@@ -38,6 +38,16 @@ test("materials: linear basis uses measured LF, not area", () => {
   assert.equal(row.materials[0].qty, 4); // ceil(130/40) = ceil(3.25)
 });
 
+test("materials: note (trowel / coats) passes through to the row", () => {
+  const conds = [{
+    id: "wd", finish_tag: "WD-1",
+    materials: [{ id: "m", name: "Adhesive (Berger-Seidle)", per: 55, basis: "area", unit: "gal", round: true, note: "3/16″ V-notch" }],
+  }];
+  const [row] = conditionTotals(conds, [area("wd", 110)]);
+  assert.equal(row.materials[0].note, "3/16″ V-notch");
+  assert.equal(row.materials[0].qty, 2); // ceil(110/55)
+});
+
 test("materialsSummary: same-named materials sum across conditions", () => {
   const conds = [
     { id: "a", finish_tag: "CT-1", materials: [{ id: "1", name: "Grout", per: 120, basis: "area", unit: "bag", round: true }] },

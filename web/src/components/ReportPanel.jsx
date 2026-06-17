@@ -131,7 +131,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               {rows.filter((r) => r.materials?.length).map((r) => (
                 <span key={r.id} style={{ marginRight: 14, whiteSpace: "nowrap" }}>
                   <strong style={{ fontFamily: "var(--f-mono)" }}>{r.finish_tag}</strong>{" "}
-                  {r.materials.map((m) => `${m.name} ${num(m.qty, 2)}${m.unit ? " " + m.unit : ""}`).join(" · ")}
+                  {r.materials.map((m) => `${m.name} ${num(m.qty, 2)}${m.unit ? " " + m.unit : ""}${m.note ? ` (${m.note})` : ""}`).join(" · ")}
                 </span>
               ))}
               <br />Each quantity = measured {`{area / linear / count}`} ÷ your coverage rate, rounded up to whole units.
