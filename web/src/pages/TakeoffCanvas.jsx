@@ -244,6 +244,47 @@ function seedConditions() {
   }));
 }
 
+// Editable supporting-materials rows — the assembly behind a condition. Shared
+// by the top-bar editor and the Takeoffs side panel so the two never drift.
+function MaterialsEditor({ materials, onAdd, onUpdate, onRemove }) {
+  const ip = { padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 };
+  return (
+    <>
+      {(materials || []).map((m) => (
+        <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
+          <input value={m.name} onChange={(e) => onUpdate(m.id, { name: e.target.value })} placeholder="Material (e.g. Adhesive)" style={{ ...ip, width: 160 }} />
+          <span style={{ color: "var(--ink-muted)" }}>1</span>
+          <input value={m.unit} onChange={(e) => onUpdate(m.id, { unit: e.target.value })} placeholder="unit" style={{ ...ip, width: 60 }} />
+          <span style={{ color: "var(--ink-muted)" }}>per</span>
+          <input type="number" min="0" step="any" value={m.per || ""} onChange={(e) => onUpdate(m.id, { per: Math.max(0, parseFloat(e.target.value) || 0) })} placeholder="0" style={{ ...ip, width: 66 }} />
+          <select value={m.basis || "area"} onChange={(e) => onUpdate(m.id, { basis: e.target.value })} style={{ ...ip, background: "var(--paper-bright)" }}>
+            <option value="area">floor SF</option>
+            <option value="linear">linear LF</option>
+            <option value="count">each</option>
+          </select>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--ink-muted)" }} title="Round up to whole units (you buy whole buckets/bags)">
+            <input type="checkbox" checked={m.round !== false} onChange={(e) => onUpdate(m.id, { round: e.target.checked })} />round up
+          </label>
+          {isAdhesive(m.name) && (m.basis || "area") === "area" && (
+            <select value={TROWEL_PRESETS.some((t) => t.label === m.note) ? m.note : ""}
+              onChange={(e) => { const t = TROWEL_PRESETS.find((x) => x.label === e.target.value); if (t) onUpdate(m.id, { note: t.label, per: t.per }); }}
+              title="Trowel notch — sets the adhesive coverage (SF/gal). Verify against the data sheet."
+              style={{ ...ip, background: "var(--paper-bright)" }}>
+              <option value="">trowel…</option>
+              {TROWEL_PRESETS.map((t) => <option key={t.label} value={t.label}>{t.label} · {t.per} SF/gal</option>)}
+            </select>
+          )}
+          <input value={m.note || ""} onChange={(e) => onUpdate(m.id, { note: e.target.value })} placeholder="note (coats, trowel…)" style={{ ...ip, width: 150 }} />
+          <button onClick={() => onRemove(m.id)} title="Remove this material"
+            style={{ padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "#b03a26", cursor: "pointer", fontSize: 12 }}>✕</button>
+        </div>
+      ))}
+      <button onClick={onAdd}
+        style={{ marginTop: 2, padding: "4px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>+ add material</button>
+    </>
+  );
+}
+
 export default function TakeoffCanvas() {
   // Client-only: a single local workspace in this browser (no project id, no backend).
   const [sheets, setSheets] = useState([]);
@@ -263,6 +304,7 @@ export default function TakeoffCanvas() {
   const [markupDraft, setMarkupDraft] = useState(null);      // in-progress markup first point (cloud/callout)
   const [showMarkupPanel, setShowMarkupPanel] = useState(false);
   const [showTakeoffs, setShowTakeoffs] = useState(false);    // side panel: takeoffs list (conditions + totals)
+  const [panelMatOpen, setPanelMatOpen] = useState(false);    // assemblies editor expanded inline under the active row in the Takeoffs panel
   const labeledFileRef = useRef("");             // which file we've already title-block-scanned
   const wantSheetRef = useRef(new URLSearchParams(window.location.search).get("sheet") || "");
   const [status, setStatus] = useState("loading");
@@ -1696,42 +1738,7 @@ export default function TakeoffCanvas() {
             <strong style={{ fontFamily: "var(--f-display)", fontSize: 12.5, color: "var(--ink)" }}>Supporting materials — {aCond.finish_tag}</strong>
             <span style={{ color: "var(--ink-muted)" }}>order qty = measured ÷ coverage, rounded up. Coverage comes off the product data sheet.</span>
           </div>
-          {(aCond.materials || []).map((m) => (
-            <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
-              <input value={m.name} onChange={(e) => updateMaterial(m.id, { name: e.target.value })} placeholder="Material (e.g. Adhesive)"
-                style={{ width: 160, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-              <span style={{ color: "var(--ink-muted)" }}>1</span>
-              <input value={m.unit} onChange={(e) => updateMaterial(m.id, { unit: e.target.value })} placeholder="unit"
-                style={{ width: 60, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-              <span style={{ color: "var(--ink-muted)" }}>per</span>
-              <input type="number" min="0" step="any" value={m.per || ""} onChange={(e) => updateMaterial(m.id, { per: Math.max(0, parseFloat(e.target.value) || 0) })} placeholder="0"
-                style={{ width: 66, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-              <select value={m.basis || "area"} onChange={(e) => updateMaterial(m.id, { basis: e.target.value })}
-                style={{ padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12, background: "var(--paper-bright)" }}>
-                <option value="area">floor SF</option>
-                <option value="linear">linear LF</option>
-                <option value="count">each</option>
-              </select>
-              <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--ink-muted)" }} title="Round up to whole units (you buy whole buckets/bags)">
-                <input type="checkbox" checked={m.round !== false} onChange={(e) => updateMaterial(m.id, { round: e.target.checked })} />round up
-              </label>
-              {isAdhesive(m.name) && (m.basis || "area") === "area" && (
-                <select value={TROWEL_PRESETS.some((t) => t.label === m.note) ? m.note : ""}
-                  onChange={(e) => { const t = TROWEL_PRESETS.find((x) => x.label === e.target.value); if (t) updateMaterial(m.id, { note: t.label, per: t.per }); }}
-                  title="Trowel notch — sets the adhesive coverage (SF/gal). Verify against the data sheet."
-                  style={{ padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12, background: "var(--paper-bright)" }}>
-                  <option value="">trowel…</option>
-                  {TROWEL_PRESETS.map((t) => <option key={t.label} value={t.label}>{t.label} · {t.per} SF/gal</option>)}
-                </select>
-              )}
-              <input value={m.note || ""} onChange={(e) => updateMaterial(m.id, { note: e.target.value })} placeholder="note (coats, trowel…)"
-                style={{ width: 150, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-              <button onClick={() => removeMaterial(m.id)} title="Remove this material"
-                style={{ padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "#b03a26", cursor: "pointer", fontSize: 12 }}>✕</button>
-            </div>
-          ))}
-          <button onClick={addMaterial}
-            style={{ marginTop: 2, padding: "4px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>+ add material</button>
+          <MaterialsEditor materials={aCond.materials} onAdd={addMaterial} onUpdate={updateMaterial} onRemove={removeMaterial} />
         </div>
       )}
 
@@ -1989,7 +1996,7 @@ export default function TakeoffCanvas() {
         {/* Takeoffs side panel — every condition on this sheet with its running totals.
             "Takeoffs on the side": click a row to make it active, ⧉ to copy its shape. */}
         {showTakeoffs && (
-          <div style={{ position: "absolute", right: 14, top: 118, width: 300, maxHeight: "calc(100% - 132px)", overflow: "auto", background: "var(--paper-bright)", border: "1px solid var(--ink)", borderRadius: 0, boxShadow: "var(--shadow-2)", zIndex: 7, fontSize: 12.5 }}>
+          <div style={{ position: "absolute", right: 14, top: 118, width: panelMatOpen ? 420 : 300, maxHeight: "calc(100% - 132px)", overflow: "auto", background: "var(--paper-bright)", border: "1px solid var(--ink)", borderRadius: 0, boxShadow: "var(--shadow-2)", zIndex: 7, fontSize: 12.5 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", background: "var(--ink)", color: "var(--paper-cream)", borderRadius: 0 }}>
               <strong>Takeoffs · {groupKeys.length > 1 ? "these sheets" : "this sheet"}</strong>
               <button onClick={() => setShowTakeoffs(false)} style={{ background: "none", border: "none", color: "#fff", fontSize: 16, cursor: "pointer" }}>×</button>
@@ -2003,17 +2010,33 @@ export default function TakeoffCanvas() {
               const ea = cs.reduce((n, s) => n + (s.measure_role === "count" ? (s.computed?.count || 1) : 0), 0) * mult;
               const wsf = cs.reduce((n, s) => n + (s.measure_role === "surface_area" ? (s.computed?.area_sf || 0) : 0), 0) * mult;
               const on = c.id === activeCond;
+              const matOn = on && panelMatOpen;
               return (
-                <div key={c.id} onClick={() => setActiveCond(c.id)} title="Make this the active condition"
-                  style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderTop: "1px solid var(--ink-faint)", cursor: "pointer", background: on ? "#f3f8f4" : "transparent", borderLeft: on ? `3px solid ${c.color}` : "3px solid transparent" }}>
-                  <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ fontWeight: on ? 700 : 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.finish_tag}{mult > 1 ? <span style={{ color: "var(--ink-muted)", fontWeight: 500 }}> ×{mult}</span> : null}</div>
-                    <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 11, color: "var(--ink-muted)" }}>
-                      {sf ? `${num(sf)} SF` : ""}{wsf ? `${sf ? " · " : ""}${num(wsf)} SF wall` : ""}{lf ? `${sf || wsf ? " · " : ""}${num(lf)} LF` : ""}{ea ? `${sf || wsf || lf ? " · " : ""}${num(ea, 0)} EA` : ""}{!sf && !wsf && !lf && !ea ? "—" : ""}
+                <div key={c.id} style={{ borderTop: "1px solid var(--ink-faint)", background: on ? "#f3f8f4" : "transparent", borderLeft: on ? `3px solid ${c.color}` : "3px solid transparent" }}>
+                  <div onClick={() => setActiveCond(c.id)} title="Make this the active condition"
+                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", cursor: "pointer" }}>
+                    <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: on ? 700 : 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.finish_tag}{mult > 1 ? <span style={{ color: "var(--ink-muted)", fontWeight: 500 }}> ×{mult}</span> : null}</div>
+                      <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 11, color: "var(--ink-muted)" }}>
+                        {sf ? `${num(sf)} SF` : ""}{wsf ? `${sf ? " · " : ""}${num(wsf)} SF wall` : ""}{lf ? `${sf || wsf ? " · " : ""}${num(lf)} LF` : ""}{ea ? `${sf || wsf || lf ? " · " : ""}${num(ea, 0)} EA` : ""}{!sf && !wsf && !lf && !ea ? "—" : ""}
+                      </div>
                     </div>
+                    <span style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)", flexShrink: 0 }}>{cs.length}▦</span>
+                    <button onClick={(e) => { e.stopPropagation(); setActiveCond(c.id); setPanelMatOpen((v) => (on ? !v : true)); }}
+                      title="Assemblies — supporting materials for this condition"
+                      style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: matOn ? "var(--ink)" : "transparent", color: matOn ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>
+                      <Icon name="product" size={11} />{c.materials?.length ? c.materials.length : ""}
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); deleteCondition(c.id); }} title="Delete this condition (and its takeoffs)"
+                      style={{ flexShrink: 0, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "#b03a26", cursor: "pointer", fontSize: 12 }}>✕</button>
                   </div>
-                  <span style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)", flexShrink: 0 }}>{cs.length}▦</span>
+                  {matOn && (
+                    <div style={{ padding: "8px 12px 10px", background: "var(--paper-cream)", borderTop: "1px solid var(--ink-faint)", fontSize: 11.5 }}>
+                      <div style={{ marginBottom: 6, color: "var(--ink-muted)" }}>Assemblies — order qty = measured ÷ coverage, rounded up.</div>
+                      <MaterialsEditor materials={c.materials} onAdd={addMaterial} onUpdate={updateMaterial} onRemove={removeMaterial} />
+                    </div>
+                  )}
                 </div>
               );
             })}
