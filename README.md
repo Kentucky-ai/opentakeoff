@@ -14,7 +14,7 @@ One-click room detection. Runs entirely in your browser. No account, no upload, 
 ---
 
 Commercial takeoff tools start around **$1,200–$5,500/yr**, and the flooring
-options (Measure Square, RFMS, …) run **$600–$2,100/yr**. There has been **no
+options run **$600–$2,100/yr**. There has been **no
 open-source, web-based takeoff canvas** — let alone one for flooring. OpenTakeoff
 is that tool, given to the trade.
 
@@ -53,7 +53,7 @@ npm run build      # -> web/dist/
   traces itself, vertices snap to true corners.
 - **Conditions** — color + CAD hatch per finish (LVP, carpet, tile, …), a
   per-condition **waste %**, and an ×N multiplier for repeated units.
-- **Report** — STACK-style breakdown by finish with measured **and** waste-adjusted
+- **Report** — breakdown by finish with measured **and** waste-adjusted
   quantities; export to CSV / JSON; print.
 - **Markups** — revision clouds, callouts, text notes.
 - **Yours, locally** — everything persists in your browser (IndexedDB +
