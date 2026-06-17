@@ -1,6 +1,6 @@
 # Third-party notices
 
-OpenTakeoff is MIT-licensed. It builds on the following open-source projects,
+OpenTakeoff is Apache-2.0 licensed. It builds on the following open-source projects,
 which retain their own licenses:
 
 | Project | License | Use |

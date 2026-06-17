@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "description": "OpenTakeoff — a free, open-source PDF takeoff canvas for flooring contractors.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

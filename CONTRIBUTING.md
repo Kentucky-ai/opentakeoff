@@ -50,4 +50,4 @@ engines — OpenTakeoff is a takeoff tool, not an ERP.
 - Keep the geometry libs pure and typed; add a test when you touch them.
 - Never commit real plan PDFs or any private/customer data.
 
-By contributing you agree your contributions are licensed under the MIT License.
+By contributing you agree your contributions are licensed under the Apache License 2.0.

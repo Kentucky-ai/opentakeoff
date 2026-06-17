@@ -120,5 +120,5 @@ commit real plans.
 
 ## License
 
-[MIT](LICENSE) — use it, fork it, ship it, sell on top of it. Given to the flooring
-community.
+[Apache License 2.0](LICENSE) — use it, fork it, ship it, sell on top of it. Given
+to the flooring community. See [NOTICE](NOTICE) for attribution.
