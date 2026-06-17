@@ -208,16 +208,16 @@ function hitShape(shape, x, y, w, h, thr) {
 // Each default also carries a couple of editable starter materials — quantities
 // derive deterministically from measured area/linear ÷ a coverage rate you set
 // (off the product data sheet). Delete/edit freely; they're just sensible seeds.
-// Wood-flooring adhesive coverage by trowel notch, in SF per gallon — sensible
-// starter seeds, NOT a substitute for the product data sheet (e.g. Berger-Seidle).
-// Picking a trowel in the materials editor fills the coverage rate + notes the
-// notch, since a wider notch lays more glue and covers less area per gallon.
+// Adhesive coverage by trowel notch, SF per gallon. Values from the BergerBond
+// M1/M1X data sheet (09/2025): 900–1,400 g/m² ≈ 40–70 SF/gal across the
+// BergerTool B-notches (B3/B7/B11/B15) — a wider notch lays more glue and covers
+// less per gallon. Picking a notch fills the coverage rate + notes it. Verify
+// against the current TDS for your subfloor + flooring type.
 const TROWEL_PRESETS = [
-  { label: "1/8″ V-notch",   per: 70 },
-  { label: "3/16″ V-notch",  per: 55 },
-  { label: "1/4″ V-notch",   per: 45 },
-  { label: "1/4″ square",    per: 40 },
-  { label: "5/16″ square",   per: 32 },
+  { label: "B3 (fine)",    per: 70 },
+  { label: "B7",           per: 58 },
+  { label: "B11",          per: 50 },
+  { label: "B15 (coarse)", per: 40 },
 ];
 const isAdhesive = (name) => /adhes|glue|bond|mastic/i.test(name || "");
 
@@ -226,9 +226,9 @@ const FLOORING_DEFAULTS = [
   { tag: "BRD-1", color: "#be185d", hatch: "dots",    waste: 10, mats: [{ name: "Adhesive", per: 120, basis: "area", unit: "gal" }] },                                    // Broadloom carpet (roll goods)
   { tag: "LVT-1", color: "#b8860b", hatch: "plank",   waste: 8,  mats: [{ name: "Adhesive", per: 250, basis: "area", unit: "gal" }] },                                    // Luxury vinyl plank/tile
   { tag: "WD-1",  color: "#9a3412", hatch: "plank",   waste: 10, mats: [                                                                                                  // Unfinished 2.25″ solid red oak — glue-down + site-finished
-    { name: "Adhesive (Berger-Seidle)",      per: 55,  basis: "area", unit: "gal", note: "3/16″ V-notch" },
-    { name: "Sealer (Berger-Seidle)",        per: 500, basis: "area", unit: "gal", note: "1 seal coat" },
-    { name: "Polyurethane (Berger-Seidle)",  per: 167, basis: "area", unit: "gal", note: "≈3 coats @ 500 SF/gal/coat" },
+    { name: "Adhesive — BergerBond M1",      per: 50,  basis: "area", unit: "gal", note: "B11 notch (SMP, solid wood)" },
+    { name: "Sealer — AquaSeal FlexPrimer",  per: 400, basis: "area", unit: "gal", note: "1 prime coat (~10 m²/L)" },
+    { name: "Polyurethane — AquaSeal 2KPU",  per: 136, basis: "area", unit: "gal", note: "≈3 coats @ ~408 SF/gal/coat (2K 10:1)" },
   ] },
   { tag: "VCT-1", color: "#2563eb", hatch: "checker", waste: 5,  mats: [{ name: "Adhesive", per: 350, basis: "area", unit: "gal" }] },                                    // Vinyl composition tile
   { tag: "SV-1",  color: "#0d9488", hatch: "solid",   waste: 10, mats: [{ name: "Adhesive", per: 150, basis: "area", unit: "gal" }] },                                    // Sheet vinyl
