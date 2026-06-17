@@ -183,7 +183,7 @@ export default function SheetGallery({
               <button onClick={() => fileRef.current?.click()}
                 style={{ display: "block", width: "100%", maxWidth: 560, margin: "24px auto", padding: "48px 24px", border: "2px dashed var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", color: "var(--ink-muted)", fontFamily: "var(--f-body)", fontSize: 13.5, lineHeight: 1.7 }}>
                 <div style={{ fontFamily: "var(--f-display)", fontSize: 20, color: "var(--ink)", marginBottom: 8 }}>Open a plan PDF</div>
-                Drag a plan PDF here, or click to choose one. Everything stays in your browser — nothing is uploaded.
+                Drag a plan here, or click to choose. Nothing leaves your browser.
               </button>
             ) : enumerated ? (
               <>
@@ -195,6 +195,7 @@ export default function SheetGallery({
         )}
       </div>
 
+      {sheets.length > 0 && (
       <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "12px 18px", borderTop: "1px solid var(--ink)", background: "var(--paper-bright)" }}>
         <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)" }}>{sel.length ? `${sel.length} selected` : "select sheets, or hover a card and hit View"}</span>
         <div style={{ flex: 1 }} />
@@ -211,6 +212,7 @@ export default function SheetGallery({
           <Icon name="sideBySide" size={14} />Open {sel.length >= 2 ? sel.length : ""} side-by-side
         </button>
       </div>
+      )}
     </div>
   );
 }

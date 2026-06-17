@@ -92,6 +92,24 @@ React 18 + Vite, plain JSX for the canvas, **TypeScript** for the geometry libs,
 [pdf.js](https://github.com/mozilla/pdf.js) for rendering, and raw HTML5 Canvas +
 SVG for drawing — no paid dependencies. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
+## A note from the maker
+
+I run estimating for a commercial flooring company. Every takeoff tool I've used costs
+four figures a year and treats flooring as an afterthought — so I built the one I actually
+wanted, and I'm giving it to the trade.
+
+This is the real measuring engine, not a teaser. **One-Click Area** is the same flood-fill
+room tracer the expensive tools gate behind a subscription. Open a plan, trace your rooms,
+hand off a clean report — free, and nothing ever leaves your computer.
+
+The one thing I'll ask: if it saves you time, consider turning on **"contribute to the open
+flooring model."** It shares only the math — labels and quantities, never your plans — and
+the goal is genuinely big: the first AI model tuned on real flooring takeoffs, owned by the
+people who do the work instead of the software companies who sell to them. We build it
+together, or nobody does.
+
+— Michael · Summit Flooring Group
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). In short: `npm run typecheck && npm test &&

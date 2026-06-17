@@ -205,11 +205,14 @@ function hitShape(shape, x, y, w, h, thr) {
 // can change per condition (it's never auto-applied to the live readout, only
 // the Report). Delete any you don't need.
 const FLOORING_DEFAULTS = [
-  { tag: "LVP-1",  color: "#b8860b", hatch: "plank",   waste: 8 },
-  { tag: "CPT-1",  color: "#2f7d54", hatch: "speckle", waste: 5 },
-  { tag: "TILE-1", color: "#2563eb", hatch: "grid",    waste: 10 },
-  { tag: "VIN-1",  color: "#0d9488", hatch: "solid",   waste: 8 },
-  { tag: "BASE-1", color: "#475569", hatch: "horiz",   waste: 0 },
+  { tag: "CPT-1", color: "#2f7d54", hatch: "speckle", waste: 5 },   // Carpet tile
+  { tag: "BRD-1", color: "#be185d", hatch: "dots",    waste: 10 },  // Broadloom carpet (roll goods)
+  { tag: "LVT-1", color: "#b8860b", hatch: "plank",   waste: 8 },   // Luxury vinyl plank/tile
+  { tag: "VCT-1", color: "#2563eb", hatch: "checker", waste: 5 },   // Vinyl composition tile
+  { tag: "SV-1",  color: "#0d9488", hatch: "solid",   waste: 10 },  // Sheet vinyl
+  { tag: "CT-1",  color: "#9333ea", hatch: "grid",    waste: 10 },  // Ceramic / porcelain tile
+  { tag: "RB-1",  color: "#475569", hatch: "horiz",   waste: 5 },   // Rubber / resilient wall base (linear)
+  { tag: "TR-1",  color: "#c96442", hatch: "vert",    waste: 0 },   // Transitions / reducers (linear)
 ];
 function seedConditions() {
   return FLOORING_DEFAULTS.map((d) => ({
