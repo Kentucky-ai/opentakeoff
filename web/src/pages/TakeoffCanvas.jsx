@@ -208,10 +208,28 @@ function hitShape(shape, x, y, w, h, thr) {
 // Each default also carries a couple of editable starter materials — quantities
 // derive deterministically from measured area/linear ÷ a coverage rate you set
 // (off the product data sheet). Delete/edit freely; they're just sensible seeds.
+// Wood-flooring adhesive coverage by trowel notch, in SF per gallon — sensible
+// starter seeds, NOT a substitute for the product data sheet (e.g. Berger-Seidle).
+// Picking a trowel in the materials editor fills the coverage rate + notes the
+// notch, since a wider notch lays more glue and covers less area per gallon.
+const TROWEL_PRESETS = [
+  { label: "1/8″ V-notch",   per: 70 },
+  { label: "3/16″ V-notch",  per: 55 },
+  { label: "1/4″ V-notch",   per: 45 },
+  { label: "1/4″ square",    per: 40 },
+  { label: "5/16″ square",   per: 32 },
+];
+const isAdhesive = (name) => /adhes|glue|bond|mastic/i.test(name || "");
+
 const FLOORING_DEFAULTS = [
   { tag: "CPT-1", color: "#2f7d54", hatch: "speckle", waste: 5,  mats: [{ name: "Adhesive", per: 250, basis: "area", unit: "gal" }] },                                    // Carpet tile
   { tag: "BRD-1", color: "#be185d", hatch: "dots",    waste: 10, mats: [{ name: "Adhesive", per: 120, basis: "area", unit: "gal" }] },                                    // Broadloom carpet (roll goods)
   { tag: "LVT-1", color: "#b8860b", hatch: "plank",   waste: 8,  mats: [{ name: "Adhesive", per: 250, basis: "area", unit: "gal" }] },                                    // Luxury vinyl plank/tile
+  { tag: "WD-1",  color: "#9a3412", hatch: "plank",   waste: 10, mats: [                                                                                                  // Unfinished 2.25″ solid red oak — glue-down + site-finished
+    { name: "Adhesive (Berger-Seidle)",      per: 55,  basis: "area", unit: "gal", note: "3/16″ V-notch" },
+    { name: "Sealer (Berger-Seidle)",        per: 500, basis: "area", unit: "gal", note: "1 seal coat" },
+    { name: "Polyurethane (Berger-Seidle)",  per: 167, basis: "area", unit: "gal", note: "≈3 coats @ 500 SF/gal/coat" },
+  ] },
   { tag: "VCT-1", color: "#2563eb", hatch: "checker", waste: 5,  mats: [{ name: "Adhesive", per: 350, basis: "area", unit: "gal" }] },                                    // Vinyl composition tile
   { tag: "SV-1",  color: "#0d9488", hatch: "solid",   waste: 10, mats: [{ name: "Adhesive", per: 150, basis: "area", unit: "gal" }] },                                    // Sheet vinyl
   { tag: "CT-1",  color: "#9333ea", hatch: "grid",    waste: 10, mats: [{ name: "Thinset", per: 95, basis: "area", unit: "bag" }, { name: "Grout", per: 120, basis: "area", unit: "bag" }] }, // Ceramic / porcelain tile
@@ -1697,6 +1715,17 @@ export default function TakeoffCanvas() {
               <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--ink-muted)" }} title="Round up to whole units (you buy whole buckets/bags)">
                 <input type="checkbox" checked={m.round !== false} onChange={(e) => updateMaterial(m.id, { round: e.target.checked })} />round up
               </label>
+              {isAdhesive(m.name) && (m.basis || "area") === "area" && (
+                <select value={TROWEL_PRESETS.some((t) => t.label === m.note) ? m.note : ""}
+                  onChange={(e) => { const t = TROWEL_PRESETS.find((x) => x.label === e.target.value); if (t) updateMaterial(m.id, { note: t.label, per: t.per }); }}
+                  title="Trowel notch — sets the adhesive coverage (SF/gal). Verify against the data sheet."
+                  style={{ padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12, background: "var(--paper-bright)" }}>
+                  <option value="">trowel…</option>
+                  {TROWEL_PRESETS.map((t) => <option key={t.label} value={t.label}>{t.label} · {t.per} SF/gal</option>)}
+                </select>
+              )}
+              <input value={m.note || ""} onChange={(e) => updateMaterial(m.id, { note: e.target.value })} placeholder="note (coats, trowel…)"
+                style={{ width: 150, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
               <button onClick={() => removeMaterial(m.id)} title="Remove this material"
                 style={{ padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "#b03a26", cursor: "pointer", fontSize: 12 }}>✕</button>
             </div>
