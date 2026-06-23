@@ -15,7 +15,7 @@ No account. No upload. No install. It runs in your browser.
 
 <br/>
 
-<img src="docs/img/oneclick.png" alt="OpenTakeoff — a flooring takeoff in progress" width="820"/>
+<img src="docs/img/social-card.png" alt="OpenTakeoff — a flooring takeoff in progress on a floor finish plan" width="820"/>
 
 </div>
 
