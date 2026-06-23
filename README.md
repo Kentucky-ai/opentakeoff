@@ -130,11 +130,11 @@ OpenTakeoff is a **working tool**, not a preview. The measuring engine — One-C
 
 ## A note from the maker
 
-I run estimating for a commercial flooring company. Every takeoff tool I've used costs four figures a year and treats flooring as an afterthought — so I built the one I actually wanted, and I'm giving it to the trade.
+I run estimating for a commercial flooring company. Every takeoff tool I've used costs four figures a year  — so I built the one I actually wanted, and I'm giving it to the trade.
 
 This is the real measuring engine, not a teaser. **One-Click Area** is the same flood-fill room tracer the expensive tools gate behind a subscription. Open a plan, trace your rooms, hand off a clean report — free, and nothing ever leaves your computer.
 
-— Michael · Summit Flooring Group
+— Michael · Kentucky Ai
 
 ## License
 
