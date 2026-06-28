@@ -63,8 +63,8 @@ Per condition, list the consumables that actually go on the order: adhesive, sea
 ### 6. Reports & export
 A per-condition breakdown — **Floor / Wall / Border SF, LF, EA, total SF, SY**, with and without waste — plus a combined **materials buy list**. Export to **CSV** or **JSON**, or print it. Waste is applied only in the report (the order quantity), never to the live measured number, so your takeoff and your buy list stay honest about which is which.
 
-### 7. Plan-set tools
-A visual **gallery** (`G`) to pick and open sheets, **Regroup** to restore a side-by-side composition in one click, per-sheet **Hi-Res** rendering for tight zoom, **Snap** (beta) to plan lines and corners, and a separate **markup layer** (revision clouds, callouts, text notes) that's never counted in the totals.
+### 7. A vector-sharp canvas + plan-set tools
+Zoom in and the linework stays **razor-sharp**: past ~1.15× the visible region re-renders straight from the PDF vectors at your current zoom — Bluebeam/AutoCAD-style — instead of magnifying a fixed bitmap, so fine callouts and hatching never blur. It overlays just what's on screen, so there's no giant full-sheet bitmap to hold. Plus a visual **gallery** (`G`) to pick and open sheets, **Regroup** to restore a side-by-side composition in one click, per-sheet **Hi-Res** base rendering, **Snap** (beta) to plan lines and corners, and a separate **markup layer** (revision clouds, callouts, text notes) that's never counted in the totals.
 
 ### 8. Yours, locally
 Every drawing, scale, condition, and markup autosaves to **your browser** (IndexedDB + localStorage). Nothing is uploaded, there's no account, and there's no server in the default build. Host the static build yourself and it stays exactly that way.
