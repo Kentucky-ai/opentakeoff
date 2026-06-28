@@ -21,7 +21,7 @@ No account. No upload. No install. It runs in your browser.
 
 ---
 
-Commercial takeoff and estimating tools — Bluebeam, PlanSwift, On-Screen Takeoff, STACK, Kreo, Autodesk Takeoff — start around **$1,200–$5,500/yr**, and the flooring-specific options (MeasureSquare, FloorRight) run **$600–$2,100/yr**. Until now there has been **no open-source, web-based takeoff canvas at all** — let alone one built for flooring. OpenTakeoff is that tool: a free, open-source alternative, given to the trade.
+Commercial takeoff and estimating tools —Until now there has been **no open-source, web-based takeoff canvas at all** — let alone one built for flooring. OpenTakeoff is that tool: a free, open-source alternative, given to the trade.
 
 It started as the takeoff module of a private flooring estimating app, then got carved out, cleaned up, and released. **This is the real measuring engine, not a demo** — including **One-Click Area**, the flood-fill room tracer the $300/mo tools gate behind a subscription.
 
