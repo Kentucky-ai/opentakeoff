@@ -28,6 +28,15 @@ const MAX_SCALE = 14;
 const PANEL_GAP = 48;  // px between side-by-side sheets in a multi-sheet group
 const HI_RES_FACTOR = 1.75; // hi-res raster multiplier (single-sheet view only)
 const MAX_GROUP = 4;   // E-size sheets at RENDER_SCALE 2 are ~70 MB RGBA each
+// Detail view: once zoomed past the base raster's 1:1, overlay a crop of JUST the
+// visible region, re-rendered from the PDF vectors at the current zoom — Bluebeam/
+// AutoCAD-style. Crispness becomes unbounded (up to the per-region canvas cap) without
+// ever holding a giant full-sheet bitmap; the region is ~viewport-sized so the cap
+// effectively never binds. Sits ON TOP of the existing rasterize-once base canvas.
+const MAX_CANVAS_DIM  = 16384;                // safe max side for a single canvas (desktop Chrome/Firefox/Safari)
+const MAX_CANVAS_AREA = 16384 * 16384 * 0.9;  // safe total-pixel budget per canvas (90% of the square cap)
+const DETAIL_ENGAGE = 1.15;  // engage once the stage is zoomed past ~1.15× (base raster starts to soften)
+const DETAIL_MARGIN = 0.35;  // render this much extra region beyond the viewport so small pans don't re-render
 const COLORS = ["#c96442", "#2f7d54", "#2563eb", "#9333ea", "#b8860b", "#0d9488", "#be185d", "#475569"];
 
 // Architectural / flooring hatch templates. Each condition gets a line color, a
@@ -338,6 +347,10 @@ export default function TakeoffCanvas() {
   const containerRef = useRef(null);
   const stageRef = useRef(null);
   const panelCanvasRefs = useRef(new Map()); // sheetKey → <canvas>
+  const pageObjsRef = useRef(new Map());     // sheetKey → pdf.js page object (kept for on-demand detail-view re-render)
+  const renderScalesRef = useRef(new Map()); // sheetKey → base raster pdf scale (detail view renders at a multiple of it)
+  const detailCanvasRef = useRef(null);      // single high-res viewport detail canvas (positioned imperatively)
+  const detailTaskRef = useRef(null);        // in-flight detail render task (cancel stale on re-zoom)
   const renderTasksRef = useRef(new Map());  // sheetKey → pdf.js RenderTask
   const pdfDocsRef = useRef(new Map());      // file name → pdf.js loading task (doc cache)
   const renderSeqRef = useRef(0);            // monotonic token — stale render chains bail out
@@ -639,6 +652,10 @@ export default function TakeoffCanvas() {
     snapGridsRef.current.clear();
     vectorSegsRef.current.clear();
     maskCacheRef.current.clear();
+    pageObjsRef.current.clear();
+    renderScalesRef.current.clear();
+    try { detailTaskRef.current?.cancel(); } catch { /* done */ }
+    if (detailCanvasRef.current) detailCanvasRef.current.style.display = "none";
     (async () => {
       // phase A — dimensions for every panel
       const metas = [];
@@ -650,6 +667,8 @@ export default function TakeoffCanvas() {
         const pageObj = await pdf.getPage(pageNum); if (stale()) return;
         const rs = (groupKeys.length === 1 && hiResKeys.includes(key)) ? RENDER_SCALE * HI_RES_FACTOR : RENDER_SCALE;
         const viewport = pageObj.getViewport({ scale: rs });
+        pageObjsRef.current.set(key, pageObj);     // kept for on-demand detail-view re-render
+        renderScalesRef.current.set(key, rs);      // base raster scale — detail view renders at a multiple of it
         metas.push({ key, file, pageNum, pageObj, viewport, w: Math.ceil(viewport.width), h: Math.ceil(viewport.height) });
       }
       setPanelImgs(Object.fromEntries(metas.map((m) => [m.key, { w: m.w, h: m.h }])));
@@ -722,6 +741,53 @@ export default function TakeoffCanvas() {
     return () => { renderSeqRef.current++; for (const [, rt] of renderTasksRef.current) { try { rt.cancel(); } catch { /* done */ } } };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupSig, hiResKeys.join(" ")]);
+
+  // ── detail view: re-render the visible region at the current zoom ───────────
+  // The base panel bitmap is the fast first paint and the zoomed-out view. Once
+  // zoomed past DETAIL_ENGAGE we overlay a crop of JUST what's on screen (+margin),
+  // rendered from the PDF vectors at the current zoom, so linework stays razor-sharp
+  // with no giant full-sheet bitmap. `tf` only updates after the ~80ms pan/zoom settle
+  // (scheduleSync), so this is naturally debounced. Pixels only — markup is an SVG
+  // sibling ABOVE this canvas, and quantities never touch render pixels: both untouched.
+  useEffect(() => {
+    const cv = detailCanvasRef.current, cont = containerRef.current, fp = focusPanel;
+    const hide = () => { if (cv) cv.style.display = "none"; };
+    if (!cv || !cont || status !== "ready" || !fp || !fp.img.w) return hide();
+    const t = tfRef.current;
+    if (t.scale <= DETAIL_ENGAGE) return hide();
+    const pageObj = pageObjsRef.current.get(fp.key), rs = renderScalesRef.current.get(fp.key);
+    if (!pageObj || !rs) return hide();
+
+    // visible region of THIS panel, in image px (stage space minus the panel's xOffset)
+    const r = cont.getBoundingClientRect();
+    let x0 = Math.max((-t.x) / t.scale, fp.xOffset) - fp.xOffset;
+    let y0 = Math.max((-t.y) / t.scale, 0);
+    let x1 = Math.min((r.width - t.x) / t.scale, fp.xOffset + fp.img.w) - fp.xOffset;
+    let y1 = Math.min((r.height - t.y) / t.scale, fp.img.h);
+    if (x1 <= x0 || y1 <= y0) return hide();           // panel off-screen
+    const mw = (x1 - x0) * DETAIL_MARGIN, mh = (y1 - y0) * DETAIL_MARGIN;
+    x0 = Math.max(0, x0 - mw); y0 = Math.max(0, y0 - mh);
+    x1 = Math.min(fp.img.w, x1 + mw); y1 = Math.min(fp.img.h, y1 + mh);
+    const regW = x1 - x0, regH = y1 - y0;
+
+    // density: enough backing px that the stage's CSS scale (×t.scale) isn't upscaling.
+    // Capped by canvas limits, but the region is ~viewport-sized so the cap ~never binds.
+    const dpr = window.devicePixelRatio || 1;
+    let factor = Math.min(t.scale * dpr, MAX_CANVAS_DIM / regW, MAX_CANVAS_DIM / regH, Math.sqrt(MAX_CANVAS_AREA / (regW * regH)));
+    factor = Math.max(1, factor);
+    const bw = Math.max(1, Math.round(regW * factor)), bh = Math.max(1, Math.round(regH * factor));
+
+    // pdf scale yielding factor× the base raster density; shift the region's top-left to (0,0)
+    const vp = pageObj.getViewport({ scale: rs * factor });
+    cv.style.left = `${fp.xOffset + x0}px`; cv.style.top = `${y0}px`;
+    cv.style.width = `${regW}px`; cv.style.height = `${regH}px`;
+    cv.width = bw; cv.height = bh; cv.style.display = "block";
+    try { detailTaskRef.current?.cancel(); } catch { /* done */ }
+    const rt = pageObj.render({ canvasContext: cv.getContext("2d"), viewport: vp, transform: [1, 0, 0, 1, -x0 * factor, -y0 * factor] });
+    detailTaskRef.current = rt;
+    rt.promise.catch(() => {});   // RenderingCancelledException on rapid re-zoom is expected
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tf, groupSig, status, focusKey]);
 
   // the doc cache holds whole PDFs in the worker — tear it down when the
   // project view unmounts or the project changes
@@ -1771,6 +1837,8 @@ export default function TakeoffCanvas() {
               <canvas key={p.key} ref={(el) => { if (el) panelCanvasRefs.current.set(p.key, el); else panelCanvasRefs.current.delete(p.key); }}
                 style={{ position: "absolute", left: p.xOffset, top: 0, boxShadow: "0 2px 20px rgba(0,0,0,.18)" }} />
             ))}
+            {/* high-res detail overlay — a crop of the visible region re-rendered at the current zoom (see the detail-view effect) */}
+            <canvas ref={detailCanvasRef} style={{ position: "absolute", left: 0, top: 0, display: "none", pointerEvents: "none" }} />
             <svg width={stage.w} height={stage.h} viewBox={`0 0 ${stage.w} ${stage.h}`} style={{ position: "absolute", top: 0, left: 0, overflow: "visible", pointerEvents: "none" }}>
               <defs>
                 {conditions.map((c) => <HatchPattern key={patId(c)} id={patId(c)} type={c.hatch || "solid"} line={c.color} fill={c.fill} />)}
