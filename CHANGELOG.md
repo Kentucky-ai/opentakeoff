@@ -5,12 +5,12 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 ## 2026-07-01
 
 ### Added
-- **45°/90° angle guides (polar tracking).** While tracing Area / Linear / Surface / Deduct, the segment locks to the 45° family (0°, 45°, 90°, 135° across the sheet) whenever the cursor comes within ~4° of an axis; a dashed guide stretches across the sheet along the locked axis and the click commits the exactly-on-axis point. Hold **⇧** to force the lock at any cursor angle. New **45°** toolbar toggle (on by default), sitting next to Snap. Endpoint Snap takes priority over the angle lock. The calibration line snaps the same way.
-- **Liquid-glass magnifier crosshair.** The aim point now rides inside a circular lens that magnifies the sheet beneath the cursor at ~2.25× the current zoom — linework and text pass under the glass, with a fine cross through the lens center as the aim point. While angle-locked the rim glows cobalt and a chip below the lens reads the locked angle plus the live segment length (once the sheet has a scale); the chip reads `snap` when an endpoint snap is active. Full-page aim hairlines are now 1px and fainter.
+- **45°/90° angle lock (polar tracking).** While tracing Area / Linear / Surface / Deduct (and the calibration line), the segment locks to the 45° family (0°, 45°, 90°, 135° across the sheet) whenever the cursor comes within ~4° of an axis — and **the click commits the exactly-on-axis point**, so walls come out dead square. Hold **⇧** to force the lock at any cursor angle. New **45°** toolbar toggle (on by default) next to Snap; endpoint Snap takes priority over the angle lock.
+- **Quiet lock feedback at the crosshair.** The full-page aim hairlines are now crisp 1px lines that brighten while locked; the rubber-band preview is **solid** (no more dashes) and thickens while locked; a small chip by the cursor reads the locked angle plus the live segment length (once the sheet has a scale), or `snap` when an endpoint snap is active. Design intentionally avoids viewer-style chrome (no sheet-wide guide lines, no floating glass): two heavier first drafts — a frosted-glass reticle, then a magnifying loupe — were cut the same night in favor of this quieter instrument feel.
 
 ### Docs
-- New `CHANGELOG.md`, `AGENTS.md` (map of the repo for coding agents), `web/public/llms.txt`, and GitHub issue/PR templates.
-- User guide: new "Angle guides & the magnifier crosshair" section + ⇧ shortcut row.
+- New `CHANGELOG.md`, `AGENTS.md` (map of the repo for coding agents), `FEATURES.md` (capability → code), `web/public/llms.txt`, and GitHub issue/PR templates.
+- User guide: new "Angle lock (45°/90°)" section + ⇧ shortcut row.
 
 ## 2026-06-28
 - **Crisp detail-view canvas** — past ~1.15× zoom the visible region re-renders straight from the PDF vectors at the current zoom (Bluebeam/AutoCAD-style), so deep zoom never pixelates.

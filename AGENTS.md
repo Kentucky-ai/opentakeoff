@@ -34,7 +34,7 @@ The tests cover the pure math (`web/test/geometry.test.ts`, `web/test/totals.tes
 
 - Each open sheet renders into a `<canvas>` bitmap; **all takeoff geometry is an SVG overlay** on top; pan/zoom is a single CSS transform on the stage div, written imperatively (`tfRef` → `style.transform`) to avoid React re-renders per frame.
 - Coordinates: pointer events (client px) → `toImage()` → **stage px**; committed shapes store **normalized [0..1] vertices per sheet** (`verts_norm`), so quantities survive re-renders and zoom.
-- Cursor-following UI (crosshair hairlines, the magnifier loupe, rubber band, angle guide) updates via **direct DOM writes in `moveCrosshair`** — never React state per mousemove. Keep it that way.
+- Cursor-following UI (crosshair hairlines, readout chip, rubber band) updates via **direct DOM writes in `moveCrosshair`** — never React state per mousemove. Keep it that way.
 - Angle snapping: `angleSnap()` locks in-progress segments to the 45° family; endpoint snap (`nearestSnap` over a spatial hash of PDF vector endpoints) takes priority. The committed click reuses the same locked point (`angleRef`).
 - Past ~1.15× zoom, a **detail-view canvas** re-renders the visible region from PDF vectors at the current zoom (crispness); the base bitmap stays as first paint.
 - pdf.js rendering schedules work on `requestAnimationFrame` — a fully hidden/occluded window will pause mid-render by design; it resumes when visible.

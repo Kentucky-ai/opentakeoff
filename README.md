@@ -51,7 +51,7 @@ Drag in a plan **PDF**, an **image** (a scan or a screenshot), or a whole **`.zi
 ### 2. A real measuring engine — not a counter with a ruler
 **One-Click Area** is the headline: click inside a room and the linework bounds it, the polygon traces itself, and the vertices snap to true corners. Plus the full manual kit — **Area, Rectangle, Linear, Surface-Area (walls), Count,** and **Deduct** (for columns, voids, and openings). This is the same engine pulled out of a commercial estimating app, not a toy reimplementation.
 
-Manual tracing gets real drafting aids: **45°/90° angle guides** lock the segment you're drawing onto the 45° family with a dashed guide across the sheet — the click commits the locked point, so walls come out dead square (hold **⇧** to force the lock at any angle). And the crosshair rides inside a **liquid-glass magnifier** — the plan passes under the lens at ~2.25× your zoom, with the locked angle and live segment length reading out on a chip below the glass.
+Manual tracing gets a real drafting aid: **45°/90° angle lock**. Come within a few degrees of square or diagonal and the segment you're drawing locks onto the axis — the click commits the locked point, so walls come out dead square (hold **⇧** to force the lock at any angle). The lock reads quietly, the way a good instrument should: the crosshair brightens, the preview line thickens, and a small chip by the cursor shows the locked angle plus the **live segment length**. No extra chrome on your sheet.
 
 ### 3. Scale that matches real plan sets
 Auto-detects the drawn scale note off the sheet, or **calibrate** from any known dimension (click two points, type the real length). Scale is remembered **per sheet** — because plan sets are never one uniform scale, and tools that assume they are get the numbers wrong.
@@ -82,7 +82,7 @@ Every drawing, scale, condition, and markup autosaves to **your browser** (Index
 | **Ingest** | PDF, image, or `.zip` plan set — unpacked in-browser, multi-page, up to 4 sheets side-by-side |
 | **Scale** | Auto-detect the drawn scale note, or calibrate from a known dimension — per sheet |
 | **Measure** | One-Click Area (flood-fill), Area, Rectangle, Linear, Surface-Area (walls), Count, Deduct |
-| **Drawing aids** | 45°/90° angle guides with ⇧ hard-lock, magnifier crosshair with live angle + length readout, endpoint Snap (beta) |
+| **Drawing aids** | 45°/90° angle lock with ⇧ hard-lock, live angle + segment-length readout at the cursor, endpoint Snap (beta) |
 | **Conditions** | Color + CAD hatch per finish, waste %, ×N multiplier, height, thickness → border SF |
 | **Assemblies** | Per-condition supporting materials with coverage rates → rounded order quantities, trowel picker |
 | **Report** | Per-condition Floor/Wall/Border SF, LF, EA, SY, with/without waste + materials buy list |

@@ -157,8 +157,6 @@ function nearestSnap(grid, x, y, maxDist) {
 // segment is exactly on-axis. The stage transform is translate+scale only, so
 // image-space angles ARE sheet angles.
 const ANGLE_TOL = 4;
-const LOUPE_D = 110;    // lens diameter, CSS px
-const LOUPE_MAG = 2.25; // magnification relative to the current canvas zoom
 function angleSnap(last, cur, force) {
   const dx = cur[0] - last[0], dy = cur[1] - last[1];
   if (!dx && !dy) return null;
@@ -387,11 +385,7 @@ export default function TakeoffCanvas() {
   const maskCacheRef = useRef(new Map());  // sheetKey → built boundary mask (lazy, dropped on re-render)
   const snapMarkRef = useRef(null);    // SVG snap indicator
   const angleRef = useRef(null);       // current angle-locked image point (or null) — the click commits it
-  const angleGuideRef = useRef(null);  // SVG dashed guide through the last vertex along the locked axis
-  const loupeRef = useRef(null);       // liquid-glass magnifier riding the crosshair — the plan passes under it
-  const loupeCanvasRef = useRef(null); // the lens interior: a magnified blit of the sheet under the cursor
-  const loupeRimRef = useRef(null);    // lens rim ring — flips cobalt while angle-locked
-  const loupeChipRef = useRef(null);   // readout chip on the lens (locked angle · live segment length)
+  const aimChipRef = useRef(null);     // readout chip by the cursor (locked angle · live segment length)
   const dragRef = useRef(null);        // {kind:'move'|'vertex', shapeId, vIndex?, start:[x,y], orig:verts_norm}
   const lastPtrRef = useRef(null);     // last pointer CLIENT coords — paste targets the sheet under the cursor
   const pendingClickRef = useRef(null); // deferred draw click {p,cx,cy} — drag >5px converts to a pan
@@ -1131,9 +1125,10 @@ export default function TakeoffCanvas() {
     const drawing = (tool === "area" || tool === "deduct" || tool === "linear" || tool === "surface");
 
     // polar tracking: endpoint snap wins (osnap beats polar); otherwise pull the
-    // rubber band onto the 45° family and stretch a dashed guide across the sheet.
-    // ⇧ forces the lock at any angle. The click path commits angleRef, so the
-    // placed vertex is exactly on-axis — not just the preview.
+    // rubber band onto the 45° family. ⇧ forces the lock at any angle. The click
+    // path commits angleRef, so the placed vertex is exactly on-axis — not just
+    // the preview. The lock reads as a QUIET state change (crosshair brightens,
+    // rubber band thickens, chip shows the angle) — no extra chrome on the sheet.
     const anchor = (drawing && poly.length > 0) ? poly[poly.length - 1]
       : (tool === "calibrate" && calib.length === 1 ? calib[0] : null);
     angleRef.current = null;
@@ -1144,64 +1139,40 @@ export default function TakeoffCanvas() {
         lock = angleSnap(anchor, cur, e.shiftKey);
       if (lock) { angleRef.current = lock.pt; cur = lock.pt; }
     }
-    if (angleGuideRef.current) {
-      if (lock) {
-        const L = (stage.w || 0) + (stage.h || 0) || 20000;
-        angleGuideRef.current.setAttribute("x1", anchor[0] - L * lock.ux); angleGuideRef.current.setAttribute("y1", anchor[1] - L * lock.uy);
-        angleGuideRef.current.setAttribute("x2", anchor[0] + L * lock.ux); angleGuideRef.current.setAttribute("y2", anchor[1] + L * lock.uy);
-        angleGuideRef.current.style.display = "block";
-      } else angleGuideRef.current.style.display = "none";
-    }
 
     // aim visuals ride the EFFECTIVE point (locked/snapped), not the raw mouse
     const t = tfRef.current;
     const ex = cur[0] * t.scale + t.x, ey = cur[1] * t.scale + t.y;
-    if (crossVRef.current) { crossVRef.current.style.left = `${ex}px`; crossVRef.current.style.display = "block"; }
-    if (crossHRef.current) { crossHRef.current.style.top = `${ey}px`; crossHRef.current.style.display = "block"; }
-    // the liquid-glass loupe: a real magnifier — the sheet under the cursor is
-    // blitted into the lens at LOUPE_MAG× the current zoom, so linework and text
-    // pass under the glass; the fine cross inside the lens IS the aim point.
-    if (loupeRef.current && loupeCanvasRef.current) {
-      const el = loupeRef.current;
-      el.style.transform = `translate3d(${ex}px, ${ey}px, 0)`;
-      const sp = panelAt(cur[0]);
-      const src = panelCanvasRefs.current.get(sp.key);
-      const ctx2 = loupeCanvasRef.current.getContext("2d");
-      const D = loupeCanvasRef.current.width;              // lens bitmap px (2× CSS for retina)
-      ctx2.fillStyle = "#f4efe0";                          // matte beyond the sheet edge
-      ctx2.fillRect(0, 0, D, D);
-      if (src) {
-        const side = LOUPE_D / (t.scale * LOUPE_MAG);      // stage px spanning the lens
-        ctx2.drawImage(src, cur[0] - sp.xOffset - side / 2, cur[1] - side / 2, side, side, 0, 0, D, D);
-      }
-      if (loupeRimRef.current) {
-        const lockState = lock ? "1" : "";
-        if (el.__lock !== lockState) {
-          el.__lock = lockState;
-          loupeRimRef.current.style.boxShadow = lock
-            ? "0 0 0 1.5px rgba(31,63,199,.75), 0 0 16px rgba(31,63,199,.35), 0 6px 18px rgba(14,26,46,.22)"
-            : "0 0 0 1px rgba(14,26,46,.30), 0 6px 18px rgba(14,26,46,.22)";
-        }
-      }
-      if (loupeChipRef.current) {
-        const chip = loupeChipRef.current;
-        let txt = "";
-        if (lock) {
-          txt = `${lock.deg}°`;
-          if (anchor && liveUpp) txt += ` · ${num(Math.hypot(cur[0] - anchor[0], cur[1] - anchor[1]) * liveUpp)}′`;
-        } else if (snapRef.current) txt = "snap";
-        if (txt) {
-          if (chip.__t !== txt) { chip.textContent = txt; chip.__t = txt; }
-          chip.style.display = "block";
-        } else chip.style.display = "none";
-      }
-      el.style.display = "block";
+    const lockState = lock ? "1" : "";
+    if (crossVRef.current) {
+      const el = crossVRef.current;
+      el.style.left = `${ex}px`; el.style.display = "block";
+      if (el.__lock !== lockState) { el.__lock = lockState; el.style.background = lock ? "rgba(31,63,199,.7)" : "rgba(31,63,199,.35)"; }
+    }
+    if (crossHRef.current) {
+      const el = crossHRef.current;
+      el.style.top = `${ey}px`; el.style.display = "block";
+      if (el.__lock !== lockState) { el.__lock = lockState; el.style.background = lock ? "rgba(31,63,199,.7)" : "rgba(31,63,199,.35)"; }
+    }
+    if (aimChipRef.current) {
+      const chip = aimChipRef.current;
+      let txt = "";
+      if (lock) {
+        txt = `${lock.deg}°`;
+        if (anchor && liveUpp) txt += ` · ${num(Math.hypot(cur[0] - anchor[0], cur[1] - anchor[1]) * liveUpp)}′`;
+      } else if (snapRef.current) txt = "snap";
+      if (txt) {
+        if (chip.__t !== txt) { chip.textContent = txt; chip.__t = txt; }
+        chip.style.transform = `translate3d(${ex + 14}px, ${ey + 18}px, 0)`;
+        chip.style.display = "block";
+      } else chip.style.display = "none";
     }
     if (rubberRef.current) {
       if (!panRef.current && drawing && poly.length > 0) {
         const last = poly[poly.length - 1];
         rubberRef.current.setAttribute("x1", last[0]); rubberRef.current.setAttribute("y1", last[1]);
         rubberRef.current.setAttribute("x2", cur[0]); rubberRef.current.setAttribute("y2", cur[1]);
+        rubberRef.current.setAttribute("stroke-width", lock ? 3.5 : 2);  // the lock reads in the band itself
         rubberRef.current.style.display = "block";
       } else rubberRef.current.style.display = "none";
     }
@@ -1222,7 +1193,7 @@ export default function TakeoffCanvas() {
     }
   }
   function hideCrosshair() {
-    for (const ref of [crossVRef, crossHRef, rubberRef, rectRef, cloudRef, snapMarkRef, angleGuideRef, loupeRef]) if (ref.current) ref.current.style.display = "none";
+    for (const ref of [crossVRef, crossHRef, rubberRef, rectRef, cloudRef, snapMarkRef, aimChipRef]) if (ref.current) ref.current.style.display = "none";
     if (hoverRef.current) hoverRef.current.style.display = "none";
     hoverIdRef.current = "";
     angleRef.current = null;
@@ -1926,26 +1897,14 @@ export default function TakeoffCanvas() {
           onPointerLeave={hideCrosshair} onContextMenu={(e) => e.preventDefault()}
           onDoubleClick={() => { if (tool === "oneclick") { if (proposal?.regions.length) createProposal(); } else if (tool === "area" || tool === "deduct" || tool === "linear" || tool === "surface") finishShape(); }}
           style={{ position: "absolute", inset: 0, background: "var(--paper-cream)", cursor: tool === "pan" ? "grab" : tool === "select" ? "default" : "crosshair", touchAction: "none" }}>
-          {/* aim crosshair (draw modes): faint full-page hairlines + a liquid-glass
-              MAGNIFIER riding the effective point — the sheet passes under the lens
-              at LOUPE_MAG× zoom, and the crosshair lives inside the glass. All
-              positioned imperatively in moveCrosshair. */}
+          {/* aim crosshair (draw modes): two crisp full-page hairlines riding the
+              EFFECTIVE point (angle-locked / endpoint-snapped) + a small readout
+              chip in the house style. The 45° lock reads as a quiet state change
+              (hairlines brighten, rubber band thickens) — no extra chrome on the
+              sheet. All positioned imperatively in moveCrosshair. */}
           <div ref={crossVRef} style={{ position: "absolute", top: 0, bottom: 0, width: 1, background: "rgba(31,63,199,.35)", boxShadow: "0 0 0 0.5px rgba(255,255,255,.4)", pointerEvents: "none", display: "none", zIndex: 5 }} />
           <div ref={crossHRef} style={{ position: "absolute", left: 0, right: 0, height: 1, background: "rgba(31,63,199,.35)", boxShadow: "0 0 0 0.5px rgba(255,255,255,.4)", pointerEvents: "none", display: "none", zIndex: 5 }} />
-          <div ref={loupeRef} style={{ position: "absolute", left: -(LOUPE_D / 2), top: -(LOUPE_D / 2), width: LOUPE_D, height: LOUPE_D, pointerEvents: "none", display: "none", zIndex: 6, willChange: "transform" }}>
-            <div style={{ position: "absolute", inset: 0, borderRadius: "50%", overflow: "hidden", background: "#f4efe0" }}>
-              <canvas ref={loupeCanvasRef} width={LOUPE_D * 2} height={LOUPE_D * 2} style={{ position: "absolute", left: 0, top: 0, width: LOUPE_D, height: LOUPE_D }} />
-              {/* the crosshair inside the glass — a fine cross through the lens center */}
-              <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, marginLeft: -0.5, background: "rgba(31,63,199,.7)" }} />
-              <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 1, marginTop: -0.5, background: "rgba(31,63,199,.7)" }} />
-              {/* specular sweep across the upper glass */}
-              <div style={{ position: "absolute", left: 10, right: 10, top: 3, height: 30, borderRadius: "50%", background: "linear-gradient(to bottom, rgba(255,255,255,.32), rgba(255,255,255,0))" }} />
-              <div style={{ position: "absolute", inset: 0, borderRadius: "50%", boxShadow: "inset 0 1px 2px rgba(255,255,255,.85), inset 0 -10px 18px rgba(14,26,46,.10)" }} />
-            </div>
-            <div ref={loupeRimRef} style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "1px solid rgba(255,255,255,.75)", boxShadow: "0 0 0 1px rgba(14,26,46,.30), 0 6px 18px rgba(14,26,46,.22)" }} />
-            {/* readout chip riding the lens — same chip language as the hover readout */}
-            <div ref={loupeChipRef} style={{ position: "absolute", left: "50%", top: "100%", transform: "translate(-50%, 7px)", display: "none", padding: "2px 8px", background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-1)", fontFamily: "var(--f-mono)", fontSize: 10.5, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap" }} />
-          </div>
+          <div ref={aimChipRef} style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none", display: "none", zIndex: 6, padding: "2px 8px", background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-1)", fontFamily: "var(--f-mono)", fontSize: 10.5, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", willChange: "transform" }} />
           {/* hover readout — what takeoff is under the cursor (DOM-direct) */}
           <div ref={hoverRef} style={{ position: "absolute", display: "none", pointerEvents: "none", zIndex: 8, background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-1)", padding: "4px 8px", fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink)", whiteSpace: "nowrap" }} />
           <div ref={stageRef} style={{ position: "absolute", transformOrigin: "0 0", willChange: "transform", width: stage.w || undefined, height: stage.h || undefined }}>
@@ -2047,10 +2006,8 @@ export default function TakeoffCanvas() {
                   </g>
                 );
               })}
-              {/* 45°/90° angle guide — dashed track through the last vertex (updated via ref on move) */}
-              <line ref={angleGuideRef} stroke="#1f3fc7" strokeOpacity={0.45} strokeWidth={1.5} strokeDasharray="4 5" vectorEffect="non-scaling-stroke" style={{ display: "none" }} />
-              {/* rubber-band (area/deduct) + rect preview (updated via ref on move) */}
-              <line ref={rubberRef} stroke={tool === "deduct" ? "#b03a26" : activeColor} strokeWidth={2} strokeDasharray="6 4" vectorEffect="non-scaling-stroke" style={{ display: "none" }} />
+              {/* rubber-band (area/deduct) + rect preview (updated via ref on move) — solid, no dashes */}
+              <line ref={rubberRef} stroke={tool === "deduct" ? "#b03a26" : activeColor} strokeWidth={2} strokeOpacity={0.9} strokeLinecap="round" vectorEffect="non-scaling-stroke" style={{ display: "none" }} />
               <rect ref={rectRef} fill={tool === "deduct" ? "rgba(176,58,38,.22)" : shapeFill(aCond)} stroke={tool === "deduct" ? "#b03a26" : activeColor} strokeWidth={2} vectorEffect="non-scaling-stroke" style={{ display: "none" }} />
               <path ref={cloudRef} fill="rgba(37,99,235,.06)" stroke="#1f3fc7" strokeWidth={2} strokeDasharray="5 4" vectorEffect="non-scaling-stroke" style={{ display: "none" }} />
               {poly.length >= 2 && (tool === "linear" || tool === "surface"
