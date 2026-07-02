@@ -53,8 +53,10 @@ Your work autosaves to this browser continuously. Reload and it's still there.
 | `Esc` | Cancel the in‑progress shape / selection / proposal. |
 | **Hold `⇧` (Shift)** | Force the next segment onto the nearest 45°/90° axis, at any cursor angle (see Angle lock below). |
 
-### Angle lock (45°/90°)
-With the **45°** toggle on (it's on by default, next to Snap), the segment you're drawing **locks to the 45° family** — 0°, 45°, 90°, 135° across the sheet — whenever your cursor comes within a few degrees of one. The lock is deliberately quiet: the crosshair brightens, the preview line thickens, and a small chip by the cursor reads the locked angle plus the **live length of the segment** (once the sheet has a scale). The point you click is the locked point, so walls come out dead square. Hold **`⇧`** to force the lock at any angle; toggle **45°** off for free-angle tracing. Endpoint **Snap** (when enabled) takes priority over the angle lock — corners beat axes.
+### Angle lock (45°/90°) & the aim cursor
+On the canvas the crosshair **is** the cursor: the OS pointer hides in draw modes, full-page hairlines meet at a star, and everything in progress draws in the instrument's cobalt — committed takeoffs wear their condition's own color.
+
+With the **45°** toggle on (it's on by default, next to Snap), the segment you're drawing **locks to the 45° family** — 0°, 45°, 90°, 135° across the sheet — whenever your cursor comes within a few degrees of one. The lock is deliberately quiet: the star swells, the hairlines brighten, the preview line thickens, and a small chip by the cursor reads the locked angle plus the **live length of the segment** (once the sheet has a scale). The point you click is the locked point, so walls come out dead square. Hold **`⇧`** to force the lock at any angle; toggle **45°** off for free-angle tracing. Endpoint **Snap** (when enabled) takes priority over the angle lock — corners beat axes.
 
 ### Selected shape (Select tool)
 | Key | Action |

@@ -385,6 +385,7 @@ export default function TakeoffCanvas() {
   const maskCacheRef = useRef(new Map());  // sheetKey → built boundary mask (lazy, dropped on re-render)
   const snapMarkRef = useRef(null);    // SVG snap indicator
   const angleRef = useRef(null);       // current angle-locked image point (or null) — the click commits it
+  const aimMarkRef = useRef(null);     // four floating liquid-glass pickets thickening the crosshair crossing
   const aimChipRef = useRef(null);     // readout chip by the cursor (locked angle · live segment length)
   const dragRef = useRef(null);        // {kind:'move'|'vertex', shapeId, vIndex?, start:[x,y], orig:verts_norm}
   const lastPtrRef = useRef(null);     // last pointer CLIENT coords — paste targets the sheet under the cursor
@@ -1140,6 +1141,11 @@ export default function TakeoffCanvas() {
       if (lock) { angleRef.current = lock.pt; cur = lock.pt; }
     }
 
+    // the crosshair IS the cursor — re-assert cursor:none every move because the
+    // pan/space handlers restore style.cursor to "" (computed auto) on release
+    if (!panRef.current && !spaceRef.current && containerRef.current.style.cursor !== "none")
+      containerRef.current.style.cursor = "none";
+
     // aim visuals ride the EFFECTIVE point (locked/snapped), not the raw mouse
     const t = tfRef.current;
     const ex = cur[0] * t.scale + t.x, ey = cur[1] * t.scale + t.y;
@@ -1153,6 +1159,19 @@ export default function TakeoffCanvas() {
       const el = crossHRef.current;
       el.style.top = `${ey}px`; el.style.display = "block";
       if (el.__lock !== lockState) { el.__lock = lockState; el.style.background = lock ? "rgba(31,63,199,.7)" : "rgba(31,63,199,.35)"; }
+    }
+    if (aimMarkRef.current) {
+      const el = aimMarkRef.current;
+      el.style.transform = `translate3d(${ex}px, ${ey}px, 0)`;
+      if (el.__lock !== lockState) {
+        el.__lock = lockState;
+        const star = el.firstChild;
+        if (star) {
+          star.style.transform = lock ? "scale(1.3)" : "scale(1)";
+          star.style.filter = lock ? "drop-shadow(0 0 5px rgba(31,63,199,.6)) drop-shadow(0 1px 2px rgba(14,26,46,.3))" : "drop-shadow(0 1px 2px rgba(14,26,46,.3))";
+        }
+      }
+      el.style.display = "block";
     }
     if (aimChipRef.current) {
       const chip = aimChipRef.current;
@@ -1172,7 +1191,7 @@ export default function TakeoffCanvas() {
         const last = poly[poly.length - 1];
         rubberRef.current.setAttribute("x1", last[0]); rubberRef.current.setAttribute("y1", last[1]);
         rubberRef.current.setAttribute("x2", cur[0]); rubberRef.current.setAttribute("y2", cur[1]);
-        rubberRef.current.setAttribute("stroke-width", lock ? 3.5 : 2);  // the lock reads in the band itself
+        rubberRef.current.setAttribute("stroke-width", lock ? 3 : 1.5);  // the lock reads in the band itself
         rubberRef.current.style.display = "block";
       } else rubberRef.current.style.display = "none";
     }
@@ -1193,7 +1212,7 @@ export default function TakeoffCanvas() {
     }
   }
   function hideCrosshair() {
-    for (const ref of [crossVRef, crossHRef, rubberRef, rectRef, cloudRef, snapMarkRef, aimChipRef]) if (ref.current) ref.current.style.display = "none";
+    for (const ref of [crossVRef, crossHRef, rubberRef, rectRef, cloudRef, snapMarkRef, aimMarkRef, aimChipRef]) if (ref.current) ref.current.style.display = "none";
     if (hoverRef.current) hoverRef.current.style.display = "none";
     hoverIdRef.current = "";
     angleRef.current = null;
@@ -1896,14 +1915,23 @@ export default function TakeoffCanvas() {
         <div ref={containerRef} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
           onPointerLeave={hideCrosshair} onContextMenu={(e) => e.preventDefault()}
           onDoubleClick={() => { if (tool === "oneclick") { if (proposal?.regions.length) createProposal(); } else if (tool === "area" || tool === "deduct" || tool === "linear" || tool === "surface") finishShape(); }}
-          style={{ position: "absolute", inset: 0, background: "var(--paper-cream)", cursor: tool === "pan" ? "grab" : tool === "select" ? "default" : "crosshair", touchAction: "none" }}>
-          {/* aim crosshair (draw modes): two crisp full-page hairlines riding the
-              EFFECTIVE point (angle-locked / endpoint-snapped) + a small readout
-              chip in the house style. The 45° lock reads as a quiet state change
-              (hairlines brighten, rubber band thickens) — no extra chrome on the
-              sheet. All positioned imperatively in moveCrosshair. */}
+          style={{ position: "absolute", inset: 0, background: "var(--paper-cream)", cursor: tool === "pan" ? "grab" : tool === "select" ? "default" : "none", touchAction: "none" }}>
+          {/* aim crosshair (draw modes): the OS cursor is hidden on the canvas — the
+              crosshair IS the cursor. Two crisp full-page hairlines riding the
+              EFFECTIVE point (angle-locked / endpoint-snapped), the SPLINE STAR at
+              the crossing, and a small readout chip in the house style. The 45°
+              lock reads as a quiet state change (hairlines brighten, star swells
+              cobalt, rubber band thickens) — no extra chrome on the sheet. All
+              positioned imperatively in moveCrosshair. */}
           <div ref={crossVRef} style={{ position: "absolute", top: 0, bottom: 0, width: 1, background: "rgba(31,63,199,.35)", boxShadow: "0 0 0 0.5px rgba(255,255,255,.4)", pointerEvents: "none", display: "none", zIndex: 5 }} />
           <div ref={crossHRef} style={{ position: "absolute", left: 0, right: 0, height: 1, background: "rgba(31,63,199,.35)", boxShadow: "0 0 0 0.5px rgba(255,255,255,.4)", pointerEvents: "none", display: "none", zIndex: 5 }} />
+          <div ref={aimMarkRef} style={{ position: "absolute", left: 0, top: 0, width: 0, height: 0, pointerEvents: "none", display: "none", zIndex: 6, willChange: "transform" }}>
+            {/* the SPLINE STAR at the crossing — the house vertex mark IS the cursor;
+                it swells and glows cobalt while the 45° lock holds */}
+            <svg width={22} height={22} viewBox="0 0 22 22" style={{ position: "absolute", left: -11, top: -11, transition: "transform 120ms ease, filter 120ms ease", filter: "drop-shadow(0 1px 2px rgba(14,26,46,.3))" }}>
+              <path d={starPath(11, 11, 8.5)} fill="#1f3fc7" stroke="#fff" strokeWidth={1.4} />
+            </svg>
+          </div>
           <div ref={aimChipRef} style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none", display: "none", zIndex: 6, padding: "2px 8px", background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-1)", fontFamily: "var(--f-mono)", fontSize: 10.5, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", willChange: "transform" }} />
           {/* hover readout — what takeoff is under the cursor (DOM-direct) */}
           <div ref={hoverRef} style={{ position: "absolute", display: "none", pointerEvents: "none", zIndex: 8, background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-1)", padding: "4px 8px", fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink)", whiteSpace: "nowrap" }} />
@@ -2006,22 +2034,24 @@ export default function TakeoffCanvas() {
                   </g>
                 );
               })}
-              {/* rubber-band (area/deduct) + rect preview (updated via ref on move) — solid, no dashes */}
-              <line ref={rubberRef} stroke={tool === "deduct" ? "#b03a26" : activeColor} strokeWidth={2} strokeOpacity={0.9} strokeLinecap="round" vectorEffect="non-scaling-stroke" style={{ display: "none" }} />
-              <rect ref={rectRef} fill={tool === "deduct" ? "rgba(176,58,38,.22)" : shapeFill(aCond)} stroke={tool === "deduct" ? "#b03a26" : activeColor} strokeWidth={2} vectorEffect="non-scaling-stroke" style={{ display: "none" }} />
+              {/* IN-PROGRESS work draws in the INSTRUMENT color — the house cobalt pencil
+                  (deduct keeps its danger red). Committed shapes wear the condition's own
+                  color; the draft never mimics anyone's takeoff look. Solid, no dashes. */}
+              <line ref={rubberRef} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={1.5} strokeOpacity={0.85} strokeLinecap="round" vectorEffect="non-scaling-stroke" style={{ display: "none" }} />
+              <rect ref={rectRef} fill={tool === "deduct" ? "rgba(176,58,38,.22)" : shapeFill(aCond)} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={2} vectorEffect="non-scaling-stroke" style={{ display: "none" }} />
               <path ref={cloudRef} fill="rgba(37,99,235,.06)" stroke="#1f3fc7" strokeWidth={2} strokeDasharray="5 4" vectorEffect="non-scaling-stroke" style={{ display: "none" }} />
               {poly.length >= 2 && (tool === "linear" || tool === "surface"
-                ? <polyline points={poly.map((p) => p.join(",")).join(" ")} fill="none" stroke={activeColor} strokeWidth={tool === "surface" ? 3.5 : 3} strokeDasharray={tool === "surface" ? "10 3 2 3" : undefined} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-                : <polygon points={poly.map((p) => p.join(",")).join(" ")} fill={poly.length >= 3 ? (tool === "deduct" ? "rgba(176,58,38,.22)" : shapeFill(aCond)) : "none"} stroke={tool === "deduct" ? "#b03a26" : activeColor} strokeWidth={2} strokeDasharray={tool === "deduct" ? "6 4" : "0"} vectorEffect="non-scaling-stroke" />)}
+                ? <polyline points={poly.map((p) => p.join(",")).join(" ")} fill="none" stroke={tool === "surface" ? activeColor : "#1f3fc7"} strokeWidth={tool === "surface" ? 3.5 : 2.5} strokeDasharray={tool === "surface" ? "10 3 2 3" : undefined} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                : <polygon points={poly.map((p) => p.join(",")).join(" ")} fill={poly.length >= 3 ? (tool === "deduct" ? "rgba(176,58,38,.22)" : shapeFill(aCond)) : "none"} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={2} vectorEffect="non-scaling-stroke" />)}
               {/* bold the most recent segment so you see where you just clicked */}
               {poly.length >= 2 && (
                 <line x1={poly[poly.length - 2][0]} y1={poly[poly.length - 2][1]} x2={poly[poly.length - 1][0]} y2={poly[poly.length - 1][1]}
-                  stroke={tool === "deduct" ? "#b03a26" : activeColor} strokeWidth={4} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                  stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={3.5} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
               )}
               {poly.map((p, i) => {
                 const isLast = i === poly.length - 1;
                 return <path key={i} d={starPath(p[0], p[1], (isLast ? 4.5 : 3) / tf.scale)}
-                  fill={isLast ? "#fff" : activeColor} stroke={activeColor} strokeWidth={isLast ? 2 : 1} vectorEffect="non-scaling-stroke" />;
+                  fill={isLast ? "#fff" : "#1f3fc7"} stroke="#1f3fc7" strokeWidth={isLast ? 2 : 1} vectorEffect="non-scaling-stroke" />;
               })}
               {calib.length === 2 && <line x1={calib[0][0]} y1={calib[0][1]} x2={calib[1][0]} y2={calib[1][1]} stroke="#1f3fc7" strokeWidth={2} vectorEffect="non-scaling-stroke" />}
               {calib.map((p, i) => <path key={i} d={starPath(p[0], p[1], 3.5 / tf.scale)} fill="#1f3fc7" />)}
