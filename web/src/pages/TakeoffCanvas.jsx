@@ -24,19 +24,39 @@ import { extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertice
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 const MIN_SCALE = 0.03;
-const MAX_SCALE = 14;
+const MAX_SCALE = 32;  // stage zoom is in raster px — with the 28MP base budget this keeps ≈ the old deep-zoom ceiling (detail view carries the crispness)
 const PANEL_GAP = 48;  // px between side-by-side sheets in a multi-sheet group
-const HI_RES_FACTOR = 1.75; // hi-res raster multiplier (single-sheet view only)
-const MAX_GROUP = 4;   // E-size sheets at RENDER_SCALE 2 are ~70 MB RGBA each
-// Detail view: once zoomed past the base raster's 1:1, overlay a crop of JUST the
-// visible region, re-rendered from the PDF vectors at the current zoom — Bluebeam/
-// AutoCAD-style. Crispness becomes unbounded (up to the per-region canvas cap) without
-// ever holding a giant full-sheet bitmap; the region is ~viewport-sized so the cap
-// effectively never binds. Sits ON TOP of the existing rasterize-once base canvas.
-const MAX_CANVAS_DIM  = 16384;                // safe max side for a single canvas (desktop Chrome/Firefox/Safari)
-const MAX_CANVAS_AREA = 16384 * 16384 * 0.9;  // safe total-pixel budget per canvas (90% of the square cap)
-const DETAIL_ENGAGE = 1.15;  // engage once the stage is zoomed past ~1.15× (base raster starts to soften)
-const DETAIL_MARGIN = 0.35;  // render this much extra region beyond the viewport so small pans don't re-render
+// Base raster: enough density for fit-to-view + the first stretch of zoom; sharpness
+// past 1:1 comes from the DETAIL VIEW (region re-render), never from a giant full-sheet
+// bitmap. Rastering to the browser caps would put a 36×24" sheet at 179MP ≈ 716MB of
+// backing store per panel — a 4-up ≈ 2.9GB, which Chrome silently fails to keep
+// composited (blank sheet at zoom-out, evicted chrome). Quantities are scale-free
+// (verts are normalized and the render factor cancels in the area math), so the budget
+// only trades memory for base-layer sharpness. Hi-Res opts a sheet INTO the auto
+// budget per-user (the default stays the lean baseline raster).
+const QUALITY_CEILING = 8.0;                  // hard cap on render scale (≈576 px/in) — binds only on small pages now
+const MAX_CANVAS_DIM  = 16384;                // safe max side for a single canvas (Chrome/Firefox/Safari desktop)
+const MAX_CANVAS_AREA = 16384 * 16384 * 0.9;  // per-canvas pixel cap — the DETAIL view's density factor uses this
+const MAX_PANEL_AREA  = 28e6;                 // base-raster pixel budget per panel (~112MB RGBA; 4-up ≈ 450MB)
+// Largest pdf.js render scale a wPt×hPt-point page can use within the base budget;
+// never below the baseline RENDER_SCALE, never above the ceiling.
+const autoRenderScale = (wPt, hPt) => {
+  if (!(wPt > 0 && hPt > 0)) return RENDER_SCALE;
+  const byDim  = Math.min(MAX_CANVAS_DIM / wPt, MAX_CANVAS_DIM / hPt);
+  const byArea = Math.sqrt(MAX_PANEL_AREA / (wPt * hPt));
+  return Math.max(RENDER_SCALE, Math.min(QUALITY_CEILING, byDim, byArea));
+};
+const MAX_GROUP = 4;   // side-by-side panels; hi-res sheets render at the full auto budget, so a 4-up of large hi-res sheets is memory-heavy
+// Detail view: once zoomed past the base raster's 1:1 IN DEVICE PIXELS, we overlay a
+// crop of JUST the visible region, re-rendered from the PDF vectors at the current zoom —
+// Bluebeam/AutoCAD-style. Crispness becomes unbounded (up to the per-region canvas cap)
+// without ever holding a giant full-sheet bitmap; the region is ~viewport-sized so the cap
+// effectively never binds. Engage compares t.scale × devicePixelRatio (softness starts
+// when the raster is upscaled in device px — on a 2× display that's t.scale 0.5, not 1).
+const DETAIL_ENGAGE = 1.15;  // engage once stage zoom × dpr passes ~1.15 (base raster starts to soften)
+const DETAIL_MARGIN = 0.5;   // render this much extra region beyond the viewport so small pans don't expose the soft base at the edges
+const SYNC_MS = 90;          // React tf-mirror sync cadence during gestures (~11Hz)
+const GESTURE_MS = 140;      // wheel/pinch quiet window before the detail view re-renders
 const COLORS = ["#c96442", "#2f7d54", "#2563eb", "#9333ea", "#b8860b", "#0d9488", "#be185d", "#475569"];
 
 // Architectural / flooring hatch templates. Each condition gets a line color, a
@@ -402,6 +422,9 @@ export default function TakeoffCanvas() {
   const hydrated = useRef(false);
   const tfRef = useRef({ x: 0, y: 0, scale: 1 });
   const syncRaf = useRef(0);
+  const lastSyncRef = useRef(0);       // last tf mirror sync (perf.now) — scheduleSync throttles against it
+  const gestureUntilRef = useRef(0);   // wheel/pinch activity horizon — the detail view waits it out
+  const panRafRef = useRef(0);         // rAF token coalescing drag-pan pointermoves into one transform write per frame
   const saveDataRef = useRef(null);    // latest serialized annotations — flushed on unmount
   const saveStateRef = useRef("idle"); // mirror of saveState for the unmount/beforeunload guard
 
@@ -500,14 +523,18 @@ export default function TakeoffCanvas() {
   const focusPanel = (focusKey && groupKeys.includes(focusKey) && panelByKey(focusKey)) || panels[0];
   const unitsPerPx = scales[focusPanel.key] ?? null;
   const labelFor = (p) => (p.file === active && pageLabels[p.page]) || (p.page > 1 ? `Sheet ${p.page}` : p.file);
-  // Stored scales are ALWAYS feet-per-pixel at the baseline RENDER_SCALE; a sheet
-  // rastered hi-res has 1.75× the pixels, so geometry must use uppFor (÷ factor)
-  // and calibration must store back to baseline (× factor) — or toggling hi-res
-  // would corrupt every quantity on the sheet.
-  const hiResOn = (key) => groupKeys.length === 1 && hiResKeys.includes(key);
+  // Stored scales are ALWAYS feet-per-pixel at the baseline RENDER_SCALE. A hi-res
+  // sheet is rastered at autoRenderScale, so its bitmap has factorFor× the baseline
+  // pixels — geometry must divide by that factor (uppFor) and calibration must multiply
+  // back to baseline, or a quantity would drift with the render resolution. Shape verts
+  // are normalized to the panel, so positions are scale-free; only the px→feet factor
+  // moves. factorFor reads the scale ACTUALLY rastered (renderScalesRef), so it always
+  // matches the bitmap currently on screen.
+  const hiResOn = (key) => hiResKeys.includes(key);
+  const factorFor = (key) => (renderScalesRef.current.get(key) || RENDER_SCALE) / RENDER_SCALE;
   const uppFor = (key) => {
     const u = scales[key];
-    return u == null ? null : (hiResOn(key) ? u / HI_RES_FACTOR : u);
+    return u == null ? null : u / factorFor(key);
   };
   const toggleHiRes = () => {
     const k = focusPanel.key;
@@ -526,12 +553,19 @@ export default function TakeoffCanvas() {
   // Re-apply after every React render so an unrelated re-render mid-drag can't
   // snap the transform back to a stale value.
   useLayoutEffect(() => { applyTf(); });
-  // Trailing debounce, not per-frame: the React mirror only feeds screen-relative
-  // sizes (handle radii, stroke widths), so re-rendering the whole SVG on every
-  // frame of a pan/zoom gesture is pure jank. The DOM transform updates per-event.
+  // Leading+trailing ~90ms throttle, not per-frame and not trailing-only: the React
+  // mirror feeds screen-relative sizes (handle radii, stroke widths, label text, the
+  // low-zoom tint switch), so it must track a CONTINUOUS gesture — the old trailing
+  // debounce left labels scaling with the stage and shapes flashing sub-pixel until
+  // 80ms after the gesture ended. ~11Hz keeps the overlay honest for a trivial render
+  // cost; the DOM transform still updates per-event/per-frame.
   const scheduleSync = useCallback(() => {
-    if (syncRaf.current) clearTimeout(syncRaf.current);
-    syncRaf.current = setTimeout(() => { syncRaf.current = 0; setTf({ ...tfRef.current }); }, 80);
+    if (syncRaf.current) return;                       // a queued tick reads the freshest tfRef
+    const wait = Math.max(0, SYNC_MS - (performance.now() - lastSyncRef.current));
+    syncRaf.current = setTimeout(() => {
+      syncRaf.current = 0; lastSyncRef.current = performance.now();
+      setTf({ ...tfRef.current });
+    }, wait);
   }, []);
   const setTfNow = useCallback((next) => { tfRef.current = next; applyTf(); setTf({ ...next }); }, [applyTf]);
 
@@ -686,7 +720,8 @@ export default function TakeoffCanvas() {
         if (file === active) setPageCount(pdf.numPages || 1);
         const pageNum = Math.min(Math.max(1, pn), pdf.numPages || 1);
         const pageObj = await pdf.getPage(pageNum); if (stale()) return;
-        const rs = (groupKeys.length === 1 && hiResKeys.includes(key)) ? RENDER_SCALE * HI_RES_FACTOR : RENDER_SCALE;
+        const base = pageObj.getViewport({ scale: 1 });   // page size in PDF points
+        const rs = hiResKeys.includes(key) ? autoRenderScale(base.width, base.height) : RENDER_SCALE;
         const viewport = pageObj.getViewport({ scale: rs });
         pageObjsRef.current.set(key, pageObj);     // kept for on-demand detail-view re-render
         renderScalesRef.current.set(key, rs);      // base raster scale — detail view renders at a multiple of it
@@ -775,7 +810,13 @@ export default function TakeoffCanvas() {
     const hide = () => { if (cv) cv.style.display = "none"; };
     if (!cv || !cont || status !== "ready" || !fp || !fp.img.w) return hide();
     const t = tfRef.current;
-    if (t.scale <= DETAIL_ENGAGE) return hide();
+    if (t.scale * (window.devicePixelRatio || 1) <= DETAIL_ENGAGE) return hide();
+    // Mid-gesture bail: `cv.width = bw` below WIPES the crop and reallocs tens of MB —
+    // doing that on every ~90ms sync while pinching/panning would flash the region
+    // blank and storm pdf.js with cancelled renders. The previous crop lives in stage
+    // space, so leaving it painted keeps it correctly anchored while the gesture runs;
+    // scheduleSync self-polls so the settle render is guaranteed once the window expires.
+    if (panRef.current || performance.now() < gestureUntilRef.current) { scheduleSync(); return; }
     const pageObj = pageObjsRef.current.get(fp.key), rs = renderScalesRef.current.get(fp.key);
     if (!pageObj || !rs) return hide();
 
@@ -891,10 +932,14 @@ export default function TakeoffCanvas() {
         const r = el.getBoundingClientRect();
         zoomAround(gx - r.left, gy - r.top, Math.exp(d));
       }
-      if (glide) raf = requestAnimationFrame(step);
+      if (glide) {
+        gestureUntilRef.current = performance.now() + GESTURE_MS;  // glide still moving = still a gesture
+        raf = requestAnimationFrame(step);
+      }
     };
     const onWheel = (e) => {
       e.preventDefault();
+      gestureUntilRef.current = performance.now() + GESTURE_MS;  // detail view waits for wheel quiet
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1;
       if (e.shiftKey) {
         const t = tfRef.current;
@@ -1284,9 +1329,16 @@ export default function TakeoffCanvas() {
       return;
     }
     if (!panRef.current) return;
-    const { sx, sy, ox, oy } = panRef.current;
-    tfRef.current = { ...tfRef.current, x: ox + (e.clientX - sx), y: oy + (e.clientY - sy) };
-    applyTf();   // direct DOM write — no React render
+    // rAF-coalesced: pointermove can outrun the display (120Hz+ mice/trackpads) — keep
+    // the latest position and write the transform once per frame. Still no React render.
+    panRef.current.lx = e.clientX; panRef.current.ly = e.clientY;
+    if (!panRafRef.current) panRafRef.current = requestAnimationFrame(() => {
+      panRafRef.current = 0;
+      const pr = panRef.current; if (!pr) return;
+      tfRef.current = { ...tfRef.current, x: pr.ox + (pr.lx - pr.sx), y: pr.oy + (pr.ly - pr.sy) };
+      applyTf();
+      scheduleSync();   // keeps the tf mirror (labels/strokes) honest during long pans
+    });
   }
   function onPointerUp(e) {
     if (pendingClickRef.current) {
@@ -1315,8 +1367,8 @@ export default function TakeoffCanvas() {
     }
     const px = Math.hypot(calib[1][0] - calib[0][0], calib[1][1] - calib[0][1]);
     if (px <= 0) return;
-    // store at BASELINE resolution — a hi-res raster has denser pixels
-    const toBase = hiResOn(pa.key) ? HI_RES_FACTOR : 1;
+    // store at BASELINE resolution — the auto hi-res raster has factorFor× denser pixels
+    const toBase = factorFor(pa.key);
     setScales((s) => ({ ...s, [pa.key]: (feet / px) * toBase })); // per page — remembered for this sheet
     setCalib([]); setPendingLen("");
   }
@@ -1583,10 +1635,17 @@ export default function TakeoffCanvas() {
   // server — otherwise browsers keep painting the cached old pattern (the "it
   // reverted" bug). Shapes and <defs> use the same id.
   const patId = (c) => `hx-${c.id}-${c.hatch || "solid"}-${String(c.color).slice(1)}-${String(c.fill || "n").slice(1)}`;
-  const shapeFill = (cond) =>
-    !cond ? "none"
-      : cond.hatch && cond.hatch !== "solid" ? `url(#${patId(cond)})`
-        : cond.fill && cond.fill !== NO_FILL ? cond.fill + "33" : "none";
+  // Fill for a committed shape. Hatch tiles are 10 stage-units — once the zoom
+  // puts a tile under ~4 screen px the pattern aliases into subpixel mush, so
+  // overview zoom swaps to a solid tint and every condition still reads as a
+  // clear color block.
+  const shapeFill = (cond) => {
+    if (!cond) return "none";
+    const solid = cond.fill && cond.fill !== NO_FILL ? cond.fill : null;
+    if (tf.scale < 0.35) return (solid || cond.color) + "40";
+    if (cond.hatch && cond.hatch !== "solid") return `url(#${patId(cond)})`;
+    return solid ? solid + "33" : "none";
+  };
   const mm = closedMetrics(poly);
   // the live readout prices the IN-PROGRESS poly with its own panel's scale
   const liveUpp = poly.length ? uppFor(panelAt(poly[0][0]).key) : uppFor(focusPanel.key);
@@ -1633,10 +1692,12 @@ export default function TakeoffCanvas() {
       <Icon name={iconName} size={15} />{showLabel ? label : null}
     </button>
   );
+  // panel-toggle for the right-edge rail — square like the zoom cluster, count as a
+  // tiny mono line under the icon. Lives on the canvas, costs the toolbar zero rows.
   const panelBtn = (onClick, iconName, label, isOn, count) => (
     <button onClick={onClick} title={label}
-      style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${isOn ? "var(--ink)" : "var(--ink-faint)"}`, background: isOn ? "var(--ink)" : "transparent", color: isOn ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
-      <Icon name={iconName} size={15} />{count ? <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5 }}>{count}</span> : null}
+      style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2, width: 34, minHeight: 34, padding: "5px 0 4px", border: `1px solid ${isOn ? "var(--ink)" : "var(--ink-faint)"}`, background: isOn ? "var(--ink)" : "var(--paper-bright)", color: isOn ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, lineHeight: 1 }}>
+      <Icon name={iconName} size={15} />{count ? <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5 }}>{count}</span> : null}
     </button>
   );
   const vRule = <span style={{ width: 1, alignSelf: "stretch", background: "var(--ink-faint)", margin: "0 3px" }} />;
@@ -1754,9 +1815,9 @@ export default function TakeoffCanvas() {
           return null;
         })()}
         {iconBtn("calibrate", "calibrate", "", "Calibrate — click two points of a known dimension", false)}
-        <button type="button" onClick={toggleHiRes} disabled={groupKeys.length > 1}
-          title={groupKeys.length > 1 ? "Hi-Res works in single-sheet view (side-by-side renders at standard res)" : `Hi-Res rendering for ${labelFor(focusPanel)} — crisper when zoomed in; saved per sheet, per user. Quantities are unaffected.`}
-          style={{ display: "inline-flex", alignItems: "center", padding: "6px 9px", border: `1px solid ${hiResOn(focusPanel.key) ? "var(--cobalt)" : "var(--ink-faint)"}`, background: hiResOn(focusPanel.key) ? "var(--cobalt)" : "transparent", color: hiResOn(focusPanel.key) ? "var(--paper-bright)" : "var(--ink)", cursor: groupKeys.length > 1 ? "default" : "pointer", opacity: groupKeys.length > 1 ? 0.45 : 1, lineHeight: 1 }}>
+        <button type="button" onClick={toggleHiRes}
+          title={`Hi-Res rendering for ${labelFor(focusPanel)} — the sheet re-rasters at an auto quality budget (~28MP), so memory stays bounded even side-by-side; crisper when zoomed in. Saved per sheet, per user. Quantities are unaffected.`}
+          style={{ display: "inline-flex", alignItems: "center", padding: "6px 9px", border: `1px solid ${hiResOn(focusPanel.key) ? "var(--cobalt)" : "var(--ink-faint)"}`, background: hiResOn(focusPanel.key) ? "var(--cobalt)" : "transparent", color: hiResOn(focusPanel.key) ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", lineHeight: 1 }}>
           <Icon name="hiRes" size={15} />
         </button>
         <div style={{ flex: 1 }} />
@@ -1770,9 +1831,6 @@ export default function TakeoffCanvas() {
         <span style={{ fontSize: 11, color: "var(--ink-muted)", minWidth: 44, fontFamily: "var(--f-mono)" }}>{saveState === "saving" ? "saving…" : saveState === "saved" ? "saved ✓" : ""}</span>
         <button onClick={() => setShowReport(true)} disabled={!conditions.length} title="Open the takeoff report — per-condition breakdown with waste, plus CSV / JSON export."
           style={{ padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--ink-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>Report</button>
-        {vRule}
-        {panelBtn(() => setShowMarkupPanel((v) => !v), "markup", "Markups on these sheets (clouds, callouts, notes)", showMarkupPanel, markupCount)}
-        {panelBtn(() => setShowTakeoffs((v) => !v), "takeoffs", "Takeoffs — conditions + running totals", showTakeoffs, visibleShapes.length)}
       </div>
 
       {/* open-sheet tabs — what you opened from the gallery; click to view,
@@ -1960,19 +2018,25 @@ export default function TakeoffCanvas() {
                       const col = cond?.color || "#888";
                       const sel = s.id === selectedId;
                       const pts = dn(s.verts_norm);
-                      const sw = sel ? 4 : 2;
+                      // Screen-constant strokes: zoom is a CSS transform on the
+                      // stage div, which never enters this SVG's CTM — so
+                      // vector-effect can't help and raw widths go subpixel at
+                      // overview zoom (invisible conditions). Divide by scale
+                      // like every other screen-relative size here.
+                      const z = tf.scale;
+                      const sw = (sel ? 4 : 2) / z;
                       if (s.measure_role === "count") {
-                        const [cx, cy] = pts[0], r = 7 / tf.scale;
-                        return <rect key={s.id} x={cx - r} y={cy - r} width={r * 2} height={r * 2} rx={2} fill={col + "cc"} stroke={sel ? "#1f3fc7" : "#fff"} strokeWidth={sel ? 3 : 1.5} vectorEffect="non-scaling-stroke" />;
+                        const [cx, cy] = pts[0], r = 7 / z;
+                        return <rect key={s.id} x={cx - r} y={cy - r} width={r * 2} height={r * 2} rx={2 / z} fill={col + "cc"} stroke={sel ? "#1f3fc7" : "#fff"} strokeWidth={(sel ? 3 : 1.5) / z} />;
                       }
                       if (s.measure_role === "surface_area") {
-                        return <polyline key={s.id} points={pts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? "#1f3fc7" : col} strokeWidth={sel ? 4.5 : 3.5} strokeDasharray="10 3 2 3" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />;
+                        return <polyline key={s.id} points={pts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? "#1f3fc7" : col} strokeWidth={(sel ? 4.5 : 3.5) / z} strokeDasharray={`${10 / z} ${3 / z} ${2 / z} ${3 / z}`} strokeLinecap="round" strokeLinejoin="round" />;
                       }
                       if (s.measure_role === "linear") {
-                        return <polyline key={s.id} points={pts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? "#1f3fc7" : col} strokeWidth={sel ? 4 : 3} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />;
+                        return <polyline key={s.id} points={pts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? "#1f3fc7" : col} strokeWidth={(sel ? 4 : 3) / z} strokeLinecap="round" strokeLinejoin="round" />;
                       }
                       const ded = s.measure_role === "deduct";
-                      return <polygon key={s.id} points={pts.map((q) => q.join(",")).join(" ")} fill={ded ? "rgba(176,58,38,.28)" : shapeFill(cond)} stroke={ded ? "#b03a26" : (sel ? "#1f3fc7" : col)} strokeWidth={sw} strokeDasharray={ded ? "6 4" : "0"} vectorEffect="non-scaling-stroke" />;
+                      return <polygon key={s.id} points={pts.map((q) => q.join(",")).join(" ")} fill={ded ? "rgba(176,58,38,.28)" : shapeFill(cond)} stroke={ded ? "#b03a26" : (sel ? "#1f3fc7" : col)} strokeWidth={sw} strokeDasharray={ded ? `${6 / z} ${4 / z}` : "0"} />;
                     })}
                     {/* vertex handles for the selected shape (drag to reshape) */}
                     {selectedId && (() => {
@@ -1986,9 +2050,9 @@ export default function TakeoffCanvas() {
                         <g>
                           {Array.from({ length: edges }, (_, i) => {
                             const a = qs[i], b = qs[(i + 1) % qs.length];
-                            return <rect key={"m" + i} x={(a[0] + b[0]) / 2 - ms} y={(a[1] + b[1]) / 2 - ms} width={ms * 2} height={ms * 2} fill="#f4efe0" stroke="#1f3fc7" strokeWidth={1.4} strokeDasharray="2 1.5" vectorEffect="non-scaling-stroke" />;
+                            return <rect key={"m" + i} x={(a[0] + b[0]) / 2 - ms} y={(a[1] + b[1]) / 2 - ms} width={ms * 2} height={ms * 2} fill="#f4efe0" stroke="#1f3fc7" strokeWidth={1.4 / tf.scale} strokeDasharray={`${2 / tf.scale} ${1.5 / tf.scale}`} />;
                           })}
-                          {qs.map((q, i) => <rect key={"h" + i} x={q[0] - hs} y={q[1] - hs} width={hs * 2} height={hs * 2} fill="#fff" stroke="#1f3fc7" strokeWidth={2} vectorEffect="non-scaling-stroke" />)}
+                          {qs.map((q, i) => <rect key={"h" + i} x={q[0] - hs} y={q[1] - hs} width={hs * 2} height={hs * 2} fill="#fff" stroke="#1f3fc7" strokeWidth={2 / tf.scale} />)}
                         </g>
                       );
                     })()}
@@ -1999,7 +2063,7 @@ export default function TakeoffCanvas() {
                         const [c0, c1] = m.rect;
                         return (
                           <g key={m.id}>
-                            <path d={cloudPath(c0[0] * p.img.w, c0[1] * p.img.h, c1[0] * p.img.w, c1[1] * p.img.h)} fill="none" stroke={mk} strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                            <path d={cloudPath(c0[0] * p.img.w, c0[1] * p.img.h, c1[0] * p.img.w, c1[1] * p.img.h)} fill="none" stroke={mk} strokeWidth={2 / tf.scale} />
                             {m.text && <text x={(c0[0] + c1[0]) / 2 * p.img.w} y={(c0[1] + c1[1]) / 2 * p.img.h} fill={mk} fontSize={13 / tf.scale} fontWeight="700" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{m.rfi_id ? "⬢ " : ""}{m.text}</text>}
                           </g>
                         );
@@ -2008,9 +2072,9 @@ export default function TakeoffCanvas() {
                         const [tx, ty] = m.target, [ax, ay] = m.at;
                         return (
                           <g key={m.id}>
-                            <line x1={tx * p.img.w} y1={ty * p.img.h} x2={ax * p.img.w} y2={ay * p.img.h} stroke={mk} strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                            <line x1={tx * p.img.w} y1={ty * p.img.h} x2={ax * p.img.w} y2={ay * p.img.h} stroke={mk} strokeWidth={2 / tf.scale} />
                             <path d={starPath(tx * p.img.w, ty * p.img.h, 4 / tf.scale)} fill={mk} />
-                            <rect x={ax * p.img.w} y={ay * p.img.h - 16 / tf.scale} width={(m.text.length * 7 + 10) / tf.scale} height={20 / tf.scale} fill="rgba(255,255,255,.92)" stroke={mk} strokeWidth={1} vectorEffect="non-scaling-stroke" rx={3 / tf.scale} />
+                            <rect x={ax * p.img.w} y={ay * p.img.h - 16 / tf.scale} width={(m.text.length * 7 + 10) / tf.scale} height={20 / tf.scale} fill="rgba(255,255,255,.92)" stroke={mk} strokeWidth={1 / tf.scale} rx={3 / tf.scale} />
                             <text x={(ax * p.img.w) + 5 / tf.scale} y={(ay * p.img.h) - 2 / tf.scale} fill="#0e1a2e" fontSize={12 / tf.scale}>{m.rfi_id ? "⬢ " : ""}{m.text}</text>
                           </g>
                         );
@@ -2018,7 +2082,7 @@ export default function TakeoffCanvas() {
                       const [x, y] = m.at;
                       return (
                         <g key={m.id}>
-                          <rect x={x * p.img.w - 3 / tf.scale} y={y * p.img.h - 14 / tf.scale} width={(m.text.length * 7 + 10) / tf.scale} height={20 / tf.scale} fill="rgba(255,247,237,.92)" stroke={mk} strokeWidth={1} vectorEffect="non-scaling-stroke" rx={3 / tf.scale} />
+                          <rect x={x * p.img.w - 3 / tf.scale} y={y * p.img.h - 14 / tf.scale} width={(m.text.length * 7 + 10) / tf.scale} height={20 / tf.scale} fill="rgba(255,247,237,.92)" stroke={mk} strokeWidth={1 / tf.scale} rx={3 / tf.scale} />
                           <text x={x * p.img.w + 2 / tf.scale} y={y * p.img.h} fill="#0e1a2e" fontSize={12 / tf.scale} fontWeight="600">{m.rfi_id ? "⬢ " : ""}{m.text}</text>
                         </g>
                       );
@@ -2028,8 +2092,8 @@ export default function TakeoffCanvas() {
                       <g key={"oc" + i}>
                         <polygon points={r.poly.map((q) => q.join(",")).join(" ")}
                           fill={r.kind === "neg" ? "rgba(176,58,38,.18)" : "rgba(31,63,199,.10)"}
-                          stroke={r.kind === "neg" ? "#b03a26" : "#1f3fc7"} strokeWidth={2.5} strokeDasharray="7 4" vectorEffect="non-scaling-stroke" />
-                        <path d={starPath(r.seed[0], r.seed[1], 5 / tf.scale)} fill={r.kind === "neg" ? "#b03a26" : "#1f3fc7"} stroke="#fff" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+                          stroke={r.kind === "neg" ? "#b03a26" : "#1f3fc7"} strokeWidth={2.5 / tf.scale} strokeDasharray={`${7 / tf.scale} ${4 / tf.scale}`} />
+                        <path d={starPath(r.seed[0], r.seed[1], 5 / tf.scale)} fill={r.kind === "neg" ? "#b03a26" : "#1f3fc7"} stroke="#fff" strokeWidth={1 / tf.scale} />
                       </g>
                     ))}
                   </g>
@@ -2038,26 +2102,26 @@ export default function TakeoffCanvas() {
               {/* IN-PROGRESS work draws in the INSTRUMENT color — the house cobalt pencil
                   (deduct keeps its danger red). Committed shapes wear the condition's own
                   color; the draft never mimics anyone's takeoff look. Solid, no dashes. */}
-              <line ref={rubberRef} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={1.5} strokeOpacity={0.85} strokeLinecap="round" vectorEffect="non-scaling-stroke" style={{ display: "none" }} />
-              <rect ref={rectRef} fill={tool === "deduct" ? "rgba(176,58,38,.22)" : shapeFill(aCond)} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={2} vectorEffect="non-scaling-stroke" style={{ display: "none" }} />
-              <path ref={cloudRef} fill="rgba(37,99,235,.06)" stroke="#1f3fc7" strokeWidth={2} strokeDasharray="5 4" vectorEffect="non-scaling-stroke" style={{ display: "none" }} />
+              <line ref={rubberRef} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={1.5 / tf.scale} strokeOpacity={0.85} strokeLinecap="round" style={{ display: "none" }} />
+              <rect ref={rectRef} fill={tool === "deduct" ? "rgba(176,58,38,.22)" : shapeFill(aCond)} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={2 / tf.scale} style={{ display: "none" }} />
+              <path ref={cloudRef} fill="rgba(37,99,235,.06)" stroke="#1f3fc7" strokeWidth={2 / tf.scale} strokeDasharray={`${5 / tf.scale} ${4 / tf.scale}`} style={{ display: "none" }} />
               {poly.length >= 2 && (tool === "linear" || tool === "surface"
-                ? <polyline points={poly.map((p) => p.join(",")).join(" ")} fill="none" stroke={tool === "surface" ? activeColor : "#1f3fc7"} strokeWidth={tool === "surface" ? 3.5 : 2.5} strokeDasharray={tool === "surface" ? "10 3 2 3" : undefined} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-                : <polygon points={poly.map((p) => p.join(",")).join(" ")} fill={poly.length >= 3 ? (tool === "deduct" ? "rgba(176,58,38,.22)" : shapeFill(aCond)) : "none"} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={2} vectorEffect="non-scaling-stroke" />)}
+                ? <polyline points={poly.map((p) => p.join(",")).join(" ")} fill="none" stroke={tool === "surface" ? activeColor : "#1f3fc7"} strokeWidth={(tool === "surface" ? 3.5 : 2.5) / tf.scale} strokeDasharray={tool === "surface" ? `${10 / tf.scale} ${3 / tf.scale} ${2 / tf.scale} ${3 / tf.scale}` : undefined} strokeLinecap="round" strokeLinejoin="round" />
+                : <polygon points={poly.map((p) => p.join(",")).join(" ")} fill={poly.length >= 3 ? (tool === "deduct" ? "rgba(176,58,38,.22)" : shapeFill(aCond)) : "none"} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={2 / tf.scale} />)}
               {/* bold the most recent segment so you see where you just clicked */}
               {poly.length >= 2 && (
                 <line x1={poly[poly.length - 2][0]} y1={poly[poly.length - 2][1]} x2={poly[poly.length - 1][0]} y2={poly[poly.length - 1][1]}
-                  stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={3.5} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                  stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={3.5 / tf.scale} strokeLinecap="round" />
               )}
               {poly.map((p, i) => {
                 const isLast = i === poly.length - 1;
                 return <path key={i} d={starPath(p[0], p[1], (isLast ? 4.5 : 3) / tf.scale)}
-                  fill={isLast ? "#fff" : "#1f3fc7"} stroke="#1f3fc7" strokeWidth={isLast ? 2 : 1} vectorEffect="non-scaling-stroke" />;
+                  fill={isLast ? "#fff" : "#1f3fc7"} stroke="#1f3fc7" strokeWidth={(isLast ? 2 : 1) / tf.scale} />;
               })}
-              {calib.length === 2 && <line x1={calib[0][0]} y1={calib[0][1]} x2={calib[1][0]} y2={calib[1][1]} stroke="#1f3fc7" strokeWidth={2} vectorEffect="non-scaling-stroke" />}
+              {calib.length === 2 && <line x1={calib[0][0]} y1={calib[0][1]} x2={calib[1][0]} y2={calib[1][1]} stroke="#1f3fc7" strokeWidth={2 / tf.scale} />}
               {calib.map((p, i) => <path key={i} d={starPath(p[0], p[1], 3.5 / tf.scale)} fill="#1f3fc7" />)}
               {/* snap-to-vector indicator (star) */}
-              <path ref={snapMarkRef} fill="#1f6b4a" stroke="#fff" strokeWidth={1} vectorEffect="non-scaling-stroke" style={{ display: "none" }} />
+              <path ref={snapMarkRef} fill="#1f6b4a" stroke="#fff" strokeWidth={1 / tf.scale} style={{ display: "none" }} />
               {/* markup draft marker (first click of cloud/callout) */}
               {markupDraft && <path d={starPath(markupDraft[0], markupDraft[1], 5 / tf.scale)} fill="#1f3fc7" />}
             </svg>
@@ -2140,6 +2204,14 @@ export default function TakeoffCanvas() {
           <div style={{ fontSize: 10.5, opacity: 0.45, marginTop: 6 }}>{visibleShapes.length} shapes on {groupKeys.length > 1 ? `${groupKeys.length} sheets` : "sheet"} · zoom {(tf.scale * 100).toFixed(0)}%</div>
         </div>
 
+        {/* panel rail — markup/takeoffs toggles on the right edge (zoom-cluster
+            style). Moved out of the toolbar so it never wraps a third row; z above the
+            takeoffs panel (which docks at right:56) so a lit toggle also closes it. */}
+        <div style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", gap: 6, zIndex: 8 }}>
+          {panelBtn(() => setShowMarkupPanel((v) => !v), "markup", "Markups on these sheets (clouds, callouts, notes)", showMarkupPanel, markupCount)}
+          {panelBtn(() => setShowTakeoffs((v) => !v), "takeoffs", "Takeoffs — conditions + running totals", showTakeoffs, visibleShapes.length)}
+        </div>
+
         {/* markup panel — manage clouds/callouts/text + link or create RFIs (top-left, clear of HUD/FABs) */}
         {showMarkupPanel && (
           <div style={{ position: "absolute", left: 14, top: 14, width: 320, maxHeight: "calc(100% - 28px)", overflow: "auto", background: "var(--paper-bright)", border: "1px solid #1f3fc7", borderRadius: 0, boxShadow: "0 6px 22px rgba(0,0,0,.16)", zIndex: 7, fontSize: 12.5 }}>
@@ -2169,7 +2241,7 @@ export default function TakeoffCanvas() {
         {/* Takeoffs side panel — every condition on this sheet with its running totals.
             "Takeoffs on the side": click a row to make it active, ⧉ to copy its shape. */}
         {showTakeoffs && (
-          <div style={{ position: "absolute", right: 14, top: 118, width: panelMatOpen ? 420 : 300, maxHeight: "calc(100% - 132px)", overflow: "auto", background: "var(--paper-bright)", border: "1px solid var(--ink)", borderRadius: 0, boxShadow: "var(--shadow-2)", zIndex: 7, fontSize: 12.5 }}>
+          <div style={{ position: "absolute", right: 56, top: 118, width: panelMatOpen ? 420 : 300, maxHeight: "calc(100% - 132px)", overflow: "auto", background: "var(--paper-bright)", border: "1px solid var(--ink)", borderRadius: 0, boxShadow: "var(--shadow-2)", zIndex: 7, fontSize: 12.5 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", background: "var(--ink)", color: "var(--paper-cream)", borderRadius: 0 }}>
               <strong>Takeoffs · {groupKeys.length > 1 ? "these sheets" : "this sheet"}</strong>
               <button onClick={() => setShowTakeoffs(false)} style={{ background: "none", border: "none", color: "#fff", fontSize: 16, cursor: "pointer" }}>×</button>
