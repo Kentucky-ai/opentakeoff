@@ -1,6 +1,6 @@
 # AGENTS.md — a map of this repo for coding agents (and fast-moving humans)
 
-OpenTakeoff is a **client-only React app**: a PDF construction-takeoff canvas for flooring (useful for any trade). No backend, no database, no auth — everything runs and persists in the browser. Apache-2.0.
+OpenTakeoff is a **client-only React app**: a PDF construction-takeoff canvas for flooring (useful for any trade). No backend, no database, no auth — everything runs and persists in the browser. Apache-2.0. (For the one-page project pitch and vision, see [`AGENT_BRIEF.md`](AGENT_BRIEF.md); for capability → code mapping, see [`FEATURES.md`](FEATURES.md).)
 
 ## Run / build / check
 
@@ -8,10 +8,11 @@ OpenTakeoff is a **client-only React app**: a PDF construction-takeoff canvas fo
 cd web
 npm install
 npm run dev      # http://localhost:5173 — hot reload
+npm test         # node:test over the pure geometry + totals math (test/*.test.ts)
 npm run build    # → web/dist/ (static output; this is what Netlify deploys)
 ```
 
-There is no test suite yet; the build is the gate. **Vite does not flag undefined identifiers in JSX** — grep for your new identifiers after editing and load the app once before you call it done. The bundled sample plan (`web/public/demo/`, wired to the "Load sample plan" button) is the fastest end-to-end check: load it, press `A`, trace a room, open Report.
+The tests cover the pure math (`web/test/geometry.test.ts`, `web/test/totals.test.ts`); the canvas itself is verified by hand — **Vite does not flag undefined identifiers in JSX**, so grep for your new identifiers after editing and load the app once before you call it done. The bundled sample plan (`web/public/demo/`, wired to the "Load sample plan" button) is the fastest end-to-end check: load it, press `A`, trace a room, open Report.
 
 ## Where things live
 
@@ -26,6 +27,8 @@ There is no test suite yet; the build is the gate. **Vite does not flag undefine
 | Icon set | `web/src/brand/icons.jsx` |
 | Design tokens (colors, spacing — the source of truth) | `web/src/styles/tokens.css` |
 | Sheet gallery / report UI | `web/src/components/` |
+| Pure-math tests (node:test) | `web/test/` |
+| **Optional AI backend** (pluggable adapter: scale/room/finish suggestions) | `server/` — `app.py` + `adapters/base.py` (interface) + `adapters/heuristic.py` (default, no model) |
 
 ## How the canvas works (the mental model)
 
