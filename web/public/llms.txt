@@ -1,0 +1,26 @@
+# OpenTakeoff
+
+> Free, open-source (Apache-2.0) construction takeoff software that runs entirely in the browser. Open a plan (PDF, image, or .zip plan set), set the scale, trace areas — with one-click room detection, 45°/90° angle guides, and a magnifier crosshair — then apply waste % and per-condition supporting materials, and export quantities (SF/SY/LF/EA) as CSV/JSON. Built for flooring; the measuring engine works for any trade (drywall, paint, concrete, sitework). No account, no upload — plans never leave the machine.
+
+OpenTakeoff is the open-source alternative to subscription takeoff tools (STACK, PlanSwift, Kreo, Togal, Bluebeam quantity takeoff). It is a static web app: self-hosting is one `npm run build` and any static file host.
+
+## Docs
+
+- [Live app](https://opentakeoff.netlify.app): try it in the browser — includes a one-click sample plan (a real medical-center floor finish plan)
+- [README](https://github.com/Kentucky-ai/opentakeoff#readme): features, quick start, deploy-it-yourself, build-on-top-of-it
+- [User guide & shortcuts](https://github.com/Kentucky-ai/opentakeoff/blob/main/docs/USER_GUIDE.md): every tool, keyboard shortcut, and the totals math
+- [Changelog](https://github.com/Kentucky-ai/opentakeoff/blob/main/CHANGELOG.md): what shipped, when
+- [AGENTS.md](https://github.com/Kentucky-ai/opentakeoff/blob/main/AGENTS.md): repo map and conventions for coding agents contributing to the codebase
+
+## Key facts
+
+- Measuring: One-Click Area (flood-fill room detection from PDF vectors), Area, Rectangle, Linear, Surface-Area (walls), Count, Deduct
+- Drawing aids: 45°/90° angle guides (polar tracking with ⇧ hard-lock), liquid-glass magnifier crosshair with live angle + segment-length readout, endpoint snap
+- Scale: auto-detects the drawn scale note per sheet, or calibrate from a known dimension
+- Conditions: color + CAD hatch per finish, waste %, multiplier, wall height, border thickness
+- Assemblies: per-condition supporting materials with coverage rates → rounded order quantities
+- Reports: per-condition SF/SY/LF/EA with and without waste + a materials buy list; CSV/JSON export
+- Storage: IndexedDB + localStorage only — client-side, private by construction
+- Stack: React 18 + Vite + pdf.js; the whole app is a static build
+- License: Apache-2.0 — fork it, ship it, build a product on it
+- Maintained by Kentucky AI (applied AI R&D, Louisville, KY): https://kentucky-ai.com

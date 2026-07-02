@@ -51,6 +51,12 @@ Your work autosaves to this browser continuously. Reload and it's still there.
 | `Backspace` / `Delete` | Remove the last placed point; if nothing's in progress, delete the **selected** shape; in One‑Click, drop the last region. |
 | `⌘Z` / `Ctrl+Z` | Undo the last placed point. |
 | `Esc` | Cancel the in‑progress shape / selection / proposal. |
+| **Hold `⇧` (Shift)** | Force the next segment onto the nearest 45°/90° axis, at any cursor angle (see Angle guides below). |
+
+### Angle guides & the magnifier crosshair
+With the **45°** toggle on (it's on by default, next to Snap), the segment you're drawing **locks to the 45° family** — 0°, 45°, 90°, 135° across the sheet — whenever your cursor comes within a few degrees of one. A dashed guide stretches across the sheet along the locked axis, the lens rim glows, and a chip below the lens reads the locked angle plus the **live length of the segment** (once the sheet has a scale). The point you click is the locked point, so walls come out dead square. Hold **`⇧`** to force the lock at any angle; toggle **45°** off for free-angle tracing.
+
+The crosshair itself lives inside a **magnifying lens**: the plan passes under the glass at ~2.25× your current zoom, so you can see exactly which line you're about to hit without zooming in. Endpoint **Snap** (when enabled) takes priority over the angle lock — corners beat axes.
 
 ### Selected shape (Select tool)
 | Key | Action |
