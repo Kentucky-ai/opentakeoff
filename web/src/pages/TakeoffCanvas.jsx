@@ -1150,15 +1150,16 @@ export default function TakeoffCanvas() {
     const t = tfRef.current;
     const ex = cur[0] * t.scale + t.x, ey = cur[1] * t.scale + t.y;
     const lockState = lock ? "1" : "";
-    if (crossVRef.current) {
-      const el = crossVRef.current;
-      el.style.left = `${ex}px`; el.style.display = "block";
-      if (el.__lock !== lockState) { el.__lock = lockState; el.style.background = lock ? "rgba(31,63,199,.7)" : "rgba(31,63,199,.35)"; }
-    }
-    if (crossHRef.current) {
-      const el = crossHRef.current;
-      el.style.top = `${ey}px`; el.style.display = "block";
-      if (el.__lock !== lockState) { el.__lock = lockState; el.style.background = lock ? "rgba(31,63,199,.7)" : "rgba(31,63,199,.35)"; }
+    for (const [el, prop, val] of [[crossVRef.current, "left", ex], [crossHRef.current, "top", ey]]) {
+      if (!el) continue;
+      el.style[prop] = `${val}px`; el.style.display = "block";
+      if (el.__lock !== lockState) {
+        el.__lock = lockState;
+        el.style.background = lock ? "rgba(31,63,199,.85)" : "rgba(31,63,199,.55)";
+        el.style.boxShadow = lock
+          ? "0 0 0 0.5px rgba(255,255,255,.6), 0 0 6px rgba(31,63,199,.5)"
+          : "0 0 0 0.5px rgba(255,255,255,.55), 0 0 4px rgba(31,63,199,.3)";
+      }
     }
     if (aimMarkRef.current) {
       const el = aimMarkRef.current;
@@ -1923,8 +1924,8 @@ export default function TakeoffCanvas() {
               lock reads as a quiet state change (hairlines brighten, star swells
               cobalt, rubber band thickens) — no extra chrome on the sheet. All
               positioned imperatively in moveCrosshair. */}
-          <div ref={crossVRef} style={{ position: "absolute", top: 0, bottom: 0, width: 1, background: "rgba(31,63,199,.35)", boxShadow: "0 0 0 0.5px rgba(255,255,255,.4)", pointerEvents: "none", display: "none", zIndex: 5 }} />
-          <div ref={crossHRef} style={{ position: "absolute", left: 0, right: 0, height: 1, background: "rgba(31,63,199,.35)", boxShadow: "0 0 0 0.5px rgba(255,255,255,.4)", pointerEvents: "none", display: "none", zIndex: 5 }} />
+          <div ref={crossVRef} style={{ position: "absolute", top: 0, bottom: 0, width: 1.5, background: "rgba(31,63,199,.55)", boxShadow: "0 0 0 0.5px rgba(255,255,255,.55), 0 0 4px rgba(31,63,199,.3)", pointerEvents: "none", display: "none", zIndex: 5 }} />
+          <div ref={crossHRef} style={{ position: "absolute", left: 0, right: 0, height: 1.5, background: "rgba(31,63,199,.55)", boxShadow: "0 0 0 0.5px rgba(255,255,255,.55), 0 0 4px rgba(31,63,199,.3)", pointerEvents: "none", display: "none", zIndex: 5 }} />
           <div ref={aimMarkRef} style={{ position: "absolute", left: 0, top: 0, width: 0, height: 0, pointerEvents: "none", display: "none", zIndex: 6, willChange: "transform" }}>
             {/* the SPLINE STAR at the crossing — the house vertex mark IS the cursor;
                 it swells and glows cobalt while the 45° lock holds */}
