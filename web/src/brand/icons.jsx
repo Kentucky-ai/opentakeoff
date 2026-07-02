@@ -36,6 +36,7 @@ export const icons = {
   deduct: (s) => <I size={s}><path d="M12 4 L 20 10 L 17 19 L 7 19 L 4 10 Z" /><line x1="9" y1="13" x2="15" y2="13" /></I>,
   deductRect: (s) => <I size={s}><rect x="4" y="6" width="16" height="12" /><line x1="9" y1="12" x2="15" y2="12" /></I>,
   snap: (s) => <I size={s}><path d="M7 4 V 12 a 5 5 0 0 0 10 0 V 4" /><path d="M7 4 H 10.5 M13.5 4 H 17" /><path d="M7 7.5 H 10.5 M13.5 7.5 H 17" /><circle cx="12" cy="20.6" r="0.9" fill="currentColor" /></I>,
+  angle: (s) => <I size={s}><path d="M4 19 H 20" /><path d="M4 19 L 17 6" /><path d="M12 19 a 8 8 0 0 0 -2.3 -5.7" /></I>,
   cloud: (s) => <I size={s}><path d="M6 9 a2.3 2.3 0 0 1 4 -1.4 a2.3 2.3 0 0 1 4 0 a2.3 2.3 0 0 1 4 1.4 a2.3 2.3 0 0 1 0.4 3 a2.3 2.3 0 0 1 -0.4 3 a2.3 2.3 0 0 1 -4 1.4 a2.3 2.3 0 0 1 -4 0 a2.3 2.3 0 0 1 -4 -1.4 a2.3 2.3 0 0 1 -0.4 -3 a2.3 2.3 0 0 1 0.4 -3 Z" /></I>,
   callout: (s) => <I size={s}><circle cx="6" cy="17" r="1.1" fill="currentColor" /><line x1="6.8" y1="16.2" x2="13" y2="10" /><rect x="13" y="5.5" width="8" height="6" /></I>,
   textNote: (s) => <I size={s}><path d="M5 5 H 19 M5 5 V 7.5 M19 5 V 7.5 M12 5 V 19 M9.5 19 H 14.5" /></I>,
