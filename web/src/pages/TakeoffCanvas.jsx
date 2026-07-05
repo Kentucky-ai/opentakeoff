@@ -323,6 +323,8 @@ export default function TakeoffCanvas() {
   const renderScalesRef = useRef(new Map()); // sheetKey → base raster pdf scale (detail view renders at a multiple of it)
   const detailCanvasRef = useRef(null);      // single high-res viewport detail canvas (positioned imperatively)
   const detailTaskRef = useRef(null);        // in-flight detail render task (cancel stale on re-zoom)
+  const detailBackRef = useRef(null);        // offscreen back buffer — the visible crop is never wiped mid-render
+  const detailKeyRef = useRef("");           // last requested crop — identical re-requests are dropped (sync churn fires the effect several times per settle)
   const renderTasksRef = useRef(new Map());  // sheetKey → pdf.js RenderTask
   const pdfDocsRef = useRef(new Map());      // file name → pdf.js loading task (doc cache)
   const renderSeqRef = useRef(0);            // monotonic token — stale render chains bail out
@@ -767,9 +769,10 @@ export default function TakeoffCanvas() {
   // sibling ABOVE this canvas, and quantities never touch render pixels: both untouched.
   useEffect(() => {
     const cv = detailCanvasRef.current, cont = containerRef.current, fp = focusPanel;
-    const hide = () => { if (cv) cv.style.display = "none"; };
+    const hide = () => { if (cv) cv.style.display = "none"; detailKeyRef.current = ""; };
     if (!cv || !cont || status !== "ready" || !fp || !fp.img.w) return hide();
     const t = tfRef.current;
+    if (window.__OT_DETAIL_DEBUG) console.log("[detail] tick " + JSON.stringify({ scale: +t.scale.toFixed(2), dpr: window.devicePixelRatio, pan: !!panRef.current, hold: +(gestureUntilRef.current - performance.now()).toFixed(0) }));
     if (t.scale * (window.devicePixelRatio || 1) <= DETAIL_ENGAGE) return hide();
     // Mid-gesture bail: `cv.width = bw` below WIPES the crop and reallocs tens of MB —
     // doing that on every ~90ms sync while pinching/panning would flash the region
@@ -801,19 +804,37 @@ export default function TakeoffCanvas() {
 
     // pdf scale yielding factor× the base raster density; shift the region's top-left to (0,0)
     const vp = pageObj.getViewport({ scale: rs * factor });
-    cv.style.left = `${fp.xOffset + x0}px`; cv.style.top = `${y0}px`;
-    cv.style.width = `${regW}px`; cv.style.height = `${regH}px`;
-    cv.width = bw; cv.height = bh; cv.style.display = "block";
-    cv.style.visibility = darkModeRef.current ? "hidden" : "";   // reveal already-inverted (see base render)
-    canvasInvertedRef.current.delete(cv);   // width assignment cleared the pixels
+    // Double-buffer: render into an offscreen canvas and swap AFTER the pixels
+    // exist. Writing cv.width here would clear the visible crop synchronously
+    // while pdf.js paints the replacement async — a crisp→blank→crisp blink on
+    // every pan/zoom settle (worse the deeper the zoom, since renders run longer).
+    // The old crop is still correctly anchored in stage space, so it stays up
+    // until the swap; the back store is released right after (width = 0).
+    // one render per distinct crop — the sync loop re-fires this effect several
+    // times around a settle with identical inputs, and each redundant pass is a
+    // full-viewport pdf.js render (in dark mode plus a full-canvas inversion)
+    const renderKey = `${fp.key}|${x0.toFixed(1)},${y0.toFixed(1)}|${bw}x${bh}`;
+    if (renderKey === detailKeyRef.current) return;
+    detailKeyRef.current = renderKey;
+    const back = detailBackRef.current || (detailBackRef.current = document.createElement("canvas"));
+    back.width = bw; back.height = bh;
     try { detailTaskRef.current?.cancel(); } catch { /* done */ }
-    const rt = pageObj.render({ canvasContext: cv.getContext("2d"), viewport: vp, transform: [1, 0, 0, 1, -x0 * factor, -y0 * factor] });
+    const rt = pageObj.render({ canvasContext: back.getContext("2d"), viewport: vp, transform: [1, 0, 0, 1, -x0 * factor, -y0 * factor] });
     detailTaskRef.current = rt;
     rt.promise.then(() => {
-      if (darkModeRef.current) invertCanvasPixels(cv);   // negative view baked into pixels
+      if (darkModeRef.current) invertCanvasPixels(back);   // negative view baked into pixels before it's ever visible
+      cv.style.left = `${fp.xOffset + x0}px`; cv.style.top = `${y0}px`;
+      cv.style.width = `${regW}px`; cv.style.height = `${regH}px`;
+      cv.width = bw; cv.height = bh;
+      cv.getContext("2d").drawImage(back, 0, 0);           // clear + repaint inside one task: no blank frame
+      back.width = back.height = 0;
       canvasInvertedRef.current.set(cv, !!darkModeRef.current);
-      cv.style.visibility = "";
-    }).catch(() => {});   // RenderingCancelledException on rapid re-zoom is expected
+      cv.style.display = "block"; cv.style.visibility = "";
+      if (window.__OT_DETAIL_DEBUG) console.log("[detail] swapped", bw, "x", bh);
+    }).catch((e) => {   // RenderingCancelledException on rapid re-zoom is expected
+      if (detailKeyRef.current === renderKey) detailKeyRef.current = "";   // let the next tick retry this crop
+      if (e?.name !== "RenderingCancelledException") console.error("[detail] render failed:", e);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tf, groupSig, status, focusKey]);
 
