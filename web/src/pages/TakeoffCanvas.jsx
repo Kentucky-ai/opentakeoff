@@ -19,7 +19,7 @@ import SheetGallery from "../components/SheetGallery.jsx";
 import ReportPanel from "../components/ReportPanel.jsx";
 import { Icon } from "../brand/icons.jsx";
 import { RENDER_SCALE, STANDARD_SCALES, parseSheetKey, extractSheetNumber, detectScale } from "../lib/sheets";
-import { extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertices, ringArea } from "../lib/oneclick";
+import { extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertices, ringArea, MASK_MAX_DIM } from "../lib/oneclick";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -402,6 +402,7 @@ export default function TakeoffCanvas() {
   const snapRef = useRef(null);        // current snapped image point (or null)
   const snapGridsRef = useRef(new Map()); // sheetKey → {cell, map} spatial hash of vector endpoints
   const vectorSegsRef = useRef(new Map()); // sheetKey → flat [x1,y1,x2,y2,…] linework segments (One-Click boundary source)
+  const segMetaRef = useRef(new Map());    // sheetKey → per-segment meta bytes (hatch classification input)
   const maskCacheRef = useRef(new Map());  // sheetKey → built boundary mask (lazy, dropped on re-render)
   const snapMarkRef = useRef(null);    // SVG snap indicator
   const angleRef = useRef(null);       // current angle-locked image point (or null) — the click commits it
@@ -706,6 +707,7 @@ export default function TakeoffCanvas() {
     renderTasksRef.current.clear();
     snapGridsRef.current.clear();
     vectorSegsRef.current.clear();
+    segMetaRef.current.clear();
     maskCacheRef.current.clear();
     pageObjsRef.current.clear();
     renderScalesRef.current.clear();
@@ -747,9 +749,10 @@ export default function TakeoffCanvas() {
         // snap-to-vector index per panel (best-effort; off until the user enables it)
         m.pageObj.getOperatorList().then((ol) => {
           if (stale()) return;
-          const { points, segs } = extractVectorGeometry(ol, m.viewport.transform, pdfjsLib.OPS);
+          const { points, segs, meta } = extractVectorGeometry(ol, m.viewport.transform, pdfjsLib.OPS);
           snapGridsRef.current.set(m.key, buildSnapGrid(points));
           vectorSegsRef.current.set(m.key, segs);
+          segMetaRef.current.set(m.key, meta);
         }).catch(() => {});
         // read the drawn scale note off this panel's page text (best-effort)
         m.pageObj.getTextContent().then((tc) => {
@@ -1444,7 +1447,7 @@ export default function TakeoffCanvas() {
       const segs = vectorSegsRef.current.get(key);
       const dims = panelImgs[key];
       if (!segs || !segs.length || !dims?.w) return null;
-      mo = buildMask(segs, dims.w, dims.h);
+      mo = buildMask(segs, dims.w, dims.h, MASK_MAX_DIM, segMetaRef.current.get(key));
       maskCacheRef.current.set(key, mo);
     }
     return mo;
@@ -1477,7 +1480,7 @@ export default function TakeoffCanvas() {
     }
     const area_sf = +(ringArea(ring) * upp * upp).toFixed(2);
     const perim_lf = +(closedMetrics(ring).perim * upp).toFixed(2);
-    setProposal({ key: tp.key, regions: [...regions, { kind: negative ? "neg" : "pos", seed: local, poly: ring, area_sf, perim_lf }] });
+    setProposal({ key: tp.key, regions: [...regions, { kind: negative ? "neg" : "pos", seed: local, poly: ring, area_sf, perim_lf, hf: !!f.hatchFiltered }] });
     setCommitMsg("");
   }
   function createProposal() {
@@ -1489,7 +1492,7 @@ export default function TakeoffCanvas() {
       verts_norm: r.poly.map(([x, y]) => [x / tp.img.w, y / tp.img.h]),
       computed: { area_sf: r.area_sf, perimeter_lf: r.perim_lf },
       // the provenance receipt: machine-proposed, human-reviewed at the Create gate
-      origin: { method: "one_click_v1", seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true },
+      origin: { method: "one_click_v1", seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, ...(r.hf ? { hatch_filtered: true } : {}) },
     }));
     setShapes((s) => [...s, ...made]);
     const sf = proposal.regions.reduce((n, r) => n + (r.kind === "neg" ? -r.area_sf : r.area_sf), 0);
