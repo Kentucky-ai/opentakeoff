@@ -61,6 +61,7 @@ export const HATCH_MIN_REGULAR = 0.7;  // fraction of gaps that must sit inside 
 export const HATCH_OVERLAP_FRAC = 0.5; // successive rows must overlap tangentially this much
 export const ROW_EPS = 1.5;            // mask px — collinear/dashed pieces merge into one row
 export const WIDE_PROTECT_RATIO = 2;   // heavier-pen member of a hairline family stays hard (wall overprint)
+export const SPAN_PROTECT_RATIO = 3;   // a row spanning ≫ the run's median row is a wall riding the rhythm, not hatch
 export const HATCH_BOUND_FRAC = 0.7;   // escalate an "ok" region blocked ≥ this fraction by hatch
 
 // ── 1. op-list walk ────────────────────────────────────────────────────────
@@ -224,9 +225,17 @@ export function classifyHatchSegs(segs: number[], meta: Uint8Array, ws: number):
       const widths: number[] = [];
       for (let k = a; k <= b; k++) for (const s of rows[k].segs) widths.push(s.w);
       const modalW = Math.max(1, median(widths));
-      for (let k = a + 1; k < b; k++)                   // extremal rows stay hard
+      // hatch rows span a room; a wall at the family's angle spans the wing.
+      // A row much longer than the run's median is a wall riding the pattern's
+      // rhythm — softening it would let the escalated fill breach the room.
+      const spans: number[] = [];
+      for (let k = a; k <= b; k++) spans.push(rows[k].t1 - rows[k].t0);
+      const medSpan = Math.max(1, median(spans));
+      for (let k = a + 1; k < b; k++) {                 // extremal rows stay hard
+        if (rows[k].t1 - rows[k].t0 > SPAN_PROTECT_RATIO * medSpan) continue;
         for (const s of rows[k].segs)
           if (s.w < WIDE_PROTECT_RATIO * modalW) soft[s.i] = 1;
+      }
     };
     for (let k = 1; k < rows.length; k++) {
       const gap = rows[k].d - rows[k - 1].d;
