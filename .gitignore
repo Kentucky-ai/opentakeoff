@@ -27,3 +27,7 @@ server/.venv/
 .vscode/
 .idea/
 *.log
+
+# Agent/browser session artifacts (Playwright MCP traces, verification screenshots)
+.playwright-mcp/
+/*.png
