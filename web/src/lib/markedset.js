@@ -46,6 +46,34 @@ const hex = (h) => {
 };
 const num = (v, d = 1) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleString(undefined, { maximumFractionDigits: d });
 
+// pdf-lib's standard Helvetica encodes WinAnsi only — one CJK/emoji code point
+// in ANY drawn string (project name, company/client fields, condition tags,
+// markup text) used to throw "WinAnsi cannot encode" and abort the whole
+// export. Every string is funneled through this before it reaches
+// drawText/widthOfTextAtSize: printable ASCII and Latin-1 (0xA0–0xFF, which
+// covers the · and × this module emits) pass through, plus the WinAnsi
+// typographic marks — … (the right-align clamp appends it) and the common
+// dashes/quotes/bullet users paste. Thin/narrow no-break spaces (some locales'
+// digit group separator) soften to a plain space. Everything else becomes "?",
+// iterated by CODE POINT so an emoji's surrogate pair maps to ONE "?" and no
+// pair is ever bisected.
+// zero-gate a legend quantity at DISPLAY precision (num renders 1dp for SF/LF,
+// 0dp for EA): gating on round2 truthiness left 0.01–0.04 slivers printing as
+// "0 SF" (and "-0 SF" for negatives).
+const shows = (v, d = 1) => Math.round(Math.abs(v) * 10 ** d) !== 0;
+
+const WINANSI_EXTRAS = new Set(["…", "–", "—", "‘", "’", "“", "”", "•"]);
+export function winAnsiSafe(s) {
+  let out = "";
+  for (const ch of String(s ?? "")) {
+    const cp = ch.codePointAt(0);
+    if ((cp >= 0x20 && cp <= 0x7e) || (cp >= 0xa0 && cp <= 0xff) || WINANSI_EXTRAS.has(ch)) out += ch;
+    else if (cp === 0x2009 || cp === 0x202f) out += " ";
+    else out += "?";
+  }
+  return out;
+}
+
 // clip segment A→B (image px) against a polygon, even-odd: returns kept
 // [ax,ay,bx,by] sub-segments whose midpoints are inside.
 function clipSegToPoly(ax, ay, bx, by, poly) {
@@ -155,11 +183,18 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
   // ── legend cover ───────────────────────────────────────────────────────────
   {
     const pg = doc.addPage([612, 792]);
+    // the single choke point for cover text — every string WinAnsi-sanitized
+    const draw = (t, opts) => pg.drawText(winAnsiSafe(t), opts);
     if (dark) pg.drawRectangle({ x: 0, y: 0, width: 612, height: 792, color: rgb(...DARK_BG) });
     // the star is the canvas vertex mark — same 4-point / 0.38-inner geometry
     pg.drawSvgPath(starPath(0, 0, 11), { x: 52, y: 738, color: cobalt });
-    pg.drawText("OpenTakeoff", { x: 70, y: 731, size: 17, font: bold, color: cobalt });
-    pg.drawText("marked set", { x: 70 + bold.widthOfTextAtSize("OpenTakeoff", 17) + 8, y: 731, size: 17, font, color: muted });
+    draw("OpenTakeoff", { x: 70, y: 731, size: 17, font: bold, color: cobalt });
+    const wordmarkX = 70 + bold.widthOfTextAtSize("OpenTakeoff", 17) + 8;
+    draw("marked set", { x: wordmarkX, y: 731, size: 17, font, color: muted });
+    // the identity column's clamp wall: the wordmark's ACTUAL right edge
+    // (≈264.5 pt) plus breathing room — a fixed 230 let long names overprint
+    // "…d set" in the no-logo case, where the name baseline rides the wordmark
+    const wordmarkRight = wordmarkX + font.widthOfTextAtSize("marked set", 17) + 12;
     // company identity — a right-aligned column ending at x=560, clear of the
     // wordmark and the 22pt project name at x=52: logo top pinned to 748
     // (bottom lands at 700 when full 48pt height), name + address stacked
@@ -172,26 +207,28 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         pg.drawImage(logoImg, { x: 560 - w, y: 748 - h, width: w, height: h });
         idY = 748 - h - 13;
       }
-      // right-aligned column, clamped: never cross x=230 into the wordmark
+      // right-aligned column, clamped: never cross the wordmark's right edge.
+      // Input is sanitized FIRST, so the ellipsis loop slices plain WinAnsi
+      // text — it can never bisect an emoji surrogate pair.
       const rightAligned = (t, size, fnt) => {
-        let s = t;
-        while (s && 560 - fnt.widthOfTextAtSize(s, size) < 230) s = s.slice(0, -2).trimEnd() + "…";
+        let s = winAnsiSafe(t);
+        while (s && 560 - fnt.widthOfTextAtSize(s, size) < wordmarkRight) s = s.slice(0, -2).trimEnd() + "…";
         return { text: s, x: 560 - fnt.widthOfTextAtSize(s, size) };
       };
       if (company?.name) {
         const { text, x } = rightAligned(String(company.name), 10, bold);
-        pg.drawText(text, { x, y: idY, size: 10, font: bold, color: ink });
+        draw(text, { x, y: idY, size: 10, font: bold, color: ink });
         idY -= 12;
       }
       for (const raw of String(company?.address || "").split("\n")) {
         const t = raw.trim();
         if (!t || idY < 652) continue;
         const { text, x } = rightAligned(t, 8.5, font);
-        pg.drawText(text, { x, y: idY, size: 8.5, font, color: muted });
+        draw(text, { x, y: idY, size: 8.5, font, color: muted });
         idY -= 11;
       }
     }
-    pg.drawText(String(projectName || "Untitled project"), { x: 52, y: 700, size: 22, font: bold, color: ink });
+    draw(String(projectName || "Untitled project"), { x: 52, y: 700, size: 22, font: bold, color: ink });
     // client block (optional) sits under the project name; the meta line and
     // everything below shift down with it — no clientInfo, no shift: every y
     // matches the unbranded cover exactly.
@@ -206,42 +243,42 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         let cy = 681;
         // capped: a pasted multi-line address must never push CONDITIONS off
         // the page or walk into the fixed footer at y=48
-        for (const t of clientLines.slice(0, 6)) { pg.drawText(t, { x: 52, y: cy, size: 9.5, font, color: ink }); cy -= 12; }
+        for (const t of clientLines.slice(0, 6)) { draw(t, { x: 52, y: cy, size: 9.5, font, color: ink }); cy -= 12; }
         metaY = cy - 4;
       }
     }
-    pg.drawText(`${marked.length} marked sheet${marked.length === 1 ? "" : "s"} · ${markedShapes.length} takeoff item${markedShapes.length === 1 ? "" : "s"} · quantities net of deducts, waste-adjusted where noted`, { x: 52, y: metaY, size: 9.5, font, color: muted });
+    draw(`${marked.length} marked sheet${marked.length === 1 ? "" : "s"} · ${markedShapes.length} takeoff item${markedShapes.length === 1 ? "" : "s"} · quantities net of deducts, waste-adjusted where noted`, { x: 52, y: metaY, size: 9.5, font, color: muted });
     let y = metaY - 34;
     const rows = conditionTotals(conditions, markedShapes).filter((r) => r.shape_count > 0);
-    pg.drawText("CONDITIONS", { x: 52, y, size: 9, font: bold, color: muted }); y -= 16;
+    draw("CONDITIONS", { x: 52, y, size: 9, font: bold, color: muted }); y -= 16;
     for (const r of rows) {
       const c = condById[r.id] || {};
       pg.drawRectangle({ x: 52, y: y - 2, width: 14, height: 10, color: rgb(...hex(c.color)), opacity: 0.8, borderColor: rgb(...hex(c.color)), borderWidth: 0.7 });
-      pg.drawText(`${r.finish_tag}${r.multiplier > 1 ? ` ×${r.multiplier}` : ""}`, { x: 72, y, size: 10.5, font: bold, color: ink });
+      draw(`${r.finish_tag}${r.multiplier > 1 ? ` ×${r.multiplier}` : ""}`, { x: 72, y, size: 10.5, font: bold, color: ink });
       const qty = [
-        r.floor_sf ? `${num(r.floor_sf)} SF` : "", r.wall_sf ? `${num(r.wall_sf)} SF wall` : "",
-        r.border_sf ? `${num(r.border_sf)} SF border` : "", r.lf ? `${num(r.lf)} LF` : "", r.ea ? `${num(r.ea, 0)} EA` : "",
+        shows(r.floor_sf) ? `${num(r.floor_sf)} SF` : "", shows(r.wall_sf) ? `${num(r.wall_sf)} SF wall` : "",
+        shows(r.border_sf) ? `${num(r.border_sf)} SF border` : "", shows(r.lf) ? `${num(r.lf)} LF` : "", shows(r.ea, 0) ? `${num(r.ea, 0)} EA` : "",
       ].filter(Boolean).join(" · ");
-      pg.drawText(qty || "-", { x: 190, y, size: 10, font, color: ink });
-      pg.drawText(`${c.hatch && c.hatch !== "solid" ? c.hatch + " · " : ""}waste ${r.waste_pct}% -> ${num(r.total_sf_net)} SF`, { x: 420, y, size: 8.5, font, color: muted });
+      draw(qty || "-", { x: 190, y, size: 10, font, color: ink });
+      draw(`${c.hatch && c.hatch !== "solid" ? c.hatch + " · " : ""}waste ${r.waste_pct}% -> ${num(r.total_sf_net)} SF`, { x: 420, y, size: 8.5, font, color: muted });
       y -= 15;
       if (y < 120) break;
     }
     y -= 10;
-    pg.drawText("BY SHEET", { x: 52, y, size: 9, font: bold, color: muted }); y -= 16;
+    draw("BY SHEET", { x: 52, y, size: 9, font: bold, color: muted }); y -= 16;
     const bySheet = sheetTotals(conditions, markedShapes);
     const bySheetId = new Map(bySheet.map((gr) => [gr.sheet_id, gr]));
     for (const sh of marked) {
       if (y < 90) break;
       const items = shapesBy.get(sh.key) || [];
-      pg.drawText(`${sh.label} · page ${sh.page} · ${items.length + (marksBy.get(sh.key) || []).length} item(s)`, { x: 52, y, size: 9.5, font: bold, color: ink }); y -= 13;
+      draw(`${sh.label} · page ${sh.page} · ${items.length + (marksBy.get(sh.key) || []).length} item(s)`, { x: 52, y, size: 9.5, font: bold, color: ink }); y -= 13;
       for (const r of bySheetId.get(sh.key)?.rows || []) {
         if (y < 92) break;   // stop above the fixed footnote slot at y=60 — rows never collide with it
         const c = condById[r.id] || {};
         pg.drawRectangle({ x: 66, y: y - 1, width: 9, height: 7, color: rgb(...hex(c.color)), opacity: 0.8 });
         const floor = round2(r.floor_sf), wall = round2(r.wall_sf), border = round2(r.border_sf), lf = round2(r.lf), ea = r.ea;
-        const qty = [floor ? `${num(floor)} SF` : "", wall ? `${num(wall)} SF wall` : "", border ? `${num(border)} SF border` : "", lf ? `${num(lf)} LF` : "", ea ? `${num(ea, 0)} EA` : ""].filter(Boolean).join(" · ");
-        pg.drawText(`${r.finish_tag}${r.multiplier > 1 ? ` ×${r.multiplier}` : ""}  ${qty}`, { x: 82, y, size: 8.5, font, color: ink });
+        const qty = [shows(floor) ? `${num(floor)} SF` : "", shows(wall) ? `${num(wall)} SF wall` : "", shows(border) ? `${num(border)} SF border` : "", shows(lf) ? `${num(lf)} LF` : "", shows(ea, 0) ? `${num(ea, 0)} EA` : ""].filter(Boolean).join(" · ");
+        draw(`${r.finish_tag}${r.multiplier > 1 ? ` ×${r.multiplier}` : ""}  ${qty}`, { x: 82, y, size: 8.5, font, color: ink });
         y -= 11;
       }
       y -= 5;
@@ -250,9 +287,9 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     // itself at y=48) — a reading of the by-sheet figures depends on it, so it
     // must never be dropped just because the row loops ran the page out
     if (bySheet.some((gr) => gr.rows.some((r) => r.multiplier > 1))) {
-      pg.drawText("by-sheet figures are measured base quantities; xN applies at condition level", { x: 52, y: 60, size: 7.5, font, color: muted });
+      draw("by-sheet figures are measured base quantities; xN applies at condition level", { x: 52, y: 60, size: 7.5, font, color: muted });
     }
-    pg.drawText(`generated by OpenTakeoff · opentakeoff.netlify.app · ${new Date().toLocaleDateString()}`, { x: 52, y: 48, size: 8, font, color: muted });
+    draw(`generated by OpenTakeoff · opentakeoff.netlify.app · ${new Date().toLocaleDateString()}`, { x: 52, y: 48, size: 8, font, color: muted });
   }
 
   // ── marked sheets ──────────────────────────────────────────────────────────
@@ -295,11 +332,14 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
       const [sx, sy] = toPage(x1, y1), [ex, ey] = toPage(x2, y2);
       pg.drawLine({ start: { x: sx, y: sy }, end: { x: ex, y: ey }, thickness: w, color: colorRgb, opacity, ...(dash ? { dashArray: dash } : {}) });
     };
+    // both helpers sanitize FIRST — markup text / sheet labels / condition
+    // tags can carry CJK/emoji, and chip measures width on the drawn string
     const text = (t, x, y, size, colorRgb, fnt = font) => {
       const [px, py] = toPage(x, y);
-      pg.drawText(t, { x: px, y: py, size, font: fnt, color: colorRgb, rotate: chipRot });
+      pg.drawText(winAnsiSafe(t), { x: px, y: py, size, font: fnt, color: colorRgb, rotate: chipRot });
     };
-    const chip = (t, x, y, borderRgb) => {
+    const chip = (raw, x, y, borderRgb) => {
+      const t = winAnsiSafe(raw);
       const size = 7.5;
       const w = font.widthOfTextAtSize(t, size) + 8;
       const [px, py] = toPage(x, y);
