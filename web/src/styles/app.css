@@ -170,3 +170,70 @@ input, textarea { font-family: var(--f-body); }
     scroll-behavior: auto !important;
   }
 }
+
+/* ── print (Takeoff report) ───────────────────────────────────────────────── */
+
+/* print-only chrome — invisible on screen. The report body sits in a layout
+   table (.report-flow) whose thead is the per-page print strip; on screen the
+   table is transparent and the strip hidden. */
+.report-print-header { display: none; }
+.report-flow { width: 100%; border-collapse: collapse; }
+.report-flow > thead { display: none; }
+.report-flow > tbody > tr > td { padding: 0; }
+
+@page { margin: 14mm 12mm 16mm; }
+
+@media print {
+  /* Only the report subtree prints; the canvas chrome behind it does not. */
+  body.report-open { visibility: hidden; color-scheme: light; }
+  body.report-open .report-panel,
+  body.report-open .report-panel * { visibility: visible; }
+
+  /* Un-clip the panel: on screen it's inset:0 with an inner scroller, which
+     window.print() would clip to one viewport. Let content flow across pages. */
+  body.report-open .report-panel {
+    position: absolute !important;
+    inset: auto !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+    background: #fff !important;   /* the app's dark view must never print dark */
+    color: #111;
+  }
+  body.report-open .report-scroll {
+    overflow: visible !important;
+    height: auto !important;
+    flex: none !important;
+  }
+  body.report-open .report-panel table { background: #fff !important; }
+
+  /* buttons / inputs don't print; neither does an open modal */
+  .report-toolbar { display: none !important; }
+  .report-modal   { display: none !important; }
+
+  /* masthead: project, date, per-sheet scale provenance, generator, disclaimer */
+  .report-print-header { display: block; }
+
+  /* one-line strip repeated at the top of every printed page: the flow-table's
+     thead re-renders at each page break (a fixed footer would overlay the last
+     row of intermediate pages — no @page margin boxes in Chromium) */
+  .report-flow > thead { display: table-header-group; }
+  .report-flow > thead td {
+    font-family: var(--f-mono);
+    font-size: 9px;
+    color: #333;
+    border-bottom: 1px solid #999;
+    padding: 0 0 4px;
+  }
+
+  /* tables paginate; header rows repeat at the top of every page */
+  table { break-inside: auto; }
+  tr    { break-inside: avoid; }
+  thead { display: table-header-group; }
+  /* …but the flow-table's single wrapper row MUST break, or the whole report
+     tries to fit one page */
+  .report-flow > tbody > tr { break-inside: auto; }
+}

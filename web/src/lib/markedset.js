@@ -18,8 +18,9 @@
 // pdf-lib is lazy-loaded (like ingest's image→PDF wrap), so the export costs
 // nothing until used and the app stays zero-install.
 
-import { conditionTotals } from "./totals.js";
+import { conditionTotals, sheetTotals, round2 } from "./totals.js";
 import { pointInPoly, starPath } from "./geometry.js";
+import { dataUrlToBytes } from "./identity.js";
 import { RENDER_SCALE } from "./sheets";
 
 const COBALT = "#1f3fc7";
@@ -120,7 +121,7 @@ function invertPixels(cv) {
   ctx.restore();
 }
 
-export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, markups, conditions, getPage, loadPdfData }) {
+export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, markups, conditions, getPage, loadPdfData, company, clientInfo }) {
   const { PDFDocument, StandardFonts, rgb, degrees } = await import("pdf-lib");
   const condById = Object.fromEntries(conditions.map((c) => [c.id, c]));
   const byKey = (arr) => {
@@ -140,6 +141,17 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
   const muted = dark ? rgb(0.63, 0.61, 0.56) : rgb(0.42, 0.4, 0.36);
   const cobalt = dark ? rgb(0.45, 0.56, 1) : rgb(...hex(COBALT));   // brighter on near-black
 
+  // company logo, if any — a corrupt stored dataURL must not kill the export,
+  // so decode + embed inside a try and skip silently on failure. Drawn as-is
+  // in dark mode too: normalized PNGs keep their transparency, no inversion.
+  let logoImg = null;
+  if (company?.logo) {
+    try {
+      const logoBytes = dataUrlToBytes(company.logo);
+      if (logoBytes) logoImg = await doc.embedPng(logoBytes);
+    } catch { logoImg = null; }
+  }
+
   // ── legend cover ───────────────────────────────────────────────────────────
   {
     const pg = doc.addPage([612, 792]);
@@ -148,9 +160,58 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     pg.drawSvgPath(starPath(0, 0, 11), { x: 52, y: 738, color: cobalt });
     pg.drawText("OpenTakeoff", { x: 70, y: 731, size: 17, font: bold, color: cobalt });
     pg.drawText("marked set", { x: 70 + bold.widthOfTextAtSize("OpenTakeoff", 17) + 8, y: 731, size: 17, font, color: muted });
+    // company identity — a right-aligned column ending at x=560, clear of the
+    // wordmark and the 22pt project name at x=52: logo top pinned to 748
+    // (bottom lands at 700 when full 48pt height), name + address stacked
+    // beneath, stopping above the CONDITIONS "waste" column (x=420, y≤630).
+    {
+      let idY = 731;   // no logo → company name baseline rides the wordmark's
+      if (logoImg) {
+        const s = Math.min(120 / logoImg.width, 48 / logoImg.height);
+        const w = logoImg.width * s, h = logoImg.height * s;
+        pg.drawImage(logoImg, { x: 560 - w, y: 748 - h, width: w, height: h });
+        idY = 748 - h - 13;
+      }
+      // right-aligned column, clamped: never cross x=230 into the wordmark
+      const rightAligned = (t, size, fnt) => {
+        let s = t;
+        while (s && 560 - fnt.widthOfTextAtSize(s, size) < 230) s = s.slice(0, -2).trimEnd() + "…";
+        return { text: s, x: 560 - fnt.widthOfTextAtSize(s, size) };
+      };
+      if (company?.name) {
+        const { text, x } = rightAligned(String(company.name), 10, bold);
+        pg.drawText(text, { x, y: idY, size: 10, font: bold, color: ink });
+        idY -= 12;
+      }
+      for (const raw of String(company?.address || "").split("\n")) {
+        const t = raw.trim();
+        if (!t || idY < 652) continue;
+        const { text, x } = rightAligned(t, 8.5, font);
+        pg.drawText(text, { x, y: idY, size: 8.5, font, color: muted });
+        idY -= 11;
+      }
+    }
     pg.drawText(String(projectName || "Untitled project"), { x: 52, y: 700, size: 22, font: bold, color: ink });
-    pg.drawText(`${marked.length} marked sheet${marked.length === 1 ? "" : "s"} · ${markedShapes.length} takeoff item${markedShapes.length === 1 ? "" : "s"} · quantities net of deducts, waste-adjusted where noted`, { x: 52, y: 680, size: 9.5, font, color: muted });
-    let y = 646;
+    // client block (optional) sits under the project name; the meta line and
+    // everything below shift down with it — no clientInfo, no shift: every y
+    // matches the unbranded cover exactly.
+    let metaY = 680;
+    {
+      const clientLines = [];
+      if (clientInfo?.client_name) clientLines.push(`Prepared for ${clientInfo.client_name}`);
+      for (const raw of String(clientInfo?.client_address || "").split("\n")) { const t = raw.trim(); if (t) clientLines.push(t); }
+      if (clientInfo?.reference) clientLines.push(`Ref ${clientInfo.reference}`);
+      if (clientInfo?.date) clientLines.push(`Date ${clientInfo.date}`);
+      if (clientLines.length) {
+        let cy = 681;
+        // capped: a pasted multi-line address must never push CONDITIONS off
+        // the page or walk into the fixed footer at y=48
+        for (const t of clientLines.slice(0, 6)) { pg.drawText(t, { x: 52, y: cy, size: 9.5, font, color: ink }); cy -= 12; }
+        metaY = cy - 4;
+      }
+    }
+    pg.drawText(`${marked.length} marked sheet${marked.length === 1 ? "" : "s"} · ${markedShapes.length} takeoff item${markedShapes.length === 1 ? "" : "s"} · quantities net of deducts, waste-adjusted where noted`, { x: 52, y: metaY, size: 9.5, font, color: muted });
+    let y = metaY - 34;
     const rows = conditionTotals(conditions, markedShapes).filter((r) => r.shape_count > 0);
     pg.drawText("CONDITIONS", { x: 52, y, size: 9, font: bold, color: muted }); y -= 16;
     for (const r of rows) {
@@ -168,19 +229,26 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     }
     y -= 10;
     pg.drawText("BY SHEET", { x: 52, y, size: 9, font: bold, color: muted }); y -= 16;
+    const bySheet = sheetTotals(conditions, markedShapes);
+    const bySheetId = new Map(bySheet.map((gr) => [gr.sheet_id, gr]));
     for (const sh of marked) {
       if (y < 90) break;
       const items = shapesBy.get(sh.key) || [];
       pg.drawText(`${sh.label} · page ${sh.page} · ${items.length + (marksBy.get(sh.key) || []).length} item(s)`, { x: 52, y, size: 9.5, font: bold, color: ink }); y -= 13;
-      for (const r of conditionTotals(conditions, items).filter((x) => x.shape_count > 0)) {
+      for (const r of bySheetId.get(sh.key)?.rows || []) {
         const c = condById[r.id] || {};
         pg.drawRectangle({ x: 66, y: y - 1, width: 9, height: 7, color: rgb(...hex(c.color)), opacity: 0.8 });
-        const qty = [r.floor_sf ? `${num(r.floor_sf)} SF` : "", r.wall_sf ? `${num(r.wall_sf)} SF wall` : "", r.lf ? `${num(r.lf)} LF` : "", r.ea ? `${num(r.ea, 0)} EA` : ""].filter(Boolean).join(" · ");
-        pg.drawText(`${r.finish_tag}  ${qty}`, { x: 82, y, size: 8.5, font, color: ink });
+        const floor = round2(r.floor_sf), wall = round2(r.wall_sf), border = round2(r.border_sf), lf = round2(r.lf), ea = r.ea;
+        const qty = [floor ? `${num(floor)} SF` : "", wall ? `${num(wall)} SF wall` : "", border ? `${num(border)} SF border` : "", lf ? `${num(lf)} LF` : "", ea ? `${num(ea, 0)} EA` : ""].filter(Boolean).join(" · ");
+        pg.drawText(`${r.finish_tag}${r.multiplier > 1 ? ` ×${r.multiplier}` : ""}  ${qty}`, { x: 82, y, size: 8.5, font, color: ink });
         y -= 11;
         if (y < 80) break;
       }
       y -= 5;
+    }
+    if (y >= 80 && bySheet.some((gr) => gr.rows.some((r) => r.multiplier > 1))) {
+      pg.drawText("by-sheet figures are measured base quantities; xN applies at condition level", { x: 52, y, size: 7.5, font, color: muted });
+      y -= 11;
     }
     pg.drawText(`generated by OpenTakeoff · opentakeoff.netlify.app · ${new Date().toLocaleDateString()}`, { x: 52, y: 48, size: 8, font, color: muted });
   }

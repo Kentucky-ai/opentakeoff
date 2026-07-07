@@ -1,0 +1,31 @@
+# Golden Plaza, Phase 2 — OpenTakeoff report
+Finish,Shapes,Multiplier,Waste %,Floor SF,Wall SF,Border SF,Total SF,LF,EA,Total SF (w/ waste),LF (w/ waste),SY (w/ waste)
+"CT-1, honed",3,1,10,546.9,0,0,546.9,0,0,601.59,0,66.84
+LVT-2,1,2,0,421.1,0,0,421.1,0,0,421.1,0,46.79
+RB-1,2,1,5,0,0,43.29,43.29,129.85,0,45.45,136.34,5.05
+WT-1,1,1,0,0,305.62,0,305.62,0,0,305.62,0,33.96
+CNT,2,1,0,0,0,0,0,0,7,0,0,0
+TOTAL,,,,,,,1316.91,129.85,7,1373.76,136.34,152.64
+
+Finish,Material,Qty,Unit,Coverage,Note
+"CT-1, honed",Thinset,6,bag,1 bag / 95 SF,
+"CT-1, honed",Grout,4.56,bag,1 bag / 120 SF,epoxy
+RB-1,Adhesive,1,gal,1 gal / 200 LF,
+CNT,Transition strip,7,ea,1 ea / 1 EA,
+
+Material (combined),Qty,Unit
+Thinset,6,bag
+Grout,4.56,bag
+Adhesive,1,gal
+Transition strip,7,ea
+
+Sheet,Sheet ID,Finish,Floor SF,Wall SF,Border SF,LF,EA
+A101,plan.pdf,"CT-1, honed",123.45,0,0,0,0
+A101,plan.pdf,LVT-2 ×2,210.55,0,0,0,0
+A101,plan.pdf,RB-1,0,0,29.42,88.25,0
+A101,plan.pdf,WT-1,0,305.62,0,0,0
+A101,plan.pdf,CNT,0,0,0,0,3
+A102,plan.pdf#2,"CT-1, honed",423.45,0,0,0,0
+A102,plan.pdf#2,RB-1,0,0,13.87,41.6,0
+A102,plan.pdf#2,CNT,0,0,0,0,4
+# By-sheet rows show measured (base) quantities; xN multipliers apply at condition level
