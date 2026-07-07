@@ -40,8 +40,15 @@ const allZero = (d) => Object.values(d).every((v) => v === 0);
 // Pair A rows with B rows: id match first, then finish_tag fallback over the
 // leftovers (first-come, exact string, empty tags never pair). Returns entries
 // in B order (matched + added as they appear in B) with removed-A appended in
-// A order — stable and review-friendly. key = the matched id, "tag:" + tag
-// for tag-matches, or the lone row's own id for added/removed.
+// A order — stable and review-friendly. key = the matched id, "tag:" + tag +
+// "#" + ordinal for tag-matches, or the lone row's own id for added/removed.
+//
+// The ordinal disambiguates DUPLICATE finish_tags: two same-tag conditions
+// recreated with fresh uids pair by order within the tag group and get keys
+// "tag:CT-1#0" / "tag:CT-1#1" — a bare "tag:CT-1" key collided in the
+// by-sheet Maps (one baseline row silently dropped, the survivor diffed
+// against both B rows → phantom changes on a byte-identical takeoff) and in
+// React's key={r.key}.
 function matchRows(rowsA, rowsB) {
   const byIdA = new Map(rowsA.map((r) => [r.id, r]));
   const idMatched = new Set();
@@ -56,13 +63,18 @@ function matchRows(rowsA, rowsB) {
   }
 
   const consumedA = new Set(idMatched);
+  const tagOrdinal = new Map();          // finish_tag → tag-matches emitted so far
   const entries = [];
   for (const b of rowsB) {
     if (idMatched.has(b.id)) { entries.push({ key: b.id, a: byIdA.get(b.id), b }); continue; }
     const q = b.finish_tag ? tagQueue.get(b.finish_tag) : null;
     const a = q && q.length ? q.shift() : null;
-    if (a) { consumedA.add(a.id); entries.push({ key: "tag:" + b.finish_tag, a, b }); }
-    else entries.push({ key: b.id, a: null, b });
+    if (a) {
+      const n = tagOrdinal.get(b.finish_tag) || 0;
+      tagOrdinal.set(b.finish_tag, n + 1);
+      consumedA.add(a.id);
+      entries.push({ key: `tag:${b.finish_tag}#${n}`, a, b });
+    } else entries.push({ key: b.id, a: null, b });
   }
   for (const a of rowsA) if (!consumedA.has(a.id)) entries.push({ key: a.id, a, b: null });
   return entries;

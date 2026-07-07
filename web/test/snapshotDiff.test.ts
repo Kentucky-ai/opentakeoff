@@ -84,11 +84,38 @@ test("deleted-and-recreated condition matches by finish_tag and diffs unchanged"
   const d = diffSnapshots(A, B);
   assert.equal(d.conditions.length, 1);                     // NOT remove+add
   const e = d.conditions[0];
-  assert.equal(e.key, "tag:CT-1");
+  assert.equal(e.key, "tag:CT-1#0");                        // ordinal disambiguates duplicate tags
   assert.equal(e.status, "unchanged");
   for (const f of COND_FIELDS) assert.equal(e.deltas[f], 0);
   // the tag key carries through to by_sheet, so the sheet reconciles too
   assert.equal(d.by_sheet.length, 0);
+  assert.equal(d.identical, true);
+});
+
+test("DUPLICATE finish_tags: two same-tag recreated conditions pair by order — no phantom changes", () => {
+  // the adversarial-review probe: two conditions sharing finish_tag "CT-1",
+  // both deleted and recreated with fresh uids, quantities byte-identical.
+  // A bare "tag:CT-1" key collided in the by-sheet Maps — one baseline row
+  // was dropped, the survivor diffed against both B rows, and an identical
+  // takeoff reported changes.
+  const A = payload(
+    [{ id: "a1", finish_tag: "CT-1" }, { id: "a2", finish_tag: "CT-1" }],
+    [floorShape("s1", "a1", "plan", 100), floorShape("s2", "a2", "plan", 250)],
+  );
+  const B = payload(
+    [{ id: "b1", finish_tag: "CT-1" }, { id: "b2", finish_tag: "CT-1" }],
+    [floorShape("s8", "b1", "plan", 100), floorShape("s9", "b2", "plan", 250)],
+  );
+  const d = diffSnapshots(A, B);
+  assert.equal(d.conditions.length, 2);                     // both pairs, neither remove+add
+  assert.deepEqual(d.conditions.map((e: any) => e.key), ["tag:CT-1#0", "tag:CT-1#1"]);
+  for (const e of d.conditions) {
+    assert.equal(e.status, "unchanged");
+    for (const f of COND_FIELDS) assert.equal(e.deltas[f], 0, `${e.key}.${f}`);
+  }
+  // row keys unique (React key={r.key} warned on duplicates before)
+  assert.equal(new Set(d.conditions.map((e: any) => e.key)).size, 2);
+  assert.equal(d.by_sheet.length, 0);                       // no phantom sheet diffs
   assert.equal(d.identical, true);
 });
 
