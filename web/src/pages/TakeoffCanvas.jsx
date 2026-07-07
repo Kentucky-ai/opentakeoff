@@ -586,8 +586,11 @@ export default function TakeoffCanvas() {
     const src = {};
     for (const s of a.sheets || []) if (s.sheet_id && s.units_per_px) {
       sc[s.sheet_id] = s.units_per_px;
-      // provenance is additive — old projects lack it, junk values are dropped (report shows "unknown")
-      if (["calibrated", "standard", "detected"].includes(s.scale_source)) src[s.sheet_id] = s.scale_source;
+      // provenance is additive — old projects lack it (report shows "unknown").
+      // Any non-empty string passes through, not just today's known values: a
+      // whitelist would silently strip a future value on load and the next
+      // autosave would persist the loss. Display already falls back safely.
+      if (typeof s.scale_source === "string" && s.scale_source) src[s.sheet_id] = s.scale_source;
     }
     setScales(sc);
     setScaleSources(src);
