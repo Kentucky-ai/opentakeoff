@@ -23,6 +23,9 @@ version from `web/.nvmrc` and runs this same script, nothing more.
 
 ## How changes ship
 
+Full pipeline details (CI, deploys, security model, troubleshooting) live in
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md). The short version:
+
 - `main` is protected: all changes land via PR, the `web` CI check must pass,
   and the branch must be up to date with `main` before merging. No force-pushes.
 - Merging to `main` triggers the Deploy workflow, which re-runs `npm run check`
