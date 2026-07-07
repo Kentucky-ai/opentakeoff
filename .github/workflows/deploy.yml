@@ -8,6 +8,9 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 concurrency:
   group: production-deploy
   cancel-in-progress: false
@@ -31,7 +34,9 @@ jobs:
       - run: npm ci
       - run: npm run check
       - name: Deploy to Netlify
-        run: npx --yes netlify-cli@26 deploy --prod --no-build --dir dist
+        # Pinned exact version — bump deliberately; a floating tag would let a
+        # compromised release run with the deploy token.
+        run: npx --yes netlify-cli@26.1.0 deploy --prod --no-build --dir dist
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
