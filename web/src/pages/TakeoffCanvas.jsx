@@ -12,16 +12,18 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { store } from "../lib/store.js";
+import { store, isStaleTabError } from "../lib/store.js";
 import { ingestFiles } from "../lib/ingest.js";
 import ToolMenu from "../components/ToolMenu.jsx";
 import SheetGallery from "../components/SheetGallery.jsx";
 import ReportPanel from "../components/ReportPanel.jsx";
+import SnapshotPanel from "../components/SnapshotPanel.jsx";
 import { Icon } from "../brand/icons.jsx";
 import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, extractSheetNumber, detectScale } from "../lib/sheets";
 import { extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertices, ringArea, MASK_MAX_DIM } from "../lib/oneclick";
 import { conditionTotals, verticalWallSf } from "../lib/totals.js";
 import { buildMarkedSetPdf, downloadBytes } from "../lib/markedset.js";
+import { loadCompany } from "../lib/identity.js";
 import { starPath, cloudPath, buildSnapGrid, nearestSnap, ANGLE_TOL, angleSnap, closedMetrics, openLen, pointInPoly, distToSeg, hitShape } from "../lib/geometry.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -286,6 +288,7 @@ export default function TakeoffCanvas() {
   const [tf, setTf] = useState({ x: 0, y: 0, scale: 1 }); // render mirror of tfRef
 
   const [scales, setScales] = useState({});
+  const [scaleSources, setScaleSources] = useState({}); // scale provenance for the report — "calibrated" | "standard" | "detected"; sheets that predate the flag export "unknown"
   const [detectedScales, setDetectedScales] = useState({}); // { sheetKey: {upp,label,multi} } read off the plan text
   const [darkMode, setDarkMode] = useState(() => { try { return localStorage.getItem("opentakeoff_dark") === "1"; } catch { return false; } });
   useEffect(() => { try { localStorage.setItem("opentakeoff_dark", darkMode ? "1" : "0"); } catch { /* private mode */ } }, [darkMode]);
@@ -313,7 +316,9 @@ export default function TakeoffCanvas() {
   const [saveState, setSaveState] = useState("idle");
   const [commitMsg, setCommitMsg] = useState("");   // transient status line (misnamed for history; just the message bar)
   const [showReport, setShowReport] = useState(false);  // Reports overlay (STACK-style breakdown + export)
+  const [showSnapshots, setShowSnapshots] = useState(false); // Snapshots modal (save / compare / restore)
   const [projectName, setProjectName] = useState("");   // optional label for the report header
+  const [clientInfo, setClientInfo] = useState({});      // per-project client/job fields for branded output; additive payload field
   const fileInputRef = useRef(null);                    // hidden <input type=file> for "Open PDF"
 
   const containerRef = useRef(null);
@@ -550,31 +555,53 @@ export default function TakeoffCanvas() {
   }, []);
 
   // ── load saved annotations once per project ───────────────────────────────
+  // hydrate applies a saved payload to state — shared by the mount load and by
+  // Load in the Snapshots panel, so a restored snapshot walks the same
+  // defensive path as a page reload.
+  const hydrate = (a) => {
+    setProjectName(a.project_name || "");
+    // string fields only — a corrupted record must not put an object where
+    // the report masthead renders a React child
+    setClientInfo(Object.fromEntries(Object.entries(
+      a.client_info && typeof a.client_info === "object" && !Array.isArray(a.client_info) ? a.client_info : {}
+    ).filter(([, v]) => typeof v === "string")));
+    const conds = a.conditions || [];
+    if (conds.length) { setConditions(conds); setActiveCond(conds[0].id); }
+    else { const seeded = seedConditions(); setConditions(seeded); setActiveCond(seeded[0].id); }   // flooring-first defaults on a fresh workspace
+    setShapes(a.shapes || []);
+    setMarkups(Array.isArray(a.markups) ? a.markups : []);
+    const grp = Array.isArray(a.sheet_group) ? a.sheet_group.slice(0, MAX_GROUP) : [];
+    setSheetGroup(grp);
+    const lg = Array.isArray(a.last_group) ? a.last_group.slice(0, MAX_GROUP) : grp;
+    // else-clear matters at runtime (snapshot load): a payload without groups/
+    // tabs must not inherit the pre-load ones — autosave would persist a hybrid
+    setLastGroup(lg.length >= 2 ? lg : []);
+    // gallery-first: tabs restore directly; legacy pinned pages migrate once
+    // (over in the sheets effect, where file names are known); nothing open → gallery
+    const tabs = Array.isArray(a.sheet_tabs) ? a.sheet_tabs : [];
+    if (tabs.length) setOpenTabs(tabs);
+    else if (Array.isArray(a.pinned) && a.pinned.length) legacyPinnedRef.current = a.pinned;
+    else { setOpenTabs([]); setView("gallery"); }
+    const sc = {};
+    const src = {};
+    for (const s of a.sheets || []) if (s.sheet_id && s.units_per_px) {
+      sc[s.sheet_id] = s.units_per_px;
+      // provenance is additive — old projects lack it, junk values are dropped (report shows "unknown")
+      if (["calibrated", "standard", "detected"].includes(s.scale_source)) src[s.sheet_id] = s.scale_source;
+    }
+    setScales(sc);
+    setScaleSources(src);
+  };
   useEffect(() => {
     let off = false;
     store.loadAnnotations().then((a) => {
       if (off) return;
-      setProjectName(a.project_name || "");
-      const conds = a.conditions || [];
-      if (conds.length) { setConditions(conds); setActiveCond(conds[0].id); }
-      else { const seeded = seedConditions(); setConditions(seeded); setActiveCond(seeded[0].id); }   // flooring-first defaults on a fresh workspace
-      setShapes(a.shapes || []);
-      setMarkups(Array.isArray(a.markups) ? a.markups : []);
-      const grp = Array.isArray(a.sheet_group) ? a.sheet_group.slice(0, MAX_GROUP) : [];
-      setSheetGroup(grp);
-      const lg = Array.isArray(a.last_group) ? a.last_group.slice(0, MAX_GROUP) : grp;
-      if (lg.length >= 2) setLastGroup(lg);
-      // gallery-first: tabs restore directly; legacy pinned pages migrate once
-      // (over in the sheets effect, where file names are known); nothing open → gallery
-      const tabs = Array.isArray(a.sheet_tabs) ? a.sheet_tabs : [];
-      if (tabs.length) setOpenTabs(tabs);
-      else if (Array.isArray(a.pinned) && a.pinned.length) legacyPinnedRef.current = a.pinned;
-      else setView("gallery");
-      const sc = {};
-      for (const s of a.sheets || []) if (s.sheet_id && s.units_per_px) sc[s.sheet_id] = s.units_per_px;
-      setScales(sc);
+      hydrate(a);
       hydrated.current = true;
-    }).catch(() => { hydrated.current = true; });
+    }).catch((e) => {
+      if (isStaleTabError(e)) setCommitMsg("OpenTakeoff was updated in another tab — reload this tab to continue.");
+      hydrated.current = true;
+    });
     return () => { off = true; };
   }, []);
 
@@ -854,18 +881,24 @@ export default function TakeoffCanvas() {
   }, [pageLabels]);
 
   // ── autosave (debounced) ──────────────────────────────────────────────────
+  // buildPayload is the single serializer — autosave and snapshots must write
+  // identical records for the same state (byte-stability matters downstream).
+  const buildPayload = () => ({ project_name: projectName, ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}) })), conditions, shapes, markups, sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs });
   // markups MUST be in the deps (a cloud/callout/text or an RFI link is real work);
   // omitting it dropped markup saves and could persist a stale markups array.
   useEffect(() => {
     if (!hydrated.current) return;
-    const payload = { project_name: projectName, sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px })), conditions, shapes, markups, sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs };
+    const payload = buildPayload();
     saveDataRef.current = payload;          // keep the freshest payload for an unmount flush
     setSaveState("saving");
     const t = setTimeout(() => {
-      store.saveAnnotations(payload).then(() => setSaveState("saved")).catch(() => setSaveState("idle"));
+      store.saveAnnotations(payload).then(() => setSaveState("saved")).catch((e) => {
+        if (isStaleTabError(e)) setCommitMsg("OpenTakeoff was updated in another tab — reload this tab to continue.");
+        setSaveState("idle");
+      });
     }, 700);
     return () => clearTimeout(t);
-  }, [shapes, conditions, scales, markups, sheetGroup, lastGroup, openTabs, projectName]);
+  }, [shapes, conditions, scales, scaleSources, markups, sheetGroup, lastGroup, openTabs, projectName, clientInfo]);
   useEffect(() => { saveStateRef.current = saveState; }, [saveState]);
 
   // Flush a pending debounced save on navigate-away (unmount), and warn before a
@@ -1357,6 +1390,7 @@ export default function TakeoffCanvas() {
     // store at BASELINE resolution — the auto hi-res raster has factorFor× denser pixels
     const toBase = factorFor(pa.key);
     setScales((s) => ({ ...s, [pa.key]: (feet / px) * toBase })); // per page — remembered for this sheet
+    setScaleSources((s) => ({ ...s, [pa.key]: "calibrated" }));
     setCalib([]); setPendingLen("");
   }
 
@@ -1548,7 +1582,8 @@ export default function TakeoffCanvas() {
         return { key, file, page, label: tabLabel(key) };
       }).sort((a, b) => (a.file === b.file ? a.page - b.page : a.file.localeCompare(b.file)));
       const { bytes, filename } = await buildMarkedSetPdf({
-        projectName, dark: darkMode, sheets: sheetMeta, shapes, markups, conditions,
+        projectName, clientInfo, company: loadCompany(),
+        dark: darkMode, sheets: sheetMeta, shapes, markups, conditions,
         getPage: async (file, pageNum) => (await docFor(file)).getPage(pageNum),
         loadPdfData: (file) => store.loadPdfData(file),
       });
@@ -1814,7 +1849,7 @@ export default function TakeoffCanvas() {
         </button>
         {vRule}
         {/* scale group: standard dropdown + plan-note chip + calibrate */}
-        <select value={stdValue} onChange={(e) => { const f = STANDARD_SCALES.find((s) => s.label === e.target.value); if (f) setScales((s) => ({ ...s, [focusPanel.key]: f.upp })); }}
+        <select value={stdValue} onChange={(e) => { const f = STANDARD_SCALES.find((s) => s.label === e.target.value); if (f) { setScales((s) => ({ ...s, [focusPanel.key]: f.upp })); setScaleSources((s) => ({ ...s, [focusPanel.key]: "standard" })); } }}
           title={`Set the scale for ${labelFor(focusPanel)} — remembered per sheet${groupKeys.length > 1 ? " (targets the sheet you last clicked)" : ""}`}
           style={{ padding: 6, border: unitsPerPx ? "1px solid var(--c-positive)" : "1px solid var(--ink-faint)", background: "transparent", color: unitsPerPx ? "var(--c-positive)" : "var(--c-danger)", fontSize: 12 }}>
           <option value="">{unitsPerPx ? `scale set${stdValue ? "" : " · custom"} ✓` : `Set scale for ${labelFor(focusPanel)}…`}</option>
@@ -1824,7 +1859,7 @@ export default function TakeoffCanvas() {
           const det = detectedScales[focusPanel.key];
           if (!det) return null;
           if (!unitsPerPx) return (
-            <button type="button" onClick={() => setScales((s) => ({ ...s, [focusPanel.key]: det.upp }))}
+            <button type="button" onClick={() => { setScales((s) => ({ ...s, [focusPanel.key]: det.upp })); setScaleSources((s) => ({ ...s, [focusPanel.key]: "detected" })); }}
               title={`The plan notes ${det.label} on ${labelFor(focusPanel)}${det.multi ? " — this sheet shows several scales (details are often larger); confirm against a known dimension" : ""}. Click to use it.`}
               style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 9px", border: "1px dashed var(--c-positive)", background: "transparent", color: "var(--c-positive)", cursor: "pointer", fontSize: 11.5, fontWeight: 600, lineHeight: 1 }}>
               <Icon name="target" size={13} />plan says {det.label}{det.multi ? " ±" : ""} — use
@@ -1851,6 +1886,10 @@ export default function TakeoffCanvas() {
           <button onClick={createProposal} title="Create the selected takeoff(s) (↵). ⌫ removes the last click; Esc discards the selection." style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", border: "none", background: "var(--c-positive)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}><Icon name="check" size={14} />Create ({proposal.regions.length})</button>
         )}
         <span style={{ fontSize: 11, color: "var(--ink-muted)", minWidth: 44, fontFamily: "var(--f-mono)" }}>{saveState === "saving" ? "saving…" : saveState === "saved" ? "saved ✓" : ""}</span>
+        <button onClick={() => setShowSnapshots((v) => !v)} title="Snapshots — save the takeoff as-is, then compare or restore it after an addendum"
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${showSnapshots ? "var(--cobalt)" : "var(--ink-faint)"}`, background: showSnapshots ? "var(--cobalt)" : "transparent", color: showSnapshots ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
+          <Icon name="document" size={15} />Snapshots
+        </button>
         <button onClick={() => setShowReport(true)} disabled={!conditions.length} title="Open the takeoff report — per-condition breakdown with waste, plus CSV / JSON export."
           style={{ padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--ink-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>Report</button>
       </div>
@@ -1897,7 +1936,7 @@ export default function TakeoffCanvas() {
         })}
         <button onClick={addCondition} style={{ padding: "4px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--ink-muted)" }}>+ condition</button>
         <span style={{ fontSize: 10.5, color: "var(--ink-faint)", marginLeft: 4 }}>⌫ undo point · Esc cancel · scroll = zoom · pan mid-measure: just press-and-drag (click without dragging places the point)</span>
-        {commitMsg && <span style={{ marginLeft: "auto", fontSize: 12, color: commitMsg.startsWith("Commit failed") ? "#b03a26" : "var(--c-positive)" }}>{commitMsg}</span>}
+        {commitMsg && <span style={{ marginLeft: "auto", fontSize: 12, color: commitMsg.startsWith("Commit failed") || commitMsg.includes("reload this tab") ? "#b03a26" : "var(--c-positive)" }}>{commitMsg}</span>}
       </div>
 
       {/* appearance editor for the active condition */}
@@ -2332,12 +2371,27 @@ export default function TakeoffCanvas() {
       {showReport && (
         <ReportPanel
           projectName={projectName} onProjectName={setProjectName}
-          conditions={conditions} shapes={shapes}
+          clientInfo={clientInfo} onClientInfo={setClientInfo}
+          conditions={conditions} shapes={shapes} markups={markups}
+          scaleInfo={Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, source: scaleSources[sheet_id] || "unknown" }))}
           sheetLabel={(k) => tabLabel(k)}
           onMarkedSet={exportMarkedSet} markedSetDark={darkMode}
           onClose={() => setShowReport(false)}
         />
       )}
+
+      <SnapshotPanel
+        open={showSnapshots} onClose={() => setShowSnapshots(false)}
+        buildPayload={buildPayload} currentLabel={projectName}
+        sheetLabel={(k) => tabLabel(k)}
+        onLoadSnapshot={(payload) => {
+          // a runtime load (unlike mount) can interrupt work in flight — an
+          // unfinished trace/calibration/proposal must not commit into the
+          // restored takeoff under a reset activeCond
+          setPoly([]); setCalib([]); setPendingLen(""); setSelectedId(null); setProposal(null);
+          hydrate(payload || {});
+        }}
+      />
     </div>
   );
 }

@@ -11,6 +11,17 @@
 //
 // `shape.computed` already holds the per-shape numbers (computed at draw time
 // against that sheet's scale), so totaling is pure arithmetic — no scale here.
+//
+// Naming debt, kept deliberately: the `_net` suffix (total_sf_net, sy_net, …)
+// means the WASTE-ADJUSTED order quantity — estimating parlance would call the
+// un-adjusted measured figure "net". The names stay as-is because the CSV
+// headers and the now-versioned JSON export keys (opentakeoff.report.v1) must
+// remain stable.
+
+// Import cycle note: reportColumns.js imports round2 from here. Safe because
+// neither module touches the other's exports at module-eval time (only inside
+// function bodies) — ESM live bindings resolve by first call.
+import { GETTERS, CSV_PROFILE } from "./reportColumns.js";
 
 export const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -134,6 +145,8 @@ export function materialsSummary(rows) {
   return [...map.values()].map((x) => ({ ...x, qty: round2(x.qty) }));
 }
 
+// NB: the CSV TOTAL row emits g[key] for any column key present here — adding
+// a key that collides with a CSV column key changes that row (golden-guarded).
 export function grandTotals(rows) {
   const sum = (k) => rows.reduce((n, r) => n + (r[k] || 0), 0);
   return {
@@ -153,28 +166,34 @@ export function grandTotals(rows) {
  * @param {string} [projectName]
  * @param {Array<{sheet_id: any, rows: any[]}>|null} [bySheet] sheetTotals() result
  * @param {((sheetId: any) => string)|null} [sheetLabel] sheet_id → display label
+ * @param {Array<{key: string, header: string}>|null} [cols] CSV_PROFILE-shaped
+ *   column list to emit; null → the default-visible CSV_PROFILE columns
+ *   (byte-identical to the frozen v1 export). Opt-ins append after the base 13.
+ * @param {{perimByCond?: Map<any, number>}|null} [ctx] handed to GETTERS
+ *   (perimeter_ref needs it)
  * @returns {string}
  */
-export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel = null) {
+export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel = null, cols = null, ctx = null) {
   const esc = (v) => {
     const s = String(v ?? "");
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const header = [
-    "Finish", "Shapes", "Multiplier", "Waste %",
-    "Floor SF", "Wall SF", "Border SF", "Total SF", "LF", "EA",
-    "Total SF (w/ waste)", "LF (w/ waste)", "SY (w/ waste)",
-  ];
-  const lines = [header.map(esc).join(",")];
+  const columns = cols || CSV_PROFILE.filter((c) => c.defaultVisible);
+  const lines = [columns.map((c) => esc(c.header)).join(",")];
   for (const r of rows) {
-    lines.push([
-      r.finish_tag, r.shape_count, r.multiplier, r.waste_pct,
-      r.floor_sf, r.wall_sf, r.border_sf, r.total_sf, r.lf, r.ea,
-      r.total_sf_net, r.lf_net, r.sy_net,
-    ].map(esc).join(","));
+    lines.push(columns.map((c) => esc(GETTERS[c.key]?.(r, ctx))).join(","));
   }
   const g = grandTotals(rows);
-  lines.push(["TOTAL", "", "", "", "", "", "", g.total_sf, g.lf, g.ea, g.total_sf_net, g.lf_net, g.sy_net].map(esc).join(","));
+  // TOTAL row, column-driven: "TOTAL" under the finish column, grand-total
+  // values where they exist, blank otherwise (perimeter_ref stays blank —
+  // reference figures never total).
+  const foot = (key) => {
+    if (key === "finish") return "TOTAL";
+    if (key === "waste_sf") return round2(g.total_sf_net - g.total_sf);
+    if (key === "waste_lf") return round2(g.lf_net - g.lf);
+    return g[key] !== undefined ? g[key] : "";
+  };
+  lines.push(columns.map((c) => esc(foot(c.key))).join(","));
 
   // supporting materials — per condition, then a combined buy list
   const basisLabel = (b) => (b === "linear" ? "LF" : b === "count" ? "EA" : "SF");
