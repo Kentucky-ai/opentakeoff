@@ -184,8 +184,12 @@ input, textarea { font-family: var(--f-body); }
 @page { margin: 14mm 12mm 16mm; }
 
 @media print {
-  /* Only the report subtree prints; the canvas chrome behind it does not. */
-  body.report-open { visibility: hidden; color-scheme: light; }
+  /* Only the report subtree prints; the canvas chrome behind it does not.
+     The background must go white too: the body's beige propagates to the
+     document CANVAS, which paints every page regardless of the body's
+     visibility:hidden — with "Background graphics" on it printed as a beige
+     block after the last report section. */
+  body.report-open { visibility: hidden; color-scheme: light; background: #fff !important; }
   body.report-open .report-panel,
   body.report-open .report-panel * { visibility: visible; }
 
