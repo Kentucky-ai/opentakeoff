@@ -1733,6 +1733,7 @@ export default function TakeoffCanvas() {
   const wallTotal = condRow?.wall_sf || 0;
   const borderTotal = condRow?.border_sf || 0;
   // display-only Kreo-style derived metric: floor-area perimeters × the condition height
+  const condH = Number(aCond?.height_ft) || 0; // the live-readout JSX below still reads this
   const vertTotal = verticalWallSf(visibleShapes, activeCond, aCond?.height_ft, condMult);
   const num = (v, d = 1) => v.toLocaleString(undefined, { maximumFractionDigits: d });
   const stdValue = unitsPerPx ? (STANDARD_SCALES.find((s) => Math.abs(s.upp - unitsPerPx) < 1e-9)?.label || "") : "";
