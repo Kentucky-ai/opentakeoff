@@ -19,7 +19,7 @@ branch → npm run check (local) → PR → CI (`web` check) → squash-merge
 ```
 
 - **CI** (`.github/workflows/ci.yml`) runs on every PR: `npm ci` then
-  `npm run check` (typecheck → tests → build) inside `web/`.
+  `npm run check` (typecheck → lint → tests → build) inside `web/`.
 - **Deploy** (`.github/workflows/deploy.yml`) runs on every push to `main`
   (which, given branch protection, means every merged PR). It re-runs the same
   check, then publishes `web/dist` to Netlify with `--no-build`.

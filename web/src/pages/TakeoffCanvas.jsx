@@ -24,7 +24,7 @@ import { extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertice
 import { conditionTotals, verticalWallSf } from "../lib/totals.js";
 import { buildMarkedSetPdf, downloadBytes } from "../lib/markedset.js";
 import { loadCompany } from "../lib/identity.js";
-import { starPath, cloudPath, buildSnapGrid, nearestSnap, ANGLE_TOL, angleSnap, closedMetrics, openLen, pointInPoly, distToSeg, hitShape } from "../lib/geometry.js";
+import { starPath, cloudPath, buildSnapGrid, nearestSnap, ANGLE_TOL, angleSnap, closedMetrics, openLen, pointInPoly, hitShape } from "../lib/geometry.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -372,7 +372,6 @@ export default function TakeoffCanvas() {
 
   // page 1 keeps the bare file name (pre-paging takeoffs still load); pages 2+ → "name#page"
   const sheetKey = page > 1 ? `${active}#${page}` : active;
-  const keyForPage = (n) => (n > 1 ? `${active}#${n}` : active);
   // toggle a sheet in/out of the side-by-side group; first toggle from single
   // mode seeds the group with the sheet currently on screen
   const toggleInGroup = (key) => setSheetGroup((g) => {
@@ -1179,8 +1178,6 @@ export default function TakeoffCanvas() {
   }
   function moveCrosshair(e) {
     if (tool === "pan" || tool === "select" || status !== "ready" || !containerRef.current) return;
-    const r = containerRef.current.getBoundingClientRect();
-
     // snap-to-vector: nearest PDF endpoint within threshold becomes the active
     // point — looked up in the hovered panel's grid, in that panel's local frame
     let cur = toImage(e.clientX, e.clientY);

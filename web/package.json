@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "OpenTakeoff — a free, open-source PDF takeoff canvas for flooring contractors.",
+  "description": "OpenTakeoff \u2014 a free, open-source PDF takeoff canvas for flooring contractors.",
   "license": "Apache-2.0",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
-    "check": "npm run typecheck && npm test && npm run build"
+    "check": "npm run typecheck && npm run lint && npm test && npm run build",
+    "lint": "eslint src"
   },
   "engines": {
     "node": ">=22"
@@ -29,7 +30,10 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "9.39.4",
+    "eslint-plugin-react-hooks": "7.1.1",
     "fake-indexeddb": "6.2.5",
+    "globals": "17.7.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vite": "^6.0.7"

@@ -15,7 +15,7 @@ npm run dev        # http://localhost:5173 — drag in demo/sample-plan.pdf
 Before opening a PR:
 
 ```bash
-npm run check      # typecheck + test + build — the exact sequence CI runs
+npm run check      # typecheck + lint + test + build — the exact sequence CI runs
 ```
 
 If `npm run check` is green locally, CI will be green: CI reads the Node

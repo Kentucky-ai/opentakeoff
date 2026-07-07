@@ -11,7 +11,7 @@ npm install
 npm run dev      # http://localhost:5173 — hot reload
 npm test         # node:test over the pure geometry + totals math (test/*.test.ts)
 npm run build    # → web/dist/ (static output; this is what Netlify deploys)
-npm run check    # typecheck + test + build — exactly what CI runs; green here ⇒ green CI
+npm run check    # typecheck + lint + test + build — exactly what CI runs; green here ⇒ green CI
 ```
 
 ## Shipping — the required steps, every change
