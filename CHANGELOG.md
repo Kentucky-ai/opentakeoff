@@ -2,6 +2,16 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-07-07
+
+### Added
+- **Highlighter.** A freehand marker under Markup (`H`): press and drag to paint — real ink feel, stroke after stroke, no dialog between strokes. A style popover under the Markup menu offers five inks (yellow default), **F/M/B** tip sizes, and a **chisel or round** nib (remembered per browser). Strokes capture with distance thinning, preview imperatively (no React render per move), stick to their sheet, scale with the plan like drawn ink, and **export into the Marked Set PDF** in their own color (chisel = ribbon fill, round = round-cap stroke). Because press-drag paints, press-drag panning is unavailable while the highlighter is armed — Space/middle/right-drag still pan. The pure stroke geometry (`thinStroke`, `strokePathD`, `chiselRibbon`) lives in `web/src/lib/geometry.js` with tests.
+
+### Changed
+- **Hatch patterns redesigned.** The 16 condition hatches retuned as a set: two stroke weights (dense/dual-family patterns draw lighter so nothing shouts), per-pattern tile sizes, even pitches, and ~8–16% ink coverage across the board — brick now staggers like running bond, plank reads as long boards, checker/dots/speckle calmed. Dark view gets brighter stroke alphas baked into the pattern. The Marked Set PDF's hatch approximations follow the new pitches. A hidden `?hatchqa` QA wall renders every pattern at three scales in two colors for future retunes.
+- **Hatch picker reorganized.** A 4×4 grid of larger swatches with a caption line that names the pattern under the cursor (or the current selection) — no more squinting at a 26px tile.
+- **"Cut Out" is now "Eraser".** The toolbar menu and its tools read Erase shape / Erase rectangle (`D` / `⇧D`). Labels only — the takeoff math is unchanged, and existing deduct shapes are untouched.
+
 ## 2026-07-05 (evening)
 
 ### Fixed

@@ -19,7 +19,7 @@
 // nothing until used and the app stays zero-install.
 
 import { conditionTotals } from "./totals.js";
-import { pointInPoly, starPath } from "./geometry.js";
+import { pointInPoly, starPath, chiselRibbon } from "./geometry.js";
 import { RENDER_SCALE } from "./sheets";
 
 const COBALT = "#1f3fc7";
@@ -29,13 +29,13 @@ const RASTER_MAX = 2800;                    // dark-mode raster cap, long side p
 
 // hatch style → parallel-line families [angleDeg, pitch(image px)] that match
 // the canvas pattern's geometric read; decorative styles approximate — the
-// legend names the true style. Pitches ×2 vs the 10px canvas tile for print.
+// legend names the true style. Pitches ×2 vs the on-screen canvas tiles for print.
 const HATCH_FAMILIES = {
-  diag: [[45, 14]], diag2: [[135, 14]], cross: [[45, 14], [135, 14]],
-  diagdense: [[45, 7]], horiz: [[0, 10]], vert: [[90, 10]],
-  grid: [[0, 10], [90, 10]], brick: [[0, 10]], plank: [[0, 10]],
-  herring: [[45, 14], [135, 14]], basket: [[0, 10], [90, 10]],
-  checker: [[45, 7]], wave: [[0, 10]], dots: [[45, 20]], speckle: [[45, 20]],
+  diag: [[45, 17]], diag2: [[135, 17]], cross: [[45, 17], [135, 17]],
+  diagdense: [[45, 8.4]], horiz: [[0, 16]], vert: [[90, 16]],
+  grid: [[0, 20], [90, 20]], brick: [[0, 16], [90, 32]], plank: [[0, 16]],
+  herring: [[45, 17], [135, 17]], basket: [[0, 18], [90, 18]],
+  checker: [[45, 12]], wave: [[0, 18]], dots: [[45, 17]], speckle: [[45, 24]],
 };
 
 const hex = (h) => {
@@ -121,7 +121,7 @@ function invertPixels(cv) {
 }
 
 export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, markups, conditions, getPage, loadPdfData }) {
-  const { PDFDocument, StandardFonts, rgb, degrees } = await import("pdf-lib");
+  const { PDFDocument, StandardFonts, rgb, degrees, LineCapStyle } = await import("pdf-lib");
   const condById = Object.fromEntries(conditions.map((c) => [c.id, c]));
   const byKey = (arr) => {
     const m = new Map();
@@ -221,6 +221,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     }
     const ptScale = Math.hypot(...(() => { const p0 = toPage(0, 0), p1 = toPage(1, 0); return [p1[0] - p0[0], p1[1] - p0[1]]; })());
     const svgPath = (pts) => pts.map(([x, y], i) => { const [px, py] = toPage(x, y); return `${i ? "L" : "M"}${px},${-py}`; }).join(" ") + " Z";
+    const svgOpenPath = (pts) => pts.map(([x, y], i) => { const [px, py] = toPage(x, y); return `${i ? "L" : "M"}${px},${-py}`; }).join(" ");
     const line = (x1, y1, x2, y2, colorRgb, w, opacity = 1, dash) => {
       const [sx, sy] = toPage(x1, y1), [ex, ey] = toPage(x2, y2);
       pg.drawLine({ start: { x: sx, y: sy }, end: { x: ex, y: ey }, thickness: w, color: colorRgb, opacity, ...(dash ? { dashArray: dash } : {}) });
@@ -265,7 +266,21 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
       }
     }
     for (const m of marksBy.get(sh.key) || []) {
-      if (m.type === "cloud" && m.rect) {
+      if (m.type === "highlight" && (m.pts || []).length >= 2) {
+        // ink stays its own color in both export modes (a highlight IS its hue);
+        // width is stored as a fraction of sheet width → image px → page points
+        const ipts = m.pts.map(([nx, ny]) => [nx * W, ny * H]);
+        const inkCol = rgb(...hex(m.color || "#ffd60a"));
+        const wImg = (m.w || 0.01) * W;
+        if (m.tip === "chisel") {
+          pg.drawSvgPath(svgPath(chiselRibbon(ipts, wImg, 45)), { x: 0, y: 0, color: inkCol, opacity: 0.35 });
+        } else {
+          pg.drawSvgPath(svgOpenPath(ipts), {
+            x: 0, y: 0, borderColor: inkCol, borderWidth: wImg * ptScale, borderOpacity: 0.35,
+            ...(LineCapStyle ? { borderLineCap: LineCapStyle.Round } : {}),   // butt caps if the pin drops the export
+          });
+        }
+      } else if (m.type === "cloud" && m.rect) {
         const [[nx0, ny0], [nx1, ny1]] = m.rect;
         // scalloped read approximated by a dashed border — arcs don't survive
         // arbitrary page transforms; the note text carries the meaning

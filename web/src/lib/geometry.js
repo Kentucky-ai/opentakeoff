@@ -35,6 +35,39 @@ export function cloudPath(x0, y0, x1, y1) {
   return d + " Z";
 }
 
+// ── freehand highlighter geometry (byte-identical with Spline's canvas copy) ──
+// Freehand capture: drop points closer than minDist to the last kept point (keep first+last).
+export function thinStroke(pts, minDist) {
+  if (pts.length <= 2) return pts.slice();
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length - 1; i++) {
+    const last = out[out.length - 1];
+    if (Math.hypot(pts[i][0] - last[0], pts[i][1] - last[1]) >= minDist) out.push(pts[i]);
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+// Open Catmull-Rom → cubic Bézier SVG "d" through pts (k=6 tangent divisor).
+export function strokePathD(pts) {
+  if (!pts.length) return "";
+  if (pts.length === 1) return `M${pts[0][0]},${pts[0][1]}`;
+  let d = `M${pts[0][0]},${pts[0][1]}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d += ` C${c1x},${c1y} ${c2x},${c2y} ${p2[0]},${p2[1]}`;
+  }
+  return d;
+}
+// Chisel-nib ribbon: offset every point ±w/2 along a FIXED nib direction (nibDeg),
+// forward offsets then reversed backward offsets — a closed polygon. Faceting on the
+// raw polyline is authentic to a chisel nib and keeps the PDF exporters trivial.
+export function chiselRibbon(pts, w, nibDeg = 45) {
+  const a = (nibDeg * Math.PI) / 180, vx = (Math.cos(a) * w) / 2, vy = -(Math.sin(a) * w) / 2;
+  return [...pts.map(([x, y]) => [x + vx, y + vy]), ...[...pts].reverse().map(([x, y]) => [x - vx, y - vy])];
+}
+
 // ── snap-to-vector spatial hash. The op-list walk that feeds it (endpoints +
 // line segments for One-Click Area) lives in lib/oneclick: extractVectorGeometry.
 // `cell` is the caller's tuning (raster px per bucket) — see SNAP_CELL in the canvas.

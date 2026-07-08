@@ -22,7 +22,7 @@ import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, extractSheetNu
 import { extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertices, ringArea, MASK_MAX_DIM } from "../lib/oneclick";
 import { conditionTotals, verticalWallSf } from "../lib/totals.js";
 import { buildMarkedSetPdf, downloadBytes } from "../lib/markedset.js";
-import { starPath, cloudPath, buildSnapGrid, nearestSnap, ANGLE_TOL, angleSnap, closedMetrics, openLen, pointInPoly, distToSeg, hitShape } from "../lib/geometry.js";
+import { starPath, cloudPath, thinStroke, strokePathD, chiselRibbon, buildSnapGrid, nearestSnap, ANGLE_TOL, angleSnap, closedMetrics, openLen, pointInPoly, distToSeg, hitShape } from "../lib/geometry.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -105,29 +105,35 @@ function invertCanvasPixels(cv) {
 }
 
 function HatchPattern({ id, type, line, fill, dark }) {
-  const sw = 1.1;
-  // dark mode legibility comes from brighter alphas baked into the pattern —
-  // never a CSS filter over the shape overlay (that re-rasterizes the whole
-  // layer on every sync)
-  const bg = fill && fill !== NO_FILL ? <rect width={10} height={10} fill={fill} opacity={dark ? 0.32 : 0.18} /> : null;
-  const s = (d) => <path d={d} stroke={line} strokeWidth={sw} fill="none" />;
-  const wrap = (kids) => <pattern id={id} patternUnits="userSpaceOnUse" width={10} height={10}>{bg}{kids}</pattern>;
+  // Design system: two stroke weights (SW1 single-family, SW2 dual/dense so no
+  // pattern shouts), per-pattern tile sizes, even pitches, ~8–16% ink coverage
+  // across the set. Corner-crossing paths carry ±3 continuation stubs so tiles
+  // stay seamless. QA wall: append ?hatchqa to the canvas URL.
+  const SW1 = 1.0, SW2 = 0.8;
+  const so = dark ? 0.95 : 0.85;
+  const s = (d, sw = SW1) => <path d={d} stroke={line} strokeWidth={sw} strokeOpacity={so} fill="none" />;
+  const wrap = (kids, w = 12, h = 12) => (
+    <pattern id={id} patternUnits="userSpaceOnUse" width={w} height={h}>
+      {fill && fill !== NO_FILL ? <rect width={w} height={h} fill={fill} opacity={dark ? 0.32 : 0.18} /> : null}
+      {kids}
+    </pattern>
+  );
   switch (type) {
-    case "diag": return wrap(s("M0,10 L10,0 M-3,3 L3,-3 M7,13 L13,7"));
-    case "diag2": return wrap(s("M0,0 L10,10 M-3,7 L3,13 M7,-3 L13,3"));
-    case "cross": return wrap(<>{s("M0,10 L10,0 M-3,3 L3,-3 M7,13 L13,7")}{s("M0,0 L10,10 M-3,7 L3,13 M7,-3 L13,3")}</>);
-    case "diagdense": return wrap(s("M0,5 L5,0 M0,10 L10,0 M5,10 L10,5 M-2.5,2.5 L2.5,-2.5 M7.5,12.5 L12.5,7.5"));
-    case "horiz": return wrap(s("M0,3 L10,3 M0,7 L10,7"));
-    case "vert": return wrap(s("M3,0 L3,10 M7,0 L7,10"));
-    case "grid": return wrap(s("M0,3 L10,3 M0,7 L10,7 M3,0 L3,10 M7,0 L7,10"));
-    case "brick": return wrap(<>{s("M0,3 L10,3 M0,7 L10,7")}{s("M5,0 L5,3 M0,3 L0,7 M10,3 L10,7 M5,7 L5,10")}</>);
-    case "plank": return wrap(<>{s("M0,0 L10,0 M0,5 L10,5 M0,10 L10,10")}{s("M3,0 L3,5 M7,5 L7,10")}</>);
-    case "herring": return wrap(<>{s("M0,5 L5,0 L10,5")}{s("M0,10 L5,5 L10,10")}</>);
-    case "basket": return wrap(<>{s("M0,2 L5,2 M0,4 L5,4")}{s("M7,0 L7,5 M9,0 L9,5")}{s("M2,5 L2,10 M4,5 L4,10")}{s("M5,7 L10,7 M5,9 L10,9")}</>);
-    case "checker": return wrap(<>{<rect x={0} y={0} width={5} height={5} fill={line} opacity={0.4} />}{<rect x={5} y={5} width={5} height={5} fill={line} opacity={0.4} />}</>);
-    case "wave": return wrap(<>{s("M0,4 Q2.5,1 5,4 T10,4")}{s("M0,8 Q2.5,5 5,8 T10,8")}</>);
-    case "dots": return wrap(<>{[2, 6].map((y) => [2, 6].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r={1.1} fill={line} />))}</>);
-    case "speckle": return wrap(<>{[[1.5, 2, 1.3], [6, 1.5, 0.8], [3.5, 5, 1], [8, 5.5, 1.4], [1.5, 8, 0.9], [6.5, 8.5, 1.2]].map(([x, y, r], i) => <circle key={i} cx={x} cy={y} r={r} fill={line} />)}</>);
+    case "diag": return wrap(s("M0,12 L12,0 M-3,3 L3,-3 M9,15 L15,9"));
+    case "diag2": return wrap(s("M0,0 L12,12 M-3,9 L3,15 M9,-3 L15,3"));
+    case "cross": return wrap(<>{s("M0,12 L12,0 M-3,3 L3,-3 M9,15 L15,9", SW2)}{s("M0,0 L12,12 M-3,9 L3,15 M9,-3 L15,3", SW2)}</>);
+    case "diagdense": return wrap(s("M0,6 L6,0 M0,12 L12,0 M6,12 L12,6 M-2,2 L2,-2 M10,14 L14,10", SW2));
+    case "horiz": return wrap(s("M0,4 L8,4"), 8, 8);
+    case "vert": return wrap(s("M4,0 L4,8"), 8, 8);
+    case "grid": return wrap(s("M0,5 L10,5 M5,0 L5,10", SW2), 10, 10);
+    case "brick": return wrap(<>{s("M0,0 L16,0 M0,8 L16,8", SW2)}{s("M4,0 L4,8 M12,8 L12,16", SW2)}</>, 16, 16);
+    case "plank": return wrap(<>{s("M0,0 L24,0 M0,8 L24,8", SW2)}{s("M6,0 L6,8 M18,8 L18,16", SW2)}</>, 24, 16);
+    case "herring": return wrap(<>{s("M0,6 L6,0 L12,6")}{s("M0,12 L6,6 L12,12")}</>);
+    case "basket": return wrap(<>{s("M0,3 L6,3")}{s("M9,0 L9,6")}{s("M3,6 L3,12")}{s("M6,9 L12,9")}</>);
+    case "checker": return wrap(<>{<rect x={0} y={0} width={6} height={6} fill={line} opacity={dark ? 0.30 : 0.22} />}{<rect x={6} y={6} width={6} height={6} fill={line} opacity={dark ? 0.30 : 0.22} />}</>);
+    case "wave": return wrap(<>{s("M0,3 Q3,0 6,3 T12,3")}{s("M0,9 Q3,6 6,9 T12,9")}</>);
+    case "dots": return wrap(<>{[[3, 3], [9, 9]].map(([x, y]) => <circle key={`${x}-${y}`} cx={x} cy={y} r={1.05} fill={line} fillOpacity={so} />)}</>);
+    case "speckle": return wrap(<>{[[3, 4, 1.3], [11, 2.5, 0.8], [7.5, 9, 1.1], [13.5, 12.5, 1.3], [4, 13, 0.8]].map(([x, y, r], i) => <circle key={i} cx={x} cy={y} r={r} fill={line} fillOpacity={so} />)}</>, 16, 16);
     default: return wrap(null);  // solid: only the fill bg
   }
 }
@@ -137,9 +143,9 @@ function HatchSwatch({ type, line, fill }) {
   const fc = fill && fill !== NO_FILL ? fill : null;
   const pid = `sw-${type}-${String(line).replace("#", "")}-${String(fill).replace("#", "")}`;
   return (
-    <svg width="26" height="18" style={{ display: "block", overflow: "hidden" }}>
+    <svg width="32" height="22" style={{ display: "block", overflow: "hidden", borderRadius: 4 }}>
       {type !== "solid" && <defs><HatchPattern id={pid} type={type} line={line} fill={fill} /></defs>}
-      <rect x="0.5" y="0.5" width="25" height="17" stroke="#a39e8d"
+      <rect x="0.5" y="0.5" width="31" height="21" rx="2" stroke="#b9b3a4"
         fill={type === "solid" ? (fc || "#fff") : `url(#${pid})`}
         fillOpacity={type === "solid" ? (fc ? 0.45 : 1) : 1} />
     </svg>
@@ -163,14 +169,18 @@ const MEASURE_TOOLS = [
   { id: "count", icon: "count", label: "Count", shortcut: "C" },
 ];
 const CUT_TOOLS = [
-  { id: "deduct", icon: "deduct", label: "Deduct shape", shortcut: "D" },
-  { id: "deduct-rect", icon: "deductRect", label: "Deduct rectangle", shortcut: "⇧D" },
+  { id: "deduct", icon: "deduct", label: "Erase shape", shortcut: "D" },
+  { id: "deduct-rect", icon: "deductRect", label: "Erase rectangle", shortcut: "⇧D" },
 ];
 const MARKUP_TOOLS = [
+  { id: "highlight", icon: "highlighter", label: "Highlighter", shortcut: "H" },
   { id: "cloud", icon: "cloud", label: "Revision cloud" },
   { id: "callout", icon: "callout", label: "Callout" },
   { id: "text", icon: "textNote", label: "Text note" },
 ];
+// highlighter inks — literal hex (SVG attrs; CSS vars don't resolve there)
+const HL_INKS = ["#ffd60a", "#ff9f0a", "#34c759", "#3fa9ff", "#ff6ea8"];
+const HL_SIZES = [["F", 8], ["M", 14], ["B", 22]];   // screen px at draw time
 const MARKUP_IDS = MARKUP_TOOLS.map((t) => t.id);
 
 // Flooring-first starter conditions seeded on a fresh workspace — line color +
@@ -270,6 +280,7 @@ export default function TakeoffCanvas() {
   const [lastGroup, setLastGroup] = useState([]);     // most recent side-by-side composition — "Regroup" restores it
   const [focusKey, setFocusKey] = useState("");         // panel of the last click — scale/calibrate target in group mode
   const [hatchOpen, setHatchOpen] = useState(false);         // hatch picker popover (declutters the row)
+  const [hatchHover, setHatchHover] = useState("");          // picker caption — hovered pattern name
   const [matOpen, setMatOpen] = useState(false);             // supporting-materials editor panel
   const [markups, setMarkups] = useState([]);                // cloud/callout/text annotations (separate from measurement shapes)
   const [markupDraft, setMarkupDraft] = useState(null);      // in-progress markup first point (cloud/callout)
@@ -335,6 +346,13 @@ export default function TakeoffCanvas() {
   const rubberRef = useRef(null);
   const rectRef = useRef(null);
   const cloudRef = useRef(null);       // live cloud preview (first corner → cursor)
+  const hlRef = useRef(null);          // in-progress highlighter stroke {pts (stage px), key}
+  const hlPathRef = useRef(null);      // live highlighter preview path (imperative, WYSIWYG ink)
+  const [hlStyle, setHlStyle] = useState(() => {
+    try { return { color: HL_INKS[0], size: 14, tip: "chisel", ...JSON.parse(localStorage.getItem("opentakeoff_hl_style") || "{}") }; }
+    catch { return { color: HL_INKS[0], size: 14, tip: "chisel" }; }
+  });
+  useEffect(() => { try { localStorage.setItem("opentakeoff_hl_style", JSON.stringify(hlStyle)); } catch { /* private mode */ } }, [hlStyle]);
   const snapRef = useRef(null);        // current snapped image point (or null)
   const snapGridsRef = useRef(new Map()); // sheetKey → {cell, map} spatial hash of vector endpoints
   const vectorSegsRef = useRef(new Map()); // sheetKey → flat [x1,y1,x2,y2,…] linework segments (One-Click boundary source)
@@ -974,7 +992,7 @@ export default function TakeoffCanvas() {
       if (viewRef.current === "gallery") return;
       if (lower === "g") { setView("gallery"); return; }
       if (e.key === "D" && e.shiftKey) { setTool("deduct-rect"); return; }
-      const map = { p: "pan", v: "select", a: "area", r: "rect", l: "linear", s: "surface", c: "count", d: "deduct", o: "oneclick" };
+      const map = { p: "pan", v: "select", a: "area", r: "rect", l: "linear", s: "surface", c: "count", d: "deduct", o: "oneclick", h: "highlight" };
       const t = map[lower];
       if (t) setTool(t);
     };
@@ -1010,7 +1028,7 @@ export default function TakeoffCanvas() {
         else if (proposal?.regions.length) { setProposal((pr) => { const rg = pr.regions.slice(0, -1); return rg.length ? { ...pr, regions: rg } : null; }); }
         else if (selectedId) { setShapes((ss) => ss.filter((s) => s.id !== selectedId)); setSelectedId(null); }
         else setCalib((c) => c.slice(0, -1));
-      } else if (e.key === "Escape") { setPoly([]); setCalib([]); setSelectedId(null); setMarkupDraft(null); setProposal(null); }
+      } else if (e.key === "Escape") { setPoly([]); setCalib([]); setSelectedId(null); setMarkupDraft(null); setProposal(null); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); setPoly((q) => (q.length ? q.slice(0, -1) : q)); }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") { if (selectedId) { e.preventDefault(); copySelected(); } }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") { if (clipRef.current.length) { e.preventDefault(); pasteClipboard(); } }
@@ -1036,6 +1054,22 @@ export default function TakeoffCanvas() {
         : toImage(e.clientX, e.clientY);
     const fp = panelAt(p[0]);
     if (fp.key !== focusKey) setFocusKey(fp.key);
+    if (tool === "highlight") {
+      // ink is freehand: raw coords (no snap/angle), drag paints — press-drag pan is
+      // intentionally unavailable while armed (space/middle/right-drag still pan)
+      const raw = toImage(e.clientX, e.clientY);
+      hlRef.current = { pts: [raw], key: panelAt(raw[0]).key };
+      if (hlPathRef.current) {
+        const el = hlPathRef.current;
+        const w = hlStyle.size / tfRef.current.scale;
+        el.setAttribute("d", "");
+        if (hlStyle.tip === "chisel") { el.setAttribute("fill", hlStyle.color); el.setAttribute("fill-opacity", darkModeRef.current ? 0.42 : 0.32); el.setAttribute("stroke", "none"); }
+        else { el.setAttribute("fill", "none"); el.setAttribute("stroke", hlStyle.color); el.setAttribute("stroke-opacity", darkModeRef.current ? 0.42 : 0.32); el.setAttribute("stroke-width", w); el.setAttribute("stroke-linecap", "round"); el.setAttribute("stroke-linejoin", "round"); }
+        el.style.display = "block";
+      }
+      e.currentTarget.setPointerCapture(e.pointerId);
+      return;
+    }
     if (tool === "select") { selectAt(p, e); return; }
     // every point-placing tool DEFERS to pointer-up: hold-and-drag (mouse left
     // or one-finger trackpad press) pans mid-measurement instead of placing
@@ -1246,6 +1280,7 @@ export default function TakeoffCanvas() {
   }
   function hideCrosshair() {
     for (const ref of [crossVRef, crossHRef, rubberRef, rectRef, cloudRef, snapMarkRef, aimMarkRef, aimChipRef]) if (ref.current) ref.current.style.display = "none";
+    if (hlRef.current == null && hlPathRef.current) hlPathRef.current.style.display = "none";
     if (hoverRef.current) hoverRef.current.style.display = "none";
     hoverIdRef.current = "";
     angleRef.current = null;
@@ -1282,6 +1317,20 @@ export default function TakeoffCanvas() {
   }
   function onPointerMove(e) {
     lastPtrRef.current = [e.clientX, e.clientY];   // paste targets the sheet under the cursor
+    if (hlRef.current) {
+      // paint: distance-thin at capture, live preview via DOM (no React render per move)
+      const st = hlRef.current;
+      const q = toImage(e.clientX, e.clientY);
+      const last = st.pts[st.pts.length - 1];
+      if (Math.hypot(q[0] - last[0], q[1] - last[1]) >= 2.5 / tfRef.current.scale && st.pts.length < 4000) st.pts.push(q);
+      if (hlPathRef.current) {
+        const w = hlStyle.size / tfRef.current.scale;
+        hlPathRef.current.setAttribute("d", hlStyle.tip === "chisel"
+          ? (st.pts.length > 1 ? "M" + chiselRibbon(st.pts, w, 45).map((v) => v.join(",")).join(" L") + " Z" : "")
+          : strokePathD(st.pts));
+      }
+      return;
+    }
     moveCrosshair(e);                 // full-page aim guide (draw modes), always tracks hover
     // a held draw-click that moves becomes a pan (point placement waits for up)
     if (pendingClickRef.current && !panRef.current) {
@@ -1328,6 +1377,22 @@ export default function TakeoffCanvas() {
     });
   }
   function onPointerUp(e) {
+    if (hlRef.current) {
+      const st = hlRef.current;
+      hlRef.current = null;
+      if (hlPathRef.current) hlPathRef.current.style.display = "none";
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* gone */ }
+      if (st.pts.length >= 2) {
+        const tp = panelByKey(st.key) || panelAt(st.pts[0][0]);
+        const pts = thinStroke(st.pts, 2.5 / tfRef.current.scale)
+          .map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]);
+        // width as a FRACTION of panel width — the stroke scales with the plan like ink,
+        // and survives raster-budget changes (screen px ÷ scale ÷ panel width at draw time)
+        addMarkup({ type: "highlight", pts, color: hlStyle.color,
+                    w: (hlStyle.size / tfRef.current.scale) / tp.img.w, tip: hlStyle.tip }, tp.key);
+      }
+      return;
+    }
     if (pendingClickRef.current) {
       const { p } = pendingClickRef.current;
       pendingClickRef.current = null;
@@ -1528,7 +1593,7 @@ export default function TakeoffCanvas() {
   // belongs to the panel of its FIRST click and normalizes against that panel.
   function addMarkup(m, key) {
     setMarkups((ms) => [...ms, { id: uid("mk"), sheet_id: key, rfi_id: "", ...m }]);
-    setShowMarkupPanel(true);
+    if (m.type !== "highlight") setShowMarkupPanel(true);   // ink flows stroke after stroke
   }
   // Marked-set PDF: every sheet carrying takeoffs/markups, work burned in as
   // drawn, legend cover with net totals — built fully in the browser
@@ -1718,6 +1783,34 @@ export default function TakeoffCanvas() {
   );
   const vRule = <span style={{ width: 1, alignSelf: "stretch", background: "var(--ink-faint)", margin: "0 3px" }} />;
 
+  // ?hatchqa — density-tuning wall: every pattern at three scales in two palette
+  // colors, real components, dark-aware. Unreachable from the UI; kept for retunes.
+  if (new URLSearchParams(window.location.search).has("hatchqa")) {
+    const qaColors = [PALETTE[0], PALETTE[2]];
+    return (
+      <div style={{ padding: 20, background: darkMode ? "#14120e" : "var(--paper-bright)", minHeight: "100vh", overflow: "auto" }}>
+        <button onClick={() => setDarkMode((v) => !v)} style={{ marginBottom: 14, padding: "4px 12px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", fontSize: 12 }}>☾ toggle dark</button>
+        {HATCHES.map((h) => (
+          <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 10 }}>
+            <span style={{ width: 120, fontFamily: "var(--f-mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", color: darkMode ? "#c9c2b2" : "var(--ink-muted)" }}>{h.label}</span>
+            {qaColors.map((col) => (
+              <svg key={col} width={392} height={64} style={{ border: "1px solid var(--ink-faint)", background: darkMode ? "#1c1914" : "#fff" }}>
+                <defs>
+                  <HatchPattern id={`qa-${h.id}-${col.slice(1)}`} type={h.id} line={col} fill={col} dark={darkMode} />
+                </defs>
+                {[[0.5, 0], [1, 132], [3, 264]].map(([sc, x]) => (
+                  <g key={sc} transform={`translate(${x},0) scale(${sc})`}>
+                    <rect width={128 / sc} height={64 / sc} fill={`url(#qa-${h.id}-${col.slice(1)})`} />
+                  </g>
+                ))}
+              </svg>
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div
       onDragOver={(e) => e.preventDefault()}
@@ -1769,19 +1862,47 @@ export default function TakeoffCanvas() {
           items={MEASURE_TOOLS.map((t) => ({ id: t.id, icon: t.icon, label: t.label, shortcut: t.shortcut, active: tool === t.id, onSelect: () => setTool(t.id) }))}
         />
         <ToolMenu
-          title="Cut Out — subtract voids/columns (counts negative)"
+          title="Eraser — subtract voids/columns from the takeoff (counts negative)"
           active={tool === "deduct"} accent="danger"
           onOpenChange={(o) => { menuDepthRef.current = Math.max(0, menuDepthRef.current + (o ? 1 : -1)); }}
-          face={<><Icon name="deduct" size={15} /><span>Cut Out</span></>}
+          face={<><Icon name="deduct" size={15} /><span>Eraser</span></>}
           items={CUT_TOOLS.map((t) => ({ id: t.id, icon: t.icon, label: t.label, shortcut: t.shortcut, active: tool === t.id, tint: "var(--c-danger)", onSelect: () => setTool(t.id) }))}
         />
-        <ToolMenu
-          title="Markup — annotations, not measurements"
-          active={MARKUP_IDS.includes(tool)}
-          onOpenChange={(o) => { menuDepthRef.current = Math.max(0, menuDepthRef.current + (o ? 1 : -1)); }}
-          face={<><Icon name="markup" size={15} /><span>Markup</span></>}
-          items={MARKUP_TOOLS.map((t) => ({ id: t.id, icon: t.icon, label: t.label, active: tool === t.id, onSelect: () => { setTool(t.id); setMarkupDraft(null); } }))}
-        />
+        <span style={{ position: "relative", display: "inline-flex" }}>
+          <ToolMenu
+            title="Markup — annotations, not measurements"
+            active={MARKUP_IDS.includes(tool)}
+            onOpenChange={(o) => { menuDepthRef.current = Math.max(0, menuDepthRef.current + (o ? 1 : -1)); }}
+            face={<><Icon name="markup" size={15} /><span>Markup</span></>}
+            items={MARKUP_TOOLS.map((t) => ({ id: t.id, icon: t.icon, label: t.label, shortcut: t.shortcut, active: tool === t.id, onSelect: () => { setTool(t.id); setMarkupDraft(null); } }))}
+          />
+          {/* highlighter style popover — visible while the tool is armed (hatch-picker chrome) */}
+          {tool === "highlight" && (
+            <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 30, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "0 6px 22px rgba(0,0,0,.16)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
+              <div style={{ display: "flex", gap: 6 }} title="Ink">
+                {HL_INKS.map((c) => (
+                  <button key={c} onClick={() => setHlStyle((st) => ({ ...st, color: c }))}
+                    style={{ width: 16, height: 16, padding: 0, background: c, border: hlStyle.color === c ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                {HL_SIZES.map(([lbl, px]) => (
+                  <button key={lbl} onClick={() => setHlStyle((st) => ({ ...st, size: px }))} title={`${lbl === "F" ? "Fine" : lbl === "M" ? "Medium" : "Broad"} tip`}
+                    style={{ width: 22, height: 20, padding: 0, fontFamily: "var(--f-mono)", fontSize: 10, cursor: "pointer", border: hlStyle.size === px ? "1px solid var(--ink)" : "1px solid var(--ink-faint)", background: hlStyle.size === px ? "var(--ink)" : "transparent", color: hlStyle.size === px ? "var(--paper-bright)" : "var(--ink)" }}>{lbl}</button>
+                ))}
+                <span style={{ width: 1, alignSelf: "stretch", background: "var(--ink-faint)" }} />
+                {[["chisel", "M4 16 L14 6 L18 10 L8 20 Z"], ["round", "M5 17 Q12 3 19 13"]].map(([tip, d]) => (
+                  <button key={tip} onClick={() => setHlStyle((st) => ({ ...st, tip }))} title={`${tip} tip`}
+                    style={{ width: 24, height: 20, padding: 1, cursor: "pointer", border: hlStyle.tip === tip ? "1px solid var(--ink)" : "1px solid var(--ink-faint)", background: "transparent" }}>
+                    <svg viewBox="0 0 24 24" width="18" height="14">{tip === "chisel"
+                      ? <path d={d} fill="currentColor" stroke="none" />
+                      : <path d={d} fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />}</svg>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </span>
         <ToolMenu
           title="Edit takeoffs"
           onOpenChange={(o) => { menuDepthRef.current = Math.max(0, menuDepthRef.current + (o ? 1 : -1)); }}
@@ -1917,11 +2038,17 @@ export default function TakeoffCanvas() {
               <span style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1 }}>{(HATCHES.find((h) => h.id === (aCond.hatch || "solid")) || {}).label || "Solid"} ▾</span>
             </button>
             {hatchOpen && (
-              <div style={{ position: "absolute", top: 26, left: 36, zIndex: 30, display: "grid", gridTemplateColumns: "repeat(8, auto)", gap: 4, padding: 8, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "0 6px 22px rgba(0,0,0,.16)" }}>
-                {HATCHES.map((h) => {
-                  const on = (aCond.hatch || "solid") === h.id;
-                  return <button key={h.id} title={h.label} onClick={() => { updateCond({ hatch: h.id }); setHatchOpen(false); }} style={{ padding: 1, borderRadius: 0, border: on ? `2px solid ${activeColor}` : "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", lineHeight: 0 }}><HatchSwatch type={h.id} line={aCond.color} fill={aCond.fill} /></button>;
-                })}
+              <div style={{ position: "absolute", top: 26, left: 36, zIndex: 30, padding: 10, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "0 6px 22px rgba(0,0,0,.16)" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, auto)", gap: 6 }}>
+                  {HATCHES.map((h) => {
+                    const on = (aCond.hatch || "solid") === h.id;
+                    return <button key={h.id} title={h.label} onClick={() => { updateCond({ hatch: h.id }); setHatchOpen(false); }} onMouseEnter={() => setHatchHover(h.label)} onMouseLeave={() => setHatchHover("")}
+                      style={{ padding: 2, borderRadius: 0, border: on ? "2px solid var(--cobalt)" : "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", lineHeight: 0 }}><HatchSwatch type={h.id} line={aCond.color} fill={aCond.fill} /></button>;
+                  })}
+                </div>
+                <div style={{ marginTop: 8, fontFamily: "var(--f-mono)", fontSize: 9, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--ink-muted)", minHeight: 11 }}>
+                  {hatchHover || (HATCHES.find((h) => h.id === (aCond.hatch || "solid")) || {}).label || ""}
+                </div>
               </div>
             )}
           </span>
@@ -2075,6 +2202,14 @@ export default function TakeoffCanvas() {
                     {/* markup layer — clouds / callouts / text notes on this panel */}
                     {markups.filter((m) => m.sheet_id === p.key).map((m) => {
                       const mk = m.rfi_id ? "#1f3fc7" : "#c47a10";
+                      if (m.type === "highlight") {
+                        const ip = (m.pts || []).map(([nx, ny]) => [nx * p.img.w, ny * p.img.h]);
+                        if (ip.length < 2) return null;
+                        const w = (m.w || 0.01) * p.img.w, o = darkMode ? 0.42 : 0.32;
+                        return m.tip === "chisel"
+                          ? <path key={m.id} d={"M" + chiselRibbon(ip, w, 45).map((q) => q.join(",")).join(" L") + " Z"} fill={m.color || "#ffd60a"} fillOpacity={o} />
+                          : <path key={m.id} d={strokePathD(ip)} fill="none" stroke={m.color || "#ffd60a"} strokeOpacity={o} strokeWidth={w} strokeLinecap="round" strokeLinejoin="round" />;
+                      }
                       if (m.type === "cloud") {
                         const [c0, c1] = m.rect;
                         return (
@@ -2121,6 +2256,7 @@ export default function TakeoffCanvas() {
               <line ref={rubberRef} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={1.5 / tf.scale} strokeOpacity={0.85} strokeLinecap="round" style={{ display: "none" }} />
               <rect ref={rectRef} fill={tool === "deduct" ? "rgba(176,58,38,.22)" : shapeFill(aCond)} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={2 / tf.scale} style={{ display: "none" }} />
               <path ref={cloudRef} fill="rgba(37,99,235,.06)" stroke="#1f3fc7" strokeWidth={2 / tf.scale} strokeDasharray={`${5 / tf.scale} ${4 / tf.scale}`} style={{ display: "none" }} />
+              <path ref={hlPathRef} style={{ display: "none" }} />
               {poly.length >= 2 && (tool === "linear" || tool === "surface"
                 ? <polyline points={poly.map((p) => p.join(",")).join(" ")} fill="none" stroke={tool === "surface" ? activeColor : "#1f3fc7"} strokeWidth={(tool === "surface" ? 3.5 : 2.5) / tf.scale} strokeDasharray={tool === "surface" ? `${10 / tf.scale} ${3 / tf.scale} ${2 / tf.scale} ${3 / tf.scale}` : undefined} strokeLinecap="round" strokeLinejoin="round" />
                 : <polygon points={poly.map((p) => p.join(",")).join(" ")} fill={poly.length >= 3 ? (tool === "deduct" ? "rgba(176,58,38,.22)" : shapeFill(aCond)) : "none"} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={2 / tf.scale} />)}
