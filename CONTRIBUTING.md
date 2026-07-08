@@ -49,7 +49,8 @@ for canvas work.
   canvas only ever talks to `store`, so a backend can be added by implementing
   the same four methods.
 - **`web/src/lib/totals.js`** + **`components/ReportPanel.jsx`** — role-aware
-  totaling, the Report, and CSV/JSON export.
+  totaling, the Report, and CSV/XLSX/JSON export (the hand-rolled .xlsx writer
+  lives in `web/src/lib/xlsx.js`).
 - **`web/src/lib/contribute.js`** — the opt-in "contribute to the open flooring
   model" payload builder (derived data only).
 
