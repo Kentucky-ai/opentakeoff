@@ -21,6 +21,9 @@ const PDF_STORE = "pdfs";          // key: file name -> { name, bytes: ArrayBuff
 const META_STORE = "meta";         // key: "annotations" -> payload object
 const SNAP_STORE = "snapshots";    // key: id -> { id, ts, label, payload }
 const ANN_KEY = "annotations";
+// condition template library — browser-global (not part of a project payload),
+// lives under its own key in the keyPath-less meta store: no DB version bump
+const TPL_KEY = "condition_templates";
 const ANN_SCHEMA = "opentakeoff.takeoff_canvas.v1";
 
 function openDB() {
@@ -154,6 +157,15 @@ export const localStore = {
 
   async saveAnnotations(payload) {
     await withDb((db) => tx(db, META_STORE, "readwrite", (os) => os.put({ ...payload, schema: ANN_SCHEMA }, ANN_KEY)));
+  },
+
+  async loadTemplates() {
+    const t = await withDb((db) => tx(db, META_STORE, "readonly", (os) => os.get(TPL_KEY)));
+    return Array.isArray(t) ? t : [];
+  },
+
+  async saveTemplates(list) {
+    await withDb((db) => tx(db, META_STORE, "readwrite", (os) => os.put(Array.isArray(list) ? list : [], TPL_KEY)));
   },
 
   async saveSnapshot(label, payload) {

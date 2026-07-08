@@ -5,6 +5,31 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 ## 2026-07-08
 
 ### Added
+- **Docked Takeoffs panel — the new home for conditions (#38).** The conditions
+  bar and its stacked editor rows are gone; a docked, resizable, collapsible
+  panel on the right now holds the condition list (running totals, shape
+  counts, inline assemblies, per-row delete, reassign-selected) with the full
+  property editor unfolding under the active row. Width, collapse, and view
+  prefs persist per browser (localStorage, diff-only). (#41, #42)
+- **Panel at scale.** Live filter, A→Z natural sort (CT-2 before CT-10), and
+  tag-family grouping with collapsible headers — all strictly view-only, so
+  the positional `1`–`9` hotkeys and the saved payload never change. ⌘/⇧-click
+  multi-select with bulk waste / line color / delete (confirm counts affected
+  takeoffs). ⌖ or double-click zooms the canvas to a condition's takeoffs.
+  (#44, #45)
+- **Condition template library.** A Library tab stores reusable condition
+  templates browser-wide (appearance, waste, H/T, materials). Save the active
+  condition, apply templates anywhere, rename/remove inline; fresh workspaces
+  seed from the library and fall back to the built-in flooring defaults. No
+  IndexedDB version bump — a new key in the existing meta store. (#46)
+- **Optional compact strip.** The old horizontal bar survives as an opt-in
+  strip (panel header toggle) rendering the same state — activate, reassign,
+  hotkey badges, + condition — for small projects with the panel collapsed.
+  The transient status message now floats bottom-center over the canvas. (#43)
+- **Columns tab.** The custom-columns manager (define columns/values) moved
+  from the toolbar strip into a Columns tab in the docked panel; per-condition
+  assignment lives in the active row's properties. Same data model and report
+  behavior as below. (#49)
 - **Custom condition columns + report grouping.** Define project-level custom
   columns (e.g. **CSI Division**) with selectable values and assign one per
   condition — from the condition bar's **Custom columns** strip or the takeoffs

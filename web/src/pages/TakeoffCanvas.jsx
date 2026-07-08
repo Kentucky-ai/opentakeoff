@@ -88,6 +88,20 @@ const HATCHES = [
 const PALETTE = ["#c96442", "#2f7d54", "#2563eb", "#9333ea", "#b8860b", "#0d9488", "#be185d", "#1f2937", "#dc2626", "#0891b2"];
 const NO_FILL = "none";
 
+// Docked Takeoffs panel geometry — per-user UI prefs (localStorage, diff-only
+// overrides like the report column prefs), NEVER in the takeoff payload: panel
+// width inside buildPayload would show up as noise in every snapshot diff.
+const PANEL_PREFS_KEY = "opentakeoff_panel";
+const PANEL_DEFAULTS = { w: 320, collapsed: false, strip: false, az: false, group: false };
+// tag family = the text before the dash (CPT-1 → CPT) — the grouping key for
+// the panel's grouped view. VIEW-ONLY, like sort and search: the conditions
+// array order is canonical (1–9 hotkeys are positional and the payload
+// serializes it), so nothing here ever reorders the array itself.
+const tagFamily = (t) => (String(t || "").split("-")[0].trim().toUpperCase() || "—");
+const natCompare = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+const PANEL_MIN_W = 240;
+const PANEL_MAX_W = 560;
+
 // SVG <pattern> for a condition (userSpaceOnUse → scales with the plan, CAD-style).
 // Invert a canvas's pixels in place: one difference-with-white pass (an
 // involution — applying it again flips back). This is how the negative/dark
@@ -210,7 +224,20 @@ const FLOORING_DEFAULTS = [
   { tag: "RB-1",  color: "#475569", hatch: "horiz",   waste: 5,  mats: [{ name: "Cove base adhesive", per: 40, basis: "linear", unit: "tube" }] },                        // Rubber / resilient wall base (linear)
   { tag: "TR-1",  color: "#c96442", hatch: "vert",    waste: 0,  mats: [] },                                                                                              // Transitions / reducers (linear)
 ];
-function seedConditions() {
+// A template is a condition minus ids (finish_tag, colors, hatch, waste,
+// H/T params, materials) — instantiation mints fresh condition/material ids.
+const instantiateTemplate = (t) => ({
+  id: uid("cnd"), finish_tag: t.finish_tag || "?",
+  color: t.color || PALETTE[0], fill: t.fill ?? t.color ?? PALETTE[0],
+  hatch: t.hatch || "solid", multiplier: 1, waste_pct: Number(t.waste_pct) || 0,
+  ...(t.height_ft != null ? { height_ft: t.height_ft } : {}),
+  ...(t.thickness_in != null ? { thickness_in: t.thickness_in } : {}),
+  materials: (t.materials || []).map((m) => ({ round: true, ...m, id: uid("mat") })),
+});
+// Fresh-workspace seeding reads the user's template library first; the
+// built-in flooring defaults are only the empty-library fallback.
+function seedConditions(library) {
+  if (Array.isArray(library) && library.length) return library.map(instantiateTemplate);
   return FLOORING_DEFAULTS.map((d) => ({
     id: uid("cnd"), finish_tag: d.tag, color: d.color, fill: d.color,
     hatch: d.hatch, multiplier: 1, waste_pct: d.waste,
@@ -311,14 +338,30 @@ export default function TakeoffCanvas() {
   const [sheetGroup, setSheetGroup] = useState([]);   // sheetKeys shown side-by-side; [] = single-sheet mode
   const [lastGroup, setLastGroup] = useState([]);     // most recent side-by-side composition — "Regroup" restores it
   const [focusKey, setFocusKey] = useState("");         // panel of the last click — scale/calibrate target in group mode
-  const [hatchOpen, setHatchOpen] = useState(false);         // hatch picker popover (declutters the row)
-  const [matOpen, setMatOpen] = useState(false);             // supporting-materials editor panel
-  const [catOpen, setCatOpen] = useState(false);             // custom-columns strip — mutually exclusive with matOpen (they'd stack)
+  const [hatchOpen, setHatchOpen] = useState(false);         // hatch picker popover (declutters the properties block)
   const [markups, setMarkups] = useState([]);                // cloud/callout/text annotations (separate from measurement shapes)
   const [markupDraft, setMarkupDraft] = useState(null);      // in-progress markup first point (cloud/callout)
   const [showMarkupPanel, setShowMarkupPanel] = useState(false);
-  const [showTakeoffs, setShowTakeoffs] = useState(false);    // side panel: takeoffs list (conditions + totals)
+  // Docked Takeoffs panel (right side, reflows the canvas): width + collapsed
+  // persist per user in localStorage as diffs against PANEL_DEFAULTS.
+  const [panelPrefs, setPanelPrefs] = useState(() => {
+    try {
+      const p = JSON.parse(localStorage.getItem(PANEL_PREFS_KEY) || "{}");
+      return { ...PANEL_DEFAULTS, ...(p && typeof p === "object" && !Array.isArray(p) ? p : {}) };
+    } catch { return { ...PANEL_DEFAULTS }; }
+  });
   const [panelMatOpen, setPanelMatOpen] = useState(false);    // assemblies editor expanded inline under the active row in the Takeoffs panel
+  const [condQuery, setCondQuery] = useState("");             // live filter over the panel's condition list (transient, never persisted)
+  const [closedGroups, setClosedGroups] = useState(() => new Set()); // collapsed tag-family groups in the panel's grouped view
+  // multi-select for bulk edit — VIEW STATE ONLY, never persisted. ⌘/ctrl-click
+  // toggles a row into the set, ⇧-click ranges from the last toggle in the
+  // current view order, plain click clears (and activates, as always).
+  const [checkedConds, setCheckedConds] = useState(() => new Set());
+  const [bulkWaste, setBulkWaste] = useState("");
+  const checkAnchorRef = useRef(null);
+  const [panelTab, setPanelTab] = useState("takeoffs");       // "takeoffs" | "library" — the docked panel's tabs
+  const [templates, setTemplates] = useState([]);             // condition template library (browser-global, meta store)
+  const templatesRef = useRef([]);                            // readable inside hydrate (seeding a fresh workspace)
   const labeledFileRef = useRef("");             // which file we've already title-block-scanned
   const wantSheetRef = useRef(new URLSearchParams(window.location.search).get("sheet") || "");
   const [status, setStatus] = useState("loading");
@@ -333,6 +376,41 @@ export default function TakeoffCanvas() {
   const [detectedScales, setDetectedScales] = useState({}); // { sheetKey: {upp,label,multi} } read off the plan text
   const [darkMode, setDarkMode] = useState(() => { try { return localStorage.getItem("opentakeoff_dark") === "1"; } catch { return false; } });
   useEffect(() => { try { localStorage.setItem("opentakeoff_dark", darkMode ? "1" : "0"); } catch { /* private mode */ } }, [darkMode]);
+  // diff-only prefs (cf. reportColumns): only keys that differ from the
+  // defaults persist, so a future default change reaches existing users
+  useEffect(() => {
+    try {
+      const diff = {};
+      for (const k of Object.keys(PANEL_DEFAULTS)) if (panelPrefs[k] !== PANEL_DEFAULTS[k]) diff[k] = panelPrefs[k];
+      localStorage.setItem(PANEL_PREFS_KEY, JSON.stringify(diff));
+    } catch { /* private mode */ }
+  }, [panelPrefs]);
+  const panelW = Math.min(PANEL_MAX_W, Math.max(PANEL_MIN_W, Number(panelPrefs.w) || PANEL_DEFAULTS.w));
+  const takeoffsOpen = !panelPrefs.collapsed;
+  const toggleTakeoffs = () => setPanelPrefs((p) => ({ ...p, collapsed: !p.collapsed }));
+  // Resize by dragging the panel's left edge. Each width change reflows the
+  // canvas container — coordinate math is safe (pointer→image reads the rect
+  // at event time; the stage transform is anchored top-left, so content stays
+  // put and we deliberately do NOT re-fit) — but the hi-res detail crop only
+  // re-renders on transform change, so the detail effect also keys on panelW/
+  // takeoffsOpen below. Mid-drag we hold the gesture window (like wheel zoom)
+  // so the crop re-renders once on settle, not per pointermove.
+  const panelDragRef = useRef(null);
+  const onPanelResizeDown = (e) => {
+    e.preventDefault();
+    panelDragRef.current = { sx: e.clientX, sw: panelW };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onPanelResizeMove = (e) => {
+    const d = panelDragRef.current; if (!d) return;
+    gestureUntilRef.current = performance.now() + GESTURE_MS;
+    const w = Math.min(PANEL_MAX_W, Math.max(PANEL_MIN_W, d.sw + (d.sx - e.clientX)));
+    setPanelPrefs((p) => (p.w === w ? p : { ...p, w }));
+  };
+  const onPanelResizeUp = (e) => {
+    panelDragRef.current = null;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* gone */ }
+  };
   // negative view is baked into the canvas PIXELS (invertCanvasPixels), never a
   // CSS filter — track which canvases currently hold inverted pixels (only
   // canvases that finished a render get an entry), + darkMode readable from
@@ -609,7 +687,7 @@ export default function TakeoffCanvas() {
     setConditionColumns(sanitizeConditionColumns(a.condition_columns));   // non-array/malformed → [] (unconditional set: snapshot load must not inherit pre-load columns)
     const conds = sanitizeConditionAttrs(a.conditions || []);   // strips corrupt attrs values so every reader can trust them (the client_info precedent)
     if (conds.length) { setConditions(conds); setActiveCond(conds[0].id); }
-    else { const seeded = seedConditions(); setConditions(seeded); setActiveCond(seeded[0].id); }   // flooring-first defaults on a fresh workspace
+    else { const seeded = seedConditions(templatesRef.current); setConditions(seeded); setActiveCond(seeded[0].id); }   // library templates first, flooring defaults as fallback
     setShapes(a.shapes || []);
     setMarkups(Array.isArray(a.markups) ? a.markups : []);
     const grp = Array.isArray(a.sheet_group) ? a.sheet_group.slice(0, MAX_GROUP) : [];
@@ -639,7 +717,12 @@ export default function TakeoffCanvas() {
   };
   useEffect(() => {
     let off = false;
-    store.loadAnnotations().then((a) => {
+    // templates load BEFORE annotations: hydrate's fresh-workspace seeding
+    // reads templatesRef, so the library must be in hand first
+    store.loadTemplates().catch(() => []).then((tpl) => {
+      if (!off) { templatesRef.current = tpl; setTemplates(tpl); }
+      return store.loadAnnotations();
+    }).then((a) => {
       if (off) return;
       hydrate(a);
       hydrated.current = true;
@@ -911,8 +994,10 @@ export default function TakeoffCanvas() {
       if (detailKeyRef.current === renderKey) detailKeyRef.current = "";   // let the next tick retry this crop
       if (e?.name !== "RenderingCancelledException") console.error("[detail] render failed:", e);
     });
+    // panelW/takeoffsOpen: docking or resizing the Takeoffs panel changes the
+    // container rect without a transform change — re-run so the crop resyncs
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tf, groupSig, status, focusKey]);
+  }, [tf, groupSig, status, focusKey, panelW, takeoffsOpen]);
 
   // the doc cache holds whole PDFs in the worker — tear it down when the
   // project view unmounts or the project changes
@@ -1489,7 +1574,7 @@ export default function TakeoffCanvas() {
     if (!upp) { setCommitMsg(`Set the scale for ${labelFor(tp)} first.`); return; }
     if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
     const h = Number(aCond?.height_ft) || 0;
-    if (!(h > 0)) { setCommitMsg(`Set a height for ${aCond?.finish_tag || "this condition"} (H in the condition bar) — Surface Area = traced LF × height.`); return; }
+    if (!(h > 0)) { setCommitMsg(`Set a height for ${aCond?.finish_tag || "this condition"} (H in the Takeoffs panel) — Surface Area = traced LF × height.`); return; }
     const LF = openLen(points) * upp;
     setShapes((s) => [...s, {
       id: uid("shp"), sheet_id: tp.key, condition_id: activeCond, measure_role: "surface_area", height_ft: h,
@@ -1681,6 +1766,29 @@ export default function TakeoffCanvas() {
   function deleteSelected() { if (selectedId) { setShapes((ss) => ss.filter((s) => s.id !== selectedId)); setSelectedId(null); } }
   function reassignSelected(condId) { if (selectedId) setShapes((ss) => ss.map((s) => (s.id === selectedId ? { ...s, condition_id: condId } : s))); }
 
+  // pan/zoom the canvas to fit a condition's takeoffs on the open sheets —
+  // the panel's ⌖ / double-click navigation. Fit zoom is capped so a lone
+  // count marker doesn't slam the view to maximum magnification.
+  function locateCondition(id) {
+    const el = containerRef.current;
+    if (!el) return;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, found = false;
+    for (const s of visibleShapes) {
+      if (s.condition_id !== id) continue;
+      const sp = panelByKey(s.sheet_id);
+      for (const [nx, ny] of s.verts_norm) {
+        const x = nx * sp.img.w + sp.xOffset, y = ny * sp.img.h;
+        x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+        found = true;
+      }
+    }
+    if (!found) { setCommitMsg(`No takeoffs for ${condById[id]?.finish_tag || "this condition"} on the open sheet${groupKeys.length > 1 ? "s" : ""} yet.`); return; }
+    const r = el.getBoundingClientRect();
+    const w = Math.max(x1 - x0, 1), h = Math.max(y1 - y0, 1), pad = 90;
+    const scale = clamp(Math.min((r.width - pad) / w, (r.height - pad) / h, 1.5));
+    setTfNow({ x: (r.width - w * scale) / 2 - x0 * scale, y: (r.height - h * scale) / 2 - y0 * scale, scale });
+  }
+
   function addCondition() {
     const tag = (window.prompt("Finish tag for this condition (e.g. LVT-1):") || "").trim();
     if (!tag) return;
@@ -1765,7 +1873,6 @@ export default function TakeoffCanvas() {
 
   const condById = Object.fromEntries(conditions.map((c) => [c.id, c]));
   const aCond = condById[activeCond];
-  const attrCount = aCond ? conditionColumns.filter((cc) => attrValue(aCond.attrs, cc.id)).length : 0;   // active condition's assigned custom-column values (button badge)
   const activeColor = aCond?.color || "#c96442";
   // Pattern id encodes the appearance so a hatch/color change yields a NEW paint
   // server — otherwise browsers keep painting the cached old pattern (the "it
@@ -1844,6 +1951,217 @@ export default function TakeoffCanvas() {
     </button>
   );
   const vRule = <span style={{ width: 1, alignSelf: "stretch", background: "var(--ink-faint)", margin: "0 3px" }} />;
+
+  // ── panel condition list: VIEW-ONLY search / natural sort / grouping ──────
+  // (c, i) pairs keep each condition's ORIGINAL index so the hotkey badge
+  // stays honest under any view — 1–9 always map to array positions.
+  const condView = (() => {
+    let v = conditions.map((c, i) => ({ c, i }));
+    const q = condQuery.trim().toLowerCase();
+    if (q) v = v.filter(({ c }) => (c.finish_tag || "").toLowerCase().includes(q));
+    if (panelPrefs.az) v = [...v].sort((a, b) => natCompare(a.c.finish_tag, b.c.finish_tag));
+    return v;
+  })();
+  const condGroups = (() => {
+    if (!panelPrefs.group) return [{ name: null, items: condView }];
+    const by = new Map();
+    for (const it of condView) {
+      const fam = tagFamily(it.c.finish_tag);
+      if (!by.has(fam)) by.set(fam, []);
+      by.get(fam).push(it);
+    }
+    return [...by.entries()].sort((a, b) => natCompare(a[0], b[0])).map(([name, items]) => ({ name, items }));
+  })();
+  const searchMiss = conditions.length > 0 && condView.length === 0;
+
+  // bulk selection helpers — ranges follow the DISPLAYED order (current view,
+  // skipping collapsed groups), which is what ⇧-click means visually
+  const visibleCondOrder = condGroups.flatMap((g) => (g.name != null && closedGroups.has(g.name) ? [] : g.items.map((it) => it.c.id)));
+  const toggleChecked = (id) => {
+    setCheckedConds((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+    checkAnchorRef.current = id;
+  };
+  const rangeCheck = (id) => {
+    const a = checkAnchorRef.current;
+    const ai = a ? visibleCondOrder.indexOf(a) : -1, bi = visibleCondOrder.indexOf(id);
+    if (ai < 0 || bi < 0) { toggleChecked(id); return; }
+    const [lo, hi] = ai < bi ? [ai, bi] : [bi, ai];
+    setCheckedConds((s) => { const n = new Set(s); for (let k = lo; k <= hi; k++) n.add(visibleCondOrder[k]); return n; });
+  };
+  const bulkPatch = (patch) => setConditions((cs) => cs.map((c) => (checkedConds.has(c.id) ? { ...c, ...patch } : c)));
+  const applyBulkWaste = () => {
+    const v = Math.max(0, parseFloat(bulkWaste));
+    if (!Number.isFinite(v)) return;
+    bulkPatch({ waste_pct: v });
+    setCommitMsg(`Waste set to ${v}% on ${checkedConds.size} condition${checkedConds.size === 1 ? "" : "s"}.`);
+  };
+  const bulkDelete = () => {
+    const ids = checkedConds;
+    if (!ids.size) return;
+    const owned = shapes.filter((s) => ids.has(s.condition_id)).length;
+    if (!window.confirm(`Delete ${ids.size} condition${ids.size === 1 ? "" : "s"}${owned ? ` and their ${owned} takeoff${owned === 1 ? "" : "s"}` : ""}? This can't be undone.`)) return;
+    setConditions((cs) => cs.filter((c) => !ids.has(c.id)));
+    if (owned) setShapes((ss) => ss.filter((s) => !ids.has(s.condition_id)));
+    if (ids.has(activeCond)) setActiveCond(conditions.find((c) => !ids.has(c.id))?.id || "");
+    setCheckedConds(new Set());
+    setCommitMsg(`Deleted ${ids.size} condition${ids.size === 1 ? "" : "s"}${owned ? ` and ${owned} takeoff${owned === 1 ? "" : "s"}` : ""}.`);
+  };
+
+  // ── condition template library ops (browser-global; store meta key) ───────
+  const persistTemplates = (next) => {
+    templatesRef.current = next; setTemplates(next);
+    store.saveTemplates(next).catch((e) => setCommitMsg(`Couldn't save the library: ${e.message || e}`));
+  };
+  const condToTemplate = (c) => ({
+    finish_tag: c.finish_tag, color: c.color, fill: c.fill, hatch: c.hatch || "solid",
+    waste_pct: c.waste_pct || 0,
+    ...(c.height_ft != null ? { height_ft: c.height_ft } : {}),
+    ...(c.thickness_in != null ? { thickness_in: c.thickness_in } : {}),
+    materials: (c.materials || []).map(({ id: _id, ...m }) => m),   // ids are minted on instantiation
+  });
+  const saveActiveAsTemplate = () => {
+    if (!aCond) return;
+    const tpl = condToTemplate(aCond);
+    const at = templates.findIndex((t) => t.finish_tag === tpl.finish_tag);
+    if (at >= 0 && !window.confirm(`A “${tpl.finish_tag}” template is already in the library — replace it?`)) return;
+    persistTemplates(at >= 0 ? templates.map((t, i) => (i === at ? tpl : t)) : [...templates, tpl]);
+    setCommitMsg(`Saved ${tpl.finish_tag} to the library.`);
+  };
+  const applyTemplate = (t) => {
+    const c = instantiateTemplate(t);
+    setConditions((cs) => [...cs, c]);
+    setActiveCond(c.id);
+    setPanelTab("takeoffs");
+    setCommitMsg(`Added ${c.finish_tag} from the library.`);
+  };
+  const renameTemplate = (idx) => {
+    const t = templates[idx];
+    const tag = (window.prompt("Template tag:", t.finish_tag) || "").trim();
+    if (!tag || tag === t.finish_tag) return;
+    persistTemplates(templates.map((x, i) => (i === idx ? { ...x, finish_tag: tag } : x)));
+  };
+  const deleteTemplate = (idx) => {
+    const t = templates[idx];
+    if (!window.confirm(`Remove the ${t.finish_tag} template from the library? Existing conditions are unaffected.`)) return;
+    persistTemplates(templates.filter((_, i) => i !== idx));
+  };
+
+  const renderCondRow = (c, i) => {
+    const row = visRowById.get(c.id);
+    const mult = c.multiplier || 1;
+    const sf = row?.floor_sf || 0, lf = row?.lf || 0, ea = row?.ea || 0, wsf = row?.wall_sf || 0;
+    const shapeCount = row?.shape_count || 0;
+    const on = c.id === activeCond;
+    const matOn = on && panelMatOpen;
+    const reassigning = tool === "select" && selectedId;
+    const checked = checkedConds.has(c.id);
+    return (
+      <div key={c.id} style={{ borderTop: "1px solid var(--ink-faint)", background: checked ? "#e8eefc" : on ? "#f3f8f4" : "transparent", borderLeft: on ? `3px solid ${c.color}` : checked ? "3px solid #1f3fc7" : "3px solid transparent" }}>
+        <div onClick={(e) => {
+            if (e.metaKey || e.ctrlKey) { toggleChecked(c.id); return; }
+            if (e.shiftKey) { rangeCheck(c.id); return; }
+            if (reassigning) reassignSelected(c.id);
+            setActiveCond(c.id);
+            if (checkedConds.size) setCheckedConds(new Set());
+          }}
+          onDoubleClick={() => locateCondition(c.id)}
+          title={reassigning ? "Reassign selected shape to this condition" : "Make this the active condition (double-click zooms to its takeoffs · ⌘-click / ⇧-click selects for bulk edit)"}
+          style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", cursor: "pointer", outline: reassigning ? "1px dashed #1f3fc7" : "none", outlineOffset: -3, userSelect: "none" }}>
+          {i < 9 && <span style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: "var(--ink-muted)", border: "1px solid var(--ink-faint)", borderRadius: 3, padding: "0 3px", flexShrink: 0 }}>{i + 1}</span>}
+          <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontWeight: on ? 700 : 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.finish_tag}{mult > 1 ? <span style={{ color: "var(--ink-muted)", fontWeight: 500 }}> ×{mult}</span> : null}</div>
+            <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 11, color: "var(--ink-muted)" }}>
+              {sf ? `${num(sf)} SF` : ""}{wsf ? `${sf ? " · " : ""}${num(wsf)} SF wall` : ""}{lf ? `${sf || wsf ? " · " : ""}${num(lf)} LF` : ""}{ea ? `${sf || wsf || lf ? " · " : ""}${num(ea, 0)} EA` : ""}{!sf && !wsf && !lf && !ea ? "—" : ""}
+            </div>
+          </div>
+          <span style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)", flexShrink: 0 }}>{shapeCount}▦</span>
+          <button onClick={(e) => { e.stopPropagation(); locateCondition(c.id); }} title="Zoom the canvas to this condition's takeoffs"
+            style={{ flexShrink: 0, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12, lineHeight: 1 }}>⌖</button>
+          <button onClick={(e) => { e.stopPropagation(); setActiveCond(c.id); setPanelMatOpen((v) => (on ? !v : true)); }}
+            title="Assemblies — supporting materials for this condition"
+            style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: matOn ? "var(--ink)" : "transparent", color: matOn ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>
+            <Icon name="product" size={11} />{c.materials?.length ? c.materials.length : ""}
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); deleteCondition(c.id); }} title="Delete this condition (and its takeoffs)"
+            style={{ flexShrink: 0, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "#b03a26", cursor: "pointer", fontSize: 12 }}>✕</button>
+        </div>
+        {/* properties for the ACTIVE condition — the appearance editing
+            that used to live in its own toolbar row above the canvas */}
+        {on && (
+          <div style={{ padding: "4px 12px 10px", display: "flex", flexDirection: "column", gap: 7, fontSize: 11 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <input value={c.finish_tag} onChange={(e) => updateCond({ finish_tag: e.target.value })}
+                title="Rename this condition / finish tag"
+                style={{ width: 88, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontFamily: "var(--f-mono)", fontWeight: 700, fontSize: 12, color: "var(--ink)" }} />
+              <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Multiply this condition by N identical units (measure one, ×N)">
+                <span style={{ color: "var(--ink-muted)" }}>×</span>
+                <input type="number" min="1" step="1" value={c.multiplier || 1}
+                  onChange={(e) => updateCond({ multiplier: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+                  style={{ width: 46, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Waste % — a flooring allowance added on top of the measured quantity in the Report. You choose it per condition (e.g. ~8% straight-lay LVP, ~15% diagonal, ~20% herringbone).">
+                <span style={{ color: "var(--ink-muted)" }}>Waste</span>
+                <input type="number" min="0" step="1" value={c.waste_pct ?? 0}
+                  onChange={(e) => updateCond({ waste_pct: Math.max(0, parseFloat(e.target.value) || 0) })}
+                  style={{ width: 50, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
+                <span style={{ color: "var(--ink-muted)" }}>%</span>
+              </span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+              <span style={{ color: "var(--ink-muted)", width: 26 }}>Line</span>
+              {PALETTE.map((p) => <button key={p} title={p} onClick={() => updateCond({ color: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, border: c.color === p ? "2px solid #0e1a2e" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+              <span style={{ color: "var(--ink-muted)", width: 26 }}>Fill</span>
+              <button title="No fill" onClick={() => updateCond({ fill: NO_FILL })} style={{ width: 16, height: 16, borderRadius: 4, background: "var(--paper-bright)", border: c.fill === NO_FILL ? "2px solid #0e1a2e" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 9, lineHeight: "12px", color: "#b03a26" }}>⦸</button>
+              {PALETTE.map((p) => <button key={p} title={p} onClick={() => updateCond({ fill: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, opacity: 0.55, border: c.fill === p ? "2px solid #0e1a2e" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 4, position: "relative" }}>
+                <button onClick={() => setHatchOpen((v) => !v)} title="Choose a hatch pattern"
+                  style={{ display: "flex", alignItems: "center", gap: 5, padding: "2px 7px 2px 2px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", lineHeight: 0 }}>
+                  <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>
+                  <span style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1 }}>{(HATCHES.find((h) => h.id === (c.hatch || "solid")) || {}).label || "Solid"} ▾</span>
+                </button>
+                {hatchOpen && (
+                  <div style={{ position: "absolute", top: 26, left: 0, zIndex: 30, display: "grid", gridTemplateColumns: "repeat(6, auto)", gap: 4, padding: 8, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "0 6px 22px rgba(0,0,0,.16)" }}>
+                    {HATCHES.map((h) => {
+                      const hOn = (c.hatch || "solid") === h.id;
+                      return <button key={h.id} title={h.label} onClick={() => { updateCond({ hatch: h.id }); setHatchOpen(false); }} style={{ padding: 1, borderRadius: 0, border: hOn ? `2px solid ${activeColor}` : "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", lineHeight: 0 }}><HatchSwatch type={h.id} line={c.color} fill={c.fill} /></button>;
+                    })}
+                  </div>
+                )}
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Height (ft) — the default for NEW wall traces (SF = LF × H) and the vertical-SF display on floor areas. Walls keep the height they were drawn at — select a wall to change just that one.">
+                <Icon name="height" size={13} /><span style={{ color: "var(--ink-muted)" }}>H</span>
+                <input type="number" min="0" step="0.25" value={c.height_ft ?? ""} placeholder="ft"
+                  onChange={(e) => setCondParam("height_ft", e.target.value)}
+                  style={{ width: 54, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Thickness (in) — a Linear run with thickness also computes border/feature-strip SF = LF × T/12. Changing it re-flows existing linear runs.">
+                <Icon name="thickness" size={13} /><span style={{ color: "var(--ink-muted)" }}>T</span>
+                <input type="number" min="0" step="0.25" value={c.thickness_in ?? ""} placeholder="in"
+                  onChange={(e) => setCondParam("thickness_in", e.target.value)}
+                  style={{ width: 50, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
+              </span>
+            </div>
+            {conditionColumns.length > 0 && (
+              <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", rowGap: 2 }} title="Classify this condition — the Report can group and export by these (manage columns in the Columns tab)">
+                <ColumnSelects columns={conditionColumns} cond={c} onAssign={assignAttr} />
+              </div>
+            )}
+          </div>
+        )}
+        {matOn && (
+          <div style={{ padding: "8px 12px 10px", background: "var(--paper-cream)", borderTop: "1px solid var(--ink-faint)", fontSize: 11.5 }}>
+            <div style={{ marginBottom: 6, color: "var(--ink-muted)" }}>Assemblies — order qty = measured ÷ coverage, rounded up.</div>
+            <MaterialsEditor materials={c.materials} onAdd={addMaterial} onUpdate={updateMaterial} onRemove={removeMaterial} />
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     // .app-shell: the print stylesheet collapses this 100vh flex column while the report is open
@@ -2010,139 +2328,24 @@ export default function TakeoffCanvas() {
         </div>
       )}
 
-      {/* conditions palette */}
-      <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "7px 14px", flexWrap: "wrap", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
-        <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--ink-muted)" }}>Conditions</span>
-        {conditions.map((c, i) => {
-          const on = c.id === activeCond;
-          return (
-            <button key={c.id} onClick={() => { if (tool === "select" && selectedId) reassignSelected(c.id); setActiveCond(c.id); }} title={tool === "select" && selectedId ? "Reassign selected shape to this condition" : (i < 9 ? `Press ${i + 1}` : "")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px 3px 4px", borderRadius: 0, border: on ? `2px solid ${c.color}` : (tool === "select" && selectedId ? "1px dashed #1f3fc7" : "1px solid var(--ink-faint)"), background: on ? "#fff" : "transparent", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 12.5 }}>
-              {i < 9 && <span style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: "var(--ink-muted)", border: "1px solid var(--ink-faint)", borderRadius: 3, padding: "0 3px" }}>{i + 1}</span>}
-              <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>{c.finish_tag}
-            </button>
-          );
-        })}
-        <button onClick={addCondition} style={{ padding: "4px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--ink-muted)" }}>+ condition</button>
-        <span style={{ fontSize: 10.5, color: "var(--ink-faint)", marginLeft: 4 }}>⌫ undo point · Esc cancel · scroll = zoom · pan mid-measure: just press-and-drag (click without dragging places the point)</span>
-        {commitMsg && <span style={{ marginLeft: "auto", fontSize: 12, color: commitMsg === STALE_TAB_MESSAGE || commitMsg.startsWith("Commit failed") ? "#b03a26" : "var(--c-positive)" }}>{commitMsg}</span>}
-      </div>
-
-      {/* appearance editor for the active condition */}
-      {aCond && (
-        <div style={{ display: "flex", gap: 14, alignItems: "center", padding: "6px 14px", flexWrap: "wrap", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", fontSize: 11 }}>
-          <input value={aCond.finish_tag} onChange={(e) => updateCond({ finish_tag: e.target.value })}
-            title="Rename this condition / finish tag"
-            style={{ width: 88, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontFamily: "var(--f-mono)", fontWeight: 700, fontSize: 12, color: "var(--ink)" }} />
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={{ color: "var(--ink-muted)" }}>Line</span>
-            {PALETTE.map((p) => <button key={p} title={p} onClick={() => updateCond({ color: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, border: aCond.color === p ? "2px solid #0e1a2e" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
-          </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <span style={{ color: "var(--ink-muted)" }}>Fill</span>
-            <button title="No fill" onClick={() => updateCond({ fill: NO_FILL })} style={{ width: 16, height: 16, borderRadius: 4, background: "var(--paper-bright)", border: aCond.fill === NO_FILL ? "2px solid #0e1a2e" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 9, lineHeight: "12px", color: "#b03a26" }}>⦸</button>
-            {PALETTE.map((p) => <button key={p} title={p} onClick={() => updateCond({ fill: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, opacity: 0.55, border: aCond.fill === p ? "2px solid #0e1a2e" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
-          </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 4, position: "relative" }}>
-            <span style={{ color: "var(--ink-muted)" }}>Hatch</span>
-            <button onClick={() => setHatchOpen((v) => !v)} title="Choose a hatch pattern"
-              style={{ display: "flex", alignItems: "center", gap: 5, padding: "2px 7px 2px 2px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", lineHeight: 0 }}>
-              <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0 }}><HatchSwatch type={aCond.hatch || "solid"} line={aCond.color} fill={aCond.fill} /></span>
-              <span style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1 }}>{(HATCHES.find((h) => h.id === (aCond.hatch || "solid")) || {}).label || "Solid"} ▾</span>
-            </button>
-            {hatchOpen && (
-              <div style={{ position: "absolute", top: 26, left: 36, zIndex: 30, display: "grid", gridTemplateColumns: "repeat(8, auto)", gap: 4, padding: 8, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "0 6px 22px rgba(0,0,0,.16)" }}>
-                {HATCHES.map((h) => {
-                  const on = (aCond.hatch || "solid") === h.id;
-                  return <button key={h.id} title={h.label} onClick={() => { updateCond({ hatch: h.id }); setHatchOpen(false); }} style={{ padding: 1, borderRadius: 0, border: on ? `2px solid ${activeColor}` : "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", lineHeight: 0 }}><HatchSwatch type={h.id} line={aCond.color} fill={aCond.fill} /></button>;
-                })}
-              </div>
-            )}
-          </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Multiply this condition by N identical units (measure one, ×N)">
-            <span style={{ color: "var(--ink-muted)" }}>×</span>
-            <input type="number" min="1" step="1" value={aCond.multiplier || 1}
-              onChange={(e) => updateCond({ multiplier: Math.max(1, parseInt(e.target.value, 10) || 1) })}
-              style={{ width: 46, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-          </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Waste % — a flooring allowance added on top of the measured quantity in the Report. You choose it per condition (e.g. ~8% straight-lay LVP, ~15% diagonal, ~20% herringbone).">
-            <span style={{ color: "var(--ink-muted)" }}>Waste</span>
-            <input type="number" min="0" step="1" value={aCond.waste_pct ?? 0}
-              onChange={(e) => updateCond({ waste_pct: Math.max(0, parseFloat(e.target.value) || 0) })}
-              style={{ width: 50, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-            <span style={{ color: "var(--ink-muted)" }}>%</span>
-          </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Height (ft) — the default for NEW wall traces (SF = LF × H) and the vertical-SF display on floor areas. Walls keep the height they were drawn at — select a wall to change just that one.">
-            <Icon name="height" size={13} /><span style={{ color: "var(--ink-muted)" }}>H</span>
-            <input type="number" min="0" step="0.25" value={aCond.height_ft ?? ""} placeholder="ft"
-              onChange={(e) => setCondParam("height_ft", e.target.value)}
-              style={{ width: 54, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-          </span>
-          <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Thickness (in) — a Linear run with thickness also computes border/feature-strip SF = LF × T/12. Changing it re-flows existing linear runs.">
-            <Icon name="thickness" size={13} /><span style={{ color: "var(--ink-muted)" }}>T</span>
-            <input type="number" min="0" step="0.25" value={aCond.thickness_in ?? ""} placeholder="in"
-              onChange={(e) => setCondParam("thickness_in", e.target.value)}
-              style={{ width: 50, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-          </span>
-          <div style={{ flex: 1, minWidth: 8 }} />
-          <button onClick={() => { setMatOpen((v) => !v); setCatOpen(false); }} title="Supporting materials (adhesive, grout, thinset…) — order quantities derive from coverage rates you set"
-            style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: matOpen ? "var(--ink)" : "transparent", color: matOpen ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontSize: 11.5, fontWeight: 600 }}>
-            <Icon name="product" size={12} />Materials{aCond.materials?.length ? ` (${aCond.materials.length})` : ""}
-          </button>
-          <button onClick={() => { setCatOpen((v) => !v); setMatOpen(false); }} title="Custom columns (e.g. CSI Division) — classify conditions for report grouping and exports"
-            style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: catOpen ? "var(--ink)" : "transparent", color: catOpen ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontSize: 11.5, fontWeight: 600 }}>
-            <Icon name="sideBySide" size={12} />Custom columns{attrCount ? ` (${attrCount})` : ""}
-          </button>
-          <button onClick={() => deleteCondition(aCond.id)} title="Delete this condition (and its takeoffs)"
-            style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "#b03a26", cursor: "pointer", fontSize: 11.5, fontWeight: 600 }}>
-            <Icon name="close" size={11} />Delete
-          </button>
-        </div>
-      )}
-      {aCond && matOpen && (
-        <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-cream)", fontSize: 11.5 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-            <strong style={{ fontFamily: "var(--f-display)", fontSize: 12.5, color: "var(--ink)" }}>Supporting materials — {aCond.finish_tag}</strong>
-            <span style={{ color: "var(--ink-muted)" }}>order qty = measured ÷ coverage, rounded up. Coverage comes off the product data sheet.</span>
-          </div>
-          <MaterialsEditor materials={aCond.materials} onAdd={addMaterial} onUpdate={updateMaterial} onRemove={removeMaterial} />
-        </div>
-      )}
-      {aCond && catOpen && (
-        <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-cream)", fontSize: 11.5 }}>
-          {conditionColumns.length > 0 && (
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-                <strong style={{ fontFamily: "var(--f-display)", fontSize: 12.5, color: "var(--ink)" }}>Custom columns — {aCond.finish_tag}</strong>
-                <span style={{ color: "var(--ink-muted)" }}>classify this condition; the Report can group and export by these.</span>
-              </div>
-              <ColumnSelects columns={conditionColumns} cond={aCond} onAssign={assignAttr} />
-            </div>
-          )}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-            <strong style={{ fontFamily: "var(--f-display)", fontSize: 12.5, color: "var(--ink)" }}>Manage columns</strong>
-            <span style={{ color: "var(--ink-muted)" }}>Columns and values apply to the whole project.</span>
-          </div>
-          {conditionColumns.length === 0 && <div style={{ color: "var(--ink-muted)", marginBottom: 6 }}>Add a column, e.g. CSI Division.</div>}
-          {conditionColumns.map((cc) => (
-            <div key={cc.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
-              <input value={cc.name} onChange={(e) => renameColumn(cc.id, e.target.value)} placeholder="Column name (e.g. CSI Division)"
-                style={{ padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12, width: 160 }} />
-              {cc.values.map((v) => (
-                <span key={v} style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 3px 2px 8px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", fontSize: 11.5, color: "var(--ink)" }}>
-                  {v}
-                  <button onClick={() => renameColumnVal(cc.id, v)} title="Rename this value — assigned conditions follow"
-                    style={{ padding: "0 3px", border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>✎</button>
-                  <button onClick={() => removeColumnValue(cc.id, v)} title="Remove from the list — conditions keep the value, shown as (removed)"
-                    style={{ padding: "0 3px", border: "none", background: "transparent", color: "#b03a26", cursor: "pointer", fontSize: 11 }}>✕</button>
-                </span>
-              ))}
-              <AddValueInput onAdd={(v) => addColumnValue(cc.id, v)} />
-              <button onClick={() => deleteColumn(cc.id)} title="Delete this column (whole project)"
-                style={{ padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "#b03a26", cursor: "pointer", fontSize: 12 }}>✕ column</button>
-            </div>
-          ))}
-          <button onClick={addColumn}
-            style={{ marginTop: 2, padding: "4px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>+ add column</button>
+      {/* compact conditions strip — OPTIONAL small-project mode. The docked
+          Takeoffs panel is the primary conditions surface; the strip renders
+          the same state (activate/reassign, hotkey badges, + condition) for
+          users who want max panel-collapse and one-click switching. Toggled
+          from the panel header, persisted with the panel prefs. */}
+      {panelPrefs.strip && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "7px 14px", flexWrap: "wrap", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
+          <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--ink-muted)" }}>Conditions</span>
+          {conditions.map((c, i) => {
+            const on = c.id === activeCond;
+            return (
+              <button key={c.id} onClick={() => { if (tool === "select" && selectedId) reassignSelected(c.id); setActiveCond(c.id); }} title={tool === "select" && selectedId ? "Reassign selected shape to this condition" : (i < 9 ? `Press ${i + 1}` : "")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px 3px 4px", borderRadius: 0, border: on ? `2px solid ${c.color}` : (tool === "select" && selectedId ? "1px dashed #1f3fc7" : "1px solid var(--ink-faint)"), background: on ? "#fff" : "transparent", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 12.5 }}>
+                {i < 9 && <span style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: "var(--ink-muted)", border: "1px solid var(--ink-faint)", borderRadius: 3, padding: "0 3px" }}>{i + 1}</span>}
+                <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>{c.finish_tag}
+              </button>
+            );
+          })}
+          <button onClick={addCondition} style={{ padding: "4px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--ink-muted)" }}>+ condition</button>
         </div>
       )}
 
@@ -2340,6 +2543,14 @@ export default function TakeoffCanvas() {
           </div>
         </div>
 
+        {/* status line — the transient message bar (was the right end of the old
+            conditions bar): floats bottom-center over the canvas, never blocks input */}
+        {commitMsg && (
+          <div style={{ position: "absolute", left: "50%", bottom: 14, transform: "translateX(-50%)", maxWidth: "70%", zIndex: 6, pointerEvents: "none", padding: "6px 12px", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", boxShadow: "var(--shadow-1)", fontSize: 12, color: commitMsg === STALE_TAB_MESSAGE || commitMsg.startsWith("Commit failed") ? "#b03a26" : "var(--c-positive)" }}>
+            {commitMsg}
+          </div>
+        )}
+
         {/* live readout — top-right */}
         <div style={{ position: "absolute", right: 14, top: 14, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, padding: "12px 16px", minWidth: 200, boxShadow: "0 4px 18px rgba(0,0,0,.12)", fontVariantNumeric: "tabular-nums", zIndex: 6 }}>
           <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.55, marginBottom: 6 }}>{aCond?.finish_tag || "No condition"}</div>
@@ -2362,7 +2573,7 @@ export default function TakeoffCanvas() {
                   <div style={{ fontSize: 22, fontWeight: 700, color: "#0e1a2e" }}>{num(liveLF * condH)} <span style={{ fontSize: 13, fontWeight: 600 }}>SF wall</span></div>
                   <div style={{ fontSize: 12.5, color: "#5b544a", marginTop: 2 }}>{num(liveLF)} LF × {num(condH, 2)} ft</div>
                 </>
-              ) : <div style={{ fontSize: 12.5, color: "#b03a26" }}>Set a height for {aCond?.finish_tag || "this condition"} — H in the condition bar</div>;
+              ) : <div style={{ fontSize: 12.5, color: "#b03a26" }}>Set a height for {aCond?.finish_tag || "this condition"} — H in the Takeoffs panel</div>;
             })()
           ) : liveArea != null && poly.length >= 3 ? (
             <>
@@ -2403,7 +2614,7 @@ export default function TakeoffCanvas() {
             takeoffs panel (which docks at right:56) so a lit toggle also closes it. */}
         <div style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", gap: 6, zIndex: 8 }}>
           {panelBtn(() => setShowMarkupPanel((v) => !v), "markup", "Markups on these sheets (clouds, callouts, notes)", showMarkupPanel, markupCount)}
-          {panelBtn(() => setShowTakeoffs((v) => !v), "takeoffs", "Takeoffs — conditions + running totals", showTakeoffs, visibleShapes.length)}
+          {panelBtn(toggleTakeoffs, "takeoffs", "Takeoffs — conditions + running totals", takeoffsOpen, visibleShapes.length)}
         </div>
 
         {/* markup panel — manage clouds/callouts/text + link or create RFIs (top-left, clear of HUD/FABs) */}
@@ -2432,61 +2643,168 @@ export default function TakeoffCanvas() {
           </div>
         )}
 
-        {/* Takeoffs side panel — every condition on this sheet with its running totals.
-            "Takeoffs on the side": click a row to make it active, ⧉ to copy its shape. */}
-        {showTakeoffs && (
-          <div style={{ position: "absolute", right: 56, top: 118, width: panelMatOpen ? 420 : 300, maxHeight: "calc(100% - 132px)", overflow: "auto", background: "var(--paper-bright)", border: "1px solid var(--ink)", borderRadius: 0, boxShadow: "var(--shadow-2)", zIndex: 7, fontSize: 12.5 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", background: "var(--ink)", color: "var(--paper-cream)", borderRadius: 0 }}>
-              <strong>Takeoffs · {groupKeys.length > 1 ? "these sheets" : "this sheet"}</strong>
-              <button onClick={() => setShowTakeoffs(false)} style={{ background: "none", border: "none", color: "#fff", fontSize: 16, cursor: "pointer" }}>×</button>
-            </div>
-            {conditions.length === 0 && <div style={{ padding: "12px", color: "var(--ink-muted)" }}>No conditions yet — add one and start tracing.</div>}
-            {conditions.map((c) => {
-              const row = visRowById.get(c.id);
-              const mult = c.multiplier || 1;
-              const sf = row?.floor_sf || 0, lf = row?.lf || 0, ea = row?.ea || 0, wsf = row?.wall_sf || 0;
-              const shapeCount = row?.shape_count || 0;
-              const on = c.id === activeCond;
-              const matOn = on && panelMatOpen;
-              return (
-                <div key={c.id} style={{ borderTop: "1px solid var(--ink-faint)", background: on ? "#f3f8f4" : "transparent", borderLeft: on ? `3px solid ${c.color}` : "3px solid transparent" }}>
-                  <div onClick={() => setActiveCond(c.id)} title="Make this the active condition"
-                    style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", cursor: "pointer" }}>
-                    <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ fontWeight: on ? 700 : 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.finish_tag}{mult > 1 ? <span style={{ color: "var(--ink-muted)", fontWeight: 500 }}> ×{mult}</span> : null}</div>
-                      <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 11, color: "var(--ink-muted)" }}>
-                        {sf ? `${num(sf)} SF` : ""}{wsf ? `${sf ? " · " : ""}${num(wsf)} SF wall` : ""}{lf ? `${sf || wsf ? " · " : ""}${num(lf)} LF` : ""}{ea ? `${sf || wsf || lf ? " · " : ""}${num(ea, 0)} EA` : ""}{!sf && !wsf && !lf && !ea ? "—" : ""}
+       </div>
+
+        {/* Takeoffs panel — DOCKED in the layout row (reflows the canvas, not an
+            overlay): every condition with its running totals. Click a row to make
+            it active (in Select with a shape picked, it reassigns — same as the
+            conditions bar). Resize by dragging the left edge; width + collapsed
+            persist per user. Collapse/expand keeps the current transform — the
+            stage is anchored top-left, so a re-fit would be a jarring jump. */}
+        {takeoffsOpen && (
+          <div style={{ width: panelW, flexShrink: 0, display: "flex", background: "var(--paper-bright)", borderLeft: "1px solid var(--ink-faint)", fontSize: 12.5 }}>
+            <div onPointerDown={onPanelResizeDown} onPointerMove={onPanelResizeMove} onPointerUp={onPanelResizeUp}
+              title="Drag to resize"
+              style={{ width: 5, flexShrink: 0, cursor: "col-resize", touchAction: "none", background: "transparent", borderRight: "1px solid var(--ink-faint)" }} />
+            <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "7px 12px", background: "var(--ink)", color: "var(--paper-cream)", flexShrink: 0 }}>
+                <span style={{ display: "inline-flex", gap: 2 }}>
+                  {[["takeoffs", `Takeoffs · ${groupKeys.length > 1 ? "these sheets" : "this sheet"}`], ["library", `Library${templates.length ? ` (${templates.length})` : ""}`], ["columns", `Columns${conditionColumns.length ? ` (${conditionColumns.length})` : ""}`]].map(([id, label]) => (
+                    <button key={id} onClick={() => setPanelTab(id)}
+                      style={{ padding: "3px 8px", border: "none", borderBottom: panelTab === id ? "2px solid var(--paper-cream)" : "2px solid transparent", background: "none", color: "var(--paper-cream)", opacity: panelTab === id ? 1 : 0.65, cursor: "pointer", fontWeight: 700, fontSize: 12.5 }}>{label}</button>
+                  ))}
+                </span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <button onClick={() => setPanelPrefs((p) => ({ ...p, strip: !p.strip }))}
+                    title="Compact strip — also show the conditions as a horizontal strip above the canvas (handy on small projects with the panel collapsed)"
+                    style={{ background: panelPrefs.strip ? "var(--paper-cream)" : "none", border: "1px solid var(--paper-cream)", color: panelPrefs.strip ? "var(--ink)" : "var(--paper-cream)", fontSize: 9.5, fontFamily: "var(--f-mono)", letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer", padding: "2px 6px", lineHeight: 1.4 }}>strip</button>
+                  <button onClick={toggleTakeoffs} title="Collapse the panel (the ▦ button on the canvas edge brings it back)"
+                    style={{ background: "none", border: "none", color: "#fff", fontSize: 15, cursor: "pointer", lineHeight: 1 }}>»</button>
+                </span>
+              </div>
+              {panelTab === "takeoffs" && <>
+              {/* view controls — search / natural sort / tag-family grouping.
+                  All VIEW-ONLY: the array order (hotkeys, payload) never changes. */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderBottom: "1px solid var(--ink-faint)", flexShrink: 0 }}>
+                <input value={condQuery} onChange={(e) => setCondQuery(e.target.value)} placeholder="filter conditions…"
+                  style={{ flex: 1, minWidth: 0, padding: "4px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
+                {condQuery && <button onClick={() => setCondQuery("")} title="Clear the filter" style={{ border: "none", background: "none", color: "var(--ink-muted)", cursor: "pointer", fontSize: 13, padding: 0 }}>×</button>}
+                <button onClick={() => setPanelPrefs((p) => ({ ...p, az: !p.az }))}
+                  title="Natural sort by tag (CT-2 before CT-10) — a view; hotkeys 1–9 keep their original numbering"
+                  style={{ padding: "3px 7px", borderRadius: 0, border: `1px solid ${panelPrefs.az ? "var(--cobalt)" : "var(--ink-faint)"}`, background: panelPrefs.az ? "var(--cobalt)" : "transparent", color: panelPrefs.az ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 10.5, fontFamily: "var(--f-mono)", lineHeight: 1.4 }}>A→Z</button>
+                <button onClick={() => setPanelPrefs((p) => ({ ...p, group: !p.group }))}
+                  title="Group by tag family (the text before the dash: CPT, LVT, CT…)"
+                  style={{ padding: "3px 7px", borderRadius: 0, border: `1px solid ${panelPrefs.group ? "var(--cobalt)" : "var(--ink-faint)"}`, background: panelPrefs.group ? "var(--cobalt)" : "transparent", color: panelPrefs.group ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 10.5, fontFamily: "var(--f-mono)", lineHeight: 1.4 }}>≡ grp</button>
+              </div>
+              {/* bulk actions — appear while a ⌘/⇧ multi-selection is live */}
+              {checkedConds.size > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)", background: "#e8eefc", flexShrink: 0, flexWrap: "wrap", fontSize: 11 }}>
+                  <strong style={{ color: "#1f3fc7" }}>{checkedConds.size} selected</strong>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title="Set the waste % on every selected condition">
+                    <span style={{ color: "var(--ink-muted)" }}>Waste</span>
+                    <input type="number" min="0" step="1" value={bulkWaste} onChange={(e) => setBulkWaste(e.target.value)} placeholder="%"
+                      onKeyDown={(e) => e.key === "Enter" && applyBulkWaste()}
+                      style={{ width: 44, padding: "2px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 11 }} />
+                    <button onClick={applyBulkWaste} title="Apply waste % to the selection" style={{ padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11 }}>✓</button>
+                  </span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title="Set the line color on every selected condition">
+                    {PALETTE.map((p) => <button key={p} title={p} onClick={() => bulkPatch({ color: p })} style={{ width: 13, height: 13, borderRadius: 3, background: p, border: "1px solid var(--ink-faint)", cursor: "pointer", padding: 0 }} />)}
+                  </span>
+                  <button onClick={bulkDelete} title="Delete every selected condition (and their takeoffs)"
+                    style={{ padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "#b03a26", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Delete</button>
+                  <button onClick={() => setCheckedConds(new Set())} title="Clear the selection"
+                    style={{ marginLeft: "auto", padding: "2px 6px", border: "none", background: "none", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>✕</button>
+                </div>
+              )}
+              <div style={{ flex: 1, overflow: "auto" }}>
+                {conditions.length === 0 && <div style={{ padding: "12px", color: "var(--ink-muted)" }}>No conditions yet — add one and start tracing.</div>}
+                {condGroups.map((g) => (
+                  <React.Fragment key={g.name ?? "_all"}>
+                    {g.name != null && (
+                      <div onClick={() => setClosedGroups((s) => { const n = new Set(s); if (n.has(g.name)) n.delete(g.name); else n.add(g.name); return n; })}
+                        title="Collapse / expand this tag family"
+                        style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderTop: "1px solid var(--ink-faint)", background: "var(--paper-cream)", cursor: "pointer", fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ink-muted)", userSelect: "none" }}>
+                        <span style={{ width: 10 }}>{closedGroups.has(g.name) ? "▸" : "▾"}</span>
+                        <span style={{ fontWeight: 700, color: "var(--ink)" }}>{g.name}</span>
+                        <span>· {g.items.length}</span>
+                      </div>
+                    )}
+                    {!closedGroups.has(g.name) && g.items.map(({ c, i }) => renderCondRow(c, i))}
+                  </React.Fragment>
+                ))}
+                {searchMiss && <div style={{ padding: "12px", color: "var(--ink-muted)" }}>No conditions match “{condQuery}”.</div>}
+                <div style={{ padding: "6px 12px", borderTop: "1px solid var(--ink-faint)" }}>
+                  <button onClick={addCondition} style={{ width: "100%", padding: "6px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--ink-muted)" }}>+ condition</button>
+                </div>
+                <div style={{ padding: "8px 12px", borderTop: "1px solid var(--ink-faint)", color: "var(--ink-muted)", fontSize: 10.5 }}>
+                  Select a shape on the plan, then ⧉ Copy / ⎘ Paste (⌘C / ⌘V) — it lands on the sheet under your cursor.
+                  <br />⌫ undo point · Esc cancel · scroll = zoom · pan mid-measure: press-and-drag (a click without dragging places the point).
+                </div>
+              </div>
+              </>}
+              {/* Library tab — reusable condition templates, browser-wide */}
+              {panelTab === "library" && (
+                <div style={{ flex: 1, overflow: "auto" }}>
+                  <div style={{ padding: "8px 12px 4px", color: "var(--ink-muted)", fontSize: 11 }}>
+                    Reusable condition templates, shared across every plan in this browser. A fresh workspace seeds from this library (built-in flooring defaults when it's empty).
+                  </div>
+                  <div style={{ padding: "6px 12px 10px" }}>
+                    <button onClick={saveActiveAsTemplate} disabled={!aCond}
+                      title="Snapshot the active condition (appearance, waste, H/T, materials) into the library"
+                      style={{ width: "100%", padding: "6px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: aCond ? "pointer" : "default", fontSize: 12, color: aCond ? "var(--ink)" : "var(--ink-faint)" }}>
+                      + save {aCond?.finish_tag || "the active condition"} to the library
+                    </button>
+                  </div>
+                  {templates.length === 0 && <div style={{ padding: "2px 12px 12px", color: "var(--ink-muted)" }}>No templates yet — make a condition the way you like it, then save it here.</div>}
+                  {templates.map((t, idx) => (
+                    <div key={`${t.finish_tag}-${idx}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderTop: "1px solid var(--ink-faint)" }}>
+                      <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0 }}><HatchSwatch type={t.hatch || "solid"} line={t.color} fill={t.fill} /></span>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.finish_tag}</div>
+                        <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)" }}>
+                          {t.waste_pct || 0}% waste{t.height_ft != null ? ` · H ${t.height_ft}′` : ""}{t.thickness_in != null ? ` · T ${t.thickness_in}″` : ""}{t.materials?.length ? ` · ${t.materials.length} material${t.materials.length === 1 ? "" : "s"}` : ""}
+                        </div>
+                      </div>
+                      <button onClick={() => applyTemplate(t)} title="Add a condition from this template to the takeoff"
+                        style={{ flexShrink: 0, padding: "3px 8px", borderRadius: 0, border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Apply</button>
+                      <button onClick={() => renameTemplate(idx)} title="Rename this template"
+                        style={{ flexShrink: 0, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>✎</button>
+                      <button onClick={() => deleteTemplate(idx)} title="Remove this template from the library"
+                        style={{ flexShrink: 0, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "#b03a26", cursor: "pointer", fontSize: 11 }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Columns tab — the custom-columns manager (#31/#33): project-level
+                  vocabulary; per-condition assignment lives in the active row's
+                  properties on the Takeoffs tab */}
+              {panelTab === "columns" && (
+                <div style={{ flex: 1, overflow: "auto", fontSize: 11.5 }}>
+                  <div style={{ padding: "8px 12px 4px", color: "var(--ink-muted)", fontSize: 11 }}>
+                    Custom columns (e.g. CSI Division) classify conditions for report grouping and exports. Columns and values apply to the whole project; assign values on a condition in the Takeoffs tab.
+                  </div>
+                  {conditionColumns.length === 0 && <div style={{ padding: "2px 12px 8px", color: "var(--ink-muted)" }}>Add a column, e.g. CSI Division.</div>}
+                  {conditionColumns.map((cc) => (
+                    <div key={cc.id} style={{ padding: "8px 12px", borderTop: "1px solid var(--ink-faint)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                        <input value={cc.name} onChange={(e) => renameColumn(cc.id, e.target.value)} placeholder="Column name (e.g. CSI Division)"
+                          style={{ padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12, flex: 1, minWidth: 0 }} />
+                        <button onClick={() => deleteColumn(cc.id)} title="Delete this column (whole project)"
+                          style={{ flexShrink: 0, padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "#b03a26", cursor: "pointer", fontSize: 12 }}>✕ column</button>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        {cc.values.map((v) => (
+                          <span key={v} style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 3px 2px 8px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", fontSize: 11.5, color: "var(--ink)" }}>
+                            {v}
+                            <button onClick={() => renameColumnVal(cc.id, v)} title="Rename this value — assigned conditions follow"
+                              style={{ padding: "0 3px", border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>✎</button>
+                            <button onClick={() => removeColumnValue(cc.id, v)} title="Remove from the list — conditions keep the value, shown as (removed)"
+                              style={{ padding: "0 3px", border: "none", background: "transparent", color: "#b03a26", cursor: "pointer", fontSize: 11 }}>✕</button>
+                          </span>
+                        ))}
+                        <AddValueInput onAdd={(v) => addColumnValue(cc.id, v)} />
                       </div>
                     </div>
-                    <span style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)", flexShrink: 0 }}>{shapeCount}▦</span>
-                    <button onClick={(e) => { e.stopPropagation(); setActiveCond(c.id); setPanelMatOpen((v) => (on ? !v : true)); }}
-                      title="Condition details — custom columns and supporting materials"
-                      style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: matOn ? "var(--ink)" : "transparent", color: matOn ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>
-                      <Icon name="product" size={11} />{c.materials?.length ? c.materials.length : ""}
-                    </button>
-                    <button onClick={(e) => { e.stopPropagation(); deleteCondition(c.id); }} title="Delete this condition (and its takeoffs)"
-                      style={{ flexShrink: 0, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "#b03a26", cursor: "pointer", fontSize: 12 }}>✕</button>
+                  ))}
+                  <div style={{ padding: "6px 12px", borderTop: conditionColumns.length ? "1px solid var(--ink-faint)" : "none" }}>
+                    <button onClick={addColumn}
+                      style={{ width: "100%", padding: "6px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>+ add column</button>
                   </div>
-                  {matOn && (
-                    <div style={{ padding: "8px 12px 10px", background: "var(--paper-cream)", borderTop: "1px solid var(--ink-faint)", fontSize: 11.5 }}>
-                      <div style={{ marginBottom: 6, fontWeight: 700, color: "var(--ink)" }}>Condition details</div>
-                      {conditionColumns.length > 0 && (
-                        <div style={{ marginBottom: 4 }}><ColumnSelects columns={conditionColumns} cond={c} onAssign={assignAttr} /></div>
-                      )}
-                      <div style={{ marginBottom: 6, color: "var(--ink-muted)" }}>Assemblies — order qty = measured ÷ coverage, rounded up.</div>
-                      <MaterialsEditor materials={c.materials} onAdd={addMaterial} onUpdate={updateMaterial} onRemove={removeMaterial} />
-                    </div>
-                  )}
                 </div>
-              );
-            })}
-            <div style={{ padding: "8px 12px", borderTop: "1px solid var(--ink-faint)", color: "var(--ink-muted)", fontSize: 10.5 }}>
-              Select a shape on the plan, then ⧉ Copy / ⎘ Paste (⌘C / ⌘V) — it lands on the sheet under your cursor.
+              )}
             </div>
           </div>
         )}
-       </div>
       </div>
 
       {/* gallery-first plan-set view — overlays the mounted canvas */}
