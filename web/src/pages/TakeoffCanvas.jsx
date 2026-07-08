@@ -23,6 +23,7 @@ import { extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertice
 import { conditionTotals, verticalWallSf } from "../lib/totals.js";
 import { buildMarkedSetPdf, downloadBytes } from "../lib/markedset.js";
 import { starPath, cloudPath, buildSnapGrid, nearestSnap, ANGLE_TOL, angleSnap, closedMetrics, openLen, pointInPoly, distToSeg, hitShape } from "../lib/geometry.js";
+import { materialKind, MATERIAL_PRESETS, GROUT_DEFAULTS, groutCoverageSfPerBag } from "../lib/coverage.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -180,31 +181,26 @@ const MARKUP_IDS = MARKUP_TOOLS.map((t) => t.id);
 // Each default also carries a couple of editable starter materials — quantities
 // derive deterministically from measured area/linear ÷ a coverage rate you set
 // (off the product data sheet). Delete/edit freely; they're just sensible seeds.
-// Adhesive coverage by trowel notch, SF per gallon. Typical wood-adhesive range is
-// ~40–70 SF/gal: a wider/coarser notch lays more glue and covers less per gallon.
-// Picking a notch fills the coverage rate + notes it. Always verify against the
-// current product data sheet for your subfloor + flooring type.
-const TROWEL_PRESETS = [
-  { label: "fine",     per: 70 },
-  { label: "medium",   per: 58 },
-  { label: "standard", per: 50 },
-  { label: "coarse",   per: 40 },
-];
-const isAdhesive = (name) => /adhes|glue|bond|mastic/i.test(name || "");
+// Per-material-kind coverage presets (adhesive trowel notches, mortar trowels)
+// and the grout-from-tile-geometry calculator live in lib/coverage.js —
+// vendor-neutral, generic rates; always verify against the product data sheet.
 
 const FLOORING_DEFAULTS = [
-  { tag: "CPT-1", color: "#2f7d54", hatch: "speckle", waste: 5,  mats: [{ name: "Adhesive", per: 250, basis: "area", unit: "gal" }] },                                    // Carpet tile
-  { tag: "BRD-1", color: "#be185d", hatch: "dots",    waste: 10, mats: [{ name: "Adhesive", per: 120, basis: "area", unit: "gal" }] },                                    // Broadloom carpet (roll goods)
-  { tag: "LVT-1", color: "#b8860b", hatch: "plank",   waste: 8,  mats: [{ name: "Adhesive", per: 250, basis: "area", unit: "gal" }] },                                    // Luxury vinyl plank/tile
+  { tag: "CPT-1", color: "#2f7d54", hatch: "speckle", waste: 5,  mats: [{ name: "Adhesive", kind: "adhesive", per: 250, basis: "area", unit: "gal" }] },                  // Carpet tile
+  { tag: "BRD-1", color: "#be185d", hatch: "dots",    waste: 10, mats: [{ name: "Adhesive", kind: "adhesive", per: 120, basis: "area", unit: "gal" }] },                  // Broadloom carpet (roll goods)
+  { tag: "LVT-1", color: "#b8860b", hatch: "plank",   waste: 8,  mats: [{ name: "Adhesive", kind: "adhesive", per: 250, basis: "area", unit: "gal" }] },                  // Luxury vinyl plank/tile
   { tag: "WD-1",  color: "#9a3412", hatch: "plank",   waste: 10, mats: [                                                                                                  // Unfinished 2.25″ solid red oak — glue-down + site-finished
-    { name: "Adhesive (wood, SMP)",     per: 50,  basis: "area", unit: "gal", note: "standard notch · SMP, solid wood" },
+    { name: "Adhesive (wood, SMP)",     kind: "adhesive", per: 50,  basis: "area", unit: "gal", note: "1/4″×1/4″ V (wood)" },
     { name: "Sealer (primer coat)",     per: 400, basis: "area", unit: "gal", note: "1 prime coat (~10 m²/L)" },
     { name: "Polyurethane (2K finish)", per: 136, basis: "area", unit: "gal", note: "≈3 coats @ ~408 SF/gal/coat (2K 10:1)" },
   ] },
-  { tag: "VCT-1", color: "#2563eb", hatch: "checker", waste: 5,  mats: [{ name: "Adhesive", per: 350, basis: "area", unit: "gal" }] },                                    // Vinyl composition tile
-  { tag: "SV-1",  color: "#0d9488", hatch: "solid",   waste: 10, mats: [{ name: "Adhesive", per: 150, basis: "area", unit: "gal" }] },                                    // Sheet vinyl
-  { tag: "CT-1",  color: "#9333ea", hatch: "grid",    waste: 10, mats: [{ name: "Thinset", per: 95, basis: "area", unit: "bag" }, { name: "Grout", per: 120, basis: "area", unit: "bag" }] }, // Ceramic / porcelain tile
-  { tag: "RB-1",  color: "#475569", hatch: "horiz",   waste: 5,  mats: [{ name: "Cove base adhesive", per: 40, basis: "linear", unit: "tube" }] },                        // Rubber / resilient wall base (linear)
+  { tag: "VCT-1", color: "#2563eb", hatch: "checker", waste: 5,  mats: [{ name: "Adhesive", kind: "adhesive", per: 350, basis: "area", unit: "gal" }] },                  // Vinyl composition tile
+  { tag: "SV-1",  color: "#0d9488", hatch: "solid",   waste: 10, mats: [{ name: "Adhesive", kind: "adhesive", per: 150, basis: "area", unit: "gal" }] },                  // Sheet vinyl
+  { tag: "CT-1",  color: "#9333ea", hatch: "grid",    waste: 10, mats: [                                                                                                  // Ceramic / porcelain tile
+    { name: "Thinset mortar", kind: "mortar", per: 65, basis: "area", unit: "bag", note: '1/4″×3/8″×1/4″ sq' },
+    { name: "Grout", kind: "grout", per: 512, basis: "area", unit: "bag", grout: { ...GROUT_DEFAULTS }, note: '12×24×3/8″ @ 1/8″ · 25 lb' },
+  ] },
+  { tag: "RB-1",  color: "#475569", hatch: "horiz",   waste: 5,  mats: [{ name: "Cove base adhesive", kind: "adhesive", per: 40, basis: "linear", unit: "tube" }] },      // Rubber / resilient wall base (linear)
   { tag: "TR-1",  color: "#c96442", hatch: "vert",    waste: 0,  mats: [] },                                                                                              // Transitions / reducers (linear)
 ];
 function seedConditions() {
@@ -215,41 +211,87 @@ function seedConditions() {
   }));
 }
 
+// Inches → drawing-style fraction (0.375 → "3/8", 1.25 → "1 1/4"); falls back
+// to the decimal when the value isn't on the 1/32″ grid.
+function inFrac(v) {
+  const n32 = Math.round(v * 32);
+  if (!(n32 > 0) || Math.abs(v * 32 - n32) > 1e-6) return String(v);
+  let n = n32, d = 32;
+  while (n % 2 === 0 && d % 2 === 0) { n /= 2; d /= 2; }
+  const whole = Math.floor(n / d), rem = n - whole * d;
+  if (!rem) return String(whole);
+  return whole ? `${whole} ${rem}/${d}` : `${rem}/${d}`;
+}
+const groutNote = (g) => `${g.tileL}×${g.tileW}×${inFrac(g.tileT)}″ @ ${inFrac(g.joint)}″ · ${g.bagLbs} lb`;
+
 // Editable supporting-materials rows — the assembly behind a condition. Shared
 // by the top-bar editor and the Takeoffs side panel so the two never drift.
 function MaterialsEditor({ materials, onAdd, onUpdate, onRemove }) {
   const ip = { padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 };
   return (
     <>
-      {(materials || []).map((m) => (
-        <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
-          <input value={m.name} onChange={(e) => onUpdate(m.id, { name: e.target.value })} placeholder="Material (e.g. Adhesive)" style={{ ...ip, width: 160 }} />
-          <span style={{ color: "var(--ink-muted)" }}>1</span>
-          <input value={m.unit} onChange={(e) => onUpdate(m.id, { unit: e.target.value })} placeholder="unit" style={{ ...ip, width: 60 }} />
-          <span style={{ color: "var(--ink-muted)" }}>per</span>
-          <input type="number" min="0" step="any" value={m.per || ""} onChange={(e) => onUpdate(m.id, { per: Math.max(0, parseFloat(e.target.value) || 0) })} placeholder="0" style={{ ...ip, width: 66 }} />
-          <select value={m.basis || "area"} onChange={(e) => onUpdate(m.id, { basis: e.target.value })} style={{ ...ip, background: "var(--paper-bright)" }}>
-            <option value="area">floor SF</option>
-            <option value="linear">linear LF</option>
-            <option value="count">each</option>
-          </select>
-          <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--ink-muted)" }} title="Round up to whole units (you buy whole buckets/bags)">
-            <input type="checkbox" checked={m.round !== false} onChange={(e) => onUpdate(m.id, { round: e.target.checked })} />round up
-          </label>
-          {isAdhesive(m.name) && (m.basis || "area") === "area" && (
-            <select value={TROWEL_PRESETS.some((t) => t.label === m.note) ? m.note : ""}
-              onChange={(e) => { const t = TROWEL_PRESETS.find((x) => x.label === e.target.value); if (t) onUpdate(m.id, { note: t.label, per: t.per }); }}
-              title="Trowel notch — sets the adhesive coverage (SF/gal). Verify against the data sheet."
-              style={{ ...ip, background: "var(--paper-bright)" }}>
-              <option value="">trowel…</option>
-              {TROWEL_PRESETS.map((t) => <option key={t.label} value={t.label}>{t.label} · {t.per} SF/gal</option>)}
+      {(materials || []).map((m) => {
+        const kind = materialKind(m);
+        const presets = (m.basis || "area") === "area" ? MATERIAL_PRESETS[kind] : undefined;
+        const g = { ...GROUT_DEFAULTS, ...(m.grout || {}) };
+        // grout coverage derives from tile geometry — every param change re-derives
+        // per + writes the derivation into the note so the Report shows its work
+        const setGrout = (patch) => {
+          const grout = { ...g, ...patch };
+          onUpdate(m.id, { grout, per: Math.round(groutCoverageSfPerBag(grout)), note: groutNote(grout) });
+        };
+        const gi = (key, title) => (
+          <input type="number" min="0" step="any" value={g[key] || ""} title={title}
+            onChange={(e) => setGrout({ [key]: Math.max(0, parseFloat(e.target.value) || 0) })}
+            style={{ ...ip, width: 52 }} />
+        );
+        return (
+          <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
+            <input value={m.name} onChange={(e) => onUpdate(m.id, { name: e.target.value })} placeholder="Material (e.g. Adhesive)" style={{ ...ip, width: 160 }} />
+            <span style={{ color: "var(--ink-muted)" }}>1</span>
+            <input value={m.unit} onChange={(e) => onUpdate(m.id, { unit: e.target.value })} placeholder="unit" style={{ ...ip, width: 60 }} />
+            <span style={{ color: "var(--ink-muted)" }}>per</span>
+            <input type="number" min="0" step="any" value={m.per || ""} onChange={(e) => onUpdate(m.id, { per: Math.max(0, parseFloat(e.target.value) || 0) })} placeholder="0" style={{ ...ip, width: 66 }} />
+            <select value={m.basis || "area"} onChange={(e) => onUpdate(m.id, { basis: e.target.value })} style={{ ...ip, background: "var(--paper-bright)" }}>
+              <option value="area">floor SF</option>
+              <option value="linear">linear LF</option>
+              <option value="count">each</option>
             </select>
-          )}
-          <input value={m.note || ""} onChange={(e) => onUpdate(m.id, { note: e.target.value })} placeholder="note (coats, trowel…)" style={{ ...ip, width: 150 }} />
-          <button onClick={() => onRemove(m.id)} title="Remove this material"
-            style={{ padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "#b03a26", cursor: "pointer", fontSize: 12 }}>✕</button>
-        </div>
-      ))}
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--ink-muted)" }} title="Round up to whole units (you buy whole buckets/bags)">
+              <input type="checkbox" checked={m.round !== false} onChange={(e) => onUpdate(m.id, { round: e.target.checked })} />round up
+            </label>
+            {presets && (
+              <select value={presets.some((t) => t.label === m.note) ? m.note : ""}
+                onChange={(e) => { const t = presets.find((x) => x.label === e.target.value); if (t) onUpdate(m.id, { note: t.label, per: t.per }); }}
+                title="Coverage preset — trowel notch / spread rate. Generic industry-typical values; verify against the product data sheet."
+                style={{ ...ip, background: "var(--paper-bright)" }}>
+                <option value="">preset…</option>
+                {presets.map((t) => <option key={t.label} value={t.label}>{t.label} · {t.per} SF/{m.unit || "unit"}</option>)}
+              </select>
+            )}
+            <input value={m.note || ""} onChange={(e) => onUpdate(m.id, { note: e.target.value })} placeholder="note (coats, trowel…)" style={{ ...ip, width: 150 }} />
+            <button onClick={() => onRemove(m.id)} title="Remove this material"
+              style={{ padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "#b03a26", cursor: "pointer", fontSize: 12 }}>✕</button>
+            {kind === "grout" && (m.basis || "area") === "area" && (
+              <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", paddingLeft: 14, color: "var(--ink-muted)", fontSize: 12 }}>
+                <span>tile</span>
+                {gi("tileL", "Tile length (in)")}
+                <span>×</span>
+                {gi("tileW", "Tile width (in)")}
+                <span>× thick</span>
+                {gi("tileT", "Tile thickness (in)")}
+                <span>″ · joint</span>
+                <input type="number" min="0.03125" max="0.5" step="any" value={g.joint || ""} title="Joint width (in) — 1/32″ to 1/2″"
+                  onChange={(e) => setGrout({ joint: Math.min(0.5, Math.max(0.03125, parseFloat(e.target.value) || 0)) })}
+                  style={{ ...ip, width: 62 }} />
+                <span>″ · bag</span>
+                {gi("bagLbs", "Bag size (lbs)")}
+                <span>lb</span>
+              </div>
+            )}
+          </div>
+        );
+      })}
       <button onClick={onAdd}
         style={{ marginTop: 2, padding: "4px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>+ add material</button>
     </>

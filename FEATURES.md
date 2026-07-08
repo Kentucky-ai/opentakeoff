@@ -12,7 +12,7 @@ The buildable map: what OpenTakeoff does and exactly where each piece lives, so 
 | **45°/90° angle lock + aim cursor** | OS pointer hides on canvas; hairlines + house star are the cursor; in-progress segments lock to the 45° family (4° tolerance, ⇧ = hard lock) and the click commits the on-axis point; star swells, band thickens, chip reads angle + live length | `angleSnap()` in `web/src/lib/geometry.js`; the lock block in `moveCrosshair`, `TakeoffCanvas.jsx` |
 | **Endpoint snap** | Cursor snaps to true PDF endpoints (spatial hash of extracted vectors) | `buildSnapGrid`/`nearestSnap` in `web/src/lib/geometry.js`; endpoints from `oneclick.ts` |
 | **Conditions** | One finish each: color + CAD hatch, waste %, ×N multiplier, wall height, border thickness | condition bar + `HatchPattern` in `TakeoffCanvas.jsx`; totals math in `web/src/lib/totals.js` |
-| **Assemblies** | Per-condition supporting materials: coverage rate + basis → order qty rounded up; trowel picker for adhesives | `MaterialsEditor` in `TakeoffCanvas.jsx` (one editor shared by the top bar and the Takeoffs panel); math in `web/src/lib/totals.js` |
+| **Assemblies** | Per-condition supporting materials: coverage rate + basis → order qty rounded up; per-material coverage presets (adhesive/mortar trowel notches) + a grout calculator that derives SF/bag from tile geometry | `MaterialsEditor` in `TakeoffCanvas.jsx` (one editor shared by the top bar and the Takeoffs panel); presets + grout math in `web/src/lib/coverage.js`; qty math in `web/src/lib/totals.js` |
 | **Totals & report** | Per-condition Floor/Wall/Border SF, LF, EA, SY, with/without waste + materials buy list | `web/src/lib/totals.js`; `web/src/components/ReportPanel.jsx` |
 | **Export** | CSV / JSON / print / **Marked Set PDF** — marked sheets with the takeoff burned in (colors, clipped hatch, quantity chips, markups) + a legend cover with net totals and a by-sheet breakdown; follows the current light/dark view | export handlers in `ReportPanel.jsx`; `web/src/lib/markedset.js` |
 | **Markups** | Revision clouds, callouts, text notes — separate layer, never counted | markup tools in `TakeoffCanvas.jsx` (`placeMarkup`); `cloudPath` in `web/src/lib/geometry.js` |
@@ -23,7 +23,7 @@ The buildable map: what OpenTakeoff does and exactly where each piece lives, so 
 
 ## Tested surface
 
-`cd web && npm test` — `node:test` over the pure math: `web/test/geometry.test.ts` (One-Click pipeline incl. the hatch-robust fill and meta emission), `web/test/canvas-geometry.test.ts` (angle lock, hit-testing, metrics, snap grid), and `web/test/totals.test.ts` (waste, SY, coverage → order quantities, vertical-wall SF).
+`cd web && npm test` — `node:test` over the pure math: `web/test/geometry.test.ts` (One-Click pipeline incl. the hatch-robust fill and meta emission), `web/test/canvas-geometry.test.ts` (angle lock, hit-testing, metrics, snap grid), `web/test/totals.test.ts` (waste, SY, coverage → order quantities, vertical-wall SF), and `web/test/coverage.test.ts` (material-kind classification, grout coverage from tile geometry).
 
 ## Extending it
 

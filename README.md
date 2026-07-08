@@ -66,7 +66,7 @@ Auto-detects the drawn scale note off the sheet, or **calibrate** from any known
 A condition is one finish (LVP, carpet, tile, base, …). Each carries a **line/fill color** and a **CAD hatch pattern** (plank, herringbone, tile, terrazzo) so the canvas looks like the real drawing — plus a per-condition **waste %**, an **×N multiplier** for repeated identical units, a default **height** for wall traces, and a **thickness** that turns a linear run into border/feature-strip SF.
 
 ### 5. Assemblies — the supporting materials, done right
-Per condition, list the consumables that actually go on the order: adhesive, sealer, polyurethane, thinset, grout, cove-base adhesive. Each has a **coverage rate** and a **basis** (floor SF / linear LF / each), and the order quantity derives automatically — measured ÷ coverage, **rounded up** to whole units. Adhesive lines get a **trowel picker** that fills the spread rate from the notch size. This is the layer most takeoff tools punt on. It's shipped here.
+Per condition, list the consumables that actually go on the order: adhesive, sealer, polyurethane, thinset, grout, cove-base adhesive. Each has a **coverage rate** and a **basis** (floor SF / linear LF / each), and the order quantity derives automatically — measured ÷ coverage, **rounded up** to whole units. Adhesive and mortar lines get **coverage presets** (trowel notches, rollers) that fill the spread rate, and grout lines get a **calculator** that derives SF/bag from tile size, thickness, joint width, and bag weight. This is the layer most takeoff tools punt on. It's shipped here.
 
 ### 6. Reports & export
 A per-condition breakdown — **Floor / Wall / Border SF, LF, EA, total SF, SY**, with and without waste — plus a combined **materials buy list**. Export to **CSV** or **JSON**, or print it. Waste is applied only in the report (the order quantity), never to the live measured number, so your takeoff and your buy list stay honest about which is which.
@@ -92,7 +92,7 @@ Every drawing, scale, condition, and markup autosaves to **your browser** (Index
 | **Measure** | One-Click Area (flood-fill), Area, Rectangle, Linear, Surface-Area (walls), Count, Deduct |
 | **Drawing aids** | 45°/90° angle lock with ⇧ hard-lock, live angle + segment-length readout at the cursor, endpoint Snap (beta) |
 | **Conditions** | Color + CAD hatch per finish, waste %, ×N multiplier, height, thickness → border SF |
-| **Assemblies** | Per-condition supporting materials with coverage rates → rounded order quantities, trowel picker |
+| **Assemblies** | Per-condition supporting materials with coverage rates → rounded order quantities, per-material coverage presets + grout calculator |
 | **Report** | Per-condition Floor/Wall/Border SF, LF, EA, SY, with/without waste + materials buy list |
 | **Export** | CSV, JSON, print, **Marked Set PDF** (sheets + burned-in takeoff + legend cover, built in-browser) |
 | **Markups** | Revision clouds, callouts, text notes — separate layer, never counted |

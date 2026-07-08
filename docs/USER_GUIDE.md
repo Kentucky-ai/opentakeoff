@@ -78,7 +78,7 @@ A condition is one finish (e.g. `WD-1` red oak). It carries:
 - **Thickness (T)** — a Linear run with thickness also yields border/feature‑strip SF (LF × T/12).
 
 ### Supporting materials (assemblies)
-Per condition, list the consumables (adhesive, sealer, polyurethane, thinset, grout, cove‑base adhesive…). Each has a **coverage rate** and a **basis** (floor SF / linear LF / each). Order qty = measured ÷ coverage, **rounded up** to whole units. Adhesive lines get a **trowel picker** that fills the SF/gal from the notch size. A `note` field carries trowel notch / # of coats. The Report sums these into a **buy list**.
+Per condition, list the consumables (adhesive, sealer, polyurethane, thinset, grout, cove‑base adhesive…). Each has a **coverage rate** and a **basis** (floor SF / linear LF / each). Order qty = measured ÷ coverage, **rounded up** to whole units. Adhesive and mortar lines get a **coverage preset picker** (trowel notch / roller) that fills the spread rate; grout lines get inline **tile geometry inputs** (tile L × W × thickness, joint width 1/32″–1/2″, bag lbs) that derive the SF/bag rate and write the derivation into the note. Preset values are generic industry‑typical rates — verify against the product data sheet. A `note` field carries trowel notch / # of coats. The Report sums these into a **buy list**.
 
 ### Measure roles → totals (the math)
 | Role | Adds to |

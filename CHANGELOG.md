@@ -2,6 +2,15 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-07-07
+
+### Added
+- **Per-material coverage presets.** The adhesive-only trowel picker grew into per-material-type presets (new pure lib `web/src/lib/coverage.js`): adhesives get real trowel-notch and roller options (PSA through coarse wood notches, SF/gal), and mortar/thinset lines get their own trowel presets (SF per 50-lb bag). All values are generic industry-typical spread rates — always verify against the product data sheet.
+- **Grout calculator.** A grout line now derives its coverage from tile geometry instead of an opaque number: enter tile length × width × thickness, joint width (1/32″–1/2″), and bag size inline on the material row, and the SF/bag rate plus a show-your-work note (e.g. `12×24×3/8″ @ 1/8″ · 25 lb`) fill in automatically. The CT-1 starter condition ships with the derived rate.
+
+### Changed
+- The old `fine` / `medium` / `standard` / `coarse` trowel preset labels retire in favor of explicit notch sizes. Materials that saved one of those labels keep their note and coverage rate — the picker just no longer pre-selects it.
+
 ## 2026-07-05 (evening)
 
 ### Fixed
