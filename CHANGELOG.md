@@ -2,6 +2,16 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-07-08 (later)
+
+### Added
+- **Zone check.** A new toolbar tool: trace a region — an apartment, a wing — like you'd trace a deduct, close it (⏎ / double-click / Finish), and a panel lists every condition inside with quantities **and its materials scaled to the zone**, computed by the same rules as the Report. Shapes count by their center point and glow cobalt so inclusion is visible. Nothing is saved: redraw replaces the zone, Esc or leaving the tool clears it.
+- **Sheet levels.** Select sheets in the gallery → **Assign level…** ("L1", "Garage"). The gallery groups by level (unassigned last, title-block order within), cards wear a level chip, and tabs + the page picker carry the label. Stored with the project.
+- **Condition plays.** **⭑ Save play** stores a tuned condition — appearance, waste, full materials list — in this browser; **Plays ▾** applies it as a fresh condition on any project. No geometry or ids travel; re-saving a name replaces it.
+
+### Fixed
+- The live readout is height-capped with internal scroll so fully populated totals never cover the right-edge panel rail.
+
 ## 2026-07-07
 
 ### Added

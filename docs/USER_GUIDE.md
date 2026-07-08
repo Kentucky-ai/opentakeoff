@@ -110,6 +110,18 @@ Highlighter, revision clouds, callouts, and text notes — annotations only, kep
 Per‑condition breakdown (Floor/Wall/Border SF, LF, EA, Total SF, SY, with and without waste), a combined materials buy list, and **CSV / JSON** export — plus **Marked set**: a distribution-ready PDF of every sheet that carries takeoffs or markups, with the work burned in as drawn and a legend cover (net totals, waste-adjusted order quantities, by-sheet breakdown). It exports in your current view — dark canvas → dark PDF. Share it with a PM or GC; they need nothing but a PDF reader.
 
 ### Saving
+## Zone check
+
+Arm **Zone** in the toolbar and trace a region — an apartment, a wing, a phase — the way you'd trace a deduct; **⏎, double‑click, or Finish** closes it. A panel lists every condition whose shapes sit inside (counted by their **center point**, same sheet only — counted shapes glow cobalt), with quantities and each condition's **materials scaled to the zone**, computed by the same rules as the Report. It's a reading, not a takeoff: nothing is saved — redraw replaces the zone; `Esc` or switching tools clears it.
+
+## Sheet levels (multi‑floor sets)
+
+In the gallery, select sheets and hit **Assign level…** ("L1", "Level 2", "Garage" — empty clears). The gallery groups by level with unassigned sheets last, each card wears its level chip, and open tabs plus the page picker carry the label. Levels save with the project.
+
+## Condition plays
+
+Tuned a condition just right — waste, materials, appearance? **⭑ Save play** (in the condition bar) stores it in this browser; **Plays ▾** applies any saved play as a fresh condition on any project (you pick the new finish tag). No geometry travels with a play, and re‑saving a name replaces it.
+
 All drawings, scales, conditions, and markups autosave to this browser (IndexedDB + localStorage). Storage is **per origin** — i.e. per `localhost:PORT` / per domain. A different port = a fresh, empty workspace.
 
 ---

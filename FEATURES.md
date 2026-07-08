@@ -26,7 +26,7 @@ The buildable map: what OpenTakeoff does and exactly where each piece lives, so 
 ## Tested surface
 
 `cd web && npm test` — `node:test` over the pure math: `web/test/geometry.test.ts` (One-Click pipeline incl. the hatch-robust fill and meta emission), `web/test/canvas-geometry.test.ts` (angle lock, hit-testing, metrics, snap grid), `web/test/totals.test.ts` (waste, SY, coverage → order quantities, vertical-wall SF), and `web/test/coverage.test.ts` (material-kind classification, grout coverage from tile geometry).
-`cd web && npm test` — `node:test` over the pure math: `web/test/geometry.test.ts` (One-Click pipeline incl. the hatch-robust fill and meta emission), `web/test/canvas-geometry.test.ts` (angle lock, hit-testing, metrics, snap grid, highlighter stroke geometry), `web/test/totals.test.ts` (waste, SY, coverage → order quantities, vertical-wall SF), and `web/test/units.test.ts` (metric display layer + ratio-scale math).
+`cd web && npm test` — `node:test` over the pure math: `web/test/geometry.test.ts` (One-Click pipeline incl. the hatch-robust fill and meta emission), `web/test/canvas-geometry.test.ts` (angle lock, hit-testing, metrics, snap grid, highlighter stroke geometry), `web/test/totals.test.ts` (waste, SY, coverage → order quantities, vertical-wall SF), and `web/test/units.test.ts` (metric display layer + ratio-scale math), `web/test/zone.test.ts` (zone-check classification + rollup), and `web/test/plays.test.ts` (condition plays).
 
 ## Extending it
 

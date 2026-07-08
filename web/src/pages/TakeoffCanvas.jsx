@@ -20,6 +20,8 @@ import ReportPanel from "../components/ReportPanel.jsx";
 import { Icon } from "../brand/icons.jsx";
 import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, extractSheetNumber, detectScale } from "../lib/sheets";
 import { areaVal, areaUnit, lenVal, lenUnit, calInputToFeet } from "../lib/units";
+import { shapesInZone } from "../lib/zone.js";
+import { playFromCondition, conditionFromPlay, upsertPlay, loadPlays, savePlays } from "../lib/plays.js";
 import { extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertices, ringArea, MASK_MAX_DIM } from "../lib/oneclick";
 import { conditionTotals, verticalWallSf } from "../lib/totals.js";
 import { buildMarkedSetPdf, downloadBytes } from "../lib/markedset.js";
@@ -328,9 +330,14 @@ export default function TakeoffCanvas() {
   const [galleryLabels, setGalleryLabels] = useState({}); // sheetKey → title-block number, all files
   const [pageLabels, setPageLabels] = useState({}); // { pageNum: "A003" } from the title block
   const [sheetGroup, setSheetGroup] = useState([]);   // sheetKeys shown side-by-side; [] = single-sheet mode
+  const [sheetLevels, setSheetLevels] = useState({}); // sheetKey → level label ("L1") — persisted; groups the gallery for multi-floor sets
   const [lastGroup, setLastGroup] = useState([]);     // most recent side-by-side composition — "Regroup" restores it
   const [focusKey, setFocusKey] = useState("");         // panel of the last click — scale/calibrate target in group mode
   const [hatchOpen, setHatchOpen] = useState(false);         // hatch picker popover (declutters the row)
+  const [zoneCheck, setZoneCheck] = useState(null);          // ephemeral zone-check region {key, pts (norm)} — never persisted
+  const [zoneExpand, setZoneExpand] = useState(null);        // zone panel: condition id with materials expanded
+  const [plays, setPlays] = useState(loadPlays);             // saved condition plays (this browser)
+  const [playsOpen, setPlaysOpen] = useState(false);         // plays picker popover
   const [hatchHover, setHatchHover] = useState("");          // picker caption — hovered pattern name
   const [matOpen, setMatOpen] = useState(false);             // supporting-materials editor panel
   const [markups, setMarkups] = useState([]);                // cloud/callout/text annotations (separate from measurement shapes)
@@ -491,7 +498,8 @@ export default function TakeoffCanvas() {
     if (!sheetGroup.length && key === sheetKey) { const nb = next[Math.min(Math.max(i, 0), next.length - 1)]; if (nb) goToSheet(nb); }
   }
   const tabLabel = (k) => {
-    if (galleryLabels[k]) return galleryLabels[k];
+    const lvl = sheetLevels[k] ? `${sheetLevels[k]} · ` : "";
+    if (galleryLabels[k]) return lvl + galleryLabels[k];
     const t = parseSheetKey(k);
     if (t.file === active && pageLabels[t.page]) return pageLabels[t.page];
     const base = t.file.replace(/\.pdf$/i, "");
@@ -646,6 +654,7 @@ export default function TakeoffCanvas() {
       for (const s of a.sheets || []) if (s.sheet_id && s.units_per_px) sc[s.sheet_id] = s.units_per_px;
       if (a.units === "metric" || a.units === "imperial") setUnits(a.units);
       setScales(sc);
+      if (a.sheet_levels && typeof a.sheet_levels === "object") setSheetLevels(a.sheet_levels);
       hydrated.current = true;
     }).catch(() => { hydrated.current = true; });
     return () => { off = true; };
@@ -683,7 +692,7 @@ export default function TakeoffCanvas() {
     tabInitRef.current = true;
     goToSheet(openTabs[0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openTabs, sheets]);
+  }, [openTabs, sheetLevels, sheets]);
 
   useEffect(() => { statusRef.current = status; }, [status]);
   useEffect(() => { viewRef.current = view; }, [view]);
@@ -931,7 +940,7 @@ export default function TakeoffCanvas() {
   // omitting it dropped markup saves and could persist a stale markups array.
   useEffect(() => {
     if (!hydrated.current) return;
-    const payload = { project_name: projectName, units, sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px })), conditions, shapes, markups, sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs };
+    const payload = { project_name: projectName, units, sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px })), conditions, shapes, markups, sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, sheet_levels: sheetLevels };
     saveDataRef.current = payload;          // keep the freshest payload for an unmount flush
     setSaveState("saving");
     const t = setTimeout(() => {
@@ -1039,7 +1048,7 @@ export default function TakeoffCanvas() {
       if (menuDepthRef.current > 0) return;
       if (e.key === "Enter") {
         if (tool === "oneclick" && proposal?.regions.length) { e.preventDefault(); createProposal(); return; }
-        const ok = ((tool === "area" || tool === "deduct") && poly.length >= 3) || ((tool === "linear" || tool === "surface") && poly.length >= 2);
+        const ok = ((tool === "area" || tool === "deduct" || tool === "zone") && poly.length >= 3) || ((tool === "linear" || tool === "surface") && poly.length >= 2);
         if (ok) { e.preventDefault(); finishShape(); }
         return;
       }
@@ -1084,7 +1093,7 @@ export default function TakeoffCanvas() {
         else if (proposal?.regions.length) { setProposal((pr) => { const rg = pr.regions.slice(0, -1); return rg.length ? { ...pr, regions: rg } : null; }); }
         else if (selectedId) { setShapes((ss) => ss.filter((s) => s.id !== selectedId)); setSelectedId(null); }
         else setCalib((c) => c.slice(0, -1));
-      } else if (e.key === "Escape") { setPoly([]); setCalib([]); setSelectedId(null); setSelectedMarkupId(null); setMarkupDraft(null); setProposal(null); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; }
+      } else if (e.key === "Escape") { setPoly([]); setCalib([]); setSelectedId(null); setSelectedMarkupId(null); setMarkupDraft(null); setProposal(null); setZoneCheck(null); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); setPoly((q) => (q.length ? q.slice(0, -1) : q)); }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") { if (selectedId) { e.preventDefault(); copySelected(); } }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") { if (clipRef.current.length) { e.preventDefault(); pasteClipboard(); } }
@@ -1136,7 +1145,7 @@ export default function TakeoffCanvas() {
   function performClick(p, ev) {
     if (tool === "calibrate") setCalib((c) => (c.length >= 2 ? [p] : [...c, p]));
     else if (tool === "oneclick") oneClickAt(p, !!(ev && ev.altKey));
-    else if (tool === "area" || tool === "deduct" || tool === "linear" || tool === "surface") setPoly((q) => [...q, p]);
+    else if (tool === "area" || tool === "deduct" || tool === "linear" || tool === "surface" || tool === "zone") setPoly((q) => [...q, p]);
     else if (tool === "count") commitCount(p);
     else if (tool === "rect" || tool === "deduct-rect") {
       if (poly.length === 0) setPoly([p]);
@@ -1721,7 +1730,19 @@ export default function TakeoffCanvas() {
   function updateMarkup(mid, patch) { setMarkups((ms) => ms.map((m) => (m.id === mid ? { ...m, ...patch } : m))); }
   function deleteMarkup(mid) { setMarkups((ms) => ms.filter((m) => m.id !== mid)); }
 
-  function finishShape() { if (tool === "surface") commitSurface(poly); else if (tool === "linear") commitLinear(poly); else commitPoly(poly, tool === "deduct"); setPoly([]); }
+  function finishShape() {
+    if (tool === "zone") {
+      // ephemeral: classify, show, never save. Belongs to the panel of its first point.
+      if (poly.length >= 3) {
+        const tp = panelAt(poly[0][0]);
+        setZoneCheck({ key: tp.key, pts: poly.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]) });
+        setZoneExpand(null);
+      }
+      setPoly([]);
+      return;
+    }
+    if (tool === "surface") commitSurface(poly); else if (tool === "linear") commitLinear(poly); else commitPoly(poly, tool === "deduct"); setPoly([]);
+  }
   function deleteSelected() { if (selectedId) { setShapes((ss) => ss.filter((s) => s.id !== selectedId)); setSelectedId(null); } }
   function reassignSelected(condId) { if (selectedId) setShapes((ss) => ss.map((s) => (s.id === selectedId ? { ...s, condition_id: condId } : s))); }
 
@@ -1744,6 +1765,28 @@ export default function TakeoffCanvas() {
   const updateCond = (patch) => setConditions((cs) => cs.map((c) => (c.id === activeCond ? { ...c, ...patch } : c)));
 
   // delete a condition entirely (and its takeoffs); pick a new active one
+  function saveActiveAsPlay() {
+    if (!aCond) return;
+    const name = window.prompt("Save this condition (appearance + waste + materials) as a reusable play.\nName:", aCond.finish_tag || "");
+    if (!name || !name.trim()) return;
+    const next = upsertPlay(plays, playFromCondition(name.trim(), aCond, () => uid("play")));
+    setPlays(next); savePlays(next);
+    setCommitMsg(`Play “${name.trim()}” saved — apply it from Plays ▾ on any project in this browser.`);
+  }
+  function applyPlay(play) {
+    const tag = (window.prompt("Finish tag for this condition:", play.finish_tag || play.name || "") || "").trim();
+    if (!tag) return;
+    const c = conditionFromPlay(play, tag, () => uid("cnd"), () => uid("mat"));
+    if (!c.color) c.color = PALETTE[conditions.length % PALETTE.length];
+    if (!c.fill) c.fill = c.color;
+    setConditions((cs) => [...cs, c]); setActiveCond(c.id); setPlaysOpen(false);
+    setCommitMsg(`Applied play “${play.name}” as ${tag} — measure it.`);
+  }
+  function deletePlayByName(name) {
+    if (!window.confirm(`Delete the play “${name}”?`)) return;
+    const next = plays.filter((pl) => pl.name !== name);
+    setPlays(next); savePlays(next);
+  }
   function deleteCondition(id) {
     const c = condById[id];
     if (!c) return;
@@ -1809,6 +1852,11 @@ export default function TakeoffCanvas() {
   // VISIBLE shapes through the same conditionTotals rules the Report uses —
   // one source of role math, two scopes.
   const visRows = conditionTotals(conditions, visibleShapes);
+  const zoneRows = zoneCheck
+    ? conditionTotals(conditions, shapesInZone(shapes, zoneCheck)).filter((r) => r.shape_count > 0)
+    : null;
+  const zoneIds = zoneCheck ? new Set(shapesInZone(shapes, zoneCheck).map((sh) => sh.id)) : null;
+  useEffect(() => { if (tool !== "zone") { setZoneCheck(null); setZoneExpand(null); } }, [tool]);
   const visRowById = new Map(visRows.map((r) => [r.id, r]));
   const condRow = visRowById.get(activeCond);
   const condTotal = condRow?.floor_sf || 0;
@@ -1844,7 +1892,7 @@ export default function TakeoffCanvas() {
   };
   const measureActive = MEASURE_TOOLS.some((t) => t.id === tool);
   const faceTool = MEASURE_TOOLS.find((t) => t.id === (measureActive ? tool : lastMeasureRef.current)) || MEASURE_TOOLS[0];
-  const finishOk = ((tool === "area" || tool === "deduct") && poly.length >= 3) || ((tool === "linear" || tool === "surface") && poly.length >= 2);
+  const finishOk = ((tool === "area" || tool === "deduct" || tool === "zone") && poly.length >= 3) || ((tool === "linear" || tool === "surface") && poly.length >= 2);
 
   // compact icon button — chrome on the brand tokens; active = cobalt
   const iconBtn = (key, iconName, label, hint, showLabel = true) => (
@@ -1926,7 +1974,7 @@ export default function TakeoffCanvas() {
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
             <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} style={{ padding: "5px 8px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer" }}><Icon name="chevronLeft" size={12} /></button>
             <select value={page} onChange={(e) => setPage(parseInt(e.target.value, 10))} style={{ padding: "5px 6px", border: "1px solid var(--ink-faint)", background: "transparent", fontFamily: "var(--f-mono,monospace)", fontSize: 12 }}>
-              {Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{pageLabels[n] ? `${pageLabels[n]}  ·  ${n}/${pageCount}` : `Sheet ${n} / ${pageCount}`}</option>)}
+              {Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => { const k = n > 1 ? `${active}#${n}` : active; const lvl = sheetLevels[k] ? `${sheetLevels[k]} · ` : ""; return <option key={n} value={n}>{pageLabels[n] ? `${lvl}${pageLabels[n]}  ·  ${n}/${pageCount}` : `${lvl}Sheet ${n} / ${pageCount}`}</option>; })}
             </select>
             <button type="button" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page >= pageCount} style={{ padding: "5px 8px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer" }}><Icon name="chevronRight" size={12} /></button>
           </span>
@@ -1999,6 +2047,7 @@ export default function TakeoffCanvas() {
             { id: "del", icon: "close", label: "Delete selected", shortcut: "⌫", disabled: !selectedId, tint: "var(--c-danger)", onSelect: deleteSelected },
           ]}
         />
+        {iconBtn("zone", "zone", "Zone", "Zone check — trace a region (an apartment, a wing) to read every condition's quantities inside it, materials included. Nothing is saved; the outline clears when you leave the tool.")}
         <button onClick={() => setSnapOn((v) => !v)} title="Snap to plan lines/corners (beta)"
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${snapOn ? "var(--c-positive)" : "var(--ink-faint)"}`, background: snapOn ? "var(--c-positive)" : "transparent", color: snapOn ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
           <Icon name="snap" size={15} />{snapOn ? "Snap ✓" : "Snap"}
@@ -2167,6 +2216,27 @@ export default function TakeoffCanvas() {
             style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: matOpen ? "var(--ink)" : "transparent", color: matOpen ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontSize: 11.5, fontWeight: 600 }}>
             <Icon name="product" size={12} />Materials{aCond.materials?.length ? ` (${aCond.materials.length})` : ""}
           </button>
+          <span style={{ position: "relative", display: "inline-flex", gap: 6 }}>
+            <button onClick={saveActiveAsPlay} title="Save this condition + its materials & waste as a reusable play (stored in this browser)"
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11.5, fontWeight: 600, color: "var(--ink)" }}>⭑ Save play</button>
+            <button onClick={() => setPlaysOpen((v) => !v)} title="Apply a saved play (condition + materials + waste) as a new condition"
+              style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 0, border: playsOpen ? "1px solid var(--cobalt)" : "1px solid var(--ink-faint)", background: playsOpen ? "var(--paper-bright)" : "transparent", cursor: "pointer", fontSize: 11.5, fontWeight: 600, color: "var(--ink)" }}>Plays{plays.length ? ` · ${plays.length}` : ""} ▾</button>
+            {playsOpen && (
+              <div style={{ position: "absolute", top: 26, right: 0, zIndex: 30, minWidth: 250, maxHeight: 320, overflow: "auto", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "0 6px 22px rgba(0,0,0,.16)" }}>
+                {plays.length === 0 ? (
+                  <div style={{ padding: "9px 11px", color: "var(--ink-muted)", fontSize: 11.5 }}>No plays yet — tune a condition's materials + waste, then <b>⭑ Save play</b>.</div>
+                ) : plays.map((pl) => (
+                  <div key={pl.name} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderTop: "1px solid var(--ink-faint)" }}>
+                    <button onClick={() => applyPlay(pl)} title="Apply this play as a new condition"
+                      style={{ flex: 1, minWidth: 0, textAlign: "left", border: "none", background: "none", cursor: "pointer", fontSize: 12, color: "var(--ink)" }}>
+                      <b>{pl.name}</b> <span style={{ color: "var(--ink-muted)" }}>· {(pl.materials?.length || 0)} mat{pl.waste_pct ? ` · ${pl.waste_pct}%` : ""}</span>
+                    </button>
+                    <button onClick={() => deletePlayByName(pl.name)} title="Delete this play" style={{ border: "none", background: "none", cursor: "pointer", color: "#b03a26", fontSize: 13, lineHeight: 1 }}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </span>
           <button onClick={() => deleteCondition(aCond.id)} title="Delete this condition (and its takeoffs)"
             style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 9px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "#b03a26", cursor: "pointer", fontSize: 11.5, fontWeight: 600 }}>
             <Icon name="close" size={11} />Delete
@@ -2201,7 +2271,7 @@ export default function TakeoffCanvas() {
        <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
         <div ref={containerRef} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
           onPointerLeave={hideCrosshair} onContextMenu={(e) => e.preventDefault()}
-          onDoubleClick={() => { if (tool === "oneclick") { if (proposal?.regions.length) createProposal(); } else if (tool === "area" || tool === "deduct" || tool === "linear" || tool === "surface") finishShape(); }}
+          onDoubleClick={() => { if (tool === "oneclick") { if (proposal?.regions.length) createProposal(); } else if (tool === "area" || tool === "deduct" || tool === "linear" || tool === "surface" || tool === "zone") finishShape(); }}
           style={{ position: "absolute", inset: 0, background: darkMode ? "#0b0e14" : "var(--paper-cream)", cursor: tool === "pan" ? "grab" : tool === "select" ? "default" : "none", touchAction: "none" }}>
           {/* aim crosshair (draw modes): the OS cursor is hidden on the canvas — the
               crosshair IS the cursor. Two crisp full-page hairlines riding the
@@ -2330,6 +2400,21 @@ export default function TakeoffCanvas() {
                         </g>
                       );
                     })}
+                    {/* zone check — transparent dashed region + a cobalt trace on every counted shape */}
+                    {zoneCheck && zoneCheck.key === p.key && (
+                      <g style={{ pointerEvents: "none" }}>
+                        <polygon points={zoneCheck.pts.map(([nx, ny]) => `${nx * p.img.w},${ny * p.img.h}`).join(" ")}
+                          fill="rgba(31,63,199,.06)" stroke="#1f3fc7" strokeWidth={2 / tf.scale}
+                          strokeDasharray={`${7 / tf.scale} ${5 / tf.scale}`} />
+                        {zoneIds && shapes.filter((sh) => zoneIds.has(sh.id) && sh.sheet_id === p.key).map((sh) => (
+                          (sh.verts_norm || []).length >= 2
+                            ? <polyline key={"zc" + sh.id} points={sh.verts_norm.map(([nx, ny]) => `${nx * p.img.w},${ny * p.img.h}`).join(" ")}
+                                fill="none" stroke="#1f3fc7" strokeOpacity={0.45} strokeWidth={3.5 / tf.scale} strokeLinejoin="round" />
+                            : <circle key={"zc" + sh.id} cx={(sh.verts_norm?.[0]?.[0] || 0) * p.img.w} cy={(sh.verts_norm?.[0]?.[1] || 0) * p.img.h}
+                                r={7 / tf.scale} fill="none" stroke="#1f3fc7" strokeOpacity={0.45} strokeWidth={2.5 / tf.scale} />
+                        ))}
+                      </g>
+                    )}
                     {/* One-Click proposal preview — dashed cobalt selection, red dashed carve */}
                     {proposal && proposal.key === p.key && proposal.regions.map((r, i) => (
                       <g key={"oc" + i}>
@@ -2351,7 +2436,7 @@ export default function TakeoffCanvas() {
               <path ref={hlPathRef} style={{ display: "none" }} />
               {poly.length >= 2 && (tool === "linear" || tool === "surface"
                 ? <polyline points={poly.map((p) => p.join(",")).join(" ")} fill="none" stroke={tool === "surface" ? activeColor : "#1f3fc7"} strokeWidth={(tool === "surface" ? 3.5 : 2.5) / tf.scale} strokeDasharray={tool === "surface" ? `${10 / tf.scale} ${3 / tf.scale} ${2 / tf.scale} ${3 / tf.scale}` : undefined} strokeLinecap="round" strokeLinejoin="round" />
-                : <polygon points={poly.map((p) => p.join(",")).join(" ")} fill={poly.length >= 3 ? (tool === "deduct" ? "rgba(176,58,38,.22)" : shapeFill(aCond)) : "none"} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={2 / tf.scale} />)}
+                : <polygon points={poly.map((p) => p.join(",")).join(" ")} fill={poly.length >= 3 ? (tool === "deduct" ? "rgba(176,58,38,.22)" : tool === "zone" ? "rgba(31,63,199,.06)" : shapeFill(aCond)) : "none"} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={2 / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : undefined} />)}
               {/* bold the most recent segment so you see where you just clicked */}
               {poly.length >= 2 && (
                 <line x1={poly[poly.length - 2][0]} y1={poly[poly.length - 2][1]} x2={poly[poly.length - 1][0]} y2={poly[poly.length - 1][1]}
@@ -2393,9 +2478,10 @@ export default function TakeoffCanvas() {
           </div>
         </div>
 
-        {/* live readout — top-right */}
-        <div style={{ position: "absolute", right: 14, top: 14, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, padding: "12px 16px", minWidth: 200, boxShadow: "0 4px 18px rgba(0,0,0,.12)", fontVariantNumeric: "tabular-nums", zIndex: 6 }}>
-          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.55, marginBottom: 6 }}>{aCond?.finish_tag || "No condition"}</div>
+        {/* live readout — top-right. Height is capped short of the panel rail's centered
+            band (same right:14 column) so populated totals never cover the rail buttons. */}
+        <div style={{ position: "absolute", right: 14, top: 14, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, padding: "12px 16px", minWidth: 200, maxWidth: 260, maxHeight: "calc(50% - 110px)", overflowY: "auto", boxShadow: "0 4px 18px rgba(0,0,0,.12)", fontVariantNumeric: "tabular-nums", zIndex: 6 }}>
+          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.55, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tool === "zone" ? "Zone check" : (aCond?.finish_tag || "No condition")}</div>
           {tool === "oneclick" && proposal?.regions.length ? (() => {
             const pos = proposal.regions.filter((r) => r.kind === "pos");
             const neg = proposal.regions.filter((r) => r.kind === "neg");
@@ -2417,6 +2503,11 @@ export default function TakeoffCanvas() {
                 </>
               ) : <div style={{ fontSize: 12.5, color: "#b03a26" }}>Set a height for {aCond?.finish_tag || "this condition"} — H in the condition bar</div>;
             })()
+          ) : tool === "zone" && poly.length >= 1 ? (
+            <>
+              {liveArea != null && poly.length >= 3 && <div style={{ fontSize: 22, fontWeight: 700, color: "#1f3fc7" }}>{num(areaVal(liveArea, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)} in zone</span></div>}
+              <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>⏎, double-click, or the Finish button closes the zone and lists everything inside · Esc cancels</div>
+            </>
           ) : liveArea != null && poly.length >= 3 ? (
             <>
               <div style={{ fontSize: 22, fontWeight: 700, color: tool === "deduct" ? "#b03a26" : "#0e1a2e" }}>{tool === "deduct" ? "−" : ""}{num(areaVal(liveArea, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)}</span></div>
@@ -2424,7 +2515,7 @@ export default function TakeoffCanvas() {
               {condH > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>@H {num(condH, 2)}′: {fa(livePerim * condH)} vert{units === "metric" ? "" : ` · ${num((liveArea * condH) / 27)} CY`}</div>}
             </>
           ) : (
-            <div style={{ fontSize: 12.5, opacity: 0.6 }}>{!unitsPerPx ? "Set scale first" : !activeCond ? "Pick a condition" : tool === "oneclick" ? "Click inside a room — it selects itself" : tool === "surface" ? "Trace the wall run" : "Click to trace an area"}</div>
+            <div style={{ fontSize: 12.5, opacity: 0.6 }}>{!unitsPerPx ? "Set scale first" : tool === "zone" ? "Trace a region (an apartment, a wing) — ⏎ closes it and lists every condition inside" : !activeCond ? "Pick a condition" : tool === "oneclick" ? "Click inside a room — it selects itself" : tool === "surface" ? "Trace the wall run" : "Click to trace an area"}</div>
           )}
           {selShape?.measure_role === "surface_area" && (
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }} title="Height for THIS wall only — full-height tile here, 4-ft wainscot there, same condition. ↺ returns to the condition height.">
@@ -2450,6 +2541,51 @@ export default function TakeoffCanvas() {
           {condTotal === 0 && lfTotal === 0 && countTotal === 0 && wallTotal === 0 && borderTotal === 0 && <div style={{ fontSize: 12.5, color: "var(--ink-muted)", marginTop: 2 }}>—</div>}
           <div style={{ fontSize: 10.5, opacity: 0.45, marginTop: 6 }}>{visibleShapes.length} shapes on {groupKeys.length > 1 ? `${groupKeys.length} sheets` : "sheet"} · zoom {(tf.scale * 100).toFixed(0)}%</div>
         </div>
+
+        {/* zone check results — ephemeral, clears with the tool/outline */}
+        {zoneRows && (
+          <div style={{ position: "absolute", right: 56, top: 14, width: 300, maxHeight: "calc(100% - 28px)", overflowY: "auto", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "0 6px 22px rgba(0,0,0,.16)", zIndex: 7, fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderBottom: "1px solid var(--ink-faint)" }}>
+              <b style={{ fontSize: 12.5 }}>Zone check</b>
+              <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, color: "var(--ink-muted)" }}>nothing saved</span>
+              <button onClick={() => setZoneCheck(null)} style={{ marginLeft: "auto", border: "none", background: "none", cursor: "pointer", fontSize: 15, lineHeight: 1, color: "var(--ink)" }}>×</button>
+            </div>
+            {zoneRows.length === 0 && (
+              <div style={{ padding: "10px 12px", color: "var(--ink-muted)", fontSize: 11.5 }}>No takeoffs inside this zone on this sheet.</div>
+            )}
+            {zoneRows.map((zr) => {
+              const parts = [];
+              if (zr.floor_sf) parts.push(fa(zr.floor_sf));
+              if (zr.wall_sf) parts.push(`${fa(zr.wall_sf)} wall`);
+              if (zr.border_sf) parts.push(`${fa(zr.border_sf)} border`);
+              if (zr.lf) parts.push(fl(zr.lf));
+              if (zr.ea) parts.push(`${num(zr.ea, 0)} EA`);
+              const open = zoneExpand === zr.id;
+              return (
+                <div key={zr.id} style={{ padding: "8px 12px", borderBottom: "1px solid var(--ink-faint)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                    <HatchSwatch type={zr.hatch || "solid"} line={zr.color} fill={zr.fill} />
+                    <b style={{ fontFamily: "var(--f-mono)", fontSize: 11.5 }}>{zr.finish_tag || "—"}</b>
+                    <span style={{ marginLeft: "auto", fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink)" }}>{parts.join(" · ") || "—"}</span>
+                  </div>
+                  {zr.materials.length > 0 && (
+                    <button onClick={() => setZoneExpand(open ? null : zr.id)}
+                      style={{ marginTop: 4, padding: 0, border: "none", background: "none", cursor: "pointer", fontSize: 10.5, color: "var(--ink-muted)" }}>
+                      {open ? "▾" : "▸"} materials · {zr.materials.length}
+                    </button>
+                  )}
+                  {open && zr.materials.map((m, i) => (
+                    <div key={i} style={{ display: "flex", gap: 8, marginTop: 3, marginLeft: 12, fontSize: 11, color: "var(--ink-soft)" }}>
+                      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name}</span>
+                      <span style={{ fontFamily: "var(--f-mono)" }}>{num(m.qty)} {m.unit}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+            <div style={{ padding: "7px 12px", fontSize: 10, color: "var(--ink-muted)" }}>Shapes counted by their center point · same sheet only · counted shapes glow cobalt.</div>
+          </div>
+        )}
 
         {/* panel rail — markup/takeoffs toggles on the right edge (zoom-cluster
             style). Moved out of the toolbar so it never wraps a third row; z above the
@@ -2548,6 +2684,12 @@ export default function TakeoffCanvas() {
           thumbCacheRef={thumbCacheRef} busyRef={statusRef}
           openTabs={openTabs} onOpen={openSheets} onClose={() => setView("canvas")} canClose={openTabs.length > 0}
           onAddFiles={handleFiles}
+          levels={sheetLevels}
+          onAssignLevel={(keys, label) => setSheetLevels((m) => {
+            const next = { ...m };
+            for (const k of keys) { if (label) next[k] = label; else delete next[k]; }
+            return next;
+          })}
         />
       )}
 
