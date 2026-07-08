@@ -9,7 +9,8 @@ no server.
 ## 1. Quick start (a demo in 6 steps)
 
 1. **Open plans** — drag a PDF, image, or `.zip` plan set onto the canvas (or use **Open plans**). The **gallery** (`G`) shows every sheet; click one (or several) to open.
-2. **Set the scale** — on each sheet, click **Scale** and either pick a standard scale or **Calibrate**: click two points along a known dimension, type the real length in feet, **Apply**. Scale is remembered **per sheet**.
+2. **Set the scale** — on each sheet, click **Scale** and either pick a standard scale (imperial architectural/engineering **or metric ratios** — 1:20 through 1:500) or **Calibrate**: click two points along a known dimension, type the real length (feet — or **meters** in metric mode), **Apply**. Scale is remembered **per sheet**.
+3. **Working in metric?** Click the **`ft`/`m`** toggle beside the scale picker. Every readout, chip, panel, the Report, CSV, and the Marked Set legend switch to **m² / m**, and Calibrate takes meters. The toggle only changes the display layer — takeoffs are stored unit-agnostically, so flipping it never changes your measurements. (Supporting-material coverage rates stay as entered, SF/LF-based.)
 3. **Pick a condition** — the **Conditions** bar holds your finishes (WD‑1, LVT‑1, …). Click one to arm it (or press its number, `1`–`9`). Edit its color / hatch / waste / height in the bar.
 4. **Draw the takeoff** — pick a Measure tool and trace. Each shape is color‑coded to its condition.
 5. **Add supporting materials** *(optional)* — open **Assemblies** on the condition (adhesive, sealer, poly…) with coverage rates; order quantities derive automatically.
@@ -30,8 +31,9 @@ Your work autosaves to this browser continuously. Reload and it's still there.
 | `L` | **Linear** | Trace a run → LF (＋ border SF if the condition has a thickness). |
 | `S` | **Surface Area** | Trace a wall run in plan → wall SF (run × condition height). |
 | `C` | **Count** | Click to count items → EA. |
-| `D` | **Deduct** | Trace a void/column → subtracts SF. |
-| `⇧D` | **Deduct rectangle** | Rectangle deduct. |
+| `D` | **Erase shape** | Trace a void/column → subtracts SF (a deduct). |
+| `⇧D` | **Erase rectangle** | Rectangle erase. |
+| `H` | **Highlighter** | Freehand marker ink — drag to paint (see Markup layer below). |
 | `P` | **Pan** | Move around the sheet. |
 | `V` | **Select** | Select / move / edit / reassign / delete a shape. |
 | `G` | **Gallery** | Open the plan‑set gallery / sheet picker. |
@@ -47,7 +49,7 @@ Your work autosaves to this browser continuously. Reload and it's still there.
 | **Click** (no drag) | Place a point. |
 | **Press‑and‑drag** | Pan mid‑measure (without placing a point). |
 | **Scroll** | Zoom. |
-| `Enter` or **double‑click** | Finish the shape (Area/Deduct need ≥3 points; Linear/Surface ≥2). In One‑Click, `Enter` creates the selected space(s). |
+| `Enter` or **double‑click** | Finish the shape (Area/Erase need ≥3 points; Linear/Surface ≥2). In One‑Click, `Enter` creates the selected space(s). |
 | `Backspace` / `Delete` | Remove the last placed point; if nothing's in progress, delete the **selected** shape; in One‑Click, drop the last region. |
 | `⌘Z` / `Ctrl+Z` | Undo the last placed point. |
 | `Esc` | Cancel the in‑progress shape / selection / proposal. |
@@ -71,7 +73,7 @@ With the **45°** toggle on (it's on by default, next to Snap), the segment you'
 
 ### Conditions (finishes)
 A condition is one finish (e.g. `WD-1` red oak). It carries:
-- **Line / fill color** and a **hatch pattern** (plank, herringbone, tile, terrazzo, …) so each finish reads like the real drawing.
+- **Line / fill color** and a **hatch pattern** (plank, herringbone, tile, terrazzo, …) so each finish reads like the real drawing. The hatch picker is a 4×4 swatch grid — hover a swatch and the caption under the grid names the pattern; the selected one is outlined in cobalt.
 - **Multiplier (×N)** — measure one identical unit, multiply by N.
 - **Waste %** — a flooring allowance applied **only in the Report** (order quantity), never to the live measured number.
 - **Height (H)** — default height for new Surface‑Area (wall) traces; also drives vertical‑SF display. Existing walls keep the height they were drawn at.
@@ -100,7 +102,9 @@ Per condition, list the consumables (adhesive, sealer, polyurethane, thinset, gr
 - **Dark view (☾)** — negative-print mode in the zoom cluster: sheets invert to light-on-dark, hatches stay legible, and the toggle is remembered per browser.
 
 ### Markup layer
-Revision clouds, callouts, and text notes — annotations only, kept separate from measurements (never counted). The markup (◇) and takeoffs (☰) panel toggles live on the slim **rail on the canvas's right edge** (zoom-cluster style); the takeoffs panel docks beside it.
+Highlighter, revision clouds, callouts, and text notes — annotations only, kept separate from measurements (never counted). The markup (◇) and takeoffs (☰) panel toggles live on the slim **rail on the canvas's right edge** (zoom-cluster style); the takeoffs panel docks beside it.
+
+**Highlighter** (`H`, under Markup) is freehand marker ink — and every stroke is a real object: with **Select** (`V`), click a stroke to pick it (it glows cobalt), **drag to move it**, `⌫` to delete it. Press and **drag to paint** — stroke after stroke, no panel popping open between them. While it's armed, a style popover hangs under the Markup menu: five inks (yellow default), **F / M / B** tip sizes, and a **chisel or round** nib; your style is remembered per browser. One tradeoff to know: because press‑drag paints, the usual press‑and‑drag pan is unavailable while the highlighter is armed — pan with **Space‑drag, middle‑drag, or right‑drag** instead (or `P`). Strokes stick to their sheet, scale with the plan like real ink, and export into the Marked Set PDF in their own color. `Esc` abandons a stroke mid‑paint.
 
 ### Report & export
 Per‑condition breakdown (Floor/Wall/Border SF, LF, EA, Total SF, SY, with and without waste), a combined materials buy list, and **CSV / JSON** export — plus **Marked set**: a distribution-ready PDF of every sheet that carries takeoffs or markups, with the work burned in as drawn and a legend cover (net totals, waste-adjusted order quantities, by-sheet breakdown). It exports in your current view — dark canvas → dark PDF. Share it with a PM or GC; they need nothing but a PDF reader.

@@ -19,7 +19,7 @@
 // nothing until used and the app stays zero-install.
 
 import { conditionTotals } from "./totals.js";
-import { pointInPoly, starPath } from "./geometry.js";
+import { pointInPoly, starPath, chiselRibbon } from "./geometry.js";
 import { RENDER_SCALE } from "./sheets";
 
 const COBALT = "#1f3fc7";
@@ -29,13 +29,13 @@ const RASTER_MAX = 2800;                    // dark-mode raster cap, long side p
 
 // hatch style → parallel-line families [angleDeg, pitch(image px)] that match
 // the canvas pattern's geometric read; decorative styles approximate — the
-// legend names the true style. Pitches ×2 vs the 10px canvas tile for print.
+// legend names the true style. Pitches ×2 vs the on-screen canvas tiles for print.
 const HATCH_FAMILIES = {
-  diag: [[45, 14]], diag2: [[135, 14]], cross: [[45, 14], [135, 14]],
-  diagdense: [[45, 7]], horiz: [[0, 10]], vert: [[90, 10]],
-  grid: [[0, 10], [90, 10]], brick: [[0, 10]], plank: [[0, 10]],
-  herring: [[45, 14], [135, 14]], basket: [[0, 10], [90, 10]],
-  checker: [[45, 7]], wave: [[0, 10]], dots: [[45, 20]], speckle: [[45, 20]],
+  diag: [[45, 17]], diag2: [[135, 17]], cross: [[45, 17], [135, 17]],
+  diagdense: [[45, 8.4]], horiz: [[0, 16]], vert: [[90, 16]],
+  grid: [[0, 20], [90, 20]], brick: [[0, 16], [90, 32]], plank: [[0, 16]],
+  herring: [[45, 17], [135, 17]], basket: [[0, 18], [90, 18]],
+  checker: [[45, 12]], wave: [[0, 18]], dots: [[45, 17]], speckle: [[45, 24]], fleur: [[45, 32]],
 };
 
 const hex = (h) => {
@@ -92,14 +92,17 @@ function hatchLines(poly, style) {
   return out;
 }
 
-function shapeChip(shape, cond) {
+function shapeChip(shape, cond, M = false) {
   const cp = shape.computed || {};
   const tag = cond?.finish_tag || "";
+  const uA = (sf) => (M ? sf * 0.09290304 : sf);
+  const uL = (lf) => (M ? lf * 0.3048 : lf);
+  const AU = M ? "m2" : "SF", LU = M ? "m" : "LF";
   switch (shape.measure_role) {
-    case "floor_area": return `${tag} · ${num(cp.area_sf || 0)} SF`;
-    case "deduct": return `-${num(cp.area_sf || 0)} SF deduct`;
-    case "surface_area": return `${tag} · ${num(cp.area_sf || 0)} SF wall`;
-    case "linear": return `${tag} · ${num(cp.perimeter_lf || 0)} LF`;
+    case "floor_area": return `${tag} · ${num(uA(cp.area_sf || 0))} ${AU}`;
+    case "deduct": return `-${num(uA(cp.area_sf || 0))} ${AU} deduct`;
+    case "surface_area": return `${tag} · ${num(uA(cp.area_sf || 0))} ${AU} wall`;
+    case "linear": return `${tag} · ${num(uL(cp.perimeter_lf || 0))} ${LU}`;
     default: return "";
   }
 }
@@ -120,8 +123,12 @@ function invertPixels(cv) {
   ctx.restore();
 }
 
-export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, markups, conditions, getPage, loadPdfData }) {
-  const { PDFDocument, StandardFonts, rgb, degrees } = await import("pdf-lib");
+export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, markups, conditions, getPage, loadPdfData, units = "imperial" }) {
+  const M = units === "metric";
+  const uA = (sf) => (M ? sf * 0.09290304 : sf);
+  const uL = (lf) => (M ? lf * 0.3048 : lf);
+  const AU = M ? "m2" : "SF", LU = M ? "m" : "LF";
+  const { PDFDocument, StandardFonts, rgb, degrees, LineCapStyle } = await import("pdf-lib");
   const condById = Object.fromEntries(conditions.map((c) => [c.id, c]));
   const byKey = (arr) => {
     const m = new Map();
@@ -158,8 +165,8 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
       pg.drawRectangle({ x: 52, y: y - 2, width: 14, height: 10, color: rgb(...hex(c.color)), opacity: 0.8, borderColor: rgb(...hex(c.color)), borderWidth: 0.7 });
       pg.drawText(`${r.finish_tag}${r.multiplier > 1 ? ` ×${r.multiplier}` : ""}`, { x: 72, y, size: 10.5, font: bold, color: ink });
       const qty = [
-        r.floor_sf ? `${num(r.floor_sf)} SF` : "", r.wall_sf ? `${num(r.wall_sf)} SF wall` : "",
-        r.border_sf ? `${num(r.border_sf)} SF border` : "", r.lf ? `${num(r.lf)} LF` : "", r.ea ? `${num(r.ea, 0)} EA` : "",
+        r.floor_sf ? `${num(uA(r.floor_sf))} ${AU}` : "", r.wall_sf ? `${num(uA(r.wall_sf))} ${AU} wall` : "",
+        r.border_sf ? `${num(uA(r.border_sf))} ${AU} border` : "", r.lf ? `${num(uL(r.lf))} ${LU}` : "", r.ea ? `${num(r.ea, 0)} EA` : "",
       ].filter(Boolean).join(" · ");
       pg.drawText(qty || "-", { x: 190, y, size: 10, font, color: ink });
       pg.drawText(`${c.hatch && c.hatch !== "solid" ? c.hatch + " · " : ""}waste ${r.waste_pct}% -> ${num(r.total_sf_net)} SF`, { x: 420, y, size: 8.5, font, color: muted });
@@ -221,6 +228,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     }
     const ptScale = Math.hypot(...(() => { const p0 = toPage(0, 0), p1 = toPage(1, 0); return [p1[0] - p0[0], p1[1] - p0[1]]; })());
     const svgPath = (pts) => pts.map(([x, y], i) => { const [px, py] = toPage(x, y); return `${i ? "L" : "M"}${px},${-py}`; }).join(" ") + " Z";
+    const svgOpenPath = (pts) => pts.map(([x, y], i) => { const [px, py] = toPage(x, y); return `${i ? "L" : "M"}${px},${-py}`; }).join(" ");
     const line = (x1, y1, x2, y2, colorRgb, w, opacity = 1, dash) => {
       const [sx, sy] = toPage(x1, y1), [ex, ey] = toPage(x2, y2);
       pg.drawLine({ start: { x: sx, y: sy }, end: { x: ex, y: ey }, thickness: w, color: colorRgb, opacity, ...(dash ? { dashArray: dash } : {}) });
@@ -254,18 +262,32 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         if (!isDeduct && cond?.hatch && cond.hatch !== "solid") {
           for (const [ax, ay, bx, by] of hatchLines(pts, cond.hatch)) line(ax, ay, bx, by, col, 0.5, 0.55 + alphaBoost);
         }
-        chip(shapeChip(s, cond), ...centroid(pts), col);
+        chip(shapeChip(s, cond, M), ...centroid(pts), col);
       } else if (s.measure_role === "linear" || s.measure_role === "surface_area") {
         for (let i = 1; i < pts.length; i++) line(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1], col, 1.4, 0.95);
         const mid = pts[Math.floor((pts.length - 1) / 2)];
-        chip(shapeChip(s, cond), mid[0], mid[1] - 14, col);
+        chip(shapeChip(s, cond, M), mid[0], mid[1] - 14, col);
       } else if (s.measure_role === "count") {
         const [px, py] = toPage(pts[0][0], pts[0][1]);
         pg.drawEllipse({ x: px, y: py, xScale: 4.5, yScale: 4.5, borderColor: col, borderWidth: 1.2, color: col, opacity: 0.35 });
       }
     }
     for (const m of marksBy.get(sh.key) || []) {
-      if (m.type === "cloud" && m.rect) {
+      if (m.type === "highlight" && (m.pts || []).length >= 2) {
+        // ink stays its own color in both export modes (a highlight IS its hue);
+        // width is stored as a fraction of sheet width → image px → page points
+        const ipts = m.pts.map(([nx, ny]) => [nx * W, ny * H]);
+        const inkCol = rgb(...hex(m.color || "#ffd60a"));
+        const wImg = (m.w || 0.01) * W;
+        if (m.tip === "chisel") {
+          pg.drawSvgPath(svgPath(chiselRibbon(ipts, wImg, 45)), { x: 0, y: 0, color: inkCol, opacity: 0.35 });
+        } else {
+          pg.drawSvgPath(svgOpenPath(ipts), {
+            x: 0, y: 0, borderColor: inkCol, borderWidth: wImg * ptScale, borderOpacity: 0.35,
+            ...(LineCapStyle ? { borderLineCap: LineCapStyle.Round } : {}),   // butt caps if the pin drops the export
+          });
+        }
+      } else if (m.type === "cloud" && m.rect) {
         const [[nx0, ny0], [nx1, ny1]] = m.rect;
         // scalloped read approximated by a dashed border — arcs don't survive
         // arbitrary page transforms; the note text carries the meaning

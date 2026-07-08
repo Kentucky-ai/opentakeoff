@@ -5,20 +5,24 @@
 import React, { useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import { conditionTotals, grandTotals, totalsToCsv, downloadText, materialsSummary } from "../lib/totals.js";
+import { areaVal, areaUnit, lenVal, lenUnit } from "../lib/units";
 import { buildContribution, sendContribution, isContributeConfigured } from "../lib/contribute.js";
 
 const num = (v, d = 1) => (Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: d });
 
-export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, onMarkedSet, markedSetDark, onClose }) {
+export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, onMarkedSet, markedSetDark, onClose, units = "imperial" }) {
   const rows = conditionTotals(conditions, shapes).filter((r) => r.shape_count > 0);
+  const M = units === "metric";
+  const AU = areaUnit(units), LU = lenUnit(units);
+  const av = (sf) => areaVal(sf, units), lv = (lf) => lenVal(lf, units);
   const g = grandTotals(rows);
   const matSummary = materialsSummary(rows);
   const [showContribute, setShowContribute] = useState(false);
 
   const baseName = (projectName || "takeoff").replace(/[^\w.-]+/g, "_");
-  const exportCsv = () => downloadText(`${baseName}.csv`, totalsToCsv(rows, projectName), "text/csv");
+  const exportCsv = () => downloadText(`${baseName}.csv`, totalsToCsv(rows, projectName, units), "text/csv");
   const exportJson = () => downloadText(`${baseName}.json`,
-    JSON.stringify({ project_name: projectName || null, generated_with: "OpenTakeoff", conditions: rows, totals: g, materials: matSummary }, null, 2),
+    JSON.stringify({ project_name: projectName || null, generated_with: "OpenTakeoff", units: "imperial (SF/LF — raw internal values)", display_units: units, conditions: rows, totals: g, materials: matSummary }, null, 2),
     "application/json");
 
   const th = { textAlign: "right", padding: "7px 10px", fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)", borderBottom: "1px solid var(--ink)", whiteSpace: "nowrap" };
@@ -62,14 +66,14 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               <tr>
                 <th style={{ ...th, textAlign: "left" }}>Finish</th>
                 <th style={th}>Shapes</th>
-                <th style={th}>Floor SF</th>
-                <th style={th}>Wall SF</th>
-                <th style={th}>Border SF</th>
-                <th style={th}>LF</th>
+                <th style={th}>Floor {AU}</th>
+                <th style={th}>Wall {AU}</th>
+                <th style={th}>Border {AU}</th>
+                <th style={th}>{LU}</th>
                 <th style={th}>EA</th>
                 <th style={th}>Waste</th>
-                <th style={{ ...th, color: "var(--cobalt)" }}>SF ordered</th>
-                <th style={{ ...th, color: "var(--cobalt)" }}>SY</th>
+                <th style={{ ...th, color: "var(--cobalt)" }}>{AU} ordered</th>
+                {!M && <th style={{ ...th, color: "var(--cobalt)" }}>SY</th>}
               </tr>
             </thead>
             <tbody>
@@ -83,14 +87,14 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                     </span>
                   </td>
                   <td style={td}>{r.shape_count}</td>
-                  <td style={td}>{r.floor_sf ? num(r.floor_sf) : "—"}</td>
-                  <td style={td}>{r.wall_sf ? num(r.wall_sf) : "—"}</td>
-                  <td style={td}>{r.border_sf ? num(r.border_sf) : "—"}</td>
-                  <td style={td}>{r.lf ? num(r.lf) : "—"}</td>
+                  <td style={td}>{r.floor_sf ? num(av(r.floor_sf)) : "—"}</td>
+                  <td style={td}>{r.wall_sf ? num(av(r.wall_sf)) : "—"}</td>
+                  <td style={td}>{r.border_sf ? num(av(r.border_sf)) : "—"}</td>
+                  <td style={td}>{r.lf ? num(lv(r.lf)) : "—"}</td>
                   <td style={td}>{r.ea ? num(r.ea, 0) : "—"}</td>
                   <td style={td}>{r.waste_pct ? `${num(r.waste_pct, 0)}%` : "—"}</td>
-                  <td style={{ ...td, fontWeight: 700, color: "var(--cobalt)" }}>{r.total_sf ? num(r.total_sf_net) : "—"}</td>
-                  <td style={{ ...td, color: "var(--cobalt)" }}>{r.total_sf ? num(r.sy_net) : "—"}</td>
+                  <td style={{ ...td, fontWeight: 700, color: "var(--cobalt)" }}>{r.total_sf ? num(av(r.total_sf_net)) : "—"}</td>
+                  {!M && <td style={{ ...td, color: "var(--cobalt)" }}>{r.total_sf ? num(r.sy_net) : "—"}</td>}
                 </tr>
               ))}
             </tbody>
@@ -99,16 +103,16 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                 <td style={{ ...td, textAlign: "left", borderTop: "2px solid var(--ink)", fontWeight: 700 }}>Total</td>
                 <td style={{ ...td, borderTop: "2px solid var(--ink)" }} colSpan={6}></td>
                 <td style={{ ...td, borderTop: "2px solid var(--ink)" }}></td>
-                <td style={{ ...td, borderTop: "2px solid var(--ink)", fontWeight: 700, color: "var(--cobalt)" }}>{num(g.total_sf_net)}</td>
-                <td style={{ ...td, borderTop: "2px solid var(--ink)", color: "var(--cobalt)" }}>{num(g.sy_net)}</td>
+                <td style={{ ...td, borderTop: "2px solid var(--ink)", fontWeight: 700, color: "var(--cobalt)" }}>{num(av(g.total_sf_net))}</td>
+                {!M && <td style={{ ...td, borderTop: "2px solid var(--ink)", color: "var(--cobalt)" }}>{num(g.sy_net)}</td>}
               </tr>
             </tfoot>
           </table>
         )}
         {rows.length > 0 && (
           <p style={{ maxWidth: 980, margin: "14px auto 0", fontSize: 11.5, color: "var(--ink-muted)", lineHeight: 1.6 }}>
-            <strong>SF ordered</strong> = measured quantity × waste %. Waste is set per condition in the canvas. Wall SF comes from Surface-Area
-            traces (run × height); Border SF from Linear runs with a thickness.
+            <strong>{AU} ordered</strong> = measured quantity × waste %. Waste is set per condition in the canvas. Wall {AU} comes from Surface-Area
+            traces (run × height); Border {AU} from Linear runs with a thickness.{M ? " Supporting-material coverage rates stay as entered (SF/LF-based)." : ""}
           </p>
         )}
         {matSummary.length > 0 && (

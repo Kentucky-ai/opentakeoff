@@ -2,7 +2,7 @@
 // they finally have a test home. Run with: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { angleSnap, ANGLE_TOL, pointInPoly, distToSeg, hitShape, closedMetrics, openLen, buildSnapGrid, nearestSnap } from "../src/lib/geometry.js";
+import { angleSnap, ANGLE_TOL, pointInPoly, distToSeg, hitShape, closedMetrics, openLen, buildSnapGrid, nearestSnap, thinStroke, strokePathD, chiselRibbon } from "../src/lib/geometry.js";
 
 test("angleSnap: locks within tolerance of a 45° multiple, exact on-axis point", () => {
   const s = angleSnap([0, 0], [100, 3], false);      // ~1.7° off horizontal
@@ -62,6 +62,40 @@ test("closedMetrics/openLen: shoelace area + perimeter vs open run length", () =
   assert.equal(m.perim, 40);
   assert.equal(openLen(sq), 30);                       // open: no closing edge
   assert.equal(closedMetrics([[0, 0], [3, 4]]).area, 0);  // degenerate → length only
+});
+
+test("thinStroke: keeps first + last, enforces min spacing between kept points", () => {
+  const pts: [number, number][] = [[0, 0], [1, 0], [2, 0], [5, 0], [6, 0], [10, 0]];
+  const out = thinStroke(pts, 4);
+  assert.deepEqual(out[0], [0, 0]);                       // first survives
+  assert.deepEqual(out[out.length - 1], [10, 0]);         // last survives
+  for (let i = 1; i < out.length - 1; i++) {              // interior points respect minDist
+    const d = Math.hypot(out[i][0] - out[i - 1][0], out[i][1] - out[i - 1][1]);
+    assert.ok(d >= 4, `spacing ${d} >= minDist`);
+  }
+  assert.deepEqual(thinStroke([[0, 0], [1, 1]], 4), [[0, 0], [1, 1]]);  // ≤2 pts pass through
+});
+
+test("chiselRibbon: closed 2N polygon with ±w/2 offsets along the 45° nib", () => {
+  const pts: [number, number][] = [[0, 0], [10, 0], [20, 5]];
+  const w = 4;
+  const rib = chiselRibbon(pts, w);
+  assert.equal(rib.length, pts.length * 2);               // forward side + reversed back side
+  const vx = (Math.cos(Math.PI / 4) * w) / 2, vy = -(Math.sin(Math.PI / 4) * w) / 2;
+  pts.forEach(([x, y], i) => {
+    assert.ok(Math.hypot(rib[i][0] - (x + vx), rib[i][1] - (y + vy)) < 1e-12, "forward offset +w/2");
+    const back = rib[rib.length - 1 - i];                 // back side runs reversed
+    assert.ok(Math.hypot(back[0] - (x - vx), back[1] - (y - vy)) < 1e-12, "backward offset -w/2");
+  });
+});
+
+test("strokePathD: starts with M at pts[0] and ends at the last point", () => {
+  const pts: [number, number][] = [[1, 2], [5, 6], [9, 3]];
+  const d = strokePathD(pts);
+  assert.ok(d.startsWith("M1,2"), "opens with M at the first point");
+  assert.ok(d.endsWith(" 9,3"), "final Bézier lands on the last point");
+  assert.equal(strokePathD([[4, 4]]), "M4,4");            // single point → bare move
+  assert.equal(strokePathD([]), "");                       // empty → empty
 });
 
 test("snap grid: nearest endpoint within maxDist, across cell borders", () => {

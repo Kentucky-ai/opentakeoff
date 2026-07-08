@@ -96,26 +96,32 @@ export function grandTotals(rows) {
 }
 
 // CSV: one row per condition, with both net (measured) and waste-adjusted columns.
-export function totalsToCsv(rows, projectName = "") {
+// units: "imperial" (SF/LF/SY) or "metric" (m²/m — SY column drops; supporting-
+// material coverage stays as entered, SF/LF-based).
+export function totalsToCsv(rows, projectName = "", units = "imperial") {
+  const M = units === "metric";
+  const A = (sf) => (M ? +(sf * 0.09290304).toFixed(2) : sf);
+  const L = (lf) => (M ? +(lf * 0.3048).toFixed(2) : lf);
+  const AU = M ? "m2" : "SF", LU = M ? "m" : "LF";
   const esc = (v) => {
     const s = String(v ?? "");
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const header = [
     "Finish", "Shapes", "Multiplier", "Waste %",
-    "Floor SF", "Wall SF", "Border SF", "Total SF", "LF", "EA",
-    "Total SF (w/ waste)", "LF (w/ waste)", "SY (w/ waste)",
+    `Floor ${AU}`, `Wall ${AU}`, `Border ${AU}`, `Total ${AU}`, LU, "EA",
+    `Total ${AU} (w/ waste)`, `${LU} (w/ waste)`, ...(M ? [] : ["SY (w/ waste)"]),
   ];
   const lines = [header.map(esc).join(",")];
   for (const r of rows) {
     lines.push([
       r.finish_tag, r.shape_count, r.multiplier, r.waste_pct,
-      r.floor_sf, r.wall_sf, r.border_sf, r.total_sf, r.lf, r.ea,
-      r.total_sf_net, r.lf_net, r.sy_net,
+      A(r.floor_sf), A(r.wall_sf), A(r.border_sf), A(r.total_sf), L(r.lf), r.ea,
+      A(r.total_sf_net), L(r.lf_net), ...(M ? [] : [r.sy_net]),
     ].map(esc).join(","));
   }
   const g = grandTotals(rows);
-  lines.push(["TOTAL", "", "", "", "", "", "", g.total_sf, g.lf, g.ea, g.total_sf_net, g.lf_net, g.sy_net].map(esc).join(","));
+  lines.push(["TOTAL", "", "", "", "", "", "", A(g.total_sf), L(g.lf), g.ea, A(g.total_sf_net), L(g.lf_net), ...(M ? [] : [g.sy_net])].map(esc).join(","));
 
   // supporting materials — per condition, then a combined buy list
   const basisLabel = (b) => (b === "linear" ? "LF" : b === "count" ? "EA" : "SF");
