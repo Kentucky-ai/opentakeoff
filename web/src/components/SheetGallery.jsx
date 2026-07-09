@@ -12,7 +12,7 @@ const THUMB_W = 380;
 
 export default function SheetGallery({
   sheets, getDoc, scales, detectedScales, shapes, labels, onLabel, onDetect,
-  thumbCacheRef, busyRef, openTabs, onOpen, onClose, canClose, onAddFiles, onAddFromDrive,
+  thumbCacheRef, busyRef, openTabs, onOpen, onClose, canClose, onAddFiles, onAddFromDrive, onBackToProjects,
 }) {
   const fileRef = useRef(null);
   const [pages, setPages] = useState({});   // file -> numPages (as discovered)
@@ -146,6 +146,14 @@ export default function SheetGallery({
           {allKeys.length || "…"} sheets · pick one or several — the order you pick is the left-to-right order
         </span>
         <div style={{ flex: 1 }} />
+        {/* Back to the project browser — like AuthChip below, this must live on
+            the gallery too: the overlay hides the main toolbar's button. */}
+        {onBackToProjects && (
+          <button onClick={onBackToProjects} title="Back to your team's projects"
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12.5 }}>
+            Projects
+          </button>
+        )}
         {/* Choose more PDFs from the project's Drive folder (cloud projects). */}
         {onAddFromDrive && (
           <button onClick={onAddFromDrive} title="Choose more PDFs from this project's Drive folder"

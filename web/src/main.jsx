@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import "./styles/tokens.css";
 import "./styles/app.css";
 import TakeoffCanvas from "./pages/TakeoffCanvas.jsx";
+import ProjectHome from "./components/ProjectHome.jsx";
 import { GoogleAuthProvider, useGoogleAuth } from "./lib/google/AuthContext.jsx";
-import { projectIdFromUrl, setActiveStore } from "./lib/store.js";
+import { projectIdFromUrl, localOnlyFromUrl, setActiveStore } from "./lib/store.js";
 import { isGoogleConfigured, getAccessToken } from "./lib/google/auth.js";
+import { projectHomeFolderId } from "./lib/projectHome.js";
 import { initTheme } from "./lib/theme.js";
 
 initTheme();   // index.html set data-theme pre-paint; this keeps it live
@@ -20,6 +22,10 @@ initTheme();   // index.html set data-theme pre-paint; this keeps it live
 // domain Google sign-in, build a Drive-backed store, and swap it into the shared
 // `store` binding BEFORE mounting the canvas — so the canvas's mount-time load
 // reads/writes that project's Drive folder with no changes to the canvas.
+//
+// When the build ALSO names the team's Projects folder (VITE_DRIVE_ROOT_FOLDER_ID),
+// bare `/` becomes a signed-in project browser (ProjectHome) that emits those
+// same `?project=` links; `/?local=1` skips it for the anonymous local canvas.
 
 const centered = {
   minHeight: "100vh", display: "flex", flexDirection: "column",
@@ -42,16 +48,21 @@ function Centered({ title, body }) {
   );
 }
 
-function SignInScreen({ ready, signIn }) {
+// Defaults are the deep-linked-project copy (ProjectGate renders it bare);
+// the project-home gate passes its own title/body, and `footer` slots an
+// extra element under the button (the home flavor's skip link).
+function SignInScreen({
+  ready, signIn,
+  title = "This project is stored in your team's Google Drive",
+  body = "Sign in with your team Google account to open it. Only accounts on the team domain can sign in.",
+  footer = null,
+}) {
   const [err, setErr] = useState("");
   return (
     <div style={centered}>
       {brand}
-      <div style={{ fontSize: 15, fontWeight: 600 }}>This project is stored in your team's Google Drive</div>
-      <div style={{ fontSize: 13, color: "var(--ink-muted)", maxWidth: 460 }}>
-        Sign in with your team Google account to open it. Only accounts on the team
-        domain can sign in.
-      </div>
+      <div style={{ fontSize: 15, fontWeight: 600 }}>{title}</div>
+      <div style={{ fontSize: 13, color: "var(--ink-muted)", maxWidth: 460 }}>{body}</div>
       <button type="button" disabled={!ready}
         onClick={() => { setErr(""); signIn().catch((e) => setErr(String(e?.message || e))); }}
         style={{ padding: "9px 16px", border: "1px solid var(--ink)", background: "var(--ink)",
@@ -60,6 +71,7 @@ function SignInScreen({ ready, signIn }) {
         Sign in with Google
       </button>
       {err ? <div style={{ fontSize: 12.5, color: "var(--c-danger)", maxWidth: 460 }}>Sign-in failed: {err}</div> : null}
+      {footer}
     </div>
   );
 }
@@ -91,8 +103,14 @@ function ProjectGate({ projectId }) {
           import("./lib/cloudStore.js"),
         ]);
         const drive = createDrive({ getToken: getAccessToken });
-        setActiveStore(createCloudStore(projectId, drive));
-        if (live) setStoreReady(true);
+        // Install + arm only while this effect is still current: a stale
+        // continuation (user navigated away before the imports resolved) must
+        // not re-install its cloud store over whatever replaced it — the
+        // unmount cleanup already restored the local store.
+        if (live) {
+          setActiveStore(createCloudStore(projectId, drive));
+          setStoreReady(true);
+        }
       } catch (e) {
         if (live) setError(String(e?.message || e));
       }
@@ -113,11 +131,41 @@ function ProjectGate({ projectId }) {
   return <TakeoffCanvas key={projectId} />;
 }
 
+// `/` on a build configured with a Projects root: sign in, then browse the
+// team's project folders. No store swap here — opening a project navigates to
+// `?project=`, where ProjectGate installs the Drive-backed store as usual.
+function ProjectHomeGate() {
+  const { user, ready, signIn } = useGoogleAuth();
+  if (!user) {
+    return (
+      <SignInScreen ready={ready} signIn={signIn}
+        title="Your team's projects live in Google Drive"
+        body="Sign in with your team Google account to browse and open them. Only accounts on the team domain can sign in."
+        footer={
+          // Plain anchor on purpose: nobody is signed in yet, so the full
+          // reload it causes has no token or state to lose.
+          <a href="/?local=1" style={{ fontSize: 12.5, color: "var(--ink-muted)" }}>
+            skip — use the local canvas
+          </a>
+        } />
+    );
+  }
+  return <ProjectHome />;
+}
+
 function App() {
+  // Subscribe to navigation: react-router bails out of re-rendering the same
+  // element on navigate(), so App must watch the location itself. The store.js
+  // URL helpers read window.location, which history has already updated by the
+  // time this re-render runs — useLocation() is purely the re-render trigger.
+  useLocation();
   const projectId = projectIdFromUrl();
-  // Cloud project mode only when configured AND deep-linked; otherwise the
-  // classic anonymous local-only canvas, byte-for-byte unchanged.
+  // ?project= deep link → the cloud project (beats ?local=1 by gate order).
   if (projectId && isGoogleConfigured()) return <ProjectGate projectId={projectId} />;
+  // Configured Projects root at `/` → the project browser (unless ?local=1).
+  if (isGoogleConfigured() && projectHomeFolderId() && !localOnlyFromUrl()) return <ProjectHomeGate />;
+  // Otherwise the classic anonymous local-only canvas — unconfigured builds
+  // render this unconditionally, byte-for-byte unchanged.
   return <TakeoffCanvas />;
 }
 

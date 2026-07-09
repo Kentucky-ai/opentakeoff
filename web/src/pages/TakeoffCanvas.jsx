@@ -10,6 +10,7 @@
 // Geometry math reads tfRef (always current), so drawing stays accurate.
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { store, isStaleTabError, STALE_TAB_MESSAGE } from "../lib/store.js";
@@ -37,6 +38,7 @@ import RfiPanel from "../components/RfiPanel.jsx";
 import StampPanel from "../components/StampPanel.jsx";
 import DrivePicker from "../components/DrivePicker.jsx";
 import AuthChip from "../components/AuthChip.jsx";
+import { projectHomeFolderId } from "../lib/projectHome.js";
 import { getTheme, toggleTheme, onThemeChange } from "../lib/theme.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -206,6 +208,9 @@ export default function TakeoffCanvas() {
   // PDF in the folder (spec books, as-builts). Stable per mount (store is swapped
   // in before the canvas mounts).
   const cloudMode = typeof store.listFolder === "function";
+  // Client-side exit back to the project home (`/`) — main.jsx's gate cleanup
+  // restores the local store on the way out, so this navigation is safe.
+  const navigate = useNavigate();
   const [openTabs, setOpenTabs] = useState([]);   // sheetKeys open as tabs across the top
   const [galleryLabels, setGalleryLabels] = useState({}); // sheetKey → title-block number, all files
   const [pageLabels, setPageLabels] = useState({}); // { pageNum: "A003" } from the title block
@@ -1109,12 +1114,18 @@ export default function TakeoffCanvas() {
   // Flush a pending debounced save on navigate-away (unmount), and warn before a
   // tab close while a save is in flight — so the tail of a tracing session is never lost.
   useEffect(() => {
+    // Pin the store this canvas mounted against: on a client-side exit from a
+    // cloud project, React runs the PARENT (ProjectGate) cleanup first, which
+    // resets the live `store` binding to localStore — flushing through the live
+    // binding here would write the cloud project's annotations into the local
+    // store. In-life saves keep the live binding (it never swaps mid-mount).
+    const mountStore = store;
     const onBeforeUnload = (e) => { if (saveStateRef.current === "saving") { e.preventDefault(); e.returnValue = ""; } };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => {
       window.removeEventListener("beforeunload", onBeforeUnload);
       if (hydrated.current && saveStateRef.current === "saving" && saveDataRef.current) {
-        store.saveAnnotations(saveDataRef.current).catch(() => {});   // best-effort flush
+        mountStore.saveAnnotations(saveDataRef.current).catch(() => {});   // best-effort flush
       }
     };
   }, []);
@@ -2680,6 +2691,13 @@ export default function TakeoffCanvas() {
       <div style={{ display: "flex", gap: 7, alignItems: "center", padding: "8px 14px", flexWrap: "wrap", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
         <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--ink)", letterSpacing: "-0.02em" }}>open<span style={{ fontStyle: "italic", color: "var(--cobalt)" }}>takeoff</span></strong>
         <AuthChip />
+        {cloudMode && projectHomeFolderId() && (
+          <button type="button" onClick={() => navigate("/")}
+            title="Back to your team's projects"
+            style={{ padding: "6px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12.5, lineHeight: 1 }}>
+            Projects
+          </button>
+        )}
         <input name="sheet-file" ref={fileInputRef} type="file" accept=".pdf,application/pdf,image/*,.zip,application/zip,application/x-zip-compressed" multiple style={{ display: "none" }}
           onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }} />
         <button type="button" onClick={() => fileInputRef.current?.click()} title="Open plans — PDF, image, or a .zip plan set (or just drag them onto the canvas)"
@@ -3525,6 +3543,7 @@ export default function TakeoffCanvas() {
           openTabs={openTabs} onOpen={openSheets} onClose={() => setView("canvas")} canClose={openTabs.length > 0}
           onAddFiles={handleFiles}
           onAddFromDrive={cloudMode ? () => setView("picker") : undefined}
+          onBackToProjects={cloudMode && projectHomeFolderId() ? () => navigate("/") : undefined}
         />
       )}
 

@@ -44,6 +44,7 @@ jobs:
           VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
           VITE_GOOGLE_HD: ${{ vars.VITE_GOOGLE_HD }}
           VITE_PRICING_FILE_ID: ${{ vars.VITE_PRICING_FILE_ID }}
+          VITE_DRIVE_ROOT_FOLDER_ID: ${{ vars.VITE_DRIVE_ROOT_FOLDER_ID }}
       - name: Deploy to Netlify
         # Pinned exact version — bump deliberately; a floating tag would let a
         # compromised release run with the deploy token.
