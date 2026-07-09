@@ -109,7 +109,7 @@ export default function SnapshotPanel({ open, onClose, buildPayload, currentLabe
           {!cmp ? (
             <>
               <div style={{ display: "flex", gap: 8 }}>
-                <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Before Addendum 1"
+                <input name="snapshot-label" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Before Addendum 1"
                   onKeyDown={(e) => { if (e.key === "Enter" && !saving) save(); }}
                   className="field-input" style={{ flex: 1 }} />
                 <button className="btn-primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save snapshot"}</button>

@@ -181,7 +181,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   const colCheckbox = (c) => (
     <React.Fragment key={c.key}>
       <label style={{ display: "flex", gap: 8, alignItems: "center", padding: "3px 0", cursor: "pointer" }}>
-        <input type="checkbox" checked={colPrefs[c.key] ?? c.defaultVisible} onChange={() => toggleCol(c)} />
+        <input name="report-column-toggle" type="checkbox" checked={colPrefs[c.key] ?? c.defaultVisible} onChange={() => toggleCol(c)} />
         <span>{c.header}</span>
       </label>
       {COL_HINTS[c.key] && (
@@ -195,7 +195,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
       <div className="report-toolbar" style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", borderBottom: "1px solid var(--ink)", background: "var(--paper-bright)" }}>
         <Icon name="takeoffs" size={18} />
         <strong style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)" }}>Takeoff report</strong>
-        <input value={projectName} onChange={(e) => onProjectName(e.target.value)} placeholder="Project name (optional)"
+        <input name="project-name" value={projectName} onChange={(e) => onProjectName(e.target.value)} placeholder="Project name (optional)"
           className="field-input" style={{ width: 260, padding: "5px 9px", fontSize: 13 }} />
         <div style={{ flex: 1 }} />
         <button className="btn-ghost" onClick={() => setShowInfo(true)}
@@ -205,7 +205,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
         <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap" }}
           title="Break the condition table into sections with subtotals">
           Group:
-          <select value={groupBy} onChange={(e) => { setGroupByRaw(e.target.value); saveGroupBy(e.target.value); }}
+          <select name="report-group-by" value={groupBy} onChange={(e) => { setGroupByRaw(e.target.value); saveGroupBy(e.target.value); }}
             style={{ padding: "5px 6px", border: "1px solid var(--ink-faint)", background: "transparent", fontSize: 12, maxWidth: 160 }}>
             <option value="">None</option>
             <option value="sheet">Sheet</option>
@@ -256,7 +256,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
         {onMarkedSet && markups.length > 0 && (
           <label title="Include your markups (clouds, callouts, notes, highlights) in the Marked Set PDF. Independent of the canvas layer toggle."
             style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--ink-muted)", cursor: "pointer", whiteSpace: "nowrap" }}>
-            <input type="checkbox" checked={includeMarkups} onChange={(e) => setIncludeMarkups(e.target.checked)} />
+            <input name="include-markups" type="checkbox" checked={includeMarkups} onChange={(e) => setIncludeMarkups(e.target.checked)} />
             Markups
           </label>
         )}
@@ -621,18 +621,18 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
           <div style={section}>Company — yours, saved on this device</div>
           <label style={row}>
             <span className="field-label">Name</span>
-            <input value={company.name || ""} onChange={(e) => setAndSave((prev) => ({ ...prev, name: e.target.value }))}
+            <input name="company-name" autoComplete="organization" value={company.name || ""} onChange={(e) => setAndSave((prev) => ({ ...prev, name: e.target.value }))}
               placeholder="Your company" className="field-input" style={{ marginTop: 4 }} />
           </label>
           <label style={row}>
             <span className="field-label">Address</span>
-            <textarea value={company.address || ""} onChange={(e) => setAndSave((prev) => ({ ...prev, address: e.target.value }))}
+            <textarea name="company-address" autoComplete="street-address" value={company.address || ""} onChange={(e) => setAndSave((prev) => ({ ...prev, address: e.target.value }))}
               rows={2} placeholder={"Street\nCity, ST"} className="field-input" style={{ marginTop: 4, resize: "vertical" }} />
           </label>
           <div style={row}>
             <span className="field-label">Logo</span>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
-              <input type="file" accept="image/*" onChange={onLogoFile} style={{ fontSize: 12, minWidth: 0 }} />
+              <input name="company-logo" type="file" accept="image/*" onChange={onLogoFile} style={{ fontSize: 12, minWidth: 0 }} />
               {company.logo && (
                 <>
                   <img src={company.logo} alt="Company logo" style={{ width: 120, height: "auto", flex: "none", border: "1px solid var(--ink-faint)", background: "#fff" }} />
@@ -647,21 +647,21 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
           <div style={{ ...section, borderTop: "1px solid var(--ink-faint)", marginTop: 14, paddingTop: 12 }}>Client / job — saved with this project</div>
           <label style={row}>
             <span className="field-label">Client name</span>
-            <input value={clientInfo.client_name || ""} onChange={client("client_name")} className="field-input" style={{ marginTop: 4 }} />
+            <input name="client-name" autoComplete="off" value={clientInfo.client_name || ""} onChange={client("client_name")} className="field-input" style={{ marginTop: 4 }} />
           </label>
           <label style={row}>
             <span className="field-label">Client address</span>
-            <textarea value={clientInfo.client_address || ""} onChange={client("client_address")} rows={2}
+            <textarea name="client-address" autoComplete="off" value={clientInfo.client_address || ""} onChange={client("client_address")} rows={2}
               className="field-input" style={{ marginTop: 4, resize: "vertical" }} />
           </label>
           <div style={{ display: "flex", gap: 12 }}>
             <label style={{ ...row, flex: 1 }}>
               <span className="field-label">PO / reference</span>
-              <input value={clientInfo.reference || ""} onChange={client("reference")} className="field-input" style={{ marginTop: 4 }} />
+              <input name="client-reference" autoComplete="off" value={clientInfo.reference || ""} onChange={client("reference")} className="field-input" style={{ marginTop: 4 }} />
             </label>
             <label style={{ ...row, flex: 1 }}>
               <span className="field-label">Date</span>
-              <input value={clientInfo.date || ""} onChange={client("date")} placeholder={'e.g. "Bid 7/12"'}
+              <input name="client-date" autoComplete="off" value={clientInfo.date || ""} onChange={client("date")} placeholder={'e.g. "Bid 7/12"'}
                 className="field-input" style={{ marginTop: 4 }} />
             </label>
           </div>
@@ -716,11 +716,11 @@ function ContributeModal({ conditions, shapes, onClose }) {
           )}
           <label style={{ display: "block", margin: "6px 0" }}>
             <span className="field-label">Credit (optional)</span>
-            <input value={contributor} onChange={(e) => setContributor(e.target.value)} placeholder="Name or company to credit"
+            <input name="contributor" autoComplete="name" value={contributor} onChange={(e) => setContributor(e.target.value)} placeholder="Name or company to credit"
               className="field-input" style={{ marginTop: 4 }} />
           </label>
           <label style={{ display: "flex", gap: 8, alignItems: "flex-start", margin: "12px 0", cursor: "pointer" }}>
-            <input type="checkbox" checked={attest} onChange={(e) => setAttest(e.target.checked)} style={{ marginTop: 3 }} />
+            <input name="attest" type="checkbox" checked={attest} onChange={(e) => setAttest(e.target.checked)} style={{ marginTop: 3 }} />
             <span>I have the right to share this takeoff data and am contributing it to the open flooring model.</span>
           </label>
           {msg && <p style={{ fontSize: 12.5, color: state === "error" ? "var(--c-danger)" : "var(--c-positive)" }}>{msg}</p>}

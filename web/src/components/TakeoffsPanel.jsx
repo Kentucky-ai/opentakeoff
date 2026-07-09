@@ -86,26 +86,26 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
         return (
           <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
             {lm && <span title={`Linked to “${lm.name}” in the material library — amber fields differ from the library values`} style={{ color: "var(--ink-muted)", fontSize: 11, cursor: "default" }}>⛓</span>}
-            <input value={m.name} onChange={(e) => onUpdate(m.id, { name: e.target.value })} placeholder="Material (e.g. Adhesive)" style={{ ...ip, width: 160, ...(ov("name") ? { border: OV } : {}) }} />
+            <input name="material-name" value={m.name} onChange={(e) => onUpdate(m.id, { name: e.target.value })} placeholder="Material (e.g. Adhesive)" style={{ ...ip, width: 160, ...(ov("name") ? { border: OV } : {}) }} />
             {ov("name") && rv(m, "name")}
             <span style={{ color: "var(--ink-muted)" }}>1</span>
-            <input value={m.unit} onChange={(e) => onUpdate(m.id, { unit: e.target.value })} placeholder="unit" style={{ ...ip, width: 60, ...(ov("unit") ? { border: OV } : {}) }} />
+            <input name="material-unit" value={m.unit} onChange={(e) => onUpdate(m.id, { unit: e.target.value })} placeholder="unit" style={{ ...ip, width: 60, ...(ov("unit") ? { border: OV } : {}) }} />
             {ov("unit") && rv(m, "unit")}
             <span style={{ color: "var(--ink-muted)" }}>per</span>
-            <input type="number" min="0" step="any" value={m.per || ""} onChange={(e) => onUpdate(m.id, { per: Math.max(0, parseFloat(e.target.value) || 0) })} placeholder="0" style={{ ...ip, width: 66, ...(ov("per") ? { border: OV } : {}) }} />
+            <input name="material-per" type="number" min="0" step="any" value={m.per || ""} onChange={(e) => onUpdate(m.id, { per: Math.max(0, parseFloat(e.target.value) || 0) })} placeholder="0" style={{ ...ip, width: 66, ...(ov("per") ? { border: OV } : {}) }} />
             {ov("per") && rv(m, "per")}
-            <select value={m.basis || "area"} onChange={(e) => onUpdate(m.id, { basis: e.target.value })} style={{ ...ip, background: "var(--paper-bright)", ...(ov("basis") ? { border: OV } : {}) }}>
+            <select name="material-basis" value={m.basis || "area"} onChange={(e) => onUpdate(m.id, { basis: e.target.value })} style={{ ...ip, background: "var(--paper-bright)", ...(ov("basis") ? { border: OV } : {}) }}>
               <option value="area">floor SF</option>
               <option value="linear">linear LF</option>
               <option value="count">each</option>
             </select>
             {ov("basis") && rv(m, "basis")}
             <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: ov("round") ? "#c47a10" : "var(--ink-muted)" }} title="Round up to whole units (you buy whole buckets/bags)">
-              <input type="checkbox" checked={m.round !== false} onChange={(e) => onUpdate(m.id, { round: e.target.checked })} />round up
+              <input name="material-round" type="checkbox" checked={m.round !== false} onChange={(e) => onUpdate(m.id, { round: e.target.checked })} />round up
             </label>
             {ov("round") && rv(m, "round")}
             {isAdhesive(m.name) && (m.basis || "area") === "area" && (
-              <select value={TROWEL_PRESETS.some((t) => t.label === m.note) ? m.note : ""}
+              <select name="trowel-preset" value={TROWEL_PRESETS.some((t) => t.label === m.note) ? m.note : ""}
                 onChange={(e) => { const t = TROWEL_PRESETS.find((x) => x.label === e.target.value); if (t) onUpdate(m.id, { note: t.label, per: t.per }); }}
                 title="Trowel notch — sets the adhesive coverage (SF/gal). Verify against the data sheet."
                 style={{ ...ip, background: "var(--paper-bright)" }}>
@@ -113,7 +113,7 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
                 {TROWEL_PRESETS.map((t) => <option key={t.label} value={t.label}>{t.label} · {t.per} SF/gal</option>)}
               </select>
             )}
-            <input value={m.note || ""} onChange={(e) => onUpdate(m.id, { note: e.target.value })} placeholder="note (coats, trowel…)" style={{ ...ip, width: 150, ...(ov("note") ? { border: OV } : {}) }} />
+            <input name="material-note" value={m.note || ""} onChange={(e) => onUpdate(m.id, { note: e.target.value })} placeholder="note (coats, trowel…)" style={{ ...ip, width: 150, ...(ov("note") ? { border: OV } : {}) }} />
             {ov("note") && rv(m, "note")}
             {!lm && onPromote && (
               <button onClick={() => onPromote(m)} title="Save this material to the library (this line becomes linked)"
@@ -127,7 +127,7 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
       <button onClick={onAdd}
         style={{ marginTop: 2, padding: "4px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>+ add material</button>
       {onAttach && (library || []).length > 0 && (
-        <select value="" onChange={(e) => { if (e.target.value) onAttach(e.target.value); }}
+        <select name="attach-material" value="" onChange={(e) => { if (e.target.value) onAttach(e.target.value); }}
           title="Attach a material from the library — the line copies the library values and stays linked"
           style={{ ...ip, marginLeft: 6, background: "var(--paper-bright)", color: "var(--ink-muted)" }}>
           <option value="">+ from library…</option>
@@ -149,7 +149,7 @@ function ColumnSelects({ columns, cond, onAssign }) {
         return (
           <label key={cc.id} style={{ display: "inline-flex", alignItems: "center", gap: 5, marginRight: 12, marginBottom: 6 }}>
             <span style={{ color: "var(--ink-muted)" }}>{columnLabel(cc)}</span>
-            <select value={v} onChange={(e) => onAssign(cc.id, e.target.value)} style={{ ...ip, background: "var(--paper-bright)" }}>
+            <select name="assign-column-value" value={v} onChange={(e) => onAssign(cc.id, e.target.value)} style={{ ...ip, background: "var(--paper-bright)" }}>
               <option value="">Unassigned</option>
               {cc.values.map((val) => <option key={val} value={val}>{val}</option>)}
               {v && !cc.values.includes(v) && <option value={v}>{v} (removed)</option>}
@@ -167,7 +167,7 @@ function AddValueInput({ onAdd }) {
   const commit = () => { const t = v.trim(); if (t) onAdd(t); setV(""); };
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-      <input value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && commit()} placeholder="add value" style={{ ...ip, width: 90 }} />
+      <input name="column-add-value" value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && commit()} placeholder="add value" style={{ ...ip, width: 90 }} />
       <button onClick={commit} title="Add this value to the list"
         style={{ padding: "2px 7px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>+</button>
     </span>
@@ -193,18 +193,18 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
       ? { padding: "6px 2px 2px", display: "flex", flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 10, rowGap: 8, fontSize: 11 }
       : { padding: "4px 12px 10px", display: "flex", flexDirection: "column", gap: 7, fontSize: 11 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <input value={c.finish_tag} onChange={(e) => onUpdateCond({ finish_tag: e.target.value })}
+        <input name="condition-finish-tag" value={c.finish_tag} onChange={(e) => onUpdateCond({ finish_tag: e.target.value })}
           title="Rename this condition / finish tag"
           style={{ width: 88, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontFamily: "var(--f-mono)", fontWeight: 700, fontSize: 12, color: "var(--ink)" }} />
         <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Multiply this condition by N identical units (measure one, ×N)">
           <span style={{ color: "var(--ink-muted)" }}>×</span>
-          <input type="number" min="1" step="1" value={c.multiplier || 1}
+          <input name="condition-multiplier" type="number" min="1" step="1" value={c.multiplier || 1}
             onChange={(e) => onUpdateCond({ multiplier: Math.max(1, parseInt(e.target.value, 10) || 1) })}
             style={{ width: 46, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Waste % — a flooring allowance added on top of the measured quantity in the Report. You choose it per condition (e.g. ~8% straight-lay LVP, ~15% diagonal, ~20% herringbone).">
           <span style={{ color: "var(--ink-muted)" }}>Waste</span>
-          <input type="number" min="0" step="1" value={c.waste_pct ?? 0}
+          <input name="condition-waste-pct" type="number" min="0" step="1" value={c.waste_pct ?? 0}
             onChange={(e) => onUpdateCond({ waste_pct: Math.max(0, parseFloat(e.target.value) || 0) })}
             style={{ width: 50, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
           <span style={{ color: "var(--ink-muted)" }}>%</span>
@@ -239,20 +239,20 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Line style — the outline dash for this finish's floor-area and linear takeoffs (canvas + Marked Set PDF). Surface walls and deducts keep their own dashing.">
           <span style={{ color: "var(--ink-muted)" }}>Style</span>
-          <select value={c.line_style || "solid"} onChange={(e) => onUpdateCond({ line_style: e.target.value })}
+          <select name="condition-line-style" value={c.line_style || "solid"} onChange={(e) => onUpdateCond({ line_style: e.target.value })}
             style={{ fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }}>
             {LINE_STYLE_IDS.map((id) => <option key={id} value={id}>{LINE_STYLES[id].label}</option>)}
           </select>
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Height (ft) — the default for NEW wall traces (SF = LF × H) and the vertical-SF display on floor areas. Walls keep the height they were drawn at — select a wall to change just that one.">
           <Icon name="height" size={13} /><span style={{ color: "var(--ink-muted)" }}>H</span>
-          <input type="number" min="0" step="0.25" value={c.height_ft ?? ""} placeholder="ft"
+          <input name="condition-height-ft" type="number" min="0" step="0.25" value={c.height_ft ?? ""} placeholder="ft"
             onChange={(e) => onSetCondParam("height_ft", e.target.value)}
             style={{ width: 54, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
         </span>
         <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Thickness (in) — a Linear run with thickness also computes border/feature-strip SF = LF × T/12. Changing it re-flows existing linear runs.">
           <Icon name="thickness" size={13} /><span style={{ color: "var(--ink-muted)" }}>T</span>
-          <input type="number" min="0" step="0.25" value={c.thickness_in ?? ""} placeholder="in"
+          <input name="condition-thickness-in" type="number" min="0" step="0.25" value={c.thickness_in ?? ""} placeholder="in"
             onChange={(e) => onSetCondParam("thickness_in", e.target.value)}
             style={{ width: 50, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
         </span>
@@ -515,7 +515,7 @@ function TakeoffsPanel({
         {/* view controls — search / natural sort / tag-family grouping.
             All VIEW-ONLY: the array order (hotkeys, payload) never changes. */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderBottom: "1px solid var(--ink-faint)", flexShrink: 0 }}>
-          <input value={condQuery} onChange={(e) => setCondQuery(e.target.value)} placeholder="filter conditions…"
+          <input name="condition-filter" value={condQuery} onChange={(e) => setCondQuery(e.target.value)} placeholder="filter conditions…"
             style={{ flex: 1, minWidth: 0, padding: "4px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
           {condQuery && <button onClick={() => setCondQuery("")} title="Clear the filter" style={btnClearX}>×</button>}
           <button onClick={() => onPanelPrefs((p) => ({ ...p, az: !p.az }))}
@@ -532,7 +532,7 @@ function TakeoffsPanel({
             <strong style={{ color: "#1f3fc7" }}>{liveChecked.length} selected</strong>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title="Set the waste % on every selected condition">
               <span style={{ color: "var(--ink-muted)" }}>Waste</span>
-              <input type="number" min="0" step="1" value={bulkWaste} onChange={(e) => setBulkWaste(e.target.value)} placeholder="%"
+              <input name="bulk-waste" type="number" min="0" step="1" value={bulkWaste} onChange={(e) => setBulkWaste(e.target.value)} placeholder="%"
                 onKeyDown={(e) => e.key === "Enter" && applyBulkWaste()}
                 style={{ width: 44, padding: "2px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 11 }} />
               <button onClick={applyBulkWaste} title="Apply waste % to the selection" style={{ padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11 }}>✓</button>
@@ -617,7 +617,7 @@ function TakeoffsPanel({
               Reusable materials, browser-wide. Attaching one to a condition copies its values and keeps a link — edits here only reach linked lines when you push them.
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px 8px" }}>
-              <input value={matLibQuery} onChange={(e) => setMatLibQuery(e.target.value)} placeholder="filter materials…"
+              <input name="material-library-filter" value={matLibQuery} onChange={(e) => setMatLibQuery(e.target.value)} placeholder="filter materials…"
                 style={{ flex: 1, minWidth: 0, padding: "4px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
               {matLibQuery && <button onClick={() => setMatLibQuery("")} title="Clear the filter" style={btnClearX}>×</button>}
             </div>
@@ -627,20 +627,20 @@ function TakeoffsPanel({
               return (
                 <div key={lm.id} style={{ padding: "8px 12px", borderTop: "1px solid var(--ink-faint)" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <input value={lm.name} onChange={(e) => onUpdateLibMaterial(lm.id, { name: e.target.value })} placeholder="Material (e.g. Adhesive)" style={{ ...ip, width: 150 }} />
+                    <input name="library-material-name" value={lm.name} onChange={(e) => onUpdateLibMaterial(lm.id, { name: e.target.value })} placeholder="Material (e.g. Adhesive)" style={{ ...ip, width: 150 }} />
                     <span style={{ color: "var(--ink-muted)" }}>1</span>
-                    <input value={lm.unit} onChange={(e) => onUpdateLibMaterial(lm.id, { unit: e.target.value })} placeholder="unit" style={{ ...ip, width: 54 }} />
+                    <input name="library-material-unit" value={lm.unit} onChange={(e) => onUpdateLibMaterial(lm.id, { unit: e.target.value })} placeholder="unit" style={{ ...ip, width: 54 }} />
                     <span style={{ color: "var(--ink-muted)" }}>per</span>
-                    <input type="number" min="0" step="any" value={lm.per || ""} onChange={(e) => onUpdateLibMaterial(lm.id, { per: Math.max(0, parseFloat(e.target.value) || 0) })} placeholder="0" style={{ ...ip, width: 62 }} />
-                    <select value={lm.basis || "area"} onChange={(e) => onUpdateLibMaterial(lm.id, { basis: e.target.value })} style={{ ...ip, background: "var(--paper-bright)" }}>
+                    <input name="library-material-per" type="number" min="0" step="any" value={lm.per || ""} onChange={(e) => onUpdateLibMaterial(lm.id, { per: Math.max(0, parseFloat(e.target.value) || 0) })} placeholder="0" style={{ ...ip, width: 62 }} />
+                    <select name="library-material-basis" value={lm.basis || "area"} onChange={(e) => onUpdateLibMaterial(lm.id, { basis: e.target.value })} style={{ ...ip, background: "var(--paper-bright)" }}>
                       <option value="area">floor SF</option>
                       <option value="linear">linear LF</option>
                       <option value="count">each</option>
                     </select>
                     <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--ink-muted)" }} title="Round up to whole units">
-                      <input type="checkbox" checked={lm.round !== false} onChange={(e) => onUpdateLibMaterial(lm.id, { round: e.target.checked })} />round up
+                      <input name="library-material-round" type="checkbox" checked={lm.round !== false} onChange={(e) => onUpdateLibMaterial(lm.id, { round: e.target.checked })} />round up
                     </label>
-                    <input value={lm.note || ""} onChange={(e) => onUpdateLibMaterial(lm.id, { note: e.target.value })} placeholder="note" style={{ ...ip, width: 120 }} />
+                    <input name="library-material-note" value={lm.note || ""} onChange={(e) => onUpdateLibMaterial(lm.id, { note: e.target.value })} placeholder="note" style={{ ...ip, width: 120 }} />
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5 }}>
                     <span style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)" }}>{n ? `⛓ ${n} linked line${n === 1 ? "" : "s"}` : "not linked yet"}</span>
@@ -672,7 +672,7 @@ function TakeoffsPanel({
             {conditionColumns.map((cc) => (
               <div key={cc.id} style={{ padding: "8px 12px", borderTop: "1px solid var(--ink-faint)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                  <input value={cc.name} onChange={(e) => onRenameColumn(cc.id, e.target.value)} placeholder="Column name (e.g. CSI Division)"
+                  <input name="column-name" value={cc.name} onChange={(e) => onRenameColumn(cc.id, e.target.value)} placeholder="Column name (e.g. CSI Division)"
                     style={{ padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12, flex: 1, minWidth: 0 }} />
                   <button onClick={() => onDeleteColumn(cc.id)} title="Delete this column (whole project)"
                     style={{ flexShrink: 0, padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "#b03a26", cursor: "pointer", fontSize: 12 }}>✕ column</button>

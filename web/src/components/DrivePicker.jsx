@@ -111,9 +111,9 @@ export default function DrivePicker({ listFolder, addSheets, existingNames, onAd
           pick the PDFs to open — specs &amp; as-builts stay unopened
         </span>
         <div style={{ flex: 1 }} />
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter by name…"
+        <input name="drive-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter by name…"
           style={{ padding: "6px 10px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", fontSize: 12.5, minWidth: 160 }} />
-        <select value={sort} onChange={(e) => setSort(e.target.value)} title="Sort files"
+        <select name="drive-sort" value={sort} onChange={(e) => setSort(e.target.value)} title="Sort files"
           style={{ padding: "6px 8px", border: "1px solid var(--ink-faint)", background: "transparent", fontSize: 12 }}>
           <option value="name">Name</option>
           <option value="size">Size</option>
@@ -168,7 +168,7 @@ export default function DrivePicker({ listFolder, addSheets, existingNames, onAd
               return (
                 <label key={f.id} style={{ ...rowBase, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.6 : 1 }}
                   title={conflict ? "Another selected PDF already uses this name — a project can't have two sheets with the same name" : undefined}>
-                  <input type="checkbox" checked={sel || inSet} disabled={disabled} onChange={() => togglePick(f)}
+                  <input name="drive-file-pick" type="checkbox" checked={sel || inSet} disabled={disabled} onChange={() => togglePick(f)}
                     style={{ width: 16, height: 16, cursor: disabled ? "default" : "pointer" }} />
                   <span style={{ fontFamily: "var(--f-mono)", fontSize: 13, color: "var(--ink)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.name}>{f.name}</span>
                   <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)", minWidth: 64, textAlign: "right" }}>{fmtSize(f.size)}</span>

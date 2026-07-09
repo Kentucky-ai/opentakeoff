@@ -77,21 +77,21 @@ export default function RfiPanel({ docked = false, rfis = [], markups = [], onUp
             </div>
 
             <label style={lbl}>Subject</label>
-            <input value={r.subject || ""} onChange={(e) => up(r, { subject: e.target.value })} placeholder="Short subject" style={{ ...field, marginBottom: 6 }} />
+            <input name="rfi-subject" value={r.subject || ""} onChange={(e) => up(r, { subject: e.target.value })} placeholder="Short subject" style={{ ...field, marginBottom: 6 }} />
 
             <label style={lbl}>Question</label>
-            <textarea value={r.question || ""} onChange={(e) => up(r, { question: e.target.value })} rows={2} placeholder="What are you asking?" style={{ ...field, marginBottom: 6, resize: "vertical" }} />
+            <textarea name="rfi-question" value={r.question || ""} onChange={(e) => up(r, { question: e.target.value })} rows={2} placeholder="What are you asking?" style={{ ...field, marginBottom: 6, resize: "vertical" }} />
 
             <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
               <div style={{ flex: 1 }}>
                 <label style={lbl}>Status</label>
-                <select value={st.id} onChange={(e) => up(r, { status: e.target.value })} style={field}>
+                <select name="rfi-status" value={st.id} onChange={(e) => up(r, { status: e.target.value })} style={field}>
                   {RFI_STATUSES.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
                 </select>
               </div>
               <div style={{ flex: 1 }}>
                 <label style={lbl}>Priority</label>
-                <select value={r.priority || "normal"} onChange={(e) => up(r, { priority: e.target.value })} style={field}>
+                <select name="rfi-priority" value={r.priority || "normal"} onChange={(e) => up(r, { priority: e.target.value })} style={field}>
                   {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
@@ -100,27 +100,27 @@ export default function RfiPanel({ docked = false, rfis = [], markups = [], onUp
             <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
               <div style={{ flex: 1 }}>
                 <label style={lbl}>Ball in court</label>
-                <input value={r.to || ""} onChange={(e) => up(r, { to: e.target.value })} placeholder="Architect / GC…" style={field} />
+                <input name="rfi-to" value={r.to || ""} onChange={(e) => up(r, { to: e.target.value })} placeholder="Architect / GC…" style={field} />
               </div>
               <div style={{ flex: 1 }}>
                 <label style={lbl}>Opened</label>
-                <input value={r.date || ""} onChange={(e) => up(r, { date: e.target.value })} placeholder="YYYY-MM-DD" style={field} />
+                <input name="rfi-date" value={r.date || ""} onChange={(e) => up(r, { date: e.target.value })} placeholder="YYYY-MM-DD" style={field} />
               </div>
             </div>
 
             <div style={{ display: "flex", gap: 14, alignItems: "center", marginBottom: 6 }}>
               <label style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 11.5 }}>
-                <input type="checkbox" checked={!!r.cost_impact} onChange={(e) => up(r, { cost_impact: e.target.checked })} />cost impact
+                <input name="rfi-cost-impact" type="checkbox" checked={!!r.cost_impact} onChange={(e) => up(r, { cost_impact: e.target.checked })} />cost impact
               </label>
               <label style={{ display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer", fontSize: 11.5 }}>
-                <input type="checkbox" checked={!!r.schedule_impact} onChange={(e) => up(r, { schedule_impact: e.target.checked })} />schedule impact
+                <input name="rfi-schedule-impact" type="checkbox" checked={!!r.schedule_impact} onChange={(e) => up(r, { schedule_impact: e.target.checked })} />schedule impact
               </label>
             </div>
 
             <label style={lbl}>Response</label>
-            <textarea value={r.response || ""} onChange={(e) => up(r, { response: e.target.value })} rows={2} placeholder="The answer, once received" style={{ ...field, marginBottom: 6, resize: "vertical" }} />
+            <textarea name="rfi-response" value={r.response || ""} onChange={(e) => up(r, { response: e.target.value })} rows={2} placeholder="The answer, once received" style={{ ...field, marginBottom: 6, resize: "vertical" }} />
             <label style={lbl}>Response date</label>
-            <input value={r.response_date || ""} onChange={(e) => up(r, { response_date: e.target.value })} placeholder="auto-stamps when set to Answered" style={{ ...field, marginBottom: 6 }} />
+            <input name="rfi-response-date" value={r.response_date || ""} onChange={(e) => up(r, { response_date: e.target.value })} placeholder="auto-stamps when set to Answered" style={{ ...field, marginBottom: 6 }} />
 
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
               <button onClick={() => up(r, { status: "closed" })} disabled={st.id === "closed"}

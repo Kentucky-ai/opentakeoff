@@ -84,7 +84,7 @@ export default function StampPanel({ docked = false, library = { stamps: [], set
     : { position: "absolute", left: 14, top: 14, width: 340, maxHeight: "calc(100% - 28px)", overflow: "auto", background: "var(--paper-bright)", border: "1px solid #1f3fc7", boxShadow: "0 6px 22px rgba(0,0,0,.16)", zIndex: 9, fontSize: 12.5 };
   // shared file input (both header modes wire the same import flow)
   const fileInput = (
-    <input ref={fileRef} type="file" accept="application/json,.json,image/svg+xml,.svg" style={{ display: "none" }}
+    <input name="stamp-import-file" ref={fileRef} type="file" accept="application/json,.json,image/svg+xml,.svg" style={{ display: "none" }}
       onChange={(e) => { const f = e.target.files?.[0]; if (f) { const isSvg = /\.svg$/i.test(f.name) || f.type === "image/svg+xml"; if (isSvg) onImportSvg?.(f); else onImport(f); } e.target.value = ""; }} />
   );
 
@@ -140,7 +140,7 @@ export default function StampPanel({ docked = false, library = { stamps: [], set
             <StampPreview elements={s.elements} />
             <div style={{ flex: 1, minWidth: 0 }}>
               {editId === s.id ? (
-                <input autoFocus defaultValue={s.name}
+                <input name="stamp-rename" autoComplete="off" autoFocus defaultValue={s.name}
                   onKeyDown={(e) => { if (e.key === "Enter") { onRename(s.id, e.currentTarget.value); setEditId(null); } else if (e.key === "Escape") setEditId(null); }}
                   onBlur={(e) => { onRename(s.id, e.currentTarget.value); setEditId(null); }}
                   style={{ width: "100%", fontSize: 12.5, padding: "1px 4px", border: "1px solid #1f3fc7", outline: "none" }} />

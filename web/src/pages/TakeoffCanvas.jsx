@@ -2675,7 +2675,7 @@ export default function TakeoffCanvas() {
       <div style={{ display: "flex", gap: 7, alignItems: "center", padding: "8px 14px", flexWrap: "wrap", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
         <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--ink)", letterSpacing: "-0.02em" }}>open<span style={{ fontStyle: "italic", color: "var(--cobalt)" }}>takeoff</span></strong>
         <AuthChip />
-        <input ref={fileInputRef} type="file" accept=".pdf,application/pdf,image/*,.zip,application/zip,application/x-zip-compressed" multiple style={{ display: "none" }}
+        <input name="sheet-file" ref={fileInputRef} type="file" accept=".pdf,application/pdf,image/*,.zip,application/zip,application/x-zip-compressed" multiple style={{ display: "none" }}
           onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }} />
         <button type="button" onClick={() => fileInputRef.current?.click()} title="Open plans — PDF, image, or a .zip plan set (or just drag them onto the canvas)"
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
@@ -2694,14 +2694,14 @@ export default function TakeoffCanvas() {
             style={{ padding: "6px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12.5 }}>Regroup ({lastGroup.length})</button>
         )}
         {sheets.length > 1 && !sheetGroup.length && (
-          <select value={active} onChange={(e) => { setActive(e.target.value); setPage(1); }} style={{ padding: 6, border: "1px solid var(--ink-faint)", background: "transparent", maxWidth: 220, fontSize: 12 }}>
+          <select name="active-sheet" value={active} onChange={(e) => { setActive(e.target.value); setPage(1); }} style={{ padding: 6, border: "1px solid var(--ink-faint)", background: "transparent", maxWidth: 220, fontSize: 12 }}>
             {sheets.map((s) => <option key={s.name} value={s.name}>{s.name}</option>)}
           </select>
         )}
         {!sheetGroup.length && pageCount > 1 && (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
             <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} style={{ padding: "5px 8px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer" }}><Icon name="chevronLeft" size={12} /></button>
-            <select value={page} onChange={(e) => setPage(parseInt(e.target.value, 10))} style={{ padding: "5px 6px", border: "1px solid var(--ink-faint)", background: "transparent", fontFamily: "var(--f-mono,monospace)", fontSize: 12 }}>
+            <select name="sheet-page" value={page} onChange={(e) => setPage(parseInt(e.target.value, 10))} style={{ padding: "5px 6px", border: "1px solid var(--ink-faint)", background: "transparent", fontFamily: "var(--f-mono,monospace)", fontSize: 12 }}>
               {Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{pageLabels[n] ? `${pageLabels[n]}  ·  ${n}/${pageCount}` : `Sheet ${n} / ${pageCount}`}</option>)}
             </select>
             <button type="button" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page >= pageCount} style={{ padding: "5px 8px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer" }}><Icon name="chevronRight" size={12} /></button>
@@ -2768,7 +2768,7 @@ export default function TakeoffCanvas() {
             <span title={"One-Click fill sensitivity — how far a fill reaches past a room's hatch pattern.\nStrict: stop at the linework (original behavior).\nBalanced: recover hatch-lined rooms to the walls (default).\nAggressive: cross more pattern and tolerate more growth.\nLower it if fills spill; raise it if hatched rooms come up short."}
               style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 10px", border: "1px solid var(--ink-faint)", lineHeight: 1 }}>
               <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)" }}>Fill</span>
-              <input type="range" min={SENS_STRICT} max={SENS_AGGRESSIVE} step={0.01} value={fillSens} list="fill-sens-notches"
+              <input name="fill-sensitivity" type="range" min={SENS_STRICT} max={SENS_AGGRESSIVE} step={0.01} value={fillSens} list="fill-sens-notches"
                 onChange={(e) => setFillSens(snap(parseFloat(e.target.value)))}
                 style={{ width: 108, accentColor: "var(--cobalt)", cursor: "pointer" }} />
               <datalist id="fill-sens-notches"><option value={SENS_STRICT} /><option value={SENS_BALANCED} /><option value={SENS_AGGRESSIVE} /></datalist>
@@ -2778,7 +2778,7 @@ export default function TakeoffCanvas() {
         })()}
         {vRule}
         {/* scale group: standard dropdown + plan-note chip + calibrate */}
-        <select value={stdValue} onChange={(e) => { const f = STANDARD_SCALES.find((s) => s.label === e.target.value); if (f) { setScales((s) => ({ ...s, [focusPanel.key]: f.upp })); setScaleSources((s) => ({ ...s, [focusPanel.key]: "standard" })); } }}
+        <select name="standard-scale" value={stdValue} onChange={(e) => { const f = STANDARD_SCALES.find((s) => s.label === e.target.value); if (f) { setScales((s) => ({ ...s, [focusPanel.key]: f.upp })); setScaleSources((s) => ({ ...s, [focusPanel.key]: "standard" })); } }}
           title={`Set the scale for ${labelFor(focusPanel)} — remembered per sheet${groupKeys.length > 1 ? " (targets the sheet you last clicked)" : ""}`}
           style={{ padding: 6, border: unitsPerPx ? "1px solid var(--c-positive)" : "1px solid var(--ink-faint)", background: "transparent", color: unitsPerPx ? "var(--c-positive)" : "var(--c-danger)", fontSize: 12 }}>
           <option value="">{unitsPerPx ? `scale set${stdValue ? "" : " · custom"} ✓` : `Set scale for ${labelFor(focusPanel)}…`}</option>
@@ -2946,7 +2946,7 @@ export default function TakeoffCanvas() {
         <div style={{ padding: "8px 14px", background: "var(--paper-bright)", borderBottom: "1px solid #f0d9c0", fontSize: 14 }}>
           {calib.length < 2 ? <span>Custom scale: click two points along a known dimension ({calib.length}/2). Tip: use the longest dimension. (Or just pick a standard scale above.)</span> : (
             <span>Real length:{" "}
-              <input type="number" value={pendingLen} onChange={(e) => setPendingLen(e.target.value)} onKeyDown={(e) => e.key === "Enter" && applyCalibration()} placeholder="feet" autoFocus style={{ width: 90, padding: 5, borderRadius: 0, border: "1px solid var(--ink-faint)" }} /> ft
+              <input name="calibration-length" type="number" value={pendingLen} onChange={(e) => setPendingLen(e.target.value)} onKeyDown={(e) => e.key === "Enter" && applyCalibration()} placeholder="feet" autoFocus style={{ width: 90, padding: 5, borderRadius: 0, border: "1px solid var(--ink-faint)" }} /> ft
               <button onClick={applyCalibration} style={{ marginLeft: 8, padding: "5px 12px", borderRadius: 0, border: "none", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer" }}>Apply</button>
               <button onClick={() => setCalib([])} style={{ marginLeft: 6, padding: "5px 10px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer" }}>Reset</button>
             </span>
@@ -2999,7 +2999,7 @@ export default function TakeoffCanvas() {
                            markup here may be off-screen or on another sheet (no click point).
                            Enter/blur commit, Esc cancels; INPUT is guarded from the global keys. */}
                        {panelEditId === m.id ? (
-                         <input autoFocus defaultValue={m.text || ""}
+                         <input name="markup-text" autoComplete="off" autoFocus defaultValue={m.text || ""}
                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); } else if (e.key === "Escape") { e.preventDefault(); e.currentTarget.value = m.text || ""; setPanelEditId(null); } }}
                            onBlur={(e) => { updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); }}
                            style={{ flex: 1, minWidth: 0, fontSize: 12.5, padding: "1px 4px", border: "1px solid #1f3fc7", borderRadius: 0, outline: "none" }} />
@@ -3016,20 +3016,20 @@ export default function TakeoffCanvas() {
                        <span style={{ fontSize: 10.5, color: "var(--ink-muted)", marginRight: 2 }}>Color</span>
                        <button title="Auto (linkage color)" onClick={() => updateMarkup(m.id, { color: "" })} style={{ width: 26, height: 15, borderRadius: 4, background: "var(--paper-bright)", border: !m.color ? "2px solid #0e1a2e" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 8.5, lineHeight: "11px", color: "var(--ink-muted)" }}>auto</button>
                        {PALETTE.map((c) => <button key={c} title={c} onClick={() => updateMarkup(m.id, { color: c })} style={{ width: 15, height: 15, borderRadius: 4, background: c, border: m.color === c ? "2px solid #0e1a2e" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
-                       <select value={m.line_style || "solid"} onChange={(e) => updateMarkup(m.id, { line_style: e.target.value })} title="Line style" style={{ marginLeft: 4, fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }}>
+                       <select name="markup-line-style" value={m.line_style || "solid"} onChange={(e) => updateMarkup(m.id, { line_style: e.target.value })} title="Line style" style={{ marginLeft: 4, fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }}>
                          {LINE_STYLE_IDS.map((id) => <option key={id} value={id}>{LINE_STYLES[id].label}</option>)}
                        </select>
                        {/* line weight — a multiplier over the element's base stroke width (default
                            ×1, clamped 0.5–3); additive, absent = ×1 so legacy markups are unchanged */}
                        <span style={{ fontSize: 10.5, color: "var(--ink-muted)", marginLeft: 4 }}>Weight</span>
-                       <select value={String(snapWeight(m.weight))} onChange={(e) => updateMarkup(m.id, { weight: Number(e.target.value) })} title="Line weight (× base)" style={{ fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }}>
+                       <select name="markup-weight" value={String(snapWeight(m.weight))} onChange={(e) => updateMarkup(m.id, { weight: Number(e.target.value) })} title="Line weight (× base)" style={{ fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }}>
                          {WEIGHT_STEPS.map((wv) => <option key={wv} value={wv}>{wv}×</option>)}
                        </select>
                        {/* revision-delta △n — clouds only; blank clears it (no delta drawn) */}
                        {m.type === "cloud" && (
                          <>
                            <span style={{ fontSize: 10.5, color: "var(--ink-muted)", marginLeft: 4 }} title="Revision-delta number (△) drawn at a cloud corner">Rev △</span>
-                           <input type="number" min="0" step="1" value={Number.isFinite(m.rev) ? m.rev : ""} placeholder="—"
+                           <input name="markup-rev" type="number" min="0" step="1" value={Number.isFinite(m.rev) ? m.rev : ""} placeholder="—"
                              onChange={(e) => { const raw = e.target.value; updateMarkup(m.id, { rev: raw === "" ? undefined : Math.max(0, Math.floor(Number(raw) || 0)) }); }}
                              title="Revision number for the △ delta (blank = none)"
                              style={{ width: 40, fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }} />
@@ -3052,7 +3052,7 @@ export default function TakeoffCanvas() {
                              <>
                                <button onClick={() => raiseRfi(m)} style={{ ...ctrl, color: "#1f3fc7", fontWeight: 600 }} title="Create a new RFI from this markup">Raise RFI</button>
                                {rfis.length > 0 && (
-                                 <select value="" onChange={(e) => { if (e.target.value) linkRfi(m, e.target.value); }}
+                                 <select name="link-rfi" value="" onChange={(e) => { if (e.target.value) linkRfi(m, e.target.value); }}
                                    title="Link this markup to an existing RFI" style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 150 }}>
                                    <option value="">Link existing…</option>
                                    {rfis.map((r) => <option key={r.id} value={r.id}>{r.number}{r.subject ? ` · ${r.subject}` : ""}</option>)}
@@ -3116,7 +3116,7 @@ export default function TakeoffCanvas() {
               all on the input's OWN handlers so the global keydown (which returns early
               for INPUT) never interferes. cursor:text overrides the stage's cursor:none. */}
           {editor && (
-            <input ref={editorInputRef} autoFocus defaultValue={editor.value}
+            <input name="inline-editor" autoComplete="off" ref={editorInputRef} autoFocus defaultValue={editor.value}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); finishEditor(true); } else if (e.key === "Escape") { e.preventDefault(); finishEditor(false); } }}
               onBlur={() => finishEditor(true)}
               placeholder="Type, Enter to place · Esc cancels"
@@ -3441,7 +3441,7 @@ export default function TakeoffCanvas() {
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }} title="Height for THIS wall only — full-height tile here, 4-ft wainscot there, same condition. ↺ returns to the condition height.">
               <Icon name="height" size={12} />
               <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>this wall</span>
-              <input type="number" min="0" step="0.25" value={selShape.height_ft ?? ""}
+              <input name="shape-height-ft" type="number" min="0" step="0.25" value={selShape.height_ft ?? ""}
                 onChange={(e) => setShapeHeight(e.target.value)}
                 style={{ width: 56, padding: "2px 5px", border: "1px solid var(--ink-faint)", fontSize: 12 }} />
               <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>ft → {num(selShape.computed?.area_sf || 0)} SF</span>

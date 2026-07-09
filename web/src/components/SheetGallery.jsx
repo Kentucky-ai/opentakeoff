@@ -159,7 +159,7 @@ export default function SheetGallery({
         <AuthChip />
         {onAddFiles && (
           <>
-            <input ref={fileRef} type="file" accept=".pdf,application/pdf,image/*,.zip,application/zip,application/x-zip-compressed" multiple style={{ display: "none" }}
+            <input name="sheet-file" ref={fileRef} type="file" accept=".pdf,application/pdf,image/*,.zip,application/zip,application/x-zip-compressed" multiple style={{ display: "none" }}
               onChange={(e) => { onAddFiles(e.target.files); e.target.value = ""; }} />
             <button onClick={() => fileRef.current?.click()} title="Open plans — PDF, image, or a .zip plan set"
               style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5 }}>
