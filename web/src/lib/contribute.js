@@ -25,6 +25,18 @@ export function isContributeConfigured() {
   return !!contributeEndpoint();
 }
 
+// Where the endpoint came from: "browser" = the user set it themselves (the
+// self-capture flow — their own capture server, their own corpus), "build" =
+// baked in at deploy time (a shared collection endpoint), "" = not configured.
+// The Contribute modal uses this to say the honest thing: self-capture is
+// keeping your own data, not contributing to anything.
+export function endpointSource() {
+  try {
+    if (localStorage.getItem("opentakeoff_contribute_endpoint")) return "browser";
+  } catch { /* private mode */ }
+  return (import.meta.env && import.meta.env.VITE_CONTRIBUTE_ENDPOINT) ? "build" : "";
+}
+
 // Build the anonymized, derived-only payload. No raw plan, no identifiers.
 export function buildContribution({ conditions, shapes }) {
   const sheetIds = [...new Set(shapes.map((s) => s.sheet_id))];

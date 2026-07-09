@@ -6,7 +6,7 @@ import React, { useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import { conditionTotals, grandTotals, totalsToCsv, downloadText, materialsSummary } from "../lib/totals.js";
 import { areaVal, areaUnit, lenVal, lenUnit } from "../lib/units";
-import { buildContribution, sendContribution, isContributeConfigured } from "../lib/contribute.js";
+import { buildContribution, sendContribution, isContributeConfigured, contributeEndpoint, endpointSource } from "../lib/contribute.js";
 
 const num = (v, d = 1) => (Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: d });
 
@@ -163,13 +163,18 @@ function ContributeModal({ conditions, shapes, onClose }) {
   const [state, setState] = useState("idle"); // idle | sending | done | error
   const [msg, setMsg] = useState("");
   const configured = isContributeConfigured();
+  // Browser-set endpoint = the self-capture flow: the user's own server, their
+  // own corpus. Say so — this is keeping your data, not contributing it.
+  const own = endpointSource() === "browser";
 
   const send = async () => {
     if (!attest || !configured) return;
     setState("sending"); setMsg("");
     try {
       await sendContribution(buildContribution({ conditions, shapes }), contributor.trim());
-      setState("done"); setMsg("Thank you — your takeoff is now helping train the open flooring model.");
+      setState("done"); setMsg(own
+        ? "Banked — this takeoff is now training rows in your own corpus."
+        : "Thank you — your takeoff is now helping train the open flooring model.");
     } catch (e) {
       setState("error"); setMsg(e.message || String(e));
     }
@@ -180,10 +185,15 @@ function ContributeModal({ conditions, shapes, onClose }) {
       <div onClick={(e) => e.stopPropagation()} className="panel" style={{ width: 520, maxWidth: "100%", maxHeight: "90%", overflow: "auto", background: "var(--paper-bright)", boxShadow: "var(--shadow-2)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: "1px solid var(--ink)" }}>
           <Icon name="oneClick" size={16} />
-          <strong style={{ fontFamily: "var(--f-display)", fontSize: 15 }}>Contribute to the open flooring model</strong>
+          <strong style={{ fontFamily: "var(--f-display)", fontSize: 15 }}>{own ? "Capture this takeoff" : "Contribute to the open flooring model"}</strong>
         </div>
         <div style={{ padding: "16px", fontSize: 13, lineHeight: 1.6, color: "var(--ink)" }}>
-          <p style={{ marginTop: 0 }}>Help grow a shared, flooring-tuned open model. We send only the <strong>derived takeoff</strong>:</p>
+          {own ? (
+            <p style={{ marginTop: 0 }}>This browser is pointed at <strong>your own endpoint</strong> (<code>{contributeEndpoint()}</code>) —
+              the takeoff goes there and nowhere else, as training rows in a corpus you keep. What's sent is the <strong>derived takeoff</strong>:</p>
+          ) : (
+            <p style={{ marginTop: 0 }}>Help grow a shared, flooring-tuned open model. We send only the <strong>derived takeoff</strong>:</p>
+          )}
           <ul style={{ margin: "0 0 10px", paddingLeft: 18 }}>
             <li>condition labels, shape types, and quantities (SF / LF / EA)</li>
             <li>normalized room geometry (shape only — no scale, no location)</li>
@@ -194,7 +204,8 @@ function ContributeModal({ conditions, shapes, onClose }) {
           {!configured && (
             <p style={{ background: "var(--paper-shadow)", padding: "8px 10px", fontSize: 12.5, color: "var(--ink)" }}>
               This build has no contribution endpoint configured, so nothing can be sent. (Set <code>VITE_CONTRIBUTE_ENDPOINT</code> at build time, or
-              <code> localStorage.opentakeoff_contribute_endpoint</code> in your browser.)
+              <code> localStorage.opentakeoff_contribute_endpoint</code> in your browser. The repo ships a local capture server — see <code>capture/</code> —
+              that banks contributions as training data you own.)
             </p>
           )}
           <label style={{ display: "block", margin: "6px 0" }}>
@@ -204,14 +215,16 @@ function ContributeModal({ conditions, shapes, onClose }) {
           </label>
           <label style={{ display: "flex", gap: 8, alignItems: "flex-start", margin: "12px 0", cursor: "pointer" }}>
             <input type="checkbox" checked={attest} onChange={(e) => setAttest(e.target.checked)} style={{ marginTop: 3 }} />
-            <span>I have the right to share this takeoff data and am contributing it to the open flooring model.</span>
+            <span>{own
+              ? "I have the right to capture this takeoff's derived data to my endpoint."
+              : "I have the right to share this takeoff data and am contributing it to the open flooring model."}</span>
           </label>
           {msg && <p style={{ fontSize: 12.5, color: state === "error" ? "var(--c-danger)" : "var(--c-positive)" }}>{msg}</p>}
         </div>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", padding: "12px 16px", borderTop: "1px solid var(--ink-faint)" }}>
           <button className="btn-ghost" onClick={onClose}>{state === "done" ? "Close" : "Cancel"}</button>
           <button className="btn-primary" onClick={send} disabled={!attest || !configured || state === "sending" || state === "done"}>
-            {state === "sending" ? "Sending…" : "Contribute"}
+            {state === "sending" ? "Sending…" : own ? "Capture" : "Contribute"}
           </button>
         </div>
       </div>

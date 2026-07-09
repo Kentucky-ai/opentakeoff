@@ -19,8 +19,34 @@ npm test           # node test runner over the One-Click geometry
 npm run build      # vite build -> dist/
 ```
 
-The optional AI sandbox lives in [`server/`](server/README.md) and is not needed
-for canvas work.
+The optional AI sandbox lives in [`server/`](server/README.md) and the optional
+capture layer in [`capture/`](capture/README.md) — neither is needed for canvas
+work. If you touch `capture/`, run `python3 capture/capture_server.py selftest`
+(stdlib only, no setup).
+
+## Pull requests — how we work
+
+- **One concern per PR.** A feature, a fix, or a refactor — not all three. Small
+  PRs get reviewed fast; grab-bags stall.
+- **Open an issue first for anything big.** Typo fixes and small bugs can go
+  straight to a PR. New tools, new panels, or anything that changes the canvas
+  feel should start as an issue so we agree on the shape before you build it.
+- **`main` is protected.** Changes land by pull request with green CI
+  (typecheck, tests, build — plus the capture selftest); force-pushes and branch
+  deletion are blocked. Write commit subjects the way the history does —
+  `feat(canvas): …`, `fix(oneclick): …`, `docs: …` — they become the changelog.
+- **Show your work.** Canvas-visible changes want a screenshot or GIF in the PR;
+  quantity-affecting changes want a measured-vs-expected check against the
+  bundled sample plan (the PR template asks for both).
+- **Stay vendor-neutral.** Generic, industry-typical rates and terms only — no
+  manufacturer or product brand names in code, docs, or sample data.
+- **Update the paper trail.** A `CHANGELOG.md` entry and a `FEATURES.md` row
+  when behavior changes; `docs/USER_GUIDE.md` when the flow a user follows
+  changes.
+- **Review etiquette.** Comments are about the code, never the author; every
+  conversation gets resolved before merge. Expect a review within a few days.
+  Maintainers may push small fixups onto your branch to land a PR faster — say
+  so in the PR if you'd rather make the changes yourself.
 
 ## Architecture in one minute
 
@@ -37,6 +63,8 @@ for canvas work.
   totaling, the Report, and CSV/JSON export.
 - **`web/src/lib/contribute.js`** — the opt-in "contribute to the open flooring
   model" payload builder (derived data only).
+- **`capture/capture_server.py`** — the optional local capture server: banks
+  Contribute payloads as (geometry → label) training rows in a corpus you own.
 
 ## Scope
 
