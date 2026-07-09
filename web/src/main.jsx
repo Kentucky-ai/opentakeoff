@@ -7,6 +7,9 @@ import TakeoffCanvas from "./pages/TakeoffCanvas.jsx";
 import { GoogleAuthProvider, useGoogleAuth } from "./lib/google/AuthContext.jsx";
 import { projectIdFromUrl, setActiveStore } from "./lib/store.js";
 import { isGoogleConfigured, getAccessToken } from "./lib/google/auth.js";
+import { initTheme } from "./lib/theme.js";
+
+initTheme();   // index.html set data-theme pre-paint; this keeps it live
 
 // Client-only SPA. By default there is no backend: the canvas runs entirely in
 // the browser and persists to IndexedDB / localStorage (anonymous local mode).

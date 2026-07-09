@@ -29,6 +29,21 @@
   --c-warning:  #c47a10;
   --c-danger:   #b03a26;
 
+  /* chrome theming — novel colors pulled out of inline styles */
+  --ink-secondary: #5b544a;      /* secondary readout text */
+  --text-faint:    #a39e8d;      /* faint text/fills — --ink-faint stays hairline-only */
+  --tint-select:   #e8eefc;      /* checked-row cobalt tint */
+  --tint-active:   #f3f8f4;      /* active-row green tint */
+  --surface-pop:   #ffffff;      /* active chip / lifted fills */
+  --well:          #ffffff;      /* media wells (PDF thumbs, stamp previews) — light in ALL themes */
+  --accent-contrast: #ffffff;    /* text/rules on cobalt surfaces */
+  --hairline-warm: #f0d9c0;      /* calibration-prompt border */
+  --divider-soft:  #eee6d8;      /* readout divider fill */
+  --scrim:         rgba(14, 26, 46, .45);
+  --shadow-pop:    0 6px 22px rgba(0, 0, 0, .16);
+  --grain-rgb:     0, 0, 0;      /* paper-grain channel triplet */
+  --grain-inverse-rgb: 255, 255, 255;
+
   /* type */
   --f-display: "Bricolage Grotesque", "Inter", system-ui, sans-serif;
   --f-body:    "Inter", system-ui, sans-serif;
@@ -54,24 +69,79 @@
   --ring: 0 0 0 3px rgba(31, 63, 199, .18);
 }
 
+/* ── themes ──────────────────────────────────────────────────────────────────
+   Light values live in :root above; a theme is one override block keyed off
+   <html data-theme="…"> (set pre-paint by the inline script in index.html).
+   Scoped to screen so print always resolves the light palette. Roles keep
+   their meaning across themes: paper-bright = base surface, paper-cream =
+   raised card, paper-shadow = hover/pressed (goes LIGHTER in dark). */
+:root { color-scheme: light; }
+
+@media screen {
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+
+    /* paper → dark drafting navy — deliberately warmer/lighter than the
+       canvas dark stage (#0b0e14) so an inverted sheet still reads as
+       "the work area" inside dark chrome */
+    --paper-bright: #121c2c;
+    --paper-cream:  #1a2536;
+    --paper-shadow: #263449;
+
+    /* ink → cream */
+    --ink:        #e9e3d1;
+    --ink-soft:   #c9c4b3;
+    --ink-muted:  #9d9a8c;
+    --ink-faint:  #3c4a63;     /* hairlines only — fails contrast as text */
+    --text-faint: #8a93a8;
+
+    /* accent, lifted for dark contrast */
+    --cobalt:      #6d87f2;
+    --cobalt-deep: #8ea4f6;
+
+    /* semantics, lifted (mirrors boostForDark's intent) */
+    --c-positive: #55b083;
+    --c-warning:  #e0a04a;
+    --c-danger:   #e0705c;
+
+    --ink-secondary:   #aba490;
+    --tint-select:     #19243f;   /* dark enough that 11px cobalt/danger text clears 4.5:1 */
+    --tint-active:     #1b2f2a;
+    --surface-pop:     #253352;
+    /* --well stays white: PDF thumbnails and stamp previews are light media */
+    --accent-contrast: #0e1a2e;
+    --hairline-warm:   #2e3c54;
+    --divider-soft:    #263449;
+    --scrim:           rgba(0, 0, 0, .55);
+
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, .35), 0 2px 8px rgba(0, 0, 0, .35);
+    --shadow-2: 0 12px 36px rgba(0, 0, 0, .6);
+    --shadow-pop: 0 6px 22px rgba(0, 0, 0, .5);
+    --ring: 0 0 0 3px rgba(109, 135, 242, .7);   /* .3 blends to 1.6:1 on the dark page — the ring is the only focus indicator */
+
+    --grain-rgb: 255, 255, 255;
+    --grain-inverse-rgb: 0, 0, 0;
+  }
+}
+
 /* paper textures — subtle grain via layered radial gradients (no images) */
 .paper-cream {
   background-color: var(--paper-cream);
   background-image:
-    radial-gradient(circle at 17% 23%, rgba(0,0,0,.025) 0, transparent 1.5px),
-    radial-gradient(circle at 73% 81%, rgba(0,0,0,.022) 0, transparent 1.2px),
-    radial-gradient(circle at 41% 67%, rgba(0,0,0,.018) 0, transparent 1px),
-    radial-gradient(circle at 89% 12%, rgba(0,0,0,.022) 0, transparent 1.3px),
-    radial-gradient(circle at 8% 88%, rgba(0,0,0,.02) 0, transparent 1px);
+    radial-gradient(circle at 17% 23%, rgba(var(--grain-rgb), .025) 0, transparent 1.5px),
+    radial-gradient(circle at 73% 81%, rgba(var(--grain-rgb), .022) 0, transparent 1.2px),
+    radial-gradient(circle at 41% 67%, rgba(var(--grain-rgb), .018) 0, transparent 1px),
+    radial-gradient(circle at 89% 12%, rgba(var(--grain-rgb), .022) 0, transparent 1.3px),
+    radial-gradient(circle at 8% 88%, rgba(var(--grain-rgb), .02) 0, transparent 1px);
   background-size: 7px 7px, 11px 11px, 5px 5px, 13px 13px, 9px 9px;
 }
 
 .paper-bright {
   background-color: var(--paper-bright);
   background-image:
-    radial-gradient(circle at 17% 23%, rgba(0,0,0,.022) 0, transparent 1.4px),
-    radial-gradient(circle at 73% 81%, rgba(0,0,0,.018) 0, transparent 1px),
-    radial-gradient(circle at 41% 67%, rgba(0,0,0,.014) 0, transparent .8px);
+    radial-gradient(circle at 17% 23%, rgba(var(--grain-rgb), .022) 0, transparent 1.4px),
+    radial-gradient(circle at 73% 81%, rgba(var(--grain-rgb), .018) 0, transparent 1px),
+    radial-gradient(circle at 41% 67%, rgba(var(--grain-rgb), .014) 0, transparent .8px);
   background-size: 7px 7px, 11px 11px, 5px 5px;
 }
 
@@ -98,8 +168,8 @@
   background-color: var(--ink);
   color: var(--paper-cream);
   background-image:
-    radial-gradient(circle at 17% 23%, rgba(255,255,255,.025) 0, transparent 1.2px),
-    radial-gradient(circle at 73% 81%, rgba(255,255,255,.02) 0, transparent 1px);
+    radial-gradient(circle at 17% 23%, rgba(var(--grain-inverse-rgb), .025) 0, transparent 1.2px),
+    radial-gradient(circle at 73% 81%, rgba(var(--grain-inverse-rgb), .02) 0, transparent 1px);
   background-size: 9px 9px, 13px 13px;
 }
 

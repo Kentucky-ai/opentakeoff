@@ -22,7 +22,7 @@ function StampPreview({ elements = [], w = 54, h = 34 }) {
   const K = 190, cx = w / 2, cy = h / 2;
   const mx = (dx) => cx + dx * K, my = (dy) => cy + dy * K;
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ flex: "none", background: "var(--paper)", border: "1px solid var(--ink-faint)" }}>
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ flex: "none", background: "var(--well)", border: "1px solid var(--ink-faint)" }}>
       {elements.map((el, i) => {
         const col = el.color || "#1f3fc7";
         if (el.type === "arrow" && el.from && el.to) {
@@ -73,7 +73,7 @@ export default function StampPanel({ docked = false, library = { stamps: [], set
     const on = setFilter === id;
     return (
       <button key={id} onClick={() => setSetFilter(id)}
-        style={{ padding: "2px 8px", border: `1px solid ${on ? "#1f3fc7" : "var(--ink-faint)"}`, background: on ? "#1f3fc7" : "transparent", color: on ? "#fff" : "var(--ink)", cursor: "pointer", fontSize: 11 }}>
+        style={{ padding: "2px 8px", border: `1px solid ${on ? "var(--cobalt)" : "var(--ink-faint)"}`, background: on ? "var(--cobalt)" : "transparent", color: on ? "var(--accent-contrast)" : "var(--ink)", cursor: "pointer", fontSize: 11 }}>
         {label}
       </button>
     );
@@ -81,7 +81,7 @@ export default function StampPanel({ docked = false, library = { stamps: [], set
 
   const outer = docked
     ? { display: "flex", flexDirection: "column", width: "100%", height: "100%", overflow: "auto", background: "var(--paper-bright)", fontSize: 12.5 }
-    : { position: "absolute", left: 14, top: 14, width: 340, maxHeight: "calc(100% - 28px)", overflow: "auto", background: "var(--paper-bright)", border: "1px solid #1f3fc7", boxShadow: "0 6px 22px rgba(0,0,0,.16)", zIndex: 9, fontSize: 12.5 };
+    : { position: "absolute", left: 14, top: 14, width: 340, maxHeight: "calc(100% - 28px)", overflow: "auto", background: "var(--paper-bright)", border: "1px solid var(--cobalt)", boxShadow: "var(--shadow-pop)", zIndex: 9, fontSize: 12.5 };
   // shared file input (both header modes wire the same import flow)
   const fileInput = (
     <input name="stamp-import-file" ref={fileRef} type="file" accept="application/json,.json,image/svg+xml,.svg" style={{ display: "none" }}
@@ -98,20 +98,20 @@ export default function StampPanel({ docked = false, library = { stamps: [], set
           {fileInput}
         </div>
       ) : (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", borderBottom: "1px solid var(--ink-faint)", background: "#1f3fc7", color: "#fff" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", borderBottom: "1px solid var(--ink-faint)", background: "var(--cobalt)", color: "var(--accent-contrast)" }}>
           <strong>Stamps · palette</strong>
           <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button onClick={onExport} title="Export the stamp library as JSON" style={{ ...ctrl, border: "1px solid rgba(255,255,255,.5)", color: "#fff" }}>Export</button>
-            <button onClick={() => fileRef.current?.click()} title="Import a stamp library (.json, merges) or a vector symbol (.svg, added as a stamp)" style={{ ...ctrl, border: "1px solid rgba(255,255,255,.5)", color: "#fff" }}>Import</button>
+            <button onClick={onExport} title="Export the stamp library as JSON" style={{ ...ctrl, border: "1px solid rgba(255,255,255,.5)", color: "var(--accent-contrast)" }}>Export</button>
+            <button onClick={() => fileRef.current?.click()} title="Import a stamp library (.json, merges) or a vector symbol (.svg, added as a stamp)" style={{ ...ctrl, border: "1px solid rgba(255,255,255,.5)", color: "var(--accent-contrast)" }}>Import</button>
             {fileInput}
-            <button onClick={onClose} style={{ background: "none", border: "none", color: "#fff", fontSize: 16, cursor: "pointer" }}>×</button>
+            <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--accent-contrast)", fontSize: 16, cursor: "pointer" }}>×</button>
           </span>
         </div>
       )}
 
       <div style={{ padding: "8px 10px", color: "var(--ink-muted)" }}>
         {armedStamp
-          ? <span><b style={{ color: "#1f3fc7" }}>“{armedStamp.name}” armed</b> — click the plan to place it. Esc to cancel.</span>
+          ? <span><b style={{ color: "var(--cobalt)" }}>“{armedStamp.name}” armed</b> — click the plan to place it. Esc to cancel.</span>
           : <span>Click <b>Place</b> on a stamp, then click the plan. Placed stamps are normal, editable markups.</span>}
       </div>
 
@@ -127,7 +127,7 @@ export default function StampPanel({ docked = false, library = { stamps: [], set
       <div style={{ padding: "0 10px 10px", borderBottom: "1px solid var(--ink-faint)" }}>
         <button onClick={() => selectedMarkup && onSaveSelected(selectedMarkup)} disabled={!selectedMarkup}
           title={selectedMarkup ? "Save the selected markup as a reusable stamp" : "Select a markup on the canvas first"}
-          style={{ ...ctrl, width: "100%", padding: "6px 8px", color: selectedMarkup ? "#1f3fc7" : "var(--ink-muted)", fontWeight: 600, cursor: selectedMarkup ? "pointer" : "not-allowed" }}>
+          style={{ ...ctrl, width: "100%", padding: "6px 8px", color: selectedMarkup ? "var(--cobalt)" : "var(--ink-muted)", fontWeight: 600, cursor: selectedMarkup ? "pointer" : "not-allowed" }}>
           <Icon name="plus" size={12} /> Save selected markup as stamp
         </button>
       </div>
@@ -136,25 +136,25 @@ export default function StampPanel({ docked = false, library = { stamps: [], set
       {shown.map((s) => {
         const armed = armedStamp?.id === s.id;
         return (
-          <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderTop: "1px solid var(--ink-faint)", background: armed ? "rgba(31,63,199,.07)" : "transparent" }}>
+          <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderTop: "1px solid var(--ink-faint)", background: armed ? "color-mix(in srgb, var(--cobalt) 7%, transparent)" : "transparent" }}>
             <StampPreview elements={s.elements} />
             <div style={{ flex: 1, minWidth: 0 }}>
               {editId === s.id ? (
                 <input name="stamp-rename" autoComplete="off" autoFocus defaultValue={s.name}
                   onKeyDown={(e) => { if (e.key === "Enter") { onRename(s.id, e.currentTarget.value); setEditId(null); } else if (e.key === "Escape") setEditId(null); }}
                   onBlur={(e) => { onRename(s.id, e.currentTarget.value); setEditId(null); }}
-                  style={{ width: "100%", fontSize: 12.5, padding: "1px 4px", border: "1px solid #1f3fc7", outline: "none" }} />
+                  style={{ width: "100%", fontSize: 12.5, padding: "1px 4px", border: "1px solid var(--cobalt)", outline: "none" }} />
               ) : (
                 <div style={{ fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.name}>{s.name}</div>
               )}
               <div style={{ fontSize: 10.5, color: "var(--ink-muted)" }}>{s.elements.length} element{s.elements.length === 1 ? "" : "s"}</div>
             </div>
             <button onClick={() => onArm(s)} title="Arm this stamp for placement"
-              style={{ ...ctrl, color: armed ? "#fff" : "#1f3fc7", background: armed ? "#1f3fc7" : "transparent", border: `1px solid #1f3fc7`, fontWeight: 600 }}>
+              style={{ ...ctrl, color: armed ? "var(--accent-contrast)" : "var(--cobalt)", background: armed ? "var(--cobalt)" : "transparent", border: `1px solid var(--cobalt)`, fontWeight: 600 }}>
               {armed ? "Armed" : "Place"}
             </button>
             <button onClick={() => setEditId((id) => (id === s.id ? null : s.id))} title="Rename stamp" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>
-            <button onClick={() => { if (window.confirm(`Delete stamp “${s.name}”?`)) onDelete(s.id); }} title="Delete stamp" style={{ border: "none", background: "none", cursor: "pointer", color: "#b03a26" }}>🗑</button>
+            <button onClick={() => { if (window.confirm(`Delete stamp “${s.name}”?`)) onDelete(s.id); }} title="Delete stamp" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
           </div>
         );
       })}

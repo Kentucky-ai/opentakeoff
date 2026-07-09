@@ -131,7 +131,7 @@ export default function DrivePicker({ listFolder, addSheets, existingNames, onAd
       <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "8px 18px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", fontFamily: "var(--f-mono)", fontSize: 12 }}>
         {path.map((c, i) => (
           <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            {i > 0 && <span style={{ color: "var(--ink-faint)" }}>/</span>}
+            {i > 0 && <span style={{ color: "var(--text-faint)" }}>/</span>}
             <button onClick={() => jumpTo(i)} disabled={i === path.length - 1}
               style={{ border: "none", background: "transparent", cursor: i === path.length - 1 ? "default" : "pointer", color: i === path.length - 1 ? "var(--ink)" : "var(--cobalt)", fontFamily: "var(--f-mono)", fontSize: 12, padding: "2px 2px", fontWeight: i === path.length - 1 ? 700 : 400 }}>
               {c.name}
@@ -193,7 +193,7 @@ export default function DrivePicker({ listFolder, addSheets, existingNames, onAd
           <button onClick={() => setPicked([])} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>Clear</button>
         )}
         <button onClick={add} disabled={!picked.length || adding}
-          style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 16px", border: "1px solid var(--ink)", background: picked.length ? "var(--cobalt)" : "var(--ink-faint)", color: "var(--paper-bright)", cursor: picked.length && !adding ? "pointer" : "default", fontWeight: 700, fontSize: 13 }}>
+          style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 16px", border: "1px solid var(--ink)", background: picked.length ? "var(--cobalt)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: picked.length && !adding ? "pointer" : "default", fontWeight: 700, fontSize: 13 }}>
           <Icon name="plus" size={13} />{adding ? "Adding…" : `Add ${picked.length || ""} sheet${picked.length === 1 ? "" : "s"}`}
         </button>
       </div>

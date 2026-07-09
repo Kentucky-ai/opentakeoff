@@ -29,7 +29,7 @@ export default function RfiPanel({ docked = false, rfis = [], markups = [], onUp
     const on = filter === id;
     return (
       <button key={id} onClick={() => setFilter(id)}
-        style={{ padding: "2px 8px", border: `1px solid ${on ? "#1f3fc7" : "var(--ink-faint)"}`, background: on ? "#1f3fc7" : "transparent", color: on ? "#fff" : "var(--ink)", cursor: "pointer", fontSize: 11 }}>
+        style={{ padding: "2px 8px", border: `1px solid ${on ? "var(--cobalt)" : "var(--ink-faint)"}`, background: on ? "var(--cobalt)" : "transparent", color: on ? "var(--accent-contrast)" : "var(--ink)", cursor: "pointer", fontSize: 11 }}>
         {label}
       </button>
     );
@@ -37,14 +37,14 @@ export default function RfiPanel({ docked = false, rfis = [], markups = [], onUp
 
   const outer = docked
     ? { display: "flex", flexDirection: "column", width: "100%", height: "100%", overflow: "auto", background: "var(--paper-bright)", fontSize: 12.5 }
-    : { position: "absolute", left: 14, top: 14, width: 372, maxHeight: "calc(100% - 28px)", overflow: "auto", background: "var(--paper-bright)", border: "1px solid #1f3fc7", boxShadow: "0 6px 22px rgba(0,0,0,.16)", zIndex: 9, fontSize: 12.5 };
+    : { position: "absolute", left: 14, top: 14, width: 372, maxHeight: "calc(100% - 28px)", overflow: "auto", background: "var(--paper-bright)", border: "1px solid var(--cobalt)", boxShadow: "var(--shadow-pop)", zIndex: 9, fontSize: 12.5 };
 
   return (
     <div style={outer}>
       {!docked && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", borderBottom: "1px solid var(--ink-faint)", background: "#1f3fc7", color: "#fff" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", borderBottom: "1px solid var(--ink-faint)", background: "var(--cobalt)", color: "var(--accent-contrast)" }}>
           <strong style={{ display: "inline-flex", alignItems: "center", gap: 7 }}><Icon name="rfi" size={15} />RFIs · {rfis.length}</strong>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#fff", fontSize: 16, cursor: "pointer" }}>×</button>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--accent-contrast)", fontSize: 16, cursor: "pointer" }}>×</button>
         </div>
       )}
 
@@ -68,12 +68,12 @@ export default function RfiPanel({ docked = false, rfis = [], markups = [], onUp
         return (
           <div key={r.id} style={{ padding: "10px 12px", borderTop: "1px solid var(--ink-faint)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
-              <span style={{ fontFamily: "var(--f-mono)", fontWeight: 700, color: "#1f3fc7" }}>{String(r.number ?? "")}</span>
+              <span style={{ fontFamily: "var(--f-mono)", fontWeight: 700, color: "var(--cobalt)" }}>{String(r.number ?? "")}</span>
               <span style={{ padding: "1px 7px", background: st.color, color: "#fff", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>{st.label}</span>
               <span style={{ flex: 1 }} />
               <span style={{ fontSize: 10.5, color: "var(--ink-muted)" }}>{linked.length} linked</span>
               <button onClick={() => { if (window.confirm(`Delete ${r.number}? Linked markups keep their annotation but lose the RFI link.`)) onDeleteRfi && onDeleteRfi(r.id); }}
-                title="Delete this RFI (hard remove; clears links)" style={{ border: "none", background: "none", cursor: "pointer", color: "#b03a26" }}>🗑</button>
+                title="Delete this RFI (hard remove; clears links)" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
             </div>
 
             <label style={lbl}>Subject</label>
@@ -126,13 +126,13 @@ export default function RfiPanel({ docked = false, rfis = [], markups = [], onUp
               <button onClick={() => up(r, { status: "closed" })} disabled={st.id === "closed"}
                 style={{ padding: "3px 9px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: st.id === "closed" ? "default" : "pointer", fontSize: 11, opacity: st.id === "closed" ? 0.5 : 1 }}>Close</button>
               <button onClick={() => up(r, { status: "void" })} disabled={st.id === "void"}
-                style={{ padding: "3px 9px", border: "1px solid var(--ink-faint)", background: "transparent", color: "#b03a26", cursor: st.id === "void" ? "default" : "pointer", fontSize: 11, opacity: st.id === "void" ? 0.5 : 1 }}>Void</button>
+                style={{ padding: "3px 9px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: st.id === "void" ? "default" : "pointer", fontSize: 11, opacity: st.id === "void" ? 0.5 : 1 }}>Void</button>
               <span style={{ flex: 1 }} />
               {linked.length === 0
                 ? <span style={{ fontSize: 10.5, color: "var(--ink-muted)" }}>no linked markups</span>
                 : linked.map((m) => (
                   <button key={m.id} onClick={() => onFlyTo && onFlyTo(m)} title={`Fly to this ${m.type} on ${sheetLabel ? sheetLabel(m.sheet_id) : m.sheet_id}`}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", border: "1px solid #1f3fc7", background: "transparent", color: "#1f3fc7", cursor: "pointer", fontSize: 11 }}>
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 8px", border: "1px solid var(--cobalt)", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11 }}>
                     <Icon name="target" size={11} />{sheetLabel ? sheetLabel(m.sheet_id) : m.sheet_id}
                   </button>
                 ))}

@@ -18,6 +18,22 @@
     <meta name="twitter:title" content="OpenTakeoff — free, open-source flooring & construction takeoff" />
     <meta name="twitter:description" content="A free, open-source PDF takeoff canvas. Trace areas, organize by finish, export quantities — runs entirely in your browser, no account." />
     <meta name="twitter:image" content="https://opentakeoff.netlify.app/og-card.png" />
+    <meta name="theme-color" content="#f4efe0" />
+    <script>
+      // Set the theme before first paint (no flash). Stored choice wins;
+      // otherwise follow the OS. matchMedia sits outside the try so private
+      // mode still gets OS-matched theming. lib/theme.js keeps this in sync
+      // after load (toggle, OS changes, other tabs).
+      (function () {
+        var t = null;
+        try { t = localStorage.getItem("opentakeoff_theme"); } catch (e) {}
+        if (t !== "light" && t !== "dark")
+          t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", t);
+        document.querySelector('meta[name="theme-color"]')
+          .setAttribute("content", t === "dark" ? "#121c2c" : "#f4efe0");
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
