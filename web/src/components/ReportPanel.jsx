@@ -194,7 +194,8 @@ function ContributeModal({ conditions, shapes, onClose }) {
           {!configured && (
             <p style={{ background: "var(--paper-shadow)", padding: "8px 10px", fontSize: 12.5, color: "var(--ink)" }}>
               This build has no contribution endpoint configured, so nothing can be sent. (Set <code>VITE_CONTRIBUTE_ENDPOINT</code> at build time, or
-              <code> localStorage.opentakeoff_contribute_endpoint</code> in your browser.)
+              <code> localStorage.opentakeoff_contribute_endpoint</code> in your browser. The repo ships a local capture server — see <code>capture/</code> —
+              that banks contributions as training data you own.)
             </p>
           )}
           <label style={{ display: "block", margin: "6px 0" }}>

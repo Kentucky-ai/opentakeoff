@@ -11,7 +11,7 @@ No account. No upload. No install. It runs in your browser.
 [![Live demo](https://img.shields.io/badge/demo-opentakeoff.netlify.app-2ea44f.svg)](https://opentakeoff.netlify.app)
 [![Built with React + Vite](https://img.shields.io/badge/React%2018-Vite-444.svg)](#tech-stack)
 
-[**▶ Try the live demo**](https://opentakeoff.netlify.app) · [Quick start](#quick-start) · [Features](#features) · [Deploy it](#run-it--deploy-it) · [Build on top](#build-on-top-of-it) · [Contributing](CONTRIBUTING.md)
+[**▶ Try the live demo**](https://opentakeoff.netlify.app) · [Quick start](#quick-start) · [Features](#features) · [Deploy it](#run-it--deploy-it) · [Own your data](#own-your-data--the-capture-layer) · [Build on top](#build-on-top-of-it) · [Contributing](CONTRIBUTING.md)
 
 **New — July 2026:** One-Click Area now traces **hatched rooms** · **Dark view** (negative print) · **Marked Set PDF export** — [full changelog](CHANGELOG.md)
 
@@ -98,6 +98,7 @@ Every drawing, scale, condition, and markup autosaves to **your browser** (Index
 | **Markups** | Revision clouds, callouts, text notes — separate layer, never counted |
 | **View** | Light or **dark (negative print)** — sheet pixels inverted at draw time, persists per browser |
 | **Storage** | IndexedDB + localStorage — client-only, nothing uploaded |
+| **Capture (opt-in)** | Bundled [capture server](capture/README.md) banks each contributed takeoff as (geometry → label) training rows — a corpus you own, mirrorable to a synced company share |
 | **Deploy** | One static build, hostable on Netlify, Vercel, GitHub Pages, S3, or any static host |
 
 ## Run it / deploy it
@@ -113,6 +114,22 @@ npm run build      # → web/dist/  (static; host it anywhere)
 [![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/Kentucky-ai/opentakeoff)
 
 The repo ships a root `netlify.toml`, so the button above is genuinely one-click. The same `web/dist/` works on **Vercel, GitHub Pages, Cloudflare Pages, S3** — anywhere that serves static files.
+
+## Own your data — the capture layer
+
+Here's the part of a takeoff nobody talks about: every one you finish is a set of expert decisions — *this* region gets *this* finish, at *this* waste %, yielding *these* quantities. Done once, that's a bid. Banked every time, it's a **labeled dataset nobody else has** — the exact raw material for training a takeoff model on your trade and your market. Today that data evaporates the moment the bid goes out. It doesn't have to.
+
+OpenTakeoff ships an optional **capture layer** so you can keep it:
+
+- The **Contribute** button in the Report builds a derived-only payload — condition labels, shape roles, quantities, normalized geometry. Never the PDF, file names, project/client names, markups, or absolute coordinates. The builder is ~70 audited lines: [`web/src/lib/contribute.js`](web/src/lib/contribute.js).
+- The bundled **capture server** ([`capture/`](capture/README.md)) — one stdlib-only Python file, no pip install — receives it on localhost and banks one training row per labeled shape, hash-gated so re-contributions never duplicate. Point it at a synced folder with `--mirror` and the corpus rides your existing OneDrive/SharePoint/Dropbox sync into company storage, atomically, ready to train on.
+
+```bash
+python3 capture/capture_server.py    # then, in the app's browser console:
+# localStorage.opentakeoff_contribute_endpoint = "http://localhost:8787/contribute"
+```
+
+Run OpenTakeoff as-is and none of this exists for you — nothing is captured, nothing leaves your machine. Install it and every takeoff you *choose* to contribute compounds into an asset you own. This is the open edition of the capture layer inside [Spline](https://spline.quisutdeus.io), the commercial Division-9 estimating system OpenTakeoff was carved from, where capture runs far deeper — ambient on autosave and commit, no button: provisional rows bank while you draw, certified rows land on commit with the exploded materials assembly, edits carry a decision trail, and each job's corpus files itself into that GC's folder on the company share. The full pitch, the row schema, and the training angle live in [`capture/README.md`](capture/README.md).
 
 ## Build on top of it
 
