@@ -2,6 +2,31 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased
+
+### Added
+- **Top-bar quick-access condition palette.** A slim band directly under the main
+  toolbar holds a curated set of **pinned conditions** (up to **9**) for one-click
+  activation without opening the sidebar. Pin three ways: **drag** a condition onto
+  the band, click the **pushpin** on a Takeoffs-panel row, or drop it there; each
+  palette chip's pushpin unpins it. **Drag one chip onto another to reorder.** Each
+  chip shows a **cobalt 1–9 badge** — and the **1–9 hotkeys now follow palette
+  order** (they fall back to condition order when nothing is pinned, so the
+  shortcuts still work out of the box). The palette persists with the workspace.
+- **Restored active-condition appearance editor in the top bar.** The
+  line/fill/hatch/line-style/height/thickness/waste/×N editor is back below the
+  palette chips (the same editor the docked panel row renders), so appearance is
+  editable without opening the sidebar.
+- **Double-click a palette chip** opens the docked Takeoffs panel and scrolls to
+  that condition's row; single-click just activates it.
+
+### Changed
+- The docked **Takeoffs sidebar now starts collapsed** — the top-bar palette band
+  is the primary condition surface. Open the sidebar via the canvas rail toggle or
+  by double-clicking a palette chip; toggling it re-persists your choice. (One-time
+  migration: because the panel used to default open, workspaces that were left open
+  now start collapsed on the first load after this change.)
+
 ## 2026-07-09
 
 ### Fixed

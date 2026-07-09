@@ -10,7 +10,7 @@ no server.
 
 1. **Open plans** — drag a PDF, image, or `.zip` plan set onto the canvas (or use **Open plans**). The **gallery** (`G`) shows every sheet; click one (or several) to open.
 2. **Set the scale** — on each sheet, click **Scale** and either pick a standard scale or **Calibrate**: click two points along a known dimension, type the real length in feet, **Apply**. Scale is remembered **per sheet**.
-3. **Pick a condition** — the **Takeoffs panel** (docked on the right) holds your finishes (WD‑1, LVT‑1, …). Click a row to arm it (or press its number, `1`–`9`); the active row unfolds its properties — tag, color, hatch, ×N, waste, height, thickness. Drag the panel's left edge to resize, collapse it with **»** (the ☰ rail button brings it back), and turn on the optional **strip** (panel header) for a compact horizontal bar.
+3. **Pick a condition** — click a chip in the **top-bar palette** (the band under the toolbar) or press its number, `1`–`9`. The active condition's properties — tag, color, hatch, ×N, waste, height, thickness — appear right there in the band. Pin your working finishes to the palette (drag them there, or use a panel row's pushpin) for one-click access; double-click a chip to open the full **Takeoffs panel** (docked on the right, collapsed by default — the ☰ rail button also opens it). Drag the panel's left edge to resize, collapse it with **»**, and turn on the optional **strip** (panel header) for a compact horizontal bar.
 4. **Draw the takeoff** — pick a Measure tool and trace. Each shape is color‑coded to its condition.
 5. **Add supporting materials** *(optional)* — open **Assemblies** on the condition (adhesive, sealer, poly…) with coverage rates; order quantities derive automatically.
 6. **Report** — open **Report** for the per‑condition breakdown (SF/LF/EA, waste, SY) and the materials buy list; export **CSV**, **Excel (.xlsx)**, or **JSON**.
@@ -39,7 +39,7 @@ Your work autosaves to this browser continuously. Reload and it's still there.
 ### Conditions
 | Key | Action |
 |---|---|
-| `1`–`9` | Make condition N the active one. |
+| `1`–`9` | Make condition N the active one. **N follows the top-bar palette order** when you've pinned conditions; with an empty palette it falls back to condition-list order. |
 
 ### While drawing
 | Key / action | Effect |
@@ -69,8 +69,11 @@ With the **45°** toggle on (it's on by default, next to Snap), the segment you'
 
 ## 3. What each part does
 
+### The top-bar condition palette
+A slim **quick-access band** sits directly under the main toolbar and is the primary condition surface — the docked Takeoffs panel now **starts collapsed** so it's out of your way. **Pin up to 9 conditions** to the band for one-click activation: drag a condition onto it (from the panel or the strip), or click the **pushpin** on a panel row. Each chip carries a **cobalt 1–9 badge**, and the **`1`–`9` hotkeys follow this palette order** (with an empty palette they fall back to condition-list order). **Single-click** a chip to activate it (reassigning a selected shape, like every activation surface); **double-click** to open the docked panel scrolled to that condition's row; the chip's pushpin unpins it; **drag one chip onto another to reorder** (which renumbers the hotkeys). Below the chips, the **active condition's full appearance editor** (tag, ×N, waste, line/fill color, hatch, line style, height, thickness, custom columns) is editable inline — no need to open the sidebar. The palette persists with the workspace.
+
 ### The Takeoffs panel
-Conditions live in a **docked, resizable panel** on the right (drag the left edge; width, collapse, and view prefs are remembered per browser). Each row shows the finish with its running totals and shape count; the active row unfolds the full property editor. At scale: **filter** box, **A→Z** natural sort (CT‑2 before CT‑10), and **≡ grp** grouping by tag family (CPT, LVT, …) — all views only, so `1`–`9` keep their numbering. **⌘‑click / ⇧‑click** rows to multi‑select for bulk waste / color / delete; **⌖** (or double‑click) zooms the canvas to a condition's takeoffs. The **Library** tab stores reusable condition templates (browser‑wide): save the active condition, apply templates anywhere, and fresh workspaces seed from your library instead of the built‑in defaults.
+Conditions live in a **docked, resizable panel** on the right that **starts collapsed** (open it with the ☰ rail button, or by double-clicking a palette chip; drag the left edge to resize — width, collapse, and view prefs are remembered per browser). Each row shows the finish with its running totals and shape count; the active row unfolds the full property editor. A row's **pushpin** pins/unpins it to the top-bar palette (cobalt when pinned). At scale: **filter** box, **A→Z** natural sort (CT‑2 before CT‑10), and **≡ grp** grouping by tag family (CPT, LVT, …) — all views only, so `1`–`9` keep their numbering. **⌘‑click / ⇧‑click** rows to multi‑select for bulk waste / color / delete; **⌖** (or double‑click) zooms the canvas to a condition's takeoffs. The **Library** tab stores reusable condition templates (browser‑wide): save the active condition, apply templates anywhere, and fresh workspaces seed from your library instead of the built‑in defaults.
 
 ### Conditions (finishes)
 A condition is one finish (e.g. `WD-1` red oak). It carries:

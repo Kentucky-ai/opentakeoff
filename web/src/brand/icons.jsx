@@ -55,6 +55,9 @@ export const icons = {
   thickness: (s) => <I size={s}><line x1="5" y1="5" x2="5" y2="19" /><line x1="19" y1="5" x2="19" y2="19" /><path d="M7.5 12 H 16.5 M7.5 12 L 9.7 9.8 M7.5 12 L 9.7 14.2 M16.5 12 L 14.3 9.8 M16.5 12 L 14.3 14.2" /></I>,
   oneClick: (s) => <I size={s}><path d="M9 3 H 3 V 9" /><path d="M15 3 H 21 V 9" /><path d="M3 15 V 21 H 9" /><path d="M21 15 V 21 H 15" /><path d="M12 7.4 L 13.2 10.8 L 16.6 12 L 13.2 13.2 L 12 16.6 L 10.8 13.2 L 7.4 12 L 10.8 10.8 Z" /></I>,
   hiRes: (s) => <I size={s}><rect x="3" y="5" width="18" height="14" /><path d="M7 15 V 9 M7 12 H 10.5 M10.5 9 V 15" /><path d="M14 9 V 15 M14 9 H 15.6 A 3 3 0 0 1 15.6 15 H 14" /></I>,
+  // pushpin / thumbtack — the quick-access palette "pin this condition" action.
+  // Cap bar at top, tapered body to a collar, needle to the point.
+  pin: (s) => <I size={s}><line x1="8" y1="3" x2="16" y2="3" /><path d="M10 3 V 8 L 7 11 H 17 L 14 8 V 3" /><line x1="12" y1="11" x2="12" y2="20" /></I>,
 };
 
 export function Icon({ name, size = 18 }) {

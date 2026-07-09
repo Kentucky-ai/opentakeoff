@@ -21,7 +21,7 @@ import ToolMenu from "../components/ToolMenu.jsx";
 import SheetGallery from "../components/SheetGallery.jsx";
 import ReportPanel from "../components/ReportPanel.jsx";
 import SnapshotPanel from "../components/SnapshotPanel.jsx";
-import TakeoffsPanel, { clampPanelW } from "../components/TakeoffsPanel.jsx";
+import TakeoffsPanel, { clampPanelW, CONDITION_DND_MIME, ConditionAppearanceEditor } from "../components/TakeoffsPanel.jsx";
 import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../components/hatches.jsx";
 import { Icon } from "../brand/icons.jsx";
 import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale } from "../lib/sheets";
@@ -82,7 +82,22 @@ const COLORS = ["#c96442", "#2f7d54", "#2563eb", "#9333ea", "#b8860b", "#0d9488"
 // by the panel itself — ONE clamp, so a future range change can't diverge
 // between the panel's own drag clamp and the load-time clamp here.)
 const PANEL_PREFS_KEY = "opentakeoff_panel";
-const PANEL_DEFAULTS = { w: 320, collapsed: false, strip: false, az: false, group: false };
+// The docked panel now starts COLLAPSED: the top-bar palette band (pinned chips
+// + the restored active-condition appearance editor) is the primary condition
+// surface, so the sidebar stays out of the way until you ask for it — via the
+// canvas rail toggle or by double-clicking a palette chip (openConditionInPanel).
+// Prefs persist diff-only against these defaults. Because the OLD default was
+// open (collapsed:false), a previously-open panel stored no diff and is
+// indistinguishable from "never touched", so this flip DOES start those users
+// collapsed on first load after the change (a one-time migration, not a per-user
+// choice being honored). An explicit COLLAPSE made under the old default is
+// preserved; any later toggle re-persists normally.
+const PANEL_DEFAULTS = { w: 320, collapsed: true, strip: false, az: false, group: false };
+// Top-bar quick-access condition palette: a curated handful (≤9) of pinned
+// conditions for one-click activation without leaving the canvas. Palette holds
+// condition ids (workspace-scoped), so it persists with the annotation payload,
+// not the per-user panel prefs. Capped at 9 so it maps 1:1 onto the 1–9 hotkeys.
+const PALETTE_MAX = 9;
 
 // Invert a canvas's pixels in place: one difference-with-white pass (an
 // involution — applying it again flips back). This is how the negative/dark
@@ -270,6 +285,7 @@ export default function TakeoffCanvas() {
   const [conditions, setConditions] = useState([]);
   const [conditionColumns, setConditionColumns] = useState([]);  // project-level custom-column vocabulary [{ id, name, values }] — assignments live on c.attrs
   const [activeCond, setActiveCond] = useState("");
+  const [palette, setPalette] = useState([]);   // ordered condition ids pinned to the top-bar quick-access palette (≤ PALETTE_MAX)
   const [shapes, setShapes] = useState([]);
   const [poly, setPoly] = useState([]);
   const [proposal, setProposal] = useState(null);  // One-Click selection under review: { key, regions: [{kind:'pos'|'neg', seed, poly, area_sf, perim_lf}] } — panel-LOCAL px
@@ -582,6 +598,11 @@ export default function TakeoffCanvas() {
     const conds = sanitizeConditionAttrs(a.conditions || []);   // strips corrupt attrs values so every reader can trust them (the client_info precedent)
     if (conds.length) { setConditions(conds); setActiveCond(conds[0].id); }
     else { const seeded = seedConditions(templatesRef.current); setConditions(seeded); setActiveCond(seeded[0].id); }   // library templates first, flooring defaults as fallback
+    // palette holds condition ids — de-dupe (a hand-edited/older payload could
+    // repeat one, which would collide React keys and double-map a hotkey), drop
+    // any that don't resolve in the loaded set, and cap defensively; a seeded
+    // fresh workspace starts with an empty palette
+    setPalette(Array.isArray(a.palette) && conds.length ? [...new Set(a.palette)].filter((id) => conds.some((c) => c.id === id)).slice(0, PALETTE_MAX) : []);
     // panel transients reset with the conditions they described — a snapshot
     // Load must not keep a checked set / range anchor / filter / collapsed
     // groups aimed at the PRE-load list (bulk edits would misfire on ids that
@@ -1004,7 +1025,13 @@ export default function TakeoffCanvas() {
   // ── autosave (debounced) ──────────────────────────────────────────────────
   // buildPayload is the single serializer — autosave and snapshots must write
   // identical records for the same state (byte-stability matters downstream).
-  const buildPayload = () => ({ project_name: projectName, ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}) })), conditions, ...(conditionColumns.length ? { condition_columns: conditionColumns } : {}), shapes, markups, rfis, sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs });
+  const buildPayload = () => {
+    // palette holds condition ids; drop any that no longer resolve (defensive —
+    // delete already prunes) and omit the key entirely when nothing survives,
+    // mirroring the condition_columns omit-when-empty convention.
+    const pinned = palette.filter((id) => conditions.some((c) => c.id === id));
+    return { project_name: projectName, ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}) })), conditions, ...(conditionColumns.length ? { condition_columns: conditionColumns } : {}), ...(pinned.length ? { palette: pinned } : {}), shapes, markups, rfis, sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs };
+  };
   // markups MUST be in the deps (a cloud/callout/text or an RFI link is real work);
   // omitting it dropped markup saves and could persist a stale markups array.
   useEffect(() => {
@@ -1019,7 +1046,7 @@ export default function TakeoffCanvas() {
       });
     }, 700);
     return () => clearTimeout(t);
-  }, [shapes, conditions, conditionColumns, scales, scaleSources, markups, rfis, sheetGroup, lastGroup, openTabs, projectName, clientInfo]);
+  }, [shapes, conditions, conditionColumns, palette, scales, scaleSources, markups, rfis, sheetGroup, lastGroup, openTabs, projectName, clientInfo]);
   useEffect(() => { saveStateRef.current = saveState; }, [saveState]);
 
   // Flush a pending debounced save on navigate-away (unmount), and warn before a
@@ -1145,16 +1172,23 @@ export default function TakeoffCanvas() {
   // activateCondition with reassign:false: a digit press has no visual
   // reassign affordance (unlike the panel row / strip button), so it must
   // never silently move a selected shape's quantities. It still dismisses a
-  // live bulk selection, same as every activation surface.
+  // live bulk selection, same as every activation surface. When the palette is
+  // curated the digits follow PALETTE ORDER (the cobalt badges on the chips);
+  // an un-pinned workspace falls back to condition-array order, so the shortcut
+  // works out of the box before anyone pins anything.
   useEffect(() => {
     const onKey = (e) => {
       if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;   // let ⌘/Ctrl+1..9 (native tab switch) through — mirror the letter handler
+      if (menuDepthRef.current > 0) return;              // a toolbar menu is open; digits are paused like the letter shortcuts
       const n = parseInt(e.key, 10);
-      if (n >= 1 && n <= 9 && conditions[n - 1]) activateCondition(conditions[n - 1].id, { reassign: false });
+      if (n < 1 || n > 9) return;
+      const id = palette.length ? palette[n - 1] : conditions[n - 1]?.id;
+      if (id) activateCondition(id, { reassign: false });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [conditions, tool, selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [conditions, palette, tool, selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Undo a wrong click: Backspace/Delete (or Cmd/Ctrl+Z) removes the last placed
   // point; Escape cancels the whole in-progress shape.
@@ -1701,7 +1735,7 @@ export default function TakeoffCanvas() {
     if (!upp) { setCommitMsg(`Set the scale for ${labelFor(tp)} first.`); return; }
     if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
     const h = Number(aCond?.height_ft) || 0;
-    if (!(h > 0)) { setCommitMsg(`Set a height for ${aCond?.finish_tag || "this condition"} (H in the Takeoffs panel) — Surface Area = traced LF × height.`); return; }
+    if (!(h > 0)) { setCommitMsg(`Set a height for ${aCond?.finish_tag || "this condition"} (H in the condition editor) — Surface Area = traced LF × height.`); return; }
     const LF = openLen(points) * upp;
     setShapes((s) => [...s, {
       id: uid("shp"), sheet_id: tp.key, condition_id: activeCond, measure_role: "surface_area", height_ft: h,
@@ -2201,6 +2235,7 @@ export default function TakeoffCanvas() {
     const next = conditions.filter((x) => x.id !== id);
     if (owned.length) setShapes((ss) => ss.filter((s) => s.condition_id !== id));
     setConditions(next);
+    unpinFromPalette(id);   // a deleted condition can't stay pinned in the palette
     if (activeCond === id) setActiveCond(next[0]?.id || "");
     // no bulk-selection pruning needed here: the panel derives liveness from
     // the conditions prop (liveChecked = conditions ∩ checked), so a deleted
@@ -2261,6 +2296,10 @@ export default function TakeoffCanvas() {
 
   const condById = Object.fromEntries(conditions.map((c) => [c.id, c]));
   const aCond = condById[activeCond];
+  // resolve pinned ids to live conditions for the top-bar palette (a stale id
+  // renders nothing — the persisted list is pruned on save/delete, this is the
+  // render-time guard)
+  const paletteConds = palette.map((id) => condById[id]).filter(Boolean);
   const activeColor = aCond?.color || "#c96442";
   // Pattern id encodes the appearance so a hatch/color change yields a NEW paint
   // server — otherwise browsers keep painting the cached old pattern (the "it
@@ -2360,6 +2399,40 @@ export default function TakeoffCanvas() {
     panelSelectionRef.current?.();   // plain activation dismisses a live bulk selection (panel view state)
   };
 
+  // ── top-bar quick-access palette (pinned conditions) ──────────────────────
+  // A palette chip is a shortcut, not a new activation path: single-click routes
+  // through activateCondition (same reassign/clear-selection semantics as the
+  // strip and panel row); double-click opens the docked Takeoffs panel on that
+  // condition — the "don't open the sidebar unless double-clicked" contract.
+  const pinToPalette = (id) => {
+    if (palette.includes(id)) return;   // already pinned — silent no-op (dropping a chip back on the band)
+    if (palette.length >= PALETTE_MAX) { setCommitMsg(`Palette is full (${PALETTE_MAX}) — unpin one first.`); return; }
+    setPalette((p) => (p.includes(id) || p.length >= PALETTE_MAX ? p : [...p, id]));
+  };
+  const unpinFromPalette = (id) => setPalette((p) => p.filter((x) => x !== id));
+  // togglePin: the panel row's pushpin — pin if absent (respecting the cap),
+  // unpin if already pinned. movePalette: drag one chip onto another to reorder
+  // it to the target index (splice out, splice back in), which also renumbers
+  // the 1–9 hotkeys since they follow palette order.
+  const togglePin = (id) => setPalette((p) => (p.includes(id) ? p.filter((x) => x !== id) : (p.length >= PALETTE_MAX ? p : [...p, id])));
+  const movePalette = (id, toIndex) => setPalette((p) => {
+    const from = p.indexOf(id);
+    if (from < 0 || toIndex < 0 || toIndex >= p.length || from === toIndex) return p;
+    const next = p.slice();
+    next.splice(from, 1);
+    next.splice(toIndex, 0, id);
+    return next;
+  });
+  const openConditionInPanel = (id) => {
+    setPanelPrefs((p) => (p.collapsed ? { ...p, collapsed: false } : p));   // reveal the docked panel; no-op if already open
+    activateCondition(id);   // highlight the row (reassigns a selected shape iff Select is armed, like every activation surface)
+    // scroll the docked row into view AFTER the uncollapse paints — two rAFs so
+    // the panel has mounted its list (the row carries data-cond-id)
+    // CSS.escape the id — hydrate accepts hand-edited/older payloads, so an id
+    // with quotes/brackets must not break the attribute selector
+    requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector(`[data-cond-id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: "nearest" })));
+  };
+
   // Bulk mutations — the multi-selection is TakeoffsPanel view state; every
   // callback takes the LIVE id set the panel computed (conditions ∩ checked),
   // so counts and names here can never claim rows the list already lost.
@@ -2378,6 +2451,7 @@ export default function TakeoffCanvas() {
     if (!window.confirm(`Delete ${what}${owned ? ` and their ${owned} takeoff${owned === 1 ? "" : "s"}` : ""}? This can't be undone.`)) return false;
     setConditions((cs) => cs.filter((c) => !ids.has(c.id)));
     if (owned) setShapes((ss) => ss.filter((s) => !ids.has(s.condition_id)));
+    setPalette((p) => p.filter((id) => !ids.has(id)));   // deleted conditions can't stay pinned
     if (ids.has(activeCond)) setActiveCond(conditions.find((c) => !ids.has(c.id))?.id || "");
     setCommitMsg(`Deleted ${live.length} condition${live.length === 1 ? "" : "s"}${owned ? ` and ${owned} takeoff${owned === 1 ? "" : "s"}` : ""}.`);
     return true;
@@ -2525,7 +2599,7 @@ export default function TakeoffCanvas() {
     onUpdateLibMaterial: updateLibMaterial, onPushLibUpdate: pushLibUpdate,
     onDeleteLibMaterial: deleteLibMaterial, onAddLibMaterial: addLibMaterial,
     matFieldOverridden,   // pure helper, not an event handler — the forwarder returns its result
-    onToggleCollapse: toggleTakeoffs,
+    onToggleCollapse: toggleTakeoffs, onTogglePin: togglePin,
     // these three are ALREADY stable on their own (setState identity, and
     // holdPanelGesture is a useCallback with an empty dep array) — routed
     // through the registry anyway so the memo contract has exactly ONE
@@ -2696,6 +2770,70 @@ export default function TakeoffCanvas() {
           style={{ padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--ink-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>Report</button>
       </div>
 
+      {/* quick-access condition palette — its own slim band under the toolbar
+          (like the sheet-tabs / conditions-strip rows), not crammed into the
+          already-wrapping top bar. A curated ≤9 pinned conditions for one-click
+          activation without opening the panel: drag a condition here from the
+          Takeoffs panel (or the strip) to pin it, or use a row's pushpin. Each
+          chip carries its 1–9 hotkey badge (cobalt); single-click activates
+          (reassigning a selected shape, like every activation surface),
+          double-click opens the docked panel scrolled to that row, the pushpin
+          unpins, and dragging one chip onto another reorders (which renumbers
+          the hotkeys). Below the chips, the active condition's appearance editor
+          — the same one the docked panel row renders — so line/fill/hatch/height
+          are editable without opening the sidebar. Shown once there's a
+          condition to pin, so the drop zone is discoverable. */}
+      {conditions.length > 0 && (
+        <div
+          onDragOver={(e) => { if (e.dataTransfer.types.includes(CONDITION_DND_MIME)) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "copy"; } }}
+          onDrop={(e) => { if (!e.dataTransfer.types.includes(CONDITION_DND_MIME)) return; e.preventDefault(); e.stopPropagation(); const id = e.dataTransfer.getData(CONDITION_DND_MIME); if (id) pinToPalette(id); }}
+          style={{ padding: "5px 14px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+            <span title="Quick-access conditions — drag a condition here (or use a row's pushpin) to pin it, up to 9. Press 1–9 to activate by this order; click a chip to activate; double-click to open the panel."
+              style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.14em", color: "var(--ink-muted)" }}>Conditions</span>
+            {paletteConds.length === 0 ? (
+              <span style={{ fontSize: 11.5, color: "var(--ink-muted)", fontStyle: "italic", padding: "3px 8px", border: "1px dashed var(--ink-faint)" }}>drag conditions here (or pin a row) for 1-9 one-click access</span>
+            ) : paletteConds.map((c) => {
+              const on = c.id === activeCond;
+              const reassign = tool === "select" && selectedId;
+              const idx = palette.indexOf(c.id);   // palette position → the 1–9 hotkey number
+              return (
+                <span key={c.id} style={{ display: "inline-flex", alignItems: "center" }}
+                  onDragOver={(e) => { if (e.dataTransfer.types.includes(CONDITION_DND_MIME)) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; } }}
+                  onDrop={(e) => { if (!e.dataTransfer.types.includes(CONDITION_DND_MIME)) return; e.preventDefault(); e.stopPropagation(); const dragId = e.dataTransfer.getData(CONDITION_DND_MIME); if (dragId) { if (palette.includes(dragId)) movePalette(dragId, idx); else pinToPalette(dragId); } }}>
+                  <button type="button" draggable
+                    onDragStart={(e) => { e.dataTransfer.setData(CONDITION_DND_MIME, c.id); e.dataTransfer.effectAllowed = "copyMove"; }}
+                    onClick={() => activateCondition(c.id)}
+                    onDoubleClick={() => openConditionInPanel(c.id)}
+                    title={reassign ? `Reassign the selected takeoff to ${c.finish_tag} (double-click opens the panel)` : `${c.finish_tag} — press ${idx + 1} or click to activate, double-click to open in the panel, drag onto another chip to reorder`}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 8px 3px 5px", border: on ? `2px solid ${c.color}` : (reassign ? "1px dashed #1f3fc7" : "1px solid var(--ink-faint)"), background: on ? "#fff" : "transparent", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 12.5, lineHeight: 1 }}>
+                    {idx < 9 && <span style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: "var(--cobalt)", border: "1px solid var(--cobalt)", borderRadius: 3, padding: "0 3px" }}>{idx + 1}</span>}
+                    <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>{c.finish_tag}
+                  </button>
+                  <button type="button" onClick={() => unpinFromPalette(c.id)} title={`Unpin ${c.finish_tag} from the palette`}
+                    style={{ border: "none", background: "none", cursor: "pointer", color: "var(--cobalt)", padding: "0 3px", lineHeight: 0, display: "inline-flex" }}>
+                    <Icon name="pin" size={12} />
+                  </button>
+                </span>
+              );
+            })}
+            {paletteConds.length >= PALETTE_MAX && (
+              <span style={{ fontSize: 10.5, color: "var(--ink-muted)", fontStyle: "italic" }}>full ({PALETTE_MAX})</span>
+            )}
+            {/* add a condition without opening the (now-collapsed) sidebar */}
+            <button type="button" onClick={addCondition} title="Add a new condition"
+              style={{ padding: "3px 9px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12, color: "var(--ink-muted)" }}>+ condition</button>
+          </div>
+          {/* the active condition's appearance editor, restored to the top bar —
+              same component the docked panel row renders (one source of truth) */}
+          {aCond && (
+            <div style={{ marginTop: 5, paddingTop: 5, borderTop: "1px solid var(--ink-faint)" }}>
+              <ConditionAppearanceEditor cond={aCond} onUpdateCond={updateCond} onSetCondParam={setCondParam} onAssignAttr={assignAttr} conditionColumns={conditionColumns} layout="row" />
+            </div>
+          )}
+        </div>
+      )}
+
       {/* open-sheet tabs — what you opened from the gallery; click to view,
           ⊞ to side-by-side, ✕ to close; the dropdown lists every open sheet */}
       {openTabs.length > 0 && (
@@ -2734,9 +2872,14 @@ export default function TakeoffCanvas() {
           <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--ink-muted)" }}>Conditions</span>
           {conditions.map((c, i) => {
             const on = c.id === activeCond;
+            // the 1–9 badge follows the same rule as the hotkeys: palette order
+            // when curated, condition order (fallback) when nothing is pinned
+            const pinnedPal = palette.length > 0;
+            const hIdx = pinnedPal ? palette.indexOf(c.id) : i;
+            const hot = hIdx >= 0 && hIdx < 9;
             return (
-              <button key={c.id} onClick={() => activateCondition(c.id)} title={tool === "select" && selectedId ? "Reassign selected shape to this condition" : (i < 9 ? `Press ${i + 1}` : "")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px 3px 4px", borderRadius: 0, border: on ? `2px solid ${c.color}` : (tool === "select" && selectedId ? "1px dashed #1f3fc7" : "1px solid var(--ink-faint)"), background: on ? "#fff" : "transparent", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 12.5 }}>
-                {i < 9 && <span style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: "var(--ink-muted)", border: "1px solid var(--ink-faint)", borderRadius: 3, padding: "0 3px" }}>{i + 1}</span>}
+              <button key={c.id} draggable onDragStart={(e) => { e.dataTransfer.setData(CONDITION_DND_MIME, c.id); e.dataTransfer.effectAllowed = "copy"; }} onClick={() => activateCondition(c.id)} title={tool === "select" && selectedId ? "Reassign selected shape to this condition" : (hot ? `Press ${hIdx + 1} · drag to the palette to pin` : "Drag to the palette to pin")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px 3px 4px", borderRadius: 0, border: on ? `2px solid ${c.color}` : (tool === "select" && selectedId ? "1px dashed #1f3fc7" : "1px solid var(--ink-faint)"), background: on ? "#fff" : "transparent", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 12.5 }}>
+                {hot && <span style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: pinnedPal ? "var(--cobalt)" : "var(--ink-muted)", border: `1px solid ${pinnedPal ? "var(--cobalt)" : "var(--ink-faint)"}`, borderRadius: 3, padding: "0 3px" }}>{hIdx + 1}</span>}
                 <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>{c.finish_tag}
               </button>
             );
@@ -3230,7 +3373,7 @@ export default function TakeoffCanvas() {
                   <div style={{ fontSize: 22, fontWeight: 700, color: "#0e1a2e" }}>{num(liveLF * condH)} <span style={{ fontSize: 13, fontWeight: 600 }}>SF wall</span></div>
                   <div style={{ fontSize: 12.5, color: "#5b544a", marginTop: 2 }}>{num(liveLF)} LF × {num(condH, 2)} ft</div>
                 </>
-              ) : <div style={{ fontSize: 12.5, color: "#b03a26" }}>Set a height for {aCond?.finish_tag || "this condition"} — H in the Takeoffs panel</div>;
+              ) : <div style={{ fontSize: 12.5, color: "#b03a26" }}>Set a height for {aCond?.finish_tag || "this condition"} — H in the condition editor</div>;
             })()
           ) : liveArea != null && poly.length >= 3 ? (
             <>
@@ -3296,6 +3439,7 @@ export default function TakeoffCanvas() {
           visRowById={visRowById}
           conditionColumns={conditionColumns}
           templates={templates}
+          palette={palette}
           matLib={matLib}
           matLibById={matLibById}
           linkedCountById={linkedCountById}

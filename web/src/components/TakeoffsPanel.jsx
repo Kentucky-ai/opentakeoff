@@ -35,6 +35,11 @@ export const PANEL_MIN_W = 240;
 export const PANEL_MAX_W = 560;
 export const clampPanelW = (w) => Math.min(PANEL_MAX_W, Math.max(PANEL_MIN_W, w));
 
+// drag-and-drop payload type carrying a condition id — a condition row here is
+// a drag SOURCE, the top-bar quick-access palette (TakeoffCanvas) is the drop
+// TARGET. Custom MIME so a condition drag never looks like a file drop.
+export const CONDITION_DND_MIME = "application/x-opentakeoff-condition";
+
 // tag family = the text before the dash (CPT-1 → CPT) — the grouping key for
 // the panel's grouped view. VIEW-ONLY, like sort and search: the conditions
 // array order is canonical (1–9 hotkeys are positional and the payload
@@ -169,9 +174,102 @@ function AddValueInput({ onAdd }) {
   );
 }
 
+// Appearance editor for ONE condition — tag, ×N, waste, line/fill color, hatch,
+// line style, height, thickness, and custom-column assignment. This is the row
+// that "used to live in its own toolbar row above the canvas"; extracted here so
+// the docked panel AND the restored top-bar band render the SAME editor (one
+// source of truth, like the app's single activateCondition path). Owns only its
+// hatch-popover open state; everything else flows through the passed handlers.
+export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondParam, onAssignAttr, conditionColumns = [], layout = "stack" }) {
+  const [hatchOpen, setHatchOpen] = useState(false);
+  const activeColor = c.color || "#c96442";
+  // Two layouts, one editor. "stack" (docked panel, narrow) stacks the groups
+  // vertically; "row" (top-bar band, wide) flows them left-to-right so they use
+  // the horizontal space instead of clumping in a corner, split by thin rules.
+  const isRow = layout === "row";
+  const rule = () => <span aria-hidden style={{ width: 1, alignSelf: "stretch", background: "var(--ink-faint)", margin: "0 3px" }} />;
+  return (
+    <div style={isRow
+      ? { padding: "6px 2px 2px", display: "flex", flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 10, rowGap: 8, fontSize: 11 }
+      : { padding: "4px 12px 10px", display: "flex", flexDirection: "column", gap: 7, fontSize: 11 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <input value={c.finish_tag} onChange={(e) => onUpdateCond({ finish_tag: e.target.value })}
+          title="Rename this condition / finish tag"
+          style={{ width: 88, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontFamily: "var(--f-mono)", fontWeight: 700, fontSize: 12, color: "var(--ink)" }} />
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Multiply this condition by N identical units (measure one, ×N)">
+          <span style={{ color: "var(--ink-muted)" }}>×</span>
+          <input type="number" min="1" step="1" value={c.multiplier || 1}
+            onChange={(e) => onUpdateCond({ multiplier: Math.max(1, parseInt(e.target.value, 10) || 1) })}
+            style={{ width: 46, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Waste % — a flooring allowance added on top of the measured quantity in the Report. You choose it per condition (e.g. ~8% straight-lay LVP, ~15% diagonal, ~20% herringbone).">
+          <span style={{ color: "var(--ink-muted)" }}>Waste</span>
+          <input type="number" min="0" step="1" value={c.waste_pct ?? 0}
+            onChange={(e) => onUpdateCond({ waste_pct: Math.max(0, parseFloat(e.target.value) || 0) })}
+            style={{ width: 50, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
+          <span style={{ color: "var(--ink-muted)" }}>%</span>
+        </span>
+      </div>
+      {isRow && rule()}
+      <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+        <span style={{ color: "var(--ink-muted)", width: 26 }}>Line</span>
+        {PALETTE.map((p) => <button key={p} title={p} onClick={() => onUpdateCond({ color: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, border: c.color === p ? "2px solid #0e1a2e" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+        <span style={{ color: "var(--ink-muted)", width: 26 }}>Fill</span>
+        <button title="No fill" onClick={() => onUpdateCond({ fill: NO_FILL })} style={{ width: 16, height: 16, borderRadius: 4, background: "var(--paper-bright)", border: c.fill === NO_FILL ? "2px solid #0e1a2e" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 9, lineHeight: "12px", color: "#b03a26" }}>⦸</button>
+        {PALETTE.map((p) => <button key={p} title={p} onClick={() => onUpdateCond({ fill: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, opacity: 0.55, border: c.fill === p ? "2px solid #0e1a2e" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
+      </div>
+      {isRow && rule()}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 4, position: "relative" }}>
+          <button onClick={() => setHatchOpen((v) => !v)} title="Choose a hatch pattern"
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "2px 7px 2px 2px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", lineHeight: 0 }}>
+            <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>
+            <span style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1 }}>{(HATCHES.find((h) => h.id === (c.hatch || "solid")) || {}).label || "Solid"} ▾</span>
+          </button>
+          {hatchOpen && (
+            <div style={{ position: "absolute", top: 26, left: 0, zIndex: 30, display: "grid", gridTemplateColumns: "repeat(6, auto)", gap: 4, padding: 8, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "0 6px 22px rgba(0,0,0,.16)" }}>
+              {HATCHES.map((h) => {
+                const hOn = (c.hatch || "solid") === h.id;
+                return <button key={h.id} title={h.label} onClick={() => { onUpdateCond({ hatch: h.id }); setHatchOpen(false); }} style={{ padding: 1, borderRadius: 0, border: hOn ? `2px solid ${activeColor}` : "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", lineHeight: 0 }}><HatchSwatch type={h.id} line={c.color} fill={c.fill} /></button>;
+              })}
+            </div>
+          )}
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Line style — the outline dash for this finish's floor-area and linear takeoffs (canvas + Marked Set PDF). Surface walls and deducts keep their own dashing.">
+          <span style={{ color: "var(--ink-muted)" }}>Style</span>
+          <select value={c.line_style || "solid"} onChange={(e) => onUpdateCond({ line_style: e.target.value })}
+            style={{ fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }}>
+            {LINE_STYLE_IDS.map((id) => <option key={id} value={id}>{LINE_STYLES[id].label}</option>)}
+          </select>
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Height (ft) — the default for NEW wall traces (SF = LF × H) and the vertical-SF display on floor areas. Walls keep the height they were drawn at — select a wall to change just that one.">
+          <Icon name="height" size={13} /><span style={{ color: "var(--ink-muted)" }}>H</span>
+          <input type="number" min="0" step="0.25" value={c.height_ft ?? ""} placeholder="ft"
+            onChange={(e) => onSetCondParam("height_ft", e.target.value)}
+            style={{ width: 54, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Thickness (in) — a Linear run with thickness also computes border/feature-strip SF = LF × T/12. Changing it re-flows existing linear runs.">
+          <Icon name="thickness" size={13} /><span style={{ color: "var(--ink-muted)" }}>T</span>
+          <input type="number" min="0" step="0.25" value={c.thickness_in ?? ""} placeholder="in"
+            onChange={(e) => onSetCondParam("thickness_in", e.target.value)}
+            style={{ width: 50, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
+        </span>
+      </div>
+      {conditionColumns.length > 0 && isRow && rule()}
+      {conditionColumns.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", rowGap: 2 }} title="Classify this condition — the Report can group and export by these (manage columns in the Columns tab)">
+          <ColumnSelects columns={conditionColumns} cond={c} onAssign={onAssignAttr} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TakeoffsPanel({
   open, width, multiSheet,
-  conditions, activeCond, visRowById, conditionColumns, templates,
+  conditions, activeCond, visRowById, conditionColumns, templates, palette = [],
   matLib, matLibById, linkedCountById,
   panelPrefs, onPanelPrefs, reassigning, epoch, clearSelectionRef,
   onActivate, onSetActive, onLocate,
@@ -182,7 +280,7 @@ function TakeoffsPanel({
   onAttachLibMaterial, onPromoteMaterial, onRevertMatField, matFieldOverridden,
   onUpdateLibMaterial, onPushLibUpdate, onDeleteLibMaterial, onAddLibMaterial,
   onAddColumn, onRenameColumn, onDeleteColumn, onAddColumnValue, onRemoveColumnValue, onRenameColumnValue,
-  onToggleCollapse, onHoldGesture,
+  onToggleCollapse, onHoldGesture, onTogglePin,
 }) {
   const [panelTab, setPanelTab] = useState("takeoffs");       // "takeoffs" | "library" | "materials" | "columns"
   const [condQuery, setCondQuery] = useState("");             // live filter over the condition list (transient, never persisted)
@@ -195,7 +293,6 @@ function TakeoffsPanel({
   const [bulkWaste, setBulkWaste] = useState("");
   const checkAnchorRef = useRef(null);
   const [panelMatOpen, setPanelMatOpen] = useState(false);    // assemblies editor expanded inline under the active row
-  const [hatchOpen, setHatchOpen] = useState(false);          // hatch picker popover (declutters the properties block)
   const rootRef = useRef(null);   // panel root — mid-drag width writes bypass React
   const dragRef = useRef(null);   // { sx, sw, w } — w is the live width during the drag
 
@@ -220,8 +317,9 @@ function TakeoffsPanel({
   }, [clearSelectionRef]);
 
   // ── condition list: VIEW-ONLY search / natural sort / grouping ────────────
-  // (c, i) pairs keep each condition's ORIGINAL index so the hotkey badge
-  // stays honest under any view — 1–9 always map to array positions.
+  // Rows are wrapped as { c } so the view transforms (filter/sort/group) never
+  // touch the condition objects; the hotkey badge now reflects palette order,
+  // resolved per row from the palette prop (no original-index bookkeeping).
   const condQ = condQuery.trim().toLowerCase();
   const matQ = matLibQuery.trim().toLowerCase();   // Materials tab filter — hoisted so the row map below computes it once, not per row
   // the one finish-tag match rule — condView's filter and searchMiss must
@@ -229,7 +327,7 @@ function TakeoffsPanel({
   // message also shows (or vice versa)
   const matchesQuery = useCallback((c) => (c.finish_tag || "").toLowerCase().includes(condQ), [condQ]);
   const condView = useMemo(() => {
-    let v = conditions.map((c, i) => ({ c, i }));
+    let v = conditions.map((c) => ({ c }));
     // the ACTIVE condition is force-included past the filter: hotkeys, the
     // strip, and applyTemplate can activate a row the query hides, and the
     // properties editor lives only in the active row — it must stay reachable
@@ -321,9 +419,8 @@ function TakeoffsPanel({
   };
 
   const aCond = conditions.find((c) => c.id === activeCond);
-  const activeColor = aCond?.color || "#c96442";
 
-  const renderCondRow = (c, i) => {
+  const renderCondRow = (c) => {
     const row = visRowById.get(c.id);
     const mult = c.multiplier || 1;
     const sf = row?.floor_sf || 0, lf = row?.lf || 0, ea = row?.ea || 0, wsf = row?.wall_sf || 0;
@@ -331,17 +428,26 @@ function TakeoffsPanel({
     const on = c.id === activeCond;
     const matOn = on && panelMatOpen;
     const checked = checkedConds.has(c.id);
+    const pinIdx = palette.indexOf(c.id);        // position in the top-bar palette (−1 = not pinned)
+    const pinned = pinIdx >= 0;
+    // 1–9 hotkey badge follows the same rule as the keys (and the strip): palette
+    // order when the palette is curated, condition-array order as the fallback
+    // when nothing is pinned so the badge never under-advertises a working key
+    const hIdx = palette.length ? pinIdx : conditions.findIndex((x) => x.id === c.id);
+    const hot = hIdx >= 0 && hIdx < 9;
     return (
-      <div key={c.id} style={{ borderTop: "1px solid var(--ink-faint)", background: checked ? "#e8eefc" : on ? "#f3f8f4" : "transparent", borderLeft: on ? `3px solid ${c.color}` : checked ? "3px solid #1f3fc7" : "3px solid transparent" }}>
-        <div onClick={(e) => {
+      <div key={c.id} data-cond-id={c.id} style={{ borderTop: "1px solid var(--ink-faint)", background: checked ? "#e8eefc" : on ? "#f3f8f4" : "transparent", borderLeft: on ? `3px solid ${c.color}` : checked ? "3px solid #1f3fc7" : "3px solid transparent" }}>
+        <div draggable
+          onDragStart={(e) => { e.dataTransfer.setData(CONDITION_DND_MIME, c.id); e.dataTransfer.effectAllowed = "copy"; }}
+          onClick={(e) => {
             if (e.metaKey || e.ctrlKey) { toggleChecked(c.id); return; }
             if (e.shiftKey) { rangeCheck(c.id); return; }
             onActivate(c.id);
           }}
           onDoubleClick={() => onLocate(c.id)}
-          title={reassigning ? "Reassign selected shape to this condition" : "Make this the active condition (double-click zooms to its takeoffs · ⌘-click / ⇧-click selects for bulk edit)"}
+          title={reassigning ? "Reassign selected shape to this condition" : "Make this the active condition (double-click zooms to its takeoffs · ⌘-click / ⇧-click selects for bulk edit · drag to the top-bar palette for one-click access)"}
           style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", cursor: "pointer", outline: reassigning ? "1px dashed #1f3fc7" : "none", outlineOffset: -3, userSelect: "none" }}>
-          {i < 9 && <span style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: "var(--ink-muted)", border: "1px solid var(--ink-faint)", borderRadius: 3, padding: "0 3px", flexShrink: 0 }}>{i + 1}</span>}
+          {hot && <span title={pinned ? `Palette shortcut — press ${hIdx + 1} to activate` : `Press ${hIdx + 1} to activate (pin to lock this number)`} style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: pinned ? "var(--cobalt)" : "var(--ink-muted)", border: `1px solid ${pinned ? "var(--cobalt)" : "var(--ink-faint)"}`, borderRadius: 3, padding: "0 3px", flexShrink: 0 }}>{hIdx + 1}</span>}
           <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontWeight: on ? 700 : 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.finish_tag}{mult > 1 ? <span style={{ color: "var(--ink-muted)", fontWeight: 500 }}> ×{mult}</span> : null}</div>
@@ -357,83 +463,19 @@ function TakeoffsPanel({
             style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: matOn ? "var(--ink)" : "transparent", color: matOn ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>
             <Icon name="product" size={11} />{c.materials?.length ? c.materials.length : ""}
           </button>
+          <button onClick={(e) => { e.stopPropagation(); onTogglePin(c.id); }}
+            title={pinned ? "Unpin from the top-bar palette" : (palette.length >= 9 ? "Palette is full (9)" : "Pin to the top-bar palette for one-click access")}
+            style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", padding: "2px 5px", borderRadius: 0, border: `1px solid ${pinned ? "var(--cobalt)" : "var(--ink-faint)"}`, background: "transparent", color: pinned ? "var(--cobalt)" : (!pinned && palette.length >= 9 ? "var(--ink-faint)" : "var(--ink-muted)"), cursor: "pointer", lineHeight: 0 }}>
+            <Icon name="pin" size={12} />
+          </button>
           <button onClick={(e) => { e.stopPropagation(); onDeleteCondition(c.id); }} title="Delete this condition (and its takeoffs)"
             style={{ flexShrink: 0, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "#b03a26", cursor: "pointer", fontSize: 12 }}>✕</button>
         </div>
-        {/* properties for the ACTIVE condition — the appearance editing
-            that used to live in its own toolbar row above the canvas */}
-        {on && (
-          <div style={{ padding: "4px 12px 10px", display: "flex", flexDirection: "column", gap: 7, fontSize: 11 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <input value={c.finish_tag} onChange={(e) => onUpdateCond({ finish_tag: e.target.value })}
-                title="Rename this condition / finish tag"
-                style={{ width: 88, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontFamily: "var(--f-mono)", fontWeight: 700, fontSize: 12, color: "var(--ink)" }} />
-              <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Multiply this condition by N identical units (measure one, ×N)">
-                <span style={{ color: "var(--ink-muted)" }}>×</span>
-                <input type="number" min="1" step="1" value={c.multiplier || 1}
-                  onChange={(e) => onUpdateCond({ multiplier: Math.max(1, parseInt(e.target.value, 10) || 1) })}
-                  style={{ width: 46, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-              </span>
-              <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Waste % — a flooring allowance added on top of the measured quantity in the Report. You choose it per condition (e.g. ~8% straight-lay LVP, ~15% diagonal, ~20% herringbone).">
-                <span style={{ color: "var(--ink-muted)" }}>Waste</span>
-                <input type="number" min="0" step="1" value={c.waste_pct ?? 0}
-                  onChange={(e) => onUpdateCond({ waste_pct: Math.max(0, parseFloat(e.target.value) || 0) })}
-                  style={{ width: 50, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-                <span style={{ color: "var(--ink-muted)" }}>%</span>
-              </span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-              <span style={{ color: "var(--ink-muted)", width: 26 }}>Line</span>
-              {PALETTE.map((p) => <button key={p} title={p} onClick={() => onUpdateCond({ color: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, border: c.color === p ? "2px solid #0e1a2e" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-              <span style={{ color: "var(--ink-muted)", width: 26 }}>Fill</span>
-              <button title="No fill" onClick={() => onUpdateCond({ fill: NO_FILL })} style={{ width: 16, height: 16, borderRadius: 4, background: "var(--paper-bright)", border: c.fill === NO_FILL ? "2px solid #0e1a2e" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 9, lineHeight: "12px", color: "#b03a26" }}>⦸</button>
-              {PALETTE.map((p) => <button key={p} title={p} onClick={() => onUpdateCond({ fill: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, opacity: 0.55, border: c.fill === p ? "2px solid #0e1a2e" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 4, position: "relative" }}>
-                <button onClick={() => setHatchOpen((v) => !v)} title="Choose a hatch pattern"
-                  style={{ display: "flex", alignItems: "center", gap: 5, padding: "2px 7px 2px 2px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", lineHeight: 0 }}>
-                  <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>
-                  <span style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1 }}>{(HATCHES.find((h) => h.id === (c.hatch || "solid")) || {}).label || "Solid"} ▾</span>
-                </button>
-                {hatchOpen && (
-                  <div style={{ position: "absolute", top: 26, left: 0, zIndex: 30, display: "grid", gridTemplateColumns: "repeat(6, auto)", gap: 4, padding: 8, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "0 6px 22px rgba(0,0,0,.16)" }}>
-                    {HATCHES.map((h) => {
-                      const hOn = (c.hatch || "solid") === h.id;
-                      return <button key={h.id} title={h.label} onClick={() => { onUpdateCond({ hatch: h.id }); setHatchOpen(false); }} style={{ padding: 1, borderRadius: 0, border: hOn ? `2px solid ${activeColor}` : "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", lineHeight: 0 }}><HatchSwatch type={h.id} line={c.color} fill={c.fill} /></button>;
-                    })}
-                  </div>
-                )}
-              </span>
-              <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Line style — the outline dash for this finish's floor-area and linear takeoffs (canvas + Marked Set PDF). Surface walls and deducts keep their own dashing.">
-                <span style={{ color: "var(--ink-muted)" }}>Style</span>
-                <select value={c.line_style || "solid"} onChange={(e) => onUpdateCond({ line_style: e.target.value })}
-                  style={{ fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }}>
-                  {LINE_STYLE_IDS.map((id) => <option key={id} value={id}>{LINE_STYLES[id].label}</option>)}
-                </select>
-              </span>
-              <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Height (ft) — the default for NEW wall traces (SF = LF × H) and the vertical-SF display on floor areas. Walls keep the height they were drawn at — select a wall to change just that one.">
-                <Icon name="height" size={13} /><span style={{ color: "var(--ink-muted)" }}>H</span>
-                <input type="number" min="0" step="0.25" value={c.height_ft ?? ""} placeholder="ft"
-                  onChange={(e) => onSetCondParam("height_ft", e.target.value)}
-                  style={{ width: 54, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-              </span>
-              <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Thickness (in) — a Linear run with thickness also computes border/feature-strip SF = LF × T/12. Changing it re-flows existing linear runs.">
-                <Icon name="thickness" size={13} /><span style={{ color: "var(--ink-muted)" }}>T</span>
-                <input type="number" min="0" step="0.25" value={c.thickness_in ?? ""} placeholder="in"
-                  onChange={(e) => onSetCondParam("thickness_in", e.target.value)}
-                  style={{ width: 50, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-              </span>
-            </div>
-            {conditionColumns.length > 0 && (
-              <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", rowGap: 2 }} title="Classify this condition — the Report can group and export by these (manage columns in the Columns tab)">
-                <ColumnSelects columns={conditionColumns} cond={c} onAssign={onAssignAttr} />
-              </div>
-            )}
-          </div>
-        )}
+        {/* properties for the ACTIVE condition — the appearance editing that
+            used to live in its own toolbar row above the canvas. Extracted to
+            ConditionAppearanceEditor so the docked panel AND the top-bar band
+            render the same editor from one source of truth. */}
+        {on && <ConditionAppearanceEditor cond={c} onUpdateCond={onUpdateCond} onSetCondParam={onSetCondParam} onAssignAttr={onAssignAttr} conditionColumns={conditionColumns} />}
         {matOn && (
           <div style={{ padding: "8px 12px 10px", background: "var(--paper-cream)", borderTop: "1px solid var(--ink-faint)", fontSize: 11.5 }}>
             <div style={{ marginBottom: 6, color: "var(--ink-muted)" }}>Assemblies — order qty = measured ÷ coverage, rounded up.</div>
@@ -519,7 +561,7 @@ function TakeoffsPanel({
               )}
               {/* groupVisibleItems: a collapsed group still renders its
                   ACTIVE row (see the shared rule above visibleCondOrder) */}
-              {groupVisibleItems(g).map(({ c, i }) => renderCondRow(c, i))}
+              {groupVisibleItems(g).map(({ c }) => renderCondRow(c))}
             </React.Fragment>
           ))}
           {searchMiss && <div style={{ padding: "12px", color: "var(--ink-muted)" }}>No conditions match “{condQuery}”.</div>}
