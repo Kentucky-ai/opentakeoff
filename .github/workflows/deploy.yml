@@ -33,6 +33,17 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
       - run: npm run check
+        # Optional team cloud mode (docs/GOOGLE_SETUP.md). These are PUBLIC,
+        # non-secret build-time config (a public OAuth client id + the Workspace
+        # domain), so they're GitHub *Variables*, not Secrets. This job targets
+        # the `production` environment, so `vars.*` resolves that environment's
+        # Variables — the same place the Netlify deploy secrets live. Unset =
+        # empty = cloud mode stays off and the build is the anonymous local-only
+        # app. Vite inlines VITE_* at build time; the deployed dist is this step.
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_HD: ${{ vars.VITE_GOOGLE_HD }}
+          VITE_PRICING_FILE_ID: ${{ vars.VITE_PRICING_FILE_ID }}
       - name: Deploy to Netlify
         # Pinned exact version — bump deliberately; a floating tag would let a
         # compromised release run with the deploy token.

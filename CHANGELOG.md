@@ -5,6 +5,18 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 ## Unreleased
 
 ### Added
+- **Sign-in visible on the plan-set/landing view (cloud mode).** The Google
+  sign-in chip now also appears in the plan-set gallery header, so a signed-out
+  visitor on the landing page can sign in without a deep link (the main toolbar's
+  chip is hidden behind that full-screen overlay). Renders nothing when cloud
+  mode isn't configured, so the anonymous app is unchanged.
+- **Deploy passes cloud-mode build vars.** The production deploy now forwards the
+  public, non-secret `VITE_GOOGLE_CLIENT_ID` / `VITE_GOOGLE_HD` /
+  `VITE_PRICING_FILE_ID` into the build from the **`production` environment's
+  Variables** (the deploy job targets `environment: production`, so `vars.*`
+  resolves that environment) — the same place the Netlify deploy secrets live.
+  Setting those Variables turns cloud mode on at the next deploy with no code
+  change.
 - **Top-bar quick-access condition palette.** A slim band directly under the main
   toolbar holds a curated set of **pinned conditions** (up to **9**) for one-click
   activation without opening the sidebar. Pin three ways: **drag** a condition onto
