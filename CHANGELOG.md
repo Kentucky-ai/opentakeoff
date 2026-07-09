@@ -4,10 +4,28 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
 ## 2026-07-09
 
+### Fixed
+- **One-Click Area now traces hatch-lined rooms to the walls (#32).** Rooms whose
+  floor is filled with a CAD hatch/finish pattern were undercounting — the fill
+  stopped at the first ring of pattern linework instead of reaching the walls
+  (measured ~31.5% sheet-wide undercount on a real finish plan). One-Click now
+  escalates past a room's hatch when the strict fill is meaningfully bounded by
+  it, but only accepts the larger result if it stays enclosed and the area grows
+  within a bounded factor — so a stray line misread as hatch can never balloon or
+  spill the measurement. Recovers 18 undercounting rooms on the bundled sample
+  plan; wall-bounded rooms are unchanged.
+
 ### Added
+- **One-Click fill sensitivity (#32).** A slider on the toolbar (shown while
+  One-Click Area is active) dials how far a fill reaches past a room's hatch
+  pattern, with detents at **Strict** (stop at the linework — original behavior),
+  **Balanced** (recover hatch-lined rooms to the walls — default), and
+  **Aggressive** (cross more pattern, tolerate more growth). It still tunes
+  0–100% freely and snaps to a notch when released near one. Lower it if fills
+  spill; raise it if hatched rooms come up short. Remembered per browser.
 - **Stamp system — reusable annotation stamps (#40).** Define an annotation once,
   save it to a **browser-wide library** (the first cross-project asset), and drop
-  it onto any sheet with a click — the Bluebeam tool-chest pattern for shop-drawing
+  it onto any sheet with a click — a reusable tool-chest for shop-drawing
   markup. In the **Stamps** tab of the left dock, **Place** arms a stamp, then each
   canvas click instantiates it as **normal, editable markups** (a number bubble
   prompts for its value on placement). A fresh library seeds three flooring
@@ -241,7 +259,7 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 - User guide: new "Angle lock (45°/90°)" section + ⇧ shortcut row.
 
 ## 2026-06-28
-- **Crisp detail-view canvas** — past ~1.15× zoom the visible region re-renders straight from the PDF vectors at the current zoom (Bluebeam/AutoCAD-style), so deep zoom never pixelates.
+- **Crisp detail-view canvas** — past ~1.15× zoom the visible region re-renders straight from the PDF vectors at the current zoom (AutoCAD-style), so deep zoom never pixelates.
 
 ## 2026-06-23
 - **Bundled sample plan** — a real (public, architect-sealed) medical-center floor finish plan with one-click **Load sample plan**; social card + README hero.
