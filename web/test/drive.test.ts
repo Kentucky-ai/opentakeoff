@@ -115,6 +115,29 @@ test("getFileBytes returns a Uint8Array from the media response", async () => {
   assert.match(calls[0].url, /alt=media/);
 });
 
+test("file ids are percent-encoded so a planted id can't escape the path segment", async () => {
+  // A manifest id from sheets.json is attacker-controllable; without encoding,
+  // `../../drive/v3/about` would steer the GET to a different googleapis path
+  // with the user's Bearer token. Encoding pins it to a single path segment.
+  const evil = "../../drive/v3/about";
+  const enc = encodeURIComponent(evil);
+  const { fetch, calls } = stubFetch([
+    makeRes({ arrayBuffer: new ArrayBuffer(0) }), // getFileBytes
+    makeRes({ json: { id: evil } }),              // updateFileBytes (via putJson)
+    makeRes({ ok: true }),                        // deleteFile
+  ]);
+  const drive = createDrive({ getToken, fetch });
+
+  await drive.getFileBytes(evil);
+  await drive.putJson({ folderId: "f", name: "n", data: {}, existingId: evil });
+  await drive.deleteFile(evil);
+
+  for (const c of calls) {
+    assert.ok(c.url.includes(enc), `expected encoded id in ${c.url}`);
+    assert.ok(!c.url.includes(evil), `raw id leaked into ${c.url}`);
+  }
+});
+
 test("getJson downloads, decodes UTF-8, and parses", async () => {
   const obj = { hello: "wörld", n: 3 };
   const buf = new TextEncoder().encode(JSON.stringify(obj)).buffer;

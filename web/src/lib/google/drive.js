@@ -81,7 +81,7 @@ export function createDrive({ getToken, fetch = globalThis.fetch }) {
 
   async function getFileBytes(fileId) {
     const params = new URLSearchParams({ alt: "media", supportsAllDrives: "true" });
-    const res = await fetch(`${FILES_URL}/${fileId}?${params}`, { headers: await authHeaders() });
+    const res = await fetch(`${FILES_URL}/${encodeURIComponent(fileId)}?${params}`, { headers: await authHeaders() });
     await assertOk(res, "download");
     return new Uint8Array(await res.arrayBuffer());
   }
@@ -117,7 +117,7 @@ export function createDrive({ getToken, fetch = globalThis.fetch }) {
 
   async function updateFileBytes(fileId, bytes, mimeType) {
     const params = new URLSearchParams({ uploadType: "media", supportsAllDrives: "true" });
-    const res = await fetch(`${UPLOAD_URL}/${fileId}?${params}`, {
+    const res = await fetch(`${UPLOAD_URL}/${encodeURIComponent(fileId)}?${params}`, {
       method: "PATCH",
       headers: await authHeaders(mimeType ? { "Content-Type": mimeType } : undefined),
       body: bytes,
@@ -141,7 +141,7 @@ export function createDrive({ getToken, fetch = globalThis.fetch }) {
 
   async function deleteFile(fileId) {
     const params = new URLSearchParams({ supportsAllDrives: "true" });
-    const res = await fetch(`${FILES_URL}/${fileId}?${params}`, {
+    const res = await fetch(`${FILES_URL}/${encodeURIComponent(fileId)}?${params}`, {
       method: "DELETE",
       headers: await authHeaders(),
     });
