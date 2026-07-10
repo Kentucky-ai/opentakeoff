@@ -50,6 +50,7 @@ import {
   MEASURE_TOOLS, CUT_TOOLS, MARKUP_TOOLS, MARKUP_IDS,
 } from "../lib/canvasConstants.js";
 import { autoRenderScale, invertCanvasPixels, uid, clamp, isDangerMsg, instantiateTemplate, seedConditions } from "../lib/canvasUtil.js";
+import * as panelGeom from "../lib/panelGeometry.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -390,19 +391,12 @@ export default function TakeoffCanvas() {
     if (dims.w) _px += dims.w + PANEL_GAP;
     return p;
   });
-  const stage = panels.reduce((a, p) => ({ w: Math.max(a.w, p.xOffset + p.img.w), h: Math.max(a.h, p.img.h) }), { w: 0, h: 0 });
-  const panelByKey = (k) => panels.find((p) => p.key === k) || panels[0];
-  // never null: a click in a gap (or off the row) routes to the NEAREST panel,
-  // matching the old behavior of happily returning out-of-bounds image coords
-  const panelAt = (sx) => {
-    let best = panels[0], bd = Infinity;
-    for (const p of panels) {
-      if (sx >= p.xOffset && sx < p.xOffset + p.img.w) return p;
-      const d = sx < p.xOffset ? p.xOffset - sx : sx - (p.xOffset + p.img.w);
-      if (d < bd) { bd = d; best = p; }
-    }
-    return best;
-  };
+  // Pure panel-row math (stage extent, nearest-panel routing, the px→feet
+  // scale factors) lives in lib/panelGeometry.js; these thin wrappers bind the
+  // live panels/scales so every call site below reads unchanged.
+  const stage = panelGeom.stageExtent(panels);
+  const panelByKey = (k) => panelGeom.panelByKey(panels, k);
+  const panelAt = (sx) => panelGeom.panelAt(panels, sx);
   const panelKeySet = new Set(groupKeys);
   // memoized: feeds the per-condition totals map the memoized TakeoffsPanel
   // takes as a prop — identity must hold across canvas-only renders. Builds
@@ -422,19 +416,12 @@ export default function TakeoffCanvas() {
   const focusPanel = (focusKey && groupKeys.includes(focusKey) && panelByKey(focusKey)) || panels[0];
   const unitsPerPx = scales[focusPanel.key] ?? null;
   const labelFor = (p) => (p.file === active && pageLabels[p.page]) || (p.page > 1 ? `Sheet ${p.page}` : p.file);
-  // Stored scales are ALWAYS feet-per-pixel at the baseline RENDER_SCALE. A hi-res
-  // sheet is rastered at autoRenderScale, so its bitmap has factorFor× the baseline
-  // pixels — geometry must divide by that factor (uppFor) and calibration must multiply
-  // back to baseline, or a quantity would drift with the render resolution. Shape verts
-  // are normalized to the panel, so positions are scale-free; only the px→feet factor
-  // moves. factorFor reads the scale ACTUALLY rastered (renderScalesRef), so it always
-  // matches the bitmap currently on screen.
+  // Scale semantics (why geometry divides by factorFor and calibration
+  // multiplies back to baseline) are documented on the pure functions in
+  // lib/panelGeometry.js; these wrappers bind the live scales/renderScalesRef.
   const hiResOn = (key) => hiResKeys.includes(key);
-  const factorFor = (key) => (renderScalesRef.current.get(key) || RENDER_SCALE) / RENDER_SCALE;
-  const uppFor = (key) => {
-    const u = scales[key];
-    return u == null ? null : u / factorFor(key);
-  };
+  const factorFor = (key) => panelGeom.factorFor(renderScalesRef.current, key);
+  const uppFor = (key) => panelGeom.uppFor(scales, renderScalesRef.current, key);
   const toggleHiRes = () => {
     const k = focusPanel.key;
     setHiResKeys((arr) => {
