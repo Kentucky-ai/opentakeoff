@@ -100,3 +100,15 @@ test("checkVerdict normalizes -0: an exact recalibrate reads +0.0%", () => {
   assert.equal(v.grade, "match");
   assert.equal(`${v.shown >= 0 ? "+" : ""}${v.shown.toFixed(1)}%`, "+0.0%");
 });
+
+test("parseLenInput accepts smart punctuation (macOS/iOS substitution, spec-doc pastes)", () => {
+  assert.equal(parseLenInput("12’6”", "imperial"), 12.5);
+  assert.equal(parseLenInput("6’", "imperial"), 6);
+  assert.equal(parseLenInput("18”", "imperial"), 1.5);
+});
+
+test("checkVerdict refuses to grade a non-answer green", () => {
+  assert.equal(checkVerdict(NaN).grade, "wrong");
+  assert.equal(checkVerdict(Infinity).grade, "wrong");
+  assert.equal(checkVerdict(-Infinity).grade, "wrong");
+});

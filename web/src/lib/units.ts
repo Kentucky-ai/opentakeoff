@@ -61,10 +61,11 @@ export function parseLenInput(raw: string, units: UnitSystem): number {
   }
   // inches-only: 6", 6″, 6in (values ≥ 12″ are fine here — "18\"" is a real
   // dimension callout; only the feet-inches form below treats inch ≥ 12 as a typo)
-  const inOnly = s.match(/^(\d+(?:\.\d+)?)\s*(?:"|″|in)$/i);
+  const inOnly = s.match(/^(\d+(?:\.\d+)?)\s*(?:"|″|”|in)$/i);
   if (inOnly) return Number(inOnly[1]) / 12;
-  // feet-inches: 12'6, 12' 6", 12-6, 12ft 6in
-  const fi = s.match(/^(\d+(?:\.\d+)?)\s*(?:'|′|ft)\s*(?:-|\s)?\s*(\d+(?:\.\d+)?)?\s*(?:"|″|in)?$/i)
+  // feet-inches: 12'6, 12' 6", 12-6, 12ft 6in — incl. the curly quotes (’ ”)
+  // macOS/iOS smart punctuation substitutes and spec-doc pastes carry
+  const fi = s.match(/^(\d+(?:\.\d+)?)\s*(?:'|′|’|ft)\s*(?:-|\s)?\s*(\d+(?:\.\d+)?)?\s*(?:"|″|”|in)?$/i)
     || s.match(/^(\d+)\s*-\s*(\d+(?:\.\d+)?)$/);
   if (fi) {
     const ft = Number(fi[1]);
@@ -85,6 +86,10 @@ export function parseLenInput(raw: string, units: UnitSystem): number {
  *  convention) so an exact recalibrate's 1-ulp FP residue reads "+0.0%",
  *  never "(-0.0%)". */
 export function checkVerdict(errPct: number): { shown: number; grade: "match" | "close" | "wrong" } {
+  // an exported helper whose failure mode is "confidently green" needs the
+  // guard even though current callers null-check first: NaN.toFixed(1) → "NaN"
+  // → Number → NaN → ||0 → 0 would grade a non-answer as a match
+  if (!Number.isFinite(errPct)) return { shown: 0, grade: "wrong" };
   const shown = Number(errPct.toFixed(1)) || 0;
   const a = Math.abs(shown);
   return { shown, grade: a <= 1 ? "match" : a <= 5 ? "close" : "wrong" };

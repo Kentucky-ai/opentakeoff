@@ -34,7 +34,7 @@ export function registerTools(server: McpServer, session: Session): void {
   }, run(({ sheet }) => session.sheetInfo(sheet)));
 
   server.registerTool("set_scale", {
-    description: `Set a sheet's scale — exactly ONE of: label (a standard scale, e.g. '1/4" = 1'-0"'), upp (real feet per image px), calibrate (two points along a known dimension plus its real feet), or use_detected (adopt the drawn scale note read off the sheet). The detected scale is never applied automatically — setting it is always this explicit call. ${COORDS}`,
+    description: `Set a sheet's scale — exactly ONE of: label (a standard scale, e.g. '1/4" = 1'-0"'), upp (real feet per image px), calibrate (two points along a known dimension plus its real feet), or use_detected (adopt the drawn scale note read off the sheet). The detected scale is never applied automatically — setting it is always this explicit call. Changing the scale re-prices the sheet's committed shapes at the new scale (the response reports repriced: N) — earlier takeoff_summary results for that sheet are stale after this call. ${COORDS}`,
     inputSchema: {
       sheet: z.string(),
       label: z.string().optional().describe("A standard scale label, exactly as listed in the error on a miss"),

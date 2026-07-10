@@ -1849,7 +1849,8 @@ export default function TakeoffCanvas() {
     // committed quantities (sheet had a scale, the scale moved, shapes exist on
     // it) — that's the case worth a one-step revert (the Scale menu surfaces it)
     const prior = scales[key];
-    if (prior != null && prior !== upp && shapes.some((sh) => sh.sheet_id === key)) {
+    if (prior === upp) return; // re-picking the active scale — no reprice churn, no stash (mirrors the MCP guard)
+    if (prior != null && shapes.some((sh) => sh.sheet_id === key)) {
       setPrevScale({ key, upp: prior, source: scaleSources[key] || "standard" });
     }
     setScales((s) => ({ ...s, [key]: upp }));
@@ -1903,6 +1904,7 @@ export default function TakeoffCanvas() {
     const feet = parseLenInput(checkStated, UNITS);
     if (!(feet > 0) || check.length !== 2) return;
     const pa = panelAt(check[0][0]);
+    if (panelAt(check[1][0])?.key !== pa?.key) return; // cross-panel span — the UI hides the button, but keep the function safe standalone
     const px = Math.hypot(check[1][0] - check[0][0], check[1][1] - check[0][1]);
     if (px <= 0) return;
     const toBase = factorFor(pa.key);
@@ -3150,7 +3152,7 @@ export default function TakeoffCanvas() {
     scaleItems.push({
       id: "revert-scale", icon: "undo",
       label: `Revert scale (was ${wasLabel})`,
-      title: `Put ${labelFor(focusPanel)} back on the scale the last rescale replaced and re-price its takeoffs. One step, this session only — reverting is itself revertible.`,
+      title: `Put ${labelFor(focusPanel)} back on the scale the last rescale replaced and re-price its takeoffs. One step, kept only until the sheet view changes — reverting is itself revertible.`,
       onSelect: revertScale,
     });
     scaleItems.push("divider");
@@ -3524,6 +3526,8 @@ export default function TakeoffCanvas() {
             <span style={{ color: "var(--c-danger)" }}>Check on one sheet — those two clicks landed on different sheets. <button onClick={() => { setCheck([]); setCheckStated(""); }} style={{ marginLeft: 6, padding: "5px 10px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer" }}>Reset</button></span>
           ) : !checkUpp ? (
             <span style={{ color: "var(--c-danger)" }}>No scale set for {labelFor(checkPanel)} — pick a standard scale or calibrate first, then check it here.</span>
+          ) : checkPx <= 0 ? (
+            <span style={{ color: "var(--c-danger)" }}>Those two clicks landed on the same point — click the two <b>ends</b> of a printed dimension.</span>
           ) : (
             <span>
               measures <b style={{ fontFamily: "var(--f-mono)" }}>{fmtCheckLen(checkFeet, UNITS)}</b> at {stdValue || "custom scale"} · drawing says{" "}
@@ -4026,7 +4030,9 @@ export default function TakeoffCanvas() {
                 const step = unitPx * z >= 6 ? 1 : unitPx * z * 5 >= 6 ? 5 : 0;
                 const nUnits = UNITS === "metric" ? Math.round(scaleGuide.feet * M_PER_FT) : scaleGuide.feet;
                 const ticks = step ? Array.from({ length: Math.floor(nUnits / step) + 1 }, (_, i) => i * step) : [0, nUnits];
-                const lbl = UNITS === "metric" ? `${nUnits} m at ${scaleGuide.label}` : `${scaleGuide.feet}′ at ${scaleGuide.label}`;
+                // "at 1/8″ = 1′-0″" reads right for a scale string; a source word ("calibrated", "custom") reads better parenthesized
+                const scaleTxt = /[=:]/.test(scaleGuide.label) ? `at ${scaleGuide.label}` : `(${scaleGuide.label})`;
+                const lbl = UNITS === "metric" ? `${nUnits} m ${scaleTxt}` : `${scaleGuide.feet}′ ${scaleTxt}`;
                 const cap = UNITS === "metric" ? "a door is about 0.9 m — if this bar looks wildly off, the scale is wrong" : "a door opening is about 3′ — if this bar looks wildly off, the scale is wrong";
                 return (
                   <g style={{ pointerEvents: "none" }}>
@@ -4245,8 +4251,12 @@ export default function TakeoffCanvas() {
         onLoadSnapshot={(payload) => {
           // a runtime load (unlike mount) can interrupt work in flight — an
           // unfinished trace/calibration/proposal must not commit into the
-          // restored takeoff under a reset activeCond
+          // restored takeoff under a reset activeCond. The check tool and the
+          // rescale stash are in that class too: a surviving prevScale would
+          // let "Revert scale" re-price the RESTORED takeoff against a scale
+          // stashed from the discarded timeline.
           setPoly([]); setCalib([]); setPendingLen(""); selectShape(null); setProposal(null);
+          setCheck([]); setCheckStated(""); setScaleGuide(null); setPrevScale(null);
           hydrate(payload || {});
         }}
       />
