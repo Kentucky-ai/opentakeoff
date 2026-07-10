@@ -245,38 +245,23 @@ async function fetchProfile(accessToken) {
   return { email: p.email, name: p.name, picture: p.picture, sub: p.sub, hd: p.hd };
 }
 
-// Try to restore a session with NO visible prompt — a live Google session plus
-// a prior consent grant for our scopes lets GIS hand back a token silently.
-// Resolves to null (never rejects) when that's not possible, so callers can
-// fall back to an interactive sign-in instead of surfacing this as an error.
-export async function trySilentSignIn() {
-  if (!isGoogleConfigured()) return null;
-  try {
-    const accessToken = await requestTokenSilentWithTimeout();
-    user = await fetchProfile(accessToken);
-    notify();
-    return user;
-  } catch {
-    return null;
-  }
-}
-
-// Interactive sign-in: try silently first (covers a returning user whose
-// earlier consent grant just wasn't picked up automatically, e.g. this is the
-// first GIS call of the tab) and only fall back to the full consent/account
-// picker when that fails — `prompt: "consent"` always shows that screen even
-// for a user who already granted access, so it's a last resort, not the
-// default. Resolves with the user object. The token stays in memory only.
+// Interactive sign-in — ALWAYS user-initiated (a click on "Sign in with Google
+// Drive"). A single `prompt: ""` request does the right thing on its own: GIS
+// returns a token with no visible UI for a user who already granted our scopes
+// ("just log me in"), and shows the account chooser / consent screen for anyone
+// who hasn't. We deliberately do NOT use the timeout-guarded silent path here:
+// the consent screen is a human reading a dialog, which routinely takes longer
+// than SILENT_TIMEOUT_MS — timing it out would abandon the request mid-consent
+// and (via the state guard) drop the token the moment the user clicks Allow,
+// breaking first-time sign-in. The timeout is only for the non-interactive
+// getAccessToken() refresh, where a stuck popup must never hang a Drive call.
+// The token stays in memory only. Resolves with the user object; rejects (so
+// the caller can surface it) if the user closes/cancels the dialog.
 export async function signIn() {
   if (!isGoogleConfigured()) {
     throw new Error("Google sign-in is not configured for this build.");
   }
-  let accessToken;
-  try {
-    accessToken = await requestTokenSilentWithTimeout();
-  } catch {
-    accessToken = await requestToken("consent");
-  }
+  const accessToken = await requestToken("");
   user = await fetchProfile(accessToken);
   notify();
   return user;

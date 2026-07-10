@@ -4,9 +4,10 @@
 // lazily through the SAME pdf.js document cache the canvas uses (getDoc), one
 // at a time, and yield while the canvas is rastering a full sheet.
 import React, { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Icon } from "../brand/icons.jsx";
 import AuthChip from "./AuthChip.jsx";
+import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
 import { parseSheetKey, extractSheetNumber, detectScale, RENDER_SCALE, MAX_GROUP } from "../lib/sheets";
 import { isGoogleConfigured } from "../lib/google/auth.js";
 import { projectHomeFolderId } from "../lib/projectHome.js";
@@ -18,10 +19,14 @@ export default function SheetGallery({
   thumbCacheRef, busyRef, openTabs, onOpen, onClose, canClose, onAddFiles, onAddFromDrive,
   onCloseProject, onBrowseProjects,
 }) {
+  const navigate = useNavigate();
+  const { user, signIn } = useGoogleAuth();
   const fileRef = useRef(null);
   const [pages, setPages] = useState({});   // file -> numPages (as discovered)
   const [sel, setSel] = useState([]);
   const [sampleBusy, setSampleBusy] = useState(false);
+  const [driveBusy, setDriveBusy] = useState(false);
+  const [driveErr, setDriveErr] = useState("");
   const [, bump] = useState(0);
   const seqRef = useRef(0);
   const queueRef = useRef([]);
@@ -43,6 +48,21 @@ export default function SheetGallery({
     } catch {
       setSampleBusy(false);   // on success this empty state unmounts as sheets load
     }
+  };
+
+  // The ONLY place a signed-out user starts Google OAuth from the local app —
+  // an explicit click, never automatic (see AuthContext: nothing touches Google
+  // on load). signIn() runs inside this click gesture, so the popup is allowed;
+  // on success we send them to their Drive project list. If a Projects root
+  // isn't configured there's nowhere to browse, so we just stay put signed in.
+  const handleDriveSignIn = () => {
+    if (driveBusy) return;
+    setDriveErr("");
+    setDriveBusy(true);
+    signIn()
+      .then(() => { if (projectHomeFolderId()) navigate("/projects"); })
+      .catch((e) => setDriveErr(String(e?.message || e)))
+      .finally(() => setDriveBusy(false));
   };
 
   // enumerate: learn every file's page count through the shared doc cache
@@ -175,19 +195,11 @@ export default function SheetGallery({
             <Icon name="plus" size={13} />Add from Drive
           </button>
         )}
-        {/* Sign-in for the optional team cloud mode — visible on the gallery/
-            landing view (the main toolbar's chip is hidden behind this overlay).
-            Renders nothing when cloud mode isn't configured. */}
+        {/* Account chip for the optional team cloud mode — shows the signed-in
+            user + sign-out (the main toolbar's chip is hidden behind this
+            overlay). Renders NOTHING when signed out: the sign-in entry point
+            is the subtle link below the Open area, not a toolbar button. */}
         <AuthChip />
-        {/* Deliberately subtle: this is a local-first app first, cloud mode
-            second. Only on the LOCAL canvas's gallery (no cloud project is
-            already open here — onCloseProject/onBrowseProjects are cloud-only
-            props) and only when the build actually names a Projects root. */}
-        {!onCloseProject && isGoogleConfigured() && projectHomeFolderId() && (
-          <Link to="/projects" style={{ fontSize: 11.5, color: "var(--ink-muted)", whiteSpace: "nowrap" }}>
-            browse team projects
-          </Link>
-        )}
         {onAddFiles && (
           <>
             <input name="sheet-file" ref={fileRef} type="file" accept=".pdf,application/pdf,image/*,.zip,application/zip,application/x-zip-compressed" multiple style={{ display: "none" }}
@@ -246,6 +258,29 @@ export default function SheetGallery({
                   <div style={{ fontFamily: "var(--f-display)", fontSize: 20, color: "var(--ink)", marginBottom: 8 }}>Open your plans</div>
                   Drag a PDF, an image, or a whole .zip plan set here — or click to choose. Nothing leaves your browser.
                 </button>
+                {/* Deliberately subtle text link, directly below the Open area:
+                    the ONLY entry into Google OAuth from the local app, and only
+                    on an explicit click. Signed in → jump to the Drive project
+                    list instead. Guard covers both arms so no empty gap renders
+                    on a signed-in build with no Projects root to browse. */}
+                {isGoogleConfigured() && (!user || projectHomeFolderId()) && (
+                  <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.6 }}>
+                    {!user ? (
+                      <>
+                        <button type="button" onClick={handleDriveSignIn} disabled={driveBusy}
+                          title="Sign in with your team Google account to open projects stored in Drive"
+                          style={{ border: "none", background: "transparent", padding: 0, color: "var(--cobalt)", cursor: driveBusy ? "default" : "pointer", fontSize: 12, textDecoration: "underline", fontFamily: "var(--f-body)" }}>
+                          {driveBusy ? "Signing in…" : "or sign in with Google Drive"}
+                        </button>
+                        {driveErr ? <div style={{ color: "var(--c-danger)", fontSize: 11.5, marginTop: 5 }}>Sign-in failed: {driveErr}</div> : null}
+                      </>
+                    ) : (
+                      <Link to="/projects" style={{ color: "var(--cobalt)", fontSize: 12, textDecoration: "underline" }}>
+                        browse your Google Drive projects
+                      </Link>
+                    )}
+                  </div>
+                )}
                 <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "18px auto 16px", color: "var(--text-faint)", fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase" }}>
                   <span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />new here?<span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />
                 </div>

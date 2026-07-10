@@ -1,9 +1,9 @@
 // Account chip — the two-deck toolbar's home for "who am I" (issue #61).
-// Absorbs AuthChip's behavior: renders NOTHING when the build isn't configured
-// for Google, a "Sign in" button (with surfaced failure reason) when signed
-// out, and an initials disc + menu (email, sync note, Sign out) when signed in.
-// The gallery header still uses the plain AuthChip; this chip is the toolbar's.
-import React, { useState } from "react";
+// Renders NOTHING unless the user is signed in: no UI when cloud mode is off,
+// and no "Sign in" button when signed out (sign-in is initiated only from the
+// explicit landing link / deep-link walls). When signed in it's an initials
+// disc + menu (email, sync note, Sign out). The gallery header uses AuthChip.
+import React from "react";
 import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
 import ToolMenu from "./ToolMenu.jsx";
 
@@ -16,34 +16,12 @@ const initialsOf = (user) => {
 };
 
 export default function AccountChip({ note, onOpenChange }) {
-  const { user, ready, configured, signIn, signOut } = useGoogleAuth();
-  const [err, setErr] = useState("");
-  if (!configured) return null;   // cloud mode off → no UI at all
-
-  if (!user) {
-    // Surface sign-in failures instead of swallowing them: log for debugging and
-    // show the reason in the button tooltip so a broken sign-in isn't silent.
-    const onSignIn = () => {
-      setErr("");
-      signIn().catch((e) => {
-        const msg = String(e?.message || e);
-        console.error("Google sign-in failed:", msg);
-        setErr(msg);
-      });
-    };
-    return (
-      <button type="button" disabled={!ready} onClick={onSignIn}
-        title={err ? `Sign-in failed: ${err}` : "Sign in with your team Google account to open cloud projects"}
-        style={{
-          display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px",
-          border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)",
-          cursor: ready ? "pointer" : "default", fontSize: 12.5, lineHeight: 1, opacity: ready ? 1 : 0.5,
-          ...(err ? { borderColor: "var(--c-danger)", color: "var(--c-danger)" } : {}),
-        }}>
-        {err ? "Sign in failed — retry" : "Sign in"}
-      </button>
-    );
-  }
+  const { user, signOut } = useGoogleAuth();
+  // Nothing in the toolbar when signed out (or cloud mode off) — the local-first
+  // app keeps its pre-Drive look and never shows a "Sign in" button here. Sign-in
+  // starts only from the explicit "Sign in with Google Drive" landing link
+  // (SheetGallery) or the deep-link sign-in walls (main.jsx).
+  if (!user) return null;
 
   return (
     <ToolMenu

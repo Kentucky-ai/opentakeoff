@@ -1,44 +1,25 @@
-// Toolbar sign-in chip for the optional Google cloud mode.
+// Toolbar account chip for the optional Google cloud mode.
 //
-// Renders NOTHING when the build isn't configured for Google — so the anonymous,
-// local-only app looks exactly as it always did. When configured it shows a
-// "Sign in" button, or the signed-in user's email with a sign-out affordance.
-// All the trust lives in the Internal OAuth app + Drive sharing (see
-// lib/google/auth.js); this is just the surface.
-import React, { useState } from "react";
+// Renders NOTHING when the build isn't configured for Google, AND nothing when
+// configured-but-signed-out — so the local-first app looks exactly as it did
+// before Drive existed, with no "Sign in" button competing in the toolbar.
+// Signing in is initiated ONLY from the explicit "Sign in with Google Drive"
+// link on the landing screen (see SheetGallery) or the deep-link sign-in walls
+// (main.jsx). Once signed in, this shows the user's email + a sign-out
+// affordance. All the trust lives in the Internal OAuth app + Drive sharing
+// (see lib/google/auth.js); this is just the surface.
+import React from "react";
 import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
 
 export default function AuthChip() {
-  const { user, ready, configured, signIn, signOut } = useGoogleAuth();
-  const [err, setErr] = useState("");
-  if (!configured) return null;   // cloud mode off → no UI at all
+  const { user, signOut } = useGoogleAuth();
+  if (!user) return null;   // signed out (or cloud mode off) → no toolbar UI
 
   const base = {
     display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px",
     border: "1px solid var(--ink-faint)", background: "transparent",
     color: "var(--ink)", cursor: "pointer", fontSize: 12.5, lineHeight: 1,
   };
-
-  if (!user) {
-    // Surface sign-in failures instead of swallowing them: log for debugging and
-    // show the reason in the button tooltip so a broken sign-in isn't silent.
-    const onSignIn = () => {
-      setErr("");
-      signIn().catch((e) => {
-        const msg = String(e?.message || e);
-        console.error("Google sign-in failed:", msg);
-        setErr(msg);
-      });
-    };
-    return (
-      <button type="button" disabled={!ready} onClick={onSignIn}
-        title={err ? `Sign-in failed: ${err}` : "Sign in with your team Google account to open cloud projects"}
-        style={{ ...base, opacity: ready ? 1 : 0.5, cursor: ready ? "pointer" : "default",
-          ...(err ? { borderColor: "var(--c-danger)", color: "var(--c-danger)" } : {}) }}>
-        {err ? "Sign in failed — retry" : "Sign in"}
-      </button>
-    );
-  }
 
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>

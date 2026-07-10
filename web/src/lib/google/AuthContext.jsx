@@ -12,7 +12,6 @@ import {
   getUser,
   signIn as authSignIn,
   signOut as authSignOut,
-  trySilentSignIn,
 } from "./auth.js";
 
 const GoogleAuthContext = createContext(null);
@@ -27,16 +26,15 @@ export function GoogleAuthProvider({ children }) {
     if (!configured) return;
     // Keep local state in lock-step with the auth module (sign-in/out fire here).
     const unsub = onAuthChange(setUser);
-    // Warm the GIS script so the first sign-in click is instant, then try to
-    // restore the session with no visible prompt — a returning user with a
-    // live Google session and a prior consent grant is signed back in before
-    // SignInScreen ever renders, instead of having to click through the full
-    // consent screen again. Failure (preload or silent sign-in) isn't fatal;
-    // either way we still mark ready and fall back to the interactive button.
+    // Warm the GIS script ONLY — inject the <script> so the first sign-in click
+    // is instant. We deliberately do NOT request a token here: the GIS token
+    // model has no truly silent path (every requestAccessToken() opens a popup
+    // and expects a user gesture — see auth.js and Google's own docs), so any
+    // automatic attempt on mount would pop the OAuth window on every page load.
+    // Nothing touches Google credentials until the user explicitly clicks
+    // "Sign in with Google Drive." Preloading the script alone never prompts.
     let live = true;
-    preloadGoogle()
-      .then(() => trySilentSignIn())
-      .finally(() => { if (live) setReady(true); });
+    preloadGoogle().finally(() => { if (live) setReady(true); });
     return () => { live = false; unsub(); };
   }, [configured]);
 

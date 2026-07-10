@@ -43,6 +43,7 @@ import StampPanel from "../components/StampPanel.jsx";
 import ImportSchedulePanel from "../components/ImportSchedulePanel.jsx";
 import DrivePicker from "../components/DrivePicker.jsx";
 import AccountChip from "../components/AccountChip.jsx";
+import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
 import { projectHomeFolderId } from "../lib/projectHome.js";
 import { getTheme, toggleTheme, onThemeChange } from "../lib/theme.js";
 // Pure data constants (render/zoom budgets, snap tuning, tool descriptors,
@@ -105,6 +106,11 @@ export default function TakeoffCanvas() {
   // PDF in the folder (spec books, as-builts). Stable per mount (store is swapped
   // in before the canvas mounts).
   const cloudMode = typeof store.listFolder === "function";
+  // Reactive sign-in state: the "browse team projects" toolbar link is a
+  // convenience shortcut for someone ALREADY signed in — it must never appear
+  // while signed out, or it'd be a second OAuth entry point (a /projects
+  // sign-in wall) in the toolbar, breaking the pre-Drive local-first look.
+  const { user: googleUser } = useGoogleAuth();
   // Client-side exit back to the project home (`/`) — main.jsx's gate cleanup
   // restores the local store on the way out, so this navigation is safe.
   const navigate = useNavigate();
@@ -3104,9 +3110,10 @@ export default function TakeoffCanvas() {
         <button onClick={() => setShowReport(true)} disabled={!conditions.length} title="Open the takeoff report — per-condition breakdown with waste, plus CSV / JSON export."
           style={{ padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>Report</button>
         {/* Deliberately subtle, not a button: local-first app, cloud mode is an
-            opt-in extra. Only when no cloud project is already open and the
-            build actually names a Projects root to browse. */}
-        {!cloudMode && isGoogleConfigured() && projectHomeFolderId() && (
+            opt-in extra. Only when ALREADY signed in (never a sign-in entry
+            point in the toolbar — that lives solely on the landing link), no
+            cloud project is open, and the build names a Projects root. */}
+        {!cloudMode && googleUser && isGoogleConfigured() && projectHomeFolderId() && (
           <Link to="/projects" style={{ fontSize: 11.5, color: "var(--ink-muted)", whiteSpace: "nowrap" }}>
             browse team projects
           </Link>
