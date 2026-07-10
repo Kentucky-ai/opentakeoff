@@ -29,7 +29,7 @@ Your work autosaves to this browser continuously. Reload and it's still there.
 |---|---|---|
 | `O` | **One‑Click Area** | Click inside a room; the enclosed space auto‑selects, traces, and snaps to corners — hatched/tiled rooms fill to the real walls (hatch linework is classified and seen through). **Scanned sheets work too**: the engine reads the scan pixels and badges the result so you verify edges before Create. Review, then Create. |
 | `A` | **Area** | Trace a polygon → floor SF. |
-| `R` | **Rectangle** | Two‑corner rectangle → floor SF. |
+| `R` | **Rectangle** | Two‑corner rectangle → floor SF. The cursor chip reads live W × H · SF · SY while you drag; it turns amber when a side reaches 12′ (broadloom roll width — a seam falls here). |
 | `L` | **Linear** | Trace a run → LF (＋ border SF if the condition has a thickness). |
 | `S` | **Surface Area** | Trace a wall run in plan → wall SF (run × condition height). |
 | `C` | **Count** | Click to count items → EA. |

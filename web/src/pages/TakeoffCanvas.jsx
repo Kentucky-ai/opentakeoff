@@ -36,6 +36,9 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 const MIN_SCALE = 0.03;
 const MAX_SCALE = 32;  // stage zoom is in raster px — with the 28MP base budget this keeps ≈ the old deep-zoom ceiling (detail view carries the crispness)
 const PANEL_GAP = 48;  // px between side-by-side sheets in a multi-sheet group
+// Carpet roll width — a run reaching this needs a seam. The live cursor readout
+// turns amber at/past it so the estimator sees where seams fall while tracing.
+const CARPET_ROLL_FT = 12;
 // Base raster: enough density for fit-to-view + the first stretch of zoom; sharpness
 // past 1:1 comes from the DETAIL VIEW (region re-render), never from a giant full-sheet
 // bitmap. Rastering to the browser caps would put a 36×24" sheet at 179MP ≈ 716MB of
@@ -1339,20 +1342,37 @@ export default function TakeoffCanvas() {
     }
     if (aimChipRef.current) {
       const chip = aimChipRef.current;
-      let txt = "";
+      let txt = "", over = false;
       if (tool === "check" && check.length === 1) {
-        // live length to the cursor while picking the second end of the dimension
+        // live length to the cursor while picking the second end of the dimension.
+        // No CARPET_ROLL_FT amber here — a dimension string is not a seam plan.
         const u = uppFor(panelAt(check[0][0]).key);
         if (u) txt = fmtCheckLen(Math.hypot(cur[0] - check[0][0], cur[1] - check[0][1]) * u, units) + (lock ? ` · ${lock.deg}°` : "");
-      }
-      if (!txt) {
-        if (lock) {
-          txt = `${lock.deg}°`;
-          if (anchor && liveUpp) txt += ` · ${num(Math.hypot(cur[0] - anchor[0], cur[1] - anchor[1]) * liveUpp)}′`;
-        } else if (snapRef.current) txt = "snap";
-      }
+      } else if ((tool === "rect" || tool === "deduct-rect") && poly.length === 1 && liveUpp) {
+        // rectangle: live W × H + area (SF and SY imperial — carpet is bought in SY)
+        const a = poly[0];
+        const w = Math.abs(cur[0] - a[0]) * liveUpp, h = Math.abs(cur[1] - a[1]) * liveUpp;
+        const sf = w * h;
+        txt = `${fmtCheckLen(w, units)} × ${fmtCheckLen(h, units)} · ${num(areaVal(sf, units))} ${areaUnit(units)}${units === "metric" ? "" : ` · ${num(sf / 9)} SY`}`;
+        over = w >= CARPET_ROLL_FT - 0.02 || h >= CARPET_ROLL_FT - 0.02;
+      } else if (drawing && anchor && liveUpp) {
+        // line/polyline: live segment length, ALWAYS (not just under the 45° lock)
+        const len = Math.hypot(cur[0] - anchor[0], cur[1] - anchor[1]) * liveUpp;
+        txt = lock ? `${lock.deg}° · ${fmtCheckLen(len, units)}` : fmtCheckLen(len, units);
+        over = len >= CARPET_ROLL_FT - 0.02;
+      } else if (lock) {
+        txt = `${lock.deg}°`;
+      } else if (snapRef.current) txt = "snap";
       if (txt) {
         if (chip.__t !== txt) { chip.textContent = txt; chip.__t = txt; }
+        // 12 ft roll-width cue — the chip goes amber when a run reaches roll width (a seam falls here)
+        const os = over ? "1" : "";
+        if (chip.__over !== os) {
+          chip.__over = os;
+          chip.style.background = over ? "var(--c-warning)" : "var(--paper-bright)";
+          chip.style.color = over ? "var(--paper-bright)" : "var(--ink)";
+          chip.style.borderColor = over ? "var(--c-warning)" : "var(--ink)";
+        }
         chip.style.transform = `translate3d(${ex + 14}px, ${ey + 18}px, 0)`;
         chip.style.display = "block";
       } else chip.style.display = "none";
