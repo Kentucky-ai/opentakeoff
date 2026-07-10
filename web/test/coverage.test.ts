@@ -93,13 +93,30 @@ test("groutDerivedFields: small rates keep two decimals and never floor to per=0
   assert.equal(d!.per, Math.round(rate * 100) / 100);   // two decimals, not floored to an integer
 });
 
-test("groutParamsEqual: structural, never by reference; absent params compare as the defaults", () => {
+test("groutParamsEqual: structural, never by reference; absent KEYS compare as the defaults", () => {
   const a = { ...GROUT_DEFAULTS };
   assert.ok(groutParamsEqual(a, { ...GROUT_DEFAULTS }));            // equal values, distinct objects
-  assert.ok(groutParamsEqual(undefined, { ...GROUT_DEFAULTS }));    // no grout renders as the defaults in the editor
   assert.ok(groutParamsEqual(undefined, undefined));
   assert.ok(!groutParamsEqual(a, { ...GROUT_DEFAULTS, joint: 0.25 }));
-  assert.ok(!groutParamsEqual(undefined, { ...GROUT_DEFAULTS, tileL: 2 }));
+  assert.ok(groutParamsEqual({}, { ...GROUT_DEFAULTS }));           // both PRESENT: an absent key renders as its default
+});
+
+// round-3 finding 4: geometry PRESENCE is render-significant — the editor
+// shows a CALCULATOR for a line with grout and a derive BUTTON for one
+// without, so absent-vs-present can never compare equal (before this, a
+// "derive from tile geometry…" click on a linked line whose entry has no
+// geometry produced the defaults, compared equal, and never ambered the
+// geometry row). Updates the pre-round-3 expectation that
+// groutParamsEqual(undefined, { ...GROUT_DEFAULTS }) === true.
+test("groutParamsEqual: presence quadrants — exactly one side absent is never equal", () => {
+  assert.ok(groutParamsEqual({ ...GROUT_DEFAULTS }, { ...GROUT_DEFAULTS }), "both present, equal values");
+  assert.ok(groutParamsEqual(undefined, undefined), "both absent");
+  assert.ok(!groutParamsEqual(undefined, { ...GROUT_DEFAULTS }), "absent vs present (defaults)");
+  assert.ok(!groutParamsEqual({ ...GROUT_DEFAULTS }, undefined), "present (defaults) vs absent");
+  assert.ok(!groutParamsEqual({ ...GROUT_DEFAULTS }, { ...GROUT_DEFAULTS, tileL: 2 }), "both present, different values");
+  // null/absent grout are the same "no geometry" state everywhere (m.grout || …)
+  assert.ok(groutParamsEqual(null as any, undefined), "null and undefined are both absent");
+  assert.ok(!groutParamsEqual(null as any, { ...GROUT_DEFAULTS }), "null vs present");
 });
 
 test("groutParamsEqual: a present-but-junk param compares as the BLANK the editor renders, not as the default", () => {
@@ -110,7 +127,7 @@ test("groutParamsEqual: a present-but-junk param compares as the BLANK the edito
   // merge, where null/0/NaN survive the spread and render blank (compare 0)
   for (const junk of [null, 0, NaN, "" as any]) {
     assert.ok(!groutParamsEqual({ ...GROUT_DEFAULTS, tileL: junk }, { ...GROUT_DEFAULTS }), `tileL=${junk} vs defaults`);
-    assert.ok(!groutParamsEqual({ ...GROUT_DEFAULTS, tileL: junk }, undefined), `tileL=${junk} vs absent`);
+    assert.ok(!groutParamsEqual({ ...GROUT_DEFAULTS, tileL: junk }, undefined), `tileL=${junk} vs absent`);   // (also a presence mismatch since round-3 finding 4)
   }
   // two identically-poisoned objects render identically → equal
   assert.ok(groutParamsEqual({ tileL: null }, { tileL: 0 }));

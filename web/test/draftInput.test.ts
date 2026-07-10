@@ -8,7 +8,7 @@
 //     invalid.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { draftCommitValue, blurCommitValue } from "../src/lib/draftInput.js";
+import { draftCommitValue, blurCommitValue, blurCommitNonNegative } from "../src/lib/draftInput.js";
 
 // the joint field's range — the case that used to be untypeable
 const MIN = 0.03125, MAX = 0.5;
@@ -54,6 +54,27 @@ test("blurCommitValue: abandons an empty/invalid/non-positive draft (null — la
   for (const t of ["", ".", "-", "abc", "0", "0.", "-3", null, undefined]) {
     assert.equal(blurCommitValue(t as any, MIN, MAX), null, JSON.stringify(t));
   }
+});
+
+// round-3 finding 5: LibDraftInput (the Materials tab's per field) had no
+// abandon rule — clearing the field and blurring committed 0 through
+// libEntryPatch, whose perChanged detach destroyed the entry's tile geometry
+// and note with no undo. blurCommitNonNegative is its blur gate: abandon
+// empty/unparseable, commit anything parseable clamped non-negative.
+
+test("blurCommitNonNegative: abandons an empty/unparseable draft (null — last good value redisplays)", () => {
+  for (const t of ["", ".", "-", "abc", "NaN", null, undefined]) {
+    assert.equal(blurCommitNonNegative(t as any), null, JSON.stringify(t));
+  }
+});
+
+test("blurCommitNonNegative: an intentional 0 typed as \"0\" still commits; positives pass; negatives clamp to 0", () => {
+  assert.equal(blurCommitNonNegative("0"), 0);       // unlike blurCommitValue, 0 is a legal library per
+  assert.equal(blurCommitNonNegative("0."), 0);
+  assert.equal(blurCommitNonNegative("512"), 512);
+  assert.equal(blurCommitNonNegative("2.49"), 2.49);
+  assert.equal(blurCommitNonNegative("007"), 7);
+  assert.equal(blurCommitNonNegative("-5"), 0);      // the input's min — matches the field's Math.max(0, …) commit
 });
 
 test("committed values can never be invalid: whatever either helper returns is in range", () => {

@@ -35,13 +35,20 @@ export function groutCoverageSfPerBag({ tileL, tileW, tileT, joint, bagLbs, dens
 }
 
 // Structural equality over the five geometry params — the invariant is
-// "equal iff the editor RENDERS them identically", so both sides go through
-// the editor's own merge ({ ...GROUT_DEFAULTS, ...grout }): an absent key
+// "equal iff the editor RENDERS them identically". PRESENCE comes first
+// (round-3 finding 4): the render gate below shows a CALCULATOR for a line
+// WITH geometry and a derive BUTTON for one without, so absent-vs-present can
+// never be equal — deriving defaults on a linked line whose entry has no
+// geometry must amber the geometry row (and the row's ↺ trio-revert heals
+// it). Both absent → equal. Both present → both sides go through the
+// editor's own merge ({ ...GROUT_DEFAULTS, ...grout }): an absent key
 // renders (and compares) as its default, while a present-but-junk value
 // (null, 0, NaN — a poisoned library entry) renders blank and compares as 0,
 // NOT as the default it visibly isn't. Never compares by reference.
 export const groutParamsEqual = (a, b) => {
-  const A = { ...GROUT_DEFAULTS, ...(a || {}) }, B = { ...GROUT_DEFAULTS, ...(b || {}) };
+  if (!a !== !b) return false;   // exactly one side absent — rendered as button vs calculator, never equal
+  if (!a && !b) return true;
+  const A = { ...GROUT_DEFAULTS, ...a }, B = { ...GROUT_DEFAULTS, ...b };
   return GROUT_PARAM_KEYS.every((k) => (Number(A[k]) || 0) === (Number(B[k]) || 0));
 };
 

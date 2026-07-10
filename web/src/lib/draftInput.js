@@ -22,3 +22,16 @@ export function blurCommitValue(text, min = 0, max) {
   const v = parseFloat(text ?? "");
   return Number.isFinite(v) && v > 0 ? Math.min(max ?? Infinity, Math.max(min, v)) : null;
 }
+
+// On blur of the Materials tab's per field (LibDraftInput in number mode):
+// any parseable number commits, clamped non-negative — an intentional 0 can
+// still be typed as "0". An empty/unparseable draft is ABANDONED (null — the
+// last good committed value redisplays): committing a cleared field as 0 is
+// a CHANGED per through libEntryPatch, which detaches a grout entry's tile
+// geometry and note with no undo (round-3 finding 5). Same philosophy as
+// blurCommitValue, minus the positivity requirement (per: 0 is the library's
+// legitimate "no rate yet").
+export function blurCommitNonNegative(text) {
+  const v = parseFloat(text ?? "");
+  return Number.isFinite(v) ? Math.max(0, v) : null;
+}

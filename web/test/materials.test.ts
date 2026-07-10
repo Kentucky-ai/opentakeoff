@@ -136,10 +136,12 @@ test("matFieldOverridden: grout compares structurally, and geometry drift ambers
   assert.equal(matFieldOverridden(drifted, entry, "grout"), true);
   assert.equal(matFieldOverridden(drifted, entry, "per"), true);
   assert.equal(matFieldOverridden(drifted, entry, "note"), true);
-  // a line with no grout object vs a defaults-geometry entry: identical rendered
-  // geometry → not flagged
+  // a line with no grout object vs a defaults-geometry entry: since the
+  // round-2 render gate, absent-vs-present RENDER differently (derive button
+  // vs calculator), so this now flags (round-3 finding 4 updates the
+  // pre-round-3 "identical rendered geometry → not flagged" expectation)
   const bare = { name: "Grout", per: 512 };
-  assert.equal(matFieldOverridden(bare, { id: "lib_2", name: "Grout", per: 512, grout: { ...GROUT_DEFAULTS } }, "grout"), false);
+  assert.equal(matFieldOverridden(bare, { id: "lib_2", name: "Grout", per: 512, grout: { ...GROUT_DEFAULTS } }, "grout"), true);
 });
 
 test("libPushPatch: pushes the library's grout (deep copy) and clears stale line geometry when the library has none", () => {
@@ -331,6 +333,138 @@ test("plain-material parity: promote/attach/override/revert/push are byte-identi
   // library-row edit is the plain merge it always was
   assert.deepEqual(libEntryPatch(entry, { per: 300 }), { ...entry, per: 300 });
   assert.deepEqual(libEntryPatch(entry, { note: "n2" }), { ...entry, note: "n2" });
+});
+
+// ── round-3 finding 1: push is kind-symmetric in BOTH directions ─────────────
+// `kind` is never override-checked (no amber, no per-field ↺), so a push that
+// leaves a stale kind behind is unhealable: an entry renamed
+// "Adhesive"→"Thinset mortar" (whose own kind was correctly dropped by
+// re-classification) used to push a line that says "Thinset mortar" but keeps
+// kind:"adhesive" — adhesive presets on a mortar line forever.
+
+test("libPushPatch kind symmetry: an entry WITHOUT kind clears the line's; an entry WITH kind carries it", () => {
+  // direction 1: entry lost its kind (rename re-classified) → push deletes the line's stale kind
+  const advLine = { id: "mat_1", name: "Adhesive", kind: "adhesive", unit: "gal", per: 250, basis: "area", round: true, note: "" };
+  const entry = libEntryPatch({ id: "lib_1", ...libFields(advLine) }, { name: "Thinset mortar" });
+  assert.ok(!("kind" in entry), "precondition: the rename dropped the entry's kind");
+  const linked = { id: "mat_2", ...libFields({ id: "lib_1", ...libFields(advLine) }), lib_id: "lib_1" };
+  const pushed = libPushPatch(linked, entry);
+  assert.ok(!("kind" in pushed), "the line's stale kind goes with the push");
+  assert.equal(materialKind(pushed), "mortar", "the pushed name rules the presets again");
+  // grout variant: detached grout entry renamed "Silicone caulk" → pushed line
+  // must NOT offer "derive from tile geometry…" on a caulk line
+  const gEntryDetached = libEntryPatch({ id: "lib_2", ...libFields(groutLine()) }, { per: 350 });
+  assert.equal(gEntryDetached.kind, "grout", "precondition: detach keeps kind");
+  const gEntry = libEntryPatch(gEntryDetached, { name: "Silicone caulk" });
+  assert.ok(!("kind" in gEntry), "precondition: the meaning-changing rename dropped kind");
+  const gPushed = libPushPatch({ id: "mat_3", ...libFields(groutLine()), lib_id: "lib_2" }, gEntry);
+  assert.ok(!("kind" in gPushed) && !("grout" in gPushed));
+  assert.equal(showsGroutDeriveAffordance(gPushed), false, "no grout affordance on a caulk line");
+  assert.equal(showsGroutCalc(gPushed), false);
+  // direction 2: entry WITH kind → the push carries it (via libFields) onto a kind-less line
+  const kindLess = { id: "mat_4", name: "Grout", unit: "bag", per: 300, basis: "area", round: true, note: "", lib_id: "lib_3" };
+  const kindEntry = { id: "lib_3", name: "Ultracolor FA", kind: "grout", unit: "bag", per: 350, basis: "area", round: true, note: "" };
+  const pushed2 = libPushPatch(kindLess, kindEntry);
+  assert.equal(pushed2.kind, "grout");
+  assert.equal(showsGroutDeriveAffordance(pushed2), true, "the unclassifiable pushed name still classifies grout via kind");
+  // and after either push, nothing ambers — the line matches its entry
+  for (const f of ["name", "unit", "per", "basis", "round", "note", "grout"]) {
+    assert.equal(matFieldOverridden(pushed, entry, f), false, `direction 1: ${f}`);
+    assert.equal(matFieldOverridden(pushed2, kindEntry, f), false, `direction 2: ${f}`);
+  }
+});
+
+// ── round-3 finding 2: a NAME revert restores the entry's kind ───────────────
+// kind is name-coupled metadata on a geometry-less line (renames drop it with
+// the name), so ↺ on the name must revert them together — before this, a
+// line renamed away from grout and reverted matched its entry on every
+// visible field (zero amber) while its kind:"grout", and the derive
+// affordance with it, was gone forever.
+
+test("libRevertPatch name: restores the entry's kind on a geometry-less line (through matEditPatch, as updateMaterial applies it)", () => {
+  const entry = { id: "lib_1", name: "Grout (Ultracolor)", kind: "grout", unit: "bag", per: 350, basis: "area", round: true, note: "" };
+  let line: any = { id: "mat_1", ...libFields(entry), lib_id: "lib_1" };
+  line = matEditPatch(line, { name: "Caulk" });                       // meaning-changing rename: grout → ""
+  assert.ok(!("kind" in line), "precondition: the rename dropped the kind");
+  const patch = libRevertPatch(line, entry, "name");
+  assert.deepEqual(patch, { name: "Grout (Ultracolor)", kind: "grout" });
+  line = matEditPatch(line, patch);                                   // ↺ routes through updateMaterial → matEditPatch
+  assert.equal(line.kind, "grout", "the revert's restored kind survives re-classification");
+  for (const f of ["name", "unit", "per", "basis", "round", "note", "grout"]) {
+    assert.equal(matFieldOverridden(line, entry, f), false, f);
+  }
+  // the revert rename may ITSELF be meaning-changing ("Mortar mix" → an
+  // unclassifiable entry name = mortar → ""): the explicit kind in the patch
+  // is a fresh classification and must be exempt from re-classification, or
+  // matEditPatch re-drops the kind the ↺ just restored (browser-caught)
+  const uEntry = { id: "lib_3", name: "Ultracolor FA", kind: "grout", unit: "bag", per: 350, basis: "area", round: true, note: "" };
+  let uLine: any = matEditPatch({ id: "mat_3", ...libFields(uEntry), lib_id: "lib_3" }, { name: "Mortar mix" });
+  assert.ok(!("kind" in uLine), "precondition: '' → mortar rename dropped the kind");
+  uLine = matEditPatch(uLine, libRevertPatch(uLine, uEntry, "name"));
+  assert.equal(uLine.kind, "grout", "restored kind survives a meaning-changing revert rename");
+  assert.equal(uLine.name, "Ultracolor FA");
+  // entry WITHOUT kind + line with a stale one: the name revert clears it (symmetry)
+  const plainEntry = { id: "lib_2", name: "Sealer", unit: "gal", per: 100, basis: "area", round: true, note: "" };
+  const staleLine = { id: "mat_2", ...libFields(plainEntry), name: "Adhesive", kind: "adhesive", lib_id: "lib_2" };
+  const clearPatch = libRevertPatch(staleLine, plainEntry, "name");
+  assert.ok("kind" in clearPatch && clearPatch.kind === undefined, "stale kind cleared with the reverted name");
+  assert.equal(clearPatch.name, "Sealer");
+  // geometry on the LINE: kind is load-bearing (calculator gate) — name reverts alone
+  const gLine = { ...groutLine(), name: "Renamed", lib_id: "lib_3" };
+  assert.deepEqual(libRevertPatch(gLine, { id: "lib_3", ...libFields(groutLine()) }, "name"), { name: "Grout" });
+  // no kind anywhere: byte-identical to the pre-round-3 patch (plain parity)
+  assert.deepEqual(libRevertPatch({ id: "m", name: "X", lib_id: "l" }, { id: "l", name: "Adhesive lite" }, "name"), { name: "Adhesive lite" });
+});
+
+// ── round-3 finding 3: only meaning-CHANGING renames re-classify ─────────────
+// The old predicate fired on ANY name touch while the stored kind disagreed
+// with the name regex — but that disagreement is a legitimate state (it's
+// exactly what kind is FOR: {name:"Ultracolor FA", kind:"grout"}), so one
+// keystroke on such a name permanently dropped the classification.
+
+test("rename predicate: a touch that keeps the name's classification preserves kind; a meaning-changing rename drops it", () => {
+  const entry = { id: "lib_1", name: "Ultracolor FA", kind: "grout", unit: "bag", per: 350, basis: "area", round: true, note: "" };
+  // typo-level touches ("" → ""): kind stays, on both edit paths
+  assert.equal(libEntryPatch(entry, { name: "Ultracolor FA " }).kind, "grout", "appended space (library row)");
+  assert.equal(libEntryPatch(entry, { name: "Ultracolor FAX" }).kind, "grout", "one keystroke (library row)");
+  assert.equal(matEditPatch({ id: "mat_1", ...libFields(entry), lib_id: "lib_1" }, { name: "Caulk" }).kind, "grout",
+    "condition line: '' → '' rename keeps the stored classification");
+  // a new name that AGREES with the stored kind keeps it too
+  assert.equal(libEntryPatch(entry, { name: "Ultracolor FA grout" }).kind, "grout");
+  // meaning-changing renames still drop it
+  const groutNamed = { ...entry, name: "Grout" };
+  assert.ok(!("kind" in libEntryPatch(groutNamed, { name: "Caulk" })), "grout → '' drops");
+  assert.ok(!("kind" in libEntryPatch(groutNamed, { name: "Silicone adhesive" })), "grout → adhesive drops");
+  // renameReclassified directly: the meaning check is old-name vs new-name
+  assert.equal(renameReclassified({ name: "Ultracolor FA ", kind: "grout" }, "Ultracolor FA").kind, "grout");
+  assert.ok(!("kind" in renameReclassified({ name: "Caulk", kind: "grout" }, "Grout")));
+  // geometry present: never drops, whatever the rename
+  assert.equal(matEditPatch(groutLine(), { name: "Silicone caulk" }).kind, "grout");
+});
+
+// ── round-3 finding 4 (flow): derive on a linked line ambers, trio-revert heals ──
+
+test("derive-on-linked-line: the geometry row ambers (presence mismatch) and the trio ↺ restores per/note and removes the geometry", () => {
+  const entry = { id: "lib_1", name: "Grout", kind: "grout", unit: "bag", per: 350, basis: "area", round: true, note: "hand rate" };
+  const line = { id: "mat_1", ...libFields(entry), lib_id: "lib_1" };
+  assert.equal(matFieldOverridden(line, entry, "grout"), false, "attach from a geometry-less entry: both absent, no amber");
+  // the derive affordance's click (setGrout({}) in the editor)
+  const g = { ...GROUT_DEFAULTS, ...((line as any).grout || {}) };
+  const derived = { ...line, grout: { ...g }, ...(groutDerivedFields(g) || {}) };
+  assert.equal(matFieldOverridden(derived, entry, "grout"), true, "line present vs entry absent NOW ambers");
+  assert.equal(matFieldOverridden(derived, entry, "per"), true);
+  assert.equal(matFieldOverridden(derived, entry, "note"), true);
+  // trio revert cleanly removes the derived geometry and restores per + note
+  const patch = libRevertPatch(derived, entry, "grout");
+  assert.deepEqual({ per: patch.per, note: patch.note }, { per: 350, note: "hand rate" });
+  assert.ok("grout" in patch && patch.grout === undefined, "the derived geometry is removed, not zeroed");
+  const reverted = { ...derived, ...patch };
+  for (const f of ["per", "note", "grout"]) assert.equal(matFieldOverridden(reverted, entry, f), false, f);
+  assert.equal(showsGroutCalc(reverted), false);
+  assert.equal(showsGroutDeriveAffordance(reverted), true, "back to the opt-in affordance");
+  // attach from a geometry-CARRYING entry: both present and equal, still no amber
+  const gEntry = { id: "lib_2", ...libFields(groutLine()) };
+  assert.equal(matFieldOverridden({ id: "mat_2", ...libFields(gEntry), lib_id: "lib_2" }, gEntry, "grout"), false);
 });
 
 // ── seed aliasing (finding 4): instantiation deep-copies nested grout ───────

@@ -55,44 +55,73 @@ export const matFieldOverridden = (m, lm, f) => {
 // fields must move together or the row contradicts its own calculator:
 // · push replaces per/note/grout as a unit, and a library entry WITHOUT
 //   geometry clears the line's — stale geometry would silently overwrite the
-//   pushed rate on the next calculator keystroke;
+//   pushed rate on the next calculator keystroke. `kind` gets the SAME
+//   symmetry (round-3 finding 1): libFields carries the entry's kind when it
+//   has one, and an entry without one clears the line's — a renamed entry
+//   whose kind was dropped by re-classification must not leave the line's
+//   stale kind pinning the wrong presets under the pushed name (kind is
+//   never override-checked, so nothing would ever amber or heal it);
 // · reverting per, note, or the geometry row on a grout line restores all
 //   three to the library values (a lone reverted per under an edited-geometry
 //   note would print false provenance in the Report).
 export const libPushPatch = (m, lm) => {
   const next = { ...m, ...libFields(lm) };
   if (!lm.grout) delete next.grout;
+  if (!lm.kind) delete next.kind;
   return next;
 };
+// Per-field ↺. `kind` is name-coupled metadata on a geometry-less line (it's
+// the cached classification of the name, and rename edits drop it together
+// with the name — renameReclassified below), so a NAME revert restores the
+// entry's kind too (round-3 finding 2): reverting "Caulk" back to
+// "Ultracolor FA" must bring kind:"grout" — and its derive affordance — back,
+// or the field is gone forever with zero amber anywhere. With geometry on the
+// line, kind:"grout" is load-bearing (the calculator gate) and the name
+// reverts alone.
 export const libRevertPatch = (m, lm, f) => {
   const L = libFields(lm);
   if ((f === "per" || f === "note" || f === "grout") && (m.grout || lm.grout)) {
     return { per: L.per, note: L.note, grout: L.grout };   // L.grout is already a fresh copy (or undefined → clears the line's)
+  }
+  if (f === "name" && !m.grout && (L.kind || m.kind)) {
+    return { name: L.name, kind: L.kind };   // L.kind may be undefined → clears the line's stale kind with the reverted name
   }
   return { [f]: L[f] };
 };
 
 // NAME edits re-classify a geometry-less material. An explicit `kind` rides
 // through the library seam (promote/attach/push carry it), but without tile
-// geometry it's only a cached classification of the OLD name — keeping it
-// would pin an attached "Adhesive" renamed "Thinset mortar" to adhesive
-// presets forever (pre-seam behavior re-classified from the name). So when
-// the name-regex classification of the new name disagrees with the stored
-// kind, the kind is dropped and the name rules again. With geometry present,
-// kind:"grout" is load-bearing (it gates the calculator whatever the line is
-// called) and stays.
-export const renameReclassified = (m) => {
+// geometry it's only a cached classification, so a rename that CHANGES THE
+// NAME'S MEANING — materialKind(old name) !== materialKind(new name) — drops
+// it and lets the new name rule again: keeping it would pin an attached
+// "Adhesive" renamed "Thinset mortar" to adhesive presets forever (pre-seam
+// behavior re-classified from the name). A touch that does NOT change the
+// name's classification (round-3 finding 3: appending a space to
+// "Ultracolor FA", a typo fix — both classify "") keeps the stored kind: the
+// mere fact that the stored kind disagrees with the name regex is a
+// legitimate state (that's exactly what kind is FOR), not evidence of a
+// rename. A new name that AGREES with the stored kind also keeps it. With
+// geometry present, kind:"grout" is load-bearing (it gates the calculator
+// whatever the line is called) and always stays.
+export const renameReclassified = (m, oldName) => {
   if (!m.kind || m.grout) return m;
-  if (materialKind({ name: m.name }) === m.kind) return m;
+  const newNameKind = materialKind({ name: m.name });
+  if (newNameKind === m.kind) return m;                              // new name agrees — nothing stale
+  if (materialKind({ name: oldName }) === newNameKind) return m;     // meaning unchanged — keep the classification
   const { kind: _k, ...rest } = m;
   return rest;
 };
 
 // Condition-line edit (MaterialsEditor → updateMaterial): a plain merge, plus
-// the rename re-classification above when the patch touches the name.
+// the rename re-classification above when the patch touches the name. A patch
+// that sets `kind` ALONGSIDE the name is asserting a fresh classification —
+// libRevertPatch's name+kind revert — not carrying a stale cache, so it is
+// exempt: reverting "Mortar mix" back to "Ultracolor FA" is itself a
+// meaning-changing rename (mortar → "") and re-classification would re-drop
+// the kind the revert just restored.
 export const matEditPatch = (m, patch) => {
   const next = { ...m, ...patch };
-  return "name" in patch ? renameReclassified(next) : next;
+  return "name" in patch && !("kind" in patch) ? renameReclassified(next, m.name) : next;
 };
 
 // Library-row edit (Materials tab). The tab has no grout calculator, so a
@@ -115,7 +144,7 @@ export const libEntryPatch = (lm, patch) => {
       delete next.grout;
     }
   }
-  return "name" in patch ? renameReclassified(next) : next;
+  return "name" in patch && !("kind" in patch) ? renameReclassified(next, lm.name) : next;   // explicit kind in a patch = fresh classification, exempt (see matEditPatch)
 };
 
 // Template/seed material → live condition line. The seed's grout object (CT-1

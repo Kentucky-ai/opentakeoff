@@ -31,7 +31,7 @@ import { num } from "../lib/num.js";
 import { HATCHES, PALETTE, NO_FILL, HatchSwatch } from "./hatches.jsx";
 import { LINE_STYLES, LINE_STYLE_IDS } from "../lib/lineStyles.js";
 import { materialKind, MATERIAL_PRESETS, GROUT_DEFAULTS, groutDerivedFields, showsGroutCalc, showsGroutDeriveAffordance } from "../lib/coverage.js";
-import { draftCommitValue, blurCommitValue } from "../lib/draftInput.js";
+import { draftCommitValue, blurCommitValue, blurCommitNonNegative } from "../lib/draftInput.js";
 
 export const PANEL_MIN_W = 240;
 export const PANEL_MAX_W = 560;
@@ -88,19 +88,31 @@ function GroutParamInput({ name, value, title, min = 0, max, width = 52, overrid
   );
 }
 
-// Draft-buffered input for the Materials tab's per + note fields: keeps the
-// raw text local while editing and commits ONLY on blur/Enter — every commit
-// there flows through libEntryPatch, where a CHANGED per/note detaches a
-// grout entry's tile geometry, so committing per keystroke destroyed the
-// geometry on the transient values of a select-all-retype ("5" of "512") or
-// a clear-and-retype, silently and with no undo.
+// Draft-buffered input for the Materials tab's name + per + note fields:
+// keeps the raw text local while editing and commits ONLY on blur/Enter —
+// every commit there flows through libEntryPatch, where a CHANGED per/note
+// detaches a grout entry's tile geometry and a name edit re-classifies the
+// entry's kind, so committing per keystroke destroyed the geometry (or the
+// classification) on the transient values of a select-all-retype ("5" of
+// "512") or a clear-and-retype, silently and with no undo. In number mode an
+// empty/unparseable draft on blur is ABANDONED and the last good value
+// redisplays (blurCommitNonNegative, the GroutParamInput/blurCommitValue
+// philosophy) — clearing the per field must not commit 0 and take the
+// geometry with it; an intentional 0 can still be typed as "0". Text drafts
+// commit as-is (clearing a name/note is a legitimate edit).
 function LibDraftInput({ name, value, number, placeholder, width, onCommitText }) {
   const [draft, setDraft] = useState(null);   // raw text mid-edit; null = mirror the committed value
   return (
     <input name={name} type={number ? "number" : "text"} min={number ? 0 : undefined} step={number ? "any" : undefined}
       value={draft ?? value}
       onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => { if (draft != null) onCommitText(draft); setDraft(null); }}
+      onBlur={() => {
+        if (draft != null) {
+          if (number) { const v = blurCommitNonNegative(draft); if (v != null) onCommitText(String(v)); }
+          else onCommitText(draft);
+        }
+        setDraft(null);
+      }}
       onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) e.currentTarget.blur(); }}
       placeholder={placeholder} style={{ ...ip, width }} />
   );
@@ -717,7 +729,12 @@ function TakeoffsPanel({
               return (
                 <div key={lm.id} style={{ padding: "8px 12px", borderTop: "1px solid var(--ink-faint)" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <input name="library-material-name" value={lm.name} onChange={(e) => onUpdateLibMaterial(lm.id, { name: e.target.value })} placeholder="Material (e.g. Adhesive)" style={{ ...ip, width: 150 }} />
+                    {/* name is draft-buffered like per/note (round-3 finding 3): a per-keystroke
+                        commit routes every transient value through libEntryPatch's rename
+                        re-classification, where a select-all-retype walks the entry's kind
+                        through arbitrary intermediate classifications */}
+                    <LibDraftInput name="library-material-name" value={lm.name} placeholder="Material (e.g. Adhesive)" width={150}
+                      onCommitText={(t) => onUpdateLibMaterial(lm.id, { name: t })} />
                     <span style={{ color: "var(--ink-muted)" }}>1</span>
                     <input name="library-material-unit" value={lm.unit} onChange={(e) => onUpdateLibMaterial(lm.id, { unit: e.target.value })} placeholder="unit" style={{ ...ip, width: 54 }} />
                     <span style={{ color: "var(--ink-muted)" }}>per</span>
