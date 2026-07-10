@@ -46,7 +46,7 @@ export function groutCoverageSfPerBag({ tileL, tileW, tileT, joint, bagLbs, dens
 // (null, 0, NaN — a poisoned library entry) renders blank and compares as 0,
 // NOT as the default it visibly isn't. Never compares by reference.
 export const groutParamsEqual = (a, b) => {
-  if (!a !== !b) return false;   // exactly one side absent — rendered as button vs calculator, never equal
+  if (!!a !== !!b) return false; // exactly one side absent — rendered as button vs calculator, never equal
   if (!a && !b) return true;
   const A = { ...GROUT_DEFAULTS, ...a }, B = { ...GROUT_DEFAULTS, ...b };
   return GROUT_PARAM_KEYS.every((k) => (Number(A[k]) || 0) === (Number(B[k]) || 0));
