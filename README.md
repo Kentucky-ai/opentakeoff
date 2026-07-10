@@ -13,7 +13,7 @@ No account. No upload. No install. It runs in your browser.
 
 [**▶ Try the live demo**](https://opentakeoff.netlify.app) · [Quick start](#quick-start) · [Features](#features) · [Deploy it](#run-it--deploy-it) · [Build on top](#build-on-top-of-it) · [Contributing](CONTRIBUTING.md)
 
-**New — July 2026:** One-Click Area now traces **hatched rooms** · **Dark view** (negative print) · **Marked Set PDF export** — [full changelog](CHANGELOG.md)
+**New — July 2026:** **Import from schedule** (marquee a finish schedule → conditions) · One-Click Area now traces **hatched rooms** · **Dark view** (negative print) · **Marked Set PDF export** — [full changelog](CHANGELOG.md)
 
 <br/>
 
@@ -64,6 +64,8 @@ Auto-detects the drawn scale note off the sheet, or **calibrate** from any known
 
 ### 4. Conditions that read like the drawing
 A condition is one finish (LVP, carpet, tile, base, …). Each carries a **line/fill color** and a **CAD hatch pattern** (plank, herringbone, tile, terrazzo) so the canvas looks like the real drawing — plus a per-condition **waste %**, an **×N multiplier** for repeated identical units, a default **height** for wall traces, and a **thickness** that turns a linear run into border/feature-strip SF. Conditions also take **custom columns** — define a project-level column (say, *CSI Division*) with a list of values, assign one per condition, and the report can group and export by it. They live in a **docked, resizable Takeoffs panel** built for real jobs: filter, natural sort, tag-family grouping, multi-select bulk edit, zoom-to-condition, a browser-wide **template library**, and an optional compact strip for small projects. A **top-bar quick-access palette** keeps the sidebar out of the way: **pin up to 9 conditions** (drag them onto the band or click the row's pushpin) for one-click activation, drag chips to reorder, and the **1–9 hotkeys follow palette order** (falling back to condition order when nothing is pinned). The active condition's full appearance editor sits right in that band, so line/fill/hatch/height are editable without opening the panel — double-click a chip to open the panel scrolled to that row.
+
+And you don't have to type them: **Import from schedule** builds the conditions for you. Arm **Schedule**, drag a box around the plan's finish/material schedule, and every finish is read off the sheet into a one-glance approval dialog — grouped by the schedule's own sections, with **ceilings and millwork unchecked** (you keep floor / base / wall) and codes you already have locked *"in use."* Check what you want and Create. On a vector plan it reads the text layer directly — no OCR, nothing uploaded.
 
 ### 5. Assemblies — the supporting materials, done right
 Per condition, list the consumables that actually go on the order: adhesive, sealer, polyurethane, thinset, grout, cove-base adhesive. Each has a **coverage rate** and a **basis** (floor SF / linear LF / each), and the order quantity derives automatically — measured ÷ coverage, **rounded up** to whole units. Adhesive lines get a **trowel picker** that fills the spread rate from the notch size. This is the layer most takeoff tools punt on. It's shipped here. A browser-wide **material library** makes them reusable: attaching a library material copies its values onto the condition and keeps a link — overridden fields show in amber with per-field revert, library edits reach linked lines only when you explicitly push them, and deleting a library entry never touches your numbers.

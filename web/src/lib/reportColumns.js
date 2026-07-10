@@ -99,6 +99,53 @@ export function customColProfile(conditionColumns) {
   }));
 }
 
+// ── Product spec (schedule-import metadata) ─────────────────────────────────
+// The schedule importer attaches an optional `condition.spec =
+// { manufacturer, style, color, size }` (all strings; the whole field is
+// ABSENT when there's no spec). These are READ-ONLY imported attributes — not a
+// custom column, not in materials[] — surfaced as fixed report/CSV/XLSX columns
+// so an estimator can review the specified product next to the measured
+// quantities. Values reach the getters through ctx.specByCond (Map(condition_id
+// → spec)), the same seam custom columns use, so conditionTotals rows never
+// grow a `spec` field (they're spread wholesale into the contribution payload).
+//
+// The four fields, in schedule order. "Spec Color" is deliberately NOT "Color"
+// — the condition's own appearance color is a different thing.
+export const SPEC_FIELDS = [
+  { field: "manufacturer", header: "Manufacturer" },
+  { field: "style",        header: "Style" },
+  { field: "color",        header: "Spec Color" },
+  { field: "size",         header: "Size" },
+];
+
+// The one visible-string rule for a spec value — a string with visible content
+// counts; a non-object spec, a missing field, an empty/whitespace-only or
+// non-string value is nothing. Returned untrimmed (imported strings unmutated).
+export function specValue(spec, field) {
+  if (!spec || typeof spec !== "object" || Array.isArray(spec)) return "";
+  const v = spec[field];
+  return typeof v === "string" && v.trim() ? v : "";
+}
+
+// Spec fields → runtime column descriptors, appended after the custom columns.
+// Data-driven like customColProfile: a field-column is emitted ONLY when at
+// least one condition carries a visible value for it, so a project with no
+// specs produces ZERO extra columns (byte-identical report/CSV/XLSX) and an
+// all-blank field never adds a dead column. Keys are "spec:<field>" — can't
+// collide with built-in keys, grandTotals keys, or custom "custom:<id>" keys.
+// Default-visible (imported metadata is worth showing) but still toggleable in
+// the picker; `spec: true` marks them read-only text at the render sites.
+export function specColProfile(conditions) {
+  const list = Array.isArray(conditions) ? conditions : [];
+  return SPEC_FIELDS.filter((f) => list.some((c) => specValue(c?.spec, f.field))).map((f) => ({
+    key: "spec:" + f.field,
+    header: f.header,
+    defaultVisible: true,
+    spec: true,
+    get: (r, ctx) => specValue(ctx?.specByCond?.get(r.id), f.field),
+  }));
+}
+
 // Partition condition rows by one custom column's assigned value, for the
 // report's grouped view → [{ value: string|null, label, rows }]. Order:
 // vocabulary order first, then ad-hoc values (assigned strings missing from

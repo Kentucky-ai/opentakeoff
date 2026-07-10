@@ -247,8 +247,8 @@ export function grandTotals(rows) {
  *   column list to emit; null → the default-visible CSV_PROFILE columns
  *   (byte-identical to the frozen v1 export). Opt-ins append after the base 13;
  *   custom columns (customColProfile) carry their own `get` and append after.
- * @param {{perimByCond?: Map<any, number>, attrsByCond?: Map<any, object>}|null}
- *   [ctx] handed to the getters (perimeter_ref / custom columns need it)
+ * @param {{perimByCond?: Map<any, number>, attrsByCond?: Map<any, object>, specByCond?: Map<any, object>}|null}
+ *   [ctx] handed to the getters (perimeter_ref / custom / spec columns need it)
  * @returns {string}
  */
 export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel = null, cols = null, ctx = null) {

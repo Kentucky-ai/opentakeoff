@@ -1,9 +1,23 @@
 # OpenTakeoff — one-click static deploy.
-# The app lives in web/ and builds to web/dist/ with no backend.
+# The app lives in web/ and builds to web/dist/. The only server code is the
+# gated schedule-scan function (web/netlify/functions/); it stays dark unless
+# GEMINI_API_KEY is set, so a default deploy is still fully static.
 [build]
   base    = "web"
   command = "npm run build"
   publish = "dist"
+
+# Serverless functions live under the build base (web/netlify/functions).
+[functions]
+  directory    = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Gated "Import from scanned schedule" — must precede the SPA catch-all, else
+# /* swallows it and the POST returns index.html.
+[[redirects]]
+  from   = "/ai/parse-schedule"
+  to     = "/.netlify/functions/parse-schedule"
+  status = 200
 
 # Single-page app: serve index.html for any path.
 [[redirects]]

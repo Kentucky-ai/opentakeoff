@@ -48,7 +48,12 @@ jobs:
       - name: Deploy to Netlify
         # Pinned exact version — bump deliberately; a floating tag would let a
         # compromised release run with the deploy token.
-        run: npx --yes netlify-cli@26.1.0 deploy --prod --no-build --dir dist
+        # --functions is explicit on purpose: with --no-build --dir dist the CLI
+        # won't reliably resolve the functions dir from netlify.toml's base, and
+        # the gated schedule-scan function lives outside dist. Naming it here
+        # guarantees it ships. (Its GEMINI_API_KEY/ALLOWED_HD are read at runtime
+        # from the site's Netlify env, not injected at deploy.)
+        run: npx --yes netlify-cli@26.1.0 deploy --prod --no-build --dir dist --functions netlify/functions
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}

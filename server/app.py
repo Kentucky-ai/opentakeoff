@@ -22,7 +22,7 @@ import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator, model_validator
 
 from adapters.base import TakeoffAI
 from adapters.heuristic import HeuristicAdapter
@@ -92,6 +92,59 @@ class ClassifyFinishOut(BaseModel):
     confidence: float = 0.0
 
 
+class ParseScheduleIn(BaseModel):
+    # base64-encoded PNG crop of the marqueed schedule region (no "data:" prefix),
+    # plus its pixel dims — what the client sends for a SCANNED sheet with no text
+    # layer to read.
+    image_b64: str = ""
+    width: int = 0
+    height: int = 0
+
+
+# The finish categories the client understands, and which ones the approval
+# dialog pre-checks. Mirrors web/src/lib/scheduleParse.ts (ceilings/millwork are
+# parsed but start UNCHECKED so the estimator drops them for free).
+_CATEGORIES = {"floor", "base", "wall", "transition", "ceiling", "other"}
+_SUGGESTED_DEFAULT = {
+    "floor": True, "base": True, "wall": True,
+    "transition": True, "ceiling": False, "other": False,
+}
+
+
+class ScheduleRow(BaseModel):
+    """One parsed schedule row — the SAME shape as the client's ScheduleRow
+    (web/src/lib/scheduleParse.ts), so an adapter's output feeds the one approval
+    dialog. Off-contract values are coerced (unknown category → "other",
+    missing `suggested` → the category default) so a rough model output still
+    lands cleanly."""
+    finish_tag: str = ""
+    section: str = ""
+    category: str = "other"
+    description: str = ""
+    manufacturer: str = ""
+    style: str = ""
+    spec_color: str = ""
+    size: str = ""
+    suggested: bool | None = None
+
+    @field_validator("category")
+    @classmethod
+    def _known_category(cls, v: str) -> str:
+        v = (v or "").strip().lower()
+        return v if v in _CATEGORIES else "other"
+
+    @model_validator(mode="after")
+    def _default_suggested(self) -> "ScheduleRow":
+        if self.suggested is None:
+            self.suggested = _SUGGESTED_DEFAULT[self.category]
+        return self
+
+
+class ParseScheduleOut(BaseModel):
+    rows: list[ScheduleRow] = []
+    note: str = ""
+
+
 # ── routes ───────────────────────────────────────────────────────────────────
 @app.get("/health")
 def health() -> dict:
@@ -112,3 +165,14 @@ def detect_rooms(body: DetectRoomsIn) -> DetectRoomsOut:
 @app.post("/ai/classify-finish", response_model=ClassifyFinishOut)
 def classify_finish(body: ClassifyFinishIn) -> ClassifyFinishOut:
     return ClassifyFinishOut(**adapter.classify_finish(body.context))
+
+
+@app.post("/ai/parse-schedule", response_model=ParseScheduleOut)
+def parse_schedule(body: ParseScheduleIn) -> ParseScheduleOut:
+    out = adapter.parse_schedule(body.image_b64, body.width, body.height)
+    # Validate/coerce each row through ScheduleRow and drop untagged ones (a row
+    # with no finish_tag can't become a condition). The default heuristic returns
+    # no rows — this path is plumbing-complete but needs a real OCR/VLM adapter.
+    rows = [ScheduleRow(**r) for r in out.get("rows", []) if isinstance(r, dict)]
+    rows = [r for r in rows if r.finish_tag.strip()]
+    return ParseScheduleOut(rows=rows, note=out.get("note", ""))

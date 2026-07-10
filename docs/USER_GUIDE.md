@@ -83,6 +83,9 @@ A condition is one finish (e.g. `WD-1` red oak). It carries:
 - **Height (H)** — default height for new Surface‑Area (wall) traces; also drives vertical‑SF display. Existing walls keep the height they were drawn at.
 - **Thickness (T)** — a Linear run with thickness also yields border/feature‑strip SF (LF × T/12).
 
+### Import from schedule
+Instead of typing finishes one by one, **arm `Schedule`** (top bar, next to Snapshots) and **drag a box** around the plan's finish/material schedule. Every finish inside is read straight off the sheet into a one‑glance approval dialog — tag, product, manufacturer, color, size — **grouped by the schedule's own sections**. **Ceilings and millwork start unchecked** (you keep floor / base / wall); finishes already in your takeoff are locked **"in use"** so a re‑import never duplicates. Tick what you want and **Create N conditions** — they land ready to trace, each with a category‑appropriate color, hatch, and waste %. On a vector plan (most modern exports) it reads the text layer — no OCR, nothing leaves your browser. Two clicks define the box: a corner, then the opposite corner.
+
 ### Supporting materials (assemblies)
 Per condition, list the consumables (adhesive, sealer, polyurethane, thinset, grout, cove‑base adhesive…). Each has a **coverage rate** and a **basis** (floor SF / linear LF / each). Order qty = measured ÷ coverage, **rounded up** to whole units. Adhesive lines get a **trowel picker** that fills the SF/gal from the notch size. A `note` field carries trowel notch / # of coats. The Report sums these into a **buy list**.
 

@@ -2,9 +2,9 @@
 
 Its job is to make the endpoints work out of the box and to document the
 contract, not to be smart. `suggest_scale` does a simple regex over the page
-text; `classify_finish` does keyword matching; `detect_rooms` returns nothing and
-tells you where to plug in a real (vision) model. Replace this with your own
-adapter to bring intelligence to the socket.
+text; `classify_finish` does keyword matching; `detect_rooms` and `parse_schedule`
+return nothing and tell you where to plug in a real (vision/OCR) model. Replace
+this with your own adapter to bring intelligence to the socket.
 """
 from __future__ import annotations
 
@@ -63,3 +63,17 @@ class HeuristicAdapter:
             if any(k in ctx for k in keywords):
                 return {"finish": tag, "confidence": 0.4}
         return {"finish": None, "confidence": 0.0}
+
+    def parse_schedule(self, image_b64: str, width: int, height: int) -> dict:
+        # No model here on purpose. Reading a schedule off a SCANNED sheet needs
+        # OCR or a vision-language model — that's exactly what you'd plug in via
+        # OPENTAKEOFF_ADAPTER. Ship empty so the client's scan path is wired end
+        # to end and degrades gracefully (the dialog just says "nothing found")
+        # until a real model returns rows. A real adapter would decode image_b64
+        # (a PNG crop, `width`×`height`), run OCR/VLM, and return ScheduleRow-
+        # shaped dicts — see the response contract in adapters/base.py.
+        return {
+            "rows": [],
+            "note": "No model loaded. Set OPENTAKEOFF_ADAPTER to your own adapter "
+                    "(e.g. an OCR / local vision model) to read scanned schedules.",
+        }
