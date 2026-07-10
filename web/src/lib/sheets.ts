@@ -163,3 +163,13 @@ export function detectScale(textContent: TextContentLike, viewport: Viewport): D
   if (allHits.length === 1) return { upp: allHits[0].upp, label: allHits[0].label, multi: false };
   return null;
 }
+
+// Match free text (e.g. a vision model's reply) against STANDARD_SCALES through
+// the SAME canonicalizer + boundary-guarded matcher as the page-text path — so
+// "1:500" never reads as its "1:50" prefix no matter who wrote the text.
+// Exactly one hit or nothing: an ambiguous reply suggests nothing.
+export function scaleFromLabel(text: string): DetectedScale | null {
+  if (!text || /^\s*UNKNOWN\s*$/i.test(text)) return null;
+  const hits = _findScales(_canonScaleText(text));
+  return hits.length === 1 ? { upp: hits[0].upp, label: hits[0].label, multi: false } : null;
+}

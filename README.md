@@ -131,6 +131,15 @@ python3 capture/capture_server.py    # then, in the app's browser console:
 
 Run OpenTakeoff as-is and none of this exists for you — nothing is captured, nothing leaves your machine. Install it and every takeoff you *choose* to contribute compounds into an asset you own. This is the open edition of the capture layer inside [Spline](https://spline.quisutdeus.io), the commercial Division-9 estimating system OpenTakeoff was carved from, where capture runs far deeper — ambient on autosave and commit, no button: provisional rows bank while you draw, certified rows land on commit with the exploded materials assembly, edits carry a decision trail, and each job's corpus files itself into that GC's folder on the company share. The full pitch, the row schema, and the training angle live in [`capture/README.md`](capture/README.md).
 
+## Bring your own AI (optional)
+
+OpenTakeoff can ask a vision model **you** provide to read things off the plan — starting with the drawn scale when a sheet's text doesn't state one (scans, rotated notes, image title blocks). Click **AI** in the toolbar and point it at an **OpenAI-style** endpoint (the default — local runtimes on your own machine speak it and need no key) or an **Anthropic-style** endpoint, plus a vision-capable model id.
+
+- **What's sent, and only when you click an AI button:** one snapshot of the sheet region in question, plus the question — to *your* endpoint. Never the whole plan file, file names, project names, or your takeoff.
+- **Nothing configured = nothing exists.** Unconfigured builds add zero UI beyond the button and make zero AI network calls. No telemetry either way.
+- The model's answer is only ever a **suggestion** — it lands in the same confirm-to-apply flow as the text-detected scale, and the calibrated guide bar shows on acceptance so you can sanity-check it.
+- The key (if any) is stored in this browser's localStorage — use one you can revoke. Deployers: `VITE_AI_ENDPOINT` / `VITE_AI_MODEL` / `VITE_AI_PROVIDER` can bake defaults into a team build, but **never set `VITE_AI_KEY` on a public deploy** — Vite inlines it into the shipped bundle.
+
 ## Build on top of it
 
 OpenTakeoff is **Apache-2.0**: fork it, change it, ship it — for your own crew or as the base of your own product. The codebase is deliberately small and readable so you can add the features *you* want:

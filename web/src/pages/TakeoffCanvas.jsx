@@ -18,7 +18,9 @@ import ToolMenu from "../components/ToolMenu.jsx";
 import SheetGallery from "../components/SheetGallery.jsx";
 import ReportPanel from "../components/ReportPanel.jsx";
 import { Icon } from "../brand/icons.jsx";
-import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, extractSheetNumber, detectScale } from "../lib/sheets";
+import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, extractSheetNumber, detectScale, scaleFromLabel } from "../lib/sheets";
+import { isAiConfigured, visionQuery, scaleReadPrompt } from "../lib/ai.js";
+import AiSettings from "../components/AiSettings.jsx";
 import { areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, fmtCheckLen, parseLenInput, M_PER_FT } from "../lib/units";
 import { shapesInZone } from "../lib/zone.js";
 import { playFromCondition, conditionFromPlay, upsertPlay, loadPlays, savePlays } from "../lib/plays.js";
@@ -390,6 +392,8 @@ export default function TakeoffCanvas() {
   const [saveState, setSaveState] = useState("idle");
   const [commitMsg, setCommitMsg] = useState("");   // transient status line (misnamed for history; just the message bar)
   const [showReport, setShowReport] = useState(false);  // Reports overlay (STACK-style breakdown + export)
+  const [showAiSettings, setShowAiSettings] = useState(false); // bring-your-own-key AI settings modal
+  const [aiScaleBusy, setAiScaleBusy] = useState("");    // sheetKey with an AI scale-read in flight
   const [projectName, setProjectName] = useState("");   // optional label for the report header
   const fileInputRef = useRef(null);                    // hidden <input type=file> for "Open PDF"
 
@@ -1540,6 +1544,50 @@ export default function TakeoffCanvas() {
   useEffect(() => { setScaleGuide(null); }, [tool, groupSig]);
   useEffect(() => () => clearTimeout(scaleGuideTimerRef.current), []);
 
+  // Snapshot of the title-block region — the SAME region detectScale treats as
+  // authoritative (sheets.ts: x > 0.55W, y > 0.5H) — for the AI scale read.
+  // Cropped from the base panel raster, downscaled to a vision-friendly size.
+  // JPEG has no alpha, so white-fill first; and dark mode bakes an inversion
+  // into the panel pixels, so the CROP (never the on-screen canvas) is flipped
+  // back to normal print before encoding.
+  function captureTitleBlock(key) {
+    const cv = panelCanvasRefs.current.get(key);
+    if (!cv || !cv.width) return null;
+    const sx = Math.floor(cv.width * 0.55), sy = Math.floor(cv.height * 0.5);
+    const sw = cv.width - sx, sh = cv.height - sy;
+    const cap = 1568;
+    const k = Math.min(1, cap / Math.max(sw, sh));
+    const off = document.createElement("canvas");
+    off.width = Math.round(sw * k); off.height = Math.round(sh * k);
+    const ctx = off.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, off.width, off.height);
+    ctx.drawImage(cv, sx, sy, sw, sh, 0, 0, off.width, off.height);
+    if (canvasInvertedRef.current.get(cv)) invertCanvasPixels(off);
+    let url = off.toDataURL("image/jpeg", 0.8);
+    if (url.length > 4_000_000) url = off.toDataURL("image/jpeg", 0.6);
+    return url;
+  }
+  // One snapshot of the title block → the user's own vision endpoint → the
+  // reply maps through scaleFromLabel (same boundary-guarded matcher as the
+  // text path) → the EXISTING detectedScales suggestion flow. Never
+  // auto-applied — the human still clicks "use", and the guide bar shows.
+  async function readScaleWithAi() {
+    const key = focusPanel.key;
+    const img = captureTitleBlock(key);
+    if (!img) { setCommitMsg("Nothing rendered to read yet."); return; }
+    setAiScaleBusy(key);
+    try {
+      const text = await visionQuery({ imageDataUrl: img, prompt: scaleReadPrompt(STANDARD_SCALES.map((s) => s.label)) });
+      const det = scaleFromLabel(text);
+      if (det) setDetectedScales((d) => ({ ...d, [key]: { ...det, ai: true } }));
+      else setCommitMsg(`AI couldn't read a scale off ${labelFor(panelByKey(key))} — calibrate against a known dimension instead.`);
+    } catch (e) {
+      setCommitMsg(`AI read failed: ${e.message || e}`);
+    } finally {
+      setAiScaleBusy("");
+    }
+  }
+
   function applyCalibration() {
     const feet = calInputToFeet(parseFloat(pendingLen), units);
     if (!(feet > 0) || calib.length !== 2) return;
@@ -2209,14 +2257,25 @@ export default function TakeoffCanvas() {
         </select>
         {(() => {
           const det = detectedScales[focusPanel.key];
-          if (!det) return null;
+          if (!det) {
+            // the text regex found nothing (scans, rotated notes, image title
+            // blocks) — offer the AI read, but only when the user configured one
+            if (!unitsPerPx && isAiConfigured() && status === "ready") return (
+              <button type="button" disabled={aiScaleBusy === focusPanel.key} onClick={readScaleWithAi}
+                title={`No scale note found in this sheet's text. Sends one snapshot of the title block (bottom-right of ${labelFor(focusPanel)}) to your configured AI endpoint and suggests what it reads. Nothing is sent until you click; you still confirm the result.`}
+                style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 9px", border: "1px dashed var(--ink-muted)", background: "transparent", color: "var(--ink-muted)", cursor: aiScaleBusy === focusPanel.key ? "default" : "pointer", fontSize: 11.5, fontWeight: 600, lineHeight: 1 }}>
+                <Icon name="target" size={13} />{aiScaleBusy === focusPanel.key ? "reading…" : "read scale with AI"}
+              </button>
+            );
+            return null;
+          }
           if (!unitsPerPx) return (
             <button type="button" onClick={() => { setScales((s) => ({ ...s, [focusPanel.key]: det.upp })); showScaleGuide(focusPanel.key, det.upp, det.label); }}
               onMouseEnter={() => showScaleGuide(focusPanel.key, det.upp, det.label)}
               onMouseLeave={() => { if (!scales[focusPanel.key]) { clearTimeout(scaleGuideTimerRef.current); setScaleGuide(null); } }}
-              title={`The plan notes ${det.label} on ${labelFor(focusPanel)}${det.multi ? " — this sheet shows several scales (details are often larger); confirm against a known dimension" : ""}. Click to use it — a calibrated guide bar shows on the sheet so you can sanity-check it.`}
+              title={`${det.ai ? `Your AI endpoint read ${det.label} off the title block of ${labelFor(focusPanel)}` : `The plan notes ${det.label} on ${labelFor(focusPanel)}`}${det.multi ? " — this sheet shows several scales (details are often larger); confirm against a known dimension" : ""}. Click to use it — a calibrated guide bar shows on the sheet so you can sanity-check it.`}
               style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 9px", border: "1px dashed var(--c-positive)", background: "transparent", color: "var(--c-positive)", cursor: "pointer", fontSize: 11.5, fontWeight: 600, lineHeight: 1 }}>
-              <Icon name="target" size={13} />plan says {det.label}{det.multi ? " ±" : ""} — use
+              <Icon name="target" size={13} />{det.ai ? "AI read" : "plan says"} {det.label}{det.multi ? " ±" : ""} — use
             </button>
           );
           if (stdValue && Math.abs(det.upp - unitsPerPx) > 1e-9) return (
@@ -2241,6 +2300,8 @@ export default function TakeoffCanvas() {
           <button onClick={createProposal} title="Create the selected takeoff(s) (↵). ⌫ removes the last click; Esc discards the selection." style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", border: "none", background: "var(--c-positive)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}><Icon name="check" size={14} />Create ({proposal.regions.length})</button>
         )}
         <span style={{ fontSize: 11, color: "var(--ink-muted)", minWidth: 44, fontFamily: "var(--f-mono)" }}>{saveState === "saving" ? "saving…" : saveState === "saved" ? "saved ✓" : ""}</span>
+        <button onClick={() => setShowAiSettings(true)} title="AI — optional, bring your own key. Nothing is sent unless you ask."
+          style={{ padding: "6px 10px", border: `1px solid ${isAiConfigured() ? "var(--cobalt)" : "var(--ink-faint)"}`, background: "transparent", color: isAiConfigured() ? "var(--cobalt)" : "var(--ink-muted)", cursor: "pointer", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11 }}>AI</button>
         <button onClick={() => setShowReport(true)} disabled={!conditions.length} title="Open the takeoff report — per-condition breakdown with waste, plus CSV / JSON export."
           style={{ padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--ink-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>Report</button>
       </div>
@@ -2914,6 +2975,8 @@ export default function TakeoffCanvas() {
           onClose={() => setShowReport(false)}
         />
       )}
+
+      {showAiSettings && <AiSettings onClose={() => setShowAiSettings(false)} />}
     </div>
   );
 }
