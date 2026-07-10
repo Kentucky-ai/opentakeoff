@@ -4,15 +4,19 @@
 // lazily through the SAME pdf.js document cache the canvas uses (getDoc), one
 // at a time, and yield while the canvas is rastering a full sheet.
 import React, { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { Icon } from "../brand/icons.jsx";
 import AuthChip from "./AuthChip.jsx";
 import { parseSheetKey, extractSheetNumber, detectScale, RENDER_SCALE, MAX_GROUP } from "../lib/sheets";
+import { isGoogleConfigured } from "../lib/google/auth.js";
+import { projectHomeFolderId } from "../lib/projectHome.js";
 
 const THUMB_W = 380;
 
 export default function SheetGallery({
   sheets, getDoc, scales, detectedScales, shapes, labels, onLabel, onDetect,
-  thumbCacheRef, busyRef, openTabs, onOpen, onClose, canClose, onAddFiles, onAddFromDrive, onBackToProjects,
+  thumbCacheRef, busyRef, openTabs, onOpen, onClose, canClose, onAddFiles, onAddFromDrive,
+  onCloseProject, onBrowseProjects,
 }) {
   const fileRef = useRef(null);
   const [pages, setPages] = useState({});   // file -> numPages (as discovered)
@@ -150,10 +154,16 @@ export default function SheetGallery({
           {allKeys.length || "…"} sheets · pick one or several — the order you pick is the left-to-right order
         </span>
         <div style={{ flex: 1 }} />
-        {/* Back to the project browser — like AuthChip below, this must live on
-            the gallery too: the overlay hides the main toolbar's button. */}
-        {onBackToProjects && (
-          <button onClick={onBackToProjects} title="Back to your team's projects"
+        {/* Leave / browse the cloud project — like AuthChip below, these must
+            live on the gallery too: the overlay hides the main toolbar's. */}
+        {onCloseProject && (
+          <button onClick={onCloseProject} title="Close this project and return to the local canvas"
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12.5 }}>
+            Close project
+          </button>
+        )}
+        {onBrowseProjects && (
+          <button onClick={onBrowseProjects} title="Back to your team's projects"
             style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12.5 }}>
             Projects
           </button>
@@ -169,6 +179,15 @@ export default function SheetGallery({
             landing view (the main toolbar's chip is hidden behind this overlay).
             Renders nothing when cloud mode isn't configured. */}
         <AuthChip />
+        {/* Deliberately subtle: this is a local-first app first, cloud mode
+            second. Only on the LOCAL canvas's gallery (no cloud project is
+            already open here — onCloseProject/onBrowseProjects are cloud-only
+            props) and only when the build actually names a Projects root. */}
+        {!onCloseProject && isGoogleConfigured() && projectHomeFolderId() && (
+          <Link to="/projects" style={{ fontSize: 11.5, color: "var(--ink-muted)", whiteSpace: "nowrap" }}>
+            browse team projects
+          </Link>
+        )}
         {onAddFiles && (
           <>
             <input name="sheet-file" ref={fileRef} type="file" accept=".pdf,application/pdf,image/*,.zip,application/zip,application/x-zip-compressed" multiple style={{ display: "none" }}

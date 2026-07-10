@@ -185,13 +185,38 @@ async function fetchProfile(accessToken) {
   return { email: p.email, name: p.name, picture: p.picture, sub: p.sub, hd: p.hd };
 }
 
-// Interactive sign-in: consent prompt, then load the profile. Resolves with the
-// user object. The token stays in memory only.
+// Try to restore a session with NO visible prompt — a live Google session plus
+// a prior consent grant for our scopes lets GIS hand back a token silently.
+// Resolves to null (never rejects) when that's not possible, so callers can
+// fall back to an interactive sign-in instead of surfacing this as an error.
+export async function trySilentSignIn() {
+  if (!isGoogleConfigured()) return null;
+  try {
+    const accessToken = await requestToken("");
+    user = await fetchProfile(accessToken);
+    notify();
+    return user;
+  } catch {
+    return null;
+  }
+}
+
+// Interactive sign-in: try silently first (covers a returning user whose
+// earlier consent grant just wasn't picked up automatically, e.g. this is the
+// first GIS call of the tab) and only fall back to the full consent/account
+// picker when that fails — `prompt: "consent"` always shows that screen even
+// for a user who already granted access, so it's a last resort, not the
+// default. Resolves with the user object. The token stays in memory only.
 export async function signIn() {
   if (!isGoogleConfigured()) {
     throw new Error("Google sign-in is not configured for this build.");
   }
-  const accessToken = await requestToken("consent");
+  let accessToken;
+  try {
+    accessToken = await requestToken("");
+  } catch {
+    accessToken = await requestToken("consent");
+  }
   user = await fetchProfile(accessToken);
   notify();
   return user;

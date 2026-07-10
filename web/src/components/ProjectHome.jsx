@@ -66,7 +66,7 @@ export default function ProjectHome() {
         <div style={{ flex: 1 }} />
         {/* client-side Link (not a plain anchor): a reload here would drop the
             in-memory Google token; App re-gates off the URL and keeps us signed in */}
-        <Link to="/?local=1" style={{ fontSize: 12, color: "var(--ink-muted)" }}>use the local canvas</Link>
+        <Link to="/" style={{ fontSize: 12, color: "var(--ink-muted)" }}>use the local canvas</Link>
         <AuthChip />
       </div>
 

@@ -12,6 +12,7 @@ import {
   getUser,
   signIn as authSignIn,
   signOut as authSignOut,
+  trySilentSignIn,
 } from "./auth.js";
 
 const GoogleAuthContext = createContext(null);
@@ -26,10 +27,16 @@ export function GoogleAuthProvider({ children }) {
     if (!configured) return;
     // Keep local state in lock-step with the auth module (sign-in/out fire here).
     const unsub = onAuthChange(setUser);
-    // Warm the GIS script so the first sign-in click is instant; failure to
-    // preload isn't fatal (the click will retry the load), so still mark ready.
+    // Warm the GIS script so the first sign-in click is instant, then try to
+    // restore the session with no visible prompt — a returning user with a
+    // live Google session and a prior consent grant is signed back in before
+    // SignInScreen ever renders, instead of having to click through the full
+    // consent screen again. Failure (preload or silent sign-in) isn't fatal;
+    // either way we still mark ready and fall back to the interactive button.
     let live = true;
-    preloadGoogle().finally(() => { if (live) setReady(true); });
+    preloadGoogle()
+      .then(() => trySilentSignIn())
+      .finally(() => { if (live) setReady(true); });
     return () => { live = false; unsub(); };
   }, [configured]);
 

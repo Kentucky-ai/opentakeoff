@@ -10,7 +10,7 @@
 // Geometry math reads tfRef (always current), so drawing stays accurate.
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { store, isStaleTabError, STALE_TAB_MESSAGE } from "../lib/store.js";
@@ -108,6 +108,14 @@ export default function TakeoffCanvas() {
   // Client-side exit back to the project home (`/`) — main.jsx's gate cleanup
   // restores the local store on the way out, so this navigation is safe.
   const navigate = useNavigate();
+  // Two distinct exits out of a cloud project, both needed once every sheet is
+  // closed: "Close project" always works (it's just leaving `/?project=` for
+  // the local canvas — main.jsx's gate cleanup restores the local store), so
+  // it's the one guaranteed path out even on deployments with no Projects root
+  // configured. "Browse projects" additionally jumps straight to the team's
+  // project list at /projects, when the build names one.
+  const closeProject = () => navigate("/");
+  const browseProjects = projectHomeFolderId() ? () => navigate("/projects") : null;
   const [openTabs, setOpenTabs] = useState([]);   // sheetKeys open as tabs across the top
   const [galleryLabels, setGalleryLabels] = useState({}); // sheetKey → title-block number, all files
   const [pageLabels, setPageLabels] = useState({}); // { pageNum: "A003" } from the title block
@@ -3035,12 +3043,18 @@ export default function TakeoffCanvas() {
           control ever changes position. */}
       <div style={{ display: "flex", gap: 7, alignItems: "center", padding: "6px 14px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-shadow)", whiteSpace: "nowrap" }}>
         <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--ink)", letterSpacing: "-0.02em" }}>open<span style={{ fontStyle: "italic", color: "var(--cobalt)" }}>takeoff</span></strong>
-        {/* team cloud mode: back to the project browser — fixed presence for
-            the whole session (cloudMode and the home folder are set before the
-            canvas mounts), so it never shifts deck-1 mid-work */}
-        {cloudMode && projectHomeFolderId() && (
-          <button type="button" onClick={() => navigate("/")}
-            title="Back to your team's projects"
+        {/* team cloud mode: always a way to leave this project, plus a way to
+            browse the rest of the team's projects when the build names a root
+            — fixed presence for the whole session (cloudMode is set before the
+            canvas mounts), so neither ever shifts deck-1 mid-work */}
+        {cloudMode && (
+          <button type="button" onClick={closeProject} title="Close this project and return to the local canvas"
+            style={{ padding: "6px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12.5, lineHeight: 1 }}>
+            Close project
+          </button>
+        )}
+        {cloudMode && browseProjects && (
+          <button type="button" onClick={browseProjects} title="Back to your team's projects"
             style={{ padding: "6px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12.5, lineHeight: 1 }}>
             Projects
           </button>
@@ -3089,6 +3103,14 @@ export default function TakeoffCanvas() {
         </button>
         <button onClick={() => setShowReport(true)} disabled={!conditions.length} title="Open the takeoff report — per-condition breakdown with waste, plus CSV / JSON export."
           style={{ padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>Report</button>
+        {/* Deliberately subtle, not a button: local-first app, cloud mode is an
+            opt-in extra. Only when no cloud project is already open and the
+            build actually names a Projects root to browse. */}
+        {!cloudMode && isGoogleConfigured() && projectHomeFolderId() && (
+          <Link to="/projects" style={{ fontSize: 11.5, color: "var(--ink-muted)", whiteSpace: "nowrap" }}>
+            browse team projects
+          </Link>
+        )}
         <AccountChip note={cloudMode ? "Synced to Google Drive" : "Local workspace"} onOpenChange={onMenuDepth} />
       </div>
 
@@ -3928,7 +3950,8 @@ export default function TakeoffCanvas() {
           openTabs={openTabs} onOpen={openSheets} onClose={() => setView("canvas")} canClose={openTabs.length > 0}
           onAddFiles={handleFiles}
           onAddFromDrive={cloudMode ? () => setView("picker") : undefined}
-          onBackToProjects={cloudMode && projectHomeFolderId() ? () => navigate("/") : undefined}
+          onCloseProject={cloudMode ? closeProject : undefined}
+          onBrowseProjects={cloudMode ? browseProjects : undefined}
         />
       )}
 

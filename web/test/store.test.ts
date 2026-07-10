@@ -8,7 +8,7 @@ import "fake-indexeddb/auto";
 import { IDBFactory } from "fake-indexeddb";
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { store, localStore, isStaleTabError, ANN_SCHEMA, STALE_TAB_MESSAGE, friendlyStoreError, localOnlyFromUrl } from "../src/lib/store.js";
+import { store, localStore, isStaleTabError, ANN_SCHEMA, STALE_TAB_MESSAGE, friendlyStoreError } from "../src/lib/store.js";
 import { createCloudStore } from "../src/lib/cloudStore.js";
 
 beforeEach(() => {
@@ -257,19 +257,4 @@ test("annotations round-trip still works against the v2 database (regression)", 
   const payload = { conditions: [{ id: "c9", name: "LVP" }], shapes: [{ id: "s9", points: [{ x: 1, y: 2 }] }], markups: [], sheets: [], sheet_group: [], last_group: [], sheet_tabs: [] };
   await store.saveAnnotations(payload);
   assert.deepEqual(await store.loadAnnotations(), { ...payload, schema: ANN_SCHEMA });
-});
-
-test("localOnlyFromUrl: true only for ?local=1; false otherwise and without a window", () => {
-  // node has no window — the same try/catch guard as projectIdFromUrl
-  assert.equal(localOnlyFromUrl(), false);
-
-  const withSearch = (search: string) => {
-    (globalThis as any).window = { location: { search } };
-    try { return localOnlyFromUrl(); } finally { delete (globalThis as any).window; }
-  };
-  assert.equal(withSearch("?local=1"), true);
-  assert.equal(withSearch("?project=abc&local=1"), true); // present alongside project (gate order decides elsewhere)
-  assert.equal(withSearch("?local=0"), false);
-  assert.equal(withSearch("?local="), false);
-  assert.equal(withSearch(""), false);
 });

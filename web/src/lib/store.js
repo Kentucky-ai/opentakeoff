@@ -302,16 +302,4 @@ export function projectIdFromUrl() {
   }
 }
 
-// The escape hatch that keeps the anonymous local canvas reachable on
-// team-configured deployments: `…/?local=1` says "skip the project home, give
-// me the browser-local canvas". `?project=` takes precedence over it — enforced
-// by gate order in main.jsx, not here.
-export function localOnlyFromUrl() {
-  try {
-    return new URLSearchParams(window.location.search).get("local") === "1";
-  } catch {
-    return false;   // no window (SSR/tests) or a malformed query
-  }
-}
-
 export { ANN_SCHEMA };

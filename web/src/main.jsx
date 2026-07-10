@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import "./styles/tokens.css";
 import "./styles/app.css";
 import TakeoffCanvas from "./pages/TakeoffCanvas.jsx";
 import ProjectHome from "./components/ProjectHome.jsx";
 import { GoogleAuthProvider, useGoogleAuth } from "./lib/google/AuthContext.jsx";
-import { projectIdFromUrl, localOnlyFromUrl, setActiveStore } from "./lib/store.js";
+import { projectIdFromUrl, setActiveStore } from "./lib/store.js";
 import { isGoogleConfigured, getAccessToken } from "./lib/google/auth.js";
 import { projectHomeFolderId } from "./lib/projectHome.js";
 import { initTheme } from "./lib/theme.js";
@@ -15,17 +15,21 @@ initTheme();   // index.html set data-theme pre-paint; this keeps it live
 
 // Client-only SPA. By default there is no backend: the canvas runs entirely in
 // the browser and persists to IndexedDB / localStorage (anonymous local mode).
+// Bare `/` ALWAYS lands here first — open the bundled demo plan or drop your
+// own — never behind a sign-in wall, even on a build with cloud mode configured.
 //
 // The OPTIONAL team-only cloud mode kicks in only when the build is configured
 // for Google (VITE_GOOGLE_CLIENT_ID) AND the app is deep-linked to a project:
-// `/?project=<driveFolderId>` (Glide hands us that id). We then require a
-// domain Google sign-in, build a Drive-backed store, and swap it into the shared
-// `store` binding BEFORE mounting the canvas — so the canvas's mount-time load
-// reads/writes that project's Drive folder with no changes to the canvas.
+// `/?project=<driveFolderId>` (Glide hands us that id, or the in-app project
+// browser below does). We then require a domain Google sign-in, build a
+// Drive-backed store, and swap it into the shared `store` binding BEFORE
+// mounting the canvas — so the canvas's mount-time load reads/writes that
+// project's Drive folder with no changes to the canvas.
 //
 // When the build ALSO names the team's Projects folder (VITE_DRIVE_ROOT_FOLDER_ID),
-// bare `/` becomes a signed-in project browser (ProjectHome) that emits those
-// same `?project=` links; `/?local=1` skips it for the anonymous local canvas.
+// `/projects` is a signed-in project browser (ProjectHome) that emits those
+// same `?project=` links — reachable only through an explicit, subtle "browse
+// team projects" link, never the default landing screen.
 
 const centered = {
   minHeight: "100vh", display: "flex", flexDirection: "column",
@@ -131,22 +135,24 @@ function ProjectGate({ projectId }) {
   return <TakeoffCanvas key={projectId} />;
 }
 
-// `/` on a build configured with a Projects root: sign in, then browse the
-// team's project folders. No store swap here — opening a project navigates to
-// `?project=`, where ProjectGate installs the Drive-backed store as usual.
+// `/projects` on a build configured with a Projects root: sign in, then browse
+// the team's project folders. No store swap here — opening a project
+// navigates to `?project=`, where ProjectGate installs the Drive-backed store
+// as usual. Google sign-in is opt-in, not the default landing (see App below)
+// — this route only exists for whoever explicitly asks to browse team
+// projects, so a build with no root configured just bounces back to `/`.
 function ProjectHomeGate() {
   const { user, ready, signIn } = useGoogleAuth();
+  if (!isGoogleConfigured() || !projectHomeFolderId()) return <Navigate to="/" replace />;
   if (!user) {
     return (
       <SignInScreen ready={ready} signIn={signIn}
         title="Your team's projects live in Google Drive"
         body="Sign in with your team Google account to browse and open them. Only accounts on the team domain can sign in."
         footer={
-          // Plain anchor on purpose: nobody is signed in yet, so the full
-          // reload it causes has no token or state to lose.
-          <a href="/?local=1" style={{ fontSize: 12.5, color: "var(--ink-muted)" }}>
+          <Link to="/" style={{ fontSize: 12.5, color: "var(--ink-muted)" }}>
             skip — use the local canvas
-          </a>
+          </Link>
         } />
     );
   }
@@ -160,12 +166,12 @@ function App() {
   // time this re-render runs — useLocation() is purely the re-render trigger.
   useLocation();
   const projectId = projectIdFromUrl();
-  // ?project= deep link → the cloud project (beats ?local=1 by gate order).
+  // ?project= deep link → the cloud project.
   if (projectId && isGoogleConfigured()) return <ProjectGate projectId={projectId} />;
-  // Configured Projects root at `/` → the project browser (unless ?local=1).
-  if (isGoogleConfigured() && projectHomeFolderId() && !localOnlyFromUrl()) return <ProjectHomeGate />;
-  // Otherwise the classic anonymous local-only canvas — unconfigured builds
-  // render this unconditionally, byte-for-byte unchanged.
+  // Otherwise the anonymous local canvas is the default landing screen —
+  // open the bundled demo plan or drop your own, no sign-in required.
+  // Google sign-in (to browse team projects at /projects) is a subtle,
+  // opt-in link on that screen, never a wall in front of it.
   return <TakeoffCanvas />;
 }
 
@@ -174,6 +180,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     <GoogleAuthProvider>
       <BrowserRouter>
         <Routes>
+          <Route path="/projects" element={<ProjectHomeGate />} />
           <Route path="*" element={<App />} />
         </Routes>
       </BrowserRouter>

@@ -66,6 +66,16 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
   by double-clicking a palette chip; toggling it re-persists your choice. (One-time
   migration: because the panel used to default open, workspaces that were left open
   now start collapsed on the first load after this change.)
+- **Cloud mode no longer fights the local-first app.** Google sign-in tries a
+  silent token refresh before ever showing the full consent screen, so a
+  returning signed-in user isn't re-prompted every visit. Bare `/` is always
+  the local canvas (open the demo plan or drop your own) even on a build with
+  `VITE_DRIVE_ROOT_FOLDER_ID` configured — the team project browser moved to
+  `/projects`, reached through a small "browse team projects" link rather than
+  a sign-in wall in front of the app. Inside a cloud project, **Close project**
+  is now always available once every sheet is closed (previously it only
+  showed up when a Projects root was configured, stranding signed-in users on
+  deployments without one).
 
 ## 2026-07-09
 
