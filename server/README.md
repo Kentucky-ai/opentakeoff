@@ -5,6 +5,11 @@ your browser. This is an *optional* backend that adds a **bring-your-own-model
 socket** — a few takeoff-scoped AI endpoints you can wire a local model behind
 to experiment and build.
 
+This sandbox is the **server-side adapter socket**: the place to plug your own
+local *vision model* under the canvas's suggestion endpoints. If you want an
+**AI agent to drive the takeoff itself** — open plans, set scales, click rooms,
+export quantities — that's the MCP server, [`mcp/`](../mcp/README.md), not this.
+
 It ships **empty of any trained model**. The default adapter is a transparent
 heuristic so the endpoints work immediately and show you the contract. There is
 **no estimate, pricing, risk, or scope engine here** — just the canvas's AI

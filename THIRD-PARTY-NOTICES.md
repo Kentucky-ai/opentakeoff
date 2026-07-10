@@ -13,6 +13,8 @@ which retain their own licenses:
 | [pdf-lib](https://github.com/Hopding/pdf-lib) | MIT | Wrapping dropped images into PDFs (lazy-loaded) |
 | [TypeScript](https://github.com/microsoft/TypeScript) | Apache-2.0 | Type-checking the geometry libs |
 | [tsx](https://github.com/privatenumber/tsx) | MIT | Running TS tests under Node |
+| [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk) (`@modelcontextprotocol/sdk`) | MIT | The `mcp/` server's protocol layer (stdio + in-memory test transport) |
+| [Zod](https://github.com/colinhacks/zod) | MIT | Tool-input validation in `mcp/` |
 
 The optional AI sandbox (`/server`) additionally uses
 [FastAPI](https://github.com/fastapi/fastapi) (MIT), [Starlette](https://github.com/encode/starlette) (BSD-3-Clause),

@@ -135,3 +135,9 @@ All drawings, scales, conditions, and markups autosave to this browser (IndexedD
 - Raster (scanned) plans: One‑Click reads the scan pixels (badged so you verify edges before Create). Snap has no true endpoints on a scan, so corners come from the trace — nudge with Select if needed.
 - Set the scale **before** you measure; changing it re‑flows dependent shapes.
 - Waste is per condition — set it to match the install (e.g. ~8% straight‑lay, ~15% diagonal, ~20% herringbone).
+
+---
+
+## 5. Driving it from an AI agent
+
+The engine is also exposed as an **MCP server** (`mcp/`) so an MCP client can run a takeoff without the browser: load a plan, read the title block, set the scale, one‑click rooms, export the same payload the app autosaves. Setup, the tool reference, and a full example transcript: [docs/MCP.md](MCP.md).

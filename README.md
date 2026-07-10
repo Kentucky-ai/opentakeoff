@@ -99,6 +99,7 @@ Every drawing, scale, condition, and markup autosaves to **your browser** (Index
 | **View** | Light or **dark (negative print)** — sheet pixels inverted at draw time, persists per browser |
 | **Storage** | IndexedDB + localStorage — client-only, nothing uploaded |
 | **Capture (opt-in)** | Bundled [capture server](capture/README.md) banks each contributed takeoff as (geometry → label) training rows — a corpus you own, mirrorable to a synced company share |
+| **MCP server** | The engine on stdio for your MCP client — load a plan, set the scale, one-click rooms, export the takeoff ([`mcp/`](mcp/README.md)) |
 | **Deploy** | One static build, hostable on Netlify, Vercel, GitHub Pages, S3, or any static host |
 
 ## Run it / deploy it
@@ -139,6 +140,10 @@ OpenTakeoff can ask a vision model **you** provide to read things off the plan �
 - **Nothing configured = nothing exists.** Unconfigured builds add zero UI beyond the button and make zero AI network calls. No telemetry either way.
 - The model's answer is only ever a **suggestion** — it lands in the same confirm-to-apply flow as the text-detected scale, and the calibrated guide bar shows on acceptance so you can sanity-check it.
 - The key (if any) is stored in this browser's localStorage — use one you can revoke. Deployers: `VITE_AI_ENDPOINT` / `VITE_AI_MODEL` / `VITE_AI_PROVIDER` can bake defaults into a team build, but **never set `VITE_AI_KEY` on a public deploy** — Vite inlines it into the shipped bundle.
+
+## Use it from an AI agent
+
+The same engine speaks [MCP](https://modelcontextprotocol.io): [`mcp/`](mcp/README.md) is a stdio server your MCP client can drive — `load_plan`, `read_sheet_text`, `set_scale`, `one_click`, `takeoff_summary`, `export_takeoff` and friends. An agent opens a plan, reads the title block, adopts the scale (never applied silently), clicks the rooms, and exports the exact payload the app autosaves — same math, same provenance receipts, same scale gate. Setup and a full example transcript: [`docs/MCP.md`](docs/MCP.md).
 
 ## Build on top of it
 
