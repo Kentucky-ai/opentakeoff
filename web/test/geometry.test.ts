@@ -242,3 +242,46 @@ test("extractVectorGeometry: meta emission — paint ops, line width, form XObje
   assert.equal(segs[(fi + 1) * 4], 0, "paintFormXObjectEnd pops the matrix");
   assert.equal(meta[fi + 1], 3 << 4, "line width restored after the form");
 });
+
+test("extractVectorGeometry: imageArea sums |det CTM| at image paint ops", () => {
+  const OPS: Record<string, number> = {
+    save: 1, restore: 2, transform: 3, constructPath: 4, setLineWidth: 5, setGState: 6,
+    moveTo: 10, lineTo: 11, curveTo: 12, curveTo2: 13, curveTo3: 14, closePath: 15, rectangle: 16,
+    stroke: 20, fill: 22, eoFill: 23, endPath: 28, clip: 29, eoClip: 30,
+    paintFormXObjectBegin: 40, paintFormXObjectEnd: 41,
+    paintImageXObject: 85, paintInlineImageXObject: 86, paintImageMaskXObject: 87,
+  };
+  const identity = [1, 0, 0, 1, 0, 0];
+  // image placed by a 100×50 CTM → 5000 px²; a second one inside a form XObject
+  // whose matrix scales 2× each axis → 40×40 → 1600 px²; form pops cleanly after.
+  const opList = {
+    fnArray: [
+      OPS.transform, OPS.paintImageXObject,
+      OPS.paintFormXObjectBegin, OPS.paintImageMaskXObject, OPS.paintFormXObjectEnd,
+      OPS.paintInlineImageXObject,
+    ],
+    argsArray: [
+      [100, 0, 0, 50, 0, 0], null,
+      [[0.004, 0, 0, 0.016, 0, 0]], null, null,   // (100·0.004)×(50·0.016) = 0.4×0.8 → |det|=0.32 px²
+      null,                                        // back at the 100×50 CTM → +5000
+    ],
+  };
+  const g = extractVectorGeometry(opList as any, identity, OPS);
+  assert.ok(Math.abs(g.imageArea - (5000 + 0.32 + 5000)) < 1e-9, `imageArea ${g.imageArea}`);
+  assert.equal(g.segs.length, 0, "image ops emit no segments");
+});
+
+test("extractVectorGeometry: imageArea is 0 when no image ops exist", () => {
+  const OPS: Record<string, number> = {
+    save: 1, restore: 2, transform: 3, constructPath: 4, setLineWidth: 5, setGState: 6,
+    moveTo: 10, lineTo: 11, curveTo: 12, curveTo2: 13, curveTo3: 14, closePath: 15, rectangle: 16,
+    stroke: 20, fill: 22, eoFill: 23, endPath: 28, clip: 29, eoClip: 30,
+    paintFormXObjectBegin: 40, paintFormXObjectEnd: 41,
+  };
+  const opList = {
+    fnArray: [OPS.constructPath, OPS.stroke],
+    argsArray: [[[OPS.moveTo, OPS.lineTo], [0, 0, 5, 0]], null],
+  };
+  const g = extractVectorGeometry(opList as any, [1, 0, 0, 1, 0, 0], OPS);
+  assert.equal(g.imageArea, 0);
+});

@@ -13,7 +13,7 @@ No account. No upload. No install. It runs in your browser.
 
 [**▶ Try the live demo**](https://opentakeoff.netlify.app) · [Quick start](#quick-start) · [Features](#features) · [Deploy it](#run-it--deploy-it) · [Own your data](#own-your-data--the-capture-layer) · [Build on top](#build-on-top-of-it) · [Contributing](CONTRIBUTING.md)
 
-**New — July 2026:** One-Click Area now traces **hatched rooms** · **Dark view** (negative print) · **Marked Set PDF export** — [full changelog](CHANGELOG.md)
+**New — July 2026:** One-Click Area now traces **hatched rooms** and **scanned plans** · **Dark view** (negative print) · **Marked Set PDF export** — [full changelog](CHANGELOG.md)
 
 <br/>
 
@@ -51,7 +51,7 @@ Drag **`demo/sample-plan.pdf`** onto the canvas. The scale auto-detects; pick a 
 Drag in a plan **PDF**, an **image** (a scan or a screenshot), or a whole **`.zip` plan set** straight off a bid platform. Zips are unpacked and images wrapped to PDF *in your browser* — multi-page and multi-sheet, with up to **4 sheets side-by-side**. No upload step, no conversion service, no account.
 
 ### 2. A real measuring engine — not a counter with a ruler
-**One-Click Area** is the headline: click inside a room and the linework bounds it, the polygon traces itself, and the vertices snap to true corners. It reads the drawing the way an estimator does — **hatching and poché don't fool it**: tile grids, plank lines, and section fills are classified as pattern, not wall, so a click inside a fully hatched room still traces the room (and a misread can never make the result worse than the strict fill — it escalates only when the strict pass comes back trapped). Plus the full manual kit — **Area, Rectangle, Linear, Surface-Area (walls), Count,** and **Deduct** (for columns, voids, and openings). This is the same engine pulled out of a commercial estimating app, not a toy reimplementation.
+**One-Click Area** is the headline: click inside a room and the linework bounds it, the polygon traces itself, and the vertices snap to true corners. It reads the drawing the way an estimator does — **hatching and poché don't fool it**: tile grids, plank lines, and section fills are classified as pattern, not wall, so a click inside a fully hatched room still traces the room (and a misread can never make the result worse than the strict fill — it escalates only when the strict pass comes back trapped). **Scanned plans work too**: when a sheet is a scan (no vector linework), the engine reads the rendered pixels instead — adaptive thresholding with a gap-bridging pass — and the same flood/trace machinery runs on the scan ink; the result is badged so you verify the edges before Create. Plus the full manual kit — **Area, Rectangle, Linear, Surface-Area (walls), Count,** and **Deduct** (for columns, voids, and openings). This is the same engine pulled out of a commercial estimating app, not a toy reimplementation.
 
 <div align="center">
 <img src="docs/img/one-click-area.gif" alt="One-Click Area on a real finish plan: one click inside a patient room and the whole room traces itself wall to wall — 240.7 SF, committed on Enter" width="820"/>
@@ -130,6 +130,15 @@ python3 capture/capture_server.py    # then, in the app's browser console:
 ```
 
 Run OpenTakeoff as-is and none of this exists for you — nothing is captured, nothing leaves your machine. Install it and every takeoff you *choose* to contribute compounds into an asset you own. This is the open edition of the capture layer inside [Spline](https://spline.quisutdeus.io), the commercial Division-9 estimating system OpenTakeoff was carved from, where capture runs far deeper — ambient on autosave and commit, no button: provisional rows bank while you draw, certified rows land on commit with the exploded materials assembly, edits carry a decision trail, and each job's corpus files itself into that GC's folder on the company share. The full pitch, the row schema, and the training angle live in [`capture/README.md`](capture/README.md).
+
+## Bring your own AI (optional)
+
+OpenTakeoff can ask a vision model **you** provide to read things off the plan — starting with the drawn scale when a sheet's text doesn't state one (scans, rotated notes, image title blocks). Click **AI** in the toolbar and point it at an **OpenAI-style** endpoint (the default — local runtimes on your own machine speak it and need no key) or an **Anthropic-style** endpoint, plus a vision-capable model id.
+
+- **What's sent, and only when you click an AI button:** one snapshot of the sheet region in question, plus the question — to *your* endpoint. Never the whole plan file, file names, project names, or your takeoff.
+- **Nothing configured = nothing exists.** Unconfigured builds add zero UI beyond the button and make zero AI network calls. No telemetry either way.
+- The model's answer is only ever a **suggestion** — it lands in the same confirm-to-apply flow as the text-detected scale, and the calibrated guide bar shows on acceptance so you can sanity-check it.
+- The key (if any) is stored in this browser's localStorage — use one you can revoke. Deployers: `VITE_AI_ENDPOINT` / `VITE_AI_MODEL` / `VITE_AI_PROVIDER` can bake defaults into a team build, but **never set `VITE_AI_KEY` on a public deploy** — Vite inlines it into the shipped bundle.
 
 ## Build on top of it
 

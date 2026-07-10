@@ -11,6 +11,7 @@ no server.
 1. **Open plans** — drag a PDF, image, or `.zip` plan set onto the canvas (or use **Open plans**). The **gallery** (`G`) shows every sheet; click one (or several) to open.
 2. **Set the scale** — on each sheet, click **Scale** and either pick a standard scale (imperial architectural/engineering **or metric ratios** — 1:20 through 1:500) or **Calibrate**: click two points along a known dimension, type the real length (feet — or **meters** in metric mode), **Apply**. Scale is remembered **per sheet**. Accepting a scale drops a **calibrated guide bar** on the sheet for a few seconds — a labeled ruler at the new scale. A door opening is about 3′; if the bar looks wildly off, the scale is wrong.
    - **Check it (K)** — click both ends of a printed dimension string and the bar shows what it *measures* at the current scale. Type what the drawing *says* and you get the error as a percentage — green means the scale checks out, red means recalibrate (one tap: **Recalibrate to this**). Make it a habit before tracing a new sheet.
+   - **No scale note in the text?** (Scans and image title blocks.) If you've configured an AI endpoint (the **AI** toolbar button — your endpoint, your key, optional), a *read scale with AI* chip appears: one click sends a snapshot of the title block to your endpoint and its answer arrives as the same kind of suggestion — you still click **use**, and the guide bar still shows.
 3. **Working in metric?** Click the **`ft`/`m`** toggle beside the scale picker. Every readout, chip, panel, the Report, CSV, and the Marked Set legend switch to **m² / m**, and Calibrate takes meters. The toggle only changes the display layer — takeoffs are stored unit-agnostically, so flipping it never changes your measurements. (Supporting-material coverage rates stay as entered, SF/LF-based.)
 3. **Pick a condition** — the **Conditions** bar holds your finishes (WD‑1, LVT‑1, …). Click one to arm it (or press its number, `1`–`9`). Edit its color / hatch / waste / height in the bar.
 4. **Draw the takeoff** — pick a Measure tool and trace. Each shape is color‑coded to its condition.
@@ -26,7 +27,7 @@ Your work autosaves to this browser continuously. Reload and it's still there.
 ### Tools
 | Key | Tool | What it does |
 |---|---|---|
-| `O` | **One‑Click Area** | Click inside a room; the enclosed space auto‑selects, traces, and snaps to corners — hatched/tiled rooms fill to the real walls (hatch linework is classified and seen through). Review, then Create. |
+| `O` | **One‑Click Area** | Click inside a room; the enclosed space auto‑selects, traces, and snaps to corners — hatched/tiled rooms fill to the real walls (hatch linework is classified and seen through). **Scanned sheets work too**: the engine reads the scan pixels and badges the result so you verify edges before Create. Review, then Create. |
 | `A` | **Area** | Trace a polygon → floor SF. |
 | `R` | **Rectangle** | Two‑corner rectangle → floor SF. |
 | `L` | **Linear** | Trace a run → LF (＋ border SF if the condition has a thickness). |
@@ -131,6 +132,6 @@ All drawings, scales, conditions, and markups autosave to this browser (IndexedD
 ## 4. Tips
 
 - Door openings usually stay closed in One‑Click (the door leaf + swing arc are linework). If a fill **spills**, click a more enclosed spot or trace with **Area**. A hatched room with a genuinely open doorway still refuses rather than guessing — that's deliberate.
-- Raster (scanned) plans have no vector linework — One‑Click/Snap won't work; trace manually.
+- Raster (scanned) plans: One‑Click reads the scan pixels (badged so you verify edges before Create). Snap has no true endpoints on a scan, so corners come from the trace — nudge with Select if needed.
 - Set the scale **before** you measure; changing it re‑flows dependent shapes.
 - Waste is per condition — set it to match the install (e.g. ~8% straight‑lay, ~15% diagonal, ~20% herringbone).
