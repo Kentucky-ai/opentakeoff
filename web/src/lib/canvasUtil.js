@@ -7,6 +7,7 @@
 
 import { RENDER_SCALE } from "./sheets";
 import { STALE_TAB_MESSAGE } from "./store.js";
+import { instantiateMaterial } from "./materials.js";
 import { PALETTE } from "../components/hatches.jsx";
 import {
   MIN_SCALE, MAX_SCALE,
@@ -56,7 +57,10 @@ export const instantiateTemplate = (t) => ({
   hatch: t.hatch || "solid", multiplier: 1, waste_pct: Number(t.waste_pct) || 0,
   ...(t.height_ft != null ? { height_ft: t.height_ft } : {}),
   ...(t.thickness_in != null ? { thickness_in: t.thickness_in } : {}),
-  materials: (t.materials || []).map((m) => ({ round: true, ...m, id: uid("mat") })),
+  // instantiateMaterial (lib/materials.js) deep-copies the nested grout
+  // geometry — a shallow spread here aliased the CT-1 seed's one grout object
+  // into every fresh-workspace condition across every project in the session
+  materials: (t.materials || []).map((m) => instantiateMaterial(m, uid("mat"))),
 });
 // Fresh-workspace seeding reads the user's template library first; the
 // built-in flooring defaults are only the empty-library fallback. Both paths

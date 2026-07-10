@@ -2,6 +2,10 @@
 // tuning, toolbar tool descriptors, and the flooring starter conditions.
 // No DOM, no React, no functions: values only, moved verbatim from
 // pages/TakeoffCanvas.jsx so the canvas and any future reader share one copy.
+// (The one import is another values-only constant: the grout tile-geometry
+// defaults from lib/coverage.js, so the CT-1 seed and the editor can't drift.)
+
+import { GROUT_DEFAULTS } from "./coverage.js";
 
 export const MIN_SCALE = 0.03;
 export const MAX_SCALE = 32;  // stage zoom is in raster px — with the 28MP base budget this keeps ≈ the old deep-zoom ceiling (detail view carries the crispness)
@@ -59,20 +63,26 @@ export const MARKUP_IDS = MARKUP_TOOLS.map((t) => t.id);
 // Each default also carries a couple of editable starter materials — quantities
 // derive deterministically from measured area/linear ÷ a coverage rate you set
 // (off the product data sheet). Delete/edit freely; they're just sensible seeds.
+// Per-material-kind coverage presets (adhesive trowel notches, mortar trowels)
+// and the grout-from-tile-geometry calculator live in lib/coverage.js —
+// vendor-neutral, generic rates; always verify against the product data sheet.
 // Expressed in TEMPLATE shape (finish_tag/waste_pct/materials, no fill — it
 // defaults from color) so seeding and the Library run the same constructor.
 export const FLOORING_DEFAULTS = [
-  { finish_tag: "CPT-1", color: "#2f7d54", hatch: "speckle", waste_pct: 5,  materials: [{ name: "Adhesive", per: 250, basis: "area", unit: "gal" }] },                                    // Carpet tile
-  { finish_tag: "BRD-1", color: "#be185d", hatch: "dots",    waste_pct: 10, materials: [{ name: "Adhesive", per: 120, basis: "area", unit: "gal" }] },                                    // Broadloom carpet (roll goods)
-  { finish_tag: "LVT-1", color: "#b8860b", hatch: "plank",   waste_pct: 8,  materials: [{ name: "Adhesive", per: 250, basis: "area", unit: "gal" }] },                                    // Luxury vinyl plank/tile
+  { finish_tag: "CPT-1", color: "#2f7d54", hatch: "speckle", waste_pct: 5,  materials: [{ name: "Adhesive", kind: "adhesive", per: 250, basis: "area", unit: "gal" }] },                  // Carpet tile
+  { finish_tag: "BRD-1", color: "#be185d", hatch: "dots",    waste_pct: 10, materials: [{ name: "Adhesive", kind: "adhesive", per: 120, basis: "area", unit: "gal" }] },                  // Broadloom carpet (roll goods)
+  { finish_tag: "LVT-1", color: "#b8860b", hatch: "plank",   waste_pct: 8,  materials: [{ name: "Adhesive", kind: "adhesive", per: 250, basis: "area", unit: "gal" }] },                  // Luxury vinyl plank/tile
   { finish_tag: "WD-1",  color: "#9a3412", hatch: "plank",   waste_pct: 10, materials: [                                                                                                  // Unfinished 2.25″ solid red oak — glue-down + site-finished
-    { name: "Adhesive (wood, SMP)",     per: 50,  basis: "area", unit: "gal", note: "standard notch · SMP, solid wood" },
+    { name: "Adhesive (wood, SMP)",     kind: "adhesive", per: 50,  basis: "area", unit: "gal", note: "1/4″×1/4″ V (wood)" },
     { name: "Sealer (primer coat)",     per: 400, basis: "area", unit: "gal", note: "1 prime coat (~10 m²/L)" },
     { name: "Polyurethane (2K finish)", per: 136, basis: "area", unit: "gal", note: "≈3 coats @ ~408 SF/gal/coat (2K 10:1)" },
   ] },
-  { finish_tag: "VCT-1", color: "#2563eb", hatch: "checker", waste_pct: 5,  materials: [{ name: "Adhesive", per: 350, basis: "area", unit: "gal" }] },                                    // Vinyl composition tile
-  { finish_tag: "SV-1",  color: "#0d9488", hatch: "solid",   waste_pct: 10, materials: [{ name: "Adhesive", per: 150, basis: "area", unit: "gal" }] },                                    // Sheet vinyl
-  { finish_tag: "CT-1",  color: "#9333ea", hatch: "grid",    waste_pct: 10, materials: [{ name: "Thinset", per: 95, basis: "area", unit: "bag" }, { name: "Grout", per: 120, basis: "area", unit: "bag" }] }, // Ceramic / porcelain tile
-  { finish_tag: "RB-1",  color: "#475569", hatch: "horiz",   waste_pct: 5,  materials: [{ name: "Cove base adhesive", per: 40, basis: "linear", unit: "tube" }] },                        // Rubber / resilient wall base (linear)
+  { finish_tag: "VCT-1", color: "#2563eb", hatch: "checker", waste_pct: 5,  materials: [{ name: "Adhesive", kind: "adhesive", per: 350, basis: "area", unit: "gal" }] },                  // Vinyl composition tile
+  { finish_tag: "SV-1",  color: "#0d9488", hatch: "solid",   waste_pct: 10, materials: [{ name: "Adhesive", kind: "adhesive", per: 150, basis: "area", unit: "gal" }] },                  // Sheet vinyl
+  { finish_tag: "CT-1",  color: "#9333ea", hatch: "grid",    waste_pct: 10, materials: [                                                                                                  // Ceramic / porcelain tile
+    { name: "Thinset mortar", kind: "mortar", per: 65, basis: "area", unit: "bag", note: '1/4″×3/8″×1/4″ sq' },
+    { name: "Grout", kind: "grout", per: 512, basis: "area", unit: "bag", grout: { ...GROUT_DEFAULTS }, note: '12×24×3/8″ @ 1/8″ · 25 lb' },
+  ] },
+  { finish_tag: "RB-1",  color: "#475569", hatch: "horiz",   waste_pct: 5,  materials: [{ name: "Cove base adhesive", kind: "adhesive", per: 40, basis: "linear", unit: "tube" }] },      // Rubber / resilient wall base (linear)
   { finish_tag: "TR-1",  color: "#c96442", hatch: "vert",    waste_pct: 0,  materials: [] },                                                                                              // Transitions / reducers (linear)
 ];

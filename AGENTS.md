@@ -21,7 +21,15 @@ no force-pushes — admins included) and a local pre-commit hook rejects commits
 made on `main`. **Merging to `main` deploys to production**
 (<https://takeoff.345flooring.com>) via `.github/workflows/deploy.yml`, which
 re-runs `npm run check` and publishes `web/dist` to Netlify with `--no-build`
-— Netlify never builds anything itself. So:
+— Netlify never builds anything itself.
+
+> **Production is <https://takeoff.345flooring.com> — nothing else.**
+> <https://opentakeoff.netlify.app> is the *parent repo's*
+> (Kentucky-ai/opentakeoff) demo deployment; the inherited README badge and
+> links still point there, but this fork does not serve it. Verify deploys
+> against takeoff.345flooring.com only.
+
+So:
 
 1. **Branch first** — never commit on `main`: `git checkout -b <topic>`.
 2. **`npm run check` before pushing** (in `web/`). It is exactly what CI runs,

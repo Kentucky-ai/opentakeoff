@@ -30,6 +30,8 @@ import { attrValue, columnLabel } from "../lib/conditionColumns.js";
 import { num } from "../lib/num.js";
 import { HATCHES, PALETTE, NO_FILL, HatchSwatch } from "./hatches.jsx";
 import { LINE_STYLES, LINE_STYLE_IDS } from "../lib/lineStyles.js";
+import { materialKind, MATERIAL_PRESETS, GROUT_DEFAULTS, groutDerivedFields, showsGroutCalc, showsGroutDeriveAffordance } from "../lib/coverage.js";
+import { draftCommitValue, blurCommitValue, blurCommitNonNegative } from "../lib/draftInput.js";
 
 export const PANEL_MIN_W = 240;
 export const PANEL_MAX_W = 560;
@@ -56,17 +58,82 @@ const ip = { padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-f
 const btnAddFull = { width: "100%", padding: "6px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 };
 const btnClearX = { border: "none", background: "none", color: "var(--ink-muted)", cursor: "pointer", fontSize: 13, padding: 0 };
 
-// Adhesive coverage by trowel notch, SF per gallon. Typical wood-adhesive range is
-// ~40–70 SF/gal: a wider/coarser notch lays more glue and covers less per gallon.
-// Picking a notch fills the coverage rate + notes it. Always verify against the
-// current product data sheet for your subfloor + flooring type.
-const TROWEL_PRESETS = [
-  { label: "fine",     per: 70 },
-  { label: "medium",   per: 58 },
-  { label: "standard", per: 50 },
-  { label: "coarse",   per: 40 },
-];
-const isAdhesive = (name) => /adhes|glue|bond|mastic/i.test(name || "");
+// Per-material-kind coverage presets (adhesive trowel notches, mortar trowels)
+// and the grout-from-tile-geometry calculator live in lib/coverage.js —
+// vendor-neutral, generic rates; always verify against the product data sheet.
+
+// The fraction formatter (inFrac) and derivation-note builder moved to
+// lib/coverage.js with the rest of the grout math so they're pure and tested.
+
+// One grout tile-geometry input. Keeps the RAW string in local state while the
+// field is being edited — clamping/coercing inside onChange made the joint
+// field untypeable (every keystroke through "0." snapped to the 0.03125 min)
+// and wiped the leading "0" of decimals in the tile fields. The commit/clamp
+// decision rules live in lib/draftInput.js (pure, tested): typing commits only
+// a fully valid in-range value; blur clamps an out-of-range value into range
+// and abandons an empty/invalid draft, so the last good committed value
+// redisplays.
+function GroutParamInput({ name, value, title, min = 0, max, width = 52, override, onCommit }) {
+  const [draft, setDraft] = useState(null);   // raw text mid-edit; null = mirror the committed value
+  return (
+    <input name={name} type="number" min={min || 0} max={max} step="any" title={title}
+      value={draft ?? (value > 0 ? String(value) : "")}
+      onChange={(e) => { const t = e.target.value; setDraft(t); const v = draftCommitValue(t, min, max); if (v != null) onCommit(v); }}
+      onBlur={() => {
+        const v = blurCommitValue(draft, min, max);
+        if (v != null) onCommit(v);
+        setDraft(null);
+      }}
+      style={{ ...ip, width, ...(override ? { border: "1px solid var(--c-warning)" } : {}) }} />
+  );
+}
+
+// Draft-buffered input for the Materials tab's name + per + note fields:
+// keeps the raw text local while editing and commits ONLY on blur/Enter —
+// every commit there flows through libEntryPatch, where a CHANGED per/note
+// detaches a grout entry's tile geometry and a name edit re-classifies the
+// entry's kind, so committing per keystroke destroyed the geometry (or the
+// classification) on the transient values of a select-all-retype ("5" of
+// "512") or a clear-and-retype, silently and with no undo. In number mode an
+// empty/unparseable draft on blur is ABANDONED and the last good value
+// redisplays (blurCommitNonNegative, the GroutParamInput/blurCommitValue
+// philosophy) — clearing the per field must not commit 0 and take the
+// geometry with it; an intentional 0 can still be typed as "0". Text drafts
+// commit as-is (clearing a name/note is a legitimate edit).
+function LibDraftInput({ name, value, number, placeholder, width, onCommitText }) {
+  const [draft, setDraft] = useState(null);   // raw text mid-edit; null = mirror the committed value
+  return (
+    <input name={name} type={number ? "number" : "text"} min={number ? 0 : undefined} step={number ? "any" : undefined}
+      value={draft ?? value}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        if (draft != null) {
+          if (number) { const v = blurCommitNonNegative(draft); if (v != null) onCommitText(String(v)); }
+          else onCommitText(draft);
+        }
+        setDraft(null);
+      }}
+      onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) e.currentTarget.blur(); }}
+      placeholder={placeholder} style={{ ...ip, width }} />
+  );
+}
+
+// Coverage preset picker — shared by the condition-line editor and the
+// Materials tab so a library "Adhesive" and an attached line offer the same
+// notch/roller list. Renders nothing when the kind has no preset table.
+function CoveragePresetSelect({ material: m, onPick }) {
+  const presets = (m.basis || "area") === "area" ? MATERIAL_PRESETS[materialKind(m)] : undefined;
+  if (!presets) return null;
+  return (
+    <select name="coverage-preset" value={presets.some((t) => t.label === m.note) ? m.note : ""}
+      onChange={(e) => { const t = presets.find((x) => x.label === e.target.value); if (t) onPick({ note: t.label, per: t.per }); }}
+      title="Coverage preset — trowel notch / spread rate. Generic industry-typical values; verify against the product data sheet."
+      style={{ ...ip, background: "var(--paper-bright)" }}>
+      <option value="">preset…</option>
+      {presets.map((t) => <option key={t.label} value={t.label}>{t.label} · {t.per} SF/{m.unit || "unit"}</option>)}
+    </select>
+  );
+}
 
 // Editable supporting-materials rows — the assembly behind a condition.
 function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libById, overridden, onRevert, onAttach, onPromote }) {
@@ -83,6 +150,20 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
       {(materials || []).map((m) => {
         const lm = libById ? libById[m.lib_id] : null;
         const ov = (f) => (lm && overridden ? overridden(m, lm, f) : false);
+        const g = { ...GROUT_DEFAULTS, ...(m.grout || {}) };
+        // grout coverage derives from tile geometry — a param change re-derives
+        // per + writes the derivation into the note so the Report shows its
+        // work, but ONLY while the whole geometry is valid: an incomplete edit
+        // (cleared field, zero) keeps the last good per + note instead of
+        // silently committing a rate of 0 into the buy list and exports
+        const setGrout = (patch) => {
+          const grout = { ...g, ...patch };
+          onUpdate(m.id, { grout, ...(groutDerivedFields(grout) || {}) });
+        };
+        const gi = (key, title, extra) => (
+          <GroutParamInput name={`grout-${key}`} value={g[key]} title={title} override={ov("grout")}
+            onCommit={(v) => setGrout({ [key]: v })} {...extra} />
+        );
         return (
           <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
             {lm && <span title={`Linked to “${lm.name}” in the material library — amber fields differ from the library values`} style={{ color: "var(--ink-muted)", fontSize: 11, cursor: "default" }}>⛓</span>}
@@ -104,15 +185,7 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
               <input name="material-round" type="checkbox" checked={m.round !== false} onChange={(e) => onUpdate(m.id, { round: e.target.checked })} />round up
             </label>
             {ov("round") && rv(m, "round")}
-            {isAdhesive(m.name) && (m.basis || "area") === "area" && (
-              <select name="trowel-preset" value={TROWEL_PRESETS.some((t) => t.label === m.note) ? m.note : ""}
-                onChange={(e) => { const t = TROWEL_PRESETS.find((x) => x.label === e.target.value); if (t) onUpdate(m.id, { note: t.label, per: t.per }); }}
-                title="Trowel notch — sets the adhesive coverage (SF/gal). Verify against the data sheet."
-                style={{ ...ip, background: "var(--paper-bright)" }}>
-                <option value="">trowel…</option>
-                {TROWEL_PRESETS.map((t) => <option key={t.label} value={t.label}>{t.label} · {t.per} SF/gal</option>)}
-              </select>
-            )}
+            <CoveragePresetSelect material={m} onPick={(patch) => onUpdate(m.id, patch)} />
             <input name="material-note" value={m.note || ""} onChange={(e) => onUpdate(m.id, { note: e.target.value })} placeholder="note (coats, trowel…)" style={{ ...ip, width: 150, ...(ov("note") ? { border: OV } : {}) }} />
             {ov("note") && rv(m, "note")}
             {!lm && onPromote && (
@@ -121,6 +194,35 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
             )}
             <button onClick={() => onRemove(m.id)} title="Remove this material"
               style={{ padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 12 }}>✕</button>
+            {/* the calculator renders ONLY when the line HAS geometry; a grout
+                line without it keeps its rate untouched behind an explicit
+                opt-in below — never a calculator backfilled with defaults */}
+            {showsGroutCalc(m) && (
+              <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", paddingLeft: 14, color: "var(--ink-muted)", fontSize: 12 }}>
+                <span>tile</span>
+                {gi("tileL", "Tile length (in)")}
+                <span>×</span>
+                {gi("tileW", "Tile width (in)")}
+                <span>× thick</span>
+                {gi("tileT", "Tile thickness (in)")}
+                <span>″ · joint</span>
+                {gi("joint", "Joint width (in) — 1/32″ to 1/2″", { min: 0.03125, max: 0.5, width: 62 })}
+                <span>″ · bag</span>
+                {gi("bagLbs", "Bag size (lbs)")}
+                <span>lb</span>
+                {ov("grout") && rv(m, "grout")}
+              </div>
+            )}
+            {showsGroutDeriveAffordance(m) && (
+              <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 6, paddingLeft: 14 }}>
+                <button onClick={() => setGrout({})}
+                  title="Start the grout calculator with standard tile geometry (12×24×3/8″ @ 1/8″, 25 lb bag) — REPLACES this line's coverage rate and note with the derived values"
+                  style={{ padding: "2px 7px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>
+                  derive from tile geometry…
+                </button>
+                {ov("grout") && rv(m, "grout")}
+              </div>
+            )}
           </div>
         );
       })}
@@ -627,11 +729,17 @@ function TakeoffsPanel({
               return (
                 <div key={lm.id} style={{ padding: "8px 12px", borderTop: "1px solid var(--ink-faint)" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <input name="library-material-name" value={lm.name} onChange={(e) => onUpdateLibMaterial(lm.id, { name: e.target.value })} placeholder="Material (e.g. Adhesive)" style={{ ...ip, width: 150 }} />
+                    {/* name is draft-buffered like per/note (round-3 finding 3): a per-keystroke
+                        commit routes every transient value through libEntryPatch's rename
+                        re-classification, where a select-all-retype walks the entry's kind
+                        through arbitrary intermediate classifications */}
+                    <LibDraftInput name="library-material-name" value={lm.name} placeholder="Material (e.g. Adhesive)" width={150}
+                      onCommitText={(t) => onUpdateLibMaterial(lm.id, { name: t })} />
                     <span style={{ color: "var(--ink-muted)" }}>1</span>
                     <input name="library-material-unit" value={lm.unit} onChange={(e) => onUpdateLibMaterial(lm.id, { unit: e.target.value })} placeholder="unit" style={{ ...ip, width: 54 }} />
                     <span style={{ color: "var(--ink-muted)" }}>per</span>
-                    <input name="library-material-per" type="number" min="0" step="any" value={lm.per || ""} onChange={(e) => onUpdateLibMaterial(lm.id, { per: Math.max(0, parseFloat(e.target.value) || 0) })} placeholder="0" style={{ ...ip, width: 62 }} />
+                    <LibDraftInput name="library-material-per" number value={lm.per || ""} placeholder="0" width={62}
+                      onCommitText={(t) => onUpdateLibMaterial(lm.id, { per: Math.max(0, parseFloat(t) || 0) })} />
                     <select name="library-material-basis" value={lm.basis || "area"} onChange={(e) => onUpdateLibMaterial(lm.id, { basis: e.target.value })} style={{ ...ip, background: "var(--paper-bright)" }}>
                       <option value="area">floor SF</option>
                       <option value="linear">linear LF</option>
@@ -640,7 +748,9 @@ function TakeoffsPanel({
                     <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--ink-muted)" }} title="Round up to whole units">
                       <input name="library-material-round" type="checkbox" checked={lm.round !== false} onChange={(e) => onUpdateLibMaterial(lm.id, { round: e.target.checked })} />round up
                     </label>
-                    <input name="library-material-note" value={lm.note || ""} onChange={(e) => onUpdateLibMaterial(lm.id, { note: e.target.value })} placeholder="note" style={{ ...ip, width: 120 }} />
+                    <CoveragePresetSelect material={lm} onPick={(patch) => onUpdateLibMaterial(lm.id, patch)} />
+                    <LibDraftInput name="library-material-note" value={lm.note || ""} placeholder="note" width={120}
+                      onCommitText={(t) => onUpdateLibMaterial(lm.id, { note: t })} />
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5 }}>
                     <span style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)" }}>{n ? `⛓ ${n} linked line${n === 1 ? "" : "s"}` : "not linked yet"}</span>

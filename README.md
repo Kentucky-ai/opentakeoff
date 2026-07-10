@@ -8,10 +8,9 @@ Open the plan. Set the scale. Trace the rooms. Read the report. Export the quant
 No account. No upload. No install. It runs in your browser.
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Live demo](https://img.shields.io/badge/demo-opentakeoff.netlify.app-2ea44f.svg)](https://opentakeoff.netlify.app)
 [![Built with React + Vite](https://img.shields.io/badge/React%2018-Vite-444.svg)](#tech-stack)
 
-[**▶ Try the live demo**](https://opentakeoff.netlify.app) · [Quick start](#quick-start) · [Features](#features) · [Deploy it](#run-it--deploy-it) · [Build on top](#build-on-top-of-it) · [Contributing](CONTRIBUTING.md)
+[Quick start](#quick-start) · [Features](#features) · [Deploy it](#run-it--deploy-it) · [Build on top](#build-on-top-of-it) · [Contributing](CONTRIBUTING.md)
 
 **New — July 2026:** **Import from schedule** (marquee a finish schedule → conditions) · One-Click Area now traces **hatched rooms** · **Dark view** (negative print) · **Marked Set PDF export** — [full changelog](CHANGELOG.md)
 
@@ -32,8 +31,6 @@ It started as the takeoff module of a private flooring estimating app, then got 
 And there's nothing to set up. Open the page, drag in a plan, start measuring. Your PDFs and your takeoffs never leave your machine — there is no server in the loop.
 
 ## Quick start
-
-You don't need to install anything to *use* it — just open the [**live demo**](https://opentakeoff.netlify.app), drag in a plan, and go.
 
 To run it yourself:
 
@@ -68,7 +65,7 @@ A condition is one finish (LVP, carpet, tile, base, …). Each carries a **line/
 And you don't have to type them: **Import from schedule** builds the conditions for you. Arm **Schedule**, drag a box around the plan's finish/material schedule, and every finish is read off the sheet into a one-glance approval dialog — grouped by the schedule's own sections, with **ceilings and millwork unchecked** (you keep floor / base / wall) and codes you already have locked *"in use."* Check what you want and Create. On a vector plan it reads the text layer directly — no OCR, nothing uploaded.
 
 ### 5. Assemblies — the supporting materials, done right
-Per condition, list the consumables that actually go on the order: adhesive, sealer, polyurethane, thinset, grout, cove-base adhesive. Each has a **coverage rate** and a **basis** (floor SF / linear LF / each), and the order quantity derives automatically — measured ÷ coverage, **rounded up** to whole units. Adhesive lines get a **trowel picker** that fills the spread rate from the notch size. This is the layer most takeoff tools punt on. It's shipped here. A browser-wide **material library** makes them reusable: attaching a library material copies its values onto the condition and keeps a link — overridden fields show in amber with per-field revert, library edits reach linked lines only when you explicitly push them, and deleting a library entry never touches your numbers.
+Per condition, list the consumables that actually go on the order: adhesive, sealer, polyurethane, thinset, grout, cove-base adhesive. Each has a **coverage rate** and a **basis** (floor SF / linear LF / each), and the order quantity derives automatically — measured ÷ coverage, **rounded up** to whole units. Adhesive and mortar lines get **coverage presets** (trowel notches, rollers) that fill the spread rate, and grout lines get a **calculator** that derives SF/bag from tile size, thickness, joint width, and bag weight. This is the layer most takeoff tools punt on. It's shipped here. A browser-wide **material library** makes them reusable: attaching a library material copies its values onto the condition and keeps a link — overridden fields show in amber with per-field revert, library edits reach linked lines only when you explicitly push them, and deleting a library entry never touches your numbers.
 
 ### 6. Reports & export
 A per-condition breakdown — **Floor / Wall / Border SF, LF, EA, total SF, SY**, with and without waste — plus a combined **materials buy list**. Export to **CSV**, **Excel (.xlsx)** — a four-tab workbook (Conditions / By sheet / Materials / Shapes) written entirely in-browser — or **JSON**, or print it. A **Group** control restructures the table — by **sheet** (ordered quantities per sheet slice) or by any **custom column** (e.g. CSI Division) — with per-group subtotals; grouping by a custom column force-includes it in the CSV/XLSX. Waste is applied only in the report (the order quantity), never to the live measured number, so your takeoff and your buy list stay honest about which is which.
@@ -111,7 +108,7 @@ Drive**. To set it up, see [`docs/GOOGLE_SETUP.md`](docs/GOOGLE_SETUP.md) and
 | **Condition palette** | Top-bar quick-access band — pin up to 9 conditions for one-click activation, **1–9 hotkeys follow palette order**, drag to pin/reorder, plus the active condition's appearance editor inline (no sidebar needed) |
 | **Takeoffs panel** | Docked, resizable condition list (starts collapsed) — filter, natural sort, tag grouping, multi-select bulk edit, pin-to-palette, zoom-to-condition, browser-wide **template library**, optional compact strip |
 | **Material library** | Browser-wide reusable materials — copy-on-attach with a live link, amber overrides with revert, explicit update-linked |
-| **Assemblies** | Per-condition supporting materials with coverage rates → rounded order quantities, trowel picker |
+| **Assemblies** | Per-condition supporting materials with coverage rates → rounded order quantities, per-material coverage presets + grout calculator |
 | **Report** | Per-condition Floor/Wall/Border SF, LF, EA, SY, with/without waste + materials buy list; group by sheet or custom column with subtotals |
 | **Export** | CSV, **Excel (.xlsx)** (Conditions / By sheet / Materials / Shapes tabs), JSON, **RFI log** (CSV / JSON), print, **Marked Set PDF** (sheets + burned-in takeoff + legend cover + RFI schedule, built in-browser) |
 | **Markups** | Revision clouds (with △ revision deltas + scalloped in the PDF), callouts, text notes, highlight boxes, arrows, bubbles — separate layer, never counted; per-markup color + line style + line weight; select, drag & delete on canvas; show/hide the whole layer; include/omit in the Marked Set |

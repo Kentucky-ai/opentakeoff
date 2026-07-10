@@ -48,6 +48,16 @@ test("materials: note (trowel / coats) passes through to the row", () => {
   assert.equal(row.materials[0].qty, 2); // ceil(110/55)
 });
 
+test("materials: grout coverage derived from tile geometry drives whole-bag qty", () => {
+  // 12×24×3/8″ tile @ 1/8″ joint, 25-lb bag → 512 SF/bag (see coverage.test.ts)
+  const conds = [{
+    id: "ct", finish_tag: "CT-1",
+    materials: [{ id: "m", name: "Grout", kind: "grout", per: 512, basis: "area", unit: "bag", round: true, note: "12×24×3/8″ @ 1/8″ · 25 lb" }],
+  }];
+  const [row] = conditionTotals(conds, [area("ct", 1000)]);
+  assert.equal(row.materials[0].qty, 2); // ceil(1000/512) = ceil(1.95)
+});
+
 test("materialsSummary: same-named materials sum across conditions", () => {
   const conds = [
     { id: "a", finish_tag: "CT-1", materials: [{ id: "1", name: "Grout", per: 120, basis: "area", unit: "bag", round: true }] },
