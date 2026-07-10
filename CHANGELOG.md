@@ -5,6 +5,14 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 ## Unreleased
 
 ### Added
+- **Same geometry handles on selected shapes (Select tool).** Editing a
+  committed takeoff now uses the same model as One-Click selections. Select a
+  shape and: **drag a corner** to move it (snaps to the plan's linework),
+  **click a corner** to select it then `Delete` to remove *just that point*
+  (kept ≥3 for a polygon / ≥2 for a run; `⌫` again drops the whole shape),
+  **drag an edge grip** to move the whole line (both endpoints together), and
+  **Shift-click an edge** to insert a new anchor point. Replaces the older
+  ⌥-click-to-delete / click-midpoint-to-insert controls.
 - **Editable One-Click selections — correct a fill before Create.** A One-Click
   proposal (the dashed cobalt selection, before you press Create) now carries
   geometry handles, so a not-quite-right fill is fixed in place without leaving

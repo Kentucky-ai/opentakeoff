@@ -33,7 +33,7 @@ Your work autosaves to this browser continuously. Reload and it's still there.
 | `D` | **Deduct** | Trace a void/column → subtracts SF. |
 | `⇧D` | **Deduct rectangle** | Rectangle deduct. |
 | `P` | **Pan** | Move around the sheet. |
-| `V` | **Select** | Select / move / edit / reassign / delete a shape — or click a markup (cloud/callout/note/arrow/bubble) to select it. |
+| `V` | **Select** | Select / move / edit / reassign / delete a shape — or click a markup (cloud/callout/note/arrow/bubble) to select it. **Editing a selected shape** uses the same handles as One-Click: **drag a corner** to move it (snaps to linework), **click a corner** then `Delete` to remove just that point, **drag an edge** to move the whole line, **Shift-click an edge** to add a point. `⌫` with no point selected deletes the whole shape. |
 | `G` | **Gallery** | Open the plan‑set gallery / sheet picker. |
 
 ### Conditions

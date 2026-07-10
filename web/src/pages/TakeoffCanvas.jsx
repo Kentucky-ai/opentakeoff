@@ -310,6 +310,7 @@ export default function TakeoffCanvas() {
   const [ocSel, setOcSel] = useState(null);        // selected proposal vertex {ri, vi} — Delete removes just that point
   const [ocHover, setOcHover] = useState(-1);      // proposal region under the cursor — handles reveal on hover
   const [selectedId, setSelectedId] = useState(null);   // selected shape (Select tool)
+  const [selVert, setSelVert] = useState(null);         // selected vertex index of the selected shape — Delete removes just that point
   const [selectedMarkupId, setSelectedMarkupId] = useState(null); // selected markup — mutually exclusive with selectedId
   const [rfis, setRfis] = useState([]);                 // RFI register (Request For Information); linked to markups via markup.rfi_id === rfi.id
   // selecting a shape clears any markup selection and vice-versa — one live
@@ -817,6 +818,8 @@ export default function TakeoffCanvas() {
   useEffect(() => { if (tool !== "oneclick") setProposal(null); }, [tool]);
   // Proposal gone (created, discarded, sheet changed) ⇒ drop any handle selection/hover.
   useEffect(() => { if (!proposal) { setOcSel(null); ocHoverRef.current = -1; setOcHover(-1); } }, [proposal]);
+  // Switching to a different shape (or clearing the selection) drops the vertex pick.
+  useEffect(() => { setSelVert(null); }, [selectedId]);
 
   // remember every live composition so Regroup works after ANY exit from group
   // mode (Ungroup button, tab click, gallery View) — not just the last Ungroup
@@ -1314,10 +1317,11 @@ export default function TakeoffCanvas() {
         if (poly.length) { setPoly((q) => q.slice(0, -1)); setCalib((c) => c.slice(0, -1)); }
         else if (ocSel && proposal) { deleteSelectedOcVertex(); }
         else if (proposal?.regions.length) { setProposal((pr) => { const rg = pr.regions.slice(0, -1); return rg.length ? { ...pr, regions: rg } : null; }); }
+        else if (selVert != null && selectedId) { deleteSelectedShapeVertex(); }
         else if (selectedId) { setShapes((ss) => ss.filter((s) => s.id !== selectedId)); setSelectedId(null); }
         else if (selectedMarkupId && showMarkups) { deleteMarkup(selectedMarkupId); setSelectedMarkupId(null); }
         else setCalib((c) => c.slice(0, -1));
-      } else if (e.key === "Escape") { if (ocSel) { setOcSel(null); } else { setPoly([]); setCalib([]); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); } }
+      } else if (e.key === "Escape") { if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { setPoly([]); setCalib([]); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); } }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); setPoly((q) => (q.length ? q.slice(0, -1) : q)); }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") { if (selectedId) { e.preventDefault(); copySelected(); } }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") { if (clipRef.current.length) { e.preventDefault(); pasteClipboard(); } }
@@ -1325,7 +1329,7 @@ export default function TakeoffCanvas() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, selectedMarkupId, showMarkups, poly, proposal, ocSel, shapes, sheetKey, groupSig, scales, focusKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedId, selVert, selectedMarkupId, showMarkups, poly, proposal, ocSel, shapes, sheetKey, groupSig, scales, focusKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── pointer ────────────────────────────────────────────────────────────────
   function onPointerDown(e) {
@@ -1341,8 +1345,12 @@ export default function TakeoffCanvas() {
       return;
     }
     if (e.button !== 0) return;   // only left-click places points
-    const p = (snapOn && snapRef.current) ? snapRef.current
-      : (angleOn && angleRef.current) ? angleRef.current
+    // snapRef/angleRef are drawing-tool aids maintained by moveCrosshair, which
+    // bails for the Select tool (:1577) — so in Select they'd be STALE. Select
+    // does its own endpoint snap (ocSnap) on drop, so it always uses the raw
+    // cursor here; otherwise a stale ref freezes the drag or jumps it on grab.
+    const p = (tool !== "select" && snapOn && snapRef.current) ? snapRef.current
+      : (tool !== "select" && angleOn && angleRef.current) ? angleRef.current
         : toImage(e.clientX, e.clientY);
     const fp = panelAt(p[0]);
     if (fp.key !== focusKey) setFocusKey(fp.key);
@@ -1439,43 +1447,45 @@ export default function TakeoffCanvas() {
     const thr = 8 / tfRef.current.scale;
     const sel = selectedId ? shapes.find((s) => s.id === selectedId) : null;
     const selSp = sel && panelKeySet.has(sel.sheet_id) ? panelByKey(sel.sheet_id) : null;
+    setSelVert(null);   // default: this press clears the vertex pick (overridden below on a corner/insert hit)
     // 1. Handles of the ALREADY-selected shape win first, so a shape (or vertex)
     //    enclosed by a markup — e.g. a revision cloud drawn around a room — stays
-    //    editable rather than being shielded by the markup's hit area.
+    //    editable rather than being shielded by the markup's hit area. Same edit
+    //    model as One-Click proposals: click a corner to select it (Delete removes
+    //    just it), drag a corner to move it, drag an edge grip to move the whole
+    //    line (both endpoints), Shift-click an edge to insert a new anchor point.
     if (sel && selSp && sel.measure_role !== "count") {
       const pts = sel.verts_norm.map(([nx, ny]) => [nx * selSp.img.w + selSp.xOffset, ny * selSp.img.h]);
       const closed = sel.measure_role !== "linear" && sel.measure_role !== "surface_area";
       for (let i = 0; i < pts.length; i++) {
         if (Math.hypot(pts[i][0] - p[0], pts[i][1] - p[1]) < thr * 1.6) {
-          if (e.altKey) {
-            // ⌥-click removes the point (a polygon keeps ≥3, a run keeps ≥2)
-            const min = closed ? 3 : 2;
-            if (sel.verts_norm.length > min) {
-              setShapes((ss) => ss.map((s) => {
-                if (s.id !== sel.id) return s;
-                const vn = s.verts_norm.filter((_, j) => j !== i);
-                return { ...s, verts_norm: vn, computed: recomputeShape({ ...s, verts_norm: vn }) };
-              }));
-            } else setCommitMsg(closed ? "A shape needs at least 3 points." : "A run needs at least 2 points.");
-            return;
-          }
+          setSelVert(i);   // select this corner + arm its move drag
           dragRef.current = { kind: "vertex", shapeId: selectedId, vIndex: i };
           e.currentTarget.setPointerCapture(e.pointerId); return;
         }
       }
-      // midpoint handles: click an edge's midpoint to INSERT a new lever point
-      // and drag it away in the same gesture
+      // edge grips: drag moves the WHOLE line (both endpoints); Shift-click drops a
+      // new anchor point there and drags it out in the same gesture.
       const edges = closed ? pts.length : pts.length - 1;
       for (let i = 0; i < edges; i++) {
-        const a = pts[i], b = pts[(i + 1) % pts.length];
+        const j = (i + 1) % pts.length;
+        const a = pts[i], b = pts[j];
         if (Math.hypot((a[0] + b[0]) / 2 - p[0], (a[1] + b[1]) / 2 - p[1]) < thr * 1.4) {
-          const nv = [(p[0] - selSp.xOffset) / selSp.img.w, p[1] / selSp.img.h];
-          setShapes((ss) => ss.map((s) => {
-            if (s.id !== sel.id) return s;
-            const vn = [...s.verts_norm.slice(0, i + 1), nv, ...s.verts_norm.slice(i + 1)];
-            return { ...s, verts_norm: vn, computed: recomputeShape({ ...s, verts_norm: vn }) };
-          }));
-          dragRef.current = { kind: "vertex", shapeId: selectedId, vIndex: i + 1 };
+          if (e.shiftKey) {
+            // insert at the EXACT edge midpoint (like One-Click's oneClickHandleAt),
+            // not the click point — click imprecision can't kink the edge before drag
+            const va = sel.verts_norm[i], vb = sel.verts_norm[j];
+            const nv = [(va[0] + vb[0]) / 2, (va[1] + vb[1]) / 2];
+            setShapes((ss) => ss.map((s) => {
+              if (s.id !== sel.id) return s;
+              const vn = [...s.verts_norm.slice(0, i + 1), nv, ...s.verts_norm.slice(i + 1)];
+              return { ...s, verts_norm: vn, computed: recomputeShape({ ...s, verts_norm: vn }) };
+            }));
+            setSelVert(i + 1);
+            dragRef.current = { kind: "vertex", shapeId: selectedId, vIndex: i + 1 };
+          } else {
+            dragRef.current = { kind: "edge", shapeId: selectedId, i, j, oaN: [...sel.verts_norm[i]], obN: [...sel.verts_norm[j]], start: p };
+          }
           e.currentTarget.setPointerCapture(e.pointerId); return;
         }
       }
@@ -1520,6 +1530,25 @@ export default function TakeoffCanvas() {
     });
     selectShape(hit ? hit.id : null);
     if (hit) { dragRef.current = { kind: "move", shapeId: hit.id, start: p, orig: hit.verts_norm }; e.currentTarget.setPointerCapture(e.pointerId); }
+  }
+  // Delete just the selected corner (Delete/⌫), keeping a polygon ≥3 / a run ≥2.
+  // At the floor we deselect so the NEXT ⌫ falls through to deleting the whole
+  // shape — mirrors the One-Click proposal behavior.
+  function deleteSelectedShapeVertex() {
+    const sel = shapes.find((s) => s.id === selectedId);
+    if (!sel || selVert == null) { setSelVert(null); return; }
+    const closed = sel.measure_role !== "linear" && sel.measure_role !== "surface_area";
+    const min = closed ? 3 : 2;
+    if (sel.verts_norm.length <= min) {
+      setCommitMsg(closed ? "A shape needs at least 3 points — ⌫ again deletes the whole shape." : "A run needs at least 2 points — ⌫ again deletes the whole run.");
+      setSelVert(null); return;
+    }
+    setShapes((ss) => ss.map((s) => {
+      if (s.id !== selectedId) return s;
+      const vn = s.verts_norm.filter((_, j) => j !== selVert);
+      return { ...s, verts_norm: vn, computed: recomputeShape({ ...s, verts_norm: vn }) };
+    }));
+    setSelVert(null);
   }
   // Geometry from the shape's OWN sheet: its panel's pixel dims × that sheet's
   // scale. This is what makes cross-sheet paste and group-mode edits honest.
@@ -1726,12 +1755,28 @@ export default function TakeoffCanvas() {
     if (tool === "oneclick" && proposal && !panRef.current && !pendingClickRef.current) ocHoverUpdate(e);
     if (dragRef.current) {
       const d = dragRef.current;
-      const p = (snapOn && snapRef.current) ? snapRef.current : toImage(e.clientX, e.clientY);
+      // dragRef is armed only by selectAt (Select tool), where snapRef is stale
+      // (moveCrosshair bails for Select) — track the RAW cursor; vertex/edge
+      // drags apply their own endpoint snap (ocSnap), and a body move is free.
+      const p = toImage(e.clientX, e.clientY);
       if (d.kind === "vertex") {
         setShapes((ss) => ss.map((s) => {
           if (s.id !== d.shapeId) return s;
           const sp = panelByKey(s.sheet_id);
-          const vn = s.verts_norm.map((v, i) => (i === d.vIndex ? [(p[0] - sp.xOffset) / sp.img.w, p[1] / sp.img.h] : v));
+          const [slx, sly] = ocSnap(sp.key, p[0] - sp.xOffset, p[1]);   // snap the corner to true endpoints
+          const vn = s.verts_norm.map((v, i) => (i === d.vIndex ? [slx / sp.img.w, sly / sp.img.h] : v));
+          return { ...s, verts_norm: vn, computed: recomputeShape({ ...s, verts_norm: vn }) };
+        }));
+      } else if (d.kind === "edge") {
+        setShapes((ss) => ss.map((s) => {
+          if (s.id !== d.shapeId) return s;
+          // translate BOTH endpoints of the line by the drag delta; each end snaps
+          // to the linework independently (normalized → local px → snap → normalized)
+          const sp = panelByKey(s.sheet_id);
+          const dx = (p[0] - d.start[0]) / sp.img.w, dy = (p[1] - d.start[1]) / sp.img.h;
+          const snapN = (nx, ny) => { const [lx, ly] = ocSnap(sp.key, nx * sp.img.w, ny * sp.img.h); return [lx / sp.img.w, ly / sp.img.h]; };
+          const na = snapN(d.oaN[0] + dx, d.oaN[1] + dy), nb = snapN(d.obN[0] + dx, d.obN[1] + dy);
+          const vn = s.verts_norm.map((v, i) => (i === d.i ? na : i === d.j ? nb : v));
           return { ...s, verts_norm: vn, computed: recomputeShape({ ...s, verts_norm: vn }) };
         }));
       } else if (d.kind === "move") {
@@ -3472,15 +3517,30 @@ export default function TakeoffCanvas() {
                       if (!sel || sel.measure_role === "count") return null;
                       const qs = dn(sel.verts_norm);
                       const closed = sel.measure_role !== "linear" && sel.measure_role !== "surface_area";
-                      const hs = 4.5 / tf.scale, ms = 3 / tf.scale;
+                      const s = tf.scale;
+                      const grip = darkMode ? "#0b0e14" : "#faf6ea";
                       const edges = closed ? qs.length : qs.length - 1;
                       return (
                         <g>
+                          {/* edge grips — drag moves the whole line; Shift-click inserts a point */}
                           {Array.from({ length: edges }, (_, i) => {
                             const a = qs[i], b = qs[(i + 1) % qs.length];
-                            return <rect key={"m" + i} x={(a[0] + b[0]) / 2 - ms} y={(a[1] + b[1]) / 2 - ms} width={ms * 2} height={ms * 2} fill="#f4efe0" stroke="#1f3fc7" strokeWidth={1.4 / tf.scale} strokeDasharray={`${2 / tf.scale} ${1.5 / tf.scale}`} />;
+                            const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+                            const ang = Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI;
+                            const ew = 14 / s, eh = 6 / s;
+                            return <rect key={"m" + i} x={mx - ew / 2} y={my - eh / 2} width={ew} height={eh} rx={eh / 2}
+                              transform={`rotate(${ang} ${mx} ${my})`} fill={grip} stroke="#1f3fc7" strokeWidth={1.6 / s} />;
                           })}
-                          {qs.map((q, i) => <rect key={"h" + i} x={q[0] - hs} y={q[1] - hs} width={hs * 2} height={hs * 2} fill="#fff" stroke="#1f3fc7" strokeWidth={2 / tf.scale} />)}
+                          {/* corner handles — click selects (Delete removes just that point), drag moves */}
+                          {qs.map(([x, y], i) => {
+                            const isSel = selVert === i;
+                            const sz = (isSel ? 6.5 : 5.5) / s;
+                            return <g key={"h" + i}>
+                              {isSel && <circle cx={x} cy={y} r={9 / s} fill="none" stroke="#1f3fc7" strokeWidth={1.2 / s} opacity={0.5} />}
+                              <path d={`M${x},${y - sz} L${x + sz},${y} L${x},${y + sz} L${x - sz},${y} Z`}
+                                fill={isSel ? grip : "#1f3fc7"} stroke={isSel ? "#1f3fc7" : "#fff"} strokeWidth={(isSel ? 2 : 1.4) / s} />
+                            </g>;
+                          })}
                         </g>
                       );
                     })()}
