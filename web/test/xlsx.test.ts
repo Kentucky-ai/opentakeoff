@@ -4,7 +4,7 @@ import { unzipSync, strFromU8 } from "fflate";
 // xlsx.js is plain JS (allowJs); the tsx loader resolves it from the .ts test.
 import { escXml, colLetter, sanitizeSheetName, sheetXml, buildXlsx, reportWorkbook } from "../src/lib/xlsx.js";
 import { conditionTotals, sheetTotals } from "../src/lib/totals.js";
-import { CSV_PROFILE, customColProfile, visibleCols } from "../src/lib/reportColumns.js";
+import { CSV_PROFILE, customColProfile, specColProfile, visibleCols } from "../src/lib/reportColumns.js";
 import { shapesDetail } from "../src/lib/shapesExport.js";
 
 // ---------------------------------------------------------------------------
@@ -152,6 +152,26 @@ test("reportWorkbook: custom column in cols — header, per-row value, blank TOT
   assert.equal(cTab.rows[1][ci], "09 30 00");    // c1 assigned
   assert.equal(cTab.rows[2][ci], "");            // c2 unassigned → cell skipped in the XML
   assert.equal(cTab.rows[cTab.rows.length - 1][ci], ""); // TOTAL stays blank
+});
+
+test("reportWorkbook: read-only spec columns in cols — header, per-row value, blank TOTAL cell", () => {
+  const spec = specColProfile([
+    { id: "c1", spec: { manufacturer: "Shaw", color: "Slate 5" } },  // both fields present
+  ] as any);
+  assert.deepEqual(spec.map((c: any) => c.header), ["Manufacturer", "Spec Color"]); // only populated fields
+  const tabs = reportWorkbook({
+    ...workbookArgs(),
+    cols: [...cols, ...spec],
+    ctx: { specByCond: new Map([["c1", { manufacturer: "Shaw", color: "Slate 5" }]]) },
+  });
+  const cTab = tabs[0];
+  const mi = cols.length;          // Manufacturer appended after the CSV columns
+  assert.equal(cTab.rows[0][mi], "Manufacturer");
+  assert.equal(cTab.rows[0][mi + 1], "Spec Color");
+  assert.equal(cTab.rows[1][mi], "Shaw");         // c1 spec'd
+  assert.equal(cTab.rows[1][mi + 1], "Slate 5");
+  assert.equal(cTab.rows[2][mi], "");             // c2 has no spec → cell skipped in the XML
+  assert.equal(cTab.rows[cTab.rows.length - 1][mi], ""); // TOTAL stays blank
 });
 
 test("reportWorkbook: materials quantity matches conditionTotals (measured basis, whole units)", () => {

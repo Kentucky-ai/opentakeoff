@@ -5,7 +5,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import { conditionTotals, grandTotals, sheetTotals, sheetGroupedRows, round2, totalsToCsv, downloadText, materialsSummary, reportJson, hasMultipliers, BY_SHEET_BASE_NOTE } from "../lib/totals.js";
-import { TABLE_PROFILE, CSV_PROFILE, colGetter, customColProfile, partitionRowsBy, forceIncludeGroupCol, loadColPrefs, saveColPrefs, loadGroupBy, saveGroupBy, visibleCols, floorPerimeterLf } from "../lib/reportColumns.js";
+import { TABLE_PROFILE, CSV_PROFILE, colGetter, customColProfile, specColProfile, partitionRowsBy, forceIncludeGroupCol, loadColPrefs, saveColPrefs, loadGroupBy, saveGroupBy, visibleCols, floorPerimeterLf } from "../lib/reportColumns.js";
 import { columnLabel } from "../lib/conditionColumns.js";
 import { shapesDetail, shapesToCsv, shapesToJson } from "../lib/shapesExport.js";
 import { rfisToCsv, rfisToJson } from "../lib/rfi.js";
@@ -56,7 +56,12 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   // custom columns append after each profile (frozen 13 → built-in opt-ins →
   // custom), so toggling one can never disturb the frozen CSV prefix
   const customCols = customColProfile(conditionColumns);
-  const tableCols = visibleCols([...TABLE_PROFILE, ...customCols], colPrefs);
+  // read-only product-spec columns (mfr/style/color/size) from "Import from
+  // schedule" — appended AFTER the custom columns, present only when at least
+  // one condition carries that spec field, so a no-spec project is byte-for-
+  // byte unchanged (frozen 13 → built-in opt-ins → custom → spec)
+  const specCols = specColProfile(conditions);
+  const tableCols = visibleCols([...TABLE_PROFILE, ...customCols, ...specCols], colPrefs);
   // group-by choice: "" (none) | "sheet" | a custom column id; normalized
   // ONCE per render and used everywhere (select value AND partitioning) — a
   // stale colId must fall back to None, never reach the select or the
@@ -65,12 +70,14 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   const groupBy = groupByRaw === "sheet" || conditionColumns.some((cc) => cc.id === groupByRaw) ? groupByRaw : "";
   // grouping force-includes its column in the CSV/XLSX even when hidden in
   // the picker (D7) — a grouped report's export always carries its grouping
-  const csvCols = forceIncludeGroupCol(visibleCols([...CSV_PROFILE, ...customCols], colPrefs), customCols, groupBy);
+  const csvCols = forceIncludeGroupCol(visibleCols([...CSV_PROFILE, ...customCols, ...specCols], colPrefs), customCols, groupBy);
   const perimByCond = useMemo(() => floorPerimeterLf(shapes), [shapes]);
   // custom-column values reach the getters through ctx, never as row fields
   // (conditionTotals rows are spread into the contribution payload)
   const attrsByCond = useMemo(() => new Map(conditions.map((c) => [c.id, c.attrs])), [conditions]);
-  const ctx = { perimByCond, attrsByCond };
+  // spec columns read the imported product spec off the same ctx seam
+  const specByCond = useMemo(() => new Map(conditions.map((c) => [c.id, c.spec])), [conditions]);
+  const ctx = { perimByCond, attrsByCond, specByCond };
   // grouped view. Custom-column mode partitions the already-computed rows
   // (no recompute); sheet mode re-runs conditionTotals per sheet's shapes —
   // ORDERED quantities per slice (waste + ×N applied), each group carrying
@@ -146,9 +153,9 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   const renderCell = (col, r, cellCtx) => {
     const get = colGetter(col);
     const v = get ? get(r, cellCtx) : r[col.key];
-    // custom columns: plain left-aligned text (already coerced to string by
-    // the customColProfile getter); TOTAL cells stay blank (no foot)
-    if (col.custom) return <td key={col.key} style={{ ...td, textAlign: "left" }}>{v || "—"}</td>;
+    // custom columns and read-only spec columns: plain left-aligned text
+    // (already coerced to string by their getter); TOTAL cells stay blank (no foot)
+    if (col.custom || col.spec) return <td key={col.key} style={{ ...td, textAlign: "left" }}>{v || "—"}</td>;
     switch (col.key) {
       case "finish":
         return (
@@ -232,6 +239,14 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               <div style={{ borderTop: "1px solid var(--ink-faint)", margin: "8px 0 4px", paddingTop: 6, fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" }}>Custom columns</div>
               {customCols.length ? customCols.map(colCheckbox) : (
                 <div style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1.5 }}>No custom columns yet — define them from the condition bar in the canvas.</div>
+              )}
+              {/* read-only product-spec columns — only shown when a schedule
+                  import attached spec data to at least one condition */}
+              {specCols.length > 0 && (
+                <>
+                  <div style={{ borderTop: "1px solid var(--ink-faint)", margin: "8px 0 4px", paddingTop: 6, fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" }}>Product spec (imported)</div>
+                  {specCols.map(colCheckbox)}
+                </>
               )}
               <p style={{ margin: "8px 0 0", fontSize: 11, color: "var(--ink-muted)" }}>Also applies to the CSV export. Grouping by a custom column always exports that column.</p>
             </div>
@@ -343,8 +358,8 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
             <thead>
               <tr>
                 {tableCols.map((c) => (
-                  // custom columns are text — header left-aligns with the cells
-                  <th key={c.key} style={c.key === "finish" || c.custom ? { ...th, textAlign: "left" } : c.accent ? { ...th, color: "var(--cobalt)" } : th}>{c.header}</th>
+                  // custom and spec columns are text — header left-aligns with the cells
+                  <th key={c.key} style={c.key === "finish" || c.custom || c.spec ? { ...th, textAlign: "left" } : c.accent ? { ...th, color: "var(--cobalt)" } : th}>{c.header}</th>
                 ))}
               </tr>
             </thead>
@@ -361,7 +376,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               // sheet groups carry a per-sheet perimByCond — the panel-wide
               // map would show whole-project perimeter next to per-slice
               // quantities
-              const gctx = gp.perimByCond ? { perimByCond: gp.perimByCond, attrsByCond } : ctx;
+              const gctx = gp.perimByCond ? { perimByCond: gp.perimByCond, attrsByCond, specByCond } : ctx;
               return (
                 <tbody key={key}>
                   {/* breakAfter is a print nicety only — unreliable on table

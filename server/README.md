@@ -31,6 +31,13 @@ so browser calls to `/ai/suggest-scale` reach this server.
 | `POST /ai/suggest-scale` | `{ page_text }` | `{ label, confidence, source }` |
 | `POST /ai/detect-rooms` | `{ width, height, segments? }` | `{ rooms: [{verts, area_px}], note }` |
 | `POST /ai/classify-finish` | `{ context }` | `{ finish, confidence }` |
+| `POST /ai/parse-schedule` | `{ image_b64, width, height }` | `{ rows: [{finish_tag, section, category, description, manufacturer, style, spec_color, size, suggested}], note }` |
+
+`parse-schedule` reads a finish/material schedule off a **scanned** sheet: the
+web app rasterizes the marqueed table region to a PNG and posts it here, and the
+returned rows feed the same "Import from schedule" approval dialog the vector
+(text-layer) path uses. The default heuristic ships **no OCR model**, so it
+returns `rows: []` — wire an OCR/vision adapter to populate them.
 
 ## Bring your own model
 

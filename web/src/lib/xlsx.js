@@ -157,7 +157,7 @@ export async function buildXlsx(sheets) {
  * @param {any[]} args.shapeRows shapesDetail() result
  * @param {Array<{key: string, header: string}>} [args.cols] visible CSV_PROFILE
  *   columns — the Conditions tab honors the same column picker the CSV uses
- * @param {{perimByCond?: Map<any, number>, attrsByCond?: Map<any, object>}|null}
+ * @param {{perimByCond?: Map<any, number>, attrsByCond?: Map<any, object>, specByCond?: Map<any, object>}|null}
  *   [args.ctx] handed to the getters
  * @param {((sheetId: any) => string)|null} [args.sheetLabel]
  * @returns {Array<{name: string, rows: any[][]}>}

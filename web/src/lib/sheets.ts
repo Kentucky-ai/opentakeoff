@@ -1,6 +1,7 @@
 // Shared sheet/plan-text helpers for the Takeoff Canvas and the Sheet Gallery:
 // sheet-key codec, standard scales, title-block sheet numbers, drawn-scale notes.
 import * as pdfjsLib from "pdfjs-dist";
+import type { Token } from "./scheduleParse";
 export { parseSheetKey, compareSheetKeys } from "./sheetKey"; // moved to a pdfjs-free module; re-exported for existing importers
 export type { ParsedSheetKey } from "./sheetKey";
 
@@ -136,4 +137,29 @@ export function detectScale(textContent: TextContentLike, viewport: Viewport): D
   if (tbHits.length) return { upp: tbHits[0].upp, label: tbHits[0].label, multi: allHits.length > 1 };
   if (allHits.length === 1) return { upp: allHits[0].upp, label: allHits[0].label, multi: false };
   return null;
+}
+
+// ── marquee → tokens: the text-layer half of "Import from schedule" ──────────
+// Turn the page text layer into positioned tokens inside a viewport-px rect (the
+// box the estimator dragged around the schedule). x is the glyph's left edge, y
+// grows downward, h is the cap height — exactly what parseSchedule() clusters on.
+// A vector plan needs no OCR: this IS the extraction. Returns [] for a raster
+// page (no text items in the box) so the caller can fall back to the OCR path.
+export function extractRegionText(
+  textContent: TextContentLike,
+  viewport: Viewport,
+  rect: { x0: number; y0: number; x1: number; y1: number },
+): Token[] {
+  const x0 = Math.min(rect.x0, rect.x1), x1 = Math.max(rect.x0, rect.x1);
+  const y0 = Math.min(rect.y0, rect.y1), y1 = Math.max(rect.y0, rect.y1);
+  const out: Token[] = [];
+  for (const it of textContent.items || []) {
+    const str = it.str || "";
+    if (!str.trim()) continue;
+    const t = pdfjsLib.Util.transform(viewport.transform, it.transform);
+    const x = t[4], y = t[5], h = Math.hypot(t[2], t[3]) || it.height || 0;
+    if (x < x0 || x > x1 || y < y0 || y > y1) continue;
+    out.push({ str, x, y, h });
+  }
+  return out;
 }

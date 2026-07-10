@@ -25,7 +25,11 @@ import SnapshotPanel from "../components/SnapshotPanel.jsx";
 import TakeoffsPanel, { clampPanelW, CONDITION_DND_MIME, ConditionAppearanceEditor } from "../components/TakeoffsPanel.jsx";
 import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../components/hatches.jsx";
 import { Icon } from "../brand/icons.jsx";
-import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale } from "../lib/sheets";
+import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText } from "../lib/sheets";
+import { parseSchedule, rowToSeed } from "../lib/scheduleParse";
+import { normalizeScanRows, SCAN_ENDPOINT } from "../lib/scheduleScan";
+import { normalizeTag } from "../lib/scheduleEdit";
+import { isGoogleConfigured, isSignedIn, getAccessToken } from "../lib/google/auth.js";
 import { extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertices, ringArea, MASK_MAX_DIM, SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE } from "../lib/oneclick";
 import { conditionTotals, verticalWallSf } from "../lib/totals.js";
 import { sanitizeConditionColumns, sanitizeConditionAttrs, renameColumnValue, columnLabel } from "../lib/conditionColumns.js";
@@ -36,6 +40,7 @@ import { dashArrayFor, boostForDark, clampWeight, snapWeight, LINE_STYLES, LINE_
 import { nextRfiNumber } from "../lib/rfi.js";
 import RfiPanel from "../components/RfiPanel.jsx";
 import StampPanel from "../components/StampPanel.jsx";
+import ImportSchedulePanel from "../components/ImportSchedulePanel.jsx";
 import DrivePicker from "../components/DrivePicker.jsx";
 import AccountChip from "../components/AccountChip.jsx";
 import { projectHomeFolderId } from "../lib/projectHome.js";
@@ -353,6 +358,8 @@ export default function TakeoffCanvas() {
   }, [commitMsgState]);
   const [showReport, setShowReport] = useState(false);  // Reports overlay (STACK-style breakdown + export)
   const [showSnapshots, setShowSnapshots] = useState(false); // Snapshots modal (save / compare / restore)
+  const [importRows, setImportRows] = useState(null);        // Import-from-schedule approval rows (null = dialog closed)
+  const [scheduleAnchor, setScheduleAnchor] = useState(null); // first marquee corner for the "schedule" tool — ISOLATED from poly so it can never leak into a measure shape
   const [projectName, setProjectName] = useState("");   // optional label for the report header
   const [clientInfo, setClientInfo] = useState({});      // per-project client/job fields for branded output; additive payload field
   const fileInputRef = useRef(null);                    // hidden <input type=file> for "Open PDF"
@@ -1321,7 +1328,7 @@ export default function TakeoffCanvas() {
         else if (selectedId) { setShapes((ss) => ss.filter((s) => s.id !== selectedId)); setSelectedId(null); }
         else if (selectedMarkupId && showMarkups) { deleteMarkup(selectedMarkupId); setSelectedMarkupId(null); }
         else setCalib((c) => c.slice(0, -1));
-      } else if (e.key === "Escape") { if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { setPoly([]); setCalib([]); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); } }
+      } else if (e.key === "Escape") { if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { setPoly([]); setCalib([]); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); } }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); setPoly((q) => (q.length ? q.slice(0, -1) : q)); }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") { if (selectedId) { e.preventDefault(); copySelected(); } }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") { if (clipRef.current.length) { e.preventDefault(); pasteClipboard(); } }
@@ -1349,8 +1356,11 @@ export default function TakeoffCanvas() {
     // bails for the Select tool (:1577) — so in Select they'd be STALE. Select
     // does its own endpoint snap (ocSnap) on drop, so it always uses the raw
     // cursor here; otherwise a stale ref freezes the drag or jumps it on grab.
-    const p = (tool !== "select" && snapOn && snapRef.current) ? snapRef.current
-      : (tool !== "select" && angleOn && angleRef.current) ? angleRef.current
+    // schedule (marquee) wants the raw cursor like select — snapping a corner to
+    // a vector vertex would shift the box off the schedule and misread the region
+    const rawCursor = tool === "select" || tool === "schedule";
+    const p = (!rawCursor && snapOn && snapRef.current) ? snapRef.current
+      : (!rawCursor && angleOn && angleRef.current) ? angleRef.current
         : toImage(e.clientX, e.clientY);
     const fp = panelAt(p[0]);
     if (fp.key !== focusKey) setFocusKey(fp.key);
@@ -1373,6 +1383,11 @@ export default function TakeoffCanvas() {
     else if (tool === "rect" || tool === "deduct-rect") {
       if (poly.length === 0) setPoly([p]);
       else { const a = poly[0]; commitPoly([[a[0], a[1]], [p[0], a[1]], [p[0], p[1]], [a[0], p[1]]], tool === "deduct-rect"); setPoly([]); }
+    }
+    else if (tool === "schedule") {
+      // two-click marquee, isolated state: first click drops the anchor, second reads the box
+      if (!scheduleAnchor) setScheduleAnchor(p);
+      else { importScheduleFromRect(scheduleAnchor, p); setScheduleAnchor(null); setTool("select"); }
     }
     else if (tool === "cloud" || tool === "callout" || tool === "text" || tool === "highlight") placeMarkup(p);
     else if (tool === "stamp") placeStamp(p);
@@ -1671,8 +1686,9 @@ export default function TakeoffCanvas() {
       } else rubberRef.current.style.display = "none";
     }
     if (rectRef.current) {
-      if (!panRef.current && (tool === "rect" || tool === "deduct-rect") && poly.length === 1) {
-        const a = poly[0];
+      const schedDraw = tool === "schedule" && scheduleAnchor;
+      if (!panRef.current && ((tool === "rect" || tool === "deduct-rect") && poly.length === 1 || schedDraw)) {
+        const a = schedDraw ? scheduleAnchor : poly[0];
         rectRef.current.setAttribute("x", Math.min(a[0], cur[0])); rectRef.current.setAttribute("y", Math.min(a[1], cur[1]));
         rectRef.current.setAttribute("width", Math.abs(cur[0] - a[0])); rectRef.current.setAttribute("height", Math.abs(cur[1] - a[1]));
         rectRef.current.style.display = "block";
@@ -2531,6 +2547,130 @@ export default function TakeoffCanvas() {
     setConditions((cs) => [...cs, c]);
     activateCondition(c.id, { reassign: false });   // no reassign affordance on +condition; still dismisses a live bulk selection
   }
+
+  // ── Import from schedule ────────────────────────────────────────────────────
+  // Read the marqueed box and open the approval dialog. Two paths, ONE contract
+  // (ScheduleRow[] → the same dialog):
+  //   • vector plans: the page text layer inside the box IS the extraction —
+  //     no OCR, open to everyone (parseSchedule);
+  //   • scanned plans: the box has no text tokens, so we rasterize it and hand
+  //     the PNG to the optional AI backend (/ai/parse-schedule). That path is
+  //     login-gated (see importScheduleFromScan).
+  // Corners a,b are stage px (raw cursor, snapping exempted at pointer-down).
+  async function importScheduleFromRect(a, b) {
+    if (status !== "ready") { setCommitMsg("Sheet still loading — try again in a moment."); return; }
+    const panel = panelAt(a[0]);
+    if (panelAt(b[0]).key !== panel.key) { setCommitMsg("Draw the box within a single sheet, around its schedule table."); return; }
+    const pageObj = pageObjsRef.current.get(panel.key);
+    if (!pageObj) { setCommitMsg("Open a sheet first."); return; }
+    const rs = renderScalesRef.current.get(panel.key) || RENDER_SCALE;
+    const rect = { x0: a[0] - panel.xOffset, y0: a[1], x1: b[0] - panel.xOffset, y1: b[1] };
+    const seq = renderSeqRef.current;                 // a sheet switch mid-await must not pop a dialog for a page you left
+    let tokens;
+    try {
+      const vp = pageObj.getViewport({ scale: rs });
+      const tc = await pageObj.getTextContent();
+      if (seq !== renderSeqRef.current) return;
+      tokens = extractRegionText(tc, vp, rect);
+    } catch { setCommitMsg("Couldn't read that region."); return; }
+    // Vector-vs-scan decision: tokens present ⇒ this is a vector page, so the
+    // text layer is the schedule (OCR wouldn't help even if it parses to nothing);
+    // NO tokens ⇒ a raster/scanned page, fall through to the AI scan path.
+    if (tokens.length) {
+      const rows = parseSchedule(tokens);
+      if (!rows.length) { setCommitMsg("No schedule found in that box — drag around the finish/material schedule (its CODE / MATERIAL / … header)."); return; }
+      setImportRows(rows);
+      return;
+    }
+    await importScheduleFromScan(pageObj, rs, rect, seq);
+  }
+
+  // Scan/OCR fallback for a raster page: rasterize the marqueed region and POST
+  // it to the optional AI backend, then feed the returned rows into the SAME
+  // approval dialog. LOGIN-GATED — only a Google-configured deployment with a
+  // signed-in user reaches the network (no API key ever lives in client code).
+  async function importScheduleFromScan(pageObj, rs, rect, seq) {
+    if (!isGoogleConfigured()) {
+      setCommitMsg("No schedule found — this looks like a scanned page (no text layer). Importing from scanned plans needs the AI backend.");
+      return;
+    }
+    if (!isSignedIn()) { setCommitMsg("Sign in to import from scanned plans."); return; }
+    let png;
+    try { png = await rasterizeRegion(pageObj, rs, rect); }
+    catch { setCommitMsg("Couldn't read that region."); return; }
+    if (seq !== renderSeqRef.current) return;
+    // The token is what actually authorizes the paid read — the server verifies
+    // it before spending. A missing/expired token here means re-consent, not a
+    // silent public call.
+    let token;
+    try { token = await getAccessToken(); }
+    catch { setCommitMsg("Sign in again to import from scanned plans."); return; }
+    if (seq !== renderSeqRef.current) return;
+    setCommitMsg("Reading the scanned schedule…");
+    try {
+      const res = await fetch(SCAN_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ image_b64: png.b64, width: png.width, height: png.height }),
+      });
+      if (seq !== renderSeqRef.current) return;
+      if (res.status === 401 || res.status === 403) { setCommitMsg("Your sign-in doesn't have access to the scanned-schedule reader."); return; }
+      if (res.status === 501) { setCommitMsg("Importing from scanned plans isn't enabled on this deployment."); return; }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const rows = normalizeScanRows(await res.json());
+      if (!rows.length) { setCommitMsg("No schedule found in that scanned region — the reader returned nothing."); return; }
+      setImportRows(rows);
+    } catch { setCommitMsg("Couldn't reach the schedule reader — try again in a moment."); }
+  }
+
+  // Render just the marqueed region (rs-viewport px, the space rect lives in) to
+  // an offscreen canvas and return its PNG as base64 + pixel dims. Mirrors the
+  // detail-view offscreen render: shift the region's top-left to (0,0) and clamp
+  // to the single-canvas caps so a huge marquee can't exceed the backing store.
+  async function rasterizeRegion(pageObj, rs, rect) {
+    const x0 = Math.min(rect.x0, rect.x1), y0 = Math.min(rect.y0, rect.y1);
+    const regW = Math.max(1, Math.abs(rect.x1 - rect.x0)), regH = Math.max(1, Math.abs(rect.y1 - rect.y0));
+    const factor = Math.min(1, MAX_CANVAS_DIM / regW, MAX_CANVAS_DIM / regH, Math.sqrt(MAX_CANVAS_AREA / (regW * regH)));
+    const bw = Math.max(1, Math.round(regW * factor)), bh = Math.max(1, Math.round(regH * factor));
+    const vp = pageObj.getViewport({ scale: rs * factor });
+    const canvas = document.createElement("canvas");
+    canvas.width = bw; canvas.height = bh;
+    await pageObj.render({
+      canvasContext: canvas.getContext("2d"),
+      viewport: vp,
+      transform: [1, 0, 0, 1, -x0 * factor, -y0 * factor],
+    }).promise;
+    const dataUrl = canvas.toDataURL("image/png");
+    return { b64: dataUrl.split(",")[1] || "", width: bw, height: bh };
+  }
+
+  // Approved rows → conditions. Category drives color/hatch/waste (rowToSeed);
+  // product spec (mfr/style/color/size) rides a plain `spec` field — NOT custom
+  // columns (would hijack a user column and pollute its grouping vocabulary) and
+  // NOT materials[] (those are coverage buy-list items, no coverage rate here).
+  // Existing codes are skipped (shown "in use" in the dialog).
+  function createFromSchedule(selected) {
+    const existing = new Set(conditions.map((c) => normalizeTag(c.finish_tag)));
+    const made = [];
+    let idx = conditions.length;
+    for (const row of selected) {
+      const tag = normalizeTag(row.finish_tag);
+      if (existing.has(tag)) continue;
+      const seed = rowToSeed({ ...row, finish_tag: tag }, idx++, PALETTE);
+      const hasSpec = Object.values(seed.spec).some(Boolean);
+      made.push({
+        id: uid("cnd"), finish_tag: seed.finish_tag, color: seed.color, fill: seed.color,
+        hatch: seed.hatch, multiplier: 1, waste_pct: seed.waste_pct, materials: [],
+        ...(hasSpec ? { spec: seed.spec } : {}),
+      });
+      existing.add(tag);
+    }
+    setImportRows(null);
+    if (!made.length) { setCommitMsg("Those finishes already exist as conditions."); return; }
+    setConditions((cs) => [...cs, ...made]);
+    activateCondition(made[0].id, { reassign: false });
+    setCommitMsg(`Created ${made.length} condition${made.length === 1 ? "" : "s"} from the schedule.`);
+  }
   const updateCond = (patch) => setConditions((cs) => cs.map((c) => (c.id === activeCond ? { ...c, ...patch } : c)));
 
   // delete a condition entirely (and its takeoffs); pick a new active one
@@ -3059,6 +3199,11 @@ export default function TakeoffCanvas() {
           aria-label="App theme — light / dark chrome" aria-pressed={theme === "dark"}
           style={{ display: "inline-flex", alignItems: "center", padding: "6px 9px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 14, lineHeight: 1 }}>
           {theme === "dark" ? "◐" : "◑"}
+        </button>
+        <button onClick={() => { setScheduleAnchor(null); setTool((t) => (t === "schedule" ? "select" : "schedule")); }}
+          title="Import from schedule — arm, then drag a box around the finish/material schedule to create conditions (two clicks: corner, corner)"
+          style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${tool === "schedule" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: tool === "schedule" ? "var(--cobalt)" : "transparent", color: tool === "schedule" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
+          <Icon name="rectTool" size={15} />Schedule
         </button>
         <button onClick={() => setShowSnapshots((v) => !v)} title="Snapshots — save the takeoff as-is, then compare or restore it after an addendum"
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${showSnapshots ? "var(--cobalt)" : "var(--ink-faint)"}`, background: showSnapshots ? "var(--cobalt)" : "transparent", color: showSnapshots ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
@@ -3919,6 +4064,16 @@ export default function TakeoffCanvas() {
           onAdded={async () => { await refreshSheets(); setStatus("ready"); setView("gallery"); }}
           onClose={() => setView("gallery")}
           canClose
+        />
+      )}
+
+      {importRows && (
+        <ImportSchedulePanel
+          rows={importRows}
+          existing={new Set(conditions.map((c) => normalizeTag(c.finish_tag)))}
+          palette={PALETTE} startIndex={conditions.length}
+          onCreate={createFromSchedule}
+          onClose={() => setImportRows(null)}
         />
       )}
 

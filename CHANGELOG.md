@@ -5,6 +5,16 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 ## Unreleased
 
 ### Added
+- **Import from schedule — a finish schedule becomes your conditions.** Arm
+  **Schedule** (top bar), drag a box around a plan's finish/material schedule,
+  and every finish inside is read straight off the sheet into a one-glance
+  approval dialog — tag, product, manufacturer, color, size — grouped by the
+  schedule's own sections. **Ceilings and millwork arrive unchecked** (you keep
+  floor / base / wall), and codes already in your takeoff are locked *"in use"*
+  so a re-import never duplicates. Check what you want, **Create**, and they land
+  as ready-to-trace conditions with a category-appropriate color, hatch, and
+  waste %. On a vector plan it reads the text layer — no OCR, nothing leaves your
+  browser.
 - **Same geometry handles on selected shapes (Select tool).** Editing a
   committed takeoff now uses the same model as One-Click selections. Select a
   shape and: **drag a corner** to move it (snaps to the plan's linework),
