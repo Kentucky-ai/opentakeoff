@@ -37,13 +37,24 @@ test("nested zips within the depth cap still extract their contents", async () =
   assert.deepEqual(pdfs.map((f) => f.name), ["A1.pdf"]);
 });
 
-test("an oversized entry is skipped before decompression (zip-bomb guard)", async () => {
-  // The entry's declared uncompressed size (200 bytes) exceeds a 100-byte budget,
-  // so the filter refuses it — fflate never allocates it.
+test("an entry whose declared size exceeds the byte budget is refused (zip-bomb guard)", async () => {
+  // fflate reads originalSize from the central directory and caps the entry's
+  // output buffer to it, so refusing on declared size is what bounds a real bomb.
   const zip = zipFile("bomb.zip", { "huge.pdf": pdfBytes(200) });
   const { pdfs, skipped } = await ingestFiles([zip], { maxTotalBytes: 100 });
   assert.equal(pdfs.length, 0);
   assert.ok(skipped.some((s) => s.name === "huge.pdf" && s.reason === "archive too large"));
+});
+
+test("the entry-count cap bounds a zip of many tiny files", async () => {
+  // Five 1-byte PDFs, budget of three entries. The byte cap alone would never
+  // fire (they're tiny), so this exercises the separate entry-count guard — the
+  // defense against an archive of countless empty files wedging the tab.
+  const tree: Record<string, Uint8Array> = {};
+  for (let i = 0; i < 5; i++) tree[`A${i}.pdf`] = pdfBytes(1);
+  const { pdfs, skipped } = await ingestFiles([zipFile("many.zip", tree)], { maxTotalEntries: 3 });
+  assert.equal(pdfs.length, 3);
+  assert.ok(skipped.some((s) => s.reason === "too many files"));
 });
 
 test("the byte budget is shared across sibling entries in one ingest", async () => {

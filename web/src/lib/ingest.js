@@ -18,12 +18,15 @@ const ZIP_EXT = /\.zip$/i;
 
 // Guardrails against hostile archives (zip bombs and self-nesting "zip quines").
 // Everything here runs in the user's browser tab, so an unbounded archive is a
-// local denial-of-service — a wedged or OOM-killed tab. Cap how deep we recurse
-// into nested zips and how many bytes we'll decompress across one whole ingest;
-// past either limit an entry is reported as skipped instead of expanded. Both
-// are overridable via ingestFiles opts so the caps are cheap to unit-test.
+// local denial-of-service — a wedged or OOM-killed tab. Three caps bound one
+// ingest: recursion depth into nested zips, total decompressed bytes, and total
+// entries expanded. The entry cap catches what the byte cap can't — an archive
+// of millions of tiny or zero-byte files drains no byte budget but still wedges
+// the tab on sheer iteration. Past any limit an entry is reported as skipped.
+// All three are overridable via ingestFiles opts so the caps are cheap to test.
 const MAX_ZIP_DEPTH = 8;
 const MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB of decompressed output
+const MAX_TOTAL_ENTRIES = 10_000;               // files expanded across one ingest
 
 const isPdf = (name, type = "") => PDF_EXT.test(name) || type === "application/pdf";
 const isImage = (name, type = "") => IMAGE_EXT.test(name) || (type || "").startsWith("image/");
@@ -50,11 +53,16 @@ async function looksLikeZip(file) {
 // Decompress only the entries we can use (saves memory on big plan sets); report
 // anything else as skipped via onSkip rather than silently dropping it.
 //
-// `budget` tracks the decompressed bytes still allowed for this whole ingest.
-// fflate runs the filter per entry BEFORE decompressing it, and
-// UnzipFileInfo.originalSize is the header's declared uncompressed size — so
-// rejecting oversized entries here means fflate never allocates them. That's
-// what defuses a zip bomb: a 4 GB entry is refused, not expanded into memory.
+// `budget` tracks the decompressed bytes AND the entry count still allowed for
+// this whole ingest. fflate runs the filter per entry, reading originalSize from
+// the zip's CENTRAL DIRECTORY (authoritative even for data-descriptor entries
+// whose local header declares 0), and caps each entry's output buffer to that
+// declared size. So refusing an entry whose declared size blows the budget is
+// what stops a real zip bomb — which must declare its true size to inflate to
+// it. A dishonest header that UNDER-declares can't OOM either: fflate clamps the
+// output to the declared size, yielding a truncated file, not a runaway alloc.
+// The entry-count half covers what bytes can't: an archive of countless tiny or
+// zero-byte files, each of which passes the byte check but drowns us in work.
 async function unzipBytes(bytes, onSkip, budget) {
   const { unzip } = await import("fflate");
   return new Promise((resolve, reject) => {
@@ -63,9 +71,11 @@ async function unzipBytes(bytes, onSkip, budget) {
         if (isJunk(f.name)) return false;
         const bn = baseName(f.name);
         if (!(isPdf(bn) || isImage(bn) || isZip(bn))) { onSkip?.(bn, "unsupported type"); return false; }
+        if (budget.entries <= 0) { onSkip?.(bn, "too many files"); return false; }
         const size = f.originalSize || 0;
-        if (size > budget.left) { onSkip?.(bn, "archive too large"); return false; }
-        budget.left -= size;
+        if (size > budget.bytes) { onSkip?.(bn, "archive too large"); return false; }
+        budget.bytes -= size;
+        budget.entries -= 1;
         return true;
       },
     }, (err, data) => (err ? reject(err) : resolve(data)));
@@ -99,7 +109,12 @@ async function imageToPdf(file) {
 
 export async function ingestFiles(
   fileList,
-  { onProgress, maxZipDepth = MAX_ZIP_DEPTH, maxTotalBytes = MAX_TOTAL_BYTES } = {},
+  {
+    onProgress,
+    maxZipDepth = MAX_ZIP_DEPTH,
+    maxTotalBytes = MAX_TOTAL_BYTES,
+    maxTotalEntries = MAX_TOTAL_ENTRIES,
+  } = {},
 ) {
   const incoming = Array.from(fileList || []);
   const pdfs = [];
@@ -107,7 +122,7 @@ export async function ingestFiles(
   const used = new Set();
   // Shared across every (possibly nested) archive in this ingest, so a bomb
   // split over many entries or sibling zips still hits one combined ceiling.
-  const budget = { left: maxTotalBytes };
+  const budget = { bytes: maxTotalBytes, entries: maxTotalEntries };
 
   // store keys by name; de-dupe within the batch so two "A1.pdf" from different
   // zip folders don't overwrite each other
