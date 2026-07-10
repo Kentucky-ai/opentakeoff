@@ -25,11 +25,21 @@ Then register it with your MCP client (any stdio MCP client works):
   "mcpServers": {
     "opentakeoff": {
       "command": "node",
-      "args": ["--import", "tsx", "/absolute/path/to/opentakeoff/mcp/server.ts"]
+      "args": [
+        "--import", "/absolute/path/to/opentakeoff/mcp/node_modules/tsx/dist/loader.mjs",
+        "/absolute/path/to/opentakeoff/mcp/server.ts"
+      ]
     }
   }
 }
 ```
+
+The `--import` path must be **absolute** too: MCP clients spawn stdio servers
+from their own working directory (often `/` or your home), where a bare
+`--import tsx` can't resolve — Node looks the package up from the *spawning*
+cwd, not from the script path, and the server dies before the handshake. (If
+your client config supports a `cwd` field, setting it to the `mcp/` directory
+and using `"--import", "tsx"` also works.)
 
 Point `command` at `node` directly, as above — **never `npm start` in a client
 config**: npm prints its banner to stdout, and stdout is the MCP wire. (Same

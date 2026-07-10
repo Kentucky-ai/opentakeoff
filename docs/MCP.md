@@ -21,14 +21,19 @@ Register the server with your MCP client (any stdio client):
   "mcpServers": {
     "opentakeoff": {
       "command": "node",
-      "args": ["--import", "tsx", "/absolute/path/to/opentakeoff/mcp/server.ts"]
+      "args": [
+        "--import", "/absolute/path/to/opentakeoff/mcp/node_modules/tsx/dist/loader.mjs",
+        "/absolute/path/to/opentakeoff/mcp/server.ts"
+      ]
     }
   }
 }
 ```
 
-Never point a client config at `npm start` — npm's banner goes to stdout,
-which is the MCP wire. `node --import tsx` is the whole invocation.
+Both paths must be absolute — clients spawn stdio servers from their own
+working directory, where a bare `--import tsx` can't resolve and the server
+dies before the handshake. Never point a client config at `npm start` — npm's
+banner goes to stdout, which is the MCP wire.
 
 ## What the agent gets
 

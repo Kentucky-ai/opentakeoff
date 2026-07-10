@@ -14,14 +14,15 @@ import {
 } from "../../web/src/lib/oneclick.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
 import { conditionTotals, grandTotals } from "../../web/src/lib/totals.js";
+import { SNAP_CELL } from "../../web/src/lib/canvasConstants.js";
 
-// Copied from the canvas (web/src/pages/TakeoffCanvas.jsx) so conditions and
-// snap behavior minted here are identical to the browser's. PALETTE/HATCH_IDS
-// are user data — never re-theme them.
-const SNAP_CELL = 24; // snap-grid bucket, raster px
+// PALETTE/HATCH_IDS mirror web/src/components/hatches.jsx and uid mirrors
+// web/src/lib/canvasUtil.js — copied, not imported, because those modules pull
+// in React. Keep them in lockstep so conditions minted here are identical to
+// the browser's. PALETTE/HATCH_IDS are user data — never re-theme them.
 const SNAP_TOL = 7;   // one-click vertex-snap tolerance, image px
 const PALETTE = ["#c96442", "#2f7d54", "#2563eb", "#9333ea", "#b8860b", "#0d9488", "#be185d", "#1f2937", "#dc2626", "#0891b2"];
-const HATCH_IDS = ["solid", "diag", "diag2", "cross", "diagdense", "horiz", "vert", "grid", "brick", "plank", "herring", "basket", "checker", "wave", "fleur", "speckle"];
+const HATCH_IDS = ["solid", "diag", "diag2", "cross", "diagdense", "horiz", "vert", "grid", "brick", "plank", "herring", "basket", "checker", "wave", "dots", "speckle"];
 let _idn = 0;
 const uid = (p: string): string => `${p}-${Date.now().toString(36)}-${(_idn++).toString(36)}`;
 
@@ -47,7 +48,9 @@ export interface Shape {
   measure_role: MeasureRole;
   verts_norm: [number, number][];
   computed: { area_sf: number; perimeter_lf: number };
-  origin?: { method: "one_click_v1"; seed_norm: [number, number]; reviewed: true; hatch_filtered?: true };
+  origin?:
+    | { method: "one_click_v1"; seed_norm: [number, number]; reviewed: true; hatch_filtered?: true }
+    | { method: "manual" }; // the receipt the canvas mints on every hand-traced shape
 }
 
 interface SheetState {
@@ -79,7 +82,11 @@ export interface SheetSummary {
   height_px: number;
   sheet_number?: string;
   detected_scale?: string;
+  detected_scale_ambiguous?: string;
 }
+
+const AMBIGUOUS_SCALE_NOTE =
+  "this sheet shows several scale notes (enlarged details are often larger) — confirm against a known dimension before measuring";
 
 const sheetSummary = (s: SheetState): SheetSummary => ({
   sheet: s.key,
@@ -90,6 +97,7 @@ const sheetSummary = (s: SheetState): SheetSummary => ({
   height_px: s.heightPx,
   ...(s.sheetNumber ? { sheet_number: s.sheetNumber } : {}),
   ...(s.detected ? { detected_scale: s.detected.label } : {}),
+  ...(s.detected?.multi ? { detected_scale_ambiguous: AMBIGUOUS_SCALE_NOTE } : {}),
 });
 
 export class Session {
@@ -218,7 +226,10 @@ export class Session {
       throw new UserError("Provide exactly one of: label, upp, calibrate, use_detected.");
     }
     s.upp = upp;
-    return { sheet: s.key, upp, ...(label ? { label } : {}), source };
+    return {
+      sheet: s.key, upp, ...(label ? { label } : {}), source,
+      ...(source === "detected" && s.detected?.multi ? { warning: AMBIGUOUS_SCALE_NOTE } : {}),
+    };
   }
 
   private conditionFor(tag: string): Condition {
@@ -304,7 +315,7 @@ export class Session {
     const area_sf = round2(met.area * s.upp * s.upp);
     const perimeter_lf = round2(met.perim * s.upp);
     let shape_id: string | undefined;
-    if (opts.condition) shape_id = this.commit(s, opts.condition, opts.role, verts, { area_sf, perimeter_lf }).id;
+    if (opts.condition) shape_id = this.commit(s, opts.condition, opts.role, verts, { area_sf, perimeter_lf }, { method: "manual" }).id;
     return { area_sf, perimeter_lf, nverts: verts.length, ...(shape_id ? { shape_id } : {}) };
   }
 
@@ -314,7 +325,7 @@ export class Session {
     const length_lf = round2(openLen(pts) * s.upp);
     let shape_id: string | undefined;
     // area_sf stays 0 — the canvas only mints border SF when the condition has a thickness
-    if (opts.condition) shape_id = this.commit(s, opts.condition, "linear", pts, { area_sf: 0, perimeter_lf: length_lf }).id;
+    if (opts.condition) shape_id = this.commit(s, opts.condition, "linear", pts, { area_sf: 0, perimeter_lf: length_lf }, { method: "manual" }).id;
     return { length_lf, npts: pts.length, ...(shape_id ? { shape_id } : {}) };
   }
 

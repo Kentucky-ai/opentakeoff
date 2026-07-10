@@ -65,7 +65,7 @@ The tests cover the pure math (`web/test/geometry.test.ts`, `web/test/totals.tes
 ## Conventions
 
 - **SVG presentation attributes take literal colors** (CSS vars don't resolve there): cobalt `#1f3fc7`, danger `#b03a26`, positive `#1f6b4a`. DOM/HTML chrome may use `var(--…)` from `tokens.css`.
-- Condition palettes (`PALETTE` in `web/src/components/hatches.jsx`, the seeded condition colors in `TakeoffCanvas.jsx`) are **user data** — don't re-theme them.
+- Condition palettes (`PALETTE` in `web/src/components/hatches.jsx`, the seeded condition colors in `FLOORING_DEFAULTS` in `web/src/lib/canvasConstants.js`, and the mirrored copies in `mcp/src/session.ts`) are **user data** — don't re-theme them.
 - Waste applies only in the report (order quantities), never to live measured numbers.
 - Keyboard shortcuts are single letters registered on `window` (see `docs/USER_GUIDE.md` §2); toolbar menus pause them via `menuDepthRef`.
 - Brand voice: paper/ink/cobalt, drafting-table language. No vendor mimicry.
