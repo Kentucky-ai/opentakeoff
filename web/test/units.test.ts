@@ -9,7 +9,7 @@
 // Restore both wholesale when the metric port lands.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, M_PER_FT, M2_PER_SF, ftIn, fmtCheckLen, parseLenInput } from "../src/lib/units.js";
+import { areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, M_PER_FT, M2_PER_SF, ftIn, fmtCheckLen, parseLenInput, checkVerdict } from "../src/lib/units.js";
 
 test("area/length convert only in metric", () => {
   assert.equal(areaVal(1000, "imperial"), 1000);
@@ -49,8 +49,54 @@ test("parseLenInput reads decimal feet, feet-inches forms, and meters", () => {
   assert.equal(parseLenInput(`12' 6"`, "imperial"), 12.5);
   assert.equal(parseLenInput("12-6", "imperial"), 12.5);
   assert.equal(parseLenInput("12′ 6″", "imperial"), 12.5);
+  assert.equal(parseLenInput("12ft 6in", "imperial"), 12.5);
+  assert.equal(parseLenInput(".5", "imperial"), 0.5);
+  assert.equal(parseLenInput("0'6", "imperial"), 0.5);
   assert.ok(Math.abs(parseLenInput("3.81", "metric") - 3.81 / M_PER_FT) < 1e-9);
+  assert.ok(Math.abs(parseLenInput("3.81 m", "metric") - 3.81 / M_PER_FT) < 1e-9);
   assert.ok(Number.isNaN(parseLenInput("", "imperial")));
   assert.ok(Number.isNaN(parseLenInput("banana", "imperial")));
   assert.ok(Number.isNaN(parseLenInput("12'14", "imperial")));  // 14 inches is not a dimension
+});
+
+test("parseLenInput reads inches-only forms (a sub-foot check dimension)", () => {
+  assert.equal(parseLenInput(`6"`, "imperial"), 0.5);
+  assert.equal(parseLenInput("6″", "imperial"), 0.5);
+  assert.equal(parseLenInput("6in", "imperial"), 0.5);
+  assert.equal(parseLenInput(`4.5"`, "imperial"), 0.375);
+  assert.equal(parseLenInput(`18"`, "imperial"), 1.5);  // ≥12″ is legit inches-only
+});
+
+test("parseLenInput rejects scientific notation and negatives", () => {
+  assert.ok(Number.isNaN(parseLenInput("1e3", "imperial")));
+  assert.ok(Number.isNaN(parseLenInput("-5", "imperial")));
+  assert.ok(Number.isNaN(parseLenInput("-5.5", "imperial")));
+  assert.ok(Number.isNaN(parseLenInput("1e3", "metric")));
+  assert.ok(Number.isNaN(parseLenInput("-5", "metric")));
+  assert.ok(Number.isNaN(parseLenInput("Infinity", "imperial")));
+});
+
+// ── Check-tool verdict: grade must agree with the displayed rounded % ───────
+
+test("checkVerdict grades the rounded value the chip displays", () => {
+  // green ≤ 1.0 as displayed
+  assert.deepEqual(checkVerdict(0.95), { shown: 0.9, grade: "match" }); // 0.95 is 0.9499… in IEEE — displays 0.9
+  assert.deepEqual(checkVerdict(1.0), { shown: 1, grade: "match" });
+  assert.deepEqual(checkVerdict(1.04), { shown: 1, grade: "match" });   // displays "+1.0%" → must be green
+  assert.equal(checkVerdict(1.06).grade, "close");                      // displays "+1.1%" → amber
+  // amber ≤ 5.0 as displayed
+  assert.deepEqual(checkVerdict(4.95), { shown: 5, grade: "close" });   // 4.95 rounds up — displays 5.0
+  assert.deepEqual(checkVerdict(5.0), { shown: 5, grade: "close" });
+  assert.deepEqual(checkVerdict(5.04), { shown: 5, grade: "close" });   // displays "+5.0%" → must be amber
+  assert.equal(checkVerdict(5.06).grade, "wrong");                      // displays "+5.1%" → red
+  // sign-symmetric
+  assert.deepEqual(checkVerdict(-1.04), { shown: -1, grade: "match" });
+  assert.equal(checkVerdict(-5.06).grade, "wrong");
+});
+
+test("checkVerdict normalizes -0: an exact recalibrate reads +0.0%", () => {
+  const v = checkVerdict(-1e-14);  // 1-ulp FP residue after recalibrate → re-check
+  assert.ok(Object.is(v.shown, 0), `expected +0, got ${Object.is(v.shown, -0) ? "-0" : v.shown}`);
+  assert.equal(v.grade, "match");
+  assert.equal(`${v.shown >= 0 ? "+" : ""}${v.shown.toFixed(1)}%`, "+0.0%");
 });

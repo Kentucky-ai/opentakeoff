@@ -57,7 +57,7 @@ import {
   MEASURE_TOOLS, CUT_TOOLS, MARKUP_TOOLS, MARKUP_IDS,
 } from "../lib/canvasConstants.js";
 import { autoRenderScale, invertCanvasPixels, uid, clamp, isDangerMsg, instantiateTemplate, seedConditions } from "../lib/canvasUtil.js";
-import { fmtCheckLen, parseLenInput, M_PER_FT } from "../lib/units";
+import { fmtCheckLen, parseLenInput, checkVerdict, M_PER_FT } from "../lib/units";
 import * as panelGeom from "../lib/panelGeometry.js";
 
 // Display units for the check tool + scale guide. Upstream carries a metric
@@ -222,6 +222,12 @@ export default function TakeoffCanvas() {
   const [checkStated, setCheckStated] = useState(""); // what the drawing says that dimension is
   const [scaleGuide, setScaleGuide] = useState(null); // ephemeral calibrated ruler {key, feet, px, label, at:[x,y]} — never persisted (buildPayload doesn't read it)
   const scaleGuideTimerRef = useRef(0);
+  const scaleGuidePreviewRef = useRef(false); // true while the visible guide is a hover PREVIEW of an unaccepted scale — the preview must die with the hover/menu; an accepted bar stays
+  // One-slot revert stash: the scale a quantity-changing rescale replaced
+  // ({key, upp, source}). An oops-hatch, not an undo history — ephemeral by
+  // design (never persisted): a mistyped recalibrate is caught within a menu
+  // click, not archaeologically.
+  const [prevScale, setPrevScale] = useState(null);
 
   const [conditions, setConditions] = useState([]);
   const [conditionColumns, setConditionColumns] = useState([]);  // project-level custom-column vocabulary [{ id, name, values }] — assignments live on c.attrs
@@ -808,7 +814,7 @@ export default function TakeoffCanvas() {
     if (!active) return;
     const seq = ++renderSeqRef.current;
     const stale = () => seq !== renderSeqRef.current;
-    setStatus("rendering"); setErr(""); setPoly([]); setCalib([]); setPendingLen(""); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setProposal(null);
+    setStatus("rendering"); setErr(""); setPoly([]); setCalib([]); setPendingLen(""); setCheck([]); setCheckStated(""); setScaleGuide(null); setPrevScale(null); selectShape(null); setProposal(null);
     for (const [, rt] of renderTasksRef.current) { try { rt.cancel(); } catch { /* done */ } }
     renderTasksRef.current.clear();
     snapGridsRef.current.clear();
@@ -1225,13 +1231,18 @@ export default function TakeoffCanvas() {
       if (viewRef.current === "gallery") return;
       if (e.key === "Backspace" || e.key === "Delete") {
         e.preventDefault();
-        if (poly.length) { setPoly((q) => q.slice(0, -1)); setCalib((c) => c.slice(0, -1)); }
+        if (poly.length) { setPoly((q) => q.slice(0, -1)); }
         else if (ocSel && proposal) { deleteSelectedOcVertex(); }
         else if (proposal?.regions.length) { setProposal((pr) => { const rg = pr.regions.slice(0, -1); return rg.length ? { ...pr, regions: rg } : null; }); }
         else if (selVert != null && selectedId) { deleteSelectedShapeVertex(); }
         else if (selectedId) { setShapes((ss) => ss.filter((s) => s.id !== selectedId)); setSelectedId(null); }
         else if (selectedMarkupId && showMarkups) { deleteMarkup(selectedMarkupId); setSelectedMarkupId(null); }
-        else { setCalib((c) => c.slice(0, -1)); setCheck((c) => c.slice(0, -1)); }
+        // pop ONLY the armed tool's pending points — calibrate and check both
+        // keep two-click state (calib points even render while another tool is
+        // armed), and an unguarded pop used to silently cross-slice the other
+        // tool's points, on-screen or hidden
+        else if (tool === "calibrate") { setCalib((c) => c.slice(0, -1)); }
+        else if (tool === "check") { setCheck((c) => c.slice(0, -1)); }
       } else if (e.key === "Escape") { if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { setPoly([]); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); } }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); setPoly((q) => (q.length ? q.slice(0, -1) : q)); }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") { if (selectedId) { e.preventDefault(); copySelected(); } }
@@ -1240,7 +1251,18 @@ export default function TakeoffCanvas() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId, selVert, selectedMarkupId, showMarkups, poly, proposal, ocSel, shapes, sheetKey, groupSig, scales, focusKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tool, selectedId, selVert, selectedMarkupId, showMarkups, poly, proposal, ocSel, shapes, sheetKey, groupSig, scales, focusKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The typed "drawing says" value belongs to ONE completed two-point check.
+  // The moment the measurement is no longer complete — third-click restart,
+  // Backspace below two points — the stale value must not grade the NEXT span:
+  // it would render an instant confident verdict against the previous
+  // dimension's number and leave "Recalibrate to this" armed with it.
+  useEffect(() => { if (check.length < 2 && checkStated) setCheckStated(""); }, [check.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Leaving the check tool discards the whole check: rendering is gated on
+  // tool === "check", so surviving state would sit invisible and resurface —
+  // stale points AND stale stated value — whenever K is pressed again.
+  useEffect(() => { if (tool !== "check" && (check.length || checkStated)) { setCheck([]); setCheckStated(""); } }, [tool]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── pointer ────────────────────────────────────────────────────────────────
   function onPointerDown(e) {
@@ -1781,10 +1803,13 @@ export default function TakeoffCanvas() {
   // recalibrate) so a grossly wrong scale is visually obvious against known
   // elements (a door is ~3′). Takes the NEW upp as an argument — never read
   // `scales` right after setScales (stale closure). Ephemeral: never persisted,
-  // dismissed by the next action.
-  function showScaleGuide(key, uppStored, label) {
+  // dismissed by the next action. `preview` marks a HOVER preview of a scale
+  // that was never accepted — it must additionally die with the hover/menu
+  // (clearPreviewGuide), while an accepted bar rides out its 8 s.
+  function showScaleGuide(key, uppStored, label, preview = false) {
     const p = panelByKey(key);
     if (!p?.img.w || !containerRef.current) return;
+    scaleGuidePreviewRef.current = preview;
     const uppBitmap = uppStored / factorFor(key);   // feet per bitmap px, matches uppFor math
     const z = tfRef.current.scale;
     // round guide length picked so the bar is legible (≥160 screen px) at the current zoom
@@ -1798,8 +1823,20 @@ export default function TakeoffCanvas() {
     clearTimeout(scaleGuideTimerRef.current);
     scaleGuideTimerRef.current = setTimeout(() => setScaleGuide(null), 8000);
   }
-  useEffect(() => { setScaleGuide(null); }, [tool, groupSig]);
+  useEffect(() => { setScaleGuide(null); scaleGuidePreviewRef.current = false; }, [tool, groupSig]);
   useEffect(() => () => clearTimeout(scaleGuideTimerRef.current), []);
+  // Kill a hover-preview guide (and only a preview — an accepted bar stays).
+  // Fired on hover-out of the plan-says item AND whenever the scale menu
+  // closes (item click, Escape, outside click — the item button unmounts
+  // without a mouseleave, so hover-out alone can't be trusted). Stable
+  // identity: it feeds the menu's onOpenChange effect via onScaleMenuDepth.
+  const clearPreviewGuide = useCallback(() => {
+    if (!scaleGuidePreviewRef.current) return;
+    scaleGuidePreviewRef.current = false;
+    clearTimeout(scaleGuideTimerRef.current);
+    setScaleGuide(null);
+  }, []);
+  const onScaleMenuDepth = useCallback((o) => { onMenuDepth(o); if (!o) clearPreviewGuide(); }, [onMenuDepth, clearPreviewGuide]);
 
   // Every user-facing scale acceptance goes through here: store the new scale
   // AND re-price the committed shapes on that sheet. `computed` is priced at
@@ -1808,11 +1845,38 @@ export default function TakeoffCanvas() {
   // now that the check tool's one-tap recalibrate makes late rescales routine.
   // Hydrate bypasses this on purpose: saved computed matches the saved scale.
   function rescaleSheet(key, upp) {
+    // stash the scale this rescale replaces, but only when it actually changes
+    // committed quantities (sheet had a scale, the scale moved, shapes exist on
+    // it) — that's the case worth a one-step revert (the Scale menu surfaces it)
+    const prior = scales[key];
+    if (prior != null && prior !== upp && shapes.some((sh) => sh.sheet_id === key)) {
+      setPrevScale({ key, upp: prior, source: scaleSources[key] || "standard" });
+    }
     setScales((s) => ({ ...s, [key]: upp }));
-    const sp = panelByKey(key);
-    if (!sp?.img?.w) return; // sheet not on canvas — nothing to re-price yet
+    // STRICT panel lookup — the panelByKey wrapper falls back to panels[0], so
+    // it can't detect an off-canvas sheet: a future off-canvas caller would
+    // silently re-price that sheet's shapes against the wrong panel's bitmap
+    // dims (and factorFor of a never-rastered key). Off-canvas the scale is
+    // still stored above; the shapes keep their (now old-scale) computed until
+    // a caller reprices them on canvas — wrong-but-visible beats silently-wrong.
+    const sp = panels.find((p) => p.key === key);
+    if (!sp?.img?.w) return; // sheet not on canvas — can't re-price without its bitmap dims
     const uEff = upp / factorFor(key);
-    setShapes((ss) => ss.map((sh) => (sh.sheet_id === key ? { ...sh, computed: recomputeShape(sh, uEff) } : sh)));
+    // count shapes keep their computed: EA has no upp dependency at all, and
+    // recomputeShape's count branch would clobber a hand-edited / hydrated
+    // fractional count (supported data — see totals.js accumulateRole) to 1
+    setShapes((ss) => ss.map((sh) => (sh.sheet_id === key && sh.measure_role !== "count" ? { ...sh, computed: recomputeShape(sh, uEff) } : sh)));
+  }
+
+  // Revert the last quantity-changing rescale (the one-slot stash above): runs
+  // the same rescaleSheet back — which re-stashes the scale being replaced, so
+  // a revert is itself revertible (a two-way toggle, not a history).
+  function revertScale() {
+    const pv = prevScale;
+    if (!pv) return;
+    rescaleSheet(pv.key, pv.upp);
+    setScaleSources((s) => ({ ...s, [pv.key]: pv.source }));
+    showScaleGuide(pv.key, pv.upp, STANDARD_SCALES.find((x) => Math.abs(x.upp - pv.upp) < 1e-9)?.label || pv.source);
   }
 
   function applyCalibration() {
@@ -3078,6 +3142,19 @@ export default function TakeoffCanvas() {
     ? `You set ${stdValue}, but the plan notes ${scaleDet.label} on ${labelFor(focusPanel)} — double-check before tracing.`
     : `Set the scale for ${labelFor(focusPanel)} — remembered per sheet${groupKeys.length > 1 ? " (targets the sheet you last clicked)" : ""}`;
   const scaleItems = [];
+  // one-step revert after a rescale that changed committed quantities on this
+  // sheet — the oops-hatch for a mistyped recalibrate (ephemeral, one slot)
+  if (prevScale && prevScale.key === focusPanel.key && scales[focusPanel.key] !== prevScale.upp) {
+    const wasLabel = STANDARD_SCALES.find((x) => Math.abs(x.upp - prevScale.upp) < 1e-9)?.label
+      || (prevScale.source === "calibrated" ? "calibrated" : "custom");
+    scaleItems.push({
+      id: "revert-scale", icon: "undo",
+      label: `Revert scale (was ${wasLabel})`,
+      title: `Put ${labelFor(focusPanel)} back on the scale the last rescale replaced and re-price its takeoffs. One step, this session only — reverting is itself revertible.`,
+      onSelect: revertScale,
+    });
+    scaleItems.push("divider");
+  }
   if (scaleDet) {
     scaleItems.push({ section: "From the plan" });
     scaleItems.push({
@@ -3085,9 +3162,13 @@ export default function TakeoffCanvas() {
       label: `Plan says ${scaleDet.label}${scaleDet.multi ? " ±" : ""} — use it`,
       title: `The plan notes ${scaleDet.label} on ${labelFor(focusPanel)}${scaleDet.multi ? " — this sheet shows several scales (details are often larger); confirm against a known dimension" : ""}. Hover previews a calibrated guide bar on the sheet so you can sanity-check it.`,
       onSelect: () => { rescaleSheet(focusPanel.key, scaleDet.upp); setScaleSources((s) => ({ ...s, [focusPanel.key]: "detected" })); showScaleGuide(focusPanel.key, scaleDet.upp, scaleDet.label); },
-      // hover previews the guide bar behind the open menu; leaving clears it
-      // only while the sheet is still unscaled (an accepted scale keeps its bar)
-      onHover: (on) => { if (on) showScaleGuide(focusPanel.key, scaleDet.upp, scaleDet.label); else if (!scales[focusPanel.key]) { clearTimeout(scaleGuideTimerRef.current); setScaleGuide(null); } },
+      // hover previews the guide bar behind the open menu — only while the
+      // sheet is still UNSCALED (upstream's gate: on a scaled sheet the bar
+      // would advertise a scale the sheet is not using, on the very affordance
+      // whose job is sanity-checking bar length). The preview dies on hover-out
+      // AND on menu close however it happens (onScaleMenuDepth below) — an
+      // ACCEPTED bar (onSelect) is not a preview and rides out its 8 s.
+      onHover: (on) => { if (on) { if (!scales[focusPanel.key]) showScaleGuide(focusPanel.key, scaleDet.upp, scaleDet.label, true); } else clearPreviewGuide(); },
     });
   }
   scaleItems.push({ section: "Standard" });
@@ -3282,7 +3363,7 @@ export default function TakeoffCanvas() {
         {cluster(`Scale — ${labelFor(focusPanel)}`,
           <ToolMenu
             title={scaleTitle}
-            onOpenChange={onMenuDepth}
+            onOpenChange={onScaleMenuDepth}
             face={<span>{scaleFace}</span>}
             faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 11.5, ...scaleFaceStyle }}
             menuStyle={{ minWidth: 250 }}
@@ -3446,14 +3527,21 @@ export default function TakeoffCanvas() {
           ) : (
             <span>
               measures <b style={{ fontFamily: "var(--f-mono)" }}>{fmtCheckLen(checkFeet, UNITS)}</b> at {stdValue || "custom scale"} · drawing says{" "}
-              <input name="check-stated-length" value={checkStated} onChange={(e) => setCheckStated(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} placeholder={UNITS === "metric" ? "meters" : `feet (12'6 ok)`} autoFocus style={{ width: 100, padding: 5, borderRadius: 0, border: "1px solid var(--ink-faint)" }} /> {UNITS === "metric" ? "m" : "ft"}
-              {checkErrPct != null && (
-                <b style={{ marginLeft: 8, color: Math.abs(checkErrPct) <= 1 ? "var(--c-positive)" : Math.abs(checkErrPct) <= 5 ? "var(--c-warning)" : "var(--c-danger)" }}>
-                  {Math.abs(checkErrPct) <= 1 ? `matches — scale checks out (${checkErrPct >= 0 ? "+" : ""}${checkErrPct.toFixed(1)}%)`
-                    : Math.abs(checkErrPct) <= 5 ? `off by ${checkErrPct >= 0 ? "+" : ""}${checkErrPct.toFixed(1)}% — re-check or recalibrate`
-                    : `off by ${checkErrPct >= 0 ? "+" : ""}${checkErrPct.toFixed(1)}% — wrong scale; recalibrate`}
-                </b>
-              )}
+              <input name="check-stated-length" value={checkStated} onChange={(e) => setCheckStated(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} placeholder={UNITS === "metric" ? "meters" : `feet (12'6, 6" ok)`} autoFocus style={{ width: 100, padding: 5, borderRadius: 0, border: "1px solid var(--ink-faint)" }} /> {UNITS === "metric" ? "m" : "ft"}
+              {checkErrPct != null && (() => {
+                // checkVerdict grades the ROUNDED value the chip displays (and
+                // normalizes -0), so color and number can never contradict —
+                // see units.ts for the ≤1/≤5 tie-break rationale
+                const v = checkVerdict(checkErrPct);
+                const pct = `${v.shown >= 0 ? "+" : ""}${v.shown.toFixed(1)}%`;
+                return (
+                  <b style={{ marginLeft: 8, color: v.grade === "match" ? "var(--c-positive)" : v.grade === "close" ? "var(--c-warning)" : "var(--c-danger)" }}>
+                    {v.grade === "match" ? `matches — scale checks out (${pct})`
+                      : v.grade === "close" ? `off by ${pct} — re-check or recalibrate`
+                      : `off by ${pct} — wrong scale; recalibrate`}
+                  </b>
+                );
+              })()}
               {checkStatedFeet > 0 && (
                 <button onClick={recalibrateFromCheck} style={{ marginLeft: 8, padding: "5px 12px", borderRadius: 0, border: "none", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer" }}>Recalibrate to this</button>
               )}
