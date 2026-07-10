@@ -1473,10 +1473,12 @@ export default function TakeoffCanvas() {
   }
   // Geometry from the shape's OWN sheet: its panel's pixel dims × that sheet's
   // scale. This is what makes cross-sheet paste and group-mode edits honest.
-  function recomputeShape(s) {
+  // uppOverride: pass the NEW effective upp when re-pricing right after a
+  // setScales — `scales` in this render's closure is still the old map.
+  function recomputeShape(s, uppOverride) {
     const sp = panelByKey(s.sheet_id);
     const pts = s.verts_norm.map(([nx, ny]) => [nx * sp.img.w, ny * sp.img.h]);
-    const u = uppFor(s.sheet_id) || 0;
+    const u = uppOverride ?? (uppFor(s.sheet_id) || 0);
     if (s.measure_role === "count") return { count: 1 };
     if (s.measure_role === "surface_area") {
       // the wall keeps the height it was DRAWN at; the condition H is only the
@@ -1799,6 +1801,20 @@ export default function TakeoffCanvas() {
   useEffect(() => { setScaleGuide(null); }, [tool, groupSig]);
   useEffect(() => () => clearTimeout(scaleGuideTimerRef.current), []);
 
+  // Every user-facing scale acceptance goes through here: store the new scale
+  // AND re-price the committed shapes on that sheet. `computed` is priced at
+  // draw time, so without this a rescale left every existing SF/LF at the old
+  // scale (the same staleness pasteClipboard calls "the legacy bug") — glaring
+  // now that the check tool's one-tap recalibrate makes late rescales routine.
+  // Hydrate bypasses this on purpose: saved computed matches the saved scale.
+  function rescaleSheet(key, upp) {
+    setScales((s) => ({ ...s, [key]: upp }));
+    const sp = panelByKey(key);
+    if (!sp?.img?.w) return; // sheet not on canvas — nothing to re-price yet
+    const uEff = upp / factorFor(key);
+    setShapes((ss) => ss.map((sh) => (sh.sheet_id === key ? { ...sh, computed: recomputeShape(sh, uEff) } : sh)));
+  }
+
   function applyCalibration() {
     const feet = parseFloat(pendingLen);
     if (!(feet > 0) || calib.length !== 2) return;
@@ -1811,7 +1827,7 @@ export default function TakeoffCanvas() {
     if (px <= 0) return;
     // store at BASELINE resolution — the auto hi-res raster has factorFor× denser pixels
     const toBase = factorFor(pa.key);
-    setScales((s) => ({ ...s, [pa.key]: (feet / px) * toBase })); // per page — remembered for this sheet
+    rescaleSheet(pa.key, (feet / px) * toBase); // per page — remembered for this sheet
     setScaleSources((s) => ({ ...s, [pa.key]: "calibrated" }));
     showScaleGuide(pa.key, (feet / px) * toBase, "calibrated");
     setCalib([]); setPendingLen("");
@@ -1826,7 +1842,7 @@ export default function TakeoffCanvas() {
     const px = Math.hypot(check[1][0] - check[0][0], check[1][1] - check[0][1]);
     if (px <= 0) return;
     const toBase = factorFor(pa.key);
-    setScales((s) => ({ ...s, [pa.key]: (feet / px) * toBase }));
+    rescaleSheet(pa.key, (feet / px) * toBase);
     setScaleSources((s) => ({ ...s, [pa.key]: "calibrated" }));
     showScaleGuide(pa.key, (feet / px) * toBase, "calibrated");
     setCheck([]); setCheckStated("");
@@ -3068,14 +3084,14 @@ export default function TakeoffCanvas() {
       id: "use-detected", icon: "target", tint: "var(--c-positive)",
       label: `Plan says ${scaleDet.label}${scaleDet.multi ? " ±" : ""} — use it`,
       title: `The plan notes ${scaleDet.label} on ${labelFor(focusPanel)}${scaleDet.multi ? " — this sheet shows several scales (details are often larger); confirm against a known dimension" : ""}. Hover previews a calibrated guide bar on the sheet so you can sanity-check it.`,
-      onSelect: () => { setScales((s) => ({ ...s, [focusPanel.key]: scaleDet.upp })); setScaleSources((s) => ({ ...s, [focusPanel.key]: "detected" })); showScaleGuide(focusPanel.key, scaleDet.upp, scaleDet.label); },
+      onSelect: () => { rescaleSheet(focusPanel.key, scaleDet.upp); setScaleSources((s) => ({ ...s, [focusPanel.key]: "detected" })); showScaleGuide(focusPanel.key, scaleDet.upp, scaleDet.label); },
       // hover previews the guide bar behind the open menu; leaving clears it
       // only while the sheet is still unscaled (an accepted scale keeps its bar)
       onHover: (on) => { if (on) showScaleGuide(focusPanel.key, scaleDet.upp, scaleDet.label); else if (!scales[focusPanel.key]) { clearTimeout(scaleGuideTimerRef.current); setScaleGuide(null); } },
     });
   }
   scaleItems.push({ section: "Standard" });
-  for (const s of STANDARD_SCALES) scaleItems.push({ id: s.label, label: s.label, active: stdValue === s.label, onSelect: () => { setScales((sc) => ({ ...sc, [focusPanel.key]: s.upp })); setScaleSources((sc) => ({ ...sc, [focusPanel.key]: "standard" })); showScaleGuide(focusPanel.key, s.upp, s.label); } });
+  for (const s of STANDARD_SCALES) scaleItems.push({ id: s.label, label: s.label, active: stdValue === s.label, onSelect: () => { rescaleSheet(focusPanel.key, s.upp); setScaleSources((sc) => ({ ...sc, [focusPanel.key]: "standard" })); showScaleGuide(focusPanel.key, s.upp, s.label); } });
   scaleItems.push("divider");
   scaleItems.push({ id: "calibrate", icon: "calibrate", label: "Calibrate two points…", title: "Calibrate — click two points of a known dimension", active: tool === "calibrate", onSelect: () => setTool("calibrate") });
   scaleItems.push({ id: "check", icon: "check", label: "Check a dimension…", shortcut: "K", title: "Check a dimension (K) — click both ends of a printed dimension string; compares the measured length against what the drawing says", active: tool === "check", onSelect: () => setTool("check") });
