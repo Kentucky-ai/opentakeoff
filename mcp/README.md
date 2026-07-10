@@ -55,7 +55,7 @@ straight from `web/src/lib` as TypeScript, so plain `node` can't run it.
 |---|---|
 | `load_plan` | Open a plan PDF from disk. Replaces the whole session (old doc, scales, conditions, shapes all cleared). Returns per-sheet dims, title-block `sheet_number`, and the detected drawn scale where present. |
 | `sheet_info` | One sheet's dims, vector segment count, scale status, detected suggestion, committed shape count. |
-| `set_scale` | Set a sheet's scale — exactly one of `label`, `upp`, `calibrate {p1, p2, feet}`, `use_detected`. |
+| `set_scale` | Set a sheet's scale — exactly one of `label`, `upp`, `calibrate {p1, p2, feet}`, `use_detected`. Changing the scale re-prices the sheet's committed shapes at the new scale (the response reports `repriced: N`), so summaries and exports always match the current scale. |
 | `one_click` | One-Click Area at (x, y): flood fill bounded by the plan linework, traced, vertices snapped. Pass `condition` to commit; `role: "deduct"` subtracts. |
 | `measure_polygon` | Area + perimeter of a polygon you supply (min 3 verts). Requires scale. |
 | `measure_line` | Length of an open polyline (min 2 points). Requires scale. |
@@ -85,6 +85,11 @@ space, which makes them usable directly as click targets.
   (`area_px2`, `perimeter_px`) with a warning, and commits nothing.
 - `upp` is real feet per image px at render scale 2.0, per sheet — the same
   number the app stores as `units_per_px`.
+- **A late recalibrate re-prices.** Shape quantities are baked at commit time;
+  `set_scale` on a sheet that already has committed shapes recomputes them at
+  the new scale (mirroring the browser's rescale) and reports `repriced: N` —
+  `takeoff_summary` and `export_takeoff` never carry old-scale numbers under a
+  new `units_per_px`.
 
 ## A whole takeoff, end to end
 

@@ -225,11 +225,44 @@ export class Session {
     } else {
       throw new UserError("Provide exactly one of: label, upp, calibrate, use_detected.");
     }
+    const prevUpp = s.upp;
     s.upp = upp;
+    // Re-price this sheet's committed shapes at the new scale. computed is
+    // baked at commit-time upp (oneClick/measurePolygon/measureLine below), so
+    // without this a late recalibrate — the workflow the browser's check tool
+    // makes routine — left takeoff_summary at the OLD scale and export_takeoff
+    // emitting new units_per_px with stale computed, which the app hydrates
+    // verbatim (it trusts saved computed to match the saved scale). Mirrors the
+    // browser's rescaleSheet (TakeoffCanvas.jsx). Shapes can't exist before the
+    // first set_scale (measures are scale-gated), so prevUpp==null never skips
+    // real work; the engine has no count tool (MeasureRole above), so there is
+    // no scale-independent EA case to exempt here — keep that exemption in mind
+    // if counts ever land.
+    let repriced = 0;
+    if (prevUpp != null && prevUpp !== upp) {
+      for (const sh of this.shapes) {
+        if (sh.sheet_id !== s.key) continue;
+        sh.computed = this.priceShape(s, sh);
+        repriced++;
+      }
+    }
     return {
       sheet: s.key, upp, ...(label ? { label } : {}), source,
+      ...(repriced > 0 ? { repriced } : {}),
       ...(source === "detected" && s.detected?.multi ? { warning: AMBIGUOUS_SCALE_NOTE } : {}),
     };
+  }
+
+  /** Price a committed shape's quantities at the sheet's CURRENT upp — the same
+   * math the commit paths bake in, re-run from verts_norm. Linear mirrors
+   * measureLine: area_sf stays 0 (the canvas only mints border SF from a
+   * condition thickness, which this engine's Condition doesn't carry). */
+  private priceShape(s: SheetState, sh: Shape): Shape["computed"] {
+    const upp = s.upp!;
+    const pts: Point[] = sh.verts_norm.map(([nx, ny]) => [nx * s.widthPx, ny * s.heightPx]);
+    if (sh.measure_role === "linear") return { area_sf: 0, perimeter_lf: round2(openLen(pts) * upp) };
+    const met = closedMetrics(pts);
+    return { area_sf: round2(met.area * upp * upp), perimeter_lf: round2(met.perim * upp) };
   }
 
   private conditionFor(tag: string): Condition {

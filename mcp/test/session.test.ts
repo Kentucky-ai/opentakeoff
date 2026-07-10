@@ -65,6 +65,48 @@ test("setScale: label / upp / calibrate / use_detected all land on the same upp"
   assert.equal(byDet.label, '1/4" = 1\'-0"');
 });
 
+test("setScale reprices committed shapes — summary and export follow the NEW scale", async () => {
+  const s = new Session();
+  await s.loadPlan(PLAN);
+  const quarter = s.setScale(KEY, { label: '1/4" = 1\'-0"' });
+  assert.ok(!("repriced" in quarter), "nothing committed yet — no repriced field");
+
+  // a 400×300 px rect and a 400 px line, committed at 1/4" scale
+  const poly = s.measurePolygon(KEY, [[300, 300], [700, 300], [700, 600], [300, 600]], { condition: "LVT-1", role: "floor_area" });
+  const line = s.measureLine(KEY, [[300, 700], [700, 700]], { condition: "TR-1" });
+
+  // the late-recalibrate workflow: adopt a scale, measure, then correct the
+  // scale. upp doubles → area ×4, length ×2 — and BOTH shapes must follow.
+  const eighth = s.setScale(KEY, { label: '1/8" = 1\'-0"' });
+  assert.equal((eighth as { repriced?: number }).repriced, 2, "both committed shapes repriced");
+  const k = eighth.upp / quarter.upp;
+  assert.equal(k, 2);
+
+  const sum = s.summary() as unknown as { conditions: { finish_tag: string; floor_sf: number; lf: number }[] };
+  const lvt = sum.conditions.find((c) => c.finish_tag === "LVT-1")!;
+  const tr = sum.conditions.find((c) => c.finish_tag === "TR-1")!;
+  // expectations from raw geometry × NEW upp (not round2(old)×k² — the reprice
+  // re-derives from verts, so it does not inherit the commit's rounding)
+  assert.ok(approx(lvt.floor_sf, 400 * 300 * eighth.upp * eighth.upp, 1e-3), `summary SF at NEW scale: ${lvt.floor_sf}`);
+  assert.ok(approx(tr.lf, 400 * eighth.upp, 1e-3), `summary LF at NEW scale: ${tr.lf}`);
+  assert.ok(approx(lvt.floor_sf, poly.area_sf * k * k, 1e-3), "≈ old-scale SF × k² (mod commit rounding)");
+  assert.ok(approx(tr.lf, line.length_lf * k, 1e-3));
+
+  // export payload coherent: saved computed matches the saved units_per_px —
+  // the app hydrates this verbatim (it never recomputes on load)
+  const pay = s.exportPayload();
+  assert.equal(pay.sheets[0].units_per_px, eighth.upp);
+  const rect = pay.shapes.find((x) => x.measure_role === "floor_area")!;
+  assert.ok(approx(rect.computed.area_sf, 400 * eighth.upp * 300 * eighth.upp, 1e-3), `payload area prices verts × saved upp, got ${rect.computed.area_sf}`);
+  const run = pay.shapes.find((x) => x.measure_role === "linear")!;
+  assert.ok(approx(run.computed.perimeter_lf, 400 * eighth.upp, 1e-3));
+  assert.equal(run.computed.area_sf, 0, "linear reprice mirrors measureLine — no border SF without a thickness");
+
+  // setting the SAME scale again is a no-op — no reprice noise
+  const again = s.setScale(KEY, { label: '1/8" = 1\'-0"' });
+  assert.ok(!("repriced" in again));
+});
+
 test("setScale: unknown label errors and lists the valid labels", async () => {
   const s = new Session();
   await s.loadPlan(PLAN);
