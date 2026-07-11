@@ -22,6 +22,7 @@ import { round2 } from "./num.js";
 import { csvEsc as esc } from "./csv.js";
 import { GETTERS, CSV_PROFILE, colGetter, floorPerimeterLf } from "./reportColumns.js";
 import { attrValue } from "./conditionColumns.js";
+import { shapeLabelValue } from "./shapeLabels.js";
 import { compareSheetKeys } from "./sheetKey"; // NOT ./sheets — that module imports pdfjs-dist
 
 // Re-export so existing consumers (markedset, snapshotDiff, ReportPanel, tests)
@@ -168,6 +169,41 @@ export function sheetGroupedRows(conditions, shapes) {
   }).filter((g) => g.rows.length);
 }
 
+// Label-grouped ORDERED quantities for the report's group-by-label view (#112) —
+// the shape-level analogue of sheetGroupedRows: bucket shapes by shape.label
+// (absent → the "Unlabeled" bucket), then conditionTotals per bucket so waste %
+// and ×N apply per slice and every column keeps its ungrouped meaning. A
+// condition that spans labels appears in each of its buckets — the slice math
+// splits it for free, and the per-bucket sums reconcile to the ungrouped row.
+// Returns [{ value, label, rows, perimByCond }] ordered vocabulary-first (in the
+// project's stored order) → ad-hoc values (sorted) → Unlabeled last (value
+// null, so the header renders italic like a custom column's Unassigned),
+// mirroring partitionRowsBy. Same per-slice materials caveat as
+// sheetGroupedRows: per-bucket ceils overstate the buy — tbody display only,
+// never aggregate (the combined materials summary stays computed ungrouped).
+// Empty buckets dropped.
+export function labelGroupedRows(conditions, shapes, shapeLabels = []) {
+  const byLabel = new Map();        // label value → that bucket's shapes ("" key = Unlabeled)
+  for (const s of shapes) {
+    const v = shapeLabelValue(s);   // "" when unassigned
+    let arr = byLabel.get(v);
+    if (!arr) { arr = []; byLabel.set(v, arr); }
+    arr.push(s);
+  }
+  const vocab = (Array.isArray(shapeLabels) ? shapeLabels : []).filter((v) => byLabel.has(v));
+  const adhoc = [...byLabel.keys()].filter((v) => v && !vocab.includes(v)).sort();
+  const order = [...vocab, ...adhoc, ...(byLabel.has("") ? [""] : [])];   // Unlabeled always last
+  return order.map((v) => {
+    const bucketShapes = byLabel.get(v);
+    return {
+      value: v || null,               // null = Unlabeled
+      label: v || "Unlabeled",
+      rows: conditionTotals(conditions, bucketShapes).filter((r) => r.shape_count > 0),
+      perimByCond: floorPerimeterLf(bucketShapes),
+    };
+  }).filter((g) => g.rows.length);
+}
+
 // The one base-quantities footnote, shared by CSV ("# " prefix, golden-
 // pinned), the Marked Set PDF legend, and the report panel (which appends
 // its own screen-only reconcile clause). Bare sentence, ASCII "xN" —
@@ -249,9 +285,12 @@ export function grandTotals(rows) {
  *   custom columns (customColProfile) carry their own `get` and append after.
  * @param {{perimByCond?: Map<any, number>, attrsByCond?: Map<any, object>, specByCond?: Map<any, object>}|null}
  *   [ctx] handed to the getters (perimeter_ref / custom / spec columns need it)
+ * @param {Array<{value: string|null, rows: any[]}>|null} [byLabel] labelGroupedRows()
+ *   result — appends a "by label" section (ordered per-bucket quantities); null/empty
+ *   omits it, so a label-less project's CSV is byte-identical to the frozen v1 export.
  * @returns {string}
  */
-export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel = null, cols = null, ctx = null) {
+export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel = null, cols = null, ctx = null, byLabel = null) {
   const columns = cols || CSV_PROFILE.filter((c) => c.defaultVisible);
   const lines = [columns.map((c) => esc(c.header)).join(",")];
   for (const r of rows) {
@@ -300,6 +339,19 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
     if (hasMultipliers(bySheet)) lines.push("# " + BY_SHEET_BASE_NOTE);
   }
 
+  // per-label subtotals (#112) — ORDERED quantities (waste/×N applied per
+  // bucket), matching the report's group-by-label view; only emitted when a
+  // byLabel result is passed (some shape is labeled), so a label-less project's
+  // CSV stays byte-identical.
+  if (byLabel && byLabel.length) {
+    lines.push("");
+    lines.push(["Label", "Finish", "Floor SF", "Wall SF", "Border SF", "LF", "EA"].map(esc).join(","));
+    for (const g of byLabel) {
+      const name = g.value || "Unlabeled";
+      for (const row of g.rows) lines.push([name, row.finish_tag, row.floor_sf, row.wall_sf, row.border_sf, row.lf, row.ea].map(esc).join(","));
+    }
+  }
+
   const title = projectName ? `# ${projectName} — OpenTakeoff report\n` : "";
   return title + lines.join("\n") + "\n";
 }
@@ -320,9 +372,10 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
  *   scaleInfo?: Array<{sheet_id: any, source?: string, [k: string]: any}>, markups?: any[],
  *   rfis?: any[], sheetLabel?: ((sheetId: any) => string)|null,
  *   conditionColumns?: Array<{id: string, name: string, values: string[]}>,
- *   attrsByCond?: Map<any, object>|null}} args
+ *   attrsByCond?: Map<any, object>|null, shapeLabels?: string[],
+ *   byLabel?: Array<{value: string|null, rows: any[]}>}} args
  */
-export function reportJson({ projectName = "", rows = [], bySheet = [], scaleInfo = [], markups = [], rfis = [], sheetLabel = null, conditionColumns = [], attrsByCond = null }) {
+export function reportJson({ projectName = "", rows = [], bySheet = [], scaleInfo = [], markups = [], rfis = [], sheetLabel = null, conditionColumns = [], attrsByCond = null, shapeLabels = [], byLabel = [] }) {
   const label = (id) => (sheetLabel ? sheetLabel(id) : id);
   // destructuring defaults don't apply to an explicit null, and both values can
   // trace back to a corrupted payload — coerce (and drop malformed items) so
@@ -383,6 +436,16 @@ export function reportJson({ projectName = "", rows = [], bySheet = [], scaleInf
     // the custom-column definitions themselves, so row `columns` values can be
     // read against the project vocabulary
     condition_columns: colDefs.map(({ id, name, values }) => ({ id, name, values: Array.isArray(values) ? values : [] })),
+    // shape-level phase/area labels (#112) APPEND after condition_columns and
+    // are always emitted (empty when unused) per the additive-only v1 rule:
+    // shape_labels is the project vocabulary; by_label is the group-by-label
+    // breakdown — ORDERED per-bucket quantities (waste/×N applied), matching the
+    // report's interactive view, unlike the BASE by_sheet reference above.
+    shape_labels: (Array.isArray(shapeLabels) ? shapeLabels : []).filter((v) => typeof v === "string" && v.trim()),
+    by_label: (Array.isArray(byLabel) ? byLabel : []).map((gp) => ({
+      label: gp.value ?? null,   // null = Unlabeled
+      rows: (gp.rows || []).map((r) => ({ id: r.id, finish_tag: r.finish_tag, floor_sf: r.floor_sf, wall_sf: r.wall_sf, border_sf: r.border_sf, lf: r.lf, ea: r.ea, total_sf: r.total_sf, total_sf_net: r.total_sf_net })),
+    })),
   };
 }
 

@@ -125,9 +125,10 @@ test("reportJson: v1 key set pinned — top level, sheets[], markups[], by_sheet
     sheetLabel: (id: string) => `Sheet ${id}`,
   });
   assert.equal(j.schema, "opentakeoff.report.v1");
-  // condition_columns appended after markups (additive-only v1, 2026-07-07)
+  // condition_columns appended after markups (additive-only v1, 2026-07-07);
+  // shape_labels + by_label appended after it (#112, additive-only, always emitted)
   assert.deepEqual(Object.keys(j),
-    ["schema", "project_name", "generated_with", "sheets", "conditions", "by_sheet", "totals", "materials", "markups", "rfis", "condition_columns"]);
+    ["schema", "project_name", "generated_with", "sheets", "conditions", "by_sheet", "totals", "materials", "markups", "rfis", "condition_columns", "shape_labels", "by_label"]);
   // rfis[] appends after markups (additive v1); linked_markups/linked_sheets derived
   assert.deepEqual(Object.keys(j.rfis[0]),
     ["id", "number", "subject", "question", "status", "to", "priority", "cost_impact", "schedule_impact",

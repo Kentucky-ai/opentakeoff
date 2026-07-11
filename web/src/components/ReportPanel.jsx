@@ -4,9 +4,10 @@
 // "Contribute to the open flooring model" flow.
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
-import { conditionTotals, grandTotals, sheetTotals, sheetGroupedRows, round2, totalsToCsv, downloadText, materialsSummary, reportJson, hasMultipliers, BY_SHEET_BASE_NOTE } from "../lib/totals.js";
+import { conditionTotals, grandTotals, sheetTotals, sheetGroupedRows, labelGroupedRows, round2, totalsToCsv, downloadText, materialsSummary, reportJson, hasMultipliers, BY_SHEET_BASE_NOTE } from "../lib/totals.js";
 import { TABLE_PROFILE, CSV_PROFILE, colGetter, customColProfile, specColProfile, partitionRowsBy, forceIncludeGroupCol, loadColPrefs, saveColPrefs, loadGroupBy, saveGroupBy, visibleCols, floorPerimeterLf } from "../lib/reportColumns.js";
 import { columnLabel } from "../lib/conditionColumns.js";
+import { shapeLabelValue } from "../lib/shapeLabels.js";
 import { shapesDetail, shapesToCsv, shapesToJson } from "../lib/shapesExport.js";
 import { rfisToCsv, rfisToJson } from "../lib/rfi.js";
 import { reportWorkbook, buildXlsx } from "../lib/xlsx.js";
@@ -33,7 +34,7 @@ const sheetNum = (v, d = 1) => {
   return num(r, d);
 };
 
-export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], clientInfo = {}, onClientInfo, conditionColumns = [] }) {
+export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], clientInfo = {}, onClientInfo, conditionColumns = [], shapeLabels = [] }) {
   // memoized on the source arrays: project-name/client-info keystrokes re-render
   // the panel without touching conditions/shapes, so the totaling passes skip
   const rows = useMemo(() => conditionTotals(conditions, shapes).filter((r) => r.shape_count > 0), [conditions, shapes]);
@@ -67,7 +68,11 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   // stale colId must fall back to None, never reach the select or the
   // partitioner.
   const [groupByRaw, setGroupByRaw] = useState(loadGroupBy);
-  const groupBy = groupByRaw === "sheet" || conditionColumns.some((cc) => cc.id === groupByRaw) ? groupByRaw : "";
+  // "label" is gated on the vocab existing — the group-by pref is one device-
+  // global string, so a leftover "label" opened on a label-less project (or a
+  // template carrying it) must fall back to ungrouped, exactly as a stale
+  // custom-column id does.
+  const groupBy = groupByRaw === "sheet" || (groupByRaw === "label" && shapeLabels.length > 0) || conditionColumns.some((cc) => cc.id === groupByRaw) ? groupByRaw : "";
   // grouping force-includes its column in the CSV/XLSX even when hidden in
   // the picker (D7) — a grouped report's export always carries its grouping
   const csvCols = forceIncludeGroupCol(visibleCols([...CSV_PROFILE, ...customCols, ...specCols], colPrefs), customCols, groupBy);
@@ -95,10 +100,17 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   const groupCol = groupBy && groupBy !== "sheet" ? conditionColumns.find((cc) => cc.id === groupBy) : null;
   const colGroups = useMemo(() => (groupCol ? partitionRowsBy(rows, groupCol, attrsByCond) : null), [rows, groupCol, attrsByCond]);
   const sheetGroups = useMemo(() => (groupBy === "sheet" ? sheetGroupedRows(conditions, shapes) : null), [groupBy, conditions, shapes]);
+  // label mode: ORDERED per-bucket rows (waste + ×N per slice), already shaped
+  // { value, label, rows, perimByCond } like the sheet groups after mapping.
+  const labelGroups = useMemo(() => (groupBy === "label" ? labelGroupedRows(conditions, shapes, shapeLabels) : null), [groupBy, conditions, shapes, shapeLabels]);
   const groups = sheetGroups
     ? sheetGroups.map((gp) => ({ value: gp.sheet_id, label: sheetLabel ? sheetLabel(gp.sheet_id) : gp.sheet_id, rows: gp.rows, perimByCond: gp.perimByCond }))
-    : colGroups;
-  const grouped = Boolean(groups && (groups.length > 1 || (groupCol && groups.length === 1 && groups[0].value !== null)));
+    : labelGroups || colGroups;
+  const grouped = Boolean(groups && (groups.length > 1 || ((groupCol || groupBy === "label") && groups.length === 1 && groups[0].value !== null)));
+  // exports always carry the by-label breakdown when any shape is labeled,
+  // independent of the current group-by view; empty (→ CSV/JSON byte-unchanged)
+  // for label-less projects.
+  const byLabelExport = useMemo(() => (shapes.some((s) => shapeLabelValue(s)) ? labelGroupedRows(conditions, shapes, shapeLabels) : []), [conditions, shapes, shapeLabels]);
 
   // while the report is up, the print stylesheet (app.css @media print) hides
   // the canvas chrome behind it and lets the report flow across pages
@@ -125,9 +137,9 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   };
 
   const baseName = (projectName || "takeoff").replace(/[^\w.-]+/g, "_");
-  const exportCsv = () => downloadText(`${baseName}.csv`, totalsToCsv(rows, projectName, bySheet, sheetLabel, csvCols, ctx), "text/csv");
+  const exportCsv = () => downloadText(`${baseName}.csv`, totalsToCsv(rows, projectName, bySheet, sheetLabel, csvCols, ctx, byLabelExport.length ? byLabelExport : null), "text/csv");
   const exportJson = () => downloadText(`${baseName}.json`,
-    JSON.stringify(reportJson({ projectName, rows, bySheet, scaleInfo, markups, rfis, sheetLabel, conditionColumns, attrsByCond }), null, 2),
+    JSON.stringify(reportJson({ projectName, rows, bySheet, scaleInfo, markups, rfis, sheetLabel, conditionColumns, attrsByCond, shapeLabels, byLabel: byLabelExport }), null, 2),
     "application/json");
   const exportRfisCsv = () => downloadText(`${baseName}_rfis.csv`, rfisToCsv(rfis, markups, projectName, sheetLabel), "text/csv");
   const exportRfisJson = () => downloadText(`${baseName}_rfis.json`,
@@ -222,6 +234,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
             style={{ padding: "5px 6px", border: "1px solid var(--ink-faint)", background: "transparent", fontSize: 12, maxWidth: 160 }}>
             <option value="">None</option>
             <option value="sheet">Sheet</option>
+            {shapeLabels.length > 0 && <option value="label">Label</option>}
             {conditionColumns.map((cc) => (
               <option key={cc.id} value={cc.id}>{columnLabel(cc)}</option>
             ))}
@@ -357,7 +370,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               the partition degenerates to one group. */}
           {grouped && (
             <p style={{ maxWidth: 980, margin: "0 auto 8px", fontSize: 11.5, color: "var(--ink-muted)" }}>
-              Grouped by <strong>{groupCol ? columnLabel(groupCol) : "sheet"}</strong>
+              Grouped by <strong>{groupCol ? columnLabel(groupCol) : groupBy === "label" ? "label" : "sheet"}</strong>
             </p>
           )}
           <table style={{ width: "100%", maxWidth: 980, margin: "0 auto", borderCollapse: "collapse", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)" }}>
