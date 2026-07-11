@@ -2449,7 +2449,7 @@ export default function TakeoffCanvas() {
   // `from` remembers the source sheet so paste knows same-sheet vs cross-sheet
   const clipEntry = (sel) => ({ condition_id: sel.condition_id, measure_role: sel.measure_role,
                                 verts_norm: sel.verts_norm.map((v) => [...v]), from: sel.sheet_id, height_ft: sel.height_ft,
-                                ...(sel.height_override ? { height_override: true } : {}), ...cloneOrigin(sel.origin) });
+                                ...(sel.height_override ? { height_override: true } : {}), ...(sel.label ? { label: sel.label } : {}), ...cloneOrigin(sel.origin) });
   function copySelected() {
     const sel = shapes.find((s) => s.id === selectedId);
     if (!sel) { setCommitMsg("Select a takeoff to copy."); return; }
@@ -3745,11 +3745,17 @@ export default function TakeoffCanvas() {
             ]}
           />
         </>)}
-        {shapeLabels.length > 0 && cluster(tool === "select" && selectedId ? "Label → shape" : "Label",
+        {/* The caption always shows the ACTIVE label (+ the cobalt highlight keyed
+            on it) so what a new trace will get is never hidden — even in Select
+            mode, where the dropdown VALUE instead shows the selected shape's label
+            so changing it reliably re-labels that shape (a value-always-active
+            select couldn't reassign to the already-active label — onChange wouldn't fire). */}
+        {shapeLabels.length > 0 && cluster(
+          tool === "select" && selectedId ? `Label · ${activeLabel || "none"} → shape` : (activeLabel ? `Label · ${activeLabel}` : "Label"),
           <select
             value={tool === "select" && selectedId ? shapeLabelValue(shapes.find((s) => s.id === selectedId)) : (activeLabel || "")}
             onChange={(e) => activateLabel(e.target.value || null)}
-            title="Phase/area label. New takeoffs get the active label; with a shape selected (Select tool), changing this re-labels that shape. Manage the list in the Columns tab."
+            title="Phase/area label. The caption shows the ACTIVE label (what new takeoffs get). With a shape selected (Select tool), the dropdown shows and re-labels that shape. Manage the list in the Columns tab."
             style={{ fontFamily: "var(--f-mono)", fontSize: 11.5, padding: "5px 6px", border: `1px solid ${activeLabel ? "var(--cobalt)" : "var(--ink-faint)"}`, background: activeLabel ? "var(--cobalt)" : "transparent", color: activeLabel ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", maxWidth: 150 }}>
             <option value="">No label</option>
             {shapeLabels.map((v) => <option key={v} value={v}>{v}</option>)}
