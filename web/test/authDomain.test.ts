@@ -54,3 +54,24 @@ test("user with neither hd nor a usable email domain ⇒ false", () => {
   assert.equal(domainAllows("345flooring.com", { email: "" }), false);
   assert.equal(domainAllows("345flooring.com", {}), false);
 });
+
+// Multi-domain org: one Workspace spanning several domains lists them all,
+// comma-separated. An account is in if its domain matches ANY entry.
+const multi = "345flooring.com,345constructionco.com";
+
+test("comma-separated allow-list ⇒ any listed domain is in, others out", () => {
+  assert.equal(domainAllows(multi, { email: "kevin@345flooring.com", hd: "345flooring.com" }), true);
+  assert.equal(domainAllows(multi, { email: "sam@345constructionco.com", hd: "345constructionco.com" }), true);
+  assert.equal(domainAllows(multi, { email: "x@gmail.com" }), false);
+});
+
+test("list parsing tolerates whitespace, blanks, case, and trailing commas", () => {
+  assert.equal(domainAllows("  345Flooring.COM , , 345ConstructionCo.com ,", { email: "k@345constructionco.com" }), true);
+  assert.equal(domainAllows("345flooring.com,,,", { email: "k@345flooring.com" }), true);
+  // a list of only blanks/commas normalizes to empty ⇒ any account (server parity)
+  assert.equal(domainAllows(" , , ", { email: "anyone@gmail.com" }), true);
+});
+
+test("multi-domain list + no signed-in user ⇒ false (fails closed)", () => {
+  assert.equal(domainAllows(multi, null), false);
+});

@@ -98,17 +98,19 @@ export function isSignedIn() {
 }
 
 // Pure org-domain match — the decision behind isAllowedDomain(), split out so it
-// is unit-testable without the module's private sign-in state. Derives the domain
-// EXACTLY as the server does (netlify/functions/parse-schedule.mjs): the Workspace
-// `hd` claim, falling back to the email's domain, case-folded. An empty `allowed`
-// ⇒ any account (parity with an empty server ALLOWED_HD). No user + a set domain
-// ⇒ false (fails closed).
+// is unit-testable without the module's private sign-in state. `allowed` is a
+// comma-separated list (an org whose one Workspace spans several domains lists
+// them all, e.g. "345flooring.com,345constructionco.com"); the account is in if
+// its domain is ANY of them. Derives the domain EXACTLY as the server does
+// (netlify/functions/parse-schedule.mjs): the Workspace `hd` claim, falling back
+// to the email's domain, case-folded. An empty `allowed` ⇒ any account (parity
+// with an empty server ALLOWED_HD). No user + a set list ⇒ false (fails closed).
 export function domainAllows(allowed, user) {
-  const a = (allowed || "").trim().toLowerCase();
-  if (!a) return true;                       // no domain configured ⇒ any account (server parity)
+  const list = (allowed || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  if (!list.length) return true;             // no domains configured ⇒ any account (server parity)
   if (!user) return false;
   const dom = (user.hd || (user.email || "").split("@")[1] || "").toLowerCase();
-  return dom === a;
+  return list.includes(dom);
 }
 
 // Is the signed-in user inside the configured org domain? Client-side

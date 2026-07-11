@@ -17,12 +17,22 @@
 
 const GOOGLE_USERINFO = "https://www.googleapis.com/oauth2/v3/userinfo";
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-// "" = any verified Google account. This is the AUTHORITATIVE org gate; the
+// Comma-separated org allow-list (e.g. "345flooring.com,345constructionco.com")
+// — an org whose one Google Workspace spans several domains lists them all here.
+// Empty ⇒ any verified Google account. This is the AUTHORITATIVE org gate; the
 // client mirrors it in isAllowedDomain() (src/lib/google/auth.js) as a build-time
-// VITE_GOOGLE_HD — keep the two values in sync (see .github/workflows/deploy.yml).
+// VITE_GOOGLE_HD — keep the two lists in sync (see .github/workflows/deploy.yml).
 // The client stamps its VITE_GOOGLE_HD on each request so hdDriftWarning() below
 // logs a warning if the two ever fall out of sync (#91).
-const ALLOWED_HD = (process.env.ALLOWED_HD || "").trim().toLowerCase();
+const ALLOWED_HDS = parseHdList(process.env.ALLOWED_HD);
+
+// Parse a comma-separated org-domain allow-list into a normalized, de-duped,
+// sorted array (trim + case-fold each; drop empties). Empty input ⇒ [] ⇒ the gate
+// is open to any account. Sorted+de-duped so hdDriftWarning() can compare two
+// lists order-insensitively. Mirrors domainAllows()'s parsing in auth.js.
+function parseHdList(v) {
+  return [...new Set((v || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean))].sort();
+}
 
 // A schedule marquee is a small crop of one sheet — these caps are generous for
 // that and just bound worst-case memory/time/cost against a malformed request
@@ -37,13 +47,13 @@ const MAX_IMAGE_DIM = 4096;
 // across the two systems (GitHub build var vs. Netlify runtime var). This is
 // DIAGNOSTIC ONLY: `client_hd` is untrusted, browser-supplied, and never
 // influences the auth decision (that's verifyGoogleUser + ALLOWED_HD, above).
-// Normalizes both sides exactly as the gates do (trim + case-fold) so cosmetic
-// differences don't warn. Returns null when they agree (incl. both empty).
+// Normalizes both sides exactly as the gates do (trim + case-fold, comma-split)
+// and compares them as sets, so domain ORDER doesn't warn but a real membership
+// difference does. Returns null when they agree (incl. both empty).
 export function hdDriftWarning(clientHd, allowedHd) {
-  const c = (clientHd || "").trim().toLowerCase();
-  const a = (allowedHd || "").trim().toLowerCase();
-  if (c === a) return null;
-  return `org-gate drift: client VITE_GOOGLE_HD="${c}" != server ALLOWED_HD="${a}" — the client isAllowedDomain() gate is out of sync (see #91)`;
+  const c = parseHdList(clientHd), a = parseHdList(allowedHd);
+  if (c.join(",") === a.join(",")) return null;
+  return `org-gate drift: client VITE_GOOGLE_HD=[${c.join(",")}] != server ALLOWED_HD=[${a.join(",")}] — the client isAllowedDomain() gate is out of sync (see #91)`;
 }
 
 // Bound an untrusted diagnostic string before it reaches a log line: single-line
@@ -111,7 +121,7 @@ async function verifyGoogleUser(authHeader) {
     return { ok: false, status: 401, msg: "Your Google sign-in doesn't have a verified email." };
   }
   const hd = (profile.hd || email.split("@")[1] || "").toLowerCase();
-  if (ALLOWED_HD && hd !== ALLOWED_HD) return { ok: false, status: 403, msg: "This deployment is limited to a single organization." };
+  if (ALLOWED_HDS.length && !ALLOWED_HDS.includes(hd)) return { ok: false, status: 403, msg: "This deployment is limited to a specific organization." };
   return { ok: true, email };
 }
 
