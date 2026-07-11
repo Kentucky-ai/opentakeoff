@@ -7,8 +7,10 @@
 // of this browser's IndexedDB.
 //
 // Trust model: the OAuth app is registered as "Internal", so Google itself only
-// issues tokens to accounts in the org — the domain is enforced at Google, not
-// by us (VITE_GOOGLE_HD is only a UI hint to the account chooser). The client_id
+// issues tokens to accounts in the org — Google and the server (ALLOWED_HD) are
+// the real domain enforcement. VITE_GOOGLE_HD drives the account-chooser hint
+// and a client-side defense-in-depth gate (isAllowedDomain) so a non-org account
+// can't ping the paid scan reader even if the app is ever set External. The client_id
 // is public by design (that's how browser OAuth works) and there is NO
 // client_secret — this is the Google Identity Services token-client flow.
 // Access tokens live in a module-level variable ONLY; they are never written to
@@ -62,6 +64,15 @@ function domainHint() {
   return (import.meta.env && import.meta.env.VITE_GOOGLE_HD) || "";
 }
 
+// The raw build-time org domain (VITE_GOOGLE_HD), exposed so the scan caller can
+// stamp it on its request for the server's drift cross-check (the server compares
+// it to its runtime ALLOWED_HD and warns on mismatch — see parse-schedule.mjs).
+// Diagnostic only: the server's token+ALLOWED_HD gate stays authoritative and
+// never trusts this value. Returns "" when cloud mode is unlocked (no domain).
+export function orgDomainHint() {
+  return domainHint();
+}
+
 export function isGoogleConfigured() {
   return !!clientId();
 }
@@ -84,6 +95,35 @@ export function getUser() {
 
 export function isSignedIn() {
   return !!token && !!user;
+}
+
+// Pure org-domain match — the decision behind isAllowedDomain(), split out so it
+// is unit-testable without the module's private sign-in state. `allowed` is a
+// comma-separated list (an org whose one Workspace spans several domains lists
+// them all, e.g. "345flooring.com,345constructionco.com"); the account is in if
+// its domain is ANY of them. Derives the domain EXACTLY as the server does
+// (netlify/functions/parse-schedule.mjs): the Workspace `hd` claim, falling back
+// to the email's domain, case-folded. An empty `allowed` ⇒ any account (parity
+// with an empty server ALLOWED_HD). No user + a set list ⇒ false (fails closed).
+export function domainAllows(allowed, user) {
+  const list = (allowed || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  if (!list.length) return true;             // no domains configured ⇒ any account (server parity)
+  if (!user) return false;
+  const dom = (user.hd || (user.email || "").split("@")[1] || "").toLowerCase();
+  return list.includes(dom);
+}
+
+// Is the signed-in user inside the configured org domain? Client-side
+// defense-in-depth for the PAID scan reader: so a signed-in account OUTSIDE the
+// domain never even pings the paid endpoint — the server would 403 it, but we
+// don't want, e.g., a personal gmail that signed in for the free local features
+// to be able to trigger a spend. NOTE: VITE_GOOGLE_HD is inlined at BUILD time
+// and must match the server's runtime ALLOWED_HD — see the deploy workflow. If
+// the build var is unset this returns true (server stays authoritative). The
+// scan caller stamps orgDomainHint() on its request so the server can warn if
+// these two ever drift apart (#91).
+export function isAllowedDomain() {
+  return domainAllows(domainHint(), user);
 }
 
 // Inject the GIS script once and resolve when its oauth2 API is live. Guards

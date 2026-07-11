@@ -20,7 +20,7 @@ export default function AccountChip({ note, onOpenChange }) {
   // Nothing in the toolbar when signed out (or cloud mode off) — the local-first
   // app keeps its pre-Drive look and never shows a "Sign in" button here. Sign-in
   // starts only from the explicit "Sign in with Google Drive" landing link
-  // (SheetGallery) or the deep-link sign-in walls (main.jsx).
+  // (PlanNavigator) or the deep-link sign-in walls (main.jsx).
   if (!user) return null;
 
   return (

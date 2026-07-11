@@ -4,7 +4,7 @@
 // configured-but-signed-out — so the local-first app looks exactly as it did
 // before Drive existed, with no "Sign in" button competing in the toolbar.
 // Signing in is initiated ONLY from the explicit "Sign in with Google Drive"
-// link on the landing screen (see SheetGallery) or the deep-link sign-in walls
+// link on the landing screen (see PlanNavigator) or the deep-link sign-in walls
 // (main.jsx). Once signed in, this shows the user's email + a sign-out
 // affordance. All the trust lives in the Internal OAuth app + Drive sharing
 // (see lib/google/auth.js); this is just the surface.

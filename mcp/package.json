@@ -6,7 +6,7 @@
   "description": "OpenTakeoff MCP server — drive the takeoff engine from your MCP client over stdio.",
   "license": "Apache-2.0",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "scripts": {
     "start": "node --import tsx server.ts",

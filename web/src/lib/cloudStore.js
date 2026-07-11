@@ -285,6 +285,21 @@ export function createCloudStore(folderId, drive, { local = localStore } = {}) {
       await mutateManifest((cur) => cur.filter((f) => f.name !== name));
     },
 
+    async removeFromProject(name) {
+      // The DESTRUCTIVE sibling of removePdf: delete the actual Drive file, then
+      // drop it from the working set. The manifest is name-keyed but Drive delete
+      // needs the id, so resolve it from the manifest entry first. No-op when the
+      // name isn't in the set (e.g. a sheet that never came from this manifest) —
+      // there's no id to delete, and we must not guess one.
+      await ensureManifest();
+      const entry = manifestFiles.find((f) => f.name === name);
+      if (!entry) return;
+      // Delete the bytes BEFORE the manifest write so a failed delete leaves the
+      // manifest (and the user's picks) intact rather than orphaning a live file.
+      await drive.deleteFile(entry.id);
+      await mutateManifest((cur) => cur.filter((f) => f.name !== name));
+    },
+
     async addPdf(file) {
       const bytes = new Uint8Array(await file.arrayBuffer());
       // de-dupe by name: a re-dropped file replaces the existing bytes

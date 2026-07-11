@@ -262,6 +262,19 @@ test("removePdf drops the entry from the manifest but LEAVES the Drive file", as
   await store.removePdf("nope.pdf"); // no-op, no throw
 });
 
+test("removeFromProject deletes the Drive file AND drops it from the manifest", async () => {
+  const drive = fakeDrive();
+  const store = createCloudStore("folder1", drive as any, { local: fakeLocal() as any });
+  await store.addPdf(fakeFile("plan.pdf", new Uint8Array([1])) as any);
+  const pdfId = [...drive._byId.values()].find((r) => r.mimeType === PDF_MIME)!.id;
+
+  await store.removeFromProject("plan.pdf");
+  assert.deepEqual(await store.listSheets(), []); // out of the working set
+  assert.ok(!drive._byId.has(pdfId)); // and the Drive file is gone (unlike removePdf)
+
+  await store.removeFromProject("nope.pdf"); // not in the manifest → no-op, no throw
+});
+
 test("loadAnnotations returns the localStore default shape when absent", async () => {
   const drive = fakeDrive();
   const store = createCloudStore("folder1", drive as any, { local: fakeLocal() as any });

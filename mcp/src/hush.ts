@@ -6,14 +6,10 @@
 // import of server.ts and pdf.ts. verbosity: 0 on getDocument is the second belt.
 console.log = console.error.bind(console);
 
-// pdf.js 4.x calls Promise.withResolvers, which Node grew in v22 — polyfill it
-// so the engines floor stays Node 20 (harmless no-op on 22+).
-if (typeof (Promise as { withResolvers?: unknown }).withResolvers !== "function") {
-  (Promise as unknown as { withResolvers: <T>() => unknown }).withResolvers = function withResolvers<T>() {
-    let resolve!: (value: T | PromiseLike<T>) => void;
-    let reject!: (reason?: unknown) => void;
-    const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
-    return { promise, resolve, reject };
-  };
-}
+// pdf.js 4.x calls Promise.withResolvers, which Node grew unflagged in v22 —
+// the package.json engines floor is now Node >=24 (see .github/workflows/ci.yml),
+// so every supported runtime has it natively and the polyfill that used to sit
+// here (for a Node 20 floor) is dead code. Removed rather than kept "harmless":
+// a stale rationale comment ("keeps the floor at 20") would actively mislead
+// the next reader once the floor moved to 24.
 export {};

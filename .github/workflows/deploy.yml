@@ -25,8 +25,8 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version-file: web/.nvmrc
           cache: npm
@@ -42,6 +42,17 @@ jobs:
         # app. Vite inlines VITE_* at build time; the deployed dist is this step.
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
+          # MATCHED PAIR: VITE_GOOGLE_HD (inlined here at build time) must equal
+          # the site's runtime ALLOWED_HD in Netlify — they gate the paid schedule
+          # scan reader on client and server respectively. Both are a comma-separated
+          # org allow-list (a multi-domain Workspace lists every domain, e.g.
+          # "345flooring.com,345constructionco.com"). Keep the two lists in sync: if
+          # they drift, a domain allowed on one side but not the other fails (client
+          # blocks before the call, or the server 403s it) — see #91. If this Variable
+          # is left unset while ALLOWED_HD is set, the client org-gate (isAllowedDomain)
+          # silently no-ops and any signed-in account can *reach* the endpoint (server
+          # still 403s non-org accounts — no spend/breach — but the "don't even hit the
+          # network" guarantee is lost).
           VITE_GOOGLE_HD: ${{ vars.VITE_GOOGLE_HD }}
           VITE_PRICING_FILE_ID: ${{ vars.VITE_PRICING_FILE_ID }}
           VITE_DRIVE_ROOT_FOLDER_ID: ${{ vars.VITE_DRIVE_ROOT_FOLDER_ID }}

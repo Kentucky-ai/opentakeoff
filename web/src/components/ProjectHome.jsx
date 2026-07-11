@@ -7,7 +7,7 @@
 // hands out, so ProjectGate does all the store work and lands the user in the
 // project (empty → the PDF picker, otherwise the sheet gallery); nothing is
 // opened here. The listing/recents logic lives in lib/projectHome.js
-// (node-testable); this file is only the screen, mirroring DrivePicker's idiom.
+// (node-testable); this file is only the screen, mirroring PlanNavigator's idiom.
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import AuthChip from "./AuthChip.jsx";
@@ -29,7 +29,7 @@ export default function ProjectHome() {
   const [recents] = useState(() => createRecents(browserStorage()).list());
 
   useEffect(() => {
-    // live flag (copied from DrivePicker): StrictMode double-invokes effects, so
+    // live flag (copied from PlanNavigator): StrictMode double-invokes effects, so
     // only the latest run commits state (a stale first run can't clobber it).
     let live = true;
     setLoading(true); setErr("");
@@ -60,10 +60,13 @@ export default function ProjectHome() {
           open<span style={{ fontStyle: "italic", color: "var(--cobalt)" }}>takeoff</span>
         </strong>
         <strong style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)" }}>Projects</strong>
+        {/* Escape hatch sits WITH the title (top-left), matching PlanNavigator's
+            back/up placement so the "get out of here" control is always in the
+            same spot. client-side Link (not a plain anchor): a reload here would
+            drop the in-memory Google token; App re-gates off the URL and keeps us
+            signed in */}
+        <Link to="/" style={{ fontSize: 12, color: "var(--cobalt)" }}>use the local canvas</Link>
         <div style={{ flex: 1 }} />
-        {/* client-side Link (not a plain anchor): a reload here would drop the
-            in-memory Google token; App re-gates off the URL and keeps us signed in */}
-        <Link to="/" style={{ fontSize: 12, color: "var(--ink-muted)" }}>use the local canvas</Link>
         <AuthChip />
       </div>
 
@@ -113,7 +116,7 @@ export default function ProjectHome() {
             // the recents rows above.
             <div key={f.id} onClick={() => open(f)} style={{ ...rowBase, cursor: "pointer" }}>
               <strong style={{ fontFamily: "var(--f-body)", fontSize: 13.5, color: "var(--ink)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.name}>{f.name}</strong>
-              <button type="button" onClick={(e) => { e.stopPropagation(); open(f); }} style={openBtn}>Open project</button>
+              <button type="button" onClick={(e) => { e.stopPropagation(); open(f); }} style={openBtn}>Open</button>
             </div>
           ))
         )}
