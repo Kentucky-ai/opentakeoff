@@ -28,7 +28,7 @@ This endpoint spends money on every call, so it is **never public**:
 | Variable         | Required | Default             | Notes |
 | ---------------- | -------- | ------------------- | ----- |
 | `GEMINI_API_KEY` | to enable | *(unset ⇒ off)*    | Google AI Studio key. Server-only secret. If unset, the endpoint returns `501` and the scan path stays off. |
-| `GEMINI_MODEL`   | no       | `gemini-2.5-flash`  | Any `generateContent`-capable Gemini model id. |
+| `GEMINI_MODEL`   | no       | `gemini-3.5-flash`  | Any `generateContent`-capable Gemini model id. Bump the default when Google retires it (early `404 NOT_FOUND` retirements happen — the function logs them distinctly). |
 | `ALLOWED_HD`     | no       | *(any verified Google account)* | Restrict to one Workspace domain, e.g. `345flooring.com`. Leave unset to allow any account that passes Google verification. |
 
 Set `ALLOWED_HD` to your Workspace domain in a real deployment so only your team
