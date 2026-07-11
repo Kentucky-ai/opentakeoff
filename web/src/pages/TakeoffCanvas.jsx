@@ -2066,11 +2066,12 @@ export default function TakeoffCanvas() {
       // distinct namespace from the panel's own renderTasksRef entry (keyed by
       // `key` alone) so registering this task can't clobber — or get clobbered
       // by — the panel's primary render; group-switch cleanup cancels both.
-      const taskKey = `${key} raster`;
+      const taskKey = `${key}:raster`;
       pr = (async () => {
         const cv = document.createElement("canvas");
         cv.width = mw; cv.height = mh;
         const ctx = cv.getContext("2d", { willReadFrequently: true });
+        if (!ctx) throw new Error("2d canvas context unavailable"); // caught below like any other render failure — clear message over a cryptic null-deref
         const rt = pageObj.render({ canvasContext: ctx, viewport: pageObj.getViewport({ scale: rs * ws }), background: "#ffffff" });
         renderTasksRef.current.set(taskKey, rt);
         try {
