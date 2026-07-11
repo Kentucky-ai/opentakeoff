@@ -136,7 +136,7 @@ test("clearing an already-unlabeled shape keeps its identity (no needless clone)
 test("a non-matching id leaves every shape untouched by identity", () => {
   const input = shapes();
   const out = assignShapeLabel(input, "nope", "East Wing");
-  out.forEach((s, i) => assert.equal(s, input[i]));
+  for (let i = 0; i < out.length; i++) assert.equal(out[i], input[i]);
 });
 
 // ── omit-when-empty (buildPayload behavior) ──────────────────────────────────
