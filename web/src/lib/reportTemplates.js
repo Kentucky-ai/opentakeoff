@@ -73,3 +73,34 @@ export function renameTemplate(id, name) {
   if (!nm || list.some((t) => t.id !== id && t.name === nm)) return list;   // empty or taken by another → no-op
   return persist(list.map((t) => (t.id === id ? { ...t, name: nm } : t)));
 }
+
+// Replace the whole set (Drive Load writes the merged result back through here).
+// Sanitizes first — the input may be a hand-merged or Drive-sourced array — so
+// the same dedupe/coerce invariants hold as any other write. Returns the stored
+// list so the caller can drop it straight into React state.
+export function overwriteTemplates(list) {
+  return persist(sanitizeTemplates(list));
+}
+
+// Merge a Drive template set INTO the local one, name-keyed, LOCAL WINS — the
+// device you're on is authoritative, so Load never silently overwrites or
+// deletes a layout you just edited here (the MVP is "pull in what's missing,"
+// not two-way sync). Both sides sanitize. Remote-only templates append after the
+// local ones (local order preserved). A remote id that collides with a local one
+// (e.g. a template pushed, then renamed only here) is regenerated so the merged
+// list keeps unique ids — t.id is the React key and the apply handle.
+export function mergeTemplates(local, remote) {
+  const L = sanitizeTemplates(local);
+  const names = new Set(L.map((t) => t.name));
+  const ids = new Set(L.map((t) => t.id));
+  const add = [];
+  for (const t of sanitizeTemplates(remote)) {
+    if (names.has(t.name)) continue;                 // name clash → local wins, drop remote
+    names.add(t.name);
+    let id = t.id;
+    while (ids.has(id)) id = uid();                  // avoid a duplicate React key / apply handle
+    ids.add(id);
+    add.push(id === t.id ? t : { ...t, id });
+  }
+  return [...L, ...add];
+}

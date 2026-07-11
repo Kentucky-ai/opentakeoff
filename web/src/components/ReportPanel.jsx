@@ -9,7 +9,11 @@ import { conditionTotals, grandTotals, sheetTotals, sheetGroupedRows, labelGroup
 import { TABLE_PROFILE, CSV_PROFILE, colGetter, customColProfile, specColProfile, partitionRowsBy, forceIncludeGroupCol, loadColPrefs, saveColPrefs, loadGroupBy, saveGroupBy, visibleCols, floorPerimeterLf } from "../lib/reportColumns.js";
 import { columnLabel } from "../lib/conditionColumns.js";
 import { shapeLabelValue } from "../lib/shapeLabels.js";
-import { loadTemplates, saveTemplate, deleteTemplate, renameTemplate } from "../lib/reportTemplates.js";
+import { loadTemplates, saveTemplate, deleteTemplate, renameTemplate, mergeTemplates, overwriteTemplates } from "../lib/reportTemplates.js";
+import { canSyncTemplates, pushTemplatesToDrive, loadTemplatesFromDrive } from "../lib/reportTemplatesSync.js";
+import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
+import { projectHomeFolderId } from "../lib/projectHome.js";
+import { getAccessToken } from "../lib/google/auth.js";
 import { shapesDetail, shapesToCsv, shapesToJson } from "../lib/shapesExport.js";
 import { rfisToCsv, rfisToJson } from "../lib/rfi.js";
 import { reportWorkbook, buildXlsx } from "../lib/xlsx.js";
@@ -61,6 +65,13 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   const [showTemplates, setShowTemplates] = useState(false);
   const [tplName, setTplName] = useState("");
   const templatesRef = useRef(null);
+  // optional Drive sync of templates (#115) — offered only when signed in AND a
+  // Projects root is configured. googleUser/driveRoot are also the push/load args.
+  const { user: googleUser } = useGoogleAuth();
+  const driveRoot = projectHomeFolderId();
+  const canSync = canSyncTemplates(googleUser, driveRoot);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncMsg, setSyncMsg] = useState("");
   // custom columns append after each profile (frozen 13 → built-in opt-ins →
   // custom), so toggling one can never disturb the frozen CSV prefix
   const customCols = customColProfile(conditionColumns);
@@ -163,6 +174,35 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
     const nm = (window.prompt("Rename template:", t.name) || "").trim();
     if (!nm || nm === t.name) return;
     setTemplates(renameTemplate(t.id, nm));
+  };
+
+  // Push/Load — Drive sync (#115). drive.js is a DYNAMIC import so the Drive
+  // client never lands in the anonymous bundle (mirrors ProjectHome.jsx);
+  // getAccessToken is safe to import statically (auth.js already ships).
+  const pushToDrive = async () => {
+    if (!canSync || syncBusy) return;
+    setSyncBusy(true); setSyncMsg("Pushing…");
+    try {
+      const { createDrive } = await import("../lib/google/drive.js");
+      const { count } = await pushTemplatesToDrive(createDrive({ getToken: getAccessToken }), driveRoot, googleUser.email, templates);
+      setSyncMsg(`Pushed ${count} to Drive.`);
+    } catch (e) {
+      setSyncMsg(`Push failed: ${String(e?.message || e)}`);
+    } finally { setSyncBusy(false); }
+  };
+  const loadFromDrive = async () => {
+    if (!canSync || syncBusy) return;
+    setSyncBusy(true); setSyncMsg("Loading…");
+    try {
+      const { createDrive } = await import("../lib/google/drive.js");
+      const remote = await loadTemplatesFromDrive(createDrive({ getToken: getAccessToken }), driveRoot, googleUser.email);
+      const before = loadTemplates().length;
+      const merged = overwriteTemplates(mergeTemplates(loadTemplates(), remote));
+      setTemplates(merged);
+      setSyncMsg(`Loaded ${merged.length - before} from Drive.`);
+    } catch (e) {
+      setSyncMsg(`Load failed: ${String(e?.message || e)}`);
+    } finally { setSyncBusy(false); }
   };
 
   // store only diffs from defaultVisible — a key toggled back to default is dropped
@@ -338,6 +378,22 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                 <button onClick={saveAsTemplate} disabled={!tplName.trim()} title="Save the current columns + grouping under this name"
                   style={{ padding: "3px 8px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>Save</button>
               </div>
+              {/* Optional Drive sync — only when signed in and a Projects root is
+                  configured. Load MERGES (this device wins on a name clash); it
+                  does not pull remote deletes/edits, so the copy stays "Load," not
+                  "Sync," to avoid over-promising two-way behavior. */}
+              {canSync && (
+                <div style={{ borderTop: "1px solid var(--ink-faint)", marginTop: 8, paddingTop: 8 }}>
+                  <div style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1.4, marginBottom: 6 }}>Carry these across your own devices via Drive. Load merges in what's missing (this device wins on a name clash).</div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={pushToDrive} disabled={syncBusy} title="Write your saved templates to your private Drive file"
+                      style={{ flex: 1, padding: "4px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: syncBusy ? "default" : "pointer", fontSize: 12 }}>Push to Drive</button>
+                    <button onClick={loadFromDrive} disabled={syncBusy} title="Merge templates from your Drive file into this device"
+                      style={{ flex: 1, padding: "4px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: syncBusy ? "default" : "pointer", fontSize: 12 }}>Load from Drive</button>
+                  </div>
+                  {syncMsg && <div style={{ fontSize: 10.5, color: "var(--ink-muted)", marginTop: 6 }}>{syncMsg}</div>}
+                </div>
+              )}
             </div>
           )}
         </div>

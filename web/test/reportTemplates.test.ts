@@ -5,7 +5,7 @@
 // (keeping its id), delete/rename by id, round-trip through the store.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sanitizeTemplates, loadTemplates, saveTemplate, deleteTemplate, renameTemplate } from "../src/lib/reportTemplates.js";
+import { sanitizeTemplates, loadTemplates, saveTemplate, deleteTemplate, renameTemplate, mergeTemplates, overwriteTemplates } from "../src/lib/reportTemplates.js";
 
 // ── sanitizeTemplates (pure) ─────────────────────────────────────────────────
 
@@ -110,5 +110,54 @@ test("empty/whitespace name is a no-op save (can't create a nameless template)",
   withMockStorage(() => {
     assert.deepEqual(saveTemplate("   ", {}, ""), []);
     assert.deepEqual(loadTemplates(), []);
+  });
+});
+
+// ── mergeTemplates / overwriteTemplates (Drive sync #115) ────────────────────
+
+test("mergeTemplates: local wins on name clash, remote-only appended, local order kept", () => {
+  const local = [
+    { id: "L1", name: "A", cols: { csv: true }, groupBy: "sheet" },
+    { id: "L2", name: "B", cols: {}, groupBy: "" },
+  ];
+  const remote = [
+    { id: "R1", name: "B", cols: { x: true }, groupBy: "label" },   // clash → local B wins
+    { id: "R2", name: "C", cols: {}, groupBy: "" },                 // new → appended
+  ];
+  const out = mergeTemplates(local, remote);
+  assert.deepEqual(out.map((t: any) => t.name), ["A", "B", "C"]);
+  // B keeps the LOCAL id/groupBy (not remote's)
+  assert.equal(out.find((t: any) => t.name === "B")!.id, "L2");
+  assert.equal(out.find((t: any) => t.name === "B")!.groupBy, "");
+  assert.equal(out.find((t: any) => t.name === "C")!.id, "R2");
+});
+
+test("mergeTemplates: sanitizes both sides; non-array remote → local unchanged", () => {
+  const local = [{ id: "L1", name: "A", cols: {}, groupBy: "" }];
+  assert.deepEqual(mergeTemplates(local, null).map((t: any) => t.name), ["A"]);
+  assert.deepEqual(mergeTemplates(null, local).map((t: any) => t.name), ["A"]);  // local coerces too
+  // a malformed remote item is dropped, a valid new one survives
+  const out = mergeTemplates(local, [{ name: "no id" }, { id: "R", name: "New", cols: {}, groupBy: "" }]);
+  assert.deepEqual(out.map((t: any) => t.name), ["A", "New"]);
+});
+
+test("mergeTemplates: a remote id colliding with a local id is regenerated (unique React keys)", () => {
+  const local = [{ id: "dup", name: "A", cols: {}, groupBy: "" }];
+  const remote = [{ id: "dup", name: "B", cols: {}, groupBy: "" }];   // same id, different name
+  const out = mergeTemplates(local, remote);
+  assert.deepEqual(out.map((t: any) => t.name), ["A", "B"]);
+  assert.equal(new Set(out.map((t: any) => t.id)).size, 2, "ids stay unique");
+  assert.equal(out.find((t: any) => t.name === "A")!.id, "dup");     // local id untouched
+});
+
+test("overwriteTemplates: sanitizes, persists, and returns the stored set (Load writes back through here)", () => {
+  withMockStorage(() => {
+    saveTemplate("Old", {}, "");
+    const stored = overwriteTemplates([
+      { id: "t1", name: "New", cols: { csv: true }, groupBy: "label" },
+      { name: "dropped" },                                            // no id → sanitized out
+    ]);
+    assert.deepEqual(stored.map((t: any) => t.name), ["New"]);
+    assert.deepEqual(loadTemplates().map((t: any) => t.name), ["New"]);   // replaced Old, persisted
   });
 });
