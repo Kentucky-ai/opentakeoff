@@ -9,6 +9,7 @@ import { conditionTotals, grandTotals, sheetTotals, sheetGroupedRows, labelGroup
 import { TABLE_PROFILE, CSV_PROFILE, colGetter, customColProfile, specColProfile, partitionRowsBy, forceIncludeGroupCol, loadColPrefs, saveColPrefs, loadGroupBy, saveGroupBy, visibleCols, floorPerimeterLf } from "../lib/reportColumns.js";
 import { columnLabel } from "../lib/conditionColumns.js";
 import { shapeLabelValue } from "../lib/shapeLabels.js";
+import { loadTemplates, saveTemplate, deleteTemplate, renameTemplate } from "../lib/reportTemplates.js";
 import { shapesDetail, shapesToCsv, shapesToJson } from "../lib/shapesExport.js";
 import { rfisToCsv, rfisToJson } from "../lib/rfi.js";
 import { reportWorkbook, buildXlsx } from "../lib/xlsx.js";
@@ -55,6 +56,11 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   const [colPrefs, setColPrefs] = useState(loadColPrefs);
   const [showCols, setShowCols] = useState(false);
   const colsRef = useRef(null);
+  // saved report templates (#114) — named column-visibility + grouping bundles
+  const [templates, setTemplates] = useState(loadTemplates);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [tplName, setTplName] = useState("");
+  const templatesRef = useRef(null);
   // custom columns append after each profile (frozen 13 → built-in opt-ins →
   // custom), so toggling one can never disturb the frozen CSV prefix
   const customCols = customColProfile(conditionColumns);
@@ -127,6 +133,37 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [showCols]);
+
+  // templates popover — same outside-click close as columns
+  useEffect(() => {
+    if (!showTemplates) return;
+    const onDown = (e) => { if (templatesRef.current && !templatesRef.current.contains(e.target)) setShowTemplates(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [showTemplates]);
+
+  // Apply a template: set BOTH the column prefs and the grouping mode, and write
+  // them through to the sticky defaults so the layout persists (and #14's "By
+  // label" mode, captured as a string, self-heals via the group-by normalizer on
+  // a label-less project). Save-as snapshots the CURRENT layout under a name;
+  // groupByRaw (not the normalized groupBy) is captured so the user's real choice
+  // round-trips even when momentarily invalid.
+  const applyTemplate = (t) => {
+    setColPrefs(t.cols); saveColPrefs(t.cols);
+    setGroupByRaw(t.groupBy); saveGroupBy(t.groupBy);
+    setShowTemplates(false);
+  };
+  const saveAsTemplate = () => {
+    const nm = tplName.trim();
+    if (!nm) return;
+    setTemplates(saveTemplate(nm, colPrefs, groupByRaw));
+    setTplName("");
+  };
+  const renameTpl = (t) => {
+    const nm = (window.prompt("Rename template:", t.name) || "").trim();
+    if (!nm || nm === t.name) return;
+    setTemplates(renameTemplate(t.id, nm));
+  };
 
   // store only diffs from defaultVisible — a key toggled back to default is dropped
   const toggleCol = (col) => {
@@ -269,6 +306,38 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                 </>
               )}
               <p style={{ margin: "8px 0 0", fontSize: 11, color: "var(--ink-muted)" }}>Also applies to the CSV export. Grouping by a custom column always exports that column.</p>
+            </div>
+          )}
+        </div>
+        <div ref={templatesRef} style={{ position: "relative" }}>
+          <button className="btn-ghost" onClick={() => setShowTemplates((s) => !s)} title="Save and recall report layouts (columns + grouping)">Templates{templates.length ? ` (${templates.length})` : ""}</button>
+          {showTemplates && (
+            <div className="report-modal" style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 70, width: 260, background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-2)", padding: "10px 12px", fontSize: 12.5, color: "var(--ink)" }}>
+              <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
+                <strong style={{ fontFamily: "var(--f-display)", fontSize: 13 }}>Templates</strong>
+                <div style={{ flex: 1 }} />
+                <button onClick={() => setShowTemplates(false)} title="Close"
+                  style={{ border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 13, padding: 0, lineHeight: 1 }}>✕</button>
+              </div>
+              <div style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1.4, marginBottom: 6 }}>Saved column + grouping layouts (this device). Click one to apply.</div>
+              {templates.length === 0 && <div style={{ fontSize: 10.5, color: "var(--ink-muted)", marginBottom: 6 }}>No saved templates yet.</div>}
+              {templates.map((t) => (
+                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 0" }}>
+                  <button onClick={() => applyTemplate(t)} title="Apply this layout"
+                    style={{ flex: 1, minWidth: 0, textAlign: "left", border: "none", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12, padding: "3px 4px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</button>
+                  <button onClick={() => renameTpl(t)} title="Rename"
+                    style={{ padding: "0 3px", border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>✎</button>
+                  <button onClick={() => setTemplates(deleteTemplate(t.id))} title="Delete this template"
+                    style={{ padding: "0 3px", border: "none", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11 }}>✕</button>
+                </div>
+              ))}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, borderTop: "1px solid var(--ink-faint)", marginTop: 6, paddingTop: 8 }}>
+                <input name="template-name" value={tplName} onChange={(e) => setTplName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && saveAsTemplate()}
+                  placeholder="Name this layout" style={{ flex: 1, minWidth: 0, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
+                <button onClick={saveAsTemplate} disabled={!tplName.trim()} title="Save the current columns + grouping under this name"
+                  style={{ padding: "3px 8px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>Save</button>
+              </div>
             </div>
           )}
         </div>
