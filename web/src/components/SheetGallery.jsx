@@ -11,6 +11,7 @@ import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
 import { parseSheetKey, extractSheetNumber, detectScale, RENDER_SCALE, MAX_GROUP } from "../lib/sheets";
 import { isGoogleConfigured } from "../lib/google/auth.js";
 import { projectHomeFolderId } from "../lib/projectHome.js";
+import { groupSheetsByLevel, sortGalleryGroups } from "../lib/sheetLevels.js";
 
 const THUMB_W = 380;
 
@@ -163,17 +164,11 @@ export default function SheetGallery({
     return t.page > 1 ? `${base} · ${t.page}` : base;
   };
   // multi-floor: group by assigned level (natural sort), unassigned last; within a
-  // group, order by the title-block label so A-sheets read in drawing order
-  const cmp = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true });
-  const levelNames = [...new Set(allKeys.map((k) => levels[k]).filter(Boolean))].sort(cmp);
-  const groups = levelNames.length
-    ? [...levelNames.map((lv) => ({ level: lv, keys: allKeys.filter((k) => levels[k] === lv) })),
-       { level: "", keys: allKeys.filter((k) => !levels[k]) }].filter((g) => g.keys.length)
-    : [{ level: null, keys: allKeys }];
-  // title-block order within a group, so A-sheets read in drawing order — only
-  // once levels exist: an unleveled gallery keeps today's file/page order (the
-  // async title-block labels would otherwise shuffle cards as they arrive)
-  if (levelNames.length) for (const g of groups) g.keys = [...g.keys].sort((a, b) => cmp(labelOf(a), labelOf(b)));
+  // group that itself has a level, order by the title-block label so A-sheets
+  // read in drawing order. The Unassigned group keeps stable file/page order
+  // regardless of whether other groups have levels — see sortGalleryGroups's
+  // comment for why this must be a PER-GROUP gate, not a whole-gallery one.
+  const groups = sortGalleryGroups(groupSheetsByLevel(allKeys, levels), labelOf);
   const assignLevel = () => {
     const label = window.prompt('Level for the selected sheets (e.g. "L1", "Level 2", "Garage") — empty clears:', "");
     if (label === null) return;

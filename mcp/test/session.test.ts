@@ -206,14 +206,16 @@ test("exportPayload: exact envelope keys, schema, only scaled sheets listed", as
   p = s.exportPayload();
   assert.deepEqual(Object.keys(p).sort(), [
     "conditions", "last_group", "markups", "project_name", "schema",
-    "shapes", "sheet_group", "sheet_levels", "sheet_tabs", "sheets", "units",
+    "shapes", "sheet_group", "sheet_tabs", "sheets", "units",
   ]);
   assert.equal(p.schema, ANN_SCHEMA);
   assert.equal(p.schema, "opentakeoff.takeoff_canvas.v1");
   assert.equal(p.units, "imperial");
   assert.equal(p.project_name, "");
   assert.deepEqual(p.markups, []);
-  assert.deepEqual(p.sheet_levels, {});
+  // sheet_levels omitted, matching the browser's own omit-when-empty
+  // convention (MCP has no level-assignment surface, so it's always empty)
+  assert.ok(!("sheet_levels" in p));
   assert.equal(p.sheets.length, 1);
   assert.equal(p.sheets[0].sheet_id, KEY);
   assert.ok(Math.abs(p.sheets[0].units_per_px! - 1 / 36) < 1e-12);

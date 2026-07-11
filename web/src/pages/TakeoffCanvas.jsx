@@ -33,6 +33,7 @@ import { isGoogleConfigured, isSignedIn, getAccessToken } from "../lib/google/au
 import { extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertices, ringArea, MASK_MAX_DIM, SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE } from "../lib/oneclick";
 import { conditionTotals, verticalWallSf } from "../lib/totals.js";
 import { shapesInZone } from "../lib/zone.js";
+import { sanitizeSheetLevels } from "../lib/sheetLevels.js";
 import { sanitizeConditionColumns, sanitizeConditionAttrs, renameColumnValue, columnLabel } from "../lib/conditionColumns.js";
 import { buildMarkedSetPdf, downloadBytes } from "../lib/markedset.js";
 import { loadCompany } from "../lib/identity.js";
@@ -140,6 +141,12 @@ export default function TakeoffCanvas() {
   const [focusKey, setFocusKey] = useState("");         // panel of the last click — scale/calibrate target in group mode
   const [zoneCheck, setZoneCheck] = useState(null);   // ephemeral zone-check region {key, pts (norm)} — never persisted (buildPayload doesn't read it)
   const [zoneExpand, setZoneExpand] = useState(null); // zone panel: condition id with materials expanded
+  // Shared reset for the two zone transients — every site that discards
+  // OTHER in-flight measurement state (sheet change, snapshot load, hydrate)
+  // must discard this too, or the results panel and glow can outlive the
+  // region/shapes they described. See the tool-change effect below for the
+  // matching `poly` (pending zone trace) reset, which has its own rule.
+  const resetZone = () => { setZoneCheck(null); setZoneExpand(null); };
   const [markups, setMarkups] = useState([]);                // cloud/callout/text annotations (separate from measurement shapes)
   const [markupDraft, setMarkupDraft] = useState(null);      // in-progress markup first point (cloud/callout/highlight)
   // Docked LEFT panel — one at a time, never overlapping: null | "markup" | "stamp" | "rfi".
@@ -332,6 +339,7 @@ export default function TakeoffCanvas() {
   const hoverRef = useRef(null);        // hover tooltip div (DOM-direct like the crosshair)
   const hoverIdRef = useRef("");        // shape id currently described by the tooltip
   const lastMeasureRef = useRef("area"); // last armed measure tool — shown on the Measure menu face
+  const prevToolRef = useRef("pan");   // previous armed tool — detects a LEAVE-zone transition so the shared `poly` array only clears when zone itself was left, not on every tool change
   const menuDepthRef = useRef(0);      // >0 while a toolbar menu is open (letter shortcuts pause)
   // ONE stable open/close listener for every toolbar menu — ToolMenu re-fires
   // its onOpenChange effect when the callback identity changes, so an inline
@@ -576,6 +584,12 @@ export default function TakeoffCanvas() {
   // Load in the Snapshots panel, so a restored snapshot walks the same
   // defensive path as a page reload.
   const hydrate = (a) => {
+    // Same cross-load-transient gap as the panel epoch bump below: a Snapshot
+    // Load runs in-place with the same sheet keys, so a surviving zoneCheck
+    // would immediately re-classify the RESTORED shape set against the
+    // pre-load polygon — "correct" math against the wrong region. Reset it
+    // unconditionally, mirroring the sheet_group/sheet_levels else-clear rule.
+    resetZone();
     setProjectName(a.project_name || "");
     // string fields only — a corrupted record must not put an object where
     // the report masthead renders a React child
@@ -608,9 +622,9 @@ export default function TakeoffCanvas() {
     // lack it and must clear any pre-load levels (the sheet_group else-clear
     // rule: a snapshot load must not inherit the replaced project's levels).
     // String labels only, mirroring the client_info string-fields gate.
-    setSheetLevels(Object.fromEntries(Object.entries(
-      a.sheet_levels && typeof a.sheet_levels === "object" && !Array.isArray(a.sheet_levels) ? a.sheet_levels : {}
-    ).filter(([, v]) => typeof v === "string" && v)));
+    // Extracted to sanitizeSheetLevels (lib/sheetLevels.js) so this gate has
+    // its own unit tests independent of the reducer.
+    setSheetLevels(sanitizeSheetLevels(a.sheet_levels));
     const grp = Array.isArray(a.sheet_group) ? a.sheet_group.slice(0, MAX_GROUP) : [];
     setSheetGroup(grp);
     const lg = Array.isArray(a.last_group) ? a.last_group.slice(0, MAX_GROUP) : grp;
@@ -826,7 +840,7 @@ export default function TakeoffCanvas() {
     if (!active) return;
     const seq = ++renderSeqRef.current;
     const stale = () => seq !== renderSeqRef.current;
-    setStatus("rendering"); setErr(""); setPoly([]); setCalib([]); setPendingLen(""); setCheck([]); setCheckStated(""); setScaleGuide(null); setPrevScale(null); selectShape(null); setProposal(null);
+    setStatus("rendering"); setErr(""); setPoly([]); setCalib([]); setPendingLen(""); setCheck([]); setCheckStated(""); setScaleGuide(null); setPrevScale(null); selectShape(null); setProposal(null); resetZone();
     for (const [, rt] of renderTasksRef.current) { try { rt.cancel(); } catch { /* done */ } }
     renderTasksRef.current.clear();
     snapGridsRef.current.clear();
@@ -1192,7 +1206,7 @@ export default function TakeoffCanvas() {
       if (menuDepthRef.current > 0) return;
       if (e.key === "Enter") {
         if (tool === "oneclick" && proposal?.regions.length) { e.preventDefault(); createProposal(); return; }
-        const ok = ((tool === "area" || tool === "deduct" || tool === "zone") && poly.length >= 3) || ((tool === "linear" || tool === "surface") && poly.length >= 2);
+        const ok = ((tool === "area" || tool === "deduct") && poly.length >= 3) || (tool === "zone" && poly.length >= 3 && !zoneTraceCross) || ((tool === "linear" || tool === "surface") && poly.length >= 2);
         if (ok) { e.preventDefault(); finishShape(); }
         return;
       }
@@ -1255,7 +1269,7 @@ export default function TakeoffCanvas() {
         // tool's points, on-screen or hidden
         else if (tool === "calibrate") { setCalib((c) => c.slice(0, -1)); }
         else if (tool === "check") { setCheck((c) => c.slice(0, -1)); }
-      } else if (e.key === "Escape") { if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { setPoly([]); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); setZoneCheck(null); } }
+      } else if (e.key === "Escape") { if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { setPoly([]); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); resetZone(); } }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); setPoly((q) => (q.length ? q.slice(0, -1) : q)); }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") { if (selectedId) { e.preventDefault(); copySelected(); } }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") { if (clipRef.current.length) { e.preventDefault(); pasteClipboard(); } }
@@ -1276,8 +1290,21 @@ export default function TakeoffCanvas() {
   // stale points AND stale stated value — whenever K is pressed again.
   useEffect(() => { if (tool !== "check" && (check.length || checkStated)) { setCheck([]); setCheckStated(""); } }, [tool]); // eslint-disable-line react-hooks/exhaustive-deps
   // Leaving the zone tool clears the zone the same way — the outline and its
-  // readout are a reading of the armed tool, never surviving state.
-  useEffect(() => { if (tool !== "zone") { setZoneCheck(null); setZoneExpand(null); } }, [tool]);
+  // readout are a reading of the armed tool, never surviving state. The
+  // in-progress trace itself must go too: `poly` is the SAME shared array
+  // area/deduct/linear/surface commit from, so without this, a mid-trace
+  // switch away from zone (a single-letter shortcut while zone has none of
+  // its own, or the Zone button re-arming "select") leaves real zone points
+  // sitting in `poly` for the NEXT tool's Enter/double-click to commit as a
+  // persisted, priced shape — the ephemeral tool's own "nothing is saved"
+  // contract broken. Only clear `poly` when the PREVIOUS tool was zone
+  // (prevToolRef), not on every tool change — poly is shared, and switching
+  // e.g. area → linear must not discard a legitimate in-progress trace.
+  useEffect(() => {
+    if (tool !== "zone") resetZone();
+    if (prevToolRef.current === "zone" && tool !== "zone") setPoly([]);
+    prevToolRef.current = tool;
+  }, [tool]);
 
   // ── pointer ────────────────────────────────────────────────────────────────
   function onPointerDown(e) {
@@ -2558,8 +2585,13 @@ export default function TakeoffCanvas() {
   function finishShape() {
     if (tool === "zone") {
       // ephemeral: classify, show, never save. Belongs to the panel of its first point.
-      if (poly.length >= 3) {
-        const tp = panelAt(poly[0][0]);
+      // Cross-panel span — the UI hides the Finish affordance (finishOk), but
+      // keep the function safe standalone (Enter is still wired to it): a
+      // point on a different panel than poly[0] would normalize to nx/ny
+      // outside [0..1] for THAT panel, drawing a region that visually spans
+      // a sheet it can never actually count shapes on.
+      const tp = poly.length ? panelAt(poly[0][0]) : null;
+      if (poly.length >= 3 && tp && poly.every((p) => panelAt(p[0]).key === tp.key)) {
         setZoneCheck({ key: tp.key, pts: poly.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]) });
         setZoneExpand(null);
       }
@@ -2834,6 +2866,15 @@ export default function TakeoffCanvas() {
   const liveUpp = poly.length ? uppFor(panelAt(poly[0][0]).key) : uppFor(focusPanel.key);
   const liveArea = liveUpp ? mm.area * liveUpp * liveUpp : null;
   const livePerim = liveUpp ? mm.perim * liveUpp : null;
+  // A zone trace with points on more than one panel (side-by-side group mode,
+  // a gap click routing to the neighboring panel): finishShape normalizes
+  // every point against the FIRST point's panel, so a second-panel point
+  // would land at nx > 1 — outside that panel's own [0..1] space — and the
+  // overlay would still draw the dashed region exactly where traced,
+  // visually enclosing rooms on the second sheet that shapesInZone (filtered
+  // to a single sheet_id) can never count. Reject it outright — mirrors the
+  // check tool's checkCross guard, the same hazard on a 2-point span.
+  const zoneTraceCross = tool === "zone" && poly.length >= 1 && poly.some((p) => panelAt(p[0]).key !== panelAt(poly[0][0]).key);
   const condMult = aCond?.multiplier || 1;
   // HUD + Takeoffs panel are sheet-scoped ("this sheet"): they total the
   // VISIBLE shapes through the same conditionTotals rules the Report uses —
@@ -2888,7 +2929,7 @@ export default function TakeoffCanvas() {
   };
   const measureActive = MEASURE_TOOLS.some((t) => t.id === tool);
   const faceTool = MEASURE_TOOLS.find((t) => t.id === (measureActive ? tool : lastMeasureRef.current)) || MEASURE_TOOLS[0];
-  const finishOk = ((tool === "area" || tool === "deduct" || tool === "zone") && poly.length >= 3) || ((tool === "linear" || tool === "surface") && poly.length >= 2);
+  const finishOk = ((tool === "area" || tool === "deduct") && poly.length >= 3) || (tool === "zone" && poly.length >= 3 && !zoneTraceCross) || ((tool === "linear" || tool === "surface") && poly.length >= 2);
 
   // panel-toggle for the right-edge rail — square like the zoom cluster, count as a
   // tiny mono line under the icon. Lives on the canvas, costs the toolbar zero rows.
@@ -3997,13 +4038,24 @@ export default function TakeoffCanvas() {
                         <polygon points={zoneCheck.pts.map(([nx, ny]) => `${nx * p.img.w},${ny * p.img.h}`).join(" ")}
                           fill="rgba(31,63,199,.06)" stroke="#1f3fc7" strokeWidth={2 / tf.scale}
                           strokeDasharray={`${7 / tf.scale} ${5 / tf.scale}`} />
-                        {zoneIds && pShapes.filter((sh) => zoneIds.has(sh.id)).map((sh) => (
-                          (sh.verts_norm || []).length >= 2
-                            ? <polyline key={"zc" + sh.id} points={sh.verts_norm.map(([nx, ny]) => `${nx * p.img.w},${ny * p.img.h}`).join(" ")}
-                                fill="none" stroke="#1f3fc7" strokeOpacity={0.45} strokeWidth={3.5 / tf.scale} strokeLinejoin="round" />
-                            : <circle key={"zc" + sh.id} cx={(sh.verts_norm?.[0]?.[0] || 0) * p.img.w} cy={(sh.verts_norm?.[0]?.[1] || 0) * p.img.h}
-                                r={7 / tf.scale} fill="none" stroke="#1f3fc7" strokeOpacity={0.45} strokeWidth={2.5 / tf.scale} />
-                        ))}
+                        {zoneIds && pShapes.filter((sh) => zoneIds.has(sh.id)).map((sh) => {
+                          const vs = sh.verts_norm || [];
+                          if (vs.length < 2) {
+                            return <circle key={"zc" + sh.id} cx={(vs[0]?.[0] || 0) * p.img.w} cy={(vs[0]?.[0] || 0) * p.img.h}
+                              r={7 / tf.scale} fill="none" stroke="#1f3fc7" strokeOpacity={0.45} strokeWidth={2.5 / tf.scale} />;
+                          }
+                          // Closed roles (floor_area/deduct) get a <polygon> like the
+                          // main shape renderer — a <polyline> never draws the
+                          // closing edge back to the first vertex, so a 4-vertex
+                          // room's glow was missing 25% of its outline. linear/
+                          // surface_area are genuinely open runs, so they keep
+                          // <polyline>, also matching the main renderer.
+                          const closed = sh.measure_role !== "linear" && sh.measure_role !== "surface_area";
+                          const pts = vs.map(([nx, ny]) => `${nx * p.img.w},${ny * p.img.h}`).join(" ");
+                          return closed
+                            ? <polygon key={"zc" + sh.id} points={pts} fill="none" stroke="#1f3fc7" strokeOpacity={0.45} strokeWidth={3.5 / tf.scale} strokeLinejoin="round" />
+                            : <polyline key={"zc" + sh.id} points={pts} fill="none" stroke="#1f3fc7" strokeOpacity={0.45} strokeWidth={3.5 / tf.scale} strokeLinejoin="round" />;
+                        })}
                       </g>
                     )}
                     {/* One-Click proposal preview — dashed cobalt selection, red dashed carve.
@@ -4175,10 +4227,14 @@ export default function TakeoffCanvas() {
               ) : <div style={{ fontSize: 12.5, color: "var(--c-danger)" }}>Set a height for {aCond?.finish_tag || "this condition"} — H in the condition editor</div>;
             })()
           ) : tool === "zone" && poly.length >= 1 ? (
-            <>
-              {liveArea != null && poly.length >= 3 && <div style={{ fontSize: 22, fontWeight: 700, color: "var(--cobalt)" }}>{num(liveArea)} <span style={{ fontSize: 13, fontWeight: 600 }}>SF in zone</span></div>}
-              <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>⏎, double-click, or the Finish button closes the zone and lists everything inside · Esc cancels</div>
-            </>
+            zoneTraceCross ? (
+              <span style={{ color: "var(--c-danger)", fontSize: 12.5 }}>Zone on one sheet — that point landed on a different sheet. Finish is disabled; Esc or Undo last point to fix it.</span>
+            ) : (
+              <>
+                {liveArea != null && poly.length >= 3 && <div style={{ fontSize: 22, fontWeight: 700, color: "var(--cobalt)" }}>{num(liveArea)} <span style={{ fontSize: 13, fontWeight: 600 }}>SF in zone</span></div>}
+                <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>⏎, double-click, or the Finish button closes the zone and lists everything inside · Esc cancels</div>
+              </>
+            )
           ) : liveArea != null && poly.length >= 3 ? (
             <>
               <div style={{ fontSize: 22, fontWeight: 700, color: tool === "deduct" ? "var(--c-danger)" : "var(--ink)" }}>{tool === "deduct" ? "−" : ""}{num(liveArea)} <span style={{ fontSize: 13, fontWeight: 600 }}>SF</span></div>
@@ -4214,9 +4270,14 @@ export default function TakeoffCanvas() {
         </div>
 
         {/* zone check results — ephemeral, clears with the tool/outline. Docked at
-            right:56 so it never covers the panel rail (right:14, 34px wide). */}
+            right:56 so it never covers the panel rail (right:14, 34px wide), and
+            anchored to the BOTTOM (not top:14 like the original) so it stacks
+            vertically with the live readout instead of sitting on top of it —
+            the live readout (right:14, top:14, zIndex 6) shows the SAME zone's
+            live "SF in zone" figure for the NEXT trace while this panel is open,
+            and a top:14 placement here covered all but a ~42px sliver of it. */}
         {zoneRows && (
-          <div style={{ position: "absolute", right: 56, top: 14, width: 300, maxHeight: "calc(100% - 28px)", overflowY: "auto", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "0 6px 22px rgba(0,0,0,.16)", zIndex: 7, fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>
+          <div style={{ position: "absolute", right: 56, bottom: 14, width: 300, maxHeight: "calc(100% - 28px)", overflowY: "auto", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "0 6px 22px rgba(0,0,0,.16)", zIndex: 7, fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderBottom: "1px solid var(--ink-faint)" }}>
               <b style={{ fontSize: 12.5 }}>Zone check</b>
               <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, color: "var(--ink-muted)" }}>nothing saved</span>
@@ -4238,6 +4299,7 @@ export default function TakeoffCanvas() {
                   <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                     <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0 }}><HatchSwatch type={zr.hatch || "solid"} line={zr.color} fill={zr.fill} /></span>
                     <b style={{ fontFamily: "var(--f-mono)", fontSize: 11.5 }}>{zr.finish_tag || "—"}</b>
+                    {zr.multiplier > 1 && <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>×{zr.multiplier}</span>}
                     <span style={{ marginLeft: "auto", fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink)" }}>{parts.join(" · ") || "—"}</span>
                   </div>
                   {zr.materials.length > 0 && (
@@ -4255,7 +4317,19 @@ export default function TakeoffCanvas() {
                 </div>
               );
             })}
-            <div style={{ padding: "7px 12px", fontSize: 10, color: "var(--ink-muted)" }}>Shapes counted by their center point · same sheet only · counted shapes glow cobalt.</div>
+            <div style={{ padding: "7px 12px", fontSize: 10, color: "var(--ink-muted)" }}>
+              Shapes counted by their center point · same sheet only · counted shapes glow cobalt.
+              {zoneRows.some((r) => (r.multiplier || 1) > 1) && <> Rows marked ×N show measured (base) quantities inside the zone with the condition's ×N multiplier applied — the same convention as the Report's by-sheet rows.</>}
+              {/* A deduct classifies by its OWN center, independent of its positive
+                  area's center (same rule the Report's by-sheet "negative slices"
+                  note already documents for a cross-sheet split) — a zone edge
+                  can split a deduct from the shape it cuts, producing a negative
+                  row here. Flag it rather than guess a pairing: the deduct/positive
+                  link is never stored, only inferred by overlap, and geometric
+                  containment pairing would guess wrong for nested/overlapping
+                  positives. */}
+              {zoneRows.some((r) => r.total_sf < 0 || r.floor_sf < 0) && <> A negative row means a deduct here counted but its positive area's center fell outside the zone (or vice-versa) — the zone edge split a deduct from its shape.</>}
+            </div>
           </div>
         )}
 
@@ -4369,9 +4443,13 @@ export default function TakeoffCanvas() {
           // restored takeoff under a reset activeCond. The check tool and the
           // rescale stash are in that class too: a surviving prevScale would
           // let "Revert scale" re-price the RESTORED takeoff against a scale
-          // stashed from the discarded timeline.
+          // stashed from the discarded timeline. Zone is in the same class —
+          // a surviving zoneCheck would re-classify the RESTORED shape set
+          // against the pre-load polygon (hydrate() also resets it, but this
+          // caller-side reset covers the pending in-progress trace too).
           setPoly([]); setCalib([]); setPendingLen(""); selectShape(null); setProposal(null);
           setCheck([]); setCheckStated(""); setScaleGuide(null); setPrevScale(null);
+          resetZone();
           hydrate(payload || {});
         }}
       />

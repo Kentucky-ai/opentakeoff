@@ -377,7 +377,12 @@ export class Session {
   }
 
   /** The exact browser save payload (TakeoffCanvas.jsx autosave + the schema key
-   * store.saveAnnotations stamps) — importable by the app. */
+   * store.saveAnnotations stamps) — importable by the app. One known, harmless
+   * divergence: the browser's buildPayload omits `sheet_levels` when empty
+   * (its general convention for additive/optional keys — see client_info,
+   * condition_columns, palette), and MCP has no level-assignment surface, so
+   * its export is always in the "empty" case — omitted here too, never
+   * `sheet_levels: {}`, to match that convention rather than special-case it. */
   exportPayload() {
     if (!this.doc) throw new UserError("No plan loaded — call load_plan first.");
     return {
@@ -391,7 +396,6 @@ export class Session {
       sheet_group: [],
       last_group: [],
       sheet_tabs: [],
-      sheet_levels: {},
     };
   }
 
