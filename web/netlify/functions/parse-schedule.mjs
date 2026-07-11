@@ -16,7 +16,11 @@
 // path stays dark, so a fork that doesn't configure it never exposes anything.
 
 const GOOGLE_USERINFO = "https://www.googleapis.com/oauth2/v3/userinfo";
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+// gemini-2.5-flash was retired to new projects earlier than its announced date
+// (404 NOT_FOUND), so the default tracks the current GA Flash model. Bump this
+// when Google retires it — parse-schedule logs `gemini 404 … NOT_FOUND` distinctly
+// (see mapGeminiHttpFailure) so an early retirement is obvious in the function logs.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
 // Comma-separated org allow-list (e.g. "345flooring.com,345constructionco.com")
 // — an org whose one Google Workspace spans several domains lists them all here.
 // Empty ⇒ any verified Google account. This is the AUTHORITATIVE org gate; the
