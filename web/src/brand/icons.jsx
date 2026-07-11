@@ -50,6 +50,7 @@ export const icons = {
   // RFI — a hexagon echoing the on-canvas ⬢ RFI marker, with a question motif
   rfi: (s) => <I size={s}><path d="M12 3 L 19 7 V 15 L 12 19 L 5 15 V 7 Z" /><path d="M10 10 a2 2 0 1 1 2.6 1.9 C 12 12.2 12 12.6 12 13.2" /><circle cx="12" cy="15.6" r="0.9" fill="currentColor" /></I>,
   takeoffs: (s) => <I size={s}><rect x="4" y="5" width="3" height="3" fill="currentColor" stroke="none" /><line x1="10" y1="6.5" x2="20" y2="6.5" /><rect x="4" y="10.5" width="3" height="3" fill="currentColor" stroke="none" /><line x1="10" y1="12" x2="20" y2="12" /><rect x="4" y="16" width="3" height="3" fill="currentColor" stroke="none" /><line x1="10" y1="17.5" x2="20" y2="17.5" /></I>,
+  zone: (s) => <I size={s}><path d="M4 4 H 8 M11 4 H 15 M18 4 H 20 V 6 M20 9 H 20 V 13 M20 16 V 20 H 17 M14 20 H 10 M7 20 H 4 V 16 M4 13 V 9 M4 6 V 4" /><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" /></I>,
   target: (s) => <I size={s}><circle cx="12" cy="12" r="6" /><path d="M12 3 V 7 M12 17 V 21 M3 12 H 7 M17 12 H 21" /><circle cx="12" cy="12" r="1" fill="currentColor" /></I>,
   height: (s) => <I size={s}><line x1="6" y1="4" x2="18" y2="4" /><line x1="6" y1="20" x2="18" y2="20" /><path d="M12 6.5 V 17.5 M12 6.5 L 9.8 8.7 M12 6.5 L 14.2 8.7 M12 17.5 L 9.8 15.3 M12 17.5 L 14.2 15.3" /></I>,
   thickness: (s) => <I size={s}><line x1="5" y1="5" x2="5" y2="19" /><line x1="19" y1="5" x2="19" y2="19" /><path d="M7.5 12 H 16.5 M7.5 12 L 9.7 9.8 M7.5 12 L 9.7 14.2 M16.5 12 L 14.3 9.8 M16.5 12 L 14.3 14.2" /></I>,

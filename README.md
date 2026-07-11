@@ -102,7 +102,7 @@ Drive**. To set it up, see [`docs/GOOGLE_SETUP.md`](docs/GOOGLE_SETUP.md) and
 |---|---|
 | **Ingest** | PDF, image, or `.zip` plan set — unpacked in-browser, multi-page, up to 4 sheets side-by-side |
 | **Scale** | Auto-detect the drawn scale note, or calibrate from a known dimension — per sheet; **Check a dimension (K)** verdicts + an acceptance ruler guard against a wrong scale, and late rescales re-price committed takeoffs |
-| **Measure** | One-Click Area (flood-fill), Area, Rectangle, Linear, Surface-Area (walls), Count, Deduct |
+| **Measure** | One-Click Area (flood-fill), Area, Rectangle, Linear, Surface-Area (walls), Count, Deduct, Zone check (per-region breakdown) |
 | **Drawing aids** | 45°/90° angle lock with ⇧ hard-lock, live angle + segment-length readout at the cursor, endpoint Snap (beta) |
 | **Conditions** | Color + CAD hatch + line style (solid/dashed/dotted/dash-dot) per finish, waste %, ×N multiplier, height, thickness → border SF, custom columns (e.g. CSI Division) |
 | **Condition palette** | Top-bar quick-access band — pin up to 9 conditions for one-click activation, **1–9 hotkeys follow palette order**, drag to pin/reorder, plus the active condition's appearance editor inline (no sidebar needed) |

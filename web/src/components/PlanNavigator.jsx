@@ -12,7 +12,9 @@
 //     full-screen "no man's land". Esc / scrim-click return to the canvas.
 //
 // Back/up is a single control anchored top-left by the title; its meaning is
-// mode-aware (see back()). While mounted, the navigator swallows canvas keyboard
+// mode-aware (see back()). Esc is a SEPARATE, one-press dismiss (browse → plan,
+// plan → canvas) rather than the back button's per-level folder climb — see
+// escRef below. While mounted, the navigator swallows canvas keyboard
 // shortcuts in EVERY mode via a capture-phase listener — shortcut suppression is
 // keyed on "is this mounted", never on the canvas' view/mode staying in sync.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -23,6 +25,7 @@ import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
 import { parseSheetKey, extractSheetNumber, detectScale, RENDER_SCALE, MAX_GROUP } from "../lib/sheets";
 import { isGoogleConfigured } from "../lib/google/auth.js";
 import { projectHomeFolderId } from "../lib/projectHome.js";
+import { groupSheetsByLevel, sortGalleryGroups } from "../lib/sheetLevels.js";
 
 const THUMB_W = 380;
 const ROOT = { id: undefined, name: "Project" };   // id undefined → cloudStore's default (project folder)
@@ -51,6 +54,7 @@ export default function PlanNavigator({
   thumbCacheRef, busyRef, openTabs, onOpen,
   onAddFiles, onClosePdf, onRemoveFromProject,
   onCloseProject, onBrowseProjects,
+  levels = {}, onAssignLevel,
   // browse (Drive) data
   listFolder, addSheets, onAdded,
 }) {
@@ -251,6 +255,18 @@ export default function PlanNavigator({
     const t = parseSheetKey(key);
     const base = t.file.replace(/\.pdf$/i, "");
     return t.page > 1 ? `${base} · ${t.page}` : base;
+  };
+  // multi-floor: group by assigned level (natural sort), unassigned last; within a
+  // group that itself has a level, order by the title-block label so A-sheets
+  // read in drawing order. The Unassigned group keeps stable file/page order
+  // regardless of whether other groups have levels — see sortGalleryGroups's
+  // comment for why this must be a PER-GROUP gate, not a whole-gallery one.
+  const groups = sortGalleryGroups(groupSheetsByLevel(allKeys, levels), labelOf);
+  const assignLevel = () => {
+    const label = window.prompt('Level for the selected sheets (e.g. "L1", "Level 2", "Garage") — empty clears:', "");
+    if (label === null) return;
+    onAssignLevel?.(sel, label.trim());
+    setSel([]);
   };
 
   // ── mode-aware back/up ──────────────────────────────────────────────────
@@ -457,8 +473,15 @@ export default function PlanNavigator({
   const planBody = (
     <>
       <div style={{ flex: 1, overflow: "auto", padding: 18 }}>
+        {groups.map((grp) => (
+        <div key={grp.level ?? "__all"} style={{ marginBottom: grp.level !== null ? 22 : 0 }}>
+        {grp.level !== null && (
+          <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink-muted)", margin: "0 0 8px 2px" }}>
+            {grp.level || "Unassigned"} · {grp.keys.length}
+          </div>
+        )}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))", gap: 14 }}>
-          {allKeys.map((key) => {
+          {grp.keys.map((key) => {
             const idx = sel.indexOf(key);
             const isSel = idx >= 0;
             const thumb = thumbCacheRef.current.get(key);
@@ -486,6 +509,7 @@ export default function PlanNavigator({
                 </div>
                 <div style={{ padding: "8px 10px", display: "flex", alignItems: "baseline", gap: 8 }}>
                   <strong style={{ fontFamily: "var(--f-mono)", fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }} title={key}>{labelOf(key)}</strong>
+                  {levels[key] && <span title="Level" style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--ink-muted)", border: "1px solid var(--ink-faint)", padding: "1px 5px" }}>{levels[key]}</span>}
                   {isOpenTab && <span title="Already open as a tab" style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--cobalt)", textTransform: "uppercase", letterSpacing: "0.08em" }}>open</span>}
                   {cnt > 0 && <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, color: "var(--ink-muted)" }}>{cnt}▦</span>}
                   <span style={{ fontSize: 10, fontWeight: 600, whiteSpace: "nowrap", color: scales[key] ? "var(--c-positive)" : detectedScales[key] ? "var(--c-warning)" : "var(--c-danger)" }}>
@@ -496,6 +520,8 @@ export default function PlanNavigator({
             );
           })}
         </div>
+        </div>
+        ))}
         {!allKeys.length && (
           <div style={{ padding: 48, textAlign: "center", color: "var(--ink-muted)", fontSize: 13.5, lineHeight: 1.7 }}>
             {!sheets.length ? (
@@ -549,7 +575,11 @@ export default function PlanNavigator({
           <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)" }}>{sel.length ? `${sel.length} selected` : "select sheets, or hover a card and hit View"}</span>
           <div style={{ flex: 1 }} />
           {sel.length > 0 && (
-            <button onClick={() => setSel([])} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>Clear</button>
+            <>
+              <button onClick={assignLevel} title="Group the selected sheets under a floor/level — the gallery sorts by it and tabs carry the label"
+                style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>Assign level…</button>
+              <button onClick={() => setSel([])} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>Clear</button>
+            </>
           )}
           <button disabled={!sel.length} onClick={() => onOpen(sel, false)}
             style={{ padding: "8px 14px", border: "1px solid var(--ink)", background: "transparent", color: "var(--ink)", cursor: sel.length ? "pointer" : "default", opacity: sel.length ? 1 : 0.4, fontWeight: 700, fontSize: 12.5 }}>

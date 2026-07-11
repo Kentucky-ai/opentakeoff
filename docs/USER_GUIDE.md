@@ -109,8 +109,12 @@ Classify conditions along your own dimension — **CSI Division**, bid package, 
 | `multiplier` | × N on every quantity |
 | `waste %` | Added on top in the Report (SF + LF; never EA) |
 
+### Zone check
+Arm **Zone** in the toolbar (Aids cluster) and trace a region — an apartment, a wing, a phase — the way you'd trace a deduct; **⏎, double‑click, or Finish** closes it (must land entirely on one sheet — a trace spanning two side‑by‑side panels is rejected, Finish stays disabled). A panel lists every condition whose shapes sit inside (counted by their **area centroid**, same sheet only — counted shapes glow cobalt; rows under a ×N condition multiplier show the ×N), with quantities and each condition's **materials scaled to the zone**, computed by the same rules as the Report. It's a reading, not a takeoff: nothing is saved — redraw replaces the zone; `Esc`, switching tools, navigating sheets, or loading a snapshot clears it (and any in‑progress trace).
+
 ### Plan set & sheets
 - **Gallery** (`G`) — the visual sheet picker; open one or several sheets side‑by‑side.
+- **Sheet levels (multi‑floor sets)** — in the gallery, select sheets and hit **Assign level…** ("L1", "Level 2", "Garage" — empty clears). The gallery groups by level with unassigned sheets last (a group without a level keeps plain file/page order — it's never reshuffled by another group getting one), each card wears its level chip, and open tabs plus the sheet‑nav chip carry the label. Levels save with the project; the report's by‑sheet **ordering** keeps file/page order regardless of levels. The level label itself is intentionally an enrichment beyond the gallery/tabs: it also prefixes the sheet label in the **Marked Set** PDF, the **Snapshot** panel, and the **RFI** panel, so an exported page or a saved snapshot still reads "L1 · A-101" — useful on a multi‑floor set, but a byte‑for‑byte diff against a pre‑levels export of the same project will show the label change even though sheet order is untouched.
 - **Per‑sheet scale** — plan sets are never one uniform scale; set it per sheet.
 - **Regroup** — restore the last side‑by‑side composition in one click after scaling sheets individually.
 - **Hi‑Res** — crisper rendering when zoomed in (per sheet, per browser). Does **not** change quantities.
