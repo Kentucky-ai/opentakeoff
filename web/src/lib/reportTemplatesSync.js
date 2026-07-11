@@ -7,6 +7,13 @@
 // teammate's push/delete never clobbers your saved layouts; a deliberate shared
 // "team library" would be a separate feature.
 //
+// The email namespace is an ORGANIZATION convention, not an access boundary: the
+// folder inherits the Projects Shared-Drive ACL, so a teammate with Drive access
+// could read another's templates file directly — exactly as project data itself
+// is team-shared. Report layouts (column visibility + grouping) carry no
+// sensitive data, and the UI only ever reads/writes the signed-in user's own
+// file, so this matches the app's existing trust model rather than widening it.
+//
 // The Drive client is INJECTED (createDrive from google/drive.js) so this whole
 // surface is node-testable with a fake drive — no network, no login. Semantics
 // are MVP: Push = write the local set to your file (last-write-wins on it);
@@ -28,13 +35,19 @@ export function templatesFileName(email) {
   return `report-templates-${String(email).trim().toLowerCase()}.json`;
 }
 
-// Find the hidden sync folder at the root, or create it. mimeType-guarded:
-// findChild matches on name only, so without this a stray FILE named
-// ".opentakeoff" could shadow the folder.
+// Resolve the hidden sync folder unambiguously by LISTING folder-typed children
+// and matching the name — not findChild, which matches on name only and returns
+// the first hit. A stray non-folder named ".opentakeoff" could otherwise sort
+// ahead of the real folder and shadow it: push would keep minting duplicate
+// folders and load would return [] while the templates sit right beside it.
+async function findSyncFolder(drive, rootFolderId) {
+  const folders = await drive.listChildren(rootFolderId, { mimeType: FOLDER_MIME });
+  return folders.find((f) => f.name === SYNC_FOLDER) || null;
+}
+
+// Find the hidden sync folder at the root, or create it.
 async function ensureSyncFolder(drive, rootFolderId) {
-  const found = await drive.findChild(rootFolderId, SYNC_FOLDER);
-  if (found && found.mimeType === FOLDER_MIME) return found;
-  return drive.createFolder(rootFolderId, SYNC_FOLDER);
+  return (await findSyncFolder(drive, rootFolderId)) || drive.createFolder(rootFolderId, SYNC_FOLDER);
 }
 
 // Write the local template set to the user's Drive file (create, or update in
@@ -51,8 +64,8 @@ export async function pushTemplatesToDrive(drive, rootFolderId, email, templates
 // into local via mergeTemplates, which sanitizes). Missing folder or file → []
 // (nothing synced yet is a normal first-Load state, not an error).
 export async function loadTemplatesFromDrive(drive, rootFolderId, email) {
-  const folder = await drive.findChild(rootFolderId, SYNC_FOLDER);
-  if (!folder || folder.mimeType !== FOLDER_MIME) return [];
+  const folder = await findSyncFolder(drive, rootFolderId);
+  if (!folder) return [];
   const file = await drive.findChild(folder.id, templatesFileName(email));
   if (!file) return [];
   const data = await drive.getJson(file.id);

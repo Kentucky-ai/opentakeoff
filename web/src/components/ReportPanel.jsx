@@ -196,10 +196,16 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
     try {
       const { createDrive } = await import("../lib/google/drive.js");
       const remote = await loadTemplatesFromDrive(createDrive({ getToken: getAccessToken }), driveRoot, googleUser.email);
-      const before = loadTemplates().length;
-      const merged = overwriteTemplates(mergeTemplates(loadTemplates(), remote));
+      // Merge against the IN-MEMORY set (the source of truth the popover shows),
+      // not a fresh localStorage read — a blocked-storage read would look empty
+      // and drop templates that are live in state.
+      const before = templates.length;
+      const merged = overwriteTemplates(mergeTemplates(templates, remote));
       setTemplates(merged);
-      setSyncMsg(`Loaded ${merged.length - before} from Drive.`);
+      const added = merged.length - before;
+      // Disambiguate a zero result: an empty Drive file reads differently to a
+      // user than "you already have everything on Drive."
+      setSyncMsg(added > 0 ? `Loaded ${added} from Drive.` : remote.length === 0 ? "Nothing saved on Drive yet." : "Already up to date — no new templates.");
     } catch (e) {
       setSyncMsg(`Load failed: ${String(e?.message || e)}`);
     } finally { setSyncBusy(false); }
@@ -384,7 +390,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                   "Sync," to avoid over-promising two-way behavior. */}
               {canSync && (
                 <div style={{ borderTop: "1px solid var(--ink-faint)", marginTop: 8, paddingTop: 8 }}>
-                  <div style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1.4, marginBottom: 6 }}>Carry these across your own devices via Drive. Load merges in what's missing (this device wins on a name clash).</div>
+                  <div style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1.4, marginBottom: 6 }}>Carry these across your own devices via Drive. Load only adds templates this device doesn't have — a same-name template is never overwritten (rename or delete it here first to pull a newer copy).</div>
                   <div style={{ display: "flex", gap: 6 }}>
                     <button onClick={pushToDrive} disabled={syncBusy} title="Write your saved templates to your private Drive file"
                       style={{ flex: 1, padding: "4px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: syncBusy ? "default" : "pointer", fontSize: 12 }}>Push to Drive</button>

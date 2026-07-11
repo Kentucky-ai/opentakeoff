@@ -148,6 +148,18 @@ test("mergeTemplates: a remote id colliding with a local id is regenerated (uniq
   assert.deepEqual(out.map((t: any) => t.name), ["A", "B"]);
   assert.equal(new Set(out.map((t: any) => t.id)).size, 2, "ids stay unique");
   assert.equal(out.find((t: any) => t.name === "A")!.id, "dup");     // local id untouched
+  assert.notEqual(out.find((t: any) => t.name === "B")!.id, "dup");  // remote id actually regenerated, not just "size 2"
+});
+
+test("mergeTemplates: duplicate names WITHIN remote dedupe (first wins), don't append twice", () => {
+  const local = [{ id: "L1", name: "A", cols: {}, groupBy: "" }];
+  const remote = [
+    { id: "R1", name: "C", cols: {}, groupBy: "" },
+    { id: "R2", name: "C", cols: {}, groupBy: "" },   // same name again → dropped by sanitize
+  ];
+  const out = mergeTemplates(local, remote);
+  assert.deepEqual(out.map((t: any) => t.name), ["A", "C"]);
+  assert.equal(out.find((t: any) => t.name === "C")!.id, "R1", "first remote C wins");
 });
 
 test("overwriteTemplates: sanitizes, persists, and returns the stored set (Load writes back through here)", () => {

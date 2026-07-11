@@ -21,6 +21,12 @@ function fakeDrive(seed: any[] = []) {
   return {
     calls,
     files,
+    async listChildren(folderId: string, { mimeType }: any = {}) {
+      calls.push({ op: "listChildren", folderId, mimeType: mimeType ?? null });
+      return files
+        .filter((x) => x.parents?.includes(folderId) && (!mimeType || x.mimeType === mimeType))
+        .map((x) => ({ id: x.id, name: x.name, mimeType: x.mimeType }));
+    },
     async findChild(folderId: string, name: string) {
       calls.push({ op: "findChild", folderId, name });
       const f = files.find((x) => x.parents?.includes(folderId) && x.name === name);
@@ -121,6 +127,28 @@ test("load: round-trips what push wrote", async () => {
   const templates = [{ id: "t1", name: "A", cols: {}, groupBy: "sheet" }];
   await pushTemplatesToDrive(drive, ROOT, "a@x.com", templates);
   assert.deepEqual(await loadTemplatesFromDrive(drive, ROOT, "a@x.com"), templates);
+});
+
+test("load: a stray FILE named .opentakeoff beside the real folder does NOT shadow it", async () => {
+  // The bug the folder resolution guards against: findChild matches on name only,
+  // so a non-folder named ".opentakeoff" could sort ahead of the real folder and
+  // make load return [] while the templates sit right beside it. Resolving the
+  // folder by folder-typed listing must ignore the stray file.
+  const drive = fakeDrive([{ id: "stray", name: ".opentakeoff", parents: [ROOT], mimeType: "application/json", data: null }]);
+  const templates = [{ id: "t1", name: "A", cols: {}, groupBy: "" }];
+  await pushTemplatesToDrive(drive, ROOT, "a@x.com", templates);
+  assert.deepEqual(await loadTemplatesFromDrive(drive, ROOT, "a@x.com"), templates);
+});
+
+test("load: if .opentakeoff exists only as a FILE (no real folder), return [] (don't treat a file as a folder)", async () => {
+  const drive = fakeDrive([{ id: "bad", name: ".opentakeoff", parents: [ROOT], mimeType: "application/json", data: null }]);
+  assert.deepEqual(await loadTemplatesFromDrive(drive, ROOT, "a@x.com"), []);
+});
+
+test("load: an empty pushed set round-trips as [] (not null/undefined)", async () => {
+  const drive = fakeDrive();
+  await pushTemplatesToDrive(drive, ROOT, "a@x.com", []);
+  assert.deepEqual(await loadTemplatesFromDrive(drive, ROOT, "a@x.com"), []);
 });
 
 test("load: non-array file contents coerce to [] (never hand junk to the merger)", async () => {
