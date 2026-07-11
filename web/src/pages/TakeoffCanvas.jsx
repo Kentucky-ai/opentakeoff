@@ -28,7 +28,7 @@ import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../compone
 import { Icon } from "../brand/icons.jsx";
 import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText } from "../lib/sheets";
 import { parseSchedule, rowToSeed } from "../lib/scheduleParse";
-import { normalizeScanRows, SCAN_ENDPOINT, scanRasterScale } from "../lib/scheduleScan";
+import { normalizeScanRows, postScanWithRetry, SCAN_ENDPOINT, scanRasterScale } from "../lib/scheduleScan";
 import { normalizeTag } from "../lib/scheduleEdit";
 import { isGoogleConfigured, isSignedIn, isAllowedDomain, getAccessToken, orgDomainHint } from "../lib/google/auth.js";
 import { extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertices, ringArea, MASK_MAX_DIM, SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE } from "../lib/oneclick";
@@ -2947,15 +2947,22 @@ export default function TakeoffCanvas() {
         tokenCount,
       });
       try {
-        const res = await fetch(SCAN_ENDPOINT, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          // client_hd stamps this build's VITE_GOOGLE_HD so the server can warn if
-          // it has drifted from the runtime ALLOWED_HD (the client org-gate would
-          // then be silently no-op'ing). Diagnostic only — the server's authoritative
-          // token + ALLOWED_HD gate ignores it.
-          body: JSON.stringify({ image_b64: png.b64, width: png.width, height: png.height, client_hd: orgDomainHint() }),
-        });
+        // A cold serverless start + slow vision call can overrun Netlify's sync cap
+        // and return a 504 gateway page; the warm retry succeeds (#102). One retry
+        // only, and only on 504 — real errors (401/403/501/5xx JSON) fall through
+        // to the handling below on the first response.
+        const res = await postScanWithRetry(
+          () => fetch(SCAN_ENDPOINT, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            // client_hd stamps this build's VITE_GOOGLE_HD so the server can warn if
+            // it has drifted from the runtime ALLOWED_HD (the client org-gate would
+            // then be silently no-op'ing). Diagnostic only — the server's authoritative
+            // token + ALLOWED_HD gate ignores it.
+            body: JSON.stringify({ image_b64: png.b64, width: png.width, height: png.height, client_hd: orgDomainHint() }),
+          }),
+          { onRetry: () => setCommitMsg("The reader was warming up — retrying…") },
+        );
         if (seq !== renderSeqRef.current) return;
         if (res.status === 401 || res.status === 403) { setCommitMsg("Your sign-in doesn't have access to the scanned-schedule reader."); return; }
         if (res.status === 501) { setCommitMsg("Importing from scanned plans isn't enabled on this deployment."); return; }

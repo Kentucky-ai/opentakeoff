@@ -16,11 +16,14 @@
 // path stays dark, so a fork that doesn't configure it never exposes anything.
 
 const GOOGLE_USERINFO = "https://www.googleapis.com/oauth2/v3/userinfo";
-// gemini-2.5-flash was retired to new projects earlier than its announced date
-// (404 NOT_FOUND), so the default tracks the current GA Flash model. Bump this
-// when Google retires it — parse-schedule logs `gemini 404 … NOT_FOUND` distinctly
-// (see mapGeminiHttpFailure) so an early retirement is obvious in the function logs.
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+// Default to gemini-3.1-flash-lite (GA, image-capable): the low-latency Flash-Lite
+// tier, chosen to shrink the cold-start time that overran Netlify's sync cap and
+// 504'd on the heavier gemini-3.5-flash (#102/#100). A schedule crop is small,
+// mostly-tabular text — Flash-Lite reads it well; override GEMINI_MODEL to trade
+// back toward accuracy if a dense schedule needs it. Bump this when Google retires
+// the model — parse-schedule logs `gemini 404 … NOT_FOUND` distinctly (see
+// mapGeminiHttpFailure) so an early retirement is obvious in the function logs.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.1-flash-lite";
 // Comma-separated org allow-list (e.g. "345flooring.com,345constructionco.com")
 // — an org whose one Google Workspace spans several domains lists them all here.
 // Empty ⇒ any verified Google account. This is the AUTHORITATIVE org gate; the

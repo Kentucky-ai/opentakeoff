@@ -9,7 +9,7 @@
 //   - de-dupes by finish_tag (first wins), since the dialog keys on it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeScanRows, SCAN_ENDPOINT, SCAN_MAX_DIM, scanRasterScale } from "../src/lib/scheduleScan.js";
+import { normalizeScanRows, postScanWithRetry, SCAN_ENDPOINT, SCAN_MAX_DIM, SCAN_RETRY_STATUS, scanRasterScale } from "../src/lib/scheduleScan.js";
 
 test("normalizes a well-formed { rows } payload", () => {
   const rows = normalizeScanRows({
@@ -102,4 +102,84 @@ test("the binding side drives the factor (portrait vs landscape)", () => {
 test("degenerate / non-positive dimensions never divide-by-zero or upscale", () => {
   assert.equal(scanRasterScale(0, 0), 1);
   assert.equal(scanRasterScale(-5, 10), 1);
+});
+
+// postScanWithRetry — the one-shot 504 retry that banks "warm retries succeed"
+// (#102). Only a 504 (Netlify's cold-start gateway timeout) is retried; real
+// responses/errors pass straight through. sleep is injected so tests don't wait.
+const resp = (status: number) => ({ status }) as Response;      // helper only reads .status
+const noSleep = () => Promise.resolve();
+
+test("504 retry: success on the first attempt is returned, no retry", async () => {
+  let calls = 0, retried = false;
+  const res = await postScanWithRetry(() => { calls++; return Promise.resolve(resp(200)); },
+    { sleep: noSleep, onRetry: () => { retried = true; } });
+  assert.equal(res.status, 200);
+  assert.equal(calls, 1);
+  assert.equal(retried, false);
+});
+
+test("504 retry: a 504 then a 200 retries once and returns the warm 200", async () => {
+  const statuses = [SCAN_RETRY_STATUS, 200];
+  let calls = 0, retried = 0;
+  const res = await postScanWithRetry(() => Promise.resolve(resp(statuses[calls++])),
+    { sleep: noSleep, onRetry: () => { retried++; } });
+  assert.equal(res.status, 200);
+  assert.equal(calls, 2);
+  assert.equal(retried, 1);
+});
+
+test("504 retry: a thrown network error then a 200 retries and recovers", async () => {
+  let calls = 0;
+  const res = await postScanWithRetry(() => {
+    if (calls++ === 0) return Promise.reject(new Error("network down"));
+    return Promise.resolve(resp(200));
+  }, { sleep: noSleep });
+  assert.equal(res.status, 200);
+  assert.equal(calls, 2);
+});
+
+test("504 retry: two 504s exhaust the one retry and return the 504 for normal handling", async () => {
+  let calls = 0;
+  const res = await postScanWithRetry(() => { calls++; return Promise.resolve(resp(SCAN_RETRY_STATUS)); },
+    { sleep: noSleep });
+  assert.equal(res.status, SCAN_RETRY_STATUS);
+  assert.equal(calls, 2);   // exactly two attempts, never a loop
+});
+
+test("504 retry: a non-504 error (e.g. 403) returns immediately, is NOT retried", async () => {
+  let calls = 0;
+  const res = await postScanWithRetry(() => { calls++; return Promise.resolve(resp(403)); },
+    { sleep: noSleep });
+  assert.equal(res.status, 403);
+  assert.equal(calls, 1);   // real errors are not a 504 → no retry, no double-charge
+});
+
+test("504 retry: two thrown errors rethrow the last one", async () => {
+  let calls = 0;
+  await assert.rejects(
+    postScanWithRetry(() => { calls++; return Promise.reject(new Error(`fail ${calls}`)); }, { sleep: noSleep }),
+    /fail 2/,
+  );
+  assert.equal(calls, 2);
+});
+
+test("504 retry: a 504 then a thrown error returns the 504 (gateway copy wins over the throw)", async () => {
+  let calls = 0;
+  const res = await postScanWithRetry(() => {
+    if (calls++ === 0) return Promise.resolve(resp(SCAN_RETRY_STATUS));
+    return Promise.reject(new Error("network down"));
+  }, { sleep: noSleep });
+  assert.equal(res.status, SCAN_RETRY_STATUS);   // a seen 504 is preferred to a rethrow
+  assert.equal(calls, 2);
+});
+
+test("504 retry: a thrown error then a 504 returns the 504", async () => {
+  let calls = 0;
+  const res = await postScanWithRetry(() => {
+    if (calls++ === 0) return Promise.reject(new Error("network down"));
+    return Promise.resolve(resp(SCAN_RETRY_STATUS));
+  }, { sleep: noSleep });
+  assert.equal(res.status, SCAN_RETRY_STATUS);
+  assert.equal(calls, 2);
 });

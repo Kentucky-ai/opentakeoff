@@ -31,6 +31,50 @@ export function scanRasterScale(regW: number, regH: number, maxDim: number = SCA
   return Math.min(1, maxDim / w, maxDim / h);
 }
 
+// Netlify's synchronous function cap (measured ~30s on this deployment's plan)
+// returns a 504 gateway page — HTML, not our JSON — when a COLD start plus a slow
+// vision call overruns it; the immediately-following WARM call succeeds (#102).
+// So retry a 504 exactly ONCE against the now-warm instance before surfacing
+// failure. Only 504 (the platform timeout) is retried — NOT the function's own
+// JSON 5xx (a Gemini/auth failure a retry won't fix and that already spent the
+// call), so cold-start cost is capped at 2× on genuine timeouts only, never on
+// real errors.
+export const SCAN_RETRY_STATUS = 504;
+
+/**
+ * Run a scan POST, retrying ONCE on a 504 (cold-start gateway timeout) or a thrown
+ * network error. `post` performs one attempt and resolves to its Response (or
+ * throws on a network failure). Returns the first NON-504 Response (a success or a
+ * real error the caller should handle); if both attempts 504, returns the 504 so
+ * the caller shows its normal "couldn't reach the reader" copy; if both throw,
+ * rethrows the last error. `onRetry` fires before the second attempt (e.g. to
+ * surface "warming up — retrying…"). Pure/injectable (sleep + post) so the retry
+ * branch is node-testable without a real network or timer.
+ */
+export async function postScanWithRetry(
+  post: () => Promise<Response>,
+  opts: { delayMs?: number; onRetry?: () => void; sleep?: (ms: number) => Promise<void> } = {},
+): Promise<Response> {
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  let last504: Response | undefined;
+  let lastErr: unknown;
+  let threw = false;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) { opts.onRetry?.(); await sleep(opts.delayMs ?? 700); }
+    try {
+      const res = await post();
+      if (res.status !== SCAN_RETRY_STATUS) return res;  // success OR a non-retryable error
+      last504 = res;                                     // 504 → eligible for the one retry
+    } catch (e) {
+      lastErr = e; threw = true;                         // network error → eligible for the one retry
+    }
+  }
+  if (last504) return last504;   // at least one attempt reached the gateway timeout
+  if (threw) throw lastErr;      // both attempts failed to reach the server
+  // unreachable: the loop always returns, sets last504, or sets threw
+  throw new Error("scan retry: no response");
+}
+
 // Mirror of scheduleParse's category vocabulary + which categories the dialog
 // pre-checks. Duplicated (not imported) so the parser's internals stay private;
 // the ScheduleRow *type* is the shared contract, this is just its value domain.
