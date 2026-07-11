@@ -26,7 +26,7 @@ Your work autosaves to this browser continuously. Reload and it's still there.
 ### Tools
 | Key | Tool | What it does |
 |---|---|---|
-| `O` | **One‑Click Area** | Click inside a room; the enclosed space auto‑selects, traces, and snaps to corners — hatched/tiled rooms fill to the real walls (hatch linework is classified and seen through). **Correct the fill before Create** without leaving the tool: hover the selection to raise its handles, then **drag a corner** to move it (snaps to linework), **drag an edge** to slide the whole line out to the wall, **Shift‑click an edge** to drop a new anchor point, and **click a corner + `Delete`** to remove just that point. Review, then Create. |
+| `O` | **One‑Click Area** | Click inside a room; the enclosed space auto‑selects, traces, and snaps to corners — hatched/tiled rooms fill to the real walls (hatch linework is classified and seen through). **Scanned sheets work too**: the engine reads the scan pixels and badges the result so you verify edges before Create. **Correct the fill before Create** without leaving the tool: hover the selection to raise its handles, then **drag a corner** to move it (snaps to linework), **drag an edge** to slide the whole line out to the wall, **Shift‑click an edge** to drop a new anchor point, and **click a corner + `Delete`** to remove just that point. Review, then Create. |
 | `A` | **Area** | Trace a polygon → floor SF. |
 | `R` | **Rectangle** | Two‑corner rectangle → floor SF. |
 | `L` | **Linear** | Trace a run → LF (＋ border SF if the condition has a thickness). |
@@ -167,7 +167,7 @@ All drawings, scales, conditions, and markups autosave to this browser (IndexedD
 ## 4. Tips
 
 - Door openings usually stay closed in One‑Click (the door leaf + swing arc are linework). If a fill **spills**, click a more enclosed spot or trace with **Area**. A hatched room with a genuinely open doorway still refuses rather than guessing — that's deliberate.
-- Raster (scanned) plans have no vector linework — One‑Click/Snap won't work; trace manually.
+- Raster (scanned) plans: One‑Click reads the scan pixels (badged so you verify edges before Create). Snap has no true endpoints on a scan, so corners come from the trace — nudge the handles before Create if needed.
 - Set the scale **before** you measure; changing it re‑flows dependent shapes.
 - Waste is per condition — set it to match the install (e.g. ~8% straight‑lay, ~15% diagonal, ~20% herringbone).
 

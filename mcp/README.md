@@ -118,8 +118,11 @@ sheet number (`A-101`) wherever a sheet is named.
 ## Limits (v1)
 
 - **Vector + text sheets only.** A scanned sheet has no vector linework, so
-  `one_click` reports it plainly; a raster fallback is a planned seam
-  (`src/session.ts`, `ensureMask`), not yet built.
+  `one_click` reports it plainly. The browser app now traces scans via
+  `web/src/lib/rastermask.ts` (a pixel-derived mask in the same `MaskObj`
+  shape); wiring it into the seam here (`src/session.ts`, `ensureMask`) still
+  needs a node canvas backend to render the page's pixels, so it remains
+  unbuilt in the MCP server.
 - One document per session; `load_plan` replaces it.
 - The takeoff lives in memory. `export_takeoff` is the way out — and its
   payload is exactly what the app persists, so nothing is lost in translation.

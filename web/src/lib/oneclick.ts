@@ -30,8 +30,9 @@ export type Point = [number, number];
 export interface OpList { fnArray: number[]; argsArray: any[]; }  // per-op args array, or null for arg-less ops
 /** pdf.js's OPS code table (op name → numeric code); passed in so this module never imports pdfjs. */
 export type OpsTable = Record<string, number>;
-/** meta: one byte per segment — SEG_* bits + device line width in the high nibble. */
-export interface VectorGeometry { points: Point[]; segs: number[]; meta: Uint8Array; }
+/** meta: one byte per segment — SEG_* bits + device line width in the high nibble.
+ *  imageArea: total placed image area in device px² (scan/photo underlay detection). */
+export interface VectorGeometry { points: Point[]; segs: number[]; meta: Uint8Array; imageArea: number; }
 export interface MaskObj { mask: Uint8Array; mw: number; mh: number; ws: number; softCount: number; }
 export interface RegionResult { region: Uint8Array; mw: number; mh: number; ws: number; count?: number; }
 export type FloodResult =
@@ -105,6 +106,7 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
   const points: Point[] = [];
   const segs: number[] = [];
   const metaArr: number[] = [];
+  let imageArea = 0;
   let m = transform.slice();
   let lw = 1;                          // graphics-state line width (user space)
   const stack: Array<[number[], number]> = [];
@@ -132,6 +134,50 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
     else if (fn === OPS.setGState) { for (const pr of args[0] || []) if (pr && pr[0] === "LW") lw = pr[1]; }
     else if (fn === OPS.paintFormXObjectBegin) { stack.push([m.slice(), lw]); if (args && args[0]) m = mul(m, args[0]); }
     else if (fn === OPS.paintFormXObjectEnd) { const p = stack.pop(); if (p) { m = p[0]; lw = p[1]; } }
+    else if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject || fn === OPS.paintImageMaskXObject) {
+      // the singular paint ops are each preceded by their OWN `transform` op
+      // (already folded into `m` above), mapping the image's unit square onto
+      // the placed rect — |det m| is its device-px area. Summed per sheet, it
+      // flags scan wrappers / photo underlays (a plan-area scan covers most of
+      // the sheet; logos and stamps are ≪ 2%).
+      imageArea += Math.abs(m[0] * m[3] - m[1] * m[2]);
+    }
+    else if (fn === OPS.paintImageXObjectRepeat) {
+      // pdf.js FOLDS a run of identical placements into one op — no per-instance
+      // `transform` op precedes it, so `m` here is just the ambient CTM (the
+      // viewport transform); placement lives in the op's OWN args instead:
+      // [objId, scaleX, scaleY, positions] where positions is a flat (x, y) ×
+      // instanceCount array. Area = |det ambient| × |scaleX·scaleY| × count.
+      const [, scaleX, scaleY, positions] = args;
+      const count = positions ? positions.length >> 1 : 0;
+      imageArea += Math.abs(m[0] * m[3] - m[1] * m[2]) * Math.abs(scaleX * scaleY) * count;
+    }
+    else if (fn === OPS.paintImageMaskXObjectRepeat) {
+      // args: [objId, a, b, c, d, positions] — a..d are the per-instance local
+      // transform's 2×2 (folded the same way as the repeat op above).
+      const [, ra, rb, rc, rd, positions] = args;
+      const count = positions ? positions.length >> 1 : 0;
+      imageArea += Math.abs(m[0] * m[3] - m[1] * m[2]) * Math.abs(ra * rd - rb * rc) * count;
+    }
+    else if (fn === OPS.paintImageMaskXObjectGroup) {
+      // args: [images] — each images[k].transform is that instance's own local
+      // [a,b,c,d,e,f] (pdf.js keeps per-instance transforms here instead of
+      // folding to *Repeat when the run isn't uniform enough).
+      const ctmDet = Math.abs(m[0] * m[3] - m[1] * m[2]);
+      for (const im of args[0] || []) {
+        const t = im && im.transform;
+        if (t) imageArea += ctmDet * Math.abs(t[0] * t[3] - t[1] * t[2]);
+      }
+    }
+    else if (fn === OPS.paintInlineImageXObjectGroup) {
+      // args: [img, map] — each map[k].transform is that instance's own local
+      // [a,b,c,d,e,f].
+      const ctmDet = Math.abs(m[0] * m[3] - m[1] * m[2]);
+      for (const mp of args[1] || []) {
+        const t = mp && mp.transform;
+        if (t) imageArea += ctmDet * Math.abs(t[0] * t[3] - t[1] * t[2]);
+      }
+    }
     else if (fn === OPS.constructPath) {
       const devW = Math.min(15, Math.max(0, Math.ceil((lw || 0) * Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2])))));
       const flags = paintFlags(i) | (devW << 4);
@@ -171,7 +217,7 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
       }
     }
   }
-  return { points, segs, meta: Uint8Array.from(metaArr) };
+  return { points, segs, meta: Uint8Array.from(metaArr), imageArea };
 }
 
 // ── 2. hatch classification ────────────────────────────────────────────────

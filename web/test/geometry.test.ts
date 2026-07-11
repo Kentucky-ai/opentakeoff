@@ -396,3 +396,106 @@ test("extractVectorGeometry: meta emission — paint ops, line width, form XObje
   assert.equal(segs[(fi + 1) * 4], 0, "paintFormXObjectEnd pops the matrix");
   assert.equal(meta[fi + 1], 3 << 4, "line width restored after the form");
 });
+
+test("extractVectorGeometry: imageArea sums |det CTM| at image paint ops", () => {
+  const OPS: Record<string, number> = {
+    save: 1, restore: 2, transform: 3, constructPath: 4, setLineWidth: 5, setGState: 6,
+    moveTo: 10, lineTo: 11, curveTo: 12, curveTo2: 13, curveTo3: 14, closePath: 15, rectangle: 16,
+    stroke: 20, fill: 22, eoFill: 23, endPath: 28, clip: 29, eoClip: 30,
+    paintFormXObjectBegin: 40, paintFormXObjectEnd: 41,
+    paintImageXObject: 85, paintInlineImageXObject: 86, paintImageMaskXObject: 87,
+  };
+  const identity = [1, 0, 0, 1, 0, 0];
+  // image placed by a 100×50 CTM → 5000 px²; a second one inside a form XObject
+  // whose OWN matrix scales the unit square down to 0.4×0.8 (100×0.004 by
+  // 50×0.016) → |det| = 0.32 px²; form pops cleanly after, back to +5000.
+  const opList = {
+    fnArray: [
+      OPS.transform, OPS.paintImageXObject,
+      OPS.paintFormXObjectBegin, OPS.paintImageMaskXObject, OPS.paintFormXObjectEnd,
+      OPS.paintInlineImageXObject,
+    ],
+    argsArray: [
+      [100, 0, 0, 50, 0, 0], null,
+      [[0.004, 0, 0, 0.016, 0, 0]], null, null,   // (100·0.004)×(50·0.016) = 0.4×0.8 → |det|=0.32 px²
+      null,                                        // back at the 100×50 CTM → +5000
+    ],
+  };
+  const g = extractVectorGeometry(opList as any, identity, OPS);
+  assert.ok(Math.abs(g.imageArea - (5000 + 0.32 + 5000)) < 1e-9, `imageArea ${g.imageArea}`);
+  assert.equal(g.segs.length, 0, "image ops emit no segments");
+});
+
+test("extractVectorGeometry: imageArea is 0 when no image ops exist", () => {
+  const OPS: Record<string, number> = {
+    save: 1, restore: 2, transform: 3, constructPath: 4, setLineWidth: 5, setGState: 6,
+    moveTo: 10, lineTo: 11, curveTo: 12, curveTo2: 13, curveTo3: 14, closePath: 15, rectangle: 16,
+    stroke: 20, fill: 22, eoFill: 23, endPath: 28, clip: 29, eoClip: 30,
+    paintFormXObjectBegin: 40, paintFormXObjectEnd: 41,
+  };
+  const opList = {
+    fnArray: [OPS.constructPath, OPS.stroke],
+    argsArray: [[[OPS.moveTo, OPS.lineTo], [0, 0, 5, 0]], null],
+  };
+  const g = extractVectorGeometry(opList as any, [1, 0, 0, 1, 0, 0], OPS);
+  assert.equal(g.imageArea, 0);
+});
+
+test("extractVectorGeometry: imageArea for the repeat/group image ops reads placement from the op's own args (Finding 7)", () => {
+  // pdf.js FOLDS a run of identical/near-identical image placements into ONE
+  // op — paintImageXObjectRepeat, paintImageMaskXObjectRepeat,
+  // paintImageMaskXObjectGroup, paintInlineImageXObjectGroup — and does NOT
+  // emit a per-instance `transform` op ahead of it, so the ambient CTM at
+  // that point is just the viewport transform. Placement instead lives in
+  // the op's own args (scaleX/scaleY/positions, or a transform per element).
+  const OPS: Record<string, number> = {
+    save: 1, restore: 2, transform: 3, constructPath: 4, setLineWidth: 5, setGState: 6,
+    moveTo: 10, lineTo: 11, curveTo: 12, curveTo2: 13, curveTo3: 14, closePath: 15, rectangle: 16,
+    stroke: 20, fill: 22, eoFill: 23, endPath: 28, clip: 29, eoClip: 30,
+    paintFormXObjectBegin: 40, paintFormXObjectEnd: 41,
+    paintImageXObject: 85, paintInlineImageXObject: 86, paintImageMaskXObject: 87,
+    paintImageXObjectRepeat: 88, paintImageMaskXObjectRepeat: 89,
+    paintImageMaskXObjectGroup: 90, paintInlineImageXObjectGroup: 91,
+  };
+  const identity = [1, 0, 0, 1, 0, 0];
+  const opList = {
+    fnArray: [
+      OPS.paintImageXObjectRepeat,
+      OPS.paintImageMaskXObjectRepeat,
+      OPS.paintImageMaskXObjectGroup,
+      OPS.paintInlineImageXObjectGroup,
+    ],
+    argsArray: [
+      ["img1", 10, 5, new Float32Array([0, 0, 10, 0])],                            // 2 instances × |10×5| = 100
+      ["mask1", 4, 0, 0, 3, new Float32Array([0, 0, 5, 5, 10, 10])],                // 3 instances × |4×3| = 36
+      [[{ transform: [2, 0, 0, 2, 0, 0] }, { transform: [1, 0, 0, 1, 5, 5] }]],     // 4 + 1 = 5
+      ["img2", [{ transform: [3, 0, 0, 1, 0, 0] }, { transform: [1, 0, 0, 4, 2, 2] }]], // 3 + 4 = 7
+    ],
+  };
+  const g = extractVectorGeometry(opList as any, identity, OPS);
+  assert.ok(Math.abs(g.imageArea - (100 + 36 + 5 + 7)) < 1e-9, `imageArea ${g.imageArea}`);
+  assert.equal(g.segs.length, 0, "image ops emit no segments");
+});
+
+test("extractVectorGeometry: a folded *Repeat op's area still scales with the ambient CTM", () => {
+  const OPS: Record<string, number> = {
+    save: 1, restore: 2, transform: 3, constructPath: 4, setLineWidth: 5, setGState: 6,
+    moveTo: 10, lineTo: 11, curveTo: 12, curveTo2: 13, curveTo3: 14, closePath: 15, rectangle: 16,
+    stroke: 20, fill: 22, eoFill: 23, endPath: 28, clip: 29, eoClip: 30,
+    paintFormXObjectBegin: 40, paintFormXObjectEnd: 41,
+    paintImageXObjectRepeat: 88,
+  };
+  // ambient viewport CTM scales 2× each axis (|det| = 4). Pre-fix, the code
+  // used |det m| ALONE and ignored the op's own scaleX/scaleY/positions —
+  // i.e. it would have read 4 px² here regardless of instance count/size,
+  // instead of the real 4 × |6×2| × 2 = 96.
+  const opList = {
+    fnArray: [OPS.transform, OPS.paintImageXObjectRepeat],
+    argsArray: [
+      [2, 0, 0, 2, 0, 0],
+      ["img", 6, 2, new Float32Array([0, 0, 20, 0])],
+    ],
+  };
+  const g = extractVectorGeometry(opList as any, [1, 0, 0, 1, 0, 0], OPS);
+  assert.ok(Math.abs(g.imageArea - 96) < 1e-9, `imageArea ${g.imageArea}`);
+});

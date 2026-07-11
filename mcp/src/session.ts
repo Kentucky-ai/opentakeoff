@@ -49,7 +49,7 @@ export interface Shape {
   verts_norm: [number, number][];
   computed: { area_sf: number; perimeter_lf: number };
   origin?:
-    | { method: "one_click_v1"; seed_norm: [number, number]; reviewed: true; hatch_filtered?: true }
+    | { method: "one_click_v1"; seed_norm: [number, number]; reviewed: true; hatch_filtered?: true; raster_traced?: true }
     | { method: "manual" }; // the receipt the canvas mints on every hand-traced shape
 }
 
@@ -166,9 +166,12 @@ export class Session {
     return s.geo;
   }
 
-  /** v1 masks come from the sheet's vector linework only. Raster seam: a scanned
-   * sheet would render via a node canvas into a future rastermask module that
-   * returns this same MaskObj shape. */
+  /** v1 masks come from the sheet's vector linework only. Raster seam: the
+   * pixel-mask module now exists — web/src/lib/rastermask.ts (buildRasterMask,
+   * pure typed arrays, returns this same MaskObj shape with softCount 0) — the
+   * browser canvas uses it for scans. Wiring it here still needs a node canvas
+   * backend (e.g. @napi-rs/canvas) to render the page's RGBA at mask scale;
+   * until then a scanned sheet stays null. */
   async ensureMask(name: string): Promise<MaskObj | null> {
     const s = this.sheet(name);
     if (s.mask === undefined) {

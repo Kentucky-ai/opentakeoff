@@ -10,6 +10,7 @@
 // Geometry math reads tfRef (always current), so drawing stays accurate.
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -31,6 +32,7 @@ import { normalizeScanRows, SCAN_ENDPOINT } from "../lib/scheduleScan";
 import { normalizeTag } from "../lib/scheduleEdit";
 import { isGoogleConfigured, isSignedIn, isAllowedDomain, getAccessToken, orgDomainHint } from "../lib/google/auth.js";
 import { extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertices, ringArea, MASK_MAX_DIM, SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE } from "../lib/oneclick";
+import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS } from "../lib/rastermask";
 import { conditionTotals, verticalWallSf } from "../lib/totals.js";
 import { shapesInZone } from "../lib/zone.js";
 import { sanitizeSheetLevels } from "../lib/sheetLevels.js";
@@ -324,6 +326,8 @@ export default function TakeoffCanvas() {
   const vectorSegsRef = useRef(new Map()); // sheetKey → flat [x1,y1,x2,y2,…] linework segments (One-Click boundary source)
   const segMetaRef = useRef(new Map());    // sheetKey → per-segment meta bytes (hatch classification input)
   const maskCacheRef = useRef(new Map());  // sheetKey → built boundary mask (lazy, dropped on re-render)
+  const sheetStatsRef = useRef(new Map()); // sheetKey → {segCount, imageFrac} — raster-fallback trigger signals
+  const rasterMaskCacheRef = useRef(new Map()); // sheetKey → Promise<MaskObj|null> — scan-pixel mask (lazy, shared across clicks)
   const snapMarkRef = useRef(null);    // SVG snap indicator
   const angleRef = useRef(null);       // current angle-locked image point (or null) — the click commits it
   const aimMarkRef = useRef(null);     // four floating liquid-glass pickets thickening the crosshair crossing
@@ -350,6 +354,14 @@ export default function TakeoffCanvas() {
   const tabInitRef = useRef(false);        // snap to the first restored tab exactly once
   const statusRef = useRef("loading");     // mirror for the gallery's thumbnail worker
   const viewRef = useRef("canvas");        // mirror for the keyboard handlers
+  // live mirrors of tool/proposal — oneClickAt is an async function whose
+  // closure over `tool`/`proposal` goes stale across an `await` (the user can
+  // switch tools or start a proposal on another panel while a raster render is
+  // in flight); the post-await guards below read these refs, never the
+  // closed-over state, so a slow raster resolve can't act on a world that has
+  // since moved on.
+  const toolRef = useRef(tool);
+  const proposalRef = useRef(proposal);
   const hydrated = useRef(false);
   // Autosave stays holstered until a user-originated edit. hydrate() flips every
   // autosave dep to a fresh identity, so the effect fires once on the post-load
@@ -828,6 +840,8 @@ export default function TakeoffCanvas() {
 
   useEffect(() => { statusRef.current = status; }, [status]);
   useEffect(() => { viewRef.current = view; }, [view]);
+  useEffect(() => { toolRef.current = tool; }, [tool]);
+  useEffect(() => { proposalRef.current = proposal; }, [proposal]);
 
   // one pdf.js document per file, cached for the life of the project view —
   // the canvas render AND the gallery thumbnails share this cache
@@ -875,6 +889,8 @@ export default function TakeoffCanvas() {
     vectorSegsRef.current.clear();
     segMetaRef.current.clear();
     maskCacheRef.current.clear();
+    sheetStatsRef.current.clear();
+    rasterMaskCacheRef.current.clear();
     canvasInvertedRef.current.clear();
     pageObjsRef.current.clear();
     renderScalesRef.current.clear();
@@ -922,11 +938,24 @@ export default function TakeoffCanvas() {
         // snap-to-vector index per panel (best-effort; off until the user enables it)
         m.pageObj.getOperatorList().then((ol) => {
           if (stale()) return;
-          const { points, segs, meta } = extractVectorGeometry(ol, m.viewport.transform, pdfjsLib.OPS);
+          const { points, segs, meta, imageArea } = extractVectorGeometry(ol, m.viewport.transform, pdfjsLib.OPS);
           snapGridsRef.current.set(m.key, buildSnapGrid(points, SNAP_CELL));
           vectorSegsRef.current.set(m.key, segs);
           segMetaRef.current.set(m.key, meta);
-        }).catch(() => {});
+          // raster-fallback trigger signals: how much of the sheet is placed
+          // image, and whether the vector linework is dense enough to bound rooms
+          sheetStatsRef.current.set(m.key, { segCount: segs.length >> 2, imageFrac: Math.min(1, imageArea / (m.w * m.h)) });
+        }).catch(() => {
+          if (stale()) return;
+          // A rejected op-list (corrupt embedded JBIG2/CCITT — exactly the class of
+          // scanned PDFs this feature serves) must not leave stats permanently
+          // unset: with no sentinel, rasterEligible and vectorViable both read
+          // false forever and oneClickAt is stuck on the vector branch showing
+          // "try again in a second" for the sheet's whole lifetime. A sentinel that
+          // reads as image-dominant/segment-empty lets the raster fallback engage
+          // instead (rasterEligible true, vectorViable false).
+          sheetStatsRef.current.set(m.key, { segCount: 0, imageFrac: 1 });
+        });
         // read the drawn scale note off this panel's page text (best-effort)
         m.pageObj.getTextContent().then((tc) => {
           if (stale()) return;
@@ -1787,7 +1816,7 @@ export default function TakeoffCanvas() {
         setShapes((ss) => ss.map((s) => {
           if (s.id !== d.shapeId) return s;
           const sp = panelByKey(s.sheet_id);
-          const [slx, sly] = ocSnap(sp.key, p[0] - sp.xOffset, p[1]);   // snap the corner to true endpoints
+          const [slx, sly] = ocSnap(sp.key, p[0] - sp.xOffset, p[1], !!s.origin?.raster_traced);   // snap the corner to true endpoints (never on a raster-traced shape — see ocSnap)
           const vn = s.verts_norm.map((v, i) => (i === d.vIndex ? [slx / sp.img.w, sly / sp.img.h] : v));
           return { ...s, verts_norm: vn, computed: recomputeShape({ ...s, verts_norm: vn }) };
         }));
@@ -1798,7 +1827,8 @@ export default function TakeoffCanvas() {
           // to the linework independently (normalized → local px → snap → normalized)
           const sp = panelByKey(s.sheet_id);
           const dx = (p[0] - d.start[0]) / sp.img.w, dy = (p[1] - d.start[1]) / sp.img.h;
-          const snapN = (nx, ny) => { const [lx, ly] = ocSnap(sp.key, nx * sp.img.w, ny * sp.img.h); return [lx / sp.img.w, ly / sp.img.h]; };
+          const rt = !!s.origin?.raster_traced;
+          const snapN = (nx, ny) => { const [lx, ly] = ocSnap(sp.key, nx * sp.img.w, ny * sp.img.h, rt); return [lx / sp.img.w, ly / sp.img.h]; };
           const na = snapN(d.oaN[0] + dx, d.oaN[1] + dy), nb = snapN(d.obN[0] + dx, d.obN[1] + dy);
           const vn = s.verts_norm.map((v, i) => (i === d.i ? na : i === d.j ? nb : v));
           return { ...s, verts_norm: vn, computed: recomputeShape({ ...s, verts_norm: vn }) };
@@ -2063,36 +2093,176 @@ export default function TakeoffCanvas() {
     }
     return mo;
   }
-  function oneClickAt(p, negative) {
+  // Scan-pixel mask for sheets with no usable linework: a fresh dedicated pdf.js
+  // render at mask scale — NEVER the panel canvas (dark mode bakes an inversion
+  // into those pixels, and a hi-res panel is a 100MB+ readback) — thresholded by
+  // rastermask.ts. Cached as a promise so concurrent clicks share one render.
+  function ensureRasterMask(key) {
+    let pr = rasterMaskCacheRef.current.get(key);
+    if (!pr) {
+      const pageObj = pageObjsRef.current.get(key), dims = panelImgs[key];
+      if (!pageObj || !dims?.w) return Promise.resolve(null);
+      const rs = renderScalesRef.current.get(key) || RENDER_SCALE;
+      const ws = Math.min(1, MASK_MAX_DIM / Math.max(dims.w, dims.h, 1));
+      const mw = Math.max(2, Math.ceil(dims.w * ws)), mh = Math.max(2, Math.ceil(dims.h * ws));
+      // distinct namespace from the panel's own renderTasksRef entry (keyed by
+      // `key` alone) so registering this task can't clobber — or get clobbered
+      // by — the panel's primary render; group-switch cleanup cancels both.
+      const taskKey = `${key}:raster`;
+      pr = (async () => {
+        const cv = document.createElement("canvas");
+        cv.width = mw; cv.height = mh;
+        const ctx = cv.getContext("2d", { willReadFrequently: true });
+        if (!ctx) throw new Error("2d canvas context unavailable"); // caught below like any other render failure — clear message over a cryptic null-deref
+        const rt = pageObj.render({ canvasContext: ctx, viewport: pageObj.getViewport({ scale: rs * ws }), background: "#ffffff" });
+        renderTasksRef.current.set(taskKey, rt);
+        try {
+          await rt.promise;
+        } finally {
+          renderTasksRef.current.delete(taskKey);
+        }
+        const px = ctx.getImageData(0, 0, mw, mh);
+        cv.width = cv.height = 0;   // drop the backing store
+        return buildRasterMask(px.data, mw, mh, ws);
+      })().catch(() => {
+        // A rejection here (pdf.js render failure — worker restart, a lazily-
+        // fetched embedded image erroring; getImageData allocation failure
+        // under memory pressure; a buildRasterMask throw) must NOT be cached
+        // as a resolved-null forever — that would make every future click on
+        // this sheet show the permanent failure message even though a retry
+        // would succeed. Evict so the next ensureRasterMask call rebuilds.
+        rasterMaskCacheRef.current.delete(key);
+        return null;
+      });
+      rasterMaskCacheRef.current.set(key, pr);
+    }
+    return pr;
+  }
+  // The propose tail, shared by the vector and raster paths. Raster differences:
+  // a looser RDP eps (scan contours wobble) and NO vertex snapping — there are
+  // no true endpoints on a scan, and pulling room corners onto the title-block's
+  // vector corners would corrupt the ring. Duplicate/carve checks run inside a
+  // FUNCTIONAL setProposal so a click racing the first raster render can't
+  // clobber state.
+  function proposeRegion(f, tp, local, negative, raster) {
+    const upp = uppFor(tp.key);
+    if (!upp) return;
+    let ring;
+    if (raster) ring = traceRegion(f, RASTER_RDP_EPS);
+    else {
+      const grid = snapGridsRef.current.get(tp.key);
+      ring = snapVertices(traceRegion(f), (x, y, d) => (grid ? nearestSnap(grid, x, y, d) : null), 7);
+    }
+    if (ring.length < 3) { setCommitMsg("Couldn't trace that space — trace it with Area (A)."); return; }
+    const area_sf = +(ringArea(ring) * upp * upp).toFixed(2);
+    const perim_lf = +(closedMetrics(ring).perim * upp).toFixed(2);
+    // Decide accept/dup/carve-reject INSIDE the functional updater, against
+    // its own authoritative `prev` — not proposalRef, which only catches up
+    // on the next render's passive-effect flush (a macrotask). proposeRegion
+    // can resume after an await (the raster path shares a cached
+    // ensureRasterMask promise across concurrent clicks on the same panel),
+    // and two continuations on that shared promise resume as back-to-back
+    // MICROTASK reactions with no render/effect flush able to run in
+    // between — so a second click's dedup check would read proposalRef from
+    // BEFORE the first click's setProposal landed and wrongly pass.
+    //
+    // setCommitMsg still must not be called from inside the updater itself
+    // — React may invoke it more than once (StrictMode double-invoke, or a
+    // discarded concurrent render), and firing a message from inside one
+    // would announce a decision that never lands. So the verdict is stashed
+    // in this scope-local `outcome` var (a plain reassignment, not a
+    // setState call) and acted on AFTER setProposal returns.
+    //
+    // That read is wrapped in flushSync rather than just trusted to be
+    // synchronous: React's "run the updater eagerly, at dispatch time" fast
+    // path is an internal bail-out optimization, not a public guarantee, and
+    // it does NOT reliably apply here — proposeRegion's raster call always
+    // resumes from a promise continuation (after `await ensureRasterMask`),
+    // never a discrete DOM event, so React defers the updater to the next
+    // render instead of running it inline (confirmed against the real
+    // shared-promise race in this file: `outcome` read back as undefined
+    // every time, in both dev and a production build, with or without a
+    // second racing click). flushSync forces that render to happen, and
+    // this updater to run, before setProposal returns, so `outcome` is
+    // always populated by the time it's read below — for the ordinary
+    // single-click case AND for two clicks racing the same shared promise
+    // (the second call's setProposal, and its read of `outcome`, still runs
+    // strictly after the first call's flushSync has fully committed).
+    let outcome;
+    flushSync(() => {
+      setProposal((prev) => {
+        const rs = prev && prev.key === tp.key ? prev.regions : [];
+        const kind = negative ? "neg" : "pos";
+        if (rs.some((r) => r.kind === kind && pointInPoly(local[0], local[1], r.poly))) {
+          outcome = "dup";
+          return prev;
+        }
+        if (negative && !rs.some((r) => r.kind === "pos" && pointInPoly(local[0], local[1], r.poly))) {
+          outcome = "needsPos";
+          return prev;
+        }
+        outcome = "added";
+        return { key: tp.key, regions: [...rs, { kind, seed: local, poly: ring, area_sf, perim_lf, hf: !!f.hatchFiltered, rt: !!raster }] };
+      });
+    });
+    if (outcome === "dup") setCommitMsg(negative ? "That cutout is already carved." : "Already selected — ⌥-click carves an enclosed cutout; ⏎ creates.");
+    else if (outcome === "needsPos") setCommitMsg("⌥-click carves an enclosed area INSIDE the selection (a column or shaft) — click its room first.");
+    else setCommitMsg("");
+  }
+  async function oneClickAt(p, negative) {
     const tp = panelAt(p[0]);
     const upp = uppFor(tp.key);
     if (!upp) { setCommitMsg(`Set the scale for ${labelFor(tp)} first.`); return; }
     if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
     if (proposal && proposal.key !== tp.key) { setCommitMsg(`Finish the selection on ${labelFor(panelByKey(proposal.key))} first — ⏎ creates it, Esc discards.`); return; }
-    const mo = ensureMask(tp.key);
-    if (!mo) { setCommitMsg("Still reading this sheet's linework — try again in a second."); return; }
     const local = [p[0] - tp.xOffset, p[1]];
-    const f = floodRegion(mo, local[0], local[1], fillSens);
+    // Trigger policy: vector is exact and always wins where it works — including
+    // the fork's hatch escalation (fillSens), which runs untouched here. The
+    // raster path engages only where vectors can't bound the room — a scan
+    // wrapper (big placed image, near-zero linework) runs raster PRIMARY; a
+    // mixed sheet (big image UNDER real linework) retries on pixels only after
+    // the vector flood fails. A pure-vector sheet never touches pixels.
+    const stats = sheetStatsRef.current.get(tp.key);
+    const rasterEligible = !!stats && stats.imageFrac >= RASTER_MIN_IMG_FRAC;
+    const vectorViable = !!stats && stats.segCount >= RASTER_MIN_SEGS;
+    if (!rasterEligible || vectorViable) {
+      const mo = ensureMask(tp.key);
+      if (!mo && !rasterEligible) { setCommitMsg("Still reading this sheet's linework — try again in a second."); return; }
+      if (mo) {
+        const f = floodRegion(mo, local[0], local[1], fillSens);
+        if (f.status === "ok") { proposeRegion(f, tp, local, negative, false); return; }
+        if (!rasterEligible) {
+          setCommitMsg(f.status === "leak"
+            ? "That space isn't enclosed on the plan linework — the fill spilled. Click a more enclosed spot, or trace it with Area (A)."
+            : "Landed in dense linework (hatching/text). Zoom in and click an open spot, or trace it with Area (A).");
+          return;
+        }
+      }
+    }
+    setCommitMsg("Reading the scan…");
+    const seq = renderSeqRef.current;
+    const rmo = await ensureRasterMask(tp.key);
+    if (seq !== renderSeqRef.current) { setCommitMsg(""); return; }   // sheet group changed mid-render — the new sheet must not be left showing a stale "Reading the scan…" ("…" messages never auto-expire, see commitMsg's 6s-timer effect
+    // The raster render can take real time on a large scan; the user may have
+    // switched tools or started a DIFFERENT panel's proposal while it was in
+    // flight. renderSeq alone only catches a sheet-GROUP change — re-validate
+    // against the LIVE tool/proposal (refs, not the closed-over `tool`/
+    // `proposal` — this is an async continuation resuming after other renders)
+    // so a late raster result can never silently replace another panel's
+    // in-progress proposal or paint a ghost selection in the wrong tool.
+    if (toolRef.current !== "oneclick" || (proposalRef.current && proposalRef.current.key !== tp.key)) { setCommitMsg(""); return; }
+    if (!rmo) { setCommitMsg("Couldn't read this scan — trace it with Area (A)."); return; }
+    // The raster mask is single-tier (softCount 0), so floodRegion's hatch
+    // escalation — and with it the Fill sensitivity knob — is structurally
+    // inert on scans; no sensitivity is passed.
+    const f = floodRegion(rmo, local[0], local[1]);
     if (f.status !== "ok") {
       setCommitMsg(f.status === "leak"
-        ? "That space isn't enclosed on the plan linework — the fill spilled. Click a more enclosed spot, or trace it with Area (A)."
-        : "Landed in dense linework (hatching/text). Zoom in and click an open spot, or trace it with Area (A).");
+        ? "That space isn't enclosed on the scan — the fill escaped through a gap (faded line or open doorway). Click a more enclosed spot, or trace it with Area (A)."
+        : "Landed on dense scan ink (text or hatching). Zoom in and click an open spot, or trace it with Area (A).");
       return;
     }
-    const grid = snapGridsRef.current.get(tp.key);
-    const ring = snapVertices(traceRegion(f), (x, y, d) => (grid ? nearestSnap(grid, x, y, d) : null), 7);
-    if (ring.length < 3) { setCommitMsg("Couldn't trace that space — trace it with Area (A)."); return; }
-    const regions = proposal?.regions || [];
-    if (regions.some((r) => r.kind === (negative ? "neg" : "pos") && pointInPoly(local[0], local[1], r.poly))) {
-      setCommitMsg(negative ? "That cutout is already carved." : "Already selected — ⌥-click carves an enclosed cutout; ⏎ creates."); return;
-    }
-    if (negative && !regions.some((r) => r.kind === "pos" && pointInPoly(local[0], local[1], r.poly))) {
-      setCommitMsg("⌥-click carves an enclosed area INSIDE the selection (a column or shaft) — click its room first."); return;
-    }
-    const area_sf = +(ringArea(ring) * upp * upp).toFixed(2);
-    const perim_lf = +(closedMetrics(ring).perim * upp).toFixed(2);
-    setProposal({ key: tp.key, regions: [...regions, { kind: negative ? "neg" : "pos", seed: local, poly: ring, area_sf, perim_lf, hf: !!f.hatchFiltered }] });
-    setCommitMsg("");
+    proposeRegion(f, tp, local, negative, true);
   }
   function createProposal() {
     if (!proposal || !proposal.regions.length) return;
@@ -2103,7 +2273,7 @@ export default function TakeoffCanvas() {
       verts_norm: r.poly.map(([x, y]) => [x / tp.img.w, y / tp.img.h]),
       computed: { area_sf: r.area_sf, perimeter_lf: r.perim_lf },
       // the provenance receipt: machine-proposed, human-reviewed at the Create gate
-      origin: { method: "one_click_v1", seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, ...(r.hf ? { hatch_filtered: true } : {}) },
+      origin: { method: "one_click_v1", seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, ...(r.hf ? { hatch_filtered: true } : {}), ...(r.rt ? { raster_traced: true } : {}) },
     }));
     setShapes((s) => [...s, ...made]);
     const sf = proposal.regions.reduce((n, r) => n + (r.kind === "neg" ? -r.area_sf : r.area_sf), 0);
@@ -2121,7 +2291,15 @@ export default function TakeoffCanvas() {
     const upp = uppFor(key) || 0;
     return { area_sf: +(ringArea(poly) * upp * upp).toFixed(2), perim_lf: +(closedMetrics(poly).perim * upp).toFixed(2) };
   };
-  const ocSnap = (key, x, y) => {
+  // `bypass` (true for a raster region/shape) skips nearestSnap entirely — on a
+  // scan wrapper the snap grid holds only the placed-image/clip-rect corners
+  // and title-block linework (extractVectorGeometry's few real points, not the
+  // scan ink), so snapping a dragged raster corner onto it yanks the point
+  // onto geometry unrelated to the room being edited. Same rationale
+  // proposeRegion already applies to the initial trace — the handles must not
+  // reintroduce it.
+  const ocSnap = (key, x, y, bypass) => {
+    if (bypass) return [x, y];
     const grid = snapGridsRef.current.get(key);
     const hit = grid ? nearestSnap(grid, x, y, 8 / tfRef.current.scale) : null;
     return hit ? [hit[0], hit[1]] : [x, y];
@@ -2194,12 +2372,12 @@ export default function TakeoffCanvas() {
         if (ri !== d.ri) return r;
         let poly;
         if (d.kind === "oc-vertex") {
-          const np = ocSnap(pr.key, lx, ly);
+          const np = ocSnap(pr.key, lx, ly, r.rt);
           poly = r.poly.map((v, i) => (i === d.vi ? np : v));
         } else {
           const dx = lx - d.sx, dy = ly - d.sy;
-          const na = ocSnap(pr.key, d.oa[0] + dx, d.oa[1] + dy);
-          const nb = ocSnap(pr.key, d.ob[0] + dx, d.ob[1] + dy);
+          const na = ocSnap(pr.key, d.oa[0] + dx, d.oa[1] + dy, r.rt);
+          const nb = ocSnap(pr.key, d.ob[0] + dx, d.ob[1] + dy, r.rt);
           poly = r.poly.map((v, i) => (i === d.i ? na : i === d.j ? nb : v));
         }
         return { ...r, poly, ...ocMetrics(poly, pr.key) };
@@ -3331,7 +3509,7 @@ export default function TakeoffCanvas() {
     const label = fillSens === SENS_STRICT ? "Strict" : fillSens === SENS_BALANCED ? "Balanced" : fillSens === SENS_AGGRESSIVE ? "Aggressive" : `${Math.round(fillSens * 100)}%`;
     const snap = (v) => { for (const n of NOTCHES) if (Math.abs(v - n) <= 0.06) return n; return v; };
     return (
-      <div title={"One-Click fill sensitivity — how far a fill reaches past a room's hatch pattern.\nStrict: stop at the linework (original behavior).\nBalanced: recover hatch-lined rooms to the walls (default).\nAggressive: cross more pattern and tolerate more growth.\nLower it if fills spill; raise it if hatched rooms come up short."}
+      <div title={"One-Click fill sensitivity — how far a fill reaches past a room's hatch pattern.\nStrict: stop at the linework (original behavior).\nBalanced: recover hatch-lined rooms to the walls (default).\nAggressive: cross more pattern and tolerate more growth.\nLower it if fills spill; raise it if hatched rooms come up short.\nScanned sheets trace from pixels — sensitivity doesn't apply there."}
         style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px" }}>
         <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)" }}>Fill</span>
         <input name="fill-sensitivity" type="range" min={SENS_STRICT} max={SENS_AGGRESSIVE} step={0.01} value={fillSens} list="fill-sens-notches"
@@ -4277,6 +4455,9 @@ export default function TakeoffCanvas() {
                 <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{pos.length} space{pos.length === 1 ? "" : "s"}{neg.length ? ` − ${neg.length} cutout${neg.length === 1 ? "" : "s"}` : ""} · {num(sf / 9)} SY</div>
                 <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{ocSel ? "drag to move · Delete drops this point · Esc deselects" : "hover a fill to edit: drag a corner or edge · shift-click an edge adds a point"}</div>
                 <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>click adds a space · ⌥-click carves a cutout · ⏎ Create · ⌫ undo · Esc cancel</div>
+                {proposal.regions.some((r) => r.rt) && (
+                  <div style={{ fontSize: 11.5, color: "var(--c-warning)", marginTop: 4 }}>Traced from scan pixels — verify edges before Create.</div>
+                )}
               </>
             );
           })() : tool === "surface" && poly.length >= 2 && liveUpp ? (
