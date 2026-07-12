@@ -211,7 +211,17 @@ input, textarea { font-family: var(--f-body); }
     overflow: visible !important;
     display: block !important;
     background: #fff !important;   /* the app's dark view must never print dark */
-    color: #111;
+    /* var(--ink) not a hard #111: print resolves the light palette (dark
+       overrides are @media screen), and an imported theme's ink reaches text
+       that relies on inherited color (e.g. the masthead title) */
+    color: var(--ink);
+    /* render element fills in the PDF regardless of the browser's "Background
+       graphics" toggle (off by default): the condition color swatches, the
+       totals band, and the grouped section-head fills all rely on background
+       color to read. Scoped to the panel so only the document — not app chrome —
+       forces exact colors. */
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
   body.report-open .report-scroll {
     overflow: visible !important;

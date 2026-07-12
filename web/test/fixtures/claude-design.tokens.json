@@ -1,0 +1,80 @@
+{
+  "$schema": "https://design-tokens.org",
+  "name": "345 / Fin — Drafting-Table Document System",
+  "description": "Brand-neutral spec-book document tokens shared by 345 Construction & Flooring Co. and Fin Workspaces. Brands differ only in logo; the palette, type, and components are shared.",
+  "version": "2.0.0",
+
+  "color": {
+    "neutral": {
+      "paper":   { "value": "#FBFBF8", "oklch": "oklch(0.97 0.008 85)",  "use": "Page background — the bond-paper base for every doc" },
+      "paper-2": { "value": "#EBE5D6", "oklch": "oklch(0.94 0.010 85)",  "use": "Group-header fill, highlighted rate rows" },
+      "paper-3": { "value": "#DCD5C5", "oklch": "oklch(0.90 0.012 85)",  "use": "Filled regions of the personnel allocation meter" },
+      "ink":   { "value": "#2E333B", "oklch": "oklch(0.22 0.015 250)", "use": "Primary text, headings, strong rules" },
+      "ink-2": { "value": "#535963", "oklch": "oklch(0.38 0.018 250)", "use": "Body copy, addresses" },
+      "ink-3": { "value": "#7A8089", "oklch": "oklch(0.55 0.015 250)", "use": "Labels, eyebrows, meta, footer" },
+      "ink-4": { "value": "#A6ABB2", "oklch": "oklch(0.72 0.012 250)", "use": "Empty regions of the allocation meter" }
+    },
+    "rule": {
+      "rule":        { "value": "#C8C6C1", "use": "Hairline rules between item rows (ink @ ~18% on paper)" },
+      "rule-strong": { "value": "#8C8E93", "use": "Group-row top/bottom rules, footer top (ink @ ~45%)" }
+    },
+    "accent-345": {
+      "brand-green": { "value": "#288234", "use": "Status / badge accents only — never body type or rules" },
+      "brand-blue":  { "value": "#125792", "use": "Status / badge accents only" },
+      "blueprint":   { "value": "#3E6F94", "oklch": "oklch(0.45 0.08 230)", "use": "Blueprint wash accent (optional)" }
+    },
+    "accent-fin": {
+      "fin-green":  { "value": "#3E4635", "use": "Fin primary ink / wordmark color" },
+      "fin-orange": { "value": "#CF6802", "use": "Fin accent dots in the 'fin.' mark" }
+    }
+  },
+
+  "font": {
+    "family": {
+      "web":  { "display": "Inter Tight", "body": "Inter Tight", "mono": "Inter Tight", "note": "Single family; tabular-nums replaces a true monospace" },
+      "docx": { "display": "Calibri", "body": "Calibri", "mono": "Calibri", "fallback": "Arial", "note": "Pre-installed on every Office install — no embed step" }
+    },
+    "weight": {
+      "bold": 700, "semibold": 600, "medium": 500, "regular": 400, "light": 300
+    },
+    "feature-settings": "ss01, cv11; tabular-nums + lining-nums on all technical figures"
+  },
+
+  "type-scale": {
+    "_note": "px = web (doc-styles-v2.css); pt ≈ px ÷ 1.33 = DOCX (generators/style.py)",
+    "doc-title":    { "px": 48, "pt": 36, "weight": 700, "case": "upper", "tracking": "0.005em", "leading": 0.95 },
+    "totals-value": { "px": 32, "pt": 24, "weight": 700, "case": "as-is", "tracking": "-0.02em", "tabular": true },
+    "party-total":  { "px": 30, "pt": 22, "weight": 700, "tabular": true },
+    "party-name":   { "px": 15, "pt": 12, "weight": 700 },
+    "section-title":{ "px": 15, "pt": 11, "weight": 700, "case": "upper", "tracking": "0.06em" },
+    "division-title":{ "px": 11.5, "pt": 9, "weight": 700, "case": "upper", "tracking": "0.06em" },
+    "body":         { "px": 11.5, "pt": 9, "weight": 400, "leading": 1.6 },
+    "cell":         { "px": 10.5, "pt": 8, "weight": 400 },
+    "label":        { "px": 9, "pt": 7, "weight": 500, "case": "upper", "tracking": "0.22em" },
+    "table-head":   { "px": 8, "pt": 6, "weight": 500, "case": "upper", "tracking": "0.22em" },
+    "footer":       { "px": 9, "pt": 7, "weight": 500, "case": "upper", "tracking": "0.16em" }
+  },
+
+  "page": {
+    "size": "US Letter (8.5in × 11in)",
+    "margin-vertical": "0.55in",
+    "margin-horizontal": "0.6in",
+    "corner-brackets": "1.25px ink L-brackets at all four page corners (web only; dropped in DOCX)"
+  },
+
+  "rules": {
+    "hairline": { "web": "1px", "docx-eighths": 2, "color": "rule" },
+    "strong":   { "web": "1px", "docx-eighths": 4, "color": "rule-strong" },
+    "ink":      { "web": "1.25px", "docx-eighths": 10, "color": "ink" }
+  },
+
+  "voice": {
+    "upper-case": "Doc title, eyebrows, section titles, section meta, division row titles, labels, totals label, rates grade column, footer",
+    "mixed-case": "Party names, addresses, body, item descriptions, personnel names, dates, notes, role names",
+    "separators": "Mid-dot · between metadata tokens",
+    "dates": "DD MMM YYYY (e.g. 18 Apr 2026) — title case, no commas",
+    "section-numbering": "Two-digit zero-padded, continuous across sheets (01, 02, 03…)",
+    "doc-numbers": "KIND-YYYY-MMDD (e.g. BID-2026-0418, TC-2026-0418)",
+    "forbidden": "No gradients, rounded corners, shadows, emoji, icons, or filler"
+  }
+}
