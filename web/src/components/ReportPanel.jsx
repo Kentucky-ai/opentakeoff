@@ -568,7 +568,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                       header stranding at a page bottom is accepted in v1 */}
                   {grouped && (
                     <tr style={{ breakAfter: "avoid" }}>
-                      <td colSpan={tableCols.length} style={{ ...td, textAlign: "left", fontFamily: "var(--f-display)", fontSize: 13, fontWeight: 700, paddingTop: 14, ...(gp.value === null ? { fontStyle: "italic" } : {}) }}>
+                      <td colSpan={tableCols.length} style={{ ...td, textAlign: "left", fontFamily: "var(--f-display)", fontSize: 13, fontWeight: 700, background: "var(--paper-cream)", borderTop: "1px solid var(--ink-soft)", borderBottom: "1px solid var(--ink-soft)", padding: "9px 10px", ...(gp.value === null ? { fontStyle: "italic" } : {}) }}>
                         {gp.label}
                       </td>
                     </tr>
