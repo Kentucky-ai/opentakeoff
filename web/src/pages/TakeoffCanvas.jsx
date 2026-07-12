@@ -450,6 +450,8 @@ export default function TakeoffCanvas() {
   const statusRef = useRef("loading");     // mirror for the gallery's thumbnail worker
   const viewRef = useRef("canvas");        // mirror for the keyboard handlers
   const hydrated = useRef(false);
+  const hydrationEcho = useRef(false);   // swallow the one autosave the load's own setStates trigger
+  const [loadError, setLoadError] = useState("");   // annotations load failed — autosave stays disarmed
   const tfRef = useRef({ x: 0, y: 0, scale: 1 });
   const syncRaf = useRef(0);
   const lastSyncRef = useRef(0);       // last tf mirror sync (perf.now) — scheduleSync throttles against it
@@ -669,8 +671,14 @@ export default function TakeoffCanvas() {
       if (a.units === "metric" || a.units === "imperial") setUnits(a.units);
       setScales(sc);
       if (a.sheet_levels && typeof a.sheet_levels === "object") setSheetLevels(a.sheet_levels);
+      hydrationEcho.current = true;   // the setStates above fire the autosave effect once — that echo re-saves what was just loaded; skip it
       hydrated.current = true;
-    }).catch(() => { hydrated.current = true; });
+    }).catch((e) => {
+      // Do NOT arm autosave on a failed load: the in-memory state is empty, so
+      // the first edit would overwrite the intact saved takeoff with nothing.
+      // Leave it disarmed and say so — a reload retries the read.
+      setLoadError(String((e && e.message) || e || "unknown error"));
+    });
     return () => { off = true; };
   }, []);
 
@@ -959,6 +967,10 @@ export default function TakeoffCanvas() {
   // omitting it dropped markup saves and could persist a stale markups array.
   useEffect(() => {
     if (!hydrated.current) return;
+    // the load's own setStates land here once (React batches them into one
+    // effect run) — saving that run would just re-write what was read and
+    // flash "Saving…" on every open
+    if (hydrationEcho.current) { hydrationEcho.current = false; return; }
     const payload = { project_name: projectName, units, sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px })), conditions, shapes, markups, sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, sheet_levels: sheetLevels };
     saveDataRef.current = payload;          // keep the freshest payload for an unmount flush
     setSaveState("saving");
@@ -2997,6 +3009,16 @@ export default function TakeoffCanvas() {
             return next;
           })}
         />
+      )}
+
+      {loadError && (
+        <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 60, display: "flex", alignItems: "center", gap: 12, maxWidth: 640, padding: "10px 14px", background: "var(--paper-bright)", border: "1px solid var(--c-danger)", boxShadow: "var(--shadow-2)", fontSize: 12.5, color: "var(--ink)" }}>
+          <span>
+            <strong style={{ color: "var(--c-danger)" }}>Couldn't load this project's saved takeoff</strong> ({loadError}).
+            Autosave is paused so nothing overwrites your saved work — reload the tab to retry.
+          </span>
+          <button className="btn-ghost" onClick={() => window.location.reload()} style={{ whiteSpace: "nowrap" }}>Reload</button>
+        </div>
       )}
 
       {showReport && (
