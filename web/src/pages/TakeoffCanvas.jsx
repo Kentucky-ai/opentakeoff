@@ -17,6 +17,7 @@ import { ingestFiles } from "../lib/ingest.js";
 import ToolMenu from "../components/ToolMenu.jsx";
 import SheetGallery from "../components/SheetGallery.jsx";
 import ReportPanel from "../components/ReportPanel.jsx";
+import RevisionsPanel from "../components/RevisionsPanel.jsx";
 import { Icon } from "../brand/icons.jsx";
 import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, extractSheetNumber, detectScale, scaleFromLabel } from "../lib/sheets";
 import { isAiConfigured, visionQuery, scaleReadPrompt } from "../lib/ai.js";
@@ -395,6 +396,7 @@ export default function TakeoffCanvas() {
   const [saveState, setSaveState] = useState("idle");
   const [commitMsg, setCommitMsg] = useState("");   // transient status line (misnamed for history; just the message bar)
   const [showReport, setShowReport] = useState(false);  // Reports overlay (STACK-style breakdown + export)
+  const [showRevisions, setShowRevisions] = useState(false);  // Revisions overlay (save snapshots + compare quantity deltas)
   const [showAiSettings, setShowAiSettings] = useState(false); // bring-your-own-key AI settings modal
   const [aiScaleBusy, setAiScaleBusy] = useState("");    // sheetKey with an AI scale-read in flight
   const [projectName, setProjectName] = useState("");   // optional label for the report header
@@ -2886,6 +2888,7 @@ export default function TakeoffCanvas() {
         <div style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", gap: 6, zIndex: 8 }}>
           {panelBtn(() => setShowMarkupPanel((v) => !v), "markup", "Markups on these sheets (clouds, callouts, notes)", showMarkupPanel, markupCount)}
           {panelBtn(() => setShowTakeoffs((v) => !v), "takeoffs", "Takeoffs — conditions + running totals", showTakeoffs, visibleShapes.length)}
+          {panelBtn(() => setShowRevisions(true), "revisions", "Revisions — save the takeoff at each bid revision, compare what moved", showRevisions)}
         </div>
 
         {/* markup panel — manage clouds/callouts/text + link or create RFIs (top-left, clear of HUD/FABs) */}
@@ -2993,6 +2996,25 @@ export default function TakeoffCanvas() {
           sheetLabel={(k) => tabLabel(k)}
           onMarkedSet={exportMarkedSet} markedSetDark={darkMode}
           onClose={() => setShowReport(false)}
+        />
+      )}
+
+      {showRevisions && (
+        <RevisionsPanel
+          current={{ project_name: projectName, units, conditions, shapes, markups }}
+          units={units}
+          onRestore={(p) => {
+            // swap in the revision's takeoff state; sheets/tabs/scales stay as
+            // they are (shapes on since-removed sheets are harmless — they only
+            // render on their own sheet). Autosave persists the swap.
+            const conds = p.conditions || [];
+            setConditions(conds);
+            setActiveCond(conds[0]?.id || null);
+            setShapes(p.shapes || []);
+            setMarkups(Array.isArray(p.markups) ? p.markups : []);
+            setSelectedId(null); setSelectedMarkupId(null); setProposal(null); setPoly([]);
+          }}
+          onClose={() => setShowRevisions(false)}
         />
       )}
 
