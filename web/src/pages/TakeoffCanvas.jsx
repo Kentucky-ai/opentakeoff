@@ -1253,8 +1253,12 @@ export default function TakeoffCanvas() {
     if (s.measure_role === "count") return { count: 1 };
     if (s.measure_role === "surface_area") {
       // the wall keeps the height it was DRAWN at; the condition H is only the
-      // default for new traces (and the fallback for legacy shapes without one)
-      const h = Number(s.height_ft) || Number(condById[s.condition_id]?.height_ft) || 0;
+      // default for new traces (and the fallback for legacy shapes without one).
+      // An explicit override wins outright — even 0 — so a zeroed wall can't
+      // silently recompute at the condition height.
+      const h = s.height_override === true
+        ? Number(s.height_ft) || 0
+        : Number(s.height_ft) || Number(condById[s.condition_id]?.height_ft) || 0;
       const LF = openLen(pts) * u;
       return { area_sf: +(LF * h).toFixed(2), perimeter_lf: +LF.toFixed(2) };
     }
@@ -1415,7 +1419,10 @@ export default function TakeoffCanvas() {
     if (s.measure_role === "count") return `${tag} · ${num(s.computed?.count || 1, 0)} EA`;
     if (s.measure_role === "deduct") return `${tag} · −${fa(a)} deduct`;
     if (s.measure_role === "surface_area") {
-      const h = s.height_ft || condById[s.condition_id]?.height_ft;
+      // mirror recomputeShape: an explicit override reads as its own value, even 0
+      const h = s.height_override === true
+        ? s.height_ft
+        : (s.height_ft || condById[s.condition_id]?.height_ft);
       return `${tag} · ${fa(a)} wall (${fl(lf)} × ${num(Number(h) || 0, 2)}′)`;
     }
     if (s.measure_role === "linear") return `${tag} · ${fl(lf)}${a > 0 ? ` · ${fa(a)} border` : ""}`;
@@ -1842,7 +1849,8 @@ export default function TakeoffCanvas() {
     const sel = shapes.find((s) => s.id === selectedId);
     if (!sel) { setCommitMsg("Select a takeoff to copy."); return; }
     clipRef.current = [{ condition_id: sel.condition_id, measure_role: sel.measure_role,
-                         verts_norm: sel.verts_norm.map((v) => [...v]), from: sel.sheet_id, height_ft: sel.height_ft }];
+                         verts_norm: sel.verts_norm.map((v) => [...v]), from: sel.sheet_id,
+                         height_ft: sel.height_ft, height_override: sel.height_override === true }];
     setCommitMsg("Copied — ⌘V pastes onto the sheet under your cursor.");
   }
   function pasteClipboard(offset = 0.03) {
@@ -1856,7 +1864,11 @@ export default function TakeoffCanvas() {
       cross = cross || !same;
       // same sheet: nudge so the copy is visible; other sheet: same relative spot
       const vn = c.verts_norm.map(([x, y]) => (same ? [Math.min(0.999, x + offset), Math.min(0.999, y + offset)] : [x, y]));
-      const s = { id: uid("shp"), sheet_id: tp.key, condition_id: c.condition_id, measure_role: c.measure_role, verts_norm: vn, ...(c.height_ft ? { height_ft: c.height_ft } : {}) };
+      // height_ft spreads on != null (not truthiness): an explicit 0-ft override
+      // must survive the paste, and the override flag rides with its value.
+      const s = { id: uid("shp"), sheet_id: tp.key, condition_id: c.condition_id, measure_role: c.measure_role, verts_norm: vn,
+                  ...(c.height_ft != null ? { height_ft: c.height_ft } : {}),
+                  ...(c.height_override ? { height_override: true } : {}) };
       return { ...s, computed: recomputeShape(s) };
     });
     setShapes((s) => [...s, ...made]);
@@ -1868,7 +1880,8 @@ export default function TakeoffCanvas() {
     const sel = shapes.find((s) => s.id === selectedId);
     if (!sel) { setCommitMsg("Select a takeoff to duplicate."); return; }
     clipRef.current = [{ condition_id: sel.condition_id, measure_role: sel.measure_role,
-                        verts_norm: sel.verts_norm.map((v) => [...v]), from: sel.sheet_id, height_ft: sel.height_ft }];
+                        verts_norm: sel.verts_norm.map((v) => [...v]), from: sel.sheet_id,
+                        height_ft: sel.height_ft, height_override: sel.height_override === true }];
     pasteClipboard();
   }
   // ── markup (cloud / callout / text) — annotations, not measurements ─────────
