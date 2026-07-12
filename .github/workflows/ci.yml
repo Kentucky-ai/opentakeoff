@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# least-privilege token: every job only checks out and reads
+permissions:
+  contents: read
+
 jobs:
   web:
     runs-on: ubuntu-latest
