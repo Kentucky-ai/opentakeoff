@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { parseThemeFile, themeToCssVars, activeThemeVars } from "../src/lib/reportTheme.js";
+import { parseThemeFile, themeToCssVars, activeThemeVars, activeTheme } from "../src/lib/reportTheme.js";
 
 const claude = JSON.parse(
   readFileSync(new URL("./fixtures/claude-design.tokens.json", import.meta.url), "utf8"),
@@ -15,6 +15,11 @@ test("imports neutral ink/paper and the web font family from a Claude Design tok
   assert.equal(theme.color.ink, "#2E333B");
   assert.equal(theme.color.paper, "#FBFBF8");
   assert.equal(theme.font.display, "Inter Tight");
+});
+
+test("captures the theme name for display", () => {
+  assert.equal(parseThemeFile(claude).theme.name, "345 / Fin — Drafting-Table Document System");
+  assert.equal(parseThemeFile({}).theme.name, undefined);
 });
 
 test("normalizes hex colors to canonical #RRGGBB (expands shorthand, adds #, upper-cases)", () => {
@@ -103,6 +108,25 @@ test("activeThemeVars returns {} (defaults stand) when nothing is stored", () =>
   (globalThis as any).localStorage = { getItem() { return null; }, setItem() {}, removeItem() {} };
   try {
     assert.deepEqual(activeThemeVars(), {});
+  } finally {
+    delete (globalThis as any).localStorage;
+  }
+});
+
+test("activeTheme exposes vars + name + warnings for the UI, and is empty when none", () => {
+  (globalThis as any).localStorage = {
+    _s: { opentakeoff_report_theme: JSON.stringify(claude) } as Record<string, string>,
+    getItem(k: string) { return this._s[k] ?? null; },
+    setItem(k: string, v: string) { this._s[k] = v; },
+    removeItem(k: string) { delete this._s[k]; },
+  };
+  try {
+    const t = activeTheme();
+    assert.equal(t.name, "345 / Fin — Drafting-Table Document System");
+    assert.equal(t.vars["--cobalt"], "#125792");
+    assert.deepEqual(t.warnings, []);
+    (globalThis as any).localStorage.removeItem("opentakeoff_report_theme");
+    assert.deepEqual(activeTheme(), { vars: {}, name: null, warnings: [] });
   } finally {
     delete (globalThis as any).localStorage;
   }

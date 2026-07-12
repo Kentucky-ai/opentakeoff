@@ -18,7 +18,7 @@ import { shapesDetail, shapesToCsv, shapesToJson } from "../lib/shapesExport.js"
 import { rfisToCsv, rfisToJson } from "../lib/rfi.js";
 import { reportWorkbook, buildXlsx } from "../lib/xlsx.js";
 import { buildContribution, sendContribution, isContributeConfigured } from "../lib/contribute.js";
-import { activeThemeVars } from "../lib/reportTheme.js";
+import { activeTheme, saveActiveThemeFile, clearActiveTheme } from "../lib/reportTheme.js";
 import { loadCompany, saveCompany, normalizeLogoToPng } from "../lib/identity.js";
 
 const num = (v, d = 1) => (Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: d });
@@ -44,9 +44,32 @@ const sheetNum = (v, d = 1) => {
 export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], clientInfo = {}, onClientInfo, conditionColumns = [], shapeLabels = [] }) {
   // memoized on the source arrays: project-name/client-info keystrokes re-render
   // the panel without touching conditions/shapes, so the totaling passes skip
-  // imported report theme → CSS-var overrides, scoped to this panel's subtree so
-  // it reskins the document (screen + print + masthead) without touching app chrome
-  const themeVars = useMemo(() => activeThemeVars(), []);
+  // imported report theme → { vars, name, warnings }. vars are spread onto this
+  // panel's root so the theme scopes to the document subtree (screen + print +
+  // masthead) without touching app chrome. Held in state so an import applies live.
+  const [theme, setTheme] = useState(() => activeTheme());
+  const [showTheme, setShowTheme] = useState(false);
+  const themeRef = useRef(null);
+  const themeFileRef = useRef(null);
+  const importThemeFile = (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = ""; // let the same file re-trigger onChange next time
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const raw = String(reader.result || "");
+      try {
+        JSON.parse(raw); // reject non-JSON before storing
+        saveActiveThemeFile(raw);
+        setTheme(activeTheme());
+      } catch {
+        setTheme((t) => ({ ...t, warnings: ["That file isn't valid JSON — expected a design-token file."] }));
+      }
+    };
+    reader.readAsText(f);
+  };
+  const resetTheme = () => { clearActiveTheme(); setTheme({ vars: {}, name: null, warnings: [] }); };
+
   const rows = useMemo(() => conditionTotals(conditions, shapes).filter((r) => r.shape_count > 0), [conditions, shapes]);
   const bySheet = useMemo(() => sheetTotals(conditions, shapes), [conditions, shapes]);
   const g = useMemo(() => grandTotals(rows), [rows]);
@@ -156,6 +179,13 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [showTemplates]);
+
+  useEffect(() => {
+    if (!showTheme) return;
+    const onDown = (e) => { if (themeRef.current && !themeRef.current.contains(e.target)) setShowTheme(false); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [showTheme]);
 
   // Apply a template: set BOTH the column prefs and the grouping mode, and write
   // them through to the sticky defaults so the layout persists (and #14's "By
@@ -304,7 +334,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   );
 
   return (
-    <div className="report-panel" style={{ ...themeVars, position: "absolute", inset: 0, zIndex: 50, display: "flex", flexDirection: "column", background: "var(--paper-cream)" }}>
+    <div className="report-panel" style={{ ...theme.vars, position: "absolute", inset: 0, zIndex: 50, display: "flex", flexDirection: "column", background: "var(--paper-cream)" }}>
       <div className="report-toolbar" style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", borderBottom: "1px solid var(--ink)", background: "var(--paper-bright)" }}>
         <Icon name="takeoffs" size={18} />
         <strong style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)" }}>Takeoff report</strong>
@@ -404,6 +434,44 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                   {syncMsg && <div style={{ fontSize: 10.5, color: "var(--ink-muted)", marginTop: 6 }}>{syncMsg}</div>}
                 </div>
               )}
+            </div>
+          )}
+        </div>
+        <div ref={themeRef} style={{ position: "relative" }}>
+          <button className="btn-ghost" onClick={() => setShowTheme((s) => !s)} title="Apply an imported design-token theme to the report (colors + fonts)">Theme{theme.name ? " ●" : ""}</button>
+          {showTheme && (
+            <div className="report-modal" style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 70, width: 292, background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-2)", padding: "10px 12px", fontSize: 12.5, color: "var(--ink)" }}>
+              <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
+                <strong style={{ fontFamily: "var(--f-display)", fontSize: 13 }}>Report theme</strong>
+                <div style={{ flex: 1 }} />
+                <button onClick={() => setShowTheme(false)} title="Close"
+                  style={{ border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 13, padding: 0, lineHeight: 1 }}>✕</button>
+              </div>
+              <div style={{ fontSize: 11, color: "var(--ink-muted)", lineHeight: 1.5, marginBottom: 8 }}>
+                Import a design-token file (e.g. a Claude Design <code>tokens.json</code>) to reskin this report — palette and fonts only. Your company identity stays where it is.
+              </div>
+              {theme.name ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <span className="pip" />
+                  <div style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }} title={theme.name}>{theme.name}</div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginBottom: 8 }}>Using the default house style.</div>
+              )}
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => themeFileRef.current?.click()} title="Choose a design-token file to import"
+                  style={{ flex: 1, padding: "5px 8px", border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Import theme…</button>
+                {theme.name && (
+                  <button onClick={resetTheme} title="Remove the imported theme and return to the default"
+                    style={{ padding: "5px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 12 }}>Reset</button>
+                )}
+              </div>
+              {theme.warnings.length > 0 && (
+                <ul style={{ margin: "8px 0 0", paddingLeft: 16, fontSize: 10.5, color: "var(--c-warning)", lineHeight: 1.5 }}>
+                  {theme.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                </ul>
+              )}
+              <input ref={themeFileRef} type="file" accept="application/json,.json" onChange={importThemeFile} style={{ display: "none" }} />
             </div>
           )}
         </div>

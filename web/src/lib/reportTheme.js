@@ -18,7 +18,7 @@ export function normalizeHex(raw) {
 /**
  * @typedef {{ ink?: string, accent?: string, paper?: string, positive?: string, warning?: string, danger?: string }} ThemeColor
  * @typedef {{ display?: string, body?: string, mono?: string }} ThemeFont
- * @typedef {{ color: ThemeColor, font: ThemeFont }} Theme
+ * @typedef {{ name?: string, color: ThemeColor, font: ThemeFont }} Theme
  */
 
 // ── importer ────────────────────────────────────────────────────────────────
@@ -31,6 +31,10 @@ export function parseThemeFile(json) {
   const font = {};
 
   const warnings = [];
+  /** @type {Theme} */
+  const theme = { color, font };
+  if (typeof json?.name === "string" && json.name.trim()) theme.name = json.name.trim();
+
   const neutral = json?.color?.neutral || {};
   // a role that's ABSENT is silently skipped (partial themes are normal); a role
   // that's PRESENT but unparseable is a real authoring mistake — warn and omit
@@ -70,7 +74,7 @@ export function parseThemeFile(json) {
     if (typeof web[role] === "string" && web[role].trim()) font[role] = web[role].trim();
   }
 
-  return { theme: { color, font }, warnings };
+  return { theme, warnings };
 }
 
 // ── CSS adapter ───────────────────────────────────────────────────────────────
@@ -108,24 +112,31 @@ export function themeToCssVars(theme) {
 // and adapted at apply time so a schema change only touches parseThemeFile.
 const ACTIVE_KEY = "opentakeoff_report_theme";
 
-// activeThemeVars() -> { "--ink": …, … } CSS-var object for the CURRENT imported
-// theme (or {} if none / private mode / corrupt). Spread onto the report root so
-// the theme scopes to the document subtree, not the whole app. Imported font
-// families get a graceful fallback since they may not be loaded in-app.
-/** @returns {Record<string, string>} */
-export function activeThemeVars() {
+// activeTheme() -> { vars, name, warnings } for the CURRENT imported theme, or an
+// empty shell if none / private mode / corrupt. `vars` is spread onto the report
+// root so the theme scopes to the document subtree, not the whole app; imported
+// font families get a graceful fallback since they may not be loaded in-app.
+/** @returns {{ vars: Record<string, string>, name: string|null, warnings: string[] }} */
+export function activeTheme() {
+  const empty = { vars: {}, name: null, warnings: [] };
   try {
     const raw = localStorage.getItem(ACTIVE_KEY);
-    if (!raw) return {};
-    const { theme } = parseThemeFile(JSON.parse(raw));
+    if (!raw) return empty;
+    const { theme, warnings } = parseThemeFile(JSON.parse(raw));
     const vars = themeToCssVars(theme);
     for (const k of ["--f-display", "--f-body", "--f-mono"]) {
       if (vars[k]) vars[k] = `"${vars[k]}", system-ui, sans-serif`;
     }
-    return vars;
+    return { vars, name: theme.name || null, warnings };
   } catch {
-    return {}; // private mode / SSR / corrupt JSON → no theme, defaults stand
+    return empty; // private mode / SSR / corrupt JSON → no theme, defaults stand
   }
+}
+
+// Back-compat/convenience: just the CSS vars for the active theme.
+/** @returns {Record<string, string>} */
+export function activeThemeVars() {
+  return activeTheme().vars;
 }
 
 // saveActiveThemeFile(json)/clearActiveTheme() — the import + reset seam a UI
