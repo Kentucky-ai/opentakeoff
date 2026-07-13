@@ -288,6 +288,45 @@ export const localStore = {
   },
 };
 
+// A localStore instance whose ANNOTATIONS are scoped to a single project, so an
+// opted-in cloud project keeps its own local-first annotation blob instead of
+// sharing the one global "annotations" key. This is the local half of the
+// local-first composite: annotations become per-project locally, while the cloud
+// sync layer (lib/google/, dynamically imported by the app shell) is what makes
+// them visible on another machine.
+//
+// Deliberately narrow:
+//   • folderId == null returns the SAME `localStore` object — the anonymous,
+//     browser-only app is byte-identical (same reference, same "annotations"
+//     key), so no importer, DB version, or migration changes.
+//   • Only loadAnnotations/saveAnnotations are re-scoped (key "annotations:<id>").
+//     The existing global "annotations" blob simply IS the null-scope project.
+//   • PDFs and the browser-global libraries (templates/materials/stamps) stay
+//     GLOBAL — cloud mode routes PDFs to cloudStore, and the libraries are
+//     cross-project by design (see their key comments above).
+//   • Snapshots keep their explicit `project` argument (cloudStore/snapshotSync
+//     pass the scope), so they are untouched here.
+// Spreading `localStore` is safe: none of its methods use `this` (they close over
+// module scope), so the copied methods keep working and we override just two.
+/** @param {string|null} [folderId] Drive project folder id; null/"" = the global anonymous store */
+export function createLocalStore(folderId = null) {
+  // Treat empty string like null: projectIdFromUrl() returns "" for anonymous
+  // mode, so a caller threading it through here must land on the global
+  // "annotations" blob, NOT a distinct "annotations:" scope.
+  if (folderId == null || folderId === "") return localStore;
+  const annKey = ANN_KEY + ":" + folderId;
+  return {
+    ...localStore,
+    async loadAnnotations() {
+      const a = await withDb((db) => tx(db, META_STORE, "readonly", (os) => os.get(annKey)));
+      return a || emptyAnnotations();
+    },
+    async saveAnnotations(payload) {
+      await withDb((db) => tx(db, META_STORE, "readwrite", (os) => os.put({ ...payload, schema: ANN_SCHEMA }, annKey)));
+    },
+  };
+}
+
 // ── the mode-aware store seam ──────────────────────────────────────────────
 // The default build is byte-for-byte the old client-only app: `store` is
 // `localStore` and nothing here touches the network. The optional, team-only

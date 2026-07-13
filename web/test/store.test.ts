@@ -8,7 +8,7 @@ import "fake-indexeddb/auto";
 import { IDBFactory } from "fake-indexeddb";
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { store, localStore, isStaleTabError, ANN_SCHEMA, STALE_TAB_MESSAGE, friendlyStoreError } from "../src/lib/store.js";
+import { store, localStore, createLocalStore, isStaleTabError, ANN_SCHEMA, STALE_TAB_MESSAGE, friendlyStoreError } from "../src/lib/store.js";
 import { createCloudStore } from "../src/lib/cloudStore.js";
 
 beforeEach(() => {
@@ -180,6 +180,55 @@ test("putSnapshot: idempotent, id-preserving upsert of a verbatim record incl. s
   await assert.rejects(store.putSnapshot({ id: "snap_x", payload: {} } as any), /record\.ts/);
   await assert.rejects(store.putSnapshot({ id: "snap_x", ts: NaN, payload: {} } as any), /record\.ts/);
   await assert.rejects(store.putSnapshot({ id: "snap_x", ts: 1 } as any), /record\.payload/);
+});
+
+test("createLocalStore(null) is the same global store — anonymous app is byte-identical", async () => {
+  // null scope returns the very same object: no new key, no migration, the
+  // existing "annotations" blob IS the anonymous project.
+  assert.equal(createLocalStore(null), localStore);
+  assert.equal(createLocalStore(), localStore);
+  // "" is anonymous too (projectIdFromUrl() returns "" for local mode) — it must
+  // NOT become a distinct "annotations:" scope
+  assert.equal(createLocalStore(""), localStore);
+  // and it reads/writes the same legacy key
+  await localStore.saveAnnotations({ conditions: [{ id: "c1" }], shapes: [] } as any);
+  const viaNull = await createLocalStore(null).loadAnnotations();
+  assert.deepEqual(viaNull.conditions, [{ id: "c1" }]);
+});
+
+test("createLocalStore(folderId) scopes annotations per project and isolates them", async () => {
+  const A = createLocalStore("folderA");
+  const B = createLocalStore("folderB");
+
+  await A.saveAnnotations({ conditions: [{ id: "a" }], shapes: [] } as any);
+  await B.saveAnnotations({ conditions: [{ id: "b" }], shapes: [] } as any);
+
+  assert.deepEqual((await A.loadAnnotations()).conditions, [{ id: "a" }]);
+  assert.deepEqual((await B.loadAnnotations()).conditions, [{ id: "b" }]);
+
+  // a scoped project never sees the global/anonymous blob, and vice-versa
+  await localStore.saveAnnotations({ conditions: [{ id: "global" }], shapes: [] } as any);
+  assert.deepEqual((await A.loadAnnotations()).conditions, [{ id: "a" }]);
+  assert.deepEqual((await localStore.loadAnnotations()).conditions, [{ id: "global" }]);
+
+  // an untouched scope hydrates the empty shape, not another project's data
+  assert.deepEqual((await createLocalStore("folderC").loadAnnotations()).conditions, []);
+
+  // saveAnnotations stamps the schema like the global store does
+  assert.equal((await A.loadAnnotations() as any).schema, ANN_SCHEMA);
+});
+
+test("createLocalStore(folderId): PDFs and browser-global libraries stay global (unscoped)", async () => {
+  const A = createLocalStore("folderA");
+  // a PDF added through a scoped store is visible to the global store — PDFs are
+  // intentionally NOT per-project locally (cloud mode routes them to cloudStore)
+  await A.addPdf({ name: "plan.pdf", arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer } as any);
+  assert.deepEqual((await localStore.listSheets()).map((s: any) => s.name), ["plan.pdf"]);
+  // browser-global libraries delegate to the same keys too: a save through a
+  // scoped store is read back by the global store (materials/stamps/templates
+  // are cross-project by design — the scoped store overrides only annotations)
+  await A.saveMaterialLibrary([{ id: "m1", name: "Carpet", unit: "sqft" }] as any);
+  assert.equal((await localStore.loadMaterialLibrary()).length, 1);
 });
 
 test("v1->v2 upgrade preserves pdfs + annotations, and snapshots work after", async () => {
