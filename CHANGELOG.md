@@ -2,6 +2,23 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-07-12 — v0.3.0
+
+### Added
+- **Excel (.xlsx) export** — the Report gains a real workbook next to CSV/JSON: **Summary** (per-condition breakdown + grand total), **By sheet** (base measured quantities per sheet × condition, for reconciling against the drawing set — multiplier and waste stay condition-level concerns), **Materials** (per-condition needs + the combined buy list), and **Shapes** (the per-shape audit trail; deducts carry their sign). A hand-rolled SpreadsheetML writer zipped with fflate (already a dependency, lazy-loaded at click time) — no SheetJS, no exceljs. Strings always go out as inline strings so a formula-shaped condition name stays inert text; numbers keep full precision in the cell with display rounding done by number-format styles, so the workbook shows what the report shows while staying exact for downstream arithmetic. Bold frozen headers, content-derived column widths, autofilter over the data rows only. Validated end-to-end with an independent parser (openpyxl).
+- **Revisions** — bid revisions and addenda as data. Save the takeoff (conditions, shapes, markups) as a named revision (IndexedDB schema v2, new `revisions` store), then **compare any two — or a revision against the live takeoff — as quantity deltas** per condition, per sheet, and on the supporting-materials buy list, with a compare CSV export. The diff is deliberately quantity-level, not geometric: conditions pair by id with a finish-tag fallback (ordinal-keyed so duplicate tags can't collide), "changed" is judged at display precision so sub-display re-trace wobble reads unchanged, and a waste-only edit moves exactly one column — the ordered quantity. **Restore is never a one-way door**: it auto-banks the live takeoff as a revision first. New Revisions rail toggle (clock icon).
+
+### Security
+- **CSP + security headers on the deploy** (`netlify.toml`): `script-src 'self'` + wasm, no `unsafe-eval` (pdf.js verified working under it); `connect-src` stays open on purpose for the BYO-AI and capture seams. Verified enforcing with zero app violations.
+- **Zip-ingest bounds** — the plan-set unzip path gains caps (entry count, shared decompressed budget, per-entry pre-decompression size, nesting depth) so a hostile archive can't balloon the browser.
+
+### Fixed
+- **Zoom/fit/dark buttons no longer fire the armed tool** — a left press on the canvas-corner button stack stopped propagating, so clicking ⌖/☾ mid-measure doesn't drop a stray vertex (the documented One-Click-through-zoom-button bug).
+- **Autosave guards** — the hydration echo no longer re-saves what was just loaded, and a failed load leaves autosave **disarmed** with a banner instead of clobbering the saved takeoff with an empty state.
+
+### CI
+- Least-privilege workflow token (`permissions: contents: read`), `.nvmrc` (Node 20), and a single `npm run check` entry point.
+
 ## 2026-07-11
 
 ### Fixed

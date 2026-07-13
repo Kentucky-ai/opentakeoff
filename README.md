@@ -69,9 +69,11 @@ A condition is one finish (LVP, carpet, tile, base, …). Each carries a **line/
 Per condition, list the consumables that actually go on the order: adhesive, sealer, polyurethane, thinset, grout, cove-base adhesive. Each has a **coverage rate** and a **basis** (floor SF / linear LF / each), and the order quantity derives automatically — measured ÷ coverage, **rounded up** to whole units. Adhesive and mortar lines get **coverage presets** (trowel notches, rollers) that fill the spread rate, and grout lines get a **calculator** that derives SF/bag from tile size, thickness, joint width, and bag weight. This is the layer most takeoff tools punt on. It's shipped here.
 
 ### 6. Reports & export
-A per-condition breakdown — **Floor / Wall / Border SF, LF, EA, total SF, SY**, with and without waste — plus a combined **materials buy list**. Export to **CSV** or **JSON**, or print it. Waste is applied only in the report (the order quantity), never to the live measured number, so your takeoff and your buy list stay honest about which is which.
+A per-condition breakdown — **Floor / Wall / Border SF, LF, EA, total SF, SY**, with and without waste — plus a combined **materials buy list**. Export to **CSV**, **JSON**, or a real **Excel workbook** (Summary, By-sheet, Materials, and Shapes-audit tabs — full-precision cells, formula-shaped names stay inert text), or print it. Waste is applied only in the report (the order quantity), never to the live measured number, so your takeoff and your buy list stay honest about which is which.
 
 And when the numbers need to leave the app: **Marked Set PDF**. One click builds a distribution-ready PDF entirely in your browser — every sheet with the work burned in as drawn (condition colors, hatches, quantity chips, count markers, markups) behind a legend cover with the full totals and a by-sheet breakdown. Send it to a GC who will never install anything.
+
+When the addendum lands: **Revisions**. Save the takeoff as a named revision at each bid revision, then compare any two — or a revision against the live takeoff — as **quantity deltas** per condition, per sheet, and on the buy list, with a compare CSV. Restore auto-banks the live takeoff first, so it's never a one-way door.
 
 ### 7. A vector-sharp canvas + plan-set tools
 Zoom in and the linework stays **razor-sharp**: past ~1.15× the visible region re-renders straight from the PDF vectors at your current zoom — Bluebeam/AutoCAD-style — instead of magnifying a fixed bitmap, so fine callouts and hatching never blur. It overlays just what's on screen, so there's no giant full-sheet bitmap to hold. Plus a **dark view** (☾) that inverts the sheet itself — a true negative print, white linework on black, not a CSS filter — with hatches retuned so takeoffs read as well at night as they do at noon. And a visual **gallery** (`G`) to pick and open sheets, **Regroup** to restore a side-by-side composition in one click, per-sheet **Hi-Res** base rendering, **Snap** (beta) to plan lines and corners, and a separate **markup layer** (revision clouds, callouts, text notes) that's never counted in the totals.
@@ -94,7 +96,8 @@ Every drawing, scale, condition, and markup autosaves to **your browser** (Index
 | **Conditions** | Color + CAD hatch per finish, waste %, ×N multiplier, height, thickness → border SF |
 | **Assemblies** | Per-condition supporting materials with coverage rates → rounded order quantities, per-material coverage presets + grout calculator |
 | **Report** | Per-condition Floor/Wall/Border SF, LF, EA, SY, with/without waste + materials buy list |
-| **Export** | CSV, JSON, print, **Marked Set PDF** (sheets + burned-in takeoff + legend cover, built in-browser) |
+| **Export** | CSV, JSON, **Excel (.xlsx)**, print, **Marked Set PDF** (sheets + burned-in takeoff + legend cover, built in-browser) |
+| **Revisions** | Save the takeoff at each bid revision, compare what moved — quantity deltas per condition, per sheet, and on the buy list; guarded restore |
 | **Markups** | Revision clouds, callouts, text notes — separate layer, never counted |
 | **View** | Light or **dark (negative print)** — sheet pixels inverted at draw time, persists per browser |
 | **Storage** | IndexedDB + localStorage — client-only, nothing uploaded |
