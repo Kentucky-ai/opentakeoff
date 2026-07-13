@@ -63,7 +63,7 @@ import {
   MEASURE_TOOLS, CUT_TOOLS, MARKUP_TOOLS, MARKUP_IDS,
 } from "../lib/canvasConstants.js";
 import { autoRenderScale, invertCanvasPixels, uid, clamp, isDangerMsg, instantiateTemplate, seedConditions } from "../lib/canvasUtil.js";
-import { fmtCheckLen, parseLenInput, checkVerdict, M_PER_FT } from "../lib/units";
+import { fmtCheckLen, parseLenInput, checkVerdict, M_PER_FT, areaVal, areaUnit } from "../lib/units";
 import * as panelGeom from "../lib/panelGeometry.js";
 
 // Display units for the check tool + scale guide. Upstream carries a metric
@@ -71,6 +71,10 @@ import * as panelGeom from "../lib/panelGeometry.js";
 // take a UnitSystem, so we pin it here — swap for the units state when the
 // metric port lands.
 const UNITS = "imperial";
+
+// Carpet roll width — a run reaching this needs a seam. The live cursor readout
+// turns amber at/past it so the estimator sees where seams fall while tracing.
+const CARPET_ROLL_FT = 12;
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -1764,20 +1768,37 @@ export default function TakeoffCanvas() {
     }
     if (aimChipRef.current) {
       const chip = aimChipRef.current;
-      let txt = "";
+      let txt = "", over = false;
       if (tool === "check" && check.length === 1) {
-        // live length to the cursor while picking the second end of the dimension
+        // live length to the cursor while picking the second end of the dimension.
+        // No CARPET_ROLL_FT amber here — a dimension string is not a seam plan.
         const u = uppFor(panelAt(check[0][0]).key);
         if (u) txt = fmtCheckLen(Math.hypot(cur[0] - check[0][0], cur[1] - check[0][1]) * u, UNITS) + (lock ? ` · ${lock.deg}°` : "");
-      }
-      if (!txt) {
-        if (lock) {
-          txt = `${lock.deg}°`;
-          if (anchor && liveUpp) txt += ` · ${num(Math.hypot(cur[0] - anchor[0], cur[1] - anchor[1]) * liveUpp)}′`;
-        } else if (snapRef.current) txt = "snap";
-      }
+      } else if ((tool === "rect" || tool === "deduct-rect") && poly.length === 1 && liveUpp) {
+        // rectangle: live W × H + area (SF and SY imperial — carpet is bought in SY)
+        const a = poly[0];
+        const w = Math.abs(cur[0] - a[0]) * liveUpp, h = Math.abs(cur[1] - a[1]) * liveUpp;
+        const sf = w * h;
+        txt = `${fmtCheckLen(w, UNITS)} × ${fmtCheckLen(h, UNITS)} · ${num(areaVal(sf, UNITS))} ${areaUnit(UNITS)}${UNITS === "metric" ? "" : ` · ${num(sf / 9)} SY`}`;
+        over = w >= CARPET_ROLL_FT - 0.02 || h >= CARPET_ROLL_FT - 0.02;
+      } else if (drawing && anchor && liveUpp) {
+        // line/polyline: live segment length, ALWAYS (not just under the 45° lock)
+        const len = Math.hypot(cur[0] - anchor[0], cur[1] - anchor[1]) * liveUpp;
+        txt = lock ? `${lock.deg}° · ${fmtCheckLen(len, UNITS)}` : fmtCheckLen(len, UNITS);
+        over = len >= CARPET_ROLL_FT - 0.02;
+      } else if (lock) {
+        txt = `${lock.deg}°`;
+      } else if (snapRef.current) txt = "snap";
       if (txt) {
         if (chip.__t !== txt) { chip.textContent = txt; chip.__t = txt; }
+        // 12 ft roll-width cue — the chip goes amber when a run reaches roll width (a seam falls here)
+        const os = over ? "1" : "";
+        if (chip.__over !== os) {
+          chip.__over = os;
+          chip.style.background = over ? "var(--c-warning)" : "var(--paper-bright)";
+          chip.style.color = over ? "var(--paper-bright)" : "var(--ink)";
+          chip.style.borderColor = over ? "var(--c-warning)" : "var(--ink)";
+        }
         chip.style.transform = `translate3d(${ex + 14}px, ${ey + 18}px, 0)`;
         chip.style.display = "block";
       } else chip.style.display = "none";
