@@ -109,9 +109,9 @@ export function createSyncStore({ base, provider, folderId, onRemoteUpdate, save
       // defer: pendingRemote is still set, so flushPending() retries once idle. (The loser
       // snapshot already taken is harmless — an immutable extra backup; content-hash dedup
       // is the plan's named punt.) This narrows the LOCAL clobber window to just the two
-      // fast IDB writes below; it does NOT close the canvas RE-RENDER race — onRemoteUpdate
-      // fires synchronously here but the canvas applies it async, so Slice 5's callback must
-      // ALSO re-check busy at apply time and re-defer (recorded in the Slice 5 task).
+      // fast IDB writes below; the canvas RE-RENDER race — onRemoteUpdate fires
+      // synchronously here but the canvas applies it async — is closed on the canvas
+      // side by Slice 5b's apply-time isBusy re-check + idle re-read-local (Case 2).
       if (isBusy()) break;
       await base.saveAnnotations(remote.data);               // adopt remote as canonical
       await metaPut(K.syncedRev, remote.rev);                // advance LAST (crash spine)
