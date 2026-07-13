@@ -91,6 +91,22 @@ Every drawing, scale, condition, and markup autosaves to **your browser** (Index
 <img src="docs/img/report.png" alt="OpenTakeoff report — per-condition breakdown and materials buy list" width="780"/>
 </div>
 
+### Optional: team cloud mode (Google sign-in + Drive)
+
+Everything above is the default, and it's unchanged: open the page and you're an
+anonymous, local-only user — no account, no upload, nothing to configure. A team
+on Google Workspace can *optionally* sign in to unlock a shared mode instead:
+projects live as folders in the team's own Google **Drive**, the project list is
+deep-linked from your existing **Glide** app, and material costs come from a
+synced `pricing.json`. It's strictly additive — turn it off (set nothing) and the
+app is exactly the local tool it always was. The security posture stays honest:
+still a plain static site, **no secrets in the bundle**, team-only because the
+Google OAuth app is **Internal** to your domain, and your data sits in **your own
+Drive**. To set it up, see [`docs/GOOGLE_SETUP.md`](docs/GOOGLE_SETUP.md) and
+[`docs/GLIDE_INTEGRATION.md`](docs/GLIDE_INTEGRATION.md). A cloud deployment can
+also opt into **local-first sync** (`VITE_CLOUD_SYNC=1`): annotations stay canonical
+in the browser and sync to Drive in the background, so the canvas is instant and
+survives a flaky network — see [`docs/SYNC_ARCHITECTURE.md`](docs/SYNC_ARCHITECTURE.md).
 ## What's in the box
 
 | Area | What you get |
