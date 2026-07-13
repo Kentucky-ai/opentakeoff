@@ -1,29 +1,19 @@
-// Per-browser preferences (localStorage), mirroring the opentakeoff_dark /
-// opentakeoff_panel pattern. Cloud sync is OPT-IN and default OFF — flag-off
-// reproduces today's behavior byte-for-byte (ProjectGate builds the legacy
-// Drive-canonical store; nothing local-first is wired). Slice 6 adds the Settings
-// UI that flips this and a status line; here we only read/write the flag.
+// Build-time feature flag for local-first + optional Drive sync. Set VITE_CLOUD_SYNC=1
+// at build time (e.g. the Netlify env) to enable it for the WHOLE deployment at once;
+// unset / anything-else = OFF, which reproduces today's Drive-canonical behavior
+// byte-for-byte (ProjectGate builds the legacy store — nothing local-first is wired).
 //
-// No cloud vocabulary or imports — this is a plain browser-pref helper so the
-// gating decision stays cheap and synchronous (never blocks a mount on network).
+// Deliberately a DEPLOYMENT flag, NOT a per-user toggle. Local-first sync relies on an
+// app-level rev precondition that only enabled clients honor, so a PARTIAL fleet (some
+// browsers on, some off) is the mixed-fleet clobber hazard the design warns about.
+// Flipping the whole build at once is the "don't share a project until its whole
+// collaborator set is opted in" rule, enforced by the deploy instead of left to
+// per-user chance. Rollback is one env change + redeploy, no code revert.
+//
+// No imports / no cloud vocabulary — the gating decision stays cheap and synchronous
+// (never blocks a mount on network), and the anonymous bundle pulls in nothing.
 
-const CLOUD_SYNC_KEY = "opentakeoff_cloud_sync";
-
-/** True when this browser has opted into local-first + optional Drive sync. */
-export function cloudSyncOptedIn() {
-  try {
-    return localStorage.getItem(CLOUD_SYNC_KEY) === "1";
-  } catch {
-    return false; // private mode / storage disabled → treat as not opted in
-  }
-}
-
-/** Enable/disable the opt-in for this browser. Slice 6's Settings toggle calls this. */
-export function setCloudSyncOptedIn(on) {
-  try {
-    if (on) localStorage.setItem(CLOUD_SYNC_KEY, "1");
-    else localStorage.removeItem(CLOUD_SYNC_KEY);
-  } catch {
-    /* storage unavailable → the flag simply stays off */
-  }
+/** True when THIS BUILD enabled local-first + optional Drive sync (VITE_CLOUD_SYNC=1). */
+export function cloudSyncEnabled() {
+  return ((import.meta.env && import.meta.env.VITE_CLOUD_SYNC) || "") === "1";
 }

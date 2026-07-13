@@ -8,7 +8,7 @@ import ProjectHome from "./components/ProjectHome.jsx";
 import { GoogleAuthProvider, useGoogleAuth } from "./lib/google/AuthContext.jsx";
 import { projectIdFromUrl, setActiveStore } from "./lib/store.js";
 import { isGoogleConfigured, getAccessToken } from "./lib/google/auth.js";
-import { cloudSyncOptedIn } from "./lib/prefs.js";
+import { cloudSyncEnabled } from "./lib/prefs.js";
 import { projectHomeFolderId } from "./lib/projectHome.js";
 import { initTheme } from "./lib/theme.js";
 
@@ -103,7 +103,7 @@ function ProjectGate({ projectId }) {
     setError("");
     (async () => {
       try {
-        const optedIn = cloudSyncOptedIn();   // per-browser flag, default OFF → legacy path
+        const optedIn = cloudSyncEnabled();   // build flag (VITE_CLOUD_SYNC), default OFF → legacy path
         const [{ createDrive }, { createCloudStore }] = await Promise.all([
           import("./lib/google/drive.js"),
           import("./lib/cloudStore.js"),
