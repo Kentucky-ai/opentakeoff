@@ -38,12 +38,29 @@ import hashlib
 import json
 import os
 import sys
+import threading
 import urllib.request
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MAX_BODY = 32 * 1024 * 1024  # a contribution is text; anything near this is not one
 CAPTURE_SCHEMA = "opentakeoff.capture.v1"
+
+# A synced share can wedge at the KERNEL level — a stalled sync client can leave
+# open()/stat() on a placeholder file hanging indefinitely, which no try/except
+# catches. So the mirror never runs on the request thread: it runs on an
+# expendable daemon thread with a wall-clock cap, and the semaphore is the
+# strand budget — once this many threads sit wedged, further mirror attempts
+# skip outright (the corpus write itself already succeeded). A stranded thread
+# frees its slot on its own if the share recovers.
+_MIRROR_STRANDS = threading.Semaphore(3)
+
+
+def _mirror_timeout() -> float:
+    try:
+        return float(os.environ.get("OPENTAKEOFF_MIRROR_TIMEOUT_S", "") or 15.0)
+    except ValueError:
+        return 15.0
 
 
 # --- corpus ------------------------------------------------------------------
@@ -150,11 +167,7 @@ class Corpus:
             self._mirror()
         return len(fresh), dup
 
-    def _mirror(self) -> None:
-        """Whole-file atomic copy into the synced share — never live appends
-        into a sync folder. Best-effort: the mirror must never fail a capture."""
-        if not self.mirror:
-            return
+    def _mirror_now(self) -> None:
         try:
             os.makedirs(self.mirror, exist_ok=True)
             dst = os.path.join(self.mirror, "takeoff_labels.jsonl")
@@ -169,6 +182,29 @@ class Corpus:
             os.replace(mtmp, meta)
         except OSError as e:
             print(f"  mirror skipped: {e}", flush=True)
+
+    def _mirror(self) -> None:
+        """Whole-file atomic copy into the synced share — never live appends
+        into a sync folder. Best-effort: the mirror must never fail a capture,
+        nor stall it — a share that hangs at the kernel strands an expendable
+        thread (capped at OPENTAKEOFF_MIRROR_TIMEOUT_S), never the request."""
+        if not self.mirror:
+            return
+        if not _MIRROR_STRANDS.acquire(blocking=False):
+            print("  mirror skipped: share unresponsive (strand budget exhausted)", flush=True)
+            return
+
+        def work():
+            try:
+                self._mirror_now()
+            finally:
+                _MIRROR_STRANDS.release()
+
+        t = threading.Thread(target=work, daemon=True, name="capture-mirror")
+        t.start()
+        t.join(_mirror_timeout())
+        if t.is_alive():
+            print(f"  mirror abandoned: share unresponsive after {_mirror_timeout():.1f}s", flush=True)
 
     def summary(self) -> dict:
         rows = contributions = 0
@@ -323,6 +359,22 @@ def selftest() -> int:
     mirrored = os.path.join(corpus.mirror, "takeoff_labels.jsonl")
     with open(mirrored) as fh:
         check("mirror is a whole consistent copy", sum(1 for l in fh if l.strip()), 3)
+
+    # a wedged share (sync client stalled mid-syscall) may cost a contribution
+    # at most the mirror timeout — the corpus row still banks, the POST returns
+    import time
+    gate = threading.Event()
+    corpus._mirror_now = gate.wait  # stands in for a share that never answers
+    os.environ["OPENTAKEOFF_MIRROR_TIMEOUT_S"] = "0.2"
+    try:
+        wedged = json.loads(json.dumps(sample))
+        wedged["shapes"][1]["finish"] = wedged["conditions"][1]["finish"] = "VCT-1"
+        t0 = time.monotonic()
+        check("wedged share still banks the row", post(wedged)["rows_added"], 1)
+        check("wedged share can't hang the POST", time.monotonic() - t0 < 5, True)
+    finally:
+        del os.environ["OPENTAKEOFF_MIRROR_TIMEOUT_S"]
+        gate.set()  # unwedge; the stranded thread frees its strand slot
 
     httpd.shutdown()
     shutil.rmtree(tmp, ignore_errors=True)

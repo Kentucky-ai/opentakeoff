@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-07-13
+
+### Fixed
+- **Capture server: a wedged synced share can't stall contributions.** A stalled sync client can leave a mirror-folder syscall hanging at the kernel — which no `try/except` catches. The `--mirror` copy now runs on an expendable thread with a wall-clock cap (`OPENTAKEOFF_MIRROR_TIMEOUT_S`, default 15s) and a 3-slot strand budget: a hung share strands at most 3 threads, then further mirror attempts skip outright until it recovers; the corpus write and the `/contribute` response are never held hostage. Selftest gains wedged-share checks.
+
 ## 2026-07-12 — v0.3.0
 
 ### Added
