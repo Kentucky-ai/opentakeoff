@@ -5,7 +5,14 @@
 // module that defers the server (and its hoisted externals) behind a dynamic
 // import. Same belt as src/hush.ts, one module earlier.
 console.log = console.error.bind(console);
-
+const tracingEnabled = process.env.OPENTAKEOFF_MCP_TRACE === '1';
+if (tracingEnabled) {
+  const originalConsoleError = console.error;
+  console.error = (...args) => {
+    const toolCallLog = args.map(arg => JSON.stringify(arg)).join(' ');
+    originalConsoleError(`TOOL_CALL ${toolCallLog}`);
+  };
+}
 // pdf.js 4.x needs Promise.withResolvers (Node 22+); polyfill here so the
 // engines floor stays Node 20 — must exist before pdfjs-dist evaluates.
 if (typeof Promise.withResolvers !== "function") {
