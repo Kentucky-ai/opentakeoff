@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "node --import tsx server.ts",
     "start": "node dist/server.js",
-    "build": "esbuild server.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server-core.js && cp bin.js dist/server.js && chmod +x dist/server.js",
+    "build": "esbuild server.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server-core.js && node scripts/finish-build.mjs",
     "prepublishOnly": "npm run typecheck && npm test && npm run build",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts"
