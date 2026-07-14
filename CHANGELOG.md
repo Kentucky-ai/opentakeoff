@@ -8,6 +8,7 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 - **Snapshots modal retired — Revisions is the single surface over saved takeoffs.** The toolbar Snapshots modal and the Revisions rail panel (clock icon) listed the exact same records — both ride the store's `saveSnapshot`/`listSnapshots`/`getSnapshot`/`deleteSnapshot` primitives, so the Drive snapshot-sync layer is untouched. Revisions is a strict superset (compare any two, per-sheet and buy-list deltas, compare CSV, auto-banked restore), so the modal's toolbar button and component are removed; save / compare / restore / delete all live in the Revisions panel.
 
 ### Fixed
+- **MCP package builds on Windows.** The build now uses a small Node script to copy the executable wrapper instead of Unix-only `cp` and `chmod` commands.
 - **Capture server: a wedged synced share can't stall contributions.** A stalled sync client can leave a mirror-folder syscall hanging at the kernel — which no `try/except` catches. The `--mirror` copy now runs on an expendable thread with a wall-clock cap (`OPENTAKEOFF_MIRROR_TIMEOUT_S`, default 15s) and a 3-slot strand budget: a hung share strands at most 3 threads, then further mirror attempts skip outright until it recovers; the corpus write and the `/contribute` response are never held hostage. Selftest gains wedged-share checks.
 
 ## 2026-07-12 — v0.3.0
