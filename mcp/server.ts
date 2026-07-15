@@ -7,9 +7,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { Session } from "./src/session.ts";
 import { registerTools } from "./src/tools.ts";
+import pkg from "./package.json" with { type: "json" };
 
 export function buildServer(session: Session = new Session()): McpServer {
-  const server = new McpServer({ name: "opentakeoff", version: "0.1.0" });
+  const server = new McpServer({ name: "opentakeoff", version: pkg.version });
   registerTools(server, session);
   return server;
 }
