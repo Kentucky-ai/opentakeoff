@@ -20,6 +20,17 @@ No clone, no build — point your MCP client at the published package:
 
 Works with Claude Code (`claude mcp add opentakeoff -- npx -y opentakeoff-mcp`), Claude Desktop, Cursor, or any stdio MCP client. Node 20+.
 
+## One-click install (Claude Desktop)
+
+No Node, no npm: download **`opentakeoff-mcp.mcpb`** from the
+[latest release](https://github.com/Kentucky-ai/opentakeoff/releases) and
+double-click it — Claude Desktop installs the server with its dependencies
+bundled. Built by `npm run mcpb` and attached automatically to every `mcp-v*`
+release. The bundle is platform-neutral on purpose: it excludes the optional
+native canvas, so every tool and the text/metadata resources work everywhere,
+and the sheet-image resource says exactly what's missing where rendering isn't
+available.
+
 
 The takeoff engine — One-Click Area, the scale model, conditions, totals — on
 **stdio for your MCP client**. An agent can open a plan, read the title block,

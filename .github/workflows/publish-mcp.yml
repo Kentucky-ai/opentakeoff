@@ -87,3 +87,13 @@ jobs:
           gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
             || gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
                  --title "opentakeoff-mcp $VERSION" --generate-notes --verify-tag
+
+      - name: Build and attach the MCPB bundle
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          npm ci --no-audit --no-fund
+          npm run mcpb
+          gh release upload "$GITHUB_REF_NAME" dist-mcpb/opentakeoff-mcp.mcpb \
+            --repo "$GITHUB_REPOSITORY" --clobber
