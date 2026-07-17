@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased
+
+### Added
+- **MCP resources — browse a plan set before measuring** (flagship issue #29, reference implementation). A loaded plan exposes `takeoff://sheets` (index, sensible when empty), `takeoff://sheet/{page}` (metadata), `takeoff://sheet/{page}/text` (joined text), and `takeoff://sheet/{page}/image` (rendered PNG, long edge capped at 1568 px, lazily rendered and cached). `load_plan` announces the new surface via `resources/list_changed`. Rendering rides pdf.js's own optional `@napi-rs/canvas` — zero new dependencies, graceful degradation where the native binary is absent. Conformance suite in `mcp/test/resources.test.ts`.
+
 ## 2026-07-17
 
 ### Fixed

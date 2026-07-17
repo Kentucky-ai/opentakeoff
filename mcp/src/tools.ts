@@ -29,9 +29,13 @@ const run = (tool: string, fn: (args: any) => unknown | Promise<unknown>) =>
 
 export function registerTools(server: McpServer, session: Session): void {
   server.registerTool("load_plan", {
-    description: `Open a plan PDF from disk and replace the whole session (previous document, scales, conditions, and shapes are cleared). Returns file, page_count, and one entry per sheet: dims, title-block sheet_number, and the detected drawn scale where present. ${COORDS}`,
+    description: `Open a plan PDF from disk and replace the whole session (previous document, scales, conditions, and shapes are cleared). Returns file, page_count, and one entry per sheet: dims, title-block sheet_number, and the detected drawn scale where present. The loaded sheets also become browsable resources (takeoff://sheets). ${COORDS}`,
     inputSchema: { path: z.string().describe("Path to a plan PDF on disk") },
-  }, run("load_plan", ({ path }) => session.loadPlan(path)));
+  }, run("load_plan", async ({ path }) => {
+    const loaded = await session.loadPlan(path);
+    server.sendResourceListChanged(); // the resource surface just changed under every subscriber
+    return loaded;
+  }));
 
   server.registerTool("sheet_info", {
     description: `Sheet detail: dims (px and pt), vector segment count, whether the sheet has vector linework (one_click needs it), scale status, the detected scale suggestion, and this sheet's committed shape count. ${COORDS}`,
