@@ -28,6 +28,25 @@ app autosaves. Same engine, same math: the server imports
 `web/src/lib/{oneclick,sheets,geometry,totals}` directly, so a shape committed
 here is field-identical to one committed on the canvas.
 
+## Run with Docker
+
+Build from the repository root so the Dockerfile can bundle the shared web
+engine:
+
+```bash
+docker build -f mcp/Dockerfile -t opentakeoff-mcp .
+docker run --rm -i opentakeoff-mcp
+```
+
+Mount local plans read-only and pass that container path to `load_plan`:
+
+```bash
+docker run --rm -i -v "$PWD/demo:/plans:ro" opentakeoff-mcp
+docker run --rm -i -e OPENTAKEOFF_MCP_TRACE=1 -v "$PWD/demo:/plans:ro" opentakeoff-mcp
+```
+
+For example, load `/plans/sample-plan.pdf` after mounting `demo/`.
+
 ## Quickstart
 
 Both `web/` and `mcp/` need their dependencies (the engine's pdf.js lives in
