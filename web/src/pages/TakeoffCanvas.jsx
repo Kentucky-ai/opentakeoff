@@ -5,9 +5,12 @@
 // Commit sums each condition into ScopeItem.measure and re-runs the takeoff.
 //
 // Pan/zoom is written DIRECTLY to the DOM (tfRef → style.transform) so dragging
-// never triggers a React render — smooth on large sheets. Trackpad two-finger
-// scroll pans (any tool); pinch (ctrl-wheel) zooms; Space-drag / middle-drag pan.
-// Geometry math reads tfRef (always current), so drawing stays accurate.
+// never triggers a React render — smooth on large sheets. Panning is always at
+// hand on every input device: left-drag on open canvas pans (Select), a held
+// draw-click that moves becomes a pan, middle-drag / right-drag / Space-drag /
+// Pan tool pan always, and continuous trackpad scroll pans both axes. A
+// discrete mouse-wheel notch zooms (glided), pinch (ctrl-wheel) zooms, ⇧-wheel
+// pans. Geometry math reads tfRef (always current), so drawing stays accurate.
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -1304,14 +1307,33 @@ export default function TakeoffCanvas() {
     applyTf(); scheduleSync();
   }, [applyTf, scheduleSync]);
 
-  // wheel: zoom toward the cursor — plain scroll wheel and trackpad pinch alike.
-  // A mouse notch is one big discrete delta; gliding it over a few frames keeps
-  // the zoom continuous instead of stepping. Pinch (ctrl/meta) deltas are already
-  // continuous, so those apply immediately at the original pinch sensitivity.
-  // Shift+wheel pans (Space-drag and middle-drag still pan as before).
+  // wheel: the DEVICE decides between pan and zoom — no toggle, no mode.
+  // Continuous trackpad scroll PANS both axes (the two-finger instinct every
+  // Mac user brings); a discrete mouse-wheel notch ZOOMS toward the cursor,
+  // glided over a few frames so it doesn't step. Pinch (ctrl/meta) always
+  // zooms at its original immediate sensitivity; ⇧+wheel always pans.
+  //
+  // Device telling: the burst-OPENING event decides. macOS runs mouse wheels
+  // through scroll acceleration, so the classic wheelDelta ±120 signature is
+  // useless there (measured on real hardware: wheelDeltaY is exactly -3×deltaY
+  // for BOTH devices). What separates them is the opening magnitude: a wheel
+  // notch LANDS at full delta — |deltaY|≈12 minimum on macOS (acceleration
+  // floor), ≈100 on Windows — while a trackpad gesture physically RAMPS from
+  // finger contact (|deltaY| 0–2 at burst start, violent flicks included).
+  // Line/page deltaMode is always a mouse (Firefox wheels). Classification is
+  // carried while events keep arriving <300ms apart, so momentum tails keep
+  // panning and a fast spin keeps zooming.
   useEffect(() => {
     const el = containerRef.current; if (!el) return;
     let glide = 0, gx = 0, gy = 0, raf = 0;
+    let kind = "", kindUntil = 0;   // per-burst wheel-device classification
+    const wheelKind = (e) => {
+      const now = performance.now();
+      if (kind && now < kindUntil) { kindUntil = now + 300; return kind; }
+      kind = (e.deltaMode !== 0 || Math.abs(e.deltaY) >= 10) ? "mouse" : "trackpad";
+      kindUntil = now + 300;
+      return kind;
+    };
     const step = () => {
       raf = 0;
       const d = Math.abs(glide) < 0.002 ? glide : glide * 0.35;
@@ -1339,6 +1361,13 @@ export default function TakeoffCanvas() {
       if (e.ctrlKey || e.metaKey) {
         const r = el.getBoundingClientRect();
         zoomAround(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * 0.01));
+        return;
+      }
+      if (wheelKind(e) === "trackpad") {
+        // two-finger scroll = pan, both axes — the sheet follows the fingers
+        const t = tfRef.current;
+        tfRef.current = { ...t, x: t.x - e.deltaX * unit, y: t.y - e.deltaY * unit };
+        applyTf(); scheduleSync();
         return;
       }
       glide += -e.deltaY * unit * 0.0012;            // one notch (~100) ≈ 12% zoom
@@ -1704,7 +1733,14 @@ export default function TakeoffCanvas() {
       return hitShape(s, p[0] - sp.xOffset, p[1], sp.img.w, sp.img.h, thr);
     });
     selectShape(hit ? hit.id : null);
-    if (hit) { dragRef.current = { kind: "move", shapeId: hit.id, start: p, orig: hit.verts_norm }; e.currentTarget.setPointerCapture(e.pointerId); }
+    if (hit) { dragRef.current = { kind: "move", shapeId: hit.id, start: p, orig: hit.verts_norm }; e.currentTarget.setPointerCapture(e.pointerId); return; }
+    // 5. open canvas — drag the paper to PAN (the instinct everyone brings from
+    // desktop takeoff tools; no need to reach for the Pan tool). The plain
+    // click (no drag) already cleared the selection above, so a stationary
+    // press costs nothing.
+    panRef.current = { sx: e.clientX, sy: e.clientY, ox: tfRef.current.x, oy: tfRef.current.y };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    if (containerRef.current) containerRef.current.style.cursor = "grabbing";
   }
   // Delete just the selected corner (Delete/⌫), keeping a polygon ≥3 / a run ≥2.
   // At the floor we deselect so the NEXT ⌫ falls through to deleting the whole
