@@ -11,7 +11,7 @@ on:
 
 permissions:
   id-token: write # OIDC token for mcp-publisher login github-oidc
-  contents: read
+  contents: write # tag checkout + GitHub release creation
 
 jobs:
   publish:
@@ -73,3 +73,12 @@ jobs:
             exit 1
           fi
           echo "Registry lists io.github.Kentucky-ai/opentakeoff@${VERSION}"
+
+      - name: Create the GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+                 --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
