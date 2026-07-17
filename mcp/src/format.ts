@@ -1,6 +1,8 @@
-// Reply and error helpers. Every tool reply is a single content text item of
-// compact JSON (no pretty-print); every failure is { isError: true, ... } —
-// never a thrown protocol error.
+// Reply and error helpers. Every tool reply carries the payload twice, per the
+// spec's back-compat rule for tools with an output schema: structuredContent
+// (typed, validated against the tool's outputSchema) plus a single content text
+// item of the same compact JSON. Failures are { isError: true, ... } — never a
+// thrown protocol error, and exempt from the structuredContent requirement.
 
 /** A message meant for the calling agent (bad input, missing scale, …). */
 export class UserError extends Error {}
@@ -8,10 +10,12 @@ export class UserError extends Error {}
 export interface ToolReply {
   [k: string]: unknown;
   content: { type: "text"; text: string }[];
+  structuredContent?: Record<string, unknown>;
   isError?: boolean;
 }
 
 export const ok = (payload: unknown): ToolReply => ({
+  structuredContent: payload as Record<string, unknown>,
   content: [{ type: "text", text: JSON.stringify(payload) }],
 });
 

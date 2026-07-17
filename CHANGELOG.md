@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased
+
+### Added
+- **MCP: typed tool results — `outputSchema` on all ten tools.** Every tool now declares its result schema (`mcp/src/outputs.ts`, mirrored from the session layer), and every reply carries the payload as `structuredContent` alongside the back-compat JSON text item. The SDK validates each reply against its schema on every call, so a reply that drifts from its contract fails loudly in the server's own test suite instead of silently in a client. Conformance test added: all ten schemas present, structured/text parity, error replies stay plain `isError`.
+
 ## 2026-07-17 — opentakeoff-mcp 0.2.0
 
 ### Added

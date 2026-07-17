@@ -154,3 +154,22 @@ test("delete_shape: removes a committed shape; unknown id is isError", async () 
   assert.equal(gone.isError, true);
   assert.match(gone.data.error, /No shape with id/);
 });
+
+test("output contract: every tool declares outputSchema; structuredContent mirrors the text item", async () => {
+  const client = await pair();
+  const { tools } = await client.listTools();
+  for (const t of tools) {
+    const schema: any = (t as any).outputSchema;
+    assert.ok(schema && schema.type === "object", `${t.name} declares an object outputSchema`);
+    assert.ok(schema.properties && Object.keys(schema.properties).length > 0, `${t.name} outputSchema has properties`);
+  }
+  // A structured reply validates AND byte-matches the back-compat text item.
+  const res: any = await client.callTool({ name: "load_plan", arguments: { path: PLAN } });
+  assert.equal(!!res.isError, false);
+  assert.ok(res.structuredContent, "structuredContent present");
+  assert.deepEqual(res.structuredContent, JSON.parse(res.content[0].text), "structuredContent === parsed text content");
+  // Error replies stay plain isError results — no structuredContent required.
+  const bad: any = await client.callTool({ name: "sheet_info", arguments: { sheet: "no-such-sheet" } });
+  assert.equal(!!bad.isError, true);
+  assert.equal(bad.structuredContent, undefined);
+});

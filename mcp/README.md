@@ -104,8 +104,11 @@ includes document text, shape vertices, or result payload content.
 | `delete_shape` | Remove a committed shape by id. |
 | `read_sheet_text` | Positioned page text (image px), optionally restricted to a region — title blocks, room labels, finish schedules. |
 
-Every reply is one compact JSON text item. Failures come back as
-`isError: true` with `{"error": "..."}` — never a dropped connection.
+Every tool declares an **`outputSchema`**, and every reply carries the payload
+as **`structuredContent`** — typed, machine-validated on every call — alongside
+the same compact JSON in a single text item for clients that predate structured
+output. Failures come back as `isError: true` with `{"error": "..."}` — never a
+dropped connection.
 
 ## Resources — browse before you measure
 
