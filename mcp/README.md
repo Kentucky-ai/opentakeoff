@@ -190,3 +190,23 @@ sheet number (`A-101`) wherever a sheet is named.
 npm run typecheck
 npm test        # session + tool-layer + e2e, against demo/sample-plan.pdf
 ```
+
+## Releasing (maintainers)
+
+MCP releases live in the **`mcp-v*`** tag namespace — bare `v*` tags belong to
+the app (v0.2.0, v0.3.0 are app releases). The npm artifact publishes manually
+(hardware-key 2FA) **before** the tag is pushed; the workflow refuses to run
+ahead of it.
+
+```bash
+# 1. bump the version — all three fields together:
+#    package.json .version, server.json .version, server.json .packages[0].version
+# 2. from mcp/, publish with the hardware key:
+npm publish
+# 3. tag and push — this fires .github/workflows/publish-mcp.yml:
+git tag mcp-v<version> && git push origin mcp-v<version>
+```
+
+The workflow checks version consistency, requires the npm artifact to exist,
+publishes to the official MCP registry via GitHub OIDC, verifies the listing,
+and creates the GitHub release (titled `opentakeoff-mcp <version>`).

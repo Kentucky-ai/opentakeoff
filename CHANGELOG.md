@@ -2,10 +2,14 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
-## Unreleased
+## 2026-07-17 — opentakeoff-mcp 0.2.0
 
 ### Added
 - **MCP resources — browse a plan set before measuring** (flagship issue #29, reference implementation). A loaded plan exposes `takeoff://sheets` (index, sensible when empty), `takeoff://sheet/{page}` (metadata), `takeoff://sheet/{page}/text` (joined text), and `takeoff://sheet/{page}/image` (rendered PNG, long edge capped at 1568 px, lazily rendered and cached). `load_plan` announces the new surface via `resources/list_changed`. Rendering rides pdf.js's own optional `@napi-rs/canvas` — zero new dependencies, graceful degradation where the native binary is absent. Conformance suite in `mcp/test/resources.test.ts`.
+- `.github/FUNDING.yml` — GitHub Sponsors manifest (button renders once Sponsors is enabled on the account).
+
+### Changed
+- **MCP releases move to the `mcp-v*` tag namespace** (`mcp-v0.2.0`). Bare `v*` tags are app releases — v0.2.0 and v0.3.0 already exist — so the registry-publish workflow now fires on `mcp-v*`, and the auto-created GitHub release is titled `opentakeoff-mcp <version>` to stay distinguishable in the shared release list.
 
 ## 2026-07-17
 
