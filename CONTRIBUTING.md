@@ -3,6 +3,14 @@
 Thanks for helping build a free takeoff tool for flooring contractors. PRs,
 issues, and ideas are all welcome.
 
+## Where to start
+
+- [`good first issue`](https://github.com/Kentucky-ai/opentakeoff/labels/good%20first%20issue)
+  — small, fully specified, exact files named. Claim one in a comment.
+- [The flagship challenge](https://github.com/Kentucky-ai/opentakeoff/issues/29)
+  — an open design-and-build bake-off. Post a design comment first; multiple
+  entries welcome; the best one merges with credit.
+
 ## Dev setup
 
 ```bash

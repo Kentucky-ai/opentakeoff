@@ -175,6 +175,15 @@ OpenTakeoff is **Apache-2.0**: fork it, change it, ship it — for your own crew
 
 Run `npm run typecheck && npm test && npm run build` before a PR; keep the geometry libs pure and tested; never commit real plans. See [CONTRIBUTING.md](CONTRIBUTING.md) and the [user guide](docs/USER_GUIDE.md).
 
+## Contributing — there's a ladder
+
+Every open issue is a real need, not a manufactured chore, and there's a rung for wherever you're starting from:
+
+- **First PR:** issues labeled [`good first issue`](https://github.com/Kentucky-ai/opentakeoff/labels/good%20first%20issue) are small, fully specified, and point at the exact files. Claim one in a comment and go.
+- **The flagship:** [#29 — expose plan sheets as MCP resources](https://github.com/Kentucky-ai/opentakeoff/issues/29) is an open design-and-build challenge. Multiple entries welcome; the best one merges with credit in the release notes, and it ships to every client that pulls [`opentakeoff-mcp`](https://www.npmjs.com/package/opentakeoff-mcp) off npm.
+
+Ground rules live in [CONTRIBUTING.md](CONTRIBUTING.md). Tested PRs with green CI merge fast — the last three external PRs did.
+
 ## Tech stack
 
 - **Frontend:** React 18 + Vite, plain JSX
