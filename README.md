@@ -13,7 +13,7 @@ No account. No upload. No install. It runs in your browser.
 
 [**▶ Try the live demo**](https://opentakeoff.netlify.app) · [Quick start](#quick-start) · [Features](#features) · [Deploy it](#run-it--deploy-it) · [Own your data](#own-your-data--the-capture-layer) · [Build on top](#build-on-top-of-it) · [Contributing](CONTRIBUTING.md)
 
-**New — July 2026:** **MCP server** — your AI agent can drive the takeoff engine (`npx opentakeoff-mcp`, on the [official MCP registry](mcp/)) · One-Click Area traces **hatched rooms** and **scanned plans** · **Dark view** · **Marked Set PDF export** — [full changelog](CHANGELOG.md)
+**New — July 2026:** **MCP server** — your AI agent can drive the takeoff engine (`npx opentakeoff-mcp`, on the [official MCP registry](mcp/)) — and **browse the plan set natively**: sheets, title-block text, and rendered pages as [MCP resources](mcp/#resources--browse-before-you-measure) (v0.2.0) · One-Click Area traces **hatched rooms** and **scanned plans** · **Dark view** · **Marked Set PDF export** — [full changelog](CHANGELOG.md)
 
 <br/>
 

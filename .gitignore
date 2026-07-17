@@ -39,3 +39,6 @@ server/.venv/
 
 # MCP compiled dist (published to npm, never committed)
 mcp/dist/
+
+# MCPB bundle build output (release artifact, never committed)
+mcp/dist-mcpb/

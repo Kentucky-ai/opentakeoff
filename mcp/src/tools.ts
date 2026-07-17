@@ -6,6 +6,11 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ok, fail, UserError, type ToolReply } from "./format.ts";
 import type { Session } from "./session.ts";
 import { traceToolCall } from "./trace.ts";
+import {
+  loadPlanOutput, sheetInfoOutput, setScaleOutput, oneClickOutput,
+  measurePolygonOutput, measureLineOutput, takeoffSummaryOutput,
+  exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
+} from "./outputs.ts";
 
 // The coordinate contract, stated on every tool so any agent reading any one
 // description knows the space it is working in.
@@ -31,6 +36,7 @@ export function registerTools(server: McpServer, session: Session): void {
   server.registerTool("load_plan", {
     description: `Open a plan PDF from disk and replace the whole session (previous document, scales, conditions, and shapes are cleared). Returns file, page_count, and one entry per sheet: dims, title-block sheet_number, and the detected drawn scale where present. The loaded sheets also become browsable resources (takeoff://sheets). ${COORDS}`,
     inputSchema: { path: z.string().describe("Path to a plan PDF on disk") },
+    outputSchema: loadPlanOutput,
   }, run("load_plan", async ({ path }) => {
     const loaded = await session.loadPlan(path);
     server.sendResourceListChanged(); // the resource surface just changed under every subscriber
@@ -40,6 +46,7 @@ export function registerTools(server: McpServer, session: Session): void {
   server.registerTool("sheet_info", {
     description: `Sheet detail: dims (px and pt), vector segment count, whether the sheet has vector linework (one_click needs it), scale status, the detected scale suggestion, and this sheet's committed shape count. ${COORDS}`,
     inputSchema: { sheet: z.string().describe('Sheet key ("plan.pdf", "plan.pdf#2") or title-block number ("A-101")') },
+    outputSchema: sheetInfoOutput,
   }, run("sheet_info", ({ sheet }) => session.sheetInfo(sheet)));
 
   server.registerTool("set_scale", {
@@ -52,6 +59,7 @@ export function registerTools(server: McpServer, session: Session): void {
         .describe("Two points (image px) a known real distance apart, and that distance in feet"),
       use_detected: z.boolean().optional().describe("true = adopt the sheet's detected scale"),
     },
+    outputSchema: setScaleOutput,
   }, run("set_scale", (a) => {
     const given = [a.label !== undefined, a.upp !== undefined, a.calibrate !== undefined, a.use_detected !== undefined].filter(Boolean).length;
     if (given !== 1) throw new UserError("Provide exactly one of: label, upp, calibrate, use_detected.");
@@ -68,6 +76,7 @@ export function registerTools(server: McpServer, session: Session): void {
       role: roleSchema,
       return_verts: z.boolean().default(false).describe("Include the traced polygon's vertices (image px)"),
     },
+    outputSchema: oneClickOutput,
   }, run("one_click", (a) => session.oneClick(a.sheet, a.x, a.y, { condition: a.condition, role: a.role, returnVerts: a.return_verts })));
 
   server.registerTool("measure_polygon", {
@@ -78,6 +87,7 @@ export function registerTools(server: McpServer, session: Session): void {
       condition: z.string().optional(),
       role: roleSchema,
     },
+    outputSchema: measurePolygonOutput,
   }, run("measure_polygon", (a) => session.measurePolygon(a.sheet, a.verts, { condition: a.condition, role: a.role })));
 
   server.registerTool("measure_line", {
@@ -87,16 +97,19 @@ export function registerTools(server: McpServer, session: Session): void {
       pts: z.array(pointSchema).min(2),
       condition: z.string().optional(),
     },
+    outputSchema: measureLineOutput,
   }, run("measure_line", (a) => session.measureLine(a.sheet, a.pts, { condition: a.condition })));
 
   server.registerTool("takeoff_summary", {
     description: `Per-condition totals (floor/wall/border SF, LF, EA, SY, with and without waste) plus grand totals — the Report's numbers, computed by the same rules. ${COORDS}`,
     inputSchema: {},
+    outputSchema: takeoffSummaryOutput,
   }, run("takeoff_summary", () => session.summary()));
 
   server.registerTool("export_takeoff", {
     description: `The full "opentakeoff.takeoff_canvas.v1" annotations payload — exactly what the app autosaves, importable by it. Returned inline; pass path to also write it to disk as JSON. ${COORDS}`,
     inputSchema: { path: z.string().optional().describe("File path to write the payload to") },
+    outputSchema: exportTakeoffOutput,
   }, run("export_takeoff", async ({ path: outPath }) => {
     const payload = session.exportPayload();
     if (outPath) {
@@ -109,6 +122,7 @@ export function registerTools(server: McpServer, session: Session): void {
   server.registerTool("delete_shape", {
     description: `Remove a committed shape by the id returned when it was committed. ${COORDS}`,
     inputSchema: { shape_id: z.string() },
+    outputSchema: deleteShapeOutput,
   }, run("delete_shape", ({ shape_id }) => session.deleteShape(shape_id)));
 
   server.registerTool("read_sheet_text", {
@@ -117,5 +131,6 @@ export function registerTools(server: McpServer, session: Session): void {
       sheet: z.string(),
       region: z.object({ x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() }).optional(),
     },
+    outputSchema: readSheetTextOutput,
   }, run("read_sheet_text", (a) => session.readSheetText(a.sheet, a.region)));
 }

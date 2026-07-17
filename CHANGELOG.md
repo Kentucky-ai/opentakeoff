@@ -5,7 +5,17 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 ## Unreleased
 
 ### Added
+- **MCP: one-click Claude Desktop install — the `.mcpb` bundle.** `npm run mcpb` stages the published-package surface with its production dependencies and an MCPB manifest, validates, and packs `opentakeoff-mcp.mcpb` (~9 MB); the release workflow builds and attaches it to every `mcp-v*` GitHub release. Platform-neutral by design: native optionals are excluded, so all ten tools and the text/metadata resources work everywhere and the sheet-image resource degrades gracefully.
+- **MCP: typed tool results — `outputSchema` on all ten tools.** Every tool now declares its result schema (`mcp/src/outputs.ts`, mirrored from the session layer), and every reply carries the payload as `structuredContent` alongside the back-compat JSON text item. The SDK validates each reply against its schema on every call, so a reply that drifts from its contract fails loudly in the server's own test suite instead of silently in a client. Conformance test added: all ten schemas present, structured/text parity, error replies stay plain `isError`.
+
+## 2026-07-17 — opentakeoff-mcp 0.2.0
+
+### Added
 - **MCP resources — browse a plan set before measuring** (flagship issue #29, reference implementation). A loaded plan exposes `takeoff://sheets` (index, sensible when empty), `takeoff://sheet/{page}` (metadata), `takeoff://sheet/{page}/text` (joined text), and `takeoff://sheet/{page}/image` (rendered PNG, long edge capped at 1568 px, lazily rendered and cached). `load_plan` announces the new surface via `resources/list_changed`. Rendering rides pdf.js's own optional `@napi-rs/canvas` — zero new dependencies, graceful degradation where the native binary is absent. Conformance suite in `mcp/test/resources.test.ts`.
+- `.github/FUNDING.yml` — GitHub Sponsors manifest (button renders once Sponsors is enabled on the account).
+
+### Changed
+- **MCP releases move to the `mcp-v*` tag namespace** (`mcp-v0.2.0`). Bare `v*` tags are app releases — v0.2.0 and v0.3.0 already exist — so the registry-publish workflow now fires on `mcp-v*`, and the auto-created GitHub release is titled `opentakeoff-mcp <version>` to stay distinguishable in the shared release list.
 
 ## 2026-07-17
 

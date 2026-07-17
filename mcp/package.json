@@ -1,6 +1,6 @@
 {
   "name": "opentakeoff-mcp",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "mcpName": "io.github.Kentucky-ai/opentakeoff",
   "type": "module",
   "description": "OpenTakeoff MCP server \u2014 drive the takeoff engine from your MCP client over stdio.",
@@ -13,6 +13,7 @@
     "start": "node dist/server.js",
     "build": "esbuild server.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server-core.js && node scripts/finish-build.mjs",
     "smoke:dist": "node scripts/smoke-dist.mjs",
+    "mcpb": "npm run build && node scripts/build-mcpb.mjs",
     "prepublishOnly": "npm run typecheck && npm test && npm run build",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/e2e.test.ts test/resources.test.ts test/session.test.ts test/tools.test.ts"

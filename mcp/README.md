@@ -20,6 +20,17 @@ No clone, no build — point your MCP client at the published package:
 
 Works with Claude Code (`claude mcp add opentakeoff -- npx -y opentakeoff-mcp`), Claude Desktop, Cursor, or any stdio MCP client. Node 20+.
 
+## One-click install (Claude Desktop)
+
+No Node, no npm: download **`opentakeoff-mcp.mcpb`** from the
+[latest release](https://github.com/Kentucky-ai/opentakeoff/releases) and
+double-click it — Claude Desktop installs the server with its dependencies
+bundled. Built by `npm run mcpb` and attached automatically to every `mcp-v*`
+release. The bundle is platform-neutral on purpose: it excludes the optional
+native canvas, so every tool and the text/metadata resources work everywhere,
+and the sheet-image resource says exactly what's missing where rendering isn't
+available.
+
 
 The takeoff engine — One-Click Area, the scale model, conditions, totals — on
 **stdio for your MCP client**. An agent can open a plan, read the title block,
@@ -104,8 +115,11 @@ includes document text, shape vertices, or result payload content.
 | `delete_shape` | Remove a committed shape by id. |
 | `read_sheet_text` | Positioned page text (image px), optionally restricted to a region — title blocks, room labels, finish schedules. |
 
-Every reply is one compact JSON text item. Failures come back as
-`isError: true` with `{"error": "..."}` — never a dropped connection.
+Every tool declares an **`outputSchema`**, and every reply carries the payload
+as **`structuredContent`** — typed, machine-validated on every call — alongside
+the same compact JSON in a single text item for clients that predate structured
+output. Failures come back as `isError: true` with `{"error": "..."}` — never a
+dropped connection.
 
 ## Resources — browse before you measure
 
@@ -190,3 +204,23 @@ sheet number (`A-101`) wherever a sheet is named.
 npm run typecheck
 npm test        # session + tool-layer + e2e, against demo/sample-plan.pdf
 ```
+
+## Releasing (maintainers)
+
+MCP releases live in the **`mcp-v*`** tag namespace — bare `v*` tags belong to
+the app (v0.2.0, v0.3.0 are app releases). The npm artifact publishes manually
+(hardware-key 2FA) **before** the tag is pushed; the workflow refuses to run
+ahead of it.
+
+```bash
+# 1. bump the version — all three fields together:
+#    package.json .version, server.json .version, server.json .packages[0].version
+# 2. from mcp/, publish with the hardware key:
+npm publish
+# 3. tag and push — this fires .github/workflows/publish-mcp.yml:
+git tag mcp-v<version> && git push origin mcp-v<version>
+```
+
+The workflow checks version consistency, requires the npm artifact to exist,
+publishes to the official MCP registry via GitHub OIDC, verifies the listing,
+and creates the GitHub release (titled `opentakeoff-mcp <version>`).
