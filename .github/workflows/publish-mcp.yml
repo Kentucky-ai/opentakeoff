@@ -1,0 +1,75 @@
+name: Publish to MCP Registry
+
+# Registry-only release automation. The npm artifact is published manually
+# (hardware-key 2FA) BEFORE the tag is pushed — this workflow refuses to run
+# ahead of it. workflow_dispatch exercises OIDC login without publishing.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  id-token: write # OIDC token for mcp-publisher login github-oidc
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check version consistency
+        run: |
+          PKG=$(jq -r .version package.json)
+          SRV=$(jq -r .version server.json)
+          SRVPKG=$(jq -r '.packages[0].version' server.json)
+          echo "package.json=$PKG server.json=$SRV server.json packages[0]=$SRVPKG"
+          if [ "$PKG" != "$SRV" ] || [ "$PKG" != "$SRVPKG" ]; then
+            echo "::error::version fields disagree — bump package.json and server.json together"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME#v}"
+            if [ "$PKG" != "$TAG" ]; then
+              echo "::error::tag v$TAG does not match package version $PKG"
+              exit 1
+            fi
+          fi
+
+      - name: Require the npm artifact to exist
+        if: github.ref_type == 'tag'
+        run: |
+          VERSION=$(jq -r .version package.json)
+          if ! npm view "opentakeoff-mcp@${VERSION}" version; then
+            echo "::error::opentakeoff-mcp@${VERSION} is not on npm — npm publish (hardware key) comes before the tag push"
+            exit 1
+          fi
+
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate to MCP Registry (GitHub OIDC)
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        if: github.ref_type == 'tag'
+        run: ./mcp-publisher publish
+
+      - name: Verify the registry lists this version
+        if: github.ref_type == 'tag'
+        run: |
+          VERSION=$(jq -r .version package.json)
+          curl -fsS "https://registry.modelcontextprotocol.io/v0/servers?search=opentakeoff" -o /tmp/registry.json
+          if ! jq -e --arg v "$VERSION" \
+            '[.servers[]? | (.server // .) | select(.name == "io.github.Kentucky-ai/opentakeoff" and .version == $v)] | length > 0' \
+            /tmp/registry.json > /dev/null; then
+            echo "::error::registry does not list io.github.Kentucky-ai/opentakeoff@${VERSION}"
+            cat /tmp/registry.json
+            exit 1
+          fi
+          echo "Registry lists io.github.Kentucky-ai/opentakeoff@${VERSION}"
