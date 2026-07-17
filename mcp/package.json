@@ -12,10 +12,11 @@
     "dev": "node --import tsx server.ts",
     "start": "node dist/server.js",
     "build": "esbuild server.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server-core.js && node scripts/finish-build.mjs",
+    "smoke:dist": "node scripts/smoke-dist.mjs",
     "mcpb": "npm run build && node scripts/build-mcpb.mjs",
     "prepublishOnly": "npm run typecheck && npm test && npm run build",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx --test test/e2e.test.ts test/resources.test.ts test/session.test.ts test/tools.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
