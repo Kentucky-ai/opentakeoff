@@ -7,7 +7,7 @@
 import path from "node:path";
 import { openPdf, positionedText, OPS, type DocHandle, type PageHandle } from "./pdf.ts";
 import { UserError, round1, round2 } from "./format.ts";
-import { STANDARD_SCALES, detectScale, extractSheetNumber, type DetectedScale } from "../../web/src/lib/sheets.ts";
+import { STANDARD_SCALES, RENDER_SCALE, detectScale, extractSheetNumber, type DetectedScale } from "../../web/src/lib/sheets.ts";
 import {
   extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertices, ringArea,
   MASK_MAX_DIM, type MaskObj, type VectorGeometry, type Point,
@@ -68,7 +68,14 @@ interface SheetState {
   snap?: ReturnType<typeof buildSnapGrid>;
   /** undefined = not built yet; null = sheet has zero vector segments (a scan) */
   mask?: MaskObj | null;
+  /** rendered-page PNG at IMAGE_MAX_EDGE, built on first resource read */
+  png?: Uint8Array;
 }
+
+/** Resource images cap their long edge here: the largest edge the mainstream
+ * vision models take without downscaling — these renders exist to be looked at
+ * by agents, so this is the native resolution of that audience. */
+export const IMAGE_MAX_EDGE = 1568;
 
 export interface SheetSummary {
   sheet: string;
@@ -147,6 +154,45 @@ export class Session {
     const wanted = name.toUpperCase().replace(/\s+/g, "");
     for (const s of this.sheets.values()) if (s.sheetNumber === wanted) return s;
     throw new UserError(`Unknown sheet "${name}" — loaded sheets: ${[...this.sheets.keys()].join(", ")}.`);
+  }
+
+  /** Resource-URI addressing: sheets by 1-based page number. */
+  sheetForPage(page: number): SheetState {
+    if (!this.doc) throw new UserError("No plan loaded — call load_plan first.");
+    for (const s of this.sheets.values()) if (s.pageNum === page) return s;
+    throw new UserError(`No page ${page} — the loaded plan has pages 1–${this.sheets.size}.`);
+  }
+
+  /** Every loaded sheet, in page order — [] before any plan loads. */
+  sheetList(): SheetState[] {
+    return [...this.sheets.values()].sort((a, b) => a.pageNum - b.pageNum);
+  }
+
+  /** The takeoff://sheets index payload — cheap (no geometry is built). */
+  index() {
+    if (!this.doc) {
+      return { file: null, page_count: 0, sheets: [], hint: "No plan loaded — call the load_plan tool with a PDF path, then list resources again." };
+    }
+    return {
+      file: this.file,
+      page_count: this.sheets.size,
+      sheets: this.sheetList().map((s) => ({
+        ...sheetSummary(s),
+        scale_set: s.upp != null,
+        shape_count: this.shapes.filter((x) => x.sheet_id === s.key).length,
+      })),
+    };
+  }
+
+  /** Rendered-page PNG, long edge capped at IMAGE_MAX_EDGE (never above the
+   * canvas-native RENDER_SCALE), cached per sheet until the next load_plan. */
+  async renderSheetPng(page: number): Promise<Uint8Array> {
+    const s = this.sheetForPage(page);
+    if (!s.png) {
+      const scale = Math.min(RENDER_SCALE, IMAGE_MAX_EDGE / Math.max(s.widthPt, s.heightPt));
+      s.png = await s.page.renderPng(scale);
+    }
+    return s.png;
   }
 
   private async ensureGeometry(s: SheetState): Promise<VectorGeometry> {

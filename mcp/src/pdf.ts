@@ -27,6 +27,29 @@ export interface PageHandle {
   viewport: ViewportLike;
   textContent: TextContentLike;
   operatorList(): Promise<OpList>;
+  /** Rasterize the page at the given scale (px per PDF pt) to PNG bytes.
+   * Needs @napi-rs/canvas (pdfjs-dist's own optional dependency); throws a
+   * plain Error naming it when the platform has no prebuilt binary. */
+  renderPng(scale: number): Promise<Uint8Array>;
+}
+
+/** pdf.js's modern build renders against DOM canvas globals that bare Node
+ * lacks; @napi-rs/canvas provides them. Loaded lazily so a platform without
+ * the optional native binary still runs every non-raster tool. */
+async function ensureCanvasGlobals(): Promise<void> {
+  const g = globalThis as Record<string, unknown>;
+  if (g.Path2D && g.DOMMatrix && g.ImageData) return;
+  let napi: typeof import("@napi-rs/canvas");
+  try {
+    napi = await import("@napi-rs/canvas");
+  } catch {
+    throw new Error(
+      "Page rendering needs @napi-rs/canvas (pdfjs-dist's optional dependency), which did not install on this platform. Reinstall with optional dependencies enabled.",
+    );
+  }
+  g.Path2D ??= napi.Path2D;
+  g.DOMMatrix ??= napi.DOMMatrix;
+  g.ImageData ??= napi.ImageData;
 }
 
 export interface DocHandle {
@@ -61,6 +84,20 @@ export async function openPdf(filePath: string): Promise<DocHandle> {
         viewport: { width: vp.width, height: vp.height, transform: vp.transform },
         textContent,
         operatorList: async () => (await page.getOperatorList()) as unknown as OpList,
+        async renderPng(scale: number): Promise<Uint8Array> {
+          await ensureCanvasGlobals();
+          const rvp = page.getViewport({ scale });
+          // canvasFactory is the document's NodeCanvasFactory — present on the
+          // proxy at runtime, absent from pdfjs-dist's public types
+          const factory = (doc as unknown as { canvasFactory: { create(w: number, h: number): { canvas: { toBuffer(mime: "image/png"): Buffer }; context: object }; destroy(target: object): void } }).canvasFactory;
+          const target = factory.create(Math.ceil(rvp.width), Math.ceil(rvp.height));
+          try {
+            await page.render({ canvasContext: target.context as never, viewport: rvp }).promise;
+            return new Uint8Array(target.canvas.toBuffer("image/png"));
+          } finally {
+            factory.destroy(target);
+          }
+        },
       };
     },
     destroy: () => doc.destroy().then(() => undefined),

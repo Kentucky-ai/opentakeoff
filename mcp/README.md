@@ -88,6 +88,31 @@ includes document text, shape vertices, or result payload content.
 Every reply is one compact JSON text item. Failures come back as
 `isError: true` with `{"error": "..."}` — never a dropped connection.
 
+## Resources — browse before you measure
+
+Tools let an agent act; resources let it **see**. When a plan loads, the sheet
+set becomes browsable natively (`resources/list` re-announces itself via
+`list_changed`):
+
+| URI | Contents |
+|---|---|
+| `takeoff://sheets` | The plan index — file, page count, every sheet's dims, title-block number, detected scale, scale state, shape count. Always listed; before any plan loads it says so and points at `load_plan`. |
+| `takeoff://sheet/{page}` | One sheet's metadata (JSON), addressed by 1-based page number. |
+| `takeoff://sheet/{page}/text` | The sheet's text, joined — title block, room labels, schedules. Positions live in the `read_sheet_text` tool. |
+| `takeoff://sheet/{page}/image` | The page rendered to PNG, long edge capped at **1568 px** — the native resolution of vision-model eyes. Rendered lazily, cached until the next `load_plan`. |
+
+Page numbers — not file-derived sheet keys — address resources, so URIs stay
+clean regardless of the PDF's name; the human-facing key (`plan.pdf#2`) and
+title-block number (`A-101`) ride along as the resource name and title.
+Rendering uses `@napi-rs/canvas` (pdf.js's own optional dependency): on a
+platform without a prebuilt binary every non-raster capability still works and
+the image read explains exactly what's missing.
+
+The intended agent loop: read `takeoff://sheets` → look at
+`takeoff://sheet/{page}/image` → pick click targets → measure with the tools.
+An image coordinate maps to the tool space (image px at render scale 2.0) by
+multiplying by `width_px / <image pixel width>`.
+
 ## The coordinate contract
 
 All coordinates are **image pixels at render scale 2.0**: PDF points × 2,
