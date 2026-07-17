@@ -10,6 +10,7 @@ No account. No upload. No install. It runs in your browser.
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Live demo](https://img.shields.io/badge/demo-opentakeoff.netlify.app-2ea44f.svg)](https://opentakeoff.netlify.app)
 [![Built with React + Vite](https://img.shields.io/badge/React%2018-Vite-444.svg)](#tech-stack)
+[![Sponsor](https://img.shields.io/github/sponsors/Kentucky-ai?logo=githubsponsors&label=sponsor&color=EA4AAA)](https://github.com/sponsors/Kentucky-ai)
 
 [**▶ Try the live demo**](https://opentakeoff.netlify.app) · [Quick start](#quick-start) · [Features](#features) · [Deploy it](#run-it--deploy-it) · [Own your data](#own-your-data--the-capture-layer) · [Build on top](#build-on-top-of-it) · [Contributing](CONTRIBUTING.md)
 
