@@ -46,6 +46,31 @@ export interface Condition {
   materials: unknown[];
 }
 
+/** Shape provenance (contribution.v2 vocabulary — mirrors the canvas +
+ * web/src/lib/provenance.js). Truthfulness rules: `actor` is omitted for a
+ * human at the canvas and "agent" for MCP/automation; `reviewed` is true ONLY
+ * after a human affirmed the shape at an explicit review gate — this server
+ * has no such gate, so everything it commits is reviewed: false. */
+export interface ShapeOrigin {
+  method: "manual" | "one_click_v1";
+  /** Omitted = human. "agent" = the shape was produced by MCP/automation. */
+  actor?: "agent";
+  /** A human affirmed this shape at an explicit review gate. */
+  reviewed?: boolean;
+  /** one_click: the flood-fill seed, normalized to sheet dims. */
+  seed_norm?: [number, number];
+  hatch_filtered?: true;
+  raster_traced?: true;
+  fill_sensitivity?: number;
+  /** Machine's original trace, frozen on first human edit (provenance.js). */
+  proposed_verts_norm?: [number, number][];
+  edited?: boolean;
+  edited_before_create?: boolean;
+  copied?: boolean;
+  /** Per-kind tally of human corrections (provenance.js). */
+  edits?: Record<string, number>;
+}
+
 export interface Shape {
   id: string;
   sheet_id: string;
@@ -53,7 +78,7 @@ export interface Shape {
   measure_role: MeasureRole;
   verts_norm: [number, number][];
   computed: { area_sf: number; perimeter_lf: number };
-  origin?: { method: "one_click_v1"; seed_norm: [number, number]; reviewed: true; hatch_filtered?: true };
+  origin?: ShapeOrigin;
 }
 
 interface SheetState {
@@ -339,10 +364,13 @@ export class Session {
     const perimeter_lf = round2(perimPx * upp);
     let shape_id: string | undefined;
     if (opts.condition) {
+      // actor + reviewed: false — this is a machine-proposed trace no human
+      // has affirmed; only an explicit human review gate may set reviewed.
       shape_id = this.commit(s, opts.condition, opts.role, ring, { area_sf, perimeter_lf }, {
         method: "one_click_v1",
+        actor: "agent",
         seed_norm: [x / s.widthPx, y / s.heightPx],
-        reviewed: true,
+        reviewed: false,
         ...(f.hatchFiltered ? { hatch_filtered: true as const } : {}),
       }).id;
     }
@@ -356,7 +384,9 @@ export class Session {
     const area_sf = round2(met.area * s.upp * s.upp);
     const perimeter_lf = round2(met.perim * s.upp);
     let shape_id: string | undefined;
-    if (opts.condition) shape_id = this.commit(s, opts.condition, opts.role, verts, { area_sf, perimeter_lf }).id;
+    // agent-supplied coordinates are a hand trace by a machine hand: manual
+    // method, agent actor — and never reviewed (no human affirmed anything).
+    if (opts.condition) shape_id = this.commit(s, opts.condition, opts.role, verts, { area_sf, perimeter_lf }, { method: "manual", actor: "agent" }).id;
     return { area_sf, perimeter_lf, nverts: verts.length, ...(shape_id ? { shape_id } : {}) };
   }
 
@@ -366,7 +396,7 @@ export class Session {
     const length_lf = round2(openLen(pts) * s.upp);
     let shape_id: string | undefined;
     // area_sf stays 0 — the canvas only mints border SF when the condition has a thickness
-    if (opts.condition) shape_id = this.commit(s, opts.condition, "linear", pts, { area_sf: 0, perimeter_lf: length_lf }).id;
+    if (opts.condition) shape_id = this.commit(s, opts.condition, "linear", pts, { area_sf: 0, perimeter_lf: length_lf }, { method: "manual", actor: "agent" }).id;
     return { length_lf, npts: pts.length, ...(shape_id ? { shape_id } : {}) };
   }
 

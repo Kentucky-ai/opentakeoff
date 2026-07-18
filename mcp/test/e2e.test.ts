@@ -71,6 +71,8 @@ test("e2e: load → set_scale(detected) → one_click × 4 rooms → summary →
     assert.equal(exported.sheets[0].sheet_id, KEY);
     for (const shp of exported.shapes) {
       assert.equal(shp.origin.method, "one_click_v1");
+      assert.equal(shp.origin.actor, "agent", "agent commits are labeled agent in the export");
+      assert.equal(shp.origin.reviewed, false, "nothing this server commits was human-reviewed");
       for (const [vx, vy] of shp.verts_norm) assert.ok(vx >= 0 && vx <= 1 && vy >= 0 && vy <= 1);
     }
   } finally {

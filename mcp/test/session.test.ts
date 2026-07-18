@@ -115,8 +115,9 @@ test("commit: verts_norm in [0,1], origin receipt, condition minted like the can
     assert.ok(x >= 0 && x <= 1 && y >= 0 && y <= 1, `verts_norm out of [0,1]: ${x},${y}`);
   }
   assert.equal(shp.origin?.method, "one_click_v1");
-  assert.equal(shp.origin?.reviewed, true);
-  assert.ok(shp.origin?.seed_norm[0]! > 0 && shp.origin?.seed_norm[0]! < 1);
+  assert.equal(shp.origin?.actor, "agent", "MCP commits are agent work, never human");
+  assert.equal(shp.origin?.reviewed, false, "no human review gate exists in this server");
+  assert.ok(shp.origin?.seed_norm?.[0]! > 0 && shp.origin?.seed_norm?.[0]! < 1);
   assert.equal(s.conditions.length, 1);
   const c = s.conditions[0];
   assert.equal(c.finish_tag, "CPT-1");
@@ -149,6 +150,12 @@ test("measure: polygon SF and line LF at scale; deletion removes the shape", asy
   assert.equal(s.shapes.length, 2);
   assert.equal(s.shapes[1].measure_role, "linear");
   assert.equal(s.shapes[1].computed.area_sf, 0);
+  // agent-supplied coordinates: a hand trace by a machine hand, never human
+  for (const shp of s.shapes) {
+    assert.equal(shp.origin?.method, "manual");
+    assert.equal(shp.origin?.actor, "agent");
+    assert.equal(shp.origin?.reviewed, undefined, "measure commits claim no review state");
+  }
   s.deleteShape(poly.shape_id!);
   assert.equal(s.shapes.length, 1);
   await assert.rejects(async () => s.deleteShape("shp-nope"), /No shape with id/);
