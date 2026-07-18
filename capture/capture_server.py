@@ -14,9 +14,13 @@ Wire-up (one line, in the browser console of any OpenTakeoff build):
 
 Then hit **Contribute** in the Report. Self-hosted builds can bake it in with
 `VITE_CONTRIBUTE_ENDPOINT` instead. The payload is the same audited, derived-only
-`opentakeoff.contribution.v1` the app builds for any endpoint: condition labels,
-shape roles, quantities, and normalized (0..1) geometry — never the PDF, file
-names, project/client names, markups, or absolute coordinates.
+contribution the app builds for any endpoint — `opentakeoff.contribution.v2`
+from current builds, `opentakeoff.contribution.v1` from older ones (both
+accepted; anything else is rejected): condition labels, shape roles,
+quantities, normalized (0..1) geometry, and per-shape provenance — never the
+PDF, file names, project/client names, markups, absolute coordinates, or scale
+values. Rows bank as `opentakeoff.capture.v2` either way; see
+docs/CONTRIBUTION_SPEC.md for the normative wire and row contracts.
 
 What lands on disk (all human-readable):
 
@@ -39,12 +43,16 @@ import json
 import os
 import sys
 import threading
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MAX_BODY = 32 * 1024 * 1024  # a contribution is text; anything near this is not one
-CAPTURE_SCHEMA = "opentakeoff.capture.v1"
+CAPTURE_SCHEMA = "opentakeoff.capture.v2"
+# Wire schemas this server ingests: current and previous (N and N−1 — the
+# versioning policy in docs/CONTRIBUTION_SPEC.md). Anything else 400s.
+ACCEPTED = {"opentakeoff.contribution.v1", "opentakeoff.contribution.v2"}
 
 # A synced share can wedge at the KERNEL level — a stalled sync client can leave
 # open()/stat() on a placeholder file hanging indefinitely, which no try/except
@@ -87,8 +95,19 @@ def payload_rows(payload: dict) -> list[dict]:
     """Flatten one contribution into (geometry → label) rows, one per labeled
     shape. The condition IS the label: finish tag plus the hatch/waste/multiplier
     the estimator tuned. Shapes without a resolvable condition carry no label
-    and are skipped."""
+    and are skipped.
+
+    Version-aware over one code path: v2 shapes carry a whitelisted `origin`
+    object (banked verbatim) plus `id`/`created_at`, and v2 payloads carry
+    per-sheet `scale_source`; v1 shapes carry a flat `origin_method` string.
+    `origin_method` derives from whichever is present — and defaults to
+    "unknown" (NOT the old "human"): a shape that recorded nothing is a shape
+    whose provenance we don't know, and pretending otherwise would poison any
+    human-vs-machine split trained on the corpus. v2-only fields are simply
+    omitted from rows a v1 payload produces."""
     conds = {c.get("finish"): c for c in (payload.get("conditions") or []) if c.get("finish")}
+    scale_by_sheet = {sh.get("sheet"): sh.get("scale_source")
+                      for sh in (payload.get("sheets") or []) if sh.get("sheet")}
     ts = datetime.now(timezone.utc).isoformat()
     rows = []
     for s in (payload.get("shapes") or []):
@@ -96,7 +115,7 @@ def payload_rows(payload: dict) -> list[dict]:
         if not cond:
             continue
         verts = s.get("verts_norm") or []
-        rows.append({
+        row = {
             "ts": ts,
             "schema": CAPTURE_SCHEMA,
             "sheet": s.get("sheet"),
@@ -109,9 +128,19 @@ def payload_rows(payload: dict) -> list[dict]:
             "multiplier": cond.get("multiplier", 1),
             "height_ft": s.get("height_ft"),
             "computed": s.get("computed") or {}, # the SF / LF / EA the estimator accepted
-            "origin_method": s.get("origin_method", "human"),
+            "origin_method": (s.get("origin") or {}).get("method") or s.get("origin_method") or "unknown",
             "contributor": payload.get("contributor") or "",
-        })
+        }
+        extras = {                               # v2 signal — key-omitted when absent
+            "shape_id": s.get("id"),             # opaque durable id — links re-contributions
+            "created_at": s.get("created_at"),
+            "origin": s.get("origin"),           # verbatim — the client already whitelists
+            "scale_source": scale_by_sheet.get(s.get("sheet")),
+            "generator_version": payload.get("generator_version"),
+            "contribution_schema": payload.get("schema"),  # the wire schema this row came from
+        }
+        row.update({k: v for k, v in extras.items() if v is not None})
+        rows.append(row)
     return rows
 
 
@@ -209,6 +238,7 @@ class Corpus:
     def summary(self) -> dict:
         rows = contributions = 0
         finishes: dict[str, int] = {}
+        origin_methods: dict[str, int] = {}
         last_ts = None
         seen_contrib = set()
         try:
@@ -222,13 +252,15 @@ class Corpus:
                         continue
                     rows += 1
                     finishes[r.get("finish_tag", "?")] = finishes.get(r.get("finish_tag", "?"), 0) + 1
+                    om = r.get("origin_method") or "unknown"
+                    origin_methods[om] = origin_methods.get(om, 0) + 1
                     seen_contrib.add(r.get("contribution"))
                     last_ts = r.get("ts") or last_ts
         except OSError:
             pass
         contributions = len(seen_contrib - {None})
         return {"rows": rows, "contributions": contributions,
-                "finishes": finishes, "last_ts": last_ts}
+                "finishes": finishes, "origin_methods": origin_methods, "last_ts": last_ts}
 
 
 # --- server ------------------------------------------------------------------
@@ -273,7 +305,7 @@ def make_handler(corpus: Corpus):
                     return self._respond(413 if length > MAX_BODY else 400,
                                          {"ok": False, "error": "bad content length"})
                 payload = json.loads(self.rfile.read(length))
-                if payload.get("schema") != "opentakeoff.contribution.v1":
+                if payload.get("schema") not in ACCEPTED:
                     return self._respond(400, {"ok": False, "error": "unknown schema"})
             except (ValueError, OSError):
                 return self._respond(400, {"ok": False, "error": "invalid JSON"})
@@ -306,8 +338,10 @@ def serve(corpus: Corpus, port: int):
 
 def selftest() -> int:
     """End-to-end over the wire: start the server on an ephemeral port, POST a
-    sample contribution twice (second must dedup), retag a shape (must
-    re-capture), and check the mirror copy. Exits non-zero on any failure."""
+    v1 sample twice (second must dedup), retag a shape (must re-capture), check
+    the mirror copy, reject an unknown schema, then POST a v2 sample carrying
+    the manual / clean one-click / corrected one-click triad and assert the
+    banked rows keep them distinguishable. Exits non-zero on any failure."""
     import shutil
     import tempfile
     import threading
@@ -359,6 +393,81 @@ def selftest() -> int:
     mirrored = os.path.join(corpus.mirror, "takeoff_labels.jsonl")
     with open(mirrored) as fh:
         check("mirror is a whole consistent copy", sum(1 for l in fh if l.strip()), 3)
+
+    # unknown schemas still 400 — accepting v1 AND v2 is not accepting anything
+    def post_status(payload):
+        req = urllib.request.Request(f"{base}/contribute", json.dumps(payload).encode(),
+                                     {"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req) as res:
+                return res.status
+        except urllib.error.HTTPError as e:
+            return e.code
+
+    check("unknown schema rejected", post_status({**sample, "schema": "opentakeoff.contribution.v99"}), 400)
+
+    # contribution.v2 — the provenance triad: a hand-traced shape, a one-click
+    # accepted verbatim, and a one-click the estimator corrected. The corpus
+    # must keep all three distinguishable, or the "what did the machine get
+    # right vs. what did a human fix" signal is lost at the door.
+    proposed = [[.61, .60], [.79, .60], [.79, .83], [.60, .84]]
+    v2 = {
+        "schema": "opentakeoff.contribution.v2", "generator": "opentakeoff",
+        "generator_version": "0.1.0", "contributor": "selftest-v2",
+        "sheets": [{"sheet": "sheet_1", "scale_source": "detected"}],
+        "conditions": [{"finish": "LVT-9", "hatch": "plank", "multiplier": 1, "waste_pct": 10}],
+        "shapes": [
+            {"role": "floor_area", "finish": "LVT-9", "sheet": "sheet_1",
+             "id": "0f7b8f9e-0000-4000-8000-000000000001", "created_at": "2026-07-18T12:00:00.000Z",
+             "verts_norm": [[.05, .05], [.20, .05], [.20, .20], [.05, .20]],
+             "computed": {"sf": 88.0}, "origin": {"method": "manual"}},
+            {"role": "floor_area", "finish": "LVT-9", "sheet": "sheet_1",
+             "id": "0f7b8f9e-0000-4000-8000-000000000002", "created_at": "2026-07-18T12:01:00.000Z",
+             "verts_norm": [[.30, .30], [.45, .30], [.45, .50], [.30, .50]],
+             "computed": {"sf": 120.0},
+             "origin": {"method": "one_click_v1", "seed_norm": [.37, .40], "reviewed": True}},
+            {"role": "floor_area", "finish": "LVT-9", "sheet": "sheet_1",
+             "id": "0f7b8f9e-0000-4000-8000-000000000003", "created_at": "2026-07-18T12:02:00.000Z",
+             "verts_norm": [[.60, .60], [.80, .60], [.80, .85], [.60, .85]],
+             "computed": {"sf": 260.0},
+             "origin": {"method": "one_click_v1", "seed_norm": [.70, .70], "reviewed": True,
+                        "edited": True, "edits": {"vertex": 2, "move": 1},
+                        "proposed_verts_norm": proposed}},
+        ],
+        "totals": [],
+        "counters": {"shapes_deleted": {"one_click_v1": 1}},
+    }
+    check("v2 triad banks three rows", post(v2)["rows_added"], 3)
+    check("v2 re-contribution dedups", post(v2)["rows_added"], 0)
+
+    with open(corpus.labels) as fh:
+        v2rows = [r for line in fh if line.strip()
+                  for r in [json.loads(line)] if r.get("contributor") == "selftest-v2"]
+    by_id = {r["shape_id"]: r for r in v2rows}
+    manual = by_id["0f7b8f9e-0000-4000-8000-000000000001"]
+    clean = by_id["0f7b8f9e-0000-4000-8000-000000000002"]
+    fixed = by_id["0f7b8f9e-0000-4000-8000-000000000003"]
+    check("v2 rows carry shape_id + created_at + scale_source",
+          all(r.get("shape_id") and r.get("created_at") and r.get("scale_source") == "detected"
+              for r in v2rows), True)
+    check("v2 rows bank as capture.v2 tagged with their wire schema",
+          all(r.get("schema") == CAPTURE_SCHEMA
+              and r.get("contribution_schema") == "opentakeoff.contribution.v2"
+              and r.get("generator_version") == "0.1.0" for r in v2rows), True)
+    check("manual row: hand-traced, uncorrected",
+          (manual["origin_method"], manual["origin"].get("edited")), ("manual", None))
+    check("clean one-click row: machine trace accepted verbatim",
+          (clean["origin_method"], clean["origin"].get("edited"),
+           clean["origin"].get("proposed_verts_norm")), ("one_click_v1", None, None))
+    check("corrected row: machine trace preserved, differs from final",
+          (fixed["origin_method"], fixed["origin"]["edited"],
+           fixed["origin"]["proposed_verts_norm"] != fixed["verts_norm"],
+           fixed["origin"]["edits"]), ("one_click_v1", True, True, {"vertex": 2, "move": 1}))
+    with urllib.request.urlopen(f"{base}/health") as res:
+        health = json.load(res)
+    check("summary counts origin methods",
+          (health["origin_methods"].get("manual"), health["origin_methods"].get("one_click_v1")),
+          (1, 2))
 
     # a wedged share (sync client stalled mid-syscall) may cost a contribution
     # at most the mirror timeout — the corpus row still banks, the POST returns

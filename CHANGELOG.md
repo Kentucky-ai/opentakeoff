@@ -2,6 +2,16 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-07-18
+
+### Added
+- **`opentakeoff.contribution.v2` — contributions carry provenance** (contribution.v2 PR-2, on the PR-1 provenance primitives). The Contribute payload now sends each shape's `id` (opaque durable UUID), `created_at`, and a **whitelisted** `origin` object (`pickOrigin` — registered keys only, never a spread): method, actor, reviewed/edited/edited-before-create/copied flags, one-click seed + trace parameters, per-kind correction tallies, and — for corrected machine shapes — the frozen `proposed_verts_norm`, so the machine's trace and the expert's fix ride side by side. New envelope fields: `generator_version` (inlined from `package.json` at build), per-sheet `scale_source` (provenance only — scale *values* never leave, and v1's `units_per_px`-free discipline tightens into an explicit MUST NOT), and aggregate `counters` (e.g. shapes deleted by origin method). The never-sent list is unchanged and now normative: no PDF, file names, project/client names, markup or label text, absolute coordinates, scale values, or edit timing beyond `created_at`.
+- **`docs/CONTRIBUTION_SPEC.md`** — the normative wire + row contract: privacy invariants (including explicit disclosure of the durable-id linkage), field tables for `contribution.v2` and the `capture.v2` row, the provenance vocabulary registry with an IoU correction-magnitude recipe, dedup semantics, and the versioning policy (additive within a version; servers accept N and N−1).
+- **Capture server banks `opentakeoff.capture.v2` rows** and accepts both `contribution.v2` and `contribution.v1` (anything else still 400s). Rows gain `shape_id`, `created_at`, verbatim `origin`, `scale_source` (joined from the payload's sheets), `generator_version`, and `contribution_schema` — all key-omitted when the wire didn't carry them; the row fingerprint is unchanged, so existing corpora can't double-bank. `summary`/`/health` gain an `origin_methods` count map, and the selftest grows a v2 triad (manual / clean one-click / corrected one-click must stay distinguishable), a v1-still-ingests check, and an unknown-schema rejection check.
+
+### Changed
+- **Capture rows default `origin_method` to `"unknown"`, not `"human"`.** A shape that recorded no provenance is a shape whose provenance we don't know — defaulting it to human would corrupt any human-vs-machine split trained on the corpus. Treat `"unknown"` as unlabeled.
+
 ## 2026-07-18 — opentakeoff-mcp 0.4.0
 
 ### Changed

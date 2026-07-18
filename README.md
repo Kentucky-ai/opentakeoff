@@ -126,8 +126,8 @@ Here's the part of a takeoff nobody talks about: every one you finish is a set o
 
 OpenTakeoff ships an optional **capture layer** so you can keep it:
 
-- The **Contribute** button in the Report builds a derived-only payload — condition labels, shape roles, quantities, normalized geometry. Never the PDF, file names, project/client names, markups, or absolute coordinates. The builder is ~70 audited lines: [`web/src/lib/contribute.js`](web/src/lib/contribute.js).
-- The bundled **capture server** ([`capture/`](capture/README.md)) — one stdlib-only Python file, no pip install — receives it on localhost and banks one training row per labeled shape, hash-gated so re-contributions never duplicate. Point it at a synced folder with `--mirror` and the corpus rides your existing OneDrive/SharePoint/Dropbox sync into company storage, atomically, ready to train on.
+- The **Contribute** button in the Report builds a derived-only payload — condition labels, shape roles, quantities, normalized geometry, and per-shape provenance (hand-traced vs. machine-proposed, and whether a human corrected it). Never the PDF, file names, project/client names, markups, absolute coordinates, or scale values. The builder is ~150 audited lines: [`web/src/lib/contribute.js`](web/src/lib/contribute.js); the normative wire contract is [`docs/CONTRIBUTION_SPEC.md`](docs/CONTRIBUTION_SPEC.md).
+- The bundled **capture server** ([`capture/`](capture/README.md)) — one stdlib-only Python file, no pip install — receives it on localhost and banks one training row per labeled shape, hash-gated so re-contributions never duplicate. v2 rows distinguish what the machine got right from what an expert had to fix — the exact signal a takeoff model trains on. Point it at a synced folder with `--mirror` and the corpus rides your existing OneDrive/SharePoint/Dropbox sync into company storage, atomically, ready to train on.
 
 ```bash
 python3 capture/capture_server.py    # then, in the app's browser console:

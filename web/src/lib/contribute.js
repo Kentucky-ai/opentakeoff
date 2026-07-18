@@ -2,9 +2,14 @@
 //
 // The pitch: grow a shared, flooring-tuned open dataset/model the community is
 // proud to feed. What's sent is the DERIVED takeoff only — condition labels,
-// per-shape roles + quantities, and NORMALIZED (0..1) geometry. What is NEVER
-// sent: the raw PDF, file names, project/customer names, markup text, or any
-// absolute coordinates. The code is open so anyone can audit exactly this.
+// per-shape roles + quantities, NORMALIZED (0..1) geometry, and each shape's
+// provenance (hand-traced vs. machine-proposed, and whether a human corrected
+// it). What is NEVER sent: the raw PDF, file names, project/customer names,
+// markup or shape-label text, absolute coordinates, scale values, or any edit
+// timing beyond each shape's created_at. Shape/sheet identifiers go out as
+// opaque tokens (UUIDs / sheet_N) that carry no content. The code is open so
+// anyone can audit exactly this; the normative contract — every MUST NOT, the
+// field tables, the provenance vocabulary — lives in docs/CONTRIBUTION_SPEC.md.
 //
 // The collection endpoint is configured at deploy time (VITE_CONTRIBUTE_ENDPOINT)
 // or per-browser (localStorage), and can be left unset — in which case the
@@ -37,21 +42,77 @@ export function endpointSource() {
   return (import.meta.env && import.meta.env.VITE_CONTRIBUTE_ENDPOINT) ? "build" : "";
 }
 
+// Vite inlines the app version at build (vite.config.js `define`); under the
+// Node test runner the identifier simply doesn't exist, hence the typeof guard.
+const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "";
+
+// The ONLY origin keys that ever leave the machine. A whitelist, never a
+// spread: any key a newer (or patched) build adds to origin stays local until
+// it is deliberately added here AND documented in docs/CONTRIBUTION_SPEC.md.
+const ORIGIN_FIELDS = [
+  "method",               // how the geometry came to exist: "manual" | "one_click_v1" | ...
+  "actor",                // omitted = human at the canvas; "agent" = MCP client
+  "reviewed",             // a human affirmed the shape at an explicit gate
+  "edited",               // corrected after Create
+  "edited_before_create", // corrected between proposal and Create
+  "copied",               // pasted clone — lineage without fresh evidence
+  "seed_norm",            // normalized one-click seed point
+  "proposed_verts_norm",  // the machine's original trace, frozen at first correction
+  "hatch_filtered",       // one-click ran with hatch filtering
+  "raster_traced",        // traced from scan pixels, not vector linework
+  "fill_sensitivity",     // non-default one-click fill sensitivity
+  "edits",                // per-kind correction tally, e.g. { vertex: 2, move: 1 }
+];
+
+/** @returns {Record<string, any> | null} the whitelisted origin, or null when nothing survives */
+export function pickOrigin(origin) {
+  if (!origin || typeof origin !== "object") return null;
+  /** @type {Record<string, any>} */
+  const out = {};
+  for (const k of ORIGIN_FIELDS) if (origin[k] !== undefined) out[k] = origin[k];
+  return Object.keys(out).length ? out : null;
+}
+
+// Omit-when-empty for the provenance counters: an all-empty tally says nothing.
+const hasCounts = (c) => !!c && Object.values(c).some((v) =>
+  typeof v === "number" ? v > 0 : !!v && typeof v === "object" && Object.keys(v).length > 0);
+
 // Build the anonymized, derived-only payload. No raw plan, no identifiers.
-export function buildContribution({ conditions, shapes }) {
+/**
+ * @param {{
+ *   conditions: Array<Record<string, unknown>>,
+ *   shapes: Array<Record<string, any>>,
+ *   scaleInfo?: Array<{ sheet_id: string, units_per_px?: number, scale_source?: string }>,
+ *   counters?: Record<string, number | Record<string, number>> | null,
+ * }} takeoff — scaleInfo's units_per_px is accepted (it's what the canvas has) and NEVER read
+ */
+export function buildContribution({ conditions, shapes, scaleInfo = [], counters = null }) {
   const sheetIds = [...new Set(shapes.map((s) => s.sheet_id))];
   const sheetIndex = new Map(sheetIds.map((k, i) => [k, `sheet_${i + 1}`])); // strip file names
   const tagOf = Object.fromEntries((conditions || []).map((c) => [c.id, c.finish_tag]));
 
-  const anonShapes = shapes.map((s) => ({
-    role: s.measure_role,
-    finish: tagOf[s.condition_id] || "?",
-    sheet: sheetIndex.get(s.sheet_id),
-    verts_norm: s.verts_norm,          // normalized 0..1 — shape only, no scale/location
-    computed: s.computed,              // SF / LF / EA
-    ...(s.height_ft ? { height_ft: s.height_ft } : {}),
-    ...(s.origin?.method ? { origin_method: s.origin.method } : {}),
+  // Per-sheet scale PROVENANCE only ("calibrated" / "detected" / "standard" /
+  // "unknown") — never units_per_px or any other scale value.
+  const bySheet = new Map((scaleInfo || []).map((si) => [si.sheet_id, si.scale_source]));
+  const sheets = sheetIds.map((sid) => ({
+    sheet: sheetIndex.get(sid),
+    ...(bySheet.get(sid) ? { scale_source: bySheet.get(sid) } : {}),
   }));
+
+  const anonShapes = shapes.map((s) => {
+    const origin = pickOrigin(s.origin);
+    return {
+      role: s.measure_role,
+      finish: tagOf[s.condition_id] || "?",
+      sheet: sheetIndex.get(s.sheet_id),
+      verts_norm: s.verts_norm,          // normalized 0..1 — shape only, no scale/location
+      computed: s.computed,              // SF / LF / EA
+      ...(s.height_ft ? { height_ft: s.height_ft } : {}),
+      ...(s.id ? { id: s.id } : {}),     // opaque UUID — links re-contributions, carries no content
+      ...(s.created_at ? { created_at: s.created_at } : {}), // legacy shapes predate stamping — omitted
+      ...(origin ? { origin } : {}),     // whitelisted provenance; updated_at/edit timing NEVER ride
+    };
+  });
 
   const anonConditions = (conditions || []).map((c) => ({
     finish: c.finish_tag,
@@ -66,12 +127,14 @@ export function buildContribution({ conditions, shapes }) {
   );
 
   return {
-    schema: "opentakeoff.contribution.v1",
+    schema: "opentakeoff.contribution.v2",
     generator: "opentakeoff",
-    sheet_count: sheetIds.length,
+    ...(APP_VERSION ? { generator_version: APP_VERSION } : {}),
+    sheets,
     conditions: anonConditions,
     shapes: anonShapes,
     totals,
+    ...(hasCounts(counters) ? { counters } : {}), // aggregate tallies (e.g. shapes_deleted by origin method)
   };
 }
 

@@ -13,7 +13,7 @@ evaporates when the bid goes out. The capture layer is how you keep it.
 
 ## What it is
 
-One stdlib-only Python file — no pip install, ~350 lines, audit it in a
+One stdlib-only Python file — no pip install, ~500 lines, audit it in a
 sitting. It listens on localhost for the app's opt-in **Contribute** payload
 and banks each labeled shape as one training row:
 
@@ -24,16 +24,27 @@ corpus/
   state.json             fingerprints already banked (ingest is idempotent)
 ```
 
-A row is the WHERE and the WHAT: normalized polygon + bbox, sheet, measure
-role, then the label — finish tag, hatch, waste %, multiplier, height — plus
-the quantities you accepted and how the shape was made (`origin_method:
-"oneclick"` vs `"human"`). Re-contributing an unchanged takeoff appends
-nothing; retag or redraw a shape and it re-captures. Rows are hash-gated by
-content, so the corpus only ever grows by real signal.
+A row is the WHERE, the WHAT, and the HOW: normalized polygon + bbox, sheet,
+measure role, then the label — finish tag, hatch, waste %, multiplier, height —
+the quantities you accepted, and the shape's provenance. Current builds send
+`opentakeoff.contribution.v2`, and those rows carry the full origin record:
+hand-traced (`manual`) vs. machine-proposed (`one_click_v1`), whether a human
+corrected it, and — for corrected shapes — the machine's original trace
+(`proposed_verts_norm`) alongside the final geometry, so what the machine got
+right and what an expert had to fix stay distinguishable. Rows also carry the
+shape's durable id, `created_at`, and the sheet's `scale_source` (provenance
+only — never a scale value). Older v1 payloads still ingest; their rows just
+lack the v2 columns, and a shape that recorded no provenance banks as
+`origin_method: "unknown"` — not `"human"`, because absence of evidence isn't
+a hand trace. Re-contributing an unchanged takeoff appends nothing; retag or
+redraw a shape and it re-captures. Rows are hash-gated by content, so the
+corpus only ever grows by real signal. The full row format and field tables
+live in [`docs/CONTRIBUTION_SPEC.md`](../docs/CONTRIBUTION_SPEC.md).
 
 What it receives is the same audited, derived-only payload the app builds for
 any Contribute endpoint (`web/src/lib/contribute.js`): **never** the PDF, file
-names, project or client names, markups, or absolute coordinates.
+names, project or client names, markups, absolute coordinates, or scale
+values.
 
 ## Run it
 

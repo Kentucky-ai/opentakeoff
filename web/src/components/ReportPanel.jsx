@@ -44,7 +44,7 @@ const sheetNum = (v, d = 1) => {
   return num(r, d);
 };
 
-export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], clientInfo = {}, onClientInfo, conditionColumns = [], shapeLabels = [], units = "imperial" }) {
+export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], provenanceCounters = null, clientInfo = {}, onClientInfo, conditionColumns = [], shapeLabels = [], units = "imperial" }) {
   // memoized on the source arrays: project-name/client-info keystrokes re-render
   // the panel without touching conditions/shapes, so the totaling passes skip
   // imported report theme → { vars, name, warnings }. vars are spread onto this
@@ -856,7 +856,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
       </div>
 
       {showContribute && (
-        <ContributeModal conditions={conditions} shapes={shapes} onClose={() => setShowContribute(false)} />
+        <ContributeModal conditions={conditions} shapes={shapes} scaleInfo={scaleInfo} provenanceCounters={provenanceCounters} onClose={() => setShowContribute(false)} />
       )}
       {showInfo && (
         <ProjectInfoModal clientInfo={clientInfo} onClientInfo={onClientInfo}
@@ -1060,7 +1060,7 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
   );
 }
 
-function ContributeModal({ conditions, shapes, onClose }) {
+function ContributeModal({ conditions, shapes, scaleInfo = [], provenanceCounters = null, onClose }) {
   const [attest, setAttest] = useState(false);
   const [contributor, setContributor] = useState("");
   const [state, setState] = useState("idle"); // idle | sending | done | error
@@ -1071,7 +1071,7 @@ function ContributeModal({ conditions, shapes, onClose }) {
     if (!attest || !configured) return;
     setState("sending"); setMsg("");
     try {
-      await sendContribution(buildContribution({ conditions, shapes }), contributor.trim());
+      await sendContribution(buildContribution({ conditions, shapes, scaleInfo, counters: provenanceCounters }), contributor.trim());
       setState("done"); setMsg("Thank you — your takeoff is now helping train the open flooring model.");
     } catch (e) {
       setState("error"); setMsg(e.message || String(e));
@@ -1090,6 +1090,7 @@ function ContributeModal({ conditions, shapes, onClose }) {
           <ul style={{ margin: "0 0 10px", paddingLeft: 18 }}>
             <li>condition labels, shape types, and quantities (SF / LF / EA)</li>
             <li>normalized room geometry (shape only — no scale, no location)</li>
+            <li>how each shape was made (hand-traced vs. machine-proposed) and whether you corrected it</li>
           </ul>
           <p style={{ margin: "0 0 10px", color: "var(--c-positive)", fontWeight: 600 }}>
             Never sent: the PDF itself, file names, project or client names, your markups, or any absolute coordinates.

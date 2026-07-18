@@ -36,7 +36,9 @@ export default [
       ecmaVersion: 2024,
       sourceType: "module",
       parserOptions: { ecmaFeatures: { jsx: true } },
-      globals: { ...globals.browser },
+      // __APP_VERSION__ is a build-time define (vite.config.js) — a real global
+      // in the bundle, absent under Node (use sites carry a typeof guard).
+      globals: { ...globals.browser, __APP_VERSION__: "readonly" },
     },
     plugins: { "react-hooks": reactHooks },
     rules: {
