@@ -109,6 +109,7 @@ Every drawing, scale, condition, and markup autosaves to **your browser** (Index
 | **Storage** | IndexedDB + localStorage — client-only, nothing uploaded |
 | **Capture (opt-in)** | Bundled [capture server](capture/README.md) banks each contributed takeoff as (geometry → label) training rows — a corpus you own, mirrorable to a synced company share |
 | **MCP server** | The engine on stdio for your MCP client — load a plan, set the scale, one-click rooms, export the takeoff ([`mcp/`](mcp/README.md)) |
+| **Provenance** | Every shape records how it was measured — its scale, one-click or hand-drawn, and whether a person or an agent made it |
 | **Deploy** | One static build, hostable on Netlify, Vercel, GitHub Pages, S3, or any static host |
 
 ## Run it / deploy it
@@ -143,7 +144,7 @@ Run OpenTakeoff as-is and none of this exists for you — nothing is captured, n
 
 ## The research behind OpenTakeoff
 
-OpenTakeoff is the open half of an applied-research program run by a working commercial flooring estimator ([Kentucky AI](https://kentucky-ai.com)). The boundary is deliberate, and it's the same one the best open-core scientific software draws: **the measurement engine — rendering, scale, geometry, exports, the MCP server — is Apache-2.0 and stays open. The AI models we train on our own estimating archive are proprietary.** You get a real tool with no seat licenses; we keep the part that only our data can build.
+OpenTakeoff is the open half of an applied-research program run by a working commercial flooring estimator who builds the AI his own department uses ([Kentucky AI](https://kentucky-ai.com)). The boundary is deliberate, and it's the same one the best open-core scientific software draws: **the measurement engine — rendering, scale, geometry, exports, the MCP server — is Apache-2.0 and stays open. The AI models we train on our own estimating archive are proprietary.** You get a real tool with no seat licenses; we keep the part that only our data can build.
 
 The research side runs like a lab, not a demo reel:
 
@@ -203,15 +204,15 @@ Ground rules live in [CONTRIBUTING.md](CONTRIBUTING.md). Tested PRs with green C
 
 ## Status
 
-OpenTakeoff is a **working tool**, not a preview. The measuring engine — One-Click Area, conditions, assemblies, the report and exports — is the production engine carved out of a commercial flooring estimating app. **Snap** is marked beta. It's used on real commercial flooring bids; issues and pull requests are welcome.
+OpenTakeoff is a **working tool**, not a preview. The measuring engine — One-Click Area, conditions, assemblies, the report and exports — is the production engine carved out of a commercial flooring estimating app. The same engine answers to a person at the canvas or an AI agent over MCP, and every measurement it makes carries its scale and origin. **Snap** is marked beta. It's used on real commercial flooring bids; issues and pull requests are welcome.
 
 ## A note from the maker
 
-I run estimating for a commercial flooring company. Every takeoff tool I've used costs four figures a year  — so I built the one I actually wanted, and I'm giving it to the trade.
+I run estimating for a commercial flooring company — and I build the AI that runs my department. OpenTakeoff is the open half of that work: the measuring engine a person or an agent drives the same way, given free to the trade. The models I train on our own estimating archive stay ours.
 
-This is the real measuring engine, not a teaser. **One-Click Area** is the same flood-fill room tracer the expensive tools gate behind a subscription. Open a plan, trace your rooms, hand off a clean report — free, and nothing ever leaves your computer.
+I built the tool I actually wanted: open a plan, trace your rooms (or let an agent do it), hand off a clean report — and every number tells you how it was made.
 
-— Michael · Kentucky Ai
+— Michael · Kentucky AI
 
 ## License
 
