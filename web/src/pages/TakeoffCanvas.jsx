@@ -1785,7 +1785,9 @@ export default function TakeoffCanvas() {
     setShapes((ss) => ss.map((s) => {
       if (s.id !== selectedId) return s;
       const vn = s.verts_norm.filter((_, j) => j !== selVert);
-      return { ...s, verts_norm: vn, computed: recomputeShape({ ...s, verts_norm: vn }) };
+      // dropping a corner is as real an edit as dragging one — stamp it, so a
+      // machine shape corrected only this way can't read as a clean accept
+      return { ...stampEdit(s, "vertex"), verts_norm: vn, computed: recomputeShape({ ...s, verts_norm: vn }) };
     }));
     setSelVert(null);
   }
