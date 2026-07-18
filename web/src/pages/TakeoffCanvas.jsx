@@ -1691,7 +1691,7 @@ export default function TakeoffCanvas() {
       for (let i = 0; i < pts.length; i++) {
         if (Math.hypot(pts[i][0] - p[0], pts[i][1] - p[1]) < thr * 1.6) {
           setSelVert(i);   // select this corner + arm its move drag
-          dragRef.current = { kind: "vertex", shapeId: selectedId, vIndex: i };
+          dragRef.current = { kind: "vertex", shapeId: selectedId, vIndex: i, gx: e.clientX, gy: e.clientY };
           e.currentTarget.setPointerCapture(e.pointerId); return;
         }
       }
@@ -1713,9 +1713,9 @@ export default function TakeoffCanvas() {
               return { ...s, verts_norm: vn, computed: recomputeShape({ ...s, verts_norm: vn }) };
             }));
             setSelVert(i + 1);
-            dragRef.current = { kind: "vertex", shapeId: selectedId, vIndex: i + 1 };
+            dragRef.current = { kind: "vertex", shapeId: selectedId, vIndex: i + 1, gx: e.clientX, gy: e.clientY };
           } else {
-            dragRef.current = { kind: "edge", shapeId: selectedId, i, j, oaN: [...sel.verts_norm[i]], obN: [...sel.verts_norm[j]], start: p };
+            dragRef.current = { kind: "edge", shapeId: selectedId, i, j, oaN: [...sel.verts_norm[i]], obN: [...sel.verts_norm[j]], start: p, gx: e.clientX, gy: e.clientY };
           }
           e.currentTarget.setPointerCapture(e.pointerId); return;
         }
@@ -1752,7 +1752,7 @@ export default function TakeoffCanvas() {
     }
     // 3. move the selected shape if its body (not a handle) was hit
     if (sel && selSp && hitShape(sel, p[0] - selSp.xOffset, p[1], selSp.img.w, selSp.img.h, thr)) {
-      dragRef.current = { kind: "move", shapeId: selectedId, start: p, orig: sel.verts_norm };
+      dragRef.current = { kind: "move", shapeId: selectedId, start: p, orig: sel.verts_norm, gx: e.clientX, gy: e.clientY };
       e.currentTarget.setPointerCapture(e.pointerId); return;
     }
     // 4. otherwise pick a shape (or clear the selection)
@@ -1761,7 +1761,7 @@ export default function TakeoffCanvas() {
       return hitShape(s, p[0] - sp.xOffset, p[1], sp.img.w, sp.img.h, thr);
     });
     selectShape(hit ? hit.id : null);
-    if (hit) { dragRef.current = { kind: "move", shapeId: hit.id, start: p, orig: hit.verts_norm }; e.currentTarget.setPointerCapture(e.pointerId); return; }
+    if (hit) { dragRef.current = { kind: "move", shapeId: hit.id, start: p, orig: hit.verts_norm, gx: e.clientX, gy: e.clientY }; e.currentTarget.setPointerCapture(e.pointerId); return; }
     // 5. open canvas — drag the paper to PAN (the instinct everyone brings from
     // desktop takeoff tools; no need to reach for the Pan tool). The plain
     // click (no drag) already cleared the selection above, so a stationary
@@ -2046,10 +2046,15 @@ export default function TakeoffCanvas() {
       const p = toImage(e.clientX, e.clientY);
       // Provenance: stamp REAL edits once per drag GESTURE, not per pointermove
       // (a single drag streams dozens of moves — per-event stamping would
-      // inflate origin.edits). The first move event still sees the PRE-drag
-      // verts_norm, so stampEdit's first-edit freeze captures the machine's
-      // untouched ring; `stamp` is resolved before the updater so it stays pure.
-      const stamp = (d.kind === "vertex" || d.kind === "edge" || d.kind === "move") && !d.stamped;
+      // inflate origin.edits), and only once the pointer has actually LEFT the
+      // grab point (gx/gy): a plain select-click emits a zero-delta pointermove
+      // that would otherwise stamp every machine shape as human-corrected just
+      // for being selected. The first displaced event still sees the PRE-drag
+      // verts_norm (zero-delta events wrote no change), so stampEdit's freeze
+      // captures the machine's untouched ring; `stamp` is resolved before the
+      // updater so it stays pure.
+      const stamp = (d.kind === "vertex" || d.kind === "edge" || d.kind === "move") && !d.stamped
+        && (e.clientX !== d.gx || e.clientY !== d.gy);
       if (stamp) d.stamped = true;
       if (d.kind === "vertex") {
         setShapes((ss) => ss.map((s) => {
