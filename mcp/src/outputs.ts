@@ -132,7 +132,7 @@ export const exportTakeoffOutput = {
     measure_role: z.enum(["floor_area", "deduct", "linear"]),
     verts_norm: z.array(point).describe("Vertices normalized to sheet dims (0–1)"),
     computed: z.object({ area_sf: z.number(), perimeter_lf: z.number() }).passthrough(),
-    origin: z.object({}).passthrough().optional().describe("Provenance for one-click traces"),
+    origin: z.object({}).passthrough().optional().describe("Provenance: method (manual|one_click_v1), actor (omitted=human, 'agent'=MCP/automation), reviewed (human affirmed at an explicit gate), and correction fields (edited, edited_before_create, copied, proposed_verts_norm, edits)"),
   }).passthrough()),
   markups: z.array(z.unknown()),
   sheet_group: z.array(z.unknown()),
