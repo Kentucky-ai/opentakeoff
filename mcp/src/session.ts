@@ -22,8 +22,14 @@ const SNAP_CELL = 24; // snap-grid bucket, raster px
 const SNAP_TOL = 7;   // one-click vertex-snap tolerance, image px
 const PALETTE = ["#c96442", "#2f7d54", "#2563eb", "#9333ea", "#b8860b", "#0d9488", "#be185d", "#1f2937", "#dc2626", "#0891b2"];
 const HATCH_IDS = ["solid", "diag", "diag2", "cross", "diagdense", "horiz", "vert", "grid", "brick", "plank", "herring", "basket", "checker", "wave", "fleur", "speckle"];
-let _idn = 0;
-const uid = (p: string): string => `${p}-${Date.now().toString(36)}-${(_idn++).toString(36)}`;
+// uid mirrors web/src/lib/provenance.js mintUuid: crypto.randomUUID is a
+// global in Node 20+, with the same non-secure-context fallback the browser
+// build carries so the two sides mint identically-shaped ids.
+const mintUuid = (): string =>
+  (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function")
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+const uid = (p: string): string => `${p}-${mintUuid()}`;
 
 export const ANN_SCHEMA = "opentakeoff.takeoff_canvas.v1"; // web/src/lib/store.js
 

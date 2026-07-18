@@ -7,6 +7,7 @@
 
 import { RENDER_SCALE } from "./sheets";
 import { STALE_TAB_MESSAGE } from "./store.js";
+import { mintUuid, nowIso } from "./provenance.js";
 import { instantiateMaterial } from "./materials.js";
 import { PALETTE } from "../components/hatches.jsx";
 import {
@@ -42,8 +43,7 @@ export function invertCanvasPixels(cv) {
   ctx.restore();
 }
 
-let _idn = 0;
-export const uid = (p) => `${p}-${Date.now().toString(36)}-${(_idn++).toString(36)}`;
+export const uid = (p) => `${p}-${mintUuid()}`;
 export const clamp = (s) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
 // shared by the status-bar tone AND the auto-dismiss skip (in the canvas) — one
 // definition of "this message is bad news" for both readers
@@ -52,7 +52,7 @@ export const isDangerMsg = (s) => s === STALE_TAB_MESSAGE || s.startsWith("Commi
 // A template is a condition minus ids (finish_tag, colors, hatch, waste,
 // H/T params, materials) — instantiation mints fresh condition/material ids.
 export const instantiateTemplate = (t) => ({
-  id: uid("cnd"), finish_tag: t.finish_tag || "?",
+  id: uid("cnd"), created_at: nowIso(), finish_tag: t.finish_tag || "?",
   color: t.color || PALETTE[0], fill: t.fill ?? t.color ?? PALETTE[0],
   hatch: t.hatch || "solid", multiplier: 1, waste_pct: Number(t.waste_pct) || 0,
   ...(t.height_ft != null ? { height_ft: t.height_ft } : {}),

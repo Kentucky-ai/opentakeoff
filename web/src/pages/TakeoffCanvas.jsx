@@ -66,6 +66,13 @@ import {
   MEASURE_TOOLS, CUT_TOOLS, MARKUP_TOOLS, MARKUP_IDS, HL_INKS, HL_SIZES,
 } from "../lib/canvasConstants.js";
 import { autoRenderScale, invertCanvasPixels, uid, clamp, isDangerMsg, instantiateTemplate, seedConditions } from "../lib/canvasUtil.js";
+// stampEdit marks REAL edits only — a human moving/reshaping/reassigning a
+// committed shape. Explicit NON-edits that must NOT stamp (they rewrite shape
+// records without a human touching the geometry): rescaleSheet's computed
+// re-price, the label-vocabulary renames (renameLabel → renameShapeLabel),
+// hydrate's legacy-markup id backfill, and every hydrate-time sanitizer
+// (sanitizeShapeLabelsOnShapes and friends).
+import { nowIso, stampEdit } from "../lib/provenance.js";
 import { fmtCheckLen, parseLenInput, checkVerdict, M_PER_FT, areaVal, areaUnit, lenVal, lenUnit, calInputToFeet } from "../lib/units";
 import * as panelGeom from "../lib/panelGeometry.js";
 
@@ -266,6 +273,20 @@ export default function TakeoffCanvas() {
   const [selVert, setSelVert] = useState(null);         // selected vertex index of the selected shape — Delete removes just that point
   const [selectedMarkupId, setSelectedMarkupId] = useState(null); // selected markup — mutually exclusive with selectedId
   const [rfis, setRfis] = useState([]);                 // RFI register (Request For Information); linked to markups via markup.rfi_id === rfi.id
+  // Deletion provenance: shapes leave no record once filtered out of `shapes`,
+  // so every delete path bumps a per-origin-method counter here (keyed by
+  // origin.method, "manual" when absent). Serialized as provenance_counters —
+  // omit-when-empty — so the corpus can see how much machine output was thrown
+  // away, not only what survived.
+  const [provCounters, setProvCounters] = useState({ shapes_deleted: {} });
+  const countDeleted = (dead) => {
+    if (!dead.length) return;
+    setProvCounters((pc) => {
+      const sd = { ...pc.shapes_deleted };
+      for (const s of dead) { const k = s.origin?.method || "manual"; sd[k] = (sd[k] || 0) + 1; }
+      return { ...pc, shapes_deleted: sd };
+    });
+  };
   // selecting a shape clears any markup selection and vice-versa — one live
   // selection at a time (bidirectional mutual exclusivity). Passing null clears both.
   const selectShape = (id) => { setSelectedId(id); setSelectedMarkupId(null); };
@@ -699,6 +720,13 @@ export default function TakeoffCanvas() {
     // select / edit / delete / move / RFI-link flows (all keyed on m.id) work on them.
     setMarkups(Array.isArray(a.markups) ? a.markups.map((m) => ({ ...m, id: m.id || uid("mk"), rfi_id: m.rfi_id || "" })) : []);
     setRfis(Array.isArray(a.rfis) ? a.rfis : []);   // additive — old saves without rfis load as []
+    // additive provenance_counters — unconditional set (the else-clear rule: a
+    // snapshot load must not inherit the replaced project's deletion tallies).
+    // Object gate mirrors client_info; number filter keeps the counts trustable.
+    const pcIn = a.provenance_counters?.shapes_deleted;
+    setProvCounters({ shapes_deleted: Object.fromEntries(Object.entries(
+      pcIn && typeof pcIn === "object" && !Array.isArray(pcIn) ? pcIn : {}
+    ).filter(([, v]) => Number.isFinite(v) && v > 0)) });
     // additive `sheet_levels` key (multi-floor gallery grouping) — old payloads
     // lack it and must clear any pre-load levels (the sheet_group else-clear
     // rule: a snapshot load must not inherit the replaced project's levels).
@@ -1178,7 +1206,7 @@ export default function TakeoffCanvas() {
     // units is additive and diff-only (the sheet_levels convention): imperial —
     // the default — omits the key, so an old imperial project's payload is
     // byte-identical on round-trip; only a metric project carries the field.
-    return { project_name: projectName, ...(units === "metric" ? { units } : {}), ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}) })), conditions, ...(conditionColumns.length ? { condition_columns: conditionColumns } : {}), ...(shapeLabels.length ? { shape_labels: shapeLabels } : {}), ...(pinned.length ? { palette: pinned } : {}), shapes, markups, rfis, sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, ...(Object.keys(sheetLevels).length ? { sheet_levels: sheetLevels } : {}) };
+    return { project_name: projectName, ...(units === "metric" ? { units } : {}), ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}) })), conditions, ...(conditionColumns.length ? { condition_columns: conditionColumns } : {}), ...(shapeLabels.length ? { shape_labels: shapeLabels } : {}), ...(pinned.length ? { palette: pinned } : {}), shapes, markups, rfis, sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, ...(Object.keys(sheetLevels).length ? { sheet_levels: sheetLevels } : {}), ...(Object.keys(provCounters.shapes_deleted).length ? { provenance_counters: provCounters } : {}) };
   };
   // Runtime restore of a saved payload — the Revisions panel's Restore lands
   // here. A runtime load (unlike mount) can interrupt work in
@@ -1225,7 +1253,7 @@ export default function TakeoffCanvas() {
     // state it serializes, so listing buildPayload (a new identity each render)
     // would fire a save on every render instead of only on a real change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, markups, rfis, sheetGroup, sheetLevels, lastGroup, openTabs, projectName, clientInfo, units]);
+  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, markups, rfis, provCounters, sheetGroup, sheetLevels, lastGroup, openTabs, projectName, clientInfo, units]);
   useEffect(() => { saveStateRef.current = saveState; }, [saveState]);
 
   // Flush a pending debounced save on navigate-away (unmount), and warn before a
@@ -1452,7 +1480,7 @@ export default function TakeoffCanvas() {
         else if (ocSel && proposal) { deleteSelectedOcVertex(); }
         else if (proposal?.regions.length) { setProposal((pr) => { const rg = pr.regions.slice(0, -1); return rg.length ? { ...pr, regions: rg } : null; }); }
         else if (selVert != null && selectedId) { deleteSelectedShapeVertex(); }
-        else if (selectedId) { setShapes((ss) => ss.filter((s) => s.id !== selectedId)); setSelectedId(null); }
+        else if (selectedId) { countDeleted(shapes.filter((s) => s.id === selectedId)); setShapes((ss) => ss.filter((s) => s.id !== selectedId)); setSelectedId(null); }
         else if (selectedMarkupId && showMarkups) { deleteMarkup(selectedMarkupId); setSelectedMarkupId(null); }
         // pop ONLY the armed tool's pending points — calibrate and check both
         // keep two-click state (calib points even render while another tool is
@@ -2014,13 +2042,20 @@ export default function TakeoffCanvas() {
       // (moveCrosshair bails for Select) — track the RAW cursor; vertex/edge
       // drags apply their own endpoint snap (ocSnap), and a body move is free.
       const p = toImage(e.clientX, e.clientY);
+      // Provenance: stamp REAL edits once per drag GESTURE, not per pointermove
+      // (a single drag streams dozens of moves — per-event stamping would
+      // inflate origin.edits). The first move event still sees the PRE-drag
+      // verts_norm, so stampEdit's first-edit freeze captures the machine's
+      // untouched ring; `stamp` is resolved before the updater so it stays pure.
+      const stamp = (d.kind === "vertex" || d.kind === "edge" || d.kind === "move") && !d.stamped;
+      if (stamp) d.stamped = true;
       if (d.kind === "vertex") {
         setShapes((ss) => ss.map((s) => {
           if (s.id !== d.shapeId) return s;
           const sp = panelByKey(s.sheet_id);
           const [slx, sly] = ocSnap(sp.key, p[0] - sp.xOffset, p[1], !!s.origin?.raster_traced);   // snap the corner to true endpoints (never on a raster-traced shape — see ocSnap)
           const vn = s.verts_norm.map((v, i) => (i === d.vIndex ? [slx / sp.img.w, sly / sp.img.h] : v));
-          return { ...s, verts_norm: vn, computed: recomputeShape({ ...s, verts_norm: vn }) };
+          return { ...(stamp ? stampEdit(s, "vertex") : s), verts_norm: vn, computed: recomputeShape({ ...s, verts_norm: vn }) };
         }));
       } else if (d.kind === "edge") {
         setShapes((ss) => ss.map((s) => {
@@ -2033,7 +2068,7 @@ export default function TakeoffCanvas() {
           const snapN = (nx, ny) => { const [lx, ly] = ocSnap(sp.key, nx * sp.img.w, ny * sp.img.h, rt); return [lx / sp.img.w, ly / sp.img.h]; };
           const na = snapN(d.oaN[0] + dx, d.oaN[1] + dy), nb = snapN(d.obN[0] + dx, d.obN[1] + dy);
           const vn = s.verts_norm.map((v, i) => (i === d.i ? na : i === d.j ? nb : v));
-          return { ...s, verts_norm: vn, computed: recomputeShape({ ...s, verts_norm: vn }) };
+          return { ...(stamp ? stampEdit(s, "edge") : s), verts_norm: vn, computed: recomputeShape({ ...s, verts_norm: vn }) };
         }));
       } else if (d.kind === "move") {
         setShapes((ss) => ss.map((s) => {
@@ -2042,7 +2077,7 @@ export default function TakeoffCanvas() {
           // only the normalizing divisor is the shape's own panel
           const sp = panelByKey(s.sheet_id);
           const dx = (p[0] - d.start[0]) / sp.img.w, dy = (p[1] - d.start[1]) / sp.img.h;
-          return { ...s, verts_norm: d.orig.map(([nx, ny]) => [nx + dx, ny + dy]) };
+          return { ...(stamp ? stampEdit(s, "move") : s), verts_norm: d.orig.map(([nx, ny]) => [nx + dx, ny + dy]) };
         }));
       } else if (d.kind === "markupMove") {
         // raw cursor point — markups aren't snapped/angle-locked, and this matches the
@@ -2243,7 +2278,7 @@ export default function TakeoffCanvas() {
     if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
     const met = closedMetrics(points);
     setShapes((s) => [...s, {
-      id: uid("shp"), sheet_id: tp.key, condition_id: activeCond,
+      id: uid("shp"), created_at: nowIso(), sheet_id: tp.key, condition_id: activeCond,
       measure_role: asDeduct ? "deduct" : "floor_area",
       verts_norm: points.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]),
       computed: { area_sf: +(met.area * upp * upp).toFixed(2), perimeter_lf: +(met.perim * upp).toFixed(2) },
@@ -2260,7 +2295,7 @@ export default function TakeoffCanvas() {
     const LF = openLen(points) * upp;
     const tIn = Number(aCond?.thickness_in) || 0; // borders/feature strips: SF = LF × T/12
     setShapes((s) => [...s, {
-      id: uid("shp"), sheet_id: tp.key, condition_id: activeCond, measure_role: "linear",
+      id: uid("shp"), created_at: nowIso(), sheet_id: tp.key, condition_id: activeCond, measure_role: "linear",
       verts_norm: points.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]),
       computed: { perimeter_lf: +LF.toFixed(2), area_sf: tIn > 0 ? +((LF * tIn) / 12).toFixed(2) : 0 },
       ...(activeLabel ? { label: activeLabel } : {}),
@@ -2279,7 +2314,7 @@ export default function TakeoffCanvas() {
     if (!(h > 0)) { setCommitMsg(`Set a height for ${aCond?.finish_tag || "this condition"} (H in the condition editor) — Surface Area = traced LF × height.`); return; }
     const LF = openLen(points) * upp;
     setShapes((s) => [...s, {
-      id: uid("shp"), sheet_id: tp.key, condition_id: activeCond, measure_role: "surface_area", height_ft: h,
+      id: uid("shp"), created_at: nowIso(), sheet_id: tp.key, condition_id: activeCond, measure_role: "surface_area", height_ft: h,
       verts_norm: points.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]),
       computed: { area_sf: +(LF * h).toFixed(2), perimeter_lf: +LF.toFixed(2) },
       ...(activeLabel ? { label: activeLabel } : {}),
@@ -2290,7 +2325,7 @@ export default function TakeoffCanvas() {
     if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
     const tp = panelAt(p[0]);
     setShapes((s) => [...s, {
-      id: uid("shp"), sheet_id: tp.key, condition_id: activeCond, measure_role: "count",
+      id: uid("shp"), created_at: nowIso(), sheet_id: tp.key, condition_id: activeCond, measure_role: "count",
       verts_norm: [[(p[0] - tp.xOffset) / tp.img.w, p[1] / tp.img.h]], computed: { count: 1 }, ...(activeLabel ? { label: activeLabel } : {}), origin: { method: "manual" },
     }]);
   }
@@ -2424,7 +2459,11 @@ export default function TakeoffCanvas() {
           return prev;
         }
         outcome = "added";
-        return { key: tp.key, regions: [...rs, { kind, seed: local, poly: ring, area_sf, perim_lf, hf: !!f.hatchFiltered, rt: !!raster }] };
+        // poly0 freezes the MACHINE trace (post-snap, pre-handle-edit) so a
+        // corrected region can still report what the fill proposed; sens rides
+        // only when the estimator moved the knob off Balanced (vector path
+        // only — the raster mask is single-tier, sensitivity is inert there).
+        return { key: tp.key, regions: [...rs, { kind, seed: local, poly: ring, poly0: ring.map(([x, y]) => [x, y]), ...(!raster && fillSens !== SENS_BALANCED ? { sens: fillSens } : {}), area_sf, perim_lf, hf: !!f.hatchFiltered, rt: !!raster }] };
       });
     });
     if (outcome === "dup") setCommitMsg(negative ? "That cutout is already carved." : "Already selected — ⌥-click carves an enclosed cutout; ⏎ creates.");
@@ -2490,13 +2529,18 @@ export default function TakeoffCanvas() {
     if (!proposal || !proposal.regions.length) return;
     const tp = panelByKey(proposal.key);
     const made = proposal.regions.map((r) => ({
-      id: uid("shp"), sheet_id: tp.key, condition_id: activeCond,
+      id: uid("shp"), created_at: nowIso(), sheet_id: tp.key, condition_id: activeCond,
       measure_role: r.kind === "neg" ? "deduct" : "floor_area",
       verts_norm: r.poly.map(([x, y]) => [x / tp.img.w, y / tp.img.h]),
       computed: { area_sf: r.area_sf, perimeter_lf: r.perim_lf },
       ...(activeLabel ? { label: activeLabel } : {}),
-      // the provenance receipt: machine-proposed, human-reviewed at the Create gate
-      origin: { method: "one_click_v1", seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, ...(r.hf ? { hatch_filtered: true } : {}), ...(r.rt ? { raster_traced: true } : {}) },
+      // the provenance receipt: machine-proposed, human-reviewed at the Create
+      // gate. A handle-corrected region (touched) records the machine's frozen
+      // trace (poly0) as proposed_verts_norm — the one-click correction pair;
+      // an untouched region's verts ARE the proposal, so nothing extra rides.
+      // Post-Create edits are stamped by stampEdit, which freezes the same
+      // field from the pre-edit ring only when Create didn't already.
+      origin: { method: "one_click_v1", seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, ...(r.hf ? { hatch_filtered: true } : {}), ...(r.rt ? { raster_traced: true } : {}), ...(r.sens != null ? { fill_sensitivity: r.sens } : {}), ...(r.touched ? { edited_before_create: true, proposed_verts_norm: r.poly0.map(([x, y]) => [x / tp.img.w, y / tp.img.h]) } : {}) },
     }));
     setShapes((s) => [...s, ...made]);
     const sf = proposal.regions.reduce((n, r) => n + (r.kind === "neg" ? -r.area_sf : r.area_sf), 0);
@@ -2603,7 +2647,9 @@ export default function TakeoffCanvas() {
           const nb = ocSnap(pr.key, d.ob[0] + dx, d.ob[1] + dy, r.rt);
           poly = r.poly.map((v, i) => (i === d.i ? na : i === d.j ? nb : v));
         }
-        return { ...r, poly, ...ocMetrics(poly, pr.key) };
+        // touched = a handle actually moved this region: Create records the
+        // frozen poly0 as origin.proposed_verts_norm only for touched regions
+        return { ...r, poly, ...ocMetrics(poly, pr.key), touched: true };
       });
       return { ...pr, regions };
     });
@@ -2645,7 +2691,8 @@ export default function TakeoffCanvas() {
       const regions = pr.regions.map((rr, ri) => {
         if (ri !== ocSel.ri) return rr;
         const np = rr.poly.filter((_, i) => i !== ocSel.vi);
-        return { ...rr, poly: np, ...ocMetrics(np, pr.key) };
+        // dropping a corner is a pre-Create correction too — same touched flag
+        return { ...rr, poly: np, ...ocMetrics(np, pr.key), touched: true };
       });
       return { ...pr, regions };
     });
@@ -2658,7 +2705,15 @@ export default function TakeoffCanvas() {
   // that sheet's scale (this also fixes the legacy bug where pasting after a
   // rescale kept the stale SF).
   const clipRef = useRef([]);
-  const cloneOrigin = (o) => (o ? { origin: { ...o, ...(o.seed_norm ? { seed_norm: [...o.seed_norm] } : {}) } } : {});
+  // A clone keeps its lineage (method + flags + copied: true) but NEVER the
+  // source's seed_norm / proposed_verts_norm: an offset paste would read as a
+  // phantom correction (machine trace over here, shape over there). The edits
+  // map is deep-copied so a stamp on the clone can't alias the source's tally.
+  const cloneOrigin = (o) => {
+    if (!o) return {};
+    const { seed_norm: _seed, proposed_verts_norm: _pvn, ...rest } = o;
+    return { origin: { ...rest, ...(rest.edits ? { edits: { ...rest.edits } } : {}), copied: true } };
+  };
   // the clipboard payload for one shape: verts deep-copied, provenance kept,
   // `from` remembers the source sheet so paste knows same-sheet vs cross-sheet
   const clipEntry = (sel) => ({ condition_id: sel.condition_id, measure_role: sel.measure_role,
@@ -2682,7 +2737,7 @@ export default function TakeoffCanvas() {
       // same sheet: nudge so the copy is visible; other sheet: same relative spot
       const vn = c.verts_norm.map(([x, y]) => (same ? [Math.min(0.999, x + offset), Math.min(0.999, y + offset)] : [x, y]));
       // != null, not truthy: an overridden height of 0 must survive the paste
-      const s = { id: uid("shp"), sheet_id: tp.key, condition_id: c.condition_id, measure_role: c.measure_role, verts_norm: vn, ...(c.height_ft != null ? { height_ft: c.height_ft } : {}), ...(c.height_override ? { height_override: true } : {}), ...(c.label ? { label: c.label } : {}), ...cloneOrigin(c.origin) };
+      const s = { id: uid("shp"), created_at: nowIso(), sheet_id: tp.key, condition_id: c.condition_id, measure_role: c.measure_role, verts_norm: vn, ...(c.height_ft != null ? { height_ft: c.height_ft } : {}), ...(c.height_override ? { height_override: true } : {}), ...(c.label ? { label: c.label } : {}), ...cloneOrigin(c.origin) };
       return { ...s, computed: recomputeShape(s) };
     });
     setShapes((s) => [...s, ...made]);
@@ -2700,7 +2755,9 @@ export default function TakeoffCanvas() {
   // markupDraft holds STAGE px (so the live preview spans panels); a markup
   // belongs to the panel of its FIRST click and normalizes against that panel.
   function addMarkup(m, key) {
-    setMarkups((ms) => [...ms, { id: uid("mk"), sheet_id: key, rfi_id: "", ...m }]);
+    // created_at rides the defaults so every markup path (hand-drawn, cloud's
+    // pre-minted id, stamp instances) is stamped at this single creation gate
+    setMarkups((ms) => [...ms, { id: uid("mk"), created_at: nowIso(), sheet_id: key, rfi_id: "", ...m }]);
     // Drawing a markup by hand surfaces the Markups tab. But a STAMP places several
     // markups via addMarkup — don't yank the user off the Stamps tab mid-placement
     // (keep the current tab, or open Markups only if nothing's open). Highlighter
@@ -2956,7 +3013,7 @@ export default function TakeoffCanvas() {
     const id = uid("rfi");
     const number = nextRfiNumber(rfis);
     const rec = {
-      id, number, subject: (markup.text || "").trim(), question: "", status: "open",
+      id, number, created_at: nowIso(), subject: (markup.text || "").trim(), question: "", status: "open",
       to: "", priority: "normal", cost_impact: false, schedule_impact: false,
       date: new Date().toISOString().slice(0, 10), response: "", response_date: "",
       sheet_id: markup.sheet_id,
@@ -3037,8 +3094,8 @@ export default function TakeoffCanvas() {
     }
     if (tool === "surface") commitSurface(poly); else if (tool === "linear") commitLinear(poly); else commitPoly(poly, tool === "deduct"); setPoly([]);
   }
-  function deleteSelected() { if (selectedId) { setShapes((ss) => ss.filter((s) => s.id !== selectedId)); setSelectedId(null); } }
-  function reassignSelected(condId) { if (selectedId) setShapes((ss) => ss.map((s) => (s.id === selectedId ? { ...s, condition_id: condId } : s))); }
+  function deleteSelected() { if (selectedId) { countDeleted(shapes.filter((s) => s.id === selectedId)); setShapes((ss) => ss.filter((s) => s.id !== selectedId)); setSelectedId(null); } }
+  function reassignSelected(condId) { if (selectedId) setShapes((ss) => ss.map((s) => (s.id === selectedId ? { ...stampEdit(s, "reassign"), condition_id: condId } : s))); }
   function reassignSelectedLabel(value) { if (selectedId) setShapes((ss) => assignShapeLabel(ss, selectedId, value)); }   // Select-tool single-shape re-label (#111) — value "" / null clears it
 
   // pan/zoom the canvas to fit a condition's takeoffs on the open sheets —
@@ -3070,7 +3127,7 @@ export default function TakeoffCanvas() {
     // auto-vary line color AND hatch so each new finish reads distinctly, like a drawing
     const lc = PALETTE[conditions.length % PALETTE.length];
     const c = {
-      id: uid("cnd"), finish_tag: tag,
+      id: uid("cnd"), created_at: nowIso(), finish_tag: tag,
       color: lc,            // line color
       fill: lc,             // fill color (NO_FILL for outline-only)
       hatch: HATCHES[1 + (conditions.length % (HATCHES.length - 1))].id,
@@ -3258,7 +3315,7 @@ export default function TakeoffCanvas() {
       const seed = rowToSeed({ ...row, finish_tag: tag }, idx++, PALETTE);
       const hasSpec = Object.values(seed.spec).some(Boolean);
       made.push({
-        id: uid("cnd"), finish_tag: seed.finish_tag, color: seed.color, fill: seed.color,
+        id: uid("cnd"), created_at: nowIso(), finish_tag: seed.finish_tag, color: seed.color, fill: seed.color,
         hatch: seed.hatch, multiplier: 1, waste_pct: seed.waste_pct, materials: [],
         ...(hasSpec ? { spec: seed.spec } : {}),
       });
@@ -3270,7 +3327,9 @@ export default function TakeoffCanvas() {
     activateCondition(made[0].id, { reassign: false });
     setCommitMsg(`Created ${made.length} condition${made.length === 1 ? "" : "s"} from the schedule.`);
   }
-  const updateCond = (patch) => setConditions((cs) => cs.map((c) => (c.id === activeCond ? { ...c, ...patch } : c)));
+  // every condition-editor save lands here — a bare updated_at is the whole
+  // provenance story for conditions (no origin machinery; they're all manual)
+  const updateCond = (patch) => setConditions((cs) => cs.map((c) => (c.id === activeCond ? { ...c, ...patch, updated_at: nowIso() } : c)));
 
   // delete a condition entirely (and its takeoffs); pick a new active one
   function deleteCondition(id) {
@@ -3279,7 +3338,7 @@ export default function TakeoffCanvas() {
     const owned = shapes.filter((s) => s.condition_id === id);
     if (owned.length && !window.confirm(`Delete ${c.finish_tag} and its ${owned.length} takeoff${owned.length === 1 ? "" : "s"}? This can't be undone.`)) return;
     const next = conditions.filter((x) => x.id !== id);
-    if (owned.length) setShapes((ss) => ss.filter((s) => s.condition_id !== id));
+    if (owned.length) { countDeleted(owned); setShapes((ss) => ss.filter((s) => s.condition_id !== id)); }
     setConditions(next);
     unpinFromPalette(id);   // a deleted condition can't stay pinned in the palette
     if (activeCond === id) setActiveCond(next[0]?.id || "");
@@ -3350,7 +3409,16 @@ export default function TakeoffCanvas() {
       return { ...s, computed: { perimeter_lf: +LF.toFixed(2), area_sf: v > 0 ? +((LF * v) / 12).toFixed(2) : 0 } };
     }));
   };
-  function undoLast() { setShapes((s) => { const mine = s.filter((x) => panelKeySet.has(x.sheet_id)); if (!mine.length) return s; const last = mine[mine.length - 1]; return s.filter((x) => x !== last); }); }
+  // resolved OUTSIDE the setShapes updater (against the render's `shapes`, which
+  // a discrete click always sees current) so the deletion counter and the filter
+  // agree on the same victim — bumping a counter inside an updater isn't pure.
+  function undoLast() {
+    const mine = shapes.filter((x) => panelKeySet.has(x.sheet_id));
+    if (!mine.length) return;
+    const last = mine[mine.length - 1];
+    countDeleted([last]);
+    setShapes((s) => s.filter((x) => x !== last));
+  }
 
   const condById = Object.fromEntries(conditions.map((c) => [c.id, c]));
   const aCond = condById[activeCond];
@@ -3532,12 +3600,13 @@ export default function TakeoffCanvas() {
   const bulkDeleteConditions = (ids) => {
     const live = conditions.filter((c) => ids.has(c.id));
     if (!live.length) return false;
-    const owned = shapes.filter((s) => ids.has(s.condition_id)).length;
+    const dead = shapes.filter((s) => ids.has(s.condition_id));
+    const owned = dead.length;
     // name what dies while the list still reads at a glance (≤5); count beyond
     const what = live.length <= 5 ? live.map((c) => c.finish_tag).join(", ") : `${live.length} conditions`;
     if (!window.confirm(`Delete ${what}${owned ? ` and their ${owned} takeoff${owned === 1 ? "" : "s"}` : ""}? This can't be undone.`)) return false;
     setConditions((cs) => cs.filter((c) => !ids.has(c.id)));
-    if (owned) setShapes((ss) => ss.filter((s) => !ids.has(s.condition_id)));
+    if (owned) { countDeleted(dead); setShapes((ss) => ss.filter((s) => !ids.has(s.condition_id))); }
     setPalette((p) => p.filter((id) => !ids.has(id)));   // deleted conditions can't stay pinned
     if (ids.has(activeCond)) setActiveCond(conditions.find((c) => !ids.has(c.id))?.id || "");
     setCommitMsg(`Deleted ${live.length} condition${live.length === 1 ? "" : "s"}${owned ? ` and ${owned} takeoff${owned === 1 ? "" : "s"}` : ""}.`);
