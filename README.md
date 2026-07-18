@@ -2,27 +2,32 @@
 
 # OpenTakeoff
 
-**The free, open-source takeoff canvas for flooring — open a plan, trace your areas, export your quantities.**
+**The first takeoff canvas built for people _and_ AI agents.**
 
-Open the plan. Set the scale. Trace the rooms. Read the report. Export the quantities.
-No account. No upload. No install. It runs in your browser.
+Open a building plan and measure it — trace the rooms yourself, or point an AI agent at the
+**same engine**. Every measurement carries its **scale** and **how it was made**. Free,
+open-source, and it runs in your browser — no account, no upload, no install.
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Live demo](https://img.shields.io/badge/demo-opentakeoff.netlify.app-2ea44f.svg)](https://opentakeoff.netlify.app)
 [![Built with React + Vite](https://img.shields.io/badge/React%2018-Vite-444.svg)](#tech-stack)
 [![Sponsor](https://img.shields.io/github/sponsors/Kentucky-ai?logo=githubsponsors&label=sponsor&color=EA4AAA)](https://github.com/sponsors/Kentucky-ai)
 
-[**▶ Try the live demo**](https://opentakeoff.netlify.app) · [Quick start](#quick-start) · [Features](#features) · [Deploy it](#run-it--deploy-it) · [Own your data](#own-your-data--the-capture-layer) · [Build on top](#build-on-top-of-it) · [Contributing](CONTRIBUTING.md)
+[**▶ Try the live demo**](https://opentakeoff.netlify.app) · [Quick start](#quick-start) · [Features](#features) · [For AI agents](mcp/) · [Deploy it](#run-it--deploy-it) · [Own your data](#own-your-data--the-capture-layer) · [Build on top](#build-on-top-of-it) · [Contributing](CONTRIBUTING.md)
 
-**New — July 2026:** **MCP server** — your AI agent can drive the takeoff engine (`npx opentakeoff-mcp`, on the [official MCP registry](mcp/)) — and **browse the plan set natively**: sheets, title-block text, and rendered pages as [MCP resources](mcp/#resources--browse-before-you-measure) (v0.2.0) · One-Click Area traces **hatched rooms** and **scanned plans** · **Dark view** · **Marked Set PDF export** — [full changelog](CHANGELOG.md)
+**New — July 2026:** **MCP server** — your AI agent can drive the takeoff engine (`npx opentakeoff-mcp`, on the [official MCP registry](mcp/)) — and **browse the plan set natively**: sheets, title-block text, and rendered pages as [MCP resources](mcp/#resources--browse-before-you-measure) (v0.2.0) · **Provenance** — every shape records how it was measured (its scale, one-click or hand-drawn, and person or agent) · One-Click Area traces **hatched rooms** and **scanned plans** · **Marked Set PDF export** — [full changelog](CHANGELOG.md)
 
 <br/>
 
-<img src="docs/img/social-card.png" alt="OpenTakeoff — a flooring takeoff in progress on a floor finish plan" width="820"/>
+<img src="docs/img/social-card.png" alt="OpenTakeoff — a real takeoff on a floor finish plan, driven the same way by a person or by an AI agent over MCP, with the scale and origin of every measurement" width="820"/>
 
 </div>
 
 ---
+
+OpenTakeoff is a free, open-source canvas for measuring quantities off a building plan — a **takeoff**. What makes it different is who can run it: a person **or** an AI agent, on the **same engine**. You click inside a room and it traces itself; an agent calls the same tool over [MCP](mcp/) and gets the same number. And every measurement records **how it was made** — its scale, whether it was one-click or hand-drawn, and whether a person or an agent made it. The proof travels with the number.
+
+That makes OpenTakeoff the first place an AI agent can measure a real building the way an estimator does — and it's still a genuinely great tool for the person at the canvas.
 
 Until now there has been **no open-source, web-based takeoff canvas at all** — let alone one built for flooring. OpenTakeoff is that tool: a free, open-source alternative, given to the trade.
 
