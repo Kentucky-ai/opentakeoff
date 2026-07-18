@@ -101,6 +101,58 @@ test("pickOrigin: whitelist — unknown keys are dropped, never spread", () => {
   assert.equal(pickOrigin({ someday_field: 1 }), null); // nothing whitelisted → origin omitted entirely
 });
 
+test("agent_v1 round-trip: evidence is deep-whitelisted on the wire; accept-gate timing never rides", () => {
+  const { conditions, scaleInfo } = fixture();
+  const shapes = [{
+    id: "0f7b8f9e-0000-4000-8000-000000000004", created_at: "2026-07-18T13:00:00.000Z",
+    sheet_id: SHEET, condition_id: "cnd-1", measure_role: "floor_area",
+    verts_norm: [[0.1, 0.6], [0.25, 0.6], [0.25, 0.8], [0.1, 0.8]],
+    computed: { area_sf: 150, perimeter_lf: 50 },
+    origin: {
+      method: "agent_v1", actor: "agent", reviewed: true,
+      // local accept-gate provenance — MUST NOT ride (no edit timing beyond created_at)
+      proposed_ts: "2026-07-18T12:59:00.000Z", accepted_ts: "2026-07-18T13:00:00.000Z",
+      proposed_verts_norm: [[0.1, 0.6], [0.25, 0.6], [0.25, 0.8], [0.1, 0.8]],
+      seed_norm: [0.17, 0.7],
+      evidence: {
+        schedule_row_tag: "LVT-9",
+        matched_text: "RM 204 " + "CLASSROOM WING CORRIDOR EAST ".repeat(10),   // >80 chars — must truncate
+        seed_norm: [0.17, 0.7],
+        prompt_text: "the estimator's full goal text",   // junk — must drop
+        sheet_transcript: "arbitrary sheet text",         // junk — must drop
+      },
+    },
+  }];
+  const wire = JSON.stringify(buildContribution({ conditions, shapes, scaleInfo }));
+  for (const leak of ["proposed_ts", "accepted_ts", "prompt_text", "sheet_transcript", "estimator's full goal"]) {
+    assert.ok(!wire.includes(leak), `payload leaked ${JSON.stringify(leak)}`);
+  }
+  const s = JSON.parse(wire).shapes[0];
+  assert.equal(s.origin.method, "agent_v1");
+  assert.equal(s.origin.actor, "agent");
+  assert.equal(s.origin.reviewed, true);
+  assert.deepEqual(s.origin.seed_norm, [0.17, 0.7]);
+  assert.deepEqual(s.origin.proposed_verts_norm, shapes[0].verts_norm);
+  // evidence survives as EXACTLY the whitelisted triple, matched_text truncated
+  assert.deepEqual(Object.keys(s.origin.evidence).sort(), ["matched_text", "schedule_row_tag", "seed_norm"]);
+  assert.equal(s.origin.evidence.schedule_row_tag, "LVT-9");
+  assert.equal(s.origin.evidence.matched_text.length, 80);
+  assert.deepEqual(s.origin.evidence.seed_norm, [0.17, 0.7]);
+});
+
+test("pickOrigin: evidence is deep-whitelisted, never spread; junk-only evidence is omitted", () => {
+  assert.deepEqual(
+    pickOrigin({ method: "agent_v1", evidence: { matched_text: "CPT-1", plan_text: "leak" } }),
+    { method: "agent_v1", evidence: { matched_text: "CPT-1" } },
+  );
+  // nothing whitelisted inside evidence → the evidence key itself is dropped
+  assert.deepEqual(
+    pickOrigin({ method: "agent_v1", evidence: { plan_text: "leak" } }),
+    { method: "agent_v1" },
+  );
+  assert.deepEqual(pickOrigin({ method: "agent_v1", evidence: "not-an-object" }), { method: "agent_v1" });
+});
+
 test("legacy v1-era shapes (no created_at, no origin) still serialize", () => {
   const { conditions } = fixture();
   const legacy = [{

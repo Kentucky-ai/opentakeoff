@@ -210,9 +210,9 @@ should rely on:
 
 | key | type | meaning |
 |---|---|---|
-| `method` | string | how the geometry came to exist: `"manual"` (hand-traced) or `"one_click_v1"` (machine flood-fill proposal); `"import"` reserved |
-| `actor` | string | omitted = a human at the canvas; `"agent"` = an MCP client committed it |
-| `reviewed` | bool | a human affirmed the shape at an explicit gate (e.g. clicked Create on a proposal) |
+| `method` | string | how the geometry came to exist: `"manual"` (hand-traced), `"one_click_v1"` (machine flood-fill proposal), or `"agent_v1"` (in-canvas agent proposal accepted at the review gate); `"import"` reserved |
+| `actor` | string | omitted = a human at the canvas; `"agent"` = an MCP client or the in-canvas agent produced it |
+| `reviewed` | bool | a human affirmed the shape at an explicit gate (e.g. clicked Create on a proposal, or Accept on an agent proposal) |
 | `edited` | bool | corrected after Create |
 | `edited_before_create` | bool | corrected between proposal and Create (grip drags on the live region) |
 | `copied` | bool | pasted clone — carries its source's lineage but no fresh evidence; excluded from correction stats |
@@ -222,6 +222,18 @@ should rely on:
 | `raster_traced` | bool | traced from scan pixels rather than vector linework |
 | `fill_sensitivity` | number | non-default one-click fill sensitivity |
 | `edits` | object | per-kind correction tally, e.g. `{"vertex": 2, "move": 1}` |
+| `evidence` | object | `agent_v1` only: the agent's cited basis for the proposal. **Deep-whitelisted** to exactly `{schedule_row_tag?, matched_text?, seed_norm?}` — never a spread. |
+
+**`evidence` privacy note.** `evidence` carries only the matched TOKEN: the
+schedule row code (`schedule_row_tag`) and/or the room-tag/schedule text the
+agent matched (`matched_text`), each truncated to 80 characters, plus the
+one-click seed (`seed_norm`, normalized). It is never a transcription of the
+sheet, the estimator's goal text, or any model output — the client's whitelist
+drops everything else, and any richer key an agent (or a patched build) stuffs
+into evidence stays local until deliberately registered here. The agent's
+accept-gate timestamps (`proposed_ts` / `accepted_ts`) exist locally on the
+shape's origin but are **not** registered fields — the no-edit-timing MUST NOT
+in §2 covers them.
 
 **Computing correction magnitude.** For a corrected machine shape
 (`proposed_verts_norm` present), the standard measure is **IoU between the

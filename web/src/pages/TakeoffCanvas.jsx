@@ -52,6 +52,15 @@ import { libFields, matFieldOverridden, libPushPatch, libRevertPatch, libEntryPa
 import RfiPanel from "../components/RfiPanel.jsx";
 import StampPanel from "../components/StampPanel.jsx";
 import ImportSchedulePanel from "../components/ImportSchedulePanel.jsx";
+// In-canvas takeoff agent — BYO-key tool-use loop (lib/agentLoop) aiming the
+// registry of deterministic tools (lib/agentTools); this file provides the
+// CAPABILITIES those tools close over and the review gate their proposals
+// pass through. AiSettings is the config surface for the ai.js seam.
+import AgentPanel from "../components/AgentPanel.jsx";
+import AiSettings from "../components/AiSettings.jsx";
+import { AGENT_TOOL_DEFS, executeAgentTool, agentScaleGate } from "../lib/agentTools.js";
+import { runAgentLoop } from "../lib/agentLoop.js";
+import { aiConfig, isAiConfigured } from "../lib/ai.js";
 import AccountChip from "../components/AccountChip.jsx";
 import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
 import { projectHomeFolderId } from "../lib/projectHome.js";
@@ -76,7 +85,7 @@ import { autoRenderScale, invertCanvasPixels, uid, clamp, isDangerMsg, instantia
 // setShapes (the label-vocabulary renames, live drag PREVIEW frames, the
 // hydrate-time sanitizers, per-shape height/thickness re-pricing).
 // nowIso stays imported for the non-shape records (markups, RFIs, conditions).
-import { nowIso } from "../lib/provenance.js";
+import { nowIso, mintUuid } from "../lib/provenance.js";
 import { applyShapeCommand, geomSnapshot, vertsEqual, recordCommand } from "../lib/shapeCommands.js";
 import { fmtCheckLen, parseLenInput, checkVerdict, M_PER_FT, areaVal, areaUnit, lenVal, lenUnit, calInputToFeet } from "../lib/units";
 import * as panelGeom from "../lib/panelGeometry.js";
@@ -272,6 +281,24 @@ export default function TakeoffCanvas() {
   const [shapes, setShapes] = useState([]);
   const [poly, setPoly] = useState([]);
   const [proposal, setProposal] = useState(null);  // One-Click selection under review: { key, regions: [{kind:'pos'|'neg', seed, poly, area_sf, perim_lf}] } — panel-LOCAL px
+  // ── in-canvas takeoff agent state ──────────────────────────────────────────
+  // agentProposals are NOT shapes: committed truth stays committed. Each entry
+  // {id, sheet_id, condition_id, measure_role, verts_norm, evidence, seed_norm?,
+  //  proposed_ts, area_sf, perim_lf} renders as a DASHED pencil outline until
+  // the human accepts (→ dispatchShape add with agent_v1 origin) or rejects
+  // (→ dropped LOCALLY — dismissed geometry never rides the contribution wire).
+  // Ephemeral by design: never persisted (buildPayload doesn't read them).
+  const [agentProposals, setAgentProposals] = useState([]);
+  const [agentOpen, setAgentOpen] = useState(false);      // docked right-rail Agent panel
+  const [agentLog, setAgentLog] = useState([]);           // streaming run status [{kind, text}]
+  const [agentRunning, setAgentRunning] = useState(false);
+  const [showAiSettings, setShowAiSettings] = useState(false); // BYO-key config modal (ai.js seam)
+  const agentAbortRef = useRef(null);                     // live AbortController while a run is in flight
+  // Live mirror of the render-scope state the agent's capability closures read:
+  // the loop runs across many awaits, so closures must read CURRENT state, not
+  // the run-click render's. Updated every render (cheap object build).
+  const agentStateRef = useRef({ panels: [], scales: {}, scaleSources: {}, detectedScales: {}, conditions: [], status: "loading" });
+  useEffect(() => () => agentAbortRef.current?.abort(), []);   // leaving the canvas stops a live agent run
   const [ocSel, setOcSel] = useState(null);        // selected proposal vertex {ri, vi} — Delete removes just that point
   const [ocHover, setOcHover] = useState(-1);      // proposal region under the cursor — handles reveal on hover
   const [selectedId, setSelectedId] = useState(null);   // selected shape (Select tool)
@@ -607,6 +634,10 @@ export default function TakeoffCanvas() {
   const hiResOn = (key) => hiResKeys.includes(key);
   const factorFor = (key) => panelGeom.factorFor(renderScalesRef.current, key);
   const uppFor = (key) => panelGeom.uppFor(scales, renderScalesRef.current, key);
+  // keep the agent's capability closures reading LIVE state across their awaits
+  useEffect(() => {
+    agentStateRef.current = { panels, scales, scaleSources, detectedScales, conditions, status };
+  });
   const toggleHiRes = () => {
     const k = focusPanel.key;
     setHiResKeys((arr) => {
@@ -751,6 +782,10 @@ export default function TakeoffCanvas() {
     // pre-load polygon — "correct" math against the wrong region. Reset it
     // unconditionally, mirroring the sheet_group/sheet_levels else-clear rule.
     resetZone();
+    // agent proposals are ephemeral review state aimed at the PRE-load
+    // conditions/sheets — a loaded/restored timeline starts with none pending
+    // (nothing is lost: rejected geometry records nothing by design).
+    setAgentProposals([]);
     setProjectName(a.project_name || "");
     // string fields only — a corrupted record must not put an object where
     // the report masthead renders a React child
@@ -1490,7 +1525,11 @@ export default function TakeoffCanvas() {
       if (e.key === "Enter") {
         if (tool === "oneclick" && proposal?.regions.length) { e.preventDefault(); createProposal(); return; }
         const ok = ((tool === "area" || tool === "deduct") && poly.length >= 3) || (tool === "zone" && poly.length >= 3 && !zoneTraceCross) || ((tool === "linear" || tool === "surface") && poly.length >= 2);
-        if (ok) { e.preventDefault(); finishShape(); }
+        if (ok) { e.preventDefault(); finishShape(); return; }
+        // ⏎ with agent proposals pending on a visible sheet = accept them all —
+        // the agent's analogue of one-click's Create gate. Only fires when no
+        // trace/proposal claimed the key above, so mid-draw ⏎ is untouched.
+        if (agentProposals.some((p) => panelKeySet.has(p.sheet_id))) { e.preventDefault(); acceptAllVisibleAgentProposals(); }
         return;
       }
       const lower = e.key.toLowerCase();
@@ -1504,7 +1543,10 @@ export default function TakeoffCanvas() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool, poly, proposal, activeCond, sheetGroup, sheetKey]);
+  }, [tool, poly, proposal, agentProposals, activeCond, sheetGroup, sheetKey, shapes, scales]);
+  // ^ shapes/scales joined the deps with the agent accept path (the delete-handler
+  //   precedent): ⏎ accept dispatches an `add` against the CURRENT array, so a
+  //   shapes change with no other dep change must re-subscribe this handler.
 
   // remember the last armed measure tool — the Measure menu face shows it
   useEffect(() => { if (MEASURE_TOOLS.some((t) => t.id === tool)) lastMeasureRef.current = tool; }, [tool]);
@@ -3238,23 +3280,288 @@ export default function TakeoffCanvas() {
     setTfNow({ x: (r.width - w * scale) / 2 - x0 * scale, y: (r.height - h * scale) / 2 - y0 * scale, scale });
   }
 
-  function addCondition() {
-    const tag = (window.prompt("Finish tag for this condition (e.g. LVT-1):") || "").trim();
-    if (!tag) return;
+  // ONE condition-minting path — the human +condition button and the agent's
+  // create_condition tool both come through here, so the field set and the
+  // color/hatch auto-rotation can never drift between the two.
+  function mintCondition(tag) {
+    // read the LIVE list (agentStateRef) — the agent can mint mid-run, when the
+    // render-scope `conditions` closure is stale; the ref is updated per render
+    // AND immediately below, so two mints in one model turn rotate correctly.
+    const cs = agentStateRef.current.conditions;
     // auto-vary line color AND hatch so each new finish reads distinctly, like a drawing
-    const lc = PALETTE[conditions.length % PALETTE.length];
+    const lc = PALETTE[cs.length % PALETTE.length];
     const c = {
       id: uid("cnd"), created_at: nowIso(), finish_tag: tag,
       color: lc,            // line color
       fill: lc,             // fill color (NO_FILL for outline-only)
-      hatch: HATCHES[1 + (conditions.length % (HATCHES.length - 1))].id,
+      hatch: HATCHES[1 + (cs.length % (HATCHES.length - 1))].id,
       multiplier: 1,        // ×N for identical repeated units (measure one, multiply)
       waste_pct: 0,         // flooring waste allowance (manual) — applied in the Report
       materials: [],        // supporting materials (adhesive, grout, …) with coverage rates
     };
-    setConditions((cs) => [...cs, c]);
+    agentStateRef.current = { ...agentStateRef.current, conditions: [...cs, c] };
+    setConditions((prev) => [...prev, c]);
+    return c;
+  }
+  function addCondition() {
+    const tag = (window.prompt("Finish tag for this condition (e.g. LVT-1):") || "").trim();
+    if (!tag) return;
+    const c = mintCondition(tag);
     activateCondition(c.id, { reassign: false });   // no reassign affordance on +condition; still dismisses a live bulk selection
   }
+
+  // ── In-canvas takeoff agent — capabilities, the accept gate, and the run ────
+  // The registry (lib/agentTools.js) owns schemas/validation/whitelists; these
+  // are the CAPABILITIES its tools close over — each one reads live state via
+  // agentStateRef (the loop spans many awaits) and reuses the app's existing
+  // deterministic engines verbatim: the pdf.js text layer + extractRegionText,
+  // parseSchedule, the one-click flood/trace/snap pipeline, and the detail-view
+  // offscreen render. Nothing here writes to `shapes` — proposals stage into
+  // agentProposals and only the accept gate below dispatches an `add` command.
+  const AGENT_VIEW_MAX_EDGE = 1024;   // view_region crop cap (vision-model native range)
+  const AGENT_TEXT_MAX_ITEMS = 600;   // read_sheet_text cap — a full E-size text layer would drown the context
+
+  const agentPanelFor = (key) => {
+    const p = agentStateRef.current.panels.find((x) => x.key === key);
+    return p && p.img.w ? p : null;
+  };
+  const agentUpp = (key) => panelGeom.uppFor(agentStateRef.current.scales, renderScalesRef.current, key);
+
+  async function agentTextTokens(key, region) {
+    const p = agentPanelFor(key);
+    const pageObj = pageObjsRef.current.get(key);
+    if (!p || !pageObj) throw new Error(`Sheet ${key} isn't rendered yet.`);
+    const rs = renderScalesRef.current.get(key) || RENDER_SCALE;
+    const vp = pageObj.getViewport({ scale: rs });
+    const tc = await pageObj.getTextContent();
+    const rect = region
+      ? { x0: region.x0 * p.img.w, y0: region.y0 * p.img.h, x1: region.x1 * p.img.w, y1: region.y1 * p.img.h }
+      : { x0: 0, y0: 0, x1: p.img.w, y1: p.img.h };
+    return { tokens: extractRegionText(tc, vp, rect), p };
+  }
+
+  async function agentReadSheetText(key, region) {
+    const { tokens, p } = await agentTextTokens(key, region);
+    return tokens.slice(0, AGENT_TEXT_MAX_ITEMS).map((t) => ({
+      text: t.str, x: +(t.x / p.img.w).toFixed(4), y: +(t.y / p.img.h).toFixed(4),
+    }));
+  }
+
+  async function agentReadSchedule(key, region) {
+    const { tokens } = await agentTextTokens(key, region);
+    return parseSchedule(tokens);   // vector path only — same parser as Import from schedule
+  }
+
+  // Render just the asked-for crop offscreen (the rasterizeRegion idiom) and
+  // hand back a PNG data URL — THE vision tool for scans and ambiguous areas.
+  async function agentViewRegion(key, region) {
+    const p = agentPanelFor(key);
+    const pageObj = pageObjsRef.current.get(key);
+    if (!p || !pageObj) throw new Error(`Sheet ${key} isn't rendered yet.`);
+    const rs = renderScalesRef.current.get(key) || RENDER_SCALE;
+    const x0 = region.x0 * p.img.w, y0 = region.y0 * p.img.h;
+    const regW = Math.max(1, (region.x1 - region.x0) * p.img.w);
+    const regH = Math.max(1, (region.y1 - region.y0) * p.img.h);
+    const factor = Math.min(1, AGENT_VIEW_MAX_EDGE / regW, AGENT_VIEW_MAX_EDGE / regH);
+    const bw = Math.max(1, Math.round(regW * factor)), bh = Math.max(1, Math.round(regH * factor));
+    const cv = document.createElement("canvas");
+    cv.width = bw; cv.height = bh;
+    await pageObj.render({
+      canvasContext: cv.getContext("2d"),
+      viewport: pageObj.getViewport({ scale: rs * factor }),
+      transform: [1, 0, 0, 1, -x0 * factor, -y0 * factor],
+      background: "#ffffff",   // never the panel canvas — dark mode bakes an inversion into those pixels
+    }).promise;
+    const image_data_url = cv.toDataURL("image/png");
+    cv.width = cv.height = 0;
+    return { image_data_url, width: bw, height: bh };
+  }
+
+  // The one-click engine at an agent-supplied seed — same trigger policy and
+  // messages as oneClickAt, WITHOUT touching the interactive proposal state:
+  // this probes and returns the ring; committing anything stays behind the gate.
+  async function agentOneClickProbe(key, xn, yn) {
+    const p = agentPanelFor(key);
+    if (!p) return { error: `Sheet ${key} isn't rendered yet — try again in a moment.` };
+    const upp = agentUpp(key);
+    if (upp == null) return { error: agentScaleGate(key, agentStateRef.current.detectedScales[key]?.label || "") };
+    const local = [xn * p.img.w, yn * p.img.h];
+    const stats = sheetStatsRef.current.get(key);
+    const rasterEligible = !!stats && stats.imageFrac >= RASTER_MIN_IMG_FRAC;
+    const vectorViable = !!stats && stats.segCount >= RASTER_MIN_SEGS;
+    let f = null, raster = false;
+    if (!rasterEligible || vectorViable) {
+      const mo = ensureMask(key);
+      if (!mo && !rasterEligible) return { error: "Still reading this sheet's linework — try again in a second." };
+      if (mo) {
+        const r = floodRegion(mo, local[0], local[1], fillSens);
+        if (r.status === "ok") f = r;
+        else if (!rasterEligible) {
+          return { error: r.status === "leak"
+            ? "That space isn't enclosed on the plan linework — the fill spilled. Seed a more enclosed spot."
+            : "Landed in dense linework (hatching/text). Seed an open spot inside the room." };
+        }
+      }
+    }
+    if (!f) {
+      const rmo = await ensureRasterMask(key);
+      if (!rmo) return { error: "Couldn't read this scan — the estimator will have to trace it by hand." };
+      const r = floodRegion(rmo, local[0], local[1]);
+      if (r.status !== "ok") {
+        return { error: r.status === "leak"
+          ? "That space isn't enclosed on the scan — the fill escaped through a gap (faded line or open doorway). Seed a more enclosed spot."
+          : "Landed on dense scan ink (text or hatching). Seed an open spot inside the room." };
+      }
+      f = r; raster = true;
+    }
+    let ring;
+    if (raster) ring = traceRegion(f, RASTER_RDP_EPS);
+    else {
+      const grid = snapGridsRef.current.get(key);
+      ring = snapVertices(traceRegion(f), (x, y, d) => (grid ? nearestSnap(grid, x, y, d) : null), 7);
+    }
+    if (ring.length < 3) return { error: "Couldn't trace that space into a polygon." };
+    return {
+      verts_norm: ring.map(([x, y]) => [+(x / p.img.w).toFixed(5), +(y / p.img.h).toFixed(5)]),
+      area_sf: +(ringArea(ring) * upp * upp).toFixed(2),
+      perimeter_lf: +(closedMetrics(ring).perim * upp).toFixed(2),
+      seed_norm: [+xn.toFixed(5), +yn.toFixed(5)],
+      ...(f.hatchFiltered ? { hatch_filtered: true } : {}),
+      ...(raster ? { raster_traced: true } : {}),
+    };
+  }
+
+  // Stage already-whitelisted proposals (the registry validated + whitelisted
+  // evidence before calling this). area/perim computed here for the review UI;
+  // the accept gate recomputes fresh in case the estimator recalibrates first.
+  function stageAgentProposals(shapes) {
+    const staged = shapes.map((s) => {
+      const p = agentPanelFor(s.sheet);
+      const upp = agentUpp(s.sheet) || 0;
+      const ringPx = s.verts_norm.map(([x, y]) => [x * p.img.w, y * p.img.h]);
+      return {
+        id: `agp-${mintUuid()}`,
+        sheet_id: s.sheet,
+        condition_id: s.condition_id,
+        measure_role: s.measure_role,
+        verts_norm: s.verts_norm,
+        evidence: s.evidence,
+        ...(Array.isArray(s.evidence.seed_norm) ? { seed_norm: s.evidence.seed_norm } : {}),
+        proposed_ts: nowIso(),
+        area_sf: +(ringArea(ringPx) * upp * upp).toFixed(2),
+        perim_lf: +(closedMetrics(ringPx).perim * upp).toFixed(2),
+      };
+    });
+    setAgentProposals((ps) => [...ps, ...staged]);
+    return { staged: staged.length };
+  }
+
+  function buildAgentCtx() {
+    return {
+      listSheets: () => agentStateRef.current.panels.filter((p) => p.img.w).map((p) => ({
+        sheet: p.key,
+        title: tabLabel(p.key),
+        width: p.img.w, height: p.img.h,
+        scale_set: agentUpp(p.key) != null,
+        ...(agentStateRef.current.scaleSources[p.key] ? { scale_source: agentStateRef.current.scaleSources[p.key] } : {}),
+        ...(agentStateRef.current.detectedScales[p.key]?.label ? { detected_label: agentStateRef.current.detectedScales[p.key].label } : {}),
+      })),
+      sheetDims: (key) => { const p = agentPanelFor(key); return p ? { w: p.img.w, h: p.img.h } : null; },
+      uppFor: agentUpp,
+      detectedLabel: (key) => agentStateRef.current.detectedScales[key]?.label || "",
+      readSheetText: agentReadSheetText,
+      readSchedule: agentReadSchedule,
+      viewRegion: agentViewRegion,
+      oneClick: agentOneClickProbe,
+      getConditions: () => agentStateRef.current.conditions.map((c) => ({ id: c.id, finish_tag: c.finish_tag, hatch: c.hatch, waste_pct: c.waste_pct })),
+      createCondition: (tag) => { const c = mintCondition(tag); return { id: c.id, finish_tag: c.finish_tag }; },
+      proposeShapes: stageAgentProposals,
+    };
+  }
+
+  // ── the accept gate ─────────────────────────────────────────────────────────
+  // Accept = the explicit human review one-click's Create models: the shape
+  // commits through dispatchShape `add` (id/created_at minted there) with the
+  // agent_v1 origin receipt — actor agent, reviewed true, the FROZEN proposed
+  // ring, the evidence, and the propose/accept timestamps (local provenance;
+  // the contribution wire whitelists evidence only, never timing). Post-accept
+  // edits then grade through stampEdit exactly like one-click corrections.
+  function acceptAgentProposals(ids) {
+    const idSet = new Set(ids);
+    const take = agentProposals.filter((p) => idSet.has(p.id));
+    if (!take.length) return;
+    const made = [], accepted = new Set();
+    let skippedClosed = 0;
+    for (const pr of take) {
+      const tp = panels.find((x) => x.key === pr.sheet_id && x.img.w);
+      const upp = uppFor(pr.sheet_id);
+      if (!tp || !upp || !condById[pr.condition_id]) { skippedClosed++; continue; }
+      const ringPx = pr.verts_norm.map(([x, y]) => [x * tp.img.w, y * tp.img.h]);
+      made.push({
+        sheet_id: pr.sheet_id, condition_id: pr.condition_id, measure_role: pr.measure_role,
+        verts_norm: pr.verts_norm.map((v) => [...v]),
+        computed: { area_sf: +(ringArea(ringPx) * upp * upp).toFixed(2), perimeter_lf: +(closedMetrics(ringPx).perim * upp).toFixed(2) },
+        origin: {
+          method: "agent_v1", actor: "agent", reviewed: true,
+          proposed_ts: pr.proposed_ts, accepted_ts: nowIso(),
+          proposed_verts_norm: pr.verts_norm.map((v) => [...v]),
+          ...(pr.seed_norm ? { seed_norm: pr.seed_norm } : {}),
+          ...(pr.evidence ? { evidence: pr.evidence } : {}),
+        },
+      });
+      accepted.add(pr.id);
+    }
+    if (made.length) dispatchShape({ type: "add", shapes: made });   // ONE command — one undo entry for the batch
+    setAgentProposals((ps) => ps.filter((p) => !accepted.has(p.id)));
+    if (made.length) setCommitMsg(`Accepted ${made.length} agent proposal${made.length === 1 ? "" : "s"}.${skippedClosed ? ` ${skippedClosed} skipped — open their sheet (with its scale set) to accept.` : ""}`);
+    else if (skippedClosed) setCommitMsg("Open that proposal's sheet (with its scale set) to accept it.");
+  }
+  const acceptAgentProposal = (id) => acceptAgentProposals([id]);
+  const acceptAllVisibleAgentProposals = () => acceptAgentProposals(agentProposals.filter((p) => panelKeySet.has(p.sheet_id)).map((p) => p.id));
+  // Reject = drop from the pending list, LOCAL ONLY. Dismissed-proposal
+  // geometry never rides the contribution wire — no rejection records, no
+  // counters, nothing for contribute.js to even see (the D34 cut-line).
+  const rejectAgentProposal = (id) => setAgentProposals((ps) => ps.filter((p) => p.id !== id));
+  const rejectAllAgentProposals = () => setAgentProposals([]);
+
+  // ── the run ────────────────────────────────────────────────────────────────
+  const trimJson = (v, n) => { let s; try { s = JSON.stringify(v); } catch { s = String(v); } return s && s.length > n ? `${s.slice(0, n)}…` : s || ""; };
+  function appendAgentLog(ev) {
+    const entry =
+      ev.type === "text" ? { kind: "text", text: ev.text }
+      : ev.type === "tool_start" ? { kind: "tool", text: `→ ${ev.name} ${trimJson(ev.args, 120)}` }
+      : ev.type === "tool_end" ? (ev.result?.error
+          ? { kind: "error", text: `✗ ${ev.name}: ${ev.result.error}` }
+          : { kind: "status", text: `✓ ${ev.name} ${trimJson({ ...ev.result, image_data_url: undefined, items: Array.isArray(ev.result?.items) ? `${ev.result.items.length} items` : undefined }, 160)}` })
+      : ev.type === "error" ? { kind: "error", text: `Error: ${ev.message}` }
+      : ev.type === "aborted" ? { kind: "status", text: "Stopped." }
+      : ev.type === "max_iterations" ? { kind: "status", text: `Stopped at the ${ev.limit}-step cap — review what's staged.` }
+      : ev.type === "done" ? { kind: "status", text: "Done — review the dashed proposals." }
+      : null;
+    if (entry) setAgentLog((l) => [...l.slice(-199), entry]);
+  }
+  async function runAgent(goal) {
+    if (agentRunning) return;
+    if (!isAiConfigured()) { setShowAiSettings(true); return; }
+    if (agentStateRef.current.status !== "ready") { setCommitMsg("Sheet still loading — try again in a moment."); return; }
+    const ctl = new AbortController();
+    agentAbortRef.current = ctl;
+    setAgentRunning(true);
+    setAgentLog([{ kind: "status", text: `Goal: ${goal}` }]);
+    const ctx = buildAgentCtx();
+    try {
+      await runAgentLoop({
+        cfg: aiConfig(), goal, tools: AGENT_TOOL_DEFS,
+        execute: (name, args) => executeAgentTool(ctx, name, args),
+        onEvent: appendAgentLog,
+        signal: ctl.signal,
+      });
+    } finally {
+      setAgentRunning(false);
+      agentAbortRef.current = null;
+    }
+  }
+  const stopAgent = () => agentAbortRef.current?.abort();
 
   // ── Import from schedule ────────────────────────────────────────────────────
   // Read the marqueed box and open the approval dialog. Two paths, ONE contract
@@ -4882,6 +5189,41 @@ export default function TakeoffCanvas() {
                       </g>
                       );
                     })}
+                    {/* Agent proposals — DASHED pencil pending the accept gate. A
+                        finer dash than one-click's selection so the two proposal
+                        kinds read apart; the seed star marks the flood seed. The
+                        native SVG <title> is the evidence tooltip. Click-to-accept
+                        only under the non-drawing tools (select/pan) so a live
+                        trace over a proposal is never swallowed; the panel rows
+                        and ⏎ accept regardless of tool. */}
+                    {agentProposals.filter((ap) => ap.sheet_id === p.key).map((ap) => {
+                      const s = tf.scale;
+                      const pts = ap.verts_norm.map(([x, y]) => [x * p.img.w, y * p.img.h]);
+                      const ded = ap.measure_role === "deduct";
+                      const col = ded ? "#b03a26" : "#1f3fc7";
+                      const clickable = tool === "select" || tool === "pan";
+                      const ev = ap.evidence || {};
+                      const evBits = [
+                        ev.schedule_row_tag ? `schedule ${ev.schedule_row_tag}` : "",
+                        ev.matched_text && ev.matched_text !== ev.schedule_row_tag ? `matched "${ev.matched_text}"` : "",
+                        Array.isArray(ev.seed_norm) ? "seeded by one-click" : "",
+                      ].filter(Boolean).join(", ");
+                      return (
+                        <g key={ap.id} style={{ pointerEvents: clickable ? "auto" : "none", cursor: clickable ? "pointer" : undefined }}
+                          onPointerDown={(e) => { if (clickable) e.stopPropagation(); }}
+                          onClick={(e) => { if (clickable) { e.stopPropagation(); acceptAgentProposal(ap.id); } }}>
+                          <title>{`Agent proposal — ${condById[ap.condition_id]?.finish_tag || "?"}${ded ? " (deduct)" : ""}, ${fa(ap.area_sf)}. ${evBits ? `Evidence: ${evBits}. ` : ""}Click to accept (⏎ accepts all visible); reject from the Agent panel.`}</title>
+                          <polygon points={pts.map((q) => q.join(",")).join(" ")}
+                            fill={ded ? "rgba(176,58,38,.10)" : "rgba(31,63,199,.07)"}
+                            stroke={col} strokeOpacity={0.9} strokeWidth={2 / s}
+                            strokeDasharray={`${3.5 / s} ${3.5 / s}`} strokeLinejoin="round" />
+                          {Array.isArray(ap.seed_norm) && (
+                            <path d={starPath(ap.seed_norm[0] * p.img.w, ap.seed_norm[1] * p.img.h, 4.5 / s)}
+                              fill={col} fillOpacity={0.85} stroke="#fff" strokeWidth={1 / s} />
+                          )}
+                        </g>
+                      );
+                    })}
                   </g>
                 );
               })}
@@ -5135,10 +5477,36 @@ export default function TakeoffCanvas() {
           {panelBtn(() => setLeftTab((t) => (t === "stamp" ? null : "stamp")), "stamp", "Stamps — reusable annotations dropped click-to-place", leftTab === "stamp", stampLib.stamps.length)}
           {panelBtn(() => setLeftTab((t) => (t === "rfi" ? null : "rfi")), "rfi", "RFI register — raise, track, and export Requests For Information", leftTab === "rfi", rfis.length)}
           {panelBtn(toggleTakeoffs, "takeoffs", "Takeoffs — conditions + running totals", takeoffsOpen, visibleShapes.length)}
+          {panelBtn(() => setAgentOpen((o) => !o), "target", "Agent — describe a takeoff; it stages dashed proposals you accept or reject (bring your own AI key)", agentOpen, agentProposals.length)}
           {panelBtn(() => setShowRevisions(true), "revisions", "Revisions — save the takeoff at each bid revision, compare what moved", showRevisions)}
         </div>
 
        </div>
+
+        {/* Agent panel — DOCKED right-rail sibling (reflows the canvas like the
+            Takeoffs panel). Honest empty state until the BYO-AI seam is
+            configured; otherwise the goal box, the streaming run log, and the
+            per-proposal accept/reject desk. */}
+        {agentOpen && (
+          <AgentPanel
+            configured={isAiConfigured()}
+            running={agentRunning}
+            log={agentLog}
+            proposals={agentProposals}
+            condById={condById}
+            sheetLabel={(k) => tabLabel(k)}
+            units={units}
+            fmtArea={(sf) => fa(sf)}
+            onRun={runAgent}
+            onStop={stopAgent}
+            onAccept={acceptAgentProposal}
+            onReject={rejectAgentProposal}
+            onAcceptAll={acceptAllVisibleAgentProposals}
+            onRejectAll={rejectAllAgentProposals}
+            onOpenSettings={() => setShowAiSettings(true)}
+            onClose={() => setAgentOpen(false)}
+          />
+        )}
 
         {/* Takeoffs panel — DOCKED in the layout row (reflows the canvas, not an
             overlay): every condition with its running totals, plus the Library,
@@ -5245,6 +5613,11 @@ export default function TakeoffCanvas() {
           onClose={() => setShowRevisions(false)}
         />
       )}
+
+      {/* BYO-key AI settings — the single config surface for the ai.js seam
+          (the Agent panel links here; closing re-renders, so `configured`
+          re-reads immediately). */}
+      {showAiSettings && <AiSettings onClose={() => setShowAiSettings(false)} />}
     </div>
   );
 }

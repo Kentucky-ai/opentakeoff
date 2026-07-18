@@ -52,7 +52,7 @@ export interface Condition {
  * after a human affirmed the shape at an explicit review gate — this server
  * has no such gate, so everything it commits is reviewed: false. */
 export interface ShapeOrigin {
-  method: "manual" | "one_click_v1";
+  method: "manual" | "one_click_v1" | "agent_v1";
   /** Omitted = human. "agent" = the shape was produced by MCP/automation. */
   actor?: "agent";
   /** A human affirmed this shape at an explicit review gate. */

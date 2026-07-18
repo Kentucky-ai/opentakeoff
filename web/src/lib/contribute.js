@@ -50,8 +50,8 @@ const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "
 // spread: any key a newer (or patched) build adds to origin stays local until
 // it is deliberately added here AND documented in docs/CONTRIBUTION_SPEC.md.
 const ORIGIN_FIELDS = [
-  "method",               // how the geometry came to exist: "manual" | "one_click_v1" | ...
-  "actor",                // omitted = human at the canvas; "agent" = MCP client
+  "method",               // how the geometry came to exist: "manual" | "one_click_v1" | "agent_v1" | ...
+  "actor",                // omitted = human at the canvas; "agent" = MCP client / in-canvas agent
   "reviewed",             // a human affirmed the shape at an explicit gate
   "edited",               // corrected after Create
   "edited_before_create", // corrected between proposal and Create
@@ -62,14 +62,42 @@ const ORIGIN_FIELDS = [
   "raster_traced",        // traced from scan pixels, not vector linework
   "fill_sensitivity",     // non-default one-click fill sensitivity
   "edits",                // per-kind correction tally, e.g. { vertex: 2, move: 1 }
+  "evidence",             // agent_v1: cited basis — DEEP-whitelisted below, never passed through
 ];
+
+// The evidence sub-object is itself a whitelist, never a spread: exactly the
+// matched schedule/room TOKEN (never arbitrary sheet text — strings truncated
+// to 80 chars as a hard line) and/or the one-click seed. Anything else an
+// agent (or a patched build) stuffs into evidence stays local. Note the
+// agent's accept-gate timestamps (proposed_ts / accepted_ts) are deliberately
+// NOT origin fields on the wire — edit timing beyond created_at never rides.
+const EVIDENCE_FIELDS = ["schedule_row_tag", "matched_text", "seed_norm"];
+const EVIDENCE_MAX_CHARS = 80;
+const pickEvidence = (ev) => {
+  if (!ev || typeof ev !== "object" || Array.isArray(ev)) return null;
+  /** @type {Record<string, any>} */
+  const out = {};
+  for (const k of EVIDENCE_FIELDS) {
+    if (ev[k] === undefined) continue;
+    out[k] = typeof ev[k] === "string" ? ev[k].slice(0, EVIDENCE_MAX_CHARS) : ev[k];
+  }
+  return Object.keys(out).length ? out : null;
+};
 
 /** @returns {Record<string, any> | null} the whitelisted origin, or null when nothing survives */
 export function pickOrigin(origin) {
   if (!origin || typeof origin !== "object") return null;
   /** @type {Record<string, any>} */
   const out = {};
-  for (const k of ORIGIN_FIELDS) if (origin[k] !== undefined) out[k] = origin[k];
+  for (const k of ORIGIN_FIELDS) {
+    if (origin[k] === undefined) continue;
+    if (k === "evidence") {
+      const ev = pickEvidence(origin.evidence);
+      if (ev) out.evidence = ev;
+      continue;
+    }
+    out[k] = origin[k];
+  }
   return Object.keys(out).length ? out : null;
 }
 
