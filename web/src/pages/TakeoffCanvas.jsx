@@ -41,7 +41,7 @@ import { conditionTotals, verticalWallSf } from "../lib/totals.js";
 import { shapesInZone } from "../lib/zone.js";
 import { sanitizeSheetLevels } from "../lib/sheetLevels.js";
 import { sanitizeConditionColumns, sanitizeConditionAttrs, renameColumnValue, columnLabel } from "../lib/conditionColumns.js";
-import { sanitizeShapeLabels, sanitizeShapeLabelsOnShapes, renameShapeLabel, shapeLabelValue, assignShapeLabel } from "../lib/shapeLabels.js";
+import { sanitizeShapeLabels, sanitizeShapeLabelsOnShapes, renameShapeLabel, shapeLabelValue } from "../lib/shapeLabels.js";
 import { buildMarkedSetPdf, downloadBytes } from "../lib/markedset.js";
 import { loadProfiles } from "../lib/identity.js";
 import { resolveBranding, loadBrandingSelection } from "../lib/branding.js";
@@ -66,13 +66,18 @@ import {
   MEASURE_TOOLS, CUT_TOOLS, MARKUP_TOOLS, MARKUP_IDS, HL_INKS, HL_SIZES,
 } from "../lib/canvasConstants.js";
 import { autoRenderScale, invertCanvasPixels, uid, clamp, isDangerMsg, instantiateTemplate, seedConditions } from "../lib/canvasUtil.js";
-// stampEdit marks REAL edits only — a human moving/reshaping/reassigning a
-// committed shape. Explicit NON-edits that must NOT stamp (they rewrite shape
-// records without a human touching the geometry): rescaleSheet's computed
-// re-price, the label-vocabulary renames (renameLabel → renameShapeLabel),
-// hydrate's legacy-markup id backfill, and every hydrate-time sanitizer
-// (sanitizeShapeLabelsOnShapes and friends).
-import { nowIso, stampEdit } from "../lib/provenance.js";
+// Shape provenance policy now lives in ONE place: lib/shapeCommands.js. Every
+// meaningful mutation of `shapes` (create / reshape / reassign / relabel /
+// delete) is a COMMAND applied through dispatchShape below — the chokepoint
+// that stamps created_at / stampEdit centrally, tallies deletion counters, and
+// records undo/redo. Explicit NON-edits that must NOT stamp (they rewrite
+// shape records without a human touching the geometry) either ride the
+// `replace` command (rescaleSheet's computed re-price, hydrate) or stay as raw
+// setShapes (the label-vocabulary renames, live drag PREVIEW frames, the
+// hydrate-time sanitizers, per-shape height/thickness re-pricing).
+// nowIso stays imported for the non-shape records (markups, RFIs, conditions).
+import { nowIso } from "../lib/provenance.js";
+import { applyShapeCommand, geomSnapshot, vertsEqual, recordCommand } from "../lib/shapeCommands.js";
 import { fmtCheckLen, parseLenInput, checkVerdict, M_PER_FT, areaVal, areaUnit, lenVal, lenUnit, calInputToFeet } from "../lib/units";
 import * as panelGeom from "../lib/panelGeometry.js";
 
@@ -274,19 +279,75 @@ export default function TakeoffCanvas() {
   const [selectedMarkupId, setSelectedMarkupId] = useState(null); // selected markup — mutually exclusive with selectedId
   const [rfis, setRfis] = useState([]);                 // RFI register (Request For Information); linked to markups via markup.rfi_id === rfi.id
   // Deletion provenance: shapes leave no record once filtered out of `shapes`,
-  // so every delete path bumps a per-origin-method counter here (keyed by
-  // origin.method, "manual" when absent). Serialized as provenance_counters —
-  // omit-when-empty — so the corpus can see how much machine output was thrown
-  // away, not only what survived.
+  // so every delete COMMAND yields a per-origin-method tally (`counted`, keyed
+  // by origin.method, "manual" when absent) that dispatchShape merges here.
+  // Serialized as provenance_counters — omit-when-empty — so the corpus can
+  // see how much machine output was thrown away, not only what survived.
   const [provCounters, setProvCounters] = useState({ shapes_deleted: {} });
-  const countDeleted = (dead) => {
-    if (!dead.length) return;
+  const countDeleted = (tally) => {
+    const keys = Object.keys(tally);
+    if (!keys.length) return;
     setProvCounters((pc) => {
       const sd = { ...pc.shapes_deleted };
-      for (const s of dead) { const k = s.origin?.method || "manual"; sd[k] = (sd[k] || 0) + 1; }
+      for (const k of keys) sd[k] = (sd[k] || 0) + tally[k];
       return { ...pc, shapes_deleted: sd };
     });
   };
+  // ── the shape-command chokepoint ──────────────────────────────────────────
+  // EVERY meaningful `shapes` mutation dispatches a command; the pure apply
+  // (lib/shapeCommands.js) owns the provenance policy, this wrapper owns the
+  // React side: setShapes the result, merge the deletion tally, and keep the
+  // undo/redo stacks. Stacks live in refs (no render on push); applied against
+  // the render's `shapes`, which a discrete event always sees current (the
+  // undoLast precedent) — NEVER inside a setShapes updater (updaters can
+  // double-run; counting/recording there would double-tally).
+  //   record: false — apply + count but keep it off the undo stack (the
+  //     condition-cascade deletes: their confirm says "can't be undone", and
+  //     undoing the shapes without the condition would resurrect orphans);
+  //   reset: true — clear BOTH stacks (hydrate / revision restore / rescale:
+  //     a restored timeline starts fresh, and a rescale invalidates every
+  //     `computed` the recorded commands froze).
+  const undoStackRef = useRef([]);   // [{ cmd, inverse }]
+  const redoStackRef = useRef([]);
+  function dispatchShape(cmd, { record = true, reset = false } = {}) {
+    const res = applyShapeCommand(shapes, cmd);
+    setShapes(res.shapes);
+    if (res.counted) countDeleted(res.counted);
+    if (reset) { undoStackRef.current = []; redoStackRef.current = []; }
+    else if (record && res.inverse) {
+      const st = recordCommand(undoStackRef.current, { cmd, inverse: res.inverse });
+      undoStackRef.current = st.undo;
+      redoStackRef.current = st.redo;   // a new command discards the redone future
+    }
+    return res;
+  }
+  // ⌘Z / ⇧⌘Z — apply the recorded inverse (undo) or the exact-restore command
+  // (redo). Undoing swaps the entry's cmd for the inverse-of-the-undo before
+  // it lands on the redo stack: that command restores the undone state
+  // VERBATIM (same ids, same created_at, same stamped updated_at, same array
+  // indices) — replaying the ORIGINAL command would re-mint/re-stamp. Neither
+  // direction feeds the deletion counters: undo's inverses are structurally
+  // count-free (an add's inverse delete rides noCount, a delete's inverse is
+  // a restore-add), so a delete is tallied exactly once, at first dispatch —
+  // undo never decrements, redo never re-counts.
+  function undoShapeCommand() {
+    const entry = undoStackRef.current[undoStackRef.current.length - 1];
+    if (!entry) return;
+    undoStackRef.current = undoStackRef.current.slice(0, -1);
+    const res = applyShapeCommand(shapes, entry.inverse);
+    setShapes(res.shapes);
+    redoStackRef.current = [...redoStackRef.current, { cmd: res.inverse, inverse: entry.inverse }];
+    setSelVert(null);   // vertex counts may have changed — a stale index must not aim the next ⌫
+  }
+  function redoShapeCommand() {
+    const entry = redoStackRef.current[redoStackRef.current.length - 1];
+    if (!entry) return;
+    redoStackRef.current = redoStackRef.current.slice(0, -1);
+    const res = applyShapeCommand(shapes, entry.cmd);
+    setShapes(res.shapes);
+    undoStackRef.current = [...undoStackRef.current, { cmd: entry.cmd, inverse: res.inverse }];
+    setSelVert(null);   // same stale-index guard as undo
+  }
   // selecting a shape clears any markup selection and vice-versa — one live
   // selection at a time (bidirectional mutual exclusivity). Passing null clears both.
   const selectShape = (id) => { setSelectedId(id); setSelectedMarkupId(null); };
@@ -373,7 +434,7 @@ export default function TakeoffCanvas() {
   const angleRef = useRef(null);       // current angle-locked image point (or null) — the click commits it
   const aimMarkRef = useRef(null);     // four floating liquid-glass pickets thickening the crosshair crossing
   const aimChipRef = useRef(null);     // readout chip by the cursor (locked angle · live segment length)
-  const dragRef = useRef(null);        // {kind:'move'|'vertex'|'markupMove', shapeId?/markupId?, vIndex?, start:[x,y], orig:verts_norm/markup coords, moved?}
+  const dragRef = useRef(null);        // {kind:'move'|'vertex'|'edge'|'markupMove', shapeId?/markupId?, vIndex?, start:[x,y], orig:verts_norm/markup coords, moved?, prev: grab-time geomSnapshot (shape drags), shape: grab-time shape, lastVerts/lastComputed: latest preview frame — the release commit's geom command payload}
   const ocDragRef = useRef(null);      // One-Click proposal edit drag: {kind:'oc-vertex'|'oc-edge', ri, vi?/i?/j?, oa?, ob?, sx?, sy?} — poly is panel-LOCAL px
   const ocHoverRef = useRef(-1);       // mirror of ocHover (region index under cursor) — compared per-move to avoid stale-closure churn
   const editingRef = useRef(false);    // true while the inline text editor is open — read in moveCrosshair/onPointerDown/wheel (a REF, never per-mousemove state) to suppress the crosshair and freeze pan/zoom
@@ -714,7 +775,10 @@ export default function TakeoffCanvas() {
     // epoch and it clears them in place (panel tab + width survive, as they
     // always did). On the mount load this is a no-op (fresh panel state).
     setPanelEpoch((e) => e + 1);
-    setShapes(sanitizeShapeLabelsOnShapes(a.shapes || []));   // strip a corrupt shape.label at hydrate (identity-preserving); other shape fields untouched
+    // `replace` command + reset: hydrate is a whole-array non-edit (no stamps,
+    // no counters) and a loaded/restored timeline starts with EMPTY undo/redo
+    // stacks — recorded inverses from the replaced project must never fire here.
+    dispatchShape({ type: "replace", shapes: sanitizeShapeLabelsOnShapes(a.shapes || []) }, { reset: true });   // strip a corrupt shape.label at hydrate (identity-preserving); other shape fields untouched
     // normalize hydrated markups: legacy workspaces may hold markups with no id
     // (pre-dating the id field) — seed a stable id + default rfi_id so the new
     // select / edit / delete / move / RFI-link flows (all keyed on m.id) work on them.
@@ -1480,7 +1544,7 @@ export default function TakeoffCanvas() {
         else if (ocSel && proposal) { deleteSelectedOcVertex(); }
         else if (proposal?.regions.length) { setProposal((pr) => { const rg = pr.regions.slice(0, -1); return rg.length ? { ...pr, regions: rg } : null; }); }
         else if (selVert != null && selectedId) { deleteSelectedShapeVertex(); }
-        else if (selectedId) { countDeleted(shapes.filter((s) => s.id === selectedId)); setShapes((ss) => ss.filter((s) => s.id !== selectedId)); setSelectedId(null); }
+        else if (selectedId) { dispatchShape({ type: "delete", ids: [selectedId] }); setSelectedId(null); }
         else if (selectedMarkupId && showMarkups) { deleteMarkup(selectedMarkupId); setSelectedMarkupId(null); }
         // pop ONLY the armed tool's pending points — calibrate and check both
         // keep two-click state (calib points even render while another tool is
@@ -1489,7 +1553,16 @@ export default function TakeoffCanvas() {
         else if (tool === "calibrate") { setCalib((c) => c.slice(0, -1)); }
         else if (tool === "check") { setCheck((c) => c.slice(0, -1)); }
       } else if (e.key === "Escape") { if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { setPoly([]); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); resetZone(); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; } }
-      else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); setPoly((q) => (q.length ? q.slice(0, -1) : q)); }
+      // ⌘Z: the drawing context wins — mid-trace it still pops the last placed
+      // point (with or without ⇧, matching the old behavior byte-for-byte);
+      // only with no trace in progress does the command stack engage
+      // (⌘Z = undo, ⇧⌘Z = redo).
+      else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (poly.length) setPoly((q) => q.slice(0, -1));
+        else if (e.shiftKey) redoShapeCommand();
+        else undoShapeCommand();
+      }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") { if (selectedId) { e.preventDefault(); copySelected(); } }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") { if (clipRef.current.length) { e.preventDefault(); pasteClipboard(); } }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d") { if (selectedId) { e.preventDefault(); duplicateSelected(); } }
@@ -1691,7 +1764,10 @@ export default function TakeoffCanvas() {
       for (let i = 0; i < pts.length; i++) {
         if (Math.hypot(pts[i][0] - p[0], pts[i][1] - p[1]) < thr * 1.6) {
           setSelVert(i);   // select this corner + arm its move drag
-          dragRef.current = { kind: "vertex", shapeId: selectedId, vIndex: i, gx: e.clientX, gy: e.clientY };
+          // prev = the grab-time snapshot the commit-on-release geom command
+          // stamps/freezes from; gx/gy only gate the live PREVIEW now (the
+          // zero-motion no-stamp guard is structural: no motion ⇒ no command)
+          dragRef.current = { kind: "vertex", shapeId: selectedId, vIndex: i, prev: geomSnapshot(sel), shape: sel, gx: e.clientX, gy: e.clientY };
           e.currentTarget.setPointerCapture(e.pointerId); return;
         }
       }
@@ -1704,18 +1780,21 @@ export default function TakeoffCanvas() {
         if (Math.hypot((a[0] + b[0]) / 2 - p[0], (a[1] + b[1]) / 2 - p[1]) < thr * 1.4) {
           if (e.shiftKey) {
             // insert at the EXACT edge midpoint (like One-Click's oneClickHandleAt),
-            // not the click point — click imprecision can't kink the edge before drag
+            // not the click point — click imprecision can't kink the edge before drag.
+            // The insertion itself is gesture-start LIVE state, not a command
+            // (a collinear midpoint changes no quantity and never stamped) —
+            // `prev` snapshots the POST-insert shape, so a zero-motion ⇧-click
+            // still leaves the unstamped anchor behind exactly as before,
+            // while any drag commits ONE stamped geom command on release.
             const va = sel.verts_norm[i], vb = sel.verts_norm[j];
             const nv = [(va[0] + vb[0]) / 2, (va[1] + vb[1]) / 2];
-            setShapes((ss) => ss.map((s) => {
-              if (s.id !== sel.id) return s;
-              const vn = [...s.verts_norm.slice(0, i + 1), nv, ...s.verts_norm.slice(i + 1)];
-              return { ...s, verts_norm: vn, computed: recomputeShape({ ...s, verts_norm: vn }) };
-            }));
+            const vnIns = [...sel.verts_norm.slice(0, i + 1), nv, ...sel.verts_norm.slice(i + 1)];
+            const inserted = { ...sel, verts_norm: vnIns, computed: recomputeShape({ ...sel, verts_norm: vnIns }) };
+            setShapes((ss) => ss.map((s) => (s.id === sel.id ? inserted : s)));
             setSelVert(i + 1);
-            dragRef.current = { kind: "vertex", shapeId: selectedId, vIndex: i + 1, gx: e.clientX, gy: e.clientY };
+            dragRef.current = { kind: "vertex", shapeId: selectedId, vIndex: i + 1, prev: geomSnapshot(inserted), shape: inserted, gx: e.clientX, gy: e.clientY };
           } else {
-            dragRef.current = { kind: "edge", shapeId: selectedId, i, j, oaN: [...sel.verts_norm[i]], obN: [...sel.verts_norm[j]], start: p, gx: e.clientX, gy: e.clientY };
+            dragRef.current = { kind: "edge", shapeId: selectedId, i, j, oaN: [...sel.verts_norm[i]], obN: [...sel.verts_norm[j]], start: p, prev: geomSnapshot(sel), shape: sel, gx: e.clientX, gy: e.clientY };
           }
           e.currentTarget.setPointerCapture(e.pointerId); return;
         }
@@ -1752,7 +1831,7 @@ export default function TakeoffCanvas() {
     }
     // 3. move the selected shape if its body (not a handle) was hit
     if (sel && selSp && hitShape(sel, p[0] - selSp.xOffset, p[1], selSp.img.w, selSp.img.h, thr)) {
-      dragRef.current = { kind: "move", shapeId: selectedId, start: p, orig: sel.verts_norm, gx: e.clientX, gy: e.clientY };
+      dragRef.current = { kind: "move", shapeId: selectedId, start: p, orig: sel.verts_norm, prev: geomSnapshot(sel), shape: sel, gx: e.clientX, gy: e.clientY };
       e.currentTarget.setPointerCapture(e.pointerId); return;
     }
     // 4. otherwise pick a shape (or clear the selection)
@@ -1761,7 +1840,7 @@ export default function TakeoffCanvas() {
       return hitShape(s, p[0] - sp.xOffset, p[1], sp.img.w, sp.img.h, thr);
     });
     selectShape(hit ? hit.id : null);
-    if (hit) { dragRef.current = { kind: "move", shapeId: hit.id, start: p, orig: hit.verts_norm, gx: e.clientX, gy: e.clientY }; e.currentTarget.setPointerCapture(e.pointerId); return; }
+    if (hit) { dragRef.current = { kind: "move", shapeId: hit.id, start: p, orig: hit.verts_norm, prev: geomSnapshot(hit), shape: hit, gx: e.clientX, gy: e.clientY }; e.currentTarget.setPointerCapture(e.pointerId); return; }
     // 5. open canvas — drag the paper to PAN (the instinct everyone brings from
     // desktop takeoff tools; no need to reach for the Pan tool). The plain
     // click (no drag) already cleared the selection above, so a stationary
@@ -1775,20 +1854,21 @@ export default function TakeoffCanvas() {
   // shape — mirrors the One-Click proposal behavior.
   function deleteSelectedShapeVertex() {
     const sel = shapes.find((s) => s.id === selectedId);
-    if (!sel || selVert == null) { setSelVert(null); return; }
+    if (!sel || selVert == null || selVert >= sel.verts_norm.length) { setSelVert(null); return; }   // stale index (shape changed under the selection) — never dispatch a no-op edit
     const closed = sel.measure_role !== "linear" && sel.measure_role !== "surface_area";
     const min = closed ? 3 : 2;
     if (sel.verts_norm.length <= min) {
       setCommitMsg(closed ? "A shape needs at least 3 points — ⌫ again deletes the whole shape." : "A run needs at least 2 points — ⌫ again deletes the whole run.");
       setSelVert(null); return;
     }
-    setShapes((ss) => ss.map((s) => {
-      if (s.id !== selectedId) return s;
-      const vn = s.verts_norm.filter((_, j) => j !== selVert);
-      // dropping a corner is as real an edit as dragging one — stamp it, so a
-      // machine shape corrected only this way can't read as a clean accept
-      return { ...stampEdit(s, "vertex"), verts_norm: vn, computed: recomputeShape({ ...s, verts_norm: vn }) };
-    }));
+    // dropping a corner is as real an edit as dragging one — the vertexDelete
+    // command stamps "vertex" centrally, so a machine shape corrected only
+    // this way can't read as a clean accept
+    const vn = sel.verts_norm.filter((_, j) => j !== selVert);
+    dispatchShape({
+      type: "geom", id: sel.id, editKind: "vertexDelete",
+      verts_norm: vn, computed: recomputeShape({ ...sel, verts_norm: vn }), prev: geomSnapshot(sel),
+    });
     setSelVert(null);
   }
   // Geometry from the shape's OWN sheet: its panel's pixel dims × that sheet's
@@ -2044,48 +2124,46 @@ export default function TakeoffCanvas() {
       // (moveCrosshair bails for Select) — track the RAW cursor; vertex/edge
       // drags apply their own endpoint snap (ocSnap), and a body move is free.
       const p = toImage(e.clientX, e.clientY);
-      // Provenance: stamp REAL edits once per drag GESTURE, not per pointermove
-      // (a single drag streams dozens of moves — per-event stamping would
-      // inflate origin.edits), and only once the pointer has actually LEFT the
-      // grab point (gx/gy): a plain select-click emits a zero-delta pointermove
-      // that would otherwise stamp every machine shape as human-corrected just
-      // for being selected. The first displaced event still sees the PRE-drag
-      // verts_norm (zero-delta events wrote no change), so stampEdit's freeze
-      // captures the machine's untouched ring; `stamp` is resolved before the
-      // updater so it stays pure.
-      const stamp = (d.kind === "vertex" || d.kind === "edge" || d.kind === "move") && !d.stamped
-        && (e.clientX !== d.gx || e.clientY !== d.gy);
-      if (stamp) d.stamped = true;
-      if (d.kind === "vertex") {
-        setShapes((ss) => ss.map((s) => {
-          if (s.id !== d.shapeId) return s;
-          const sp = panelByKey(s.sheet_id);
-          const [slx, sly] = ocSnap(sp.key, p[0] - sp.xOffset, p[1], !!s.origin?.raster_traced);   // snap the corner to true endpoints (never on a raster-traced shape — see ocSnap)
-          const vn = s.verts_norm.map((v, i) => (i === d.vIndex ? [slx / sp.img.w, sly / sp.img.h] : v));
-          return { ...(stamp ? stampEdit(s, "vertex") : s), verts_norm: vn, computed: recomputeShape({ ...s, verts_norm: vn }) };
-        }));
-      } else if (d.kind === "edge") {
-        setShapes((ss) => ss.map((s) => {
-          if (s.id !== d.shapeId) return s;
+      // Live PREVIEW only — geometry follows the cursor for feel, but nothing
+      // stamps here anymore: provenance is applied exactly once, on release,
+      // by the geom command in onPointerUp (whose `prev` is the grab-time
+      // snapshot — so stampEdit's freeze still reads the TRUE pre-drag ring).
+      // The gx/gy gate keeps a plain select-click's zero-delta pointermove
+      // from writing any preview state at all: no motion ⇒ no write ⇒ no
+      // command ⇒ no stamp — the old d.stamped flag guard, made structural.
+      // vn is computed OUTSIDE the updater (from the grab-time snapshot, which
+      // is exact: a gesture only ever moves the verts named by the drag ref)
+      // and remembered on the ref (d.lastVerts/d.lastComputed) so the release
+      // commit and the preview can never disagree.
+      if (d.kind === "vertex" || d.kind === "edge" || d.kind === "move") {
+        if (!d.moved && e.clientX === d.gx && e.clientY === d.gy) return;
+        d.moved = true;
+        const sp = panelByKey(d.shape.sheet_id);
+        let vn;
+        if (d.kind === "vertex") {
+          const [slx, sly] = ocSnap(sp.key, p[0] - sp.xOffset, p[1], !!d.shape.origin?.raster_traced);   // snap the corner to true endpoints (never on a raster-traced shape — see ocSnap)
+          vn = d.prev.verts_norm.map((v, i) => (i === d.vIndex ? [slx / sp.img.w, sly / sp.img.h] : v));
+        } else if (d.kind === "edge") {
           // translate BOTH endpoints of the line by the drag delta; each end snaps
           // to the linework independently (normalized → local px → snap → normalized)
-          const sp = panelByKey(s.sheet_id);
           const dx = (p[0] - d.start[0]) / sp.img.w, dy = (p[1] - d.start[1]) / sp.img.h;
-          const rt = !!s.origin?.raster_traced;
+          const rt = !!d.shape.origin?.raster_traced;
           const snapN = (nx, ny) => { const [lx, ly] = ocSnap(sp.key, nx * sp.img.w, ny * sp.img.h, rt); return [lx / sp.img.w, ly / sp.img.h]; };
           const na = snapN(d.oaN[0] + dx, d.oaN[1] + dy), nb = snapN(d.obN[0] + dx, d.obN[1] + dy);
-          const vn = s.verts_norm.map((v, i) => (i === d.i ? na : i === d.j ? nb : v));
-          return { ...(stamp ? stampEdit(s, "edge") : s), verts_norm: vn, computed: recomputeShape({ ...s, verts_norm: vn }) };
-        }));
-      } else if (d.kind === "move") {
-        setShapes((ss) => ss.map((s) => {
-          if (s.id !== d.shapeId) return s;
+          vn = d.prev.verts_norm.map((v, i) => (i === d.i ? na : i === d.j ? nb : v));
+        } else {
           // start and p are both stage px, so xOffset cancels in the delta —
           // only the normalizing divisor is the shape's own panel
-          const sp = panelByKey(s.sheet_id);
           const dx = (p[0] - d.start[0]) / sp.img.w, dy = (p[1] - d.start[1]) / sp.img.h;
-          return { ...(stamp ? stampEdit(s, "move") : s), verts_norm: d.orig.map(([nx, ny]) => [nx + dx, ny + dy]) };
-        }));
+          vn = d.orig.map(([nx, ny]) => [nx + dx, ny + dy]);
+        }
+        d.lastVerts = vn;
+        // a translation never re-prices (same lengths/areas) — matches the old
+        // move updater, which left `computed` untouched
+        d.lastComputed = d.kind === "move" ? undefined : recomputeShape({ ...d.shape, verts_norm: vn });
+        setShapes((ss) => ss.map((s) => (s.id !== d.shapeId ? s
+          : d.kind === "move" ? { ...s, verts_norm: vn }
+            : { ...s, verts_norm: vn, computed: d.lastComputed })));
       } else if (d.kind === "markupMove") {
         // raw cursor point — markups aren't snapped/angle-locked, and this matches the
         // raw d.start so the delta can't jump from a stale snap/angle ref.
@@ -2150,7 +2228,29 @@ export default function TakeoffCanvas() {
       return;
     }
     if (ocDragRef.current) { ocDragRef.current = null; try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* gone */ } return; }
-    if (dragRef.current) { dragRef.current = null; try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* gone */ } return; }
+    if (dragRef.current) {
+      const d = dragRef.current;
+      dragRef.current = null;
+      // Commit-on-gesture-end: ONE geom command per drag, and only when the
+      // geometry actually moved off the grab-time snapshot (a drag that snapped
+      // back exactly is not an edit — no command, no stamp). The command's
+      // canonical result supersedes the live-preview frames; `prev` carries the
+      // grab-time verts/computed/provenance so the stamp freezes the true
+      // pre-drag ring and undo restores it exactly. (pointercancel routes here
+      // too, so an interrupted drag still lands as a stamped command, never as
+      // orphaned preview state.)
+      if ((d.kind === "vertex" || d.kind === "edge" || d.kind === "move")
+          && d.lastVerts && !vertsEqual(d.lastVerts, d.prev.verts_norm)) {
+        dispatchShape({
+          type: "geom", id: d.shapeId, editKind: d.kind,
+          verts_norm: d.lastVerts,
+          ...(d.lastComputed !== undefined ? { computed: d.lastComputed } : {}),
+          prev: d.prev,
+        });
+      }
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* gone */ }
+      return;
+    }
     if (panRef.current) {
       panRef.current = null;
       setTf({ ...tfRef.current });   // sync once at end
@@ -2226,8 +2326,15 @@ export default function TakeoffCanvas() {
     const uEff = upp / factorFor(key);
     // count shapes keep their computed: EA has no upp dependency at all, and
     // recomputeShape's count branch would clobber a hand-edited / hydrated
-    // fractional count (supported data — see totals.js accumulateRole) to 1
-    setShapes((ss) => ss.map((sh) => (sh.sheet_id === key && sh.measure_role !== "count" ? { ...sh, computed: recomputeShape(sh, uEff) } : sh)));
+    // fractional count (supported data — see totals.js accumulateRole) to 1.
+    // A rescale re-price is a whole-array NON-edit (`replace`: no stamps, no
+    // counters) and it RESETS both undo stacks: every recorded command froze
+    // `computed` at the old scale, and undoing one afterwards would resurrect
+    // stale quantities.
+    dispatchShape({
+      type: "replace",
+      shapes: shapes.map((sh) => (sh.sheet_id === key && sh.measure_role !== "count" ? { ...sh, computed: recomputeShape(sh, uEff) } : sh)),
+    }, { reset: true });
   }
 
   // Revert the last quantity-changing rescale (the one-slot stash above): runs
@@ -2284,14 +2391,15 @@ export default function TakeoffCanvas() {
     if (!upp) { setCommitMsg(`Set the scale for ${labelFor(tp)} first.`); return; }
     if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
     const met = closedMetrics(points);
-    setShapes((s) => [...s, {
-      id: uid("shp"), created_at: nowIso(), sheet_id: tp.key, condition_id: activeCond,
+    // id + created_at are minted by the add command — the ONE creation gate
+    dispatchShape({ type: "add", shapes: [{
+      sheet_id: tp.key, condition_id: activeCond,
       measure_role: asDeduct ? "deduct" : "floor_area",
       verts_norm: points.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]),
       computed: { area_sf: +(met.area * upp * upp).toFixed(2), perimeter_lf: +(met.perim * upp).toFixed(2) },
       ...(activeLabel ? { label: activeLabel } : {}),
       origin: { method: "manual" },
-    }]);
+    }] });
   }
   function commitLinear(points) {
     if (points.length < 2) return;
@@ -2301,13 +2409,13 @@ export default function TakeoffCanvas() {
     if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
     const LF = openLen(points) * upp;
     const tIn = Number(aCond?.thickness_in) || 0; // borders/feature strips: SF = LF × T/12
-    setShapes((s) => [...s, {
-      id: uid("shp"), created_at: nowIso(), sheet_id: tp.key, condition_id: activeCond, measure_role: "linear",
+    dispatchShape({ type: "add", shapes: [{
+      sheet_id: tp.key, condition_id: activeCond, measure_role: "linear",
       verts_norm: points.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]),
       computed: { perimeter_lf: +LF.toFixed(2), area_sf: tIn > 0 ? +((LF * tIn) / 12).toFixed(2) : 0 },
       ...(activeLabel ? { label: activeLabel } : {}),
       origin: { method: "manual" },
-    }]);
+    }] });
   }
   // Surface Area — trace the wall run in plan; SF = traced LF × the condition's
   // height. The wall-tile "stack" workflow: set tile height once, trace walls.
@@ -2320,21 +2428,21 @@ export default function TakeoffCanvas() {
     const h = Number(aCond?.height_ft) || 0;
     if (!(h > 0)) { setCommitMsg(`Set a height for ${aCond?.finish_tag || "this condition"} (H in the condition editor) — Surface Area = traced LF × height.`); return; }
     const LF = openLen(points) * upp;
-    setShapes((s) => [...s, {
-      id: uid("shp"), created_at: nowIso(), sheet_id: tp.key, condition_id: activeCond, measure_role: "surface_area", height_ft: h,
+    dispatchShape({ type: "add", shapes: [{
+      sheet_id: tp.key, condition_id: activeCond, measure_role: "surface_area", height_ft: h,
       verts_norm: points.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]),
       computed: { area_sf: +(LF * h).toFixed(2), perimeter_lf: +LF.toFixed(2) },
       ...(activeLabel ? { label: activeLabel } : {}),
       origin: { method: "manual" },
-    }]);
+    }] });
   }
   function commitCount(p) {
     if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
     const tp = panelAt(p[0]);
-    setShapes((s) => [...s, {
-      id: uid("shp"), created_at: nowIso(), sheet_id: tp.key, condition_id: activeCond, measure_role: "count",
+    dispatchShape({ type: "add", shapes: [{
+      sheet_id: tp.key, condition_id: activeCond, measure_role: "count",
       verts_norm: [[(p[0] - tp.xOffset) / tp.img.w, p[1] / tp.img.h]], computed: { count: 1 }, ...(activeLabel ? { label: activeLabel } : {}), origin: { method: "manual" },
-    }]);
+    }] });
   }
 
   // ── One-Click Area — click inside a room; the linework bounds it ──────────
@@ -2536,7 +2644,7 @@ export default function TakeoffCanvas() {
     if (!proposal || !proposal.regions.length) return;
     const tp = panelByKey(proposal.key);
     const made = proposal.regions.map((r) => ({
-      id: uid("shp"), created_at: nowIso(), sheet_id: tp.key, condition_id: activeCond,
+      sheet_id: tp.key, condition_id: activeCond,
       measure_role: r.kind === "neg" ? "deduct" : "floor_area",
       verts_norm: r.poly.map(([x, y]) => [x / tp.img.w, y / tp.img.h]),
       computed: { area_sf: r.area_sf, perimeter_lf: r.perim_lf },
@@ -2549,7 +2657,7 @@ export default function TakeoffCanvas() {
       // field from the pre-edit ring only when Create didn't already.
       origin: { method: "one_click_v1", seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, ...(r.hf ? { hatch_filtered: true } : {}), ...(r.rt ? { raster_traced: true } : {}), ...(r.sens != null ? { fill_sensitivity: r.sens } : {}), ...(r.touched ? { edited_before_create: true, proposed_verts_norm: r.poly0.map(([x, y]) => [x / tp.img.w, y / tp.img.h]) } : {}) },
     }));
-    setShapes((s) => [...s, ...made]);
+    dispatchShape({ type: "add", shapes: made });   // Create is the creation gate — id/created_at minted by the command
     const sf = proposal.regions.reduce((n, r) => n + (r.kind === "neg" ? -r.area_sf : r.area_sf), 0);
     setCommitMsg(`Created ${made.length} takeoff${made.length === 1 ? "" : "s"} — ${fa(sf)} ${condById[activeCond]?.finish_tag || ""}. Click the next room.`);
     setProposal(null);
@@ -2744,11 +2852,13 @@ export default function TakeoffCanvas() {
       // same sheet: nudge so the copy is visible; other sheet: same relative spot
       const vn = c.verts_norm.map(([x, y]) => (same ? [Math.min(0.999, x + offset), Math.min(0.999, y + offset)] : [x, y]));
       // != null, not truthy: an overridden height of 0 must survive the paste
-      const s = { id: uid("shp"), created_at: nowIso(), sheet_id: tp.key, condition_id: c.condition_id, measure_role: c.measure_role, verts_norm: vn, ...(c.height_ft != null ? { height_ft: c.height_ft } : {}), ...(c.height_override ? { height_override: true } : {}), ...(c.label ? { label: c.label } : {}), ...cloneOrigin(c.origin) };
+      const s = { sheet_id: tp.key, condition_id: c.condition_id, measure_role: c.measure_role, verts_norm: vn, ...(c.height_ft != null ? { height_ft: c.height_ft } : {}), ...(c.height_override ? { height_override: true } : {}), ...(c.label ? { label: c.label } : {}), ...cloneOrigin(c.origin) };
       return { ...s, computed: recomputeShape(s) };
     });
-    setShapes((s) => [...s, ...made]);
-    selectShape(made[made.length - 1].id);
+    // the add command mints id/created_at; a plain add appends, so the minted
+    // clones are the array's last N — select the newest one
+    const res = dispatchShape({ type: "add", shapes: made });
+    selectShape(res.shapes[res.shapes.length - 1].id);
     setTool("select");
     setCommitMsg(`Pasted ${made.length} takeoff${made.length === 1 ? "" : "s"}${cross ? ` onto ${labelFor(tp)}` : ""} — drag to position.`);
   }
@@ -3101,9 +3211,9 @@ export default function TakeoffCanvas() {
     }
     if (tool === "surface") commitSurface(poly); else if (tool === "linear") commitLinear(poly); else commitPoly(poly, tool === "deduct"); setPoly([]);
   }
-  function deleteSelected() { if (selectedId) { countDeleted(shapes.filter((s) => s.id === selectedId)); setShapes((ss) => ss.filter((s) => s.id !== selectedId)); setSelectedId(null); } }
-  function reassignSelected(condId) { if (selectedId) setShapes((ss) => ss.map((s) => (s.id === selectedId ? { ...stampEdit(s, "reassign"), condition_id: condId } : s))); }
-  function reassignSelectedLabel(value) { if (selectedId) setShapes((ss) => assignShapeLabel(ss, selectedId, value)); }   // Select-tool single-shape re-label (#111) — value "" / null clears it
+  function deleteSelected() { if (selectedId) { dispatchShape({ type: "delete", ids: [selectedId] }); setSelectedId(null); } }
+  function reassignSelected(condId) { if (selectedId) dispatchShape({ type: "reassign", ids: [selectedId], condition_id: condId }); }
+  function reassignSelectedLabel(value) { if (selectedId) dispatchShape({ type: "label", ids: [selectedId], value }); }   // Select-tool single-shape re-label (#111) — value "" / null clears it; label commands never stamp
 
   // pan/zoom the canvas to fit a condition's takeoffs on the open sheets —
   // the panel's ⌖ / double-click navigation. Fit zoom is capped so a lone
@@ -3345,7 +3455,11 @@ export default function TakeoffCanvas() {
     const owned = shapes.filter((s) => s.condition_id === id);
     if (owned.length && !window.confirm(`Delete ${c.finish_tag} and its ${owned.length} takeoff${owned.length === 1 ? "" : "s"}? This can't be undone.`)) return;
     const next = conditions.filter((x) => x.id !== id);
-    if (owned.length) { countDeleted(owned); setShapes((ss) => ss.filter((s) => s.condition_id !== id)); }
+    // cascade delete of the condition's OWNED shapes — counted centrally by the
+    // command, but record:false keeps it off the undo stack: the confirm just
+    // said "can't be undone", and ⌘Z restoring shapes without their condition
+    // would resurrect orphans
+    if (owned.length) dispatchShape({ type: "delete", ids: owned.map((s) => s.id), reason: "condition-delete" }, { record: false });
     setConditions(next);
     unpinFromPalette(id);   // a deleted condition can't stay pinned in the palette
     if (activeCond === id) setActiveCond(next[0]?.id || "");
@@ -3416,15 +3530,14 @@ export default function TakeoffCanvas() {
       return { ...s, computed: { perimeter_lf: +LF.toFixed(2), area_sf: v > 0 ? +((LF * v) / 12).toFixed(2) : 0 } };
     }));
   };
-  // resolved OUTSIDE the setShapes updater (against the render's `shapes`, which
-  // a discrete click always sees current) so the deletion counter and the filter
-  // agree on the same victim — bumping a counter inside an updater isn't pure.
+  // "Undo last shape" (toolbar/⌫) is NOT ⌘Z: it stays what it always was — a
+  // DELETE of the newest shape on the focused sheets (a decision, so it still
+  // counts toward the deletion tally, now via the command's central tally).
+  // It records on the undo stack like any delete, so ⌘Z can resurrect it.
   function undoLast() {
     const mine = shapes.filter((x) => panelKeySet.has(x.sheet_id));
     if (!mine.length) return;
-    const last = mine[mine.length - 1];
-    countDeleted([last]);
-    setShapes((s) => s.filter((x) => x !== last));
+    dispatchShape({ type: "delete", ids: [mine[mine.length - 1].id], reason: "undo-last" });
   }
 
   const condById = Object.fromEntries(conditions.map((c) => [c.id, c]));
@@ -3613,7 +3726,8 @@ export default function TakeoffCanvas() {
     const what = live.length <= 5 ? live.map((c) => c.finish_tag).join(", ") : `${live.length} conditions`;
     if (!window.confirm(`Delete ${what}${owned ? ` and their ${owned} takeoff${owned === 1 ? "" : "s"}` : ""}? This can't be undone.`)) return false;
     setConditions((cs) => cs.filter((c) => !ids.has(c.id)));
-    if (owned) { countDeleted(dead); setShapes((ss) => ss.filter((s) => !ids.has(s.condition_id))); }
+    // same cascade rule as deleteCondition: counted centrally, off the stack
+    if (owned) dispatchShape({ type: "delete", ids: dead.map((s) => s.id), reason: "condition-delete" }, { record: false });
     setPalette((p) => p.filter((id) => !ids.has(id)));   // deleted conditions can't stay pinned
     if (ids.has(activeCond)) setActiveCond(conditions.find((c) => !ids.has(c.id))?.id || "");
     setCommitMsg(`Deleted ${live.length} condition${live.length === 1 ? "" : "s"}${owned ? ` and ${owned} takeoff${owned === 1 ? "" : "s"}` : ""}.`);
