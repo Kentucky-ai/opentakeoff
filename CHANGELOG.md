@@ -2,7 +2,7 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
-## Unreleased
+## 2026-07-18 — opentakeoff-mcp 0.4.0
 
 ### Changed
 - **MCP: shapes the server commits now tell the truth about who made them.** Previously, agent work banked as human work: one-click commits stamped `origin.reviewed: true` even though no human ever reviewed them, and `measure_polygon` / `measure_line` commits carried no `origin` at all — so downstream consumers (the capture/contribution pipeline included) defaulted them to human demonstrations. Now every shape the MCP server commits carries `actor: "agent"`; one-click commits stamp `reviewed: false` (an agent's un-reviewed trace is machine-proposed, exactly like a pending binder shape), and measure commits carry `origin: { method: "manual", actor: "agent" }` — agent-supplied coordinates are a hand trace by a machine hand. `Shape.origin` in `mcp/src/session.ts` is widened to the full contribution.v2 vocabulary (`method`, `actor`, `reviewed`, correction fields). **Behavioral change for anyone trusting `reviewed` or the human-by-default origin convention**: MCP-produced shapes no longer masquerade as human-reviewed work in exports or contributed corpora.
