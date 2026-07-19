@@ -180,7 +180,7 @@ OpenTakeoff is **Apache-2.0**: fork it, change it, ship it — for your own crew
 - **State & persistence** — [`web/src/lib/store.js`](web/src/lib/store.js)
 - **UI** — [`web/src/pages/TakeoffCanvas.jsx`](web/src/pages/TakeoffCanvas.jsx) and [`web/src/components/`](web/src/components/)
 
-Run `npm run typecheck && npm test && npm run build` before a PR; keep the geometry libs pure and tested; never commit real plans. See [CONTRIBUTING.md](CONTRIBUTING.md) and the [user guide](docs/USER_GUIDE.md).
+Run `npm run typecheck && npm test && npm run build` before a PR; keep the geometry libs pure and tested; never commit real plans. See [CONTRIBUTING.md](CONTRIBUTING.md) and the [user manual](docs/USER_GUIDE.md) — the complete zero-to-exported-takeoff guide.
 
 ## Contributing — there's a ladder
 
