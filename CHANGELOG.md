@@ -14,6 +14,9 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 ### Changed
 - **Capture rows default `origin_method` to `"unknown"`, not `"human"`.** A shape that recorded no provenance is a shape whose provenance we don't know — defaulting it to human would corrupt any human-vs-machine split trained on the corpus. Treat `"unknown"` as unlabeled.
 
+### Docs
+- **`docs/USER_GUIDE.md` rewritten as the full user manual** — zero-to-exported-takeoff coverage of every shipped feature (scale, conditions, every tool, One-Click review, command-layer undo/redo, markups/stamps/RFIs, report, revisions, Contribute, the in-canvas agent, MCP), with a code-verified keyboard reference.
+
 ## 2026-07-18 — opentakeoff-mcp 0.4.0
 
 ### Changed
