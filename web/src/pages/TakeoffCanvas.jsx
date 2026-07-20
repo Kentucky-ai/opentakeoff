@@ -525,6 +525,7 @@ export default function TakeoffCanvas() {
   const tfRef = useRef({ x: 0, y: 0, scale: 1 });
   const syncRaf = useRef(0);
   const lastSyncRef = useRef(0);       // last tf mirror sync (perf.now) — scheduleSync throttles against it
+  const lastSyncedScaleRef = useRef(1); // scale last written into `tf` — scheduleSync skips a translate-only pan tick when this is unchanged
   const gestureUntilRef = useRef(0);   // wheel/pinch activity horizon — the detail view waits it out
   const panRafRef = useRef(0);         // rAF token coalescing drag-pan pointermoves into one transform write per frame
   const saveDataRef = useRef(null);    // latest serialized annotations — flushed on unmount
@@ -622,7 +623,10 @@ export default function TakeoffCanvas() {
     const keys = new Set(sheetGroup.length ? sheetGroup : [sheetKey]);
     return shapes.filter((s) => keys.has(s.sheet_id));
   }, [shapes, sheetGroup, sheetKey]);
-  const visibleMarkups = markups.filter((m) => panelKeySet.has(m.sheet_id));
+  const visibleMarkups = useMemo(() => {
+    const keys = new Set(sheetGroup.length ? sheetGroup : [sheetKey]);
+    return markups.filter((m) => keys.has(m.sheet_id));
+  }, [markups, sheetGroup, sheetKey]);
   // scale is PER PAGE (plan sets are never one uniform scale) — set it once per
   // sheet and it's remembered. In group mode the scale dropdown and hints target
   // the FOCUSED panel (the one last clicked); single mode focuses the lone panel.
@@ -667,7 +671,17 @@ export default function TakeoffCanvas() {
     const wait = Math.max(0, SYNC_MS - (performance.now() - lastSyncRef.current));
     syncRaf.current = setTimeout(() => {
       syncRaf.current = 0; lastSyncRef.current = performance.now();
-      setTf({ ...tfRef.current });
+      const t = tfRef.current;
+      // Nothing in the render tree reads tf.x/tf.y — position lives entirely in
+      // the CSS transform above. A pure pan (scale unchanged) only needs this
+      // mirror when the detail view is engaged (it re-crops from tf on every
+      // tick); below DETAIL_ENGAGE it's hidden and reads nothing. Skipping the
+      // state write there avoids re-rendering the whole shape/markup overlay
+      // (thousands of SVG els at overview zoom) on every ~90ms pan tick — that
+      // wasted reconciliation was the zoomed-out pan flicker + toolbar lag.
+      if (t.scale === lastSyncedScaleRef.current && t.scale * (window.devicePixelRatio || 1) <= DETAIL_ENGAGE) return;
+      lastSyncedScaleRef.current = t.scale;
+      setTf({ ...t });
     }, wait);
   }, []);
   const setTfNow = useCallback((next) => { tfRef.current = next; applyTf(); setTf({ ...next }); }, [applyTf]);
@@ -4923,7 +4937,7 @@ export default function TakeoffCanvas() {
               </defs>
               {/* committed shapes + markups, one group per panel in its local frame */}
               {panels.map((p) => {
-                const pShapes = shapes.filter((s) => s.sheet_id === p.key);
+                const pShapes = visibleShapes.filter((s) => s.sheet_id === p.key);
                 const dn = (vn) => vn.map(([x, y]) => [x * p.img.w, y * p.img.h]);
                 const label = labelFor(p);
                 return (
@@ -4995,7 +5009,7 @@ export default function TakeoffCanvas() {
                         (white outer ring + cobalt inner). Per-markup color drives the STROKE/
                         FILL (dark-boosted on the dark canvas); RFI linkage is an unconditional
                         ⬢/number badge, independent of the note text. Layer hides via showMarkups. */}
-                    {showMarkups && markups.filter((m) => m.sheet_id === p.key)
+                    {showMarkups && visibleMarkups.filter((m) => m.sheet_id === p.key)
                       .slice().sort((a, b) => (a.type === "highlight" ? 0 : 1) - (b.type === "highlight" ? 0 : 1))
                       .map((m) => {
                       const z = tf.scale;
