@@ -113,6 +113,18 @@ export function cloudBezier(x0, y0, x1, y1) {
   return { start: [ax0, ay0], segments };
 }
 
+// Mirror a normalized vertex ring about its OWN bbox center on one axis.
+// axis "h" flips left↔right (reflects X), "v" flips top↔bottom (reflects Y).
+// Isometry: perimeter/area are invariant, so quantities never change.
+export function reflectVertsNorm(verts, axis) {
+  if (!Array.isArray(verts) || verts.length < 2) return verts;
+  const ax = axis === "v" ? 1 : 0;
+  let lo = Infinity, hi = -Infinity;
+  for (const v of verts) { if (v[ax] < lo) lo = v[ax]; if (v[ax] > hi) hi = v[ax]; }
+  const s = lo + hi;
+  return verts.map((v) => (ax === 0 ? [s - v[0], v[1]] : [v[0], s - v[1]]));
+}
+
 // ── snap-to-vector spatial hash. The op-list walk that feeds it (endpoints +
 // line segments for One-Click Area) lives in lib/oneclick: extractVectorGeometry.
 // `cell` is the caller's tuning (raster px per bucket) — see SNAP_CELL in the canvas.

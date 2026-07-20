@@ -45,7 +45,7 @@ import { sanitizeShapeLabels, sanitizeShapeLabelsOnShapes, renameShapeLabel, sha
 import { buildMarkedSetPdf, downloadBytes } from "../lib/markedset.js";
 import { loadProfiles } from "../lib/identity.js";
 import { resolveBranding, loadBrandingSelection } from "../lib/branding.js";
-import { starPath, cloudPath, thinStroke, strokePathD, chiselRibbon, buildSnapGrid, nearestSnap, ANGLE_TOL, angleSnap, closedMetrics, openLen, pointInPoly, hitShape, arrowheadPath, distToSeg } from "../lib/geometry.js";
+import { starPath, cloudPath, thinStroke, strokePathD, chiselRibbon, buildSnapGrid, nearestSnap, ANGLE_TOL, angleSnap, closedMetrics, openLen, pointInPoly, hitShape, arrowheadPath, distToSeg, reflectVertsNorm } from "../lib/geometry.js";
 import { dashArrayFor, boostForDark, clampWeight, snapWeight, LINE_STYLES, LINE_STYLE_IDS, WEIGHT_STEPS } from "../lib/lineStyles.js";
 import { nextRfiNumber } from "../lib/rfi.js";
 import { libFields, matFieldOverridden, libPushPatch, libRevertPatch, libEntryPatch, matEditPatch } from "../lib/materials.js";
@@ -2955,6 +2955,20 @@ export default function TakeoffCanvas() {
     clipRef.current = [clipEntry(sel)];
     pasteClipboard();
   }
+  // Mirror the selected shape about its own bbox center — an isometry, so SF/LF
+  // never change. Routes through the same geom/vertex command path as a manual
+  // vertex drag, which gives correct undo/redo and provenance stamping for free.
+  function flipSelected(axis) {
+    const sel = shapes.find((s) => s.id === selectedId);
+    if (!sel || !Array.isArray(sel.verts_norm) || sel.verts_norm.length < 2) {
+      setCommitMsg("Select an area or linear takeoff to flip."); return;
+    }
+    const vn = reflectVertsNorm(sel.verts_norm, axis);
+    dispatchShape({
+      type: "geom", id: sel.id, editKind: "vertex",
+      verts_norm: vn, computed: recomputeShape({ ...sel, verts_norm: vn }), prev: geomSnapshot(sel),
+    });
+  }
   // ── markup (cloud / callout / text) — annotations, not measurements ─────────
   // markupDraft holds STAGE px (so the live preview spans panels); a markup
   // belongs to the panel of its FIRST click and normalizes against that panel.
@@ -4501,9 +4515,13 @@ export default function TakeoffCanvas() {
               { id: "paste", icon: "paste", label: "Paste", shortcut: "⌘V", disabled: !clipRef.current.length, onSelect: () => pasteClipboard() },
               { id: "dup", icon: "duplicate", label: "Duplicate", shortcut: "⌘D", disabled: !selectedId, onSelect: duplicateSelected },
               "divider",
+              { id: "flipH", label: "Flip Horizontal", disabled: !selectedId, onSelect: () => flipSelected("h") },
+              { id: "flipV", label: "Flip Vertical", disabled: !selectedId, onSelect: () => flipSelected("v") },
+              "divider",
               { id: "finish", icon: "check", label: `Finish shape${poly.length ? ` (${poly.length} pts)` : ""}`, shortcut: "↵", disabled: !finishOk, onSelect: finishShape },
               { id: "undopt", icon: "undo", label: "Undo last point", shortcut: "⌘Z", disabled: !poly.length, onSelect: () => setPoly((q) => q.slice(0, -1)) },
               { id: "undoshape", icon: "undo", label: "Undo last shape", disabled: !visibleShapes.length, onSelect: undoLast },
+              { id: "redo", label: "Redo", shortcut: "⇧⌘Z", onSelect: redoShapeCommand },
               "divider",
               { id: "del", icon: "close", label: "Delete selected", shortcut: "⌫", disabled: !selectedId, tint: "var(--c-danger)", onSelect: deleteSelected },
             ]}

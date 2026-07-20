@@ -8,7 +8,7 @@ import {
   SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE,
   type Point, type MaskObj,
 } from "../src/lib/oneclick.ts";
-import { cloudBezier, cloudPath, arrowheadPath } from "../src/lib/geometry.js";
+import { cloudBezier, cloudPath, arrowheadPath, reflectVertsNorm, closedMetrics } from "../src/lib/geometry.js";
 
 // a closed square room, as flat boundary segments in image px
 function squareSegs(x0: number, y0: number, x1: number, y1: number): number[] {
@@ -335,6 +335,45 @@ test("cloudBezier: degenerate zero-size box yields finite points", () => {
   assert.ok(Number.isFinite(start[0]) && Number.isFinite(start[1]), "start finite");
   for (const seg of segments) for (const [x, y] of seg) {
     assert.ok(Number.isFinite(x) && Number.isFinite(y), "control/end finite");
+  }
+});
+
+// ── Flip Horizontal/Vertical (reflectVertsNorm) ─────────────────────────────
+const L_SHAPE: Point[] = [[0.1, 0.1], [0.5, 0.1], [0.5, 0.3], [0.3, 0.3], [0.3, 0.5], [0.1, 0.5]];
+
+test("reflectVertsNorm: horizontal flip mirrors X about the ring's own bbox center, area/perimeter unchanged", () => {
+  const flipped = reflectVertsNorm(L_SHAPE, "h");
+  const before = closedMetrics(L_SHAPE), after = closedMetrics(flipped);
+  assert.ok(Math.abs(before.area - after.area) < 1e-9, "area invariant under flip");
+  assert.ok(Math.abs(before.perim - after.perim) < 1e-9, "perimeter invariant under flip");
+  const xs = L_SHAPE.map((p) => p[0]), lo = Math.min(...xs), hi = Math.max(...xs), s = lo + hi;
+  for (let i = 0; i < L_SHAPE.length; i++) {
+    assert.ok(Math.abs(flipped[i][0] - (s - L_SHAPE[i][0])) < 1e-9, "X mirrors about bbox center");
+    assert.equal(flipped[i][1], L_SHAPE[i][1], "Y untouched by a horizontal flip");
+  }
+});
+
+test("reflectVertsNorm: vertical flip mirrors Y, area/perimeter unchanged, X untouched", () => {
+  const flipped = reflectVertsNorm(L_SHAPE, "v");
+  const before = closedMetrics(L_SHAPE), after = closedMetrics(flipped);
+  assert.ok(Math.abs(before.area - after.area) < 1e-9);
+  assert.ok(Math.abs(before.perim - after.perim) < 1e-9);
+  for (let i = 0; i < L_SHAPE.length; i++) {
+    assert.equal(flipped[i][0], L_SHAPE[i][0], "X untouched by a vertical flip");
+  }
+});
+
+test("reflectVertsNorm: a single-vertex ring (count marker) is a safe no-op", () => {
+  const pt: Point[] = [[0.4, 0.6]];
+  assert.deepEqual(reflectVertsNorm(pt, "h"), pt);
+  assert.deepEqual(reflectVertsNorm(pt, "v"), pt);
+});
+
+test("reflectVertsNorm: applying the same flip twice returns the original ring", () => {
+  const twice = reflectVertsNorm(reflectVertsNorm(L_SHAPE, "h"), "h");
+  for (let i = 0; i < L_SHAPE.length; i++) {
+    assert.ok(Math.abs(twice[i][0] - L_SHAPE[i][0]) < 1e-9);
+    assert.ok(Math.abs(twice[i][1] - L_SHAPE[i][1]) < 1e-9);
   }
 });
 
