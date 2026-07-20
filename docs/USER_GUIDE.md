@@ -391,15 +391,15 @@ Open **Report** for the whole takeoff on one page: a per-condition table, the su
 
 ### The numbers, honestly
 
-- **Measured vs. ordered.** Waste lives only in the ordered column: *SF ordered = measured × (1 + waste %)*. The measured quantity is never inflated, so your takeoff and your buy list stay honest about which is which. Waste applies to SF and LF, never EA.
-- **SY** = ordered SF ÷ 9.
+- **Measured vs. w/Waste.** Waste lives only in the w/Waste column: *SF w/Waste = measured × (1 + waste %)*. The measured quantity is never inflated, so your takeoff and your buy list stay honest about which is which. Waste applies to SF and LF, never EA.
+- **SY** = w/Waste SF ÷ 9.
 - **Multipliers** show as ×N beside the finish tag and multiply every quantity.
 - **Buy list**: each material's quantity = measured basis (floor SF / linear LF / each) ÷ its coverage rate, **rounded up to whole units** — the number you order, not a theoretical gallon and a half. The combined list sums same-name materials after per-condition rounding.
 - The footer says it plainly: *Quantities derived from drawings at stated scales; verify in field.*
 
 ### Columns, grouping, templates, theme
 
-- **Columns** — choose what the table (and the CSV) shows. Defaults: Finish, Shapes, Floor SF, Wall SF, Border SF, LF, EA, Waste, SF ordered, SY. Opt-ins: Waste SF, Waste LF, Perimeter LF (reference only — includes openings, never totaled). Custom condition columns, imported product-spec columns (manufacturer, style, color, size, description — from a schedule import), and Labor Type / Subfloor Type (typed into a condition's Supporting Materials panel) appear once they exist.
+- **Columns** — choose what the table (and the CSV) shows. Defaults: Finish, Shapes, Floor SF, Wall SF, Border SF, LF, EA, Waste, SF w/Waste, SY w/Waste. Opt-ins: Total SF, Waste SF, Waste LF, Perimeter LF (reference only — includes openings, never totaled). Custom condition columns, imported product-spec columns (manufacturer, style, color, size, description — from a schedule import), and Labor Type / Subfloor Type (typed into a condition's Supporting Materials panel) appear once they exist. **Labor view** switches to a no-waste actuals set (Total SF in, SF/SY w/Waste out) for tying quantities to labor — attach your own rates externally.
 - **Group** — break the table into sections with subtotals: by **Sheet**, by **Label** (once shapes carry labels), or by any custom column. Grouping by a column always carries that column into the CSV.
 - **Templates** — save a column-plus-grouping layout by name and recall it on this device. Signed in on a team build, **Push to Drive / Load from Drive** carries templates across your own devices — Load only adds what this device doesn't have; it never overwrites a same-name template.
 - **Theme** — import a design-token file (a `tokens.json`) to reskin the report's palette and fonts for output. **Reset** returns the house style.
@@ -413,7 +413,7 @@ Open **Report** for the whole takeoff on one page: a per-condition table, the su
 | **JSON** | The full structured report — works markups-only and RFI-only too. |
 | **Shapes CSV / JSON** | Per-shape measured quantities — no multiplier, no waste; the audit layer. |
 | **Print** | The report through your browser's print dialog. |
-| **Marked set** | A distribution-ready PDF built in your browser: every sheet that carries takeoffs or markups, the work burned in as drawn — condition colors, hatches, quantity chips, count markers, markups (toggleable) — behind a legend cover with net totals, ordered quantities, and a by-sheet breakdown. Exports in your current view: dark canvas → dark PDF. Send it to a GC who will never install anything. |
+| **Marked set** | A distribution-ready PDF built in your browser: every sheet that carries takeoffs or markups, the work burned in as drawn — condition colors, hatches, quantity chips, count markers, markups (toggleable) — behind a legend cover with net totals, w/Waste quantities, and a by-sheet breakdown. Exports in your current view: dark canvas → dark PDF. Send it to a GC who will never install anything. |
 | **RFI CSV / JSON** | The RFI register (appears once RFIs exist). |
 
 **Contribute** also lives here — covered with the rest of your data in §12.

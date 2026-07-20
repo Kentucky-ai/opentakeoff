@@ -51,7 +51,7 @@ test("metric CSV converts measured columns and drops SY", () => {
   assert.doesNotMatch(metric, /SY/);
   const imperial = totalsToCsv(rows, "P");
   assert.match(imperial, /Floor SF/);
-  assert.match(imperial, /SY \(w\/ waste\)/);
+  assert.match(imperial, /SY w\/Waste/);
 });
 
 // ── Check-a-dimension helpers (ftIn / fmtCheckLen / parseLenInput) ──────────

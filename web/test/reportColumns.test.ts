@@ -89,8 +89,8 @@ test("CSV with a base column toggled off drops it end-to-end", () => {
   const cols = visibleCols(CSV_PROFILE, { sy_net: false });
   const csv = totalsToCsv(rows, projectName, null, null, cols);
   const header = csv.split("\n")[1];
-  assert.ok(!header.includes("SY (w/ waste)"));
-  assert.ok(header.endsWith("LF (w/ waste)"));   // neighbours intact, order kept
+  assert.ok(!header.includes("SY w/Waste"));
+  assert.ok(header.endsWith("LF w/Waste"));   // neighbours intact, order kept
 });
 
 test("CSV with opt-ins: appended at the end, base 13 untouched, TOTAL blank under perimeter_ref", () => {

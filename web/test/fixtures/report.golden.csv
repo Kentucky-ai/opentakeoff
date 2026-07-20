@@ -1,5 +1,5 @@
 # Golden Plaza, Phase 2 — OpenTakeoff report
-Finish,Shapes,Multiplier,Waste %,Floor SF,Wall SF,Border SF,Total SF,LF,EA,Total SF (w/ waste),LF (w/ waste),SY (w/ waste)
+Finish,Shapes,Multiplier,Waste %,Floor SF,Wall SF,Border SF,Total SF,LF,EA,Total SF w/Waste,LF w/Waste,SY w/Waste
 "CT-1, honed",3,1,10,546.9,0,0,546.9,0,0,601.59,0,66.84
 LVT-2,1,2,0,421.1,0,0,421.1,0,0,421.1,0,46.79
 RB-1,2,1,5,0,0,43.29,43.29,129.85,0,45.45,136.34,5.05

@@ -108,14 +108,14 @@ test("reportWorkbook: four tabs, Conditions mirrors the CSV columns and numbers"
   const r1 = cTab.rows[1]; // c1: 100 SF, 10% waste
   assert.equal(r1[idx("Finish")], NASTY);
   assert.equal(r1[idx("Total SF")], 100);            // measured — no waste
-  assert.equal(r1[idx("Total SF (w/ waste)")], 110); // waste only on the order qty
+  assert.equal(r1[idx("Total SF w/Waste")], 110); // waste only on the w/Waste qty
   const r2 = cTab.rows[2]; // c2: linear 25 LF ×2 multiplier
   assert.equal(r2[idx("LF")], 50);
-  assert.equal(r2[idx("LF (w/ waste)")], 50); // 0% waste
+  assert.equal(r2[idx("LF w/Waste")], 50); // 0% waste
   // TOTAL row
   const total = cTab.rows[cTab.rows.length - 1];
   assert.equal(total[0], "TOTAL");
-  assert.equal(total[idx("Total SF (w/ waste)")], 110);
+  assert.equal(total[idx("Total SF w/Waste")], 110);
 
   // By sheet: base quantities (no ×2 on the c2 row), label + raw id + ×N tag
   assert.deepEqual(sheetTab.rows[0], ["Sheet", "Sheet ID", "Finish", "Floor SF", "Wall SF", "Border SF", "LF", "EA"]);
