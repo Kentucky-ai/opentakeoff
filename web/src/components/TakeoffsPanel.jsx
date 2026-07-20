@@ -137,7 +137,7 @@ function CoveragePresetSelect({ material: m, onPick }) {
   );
 }
 
-// Editable supporting-materials rows — the assembly behind a condition.
+// Editable supporting-materials rows for a condition (coverage-derived order qty).
 function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libById, overridden, onRevert, onAttach, onPromote }) {
   // library link affordances (#47, all optional so the editor works standalone):
   // linked lines show ⛓; a field differing from its library entry tints amber
@@ -419,7 +419,7 @@ function TakeoffsPanel({
   const [checkedConds, setCheckedConds] = useState(() => new Set());
   const [bulkWaste, setBulkWaste] = useState("");
   const checkAnchorRef = useRef(null);
-  const [panelMatOpen, setPanelMatOpen] = useState(false);    // assemblies editor expanded inline under the active row
+  const [panelMatOpen, setPanelMatOpen] = useState(false);    // supporting-materials editor expanded inline under the active row
   const rootRef = useRef(null);   // panel root — mid-drag width writes bypass React
   const dragRef = useRef(null);   // { sx, sw, w } — w is the live width during the drag
 
@@ -590,7 +590,7 @@ function TakeoffsPanel({
           <button onClick={(e) => { e.stopPropagation(); onLocate(c.id); }} title="Zoom the canvas to this condition's takeoffs"
             style={{ flexShrink: 0, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12, lineHeight: 1 }}>⌖</button>
           <button onClick={(e) => { e.stopPropagation(); onSetActive(c.id); setPanelMatOpen((v) => (on ? !v : true)); }}
-            title="Assemblies — supporting materials for this condition"
+            title="Supporting Materials — labor, subfloor & materials for this condition"
             style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: matOn ? "var(--ink)" : "transparent", color: matOn ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>
             <Icon name="product" size={11} />{c.materials?.length ? c.materials.length : ""}
           </button>
@@ -609,7 +609,21 @@ function TakeoffsPanel({
         {on && <ConditionAppearanceEditor cond={c} onUpdateCond={onUpdateCond} onSetCondParam={onSetCondParam} onAssignAttr={onAssignAttr} conditionColumns={conditionColumns} />}
         {matOn && (
           <div style={{ padding: "8px 12px 10px", background: "var(--paper-cream)", borderTop: "1px solid var(--ink-faint)", fontSize: 11.5 }}>
-            <div style={{ marginBottom: 6, color: "var(--ink-muted)" }}>Assemblies — order qty = measured ÷ coverage, rounded up.</div>
+            <div style={{ marginBottom: 6, color: "var(--ink-muted)" }}>Supporting Materials — order qty = measured ÷ coverage, rounded up.</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ color: "var(--ink-muted)", width: 56, flexShrink: 0 }}>Labor</span>
+                <input name="condition-labor-type" value={c.laborType || ""} placeholder="e.g. Glue-down, Float, Nail-down"
+                  onChange={(e) => onUpdateCond({ laborType: e.target.value })}
+                  style={{ ...ip, flex: 1, minWidth: 0 }} />
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ color: "var(--ink-muted)", width: 56, flexShrink: 0 }}>Subfloor</span>
+                <input name="condition-subfloor-type" value={c.subfloorType || ""} placeholder="e.g. Ply, Concrete slab, OSB"
+                  onChange={(e) => onUpdateCond({ subfloorType: e.target.value })}
+                  style={{ ...ip, flex: 1, minWidth: 0 }} />
+              </label>
+            </div>
             <MaterialsEditor materials={c.materials} onAdd={onAddMaterial} onUpdate={onUpdateMaterial} onRemove={onRemoveMaterial}
               library={matLib} libById={matLibById} overridden={matFieldOverridden} onRevert={onRevertMatField}
               onAttach={onAttachLibMaterial} onPromote={onPromoteMaterial} />

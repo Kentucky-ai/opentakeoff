@@ -57,6 +57,8 @@ export const instantiateTemplate = (t) => ({
   hatch: t.hatch || "solid", multiplier: 1, waste_pct: Number(t.waste_pct) || 0,
   ...(t.height_ft != null ? { height_ft: t.height_ft } : {}),
   ...(t.thickness_in != null ? { thickness_in: t.thickness_in } : {}),
+  ...(t.laborType != null ? { laborType: t.laborType } : {}),
+  ...(t.subfloorType != null ? { subfloorType: t.subfloorType } : {}),
   // instantiateMaterial (lib/materials.js) deep-copies the nested grout
   // geometry — a shallow spread here aliased the CT-1 seed's one grout object
   // into every fresh-workspace condition across every project in the session

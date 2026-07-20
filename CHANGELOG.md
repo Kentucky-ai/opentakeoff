@@ -2,6 +2,14 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-07-19
+
+### Added
+- **Labor type & subfloor type on every condition.** Two free-text fields — Labor and Subfloor — live in the Supporting Materials panel, right above the material list; fill in whatever the bid needs (glue-down, float, nail-down… / ply, concrete slab, OSB…). Both round-trip through saved condition templates and surface as their own Report/CSV/XLSX columns once a project has a value typed in.
+
+### Changed
+- **"Assemblies" renamed to "Supporting Materials" throughout the app and docs** — the per-condition materials button/panel, `FEATURES.md`, `README.md`, and the user guide now consistently say Supporting Materials. No data-shape change: `condition.materials` was already the underlying field. The unbuilt Phase 3b roadmap item (a reusable named bundle of material lines) is renamed **Material Kits** to avoid colliding with this panel's name — see `docs/ESTIMATING_ROADMAP.md`.
+
 ## 2026-07-18
 
 ### Added

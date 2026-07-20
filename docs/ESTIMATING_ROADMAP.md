@@ -1,4 +1,4 @@
-# Estimating Roadmap — Pricing, Assemblies, Estimate Worksheet & Proposals
+# Estimating Roadmap — Pricing, Material Kits, Estimate Worksheet & Proposals
 
 > **Status: PLANNED, not yet built.** This documents the follow-up phases to the
 > optional team cloud mode (PR #58: Google sign-in + Drive-backed storage).
@@ -9,7 +9,7 @@
 ## Goal
 
 Give OpenTakeoff the flexibility of a **StackCT-style estimate worksheet**: a
-simple **unit-cost estimate** driven by **items** and **assemblies** of
+simple **unit-cost estimate** driven by **items** and **kits** of
 materials, with **material and labor costs as separate columns**, fed by takeoff
 quantities. The first proposal deliverable is exactly this unit-cost estimate,
 rendered to a PDF and saved to the project's Drive folder.
@@ -17,8 +17,8 @@ rendered to a PDF and saved to the project's Drive folder.
 ## Core model (maps onto existing code)
 
 - **Item** = a priced material/labor line: `{ id, name, unit, material_cost, labor_cost, category }` where `category ∈ material | labor | sub | equipment`. Items are the existing browser-global **material library** (`web/src/lib/materials.js`, sanitized by `sanitizeMaterialLibrary`) enriched with `material_cost` + `labor_cost` fed from the pricing table.
-- **Assembly** = a reusable, named bundle of item-lines, each carrying a coverage/basis: `{ id, name, lines: [{ item_id|name, unit, per, basis }] }`. This is the SAME shape `conditionTotals` already computes per condition — `materials: [{ name, unit, per, basis, qty }]` with `qty = basisVal ÷ per`, rounded up (`web/src/lib/totals.js:62-68`). An assembly makes that list reusable and attachable to a condition in one action — a new library asset following the exact pattern of templates/materials/stamps (browser-global meta record + `sanitize*` load gate + Drive-backed later).
-- **Unit-cost estimate** = attach an item or assembly to each takeoff condition → its measured quantity (floor/wall/border SF, LF, EA from `conditionTotals`) explodes into item quantities → `qty × material_cost` and `qty × labor_cost` = extended costs → roll up to condition subtotals and grand totals, with waste (already in `conditionTotals`) and markup.
+- **Kit** = a reusable, named bundle of item-lines, each carrying a coverage/basis: `{ id, name, lines: [{ item_id|name, unit, per, basis }] }`. This is the SAME shape `conditionTotals` already computes per condition — `materials: [{ name, unit, per, basis, qty }]` with `qty = basisVal ÷ per`, rounded up (`web/src/lib/totals.js:62-68`). A kit makes that list reusable and attachable to a condition in one action — a new library asset following the exact pattern of templates/materials/stamps (browser-global meta record + `sanitize*` load gate + Drive-backed later). Distinct from a condition's own Supporting Materials list (§ the docked panel) — a kit is the reusable, named source; "Apply kit" seeds a condition's list from it.
+- **Unit-cost estimate** = attach an item or kit to each takeoff condition → its measured quantity (floor/wall/border SF, LF, EA from `conditionTotals`) explodes into item quantities → `qty × material_cost` and `qty × labor_cost` = extended costs → roll up to condition subtotals and grand totals, with waste (already in `conditionTotals`) and markup.
 
 ## Phase 3a — Pricing ingest + unit-cost join (the simple estimate)
 
@@ -51,16 +51,17 @@ the new grand totals — the additive, golden-safe pattern the file documents. N
 existing currency util exists; add a small `money(n)` to `num.js`
 (`toLocaleString(undefined, { style: 'currency', currency: 'USD' })`).
 
-## Phase 3b — Assemblies library
+## Phase 3b — Material Kits library
 
 A new browser-global asset mirroring templates/materials/stamps:
-- `web/src/lib/assemblies.js` — `sanitizeAssemblyLibrary` load gate (the
+- `web/src/lib/materialKits.js` — `sanitizeMaterialKitLibrary` load gate (the
   `sanitizeMaterialLibrary`/`sanitizeTemplates` precedent).
-- `store.js` — `loadAssemblyLibrary`/`saveAssemblyLibrary` (own `ASSEMBLY_KEY`
-  in the keyPath-less meta store, no DB version bump — the stamp-library
-  precedent at `store.js`), delegated in `cloudStore` like the other libraries.
-- UI — an **Assemblies** tab beside Materials in the left dock; "Apply assembly"
-  on a condition seeds/overwrites its `materials` array from the assembly's
+- `store.js` — `loadMaterialKitLibrary`/`saveMaterialKitLibrary` (own
+  `MATERIAL_KIT_KEY` in the keyPath-less meta store, no DB version bump — the
+  stamp-library precedent at `store.js`), delegated in `cloudStore` like the
+  other libraries.
+- UI — a **Kits** tab beside Materials in the left dock; "Apply kit" on a
+  condition seeds/overwrites its Supporting Materials list from the kit's
   lines (so the existing `conditionTotals` math produces item quantities and
   costs with no new engine).
 
@@ -108,7 +109,7 @@ sync job.
 1. **3a** pricing ingest + unit-cost/labor columns (pure cost-math unit tests in
    the `totals.test.ts` style: `qty × cost`, missing price → blank/0, grand
    totals split material/labor).
-2. **3b** assemblies library (sanitizer + store round-trip tests, the
+2. **3b** material kits library (sanitizer + store round-trip tests, the
    `materials.test.ts`/`templates.test.ts` precedent).
 3. **4** estimate worksheet UI + `buildProposalPdf` (smoke test: non-empty PDF
    bytes; cost table totals match `grandTotals`).

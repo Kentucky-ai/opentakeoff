@@ -43,7 +43,7 @@ Users drag in a floor plan (PDF/image), set the scale, trace rooms/areas with si
 
 ### UI & State
 - `web/src/pages/TakeoffCanvas.jsx` — Main canvas component (plan display, tool dispatch).
-- `web/src/components/` — Condition editor, assembly editor, report, file upload, etc.
+- `web/src/components/` — Condition editor, supporting-materials editor, report, file upload, etc.
 - `web/src/lib/store.js` — Persistence (IndexedDB + localStorage).
 
 ### Optional AI Backend
@@ -76,7 +76,7 @@ Users drag in a floor plan (PDF/image), set the scale, trace rooms/areas with si
 
 - [ ] Understand the full measurement engine (area, linear, count, etc.)
 - [ ] Find and reuse the geometry math (oneclick, polygon calculation)
-- [ ] Extend assemblies with new material types or cost logic
+- [ ] Extend supporting materials with new material types or cost logic
 - [ ] Wire a custom AI model to the backend
 - [ ] Add new export formats (XLSX, JSON, etc.)
 - [ ] Understand the scale detection and calibration flow

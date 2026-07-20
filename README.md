@@ -71,8 +71,8 @@ Auto-detects the drawn scale note off the sheet, or **calibrate** from any known
 ### 4. Conditions that read like the drawing
 A condition is one finish (LVP, carpet, tile, base, …). Each carries a **line/fill color** and a **CAD hatch pattern** (plank, herringbone, tile, terrazzo) so the canvas looks like the real drawing — plus a per-condition **waste %**, an **×N multiplier** for repeated identical units, a default **height** for wall traces, and a **thickness** that turns a linear run into border/feature-strip SF.
 
-### 5. Assemblies — the supporting materials, done right
-Per condition, list the consumables that actually go on the order: adhesive, sealer, polyurethane, thinset, grout, cove-base adhesive. Each has a **coverage rate** and a **basis** (floor SF / linear LF / each), and the order quantity derives automatically — measured ÷ coverage, **rounded up** to whole units. Adhesive and mortar lines get **coverage presets** (trowel notches, rollers) that fill the spread rate, and grout lines get a **calculator** that derives SF/bag from tile size, thickness, joint width, and bag weight. This is the layer most takeoff tools punt on. It's shipped here.
+### 5. Supporting Materials — labor, subfloor, and the consumables, done right
+Per condition: a free-text **labor type** (glue-down, float, nail-down, …) and **subfloor type** (ply, concrete slab, OSB, …), plus the consumables that actually go on the order — adhesive, sealer, polyurethane, thinset, grout, cove-base adhesive. Each material has a **coverage rate** and a **basis** (floor SF / linear LF / each), and the order quantity derives automatically — measured ÷ coverage, **rounded up** to whole units. Adhesive and mortar lines get **coverage presets** (trowel notches, rollers) that fill the spread rate, and grout lines get a **calculator** that derives SF/bag from tile size, thickness, joint width, and bag weight. This is the layer most takeoff tools punt on. It's shipped here.
 
 ### 6. Reports & export
 A per-condition breakdown — **Floor / Wall / Border SF, LF, EA, total SF, SY**, with and without waste — plus a combined **materials buy list**. Export to **CSV**, **JSON**, or a real **Excel workbook** (Summary, By-sheet, Materials, and Shapes-audit tabs — full-precision cells, formula-shaped names stay inert text), or print it. Waste is applied only in the report (the order quantity), never to the live measured number, so your takeoff and your buy list stay honest about which is which.
@@ -100,7 +100,7 @@ Every drawing, scale, condition, and markup autosaves to **your browser** (Index
 | **Measure** | One-Click Area (flood-fill), Area, Rectangle, Linear, Surface-Area (walls), Count, Eraser (deduct), Zone check (per-region breakdown) — imperial or metric (m²/m, 1:50-style scales) |
 | **Drawing aids** | 45°/90° angle lock with ⇧ hard-lock, live angle + segment-length readout at the cursor, endpoint Snap (beta) |
 | **Conditions** | Color + CAD hatch per finish, waste %, ×N multiplier, height, thickness → border SF |
-| **Assemblies** | Per-condition supporting materials with coverage rates → rounded order quantities, per-material coverage presets + grout calculator |
+| **Supporting Materials** | Per-condition labor type + subfloor type (free text), plus supporting materials with coverage rates → rounded order quantities, per-material coverage presets + grout calculator |
 | **Report** | Per-condition Floor/Wall/Border SF, LF, EA, SY, with/without waste + materials buy list |
 | **Export** | CSV, JSON, **Excel (.xlsx)**, print, **Marked Set PDF** (sheets + burned-in takeoff + legend cover, built in-browser) |
 | **Revisions** | Save the takeoff at each bid revision, compare what moved — quantity deltas per condition, per sheet, and on the buy list; guarded restore |
@@ -204,7 +204,7 @@ Ground rules live in [CONTRIBUTING.md](CONTRIBUTING.md). Tested PRs with green C
 
 ## Status
 
-OpenTakeoff is a **working tool**, not a preview. The measuring engine — One-Click Area, conditions, assemblies, the report and exports — is the production engine carved out of a commercial flooring estimating app. The same engine answers to a person at the canvas or an AI agent over MCP, and every measurement it makes carries its scale and origin. **Snap** is marked beta. It's used on real commercial flooring bids; issues and pull requests are welcome.
+OpenTakeoff is a **working tool**, not a preview. The measuring engine — One-Click Area, conditions, supporting materials, the report and exports — is the production engine carved out of a commercial flooring estimating app. The same engine answers to a person at the canvas or an AI agent over MCP, and every measurement it makes carries its scale and origin. **Snap** is marked beta. It's used on real commercial flooring bids; issues and pull requests are welcome.
 
 ## A note from the maker
 

@@ -186,6 +186,36 @@ export function specColProfile(conditions) {
   }));
 }
 
+// ── Labor & subfloor type (typed directly on the condition) ────────────────
+// Free-text `condition.laborType` / `condition.subfloorType` — filled in by
+// hand in the Supporting Materials panel, no import, no vocabulary. Same
+// treatment as spec above: values reach the getters through ctx.laborByCond
+// (Map(condition_id → { laborType, subfloorType })), never as new
+// conditionTotals row fields, and a field-column is emitted only when at
+// least one condition carries a visible value — a project that never uses
+// them produces zero extra columns.
+export const LABOR_FIELDS = [
+  { field: "laborType", header: "Labor Type" },
+  { field: "subfloorType", header: "Subfloor Type" },
+];
+
+export function laborValue(labor, field) {
+  if (!labor || typeof labor !== "object" || Array.isArray(labor)) return "";
+  const v = labor[field];
+  return typeof v === "string" && v.trim() ? v : "";
+}
+
+export function laborColProfile(conditions) {
+  const list = Array.isArray(conditions) ? conditions : [];
+  return LABOR_FIELDS.filter((f) => list.some((c) => laborValue(c, f.field))).map((f) => ({
+    key: "labor:" + f.field,
+    header: f.header,
+    defaultVisible: true,
+    labor: true,
+    get: (r, ctx) => laborValue(ctx?.laborByCond?.get(r.id), f.field),
+  }));
+}
+
 // Partition condition rows by one custom column's assigned value, for the
 // report's grouped view → [{ value: string|null, label, rows }]. Order:
 // vocabulary order first, then ad-hoc values (assigned strings missing from

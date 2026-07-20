@@ -4051,6 +4051,8 @@ export default function TakeoffCanvas() {
     waste_pct: c.waste_pct || 0,
     ...(c.height_ft != null ? { height_ft: c.height_ft } : {}),
     ...(c.thickness_in != null ? { thickness_in: c.thickness_in } : {}),
+    ...(c.laborType != null ? { laborType: c.laborType } : {}),
+    ...(c.subfloorType != null ? { subfloorType: c.subfloorType } : {}),
     materials: (c.materials || []).map(({ id: _id, ...m }) => (m.grout ? { ...m, grout: { ...m.grout } } : m)),   // ids are minted on instantiation; grout never shared by reference
   });
   const saveActiveAsTemplate = () => {

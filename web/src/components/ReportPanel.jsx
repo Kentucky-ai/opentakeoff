@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import ToolMenu from "./ToolMenu.jsx";
 import { conditionTotals, grandTotals, sheetTotals, sheetGroupedRows, labelGroupedRows, round2, totalsToCsv, downloadText, materialsSummary, reportJson, hasMultipliers, BY_SHEET_BASE_NOTE } from "../lib/totals.js";
-import { TABLE_PROFILE, CSV_PROFILE, colGetter, customColProfile, specColProfile, partitionRowsBy, forceIncludeGroupCol, loadColPrefs, saveColPrefs, loadGroupBy, saveGroupBy, visibleCols, floorPerimeterLf, applyUnits } from "../lib/reportColumns.js";
+import { TABLE_PROFILE, CSV_PROFILE, colGetter, customColProfile, specColProfile, laborColProfile, partitionRowsBy, forceIncludeGroupCol, loadColPrefs, saveColPrefs, loadGroupBy, saveGroupBy, visibleCols, floorPerimeterLf, applyUnits } from "../lib/reportColumns.js";
 import { areaVal, areaUnit, lenVal, lenUnit } from "../lib/units";
 import { columnLabel } from "../lib/conditionColumns.js";
 import { shapeLabelValue } from "../lib/shapeLabels.js";
@@ -124,6 +124,11 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   // one condition carries that spec field, so a no-spec project is byte-for-
   // byte unchanged (frozen 13 → built-in opt-ins → custom → spec)
   const specCols = specColProfile(conditions);
+  // labor/subfloor-type columns, typed directly on the condition in the
+  // Supporting Materials panel — appended after spec (frozen 13 → built-in
+  // opt-ins → custom → spec → labor), present only when at least one
+  // condition carries a laborType/subfloorType value.
+  const laborCols = laborColProfile(conditions);
   // metric display converts AT THE DESCRIPTOR (applyUnits): headers swap to
   // m²/m, the SY column retires, and every dimensioned getter/foot wraps in
   // the converter — renderCell and the tfoot below need no unit awareness.
@@ -131,7 +136,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   // inside totalsToCsv/reportWorkbook so each output has ONE conversion site.
   const M = units === "metric";
   const AU = areaUnit(units), LU = lenUnit(units);
-  const tableCols = applyUnits(visibleCols([...TABLE_PROFILE, ...customCols, ...specCols], colPrefs), units);
+  const tableCols = applyUnits(visibleCols([...TABLE_PROFILE, ...customCols, ...specCols, ...laborCols], colPrefs), units);
   // group-by choice: "" (none) | "sheet" | a custom column id; normalized
   // ONCE per render and used everywhere (select value AND partitioning) — a
   // stale colId must fall back to None, never reach the select or the
@@ -144,14 +149,16 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   const groupBy = groupByRaw === "sheet" || (groupByRaw === "label" && shapeLabels.length > 0) || conditionColumns.some((cc) => cc.id === groupByRaw) ? groupByRaw : "";
   // grouping force-includes its column in the CSV/XLSX even when hidden in
   // the picker (D7) — a grouped report's export always carries its grouping
-  const csvCols = forceIncludeGroupCol(visibleCols([...CSV_PROFILE, ...customCols, ...specCols], colPrefs), customCols, groupBy);
+  const csvCols = forceIncludeGroupCol(visibleCols([...CSV_PROFILE, ...customCols, ...specCols, ...laborCols], colPrefs), customCols, groupBy);
   const perimByCond = useMemo(() => floorPerimeterLf(shapes), [shapes]);
   // custom-column values reach the getters through ctx, never as row fields
   // (conditionTotals rows are spread into the contribution payload)
   const attrsByCond = useMemo(() => new Map(conditions.map((c) => [c.id, c.attrs])), [conditions]);
   // spec columns read the imported product spec off the same ctx seam
   const specByCond = useMemo(() => new Map(conditions.map((c) => [c.id, c.spec])), [conditions]);
-  const ctx = { perimByCond, attrsByCond, specByCond };
+  // labor columns read the hand-typed labor/subfloor type off the same ctx seam
+  const laborByCond = useMemo(() => new Map(conditions.map((c) => [c.id, { laborType: c.laborType, subfloorType: c.subfloorType }])), [conditions]);
+  const ctx = { perimByCond, attrsByCond, specByCond, laborByCond };
   // grouped view. Custom-column mode partitions the already-computed rows
   // (no recompute); sheet mode re-runs conditionTotals per sheet's shapes —
   // ORDERED quantities per slice (waste + ×N applied), each group carrying
@@ -307,12 +314,13 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   const renderCell = (col, r, cellCtx) => {
     const get = colGetter(col);
     const v = get ? get(r, cellCtx) : r[col.key];
-    // custom columns and read-only spec columns: plain left-aligned text
-    // (already coerced to string by their getter); TOTAL cells stay blank (no foot).
-    // spec cells can hold sentence-length values (esp. Description) — let them WRAP
-    // and cap the width so one long value can't push report/print columns off the
-    // page edge (mirrors the notes cell below). Custom columns stay nowrap.
-    if (col.custom || col.spec) {
+    // custom columns, read-only spec columns, and labor/subfloor-type columns:
+    // plain left-aligned text (already coerced to string by their getter);
+    // TOTAL cells stay blank (no foot). spec cells can hold sentence-length
+    // values (esp. Description) — let them WRAP and cap the width so one long
+    // value can't push report/print columns off the page edge (mirrors the
+    // notes cell below). Custom and labor columns stay nowrap.
+    if (col.custom || col.spec || col.labor) {
       const cell = col.spec ? { ...td, textAlign: "left", whiteSpace: "normal", maxWidth: 240 } : { ...td, textAlign: "left" };
       return <td key={col.key} style={cell}>{v || "—"}</td>;
     }
@@ -407,6 +415,14 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                 <>
                   <div style={{ borderTop: "1px solid var(--ink-faint)", margin: "8px 0 4px", paddingTop: 6, fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" }}>Product spec (imported)</div>
                   {specCols.map(colCheckbox)}
+                </>
+              )}
+              {/* labor/subfloor-type columns — only shown once a condition has
+                  a value typed in from the Supporting Materials panel */}
+              {laborCols.length > 0 && (
+                <>
+                  <div style={{ borderTop: "1px solid var(--ink-faint)", margin: "8px 0 4px", paddingTop: 6, fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" }}>Labor & subfloor</div>
+                  {laborCols.map(colCheckbox)}
                 </>
               )}
               <p style={{ margin: "8px 0 0", fontSize: 11, color: "var(--ink-muted)" }}>Also applies to the CSV export. Grouping by a custom column always exports that column.</p>
@@ -646,8 +662,8 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
             <thead>
               <tr>
                 {tableCols.map((c) => (
-                  // custom and spec columns are text — header left-aligns with the cells
-                  <th key={c.key} style={c.key === "finish" || c.custom || c.spec ? { ...th, textAlign: "left" } : c.accent ? { ...th, color: "var(--cobalt)" } : th}>{c.header}</th>
+                  // custom, spec, and labor columns are text — header left-aligns with the cells
+                  <th key={c.key} style={c.key === "finish" || c.custom || c.spec || c.labor ? { ...th, textAlign: "left" } : c.accent ? { ...th, color: "var(--cobalt)" } : th}>{c.header}</th>
                 ))}
               </tr>
             </thead>
@@ -664,7 +680,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               // sheet groups carry a per-sheet perimByCond — the panel-wide
               // map would show whole-project perimeter next to per-slice
               // quantities
-              const gctx = gp.perimByCond ? { perimByCond: gp.perimByCond, attrsByCond, specByCond } : ctx;
+              const gctx = gp.perimByCond ? { perimByCond: gp.perimByCond, attrsByCond, specByCond, laborByCond } : ctx;
               return (
                 <tbody key={key}>
                   {/* breakAfter is a print nicety only — unreliable on table

@@ -53,7 +53,7 @@ dimension (a dimensioned room, or draw on graph paper exported to PDF).
 - [ ] Hi‑Res toggle changes crispness only — **quantities unchanged**.
 - [ ] Snap (beta): snaps to real corners; degrades cleanly on raster sheets.
 - [ ] Markup (cloud/callout/text) never affects totals.
-- [ ] Delete a condition removes its takeoffs (with confirm); deleting/editing assemblies works from both the condition bar and the Takeoffs panel.
+- [ ] Delete a condition removes its takeoffs (with confirm); deleting/editing supporting materials (and labor/subfloor type) works from the Takeoffs panel.
 
 **Pass bar:** no tool throws; no edit corrupts a shape or its totals.
 
