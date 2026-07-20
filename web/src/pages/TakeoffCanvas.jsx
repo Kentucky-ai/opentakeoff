@@ -71,7 +71,7 @@ import { getTheme, toggleTheme, onThemeChange } from "../lib/theme.js";
 // isDangerMsg, instantiateTemplate, seedConditions) in lib/canvasUtil.js.
 import {
   PANEL_GAP, MAX_CANVAS_DIM, MAX_CANVAS_AREA,
-  DETAIL_ENGAGE, DETAIL_MARGIN, SYNC_MS, GESTURE_MS, SNAP_CELL,
+  DETAIL_ENGAGE, DETAIL_MARGIN, SYNC_MS, GESTURE_MS, DETAIL_STALL_MS, SNAP_CELL,
   MEASURE_TOOLS, CUT_TOOLS, MARKUP_TOOLS, MARKUP_IDS, HL_INKS, HL_SIZES,
 } from "../lib/canvasConstants.js";
 import { autoRenderScale, invertCanvasPixels, uid, clamp, isDangerMsg, instantiateTemplate, seedConditions } from "../lib/canvasUtil.js";
@@ -431,6 +431,7 @@ export default function TakeoffCanvas() {
   const detailTaskRef = useRef(null);        // in-flight detail render task (cancel stale on re-zoom)
   const detailBackRef = useRef(null);        // offscreen back buffer — the visible crop is never wiped mid-render
   const detailKeyRef = useRef("");           // last requested crop — identical re-requests are dropped (sync churn fires the effect several times per settle)
+  const detailWatchdogRef = useRef(0);       // recovers a render stuck by a backgrounded/throttled tab (see DETAIL_STALL_MS)
   const renderTasksRef = useRef(new Map());  // sheetKey → pdf.js RenderTask
   const pdfDocsRef = useRef(new Map());      // file name → pdf.js loading task (doc cache)
   const renderSeqRef = useRef(0);            // monotonic token — stale render chains bail out
@@ -1241,9 +1242,23 @@ export default function TakeoffCanvas() {
     const back = detailBackRef.current || (detailBackRef.current = document.createElement("canvas"));
     back.width = bw; back.height = bh;
     try { detailTaskRef.current?.cancel(); } catch { /* done */ }
+    clearTimeout(detailWatchdogRef.current);
     const rt = pageObj.render({ canvasContext: back.getContext("2d"), viewport: vp, transform: [1, 0, 0, 1, -x0 * factor, -y0 * factor] });
     detailTaskRef.current = rt;
+    // Backstop watchdog — NOT the primary fix (that's the visibilitychange retry
+    // below, which targets the actual documented cause). This only covers some
+    // OTHER wedge with no visibility signal, so it deliberately skips firing while
+    // still hidden (retrying then would just wedge the same way) and is tuned long
+    // enough to never race a merely slow render.
+    detailWatchdogRef.current = setTimeout(() => {
+      if (detailTaskRef.current !== rt) return;              // already superseded — nothing to recover
+      if (document.visibilityState !== "visible") return;    // still hidden — visibilitychange will recover it on return
+      if (detailKeyRef.current === renderKey) detailKeyRef.current = "";   // let the next tick retry this crop
+      if (window.__OT_DETAIL_DEBUG) console.log("[detail] stalled, retrying", renderKey);
+      scheduleSync();
+    }, DETAIL_STALL_MS);
     rt.promise.then(() => {
+      clearTimeout(detailWatchdogRef.current);
       if (darkModeRef.current) invertCanvasPixels(back);   // negative view baked into pixels before it's ever visible
       cv.style.left = `${fp.xOffset + x0}px`; cv.style.top = `${y0}px`;
       cv.style.width = `${regW}px`; cv.style.height = `${regH}px`;
@@ -1254,6 +1269,7 @@ export default function TakeoffCanvas() {
       cv.style.display = "block"; cv.style.visibility = "";
       if (window.__OT_DETAIL_DEBUG) console.log("[detail] swapped", bw, "x", bh);
     }).catch((e) => {   // RenderingCancelledException on rapid re-zoom is expected
+      clearTimeout(detailWatchdogRef.current);
       if (detailKeyRef.current === renderKey) detailKeyRef.current = "";   // let the next tick retry this crop
       if (e?.name !== "RenderingCancelledException") console.error("[detail] render failed:", e);
     });
@@ -1261,6 +1277,21 @@ export default function TakeoffCanvas() {
     // container rect without a transform change — re-run so the crop resyncs
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tf, groupSig, status, focusKey, panelW, takeoffsOpen]);
+
+  // Primary recovery for the detail-view stall: a hidden tab can suspend pdf.js's
+  // render scheduling indefinitely (the promise above neither resolves nor rejects,
+  // no console error — Chrome throttles rAF-gated work in hidden tabs). Retrying the
+  // moment the tab is foregrounded again is immediate and, unlike a blind timeout,
+  // never fights a render that's just legitimately slow while visible.
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== "visible" || !detailKeyRef.current) return;
+      detailKeyRef.current = "";   // let the next tick re-request the pending crop
+      scheduleSync();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [scheduleSync]);
 
   // the doc cache holds whole PDFs in the worker — tear it down when the
   // project view unmounts or the project changes

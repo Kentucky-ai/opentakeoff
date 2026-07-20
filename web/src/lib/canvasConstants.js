@@ -32,6 +32,13 @@ export const DETAIL_ENGAGE = 1.15;  // engage once stage zoom × dpr passes ~1.1
 export const DETAIL_MARGIN = 0.5;   // render this much extra region beyond the viewport so small pans don't expose the soft base at the edges
 export const SYNC_MS = 90;          // React tf-mirror sync cadence during gestures (~11Hz)
 export const GESTURE_MS = 140;      // wheel/pinch quiet window before the detail view re-renders
+// A backgrounded/hidden tab can suspend pdf.js's render scheduling indefinitely (promise
+// neither resolves nor rejects, no console error — Chrome throttles rAF-gated work in
+// hidden tabs). The primary recovery for THAT case is the visibilitychange retry below —
+// this is only a backstop for some other, unknown cause of a wedged render, so it's set
+// long enough to never fire on a merely slow (not stuck) render — confirmed live: a large
+// region under real CPU contention took 50+ seconds and still resolved on its own.
+export const DETAIL_STALL_MS = 25000;
 
 export const SNAP_CELL = 24;   // snap-grid bucket, raster px (Spline runs 12 — its budgeted raster is denser)
 
