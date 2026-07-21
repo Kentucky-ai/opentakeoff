@@ -2,6 +2,24 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-07-20
+
+### Added
+- **`detect_rooms` — the MCP server's 11th tool: batch room detection from the sheet's own labels.** Reads every room-number label off a sheet's text layer (`134`, `139A`, `OFFICE 101`) and runs the existing One-Click flood at each one in a single call — one round-trip instead of `read_sheet_text` + reasoning + N `one_click` calls. Only cleanly-traced rooms come back; a label that leaks or lands in dense linework is silently withheld, matching `one_click`'s own precision stance. Same contract: no scale set returns px-only quantities per room; pass `condition` to commit every detected room under that finish tag with the standard agent/unreviewed provenance stamp. Pure core lives in `web/src/lib/detectRooms.ts`.
+- **Local-first sync, continued (Slices 5b–7).** A conflict defer-gate (`web/src/lib/canvasBusy.ts`) holds a remote sync adopt until the canvas is genuinely idle — covering trace/calibrate/check in progress, One-Click review, an active drag, the open text editor, an in-flight OCR scan, and (extended in review) the in-canvas agent mid-run or its staged proposals, so a background sync can never wipe unsaved or unreviewed work. The sync layer itself is gated behind a build-time flag (`VITE_CLOUD_SYNC=1`), never a per-user toggle. `docs/SYNC_ARCHITECTURE.md` documents the design: IndexedDB canonical, revision-precondition conflict handling (remote wins on real divergence, local is snapshotted first — nothing lost silently), and a provider seam so Drive can be swapped for OneDrive/SharePoint later.
+- **A no-waste "Labor view" for the Report's Columns picker.** One click hides the waste-baked columns (Waste %, SF w/Waste, SY w/Waste) and surfaces the raw **Total SF** column (previously opt-in only) — a standalone quantity view tied directly to conditions, for anyone attaching their own labor rates externally. **Reset** returns to the default view.
+- **Flip Horizontal / Flip Vertical**, in the Edit menu. Mirrors the selected shape about its own bbox center — an isometry, so SF/LF never change. Routes through the existing shape-command layer, so undo/redo and provenance stamping come for free. No keyboard shortcut (the single-letter tool hotkeys don't guard Shift). The Edit menu also gained a **Redo** label — `⇧⌘Z` already worked, it just wasn't listed.
+
+### Changed
+- **Report quantities that carry waste now read "w/Waste," not "SF ordered."** On-screen table, CSV, and Excel: `SF w/Waste` / `SY w/Waste` / `Total SF w/Waste` / `LF w/Waste`. Only display strings moved — the underlying `total_sf_net`/`sy_net`/`lf_net` keys and the versioned JSON export are unchanged.
+
+### Fixed
+- **Zoomed-out pan flicker + laggy toolbars.** Panning while zoomed out was re-rendering the entire canvas component (including the full unmemoized shape/markup SVG overlay) on every ~90ms sync tick, even though nothing visible depended on the pan position — only scale-dependent stroke widths did. The tick now skips the state write when scale hasn't changed and the high-zoom detail view isn't engaged, so a pure pan at overview zoom is a true no-op on the React side.
+- **Two conflicting `Content-Security-Policy` headers were shipping to production.** `netlify.toml` and `web/public/_headers` both set a CSP on `/*`; multiple CSP headers are each enforced by the browser as a per-directive intersection, and `netlify.toml`'s block predated the Google-sign-in work, so it would have silently stripped `accounts.google.com`/the webfonts origins back out — breaking sign-in and fonts with no visible error — the moment team cloud mode's env vars are set in production. `_headers` is now the single source of truth; its `connect-src` stays deliberately open (`* data: blob:`, not narrowed to Google-only) so the BYO-AI agent endpoint and the optional `/ai/*` contribute path — both user-configured to arbitrary origins by design — keep working. That trade-off (an XSS could exfiltrate the Google token to any origin) is documented explicitly in `_headers`.
+- **`.nvmrc` had drifted to `20`** while `web/package.json`'s `engines` already required `>=24`, and CI hardcoded `node-version: 20` in two places rather than reading the pin. Both now read `24` / `node-version-file: .nvmrc`.
+- **`mcp/server.json` still read `0.3.0`** while `mcp/package.json` was already at `0.4.0`. Version numbers now match.
+- **`AGENTS.md` / `docs/DEPLOYMENT.md` misattributed this repo's production URL** as `takeoff.345flooring.com` — that's real, but it's a downstream fork's (`knmurphy/opentakeoff`) own deployment; its fork-specific docs rode along into this repo during the 2026-07-13 wholesale history merge and were never re-scoped. Both now correctly point at `opentakeoff.netlify.app`.
+
 ## 2026-07-19
 
 ### Added
