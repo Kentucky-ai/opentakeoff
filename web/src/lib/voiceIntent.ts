@@ -219,7 +219,8 @@ function ctxTagLookup(ctx: VoiceContext): Map<string, string> {
 //   • prefix token + integer, e.g. "cpt one", "cpt 1"
 //   • pre-joined token, e.g. "cpt-1" / "cpt1"
 //   • any ctx tag spoken plainly, e.g. "p two", bare "c"
-// Returns the canonical tag plus whether it is live in ctx; null if nothing
+// Returns the ctx LITERAL for live tags (so callers can look conditions up by
+// exact finish_tag) or the canonical tag for create-offers; null if nothing
 // tag-shaped starts here.
 function takeTag(
   tokens: string[],
@@ -231,7 +232,7 @@ function takeTag(
   const finish = (prefix: string, num: number | null, next: number) => {
     const canon = num === null ? prefix.toUpperCase() : canonTag(`${prefix}-${num}`);
     const hit = live.get(canon);
-    if (hit !== undefined) return { tag: canonTag(hit), known: true, next };
+    if (hit !== undefined) return { tag: hit, known: true, next };
     const bare = canon.split("-")[0];
     if (num !== null && Number.isInteger(num) && num >= 1 && num <= 99 && DIV9_PREFIXES.has(bare))
       return { tag: canon, known: false, next };
