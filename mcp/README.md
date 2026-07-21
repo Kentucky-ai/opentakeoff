@@ -108,6 +108,7 @@ includes document text, shape vertices, or result payload content.
 | `sheet_info` | One sheet's dims, vector segment count, scale status, detected suggestion, committed shape count. |
 | `set_scale` | Set a sheet's scale — exactly one of `label`, `upp`, `calibrate {p1, p2, feet}`, `use_detected`. |
 | `one_click` | One-Click Area at (x, y): flood fill bounded by the plan linework, traced, vertices snapped. Pass `condition` to commit; `role: "deduct"` subtracts. |
+| `detect_rooms` | Batch One-Click: reads every room-number label off the sheet's text layer and floods each — one call instead of `read_sheet_text` + reasoning + N `one_click` calls. Only cleanly-traced rooms come back; a leaked/dense-linework label is silently withheld. Pass `condition` to commit every detected room. |
 | `measure_polygon` | Area + perimeter of a polygon you supply (min 3 verts). Requires scale. |
 | `measure_line` | Length of an open polyline (min 2 points). Requires scale. |
 | `takeoff_summary` | Per-condition totals + grand totals, computed by the Report's rules. |

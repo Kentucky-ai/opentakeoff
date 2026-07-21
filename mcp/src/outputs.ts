@@ -62,6 +62,33 @@ export const oneClickOutput = {
   warning: z.string().optional().describe("Preview mode (no scale): why quantities are unavailable and what to do"),
 };
 
+/** One batch-detected room — same per-room shape as oneClickOutput's scaled/
+ * preview modes, minus `status` (the batch already withheld anything that
+ * didn't trace cleanly) and plus `label`, the room-number text it was seeded
+ * from. */
+const detectedRoom = z.object({
+  label: z.string().describe("The room-number text the seed was read from (e.g. \"104\", \"139A\")"),
+  nverts: z.number().int().describe("Vertex count of the traced polygon"),
+  hatch_filtered: z.literal(true).optional().describe("Present when hatch/pattern linework was classified out of the boundary"),
+  verts: z.array(point).optional().describe("Traced polygon vertices (image px), when return_verts was set"),
+  area_sf: z.number().optional().describe("Scaled mode: traced area in SF"),
+  perimeter_lf: z.number().optional().describe("Scaled mode: traced perimeter in LF"),
+  shape_id: z.string().optional().describe("Scaled mode: id of the committed shape, when condition was passed"),
+  area_px2: z.number().optional().describe("Preview mode (no scale): raw area in px²"),
+  perimeter_px: z.number().optional().describe("Preview mode (no scale): raw perimeter in px"),
+});
+
+/** detect_rooms: one flood per room-number label found on the sheet's text
+ * layer, kept only when it traces cleanly (a leak/tiny/boundary flood is
+ * silently withheld, not reported as a room). Same scaled-vs-preview split as
+ * one_click, applied per room; `warning` appears once for the whole sheet
+ * when no scale is set. */
+export const detectRoomsOutput = {
+  detected: z.number().int().describe("Count of cleanly-detected rooms — may be fewer than the labels found on the sheet"),
+  rooms: z.array(detectedRoom),
+  warning: z.string().optional().describe("Preview mode (no scale): why quantities are unavailable and what to do"),
+};
+
 export const measurePolygonOutput = {
   area_sf: z.number(),
   perimeter_lf: z.number(),
