@@ -1121,7 +1121,10 @@ export default function TakeoffCanvas() {
         const pageNum = Math.min(Math.max(1, pn), pdf.numPages || 1);
         const pageObj = await pdf.getPage(pageNum); if (stale()) return;
         const base = pageObj.getViewport({ scale: 1 });   // page size in PDF points
-        const rs = hiResKeys.includes(key) ? autoRenderScale(base.width, base.height) : RENDER_SCALE;
+        // base raster obeys the same budget cap: for oversized pages (image ingest
+        // mints 1px=1pt pages) autoRenderScale lands below RENDER_SCALE and wins
+        const auto = autoRenderScale(base.width, base.height);
+        const rs = hiResKeys.includes(key) ? auto : Math.min(RENDER_SCALE, auto);
         const viewport = pageObj.getViewport({ scale: rs });
         pageObjsRef.current.set(key, pageObj);     // kept for on-demand detail-view re-render
         renderScalesRef.current.set(key, rs);      // base raster scale — detail view renders at a multiple of it
