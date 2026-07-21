@@ -48,6 +48,7 @@ export const MEASURE_TOOLS = [
   { id: "area", icon: "area", label: "Area", shortcut: "A" },
   { id: "rect", icon: "rectTool", label: "Rectangle", shortcut: "R" },
   { id: "linear", icon: "linear", label: "Linear", shortcut: "L" },
+  { id: "curve", icon: "curve", label: "Curved Line", shortcut: "Q" },
   { id: "surface", icon: "surface", label: "Surface Area", shortcut: "S" },
   { id: "count", icon: "count", label: "Count", shortcut: "C" },
 ];

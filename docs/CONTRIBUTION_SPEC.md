@@ -88,6 +88,7 @@ No scale *value* ever appears — a sheet's `units_per_px` stays local.
 | `sheet` | string | required | positional sheet token |
 | `verts_norm` | number[][] | required | final geometry, normalized 0..1 |
 | `computed` | object | required | the quantities the expert accepted (SF / LF / EA) |
+| `curved` | boolean | when true | curved linear run: `verts_norm` are spline control points (centripetal Catmull-Rom), not a polyline — consumers must flatten before treating them as drawn geometry |
 | `height_ft` | number | when set | wall height override |
 | `id` | string | when present | opaque durable UUID (see §2) |
 | `created_at` | string | when present | ISO-8601 UTC creation stamp; legacy shapes predate stamping and omit it |

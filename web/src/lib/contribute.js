@@ -135,6 +135,7 @@ export function buildContribution({ conditions, shapes, scaleInfo = [], counters
       sheet: sheetIndex.get(s.sheet_id),
       verts_norm: s.verts_norm,          // normalized 0..1 — shape only, no scale/location
       computed: s.computed,              // SF / LF / EA
+      ...(s.curved ? { curved: true } : {}), // curved linear: verts_norm are spline control points, not a polyline
       ...(s.height_ft ? { height_ft: s.height_ft } : {}),
       ...(s.id ? { id: s.id } : {}),     // opaque UUID — links re-contributions, carries no content
       ...(s.created_at ? { created_at: s.created_at } : {}), // legacy shapes predate stamping — omitted

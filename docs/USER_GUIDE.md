@@ -213,6 +213,10 @@ Two clicks: one corner, then the opposite corner. Between them the cursor chip r
 
 An open run, two or more points → LF. If the condition carries a **thickness**, the run also yields border SF (LF × thickness ÷ 12) — feature strips, borders, transitions. The live chip reads the running segment length, amber at 12′.
 
+### Curved Line (`Q`)
+
+Like Linear, but the line bends smoothly through your clicks — radius walls, curved transitions, winding corridors. Click a few points along the curve, **⏎** or double-click finishes; drag any point later and the curve re-smooths through it. LF comes from the true curved length (a spline through your points, not the chords between them), and a condition **thickness** yields border SF the same way Linear's does.
+
 ### Surface Area (`S`)
 
 Trace a wall run in plan; wall SF = traced LF × the condition's **height**. There's no prompt mid-trace — the height comes from the condition, and the tool refuses if it has none: *"Set a height for 〈TAG〉 (H in the condition editor) — Surface Area = traced LF × height."* After commit, select the wall and the readout offers a **this wall** height override (with a ↺ reset) — full-height tile here, 4-ft wainscot there, same condition. A wall keeps the height it was drawn at even if you later change the condition's default, and an explicit override is honored outright — even `0`.
@@ -551,6 +555,7 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `A` | Area |
 | `R` | Rectangle |
 | `L` | Linear |
+| `Q` | Curved Line |
 | `S` | Surface Area (walls) |
 | `C` | Count |
 | `D` | Deduct shape (Cut Out) |
