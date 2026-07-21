@@ -2,8 +2,13 @@
 
 How OpenTakeoff ships: every change lands on `main` through a pull request,
 and every merge to `main` is automatically deployed to production at
-<https://takeoff.345flooring.com>. There is no manual deploy step and no
+<https://opentakeoff.netlify.app>. There is no manual deploy step and no
 "deploy later" state — **a merge is a deploy**.
+
+(This file's mechanism description is accurate for this repo — it originally
+came in from a downstream fork's own docs during the 2026-07-13 history
+merge, which is why earlier revisions named that fork's own deployment,
+`takeoff.345flooring.com`, instead of this repo's. See `AGENTS.md`.)
 
 ## The pipeline
 
@@ -15,7 +20,7 @@ branch → npm run check (local) → PR → CI (`web` check) → squash-merge
                                           npm ci → npm run check → netlify deploy
                                                              │
                                                              ▼
-                                          https://takeoff.345flooring.com
+                                          https://opentakeoff.netlify.app
 ```
 
 - **CI** (`.github/workflows/ci.yml`) runs on every PR: `npm ci` then

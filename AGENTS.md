@@ -16,18 +16,22 @@ npm run check    # typecheck + lint + test + build — exactly what CI runs; gre
 
 ## Shipping — the required steps, every change
 
-`main` is protected on GitHub (PRs only, green `web` check, branch up to date,
-no force-pushes — admins included) and a local pre-commit hook rejects commits
-made on `main`. **Merging to `main` deploys to production**
-(<https://takeoff.345flooring.com>) via `.github/workflows/deploy.yml`, which
+`main` is protected on GitHub via a ruleset (PR-only, one approving review,
+green `web` check, branch up to date — the repo owner has a standing bypass
+as the solo maintainer). **Merging to `main` deploys to production**
+(<https://opentakeoff.netlify.app>) via `.github/workflows/deploy.yml`, which
 re-runs `npm run check` and publishes `web/dist` to Netlify with `--no-build`
 — Netlify never builds anything itself.
 
-> **Production is <https://takeoff.345flooring.com> — nothing else.**
-> <https://opentakeoff.netlify.app> is the *parent repo's*
-> (Kentucky-ai/opentakeoff) demo deployment; the inherited README badge and
-> links still point there, but this fork does not serve it. Verify deploys
-> against takeoff.345flooring.com only.
+> **This is the canonical `Kentucky-ai/opentakeoff` repo — production is
+> <https://opentakeoff.netlify.app>, nothing else.** A downstream fork
+> (`knmurphy/opentakeoff`) tracks this repo as its own upstream and deploys
+> separately to `takeoff.345flooring.com` — that URL belongs to *that* fork,
+> not this repo. If you're seeing `takeoff.345flooring.com` referenced
+> elsewhere in this repo's docs (`docs/DEPLOYMENT.md`,
+> `docs/PARENT_FORK_PORTS.md`), it's leftover content from that fork's own
+> `AGENTS.md`/docs that rode along in a wholesale history merge (2026-07-13) —
+> treat it as describing the *downstream* fork's deployment, not this one's.
 
 So:
 
