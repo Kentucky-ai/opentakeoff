@@ -57,7 +57,7 @@ export function registerTools(server: McpServer, session: Session): void {
       upp: z.number().optional().describe("Real feet per image px at render scale 2.0"),
       calibrate: z.object({ p1: pointSchema, p2: pointSchema, feet: z.number() }).optional()
         .describe("Two points (image px) a known real distance apart, and that distance in feet"),
-      use_detected: z.boolean().optional().describe("true = adopt the sheet's detected scale"),
+      use_detected: z.literal(true).optional().describe("true = adopt the sheet's detected scale"),
     },
     outputSchema: setScaleOutput,
   }, run("set_scale", (a) => {
