@@ -1458,8 +1458,10 @@ export default function TakeoffCanvas() {
   // stable to capture once — no re-registration null window. isCanvasBusy is the
   // pure, unit-tested core (lib/canvasBusy.js); it must report EVERY interaction mode
   // a mid-session re-hydrate would clobber (trace/calibrate/check, One-Click review,
-  // a scheduled save, an active drag, the open text editor, an in-flight OCR scan).
-  busyStateRef.current = { poly, calib, check, proposal, scaleGuide, prevScale };
+  // a scheduled save, an active drag, the open text editor, an in-flight OCR scan,
+  // an agent run and its staged proposals — hydrate() wipes agentProposals and the
+  // conditions a mid-run agent minted, so both defer exactly like One-Click review).
+  busyStateRef.current = { poly, calib, check, proposal, scaleGuide, prevScale, agentRunning, agentProposals };
   const computeBusy = () => isCanvasBusy({
     ...busyStateRef.current,
     saveState: saveStateRef.current,
@@ -1531,8 +1533,10 @@ export default function TakeoffCanvas() {
     // computeBusy/hydrate are stable (refs/setters); the deps below ARE the idle-
     // transition triggers. saveState catches the debounced-save clearing; idleTick
     // catches an interaction ref (drag/editor/scan) clearing with no state change.
+    // agentRunning/agentProposals: the run finishing or the last proposal being
+    // accepted/rejected is a busy→idle edge that must drain a held remote.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [poly, calib, check, proposal, scaleGuide, prevScale, saveState, idleTick]);
+  }, [poly, calib, check, proposal, scaleGuide, prevScale, saveState, idleTick, agentRunning, agentProposals]);
 
   function fitToView(w, h) {
     const el = containerRef.current;

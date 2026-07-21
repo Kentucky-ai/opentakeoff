@@ -34,6 +34,12 @@ test("the interaction modes the 4c review flagged as missing are all covered", (
   assert.equal(isCanvasBusy({ scanning: true }), true);   // paid OCR read in flight
 });
 
+test("agent run in flight / staged agent proposals → busy (post-merge review finding)", () => {
+  assert.equal(isCanvasBusy({ agentRunning: true }), true);            // mid tool-use loop: hydrate would orphan minted conditions
+  assert.equal(isCanvasBusy({ agentProposals: [{ id: "p1" }] }), true); // dashed proposals await review — the agent's One-Click analog
+  assert.equal(isCanvasBusy({ agentRunning: false, agentProposals: [] }), false);
+});
+
 test("prevScale === 0 counts as busy (a present prompt, not absent) — nullish check, not truthy", () => {
   // proposal/scaleGuide/prevScale use != null so a falsy-but-present value still gates.
   assert.equal(isCanvasBusy({ prevScale: 0 }), true);
