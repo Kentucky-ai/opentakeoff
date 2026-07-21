@@ -95,7 +95,11 @@ function normalizeTokens(transcript: string): string[] {
         .replace(/\.(?!\d)/g, "");
       // split a glued unit sign ("12%") into its own token
       const pct = /^(.+)%$/.exec(clean);
-      return pct ? [pct[1], "%"] : [clean];
+      if (pct) return [pct[1], "%"];
+      // split STT-hyphenated word compounds ("twenty-five" → "twenty","five");
+      // alpha-digit tags like "cpt-1" keep their hyphen
+      if (/^[a-z]+(-[a-z]+)+$/.test(clean)) return clean.split("-");
+      return [clean];
     })
     .filter(Boolean)
     .map((w) => HOMOPHONES[w] ?? w);
