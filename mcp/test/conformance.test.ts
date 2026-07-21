@@ -11,6 +11,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { z } from "zod";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -271,7 +273,9 @@ test("one_click misuse and a bad document: clean errors, and a failed load leave
 test("export_takeoff: an unwritable path is isError and does not corrupt the inline export", async () => {
   const client = await pair();
   await callOk(client, "load_plan", { path: PLAN });
-  await callErr(client, "export_takeoff", { path: fileURLToPath(new URL("file:///nowhere/deep/missing-dir/out.json")) });
+  // a parent directory that does not exist, valid on every platform
+  const unwritable = path.join(tmpdir(), "opentakeoff-conformance-no-such-dir", "deep", "out.json");
+  await callErr(client, "export_takeoff", { path: unwritable });
   const exported = await callOk(client, "export_takeoff");
   assert.equal(exported.schema, "opentakeoff.takeoff_canvas.v1");
 });
