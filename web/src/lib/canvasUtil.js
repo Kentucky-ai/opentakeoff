@@ -17,12 +17,16 @@ import {
 } from "./canvasConstants.js";
 
 // Largest pdf.js render scale a wPt×hPt-point page can use within the base budget;
-// never below the baseline RENDER_SCALE, never above the ceiling.
+// prefers the baseline RENDER_SCALE, never above the ceiling — and never above the
+// physical caps: an oversized page (an ingested image is a 1px=1pt page, so a
+// 7920×5280 scan is a 7920pt page) must render BELOW baseline or the canvas blows
+// the budget (669MB at ×2) and Chrome's compositor degrades it to a blocky proxy.
 export const autoRenderScale = (wPt, hPt) => {
   if (!(wPt > 0 && hPt > 0)) return RENDER_SCALE;
   const byDim  = Math.min(MAX_CANVAS_DIM / wPt, MAX_CANVAS_DIM / hPt);
   const byArea = Math.sqrt(MAX_PANEL_AREA / (wPt * hPt));
-  return Math.max(RENDER_SCALE, Math.min(QUALITY_CEILING, byDim, byArea));
+  const cap = Math.min(byDim, byArea);
+  return Math.min(Math.max(RENDER_SCALE, Math.min(QUALITY_CEILING, cap)), cap);
 };
 
 // Invert a canvas's pixels in place: one difference-with-white pass (an

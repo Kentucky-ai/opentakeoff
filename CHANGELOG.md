@@ -4,6 +4,9 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
 ## 2026-07-20
 
+### Fixed
+- **Jagged, blocky linework on very large ingested images.** An ingested image becomes a 1 px = 1 pt PDF page, so a 7920×5280 scan minted a 7920-point-wide page — and the base raster's fixed ×2 scale then built a 15840×10560 canvas (669 MB backing store). The pixels in it were actually crisp, but a canvas that size blows past Chrome's GPU budget, so the compositor silently displays a degraded low-res proxy: giant nearest-neighbor blocks at any zoom, on that sheet only. `autoRenderScale`'s floor no longer overrides the physical caps — oversized pages now render below the ×2 baseline, inside the 28 MP panel budget (the existing `factorFor` scale plumbing already handles non-baseline rasters), and deep zoom stays sharp through the detail-view re-render as usual. Regression-tested in `web/test/renderBudget.test.ts`.
+
 ### Tests
 - **MCP tool-conformance suite — every tool, both directions** (`mcp/test/conformance.test.ts`, closes #27). Each of the eleven tools now has: a canonical valid call whose `structuredContent` is validated against the tool's declared output schema and byte-checked against the back-compat text item; semantic-misuse cases proving a clean `isError` + JSON `{error}` reply (no-plan gates, unknown sheets, degenerate calibrations, unenclosed one-click seeds, non-PDF documents, unwritable export paths); and schema-invalid-argument cases pinning the SDK's `-32602` input-validation surface — with follow-up calls proving the session survives every failure. Also covers title-block sheet addressing, exact scale math on the demo plan, deduct-role subtraction, provenance receipts on export, and `read_sheet_text` region windows.
 
