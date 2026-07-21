@@ -12,6 +12,7 @@ import {
   extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertices, ringArea,
   MASK_MAX_DIM, type MaskObj, type VectorGeometry, type Point,
 } from "../../web/src/lib/oneclick.ts";
+import { roomLabelSeeds, detectRegions } from "../../web/src/lib/detectRooms.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
 import { conditionTotals, grandTotals } from "../../web/src/lib/totals.js";
 
@@ -375,6 +376,59 @@ export class Session {
       }).id;
     }
     return { ...common, area_sf, perimeter_lf, ...(shape_id ? { shape_id } : {}) };
+  }
+
+  /** Batch room detection: read every room-number label off the sheet's text
+   *  layer, seed the existing One-Click flood at each, and trace/commit
+   *  exactly like oneClick — just N of them from one call instead of N
+   *  reasoning-heavy round-trips. Same contract as oneClick: no scale → a
+   *  px-only preview per room; no condition → nothing commits (a review
+   *  pass, not a proposal-acceptance gate — this server has none). A region
+   *  that traces to a degenerate ring (<3 verts) is dropped from the batch
+   *  rather than failing the whole call — one bad label must not sink every
+   *  other clean detection on the sheet. */
+  async detectRooms(name: string, opts: { condition?: string; role: "floor_area" | "deduct"; returnVerts: boolean }) {
+    const s = this.sheet(name);
+    const mask = await this.ensureMask(name);
+    if (!mask) throw new UserError("This sheet has no vector linework (likely a scan); raster fallback not yet available in the MCP server.");
+    const seeds = roomLabelSeeds(s.text);
+    const regions = detectRegions(mask, seeds);
+    const rooms = regions
+      .map((r) => {
+        const ring = snapVertices(traceRegion(r.flood), (px, py, d) => (s.snap ? nearestSnap(s.snap, px, py, d) : null), SNAP_TOL);
+        if (ring.length < 3) return null; // couldn't trace into a polygon — drop, don't sink the batch
+        const areaPx2 = ringArea(ring);
+        const perimPx = closedMetrics(ring).perim;
+        const common = {
+          label: r.str,
+          nverts: ring.length,
+          ...(r.flood.hatchFiltered ? { hatch_filtered: true as const } : {}),
+          ...(opts.returnVerts ? { verts: ring.map(([vx, vy]) => [round1(vx), round1(vy)]) } : {}),
+        };
+        if (s.upp == null) {
+          return { ...common, area_px2: round1(areaPx2), perimeter_px: round1(perimPx) };
+        }
+        const upp = s.upp;
+        const area_sf = round2(areaPx2 * upp * upp);
+        const perimeter_lf = round2(perimPx * upp);
+        let shape_id: string | undefined;
+        if (opts.condition) {
+          shape_id = this.commit(s, opts.condition, opts.role, ring, { area_sf, perimeter_lf }, {
+            method: "one_click_v1",
+            actor: "agent",
+            seed_norm: [r.seed[0] / s.widthPx, r.seed[1] / s.heightPx],
+            reviewed: false,
+            ...(r.flood.hatchFiltered ? { hatch_filtered: true as const } : {}),
+          }).id;
+        }
+        return { ...common, area_sf, perimeter_lf, ...(shape_id ? { shape_id } : {}) };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+    return {
+      detected: rooms.length,
+      rooms,
+      ...(s.upp == null ? { warning: `No scale set for ${s.key} — quantities unavailable. Call set_scale${s.detected ? ` (detected: ${s.detected.label})` : ""}.` } : {}),
+    };
   }
 
   measurePolygon(name: string, verts: Point[], opts: { condition?: string; role: "floor_area" | "deduct" }) {

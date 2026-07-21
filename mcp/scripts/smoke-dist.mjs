@@ -94,6 +94,7 @@ const listed = await responseFor(2);
 const names = listed.tools.map((tool) => tool.name).sort();
 assert.deepEqual(names, [
   "delete_shape",
+  "detect_rooms",
   "export_takeoff",
   "load_plan",
   "measure_line",

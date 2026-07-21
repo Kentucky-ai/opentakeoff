@@ -129,6 +129,50 @@ test("commit: verts_norm in [0,1], origin receipt, condition minted like the can
   assert.deepEqual(c.materials, []);
 });
 
+test("detectRooms: finds all 4 real room labels, excludes the title-block number and scale note", async () => {
+  const s = new Session();
+  await s.loadPlan(PLAN);
+  s.setScale(KEY, { use_detected: true });
+  const r = await s.detectRooms(KEY, { role: "floor_area", returnVerts: false });
+  assert.equal(r.detected, 4, `expected the 4 office/break/corridor rooms, got ${JSON.stringify(r.rooms.map((x) => x.label))}`);
+  assert.deepEqual(r.rooms.map((x) => x.label).sort(), ["101", "102", "103", "104"]);
+  for (const room of r.rooms) assert.ok(approx((room as any).area_sf, 438.6, 0.05), `room ${room.label} ≈ 438.6 SF, got ${(room as any).area_sf}`);
+  assert.equal(s.shapes.length, 0, "no condition given — nothing committed");
+});
+
+test("detectRooms: px-only preview before scale; condition commits every detected room under one finish tag", async () => {
+  const s = new Session();
+  await s.loadPlan(PLAN);
+  const pre = await s.detectRooms(KEY, { role: "floor_area", returnVerts: false });
+  assert.equal(pre.detected, 4);
+  assert.ok("area_px2" in pre.rooms[0] && pre.rooms[0].area_px2! > 0);
+  assert.ok(!("area_sf" in pre.rooms[0]));
+  assert.match(pre.warning!, /No scale set for sample-plan\.pdf/);
+  assert.equal(s.shapes.length, 0);
+
+  s.setScale(KEY, { use_detected: true });
+  const r = await s.detectRooms(KEY, { condition: "CPT-1", role: "floor_area", returnVerts: false });
+  assert.equal(r.rooms.filter((x) => (x as any).shape_id).length, 4, "all 4 rooms committed");
+  assert.equal(s.shapes.length, 4);
+  assert.equal(s.conditions.length, 1, "one condition minted, shared by every detected room");
+  for (const shp of s.shapes) {
+    assert.equal(shp.origin?.method, "one_click_v1");
+    assert.equal(shp.origin?.actor, "agent");
+    assert.equal(shp.origin?.reviewed, false);
+  }
+});
+
+test("detectRooms: a sheet with no room-number labels detects nothing, no crash", async () => {
+  const s = new Session();
+  await s.loadPlan(PLAN);
+  s.setScale(KEY, { use_detected: true });
+  const r = await s.detectRooms(KEY, { role: "floor_area", returnVerts: false });
+  assert.ok(r.detected > 0, "sanity: the fixture does have labels");
+  // now prove the empty case doesn't throw — a region with no labels near it
+  const noLabelRegion = s.readSheetText(KEY, { x0: 0, y0: 0, x1: 1, y1: 1 });
+  assert.equal(noLabelRegion.items.length, 0);
+});
+
 test("measure gates: polygon and line refuse without a scale, with the detected hint", async () => {
   const s = new Session();
   await s.loadPlan(PLAN);

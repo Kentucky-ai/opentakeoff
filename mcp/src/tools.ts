@@ -1,4 +1,4 @@
-// The ten tools — thin zod-validated handlers over the Session. Replies are
+// The eleven tools — thin zod-validated handlers over the Session. Replies are
 // compact JSON (format.ts); failures are isError results, never thrown
 // protocol errors.
 import { z } from "zod";
@@ -7,7 +7,7 @@ import { ok, fail, UserError, type ToolReply } from "./format.ts";
 import type { Session } from "./session.ts";
 import { traceToolCall } from "./trace.ts";
 import {
-  loadPlanOutput, sheetInfoOutput, setScaleOutput, oneClickOutput,
+  loadPlanOutput, sheetInfoOutput, setScaleOutput, oneClickOutput, detectRoomsOutput,
   measurePolygonOutput, measureLineOutput, takeoffSummaryOutput,
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
 } from "./outputs.ts";
@@ -78,6 +78,17 @@ export function registerTools(server: McpServer, session: Session): void {
     },
     outputSchema: oneClickOutput,
   }, run("one_click", (a) => session.oneClick(a.sheet, a.x, a.y, { condition: a.condition, role: a.role, returnVerts: a.return_verts })));
+
+  server.registerTool("detect_rooms", {
+    description: `Batch room detection: reads every room-number label off the sheet's text layer (e.g. "134", "OFFICE 101") and runs One-Click at each — one call instead of read_sheet_text + reasoning + N one_click calls. Only cleanly-traced rooms are returned; a label that leaked or landed in dense linework is silently withheld, never reported as a bad room. With the sheet's scale set, returns area_sf/perimeter_lf per room; pass condition to commit every detected room under that finish tag (role "deduct" makes them subtract). Without a scale, returns px-only quantities per room and commits nothing. ${COORDS}`,
+    inputSchema: {
+      sheet: z.string(),
+      condition: z.string().optional().describe("Finish tag to commit every detected room under (minted on first use)"),
+      role: roleSchema,
+      return_verts: z.boolean().default(false).describe("Include each traced polygon's vertices (image px)"),
+    },
+    outputSchema: detectRoomsOutput,
+  }, run("detect_rooms", (a) => session.detectRooms(a.sheet, { condition: a.condition, role: a.role, returnVerts: a.return_verts })));
 
   server.registerTool("measure_polygon", {
     description: `Measure a closed polygon you supply (min 3 vertices, image px): area_sf and perimeter_lf at the sheet's scale. Requires the scale to be set. Pass condition to commit it; role "deduct" subtracts. ${COORDS}`,

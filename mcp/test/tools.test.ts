@@ -43,11 +43,11 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
   return output;
 }
 
-test("tools/list: all ten tools, each described with the coordinate contract", async () => {
+test("tools/list: all eleven tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
-    "delete_shape", "export_takeoff", "load_plan", "measure_line", "measure_polygon",
+    "delete_shape", "detect_rooms", "export_takeoff", "load_plan", "measure_line", "measure_polygon",
     "one_click", "read_sheet_text", "set_scale", "sheet_info", "takeoff_summary",
   ]);
   for (const t of tools) assert.match(t.description || "", /image px at render scale 2\.0/, `${t.name} carries the coordinate contract`);
@@ -73,6 +73,24 @@ test("one_click without a scale: ok result with px quantities and the warning", 
   assert.ok(r.data.area_px2 > 0);
   assert.equal(r.data.area_sf, undefined);
   assert.match(r.data.warning, /No scale set .* set_scale \(detected: 1\/4" = 1'-0"\)/);
+});
+
+test("detect_rooms: batch-finds all 4 rooms via the wire, commits under one condition", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  await call(client, "set_scale", { sheet: KEY, use_detected: true });
+  const preview = await call(client, "detect_rooms", { sheet: KEY });
+  assert.equal(preview.isError, false);
+  assert.equal(preview.data.detected, 4);
+  assert.deepEqual(preview.data.rooms.map((r: any) => r.label).sort(), ["101", "102", "103", "104"]);
+  assert.ok(preview.data.rooms.every((r: any) => !r.shape_id), "no condition — nothing committed");
+
+  const committed = await call(client, "detect_rooms", { sheet: KEY, condition: "CPT-1" });
+  assert.equal(committed.isError, false);
+  assert.ok(committed.data.rooms.every((r: any) => typeof r.shape_id === "string"));
+  const summary = await call(client, "takeoff_summary");
+  assert.equal(summary.data.conditions.length, 1);
+  assert.equal(summary.data.conditions[0].shape_count, 4);
 });
 
 test("measure_polygon scale gate: exact refusal text with the detected hint", async () => {
