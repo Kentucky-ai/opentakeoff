@@ -136,7 +136,7 @@ test("detectRooms: finds all 4 real room labels, excludes the title-block number
   const r = await s.detectRooms(KEY, { role: "floor_area", returnVerts: false });
   assert.equal(r.detected, 4, `expected the 4 office/break/corridor rooms, got ${JSON.stringify(r.rooms.map((x) => x.label))}`);
   assert.deepEqual(r.rooms.map((x) => x.label).sort(), ["101", "102", "103", "104"]);
-  for (const room of r.rooms) assert.ok(approx(room.area_sf!, 438.6, 0.05), `room ${room.label} ≈ 438.6 SF, got ${room.area_sf}`);
+  for (const room of r.rooms) assert.ok(approx((room as any).area_sf, 438.6, 0.05), `room ${room.label} ≈ 438.6 SF, got ${(room as any).area_sf}`);
   assert.equal(s.shapes.length, 0, "no condition given — nothing committed");
 });
 
@@ -152,7 +152,7 @@ test("detectRooms: px-only preview before scale; condition commits every detecte
 
   s.setScale(KEY, { use_detected: true });
   const r = await s.detectRooms(KEY, { condition: "CPT-1", role: "floor_area", returnVerts: false });
-  assert.equal(r.rooms.filter((x) => x.shape_id).length, 4, "all 4 rooms committed");
+  assert.equal(r.rooms.filter((x) => (x as any).shape_id).length, 4, "all 4 rooms committed");
   assert.equal(s.shapes.length, 4);
   assert.equal(s.conditions.length, 1, "one condition minted, shared by every detected room");
   for (const shp of s.shapes) {
