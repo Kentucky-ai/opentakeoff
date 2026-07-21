@@ -25,21 +25,9 @@
   to     = "/index.html"
   status = 200
 
-# Security headers. The CSP is shaped by what the app actually is — a
-# client-only canvas with two user-pointed network seams:
-#   - script-src stays 'self' (+ wasm for pdf.js image codecs); no unsafe-eval —
-#     pdf.js falls back to its non-eval PostScript/font paths under CSP.
-#   - style-src needs 'unsafe-inline': the app styles via React style attributes.
-#   - worker-src blob: for the bundled pdf.js worker; img-src data:/blob: for
-#     rendered canvases and export previews.
-#   - connect-src stays open ON PURPOSE: the BYO-AI base URL and the
-#     capture/contribute endpoint are user-configured (your own server,
-#     localhost, any provider). Self-hosters who pin those can tighten it.
-[[headers]]
-  for = "/*"
-  [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:; connect-src * data: blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
-    X-Content-Type-Options = "nosniff"
-    X-Frame-Options = "DENY"
-    Referrer-Policy = "strict-origin-when-cross-origin"
-    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+# Security headers live in web/public/_headers (copied into dist/ at build) —
+# the ONE source of truth. Do not add a [[headers]] block here: two CSP
+# headers on the same response are each enforced by the browser (an
+# intersection), and this block used to lack the Google sign-in origins
+# _headers allows, which silently broke sign-in/webfonts via that
+# intersection. See web/public/_headers for the full policy + rationale.
