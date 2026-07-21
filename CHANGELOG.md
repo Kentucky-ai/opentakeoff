@@ -2,6 +2,12 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-07-21 — opentakeoff-mcp 0.5.0
+
+### Added
+- **`detect_rooms` — the eleventh tool: batch room detection from the sheet's own labels.** One call reads every room-number label off the sheet's text layer and runs the One-Click flood at each; only cleanly-traced rooms return (a leaking or dense-linework label is silently withheld, matching `one_click`'s precision stance). Same contract as `one_click`: px-only preview without a scale, per-room `area_sf`/`perimeter_lf` with one, `condition` commits every detected room with the standard agent/unreviewed provenance stamp, and a declared `outputSchema` like the other ten.
+- **A per-tool conformance suite backs the whole surface** (`mcp/test/conformance.test.ts`, closes #27): every tool's valid replies are schema-validated, every misuse path is a clean `isError` + JSON `{error}`, schema-invalid arguments pin the SDK's `-32602` surface, and the session is proven to survive every failure. Runs in CI on Ubuntu and Windows.
+
 ## 2026-07-20
 
 ### Fixed
