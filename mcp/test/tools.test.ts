@@ -93,6 +93,50 @@ test("detect_rooms: batch-finds all 4 rooms via the wire, commits under one cond
   assert.equal(summary.data.conditions[0].shape_count, 4);
 });
 
+// Regression for FINDING-2026-07-22: on a real sheet, detect_rooms reported 48
+// "rooms" — 37 of them label-bubble floods under 5 SF, plus one region claimed by
+// two labels and committed twice (589 SF double-counted). Every one traced
+// cleanly, so the <3-vertex guard passed them and the schema tests passed too.
+// What was missing was a contract on WITHHOLDING, so that is what these assert.
+test("detect_rooms withholding: floor is enforced, reported, and never silent", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  await call(client, "set_scale", { sheet: KEY, use_detected: true });
+
+  const normal = await call(client, "detect_rooms", { sheet: KEY, return_verts: true });
+  assert.equal(normal.isError, false);
+  assert.ok(normal.data.withheld, "withheld is always reported, even when nothing was withheld");
+  assert.equal(typeof normal.data.withheld.total, "number");
+  assert.equal(normal.data.withheld.min_area_sf, 5, "default plausibility floor");
+
+  // No two reported rooms may share a ring — that is the double-count. Keyed on
+  // real geometry: the fixture's rooms are congruent, so area would collide.
+  const rings = normal.data.rooms.map((r: any) => JSON.stringify(r.verts));
+  assert.ok(rings.every((v: string) => v !== undefined));
+  assert.equal(new Set(rings).size, rings.length, "one region commits once");
+
+  // Raise the floor above every room: all withheld, counted as implausible,
+  // and — the part that actually matters — nothing committed.
+  const strict = await call(client, "detect_rooms", { sheet: KEY, condition: "CPT-1", min_area_sf: 1e6 });
+  assert.equal(strict.isError, false);
+  assert.equal(strict.data.detected, 0);
+  assert.equal(strict.data.rooms.length, 0);
+  assert.equal(strict.data.withheld.implausible, normal.data.detected);
+  assert.match(strict.data.note, /withheld/);
+  const summary = await call(client, "takeoff_summary");
+  assert.equal(summary.data.conditions.length, 0, "withheld rooms must not commit");
+});
+
+test("detect_rooms preview: the plausibility floor needs real units, so it waits for a scale", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  const preview = await call(client, "detect_rooms", { sheet: KEY, min_area_sf: 1e6 });
+  assert.equal(preview.isError, false);
+  assert.equal(preview.data.withheld.implausible, 0, "no scale — no SF to judge, so the floor cannot apply");
+  assert.equal(preview.data.withheld.min_area_sf, undefined);
+  assert.ok(preview.data.detected > 0);
+});
+
 test("measure_polygon scale gate: exact refusal text with the detected hint", async () => {
   const client = await pair();
   await call(client, "load_plan", { path: PLAN });

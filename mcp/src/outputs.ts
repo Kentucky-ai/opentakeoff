@@ -69,6 +69,7 @@ export const oneClickOutput = {
 const detectedRoom = z.object({
   label: z.string().describe("The room-number text the seed was read from (e.g. \"104\", \"139A\")"),
   nverts: z.number().int().describe("Vertex count of the traced polygon"),
+  merged_labels: z.array(z.string()).optional().describe("Other labels that flooded to this same region — the area is counted once, under `label`"),
   hatch_filtered: z.literal(true).optional().describe("Present when hatch/pattern linework was classified out of the boundary"),
   verts: z.array(point).optional().describe("Traced polygon vertices (image px), when return_verts was set"),
   area_sf: z.number().optional().describe("Scaled mode: traced area in SF"),
@@ -86,6 +87,14 @@ const detectedRoom = z.object({
 export const detectRoomsOutput = {
   detected: z.number().int().describe("Count of cleanly-detected rooms — may be fewer than the labels found on the sheet"),
   rooms: z.array(detectedRoom),
+  withheld: z.object({
+    total: z.number().int().describe("Seeds found on the sheet but not reported as rooms"),
+    degenerate: z.number().int().describe("Traced to fewer than 3 vertices"),
+    duplicate: z.number().int().describe("Flooded to a region another label already claimed — counted once, never twice"),
+    implausible: z.number().int().describe("Enclosed and clean, but smaller than min_area_sf — a label bubble, door swing, or wall cavity rather than a room"),
+    min_area_sf: z.number().optional().describe("The plausibility floor applied (scaled mode only)"),
+  }).describe("What detection skipped and why — a withheld room is a question the caller can ask; a silently dropped one is a hole in a bid"),
+  note: z.string().optional().describe("Human-readable summary of what was withheld, when anything was"),
   warning: z.string().optional().describe("Preview mode (no scale): why quantities are unavailable and what to do"),
 };
 

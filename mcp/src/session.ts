@@ -426,50 +426,96 @@ export class Session {
    *  exactly like oneClick — just N of them from one call instead of N
    *  reasoning-heavy round-trips. Same contract as oneClick: no scale → a
    *  px-only preview per room; no condition → nothing commits (a review
-   *  pass, not a proposal-acceptance gate — this server has none). A region
-   *  that traces to a degenerate ring (<3 verts) is dropped from the batch
-   *  rather than failing the whole call — one bad label must not sink every
-   *  other clean detection on the sheet. */
-  async detectRooms(name: string, opts: { condition?: string; role: "floor_area" | "deduct"; returnVerts: boolean }) {
+   *  pass, not a proposal-acceptance gate — this server has none).
+   *
+   *  Withholding — nothing is committed until it survives all three, and the
+   *  batch NEVER silently drops work: every withheld seed is counted and
+   *  reasoned in `withheld`, because a room the tool knows it skipped is a
+   *  question the caller can ask, while a room it skipped silently is a hole
+   *  in a bid.
+   *    1. degenerate — traced to fewer than 3 vertices.
+   *    2. duplicate — two labels flooding one region (a room tagged twice, or
+   *       a legend number landing in the same space) trace to an identical
+   *       ring. Committing both double-counts the area with no signal, which
+   *       is the worst failure mode an estimating tool has. One region commits
+   *       once; the collapsed labels ride along on `merged_labels`.
+   *    3. implausible — a flood trapped inside a room-number bubble, a door
+   *       swing, or a wall cavity is fully enclosed, so it traces clean and
+   *       `detectRegions` passes it. Area is the only thing that separates it
+   *       from a room. Withheld below `minAreaSf` (default 5 SF — smaller than
+   *       any real finished space; a broom closet is ~10 SF). Only applied
+   *       once a scale exists, since without one there is no real area to
+   *       judge and nothing commits anyway. */
+  async detectRooms(name: string, opts: { condition?: string; role: "floor_area" | "deduct"; returnVerts: boolean; minAreaSf?: number }) {
     const s = this.sheet(name);
     const mask = await this.ensureMask(name);
     if (!mask) throw new UserError("This sheet has no vector linework (likely a scan); raster fallback not yet available in the MCP server.");
+    const minAreaSf = opts.minAreaSf ?? 5;
     const seeds = roomLabelSeeds(s.text);
     const regions = detectRegions(mask, seeds);
-    const rooms = regions
-      .map((r) => {
-        const ring = snapVertices(traceRegion(r.flood), (px, py, d) => (s.snap ? nearestSnap(s.snap, px, py, d) : null), SNAP_TOL);
-        if (ring.length < 3) return null; // couldn't trace into a polygon — drop, don't sink the batch
-        const areaPx2 = ringArea(ring);
-        const perimPx = closedMetrics(ring).perim;
+
+    // Trace every region first. Nothing commits in this pass — withholding has
+    // to be decided across the whole batch (dedupe needs to see every ring).
+    const withheld = { degenerate: 0, duplicate: 0, implausible: 0 };
+    type Cand = { label: string; ring: Point[]; areaPx2: number; perimPx: number; seed: readonly [number, number] | number[]; hatch: boolean; merged: string[] };
+    const byRing = new Map<string, Cand>();
+    const order: Cand[] = [];
+    for (const r of regions) {
+      const ring = snapVertices(traceRegion(r.flood), (px, py, d) => (s.snap ? nearestSnap(s.snap, px, py, d) : null), SNAP_TOL);
+      if (ring.length < 3) { withheld.degenerate++; continue; }
+      const key = ring.map(([x, y]) => `${Math.round(x)},${Math.round(y)}`).join(";");
+      const seen = byRing.get(key);
+      if (seen) { seen.merged.push(r.str); withheld.duplicate++; continue; }
+      const cand: Cand = {
+        label: r.str, ring, areaPx2: ringArea(ring), perimPx: closedMetrics(ring).perim,
+        seed: r.seed, hatch: !!r.flood.hatchFiltered, merged: [],
+      };
+      byRing.set(key, cand);
+      order.push(cand);
+    }
+
+    const upp = s.upp;
+    const rooms = order
+      .map((c) => {
         const common = {
-          label: r.str,
-          nverts: ring.length,
-          ...(r.flood.hatchFiltered ? { hatch_filtered: true as const } : {}),
-          ...(opts.returnVerts ? { verts: ring.map(([vx, vy]) => [round1(vx), round1(vy)]) } : {}),
+          label: c.label,
+          nverts: c.ring.length,
+          ...(c.merged.length ? { merged_labels: c.merged } : {}),
+          ...(c.hatch ? { hatch_filtered: true as const } : {}),
+          ...(opts.returnVerts ? { verts: c.ring.map(([vx, vy]) => [round1(vx), round1(vy)]) } : {}),
         };
-        if (s.upp == null) {
-          return { ...common, area_px2: round1(areaPx2), perimeter_px: round1(perimPx) };
+        if (upp == null) {
+          return { ...common, area_px2: round1(c.areaPx2), perimeter_px: round1(c.perimPx) };
         }
-        const upp = s.upp;
-        const area_sf = round2(areaPx2 * upp * upp);
-        const perimeter_lf = round2(perimPx * upp);
+        const area_sf = round2(c.areaPx2 * upp * upp);
+        if (area_sf < minAreaSf) { withheld.implausible++; return null; }
+        const perimeter_lf = round2(c.perimPx * upp);
         let shape_id: string | undefined;
         if (opts.condition) {
-          shape_id = this.commit(s, opts.condition, opts.role, ring, { area_sf, perimeter_lf }, {
+          shape_id = this.commit(s, opts.condition, opts.role, c.ring, { area_sf, perimeter_lf }, {
             method: "one_click_v1",
             actor: "agent",
-            seed_norm: [r.seed[0] / s.widthPx, r.seed[1] / s.heightPx],
+            seed_norm: [c.seed[0] / s.widthPx, c.seed[1] / s.heightPx],
             reviewed: false,
-            ...(r.flood.hatchFiltered ? { hatch_filtered: true as const } : {}),
+            ...(c.hatch ? { hatch_filtered: true as const } : {}),
           }).id;
         }
         return { ...common, area_sf, perimeter_lf, ...(shape_id ? { shape_id } : {}) };
       })
       .filter((r): r is NonNullable<typeof r> => r !== null);
+
+    const withheldTotal = withheld.degenerate + withheld.duplicate + withheld.implausible;
     return {
       detected: rooms.length,
       rooms,
+      withheld: {
+        total: withheldTotal,
+        ...withheld,
+        ...(upp != null ? { min_area_sf: minAreaSf } : {}),
+      },
+      ...(withheldTotal
+        ? { note: `${withheldTotal} seed(s) withheld — ${withheld.duplicate} duplicate region(s), ${withheld.implausible} under ${minAreaSf} SF, ${withheld.degenerate} untraceable. Raise or lower min_area_sf to see more.` }
+        : {}),
       ...(s.upp == null ? { warning: `No scale set for ${s.key} — quantities unavailable. Call set_scale${s.detected ? ` (detected: ${s.detected.label})` : ""}.` } : {}),
     };
   }
