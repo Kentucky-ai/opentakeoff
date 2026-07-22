@@ -212,19 +212,25 @@ npm test        # session + tool-layer + e2e, against demo/sample-plan.pdf
 ## Releasing (maintainers)
 
 MCP releases live in the **`mcp-v*`** tag namespace — bare `v*` tags belong to
-the app (v0.2.0, v0.3.0 are app releases). The npm artifact publishes manually
-(hardware-key 2FA) **before** the tag is pushed; the workflow refuses to run
-ahead of it.
+the app (v0.2.0, v0.3.0 are app releases). Releases publish via **npm trusted
+publishing**: the tag push fires `.github/workflows/publish-mcp.yml`, which
+pauses at the `release` environment for maintainer approval, then publishes
+the npm artifact over OIDC with a **provenance attestation** (no npm token
+exists anywhere — the npm package designates that exact repo + workflow as
+its trusted publisher), followed by the MCP registry entry, the GitHub
+release, and the MCPB bundle.
 
 ```bash
 # 1. bump the version — all three fields together:
 #    package.json .version, server.json .version, server.json .packages[0].version
-# 2. from mcp/, publish with the hardware key:
-npm publish
-# 3. tag and push — this fires .github/workflows/publish-mcp.yml:
+# 2. tag and push — this fires the whole release:
 git tag mcp-v<version> && git push origin mcp-v<version>
+# 3. approve the run (GitHub → Actions → the paused "Publish to MCP Registry" run)
 ```
 
-The workflow checks version consistency, requires the npm artifact to exist,
-publishes to the official MCP registry via GitHub OIDC, verifies the listing,
-and creates the GitHub release (titled `opentakeoff-mcp <version>`).
+The workflow checks version consistency, runs the full publish gate
+(`prepublishOnly` = typecheck + tests + build), publishes to npm and the
+official MCP registry, verifies the registry listing, and creates the GitHub
+release (titled `opentakeoff-mcp <version>`). A re-run skips the npm publish
+if that version already shipped, so a transient failure downstream is safe to
+retry.
