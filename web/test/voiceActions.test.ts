@@ -40,6 +40,11 @@ function makeCtx(overrides: Partial<VoiceCapabilities> = {}) {
     addLabel: (label) => { log.push(["addLabel", label]); },
     activateLabel: (label) => { log.push(["activateLabel", label]); },
     addNote: (text) => { log.push(["addNote", text]); },
+    getAimSeed: () => ({ x: 320, y: 240, sheetId: "plan.pdf" }),
+    traceAt: (seed, conditionId, label) => {
+      log.push(["traceAt", seed, conditionId, label]);
+      return { ok: true, message: "Created 1 takeoff — 234.5 SF CPT-1. Click the next room." };
+    },
     ...overrides,
   };
   return { caps, log };
@@ -160,6 +165,123 @@ test("rejected transcript → mapped message, ZERO calls", () => {
   assert.deepEqual(log, []);
 });
 
+// ── deixis (RFC #59 deixis slice): seed handoff, ordered like the aimed click ──
+
+const SEED = { x: 320, y: 240, sheetId: "plan.pdf" };
+
+test("deixis known tag: activate THEN traceAt with the seed — the aimed click's order", () => {
+  const { caps, log } = makeCtx();
+  const out = runVoiceCommand(caps, "carpet one, this room");
+  assert.deepEqual(out, { ok: true, message: "Created 1 takeoff — 234.5 SF CPT-1. Click the next room." });
+  assert.deepEqual(log, [
+    ["activateCondition", "cnd-1"],
+    ["traceAt", SEED, "cnd-1", undefined],
+  ]);
+});
+
+test("deixis + waste: activate, update by id, THEN traceAt — chip click, editor save, aimed click", () => {
+  const { caps, log } = makeCtx();
+  const out = runVoiceCommand(caps, "cpt one waste seven this room");
+  assert.deepEqual(out, { ok: true, message: "Created 1 takeoff — 234.5 SF CPT-1. Click the next room." });
+  assert.deepEqual(log, [
+    ["activateCondition", "cnd-1"],
+    ["updateCondition", "cnd-1", { waste_pct: 7 }],
+    ["traceAt", SEED, "cnd-1", undefined],
+  ]);
+});
+
+test("deixis unknown tag: create, activate, traceAt", () => {
+  const { caps, log } = makeCtx();
+  const out = runVoiceCommand(caps, "lvt two here");
+  assert.deepEqual(out, { ok: true, message: "Created 1 takeoff — 234.5 SF CPT-1. Click the next room." });
+  assert.deepEqual(log, [
+    ["createCondition", "LVT-2"],
+    ["activateCondition", "cnd-LVT-2"],
+    ["traceAt", SEED, "cnd-LVT-2", undefined],
+  ]);
+});
+
+test("deixis + unknown label: activate, addLabel, activateLabel, traceAt carrying the label", () => {
+  const { caps, log } = makeCtx();
+  const out = runVoiceCommand(caps, "cpt one label East Mezzanine this one");
+  assert.deepEqual(out, { ok: true, message: "Created 1 takeoff — 234.5 SF CPT-1. Click the next room." });
+  assert.deepEqual(log, [
+    ["activateCondition", "cnd-1"],
+    ["addLabel", "East Mezzanine"],
+    ["activateLabel", "East Mezzanine"],
+    ["traceAt", SEED, "cnd-1", "East Mezzanine"],
+  ]);
+});
+
+test("deixis + known label: no addLabel — vocabulary untouched", () => {
+  const { caps, log } = makeCtx();
+  const out = runVoiceCommand(caps, "cpt one label Phase 1 right here");
+  assert.deepEqual(out, { ok: true, message: "Created 1 takeoff — 234.5 SF CPT-1. Click the next room." });
+  assert.deepEqual(log, [
+    ["activateCondition", "cnd-1"],
+    ["activateLabel", "Phase 1"],
+    ["traceAt", SEED, "cnd-1", "Phase 1"],
+  ]);
+});
+
+test("bare deixis: traceAt on the ACTIVE condition, nothing re-armed", () => {
+  const { caps, log } = makeCtx();
+  const out = runVoiceCommand(caps, "this room");
+  assert.deepEqual(out, { ok: true, message: "Created 1 takeoff — 234.5 SF CPT-1. Click the next room." });
+  assert.deepEqual(log, [["traceAt", SEED, "cnd-1", undefined]]);
+});
+
+test("deixis stale aim (getAimSeed null) → exact message, ZERO calls — nothing half-arms", () => {
+  const { caps, log } = makeCtx({ getAimSeed: () => null });
+  const out = runVoiceCommand(caps, "carpet one, this room");
+  assert.deepEqual(out, { ok: false, message: "Couldn't place that — aim went stale. Put the cursor on the room and say it again." });
+  assert.deepEqual(log, []);
+});
+
+test("deixis off-sheet aim (sheetId \"\") → exact message, ZERO calls", () => {
+  const { caps, log } = makeCtx({ getAimSeed: () => ({ x: -40, y: 9999, sheetId: "" }) });
+  const out = runVoiceCommand(caps, "carpet one, this room");
+  assert.deepEqual(out, { ok: false, message: "Couldn't place that — aim at a sheet." });
+  assert.deepEqual(log, []);
+});
+
+test("bare deixis with no active condition → parse-level reject, ZERO calls", () => {
+  const { caps, log } = makeCtx({ getActiveConditionId: () => "" });
+  const out = runVoiceCommand(caps, "this room");
+  assert.deepEqual(out, { ok: false, message: REJECTION_MESSAGES.deixis_no_condition });
+  assert.deepEqual(log, []);
+});
+
+test("deixis one-click failure (open boundary) speaks through the outcome — armed, but no commit", () => {
+  const { caps, log } = makeCtx({
+    traceAt: (seed, conditionId, label) => {
+      log.push(["traceAt", seed, conditionId, label]);
+      return { ok: false, message: "Couldn't place that — that space isn't enclosed on the plan linework. Click a more enclosed spot, or trace it with Area (A)." };
+    },
+  });
+  const out = runVoiceCommand(caps, "carpet one, this room");
+  assert.deepEqual(out, { ok: false, message: "Couldn't place that — that space isn't enclosed on the plan linework. Click a more enclosed spot, or trace it with Area (A)." });
+  assert.deepEqual(log, [
+    ["activateCondition", "cnd-1"],
+    ["traceAt", SEED, "cnd-1", undefined],
+  ]);
+});
+
+test("deixis async traceAt: the promise outcome rides through runVoiceCommand", async () => {
+  const { caps, log } = makeCtx({
+    traceAt: (seed, conditionId, label) => {
+      log.push(["traceAt", seed, conditionId, label]);
+      return Promise.resolve({ ok: true, message: "Created 1 takeoff — 120 SF CPT-1. Click the next room." });
+    },
+  });
+  const out = await runVoiceCommand(caps, "carpet one, this room");
+  assert.deepEqual(out, { ok: true, message: "Created 1 takeoff — 120 SF CPT-1. Click the next room." });
+  assert.deepEqual(log, [
+    ["activateCondition", "cnd-1"],
+    ["traceAt", SEED, "cnd-1", undefined],
+  ]);
+});
+
 test("every failure message starts with \"Couldn't\" (the isDangerMsg red/sticky contract)", () => {
   for (const msg of Object.values(REJECTION_MESSAGES))
     assert.ok(msg.startsWith("Couldn't"), msg);
@@ -182,6 +304,10 @@ type AppState = {
   shapeLabels: string[];
   activeLabel: string | null;
   markups: Array<{ id: string; sheet_id: string; rfi_id: string; type: string; at: [number, number]; text: string }>;
+  // deixis: committed takeoffs land in shapes with the CLICK path's origin;
+  // agentProposals stays EMPTY under voice — the who-aimed-it line
+  shapes: Array<{ id: string; sheet_id: string; condition_id: string; label?: string; origin: { method: string; seed: [number, number]; reviewed: true } }>;
+  agentProposals: unknown[];
 };
 
 function makeApp() {
@@ -194,6 +320,12 @@ function makeApp() {
     shapeLabels: ["Phase 1"],
     activeLabel: null,
     markups: [],
+    shapes: [],
+    agentProposals: [],
+  };
+  // the aim is INPUT, not asserted state — mutable so reject cases can park it
+  const box: { aim: { x: number; y: number; sheetId: string } | null } = {
+    aim: { x: 320, y: 240, sheetId: "plan.pdf" },
   };
   let seq = 0;
 
@@ -213,6 +345,18 @@ function makeApp() {
   const addMarkup = (m: { type: string; at: [number, number]; text: string }, key: string) => {
     state.markups = [...state.markups, { id: `mk-${++seq}`, sheet_id: key, rfi_id: "", ...m }];
   };
+  // the aimed one-click COMMIT, modeled on commitOneClickRegions' semantics:
+  // deterministic flood stand-in, click-path origin, label stamped from the
+  // explicit override when the utterance carried one, else the active label —
+  // exactly the canvas fallback. Never touches agentProposals.
+  const oneClickCommitAt = (seed: { x: number; y: number; sheetId: string }, condId: string, label?: string) => {
+    const eff = label !== undefined ? label : (state.activeLabel || undefined);
+    state.shapes = [...state.shapes, {
+      id: `sh-${++seq}`, sheet_id: seed.sheetId, condition_id: condId,
+      ...(eff ? { label: eff } : {}),
+      origin: { method: "one_click_v1", seed: [seed.x, seed.y], reviewed: true },
+    }];
+  };
 
   // caps bound over the SAME verbs — the buildVoiceCtx binding, verbatim
   const caps: VoiceCapabilities = {
@@ -225,9 +369,11 @@ function makeApp() {
     addLabel,
     activateLabel,
     addNote: (text) => addMarkup({ type: "text", at: [0.5, 0.06], text }, "plan.pdf"),
+    getAimSeed: () => box.aim,
+    traceAt: (seed, conditionId, label) => { oneClickCommitAt(seed, conditionId, label); return { ok: true, message: "Created 1 takeoff." }; },
   };
 
-  return { state, caps, ui: { mintCondition, activateCondition, updateCond, updateCondById, addLabel, activateLabel, addMarkup } };
+  return { state, caps, box, ui: { mintCondition, activateCondition, updateCond, updateCondById, addLabel, activateLabel, addMarkup, oneClickCommitAt } };
 }
 
 type App = ReturnType<typeof makeApp>;
@@ -255,31 +401,74 @@ const EQUIV: Array<{ name: string; transcript: string; uiScript: (app: App) => v
     uiScript: ({ ui }) => ui.activateLabel(null) },
   { name: "note ≡ placing a text markup on the focused sheet", transcript: "note check seams at door",
     uiScript: ({ ui }) => ui.addMarkup({ type: "text", at: [0.5, 0.06], text: "check seams at door" }, "plan.pdf") },
+  // deixis ≡ the aimed click: arm by hand, then physically one-click the same
+  // seed and Create — the whole point of the who-aimed-it rule
+  { name: "deixis known tag ≡ chip click then aimed one-click Create", transcript: "carpet one, this room",
+    uiScript: ({ ui, box }) => { ui.activateCondition("cnd-1"); ui.oneClickCommitAt(box.aim!, "cnd-1"); } },
+  { name: "deixis + waste ≡ chip click, editor save, aimed one-click", transcript: "cpt one waste seven this room",
+    uiScript: ({ ui, box }) => { ui.activateCondition("cnd-1"); ui.updateCond({ waste_pct: 7 }); ui.oneClickCommitAt(box.aim!, "cnd-1"); } },
+  { name: "deixis create ≡ +condition then aimed one-click", transcript: "lvt two here",
+    uiScript: ({ ui, box }) => { const c = ui.mintCondition("LVT-2"); ui.activateCondition(c.id); ui.oneClickCommitAt(box.aim!, c.id); } },
+  { name: "deixis + label ≡ add+pick label then aimed one-click", transcript: "cpt one label East Mezzanine this one",
+    uiScript: ({ ui, box }) => { ui.activateCondition("cnd-1"); ui.addLabel("East Mezzanine"); ui.activateLabel("East Mezzanine"); ui.oneClickCommitAt(box.aim!, "cnd-1", "East Mezzanine"); } },
+  { name: "bare deixis ≡ aimed one-click on the active condition", transcript: "right here",
+    uiScript: ({ ui, box }) => ui.oneClickCommitAt(box.aim!, "cnd-1") },
 ];
 
 for (const c of EQUIV)
-  test(`state-equal: ${c.name}`, () => {
+  test(`state-equal: ${c.name}`, async () => {
     const voiceApp = makeApp();
     const uiApp = makeApp();
-    const out = runVoiceCommand(voiceApp.caps, c.transcript);
+    const out = await runVoiceCommand(voiceApp.caps, c.transcript);
     assert.equal(out.ok, true, out.message);
     c.uiScript(uiApp);
     assert.deepEqual(voiceApp.state, uiApp.state);
   });
 
-test("state-equal: rejected transcript mutates NOTHING", () => {
+test("state-equal: rejected transcript mutates NOTHING", async () => {
   const app = makeApp();
   const before = structuredClone(app.state);
-  const out = runVoiceCommand(app.caps, "carpet one seven");
+  const out = await runVoiceCommand(app.caps, "carpet one seven");
   assert.equal(out.ok, false);
   assert.deepEqual(app.state, before);
 });
 
-test("state-equal: set_waste with no active condition mutates NOTHING", () => {
+test("state-equal: set_waste with no active condition mutates NOTHING", async () => {
   const app = makeApp();
   app.state.activeCond = "";
   const before = structuredClone(app.state);
-  const out = runVoiceCommand(app.caps, "waste 7");
+  const out = await runVoiceCommand(app.caps, "waste 7");
   assert.deepEqual(out, { ok: false, message: "Couldn't set waste — no active condition." });
+  assert.deepEqual(app.state, before);
+});
+
+// ── deixis provenance + zero-mutation (the who-aimed-it line, both sides) ──
+
+test("deixis commits ONE shape as human one-click work — agentProposals stays empty", async () => {
+  const app = makeApp();
+  const out = await runVoiceCommand(app.caps, "carpet one, this room");
+  assert.equal(out.ok, true, out.message);
+  assert.deepEqual(app.state.shapes, [{
+    id: "sh-1", sheet_id: "plan.pdf", condition_id: "cnd-1",
+    origin: { method: "one_click_v1", seed: [320, 240], reviewed: true },
+  }]);
+  assert.deepEqual(app.state.agentProposals, []);   // NEVER a proposal row for human aim
+});
+
+test("deixis stale aim mutates NOTHING — not even the condition arms", async () => {
+  const app = makeApp();
+  app.box.aim = null;
+  const before = structuredClone(app.state);
+  const out = await runVoiceCommand(app.caps, "carpet one, this room");
+  assert.deepEqual(out, { ok: false, message: "Couldn't place that — aim went stale. Put the cursor on the room and say it again." });
+  assert.deepEqual(app.state, before);
+});
+
+test("deixis off-sheet aim mutates NOTHING", async () => {
+  const app = makeApp();
+  app.box.aim = { x: -12, y: 400, sheetId: "" };
+  const before = structuredClone(app.state);
+  const out = await runVoiceCommand(app.caps, "carpet one, this room");
+  assert.deepEqual(out, { ok: false, message: "Couldn't place that — aim at a sheet." });
   assert.deepEqual(app.state, before);
 });
