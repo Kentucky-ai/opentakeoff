@@ -565,6 +565,7 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `V` | Select |
 | `P` | Pan |
 | `G` | Sheet gallery |
+| Hold `M` | Push-to-talk dictation — release runs the command, `Esc` discards (see [§17](#17-voice--the-command-box)) |
 
 ### Conditions
 
@@ -636,6 +637,39 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 **Endpoint errors in the agent log.** *"Couldn't reach the endpoint — check the URL, and that it allows browser requests (CORS)"* means exactly that; local runtimes generally allow localhost. A run that stalls two minutes reports the timeout plainly — check the model is loaded.
 
 **Browser support.** OpenTakeoff needs a current browser with IndexedDB and localStorage — recent Chromium-family, Firefox, and Safari releases all qualify. Private/incognito windows may cap or evict storage: fine for a look around, wrong for real work.
+
+---
+
+## 17. Voice & the Command box
+
+Your hands are busy — one on the mouse tracing, one on the tool keys.
+The Command box and push-to-talk dictation set takeoff metadata without
+stealing them away.
+
+**The Command box** (toolbar, next to the label picker) runs a small,
+deterministic command language through the exact actions the buttons run:
+
+| Type (or say) | What happens |
+|---|---|
+| `carpet one` / `CPT-1` / `c p t 1` | Activates CPT-1 — creates it first if it doesn't exist (Div-9 patterns: CPT/LVT/VCT/CT/RB/TR + number) |
+| `carpet one waste 7` | Activates/creates CPT-1 **and** sets its waste to 7% |
+| `waste 12` (also `waste twelve`, `waste 7.5`, `waste ten percent`) | Sets the active condition's waste |
+| `label Phase 2` / `clear label` | Arms a shape label for subsequent traces (learning it if new) / disarms |
+| `note verify sheet vinyl with GC` | Drops a text markup on the focused sheet and opens the Markups dock |
+| `carpet one, this room` (pointer resting on a room) | Arms CPT-1 and one-click-traces the room under your cursor — committed as your work, undo covers it |
+
+Anything ambiguous is refused with a red explanation, never guessed —
+"carpet one seven" could be CPT-1 + waste 7 or a mis-heard CPT-17, so it
+asks you to say it again.
+
+**Push-to-talk.** Hold **M** (or hold the **Voice** toolbar button), speak,
+release to run — the transcript flashes in a chip so you can see what was
+heard, then the outcome lands in the message bar. `Esc` mid-hold discards.
+Speech is recognized **on your device** in the browser (a ~44 MB model,
+downloaded once from the site itself and cached) — audio never leaves your
+machine, in keeping with the no-upload pledge. If a deployment doesn't ship
+the model, the feature says so plainly; details in
+[`docs/VOICE.md`](./VOICE.md).
 
 ---
 
