@@ -17,7 +17,7 @@ import { mkdirSync, existsSync, writeFileSync, readFileSync, statSync } from "no
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const MODEL_ID = "Xenova/whisper-tiny.en";
+const MODEL_ID = "onnx-community/whisper-tiny.en";
 const MODEL_REV = "main"; // bump deliberately; cache keys + PR notes reference it
 const FILES = [
   "config.json",
@@ -26,7 +26,7 @@ const FILES = [
   "tokenizer.json",
   "tokenizer_config.json",
   "onnx/encoder_model_quantized.onnx",
-  "onnx/decoder_model_merged_quantized.onnx",
+  "onnx/decoder_model_merged_uint8.onnx",
 ];
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -58,3 +58,6 @@ for (const file of FILES) {
   console.log(`${(buf.length / 1e6).toFixed(1)} MB  sha256 ${sha256(buf).slice(0, 12)}…`);
 }
 console.log(`voice model staged: ${MODEL_ID}@${MODEL_REV} → ${destRoot} (${(total / 1e6).toFixed(1)} MB total)`);
+// (The onnxruntime-web runtime itself needs no staging: the adapter imports it
+// through Vite's asset pipeline with `?url`, so it ships same-origin in
+// dist/assets/ automatically — dev and build alike.)

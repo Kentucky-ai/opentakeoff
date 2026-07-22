@@ -93,7 +93,7 @@ test("corpus table: expectations agree with the parser on the CLEAN transcript",
 const wavs = existsSync(voiceDir)
   ? readdirSync(voiceDir).filter((f) => /^s\d+-(quiet|noisy)-p\d\d\.wav$/.test(f)).sort()
   : [];
-const modelPresent = existsSync(join(modelsDir, "Xenova", "whisper-tiny.en", "onnx"));
+const modelPresent = existsSync(join(modelsDir, "onnx-community", "whisper-tiny.en", "onnx"));
 
 const skip = !modelPresent
   ? "voice model not staged — run: node scripts/fetch-voice-model.mjs"

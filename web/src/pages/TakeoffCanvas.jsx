@@ -63,6 +63,8 @@ import AiSettings from "../components/AiSettings.jsx";
 import { AGENT_TOOL_DEFS, executeAgentTool, agentScaleGate } from "../lib/agentTools.js";
 import { runAgentLoop } from "../lib/agentLoop.js";
 import { runVoiceCommand } from "../lib/voiceActions";
+import { createVoiceRecognizerClient } from "../lib/voiceRecognizerClient";
+import { startCapture, captureSupported } from "../lib/voiceCapture";
 import { aiConfig, isAiConfigured } from "../lib/ai.js";
 import AccountChip from "../components/AccountChip.jsx";
 import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
@@ -3804,6 +3806,128 @@ export default function TakeoffCanvas() {
     return typeof out?.then === "function" ? out.then(finish) : finish(out);
   };
 
+  // ── push-to-talk (RFC #59 recognizer slice) ────────────────────────────────
+  // Hold M to dictate; release runs the transcript through the SAME
+  // onVoiceCommand the Command box uses; Esc mid-hold discards. Everything is
+  // lazy: the worker + model load on the first hold (ingest.js precedent), and
+  // decode happens OFF the main thread (stt.worker.ts) so pan/zoom stays
+  // smooth. Deliberately NOT re-marking the deixis aim at keydown: for typed
+  // commands focus starts the utterance and the pointer moves after; for a
+  // hold, the hand is ALREADY resting the pointer on the room — demanding a
+  // pointer tick mid-hold would stale-reject every still-handed "this room".
+  // The standing invalidations (canvas-leave, tab-hide, previous run) still
+  // guard every ghost-seed path the #83 design named.
+  const [voiceChip, setVoiceChip] = useState(null); // { text, tone: "live"|"busy"|"info" } | null
+  const voiceClientRef = useRef(null);
+  const voiceCaptureRef = useRef(null);              // live CaptureSession during a hold
+  const voiceModelRef = useRef({ phase: "unprobed" });
+  const voiceHoldRef = useRef(false);                // physical key/button state
+  const voiceFlashRef = useRef(0);                   // transcript-flash timer
+  function ensureVoiceClient() {
+    if (!voiceClientRef.current) {
+      voiceClientRef.current = createVoiceRecognizerClient((s) => {
+        voiceModelRef.current = s;
+        if (s.phase === "loading") setVoiceChip({ text: `voice model loading… ${s.pct}%`, tone: "busy" });
+        else if (s.phase === "ready") setVoiceChip((c) => (c && c.tone === "busy" ? null : c));
+        else if (s.phase === "uninstalled") { setVoiceChip(null); setCommitMsg("Voice isn't installed on this deployment — see docs/VOICE.md to stage the model."); }
+        else if (s.phase === "error") { setVoiceChip(null); setCommitMsg(`Couldn't load the voice model — ${s.message} Hold M to retry.`); }
+      });
+    }
+    return voiceClientRef.current;
+  }
+  async function voiceHoldStart() {
+    if (voiceCaptureRef.current) return;
+    const client = ensureVoiceClient();
+    if (voiceModelRef.current.phase !== "ready") {
+      // never a silent drop: pressing PTT before the model is ready SAYS so
+      // (and kicks off/retries the load, so the affordance is also the fix)
+      void client.ensureReady();
+      if (voiceModelRef.current.phase === "loading")
+        setVoiceChip({ text: `voice model loading… ${voiceModelRef.current.pct ?? 0}% — try again shortly`, tone: "busy" });
+      return;
+    }
+    try {
+      const session = await startCapture();
+      if (!voiceHoldRef.current) { session.cancel(); return; }  // released during the permission prompt
+      session.onEnded(() => {
+        session.cancel();
+        voiceCaptureRef.current = null;
+        setVoiceChip(null);
+        setCommitMsg("Couldn't finish dictation — the microphone was revoked.");
+      });
+      voiceCaptureRef.current = session;
+      setVoiceChip({ text: "listening… release M to run · Esc to discard", tone: "live" });
+    } catch (err) {
+      setCommitMsg(
+        err?.reason === "mic_denied" ? "Couldn't start dictation — microphone permission denied. Allow the mic and try again."
+        : err?.reason === "no_mic_device" ? "Couldn't start dictation — no microphone found."
+        : "Couldn't start dictation — microphone unavailable.",
+      );
+    }
+  }
+  function voiceHoldEnd(commit) {
+    const session = voiceCaptureRef.current;
+    voiceCaptureRef.current = null;
+    if (!session) return;
+    if (!commit) { session.cancel(); setVoiceChip(null); return; }
+    const pcm = session.stop();
+    if (pcm.length < 1600) { setVoiceChip(null); return; }   // <0.1 s — a key tap, not an utterance
+    setVoiceChip({ text: "decoding…", tone: "busy" });
+    voiceClientRef.current.transcribe(pcm).then((text) => {
+      const t = text.trim();
+      // flash what was heard — the transcript is the receipt — then the
+      // outcome lands in the commitMsg bar like every other command
+      setVoiceChip(t ? { text: `“${t}”`, tone: "info" } : null);
+      clearTimeout(voiceFlashRef.current);
+      voiceFlashRef.current = setTimeout(() => setVoiceChip((c) => (c && c.tone === "info" ? null : c)), 2400);
+      return Promise.resolve(onVoiceCommandRef.current(t));
+    }).catch(() => { setVoiceChip(null); setCommitMsg("Couldn't decode that — try again."); });
+  }
+  // live refs — the mount-once keyboard effect must never see stale closures
+  const onVoiceCommandRef = useRef(null);
+  onVoiceCommandRef.current = onVoiceCommand;
+  const voiceFnsRef = useRef(null);
+  voiceFnsRef.current = { start: voiceHoldStart, end: voiceHoldEnd };
+  useEffect(() => {
+    const down = (e) => {
+      if (e.key === "Escape" && voiceCaptureRef.current) { voiceFnsRef.current.end(false); return; }
+      const tg = e.target.tagName;
+      if (tg === "INPUT" || tg === "SELECT" || tg === "TEXTAREA") return;
+      if (menuDepthRef.current > 0) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+      if ((e.key || "").toLowerCase() !== "m") return;
+      voiceHoldRef.current = true;
+      voiceFnsRef.current.start();
+    };
+    const up = (e) => {
+      if ((e.key || "").toLowerCase() !== "m") return;
+      if (!voiceHoldRef.current) return;
+      voiceHoldRef.current = false;
+      voiceFnsRef.current.end(true);
+    };
+    // tab backgrounded mid-dictation: discard, say so (testing-bar lifecycle)
+    const onVis = () => {
+      if (document.visibilityState === "hidden" && voiceCaptureRef.current) {
+        voiceHoldRef.current = false;
+        voiceFnsRef.current.end(false);
+        setCommitMsg("Dictation discarded — the tab went to the background.");
+      }
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      document.removeEventListener("visibilitychange", onVis);
+      // unmount cleanup — no orphaned audio contexts or workers
+      voiceCaptureRef.current?.cancel();
+      voiceCaptureRef.current = null;
+      voiceClientRef.current?.dispose();
+      voiceClientRef.current = null;
+    };
+  }, []);
+
   // ── the accept gate ─────────────────────────────────────────────────────────
   // Accept = the explicit human review one-click's Create models: the shape
   // commits through dispatchShape `add` (id/created_at minted there) with the
@@ -4879,6 +5003,19 @@ export default function TakeoffCanvas() {
             style={{ fontFamily: "var(--f-mono)", fontSize: 11.5, padding: "5px 6px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", width: 150 }}
           />
         )}
+        {/* Push-to-talk (RFC #59 recognizer): hold the button (or M) to dictate
+            into the same grammar the Command box runs. Hidden entirely where
+            capture is unsupported — graceful feature-absence, never broken. */}
+        {captureSupported() && cluster("Voice",
+          <button
+            title={'Hold to talk (or hold M anywhere on the canvas): speak a command — "carpet one, waste seven", "label phase two", "note …", or end with "this room" to trace at the cursor. Release to run; Esc discards. Audio is processed on-device and never leaves the browser.'}
+            onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); voiceHoldRef.current = true; voiceFnsRef.current.start(); }}
+            onPointerUp={() => { if (voiceHoldRef.current) { voiceHoldRef.current = false; voiceFnsRef.current.end(true); } }}
+            onPointerCancel={() => { if (voiceHoldRef.current) { voiceHoldRef.current = false; voiceFnsRef.current.end(false); } }}
+            style={{ padding: "5px 10px", border: `1px solid ${voiceChip?.tone === "live" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: voiceChip?.tone === "live" ? "var(--cobalt)" : "transparent", color: voiceChip?.tone === "live" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700, lineHeight: 1 }}>
+            {voiceChip?.tone === "live" ? "● talking" : "talk · M"}
+          </button>
+        )}
         <div style={{ flex: 1 }} />
         {cluster(`Scale — ${labelFor(focusPanel)}`,
           <>
@@ -5709,6 +5846,16 @@ export default function TakeoffCanvas() {
         {commitMsg && (
           <div style={{ position: "absolute", left: "50%", bottom: 14, transform: "translateX(-50%)", maxWidth: "70%", zIndex: 6, pointerEvents: "none", padding: "6px 12px", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", boxShadow: "var(--shadow-1)", fontSize: 12, color: isDangerMsg(commitMsg) ? "var(--c-danger)" : "var(--c-positive)" }}>
             {commitMsg}
+          </div>
+        )}
+        {/* live dictation chip (RFC #59 recognizer): top-center, fixed — NOT
+            cursor-following, the cursor is busy aiming for deixis. Shows the
+            hold state, decode state, and a brief flash of the heard transcript
+            (the receipt); outcomes land in the commitMsg bar like every command. */}
+        {voiceChip && (
+          <div style={{ position: "absolute", left: "50%", top: 14, transform: "translateX(-50%)", zIndex: 6, pointerEvents: "none", padding: "5px 12px", background: "var(--surface-pop)", border: `1px solid ${voiceChip.tone === "live" ? "var(--cobalt)" : "var(--ink-faint)"}`, boxShadow: "var(--shadow-1)", fontFamily: "var(--f-mono)", fontSize: 11.5, color: "var(--ink)", display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+            {voiceChip.tone === "live" && <span className="pip" />}
+            {voiceChip.text}
           </div>
         )}
 

@@ -13,7 +13,9 @@
 export type SttEngineId = "transformers-js" | "whisper-cpp";
 
 /** Where the model comes from. Same-origin base URL in the browser (served
- *  from /models/ in dist), a filesystem path in Node (the corpus harness). */
+ *  from /models/ in dist), a filesystem path in Node (the corpus harness).
+ *  The ORT wasm runtime needs no source entry: adapters resolve it through
+ *  the bundler's asset pipeline (`?url`), same-origin in dev and build. */
 export type ModelSource = { baseUrl: string };
 
 export type SttProgress = { pct: number; note?: string };
