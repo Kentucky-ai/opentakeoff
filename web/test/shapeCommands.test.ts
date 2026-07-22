@@ -287,3 +287,35 @@ test("vertsEqual: exact structural comparison — the zero-motion / snapped-back
   assert.ok(!vertsEqual([[0.1, 0.2]], [[0.1, 0.20000001]]));
   assert.ok(!vertsEqual(undefined as any, [[0, 0]]));
 });
+
+// ── review (the accept gate for shapes already in the data) ──────────────────
+
+test("review: accepts only still-pending shapes (reviewed → true + accepted_ts, nothing else); undo un-accepts verbatim; redo re-accepts verbatim", () => {
+  const pending = machineShape("shp-p1");
+  pending.origin = { method: "one_click_v1", actor: "agent", seed_norm: [0.4, 0.3], reviewed: false };
+  const accepted = machineShape("shp-a1");   // reviewed: true — must ride through untouched
+  const manual = manualShape("shp-m1");      // no reviewed key — not a proposal, must ride through
+  const input = [pending, accepted, manual];
+
+  const r1 = applyShapeCommand(input, { type: "review", ids: ["shp-p1", "shp-a1", "shp-m1"] });
+  const out: any = r1.shapes.find((s: any) => s.id === "shp-p1");
+  assert.equal(out.origin.reviewed, true);
+  assert.match(out.origin.accepted_ts, ISO);
+  assert.equal(out.origin.actor, "agent");                        // the rest of the origin rides through
+  assert.deepEqual(out.origin.seed_norm, [0.4, 0.3]);
+  assert.equal(out.updated_at, undefined, "accepting is affirmation, not an edit — no updated_at");
+  assert.equal(r1.shapes[1], accepted, "already-accepted shape untouched (same reference)");
+  assert.equal(r1.shapes[2], manual, "manual shape untouched (same reference)");
+
+  const undone = applyShapeCommand(r1.shapes, r1.inverse);        // un-accept: the exact input again
+  assert.deepEqual(undone.shapes, input);
+  const redone = applyShapeCommand(undone.shapes, undone.inverse); // redo restores the accepted state verbatim, accepted_ts included
+  assert.deepEqual(redone.shapes, r1.shapes);
+});
+
+test("review: an empty or all-non-pending id set is a no-op with an empty restore", () => {
+  const shapes = [machineShape("shp-a1"), manualShape("shp-m1")];
+  const r = applyShapeCommand(shapes, { type: "review", ids: ["shp-a1", "shp-m1", "shp-ghost"] });
+  assert.deepEqual(r.shapes, shapes);
+  assert.deepEqual(r.inverse, { type: "review", restore: [] });
+});

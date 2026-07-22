@@ -3710,6 +3710,19 @@ export default function TakeoffCanvas() {
   // geometry never rides the contribution wire — no rejection records, no
   // counters, nothing for contribute.js to even see (the D34 cut-line).
   const rejectAgentProposal = (id) => setAgentProposals((ps) => ps.filter((p) => p.id !== id));
+
+  // ── the accept gate, for shapes already IN the data ─────────────────────────
+  // An imported MCP takeoff arrives committed but unreviewed (origin.reviewed
+  // === false) — those render dashed pencil and gate the Accept pill. Accept
+  // routes through the `review` command (ONE undo entry), which flips reviewed
+  // + stamps accepted_ts and nothing else: affirmation, not an edit. Rejecting
+  // one is just deleting it — select and Delete, like any shape.
+  const pendingCommitted = useMemo(() => visibleShapes.filter((s) => s.origin?.reviewed === false), [visibleShapes]);
+  function acceptPendingShapes() {
+    if (!pendingCommitted.length) return;
+    dispatchShape({ type: "review", ids: pendingCommitted.map((s) => s.id) });
+    setCommitMsg(`Accepted ${pendingCommitted.length} proposed shape${pendingCommitted.length === 1 ? "" : "s"} — pencil is now ink.`);
+  }
   const rejectAllAgentProposals = () => setAgentProposals([]);
 
   // ── the run ────────────────────────────────────────────────────────────────
@@ -5124,21 +5137,29 @@ export default function TakeoffCanvas() {
                       // like every other screen-relative size here.
                       const z = tf.scale;
                       const sw = (sel ? 4 : 2) / z;
+                      // Committed-but-unreviewed machine shapes (an imported MCP
+                      // takeoff) render dashed pencil — same invariant as the
+                      // ephemeral agent proposals, until Accept flips reviewed.
+                      const pending = s.origin?.reviewed === false;
+                      const pDash = `${4 / z} ${3 / z}`;
                       if (s.measure_role === "count") {
                         const [cx, cy] = pts[0], r = 7 / z;
-                        return <rect key={s.id} x={cx - r} y={cy - r} width={r * 2} height={r * 2} rx={2 / z} fill={col + "cc"} stroke={sel ? "#1f3fc7" : "#fff"} strokeWidth={(sel ? 3 : 1.5) / z} />;
+                        return <rect key={s.id} x={cx - r} y={cy - r} width={r * 2} height={r * 2} rx={2 / z} fill={col + (pending ? "55" : "cc")} stroke={sel ? "#1f3fc7" : "#fff"} strokeWidth={(sel ? 3 : 1.5) / z} strokeDasharray={pending ? `${3 / z} ${2.5 / z}` : undefined} />;
                       }
                       if (s.measure_role === "surface_area") {
-                        return <polyline key={s.id} points={pts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? "#1f3fc7" : col} strokeWidth={(sel ? 4.5 : 3.5) / z} strokeDasharray={`${10 / z} ${3 / z} ${2 / z} ${3 / z}`} strokeLinecap="round" strokeLinejoin="round" />;
+                        return <polyline key={s.id} points={pts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? "#1f3fc7" : col} strokeOpacity={pending ? 0.85 : undefined} strokeWidth={(sel ? 4.5 : 3.5) / z} strokeDasharray={pending ? pDash : `${10 / z} ${3 / z} ${2 / z} ${3 / z}`} strokeLinecap="round" strokeLinejoin="round" />;
                       }
                       if (s.measure_role === "linear") {
                         // line_style governs linear outlines (surface_area keeps its dash-dot identity above)
                         const lpts = s.curved ? flattenCurve(pts) : pts;
-                        return <polyline key={s.id} points={lpts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? "#1f3fc7" : col} strokeWidth={(sel ? 4 : 3) / z} strokeDasharray={dashArrayFor(cond?.line_style || "solid", z)} strokeLinecap="round" strokeLinejoin="round" />;
+                        return <polyline key={s.id} points={lpts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? "#1f3fc7" : col} strokeOpacity={pending ? 0.85 : undefined} strokeWidth={(sel ? 4 : 3) / z} strokeDasharray={pending ? pDash : dashArrayFor(cond?.line_style || "solid", z)} strokeLinecap="round" strokeLinejoin="round" />;
                       }
                       const ded = s.measure_role === "deduct";
                       // deduct keeps its danger-red dashing (a safety signal, wins over line_style); positive floor_area follows the condition's line_style
-                      return <polygon key={s.id} points={pts.map((q) => q.join(",")).join(" ")} fill={ded ? "rgba(176,58,38,.28)" : shapeFill(cond)} stroke={ded ? "#b03a26" : (sel ? "#1f3fc7" : col)} strokeWidth={sw} strokeDasharray={ded ? `${6 / z} ${4 / z}` : dashArrayFor(cond?.line_style || "solid", z)} />;
+                      return <polygon key={s.id} points={pts.map((q) => q.join(",")).join(" ")}
+                        fill={ded ? (pending ? "rgba(176,58,38,.10)" : "rgba(176,58,38,.28)") : pending ? col + "14" : shapeFill(cond)}
+                        stroke={ded ? "#b03a26" : (sel ? "#1f3fc7" : col)} strokeOpacity={pending ? 0.9 : undefined} strokeWidth={sw}
+                        strokeDasharray={pending ? pDash : ded ? `${6 / z} ${4 / z}` : dashArrayFor(cond?.line_style || "solid", z)} />;
                     })}
                     {/* vertex handles for the selected shape (drag to reshape) */}
                     {selectedId && (() => {
@@ -5547,6 +5568,17 @@ export default function TakeoffCanvas() {
           <div style={{ position: "absolute", left: "50%", bottom: 14, transform: "translateX(-50%)", maxWidth: "70%", zIndex: 6, pointerEvents: "none", padding: "6px 12px", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", boxShadow: "var(--shadow-1)", fontSize: 12, color: isDangerMsg(commitMsg) ? "var(--c-danger)" : "var(--c-positive)" }}>
             {commitMsg}
           </div>
+        )}
+
+        {/* accept pill — visible while committed-but-unreviewed shapes (an
+            imported MCP takeoff) are on the visible sheets; they render dashed
+            pencil until accepted. One click, one undo entry. */}
+        {pendingCommitted.length > 0 && (
+          <button onClick={acceptPendingShapes}
+            title={`${pendingCommitted.length} machine-proposed shape${pendingCommitted.length === 1 ? "" : "s"} render${pendingCommitted.length === 1 ? "s" : ""} dashed pending your review. Accept makes them ink (⌘Z undoes); to reject one, select it and press Delete.`}
+            style={{ position: "absolute", left: "50%", top: 12, transform: "translateX(-50%)", zIndex: 6, padding: "6px 14px", background: "var(--paper-bright)", border: "1.5px dashed var(--cobalt)", boxShadow: "var(--shadow-1)", fontSize: 12.5, fontWeight: 600, color: "var(--cobalt)", cursor: "pointer" }}>
+            Accept {pendingCommitted.length} proposed shape{pendingCommitted.length === 1 ? "" : "s"}
+          </button>
         )}
 
         {/* live readout — top-right. Height is capped short of the panel rail's centered
