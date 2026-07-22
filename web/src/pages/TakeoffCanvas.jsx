@@ -62,6 +62,7 @@ import AgentPanel from "../components/AgentPanel.jsx";
 import AiSettings from "../components/AiSettings.jsx";
 import { AGENT_TOOL_DEFS, executeAgentTool, agentScaleGate } from "../lib/agentTools.js";
 import { runAgentLoop } from "../lib/agentLoop.js";
+import { runVoiceCommand } from "../lib/voiceActions";
 import { aiConfig, isAiConfigured } from "../lib/ai.js";
 import AccountChip from "../components/AccountChip.jsx";
 import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
@@ -3638,6 +3639,34 @@ export default function TakeoffCanvas() {
     };
   }
 
+  // Voice-command capabilities (RFC #59 slice 2) — every entry binds an action
+  // the UI already exposes; the dispatcher (voiceActions.ts) never touches
+  // state directly. getConditions reads the live mirror (mintCondition updates
+  // it mid-handler); the rest are safe render closures because the voice path
+  // is fully synchronous, unlike the agent loop. Programmatic activation
+  // passes {reassign:false} — same policy as hotkeys and Library Apply.
+  function buildVoiceCtx() {
+    return {
+      getConditions: () => agentStateRef.current.conditions.map((c) => ({ id: c.id, finish_tag: c.finish_tag })),
+      getShapeLabels: () => shapeLabels,
+      getActiveConditionId: () => activeCond || "",
+      activateCondition: (id) => activateCondition(id, { reassign: false }),
+      createCondition: (tag) => mintCondition(tag),
+      updateCondition: updateCondById,
+      addLabel,
+      activateLabel,
+      // top-center of the focused sheet: text markups render centered on `at`,
+      // and addMarkup auto-opens the Markups dock, so the note is immediately
+      // visible and draggable — the anchor is a starting point, not a commitment
+      addNote: (text) => addMarkup({ type: "text", at: [0.5, 0.06], text }, focusPanel.key),
+    };
+  }
+  const onVoiceCommand = (text) => {
+    const out = runVoiceCommand(buildVoiceCtx(), text);
+    setCommitMsg(out.message);
+    return out.ok;
+  };
+
   // ── the accept gate ─────────────────────────────────────────────────────────
   // Accept = the explicit human review one-click's Create models: the shape
   // commits through dispatchShape `add` (id/created_at minted there) with the
@@ -3913,7 +3942,11 @@ export default function TakeoffCanvas() {
   }
   // every condition-editor save lands here — a bare updated_at is the whole
   // provenance story for conditions (no origin machinery; they're all manual)
-  const updateCond = (patch) => setConditions((cs) => cs.map((c) => (c.id === activeCond ? { ...c, ...patch, updated_at: nowIso() } : c)));
+  // By-id core + active-based convenience: one save chokepoint. Voice combo
+  // intents ("cpt one waste seven") patch a condition activated in the SAME
+  // handler, before re-render — the active-based form would hit the old active.
+  const updateCondById = (id, patch) => setConditions((cs) => cs.map((c) => (c.id === id ? { ...c, ...patch, updated_at: nowIso() } : c)));
+  const updateCond = (patch) => updateCondById(activeCond, patch);
 
   // delete a condition entirely (and its takeoffs); pick a new active one
   function deleteCondition(id) {
@@ -4674,6 +4707,22 @@ export default function TakeoffCanvas() {
             <option value="">No label</option>
             {shapeLabels.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
+        )}
+        {/* Typed voice command (RFC #59 slice 2): the same grammar push-to-talk
+            will feed — a keyboard command line meanwhile, and the accessibility
+            path. Focus suppresses canvas shortcuts via the existing INPUT guards. */}
+        {cluster("Command",
+          <input
+            type="text"
+            placeholder="cpt 1 · waste 7 · label · note"
+            title={'Command line (RFC #59): a condition tag ("CPT-1", "carpet one", "tile 2 waste 5"), "waste 7", "label Phase 1", "clear label", or "note …" — Enter runs it through the same actions the buttons use. Push-to-talk dictation will feed this box.'}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              const v = e.currentTarget.value.trim();
+              if (v && onVoiceCommand(v)) e.currentTarget.value = "";
+            }}
+            style={{ fontFamily: "var(--f-mono)", fontSize: 11.5, padding: "5px 6px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", width: 150 }}
+          />
         )}
         <div style={{ flex: 1 }} />
         {cluster(`Scale — ${labelFor(focusPanel)}`,

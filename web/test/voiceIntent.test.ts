@@ -8,8 +8,10 @@
 //   - homophone map is exactly waist→waste (keyword, true homophone, no
 //     literal mid-command use); no letter-name mappings;
 //   - ctx tag matching is case-insensitive EXACT after canonicalization
-//     (cpt 1 / cpt1 / cpt-1 → CPT-1), no fuzzy ever; unknown Div-9 patterns
-//     (CPT/LVT/VCT/CT/RB/TR + 1-99) come back known:false for a create-offer;
+//     (cpt 1 / cpt1 / cpt-1 → CPT-1), no fuzzy ever; live matches return the
+//     ctx LITERAL (directly actionable as finish_tag), while unknown Div-9
+//     patterns (CPT/LVT/VCT/CT/RB/TR + 1-99) come back canonical + known:false
+//     for a create-offer;
 //   - note/label free text is taken verbatim from the RAW transcript, so
 //     normalization never corrupts user prose.
 import { test } from "node:test";
@@ -53,6 +55,15 @@ const CASES: Case[] = [
   { name: "unknown pattern: tile three", input: "tile three", expect: ok({ kind: "activate_condition", tag: "CT-3", known: false }) },
   { name: "unknown pattern: transition one", input: "transition one", expect: ok({ kind: "activate_condition", tag: "TR-1", known: false }) },
   { name: "unknown pattern digits: lvt 4", input: "lvt 4", expect: ok({ kind: "activate_condition", tag: "LVT-4", known: false }) },
+
+  // 3b. live tags with non-canonical finish_tags come back as the ctx LITERAL
+  //     (maintainer note on #79: the wiring slice looks conditions up by exact
+  //     finish_tag, so the parser must hand back the tag as the project spells it)
+  { name: "non-canonical live tag, spoken: cpt one", input: "cpt one", ctx: { conditionTags: ["cpt 1"] }, expect: ok({ kind: "activate_condition", tag: "cpt 1", known: true }) },
+  { name: "non-canonical live tag, joined: cpt-1", input: "cpt-1", ctx: { conditionTags: ["cpt 1"] }, expect: ok({ kind: "activate_condition", tag: "cpt 1", known: true }) },
+  { name: "non-canonical live tag via synonym: carpet one", input: "carpet one", ctx: { conditionTags: ["cpt 1"] }, expect: ok({ kind: "activate_condition", tag: "cpt 1", known: true }) },
+  { name: "mixed-case live tag: lvt two", input: "lvt two", ctx: { conditionTags: ["Lvt-2"] }, expect: ok({ kind: "activate_condition", tag: "Lvt-2", known: true }) },
+  { name: "non-canonical live tag + waste combo", input: "cpt one waste seven", ctx: { conditionTags: ["cpt 1"] }, expect: ok({ kind: "activate_condition", tag: "cpt 1", known: true, waste: 7 }) },
 
   // 4. activate + waste combo
   { name: "combo: carpet one waste seven", input: "carpet one waste seven", expect: ok({ kind: "activate_condition", tag: "CPT-1", known: true, waste: 7 }) },
