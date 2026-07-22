@@ -1,6 +1,6 @@
 {
   "name": "opentakeoff-mcp",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "mcpName": "io.github.Kentucky-ai/opentakeoff",
   "type": "module",
   "description": "OpenTakeoff MCP server — drive the takeoff engine from your MCP client over stdio.",
@@ -16,7 +16,7 @@
     "mcpb": "npm run build && node scripts/build-mcpb.mjs",
     "prepublishOnly": "npm run typecheck && npm test && npm run build",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test test/conformance.test.ts test/e2e.test.ts test/resources.test.ts test/session.test.ts test/tools.test.ts"
+    "test": "node --import tsx --test test/conformance.test.ts test/e2e.test.ts test/resources.test.ts test/session.test.ts test/tools.test.ts test/view.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",

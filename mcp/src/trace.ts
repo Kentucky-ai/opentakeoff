@@ -5,7 +5,8 @@ const TRACE_ENV = "OPENTAKEOFF_MCP_TRACE";
 export function traceToolCall(tool: string, args: unknown, startedAt: bigint, reply: ToolReply): void {
   if (process.env[TRACE_ENV] !== "1") return;
 
-  const text = reply.content[0]?.text ?? "";
+  // result_size spans every part — for image tools that's meta + base64 bytes
+  const text = reply.content.map((c) => ("text" in c ? c.text : c.data)).join("");
   const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
   const sheet =
     args && typeof args === "object" && "sheet" in args

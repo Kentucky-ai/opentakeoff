@@ -1,9 +1,10 @@
-// The eleven tools — thin zod-validated handlers over the Session. Replies are
-// compact JSON (format.ts); failures are isError results, never thrown
+// The twelve tools — thin zod-validated handlers over the Session. Replies are
+// compact JSON (format.ts); view_sheet alone replies with an image content
+// item plus a JSON meta text item. Failures are isError results, never thrown
 // protocol errors.
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { ok, fail, UserError, type ToolReply } from "./format.ts";
+import { ok, okImage, fail, UserError, type ToolReply } from "./format.ts";
 import type { Session } from "./session.ts";
 import { traceToolCall } from "./trace.ts";
 import {
@@ -144,4 +145,30 @@ export function registerTools(server: McpServer, session: Session): void {
     },
     outputSchema: readSheetTextOutput,
   }, run("read_sheet_text", (a) => session.readSheetText(a.sheet, a.region)));
+
+  server.registerTool("view_sheet", {
+    description: `SEE the sheet — render the page (or a crop of it) to a PNG image. This is your eyes on the plan: full-sheet overview first, then tight crops at higher px until dimension strings and room labels read cleanly. region is in image px — the same space as every other tool — so a feature at pixel (ix, iy) of the returned image sits at x = region_x0 + ix × (region_x1 − region_x0) / img_w (same for y), and those coordinates go straight into one_click, measure_polygon, or read_sheet_text. overlay:true burns the session's committed shapes into the render (human-affirmed ink solid red, unreviewed machine shapes dashed blue) — render again after committing to verify your geometry landed where you intended, and sanity-check what you see: a fixture-sized ring where a room should be means the seed landed inside a stall or casework; an outsized ring means the flood escaped through an opening. To MEASURE rather than guess, pass grid: a calibrated measuring grid is burned in — thin lines every 1 ft, heavy blue every 5 ft, foot labels along the crop edges, feet counted from the crop's top-left corner. Count grid cells between walls exactly like an estimator scaling a plan; never derive a dimension by eye when the grid can give it to you. grid "auto" uses the sheet's set scale; before set_scale, pass the drawing scale read off the title block as inches-per-foot — "1/4" for a 1/4" = 1'-0" plan, "3/16", "0.25". Rendering needs the optional native canvas (@napi-rs/canvas); where it isn't installed this tool errors cleanly and every other tool still works. ${COORDS}`,
+    inputSchema: {
+      sheet: z.string(),
+      region: z.object({ x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() }).optional()
+        .describe("Crop rect in image px (origin top-left, y down); omit for the full sheet"),
+      px: z.number().int().min(200).max(2000).optional()
+        .describe("Long-side pixel budget of the returned image (default 1400) — small region + high px = readable dimension strings"),
+      overlay: z.boolean().optional()
+        .describe("Burn committed shapes into the render (solid = human-affirmed, dashed = unreviewed)"),
+      grid: z.string().optional()
+        .describe('Burn in a calibrated 1-ft/5-ft measuring grid: "auto" = the sheet\'s set scale; otherwise the drawing scale as inches-per-foot, e.g. "1/4", "3/16", "0.25"'),
+    },
+  }, async (a: { sheet: string; region?: { x0: number; y0: number; x1: number; y1: number }; px?: number; overlay?: boolean; grid?: string }): Promise<ToolReply> => {
+    const startedAt = process.hrtime.bigint();
+    let reply: ToolReply;
+    try {
+      const { png, meta } = await session.viewSheet(a.sheet, { region: a.region, px: a.px, overlay: a.overlay, grid: a.grid });
+      reply = okImage(png, meta);
+    } catch (e) {
+      reply = fail(e);
+    }
+    traceToolCall("view_sheet", a, startedAt, reply);
+    return reply;
+  });
 }

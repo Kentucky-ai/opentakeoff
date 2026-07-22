@@ -27,9 +27,9 @@ No Node, no npm: download **`opentakeoff-mcp.mcpb`** from the
 double-click it — Claude Desktop installs the server with its dependencies
 bundled. Built by `npm run mcpb` and attached automatically to every `mcp-v*`
 release. The bundle is platform-neutral on purpose: it excludes the optional
-native canvas, so every tool and the text/metadata resources work everywhere,
-and the sheet-image resource says exactly what's missing where rendering isn't
-available.
+native canvas, so every JSON tool and the text/metadata resources work
+everywhere; the sheet-image resource and the `view_sheet` tool say exactly
+what's missing where rendering isn't available.
 
 
 The takeoff engine — One-Click Area, the scale model, conditions, totals — on
@@ -115,12 +115,15 @@ includes document text, shape vertices, or result payload content.
 | `export_takeoff` | The full `opentakeoff.takeoff_canvas.v1` payload — exactly what the app autosaves. Inline, and to disk with `path`. |
 | `delete_shape` | Remove a committed shape by id. |
 | `read_sheet_text` | Positioned page text (image px), optionally restricted to a region — title blocks, room labels, finish schedules. |
+| `view_sheet` | The agent's eyes: render the sheet (or an image-px crop) to PNG. `overlay` burns committed shapes in (solid = human-affirmed, dashed = unreviewed) to verify geometry landed; `grid` burns in a calibrated 1-ft/5-ft measuring grid with foot labels (`"auto"` from the set scale, or the drawing scale like `"1/4"`) so dimensions are counted off cells, not guessed. |
 
-Every tool declares an **`outputSchema`**, and every reply carries the payload
-as **`structuredContent`** — typed, machine-validated on every call — alongside
-the same compact JSON in a single text item for clients that predate structured
-output. Failures come back as `isError: true` with `{"error": "..."}` — never a
-dropped connection.
+Every JSON tool declares an **`outputSchema`**, and every reply carries the
+payload as **`structuredContent`** — typed, machine-validated on every call —
+alongside the same compact JSON in a single text item for clients that predate
+structured output. `view_sheet` is the one image tool: its reply is a PNG
+content item plus a JSON meta text item (image replies aren't structured
+output, so it declares no schema by design). Failures come back as
+`isError: true` with `{"error": "..."}` — never a dropped connection.
 
 ## Resources — browse before you measure
 

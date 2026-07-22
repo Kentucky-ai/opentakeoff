@@ -104,6 +104,7 @@ assert.deepEqual(names, [
   "set_scale",
   "sheet_info",
   "takeoff_summary",
+  "view_sheet",
 ]);
 
 child.stdin.end();

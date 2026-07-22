@@ -32,9 +32,11 @@ which is the MCP wire. `node --import tsx` is the whole invocation.
 
 ## What the agent gets
 
-Eleven tools: `load_plan`, `sheet_info`, `set_scale`, `one_click`, `detect_rooms`,
+Twelve tools: `load_plan`, `sheet_info`, `set_scale`, `one_click`, `detect_rooms`,
 `measure_polygon`, `measure_line`, `takeoff_summary`, `export_takeoff`,
-`delete_shape`, `read_sheet_text`. The full reference — including the
+`delete_shape`, `read_sheet_text`, `view_sheet` (render a sheet or crop to PNG
+with an optional calibrated measuring grid and committed-shapes overlay — the
+agent's eyes and its self-check). The full reference — including the
 coordinate contract (image px at render scale 2.0, origin top-left) and the
 scale-gate rules — is in [`mcp/README.md`](../mcp/README.md).
 
