@@ -29,9 +29,13 @@ export function createVoiceRecognizerClient(onStatus: (s: VoiceModelStatus) => v
     if (initInFlight) return initInFlight;
     initInFlight = (async () => {
       try {
-        // same-origin probe: distinguishes uninstalled from broken
+        // same-origin probe: distinguishes uninstalled from broken. SPA-
+        // fallback servers (vite dev, Netlify redirects) answer missing files
+        // with 200 + index.html — so a JSON-ish content-type is part of the
+        // check, not just res.ok.
         const probe = await fetch(PROBE_FILE, { method: "HEAD" });
-        if (!probe.ok) {
+        const ctype = probe.headers.get("content-type") ?? "";
+        if (!probe.ok || ctype.includes("text/html")) {
           onStatus({ phase: "uninstalled" });
           return false;
         }

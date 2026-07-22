@@ -42,5 +42,8 @@
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
+  # microphone=(self): push-to-talk dictation (RFC #59) — same-origin only,
+  # audio is processed on-device in a Worker and never leaves the browser.
+  # Everything else stays fully disabled.
+  Permissions-Policy: camera=(), microphone=(self), geolocation=(), interest-cohort=()
   Strict-Transport-Security: max-age=31536000
