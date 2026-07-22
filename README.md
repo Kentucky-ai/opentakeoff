@@ -15,7 +15,7 @@ open-source, and it runs in your browser — no account, no upload, no install.
 
 [**▶ Try the live demo**](https://opentakeoff.netlify.app) · [Quick start](#quick-start) · [Features](#features) · [For AI agents](mcp/) · [Deploy it](#run-it--deploy-it) · [Own your data](#own-your-data--the-capture-layer) · [Build on top](#build-on-top-of-it) · [Contributing](CONTRIBUTING.md)
 
-**New — July 2026:** **MCP server** — your AI agent can drive the takeoff engine (`npx opentakeoff-mcp`, on the [official MCP registry](mcp/)) — and **browse the plan set natively**: sheets, title-block text, and rendered pages as [MCP resources](mcp/#resources--browse-before-you-measure) (v0.2.0) · **Provenance** — every shape records how it was measured (its scale, one-click or hand-drawn, and person or agent) · One-Click Area traces **hatched rooms** and **scanned plans** · **Marked Set PDF export** — [full changelog](CHANGELOG.md)
+**New — July 2026:** **MCP server** — your AI agent can drive the takeoff engine (`npx opentakeoff-mcp`, on the [official MCP registry](mcp/)) — and **browse the plan set natively**: sheets, title-block text, and rendered pages as [MCP resources](mcp/#resources--browse-before-you-measure) (v0.2.0) · **Command box** — type `carpet one waste 7` and it runs through the same actions as the buttons; the wiring for push-to-talk voice takeoff ([RFC #59](https://github.com/Kentucky-ai/opentakeoff/issues/59)) · **Provenance** — every shape records how it was measured (its scale, one-click or hand-drawn, and person or agent) · One-Click Area traces **hatched rooms** and **scanned plans** · **Marked Set PDF export** — [full changelog](CHANGELOG.md)
 
 <br/>
 

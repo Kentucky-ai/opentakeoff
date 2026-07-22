@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-07-21 — the Command box (RFC #59, slices 1–2)
+
+### Added
+- **A Command box in the toolbar — type a takeoff command, and it runs through the exact actions the buttons run.** `carpet one waste 7` activates (or creates) CPT-1 and sets its waste; `waste 12` patches the active condition; `label Phase 2` arms a shape label, learning it into the vocabulary if it's new; `clear label` disarms; `note verify seam direction with GC` drops a text markup on the focused sheet and opens the Markups dock. The grammar is deterministic — a pure transcript→intent parser (`web/src/lib/voiceIntent.ts`) with Div-9 tag synonyms ("carpet one" → CPT-1), number words, decimal and percent forms, homophone handling ("waist seven"), and hard rejection of anything ambiguous: garbage never guesses, it explains itself in red. Every parsed intent routes through a pure dispatcher (`web/src/lib/voiceActions.ts`) over the same capability calls the UI's own controls make — **no voice-only mutation path exists**, proven two ways in tests: ordered call-log equality, and voice-driven state deep-equaling the equivalent UI-driven state across every grammar production. This is the wiring for RFC #59's push-to-talk dictation — the on-device recognizer slice will feed the same box. Both slices contributed by @karthikyeluripati.
+
 ## 2026-07-21 — opentakeoff-mcp 0.5.0
 
 ### Added
