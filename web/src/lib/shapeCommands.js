@@ -41,6 +41,13 @@
 //   replace   NO stamp, NO counted, inverse null (never recorded): the escape
 //             hatch for whole-array non-edits — hydrate, revision restore,
 //             rescale's computed re-price.
+//   review    the accept gate for machine proposals already IN the shapes
+//             array (an imported MCP takeoff, a binder run): each named shape
+//             still carrying origin.reviewed === false gets reviewed: true +
+//             accepted_ts — nothing else stamps (accepting is affirmation, not
+//             an edit; post-accept edits grade through geom/stampEdit as
+//             usual). Shapes not pending are untouched. `restore` puts the
+//             prior origin back verbatim — undo of an accept is un-accepting.
 // ─────────────────────────────────────────────────────────────────────────────
 import { mintUuid, nowIso, stampEdit } from "./provenance.js";
 import { assignShapeLabel } from "./shapeLabels.js";
@@ -52,6 +59,7 @@ export const PROVENANCE_POLICY = {
   label: "no stamp (documented non-edit)",
   delete: "no stamp; counted per origin.method unless noCount",
   replace: "no stamp, no counted, no undo entry (whole-array non-edit)",
+  review: "origin.reviewed → true + accepted_ts per still-pending shape; restore puts the prior origin back verbatim",
 };
 
 // Undo depth — one bounded gesture history, not an archive (revisions are).
@@ -242,6 +250,26 @@ export function applyShapeCommand(shapes, cmd) {
       // canvas clears both stacks alongside (a restored timeline starts fresh,
       // and a rescale invalidates every recorded `computed`).
       return { shapes: Array.isArray(cmd.shapes) ? cmd.shapes : [], inverse: null };
+    case "review": {
+      if (cmd.restore) {
+        // restore rows put the recorded origin back verbatim; the inverse is
+        // the same shape again — restore rows of the CURRENT origins, so
+        // redo-of-undo re-accepts (accepted_ts included) without re-stamping.
+        const byId = new Map(cmd.restore.map((r) => [r.id, r]));
+        const inverse = { type: "review", restore: shapes.filter((s) => byId.has(s.id)).map((s) => ({ id: s.id, origin: s.origin })) };
+        const next = shapes.map((s) => (byId.has(s.id) ? { ...s, origin: byId.get(s.id).origin } : s));
+        return { shapes: next, inverse };
+      }
+      const idSet = new Set(cmd.ids);
+      const ts = nowIso();
+      const restore = [];
+      const next = shapes.map((s) => {
+        if (!idSet.has(s.id) || s.origin?.reviewed !== false) return s;
+        restore.push({ id: s.id, origin: s.origin });
+        return { ...s, origin: { ...s.origin, reviewed: true, accepted_ts: ts } };
+      });
+      return { shapes: next, inverse: { type: "review", restore } };
+    }
   }
 }
 
