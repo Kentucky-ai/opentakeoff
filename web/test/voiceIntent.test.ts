@@ -132,6 +132,44 @@ const CASES: Case[] = [
   { name: "near-prefix rejects: cptx one", input: "cptx one", expect: no("unrecognized") },
   { name: "unmapped material rejects: granite one", input: "granite one", expect: no("unrecognized") },
   { name: "ambiguous bare vinyl rejects: vinyl one", input: "vinyl one", expect: no("unknown_tag") },
+
+  // 16. deixis (RFC #59 deixis slice) — utterance-terminal riders. Matrix:
+  // every token × (tag | bare | +waste | +label). Bare/tagless forms need
+  // ctx.hasActiveCondition; the parser marks THAT the speaker aimed, never where.
+  // tag × every token
+  { name: "deixis tag: cpt one this room", input: "cpt one this room", expect: ok({ kind: "trace_at_cursor", tag: "CPT-1", known: true }) },
+  { name: "deixis tag: carpet one here", input: "carpet one here", expect: ok({ kind: "trace_at_cursor", tag: "CPT-1", known: true }) },
+  { name: "deixis tag with comma: CPT-1, this one", input: "CPT-1, this one", expect: ok({ kind: "trace_at_cursor", tag: "CPT-1", known: true }) },
+  { name: "deixis tag create-offer: tile three right here", input: "tile three right here", expect: ok({ kind: "trace_at_cursor", tag: "CT-3", known: false }) },
+  // bare × every token (active condition present)
+  { name: "bare deixis: this room", input: "this room", ctx: { hasActiveCondition: true }, expect: ok({ kind: "trace_at_cursor" }) },
+  { name: "bare deixis: here", input: "here", ctx: { hasActiveCondition: true }, expect: ok({ kind: "trace_at_cursor" }) },
+  { name: "bare deixis: this one", input: "this one", ctx: { hasActiveCondition: true }, expect: ok({ kind: "trace_at_cursor" }) },
+  { name: "bare deixis: right here", input: "right here", ctx: { hasActiveCondition: true }, expect: ok({ kind: "trace_at_cursor" }) },
+  // +waste × every token
+  { name: "deixis+waste: carpet one waste seven this room", input: "carpet one waste seven this room", expect: ok({ kind: "trace_at_cursor", tag: "CPT-1", known: true, waste: 7 }) },
+  { name: "deixis+waste decimal: cpt one waste 7.5 here", input: "cpt one waste 7.5 here", expect: ok({ kind: "trace_at_cursor", tag: "CPT-1", known: true, waste: 7.5 }) },
+  { name: "deixis+waste rider, tagless: waste ten this one", input: "waste ten this one", ctx: { hasActiveCondition: true }, expect: ok({ kind: "trace_at_cursor", waste: 10 }) },
+  { name: "deixis+waste homophone+percent: cpt one waist twelve percent right here", input: "cpt one waist twelve percent right here", expect: ok({ kind: "trace_at_cursor", tag: "CPT-1", known: true, waste: 12 }) },
+  // +label × every token (known labels come back in vocabulary casing; unknown verbatim)
+  { name: "deixis+label known: carpet one label phase 1 this room", input: "carpet one label phase 1 this room", expect: ok({ kind: "trace_at_cursor", tag: "CPT-1", known: true, label: "Phase 1" }) },
+  { name: "deixis+label unknown: cpt one label East Mezzanine here", input: "cpt one label East Mezzanine here", expect: ok({ kind: "trace_at_cursor", tag: "CPT-1", known: true, label: "East Mezzanine" }) },
+  { name: "deixis+label rider, tagless: label Alternate this one", input: "label Alternate this one", ctx: { hasActiveCondition: true }, expect: ok({ kind: "trace_at_cursor", label: "Alternate" }) },
+  { name: "deixis full combo: carpet one waste seven label phase 1 right here", input: "carpet one waste seven label phase 1 right here", expect: ok({ kind: "trace_at_cursor", tag: "CPT-1", known: true, waste: 7, label: "Phase 1" }) },
+
+  // 17. deixis rejects — never a guess
+  { name: "bare deixis, no active condition: this room", input: "this room", expect: no("deixis_no_condition") },
+  { name: "bare deixis, no active condition: here", input: "here", expect: no("deixis_no_condition") },
+  { name: "tagless waste rider, no active condition: waste seven here", input: "waste seven here", expect: no("deixis_no_condition") },
+  { name: "deixis on note rejects: note check this one", input: "note check this one", expect: no("deixis_target") },
+  { name: "deixis on note rejects: note verify base here", input: "note verify base here", expect: no("deixis_target") },
+  { name: "deixis on clear label rejects: clear label here", input: "clear label here", expect: no("deixis_target") },
+  { name: "deixis on clear label rejects: clear label this room", input: "clear label this room", expect: no("deixis_target") },
+  { name: "deixis with numberless tag rejects: carpet this room", input: "carpet this room", expect: no("unknown_tag") },
+  { name: "deixis with prose head rejects: hello this room", input: "hello this room", expect: no("unrecognized") },
+  { name: "deixis keeps the ambiguity bar: carpet one seven this room", input: "carpet one seven this room", expect: no("trailing_words") },
+  { name: "deixis with numberless waste rejects: cpt one waste here", input: "cpt one waste here", expect: no("bad_number") },
+  { name: "deixis with empty label rejects: label here", input: "label here", expect: no("unrecognized") },
 ];
 
 for (const c of CASES)

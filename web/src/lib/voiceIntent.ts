@@ -12,6 +12,11 @@
 export type VoiceContext = {
   conditionTags: string[]; // live finish_tag values, e.g. ["CPT-1","VCT-1","P-2","C"]
   shapeLabels: string[];   // project label vocabulary (TakeoffCanvas shape_labels)
+  /** Is a condition active right now? Gates BARE deixis ("this room" alone):
+   *  with none active the parse rejects (deixis_no_condition) rather than let
+   *  the wiring guess. Optional so pre-deixis callers/tests are untouched;
+   *  absent reads as false. */
+  hasActiveCondition?: boolean;
 };
 
 export type Intent =
@@ -19,14 +24,21 @@ export type Intent =
   | { kind: "set_waste"; waste: number }
   | { kind: "set_label"; label: string; known: boolean }
   | { kind: "clear_label" }
-  | { kind: "add_note"; text: string };
+  | { kind: "add_note"; text: string }
+  // deixis (RFC #59 deixis slice): the utterance ended in "this room"/"here"/
+  // "this one"/"right here" — the speaker AIMED. The parser marks that they
+  // aimed, never where; seed resolution is the caps layer's job. No tag =
+  // bare deixis on the active condition (gated by ctx.hasActiveCondition).
+  | { kind: "trace_at_cursor"; tag?: string; known?: boolean; waste?: number; label?: string };
 
 export type RejectReason =
   | "empty"          // blank/whitespace transcript
   | "unrecognized"   // no production matched at all
   | "unknown_tag"    // tag-shaped lead but not in ctx and not a Div-9 pattern
   | "bad_number"     // waste keyword present but number missing/invalid/out of range
-  | "trailing_words"; // a production matched but tokens were left over
+  | "trailing_words" // a production matched but tokens were left over
+  | "deixis_no_condition" // bare deixis ("this room" alone) with no active condition
+  | "deixis_target"; // deixis riding note/clear-label — nothing to aim at
 
 export type VoiceParse =
   | { ok: true; intent: Intent }
@@ -58,6 +70,15 @@ const SYNONYM_PHRASES: [string[], string][] = [
   [["ceramic"], "CT"],
   [["base"], "RB"],
   [["transition"], "TR"],
+];
+
+// Deixis riders (RFC #59 deixis slice): utterance-TERMINAL only — "carpet
+// one, this room". Longest first so "right here" strips whole, not as "here".
+const DEIXIS_PHRASES: string[][] = [
+  ["this", "room"],
+  ["this", "one"],
+  ["right", "here"],
+  ["here"],
 ];
 
 const UNITS: Record<string, number> = {
@@ -283,12 +304,80 @@ function rawRemainder(transcript: string, keyword: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// deixis
+
+// Strip ONE terminal deixis phrase off the normalized tokens; null when the
+// utterance doesn't end in one (the non-deixis grammar then runs untouched).
+function takeTerminalDeixis(tokens: string[]): string[] | null {
+  for (const phrase of DEIXIS_PHRASES) {
+    const start = tokens.length - phrase.length;
+    if (start >= 0 && phrase.every((w, k) => tokens[start + k] === w))
+      return tokens.slice(0, start);
+  }
+  return null;
+}
+
+// Raw-transcript twin of takeTerminalDeixis, for label free text: drop the
+// terminal deixis phrase (and punctuation around it) from the RAW transcript
+// so "label East Wing, this room" labels "East Wing", verbatim casing intact.
+function stripTerminalDeixisRaw(transcript: string): string {
+  return transcript.replace(/[\s,.;:!–—-]*\b(?:this\s+room|this\s+one|right\s+here|here)\b[\s,.;:!?–—-]*$/i, "");
+}
+
+// [tag] [waste <n>] [label <text>] <deixis> — the aimed-trace production.
+// Riders mirror the main grammar exactly (same takeTag/takeWasteValue, same
+// raw-text label rule, keyword-first so a leading waste/label is a rider and
+// never a tag candidate). Tagless forms arm nothing themselves, so they need
+// a live active condition — absent one the parse rejects loudly, per the
+// never-a-guess bar.
+function parseDeixisUtterance(transcript: string, head: string[], ctx: VoiceContext): VoiceParse {
+  let i = 0;
+  let tag: { tag: string; known: boolean; next: number } | null = null;
+  if (head.length > 0 && head[0] !== "waste" && head[0] !== "label") {
+    tag = takeTag(head, 0, ctx);
+    if (tag) i = tag.next;
+  }
+  let waste: number | undefined;
+  if (head[i] === "waste") {
+    const w = takeWasteValue(head, i + 1);
+    if (w === null) return { ok: false, reason: "bad_number" };
+    waste = w.value;
+    i = w.next;
+  }
+  let label: string | undefined;
+  if (head[i] === "label") {
+    const m = /\blabel\b[:,]?\s*(.+)$/i.exec(stripTerminalDeixisRaw(transcript));
+    const text = m ? m[1].trim().replace(/[\s,;:–—-]+$/, "") : "";
+    if (!text) return { ok: false, reason: "unrecognized" };
+    const hit = ctx.shapeLabels.find((l) => l.toLowerCase() === text.toLowerCase());
+    label = hit ?? text;
+    i = head.length; // label free text consumes the rest of the head
+  }
+  if (i !== head.length)
+    return i === 0
+      ? { ok: false, reason: couldBeTagLead(head, ctx) ? "unknown_tag" : "unrecognized" }
+      : { ok: false, reason: "trailing_words" };
+  if (!tag && !ctx.hasActiveCondition) return { ok: false, reason: "deixis_no_condition" };
+  return {
+    ok: true,
+    intent: {
+      kind: "trace_at_cursor",
+      ...(tag ? { tag: tag.tag, known: tag.known } : {}),
+      ...(waste !== undefined ? { waste } : {}),
+      ...(label !== undefined ? { label } : {}),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // dispatch
 
 /**
  * Parse one push-to-talk transcript into one intent, or a typed rejection.
  * Grammar (keyword-first):
  *   clear label | label <text> | note <text> | waste <n> | <tag> [waste <n>]
+ *   | [tag] [waste <n>] [label <text>] <deixis>   (deixis = utterance-terminal
+ *     "this room" / "here" / "this one" / "right here" → trace_at_cursor)
  * Anything else — including a matched production with leftover tokens —
  * rejects. Never guesses.
  */
@@ -296,6 +385,18 @@ export function parseVoiceIntent(transcript: string, ctx: VoiceContext): VoicePa
   if (!transcript || !transcript.trim()) return { ok: false, reason: "empty" };
   const tokens = normalizeTokens(transcript);
   if (tokens.length === 0) return { ok: false, reason: "empty" };
+
+  // deixis production, checked BEFORE the keyword dispatch: an utterance
+  // ENDING in a deixis token is an aimed trace. On note/clear-label there is
+  // nothing to aim at, and a prose "here" is indistinguishable from an aimed
+  // one — reject loudly, never guess. Utterances without a deixis tail fall
+  // through to the existing productions unchanged.
+  const head = takeTerminalDeixis(tokens);
+  if (head !== null) {
+    if (head[0] === "note" || (head[0] === "clear" && head[1] === "label"))
+      return { ok: false, reason: "deixis_target" };
+    return parseDeixisUtterance(transcript, head, ctx);
+  }
 
   // clear label
   if (tokens[0] === "clear" && tokens[1] === "label") {
