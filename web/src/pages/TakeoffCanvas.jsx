@@ -479,7 +479,9 @@ export default function TakeoffCanvas() {
   const editingRef = useRef(false);    // true while the inline text editor is open — read in moveCrosshair/onPointerDown/wheel (a REF, never per-mousemove state) to suppress the crosshair and freeze pan/zoom
   const editorRef = useRef(null);      // mirror of the open editor object, so finishEditor can commit without a stale-closure race
   const editorInputRef = useRef(null); // the live <input> element (uncontrolled — value read on commit)
-  const lastPtrRef = useRef(null);     // last pointer CLIENT coords — paste targets the sheet under the cursor
+  const lastPtrRef = useRef(null);     // last pointer CLIENT coords — paste targets the sheet under the cursor; ALSO the voice-deixis aim (getAimSeed) — the one pointer tracker
+  const aimSeqRef = useRef(0);         // bumps with every lastPtrRef write — the deixis freshness clock (no second tracker, just a tick on the existing one)
+  const voiceAimMarkRef = useRef(0);   // aim is LIVE for deixis only while aimSeq > this; re-marked at utterance begin (Command box focus / every run) and on canvas-leave + tab-hide, so a parked-off-canvas or refocus ghost seed can never place a trace
   const pendingClickRef = useRef(null); // deferred draw click {p,cx,cy} — drag >5px converts to a pan
   const hoverRef = useRef(null);        // hover tooltip div (DOM-direct like the crosshair)
   const hoverIdRef = useRef("");        // shape id currently described by the tooltip
@@ -1058,6 +1060,14 @@ export default function TakeoffCanvas() {
   useEffect(() => { viewRef.current = view; }, [view]);
   useEffect(() => { toolRef.current = tool; }, [tool]);
   useEffect(() => { proposalRef.current = proposal; }, [proposal]);
+  // Tab hidden ⇒ the voice-deixis aim dies: on return the tracked position
+  // predates the refocus (rAF suspended, the pointer may be anywhere), so
+  // "this room" must wait for a fresh move — the stale-aim bar (RFC #59).
+  useEffect(() => {
+    const onVis = () => { if (document.visibilityState === "hidden") voiceAimMarkRef.current = aimSeqRef.current; };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
 
   // one pdf.js document per file, cached for the life of the project view —
   // the canvas render AND the gallery thumbnails share this cache
@@ -2237,6 +2247,14 @@ export default function TakeoffCanvas() {
     hoverIdRef.current = "";
     angleRef.current = null;
   }
+  // Pointer left the canvas: hide the aim chrome AND kill the voice-deixis aim —
+  // a pointer parked off-canvas must not leave a ghost seed for "this room".
+  // (Other hideCrosshair callers — e.g. the inline editor — keep the aim: the
+  // pointer is still parked on the sheet there.)
+  function leaveCanvas() {
+    hideCrosshair();
+    voiceAimMarkRef.current = aimSeqRef.current;
+  }
   function describeShape(s) {
     const tag = condById[s.condition_id]?.finish_tag || "?";
     const a = s.computed?.area_sf || 0, lf = s.computed?.perimeter_lf || 0;
@@ -2273,6 +2291,7 @@ export default function TakeoffCanvas() {
   }
   function onPointerMove(e) {
     lastPtrRef.current = [e.clientX, e.clientY];   // paste targets the sheet under the cursor
+    aimSeqRef.current++;                           // deixis freshness tick — see getAimSeed
     if (hlRef.current) {
       // paint: distance-thin at capture, live preview via DOM (no React render per move)
       const st = hlRef.current;
@@ -2698,24 +2717,48 @@ export default function TakeoffCanvas() {
     }
     return pr;
   }
-  // The propose tail, shared by the vector and raster paths. Raster differences:
-  // a looser RDP eps (scan contours wobble) and NO vertex snapping — there are
-  // no true endpoints on a scan, and pulling room corners onto the title-block's
-  // vector corners would corrupt the ring. Duplicate/carve checks run inside a
-  // FUNCTIONAL setProposal so a click racing the first raster render can't
-  // clobber state.
-  function proposeRegion(f, tp, local, negative, raster) {
+  // Build one one-click region from a flood result — the trace/snap/metrics
+  // core shared VERBATIM by the stage path (proposeRegion) and the voice-deixis
+  // direct-commit path (settleRegion), so an aimed utterance and an aimed click
+  // can never trace differently. Raster differences: a looser RDP eps (scan
+  // contours wobble) and NO vertex snapping — there are no true endpoints on a
+  // scan, and pulling room corners onto the title-block's vector corners would
+  // corrupt the ring. null = no scale, or the ring collapsed (too tiny/thin).
+  function buildOneClickRegion(f, tp, local, negative, raster) {
     const upp = uppFor(tp.key);
-    if (!upp) return;
+    if (!upp) return null;
     let ring;
     if (raster) ring = traceRegion(f, RASTER_RDP_EPS);
     else {
       const grid = snapGridsRef.current.get(tp.key);
       ring = snapVertices(traceRegion(f), (x, y, d) => (grid ? nearestSnap(grid, x, y, d) : null), 7);
     }
-    if (ring.length < 3) { setCommitMsg("Couldn't trace that space — trace it with Area (A)."); return; }
-    const area_sf = +(ringArea(ring) * upp * upp).toFixed(2);
-    const perim_lf = +(closedMetrics(ring).perim * upp).toFixed(2);
+    if (ring.length < 3) return null;
+    // poly0 freezes the MACHINE trace (post-snap, pre-handle-edit) so a
+    // corrected region can still report what the fill proposed; sens rides
+    // only when the estimator moved the knob off Balanced (vector path
+    // only — the raster mask is single-tier, sensitivity is inert there).
+    return {
+      kind: negative ? "neg" : "pos",
+      seed: local,
+      poly: ring,
+      poly0: ring.map(([x, y]) => [x, y]),
+      ...(!raster && fillSens !== SENS_BALANCED ? { sens: fillSens } : {}),
+      area_sf: +(ringArea(ring) * upp * upp).toFixed(2),
+      perim_lf: +(closedMetrics(ring).perim * upp).toFixed(2),
+      hf: !!f.hatchFiltered,
+      rt: !!raster,
+    };
+  }
+  // The propose tail (physical clicks): stage the region for the Create (⏎)
+  // gate. Duplicate/carve checks run inside a FUNCTIONAL setProposal so a
+  // click racing the first raster render can't clobber state.
+  function proposeRegion(f, tp, local, negative, raster) {
+    const region = buildOneClickRegion(f, tp, local, negative, raster);
+    if (!region) {
+      if (uppFor(tp.key)) setCommitMsg("Couldn't trace that space — trace it with Area (A).");
+      return;
+    }
     // Decide accept/dup/carve-reject INSIDE the functional updater, against
     // its own authoritative `prev` — not proposalRef, which only catches up
     // on the next render's passive-effect flush (a macrotask). proposeRegion
@@ -2752,8 +2795,7 @@ export default function TakeoffCanvas() {
     flushSync(() => {
       setProposal((prev) => {
         const rs = prev && prev.key === tp.key ? prev.regions : [];
-        const kind = negative ? "neg" : "pos";
-        if (rs.some((r) => r.kind === kind && pointInPoly(local[0], local[1], r.poly))) {
+        if (rs.some((r) => r.kind === region.kind && pointInPoly(local[0], local[1], r.poly))) {
           outcome = "dup";
           return prev;
         }
@@ -2762,23 +2804,35 @@ export default function TakeoffCanvas() {
           return prev;
         }
         outcome = "added";
-        // poly0 freezes the MACHINE trace (post-snap, pre-handle-edit) so a
-        // corrected region can still report what the fill proposed; sens rides
-        // only when the estimator moved the knob off Balanced (vector path
-        // only — the raster mask is single-tier, sensitivity is inert there).
-        return { key: tp.key, regions: [...rs, { kind, seed: local, poly: ring, poly0: ring.map(([x, y]) => [x, y]), ...(!raster && fillSens !== SENS_BALANCED ? { sens: fillSens } : {}), area_sf, perim_lf, hf: !!f.hatchFiltered, rt: !!raster }] };
+        return { key: tp.key, regions: [...rs, region] };
       });
     });
     if (outcome === "dup") setCommitMsg(negative ? "That cutout is already carved." : "Already selected — ⌥-click carves an enclosed cutout; ⏎ creates.");
     else if (outcome === "needsPos") setCommitMsg("⌥-click carves an enclosed area INSIDE the selection (a column or shaft) — click its room first.");
     else setCommitMsg("");
   }
-  async function oneClickAt(p, negative) {
+  // `direct` (voice deixis, RFC #59): { conditionId, label } — the human aimed
+  // the crosshair, so the flood COMMITS in one step through settleRegion →
+  // commitOneClickRegions (the same gate ⏎ drives) instead of staging a
+  // proposal, and every exit returns { ok, message } so the voice outcome can
+  // speak it — a deixis trace never no-ops silently. The condition rides BY
+  // VALUE because the utterance armed it in this same handler (the activeCond
+  // closure is a render behind). Click callers ignore the return value; their
+  // message surface stays setCommitMsg, unchanged.
+  async function oneClickAt(p, negative, direct) {
+    const say = (message) => { setCommitMsg(message); return { ok: false, message }; };
     const tp = panelAt(p[0]);
     const upp = uppFor(tp.key);
-    if (!upp) { setCommitMsg(`Set the scale for ${labelFor(tp)} first.`); return; }
-    if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
-    if (proposal && proposal.key !== tp.key) { setCommitMsg(`Finish the selection on ${labelFor(panelByKey(proposal.key))} first — ⏎ creates it, Esc discards.`); return; }
+    if (!upp) return say(`Set the scale for ${labelFor(tp)} first.`);
+    if (!(direct ? direct.conditionId : activeCond)) return say("Pick or add a condition first.");
+    // a click may EXTEND a same-sheet proposal; voice deixis commits whole and
+    // must never swallow a selection the human is still reviewing — ANY pending
+    // proposal rejects the utterance
+    if (proposal && (direct || proposal.key !== tp.key)) {
+      return say(direct
+        ? "Finish the pending one-click selection first — ⏎ creates it, Esc discards."
+        : `Finish the selection on ${labelFor(panelByKey(proposal.key))} first — ⏎ creates it, Esc discards.`);
+    }
     const local = [p[0] - tp.xOffset, p[1]];
     // Trigger policy: vector is exact and always wins where it works — including
     // the fork's hatch escalation (fillSens), which runs untouched here. The
@@ -2791,22 +2845,26 @@ export default function TakeoffCanvas() {
     const vectorViable = !!stats && stats.segCount >= RASTER_MIN_SEGS;
     if (!rasterEligible || vectorViable) {
       const mo = ensureMask(tp.key);
-      if (!mo && !rasterEligible) { setCommitMsg("Still reading this sheet's linework — try again in a second."); return; }
+      if (!mo && !rasterEligible) return say("Still reading this sheet's linework — try again in a second.");
       if (mo) {
         const f = floodRegion(mo, local[0], local[1], fillSens);
-        if (f.status === "ok") { proposeRegion(f, tp, local, negative, false); return; }
+        if (f.status === "ok") return settleRegion(f, tp, local, negative, false, direct);
         if (!rasterEligible) {
-          setCommitMsg(f.status === "leak"
+          return say(f.status === "leak"
             ? "That space isn't enclosed on the plan linework — the fill spilled. Click a more enclosed spot, or trace it with Area (A)."
             : "Landed in dense linework (hatching/text). Zoom in and click an open spot, or trace it with Area (A).");
-          return;
         }
       }
     }
     setCommitMsg("Reading the scan…");
     const seq = renderSeqRef.current;
     const rmo = await ensureRasterMask(tp.key);
-    if (seq !== renderSeqRef.current) { setCommitMsg(""); return; }   // sheet group changed mid-render — the new sheet must not be left showing a stale "Reading the scan…" ("…" messages never auto-expire, see commitMsg's 6s-timer effect
+    if (seq !== renderSeqRef.current) {   // sheet group changed mid-render — the new sheet must not be left showing a stale "Reading the scan…" ("…" messages never auto-expire, see commitMsg's 6s-timer effect
+      setCommitMsg("");
+      return direct
+        ? say("Couldn't place that — the sheet changed while reading the scan. Say it again.")
+        : { ok: false, message: "" };
+    }
     // The raster render can take real time on a large scan; the user may have
     // switched tools or started a DIFFERENT panel's proposal while it was in
     // flight. renderSeq alone only catches a sheet-GROUP change — re-validate
@@ -2814,40 +2872,74 @@ export default function TakeoffCanvas() {
     // `proposal` — this is an async continuation resuming after other renders)
     // so a late raster result can never silently replace another panel's
     // in-progress proposal or paint a ghost selection in the wrong tool.
-    if (toolRef.current !== "oneclick" || (proposalRef.current && proposalRef.current.key !== tp.key)) { setCommitMsg(""); return; }
-    if (!rmo) { setCommitMsg("Couldn't read this scan — trace it with Area (A)."); return; }
+    // Voice (direct) is modeless — no tool check — but a proposal appearing
+    // mid-await means the human started clicking; the utterance yields loudly
+    // rather than race the hand.
+    if (direct ? proposalRef.current : (toolRef.current !== "oneclick" || (proposalRef.current && proposalRef.current.key !== tp.key))) {
+      setCommitMsg("");
+      return direct
+        ? say("Couldn't place that — a one-click selection started while reading the scan. Finish it (⏎/Esc), then say it again.")
+        : { ok: false, message: "" };
+    }
+    if (!rmo) return say("Couldn't read this scan — trace it with Area (A).");
     // The raster mask is single-tier (softCount 0), so floodRegion's hatch
     // escalation — and with it the Fill sensitivity knob — is structurally
     // inert on scans; no sensitivity is passed.
     const f = floodRegion(rmo, local[0], local[1]);
     if (f.status !== "ok") {
-      setCommitMsg(f.status === "leak"
+      return say(f.status === "leak"
         ? "That space isn't enclosed on the scan — the fill escaped through a gap (faded line or open doorway). Click a more enclosed spot, or trace it with Area (A)."
         : "Landed on dense scan ink (text or hatching). Zoom in and click an open spot, or trace it with Area (A).");
-      return;
     }
-    proposeRegion(f, tp, local, negative, true);
+    return settleRegion(f, tp, local, negative, true, direct);
   }
-  function createProposal() {
-    if (!proposal || !proposal.regions.length) return;
-    const tp = panelByKey(proposal.key);
-    const made = proposal.regions.map((r) => ({
-      sheet_id: tp.key, condition_id: activeCond,
+  // After a successful flood: a physical click STAGES the region for the
+  // ⏎/dblclick Create gate; a voice-deixis trace (direct) COMMITS it now —
+  // same builder, same commit gate, no preview-then-Enter. The spoken
+  // imperative IS the confirmation (RFC #59 who-aimed-it rule).
+  function settleRegion(f, tp, local, negative, raster, direct) {
+    if (!direct) { proposeRegion(f, tp, local, negative, raster); return { ok: true, message: "" }; }
+    const region = buildOneClickRegion(f, tp, local, negative, raster);
+    if (!region) return { ok: false, message: "Couldn't trace that space — trace it with Area (A)." };
+    return commitOneClickRegions({ key: tp.key, regions: [region] }, direct);
+  }
+  // The ONE commit gate for one-click regions — the ⏎/dblclick Create AND a
+  // voice-deixis trace both land here, so human-aimed work gets exactly one
+  // origin shape (one_click_v1, reviewed) and one undo path. `direct` (voice)
+  // pins { conditionId, label } from the utterance BY VALUE — the arming
+  // setState hasn't rendered, so the activeCond/activeLabel closures are one
+  // render behind (the updateCondition-by-id precedent in voiceActions).
+  function commitOneClickRegions(prop, direct) {
+    const tp = panelByKey(prop.key);
+    const condId = direct ? direct.conditionId : activeCond;
+    const label = direct && direct.label !== undefined ? direct.label : (activeLabel || undefined);
+    const made = prop.regions.map((r) => ({
+      sheet_id: tp.key, condition_id: condId,
       measure_role: r.kind === "neg" ? "deduct" : "floor_area",
       verts_norm: r.poly.map(([x, y]) => [x / tp.img.w, y / tp.img.h]),
       computed: { area_sf: r.area_sf, perimeter_lf: r.perim_lf },
-      ...(activeLabel ? { label: activeLabel } : {}),
+      ...(label ? { label } : {}),
       // the provenance receipt: machine-proposed, human-reviewed at the Create
-      // gate. A handle-corrected region (touched) records the machine's frozen
-      // trace (poly0) as proposed_verts_norm — the one-click correction pair;
-      // an untouched region's verts ARE the proposal, so nothing extra rides.
-      // Post-Create edits are stamped by stampEdit, which freezes the same
-      // field from the pre-edit ring only when Create didn't already.
+      // gate (voice deixis: the spoken imperative is the review). A handle-
+      // corrected region (touched) records the machine's frozen trace (poly0)
+      // as proposed_verts_norm — the one-click correction pair; an untouched
+      // region's verts ARE the proposal, so nothing extra rides. Post-Create
+      // edits are stamped by stampEdit, which freezes the same field from the
+      // pre-edit ring only when Create didn't already.
       origin: { method: "one_click_v1", seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, ...(r.hf ? { hatch_filtered: true } : {}), ...(r.rt ? { raster_traced: true } : {}), ...(r.sens != null ? { fill_sensitivity: r.sens } : {}), ...(r.touched ? { edited_before_create: true, proposed_verts_norm: r.poly0.map(([x, y]) => [x / tp.img.w, y / tp.img.h]) } : {}) },
     }));
-    dispatchShape({ type: "add", shapes: made });   // Create is the creation gate — id/created_at minted by the command
-    const sf = proposal.regions.reduce((n, r) => n + (r.kind === "neg" ? -r.area_sf : r.area_sf), 0);
-    setCommitMsg(`Created ${made.length} takeoff${made.length === 1 ? "" : "s"} — ${fa(sf)} ${condById[activeCond]?.finish_tag || ""}. Click the next room.`);
+    dispatchShape({ type: "add", shapes: made });   // the creation gate — id/created_at minted by the command
+    const sf = prop.regions.reduce((n, r) => n + (r.kind === "neg" ? -r.area_sf : r.area_sf), 0);
+    // condById is a render closure — a condition minted THIS utterance is only
+    // in the live mirror, so fall through to it for the tag
+    const tag = (condById[condId] || agentStateRef.current.conditions.find((c) => c.id === condId))?.finish_tag || "";
+    const message = `Created ${made.length} takeoff${made.length === 1 ? "" : "s"} — ${fa(sf)} ${tag}. Click the next room.`;
+    setCommitMsg(message);
+    return { ok: true, message };
+  }
+  function createProposal() {
+    if (!proposal || !proposal.regions.length) return;
+    commitOneClickRegions(proposal);
     setProposal(null);
   }
 
@@ -3639,12 +3731,49 @@ export default function TakeoffCanvas() {
     };
   }
 
+  // Voice deixis (RFC #59 deixis slice): "carpet one, this room" — the
+  // utterance carries WHAT, the crosshair carries WHERE. getAimSeed resolves
+  // the existing pointer tracker (lastPtrRef — the same positions the
+  // moveCrosshair aim renders from; no second tracker) into a sheet-local
+  // seed. null = the aim isn't LIVE: nothing tracked since the utterance
+  // began — Command box focus / the previous run — or since the pointer left
+  // the canvas or the tab hid (voiceAimMarkRef). sheetId "" = live aim that
+  // isn't over a sheet. Both become loud rejects in the dispatcher, checked
+  // before any state moves. The seed is the RAW cursor, not the snap/angle-
+  // adjusted point: a flood seed targets a room's interior, where snap pull
+  // toward a wall endpoint could only hurt — and matches a mid-room click,
+  // which never snaps either.
+  function getAimSeed() {
+    if (status !== "ready" || !lastPtrRef.current) return null;
+    if (aimSeqRef.current <= voiceAimMarkRef.current) return null;   // stale — no pointer update since the utterance began / last invalidation
+    const p = toImage(lastPtrRef.current[0], lastPtrRef.current[1]);
+    const tp = panelAt(p[0]);
+    const x = p[0] - tp.xOffset, y = p[1];
+    if (!tp.img.w || x < 0 || y < 0 || x >= tp.img.w || y >= tp.img.h) return { x, y, sheetId: "" };
+    return { x, y, sheetId: tp.key };
+  }
+  // The who-aimed-it rule: the human put the crosshair there, so the trace
+  // runs the SAME oneClickAt flood a physical click runs and commits DIRECT
+  // as human work (one_click_v1 origin, same undo) — one utterance, no
+  // preview-then-⏎, and NEVER an agentProposals row (that gate is for agent-
+  // INFERRED placement; the line is aim). conditionId/label ride explicitly:
+  // the utterance armed them in this same handler, so the render closures are
+  // stale. Failures wrap into the commitMsg bar's "Couldn't" convention.
+  async function voiceTraceAt(seed, conditionId, label) {
+    const tp = panelByKey(seed.sheetId);
+    if (!tp || tp.key !== seed.sheetId || !tp.img.w) return { ok: false, message: "Couldn't place that — aim at a sheet." };
+    const out = await oneClickAt([seed.x + tp.xOffset, seed.y], false, { conditionId, label });
+    if (out.ok) return out;
+    const m = out.message || "Couldn't place that — the view changed mid-trace. Say it again.";
+    return { ok: false, message: /^couldn'?t/i.test(m) ? m : `Couldn't place that — ${m.charAt(0).toLowerCase()}${m.slice(1)}` };
+  }
   // Voice-command capabilities (RFC #59 slice 2) — every entry binds an action
   // the UI already exposes; the dispatcher (voiceActions.ts) never touches
   // state directly. getConditions reads the live mirror (mintCondition updates
   // it mid-handler); the rest are safe render closures because the voice path
-  // is fully synchronous, unlike the agent loop. Programmatic activation
-  // passes {reassign:false} — same policy as hotkeys and Library Apply.
+  // is synchronous up to traceAt, whose async continuation carries its state
+  // by value/ref instead. Programmatic activation passes {reassign:false} —
+  // same policy as hotkeys and Library Apply.
   function buildVoiceCtx() {
     return {
       getConditions: () => agentStateRef.current.conditions.map((c) => ({ id: c.id, finish_tag: c.finish_tag })),
@@ -3659,12 +3788,20 @@ export default function TakeoffCanvas() {
       // and addMarkup auto-opens the Markups dock, so the note is immediately
       // visible and draggable — the anchor is a starting point, not a commitment
       addNote: (text) => addMarkup({ type: "text", at: [0.5, 0.06], text }, focusPanel.key),
+      getAimSeed,
+      traceAt: (seed, conditionId, label) => voiceTraceAt(seed, conditionId, label),
     };
   }
   const onVoiceCommand = (text) => {
     const out = runVoiceCommand(buildVoiceCtx(), text);
-    setCommitMsg(out.message);
-    return out.ok;
+    // every run consumes the aim (the seed was already read synchronously):
+    // repeating "this room" without a fresh pointer move is a stale-aim
+    // reject, never a silent double-commit of the same room
+    voiceAimMarkRef.current = aimSeqRef.current;
+    const finish = (o) => { setCommitMsg(o.message); return o.ok; };
+    // deixis traces can resolve async (raster flood awaits a render) — the
+    // outcome message lands when it lands; everything else stays synchronous
+    return typeof out?.then === "function" ? out.then(finish) : finish(out);
   };
 
   // ── the accept gate ─────────────────────────────────────────────────────────
@@ -4723,16 +4860,21 @@ export default function TakeoffCanvas() {
         )}
         {/* Typed voice command (RFC #59 slice 2): the same grammar push-to-talk
             will feed — a keyboard command line meanwhile, and the accessibility
-            path. Focus suppresses canvas shortcuts via the existing INPUT guards. */}
+            path. Focus suppresses canvas shortcuts via the existing INPUT guards.
+            Deixis: focus marks the utterance's start — "this room" then needs an
+            aim placed AFTER it (park the pointer on the room, type, Enter). */}
         {cluster("Command",
           <input
             type="text"
-            placeholder="cpt 1 · waste 7 · label · note"
-            title={'Command line (RFC #59): a condition tag ("CPT-1", "carpet one", "tile 2 waste 5"), "waste 7", "label Phase 1", "clear label", or "note …" — Enter runs it through the same actions the buttons use. Push-to-talk dictation will feed this box.'}
+            placeholder="cpt 1 · waste 7 · this room"
+            title={'Command line (RFC #59): a condition tag ("CPT-1", "carpet one", "tile 2 waste 5"), "waste 7", "label Phase 1", "clear label", or "note …" — Enter runs it through the same actions the buttons use. End with "this room" / "here" while the pointer rests on a room to trace and commit it there ("carpet one, this room"). Push-to-talk dictation will feed this box.'}
+            onFocus={() => { voiceAimMarkRef.current = aimSeqRef.current; }}
             onKeyDown={(e) => {
               if (e.key !== "Enter") return;
               const v = e.currentTarget.value.trim();
-              if (v && onVoiceCommand(v)) e.currentTarget.value = "";
+              if (!v) return;
+              const el = e.currentTarget;   // capture: currentTarget nulls after dispatch, and deixis outcomes can resolve async (raster)
+              Promise.resolve(onVoiceCommand(v)).then((ok) => { if (ok) el.value = ""; });
             }}
             style={{ fontFamily: "var(--f-mono)", fontSize: 11.5, padding: "5px 6px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", width: 150 }}
           />
@@ -5073,7 +5215,7 @@ export default function TakeoffCanvas() {
        )}
        <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
         <div ref={containerRef} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
-          onPointerCancel={onPointerUp} onPointerLeave={hideCrosshair} onContextMenu={(e) => e.preventDefault()}
+          onPointerCancel={onPointerUp} onPointerLeave={leaveCanvas} onContextMenu={(e) => e.preventDefault()}
           onDoubleClick={(e) => { if (tool === "oneclick") { if (proposal?.regions.length) createProposal(); } else if (tool === "area" || tool === "deduct" || tool === "linear" || tool === "curve" || tool === "surface" || tool === "zone") finishShape(); else if (tool === "select") editMarkupAt(e); }}
           style={{ position: "absolute", inset: 0, background: darkMode ? "#0b0e14" : "var(--paper-cream)", cursor: tool === "pan" ? "grab" : tool === "select" ? "default" : "none", touchAction: "none" }}>
           {/* aim crosshair (draw modes): the OS cursor is hidden on the canvas — the
