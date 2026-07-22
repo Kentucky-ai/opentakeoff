@@ -1,8 +1,12 @@
 name: Publish to MCP Registry
 
-# Registry-only release automation. The npm artifact is published manually
-# (hardware-key 2FA) BEFORE the tag is pushed — this workflow refuses to run
-# ahead of it. workflow_dispatch exercises OIDC login without publishing.
+# Full release automation via trusted publishing (adopted 2026-07-21, decision
+# doc in the maintainer binder): pushing an mcp-v* tag publishes the npm
+# artifact (OIDC, provenance attested — no token exists anywhere), then the
+# MCP registry entry, the GitHub release, and the MCPB bundle. The `release`
+# environment pauses every run for the maintainer's approval, so a human
+# decision still gates each publish. workflow_dispatch exercises OIDC login
+# without publishing.
 #
 # MCP releases live in the mcp-v* tag namespace: bare v* tags are app
 # releases (v0.2.0, v0.3.0 already exist), so the server versions its tags
@@ -14,12 +18,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write # OIDC token for mcp-publisher login github-oidc
+  id-token: write # OIDC token for npm trusted publishing + mcp-publisher login github-oidc
   contents: write # tag checkout + GitHub release creation
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: release # required reviewer holds the run until approved
     defaults:
       run:
         working-directory: mcp
@@ -44,14 +49,31 @@ jobs:
             fi
           fi
 
-      - name: Require the npm artifact to exist
+      - uses: actions/setup-node@v4
+        if: github.ref_type == 'tag'
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            mcp/package-lock.json
+
+      - name: Install the engine's dependencies (mcp imports web/src/lib)
+        if: github.ref_type == 'tag'
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+
+      - name: Publish to npm (trusted publishing, provenance attested)
         if: github.ref_type == 'tag'
         run: |
           VERSION=$(jq -r .version package.json)
-          if ! npm view "opentakeoff-mcp@${VERSION}" version; then
-            echo "::error::opentakeoff-mcp@${VERSION} is not on npm — npm publish (hardware key) comes before the tag push"
-            exit 1
+          if npm view "opentakeoff-mcp@${VERSION}" version 2>/dev/null; then
+            echo "opentakeoff-mcp@${VERSION} is already on npm — skipping publish (idempotent re-run)"
+            exit 0
           fi
+          npm ci --no-audit --no-fund
+          # prepublishOnly runs the full gate (typecheck + tests + build) before anything ships
+          npm publish --provenance --access public
 
       - name: Install mcp-publisher
         run: |
