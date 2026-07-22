@@ -185,7 +185,7 @@ OpenTakeoff can ask a vision model **you** provide to read things off the plan �
 
 ## Use it from an AI agent
 
-The same engine speaks [MCP](https://modelcontextprotocol.io): [`mcp/`](mcp/README.md) is a stdio server your MCP client can drive, one command away — `npx -y opentakeoff-mcp` — with `load_plan`, `read_sheet_text`, `set_scale`, `one_click`, `takeoff_summary`, `export_takeoff` and friends. An agent opens a plan, reads the title block, adopts the scale (never applied silently), clicks the rooms, and exports the exact payload the app autosaves — same math, same provenance receipts, same scale gate. Setup and a full example transcript: [`docs/MCP.md`](docs/MCP.md).
+The same engine speaks [MCP](https://modelcontextprotocol.io): [`mcp/`](mcp/README.md) is a stdio server your MCP client can drive, one command away — `npx -y opentakeoff-mcp` — with `load_plan`, `read_sheet_text`, `set_scale`, `one_click`, `view_sheet`, `takeoff_summary`, `export_takeoff` and friends. An agent opens a plan, reads the title block, adopts the scale (never applied silently), clicks the rooms, checks its work on a rendered overlay with a calibrated measuring grid (`view_sheet`), and exports the exact payload the app autosaves — same math, same provenance receipts, same scale gate. Setup and a full example transcript: [`docs/MCP.md`](docs/MCP.md).
 
 ## Build on top of it
 

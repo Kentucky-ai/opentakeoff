@@ -43,12 +43,12 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
   return output;
 }
 
-test("tools/list: all eleven tools, each described with the coordinate contract", async () => {
+test("tools/list: all twelve tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
     "delete_shape", "detect_rooms", "export_takeoff", "load_plan", "measure_line", "measure_polygon",
-    "one_click", "read_sheet_text", "set_scale", "sheet_info", "takeoff_summary",
+    "one_click", "read_sheet_text", "set_scale", "sheet_info", "takeoff_summary", "view_sheet",
   ]);
   for (const t of tools) assert.match(t.description || "", /image px at render scale 2\.0/, `${t.name} carries the coordinate contract`);
 });
@@ -173,10 +173,16 @@ test("delete_shape: removes a committed shape; unknown id is isError", async () 
   assert.match(gone.data.error, /No shape with id/);
 });
 
-test("output contract: every tool declares outputSchema; structuredContent mirrors the text item", async () => {
+test("output contract: every JSON tool declares outputSchema; structuredContent mirrors the text item", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   for (const t of tools) {
+    if (t.name === "view_sheet") {
+      // the one image tool: replies are an image + meta text item, so there is
+      // deliberately no outputSchema and no structuredContent
+      assert.equal((t as any).outputSchema, undefined, "view_sheet declares no outputSchema");
+      continue;
+    }
     const schema: any = (t as any).outputSchema;
     assert.ok(schema && schema.type === "object", `${t.name} declares an object outputSchema`);
     assert.ok(schema.properties && Object.keys(schema.properties).length > 0, `${t.name} outputSchema has properties`);

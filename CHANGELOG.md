@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-07-21 — opentakeoff-mcp 0.6.0: sheet vision
+
+### Added
+- **`view_sheet` — the twelfth tool, and the agent's eyes: render any sheet (or a crop of it) to PNG with a calibrated measuring grid and a committed-shapes overlay.** Seeing wasn't the whole gap — measuring was. The workflow the description teaches: full-sheet overview first, then tight crops at higher `px` until dimension strings and room labels read cleanly; `region` is image px — the same space as every other tool — so a pixel located in the render maps straight into `one_click`, `measure_polygon`, or `read_sheet_text`. `overlay:true` burns the session's committed shapes into the render (human-affirmed ink solid, unreviewed machine shapes dashed — the same reading the canvas gives those states), so an agent can verify its own commits landed where it intended and sanity-check a trace that leaked or landed in casework. `grid` burns in a calibrated 1-ft/5-ft measuring grid with foot labels counted from the crop's corner — `"auto"` derives it from the sheet's set scale; before any scale is set, the drawing scale off the title block (`"1/4"`, `"3/16"`, `"0.25"`) works on its own — so an agent counts cells between walls exactly like an estimator scaling a plan, instead of eyeballing. The one image-reply tool (PNG content item + JSON meta text item; deliberately no `outputSchema` — image replies aren't structured output). Rendering rides the same optional native canvas as the sheet-image resource: platforms without it get a clean self-describing error and every other tool untouched. Grid math pinned by unit test (`1/4"` → 36 image px/ft at render scale 2.0; `"auto"` is the reciprocal of `upp` and agrees with the drawing scale on the demo plan); conformance covers the image reply shape, the crop/zoom meta, byte-level overlay proof, and the no-plan/unknown-sheet/degenerate-region/junk-grid error surfaces.
+
 ## 2026-07-21 — the Command box (RFC #59, slices 1–2)
 
 ### Added

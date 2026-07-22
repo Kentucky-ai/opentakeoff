@@ -181,10 +181,62 @@ test("every tool: canonical valid call → schema-valid structuredContent mirror
   assert.equal(infoAfter.shape_count, 2);
 });
 
+test("view_sheet: image + meta reply, grid math pinned, overlay drawn, misuse clean", async () => {
+  const client = await pair();
+  await callOk(client, "load_plan", { path: PLAN });
+
+  // the image tool's reply shape: PNG content item first, JSON meta second
+  const callImage = async (args: Record<string, unknown>) => {
+    const res: any = await client.callTool({ name: "view_sheet", arguments: args });
+    assert.equal(!!res.isError, false, `view_sheet failed: ${res.content?.[0]?.text}`);
+    assert.equal(res.content.length, 2, "image item + meta text item");
+    assert.equal(res.content[0].type, "image");
+    assert.equal(res.content[0].mimeType, "image/png");
+    assert.equal(res.structuredContent, undefined, "no outputSchema → no structuredContent");
+    const png = Buffer.from(res.content[0].data, "base64");
+    assert.deepEqual([...png.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], "PNG signature");
+    assert.equal(res.content[1].type, "text");
+    return { png, meta: JSON.parse(res.content[1].text) };
+  };
+
+  // before the scale: grid "auto" refuses toward set_scale, the drawing scale works
+  assert.match(await callErr(client, "view_sheet", { sheet: KEY, grid: "auto" }), /set_scale/);
+  const gridded = await callImage({ sheet: KEY, px: 400, grid: "1/4" });
+  assert.equal(gridded.meta.grid_px_per_foot, 36, "1/4\" = 1'-0\" → 36 image px per foot");
+  assert.equal(Math.max(...gridded.meta.img_px), 400, "long edge honors the px budget");
+  assert.equal(gridded.meta.page, 1);
+  assert.equal(gridded.meta.overlay, false);
+
+  // after set_scale, auto derives the same grid the drawing scale gave
+  await callOk(client, "set_scale", { sheet: KEY, use_detected: true });
+  const auto = await callImage({ sheet: KEY, px: 400, grid: "auto" });
+  assert.ok(Math.abs(auto.meta.grid_px_per_foot - 36) < 1e-6, "auto agrees with the detected 1/4\" scale");
+
+  // a crop honors the region and maps back: square region → square image
+  const crop = await callImage({ sheet: KEY, region: { x0: 100, y0: 100, x1: 460, y1: 460 }, px: 300 });
+  assert.deepEqual(crop.meta.region, [100, 100, 460, 460]);
+  assert.deepEqual(crop.meta.img_px, [300, 300]);
+  assert.ok(Math.abs(crop.meta.zoom - 300 / 360) < 1e-3, "zoom = canvas px per image px");
+
+  // overlay burns committed shapes in: same render differs byte-for-byte
+  const clicked = await callOk(client, "one_click", { sheet: KEY, x: 600, y: 1084, condition: "CPT-1" });
+  assert.ok(clicked.shape_id);
+  const bare = await callImage({ sheet: KEY, px: 400 });
+  const overlaid = await callImage({ sheet: KEY, px: 400, overlay: true });
+  assert.equal(overlaid.meta.overlay, true);
+  assert.equal(overlaid.meta.shapes_drawn, 1);
+  assert.ok(!bare.png.equals(overlaid.png), "the overlay visibly changes the render");
+
+  // misuse: degenerate region and junk grid are clean isError replies
+  assert.match(await callErr(client, "view_sheet", { sheet: KEY, region: { x0: 400, y0: 100, x1: 100, y1: 460 } }), /Empty view region/);
+  assert.match(await callErr(client, "view_sheet", { sheet: KEY, grid: "banana" }), /inches-per-foot/);
+});
+
 test("before any plan: sheet tools and export refuse cleanly; summary is a valid empty reply", async () => {
   const client = await pair();
   const gate = /No plan loaded — call load_plan first\./;
   assert.match(await callErr(client, "sheet_info", { sheet: KEY }), gate);
+  assert.match(await callErr(client, "view_sheet", { sheet: KEY }), gate);
   assert.match(await callErr(client, "set_scale", { sheet: KEY, use_detected: true }), gate);
   assert.match(await callErr(client, "one_click", { sheet: KEY, x: 1, y: 1 }), gate);
   assert.match(await callErr(client, "detect_rooms", { sheet: KEY }), gate);
@@ -210,6 +262,7 @@ test("unknown sheet: every sheet-addressed tool names the miss and lists what is
   assert.match(await callErr(client, "measure_polygon", { sheet: "no-such-sheet", verts: [[0, 0], [1, 0], [1, 1]] }), miss);
   assert.match(await callErr(client, "measure_line", { sheet: "no-such-sheet", pts: [[0, 0], [1, 1]] }), miss);
   assert.match(await callErr(client, "read_sheet_text", { sheet: "no-such-sheet" }), miss);
+  assert.match(await callErr(client, "view_sheet", { sheet: "no-such-sheet" }), miss);
 });
 
 test("schema-invalid arguments: -32602 validation error naming the tool; the session survives", async () => {
@@ -228,6 +281,8 @@ test("schema-invalid arguments: -32602 validation error naming the tool; the ses
   await callViolation(client, "delete_shape", {});                                         // missing shape_id
   await callViolation(client, "read_sheet_text", { sheet: KEY, region: { x0: 0, y0: 0, x1: 10 } }); // partial region
   await callViolation(client, "export_takeoff", { path: 42 });                             // path not a string
+  await callViolation(client, "view_sheet", { sheet: KEY, px: 50 });                       // px below the 200 floor
+  await callViolation(client, "view_sheet", { sheet: KEY, region: { x0: 0, y0: 0, x1: 10 } }); // partial region
 
   // none of that touched the session — a real call still works on the same pair
   const r = await callOk(client, "one_click", { sheet: KEY, x: 600, y: 1084 });

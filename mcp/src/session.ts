@@ -15,6 +15,7 @@ import {
 import { roomLabelSeeds, detectRegions } from "../../web/src/lib/detectRooms.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
 import { conditionTotals, grandTotals } from "../../web/src/lib/totals.js";
+import { gridPxPerFoot, drawGrid, drawShapes, type Ctx2D, type ToCanvas } from "./view.ts";
 
 // Copied from the canvas (web/src/pages/TakeoffCanvas.jsx) so conditions and
 // snap behavior minted here are identical to the browser's. PALETTE/HATCH_IDS
@@ -108,6 +109,12 @@ interface SheetState {
  * vision models take without downscaling — these renders exist to be looked at
  * by agents, so this is the native resolution of that audience. */
 export const IMAGE_MAX_EDGE = 1568;
+
+/** view_sheet's long-edge budget: small enough to stream comfortably, large
+ * enough that a tight crop resolves dimension strings. */
+export const VIEW_MIN_PX = 200;
+export const VIEW_DEFAULT_PX = 1400;
+export const VIEW_MAX_PX = 2000;
 
 export interface SheetSummary {
   sheet: string;
@@ -225,6 +232,42 @@ export class Session {
       s.png = await s.page.renderPng(scale);
     }
     return s.png;
+  }
+
+  /** view_sheet: render a sheet (or an image-px crop of it) to PNG, with an
+   * optional committed-shapes overlay and calibrated measuring grid. The grid
+   * draws under the overlay, both in canvas space after the page rasterizes. */
+  async viewSheet(name: string, opts: { region?: { x0: number; y0: number; x1: number; y1: number }; px?: number; overlay?: boolean; grid?: string }) {
+    const s = this.sheet(name);
+    const px = Math.max(VIEW_MIN_PX, Math.min(VIEW_MAX_PX, Math.round(opts.px ?? VIEW_DEFAULT_PX)));
+    const clampX = (v: number) => Math.max(0, Math.min(v, s.widthPx));
+    const clampY = (v: number) => Math.max(0, Math.min(v, s.heightPx));
+    const r = opts.region
+      ? { x0: clampX(opts.region.x0), y0: clampY(opts.region.y0), x1: clampX(opts.region.x1), y1: clampY(opts.region.y1) }
+      : { x0: 0, y0: 0, x1: s.widthPx, y1: s.heightPx };
+    if (!(r.x1 - r.x0 >= 1 && r.y1 - r.y0 >= 1)) {
+      throw new UserError(`Empty view region — need x1 > x0 and y1 > y0 in image px inside the sheet (${s.widthPx} × ${s.heightPx}).`);
+    }
+    const ppf = gridPxPerFoot(opts.grid, s.upp);
+    const sheetShapes = this.shapes.filter((x) => x.sheet_id === s.key);
+    const { png, width, height, zoom } = await s.page.renderRegionPng(r, px, (ctx, toCanvas) => {
+      if (ppf) drawGrid(ctx as Ctx2D, toCanvas as ToCanvas, r, ppf);
+      if (opts.overlay) drawShapes(ctx as Ctx2D, toCanvas as ToCanvas, sheetShapes, s.widthPx, s.heightPx, px);
+    });
+    return {
+      png,
+      meta: {
+        sheet: s.key,
+        page: s.pageNum,
+        sheet_px: [s.widthPx, s.heightPx],
+        region: [round1(r.x0), round1(r.y0), round1(r.x1), round1(r.y1)],
+        img_px: [width, height],
+        zoom: +zoom.toFixed(4),
+        overlay: !!opts.overlay,
+        ...(opts.overlay ? { shapes_drawn: sheetShapes.length } : {}),
+        grid_px_per_foot: ppf ? round2(ppf) : 0,
+      },
+    };
   }
 
   private async ensureGeometry(s: SheetState): Promise<VectorGeometry> {
