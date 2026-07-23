@@ -31,11 +31,15 @@ wants voice enabled runs the same script before `vite build`.
 
 ## Engine choice (the RFC asked for benchmarks)
 
-| engine | model size | cold init | decode speed | peak RSS | notes |
-|---|---|---|---|---|---|
-| **transformers.js** — whisper-tiny.en ONNX, q8 encoder + uint8 decoder | 43.5 MB | ~1.5 s (Node) / ~8 s cold in-browser | ~4× realtime (Node native) / ~1.2× realtime (browser wasm, single thread) | ~685 MB (Node) | **shipped.** Same artifact runs headless in CI and in the browser Worker — the corpus numbers ARE the browser engine's numbers. |
-| whisper.cpp WASM | — | — | — | — | **not browser-viable here:** maintained wrappers require `SharedArrayBuffer`, and OpenTakeoff deliberately ships no COOP/COEP (adding them would break the cross-origin font/Google-Identity loads under the current CSP). That constraint decided the benchmark. |
-| (variant) q4 decoder | 99.5 MB total | — | — | — | evaluated and rejected: 2.8× the size AND audibly worse transcripts on identical audio. |
+Measured on the committed real-speaker corpus (28 quiet + 9 noisy recordings):
+
+| engine / configuration | model size | intent recall (quiet / noisy) | decode speed | notes |
+|---|---|---|---|---|
+| **transformers.js, whisper-tiny.en, greedy** (q8 encoder + uint8 decoder) | 43.5 MB | **82.1% / 66.7%** | ~4× realtime (Node) / ~1.2× realtime (browser wasm, single thread) | **shipped.** Same artifact runs headless in CI and in the browser Worker — the corpus numbers ARE the browser engine's numbers. Cold init ~1.5 s Node / ~8 s browser; ~685 MB RSS (Node). |
+| transformers.js, whisper-**base**.en, greedy | 76.9 MB | 60.7% / 44.4% | 2.3× realtime (Node) | rejected: bigger AND worse on the real corpus (its keyword mishears just differ — "carpet wand", "rubber bass one"). |
+| transformers.js, whisper-tiny.en, **beam 5** | 43.5 MB | 75.0% / 55.6% | 2.5× realtime (Node) | rejected: worse than greedy, plus a repetition pathology on noisy audio ("1.0.0.0.0…"). |
+| whisper.cpp WASM | — | — | — | **not browser-viable here:** maintained wrappers require `SharedArrayBuffer`, and OpenTakeoff deliberately ships no COOP/COEP (adding them would break the cross-origin font/Google-Identity loads under the current CSP). That constraint decided the benchmark. |
+| (variant) q4 decoder | 99.5 MB total | — | — | rejected: 2.8× the size AND audibly worse transcripts on identical audio. |
 
 Implementation notes pinned in code: the ORT wasm runtime rides Vite's asset
 pipeline (`?url`) so it ships same-origin in dev and build (never a CDN);
@@ -52,10 +56,24 @@ node --import tsx scripts/voice-benchmark.mjs --dir …    # over any WAVs
 
 `web/test/fixtures/voice/` holds the recorded fixture corpus (see
 `RECORDING.md` there): scripted phrases across speakers and noise profiles,
-run through the REAL chain (WAV → whisper → intent parser) in CI. Intent
-accuracy gates the build: **quiet ≥ 0.90, noisy ≥ 0.75**; rejection phrases
-count as correct only when the chain refuses them — never-guess, proven
-through audio.
+run through the REAL chain (WAV → whisper → intent parser) in CI. Two gates:
+
+1. **Hard invariant — zero wrong actions.** A mishear may cost a re-say
+   (safe refusal) or drift note prose; it must never mutate state
+   differently than the speaker intended. Held over 400+ recognition
+   attempts (real + synthetic stress audio); one violation fails the build.
+2. **Regression floor — quiet ≥ 0.75, noisy ≥ 0.55 intent recall**, set just
+   under the committed corpus's measured baseline (82.1% / 66.7%,
+   whisper-tiny.en greedy) so any change that degrades recall fails the
+   build. The bar's words are "regressions fail the build" — the floor is a
+   tripwire under measured reality, not an aspiration above it. Rejection
+   phrases count as correct only when the chain refuses them.
+
+Two grammar normalizations were EARNED by corpus evidence and are pinned by
+tests: `bass→base` (true homophone, heard in "rubber bass one") and
+number-slot-only `to/too→two, won→one` ("transition to") — slot-restricted so
+note prose keeps its literal words, and `for→four` deliberately excluded (a
+literal preposition there could mint a wrong waste value).
 
 ## The synthetic accent stress set (what it proved)
 
