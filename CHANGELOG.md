@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — the two-tier router (RFC #59, slice 5)
+
+### Added
+- **"ask the agent" — the consent-gated bridge from voice to the agent.** The deterministic grammar stays the entire fast path; when a spoken/typed command is *fully* unrecognized and the bring-your-own agent is configured, the red rejection now adds an offer: press `⏎` (or say the fixed literal **"ask the agent"**) to hand that exact transcript to the in-canvas agent as a task. The offer names both costs — the text leaves the browser, on *your* endpoint with *your* key — expires after 20 s, and never appears for near-miss rejects (a garbled number or trailing words is almost-valid grammar; routing it would launder a mishear into a mutation — pinned by a table test across every rejection reason). Confirmation runs the exact same `runAgent` the Agent panel runs — same tools, same dashed-proposals → Accept gate — so the router changes who *reads* the words, never who owns the work, and the zero-wrong-actions invariant never sees the agent path. Design record and green-light on [#59](https://github.com/Kentucky-ai/opentakeoff/issues/59). Contributed by @karthikyeluripati.
+
 ## Unreleased — voice dictation: the recognizer (RFC #59, slice 4)
 
 ### Added

@@ -53,7 +53,13 @@ export type VoiceCapabilities = {
   addNote(text: string): void;
 };
 
-export type VoiceOutcome = { ok: boolean; message: string };
+/** reason rides ONLY on parse rejections (runVoiceCommand) — it is what lets
+ *  the two-tier router (slice 5) tell `unrecognized` (offerable to the agent)
+ *  from every other reject, which are near-misses of valid grammar: routing
+ *  those would launder a mishear into a mutation, so they keep asking for a
+ *  re-say. Dispatcher failures (ok:false from applyVoiceIntent) carry no
+ *  reason and are never offerable. */
+export type VoiceOutcome = { ok: boolean; message: string; reason?: RejectReason };
 
 /** Every value MUST start with "Couldn't" — that prefix is what the commitMsg
  *  bar's isDangerMsg keys on to render red + sticky. */
@@ -168,6 +174,33 @@ export function runVoiceCommand(caps: VoiceCapabilities, transcript: string): Vo
     shapeLabels: caps.getShapeLabels(),
     hasActiveCondition: caps.getActiveConditionId() !== "",
   });
-  if (!parsed.ok) return fail(REJECTION_MESSAGES[parsed.reason]);
+  if (!parsed.ok) return { ...fail(REJECTION_MESSAGES[parsed.reason]), reason: parsed.reason };
   return applyVoiceIntent(caps, parsed.intent);
+}
+
+// ── the two-tier router seam (RFC #59 slice 5) ─────────────────────────────
+// The router is a thin, consent-gated bridge from a REFUSED transcript into
+// the existing agent loop (runAgentLoop + tool registry + Accept gate). It
+// never runs where the dispatcher acted — the zero-wrong-actions invariant
+// never sees the agent path — and it grows no tools and no interpretation of
+// its own. The canvas renders the offer; these pure pieces decide it.
+
+/** The spoken confirmation is a FIXED LITERAL (review ask on the design
+ *  record), not a grammar production — "no second grammar" stays honest. */
+export const AGENT_HANDOFF_TRIGGER = "ask the agent";
+
+/** Whole-utterance equality after trim/lowercase/terminal-punctuation strip
+ *  (whisper writes "Ask the agent."). "please ask the agent" or the phrase
+ *  inside prose does NOT match — a trigger is said alone or not at all. */
+export function isAgentHandoffTrigger(text: string): boolean {
+  return text.trim().toLowerCase().replace(/[.!?,;:…]+$/u, "").trim() === AGENT_HANDOFF_TRIGGER;
+}
+
+/** The offer gate, in one pure predicate (the pinned near-miss test bites
+ *  here): ONLY a fully-unrecognized transcript with the agent actually
+ *  configured is offerable. Near-misses (bad_number, trailing_words,
+ *  unknown_tag, deixis_*) are almost-valid grammar — routing them would
+ *  launder a mishear into a mutation — and `empty` has nothing to send. */
+export function shouldOfferAgentHandoff(outcome: VoiceOutcome, aiConfigured: boolean): boolean {
+  return !outcome.ok && outcome.reason === "unrecognized" && aiConfigured;
 }

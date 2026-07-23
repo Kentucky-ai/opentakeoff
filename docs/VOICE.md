@@ -97,6 +97,34 @@ stress floor, not a forecast), but the safety property held absolutely:
 a mishear costs a re-say, never corrupted takeoff data. The committed
 corpus of real recorded speech is what the CI floor applies to.
 
+## The two-tier router (slice 5)
+
+The grammar is the entire fast path — deterministic, zero AI. When a
+transcript is **fully unrecognized** (and only then), and the bring-your-own
+agent is configured, the red rejection gains one *offered* escape hatch:
+
+> not a command — ⏎ or say "ask the agent" to run it on YOUR agent
+> (your endpoint, your key) · proposals land for review · Esc dismisses
+
+The hard lines, all pinned by tests:
+- **Never silent, never auto.** The rejection stays; the offer only acts on
+  explicit confirmation, names both costs (the transcript leaves the browser;
+  it runs on your configured endpoint), and expires after 20 s so a stale ⏎
+  can't become a surprise agent run. Unconfigured deployments never see it.
+- **Near-misses never route.** `bad_number`, `trailing_words`, `unknown_tag`
+  and the deixis rejects are almost-valid grammar — routing them would
+  launder a mishear into a mutation. They keep asking for a re-say
+  (table-tested across every rejection reason).
+- **"ask the agent" is a fixed literal**, matched whole-utterance after
+  punctuation strip — not a grammar production; "no second grammar" stays
+  honest. Spoken with nothing pending it says so and sends nothing.
+- **The bridge grows nothing.** Confirmation calls the same `runAgent` the
+  Agent panel runs — same config, same tool registry, and agent-inferred work
+  stays on the dashed-proposals → Accept gate. The router changes who reads
+  the words, never who owns the work; the zero-wrong-actions invariant never
+  sees the agent path because the router only exists where the dispatcher
+  refused.
+
 ## Privacy proof
 
 - `web/test/voicePrivacy.test.ts` replaces `fetch`/`XMLHttpRequest`/`WebSocket`
