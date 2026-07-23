@@ -4,7 +4,12 @@
 # GEMINI_API_KEY is set, so a default deploy is still fully static.
 [build]
   base    = "web"
-  command = "npm run build"
+  # Stage the on-device voice model (RFC #59) same-origin before the build, so
+  # push-to-talk dictation is live on the hosted demo (~44 MB, gitignored, not
+  # fetched by the app at runtime). Tolerant by design: a HuggingFace hiccup at
+  # deploy time logs and deploys WITHOUT voice rather than failing the whole
+  # static site — feature-absence, never breakage, exactly as the app degrades.
+  command = "node scripts/fetch-voice-model.mjs || echo 'voice model fetch failed — deploying without voice'; npm run build"
   publish = "dist"
 
 # Serverless functions live under the build base (web/netlify/functions).
