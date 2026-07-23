@@ -108,6 +108,14 @@ const CASES: Case[] = [
 
   // 10. homophones (RFC-mandated)
   { name: "waist seven → set_waste", input: "waist seven", expect: ok({ kind: "set_waste", waste: 7 }) },
+  { name: "corpus-earned homophone: rubber bass one", input: "rubber bass one", expect: ok({ kind: "activate_condition", tag: "RB-1", known: true }) },
+
+  // 10b. NUMBER-SLOT homophones (corpus-earned: real STT writes "to" for "two"
+  //      in number positions). Slot-restricted — prose keeps its words.
+  { name: "number-slot to: transition to → TR-2", input: "transition to", expect: ok({ kind: "activate_condition", tag: "TR-2", known: false }) },
+  { name: "number-slot too: waste too", input: "waste too", expect: ok({ kind: "set_waste", waste: 2 }) },
+  { name: "number-slot won: tile won", input: "tile won", expect: ok({ kind: "activate_condition", tag: "CT-1", known: false }) },
+  { name: "note prose keeps literal 'to' (slot restriction)", input: "note go to room two", expect: ok({ kind: "add_note", text: "go to room two" }) },
 
   // 11. numbers as words vs digits (RFC-mandated)
   { name: "waste seventeen (teen word)", input: "waste seventeen", expect: ok({ kind: "set_waste", waste: 17 }) },

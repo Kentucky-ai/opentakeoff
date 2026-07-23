@@ -49,7 +49,17 @@ export type VoiceParse =
 
 // Inclusion rule: target is a grammar keyword, true homophone in general
 // American English, and the source has no plausible literal use mid-command.
-const HOMOPHONES: Record<string, string> = { waist: "waste" };
+// bass→base earned its entry from the recorded corpus: whisper writes
+// "rubber bass one" for a real speaker, and bass has no takeoff meaning.
+const HOMOPHONES: Record<string, string> = { waist: "waste", bass: "base" };
+
+// NUMBER-SLOT homophones: applied ONLY where the grammar requires a number
+// (takeNumber), never during general normalization — "to" in note prose stays
+// "to". True homophones with no alternative reading in a number slot; each
+// observed in real STT output ("transition to" for "transition two"). "for"
+// is deliberately absent: a literal preposition there is plausible, and
+// mapping it could mint waste 4 from a mishear — a wrong action.
+const NUMBER_SLOT_HOMOPHONES: Record<string, string> = { to: "two", too: "two", won: "one" };
 
 // Common Div-9 finish-tag prefixes; <prefix>-<1..99> is offerable-to-create
 // even when not in the live conditions list.
@@ -172,8 +182,9 @@ function wordValue(tok: string): number | null {
 
 // Consume one number starting at tokens[i]; null if none there.
 function takeNumber(tokens: string[], i: number): { value: number; next: number } | null {
-  const t = tokens[i];
-  if (t === undefined) return null;
+  const raw = tokens[i];
+  if (raw === undefined) return null;
+  const t = NUMBER_SLOT_HOMOPHONES[raw] ?? raw; // slot-restricted: see the table's rule
 
   // digits: "7", "7.5", "7,5" (comma decimal only before 1-2 digits), "1,000"
   if (/^\d/.test(t)) {

@@ -19,6 +19,10 @@ const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), 
 export default defineConfig({
   plugins: [react()],
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  // The STT worker (stt.worker.ts, RFC #59) lazy-imports its engine adapter,
+  // which needs code-splitting inside the worker bundle — only the ES format
+  // supports that (Vite's default iife errors on split worker builds).
+  worker: { format: "es" },
   server: {
     port: 5173,
     proxy: {

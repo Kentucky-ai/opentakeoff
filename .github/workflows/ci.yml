@@ -12,6 +12,7 @@ permissions:
 jobs:
   web:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: web
@@ -23,6 +24,15 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      # Voice model (RFC #59): ~44 MB, cached between runs; the fetch script
+      # is the cache key, so bumping MODEL_REV/files in it invalidates cleanly.
+      # With the model staged, the corpus + privacy voice tests run for real
+      # (they skip loudly when it's absent, e.g. on forks with cache misses).
+      - uses: actions/cache@v4
+        with:
+          path: web/public/models
+          key: voice-model-${{ hashFiles('web/scripts/fetch-voice-model.mjs') }}
+      - run: node scripts/fetch-voice-model.mjs
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

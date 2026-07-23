@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — voice dictation: the recognizer (RFC #59, slice 4)
+
+### Added
+- **Push-to-talk voice takeoff — hold `M`, say `carpet one, waste seven`, release.** Speech is recognized **on-device** (whisper-tiny.en in WebAssembly, inside a Web Worker so pan/zoom never stutters) and the transcript runs through the same deterministic grammar and app actions the Command box runs — no AI in the loop, no new mutation path, and **audio never leaves the browser**: the model is served same-origin (staged by `web/scripts/fetch-voice-model.mjs`, ~44 MB, cached), the recognizer performs zero network I/O during dictation (asserted by `web/test/voicePrivacy.test.ts`), and the mic permission opens for `self` only. A live chip shows listening/decoding state and flashes the heard transcript — the receipt — before the outcome lands in the message bar; every lifecycle edge speaks up (model still downloading, mic denied/revoked mid-hold, tab backgrounded, deployment without the model). A recorded fixture corpus (`web/test/fixtures/voice/`) runs the full WAV→whisper→intent chain in CI with an intent-accuracy floor — rejection phrases count as correct only when refused. Engine choice per the RFC's benchmark ask: transformers.js shipped; whisper.cpp WASM ruled out on this deployment (needs `SharedArrayBuffer`; no COOP/COEP by design) — table in [`docs/VOICE.md`](docs/VOICE.md). Contributed by @karthikyeluripati.
+
 ## 2026-07-21 — opentakeoff-mcp 0.6.0: sheet vision
 
 ### Added
