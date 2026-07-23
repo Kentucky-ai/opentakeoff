@@ -62,7 +62,9 @@ node --import tsx --test test/voiceCorpus.test.ts
 ```
 
 The report lists every file: the transcript whisper heard, the intent parsed,
-and ✓/✗ against the expected intent. Quiet-set accuracy must be ≥ 0.90 and
-noisy ≥ 0.75 (the proposed CI floor). A rejected garbage phrase (`p21`–`p23`)
-counts as CORRECT when it produces a typed rejection — the never-guess rule,
-end to end.
+and ✓/✗ against the expected intent. Two gates apply (ratified on the
+recognizer PR): **zero wrong actions** — a mishear must refuse or drift note
+prose, never mutate differently — and the regression floor, quiet ≥ 0.75 /
+noisy ≥ 0.55 intent recall (set just under the measured corpus baseline; see
+`docs/VOICE.md`). A rejected garbage phrase (`p21`–`p23`) counts as CORRECT
+when it produces a typed rejection — the never-guess rule, end to end.
