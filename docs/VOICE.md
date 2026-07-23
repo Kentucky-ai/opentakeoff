@@ -55,8 +55,10 @@ node --import tsx scripts/voice-benchmark.mjs --dir …    # over any WAVs
 ## The corpus gate
 
 `web/test/fixtures/voice/` holds the recorded fixture corpus (see
-`RECORDING.md` there): scripted phrases across speakers and noise profiles,
-run through the REAL chain (WAV → whisper → intent parser) in CI. Two gates:
+`RECORDING.md` there): scripted phrases run through the REAL chain
+(WAV → whisper → intent parser) in CI. **Current coverage: one real speaker
+(s1), 28 quiet + 9 noisy takes** — additional speakers are invited and slot
+in by filename alone (`s2-…`), no harness changes. Two gates:
 
 1. **Hard invariant — zero wrong actions.** A mishear may cost a re-say
    (safe refusal) or drift note prose; it must never mutate state
@@ -110,27 +112,27 @@ corpus of real recorded speech is what the CI floor applies to.
 Every state below is wired to a loud, specific message. Verified per release
 (states marked ✓ are also covered by automated browser drives):
 
-| state | expected behavior | |
+| state | expected behavior | verified |
 |---|---|---|
-| model not staged on origin | "Voice isn't installed on this deployment — see docs/VOICE.md" | ✓ |
-| PTT while model downloading | chip shows "voice model loading… N%" — never a silent drop; the press also kicks/retries the load | ✓ |
-| model download failure | red sticky "Couldn't load the voice model — … Hold M to retry."; retry works | ✓ |
-| mic permission denied | red sticky "Couldn't start dictation — microphone permission denied." | ✓ |
-| no microphone device | red sticky "… no microphone found." | |
-| mic revoked mid-hold (OS/site toggle) | session discarded; "… the microphone was revoked." | |
-| tab backgrounded mid-dictation | session discarded; "Dictation discarded — the tab went to the background." | |
-| Esc mid-hold | session discarded silently (deliberate cancel) | ✓ |
-| key-tap (<0.1 s) | ignored — a tap is not an utterance | ✓ |
-| unmount / navigate away | AudioContext closed, tracks stopped, worker terminated — verify no orphans in `chrome://media-internals` | |
-| unsupported browser (no getUserMedia) | Voice button hidden entirely — feature absence, not breakage | |
+| model not staged on origin | "Voice isn't installed on this deployment — see docs/VOICE.md" | ✓ automated |
+| PTT while model downloading | chip shows "voice model loading… N%" — never a silent drop; the press also kicks/retries the load | ✓ automated + manual |
+| model download failure | red sticky "Couldn't load the voice model — … Hold M to retry."; retry works | ✓ automated |
+| mic permission denied | red sticky "Couldn't start dictation — microphone permission denied." | ✓ automated |
+| no microphone device | red sticky "… no microphone found." | code-pathed with mic-denied; untested (needs mic-less hardware) |
+| mic revoked mid-hold (site toggle) | session discarded; "… the microphone was revoked." | ✓ manual |
+| tab backgrounded mid-dictation | session discarded; "Dictation discarded — the tab went to the background." | ✓ manual |
+| Esc mid-hold | session discarded silently (deliberate cancel) | ✓ manual |
+| key-tap (<0.1 s) | ignored — a tap is not an utterance | ✓ automated |
+| unmount / navigate away | AudioContext closed, tracks stopped, worker terminated | ✓ manual — `chrome://media-internals` clean after tab close |
+| unsupported browser (no getUserMedia) | Voice button hidden entirely — feature absence, not breakage | by construction (`captureSupported()` gates the render) |
 
 ## Browser matrix
 
 | browser | platform | status |
 |---|---|---|
-| Chrome (latest) | Windows x64 | ✓ full flow (automated drive + manual) |
-| Edge (latest) | Windows x64 | manual pass pending |
-| Firefox (latest) | Windows x64 | manual pass pending |
+| Chrome (latest) | Windows x64 | ✓ full flow — automated fake-mic drives + manual real-mic pass (all lifecycle states) |
+| Firefox (latest) | Windows x64 | ✓ manual — dictation end-to-end |
+| Edge (latest) | Windows x64 | ✓ manual — dictation end-to-end |
 | Safari (latest) | macOS Apple Silicon | **requested from maintainer** — no Mac access on the contributing side |
 | Safari (latest) | macOS x86 | **requested from maintainer** |
 
