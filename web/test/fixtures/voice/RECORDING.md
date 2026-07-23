@@ -45,6 +45,13 @@ real chain (decode → whisper → intent parser) and gates CI on intent accurac
   self-reported, no other personal information.
 - No third-party audio, ever — no clips from videos, datasets, or other
   people's recordings. Everything here is recorded for this project.
+- **No synthetic/TTS audio in the corpus** — generated voices aren't speakers
+  (the bar reads "multiple speakers … recorded for this project"), their
+  redistribution licensing is tier-dependent, and whisper degrades
+  differently on synthetic speech, so they'd measure the wrong thing.
+  A TTS set is still useful as an uncommitted stress set — see the
+  "synthetic accent stress set" notes in `docs/VOICE.md` — it just isn't
+  corpus material.
 
 ## Checking your recordings
 

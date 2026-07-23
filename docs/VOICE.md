@@ -57,6 +57,26 @@ accuracy gates the build: **quiet ≥ 0.90, noisy ≥ 0.75**; rejection phrases
 count as correct only when the chain refuses them — never-guess, proven
 through audio.
 
+## The synthetic accent stress set (what it proved)
+
+Before the recorded corpus landed, a 185-clip TTS set (ElevenLabs, five
+synthetic accent voices — **not committed**: generated voices aren't corpus
+material per the recording rules, and redistribution licensing is
+tier-dependent) was run through the full chain as a stress test. The
+finding that matters:
+
+> **370 recognition attempts across whisper-tiny.en and whisper-base.en
+> produced ZERO wrong actions.** Every keyword mishear ("carpet" → "Copy",
+> "waste seven" → "With Sabin") was refused loudly by the never-guess
+> grammar; the only non-refusal misses were notes/labels where the action
+> was right and the free text drifted by a homophone ("seams" → "seems").
+
+Raw intent recall on that synthetic-accent audio was low (tiny 36–40%,
+base 49–60% — synthetic accented speech is a known whisper weak spot and a
+stress floor, not a forecast), but the safety property held absolutely:
+a mishear costs a re-say, never corrupted takeoff data. The committed
+corpus of real recorded speech is what the CI floor applies to.
+
 ## Privacy proof
 
 - `web/test/voicePrivacy.test.ts` replaces `fetch`/`XMLHttpRequest`/`WebSocket`
