@@ -49,12 +49,12 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // speaks image px and says so.
 const NO_COORDS = new Set(["undo_last"]);
 
-test("tools/list: all fourteen tools, each described with the coordinate contract", async () => {
+test("tools/list: all fifteen tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
     "delete_shape", "detect_rooms", "edit_shape", "export_takeoff", "load_plan", "measure_line", "measure_polygon",
-    "one_click", "read_sheet_text", "set_scale", "sheet_info", "takeoff_summary", "undo_last", "view_sheet",
+    "one_click", "read_sheet_text", "set_scale", "sheet_context", "sheet_info", "takeoff_summary", "undo_last", "view_sheet",
   ]);
   for (const t of tools) {
     if (NO_COORDS.has(t.name)) continue;

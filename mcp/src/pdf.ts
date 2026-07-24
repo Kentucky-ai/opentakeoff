@@ -15,7 +15,7 @@ const PDFJS_ROOT = path.dirname(requireHere.resolve("pdfjs-dist/package.json"));
 export const OPS = pdfjs.OPS as unknown as OpsTable;
 
 export interface ViewportLike { width: number; height: number; transform: number[] }
-interface TextItemLike { str?: string; transform: number[]; height?: number }
+interface TextItemLike { str?: string; transform: number[]; width?: number; height?: number }
 export interface TextContentLike { items: TextItemLike[] }
 
 export interface PageHandle {
@@ -151,6 +151,31 @@ export function positionedText(ph: PageHandle): { str: string; x: number; y: num
     if (!str.trim()) continue;
     const t = pdfjs.Util.transform(ph.viewport.transform, it.transform);
     out.push({ str, x: +t[4].toFixed(1), y: +t[5].toFixed(1) });
+  }
+  return out;
+}
+
+export interface TextSpan { str: string; x0: number; y0: number; x1: number; y1: number }
+
+/** Positioned page text as BBOX SPANS in image px (issue #29's sheet_context
+ * needs boxes, not points, to answer "which text is inside this region").
+ * Same composed transform as positionedText: t[4], t[5] is the baseline's
+ * bottom-left in device space. item.width/height are user-space units; this
+ * server's viewports are unrotated at RENDER_SCALE (openPdf), so device
+ * extent is a straight scale — glyphs rise from the baseline, y is down, so
+ * the box spans [y − h, y]. */
+export function textSpans(ph: PageHandle): TextSpan[] {
+  const out: TextSpan[] = [];
+  for (const it of ph.textContent.items || []) {
+    const str = it.str || "";
+    if (!str.trim()) continue;
+    const t = pdfjs.Util.transform(ph.viewport.transform, it.transform);
+    const x = t[4], y = t[5];
+    const w = (it.width || 0) * RENDER_SCALE;
+    // pdf.js gives height on most items; the composed transform's column
+    // norm is the font's device height when it doesn't
+    const h = (it.height || 0) * RENDER_SCALE || Math.hypot(t[2], t[3]);
+    out.push({ str, x0: +x.toFixed(1), y0: +(y - h).toFixed(1), x1: +(x + w).toFixed(1), y1: +y.toFixed(1) });
   }
   return out;
 }

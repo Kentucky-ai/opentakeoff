@@ -2,6 +2,13 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — `sheet_context`: vector, raster, and text in one coordinate frame (RFC #29)
+
+### Added
+- **`sheet_context` — the fifteenth tool, and the reasoning half of the agent's eyes.** `view_sheet` lets an agent look; this lets it *know*: for one region, in one call, the classified vector segments the engine itself floods against (endpoints exactly as drawn, one meta byte each — curve/clip/poché bits + device pen width), every text span with its bbox, and the sheet's **hatch-family instances**, each carrying a content-derived id built from its quantized (angle, pitch, pen-width) signature. Same pattern spec ⇒ same id anywhere on the sheet — so matching a plan region to a legend swatch stops being a vision guess and becomes `id === id`, deterministic and citable (both instances arrive with their bboxes as evidence pointers). The frame contract is deliberately trivial: everything is already in image px, the method clips and never transforms, and the reply echoes the post-clamp region — hand that same rect to `view_sheet` and the render matches by construction, with no second renderer to drift.
+- **Decimation that confesses.** Declared, ordered, and counted on every reply: segments shorter than `min_len_px` drop first (default 2.0 px — one PDF point at render scale, invisible ink), then `max_segments` applies **longest-first** (walls are long, hatch strokes are short — truncation degrades toward structure). Whole segments drop with their meta intact; nothing is simplified or merged, because a merge would silently rewrite the classification. `kept + dropped.short + dropped.cap === total_in_region` always, pinned by test. Measured on a real 140k-segment E-size unit plan: full sheet at defaults is a 205 KB reply in ~100 ms (71k segments were sub-2px ink, 65k capped), a quarter-sheet window is 132 KB in ~8 ms with no cap hit — and the classifier found 17 hatch-family instances.
+- **`hatchFamilies` in the engine (`web/src/lib/oneclick.ts`)** — the hatch sweep now has two views of one algorithm: the classifier's (`classifyHatchSegs`, soft bits for the flood, bit-compatible with the historical behavior) and the context view, which keeps the (angle, pitch, pen-width) signature the sweep always computed and previously threw away. Pure, DOM-free, deterministic; the legend-match property (same spec, different place, same id) is pinned in `web/test/hatchFamilies.test.ts`.
+
 ## Unreleased — the agent command algebra: `edit_shape` + `undo_last`
 
 ### Added

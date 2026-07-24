@@ -1,17 +1,17 @@
-// The fourteen tools — thin zod-validated handlers over the Session. Replies are
+// The fifteen tools — thin zod-validated handlers over the Session. Replies are
 // compact JSON (format.ts); view_sheet alone replies with an image content
 // item plus a JSON meta text item. Failures are isError results, never thrown
 // protocol errors.
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ok, okImage, fail, UserError, type ToolReply } from "./format.ts";
-import { UNDO_CAP, type Session } from "./session.ts";
+import { UNDO_CAP, CONTEXT_MIN_LEN_PX, CONTEXT_MAX_SEGMENTS, CONTEXT_MAX_SEGMENTS_CEIL, type Session } from "./session.ts";
 import { traceToolCall } from "./trace.ts";
 import {
   loadPlanOutput, sheetInfoOutput, setScaleOutput, oneClickOutput, detectRoomsOutput,
   measurePolygonOutput, measureLineOutput, takeoffSummaryOutput,
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
-  editShapeOutput, undoLastOutput,
+  editShapeOutput, undoLastOutput, sheetContextOutput,
 } from "./outputs.ts";
 
 // The coordinate contract, stated on every tool so any agent reading any one
@@ -138,6 +138,20 @@ export function registerTools(server: McpServer, session: Session): void {
     inputSchema: { shape_id: z.string() },
     outputSchema: deleteShapeOutput,
   }, run("delete_shape", ({ shape_id }) => session.deleteShape(shape_id)));
+
+  server.registerTool("sheet_context", {
+    description: `The sheet's STRUCTURE in one call and one frame: the classified vector segments, the positioned text spans, and the hatch-family instances of a region — everything the engine itself floods against, exposed as data instead of pixels. Use it when you need to REASON about a region rather than look at it: which lines bound this space and at what pen weight, what the region says, and which periodic fill pattern covers it. The join is the point — all three arrive in image px with no reconciliation left to do, and the reply echoes the post-clamp region so passing that same rect to view_sheet gives you the matching render by construction. Hatch families carry a content-derived id (same pattern spec ⇒ same id, anywhere on the sheet), so matching a plan region to a legend swatch is comparing two ids, not guessing from a render — read the legend region, read the room region, match ids, and cite both bboxes as evidence. Decimation is declared, ordered, and counted on every reply: segments shorter than min_len_px drop first (invisible ink), then a max_segments cap applies LONGEST-FIRST so walls survive and hatch strokes go; kept + dropped always reconciles to total_in_region, and whole segments drop with their meta intact — nothing is ever simplified or merged, because these are classified segments and a merge would rewrite the classification. A scan returns has_vector_linework: false with empty vectors — absence of linework, never a claim the region is blank. ${COORDS}`,
+    inputSchema: {
+      sheet: z.string(),
+      region: z.object({ x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() }).optional()
+        .describe("Rect in image px (origin top-left, y down); omit for the full sheet"),
+      min_len_px: z.number().min(0).default(CONTEXT_MIN_LEN_PX)
+        .describe(`Drop segments shorter than this (default ${CONTEXT_MIN_LEN_PX} — one PDF point at render scale 2.0, below any pen width). 0 keeps everything`),
+      max_segments: z.number().int().min(1).max(CONTEXT_MAX_SEGMENTS_CEIL).default(CONTEXT_MAX_SEGMENTS)
+        .describe(`Segment cap, applied longest-first (default ${CONTEXT_MAX_SEGMENTS}). The reply's dropped.cap says exactly what a smaller region would recover`),
+    },
+    outputSchema: sheetContextOutput,
+  }, run("sheet_context", (a) => session.sheetContext(a.sheet, { region: a.region, min_len_px: a.min_len_px, max_segments: a.max_segments })));
 
   server.registerTool("edit_shape", {
     description: `REVISE a shape you already committed, instead of deleting it and starting over: pass new verts to move the geometry, condition to reassign it to a different finish tag, role to switch between floor_area / deduct / linear, or any combination. Quantities are recomputed from the result — a role flip alone re-measures (closed area vs open length). The loop this is for: one_click or measure_polygon to commit, view_sheet with overlay:true to LOOK at what landed, then edit_shape to fix the two vertices that overshot into the corridor. Shapes a human affirmed (origin.reviewed) are ink and are refused — an agent revises its own pencil and nothing else. Agent self-revision is tallied on origin.agent_edits, kept deliberately separate from the human-correction fields. ${COORDS}`,

@@ -215,3 +215,44 @@ export const readSheetTextOutput = {
   items: z.array(z.object({ str: z.string(), x: z.number(), y: z.number() })).describe("Positioned text items (image px)"),
   text: z.string().describe("The items joined with spaces"),
 };
+
+/** sheet_context (issue #29): vectors + text + hatch families of one region,
+ * in one frame. Structured-only by design — the raster stays view_sheet's
+ * job, and frame agreement is a contract on the echoed region rect rather
+ * than on a second renderer. */
+const hatchFamilyRow = z.object({
+  id: z.string().describe("Content hash of the quantized (angle, pitch, pen-width) signature — the SAME id for the same pattern spec anywhere on the sheet, so legend↔plan matching is id === id. Identifies a pattern, not a material; the legend maps pattern → material."),
+  angle_deg: z.number().describe("Raw mean angle [0, 180) — rides beside the id for tolerance matching at bucket boundaries"),
+  pitch_px: z.number().describe("Raw median row pitch, image px"),
+  pen_w_px: z.number().int().describe("Modal device pen width of the members"),
+  rows: z.number().int(),
+  segments: z.number().int().describe("Member segments in the whole instance"),
+  segments_in_region: z.number().int().describe("…of which this many were returned in vectors (post-decimation)"),
+  bbox: z.array(z.number()).length(4).describe("The instance's tight bbox [x0, y0, x1, y1], image px"),
+});
+
+export const sheetContextOutput = {
+  sheet: z.string(),
+  page: z.number().int(),
+  sheet_px: z.array(z.number()).length(2),
+  region: z.array(z.number()).length(4).describe("The region actually resolved, post-clamp — pass this same rect to view_sheet and the render is in the same frame by construction"),
+  has_vector_linework: z.boolean().describe("false = a scan: vectors and hatch are empty because there are none, not because the region is blank"),
+  vectors: z.object({
+    segments: z.array(z.array(z.number()).length(4)).describe("[x0, y0, x1, y1] per segment, image px, endpoints exactly as drawn — clipped by KEEPING whole intersecting segments, never by rewriting them"),
+    meta: z.array(z.number().int()).describe("One byte per segment, aligned with segments: bit 1 = curve chord, bit 2 = clip-only, bit 4 = filled-not-stroked; high nibble = device pen width"),
+    family: z.array(z.string().nullable()).describe("Aligned with segments: the hatch-family id this segment belongs to, or null for structural linework"),
+    kept: z.number().int(),
+    total_in_region: z.number().int().describe("Segments intersecting the region before any decimation — kept + dropped always reconciles to this"),
+    truncated: z.boolean(),
+    dropped: z.object({
+      short: z.number().int().describe("Below min_len_px (invisible ink)"),
+      cap: z.number().int().describe("Over max_segments — the SHORTEST went first, so walls survive"),
+    }),
+    note: z.string().optional(),
+  }),
+  text: z.object({
+    spans: z.array(z.object({ str: z.string(), x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() })).describe("Text with bboxes, image px, same frame as the vectors"),
+    count: z.number().int(),
+  }),
+  hatch: z.object({ families: z.array(hatchFamilyRow), count: z.number().int() }),
+};

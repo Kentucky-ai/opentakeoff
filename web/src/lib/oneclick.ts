@@ -230,15 +230,45 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
 // coincide with walls), and heavier-pen members stay hard (wall overprint).
 interface HatchCand { i: number; ang: number; x1: number; y1: number; x2: number; y2: number; w: number; }
 interface HatchRow { d: number; t0: number; t1: number; segs: HatchCand[]; }
-export function classifyHatchSegs(segs: number[], meta: Uint8Array, ws: number): Uint8Array {
+
+/** One periodic family found by the sweep — the (angle, pitch, pen-width)
+ * signature plus its membership, in the caller's coordinate unit (ws-scaled).
+ * This is the data `classifyHatchSegs` always computed and then threw away
+ * (issue #29): the classifier's view keeps only `softIdx`; the context view
+ * (`hatchFamilies`) keeps the signature, which is what makes legend↔plan
+ * matching a comparison instead of a vision guess. */
+export interface HatchRunInfo {
+  /** Mean member angle, folded to [0, 180) — direction-free. */
+  angleDeg: number;
+  /** Median row-to-row gap (the pattern's pitch), in the caller's unit. */
+  pitch: number;
+  /** Modal device pen width of the members (meta high nibble). */
+  modalW: number;
+  rowCount: number;
+  /** Tight bbox over member segments [x0, y0, x1, y1], caller's unit. */
+  bbox: [number, number, number, number];
+  /** Every segment index belonging to the run's rows. */
+  memberIdx: number[];
+  /** The subset the classifier softens — members minus the wall guards
+   * (extremal rows, span-protected rows, heavy-pen overprints). */
+  softIdx: number[];
+}
+
+/** The sweep core, shared verbatim-in-logic by both views: collect stroked
+ * non-curve candidates, cluster by angle (folding the 0°/180° seam), merge
+ * collinear pieces into rows, and keep maximal regularly-pitched
+ * tangentially-stacking runs. Returns the runs plus the clip-only indices
+ * (invisible ink — soft outright, independent of any family). */
+function sweepHatchRuns(segs: number[], meta: Uint8Array, ws: number): { clipSoft: number[]; runs: HatchRunInfo[] } {
   const n = segs.length >> 2;
-  const soft = new Uint8Array(n);
-  if (!meta || !n) return soft;
+  const clipSoft: number[] = [];
+  const runs: HatchRunInfo[] = [];
+  if (!meta || !n) return { clipSoft, runs };
   const cand: HatchCand[] = [];
   for (let i = 0; i < n; i++) {
     const mt = meta[i];
     if (mt & SEG_CURVE) continue;
-    if (mt & SEG_CLIP) { soft[i] = 1; continue; }
+    if (mt & SEG_CLIP) { clipSoft.push(i); continue; }
     // Filled-not-stroked outlines bound SOLID ink (wall poché). Their short
     // 0°/90° edges ride a tile grid's rhythm and would classify as hatch — but
     // making them transparent lets the escalated fill cross a solid black band
@@ -253,7 +283,7 @@ export function classifyHatchSegs(segs: number[], meta: Uint8Array, ws: number):
     if (ang < 0) ang += 180; if (ang >= 180) ang -= 180;
     cand.push({ i, ang, x1, y1, x2, y2, w: meta[i] >> 4 });
   }
-  if (cand.length < HATCH_MIN_RUN) return soft;
+  if (cand.length < HATCH_MIN_RUN) return { clipSoft, runs };
   cand.sort((a, b) => a.ang - b.ang);
   // sweep into angle clusters; a near-0° cluster merges with a near-180° one
   const clusters: HatchCand[][] = [];
@@ -313,11 +343,25 @@ export function classifyHatchSegs(segs: number[], meta: Uint8Array, ws: number):
       const spans: number[] = [];
       for (let k = a; k <= b; k++) spans.push(rows[k].t1 - rows[k].t0);
       const medSpan = Math.max(1, median(spans));
-      for (let k = a + 1; k < b; k++) {                 // extremal rows stay hard
-        if (rows[k].t1 - rows[k].t0 > SPAN_PROTECT_RATIO * medSpan) continue;
-        for (const s of rows[k].segs)
-          if (s.w < WIDE_PROTECT_RATIO * modalW) soft[s.i] = 1;
+      const memberIdx: number[] = [];
+      const softIdx: number[] = [];
+      let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+      let angSum = 0, angN = 0;
+      for (let k = a; k <= b; k++) {
+        const guarded = rows[k].t1 - rows[k].t0 > SPAN_PROTECT_RATIO * medSpan;
+        for (const s of rows[k].segs) {
+          memberIdx.push(s.i);
+          angSum += s.ang; angN++;
+          bx0 = Math.min(bx0, s.x1, s.x2); by0 = Math.min(by0, s.y1, s.y2);
+          bx1 = Math.max(bx1, s.x1, s.x2); by1 = Math.max(by1, s.y1, s.y2);
+          // the classifier's wall guards: extremal rows stay hard, span-
+          // protected rows stay hard, heavy-pen overprints stay hard
+          if (k > a && k < b && !guarded && s.w < WIDE_PROTECT_RATIO * modalW) softIdx.push(s.i);
+        }
       }
+      const meanAng = ((angSum / Math.max(1, angN)) % 180 + 180) % 180;
+      runs.push({ angleDeg: meanAng, pitch: med, modalW, rowCount: count,
+                  bbox: [bx0, by0, bx1, by1], memberIdx, softIdx });
     };
     for (let k = 1; k < rows.length; k++) {
       const gap = rows[k].d - rows[k - 1].d;
@@ -327,7 +371,68 @@ export function classifyHatchSegs(segs: number[], meta: Uint8Array, ws: number):
     }
     flushRun(runStart, rows.length - 1);
   }
+  return { clipSoft, runs };
+}
+
+/** The classifier's view of the sweep: clip-only paths soft outright, then
+ * every run member the wall guards allow. Bit-compatible with the historical
+ * implementation — the guards moved into `sweepHatchRuns` unchanged. */
+export function classifyHatchSegs(segs: number[], meta: Uint8Array, ws: number): Uint8Array {
+  const soft = new Uint8Array(segs.length >> 2);
+  const { clipSoft, runs } = sweepHatchRuns(segs, meta, ws);
+  for (const i of clipSoft) soft[i] = 1;
+  for (const r of runs) for (const i of r.softIdx) soft[i] = 1;
   return soft;
+}
+
+// Signature quantization for the stable family id (issue #29): coarse enough
+// to absorb CAD jitter (≪ the classifier's own tolerances), fine enough that
+// distinct pattern specs never collide. The RAW signature values ride along
+// beside the id so a caller can run its own tolerance match when an instance
+// sits on a bucket boundary.
+export const HATCH_ID_ANGLE_Q = 0.5;  // degrees
+export const HATCH_ID_PITCH_Q = 0.1;  // px
+
+/** One hatch-family INSTANCE: a periodic region of the sheet, carrying the
+ * content-derived id that makes instances comparable. Two regions drawn with
+ * the same pattern spec — a legend swatch and the plan region it labels — get
+ * the SAME id, which is the whole point: matching them is `id === id`. The id
+ * identifies a pattern, not a material; the legend maps pattern → material. */
+export interface HatchFamily {
+  /** Content hash of the quantized signature: `h-a{angle}p{pitch}w{penW}`.
+   * Derived from geometry alone — stable across calls, crops, and sessions. */
+  id: string;
+  angle_deg: number;
+  pitch_px: number;
+  pen_w_px: number;
+  rows: number;
+  segments: number;
+  /** Tight bbox over the instance's members, image px [x0, y0, x1, y1]. */
+  bbox: [number, number, number, number];
+  /** Member segment indices into the sheet's segs/meta arrays. */
+  memberIdx: number[];
+}
+
+/** The context view of the sweep (issue #29): every periodic family on the
+ * sheet as an instance record with its (angle, pitch, pen-width) signature —
+ * in IMAGE PX (ws = 1), the frame every tool speaks. Pure and deterministic;
+ * same input, same ids. */
+export function hatchFamilies(segs: number[], meta: Uint8Array): HatchFamily[] {
+  const { runs } = sweepHatchRuns(segs, meta, 1);
+  const q = (v: number, step: number): number => Math.round(v / step) * step;
+  return runs.map((r) => {
+    const a = q(r.angleDeg, HATCH_ID_ANGLE_Q), p = q(r.pitch, HATCH_ID_PITCH_Q);
+    return {
+      id: `h-a${a.toFixed(1)}p${p.toFixed(1)}w${r.modalW}`,
+      angle_deg: +r.angleDeg.toFixed(2),
+      pitch_px: +r.pitch.toFixed(2),
+      pen_w_px: r.modalW,
+      rows: r.rowCount,
+      segments: r.memberIdx.length,
+      bbox: r.bbox.map((v) => +v.toFixed(1)) as [number, number, number, number],
+      memberIdx: r.memberIdx,
+    };
+  });
 }
 
 // ── 3. boundary mask ───────────────────────────────────────────────────────

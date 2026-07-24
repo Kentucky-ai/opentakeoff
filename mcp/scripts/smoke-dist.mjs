@@ -103,6 +103,7 @@ assert.deepEqual(names, [
   "one_click",
   "read_sheet_text",
   "set_scale",
+  "sheet_context",
   "sheet_info",
   "takeoff_summary",
   "undo_last",
