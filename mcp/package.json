@@ -3,7 +3,7 @@
   "version": "0.6.1",
   "mcpName": "io.github.Kentucky-ai/opentakeoff",
   "type": "module",
-  "description": "OpenTakeoff MCP server — drive the takeoff engine from your MCP client over stdio.",
+  "description": "OpenTakeoff MCP server \u2014 drive the takeoff engine from your MCP client over stdio.",
   "license": "Apache-2.0",
   "engines": {
     "node": ">=20"
@@ -27,7 +27,7 @@
     "@types/node": "^22.19.21",
     "typescript": "^5.7.2",
     "tsx": "^4.19.2",
-    "esbuild": "^0.24.2"
+    "esbuild": "^0.25.0"
   },
   "bin": {
     "opentakeoff-mcp": "dist/server.js"
@@ -52,5 +52,9 @@
     "pdf",
     "quantity-takeoff",
     "flooring"
-  ]
+  ],
+  "overrides": {
+    "fast-uri": "^3.1.4",
+    "@hono/node-server": "^2.0.5"
+  }
 }
