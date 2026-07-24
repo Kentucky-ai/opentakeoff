@@ -24,7 +24,7 @@
     "pdfjs-dist": "^4.10.38",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^7.18.0"
+    "react-router": "^7.18.0"
   },
   "devDependencies": {
     "@types/node": "^22.19.21",
@@ -42,6 +42,7 @@
   "overrides": {
     "sharp": "^0.35.0",
     "adm-zip": "^0.6.0",
-    "brace-expansion": "^1.1.16"
+    "brace-expansion": "^1.1.16",
+    "postcss": "^8.5.18"
   }
 }
