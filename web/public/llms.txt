@@ -1,19 +1,23 @@
 # OpenTakeoff
 
-> Free, open-source (Apache-2.0) construction takeoff software that runs entirely in the browser. Open a plan (PDF, image, or .zip plan set), set the scale, trace areas — with one-click room detection and a 45°/90° angle lock — then apply waste % and per-condition supporting materials, and export quantities (SF/SY/LF/EA) as CSV/JSON. Built for flooring; the measuring engine works for any trade (drywall, paint, concrete, sitework). No account, no upload — plans never leave the machine.
+> Free, open-source (Apache-2.0) construction takeoff engine that a person and an AI agent drive the same way. Open a plan (PDF, image, or .zip plan set), set the scale, trace areas — with one-click room detection and a 45°/90° angle lock — then apply waste % and per-condition supporting materials, and export quantities (SF/SY/LF/EA) as CSV/JSON. A person clicks the canvas; an agent calls the identical engine over MCP (`npx opentakeoff-mcp`) and gets the identical number, with the scale and origin of every measurement recorded. Built for flooring; the measuring engine works for any trade (drywall, paint, concrete, sitework). No account, no upload — plans never leave the machine.
 
-OpenTakeoff is the open-source alternative to subscription takeoff tools (STACK, PlanSwift, Kreo, Togal, Bluebeam quantity takeoff). It is a static web app: self-hosting is one `npm run build` and any static file host.
+OpenTakeoff is the open-source alternative to subscription takeoff tools (STACK, PlanSwift, Kreo, Togal, Bluebeam quantity takeoff) — and the first of them an AI agent can drive natively, not through screen scraping or a bolted-on chat layer. It is a static web app: self-hosting is one `npm run build` and any static file host.
 
 ## Docs
 
 - [Live app](https://opentakeoff.netlify.app): try it in the browser — includes a one-click sample plan (a real medical-center floor finish plan)
 - [README](https://github.com/Kentucky-ai/opentakeoff#readme): features, quick start, deploy-it-yourself, build-on-top-of-it
+- [MCP server](https://github.com/Kentucky-ai/opentakeoff/blob/main/mcp/README.md): `npx -y opentakeoff-mcp` on the [npm registry](https://www.npmjs.com/package/opentakeoff-mcp) — `load_plan`, `read_sheet_text`, `set_scale`, `one_click`, `view_sheet`, `takeoff_summary`, `export_takeoff`, and more
+- [Agent usage guide + example transcript](https://github.com/Kentucky-ai/opentakeoff/blob/main/docs/MCP.md): how an agent opens a plan, adopts the scale, traces rooms, and exports a takeoff over MCP
 - [User guide & shortcuts](https://github.com/Kentucky-ai/opentakeoff/blob/main/docs/USER_GUIDE.md): every tool, keyboard shortcut, and the totals math
 - [Changelog](https://github.com/Kentucky-ai/opentakeoff/blob/main/CHANGELOG.md): what shipped, when
 - [AGENTS.md](https://github.com/Kentucky-ai/opentakeoff/blob/main/AGENTS.md): repo map and conventions for coding agents contributing to the codebase
 
 ## Key facts
 
+- **Agent-native**: the same engine answers to a person at the canvas or an AI agent over MCP — not two implementations, one. Every shape records its provenance: scale, one-click or hand-drawn, and person or agent.
+- **MCP server**: `opentakeoff-mcp` on npm, official MCP registry listing, 11 tools — an agent loads a plan, reads the title block, adopts the scale (never applied silently), one-clicks rooms, and exports the same payload the app autosaves.
 - Measuring: One-Click Area (flood-fill room detection from PDF vectors), Area, Rectangle, Linear, Surface-Area (walls), Count, Deduct
 - Drawing aids: 45°/90° angle lock (polar tracking with ⇧ hard-lock, commits the on-axis point), live angle + segment-length readout at the cursor, endpoint snap
 - Scale: auto-detects the drawn scale note per sheet, or calibrate from a known dimension
