@@ -5,12 +5,12 @@
 // what the canvas commits (web/src/pages/TakeoffCanvas.jsx), so an exported
 // takeoff round-trips into the app.
 import path from "node:path";
-import { openPdf, positionedText, OPS, type DocHandle, type PageHandle } from "./pdf.ts";
+import { openPdf, positionedText, textSpans, OPS, type DocHandle, type PageHandle, type TextSpan } from "./pdf.ts";
 import { UserError, round1, round2 } from "./format.ts";
 import { STANDARD_SCALES, RENDER_SCALE, detectScale, extractSheetNumber, type DetectedScale } from "../../web/src/lib/sheets.ts";
 import {
   extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertices, ringArea,
-  MASK_MAX_DIM, type MaskObj, type VectorGeometry, type Point,
+  hatchFamilies, MASK_MAX_DIM, type MaskObj, type VectorGeometry, type Point, type HatchFamily,
 } from "../../web/src/lib/oneclick.ts";
 import { roomLabelSeeds, detectRegions } from "../../web/src/lib/detectRooms.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
@@ -108,7 +108,36 @@ interface SheetState {
   mask?: MaskObj | null;
   /** rendered-page PNG at IMAGE_MAX_EDGE, built on first resource read */
   png?: Uint8Array;
+  /** hatch-family instances (image px), built with geo on first sheet_context */
+  hatch?: HatchFamily[];
+  /** text as bbox spans (image px), built on first sheet_context */
+  spans?: TextSpan[];
 }
+
+/** sheet_context decimation defaults (issue #29) — declared and stable, never
+ * adaptive: an agent that receives a silently-truncated geometry set measures
+ * confidently and is wrong, so every reply carries the counts. */
+export const CONTEXT_MIN_LEN_PX = 2.0;   // one PDF point at render scale 2.0 — below any pen width
+export const CONTEXT_MAX_SEGMENTS = 4000; // cap, applied longest-first (walls survive, hatch strokes go)
+export const CONTEXT_MAX_SEGMENTS_CEIL = 20000;
+
+/** Does the segment intersect the axis-aligned rect? Liang–Barsky boolean —
+ * endpoints untouched, this is a KEEP test, never a clip-and-rewrite. */
+function segIntersectsRect(x1: number, y1: number, x2: number, y2: number, r: { x0: number; y0: number; x1: number; y1: number }): boolean {
+  if (Math.max(x1, x2) < r.x0 || Math.min(x1, x2) > r.x1 || Math.max(y1, y2) < r.y0 || Math.min(y1, y2) > r.y1) return false;
+  const dx = x2 - x1, dy = y2 - y1;
+  let t0 = 0, t1 = 1;
+  for (const [p, q] of [[-dx, x1 - r.x0], [dx, r.x1 - x1], [-dy, y1 - r.y0], [dy, r.y1 - y1]] as [number, number][]) {
+    if (p === 0) { if (q < 0) return false; continue; }
+    const t = q / p;
+    if (p < 0) { if (t > t1) return false; if (t > t0) t0 = t; }
+    else { if (t < t0) return false; if (t < t1) t1 = t; }
+  }
+  return true;
+}
+
+const rectsOverlap = (a: [number, number, number, number], r: { x0: number; y0: number; x1: number; y1: number }): boolean =>
+  a[0] <= r.x1 && a[2] >= r.x0 && a[1] <= r.y1 && a[3] >= r.y0;
 
 /** Resource images cap their long edge here: the largest edge the mainstream
  * vision models take without downscaling — these renders exist to be looked at
@@ -320,6 +349,98 @@ export class Session {
         ...(opts.overlay ? { shapes_drawn: sheetShapes.length } : {}),
         grid_px_per_foot: ppf ? round2(ppf) : 0,
       },
+    };
+  }
+
+  /** sheet_context (issue #29): the classified vectors, the positioned text,
+   * and the hatch-family instances of ONE region, in ONE frame — image px,
+   * the space every other tool already speaks. There is deliberately no
+   * transform in this method: everything below is a containment test against
+   * a rect, so frame agreement with view_sheet is a contract on the echoed
+   * region, not on a second renderer.
+   *
+   * Decimation is declared and ordered (issue #29 design comment): clip to
+   * region → drop segments shorter than min_len_px → cap at max_segments
+   * LONGEST-FIRST (walls are long, hatch strokes are short — truncation
+   * degrades toward structure). Whole segments drop with their meta intact;
+   * nothing is simplified or merged, because these are CLASSIFIED segments
+   * and a merge would silently rewrite the classification. The counts ride
+   * on every reply, truncated or not. */
+  async sheetContext(name: string, opts: { region?: { x0: number; y0: number; x1: number; y1: number }; min_len_px?: number; max_segments?: number }) {
+    const s = this.sheet(name);
+    const clampX = (v: number) => Math.max(0, Math.min(v, s.widthPx));
+    const clampY = (v: number) => Math.max(0, Math.min(v, s.heightPx));
+    const r = opts.region
+      ? { x0: clampX(opts.region.x0), y0: clampY(opts.region.y0), x1: clampX(opts.region.x1), y1: clampY(opts.region.y1) }
+      : { x0: 0, y0: 0, x1: s.widthPx, y1: s.heightPx };
+    if (!(r.x1 - r.x0 >= 1 && r.y1 - r.y0 >= 1)) {
+      throw new UserError(`Empty context region — need x1 > x0 and y1 > y0 in image px inside the sheet (${s.widthPx} × ${s.heightPx}).`);
+    }
+    const minLen = opts.min_len_px ?? CONTEXT_MIN_LEN_PX;
+    const cap = opts.max_segments ?? CONTEXT_MAX_SEGMENTS;
+
+    const geo = await this.ensureGeometry(s);
+    const hasVectors = geo.segs.length > 0;
+    if (!s.hatch) s.hatch = hasVectors ? hatchFamilies(geo.segs, geo.meta) : [];
+    if (!s.spans) s.spans = textSpans(s.page);
+
+    // family membership index → id, for the per-segment annotation
+    const famBySeg = new Map<number, string>();
+    for (const f of s.hatch) for (const i of f.memberIdx) famBySeg.set(i, f.id);
+
+    // 1. clip to region (keep test, endpoints untouched)
+    const inRegion: { i: number; len: number }[] = [];
+    const nSeg = geo.segs.length >> 2;
+    for (let i = 0; i < nSeg; i++) {
+      const x1 = geo.segs[i * 4], y1 = geo.segs[i * 4 + 1], x2 = geo.segs[i * 4 + 2], y2 = geo.segs[i * 4 + 3];
+      if (segIntersectsRect(x1, y1, x2, y2, r)) inRegion.push({ i, len: Math.hypot(x2 - x1, y2 - y1) });
+    }
+    // 2. drop invisible ink
+    const visible = inRegion.filter((e) => e.len >= minLen);
+    const droppedShort = inRegion.length - visible.length;
+    // 3. cap, longest-first
+    let kept = visible;
+    let droppedCap = 0;
+    if (visible.length > cap) {
+      kept = visible.slice().sort((a, b) => b.len - a.len).slice(0, cap);
+      droppedCap = visible.length - cap;
+    }
+
+    const segments: number[][] = [], metaOut: number[] = [], family: (string | null)[] = [];
+    for (const { i } of kept) {
+      segments.push([
+        round1(geo.segs[i * 4]), round1(geo.segs[i * 4 + 1]),
+        round1(geo.segs[i * 4 + 2]), round1(geo.segs[i * 4 + 3]),
+      ]);
+      metaOut.push(geo.meta[i]);
+      family.push(famBySeg.get(i) ?? null);
+    }
+
+    const spans = s.spans.filter((sp) => sp.x0 <= r.x1 && sp.x1 >= r.x0 && sp.y0 <= r.y1 && sp.y1 >= r.y0);
+    const keptIdx = new Set(kept.map((k) => k.i));
+    const families = s.hatch
+      .filter((f) => rectsOverlap(f.bbox, r))
+      .map(({ memberIdx, ...f }) => ({
+        ...f,
+        segments_in_region: memberIdx.reduce((acc, i) => acc + (keptIdx.has(i) ? 1 : 0), 0),
+      }));
+
+    return {
+      sheet: s.key,
+      page: s.pageNum,
+      sheet_px: [s.widthPx, s.heightPx],
+      region: [round1(r.x0), round1(r.y0), round1(r.x1), round1(r.y1)],
+      has_vector_linework: hasVectors,
+      vectors: {
+        segments, meta: metaOut, family,
+        kept: kept.length,
+        total_in_region: inRegion.length,
+        truncated: droppedShort + droppedCap > 0,
+        dropped: { short: droppedShort, cap: droppedCap },
+        ...(droppedCap > 0 ? { note: `Region exceeds max_segments — the ${droppedCap} SHORTEST segments were dropped, so structure (walls) survives and fill (hatch) goes first. Narrow the region or raise max_segments for the full set.` } : {}),
+      },
+      text: { spans, count: spans.length },
+      hatch: { families, count: families.length },
     };
   }
 
