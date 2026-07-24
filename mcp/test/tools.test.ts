@@ -43,14 +43,23 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
   return output;
 }
 
-test("tools/list: all twelve tools, each described with the coordinate contract", async () => {
+// undo_last is the one tool that takes no coordinates — it addresses this
+// session's own command history, not the sheet — so the coordinate contract
+// would be noise in its description rather than orientation. Every other tool
+// speaks image px and says so.
+const NO_COORDS = new Set(["undo_last"]);
+
+test("tools/list: all fourteen tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
-    "delete_shape", "detect_rooms", "export_takeoff", "load_plan", "measure_line", "measure_polygon",
-    "one_click", "read_sheet_text", "set_scale", "sheet_info", "takeoff_summary", "view_sheet",
+    "delete_shape", "detect_rooms", "edit_shape", "export_takeoff", "load_plan", "measure_line", "measure_polygon",
+    "one_click", "read_sheet_text", "set_scale", "sheet_info", "takeoff_summary", "undo_last", "view_sheet",
   ]);
-  for (const t of tools) assert.match(t.description || "", /image px at render scale 2\.0/, `${t.name} carries the coordinate contract`);
+  for (const t of tools) {
+    if (NO_COORDS.has(t.name)) continue;
+    assert.match(t.description || "", /image px at render scale 2\.0/, `${t.name} carries the coordinate contract`);
+  }
 });
 
 test("load_plan: happy path returns sheets; a missing file is isError, not a crash", async () => {
@@ -240,4 +249,154 @@ test("output contract: every JSON tool declares outputSchema; structuredContent 
   const bad: any = await client.callTool({ name: "sheet_info", arguments: { sheet: "no-such-sheet" } });
   assert.equal(!!bad.isError, true);
   assert.equal(bad.structuredContent, undefined);
+});
+
+// ── The command algebra: the agent revises and retracts its OWN work ──────────
+// Before this, the agent could only append. A proposal that overshot had to be
+// deleted and re-derived from scratch; a sweep committed under the wrong
+// condition meant N deletes. These are the two verbs that close that gap.
+
+test("edit_shape: moves geometry, reassigns, flips role — and re-measures every time", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  await call(client, "set_scale", { sheet: KEY, use_detected: true });
+
+  const square = [[100, 100], [300, 100], [300, 300], [100, 300]];
+  const made = await call(client, "measure_polygon", { sheet: KEY, verts: square, condition: "CPT-1" });
+  assert.equal(made.isError, false);
+  const id = made.data.shape_id;
+  const area0 = made.data.area_sf;
+  assert.ok(area0 > 0);
+
+  // Geometry: half the width => half the area, recomputed server-side.
+  const moved = await call(client, "edit_shape", { shape_id: id, verts: [[100, 100], [200, 100], [200, 300], [100, 300]] });
+  assert.equal(moved.isError, false);
+  assert.deepEqual(moved.data.changed, ["verts"]);
+  assert.ok(Math.abs(moved.data.area_sf - area0 / 2) < 0.01, `half area: ${moved.data.area_sf} vs ${area0 / 2}`);
+  assert.equal(moved.data.agent_edits, 1);
+
+  // Reassign: the shape moves to a second condition, and the totals follow.
+  const reassigned = await call(client, "edit_shape", { shape_id: id, condition: "VCT-2" });
+  assert.equal(reassigned.isError, false);
+  assert.deepEqual(reassigned.data.changed, ["condition"]);
+  assert.equal(reassigned.data.agent_edits, 2);
+  const summary = await call(client, "takeoff_summary");
+  const byTag = Object.fromEntries(summary.data.conditions.map((c: any) => [c.finish_tag, c.shape_count]));
+  assert.equal(byTag["CPT-1"], 0, "left the old condition");
+  assert.equal(byTag["VCT-2"], 1, "landed on the new one");
+
+  // Role flip alone re-measures: a closed ring read as an open polyline.
+  const linear = await call(client, "edit_shape", { shape_id: id, role: "linear" });
+  assert.equal(linear.isError, false);
+  assert.equal(linear.data.measure_role, "linear");
+  assert.equal(linear.data.area_sf, 0, "a linear shape carries no area");
+  assert.ok(linear.data.perimeter_lf > 0);
+
+  // Provenance: agent self-revision never touches the human-correction fields.
+  const payload = await call(client, "export_takeoff");
+  const shape = payload.data.shapes.find((s: any) => s.id === id);
+  assert.equal(shape.origin.agent_edits, 3);
+  assert.equal(shape.origin.edited, undefined, "agent self-revision is not a human correction");
+  assert.equal(shape.origin.edits, undefined);
+  assert.equal(shape.origin.proposed_verts_norm, undefined, "nothing froze — no human has reviewed this");
+});
+
+test("edit_shape refusals: unknown id, empty patch, too few verts, and human ink", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  await call(client, "set_scale", { sheet: KEY, use_detected: true });
+  const made = await call(client, "measure_polygon", {
+    sheet: KEY, verts: [[100, 100], [300, 100], [300, 300]], condition: "CPT-1",
+  });
+  const id = made.data.shape_id;
+
+  const unknown = await call(client, "edit_shape", { shape_id: "shp-nope", verts: [[0, 0], [1, 0], [1, 1]] });
+  assert.equal(unknown.isError, true);
+  assert.match(unknown.data.error, /No shape with id/);
+
+  const empty = await call(client, "edit_shape", { shape_id: id });
+  assert.equal(empty.isError, true);
+  assert.match(empty.data.error, /at least one of verts, condition, role/);
+
+  const thin = await call(client, "edit_shape", { shape_id: id, verts: [[0, 0], [10, 10]] });
+  assert.equal(thin.isError, true);
+  assert.match(thin.data.error, /at least 3 vertices/);
+
+  // The review gate is absolute: reviewed work is ink and no agent verb touches
+  // it. This server never sets the flag, so it is set directly here — the guard
+  // is the contract that makes this surface safe to port to a host that has a
+  // real review gate.
+  const session = new Session();
+  await session.loadPlan(PLAN);
+  session.setScale(KEY, { use_detected: true });
+  const inkId = session.measurePolygon(KEY, [[100, 100], [300, 100], [300, 300]], { role: "floor_area", condition: "CPT-1" }).shape_id!;
+  session.shapes.find((s) => s.id === inkId)!.origin!.reviewed = true;
+  assert.throws(() => session.editShape(inkId, { condition: "VCT-2" }), /affirmed by a human/);
+});
+
+test("undo_last: a sweep is one step, an edit restores verbatim, a delete comes back", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  await call(client, "set_scale", { sheet: KEY, use_detected: true });
+
+  // A whole detect_rooms sweep undoes as ONE gesture, not four.
+  const sweep = await call(client, "detect_rooms", { sheet: KEY, condition: "CPT-1" });
+  assert.equal(sweep.data.detected, 4);
+  const back = await call(client, "undo_last", { n: 1 });
+  assert.equal(back.isError, false);
+  assert.equal(back.data.undone, 1);
+  assert.equal(back.data.steps[0].op, "commit");
+  assert.equal(back.data.steps[0].tool, "detect_rooms");
+  assert.equal(back.data.steps[0].shapes, 4, "the sweep's four rooms, one step");
+  assert.equal(back.data.shape_count, 0);
+
+  // An edit restores the pre-edit shape verbatim.
+  const made = await call(client, "measure_polygon", {
+    sheet: KEY, verts: [[100, 100], [300, 100], [300, 300], [100, 300]], condition: "CPT-1",
+  });
+  const id = made.data.shape_id;
+  const area0 = made.data.area_sf;
+  await call(client, "edit_shape", { shape_id: id, verts: [[100, 100], [200, 100], [200, 300], [100, 300]] });
+  const undoEdit = await call(client, "undo_last", { n: 1 });
+  assert.equal(undoEdit.data.steps[0].op, "edit");
+  const restored = (await call(client, "export_takeoff")).data.shapes.find((s: any) => s.id === id);
+  assert.ok(Math.abs(restored.computed.area_sf - area0) < 0.01, "geometry is back to the original");
+
+  // A delete comes back where it was.
+  await call(client, "delete_shape", { shape_id: id });
+  assert.equal((await call(client, "takeoff_summary")).data.conditions[0].shape_count, 0);
+  const undoDelete = await call(client, "undo_last", { n: 1 });
+  assert.equal(undoDelete.data.steps[0].op, "delete");
+  assert.equal(undoDelete.data.shape_count, 1);
+
+  // Running past the end is honest, not an error.
+  const past = await call(client, "undo_last", { n: 50 });
+  assert.equal(past.isError, false);
+  assert.ok(past.data.undone < 50);
+  assert.match(past.data.note, /Only \d+ step/);
+  assert.equal(past.data.remaining, 0);
+});
+
+test("undo_last: reads are never journaled, and load_plan clears the history", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  await call(client, "set_scale", { sheet: KEY, use_detected: true });
+  await call(client, "measure_polygon", { sheet: KEY, verts: [[100, 100], [300, 100], [300, 300]], condition: "CPT-1" });
+
+  // Look at the sheet, measure without committing, read text — none of it is a
+  // gesture, so undo still steps over the one thing that actually changed state.
+  await call(client, "read_sheet_text", { sheet: KEY });
+  await call(client, "measure_polygon", { sheet: KEY, verts: [[10, 10], [20, 10], [20, 20]] });
+  await call(client, "sheet_info", { sheet: KEY });
+  const back = await call(client, "undo_last", { n: 1 });
+  assert.equal(back.data.undone, 1);
+  assert.equal(back.data.shape_count, 0, "the committed shape, not a read");
+  assert.equal(back.data.remaining, 0, "the reads left no steps behind");
+
+  // A new document invalidates every id the journal refers to.
+  await call(client, "measure_polygon", { sheet: KEY, verts: [[100, 100], [300, 100], [300, 300]], condition: "CPT-1" });
+  await call(client, "load_plan", { path: PLAN });
+  const afterLoad = await call(client, "undo_last", { n: 1 });
+  assert.equal(afterLoad.data.undone, 0, "history goes with the document it described");
+  assert.equal(afterLoad.data.remaining, 0);
 });

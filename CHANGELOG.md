@@ -2,6 +2,12 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — the agent command algebra: `edit_shape` + `undo_last`
+
+### Added
+- **`edit_shape` and `undo_last` — the agent stops being an appender and becomes an editor.** Until now an MCP agent had exactly one mutation move (commit) and one recovery move (delete and re-derive from scratch): a ring that overshot into the corridor by two vertices cost the whole room, and a `detect_rooms` sweep committed under the wrong condition cost N deletes. `edit_shape` revises a committed shape in place — new `verts`, a different `condition`, a different `role`, or any combination — and always recomputes quantities from the result, so a role flip alone re-measures (closed area vs open length). That closes the loop the description teaches and a human estimator already runs: commit → `view_sheet overlay:true` → *see* what landed → fix the two vertices that missed → look again. `undo_last` steps back over the session's own last *n* mutations with exact inverses (a commit is removed, an edit restored verbatim, a delete re-inserted at its old index), and a whole `detect_rooms` sweep undoes as **one** gesture rather than four, because the sweep is what the agent actually did. Reads are never journaled, so *n* counts changes, not tool calls; `load_plan` clears the history along with the shapes its entries refer to, because undoing across a document swap would be a lie.
+- Two rules keep the new write surface honest, both pinned by tests. **Ink is not pencil**: a shape carrying `origin.reviewed === true` is work a human affirmed and `edit_shape` refuses it — this server sets that flag on nothing, so the guard is inert here by design and exists so the surface ports safely to a host that has a real review gate. **Self-revision is not correction**: agent edits tally on a new `origin.agent_edits` and touch nothing in the human-correction vocabulary (`edited`, `edits`, `proposed_verts_norm`), which mean *a human corrected the machine* — merging a machine's own fix into them would corrupt the one signal that measures whether the machine is improving. Freezing `proposed_verts_norm` stays correct on a human's first edit, because the geometry a reviewer saw is the agent's final revision, not its first draft.
+
 ## Unreleased — the two-tier router (RFC #59, slice 5)
 
 ### Added
