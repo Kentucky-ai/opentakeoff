@@ -18,8 +18,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   applyVoiceIntent, runVoiceCommand, REJECTION_MESSAGES,
+  AGENT_HANDOFF_TRIGGER, isAgentHandoffTrigger, shouldOfferAgentHandoff,
   type VoiceCapabilities, type VoiceOutcome,
 } from "../src/lib/voiceActions.ts";
+import type { RejectReason } from "../src/lib/voiceIntent.ts";
 
 // ── Part A: ordered call-log ────────────────────────────────────────────────
 
@@ -161,7 +163,7 @@ test("runVoiceCommand end-to-end: homophone + percent through parse and apply", 
 test("rejected transcript → mapped message, ZERO calls", () => {
   const { caps, log } = makeCtx();
   const out = runVoiceCommand(caps, "carpet one seven");
-  assert.deepEqual(out, { ok: false, message: REJECTION_MESSAGES.trailing_words });
+  assert.deepEqual(out, { ok: false, message: REJECTION_MESSAGES.trailing_words, reason: "trailing_words" });
   assert.deepEqual(log, []);
 });
 
@@ -248,7 +250,7 @@ test("deixis off-sheet aim (sheetId \"\") → exact message, ZERO calls", () => 
 test("bare deixis with no active condition → parse-level reject, ZERO calls", () => {
   const { caps, log } = makeCtx({ getActiveConditionId: () => "" });
   const out = runVoiceCommand(caps, "this room");
-  assert.deepEqual(out, { ok: false, message: REJECTION_MESSAGES.deixis_no_condition });
+  assert.deepEqual(out, { ok: false, message: REJECTION_MESSAGES.deixis_no_condition, reason: "deixis_no_condition" });
   assert.deepEqual(log, []);
 });
 
@@ -471,4 +473,50 @@ test("deixis off-sheet aim mutates NOTHING", async () => {
   const out = await runVoiceCommand(app.caps, "carpet one, this room");
   assert.deepEqual(out, { ok: false, message: "Couldn't place that — aim at a sheet." });
   assert.deepEqual(app.state, before);
+});
+
+// ── Part C: the two-tier router seam (RFC #59 slice 5) ─────────────────────
+// The router is decided by pure pieces so the gate is table-testable: ONLY a
+// fully-unrecognized transcript, with the agent configured, is offerable.
+// Near-misses are almost-valid grammar — routing them would launder a mishear
+// into a mutation — and the spoken confirm is a FIXED LITERAL, not grammar.
+
+const ALL_REASONS: RejectReason[] = [
+  "empty", "unrecognized", "unknown_tag", "bad_number", "trailing_words",
+  "deixis_no_condition", "deixis_target",
+];
+
+test("PINNED: only unrecognized × configured offers — every near-miss reason never reaches the offer", () => {
+  for (const reason of ALL_REASONS) {
+    for (const configured of [true, false]) {
+      const offer = shouldOfferAgentHandoff({ ok: false, message: REJECTION_MESSAGES[reason], reason }, configured);
+      assert.equal(offer, reason === "unrecognized" && configured, `${reason} × configured=${configured}`);
+    }
+  }
+});
+
+test("router: ok outcomes and reasonless dispatcher failures never offer", () => {
+  assert.equal(shouldOfferAgentHandoff({ ok: true, message: "CPT-1 active." }, true), false);
+  assert.equal(shouldOfferAgentHandoff({ ok: false, message: "Couldn't set waste — no active condition." }, true), false);
+});
+
+test("router: runVoiceCommand surfaces the reason on parse rejections only", () => {
+  const { caps } = makeCtx();
+  const rej = runVoiceCommand(caps, "the quick brown fox") as VoiceOutcome;
+  assert.deepEqual(rej, { ok: false, message: REJECTION_MESSAGES.unrecognized, reason: "unrecognized" });
+  const nearMiss = runVoiceCommand(caps, "waste banana") as VoiceOutcome;
+  assert.equal(nearMiss.reason, "bad_number");
+  const okOut = runVoiceCommand(caps, "cpt one") as VoiceOutcome;
+  assert.equal(okOut.ok, true);
+  assert.equal("reason" in okOut, false);
+  const dispatcherFail = applyVoiceIntent(makeCtx({ getActiveConditionId: () => "" }).caps, { kind: "set_waste", waste: 7 });
+  assert.equal("reason" in dispatcherFail, false);
+});
+
+test("router trigger: fixed literal, whole-utterance only", () => {
+  assert.equal(AGENT_HANDOFF_TRIGGER, "ask the agent");
+  for (const yes of ["ask the agent", "Ask the agent.", "  ASK THE AGENT!  ", "ask the agent…?!"])
+    assert.equal(isAgentHandoffTrigger(yes), true, yes);
+  for (const no of ["please ask the agent", "ask the agent to trace the wing", "I would ask the agent", "ask agent", ""])
+    assert.equal(isAgentHandoffTrigger(no), false, no);
 });

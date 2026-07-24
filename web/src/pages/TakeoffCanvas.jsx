@@ -62,7 +62,7 @@ import AgentPanel from "../components/AgentPanel.jsx";
 import AiSettings from "../components/AiSettings.jsx";
 import { AGENT_TOOL_DEFS, executeAgentTool, agentScaleGate } from "../lib/agentTools.js";
 import { runAgentLoop } from "../lib/agentLoop.js";
-import { runVoiceCommand } from "../lib/voiceActions";
+import { runVoiceCommand, isAgentHandoffTrigger, shouldOfferAgentHandoff } from "../lib/voiceActions";
 import { createVoiceRecognizerClient } from "../lib/voiceRecognizerClient";
 import { startCapture, captureSupported } from "../lib/voiceCapture";
 import { aiConfig, isAiConfigured } from "../lib/ai.js";
@@ -1677,6 +1677,11 @@ export default function TakeoffCanvas() {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (menuDepthRef.current > 0) return;
       if (e.key === "Enter") {
+        // router offer confirm takes the key FIRST (RFC #59 slice 5): the
+        // offer is the most recent thing the user was told ⏎ does, and it
+        // auto-expires — so it can never contest ⏎ for long, and a pending
+        // agent-proposal accept resumes the key the moment the offer clears
+        if (agentOfferFnsRef.current?.pending()) { e.preventDefault(); agentOfferFnsRef.current.confirm(); return; }
         if (tool === "oneclick" && proposal?.regions.length) { e.preventDefault(); createProposal(); return; }
         const ok = ((tool === "area" || tool === "deduct") && poly.length >= 3) || (tool === "zone" && poly.length >= 3 && !zoneTraceCross) || ((tool === "linear" || tool === "surface" || tool === "curve") && poly.length >= 2);
         if (ok) { e.preventDefault(); finishShape(); return; }
@@ -1748,7 +1753,7 @@ export default function TakeoffCanvas() {
         // tool's points, on-screen or hidden
         else if (tool === "calibrate") { setCalib((c) => c.slice(0, -1)); }
         else if (tool === "check") { setCheck((c) => c.slice(0, -1)); }
-      } else if (e.key === "Escape") { if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { setPoly([]); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); resetZone(); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; } }
+      } else if (e.key === "Escape") { if (agentOfferFnsRef.current?.pending()) { agentOfferFnsRef.current.dismiss(); } else if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { setPoly([]); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); resetZone(); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; } }
       // ⌘Z: the drawing context wins — mid-trace it still pops the last placed
       // point (with or without ⇧, matching the old behavior byte-for-byte);
       // only with no trace in progress does the command stack engage
@@ -3800,7 +3805,16 @@ export default function TakeoffCanvas() {
     // repeating "this room" without a fresh pointer move is a stale-aim
     // reject, never a silent double-commit of the same room
     voiceAimMarkRef.current = aimSeqRef.current;
-    const finish = (o) => { setCommitMsg(o.message); return o.ok; };
+    const finish = (o) => {
+      setCommitMsg(o.message);
+      // two-tier router (RFC #59 slice 5): a FULLY-unrecognized transcript,
+      // with the agent configured, earns an OFFER — never an auto-run. Any
+      // other outcome (success, near-miss reject, dispatcher refusal) clears
+      // a stale offer so ⏎ can never become a surprise agent run.
+      if (shouldOfferAgentHandoff(o, isAiConfigured())) offerAgentHandoff(text);
+      else clearAgentOffer();
+      return o.ok;
+    };
     // deixis traces can resolve async (raster flood awaits a render) — the
     // outcome message lands when it lands; everything else stays synchronous
     return typeof out?.then === "function" ? out.then(finish) : finish(out);
@@ -3817,12 +3831,43 @@ export default function TakeoffCanvas() {
   // pointer tick mid-hold would stale-reject every still-handed "this room".
   // The standing invalidations (canvas-leave, tab-hide, previous run) still
   // guard every ghost-seed path the #83 design named.
-  const [voiceChip, setVoiceChip] = useState(null); // { text, tone: "live"|"busy"|"info" } | null
+  const [voiceChip, setVoiceChip] = useState(null); // { text, tone: "live"|"busy"|"info"|"offer" } | null
   const voiceClientRef = useRef(null);
   const voiceCaptureRef = useRef(null);              // live CaptureSession during a hold
   const voiceModelRef = useRef({ phase: "unprobed" });
   const voiceHoldRef = useRef(false);                // physical key/button state
   const voiceFlashRef = useRef(0);                   // transcript-flash timer
+  // ── two-tier router offer (RFC #59 slice 5) ───────────────────────────────
+  // A thin consent-gated bridge into the EXISTING agent loop: confirm hands
+  // the refused transcript to runAgent() — same cfg, tools, Accept gate as the
+  // panel; no new tools, no second interpretation. The offer expires (consent
+  // hygiene), and the spoken confirm is a fixed literal, never grammar.
+  const AGENT_OFFER_TTL_MS = 20000;
+  const pendingAgentOfferRef = useRef(null);         // { transcript } | null — the chip is the render, the ref is the logic
+  const agentOfferTimerRef = useRef(0);
+  function offerAgentHandoff(transcript) {
+    clearTimeout(agentOfferTimerRef.current);
+    pendingAgentOfferRef.current = { transcript };
+    setVoiceChip({ text: 'not a command — ⏎ or say "ask the agent" to run it on YOUR agent (your endpoint, your key) · proposals land for review · Esc dismisses', tone: "offer" });
+    agentOfferTimerRef.current = setTimeout(() => clearAgentOffer(), AGENT_OFFER_TTL_MS);
+  }
+  function clearAgentOffer() {
+    if (!pendingAgentOfferRef.current) return;
+    clearTimeout(agentOfferTimerRef.current);
+    pendingAgentOfferRef.current = null;
+    setVoiceChip((c) => (c && c.tone === "offer" ? null : c));
+  }
+  function confirmAgentHandoff() {
+    const t = pendingAgentOfferRef.current?.transcript;
+    clearAgentOffer();
+    if (!t) return;
+    // runAgent self-guards (agentRunning, isAiConfigured, sheet ready); the
+    // panel opens so the run — and its Accept gate — happen in plain sight
+    setAgentOpen(true);
+    void runAgent(t);
+  }
+  const agentOfferFnsRef = useRef(null);
+  agentOfferFnsRef.current = { confirm: confirmAgentHandoff, dismiss: clearAgentOffer, pending: () => !!pendingAgentOfferRef.current };
   function ensureVoiceClient() {
     if (!voiceClientRef.current) {
       voiceClientRef.current = createVoiceRecognizerClient((s) => {
@@ -3875,6 +3920,16 @@ export default function TakeoffCanvas() {
     setVoiceChip({ text: "decoding…", tone: "busy" });
     voiceClientRef.current.transcribe(pcm).then((text) => {
       const t = text.trim();
+      // the spoken router confirm is a FIXED LITERAL (never grammar): said
+      // alone with an offer pending it confirms; without one it says so —
+      // and the trigger itself never becomes an offer
+      if (isAgentHandoffTrigger(t)) {
+        if (pendingAgentOfferRef.current) { setVoiceChip(null); agentOfferFnsRef.current.confirm(); return true; }
+        setVoiceChip({ text: "nothing to hand off — say the command first", tone: "info" });
+        clearTimeout(voiceFlashRef.current);
+        voiceFlashRef.current = setTimeout(() => setVoiceChip((c) => (c && c.tone === "info" ? null : c)), 2400);
+        return false;
+      }
       // flash what was heard — the transcript is the receipt — then the
       // outcome lands in the commitMsg bar like every other command
       setVoiceChip(t ? { text: `“${t}”`, tone: "info" } : null);
@@ -3920,11 +3975,13 @@ export default function TakeoffCanvas() {
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
       document.removeEventListener("visibilitychange", onVis);
-      // unmount cleanup — no orphaned audio contexts or workers
+      // unmount cleanup — no orphaned audio contexts, workers, or offer timers
       voiceCaptureRef.current?.cancel();
       voiceCaptureRef.current = null;
       voiceClientRef.current?.dispose();
       voiceClientRef.current = null;
+      clearTimeout(agentOfferTimerRef.current);
+      pendingAgentOfferRef.current = null;
     };
   }, []);
 
@@ -4998,6 +5055,14 @@ export default function TakeoffCanvas() {
               const v = e.currentTarget.value.trim();
               if (!v) return;
               const el = e.currentTarget;   // capture: currentTarget nulls after dispatch, and deixis outcomes can resolve async (raster)
+              // router confirm (RFC #59 slice 5): the rejected text is still in
+              // the box (only success clears it) — a second ⏎ on the SAME text
+              // confirms the pending offer instead of re-rejecting in a loop
+              if (pendingAgentOfferRef.current && v === pendingAgentOfferRef.current.transcript) {
+                agentOfferFnsRef.current.confirm();
+                el.value = "";
+                return;
+              }
               Promise.resolve(onVoiceCommand(v)).then((ok) => { if (ok) el.value = ""; });
             }}
             style={{ fontFamily: "var(--f-mono)", fontSize: 11.5, padding: "5px 6px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", width: 150 }}
@@ -5853,7 +5918,7 @@ export default function TakeoffCanvas() {
             hold state, decode state, and a brief flash of the heard transcript
             (the receipt); outcomes land in the commitMsg bar like every command. */}
         {voiceChip && (
-          <div style={{ position: "absolute", left: "50%", top: 14, transform: "translateX(-50%)", zIndex: 6, pointerEvents: "none", padding: "5px 12px", background: "var(--surface-pop)", border: `1px solid ${voiceChip.tone === "live" ? "var(--cobalt)" : "var(--ink-faint)"}`, boxShadow: "var(--shadow-1)", fontFamily: "var(--f-mono)", fontSize: 11.5, color: "var(--ink)", display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+          <div style={{ position: "absolute", left: "50%", top: 14, transform: "translateX(-50%)", zIndex: 6, pointerEvents: "none", padding: "5px 12px", background: "var(--surface-pop)", border: `1px solid ${voiceChip.tone === "live" || voiceChip.tone === "offer" ? "var(--cobalt)" : "var(--ink-faint)"}`, boxShadow: "var(--shadow-1)", fontFamily: "var(--f-mono)", fontSize: 11.5, color: "var(--ink)", display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
             {voiceChip.tone === "live" && <span className="pip" />}
             {voiceChip.text}
           </div>

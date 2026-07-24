@@ -662,6 +662,15 @@ Anything ambiguous is refused with a red explanation, never guessed —
 "carpet one seven" could be CPT-1 + waste 7 or a mis-heard CPT-17, so it
 asks you to say it again.
 
+**When it isn't a command.** If what you said (or typed) isn't in the grammar
+at all and you've configured the bring-your-own agent (§14), the red
+rejection adds an offer: press `⏎` — or say **"ask the agent"** — to hand
+that exact text to the agent as a task. It runs on *your* endpoint with
+*your* key, its proposals land as dashed outlines for your review, and
+nothing is ever sent without that explicit confirm (`Esc` or 20 seconds
+dismisses the offer). Near-miss commands — a garbled number, extra words —
+never get the offer; they just ask you to say it again.
+
 **Push-to-talk.** Hold **M** (or hold the **Voice** toolbar button), speak,
 release to run — the transcript flashes in a chip so you can see what was
 heard, then the outcome lands in the message bar. `Esc` mid-hold discards.
