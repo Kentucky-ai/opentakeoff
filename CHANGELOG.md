@@ -2,6 +2,12 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — detect_rooms bubble guards + the sensitivity knob (port of a live finding)
+
+### Added
+- **Seed ladder + scale-free bubble rejection in `detect_rooms`.** Found live on a real plan (via the Spline sibling, 2026-07-24): plans draw room numbers inside little boxes, a seed at the label floods the label's own BUBBLE — fully enclosed, traces clean at label size, and is not a room. 25 of 26 "rooms" on the discovering sheet were bubbles, and the SF plausibility floor can't guard unscaled previews (no scale, no SF). Each label now runs a **seed ladder** (anchor first — bubble-less plans stay one-flood fast — then label-height offsets below/above), and any ring whose bbox barely exceeds the label's own bbox is rejected as the label itself (`isLabelBubblePx`, ratio 2.5) — scale-free, so it holds before `set_scale` too. The withheld ledger gains a `bubble` reason; a label whose every clean flood was its own bubble is counted, never silent. Pure helpers in `web/src/lib/detectRooms.ts`, pinned by `web/test/detectLadder.test.ts` (the trap flood IS clean; the guard catches it; the ladder recovers the room).
+- **`sensitivity` on `one_click` and `detect_rooms`** — the canvas's fill-sensitivity knob (0 strict / 0.5 balanced / 1 aggressive), which the engine has carried since #32, finally reachable by agents. Raise it when a flood stops short at hatching or light linework INSIDE a room; verify the grown ring with `view_sheet overlay` before committing. A non-default value rides on `origin.fill_sensitivity`, canvas-parity provenance.
+
 ## Unreleased — `sheet_context`: vector, raster, and text in one coordinate frame (RFC #29)
 
 ### Added

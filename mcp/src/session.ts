@@ -10,9 +10,9 @@ import { UserError, round1, round2 } from "./format.ts";
 import { STANDARD_SCALES, RENDER_SCALE, detectScale, extractSheetNumber, type DetectedScale } from "../../web/src/lib/sheets.ts";
 import {
   extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertices, ringArea,
-  hatchFamilies, MASK_MAX_DIM, type MaskObj, type VectorGeometry, type Point, type HatchFamily,
+  hatchFamilies, MASK_MAX_DIM, SENS_BALANCED, type MaskObj, type VectorGeometry, type Point, type HatchFamily,
 } from "../../web/src/lib/oneclick.ts";
-import { roomLabelSeeds, detectRegions } from "../../web/src/lib/detectRooms.ts";
+import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
 import { conditionTotals, grandTotals } from "../../web/src/lib/totals.js";
 import { gridPxPerFoot, drawGrid, drawShapes, type Ctx2D, type ToCanvas } from "./view.ts";
@@ -552,11 +552,11 @@ export class Session {
     return shape;
   }
 
-  async oneClick(name: string, x: number, y: number, opts: { condition?: string; role: "floor_area" | "deduct"; returnVerts: boolean }) {
+  async oneClick(name: string, x: number, y: number, opts: { condition?: string; role: "floor_area" | "deduct"; returnVerts: boolean; sensitivity?: number }) {
     const s = this.sheet(name);
     const mask = await this.ensureMask(name);
     if (!mask) throw new UserError("This sheet has no vector linework (likely a scan); raster fallback not yet available in the MCP server.");
-    const f = floodRegion(mask, x, y);
+    const f = floodRegion(mask, x, y, opts.sensitivity ?? SENS_BALANCED);
     if (f.status === "leak") throw new UserError("That space isn't enclosed on the plan linework — the fill spilled through a gap or opening.");
     if (f.status !== "ok") throw new UserError("Landed in dense linework (hatching or text).");
     const ring = snapVertices(traceRegion(f), (px, py, d) => (s.snap ? nearestSnap(s.snap, px, py, d) : null), SNAP_TOL);
@@ -591,6 +591,9 @@ export class Session {
         seed_norm: [x / s.widthPx, y / s.heightPx],
         reviewed: false,
         ...(f.hatchFiltered ? { hatch_filtered: true as const } : {}),
+        // canvas-parity provenance: a non-default fill sensitivity is part of
+        // how the shape was made (ShapeOrigin.fill_sensitivity)
+        ...(opts.sensitivity !== undefined && opts.sensitivity !== SENS_BALANCED ? { fill_sensitivity: opts.sensitivity } : {}),
       }).id;
     }
     this.flushCommits("one_click");
@@ -615,36 +618,64 @@ export class Session {
    *       ring. Committing both double-counts the area with no signal, which
    *       is the worst failure mode an estimating tool has. One region commits
    *       once; the collapsed labels ride along on `merged_labels`.
-   *    3. implausible — a flood trapped inside a room-number bubble, a door
-   *       swing, or a wall cavity is fully enclosed, so it traces clean and
-   *       `detectRegions` passes it. Area is the only thing that separates it
-   *       from a room. Withheld below `minAreaSf` (default 5 SF — smaller than
-   *       any real finished space; a broom closet is ~10 SF). Only applied
+   *    3. bubble — plans draw room numbers inside little boxes, and a seed at
+   *       the label floods the label's own BUBBLE: fully enclosed, traces
+   *       clean at label size, and is not a room (found live: 25 of 26). Each
+   *       label runs a SEED LADDER (anchor first, then label-height offsets)
+   *       and bubble rings are rejected scale-free (ring bbox ≈ label bbox) —
+   *       so the guard holds even before any scale is set. A label whose
+   *       every clean flood was its bubble counts here.
+   *    4. implausible — enclosed, clean, non-bubble, and still smaller than
+   *       `minAreaSf` (default 5 SF — smaller than any real finished space; a
+   *       broom closet is ~10 SF): a door swing or wall cavity. Only applied
    *       once a scale exists, since without one there is no real area to
    *       judge and nothing commits anyway. */
-  async detectRooms(name: string, opts: { condition?: string; role: "floor_area" | "deduct"; returnVerts: boolean; minAreaSf?: number }) {
+  async detectRooms(name: string, opts: { condition?: string; role: "floor_area" | "deduct"; returnVerts: boolean; minAreaSf?: number; sensitivity?: number }) {
     const s = this.sheet(name);
     const mask = await this.ensureMask(name);
     if (!mask) throw new UserError("This sheet has no vector linework (likely a scan); raster fallback not yet available in the MCP server.");
     const minAreaSf = opts.minAreaSf ?? 5;
-    const seeds = roomLabelSeeds(s.text);
-    const regions = detectRegions(mask, seeds);
+    if (!s.spans) s.spans = textSpans(s.page);
+    // labels with BBOXES: same tokenization as roomLabelSeeds, but the ladder
+    // and the bubble test need the label's box, not just its anchor
+    const labels: { str: string; bbox: LabelBBox }[] = [];
+    for (const sp of s.spans) {
+      const num = (sp.str || "").trim().split(/\s+/).find((tok) => ROOM_LABEL_RE.test(tok));
+      if (num) labels.push({ str: num, bbox: sp });
+    }
 
-    // Trace every region first. Nothing commits in this pass — withholding has
-    // to be decided across the whole batch (dedupe needs to see every ring).
-    const withheld = { degenerate: 0, duplicate: 0, implausible: 0 };
+    // Trace every label first (ladder + bubble guard per label). Nothing
+    // commits in this pass — withholding has to be decided across the whole
+    // batch (dedupe needs to see every ring).
+    const withheld = { degenerate: 0, duplicate: 0, bubble: 0, implausible: 0 };
     type Cand = { label: string; ring: Point[]; areaPx2: number; perimPx: number; seed: readonly [number, number] | number[]; hatch: boolean; merged: string[] };
     const byRing = new Map<string, Cand>();
     const order: Cand[] = [];
-    for (const r of regions) {
-      const ring = snapVertices(traceRegion(r.flood), (px, py, d) => (s.snap ? nearestSnap(s.snap, px, py, d) : null), SNAP_TOL);
-      if (ring.length < 3) { withheld.degenerate++; continue; }
+    for (const lb of labels) {
+      let ring: Point[] | null = null, hatch = false, seed: [number, number] | null = null;
+      let sawBubble = false, sawDegenerate = false;
+      for (const probe of seedLadderPx(lb.bbox)) {
+        const f = floodRegion(mask, probe[0], probe[1], opts.sensitivity ?? SENS_BALANCED);
+        if (f.status !== "ok") continue;
+        const r = snapVertices(traceRegion(f), (px, py, d) => (s.snap ? nearestSnap(s.snap, px, py, d) : null), SNAP_TOL);
+        if (r.length < 3) { sawDegenerate = true; continue; }
+        if (isLabelBubblePx(r as [number, number][], lb.bbox)) { sawBubble = true; continue; }
+        ring = r; hatch = !!f.hatchFiltered; seed = probe;
+        break;
+      }
+      if (!ring || !seed) {
+        if (sawBubble) withheld.bubble++;            // only its own bubble ever flooded clean
+        else if (sawDegenerate) withheld.degenerate++;
+        // a label with no clean flood at any probe simply isn't counted as a
+        // seed that traced — same as the historical single-seed gate
+        continue;
+      }
       const key = ring.map(([x, y]) => `${Math.round(x)},${Math.round(y)}`).join(";");
       const seen = byRing.get(key);
-      if (seen) { seen.merged.push(r.str); withheld.duplicate++; continue; }
+      if (seen) { seen.merged.push(lb.str); withheld.duplicate++; continue; }
       const cand: Cand = {
-        label: r.str, ring, areaPx2: ringArea(ring), perimPx: closedMetrics(ring).perim,
-        seed: r.seed, hatch: !!r.flood.hatchFiltered, merged: [],
+        label: lb.str, ring, areaPx2: ringArea(ring), perimPx: closedMetrics(ring).perim,
+        seed, hatch, merged: [],
       };
       byRing.set(key, cand);
       order.push(cand);
@@ -681,7 +712,7 @@ export class Session {
       .filter((r): r is NonNullable<typeof r> => r !== null);
 
     this.flushCommits("detect_rooms"); // the whole sweep is one reversible step
-    const withheldTotal = withheld.degenerate + withheld.duplicate + withheld.implausible;
+    const withheldTotal = withheld.degenerate + withheld.duplicate + withheld.bubble + withheld.implausible;
     return {
       detected: rooms.length,
       rooms,
@@ -691,7 +722,7 @@ export class Session {
         ...(upp != null ? { min_area_sf: minAreaSf } : {}),
       },
       ...(withheldTotal
-        ? { note: `${withheldTotal} seed(s) withheld — ${withheld.duplicate} duplicate region(s), ${withheld.implausible} under ${minAreaSf} SF, ${withheld.degenerate} untraceable. Raise or lower min_area_sf to see more.` }
+        ? { note: `${withheldTotal} seed(s) withheld — ${withheld.duplicate} duplicate region(s), ${withheld.bubble} label-bubble(s), ${withheld.implausible} under ${minAreaSf} SF, ${withheld.degenerate} untraceable.` }
         : {}),
       ...(s.upp == null ? { warning: `No scale set for ${s.key} — quantities unavailable. Call set_scale${s.detected ? ` (detected: ${s.detected.label})` : ""}.` } : {}),
     };

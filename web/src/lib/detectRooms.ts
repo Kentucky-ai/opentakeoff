@@ -64,6 +64,45 @@ export interface DetectedRegion {
   flood: Extract<FloodResult, { status: "ok" }>;
 }
 
+// ── the bubble problem (found live on a real plan, 2026-07-24) ───────────────
+// Plans draw room numbers inside a small box or ellipse — the label BUBBLE.
+// A seed at (or near) the label lands INSIDE that bubble, the flood is
+// legitimately enclosed by it, and the trace comes back clean at label size:
+// on the discovering sheet, 25 of 26 "rooms" were bubbles. Clean is not the
+// same as right. Two pure guards, both scale-free (they compare the ring to
+// the label's own box, so they work before any scale is set — exactly where
+// the SF plausibility floor cannot):
+//
+//   seedLadderPx    probe seeds in order — the label's own anchor first
+//                   (bubble-less plans stay one-flood fast), then below /
+//                   above / farther below at label-height offsets. Bubble
+//                   diameters track text size; room sizes don't.
+//   isLabelBubblePx a traced ring whose bbox barely exceeds the label's own
+//                   bbox IS the label.
+
+/** Ring bbox ≤ this × label bbox (both axes) ⇒ the label's own bubble. */
+export const BUBBLE_RATIO = 2.5;
+
+export interface LabelBBox { x0: number; y0: number; x1: number; y1: number }
+
+/** Probe seeds for one label, best-first, in the caller's px space. */
+export function seedLadderPx(b: LabelBBox): [number, number][] {
+  const cx = (b.x0 + b.x1) / 2, cy = (b.y0 + b.y1) / 2;
+  const h = Math.max(b.y1 - b.y0, 1);
+  return [[cx, cy], [cx, cy + 2 * h], [cx, cy - 2 * h], [cx, cy + 3.5 * h]];
+}
+
+/** Is this traced ring just the label's own bubble? Same px space as the ring. */
+export function isLabelBubblePx(ring: [number, number][], b: LabelBBox): boolean {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of ring) {
+    if (x < x0) x0 = x; if (y < y0) y0 = y;
+    if (x > x1) x1 = x; if (y > y1) y1 = y;
+  }
+  const lw = Math.max(b.x1 - b.x0, 1e-6), lh = Math.max(b.y1 - b.y0, 1e-6);
+  return (x1 - x0) <= BUBBLE_RATIO * lw && (y1 - y0) <= BUBBLE_RATIO * lh;
+}
+
 /** Seed the EXISTING flood at each label and apply the high-precision status
  *  gate: keep a region ONLY if floodRegion returns status "ok". leak / tiny /
  *  boundary are silently dropped — a batch detector must never propose a bad
