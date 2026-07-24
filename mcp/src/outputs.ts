@@ -182,6 +182,34 @@ export const deleteShapeOutput = {
   shape_count: z.number().int().describe("Committed shapes remaining"),
 };
 
+/** edit_shape: the revised shape's re-measured quantities. Quantities are
+ * always recomputed from the resulting geometry and role, so a role flip alone
+ * re-measures (closed area vs open length). */
+export const editShapeOutput = {
+  shape_id: z.string(),
+  changed: z.array(z.enum(["verts", "condition", "role"])).describe("Which fields this call actually changed"),
+  measure_role: z.enum(["floor_area", "deduct", "linear"]),
+  nverts: z.number().int(),
+  area_sf: z.number().describe("0 for linear shapes"),
+  perimeter_lf: z.number().describe("Length for linear shapes, perimeter for closed ones"),
+  agent_edits: z.number().int().describe("How many times the agent has revised this shape — separate from the human-correction tally"),
+};
+
+/** undo_last: what was actually stepped back. `undone` may be fewer than
+ * requested when the journal ran out; the note says so rather than pretending. */
+export const undoLastOutput = {
+  undone: z.number().int().describe("Steps actually reversed"),
+  steps: z.array(z.object({
+    seq: z.number().int(),
+    op: z.enum(["commit", "edit", "delete"]),
+    tool: z.string().describe("The tool call this step came from"),
+    shapes: z.number().int().describe("Shapes affected by reversing this step"),
+  })).describe("Newest first"),
+  shape_count: z.number().int().describe("Committed shapes after the undo"),
+  remaining: z.number().int().describe("Steps still available to undo"),
+  note: z.string().optional(),
+};
+
 export const readSheetTextOutput = {
   sheet: z.string(),
   items: z.array(z.object({ str: z.string(), x: z.number(), y: z.number() })).describe("Positioned text items (image px)"),

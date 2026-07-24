@@ -71,6 +71,11 @@ export interface ShapeOrigin {
   copied?: boolean;
   /** Per-kind tally of human corrections (provenance.js). */
   edits?: Record<string, number>;
+  /** How many times the AGENT revised its own shape (edit_shape). Deliberately
+   * separate from `edited`/`edits`, which mean "a human corrected the machine"
+   * — a machine correcting itself is a different event, and merging the two
+   * would corrupt the correction signal the capture layer grades on. */
+  agent_edits?: number;
 }
 
 export interface Shape {
@@ -127,6 +132,30 @@ export interface SheetSummary {
   detected_scale?: string;
 }
 
+/** Bounded gesture history, not an archive — mirrors the canvas's UNDO_CAP. */
+export const UNDO_CAP = 100;
+
+/** The agent-scoped command journal. Every mutation this server performs
+ * records one entry carrying enough state to invert it exactly: a commit
+ * removes by id, an edit restores the pre-edit shape verbatim, a delete
+ * re-inserts at the recorded index. Undo is a true inverse, never an
+ * approximation, so an agent that overshot can step back instead of
+ * re-deriving a whole sheet.
+ *
+ * Scope, stated precisely: this is the MCP session's OWN history. It is not
+ * the browser canvas's undo stack, nothing is shared between them, and
+ * load_plan clears it along with the shapes its entries refer to.
+ *
+ * One entry per TOOL CALL, not per shape — undoing a detect_rooms sweep that
+ * committed 18 rooms takes back the sweep, which is the gesture the agent
+ * actually made. */
+export type JournalPayload =
+  | { op: "commit"; tool: string; ids: string[] }
+  | { op: "edit"; tool: string; before: Shape }
+  | { op: "delete"; tool: string; removed: { shape: Shape; index: number }[] };
+
+export type JournalEntry = JournalPayload & { seq: number };
+
 const sheetSummary = (s: SheetState): SheetSummary => ({
   sheet: s.key,
   page: s.pageNum,
@@ -145,6 +174,26 @@ export class Session {
   conditions: Condition[] = [];
   shapes: Shape[] = [];
 
+  /** Newest-last. Capped at UNDO_CAP; the oldest entry falls off the front. */
+  private journal: JournalEntry[] = [];
+  private seq = 0;
+  /** Ids minted by commit() since the last flush — one tool call may commit
+   * many shapes (detect_rooms), and they journal as a single reversible step. */
+  private pendingCommits: string[] = [];
+
+  private record(entry: JournalPayload): void {
+    this.journal.push({ ...entry, seq: ++this.seq });
+    if (this.journal.length > UNDO_CAP) this.journal.shift();
+  }
+
+  /** Journal whatever commit() minted during this tool call, as one entry.
+   * A call that committed nothing records nothing — undo steps over reads. */
+  private flushCommits(tool: string): void {
+    if (!this.pendingCommits.length) return;
+    this.record({ op: "commit", tool, ids: this.pendingCommits });
+    this.pendingCommits = [];
+  }
+
   /** load_plan replaces the session's document: the old doc is destroyed and
    * ALL state — scales, caches, conditions, shapes — is cleared. */
   async loadPlan(filePath: string) {
@@ -154,6 +203,10 @@ export class Session {
     this.conditions = [];
     this.shapes = [];
     this.file = null;
+    // the journal's entries reference shapes that no longer exist — undoing
+    // across a document swap would be a lie, so the history goes with them
+    this.journal = [];
+    this.pendingCommits = [];
 
     const doc = await openPdf(filePath);
     this.doc = doc;
@@ -374,6 +427,7 @@ export class Session {
       ...(origin ? { origin } : {}),
     };
     this.shapes.push(shape);
+    this.pendingCommits.push(shape.id);
     return shape;
   }
 
@@ -418,6 +472,7 @@ export class Session {
         ...(f.hatchFiltered ? { hatch_filtered: true as const } : {}),
       }).id;
     }
+    this.flushCommits("one_click");
     return { ...common, area_sf, perimeter_lf, ...(shape_id ? { shape_id } : {}) };
   }
 
@@ -504,6 +559,7 @@ export class Session {
       })
       .filter((r): r is NonNullable<typeof r> => r !== null);
 
+    this.flushCommits("detect_rooms"); // the whole sweep is one reversible step
     const withheldTotal = withheld.degenerate + withheld.duplicate + withheld.implausible;
     return {
       detected: rooms.length,
@@ -530,6 +586,7 @@ export class Session {
     // agent-supplied coordinates are a hand trace by a machine hand: manual
     // method, agent actor — and never reviewed (no human affirmed anything).
     if (opts.condition) shape_id = this.commit(s, opts.condition, opts.role, verts, { area_sf, perimeter_lf }, { method: "manual", actor: "agent" }).id;
+    this.flushCommits("measure_polygon");
     return { area_sf, perimeter_lf, nverts: verts.length, ...(shape_id ? { shape_id } : {}) };
   }
 
@@ -540,6 +597,7 @@ export class Session {
     let shape_id: string | undefined;
     // area_sf stays 0 — the canvas only mints border SF when the condition has a thickness
     if (opts.condition) shape_id = this.commit(s, opts.condition, "linear", pts, { area_sf: 0, perimeter_lf: length_lf }, { method: "manual", actor: "agent" }).id;
+    this.flushCommits("measure_line");
     return { length_lf, npts: pts.length, ...(shape_id ? { shape_id } : {}) };
   }
 
@@ -553,8 +611,123 @@ export class Session {
   deleteShape(id: string) {
     const i = this.shapes.findIndex((x) => x.id === id);
     if (i < 0) throw new UserError(`No shape with id ${JSON.stringify(id)}.`);
-    this.shapes.splice(i, 1);
+    const [shape] = this.shapes.splice(i, 1);
+    this.record({ op: "delete", tool: "delete_shape", removed: [{ shape, index: i }] });
     return { deleted: id, shape_count: this.shapes.length };
+  }
+
+  /** Revise a committed shape in place: new geometry, a different condition, a
+   * different role, or any combination. This is the verb that turns the agent
+   * from an appender into an editor — it can propose a ring, look at the
+   * overlay, see it overshot into the corridor, and move the two offending
+   * vertices, instead of deleting and re-deriving the whole room.
+   *
+   * The review gate is absolute: a shape a human affirmed (origin.reviewed ===
+   * true) is ink, and no agent verb touches ink. This server never sets that
+   * flag itself, so the guard is inert here today — it is the contract that
+   * makes this surface portable to a host that DOES have a review gate, and it
+   * belongs in the code rather than in a host's good intentions.
+   *
+   * Provenance: agent self-revision bumps origin.agent_edits and touches
+   * NOTHING in the human-correction vocabulary (edited / edits /
+   * proposed_verts_norm — see web/src/lib/provenance.js). Those fields grade a
+   * human's correction of a machine proposal; an agent fixing its own work is
+   * not that, and conflating the two would poison the exact signal the capture
+   * layer exists to collect. Freezing proposed_verts_norm stays correct on the
+   * human's first edit, because the geometry a reviewer saw IS the agent's
+   * final revision, not its first draft. */
+  editShape(id: string, patch: { verts?: Point[]; condition?: string; role?: MeasureRole }) {
+    const i = this.shapes.findIndex((x) => x.id === id);
+    if (i < 0) throw new UserError(`No shape with id ${JSON.stringify(id)}.`);
+    const cur = this.shapes[i];
+    if (cur.origin?.reviewed === true) {
+      throw new UserError(`Shape ${JSON.stringify(id)} was affirmed by a human — reviewed work is ink, not pencil, and cannot be edited by an agent.`);
+    }
+    if (patch.verts === undefined && patch.condition === undefined && patch.role === undefined) {
+      throw new UserError("Nothing to change — pass at least one of verts, condition, role.");
+    }
+    const s = this.sheet(cur.sheet_id);
+    if (s.upp == null) throw new UserError(this.scaleGate(s));
+    const upp = s.upp;
+    const role = patch.role ?? cur.measure_role;
+
+    // Geometry: either the supplied verts or the shape's own, back in image px.
+    const vertsPx: Point[] = patch.verts
+      ?? cur.verts_norm.map(([x, y]) => [x * s.widthPx, y * s.heightPx] as Point);
+    const minPts = role === "linear" ? 2 : 3;
+    if (vertsPx.length < minPts) {
+      throw new UserError(`A ${role === "linear" ? "linear shape needs at least 2 points" : "closed shape needs at least 3 vertices"} — got ${vertsPx.length}.`);
+    }
+
+    // Quantities are always recomputed from the resulting geometry AND role, so
+    // a role flip alone re-measures correctly (open length vs closed area).
+    const computed = role === "linear"
+      ? { area_sf: 0, perimeter_lf: round2(openLen(vertsPx) * upp) }
+      : (() => {
+          const met = closedMetrics(vertsPx);
+          return { area_sf: round2(met.area * upp * upp), perimeter_lf: round2(met.perim * upp) };
+        })();
+
+    const before: Shape = structuredClone(cur);
+    const condition_id = patch.condition !== undefined ? this.conditionFor(patch.condition).id : cur.condition_id;
+    this.shapes[i] = {
+      ...cur,
+      condition_id,
+      measure_role: role,
+      verts_norm: vertsPx.map(([x, y]) => [x / s.widthPx, y / s.heightPx]),
+      computed,
+      ...(cur.origin ? { origin: { ...cur.origin, agent_edits: (cur.origin.agent_edits ?? 0) + 1 } } : {}),
+    };
+    this.record({ op: "edit", tool: "edit_shape", before });
+
+    const changed = [
+      ...(patch.verts !== undefined ? ["verts"] : []),
+      ...(patch.condition !== undefined ? ["condition"] : []),
+      ...(patch.role !== undefined ? ["role"] : []),
+    ];
+    return {
+      shape_id: id,
+      changed,
+      measure_role: role,
+      nverts: vertsPx.length,
+      ...computed,
+      agent_edits: this.shapes[i].origin?.agent_edits ?? 0,
+    };
+  }
+
+  /** Step back over this session's own last n mutations, newest first. Each
+   * entry's inverse is exact (see JournalEntry), so this restores state rather
+   * than approximating it. Reads are not journaled, so undo never has to step
+   * over a look — n counts gestures that changed something. */
+  undoLast(n: number) {
+    const undone: { seq: number; op: JournalEntry["op"]; tool: string; shapes: number }[] = [];
+    for (let k = 0; k < n; k++) {
+      const e = this.journal.pop();
+      if (!e) break;
+      if (e.op === "commit") {
+        const dead = new Set(e.ids);
+        this.shapes = this.shapes.filter((x) => !dead.has(x.id));
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: e.ids.length });
+      } else if (e.op === "edit") {
+        const i = this.shapes.findIndex((x) => x.id === e.before.id);
+        // the shape may have been deleted after the edit; undoing the edit of a
+        // shape that is gone is a no-op on geometry, not an error
+        if (i >= 0) this.shapes[i] = e.before;
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: i >= 0 ? 1 : 0 });
+      } else {
+        for (const { shape, index } of e.removed) {
+          this.shapes.splice(Math.min(index, this.shapes.length), 0, shape);
+        }
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: e.removed.length });
+      }
+    }
+    return {
+      undone: undone.length,
+      steps: undone,
+      shape_count: this.shapes.length,
+      remaining: this.journal.length,
+      ...(undone.length < n ? { note: `Only ${undone.length} step(s) were available to undo.` } : {}),
+    };
   }
 
   /** The exact browser save payload (TakeoffCanvas.jsx autosave + the schema key

@@ -1,16 +1,17 @@
-// The twelve tools — thin zod-validated handlers over the Session. Replies are
+// The fourteen tools — thin zod-validated handlers over the Session. Replies are
 // compact JSON (format.ts); view_sheet alone replies with an image content
 // item plus a JSON meta text item. Failures are isError results, never thrown
 // protocol errors.
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ok, okImage, fail, UserError, type ToolReply } from "./format.ts";
-import type { Session } from "./session.ts";
+import { UNDO_CAP, type Session } from "./session.ts";
 import { traceToolCall } from "./trace.ts";
 import {
   loadPlanOutput, sheetInfoOutput, setScaleOutput, oneClickOutput, detectRoomsOutput,
   measurePolygonOutput, measureLineOutput, takeoffSummaryOutput,
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
+  editShapeOutput, undoLastOutput,
 } from "./outputs.ts";
 
 // The coordinate contract, stated on every tool so any agent reading any one
@@ -137,6 +138,25 @@ export function registerTools(server: McpServer, session: Session): void {
     inputSchema: { shape_id: z.string() },
     outputSchema: deleteShapeOutput,
   }, run("delete_shape", ({ shape_id }) => session.deleteShape(shape_id)));
+
+  server.registerTool("edit_shape", {
+    description: `REVISE a shape you already committed, instead of deleting it and starting over: pass new verts to move the geometry, condition to reassign it to a different finish tag, role to switch between floor_area / deduct / linear, or any combination. Quantities are recomputed from the result — a role flip alone re-measures (closed area vs open length). The loop this is for: one_click or measure_polygon to commit, view_sheet with overlay:true to LOOK at what landed, then edit_shape to fix the two vertices that overshot into the corridor. Shapes a human affirmed (origin.reviewed) are ink and are refused — an agent revises its own pencil and nothing else. Agent self-revision is tallied on origin.agent_edits, kept deliberately separate from the human-correction fields. ${COORDS}`,
+    inputSchema: {
+      shape_id: z.string().describe("Id returned when the shape was committed"),
+      verts: z.array(pointSchema).optional().describe("Replacement geometry (image px): ≥3 vertices for an area shape, ≥2 points for a linear one"),
+      condition: z.string().optional().describe("Reassign to this finish tag (minted on first use)"),
+      role: z.enum(["floor_area", "deduct", "linear"]).optional().describe("Switch what the shape measures"),
+    },
+    outputSchema: editShapeOutput,
+  }, run("edit_shape", (a) => session.editShape(a.shape_id, { verts: a.verts, condition: a.condition, role: a.role })));
+
+  server.registerTool("undo_last", {
+    description: `Step back over your OWN last n mutations, newest first — a committed one_click, a whole detect_rooms sweep, an edit_shape, or a delete_shape. Each step is reversed exactly (a commit is removed, an edit is restored verbatim, a delete is re-inserted where it was), so this restores state rather than approximating it. Reads are never journaled, so n counts gestures that changed something, not tool calls you made. Use it when a sweep committed against the wrong condition or a batch went in on the wrong sheet — one call instead of N deletes. Scope: this session's own history only. It is not the browser canvas's undo stack, and load_plan clears it along with the shapes it refers to.`,
+    inputSchema: {
+      n: z.number().int().min(1).max(UNDO_CAP).default(1).describe(`How many steps to reverse (1–${UNDO_CAP})`),
+    },
+    outputSchema: undoLastOutput,
+  }, run("undo_last", ({ n }) => session.undoLast(n)));
 
   server.registerTool("read_sheet_text", {
     description: `The sheet's text with positions — items [{str, x, y}] in image px plus the joined text. Optionally restrict to a region {x0, y0, x1, y1}. Use it to read title blocks, room labels, finish schedules, and scale notes. ${COORDS}`,

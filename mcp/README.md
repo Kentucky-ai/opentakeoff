@@ -108,14 +108,37 @@ includes document text, shape vertices, or result payload content.
 | `sheet_info` | One sheet's dims, vector segment count, scale status, detected suggestion, committed shape count. |
 | `set_scale` | Set a sheet's scale — exactly one of `label`, `upp`, `calibrate {p1, p2, feet}`, `use_detected`. |
 | `one_click` | One-Click Area at (x, y): flood fill bounded by the plan linework, traced, vertices snapped. Pass `condition` to commit; `role: "deduct"` subtracts. |
-| `detect_rooms` | Batch One-Click: reads every room-number label off the sheet's text layer and floods each — one call instead of `read_sheet_text` + reasoning + N `one_click` calls. Only cleanly-traced rooms come back; a leaked/dense-linework label is silently withheld. Pass `condition` to commit every detected room. |
+| `detect_rooms` | Batch One-Click: reads every room-number label off the sheet's text layer and floods each — one call instead of `read_sheet_text` + reasoning + N `one_click` calls. Only cleanly-traced rooms come back; everything skipped is counted and reasoned in `withheld` (degenerate / duplicate / implausible), never dropped silently. Pass `condition` to commit every detected room. |
 | `measure_polygon` | Area + perimeter of a polygon you supply (min 3 verts). Requires scale. |
 | `measure_line` | Length of an open polyline (min 2 points). Requires scale. |
 | `takeoff_summary` | Per-condition totals + grand totals, computed by the Report's rules. |
 | `export_takeoff` | The full `opentakeoff.takeoff_canvas.v1` payload — exactly what the app autosaves. Inline, and to disk with `path`. |
 | `delete_shape` | Remove a committed shape by id. |
+| `edit_shape` | **Revise** a committed shape instead of redoing it: new `verts`, a different `condition`, a different `role`, or any combination — quantities recomputed from the result. Refuses shapes a human affirmed. |
+| `undo_last` | Step back over your own last `n` mutations, newest first. Exact inverses: a commit is removed, an edit restored verbatim, a delete re-inserted where it was. A whole `detect_rooms` sweep is **one** step. |
 | `read_sheet_text` | Positioned page text (image px), optionally restricted to a region — title blocks, room labels, finish schedules. |
 | `view_sheet` | The agent's eyes: render the sheet (or an image-px crop) to PNG. `overlay` burns committed shapes in (solid = human-affirmed, dashed = unreviewed) to verify geometry landed; `grid` burns in a calibrated 1-ft/5-ft measuring grid with foot labels (`"auto"` from the set scale, or the drawing scale like `"1/4"`) so dimensions are counted off cells, not guessed. |
+
+### The agent revises its own work
+
+`edit_shape` and `undo_last` exist because an agent that can only *append* has
+one recovery move: delete and re-derive. The loop they enable instead —
+**commit → `view_sheet overlay:true` → see the ring overshot into the corridor
+→ move those two vertices → look again** — is the loop a human estimator
+already runs, and it is the difference between an agent that drafts and one
+that works.
+
+Two rules hold the surface honest:
+
+- **Ink is not pencil.** A shape carrying `origin.reviewed === true` is work a
+  human affirmed, and no agent verb touches it. This server has no review gate
+  of its own, so the guard is inert here — it is the contract that makes the
+  surface safe to port to a host that *does* have one.
+- **Self-revision is not correction.** `edit_shape` bumps `origin.agent_edits`
+  and touches nothing in the human-correction vocabulary (`edited`, `edits`,
+  `proposed_verts_norm`). Those fields mean *a human corrected the machine*;
+  merging a machine's own fix into them would corrupt the one signal that
+  measures whether the machine is getting better.
 
 Every JSON tool declares an **`outputSchema`**, and every reply carries the
 payload as **`structuredContent`** — typed, machine-validated on every call —
