@@ -18,7 +18,7 @@
 // shortcuts in EVERY mode via a capture-phase listener — shortcut suppression is
 // keyed on "is this mounted", never on the canvas' view/mode staying in sync.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import { Icon } from "../brand/icons.jsx";
 import AuthChip from "./AuthChip.jsx";
 import { useGoogleAuth } from "../lib/google/AuthContext.jsx";

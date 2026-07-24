@@ -9,7 +9,7 @@
 // opened here. The listing/recents logic lives in lib/projectHome.js
 // (node-testable); this file is only the screen, mirroring PlanNavigator's idiom.
 import React, { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import AuthChip from "./AuthChip.jsx";
 import { projectHomeFolderId, listProjectFolders, createRecents, browserStorage } from "../lib/projectHome.js";
 import { getAccessToken } from "../lib/google/auth.js";
