@@ -423,7 +423,14 @@ export function reportJson({ projectName = "", rows = [], bySheet = [], scaleInf
     // id + rfi_id APPEND after the original four keys (the additive-only v1
     // convention — see scale_source above): a cloud with empty text was fully
     // anonymous in the export. Legacy markups: id → null, rfi_id → "".
-    markups: markups.map((m) => ({ type: m.type, sheet_id: m.sheet_id, sheet: label(m.sheet_id), text: m.text || "", id: m.id ?? null, rfi_id: m.rfi_id || "" })),
+    // condition_id + condition APPEND again, same rule. condition is the
+    // resolved finish_tag rather than only the id, so a reader of the export
+    // can see WHICH scope an annotation is about without joining two arrays;
+    // the id stays authoritative. Unattached markups: "" for both.
+    markups: markups.map((m) => {
+      const c = m.condition_id ? (rows || []).find((r) => r.id === m.condition_id) : null;
+      return { type: m.type, sheet_id: m.sheet_id, sheet: label(m.sheet_id), text: m.text || "", id: m.id ?? null, rfi_id: m.rfi_id || "", condition_id: m.condition_id || "", condition: c?.finish_tag || "" };
+    }),
     // rfis APPENDS after markups (additive-only v1 — old exports had no RFI
     // register). linked_markups/linked_sheets are DERIVED from markup.rfi_id,
     // never a second store of the link.
