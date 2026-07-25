@@ -29,7 +29,14 @@ export const MAX_PANEL_AREA  = 28e6;                 // base-raster pixel budget
 // effectively never binds. Engage compares t.scale × devicePixelRatio (softness starts
 // when the raster is upscaled in device px — on a 2× display that's t.scale 0.5, not 1).
 export const DETAIL_ENGAGE = 1.15;  // engage once stage zoom × dpr passes ~1.15 (base raster starts to soften)
-export const DETAIL_MARGIN = 0.5;   // render this much extra region beyond the viewport so small pans don't expose the soft base at the edges
+// Render this much extra region beyond the viewport so small pans don't
+// expose an unfetched edge. 0.5 (4x the viewport's tile area) was the right
+// number for the OLD single-region crop render (one pdf.js call regardless
+// of margin size, so a bigger margin was nearly free); with #86's tile pool,
+// margin scales the TILE COUNT quadratically ((1+2*margin)^2), and a fat
+// margin was a real, measured contributor to "buffering takes forever" —
+// dropped to 0.25 (2.25x area, ~44% fewer tiles than 0.5) once that shipped.
+export const DETAIL_MARGIN = 0.25;
 export const SYNC_MS = 90;          // React tf-mirror sync cadence during gestures (~11Hz)
 export const GESTURE_MS = 140;      // wheel/pinch quiet window before the detail view re-renders
 // A backgrounded/hidden tab can suspend pdf.js's render scheduling indefinitely (promise

@@ -72,14 +72,23 @@ import { projectHomeFolderId } from "../lib/projectHome.js";
 import { getTheme, toggleTheme, onThemeChange } from "../lib/theme.js";
 // Pure data constants (render/zoom budgets, snap tuning, tool descriptors,
 // flooring starter conditions) live in lib/canvasConstants.js; the pure
-// module-scope helpers (autoRenderScale, invertCanvasPixels, uid, clamp,
-// isDangerMsg, instantiateTemplate, seedConditions) in lib/canvasUtil.js.
+// module-scope helpers (uid, clamp, isDangerMsg, instantiateTemplate,
+// seedConditions) in lib/canvasUtil.js. autoRenderScale/invertCanvasPixels
+// retired from this file's imports — #86 moved painting into the tile
+// worker pool (lib/tileCompositor.ts); both still exist as pure exports
+// (renderBudget.test.ts covers autoRenderScale) pending a follow-up cleanup
+// pass once the tile path has proven itself in production.
 import {
-  PANEL_GAP, MAX_CANVAS_DIM, MAX_CANVAS_AREA,
-  DETAIL_ENGAGE, DETAIL_MARGIN, SYNC_MS, GESTURE_MS, DETAIL_STALL_MS, SNAP_CELL,
+  PANEL_GAP, DETAIL_ENGAGE, DETAIL_MARGIN, MAX_CANVAS_DIM, MAX_CANVAS_AREA, SYNC_MS, GESTURE_MS, SNAP_CELL,
   MEASURE_TOOLS, CUT_TOOLS, MARKUP_TOOLS, MARKUP_IDS, HL_INKS, HL_SIZES,
 } from "../lib/canvasConstants.js";
-import { autoRenderScale, invertCanvasPixels, uid, clamp, isDangerMsg, instantiateTemplate, seedConditions } from "../lib/canvasUtil.js";
+import { uid, clamp, isDangerMsg, instantiateTemplate, seedConditions } from "../lib/canvasUtil.js";
+// Tile-pyramid rendering (#86) — pure math in lib/tiles.ts (tested), worker
+// pool in lib/tilePool.ts, DOM/Worker orchestration glue here via one
+// long-lived compositor instance. Replaces the old single-raster base +
+// threshold-gated detail-overlay effects below.
+import { createTileCompositor } from "../lib/tileCompositor";
+import { requiredDensity as tileRequiredDensity } from "../lib/tiles";
 // Shape provenance policy now lives in ONE place: lib/shapeCommands.js. Every
 // meaningful mutation of `shapes` (create / reshape / reassign / relabel /
 // delete) is a COMMAND applied through dispatchShape below — the chokepoint
@@ -263,9 +272,6 @@ export default function TakeoffCanvas() {
   // async render chains
   const canvasInvertedRef = useRef(new Map());
   const darkModeRef = useRef(darkMode);
-  const [hiResKeys, setHiResKeys] = useState(() => {        // per-sheet hi-res raster — per user (localStorage)
-    try { return JSON.parse(localStorage.getItem("opentakeoff_hires") || "[]"); } catch { return []; }
-  });
   const [calib, setCalib] = useState([]);
   const [pendingLen, setPendingLen] = useState("");
   // Display unit system (ft/m toggle beside the scale picker) — DISPLAY LAYER
@@ -437,14 +443,25 @@ export default function TakeoffCanvas() {
 
   const containerRef = useRef(null);
   const stageRef = useRef(null);
-  const panelCanvasRefs = useRef(new Map()); // sheetKey → <canvas>
-  const pageObjsRef = useRef(new Map());     // sheetKey → pdf.js page object (kept for on-demand detail-view re-render)
-  const renderScalesRef = useRef(new Map()); // sheetKey → base raster pdf scale (detail view renders at a multiple of it)
-  const detailCanvasRef = useRef(null);      // single high-res viewport detail canvas (positioned imperatively)
-  const detailTaskRef = useRef(null);        // in-flight detail render task (cancel stale on re-zoom)
-  const detailBackRef = useRef(null);        // offscreen back buffer — the visible crop is never wiped mid-render
-  const detailKeyRef = useRef("");           // last requested crop — identical re-requests are dropped (sync churn fires the effect several times per settle)
-  const detailWatchdogRef = useRef(0);       // recovers a render stuck by a backgrounded/throttled tab (see DETAIL_STALL_MS)
+  const panelCanvasRefs = useRef(new Map()); // sheetKey → <canvas> (base layer — small backing store, coarse pyramid placeholder)
+  const pageObjsRef = useRef(new Map());     // sheetKey → pdf.js page object (getOperatorList/getTextContent only — painting moved to the tile worker pool)
+  const renderScalesRef = useRef(new Map()); // sheetKey → RENDER_SCALE, always (see factorFor comment above) — kept so the ~20 factorFor/uppFor call sites are untouched
+  // Tile-pyramid compositor (#86) — one instance owning the worker pool +
+  // tile LRU cache (see lib/tileCompositor.ts). Lazily created on first
+  // real use (getCompositor(), mirroring voiceRecognizerClient.ts's "nothing
+  // loads until first use" worker pattern), NOT eagerly in a mount effect —
+  // an eager create+dispose pair fought React 18 StrictMode's dev-mode
+  // double-invoke in a way pure effect-ordering couldn't reliably fix (this
+  // component observably mounts more than the textbook once-cleanup-once
+  // cycle on first load — confirmed live via instrumented logging). Nulling
+  // the ref on dispose (below) is what makes this resilient to ANY number of
+  // create/dispose cycles, not just exactly one: the next real use just
+  // recreates it.
+  const compositorRef = useRef(null);
+  const getCompositor = () => (compositorRef.current ??= createTileCompositor());
+  const detailCanvasRefs = useRef(new Map()); // sheetKey → <canvas> (one detail/viewport layer PER PANEL now, not one shared global — every group-mode panel gets independent sharpness)
+  const detailKeysRef = useRef(new Map());    // sheetKey → last requested crop key (per-panel render-key dedup, generalizing the old single detailKeyRef)
+  const detailCancelsRef = useRef(new Map()); // sheetKey → disposer for the in-flight paintDetail call
   const renderTasksRef = useRef(new Map());  // sheetKey → pdf.js RenderTask
   const pdfDocsRef = useRef(new Map());      // file name → pdf.js loading task (doc cache)
   const renderSeqRef = useRef(0);            // monotonic token — stale render chains bail out
@@ -667,21 +684,17 @@ export default function TakeoffCanvas() {
   // Scale semantics (why geometry divides by factorFor and calibration
   // multiplies back to baseline) are documented on the pure functions in
   // lib/panelGeometry.js; these wrappers bind the live scales/renderScalesRef.
-  const hiResOn = (key) => hiResKeys.includes(key);
+  // factorFor is now a constant 1 (renderScalesRef is always pinned to
+  // RENDER_SCALE — see the tile-pyramid render effect below): the logical
+  // img space no longer varies with what's actually rastered, since nothing
+  // is rastered at panel scope anymore, only bounded tiles. Signatures are
+  // unchanged so none of factorFor/uppFor's ~20 call sites needed to move.
   const factorFor = (key) => panelGeom.factorFor(renderScalesRef.current, key);
   const uppFor = (key) => panelGeom.uppFor(scales, renderScalesRef.current, key);
   // keep the agent's capability closures reading LIVE state across their awaits
   useEffect(() => {
     agentStateRef.current = { panels, scales, scaleSources, detectedScales, conditions, status };
   });
-  const toggleHiRes = () => {
-    const k = focusPanel.key;
-    setHiResKeys((arr) => {
-      const next = arr.includes(k) ? arr.filter((x) => x !== k) : [...arr, k];
-      try { localStorage.setItem("opentakeoff_hires", JSON.stringify(next)); } catch { /* private mode */ }
-      return next;
-    });
-  };
 
   // ── transform: tfRef is source of truth; write straight to the DOM ─────────
   const applyTf = useCallback(() => {
@@ -703,13 +716,18 @@ export default function TakeoffCanvas() {
     syncRaf.current = setTimeout(() => {
       syncRaf.current = 0; lastSyncRef.current = performance.now();
       const t = tfRef.current;
+      // Tile repositioning (#86) is UNCONDITIONAL — it doesn't wait on the tf
+      // state mirror below, or a pure low-zoom pan would never resync its
+      // crop (see syncTilePanelsRef's comment for why this had to split out).
+      syncTilePanelsRef.current();
       // Nothing in the render tree reads tf.x/tf.y — position lives entirely in
-      // the CSS transform above. A pure pan (scale unchanged) only needs this
-      // mirror when the detail view is engaged (it re-crops from tf on every
-      // tick); below DETAIL_ENGAGE it's hidden and reads nothing. Skipping the
-      // state write there avoids re-rendering the whole shape/markup overlay
+      // the CSS transform above. A pure pan (scale unchanged) below this
+      // density threshold doesn't need the React mirror at all: skipping the
+      // state write avoids re-rendering the whole shape/markup overlay
       // (thousands of SVG els at overview zoom) on every ~90ms pan tick — that
       // wasted reconciliation was the zoomed-out pan flicker + toolbar lag.
+      // (DETAIL_ENGAGE is reused here only as a convenient density threshold —
+      // this gate is about SVG reconciliation cost, unrelated to raster tiles.)
       if (t.scale === lastSyncedScaleRef.current && t.scale * (window.devicePixelRatio || 1) <= DETAIL_ENGAGE) return;
       lastSyncedScaleRef.current = t.scale;
       setTf({ ...t });
@@ -1084,28 +1102,29 @@ export default function TakeoffCanvas() {
     return t.then((task) => task.promise);
   }, []);
 
-  // dark toggle: flip the pixels of every rendered canvas in place — instant,
-  // no pdf.js re-render. Canvases without a map entry haven't rendered yet
-  // (their chain applies the current mode when it finishes) — skip those, or
-  // difference-fill would paint transparent backing stores white.
+  // dark toggle: repaint the base layer of every already-loaded panel at the
+  // new mode (the detail effect below also depends on darkMode, so it
+  // repaints too). Tiles are cached PER MODE (tileCompositor.ts), so a
+  // toggle-back is instant once both variants have been seen once.
   useEffect(() => {
     darkModeRef.current = darkMode;
-    const flip = (cv) => {
-      if (cv && canvasInvertedRef.current.has(cv) && canvasInvertedRef.current.get(cv) !== darkMode) {
-        invertCanvasPixels(cv);
-        canvasInvertedRef.current.set(cv, darkMode);
-      }
-    };
-    for (const [, cv] of panelCanvasRefs.current) flip(cv);
-    flip(detailCanvasRef.current);
+    if (status !== "ready") return;
+    for (const p of panels) {
+      const cv = panelCanvasRefs.current.get(p.key);
+      if (cv && p.img?.w) getCompositor().paintBase(cv, p.key, p.img.w, p.img.h, darkMode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [darkMode]);
 
   // ── render the sheet group (a single sheet is a group of one) ──────────────
-  // Two phases: (A) resolve every panel's dimensions — no raster — so the row
-  // layout is final before any pixel paints, then (B) raster sequentially left
-  // to right. A monotonic token is checked after EVERY await so a stale chain
-  // can never paint, resize, or cancel a newer chain's work (the old code had
-  // that race between document-load and render).
+  // Two phases: (A) resolve every panel's LOGICAL dimensions — page-points ×
+  // RENDER_SCALE, fixed forever, never rastered directly (see tiles.ts's
+  // header comment on why this makes factorFor collapse to a constant) — so
+  // the row layout is final before any pixel paints, then (B) hand each sheet
+  // to the tile compositor, which paints a small bounded coarse placeholder
+  // (the base layer) and opens the sheet in the worker pool for on-demand
+  // tile rendering. A monotonic token is checked after EVERY await so a stale
+  // chain can never paint, resize, or cancel a newer chain's work.
   useEffect(() => {
     if (!active) return;
     const seq = ++renderSeqRef.current;
@@ -1122,10 +1141,13 @@ export default function TakeoffCanvas() {
     canvasInvertedRef.current.clear();
     pageObjsRef.current.clear();
     renderScalesRef.current.clear();
-    try { detailTaskRef.current?.cancel(); } catch { /* done */ }
-    if (detailCanvasRef.current) detailCanvasRef.current.style.display = "none";
+    getCompositor().resetAll();
+    for (const [, c] of detailCancelsRef.current) { try { c.cancel(); } catch { /* done */ } }
+    detailCancelsRef.current.clear();
+    detailKeysRef.current.clear();
+    for (const [, cv] of detailCanvasRefs.current) cv.style.display = "none";
     (async () => {
-      // phase A — dimensions for every panel
+      // phase A — logical dimensions for every panel
       const metas = [];
       for (const key of groupKeys) {
         const { file, page: pn } = parseSheetKey(key);
@@ -1133,39 +1155,29 @@ export default function TakeoffCanvas() {
         if (file === active) setPageCount(pdf.numPages || 1);
         const pageNum = Math.min(Math.max(1, pn), pdf.numPages || 1);
         const pageObj = await pdf.getPage(pageNum); if (stale()) return;
-        const base = pageObj.getViewport({ scale: 1 });   // page size in PDF points
-        // base raster obeys the same budget cap: for oversized pages (image ingest
-        // mints 1px=1pt pages) autoRenderScale lands below RENDER_SCALE and wins
-        const auto = autoRenderScale(base.width, base.height);
-        const rs = hiResKeys.includes(key) ? auto : Math.min(RENDER_SCALE, auto);
-        const viewport = pageObj.getViewport({ scale: rs });
-        pageObjsRef.current.set(key, pageObj);     // kept for on-demand detail-view re-render
-        renderScalesRef.current.set(key, rs);      // base raster scale — detail view renders at a multiple of it
+        const viewport = pageObj.getViewport({ scale: RENDER_SCALE });
+        pageObjsRef.current.set(key, pageObj);     // kept for getOperatorList/getTextContent and the independent one-off render paths (raster-mask, agent vision, schedule marquee) — unrelated to painting, still main-thread
+        renderScalesRef.current.set(key, RENDER_SCALE);
         metas.push({ key, file, pageNum, pageObj, viewport, w: Math.ceil(viewport.width), h: Math.ceil(viewport.height) });
       }
       setPanelImgs(Object.fromEntries(metas.map((m) => [m.key, { w: m.w, h: m.h }])));
       let rw = 0, rh = 0;
       for (const m of metas) { rw += (rw ? PANEL_GAP : 0) + m.w; rh = Math.max(rh, m.h); }
       fitToView(rw, rh);
-      // phase B — raster left to right (the canvases mount when panelImgs commits;
-      // give React a frame or two for the refs of newly added panels)
-      for (const m of metas) {
+      // phase B — open each sheet in the worker pool + paint its coarse base
+      // layer. Sheets are independent pdf.js docs in the pool now (not one
+      // shared canvas context), so there's no reason to serialize them the
+      // way the old left-to-right raster loop had to.
+      await Promise.all(metas.map(async (m) => {
+        getCompositor().openSheet(m.key, m.pageNum, store.loadPdfData(m.file), m.w, m.h);
         let canvas = panelCanvasRefs.current.get(m.key);
         for (let t = 0; !canvas && t < 10; t++) {
           await new Promise((r) => requestAnimationFrame(r)); if (stale()) return;
           canvas = panelCanvasRefs.current.get(m.key);
         }
-        if (!canvas) continue;
-        canvas.width = m.w; canvas.height = m.h;
-        // dark: pdf.js paints light pixels progressively — keep the canvas hidden
-        // and reveal it already-inverted, or every render flashes white-on-dark
-        canvas.style.visibility = darkModeRef.current ? "hidden" : "";
-        const rt = m.pageObj.render({ canvasContext: canvas.getContext("2d"), viewport: m.viewport });
-        renderTasksRef.current.set(m.key, rt);
-        await rt.promise; if (stale()) return;
-        if (darkModeRef.current) invertCanvasPixels(canvas);   // negative view baked into pixels
-        canvasInvertedRef.current.set(canvas, !!darkModeRef.current);
-        canvas.style.visibility = "";
+        if (!canvas || stale()) return;
+        await getCompositor().paintBase(canvas, m.key, m.w, m.h, darkModeRef.current);
+        if (stale()) return;
         // snap-to-vector index per panel (best-effort; off until the user enables it)
         m.pageObj.getOperatorList().then((ol) => {
           if (stale()) return;
@@ -1193,7 +1205,8 @@ export default function TakeoffCanvas() {
           const det = detectScale(tc, m.viewport);
           if (det) setDetectedScales((d) => (d[m.key]?.label === det.label ? d : { ...d, [m.key]: det }));
         }).catch(() => {});
-      }
+      }));
+      if (stale()) return;
       setStatus("ready");
       // title-block labels — current page now, then once per file scan the rest so
       // the pager + pinned tabs + provenance deep-jump can show real sheet numbers
@@ -1237,123 +1250,102 @@ export default function TakeoffCanvas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     return () => { renderSeqRef.current++; for (const [, rt] of renderTasksRef.current) { try { rt.cancel(); } catch { /* done */ } } };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupSig, hiResKeys.join(" ")]);
+  }, [groupSig]);
 
-  // ── detail view: re-render the visible region at the current zoom ───────────
-  // The base panel bitmap is the fast first paint and the zoomed-out view. Once
-  // zoomed past DETAIL_ENGAGE we overlay a crop of JUST what's on screen (+margin),
-  // rendered from the PDF vectors at the current zoom, so linework stays razor-sharp
-  // with no giant full-sheet bitmap. `tf` only updates after the ~80ms pan/zoom settle
-  // (scheduleSync), so this is naturally debounced. Pixels only — markup is an SVG
-  // sibling ABOVE this canvas, and quantities never touch render pixels: both untouched.
+  // ── detail view: composite the visible region + margin from cached tiles ──
+  // Generalizes the old single-detail-canvas effect to EVERY panel (group
+  // mode previously only ever sharpened the last-focused one — see the #86
+  // research note) and drops the DETAIL_ENGAGE threshold entirely: tiles are
+  // the only raster path now, active at every zoom level, not a sharpening
+  // overlay on top of an already-acceptable base. Pixels only — markup is an
+  // SVG sibling ABOVE these canvases, and quantities never touch render
+  // pixels: both untouched.
+  //
+  // This is a REF-CALLED FUNCTION, not a plain tf-keyed effect: scheduleSync
+  // (below) intentionally skips mirroring tfRef into the `tf` REACT STATE for
+  // a pure pan below the old DETAIL_ENGAGE threshold (avoids a full SVG-
+  // overlay reconciliation storm on a zoomed-out pan — see its comment). That
+  // optimization predates tiles being always-active; if this logic only ran
+  // off `tf` state, a low-zoom pan would never reposition the visible-region
+  // crop. So scheduleSync calls syncTilePanelsRef.current() on EVERY tick,
+  // state-mirror-skip or not, and this effect is just the "also run it after
+  // a structural render" path (load, dark toggle, group change, panel resize).
+  const syncTilePanelsRef = useRef(() => {});
   useEffect(() => {
-    const cv = detailCanvasRef.current, cont = containerRef.current, fp = focusPanel;
-    const hide = () => { if (cv) cv.style.display = "none"; detailKeyRef.current = ""; };
-    if (!cv || !cont || status !== "ready" || !fp || !fp.img.w) return hide();
-    const t = tfRef.current;
-    if (window.__OT_DETAIL_DEBUG) console.log("[detail] tick " + JSON.stringify({ scale: +t.scale.toFixed(2), dpr: window.devicePixelRatio, pan: !!panRef.current, hold: +(gestureUntilRef.current - performance.now()).toFixed(0) }));
-    if (t.scale * (window.devicePixelRatio || 1) <= DETAIL_ENGAGE) return hide();
-    // Mid-gesture bail: `cv.width = bw` below WIPES the crop and reallocs tens of MB —
-    // doing that on every ~90ms sync while pinching/panning would flash the region
-    // blank and storm pdf.js with cancelled renders. The previous crop lives in stage
-    // space, so leaving it painted keeps it correctly anchored while the gesture runs;
-    // scheduleSync self-polls so the settle render is guaranteed once the window expires.
-    if (panRef.current || performance.now() < gestureUntilRef.current) { scheduleSync(); return; }
-    const pageObj = pageObjsRef.current.get(fp.key), rs = renderScalesRef.current.get(fp.key);
-    if (!pageObj || !rs) return hide();
+    syncTilePanelsRef.current = () => {
+      const cont = containerRef.current;
+      if (!cont || status !== "ready") return;
+      const t = tfRef.current;
+      // Mid-gesture bail: resizing a detail canvas mid-pinch would flash the
+      // region blank and storm the worker pool with cancelled renders. The
+      // previous crop stays correctly anchored in stage space (it rides the
+      // same CSS transform everything else does), so leaving it painted is
+      // free; self-poll so the settle repaint is guaranteed even if no further
+      // input event arrives before the gesture window expires.
+      if (panRef.current || performance.now() < gestureUntilRef.current) { scheduleSync(); return; }
+      const r = cont.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const density = tileRequiredDensity(t.scale, dpr);
+      for (const p of panels) {
+        const cv = detailCanvasRefs.current.get(p.key);
+        if (!cv || !p.img?.w) continue;
+        const hide = () => { cv.style.display = "none"; detailKeysRef.current.delete(p.key); };
+        // visible region of THIS panel, in image px (stage space minus xOffset)
+        let x0 = Math.max((-t.x) / t.scale, p.xOffset) - p.xOffset;
+        let y0 = Math.max((-t.y) / t.scale, 0);
+        let x1 = Math.min((r.width - t.x) / t.scale, p.xOffset + p.img.w) - p.xOffset;
+        let y1 = Math.min((r.height - t.y) / t.scale, p.img.h);
+        if (x1 <= x0 || y1 <= y0) { hide(); continue; }         // panel off-screen
+        const mw = (x1 - x0) * DETAIL_MARGIN, mh = (y1 - y0) * DETAIL_MARGIN;
+        x0 = Math.max(0, x0 - mw); y0 = Math.max(0, y0 - mh);
+        x1 = Math.min(p.img.w, x1 + mw); y1 = Math.min(p.img.h, y1 + mh);
+        // one composite per distinct crop — the sync loop re-fires this several
+        // times around a settle with identical inputs
+        const renderKey = `${p.key}|${x0.toFixed(1)},${y0.toFixed(1)}|${x1.toFixed(1)},${y1.toFixed(1)}|${density.toFixed(2)}|${darkModeRef.current ? 1 : 0}`;
+        if (renderKey === detailKeysRef.current.get(p.key)) continue;
+        detailKeysRef.current.set(p.key, renderKey);
+        try { detailCancelsRef.current.get(p.key)?.cancel(); } catch { /* done */ }
+        // paintDetail owns position/size/pixels together now and applies all
+        // three atomically on reveal — setting them here first would show a
+        // correctly-positioned canvas with the OLD crop's (wrongly scaled)
+        // pixels for a frame, which is its own flavor of flicker.
+        const cancel = getCompositor().paintDetail(cv, p.key, p.xOffset, x0, y0, x1, y1, density, darkModeRef.current, () => {});
+        detailCancelsRef.current.set(p.key, cancel);
+      }
+    };
+  });
+  const [repaintTick, setRepaintTick] = useState(0);
+  // panelW/takeoffsOpen: docking or resizing the Takeoffs panel changes the
+  // container rect without a transform change. repaintTick: bumped by the
+  // visibilitychange recovery below.
+  useEffect(() => { syncTilePanelsRef.current(); }, [tf, groupSig, status, panelW, takeoffsOpen, darkMode, repaintTick]);
 
-    // visible region of THIS panel, in image px (stage space minus the panel's xOffset)
-    const r = cont.getBoundingClientRect();
-    let x0 = Math.max((-t.x) / t.scale, fp.xOffset) - fp.xOffset;
-    let y0 = Math.max((-t.y) / t.scale, 0);
-    let x1 = Math.min((r.width - t.x) / t.scale, fp.xOffset + fp.img.w) - fp.xOffset;
-    let y1 = Math.min((r.height - t.y) / t.scale, fp.img.h);
-    if (x1 <= x0 || y1 <= y0) return hide();           // panel off-screen
-    const mw = (x1 - x0) * DETAIL_MARGIN, mh = (y1 - y0) * DETAIL_MARGIN;
-    x0 = Math.max(0, x0 - mw); y0 = Math.max(0, y0 - mh);
-    x1 = Math.min(fp.img.w, x1 + mw); y1 = Math.min(fp.img.h, y1 + mh);
-    const regW = x1 - x0, regH = y1 - y0;
-
-    // density: enough backing px that the stage's CSS scale (×t.scale) isn't upscaling.
-    // Capped by canvas limits, but the region is ~viewport-sized so the cap ~never binds.
-    const dpr = window.devicePixelRatio || 1;
-    let factor = Math.min(t.scale * dpr, MAX_CANVAS_DIM / regW, MAX_CANVAS_DIM / regH, Math.sqrt(MAX_CANVAS_AREA / (regW * regH)));
-    factor = Math.max(1, factor);
-    const bw = Math.max(1, Math.round(regW * factor)), bh = Math.max(1, Math.round(regH * factor));
-
-    // pdf scale yielding factor× the base raster density; shift the region's top-left to (0,0)
-    const vp = pageObj.getViewport({ scale: rs * factor });
-    // Double-buffer: render into an offscreen canvas and swap AFTER the pixels
-    // exist. Writing cv.width here would clear the visible crop synchronously
-    // while pdf.js paints the replacement async — a crisp→blank→crisp blink on
-    // every pan/zoom settle (worse the deeper the zoom, since renders run longer).
-    // The old crop is still correctly anchored in stage space, so it stays up
-    // until the swap; the back store is released right after (width = 0).
-    // one render per distinct crop — the sync loop re-fires this effect several
-    // times around a settle with identical inputs, and each redundant pass is a
-    // full-viewport pdf.js render (in dark mode plus a full-canvas inversion)
-    const renderKey = `${fp.key}|${x0.toFixed(1)},${y0.toFixed(1)}|${bw}x${bh}`;
-    if (renderKey === detailKeyRef.current) return;
-    detailKeyRef.current = renderKey;
-    const back = detailBackRef.current || (detailBackRef.current = document.createElement("canvas"));
-    back.width = bw; back.height = bh;
-    try { detailTaskRef.current?.cancel(); } catch { /* done */ }
-    clearTimeout(detailWatchdogRef.current);
-    const rt = pageObj.render({ canvasContext: back.getContext("2d"), viewport: vp, transform: [1, 0, 0, 1, -x0 * factor, -y0 * factor] });
-    detailTaskRef.current = rt;
-    // Backstop watchdog — NOT the primary fix (that's the visibilitychange retry
-    // below, which targets the actual documented cause). This only covers some
-    // OTHER wedge with no visibility signal, so it deliberately skips firing while
-    // still hidden (retrying then would just wedge the same way) and is tuned long
-    // enough to never race a merely slow render.
-    detailWatchdogRef.current = setTimeout(() => {
-      if (detailTaskRef.current !== rt) return;              // already superseded — nothing to recover
-      if (document.visibilityState !== "visible") return;    // still hidden — visibilitychange will recover it on return
-      if (detailKeyRef.current === renderKey) detailKeyRef.current = "";   // let the next tick retry this crop
-      if (window.__OT_DETAIL_DEBUG) console.log("[detail] stalled, retrying", renderKey);
-      scheduleSync();
-    }, DETAIL_STALL_MS);
-    rt.promise.then(() => {
-      clearTimeout(detailWatchdogRef.current);
-      if (darkModeRef.current) invertCanvasPixels(back);   // negative view baked into pixels before it's ever visible
-      cv.style.left = `${fp.xOffset + x0}px`; cv.style.top = `${y0}px`;
-      cv.style.width = `${regW}px`; cv.style.height = `${regH}px`;
-      cv.width = bw; cv.height = bh;
-      cv.getContext("2d").drawImage(back, 0, 0);           // clear + repaint inside one task: no blank frame
-      back.width = back.height = 0;
-      canvasInvertedRef.current.set(cv, !!darkModeRef.current);
-      cv.style.display = "block"; cv.style.visibility = "";
-      if (window.__OT_DETAIL_DEBUG) console.log("[detail] swapped", bw, "x", bh);
-    }).catch((e) => {   // RenderingCancelledException on rapid re-zoom is expected
-      clearTimeout(detailWatchdogRef.current);
-      if (detailKeyRef.current === renderKey) detailKeyRef.current = "";   // let the next tick retry this crop
-      if (e?.name !== "RenderingCancelledException") console.error("[detail] render failed:", e);
-    });
-    // panelW/takeoffsOpen: docking or resizing the Takeoffs panel changes the
-    // container rect without a transform change — re-run so the crop resyncs
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tf, groupSig, status, focusKey, panelW, takeoffsOpen]);
-
-  // Primary recovery for the detail-view stall: a hidden tab can suspend pdf.js's
-  // render scheduling indefinitely (the promise above neither resolves nor rejects,
-  // no console error — Chrome throttles rAF-gated work in hidden tabs). Retrying the
-  // moment the tab is foregrounded again is immediate and, unlike a blind timeout,
-  // never fights a render that's just legitimately slow while visible.
+  // Primary recovery for a stalled tile fetch: a hidden tab can suspend
+  // in-flight work indefinitely with no error (Chrome throttles rAF-gated
+  // work in hidden tabs) — clear every panel's render key and retry on return.
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState !== "visible" || !detailKeyRef.current) return;
-      detailKeyRef.current = "";   // let the next tick re-request the pending crop
-      scheduleSync();
+      if (document.visibilityState !== "visible") return;
+      detailKeysRef.current.clear();
+      setRepaintTick((n) => n + 1);
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
-  }, [scheduleSync]);
+  }, []);
 
   // the doc cache holds whole PDFs in the worker — tear it down when the
-  // project view unmounts or the project changes
+  // project view unmounts or the project changes. The tile compositor (its
+  // worker pool + up to BYTE_BUDGET of ImageBitmaps) goes down with it:
+  // dispose-and-NULL pairs with getCompositor's lazy ??= creation, which is
+  // what makes this safe under StrictMode's extra mount/unmount cycles — a
+  // post-dispose render just mints a fresh compositor instead of hitting a
+  // permanently-dead pool (the failure mode an eager create/dispose effect
+  // pair was observed to cause; see getCompositor's comment).
   useEffect(() => () => {
     for (const [, t] of pdfDocsRef.current) { t.then((task) => { try { task.destroy(); } catch { /* already gone */ } }).catch(() => {}); }
     pdfDocsRef.current.clear();
+    try { compositorRef.current?.dispose(); } catch { /* half-built pool */ }
+    compositorRef.current = null;
   }, []);
 
   // provenance deep-jump: if the URL named a sheet (?sheet=A003), jump once its page is known
@@ -5009,16 +5001,11 @@ export default function TakeoffCanvas() {
             <Icon name="angle" size={15} />45°
           </button>
           <ToolMenu
-            title="Render & fill settings — Hi-Res and One-Click fill sensitivity"
+            title="Render & fill settings — One-Click fill sensitivity"
             onOpenChange={onMenuDepth}
             face={<Icon name="sliders" size={15} />}
             menuStyle={{ minWidth: 252 }}
             items={[
-              {
-                id: "hires", icon: "hiRes", label: "Hi-Res render (this sheet)", checked: hiResOn(focusPanel.key), stayOpen: true, onSelect: toggleHiRes,
-                title: `Hi-Res rendering for ${labelFor(focusPanel)} — the sheet re-rasters at an auto quality budget (~28MP), so memory stays bounded even side-by-side; crisper when zoomed in. Saved per sheet, per user. Quantities are unaffected.`,
-              },
-              "divider",
               { id: "fill", custom: fillRow },
             ]}
           />
@@ -5451,12 +5438,21 @@ export default function TakeoffCanvas() {
               style={{ position: "absolute", left: editor.left, top: editor.top, zIndex: 9, minWidth: 160, padding: "3px 6px", font: "13px var(--f-body, sans-serif)", color: "var(--ink)", background: "var(--paper-bright)", border: "1px solid var(--cobalt)", boxShadow: "0 2px 10px rgba(0,0,0,.18)", borderRadius: 0, cursor: "text", outline: "none" }} />
           )}
           <div ref={stageRef} style={{ position: "absolute", transformOrigin: "0 0", willChange: "transform", width: stage.w || undefined, height: stage.h || undefined }}>
+            {/* base layer — a small, bounded coarse pyramid placeholder CSS-stretched
+                to the panel's full logical footprint (see tileCompositor.ts's
+                paintBase); the backing store is NOT sheet-sized, only its CSS box is,
+                which is what keeps this a bounded canvas regardless of sheet size */}
             {panels.map((p) => (
               <canvas key={p.key} ref={(el) => { if (el) panelCanvasRefs.current.set(p.key, el); else panelCanvasRefs.current.delete(p.key); }}
-                style={{ position: "absolute", left: p.xOffset, top: 0, boxShadow: "0 2px 20px rgba(0,0,0,.18)" }} />
+                style={{ position: "absolute", left: p.xOffset, top: 0, width: p.img.w || undefined, height: p.img.h || undefined, boxShadow: "0 2px 20px rgba(0,0,0,.18)" }} />
             ))}
-            {/* high-res detail overlay — a crop of the visible region re-rendered at the current zoom (see the detail-view effect) */}
-            <canvas ref={detailCanvasRef} style={{ position: "absolute", left: 0, top: 0, display: "none", pointerEvents: "none" }} />
+            {/* detail layer — one PER PANEL, a crop of the visible region + margin
+                composited from cached tiles at the current zoom (see the detail-view
+                effect); group mode no longer shares a single global detail canvas */}
+            {panels.map((p) => (
+              <canvas key={`detail-${p.key}`} ref={(el) => { if (el) detailCanvasRefs.current.set(p.key, el); else detailCanvasRefs.current.delete(p.key); }}
+                style={{ position: "absolute", left: 0, top: 0, display: "none", pointerEvents: "none" }} />
+            ))}
             <svg width={stage.w} height={stage.h} viewBox={`0 0 ${stage.w} ${stage.h}`} style={{ position: "absolute", top: 0, left: 0, overflow: "visible", pointerEvents: "none" }}>
               <defs>
                 {conditions.map((c) => <HatchPattern key={patId(c)} id={patId(c)} type={c.hatch || "solid"} line={c.color} fill={c.fill} dark={darkMode} />)}
