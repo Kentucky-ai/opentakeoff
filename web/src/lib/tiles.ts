@@ -23,7 +23,37 @@ export const TILE_SIZE = 512;
 export const MIN_LEVEL_PX = 768;
 // Reuses the old QUALITY_CEILING's intent (≈576 px/in-equivalent deep zoom)
 // as the top of the pyramid, relative to the RENDER_SCALE=2 logical baseline.
-export const MAX_DENSITY = 8;
+// That intent works out to 4, not 8: 576 px/in ÷ 72 pt/in = 8 device px per
+// POINT, and the logical space is already 2 px per point (RENDER_SCALE), so
+// the density multiplier on top of it is 8/2 = 4. Shipping 8 asked pdf.js to
+// render each tile at scale RENDER_SCALE×8 = 16 — a >100k-px viewport on an
+// E-size sheet — and quadrupled the tile count for the same crop. Measured on
+// the hosted demo at 259% zoom: not one level-8 tile ever completed (no
+// error, they simply never finished), so the detail layer sat on the base
+// placeholder upscaled 16× — the "so so pixelated" report. Deep zoom is
+// exactly where a tile must still be CHEAP, because that's where the pyramid
+// has the most tiles to produce.
+export const MAX_DENSITY = 4;
+
+/** Level id for the whole-sheet BASE composite. Deliberately outside the
+ *  pyramid's 0..n index range so its cache keys can never collide with a
+ *  real level's — the base is rendered at its own exact-fit density (see
+ *  fitDensity), not at a power-of-two level. */
+export const BASE_LEVEL = -1;
+
+/** The exact density whose full-sheet composite hits `targetArea` device px.
+ *  The pyramid is power-of-two, so snapping a budget DOWN to a level wastes
+ *  most of it: on a 7920×5280 sheet a 28MP budget admits density 0.818, but
+ *  the nearest level at-or-under is 0.5 — 10.4MP, 37% of the budget and a
+ *  1.6× LINEAR regression against the single raster this replaced. The base
+ *  layer is whatever a fast pan and any zoom past the pyramid's top actually
+ *  shows, so that shortfall is visible constantly. Never denser than 1.0:
+ *  past the RENDER_SCALE baseline there is no more detail to recover, only
+ *  supersampling a whole sheet nobody asked for. */
+export function fitDensity(imgW: number, imgH: number, targetArea: number): number {
+  const area = Math.max(1, imgW * imgH);
+  return Math.min(1, Math.sqrt(targetArea / area));
+}
 
 /** Density multiplier for each level, ascending, level index = array index.
  *  Always includes 1.0 (the native baseline) as a level boundary so pickLevel
@@ -74,7 +104,16 @@ export function visibleTiles(
   imgW: number, imgH: number, levels: number[], level: number,
   x0: number, y0: number, x1: number, y1: number,
 ): VisibleTile[] {
-  const density = levels[level];
+  return visibleTilesAtDensity(imgW, imgH, levels[level], level, x0, y0, x1, y1);
+}
+
+/** visibleTiles for a density that is NOT a pyramid level — the base layer's
+ *  exact-fit density. `level` is carried through untouched purely as the id
+ *  the caller will key the cache on (BASE_LEVEL for the base). */
+export function visibleTilesAtDensity(
+  imgW: number, imgH: number, density: number, level: number,
+  x0: number, y0: number, x1: number, y1: number,
+): VisibleTile[] {
   const { w: levelW, h: levelH } = levelDims(imgW, imgH, density);
   const lx0 = Math.max(0, Math.floor(x0 * density));
   const ly0 = Math.max(0, Math.floor(y0 * density));
