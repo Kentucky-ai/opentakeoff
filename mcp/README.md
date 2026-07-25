@@ -240,19 +240,25 @@ npm test        # session + tool-layer + e2e, against demo/sample-plan.pdf
 MCP releases live in the **`mcp-v*`** tag namespace — bare `v*` tags belong to
 the app (v0.2.0, v0.3.0 are app releases). Releases publish via **npm trusted
 publishing**: the tag push fires `.github/workflows/publish-mcp.yml`, which
-pauses at the `release` environment for maintainer approval, then publishes
-the npm artifact over OIDC with a **provenance attestation** (no npm token
-exists anywhere — the npm package designates that exact repo + workflow as
-its trusted publisher), followed by the MCP registry entry, the GitHub
-release, and the MCPB bundle.
+runs straight through — no approval click — and publishes the npm artifact
+over OIDC with a **provenance attestation** (no npm token exists anywhere —
+the npm package designates that exact repo + workflow as its trusted
+publisher), followed by the MCP registry entry, the GitHub release, and the
+MCPB bundle. The `release` environment's required-reviewer gate existed
+briefly and was deliberately removed (2026-07-22) — the tag push is the one
+human decision, and it's already admin-gated, so a second click added
+friction without adding safety.
 
 ```bash
 # 1. bump the version — all three fields together:
 #    package.json .version, server.json .version, server.json .packages[0].version
-# 2. tag and push — this fires the whole release:
+# 2. tag and push — this fires the whole release, fully unattended:
 git tag mcp-v<version> && git push origin mcp-v<version>
-# 3. approve the run (GitHub → Actions → the paused "Publish to MCP Registry" run)
 ```
+
+⚠️ Because there's no approval step, an accidental or mistyped `mcp-v*` tag
+publishes to npm immediately, and npm unpublish is heavily restricted —
+double-check the version before tagging.
 
 The workflow checks version consistency, runs the full publish gate
 (`prepublishOnly` = typecheck + tests + build), publishes to npm and the
