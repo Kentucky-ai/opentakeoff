@@ -32,8 +32,8 @@
 //           gets independent sharpness, closing the RFC's noted group-mode gap.
 //
 // paintDetail double-buffers and swaps ATOMICALLY (compose off-DOM, one
-// drawImage onto the visible canvas once the crop is ready or a short grace
-// period elapses) — this is the OLD codebase's own "never a partial paint"
+// drawImage onto the visible canvas once the crop is READY — never on a
+// timer, see its comment) — this is the OLD codebase's own "never a partial paint"
 // rule (see its double-buffer comment history), which the first version of
 // this file dropped in favor of drawing each tile the moment it landed.
 // That reads, live, as tiles visibly sweeping across the sheet in whatever
@@ -62,11 +62,6 @@ const BYTE_BUDGET = 450 * 1024 * 1024;
 // shipped for years before #86; tiling just makes hitting that number
 // bounded-memory instead of one giant backing store.
 const BASE_TARGET_AREA = 28_000_000;
-// If the target crop isn't fully resolved within this long, reveal whatever
-// IS ready (placeholder + however many real tiles landed) rather than let
-// one slow/stuck tile hold the whole reveal hostage — a progressive fallback,
-// not the common case once tilePool.ts's real parallelism is in place.
-const REVEAL_GRACE_MS = 350;
 // Sanity ceiling on ONE detail crop's backing store. In normal use the crop
 // is viewport*dpr — about 8MP — at every zoom, because zooming in shrinks the
 // image-space region by exactly the factor it raises the density. This only
@@ -283,7 +278,7 @@ export function createTileCompositor() {
    *  for a panel positioned at `panelXOffset` in stage space. Composes
    *  off-DOM and swaps into `canvas` ATOMICALLY — the visible canvas (size,
    *  position, AND pixels) is untouched until the new crop is ready (or
-   *  REVEAL_GRACE_MS elapses), so the previous, fully-painted crop stays on
+   *  is READY — never on a timer), so the previous, fully-painted crop stays on
    *  screen with zero flicker and zero tile-by-tile sweep. `onDone` fires
    *  once per actual reveal (the atomic swap, or a rare post-grace straggler
    *  patch), not once per tile. Returns a disposer that stops this call from
@@ -347,7 +342,6 @@ export function createTileCompositor() {
     const swap = () => {
       if (swapped || !live || myGen !== generation) return;
       swapped = true;
-      clearTimeout(graceTimer);
       canvas.width = bw; canvas.height = bh;
       canvas.style.left = `${panelXOffset + x0}px`; canvas.style.top = `${y0}px`;
       canvas.style.width = `${x1 - x0}px`; canvas.style.height = `${y1 - y0}px`;
@@ -355,11 +349,26 @@ export function createTileCompositor() {
       canvas.getContext("2d")?.drawImage(back, 0, 0);
       onDone();
     };
-    // Fallback only — swap normally fires the instant every target tile has
-    // settled (success or failure), which with tilePool.ts's real pool
-    // parallelism should usually beat this. If one tile is genuinely stuck,
-    // reveal what's ready rather than hold the whole crop hostage.
-    const graceTimer = window.setTimeout(swap, REVEAL_GRACE_MS);
+    // NOTHING reveals this buffer on a timer any more, and that is the whole
+    // point: A SHARP CROP IS NEVER REPLACED BY A COARSER ONE.
+    //
+    // There used to be a REVEAL_GRACE_MS fallback that swapped in whatever was
+    // ready. On a slow render that meant revealing a placeholder-only buffer —
+    // which resizes and repaints the visible canvas, destroying the previous
+    // sharp crop to show a ~26x upscale of the base. Every pan became
+    // sharp -> blurry -> sharp, and holding a gesture parked you in the blurry
+    // half. Reported as "jumps and flashes and blurry just out of focus", and
+    // confirmed from a screen recording: two frames at the SAME 1081% zoom,
+    // one smeared and one crisp.
+    //
+    // Waiting costs nothing, because the previous crop is still correct while
+    // we wait. The detail canvas is positioned in SHEET space, so it pans with
+    // the stage: its pixels stay pinned to the region they were rendered for.
+    // A small pan is still covered (the crop carries a margin for exactly
+    // this), and wherever it no longer reaches, the BASE layer shows through —
+    // which is the "never blank" guarantee doing its job. Base under new
+    // territory is honest; base smeared over ground we already had sharp is
+    // not.
 
     // ONE render for the whole crop. The rect is in the crop's own density
     // space, which is what the worker's `transform: [1,0,0,1,-x,-y]` expects.
@@ -376,21 +385,24 @@ export function createTileCompositor() {
       cropReq = { cancel: req.cancel };
       req.promise.then(({ bitmap }) => {
         if (!live || myGen !== generation) { bitmap.close(); return; }
-        // Landing after the grace swap is normal, not an error: the
-        // placeholder was revealed first so the view never blanks. Paint onto
-        // whichever surface is current, then release — this bitmap is a
-        // one-off crop, so nothing else will ever close it for us.
-        if (swapped) { canvas.getContext("2d")?.drawImage(bitmap, 0, 0); onDone(); }
-        else { bctx.drawImage(bitmap, 0, 0); swap(); }
+        // The ONLY path that reveals this crop. Compose over the placeholder
+        // underlay (which covers any region the render left transparent) and
+        // swap once, fully sharp. Then release — a one-off crop, so nothing
+        // else will ever close it for us.
+        bctx.drawImage(bitmap, 0, 0);
         bitmap.close();
+        swap();
       }).catch((err) => {
         if (!live || myGen !== generation) return;
-        console.warn("[tiles] detail crop failed:", err);
-        swap(); // reveal the placeholder rather than sit on a stale crop
+        // Deliberately do NOT swap. A failed crop means we have nothing better
+        // than what is already on screen, and revealing the placeholder buffer
+        // here would blur a view the user could still read. Keep the last good
+        // crop, let the base cover the rest, and say so.
+        console.warn("[tiles] detail crop failed — keeping the previous crop:", err);
       });
     }
 
-    return { cancel() { live = false; clearTimeout(graceTimer); cropReq?.cancel(); } };
+    return { cancel() { live = false; cropReq?.cancel(); } };
   }
 
   function dispose() { resetAll(); pool.dispose(); }
