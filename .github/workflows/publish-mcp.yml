@@ -3,10 +3,11 @@ name: Publish to MCP Registry
 # Full release automation via trusted publishing (adopted 2026-07-21, decision
 # doc in the maintainer binder): pushing an mcp-v* tag publishes the npm
 # artifact (OIDC, provenance attested — no token exists anywhere), then the
-# MCP registry entry, the GitHub release, and the MCPB bundle. The `release`
-# environment pauses every run for the maintainer's approval, so a human
-# decision still gates each publish. workflow_dispatch exercises OIDC login
-# without publishing.
+# MCP registry entry, the GitHub release, and the MCPB bundle, fully
+# unattended — no approval click. The `release` environment's required
+# reviewer was removed 2026-07-22 (friction without added safety, since the
+# tag push is already admin-gated); it stays as the OIDC trust boundary, not
+# a pause point. workflow_dispatch exercises OIDC login without publishing.
 #
 # MCP releases live in the mcp-v* tag namespace: bare v* tags are app
 # releases (v0.2.0, v0.3.0 already exist), so the server versions its tags
@@ -24,7 +25,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: release # required reviewer holds the run until approved
+    environment: release # OIDC trust boundary for npm trusted publishing — no required reviewer (removed 2026-07-22)
     defaults:
       run:
         working-directory: mcp
