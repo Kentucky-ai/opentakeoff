@@ -23,16 +23,18 @@ export const TILE_SIZE = 512;
 export const MIN_LEVEL_PX = 768;
 // Reuses the old QUALITY_CEILING's intent (≈576 px/in-equivalent deep zoom)
 // as the top of the pyramid, relative to the RENDER_SCALE=2 logical baseline.
-// That intent works out to 4, not 8: 576 px/in ÷ 72 pt/in = 8 device px per
-// POINT, and the logical space is already 2 px per point (RENDER_SCALE), so
-// the density multiplier on top of it is 8/2 = 4. Shipping 8 asked pdf.js to
-// render each tile at scale RENDER_SCALE×8 = 16 — a >100k-px viewport on an
-// E-size sheet — and quadrupled the tile count for the same crop. Measured on
-// the hosted demo at 259% zoom: not one level-8 tile ever completed (no
-// error, they simply never finished), so the detail layer sat on the base
-// placeholder upscaled 16× — the "so so pixelated" report. Deep zoom is
-// exactly where a tile must still be CHEAP, because that's where the pyramid
-// has the most tiles to produce.
+// This bounds the PYRAMID only — the base layer and the placeholder search.
+// It no longer bounds on-screen sharpness: the detail crop is a single render
+// at exactly the density the screen asks for (see tileCompositor's
+// paintDetail), so it is not chosen from these levels at all.
+//
+// It briefly did bound sharpness, and that was a bug: #108 set it to 4 to stop
+// deep-zoom tiles from being unaffordable, which capped real sharpness at 200%
+// zoom on a dpr-2 screen and produced measurable pixel-doubling (2.08x at
+// 417%). The tiling was the thing that couldn't be afforded, not the density.
+// 4 is still the right pyramid ceiling — the base never needs to exceed the
+// RENDER_SCALE baseline, and a coarser placeholder is only ever a stand-in for
+// the few hundred ms before the crop lands.
 export const MAX_DENSITY = 4;
 
 /** Level id for the whole-sheet BASE composite. Deliberately outside the
