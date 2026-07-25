@@ -1,4 +1,4 @@
-// The fifteen tools — thin zod-validated handlers over the Session. Replies are
+// The seventeen tools — thin zod-validated handlers over the Session. Replies are
 // compact JSON (format.ts); view_sheet alone replies with an image content
 // item plus a JSON meta text item. Failures are isError results, never thrown
 // protocol errors.
@@ -12,6 +12,7 @@ import {
   measurePolygonOutput, measureLineOutput, takeoffSummaryOutput,
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
   editShapeOutput, undoLastOutput, sheetContextOutput,
+  findTextOutput, editMaterialsOutput,
 } from "./outputs.ts";
 
 // The coordinate contract, stated on every tool so any agent reading any one
@@ -166,8 +167,29 @@ export function registerTools(server: McpServer, session: Session): void {
     outputSchema: editShapeOutput,
   }, run("edit_shape", (a) => session.editShape(a.shape_id, { verts: a.verts, condition: a.condition, role: a.role })));
 
+  server.registerTool("edit_materials", {
+    description: `Add, remove, or patch supporting-materials rows on a condition — the coverage-rate lines that turn a measured area/length/count into an order quantity (adhesive at N sf/gal, grout at N lf/bag, …), matching the canvas's per-condition Supporting Materials panel. Each row is {name, per, basis, unit, round, note}: quantity = the condition's basis total (area/linear/count) ÷ per, rounded up to whole purchase units unless round:false. condition names an existing OR NEW finish tag (minted on first touch, same as one_click/measure_polygon) — add alone is enough to seed materials on a condition before you've traced anything. remove/patch target existing row ids from this reply or export_takeoff (takeoff_summary strips materials for a compact quantities-only reply); a bad id 404s the WHOLE call before anything is written, and referencing an id on a tag with no condition yet errors rather than silently minting an empty one. No review gate here — materials rows are quantity config, not traced geometry, so this edits directly; undo_last reverses a call in one step (the condition's whole materials array, snapshotted before the write, restored verbatim).`,
+    inputSchema: {
+      condition: z.string().describe("Finish tag, e.g. 'CPT-1'"),
+      add: z.array(z.object({
+        name: z.string().min(1),
+        per: z.number().min(0).optional().describe("Coverage rate — basis units per purchase unit, e.g. 250 for 1 gal / 250 sf. Default 0 (quantity 0 until set)"),
+        basis: z.enum(["area", "linear", "count"]).optional().describe("Which of the condition's totals this row divides against — default 'area' (total SF)"),
+        unit: z.string().optional().describe("Purchase unit, e.g. 'gal', 'bag', 'roll'"),
+        round: z.boolean().optional().describe("Round up to whole purchase units — default true"),
+        note: z.string().optional(),
+      })).optional().describe("New rows to add"),
+      remove: z.array(z.string()).optional().describe("Existing row ids to remove"),
+      patch: z.array(z.object({
+        id: z.string(),
+        fields: z.record(z.union([z.string(), z.number(), z.boolean()])).describe("Field:value pairs — name/per/basis/unit/round/note only"),
+      })).optional().describe("Field changes on existing rows"),
+    },
+    outputSchema: editMaterialsOutput,
+  }, run("edit_materials", (a) => session.editMaterials(a.condition, { add: a.add, remove: a.remove, patch: a.patch })));
+
   server.registerTool("undo_last", {
-    description: `Step back over your OWN last n mutations, newest first — a committed one_click, a whole detect_rooms sweep, an edit_shape, or a delete_shape. Each step is reversed exactly (a commit is removed, an edit is restored verbatim, a delete is re-inserted where it was), so this restores state rather than approximating it. Reads are never journaled, so n counts gestures that changed something, not tool calls you made. Use it when a sweep committed against the wrong condition or a batch went in on the wrong sheet — one call instead of N deletes. Scope: this session's own history only. It is not the browser canvas's undo stack, and load_plan clears it along with the shapes it refers to.`,
+    description: `Step back over your OWN last n mutations, newest first — a committed one_click, a whole detect_rooms sweep, an edit_shape, a delete_shape, or an edit_materials call. Each step is reversed exactly (a commit is removed, an edit is restored verbatim, a delete is re-inserted where it was, a materials edit's whole array is restored), so this restores state rather than approximating it. Reads are never journaled, so n counts gestures that changed something, not tool calls you made. Use it when a sweep committed against the wrong condition or a batch went in on the wrong sheet — one call instead of N deletes. Scope: this session's own history only. It is not the browser canvas's undo stack, and load_plan clears it along with the shapes it refers to.`,
     inputSchema: {
       n: z.number().int().min(1).max(UNDO_CAP).default(1).describe(`How many steps to reverse (1–${UNDO_CAP})`),
     },
@@ -182,6 +204,18 @@ export function registerTools(server: McpServer, session: Session): void {
     },
     outputSchema: readSheetTextOutput,
   }, run("read_sheet_text", (a) => session.readSheetText(a.sheet, a.region)));
+
+  server.registerTool("find_text", {
+    description: `LOCATE a known string on a sheet — the complement to read_sheet_text (which returns what a region SAYS; this finds WHERE a string you already know sits). Case-insensitive substring match against each pdf.js text run, so a room label split across runs ("OFFICE" then "134" as separate items) needs a find_text call per fragment, or read_sheet_text over a region to see the whole thing joined. Every hit's center feeds straight into one_click as the seed — the locate-then-trace workflow: find_text the room number, one_click at (or just past) its center. Optionally restrict to a region {x0, y0, x1, y1}; results cap at limit (default 200), with count/truncated telling you exactly how much a tighter region or higher limit would recover. ${COORDS}`,
+    inputSchema: {
+      sheet: z.string(),
+      q: z.string().min(1).describe("Text to find — a room number ('134'), a label fragment ('RECEPTION'), a schedule tag ('CPT-1')"),
+      region: z.object({ x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() }).optional()
+        .describe("Rect in image px (origin top-left, y down); omit for the full sheet"),
+      limit: z.number().int().min(1).max(2000).default(200).describe("Max hits returned"),
+    },
+    outputSchema: findTextOutput,
+  }, run("find_text", (a) => session.findText(a.sheet, a.q, { region: a.region, limit: a.limit })));
 
   server.registerTool("view_sheet", {
     description: `SEE the sheet — render the page (or a crop of it) to a PNG image. This is your eyes on the plan: full-sheet overview first, then tight crops at higher px until dimension strings and room labels read cleanly. region is in image px — the same space as every other tool — so a feature at pixel (ix, iy) of the returned image sits at x = region_x0 + ix × (region_x1 − region_x0) / img_w (same for y), and those coordinates go straight into one_click, measure_polygon, or read_sheet_text. overlay:true burns the session's committed shapes into the render (human-affirmed ink solid red, unreviewed machine shapes dashed blue) — render again after committing to verify your geometry landed where you intended, and sanity-check what you see: a fixture-sized ring where a room should be means the seed landed inside a stall or casework; an outsized ring means the flood escaped through an opening. To MEASURE rather than guess, pass grid: a calibrated measuring grid is burned in — thin lines every 1 ft, heavy blue every 5 ft, foot labels along the crop edges, feet counted from the crop's top-left corner. Count grid cells between walls exactly like an estimator scaling a plan; never derive a dimension by eye when the grid can give it to you. grid "auto" uses the sheet's set scale; before set_scale, pass the drawing scale read off the title block as inches-per-foot — "1/4" for a 1/4" = 1'-0" plan, "3/16", "0.25". Rendering needs the optional native canvas (@napi-rs/canvas); where it isn't installed this tool errors cleanly and every other tool still works. ${COORDS}`,
