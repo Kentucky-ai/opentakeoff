@@ -95,8 +95,10 @@ const names = listed.tools.map((tool) => tool.name).sort();
 assert.deepEqual(names, [
   "delete_shape",
   "detect_rooms",
+  "edit_materials",
   "edit_shape",
   "export_takeoff",
+  "find_text",
   "load_plan",
   "measure_line",
   "measure_polygon",
