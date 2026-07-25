@@ -50,7 +50,7 @@
 
 import { RENDER_SCALE } from "./sheets";
 import { createTilePool } from "./tilePool";
-import { TileLRU, buildLevels, pickLevel, levelDims, visibleTiles, tileKey as rawTileKey, TILE_SIZE } from "./tiles";
+import { TileLRU, buildLevels, pickLevel, levelDims, visibleTiles, visibleTilesAtDensity, fitDensity, BASE_LEVEL, tileKey as rawTileKey, TILE_SIZE } from "./tiles";
 
 // ~450MB shared across every open sheet/panel — the old per-group ceiling
 // ("4-up ≈ 450MB" per canvasConstants.js), now a BUDGET instead of a floor
@@ -67,6 +67,12 @@ const BASE_TARGET_AREA = 28_000_000;
 // one slow/stuck tile hold the whole reveal hostage — a progressive fallback,
 // not the common case once tilePool.ts's real parallelism is in place.
 const REVEAL_GRACE_MS = 350;
+// Most tiles one detail crop may queue. A 512² tile costs roughly a full
+// page-operator replay regardless of how little of the page lands in it, so
+// crop cost scales with tile COUNT, and a crop the pool can't drain is a crop
+// the user never sees. Sized so a full-viewport crop drains in a couple of
+// passes across the pool rather than tying it up indefinitely.
+const MAX_CROP_TILES = 48;
 
 function modeKey(key: string, dark: boolean) { return `${key}:${dark ? 1 : 0}`; }
 
@@ -103,6 +109,9 @@ export function createTileCompositor() {
   const inflightReqs = new Map<string, { cancel: () => void; promise: Promise<ImageBitmap | undefined> }>();
   const levelsBySheet = new Map<string, number[]>();
   const dimsBySheet = new Map<string, { w: number; h: number }>();
+  // exact-fit density the BASE composite was painted at, per sheet — the
+  // placeholder search needs it to rank the base against the pyramid levels
+  const baseDensityBySheet = new Map<string, number>();
   const opened = new Set<string>();
   // Every tile request awaits this before hitting the worker — dataPromise
   // (an IndexedDB read) resolves well after openSheet() returns, so without
@@ -184,7 +193,14 @@ export function createTileCompositor() {
         if (myGen !== generation) { bitmap.close(); return undefined; } // superseded by resetAll
         cache.set(key, bitmap, w * h * 4);
         return bitmap;
-      } catch {
+      } catch (err) {
+        // A failed tile silently degrades to "placeholder forever" on screen,
+        // which reads as blur rather than as breakage — the #86 pixelation
+        // hunt cost a day precisely because this catch was bare. Cancellation
+        // is routine and stays quiet; a genuine render failure must not.
+        if (!(err as Error)?.message?.includes("Rendering cancelled")) {
+          console.warn(`[tiles] level ${level} tile ${tx},${ty} failed:`, err);
+        }
         return undefined;
       }
     })();
@@ -194,27 +210,14 @@ export function createTileCompositor() {
     return run;
   }
 
-  /** Densest level whose full-sheet composite still fits BASE_TARGET_AREA —
-   *  the old codebase's own raster budget, just expressed as a pyramid level
-   *  instead of a single canvas size. */
-  function baseTargetLevel(levels: number[], imgW: number, imgH: number): number {
-    let best = 0;
-    for (let i = 0; i < levels.length; i++) {
-      const { w, h } = levelDims(imgW, imgH, levels[i]);
-      if (w * h > BASE_TARGET_AREA) break; // densities only increase — first overshoot ends the search
-      best = i;
-    }
-    return best;
-  }
-
-  /** Renders the WHOLE sheet at `level` into an off-DOM buffer, then swaps it
-   *  into `canvas` atomically (same "compose off-screen, one reveal" rule as
-   *  paintDetail — a ~28MP base composite can be 100+ tiles, and painting
-   *  those onto the visible canvas one at a time would be its own wave). */
-  async function paintBaseAtLevel(canvas: HTMLCanvasElement, sheetKey: string, imgW: number, imgH: number, levels: number[], level: number, dark: boolean, myGen: number) {
-    const density = levels[level];
+  /** Renders the WHOLE sheet at `density` into an off-DOM buffer, then swaps
+   *  it into `canvas` atomically (same "compose off-screen, one reveal" rule
+   *  as paintDetail — a ~28MP base composite can be 100+ tiles, and painting
+   *  those onto the visible canvas one at a time would be its own wave).
+   *  `level` is the cache-key id only; it need not index `levels`. */
+  async function paintBaseAtLevel(canvas: HTMLCanvasElement, sheetKey: string, imgW: number, imgH: number, density: number, level: number, dark: boolean, myGen: number) {
     const { w: lw, h: lh } = levelDims(imgW, imgH, density);
-    const tiles = visibleTiles(imgW, imgH, levels, level, 0, 0, imgW, imgH);
+    const tiles = visibleTilesAtDensity(imgW, imgH, density, level, 0, 0, imgW, imgH);
     const back = document.createElement("canvas");
     back.width = lw; back.height = lh;
     const bctx = back.getContext("2d");
@@ -239,21 +242,34 @@ export function createTileCompositor() {
   async function paintBase(canvas: HTMLCanvasElement, sheetKey: string, imgW: number, imgH: number, dark: boolean) {
     const levels = levelsFor(sheetKey, imgW, imgH);
     const myGen = generation;
-    await paintBaseAtLevel(canvas, sheetKey, imgW, imgH, levels, 0, dark, myGen);
+    await paintBaseAtLevel(canvas, sheetKey, imgW, imgH, levels[0], 0, dark, myGen);
     if (myGen !== generation) return;
-    const target = baseTargetLevel(levels, imgW, imgH);
-    if (target > 0) await paintBaseAtLevel(canvas, sheetKey, imgW, imgH, levels, target, dark, myGen);
+    // Phase 2 at the EXACT budget density, not the nearest level under it —
+    // see fitDensity for the 37%-of-budget shortfall that snapping caused.
+    const bd = fitDensity(imgW, imgH, BASE_TARGET_AREA);
+    baseDensityBySheet.set(sheetKey, bd);
+    if (bd > levels[0]) await paintBaseAtLevel(canvas, sheetKey, imgW, imgH, bd, BASE_LEVEL, dark, myGen);
   }
 
-  /** Best coarser level fully cached for this region — the instant
-   *  placeholder drawn under the target level while its tiles stream in. */
-  function bestPlaceholderLevel(sheetKey: string, levels: number[], target: number, x0: number, y0: number, x1: number, y1: number, dark: boolean) {
+  /** Densest fully-cached stand-in for this region — drawn under the target
+   *  level while its tiles stream in. Considers the BASE composite alongside
+   *  the coarser pyramid levels: the base sits at the exact budget density
+   *  (~0.82 on an E-size sheet), denser than any power-of-two level under 1,
+   *  so at deep zoom it is both the best available placeholder AND the thing
+   *  the user actually stares at while the target level renders. */
+  function bestPlaceholder(sheetKey: string, levels: number[], target: number, x0: number, y0: number, x1: number, y1: number, dark: boolean): { level: number; density: number } {
     const dims = dimsBySheet.get(sheetKey)!;
-    for (let l = target - 1; l >= 0; l--) {
-      const tiles = visibleTiles(dims.w, dims.h, levels, l, x0, y0, x1, y1);
-      if (tiles.length && tiles.every((t) => cache.has(modeKey(rawTileKey(sheetKey, l, t.tx, t.ty), dark)))) return l;
-    }
-    return 0; // level 0 is always fetched by paintBase — safe fallback even if not yet cached (draws nothing, not a crash)
+    const cached = (level: number, density: number) => {
+      const tiles = visibleTilesAtDensity(dims.w, dims.h, density, level, x0, y0, x1, y1);
+      return tiles.length > 0 && tiles.every((t) => cache.has(modeKey(rawTileKey(sheetKey, level, t.tx, t.ty), dark)));
+    };
+    const baseDensity = baseDensityBySheet.get(sheetKey);
+    const candidates: { level: number; density: number }[] = [];
+    for (let l = target - 1; l >= 0; l--) candidates.push({ level: l, density: levels[l] });
+    if (baseDensity !== undefined && baseDensity < levels[target]) candidates.push({ level: BASE_LEVEL, density: baseDensity });
+    candidates.sort((a, b) => b.density - a.density); // densest stand-in first
+    for (const c of candidates) if (cached(c.level, c.density)) return c;
+    return { level: 0, density: levels[0] }; // always fetched by paintBase — safe even if not yet cached (draws nothing, not a crash)
   }
 
   /** Paints [x0,y0,x1,y1) (image px, margin already applied by the caller)
@@ -276,7 +292,13 @@ export function createTileCompositor() {
     const dims = dimsBySheet.get(sheetKey);
     const levels = levelsBySheet.get(sheetKey);
     if (!dims || !levels) return { cancel() {} };
-    const level = pickLevel(levels, density);
+    // Step down until the crop is a number of tiles the pool can actually
+    // finish. Without this the level is chosen purely from screen density, so
+    // a deep zoom on a big sheet queues a crop that never completes and the
+    // user is left on the placeholder indefinitely — blur with no recovery
+    // path, which is strictly worse than one level softer that ARRIVES.
+    let level = pickLevel(levels, density);
+    while (level > 0 && visibleTilesAtDensity(dims.w, dims.h, levels[level], level, x0, y0, x1, y1).length > MAX_CROP_TILES) level--;
     const targetDensity = levels[level];
     const bw = Math.max(1, Math.round((x1 - x0) * targetDensity));
     const bh = Math.max(1, Math.round((y1 - y0) * targetDensity));
@@ -290,9 +312,8 @@ export function createTileCompositor() {
     const bctx = back.getContext("2d");
     if (!bctx) return { cancel() {} };
 
-    const placeholderLevel = bestPlaceholderLevel(sheetKey, levels, level, x0, y0, x1, y1, dark);
-    const phDensity = levels[placeholderLevel];
-    const phTiles = visibleTiles(dims.w, dims.h, levels, placeholderLevel, x0, y0, x1, y1);
+    const { level: placeholderLevel, density: phDensity } = bestPlaceholder(sheetKey, levels, level, x0, y0, x1, y1, dark);
+    const phTiles = visibleTilesAtDensity(dims.w, dims.h, phDensity, placeholderLevel, x0, y0, x1, y1);
     for (const t of phTiles) {
       const bmp = cache.get(modeKey(rawTileKey(sheetKey, placeholderLevel, t.tx, t.ty), dark)) as ImageBitmap | undefined;
       if (!bmp) continue;

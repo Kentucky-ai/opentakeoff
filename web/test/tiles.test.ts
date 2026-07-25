@@ -2,8 +2,53 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   TILE_SIZE, MAX_DENSITY, buildLevels, pickLevel, levelDims, tileGrid,
-  tileKey, tileRect, visibleTiles, requiredDensity, TileLRU,
+  tileKey, tileRect, visibleTiles, visibleTilesAtDensity, fitDensity,
+  BASE_LEVEL, requiredDensity, TileLRU,
 } from "../src/lib/tiles.ts";
+
+// The E-size sheet the 259%-zoom pixelation was measured on: 3960x2640 pt at
+// RENDER_SCALE=2. Its whole-sheet area (41.8MP) sits just above the 28MP base
+// budget, which is exactly the case power-of-two snapping handled worst.
+const E_W = 7920, E_H = 5280;
+const BASE_TARGET_AREA = 28_000_000;
+
+test("fitDensity spends the base budget instead of snapping down a level", () => {
+  const d = fitDensity(E_W, E_H, BASE_TARGET_AREA);
+  const { w, h } = levelDims(E_W, E_H, d);
+  // fills the budget (within a rounding pixel), rather than the 10.4MP that
+  // the nearest power-of-two level at-or-under the budget would have given
+  assert.ok(w * h <= BASE_TARGET_AREA * 1.001, `over budget: ${w * h}`);
+  assert.ok(w * h >= BASE_TARGET_AREA * 0.99, `under budget: ${w * h}`);
+  const snapped = buildLevels(E_W, E_H).filter((l) => {
+    const dim = levelDims(E_W, E_H, l); return dim.w * dim.h <= BASE_TARGET_AREA;
+  }).pop()!;
+  assert.ok(d > snapped, `exact fit ${d} should beat snapped level ${snapped}`);
+  assert.ok(d / snapped > 1.5, `expected a >1.5x linear gain, got ${d / snapped}`);
+});
+
+test("fitDensity never supersamples past the RENDER_SCALE baseline", () => {
+  // a small sheet whose whole page fits the budget many times over
+  assert.equal(fitDensity(1000, 800, BASE_TARGET_AREA), 1);
+});
+
+test("MAX_DENSITY keeps the deepest pdf.js render scale affordable", () => {
+  // RENDER_SCALE (2) x MAX_DENSITY is the scale a tile is rendered at; 8 put
+  // an E-size sheet's viewport past 100k px per tile and nothing completed
+  assert.ok(MAX_DENSITY <= 4, `MAX_DENSITY ${MAX_DENSITY} is too deep to render`);
+  assert.ok(Math.max(E_W, E_H) * 2 * MAX_DENSITY <= 70_000);
+});
+
+test("visibleTilesAtDensity carries a non-level id through for cache keying", () => {
+  const tiles = visibleTilesAtDensity(E_W, E_H, fitDensity(E_W, E_H, BASE_TARGET_AREA), BASE_LEVEL, 0, 0, E_W, E_H);
+  assert.ok(tiles.length > 0);
+  assert.ok(tiles.every((t) => t.level === BASE_LEVEL));
+  // and it agrees with the level-indexed path when handed a real level
+  const levels = buildLevels(E_W, E_H);
+  assert.deepEqual(
+    visibleTilesAtDensity(E_W, E_H, levels[1], 1, 0, 0, E_W, E_H),
+    visibleTiles(E_W, E_H, levels, 1, 0, 0, E_W, E_H),
+  );
+});
 
 test("buildLevels always includes native (1.0) and tops out at MAX_DENSITY", () => {
   const levels = buildLevels(5000, 3000);
