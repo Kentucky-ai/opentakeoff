@@ -38,8 +38,35 @@ function modeKey(key: string, dark: boolean) { return `${key}:${dark ? 1 : 0}`; 
 
 export function createTileCompositor() {
   const pool = createTilePool();
-  const cache = new TileLRU(BYTE_BUDGET);
-  const inflightReqs = new Map<string, { cancel: () => void }>();
+  // The LRU owns real pixel memory: ImageBitmaps hold their backing store
+  // until close(), so eviction/replace/clear must close, or the "byte budget"
+  // only bounds the ledger while the process keeps every bitmap ever rendered
+  // alive until GC gets around to it. Never close a bitmap still on screen:
+  // the protect provider unions every panel's last-painted tile set (base +
+  // detail), so evictToBudget skips exactly what's visible right now.
+  const visibleKeys = new Map<string, Set<string>>(); // `${sheetKey}|base` / `${sheetKey}|detail` → protected tile keys
+  const cache = new TileLRU(
+    BYTE_BUDGET,
+    // close() on a MACROTASK, not inline: every drawImage of a just-fetched
+    // tile runs synchronously right after its await resumes, so deferring one
+    // macrotask guarantees no draw ever sees a closed bitmap even if the
+    // insert that cached it immediately evicted it (budget saturated by
+    // protected tiles). Memory still releases within the same tick's turn.
+    (v) => { const b = v as ImageBitmap; setTimeout(() => { try { b.close(); } catch { /* already closed */ } }, 0); },
+    () => {
+      const s = new Set<string>();
+      for (const set of visibleKeys.values()) for (const k of set) s.add(k);
+      return s;
+    },
+  );
+  // One entry per tile IN FLIGHT, holding the SHARED promise every concurrent
+  // caller awaits. Sharing (rather than "already fetching → undefined") is
+  // load-bearing: during a pan, paint N requests a tile, paint N+1 supersedes
+  // paint N (live=false) and asks for the same tile — if N+1 got `undefined`
+  // back, NOBODY would ever draw that tile once it lands (N is dead, N+1
+  // skipped it, and nothing else repaints at rest), leaving a permanently
+  // blurry patch after every settle. With the shared promise, N+1 draws it.
+  const inflightReqs = new Map<string, { cancel: () => void; promise: Promise<ImageBitmap | undefined> }>();
   const levelsBySheet = new Map<string, number[]>();
   const dimsBySheet = new Map<string, { w: number; h: number }>();
   const opened = new Set<string>();
@@ -87,36 +114,50 @@ export function createTileCompositor() {
     levelsBySheet.clear();
     dimsBySheet.clear();
     readyBySheet.clear();
+    visibleKeys.clear();
   }
 
   async function getOrFetchTile(sheetKey: string, level: number, tx: number, ty: number, density: number, dark: boolean): Promise<ImageBitmap | undefined> {
     const key = modeKey(rawTileKey(sheetKey, level, tx, ty), dark);
     const cached = cache.get(key) as ImageBitmap | undefined;
     if (cached) return cached;
-    if (inflightReqs.has(key)) return undefined; // already fetching — caller will repaint when it lands
+    const myGen = generation;
+    const existing = inflightReqs.get(key);
+    if (existing) {
+      // join the in-flight fetch (see inflightReqs' comment for why joining,
+      // not skipping, is what keeps settled views sharp)
+      const bmp = await existing.promise;
+      return myGen === generation ? bmp : undefined;
+    }
     const dims = dimsBySheet.get(sheetKey);
     const levels = levelsBySheet.get(sheetKey);
     if (!dims || !levels) return undefined;
-    const myGenEarly = generation;
-    try { await readyBySheet.get(sheetKey); } catch { return undefined; } // sheet failed to open
-    if (myGenEarly !== generation) return undefined; // superseded while we waited on open
-    const { w: levelW, h: levelH } = levelDims(dims.w, dims.h, density);
-    const x = tx * TILE_SIZE, y = ty * TILE_SIZE;
-    const rect = { x, y, w: Math.min(TILE_SIZE, levelW - x), h: Math.min(TILE_SIZE, levelH - y) };
-    if (rect.w <= 0 || rect.h <= 0) return undefined;
-    const myGen = generation;
-    const { promise, cancel } = pool.requestTile({ sheetKey, scale: RENDER_SCALE * density, rect, dark });
-    inflightReqs.set(key, { cancel });
-    try {
-      const { bitmap, w, h } = await promise;
-      inflightReqs.delete(key);
-      if (myGen !== generation) { bitmap.close(); return undefined; } // superseded by resetAll
-      cache.set(key, bitmap, w * h * 4);
-      return bitmap;
-    } catch {
-      inflightReqs.delete(key);
-      return undefined;
-    }
+    // Register the entry SYNCHRONOUSLY (before any await) or two callers can
+    // both pass the `existing` check during the sheet-ready await and issue
+    // duplicate worker renders for the same tile.
+    const cancelRef: { cancel: () => void } = { cancel: () => {} };
+    const run = (async (): Promise<ImageBitmap | undefined> => {
+      try { await readyBySheet.get(sheetKey); } catch { return undefined; } // sheet failed to open
+      if (myGen !== generation) return undefined; // superseded while we waited on open
+      const { w: levelW, h: levelH } = levelDims(dims.w, dims.h, density);
+      const x = tx * TILE_SIZE, y = ty * TILE_SIZE;
+      const rect = { x, y, w: Math.min(TILE_SIZE, levelW - x), h: Math.min(TILE_SIZE, levelH - y) };
+      if (rect.w <= 0 || rect.h <= 0) return undefined;
+      const { promise, cancel } = pool.requestTile({ sheetKey, scale: RENDER_SCALE * density, rect, dark });
+      cancelRef.cancel = cancel;
+      try {
+        const { bitmap, w, h } = await promise;
+        if (myGen !== generation) { bitmap.close(); return undefined; } // superseded by resetAll
+        cache.set(key, bitmap, w * h * 4);
+        return bitmap;
+      } catch {
+        return undefined;
+      }
+    })();
+    inflightReqs.set(key, { cancel: () => cancelRef.cancel(), promise: run });
+    const settle = () => { if (inflightReqs.get(key)?.promise === run) inflightReqs.delete(key); };
+    run.then(settle, settle);
+    return run;
   }
 
   /** Whole-sheet coarse placeholder — small backing store, painted once. */
@@ -126,6 +167,8 @@ export function createTileCompositor() {
     const density = levels[level];
     const { w: lw, h: lh } = levelDims(imgW, imgH, density);
     const tiles = visibleTiles(imgW, imgH, levels, level, 0, 0, imgW, imgH);
+    // the base layer is visible for as long as the sheet is open — protect it
+    visibleKeys.set(`${sheetKey}|base`, new Set(tiles.map((t) => modeKey(rawTileKey(sheetKey, level, t.tx, t.ty), dark))));
     canvas.width = lw; canvas.height = lh;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -152,7 +195,12 @@ export function createTileCompositor() {
    *  caller) into `canvas`, sized to the region at `density`. Fires `onDone`
    *  every time a fresh tile arrival changes what's on screen, so the caller
    *  can just no-op if nothing needs repositioning. Returns a disposer that
-   *  cancels any tiles still in flight for this call. */
+   *  stops this call from PAINTING anything further — deliberately NOT a
+   *  worker-render cancel: a superseded crop's tiles usually overlap the next
+   *  crop (pans are incremental), so letting them finish warms the cache the
+   *  successor reads from, and the byte budget bounds the cost. resetAll is
+   *  the hard cancel for sheet/group changes, where in-flight tiles really
+   *  are garbage. */
   function paintDetail(
     canvas: HTMLCanvasElement, sheetKey: string, x0: number, y0: number, x1: number, y1: number,
     density: number, dark: boolean, onDone: () => void,
@@ -182,7 +230,9 @@ export function createTileCompositor() {
     }
 
     const target = visibleTiles(dims.w, dims.h, levels, level, x0, y0, x1, y1);
-    const cancels: Array<() => void> = [];
+    // protect THIS crop's tiles from eviction while they're the visible set
+    // (replaced wholesale by the next paintDetail on this sheet)
+    visibleKeys.set(`${sheetKey}|detail`, new Set(target.map((t) => modeKey(rawTileKey(sheetKey, level, t.tx, t.ty), dark))));
     Promise.all(target.map(async (t) => {
       const bmp = await getOrFetchTile(sheetKey, level, t.tx, t.ty, targetDensity, dark);
       if (!bmp || !live || myGen !== generation) return;
@@ -191,7 +241,7 @@ export function createTileCompositor() {
       onDone();
     })).catch(() => {});
 
-    return { cancel() { live = false; for (const c of cancels) c(); } };
+    return { cancel() { live = false; } };
   }
 
   function dispose() { resetAll(); pool.dispose(); }

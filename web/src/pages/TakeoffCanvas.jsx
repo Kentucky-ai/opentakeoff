@@ -1333,12 +1333,18 @@ export default function TakeoffCanvas() {
   }, []);
 
   // the doc cache holds whole PDFs in the worker — tear it down when the
-  // project view unmounts or the project changes. (The tile compositor has
-  // its own dedicated create/dispose effect above, for StrictMode reasons —
-  // see its comment.)
+  // project view unmounts or the project changes. The tile compositor (its
+  // worker pool + up to BYTE_BUDGET of ImageBitmaps) goes down with it:
+  // dispose-and-NULL pairs with getCompositor's lazy ??= creation, which is
+  // what makes this safe under StrictMode's extra mount/unmount cycles — a
+  // post-dispose render just mints a fresh compositor instead of hitting a
+  // permanently-dead pool (the failure mode an eager create/dispose effect
+  // pair was observed to cause; see getCompositor's comment).
   useEffect(() => () => {
     for (const [, t] of pdfDocsRef.current) { t.then((task) => { try { task.destroy(); } catch { /* already gone */ } }).catch(() => {}); }
     pdfDocsRef.current.clear();
+    try { compositorRef.current?.dispose(); } catch { /* half-built pool */ }
+    compositorRef.current = null;
   }, []);
 
   // provenance deep-jump: if the URL named a sheet (?sheet=A003), jump once its page is known

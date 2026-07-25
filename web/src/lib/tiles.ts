@@ -99,14 +99,22 @@ export const requiredDensity = (stageScale: number, dpr: number) => stageScale *
 
 interface Entry { bytes: number; value: unknown; }
 
-/** LRU keyed by tile key, evicted by a total-byte budget. `protect` (the
- *  currently-visible set, passed at evict time) is never evicted even if
- *  least-recently-used — a settle-then-immediately-re-fetch loop would
- *  otherwise thrash the very tiles on screen. */
+/** LRU keyed by tile key, evicted by a total-byte budget. Protected keys (the
+ *  currently-visible set, from `protect` or the constructor's provider) are
+ *  never evicted even if least-recently-used — a settle-then-immediately-
+ *  re-fetch loop would otherwise thrash the very tiles on screen. `onEvict`
+ *  fires for every value leaving the cache (evict / replace / clear) so the
+ *  owner can release non-GC-tracked backing memory — an ImageBitmap holds its
+ *  pixels until close(), so without this the byte budget only bounds what the
+ *  cache COUNTS, not what the process actually holds. */
 export class TileLRU {
   private map = new Map<string, Entry>();
   private total = 0;
-  constructor(public maxBytes: number) {}
+  constructor(
+    public maxBytes: number,
+    private onEvict?: (value: unknown) => void,
+    private protectProvider?: () => Set<string> | undefined,
+  ) {}
 
   get size() { return this.total; }
   has(key: string) { return this.map.has(key); }
@@ -120,7 +128,7 @@ export class TileLRU {
 
   set(key: string, value: unknown, bytes: number) {
     const prev = this.map.get(key);
-    if (prev) this.total -= prev.bytes;
+    if (prev) { this.total -= prev.bytes; if (prev.value !== value) this.onEvict?.(prev.value); }
     this.map.set(key, { value, bytes });
     this.total += bytes;
     this.evictToBudget();
@@ -131,16 +139,25 @@ export class TileLRU {
     if (!e) return;
     this.total -= e.bytes;
     this.map.delete(key);
+    this.onEvict?.(e.value);
   }
 
+  /** Explicit `protect` wins; otherwise the constructor's provider is asked.
+   *  If the protected set alone exceeds the budget, the cache stays over
+   *  budget rather than evicting on-screen tiles — deliberate. */
   evictToBudget(protect?: Set<string>) {
     if (this.total <= this.maxBytes) return;
+    const shielded = protect ?? this.protectProvider?.();
     for (const key of this.map.keys()) {
       if (this.total <= this.maxBytes) break;
-      if (protect?.has(key)) continue;
+      if (shielded?.has(key)) continue;
       this.delete(key);
     }
   }
 
-  clear() { this.map.clear(); this.total = 0; }
+  clear() {
+    if (this.onEvict) for (const e of this.map.values()) this.onEvict(e.value);
+    this.map.clear();
+    this.total = 0;
+  }
 }

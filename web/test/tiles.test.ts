@@ -100,3 +100,24 @@ test("TileLRU.set on an existing key replaces its byte accounting, not doubles i
   assert.equal(lru.size, 250);
   assert.equal(lru.get("a"), "v2");
 });
+
+test("TileLRU.onEvict fires for every value leaving the cache — evict, replace, and clear", () => {
+  const closed: string[] = [];
+  const lru = new TileLRU(200, (v) => closed.push(v as string));
+  lru.set("a", "A", 100);
+  lru.set("b", "B", 100);
+  lru.set("c", "C", 100);          // over budget -> evicts "a"
+  assert.deepEqual(closed, ["A"]);
+  lru.set("b", "B2", 100);         // replace -> old "B" released
+  assert.deepEqual(closed, ["A", "B"]);
+  lru.clear();                     // teardown releases the rest
+  assert.deepEqual(closed.sort(), ["A", "B", "B2", "C"]);
+});
+
+test("TileLRU protect provider shields the visible set when no explicit protect is passed", () => {
+  const lru = new TileLRU(150, undefined, () => new Set(["visible"]));
+  lru.set("visible", "V", 100);
+  lru.set("offscreen", "O", 100);  // over budget; LRU order would evict "visible" first
+  assert.equal(lru.has("visible"), true, "provider-protected key survived");
+  assert.equal(lru.has("offscreen"), false, "unprotected key was evicted instead");
+});
