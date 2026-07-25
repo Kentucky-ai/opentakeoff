@@ -38,6 +38,7 @@ import { normalizeTag } from "../lib/scheduleEdit";
 import { isGoogleConfigured, isSignedIn, isAllowedDomain, getAccessToken, orgDomainHint } from "../lib/google/auth.js";
 import { extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertices, ringArea, MASK_MAX_DIM, SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE } from "../lib/oneclick";
 import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS } from "../lib/rastermask";
+import { detectCandidateRule, buildRuleFromSeed, applyRuleToProject } from "../lib/rules";
 import { conditionTotals, verticalWallSf } from "../lib/totals.js";
 import { shapesInZone } from "../lib/zone.js";
 import { sanitizeSheetLevels } from "../lib/sheetLevels.js";
@@ -302,6 +303,15 @@ export default function TakeoffCanvas() {
   // (→ dropped LOCALLY — dismissed geometry never rides the contribution wire).
   // Ephemeral by design: never persisted (buildPayload doesn't read them).
   const [agentProposals, setAgentProposals] = useState([]);
+  // ── correction rules (#88) — one correction, fifty rooms ────────────────────
+  // rules PERSIST (project file, buildPayload/hydrate) — they're the captured
+  // corrections. ruleOffer/ruleStage are ephemeral review state like
+  // agentProposals: the offer banner after a qualifying Cut Out, and the staged
+  // batch awaiting the explicit Apply. Staged candidates are NOT shapes —
+  // nothing commits until Apply dispatches ONE `ruleApply` command.
+  const [rules, setRules] = useState([]);
+  const [ruleOffer, setRuleOffer] = useState(null);   // { deduct, seed, tag }
+  const [ruleStage, setRuleStage] = useState(null);   // { rule, candidates, proposed_ts }
   const [agentOpen, setAgentOpen] = useState(false);      // docked right-rail Agent panel
   const [agentLog, setAgentLog] = useState([]);           // streaming run status [{kind, text}]
   const [agentRunning, setAgentRunning] = useState(false);
@@ -832,6 +842,11 @@ export default function TakeoffCanvas() {
     // conditions/sheets — a loaded/restored timeline starts with none pending
     // (nothing is lost: rejected geometry records nothing by design).
     setAgentProposals([]);
+    // same rule for the correction-rule review state (#88): an offer/staged
+    // batch aimed at pre-load shapes must not survive the load. The RULES
+    // themselves are project data and hydrate below.
+    setRuleOffer(null); setRuleStage(null);
+    setRules(Array.isArray(a.rules) ? a.rules : []);   // additive — old saves without rules load as []
     setProjectName(a.project_name || "");
     // string fields only — a corrupted record must not put an object where
     // the report masthead renders a React child
@@ -1392,7 +1407,7 @@ export default function TakeoffCanvas() {
     // units is additive and diff-only (the sheet_levels convention): imperial —
     // the default — omits the key, so an old imperial project's payload is
     // byte-identical on round-trip; only a metric project carries the field.
-    return { project_name: projectName, ...(units === "metric" ? { units } : {}), ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}) })), conditions, ...(conditionColumns.length ? { condition_columns: conditionColumns } : {}), ...(shapeLabels.length ? { shape_labels: shapeLabels } : {}), ...(pinned.length ? { palette: pinned } : {}), shapes, markups, rfis, sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, ...(Object.keys(sheetLevels).length ? { sheet_levels: sheetLevels } : {}), ...(Object.keys(provCounters.shapes_deleted).length ? { provenance_counters: provCounters } : {}) };
+    return { project_name: projectName, ...(units === "metric" ? { units } : {}), ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}) })), conditions, ...(conditionColumns.length ? { condition_columns: conditionColumns } : {}), ...(shapeLabels.length ? { shape_labels: shapeLabels } : {}), ...(pinned.length ? { palette: pinned } : {}), shapes, markups, rfis, ...(rules.length ? { rules } : {}), sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, ...(Object.keys(sheetLevels).length ? { sheet_levels: sheetLevels } : {}), ...(Object.keys(provCounters.shapes_deleted).length ? { provenance_counters: provCounters } : {}) };
   };
   // Runtime restore of a saved payload — the Revisions panel's Restore lands
   // here. A runtime load (unlike mount) can interrupt work in
@@ -1451,7 +1466,7 @@ export default function TakeoffCanvas() {
     // state it serializes, so listing buildPayload (a new identity each render)
     // would fire a save on every render instead of only on a real change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, markups, rfis, provCounters, sheetGroup, sheetLevels, lastGroup, openTabs, projectName, clientInfo, units]);
+  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, markups, rfis, rules, provCounters, sheetGroup, sheetLevels, lastGroup, openTabs, projectName, clientInfo, units]);
   useEffect(() => { saveStateRef.current = saveState; }, [saveState]);
 
   // Flush a pending debounced save on navigate-away (unmount), and warn before a
@@ -2603,7 +2618,7 @@ export default function TakeoffCanvas() {
     if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
     const met = closedMetrics(points);
     // id + created_at are minted by the add command — the ONE creation gate
-    dispatchShape({ type: "add", shapes: [{
+    const res = dispatchShape({ type: "add", shapes: [{
       sheet_id: tp.key, condition_id: activeCond,
       measure_role: asDeduct ? "deduct" : "floor_area",
       verts_norm: points.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]),
@@ -2611,6 +2626,9 @@ export default function TakeoffCanvas() {
       ...(activeLabel ? { label: activeLabel } : {}),
       origin: { method: "manual" },
     }] });
+    // A Cut Out fully inside a same-condition room reads as a correction —
+    // offer to make it a rule (#88). Detection only; nothing applies here.
+    if (asDeduct) maybeOfferRule(res.shapes[res.shapes.length - 1], res.shapes);
   }
   function commitLinear(points, curved = false) {
     if (points.length < 2) return;
@@ -4028,6 +4046,70 @@ export default function TakeoffCanvas() {
   // geometry never rides the contribution wire — no rejection records, no
   // counters, nothing for contribute.js to even see (the D34 cut-line).
   const rejectAgentProposal = (id) => setAgentProposals((ps) => ps.filter((p) => p.id !== id));
+
+  // ── correction rules (#88) — detect → offer → preview → Apply ──────────────
+  // The correction carried information: a deduct hand-drawn fully inside a
+  // same-condition room is "this enclosed thing is not finish area on this
+  // project". detectCandidateRule (lib/rules.ts, pure + tested) decides; the
+  // banner offers; Preview stages candidates as dashed pencil; Apply commits
+  // ONE ruleApply command. Never silent, never model-in-the-loop.
+  function maybeOfferRule(deductShape, allShapes) {
+    const seed = detectCandidateRule(allShapes, deductShape);
+    if (!seed) return;
+    setRuleStage(null);
+    setRuleOffer({ deduct: deductShape, seed, tag: condById[deductShape.condition_id]?.finish_tag || "this condition" });
+  }
+  function previewRule() {
+    if (!ruleOffer) return;
+    const rule = buildRuleFromSeed(ruleOffer.deduct, ruleOffer.seed, ruleOffer.tag, { id: `rule-${mintUuid()}`, now: nowIso() });
+    // sheet data for every OPEN panel with linework + a scale — the rule scans
+    // what the estimator can see and review, nothing off-screen.
+    const sheetData = new Map();
+    for (const p of panels) {
+      if (!p.img?.w) continue;
+      const mo = ensureMask(p.key);
+      const upp = uppFor(p.key);
+      if (!mo || !upp) continue;
+      sheetData.set(p.key, { mask: mo, upp, imgW: p.img.w, imgH: p.img.h });
+    }
+    const candidates = applyRuleToProject(rule, shapes, sheetData);
+    setRuleOffer(null);
+    if (!candidates.length) { setCommitMsg("No other enclosed regions match this rule on the open sheets."); return; }
+    setRuleStage({ rule, candidates, proposed_ts: nowIso() });
+  }
+  function applyStagedRule() {
+    if (!ruleStage) return;
+    const { rule, candidates, proposed_ts } = ruleStage;
+    const ts = nowIso();
+    const made = [];
+    for (const c of candidates) {
+      const tp = panels.find((x) => x.key === c.sheet_id && x.img.w);
+      const upp = uppFor(c.sheet_id);
+      if (!tp || !upp) continue;
+      const ringPx = c.verts_norm.map(([nx, ny]) => [nx * tp.img.w, ny * tp.img.h]);
+      made.push({
+        sheet_id: c.sheet_id, condition_id: rule.seed_condition_id, measure_role: "deduct",
+        verts_norm: c.verts_norm.map((v) => [...v]),
+        computed: { area_sf: +(ringArea(ringPx) * upp * upp).toFixed(2), perimeter_lf: +(closedMetrics(ringPx).perim * upp).toFixed(2) },
+        // rule_v1 origin — every propagated shape traces back to the rule and
+        // the seed correction (the RFC's provenance requirement, verbatim).
+        origin: {
+          method: "rule_v1", actor: "rule", reviewed: true,
+          rule_id: rule.id, seed_shape_id: rule.seed_shape_id,
+          container_shape_id: c.container_shape_id,
+          proposed_ts, accepted_ts: ts,
+          proposed_verts_norm: c.verts_norm.map((v) => [...v]),
+        },
+      });
+    }
+    setRuleStage(null);
+    if (!made.length) return;
+    const res = dispatchShape({ type: "ruleApply", shapes: made });   // ONE command — one undo entry for the whole batch
+    const ids = res.shapes.slice(-made.length).map((s) => s.id);
+    // the rule persists WITH its audit trail — inspectable in the project file
+    setRules((rs) => [...rs.filter((r) => r.id !== rule.id), { ...rule, applied_to: ids }]);
+    setCommitMsg(`Rule applied — ${made.length} deduct${made.length === 1 ? "" : "s"} added (⌘Z undoes all). ${rule.label}.`);
+  }
 
   // ── the accept gate, for shapes already IN the data ─────────────────────────
   // An imported MCP takeoff arrives committed but unreviewed (origin.reviewed
@@ -5806,6 +5888,23 @@ export default function TakeoffCanvas() {
                         </g>
                       );
                     })}
+                    {/* staged rule-propagation candidates (#88): dashed danger
+                        pencil until Apply — the same review-before-ink contract
+                        as agent proposals. Non-interactive on the canvas; the
+                        banner owns Apply/Cancel (ONE decision for the batch,
+                        matching the one-command undo). */}
+                    {ruleStage && ruleStage.candidates.filter((c) => c.sheet_id === p.key).map((c, i) => {
+                      const s = tf.scale;
+                      const pts = c.verts_norm.map(([x, y]) => [x * p.img.w, y * p.img.h]);
+                      return (
+                        <g key={`rulecand-${i}`} style={{ pointerEvents: "none" }}>
+                          <title>{`Rule candidate — −${fa(c.area_sf)} deduct. ${ruleStage.rule.label}.`}</title>
+                          <polygon points={pts.map((q) => q.join(",")).join(" ")}
+                            fill="rgba(176,58,38,.10)" stroke="#b03a26" strokeOpacity={0.9}
+                            strokeWidth={2 / s} strokeDasharray={`${3.5 / s} ${3.5 / s}`} strokeLinejoin="round" />
+                        </g>
+                      );
+                    })}
                   </g>
                 );
               })}
@@ -5911,6 +6010,31 @@ export default function TakeoffCanvas() {
         {commitMsg && (
           <div style={{ position: "absolute", left: "50%", bottom: 14, transform: "translateX(-50%)", maxWidth: "70%", zIndex: 6, pointerEvents: "none", padding: "6px 12px", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", boxShadow: "var(--shadow-1)", fontSize: 12, color: isDangerMsg(commitMsg) ? "var(--c-danger)" : "var(--c-positive)" }}>
             {commitMsg}
+          </div>
+        )}
+        {/* correction-rule banner (#88): offer after a qualifying Cut Out, then
+            the staged batch's Apply/Cancel. Sits above the status line so a
+            commitMsg never hides the decision. Dismiss/Cancel are always one
+            click — a rule is never applied silently. */}
+        {(ruleOffer || ruleStage) && (
+          <div style={{ position: "absolute", left: "50%", bottom: 44, transform: "translateX(-50%)", zIndex: 7, display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: "var(--paper-bright)", border: "1.5px dashed var(--c-danger)", boxShadow: "var(--shadow-1)", fontSize: 12.5, color: "var(--ink)", maxWidth: "82%" }}>
+            {ruleOffer ? (<>
+              <span>Make this a rule for all <b>{ruleOffer.tag}</b> rooms? Excludes enclosed regions under <b>{ruleOffer.seed.max_area_sf} SF</b>.</span>
+              <button onClick={previewRule}
+                style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1.5px solid var(--cobalt)", color: "var(--cobalt)", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                Preview</button>
+              <button onClick={() => setRuleOffer(null)}
+                style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", color: "var(--ink-muted)", fontSize: 12, cursor: "pointer" }}>
+                Dismiss</button>
+            </>) : (<>
+              <span><b>{ruleStage.candidates.length}</b> matching region{ruleStage.candidates.length === 1 ? "" : "s"} staged as dashed deducts — {ruleStage.rule.label}.</span>
+              <button onClick={applyStagedRule}
+                style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1.5px solid var(--cobalt)", color: "var(--cobalt)", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                Apply {ruleStage.candidates.length}</button>
+              <button onClick={() => setRuleStage(null)}
+                style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", color: "var(--ink-muted)", fontSize: 12, cursor: "pointer" }}>
+                Cancel</button>
+            </>)}
           </div>
         )}
         {/* live dictation chip (RFC #59 recognizer): top-center, fixed — NOT
