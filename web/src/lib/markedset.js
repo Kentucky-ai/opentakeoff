@@ -41,6 +41,58 @@ const HATCH_FAMILIES = {
   checker: [[45, 7]], wave: [[0, 10]], dots: [[45, 20]], speckle: [[45, 20]],
 };
 
+// Signal-set (2026-07) hatches carry real per-tile segments instead of a
+// line-family approximation — every one of them is segment-representable, so
+// the print keeps pattern identity. Authored in canvas SVG tile units and
+// scaled ×2 at draw time, matching the line families' print pitch convention.
+const TILE_K = 2;
+const hexSegs = (cx, cy, s) => {
+  const h = 0.866 * s;
+  const p = [[cx - s, cy], [cx - s / 2, cy - h], [cx + s / 2, cy - h], [cx + s, cy], [cx + s / 2, cy + h], [cx - s / 2, cy + h]];
+  return p.map((a, i) => [...a, ...p[(i + 1) % 6]]);
+};
+const ovalSegs = (cx, cy, rx, ry, rotDeg, n = 16) => {
+  const rot = (rotDeg * Math.PI) / 180, c = Math.cos(rot), s = Math.sin(rot), pts = [];
+  for (let i = 0; i <= n; i++) {
+    const a = (2 * Math.PI * i) / n, ex = rx * Math.cos(a), ey = ry * Math.sin(a);
+    pts.push([cx + ex * c - ey * s, cy + ex * s + ey * c]);
+  }
+  return pts.slice(1).map((p, i) => [...pts[i], ...p]);
+};
+const HATCH_TILES = {
+  iso: { w: 13.86, h: 8, segs: [[0, 8, 13.86, 0], [0, 0, 13.86, 8], [6.93, 0, 6.93, 8]] },
+  honeycomb: { w: 12, h: 6.9282, segs: [...hexSegs(0, 0, 4), ...hexSegs(6, 3.4641, 4)] },
+  scan: { w: 16, h: 8, segs: [[0, 2, 10, 2], [8, 6, 16, 6], [0, 6, 2, 6]] },
+  plus: { w: 12, h: 12, segs: [[6, 3.5, 6, 8.5], [3.5, 6, 8.5, 6], [0, -2.5, 0, 2.5], [-2.5, 0, 2.5, 0]] },
+  circuit: {
+    w: 20, h: 20,
+    segs: [[2, 2, 10, 2], [10, 2, 10, 10], [14, 18, 14, 13], [14, 13, 18, 13]],
+    dots: [[2, 2], [10, 10], [14, 18], [18, 13]],
+  },
+  topo: { w: 24, h: 24, segs: [...ovalSegs(12, 12, 8, 5, -18), ...ovalSegs(12, 12, 4.6, 2.6, -18, 12)] },
+};
+
+// tile-based hatch (image px): per-tile segments clipped to the polygon; a
+// spec's dots come back separately for the caller to draw as filled circles.
+function hatchTiles(poly, spec) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of poly) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  const w = spec.w * TILE_K, h = spec.h * TILE_K;
+  const segs = [], dots = [];
+  for (let ty = Math.floor(y0 / h) * h; ty < y1 + h; ty += h) {
+    for (let tx = Math.floor(x0 / w) * w; tx < x1 + w; tx += w) {
+      for (const [ax, ay, bx, by] of spec.segs) {
+        segs.push(...clipSegToPoly(tx + ax * TILE_K, ty + ay * TILE_K, tx + bx * TILE_K, ty + by * TILE_K, poly));
+      }
+      for (const [cx, cy] of spec.dots || []) {
+        const x = tx + cx * TILE_K, y = ty + cy * TILE_K;
+        if (pointInPoly(x, y, poly)) dots.push([x, y]);
+      }
+    }
+  }
+  return { segs, dots };
+}
+
 const hex = (h) => {
   const s = String(h || "#888").replace("#", "");
   const v = s.length === 3 ? s.split("").map((c) => c + c).join("") : s.padEnd(6, "0");
@@ -446,7 +498,17 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         const fill = cond?.fill && cond.fill !== "none" && !isDeduct ? rgb(...hex(cond.fill)) : col;
         pg.drawSvgPath(svgPath(pts), { x: 0, y: 0, color: fill, opacity: (isDeduct ? 0.14 : 0.16) + alphaBoost / 2, borderColor: col, borderWidth: 1.1, borderOpacity: 0.95, ...(borderDash ? { borderDashArray: borderDash } : {}) });
         if (!isDeduct && cond?.hatch && cond.hatch !== "solid") {
-          for (const [ax, ay, bx, by] of hatchLines(pts, cond.hatch)) line(ax, ay, bx, by, col, 0.5, 0.55 + alphaBoost);
+          const tiled = HATCH_TILES[cond.hatch];
+          if (tiled) {
+            const { segs, dots } = hatchTiles(pts, tiled);
+            for (const [ax, ay, bx, by] of segs) line(ax, ay, bx, by, col, 0.5, 0.55 + alphaBoost);
+            for (const [dx, dy] of dots) {
+              const [px, py] = toPage(dx, dy);
+              pg.drawEllipse({ x: px, y: py, xScale: 1.4, yScale: 1.4, color: col, opacity: 0.55 + alphaBoost });
+            }
+          } else {
+            for (const [ax, ay, bx, by] of hatchLines(pts, cond.hatch)) line(ax, ay, bx, by, col, 0.5, 0.55 + alphaBoost);
+          }
         }
         chip(shapeChip(s, cond, M), ...centroid(pts), col);
       } else if (s.measure_role === "linear" || s.measure_role === "surface_area") {

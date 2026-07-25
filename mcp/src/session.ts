@@ -23,7 +23,9 @@ import { gridPxPerFoot, drawGrid, drawShapes, type Ctx2D, type ToCanvas } from "
 const SNAP_CELL = 24; // snap-grid bucket, raster px
 const SNAP_TOL = 7;   // one-click vertex-snap tolerance, image px
 const PALETTE = ["#c96442", "#2f7d54", "#2563eb", "#9333ea", "#b8860b", "#0d9488", "#be185d", "#1f2937", "#dc2626", "#0891b2"];
-const HATCH_IDS = ["solid", "diag", "diag2", "cross", "diagdense", "horiz", "vert", "grid", "brick", "plank", "herring", "basket", "checker", "wave", "fleur", "speckle"];
+// (2026-07: dropped a drifted "fleur" entry that never existed in this app's
+// HATCHES, restoring "dots", and appended the signal-set ids.)
+const HATCH_IDS = ["solid", "diag", "diag2", "cross", "diagdense", "horiz", "vert", "grid", "brick", "plank", "herring", "basket", "checker", "wave", "dots", "speckle", "iso", "honeycomb", "scan", "plus", "circuit", "topo"];
 // uid mirrors web/src/lib/provenance.js mintUuid: crypto.randomUUID is a
 // global in Node 20+, with the same non-secure-context fallback the browser
 // build carries so the two sides mint identically-shaped ids.
