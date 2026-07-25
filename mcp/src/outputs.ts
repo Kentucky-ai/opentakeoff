@@ -293,3 +293,39 @@ export const sheetContextOutput = {
   }),
   hatch: z.object({ families: z.array(hatchFamilyRow), count: z.number().int() }),
 };
+
+// ── annotations (#114) — notes ABOUT the work, never measurements of it ──────
+const annotationRow = z.object({
+  id: z.string(),
+  sheet: z.string(),
+  type: z.string(),
+  text: z.string(),
+  condition: z.string().describe("Resolved finish tag, or '' when unattached — saves joining against conditions[]"),
+  condition_id: z.string(),
+  at: z.tuple([z.number(), z.number()]).optional(),
+  target: z.tuple([z.number(), z.number()]).optional(),
+  rect: z.array(z.tuple([z.number(), z.number()]).optional()).optional(),
+});
+
+export const annotateOutput = {
+  id: z.string(),
+  sheet: z.string(),
+  type: z.string(),
+  text: z.string(),
+  condition: z.string(),
+  condition_id: z.string(),
+  note: z.string(),
+};
+
+export const listAnnotationsOutput = {
+  annotations: z.array(annotationRow),
+  count: z.number().int(),
+  unattached: z.number().int().describe("How many carry no condition — candidates for link_annotation"),
+};
+
+export const linkAnnotationOutput = {
+  id: z.string(),
+  condition: z.string(),
+  condition_id: z.string().optional(),
+  note: z.string(),
+};

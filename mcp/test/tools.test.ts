@@ -48,15 +48,17 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // supporting-materials config — so the coordinate contract would be noise in
 // their descriptions rather than orientation. Every other tool speaks image
 // px and says so.
-const NO_COORDS = new Set(["undo_last", "edit_materials"]);
+// link_annotation takes an id and a tag — no geometry crosses it, so the
+// coordinate contract would be noise rather than clarity.
+const NO_COORDS = new Set(["undo_last", "edit_materials", "link_annotation"]);
 
-test("tools/list: all seventeen tools, each described with the coordinate contract", async () => {
+test("tools/list: all twenty tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
-    "delete_shape", "detect_rooms", "edit_materials", "edit_shape", "export_takeoff", "find_text", "load_plan",
-    "measure_line", "measure_polygon", "one_click", "read_sheet_text", "set_scale", "sheet_context", "sheet_info",
-    "takeoff_summary", "undo_last", "view_sheet",
+    "annotate", "delete_shape", "detect_rooms", "edit_materials", "edit_shape", "export_takeoff", "find_text",
+    "link_annotation", "list_annotations", "load_plan", "measure_line", "measure_polygon", "one_click",
+    "read_sheet_text", "set_scale", "sheet_context", "sheet_info", "takeoff_summary", "undo_last", "view_sheet",
   ]);
   for (const t of tools) {
     if (NO_COORDS.has(t.name)) continue;
@@ -510,4 +512,74 @@ test("edit_materials: add/remove/patch, minted-on-touch, all-or-nothing, undo re
   const exported = await call(client, "export_takeoff", {});
   const cond = exported.data.conditions.find((c: any) => c.finish_tag === "CPT-1");
   assert.equal(cond.materials.length, 0, "undo restored the pre-add state");
+});
+
+// ── annotations (#114) — the agent half of markup.condition_id (#112) ────────
+
+test("annotate: attaches a note to a scope, resolves the tag back, and round-trips into the app payload", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+
+  const cloud = await call(client, "annotate", {
+    sheet: KEY, type: "cloud", text: "verify substrate before install",
+    rect: [[400, 900], [800, 1200]], condition: "CPT-1",
+  });
+  assert.equal(cloud.isError, false);
+  assert.equal(cloud.data.condition, "CPT-1");            // minted on first touch
+  assert.ok(cloud.data.condition_id);
+
+  // a sheet note, deliberately unattached
+  const note = await call(client, "annotate", { sheet: KEY, type: "text", text: "GC to confirm", at: [500, 500] });
+  assert.equal(note.data.condition, "");
+  assert.equal(note.data.condition_id, "");
+
+  const all = await call(client, "list_annotations", {});
+  assert.equal(all.data.count, 2);
+  assert.equal(all.data.unattached, 1);                    // the text note
+  // condition resolved for the caller — no join against conditions[] needed
+  const c = all.data.annotations.find((a: any) => a.id === cloud.data.id);
+  assert.equal(c.condition, "CPT-1");
+  // coordinates come back in the SAME image-px frame they went in as
+  assert.deepEqual(c.rect[0], [400, 900]);
+
+  // filtering by condition excludes the unattached note
+  const only = await call(client, "list_annotations", { condition: "CPT-1" });
+  assert.equal(only.data.count, 1);
+  assert.equal(only.data.annotations[0].id, cloud.data.id);
+
+  // the export the app imports carries them — markups used to be hardcoded []
+  const payload = await call(client, "export_takeoff", {});
+  assert.equal(payload.data.markups.length, 2);
+  const exported = payload.data.markups.find((m: any) => m.id === cloud.data.id);
+  assert.equal(exported.condition_id, cloud.data.condition_id);
+  assert.ok(exported.rect[0][0] > 0 && exported.rect[0][0] < 1, "stored normalized, like verts_norm");
+});
+
+test("link_annotation: attaches an orphan note, and detaches on an empty condition", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  const note = await call(client, "annotate", { sheet: KEY, type: "text", text: "chase this", at: [300, 300] });
+
+  const linked = await call(client, "link_annotation", { annotation_id: note.data.id, condition: "LVT-2" });
+  assert.equal(linked.isError, false);
+  assert.equal(linked.data.condition, "LVT-2");
+  assert.equal((await call(client, "list_annotations", {})).data.unattached, 0);
+
+  const off = await call(client, "link_annotation", { annotation_id: note.data.id, condition: "" });
+  assert.equal(off.data.condition, "");
+  assert.equal((await call(client, "list_annotations", {})).data.unattached, 1);
+
+  // a bad id is a user error, not a crash
+  const bad = await call(client, "link_annotation", { annotation_id: "mk-nope", condition: "LVT-2" });
+  assert.equal(bad.isError, true);
+});
+
+test("annotate: a shape-less type mismatch is refused before anything is written", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  const noRect = await call(client, "annotate", { sheet: KEY, type: "cloud", text: "x" });   // cloud needs rect
+  assert.equal(noRect.isError, true);
+  const noTarget = await call(client, "annotate", { sheet: KEY, type: "callout", text: "x", at: [10, 10] });
+  assert.equal(noTarget.isError, true);
+  assert.equal((await call(client, "list_annotations", {})).data.count, 0);   // nothing written
 });
