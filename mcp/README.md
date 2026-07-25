@@ -1,7 +1,8 @@
 # OpenTakeoff MCP server
 
 Listed in the [official MCP registry](https://registry.modelcontextprotocol.io) as
-`io.github.Kentucky-ai/opentakeoff` and on [Glama](https://glama.ai/mcp/servers/Kentucky-ai/opentakeoff).
+`io.github.Kentucky-ai/opentakeoff`, on [Glama](https://glama.ai/mcp/servers/Kentucky-ai/opentakeoff),
+and on [Smithery](https://smithery.ai/servers/Kentucky-ai/opentakeoff).
 
 ## Run it in 60 seconds (npx)
 
@@ -266,3 +267,22 @@ official MCP registry, verifies the registry listing, and creates the GitHub
 release (titled `opentakeoff-mcp <version>`). A re-run skips the npm publish
 if that version already shipped, so a transient failure downstream is safe to
 retry.
+
+### Refreshing the Smithery listing
+
+Smithery isn't part of the automated release above — it needs a **separate,
+manual** publish after any tool signature change, because of a genuine spec
+conflict between two validators: the official MCPB validator (what
+`npm run mcpb` gates on) rejects a `tools[].inputSchema` key outright, while
+Smithery's registry rejects a bundle *without* real `inputSchema` per tool
+(smithery-ai/cli#770, #797, #787 — no manifest satisfies both). The canonical
+`dist-mcpb/opentakeoff-mcp.mcpb` stays spec-compliant for Claude Desktop / the
+official registry / Glama; `scripts/build-smithery-mcpb.mjs` builds a
+Smithery-only bundle instead, with live-introspected tools + inputSchema baked
+in, packed with a plain zip (bypassing `mcpb validate`, which would reject it):
+
+```bash
+npm run build
+node scripts/build-smithery-mcpb.mjs
+smithery mcp publish dist-smithery/opentakeoff-mcp.mcpb -n Kentucky-ai/opentakeoff
+```
