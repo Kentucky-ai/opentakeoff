@@ -1,7 +1,8 @@
 # OpenTakeoff MCP server
 
 Listed in the [official MCP registry](https://registry.modelcontextprotocol.io) as
-`io.github.Kentucky-ai/opentakeoff` and on [Glama](https://glama.ai/mcp/servers/Kentucky-ai/opentakeoff).
+`io.github.Kentucky-ai/opentakeoff`, on [Glama](https://glama.ai/mcp/servers/Kentucky-ai/opentakeoff),
+and on [Smithery](https://smithery.ai/servers/Kentucky-ai/opentakeoff).
 
 ## Run it in 60 seconds (npx)
 
