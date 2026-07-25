@@ -1,8 +1,10 @@
-// Tile-render worker (#86) — owns one pdf.js instance PER WORKER, renders
-// requested tiles into an OffscreenCanvas, transfers the result back as an
-// ImageBitmap (zero-copy). The compositor (lib/tileCompositor.ts) round-robins
-// sheets across a small pool of these so group-mode panels can render in
-// parallel instead of fighting for one thread — see lib/tilePool.ts.
+// Tile-render worker (#86) — owns one pdf.js instance PER SHEET PER WORKER,
+// renders requested tiles into an OffscreenCanvas, transfers the result back
+// as an ImageBitmap (zero-copy). Every open sheet is loaded into EVERY
+// worker in the pool (lib/tilePool.ts broadcasts, doesn't hash-pin), and
+// tile requests round-robin across the whole pool — so a single sheet gets
+// real N-way render parallelism (N = pool size), not just group-mode panels
+// splitting across workers.
 //
 // hush.ts (mcp/) is prior art for "pdf.js is fussy about its environment":
 // verbosity:0 here for the same reason (its console noise has no wire

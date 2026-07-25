@@ -1305,10 +1305,11 @@ export default function TakeoffCanvas() {
         if (renderKey === detailKeysRef.current.get(p.key)) continue;
         detailKeysRef.current.set(p.key, renderKey);
         try { detailCancelsRef.current.get(p.key)?.cancel(); } catch { /* done */ }
-        cv.style.left = `${p.xOffset + x0}px`; cv.style.top = `${y0}px`;
-        cv.style.width = `${x1 - x0}px`; cv.style.height = `${y1 - y0}px`;
-        cv.style.display = "block";
-        const cancel = getCompositor().paintDetail(cv, p.key, x0, y0, x1, y1, density, darkModeRef.current, () => {});
+        // paintDetail owns position/size/pixels together now and applies all
+        // three atomically on reveal — setting them here first would show a
+        // correctly-positioned canvas with the OLD crop's (wrongly scaled)
+        // pixels for a frame, which is its own flavor of flicker.
+        const cancel = getCompositor().paintDetail(cv, p.key, p.xOffset, x0, y0, x1, y1, density, darkModeRef.current, () => {});
         detailCancelsRef.current.set(p.key, cancel);
       }
     };

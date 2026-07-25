@@ -18,6 +18,17 @@
 //           unlike the old single detailCanvasRef) — every panel in a group
 //           gets independent sharpness, closing the RFC's noted group-mode gap.
 //
+// paintDetail double-buffers and swaps ATOMICALLY (compose off-DOM, one
+// drawImage onto the visible canvas once the crop is ready or a short grace
+// period elapses) — this is the OLD codebase's own "never a partial paint"
+// rule (see its double-buffer comment history), which the first version of
+// this file dropped in favor of drawing each tile the moment it landed.
+// That reads, live, as tiles visibly sweeping across the sheet in whatever
+// order the worker pool happens to finish them — confirmed as a real UX
+// complaint, not a perf one: the fix is compositing off-screen and revealing
+// once, not rendering fewer/faster tiles (see tilePool.ts for the actual
+// speed fix — real N-way parallelism instead of one worker doing everything).
+//
 // Dark mode: tiles are cached per-mode (key suffixed :0/:1) and rendered
 // inverted BY THE WORKER before transfer, not re-inverted on the main thread
 // — inversion moves into the tile pipeline exactly as the RFC asks. This
@@ -32,7 +43,11 @@ import { TileLRU, buildLevels, pickLevel, levelDims, visibleTiles, tileKey as ra
 // ("4-up ≈ 450MB" per canvasConstants.js), now a BUDGET instead of a floor
 // that individual panels could each independently blow past.
 const BYTE_BUDGET = 450 * 1024 * 1024;
-const BASE_MARGIN = 0.5; // same DETAIL_MARGIN intent — buffer beyond the viewport
+// If the target crop isn't fully resolved within this long, reveal whatever
+// IS ready (placeholder + however many real tiles landed) rather than let
+// one slow/stuck tile hold the whole reveal hostage — a progressive fallback,
+// not the common case once tilePool.ts's real parallelism is in place.
+const REVEAL_GRACE_MS = 350;
 
 function modeKey(key: string, dark: boolean) { return `${key}:${dark ? 1 : 0}`; }
 
@@ -191,18 +206,21 @@ export function createTileCompositor() {
     return 0; // level 0 is always fetched by paintBase — safe fallback even if not yet cached (draws nothing, not a crash)
   }
 
-  /** Paints [x0,y0,x1,y1) (image px, +BASE_MARGIN buffer applied by the
-   *  caller) into `canvas`, sized to the region at `density`. Fires `onDone`
-   *  every time a fresh tile arrival changes what's on screen, so the caller
-   *  can just no-op if nothing needs repositioning. Returns a disposer that
-   *  stops this call from PAINTING anything further — deliberately NOT a
-   *  worker-render cancel: a superseded crop's tiles usually overlap the next
-   *  crop (pans are incremental), so letting them finish warms the cache the
-   *  successor reads from, and the byte budget bounds the cost. resetAll is
-   *  the hard cancel for sheet/group changes, where in-flight tiles really
-   *  are garbage. */
+  /** Paints [x0,y0,x1,y1) (image px, margin already applied by the caller)
+   *  for a panel positioned at `panelXOffset` in stage space. Composes
+   *  off-DOM and swaps into `canvas` ATOMICALLY — the visible canvas (size,
+   *  position, AND pixels) is untouched until the new crop is ready (or
+   *  REVEAL_GRACE_MS elapses), so the previous, fully-painted crop stays on
+   *  screen with zero flicker and zero tile-by-tile sweep. `onDone` fires
+   *  once per actual reveal (the atomic swap, or a rare post-grace straggler
+   *  patch), not once per tile. Returns a disposer that stops this call from
+   *  PAINTING anything further — deliberately NOT a worker-render cancel: a
+   *  superseded crop's tiles usually overlap the next crop (pans are
+   *  incremental), so letting them finish warms the cache the successor
+   *  reads from, and the byte budget bounds the cost. resetAll is the hard
+   *  cancel for sheet/group changes, where in-flight tiles really are garbage. */
   function paintDetail(
-    canvas: HTMLCanvasElement, sheetKey: string, x0: number, y0: number, x1: number, y1: number,
+    canvas: HTMLCanvasElement, sheetKey: string, panelXOffset: number, x0: number, y0: number, x1: number, y1: number,
     density: number, dark: boolean, onDone: () => void,
   ) {
     const dims = dimsBySheet.get(sheetKey);
@@ -212,11 +230,15 @@ export function createTileCompositor() {
     const targetDensity = levels[level];
     const bw = Math.max(1, Math.round((x1 - x0) * targetDensity));
     const bh = Math.max(1, Math.round((y1 - y0) * targetDensity));
-    canvas.width = bw; canvas.height = bh;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return { cancel() {} };
     const myGen = generation;
     let live = true;
+
+    // Compose off-DOM — see the file header for why this replaced painting
+    // straight onto the visible canvas.
+    const back = document.createElement("canvas");
+    back.width = bw; back.height = bh;
+    const bctx = back.getContext("2d");
+    if (!bctx) return { cancel() {} };
 
     const placeholderLevel = bestPlaceholderLevel(sheetKey, levels, level, x0, y0, x1, y1, dark);
     const phDensity = levels[placeholderLevel];
@@ -226,22 +248,49 @@ export function createTileCompositor() {
       if (!bmp) continue;
       const dx = (t.x / phDensity - x0) * targetDensity, dy = (t.y / phDensity - y0) * targetDensity;
       const dw = (t.w / phDensity) * targetDensity, dh = (t.h / phDensity) * targetDensity;
-      ctx.drawImage(bmp, dx, dy, dw, dh);
+      bctx.drawImage(bmp, dx, dy, dw, dh);
     }
 
     const target = visibleTiles(dims.w, dims.h, levels, level, x0, y0, x1, y1);
     // protect THIS crop's tiles from eviction while they're the visible set
     // (replaced wholesale by the next paintDetail on this sheet)
     visibleKeys.set(`${sheetKey}|detail`, new Set(target.map((t) => modeKey(rawTileKey(sheetKey, level, t.tx, t.ty), dark))));
+
+    let swapped = false;
+    const swap = () => {
+      if (swapped || !live || myGen !== generation) return;
+      swapped = true;
+      clearTimeout(graceTimer);
+      canvas.width = bw; canvas.height = bh;
+      canvas.style.left = `${panelXOffset + x0}px`; canvas.style.top = `${y0}px`;
+      canvas.style.width = `${x1 - x0}px`; canvas.style.height = `${y1 - y0}px`;
+      canvas.style.display = "block";
+      canvas.getContext("2d")?.drawImage(back, 0, 0);
+      onDone();
+    };
+    // Fallback only — swap normally fires the instant every target tile has
+    // settled (success or failure), which with tilePool.ts's real pool
+    // parallelism should usually beat this. If one tile is genuinely stuck,
+    // reveal what's ready rather than hold the whole crop hostage.
+    const graceTimer = window.setTimeout(swap, REVEAL_GRACE_MS);
+
+    let remaining = target.length;
+    if (remaining === 0) swap(); // degenerate region — nothing to wait for
     Promise.all(target.map(async (t) => {
       const bmp = await getOrFetchTile(sheetKey, level, t.tx, t.ty, targetDensity, dark);
-      if (!bmp || !live || myGen !== generation) return;
+      if (!bmp || !live || myGen !== generation) { remaining--; return; }
       const dx = t.x - x0 * targetDensity, dy = t.y - y0 * targetDensity;
-      ctx.drawImage(bmp, dx, dy);
-      onDone();
+      bctx.drawImage(bmp, dx, dy);
+      // A straggler landing AFTER the grace-period swap already happened:
+      // patch it directly onto the now-visible canvas (the live canvas is
+      // correctly sized/positioned by then) rather than lose it silently in
+      // a back buffer nobody composites again until the next settle.
+      if (swapped) { canvas.getContext("2d")?.drawImage(bmp, dx, dy); onDone(); }
+      remaining--;
+      if (remaining === 0) swap();
     })).catch(() => {});
 
-    return { cancel() { live = false; } };
+    return { cancel() { live = false; clearTimeout(graceTimer); } };
   }
 
   function dispose() { resetAll(); pool.dispose(); }
