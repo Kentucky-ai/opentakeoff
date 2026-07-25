@@ -67,12 +67,19 @@ const BASE_TARGET_AREA = 28_000_000;
 // one slow/stuck tile hold the whole reveal hostage — a progressive fallback,
 // not the common case once tilePool.ts's real parallelism is in place.
 const REVEAL_GRACE_MS = 350;
-// Most tiles one detail crop may queue. A 512² tile costs roughly a full
-// page-operator replay regardless of how little of the page lands in it, so
-// crop cost scales with tile COUNT, and a crop the pool can't drain is a crop
-// the user never sees. Sized so a full-viewport crop drains in a couple of
-// passes across the pool rather than tying it up indefinitely.
-const MAX_CROP_TILES = 48;
+// Sanity ceiling on ONE detail crop's backing store. In normal use the crop
+// is viewport*dpr — about 8MP — at every zoom, because zooming in shrinks the
+// image-space region by exactly the factor it raises the density. This only
+// engages for an abnormally large panel (a huge display, or a margin far
+// wider than the viewport), and it is a backstop, not a quality knob: at the
+// sizes real screens produce it never binds.
+const MAX_CROP_AREA = 40_000_000;
+
+/** Density ceiling for a crop of this image-space size, from MAX_CROP_AREA. */
+function cropDensityCap(iw: number, ih: number): number {
+  const area = Math.max(1, iw * ih);
+  return Math.sqrt(MAX_CROP_AREA / area);
+}
 
 function modeKey(key: string, dark: boolean) { return `${key}:${dark ? 1 : 0}`; }
 
@@ -292,14 +299,23 @@ export function createTileCompositor() {
     const dims = dimsBySheet.get(sheetKey);
     const levels = levelsBySheet.get(sheetKey);
     if (!dims || !levels) return { cancel() {} };
-    // Step down until the crop is a number of tiles the pool can actually
-    // finish. Without this the level is chosen purely from screen density, so
-    // a deep zoom on a big sheet queues a crop that never completes and the
-    // user is left on the placeholder indefinitely — blur with no recovery
-    // path, which is strictly worse than one level softer that ARRIVES.
-    let level = pickLevel(levels, density);
-    while (level > 0 && visibleTilesAtDensity(dims.w, dims.h, levels[level], level, x0, y0, x1, y1).length > MAX_CROP_TILES) level--;
-    const targetDensity = levels[level];
+    // The detail crop is rendered ONCE, at exactly the density the screen
+    // asks for — no pyramid snapping, no density ceiling.
+    //
+    // The pyramid was the wrong tool here. A crop at full sharpness is
+    // (viewport/zoom) image px at (zoom*dpr) density, and those cancel: it is
+    // viewport*dpr device px at EVERY zoom — a constant ~8MP, whether you are
+    // at 50% or 1600%. Tiling that constant into 512² pieces doesn't make it
+    // cheaper, it makes it ~36x more expensive, because pdf.js replays the
+    // whole page operator list per render regardless of how little of the page
+    // lands in the target canvas. That is why deep-zoom tiles never completed,
+    // which is why #108 lowered MAX_DENSITY to 4, which capped sharpness at
+    // 200% zoom on a dpr-2 screen and produced visible pixel-doubling (2.08x
+    // measured at 417%). One render removes the cause instead of trading one
+    // blur for another. Tiles remain exactly right for the BASE layer: a
+    // whole-sheet composite, built once, where the pyramid's bounded memory is
+    // the entire point.
+    const targetDensity = Math.min(density, cropDensityCap(x1 - x0, y1 - y0));
     const bw = Math.max(1, Math.round((x1 - x0) * targetDensity));
     const bh = Math.max(1, Math.round((y1 - y0) * targetDensity));
     const myGen = generation;
@@ -312,7 +328,7 @@ export function createTileCompositor() {
     const bctx = back.getContext("2d");
     if (!bctx) return { cancel() {} };
 
-    const { level: placeholderLevel, density: phDensity } = bestPlaceholder(sheetKey, levels, level, x0, y0, x1, y1, dark);
+    const { level: placeholderLevel, density: phDensity } = bestPlaceholder(sheetKey, levels, pickLevel(levels, targetDensity), x0, y0, x1, y1, dark);
     const phTiles = visibleTilesAtDensity(dims.w, dims.h, phDensity, placeholderLevel, x0, y0, x1, y1);
     for (const t of phTiles) {
       const bmp = cache.get(modeKey(rawTileKey(sheetKey, placeholderLevel, t.tx, t.ty), dark)) as ImageBitmap | undefined;
@@ -322,10 +338,10 @@ export function createTileCompositor() {
       bctx.drawImage(bmp, dx, dy, dw, dh);
     }
 
-    const target = visibleTiles(dims.w, dims.h, levels, level, x0, y0, x1, y1);
-    // protect THIS crop's tiles from eviction while they're the visible set
-    // (replaced wholesale by the next paintDetail on this sheet)
-    visibleKeys.set(`${sheetKey}|detail`, new Set(target.map((t) => modeKey(rawTileKey(sheetKey, level, t.tx, t.ty), dark))));
+    // Nothing to protect from eviction any more — the crop is a one-off
+    // render, not cached tiles. Clearing the old detail set lets the LRU
+    // reclaim the previous crop's tiles (base tiles stay shielded).
+    visibleKeys.delete(`${sheetKey}|detail`);
 
     let swapped = false;
     const swap = () => {
@@ -345,23 +361,36 @@ export function createTileCompositor() {
     // reveal what's ready rather than hold the whole crop hostage.
     const graceTimer = window.setTimeout(swap, REVEAL_GRACE_MS);
 
-    let remaining = target.length;
-    if (remaining === 0) swap(); // degenerate region — nothing to wait for
-    Promise.all(target.map(async (t) => {
-      const bmp = await getOrFetchTile(sheetKey, level, t.tx, t.ty, targetDensity, dark);
-      if (!bmp || !live || myGen !== generation) { remaining--; return; }
-      const dx = t.x - x0 * targetDensity, dy = t.y - y0 * targetDensity;
-      bctx.drawImage(bmp, dx, dy);
-      // A straggler landing AFTER the grace-period swap already happened:
-      // patch it directly onto the now-visible canvas (the live canvas is
-      // correctly sized/positioned by then) rather than lose it silently in
-      // a back buffer nobody composites again until the next settle.
-      if (swapped) { canvas.getContext("2d")?.drawImage(bmp, dx, dy); onDone(); }
-      remaining--;
-      if (remaining === 0) swap();
-    })).catch(() => {});
+    // ONE render for the whole crop. The rect is in the crop's own density
+    // space, which is what the worker's `transform: [1,0,0,1,-x,-y]` expects.
+    let cropReq: { cancel: () => void } | undefined;
+    if (bw <= 0 || bh <= 0) {
+      swap(); // degenerate region — nothing to wait for
+    } else {
+      const req = pool.requestTile({
+        sheetKey,
+        scale: RENDER_SCALE * targetDensity,
+        rect: { x: Math.round(x0 * targetDensity), y: Math.round(y0 * targetDensity), w: bw, h: bh },
+        dark,
+      });
+      cropReq = { cancel: req.cancel };
+      req.promise.then(({ bitmap }) => {
+        if (!live || myGen !== generation) { bitmap.close(); return; }
+        // Landing after the grace swap is normal, not an error: the
+        // placeholder was revealed first so the view never blanks. Paint onto
+        // whichever surface is current, then release — this bitmap is a
+        // one-off crop, so nothing else will ever close it for us.
+        if (swapped) { canvas.getContext("2d")?.drawImage(bitmap, 0, 0); onDone(); }
+        else { bctx.drawImage(bitmap, 0, 0); swap(); }
+        bitmap.close();
+      }).catch((err) => {
+        if (!live || myGen !== generation) return;
+        console.warn("[tiles] detail crop failed:", err);
+        swap(); // reveal the placeholder rather than sit on a stale crop
+      });
+    }
 
-    return { cancel() { live = false; clearTimeout(graceTimer); } };
+    return { cancel() { live = false; clearTimeout(graceTimer); cropReq?.cancel(); } };
   }
 
   function dispose() { resetAll(); pool.dispose(); }
