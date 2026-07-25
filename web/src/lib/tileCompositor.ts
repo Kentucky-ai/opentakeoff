@@ -7,10 +7,23 @@
 //
 // Two layers per panel, mirroring the OLD base-raster + detail-overlay split
 // so pan/zoom never blanks:
-//   BASE  — one small (bounded backing store), painted ONCE per sheet from
-//           the coarsest pyramid level, stretched to the panel's full CSS
-//           footprint. Never re-rendered on pan/zoom. The "never blank"
-//           guarantee.
+//   BASE  — painted ONCE per sheet, in two phases: an instant coarse
+//           placeholder (level 0, a handful of tiles), then upgraded to a
+//           bounded ~28MP-equivalent tiled composite (BASE_TARGET_AREA,
+//           matching the OLD codebase's MAX_PANEL_AREA raster budget) once
+//           those tiles land. Never re-rendered on pan/zoom after that.
+//           This second phase is NOT an optimization — it's a correctness
+//           fix. The detail layer deliberately doesn't repaint mid-gesture
+//           (see its comment), which means the base layer is what a fast
+//           pan actually shows most of the time. Shipping this at level-0
+//           quality (an instant-placeholder density, maybe 1-1.5K px for
+//           the WHOLE sheet) reads as "blurry and laggy" during exactly the
+//           panning-across-a-big-sheet motion an estimator does constantly —
+//           confirmed live, not a hypothesis. The old per-sheet raster was
+//           sharp on its own up to 28MP; the base layer has to clear that
+//           same bar, or #86 is a real quality regression for that gesture
+//           even though the DETAIL layer is sharper than the old code ever
+//           was once it engages.
 //   DETAIL — repositioned/resized to [visible region + margin] on settle,
 //           like the old detail view, but active at every zoom level (no
 //           DETAIL_ENGAGE gate) and sourced from the tile cache instead of a
@@ -43,6 +56,12 @@ import { TileLRU, buildLevels, pickLevel, levelDims, visibleTiles, tileKey as ra
 // ("4-up ≈ 450MB" per canvasConstants.js), now a BUDGET instead of a floor
 // that individual panels could each independently blow past.
 const BYTE_BUDGET = 450 * 1024 * 1024;
+// The base layer's phase-2 target — deliberately the SAME number as the old
+// codebase's MAX_PANEL_AREA (canvasConstants.js), not a new tuning constant.
+// The goal isn't a new budget, it's parity with the raster quality that
+// shipped for years before #86; tiling just makes hitting that number
+// bounded-memory instead of one giant backing store.
+const BASE_TARGET_AREA = 28_000_000;
 // If the target crop isn't fully resolved within this long, reveal whatever
 // IS ready (placeholder + however many real tiles landed) rather than let
 // one slow/stuck tile hold the whole reveal hostage — a progressive fallback,
@@ -175,24 +194,55 @@ export function createTileCompositor() {
     return run;
   }
 
-  /** Whole-sheet coarse placeholder — small backing store, painted once. */
-  async function paintBase(canvas: HTMLCanvasElement, sheetKey: string, imgW: number, imgH: number, dark: boolean) {
-    const levels = levelsFor(sheetKey, imgW, imgH);
-    const level = 0;
+  /** Densest level whose full-sheet composite still fits BASE_TARGET_AREA —
+   *  the old codebase's own raster budget, just expressed as a pyramid level
+   *  instead of a single canvas size. */
+  function baseTargetLevel(levels: number[], imgW: number, imgH: number): number {
+    let best = 0;
+    for (let i = 0; i < levels.length; i++) {
+      const { w, h } = levelDims(imgW, imgH, levels[i]);
+      if (w * h > BASE_TARGET_AREA) break; // densities only increase — first overshoot ends the search
+      best = i;
+    }
+    return best;
+  }
+
+  /** Renders the WHOLE sheet at `level` into an off-DOM buffer, then swaps it
+   *  into `canvas` atomically (same "compose off-screen, one reveal" rule as
+   *  paintDetail — a ~28MP base composite can be 100+ tiles, and painting
+   *  those onto the visible canvas one at a time would be its own wave). */
+  async function paintBaseAtLevel(canvas: HTMLCanvasElement, sheetKey: string, imgW: number, imgH: number, levels: number[], level: number, dark: boolean, myGen: number) {
     const density = levels[level];
     const { w: lw, h: lh } = levelDims(imgW, imgH, density);
     const tiles = visibleTiles(imgW, imgH, levels, level, 0, 0, imgW, imgH);
-    // the base layer is visible for as long as the sheet is open — protect it
-    visibleKeys.set(`${sheetKey}|base`, new Set(tiles.map((t) => modeKey(rawTileKey(sheetKey, level, t.tx, t.ty), dark))));
-    canvas.width = lw; canvas.height = lh;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const myGen = generation;
+    const back = document.createElement("canvas");
+    back.width = lw; back.height = lh;
+    const bctx = back.getContext("2d");
+    if (!bctx) return;
     await Promise.all(tiles.map(async (t) => {
       const bmp = await getOrFetchTile(sheetKey, level, t.tx, t.ty, density, dark);
       if (!bmp || myGen !== generation) return;
-      ctx.drawImage(bmp, t.x, t.y);
+      bctx.drawImage(bmp, t.x, t.y);
     }));
+    if (myGen !== generation) return;
+    // the base layer is visible for as long as the sheet is open — protect
+    // whichever level is CURRENTLY painted (replaces the prior phase's set)
+    visibleKeys.set(`${sheetKey}|base`, new Set(tiles.map((t) => modeKey(rawTileKey(sheetKey, level, t.tx, t.ty), dark))));
+    canvas.width = lw; canvas.height = lh;
+    canvas.getContext("2d")?.drawImage(back, 0, 0);
+  }
+
+  /** Two-phase whole-sheet base layer, painted once per sheet: an instant
+   *  coarse placeholder (near-zero tiles), then upgraded in place to a
+   *  bounded ~28MP-equivalent composite — see the file header for why the
+   *  second phase isn't optional polish. */
+  async function paintBase(canvas: HTMLCanvasElement, sheetKey: string, imgW: number, imgH: number, dark: boolean) {
+    const levels = levelsFor(sheetKey, imgW, imgH);
+    const myGen = generation;
+    await paintBaseAtLevel(canvas, sheetKey, imgW, imgH, levels, 0, dark, myGen);
+    if (myGen !== generation) return;
+    const target = baseTargetLevel(levels, imgW, imgH);
+    if (target > 0) await paintBaseAtLevel(canvas, sheetKey, imgW, imgH, levels, target, dark, myGen);
   }
 
   /** Best coarser level fully cached for this region — the instant
