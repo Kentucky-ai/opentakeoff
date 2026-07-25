@@ -1,0 +1,22 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Kentucky-ai/opentakeoff",
+  "title": "OpenTakeoff",
+  "description": "Construction takeoff for AI agents: load plans, set scale, measure, count, export with provenance.",
+  "websiteUrl": "https://opentakeoff.netlify.app",
+  "repository": {
+    "url": "https://github.com/Kentucky-ai/opentakeoff",
+    "source": "github"
+  },
+  "version": "0.8.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "opentakeoff-mcp",
+      "version": "0.8.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
