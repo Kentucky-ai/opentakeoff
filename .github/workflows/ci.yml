@@ -65,6 +65,88 @@ jobs:
       - run: npm run smoke:dist
         working-directory: mcp
 
+  # Publishing the MCP server is fully unattended ONCE an mcp-v* tag exists —
+  # but nothing ever checked that a change to mcp/ came with a version bump, so
+  # "publish when needed" quietly depended on remembering. This is the check.
+  #
+  # It deliberately does NOT create the tag. publish-mcp.yml fires on the tag
+  # push, and a tag pushed by a workflow's GITHUB_TOKEN does not trigger other
+  # workflows — an auto-tag here would fire nothing AND consume the tag name,
+  # so the manual push that would have published is now a no-op. That trades a
+  # forgotten publish for a silently impossible one. Auto-publishing needs a
+  # PAT, which is a credential decision, not a CI one.
+  mcp-version-guard:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need the base commit to diff against
+      - name: Require a version bump when mcp/ changes
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet "$BASE" HEAD -- mcp/; then
+            echo "mcp/ untouched — nothing to check."
+            exit 0
+          fi
+          echo "mcp/ changed in this PR:"
+          git diff --name-only "$BASE" HEAD -- mcp/ | sed 's/^/  /'
+
+          PKG=$(jq -r .version mcp/package.json)
+          SRV=$(jq -r .version mcp/server.json)
+          SRVPKG=$(jq -r '.packages[0].version' mcp/server.json)
+          # Same three-way agreement publish-mcp.yml enforces at tag time.
+          # Catching it here means a mismatch fails a PR instead of a release.
+          if [ "$PKG" != "$SRV" ] || [ "$PKG" != "$SRVPKG" ]; then
+            echo "::error::version fields disagree (package.json=$PKG server.json=$SRV packages[0]=$SRVPKG) — bump them together"
+            exit 1
+          fi
+
+          BASE_PKG=$(git show "$BASE:mcp/package.json" | jq -r .version)
+          if [ "$PKG" = "$BASE_PKG" ]; then
+            echo "::error file=mcp/package.json::mcp/ changed but the version is still $PKG. Bump mcp/package.json AND mcp/server.json (.version and .packages[0].version), or the change ships to nobody: the registry only ever sees a published mcp-v* tag."
+            exit 1
+          fi
+          echo "version $BASE_PKG -> $PKG"
+          if git rev-parse -q --verify "refs/tags/mcp-v$PKG" >/dev/null; then
+            echo "::error::tag mcp-v$PKG already exists — pick an unused version"
+            exit 1
+          fi
+          echo "OK — merge, then publish with:  git tag mcp-v$PKG && git push origin mcp-v$PKG"
+
+  # Post-merge nudge: says exactly what to run, so a bumped-but-unpublished
+  # version can't sit unnoticed. Never fails the build — main is already green
+  # by here and an unpublished version is a pending action, not a defect.
+  mcp-release-reminder:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Flag an unpublished version
+        run: |
+          set -euo pipefail
+          PKG=$(jq -r .version mcp/package.json)
+          if git rev-parse -q --verify "refs/tags/mcp-v$PKG" >/dev/null; then
+            echo "mcp v$PKG is tagged — nothing pending." >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### MCP v$PKG is not published"
+              echo ""
+              echo '```'
+              echo "git tag mcp-v$PKG && git push origin mcp-v$PKG"
+              echo '```'
+              echo ""
+              echo "That tag push runs \`publish-mcp.yml\` end to end: npm (OIDC, provenance), the MCP registry entry, the GitHub release, and the MCPB bundle."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::mcp v$PKG has no mcp-v$PKG tag — not published yet"
+          fi
+
   capture:
     runs-on: ubuntu-latest
     steps:
