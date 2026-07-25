@@ -319,3 +319,32 @@ test("review: an empty or all-non-pending id set is a no-op with an empty restor
   assert.deepEqual(r.shapes, shapes);
   assert.deepEqual(r.inverse, { type: "review", restore: [] });
 });
+
+// ── ruleApply (#88) ──────────────────────────────────────────────────────────
+
+test("ruleApply: add semantics — mints ids/created_at, one noCount-delete inverse for the batch", () => {
+  const base = [manualShape()];
+  const drafts = [1, 2].map((i) => ({
+    sheet_id: "a.pdf#1", condition_id: "cnd-1", measure_role: "deduct",
+    verts_norm: [[0.1 * i, 0.1], [0.2 * i, 0.1], [0.2 * i, 0.2]],
+    computed: { area_sf: 12.5 },
+    origin: {
+      method: "rule_v1", actor: "rule", reviewed: true,
+      rule_id: "rule-1", seed_shape_id: "shp-seed",
+      proposed_ts: "2026-07-25T00:00:00.000Z", accepted_ts: "2026-07-25T00:00:01.000Z",
+    },
+  }));
+  const fwd = roundTrip(base, { type: "ruleApply", shapes: drafts.map(clone) });
+  assert.equal(fwd.shapes.length, 3);
+  const added = fwd.shapes.slice(1);
+  for (const s of added) {
+    assert.match(s.id, /^shp-/);
+    assert.match(s.created_at, ISO);
+    assert.equal(s.origin.method, "rule_v1");
+    assert.equal(s.origin.rule_id, "rule-1");                      // every propagated shape traces to its rule
+    assert.equal(s.origin.seed_shape_id, "shp-seed");              // …and to the correction that seeded it
+    assert.equal(s.origin.reviewed, true);
+  }
+  // ONE inverse deletes the whole batch, and never feeds the deletion counters
+  assert.deepEqual(fwd.inverse, { type: "delete", ids: added.map((s) => s.id), noCount: true });
+});

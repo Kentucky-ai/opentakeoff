@@ -42,7 +42,11 @@ const ANN_SCHEMA = "opentakeoff.takeoff_canvas.v1";
 // Drive-backed cloud store (cloudStore.js) hydrate a fresh project identically —
 // a new field added here reaches both, instead of silently drifting apart.
 export function emptyAnnotations() {
-  return { schema: ANN_SCHEMA, conditions: [], shapes: [], markups: [], sheets: [], sheet_group: [], last_group: [], sheet_tabs: [] };
+  // rules (#88): project-scoped correction rules — deterministic predicates
+  // seeded by an estimator's edit, re-runnable across the project. Local to
+  // the project file by the RFC's scope boundary (never on the MCP export or
+  // contribution wire).
+  return { schema: ANN_SCHEMA, conditions: [], shapes: [], markups: [], sheets: [], sheet_group: [], last_group: [], sheet_tabs: [], rules: [] };
 }
 
 function openDB() {

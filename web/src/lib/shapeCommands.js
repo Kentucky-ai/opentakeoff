@@ -41,6 +41,13 @@
 //   replace   NO stamp, NO counted, inverse null (never recorded): the escape
 //             hatch for whole-array non-edits — hydrate, revision restore,
 //             rescale's computed re-price.
+//   ruleApply the batch-accept gate for correction-rule propagation (#88):
+//             add semantics (created_at + id mint per shape, one undo entry
+//             for the whole batch), but a DISTINCT type because the policy
+//             decision differs — the caller pre-builds each origin with
+//             method "rule_v1", rule_id and seed_shape_id (the propagated
+//             shape must trace to its seed correction), reviewed: true
+//             (the estimator saw the staged batch and clicked Apply).
 //   review    the accept gate for machine proposals already IN the shapes
 //             array (an imported MCP takeoff, a binder run): each named shape
 //             still carrying origin.reviewed === false gets reviewed: true +
@@ -60,6 +67,7 @@ export const PROVENANCE_POLICY = {
   delete: "no stamp; counted per origin.method unless noCount",
   replace: "no stamp, no counted, no undo entry (whole-array non-edit)",
   review: "origin.reviewed → true + accepted_ts per still-pending shape; restore puts the prior origin back verbatim",
+  ruleApply: "add semantics (created_at + id mint per shape, ONE undo entry per batch); caller-built rule_v1 origin carries rule_id + seed_shape_id",
 };
 
 // Undo depth — one bounded gesture history, not an archive (revisions are).
@@ -132,6 +140,11 @@ export function applyShapeCommand(shapes, cmd) {
     throw new Error(`Unknown shape command type: ${cmd && cmd.type} — add it to PROVENANCE_POLICY (and decide what it stamps) first.`);
   }
   switch (cmd.type) {
+    // ruleApply IS an add structurally (mint id/created_at, inverse = noCount
+    // delete of the batch — one undo entry); the separate type exists so the
+    // PROVENANCE_POLICY table forces the policy decision to be made (and
+    // documents it) rather than overloading `add` rows with a rule flag.
+    case "ruleApply":
     case "add": {
       // restore: true = resurrection (undo of a delete) — the shapes go back
       // VERBATIM (created_at kept, no re-mint), at their original indices when
