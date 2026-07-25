@@ -13,6 +13,7 @@ import {
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
   editShapeOutput, undoLastOutput, sheetContextOutput,
   findTextOutput, editMaterialsOutput,
+  annotateOutput, listAnnotationsOutput, linkAnnotationOutput,
 } from "./outputs.ts";
 
 // The coordinate contract, stated on every tool so any agent reading any one
@@ -242,4 +243,39 @@ export function registerTools(server: McpServer, session: Session): void {
     traceToolCall("view_sheet", a, startedAt, reply);
     return reply;
   });
+
+  // ── annotations (#114) — the agent half of markup.condition_id (#112) ──────
+  // A human could attach a note to a scope; an agent could not even SEE one
+  // (session.exportPayload hardcoded markups: []). These three close that.
+  server.registerTool("annotate", {
+    description: `Place an annotation on a sheet — a note ABOUT the work, never a measurement of it. Types: cloud and highlight take rect:[[x0,y0],[x1,y1]] (a revision cloud around an area, a highlight box over it), text takes at:[x,y], callout takes at:[x,y] plus target:[x,y] (the point its leader aims at). \n\nPass condition to attach the note to a finish tag, which is what makes it part of that SCOPE rather than a floating remark: it then wears the condition's colour on the canvas and in the marked-set PDF, and travels with it into the report. The tag is minted on first touch like one_click/measure_polygon, so you can annotate CPT-1 before anything is traced for it. Omit condition for a note about the sheet itself. \n\nNo review gate: the pencil-not-ink rule exists to stop an agent inventing geometry, and a cloud reading "verify substrate" is not geometry. It touches no quantity. ${COORDS}`,
+    inputSchema: {
+      sheet: z.string().describe("Sheet name or number, as sheet_info reports it"),
+      type: z.enum(["cloud", "text", "callout", "highlight"]).describe("cloud/highlight need rect; text/callout need at; callout also needs target"),
+      text: z.string().default("").describe("The note. A cloud with no text still reads as 'look here'"),
+      condition: z.string().optional().describe("Finish tag to attach this note to, e.g. 'CPT-1' (minted on first use). Omit for an unattached sheet note"),
+      at: pointSchema.optional().describe("Anchor point (image px) — text and callout"),
+      target: pointSchema.optional().describe("What a callout's leader line points at (image px)"),
+      rect: z.tuple([pointSchema, pointSchema]).optional().describe("Corners (image px) — cloud and highlight"),
+    },
+    outputSchema: annotateOutput,
+  }, run("annotate", (a) => session.annotate(a)));
+
+  server.registerTool("list_annotations", {
+    description: `Every annotation on the takeoff, with condition_id RESOLVED to its finish tag so you can act on the reply without joining against conditions[]. Filter by sheet, by condition, or both. Coordinates come back in image px (the same frame you passed in), not the normalized form they're stored as. \`unattached\` counts the notes carrying no condition — the candidates for link_annotation. ${COORDS}`,
+    inputSchema: {
+      sheet: z.string().optional().describe("Only annotations on this sheet"),
+      condition: z.string().optional().describe("Only annotations attached to this finish tag"),
+    },
+    outputSchema: listAnnotationsOutput,
+  }, run("list_annotations", (a) => session.listAnnotations(a)));
+
+  server.registerTool("link_annotation", {
+    description: `Attach an existing annotation to a condition, or detach it by passing an empty condition — the canvas's Attach/Detach control, reachable by an agent. Use it to tie up notes left unattached (list_annotations reports how many), or to move one to the finish it actually concerns. Attaching mints the tag on first use.`,
+    inputSchema: {
+      annotation_id: z.string().describe("Id from annotate or list_annotations"),
+      condition: z.string().describe("Finish tag to attach to; empty string detaches"),
+    },
+    outputSchema: linkAnnotationOutput,
+  }, run("link_annotation", (a) => session.linkAnnotation(a.annotation_id, a.condition)));
 }

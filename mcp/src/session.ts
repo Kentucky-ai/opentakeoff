@@ -104,6 +104,31 @@ export interface Shape {
   origin?: ShapeOrigin;
 }
 
+/** An annotation — a note ABOUT the work, never a measurement of it.
+ *
+ *  Field-identical to the canvas's markup (web/src/pages/TakeoffCanvas.jsx), so
+ *  what an agent writes here loads in the app unchanged and vice versa. Coords
+ *  are NORMALIZED 0..1 of the sheet, matching shapes' verts_norm — the tools
+ *  take image px and convert at the boundary, which is the same contract every
+ *  other tool honours.
+ *
+ *  condition_id is what makes an annotation part of a scope rather than a
+ *  floating note: it takes that condition's colour on canvas and in the marked
+ *  set, and travels with it into the report (#112). "" means unattached, which
+ *  is a legitimate state — a note about the sheet, not about a finish. */
+export interface Markup {
+  id: string;
+  sheet_id: string;
+  type: "cloud" | "text" | "callout" | "highlight";
+  text: string;
+  condition_id: string;
+  rfi_id: string;
+  at?: [number, number];
+  target?: [number, number];
+  rect?: [[number, number], [number, number]];
+  created_at?: string;
+}
+
 interface SheetState {
   key: string;
   pageNum: number;
@@ -218,6 +243,7 @@ export class Session {
   private doc: DocHandle | null = null;
   private sheets = new Map<string, SheetState>();
   conditions: Condition[] = [];
+  markups: Markup[] = [];
   shapes: Shape[] = [];
 
   /** Newest-last. Capped at UNDO_CAP; the oldest entry falls off the front. */
@@ -248,6 +274,7 @@ export class Session {
     this.sheets.clear();
     this.conditions = [];
     this.shapes = [];
+    this.markups = [];
     this.file = null;
     // the journal's entries reference shapes that no longer exist — undoing
     // across a document swap would be a lie, so the history goes with them
@@ -971,6 +998,88 @@ export class Session {
     };
   }
 
+  /** Place an annotation. A note ABOUT the work — it never measures anything
+   *  and never touches a quantity, which is why there is no review gate here:
+   *  the pencil-not-ink rule exists to stop an agent inventing GEOMETRY, and a
+   *  cloud saying "verify substrate" is not geometry.
+   *
+   *  `condition` attaches it to a scope by finish tag, minting the condition on
+   *  first touch exactly like one_click/measure_polygon — so an agent can note
+   *  something about CPT-1 before anything is traced for CPT-1. Omit it for a
+   *  note about the sheet rather than about a finish. */
+  annotate(a: { sheet: string; type: Markup["type"]; text: string; at?: Point; target?: Point; rect?: [Point, Point]; condition?: string }): Record<string, unknown> {
+    const s = this.sheet(a.sheet);
+    const n = ([x, y]: Point): [number, number] => [x / s.widthPx, y / s.heightPx];
+    if ((a.type === "cloud" || a.type === "highlight") && !a.rect) throw new UserError(`a ${a.type} needs rect: [[x0,y0],[x1,y1]] in image px`);
+    if ((a.type === "text" || a.type === "callout") && !a.at) throw new UserError(`a ${a.type} needs at: [x,y] in image px`);
+    if (a.type === "callout" && !a.target) throw new UserError("a callout needs target: [x,y] — the point the leader line aims at");
+    const cond = a.condition ? this.conditionFor(a.condition) : null;
+    const m: Markup = {
+      id: uid("mk"),
+      sheet_id: s.key,
+      type: a.type,
+      text: a.text || "",
+      condition_id: cond?.id ?? "",
+      rfi_id: "",
+      created_at: new Date().toISOString(),
+      ...(a.at ? { at: n(a.at) } : {}),
+      ...(a.target ? { target: n(a.target) } : {}),
+      ...(a.rect ? { rect: [n(a.rect[0]), n(a.rect[1])] as [[number, number], [number, number]] } : {}),
+    };
+    this.markups.push(m);
+    return {
+      id: m.id, sheet: s.key, type: m.type, text: m.text,
+      condition: cond?.finish_tag ?? "", condition_id: m.condition_id,
+      note: cond
+        ? `Attached to ${cond.finish_tag} — it wears that condition's colour on the canvas and in the marked set.`
+        : "Unattached — a note about the sheet. Pass condition to tie it to a scope.",
+    };
+  }
+
+  /** Read annotations, optionally narrowed to a sheet and/or a condition.
+   *  Resolves condition_id to its finish tag so a caller can act on the reply
+   *  without joining against the conditions array. */
+  listAnnotations(f: { sheet?: string; condition?: string } = {}): Record<string, unknown> {
+    const tagById = new Map(this.conditions.map((c) => [c.id, c.finish_tag]));
+    let rows = this.markups;
+    if (f.sheet) { const s = this.sheet(f.sheet); rows = rows.filter((m) => m.sheet_id === s.key); }
+    if (f.condition) {
+      const c = this.conditions.find((x) => x.finish_tag === f.condition);
+      if (!c) throw new UserError(`no condition "${f.condition}" — tags: ${this.conditions.map((x) => x.finish_tag).join(", ") || "(none)"}`);
+      rows = rows.filter((m) => m.condition_id === c.id);
+    }
+    const s0 = this.sheets;
+    const px = (m: Markup, p?: [number, number]): [number, number] | undefined => {
+      const sh = s0.get(m.sheet_id); if (!p || !sh) return undefined;
+      return [round1(p[0] * sh.widthPx), round1(p[1] * sh.heightPx)];
+    };
+    return {
+      annotations: rows.map((m) => ({
+        id: m.id, sheet: m.sheet_id, type: m.type, text: m.text,
+        condition: tagById.get(m.condition_id) ?? "", condition_id: m.condition_id,
+        ...(m.at ? { at: px(m, m.at) } : {}),
+        ...(m.target ? { target: px(m, m.target) } : {}),
+        ...(m.rect ? { rect: [px(m, m.rect[0]), px(m, m.rect[1])] } : {}),
+      })),
+      count: rows.length,
+      unattached: rows.filter((m) => !m.condition_id).length,
+    };
+  }
+
+  /** Attach an existing annotation to a condition, or detach it with "". The
+   *  canvas's Attach/Detach, reachable by an agent. */
+  linkAnnotation(id: string, condition: string): Record<string, unknown> {
+    const m = this.markups.find((x) => x.id === id);
+    if (!m) throw new UserError(`no annotation "${id}" — call list_annotations for real ids`);
+    if (!condition) {
+      m.condition_id = "";
+      return { id: m.id, condition: "", note: "Detached — now a note about the sheet." };
+    }
+    const c = this.conditionFor(condition);
+    m.condition_id = c.id;
+    return { id: m.id, condition: c.finish_tag, condition_id: c.id, note: `Attached to ${c.finish_tag}.` };
+  }
+
   /** The exact browser save payload (TakeoffCanvas.jsx autosave + the schema key
    * store.saveAnnotations stamps) — importable by the app. */
   exportPayload() {
@@ -982,7 +1091,7 @@ export class Session {
       sheets: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => ({ sheet_id: s.key, units_per_px: s.upp })),
       conditions: this.conditions,
       shapes: this.shapes,
-      markups: [],
+      markups: this.markups,
       sheet_group: [],
       last_group: [],
       sheet_tabs: [],
