@@ -2,6 +2,13 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — `find_text` + `edit_materials`, the seventeenth and eighteenth tools
+
+### Added
+- **`find_text` — LOCATE a known string, the complement to `read_sheet_text`** (which returns what a region *says*). Case-insensitive substring match against each pdf.js text run, reusing the same bbox-span cache `sheet_context` lazily builds so calling both on one sheet costs the extraction once. Every hit's center feeds straight into `one_click`'s seed — the locate-then-trace workflow a room-number search enables. A room label split across pdf.js runs needs its own call per fragment (runs aren't merged into lines); results cap at `limit` (default 200) with `count`/`truncated` telling you exactly how much a tighter region would recover.
+- **`edit_materials` — add/remove/patch supporting-materials rows on a condition**, matching the canvas's per-condition Supporting Materials panel (coverage-rate lines: adhesive at N sf/gal, grout at N lf/bag, … — quantity = the condition's basis total ÷ `per`, rounded up to whole purchase units). `condition` mints on first touch, same as `one_click`/`measure_polygon`, so `add` alone seeds materials before anything is traced. No review gate here — materials rows are quantity config, not traced geometry a human affirmed — so the tool edits directly; validated all-or-nothing (a bad row id anywhere in `remove`/`patch` errors the whole call, and referencing an id on a tag with no condition yet errors rather than silently minting an empty one). Reversible with `undo_last`, which gained a fourth journal op (`materials`) alongside `commit`/`edit`/`delete` — one entry snapshots the condition's whole materials array before the write, restored verbatim on undo.
+- `Condition.materials` — previously `unknown[]`, dead weight since nothing touched it — is now the typed `MaterialRow[]` these tools read and write.
+
 ## Unreleased — detect_rooms bubble guards + the sensitivity knob (port of a live finding)
 
 ### Added

@@ -37,6 +37,20 @@ export const ANN_SCHEMA = "opentakeoff.takeoff_canvas.v1"; // web/src/lib/store.
 
 export type MeasureRole = "floor_area" | "deduct" | "linear";
 
+/** Supporting-materials row (field-identical to the canvas's addMaterial —
+ * web/src/pages/TakeoffCanvas.jsx). Quantity is deterministic: basis ÷ per,
+ * rounded up to whole purchase units unless round:false (totals.js). basis
+ * "area" reads the condition's total SF, "linear" its LF, "count" its EA. */
+export interface MaterialRow {
+  id: string;
+  name: string;
+  per: number;
+  basis: "area" | "linear" | "count";
+  unit: string;
+  round: boolean;
+  note?: string;
+}
+
 export interface Condition {
   id: string;
   finish_tag: string;
@@ -45,7 +59,7 @@ export interface Condition {
   hatch: string;
   multiplier: number;
   waste_pct: number;
-  materials: unknown[];
+  materials: MaterialRow[];
 }
 
 /** Shape provenance (contribution.v2 vocabulary — mirrors the canvas +
@@ -181,7 +195,8 @@ export const UNDO_CAP = 100;
 export type JournalPayload =
   | { op: "commit"; tool: string; ids: string[] }
   | { op: "edit"; tool: string; before: Shape }
-  | { op: "delete"; tool: string; removed: { shape: Shape; index: number }[] };
+  | { op: "delete"; tool: string; removed: { shape: Shape; index: number }[] }
+  | { op: "materials"; tool: string; condition_id: string; before: MaterialRow[] };
 
 export type JournalEntry = JournalPayload & { seq: number };
 
@@ -847,6 +862,71 @@ export class Session {
     };
   }
 
+  /** Add/remove/patch supporting-materials rows on a condition, in one call.
+   * Unlike editShape there is no review gate to check — materials rows carry
+   * no origin/reviewed field, because they are quantity CONFIG (a coverage
+   * rate), not geometry a human traced. Validated all-or-nothing before
+   * anything is written: a bad id anywhere in remove/patch throws and nothing
+   * changes, same discipline as the shapes tools. Reversible with undo_last —
+   * one journal entry snapshots the condition's whole materials array before
+   * the call, restored verbatim on undo (same pattern as editShape's `before`
+   * capture, simpler here because there is no per-row provenance to preserve). */
+  editMaterials(tag: string, opts: {
+    add?: { name: string; per?: number; basis?: MaterialRow["basis"]; unit?: string; round?: boolean; note?: string }[];
+    remove?: string[];
+    patch?: { id: string; fields: Partial<Omit<MaterialRow, "id">> }[];
+  }) {
+    const add = opts.add ?? [], remove = opts.remove ?? [], patch = opts.patch ?? [];
+    if (!add.length && !remove.length && !patch.length) {
+      throw new UserError("Nothing to change — pass at least one of add, remove, patch.");
+    }
+    for (let i = 0; i < add.length; i++) {
+      if (!add[i].name.trim()) throw new UserError(`add[${i}]: name required.`);
+    }
+    // Validate remove/patch against whatever condition already exists, WITHOUT
+    // minting one — conditionFor() below creates on first touch (same as every
+    // other condition-bearing tool), and a validation failure must leave no
+    // trace: an unknown tag + a bad row id should error, not mint an empty
+    // condition as a side effect of the error.
+    const existingMaterials = this.conditions.find((x) => x.finish_tag === tag)?.materials ?? [];
+    const byId = new Map(existingMaterials.map((m) => [m.id, m]));
+    for (const id of remove) {
+      if (!byId.has(id)) throw new UserError(`remove: no material row ${JSON.stringify(id)} on condition ${JSON.stringify(tag)}.`);
+    }
+    for (let i = 0; i < patch.length; i++) {
+      if (!byId.has(patch[i].id)) throw new UserError(`patch[${i}]: no material row ${JSON.stringify(patch[i].id)} on condition ${JSON.stringify(tag)}.`);
+      if (!Object.keys(patch[i].fields).length) throw new UserError(`patch[${i}]: fields must be non-empty.`);
+    }
+
+    const c = this.conditionFor(tag);
+    const before = structuredClone(c.materials);
+    const added: string[] = [];
+    for (const a of add) {
+      const row: MaterialRow = {
+        id: uid("mat"), name: a.name.trim(), per: Math.max(0, a.per ?? 0),
+        basis: a.basis ?? "area", unit: a.unit ?? "", round: a.round ?? true,
+        ...(a.note ? { note: a.note } : {}),
+      };
+      c.materials.push(row);
+      added.push(row.id);
+    }
+    const removed = new Set(remove);
+    if (removed.size) c.materials = c.materials.filter((m) => !removed.has(m.id));
+    const patched: string[] = [];
+    for (const p of patch) {
+      const m = c.materials.find((x) => x.id === p.id)!;
+      Object.assign(m, p.fields);
+      patched.push(p.id);
+    }
+    this.record({ op: "materials", tool: "edit_materials", condition_id: c.id, before });
+
+    return {
+      condition: tag, condition_id: c.id,
+      changed: { added, removed: [...removed], patched },
+      materials: c.materials,
+    };
+  }
+
   /** Step back over this session's own last n mutations, newest first. Each
    * entry's inverse is exact (see JournalEntry), so this restores state rather
    * than approximating it. Reads are not journaled, so undo never has to step
@@ -866,6 +946,13 @@ export class Session {
         // shape that is gone is a no-op on geometry, not an error
         if (i >= 0) this.shapes[i] = e.before;
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: i >= 0 ? 1 : 0 });
+      } else if (e.op === "materials") {
+        const c = this.conditions.find((x) => x.id === e.condition_id);
+        // the condition itself is never deleted (no delete_condition tool), so
+        // this only misses if a fresh session's journal outlived a load_plan —
+        // which load_plan already clears the journal for.
+        if (c) c.materials = e.before;
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
       } else {
         for (const { shape, index } of e.removed) {
           this.shapes.splice(Math.min(index, this.shapes.length), 0, shape);
@@ -907,5 +994,31 @@ export class Session {
       ? s.text.filter((t) => t.x >= region.x0 && t.x <= region.x1 && t.y >= region.y0 && t.y <= region.y1)
       : s.text;
     return { sheet: s.key, items, text: items.map((t) => t.str).join(" ") };
+  }
+
+  /** LOCATE a known string — the complement to readSheetText (which returns
+   * what a region SAYS; this finds WHERE a string you already know sits).
+   * Case-insensitive substring match per pdf.js text run, so a room label
+   * split across runs ("OFFICE" then "134" as separate items) needs its own
+   * find_text call per fragment, or read_sheet_text over a region to see the
+   * whole thing at once — this tool doesn't merge runs into lines. Reuses the
+   * bbox spans sheet_context lazily builds (same cache, same textSpans()
+   * call), so calling both on one sheet costs the extraction once. */
+  findText(name: string, q: string, opts: { region?: { x0: number; y0: number; x1: number; y1: number }; limit?: number } = {}) {
+    const query = q.trim();
+    if (!query) throw new UserError("q must be a non-empty string.");
+    const s = this.sheet(name);
+    if (!s.spans) s.spans = textSpans(s.page);
+    const r = opts.region;
+    const needle = query.toLowerCase();
+    const limit = opts.limit ?? 200;
+    const all = s.spans.filter((sp) => sp.str.toLowerCase().includes(needle)
+      && (!r || (sp.x0 <= r.x1 && sp.x1 >= r.x0 && sp.y0 <= r.y1 && sp.y1 >= r.y0)));
+    const hits = all.slice(0, limit).map((sp) => ({
+      str: sp.str,
+      bbox: [sp.x0, sp.y0, sp.x1, sp.y1] as [number, number, number, number],
+      center: [round1((sp.x0 + sp.x1) / 2), round1((sp.y0 + sp.y1) / 2)] as [number, number],
+    }));
+    return { sheet: s.key, q: query, count: all.length, truncated: all.length > hits.length, hits };
   }
 }

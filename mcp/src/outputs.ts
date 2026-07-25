@@ -202,13 +202,49 @@ export const undoLastOutput = {
   undone: z.number().int().describe("Steps actually reversed"),
   steps: z.array(z.object({
     seq: z.number().int(),
-    op: z.enum(["commit", "edit", "delete"]),
+    op: z.enum(["commit", "edit", "delete", "materials"]),
     tool: z.string().describe("The tool call this step came from"),
-    shapes: z.number().int().describe("Shapes affected by reversing this step"),
+    shapes: z.number().int().describe("Shapes affected by reversing this step — 0 for a materials step (it restores a condition's supporting-materials rows, not shapes)"),
   })).describe("Newest first"),
   shape_count: z.number().int().describe("Committed shapes after the undo"),
   remaining: z.number().int().describe("Steps still available to undo"),
   note: z.string().optional(),
+};
+
+/** findText — the complement to readSheetTextOutput: WHERE a known string
+ * sits, not what a region says. */
+export const findTextOutput = {
+  sheet: z.string(),
+  q: z.string(),
+  count: z.number().int().describe("Total matches before the limit cap"),
+  truncated: z.boolean().describe("true = count exceeds hits.length; narrow the region or raise limit"),
+  hits: z.array(z.object({
+    str: z.string().describe("The matched pdf.js text run, verbatim (may be shorter than the full label — runs aren't merged into lines)"),
+    bbox: z.tuple([z.number(), z.number(), z.number(), z.number()]).describe("[x0, y0, x1, y1] image px"),
+    center: z.tuple([z.number(), z.number()]).describe("Bbox center, image px — feed straight into one_click's seed"),
+  })),
+};
+
+/** editMaterials — session.ts's MaterialRow, verbatim. */
+const materialRow = z.object({
+  id: z.string(),
+  name: z.string(),
+  per: z.number().describe("Coverage rate: basis ÷ per = order quantity"),
+  basis: z.enum(["area", "linear", "count"]).describe("Which of the condition's totals this row's quantity is computed against"),
+  unit: z.string(),
+  round: z.boolean().describe("true = round up to whole purchase units (the default — you buy whole bags/buckets)"),
+  note: z.string().optional(),
+});
+
+export const editMaterialsOutput = {
+  condition: z.string().describe("The finish tag passed in"),
+  condition_id: z.string(),
+  changed: z.object({
+    added: z.array(z.string()).describe("Ids of newly added rows"),
+    removed: z.array(z.string()).describe("Ids removed"),
+    patched: z.array(z.string()).describe("Ids whose fields changed"),
+  }),
+  materials: z.array(materialRow).describe("The condition's full materials array after this write"),
 };
 
 export const readSheetTextOutput = {

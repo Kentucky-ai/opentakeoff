@@ -43,18 +43,20 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
   return output;
 }
 
-// undo_last is the one tool that takes no coordinates — it addresses this
-// session's own command history, not the sheet — so the coordinate contract
-// would be noise in its description rather than orientation. Every other tool
-// speaks image px and says so.
-const NO_COORDS = new Set(["undo_last"]);
+// undo_last and edit_materials are the tools that take no coordinates — one
+// addresses this session's own command history, the other a condition's
+// supporting-materials config — so the coordinate contract would be noise in
+// their descriptions rather than orientation. Every other tool speaks image
+// px and says so.
+const NO_COORDS = new Set(["undo_last", "edit_materials"]);
 
-test("tools/list: all fifteen tools, each described with the coordinate contract", async () => {
+test("tools/list: all seventeen tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
-    "delete_shape", "detect_rooms", "edit_shape", "export_takeoff", "load_plan", "measure_line", "measure_polygon",
-    "one_click", "read_sheet_text", "set_scale", "sheet_context", "sheet_info", "takeoff_summary", "undo_last", "view_sheet",
+    "delete_shape", "detect_rooms", "edit_materials", "edit_shape", "export_takeoff", "find_text", "load_plan",
+    "measure_line", "measure_polygon", "one_click", "read_sheet_text", "set_scale", "sheet_context", "sheet_info",
+    "takeoff_summary", "undo_last", "view_sheet",
   ]);
   for (const t of tools) {
     if (NO_COORDS.has(t.name)) continue;
@@ -399,4 +401,113 @@ test("undo_last: reads are never journaled, and load_plan clears the history", a
   const afterLoad = await call(client, "undo_last", { n: 1 });
   assert.equal(afterLoad.data.undone, 0, "history goes with the document it described");
   assert.equal(afterLoad.data.remaining, 0);
+});
+
+test("find_text: locates a room label, region narrows the search, limit caps it", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+
+  // "101" substring-matches BOTH the room label AND the sheet number in the
+  // title block ("OFFICE 101" and "A-101") — real substring-search behavior,
+  // not a bug; a narrower query is how an agent disambiguates.
+  const hit = await call(client, "find_text", { sheet: KEY, q: "101" });
+  assert.equal(hit.isError, false);
+  assert.equal(hit.data.count, 2);
+  assert.equal(hit.data.hits.length, 2);
+  assert.deepEqual(hit.data.hits.map((h: any) => h.str).sort(), ["A-101", "OFFICE 101"]);
+  assert.equal(hit.data.hits[0].bbox.length, 4);
+  assert.equal(hit.data.hits[0].center.length, 2);
+  assert.equal(hit.data.truncated, false);
+
+  // a query specific enough to disambiguate finds exactly the room label
+  const room = await call(client, "find_text", { sheet: KEY, q: "OFFICE 101" });
+  assert.equal(room.isError, false);
+  assert.equal(room.data.count, 1);
+  assert.equal(room.data.hits[0].str, "OFFICE 101");
+
+  // case-insensitive
+  const ci = await call(client, "find_text", { sheet: KEY, q: "office" });
+  assert.equal(ci.isError, false);
+  assert.ok(ci.data.count > 0);
+
+  // a region that excludes the hit finds nothing
+  const missed = await call(client, "find_text", { sheet: KEY, q: "101", region: { x0: 0, y0: 0, x1: 1, y1: 1 } });
+  assert.equal(missed.isError, false);
+  assert.equal(missed.data.count, 0);
+
+  // limit caps hits but count still reports the true total
+  const capped = await call(client, "find_text", { sheet: KEY, q: "0", limit: 1 });
+  assert.equal(capped.isError, false);
+  assert.equal(capped.data.hits.length, 1);
+  assert.ok(capped.data.count >= capped.data.hits.length);
+  if (capped.data.count > 1) assert.equal(capped.data.truncated, true);
+
+  // schema's min(1) catches "" (see conformance.test.ts's -32602 sweep);
+  // whitespace-only passes that and is caught here instead
+  const blank = await call(client, "find_text", { sheet: KEY, q: "   " });
+  assert.equal(blank.isError, true);
+  assert.match(blank.data.error, /non-empty/);
+});
+
+test("edit_materials: add/remove/patch, minted-on-touch, all-or-nothing, undo restores verbatim", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+
+  // add alone mints the condition — no shape needs to exist first
+  const added = await call(client, "edit_materials", { condition: "CPT-1", add: [
+    { name: "Adhesive", per: 250, basis: "area", unit: "gal" },
+  ] });
+  assert.equal(added.isError, false);
+  assert.equal(added.data.condition_id.startsWith("cnd-"), true);
+  assert.equal(added.data.materials.length, 1);
+  const rowId = added.data.materials[0].id;
+  assert.equal(added.data.materials[0].round, true, "default round:true");
+  assert.equal(added.data.changed.added[0], rowId);
+
+  // patch changes fields without touching id/basis
+  const patched = await call(client, "edit_materials", { condition: "CPT-1", patch: [
+    { id: rowId, fields: { per: 300, note: "verify TDS" } },
+  ] });
+  assert.equal(patched.isError, false);
+  assert.equal(patched.data.materials[0].per, 300);
+  assert.equal(patched.data.materials[0].note, "verify TDS");
+  assert.equal(patched.data.materials.length, 1);
+
+  // remove drops the row
+  const removed = await call(client, "edit_materials", { condition: "CPT-1", remove: [rowId] });
+  assert.equal(removed.isError, false);
+  assert.equal(removed.data.materials.length, 0);
+
+  // remove/patch on an unknown tag errors WITHOUT minting an empty condition
+  const before = await call(client, "takeoff_summary");
+  const condCountBefore = before.data.conditions.length;
+  const badRemove = await call(client, "edit_materials", { condition: "NOPE-9", remove: ["mat-nope"] });
+  assert.equal(badRemove.isError, true);
+  assert.match(badRemove.data.error, /no material row/);
+  const after = await call(client, "takeoff_summary");
+  assert.equal(after.data.conditions.length, condCountBefore, "no empty condition minted by a failed call");
+
+  // empty body errors
+  const empty = await call(client, "edit_materials", { condition: "CPT-1" });
+  assert.equal(empty.isError, true);
+  assert.match(empty.data.error, /at least one of add, remove, patch/);
+
+  // blank name on add errors before anything is written
+  const blank = await call(client, "edit_materials", { condition: "CPT-1", add: [{ name: "  " }] });
+  assert.equal(blank.isError, true);
+  assert.match(blank.data.error, /name required/);
+
+  // undo_last restores the whole materials array from before the last edit_materials call
+  const readded = await call(client, "edit_materials", { condition: "CPT-1", add: [{ name: "Sealer", per: 400 }] });
+  assert.equal(readded.data.materials.length, 1);
+  const undone = await call(client, "undo_last", { n: 1 });
+  assert.equal(undone.isError, false);
+  assert.equal(undone.data.steps[0].op, "materials");
+  assert.equal(undone.data.steps[0].shapes, 0);
+  const summary = await call(client, "takeoff_summary");
+  assert.equal(summary.isError, false);
+  // materials is stripped from the lean summary reply by design — confirm via export_takeoff instead
+  const exported = await call(client, "export_takeoff", {});
+  const cond = exported.data.conditions.find((c: any) => c.finish_tag === "CPT-1");
+  assert.equal(cond.materials.length, 0, "undo restored the pre-add state");
 });

@@ -22,6 +22,7 @@ import {
   loadPlanOutput, sheetInfoOutput, setScaleOutput, oneClickOutput, detectRoomsOutput,
   measurePolygonOutput, measureLineOutput, takeoffSummaryOutput,
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
+  findTextOutput, editMaterialsOutput,
 } from "../src/outputs.ts";
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
@@ -41,6 +42,8 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   export_takeoff: z.object(exportTakeoffOutput),
   delete_shape: z.object(deleteShapeOutput),
   read_sheet_text: z.object(readSheetTextOutput),
+  find_text: z.object(findTextOutput),
+  edit_materials: z.object(editMaterialsOutput),
 };
 
 async function pair() {
@@ -172,6 +175,22 @@ test("every tool: canonical valid call → schema-valid structuredContent mirror
   const empty = await callOk(client, "read_sheet_text", { sheet: KEY, region: { x0: 0, y0: 0, x1: 10, y1: 10 } });
   assert.deepEqual({ items: empty.items, text: empty.text }, { items: [], text: "" });
 
+  // "101" substring-matches both the room label and the sheet number ("A-101")
+  const found = await callOk(client, "find_text", { sheet: KEY, q: "101" });
+  assert.equal(found.count, 2);
+  assert.deepEqual(found.hits.map((h: any) => h.str).sort(), ["A-101", "OFFICE 101"]);
+  const foundRegion = await callOk(client, "find_text", { sheet: KEY, q: "office", region: { x0: 500, y0: 1000, x1: 700, y1: 1200 } });
+  assert.deepEqual(foundRegion.hits.map((h: any) => h.str), ["OFFICE 101"]);
+
+  const materials = await callOk(client, "edit_materials", { condition: "CPT-1", add: [
+    { name: "Adhesive", per: 250, basis: "area", unit: "gal" },
+  ] });
+  assert.equal(materials.materials.length, 1);
+  assert.equal(materials.materials[0].round, true);
+  const matched = await callOk(client, "edit_materials", { condition: "CPT-1",
+    patch: [{ id: materials.materials[0].id, fields: { per: 300 } }] });
+  assert.equal(matched.materials[0].per, 300);
+
   const del = await callOk(client, "delete_shape", { shape_id: clicked.shape_id });
   assert.deepEqual(del, { deleted: clicked.shape_id, shape_count: 2 });
 
@@ -283,6 +302,9 @@ test("schema-invalid arguments: -32602 validation error naming the tool; the ses
   await callViolation(client, "export_takeoff", { path: 42 });                             // path not a string
   await callViolation(client, "view_sheet", { sheet: KEY, px: 50 });                       // px below the 200 floor
   await callViolation(client, "view_sheet", { sheet: KEY, region: { x0: 0, y0: 0, x1: 10 } }); // partial region
+  await callViolation(client, "find_text", { sheet: KEY });                                // missing q
+  await callViolation(client, "find_text", { sheet: KEY, q: "101", limit: 0 });            // limit below min 1
+  await callViolation(client, "edit_materials", { condition: "CPT-1", add: [{ per: 250 }] }); // add row missing name
 
   // none of that touched the session — a real call still works on the same pair
   const r = await callOk(client, "one_click", { sheet: KEY, x: 600, y: 1084 });
