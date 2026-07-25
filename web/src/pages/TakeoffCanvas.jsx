@@ -896,7 +896,7 @@ export default function TakeoffCanvas() {
     // normalize hydrated markups: legacy workspaces may hold markups with no id
     // (pre-dating the id field) — seed a stable id + default rfi_id so the new
     // select / edit / delete / move / RFI-link flows (all keyed on m.id) work on them.
-    setMarkups(Array.isArray(a.markups) ? a.markups.map((m) => ({ ...m, id: m.id || uid("mk"), rfi_id: m.rfi_id || "" })) : []);
+    setMarkups(Array.isArray(a.markups) ? a.markups.map((m) => ({ ...m, id: m.id || uid("mk"), rfi_id: m.rfi_id || "", condition_id: m.condition_id || "" })) : []);
     setRfis(Array.isArray(a.rfis) ? a.rfis : []);   // additive — old saves without rfis load as []
     // additive provenance_counters — unconditional set (the else-clear rule: a
     // snapshot load must not inherit the replaced project's deletion tallies).
@@ -3184,8 +3184,13 @@ export default function TakeoffCanvas() {
   // belongs to the panel of its FIRST click and normalizes against that panel.
   function addMarkup(m, key) {
     // created_at rides the defaults so every markup path (hand-drawn, cloud's
-    // pre-minted id, stamp instances) is stamped at this single creation gate
-    setMarkups((ms) => [...ms, { id: uid("mk"), created_at: nowIso(), sheet_id: key, rfi_id: "", ...m }]);
+    // pre-minted id, stamp instances) is stamped at this single creation gate.
+    // condition_id defaults to the ACTIVE condition: an annotation drawn while
+    // a condition is selected is almost always about that condition, and a
+    // wrong-but-editable link beats an unlinked note nobody ever goes back to
+    // attach. Explicit `...m` still wins, so a caller that means "unattached"
+    // can pass condition_id: "".
+    setMarkups((ms) => [...ms, { id: uid("mk"), created_at: nowIso(), sheet_id: key, rfi_id: "", condition_id: activeCond || "", ...m }]);
     // Drawing a markup by hand surfaces the Markups tab. But a STAMP places several
     // markups via addMarkup — don't yank the user off the Stamps tab mid-placement
     // (keep the current tab, or open Markups only if nothing's open). Highlighter
@@ -3453,6 +3458,13 @@ export default function TakeoffCanvas() {
   }
   const linkRfi = (markup, rfiId) => { if (markup && rfiId) updateMarkup(markup.id, { rfi_id: rfiId }); };
   const unlinkRfi = (markup) => { if (markup) updateMarkup(markup.id, { rfi_id: "" }); };
+  // ── markup ↔ condition. Same shape as the RFI link and deliberately so: one
+  // condition ↔ many markups, the link lives on the MARKUP, and membership is
+  // derived rather than stored on the condition. Without this an annotation is
+  // a floating note — it can't take the condition's colour, can't travel with
+  // it into an export, and can't answer "what did we say about this scope".
+  const linkCondition = (markup, condId) => { if (markup && condId) updateMarkup(markup.id, { condition_id: condId }); };
+  const unlinkCondition = (markup) => { if (markup) updateMarkup(markup.id, { condition_id: "" }); };
   // hard delete: drop the record AND clear the dangling pointer on every linked
   // markup (void is a status; delete removes — both must leave no orphan link)
   function deleteRfi(id) {
@@ -4366,6 +4378,12 @@ export default function TakeoffCanvas() {
     // would resurrect orphans
     if (owned.length) dispatchShape({ type: "delete", ids: owned.map((s) => s.id), reason: "condition-delete" }, { record: false });
     setConditions(next);
+    // Annotations are NOT owned by the condition the way shapes are — a cloud
+    // saying "verify substrate here" outlives the takeoff line it was drawn
+    // against. Clear the dangling pointer and keep the markup, same rule
+    // deleteRfi follows: leave no orphan link, but never delete someone's note
+    // as a side effect of deleting a quantity.
+    setMarkups((ms) => ms.map((m) => (m.condition_id === id ? { ...m, condition_id: "" } : m)));
     unpinFromPalette(id);   // a deleted condition can't stay pinned in the palette
     if (activeCond === id) setActiveCond(next[0]?.id || "");
     // no bulk-selection pruning needed here: the panel derives liveness from
@@ -5433,6 +5451,33 @@ export default function TakeoffCanvas() {
                          </>
                        )}
                      </div>
+                     {/* Condition link — which scope this annotation is ABOUT.
+                         Same one-to-many shape as the RFI link below it. */}
+                     {(() => {
+                       const lc = m.condition_id ? condById[m.condition_id] : null;
+                       const ctrl = { padding: "2px 7px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11 };
+                       return (
+                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
+                           {lc ? (
+                             <>
+                               <span title={`Annotation is about ${lc.finish_tag}`}
+                                 style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700 }}>
+                                 <span style={{ width: 9, height: 9, background: lc.color, border: "1px solid var(--ink-faint)" }} />
+                                 {lc.finish_tag}
+                               </span>
+                               <button onClick={() => { setActiveCond(lc.id); }} style={{ ...ctrl, color: "var(--cobalt)" }} title="Make this the active condition">Select</button>
+                               <button onClick={() => unlinkCondition(m)} style={{ ...ctrl, color: "var(--ink-muted)" }} title="Detach this annotation from its condition">Detach</button>
+                             </>
+                           ) : conditions.length > 0 && (
+                             <select name="link-condition" value="" onChange={(e) => { if (e.target.value) linkCondition(m, e.target.value); }}
+                               title="Attach this annotation to a condition" style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 170 }}>
+                               <option value="">Attach to condition…</option>
+                               {conditions.map((c) => <option key={c.id} value={c.id}>{c.finish_tag}</option>)}
+                             </select>
+                           )}
+                         </div>
+                       );
+                     })()}
                      {/* RFI controls — raise a fresh RFI, link an existing one, or unlink */}
                      {(() => {
                        const linked = m.rfi_id ? rfis.find((r) => r.id === m.rfi_id) : null;
@@ -5626,7 +5671,12 @@ export default function TakeoffCanvas() {
                       .slice().sort((a, b) => (a.type === "highlight" ? 0 : 1) - (b.type === "highlight" ? 0 : 1))
                       .map((m) => {
                       const z = tf.scale;
-                      const base = m.color || (m.rfi_id ? "#1f3fc7" : "#c47a10");
+                      // Colour precedence: an explicit per-markup colour always
+                      // wins (the user picked it), then the LINKED CONDITION's
+                      // colour so an annotation reads as part of that scope at a
+                      // glance, then RFI blue, then the unattached default.
+                      const mCond = m.condition_id ? condById[m.condition_id] : null;
+                      const base = m.color || mCond?.color || (m.rfi_id ? "#1f3fc7" : "#c47a10");
                       const mk = darkMode ? boostForDark(base) : base;   // literal — SVG attrs don't resolve CSS vars
                       const dash = dashArrayFor(m.line_style || "solid", z);
                       const w = clampWeight(m.weight);   // stroke-width multiplier over each element's base, default ×1

@@ -533,9 +533,13 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
       const lbl = (t) => [rlabel, t].filter((s) => s != null && s !== "").join(" ");
       // per-markup color drives the STROKE/FILL and the note text, dark-boosted for
       // the dark sheet — mirroring the canvas fallback exactly (custom color, else
-      // cobalt when linked, else amber). Legacy/uncolored markups match the canvas.
+      // the LINKED CONDITION's color, else cobalt when RFI-linked, else amber).
+      // Legacy/uncolored markups match the canvas. This precedence must stay in
+      // step with TakeoffCanvas's markup layer, or the burned set stops looking
+      // like the screen it was reviewed on — the one thing a marked set owes.
       // Linkage still prints via the RFI number prefix (lbl), independent of color.
-      const mbase = m.color || (m.rfi_id ? COBALT : "#c47a10");
+      const mCond = m.condition_id ? (conditions || []).find((c) => c.id === m.condition_id) : null;
+      const mbase = m.color || mCond?.color || (m.rfi_id ? COBALT : "#c47a10");
       const mcol = rgb(...hex(dark ? boostForDark(mbase) : mbase));
       const mdash = pdfDashFor(m.line_style || "solid");
       const mw = clampWeight(m.weight);   // stroke-width multiplier (markups only), default ×1

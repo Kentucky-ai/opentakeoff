@@ -145,9 +145,14 @@ test("reportJson: v1 key set pinned — top level, sheets[], markups[], by_sheet
   assert.equal(j.sheets[0].scale_source, "calibrated");
   assert.equal(j.sheets[0].sheet, "Sheet sh1");
   // id + rfi_id appended after the original four (additive-only v1 schema)
-  assert.deepEqual(Object.keys(j.markups[0]), ["type", "sheet_id", "sheet", "text", "id", "rfi_id"]);
+  // condition_id + condition APPEND after rfi_id (additive-only v1). `condition`
+  // is the RESOLVED finish_tag so a reader sees which scope an annotation is
+  // about without joining two arrays; condition_id stays authoritative.
+  assert.deepEqual(Object.keys(j.markups[0]), ["type", "sheet_id", "sheet", "text", "id", "rfi_id", "condition_id", "condition"]);
   assert.equal(j.markups[0].id, null);              // legacy markup: null id, empty rfi
   assert.equal(j.markups[0].rfi_id, "");
+  assert.equal(j.markups[0].condition_id, "");      // legacy markup: unattached
+  assert.equal(j.markups[0].condition, "");
   assert.equal(j.markups[1].id, "mk-2");            // an id-bearing cloud with empty text
   assert.equal(j.markups[1].rfi_id, "rfi-1");       // links to the RFI record by its id
   assert.equal(j.markups[1].text, "");
@@ -251,4 +256,30 @@ test("verticalWallSf: floor perimeters × height × multiplier; 0 without a heig
   assert.equal(verticalWallSf(shapes, "c", 9, 2), 1260);  // (40+30) × 9 × 2
   assert.equal(verticalWallSf(shapes, "c", 0, 2), 0);
   assert.equal(verticalWallSf(shapes, "c", undefined, 2), 0);
+});
+
+test("reportJson: a condition-linked markup resolves to its finish_tag; a dangling id degrades", () => {
+  const conds = [{ id: "ct", finish_tag: "CT-1", color: "#123456", waste_pct: 0 }];
+  const shapes = [{ condition_id: "ct", sheet_id: "sh1", measure_role: "floor_area", computed: { area_sf: 100, perimeter_lf: 40 } }];
+  const j = reportJson({
+    projectName: "Job 42",
+    rows: conditionTotals(conds, shapes),
+    bySheet: sheetTotals(conds, shapes),
+    markups: [
+      { type: "cloud", sheet_id: "sh1", text: "verify substrate", id: "mk-1", condition_id: "ct" },
+      { type: "text", sheet_id: "sh1", text: "general note", id: "mk-2" },                       // unattached
+      { type: "cloud", sheet_id: "sh1", text: "orphan", id: "mk-3", condition_id: "gone" },      // condition deleted
+    ],
+    sheetLabel: (id: string) => `Sheet ${id}`,
+  });
+  // linked: the id is authoritative AND the tag is resolved for the reader
+  assert.equal(j.markups[0].condition_id, "ct");
+  assert.equal(j.markups[0].condition, "CT-1");
+  // unattached stays empty on both — an annotation about the sheet, not a scope
+  assert.equal(j.markups[1].condition_id, "");
+  assert.equal(j.markups[1].condition, "");
+  // a dangling id keeps the id (so the link is diagnosable) but resolves to ""
+  // rather than inventing a tag — the export must not claim a scope that is gone
+  assert.equal(j.markups[2].condition_id, "gone");
+  assert.equal(j.markups[2].condition, "");
 });
