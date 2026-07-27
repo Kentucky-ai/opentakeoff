@@ -6,6 +6,7 @@ export type UnitSystem = "imperial" | "metric";
 
 export const M_PER_FT = 0.3048;
 export const M2_PER_SF = 0.09290304;
+export const MM_PER_IN = 25.4;
 
 /** area for display: SF in, SF or m² out */
 export const areaVal = (sf: number, units: UnitSystem): number =>
@@ -20,6 +21,56 @@ export const lenUnit = (units: UnitSystem): string => (units === "metric" ? "m" 
 /** calibration input → internal feet (metric users type meters) */
 export const calInputToFeet = (v: number, units: UnitSystem): number =>
   units === "metric" ? v / M_PER_FT : v;
+
+// ── condition/shape dimension params (issue #115) ────────────────────────────
+// A wall HEIGHT is stored as `height_ft` and a material THICKNESS as
+// `thickness_in`; both are internal-feet-contract fields that the UI used to
+// edit RAW, so a metric user typing a 2.4 m wall got a 2.4 FOOT wall and the
+// vertical area came out ~3.3x short while the readout beside it said m².
+// Nothing downstream reads these in display units — the report never surfaces
+// them — so the whole fix lives at the input edge, exactly like calInputToFeet.
+//
+// Thickness localizes to MILLIMETRES, not metres: it is a material callout
+// (3 mm LVT, 10 mm tile), and metres would bury every real value four decimals
+// deep. Height localizes to metres, the way a wall is actually called out.
+
+/** wall height for display: internal feet → ft or m */
+export const heightVal = (ft: number, units: UnitSystem): number =>
+  units === "metric" ? ft * M_PER_FT : ft;
+export const heightUnit = (units: UnitSystem): string => (units === "metric" ? "m" : "ft");
+/** typed wall height → internal feet (metric users type metres) */
+export const heightInputToFeet = (v: number, units: UnitSystem): number =>
+  units === "metric" ? v / M_PER_FT : v;
+/** sane spinner step per system: a quarter foot, or 5 cm */
+export const heightStep = (units: UnitSystem): number => (units === "metric" ? 0.05 : 0.25);
+
+/** material thickness for display: internal inches → in or mm */
+export const thickVal = (inches: number, units: UnitSystem): number =>
+  units === "metric" ? inches * MM_PER_IN : inches;
+export const thickUnit = (units: UnitSystem): string => (units === "metric" ? "mm" : "in");
+/** typed thickness → internal inches (metric users type millimetres) */
+export const thickInputToInches = (v: number, units: UnitSystem): number =>
+  units === "metric" ? v / MM_PER_IN : v;
+/** sane spinner step per system: a quarter inch, or 1 mm */
+export const thickStep = (units: UnitSystem): number => (units === "metric" ? 1 : 0.25);
+
+/** The string a dimension input SHOWS when it is not being edited. Rounded so
+ *  metric doesn't display 8 ft as "2.4384000000000004", but only ever at the
+ *  precision the field is actually built for (mm for a height, 0.1 mm for a
+ *  thickness) — so re-committing an untouched value can't visibly drift it.
+ *  Empty/blank in → empty out: a cleared param is null, not 0. */
+export function dimInputStr(
+  internal: number | string | null | undefined,
+  units: UnitSystem,
+  kind: "height" | "thickness",
+): string {
+  if (internal === null || internal === undefined || internal === "") return "";
+  const n = Number(internal);
+  if (!Number.isFinite(n)) return "";
+  if (units !== "metric") return String(n);
+  const shown = kind === "height" ? heightVal(n, units) : thickVal(n, units);
+  return String(Number(shown.toFixed(kind === "height" ? 3 : 1)));
+}
 
 /** Feet → drawing-style feet-and-inches: 12.51 → "12′ 6″". Rounds to the
  *  nearest inch; 12″ rolls up to the next foot. */

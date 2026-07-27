@@ -102,7 +102,7 @@ import { requiredDensity as tileRequiredDensity } from "../lib/tiles";
 // nowIso stays imported for the non-shape records (markups, RFIs, conditions).
 import { nowIso, mintUuid } from "../lib/provenance.js";
 import { applyShapeCommand, geomSnapshot, vertsEqual, recordCommand } from "../lib/shapeCommands.js";
-import { fmtCheckLen, parseLenInput, checkVerdict, M_PER_FT, areaVal, areaUnit, lenVal, lenUnit, calInputToFeet } from "../lib/units";
+import { fmtCheckLen, parseLenInput, checkVerdict, M_PER_FT, areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, heightVal, heightUnit, heightInputToFeet, heightStep, dimInputStr } from "../lib/units";
 import * as panelGeom from "../lib/panelGeometry.js";
 
 // Carpet roll width — a run reaching this needs a seam. The live cursor readout
@@ -331,6 +331,12 @@ export default function TakeoffCanvas() {
   const [ocSel, setOcSel] = useState(null);        // selected proposal vertex {ri, vi} — Delete removes just that point
   const [ocHover, setOcHover] = useState(-1);      // proposal region under the cursor — handles reveal on hover
   const [selectedId, setSelectedId] = useState(null);   // selected shape (Select tool)
+  // raw text of the per-wall height field while it is being edited; null =
+  // mirror the stored value. Same reason as DimParamInput's draft: the field
+  // round-trips through a rounded unit conversion, so without this a metric
+  // typist watching "2.4" become "2.438" mid-word cannot finish the number.
+  const [shapeHDraft, setShapeHDraft] = useState(null);
+  useEffect(() => { setShapeHDraft(null); }, [selectedId]);   // a draft belongs to ONE wall
   const [selVert, setSelVert] = useState(null);         // selected vertex index of the selected shape — Delete removes just that point
   const [selectedMarkupId, setSelectedMarkupId] = useState(null); // selected markup — mutually exclusive with selectedId
   const [rfis, setRfis] = useState([]);                 // RFI register (Request For Information); linked to markups via markup.rfi_id === rfi.id
@@ -4543,8 +4549,9 @@ export default function TakeoffCanvas() {
 
   const markupCount = markups.filter((m) => panelKeySet.has(m.sheet_id)).length;
   const selShape = selectedId ? visibleShapes.find((s) => s.id === selectedId) : null;
+  // the input types in DISPLAY units (metres in metric); height_ft is stored feet
   const setShapeHeight = (raw) => {
-    const v = Math.max(0, parseFloat(raw) || 0);
+    const v = Math.max(0, heightInputToFeet(parseFloat(raw) || 0, units));
     setShapes((ss) => ss.map((s) => {
       if (s.id !== selectedId) return s;
       const next = { ...s, height_ft: v, height_override: true };
@@ -4552,6 +4559,7 @@ export default function TakeoffCanvas() {
     }));
   };
   const clearShapeHeight = () => {
+    setShapeHDraft(null);
     setShapes((ss) => ss.map((s) => {
       if (s.id !== selectedId) return s;
       const next = { ...s, height_ft: Number(condById[s.condition_id]?.height_ft) || 0, height_override: false };
@@ -5257,7 +5265,7 @@ export default function TakeoffCanvas() {
               same component the docked panel row renders (one source of truth) */}
           {aCond && (
             <div style={{ marginTop: 5, paddingTop: 5, borderTop: "1px solid var(--ink-faint)" }}>
-              <ConditionAppearanceEditor cond={aCond} onUpdateCond={updateCond} onSetCondParam={setCondParam} onAssignAttr={assignAttr} conditionColumns={conditionColumns} layout="row" />
+              <ConditionAppearanceEditor cond={aCond} onUpdateCond={updateCond} onSetCondParam={setCondParam} onAssignAttr={assignAttr} conditionColumns={conditionColumns} layout="row" units={units} />
             </div>
           )}
         </div>
@@ -6147,7 +6155,7 @@ export default function TakeoffCanvas() {
             <>
               <div style={{ fontSize: 22, fontWeight: 700, color: tool === "deduct" ? "var(--c-danger)" : "var(--ink)" }}>{tool === "deduct" ? "−" : ""}{num(areaVal(liveArea, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)}</span></div>
               <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{units === "metric" ? `${fl(livePerim)} perim` : `${num(liveArea / 9)} SY  ·  ${num(livePerim)} LF perim`}</div>
-              {condH > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>@H {num(condH, 2)}′: {fa(livePerim * condH)} vert{units === "metric" ? "" : ` · ${num((liveArea * condH) / 27)} CY`}</div>}
+              {condH > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>@H {num(heightVal(condH, units), 2)}{units === "metric" ? " m" : "′"}: {fa(livePerim * condH)} vert{units === "metric" ? "" : ` · ${num((liveArea * condH) / 27)} CY`}</div>}
             </>
           ) : (
             <div style={{ fontSize: 12.5, opacity: 0.6 }}>{!unitsPerPx ? "Set scale first" : tool === "zone" ? "Trace a region (an apartment, a wing) — ⏎ closes it and lists every condition inside" : !activeCond ? "Pick a condition" : tool === "oneclick" ? "Click inside a room — it selects itself" : tool === "surface" ? "Trace the wall run" : "Click to trace an area"}</div>
@@ -6156,10 +6164,11 @@ export default function TakeoffCanvas() {
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }} title="Height for THIS wall only — full-height tile here, 4-ft wainscot there, same condition. ↺ returns to the condition height.">
               <Icon name="height" size={12} />
               <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>this wall</span>
-              <input name="shape-height-ft" type="number" min="0" step="0.25" value={selShape.height_ft ?? ""}
-                onChange={(e) => setShapeHeight(e.target.value)}
+              <input name="shape-height-ft" type="number" min="0" step={heightStep(units)} value={shapeHDraft ?? dimInputStr(selShape.height_ft, units, "height")}
+                onChange={(e) => { setShapeHDraft(e.target.value); setShapeHeight(e.target.value); }}
+                onBlur={() => { if (shapeHDraft != null) setShapeHeight(shapeHDraft); setShapeHDraft(null); }}
                 style={{ width: 56, padding: "2px 5px", border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-              <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>ft → {fa(selShape.computed?.area_sf || 0)}</span>
+              <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>{heightUnit(units)} → {fa(selShape.computed?.area_sf || 0)}</span>
               {condH > 0 && Number(selShape.height_ft) !== condH && (
                 <button onClick={clearShapeHeight} title="Set this wall to the condition height" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)", padding: 0 }}>↺</button>
               )}

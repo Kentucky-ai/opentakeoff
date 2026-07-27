@@ -3,7 +3,7 @@
 // with the metric display port.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, M_PER_FT, M2_PER_SF, ftIn, fmtCheckLen, parseLenInput, checkVerdict } from "../src/lib/units.js";
+import { areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, M_PER_FT, M2_PER_SF, ftIn, fmtCheckLen, parseLenInput, checkVerdict, heightVal, heightUnit, heightInputToFeet, heightStep, thickVal, thickUnit, thickInputToInches, thickStep, dimInputStr } from "../src/lib/units.js";
 import { STANDARD_SCALES, RENDER_SCALE } from "../src/lib/sheets.js";
 import { totalsToCsv } from "../src/lib/totals.js";
 
@@ -138,4 +138,69 @@ test("checkVerdict refuses to grade a non-answer green", () => {
   assert.equal(checkVerdict(NaN).grade, "wrong");
   assert.equal(checkVerdict(Infinity).grade, "wrong");
   assert.equal(checkVerdict(-Infinity).grade, "wrong");
+});
+
+// ── condition/shape dimension params (issue #115) ────────────────────────────
+
+test("wall height converts at the edge, feet stay internal", () => {
+  assert.equal(heightVal(8, "imperial"), 8);
+  assert.ok(Math.abs(heightVal(8, "metric") - 2.4384) < 1e-9);
+  assert.equal(heightUnit("imperial"), "ft");
+  assert.equal(heightUnit("metric"), "m");
+});
+
+test("a typed metric height is METRES — the #115 regression guard", () => {
+  // the bug: a metric user typing a 2.4 m wall got 2.4 FEET stored
+  assert.ok(Math.abs(heightInputToFeet(2.4, "metric") - 7.874015748) < 1e-6);
+  assert.equal(heightInputToFeet(2.4, "imperial"), 2.4);
+  // direction matters: metres->feet must GROW the number, never shrink it
+  assert.ok(heightInputToFeet(3, "metric") > 3);
+});
+
+test("height input round-trips through the display edge", () => {
+  for (const ft of [0.25, 4, 8, 9.5, 12]) {
+    const shown = heightVal(ft, "metric");
+    assert.ok(Math.abs(heightInputToFeet(shown, "metric") - ft) < 1e-9);
+  }
+});
+
+test("thickness localizes to MILLIMETRES, not metres", () => {
+  assert.equal(thickVal(1, "imperial"), 1);
+  assert.ok(Math.abs(thickVal(1, "metric") - 25.4) < 1e-9);
+  assert.equal(thickUnit("imperial"), "in");
+  assert.equal(thickUnit("metric"), "mm");
+  // 3 mm LVT reads back as 3 mm, not 0.003 of anything
+  assert.ok(Math.abs(thickVal(thickInputToInches(3, "metric"), "metric") - 3) < 1e-9);
+});
+
+test("thickness input round-trips through the display edge", () => {
+  for (const inches of [0.25, 1, 2, 3.5]) {
+    const shown = thickVal(inches, "metric");
+    assert.ok(Math.abs(thickInputToInches(shown, "metric") - inches) < 1e-9);
+  }
+});
+
+test("dimInputStr rounds for display without drifting a value nobody edited", () => {
+  assert.equal(dimInputStr(8, "imperial", "height"), "8");
+  assert.equal(dimInputStr(8, "metric", "height"), "2.438");
+  assert.equal(dimInputStr(1, "metric", "thickness"), "25.4");
+  assert.equal(dimInputStr(3, "imperial", "thickness"), "3");
+  // a re-commit of the untouched displayed value stays within a millimetre
+  const back = heightInputToFeet(Number(dimInputStr(8, "metric", "height")), "metric");
+  assert.ok(Math.abs(back - 8) < 0.002);
+});
+
+test("a cleared dimension param is empty, never 0", () => {
+  assert.equal(dimInputStr(null, "metric", "height"), "");
+  assert.equal(dimInputStr(undefined, "imperial", "height"), "");
+  assert.equal(dimInputStr("", "metric", "thickness"), "");
+  assert.equal(dimInputStr(NaN, "metric", "height"), "");
+  assert.equal(dimInputStr(0, "metric", "height"), "0");   // an explicit 0 is a real value
+});
+
+test("dimension spinner steps suit the system they're typed in", () => {
+  assert.equal(heightStep("imperial"), 0.25);
+  assert.equal(heightStep("metric"), 0.05);
+  assert.equal(thickStep("imperial"), 0.25);
+  assert.equal(thickStep("metric"), 1);
 });
