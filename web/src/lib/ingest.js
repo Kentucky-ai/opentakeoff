@@ -82,11 +82,40 @@ async function unzipBytes(bytes, onSkip, budget) {
   });
 }
 
+// Set /Interpolate true on the embedded image XObject so deep zoom stays SMOOTH
+// instead of snapping to hard nearest-neighbor blocks.
+//
+// pdf.js decides per-draw whether to smooth (getImageSmoothingEnabled): if the
+// image dict does NOT say /Interpolate true, it smooths only while the draw
+// transform's scale stays under dpr * 96/72 — about 2.67x on a retina display —
+// and turns smoothing OFF above that. pdf-lib's embedPng/embedJpg don't emit the
+// key, so every ingested scan or screenshot went blocky the moment you zoomed
+// past ~2.7x, which is early: a wrapped image page is sized in pixels-as-points,
+// so a 220-ppi sheet is already being magnified hard at normal working zoom.
+// Blocks are strictly worse than a soft edge when the whole job is deciding
+// where a finish boundary falls. The flag only affects MAGNIFICATION — pdf.js
+// already smooths on the way down, where the scale test passes on its own.
+//
+// Only the drawn image needs it: pdf.js reads Interpolate off the main image
+// dict and folds any SMask into that image's alpha before one composed draw, so
+// an alpha PNG's mask never carries the flag (asserted in test/ingest.test.ts).
+//
+// embedPng/embedJpg only RESERVE a ref; the XObject itself isn't in the context
+// until save() flushes it, so the dict can't be reached without forcing the
+// embed first. embed() is idempotent (it caches its own task), so the flush at
+// save time awaits the same work rather than redoing it.
+async function markInterpolated({ PDFName, PDFBool }, doc, img) {
+  await img.embed();
+  const stream = doc.context.lookup(img.ref);
+  stream?.dict?.set(PDFName.of("Interpolate"), PDFBool.True);
+}
+
 // Wrap a raster image into a single-page PDF at its native pixel size so it flows
 // through the same pdf.js path as a real plan. JPG/PNG embed directly; webp/gif/
 // bmp are decoded by the browser and re-encoded as PNG.
 async function imageToPdf(file) {
-  const { PDFDocument } = await import("pdf-lib");
+  const pdfLib = await import("pdf-lib");
+  const { PDFDocument } = pdfLib;
   const bytes = new Uint8Array(await file.arrayBuffer());
   const doc = await PDFDocument.create();
   let img, w, h;
@@ -102,6 +131,7 @@ async function imageToPdf(file) {
     const blob = await new Promise((res) => canvas.toBlob(res, "image/png"));
     img = await doc.embedPng(new Uint8Array(await blob.arrayBuffer())); w = bmp.width; h = bmp.height;
   }
+  await markInterpolated(pdfLib, doc, img);
   doc.addPage([w, h]).drawImage(img, { x: 0, y: 0, width: w, height: h });
   const name = baseName(file.name).replace(IMAGE_EXT, "") + ".pdf";
   return new File([await doc.save()], name, { type: "application/pdf" });
