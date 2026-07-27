@@ -1,17 +1,45 @@
-// Ingest guardrails — the zip-bomb / nested-archive caps in lib/ingest.js.
-// Real archives are built with fflate's zipSync so the caps run against genuine
-// zip headers (originalSize, nesting) rather than mocks. The image→PDF path is
-// browser-only (createImageBitmap/canvas) and deliberately untouched here; every
-// case uses PDF entries so the test stays DOM-free and node-runnable.
+// Ingest guardrails — the zip-bomb / nested-archive caps in lib/ingest.js, plus
+// the image→PDF wrap. Real archives are built with fflate's zipSync so the caps
+// run against genuine zip headers (originalSize, nesting) rather than mocks, and
+// the image cases use real PNG bytes through pdf-lib's embedPng. Only the
+// webp/gif/bmp branch is browser-only (createImageBitmap/canvas) and untested
+// here; everything below stays DOM-free and node-runnable.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { zipSync } from "fflate";
+import { PDFDocument, PDFName } from "pdf-lib";
 import { ingestFiles } from "../src/lib/ingest.js";
 
 const enc = new TextEncoder();
 const pdfBytes = (n = 1) => enc.encode("%PDF-1.4\n" + "x".repeat(n));
 const zipFile = (name: string, tree: Record<string, Uint8Array>) =>
   new File([zipSync(tree)], name, { type: "application/zip" });
+
+// 2x2 checkerboards, hand-encoded so no fixture file is needed: one opaque
+// (color type 2, the shape a plan scan takes) and one with alpha (color type 6,
+// what a screenshot takes) — the alpha case makes pdf-lib emit a second /Image
+// XObject as the SMask.
+const OPAQUE_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAE0lEQVR4nGNgYGD4//8/GDMwAAAp5AX71ZPZmwAAAABJRU5ErkJggg==";
+const ALPHA_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAF0lEQVR4nGNgYGBo+P///38GMMHA0AAAT0oI+QstIkIAAAAASUVORK5CYII=";
+const pngFile = (b64: string, name: string) =>
+  new File([Buffer.from(b64, "base64")], name, { type: "image/png" });
+
+/** Every /Image XObject in a saved PDF, as [ColorSpace, Interpolate] pairs. */
+async function imageXObjects(file: File) {
+  const doc = await PDFDocument.load(new Uint8Array(await file.arrayBuffer()));
+  const out: { cs: string; interpolate: string | undefined }[] = [];
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    const dict = (obj as { dict?: { get(k: unknown): { toString(): string } | undefined } }).dict;
+    if (!dict || dict.get(PDFName.of("Subtype"))?.toString() !== "/Image") continue;
+    out.push({
+      cs: dict.get(PDFName.of("ColorSpace"))?.toString() ?? "",
+      interpolate: dict.get(PDFName.of("Interpolate"))?.toString(),
+    });
+  }
+  return out;
+}
 
 test("a plain zip of PDFs extracts them all", async () => {
   const zip = zipFile("plans.zip", { "A1.pdf": pdfBytes(), "A2.pdf": pdfBytes() });
@@ -64,4 +92,31 @@ test("the byte budget is shared across sibling entries in one ingest", async () 
   const { pdfs, skipped } = await ingestFiles([zip], { maxTotalBytes: 120 });
   assert.equal(pdfs.length, 1);
   assert.ok(skipped.some((s) => s.reason === "archive too large"));
+});
+
+test("an ingested image becomes a .pdf sized in pixels-as-points", async () => {
+  const { pdfs, skipped } = await ingestFiles([pngFile(OPAQUE_PNG, "finishplan-17.png")]);
+  assert.equal(skipped.length, 0);
+  assert.equal(pdfs[0].name, "finishplan-17.pdf");
+  const doc = await PDFDocument.load(new Uint8Array(await pdfs[0].arrayBuffer()));
+  assert.deepEqual(doc.getPage(0).getSize(), { width: 2, height: 2 });
+});
+
+test("an ingested image carries /Interpolate true so deep zoom stays smooth", async () => {
+  // Without the flag pdf.js turns image smoothing OFF once the draw transform's
+  // scale passes dpr * 96/72 (~2.67x on retina), so a wrapped scan snaps to hard
+  // nearest-neighbor blocks exactly where an estimator is deciding a boundary.
+  const { pdfs } = await ingestFiles([pngFile(OPAQUE_PNG, "scan.png")]);
+  assert.deepEqual(await imageXObjects(pdfs[0]), [{ cs: "/DeviceRGB", interpolate: "true" }]);
+});
+
+test("only the drawn image needs the flag — an alpha PNG's SMask is not drawn on its own", async () => {
+  // pdf.js reads Interpolate off the MAIN image dict and folds the SMask into
+  // that image's alpha before one composed draw, so the mask never carries it.
+  // Asserted rather than assumed: it's the reason this doesn't walk /SMask.
+  const { pdfs } = await ingestFiles([pngFile(ALPHA_PNG, "shot.png")]);
+  assert.deepEqual(await imageXObjects(pdfs[0]), [
+    { cs: "/DeviceRGB", interpolate: "true" },
+    { cs: "/DeviceGray", interpolate: undefined },
+  ]);
 });
