@@ -246,11 +246,20 @@ export function createTileCompositor() {
     const myGen = generation;
     await paintBaseAtLevel(canvas, sheetKey, imgW, imgH, levels[0], 0, dark, myGen);
     if (myGen !== generation) return;
+    // Record the density the base is ACTUALLY showing, as each phase lands —
+    // paintDetail's floor reads this, and promising phase 2's density while
+    // phase 1's coarse pass is still on screen would suppress a crop that is
+    // genuinely sharper than what the user is looking at, for the whole
+    // duration of the phase-2 render.
+    baseDensityBySheet.set(sheetKey, levels[0]);
     // Phase 2 at the EXACT budget density, not the nearest level under it —
     // see fitDensity for the 37%-of-budget shortfall that snapping caused.
     const bd = fitDensity(imgW, imgH, BASE_TARGET_AREA);
-    baseDensityBySheet.set(sheetKey, bd);
-    if (bd > levels[0]) await paintBaseAtLevel(canvas, sheetKey, imgW, imgH, bd, BASE_LEVEL, dark, myGen);
+    if (bd > levels[0]) {
+      await paintBaseAtLevel(canvas, sheetKey, imgW, imgH, bd, BASE_LEVEL, dark, myGen);
+      if (myGen !== generation) return;
+      baseDensityBySheet.set(sheetKey, bd);
+    }
   }
 
   /** Densest fully-cached stand-in for this region — drawn under the target
@@ -311,6 +320,32 @@ export function createTileCompositor() {
     // whole-sheet composite, built once, where the pyramid's bounded memory is
     // the entire point.
     const targetDensity = Math.min(density, cropDensityCap(x1 - x0, y1 - y0));
+
+    // DENSITY FLOOR — the detail layer sits ON TOP of the base, so a crop
+    // rendered below the base's density is a WORSE picture painted over a
+    // better one. #113 established "a sharp crop is never replaced by a
+    // coarser one"; it only ever enforced that against the previous CROP,
+    // never against the base underneath, so below the base density the canvas
+    // quietly degraded itself on every settle.
+    //
+    // dpr is why this hid for so long. Required density is zoom x dpr: on a
+    // dpr-2 screen the floor clears at 44% zoom, so it is unreachable in
+    // normal use. On dpr 1 — a Windows box at 100% scaling, which is what most
+    // estimators are on — it needs 88%, and takeoff work on a 48"x36" sheet
+    // lives at 28-51%. Measured on a real E-size bid set at dpr 1, stage 0.132:
+    // the detail canvas was 915x686 covering the whole sheet, over a 6111x4583
+    // base. ~19 ppi, 6.7x blurrier than painting nothing at all.
+    //
+    // Hiding is the whole fix — the base is already the entire sheet at
+    // BASE_TARGET_AREA, already painted, already correct under this exact
+    // region. It also drops a full-sheet operator-list replay off every settle
+    // at low zoom, which is where a slow machine can least afford one.
+    const baseDensity = baseDensityBySheet.get(sheetKey);
+    if (baseDensity !== undefined && targetDensity <= baseDensity) {
+      canvas.style.display = "none";
+      return { cancel() {} };
+    }
+
     const bw = Math.max(1, Math.round((x1 - x0) * targetDensity));
     const bh = Math.max(1, Math.round((y1 - y0) * targetDensity));
     const myGen = generation;
