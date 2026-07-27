@@ -15,6 +15,8 @@ open-source, and it runs in your browser — no account, no upload, no install.
 
 [**▶ Try the live demo**](https://opentakeoff.netlify.app) · [Quick start](#quick-start) · [Features](#features) · [For AI agents](mcp/) · [Deploy it](#run-it--deploy-it) · [Own your data](#own-your-data--the-capture-layer) · [Build on top](#build-on-top-of-it) · [Contributing](CONTRIBUTING.md)
 
+**Read this in:** [日本語](README.ja.md) · [한국어](README.ko.md) · [简体中文](README.zh-Hans.md)
+
 **New — July 2026:** **MCP server** — your AI agent can drive the takeoff engine (`npx opentakeoff-mcp`, on the [official MCP registry](mcp/)) — and **browse the plan set natively**: sheets, title-block text, and rendered pages as [MCP resources](mcp/#resources--browse-before-you-measure) (v0.2.0) · **Voice takeoff** — hold M and say `carpet one, waste seven` (or type it in the Command box); speech is recognized on-device in the browser — audio never leaves your machine ([RFC #59](https://github.com/Kentucky-ai/opentakeoff/issues/59), [docs/VOICE.md](docs/VOICE.md)) · **Provenance** — every shape records how it was measured (its scale, one-click or hand-drawn, and person or agent) · One-Click Area traces **hatched rooms** and **scanned plans** · **Marked Set PDF export** — [full changelog](CHANGELOG.md)
 
 <br/>
