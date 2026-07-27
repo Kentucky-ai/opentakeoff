@@ -29,7 +29,7 @@ import { Icon } from "../brand/icons.jsx";
 import { attrValue, columnLabel } from "../lib/conditionColumns.js";
 import { SPEC_FIELDS } from "../lib/reportColumns.js";
 import { num } from "../lib/num.js";
-import { areaVal, areaUnit, lenVal, lenUnit } from "../lib/units";
+import { areaVal, areaUnit, lenVal, lenUnit, heightUnit, heightInputToFeet, heightStep, thickUnit, thickInputToInches, thickStep, dimInputStr } from "../lib/units";
 import { HATCHES, PALETTE, NO_FILL, HatchSwatch } from "./hatches.jsx";
 import { LINE_STYLES, LINE_STYLE_IDS } from "../lib/lineStyles.js";
 import { materialKind, MATERIAL_PRESETS, GROUT_DEFAULTS, groutDerivedFields, showsGroutCalc, showsGroutDeriveAffordance } from "../lib/coverage.js";
@@ -87,6 +87,38 @@ function GroutParamInput({ name, value, title, min = 0, max, width = 52, overrid
         setDraft(null);
       }}
       style={{ ...ip, width, ...(override ? { border: "1px solid var(--c-warning)" } : {}) }} />
+  );
+}
+
+// Draft-buffered input for a condition's dimension params — wall height
+// (stored `height_ft`) and material thickness (stored `thickness_in`). Both
+// are internal-feet-contract fields, so this component owns the whole display
+// edge: it SHOWS the value in the active unit system and commits back in the
+// stored one (issue #115 — a metric user typing a 2.4 m wall used to get a
+// 2.4 FOOT wall, silently, beside a readout that said m²).
+//
+// Draft-buffered for the same reason GroutParamInput is, plus one specific to
+// converting: without it the field fights the typist, because every keystroke
+// round-trips through a rounded conversion — typing "2.4" would redisplay as
+// "2.438" mid-word. The raw text stays local while editing; the converted
+// value still commits per keystroke, so thickness keeps re-flowing linear runs
+// live the way it always has. Clearing commits "" (the param's null), which is
+// distinct from an intentional 0.
+function DimParamInput({ name, internal, units, kind, width, onCommit }) {
+  const [draft, setDraft] = useState(null);   // raw text mid-edit; null = mirror the committed value
+  const toInternal = (n) => (kind === "height" ? heightInputToFeet(n, units) : thickInputToInches(n, units));
+  const commit = (text) => {
+    if (text === "") return onCommit("");
+    const n = parseFloat(text);
+    if (Number.isFinite(n) && n >= 0) onCommit(toInternal(n));
+  };
+  return (
+    <input name={name} type="number" min="0" step={kind === "height" ? heightStep(units) : thickStep(units)}
+      placeholder={kind === "height" ? heightUnit(units) : thickUnit(units)}
+      value={draft ?? dimInputStr(internal, units, kind)}
+      onChange={(e) => { setDraft(e.target.value); commit(e.target.value); }}
+      onBlur={() => { if (draft != null) commit(draft); setDraft(null); }}
+      style={{ width, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
   );
 }
 
@@ -284,7 +316,7 @@ function AddValueInput({ onAdd }) {
 // the docked panel AND the restored top-bar band render the SAME editor (one
 // source of truth, like the app's single activateCondition path). Owns only its
 // hatch-popover open state; everything else flows through the passed handlers.
-export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondParam, onAssignAttr, conditionColumns = [], layout = "stack" }) {
+export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondParam, onAssignAttr, conditionColumns = [], layout = "stack", units = "imperial" }) {
   const [hatchOpen, setHatchOpen] = useState(false);
   const activeColor = c.color || "#c96442";
   // Two layouts, one editor. "stack" (docked panel, narrow) stacks the groups
@@ -348,17 +380,15 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
             {LINE_STYLE_IDS.map((id) => <option key={id} value={id}>{LINE_STYLES[id].label}</option>)}
           </select>
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Height (ft) — the default for NEW wall traces (SF = LF × H) and the vertical-SF display on floor areas. Walls keep the height they were drawn at — select a wall to change just that one.">
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={`Height (${heightUnit(units)}) — the default for NEW wall traces (SF = LF × H) and the vertical-SF display on floor areas. Walls keep the height they were drawn at — select a wall to change just that one.`}>
           <Icon name="height" size={13} /><span style={{ color: "var(--ink-muted)" }}>H</span>
-          <input name="condition-height-ft" type="number" min="0" step="0.25" value={c.height_ft ?? ""} placeholder="ft"
-            onChange={(e) => onSetCondParam("height_ft", e.target.value)}
-            style={{ width: 54, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
+          <DimParamInput name="condition-height-ft" internal={c.height_ft} units={units} kind="height" width={54}
+            onCommit={(v) => onSetCondParam("height_ft", v)} />
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Thickness (in) — a Linear run with thickness also computes border/feature-strip SF = LF × T/12. Changing it re-flows existing linear runs.">
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={`Thickness (${thickUnit(units)}) — a Linear run with thickness also computes border/feature-strip SF = LF × T/12. Changing it re-flows existing linear runs.`}>
           <Icon name="thickness" size={13} /><span style={{ color: "var(--ink-muted)" }}>T</span>
-          <input name="condition-thickness-in" type="number" min="0" step="0.25" value={c.thickness_in ?? ""} placeholder="in"
-            onChange={(e) => onSetCondParam("thickness_in", e.target.value)}
-            style={{ width: 50, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
+          <DimParamInput name="condition-thickness-in" internal={c.thickness_in} units={units} kind="thickness" width={50}
+            onCommit={(v) => onSetCondParam("thickness_in", v)} />
         </span>
       </div>
       {conditionColumns.length > 0 && isRow && rule()}
@@ -606,7 +636,7 @@ function TakeoffsPanel({
             used to live in its own toolbar row above the canvas. Extracted to
             ConditionAppearanceEditor so the docked panel AND the top-bar band
             render the same editor from one source of truth. */}
-        {on && <ConditionAppearanceEditor cond={c} onUpdateCond={onUpdateCond} onSetCondParam={onSetCondParam} onAssignAttr={onAssignAttr} conditionColumns={conditionColumns} />}
+        {on && <ConditionAppearanceEditor cond={c} onUpdateCond={onUpdateCond} onSetCondParam={onSetCondParam} onAssignAttr={onAssignAttr} conditionColumns={conditionColumns} units={units} />}
         {matOn && (
           <div style={{ padding: "8px 12px 10px", background: "var(--paper-cream)", borderTop: "1px solid var(--ink-faint)", fontSize: 11.5 }}>
             <div style={{ marginBottom: 6, color: "var(--ink-muted)" }}>Supporting Materials — order qty = measured ÷ coverage, rounded up.</div>
@@ -739,7 +769,7 @@ function TakeoffsPanel({
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.finish_tag}</div>
                   <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)" }}>
-                    {t.waste_pct || 0}% waste{t.height_ft != null ? ` · H ${t.height_ft}′` : ""}{t.thickness_in != null ? ` · T ${t.thickness_in}″` : ""}{t.materials?.length ? ` · ${t.materials.length} material${t.materials.length === 1 ? "" : "s"}` : ""}
+                    {t.waste_pct || 0}% waste{t.height_ft != null ? ` · H ${dimInputStr(t.height_ft, units, "height")}${units === "metric" ? " m" : "′"}` : ""}{t.thickness_in != null ? ` · T ${dimInputStr(t.thickness_in, units, "thickness")}${units === "metric" ? " mm" : "″"}` : ""}{t.materials?.length ? ` · ${t.materials.length} material${t.materials.length === 1 ? "" : "s"}` : ""}
                   </div>
                 </div>
                 <button onClick={() => { onApplyTemplate(t); setPanelTab("takeoffs"); }} title="Add a condition from this template to the takeoff"
