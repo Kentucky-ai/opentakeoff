@@ -189,6 +189,10 @@ OpenTakeoff can ask a vision model **you** provide to read things off the plan �
 
 The same engine speaks [MCP](https://modelcontextprotocol.io): [`mcp/`](mcp/README.md) is a stdio server your MCP client can drive, one command away — `npx -y opentakeoff-mcp` — with `load_plan`, `read_sheet_text`, `set_scale`, `one_click`, `view_sheet`, `takeoff_summary`, `export_takeoff` and friends. An agent opens a plan, reads the title block, adopts the scale (never applied silently), clicks the rooms, checks its work on a rendered overlay with a calibrated measuring grid (`view_sheet`), and exports the exact payload the app autosaves — same math, same provenance receipts, same scale gate. Setup and a full example transcript: [`docs/MCP.md`](docs/MCP.md).
 
+<img src="docs/img/mcp-live-demo.gif" alt="A real run, real time at 3×: an AI agent in a terminal one-clicks three patient rooms on a VA medical center finish plan over MCP; each export lands in the web app as dashed pencil proposals, and the operator accepts them — 743.64 SF, pencil to ink" width="900"/>
+
+*A real run (3× speed): the agent takes off patient rooms 161–163 on a federal VA finish plan, exporting after each commit; every shape lands in the app as a dashed **pencil proposal** and becomes ink only when the operator clicks Accept.*
+
 ## Build on top of it
 
 OpenTakeoff is **Apache-2.0**: fork it, change it, ship it — for your own crew or as the base of your own product. The codebase is deliberately small and readable so you can add the features *you* want:
