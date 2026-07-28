@@ -110,6 +110,17 @@ import * as panelGeom from "../lib/panelGeometry.js";
 // turns amber at/past it so the estimator sees where seams fall while tracing.
 const CARPET_ROLL_FT = 12;
 
+// Paint/pick tiers (#116): a filled Area passes hitShape anywhere inside its
+// fill, so in raw creation order an Area drawn over a Counter, Line, or Surface
+// both paints above it and eats every pick inside it — the covered element
+// becomes unselectable. Tiers put fills at the bottom, deducts just above their
+// parent fills, runs above that, count pins on top. The renderer paints the
+// stack ascending and both pickers scan the SAME stack descending, so what
+// reads as on-top is always what a click lands on. Creation order still breaks
+// ties within a tier (stable sort), so overlapping Areas keep newest-wins.
+const ROLE_TIER = { floor_area: 0, deduct: 1, linear: 2, surface_area: 2, count: 3 };
+const tierOf = (s) => ROLE_TIER[s.measure_role] ?? 0;
+
 // Click-select against a curved line's DRAWN path: flatten the control points and
 // hand hitShape a stand-in shape (lib/geometry.js stays byte-identical with Spline's).
 function hitShapeC(s, x, y, w, h, thr) {
@@ -689,6 +700,9 @@ export default function TakeoffCanvas() {
     const keys = new Set(sheetGroup.length ? sheetGroup : [sheetKey]);
     return shapes.filter((s) => keys.has(s.sheet_id));
   }, [shapes, sheetGroup, sheetKey]);
+  // bottom-to-top paint order (see ROLE_TIER) — the renderer maps this
+  // ascending; the click and hover pickers scan it reversed.
+  const stackedShapes = useMemo(() => [...visibleShapes].sort((a, b) => tierOf(a) - tierOf(b)), [visibleShapes]);
   const visibleMarkups = useMemo(() => {
     const keys = new Set(sheetGroup.length ? sheetGroup : [sheetKey]);
     return markups.filter((m) => keys.has(m.sheet_id));
@@ -2078,7 +2092,7 @@ export default function TakeoffCanvas() {
       e.currentTarget.setPointerCapture(e.pointerId); return;
     }
     // 4. otherwise pick a shape (or clear the selection)
-    const hit = [...visibleShapes].reverse().find((s) => {
+    const hit = [...stackedShapes].reverse().find((s) => {
       const sp = panelByKey(s.sheet_id);
       return hitShapeC(s, p[0] - sp.xOffset, p[1], sp.img.w, sp.img.h, thr);
     });
@@ -2327,7 +2341,7 @@ export default function TakeoffCanvas() {
     if (panRef.current || dragRef.current || pendingClickRef.current || status !== "ready") { el.style.display = "none"; hoverIdRef.current = ""; return; }
     const pt = toImage(e.clientX, e.clientY);
     const thr = 8 / tfRef.current.scale;
-    const hit = [...visibleShapes].reverse().find((s) => {
+    const hit = [...stackedShapes].reverse().find((s) => {
       const sp = panelByKey(s.sheet_id);
       return hitShapeC(s, pt[0] - sp.xOffset, pt[1], sp.img.w, sp.img.h, thr);
     });
@@ -5631,7 +5645,7 @@ export default function TakeoffCanvas() {
               </defs>
               {/* committed shapes + markups, one group per panel in its local frame */}
               {panels.map((p) => {
-                const pShapes = visibleShapes.filter((s) => s.sheet_id === p.key);
+                const pShapes = stackedShapes.filter((s) => s.sheet_id === p.key);
                 const dn = (vn) => vn.map(([x, y]) => [x * p.img.w, y * p.img.h]);
                 const label = labelFor(p);
                 return (
