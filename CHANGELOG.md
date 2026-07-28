@@ -2,6 +2,17 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — Import takeoff: the agent handoff lands in the canvas
+
+### Added
+- **"Import takeoff…" (Sheet menu).** `export_takeoff` has always emitted the app's exact autosave payload (`opentakeoff.takeoff_canvas.v1`) and called itself "importable by it"; now the app holds up its end: one menu entry, a JSON file picker, and the payload lands through the same review gate as in-canvas agent work. Machine shapes arrive committed-but-unreviewed (`origin.reviewed:false`) and render dashed in their condition colors until the Accept banner (the `review` command, one undo entry) turns pencil to ink — the pencil-vs-ink provenance story visible in the product, not just in `view_sheet` renders.
+- **Merge rules, pure and tested** (`web/src/lib/importTakeoff.js`, `web/test/importTakeoff.test.ts`). Into an empty project the import replaces wholesale. Into live work it merges with the operator winning everywhere it matters: a matching finish tag joins *their* condition (their color, waste %, materials), their per-sheet calibration is never rescaled, and name/tabs/groups/rules stay untouched. Re-importing the same file is idempotent — same-id shapes skip, so an accepted shape never returns as a second pencil copy. Shapes referencing files that aren't loaded are reported in the status bar instead of landing invisibly.
+
+## Unreleased — opentakeoff-mcp 0.9.2: npx arrives with eyes
+
+### Changed
+- **`@napi-rs/canvas` is now declared in the package's own `optionalDependencies`** (#122, #123), so a bare `npx opentakeoff-mcp` installs the prebuilt platform binary and `view_sheet` + the `takeoff://sheet/{page}/image` resources work with no local install step. npm dropped the transitive optional dependency (pdf.js's) in the npx flow, which left fresh installs blind. Optional deps fail soft: a platform without a prebuilt binary still installs and keeps the existing clean per-tool error.
+
 ## Unreleased — `find_text` + `edit_materials`, the seventeenth and eighteenth tools
 
 ### Added

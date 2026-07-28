@@ -22,6 +22,7 @@ import { seedStampLibrary, instantiateStamp, markupToStampElement } from "../lib
 import { extractSvgPrimitives, svgToStamp } from "../lib/svgImport.js";
 import { transformPath, svgPlacedBox } from "../lib/svgpath.js";
 import { ingestFiles } from "../lib/ingest.js";
+import { parseTakeoffImport, mergeTakeoffImport } from "../lib/importTakeoff.js";
 import ToolMenu from "../components/ToolMenu.jsx";
 import PlanNavigator from "../components/PlanNavigator.jsx";
 import ReportPanel from "../components/ReportPanel.jsx";
@@ -456,6 +457,7 @@ export default function TakeoffCanvas() {
   const [projectName, setProjectName] = useState("");   // optional label for the report header
   const [clientInfo, setClientInfo] = useState({});      // per-project client/job fields for branded output; additive payload field
   const fileInputRef = useRef(null);                    // hidden <input type=file> for "Open PDF"
+  const importInputRef = useRef(null);                  // hidden <input type=file> for "Import takeoff…" (the agent-JSON handoff)
 
   const containerRef = useRef(null);
   const stageRef = useRef(null);
@@ -1424,6 +1426,33 @@ export default function TakeoffCanvas() {
     setCheck([]); setCheckStated(""); setScaleGuide(null); setPrevScale(null);
     resetZone();
     hydrate(payload || {});
+  };
+
+  // "Import takeoff…" (Sheet menu) — the file half of the agent handoff: an
+  // MCP session's export_takeoff JSON (the app's own autosave schema) lands
+  // here. The merge rules are pure and tested (lib/importTakeoff.js): operator
+  // state wins, re-import is idempotent. Landed machine shapes keep
+  // origin.reviewed:false, so the committed-but-unreviewed path renders them
+  // dashed in their condition colors until the Accept banner inks them; the
+  // runtime-load path above resets in-flight work, and mid-session savesArmed
+  // is already true, so the merged payload autosaves like any other edit.
+  const importTakeoffFile = async (file) => {
+    if (!file) return;
+    try {
+      const imported = parseTakeoffImport(await file.text());
+      const { payload, note } = mergeTakeoffImport(buildPayload(), imported, sheets.map((s) => s.name));
+      restoreSavedPayload(payload);
+      const parts = [`Imported ${note.shapes_added} shape${note.shapes_added === 1 ? "" : "s"}`];
+      if (note.shapes_pending) parts.push(`${note.shapes_pending} dashed pending your review — Accept turns pencil to ink`);
+      if (note.conditions_added) parts.push(`${note.conditions_added} new condition${note.conditions_added === 1 ? "" : "s"}`);
+      if (note.conditions_merged) parts.push(`${note.conditions_merged} matched your finish tags`);
+      if (note.unknown_files.length) parts.push(`some shapes reference ${note.unknown_files.join(", ")} — open that file to see them`);
+      setCommitMsg(parts.join(" · ") + ".");
+    } catch (e) {
+      // module copy already speaks "Couldn't…" (the sticky danger convention);
+      // anything unexpected gets wrapped into it rather than aging out unread
+      setCommitMsg(String(e?.message || "").startsWith("Couldn't") ? e.message : `Couldn't import takeoff: ${e?.message || e}`);
+    }
   };
 
   // markups MUST be in the deps (a cloud/callout/text or an RFI link is real work);
@@ -4857,6 +4886,11 @@ export default function TakeoffCanvas() {
   if (!sheetGroup.length && lastGroup.length >= 2) sheetMenuItems.push({ id: "regroup", label: `Regroup (${lastGroup.length})`, title: `Side-by-side again with the same ${lastGroup.length} sheets — each keeps its own scale, takeoffs and markups`, onSelect: regroup });
   if (sheetMenuItems.length) sheetMenuItems.push("divider");
   sheetMenuItems.push({ id: "gallery", icon: "sheets", label: "Open gallery…", shortcut: "G", onSelect: () => setView("gallery") });
+  sheetMenuItems.push({
+    id: "import-takeoff", icon: "document", label: "Import takeoff…",
+    title: "Load a takeoff JSON — the app's own export or an agent session's export_takeoff. Machine shapes land dashed in their condition colors for your review; on merge, your calibration, conditions, and workspace win.",
+    onSelect: () => importInputRef.current?.click(),
+  });
 
   // deck-2 scale chip — the four scale controls collapsed to one status face:
   // red dashed = unset ("you can't trace yet"), green = set, warning = the
@@ -4963,6 +4997,8 @@ export default function TakeoffCanvas() {
         )}
         <input name="sheet-file" ref={fileInputRef} type="file" accept=".pdf,application/pdf,image/*,.zip,application/zip,application/x-zip-compressed" multiple style={{ display: "none" }}
           onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }} />
+        <input name="takeoff-import" ref={importInputRef} type="file" accept=".json,application/json" style={{ display: "none" }}
+          onChange={(e) => { importTakeoffFile(e.target.files?.[0]); e.target.value = ""; }} />
         <button type="button" onClick={() => fileInputRef.current?.click()} title="Open plans — PDF, image, or a .zip plan set (or just drag them onto the canvas)"
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
           <Icon name="plus" size={14} />Open</button>
