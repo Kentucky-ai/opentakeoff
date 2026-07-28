@@ -39,7 +39,7 @@ export type FloodResult =
   | { status: "boundary" }
   | { status: "leak" }
   | { status: "tiny"; count: number }
-  | { status: "ok"; region: Uint8Array; count: number; mw: number; mh: number; ws: number; hardHits?: number; softHits?: number; hatchFiltered?: boolean };
+  | { status: "ok"; region: Uint8Array; count: number; mw: number; mh: number; ws: number; hardHits?: number; softHits?: number; hatchFiltered?: boolean; gapBridged?: number };
 /** Caller's snap-grid lookup: nearest true endpoint to (x,y) within maxDist, or null. */
 export type NearestFn = (x: number, y: number, maxDist: number) => Point | null | undefined;
 
@@ -48,6 +48,7 @@ const LEAK_FRACTION = 0.30;         // fill > 30% of the sheet ⇒ not an enclos
 const TINY_PX = 30;                 // fill < 30 mask px ⇒ landed in dense linework
 const MIN_THICK = 4;                // region bbox thinner than 4 mask px ⇒ hatch sliver, not a room
 const CURVE_STEPS = 8;              // chords per bezier (door swings stay closed)
+export const GAP_BRIDGE_MAX = 2;    // mask px — leak recovery seals drafting pinholes (≤ ~2r px), never doorways
 
 // segment meta bits (extractVectorGeometry emits, classifyHatchSegs consumes)
 export const SEG_CURVE = 1;         // bezier chord — never classified as hatch (door swings close gaps)
@@ -527,6 +528,49 @@ function floodPass(maskObj: MaskObj, ix: number, iy: number, barrier: number): F
   return { status: "ok", region, count, mw, mh, ws, hardHits, softHits };
 }
 
+// ── gap bridging (leak recovery) ───────────────────────────────────────────
+// A room whose walls don't quite meet — a hairline drafting gap where two
+// wall runs stop short of each other, or a jamb drawn a pixel shy of the
+// wall — floods straight through the pinhole and dies as a "leak": the
+// engine calls a plainly enclosed space not-a-room and the user is left
+// tracing it by hand. Sealing is a hard-bit (wall) box dilation: radius r
+// closes gaps up to ~2r px in MASK space, and with GAP_BRIDGE_MAX = 2 only
+// pinholes ≤ ~4-5 px ever seal. A real doorway is tens of mask px wide at
+// any plausible drawing scale, so it keeps leaking at every radius and an
+// open floor plan is never fenced into a fake room. The traced ring sits
+// ≤ r px inside the true wall line; snapVertices pulls the corners back onto
+// true endpoints, and the rescue rides provenance (`gapBridged` →
+// origin.gap_bridged_px) rather than passing itself off as a clean fill.
+
+/** Box-dilate the HARD (wall) bit by Chebyshev radius r — separable
+ *  two-pass, O(n·r). Soft (hatch) bits copy through untouched: hatch is
+ *  transparent at the walls-only barrier, so it never causes a leak, and
+ *  growing it would only skew the escalation tiers' soft/hard hit counts. */
+export function dilateHard(maskObj: MaskObj, r: number): MaskObj {
+  const { mask, mw, mh, ws, softCount } = maskObj;
+  const horiz = new Uint8Array(mask);
+  for (let y = 0; y < mh; y++) {
+    const row = y * mw;
+    for (let x = 0; x < mw; x++) {
+      if (mask[row + x] & 1) {
+        const x1 = Math.min(mw - 1, x + r);
+        for (let i = Math.max(0, x - r); i <= x1; i++) horiz[row + i] |= 1;
+      }
+    }
+  }
+  const out = new Uint8Array(horiz);
+  for (let y = 0; y < mh; y++) {
+    const row = y * mw;
+    for (let x = 0; x < mw; x++) {
+      if (horiz[row + x] & 1) {
+        const y1 = Math.min(mh - 1, y + r);
+        for (let j = Math.max(0, y - r); j <= y1; j++) out[j * mw + x] |= 1;
+      }
+    }
+  }
+  return { mask: out, mw, mh, ws, softCount };
+}
+
 // The escalating fill. Pass 1 is the strict mask (walls + hatch — exactly the
 // original behavior; masks with no soft cells never go further). When the strict
 // pass is bounded by hatch, re-flood with hatch transparent (pass 2). Three tiers
@@ -546,23 +590,36 @@ function floodPass(maskObj: MaskObj, ix: number, iy: number, barrier: number): F
 // `sensitivity` (0..1) dials the moderate tier's escalateFrac/growthMax via
 // escalationParams; the default is the calibrated Balanced preset.
 export function floodRegion(maskObj: MaskObj, ix: number, iy: number, sensitivity: number = SENS_BALANCED): FloodResult {
-  const r1 = floodPass(maskObj, ix, iy, 3);
-  if (!maskObj.softCount) return r1;
-  if (r1.status === "leak") return r1;
-  const { escalateFrac, growthMax } = escalationParams(sensitivity);
-  let growthCap = Infinity;                            // unbounded unless we're in the moderate band
-  if (r1.status === "ok") {
-    const blocks = (r1.hardHits || 0) + (r1.softHits || 0);
-    const softFrac = blocks ? (r1.softHits || 0) / blocks : 0;
-    if (softFrac < escalateFrac) return r1;            // lightly hatch-bounded ⇒ strict is right
-    if (softFrac < HATCH_BOUND_FRAC) growthCap = growthMax; // moderate ⇒ grow-but-verify
+  const attempt = (m: MaskObj): FloodResult => {
+    const r1 = floodPass(m, ix, iy, 3);
+    if (!m.softCount) return r1;
+    if (r1.status === "leak") return r1;
+    const { escalateFrac, growthMax } = escalationParams(sensitivity);
+    let growthCap = Infinity;                            // unbounded unless we're in the moderate band
+    if (r1.status === "ok") {
+      const blocks = (r1.hardHits || 0) + (r1.softHits || 0);
+      const softFrac = blocks ? (r1.softHits || 0) / blocks : 0;
+      if (softFrac < escalateFrac) return r1;            // lightly hatch-bounded ⇒ strict is right
+      if (softFrac < HATCH_BOUND_FRAC) growthCap = growthMax; // moderate ⇒ grow-but-verify
+    }
+    const r2 = floodPass(m, ix, iy, 1);
+    if (r2.status === "ok" && (r1.status !== "ok" || r2.count <= r1.count * growthCap)) {
+      r2.hatchFiltered = true;
+      return r2;
+    }
+    return r1;
+  };
+  const r = attempt(maskObj);
+  if (r.status !== "leak") return r;
+  // Leak recovery (see the gap-bridging block above): seal hairline wall gaps
+  // and rerun the whole ladder. The first radius that yields a clean fill
+  // wins; a real opening keeps leaking at every radius, so the original leak
+  // stands and bridging can never do worse than the un-bridged result.
+  for (let br = 1; br <= GAP_BRIDGE_MAX; br++) {
+    const rb = attempt(dilateHard(maskObj, br));
+    if (rb.status === "ok") { rb.gapBridged = br; return rb; }
   }
-  const r2 = floodPass(maskObj, ix, iy, 1);
-  if (r2.status === "ok" && (r1.status !== "ok" || r2.count <= r1.count * growthCap)) {
-    r2.hatchFiltered = true;
-    return r2;
-  }
-  return r1;
+  return r;
 }
 
 // ── 5. contour trace + simplify ────────────────────────────────────────────
