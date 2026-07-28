@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — gap bridging: nearly-closed rooms stop failing as leaks
+
+### Added
+- **Leak recovery in the flood engine** (`web/src/lib/oneclick.ts`). A room whose walls don't quite meet — a hairline drafting gap where two wall runs stop short, the single most common way a plainly enclosed space died as "not an enclosed space" — now seals and traces. On a leak, the whole escalation ladder reruns against a mask whose HARD (wall) bits are box-dilated by 1 then 2 mask px (`dilateHard`, separable O(n·r)); the first radius that yields a clean fill wins. The cap is the honesty guarantee: only pinholes ≤ ~4–5 mask px ever seal, a real doorway is tens of mask px at any plausible scale and keeps leaking, so an open floor plan is never fenced into a fake room — bridging can never do worse than the leak it replaces. The traced ring sits ≤ r px inside the true wall line and `snapVertices` pulls corners back onto true endpoints (measured on the demo-scale test room: 0.6 SF of 438). The rescue rides provenance — `FloodResult.gapBridged` → `origin.gap_bridged_px` — rather than passing as a clean fill. Pinned by `web/test/gapBridge.test.ts` (pinhole seals + flags, doorway stands, watertight untouched, a truthful "tiny" is not bridged away); the scan path's closing test now also pins the interplay (an unclosed raster mask is rescued *with the flag*, the default closing stays clean *without* it). The MCP server inherits the engine at its next release.
+
 ## Unreleased — Import takeoff: the agent handoff lands in the canvas
 
 ### Added

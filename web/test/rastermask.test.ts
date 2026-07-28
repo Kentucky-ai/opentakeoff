@@ -60,16 +60,23 @@ test("clean scanned room floods and traces at the right area", () => {
   assert.ok(area > 8500 && area < 9800, `area ${area}`);
 });
 
-test("broken scan lines: leaks with bridging off, seals with the default closing", () => {
+test("broken scan lines: without closing the flood's own gap bridging rescues (flagged); with closing the fill is clean", () => {
   // 1px slits through the full stroke thickness of the TOP wall — a faded-ink dropout
   const gaps = (x: number, y: number) => y <= 101 && x % 40 === 0 && x > 100 && x < 200;
   const img = room(undefined, gaps);
+  // Historically this leaked outright. floodRegion's leak recovery (gap
+  // bridging, oneclick.ts) now seals pinhole dropouts even on an unclosed
+  // mask — but must say so on provenance rather than pass as a clean fill.
   const noBridge = buildRasterMask(img, W, H, 1, { bridge: false });
   const fNo = floodRegion(noBridge, 150, 150);
-  assert.equal(fNo.status, "leak", "1px dropouts leak without closing");
+  assert.equal(fNo.status, "ok", "1px dropouts are rescued by gap bridging");
+  if (fNo.status === "ok") assert.ok((fNo.gapBridged ?? 0) >= 1, "the rescue is flagged");
+  // The raster closing still earns its keep: the mask itself is sealed, the
+  // strict flood is clean on the first pass, and no rescue flag rides along.
   const bridged = buildRasterMask(img, W, H, 1);
   const fYes = floodRegion(bridged, 150, 150);
   assert.equal(fYes.status, "ok");
+  if (fYes.status === "ok") assert.equal(fYes.gapBridged, undefined, "closing keeps the fill clean — no rescue needed");
   const area = ringArea(traceRegion(fYes as any, RASTER_RDP_EPS));
   assert.ok(area > 8300 && area < 9800, `closing must not shrink the room (${area})`);
 });
