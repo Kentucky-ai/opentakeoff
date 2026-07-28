@@ -35,6 +35,19 @@ test("empty project: import replaces wholesale (seeded conditions are not work)"
   assert.equal(note.shapes_pending, 1);   // reviewed:false counts as pending
 });
 
+test("replace keeps the operator's open view when the export carries none", () => {
+  // An MCP export has empty sheet_tabs/groups — adopting them would bounce
+  // the operator from their open sheet to the gallery mid-import.
+  const current = { shapes: [], markups: [], conditions: [], sheets: [], sheet_tabs: ["va.pdf"], sheet_group: ["va.pdf", "va.pdf#2"], last_group: ["va.pdf", "va.pdf#2"] };
+  const { payload, note } = mergeTakeoffImport(current, doc({ sheet_tabs: [], sheet_group: [], last_group: [] }));
+  assert.equal(note.replaced, true);
+  assert.deepEqual(payload.sheet_tabs, ["va.pdf"]);
+  assert.deepEqual(payload.sheet_group, ["va.pdf", "va.pdf#2"]);
+  // …but a NON-empty imported view is real state and wins on replace
+  const explicit = mergeTakeoffImport(current, doc({ sheet_tabs: ["va.pdf#3"] }));
+  assert.deepEqual(explicit.payload.sheet_tabs, ["va.pdf#3"]);
+});
+
 test("merge: same finish tag joins the operator's condition — no duplicate, shapes remapped", () => {
   const current = {
     conditions: [{ id: "mine", finish_tag: " cpt-1 " }],   // tag match is case/space-insensitive
