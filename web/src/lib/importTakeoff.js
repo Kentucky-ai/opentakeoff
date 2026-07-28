@@ -75,8 +75,19 @@ export function mergeTakeoffImport(current, imported, knownFiles = null) {
   // don't block the clean-replace path (a pre-traced calibration would be rare
   // enough here that predictability wins over preserving it).
   if (!arr(cur.shapes).length && !arr(cur.markups).length) {
+    // …except the VIEW. An MCP export typically carries empty tab/group
+    // state (the session has no such concept), and adopting an empty list
+    // would close the operator's open sheet and bounce them to the gallery
+    // mid-import — the shapes land on a sheet they're no longer looking at.
+    // Empty carries no intent; a NON-empty imported view is real state and wins.
+    const payload = {
+      ...imported,
+      ...(arr(imported.sheet_tabs).length ? {} : { sheet_tabs: arr(cur.sheet_tabs) }),
+      ...(arr(imported.sheet_group).length ? {} : { sheet_group: arr(cur.sheet_group) }),
+      ...(arr(imported.last_group).length ? {} : { last_group: arr(cur.last_group) }),
+    };
     return {
-      payload: imported,
+      payload,
       note: { replaced: true, shapes_added: impShapes.length, shapes_pending: pendingCount(impShapes), conditions_merged: 0, conditions_added: impConds.length, scales_adopted: arr(imported.sheets).length, unknown_files: unknownFiles(impShapes) },
     };
   }
