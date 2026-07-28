@@ -168,9 +168,10 @@ set becomes browsable natively (`resources/list` re-announces itself via
 Page numbers — not file-derived sheet keys — address resources, so URIs stay
 clean regardless of the PDF's name; the human-facing key (`plan.pdf#2`) and
 title-block number (`A-101`) ride along as the resource name and title.
-Rendering uses `@napi-rs/canvas` (pdf.js's own optional dependency): on a
-platform without a prebuilt binary every non-raster capability still works and
-the image read explains exactly what's missing.
+Rendering uses `@napi-rs/canvas`, declared as this package's own optional
+dependency so a plain `npx opentakeoff-mcp` installs the prebuilt binary and
+arrives with eyes; on a platform without a prebuilt binary every non-raster
+capability still works and the image read explains exactly what's missing.
 
 The intended agent loop: read `takeoff://sheets` → look at
 `takeoff://sheet/{page}/image` → pick click targets → measure with the tools.
