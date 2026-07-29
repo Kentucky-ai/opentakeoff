@@ -406,3 +406,43 @@ test("ruleApply: add semantics — mints ids/created_at, one noCount-delete inve
   // ONE inverse deletes the whole batch, and never feeds the deletion counters
   assert.deepEqual(fwd.inverse, { type: "delete", ids: added.map((s) => s.id), noCount: true });
 });
+
+// ── rollcut (#136) — roll-layout metadata patches, presence-aware, no stamp ──
+
+test("rollcut: sets / clears roll_layout with an exact inverse; prev overrides the inverse source", () => {
+  const shapes = [
+    { id: "a", condition_id: "c1", measure_role: "floor_area", verts_norm: [[0, 0], [1, 0], [1, 1]] },
+    { id: "b", condition_id: "c1", measure_role: "floor_area", verts_norm: [[0, 0], [1, 0], [1, 1]], roll_layout: { laneCount: 2, lanes: { 0: { seq: 1 } } } },
+  ];
+  const rl = { laneCount: 2, lanes: { 1: { runMin: 0, runMax: 12 } } };
+  // set on a — inverse row carries NO roll_layout key (clear on undo)
+  const r1 = applyShapeCommand(shapes, { type: "rollcut", rows: [{ id: "a", roll_layout: rl }] });
+  assert.deepEqual(r1.shapes[0].roll_layout, rl);
+  assert.equal(r1.shapes[0].updated_at, undefined, "no stamp — layout metadata is not a shape edit");
+  assert.deepEqual(r1.inverse, { type: "rollcut", rows: [{ id: "a" }] });
+  const undone = applyShapeCommand(r1.shapes, r1.inverse);
+  assert.deepEqual(undone.shapes, shapes, "undo restores the input verbatim, key absence included");
+  // clear on b — inverse carries the prior layout
+  const r2 = applyShapeCommand(shapes, { type: "rollcut", rows: [{ id: "b" }] });
+  assert.equal("roll_layout" in r2.shapes[1], false);
+  assert.deepEqual(r2.inverse.rows, [{ id: "b", roll_layout: shapes[1].roll_layout }]);
+  // prev (the grab-time row) builds the inverse when a live preview already
+  // wrote the final state — the geom-command idea
+  const previewed = applyShapeCommand(shapes, { type: "rollcut", rows: [{ id: "a", roll_layout: rl }] }).shapes;
+  const r3 = applyShapeCommand(previewed, { type: "rollcut", rows: [{ id: "a", roll_layout: rl }], prev: [{ id: "a" }] });
+  assert.deepEqual(applyShapeCommand(r3.shapes, r3.inverse).shapes, shapes, "inverse from prev undoes past the preview");
+});
+
+test("rollcut: multi-row (a reorder) is ONE command with one exact inverse", () => {
+  const shapes = [
+    { id: "a", condition_id: "c1", measure_role: "floor_area", verts_norm: [[0, 0], [1, 0], [1, 1]], roll_layout: { laneCount: 1, lanes: { 0: { runMin: 1, runMax: 9 } } } },
+    { id: "b", condition_id: "c1", measure_role: "floor_area", verts_norm: [[0, 0], [1, 0], [1, 1]] },
+  ];
+  const cmd = { type: "rollcut", rows: [
+    { id: "a", roll_layout: { laneCount: 1, lanes: { 0: { runMin: 1, runMax: 9, seq: 0 } } } },
+    { id: "b", roll_layout: { laneCount: 1, lanes: { 0: { seq: 1 } } } },
+  ] };
+  const r = applyShapeCommand(shapes, cmd);
+  assert.deepEqual(r.shapes[0].roll_layout.lanes[0], { runMin: 1, runMax: 9, seq: 0 });
+  assert.deepEqual(applyShapeCommand(r.shapes, r.inverse).shapes, shapes);
+});

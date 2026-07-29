@@ -95,6 +95,7 @@ const COL_DIM = {
   floor_sf: "area", wall_sf: "area", border_sf: "area", total_sf: "area",
   total_sf_net: "area", waste_sf: "area",
   lf: "len", lf_net: "len", waste_lf: "len", perimeter_ref: "len",
+  "roll:order_lf": "len",
 };
 export const METRIC_LABELS = { area: "m²", len: "m" };        // on-screen table
 export const METRIC_CSV_LABELS = { area: "m2", len: "m" };    // CSV/XLSX (ASCII, matches the legend PDF)
@@ -214,6 +215,34 @@ export function laborColProfile(conditions) {
     defaultVisible: true,
     labor: true,
     get: (r, ctx) => laborValue(ctx?.laborByCond?.get(r.id), f.field),
+  }));
+}
+
+// ── Roll goods (#136) ───────────────────────────────────────────────────────
+// The figured order beside the measured quantities: order footage down the
+// roll (side-by-side cuts share length — NOT a sum of cut lengths) and the
+// physical roll count. Values arrive via ctx.rollByCond (Map(condition_id →
+// computeRollTakeoff summary)), the spec/labor seam — never as row fields.
+// Emitted only when at least one condition actually figures a roll layout, so
+// a project without roll goods is byte-identical (frozen 13 → built-in
+// opt-ins → custom → spec → labor → roll). ×N applies like every quantity —
+// N identical units are N cuttings of the same layout.
+export const ROLL_FIELDS = [
+  { key: "roll:order_lf", header: "Roll Order LF", get: (ri, mult) => round2(ri.orderFt * mult) },
+  { key: "roll:rolls", header: "Rolls", get: (ri, mult) => ri.rollCount * mult },
+];
+
+export function rollColProfile(rollByCond) {
+  if (!(rollByCond instanceof Map) || !rollByCond.size) return [];
+  return ROLL_FIELDS.map((f) => ({
+    key: f.key,
+    header: f.header,
+    defaultVisible: true,
+    roll: true,
+    get: (r, ctx) => {
+      const ri = ctx?.rollByCond?.get(r.id);
+      return ri ? f.get(ri, r.multiplier || 1) : "";
+    },
   }));
 }
 

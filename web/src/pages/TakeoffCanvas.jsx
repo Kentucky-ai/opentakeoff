@@ -56,6 +56,12 @@ import { libFields, matFieldOverridden, libPushPatch, libRevertPatch, libEntryPa
 import RfiPanel from "../components/RfiPanel.jsx";
 import StampPanel from "../components/StampPanel.jsx";
 import ImportSchedulePanel from "../components/ImportSchedulePanel.jsx";
+// Roll goods (#136): lib/rollgoods.js is the pure packing engine (untouched
+// here), lib/rollTakeoff.js the pure shapes→engine bridge; RollPanel is the
+// docked diagram/reorder desk. Cut edits commit through the rollcut command.
+import RollPanel from "../components/RollPanel.jsx";
+import { rollColorForType } from "../lib/rollgoods.js";
+import { computeRollTakeoff } from "../lib/rollTakeoff.js";
 // In-canvas takeoff agent — BYO-key tool-use loop (lib/agentLoop) aiming the
 // registry of deterministic tools (lib/agentTools); this file provides the
 // CAPABILITIES those tools close over and the review gate their proposals
@@ -333,6 +339,11 @@ export default function TakeoffCanvas() {
   const [ruleOffer, setRuleOffer] = useState(null);   // { deduct, seed, tag }
   const [ruleStage, setRuleStage] = useState(null);   // { rule, candidates, proposed_ts }
   const [agentOpen, setAgentOpen] = useState(false);      // docked right-rail Agent panel
+  // ── roll goods (#136) — view state; the figured layouts are a memo below ──
+  const [rollShow, setRollShow] = useState(true);         // draw the figured cuts over the plan (on: opting a condition in shows its cuts immediately)
+  const [rollEdit, setRollEdit] = useState(false);        // cut-edit mode — cuts take pointer events (slide / resize / double-click reset)
+  const [rollPanelOpen, setRollPanelOpen] = useState(false); // docked Roll panel (diagram + reorder)
+  const rollDragRef = useRef(null);                       // live cut-drag gesture; commit is ONE rollcut command on release
   const [agentLog, setAgentLog] = useState([]);           // streaming run status [{kind, text}]
   const [agentRunning, setAgentRunning] = useState(false);
   const [showAiSettings, setShowAiSettings] = useState(false); // BYO-key config modal (ai.js seam)
@@ -729,6 +740,124 @@ export default function TakeoffCanvas() {
   useEffect(() => {
     agentStateRef.current = { panels, scales, scaleSources, detectedScales, conditions, status };
   });
+
+  // ── roll goods (#136): the figured layouts, one pure pass over the takeoff ──
+  // Rendered sheets only — a ring needs bitmap dims (panelImgs) plus a scale to
+  // speak feet. Memoized off geometry/config, never the transform: pan/zoom
+  // must not re-figure a roll. uppFor reads `scales` (a dep) plus a ref pinned
+  // to RENDER_SCALE, so the dep list is honest.
+  const rollTakeoff = useMemo(
+    () => computeRollTakeoff(conditions, shapes, (k) => panelImgs[k] || null, (k) => uppFor(k)),
+    [conditions, shapes, panelImgs, scales]   // uppFor: scales + a pinned ref
+  );
+  const rollByCond = rollTakeoff.byCond;
+  const rollCutsByPanel = rollTakeoff.cutsBySheet;
+
+  // Cut drag (#136) — the self-contained element-drag pattern (the panel-resize
+  // handle's): the cut's own <g> opts into pointer events in edit mode, captures
+  // the pointer, live-PREVIEWS by writing shape.roll_layout through raw
+  // setShapes (the sanctioned preview path — see the dispatchShape header), and
+  // commits ONE undoable `rollcut` command on release whose inverse is the
+  // grab-time row. kind: "body" slides the cut along its lane; "start"/"end"
+  // pull the run ends (the installer's call the math can't make — carry into a
+  // closet, stop short of a transition). A cut can never get shorter than 3″.
+  const beginRollCut = (e, ct, kind) => {
+    if (!rollEdit) return;
+    e.stopPropagation(); e.preventDefault();
+    const shape = shapes.find((s) => s.id === ct.srcId);
+    if (!shape) return;
+    rollDragRef.current = {
+      srcId: ct.srcId, laneIndex: ct.laneIndex, laneCount: ct.laneCount, kind,
+      runY: ct.laneAxis === "x", upp: ct.upp, sx: e.clientX, sy: e.clientY,
+      base: { runMin: ct.runMin, runMax: ct.runMax },
+      prevRow: { id: ct.srcId, ...("roll_layout" in shape ? { roll_layout: shape.roll_layout } : {}) },
+      moved: false, lastLayout: null,
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const moveRollCut = (e) => {
+    const d = rollDragRef.current; if (!d) return;
+    const dFt = ((d.runY ? e.clientY - d.sy : e.clientX - d.sx) / tfRef.current.scale) * d.upp;
+    let { runMin, runMax } = d.base;
+    if (d.kind === "body") { runMin += dFt; runMax += dFt; }
+    else if (d.kind === "start") runMin = Math.min(d.base.runMax - 0.25, d.base.runMin + dFt);
+    else runMax = Math.max(d.base.runMin + 0.25, d.base.runMax + dFt);
+    d.moved = d.moved || Math.abs(dFt) > 1e-4;
+    // Build the target layout SYNCHRONOUSLY, from the grab-time row — never
+    // inside the setShapes updater: a fast flick's pointerup can land before
+    // React flushes the last move, and a commit that reads updater-written
+    // state would silently skip (the house drag pattern: gesture state lives
+    // in the ref, the updater only mirrors it). A stored layout from a
+    // DIFFERENT lane count is stale (reshaped room) — start fresh rather than
+    // resurrect overrides aimed at lanes that moved.
+    const prevRl = d.prevRow.roll_layout;
+    const prior = prevRl && typeof prevRl === "object" && prevRl.lanes && prevRl.laneCount === d.laneCount ? prevRl.lanes : {};
+    d.lastLayout = { laneCount: d.laneCount, lanes: { ...prior, [d.laneIndex]: { ...(prior[d.laneIndex] || {}), runMin, runMax } } };
+    setShapes((ss) => ss.map((s) => (s.id === d.srcId ? { ...s, roll_layout: d.lastLayout } : s)));
+  };
+  const endRollCut = () => {
+    const d = rollDragRef.current; if (!d) return;
+    rollDragRef.current = null;
+    if (!d.moved || !d.lastLayout) return;   // zero-motion = not an edit — no command, no undo entry
+    dispatchShape({ type: "rollcut", rows: [{ id: d.srcId, roll_layout: d.lastLayout }], prev: [d.prevRow] });
+  };
+  // double-click: hand THIS cut back to the figured layout (drop its lane
+  // override; the key clears entirely when no other lane holds an edit)
+  const resetRollCut = (ct) => {
+    const shape = shapes.find((s) => s.id === ct.srcId);
+    const rl = shape?.roll_layout;
+    if (!rl || !rl.lanes || !(ct.laneIndex in rl.lanes)) return;
+    const lanes = { ...rl.lanes };
+    delete lanes[ct.laneIndex];
+    const row = Object.keys(lanes).length ? { id: ct.srcId, roll_layout: { laneCount: rl.laneCount, lanes } } : { id: ct.srcId };
+    dispatchShape({ type: "rollcut", rows: [row] });
+  };
+  // RollPanel reorder: the dragged order becomes seq overrides (manual cuts
+  // pack FIRST, in that order — the engine's skyline re-packs, so a manual
+  // order can never overlap) — ONE rollcut command, one undo entry.
+  const onReorderRollCuts = (condId, orderedIds) => {
+    const ri = rollByCond.get(condId); if (!ri) return;
+    const laneCountBySrc = new Map(ri.strips.map((s) => [s.srcId, s.laneCount]));
+    const bySrc = new Map();
+    orderedIds.forEach((sid, idx) => {
+      const i = sid.lastIndexOf(":");
+      const srcId = sid.slice(0, i), lane = sid.slice(i + 1);
+      if (!bySrc.has(srcId)) bySrc.set(srcId, {});
+      bySrc.get(srcId)[lane] = idx;
+    });
+    const rows = [];
+    for (const [srcId, seqByLane] of bySrc) {
+      const shape = shapes.find((s) => s.id === srcId); if (!shape) continue;
+      const lc = laneCountBySrc.get(srcId);
+      const prior = shape.roll_layout?.laneCount === lc && shape.roll_layout.lanes ? shape.roll_layout.lanes : {};
+      const lanes = { ...prior };
+      for (const [lane, seq] of Object.entries(seqByLane)) lanes[lane] = { ...(lanes[lane] || {}), seq };
+      rows.push({ id: srcId, roll_layout: { laneCount: lc, lanes } });
+    }
+    if (rows.length) dispatchShape({ type: "rollcut", rows });
+  };
+  // strip only the seq keys — a floor-position edit (runMin/runMax) survives a
+  // cutting-order reset; that's a different decision than double-click reset
+  const onResetRollOrder = (condId) => {
+    const ri = rollByCond.get(condId); if (!ri) return;
+    const srcIds = new Set(ri.strips.map((s) => s.srcId));
+    const rows = [];
+    for (const s of shapes) {
+      if (!srcIds.has(s.id) || !s.roll_layout?.lanes) continue;
+      let changed = false;
+      const lanes = {};
+      for (const [k, o] of Object.entries(s.roll_layout.lanes)) {
+        if (o && typeof o === "object" && "seq" in o) {
+          const { seq: _seq, ...rest } = o;
+          changed = true;
+          if (Object.keys(rest).length) lanes[k] = rest;
+        } else lanes[k] = o;
+      }
+      if (!changed) continue;
+      rows.push(Object.keys(lanes).length ? { id: s.id, roll_layout: { laneCount: s.roll_layout.laneCount, lanes } } : { id: s.id });
+    }
+    if (rows.length) dispatchShape({ type: "rollcut", rows });
+  };
 
   // ── transform: tfRef is source of truth; write straight to the DOM ─────────
   const applyTf = useCallback(() => {
@@ -4871,6 +5000,7 @@ export default function TakeoffCanvas() {
     ...(c.thickness_in != null ? { thickness_in: c.thickness_in } : {}),
     ...(c.laborType != null ? { laborType: c.laborType } : {}),
     ...(c.subfloorType != null ? { subfloorType: c.subfloorType } : {}),
+    ...(c.roll_setup ? { roll_setup: { ...c.roll_setup } } : {}),   // #136 — the roll spec is part of what makes a CPT-1 template CPT-1
     materials: (c.materials || []).map(({ id: _id, ...m }) => (m.grout ? { ...m, grout: { ...m.grout } } : m)),   // ids are minted on instantiation; grout never shared by reference
   });
   const saveActiveAsTemplate = () => {
@@ -6176,6 +6306,55 @@ export default function TakeoffCanvas() {
                         </g>
                       );
                     })}
+                    {/* Roll-goods cut overlay (#136) — every figured cut drawn to
+                        scale over its room in the MATERIAL-TRUE color (carpet tan,
+                        vinyl/rubber grey — the engine's own palette, so cuts never
+                        mimic a condition's takeoff look), numbered in cutting
+                        order, dashed when the room seams across lanes. Inert
+                        drawing until edit mode; then each cut owns its pointer
+                        events — body slides along the lane, the two end handles
+                        pull the run ends, double-click resets to the figured
+                        layout. Adjacent cuts overlapping IS the seam (physical
+                        pieces carry the seam allowance). */}
+                    {rollShow && (rollCutsByPanel.get(p.key) || []).map((ct) => {
+                      const s = tf.scale;
+                      const col = rollColorForType(ct.material);
+                      const runY = ct.laneAxis === "x";     // strips run along screen y; lanes tile across x
+                      const hs = 5 / s;
+                      const showNum = ct.w * s > 16 && ct.h * s > 16;
+                      const strokeCol = ct.overRoll ? "#b03a26" : col;
+                      return (
+                        <g key={"roll" + ct.id}
+                          style={{ pointerEvents: rollEdit ? "auto" : "none", cursor: rollEdit ? "grab" : undefined }}
+                          onPointerDown={(e) => beginRollCut(e, ct, "body")}
+                          onPointerMove={moveRollCut} onPointerUp={endRollCut} onPointerCancel={endRollCut}
+                          onDoubleClick={() => rollEdit && resetRollCut(ct)}>
+                          <title>{`Cut ${ct.num} — ${condById[ct.condId]?.finish_tag || "?"}: ${fmtCheckLen(ct.lenFt, units)} × ${fmtCheckLen(ct.widthFt, units)}${ct.multi ? ` · lane ${ct.laneIndex + 1}/${ct.laneCount}` : ""}${ct.overRoll ? " · LONGER THAN ONE ROLL — needs a cross-seam" : ""}${rollEdit ? " · drag to slide, pull the square handles to resize, double-click to reset" : ""}`}</title>
+                          <rect x={ct.x} y={ct.y} width={ct.w} height={ct.h}
+                            fill={col + "38"} stroke={strokeCol}
+                            strokeWidth={(ct.overRoll ? 2.6 : 1.8) / s}
+                            strokeDasharray={ct.multi ? `${6 / s} ${4 / s}` : undefined} />
+                          {showNum && (
+                            <g style={{ pointerEvents: "none" }}>
+                              <circle cx={ct.x + 11 / s} cy={ct.y + 11 / s} r={7.5 / s} fill={strokeCol} stroke="#fff" strokeWidth={1 / s} />
+                              <text x={ct.x + 11 / s} y={ct.y + 14.4 / s} fontSize={10 / s} fontWeight={700} fill="#fff" textAnchor="middle" fontFamily="var(--f-mono,monospace)">{ct.num}</text>
+                            </g>
+                          )}
+                          {rollEdit && (
+                            <>
+                              <rect x={runY ? ct.x + ct.w / 2 - hs : ct.x - hs} y={runY ? ct.y - hs : ct.y + ct.h / 2 - hs}
+                                width={hs * 2} height={hs * 2} fill="#fff" stroke={strokeCol} strokeWidth={1.4 / s}
+                                style={{ cursor: runY ? "ns-resize" : "ew-resize" }}
+                                onPointerDown={(e) => beginRollCut(e, ct, "start")} />
+                              <rect x={runY ? ct.x + ct.w / 2 - hs : ct.x + ct.w - hs} y={runY ? ct.y + ct.h - hs : ct.y + ct.h / 2 - hs}
+                                width={hs * 2} height={hs * 2} fill="#fff" stroke={strokeCol} strokeWidth={1.4 / s}
+                                style={{ cursor: runY ? "ns-resize" : "ew-resize" }}
+                                onPointerDown={(e) => beginRollCut(e, ct, "end")} />
+                            </>
+                          )}
+                        </g>
+                      );
+                    })}
                   </g>
                 );
               })}
@@ -6477,6 +6656,7 @@ export default function TakeoffCanvas() {
           {panelBtn(() => setLeftTab((t) => (t === "rfi" ? null : "rfi")), "rfi", "RFI register — raise, track, and export Requests For Information", leftTab === "rfi", rfis.length)}
           {panelBtn(toggleTakeoffs, "takeoffs", "Takeoffs — conditions + running totals", takeoffsOpen, visibleShapes.length)}
           {panelBtn(() => setAgentOpen((o) => !o), "target", "Agent — describe a takeoff; it stages dashed proposals you accept or reject (bring your own AI key)", agentOpen, agentProposals.length)}
+          {rollByCond.size > 0 && panelBtn(() => setRollPanelOpen((o) => !o), "roll", "Roll goods — the cut diagram, cutting order, and figured order footage", rollPanelOpen, rollByCond.size)}
           {panelBtn(() => setShowRevisions(true), "revisions", "Revisions — save the takeoff at each bid revision, compare what moved", showRevisions)}
         </div>
 
@@ -6507,6 +6687,23 @@ export default function TakeoffCanvas() {
           />
         )}
 
+        {/* Roll panel (#136) — DOCKED right-rail sibling like the Agent panel:
+            per-condition cut diagrams (to scale, numbered), drag-to-reorder with
+            the engine re-pack, the overlay/edit toggles, and the figured order
+            lines. A pure view — layout state lives on the shapes (rollcut). */}
+        {rollPanelOpen && (
+          <RollPanel
+            layouts={[...rollByCond.entries()].map(([condId, ri]) => {
+              const c = condById[condId];
+              return { condId, tag: c?.finish_tag || "?", color: c?.color, fill: c?.fill, hatch: c?.hatch, multiplier: c?.multiplier || 1, ri };
+            })}
+            show={rollShow} onShow={setRollShow}
+            edit={rollEdit} onEdit={setRollEdit}
+            onReorder={onReorderRollCuts} onResetOrder={onResetRollOrder}
+            onClose={() => setRollPanelOpen(false)}
+          />
+        )}
+
         {/* Takeoffs panel — DOCKED in the layout row (reflows the canvas, not an
             overlay): every condition with its running totals, plus the Library,
             Materials, and Columns tabs. Extracted to components/TakeoffsPanel.jsx and
@@ -6527,6 +6724,7 @@ export default function TakeoffCanvas() {
           shapeLabels={shapeLabels}
           templates={templates}
           palette={palette}
+          rollByCond={rollByCond}
           matLib={matLib}
           matLibById={matLibById}
           linkedCountById={linkedCountById}
@@ -6597,6 +6795,7 @@ export default function TakeoffCanvas() {
           conditions={conditions} shapes={shapes} markups={markups} rfis={rfis}
           conditionColumns={conditionColumns} shapeLabels={shapeLabels}
           scaleInfo={Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, scale_source: scaleSources[sheet_id] || "unknown" }))}
+          rollByCond={rollByCond}
           provenanceCounters={provCounters}
           sheetLabel={(k) => tabLabel(k)}
           onMarkedSet={exportMarkedSet} markedSetDark={darkMode}

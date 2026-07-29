@@ -127,11 +127,14 @@ test("reportJson: v1 key set pinned — top level, sheets[], markups[], by_sheet
   assert.equal(j.schema, "opentakeoff.report.v1");
   // condition_columns appended after markups (additive-only v1, 2026-07-07);
   // shape_labels + by_label appended after it (#112, additive-only, always
-  // emitted); units + display_units appended last (metric display port —
-  // quantities stay RAW feet, the export says which system the user was reading)
+  // emitted); units + display_units appended after that (metric display port —
+  // quantities stay RAW feet, the export says which system the user was
+  // reading); roll_goods appended last (#136, always emitted, empty without
+  // roll-goods conditions)
   assert.deepEqual(Object.keys(j),
-    ["schema", "project_name", "generated_with", "sheets", "conditions", "by_sheet", "totals", "materials", "markups", "rfis", "condition_columns", "shape_labels", "by_label", "units", "display_units"]);
+    ["schema", "project_name", "generated_with", "sheets", "conditions", "by_sheet", "totals", "materials", "markups", "rfis", "condition_columns", "shape_labels", "by_label", "units", "display_units", "roll_goods"]);
   assert.equal(j.display_units, "imperial");
+  assert.deepEqual(j.roll_goods, []);   // #136 — always emitted; empty when nothing carries a roll_setup
   // rfis[] appends after markups (additive v1); linked_markups/linked_sheets derived
   assert.deepEqual(Object.keys(j.rfis[0]),
     ["id", "number", "subject", "question", "status", "to", "priority", "cost_impact", "schedule_impact",
@@ -164,6 +167,12 @@ test("reportJson: v1 key set pinned — top level, sheets[], markups[], by_sheet
     ["id", "finish_tag", "color", "fill", "hatch", "multiplier", "waste_pct", "shape_count",
      "floor_sf", "wall_sf", "border_sf", "lf", "ea", "total_sf",
      "floor_sf_net", "wall_sf_net", "border_sf_net", "lf_net", "total_sf_net", "sy_net", "materials", "columns"]);
+});
+
+test("reportJson: roll_goods rides through verbatim; a non-array coerces to [] (#136)", () => {
+  const rows = [{ condition_id: "ct", finish_tag: "CPT-1", material: "carpet", roll_width_ft: 12, roll_length_ft: 0, direction: "ns", cuts: 3, order_lf: 46.5, rolls: 1, order_qty: 62, order_unit: "sy", oversize: false }];
+  assert.deepEqual(reportJson({ rollGoods: rows }).roll_goods, rows);
+  assert.deepEqual(reportJson({ rollGoods: "corrupt" as any }).roll_goods, []);
 });
 
 test("reportJson: by_sheet rows serialize round2-ed — incl. ea — with key order intact", () => {
