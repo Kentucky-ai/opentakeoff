@@ -420,3 +420,55 @@ test("deduct role: committed deducts subtract in the summary and export as measu
   const exported = await callOk(client, "export_takeoff");
   assert.deepEqual(exported.shapes.map((s: any) => s.measure_role), ["floor_area", "deduct"]);
 });
+
+// ── PDF layers (#85): the layered fixture drives the whole loop ─────────────
+// test/fixtures/layered-plan.pdf (see scripts/make-layered-fixture.mjs): a
+// 300×300 pt room on A-WALL-FULL, a 3×3 tile grid on A-FLOR-PATT (FOUR lines
+// — far below HATCH_MIN_RUN, so pitch heuristics keep them hard and a naive
+// flood traps in one cell), a leader on A-ANNO-TEXT crossing the room, and a
+// demolition wall on A-WALL-DEMO hidden in the default config.
+const LAYERED = fileURLToPath(new URL("./fixtures/layered-plan.pdf", import.meta.url));
+
+test("layers (#85): the table reads, stated roles feed the mask, include/exclude bite, unlayered refuses", async () => {
+  const client = await pair();
+  const LKEY = "layered-plan.pdf";
+  const loaded = await callOk(client, "load_plan", { path: LAYERED });
+  assert.equal(loaded.page_count, 1);
+
+  const info = await callOk(client, "sheet_info", { sheet: LKEY });
+  const byName = Object.fromEntries(info.layers.map((l: any) => [l.name, l]));
+  assert.deepEqual(Object.keys(byName).sort(), ["A-ANNO-TEXT", "A-FLOR-PATT", "A-WALL-DEMO", "A-WALL-FULL"]);
+  assert.equal(byName["A-WALL-FULL"].role, "boundary");
+  assert.equal(byName["A-FLOR-PATT"].role, "finish-pattern");
+  assert.equal(byName["A-ANNO-TEXT"].role, "annotation");
+  assert.deepEqual({ role: byName["A-WALL-DEMO"].role, visible: byName["A-WALL-DEMO"].visible },
+    { role: "demolition", visible: false }, "hidden demolition arrives stated, not guessed");
+  assert.ok(info.layers.every((l: any) => l.seg_count > 0 && l.confidence > 0.5), "every layer owns ink and classifies confidently");
+
+  await callOk(client, "set_scale", { sheet: LKEY, upp: 1 / 24 });
+  // seed (300, 924) image px = pdf (150, 150) — inside ONE tile cell. The
+  // stated layers exclude the grid (pattern), the leader (annotation), and
+  // the hidden demo wall, so the flood reaches the whole 25×25 ft room.
+  const room = await callOk(client, "one_click", { sheet: LKEY, x: 300, y: 924, condition: "CPT-1" });
+  assert.ok(Math.abs(room.area_sf - 625) < 20, `whole room, not a tile cell: ${room.area_sf} SF`);
+
+  // provenance: a trace bounded by DECLARED layers says so on the wire
+  const payload = await callOk(client, "export_takeoff");
+  assert.equal(payload.shapes[0].origin.layer_bounded, true);
+
+  // include: the hidden demolition wall becomes hard boundary — the room halves
+  const half = await callOk(client, "one_click", { sheet: LKEY, x: 300, y: 924, layers: { include: ["A-WALL-DEMO"] } });
+  assert.ok(Math.abs(half.area_sf - 312.5) < 15, `the included demo wall splits the room: ${half.area_sf} SF`);
+
+  // exclude the boundary itself → nothing encloses (never a silent guess)
+  assert.match(await callErr(client, "one_click", { sheet: LKEY, x: 300, y: 924, layers: { exclude: ["A-WALL-FULL"] } }), /isn't enclosed/);
+  // unknown layer name → resolve-or-error, listing the sheet's actual layers
+  assert.match(await callErr(client, "one_click", { sheet: LKEY, x: 300, y: 924, layers: { exclude: ["NOPE"] } }), /No layer "NOPE".*A-WALL-FULL/);
+
+  // the unlayered world stays exactly as it was: empty table, and a layer
+  // filter REFUSES rather than silently no-ops
+  await callOk(client, "load_plan", { path: PLAN });
+  const plain = await callOk(client, "sheet_info", { sheet: KEY });
+  assert.deepEqual(plain.layers, []);
+  assert.match(await callErr(client, "one_click", { sheet: KEY, x: 600, y: 1084, layers: { exclude: ["A-WALL-FULL"] } }), /no PDF layers/);
+});

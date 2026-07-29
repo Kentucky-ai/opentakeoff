@@ -37,6 +37,14 @@ export const sheetInfoOutput = {
   scale_set: z.boolean(),
   upp: z.number().optional().describe("Real feet per image px at render scale 2.0 — present once the scale is set"),
   shape_count: z.number().int().describe("Committed shapes on this sheet"),
+  layers: z.array(z.object({
+    id: z.string().describe("Optional Content Group id — pass to one_click/detect_rooms layers.include/exclude"),
+    name: z.string().describe("The CAD layer name as exported (e.g. A-WALL-FULL)"),
+    role: z.enum(["boundary", "finish-pattern", "annotation", "structure", "demolition", "unknown"]).describe("What this layer's linework IS to a takeoff (lib/layers.ts) — boundary/structure plot hard, pattern/annotation/demolition are excluded, unknown falls back to the hatch heuristics"),
+    confidence: z.number().describe("0..1 — how sure the name classifier is"),
+    visible: z.boolean().describe("Default-config visibility — a hidden layer's ink is excluded outright (or you trace demolition)"),
+    seg_count: z.number().int().describe("Segments this layer owns on this sheet"),
+  })).describe("The sheet's PDF layer table (#85) — [] when no Optional Content survived export (every engine path then runs the heuristics unchanged)"),
 };
 
 export const setScaleOutput = {
