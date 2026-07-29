@@ -103,6 +103,8 @@ import { requiredDensity as tileRequiredDensity } from "../lib/tiles";
 // nowIso stays imported for the non-shape records (markups, RFIs, conditions).
 import { nowIso, mintUuid } from "../lib/provenance.js";
 import { applyShapeCommand, geomSnapshot, vertsEqual, recordCommand } from "../lib/shapeCommands.js";
+import { findCutoutParent, subtractCutout, recomposeCutouts } from "../lib/cutout.js";
+import { computeShapeMetrics, needsMetrics } from "../lib/shapeMetrics.js";
 import { fmtCheckLen, parseLenInput, checkVerdict, M_PER_FT, areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, heightVal, heightUnit, heightInputToFeet, heightStep, dimInputStr } from "../lib/units";
 import * as panelGeom from "../lib/panelGeometry.js";
 
@@ -1801,7 +1803,9 @@ export default function TakeoffCanvas() {
         else if (ocSel && proposal) { deleteSelectedOcVertex(); }
         else if (proposal?.regions.length) { setProposal((pr) => { const rg = pr.regions.slice(0, -1); return rg.length ? { ...pr, regions: rg } : null; }); }
         else if (selVert != null && selectedId) { deleteSelectedShapeVertex(); }
-        else if (selectedId) { dispatchShape({ type: "delete", ids: [selectedId] }); setSelectedId(null); }
+        // route through deleteSelected — a reconciled Cut Out (#137) must
+        // revert its hole out of the parent, keyboard and menu alike
+        else if (selectedId) { deleteSelected(); }
         else if (selectedMarkupId && showMarkups) { deleteMarkup(selectedMarkupId); setSelectedMarkupId(null); }
         // pop ONLY the armed tool's pending points — calibrate and check both
         // keep two-click state (calib points even render while another tool is
@@ -2132,29 +2136,13 @@ export default function TakeoffCanvas() {
   // scale. This is what makes cross-sheet paste and group-mode edits honest.
   // uppOverride: pass the NEW effective upp when re-pricing right after a
   // setScales — `scales` in this render's closure is still the old map.
+  // Canvas-side wrapper over the ONE quantity computer (lib/shapeMetrics.js):
+  // panel dims + scale + condition lookup here, the role-aware math there —
+  // shared with the load-time heal, which prices shapes on CLOSED sheets too.
+  // Hole-aware since #137: a parent carrying verts_norm_holes prices the
+  // clipped geometry, not the outer ring.
   function recomputeShape(s, uppOverride) {
-    const sp = panelByKey(s.sheet_id);
-    const pts = s.verts_norm.map(([nx, ny]) => [nx * sp.img.w, ny * sp.img.h]);
-    const u = uppOverride ?? (uppFor(s.sheet_id) || 0);
-    if (s.measure_role === "count") return { count: 1 };
-    if (s.measure_role === "surface_area") {
-      // the wall keeps the height it was DRAWN at; the condition H is only the
-      // default for new traces (and the fallback for legacy shapes without one).
-      // An explicit override wins outright — even 0 (a zero-height wall is a
-      // deliberate statement, not an invitation to fall back to the condition).
-      const h = s.height_override === true
-        ? Number(s.height_ft) || 0
-        : Number(s.height_ft) || Number(condById[s.condition_id]?.height_ft) || 0;
-      const LF = openLen(pts) * u;
-      return { area_sf: +(LF * h).toFixed(2), perimeter_lf: +LF.toFixed(2) };
-    }
-    if (s.measure_role === "linear") {
-      const LF = openLen(s.curved ? flattenCurve(pts) : pts) * u;
-      const tIn = Number(condById[s.condition_id]?.thickness_in) || 0;
-      return { perimeter_lf: +LF.toFixed(2), area_sf: tIn > 0 ? +((LF * tIn) / 12).toFixed(2) : 0 };
-    }
-    const met = closedMetrics(pts);
-    return { area_sf: +(met.area * u * u).toFixed(2), perimeter_lf: +(met.perim * u).toFixed(2) };
+    return computeShapeMetrics(s, panelByKey(s.sheet_id).img, uppOverride ?? (uppFor(s.sheet_id) || 0), condById[s.condition_id]);
   }
   function moveCrosshair(e) {
     if (editingRef.current) return;   // inline editor open — no aim crosshair (ref check, never per-mousemove state)
@@ -2651,6 +2639,59 @@ export default function TakeoffCanvas() {
 
   // A shape belongs to the panel of its FIRST point — verts normalize against
   // that panel's dims, quantities use that sheet's scale.
+  // #137 — try to resolve a freshly-drawn deduct into a REAL hole in a parent
+  // floor_area shape (turf boolean subtract, lib/cutout.js) instead of it
+  // landing as a second independent overlay. Returns null (caller keeps the
+  // legacy path) whenever the resolution is anything but unambiguous:
+  //   - zero or 2+ floor_area shapes on this sheet touch the deduct's ring
+  //     (ambiguous parent, or it spans more than one condition's shape);
+  //   - the boolean op itself degenerates (deduct erases the parent, or
+  //     splits it into disjoint pieces — subtractCutout refuses both).
+  // A parent that already carries reconciled cutout(s) is a normal target:
+  // the new ring subtracts against (outer + existing holes), so N deducts
+  // compose into N holes and overlap between cuts never double-deducts.
+  function resolveCutout(tp, deductPointsPx, deductShape) {
+    // deductPointsPx is ABSOLUTE stage space (commitPoly's `points`, xOffset
+    // baked in — same convention as verts_norm's own encode below); candidate
+    // rings must land in that SAME frame or containment/overlap comes out
+    // wrong the moment more than one sheet is open side by side (group view).
+    const candidates = shapes
+      .filter((s) => s.sheet_id === tp.key && s.measure_role === "floor_area")
+      .map((s) => ({ id: s.id, ringPx: s.verts_norm.map(([x, y]) => [x * tp.img.w + tp.xOffset, y * tp.img.h]) }));
+    if (!candidates.length) return null;
+    const parentId = findCutoutParent(candidates, deductPointsPx);
+    if (!parentId) return null;
+    const parent = shapes.find((s) => s.id === parentId);
+    const parentRingPx = candidates.find((c) => c.id === parentId).ringPx;
+    const parentHolesPx = (parent.verts_norm_holes || []).map((ring) => ring.map(([nx, ny]) => [nx * tp.img.w + tp.xOffset, ny * tp.img.h]));
+    const result = subtractCutout(parentRingPx, parentHolesPx, deductPointsPx);
+    if (!result) return null;
+    const norm = (ring) => ring.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]);
+    const upp = uppFor(tp.key);
+    const parentNext = {
+      verts_norm: norm(result.outer),
+      verts_norm_holes: result.holes.map(norm),
+      computed: { area_sf: +(result.area * upp * upp).toFixed(2), perimeter_lf: +(result.perim * upp).toFixed(2) },
+    };
+    // Frozen pre-cut snapshot of the PARENT, durable on the deduct's own
+    // origin (not just the ephemeral undo stack) — deleteSelected reads this
+    // to revert the parent's geometry when this specific cutout is deleted
+    // later, possibly in a different session after the undo stack is long gone.
+    const parentPrev = {
+      verts_norm: parent.verts_norm.map((v) => [...v]),
+      ...("verts_norm_holes" in parent ? { verts_norm_holes: parent.verts_norm_holes.map((r) => r.map((v) => [...v])) } : {}),
+      ...("computed" in parent ? { computed: parent.computed } : {}),
+    };
+    return {
+      parentId,
+      parentNext,
+      deductShape: {
+        ...deductShape,
+        cuts_shape_id: parentId,
+        origin: { method: "cutout_v1", cuts_shape_id: parentId, parent_prev: parentPrev },
+      },
+    };
+  }
   function commitPoly(points, asDeduct) {
     if (points.length < 3) return;
     const tp = panelAt(points[0][0]);
@@ -2659,14 +2700,26 @@ export default function TakeoffCanvas() {
     if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
     const met = closedMetrics(points);
     // id + created_at are minted by the add command — the ONE creation gate
-    const res = dispatchShape({ type: "add", shapes: [{
+    const shape = {
       sheet_id: tp.key, condition_id: activeCond,
       measure_role: asDeduct ? "deduct" : "floor_area",
       verts_norm: points.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]),
       computed: { area_sf: +(met.area * upp * upp).toFixed(2), perimeter_lf: +(met.perim * upp).toFixed(2) },
       ...(activeLabel ? { label: activeLabel } : {}),
       origin: { method: "manual" },
-    }] });
+    };
+    // #137 — a deduct tries the real-hole path first; anything ambiguous
+    // (see resolveCutout) falls straight back to the independent-overlay
+    // commit below, unchanged.
+    if (asDeduct) {
+      const cut = resolveCutout(tp, points, shape);
+      if (cut) {
+        const res = dispatchShape({ type: "cutout", shape: cut.deductShape, parentId: cut.parentId, parentNext: cut.parentNext });
+        maybeOfferRule(res.shapes[res.shapes.length - 1], res.shapes);
+        return;
+      }
+    }
+    const res = dispatchShape({ type: "add", shapes: [shape] });
     // A Cut Out fully inside a same-condition room reads as a correction —
     // offer to make it a rule (#88). Detection only; nothing applies here.
     if (asDeduct) maybeOfferRule(res.shapes[res.shapes.length - 1], res.shapes);
@@ -3584,7 +3637,55 @@ export default function TakeoffCanvas() {
     }
     if (tool === "surface") commitSurface(poly); else if (tool === "linear") commitLinear(poly); else if (tool === "curve") commitLinear(poly, true); else commitPoly(poly, tool === "deduct"); setPoly([]);
   }
-  function deleteSelected() { if (selectedId) { dispatchShape({ type: "delete", ids: [selectedId] }); setSelectedId(null); } }
+  // #137 — the parent state deleting a reconciled deduct should restore. The
+  // deduct's own frozen origin.parent_prev is only correct when it is the
+  // parent's SOLE cut: with several reconciled cutouts on one parent, that
+  // snapshot predates the OTHER cuts, so restoring it would wipe their holes
+  // while their deduct shapes live on. Instead: take the chain's EARLIEST
+  // snapshot (the most pristine geometry on record) and re-subtract every
+  // surviving deduct's ring in commit order (lib/cutout.recomposeCutouts).
+  // Null when the rebuild can't be trusted (panel not mounted, scale unset,
+  // or a re-subtract degenerates) — the caller then falls back to a plain
+  // delete that leaves the cut baked in, never reverts over survivors.
+  function cutoutParentPrevSans(doomed) {
+    const chain = shapes.filter((s) => s.cuts_shape_id === doomed.cuts_shape_id && s.origin?.parent_prev);
+    const rest = chain.filter((s) => s.id !== doomed.id);
+    if (!rest.length) return doomed.origin.parent_prev;
+    const parent = shapes.find((s) => s.id === doomed.cuts_shape_id);
+    const tp = panelByKey(parent.sheet_id);
+    const upp = uppFor(parent.sheet_id);
+    if (!tp?.img?.w || !upp) return null;
+    const px = (ring) => ring.map(([nx, ny]) => [nx * tp.img.w, ny * tp.img.h]);
+    const base = chain[0].origin.parent_prev;
+    const r = recomposeCutouts(px(base.verts_norm), (base.verts_norm_holes || []).map(px), rest.map((s) => px(s.verts_norm)));
+    if (!r) return null;
+    const norm = (ring) => ring.map(([x, y]) => [x / tp.img.w, y / tp.img.h]);
+    return {
+      verts_norm: norm(r.outer),
+      ...(r.holes.length ? { verts_norm_holes: r.holes.map(norm) } : {}),
+      computed: { area_sf: +(r.area * upp * upp).toFixed(2), perimeter_lf: +(r.perim * upp).toFixed(2) },
+    };
+  }
+  // #137 — deleting a reconciled deduct reverts its cut out of the parent
+  // too: the sole cut restores the frozen origin.parent_prev snapshot
+  // (durable — works after a reload, not just within the same undo stack);
+  // one of SEVERAL cuts rebuilds the parent from the chain's earliest
+  // snapshot minus the survivors (cutoutParentPrevSans). A rebuild that
+  // degenerates falls through to the plain delete — the shape goes, its cut
+  // stays baked in.
+  function deleteSelected() {
+    if (!selectedId) return;
+    const only = shapes.find((s) => s.id === selectedId);
+    if (only?.cuts_shape_id && only.origin?.parent_prev && shapes.some((s) => s.id === only.cuts_shape_id)) {
+      const parentPrev = cutoutParentPrevSans(only);
+      if (parentPrev) {
+        dispatchShape({ type: "cutout", restore: true, deductId: only.id, parentId: only.cuts_shape_id, parentPrev });
+        setSelectedId(null);
+        return;
+      }
+    }
+    dispatchShape({ type: "delete", ids: [selectedId] }); setSelectedId(null);
+  }
   function reassignSelected(condId) { if (selectedId) dispatchShape({ type: "reassign", ids: [selectedId], condition_id: condId }); }
   function reassignSelectedLabel(value) { if (selectedId) dispatchShape({ type: "label", ids: [selectedId], value }); }   // Select-tool single-shape re-label (#111) — value "" / null clears it; label commands never stamp
 
@@ -4559,6 +4660,54 @@ export default function TakeoffCanvas() {
   // memoized panel, so its identity must only change when the totals can.
   const visRows = useMemo(() => conditionTotals(conditions, visibleShapes), [conditions, visibleShapes]);
   const visRowById = useMemo(() => new Map(visRows.map((r) => [r.id, r])), [visRows]);
+  // Whole-project per-condition totals — the number the bid is built on. The
+  // panel's rows lead with the visible-sheet slice (what you're looking at);
+  // this map feeds the dim Σ suffix whenever the project holds MORE than the
+  // open sheets show, so a condition whose takeoffs live on closed sheets
+  // reads "Σ 412 SF" instead of a dead "—" (the whole-project number used to
+  // exist only in the Report/exports). Same conditionTotals rules, no filter.
+  const projRows = useMemo(() => conditionTotals(conditions, shapes), [conditions, shapes]);
+  const projRowById = useMemo(() => new Map(projRows.map((r) => [r.id, r])), [projRows]);
+  // ── load-time quantity heal (#137) ─────────────────────────────────────────
+  // A shape can ARRIVE without the numbers its role requires (an import that
+  // carried geometry only). Such a shape draws fine but reads as 0 SF in
+  // every summer and silently zeroes its condition's totals. Heal once per
+  // load: recompute from the SAME deterministic dims the render pipeline uses
+  // (pdf.js viewport at RENDER_SCALE — page metadata only, no raster, so
+  // shapes on CLOSED sheets heal too), and only where the sheet's scale is
+  // known — no scale, no honest number; those stay unpriced rather than
+  // guessed. Commits like the rescale repair (replace + reset — not an edit,
+  // no undo entry); the next autosave banks it. The seq guard kills an
+  // in-flight heal the moment shapes/scales change — the rerun starts over
+  // against the fresh state (docFor caches, so the redo is cheap), and once
+  // nothing needsMetrics this is a pure no-op.
+  const healSeqRef = useRef(0);
+  useEffect(() => {
+    if (status !== "ready") return;
+    const missing = shapes.filter((s) => needsMetrics(s) && uppFor(s.sheet_id));
+    if (!missing.length) return;
+    const seq = ++healSeqRef.current;
+    (async () => {
+      const dimsBy = new Map();
+      for (const key of new Set(missing.map((s) => s.sheet_id))) {
+        try {
+          const { file, page: pn } = parseSheetKey(key);
+          const pdf = await docFor(file);
+          const pageObj = await pdf.getPage(Math.min(Math.max(1, pn), pdf.numPages || 1));
+          const vp = pageObj.getViewport({ scale: RENDER_SCALE });
+          dimsBy.set(key, { w: Math.ceil(vp.width), h: Math.ceil(vp.height) });
+        } catch { /* orphaned sheet (source gone) — its shapes stay unpriced */ }
+      }
+      if (seq !== healSeqRef.current) return;   // stale — a newer load/edit owns the heal now
+      const healed = new Map(missing
+        .filter((s) => dimsBy.has(s.sheet_id))
+        .map((s) => [s.id, computeShapeMetrics(s, dimsBy.get(s.sheet_id), uppFor(s.sheet_id) || 0, condById[s.condition_id])]));
+      if (!healed.size) return;
+      dispatchShape({ type: "replace", shapes: shapes.map((s) => (healed.has(s.id) ? { ...s, computed: healed.get(s.id) } : s)) }, { reset: true });
+      setCommitMsg(`Repriced ${healed.size} takeoff${healed.size === 1 ? "" : "s"} that loaded without quantities.`);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reruns on load/shape/scale change; docFor/uppFor/condById read from the same render
+  }, [status, shapes, scales, conditions]);
   // Zone check: the SAME conditionTotals rules on the shapes whose center point
   // sits inside the traced zone (lib/zone.js) — third scope of the one role math.
   const zoneShapes = useMemo(() => (zoneCheck ? shapesInZone(shapes, zoneCheck) : null), [shapes, zoneCheck]);
@@ -5681,6 +5830,23 @@ export default function TakeoffCanvas() {
                         return <polyline key={s.id} points={lpts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? "#1f3fc7" : col} strokeOpacity={pending ? 0.85 : undefined} strokeWidth={(sel ? 4 : 3) / z} strokeDasharray={pending ? pDash : dashArrayFor(cond?.line_style || "solid", z)} strokeLinecap="round" strokeLinejoin="round" />;
                       }
                       const ded = s.measure_role === "deduct";
+                      // #137 — a RECONCILED deduct (cuts_shape_id) renders as a
+                      // dashed outline only: its geometry is already excised
+                      // from its parent's fill below (fill-rule evenodd), so a
+                      // solid overlay here would reintroduce the exact
+                      // "decal on top" bug the real subtract fixes.
+                      if (ded && s.cuts_shape_id) {
+                        return <polygon key={s.id} points={pts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? "#1f3fc7" : "#b03a26"} strokeWidth={(sel ? 3 : 1.5) / z} strokeDasharray={`${5 / z} ${3 / z}`} />;
+                      }
+                      // #137 — a parent carrying real hole ring(s): ONE compound
+                      // path, outer ring + every hole ring, fill-rule evenodd so
+                      // the hole is an actual excision from the fill rather than
+                      // a shape sitting on top of it.
+                      if (!ded && s.verts_norm_holes?.length) {
+                        const ringD = (ring) => `M${dn(ring).map((q) => q.join(",")).join("L")}Z`;
+                        const d = ringD(s.verts_norm) + s.verts_norm_holes.map(ringD).join("");
+                        return <path key={s.id} d={d} fillRule="evenodd" fill={pending ? col + "14" : shapeFill(cond)} stroke={sel ? "#1f3fc7" : col} strokeOpacity={pending ? 0.9 : undefined} strokeWidth={sw} strokeDasharray={pending ? pDash : dashArrayFor(cond?.line_style || "solid", z)} />;
+                      }
                       // deduct keeps its danger-red dashing (a safety signal, wins over line_style); positive floor_area follows the condition's line_style
                       return <polygon key={s.id} points={pts.map((q) => q.join(",")).join(" ")}
                         fill={ded ? (pending ? "rgba(176,58,38,.10)" : "rgba(176,58,38,.28)") : pending ? col + "14" : shapeFill(cond)}
@@ -6356,7 +6522,7 @@ export default function TakeoffCanvas() {
           units={units}
           conditions={conditions}
           activeCond={activeCond}
-          visRowById={visRowById}
+          visRowById={visRowById} projRowById={projRowById}
           conditionColumns={conditionColumns}
           shapeLabels={shapeLabels}
           templates={templates}

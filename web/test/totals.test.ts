@@ -283,3 +283,17 @@ test("reportJson: a condition-linked markup resolves to its finish_tag; a dangli
   assert.equal(j.markups[2].condition_id, "gone");
   assert.equal(j.markups[2].condition, "");
 });
+
+// #137 — a RECONCILED deduct (cuts_shape_id set) was boolean-subtracted into
+// its parent at commit time: the parent's own area_sf already nets the hole
+// out, so the summer must NOT subtract the deduct's area again. A legacy
+// independent deduct (no cuts_shape_id) still subtracts.
+test("conditionTotals: reconciled deduct never double-subtracts; legacy deduct still does", () => {
+  const conds = [{ id: "c1", finish_tag: "CPT-1" }];
+  const rows = conditionTotals(conds as any, [
+    { id: "p", condition_id: "c1", measure_role: "floor_area", verts_norm: [], computed: { area_sf: 90 } },   // 100 gross − 10 hole, already netted
+    { id: "d1", condition_id: "c1", measure_role: "deduct", cuts_shape_id: "p", verts_norm: [], computed: { area_sf: 10 } },
+    { id: "d2", condition_id: "c1", measure_role: "deduct", verts_norm: [], computed: { area_sf: 5 } },
+  ] as any);
+  assert.equal(rows[0].floor_sf, 85, "90 − 5 (legacy only); a double-deduct would read 75");
+});

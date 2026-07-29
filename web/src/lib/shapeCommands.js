@@ -55,6 +55,14 @@
 //             an edit; post-accept edits grade through geom/stampEdit as
 //             usual). Shapes not pending are untouched. `restore` puts the
 //             prior origin back verbatim — undo of an accept is un-accepting.
+//   cutout    #137 — mints the deduct shape (add semantics: id + created_at)
+//             AND patches its PARENT's verts_norm/verts_norm_holes/computed
+//             together as ONE undo entry (a real polygon boolean subtract,
+//             not a second independent overlay). The parent patch stamps
+//             NOTHING — the reconciliation is derived from the deduct
+//             gesture, not a parent edit — and nothing counts. `restore`
+//             (undo of a draw, or an explicit delete of the reconciled
+//             deduct) unmints the deduct and puts the parent back verbatim.
 // ─────────────────────────────────────────────────────────────────────────────
 import { mintUuid, nowIso, stampEdit } from "./provenance.js";
 import { assignShapeLabel } from "./shapeLabels.js";
@@ -68,6 +76,7 @@ export const PROVENANCE_POLICY = {
   replace: "no stamp, no counted, no undo entry (whole-array non-edit)",
   review: "origin.reviewed → true + accepted_ts per still-pending shape; restore puts the prior origin back verbatim",
   ruleApply: "add semantics (created_at + id mint per shape, ONE undo entry per batch); caller-built rule_v1 origin carries rule_id + seed_shape_id",
+  cutout: "#137 — mints the deduct (id + created_at) AND patches its parent's verts_norm/verts_norm_holes/computed as ONE undo entry; parent patch stamps nothing, nothing counts; restore unmints the deduct and reverts the parent verbatim",
 };
 
 // Undo depth — one bounded gesture history, not an archive (revisions are).
@@ -114,6 +123,22 @@ const withGeomFields = (s, snap) => {
   if ("computed" in snap) out.computed = snap.computed; else delete out.computed;
   if ("updated_at" in snap) out.updated_at = snap.updated_at; else delete out.updated_at;
   if ("origin" in snap) out.origin = snap.origin; else delete out.origin;
+  return out;
+};
+
+// #137 — the PARENT-shape half of a cutout: verts_norm always set (the outer
+// ring), verts_norm_holes and computed presence-aware — a parent that has
+// never carried a hole must come back from undo with no verts_norm_holes key
+// at all, matching every other presence-aware snapshot in this file.
+const cutoutSnapshot = (s) => ({
+  verts_norm: s.verts_norm.map((v) => [...v]),
+  ...("verts_norm_holes" in s ? { verts_norm_holes: s.verts_norm_holes.map((r) => r.map((v) => [...v])) } : {}),
+  ...("computed" in s ? { computed: s.computed } : {}),
+});
+const withCutout = (s, patch) => {
+  const out = { ...s, verts_norm: patch.verts_norm };
+  if ("verts_norm_holes" in patch) out.verts_norm_holes = patch.verts_norm_holes; else delete out.verts_norm_holes;
+  if ("computed" in patch) out.computed = patch.computed; else delete out.computed;
   return out;
 };
 
@@ -263,6 +288,35 @@ export function applyShapeCommand(shapes, cmd) {
       // canvas clears both stacks alongside (a restored timeline starts fresh,
       // and a rescale invalidates every recorded `computed`).
       return { shapes: Array.isArray(cmd.shapes) ? cmd.shapes : [], inverse: null };
+    case "cutout": {
+      // restore (undo of a draw, or an explicit delete of the reconciled
+      // deduct — see TakeoffCanvas.deleteSelected): drop the deduct shape,
+      // put the parent back exactly as the caller says (the pre-cut snapshot,
+      // or a multi-cut rebuild — see cutout.recomposeCutouts).
+      if (cmd.restore) {
+        const removed = shapes.find((s) => s.id === cmd.deductId);
+        if (!removed) return { shapes, inverse: null };
+        let redoParentNext = null;
+        const next = shapes.filter((s) => s.id !== cmd.deductId).map((s) => {
+          if (s.id !== cmd.parentId) return s;
+          redoParentNext = cutoutSnapshot(s);
+          return withCutout(s, cmd.parentPrev);
+        });
+        if (!redoParentNext) return { shapes, inverse: null };   // parent vanished — refuse rather than orphan the patch
+        return { shapes: next, inverse: { type: "cutout", shape: removed, parentId: cmd.parentId, parentNext: redoParentNext } };
+      }
+      // forward: mint the deduct shape (add semantics), patch the parent in place.
+      const minted = cmd.shape.id ? cmd.shape : { id: `shp-${mintUuid()}`, created_at: nowIso(), ...cmd.shape };
+      let parentPrev = null;
+      const next = shapes.map((s) => {
+        if (s.id !== cmd.parentId) return s;
+        parentPrev = cutoutSnapshot(s);
+        return withCutout(s, cmd.parentNext);
+      });
+      if (!parentPrev) return { shapes, inverse: null };   // parent vanished mid-gesture — refuse rather than mint an orphaned deduct
+      next.push(minted);
+      return { shapes: next, inverse: { type: "cutout", restore: true, deductId: minted.id, parentId: cmd.parentId, parentPrev } };
+    }
     case "review": {
       if (cmd.restore) {
         // restore rows put the recorded origin back verbatim; the inverse is

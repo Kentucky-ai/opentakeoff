@@ -57,11 +57,69 @@ function roundTrip(shapes: any[], cmd: any) {
 // ── policy completeness ──────────────────────────────────────────────────────
 
 test("every applied command type has a PROVENANCE_POLICY row; unknown types throw", () => {
-  for (const t of ["add", "geom", "reassign", "label", "delete", "replace"]) {
+  for (const t of ["add", "geom", "reassign", "label", "delete", "replace", "cutout"]) {
     assert.ok(t in PROVENANCE_POLICY, `policy row missing for ${t}`);
   }
   assert.throws(() => applyShapeCommand([], { type: "resize" } as any), /PROVENANCE_POLICY/);
   assert.throws(() => applyShapeCommand([], null as any), /PROVENANCE_POLICY/);
+});
+
+// ── cutout (#137 — mint the deduct + patch its parent as ONE command) ────────
+
+test("cutout: mints the deduct, patches the parent, ONE symmetric undo entry", () => {
+  const parent = {
+    id: "shp-parent", created_at: "2026-01-01T00:00:00Z", sheet_id: "a.pdf#1",
+    condition_id: "cnd-1", measure_role: "floor_area",
+    verts_norm: [[0, 0], [1, 0], [1, 1], [0, 1]] as number[][],
+    computed: { area_sf: 100, perimeter_lf: 40 },
+    origin: { method: "manual" },
+  };
+  const before = [clone(parent)];
+  const cmd = {
+    type: "cutout",
+    parentId: "shp-parent",
+    parentNext: {
+      verts_norm: [[0, 0], [1, 0], [1, 1], [0, 1]],
+      verts_norm_holes: [[[0.4, 0.4], [0.6, 0.4], [0.6, 0.6], [0.4, 0.6]]],
+      computed: { area_sf: 96, perimeter_lf: 48 },
+    },
+    shape: {
+      sheet_id: "a.pdf#1", condition_id: "cnd-1", measure_role: "deduct",
+      verts_norm: [[0.4, 0.4], [0.6, 0.4], [0.6, 0.6], [0.4, 0.6]],
+      computed: { area_sf: 4, perimeter_lf: 8 },
+      cuts_shape_id: "shp-parent",
+      origin: { method: "cutout_v1", cuts_shape_id: "shp-parent", parent_prev: { verts_norm: parent.verts_norm, computed: parent.computed } },
+    },
+  };
+  const res = applyShapeCommand(before, cmd as any);
+  assert.equal(res.shapes.length, 2, "ONE new shape lands — no orphan second overlay");
+  const patched = res.shapes.find((s: any) => s.id === "shp-parent");
+  assert.equal(patched.verts_norm_holes.length, 1, "parent gained the real hole ring");
+  assert.equal(patched.computed.area_sf, 96, "parent's own computed nets the hole out");
+  const minted = res.shapes.find((s: any) => s.measure_role === "deduct");
+  assert.ok(minted.id.startsWith("shp-") && minted.created_at, "deduct minted with id + created_at");
+  assert.equal(minted.cuts_shape_id, "shp-parent", "linked back to its parent");
+  assert.equal(res.counted, undefined, "nothing counts");
+  // undo: drop the deduct, parent back verbatim — hole KEY absent, not []
+  const undone = applyShapeCommand(res.shapes, res.inverse);
+  assert.equal(undone.shapes.length, 1);
+  assert.ok(!("verts_norm_holes" in undone.shapes[0]), "undo restores holeless = key absent");
+  assert.deepEqual(undone.shapes, before, "undo restores deep-equal");
+  // redo-of-undo re-applies verbatim (same deduct id, same parent patch)
+  const redone = applyShapeCommand(undone.shapes, undone.inverse);
+  assert.deepEqual(redone.shapes, res.shapes, "redo restores the cut state verbatim");
+});
+
+test("cutout: parent missing → refuses (inverse null, nothing minted); restore of a gone deduct refuses too", () => {
+  const res = applyShapeCommand([], {
+    type: "cutout", parentId: "shp-gone",
+    parentNext: { verts_norm: [[0, 0], [1, 0], [1, 1]], computed: { area_sf: 1, perimeter_lf: 4 } },
+    shape: { sheet_id: "a.pdf#1", condition_id: "c", measure_role: "deduct", verts_norm: [[0, 0], [1, 0], [1, 1]] },
+  } as any);
+  assert.equal(res.shapes.length, 0, "nothing minted");
+  assert.equal(res.inverse, null);
+  const res2 = applyShapeCommand([], { type: "cutout", restore: true, deductId: "shp-gone", parentId: "p", parentPrev: { verts_norm: [] } } as any);
+  assert.equal(res2.inverse, null);
 });
 
 // ── add ──────────────────────────────────────────────────────────────────────

@@ -177,6 +177,23 @@ export function closedMetrics(pts) {
   return { area: Math.abs(area) / 2, perim };
 }
 export function openLen(pts) { let L = 0; for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); return L; }
+// #137 — a polygon that carries real holes (verts_norm_holes: a Cut Out that
+// was reconciled into the parent's own geometry via a real boolean subtract,
+// see lib/cutout.js): outer ring's area LESS every hole's, perimeter PLUS
+// every hole's boundary — a hole is a real wall, it gets walked same as the
+// outer ring, not zeroed out. Same pixel-space-in/pixel-space-out convention
+// as closedMetrics (caller scales by upp/upp²). Floors at 0 so a degenerate
+// hole set (shouldn't happen off a real turf.difference result, but a stale
+// hand-edited project file could carry one) can't hand back negative SF.
+export function polyWithHolesMetrics(outerPts, holesPts = []) {
+  const outer = closedMetrics(outerPts);
+  let area = outer.area, perim = outer.perim;
+  for (const h of holesPts) {
+    const hm = closedMetrics(h);
+    area -= hm.area; perim += hm.perim;
+  }
+  return { area: Math.max(0, area), perim };
+}
 export function pointInPoly(x, y, pts) {
   let inside = false;
   for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
@@ -192,12 +209,22 @@ export function distToSeg(px, py, ax, ay, bx, by) {
 }
 
 // does (x,y) image-px hit this shape (within thr px)?
+// #137 — hole-aware: a shape carrying verts_norm_holes (a real Cut Out) does
+// NOT hit-test true for a point strictly inside one of its holes — clicking
+// into the cut should reach whatever's underneath (or nothing), not the
+// condition it was cut out of. The hole's own boundary still counts as an
+// edge hit, exactly like the outer ring's. No-op (byte-identical to before)
+// when the shape carries no holes.
 export function hitShape(shape, x, y, w, h, thr) {
   const pts = shape.verts_norm.map(([nx, ny]) => [nx * w, ny * h]);
   if (shape.measure_role === "count") return Math.hypot(pts[0][0] - x, pts[0][1] - y) < thr * 2;
   if (shape.measure_role === "linear" || shape.measure_role === "surface_area") { for (let i = 1; i < pts.length; i++) if (distToSeg(x, y, pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]) < thr) return true; return false; }
-  if (pointInPoly(x, y, pts)) return true;
+  const holes = (shape.verts_norm_holes || []).map((ring) => ring.map(([nx, ny]) => [nx * w, ny * h]));
+  if (pointInPoly(x, y, pts) && !holes.some((hpts) => pointInPoly(x, y, hpts))) return true;
   for (let i = 0; i < pts.length; i++) { const j = (i + 1) % pts.length; if (distToSeg(x, y, pts[i][0], pts[i][1], pts[j][0], pts[j][1]) < thr) return true; }
+  for (const hpts of holes) {
+    for (let i = 0; i < hpts.length; i++) { const j = (i + 1) % hpts.length; if (distToSeg(x, y, hpts[i][0], hpts[i][1], hpts[j][0], hpts[j][1]) < thr) return true; }
+  }
   return false;
 }
 
