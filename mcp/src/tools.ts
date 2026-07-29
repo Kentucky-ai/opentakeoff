@@ -12,7 +12,7 @@ import {
   measurePolygonOutput, measureLineOutput, takeoffSummaryOutput,
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
   editShapeOutput, undoLastOutput, sheetContextOutput,
-  findTextOutput, editMaterialsOutput,
+  findTextOutput, editMaterialsOutput, editConditionOutput,
   annotateOutput, listAnnotationsOutput, linkAnnotationOutput,
 } from "./outputs.ts";
 
@@ -189,8 +189,18 @@ export function registerTools(server: McpServer, session: Session): void {
     outputSchema: editMaterialsOutput,
   }, run("edit_materials", (a) => session.editMaterials(a.condition, { add: a.add, remove: a.remove, patch: a.patch })));
 
+  server.registerTool("edit_condition", {
+    description: `Set a condition's quantity knobs — waste % and/or multiplier. takeoff_summary emits waste-adjusted *_net order quantities and a per-condition multiplier, and every export carries both, but conditions minted through the measure tools start at waste 0 / multiplier 1 — without this tool an agent's takeoff always ships net === gross (#131). waste_pct is the estimator's cut-waste percentage (carpet commonly 5–10); multiplier scales every quantity on the condition (×N identical floors — takeoff_summary applies it before waste). condition must resolve to an EXISTING finish tag — a typo'd tag errors rather than minting an empty condition (the edit_materials remove/patch rule, not its add rule: these knobs mean nothing on a condition that doesn't exist yet). No review gate — quantity config, not traced geometry; undo_last reverses a call in one step (both knobs snapshotted together, restored verbatim).`,
+    inputSchema: {
+      condition: z.string().describe("Finish tag of an existing condition, e.g. 'CPT-1'"),
+      waste_pct: z.number().min(0).optional().describe("Waste percentage applied to net order quantities, e.g. 10 for 10%"),
+      multiplier: z.number().positive().optional().describe("Quantity multiplier (×N identical areas). Note: the canvas treats 0 as 1, so 0 is rejected here rather than silently meaning 'off'"),
+    },
+    outputSchema: editConditionOutput,
+  }, run("edit_condition", (a) => session.editCondition(a.condition, { waste_pct: a.waste_pct, multiplier: a.multiplier })));
+
   server.registerTool("undo_last", {
-    description: `Step back over your OWN last n mutations, newest first — a committed one_click, a whole detect_rooms sweep, an edit_shape, a delete_shape, or an edit_materials call. Each step is reversed exactly (a commit is removed, an edit is restored verbatim, a delete is re-inserted where it was, a materials edit's whole array is restored), so this restores state rather than approximating it. Reads are never journaled, so n counts gestures that changed something, not tool calls you made. Use it when a sweep committed against the wrong condition or a batch went in on the wrong sheet — one call instead of N deletes. Scope: this session's own history only. It is not the browser canvas's undo stack, and load_plan clears it along with the shapes it refers to.`,
+    description: `Step back over your OWN last n mutations, newest first — a committed one_click, a whole detect_rooms sweep, an edit_shape, a delete_shape, an edit_materials call, or an edit_condition call. Each step is reversed exactly (a commit is removed, an edit is restored verbatim, a delete is re-inserted where it was, a materials edit's whole array is restored, a condition edit's waste/multiplier pair is restored), so this restores state rather than approximating it. Reads are never journaled, so n counts gestures that changed something, not tool calls you made. Use it when a sweep committed against the wrong condition or a batch went in on the wrong sheet — one call instead of N deletes. Scope: this session's own history only. It is not the browser canvas's undo stack, and load_plan clears it along with the shapes it refers to.`,
     inputSchema: {
       n: z.number().int().min(1).max(UNDO_CAP).default(1).describe(`How many steps to reverse (1–${UNDO_CAP})`),
     },

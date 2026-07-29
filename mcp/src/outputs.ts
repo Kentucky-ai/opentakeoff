@@ -202,9 +202,9 @@ export const undoLastOutput = {
   undone: z.number().int().describe("Steps actually reversed"),
   steps: z.array(z.object({
     seq: z.number().int(),
-    op: z.enum(["commit", "edit", "delete", "materials"]),
+    op: z.enum(["commit", "edit", "delete", "materials", "condition"]),
     tool: z.string().describe("The tool call this step came from"),
-    shapes: z.number().int().describe("Shapes affected by reversing this step — 0 for a materials step (it restores a condition's supporting-materials rows, not shapes)"),
+    shapes: z.number().int().describe("Shapes affected by reversing this step — 0 for a materials step (it restores a condition's supporting-materials rows, not shapes) and for a condition step (it restores the waste/multiplier pair)"),
   })).describe("Newest first"),
   shape_count: z.number().int().describe("Committed shapes after the undo"),
   remaining: z.number().int().describe("Steps still available to undo"),
@@ -245,6 +245,13 @@ export const editMaterialsOutput = {
     patched: z.array(z.string()).describe("Ids whose fields changed"),
   }),
   materials: z.array(materialRow).describe("The condition's full materials array after this write"),
+};
+
+export const editConditionOutput = {
+  condition: z.string().describe("The finish tag passed in"),
+  condition_id: z.string(),
+  waste_pct: z.number().describe("The condition's waste % after this write"),
+  multiplier: z.number().describe("The condition's quantity multiplier after this write"),
 };
 
 export const readSheetTextOutput = {

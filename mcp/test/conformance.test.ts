@@ -22,7 +22,7 @@ import {
   loadPlanOutput, sheetInfoOutput, setScaleOutput, oneClickOutput, detectRoomsOutput,
   measurePolygonOutput, measureLineOutput, takeoffSummaryOutput,
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
-  findTextOutput, editMaterialsOutput,
+  findTextOutput, editMaterialsOutput, editConditionOutput, undoLastOutput,
 } from "../src/outputs.ts";
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
@@ -44,6 +44,8 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   read_sheet_text: z.object(readSheetTextOutput),
   find_text: z.object(findTextOutput),
   edit_materials: z.object(editMaterialsOutput),
+  edit_condition: z.object(editConditionOutput),
+  undo_last: z.object(undoLastOutput),
 };
 
 async function pair() {
@@ -191,6 +193,23 @@ test("every tool: canonical valid call → schema-valid structuredContent mirror
     patch: [{ id: materials.materials[0].id, fields: { per: 300 } }] });
   assert.equal(matched.materials[0].per, 300);
 
+  // edit_condition: the waste/multiplier knobs actually move takeoff_summary's
+  // nets (#131 — before this tool, an agent takeoff always shipped net === gross)
+  const preRow = (await callOk(client, "takeoff_summary")).conditions.find((r: any) => r.finish_tag === "CPT-1");
+  assert.deepEqual({ w: preRow.waste_pct, m: preRow.multiplier }, { w: 0, m: 1 }, "minted conditions start net === gross");
+  const knobs = await callOk(client, "edit_condition", { condition: "CPT-1", waste_pct: 10, multiplier: 2 });
+  assert.deepEqual({ w: knobs.waste_pct, m: knobs.multiplier }, { w: 10, m: 2 });
+  const postRow = (await callOk(client, "takeoff_summary")).conditions.find((r: any) => r.finish_tag === "CPT-1");
+  assert.ok(Math.abs(postRow.total_sf - preRow.total_sf * 2) < 0.05, "multiplier scales gross");
+  assert.ok(Math.abs(postRow.total_sf_net - postRow.total_sf * 1.1) < 0.05, "waste lifts net over gross");
+  assert.match(await callErr(client, "edit_condition", { condition: "NOPE-9", waste_pct: 5 }),
+    /No condition "NOPE-9"\. Known tags: /);        // resolve-or-error — a typo must not mint
+  assert.match(await callErr(client, "edit_condition", { condition: "CPT-1" }), /Nothing to change/);
+  const undone = await callOk(client, "undo_last", { n: 1 });
+  assert.equal(undone.steps[0].op, "condition");
+  const revRow = (await callOk(client, "takeoff_summary")).conditions.find((r: any) => r.finish_tag === "CPT-1");
+  assert.deepEqual({ w: revRow.waste_pct, m: revRow.multiplier }, { w: 0, m: 1 }, "undo restores both knobs verbatim");
+
   const del = await callOk(client, "delete_shape", { shape_id: clicked.shape_id });
   assert.deepEqual(del, { deleted: clicked.shape_id, shape_count: 2 });
 
@@ -305,6 +324,9 @@ test("schema-invalid arguments: -32602 validation error naming the tool; the ses
   await callViolation(client, "find_text", { sheet: KEY });                                // missing q
   await callViolation(client, "find_text", { sheet: KEY, q: "101", limit: 0 });            // limit below min 1
   await callViolation(client, "edit_materials", { condition: "CPT-1", add: [{ per: 250 }] }); // add row missing name
+  await callViolation(client, "edit_condition", { condition: "CPT-1", waste_pct: -5 });    // negative waste
+  await callViolation(client, "edit_condition", { condition: "CPT-1", multiplier: 0 });    // 0 silently means 1 on the canvas — rejected
+  await callViolation(client, "edit_condition", { condition: "CPT-1", waste_pct: "ten" }); // wrong type
 
   // none of that touched the session — a real call still works on the same pair
   const r = await callOk(client, "one_click", { sheet: KEY, x: 600, y: 1084 });

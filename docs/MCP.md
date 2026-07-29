@@ -32,11 +32,14 @@ which is the MCP wire. `node --import tsx` is the whole invocation.
 
 ## What the agent gets
 
-Twenty tools, in the order an agent tends to reach for them:
+Twenty-one tools, in the order an agent tends to reach for them:
 
 - **Open and orient** — `load_plan`, `sheet_info`, `set_scale`, `sheet_context`
 - **Measure** — `one_click`, `detect_rooms`, `measure_polygon`, `measure_line`
-- **Revise** — `edit_shape`, `edit_materials`, `delete_shape`, `undo_last`
+- **Revise** — `edit_shape`, `edit_materials`, `edit_condition` (waste % and
+  ×N multiplier — the knobs that turn measured quantities into order
+  quantities; without them a takeoff always ships net === gross), `delete_shape`,
+  `undo_last`
 - **Read the sheet** — `read_sheet_text`, `find_text`, `view_sheet` (render a
   sheet or crop to PNG with an optional calibrated measuring grid and
   committed-shapes overlay — the agent's eyes and its self-check)

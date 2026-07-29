@@ -223,7 +223,8 @@ export type JournalPayload =
   | { op: "commit"; tool: string; ids: string[] }
   | { op: "edit"; tool: string; before: Shape }
   | { op: "delete"; tool: string; removed: { shape: Shape; index: number }[] }
-  | { op: "materials"; tool: string; condition_id: string; before: MaterialRow[] };
+  | { op: "materials"; tool: string; condition_id: string; before: MaterialRow[] }
+  | { op: "condition"; tool: string; condition_id: string; before: { waste_pct: number; multiplier: number } };
 
 export type JournalEntry = JournalPayload & { seq: number };
 
@@ -956,6 +957,31 @@ export class Session {
     };
   }
 
+  /** Set a condition's quantity knobs — waste % and multiplier. Both are
+   * emitted by takeoff_summary (`waste_pct`, the `*_net` order quantities) and
+   * carried by every export, but nothing in the tool surface could set them,
+   * so an agent's takeoff always shipped net === gross (#131). Same class as
+   * editMaterials — quantity config, not traced geometry, so no review gate —
+   * but resolve-or-error rather than mint-on-first-touch: these knobs only
+   * mean anything on a condition that exists, and a typo'd tag must error,
+   * not create an empty condition as a side effect. One journal entry
+   * snapshots both knobs; undo restores them verbatim. */
+  editCondition(tag: string, opts: { waste_pct?: number; multiplier?: number }) {
+    if (opts.waste_pct === undefined && opts.multiplier === undefined) {
+      throw new UserError("Nothing to change — pass at least one of waste_pct, multiplier.");
+    }
+    const c = this.conditions.find((x) => x.finish_tag === tag);
+    if (!c) {
+      const known = this.conditions.map((x) => x.finish_tag);
+      throw new UserError(`No condition ${JSON.stringify(tag)}.${known.length ? ` Known tags: ${known.join(", ")}.` : " Nothing has minted a condition yet — commit a measurement or add materials first."}`);
+    }
+    const before = { waste_pct: c.waste_pct, multiplier: c.multiplier };
+    if (opts.waste_pct !== undefined) c.waste_pct = opts.waste_pct;
+    if (opts.multiplier !== undefined) c.multiplier = opts.multiplier;
+    this.record({ op: "condition", tool: "edit_condition", condition_id: c.id, before });
+    return { condition: tag, condition_id: c.id, waste_pct: c.waste_pct, multiplier: c.multiplier };
+  }
+
   /** Step back over this session's own last n mutations, newest first. Each
    * entry's inverse is exact (see JournalEntry), so this restores state rather
    * than approximating it. Reads are not journaled, so undo never has to step
@@ -981,6 +1007,10 @@ export class Session {
         // this only misses if a fresh session's journal outlived a load_plan —
         // which load_plan already clears the journal for.
         if (c) c.materials = e.before;
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "condition") {
+        const c = this.conditions.find((x) => x.id === e.condition_id);
+        if (c) { c.waste_pct = e.before.waste_pct; c.multiplier = e.before.multiplier; }
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
       } else {
         for (const { shape, index } of e.removed) {
