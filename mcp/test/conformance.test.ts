@@ -227,6 +227,9 @@ test("every tool: canonical valid call → schema-valid structuredContent mirror
   assert.deepEqual(report.materials, [{ name: "Adhesive", unit: "gal", qty: mLine.qty }], "project-wide roll-up sums by (name, unit)");
   assert.ok(["standard", "upp", "calibrated", "detected"].includes(report.sheets[0].scale_source), "scale provenance rides the report");
   assert.ok(report.totals.total_sf_net > report.totals.total_sf, "grand totals carry waste");
+  assert.equal(report.project_name, null, "a headless session has no project of its own — null, never ''");
+  const labeled = await callOk(client, "export_report", { project_name: "Summit Phase 2" });
+  assert.equal(labeled.project_name, "Summit Phase 2", "a consumer can label the document it prices from");
   await callOk(client, "edit_condition", { condition: "CPT-1", waste_pct: 0 });   // leave the session as the later tests expect
 
   const del = await callOk(client, "delete_shape", { shape_id: clicked.shape_id });
