@@ -68,9 +68,16 @@ async function ensureCanvasGlobals(): Promise<void> {
   g.ImageData ??= napi.ImageData;
 }
 
+/** One Optional Content Group as the document declares it — id (pdf.js objId,
+ * what the operator list attributes segments to), the CAD layer name, and the
+ * DEFAULT-config visibility (#85). */
+export interface OcgEntry { id: string; name: string; visible: boolean; }
+
 export interface DocHandle {
   numPages: number;
   page(n: number): Promise<PageHandle>;
+  /** The document's Optional Content Groups (empty = no layers survived export). */
+  layers(): Promise<OcgEntry[]>;
   destroy(): Promise<void>;
 }
 
@@ -137,6 +144,12 @@ export async function openPdf(filePath: string): Promise<DocHandle> {
           }
         },
       };
+    },
+    async layers(): Promise<OcgEntry[]> {
+      const cfg = await doc.getOptionalContentConfig();
+      const groups = cfg ? (cfg.getGroups() as Record<string, { name?: string | null; visible?: boolean }> | null) : null;
+      if (!groups) return [];
+      return Object.entries(groups).map(([id, g]) => ({ id, name: String(g?.name ?? ""), visible: g?.visible !== false }));
     },
     destroy: () => doc.destroy().then(() => undefined),
   };

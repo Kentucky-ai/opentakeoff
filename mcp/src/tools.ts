@@ -22,6 +22,14 @@ const COORDS = "Coordinates are image px at render scale 2.0: PDF pt × 2, origi
 
 const pointSchema = z.tuple([z.number(), z.number()]);
 const roleSchema = z.enum(["floor_area", "deduct"]).default("floor_area");
+// #85 — per-call layer overrides on the flood mask. sheet_info's layer table
+// is the vocabulary; include forces a layer's ink to plot as hard boundary,
+// exclude drops it outright. An unknown name errors with the sheet's actual
+// layer list; on an unlayered sheet the filter errors rather than no-ops.
+const layersFilterSchema = z.object({
+  include: z.array(z.string()).optional().describe("Layer names or ids whose ink must plot as HARD boundary"),
+  exclude: z.array(z.string()).optional().describe("Layer names or ids whose ink must not block the flood at all"),
+}).optional().describe("Override the sheet's classified layer roles for THIS call (see sheet_info.layers)");
 
 const run = (tool: string, fn: (args: any) => unknown | Promise<unknown>) =>
   async (args: any): Promise<ToolReply> => {
@@ -80,9 +88,10 @@ export function registerTools(server: McpServer, session: Session): void {
       role: roleSchema,
       return_verts: z.boolean().default(false).describe("Include the traced polygon's vertices (image px)"),
       sensitivity: z.number().min(0).max(1).optional().describe("Fill sensitivity, the same knob the canvas has: 0 strict (hatch/light linework always blocks), 0.5 balanced (default), 1 aggressive (crosses more hatch, tolerates more growth). Raise it when a flood stops short at hatching INSIDE the room; verify the grown ring with view_sheet overlay before committing"),
+      layers: layersFilterSchema,
     },
     outputSchema: oneClickOutput,
-  }, run("one_click", (a) => session.oneClick(a.sheet, a.x, a.y, { condition: a.condition, role: a.role, returnVerts: a.return_verts, sensitivity: a.sensitivity })));
+  }, run("one_click", (a) => session.oneClick(a.sheet, a.x, a.y, { condition: a.condition, role: a.role, returnVerts: a.return_verts, sensitivity: a.sensitivity, layers: a.layers })));
 
   server.registerTool("detect_rooms", {
     description: `Batch room detection: reads every room-number label off the sheet's text layer (e.g. "134", "OFFICE 101") and runs One-Click at each — one call instead of read_sheet_text + reasoning + N one_click calls. A seed is only reported as a room once it survives three gates, and everything skipped is counted and reasoned in \`withheld\` — never dropped silently, because a room the tool tells you it skipped is a question you can ask, while one it hides is a hole in a bid. The gates: a flood that leaked or landed in dense linework never becomes a region; two labels flooding the SAME region commit once (the extra labels ride on \`merged_labels\` — double-counting an area is the worst failure an estimating tool has); and a flood that is enclosed and clean but smaller than min_area_sf is a room-number bubble, a door swing, or a wall cavity rather than a room. With the sheet's scale set, returns area_sf/perimeter_lf per room; pass condition to commit every detected room under that finish tag (role "deduct" makes them subtract). Without a scale, returns px-only quantities per room and commits nothing — the plausibility floor needs real units, so it only applies once a scale is set. ${COORDS}`,
@@ -93,9 +102,10 @@ export function registerTools(server: McpServer, session: Session): void {
       return_verts: z.boolean().default(false).describe("Include each traced polygon's vertices (image px)"),
       min_area_sf: z.number().positive().default(5).describe("Plausibility floor: enclosed non-bubble regions smaller than this are withheld as cavities, not rooms. Default 5 SF — below any real finished space (a broom closet is ~10 SF). Lower it to inspect what was skipped."),
       sensitivity: z.number().min(0).max(1).optional().describe("Fill sensitivity, the same knob the canvas has: 0 strict (hatch/light linework always blocks), 0.5 balanced (default), 1 aggressive (crosses more hatch, tolerates more growth). Raise it when a flood stops short at hatching INSIDE the room; verify the grown ring with view_sheet overlay before committing"),
+      layers: layersFilterSchema,
     },
     outputSchema: detectRoomsOutput,
-  }, run("detect_rooms", (a) => session.detectRooms(a.sheet, { condition: a.condition, role: a.role, returnVerts: a.return_verts, minAreaSf: a.min_area_sf, sensitivity: a.sensitivity })));
+  }, run("detect_rooms", (a) => session.detectRooms(a.sheet, { condition: a.condition, role: a.role, returnVerts: a.return_verts, minAreaSf: a.min_area_sf, sensitivity: a.sensitivity, layers: a.layers })));
 
   server.registerTool("measure_polygon", {
     description: `Measure a closed polygon you supply (min 3 vertices, image px): area_sf and perimeter_lf at the sheet's scale. Requires the scale to be set. Pass condition to commit it; role "deduct" subtracts. ${COORDS}`,

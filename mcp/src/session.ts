@@ -5,7 +5,8 @@
 // what the canvas commits (web/src/pages/TakeoffCanvas.jsx), so an exported
 // takeoff round-trips into the app.
 import path from "node:path";
-import { openPdf, positionedText, textSpans, OPS, type DocHandle, type PageHandle, type TextSpan } from "./pdf.ts";
+import { openPdf, positionedText, textSpans, OPS, type DocHandle, type PageHandle, type TextSpan, type OcgEntry } from "./pdf.ts";
+import { classifyLayerName, layerRoleCodes, segRoles, type LayerInfo } from "../../web/src/lib/layers.ts";
 import { UserError, round1, round2 } from "./format.ts";
 import { STANDARD_SCALES, RENDER_SCALE, detectScale, extractSheetNumber, type DetectedScale } from "../../web/src/lib/sheets.ts";
 import {
@@ -82,6 +83,10 @@ export interface ShapeOrigin {
    * to close the region (engine `gapBridged` — canvas parity: the rescue rides
    * provenance rather than passing itself off as a clean fill). */
   gap_bridged_px?: number;
+  /** one_click (#85): the flood ran against a mask whose boundary was STATED
+   * by the sheet's PDF layers (visible boundary/structure roles present) —
+   * categorically stronger evidence than a pitch-heuristic boundary. */
+  layer_bounded?: true;
   raster_traced?: true;
   fill_sensitivity?: number;
   /** Machine's original trace, frozen on first human edit (provenance.js). */
@@ -160,6 +165,9 @@ interface SheetState {
   hatch?: HatchFamily[];
   /** text as bbox spans (image px), built on first sheet_context */
   spans?: TextSpan[];
+  /** the sheet's Optional Content layers (#85), classified — built with geo;
+   * [] = no layers survived export (the silent, invisible fallback) */
+  layers?: LayerInfo[];
 }
 
 /** sheet_context decimation defaults (issue #29) — declared and stable, never
@@ -501,20 +509,79 @@ export class Session {
       const opList = await s.page.operatorList();
       s.geo = extractVectorGeometry(opList, s.page.viewport.transform, OPS);
       s.snap = buildSnapGrid(s.geo.points, SNAP_CELL);
+      // classify this sheet's Optional Content layers (#85): the doc declares
+      // id → (name, default visibility); the geometry attributes segments; the
+      // pure normalizer states each layer's ROLE. Only layers that actually
+      // own segments on this sheet are reported — an empty table is the
+      // unlayered case and every consumer falls through to the heuristics.
+      const layerIds = s.geo.layerIds || [];
+      if (layerIds.length && this.doc) {
+        const byId = new Map((await this.doc.layers()).map((g) => [g.id, g]));
+        const counts = new Map<number, number>();
+        const lo = s.geo.layerOf;
+        if (lo) for (let i = 0; i < lo.length; i++) if (lo[i] >= 0) counts.set(lo[i], (counts.get(lo[i]) || 0) + 1);
+        s.layers = layerIds.map((id, k) => {
+          const g = byId.get(id);
+          const name = g?.name || "";
+          const { role, confidence } = classifyLayerName(name);
+          return { id, name, role, confidence, visible: g ? g.visible : true, seg_count: counts.get(k) || 0 };
+        });
+      } else {
+        s.layers = [];
+      }
     }
     return s.geo;
   }
 
+  /** Per-layer role codes for buildMask (#85), with optional include/exclude
+   * OVERRIDES (by layer name or id, case-insensitive): include forces hard
+   * boundary, exclude drops the layer outright — the agent's judgment beats
+   * the table's. Unknown names error with the sheet's actual layer list
+   * (resolve-or-error, never a silent no-op). */
+  private rolesFor(s: SheetState, geo: VectorGeometry, layersOpt?: { include?: string[]; exclude?: string[] }): Uint8Array | null {
+    const infos = s.layers || [];
+    if (!infos.length || !geo.layerIds?.length) {
+      if (layersOpt && (layersOpt.include?.length || layersOpt.exclude?.length)) {
+        throw new UserError(`${s.key} has no PDF layers (no Optional Content survived export) — layers.include/exclude can't apply here.`);
+      }
+      return null;
+    }
+    const infoById = new Map(infos.map((l) => [l.id, { role: l.role, visible: l.visible }]));
+    if (layersOpt) {
+      const resolve = (ref: string): LayerInfo => {
+        const needle = ref.trim().toLowerCase();
+        const hit = infos.find((l) => l.id.toLowerCase() === needle || l.name.toLowerCase() === needle);
+        if (!hit) throw new UserError(`No layer ${JSON.stringify(ref)} on ${s.key}. Layers: ${infos.map((l) => l.name || l.id).join(" | ")}`);
+        return hit;
+      };
+      for (const ref of layersOpt.include || []) { const l = resolve(ref); infoById.set(l.id, { role: "boundary", visible: true }); }
+      for (const ref of layersOpt.exclude || []) { const l = resolve(ref); infoById.set(l.id, { role: l.role, visible: false }); }
+    }
+    return segRoles(geo.layerOf, layerRoleCodes(geo.layerIds, infoById));
+  }
+
   /** v1 masks come from the sheet's vector linework only. Raster seam: a scanned
    * sheet would render via a node canvas into a future rastermask module that
-   * returns this same MaskObj shape. */
+   * returns this same MaskObj shape. Layer roles (#85) ride in as the stated
+   * short-circuit; an unlayered sheet builds the identical pre-#85 mask. */
   async ensureMask(name: string): Promise<MaskObj | null> {
     const s = this.sheet(name);
     if (s.mask === undefined) {
       const geo = await this.ensureGeometry(s);
-      s.mask = geo.segs.length ? buildMask(geo.segs, s.widthPx, s.heightPx, MASK_MAX_DIM, geo.meta) : null;
+      s.mask = geo.segs.length ? buildMask(geo.segs, s.widthPx, s.heightPx, MASK_MAX_DIM, geo.meta, this.rolesFor(s, geo)) : null;
     }
     return s.mask;
+  }
+
+  /** The mask honoring per-call layer overrides — a fresh build when overrides
+   * are given (never cached: the default mask stays authoritative), the cached
+   * default otherwise. */
+  async maskWithLayers(name: string, layersOpt?: { include?: string[]; exclude?: string[] }): Promise<MaskObj | null> {
+    if (!layersOpt || (!layersOpt.include?.length && !layersOpt.exclude?.length)) return this.ensureMask(name);
+    const s = this.sheet(name);
+    const geo = await this.ensureGeometry(s);
+    if (!geo.segs.length) return null;
+    return buildMask(geo.segs, s.widthPx, s.heightPx, MASK_MAX_DIM, geo.meta, this.rolesFor(s, geo, layersOpt));
   }
 
   async sheetInfo(name: string) {
@@ -527,6 +594,9 @@ export class Session {
       scale_set: s.upp != null,
       ...(s.upp != null ? { upp: s.upp } : {}),
       shape_count: this.shapes.filter((x) => x.sheet_id === s.key).length,
+      // the sheet's PDF layer table (#85) — always emitted; [] = no Optional
+      // Content survived export and every engine path runs the heuristics
+      layers: (s.layers || []).map((l) => ({ id: l.id, name: l.name, role: l.role, confidence: l.confidence, visible: l.visible, seg_count: l.seg_count })),
     };
   }
 
@@ -608,9 +678,9 @@ export class Session {
     return shape;
   }
 
-  async oneClick(name: string, x: number, y: number, opts: { condition?: string; role: "floor_area" | "deduct"; returnVerts: boolean; sensitivity?: number }) {
+  async oneClick(name: string, x: number, y: number, opts: { condition?: string; role: "floor_area" | "deduct"; returnVerts: boolean; sensitivity?: number; layers?: { include?: string[]; exclude?: string[] } }) {
     const s = this.sheet(name);
-    const mask = await this.ensureMask(name);
+    const mask = await this.maskWithLayers(name, opts.layers);
     if (!mask) throw new UserError("This sheet has no vector linework (likely a scan); raster fallback not yet available in the MCP server.");
     const f = floodRegion(mask, x, y, opts.sensitivity ?? SENS_BALANCED);
     if (f.status === "leak") throw new UserError("That space isn't enclosed on the plan linework — the fill spilled through a gap or opening.");
@@ -649,6 +719,9 @@ export class Session {
         reviewed: false,
         ...(f.hatchFiltered ? { hatch_filtered: true as const } : {}),
         ...(f.gapBridged ? { gap_bridged_px: f.gapBridged } : {}),
+        // #85 — a trace bounded by DECLARED boundary layers is categorically
+        // stronger evidence than one bounded by a pitch heuristic
+        ...((s.layers || []).some((l) => l.visible && (l.role === "boundary" || l.role === "structure")) ? { layer_bounded: true as const } : {}),
         // canvas-parity provenance: a non-default fill sensitivity is part of
         // how the shape was made (ShapeOrigin.fill_sensitivity)
         ...(opts.sensitivity !== undefined && opts.sensitivity !== SENS_BALANCED ? { fill_sensitivity: opts.sensitivity } : {}),
@@ -688,9 +761,9 @@ export class Session {
    *       broom closet is ~10 SF): a door swing or wall cavity. Only applied
    *       once a scale exists, since without one there is no real area to
    *       judge and nothing commits anyway. */
-  async detectRooms(name: string, opts: { condition?: string; role: "floor_area" | "deduct"; returnVerts: boolean; minAreaSf?: number; sensitivity?: number }) {
+  async detectRooms(name: string, opts: { condition?: string; role: "floor_area" | "deduct"; returnVerts: boolean; minAreaSf?: number; sensitivity?: number; layers?: { include?: string[]; exclude?: string[] } }) {
     const s = this.sheet(name);
-    const mask = await this.ensureMask(name);
+    const mask = await this.maskWithLayers(name, opts.layers);
     if (!mask) throw new UserError("This sheet has no vector linework (likely a scan); raster fallback not yet available in the MCP server.");
     const minAreaSf = opts.minAreaSf ?? 5;
     if (!s.spans) s.spans = textSpans(s.page);

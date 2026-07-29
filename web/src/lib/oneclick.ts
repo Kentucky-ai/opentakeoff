@@ -31,8 +31,14 @@ export interface OpList { fnArray: number[]; argsArray: any[]; }  // per-op args
 /** pdf.js's OPS code table (op name → numeric code); passed in so this module never imports pdfjs. */
 export type OpsTable = Record<string, number>;
 /** meta: one byte per segment — SEG_* bits + device line width in the high nibble.
- *  imageArea: total placed image area in device px² (scan/photo underlay detection). */
-export interface VectorGeometry { points: Point[]; segs: number[]; meta: Uint8Array; imageArea: number; }
+ *  imageArea: total placed image area in device px² (scan/photo underlay detection).
+ *  layerOf/layerIds (#85): per-segment index into layerIds (−1 = outside any
+ *  Optional Content Group); layerIds carries pdf.js OCG ids in first-seen
+ *  order. The id→name/visibility mapping is the CALLER's (pdf.js API side) —
+ *  this module never resolves it, which is what keeps it pure. Optional so
+ *  hand-built geometry (rastermask, tests) needs no ceremony; extraction
+ *  always emits both (empty table on an unlayered sheet). */
+export interface VectorGeometry { points: Point[]; segs: number[]; meta: Uint8Array; imageArea: number; layerOf?: Int32Array; layerIds?: string[]; }
 export interface MaskObj { mask: Uint8Array; mw: number; mh: number; ws: number; softCount: number; }
 export interface RegionResult { region: Uint8Array; mw: number; mh: number; ws: number; count?: number; }
 export type FloodResult =
@@ -111,6 +117,22 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
   let m = transform.slice();
   let lw = 1;                          // graphics-state line width (user space)
   const stack: Array<[number[], number]> = [];
+  // Marked-content / Optional Content (#85): a purely SEQUENTIAL stack — not
+  // graphics state, so save/restore never touches it, and a Form XObject with
+  // /OC arrives as its own begin/end pair around the form's ops (the worker
+  // emits them), so the linear walk covers page content and forms alike.
+  // Every begin pushes (−1 for non-OC marked content — it still nests); every
+  // end pops; a segment is attributed to the NEAREST enclosing OC layer.
+  const layerIds: string[] = [];
+  const layerIdxById = new Map<string, number>();
+  const layerOfArr: number[] = [];
+  const mcStack: number[] = [];
+  let curLayer = -1;
+  const layerIdxFor = (id: string): number => {
+    let k = layerIdxById.get(id);
+    if (k === undefined) { k = layerIds.length; layerIds.push(id); layerIdxById.set(id, k); }
+    return k;
+  };
   const mul = (a: number[], b: number[]): number[] => [a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1], a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3], a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5]];
   const tx = (x: number, y: number): Point => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
   const fns = opList.fnArray, A = opList.argsArray;
@@ -135,6 +157,28 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
     else if (fn === OPS.setGState) { for (const pr of args[0] || []) if (pr && pr[0] === "LW") lw = pr[1]; }
     else if (fn === OPS.paintFormXObjectBegin) { stack.push([m.slice(), lw]); if (args && args[0]) m = mul(m, args[0]); }
     else if (fn === OPS.paintFormXObjectEnd) { const p = stack.pop(); if (p) { m = p[0]; lw = p[1]; } }
+    else if (fn === OPS.beginMarkedContent) { mcStack.push(-1); }
+    else if (fn === OPS.beginMarkedContentProps) {
+      // worker emits ["OC", data] where data is {type:"OCG", id}, an OCMD
+      // ({ids, policy} / {expression}) or null. Attribute to a SINGLE stated
+      // group only — a multi-group OCMD or an expression is a visibility rule,
+      // not an authorship claim, and misattributing it would poison the roles.
+      const data = args && args[0] === "OC" ? args[1] : null;
+      let li = -1;
+      if (data && typeof data === "object") {
+        if (typeof data.id === "string" && data.id) li = layerIdxFor(data.id);
+        else if (Array.isArray(data.ids) && data.ids.length === 1 && typeof data.ids[0] === "string" && data.ids[0]) li = layerIdxFor(data.ids[0]);
+      }
+      mcStack.push(li);
+      if (li >= 0) curLayer = li;
+    }
+    else if (fn === OPS.endMarkedContent) {
+      if (mcStack.length) {
+        mcStack.pop();
+        curLayer = -1;
+        for (let k = mcStack.length - 1; k >= 0; k--) if (mcStack[k] >= 0) { curLayer = mcStack[k]; break; }
+      }
+    }
     else if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject || fn === OPS.paintImageMaskXObject) {
       // the singular paint ops are each preceded by their OWN `transform` op
       // (already folded into `m` above), mapping the image's unit square onto
@@ -184,8 +228,9 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
       const flags = paintFlags(i) | (devW << 4);
       const ops = args[0], co = args[1];
       let c = 0, cur: Point | null = null, start: Point | null = null;
+      const pathLayer = curLayer;   // one path = one marked-content scope (#85)
       const visit = (p: Point) => { points.push(p); };
-      const lineTo = (p: Point) => { if (cur) { segs.push(cur[0], cur[1], p[0], p[1]); metaArr.push(flags); } cur = p; visit(p); };
+      const lineTo = (p: Point) => { if (cur) { segs.push(cur[0], cur[1], p[0], p[1]); metaArr.push(flags); layerOfArr.push(pathLayer); } cur = p; visit(p); };
       for (const op of ops) {
         if (op === OPS.moveTo) { cur = tx(co[c], co[c + 1]); start = cur; visit(cur); c += 2; }
         else if (op === OPS.lineTo) { lineTo(tx(co[c], co[c + 1])); c += 2; }
@@ -203,22 +248,22 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
               u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
               u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1],
             ];
-            if (cur) { segs.push(cur[0], cur[1], q[0], q[1]); metaArr.push(flags | SEG_CURVE); }
+            if (cur) { segs.push(cur[0], cur[1], q[0], q[1]); metaArr.push(flags | SEG_CURVE); layerOfArr.push(pathLayer); }
             cur = q;
           }
           visit(p3);
         }
-        else if (op === OPS.closePath) { if (cur && start) { segs.push(cur[0], cur[1], start[0], start[1]); metaArr.push(flags); cur = start; } }
+        else if (op === OPS.closePath) { if (cur && start) { segs.push(cur[0], cur[1], start[0], start[1]); metaArr.push(flags); layerOfArr.push(pathLayer); cur = start; } }
         else if (op === OPS.rectangle) {
           const x = co[c], y = co[c + 1], w = co[c + 2], h = co[c + 3]; c += 4;
           const q: Point[] = [tx(x, y), tx(x + w, y), tx(x + w, y + h), tx(x, y + h)];
-          for (let k = 0; k < 4; k++) { const a = q[k], b = q[(k + 1) % 4]; segs.push(a[0], a[1], b[0], b[1]); metaArr.push(flags); visit(a); }
+          for (let k = 0; k < 4; k++) { const a = q[k], b = q[(k + 1) % 4]; segs.push(a[0], a[1], b[0], b[1]); metaArr.push(flags); layerOfArr.push(pathLayer); visit(a); }
           cur = q[0]; start = q[0];
         }
       }
     }
   }
-  return { points, segs, meta: Uint8Array.from(metaArr), imageArea };
+  return { points, segs, meta: Uint8Array.from(metaArr), imageArea, layerOf: Int32Array.from(layerOfArr), layerIds };
 }
 
 // ── 2. hatch classification ────────────────────────────────────────────────
@@ -442,14 +487,28 @@ export function hatchFamilies(segs: number[], meta: Uint8Array): HatchFamily[] {
 // continuous. Without meta the mask is bit-identical to the original (every
 // cell 1). With meta, wall cells carry bit 1 and suspected-hatch cells bit 2 —
 // a cell crossed by both keeps bit 1, so hard always wins.
-export function buildMask(segs: number[], imgW: number, imgH: number, maxDim = MASK_MAX_DIM, meta: Uint8Array | null = null): MaskObj {
+//
+// roles (#85, optional): one code per segment from a sheet whose layers STATE
+// what the ink is (lib/layers.ts) — a short-circuit over the heuristics,
+// never a replacement:
+//   boundary / structure → hard (bit 1), no classifyHatchSegs vote;
+//   finish-pattern / annotation / demolition / hidden → not plotted at all —
+//     the file says this ink is not a wall (a hidden layer is excluded
+//     whatever its name, or a demolished wall traces as a real one);
+//   unknown (0) → exactly today's path.
+// Null roles (unlayered sheet, or nothing classified) is bit-identical to the
+// pre-#85 mask — the fallback must be invisible, and a regression test holds
+// it there.
+export function buildMask(segs: number[], imgW: number, imgH: number, maxDim = MASK_MAX_DIM, meta: Uint8Array | null = null, roles: Uint8Array | null = null): MaskObj {
   const ws = Math.min(1, maxDim / Math.max(imgW, imgH, 1));
   const mw = Math.max(2, Math.ceil(imgW * ws)), mh = Math.max(2, Math.ceil(imgH * ws));
   const mask = new Uint8Array(mw * mh);
   const soft = meta ? classifyHatchSegs(segs, meta, ws) : null;
   let softCount = 0;
   for (let i = 0, si = 0; i + 3 < segs.length; i += 4, si++) {
-    const v = soft && soft[si] ? 2 : 1;
+    const role = roles ? roles[si] : 0;
+    if (role === 2 || role === 3 || role === 5 || role === 6) continue;  // pattern/annotation/demolition/hidden — stated non-boundary ink
+    const v = role === 1 || role === 4 ? 1 : soft && soft[si] ? 2 : 1;   // stated boundary/structure: hard, no heuristic vote
     if (v === 2) softCount++;
     let x0 = Math.round(segs[i] * ws), y0 = Math.round(segs[i + 1] * ws);
     const x1 = Math.round(segs[i + 2] * ws), y1 = Math.round(segs[i + 3] * ws);

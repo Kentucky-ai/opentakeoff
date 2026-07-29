@@ -1,0 +1,62 @@
+%PDF-1.5
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R /OCProperties << /OCGs [5 0 R 6 0 R 7 0 R 8 0 R] /D << /Order [5 0 R 6 0 R 7 0 R 8 0 R] /OFF [8 0 R] >> >> >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 612] /Contents 4 0 R /Resources << /Properties << /oc1 5 0 R /oc2 6 0 R /oc3 7 0 R /oc4 8 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 240 >>
+stream
+/OC /oc1 BDC
+2 w
+100 100 300 300 re S
+EMC
+/OC /oc2 BDC
+0.5 w
+200 100 m 200 400 l S
+300 100 m 300 400 l S
+100 200 m 400 200 l S
+100 300 m 400 300 l S
+EMC
+/OC /oc3 BDC
+0.5 w
+110 110 m 390 390 l S
+EMC
+/OC /oc4 BDC
+2 w
+100 250 m 400 250 l S
+EMC
+endstream
+endobj
+5 0 obj
+<< /Type /OCG /Name (A-WALL-FULL) >>
+endobj
+6 0 obj
+<< /Type /OCG /Name (A-FLOR-PATT) >>
+endobj
+7 0 obj
+<< /Type /OCG /Name (A-ANNO-TEXT) >>
+endobj
+8 0 obj
+<< /Type /OCG /Name (A-WALL-DEMO) >>
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000009 00000 n 
+0000000165 00000 n 
+0000000222 00000 n 
+0000000388 00000 n 
+0000000679 00000 n 
+0000000731 00000 n 
+0000000783 00000 n 
+0000000835 00000 n 
+trailer
+<< /Size 9 /Root 1 0 R >>
+startxref
+887
+%%EOF
