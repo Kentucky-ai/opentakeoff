@@ -32,7 +32,7 @@ which is the MCP wire. `node --import tsx` is the whole invocation.
 
 ## What the agent gets
 
-Twenty-one tools, in the order an agent tends to reach for them:
+Twenty-two tools, in the order an agent tends to reach for them:
 
 - **Open and orient** — `load_plan`, `sheet_info`, `set_scale`, `sheet_context`
 - **Measure** — `one_click`, `detect_rooms`, `measure_polygon`, `measure_line`
@@ -47,7 +47,12 @@ Twenty-one tools, in the order an agent tends to reach for them:
   *about* the work, never measurements of it; attaching one to a finish tag is
   what makes it part of that scope rather than a floating remark — it then
   wears the condition's colour on the canvas and in the marked set)
-- **Report** — `takeoff_summary`, `export_takeoff`
+- **Report** — `takeoff_summary` (quantities only — materials stripped),
+  `export_takeoff` (the raw `opentakeoff.takeoff_canvas.v1` canvas payload —
+  materials as config rows, importable by the app), `export_report` (the
+  computed `opentakeoff.report.v1` Report document — waste-adjusted nets, the
+  materials buy list as order quantities, per-sheet subtotals, scale
+  provenance; the contract for pricing consumers)
 
 The full reference — including the coordinate contract (image px at render
 scale 2.0, origin top-left) and the scale-gate rules — is in

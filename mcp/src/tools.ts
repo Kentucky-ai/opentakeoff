@@ -12,7 +12,7 @@ import {
   measurePolygonOutput, measureLineOutput, takeoffSummaryOutput,
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
   editShapeOutput, undoLastOutput, sheetContextOutput,
-  findTextOutput, editMaterialsOutput, editConditionOutput,
+  findTextOutput, editMaterialsOutput, editConditionOutput, exportReportOutput,
   annotateOutput, listAnnotationsOutput, linkAnnotationOutput,
 } from "./outputs.ts";
 
@@ -135,6 +135,19 @@ export function registerTools(server: McpServer, session: Session): void {
       await writeFile(outPath, JSON.stringify(payload));
     }
     return payload;
+  }));
+
+  server.registerTool("export_report", {
+    description: `The computed Report document — "opentakeoff.report.v1", the same schema the canvas Report's JSON export writes. Everything a pricing consumer needs without re-implementing the app's math: per-condition quantities with waste and multiplier applied (gross and *_net), the computed materials BUY LIST per condition (order quantity = basis ÷ coverage rate, rounded up to whole purchase units) plus the project-wide roll-up summed by (name, unit), per-sheet BASE subtotals, scale provenance per sheet, and annotations. Contrast: export_takeoff is the raw canvas payload (materials as CONFIG rows, no computed quantities) and takeoff_summary strips materials for a compact reply — when the numbers are leaving for pricing, consume this. Returned inline; pass path to also write it to disk as JSON.`,
+    inputSchema: { path: z.string().optional().describe("File path to write the document to") },
+    outputSchema: exportReportOutput,
+  }, run("export_report", async ({ path: outPath }) => {
+    const doc = session.exportReport();
+    if (outPath) {
+      const { writeFile } = await import("node:fs/promises");
+      await writeFile(outPath, JSON.stringify(doc));
+    }
+    return doc;
   }));
 
   server.registerTool("delete_shape", {

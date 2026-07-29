@@ -14,7 +14,7 @@ import {
 } from "../../web/src/lib/oneclick.ts";
 import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
-import { conditionTotals, grandTotals } from "../../web/src/lib/totals.js";
+import { conditionTotals, grandTotals, sheetTotals, reportJson } from "../../web/src/lib/totals.js";
 import { gridPxPerFoot, drawGrid, drawShapes, type Ctx2D, type ToCanvas } from "./view.ts";
 
 // Copied from the canvas (web/src/pages/TakeoffCanvas.jsx) so conditions and
@@ -78,6 +78,10 @@ export interface ShapeOrigin {
   /** one_click: the flood-fill seed, normalized to sheet dims. */
   seed_norm?: [number, number];
   hatch_filtered?: true;
+  /** one_click: the seal ladder bridged a drafting pinhole this many px wide
+   * to close the region (engine `gapBridged` — canvas parity: the rescue rides
+   * provenance rather than passing itself off as a clean fill). */
+  gap_bridged_px?: number;
   raster_traced?: true;
   fill_sensitivity?: number;
   /** Machine's original trace, frozen on first human edit (provenance.js). */
@@ -140,6 +144,9 @@ interface SheetState {
   detected: DetectedScale | null;
   /** real feet per image px at RENDER_SCALE; null until set_scale */
   upp: number | null;
+  /** how the scale was set — report provenance (export_report scale_source),
+   * canvas vocabulary: "standard" | "upp" | "calibrated" | "detected" */
+  scaleSource?: string;
   text: { str: string; x: number; y: number }[];
   page: PageHandle;
   // lazy per-sheet caches (built once, reused by identity)
@@ -558,6 +565,10 @@ export class Session {
       throw new UserError("Provide exactly one of: label, upp, calibrate, use_detected.");
     }
     s.upp = upp;
+    // the tool reply keeps this session's source vocabulary; the stored value
+    // uses the canvas's report vocabulary so export_report's scale_source
+    // reads the same as an app-side report.v1
+    s.scaleSource = source === "label" ? "standard" : source === "calibrate" ? "calibrated" : source;
     return { sheet: s.key, upp, ...(label ? { label } : {}), source };
   }
 
@@ -612,6 +623,7 @@ export class Session {
       status: "ok" as const,
       nverts: ring.length,
       ...(f.hatchFiltered ? { hatch_filtered: true } : {}),
+      ...(f.gapBridged ? { gap_bridged_px: f.gapBridged } : {}),
       ...(opts.returnVerts ? { verts: ring.map(([vx, vy]) => [round1(vx), round1(vy)]) } : {}),
     };
     if (s.upp == null) {
@@ -636,6 +648,7 @@ export class Session {
         seed_norm: [x / s.widthPx, y / s.heightPx],
         reviewed: false,
         ...(f.hatchFiltered ? { hatch_filtered: true as const } : {}),
+        ...(f.gapBridged ? { gap_bridged_px: f.gapBridged } : {}),
         // canvas-parity provenance: a non-default fill sensitivity is part of
         // how the shape was made (ShapeOrigin.fill_sensitivity)
         ...(opts.sensitivity !== undefined && opts.sensitivity !== SENS_BALANCED ? { fill_sensitivity: opts.sensitivity } : {}),
@@ -693,11 +706,11 @@ export class Session {
     // commits in this pass — withholding has to be decided across the whole
     // batch (dedupe needs to see every ring).
     const withheld = { degenerate: 0, duplicate: 0, bubble: 0, implausible: 0 };
-    type Cand = { label: string; ring: Point[]; areaPx2: number; perimPx: number; seed: readonly [number, number] | number[]; hatch: boolean; merged: string[] };
+    type Cand = { label: string; ring: Point[]; areaPx2: number; perimPx: number; seed: readonly [number, number] | number[]; hatch: boolean; gap: number; merged: string[] };
     const byRing = new Map<string, Cand>();
     const order: Cand[] = [];
     for (const lb of labels) {
-      let ring: Point[] | null = null, hatch = false, seed: [number, number] | null = null;
+      let ring: Point[] | null = null, hatch = false, gap = 0, seed: [number, number] | null = null;
       let sawBubble = false, sawDegenerate = false;
       for (const probe of seedLadderPx(lb.bbox)) {
         const f = floodRegion(mask, probe[0], probe[1], opts.sensitivity ?? SENS_BALANCED);
@@ -705,7 +718,7 @@ export class Session {
         const r = snapVertices(traceRegion(f), (px, py, d) => (s.snap ? nearestSnap(s.snap, px, py, d) : null), SNAP_TOL);
         if (r.length < 3) { sawDegenerate = true; continue; }
         if (isLabelBubblePx(r as [number, number][], lb.bbox)) { sawBubble = true; continue; }
-        ring = r; hatch = !!f.hatchFiltered; seed = probe;
+        ring = r; hatch = !!f.hatchFiltered; gap = f.gapBridged || 0; seed = probe;
         break;
       }
       if (!ring || !seed) {
@@ -720,7 +733,7 @@ export class Session {
       if (seen) { seen.merged.push(lb.str); withheld.duplicate++; continue; }
       const cand: Cand = {
         label: lb.str, ring, areaPx2: ringArea(ring), perimPx: closedMetrics(ring).perim,
-        seed, hatch, merged: [],
+        seed, hatch, gap, merged: [],
       };
       byRing.set(key, cand);
       order.push(cand);
@@ -734,6 +747,7 @@ export class Session {
           nverts: c.ring.length,
           ...(c.merged.length ? { merged_labels: c.merged } : {}),
           ...(c.hatch ? { hatch_filtered: true as const } : {}),
+          ...(c.gap ? { gap_bridged_px: c.gap } : {}),
           ...(opts.returnVerts ? { verts: c.ring.map(([vx, vy]) => [round1(vx), round1(vy)]) } : {}),
         };
         if (upp == null) {
@@ -750,6 +764,7 @@ export class Session {
             seed_norm: [c.seed[0] / s.widthPx, c.seed[1] / s.heightPx],
             reviewed: false,
             ...(c.hatch ? { hatch_filtered: true as const } : {}),
+            ...(c.gap ? { gap_bridged_px: c.gap } : {}),
           }).id;
         }
         return { ...common, area_sf, perimeter_lf, ...(shape_id ? { shape_id } : {}) };
@@ -1127,6 +1142,26 @@ export class Session {
       sheet_tabs: [],
       sheet_levels: {},
     };
+  }
+
+  /** The computed Report document — "opentakeoff.report.v1", the SAME schema
+   * and math as the canvas Report's JSON export (web reportJson, totals.js):
+   * per-condition quantities with waste and multiplier applied, the computed
+   * materials buy list, per-sheet BASE subtotals, scale provenance. This is
+   * the contract a pricing consumer reads (#130) — export_takeoff carries
+   * materials as CONFIG rows and takeoff_summary strips them; only this
+   * document carries the computed order quantities. */
+  exportReport() {
+    if (!this.doc) throw new UserError("No plan loaded — call load_plan first.");
+    const rows = (conditionTotals(this.conditions, this.shapes) as Record<string, unknown>[]).filter((r) => (r.shape_count as number) > 0);
+    return reportJson({
+      projectName: "",
+      rows,
+      bySheet: sheetTotals(this.conditions, this.shapes),
+      scaleInfo: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => ({ sheet_id: s.key, scale_source: s.scaleSource ?? "unknown" })),
+      markups: this.markups,
+      rfis: [],
+    });
   }
 
   readSheetText(name: string, region?: { x0: number; y0: number; x1: number; y1: number }) {
