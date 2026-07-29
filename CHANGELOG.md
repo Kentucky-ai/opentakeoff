@@ -2,6 +2,16 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-07-28 — opentakeoff-mcp 0.9.3: the knobs and the report contract
+
+### Added
+- **`edit_condition` — the waste % and multiplier knobs** (#131, the twenty-first tool). `takeoff_summary` has always emitted waste-adjusted `*_net` order quantities and a per-condition multiplier, but nothing in the tool surface could set either — an agent's takeoff shipped net === gross every time. `{condition, waste_pct?, multiplier?}` resolves an **existing** finish tag or errors (these knobs mean nothing on a condition that doesn't exist, so a typo'd tag must not mint one — the opposite of `edit_materials`' create-on-first-touch `add`), edits directly with no review gate (quantity config, not traced geometry), and journals one entry restoring both knobs verbatim on `undo_last` (a fifth journal op, `condition`). `multiplier: 0` is rejected at the schema — the canvas treats 0 as 1, so accepting it would silently mean "off".
+- **`export_report` — the computed Report document** (#130, the twenty-second tool). Emits the canvas Report's own `opentakeoff.report.v1` JSON by calling the web's `reportJson` (`web/src/lib/totals.js`) directly — one computation, both consumers, zero drift: per-condition quantities gross and net, the computed materials **buy list** (order qty = basis ÷ coverage, rounded up to whole purchase units) plus the project-wide (name, unit) roll-up, per-sheet BASE subtotals, and per-sheet scale provenance (`set_scale` now stores its source in the canvas vocabulary: `standard`/`upp`/`calibrated`/`detected`). The contract for pricing consumers: `export_takeoff` carries materials as *config rows* and `takeoff_summary` strips them — only this document carries computed order quantities.
+- **`gap_bridged_px` over MCP.** `one_click` and `detect_rooms` now surface the flood engine's gap-sealing rescue in both the tool reply and `origin` — the provenance the canvas has carried since the engine change, now visible to agents and to anything reading an export.
+
+### Fixed
+- **Areas no longer trap the Counters, Lines, and Surfaces they cover** (#116 — the first external bug report, filed by a user doing real takeoffs; fixed same day in #129). Shapes painted and hit-tested in raw creation order, and a closed Area passes the hit test anywhere inside its fill — so an Area drawn over a smaller element both painted above it and won every pick inside it, leaving the covered element unreachable by canvas click. Shapes now stack by role tier — filled Areas at the bottom, Cut Outs just above the fill they punch, Linear/Surface runs above that, Count pins on top — with the renderer painting the stack bottom-up and the click + hover pickers scanning the same stack top-down, so what reads as on-top is always what a click lands on. Creation order still breaks ties within a tier (overlapping Areas keep newest-wins), and an Area stays selectable anywhere in its open fill.
+
 ## Unreleased — gap bridging: nearly-closed rooms stop failing as leaks
 
 ### Added

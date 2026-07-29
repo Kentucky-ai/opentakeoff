@@ -303,7 +303,7 @@ Every shape One-Click creates records how it was made: the method, the seed poin
 
 ## 7. Selecting & editing shapes
 
-Arm **Select** (`V`) and click a shape. Selection is one shape at a time on the canvas, and the same edit grammar as One-Click proposals applies:
+Arm **Select** (`V`) and click a shape. Shapes stack by kind — filled Areas at the bottom, Cut Outs just above the fill they punch, Linear and Surface runs above that, Count pins on top — and clicking picks whatever reads as on-top at that spot. So a big Area drawn over a Counter, Line, or Surface never blocks it: the covered element stays clickable through the fill, and the Area itself still selects anywhere in its open fill. Selection is one shape at a time on the canvas, and the same edit grammar as One-Click proposals applies:
 
 - **Drag a corner** to move that vertex (it snaps to true drawing endpoints). **Click a corner first** to select it — `⌫` then deletes just that vertex. A closed shape keeps at least 3 points, a run keeps 2; at the floor, the message tells you *"⌫ again deletes the whole shape."*
 - **Drag an edge grip** (mid-edge) to move the whole line — both endpoints together.
