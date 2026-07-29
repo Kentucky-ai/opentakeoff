@@ -425,7 +425,7 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
 
 function TakeoffsPanel({
   open, width, multiSheet, units = "imperial",
-  conditions, activeCond, visRowById, conditionColumns, shapeLabels = [], templates, palette = [],
+  conditions, activeCond, visRowById, projRowById = new Map(), conditionColumns, shapeLabels = [], templates, palette = [],
   matLib, matLibById, linkedCountById,
   panelPrefs, onPanelPrefs, reassigning, epoch, clearSelectionRef,
   onActivate, onSetActive, onLocate,
@@ -586,6 +586,14 @@ function TakeoffsPanel({
     const mult = c.multiplier || 1;
     const sf = row?.floor_sf || 0, lf = row?.lf || 0, ea = row?.ea || 0, wsf = row?.wall_sf || 0;
     const shapeCount = row?.shape_count || 0;
+    // whole-project Σ suffix (#137): shown ONLY when the project holds more
+    // than the open sheets, so the common everything-on-this-sheet case stays
+    // one number. A condition entirely on closed sheets reads "Σ 412 SF"
+    // instead of a dead "—".
+    const qtys = (o) => [o.sf ? fa(o.sf) : "", o.wsf ? `${fa(o.wsf)} wall` : "", o.lf ? fl(o.lf) : "", o.ea ? `${num(o.ea, 0)} EA` : ""].filter(Boolean).join(" · ");
+    const pr = projRowById.get(c.id);
+    const prQ = pr ? { sf: pr.floor_sf || 0, wsf: pr.wall_sf || 0, lf: pr.lf || 0, ea: pr.ea || 0 } : null;
+    const projDiff = prQ && (Math.abs(prQ.sf - sf) > 0.005 || Math.abs(prQ.wsf - wsf) > 0.005 || Math.abs(prQ.lf - lf) > 0.005 || Math.abs(prQ.ea - ea) > 0.005);
     const on = c.id === activeCond;
     const matOn = on && panelMatOpen;
     const checked = checkedConds.has(c.id);
@@ -613,7 +621,12 @@ function TakeoffsPanel({
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontWeight: on ? 700 : 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.finish_tag}{mult > 1 ? <span style={{ color: "var(--ink-muted)", fontWeight: 500 }}> ×{mult}</span> : null}</div>
             <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 11, color: "var(--ink-muted)" }}>
-              {sf ? fa(sf) : ""}{wsf ? `${sf ? " · " : ""}${fa(wsf)} wall` : ""}{lf ? `${sf || wsf ? " · " : ""}${fl(lf)}` : ""}{ea ? `${sf || wsf || lf ? " · " : ""}${num(ea, 0)} EA` : ""}{!sf && !wsf && !lf && !ea ? "—" : ""}
+              {qtys({ sf, wsf, lf, ea })}{!sf && !wsf && !lf && !ea && !projDiff ? "—" : ""}
+              {projDiff ? (
+                <span title="Σ = whole project, every sheet. The leading numbers count the open sheets only." style={{ color: "var(--ink-faint)" }}>
+                  {(sf || wsf || lf || ea) ? " · " : ""}Σ {qtys(prQ) || "0"}
+                </span>
+              ) : null}
             </div>
           </div>
           <span style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)", flexShrink: 0 }}>{shapeCount}▦</span>

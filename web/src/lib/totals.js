@@ -38,7 +38,13 @@ export { round2 } from "./num.js";
 function accumulateRole(acc, s) {
   const cp = s.computed || {};
   switch (s.measure_role) {
-    case "deduct": acc.floor -= cp.area_sf || 0; break;
+    // #137 — a deduct carrying cuts_shape_id was reconciled at commit time
+    // into a REAL polygon boolean subtract against its parent (lib/cutout.js):
+    // the parent's own computed.area_sf already nets the hole out, so
+    // counting the deduct's own area again here would double-subtract the
+    // same cut. Its area_sf stays at face value on the shape (hover label);
+    // this is the ONE place that decides whether it counts toward aggregates.
+    case "deduct": if (!s.cuts_shape_id) acc.floor -= cp.area_sf || 0; break;
     case "floor_area": acc.floor += cp.area_sf || 0; break;
     case "surface_area": acc.wall += cp.area_sf || 0; break;
     case "linear": acc.lf += cp.perimeter_lf || 0; acc.border += cp.area_sf || 0; break;

@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "OpenTakeoff \u2014 a free, open-source PDF takeoff canvas for flooring contractors.",
+  "description": "OpenTakeoff — a free, open-source PDF takeoff canvas for flooring contractors.",
   "license": "Apache-2.0",
   "scripts": {
     "dev": "vite",
@@ -19,6 +19,10 @@
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
+    "@turf/boolean-contains": "^7.3.5",
+    "@turf/boolean-overlap": "^7.3.5",
+    "@turf/difference": "^7.3.5",
+    "@turf/helpers": "^7.3.5",
     "fflate": "^0.8.3",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",
