@@ -23,7 +23,7 @@ import {
   measurePolygonOutput, measureLineOutput, takeoffSummaryOutput,
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
   findTextOutput, editMaterialsOutput, editConditionOutput, undoLastOutput,
-  exportReportOutput,
+  exportReportOutput, sheetGraphOutput, resolveTagOutput, findScheduleOutput,
 } from "../src/outputs.ts";
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
@@ -48,6 +48,9 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   edit_condition: z.object(editConditionOutput),
   undo_last: z.object(undoLastOutput),
   export_report: z.object(exportReportOutput),
+  sheet_graph: z.object(sheetGraphOutput),
+  resolve_tag: z.object(resolveTagOutput),
+  find_schedule: z.object(findScheduleOutput),
 };
 
 async function pair() {
@@ -471,4 +474,48 @@ test("layers (#85): the table reads, stated roles feed the mask, include/exclude
   const plain = await callOk(client, "sheet_info", { sheet: KEY });
   assert.deepEqual(plain.layers, []);
   assert.match(await callErr(client, "one_click", { sheet: KEY, x: 600, y: 1084, layers: { exclude: ["A-WALL-FULL"] } }), /no PDF layers/);
+});
+
+// ── the sheet graph (#87): the two-page demo set drives all three tools ─────
+const FINISH_PLAN = fileURLToPath(new URL("../../demo/sample-finish-plan.pdf", import.meta.url));
+
+test("sheet graph (#87): index, resolve with citations, refusal with reasons, find_schedule", async () => {
+  const client = await pair();
+  // the graph needs a document
+  assert.match(await callErr(client, "sheet_graph"), /No plan loaded/);
+
+  await callOk(client, "load_plan", { path: FINISH_PLAN });
+  const g = await callOk(client, "sheet_graph");
+  assert.equal(g.available, true);
+  const roles = Object.fromEntries(g.sheets.map((s: any) => [s.sheet, s.role]));
+  assert.equal(roles["sample-finish-plan.pdf"], "plan", "page 1 is the finish plan");
+  assert.equal(roles["sample-finish-plan.pdf#2"], "schedule", "page 2 is the schedule sheet — its room-number column must NOT mint phantom rooms");
+  assert.ok(g.counts.rooms >= 40, `the plan's room tags: ${g.counts.rooms}`);
+  assert.ok(g.counts.schedules >= 2, "a room-finish table AND a finish/material table");
+  assert.ok(g.rooms.every((r: any) => r.sheet === "sample-finish-plan.pdf"), "rooms come from the plan sheet only");
+  const r134 = g.rooms.find((r: any) => r.tag === "134");
+  assert.ok(r134 && r134.bbox.x1 > r134.bbox.x0, "a tag carries its bbox");
+
+  // THE question: what finish is specified in room 134, and how do you know
+  const res = await callOk(client, "resolve_tag", { tag: "134" });
+  assert.equal(res.status, "resolved");
+  const bySurface = Object.fromEntries(res.finishes.map((f: any) => [f.surface, f]));
+  assert.equal(bySurface.FLOOR.code, "CPT-1/VCT-1", "the dual-finish floor cell survives verbatim");
+  assert.equal(bySurface.BASE.code, "RB-1");
+  assert.equal(bySurface.BASE.definition.cells.MATERIAL, "RESILIENT BASE", "the code chains to its material-schedule definition");
+  for (const f of res.finishes) {
+    assert.ok(f.source.sheet && f.source.bbox.x1 > f.source.bbox.x0, `${f.surface} carries a citation`);
+  }
+  assert.ok(res.sources.length >= 2, "the chain cites the plan tag AND the schedule row");
+
+  // refusal over guessing: a tag with no row names the gap, never omits it
+  const missing = await callOk(client, "resolve_tag", { tag: "999" });
+  assert.equal(missing.status, "unresolved");
+  assert.match(missing.reason, /no schedule row for 999/);
+
+  const found = await callOk(client, "find_schedule", { kind: "room finish" });
+  assert.ok(found.matches[0].rows >= 30);
+  assert.match(found.matches[0].title, /ROOM FINISH SCHEDULE/);
+  assert.ok(found.matches[0].region.x1 > found.matches[0].region.x0, "the region is viewable");
+  assert.match(await callErr(client, "find_schedule", { kind: "door" }), /No "door" schedule found .* Found: /);
 });

@@ -1,4 +1,4 @@
-// The seventeen tools — thin zod-validated handlers over the Session. Replies are
+// The twenty-five tools — thin zod-validated handlers over the Session. Replies are
 // compact JSON (format.ts); view_sheet alone replies with an image content
 // item plus a JSON meta text item. Failures are isError results, never thrown
 // protocol errors.
@@ -14,6 +14,7 @@ import {
   editShapeOutput, undoLastOutput, sheetContextOutput,
   findTextOutput, editMaterialsOutput, editConditionOutput, exportReportOutput,
   annotateOutput, listAnnotationsOutput, linkAnnotationOutput,
+  sheetGraphOutput, resolveTagOutput, findScheduleOutput,
 } from "./outputs.ts";
 
 // The coordinate contract, stated on every tool so any agent reading any one
@@ -232,6 +233,24 @@ export function registerTools(server: McpServer, session: Session): void {
     },
     outputSchema: undoLastOutput,
   }, run("undo_last", ({ n }) => session.undoLast(n)));
+
+  server.registerTool("sheet_graph", {
+    description: `The plan-set INDEX (#87): every sheet's role (plan / schedule / legend / …, with confidence and the title evidence), the schedule tables found (kind, row count, region), every room tag on the plan sheets (with the stacked room NAME when one exists), and the detail callouts (3/A-601 → sheet edges). Built once per document from the text layer and cached. This is how an agent decides WHAT to measure without a human enumerating the rooms: list the rooms here, resolve each with resolve_tag, then measure with one_click/detect_rooms. A scanned set (no text layer) returns available: false — unavailable, never half-populated. ${COORDS}`,
+    inputSchema: {},
+    outputSchema: sheetGraphOutput,
+  }, run("sheet_graph", () => session.sheetGraph()));
+
+  server.registerTool("resolve_tag", {
+    description: `Resolve ONE room tag across the set (#87): the plan tag → its room-finish schedule row → each finish code's definition in the finish/material schedule, EVERY edge carrying an evidence pointer (sheet + literal text + bbox — pass a bbox to view_sheet to look at the source). The doctrine is refusal over guessing: a room that appears on the plan with no schedule row returns status "unresolved" with the reason (and still cites the plan tag); reused room numbers across the set return "ambiguous" rather than picking one. This is the answer to "what finish is specified in room 134, and how do you know". ${COORDS}`,
+    inputSchema: { tag: z.string().describe('The room tag as drawn, e.g. "134" or "139A"') },
+    outputSchema: resolveTagOutput,
+  }, run("resolve_tag", ({ tag }) => session.resolveRoomTag(tag)));
+
+  server.registerTool("find_schedule", {
+    description: `Locate a schedule table in the set (#87): pass a kind ("room finish", "material"/"finish") and get every matching table's sheet, title, headers, row count, and REGION — sized for a view_sheet look or a read_sheet_text pull of exactly the table. Errors with what WAS found when the asked-for kind isn't in the set. ${COORDS}`,
+    inputSchema: { kind: z.string().describe('"room finish" (rooms → surface finishes) or "finish"/"material" (codes → products)') },
+    outputSchema: findScheduleOutput,
+  }, run("find_schedule", ({ kind }) => session.findSchedule(kind)));
 
   server.registerTool("read_sheet_text", {
     description: `The sheet's text with positions — items [{str, x, y}] in image px plus the joined text. Optionally restrict to a region {x0, y0, x1, y1}. Use it to read title blocks, room labels, finish schedules, and scale notes. ${COORDS}`,

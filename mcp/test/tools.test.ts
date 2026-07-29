@@ -52,14 +52,14 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // coordinate contract would be noise rather than clarity.
 const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "link_annotation"]);
 
-test("tools/list: all twenty-two tools, each described with the coordinate contract", async () => {
+test("tools/list: all twenty-five tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
     "annotate", "delete_shape", "detect_rooms", "edit_condition", "edit_materials", "edit_shape", "export_report",
-    "export_takeoff", "find_text",
+    "export_takeoff", "find_schedule", "find_text",
     "link_annotation", "list_annotations", "load_plan", "measure_line", "measure_polygon", "one_click",
-    "read_sheet_text", "set_scale", "sheet_context", "sheet_info", "takeoff_summary", "undo_last", "view_sheet",
+    "read_sheet_text", "resolve_tag", "set_scale", "sheet_context", "sheet_graph", "sheet_info", "takeoff_summary", "undo_last", "view_sheet",
   ]);
   for (const t of tools) {
     if (NO_COORDS.has(t.name)) continue;
