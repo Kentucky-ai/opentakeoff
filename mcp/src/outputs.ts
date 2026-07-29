@@ -53,6 +53,7 @@ export const oneClickOutput = {
   status: z.literal("ok"),
   nverts: z.number().int().describe("Vertex count of the traced polygon"),
   hatch_filtered: z.literal(true).optional().describe("Present when hatch/pattern linework was classified out of the boundary"),
+  gap_bridged_px: z.number().optional().describe("Present when the seal ladder bridged a drafting pinhole this many px wide to close the region — the rescue rides provenance (origin.gap_bridged_px) rather than passing as a clean fill"),
   verts: z.array(point).optional().describe("Traced polygon vertices (image px), when return_verts was set"),
   area_sf: z.number().optional().describe("Scaled mode: traced area in SF"),
   perimeter_lf: z.number().optional().describe("Scaled mode: traced perimeter in LF"),
@@ -71,6 +72,7 @@ const detectedRoom = z.object({
   nverts: z.number().int().describe("Vertex count of the traced polygon"),
   merged_labels: z.array(z.string()).optional().describe("Other labels that flooded to this same region — the area is counted once, under `label`"),
   hatch_filtered: z.literal(true).optional().describe("Present when hatch/pattern linework was classified out of the boundary"),
+  gap_bridged_px: z.number().optional().describe("Present when the seal ladder bridged a drafting pinhole this many px wide to close the region"),
   verts: z.array(point).optional().describe("Traced polygon vertices (image px), when return_verts was set"),
   area_sf: z.number().optional().describe("Scaled mode: traced area in SF"),
   perimeter_lf: z.number().optional().describe("Scaled mode: traced perimeter in LF"),
@@ -202,9 +204,9 @@ export const undoLastOutput = {
   undone: z.number().int().describe("Steps actually reversed"),
   steps: z.array(z.object({
     seq: z.number().int(),
-    op: z.enum(["commit", "edit", "delete", "materials"]),
+    op: z.enum(["commit", "edit", "delete", "materials", "condition"]),
     tool: z.string().describe("The tool call this step came from"),
-    shapes: z.number().int().describe("Shapes affected by reversing this step — 0 for a materials step (it restores a condition's supporting-materials rows, not shapes)"),
+    shapes: z.number().int().describe("Shapes affected by reversing this step — 0 for a materials step (it restores a condition's supporting-materials rows, not shapes) and for a condition step (it restores the waste/multiplier pair)"),
   })).describe("Newest first"),
   shape_count: z.number().int().describe("Committed shapes after the undo"),
   remaining: z.number().int().describe("Steps still available to undo"),
@@ -245,6 +247,52 @@ export const editMaterialsOutput = {
     patched: z.array(z.string()).describe("Ids whose fields changed"),
   }),
   materials: z.array(materialRow).describe("The condition's full materials array after this write"),
+};
+
+/** One computed materials line inside a report condition row — the buy list.
+ * conditionTotals (web/src/lib/totals.js) computes qty = basis_qty ÷ per,
+ * rounded UP to whole purchase units unless round is false. */
+const reportMaterialLine = z.object({
+  name: z.string(),
+  unit: z.string().describe("Purchase unit, e.g. 'gal', 'bag'"),
+  per: z.number().describe("Coverage rate — basis units per purchase unit"),
+  basis: z.enum(["area", "linear", "count"]),
+  round: z.boolean(),
+  basis_qty: z.number().describe("The condition total this row divides (SF, LF, or EA — multiplier applied, waste not)"),
+  qty: z.number().describe("Computed order quantity"),
+}).passthrough();
+
+/** export_report: the canvas Report's own JSON document (totals.js reportJson,
+ * schema "opentakeoff.report.v1", additive-only). The authority on the shape
+ * is the web export — this mirror pins what a pricing consumer relies on and
+ * passes the additive tail through. */
+export const exportReportOutput = {
+  schema: z.literal("opentakeoff.report.v1"),
+  project_name: z.string().nullable(),
+  generated_with: z.string(),
+  sheets: z.array(z.object({ sheet_id: z.string(), sheet: z.string(), scale_source: z.string() }).passthrough()).describe("Scale provenance per sheet — how each scale was set"),
+  conditions: z.array(summaryRow.extend({ materials: z.array(reportMaterialLine) }).passthrough()).describe("conditionTotals rows: gross + *_net quantities AND the computed materials buy list"),
+  by_sheet: z.array(z.object({ sheet_id: z.string(), sheet: z.string(), rows: z.array(z.record(z.unknown())) }).passthrough()).describe("BASE per-sheet subtotals — multiplier NOT applied, no waste, no materials"),
+  totals: z.object({
+    total_sf: z.number(), total_sf_net: z.number(),
+    lf: z.number(), lf_net: z.number(),
+    ea: z.number(), sy_net: z.number(),
+  }).passthrough(),
+  materials: z.array(z.object({ name: z.string(), unit: z.string(), qty: z.number() }).passthrough()).describe("Project-wide buy list — condition rows summed by (name, unit)"),
+  markups: z.array(z.record(z.unknown())),
+  rfis: z.array(z.record(z.unknown())),
+  condition_columns: z.array(z.record(z.unknown())),
+  shape_labels: z.array(z.string()),
+  by_label: z.array(z.record(z.unknown())),
+  units: z.string(),
+  display_units: z.string(),
+};
+
+export const editConditionOutput = {
+  condition: z.string().describe("The finish tag passed in"),
+  condition_id: z.string(),
+  waste_pct: z.number().describe("The condition's waste % after this write"),
+  multiplier: z.number().describe("The condition's quantity multiplier after this write"),
 };
 
 export const readSheetTextOutput = {

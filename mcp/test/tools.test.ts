@@ -50,13 +50,14 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // px and says so.
 // link_annotation takes an id and a tag — no geometry crosses it, so the
 // coordinate contract would be noise rather than clarity.
-const NO_COORDS = new Set(["undo_last", "edit_materials", "link_annotation"]);
+const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "link_annotation"]);
 
-test("tools/list: all twenty tools, each described with the coordinate contract", async () => {
+test("tools/list: all twenty-two tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
-    "annotate", "delete_shape", "detect_rooms", "edit_materials", "edit_shape", "export_takeoff", "find_text",
+    "annotate", "delete_shape", "detect_rooms", "edit_condition", "edit_materials", "edit_shape", "export_report",
+    "export_takeoff", "find_text",
     "link_annotation", "list_annotations", "load_plan", "measure_line", "measure_polygon", "one_click",
     "read_sheet_text", "set_scale", "sheet_context", "sheet_info", "takeoff_summary", "undo_last", "view_sheet",
   ]);

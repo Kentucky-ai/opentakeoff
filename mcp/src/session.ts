@@ -14,7 +14,7 @@ import {
 } from "../../web/src/lib/oneclick.ts";
 import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
-import { conditionTotals, grandTotals } from "../../web/src/lib/totals.js";
+import { conditionTotals, grandTotals, sheetTotals, reportJson } from "../../web/src/lib/totals.js";
 import { gridPxPerFoot, drawGrid, drawShapes, type Ctx2D, type ToCanvas } from "./view.ts";
 
 // Copied from the canvas (web/src/pages/TakeoffCanvas.jsx) so conditions and
@@ -78,6 +78,10 @@ export interface ShapeOrigin {
   /** one_click: the flood-fill seed, normalized to sheet dims. */
   seed_norm?: [number, number];
   hatch_filtered?: true;
+  /** one_click: the seal ladder bridged a drafting pinhole this many px wide
+   * to close the region (engine `gapBridged` — canvas parity: the rescue rides
+   * provenance rather than passing itself off as a clean fill). */
+  gap_bridged_px?: number;
   raster_traced?: true;
   fill_sensitivity?: number;
   /** Machine's original trace, frozen on first human edit (provenance.js). */
@@ -140,6 +144,9 @@ interface SheetState {
   detected: DetectedScale | null;
   /** real feet per image px at RENDER_SCALE; null until set_scale */
   upp: number | null;
+  /** how the scale was set — report provenance (export_report scale_source),
+   * canvas vocabulary: "standard" | "upp" | "calibrated" | "detected" */
+  scaleSource?: string;
   text: { str: string; x: number; y: number }[];
   page: PageHandle;
   // lazy per-sheet caches (built once, reused by identity)
@@ -223,7 +230,8 @@ export type JournalPayload =
   | { op: "commit"; tool: string; ids: string[] }
   | { op: "edit"; tool: string; before: Shape }
   | { op: "delete"; tool: string; removed: { shape: Shape; index: number }[] }
-  | { op: "materials"; tool: string; condition_id: string; before: MaterialRow[] };
+  | { op: "materials"; tool: string; condition_id: string; before: MaterialRow[] }
+  | { op: "condition"; tool: string; condition_id: string; before: { waste_pct: number; multiplier: number } };
 
 export type JournalEntry = JournalPayload & { seq: number };
 
@@ -557,6 +565,10 @@ export class Session {
       throw new UserError("Provide exactly one of: label, upp, calibrate, use_detected.");
     }
     s.upp = upp;
+    // the tool reply keeps this session's source vocabulary; the stored value
+    // uses the canvas's report vocabulary so export_report's scale_source
+    // reads the same as an app-side report.v1
+    s.scaleSource = source === "label" ? "standard" : source === "calibrate" ? "calibrated" : source;
     return { sheet: s.key, upp, ...(label ? { label } : {}), source };
   }
 
@@ -611,6 +623,7 @@ export class Session {
       status: "ok" as const,
       nverts: ring.length,
       ...(f.hatchFiltered ? { hatch_filtered: true } : {}),
+      ...(f.gapBridged ? { gap_bridged_px: f.gapBridged } : {}),
       ...(opts.returnVerts ? { verts: ring.map(([vx, vy]) => [round1(vx), round1(vy)]) } : {}),
     };
     if (s.upp == null) {
@@ -635,6 +648,7 @@ export class Session {
         seed_norm: [x / s.widthPx, y / s.heightPx],
         reviewed: false,
         ...(f.hatchFiltered ? { hatch_filtered: true as const } : {}),
+        ...(f.gapBridged ? { gap_bridged_px: f.gapBridged } : {}),
         // canvas-parity provenance: a non-default fill sensitivity is part of
         // how the shape was made (ShapeOrigin.fill_sensitivity)
         ...(opts.sensitivity !== undefined && opts.sensitivity !== SENS_BALANCED ? { fill_sensitivity: opts.sensitivity } : {}),
@@ -692,11 +706,11 @@ export class Session {
     // commits in this pass — withholding has to be decided across the whole
     // batch (dedupe needs to see every ring).
     const withheld = { degenerate: 0, duplicate: 0, bubble: 0, implausible: 0 };
-    type Cand = { label: string; ring: Point[]; areaPx2: number; perimPx: number; seed: readonly [number, number] | number[]; hatch: boolean; merged: string[] };
+    type Cand = { label: string; ring: Point[]; areaPx2: number; perimPx: number; seed: readonly [number, number] | number[]; hatch: boolean; gap: number; merged: string[] };
     const byRing = new Map<string, Cand>();
     const order: Cand[] = [];
     for (const lb of labels) {
-      let ring: Point[] | null = null, hatch = false, seed: [number, number] | null = null;
+      let ring: Point[] | null = null, hatch = false, gap = 0, seed: [number, number] | null = null;
       let sawBubble = false, sawDegenerate = false;
       for (const probe of seedLadderPx(lb.bbox)) {
         const f = floodRegion(mask, probe[0], probe[1], opts.sensitivity ?? SENS_BALANCED);
@@ -704,7 +718,7 @@ export class Session {
         const r = snapVertices(traceRegion(f), (px, py, d) => (s.snap ? nearestSnap(s.snap, px, py, d) : null), SNAP_TOL);
         if (r.length < 3) { sawDegenerate = true; continue; }
         if (isLabelBubblePx(r as [number, number][], lb.bbox)) { sawBubble = true; continue; }
-        ring = r; hatch = !!f.hatchFiltered; seed = probe;
+        ring = r; hatch = !!f.hatchFiltered; gap = f.gapBridged || 0; seed = probe;
         break;
       }
       if (!ring || !seed) {
@@ -719,7 +733,7 @@ export class Session {
       if (seen) { seen.merged.push(lb.str); withheld.duplicate++; continue; }
       const cand: Cand = {
         label: lb.str, ring, areaPx2: ringArea(ring), perimPx: closedMetrics(ring).perim,
-        seed, hatch, merged: [],
+        seed, hatch, gap, merged: [],
       };
       byRing.set(key, cand);
       order.push(cand);
@@ -733,6 +747,7 @@ export class Session {
           nverts: c.ring.length,
           ...(c.merged.length ? { merged_labels: c.merged } : {}),
           ...(c.hatch ? { hatch_filtered: true as const } : {}),
+          ...(c.gap ? { gap_bridged_px: c.gap } : {}),
           ...(opts.returnVerts ? { verts: c.ring.map(([vx, vy]) => [round1(vx), round1(vy)]) } : {}),
         };
         if (upp == null) {
@@ -749,6 +764,7 @@ export class Session {
             seed_norm: [c.seed[0] / s.widthPx, c.seed[1] / s.heightPx],
             reviewed: false,
             ...(c.hatch ? { hatch_filtered: true as const } : {}),
+            ...(c.gap ? { gap_bridged_px: c.gap } : {}),
           }).id;
         }
         return { ...common, area_sf, perimeter_lf, ...(shape_id ? { shape_id } : {}) };
@@ -956,6 +972,31 @@ export class Session {
     };
   }
 
+  /** Set a condition's quantity knobs — waste % and multiplier. Both are
+   * emitted by takeoff_summary (`waste_pct`, the `*_net` order quantities) and
+   * carried by every export, but nothing in the tool surface could set them,
+   * so an agent's takeoff always shipped net === gross (#131). Same class as
+   * editMaterials — quantity config, not traced geometry, so no review gate —
+   * but resolve-or-error rather than mint-on-first-touch: these knobs only
+   * mean anything on a condition that exists, and a typo'd tag must error,
+   * not create an empty condition as a side effect. One journal entry
+   * snapshots both knobs; undo restores them verbatim. */
+  editCondition(tag: string, opts: { waste_pct?: number; multiplier?: number }) {
+    if (opts.waste_pct === undefined && opts.multiplier === undefined) {
+      throw new UserError("Nothing to change — pass at least one of waste_pct, multiplier.");
+    }
+    const c = this.conditions.find((x) => x.finish_tag === tag);
+    if (!c) {
+      const known = this.conditions.map((x) => x.finish_tag);
+      throw new UserError(`No condition ${JSON.stringify(tag)}.${known.length ? ` Known tags: ${known.join(", ")}.` : " Nothing has minted a condition yet — commit a measurement or add materials first."}`);
+    }
+    const before = { waste_pct: c.waste_pct, multiplier: c.multiplier };
+    if (opts.waste_pct !== undefined) c.waste_pct = opts.waste_pct;
+    if (opts.multiplier !== undefined) c.multiplier = opts.multiplier;
+    this.record({ op: "condition", tool: "edit_condition", condition_id: c.id, before });
+    return { condition: tag, condition_id: c.id, waste_pct: c.waste_pct, multiplier: c.multiplier };
+  }
+
   /** Step back over this session's own last n mutations, newest first. Each
    * entry's inverse is exact (see JournalEntry), so this restores state rather
    * than approximating it. Reads are not journaled, so undo never has to step
@@ -981,6 +1022,10 @@ export class Session {
         // this only misses if a fresh session's journal outlived a load_plan —
         // which load_plan already clears the journal for.
         if (c) c.materials = e.before;
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "condition") {
+        const c = this.conditions.find((x) => x.id === e.condition_id);
+        if (c) { c.waste_pct = e.before.waste_pct; c.multiplier = e.before.multiplier; }
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
       } else {
         for (const { shape, index } of e.removed) {
@@ -1097,6 +1142,26 @@ export class Session {
       sheet_tabs: [],
       sheet_levels: {},
     };
+  }
+
+  /** The computed Report document — "opentakeoff.report.v1", the SAME schema
+   * and math as the canvas Report's JSON export (web reportJson, totals.js):
+   * per-condition quantities with waste and multiplier applied, the computed
+   * materials buy list, per-sheet BASE subtotals, scale provenance. This is
+   * the contract a pricing consumer reads (#130) — export_takeoff carries
+   * materials as CONFIG rows and takeoff_summary strips them; only this
+   * document carries the computed order quantities. */
+  exportReport() {
+    if (!this.doc) throw new UserError("No plan loaded — call load_plan first.");
+    const rows = (conditionTotals(this.conditions, this.shapes) as Record<string, unknown>[]).filter((r) => (r.shape_count as number) > 0);
+    return reportJson({
+      projectName: "",
+      rows,
+      bySheet: sheetTotals(this.conditions, this.shapes),
+      scaleInfo: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => ({ sheet_id: s.key, scale_source: s.scaleSource ?? "unknown" })),
+      markups: this.markups,
+      rfis: [],
+    });
   }
 
   readSheetText(name: string, region?: { x0: number; y0: number; x1: number; y1: number }) {

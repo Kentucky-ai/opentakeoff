@@ -22,7 +22,8 @@ import {
   loadPlanOutput, sheetInfoOutput, setScaleOutput, oneClickOutput, detectRoomsOutput,
   measurePolygonOutput, measureLineOutput, takeoffSummaryOutput,
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
-  findTextOutput, editMaterialsOutput,
+  findTextOutput, editMaterialsOutput, editConditionOutput, undoLastOutput,
+  exportReportOutput,
 } from "../src/outputs.ts";
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
@@ -44,6 +45,9 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   read_sheet_text: z.object(readSheetTextOutput),
   find_text: z.object(findTextOutput),
   edit_materials: z.object(editMaterialsOutput),
+  edit_condition: z.object(editConditionOutput),
+  undo_last: z.object(undoLastOutput),
+  export_report: z.object(exportReportOutput),
 };
 
 async function pair() {
@@ -191,6 +195,40 @@ test("every tool: canonical valid call → schema-valid structuredContent mirror
     patch: [{ id: materials.materials[0].id, fields: { per: 300 } }] });
   assert.equal(matched.materials[0].per, 300);
 
+  // edit_condition: the waste/multiplier knobs actually move takeoff_summary's
+  // nets (#131 — before this tool, an agent takeoff always shipped net === gross)
+  const preRow = (await callOk(client, "takeoff_summary")).conditions.find((r: any) => r.finish_tag === "CPT-1");
+  assert.deepEqual({ w: preRow.waste_pct, m: preRow.multiplier }, { w: 0, m: 1 }, "minted conditions start net === gross");
+  const knobs = await callOk(client, "edit_condition", { condition: "CPT-1", waste_pct: 10, multiplier: 2 });
+  assert.deepEqual({ w: knobs.waste_pct, m: knobs.multiplier }, { w: 10, m: 2 });
+  const postRow = (await callOk(client, "takeoff_summary")).conditions.find((r: any) => r.finish_tag === "CPT-1");
+  assert.ok(Math.abs(postRow.total_sf - preRow.total_sf * 2) < 0.05, "multiplier scales gross");
+  assert.ok(Math.abs(postRow.total_sf_net - postRow.total_sf * 1.1) < 0.05, "waste lifts net over gross");
+  assert.match(await callErr(client, "edit_condition", { condition: "NOPE-9", waste_pct: 5 }),
+    /No condition "NOPE-9"\. Known tags: /);        // resolve-or-error — a typo must not mint
+  assert.match(await callErr(client, "edit_condition", { condition: "CPT-1" }), /Nothing to change/);
+  const undone = await callOk(client, "undo_last", { n: 1 });
+  assert.equal(undone.steps[0].op, "condition");
+  const revRow = (await callOk(client, "takeoff_summary")).conditions.find((r: any) => r.finish_tag === "CPT-1");
+  assert.deepEqual({ w: revRow.waste_pct, m: revRow.multiplier }, { w: 0, m: 1 }, "undo restores both knobs verbatim");
+
+  // export_report: the canvas Report document over MCP (#130) — computed buy
+  // list included, math parity with the app's totals.js
+  await callOk(client, "edit_condition", { condition: "CPT-1", waste_pct: 5 });
+  const report = await callOk(client, "export_report");
+  assert.equal(report.schema, "opentakeoff.report.v1");
+  const rRow = report.conditions.find((r: any) => r.finish_tag === "CPT-1");
+  assert.ok(rRow.shape_count > 0, "report rows are shape-bearing conditions only");
+  assert.ok(Math.abs(rRow.total_sf_net - rRow.total_sf * 1.05) < 0.05, "net carries the waste knob");
+  assert.equal(rRow.materials.length, 1, "the buy list rides the row — the thing summary strips and the canvas payload never computes");
+  const mLine = rRow.materials[0];
+  assert.equal(mLine.per, 300);
+  assert.equal(mLine.qty, Math.ceil(mLine.basis_qty / 300 - 1e-9), "order qty = basis ÷ coverage, rounded up to whole purchase units");
+  assert.deepEqual(report.materials, [{ name: "Adhesive", unit: "gal", qty: mLine.qty }], "project-wide roll-up sums by (name, unit)");
+  assert.ok(["standard", "upp", "calibrated", "detected"].includes(report.sheets[0].scale_source), "scale provenance rides the report");
+  assert.ok(report.totals.total_sf_net > report.totals.total_sf, "grand totals carry waste");
+  await callOk(client, "edit_condition", { condition: "CPT-1", waste_pct: 0 });   // leave the session as the later tests expect
+
   const del = await callOk(client, "delete_shape", { shape_id: clicked.shape_id });
   assert.deepEqual(del, { deleted: clicked.shape_id, shape_count: 2 });
 
@@ -263,6 +301,7 @@ test("before any plan: sheet tools and export refuse cleanly; summary is a valid
   assert.match(await callErr(client, "measure_line", { sheet: KEY, pts: [[0, 0], [1, 1]] }), gate);
   assert.match(await callErr(client, "read_sheet_text", { sheet: KEY }), gate);
   assert.match(await callErr(client, "export_takeoff"), gate);
+  assert.match(await callErr(client, "export_report"), gate);
   assert.match(await callErr(client, "delete_shape", { shape_id: "shp-nope" }), /No shape with id "shp-nope"\./);
 
   const summary = await callOk(client, "takeoff_summary");
@@ -305,6 +344,9 @@ test("schema-invalid arguments: -32602 validation error naming the tool; the ses
   await callViolation(client, "find_text", { sheet: KEY });                                // missing q
   await callViolation(client, "find_text", { sheet: KEY, q: "101", limit: 0 });            // limit below min 1
   await callViolation(client, "edit_materials", { condition: "CPT-1", add: [{ per: 250 }] }); // add row missing name
+  await callViolation(client, "edit_condition", { condition: "CPT-1", waste_pct: -5 });    // negative waste
+  await callViolation(client, "edit_condition", { condition: "CPT-1", multiplier: 0 });    // 0 silently means 1 on the canvas — rejected
+  await callViolation(client, "edit_condition", { condition: "CPT-1", waste_pct: "ten" }); // wrong type
 
   // none of that touched the session — a real call still works on the same pair
   const r = await callOk(client, "one_click", { sheet: KEY, x: 600, y: 1084 });
