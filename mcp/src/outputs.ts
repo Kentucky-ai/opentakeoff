@@ -310,6 +310,48 @@ export const readSheetTextOutput = {
   text: z.string().describe("The items joined with spaces"),
 };
 
+// ── the sheet graph (#87) ───────────────────────────────────────────────────
+const wireBox = z.object({ x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() });
+const wireEvidence = z.object({ sheet: z.string(), text: z.string(), bbox: wireBox })
+  .describe("An evidence pointer — the sheet, the literal text, and where it sits (image px). Every edge in the graph carries one; pass the bbox to view_sheet to LOOK at the source.");
+const graphRoom = z.object({ tag: z.string(), name: z.string().describe("The name span stacked over the tag ('' when none)"), sheet: z.string(), bbox: wireBox });
+
+export const sheetGraphOutput = {
+  available: z.boolean().describe("false = the set has no text layer (a scan) — the graph degrades to unavailable, never half-populates"),
+  sheets: z.array(z.object({
+    sheet: z.string(),
+    role: z.enum(["plan", "schedule", "legend", "detail", "elevation", "demolition", "unknown"]),
+    confidence: z.number().describe("0..1; mixed title signals halve it, a bare sheet-number convention stays under 0.5"),
+    evidence: wireEvidence.optional(),
+    schedules: z.array(z.object({ kind: z.string(), title: z.string(), rows: z.number().int(), region: wireBox })),
+  })),
+  rooms: z.array(graphRoom).describe("Room tags read off plan-role sheets — schedule sheets contribute rows, never phantom rooms"),
+  callouts: z.array(z.object({ detail: z.string(), target_sheet: z.string(), sheet: z.string(), bbox: wireBox })).describe("Detail callouts (3/A-601) — edges to their target sheets"),
+  counts: z.object({ rooms: z.number().int(), schedules: z.number().int(), callouts: z.number().int() }),
+};
+
+export const resolveTagOutput = {
+  status: z.enum(["resolved", "unresolved"]),
+  tag: z.string(),
+  room: graphRoom.nullable().describe("The plan tag, when the room appears on a plan sheet — cited even when resolution fails"),
+  finishes: z.array(z.object({
+    surface: z.string().describe("The schedule column: FLOOR / BASE / WALL / …"),
+    code: z.string(),
+    source: wireEvidence,
+    definition: z.object({ cells: z.record(z.string()), source: wireEvidence }).optional()
+      .describe("The finish/material-schedule row this code chains to, when one exists"),
+  })).optional(),
+  sources: z.array(wireEvidence).optional().describe("The chain: plan tag → schedule row"),
+  reason: z.string().optional().describe("unresolved only — WHY (no schedule row / ambiguous / no schedule found). A room that appears on the plan with no row comes back here, never as a silent omission"),
+};
+
+export const findScheduleOutput = {
+  matches: z.array(z.object({
+    sheet: z.string(), kind: z.string(), title: z.string(), rows: z.number().int(),
+    headers: z.array(z.string()), region: wireBox.describe("Pass to view_sheet to look at the table"),
+  })),
+};
+
 /** sheet_context (issue #29): vectors + text + hatch families of one region,
  * in one frame. Structured-only by design — the raster stays view_sheet's
  * job, and frame agreement is a contract on the echoed region rect rather

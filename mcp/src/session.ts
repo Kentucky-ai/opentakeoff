@@ -7,6 +7,7 @@
 import path from "node:path";
 import { openPdf, positionedText, textSpans, OPS, type DocHandle, type PageHandle, type TextSpan, type OcgEntry } from "./pdf.ts";
 import { classifyLayerName, layerRoleCodes, segRoles, type LayerInfo } from "../../web/src/lib/layers.ts";
+import { buildSheetGraph, resolveTag, type SheetGraph, type SheetSpans } from "../../web/src/lib/sheetgraph.ts";
 import { UserError, round1, round2 } from "./format.ts";
 import { STANDARD_SCALES, RENDER_SCALE, detectScale, extractSheetNumber, type DetectedScale } from "../../web/src/lib/sheets.ts";
 import {
@@ -296,6 +297,7 @@ export class Session {
     // across a document swap would be a lie, so the history goes with them
     this.journal = [];
     this.pendingCommits = [];
+    this.graph = null;   // the sheet graph (#87) indexes the OLD document
 
     const doc = await openPdf(filePath);
     this.doc = doc;
@@ -1235,6 +1237,88 @@ export class Session {
       markups: this.markups,
       rfis: [],
     });
+  }
+
+  // ── the sheet graph (#87) ─────────────────────────────────────────────────
+  // Built lazily from every sheet's text spans, cached per document (loadPlan
+  // clears it). The engine is pure (web/src/lib/sheetgraph.ts); this is the
+  // span plumbing plus the wire shapes.
+  private graph: SheetGraph | null = null;
+
+  private async ensureGraph(): Promise<SheetGraph> {
+    if (!this.doc) throw new UserError("No plan loaded — call load_plan first.");
+    if (!this.graph) {
+      const inputs: SheetSpans[] = [];
+      for (const s of this.sheets.values()) {
+        if (!s.spans) s.spans = textSpans(s.page);
+        inputs.push({
+          key: s.key,
+          sheet_number: s.sheetNumber,
+          spans: s.spans.map((t) => ({ str: t.str, x: t.x0, y: t.y0, w: t.x1 - t.x0, h: t.y1 - t.y0 })),
+        });
+      }
+      this.graph = buildSheetGraph(inputs);
+    }
+    return this.graph;
+  }
+
+  private static wireBox(b: [number, number, number, number]) {
+    return { x0: round1(b[0]), y0: round1(b[1]), x1: round1(b[2]), y1: round1(b[3]) };
+  }
+  private static wireEvidence(e: { sheet: string; text: string; bbox: [number, number, number, number] }) {
+    return { sheet: e.sheet, text: e.text, bbox: Session.wireBox(e.bbox) };
+  }
+
+  async sheetGraph() {
+    const g = await this.ensureGraph();
+    return {
+      available: g.available,
+      sheets: g.sheets.map((s) => ({
+        sheet: s.key, role: s.role, confidence: s.confidence,
+        ...(s.evidence ? { evidence: Session.wireEvidence(s.evidence) } : {}),
+        schedules: s.schedules.map((t) => ({ kind: t.kind, title: t.title, rows: t.rows, region: Session.wireBox(t.region) })),
+      })),
+      rooms: g.rooms.map((r) => ({ tag: r.tag, name: r.name, sheet: r.sheet, bbox: Session.wireBox(r.bbox) })),
+      callouts: g.callouts.map((c) => ({ detail: c.detail, target_sheet: c.target_sheet, sheet: c.sheet, bbox: Session.wireBox(c.bbox) })),
+      counts: { rooms: g.rooms.length, schedules: g.tables.length, callouts: g.callouts.length },
+    };
+  }
+
+  async resolveRoomTag(tag: string) {
+    if (!tag || !tag.trim()) throw new UserError("Pass a room tag, e.g. resolve_tag { tag: \"134\" }.");
+    const g = await this.ensureGraph();
+    if (!g.available) throw new UserError("This set has no text layer (a scan) — the sheet graph is unavailable, not empty.");
+    const res = resolveTag(g, tag);
+    const room = res.room ? { tag: res.room.tag, name: res.room.name, sheet: res.room.sheet, bbox: Session.wireBox(res.room.bbox) } : null;
+    if (res.status === "unresolved") return { status: "unresolved" as const, tag: res.tag, room, reason: res.reason };
+    return {
+      status: "resolved" as const,
+      tag: res.tag,
+      room,
+      finishes: res.finishes.map((f) => ({
+        surface: f.surface, code: f.code, source: Session.wireEvidence(f.source),
+        ...(f.definition ? { definition: { cells: f.definition.cells, source: Session.wireEvidence(f.definition.source) } } : {}),
+      })),
+      sources: res.sources.map(Session.wireEvidence),
+    };
+  }
+
+  async findSchedule(kind: string) {
+    const g = await this.ensureGraph();
+    if (!g.available) throw new UserError("This set has no text layer (a scan) — the sheet graph is unavailable.");
+    const k = (kind || "").toLowerCase();
+    const want = /room/.test(k) ? "room-finish" : /finish|material|product|code|mark/.test(k) ? "finish" : k;
+    const hits = g.tables.filter((t) => t.kind === want);
+    if (!hits.length) {
+      const found = g.tables.map((t) => `${t.kind} on ${t.sheet}`).join(" | ");
+      throw new UserError(`No ${JSON.stringify(kind)} schedule found in the set. Found: ${found || "no schedules at all"}.`);
+    }
+    return {
+      matches: hits.map((t) => ({
+        sheet: t.sheet, kind: t.kind, title: t.title?.text || "", rows: t.rows.length,
+        headers: t.headers, region: Session.wireBox(t.region),
+      })),
+    };
   }
 
   readSheetText(name: string, region?: { x0: number; y0: number; x1: number; y1: number }) {
