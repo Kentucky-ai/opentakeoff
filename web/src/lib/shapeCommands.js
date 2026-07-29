@@ -77,6 +77,7 @@ export const PROVENANCE_POLICY = {
   review: "origin.reviewed → true + accepted_ts per still-pending shape; restore puts the prior origin back verbatim",
   ruleApply: "add semantics (created_at + id mint per shape, ONE undo entry per batch); caller-built rule_v1 origin carries rule_id + seed_shape_id",
   cutout: "#137 — mints the deduct (id + created_at) AND patches its parent's verts_norm/verts_norm_holes/computed as ONE undo entry; parent patch stamps nothing, nothing counts; restore unmints the deduct and reverts the parent verbatim",
+  rollcut: "#136 — NO stamp: a manual roll-cut override (slide/resize/reorder/reset) writes LAYOUT metadata (shape.roll_layout) over the shape, never its geometry or provenance; a row without roll_layout clears the key; `prev` (grab-time rows) builds the inverse when a live preview already wrote the final state",
 };
 
 // Undo depth — one bounded gesture history, not an archive (revisions are).
@@ -316,6 +317,29 @@ export function applyShapeCommand(shapes, cmd) {
       if (!parentPrev) return { shapes, inverse: null };   // parent vanished mid-gesture — refuse rather than mint an orphaned deduct
       next.push(minted);
       return { shapes: next, inverse: { type: "cutout", restore: true, deductId: minted.id, parentId: cmd.parentId, parentPrev } };
+    }
+    case "rollcut": {
+      // #136 — patch shape.roll_layout across one or more shapes as ONE undo
+      // entry (a drag gesture, a whole-roll reorder, a reset). Rows are
+      // presence-aware like every restore in this file: a row carrying
+      // roll_layout sets it; a row without clears the key (back to the
+      // engine's auto layout). `prev` is the geom-command idea applied here:
+      // the caller's grab-time rows build the inverse when the live drag
+      // preview already wrote the final layout into the array — without it,
+      // the inverse reads the CURRENT shapes (the discrete-edit path).
+      const rows = cmd.rows || [];
+      const byId = new Map(rows.map((r) => [r.id, r]));
+      const prevRows = cmd.prev || shapes.filter((s) => byId.has(s.id))
+        .map((s) => ({ id: s.id, ...("roll_layout" in s ? { roll_layout: s.roll_layout } : {}) }));
+      const next = shapes.map((s) => {
+        const r = byId.get(s.id);
+        if (!r) return s;
+        if ("roll_layout" in r && r.roll_layout != null) return { ...s, roll_layout: r.roll_layout };
+        if (!("roll_layout" in s)) return s;
+        const { roll_layout: _rl, ...rest } = s;   // clear = key absent, never null
+        return rest;
+      });
+      return { shapes: next, inverse: { type: "rollcut", rows: prevRows } };
     }
     case "review": {
       if (cmd.restore) {

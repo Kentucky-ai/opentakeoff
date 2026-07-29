@@ -286,6 +286,7 @@ export const exportReportOutput = {
   by_label: z.array(z.record(z.unknown())),
   units: z.string(),
   display_units: z.string(),
+  roll_goods: z.array(z.record(z.unknown())).describe("Roll-goods order rows (#136) — order_lf / rolls / order_qty per roll-goods condition, ×N applied; empty when no condition carries a roll_setup (always the case for a headless session today)"),
 };
 
 export const editConditionOutput = {

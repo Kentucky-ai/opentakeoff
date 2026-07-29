@@ -394,9 +394,10 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
  *   rfis?: any[], sheetLabel?: ((sheetId: any) => string)|null,
  *   conditionColumns?: Array<{id: string, name: string, values: string[]}>,
  *   attrsByCond?: Map<any, object>|null, shapeLabels?: string[],
- *   byLabel?: Array<{value: string|null, rows: any[]}>, displayUnits?: string}} args
+ *   byLabel?: Array<{value: string|null, rows: any[]}>, displayUnits?: string,
+ *   rollGoods?: any[]}} args
  */
-export function reportJson({ projectName = "", rows = [], bySheet = [], scaleInfo = [], markups = [], rfis = [], sheetLabel = null, conditionColumns = [], attrsByCond = null, shapeLabels = [], byLabel = [], displayUnits = "imperial" }) {
+export function reportJson({ projectName = "", rows = [], bySheet = [], scaleInfo = [], markups = [], rfis = [], sheetLabel = null, conditionColumns = [], attrsByCond = null, shapeLabels = [], byLabel = [], displayUnits = "imperial", rollGoods = [] }) {
   const label = (id) => (sheetLabel ? sheetLabel(id) : id);
   // destructuring defaults don't apply to an explicit null, and both values can
   // trace back to a corrupted payload — coerce (and drop malformed items) so
@@ -480,6 +481,13 @@ export function reportJson({ projectName = "", rows = [], bySheet = [], scaleInf
     // "JSON stays raw, but says so" contract.
     units: "imperial (SF/LF — raw internal values)",
     display_units: displayUnits === "metric" ? "metric" : "imperial",
+    // roll_goods APPENDS last (additive-only v1, #136): one row per roll-goods
+    // condition — the figured order (order_lf / rolls / order_qty in the
+    // condition's sell unit, ×N applied like every reported quantity) beside
+    // the measured quantities the conditions[] rows already carry. Always
+    // emitted; empty for projects with no roll-goods conditions, so every
+    // pre-#136 export round-trips byte-identically except this one key.
+    roll_goods: Array.isArray(rollGoods) ? rollGoods : [],
   };
 }
 

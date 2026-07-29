@@ -362,3 +362,23 @@ test("CSV is byte-identical to golden when no condition has a spec (spec cols co
   const csv = totalsToCsv(rows, projectName, sheetTotals(conditions, shapes), sheetLabel, cols);
   assert.equal(csv, golden);
 });
+
+// ── roll-goods columns (#136) ────────────────────────────────────────────────
+
+test("rollColProfile: empty without figured layouts; ×N-applied getters through ctx; metric converts order LF", async () => {
+  const { rollColProfile, applyUnits } = await import("../src/lib/reportColumns.js");
+  assert.deepEqual(rollColProfile(null), []);
+  assert.deepEqual(rollColProfile(new Map()), [], "no roll conditions → zero extra columns (golden CSV byte-safe)");
+  const rollByCond = new Map([["c1", { orderFt: 29, rollCount: 2 }]]);
+  const cols = rollColProfile(rollByCond);
+  assert.deepEqual(cols.map((c: any) => [c.key, c.header]), [["roll:order_lf", "Roll Order LF"], ["roll:rolls", "Rolls"]]);
+  const ctx = { rollByCond };
+  const row = { id: "c1", multiplier: 3 };
+  assert.equal(cols[0].get(row, ctx), 87, "order LF ×N");
+  assert.equal(cols[1].get(row, ctx), 6, "rolls ×N");
+  assert.equal(cols[0].get({ id: "other", multiplier: 1 }, ctx), "", "a non-roll condition's cell is blank");
+  // metric: the LF column converts at the descriptor like every dimensioned column
+  const [mOrder] = applyUnits(cols, "metric");
+  assert.equal(mOrder.header, "Roll Order m");
+  assert.equal(mOrder.get(row, ctx), round2(87 * 0.3048));
+});
