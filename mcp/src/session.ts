@@ -1151,11 +1151,11 @@ export class Session {
    * the contract a pricing consumer reads (#130) — export_takeoff carries
    * materials as CONFIG rows and takeoff_summary strips them; only this
    * document carries the computed order quantities. */
-  exportReport() {
+  exportReport(projectName = "") {
     if (!this.doc) throw new UserError("No plan loaded — call load_plan first.");
     const rows = (conditionTotals(this.conditions, this.shapes) as Record<string, unknown>[]).filter((r) => (r.shape_count as number) > 0);
     return reportJson({
-      projectName: "",
+      projectName,
       rows,
       bySheet: sheetTotals(this.conditions, this.shapes),
       scaleInfo: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => ({ sheet_id: s.key, scale_source: s.scaleSource ?? "unknown" })),

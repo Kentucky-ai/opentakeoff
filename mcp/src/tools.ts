@@ -139,10 +139,13 @@ export function registerTools(server: McpServer, session: Session): void {
 
   server.registerTool("export_report", {
     description: `The computed Report document — "opentakeoff.report.v1", the same schema the canvas Report's JSON export writes. Everything a pricing consumer needs without re-implementing the app's math: per-condition quantities with waste and multiplier applied (gross and *_net), the computed materials BUY LIST per condition (order quantity = basis ÷ coverage rate, rounded up to whole purchase units) plus the project-wide roll-up summed by (name, unit), per-sheet BASE subtotals, scale provenance per sheet, and annotations. Contrast: export_takeoff is the raw canvas payload (materials as CONFIG rows, no computed quantities) and takeoff_summary strips materials for a compact reply — when the numbers are leaving for pricing, consume this. Returned inline; pass path to also write it to disk as JSON.`,
-    inputSchema: { path: z.string().optional().describe("File path to write the document to") },
+    inputSchema: {
+      path: z.string().optional().describe("File path to write the document to"),
+      project_name: z.string().optional().describe("Label for the document's project_name field (a headless session has no project of its own; omitted → null)"),
+    },
     outputSchema: exportReportOutput,
-  }, run("export_report", async ({ path: outPath }) => {
-    const doc = session.exportReport();
+  }, run("export_report", async ({ path: outPath, project_name: projectName }) => {
+    const doc = session.exportReport(projectName);
     if (outPath) {
       const { writeFile } = await import("node:fs/promises");
       await writeFile(outPath, JSON.stringify(doc));
