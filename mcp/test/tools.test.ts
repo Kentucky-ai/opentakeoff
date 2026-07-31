@@ -56,13 +56,13 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // export_marked_pdf takes a file path and writes a document — same reasoning.
 const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "link_annotation"]);
 
-test("tools/list: all twenty-six tools, each described with the coordinate contract", async () => {
+test("tools/list: all twenty-eight tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
     "annotate", "delete_shape", "detect_rooms", "edit_condition", "edit_materials", "edit_shape", "export_marked_pdf", "export_report",
     "export_takeoff", "find_schedule", "find_text",
-    "link_annotation", "list_annotations", "load_plan", "measure_line", "measure_polygon", "one_click",
+    "link_annotation", "list_annotations", "load_plan", "measure_line", "measure_polygon", "measure_surface", "one_click", "place_count",
     "read_sheet_text", "resolve_tag", "set_scale", "sheet_context", "sheet_graph", "sheet_info", "takeoff_summary", "undo_last", "view_sheet",
   ]);
   for (const t of tools) {
@@ -282,6 +282,63 @@ test("export_marked_pdf: refuses an empty session, then writes a real 2-page PDF
   assert.equal(r2.isError, false);
   assert.equal(r2.data.path, out2);
   assert.equal((await readFile(out2)).subarray(0, 5).toString(), "%PDF-");
+});
+
+// #146 — the missing measure roles: wall SF and EA reach the wire.
+test("measure_surface: refuses without a height (minting nothing), commits LF × height, height journals separately", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  await call(client, "set_scale", { sheet: KEY, use_detected: true });
+
+  const bare = await call(client, "measure_surface", { sheet: KEY, pts: [[600, 400], [900, 400]], condition: "CT-W1" });
+  assert.equal(bare.isError, true);
+  assert.match(bare.data.error, /Set a height for CT-W1/);
+  const sum0 = await call(client, "takeoff_summary");
+  assert.equal(sum0.data.conditions.length, 0, "the refusal minted no condition");
+
+  // 300 px at 1/4" = 1'-0" (36 px per real foot at render scale 2) = 8.33 LF; × 9 ft = 75 SF
+  const r = await call(client, "measure_surface", { sheet: KEY, pts: [[600, 400], [900, 400]], condition: "CT-W1", height_ft: 9 });
+  assert.equal(r.isError, false);
+  assert.equal(r.data.height_ft, 9);
+  assert.equal(r.data.length_lf, 8.33);
+  assert.equal(r.data.area_sf, 75);
+  const sum = await call(client, "takeoff_summary");
+  assert.equal(sum.data.conditions[0].wall_sf, 75);
+
+  // the height write and the trace are separate undo steps (H-then-trace)
+  const undo = await call(client, "undo_last", { n: 2 });
+  assert.deepEqual(undo.data.steps.map((s: any) => s.op), ["commit", "condition"]);
+
+  // knob path: edit_condition height_ft, then measure without an explicit height
+  await call(client, "measure_surface", { sheet: KEY, pts: [[0, 0], [96, 0]], condition: "CT-W2", height_ft: 10 });
+  const knob = await call(client, "edit_condition", { condition: "CT-W2", height_ft: 8 });
+  assert.equal(knob.data.height_ft, 8);
+  const r2 = await call(client, "measure_surface", { sheet: KEY, pts: [[600, 400], [900, 400]], condition: "CT-W2" });
+  assert.equal(r2.data.area_sf, 66.67); // 8.33 LF × 8 ft
+});
+
+test("place_count: EA with no scale set, one journal step for the sweep, marked set and summary carry them", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  // deliberately NO set_scale — EA is scale-free
+  const r = await call(client, "place_count", { sheet: KEY, points: [[500, 500], [700, 500], [900, 500]], condition: "TR-1" });
+  assert.equal(r.isError, false);
+  assert.equal(r.data.committed, 3);
+  assert.equal(r.data.ea_total, 3);
+  assert.equal(r.data.shape_ids.length, 3);
+  const sum = await call(client, "takeoff_summary");
+  assert.equal(sum.data.conditions[0].ea, 3);
+
+  // whole sweep = one undo step
+  const undo = await call(client, "undo_last", { n: 1 });
+  assert.equal(undo.data.steps[0].shapes, 3);
+  assert.equal(undo.data.shape_count, 0);
+
+  // count markers move without a scale; edit preserves the EA
+  const again = await call(client, "place_count", { sheet: KEY, points: [[500, 500]], condition: "TR-1" });
+  const moved = await call(client, "edit_shape", { shape_id: again.data.shape_ids[0], verts: [[520, 520]] });
+  assert.equal(moved.isError, false);
+  assert.equal(moved.data.count, 1);
 });
 
 test("output contract: every JSON tool declares outputSchema; structuredContent mirrors the text item", async () => {

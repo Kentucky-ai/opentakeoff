@@ -116,6 +116,24 @@ export const measurePolygonOutput = {
   shape_id: z.string().optional().describe("Present when condition was passed and the shape committed"),
 };
 
+/** measure_surface (#146) — wall SF: traced LF × the condition's height. */
+export const measureSurfaceOutput = {
+  condition: z.string(),
+  height_ft: z.number().describe("The height this shape was quantified at (snapshotted on the shape)"),
+  length_lf: z.number().describe("The traced run's open length"),
+  area_sf: z.number().describe("length_lf × height_ft — the wall SF committed"),
+  npts: z.number().int(),
+  shape_id: z.string(),
+};
+
+/** place_count (#146) — EA markers, one shape per point, scale-free. */
+export const placeCountOutput = {
+  committed: z.number().int().describe("Count shapes committed by this call — one per point"),
+  shape_ids: z.array(z.string()),
+  condition: z.string(),
+  ea_total: z.number().describe("The condition's total EA after this call"),
+};
+
 export const measureLineOutput = {
   length_lf: z.number(),
   npts: z.number().int(),
@@ -176,9 +194,10 @@ export const exportTakeoffOutput = {
     id: z.string(),
     sheet_id: z.string(),
     condition_id: z.string(),
-    measure_role: z.enum(["floor_area", "deduct", "linear"]),
+    measure_role: z.enum(["floor_area", "deduct", "linear", "surface_area", "count"]),
     verts_norm: z.array(point).describe("Vertices normalized to sheet dims (0–1)"),
-    computed: z.object({ area_sf: z.number(), perimeter_lf: z.number() }).passthrough(),
+    computed: z.object({ area_sf: z.number().optional(), perimeter_lf: z.number().optional(), count: z.number().optional() }).passthrough()
+      .describe("count shapes carry {count} alone; every other role carries area_sf + perimeter_lf"),
     origin: z.object({}).passthrough().optional().describe("Provenance: method (manual|one_click_v1), actor (omitted=human, 'agent'=MCP/automation), reviewed (human affirmed at an explicit gate), and correction fields (edited, edited_before_create, copied, proposed_verts_norm, edits)"),
   }).passthrough()),
   markups: z.array(z.unknown()),
@@ -199,10 +218,11 @@ export const deleteShapeOutput = {
 export const editShapeOutput = {
   shape_id: z.string(),
   changed: z.array(z.enum(["verts", "condition", "role"])).describe("Which fields this call actually changed"),
-  measure_role: z.enum(["floor_area", "deduct", "linear"]),
+  measure_role: z.enum(["floor_area", "deduct", "linear", "surface_area", "count"]),
   nverts: z.number().int(),
-  area_sf: z.number().describe("0 for linear shapes"),
-  perimeter_lf: z.number().describe("Length for linear shapes, perimeter for closed ones"),
+  area_sf: z.number().optional().describe("0 for linear shapes; LF × height for surface_area; absent for count"),
+  perimeter_lf: z.number().optional().describe("Length for linear/surface runs, perimeter for closed ones; absent for count"),
+  count: z.number().optional().describe("count shapes only — the marker's EA (preserved across the edit)"),
   agent_edits: z.number().int().describe("How many times the agent has revised this shape — separate from the human-correction tally"),
 };
 
@@ -313,6 +333,7 @@ export const editConditionOutput = {
   condition_id: z.string(),
   waste_pct: z.number().describe("The condition's waste % after this write"),
   multiplier: z.number().describe("The condition's quantity multiplier after this write"),
+  height_ft: z.number().optional().describe("The condition's wall height after this write — present once set (measure_surface multiplies traced LF by it)"),
 };
 
 export const readSheetTextOutput = {

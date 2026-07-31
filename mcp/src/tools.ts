@@ -1,4 +1,4 @@
-// The twenty-six tools — thin zod-validated handlers over the Session. Replies are
+// The twenty-eight tools — thin zod-validated handlers over the Session. Replies are
 // compact JSON (format.ts); view_sheet alone replies with an image content
 // item plus a JSON meta text item. Failures are isError results, never thrown
 // protocol errors.
@@ -9,7 +9,7 @@ import { UNDO_CAP, CONTEXT_MIN_LEN_PX, CONTEXT_MAX_SEGMENTS, CONTEXT_MAX_SEGMENT
 import { traceToolCall } from "./trace.ts";
 import {
   loadPlanOutput, sheetInfoOutput, setScaleOutput, oneClickOutput, detectRoomsOutput,
-  measurePolygonOutput, measureLineOutput, takeoffSummaryOutput,
+  measurePolygonOutput, measureLineOutput, measureSurfaceOutput, placeCountOutput, takeoffSummaryOutput,
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
   editShapeOutput, undoLastOutput, sheetContextOutput,
   findTextOutput, editMaterialsOutput, editConditionOutput, exportReportOutput,
@@ -131,6 +131,27 @@ export function registerTools(server: McpServer, session: Session): void {
     outputSchema: measureLineOutput,
   }, run("measure_line", (a) => session.measureLine(a.sheet, a.pts, { condition: a.condition })));
 
+  server.registerTool("measure_surface", {
+    description: `Surface Area — wall SF (#146): trace an OPEN run along the wall in plan view (min 2 points, image px) and the quantity is traced LF × height. This is how wall tile, wainscot, and wall systems are taken off — the quantity family one_click and measure_polygon cannot produce. Height lives on the CONDITION (the canvas's H knob): pass height_ft to set it on this call (journals as its own undo step, like typing H before tracing), or set it once with edit_condition; with neither, this refuses and mints nothing. The shape snapshots the height it was quantified at. Requires the sheet's scale. ${COORDS}`,
+    inputSchema: {
+      sheet: z.string(),
+      pts: z.array(pointSchema).min(2).describe("The wall run, an open polyline (image px)"),
+      condition: z.string().describe("Finish tag to commit under (minted on first use), e.g. 'CT-W1'"),
+      height_ft: z.number().positive().optional().describe("Wall height in feet — written to the condition's H knob first, then used"),
+    },
+    outputSchema: measureSurfaceOutput,
+  }, run("measure_surface", (a) => session.measureSurface(a.sheet, a.pts, { condition: a.condition, height_ft: a.height_ft })));
+
+  server.registerTool("place_count", {
+    description: `Count markers — EA (#146): one point, one each. Thresholds, stair nosings, floor boxes, entrance mats — the scale-free quantity family. Commits one count shape per point (computed {count: 1}, exactly the canvas's Count tool), NO scale required, and the whole call is ONE undo step like a detect_rooms sweep. takeoff_summary reports them as ea; the marked set draws each marker. ${COORDS}`,
+    inputSchema: {
+      sheet: z.string(),
+      points: z.array(pointSchema).min(1).describe("Marker positions (image px), one committed count shape each"),
+      condition: z.string().describe("Finish tag to commit under (minted on first use), e.g. 'TR-1'"),
+    },
+    outputSchema: placeCountOutput,
+  }, run("place_count", (a) => session.placeCount(a.sheet, a.points, { condition: a.condition })));
+
   server.registerTool("takeoff_summary", {
     description: `Per-condition totals (floor/wall/border SF, LF, EA, SY, with and without waste) plus grand totals — the Report's numbers, computed by the same rules. Numbers only: the deliverable that SHOWS the work on the drawings is export_marked_pdf. ${COORDS}`,
     inputSchema: {},
@@ -199,9 +220,9 @@ export function registerTools(server: McpServer, session: Session): void {
     description: `REVISE a shape you already committed, instead of deleting it and starting over: pass new verts to move the geometry, condition to reassign it to a different finish tag, role to switch between floor_area / deduct / linear, or any combination. Quantities are recomputed from the result — a role flip alone re-measures (closed area vs open length). The loop this is for: one_click or measure_polygon to commit, view_sheet with overlay:true to LOOK at what landed, then edit_shape to fix the two vertices that overshot into the corridor. Shapes a human affirmed (origin.reviewed) are ink and are refused — an agent revises its own pencil and nothing else. Agent self-revision is tallied on origin.agent_edits, kept deliberately separate from the human-correction fields. ${COORDS}`,
     inputSchema: {
       shape_id: z.string().describe("Id returned when the shape was committed"),
-      verts: z.array(pointSchema).optional().describe("Replacement geometry (image px): ≥3 vertices for an area shape, ≥2 points for a linear one"),
+      verts: z.array(pointSchema).optional().describe("Replacement geometry (image px): ≥3 vertices for an area shape, ≥2 points for a linear/surface run, ≥1 for a count marker"),
       condition: z.string().optional().describe("Reassign to this finish tag (minted on first use)"),
-      role: z.enum(["floor_area", "deduct", "linear"]).optional().describe("Switch what the shape measures"),
+      role: z.enum(["floor_area", "deduct", "linear", "surface_area", "count"]).optional().describe("Switch what the shape measures — flipping INTO surface_area needs a height on the shape or its condition"),
     },
     outputSchema: editShapeOutput,
   }, run("edit_shape", (a) => session.editShape(a.shape_id, { verts: a.verts, condition: a.condition, role: a.role })));
@@ -228,14 +249,15 @@ export function registerTools(server: McpServer, session: Session): void {
   }, run("edit_materials", (a) => session.editMaterials(a.condition, { add: a.add, remove: a.remove, patch: a.patch })));
 
   server.registerTool("edit_condition", {
-    description: `Set a condition's quantity knobs — waste % and/or multiplier. takeoff_summary emits waste-adjusted *_net order quantities and a per-condition multiplier, and every export carries both, but conditions minted through the measure tools start at waste 0 / multiplier 1 — without this tool an agent's takeoff always ships net === gross (#131). waste_pct is the estimator's cut-waste percentage (carpet commonly 5–10); multiplier scales every quantity on the condition (×N identical floors — takeoff_summary applies it before waste). condition must resolve to an EXISTING finish tag — a typo'd tag errors rather than minting an empty condition (the edit_materials remove/patch rule, not its add rule: these knobs mean nothing on a condition that doesn't exist yet). No review gate — quantity config, not traced geometry; undo_last reverses a call in one step (both knobs snapshotted together, restored verbatim).`,
+    description: `Set a condition's quantity knobs — waste %, multiplier, and/or height_ft (the H knob measure_surface quantifies against). takeoff_summary emits waste-adjusted *_net order quantities and a per-condition multiplier, and every export carries both, but conditions minted through the measure tools start at waste 0 / multiplier 1 — without this tool an agent's takeoff always ships net === gross (#131). waste_pct is the estimator's cut-waste percentage (carpet commonly 5–10); multiplier scales every quantity on the condition (×N identical floors — takeoff_summary applies it before waste). condition must resolve to an EXISTING finish tag — a typo'd tag errors rather than minting an empty condition (the edit_materials remove/patch rule, not its add rule: these knobs mean nothing on a condition that doesn't exist yet). No review gate — quantity config, not traced geometry; undo_last reverses a call in one step (both knobs snapshotted together, restored verbatim).`,
     inputSchema: {
       condition: z.string().describe("Finish tag of an existing condition, e.g. 'CPT-1'"),
       waste_pct: z.number().min(0).optional().describe("Waste percentage applied to net order quantities, e.g. 10 for 10%"),
       multiplier: z.number().positive().optional().describe("Quantity multiplier (×N identical areas). Note: the canvas treats 0 as 1, so 0 is rejected here rather than silently meaning 'off'"),
+      height_ft: z.number().positive().optional().describe("Wall height in feet — the canvas's H knob; measure_surface quantifies traced LF × this"),
     },
     outputSchema: editConditionOutput,
-  }, run("edit_condition", (a) => session.editCondition(a.condition, { waste_pct: a.waste_pct, multiplier: a.multiplier })));
+  }, run("edit_condition", (a) => session.editCondition(a.condition, { waste_pct: a.waste_pct, multiplier: a.multiplier, height_ft: a.height_ft })));
 
   server.registerTool("undo_last", {
     description: `Step back over your OWN last n mutations, newest first — a committed one_click, a whole detect_rooms sweep, an edit_shape, a delete_shape, an edit_materials call, or an edit_condition call. Each step is reversed exactly (a commit is removed, an edit is restored verbatim, a delete is re-inserted where it was, a materials edit's whole array is restored, a condition edit's waste/multiplier pair is restored), so this restores state rather than approximating it. Reads are never journaled, so n counts gestures that changed something, not tool calls you made. Use it when a sweep committed against the wrong condition or a batch went in on the wrong sheet — one call instead of N deletes. Scope: this session's own history only. It is not the browser canvas's undo stack, and load_plan clears it along with the shapes it refers to.`,

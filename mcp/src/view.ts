@@ -106,21 +106,35 @@ export function drawGrid(ctx: Ctx2D, toCanvas: ToCanvas, region: Region, ppf: nu
 }
 
 /** Burn the session's shapes for one sheet into the render: closed rings for
- * area/deduct roles, open polylines for linear — solid ink when a human
- * affirmed the shape, dashed pencil while origin.reviewed === false. */
+ * area/deduct roles, open polylines for linear and surface_area (a wall run is
+ * genuinely open — the canvas holds the same rule), an X marker for count —
+ * solid ink when a human affirmed the shape, dashed pencil while
+ * origin.reviewed === false. */
 export function drawShapes(ctx: Ctx2D, toCanvas: ToCanvas, shapes: Shape[], sheetW: number, sheetH: number, longEdge: number): void {
   const w = Math.max(1.4, longEdge / 700);
   for (const s of shapes) {
     const pts = s.verts_norm.map(([nx, ny]) => toCanvas(nx * sheetW, ny * sheetH));
-    if (pts.length < 2) continue;
+    if (!pts.length) continue;
     const pending = s.origin?.reviewed === false;
     ctx.strokeStyle = pending ? PENCIL : INK;
     ctx.lineWidth = w;
+    if (s.measure_role === "count") {
+      // an X at the marker point — always solid (a dashed X reads as noise)
+      const m = Math.max(4, longEdge / 160);
+      const [x, y] = pts[0];
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(x - m, y - m); ctx.lineTo(x + m, y + m);
+      ctx.moveTo(x - m, y + m); ctx.lineTo(x + m, y - m);
+      ctx.stroke();
+      continue;
+    }
+    if (pts.length < 2) continue;
     ctx.setLineDash(pending ? [w * 4, w * 3] : []);
     ctx.beginPath();
     ctx.moveTo(pts[0][0], pts[0][1]);
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
-    if (s.measure_role !== "linear") ctx.closePath();
+    if (s.measure_role !== "linear" && s.measure_role !== "surface_area") ctx.closePath();
     ctx.stroke();
   }
   ctx.setLineDash([]);

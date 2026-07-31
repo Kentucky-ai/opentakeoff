@@ -39,7 +39,7 @@ const uid = (p: string): string => `${p}-${mintUuid()}`;
 
 export const ANN_SCHEMA = "opentakeoff.takeoff_canvas.v1"; // web/src/lib/store.js
 
-export type MeasureRole = "floor_area" | "deduct" | "linear";
+export type MeasureRole = "floor_area" | "deduct" | "linear" | "surface_area" | "count";
 
 /** Supporting-materials row (field-identical to the canvas's addMaterial —
  * web/src/pages/TakeoffCanvas.jsx). Quantity is deterministic: basis ÷ per,
@@ -63,6 +63,8 @@ export interface Condition {
   hatch: string;
   multiplier: number;
   waste_pct: number;
+  /** Wall height in feet — the canvas's H knob; surface_area = traced LF × this. */
+  height_ft?: number;
   materials: MaterialRow[];
 }
 
@@ -110,7 +112,12 @@ export interface Shape {
   condition_id: string;
   measure_role: MeasureRole;
   verts_norm: [number, number][];
-  computed: { area_sf: number; perimeter_lf: number };
+  /** count shapes carry {count} alone (canvas commitCount) — recompute skips
+   * them, so they never grow area fields; every other role carries both. */
+  computed: { area_sf?: number; perimeter_lf?: number; count?: number };
+  /** surface_area only: the height this shape was quantified at (canvas
+   * commitSurface snapshots the condition's H onto the shape). */
+  height_ft?: number;
   origin?: ShapeOrigin;
 }
 
@@ -240,7 +247,7 @@ export type JournalPayload =
   | { op: "edit"; tool: string; before: Shape }
   | { op: "delete"; tool: string; removed: { shape: Shape; index: number }[] }
   | { op: "materials"; tool: string; condition_id: string; before: MaterialRow[] }
-  | { op: "condition"; tool: string; condition_id: string; before: { waste_pct: number; multiplier: number } };
+  | { op: "condition"; tool: string; condition_id: string; before: { waste_pct: number; multiplier: number; height_ft?: number } };
 
 export type JournalEntry = JournalPayload & { seq: number };
 
@@ -893,6 +900,48 @@ export class Session {
     return { length_lf, npts: pts.length, ...(shape_id ? { shape_id } : {}) };
   }
 
+  /** Surface Area — the canvas's Surface tool (commitSurface): an OPEN run
+   * traced along the wall in plan view, quantified as traced LF × height.
+   * Height lives on the CONDITION (the canvas's H knob); an explicit height_ft
+   * here writes that knob first, exactly like typing H before tracing — and
+   * that write journals as its own condition step, so undo stays exact.
+   * The refusal path mints nothing: no height, no condition side effects. */
+  measureSurface(name: string, pts: Point[], opts: { condition: string; height_ft?: number }) {
+    const s = this.sheet(name);
+    if (s.upp == null) throw new UserError(this.scaleGate(s));
+    const existing = this.conditions.find((x) => x.finish_tag === opts.condition);
+    const h = opts.height_ft ?? (Number(existing?.height_ft) || 0);
+    if (!(h > 0)) {
+      throw new UserError(`Set a height for ${opts.condition} first — Surface Area = traced LF × height. Pass height_ft on this call, or set it with edit_condition.`);
+    }
+    const c = this.conditionFor(opts.condition);
+    if (opts.height_ft !== undefined && c.height_ft !== opts.height_ft) {
+      this.record({ op: "condition", tool: "measure_surface", condition_id: c.id, before: { waste_pct: c.waste_pct, multiplier: c.multiplier, height_ft: c.height_ft } });
+      c.height_ft = opts.height_ft;
+    }
+    const LF = openLen(pts) * s.upp;
+    const shape = this.commit(s, opts.condition, "surface_area", pts, { area_sf: round2(LF * h), perimeter_lf: round2(LF) }, { method: "manual", actor: "agent" });
+    shape.height_ft = h;
+    this.flushCommits("measure_surface");
+    return { condition: c.finish_tag, height_ft: h, length_lf: round2(LF), area_sf: round2(LF * h), npts: pts.length, shape_id: shape.id };
+  }
+
+  /** Count markers — the canvas's Count tool (commitCount): one point, one EA,
+   * computed {count: 1}, NO scale required (EA is scale-free; the canvas's
+   * recompute skips count shapes for the same reason). One shape per point,
+   * the whole call one journal gesture — undoing a placement sweep is one step,
+   * matching detect_rooms. */
+  placeCount(name: string, points: Point[], opts: { condition: string }) {
+    const s = this.sheet(name);
+    const ids = points.map(([x, y]) => this.commit(s, opts.condition, "count", [[x, y]], { count: 1 }, { method: "manual", actor: "agent" }).id);
+    this.flushCommits("place_count");
+    const c = this.conditions.find((x) => x.finish_tag === opts.condition)!;
+    const ea_total = this.shapes
+      .filter((x) => x.condition_id === c.id && x.measure_role === "count")
+      .reduce((n, x) => n + (x.computed.count || 1), 0);
+    return { committed: ids.length, shape_ids: ids, condition: c.finish_tag, ea_total };
+  }
+
   summary() {
     const rows = conditionTotals(this.conditions, this.shapes) as Record<string, unknown>[];
     // strip presentation fields for a compact agent-facing reply
@@ -939,22 +988,38 @@ export class Session {
       throw new UserError("Nothing to change — pass at least one of verts, condition, role.");
     }
     const s = this.sheet(cur.sheet_id);
-    if (s.upp == null) throw new UserError(this.scaleGate(s));
-    const upp = s.upp;
     const role = patch.role ?? cur.measure_role;
+    // count is scale-free (EA), exactly as commit-time: moving a marker on an
+    // unscaled sheet must not trip the scale gate
+    if (role !== "count" && s.upp == null) throw new UserError(this.scaleGate(s));
+    const upp = s.upp ?? 0;
 
     // Geometry: either the supplied verts or the shape's own, back in image px.
     const vertsPx: Point[] = patch.verts
       ?? cur.verts_norm.map(([x, y]) => [x * s.widthPx, y * s.heightPx] as Point);
-    const minPts = role === "linear" ? 2 : 3;
+    const minPts = role === "count" ? 1 : role === "linear" || role === "surface_area" ? 2 : 3;
     if (vertsPx.length < minPts) {
-      throw new UserError(`A ${role === "linear" ? "linear shape needs at least 2 points" : "closed shape needs at least 3 vertices"} — got ${vertsPx.length}.`);
+      throw new UserError(`A ${role === "count" ? "count marker needs at least 1 point" : role === "linear" || role === "surface_area" ? `${role} shape needs at least 2 points` : "closed shape needs at least 3 vertices"} — got ${vertsPx.length}.`);
     }
 
     // Quantities are always recomputed from the resulting geometry AND role, so
     // a role flip alone re-measures correctly (open length vs closed area).
-    const computed = role === "linear"
-      ? { area_sf: 0, perimeter_lf: round2(openLen(vertsPx) * upp) }
+    // surface_area re-measures at its height: the shape's snapshot, else the
+    // condition's H knob — flipping INTO surface with neither is refused.
+    const heightFor = (): number => {
+      const condId = patch.condition !== undefined ? this.conditionFor(patch.condition).id : cur.condition_id;
+      const cond = this.conditions.find((x) => x.id === condId);
+      const h = Number(cur.height_ft) || Number(cond?.height_ft) || 0;
+      if (!(h > 0)) throw new UserError(`Surface Area needs a height — set height_ft on ${cond?.finish_tag ?? "the condition"} with edit_condition first.`);
+      return h;
+    };
+    const computed =
+      role === "count" ? { count: cur.computed.count ?? 1 }
+      : role === "linear" ? { area_sf: 0, perimeter_lf: round2(openLen(vertsPx) * upp) }
+      : role === "surface_area" ? (() => {
+          const LF = openLen(vertsPx) * upp;
+          return { area_sf: round2(LF * heightFor()), perimeter_lf: round2(LF) };
+        })()
       : (() => {
           const met = closedMetrics(vertsPx);
           return { area_sf: round2(met.area * upp * upp), perimeter_lf: round2(met.perim * upp) };
@@ -968,6 +1033,7 @@ export class Session {
       measure_role: role,
       verts_norm: vertsPx.map(([x, y]) => [x / s.widthPx, y / s.heightPx]),
       computed,
+      ...(role === "surface_area" ? { height_ft: Number(cur.height_ft) || heightFor() } : {}),
       ...(cur.origin ? { origin: { ...cur.origin, agent_edits: (cur.origin.agent_edits ?? 0) + 1 } } : {}),
     };
     this.record({ op: "edit", tool: "edit_shape", before });
@@ -1061,20 +1127,21 @@ export class Session {
    * mean anything on a condition that exists, and a typo'd tag must error,
    * not create an empty condition as a side effect. One journal entry
    * snapshots both knobs; undo restores them verbatim. */
-  editCondition(tag: string, opts: { waste_pct?: number; multiplier?: number }) {
-    if (opts.waste_pct === undefined && opts.multiplier === undefined) {
-      throw new UserError("Nothing to change — pass at least one of waste_pct, multiplier.");
+  editCondition(tag: string, opts: { waste_pct?: number; multiplier?: number; height_ft?: number }) {
+    if (opts.waste_pct === undefined && opts.multiplier === undefined && opts.height_ft === undefined) {
+      throw new UserError("Nothing to change — pass at least one of waste_pct, multiplier, height_ft.");
     }
     const c = this.conditions.find((x) => x.finish_tag === tag);
     if (!c) {
       const known = this.conditions.map((x) => x.finish_tag);
       throw new UserError(`No condition ${JSON.stringify(tag)}.${known.length ? ` Known tags: ${known.join(", ")}.` : " Nothing has minted a condition yet — commit a measurement or add materials first."}`);
     }
-    const before = { waste_pct: c.waste_pct, multiplier: c.multiplier };
+    const before = { waste_pct: c.waste_pct, multiplier: c.multiplier, height_ft: c.height_ft };
     if (opts.waste_pct !== undefined) c.waste_pct = opts.waste_pct;
     if (opts.multiplier !== undefined) c.multiplier = opts.multiplier;
+    if (opts.height_ft !== undefined) c.height_ft = opts.height_ft;
     this.record({ op: "condition", tool: "edit_condition", condition_id: c.id, before });
-    return { condition: tag, condition_id: c.id, waste_pct: c.waste_pct, multiplier: c.multiplier };
+    return { condition: tag, condition_id: c.id, waste_pct: c.waste_pct, multiplier: c.multiplier, ...(c.height_ft !== undefined ? { height_ft: c.height_ft } : {}) };
   }
 
   /** Step back over this session's own last n mutations, newest first. Each
@@ -1105,7 +1172,12 @@ export class Session {
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
       } else if (e.op === "condition") {
         const c = this.conditions.find((x) => x.id === e.condition_id);
-        if (c) { c.waste_pct = e.before.waste_pct; c.multiplier = e.before.multiplier; }
+        if (c) {
+          c.waste_pct = e.before.waste_pct;
+          c.multiplier = e.before.multiplier;
+          if (e.before.height_ft === undefined) delete c.height_ft;
+          else c.height_ft = e.before.height_ft;
+        }
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
       } else {
         for (const { shape, index } of e.removed) {
