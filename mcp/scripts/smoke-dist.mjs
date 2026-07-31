@@ -106,6 +106,7 @@ assert.deepEqual(names, [
   "find_text",
   "link_annotation",
   "list_annotations",
+  "list_shapes",
   "load_plan",
   "measure_line",
   "measure_polygon",

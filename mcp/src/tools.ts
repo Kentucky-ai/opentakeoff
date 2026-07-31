@@ -1,4 +1,4 @@
-// The twenty-eight tools — thin zod-validated handlers over the Session. Replies are
+// The twenty-nine tools — thin zod-validated handlers over the Session. Replies are
 // compact JSON (format.ts); view_sheet alone replies with an image content
 // item plus a JSON meta text item. Failures are isError results, never thrown
 // protocol errors.
@@ -13,7 +13,7 @@ import {
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
   editShapeOutput, undoLastOutput, sheetContextOutput,
   findTextOutput, editMaterialsOutput, editConditionOutput, exportReportOutput,
-  exportMarkedPdfOutput,
+  exportMarkedPdfOutput, listShapesOutput,
   annotateOutput, listAnnotationsOutput, linkAnnotationOutput,
   sheetGraphOutput, resolveTagOutput, findScheduleOutput,
 } from "./outputs.ts";
@@ -195,6 +195,15 @@ export function registerTools(server: McpServer, session: Session): void {
     },
     outputSchema: exportMarkedPdfOutput,
   }, run("export_marked_pdf", (a) => exportMarkedPdf(session, a)));
+
+  server.registerTool("list_shapes", {
+    description: `The mid-session shape inventory (#149): every committed shape's id, sheet, condition tag, role, quantities, vertex count, and review state in one compact read — the ids edit_shape and delete_shape assume you have, without pulling the whole export_takeoff payload to find one shape. Filter by sheet, by condition, or both; filters narrow, an empty list is a result, not an error.`,
+    inputSchema: {
+      sheet: z.string().optional().describe("Only shapes on this sheet"),
+      condition: z.string().optional().describe("Only shapes under this finish tag (must exist)"),
+    },
+    outputSchema: listShapesOutput,
+  }, run("list_shapes", (a) => session.listShapes(a)));
 
   server.registerTool("delete_shape", {
     description: `Remove a committed shape by the id returned when it was committed. ${COORDS}`,

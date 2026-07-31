@@ -207,6 +207,24 @@ export const exportTakeoffOutput = {
   sheet_levels: z.object({}).passthrough(),
 };
 
+/** list_shapes (#149) — the compact inventory; quantities appear per role. */
+export const listShapesOutput = {
+  shapes: z.array(z.object({
+    id: z.string(),
+    sheet: z.string(),
+    condition: z.string(),
+    measure_role: z.enum(["floor_area", "deduct", "linear", "surface_area", "count"]),
+    area_sf: z.number().optional(),
+    perimeter_lf: z.number().optional(),
+    count: z.number().optional(),
+    height_ft: z.number().optional().describe("surface_area shapes — the height they were quantified at"),
+    nverts: z.number().int(),
+    reviewed: z.boolean().describe("true = human-affirmed ink, refused by every agent mutation"),
+    agent_edits: z.number().int().optional().describe("Present when the agent has revised this shape"),
+  })),
+  count: z.number().int(),
+};
+
 export const deleteShapeOutput = {
   deleted: z.string().describe("The removed shape's id"),
   shape_count: z.number().int().describe("Committed shapes remaining"),
