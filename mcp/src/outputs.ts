@@ -463,6 +463,9 @@ const annotationRow = z.object({
   at: z.tuple([z.number(), z.number()]).optional(),
   target: z.tuple([z.number(), z.number()]).optional(),
   rect: z.array(z.tuple([z.number(), z.number()]).optional()).optional(),
+  from: z.tuple([z.number(), z.number()]).optional().describe("Arrow tail (image px)"),
+  to: z.tuple([z.number(), z.number()]).optional().describe("Arrow head (image px)"),
+  r: z.number().optional().describe("Bubble radius (image px)"),
 });
 
 export const annotateOutput = {

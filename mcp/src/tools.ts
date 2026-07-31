@@ -358,18 +358,22 @@ export function registerTools(server: McpServer, session: Session): void {
   // A human could attach a note to a scope; an agent could not even SEE one
   // (session.exportPayload hardcoded markups: []). These three close that.
   server.registerTool("annotate", {
-    description: `Place an annotation on a sheet — a note ABOUT the work, never a measurement of it. Types: cloud and highlight take rect:[[x0,y0],[x1,y1]] (a revision cloud around an area, a highlight box over it), text takes at:[x,y], callout takes at:[x,y] plus target:[x,y] (the point its leader aims at). \n\nPass condition to attach the note to a finish tag, which is what makes it part of that SCOPE rather than a floating remark: it then wears the condition's colour on the canvas and in the marked-set PDF, and travels with it into the report. The tag is minted on first touch like one_click/measure_polygon, so you can annotate CPT-1 before anything is traced for it. Omit condition for a note about the sheet itself. \n\nNo review gate: the pencil-not-ink rule exists to stop an agent inventing geometry, and a cloud reading "verify substrate" is not geometry. It touches no quantity. ${COORDS}`,
+    description: `Place an annotation on a sheet — a note ABOUT the work, never a measurement of it. Types: cloud and highlight take rect:[[x0,y0],[x1,y1]] (a revision cloud around an area, a highlight box over it), text takes at:[x,y], callout takes at:[x,y] plus target:[x,y] (the point its leader aims at), arrow takes from:[x,y] and to:[x,y] (tail and head — plank/seam direction, the markup flooring drawings use most; #150), bubble takes at:[x,y] plus optional r (a keynote/detail circle carrying centered text). \n\nPass condition to attach the note to a finish tag, which is what makes it part of that SCOPE rather than a floating remark: it then wears the condition's colour on the canvas and in the marked-set PDF, and travels with it into the report. The tag is minted on first touch like one_click/measure_polygon, so you can annotate CPT-1 before anything is traced for it. Omit condition for a note about the sheet itself. \n\nNo review gate: the pencil-not-ink rule exists to stop an agent inventing geometry, and a cloud reading "verify substrate" is not geometry. It touches no quantity. ${COORDS}`,
     inputSchema: {
       sheet: z.string().describe("Sheet name or number, as sheet_info reports it"),
-      type: z.enum(["cloud", "text", "callout", "highlight"]).describe("cloud/highlight need rect; text/callout need at; callout also needs target"),
-      text: z.string().default("").describe("The note. A cloud with no text still reads as 'look here'"),
+      type: z.enum(["cloud", "text", "callout", "highlight", "arrow", "bubble"]).describe("cloud/highlight need rect; text/callout/bubble need at; callout also needs target; arrow needs from + to"),
+      text: z.string().default("").describe("The note. A cloud with no text still reads as 'look here'; a bubble's text draws centered in the circle"),
       condition: z.string().optional().describe("Finish tag to attach this note to, e.g. 'CPT-1' (minted on first use). Omit for an unattached sheet note"),
-      at: pointSchema.optional().describe("Anchor point (image px) — text and callout"),
+      at: pointSchema.optional().describe("Anchor point (image px) — text, callout, and bubble (the circle's center)"),
       target: pointSchema.optional().describe("What a callout's leader line points at (image px)"),
       rect: z.tuple([pointSchema, pointSchema]).optional().describe("Corners (image px) — cloud and highlight"),
+      from: pointSchema.optional().describe("Arrow tail (image px)"),
+      to: pointSchema.optional().describe("Arrow head — what it points at (image px)"),
+      r: z.number().positive().optional().describe("Bubble radius (image px); omitted → the canvas default (2% of sheet width)"),
     },
     outputSchema: annotateOutput,
   }, run("annotate", (a) => session.annotate(a)));
+  // (arrow/bubble ride the same handler — the Session validates per type)
 
   server.registerTool("list_annotations", {
     description: `Every annotation on the takeoff, with condition_id RESOLVED to its finish tag so you can act on the reply without joining against conditions[]. Filter by sheet, by condition, or both. Coordinates come back in image px (the same frame you passed in), not the normalized form they're stored as. \`unattached\` counts the notes carrying no condition — the candidates for link_annotation. ${COORDS}`,

@@ -342,6 +342,44 @@ test("place_count: EA with no scale set, one journal step for the sweep, marked 
   assert.equal(moved.data.count, 1);
 });
 
+// #150 — arrow and bubble: the two markup types flooring drawings use most.
+test("annotate arrow/bubble: validated per type, round-trip through list_annotations in px, drawn in the marked set", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+
+  const noHead = await call(client, "annotate", { sheet: KEY, type: "arrow", from: [100, 100] });
+  assert.equal(noHead.isError, true);
+  assert.match(noHead.data.error, /arrow needs from.*and to/);
+
+  const arrow = await call(client, "annotate", { sheet: KEY, type: "arrow", text: "ALIGN CPT TO WALL", from: [600, 900], to: [900, 900], condition: "CPT-1" });
+  assert.equal(arrow.isError, false);
+  const bubble = await call(client, "annotate", { sheet: KEY, type: "bubble", text: "K3", at: [1200, 500], r: 40 });
+  assert.equal(bubble.isError, false);
+
+  const listed = await call(client, "list_annotations", {});
+  const la = listed.data.annotations.find((m: any) => m.type === "arrow");
+  const lb = listed.data.annotations.find((m: any) => m.type === "bubble");
+  assert.deepEqual(la.from, [600, 900]);
+  assert.deepEqual(la.to, [900, 900]);
+  assert.equal(la.condition, "CPT-1");
+  assert.deepEqual(lb.at, [1200, 500]);
+  assert.equal(lb.r, 40);
+
+  // both burn into the marked set (annotations alone mark a sheet)
+  const dir = await mkdtemp(path.join(tmpdir(), "ot-arrow-"));
+  const out = path.join(dir, "m.pdf");
+  const pdf = await call(client, "export_marked_pdf", { path: out });
+  assert.equal(pdf.isError, false);
+  assert.equal(pdf.data.annotations_drawn, 2);
+  assert.equal((await readFile(out)).subarray(0, 5).toString(), "%PDF-");
+
+  // a bubble with no r stores the canvas default (2% of sheet width = 48.96 px on the 2448-px sheet)
+  await call(client, "annotate", { sheet: KEY, type: "bubble", text: "K4", at: [300, 300] });
+  const again = await call(client, "list_annotations", {});
+  const lb2 = again.data.annotations.find((m: any) => m.text === "K4");
+  assert.ok(Math.abs(lb2.r - 48.96) < 0.1);
+});
+
 // #149 — the inventory read every mutating tool assumes you have.
 test("list_shapes: compact inventory, filters narrow, empty is a result", async () => {
   const client = await pair();
