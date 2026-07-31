@@ -207,6 +207,23 @@ export const exportTakeoffOutput = {
   sheet_levels: z.object({}).passthrough(),
 };
 
+/** derive_base (#148) — per-room receipts for the perimeter → base derivation. */
+export const deriveBaseOutput = {
+  condition: z.string().describe("The tag the base committed under"),
+  source_condition: z.string(),
+  rooms: z.array(z.object({
+    source_shape_id: z.string(),
+    base_shape_id: z.string().describe("The committed linear base shape"),
+    sheet: z.string(),
+    gross_lf: z.number().describe("The room's full perimeter"),
+    openings_lf: z.number().describe("The openings you stated for this room"),
+    net_lf: z.number().describe("gross − openings — the committed quantity"),
+  })),
+  committed: z.number().int(),
+  total_lf: z.number().describe("Sum of net_lf across rooms"),
+  note: z.string(),
+};
+
 /** list_shapes (#149) — the compact inventory; quantities appear per role. */
 export const listShapesOutput = {
   shapes: z.array(z.object({

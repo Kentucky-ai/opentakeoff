@@ -97,6 +97,10 @@ export interface ShapeOrigin {
   layer_bounded?: true;
   raster_traced?: true;
   fill_sensitivity?: number;
+  /** derive_base (#148): this linear shape was derived from a floor shape's
+   * perimeter — the source, the gross figure, and the openings the agent
+   * STATED (its claim to make; the tool never guesses doors). */
+  derived?: { from_shape_id: string; gross_lf: number; openings_lf: number };
   /** Machine's original trace, frozen on first human edit (provenance.js). */
   proposed_verts_norm?: [number, number][];
   edited?: boolean;
@@ -935,6 +939,70 @@ export class Session {
     shape.height_ft = h;
     this.flushCommits("measure_surface");
     return { condition: c.finish_tag, height_ft: h, length_lf: round2(LF), area_sf: round2(LF * h), npts: pts.length, shape_id: shape.id };
+  }
+
+  /** derive_base (#148): the estimator's most mechanical derivation — wall
+   * base LF = room perimeter − stated door openings — minted as committed
+   * linear shapes from the floor shapes an agent (or detect_rooms) already
+   * traced. Every committed floor shape carries its perimeter; the openings
+   * stay the CALLER'S stated claim per room (it can see the doors in
+   * view_sheet) — refusal over guessing, and the claim rides provenance.
+   * Geometry: each base shape re-uses its source ring CLOSED (ring + the
+   * first vertex again) so the run traces the whole room boundary on the
+   * canvas and in the marked set. NOTE: quantities are assigned at derive
+   * time (net of openings); a later edit_shape re-measure of the polyline is
+   * the gross boundary again — the openings deduction lives here and in
+   * origin.derived, not in the geometry. */
+  deriveBase(opts: { source_condition: string; condition: string; openings?: { shape_id: string; lf: number }[] }) {
+    const src = this.conditions.find((x) => x.finish_tag === opts.source_condition);
+    if (!src) {
+      throw new UserError(`No condition ${JSON.stringify(opts.source_condition)} — tags: ${this.conditions.map((x) => x.finish_tag).join(", ") || "(none)"}.`);
+    }
+    if (opts.condition === opts.source_condition) {
+      throw new UserError("Base must land on its OWN condition (e.g. 'RB-1') — deriving onto the source would add its perimeter to the same tag's LF.");
+    }
+    const floors = this.shapes.filter((x) => x.condition_id === src.id && x.measure_role === "floor_area");
+    if (!floors.length) {
+      throw new UserError(`${src.finish_tag} has no floor_area shapes to derive from — commit rooms first (one_click / detect_rooms).`);
+    }
+    const byShape = new Map<string, number>();
+    for (const [i, o] of (opts.openings ?? []).entries()) {
+      const hit = floors.find((f) => f.id === o.shape_id);
+      if (!hit) throw new UserError(`openings[${i}]: ${JSON.stringify(o.shape_id)} is not a floor_area shape of ${src.finish_tag} — list_shapes for real ids.`);
+      if (!(o.lf >= 0)) throw new UserError(`openings[${i}]: lf must be >= 0.`);
+      byShape.set(o.shape_id, (byShape.get(o.shape_id) ?? 0) + o.lf);
+    }
+    // validate every net BEFORE committing anything — all-or-nothing
+    for (const f of floors) {
+      const open = byShape.get(f.id) ?? 0;
+      const gross = f.computed.perimeter_lf ?? 0;
+      if (open >= gross) {
+        throw new UserError(`Shape ${f.id}: stated openings (${round2(open)} LF) meet or exceed its perimeter (${round2(gross)} LF) — nothing would remain.`);
+      }
+    }
+    const rooms = floors.map((f) => {
+      const s = this.sheet(f.sheet_id);
+      const gross = f.computed.perimeter_lf ?? 0;
+      const open = byShape.get(f.id) ?? 0;
+      const net = round2(gross - open);
+      const ringPx: Point[] = f.verts_norm.map(([x, y]) => [x * s.widthPx, y * s.heightPx]);
+      const shape = this.commit(s, opts.condition, "linear", [...ringPx, ringPx[0]], { area_sf: 0, perimeter_lf: net }, {
+        method: "agent_v1",
+        actor: "agent",
+        reviewed: false,
+        derived: { from_shape_id: f.id, gross_lf: round2(gross), openings_lf: round2(open) },
+      });
+      return { source_shape_id: f.id, base_shape_id: shape.id, sheet: f.sheet_id, gross_lf: round2(gross), openings_lf: round2(open), net_lf: net };
+    });
+    this.flushCommits("derive_base");
+    return {
+      condition: opts.condition,
+      source_condition: src.finish_tag,
+      rooms,
+      committed: rooms.length,
+      total_lf: round2(rooms.reduce((n, r) => n + r.net_lf, 0)),
+      note: "Base runs trace each room's boundary; openings are your stated claim, recorded on origin.derived. Verify with view_sheet overlay:true.",
+    };
   }
 
   /** Count markers — the canvas's Count tool (commitCount): one point, one EA,

@@ -1,4 +1,4 @@
-// The twenty-nine tools — thin zod-validated handlers over the Session. Replies are
+// The thirty tools — thin zod-validated handlers over the Session. Replies are
 // compact JSON (format.ts); view_sheet alone replies with an image content
 // item plus a JSON meta text item. Failures are isError results, never thrown
 // protocol errors.
@@ -13,7 +13,7 @@ import {
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
   editShapeOutput, undoLastOutput, sheetContextOutput,
   findTextOutput, editMaterialsOutput, editConditionOutput, exportReportOutput,
-  exportMarkedPdfOutput, listShapesOutput,
+  exportMarkedPdfOutput, listShapesOutput, deriveBaseOutput,
   annotateOutput, listAnnotationsOutput, linkAnnotationOutput,
   sheetGraphOutput, resolveTagOutput, findScheduleOutput,
 } from "./outputs.ts";
@@ -151,6 +151,19 @@ export function registerTools(server: McpServer, session: Session): void {
     },
     outputSchema: placeCountOutput,
   }, run("place_count", (a) => session.placeCount(a.sheet, a.points, { condition: a.condition })));
+
+  server.registerTool("derive_base", {
+    description: `Mint the wall base from committed rooms (#148) — the estimator's most mechanical derivation: base LF = room perimeter − stated door openings. For every floor_area shape of source_condition, commits ONE linear shape under condition (e.g. 'RB-1') tracing that room's boundary, quantified NET of the openings you state per room. The openings are YOUR claim to make — look at the doors with view_sheet, state {shape_id, lf} per room (repeat a shape_id to stack openings); the tool never guesses, and your claim is recorded on origin.derived (from_shape_id, gross_lf, openings_lf). All-or-nothing: an unknown shape_id, a negative lf, or openings meeting a room's whole perimeter refuses the call before anything commits. The whole derivation is ONE undo step. Deriving onto the source condition is refused — base lands on its own tag.`,
+    inputSchema: {
+      source_condition: z.string().describe("Finish tag whose floor_area rooms the base derives from, e.g. 'CPT-1'"),
+      condition: z.string().describe("Finish tag the base commits under (minted on first use), e.g. 'RB-1'"),
+      openings: z.array(z.object({
+        shape_id: z.string().describe("A floor_area shape id of source_condition (list_shapes)"),
+        lf: z.number().min(0).describe("Door/opening width to deduct from that room's perimeter, in feet"),
+      })).optional().describe("Stated openings per room — omit for gross perimeters"),
+    },
+    outputSchema: deriveBaseOutput,
+  }, run("derive_base", (a) => session.deriveBase(a)));
 
   server.registerTool("takeoff_summary", {
     description: `Per-condition totals (floor/wall/border SF, LF, EA, SY, with and without waste) plus grand totals — the Report's numbers, computed by the same rules. Numbers only: the deliverable that SHOWS the work on the drawings is export_marked_pdf. ${COORDS}`,
