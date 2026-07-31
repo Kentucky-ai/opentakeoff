@@ -273,7 +273,7 @@ test("createLocalStore(folderId): PDFs and browser-global libraries stay global 
   assert.equal((await localStore.loadMaterialLibrary()).length, 1);
 });
 
-test("v1->v2 upgrade preserves pdfs + annotations, and snapshots work after", async () => {
+test("v1->v3 upgrade preserves pdfs + annotations, and snapshots work after", async () => {
   // Seed a v1 database exactly the way the shipped v1 code laid it out.
   const v1 = await rawOpen(1, (db) => {
     db.createObjectStore("pdfs", { keyPath: "name" });
@@ -285,8 +285,8 @@ test("v1->v2 upgrade preserves pdfs + annotations, and snapshots work after", as
   await rawPut(v1, "meta", ann, "annotations");
   v1.close();
 
-  // Store methods open at DB_VERSION 2 — onupgradeneeded's contains-guards
-  // must add only the snapshots store and leave v1 data intact.
+  // Store methods open at DB_VERSION 3 — onupgradeneeded contains-guards
+  // must add only the missing stores (snapshots, pdf_revs) and leave v1 data intact.
   assert.deepEqual(await store.listSheets(), [{ name: "plan-a.pdf" }]);
   assert.deepEqual(await store.loadAnnotations(), ann);
   assert.deepEqual(await store.loadPdfData("plan-a.pdf"), new Uint8Array([37, 80, 68, 70, 45]));
@@ -318,19 +318,19 @@ test("a failed put closes the connection anyway (withDb error path)", async () =
   // functions aren't structured-cloneable — the put throws DataCloneError
   await assert.rejects(store.saveSnapshot("x", { evil: () => {} }), /clon/i);
   // if saveSnapshot leaked its connection, this version bump would block
-  await probeUpgrade(3);
+  await probeUpgrade(4);
 });
 
 test("blocked open rejects BlockedError, then closes its late success (no zombie connection)", async () => {
   const v1 = await rawOpen(1);
-  // v1 stays open — the store's v2 open blocks behind it and must reject
+  // v1 stays open — the store's v3 open blocks behind it and must reject
   await assert.rejects(store.listSheets(), (e: any) => e.name === "BlockedError");
   // Once the blocker closes, the store's orphaned open finally succeeds; the
   // settled flag must close that connection, or THIS probe blocks in turn.
   // (Deterministic: fake-indexeddb chains opens on one connection queue and
   // fires onsuccess before advancing it — no sleeps needed.)
   v1.close();
-  await probeUpgrade(3);
+  await probeUpgrade(4);
 });
 
 test("friendlyStoreError maps quota to actionable copy; other errors pass through", () => {
@@ -377,4 +377,91 @@ test("annotations round-trip still works against the v2 database (regression)", 
   const payload = { conditions: [{ id: "c9", name: "LVP" }], shapes: [{ id: "s9", points: [{ x: 1, y: 2 }] }], markups: [], sheets: [], sheet_group: [], last_group: [], sheet_tabs: [] };
   await store.saveAnnotations(payload);
   assert.deepEqual(await store.loadAnnotations(), { ...payload, schema: ANN_SCHEMA });
+});
+
+// ── CO-1: sheet revisions at addPdf ─────────────────────────────────────────
+// A re-dropped file whose bytes differ must never silently overwrite — the old
+// bytes become a numbered revision and the return value says so.
+
+const fileOf = (name: string, bytes: number[]) =>
+  ({ name, arrayBuffer: async () => new Uint8Array(bytes).buffer } as any);
+
+test("addPdf: new file is rev 1; identical re-add is a no-op; changed bytes archive a revision", async () => {
+  const first = await store.addPdf(fileOf("plan.pdf", [1, 2, 3]));
+  assert.equal(first.rev, 1);
+  assert.equal(first.revised, undefined);
+
+  // same bytes → unchanged, no new revision minted
+  const again = await store.addPdf(fileOf("plan.pdf", [1, 2, 3]));
+  assert.equal(again.unchanged, true);
+  assert.equal(again.rev, 1);
+  assert.deepEqual((await store.listPdfRevisions("plan.pdf")).map((r: any) => r.rev), [1]);
+
+  // changed bytes → archive + swap, atomically visible on both read paths
+  const rev2 = await store.addPdf(fileOf("plan.pdf", [9, 9, 9]));
+  assert.equal(rev2.revised, true);
+  assert.equal(rev2.rev, 2);
+  assert.equal(rev2.prev_rev, 1);
+  assert.deepEqual(await store.loadPdfData("plan.pdf"), new Uint8Array([9, 9, 9]));
+  assert.deepEqual(await store.loadPdfRevisionData("plan.pdf", 1), new Uint8Array([1, 2, 3]));
+  // the current record answers for its own rev too
+  assert.deepEqual(await store.loadPdfRevisionData("plan.pdf", 2), new Uint8Array([9, 9, 9]));
+
+  const revs = await store.listPdfRevisions("plan.pdf");
+  assert.deepEqual(revs.map((r: any) => [r.rev, r.current]), [[2, true], [1, false]]);
+  assert.ok(revs.every((r: any) => typeof r.hash === "string" && r.hash.length === 64));
+  // metadata only — a trail entry must never carry the PDF bytes
+  assert.ok(revs.every((r: any) => !("bytes" in r)));
+
+  await assert.rejects(store.loadPdfRevisionData("plan.pdf", 7), /not found/);
+});
+
+test("legacy (pre-v3) pdf records version correctly on first re-drop", async () => {
+  // Seed a v2 database the way shipped v2 code wrote it: bytes only, no hash/rev.
+  const v2 = await rawOpen(2, (db) => {
+    db.createObjectStore("pdfs", { keyPath: "name" });
+    db.createObjectStore("meta");
+    db.createObjectStore("snapshots", { keyPath: "id" });
+  });
+  await rawPut(v2, "pdfs", { name: "old.pdf", bytes: new Uint8Array([5, 5]).buffer });
+  v2.close();
+
+  // identical re-drop of a legacy record: no phantom revision, identity backfilled
+  const same = await store.addPdf(fileOf("old.pdf", [5, 5]));
+  assert.equal(same.unchanged, true);
+  assert.equal(same.rev, 1);
+  assert.deepEqual((await store.listPdfRevisions("old.pdf")).map((r: any) => r.rev), [1]);
+
+  // changed re-drop: the legacy bytes are archived as rev 1
+  const rev2 = await store.addPdf(fileOf("old.pdf", [6, 6]));
+  assert.equal(rev2.revised, true);
+  assert.equal(rev2.prev_rev, 1);
+  assert.deepEqual(await store.loadPdfRevisionData("old.pdf", 1), new Uint8Array([5, 5]));
+});
+
+test("removePdf clears the revision trail; re-add starts fresh at rev 1", async () => {
+  await store.addPdf(fileOf("plan.pdf", [1]));
+  await store.addPdf(fileOf("plan.pdf", [2]));
+  await store.addPdf(fileOf("plan.pdf", [3]));
+  assert.equal((await store.listPdfRevisions("plan.pdf")).length, 3);
+
+  await store.removePdf("plan.pdf");
+  assert.deepEqual(await store.listSheets(), []);
+  assert.deepEqual(await store.listPdfRevisions("plan.pdf"), []);
+
+  // a fresh add after removal is a new trail, not a continuation
+  const back = await store.addPdf(fileOf("plan.pdf", [4]));
+  assert.equal(back.rev, 1);
+  assert.deepEqual((await store.listPdfRevisions("plan.pdf")).map((r: any) => r.rev), [1]);
+});
+
+test("revision trails are per-name: revising A leaves B untouched", async () => {
+  await store.addPdf(fileOf("a.pdf", [1]));
+  await store.addPdf(fileOf("b.pdf", [1]));
+  await store.addPdf(fileOf("a.pdf", [2]));
+  assert.deepEqual((await store.listPdfRevisions("a.pdf")).map((r: any) => r.rev), [2, 1]);
+  assert.deepEqual((await store.listPdfRevisions("b.pdf")).map((r: any) => [r.rev, r.current]), [[1, true]]);
+  // and removing A's trail can't touch B's
+  await store.removePdf("a.pdf");
+  assert.deepEqual((await store.listPdfRevisions("b.pdf")).map((r: any) => r.rev), [1]);
 });

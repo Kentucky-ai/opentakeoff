@@ -2,6 +2,12 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-07-31 — sheet revisions: a re-drop is never a silent overwrite
+
+### Added
+- **Sheet versioning at `addPdf` (CO-1)** — the chokepoint the change-order track stands on. Every added PDF is content-hashed (SHA-256); re-dropping a file whose bytes CHANGED archives the old record as a numbered revision (new `pdf_revs` store, IndexedDB v3) in the same transaction that swaps the new bytes in — atomically, so a failure mid-swap can never lose the only copy of a sheet. The canvas tells the truth about it: a revised drop evicts the stale pdf.js doc cache and re-keys the render path so the new paper actually reaches the screen, and the message says **"Sheet changed under your markups"** when ink rides the revised file (a plain re-open when it doesn't; identical bytes are a no-op — no phantom revisions). Legacy records version correctly on their first re-drop (bytes hashed lazily, archived as rev 1); closing a PDF removes its trail with it. Read path for what comes next: `listPdfRevisions(name)` (metadata only) and `loadPdfRevisionData(name, rev)` — the slip-sheet overlay (CO-2) and diff-driven re-review (CO-3) build on exactly these. Local-only by design: cloud mode's PDFs are Drive-canonical, and Drive keeps its own revision history.
+- **Deterministic image→PDF wrap** — pdf-lib stamps CreationDate/ModificationDate with the wall clock by default, which would have made every re-dropped screenshot a false "sheet changed" alarm. `imageToPdf` now creates with `updateMetadata: false`: same image in, same bytes out, so the content hash means what it says.
+
 ## 2026-07-30 — the marked-up planset from an agent, the missing measure roles; opentakeoff-mcp 0.9.8+
 
 ### Added
