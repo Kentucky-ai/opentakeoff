@@ -16,6 +16,7 @@
 // path stays dark, so a fork that doesn't configure it never exposes anything.
 
 const GOOGLE_USERINFO = "https://www.googleapis.com/oauth2/v3/userinfo";
+const GOOGLE_TOKENINFO = "https://www.googleapis.com/oauth2/v3/tokeninfo";
 // Default to gemini-3.1-flash-lite (GA, image-capable): the low-latency Flash-Lite
 // tier, chosen to shrink the cold-start time that overran Netlify's sync cap and
 // 504'd on the heavier gemini-3.5-flash (#102/#100). A schedule crop is small,
@@ -129,6 +130,28 @@ async function verifyGoogleUser(authHeader) {
   const email = (profile.email || "").toLowerCase();
   if (!email || profile.email_verified === false) {
     return { ok: false, status: 401, msg: "Your Google sign-in doesn't have a verified email." };
+  }
+  // Verify the token audience matches this application's client ID to prevent
+  // tokens issued to other Google apps from being accepted here.
+  const expectedAud = process.env.GOOGLE_CLIENT_ID;
+  if (!expectedAud) {
+    console.warn("parse-schedule: aud check inactive — GOOGLE_CLIENT_ID unset");
+  }
+  if (expectedAud) {
+    try {
+      const tiRes = await fetch(GOOGLE_TOKENINFO, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `access_token=${encodeURIComponent(token)}`,
+      });
+      const tiData = tiRes.ok ? await tiRes.json() : null;
+      const aud = tiData?.aud || tiData?.azp || "";
+      if (aud !== expectedAud) {
+        return { ok: false, status: 401, msg: "Token audience mismatch — sign in again." };
+      }
+    } catch {
+      return { ok: false, status: 502, msg: "Couldn't verify your sign-in." };
+    }
   }
   const hd = (profile.hd || email.split("@")[1] || "").toLowerCase();
   if (ALLOWED_HDS.length && !ALLOWED_HDS.includes(hd)) return { ok: false, status: 403, msg: "This deployment is limited to a specific organization." };
