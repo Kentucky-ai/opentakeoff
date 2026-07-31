@@ -134,9 +134,16 @@ async function verifyGoogleUser(authHeader) {
   // Verify the token audience matches this application's client ID to prevent
   // tokens issued to other Google apps from being accepted here.
   const expectedAud = process.env.GOOGLE_CLIENT_ID;
+  if (!expectedAud) {
+    console.warn("parse-schedule: aud check inactive — GOOGLE_CLIENT_ID unset");
+  }
   if (expectedAud) {
     try {
-      const tiRes = await fetch(`${GOOGLE_TOKENINFO}?access_token=${encodeURIComponent(token)}`);
+      const tiRes = await fetch(GOOGLE_TOKENINFO, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `access_token=${encodeURIComponent(token)}`,
+      });
       const tiData = tiRes.ok ? await tiRes.json() : null;
       const aud = tiData?.aud || tiData?.azp || "";
       if (aud !== expectedAud) {
