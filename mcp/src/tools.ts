@@ -1,4 +1,4 @@
-// The thirty tools — thin zod-validated handlers over the Session. Replies are
+// The thirty-one tools — thin zod-validated handlers over the Session. Replies are
 // compact JSON (format.ts); view_sheet alone replies with an image content
 // item plus a JSON meta text item. Failures are isError results, never thrown
 // protocol errors.
@@ -13,11 +13,12 @@ import {
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
   editShapeOutput, undoLastOutput, sheetContextOutput,
   findTextOutput, editMaterialsOutput, editConditionOutput, exportReportOutput,
-  exportMarkedPdfOutput, listShapesOutput, deriveBaseOutput,
+  exportMarkedPdfOutput, listShapesOutput, deriveBaseOutput, importTakeoffOutput,
   annotateOutput, listAnnotationsOutput, linkAnnotationOutput,
   sheetGraphOutput, resolveTagOutput, findScheduleOutput,
 } from "./outputs.ts";
 import { exportMarkedPdf } from "./marked.ts";
+import { importTakeoff } from "./importing.ts";
 
 // The coordinate contract, stated on every tool so any agent reading any one
 // description knows the space it is working in.
@@ -199,6 +200,14 @@ export function registerTools(server: McpServer, session: Session): void {
     }
     return doc;
   }));
+
+  server.registerTool("import_takeoff", {
+    description: `The way BACK IN (#151): load an "opentakeoff.takeoff_canvas.v1" file — a prior export_takeoff, or the app's own save — into this session, through the SAME tested merge rules as the app's Sheet-menu import: finish-tag identity joins imported conditions onto this session's own (their knobs win), new ids append, duplicate ids skip (re-import is idempotent), and THIS session's calibration wins per sheet. An empty session adopts the file wholesale. Resume yesterday's work, extend a takeoff a human already reviewed (their ink stays ink — reviewed shapes arrive untouchable by agent verbs), or audit someone else's export with list_shapes/takeoff_summary. Requires a loaded plan; shapes referencing OTHER files ride along and count in totals but can't be viewed against this document — the reply's unknown_files names them. undo_last removes the imported SHAPES as one step; adopted conditions, scales, and annotations stay.`,
+    inputSchema: {
+      path: z.string().describe("Path to a takeoff_canvas.v1 JSON file on disk"),
+    },
+    outputSchema: importTakeoffOutput,
+  }, run("import_takeoff", (a) => importTakeoff(session, a.path)));
 
   server.registerTool("export_marked_pdf", {
     description: `The MARKED-UP PLANSET — the deliverable of every takeoff. Writes a distribution-ready PDF to disk: a legend cover (per-condition totals, swatches, a by-sheet breakdown) followed by every sheet that carries takeoff shapes or annotations, vector-copied from the source plan with the work burned in as drawn — condition colors and hatches, a quantity chip on every shape, annotation clouds/callouts/highlights. Built by the same module as the canvas's MARKED SET button, so agent output and app output are one implementation. A construction takeoff is no good without markup: finish EVERY takeoff by writing this file and giving the user its path (export_report carries the numbers for pricing; this carries the evidence). When the shapes were machine-traced and unreviewed, the document says so on its last page — the review path is importing the export_takeoff payload into the app, where agent shapes arrive as pencil proposals. Default path: next to the loaded plan as "<plan> - marked set.pdf". Needs no native canvas — pure vector copy, so it works even where view_sheet cannot render.`,

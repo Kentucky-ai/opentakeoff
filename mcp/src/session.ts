@@ -366,6 +366,18 @@ export class Session {
     throw new UserError(`Unknown sheet "${name}" — loaded sheets: ${[...this.sheets.keys()].join(", ")}.`);
   }
 
+  /** Like sheet(), but null for an unknown key — import adoption iterates
+   * merged rows that may reference files this document doesn't have. */
+  sheetOrNull(name: string): SheetState | null {
+    return this.sheets.get(name) ?? null;
+  }
+
+  /** Journal an externally-assembled commit gesture (import_takeoff) as one
+   * reversible step — the same entry shape commit()+flushCommits() writes. */
+  journalCommit(tool: string, ids: string[]): void {
+    this.record({ op: "commit", tool, ids });
+  }
+
   /** Resource-URI addressing: sheets by 1-based page number. */
   sheetForPage(page: number): SheetState {
     if (!this.doc) throw new UserError("No plan loaded — call load_plan first.");

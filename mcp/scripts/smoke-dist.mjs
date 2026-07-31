@@ -105,6 +105,7 @@ assert.deepEqual(names, [
   "export_takeoff",
   "find_schedule",
   "find_text",
+  "import_takeoff",
   "link_annotation",
   "list_annotations",
   "list_shapes",
