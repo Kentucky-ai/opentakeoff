@@ -141,13 +141,19 @@ export interface Shape {
 export interface Markup {
   id: string;
   sheet_id: string;
-  type: "cloud" | "text" | "callout" | "highlight";
+  type: "cloud" | "text" | "callout" | "highlight" | "arrow" | "bubble";
   text: string;
   condition_id: string;
   rfi_id: string;
   at?: [number, number];
   target?: [number, number];
   rect?: [[number, number], [number, number]];
+  /** arrow: tail and head, normalized like at/target. */
+  from?: [number, number];
+  to?: [number, number];
+  /** bubble: radius normalized to sheet WIDTH (the canvas/marked-set frame —
+   * uniform scale off width keeps the circle round on any page). */
+  r?: number;
   created_at?: string;
 }
 
@@ -1285,12 +1291,13 @@ export class Session {
    *  first touch exactly like one_click/measure_polygon — so an agent can note
    *  something about CPT-1 before anything is traced for CPT-1. Omit it for a
    *  note about the sheet rather than about a finish. */
-  annotate(a: { sheet: string; type: Markup["type"]; text: string; at?: Point; target?: Point; rect?: [Point, Point]; condition?: string }): Record<string, unknown> {
+  annotate(a: { sheet: string; type: Markup["type"]; text: string; at?: Point; target?: Point; rect?: [Point, Point]; from?: Point; to?: Point; r?: number; condition?: string }): Record<string, unknown> {
     const s = this.sheet(a.sheet);
     const n = ([x, y]: Point): [number, number] => [x / s.widthPx, y / s.heightPx];
     if ((a.type === "cloud" || a.type === "highlight") && !a.rect) throw new UserError(`a ${a.type} needs rect: [[x0,y0],[x1,y1]] in image px`);
-    if ((a.type === "text" || a.type === "callout") && !a.at) throw new UserError(`a ${a.type} needs at: [x,y] in image px`);
+    if ((a.type === "text" || a.type === "callout" || a.type === "bubble") && !a.at) throw new UserError(`a ${a.type} needs at: [x,y] in image px`);
     if (a.type === "callout" && !a.target) throw new UserError("a callout needs target: [x,y] — the point the leader line aims at");
+    if (a.type === "arrow" && (!a.from || !a.to)) throw new UserError("an arrow needs from: [x,y] and to: [x,y] — tail and head, in image px");
     const cond = a.condition ? this.conditionFor(a.condition) : null;
     const m: Markup = {
       id: uid("mk"),
@@ -1303,6 +1310,11 @@ export class Session {
       ...(a.at ? { at: n(a.at) } : {}),
       ...(a.target ? { target: n(a.target) } : {}),
       ...(a.rect ? { rect: [n(a.rect[0]), n(a.rect[1])] as [[number, number], [number, number]] } : {}),
+      ...(a.from ? { from: n(a.from) } : {}),
+      ...(a.to ? { to: n(a.to) } : {}),
+      // bubble radius: px → fraction of sheet WIDTH (marked-set frame); the
+      // canvas default is 0.02 when unset — stored explicitly so exports agree
+      ...(a.type === "bubble" ? { r: a.r != null ? a.r / s.widthPx : 0.02 } : {}),
     };
     this.markups.push(m);
     return {
@@ -1338,6 +1350,9 @@ export class Session {
         ...(m.at ? { at: px(m, m.at) } : {}),
         ...(m.target ? { target: px(m, m.target) } : {}),
         ...(m.rect ? { rect: [px(m, m.rect[0]), px(m, m.rect[1])] } : {}),
+        ...(m.from ? { from: px(m, m.from) } : {}),
+        ...(m.to ? { to: px(m, m.to) } : {}),
+        ...(m.r != null ? { r: round1(m.r * (s0.get(m.sheet_id)?.widthPx ?? 0)) } : {}),
       })),
       count: rows.length,
       unattached: rows.filter((m) => !m.condition_id).length,
