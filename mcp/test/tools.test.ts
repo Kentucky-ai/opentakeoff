@@ -55,13 +55,14 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // coordinate contract would be noise rather than clarity.
 // export_marked_pdf takes a file path and writes a document — same reasoning.
 // list_shapes returns ids and quantities, no geometry — same reasoning.
-const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "link_annotation", "list_shapes"]);
+// derive_base takes shape ids and lineal feet — same reasoning.
+const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "link_annotation", "list_shapes", "derive_base"]);
 
-test("tools/list: all twenty-nine tools, each described with the coordinate contract", async () => {
+test("tools/list: all thirty tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
-    "annotate", "delete_shape", "detect_rooms", "edit_condition", "edit_materials", "edit_shape", "export_marked_pdf", "export_report",
+    "annotate", "delete_shape", "derive_base", "detect_rooms", "edit_condition", "edit_materials", "edit_shape", "export_marked_pdf", "export_report",
     "export_takeoff", "find_schedule", "find_text",
     "link_annotation", "list_annotations", "list_shapes", "load_plan", "measure_line", "measure_polygon", "measure_surface", "one_click", "place_count",
     "read_sheet_text", "resolve_tag", "set_scale", "sheet_context", "sheet_graph", "sheet_info", "takeoff_summary", "undo_last", "view_sheet",
@@ -340,6 +341,52 @@ test("place_count: EA with no scale set, one journal step for the sweep, marked 
   const moved = await call(client, "edit_shape", { shape_id: again.data.shape_ids[0], verts: [[520, 520]] });
   assert.equal(moved.isError, false);
   assert.equal(moved.data.count, 1);
+});
+
+// #148 — perimeter − stated openings → committed base runs, all-or-nothing.
+test("derive_base: nets stated openings per room, refuses bad claims whole, one undo step", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  await call(client, "set_scale", { sheet: KEY, use_detected: true });
+  await call(client, "detect_rooms", { sheet: KEY, condition: "CPT-1" });
+  const inv = await call(client, "list_shapes", { condition: "CPT-1" });
+  const [room0, room1] = inv.data.shapes;
+
+  // gross perimeters, no openings
+  const gross = await call(client, "derive_base", { source_condition: "CPT-1", condition: "RB-1" });
+  assert.equal(gross.isError, false);
+  assert.equal(gross.data.committed, 4);
+  assert.ok(gross.data.rooms.every((r: any) => r.openings_lf === 0 && r.net_lf === r.gross_lf));
+  assert.equal(gross.data.total_lf, +gross.data.rooms.reduce((n: number, r: any) => n + r.net_lf, 0).toFixed(2));
+  const summary = await call(client, "takeoff_summary");
+  const rb = summary.data.conditions.find((c: any) => c.finish_tag === "RB-1");
+  assert.equal(rb.lf, gross.data.total_lf);
+  await call(client, "undo_last", { n: 1 }); // the whole derivation is one step
+
+  // stated openings net out, stacking per room; provenance carries the claim
+  const withOpen = await call(client, "derive_base", {
+    source_condition: "CPT-1", condition: "RB-1",
+    openings: [{ shape_id: room0.id, lf: 3 }, { shape_id: room0.id, lf: 3 }, { shape_id: room1.id, lf: 6 }],
+  });
+  assert.equal(withOpen.isError, false);
+  const r0 = withOpen.data.rooms.find((r: any) => r.source_shape_id === room0.id);
+  assert.equal(r0.openings_lf, 6);
+  assert.equal(r0.net_lf, +(r0.gross_lf - 6).toFixed(2));
+  const payload = await call(client, "export_takeoff", {});
+  const base = payload.data.shapes.find((s: any) => s.id === r0.base_shape_id);
+  assert.equal(base.origin.derived.from_shape_id, room0.id);
+  assert.equal(base.origin.derived.openings_lf, 6);
+
+  // refusals: all-or-nothing, and base never lands on its source tag
+  const badId = await call(client, "derive_base", { source_condition: "CPT-1", condition: "RB-2", openings: [{ shape_id: "shp-nope", lf: 3 }] });
+  assert.equal(badId.isError, true);
+  const tooBig = await call(client, "derive_base", { source_condition: "CPT-1", condition: "RB-2", openings: [{ shape_id: room0.id, lf: 10000 }] });
+  assert.equal(tooBig.isError, true);
+  assert.match(tooBig.data.error, /meet or exceed/);
+  const selfTag = await call(client, "derive_base", { source_condition: "CPT-1", condition: "CPT-1" });
+  assert.equal(selfTag.isError, true);
+  const rb2 = (await call(client, "takeoff_summary")).data.conditions.find((c: any) => c.finish_tag === "RB-2");
+  assert.equal(rb2, undefined, "refused calls committed nothing");
 });
 
 // #150 — arrow and bubble: the two markup types flooring drawings use most.

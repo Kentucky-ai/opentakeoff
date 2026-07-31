@@ -112,6 +112,7 @@ includes document text, shape vertices, or result payload content.
 | `detect_rooms` | Batch One-Click: reads every room-number label off the sheet's text layer and floods each — one call instead of `read_sheet_text` + reasoning + N `one_click` calls. Only cleanly-traced rooms come back; everything skipped is counted and reasoned in `withheld` (degenerate / duplicate / implausible), never dropped silently. Pass `condition` to commit every detected room. |
 | `measure_polygon` | Area + perimeter of a polygon you supply (min 3 verts). Requires scale. |
 | `measure_line` | Length of an open polyline (min 2 points). Requires scale. |
+| `derive_base` | **Base LF from committed rooms**: for every floor shape of a source condition, commits a linear base run tracing that room's boundary, quantified net of the door openings YOU state per room (`{shape_id, lf}` — your claim, recorded on `origin.derived`; the tool never guesses). All-or-nothing; one undo step. |
 | `measure_surface` | **Wall SF**: an open run traced along the wall, quantified as traced LF × the condition's height (the canvas's H knob — pass `height_ft` to set it, or set it once with `edit_condition`). Wall tile, wainscot, wall systems. Refuses without a height, minting nothing. |
 | `place_count` | **EA markers**: one point, one each — thresholds, stair nosings, floor boxes. No scale required (EA is scale-free). One shape per point; the whole call is one undo step. |
 | `takeoff_summary` | Per-condition totals + grand totals, computed by the Report's rules. |
