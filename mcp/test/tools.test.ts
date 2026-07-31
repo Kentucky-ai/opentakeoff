@@ -54,15 +54,16 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // link_annotation takes an id and a tag — no geometry crosses it, so the
 // coordinate contract would be noise rather than clarity.
 // export_marked_pdf takes a file path and writes a document — same reasoning.
-const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "link_annotation"]);
+// list_shapes returns ids and quantities, no geometry — same reasoning.
+const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "link_annotation", "list_shapes"]);
 
-test("tools/list: all twenty-eight tools, each described with the coordinate contract", async () => {
+test("tools/list: all twenty-nine tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
     "annotate", "delete_shape", "detect_rooms", "edit_condition", "edit_materials", "edit_shape", "export_marked_pdf", "export_report",
     "export_takeoff", "find_schedule", "find_text",
-    "link_annotation", "list_annotations", "load_plan", "measure_line", "measure_polygon", "measure_surface", "one_click", "place_count",
+    "link_annotation", "list_annotations", "list_shapes", "load_plan", "measure_line", "measure_polygon", "measure_surface", "one_click", "place_count",
     "read_sheet_text", "resolve_tag", "set_scale", "sheet_context", "sheet_graph", "sheet_info", "takeoff_summary", "undo_last", "view_sheet",
   ]);
   for (const t of tools) {
@@ -339,6 +340,36 @@ test("place_count: EA with no scale set, one journal step for the sweep, marked 
   const moved = await call(client, "edit_shape", { shape_id: again.data.shape_ids[0], verts: [[520, 520]] });
   assert.equal(moved.isError, false);
   assert.equal(moved.data.count, 1);
+});
+
+// #149 — the inventory read every mutating tool assumes you have.
+test("list_shapes: compact inventory, filters narrow, empty is a result", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  await call(client, "set_scale", { sheet: KEY, use_detected: true });
+  await call(client, "detect_rooms", { sheet: KEY, condition: "CPT-1" });
+  await call(client, "place_count", { sheet: KEY, points: [[500, 500]], condition: "TR-1" });
+
+  const all = await call(client, "list_shapes", {});
+  assert.equal(all.isError, false);
+  assert.equal(all.data.count, 5);
+  const roles = all.data.shapes.map((s: any) => s.measure_role);
+  assert.equal(roles.filter((r: string) => r === "floor_area").length, 4);
+  assert.equal(roles.filter((r: string) => r === "count").length, 1);
+  assert.ok(all.data.shapes.every((s: any) => s.reviewed === false), "everything this server commits is pencil");
+
+  const byCond = await call(client, "list_shapes", { condition: "TR-1" });
+  assert.equal(byCond.data.count, 1);
+  assert.equal(byCond.data.shapes[0].count, 1);
+
+  // an id from the inventory drives edit_shape directly
+  const target = all.data.shapes.find((s: any) => s.measure_role === "floor_area");
+  const del = await call(client, "delete_shape", { shape_id: target.id });
+  assert.equal(del.isError, false);
+  assert.equal((await call(client, "list_shapes", {})).data.count, 4);
+
+  const badCond = await call(client, "list_shapes", { condition: "NOPE" });
+  assert.equal(badCond.isError, true);
 });
 
 // #147 — roll goods reach the wire: the opt-in knob, the figured echo, the

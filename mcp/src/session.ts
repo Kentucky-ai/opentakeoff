@@ -947,6 +947,38 @@ export class Session {
     return { committed: ids.length, shape_ids: ids, condition: c.finish_tag, ea_total };
   }
 
+  /** The mid-session shape inventory (#149): every committed shape's id,
+   * home, role, and quantities in one compact read — the ids edit_shape /
+   * delete_shape assume you have, without pulling the whole export_takeoff
+   * payload to find one shape. Filters narrow, they never 404 an empty list. */
+  listShapes(f: { sheet?: string; condition?: string } = {}) {
+    if (!this.doc) throw new UserError("No plan loaded — call load_plan first.");
+    let rows = this.shapes;
+    if (f.sheet) { const s = this.sheet(f.sheet); rows = rows.filter((x) => x.sheet_id === s.key); }
+    if (f.condition) {
+      const c = this.conditions.find((x) => x.finish_tag === f.condition);
+      if (!c) throw new UserError(`No condition ${JSON.stringify(f.condition)} — tags: ${this.conditions.map((x) => x.finish_tag).join(", ") || "(none)"}.`);
+      rows = rows.filter((x) => x.condition_id === c.id);
+    }
+    const tagById = new Map(this.conditions.map((c) => [c.id, c.finish_tag]));
+    return {
+      shapes: rows.map((x) => ({
+        id: x.id,
+        sheet: x.sheet_id,
+        condition: tagById.get(x.condition_id) ?? "",
+        measure_role: x.measure_role,
+        ...(x.computed.area_sf !== undefined ? { area_sf: x.computed.area_sf } : {}),
+        ...(x.computed.perimeter_lf !== undefined ? { perimeter_lf: x.computed.perimeter_lf } : {}),
+        ...(x.computed.count !== undefined ? { count: x.computed.count } : {}),
+        ...(x.height_ft !== undefined ? { height_ft: x.height_ft } : {}),
+        nverts: x.verts_norm.length,
+        reviewed: x.origin?.reviewed === true,
+        ...(x.origin?.agent_edits ? { agent_edits: x.origin.agent_edits } : {}),
+      })),
+      count: rows.length,
+    };
+  }
+
   summary() {
     const rows = conditionTotals(this.conditions, this.shapes) as Record<string, unknown>[];
     // strip presentation fields for a compact agent-facing reply
