@@ -341,6 +341,46 @@ test("place_count: EA with no scale set, one journal step for the sweep, marked 
   assert.equal(moved.data.count, 1);
 });
 
+// #147 — roll goods reach the wire: the opt-in knob, the figured echo, the
+// report block, and the exact undo.
+test("edit_condition roll_setup: opt-in figures the order, report carries it, null opts out, undo restores verbatim", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  await call(client, "set_scale", { sheet: KEY, use_detected: true });
+  await call(client, "detect_rooms", { sheet: KEY, condition: "CPT-1" });
+
+  const on = await call(client, "edit_condition", { condition: "CPT-1", roll_setup: { material: "carpet" } });
+  assert.equal(on.isError, false);
+  assert.equal(on.data.roll_setup.material, "carpet");
+  assert.equal(on.data.roll_setup.roll_width_ft, 12, "engine defaults minted");
+  assert.equal(on.data.roll_setup.price_unit, "sy", "carpet sells sy");
+  assert.ok(on.data.roll, "figured order echoed — floor shapes exist on a scaled sheet");
+  assert.ok(on.data.roll.cuts > 0);
+  assert.ok(on.data.roll.order_lf > 0);
+  assert.equal(on.data.roll.order_unit, "sy");
+
+  // same-material partial edit patches, keeps the rest
+  const patched = await call(client, "edit_condition", { condition: "CPT-1", roll_setup: { roll_width_ft: 6 } });
+  assert.equal(patched.data.roll_setup.roll_width_ft, 6);
+  assert.equal(patched.data.roll_setup.material, "carpet");
+  assert.ok(patched.data.roll.order_lf > on.data.roll.order_lf, "half the roll width ⇒ more lineal footage");
+
+  // the report block carries the same figures
+  const rep = await call(client, "export_report", {});
+  assert.equal(rep.data.roll_goods.length, 1);
+  assert.equal(rep.data.roll_goods[0].finish_tag, "CPT-1");
+  assert.equal(rep.data.roll_goods[0].order_lf, patched.data.roll.order_lf);
+
+  // opt out; then undo restores the width-6 setup verbatim
+  const off = await call(client, "edit_condition", { condition: "CPT-1", roll_setup: null });
+  assert.equal(off.data.roll_setup, undefined);
+  assert.equal((await call(client, "export_report", {})).data.roll_goods.length, 0);
+  await call(client, "undo_last", { n: 1 });
+  const rep2 = await call(client, "export_report", {});
+  assert.equal(rep2.data.roll_goods.length, 1);
+  assert.equal(rep2.data.roll_goods[0].roll_width_ft, 6);
+});
+
 test("output contract: every JSON tool declares outputSchema; structuredContent mirrors the text item", async () => {
   const client = await pair();
   const { tools } = await client.listTools();

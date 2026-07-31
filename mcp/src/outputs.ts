@@ -334,6 +334,15 @@ export const editConditionOutput = {
   waste_pct: z.number().describe("The condition's waste % after this write"),
   multiplier: z.number().describe("The condition's quantity multiplier after this write"),
   height_ft: z.number().optional().describe("The condition's wall height after this write — present once set (measure_surface multiplies traced LF by it)"),
+  roll_setup: z.object({}).passthrough().optional().describe("The condition's roll-goods setup after this write — present while opted in"),
+  roll: z.object({
+    condition_id: z.string(), finish_tag: z.string(), material: z.string(),
+    roll_width_ft: z.number(), roll_length_ft: z.number(),
+    direction: z.string(), cuts: z.number().int(),
+    order_lf: z.number().describe("Full-width roll footage to order, ×N applied, rounded up to the inch"),
+    rolls: z.number(), order_qty: z.number(), order_unit: z.string(),
+    oversize: z.boolean().describe("true when a cut exceeds the physical roll length (roll_length_ft binds)"),
+  }).passthrough().optional().describe("The figured order (same row export_report's roll_goods carries) — present when the roll-goods condition has floor shapes on scaled sheets"),
 };
 
 export const readSheetTextOutput = {
