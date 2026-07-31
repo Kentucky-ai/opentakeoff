@@ -17,6 +17,7 @@ import {
 import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
 import { conditionTotals, grandTotals, sheetTotals, reportJson } from "../../web/src/lib/totals.js";
+import { hasRollSetup, mintRollSetup, computeRollTakeoff, rollReportRows } from "../../web/src/lib/rollTakeoff.js";
 import { gridPxPerFoot, drawGrid, drawShapes, type Ctx2D, type ToCanvas } from "./view.ts";
 
 // Copied from the canvas (web/src/pages/TakeoffCanvas.jsx) so conditions and
@@ -65,6 +66,10 @@ export interface Condition {
   waste_pct: number;
   /** Wall height in feet — the canvas's H knob; surface_area = traced LF × this. */
   height_ft?: number;
+  /** Roll-goods opt-in (#136): presence of a usable setup is what makes the
+   * condition roll goods — material class + the packing engine's spec fields,
+   * exactly the object the canvas persists (web/src/lib/rollTakeoff.js). */
+  roll_setup?: Record<string, unknown>;
   materials: MaterialRow[];
 }
 
@@ -247,7 +252,7 @@ export type JournalPayload =
   | { op: "edit"; tool: string; before: Shape }
   | { op: "delete"; tool: string; removed: { shape: Shape; index: number }[] }
   | { op: "materials"; tool: string; condition_id: string; before: MaterialRow[] }
-  | { op: "condition"; tool: string; condition_id: string; before: { waste_pct: number; multiplier: number; height_ft?: number } };
+  | { op: "condition"; tool: string; condition_id: string; before: { waste_pct: number; multiplier: number; height_ft?: number; roll_setup?: Record<string, unknown> } };
 
 export type JournalEntry = JournalPayload & { seq: number };
 
@@ -1127,21 +1132,63 @@ export class Session {
    * mean anything on a condition that exists, and a typo'd tag must error,
    * not create an empty condition as a side effect. One journal entry
    * snapshots both knobs; undo restores them verbatim. */
-  editCondition(tag: string, opts: { waste_pct?: number; multiplier?: number; height_ft?: number }) {
-    if (opts.waste_pct === undefined && opts.multiplier === undefined && opts.height_ft === undefined) {
-      throw new UserError("Nothing to change — pass at least one of waste_pct, multiplier, height_ft.");
+  /** dimsFor / uppFor as computeRollTakeoff wants them — bitmap px and real
+   * feet per px, null for sheets that can't participate. */
+  private rollInputs() {
+    return {
+      dimsFor: (sheetId: string) => { const s = this.sheets.get(sheetId); return s ? { w: s.widthPx, h: s.heightPx } : null; },
+      uppFor: (sheetId: string) => this.sheets.get(sheetId)?.upp ?? null,
+    };
+  }
+
+  editCondition(tag: string, opts: { waste_pct?: number; multiplier?: number; height_ft?: number; roll_setup?: Record<string, unknown> | null }) {
+    if (opts.waste_pct === undefined && opts.multiplier === undefined && opts.height_ft === undefined && opts.roll_setup === undefined) {
+      throw new UserError("Nothing to change — pass at least one of waste_pct, multiplier, height_ft, roll_setup.");
     }
     const c = this.conditions.find((x) => x.finish_tag === tag);
     if (!c) {
       const known = this.conditions.map((x) => x.finish_tag);
       throw new UserError(`No condition ${JSON.stringify(tag)}.${known.length ? ` Known tags: ${known.join(", ")}.` : " Nothing has minted a condition yet — commit a measurement or add materials first."}`);
     }
-    const before = { waste_pct: c.waste_pct, multiplier: c.multiplier, height_ft: c.height_ft };
+    const before = {
+      waste_pct: c.waste_pct, multiplier: c.multiplier, height_ft: c.height_ft,
+      roll_setup: c.roll_setup ? structuredClone(c.roll_setup) : undefined,
+    };
     if (opts.waste_pct !== undefined) c.waste_pct = opts.waste_pct;
     if (opts.multiplier !== undefined) c.multiplier = opts.multiplier;
     if (opts.height_ft !== undefined) c.height_ft = opts.height_ft;
+    if (opts.roll_setup !== undefined) {
+      if (opts.roll_setup === null) {
+        delete c.roll_setup; // opt out — the condition is trade-agnostic again
+      } else {
+        const given = Object.fromEntries(Object.entries(opts.roll_setup).filter(([, v]) => v !== undefined));
+        const prevMaterial = (c.roll_setup as { material?: string } | undefined)?.material;
+        const material = (given.material as string | undefined) ?? prevMaterial ?? "carpet";
+        // a material change (or a fresh opt-in) starts from the engine's
+        // defaults for that class — the canvas's opt-in select does the same;
+        // a same-material partial edit patches the existing setup
+        const base = hasRollSetup(c) && material === prevMaterial ? (c.roll_setup as object) : (mintRollSetup(material) as object);
+        c.roll_setup = { ...base, ...given, material };
+      }
+    }
     this.record({ op: "condition", tool: "edit_condition", condition_id: c.id, before });
-    return { condition: tag, condition_id: c.id, waste_pct: c.waste_pct, multiplier: c.multiplier, ...(c.height_ft !== undefined ? { height_ft: c.height_ft } : {}) };
+
+    // when the condition is roll goods AND floor shapes exist on scaled sheets,
+    // echo the figured order right on the reply — the agent should not need an
+    // export round-trip to learn what its knob just did
+    let roll: Record<string, unknown> | undefined;
+    if (hasRollSetup(c)) {
+      const { dimsFor, uppFor } = this.rollInputs();
+      const { byCond } = computeRollTakeoff([c], this.shapes, dimsFor, uppFor) as { byCond: Map<string, unknown> };
+      const rows = conditionTotals([c], this.shapes) as Record<string, unknown>[];
+      roll = (rollReportRows(byCond, rows) as Record<string, unknown>[])[0];
+    }
+    return {
+      condition: tag, condition_id: c.id, waste_pct: c.waste_pct, multiplier: c.multiplier,
+      ...(c.height_ft !== undefined ? { height_ft: c.height_ft } : {}),
+      ...(c.roll_setup ? { roll_setup: c.roll_setup } : {}),
+      ...(roll ? { roll } : {}),
+    };
   }
 
   /** Step back over this session's own last n mutations, newest first. Each
@@ -1177,6 +1224,8 @@ export class Session {
           c.multiplier = e.before.multiplier;
           if (e.before.height_ft === undefined) delete c.height_ft;
           else c.height_ft = e.before.height_ft;
+          if (e.before.roll_setup === undefined) delete c.roll_setup;
+          else c.roll_setup = e.before.roll_setup;
         }
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
       } else {
@@ -1306,6 +1355,10 @@ export class Session {
   exportReport(projectName = "") {
     if (!this.doc) throw new UserError("No plan loaded — call load_plan first.");
     const rows = (conditionTotals(this.conditions, this.shapes) as Record<string, unknown>[]).filter((r) => (r.shape_count as number) > 0);
+    // roll goods (#147): the same pure seam the canvas report uses — figured
+    // here so the report.v1 block fills the moment a condition carries a setup
+    const { dimsFor, uppFor } = this.rollInputs();
+    const { byCond } = computeRollTakeoff(this.conditions, this.shapes, dimsFor, uppFor) as { byCond: Map<string, unknown> };
     return reportJson({
       projectName,
       rows,
@@ -1313,6 +1366,7 @@ export class Session {
       scaleInfo: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => ({ sheet_id: s.key, scale_source: s.scaleSource ?? "unknown" })),
       markups: this.markups,
       rfis: [],
+      rollGoods: rollReportRows(byCond, rows),
     });
   }
 
