@@ -18,6 +18,7 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 - **Root-level `Dockerfile`** — registry build systems (Glama and friends) that build from the repository root now find a working build without guessing a context; building `mcp/Dockerfile` with `mcp/` as the context fails by construction (the engine lives in `web/src/lib`), and that ambiguity is now closed. Same two-stage build, verified on Linux.
 
 ### Released
+- **opentakeoff-mcp 0.9.17** (tag `mcp-v0.9.17`) — the backlog batch: 31 tools incl. `derive_base`, `import_takeoff`, mixed-scale honesty, and multi-document sessions. npm latest, MCP registry, GitHub release + MCPB bundle. (0.9.13–0.9.16 were in-repo guard bumps, never published.)
 - **opentakeoff-mcp 0.9.12** (tag `mcp-v0.9.12`) — the whole estimator-gap batch in one release: 29 tools incl. `export_marked_pdf`, `measure_surface`/`place_count`, `roll_setup`, `list_shapes`, arrow/bubble annotations. npm latest, MCP registry, GitHub release + MCPB bundle. (0.9.9–0.9.11 were in-repo guard bumps, never published.)
 - **opentakeoff-mcp 0.9.8** (tag `mcp-v0.9.8`) — npm latest, MCP registry, GitHub release + MCPB bundle.
 
