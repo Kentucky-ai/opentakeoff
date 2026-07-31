@@ -105,7 +105,7 @@ includes document text, shape vertices, or result payload content.
 
 | Tool | What it does |
 |---|---|
-| `load_plan` | Open a plan PDF from disk. Replaces the whole session (old doc, scales, conditions, shapes all cleared). Returns per-sheet dims, title-block `sheet_number`, and the detected drawn scale where present. |
+| `load_plan` | Open a plan PDF from disk. Default replaces the whole session; **`merge: true` ADDS the document to the working set** (#152) — plans + schedule + addenda as one takeoff, sheet graph spanning the whole set, marked set covering every worked sheet. Returns per-sheet dims, title-block `sheet_number`, and the detected drawn scale where present. |
 | `sheet_info` | One sheet's dims, vector segment count, scale status, detected suggestion, committed shape count. |
 | `set_scale` | Set a sheet's scale — exactly one of `label`, `upp`, `calibrate {p1, p2, feet}`, `use_detected`. |
 | `one_click` | One-Click Area at (x, y): flood fill bounded by the plan linework, traced, vertices snapped. Pass `condition` to commit; `role: "deduct"` subtracts. |
@@ -246,7 +246,7 @@ sheet number (`A-101`) wherever a sheet is named.
 - **Vector + text sheets only.** A scanned sheet has no vector linework, so
   `one_click` reports it plainly; a raster fallback is a planned seam
   (`src/session.ts`, `ensureMask`), not yet built.
-- One document per session; `load_plan` replaces it.
+- `load_plan` replaces the session by default; `merge: true` builds a multi-document working set (#152). Reloading a merged file is refused — reload = replace, deliberately.
 - The takeoff lives in memory. `export_takeoff` (the app's exact save payload,
   nothing lost in translation) and `export_marked_pdf` (the reviewable marked
   planset) are the ways out.

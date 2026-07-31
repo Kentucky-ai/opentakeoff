@@ -50,11 +50,14 @@ const run = (tool: string, fn: (args: any) => unknown | Promise<unknown>) =>
 
 export function registerTools(server: McpServer, session: Session): void {
   server.registerTool("load_plan", {
-    description: `Open a plan PDF from disk and replace the whole session (previous document, scales, conditions, and shapes are cleared). Returns file, page_count, and one entry per sheet: dims, title-block sheet_number, and the detected drawn scale where present. The loaded sheets also become browsable resources (takeoff://sheets). ${COORDS}`,
-    inputSchema: { path: z.string().describe("Path to a plan PDF on disk") },
+    description: `Open a plan PDF from disk. Default: replace the whole session (previous documents, scales, conditions, and shapes are cleared). merge: true ADDS the document to the working set instead (#152) — a bid set is plans + schedule + addenda, not one PDF — keeping every scale, condition, and shape; sheet keys carry file names so documents never collide, the sheet graph spans the whole set (resolve_tag can chain a plan tag on one file to a schedule row in another), and the marked set covers every worked sheet. Re-loading an already-merged file is refused — reload = replace, deliberately. Returns file, files, page_count, and one entry per sheet. The loaded sheets also become browsable resources (takeoff://sheets). ${COORDS}`,
+    inputSchema: {
+      path: z.string().describe("Path to a plan PDF on disk"),
+      merge: z.boolean().optional().describe("true = ADD this document to the working set, keeping all existing work (merge into an empty session is just a load)"),
+    },
     outputSchema: loadPlanOutput,
-  }, run("load_plan", async ({ path }) => {
-    const loaded = await session.loadPlan(path);
+  }, run("load_plan", async ({ path, merge }) => {
+    const loaded = await session.loadPlan(path, { merge });
     server.sendResourceListChanged(); // the resource surface just changed under every subscriber
     return loaded;
   }));

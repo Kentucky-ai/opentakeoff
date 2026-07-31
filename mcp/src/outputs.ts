@@ -24,9 +24,10 @@ const sheetSummary = {
 };
 
 export const loadPlanOutput = {
-  file: z.string(),
-  page_count: z.number().int(),
-  sheets: z.array(z.object(sheetSummary)),
+  file: z.string().describe("The document just loaded (basename)"),
+  files: z.array(z.string()).describe("Every document in the working set, load order (#152 — one entry unless merge was used)"),
+  page_count: z.number().int().describe("Total sheets across the working set"),
+  sheets: z.array(z.object(sheetSummary)).describe("EVERY sheet in the working set, not just the file loaded by this call"),
   note: z.string(),
 };
 

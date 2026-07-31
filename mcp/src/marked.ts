@@ -36,10 +36,11 @@ export async function exportMarkedPdf(session: Session, opts: MarkedPdfOpts) {
   }
 
   const sheetStates = session.sheetList();
-  const byPage = new Map(sheetStates.map((s) => [s.pageNum, s.page]));
+  // #152: the working set can span documents — pages resolve per (file, page)
+  const byFilePage = new Map(sheetStates.map((s) => [`${session.fileFor(s.key)}#${s.pageNum}`, s.page]));
   const sheets = sheetStates.map((s) => ({
     key: s.key,
-    file,
+    file: session.fileFor(s.key),
     page: s.pageNum,
     label: s.sheetNumber ? `${s.sheetNumber} · p${s.pageNum}` : s.key,
   }));
@@ -47,9 +48,9 @@ export async function exportMarkedPdf(session: Session, opts: MarkedPdfOpts) {
   // markedset.js speaks pdf.js pages; serve it a shim over the PageHandle. The
   // stored viewport is at RENDER_SCALE and every entry of a pdf.js viewport
   // transform is linear in scale, so any requested scale is a plain rescale.
-  const getPage = async (_file: string, pageNum: number) => {
-    const ph = byPage.get(pageNum);
-    if (!ph) throw new UserError(`No page ${pageNum} in the loaded plan.`);
+  const getPage = async (srcFile: string, pageNum: number) => {
+    const ph = byFilePage.get(`${srcFile}#${pageNum}`);
+    if (!ph) throw new UserError(`No page ${pageNum} of ${srcFile} in the working set.`);
     return {
       rotate: ph.rotate,
       getViewport: ({ scale }: { scale: number }) => {
@@ -59,9 +60,18 @@ export async function exportMarkedPdf(session: Session, opts: MarkedPdfOpts) {
       },
     };
   };
-  // one source file per session; read once, share across page copies
-  let srcBytes: Uint8Array | null = null;
-  const loadPdfData = async () => (srcBytes ??= new Uint8Array(await readFile(filePath)));
+  // bytes per source file (#152: a merged set has several), read once each
+  const srcBytes = new Map<string, Uint8Array>();
+  const loadPdfData = async (srcFile: string) => {
+    let bytes = srcBytes.get(srcFile);
+    if (!bytes) {
+      const p = session.pathFor(srcFile);
+      if (!p) throw new UserError(`No source path for ${srcFile} — is it loaded?`);
+      bytes = new Uint8Array(await readFile(p));
+      srcBytes.set(srcFile, bytes);
+    }
+    return bytes;
+  };
 
   const base = file.replace(/\.pdf$/i, "");
   // truth-in-provenance: everything this server commits is reviewed:false, and

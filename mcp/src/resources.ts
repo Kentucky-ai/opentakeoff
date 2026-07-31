@@ -3,7 +3,9 @@
 //
 // URI scheme (issue #29):
 //   takeoff://sheets              the plan index — always listed, sensible when empty
-//   takeoff://sheet/{page}        one sheet's metadata (JSON), 1-based page number
+//   takeoff://sheet/{page}        one sheet's metadata (JSON), 1-based position in
+//                                 load order across the working set (#152 — ord ===
+//                                 page number for a single-document session)
 //   takeoff://sheet/{page}/text   the sheet's text, joined (text/plain)
 //   takeoff://sheet/{page}/image  the rendered page (PNG, long edge ≤ IMAGE_MAX_EDGE)
 //
@@ -26,7 +28,7 @@ function parsePage(session: Session, raw: string | string[]) {
 export function registerResources(server: McpServer, session: Session): void {
   const sheetEntries = (suffix: string, mimeType: string, what: string) => () => ({
     resources: session.sheetList().map((s) => ({
-      uri: `takeoff://sheet/${s.pageNum}${suffix}`,
+      uri: `takeoff://sheet/${s.ord}${suffix}`,
       name: `${s.key}${suffix.replace("/", " · ")}`,
       ...(s.sheetNumber ? { title: `${s.sheetNumber} — ${what}` } : { title: `page ${s.pageNum} — ${what}` }),
       description: `${what} for ${s.key}${s.sheetNumber ? ` (${s.sheetNumber})` : ""}`,
@@ -58,7 +60,7 @@ export function registerResources(server: McpServer, session: Session): void {
     async (uri, { page }) => {
       const s = parsePage(session, page);
       const idx = session.index();
-      const row = idx.sheets.find((x) => x.page === s.pageNum);
+      const row = idx.sheets.find((x) => x.sheet === s.key);
       return { contents: [{ uri: uri.href, mimeType: "application/json", text: JSON.stringify(row) }] };
     },
   );
@@ -87,7 +89,7 @@ export function registerResources(server: McpServer, session: Session): void {
     },
     async (uri, { page }) => {
       const s = parsePage(session, page);
-      const png = await session.renderSheetPng(s.pageNum);
+      const png = await session.renderSheetPng(s.ord);
       return { contents: [{ uri: uri.href, mimeType: "image/png", blob: toBase64(png) }] };
     },
   );

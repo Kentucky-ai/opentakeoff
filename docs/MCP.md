@@ -37,6 +37,8 @@ Twenty-five tools, in the order an agent tends to reach for them:
 - **Open and orient** — `load_plan`, `sheet_info` (including the sheet's PDF
   layer table — Optional Content Groups with a classified role, confidence,
   and default visibility per layer), `set_scale`, `sheet_context`
+- **Load the set** — `load_plan` (default replaces; `merge: true` adds — plans +
+  schedule + addenda as one working set, #152)
 - **Navigate the set** — `sheet_graph` (the plan-set index: sheet roles with
   evidence, schedule tables found, every room tag with its name, detail
   callouts — how an agent decides *what* to measure without a human
