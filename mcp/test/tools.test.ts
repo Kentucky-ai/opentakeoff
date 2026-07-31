@@ -3,6 +3,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
+import { mkdtemp, copyFile, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildServer } from "../server.ts";
@@ -50,13 +53,14 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // px and says so.
 // link_annotation takes an id and a tag — no geometry crosses it, so the
 // coordinate contract would be noise rather than clarity.
-const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "link_annotation"]);
+// export_marked_pdf takes a file path and writes a document — same reasoning.
+const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "link_annotation"]);
 
-test("tools/list: all twenty-five tools, each described with the coordinate contract", async () => {
+test("tools/list: all twenty-six tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
-    "annotate", "delete_shape", "detect_rooms", "edit_condition", "edit_materials", "edit_shape", "export_report",
+    "annotate", "delete_shape", "detect_rooms", "edit_condition", "edit_materials", "edit_shape", "export_marked_pdf", "export_report",
     "export_takeoff", "find_schedule", "find_text",
     "link_annotation", "list_annotations", "load_plan", "measure_line", "measure_polygon", "one_click",
     "read_sheet_text", "resolve_tag", "set_scale", "sheet_context", "sheet_graph", "sheet_info", "takeoff_summary", "undo_last", "view_sheet",
@@ -229,6 +233,55 @@ test("delete_shape: removes a committed shape; unknown id is isError", async () 
   const gone = await call(client, "delete_shape", { shape_id: committed.data.shape_id });
   assert.equal(gone.isError, true);
   assert.match(gone.data.error, /No shape with id/);
+});
+
+// The deliverable contract (the "Jake ran a takeoff and got numbers, no
+// markup" fix): the server must be able to hand back a marked-up planset,
+// and its instructions must tell every client that the takeoff finishes there.
+test("initialize: server instructions state the marked-planset finish", async () => {
+  const client = await pair();
+  assert.match(client.getInstructions() || "", /export_marked_pdf/);
+  assert.match(client.getInstructions() || "", /marked-up planset/);
+});
+
+test("export_marked_pdf: refuses an empty session, then writes a real 2-page PDF at the default path", async () => {
+  const client = await pair();
+  // load from a tmp copy so the default output path lands in the tmp dir,
+  // proving the "<plan dir>/<plan> - marked set.pdf" default — and never
+  // writing artifacts next to the repo's bundled demo plan
+  const dir = await mkdtemp(path.join(tmpdir(), "ot-marked-"));
+  const tmpPlan = path.join(dir, "sample-plan.pdf");
+  await copyFile(PLAN, tmpPlan);
+  await call(client, "load_plan", { path: tmpPlan });
+
+  const empty = await call(client, "export_marked_pdf", {});
+  assert.equal(empty.isError, true);
+  assert.match(empty.data.error, /Nothing to mark/);
+
+  await call(client, "set_scale", { sheet: KEY, use_detected: true });
+  await call(client, "detect_rooms", { sheet: KEY, condition: "CPT-1" });
+  await call(client, "annotate", { sheet: KEY, type: "cloud", text: "verify substrate", condition: "CPT-1", rect: [[500, 900], [800, 1200]] });
+
+  const r = await call(client, "export_marked_pdf", {});
+  assert.equal(r.isError, false);
+  assert.equal(r.data.path, path.join(dir, "sample-plan - marked set.pdf"));
+  assert.equal(r.data.pages, 2);           // legend cover + the one marked sheet
+  assert.equal(r.data.sheets_marked, 1);
+  assert.equal(r.data.shapes_drawn, 4);    // the 4 detect_rooms commits
+  assert.equal(r.data.annotations_drawn, 1);
+
+  const bytes = await readFile(r.data.path);
+  assert.equal(bytes.subarray(0, 5).toString(), "%PDF-");
+  const { PDFDocument } = await import("pdf-lib");
+  const doc = await PDFDocument.load(new Uint8Array(bytes));
+  assert.equal(doc.getPageCount(), 2);
+
+  // explicit path + project name honoured
+  const out2 = path.join(dir, "custom-marked.pdf");
+  const r2 = await call(client, "export_marked_pdf", { path: out2, project_name: "Bldg 28 test" });
+  assert.equal(r2.isError, false);
+  assert.equal(r2.data.path, out2);
+  assert.equal((await readFile(out2)).subarray(0, 5).toString(), "%PDF-");
 });
 
 test("output contract: every JSON tool declares outputSchema; structuredContent mirrors the text item", async () => {

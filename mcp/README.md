@@ -119,6 +119,7 @@ includes document text, shape vertices, or result payload content.
 | `edit_materials` | Add/remove/patch supporting-materials rows on a condition — the coverage-rate lines (adhesive at N sf/gal, grout at N lf/bag, …) that turn a measured quantity into an order quantity, matching the canvas's Supporting Materials panel. `condition` mints on first touch, like `one_click`/`measure_polygon`. No review gate (materials rows are quantity config, not traced geometry) — edits directly, reversible with `undo_last`. |
 | `edit_condition` | Set a condition's **waste %** and **×N multiplier** — the knobs that turn measured quantities into order quantities (`takeoff_summary`'s `*_net`); without them an agent takeoff always ships net === gross. Resolves an **existing** finish tag or errors — a typo must not mint an empty condition. No review gate; one `undo_last` step restores both knobs verbatim. |
 | `export_report` | The **computed Report document** — `opentakeoff.report.v1`, the same JSON the canvas Report exports: gross + waste-adjusted quantities, the computed materials **buy list** per condition plus the project-wide roll-up, per-sheet base subtotals, and scale provenance. The contract for pricing consumers — `export_takeoff` carries materials as config rows, `takeoff_summary` strips them. Inline, and to disk with `path`. |
+| `export_marked_pdf` | The **marked-up planset** — the deliverable. Writes a distribution-ready PDF: a legend cover (per-condition totals, swatches, by-sheet breakdown) plus every sheet that carries work, vector-copied from the source with shapes, hatches, per-shape quantity chips, and annotations burned in — built by the same module as the canvas's MARKED SET button. Machine-traced shapes are disclosed as pending human review on the document itself. Default path: `<plan> - marked set.pdf` next to the plan. Works without `@napi-rs/canvas`. |
 | `undo_last` | Step back over your own last `n` mutations, newest first. Exact inverses: a commit is removed, an edit restored verbatim, a delete re-inserted where it was, a materials edit's whole array restored, a condition edit's waste/multiplier pair restored. A whole `detect_rooms` sweep is **one** step. |
 | `read_sheet_text` | Positioned page text (image px), optionally restricted to a region — title blocks, room labels, finish schedules. |
 | `find_text` | **Locate** a known string — the complement to `read_sheet_text` (which returns what a region *says*; this finds *where* a string sits). Case-insensitive substring match per pdf.js text run; each hit's center feeds straight into `one_click`'s seed. |
@@ -217,7 +218,13 @@ one_click       { "sheet": "sample-plan.pdf", "x": 600,  "y": 464,  "condition":
 one_click       { "sheet": "sample-plan.pdf", "x": 1600, "y": 464,  "condition": "CPT-1" }   → ~438 SF
 takeoff_summary {}                                        → CPT-1, 4 shapes, ~1752 SF
 export_takeoff  { "path": "/tmp/takeoff.json" }           → the app's save payload
+export_marked_pdf {}                                      → the marked-up planset PDF,
+                                                            written next to the plan
 ```
+
+A takeoff finishes with **both** exports: `export_marked_pdf` is what a human
+reviews (construction takeoffs are no good without markup), `export_report` is
+what pricing consumes.
 
 Sheet keys follow the app's codec: page 1 is the bare file name
 (`plan.pdf`), pages 2+ are `plan.pdf#2`. Tools also accept the title-block
@@ -229,8 +236,9 @@ sheet number (`A-101`) wherever a sheet is named.
   `one_click` reports it plainly; a raster fallback is a planned seam
   (`src/session.ts`, `ensureMask`), not yet built.
 - One document per session; `load_plan` replaces it.
-- The takeoff lives in memory. `export_takeoff` is the way out — and its
-  payload is exactly what the app persists, so nothing is lost in translation.
+- The takeoff lives in memory. `export_takeoff` (the app's exact save payload,
+  nothing lost in translation) and `export_marked_pdf` (the reviewable marked
+  planset) are the ways out.
 
 ## Tests
 

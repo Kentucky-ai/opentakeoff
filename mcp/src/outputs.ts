@@ -297,6 +297,17 @@ export const exportReportOutput = {
   roll_goods: z.array(z.record(z.unknown())).describe("Roll-goods order rows (#136) — order_lf / rolls / order_qty per roll-goods condition, ×N applied; empty when no condition carries a roll_setup (always the case for a headless session today)"),
 };
 
+/** export_marked_pdf — the tool writes the PDF to disk and replies with where
+ * and what; the document itself is the deliverable, never inlined. */
+export const exportMarkedPdfOutput = {
+  path: z.string().describe("Absolute path of the written marked-set PDF — hand this to the user"),
+  pages: z.number().int().describe("Legend cover + one page per marked sheet"),
+  sheets_marked: z.number().int().describe("Sheets carrying shapes or annotations — unmarked sheets are omitted"),
+  shapes_drawn: z.number().int(),
+  annotations_drawn: z.number().int(),
+  note: z.string(),
+};
+
 export const editConditionOutput = {
   condition: z.string().describe("The finish tag passed in"),
   condition_id: z.string(),
