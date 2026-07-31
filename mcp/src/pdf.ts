@@ -20,6 +20,9 @@ export interface TextContentLike { items: TextItemLike[] }
 
 export interface PageHandle {
   pageNum: number;
+  /** page /Rotate in degrees (0/90/180/270) — the marked-set export re-applies
+   * the canvas's visual orientation to its burned-in chips from this */
+  rotate: number;
   /** page size in PDF points */
   widthPt: number;
   heightPt: number;
@@ -102,6 +105,7 @@ export async function openPdf(filePath: string): Promise<DocHandle> {
       const textContent = (await page.getTextContent()) as TextContentLike;
       return {
         pageNum: n,
+        rotate: page.rotate,
         widthPt: vp1.width,
         heightPt: vp1.height,
         viewport: { width: vp.width, height: vp.height, transform: vp.transform },

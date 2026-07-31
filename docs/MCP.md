@@ -64,7 +64,11 @@ Twenty-five tools, in the order an agent tends to reach for them:
   materials as config rows, importable by the app), `export_report` (the
   computed `opentakeoff.report.v1` Report document — waste-adjusted nets, the
   materials buy list as order quantities, per-sheet subtotals, scale
-  provenance; the contract for pricing consumers)
+  provenance; the contract for pricing consumers), `export_marked_pdf` (**the
+  marked-up planset** — the plan sheets vector-copied with shapes, hatches,
+  quantity chips, and annotations burned in, plus a legend cover; the
+  deliverable a human reviews, with machine-traced work disclosed as pending
+  review on the document itself)
 
 The full reference — including the coordinate contract (image px at render
 scale 2.0, origin top-left) and the scale-gate rules — is in

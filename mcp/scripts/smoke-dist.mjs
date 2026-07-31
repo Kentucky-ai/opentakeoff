@@ -99,6 +99,7 @@ assert.deepEqual(names, [
   "edit_condition",
   "edit_materials",
   "edit_shape",
+  "export_marked_pdf",
   "export_report",
   "export_takeoff",
   "find_schedule",

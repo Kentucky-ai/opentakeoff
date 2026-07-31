@@ -257,6 +257,9 @@ const sheetSummary = (s: SheetState): SheetSummary => ({
 
 export class Session {
   file: string | null = null;
+  /** Absolute path the plan was loaded from — the marked-set export re-reads
+   * the source bytes here to vector-copy pages (pdf.js never hands them back). */
+  filePath: string | null = null;
   private doc: DocHandle | null = null;
   private sheets = new Map<string, SheetState>();
   conditions: Condition[] = [];
@@ -293,6 +296,7 @@ export class Session {
     this.shapes = [];
     this.markups = [];
     this.file = null;
+    this.filePath = null;
     // the journal's entries reference shapes that no longer exist — undoing
     // across a document swap would be a lie, so the history goes with them
     this.journal = [];
@@ -302,6 +306,7 @@ export class Session {
     const doc = await openPdf(filePath);
     this.doc = doc;
     this.file = path.basename(filePath);
+    this.filePath = path.resolve(filePath);
     for (let n = 1; n <= doc.numPages; n++) {
       const ph = await doc.page(n);
       // sheet-key codec: page 1 = bare file name, pages 2+ = "name#page"

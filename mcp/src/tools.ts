@@ -1,4 +1,4 @@
-// The twenty-five tools — thin zod-validated handlers over the Session. Replies are
+// The twenty-six tools — thin zod-validated handlers over the Session. Replies are
 // compact JSON (format.ts); view_sheet alone replies with an image content
 // item plus a JSON meta text item. Failures are isError results, never thrown
 // protocol errors.
@@ -13,9 +13,11 @@ import {
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
   editShapeOutput, undoLastOutput, sheetContextOutput,
   findTextOutput, editMaterialsOutput, editConditionOutput, exportReportOutput,
+  exportMarkedPdfOutput,
   annotateOutput, listAnnotationsOutput, linkAnnotationOutput,
   sheetGraphOutput, resolveTagOutput, findScheduleOutput,
 } from "./outputs.ts";
+import { exportMarkedPdf } from "./marked.ts";
 
 // The coordinate contract, stated on every tool so any agent reading any one
 // description knows the space it is working in.
@@ -130,7 +132,7 @@ export function registerTools(server: McpServer, session: Session): void {
   }, run("measure_line", (a) => session.measureLine(a.sheet, a.pts, { condition: a.condition })));
 
   server.registerTool("takeoff_summary", {
-    description: `Per-condition totals (floor/wall/border SF, LF, EA, SY, with and without waste) plus grand totals — the Report's numbers, computed by the same rules. ${COORDS}`,
+    description: `Per-condition totals (floor/wall/border SF, LF, EA, SY, with and without waste) plus grand totals — the Report's numbers, computed by the same rules. Numbers only: the deliverable that SHOWS the work on the drawings is export_marked_pdf. ${COORDS}`,
     inputSchema: {},
     outputSchema: takeoffSummaryOutput,
   }, run("takeoff_summary", () => session.summary()));
@@ -149,7 +151,7 @@ export function registerTools(server: McpServer, session: Session): void {
   }));
 
   server.registerTool("export_report", {
-    description: `The computed Report document — "opentakeoff.report.v1", the same schema the canvas Report's JSON export writes. Everything a pricing consumer needs without re-implementing the app's math: per-condition quantities with waste and multiplier applied (gross and *_net), the computed materials BUY LIST per condition (order quantity = basis ÷ coverage rate, rounded up to whole purchase units) plus the project-wide roll-up summed by (name, unit), per-sheet BASE subtotals, scale provenance per sheet, and annotations. Contrast: export_takeoff is the raw canvas payload (materials as CONFIG rows, no computed quantities) and takeoff_summary strips materials for a compact reply — when the numbers are leaving for pricing, consume this. Returned inline; pass path to also write it to disk as JSON.`,
+    description: `The computed Report document — "opentakeoff.report.v1", the same schema the canvas Report's JSON export writes. Everything a pricing consumer needs without re-implementing the app's math: per-condition quantities with waste and multiplier applied (gross and *_net), the computed materials BUY LIST per condition (order quantity = basis ÷ coverage rate, rounded up to whole purchase units) plus the project-wide roll-up summed by (name, unit), per-sheet BASE subtotals, scale provenance per sheet, and annotations. Contrast: export_takeoff is the raw canvas payload (materials as CONFIG rows, no computed quantities) and takeoff_summary strips materials for a compact reply — when the numbers are leaving for pricing, consume this. A report alone is HALF the deliverable: pair it with export_marked_pdf, because a takeoff is reviewed on marked drawings, not on numbers. Returned inline; pass path to also write it to disk as JSON.`,
     inputSchema: {
       path: z.string().optional().describe("File path to write the document to"),
       project_name: z.string().optional().describe("Label for the document's project_name field (a headless session has no project of its own; omitted → null)"),
@@ -163,6 +165,15 @@ export function registerTools(server: McpServer, session: Session): void {
     }
     return doc;
   }));
+
+  server.registerTool("export_marked_pdf", {
+    description: `The MARKED-UP PLANSET — the deliverable of every takeoff. Writes a distribution-ready PDF to disk: a legend cover (per-condition totals, swatches, a by-sheet breakdown) followed by every sheet that carries takeoff shapes or annotations, vector-copied from the source plan with the work burned in as drawn — condition colors and hatches, a quantity chip on every shape, annotation clouds/callouts/highlights. Built by the same module as the canvas's MARKED SET button, so agent output and app output are one implementation. A construction takeoff is no good without markup: finish EVERY takeoff by writing this file and giving the user its path (export_report carries the numbers for pricing; this carries the evidence). When the shapes were machine-traced and unreviewed, the document says so on its last page — the review path is importing the export_takeoff payload into the app, where agent shapes arrive as pencil proposals. Default path: next to the loaded plan as "<plan> - marked set.pdf". Needs no native canvas — pure vector copy, so it works even where view_sheet cannot render.`,
+    inputSchema: {
+      path: z.string().optional().describe('Where to write the PDF (default: "<plan dir>/<plan> - marked set.pdf")'),
+      project_name: z.string().optional().describe("Cover-page project name (default: the plan file's name)"),
+    },
+    outputSchema: exportMarkedPdfOutput,
+  }, run("export_marked_pdf", (a) => exportMarkedPdf(session, a)));
 
   server.registerTool("delete_shape", {
     description: `Remove a committed shape by the id returned when it was committed. ${COORDS}`,

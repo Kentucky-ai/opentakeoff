@@ -2,6 +2,16 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-07-30 — the marked-up planset from an agent; opentakeoff-mcp 0.9.8
+
+### Added
+- **`export_marked_pdf` — the marked-up planset, from the MCP surface** (the twenty-sixth tool). Field report from the first outside agent-driven takeoff: the run ended with a numbers report and no markup on the drawings — and a construction takeoff is no good without markup. The server's shape-visualizing output (`view_sheet overlay`) was the agent's eyes only; the canvas's Marked Set PDF never had an MCP door. Now it does, and it is **the same module** (`web/src/lib/markedset.js`) both surfaces build with: a legend cover (per-condition totals, swatches, by-sheet breakdown) plus every sheet carrying work, vector-copied from the source with condition-colored shapes, hatch linework, a quantity chip on every shape, and annotations burned in. Light-mode path only, deliberately — pure pdf-lib vector copy, no raster, so it works even where `view_sheet`'s optional `@napi-rs/canvas` never installed. Truth-in-provenance: when shapes are machine-traced and unreviewed (everything this server commits), the document's last page says so — `Machine-traced via OpenTakeoff MCP — N shapes pending human review`. Default path: `<plan> - marked set.pdf` beside the plan. Verified end to end on the bundled VA plan: rooms 161–163 as CPT-1, 743.6 SF on the cover, chips on every room — the same totals as the recorded live demo, to the digit.
+- **Server `instructions` at initialize** — every MCP client now receives the takeoff discipline with the handshake: set the scale, commit under conditions, verify with `view_sheet overlay:true`, and *finish every takeoff by writing the marked planset* alongside the report. The gap the field report exposed was not capability alone but doctrine; now the server states it.
+- **Root-level `Dockerfile`** — registry build systems (Glama and friends) that build from the repository root now find a working build without guessing a context; building `mcp/Dockerfile` with `mcp/` as the context fails by construction (the engine lives in `web/src/lib`), and that ambiguity is now closed. Same two-stage build, verified on Linux.
+
+### Released
+- **opentakeoff-mcp 0.9.8** (tag `mcp-v0.9.8`) — npm latest, MCP registry, GitHub release + MCPB bundle.
+
 ## 2026-07-29 — roll goods on the canvas, the PDF layer tree, the sheet graph; opentakeoff-mcp 0.9.7
 
 ### Added
