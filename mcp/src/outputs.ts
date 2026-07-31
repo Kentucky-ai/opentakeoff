@@ -207,6 +207,20 @@ export const exportTakeoffOutput = {
   sheet_levels: z.object({}).passthrough(),
 };
 
+/** import_takeoff (#151) — the merge receipt, field-identical to the app's. */
+export const importTakeoffOutput = {
+  file: z.string().describe("Basename of the imported file"),
+  replaced: z.boolean().describe("true = the session was empty and adopted the file wholesale"),
+  shapes_added: z.number().int(),
+  shapes_pending: z.number().int().describe("Of the added shapes, how many are unreviewed machine pencil"),
+  conditions_merged: z.number().int().describe("Imported conditions that joined an existing finish tag (its knobs won)"),
+  conditions_added: z.number().int(),
+  scales_adopted: z.number().int().describe("Sheets whose calibration came from the file (this session's own always wins)"),
+  unknown_files: z.array(z.string()).describe("Files referenced by imported shapes that this document doesn't have — they count in totals but can't be viewed here"),
+  shapes_total: z.number().int(),
+  note: z.string(),
+};
+
 /** derive_base (#148) — per-room receipts for the perimeter → base derivation. */
 export const deriveBaseOutput = {
   condition: z.string().describe("The tag the base committed under"),

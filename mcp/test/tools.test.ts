@@ -56,14 +56,15 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // export_marked_pdf takes a file path and writes a document — same reasoning.
 // list_shapes returns ids and quantities, no geometry — same reasoning.
 // derive_base takes shape ids and lineal feet — same reasoning.
-const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "link_annotation", "list_shapes", "derive_base"]);
+// import_takeoff takes a file path — same reasoning.
+const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "link_annotation", "list_shapes", "derive_base", "import_takeoff"]);
 
-test("tools/list: all thirty tools, each described with the coordinate contract", async () => {
+test("tools/list: all thirty-one tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
     "annotate", "delete_shape", "derive_base", "detect_rooms", "edit_condition", "edit_materials", "edit_shape", "export_marked_pdf", "export_report",
-    "export_takeoff", "find_schedule", "find_text",
+    "export_takeoff", "find_schedule", "find_text", "import_takeoff",
     "link_annotation", "list_annotations", "list_shapes", "load_plan", "measure_line", "measure_polygon", "measure_surface", "one_click", "place_count",
     "read_sheet_text", "resolve_tag", "set_scale", "sheet_context", "sheet_graph", "sheet_info", "takeoff_summary", "undo_last", "view_sheet",
   ]);
@@ -341,6 +342,59 @@ test("place_count: EA with no scale set, one journal step for the sweep, marked 
   const moved = await call(client, "edit_shape", { shape_id: again.data.shape_ids[0], verts: [[520, 520]] });
   assert.equal(moved.isError, false);
   assert.equal(moved.data.count, 1);
+});
+
+// #151 — the way back in: resume, merge-by-tag, idempotent re-import.
+test("import_takeoff: empty session adopts wholesale; worked session merges by tag; re-import is idempotent", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "ot-import-"));
+  const exported = path.join(dir, "takeoff.json");
+
+  // session A: trace and export
+  const a = await pair();
+  await call(a, "load_plan", { path: PLAN });
+  await call(a, "set_scale", { sheet: KEY, use_detected: true });
+  await call(a, "detect_rooms", { sheet: KEY, condition: "CPT-1" });
+  await call(a, "export_takeoff", { path: exported });
+
+  // fresh session B: import = resume (scale rides in, shapes stay pencil)
+  const b = await pair();
+  await call(b, "load_plan", { path: PLAN });
+  const bad = await call(b, "import_takeoff", { path: path.join(dir, "nope.json") });
+  assert.equal(bad.isError, true);
+  const r = await call(b, "import_takeoff", { path: exported });
+  assert.equal(r.isError, false);
+  assert.equal(r.data.replaced, true);
+  assert.equal(r.data.shapes_added, 4);
+  assert.equal(r.data.shapes_pending, 4, "machine shapes stay pencil through the round-trip");
+  assert.equal(r.data.scales_adopted, 1);
+  assert.deepEqual(r.data.unknown_files, []);
+  const sum = await call(b, "takeoff_summary");
+  assert.equal(sum.data.conditions[0].shape_count, 4, "adopted scale makes quantities real");
+
+  // re-import: idempotent — same ids skip
+  const again = await call(b, "import_takeoff", { path: exported });
+  assert.equal(again.data.shapes_added, 0);
+  assert.equal(again.data.shapes_total, 4);
+
+  // worked session C: same finish tag merges onto the local condition (its knobs win)
+  const c = await pair();
+  await call(c, "load_plan", { path: PLAN });
+  await call(c, "set_scale", { sheet: KEY, use_detected: true });
+  await call(c, "measure_polygon", { sheet: KEY, verts: [[100, 100], [200, 100], [200, 200], [100, 200]], condition: "CPT-1" });
+  await call(c, "edit_condition", { condition: "CPT-1", waste_pct: 10 });
+  const m = await call(c, "import_takeoff", { path: exported });
+  assert.equal(m.data.replaced, false);
+  assert.equal(m.data.conditions_merged, 1);
+  assert.equal(m.data.conditions_added, 0);
+  assert.equal(m.data.shapes_added, 4);
+  const csum = await call(c, "takeoff_summary");
+  assert.equal(csum.data.conditions.length, 1);
+  assert.equal(csum.data.conditions[0].shape_count, 5);
+  assert.equal(csum.data.conditions[0].waste_pct, 10, "the session's own knobs won the merge");
+
+  // undo removes the imported shapes as one step; the local trace stays
+  await call(c, "undo_last", { n: 1 });
+  assert.equal((await call(c, "takeoff_summary")).data.conditions[0].shape_count, 1);
 });
 
 // #148 — perimeter − stated openings → committed base runs, all-or-nothing.
