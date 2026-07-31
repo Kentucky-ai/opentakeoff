@@ -164,6 +164,10 @@ export interface Markup {
 
 interface SheetState {
   key: string;
+  /** 1-based position in load order across ALL documents — what addresses
+   * resources (#152: pageNum collides across files; ord never does, and for a
+   * single document ord === pageNum so existing URIs are unchanged). */
+  ord: number;
   pageNum: number;
   widthPt: number;
   heightPt: number;
@@ -280,10 +284,13 @@ const sheetSummary = (s: SheetState): SheetSummary => ({
 
 export class Session {
   file: string | null = null;
-  /** Absolute path the plan was loaded from — the marked-set export re-reads
-   * the source bytes here to vector-copy pages (pdf.js never hands them back). */
+  /** Absolute path of the PRIMARY (first-loaded) plan — the marked set's
+   * default output lands beside it; per-file paths live in `docs`. */
   filePath: string | null = null;
-  private doc: DocHandle | null = null;
+  /** The working document set (#152), by basename — one entry per load_plan,
+   * several under merge: true. Source paths ride along for byte re-reads. */
+  private docs = new Map<string, { doc: DocHandle; path: string }>();
+  private nextOrd = 1;
   private sheets = new Map<string, SheetState>();
   conditions: Condition[] = [];
   markups: Markup[] = [];
@@ -309,34 +316,49 @@ export class Session {
     this.pendingCommits = [];
   }
 
-  /** load_plan replaces the session's document: the old doc is destroyed and
-   * ALL state — scales, caches, conditions, shapes — is cleared. */
-  async loadPlan(filePath: string) {
-    if (this.doc) await this.doc.destroy().catch(() => {});
-    this.doc = null;
-    this.sheets.clear();
-    this.conditions = [];
-    this.shapes = [];
-    this.markups = [];
-    this.file = null;
-    this.filePath = null;
-    // the journal's entries reference shapes that no longer exist — undoing
-    // across a document swap would be a lie, so the history goes with them
-    this.journal = [];
-    this.pendingCommits = [];
-    this.graph = null;   // the sheet graph (#87) indexes the OLD document
+  /** load_plan (#152): without merge, replaces the whole session — every doc
+   * destroyed, ALL state (scales, caches, conditions, shapes) cleared. With
+   * merge: true, ADDS a document to the working set — a bid set is plans +
+   * schedule + addenda, not one PDF — keeping every scale, condition, and
+   * shape already in the session. Sheet keys already carry file names
+   * (plan.pdf, plan.pdf#2), so two documents never collide; loading the SAME
+   * file again under merge is refused (an addendum is a new file — reloading
+   * one in place is a replace-the-session decision, not a merge). */
+  async loadPlan(filePath: string, opts: { merge?: boolean } = {}) {
+    const base = path.basename(filePath);
+    const merging = !!opts.merge && this.docs.size > 0;   // merge into empty = plain first load
+    if (!merging) {
+      for (const d of this.docs.values()) await d.doc.destroy().catch(() => {});
+      this.docs.clear();
+      this.sheets.clear();
+      this.conditions = [];
+      this.shapes = [];
+      this.markups = [];
+      this.file = null;
+      this.filePath = null;
+      this.nextOrd = 1;
+      // the journal's entries reference shapes that no longer exist — undoing
+      // across a document swap would be a lie, so the history goes with them
+      this.journal = [];
+      this.pendingCommits = [];
+    } else if (this.docs.has(base)) {
+      throw new UserError(`${base} is already loaded — merge adds NEW documents. To reload it, call load_plan without merge (replaces the whole session).`);
+    }
+    this.graph = null;   // the sheet graph (#87) indexes the OLD document set
 
     const doc = await openPdf(filePath);
-    this.doc = doc;
-    this.file = path.basename(filePath);
-    this.filePath = path.resolve(filePath);
+    const resolved = path.resolve(filePath);
+    this.docs.set(base, { doc, path: resolved });
+    if (!this.file) { this.file = base; this.filePath = resolved; }
+    const added: SheetSummary[] = [];
     for (let n = 1; n <= doc.numPages; n++) {
       const ph = await doc.page(n);
       // sheet-key codec: page 1 = bare file name, pages 2+ = "name#page"
       // (parseSheetKey in web/src/lib/sheets.ts is the inverse)
-      const key = n === 1 ? this.file : `${this.file}#${n}`;
-      this.sheets.set(key, {
+      const key = n === 1 ? base : `${base}#${n}`;
+      const state: SheetState = {
         key,
+        ord: this.nextOrd++,
         pageNum: n,
         widthPt: ph.widthPt,
         heightPt: ph.heightPt,
@@ -347,18 +369,38 @@ export class Session {
         upp: null,
         text: positionedText(ph),
         page: ph,
-      });
+      };
+      this.sheets.set(key, state);
+      added.push(sheetSummary(state));
     }
     return {
-      file: this.file,
-      page_count: doc.numPages,
+      file: base,
+      files: this.files,
+      page_count: this.sheets.size,
       sheets: [...this.sheets.values()].map(sheetSummary),
-      note: "Replaced the previous session — all prior scales, conditions, and shapes were cleared.",
+      note: merging
+        ? `Merged ${base} into the working set (${added.length} sheet${added.length === 1 ? "" : "s"} added) — every prior scale, condition, and shape kept. The sheet graph now spans ${this.docs.size} documents.`
+        : "Replaced the previous session — all prior scales, conditions, and shapes were cleared.",
     };
   }
 
+  /** Every loaded document's basename, load order. */
+  get files(): string[] {
+    return [...this.docs.keys()];
+  }
+
+  /** The file (basename) a sheet key belongs to — the key codec's inverse. */
+  fileFor(sheetKey: string): string {
+    return sheetKey.split("#")[0];
+  }
+
+  /** Absolute source path for a loaded file — the marked set re-reads bytes. */
+  pathFor(file: string): string | null {
+    return this.docs.get(file)?.path ?? null;
+  }
+
   sheet(name: string): SheetState {
-    if (!this.doc) throw new UserError("No plan loaded — call load_plan first.");
+    if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
     const hit = this.sheets.get(name);
     if (hit) return hit;
     // convenience: accept the title-block sheet number (e.g. "A-101") too
@@ -379,28 +421,32 @@ export class Session {
     this.record({ op: "commit", tool, ids });
   }
 
-  /** Resource-URI addressing: sheets by 1-based page number. */
-  sheetForPage(page: number): SheetState {
-    if (!this.doc) throw new UserError("No plan loaded — call load_plan first.");
-    for (const s of this.sheets.values()) if (s.pageNum === page) return s;
-    throw new UserError(`No page ${page} — the loaded plan has pages 1–${this.sheets.size}.`);
+  /** Resource-URI addressing: 1-based position in load order across every
+   * loaded document (=== page number for a single-document session). */
+  sheetForPage(ord: number): SheetState {
+    if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
+    const hit = this.sheetList()[ord - 1];
+    if (!hit) throw new UserError(`No sheet ${ord} — the working set has sheets 1–${this.sheets.size}.`);
+    return hit;
   }
 
   /** Every loaded sheet, in page order — [] before any plan loads. */
   sheetList(): SheetState[] {
-    return [...this.sheets.values()].sort((a, b) => a.pageNum - b.pageNum);
+    return [...this.sheets.values()].sort((a, b) => a.ord - b.ord);
   }
 
   /** The takeoff://sheets index payload — cheap (no geometry is built). */
   index() {
-    if (!this.doc) {
+    if (!this.docs.size) {
       return { file: null, page_count: 0, sheets: [], hint: "No plan loaded — call the load_plan tool with a PDF path, then list resources again." };
     }
     return {
       file: this.file,
+      files: this.files,
       page_count: this.sheets.size,
       sheets: this.sheetList().map((s) => ({
         ...sheetSummary(s),
+        ord: s.ord,
         scale_set: s.upp != null,
         shape_count: this.shapes.filter((x) => x.sheet_id === s.key).length,
       })),
@@ -409,8 +455,8 @@ export class Session {
 
   /** Rendered-page PNG, long edge capped at IMAGE_MAX_EDGE (never above the
    * canvas-native RENDER_SCALE), cached per sheet until the next load_plan. */
-  async renderSheetPng(page: number): Promise<Uint8Array> {
-    const s = this.sheetForPage(page);
+  async renderSheetPng(ord: number): Promise<Uint8Array> {
+    const s = this.sheetForPage(ord);
     if (!s.png) {
       const scale = Math.min(RENDER_SCALE, IMAGE_MAX_EDGE / Math.max(s.widthPt, s.heightPt));
       s.png = await s.page.renderPng(scale);
@@ -557,8 +603,9 @@ export class Session {
       // own segments on this sheet are reported — an empty table is the
       // unlayered case and every consumer falls through to the heuristics.
       const layerIds = s.geo.layerIds || [];
-      if (layerIds.length && this.doc) {
-        const byId = new Map((await this.doc.layers()).map((g) => [g.id, g]));
+      if (layerIds.length && this.docs.size) {
+        const owner = this.docs.get(this.fileFor(s.key));
+        const byId = new Map(owner ? (await owner.doc.layers()).map((g) => [g.id, g] as const) : []);
         const counts = new Map<number, number>();
         const lo = s.geo.layerOf;
         if (lo) for (let i = 0; i < lo.length; i++) if (lo[i] >= 0) counts.set(lo[i], (counts.get(lo[i]) || 0) + 1);
@@ -1064,7 +1111,7 @@ export class Session {
    * delete_shape assume you have, without pulling the whole export_takeoff
    * payload to find one shape. Filters narrow, they never 404 an empty list. */
   listShapes(f: { sheet?: string; condition?: string } = {}) {
-    if (!this.doc) throw new UserError("No plan loaded — call load_plan first.");
+    if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
     let rows = this.shapes;
     if (f.sheet) { const s = this.sheet(f.sheet); rows = rows.filter((x) => x.sheet_id === s.key); }
     if (f.condition) {
@@ -1482,7 +1529,7 @@ export class Session {
   /** The exact browser save payload (TakeoffCanvas.jsx autosave + the schema key
    * store.saveAnnotations stamps) — importable by the app. */
   exportPayload() {
-    if (!this.doc) throw new UserError("No plan loaded — call load_plan first.");
+    if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
     return {
       schema: ANN_SCHEMA,
       project_name: "",
@@ -1506,7 +1553,7 @@ export class Session {
    * materials as CONFIG rows and takeoff_summary strips them; only this
    * document carries the computed order quantities. */
   exportReport(projectName = "") {
-    if (!this.doc) throw new UserError("No plan loaded — call load_plan first.");
+    if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
     const rows = (conditionTotals(this.conditions, this.shapes) as Record<string, unknown>[]).filter((r) => (r.shape_count as number) > 0);
     // roll goods (#147): the same pure seam the canvas report uses — figured
     // here so the report.v1 block fills the moment a condition carries a setup
@@ -1530,7 +1577,7 @@ export class Session {
   private graph: SheetGraph | null = null;
 
   private async ensureGraph(): Promise<SheetGraph> {
-    if (!this.doc) throw new UserError("No plan loaded — call load_plan first.");
+    if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
     if (!this.graph) {
       const inputs: SheetSpans[] = [];
       for (const s of this.sheets.values()) {

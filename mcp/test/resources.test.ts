@@ -90,8 +90,8 @@ test("bad URIs fail with named errors, not crashes", async () => {
   const client = await connect();
   await client.callTool({ name: "load_plan", arguments: { path: PLAN } });
 
-  await assert.rejects(client.readResource({ uri: "takeoff://sheet/99" }), /No page 99/);
-  await assert.rejects(client.readResource({ uri: "takeoff://sheet/99/image" }), /No page 99/);
+  await assert.rejects(client.readResource({ uri: "takeoff://sheet/99" }), /No sheet 99/);
+  await assert.rejects(client.readResource({ uri: "takeoff://sheet/99/image" }), /No sheet 99/);
   await assert.rejects(client.readResource({ uri: "takeoff://sheet/abc" }), /page number/);
 
   // the wire stayed healthy after every rejection

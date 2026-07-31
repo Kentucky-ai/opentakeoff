@@ -344,6 +344,55 @@ test("place_count: EA with no scale set, one journal step for the sweep, marked 
   assert.equal(moved.data.count, 1);
 });
 
+// #152 — the bid set, not the PDF, is the unit of work.
+test("load_plan merge: two documents, one takeoff — cross-file graph, spanning marked set, refusals", async () => {
+  const VA = fileURLToPath(new URL("../../web/public/demo/sample-finish-plan.pdf", import.meta.url));
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  await call(client, "set_scale", { sheet: KEY, use_detected: true });
+  await call(client, "detect_rooms", { sheet: KEY, condition: "CPT-1" });
+
+  // merge keeps everything and adds the second document's sheets
+  const merged = await call(client, "load_plan", { path: VA, merge: true });
+  assert.equal(merged.isError, false);
+  assert.deepEqual(merged.data.files, [KEY, "sample-finish-plan.pdf"]);
+  assert.equal(merged.data.page_count, 3);
+  assert.match(merged.data.note, /kept/);
+  assert.equal((await call(client, "takeoff_summary")).data.conditions[0].shape_count, 4, "merge kept the shapes");
+
+  // work continues on the NEW document's sheets
+  await call(client, "set_scale", { sheet: "sample-finish-plan.pdf", use_detected: true });
+  const hit = (await call(client, "find_text", { sheet: "sample-finish-plan.pdf", q: "161" })).data.hits.find((h: any) => h.str.trim() === "161");
+  const room = await call(client, "one_click", { sheet: "sample-finish-plan.pdf", x: hit.center[0], y: hit.center[1] + 18, condition: "CPT-1" });
+  assert.equal(room.data.area_sf, 298.86, "the standing VA truth, on a merged document");
+
+  // the sheet graph spans the whole set
+  const graph = await call(client, "sheet_graph", {});
+  assert.equal(graph.data.available, true);
+  const graphSheets = new Set(graph.data.sheets.map((s: any) => s.sheet.split("#")[0]));
+  assert.ok(graphSheets.has(KEY) && graphSheets.has("sample-finish-plan.pdf"), "graph indexes both documents");
+
+  // the marked set covers worked sheets from BOTH files
+  const dir = await mkdtemp(path.join(tmpdir(), "ot-multidoc-"));
+  const out = path.join(dir, "set.pdf");
+  const pdf = await call(client, "export_marked_pdf", { path: out });
+  assert.equal(pdf.isError, false);
+  assert.equal(pdf.data.sheets_marked, 2);
+  assert.equal(pdf.data.pages, 3); // cover + one sheet per file
+  assert.equal((await readFile(out)).subarray(0, 5).toString(), "%PDF-");
+
+  // refusal: merging an already-loaded file
+  const dup = await call(client, "load_plan", { path: PLAN, merge: true });
+  assert.equal(dup.isError, true);
+  assert.match(dup.data.error, /already loaded/);
+
+  // plain load replaces the whole set again
+  const replaced = await call(client, "load_plan", { path: PLAN });
+  assert.equal(replaced.data.page_count, 1);
+  assert.deepEqual(replaced.data.files, [KEY]);
+  assert.equal((await call(client, "takeoff_summary")).data.conditions.length, 0);
+});
+
 // #151 — the way back in: resume, merge-by-tag, idempotent re-import.
 test("import_takeoff: empty session adopts wholesale; worked session merges by tag; re-import is idempotent", async () => {
   const dir = await mkdtemp(path.join(tmpdir(), "ot-import-"));
