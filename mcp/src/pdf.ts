@@ -172,6 +172,21 @@ export function positionedText(ph: PageHandle): { str: string; x: number; y: num
   return out;
 }
 
+/** The page's text items FILTERED to an image-px rect (#153) — a TextContentLike
+ * detectScale can re-run on, so "does an enlarged plan's own scale note sit in
+ * this measured region" is the SAME detector the sheet-level suggestion uses,
+ * never a second regex. Items keep their raw transforms; position is judged by
+ * the same composed transform positionedText uses. */
+export function textItemsInRegion(ph: PageHandle, r: { x0: number; y0: number; x1: number; y1: number }): TextContentLike {
+  const items: TextItemLike[] = [];
+  for (const it of ph.textContent.items || []) {
+    if (!(it.str || "").trim()) continue;
+    const t = pdfjs.Util.transform(ph.viewport.transform, it.transform);
+    if (t[4] >= r.x0 && t[4] <= r.x1 && t[5] >= r.y0 && t[5] <= r.y1) items.push(it);
+  }
+  return { items };
+}
+
 export interface TextSpan { str: string; x0: number; y0: number; x1: number; y1: number }
 
 /** Positioned page text as BBOX SPANS in image px (issue #29's sheet_context

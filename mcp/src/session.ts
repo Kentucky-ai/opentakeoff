@@ -5,7 +5,8 @@
 // what the canvas commits (web/src/pages/TakeoffCanvas.jsx), so an exported
 // takeoff round-trips into the app.
 import path from "node:path";
-import { openPdf, positionedText, textSpans, OPS, type DocHandle, type PageHandle, type TextSpan, type OcgEntry } from "./pdf.ts";
+import { openPdf, positionedText, textSpans, textItemsInRegion, OPS, type DocHandle, type PageHandle, type TextSpan, type OcgEntry } from "./pdf.ts";
+import { expandForScaleNotes, mixedScaleWarning } from "./scalewarn.ts";
 import { classifyLayerName, layerRoleCodes, segRoles, type LayerInfo } from "../../web/src/lib/layers.ts";
 import { buildSheetGraph, resolveTag, type SheetGraph, type SheetSpans } from "../../web/src/lib/sheetgraph.ts";
 import { UserError, round1, round2 } from "./format.ts";
@@ -634,6 +635,7 @@ export class Session {
       has_vector_linework: geo.segs.length > 0,
       scale_set: s.upp != null,
       ...(s.upp != null ? { upp: s.upp } : {}),
+      ...(s.detected?.multi ? { multiple_scales: true as const } : {}),
       shape_count: this.shapes.filter((x) => x.sheet_id === s.key).length,
       // the sheet's PDF layer table (#85) — always emitted; [] = no Optional
       // Content survived export and every engine path runs the heuristics
@@ -680,7 +682,28 @@ export class Session {
     // uses the canvas's report vocabulary so export_report's scale_source
     // reads the same as an app-side report.v1
     s.scaleSource = source === "label" ? "standard" : source === "calibrate" ? "calibrated" : source;
-    return { sheet: s.key, upp, ...(label ? { label } : {}), source };
+    return {
+      sheet: s.key, upp, ...(label ? { label } : {}), source,
+      // #153 — several DISTINCT scale notes on one sheet means enlarged plans
+      // or details are likely; region measurements will warn when a
+      // disagreeing note sits inside them, but say it up front too
+      ...(s.detected?.multi ? { warning: "This sheet carries MULTIPLE distinct scale notes — enlarged plans/details likely. Measurements inside a viewport whose note disagrees with this scale will carry a warning; calibrate or re-set_scale before trusting them." } : {}),
+    };
+  }
+
+  /** Mixed-scale check (#153): does the measured region carry a scale note
+   * that DISAGREES with the scale these quantities were figured at? Runs the
+   * sheet-level detector on a region-filtered text set — same detector, no
+   * second regex. Returns the warning to ride the reply, or undefined. */
+  private scaleWarningFor(s: SheetState, ptsPx: Point[]): string | undefined {
+    if (s.upp == null || !ptsPx.length) return undefined;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [x, y] of ptsPx) {
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+    }
+    const region = expandForScaleNotes({ x0, y0, x1, y1 });
+    const adoptedLabel = s.detected && Math.abs(s.detected.upp - s.upp) / s.upp <= 1e-6 ? s.detected.label : undefined;
+    return mixedScaleWarning(textItemsInRegion(s.page, region), s.page.viewport, s.upp, adoptedLabel);
   }
 
   private conditionFor(tag: string): Condition {
@@ -769,7 +792,8 @@ export class Session {
       }).id;
     }
     this.flushCommits("one_click");
-    return { ...common, area_sf, perimeter_lf, ...(shape_id ? { shape_id } : {}) };
+    const mixed = this.scaleWarningFor(s, ring);
+    return { ...common, area_sf, perimeter_lf, ...(shape_id ? { shape_id } : {}), ...(mixed ? { warning: mixed } : {}) };
   }
 
   /** Batch room detection: read every room-number label off the sheet's text
@@ -895,6 +919,7 @@ export class Session {
         ...withheld,
         ...(upp != null ? { min_area_sf: minAreaSf } : {}),
       },
+      ...(s.detected?.multi ? { multiple_scales: true as const } : {}),
       ...(withheldTotal
         ? { note: `${withheldTotal} seed(s) withheld — ${withheld.duplicate} duplicate region(s), ${withheld.bubble} label-bubble(s), ${withheld.implausible} under ${minAreaSf} SF, ${withheld.degenerate} untraceable.` }
         : {}),
@@ -913,7 +938,8 @@ export class Session {
     // method, agent actor — and never reviewed (no human affirmed anything).
     if (opts.condition) shape_id = this.commit(s, opts.condition, opts.role, verts, { area_sf, perimeter_lf }, { method: "manual", actor: "agent" }).id;
     this.flushCommits("measure_polygon");
-    return { area_sf, perimeter_lf, nverts: verts.length, ...(shape_id ? { shape_id } : {}) };
+    const mixed = this.scaleWarningFor(s, verts);
+    return { area_sf, perimeter_lf, nverts: verts.length, ...(shape_id ? { shape_id } : {}), ...(mixed ? { warning: mixed } : {}) };
   }
 
   measureLine(name: string, pts: Point[], opts: { condition?: string }) {

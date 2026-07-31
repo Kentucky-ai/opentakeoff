@@ -37,6 +37,7 @@ export const sheetInfoOutput = {
   scale_set: z.boolean(),
   upp: z.number().optional().describe("Real feet per image px at render scale 2.0 — present once the scale is set"),
   shape_count: z.number().int().describe("Committed shapes on this sheet"),
+  multiple_scales: z.literal(true).optional().describe("Several DISTINCT scale notes on this sheet (#153) — enlarged plans/details likely"),
   layers: z.array(z.object({
     id: z.string().describe("Optional Content Group id — pass to one_click/detect_rooms layers.include/exclude"),
     name: z.string().describe("The CAD layer name as exported (e.g. A-WALL-FULL)"),
@@ -52,6 +53,7 @@ export const setScaleOutput = {
   upp: z.number().describe("Real feet per image px at render scale 2.0"),
   label: z.string().optional().describe("The standard scale label, when set by label or detected note"),
   source: z.enum(["label", "upp", "calibrate", "detected"]),
+  warning: z.string().optional().describe("Present when the sheet carries MULTIPLE distinct scale notes (#153) — enlarged plans/details likely; region measurements under a disagreeing note will warn"),
 };
 
 /** one_click replies in one of two modes: with the sheet's scale set,
@@ -68,7 +70,7 @@ export const oneClickOutput = {
   shape_id: z.string().optional().describe("Scaled mode: id of the committed shape, when condition was passed"),
   area_px2: z.number().optional().describe("Preview mode (no scale): raw area in px²"),
   perimeter_px: z.number().optional().describe("Preview mode (no scale): raw perimeter in px"),
-  warning: z.string().optional().describe("Preview mode (no scale): why quantities are unavailable and what to do"),
+  warning: z.string().optional().describe("Preview mode (no scale): why quantities are unavailable — OR, in scaled mode, a mixed-scale warning (#153): a scale note disagreeing with the sheet's sits in the measured region (enlarged plan/detail viewport likely)"),
 };
 
 /** One batch-detected room — same per-room shape as oneClickOutput's scaled/
@@ -106,6 +108,7 @@ export const detectRoomsOutput = {
     min_area_sf: z.number().optional().describe("The plausibility floor applied (scaled mode only)"),
   }).describe("What detection skipped and why — a withheld room is a question the caller can ask; a silently dropped one is a hole in a bid"),
   note: z.string().optional().describe("Human-readable summary of what was withheld, when anything was"),
+  multiple_scales: z.literal(true).optional().describe("Several DISTINCT scale notes on this sheet (#153) — rooms inside an enlarged viewport may be figured at the wrong scale"),
   warning: z.string().optional().describe("Preview mode (no scale): why quantities are unavailable and what to do"),
 };
 
@@ -114,6 +117,7 @@ export const measurePolygonOutput = {
   perimeter_lf: z.number(),
   nverts: z.number().int(),
   shape_id: z.string().optional().describe("Present when condition was passed and the shape committed"),
+  warning: z.string().optional().describe("Mixed-scale warning (#153): a scale note disagreeing with the sheet's sits in the measured region — verify before trusting these numbers"),
 };
 
 /** measure_surface (#146) — wall SF: traced LF × the condition's height. */
