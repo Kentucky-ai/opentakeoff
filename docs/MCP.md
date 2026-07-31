@@ -47,18 +47,23 @@ Twenty-five tools, in the order an agent tends to reach for them:
   region)
 - **Measure** — `one_click`, `detect_rooms` (both take `layers {include,
   exclude}` to override the sheet's stated layer roles for a call),
-  `measure_polygon`, `measure_line`
-- **Revise** — `edit_shape`, `edit_materials`, `edit_condition` (waste % and
-  ×N multiplier — the knobs that turn measured quantities into order
-  quantities; without them a takeoff always ships net === gross), `delete_shape`,
-  `undo_last`
+  `measure_polygon`, `measure_line`, `measure_surface` (wall SF: an open run
+  × the condition's height — the H knob), `place_count` (EA markers, no scale
+  required) — all five of the engine's measure roles
+- **Revise** — `edit_shape` (all five roles), `edit_materials`,
+  `edit_condition` (waste %, ×N multiplier, `height_ft`, and the roll-goods
+  `roll_setup` opt-in — the reply echoes the figured order), `delete_shape`,
+  `undo_last`, with `list_shapes` as the mid-session inventory the mutating
+  verbs assume you have
 - **Read the sheet** — `read_sheet_text`, `find_text`, `view_sheet` (render a
   sheet or crop to PNG with an optional calibrated measuring grid and
   committed-shapes overlay — the agent's eyes and its self-check)
-- **Annotate** — `annotate`, `list_annotations`, `link_annotation` (notes
-  *about* the work, never measurements of it; attaching one to a finish tag is
-  what makes it part of that scope rather than a floating remark — it then
-  wears the condition's colour on the canvas and in the marked set)
+- **Annotate** — `annotate` (cloud, highlight, text, callout, arrow —
+  plank/seam direction — and keynote bubble), `list_annotations`,
+  `link_annotation` (notes *about* the work, never measurements of it;
+  attaching one to a finish tag is what makes it part of that scope rather
+  than a floating remark — it then wears the condition's colour on the canvas
+  and in the marked set)
 - **Report** — `takeoff_summary` (quantities only — materials stripped),
   `export_takeoff` (the raw `opentakeoff.takeoff_canvas.v1` canvas payload —
   materials as config rows, importable by the app), `export_report` (the
