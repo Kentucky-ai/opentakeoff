@@ -14,16 +14,31 @@
 // Plus local-only helpers the drag-drop entry needs: addPdf(file), removePdf(name).
 // And local-only snapshot helpers (like addPdf/removePdf, not part of the seam):
 // saveSnapshot(label, payload), listSnapshots(), getSnapshot(id), deleteSnapshot(id).
+//
+// Sheet revisions (CO-1): a re-dropped file whose BYTES differ is never a silent
+// overwrite. addPdf content-hashes every file; changed bytes archive the old
+// record as a numbered revision (pdf_revs store) before the new bytes become
+// current, and the return value says so ({ revised, rev, prev_rev }) so the
+// canvas can tell the estimator their markups now sit on different paper.
+// Local-only, like addPdf itself — cloud mode's addPdf rides Drive's native
+// revision history instead. Readers: listPdfRevisions(name) (metadata only),
+// loadPdfRevisionData(name, rev) (bytes, for the CO-2 overlay).
 
 import { sanitizeTemplates } from "./templates.js";
 import { sanitizeMaterialLibrary } from "./materials.js";
 import { sanitizeStampLibrary } from "./stamps.js";
 
 const DB_NAME = "opentakeoff";
-const DB_VERSION = 2;
-const PDF_STORE = "pdfs";          // key: file name -> { name, bytes: ArrayBuffer }
+const DB_VERSION = 3;
+const PDF_STORE = "pdfs";          // key: file name -> { name, bytes: ArrayBuffer, hash?, rev?, ts? }
 const META_STORE = "meta";         // key: "annotations" -> payload object
 const SNAP_STORE = "snapshots";    // key: id -> { id, ts, label, payload }
+// Archived sheet revisions (v3). key: "name + NUL + rev" — NUL can't appear in
+// a file name on any OS, so the compound key can't collide with a sibling name.
+// Records mirror the pdfs shape plus their frozen rev number; the "name" index
+// is how removePdf and listPdfRevisions find a file's whole trail.
+const REV_STORE = "pdf_revs";      // key -> { key, name, rev, hash, ts, bytes }
+const revKey = (name, rev) => `${name}\u0000${rev}`;
 const ANN_KEY = "annotations";
 // condition template library — browser-global (not part of a project payload),
 // lives under its own key in the keyPath-less meta store: no DB version bump
@@ -54,10 +69,13 @@ function openDB() {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      // contains-guards make this run for both fresh creates and v1->v2 upgrades
+      // contains-guards make this run for fresh creates and every vN->v3 upgrade
       if (!db.objectStoreNames.contains(PDF_STORE)) db.createObjectStore(PDF_STORE, { keyPath: "name" });
       if (!db.objectStoreNames.contains(META_STORE)) db.createObjectStore(META_STORE);
       if (!db.objectStoreNames.contains(SNAP_STORE)) db.createObjectStore(SNAP_STORE, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(REV_STORE)) {
+        db.createObjectStore(REV_STORE, { keyPath: "key" }).createIndex("name", "name");
+      }
     };
     // Another tab still holds an older-version connection, so the upgrade
     // can't proceed until it's gone. We reject rather than wait — but the
@@ -144,6 +162,27 @@ function tx(db, store, mode, fn) {
   });
 }
 
+// Like tx, but spanning several stores in ONE transaction — fn gets the
+// transaction itself. This is what makes a revision archive atomic: the
+// old-bytes put and the new-current put commit together or not at all, so
+// a failure mid-swap can never lose the only copy of a sheet.
+function txAll(db, stores, mode, fn) {
+  return new Promise((resolve, reject) => {
+    const t = db.transaction(stores, mode);
+    const out = fn(t);
+    t.oncomplete = () => resolve(out);
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error);
+  });
+}
+
+// SHA-256 of a PDF's bytes as lowercase hex — the identity a revision is keyed
+// on. WebCrypto is available in every target (browsers, the Node 24 test env).
+async function sha256Hex(bytes) {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export const localStore = {
   async listSheets() {
     const names = await withDb((db) => tx(db, PDF_STORE, "readonly", (os) => os.getAllKeys()));
@@ -162,15 +201,78 @@ export const localStore = {
 
   async addPdf(file) {
     // read the bytes BEFORE opening — don't hold a connection across an
-    // unrelated (possibly slow, file-sized) await
+    // unrelated (possibly slow, file-sized) await. Same rule for the hash:
+    // subtle.digest is async, and an IDB transaction commits the moment its
+    // event loop drains, so ALL hashing happens outside every transaction.
     const bytes = await file.arrayBuffer();
-    // de-dupe by name: a re-dropped file replaces the old bytes
-    await withDb((db) => tx(db, PDF_STORE, "readwrite", (os) => os.put({ name: file.name, bytes })));
-    return { name: file.name };
+    const hash = await sha256Hex(bytes);
+    const ts = Date.now();
+    const existing = await withDb((db) => tx(db, PDF_STORE, "readonly", (os) => os.get(file.name)));
+    if (!existing) {
+      await withDb((db) => tx(db, PDF_STORE, "readwrite", (os) => os.put({ name: file.name, bytes, hash, rev: 1, ts })));
+      return { name: file.name, rev: 1 };
+    }
+    // de-dupe by name, but never by silent overwrite: same bytes are a no-op,
+    // different bytes archive the old record as a revision first (CO-1).
+    // Records written before v3 carry no hash/rev — hash their bytes now and
+    // treat them as rev 1, so legacy sheets version correctly on first re-drop.
+    const prevRev = existing.rev || 1;
+    const prevHash = existing.hash || await sha256Hex(existing.bytes);
+    if (prevHash === hash) {
+      if (!existing.hash || !existing.rev) {
+        // backfill the legacy record's identity so the next compare is cheap
+        await withDb((db) => tx(db, PDF_STORE, "readwrite", (os) => os.put({ ...existing, hash: prevHash, rev: prevRev, ts: existing.ts ?? ts })));
+      }
+      return { name: file.name, rev: prevRev, unchanged: true };
+    }
+    // one transaction across both stores: archive + swap commit atomically
+    await withDb((db) => txAll(db, [PDF_STORE, REV_STORE], "readwrite", (t) => {
+      t.objectStore(REV_STORE).put({ key: revKey(file.name, prevRev), name: file.name, rev: prevRev, hash: prevHash, ts: existing.ts ?? ts, bytes: existing.bytes });
+      t.objectStore(PDF_STORE).put({ name: file.name, bytes, hash, rev: prevRev + 1, ts });
+    }));
+    return { name: file.name, rev: prevRev + 1, prev_rev: prevRev, revised: true };
   },
 
   async removePdf(name) {
-    await withDb((db) => tx(db, PDF_STORE, "readwrite", (os) => os.delete(name)));
+    // the revision trail goes with the file — locally, close = delete the
+    // stored bytes (see closePdf), and keeping orphaned revisions would leak
+    // whole PDFs into storage with no surface that ever lists them again
+    await withDb((db) => txAll(db, [PDF_STORE, REV_STORE], "readwrite", (t) => {
+      t.objectStore(PDF_STORE).delete(name);
+      const req = t.objectStore(REV_STORE).index("name").openCursor(IDBKeyRange.only(name));
+      req.onsuccess = () => {
+        const cur = req.result;
+        if (cur) { cur.delete(); cur.continue(); }
+      };
+    }));
+  },
+
+  // Revision metadata for one file, newest first, current included — never the
+  // bytes (a trail can be many full PDFs; the list UI only needs numbers).
+  async listPdfRevisions(name) {
+    const out = await withDb((db) => txAll(db, [PDF_STORE, REV_STORE], "readonly", (t) => {
+      const list = [];
+      const cur = t.objectStore(PDF_STORE).get(name);
+      cur.onsuccess = () => { const r = cur.result; if (r) list.push({ rev: r.rev || 1, hash: r.hash || null, ts: r.ts ?? null, current: true }); };
+      const req = t.objectStore(REV_STORE).index("name").openCursor(IDBKeyRange.only(name));
+      req.onsuccess = () => {
+        const c = req.result;
+        if (c) { const { rev, hash, ts } = c.value; list.push({ rev, hash: hash || null, ts: ts ?? null, current: false }); c.continue(); }
+      };
+      return list;
+    }));
+    return out.sort((a, b) => b.rev - a.rev);
+  },
+
+  // Bytes of one specific revision — the CO-2 overlay's read path. The current
+  // record answers for its own rev so callers can hold any rev number from
+  // listPdfRevisions without caring which side of the archive it lives on.
+  async loadPdfRevisionData(name, rev) {
+    const cur = await withDb((db) => tx(db, PDF_STORE, "readonly", (os) => os.get(name)));
+    if (cur && (cur.rev || 1) === rev) return new Uint8Array(cur.bytes);
+    const rec = await withDb((db) => tx(db, REV_STORE, "readonly", (os) => os.get(revKey(name, rev))));
+    if (!rec) throw new Error(`Revision ${rev} of ${name} not found in local store`);
+    return new Uint8Array(rec.bytes);
   },
 
   async loadAnnotations() {

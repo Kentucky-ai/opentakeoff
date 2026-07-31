@@ -687,7 +687,13 @@ export default function TakeoffCanvas() {
   // its xOffset. With one panel xOffset is 0, so stage space IS image space and
   // all the original single-sheet math is unchanged.
   const groupKeys = sheetGroup.length ? sheetGroup : [sheetKey];
-  const groupSig = JSON.stringify(groupKeys);
+  // docEpoch re-keys groupSig when a re-dropped file's BYTES changed under the
+  // same name (store.addPdf → revised): the render effect keyed on groupSig is
+  // the one path that resets every cache (compositor, pageObjs, snap grids) and
+  // reloads docs, so bumping it is how new revision bytes reach the screen
+  // without a reload. Same-name-same-bytes drops don't bump — no wasted repaint.
+  const [docEpoch, setDocEpoch] = useState(0);
+  const groupSig = JSON.stringify(groupKeys) + "@" + docEpoch;
   let _px = 0;
   const panels = groupKeys.map((key) => {
     const dims = panelImgs[key] || { w: 0, h: 0 };
@@ -953,8 +959,21 @@ export default function TakeoffCanvas() {
         : "No supported files found. Drop a PDF, an image, or a .zip plan set.");
       return;
     }
-    for (const f of pdfs) { try { await store.addPdf(f); } catch (e) { setCommitMsg(`Couldn't open ${f.name}: ${e.message || e}`); } }
+    const results = [];
+    for (const f of pdfs) { try { results.push(await store.addPdf(f)); } catch (e) { setCommitMsg(`Couldn't open ${f.name}: ${e.message || e}`); } }
     await refreshSheets();
+    // CO-1: a re-drop whose bytes CHANGED is a plan revision, not a re-open.
+    // The store archived the old bytes; here the stale pdf.js docs must go
+    // (docFor caches by name for the life of the view) and the render effect
+    // must re-key so the new revision actually reaches the screen.
+    const revised = results.filter((r) => r?.revised);
+    if (revised.length) {
+      for (const r of revised) {
+        const t = pdfDocsRef.current.get(r.name);
+        if (t) { t.then((task) => { try { task.destroy(); } catch { /* already gone */ } }).catch(() => {}); pdfDocsRef.current.delete(r.name); }
+      }
+      setDocEpoch((e) => e + 1);
+    }
     const names = pdfs.map((f) => f.name);
     const tail = skipped.length ? ` · ${skipped.length} skipped` : "";
     if (names.length === 1) {
@@ -964,7 +983,19 @@ export default function TakeoffCanvas() {
     } else {
       setView("gallery");   // a plan set → land in the gallery to pick sheets
     }
-    setCommitMsg(`Opened ${names.length} sheet${names.length === 1 ? "" : "s"}${tail}.`);
+    if (revised.length) {
+      // "changed under your markups" only when ink actually rides that file —
+      // any page of it (sheet_id is `name` for page 1, `name#page` beyond)
+      const inked = (n) => shapes.some((s) => s.sheet_id === n || s.sheet_id.startsWith(n + "#"))
+        || markups.some((m) => m.sheet_id === n || m.sheet_id.startsWith(n + "#"));
+      const hot = revised.filter((r) => inked(r.name));
+      const label = (r) => `${r.name} → rev ${r.rev}`;
+      setCommitMsg(hot.length
+        ? `Sheet changed under your markups: ${hot.map(label).join(", ")} — earlier revision kept; re-check the affected takeoff.`
+        : `Sheet updated: ${revised.map(label).join(", ")} — earlier revision kept.`);
+    } else {
+      setCommitMsg(`Opened ${names.length} sheet${names.length === 1 ? "" : "s"}${tail}.`);
+    }
   }
   // The empty-project landing view (the Drive picker for an empty cloud project,
   // else the gallery) depends on BOTH the sheet list and the annotations (open

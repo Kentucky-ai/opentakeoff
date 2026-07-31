@@ -117,7 +117,12 @@ async function imageToPdf(file) {
   const pdfLib = await import("pdf-lib");
   const { PDFDocument } = pdfLib;
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const doc = await PDFDocument.create();
+  // updateMetadata:false — pdf-lib otherwise stamps CreationDate/ModificationDate
+  // with the wall clock, so the SAME image dropped twice would produce different
+  // bytes. The wrap must stay deterministic: store.addPdf content-hashes every
+  // file to tell a real plan revision from a re-drop (CO-1), and a timestamp in
+  // the wrapper would make every image re-drop a false "sheet changed" alarm.
+  const doc = await PDFDocument.create({ updateMetadata: false });
   let img, w, h;
   if (/\.jpe?g$/i.test(file.name) || file.type === "image/jpeg") {
     img = await doc.embedJpg(bytes); w = img.width; h = img.height;
