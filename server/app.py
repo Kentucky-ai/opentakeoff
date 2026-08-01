@@ -19,9 +19,11 @@ from __future__ import annotations
 
 import importlib
 import os
+import re
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Security, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel, field_validator, model_validator
 
 from adapters.base import TakeoffAI
@@ -46,12 +48,23 @@ def _load_adapter() -> TakeoffAI:
     if not spec:
         return HeuristicAdapter()
     mod_name, _, attr = spec.partition(":")
-    mod = importlib.import_module(mod_name)
+    if not re.fullmatch(r"[A-Za-z0-9_.]+", mod_name):
+        raise ValueError(f"OPENTAKEOFF_ADAPTER module name contains invalid characters: {mod_name!r}")
+    mod = importlib.import_module(mod_name)  # nosemgrep: python.lang.security.audit.non-literal-import.non-literal-import
     factory = getattr(mod, attr or "Adapter")
     return factory()
 
 
 adapter: TakeoffAI = _load_adapter()
+
+_API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+_REQUIRED_KEY: str | None = os.environ.get("OPENTAKEOFF_API_KEY", "").strip() or None
+
+
+def _require_api_key(key: str | None = Security(_API_KEY_HEADER)) -> None:
+    """Enforce API key when OPENTAKEOFF_API_KEY env var is set."""
+    if _REQUIRED_KEY and key != _REQUIRED_KEY:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or missing API key")
 
 
 # ── request/response models ──────────────────────────────────────────────────
@@ -151,23 +164,23 @@ def health() -> dict:
     return {"ok": True, "adapter": adapter.name}
 
 
-@app.post("/ai/suggest-scale", response_model=SuggestScaleOut)
+@app.post("/ai/suggest-scale", response_model=SuggestScaleOut, dependencies=[Depends(_require_api_key)])
 def suggest_scale(body: SuggestScaleIn) -> SuggestScaleOut:
     return SuggestScaleOut(**adapter.suggest_scale(body.page_text))
 
 
-@app.post("/ai/detect-rooms", response_model=DetectRoomsOut)
+@app.post("/ai/detect-rooms", response_model=DetectRoomsOut, dependencies=[Depends(_require_api_key)])
 def detect_rooms(body: DetectRoomsIn) -> DetectRoomsOut:
     out = adapter.detect_rooms(body.width, body.height, body.segments)
     return DetectRoomsOut(**out)
 
 
-@app.post("/ai/classify-finish", response_model=ClassifyFinishOut)
+@app.post("/ai/classify-finish", response_model=ClassifyFinishOut, dependencies=[Depends(_require_api_key)])
 def classify_finish(body: ClassifyFinishIn) -> ClassifyFinishOut:
     return ClassifyFinishOut(**adapter.classify_finish(body.context))
 
 
-@app.post("/ai/parse-schedule", response_model=ParseScheduleOut)
+@app.post("/ai/parse-schedule", response_model=ParseScheduleOut, dependencies=[Depends(_require_api_key)])
 def parse_schedule(body: ParseScheduleIn) -> ParseScheduleOut:
     out = adapter.parse_schedule(body.image_b64, body.width, body.height)
     # Validate/coerce each row through ScheduleRow and drop untagged ones (a row
