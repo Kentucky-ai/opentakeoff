@@ -9,6 +9,9 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 - **Assignment provenance on the record** — shapes already said *who* traced them (`actor`) and *whether a human affirmed them* (`reviewed`), but not *where the finish tag came from*. Now `origin.assignment` states it: `{source: "schedule", room_tag, surface, schedule_sheet}` with the citation when a schedule row decided, `{source: "asserted"}` when the agent chose — stamped centrally in `commit()` so no agent commit path can ship unstamped, and a reassigning `edit_shape` flips schedule → asserted because the citation must not survive the agent choosing a different tag. `list_shapes` carries the flat verdict; the marked-set cover discloses the split (`Finish assignment: N schedule-resolved · N agent-asserted · N pending human review · N rooms withheld…`) with an export-time staleness drop so the cover never calls a room withheld after it was committed by hand. Canvas output without the new param is byte-identical.
 - **The verify loop, stated where agents read** — `detect_rooms` and `one_click` descriptions now demand the audit ritual (a batch commit is not finished until you have LOOKED at it: `view_sheet {overlay: true}`, fix with `edit_shape`/`delete_shape`), `view_sheet` teaches crop-don't-squint (a full-sheet render downsamples too far to audit a ring or read a dimension), and the server's initialize `instructions` prefer assign mode whenever the set carries a schedule. Same field session, other lesson: the verify loop only happens when the tools demand it.
 
+### Released
+- **opentakeoff-mcp 0.9.19** (tag `mcp-v0.9.19`) — assign-from-schedule, assignment provenance, verify-loop doctrine; 31 tools. npm latest, MCP registry, GitHub release + MCPB bundle. (0.9.18 was the same-day registry-freshness release, #171.)
+
 ## 2026-08-01 — registry freshness
 
 ### Fixed
