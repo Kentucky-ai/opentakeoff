@@ -203,7 +203,7 @@ export const exportTakeoffOutput = {
     verts_norm: z.array(point).describe("Vertices normalized to sheet dims (0–1)"),
     computed: z.object({ area_sf: z.number().optional(), perimeter_lf: z.number().optional(), count: z.number().optional() }).passthrough()
       .describe("count shapes carry {count} alone; every other role carries area_sf + perimeter_lf"),
-    origin: z.object({}).passthrough().optional().describe("Provenance: method (manual|one_click_v1), actor (omitted=human, 'agent'=MCP/automation), reviewed (human affirmed at an explicit gate), and correction fields (edited, edited_before_create, copied, proposed_verts_norm, edits)"),
+    origin: z.object({}).passthrough().optional().describe("Provenance: method (manual|one_click_v1), actor (omitted=human, 'agent'=MCP/automation), reviewed (human affirmed at an explicit gate), assignment (where the finish tag came from — {source: 'schedule', room_tag, surface, schedule_sheet} when the room's own schedule row decided it, {source: 'asserted'} when the agent chose; stamped on every agent commit), and correction fields (edited, edited_before_create, copied, proposed_verts_norm, edits)"),
   }).passthrough()),
   markups: z.array(z.unknown()),
   sheet_group: z.array(z.unknown()),
@@ -256,6 +256,7 @@ export const listShapesOutput = {
     height_ft: z.number().optional().describe("surface_area shapes — the height they were quantified at"),
     nverts: z.number().int(),
     reviewed: z.boolean().describe("true = human-affirmed ink, refused by every agent mutation"),
+    assignment: z.enum(["schedule", "asserted"]).optional().describe('Where the finish tag came from: "schedule" = resolved from the room\'s own schedule row, "asserted" = the agent chose it. origin.assignment in export_takeoff carries the citation. Absent on human canvas shapes'),
     agent_edits: z.number().int().optional().describe("Present when the agent has revised this shape"),
   })),
   count: z.number().int(),

@@ -102,6 +102,13 @@ export interface ShapeOrigin {
    * perimeter — the source, the gross figure, and the openings the agent
    * STATED (its claim to make; the tool never guesses doors). */
   derived?: { from_shape_id: string; gross_lf: number; openings_lf: number };
+  /** Where the shape's finish ASSIGNMENT came from (0.9.18): "schedule" =
+   * resolved from the room's own schedule row (room_tag / surface /
+   * schedule_sheet carry the citation), "asserted" = the agent chose the tag
+   * itself. Stamped centrally in commit(), so no agent commit path can ship
+   * without a verdict; human canvas commits carry nothing, mirroring the
+   * `actor` convention. */
+  assignment?: { source: "schedule" | "asserted"; room_tag?: string; surface?: string; schedule_sheet?: string };
   /** Machine's original trace, frozen on first human edit (provenance.js). */
   proposed_verts_norm?: [number, number][];
   edited?: boolean;
@@ -774,6 +781,10 @@ export class Session {
   }
 
   private commit(s: SheetState, tag: string, role: MeasureRole, vertsPx: Point[], computed: Shape["computed"], origin?: Shape["origin"]): Shape {
+    // assignment provenance (0.9.18) defaults HERE, not at the seven call
+    // sites: an agent commit that stated no source asserted the tag itself,
+    // and stamping centrally means no future commit path can ship unstamped.
+    if (origin?.actor === "agent" && !origin.assignment) origin = { ...origin, assignment: { source: "asserted" } };
     const c = this.conditionFor(tag);
     const shape: Shape = {
       id: uid("shp"),
@@ -1132,6 +1143,7 @@ export class Session {
         ...(x.height_ft !== undefined ? { height_ft: x.height_ft } : {}),
         nverts: x.verts_norm.length,
         reviewed: x.origin?.reviewed === true,
+        ...(x.origin?.assignment ? { assignment: x.origin.assignment.source } : {}),
         ...(x.origin?.agent_edits ? { agent_edits: x.origin.agent_edits } : {}),
       })),
       count: rows.length,
