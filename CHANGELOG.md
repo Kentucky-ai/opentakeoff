@@ -2,6 +2,14 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-01 — registry freshness
+
+### Fixed
+- **`/.well-known/mcp.json` tells the truth again** — the deployed manifest still declared 0.8.0 while npm and the MCP registry served 0.9.17; the well-known file now versions with the release. Directory indexers (Smithery among them) cache whatever they last scanned, so a stale manifest quietly under-reports the server — Smithery was still describing the 17-tool era of a 31-tool server.
+
+### Released
+- **opentakeoff-mcp 0.9.18** (tag `mcp-v0.9.18`) — no tool changes; a version-surface release so registry re-scans pick up the current 31-tool record. npm latest, MCP registry, GitHub release + MCPB bundle.
+
 ## 2026-07-31 — sheet revisions: a re-drop is never a silent overwrite
 
 ### Added
