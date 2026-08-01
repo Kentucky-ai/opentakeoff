@@ -172,7 +172,8 @@ class Corpus:
         os.makedirs(os.path.join(self.root, "raw"), exist_ok=True)
         blob = json.dumps(payload, sort_keys=True)
         phash = hashlib.sha1(blob.encode()).hexdigest()[:12]
-        raw = os.path.join(self.root, "raw", f"{phash}.json")
+        safe_filename = os.path.basename(f"{phash}.json")
+        raw = os.path.join(self.root, "raw", safe_filename)
         if not os.path.exists(raw):
             tmp = raw + ".tmp"
             with open(tmp, "w") as fh:
