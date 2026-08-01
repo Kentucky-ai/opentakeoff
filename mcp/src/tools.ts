@@ -104,7 +104,8 @@ export function registerTools(server: McpServer, session: Session): void {
     description: `Batch room detection: reads every room-number label off the sheet's text layer (e.g. "134", "OFFICE 101") and runs One-Click at each — one call instead of read_sheet_text + reasoning + N one_click calls. A seed is only reported as a room once it survives three gates, and everything skipped is counted and reasoned in \`withheld\` — never dropped silently, because a room the tool tells you it skipped is a question you can ask, while one it hides is a hole in a bid. The gates: a flood that leaked or landed in dense linework never becomes a region; two labels flooding the SAME region commit once (the extra labels ride on \`merged_labels\` — double-counting an area is the worst failure an estimating tool has); and a flood that is enclosed and clean but smaller than min_area_sf is a room-number bubble, a door swing, or a wall cavity rather than a room. With the sheet's scale set, returns area_sf/perimeter_lf per room; pass condition to commit every detected room under that finish tag (role "deduct" makes them subtract). Without a scale, returns px-only quantities per room and commits nothing — the plausibility floor needs real units, so it only applies once a scale is set. ${COORDS}`,
     inputSchema: {
       sheet: z.string(),
-      condition: z.string().optional().describe("Finish tag to commit every detected room under (minted on first use)"),
+      condition: z.string().optional().describe("Finish tag to commit every detected room under (minted on first use). Mutually exclusive with assign_from_schedule"),
+      assign_from_schedule: z.boolean().default(false).describe("Commit each room under the FLOOR finish its OWN room-finish schedule row states (resolve_tag's chain, per room): the citation rides origin.assignment, and rooms the schedule cannot answer for — no row, no FLOOR cell, a compound cell like \"CPT-1/VCT-1\" — are returned in unresolved[] with reasons and seeds instead of committed under a guess. Needs the sheet's scale and a room-finish schedule in the working set (merge the schedule sheet in with load_plan first). Mutually exclusive with condition"),
       role: roleSchema,
       return_verts: z.boolean().default(false).describe("Include each traced polygon's vertices (image px)"),
       min_area_sf: z.number().positive().default(5).describe("Plausibility floor: enclosed non-bubble regions smaller than this are withheld as cavities, not rooms. Default 5 SF — below any real finished space (a broom closet is ~10 SF). Lower it to inspect what was skipped."),
@@ -112,7 +113,14 @@ export function registerTools(server: McpServer, session: Session): void {
       layers: layersFilterSchema,
     },
     outputSchema: detectRoomsOutput,
-  }, run("detect_rooms", (a) => session.detectRooms(a.sheet, { condition: a.condition, role: a.role, returnVerts: a.return_verts, minAreaSf: a.min_area_sf, sensitivity: a.sensitivity, layers: a.layers })));
+  }, run("detect_rooms", (a) => {
+    // the set_scale "exactly one of" convention: both sources of a finish tag
+    // at once is a contradiction, refused before any flooding
+    if (a.assign_from_schedule && a.condition !== undefined) {
+      throw new UserError("Provide at most one of: condition (every room under one stated tag) or assign_from_schedule (each room's own schedule row decides).");
+    }
+    return session.detectRooms(a.sheet, { condition: a.condition, role: a.role, returnVerts: a.return_verts, minAreaSf: a.min_area_sf, sensitivity: a.sensitivity, layers: a.layers, assignFromSchedule: a.assign_from_schedule });
+  }));
 
   server.registerTool("measure_polygon", {
     description: `Measure a closed polygon you supply (min 3 vertices, image px): area_sf and perimeter_lf at the sheet's scale. Requires the scale to be set. Pass condition to commit it; role "deduct" subtracts. ${COORDS}`,

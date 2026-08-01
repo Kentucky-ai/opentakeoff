@@ -257,3 +257,30 @@ test("readSheetText: positioned items in image px; region narrows to the title b
   assert.ok(tb.items.some((i) => i.str === "A-101"));
   assert.ok(!tb.text.includes("OFFICE 101"));
 });
+
+// 0.9.18 — floorTagFor, the per-room resolver behind assign-from-schedule.
+// Unit-tested here because the fixture's room 134 (the REAL compound cell,
+// "CPT-1/VCT-1") never survives detect_rooms' geometric gates on this sheet —
+// the resolver's refusal doctrine still has to hold when a future plan DOES
+// flood it cleanly.
+test("floorTagFor: resolves the row's FLOOR cell; compound cells and missing rows refuse with reasons", async () => {
+  const FINISH = fileURLToPath(new URL("../../demo/sample-finish-plan.pdf", import.meta.url));
+  const s = new Session();
+  await s.loadPlan(FINISH);
+  const g = await (s as any).ensureGraph();
+  const resolve = (tag: string) => (s as any).floorTagFor(g, tag);
+
+  // a clean row resolves to its FLOOR literal, citing the schedule sheet —
+  // and the hyphen in "CPT-1" never trips the compound detector
+  const ok = resolve("164");
+  assert.deepEqual(ok, { tag: "CPT-1", sheet: "sample-finish-plan.pdf#2" });
+
+  // the compound cell is ambiguous: committing whole-room SF under a
+  // two-finish literal asserts an area split the schedule never stated
+  const amb = resolve("134");
+  assert.match(amb.reason, /^ambiguous: floor cell "CPT-1\/VCT-1" names more than one finish/);
+  assert.equal(amb.tag, undefined, "an ambiguous cell yields no tag at all");
+
+  // no row: resolveTag's own reason passes through verbatim
+  assert.match(resolve("999").reason, /no schedule row for 999/);
+});
