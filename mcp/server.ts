@@ -18,8 +18,8 @@ export function buildServer(session: Session = new Session()): McpServer {
       "OpenTakeoff: quantity takeoff on construction plan PDFs.",
       "A takeoff's deliverable is the marked-up planset, not a numbers report. Standard finish for ANY takeoff:",
       "1. load_plan, then set_scale on each sheet you measure (quantities are px-only until the scale is set).",
-      "2. Commit shapes under finish-tag conditions (one_click / detect_rooms / measure_polygon / measure_line with `condition`).",
-      "3. LOOK at what landed with view_sheet overlay:true and fix misses with edit_shape before trusting totals.",
+      "2. Commit shapes under finish-tag conditions (one_click / detect_rooms / measure_polygon / measure_line with `condition`; when the set carries a room-finish schedule, prefer detect_rooms assign_from_schedule so each room commits under its OWN row).",
+      "3. LOOK at what landed with view_sheet overlay:true and fix misses with edit_shape before trusting totals — crop the work region tight (full-sheet renders downsample too far to audit a ring).",
       "4. Finish by writing the marked-up planset with export_marked_pdf and give the user its file path, alongside export_report for the numbers. Never end a takeoff with numbers alone.",
     ].join("\n"),
   });

@@ -13,9 +13,42 @@
 import path from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 import { buildMarkedSetPdf as buildMarkedSetPdfJs } from "../../web/src/lib/markedset.js";
+import { pointInPoly } from "../../web/src/lib/geometry.js";
 import { RENDER_SCALE } from "../../web/src/lib/sheets.ts";
 import { UserError } from "./format.ts";
-import type { Session } from "./session.ts";
+import type { Session, Shape } from "./session.ts";
+
+/** The cover's assignment-provenance line (0.9.18): where the finish tags on
+ * this document came from — schedule-resolved vs agent-asserted vs pending
+ * human review — plus the rooms the last assign run withheld. Pure and
+ * unit-testable: shapes + withheld in, string (or null) out, no PDF parsing.
+ * Null for an all-human takeoff: the canvas path stays byte-identical.
+ *
+ * The staleness drop: a withheld room whose seed now falls inside a committed
+ * area shape was answered by hand after the sweep — the cover must never
+ * claim a room is withheld after the agent (or a human import) committed it.
+ * Seeds and rings compare in verts_norm space (both normalized to sheet dims). */
+export function assignmentDisclosure(
+  shapes: Shape[],
+  withheld: { sheet_id: string; seed_norm: [number, number] }[] = [],
+): string | null {
+  const agent = shapes.filter((s) => s.origin?.actor === "agent");
+  const live = withheld.filter((w) => !shapes.some((s) =>
+    s.sheet_id === w.sheet_id
+    && (s.measure_role === "floor_area" || s.measure_role === "deduct")
+    && s.verts_norm.length >= 3
+    && pointInPoly(w.seed_norm[0], w.seed_norm[1], s.verts_norm)));
+  if (!agent.length && !live.length) return null;
+  const schedule = agent.filter((s) => s.origin?.assignment?.source === "schedule").length;
+  const asserted = agent.filter((s) => s.origin?.assignment?.source === "asserted").length;
+  const pending = agent.filter((s) => s.origin?.reviewed !== true).length;
+  const parts: string[] = [];
+  if (schedule) parts.push(`${schedule} schedule-resolved`);
+  if (asserted) parts.push(`${asserted} agent-asserted`);
+  if (pending) parts.push(`${pending} pending human review`);
+  if (live.length) parts.push(`${live.length} room${live.length === 1 ? "" : "s"} withheld, unresolved against the schedule`);
+  return parts.length ? `Finish assignment: ${parts.join(" · ")}` : null;
+}
 
 // The builder is untyped canvas JS; tsc infers parameter types from its
 // destructuring DEFAULTS (credit = null ⇒ "null only"), so a typed facade at
@@ -94,6 +127,7 @@ export async function exportMarkedPdf(session: Session, opts: MarkedPdfOpts) {
     getPage,
     loadPdfData,
     credit,
+    provenance: assignmentDisclosure(session.shapes, session.scheduleWithheld),
     coverTitle: "OpenTakeoff · Marked Set",
   });
 

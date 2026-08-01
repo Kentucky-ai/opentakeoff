@@ -102,6 +102,13 @@ export interface ShapeOrigin {
    * perimeter — the source, the gross figure, and the openings the agent
    * STATED (its claim to make; the tool never guesses doors). */
   derived?: { from_shape_id: string; gross_lf: number; openings_lf: number };
+  /** Where the shape's finish ASSIGNMENT came from (0.9.18): "schedule" =
+   * resolved from the room's own schedule row (room_tag / surface /
+   * schedule_sheet carry the citation), "asserted" = the agent chose the tag
+   * itself. Stamped centrally in commit(), so no agent commit path can ship
+   * without a verdict; human canvas commits carry nothing, mirroring the
+   * `actor` convention. */
+  assignment?: { source: "schedule" | "asserted"; room_tag?: string; surface?: string; schedule_sheet?: string };
   /** Machine's original trace, frozen on first human edit (provenance.js). */
   proposed_verts_norm?: [number, number][];
   edited?: boolean;
@@ -295,6 +302,12 @@ export class Session {
   conditions: Condition[] = [];
   markups: Markup[] = [];
   shapes: Shape[] = [];
+  /** The last assign-from-schedule run's unresolved rooms (0.9.18) — what the
+   * marked-set cover discloses as withheld. Replaced per assign run, cleared
+   * with the rest of the session on a non-merge load_plan. Seeds ride
+   * normalized so the export-time staleness drop can test them against
+   * committed rings in verts_norm space. */
+  scheduleWithheld: { sheet_id: string; label: string; reason: string; seed_norm: [number, number] }[] = [];
 
   /** Newest-last. Capped at UNDO_CAP; the oldest entry falls off the front. */
   private journal: JournalEntry[] = [];
@@ -337,6 +350,7 @@ export class Session {
       this.file = null;
       this.filePath = null;
       this.nextOrd = 1;
+      this.scheduleWithheld = [];
       // the journal's entries reference shapes that no longer exist — undoing
       // across a document swap would be a lie, so the history goes with them
       this.journal = [];
@@ -774,6 +788,10 @@ export class Session {
   }
 
   private commit(s: SheetState, tag: string, role: MeasureRole, vertsPx: Point[], computed: Shape["computed"], origin?: Shape["origin"]): Shape {
+    // assignment provenance (0.9.18) defaults HERE, not at the seven call
+    // sites: an agent commit that stated no source asserted the tag itself,
+    // and stamping centrally means no future commit path can ship unstamped.
+    if (origin?.actor === "agent" && !origin.assignment) origin = { ...origin, assignment: { source: "asserted" } };
     const c = this.conditionFor(tag);
     const shape: Shape = {
       id: uid("shp"),
@@ -873,8 +891,23 @@ export class Session {
    *       broom closet is ~10 SF): a door swing or wall cavity. Only applied
    *       once a scale exists, since without one there is no real area to
    *       judge and nothing commits anyway. */
-  async detectRooms(name: string, opts: { condition?: string; role: "floor_area" | "deduct"; returnVerts: boolean; minAreaSf?: number; sensitivity?: number; layers?: { include?: string[]; exclude?: string[] } }) {
+  async detectRooms(name: string, opts: { condition?: string; role: "floor_area" | "deduct"; returnVerts: boolean; minAreaSf?: number; sensitivity?: number; layers?: { include?: string[]; exclude?: string[] }; assignFromSchedule?: boolean }) {
     const s = this.sheet(name);
+    // assign-from-schedule (0.9.18): each detected room commits under the
+    // FLOOR finish its OWN schedule row states, and rooms the schedule cannot
+    // answer for are withheld into `unresolved[]` instead of committed under a
+    // guess. The mode exists to COMMIT, so the whole-set preflights refuse up
+    // front — before a single flood; per-room failures stay per-room below.
+    const assign = !!opts.assignFromSchedule;
+    let graph: SheetGraph | null = null;
+    if (assign) {
+      if (s.upp == null) throw new UserError(this.scaleGate(s));   // no silent px-only preview wearing a success reply
+      graph = await this.ensureGraph();
+      if (!graph.available) throw new UserError("This set has no text layer (a scan) — the sheet graph is unavailable, not empty.");
+      if (!graph.tables.some((t) => t.kind === "room-finish")) {
+        throw new UserError("No room-finish schedule in the working set — load_plan the schedule sheet with merge: true, or pass condition to commit every room under one tag.");
+      }
+    }
     const mask = await this.maskWithLayers(name, opts.layers);
     if (!mask) throw new UserError("This sheet has no vector linework (likely a scan); raster fallback not yet available in the MCP server.");
     const minAreaSf = opts.minAreaSf ?? 5;
@@ -890,7 +923,8 @@ export class Session {
     // Trace every label first (ladder + bubble guard per label). Nothing
     // commits in this pass — withholding has to be decided across the whole
     // batch (dedupe needs to see every ring).
-    const withheld = { degenerate: 0, duplicate: 0, bubble: 0, implausible: 0 };
+    const withheld = { degenerate: 0, duplicate: 0, bubble: 0, implausible: 0, unresolved: 0 };
+    const unresolved: { label: string; reason: string; area_sf: number; perimeter_lf: number; seed: [number, number] }[] = [];
     type Cand = { label: string; ring: Point[]; areaPx2: number; perimPx: number; seed: readonly [number, number] | number[]; hatch: boolean; gap: number; merged: string[] };
     const byRing = new Map<string, Cand>();
     const order: Cand[] = [];
@@ -941,23 +975,49 @@ export class Session {
         const area_sf = round2(c.areaPx2 * upp * upp);
         if (area_sf < minAreaSf) { withheld.implausible++; return null; }
         const perimeter_lf = round2(c.perimPx * upp);
+        // schedule resolution runs AFTER the geometric gates: a bubble is
+        // reported as a bubble, and an unresolved room still reports its real
+        // area — withheld, never dropped, with the seed that turns "ask the
+        // estimator" into "one_click here" once they answer.
+        let tag = opts.condition;
+        let assignment: ShapeOrigin["assignment"];
+        if (assign) {
+          const hit = this.floorTagFor(graph!, c.label);
+          if ("reason" in hit) {
+            withheld.unresolved++;
+            unresolved.push({ label: c.label, reason: hit.reason, area_sf, perimeter_lf, seed: [round1(c.seed[0]), round1(c.seed[1])] });
+            return null;
+          }
+          tag = hit.tag;
+          assignment = { source: "schedule", room_tag: c.label, surface: "FLOOR", schedule_sheet: hit.sheet };
+        }
         let shape_id: string | undefined;
-        if (opts.condition) {
-          shape_id = this.commit(s, opts.condition, opts.role, c.ring, { area_sf, perimeter_lf }, {
+        if (tag) {
+          shape_id = this.commit(s, tag, opts.role, c.ring, { area_sf, perimeter_lf }, {
             method: "one_click_v1",
             actor: "agent",
             seed_norm: [c.seed[0] / s.widthPx, c.seed[1] / s.heightPx],
             reviewed: false,
             ...(c.hatch ? { hatch_filtered: true as const } : {}),
             ...(c.gap ? { gap_bridged_px: c.gap } : {}),
+            ...(assignment ? { assignment } : {}),
           }).id;
         }
-        return { ...common, area_sf, perimeter_lf, ...(shape_id ? { shape_id } : {}) };
+        return { ...common, area_sf, perimeter_lf, ...(shape_id ? { shape_id, condition: tag } : {}) };
       })
       .filter((r): r is NonNullable<typeof r> => r !== null);
 
     this.flushCommits("detect_rooms"); // the whole sweep is one reversible step
-    const withheldTotal = withheld.degenerate + withheld.duplicate + withheld.bubble + withheld.implausible;
+    // each assign run REPLACES the disclosure state: the marked set reports
+    // the latest sweep's unresolved rooms, and only those (export-time
+    // staleness drops any the agent has since committed by hand)
+    if (assign) {
+      this.scheduleWithheld = unresolved.map((u) => ({
+        sheet_id: s.key, label: u.label, reason: u.reason,
+        seed_norm: [u.seed[0] / s.widthPx, u.seed[1] / s.heightPx] as [number, number],
+      }));
+    }
+    const withheldTotal = withheld.degenerate + withheld.duplicate + withheld.bubble + withheld.implausible + withheld.unresolved;
     return {
       detected: rooms.length,
       rooms,
@@ -966,9 +1026,12 @@ export class Session {
         ...withheld,
         ...(upp != null ? { min_area_sf: minAreaSf } : {}),
       },
+      // assign mode always states the answer, empty array included: [] is the
+      // positive claim "every detected room resolved against its own row"
+      ...(assign ? { unresolved } : {}),
       ...(s.detected?.multi ? { multiple_scales: true as const } : {}),
       ...(withheldTotal
-        ? { note: `${withheldTotal} seed(s) withheld — ${withheld.duplicate} duplicate region(s), ${withheld.bubble} label-bubble(s), ${withheld.implausible} under ${minAreaSf} SF, ${withheld.degenerate} untraceable.` }
+        ? { note: `${withheldTotal} seed(s) withheld — ${withheld.duplicate} duplicate region(s), ${withheld.bubble} label-bubble(s), ${withheld.implausible} under ${minAreaSf} SF, ${withheld.degenerate} untraceable${assign ? `, ${withheld.unresolved} unresolved against the schedule (see unresolved[])` : ""}.` }
         : {}),
       ...(s.upp == null ? { warning: `No scale set for ${s.key} — quantities unavailable. Call set_scale${s.detected ? ` (detected: ${s.detected.label})` : ""}.` } : {}),
     };
@@ -1132,6 +1195,7 @@ export class Session {
         ...(x.height_ft !== undefined ? { height_ft: x.height_ft } : {}),
         nverts: x.verts_norm.length,
         reviewed: x.origin?.reviewed === true,
+        ...(x.origin?.assignment ? { assignment: x.origin.assignment.source } : {}),
         ...(x.origin?.agent_edits ? { agent_edits: x.origin.agent_edits } : {}),
       })),
       count: rows.length,
@@ -1230,7 +1294,14 @@ export class Session {
       verts_norm: vertsPx.map(([x, y]) => [x / s.widthPx, y / s.heightPx]),
       computed,
       ...(role === "surface_area" ? { height_ft: Number(cur.height_ft) || heightFor() } : {}),
-      ...(cur.origin ? { origin: { ...cur.origin, agent_edits: (cur.origin.agent_edits ?? 0) + 1 } } : {}),
+      ...(cur.origin ? { origin: {
+        ...cur.origin,
+        agent_edits: (cur.origin.agent_edits ?? 0) + 1,
+        // a reassign onto a different tag is the agent choosing the finish —
+        // keeping "schedule" (and its citation) past that point would be a lie
+        ...(patch.condition !== undefined && cur.origin.assignment?.source === "schedule"
+          ? { assignment: { source: "asserted" as const } } : {}),
+      } } : {}),
     };
     this.record({ op: "edit", tool: "edit_shape", before });
 
@@ -1613,6 +1684,25 @@ export class Session {
       callouts: g.callouts.map((c) => ({ detail: c.detail, target_sheet: c.target_sheet, sheet: c.sheet, bbox: Session.wireBox(c.bbox) })),
       counts: { rooms: g.rooms.length, schedules: g.tables.length, callouts: g.callouts.length },
     };
+  }
+
+  /** The FLOOR finish a room's own schedule row states — assign-from-schedule's
+   * per-room resolver (0.9.18): resolveTag's chain narrowed to the one surface
+   * a floor takeoff commits. Refusal over guessing, per room: an unresolved
+   * tag returns resolveTag's own reason; a resolved row with no FLOOR cell
+   * says so; a compound cell ("CPT-1/VCT-1") is ambiguous — committing the
+   * whole room's SF under a two-finish literal would assert an area split the
+   * schedule never stated. Compound detection is narrow ("/", ",", " OR "),
+   * so a hyphenated code never trips it. BASE/WALL are deliberately ignored:
+   * those are derive_base's and measure_surface's measures. */
+  private floorTagFor(g: SheetGraph, tag: string): { tag: string; sheet: string } | { reason: string } {
+    const res = resolveTag(g, tag);
+    if (res.status !== "resolved") return { reason: res.reason };
+    const floor = res.finishes.find((f) => f.surface === "FLOOR");
+    const code = floor?.code.trim();
+    if (!floor || !code) return { reason: `schedule row ${res.tag} states no FLOOR finish` };
+    if (/[/,]|\bOR\b/i.test(code)) return { reason: `ambiguous: floor cell "${code}" names more than one finish with no stated split` };
+    return { tag: code, sheet: floor.source.sheet };
   }
 
   async resolveRoomTag(tag: string) {

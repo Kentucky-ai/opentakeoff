@@ -208,7 +208,7 @@ function invertPixels(cv) {
   ctx.restore();
 }
 
-export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, markups, rfis = [], conditions, getPage, loadPdfData, company, clientInfo, credit = null, coverTitle = "Marked Set", units = "imperial" }) {
+export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, markups, rfis = [], conditions, getPage, loadPdfData, company, clientInfo, credit = null, provenance = null, coverTitle = "Marked Set", units = "imperial" }) {
   // display-unit edge (lib/units contract): quantities arrive as internal feet;
   // metric converts at the drawn string only — legend rows, by-sheet rows, and
   // the per-shape chips. ASCII "m2" (Helvetica WinAnsi has no superscript 2).
@@ -319,6 +319,10 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
       }
     }
     draw(`${marked.length} marked sheet${marked.length === 1 ? "" : "s"} · ${markedShapes.length} takeoff item${markedShapes.length === 1 ? "" : "s"} · quantities net of deducts, waste-adjusted where noted`, { x: 52, y: metaY, size: 9.5, font, color: muted });
+    // assignment provenance (0.9.18): where the finish tags came from
+    // (schedule-resolved / agent-asserted / withheld) — drawn only when the
+    // caller states it, so canvas output stays byte-identical without it
+    if (provenance) { metaY -= 12; draw(provenance, { x: 52, y: metaY, size: 9.5, font, color: muted }); }
     let y = metaY - 34;
     const rows = conditionTotals(conditions, markedShapes).filter((r) => r.shape_count > 0);
     draw("CONDITIONS", { x: 52, y, size: 9, font: bold, color: muted }); y -= 16;

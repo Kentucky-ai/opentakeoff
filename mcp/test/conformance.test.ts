@@ -519,3 +519,17 @@ test("sheet graph (#87): index, resolve with citations, refusal with reasons, fi
   assert.ok(found.matches[0].region.x1 > found.matches[0].region.x0, "the region is viewable");
   assert.match(await callErr(client, "find_schedule", { kind: "door" }), /No "door" schedule found .* Found: /);
 });
+
+// 0.9.18 — assign-from-schedule's output contract. The deepEqual is the
+// load-bearing assertion: zod strips unknown keys, so a bare parse would pass
+// with an incomplete schema — equality proves the schema states EVERY field
+// the tool actually returns (unresolved[], withheld.unresolved, rooms[].condition).
+test("detect_rooms assign mode: reply validates AND round-trips the schema unstripped", async () => {
+  const client = await pair();
+  await callOk(client, "load_plan", { path: FINISH_PLAN });
+  await callOk(client, "set_scale", { sheet: "sample-finish-plan.pdf", use_detected: true });
+  const r = await callOk(client, "detect_rooms", { sheet: "sample-finish-plan.pdf", assign_from_schedule: true });
+  assert.deepEqual(z.object(detectRoomsOutput).parse(r), r, "schema states every returned field — nothing stripped");
+  assert.ok(Array.isArray(r.unresolved), "assign mode always states the answer, empty array included");
+  assert.equal(r.withheld.unresolved, r.unresolved.length, "the counter and the array agree");
+});
