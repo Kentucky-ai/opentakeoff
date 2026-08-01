@@ -284,3 +284,40 @@ test("floorTagFor: resolves the row's FLOOR cell; compound cells and missing row
   // no row: resolveTag's own reason passes through verbatim
   assert.match(resolve("999").reason, /no schedule row for 999/);
 });
+
+// 0.9.18 — the marked-set cover's assignment-provenance line. Pure function,
+// synthetic shapes: no PDF in the loop.
+test("assignmentDisclosure: null for all-human, mixed counts, and the pointInPoly staleness drop", async () => {
+  const { assignmentDisclosure } = await import("../src/marked.ts");
+  const shape = (over: Record<string, unknown>) => ({
+    id: "shp-x", sheet_id: "p.pdf", condition_id: "cnd-x", measure_role: "floor_area",
+    verts_norm: [[0.1, 0.1], [0.4, 0.1], [0.4, 0.4], [0.1, 0.4]], computed: { area_sf: 1, perimeter_lf: 1 },
+    ...over,
+  }) as any;
+
+  // an all-human takeoff discloses nothing — the canvas path stays unchanged
+  assert.equal(assignmentDisclosure([shape({ origin: undefined })], []), null);
+  assert.equal(assignmentDisclosure([], []), null);
+
+  // mixed counts, in the stated order
+  const mixed = [
+    shape({ id: "a", origin: { method: "one_click_v1", actor: "agent", reviewed: false, assignment: { source: "schedule" } } }),
+    shape({ id: "b", origin: { method: "one_click_v1", actor: "agent", reviewed: false, assignment: { source: "schedule" } } }),
+    shape({ id: "c", origin: { method: "manual", actor: "agent", reviewed: false, assignment: { source: "asserted" } } }),
+  ];
+  assert.equal(
+    assignmentDisclosure(mixed, [{ sheet_id: "p.pdf", label: "9", reason: "no row", seed_norm: [0.9, 0.9] } as any]),
+    "Finish assignment: 2 schedule-resolved · 1 agent-asserted · 3 pending human review · 1 room withheld, unresolved against the schedule",
+  );
+
+  // staleness: a withheld seed INSIDE a committed area ring was answered by
+  // hand after the sweep — the cover must not still call it withheld. A seed
+  // on another sheet at the same coordinates stays.
+  const inside = { sheet_id: "p.pdf", label: "7", reason: "no row", seed_norm: [0.2, 0.2] } as any;
+  const otherSheet = { ...inside, sheet_id: "q.pdf" };
+  assert.equal(
+    assignmentDisclosure(mixed, [inside]),
+    "Finish assignment: 2 schedule-resolved · 1 agent-asserted · 3 pending human review",
+  );
+  assert.match(assignmentDisclosure(mixed, [otherSheet])!, / · 1 room withheld/);
+});
