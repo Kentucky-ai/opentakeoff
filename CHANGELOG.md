@@ -11,6 +11,9 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 ### Added
 - **Trace confidence + sealed provenance on the wire and in the record (RFC #60 item D).** Every `one_click`/`detect_rooms` trace now carries the engine's account of itself — `confidence` (0–1) with `confidence_factors` naming each deduction, `gap_sealed_px` (synthetic boundary across a real opening), `door_wedges`/`ring_interiors`, `min_pass_px`/`min_pass_delta` — on the tool reply AND on the committed shape's `origin`, stamped centrally in the session's one commit path (beside the assignment-provenance stamp) so no flood commit can ship unscored; `export_takeoff` round-trips it into the app unchanged. The score is a review prioritizer, never a verification: a low-confidence trace is a `view_sheet {overlay: true}` audit prompt, not a fact.
 
+### Released
+- **opentakeoff-mcp 0.9.26** — the MCP's own flood paths ride the sealed engine: canvas-equal one_click (parity-pinned against the bench corpus), confidence + seal/wedge/min-passage provenance stamped centrally on every commit; 35 tools.
+
 ## 2026-08-02 — stitched sheets: a floor split at a match line becomes ONE working surface (#161)
 
 ### Added
