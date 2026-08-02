@@ -2,6 +2,19 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-02 — One-Click accuracy: the RFC #60 slice — contributed by Kevin Murphy (@knmurphy)
+
+The engine work RFC #60 asked for, built and staged for upstream by **Kevin Murphy (@knmurphy)** in his fork (his `docs/UPSTREAM_CONTRIBUTION_SLICE.md` defined exactly this slice), landed here with his authorship preserved.
+
+### Added
+- **Gap sealing — the seal ladder (item B)** — a fill that leaks now retries with hard linework dilated by scale-aware radii (Manhattan distance transform, never-ascending growback, room-size + ≥75%-real-boundary gates), so drawn wall openings and sloppy linework bound rooms honestly instead of leaking; every seal is on the record (`origin.gap_sealed_px`).
+- **Door-swing wedges (failure mode #2)** — doorways closed by drawn swings measure through the door to the wall opening: curve marking from the vector meta, a LOCAL curve-transparent retry with grow-but-verify, leaf absorption, and **polyline-arc recognition** (CAD-tessellated swings, solid or dashed, detected as circle geometry and unified with bezier arcs), with per-arc-cluster retries so multi-door rooms keep every wedge. `origin.door_wedges` / `ring_interiors` carry the receipts. *Measurement policy, named for review: the swing wedge is included, measured to the wall plane.*
+- **Confidence + receipts (item D)** — `traceConfidence` (`web/src/lib/confidence.ts`): a transparent 0–1 score with named factors over what the engine already knows (tier, seal, wedges, min-passage, mask coarseness), minted into `origin.confidence` / `confidence_factors` on every one-click shape and agent probe reply, and explained at stage time in plain language.
+- **Periodicity-based hatch classification (item C)** — per-stroke lattice evidence replaces the parallel-row heuristics for the mask's soft/hard verdict; the escalation floor drops 0.35 → 0.02 because the classifier's precision earns it. Known limitations are fixture-tracked bench known-fails, not silent gaps. *Second policy note: precise hatch classification separates finish zones — a patterned floor area measures as its own click.*
+- **Cross-resolution determinism (failure mode #3)** — feet-true thresholds through `MaskObj.mppf`, the **minimum-passage rule** (a drawn gap under half a foot never connects two spaces, at any resolution), a stated honesty floor (`DETERMINISM_MIN_MPPF`), and the mask pinned to the page in POINTS so the Hi-Res toggle and render scale cannot move a measurement — on the raster path too (`rasterMaskScale`/`scanNativeScale`).
+- **The scored benchmark corpus (item E — the instrument)** — `npm run bench` is now part of `check`: synthetic truth-by-construction fixtures plus pinned, adjudicated real-plan traces over the bundled demo PDFs, scored by rasterized IoU with refusal/leak/correct-refusal rates, confidence gating, and cross-resolution gates. Current scoreboard: mean IoU 0.999, floor 0.990, refusal 0.0%, leak 0.0% over 21 gating goldens; every golden that ever moved carries its adjudication in the corpus JSON. `npm run bench:callouts` cross-checks the engine against the plan's own printed `NNN SF` annotations (reports, never gates); `npm run bench:batch` scoreboards the batch detector.
+- **Batch parity + label precision (item F precursor)** — `detectRegions` runs the same sealed engine as a click (mean IoU 0.817 → 0.999 on the VA plan's pinned probes; sheet-wide double-counted floor 16.6% → 0.0%), and `roomLabelSeeds` stops proposing printed areas, dimension strings, drawing numbers, and title-block numerals as rooms, seeding below the tag so a boxed room number doesn't measure its own bubble.
+
 ## 2026-08-02 — one_click reads scans: the canvas's raster fallback reaches the MCP server
 
 ### Added
