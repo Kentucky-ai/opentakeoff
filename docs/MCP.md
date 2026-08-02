@@ -32,7 +32,7 @@ which is the MCP wire. `node --import tsx` is the whole invocation.
 
 ## What the agent gets
 
-Thirty-two tools, in the order an agent tends to reach for them:
+Thirty-four tools, in the order an agent tends to reach for them:
 
 - **Open and orient** — `load_plan`, `sheet_info` (including the sheet's PDF
   layer table — Optional Content Groups with a classified role, confidence,
@@ -80,6 +80,12 @@ Thirty-two tools, in the order an agent tends to reach for them:
   attaching one to a finish tag is what makes it part of that scope rather
   than a floating remark — it then wears the condition's colour on the canvas
   and in the marked set)
+- **Sign** — `mark_verdict`, `delete_verdict` (the agent half of the approval
+  family: the graphite AGENT diamond, the agent's pencil-signature on work it
+  checked — anchored on a committed shape or dropped at a sheet point, listed
+  in `list_annotations`' `verdicts[]`. The estimator's APPROVED ring is the
+  other half and stays human-only: these tools take no actor input, so no
+  agent path can mint or lift the human's ink. A verdict touches no quantity)
 - **Report** — `takeoff_summary` (quantities only — materials stripped),
   `export_takeoff` (the raw `opentakeoff.takeoff_canvas.v1` canvas payload —
   materials as config rows, importable by the app), `export_report` (the

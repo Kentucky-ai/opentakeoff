@@ -2,6 +2,16 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-02 — the agent signs its own work: verdict marks reach the MCP server
+
+### Added
+- **`mark_verdict` / `delete_verdict` (tools 33–34)** — the agent half of the approval family shipped in #176. The estimator's APPROVED ring stays exactly where it was: mintable only by a human's click at the canvas's Approve tool. These verbs are the other actor — the graphite AGENT diamond, the agent's pencil-signature on work it checked — and the ink/pencil line is structural, not conventional: neither tool takes an actor input, `actor: "agent"` is a string literal on the one line that writes the record, and `delete_verdict` refuses the estimator's seal outright (the `edit_shape`-on-reviewed-ink refusal, applied to marks). Target a committed shape by id — anchored ON the shape (a room at its area centroid, an open run at its true on-path midpoint in sheet px, a count marker at its point) with the `shape_id` recorded as provenance, one mark per shape — or drop the mark at a `sheet` + `at` point; optional short `text` rides the record through every export. A verdict touches no quantity and gates nothing.
+- **One implementation, both surfaces** — the server imports the canvas's own pure module (`web/src/lib/approvals.js`): minting, the load gate, and exact-restore inverses are the same code the canvas runs, so `undo_last` re-seats a lifted mark at its original index (a new `approval` journal op storing the pure apply's inverse), MCP-minted records pass the canvas hydrate's `sanitizeApprovals` gate by construction, and the AGENT diamond renders identically in the app and in the marked set. `export_marked_pdf` now feeds the family through (`approvals` was `[]` from this path before): glyphs burn in above the markups, a sheet carrying only a mark still exports, the cover tallies `Approval stamps: N estimator-approved · M agent-marked`, and the reply reports `approvals_drawn`.
+- **Round-trip + inventory** — `approvals` rides `export_takeoff` additively (present only when any exist, the canvas payload's own convention) and `import_takeoff` adopts it as transport, not minting: an estimator seal arriving by file stays estimator ink — listable, refused by `delete_verdict`. `list_annotations` grows `verdicts[]`/`verdict_count`: every mark with its actor stated, the sheet filter applying directly and a condition filter reaching a verdict through its target shape. The app-side merge (`web/src/lib/importTakeoff.js`) now carries the family under the markup rule — new ids append, same ids skip, corrupt records drop at the same `sanitizeApprovals` gate the hydrate runs — and an approval seal now blocks the clean-replace path (a seal is operator ink; operator state wins).
+
+### Released
+- **opentakeoff-mcp 0.9.23** — `mark_verdict`/`delete_verdict`, approvals through the marked set + import round-trip; 34 tools.
+
 ## 2026-08-02 — One-Click accuracy: the RFC #60 slice — contributed by Kevin Murphy (@knmurphy)
 
 The engine work RFC #60 asked for, built and staged for upstream by **Kevin Murphy (@knmurphy)** in his fork (his `docs/UPSTREAM_CONTRIBUTION_SLICE.md` defined exactly this slice), landed here with his authorship preserved.

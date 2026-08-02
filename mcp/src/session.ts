@@ -22,6 +22,11 @@ import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS }
 import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
 import { sweepSymbols, SWEEP_TOL_PX, type SweepOptions } from "../../web/src/lib/symbolsweep.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
+// The approvals family (#176) — the canvas's own pure module, imported as-is
+// (the markedset.js/importTakeoff.js precedent), so a verdict this server
+// mints and a seal the canvas mints share ONE implementation of minting,
+// load-gating, and exact-restore inverses.
+import { sanitizeApprovals as sanitizeApprovalsJs, applyApprovalCommand as applyApprovalCommandJs } from "../../web/src/lib/approvals.js";
 import { conditionTotals, grandTotals, sheetTotals, reportJson } from "../../web/src/lib/totals.js";
 import { hasRollSetup, mintRollSetup, computeRollTakeoff, rollReportRows } from "../../web/src/lib/rollTakeoff.js";
 import { gridPxPerFoot, drawGrid, drawShapes, type Ctx2D, type ToCanvas } from "./view.ts";
@@ -182,6 +187,45 @@ export interface Markup {
   created_at?: string;
 }
 
+/** An approval-family record (web/src/lib/approvals.js, PR #176) — the record
+ *  of a VERDICT, its own family beside shapes and markups. Two actors, one
+ *  hard line: "estimator" is the human's APPROVED ring, minted only by the
+ *  canvas's Approve tool — NO path through this server can produce one;
+ *  "agent" is the AGENT diamond, the machine's pencil-signature on its own
+ *  work, and the only actor mark_verdict is capable of writing. Rides the
+ *  annotations payload additively (`approvals`), so it round-trips through
+ *  export_takeoff/import_takeoff and the app's own saves unchanged. */
+export interface Approval {
+  id: string;
+  actor: "estimator" | "agent";
+  /** ISO-8601 mint time — optional on the type because the canvas load gate
+   * (sanitizeApprovals) doesn't require it of imported records; everything
+   * minted here carries it. */
+  ts?: string;
+  sheet_id: string;
+  /** Render anchor, normalized to the sheet (the markup convention). The
+   * glyph ALWAYS draws here, so a later shape delete never orphans it. */
+  at: [number, number];
+  /** Present when the verdict targets a committed shape — provenance (WHAT
+   * was marked), never where it draws. */
+  shape_id?: string;
+  /** The agent's optional short note. Unknown fields pass the canvas load
+   * gate verbatim, so it survives every round-trip. */
+  text?: string;
+}
+
+/** The pure apply's command vocabulary (approvals.js) — what the journal
+ * stores as the exact-restore inverse of a verdict mutation. */
+export type ApprovalCommand =
+  | { type: "add"; approvals: (Omit<Approval, "id"> & { id?: string })[]; restore?: boolean; at?: number[] }
+  | { type: "delete"; ids: string[] };
+
+// untyped canvas JS — typed facades state the contract at the boundary
+// (the marked.ts/importing.ts convention)
+export const sanitizeApprovals = sanitizeApprovalsJs as unknown as (raw: unknown) => Approval[];
+const applyApprovalCommand = applyApprovalCommandJs as unknown as
+  (approvals: Approval[], cmd: ApprovalCommand) => { approvals: Approval[]; inverse: ApprovalCommand };
+
 interface SheetState {
   key: string;
   /** 1-based position in load order across ALL documents — what addresses
@@ -290,7 +334,8 @@ export type JournalPayload =
   | { op: "edit"; tool: string; before: Shape }
   | { op: "delete"; tool: string; removed: { shape: Shape; index: number }[] }
   | { op: "materials"; tool: string; condition_id: string; before: MaterialRow[] }
-  | { op: "condition"; tool: string; condition_id: string; before: { waste_pct: number; multiplier: number; height_ft?: number; roll_setup?: Record<string, unknown> } };
+  | { op: "condition"; tool: string; condition_id: string; before: { waste_pct: number; multiplier: number; height_ft?: number; roll_setup?: Record<string, unknown> } }
+  | { op: "approval"; tool: string; inverse: ApprovalCommand };
 
 export type JournalEntry = JournalPayload & { seq: number };
 
@@ -318,6 +363,9 @@ export class Session {
   conditions: Condition[] = [];
   markups: Markup[] = [];
   shapes: Shape[] = [];
+  /** Approval-family records (#176) — estimator seals arrive only by import;
+   * agent verdicts mint through markVerdict and nothing else. */
+  approvals: Approval[] = [];
   /** The last assign-from-schedule run's unresolved rooms (0.9.18) — what the
    * marked-set cover discloses as withheld. Replaced per assign run, cleared
    * with the rest of the session on a non-merge load_plan. Seeds ride
@@ -363,6 +411,7 @@ export class Session {
       this.conditions = [];
       this.shapes = [];
       this.markups = [];
+      this.approvals = [];
       this.file = null;
       this.filePath = null;
       this.nextOrd = 1;
@@ -1701,6 +1750,12 @@ export class Session {
           else c.roll_setup = e.before.roll_setup;
         }
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "approval") {
+        // the stored inverse came from the canvas's own pure apply — exact
+        // restore, array order included (a lifted verdict returns to its
+        // recorded index; a minted one is removed, id and all)
+        this.approvals = applyApprovalCommand(this.approvals, e.inverse).approvals;
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
       } else {
         for (const { shape, index } of e.removed) {
           this.shapes.splice(Math.min(index, this.shapes.length), 0, shape);
@@ -1779,15 +1834,28 @@ export class Session {
 
   /** Read annotations, optionally narrowed to a sheet and/or a condition.
    *  Resolves condition_id to its finish tag so a caller can act on the reply
-   *  without joining against the conditions array. */
+   *  without joining against the conditions array.
+   *
+   *  Verdict marks (#176) ride the same inventory as their own block: the
+   *  sheet filter applies directly (a record renders on its sheet), and a
+   *  condition filter reaches a verdict THROUGH its target shape — a verdict
+   *  on a CPT-1 shape is about CPT-1 work, while a sheet-point mark carries
+   *  no scope and drops out of any condition filter. */
   listAnnotations(f: { sheet?: string; condition?: string } = {}): Record<string, unknown> {
     const tagById = new Map(this.conditions.map((c) => [c.id, c.finish_tag]));
     let rows = this.markups;
-    if (f.sheet) { const s = this.sheet(f.sheet); rows = rows.filter((m) => m.sheet_id === s.key); }
+    let seals = this.approvals;
+    if (f.sheet) {
+      const s = this.sheet(f.sheet);
+      rows = rows.filter((m) => m.sheet_id === s.key);
+      seals = seals.filter((a) => a.sheet_id === s.key);
+    }
+    const shapeById = new Map(this.shapes.map((x) => [x.id, x]));
     if (f.condition) {
       const c = this.conditions.find((x) => x.finish_tag === f.condition);
       if (!c) throw new UserError(`no condition "${f.condition}" — tags: ${this.conditions.map((x) => x.finish_tag).join(", ") || "(none)"}`);
       rows = rows.filter((m) => m.condition_id === c.id);
+      seals = seals.filter((a) => a.shape_id !== undefined && shapeById.get(a.shape_id)?.condition_id === c.id);
     }
     const s0 = this.sheets;
     const px = (m: Markup, p?: [number, number]): [number, number] | undefined => {
@@ -1808,6 +1876,21 @@ export class Session {
       })),
       count: rows.length,
       unattached: rows.filter((m) => !m.condition_id).length,
+      verdicts: seals.map((a) => {
+        const sh = s0.get(a.sheet_id);
+        const target = a.shape_id !== undefined ? shapeById.get(a.shape_id) : undefined;
+        return {
+          id: a.id,
+          actor: a.actor,
+          sheet: a.sheet_id,
+          ...(sh ? { at: [round1(a.at[0] * sh.widthPx), round1(a.at[1] * sh.heightPx)] as [number, number] } : {}),
+          ...(a.ts ? { ts: a.ts } : {}),
+          ...(a.shape_id !== undefined ? { shape_id: a.shape_id } : {}),
+          condition: target ? (tagById.get(target.condition_id) ?? "") : "",
+          ...(typeof a.text === "string" && a.text ? { text: a.text } : {}),
+        };
+      }),
+      verdict_count: seals.length,
     };
   }
 
@@ -1825,6 +1908,129 @@ export class Session {
     return { id: m.id, condition: c.finish_tag, condition_id: c.id, note: `Attached to ${c.finish_tag}.` };
   }
 
+  // ── verdict marks (#176) — the agent half of the approval family ───────────
+
+  /** Where a shape-targeted verdict draws, in the space of the verts given.
+   * The anchor is a render decision, not a measurement: a closed room anchors
+   * at its area centroid, an open run at its on-path midpoint (a bent run's
+   * centroid can sit off the work; the midpoint never does), a count marker
+   * at the marker itself. Callers pass SHEET-PX verts so the midpoint is the
+   * drawn run's true midpoint — arc length does not commute with the
+   * non-uniform norm↔px map (centroids do, so they'd be safe either way).
+   * Degenerate geometry falls back to the vertex mean. */
+  private static verdictAnchor(v: [number, number][], role: MeasureRole): [number, number] {
+    if (v.length === 1) return [v[0][0], v[0][1]];
+    const closed = role === "floor_area" || role === "deduct";
+    if (closed && v.length >= 3) {
+      let a = 0, cx = 0, cy = 0;
+      for (let i = 0; i < v.length; i++) {
+        const [x1, y1] = v[i], [x2, y2] = v[(i + 1) % v.length];
+        const w = x1 * y2 - x2 * y1;
+        a += w; cx += (x1 + x2) * w; cy += (y1 + y2) * w;
+      }
+      if (Math.abs(a) > 1e-12) return [cx / (3 * a), cy / (3 * a)];
+    } else if (!closed && v.length >= 2) {
+      const lens: number[] = [];
+      let total = 0;
+      for (let i = 1; i < v.length; i++) {
+        const l = Math.hypot(v[i][0] - v[i - 1][0], v[i][1] - v[i - 1][1]);
+        lens.push(l); total += l;
+      }
+      let walk = total / 2;
+      for (let i = 0; i < lens.length; i++) {
+        if (walk <= lens[i] && lens[i] > 0) {
+          const t = walk / lens[i];
+          return [v[i][0] + (v[i + 1][0] - v[i][0]) * t, v[i][1] + (v[i + 1][1] - v[i][1]) * t];
+        }
+        walk -= lens[i];
+      }
+    }
+    const n = v.length || 1;
+    return [v.reduce((s, p) => s + p[0], 0) / n, v.reduce((s, p) => s + p[1], 0) / n];
+  }
+
+  /** Mint the agent's verdict mark. actor is the string literal "agent" on
+   * the one line that writes the record — there is no actor parameter on this
+   * method, on the tool, or anywhere between, so no MCP path can produce the
+   * estimator's APPROVED seal (that ink stays behind the canvas's human-only
+   * Approve tool). The mutation and its exact-restore inverse both come from
+   * the canvas's pure apply, so a mark here undoes and hydrates exactly like
+   * a mark made in the app. Touches no quantity. */
+  markVerdict(a: { shape_id?: string; sheet?: string; at?: Point; text?: string }): Record<string, unknown> {
+    let sheetId: string;
+    let atNorm: [number, number];
+    let shape: Shape | undefined;
+    if (a.shape_id !== undefined) {
+      shape = this.shapes.find((x) => x.id === a.shape_id);
+      if (!shape) throw new UserError(`No shape with id ${JSON.stringify(a.shape_id)} — list_shapes has the real ids.`);
+      // one mark per shape: a second identical diamond stacked on the same
+      // anchor is invisible duplication, the same failure class the canvas's
+      // click-to-lift toggle prevents. Re-mark = delete_verdict + mark_verdict.
+      const dup = this.approvals.find((x) => x.actor === "agent" && x.shape_id === shape!.id);
+      if (dup) throw new UserError(`Shape ${shape.id} already carries an agent verdict (${dup.id}) — one mark per shape. delete_verdict it first to re-mark.`);
+      sheetId = shape.sheet_id;
+      // anchor in sheet px, normalized back for storage; a shape riding a
+      // file this session hasn't loaded (#152) anchors in normalized space —
+      // still on the work, just without the true-aspect midpoint
+      const dims = this.sheets.get(sheetId);
+      if (dims) {
+        const px = shape.verts_norm.map(([nx, ny]) => [nx * dims.widthPx, ny * dims.heightPx] as [number, number]);
+        const [ax, ay] = Session.verdictAnchor(px, shape.measure_role);
+        atNorm = [ax / dims.widthPx, ay / dims.heightPx];
+      } else {
+        atNorm = Session.verdictAnchor(shape.verts_norm, shape.measure_role);
+      }
+    } else {
+      const s = this.sheet(a.sheet!);
+      sheetId = s.key;
+      atNorm = [a.at![0] / s.widthPx, a.at![1] / s.heightPx];
+    }
+    const text = (a.text ?? "").trim();
+    const { approvals, inverse } = applyApprovalCommand(this.approvals, {
+      type: "add",
+      approvals: [{
+        actor: "agent",   // hardcoded — the structural impossibility, not a default
+        sheet_id: sheetId,
+        at: atNorm,
+        ...(shape ? { shape_id: shape.id } : {}),
+        ...(text ? { text } : {}),
+      }],
+    });
+    this.approvals = approvals;
+    this.record({ op: "approval", tool: "mark_verdict", inverse });
+    const minted = this.approvals[this.approvals.length - 1];
+    const sh = this.sheets.get(sheetId);
+    const tag = shape ? (this.conditions.find((c) => c.id === shape!.condition_id)?.finish_tag ?? "") : undefined;
+    return {
+      id: minted.id,
+      actor: "agent" as const,
+      sheet: sheetId,
+      ...(sh ? { at: [round1(atNorm[0] * sh.widthPx), round1(atNorm[1] * sh.heightPx)] as [number, number] } : {}),
+      ts: minted.ts,
+      ...(shape ? { shape_id: shape.id } : {}),
+      ...(tag !== undefined ? { condition: tag } : {}),
+      ...(text ? { text } : {}),
+      note: shape
+        ? `AGENT diamond anchored on ${shape.id} — the agent's pencil-signature on its own work, beside the estimator's ink, never in its place. It touches no quantity.`
+        : "AGENT diamond at the sheet point — the agent's pencil-signature, beside the estimator's ink, never in its place. It touches no quantity.",
+    };
+  }
+
+  /** Lift an agent verdict mark. The estimator's seal is human ink and is
+   * refused — the same line editShape holds on reviewed shapes: an agent
+   * retracts only its own marks. */
+  deleteVerdict(id: string): Record<string, unknown> {
+    const a = this.approvals.find((x) => x.id === id);
+    if (!a) throw new UserError(`No verdict ${JSON.stringify(id)} — list_annotations returns the real ids in verdicts[].`);
+    if (a.actor !== "agent") {
+      throw new UserError(`${id} is the estimator's APPROVED seal — human ink, refused. An agent lifts only its own marks (actor "agent").`);
+    }
+    const { approvals, inverse } = applyApprovalCommand(this.approvals, { type: "delete", ids: [id] });
+    this.approvals = approvals;
+    this.record({ op: "approval", tool: "delete_verdict", inverse });
+    return { deleted: id, verdicts_remaining: this.approvals.length };
+  }
+
   /** The exact browser save payload (TakeoffCanvas.jsx autosave + the schema key
    * store.saveAnnotations stamps) — importable by the app. */
   exportPayload() {
@@ -1837,6 +2043,10 @@ export class Session {
       conditions: this.conditions,
       shapes: this.shapes,
       markups: this.markups,
+      // approvals ride the payload additively (#176) — present only when any
+      // exist, exactly the canvas buildPayload's convention, so a verdict-free
+      // export stays byte-identical to a pre-#176 one
+      ...(this.approvals.length ? { approvals: this.approvals } : {}),
       sheet_group: [],
       last_group: [],
       sheet_tabs: [],

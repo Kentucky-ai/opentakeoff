@@ -9,7 +9,10 @@ import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildServer } from "../server.ts";
-import { Session } from "../src/session.ts";
+import { Session, sanitizeApprovals } from "../src/session.ts";
+import { openPdf, positionedText } from "../src/pdf.ts";
+// the canvas's own tally — the same function the marked-set cover prints from
+import { approvalTally } from "../../web/src/lib/approvals.js";
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
 const KEY = "sample-plan.pdf";
@@ -57,15 +60,16 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // list_shapes returns ids and quantities, no geometry — same reasoning.
 // derive_base takes shape ids and lineal feet — same reasoning.
 // import_takeoff takes a file path — same reasoning.
-const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "link_annotation", "list_shapes", "derive_base", "import_takeoff"]);
+// delete_verdict takes a record id — same reasoning.
+const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict"]);
 
-test("tools/list: all thirty-two tools, each described with the coordinate contract", async () => {
+test("tools/list: all thirty-four tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
-    "annotate", "delete_shape", "derive_base", "detect_rooms", "edit_condition", "edit_materials", "edit_shape", "export_marked_pdf", "export_report",
+    "annotate", "delete_shape", "delete_verdict", "derive_base", "detect_rooms", "edit_condition", "edit_materials", "edit_shape", "export_marked_pdf", "export_report",
     "export_takeoff", "find_schedule", "find_text", "import_takeoff",
-    "link_annotation", "list_annotations", "list_shapes", "load_plan", "measure_line", "measure_polygon", "measure_surface", "one_click", "place_count",
+    "link_annotation", "list_annotations", "list_shapes", "load_plan", "mark_verdict", "measure_line", "measure_polygon", "measure_surface", "one_click", "place_count",
     "read_sheet_text", "resolve_tag", "set_scale", "sheet_context", "sheet_graph", "sheet_info", "symbol_sweep", "takeoff_summary", "undo_last", "view_sheet",
   ]);
   for (const t of tools) {
@@ -1202,4 +1206,223 @@ test("symbol_sweep refusals: empty marquee, marquee off the ink, and a loose rec
 
   // nothing above minted anything
   assert.equal((await call(client, "takeoff_summary")).data.conditions.length, 0);
+});
+
+// ── verdict marks (#176) — the agent half of the approval family ─────────────
+// The estimator's APPROVED ring is minted only by the canvas's Approve tool;
+// mark_verdict mints the AGENT diamond and is structurally incapable of
+// anything else. These tests pin the whole loop: mint (shape + sheet point),
+// anchor choice, inventory, exact undo, the ink refusal, the marked-set
+// tally, and the export/import round-trip through the canvas's own load gate.
+
+test("mark_verdict: shape and sheet-point mints, anchors, inventory, and the exactly-one-target refusals", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  await call(client, "set_scale", { sheet: KEY, use_detected: true });
+
+  // exactly one target — none, or both, is a refusal that writes nothing
+  const none = await call(client, "mark_verdict", {});
+  assert.equal(none.isError, true);
+  assert.match(none.data.error, /exactly one target/);
+  const square = await call(client, "measure_polygon", { sheet: KEY, verts: [[100, 100], [300, 100], [300, 300], [100, 300]], condition: "CPT-1" });
+  const both = await call(client, "mark_verdict", { shape_id: square.data.shape_id, sheet: KEY, at: [50, 50] });
+  assert.equal(both.isError, true);
+  assert.match(both.data.error, /exactly one target/);
+  const half = await call(client, "mark_verdict", { sheet: KEY });
+  assert.equal(half.isError, true);
+  assert.match(half.data.error, /BOTH sheet and at/);
+  assert.equal((await call(client, "list_annotations", {})).data.verdict_count, 0, "the refusals minted nothing");
+
+  // shape mode: a closed room anchors at its area centroid, condition resolved
+  const onShape = await call(client, "mark_verdict", { shape_id: square.data.shape_id, text: "traced against A-101 walls" });
+  assert.equal(onShape.isError, false);
+  assert.match(onShape.data.id, /^apr-/);
+  assert.equal(onShape.data.actor, "agent");
+  assert.equal(onShape.data.sheet, KEY);
+  assert.deepEqual(onShape.data.at, [200, 200], "a square's area centroid");
+  assert.equal(onShape.data.shape_id, square.data.shape_id);
+  assert.equal(onShape.data.condition, "CPT-1");
+  assert.equal(onShape.data.text, "traced against A-101 walls");
+  assert.ok(onShape.data.ts, "mint time stamped");
+
+  // one mark per shape — a second diamond stacked on the same anchor is
+  // invisible duplication, refused with the re-mark path named
+  const dup = await call(client, "mark_verdict", { shape_id: square.data.shape_id });
+  assert.equal(dup.isError, true);
+  assert.match(dup.data.error, /already carries an agent verdict/);
+
+  // an open run anchors at its on-path midpoint; a count marker at its point
+  const line = await call(client, "measure_line", { sheet: KEY, pts: [[0, 0], [360, 0], [360, 360]], condition: "RB-1" });
+  const onLine = await call(client, "mark_verdict", { shape_id: line.data.shape_id });
+  assert.deepEqual(onLine.data.at, [360, 0], "half the run's length lands at the elbow");
+  const ea = await call(client, "place_count", { sheet: KEY, points: [[500, 500]], condition: "TR-1" });
+  const onCount = await call(client, "mark_verdict", { shape_id: ea.data.shape_ids[0] });
+  assert.deepEqual(onCount.data.at, [500, 500], "a count marker is its own anchor");
+
+  // sheet-point mode: no shape, no condition — a mark about the paper
+  const onSheet = await call(client, "mark_verdict", { sheet: KEY, at: [1200, 800], text: "sheet checked for scope gaps" });
+  assert.equal(onSheet.isError, false);
+  assert.deepEqual(onSheet.data.at, [1200, 800]);
+  assert.equal(onSheet.data.shape_id, undefined);
+  assert.equal(onSheet.data.condition, undefined);
+
+  // a bad shape id is a user error naming the inventory
+  const badId = await call(client, "mark_verdict", { shape_id: "shp-nope" });
+  assert.equal(badId.isError, true);
+  assert.match(badId.data.error, /list_shapes/);
+
+  // the inventory: all four, actors stated, condition filter reaches through
+  // the target shape, sheet-point marks drop out of any condition filter
+  const all = await call(client, "list_annotations", {});
+  assert.equal(all.data.verdict_count, 4);
+  assert.ok(all.data.verdicts.every((v: any) => v.actor === "agent"));
+  const byCond = await call(client, "list_annotations", { condition: "CPT-1" });
+  assert.equal(byCond.data.verdict_count, 1);
+  assert.equal(byCond.data.verdicts[0].id, onShape.data.id);
+  assert.equal(byCond.data.verdicts[0].condition, "CPT-1");
+  const bySheet = await call(client, "list_annotations", { sheet: KEY });
+  assert.equal(bySheet.data.verdict_count, 4);
+
+  // a verdict touches no quantity — the takeoff is exactly what was measured
+  const summary = await call(client, "takeoff_summary");
+  assert.equal(summary.data.conditions.reduce((n: number, c: any) => n + c.shape_count, 0), 3);
+});
+
+test("mark_verdict is structurally agent-only: an injected actor is discarded, and the export says agent on every record", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+
+  // the tool has no actor input, so an injected one is stripped by the input
+  // schema — the reply AND the stored record still say agent
+  const forged = await call(client, "mark_verdict", { sheet: KEY, at: [600, 600], actor: "estimator" });
+  assert.equal(forged.isError, false);
+  assert.equal(forged.data.actor, "agent", "there is no path to the estimator's seal");
+
+  const payload = await call(client, "export_takeoff", {});
+  assert.equal(payload.data.approvals.length, 1);
+  assert.equal(payload.data.approvals[0].actor, "agent");
+
+  // and at the session boundary: markVerdict takes no actor at all, while the
+  // estimator's ink — arriving only by import — refuses the agent's delete
+  const session = new Session();
+  await session.loadPlan(PLAN);
+  session.approvals.push({ id: "apr-human", actor: "estimator", sheet_id: KEY, at: [0.5, 0.5] });
+  assert.throws(() => session.deleteVerdict("apr-human"), /human ink/);
+  assert.equal(session.approvals.length, 1, "the refusal lifted nothing");
+});
+
+test("delete_verdict + undo_last: a lift is journaled with its exact inverse, and a mint undoes clean", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+
+  const a = await call(client, "mark_verdict", { sheet: KEY, at: [100, 100], text: "first" });
+  const b = await call(client, "mark_verdict", { sheet: KEY, at: [200, 200], text: "second" });
+
+  // unknown id names the inventory
+  const nope = await call(client, "delete_verdict", { verdict_id: "apr-nope" });
+  assert.equal(nope.isError, true);
+  assert.match(nope.data.error, /verdicts\[\]/);
+
+  // lift the FIRST record, then undo — it comes back at its original index,
+  // id and ts included (the pure apply's restore contract)
+  const del = await call(client, "delete_verdict", { verdict_id: a.data.id });
+  assert.equal(del.isError, false);
+  assert.deepEqual(del.data, { deleted: a.data.id, verdicts_remaining: 1 });
+  const undo = await call(client, "undo_last", { n: 1 });
+  assert.equal(undo.data.steps[0].op, "approval");
+  assert.equal(undo.data.steps[0].tool, "delete_verdict");
+  const restored = await call(client, "list_annotations", {});
+  assert.deepEqual(restored.data.verdicts.map((v: any) => v.id), [a.data.id, b.data.id], "re-seated at its original index, order intact");
+
+  // undoing past the delete takes back the mints too, newest first
+  const back2 = await call(client, "undo_last", { n: 2 });
+  assert.deepEqual(back2.data.steps.map((s: any) => s.tool), ["mark_verdict", "mark_verdict"]);
+  assert.equal((await call(client, "list_annotations", {})).data.verdict_count, 0);
+});
+
+test("verdicts in the marked set: glyphs drawn, sheet marked, and the cover tallies the ink/pencil split", async () => {
+  const client = await pair();
+  const dir = await mkdtemp(path.join(tmpdir(), "ot-verdict-"));
+  const tmpPlan = path.join(dir, "sample-plan.pdf");
+  await copyFile(PLAN, tmpPlan);
+  await call(client, "load_plan", { path: tmpPlan });
+  await call(client, "set_scale", { sheet: KEY, use_detected: true });
+
+  const room = await call(client, "one_click", { sheet: KEY, x: 600, y: 1084, condition: "CPT-1" });
+  await call(client, "mark_verdict", { shape_id: room.data.shape_id });
+  await call(client, "mark_verdict", { sheet: KEY, at: [1200, 300] });
+
+  const pdf = await call(client, "export_marked_pdf", {});
+  assert.equal(pdf.isError, false);
+  assert.equal(pdf.data.approvals_drawn, 2);
+  assert.equal(pdf.data.pages, 2);
+
+  // the cover states the split in so many words — read it back off the page
+  const doc = await openPdf(pdf.data.path);
+  const cover = positionedText(await doc.page(1)).map((t) => t.str).join(" ");
+  assert.match(cover, /Approval stamps: 0 estimator-approved · 2 agent-marked/);
+  await doc.destroy();
+
+  // a verdict alone marks its sheet — a sheet-point mark before any takeoff
+  // still exports (the markedset seal-only rule, reachable from here)
+  const solo = await pair();
+  await call(solo, "load_plan", { path: tmpPlan });
+  await call(solo, "mark_verdict", { sheet: KEY, at: [500, 500] });
+  const soloPdf = await call(solo, "export_marked_pdf", { path: path.join(dir, "solo.pdf") });
+  assert.equal(soloPdf.isError, false);
+  assert.equal(soloPdf.data.sheets_marked, 1);
+  assert.equal(soloPdf.data.approvals_drawn, 1);
+  assert.equal((await readFile(soloPdf.data.path)).subarray(0, 5).toString(), "%PDF-");
+});
+
+test("verdicts round-trip: export_takeoff → import_takeoff (wholesale and merge), through the canvas's own load gate", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "ot-verdict-rt-"));
+  const exported = path.join(dir, "takeoff.json");
+
+  // session A: trace, mark, export
+  const a = await pair();
+  await call(a, "load_plan", { path: PLAN });
+  await call(a, "set_scale", { sheet: KEY, use_detected: true });
+  const room = await call(a, "one_click", { sheet: KEY, x: 600, y: 1084, condition: "CPT-1" });
+  const v1 = await call(a, "mark_verdict", { shape_id: room.data.shape_id, text: "checked" });
+  const v2 = await call(a, "mark_verdict", { sheet: KEY, at: [1000, 1000] });
+  const payload = await call(a, "export_takeoff", { path: exported });
+  assert.equal(payload.data.approvals.length, 2);
+
+  // the exact records the file carries pass the canvas hydrate's load gate
+  // (sanitizeApprovals IS what TakeoffCanvas runs on a.approvals) — so what
+  // this server mints is what the app renders as the AGENT diamond
+  assert.equal(sanitizeApprovals(payload.data.approvals).length, 2, "every record survives the canvas load gate");
+  assert.deepEqual(approvalTally(payload.data.approvals), { estimator: 0, agent: 2 }, "the cover tally the canvas would print");
+
+  // fresh session B: wholesale adoption
+  const b = await pair();
+  await call(b, "load_plan", { path: PLAN });
+  const r = await call(b, "import_takeoff", { path: exported });
+  assert.equal(r.data.replaced, true);
+  const listed = await call(b, "list_annotations", {});
+  assert.equal(listed.data.verdict_count, 2);
+  assert.deepEqual(listed.data.verdicts.map((v: any) => v.id).sort(), [v1.data.id, v2.data.id].sort());
+  const rt = listed.data.verdicts.find((v: any) => v.id === v1.data.id);
+  assert.equal(rt.text, "checked", "the note rides the round-trip");
+  assert.deepEqual(rt.at, v1.data.at, "the anchor survives normalized storage exactly");
+  // and imported marks are live records here: agent marks lift, undo re-seats
+  await call(b, "delete_verdict", { verdict_id: v2.data.id });
+  assert.equal((await call(b, "list_annotations", {})).data.verdict_count, 1);
+
+  // worked session C: merge keeps its own marks and adds the file's (new ids
+  // append, re-import would skip them — the markup rule)
+  const c = await pair();
+  await call(c, "load_plan", { path: PLAN });
+  await call(c, "set_scale", { sheet: KEY, use_detected: true });
+  await call(c, "measure_polygon", { sheet: KEY, verts: [[100, 100], [200, 100], [200, 200], [100, 200]], condition: "CPT-1" });
+  const own = await call(c, "mark_verdict", { sheet: KEY, at: [50, 50] });
+  const m = await call(c, "import_takeoff", { path: exported });
+  assert.equal(m.data.replaced, false);
+  const merged = await call(c, "list_annotations", {});
+  assert.equal(merged.data.verdict_count, 3, "own mark kept, both imported marks added");
+  assert.ok(merged.data.verdicts.some((v: any) => v.id === own.data.id));
+  const again = await call(c, "import_takeoff", { path: exported });
+  assert.equal(again.isError, false);
+  assert.equal((await call(c, "list_annotations", {})).data.verdict_count, 3, "re-import is idempotent for verdicts too");
 });

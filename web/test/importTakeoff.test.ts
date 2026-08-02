@@ -115,3 +115,50 @@ test("unknown files are reported so the banner can explain an invisible import",
   // and silence when every referenced file is loaded
   assert.deepEqual(mergeTakeoffImport(current, doc(), ["other.pdf", "va.pdf"]).note.unknown_files, []);
 });
+
+// ── approvals (#176): transport, not minting ─────────────────────────────────
+// An MCP session can now mint agent verdict marks, so the file half of the
+// handoff has to carry the family — under the markup rule (append new ids,
+// skip ones already here) and behind the same load gate the hydrate runs.
+const agentMark = (id: string, over: Record<string, unknown> = {}) =>
+  ({ id, actor: "agent", ts: "2026-08-02T00:00:00.000Z", sheet_id: "va.pdf", at: [0.5, 0.5], ...over });
+
+test("merge carries imported approvals: new ids append, same ids skip, actors ride untouched", () => {
+  const current = {
+    shapes: [{ id: "s0", sheet_id: "va.pdf", condition_id: "x" }], markups: [], conditions: [], sheets: [],
+    approvals: [agentMark("apr-mine")],
+  };
+  const imported = doc({ approvals: [agentMark("apr-mine"), agentMark("apr-new", { shape_id: "s1", text: "checked" }), { id: "apr-seal", actor: "estimator", sheet_id: "va.pdf", at: [0.2, 0.2] }] });
+  const { payload } = mergeTakeoffImport(current, imported);
+  assert.deepEqual(payload.approvals.map((a: { id: string }) => a.id), ["apr-mine", "apr-new", "apr-seal"]);
+  // an estimator seal arriving by file STAYS an estimator seal — the actor
+  // field is the authority; import is transport, never a mint
+  assert.equal(payload.approvals.find((a: { id: string }) => a.id === "apr-seal").actor, "estimator");
+  assert.equal(payload.approvals.find((a: { id: string }) => a.id === "apr-new").text, "checked");
+  // re-import is idempotent for the family too
+  const again = mergeTakeoffImport(payload, imported);
+  assert.equal(again.payload.approvals.length, 3);
+});
+
+test("merge gates imported approvals like the hydrate does: corrupt records drop, valid ones land", () => {
+  const current = { shapes: [{ id: "s0", sheet_id: "va.pdf", condition_id: "x" }], markups: [], conditions: [], sheets: [] };
+  const imported = doc({ approvals: [
+    agentMark("apr-ok"),
+    { id: "apr-bad-actor", actor: "robot", sheet_id: "va.pdf", at: [0.1, 0.1] },   // unknown actor
+    { id: "", actor: "agent", sheet_id: "va.pdf", at: [0.1, 0.1] },                 // no id
+    { id: "apr-bad-at", actor: "agent", sheet_id: "va.pdf", at: [0.1] },            // malformed anchor
+  ] });
+  const { payload } = mergeTakeoffImport(current, imported);
+  assert.deepEqual(payload.approvals.map((a: { id: string }) => a.id), ["apr-ok"]);
+  // …and a file with none leaves the payload without the key (byte-stable)
+  assert.equal(mergeTakeoffImport(current, doc()).payload.approvals, undefined);
+});
+
+test("a sealed-but-untraced project MERGES instead of being replaced — a seal is operator ink", () => {
+  const current = { project_name: "My Bid", shapes: [], markups: [], conditions: [], sheets: [], approvals: [{ id: "apr-seal", actor: "estimator", sheet_id: "va.pdf", at: [0.3, 0.3] }] };
+  const { payload, note } = mergeTakeoffImport(current, doc());
+  assert.equal(note.replaced, false, "the seal blocked the clean-replace path");
+  assert.equal(payload.project_name, "My Bid");
+  assert.equal(payload.approvals.length, 1, "the operator's seal survives");
+  assert.equal(payload.shapes.length, 1, "the imported work still lands");
+});

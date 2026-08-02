@@ -1,4 +1,4 @@
-// The thirty-two tools — thin zod-validated handlers over the Session. Replies are
+// The thirty-four tools — thin zod-validated handlers over the Session. Replies are
 // compact JSON (format.ts); view_sheet alone replies with an image content
 // item plus a JSON meta text item. Failures are isError results, never thrown
 // protocol errors.
@@ -15,6 +15,7 @@ import {
   findTextOutput, editMaterialsOutput, editConditionOutput, exportReportOutput,
   exportMarkedPdfOutput, listShapesOutput, deriveBaseOutput, importTakeoffOutput,
   annotateOutput, listAnnotationsOutput, linkAnnotationOutput,
+  markVerdictOutput, deleteVerdictOutput,
   sheetGraphOutput, resolveTagOutput, findScheduleOutput,
 } from "./outputs.ts";
 import { exportMarkedPdf } from "./marked.ts";
@@ -235,7 +236,7 @@ export function registerTools(server: McpServer, session: Session): void {
   }));
 
   server.registerTool("import_takeoff", {
-    description: `The way BACK IN (#151): load an "opentakeoff.takeoff_canvas.v1" file — a prior export_takeoff, or the app's own save — into this session, through the SAME tested merge rules as the app's Sheet-menu import: finish-tag identity joins imported conditions onto this session's own (their knobs win), new ids append, duplicate ids skip (re-import is idempotent), and THIS session's calibration wins per sheet. An empty session adopts the file wholesale. Resume yesterday's work, extend a takeoff a human already reviewed (their ink stays ink — reviewed shapes arrive untouchable by agent verbs), or audit someone else's export with list_shapes/takeoff_summary. Requires a loaded plan; shapes referencing OTHER files ride along and count in totals but can't be viewed against this document — the reply's unknown_files names them. undo_last removes the imported SHAPES as one step; adopted conditions, scales, and annotations stay.`,
+    description: `The way BACK IN (#151): load an "opentakeoff.takeoff_canvas.v1" file — a prior export_takeoff, or the app's own save — into this session, through the SAME tested merge rules as the app's Sheet-menu import: finish-tag identity joins imported conditions onto this session's own (their knobs win), new ids append, duplicate ids skip (re-import is idempotent), and THIS session's calibration wins per sheet. An empty session adopts the file wholesale. Resume yesterday's work, extend a takeoff a human already reviewed (their ink stays ink — reviewed shapes arrive untouchable by agent verbs), or audit someone else's export with list_shapes/takeoff_summary. Requires a loaded plan; shapes referencing OTHER files ride along and count in totals but can't be viewed against this document — the reply's unknown_files names them. Approval marks ride the file too — transport, not minting: an estimator seal arriving by import stays estimator ink, listable but untouchable here. undo_last removes the imported SHAPES as one step; adopted conditions, scales, annotations, and approval marks stay.`,
     inputSchema: {
       path: z.string().describe("Path to a takeoff_canvas.v1 JSON file on disk"),
     },
@@ -243,7 +244,7 @@ export function registerTools(server: McpServer, session: Session): void {
   }, run("import_takeoff", (a) => importTakeoff(session, a.path)));
 
   server.registerTool("export_marked_pdf", {
-    description: `The MARKED-UP PLANSET — the deliverable of every takeoff. Writes a distribution-ready PDF to disk: a legend cover (per-condition totals, swatches, a by-sheet breakdown) followed by every sheet that carries takeoff shapes or annotations, vector-copied from the source plan with the work burned in as drawn — condition colors and hatches, a quantity chip on every shape, annotation clouds/callouts/highlights. Built by the same module as the canvas's MARKED SET button, so agent output and app output are one implementation. A construction takeoff is no good without markup: finish EVERY takeoff by writing this file and giving the user its path (export_report carries the numbers for pricing; this carries the evidence). When the shapes were machine-traced and unreviewed, the document says so on its last page — the review path is importing the export_takeoff payload into the app, where agent shapes arrive as pencil proposals. Default path: next to the loaded plan as "<plan> - marked set.pdf". Needs no native canvas — pure vector copy, so it works even where view_sheet cannot render.`,
+    description: `The MARKED-UP PLANSET — the deliverable of every takeoff. Writes a distribution-ready PDF to disk: a legend cover (per-condition totals, swatches, a by-sheet breakdown) followed by every sheet that carries takeoff shapes or annotations, vector-copied from the source plan with the work burned in as drawn — condition colors and hatches, a quantity chip on every shape, annotation clouds/callouts/highlights, and approval marks (the estimator's APPROVED rings, the agent's AGENT diamonds — the cover tallies the split). Built by the same module as the canvas's MARKED SET button, so agent output and app output are one implementation. A construction takeoff is no good without markup: finish EVERY takeoff by writing this file and giving the user its path (export_report carries the numbers for pricing; this carries the evidence). When the shapes were machine-traced and unreviewed, the document says so on its last page — the review path is importing the export_takeoff payload into the app, where agent shapes arrive as pencil proposals. Default path: next to the loaded plan as "<plan> - marked set.pdf". Needs no native canvas — pure vector copy, so it works even where view_sheet cannot render.`,
     inputSchema: {
       path: z.string().optional().describe('Where to write the PDF (default: "<plan dir>/<plan> - marked set.pdf")'),
       project_name: z.string().optional().describe("Cover-page project name (default: the plan file's name)"),
@@ -431,7 +432,7 @@ export function registerTools(server: McpServer, session: Session): void {
   // (arrow/bubble/dimension ride the same handler — the Session validates per type)
 
   server.registerTool("list_annotations", {
-    description: `Every annotation on the takeoff, with condition_id RESOLVED to its finish tag so you can act on the reply without joining against conditions[]. Filter by sheet, by condition, or both. Coordinates come back in image px (the same frame you passed in), not the normalized form they're stored as. \`unattached\` counts the notes carrying no condition — the candidates for link_annotation. ${COORDS}`,
+    description: `Every annotation on the takeoff, with condition_id RESOLVED to its finish tag so you can act on the reply without joining against conditions[]. Filter by sheet, by condition, or both. Coordinates come back in image px (the same frame you passed in), not the normalized form they're stored as. \`unattached\` counts the notes carrying no condition — the candidates for link_annotation. \`verdicts\` is the approval family's inventory (mark_verdict/delete_verdict): every mark with its actor stated — the estimator's APPROVED ring or the agent's AGENT diamond — under the same filters, a condition filter reaching a verdict through its target shape. ${COORDS}`,
     inputSchema: {
       sheet: z.string().optional().describe("Only annotations on this sheet"),
       condition: z.string().optional().describe("Only annotations attached to this finish tag"),
@@ -447,4 +448,35 @@ export function registerTools(server: McpServer, session: Session): void {
     },
     outputSchema: linkAnnotationOutput,
   }, run("link_annotation", (a) => session.linkAnnotation(a.annotation_id, a.condition)));
+
+  // ── verdict marks (#176) — the agent half of the approval family ───────────
+  // The canvas's Approve tool mints the estimator's APPROVED ring: ink, human-
+  // only, deliberately unreachable from here. These two verbs are the other
+  // actor — the AGENT diamond — and they take no actor input at all, so the
+  // pencil/ink line is structural, not a convention.
+  server.registerTool("mark_verdict", {
+    description: `Mark the agent's VERDICT on work — the pencil half of the approval family, and the only half an agent can mint. Two actors exist on the record: the estimator's APPROVED ring is ink, minted solely by a human's click at the canvas's Approve tool; this tool mints the AGENT diamond and structurally nothing else — it takes no actor input to misuse. Target the work either way: shape_id anchors the mark ON a committed shape (a room at its area centroid, a run at its on-path midpoint, a count marker at its point) and records WHAT was marked — the shape_id stays on the record as provenance, and the glyph keeps its own anchor even if the shape is later deleted; or sheet + at drops the mark at a sheet point (image px). Exactly one target. Optional text rides the record through every export; the glyph itself always reads AGENT. A verdict touches no quantity and gates nothing: it is the agent's signed claim that it checked this work — pencil beside the estimator's ink, never in its place. The mark renders as the graphite AGENT diamond on the canvas and in the marked set, the marked-set cover tallies the split ("Approval stamps: N estimator-approved · M agent-marked"), and the record rides the annotations payload through export_takeoff / import_takeoff and the app's own saves. One mark per shape (re-mark = delete_verdict, then mark again); list_annotations returns the inventory in verdicts[]; undo_last steps over a mark exactly like any other mutation. ${COORDS}`,
+    inputSchema: {
+      shape_id: z.string().optional().describe("Mark a committed shape (list_shapes has the ids) — anchored on the shape, recorded as provenance. Exactly one target: this OR sheet + at"),
+      sheet: z.string().optional().describe("Sheet-point mode: the sheet, together with at"),
+      at: pointSchema.optional().describe("Sheet-point mode: where the AGENT diamond renders (image px)"),
+      text: z.string().optional().describe("Optional short note riding the record and every export — the glyph always reads AGENT"),
+    },
+    outputSchema: markVerdictOutput,
+  }, run("mark_verdict", (a) => {
+    // the set_scale convention: one target, stated exactly, refused otherwise
+    const byShape = a.shape_id !== undefined;
+    const byPoint = a.sheet !== undefined || a.at !== undefined;
+    if (byShape === byPoint) throw new UserError("Provide exactly one target: shape_id (mark a committed shape), or sheet + at (mark a sheet point).");
+    if (byPoint && (a.sheet === undefined || a.at === undefined)) throw new UserError("A sheet-point verdict needs BOTH sheet and at: [x, y] (image px).");
+    return session.markVerdict({ shape_id: a.shape_id, sheet: a.sheet, at: a.at, text: a.text });
+  }));
+
+  server.registerTool("delete_verdict", {
+    description: `Lift an agent verdict mark by id (mark_verdict's reply, or list_annotations verdicts[]). Agent marks only: the estimator's APPROVED seal is human ink and is refused — the same line edit_shape holds on reviewed shapes. Journaled like every mutation, so undo_last re-seats a lifted mark exactly where it was.`,
+    inputSchema: {
+      verdict_id: z.string().describe("Record id from mark_verdict or list_annotations verdicts[]"),
+    },
+    outputSchema: deleteVerdictOutput,
+  }, run("delete_verdict", ({ verdict_id }) => session.deleteVerdict(verdict_id)));
 }
