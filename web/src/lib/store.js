@@ -61,7 +61,10 @@ export function emptyAnnotations() {
   // seeded by an estimator's edit, re-runnable across the project. Local to
   // the project file by the RFC's scope boundary (never on the MCP export or
   // contribution wire).
-  return { schema: ANN_SCHEMA, conditions: [], shapes: [], markups: [], sheets: [], sheet_group: [], last_group: [], sheet_tabs: [], rules: [] };
+  // approvals: approval seals (lib/approvals.js) — estimator APPROVED ink +
+  // agent AGENT marks. Same scope boundary as rules: project data, never on
+  // the MCP export or contribution wire (the estimator tool is human-only).
+  return { schema: ANN_SCHEMA, conditions: [], shapes: [], markups: [], sheets: [], sheet_group: [], last_group: [], sheet_tabs: [], rules: [], approvals: [] };
 }
 
 function openDB() {
