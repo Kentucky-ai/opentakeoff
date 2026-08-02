@@ -87,6 +87,20 @@ export function ftIn(feet: number): string {
 export const fmtCheckLen = (feet: number, units: UnitSystem): string =>
   units === "metric" ? `${(feet * M_PER_FT).toFixed(2)} m` : ftIn(feet);
 
+/** Dimension-annotation label: ASCII feet-and-inches (12.51 → `12'-6"`) so it
+ *  survives WinAnsi PDF embedding — ftIn's ′/″ sit outside cp1252 and would
+ *  print as "?" in the marked set. Same rounding rules as ftIn (nearest inch,
+ *  12″ rolls up). Metric callers get meters at 2dp. */
+export function dimLabel(feet: number, units: UnitSystem = "imperial"): string {
+  if (!Number.isFinite(feet)) return "";
+  if (units === "metric") return `${(feet * M_PER_FT).toFixed(2)} m`;
+  const sign = feet < 0 ? "-" : "";
+  let ft = Math.floor(Math.abs(feet) + 1e-9);
+  let inch = Math.round((Math.abs(feet) - ft) * 12);
+  if (inch === 12) { ft += 1; inch = 0; }
+  return `${sign}${ft}'-${inch}"`;
+}
+
 /** Parse a typed dimension into internal feet. Imperial accepts decimal feet
  *  ("12.5"), feet-inches forms ("12'6", "12' 6\"", "12-6"), and inches-only
  *  ("6\"", "6in" — the natural way to type a sub-foot check dimension); metric

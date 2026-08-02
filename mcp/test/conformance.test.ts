@@ -24,6 +24,7 @@ import {
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
   findTextOutput, editMaterialsOutput, editConditionOutput, undoLastOutput,
   exportReportOutput, sheetGraphOutput, resolveTagOutput, findScheduleOutput,
+  symbolSweepOutput, annotateOutput,
 } from "../src/outputs.ts";
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
@@ -51,6 +52,8 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   sheet_graph: z.object(sheetGraphOutput),
   resolve_tag: z.object(resolveTagOutput),
   find_schedule: z.object(findScheduleOutput),
+  symbol_sweep: z.object(symbolSweepOutput),
+  annotate: z.object(annotateOutput),
 };
 
 async function pair() {
@@ -350,6 +353,10 @@ test("schema-invalid arguments: -32602 validation error naming the tool; the ses
   await callViolation(client, "view_sheet", { sheet: KEY, region: { x0: 0, y0: 0, x1: 10 } }); // partial region
   await callViolation(client, "find_text", { sheet: KEY });                                // missing q
   await callViolation(client, "find_text", { sheet: KEY, q: "101", limit: 0 });            // limit below min 1
+  await callViolation(client, "symbol_sweep", { sheet: KEY });                             // missing seed_rect
+  await callViolation(client, "symbol_sweep", { sheet: KEY, seed_rect: [[0, 0]] });        // one corner is not a rect
+  await callViolation(client, "symbol_sweep", { sheet: KEY, seed_rect: [[0, 0], [50, 50]], tolerance_px: 0 }); // tolerance must be positive
+  await callViolation(client, "annotate", { sheet: KEY, type: "measure" });                // bad type enum
   await callViolation(client, "edit_materials", { condition: "CPT-1", add: [{ per: 250 }] }); // add row missing name
   await callViolation(client, "edit_condition", { condition: "CPT-1", waste_pct: -5 });    // negative waste
   await callViolation(client, "edit_condition", { condition: "CPT-1", multiplier: 0 });    // 0 silently means 1 on the canvas — rejected
@@ -518,6 +525,38 @@ test("sheet graph (#87): index, resolve with citations, refusal with reasons, fi
   assert.match(found.matches[0].title, /ROOM FINISH SCHEDULE/);
   assert.ok(found.matches[0].region.x1 > found.matches[0].region.x0, "the region is viewable");
   assert.match(await callErr(client, "find_schedule", { kind: "door" }), /No "door" schedule found .* Found: /);
+});
+
+// 0.9.20 — symbol_sweep's output contract, both modes, schema round-tripped
+// unstripped (the assign-mode deepEqual discipline: zod strips unknown keys,
+// so equality proves the schema states EVERY returned field).
+const SYMPLAN = fileURLToPath(new URL("./fixtures/symbol-plan.pdf", import.meta.url));
+
+test("symbol_sweep: reply validates AND round-trips the schema unstripped, in read and commit modes", async () => {
+  const client = await pair();
+  await callOk(client, "load_plan", { path: SYMPLAN });
+  const read = await callOk(client, "symbol_sweep", { sheet: "symbol-plan.pdf", seed_rect: [[196, 980], [272, 1028]] });
+  assert.deepEqual(z.object(symbolSweepOutput).parse(read), read, "schema states every returned field — nothing stripped");
+  assert.equal(read.found, read.matches.length);
+  assert.ok(read.withheld.every((w: any) => typeof w.reason === "string" && w.reason.length > 0));
+  assert.equal(read.committed, undefined, "read mode commits nothing");
+
+  const commit = await callOk(client, "symbol_sweep", { sheet: "symbol-plan.pdf", seed_rect: [[196, 980], [272, 1028]], commit: true, condition: "FD-1" });
+  assert.deepEqual(z.object(symbolSweepOutput).parse(commit), commit);
+  assert.equal(commit.committed, commit.found);
+  assert.equal(commit.shape_ids.length, commit.found);
+  assert.equal(commit.condition, "FD-1");
+});
+
+// dimension annotation (0.9.20): the annotate reply's schema covers the new
+// length_lf field, both on annotate and on the list round-trip.
+test("annotate dimension: reply validates against the schema, length rides the round-trip", async () => {
+  const client = await pair();
+  await callOk(client, "load_plan", { path: PLAN });
+  await callOk(client, "set_scale", { sheet: KEY, use_detected: true });
+  const dim = await callOk(client, "annotate", { sheet: KEY, type: "dimension", from: [100, 100], to: [460, 100] });
+  assert.deepEqual(z.object(annotateOutput).parse(dim), dim, "schema states every returned field");
+  assert.equal(dim.length_lf, 10);
 });
 
 // 0.9.18 — assign-from-schedule's output contract. The deepEqual is the

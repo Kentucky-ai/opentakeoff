@@ -112,7 +112,7 @@ import { applyShapeCommand, geomSnapshot, vertsEqual, recordCommand } from "../l
 import { applyApprovalCommand, sanitizeApprovals, approvalInk, APPROVAL_R } from "../lib/approvals.js";
 import { findCutoutParent, subtractCutout, recomposeCutouts } from "../lib/cutout.js";
 import { computeShapeMetrics, needsMetrics } from "../lib/shapeMetrics.js";
-import { fmtCheckLen, parseLenInput, checkVerdict, M_PER_FT, areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, heightVal, heightUnit, heightInputToFeet, heightStep, dimInputStr } from "../lib/units";
+import { fmtCheckLen, parseLenInput, checkVerdict, M_PER_FT, areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, heightVal, heightUnit, heightInputToFeet, heightStep, dimInputStr, dimLabel } from "../lib/units";
 import * as panelGeom from "../lib/panelGeometry.js";
 
 // Carpet roll width — a run reaching this needs a seam. The live cursor readout
@@ -2183,8 +2183,8 @@ export default function TakeoffCanvas() {
       const y0 = Math.min(b0, b1) * H, y1 = Math.max(b0, b1) * H;
       return X >= x0 - thr && X <= x1 + thr && Y >= y0 - thr && Y <= y1 + thr;
     }
-    if (m.type === "arrow" && m.from && m.to) {
-      // a stamp-placed leader — hit its shaft (endpoint tolerance folds into the band)
+    if ((m.type === "arrow" || m.type === "dimension") && m.from && m.to) {
+      // a leader / dimension line — hit its shaft (endpoint tolerance folds into the band)
       const fx = m.from[0] * W + ox, fy = m.from[1] * H, tx = m.to[0] * W + ox, ty = m.to[1] * H;
       return distToSeg(X, Y, fx, fy, tx, ty) < thr * 1.5;
     }
@@ -2277,7 +2277,7 @@ export default function TakeoffCanvas() {
         const orig = (mHit.type === "highlight" && Array.isArray(mHit.pts)) ? { pts: mHit.pts.map((v) => [...v]) }
           : (mHit.type === "cloud" || mHit.type === "highlight") ? { rect: mHit.rect }
           : mHit.type === "callout" ? { at: mHit.at, target: mHit.target }
-            : mHit.type === "arrow" ? { from: mHit.from, to: mHit.to }
+            : (mHit.type === "arrow" || mHit.type === "dimension") ? { from: mHit.from, to: mHit.to }
               : { at: mHit.at };   // text + bubble
         // raw start (markups don't snap/angle-lock; matches the raw tracking point in
         // onPointerMove so the delta can't be contaminated by a stale snap/angle ref)
@@ -3544,7 +3544,7 @@ export default function TakeoffCanvas() {
     let nx, ny;
     if (m.type === "highlight" && Array.isArray(m.pts) && m.pts.length) { const mid = m.pts[Math.floor((m.pts.length - 1) / 2)]; nx = mid[0]; ny = mid[1]; }
     else if ((m.type === "cloud" || m.type === "highlight") && m.rect) { nx = (m.rect[0][0] + m.rect[1][0]) / 2; ny = (m.rect[0][1] + m.rect[1][1]) / 2; }
-    else if (m.type === "arrow" && m.from && m.to) { nx = (m.from[0] + m.to[0]) / 2; ny = (m.from[1] + m.to[1]) / 2; }
+    else if ((m.type === "arrow" || m.type === "dimension") && m.from && m.to) { nx = (m.from[0] + m.to[0]) / 2; ny = (m.from[1] + m.to[1]) / 2; }
     else if (m.at) { nx = m.at[0]; ny = m.at[1]; }   // text + bubble + callout
     else return null;
     return [nx * sp.img.w + sp.xOffset, ny * sp.img.h];
@@ -3821,7 +3821,7 @@ export default function TakeoffCanvas() {
     if (m.type === "highlight" && Array.isArray(m.pts) && m.pts.length) anchor = m.pts[Math.floor((m.pts.length - 1) / 2)];
     else if ((m.type === "cloud" || m.type === "highlight") && m.rect) anchor = [(m.rect[0][0] + m.rect[1][0]) / 2, (m.rect[0][1] + m.rect[1][1]) / 2];
     else if (m.type === "callout") anchor = m.at || m.target;
-    else if (m.type === "arrow" && m.from && m.to) anchor = [(m.from[0] + m.to[0]) / 2, (m.from[1] + m.to[1]) / 2];
+    else if ((m.type === "arrow" || m.type === "dimension") && m.from && m.to) anchor = [(m.from[0] + m.to[0]) / 2, (m.from[1] + m.to[1]) / 2];
     else anchor = m.at;   // text + bubble
     if (!anchor) return false;
     const el = containerRef.current;
@@ -6247,6 +6247,30 @@ export default function TakeoffCanvas() {
                             {/* filled arrowhead at the `to` end */}
                             <path d={arrowheadPath(fx, fy, tx, ty, 11 / z)} fill={mk} />
                             {m.text && <text x={midx} y={midy - 6 / z} fill={mk} fontSize={12 / z} fontWeight="700" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{m.text}</text>}
+                            {badge(hx0, hy0 - pad - 9 / z)}
+                          </g>
+                        );
+                      }
+                      if (m.type === "dimension" && m.from && m.to) {
+                        // a dimension line: perpendicular ticks at both ends and the
+                        // measured length (m.len_ft, snapshotted at annotate time from
+                        // the sheet scale) centered beside the line — a note ABOUT a
+                        // distance, never a takeoff quantity
+                        const [fx, fy] = [m.from[0] * p.img.w, m.from[1] * p.img.h];
+                        const [tx, ty] = [m.to[0] * p.img.w, m.to[1] * p.img.h];
+                        const dl = Math.hypot(tx - fx, ty - fy) || 1;
+                        const dnx = -(ty - fy) / dl, dny = (tx - fx) / dl;   // unit normal
+                        const tick = 7 / z;
+                        const dimText = [Number(m.len_ft) > 0 ? dimLabel(m.len_ft) : "", m.text].filter(Boolean).join(" · ");
+                        const hx0 = Math.min(fx, tx), hy0 = Math.min(fy, ty), hx1 = Math.max(fx, tx), hy1 = Math.max(fy, ty);
+                        const pad = (6 * w) / z;
+                        return (
+                          <g key={m.id}>
+                            {halo(hx0 - pad, hy0 - pad, hx1 + pad, hy1 + pad)}
+                            <line x1={fx} y1={fy} x2={tx} y2={ty} stroke={mk} strokeWidth={(2 * w) / z} strokeDasharray={dash} />
+                            <line x1={fx - dnx * tick} y1={fy - dny * tick} x2={fx + dnx * tick} y2={fy + dny * tick} stroke={mk} strokeWidth={(2 * w) / z} />
+                            <line x1={tx - dnx * tick} y1={ty - dny * tick} x2={tx + dnx * tick} y2={ty + dny * tick} stroke={mk} strokeWidth={(2 * w) / z} />
+                            {dimText && <text x={(fx + tx) / 2 + dnx * (11 / z)} y={(fy + ty) / 2 + dny * (11 / z)} fill={mk} fontSize={12 / z} fontWeight="700" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{dimText}</text>}
                             {badge(hx0, hy0 - pad - 9 / z)}
                           </g>
                         );

@@ -3,7 +3,7 @@
 // with the metric display port.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, M_PER_FT, M2_PER_SF, ftIn, fmtCheckLen, parseLenInput, checkVerdict, heightVal, heightUnit, heightInputToFeet, heightStep, thickVal, thickUnit, thickInputToInches, thickStep, dimInputStr } from "../src/lib/units.js";
+import { areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, M_PER_FT, M2_PER_SF, ftIn, dimLabel, fmtCheckLen, parseLenInput, checkVerdict, heightVal, heightUnit, heightInputToFeet, heightStep, thickVal, thickUnit, thickInputToInches, thickStep, dimInputStr } from "../src/lib/units.js";
 import { STANDARD_SCALES, RENDER_SCALE } from "../src/lib/sheets.js";
 import { totalsToCsv } from "../src/lib/totals.js";
 
@@ -63,6 +63,17 @@ test("ftIn renders drawing-style feet-and-inches", () => {
   assert.equal(ftIn(0), "0′ 0″");
   assert.equal(ftIn(-3.25), "-3′ 3″");
   assert.equal(ftIn(NaN), "");
+});
+
+test("dimLabel is the WinAnsi-safe sibling of ftIn: ASCII feet-inches, meters in metric", () => {
+  assert.equal(dimLabel(12.5), "12'-6\"");
+  assert.equal(dimLabel(11.999), "12'-0\"");   // 12″ rolls up, same rule as ftIn
+  assert.equal(dimLabel(0.49), "0'-6\"");
+  assert.equal(dimLabel(-3.25), "-3'-3\"");
+  assert.equal(dimLabel(NaN), "");
+  assert.equal(dimLabel(10, "metric"), "3.05 m");
+  // every character survives the marked set's WinAnsi funnel (' and " are ASCII)
+  for (const ch of dimLabel(12.5)) assert.ok(ch.codePointAt(0)! < 0x7f);
 });
 
 test("fmtCheckLen: ft-in imperial, meters metric", () => {

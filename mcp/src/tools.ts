@@ -1,4 +1,4 @@
-// The thirty-one tools — thin zod-validated handlers over the Session. Replies are
+// The thirty-two tools — thin zod-validated handlers over the Session. Replies are
 // compact JSON (format.ts); view_sheet alone replies with an image content
 // item plus a JSON meta text item. Failures are isError results, never thrown
 // protocol errors.
@@ -9,7 +9,7 @@ import { UNDO_CAP, CONTEXT_MIN_LEN_PX, CONTEXT_MAX_SEGMENTS, CONTEXT_MAX_SEGMENT
 import { traceToolCall } from "./trace.ts";
 import {
   loadPlanOutput, sheetInfoOutput, setScaleOutput, oneClickOutput, detectRoomsOutput,
-  measurePolygonOutput, measureLineOutput, measureSurfaceOutput, placeCountOutput, takeoffSummaryOutput,
+  measurePolygonOutput, measureLineOutput, measureSurfaceOutput, placeCountOutput, symbolSweepOutput, takeoffSummaryOutput,
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
   editShapeOutput, undoLastOutput, sheetContextOutput,
   findTextOutput, editMaterialsOutput, editConditionOutput, exportReportOutput,
@@ -163,6 +163,28 @@ export function registerTools(server: McpServer, session: Session): void {
     },
     outputSchema: placeCountOutput,
   }, run("place_count", (a) => session.placeCount(a.sheet, a.points, { condition: a.condition })));
+
+  server.registerTool("symbol_sweep", {
+    description: `Find EVERY instance of a repeated plan symbol from ONE example — drains, thresholds, fixtures, transition markers: marquee a tight seed_rect around a single instance and the sheet's vector linework is searched for every other placement of that same segment cluster. Deterministic geometry, not vision: each placement scores as the length-weighted fraction of the seed's segments reproduced within tolerance_px, under translation plus 0/90/180/270 rotation and mirroring (symbols rotate on plans — both ON by default; turn them off to pin orientation). Score ≥ 0.92 is a match; the 0.75–0.92 band comes back in \`withheld\` with a reason — a near-match is a question you answer by LOOKING (view_sheet at its \`at\`), never a silent commit and never a silent drop. The seed's own location is reported in \`seed\` and never double-committed. Work is capped and the cap is disclosed: a reply with candidates.dropped > 0 says exactly that some placements were never scored — tighten the seed rect around more distinctive geometry rather than trusting a truncated count. Marquee discipline: the rect must hug ONE instance — only segments FULLY inside it define the symbol, so a loose rect that swallows wall linework fingerprints the wall, not the symbol. commit: true (requires condition) commits every match center as an EA count marker through the same path as place_count — the whole sweep is ONE undo step, each marker carries origin.method "symbol_sweep" with its score and transform, and withheld placements are NEVER committed. No scale needed: EA is scale-free. After any batch commit, LOOK at what landed — view_sheet {overlay: true} over the swept area — and audit the markers against the drawing before trusting the EA total. ${COORDS}`,
+    inputSchema: {
+      sheet: z.string(),
+      seed_rect: z.tuple([pointSchema, pointSchema])
+        .describe("Marquee around ONE example instance, [[x0,y0],[x1,y1]] in image px — tight: segments fully inside define the symbol"),
+      condition: z.string().optional().describe("Finish tag to commit match markers under (minted on first use), e.g. 'FD-1'. Required when commit is true"),
+      commit: z.boolean().default(false).describe("Commit every MATCH center as one EA count marker (withheld placements never commit)"),
+      rotations: z.boolean().default(true).describe("Also match 90/180/270-rotated placements"),
+      mirror: z.boolean().default(true).describe("Also match mirrored placements"),
+      tolerance_px: z.number().positive().max(20).default(2).describe("Endpoint match tolerance in image px (default 2 — CAD jitter, not drift)"),
+    },
+    outputSchema: symbolSweepOutput,
+  }, run("symbol_sweep", (a) => session.symbolSweep(a.sheet, {
+    seedRect: a.seed_rect,
+    condition: a.condition,
+    commit: a.commit,
+    rotations: a.rotations,
+    mirror: a.mirror,
+    tolerancePx: a.tolerance_px,
+  })));
 
   server.registerTool("derive_base", {
     description: `Mint the wall base from committed rooms (#148) — the estimator's most mechanical derivation: base LF = room perimeter − stated door openings. For every floor_area shape of source_condition, commits ONE linear shape under condition (e.g. 'RB-1') tracing that room's boundary, quantified NET of the openings you state per room. The openings are YOUR claim to make — look at the doors with view_sheet, state {shape_id, lf} per room (repeat a shape_id to stack openings); the tool never guesses, and your claim is recorded on origin.derived (from_shape_id, gross_lf, openings_lf). All-or-nothing: an unknown shape_id, a negative lf, or openings meeting a room's whole perimeter refuses the call before anything commits. The whole derivation is ONE undo step. Deriving onto the source condition is refused — base lands on its own tag.`,
@@ -391,22 +413,22 @@ export function registerTools(server: McpServer, session: Session): void {
   // A human could attach a note to a scope; an agent could not even SEE one
   // (session.exportPayload hardcoded markups: []). These three close that.
   server.registerTool("annotate", {
-    description: `Place an annotation on a sheet — a note ABOUT the work, never a measurement of it. Types: cloud and highlight take rect:[[x0,y0],[x1,y1]] (a revision cloud around an area, a highlight box over it), text takes at:[x,y], callout takes at:[x,y] plus target:[x,y] (the point its leader aims at), arrow takes from:[x,y] and to:[x,y] (tail and head — plank/seam direction, the markup flooring drawings use most; #150), bubble takes at:[x,y] plus optional r (a keynote/detail circle carrying centered text). \n\nPass condition to attach the note to a finish tag, which is what makes it part of that SCOPE rather than a floating remark: it then wears the condition's colour on the canvas and in the marked-set PDF, and travels with it into the report. The tag is minted on first touch like one_click/measure_polygon, so you can annotate CPT-1 before anything is traced for it. Omit condition for a note about the sheet itself. \n\nNo review gate: the pencil-not-ink rule exists to stop an agent inventing geometry, and a cloud reading "verify substrate" is not geometry. It touches no quantity. ${COORDS}`,
+    description: `Place an annotation on a sheet — a note ABOUT the work, never a measurement of it. Types: cloud and highlight take rect:[[x0,y0],[x1,y1]] (a revision cloud around an area, a highlight box over it), text takes at:[x,y], callout takes at:[x,y] plus target:[x,y] (the point its leader aims at), arrow takes from:[x,y] and to:[x,y] (tail and head — plank/seam direction, the markup flooring drawings use most; #150), bubble takes at:[x,y] plus optional r (a keynote/detail circle carrying centered text), dimension takes from:[x,y] and to:[x,y] (its two measured endpoints) and labels itself with the length between them at the sheet's scale — drawn as a dimension line with end ticks and the measurement centered. A dimension states a REAL length, so it is the one annotation the scale gate applies to: on an unscaled sheet it refuses exactly like the measure tools (set_scale first) rather than dressing a px figure up as feet. It still touches no quantity — a dimension is a note about a distance, not a takeoff line item.\n\nPass condition to attach the note to a finish tag, which is what makes it part of that SCOPE rather than a floating remark: it then wears the condition's colour on the canvas and in the marked-set PDF, and travels with it into the report. The tag is minted on first touch like one_click/measure_polygon, so you can annotate CPT-1 before anything is traced for it. Omit condition for a note about the sheet itself. \n\nNo review gate: the pencil-not-ink rule exists to stop an agent inventing geometry, and a cloud reading "verify substrate" is not geometry. It touches no quantity. ${COORDS}`,
     inputSchema: {
       sheet: z.string().describe("Sheet name or number, as sheet_info reports it"),
-      type: z.enum(["cloud", "text", "callout", "highlight", "arrow", "bubble"]).describe("cloud/highlight need rect; text/callout/bubble need at; callout also needs target; arrow needs from + to"),
-      text: z.string().default("").describe("The note. A cloud with no text still reads as 'look here'; a bubble's text draws centered in the circle"),
+      type: z.enum(["cloud", "text", "callout", "highlight", "arrow", "bubble", "dimension"]).describe("cloud/highlight need rect; text/callout/bubble need at; callout also needs target; arrow and dimension need from + to"),
+      text: z.string().default("").describe("The note. A cloud with no text still reads as 'look here'; a bubble's text draws centered in the circle; a dimension appends it after the measured length"),
       condition: z.string().optional().describe("Finish tag to attach this note to, e.g. 'CPT-1' (minted on first use). Omit for an unattached sheet note"),
       at: pointSchema.optional().describe("Anchor point (image px) — text, callout, and bubble (the circle's center)"),
       target: pointSchema.optional().describe("What a callout's leader line points at (image px)"),
       rect: z.tuple([pointSchema, pointSchema]).optional().describe("Corners (image px) — cloud and highlight"),
-      from: pointSchema.optional().describe("Arrow tail (image px)"),
-      to: pointSchema.optional().describe("Arrow head — what it points at (image px)"),
+      from: pointSchema.optional().describe("Arrow tail / dimension start (image px)"),
+      to: pointSchema.optional().describe("Arrow head / dimension end (image px)"),
       r: z.number().positive().optional().describe("Bubble radius (image px); omitted → the canvas default (2% of sheet width)"),
     },
     outputSchema: annotateOutput,
   }, run("annotate", (a) => session.annotate(a)));
-  // (arrow/bubble ride the same handler — the Session validates per type)
+  // (arrow/bubble/dimension ride the same handler — the Session validates per type)
 
   server.registerTool("list_annotations", {
     description: `Every annotation on the takeoff, with condition_id RESOLVED to its finish tag so you can act on the reply without joining against conditions[]. Filter by sheet, by condition, or both. Coordinates come back in image px (the same frame you passed in), not the normalized form they're stored as. \`unattached\` counts the notes carrying no condition — the candidates for link_annotation. ${COORDS}`,

@@ -16,6 +16,7 @@ import {
   hatchFamilies, MASK_MAX_DIM, SENS_BALANCED, type MaskObj, type VectorGeometry, type Point, type HatchFamily,
 } from "../../web/src/lib/oneclick.ts";
 import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
+import { sweepSymbols, SWEEP_TOL_PX, type SweepOptions } from "../../web/src/lib/symbolsweep.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
 import { conditionTotals, grandTotals, sheetTotals, reportJson } from "../../web/src/lib/totals.js";
 import { hasRollSetup, mintRollSetup, computeRollTakeoff, rollReportRows } from "../../web/src/lib/rollTakeoff.js";
@@ -80,7 +81,7 @@ export interface Condition {
  * after a human affirmed the shape at an explicit review gate — this server
  * has no such gate, so everything it commits is reviewed: false. */
 export interface ShapeOrigin {
-  method: "manual" | "one_click_v1" | "agent_v1";
+  method: "manual" | "one_click_v1" | "agent_v1" | "symbol_sweep";
   /** Omitted = human. "agent" = the shape was produced by MCP/automation. */
   actor?: "agent";
   /** A human affirmed this shape at an explicit review gate. */
@@ -121,6 +122,10 @@ export interface ShapeOrigin {
    * — a machine correcting itself is a different event, and merging the two
    * would corrupt the correction signal the capture layer grades on. */
   agent_edits?: number;
+  /** symbol_sweep: how this count marker matched the seed exemplar — the
+   * evidence that made it a commit (score against the commit bar, and the
+   * symmetry-group element it matched under). */
+  symbol?: { score: number; rotation: number; mirrored: boolean };
 }
 
 export interface Shape {
@@ -153,19 +158,23 @@ export interface Shape {
 export interface Markup {
   id: string;
   sheet_id: string;
-  type: "cloud" | "text" | "callout" | "highlight" | "arrow" | "bubble";
+  type: "cloud" | "text" | "callout" | "highlight" | "arrow" | "bubble" | "dimension";
   text: string;
   condition_id: string;
   rfi_id: string;
   at?: [number, number];
   target?: [number, number];
   rect?: [[number, number], [number, number]];
-  /** arrow: tail and head, normalized like at/target. */
+  /** arrow + dimension: the two endpoints, normalized like at/target. */
   from?: [number, number];
   to?: [number, number];
   /** bubble: radius normalized to sheet WIDTH (the canvas/marked-set frame —
    * uniform scale off width keeps the circle round on any page). */
   r?: number;
+  /** dimension: the measured length in real feet, snapshotted at annotate
+   * time from the sheet scale — the renderers (canvas, marked set) draw the
+   * label from this, so neither needs scale plumbing of its own. */
+  len_ft?: number;
   created_at?: string;
 }
 
@@ -1157,16 +1166,107 @@ export class Session {
    * computed {count: 1}, NO scale required (EA is scale-free; the canvas's
    * recompute skips count shapes for the same reason). One shape per point,
    * the whole call one journal gesture — undoing a placement sweep is one step,
-   * matching detect_rooms. */
-  placeCount(name: string, points: Point[], opts: { condition: string }) {
+   * matching detect_rooms.
+   *
+   * `origins` (optional, aligned with points) lets a derived tool commit
+   * through this same path while telling the truth about the method —
+   * symbol_sweep stamps `{method: "symbol_sweep", …, symbol: {score, …}}` per
+   * marker; a bare place_count stays exactly the manual agent gesture it is. */
+  placeCount(name: string, points: Point[], opts: { condition: string; origins?: ShapeOrigin[]; tool?: string }) {
     const s = this.sheet(name);
-    const ids = points.map(([x, y]) => this.commit(s, opts.condition, "count", [[x, y]], { count: 1 }, { method: "manual", actor: "agent" }).id);
-    this.flushCommits("place_count");
+    const ids = points.map(([x, y], i) =>
+      this.commit(s, opts.condition, "count", [[x, y]], { count: 1 },
+        opts.origins?.[i] ? { ...opts.origins[i] } : { method: "manual", actor: "agent" }).id);
+    this.flushCommits(opts.tool ?? "place_count");
     const c = this.conditions.find((x) => x.finish_tag === opts.condition)!;
     const ea_total = this.shapes
       .filter((x) => x.condition_id === c.id && x.measure_role === "count")
       .reduce((n, x) => n + (x.computed.count || 1), 0);
     return { committed: ids.length, shape_ids: ids, condition: c.finish_tag, ea_total };
+  }
+
+  /** symbol_sweep — every placement of ONE example symbol, from the linework.
+   * The engine is pure (web/src/lib/symbolsweep.ts): fingerprint the seed
+   * rect's segments, propose placements by constellation anchoring under the
+   * square symmetry group, score each as the length-weighted fraction of seed
+   * segments reproduced within tolerance. This method is the plumbing plus
+   * the wire shapes: rect clamping, the scan refusal, and the commit path —
+   * match centers through placeCount (ONE undo step, EA scale-free), origins
+   * telling the truth (`method: "symbol_sweep"`, per-match score/transform),
+   * withheld placements NEVER committed. */
+  async symbolSweep(name: string, opts: {
+    seedRect: [Point, Point];
+    condition?: string;
+    commit?: boolean;
+    rotations?: boolean;
+    mirror?: boolean;
+    tolerancePx?: number;
+  }) {
+    const s = this.sheet(name);
+    if (opts.commit && !opts.condition) {
+      throw new UserError("commit: true needs a condition — the finish tag the match markers count under (e.g. 'FD-1').");
+    }
+    const geo = await this.ensureGeometry(s);
+    if (!geo.segs.length) {
+      throw new UserError("This sheet has no vector linework (likely a scan) — symbol matching reads the drawn segments; raster fallback not yet available in the MCP server.");
+    }
+    const clampX = (v: number) => Math.max(0, Math.min(v, s.widthPx));
+    const clampY = (v: number) => Math.max(0, Math.min(v, s.heightPx));
+    const rect: [Point, Point] = [
+      [clampX(opts.seedRect[0][0]), clampY(opts.seedRect[0][1])],
+      [clampX(opts.seedRect[1][0]), clampY(opts.seedRect[1][1])],
+    ];
+    if (!(Math.abs(rect[1][0] - rect[0][0]) >= 1 && Math.abs(rect[1][1] - rect[0][1]) >= 1)) {
+      throw new UserError(`Empty seed rect — need two distinct corners in image px inside the sheet (${s.widthPx} × ${s.heightPx}).`);
+    }
+    const sweepOpts: SweepOptions = {
+      rotations: opts.rotations ?? true,
+      mirror: opts.mirror ?? true,
+      tolPx: opts.tolerancePx ?? SWEEP_TOL_PX,
+    };
+    let res;
+    try {
+      res = sweepSymbols(geo.segs, rect, sweepOpts);
+    } catch (e) {
+      // the engine's refusals (empty marquee, region-sized marquee) are
+      // user-facing instructions, not crashes
+      throw new UserError(e instanceof Error ? e.message : String(e));
+    }
+
+    let committed: { committed: number; shape_ids: string[]; condition: string; ea_total: number } | undefined;
+    if (opts.commit && res.matches.length) {
+      committed = this.placeCount(name, res.matches.map((m) => m.at), {
+        condition: opts.condition!,
+        tool: "symbol_sweep",
+        origins: res.matches.map((m) => ({
+          method: "symbol_sweep" as const,
+          actor: "agent" as const,
+          reviewed: false,
+          symbol: { score: m.score, rotation: m.rotation, mirrored: m.mirrored },
+        })),
+      });
+    }
+
+    return {
+      found: res.matches.length,
+      matches: res.matches.map((m) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored })),
+      withheld: res.withheld.map((w) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, reason: w.reason })),
+      seed: {
+        segments: res.seed.segments,
+        center: [round1(res.seed.center[0]), round1(res.seed.center[1])],
+        rect: [round1(rect[0][0]), round1(rect[0][1]), round1(rect[1][0]), round1(rect[1][1])],
+        length_px: res.seed.length_px,
+      },
+      candidates: res.candidates,
+      ...(committed ? {
+        committed: committed.committed,
+        shape_ids: committed.shape_ids,
+        condition: committed.condition,
+        ea_total: committed.ea_total,
+      } : {}),
+      ...(opts.commit && !res.matches.length ? { note: "commit requested but nothing cleared the bar — no shapes were committed." } : {}),
+      ...(res.candidates.dropped > 0 ? { warning: `Work cap: ${res.candidates.dropped} candidate placement(s) were never scored — the seed's linework is too common on this sheet for an exhaustive sweep. Tighten the seed rect around more distinctive geometry, or sweep a region at a time and reconcile the counts.` } : {}),
+    };
   }
 
   /** The mid-session shape inventory (#149): every committed shape's id,
@@ -1521,7 +1621,19 @@ export class Session {
     if ((a.type === "cloud" || a.type === "highlight") && !a.rect) throw new UserError(`a ${a.type} needs rect: [[x0,y0],[x1,y1]] in image px`);
     if ((a.type === "text" || a.type === "callout" || a.type === "bubble") && !a.at) throw new UserError(`a ${a.type} needs at: [x,y] in image px`);
     if (a.type === "callout" && !a.target) throw new UserError("a callout needs target: [x,y] — the point the leader line aims at");
-    if (a.type === "arrow" && (!a.from || !a.to)) throw new UserError("an arrow needs from: [x,y] and to: [x,y] — tail and head, in image px");
+    if ((a.type === "arrow" || a.type === "dimension") && (!a.from || !a.to)) {
+      throw new UserError(a.type === "arrow"
+        ? "an arrow needs from: [x,y] and to: [x,y] — tail and head, in image px"
+        : "a dimension needs from: [x,y] and to: [x,y] — its two measured endpoints, in image px");
+    }
+    // a dimension LABELS a real length, so it is the one annotation the scale
+    // gate applies to — same refusal the measure tools give, never a px label
+    // dressed up as feet
+    let len_ft: number | undefined;
+    if (a.type === "dimension") {
+      if (s.upp == null) throw new UserError(this.scaleGate(s));
+      len_ft = round2(Math.hypot(a.to![0] - a.from![0], a.to![1] - a.from![1]) * s.upp);
+    }
     const cond = a.condition ? this.conditionFor(a.condition) : null;
     const m: Markup = {
       id: uid("mk"),
@@ -1539,11 +1651,15 @@ export class Session {
       // bubble radius: px → fraction of sheet WIDTH (marked-set frame); the
       // canvas default is 0.02 when unset — stored explicitly so exports agree
       ...(a.type === "bubble" ? { r: a.r != null ? a.r / s.widthPx : 0.02 } : {}),
+      // dimension: the measured length rides the markup so the renderers
+      // (canvas, marked set) draw the label without scale plumbing
+      ...(len_ft !== undefined ? { len_ft } : {}),
     };
     this.markups.push(m);
     return {
       id: m.id, sheet: s.key, type: m.type, text: m.text,
       condition: cond?.finish_tag ?? "", condition_id: m.condition_id,
+      ...(len_ft !== undefined ? { length_lf: len_ft } : {}),
       note: cond
         ? `Attached to ${cond.finish_tag} — it wears that condition's colour on the canvas and in the marked set.`
         : "Unattached — a note about the sheet. Pass condition to tie it to a scope.",
@@ -1577,6 +1693,7 @@ export class Session {
         ...(m.from ? { from: px(m, m.from) } : {}),
         ...(m.to ? { to: px(m, m.to) } : {}),
         ...(m.r != null ? { r: round1(m.r * (s0.get(m.sheet_id)?.widthPx ?? 0)) } : {}),
+        ...(m.len_ft != null ? { length_lf: m.len_ft } : {}),
       })),
       count: rows.length,
       unattached: rows.filter((m) => !m.condition_id).length,
