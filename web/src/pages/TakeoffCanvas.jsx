@@ -37,7 +37,8 @@ import { parseSchedule, rowToSeed } from "../lib/scheduleParse";
 import { normalizeScanRows, postScanWithRetry, SCAN_ENDPOINT, scanRasterScale } from "../lib/scheduleScan";
 import { normalizeTag } from "../lib/scheduleEdit";
 import { isGoogleConfigured, isSignedIn, isAllowedDomain, getAccessToken, orgDomainHint } from "../lib/google/auth.js";
-import { extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertices, ringArea, MASK_MAX_DIM, SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE } from "../lib/oneclick";
+import { extractVectorGeometry, buildMask, floodRegionSealed, sealRadiiFor, doorWedgeCapPx, minPassRadiusFor, oneClickRing, ringArea, MASK_MAX_DIM, MIN_PASS_FT, SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE } from "../lib/oneclick";
+import { traceConfidence, floodSignals } from "../lib/confidence";
 import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS } from "../lib/rastermask";
 import { detectCandidateRule, buildRuleFromSeed, applyRuleToProject } from "../lib/rules";
 import { conditionTotals, verticalWallSf } from "../lib/totals.js";
@@ -2766,6 +2767,12 @@ export default function TakeoffCanvas() {
       setPrevScale({ key, upp: prior, source: scaleSources[key] || "standard" });
     }
     setScales((s) => ({ ...s, [key]: upp }));
+    // The vector mask bakes the scale in (its hatch-pitch cap and seal radii
+    // are feet-true via mppf), so a recalibrated sheet must rebuild its masks
+    // on next use — a mask built against the old calibration is exactly the
+    // failure class the scale pinning exists to remove.
+    maskCacheRef.current.delete(key);
+    rasterMaskCacheRef.current.delete(key);
     // STRICT panel lookup — the panelByKey wrapper falls back to panels[0], so
     // it can't detect an off-canvas sheet: a future off-canvas caller would
     // silently re-price that sheet's shapes against the wrong panel's bitmap
@@ -2982,7 +2989,25 @@ export default function TakeoffCanvas() {
       const segs = vectorSegsRef.current.get(key);
       const dims = panelImgs[key];
       if (!segs || !segs.length || !dims?.w) return null;
-      mo = buildMask(segs, dims.w, dims.h, MASK_MAX_DIM, segMetaRef.current.get(key));
+      // sheet scale (image px per foot) rides into the mask so the hatch pitch
+      // cap and the flood's size guards are feet-true — resolution-independent.
+      // rescaleSheet evicts this cache entry when the calibration changes.
+      const upp = uppFor(key);
+      // A1: pass the BASELINE px/ft too, so the working raster is pinned to the
+      // sheet rather than to whatever scale this sheet happens to be rendered at.
+      const rsNow = renderScalesRef.current.get(key) || RENDER_SCALE;
+      const pxPerFt = upp ? 1 / upp : 0;
+      // …and A1/F3: the baseline the raster is pinned to comes from the page in
+      // POINTS. `dims` is a ceil() of the render, so deriving the baseline from
+      // it leaves the pin render-dependent (see buildMask's F3 note). This is
+      // also the only branch that works before a calibration: k comes from the
+      // render scales, not from px/ft, so an uncalibrated Hi-Res sheet is pinned
+      // too. The mask is cached, so the extra getViewport is once per sheet per
+      // calibration.
+      const pgVp = pageObjsRef.current.get(key)?.getViewport({ scale: 1 });
+      mo = buildMask(segs, dims.w, dims.h, MASK_MAX_DIM, segMetaRef.current.get(key), pxPerFt,
+                     pxPerFt ? pxPerFt * RENDER_SCALE / rsNow : 0,
+                     pgVp ? { pageW: pgVp.width, pageH: pgVp.height, renderScale: rsNow, baseScale: RENDER_SCALE } : null);
       maskCacheRef.current.set(key, mo);
     }
     return mo;
@@ -3042,13 +3067,20 @@ export default function TakeoffCanvas() {
   function buildOneClickRegion(f, tp, local, negative, raster) {
     const upp = uppFor(tp.key);
     if (!upp) return null;
-    let ring;
-    if (raster) ring = traceRegion(f, RASTER_RDP_EPS);
-    else {
-      const grid = snapGridsRef.current.get(tp.key);
-      ring = snapVertices(traceRegion(f), (x, y, d) => (grid ? nearestSnap(grid, x, y, d) : null), 7);
-    }
+    // THE shared ring — trace-then-snap for vector, looser-eps unsnapped for
+    // raster — through oneClickRing so this site cannot drift from the bench's
+    // scoring of the production ring.
+    const grid = snapGridsRef.current.get(tp.key);
+    const ring = raster
+      ? oneClickRing(f, { raster: true, rasterEps: RASTER_RDP_EPS })
+      : oneClickRing(f, { nearest: (x, y, d) => (grid ? nearestSnap(grid, x, y, d) : null) });
     if (ring.length < 3) return null;
+    const area_sf = +(ringArea(ring) * upp * upp).toFixed(2);
+    const perim_lf = +(closedMetrics(ring).perim * upp).toFixed(2);
+    // Item D: the engine's own account of the trace — tier, seal, wedges,
+    // min-passage — scored to a 0–1 confidence with named factors, minted
+    // into provenance at the Create gate below.
+    const conf = traceConfidence(floodSignals(f, { raster, mppf: f.ws / upp, areaSF: area_sf }));
     // poly0 freezes the MACHINE trace (post-snap, pre-handle-edit) so a
     // corrected region can still report what the fill proposed; sens rides
     // only when the estimator moved the knob off Balanced (vector path
@@ -3059,11 +3091,17 @@ export default function TakeoffCanvas() {
       poly: ring,
       poly0: ring.map(([x, y]) => [x, y]),
       ...(!raster && fillSens !== SENS_BALANCED ? { sens: fillSens } : {}),
-      area_sf: +(ringArea(ring) * upp * upp).toFixed(2),
-      perim_lf: +(closedMetrics(ring).perim * upp).toFixed(2),
+      area_sf,
+      perim_lf,
       hf: !!f.hatchFiltered,
+      sl: f.sealedPx || 0,
       gap: f.gapBridged || 0,
+      mp: f.minPassDelta ? (f.minPassPx || 0) : 0, mpd: f.minPassDelta || 0,
+      wg: f.wedges || 0,
+      rw: f.ringWedges || 0,
       rt: !!raster,
+      cf: conf.score,
+      cff: conf.factors,
     };
   }
   // The propose tail (physical clicks): stage the region for the Create (⏎)
@@ -3125,6 +3163,16 @@ export default function TakeoffCanvas() {
     });
     if (outcome === "dup") setCommitMsg(negative ? "That cutout is already carved." : "Already selected — ⌥-click carves an enclosed cutout; ⏎ creates.");
     else if (outcome === "needsPos") setCommitMsg("⌥-click carves an enclosed area INSIDE the selection (a column or shaft) — click its room first.");
+    // The measurement-policy receipts: when the engine sealed, wedged, or
+    // ruled a passage out, the estimator hears it at stage time — the trace is
+    // reviewable while the edge in question is still under the cursor.
+    else if (f.wedges && f.ringWedges >= f.wedges) setCommitMsg(`Measured to include the floor inside ${f.ringWedges === 1 ? "a closed ring" : `${f.ringWedges} closed rings`} drawn on the plan (a round column or a callout bubble) — no door swing was involved. If that is a column you deduct rather than floor you cover, ⌥-click carves it out. ⏎ creates.`);
+    else if (f.wedges && f.ringWedges) setCommitMsg(`Measured through the drawn door to the wall opening — the swing area is included. It also includes the floor inside ${f.ringWedges === 1 ? "a closed ring" : `${f.ringWedges} closed rings`} (a round column or callout bubble), which is not a door swing; ⌥-click carves one out if it should be deducted. ⏎ creates.`);
+    else if (f.wedges) setCommitMsg("Measured through the drawn door to the wall opening — the swing area is included. ⏎ creates.");
+    else if (f.sealedPx) setCommitMsg(f.minPassPx
+      ? `That space isn't closed on the drawing — the gap is under ${MIN_PASS_FT} ft, so the minimum-passage rule bridged it rather than measuring through it. That call is at the limit of what this sheet's resolution can decide; review the edge, then ⏎ creates.`
+      : "That space wasn't fully enclosed — a small opening (a doorway or line gap) was sealed to bound it. Review the edge, then ⏎ creates.");
+    else if (f.minPassDelta) setCommitMsg(`A passage under ${MIN_PASS_FT} ft wide was treated as not connecting — measuring through it would have added ${Math.round(f.minPassDelta * 100)}% more area. Review that edge, then ⏎ creates.`);
     else setCommitMsg("");
   }
   // `direct` (voice deixis, RFC #59): { conditionId, label } — the human aimed
@@ -3163,7 +3211,10 @@ export default function TakeoffCanvas() {
       const mo = ensureMask(tp.key);
       if (!mo && !rasterEligible) return say("Still reading this sheet's linework — try again in a second.");
       if (mo) {
-        const f = floodRegion(mo, local[0], local[1], fillSens);
+        // seal radii + wedge cap scale with the sheet: bridge up to a door-width
+        // opening (mask px per foot = mask-per-image-px / units-per-image-px)
+        const mppf = mo.ws / upp;
+        const f = floodRegionSealed(mo, local[0], local[1], fillSens, sealRadiiFor(mppf), doorWedgeCapPx(mppf), minPassRadiusFor(mppf));
         if (f.status === "ok") return settleRegion(f, tp, local, negative, false, direct);
         if (!rasterEligible) {
           return say(f.status === "leak"
@@ -3198,10 +3249,11 @@ export default function TakeoffCanvas() {
         : { ok: false, message: "" };
     }
     if (!rmo) return say("Couldn't read this scan — trace it with Area (A).");
-    // The raster mask is single-tier (softCount 0), so floodRegion's hatch
+    // The raster mask is single-tier (softCount 0), so the flood's hatch
     // escalation — and with it the Fill sensitivity knob — is structurally
-    // inert on scans; no sensitivity is passed.
-    const f = floodRegion(rmo, local[0], local[1]);
+    // inert on scans; the default sensitivity rides along. Gap sealing still
+    // applies — faded scan lines are the raster path's own flavor of open doorway.
+    const f = floodRegionSealed(rmo, local[0], local[1], undefined, sealRadiiFor(rmo.ws / upp), doorWedgeCapPx(rmo.ws / upp), minPassRadiusFor(rmo.ws / upp));
     if (f.status !== "ok") {
       return say(f.status === "leak"
         ? "That space isn't enclosed on the scan — the fill escaped through a gap (faded line or open doorway). Click a more enclosed spot, or trace it with Area (A)."
@@ -3242,7 +3294,7 @@ export default function TakeoffCanvas() {
       // region's verts ARE the proposal, so nothing extra rides. Post-Create
       // edits are stamped by stampEdit, which freezes the same field from the
       // pre-edit ring only when Create didn't already.
-      origin: { method: "one_click_v1", seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, ...(r.hf ? { hatch_filtered: true } : {}), ...(r.gap ? { gap_bridged_px: r.gap } : {}), ...(r.rt ? { raster_traced: true } : {}), ...(r.sens != null ? { fill_sensitivity: r.sens } : {}), ...(r.touched ? { edited_before_create: true, proposed_verts_norm: r.poly0.map(([x, y]) => [x / tp.img.w, y / tp.img.h]) } : {}) },
+      origin: { method: "one_click_v1", seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, confidence: r.cf ?? 1, ...(r.cff?.length ? { confidence_factors: r.cff } : {}), ...(r.hf ? { hatch_filtered: true } : {}), ...(r.sl ? { gap_sealed_px: r.sl } : {}), ...(r.gap ? { gap_bridged_px: r.gap } : {}), ...(r.mp ? { min_pass_px: r.mp, min_pass_delta: r.mpd } : {}), ...(r.wg ? { door_wedges: r.wg } : {}), ...(r.rw ? { ring_interiors: r.rw } : {}), ...(r.rt ? { raster_traced: true } : {}), ...(r.sens != null ? { fill_sensitivity: r.sens } : {}), ...(r.touched ? { edited_before_create: true, proposed_verts_norm: r.poly0.map(([x, y]) => [x / tp.img.w, y / tp.img.h]) } : {}) },
     }));
     dispatchShape({ type: "add", shapes: made });   // the creation gate — id/created_at minted by the command
     const sf = prop.regions.reduce((n, r) => n + (r.kind === "neg" ? -r.area_sf : r.area_sf), 0);
@@ -4049,7 +4101,7 @@ export default function TakeoffCanvas() {
       const mo = ensureMask(key);
       if (!mo && !rasterEligible) return { error: "Still reading this sheet's linework — try again in a second." };
       if (mo) {
-        const r = floodRegion(mo, local[0], local[1], fillSens);
+        const r = floodRegionSealed(mo, local[0], local[1], fillSens, sealRadiiFor(mo.ws / upp), doorWedgeCapPx(mo.ws / upp), minPassRadiusFor(mo.ws / upp));
         if (r.status === "ok") f = r;
         else if (!rasterEligible) {
           return { error: r.status === "leak"
@@ -4061,7 +4113,7 @@ export default function TakeoffCanvas() {
     if (!f) {
       const rmo = await ensureRasterMask(key);
       if (!rmo) return { error: "Couldn't read this scan — the estimator will have to trace it by hand." };
-      const r = floodRegion(rmo, local[0], local[1]);
+      const r = floodRegionSealed(rmo, local[0], local[1], undefined, sealRadiiFor(rmo.ws / upp), doorWedgeCapPx(rmo.ws / upp), minPassRadiusFor(rmo.ws / upp));
       if (r.status !== "ok") {
         return { error: r.status === "leak"
           ? "That space isn't enclosed on the scan — the fill escaped through a gap (faded line or open doorway). Seed a more enclosed spot."
@@ -4069,19 +4121,25 @@ export default function TakeoffCanvas() {
       }
       f = r; raster = true;
     }
-    let ring;
-    if (raster) ring = traceRegion(f, RASTER_RDP_EPS);
-    else {
-      const grid = snapGridsRef.current.get(key);
-      ring = snapVertices(traceRegion(f), (x, y, d) => (grid ? nearestSnap(grid, x, y, d) : null), 7);
-    }
+    const grid = snapGridsRef.current.get(key);
+    const ring = raster
+      ? oneClickRing(f, { raster: true, rasterEps: RASTER_RDP_EPS })
+      : oneClickRing(f, { nearest: (x, y, d) => (grid ? nearestSnap(grid, x, y, d) : null) });
     if (ring.length < 3) return { error: "Couldn't trace that space into a polygon." };
+    const area_sf = +(ringArea(ring) * upp * upp).toFixed(2);
+    const conf = traceConfidence(floodSignals(f, { raster, mppf: f.ws / upp, areaSF: area_sf }));
     return {
       verts_norm: ring.map(([x, y]) => [+(x / p.img.w).toFixed(5), +(y / p.img.h).toFixed(5)]),
-      area_sf: +(ringArea(ring) * upp * upp).toFixed(2),
+      area_sf,
       perimeter_lf: +(closedMetrics(ring).perim * upp).toFixed(2),
       seed_norm: [+xn.toFixed(5), +yn.toFixed(5)],
+      confidence: conf.score,
+      ...(conf.factors.length ? { confidence_factors: conf.factors } : {}),
       ...(f.hatchFiltered ? { hatch_filtered: true } : {}),
+      ...(f.sealedPx ? { gap_sealed_px: f.sealedPx } : {}),
+      ...(f.minPassDelta ? { min_pass_px: f.minPassPx || 0, min_pass_delta: f.minPassDelta } : {}),
+      ...(f.wedges ? { door_wedges: f.wedges } : {}),
+      ...(f.ringWedges ? { ring_interiors: f.ringWedges } : {}),
       ...(raster ? { raster_traced: true } : {}),
     };
   }
