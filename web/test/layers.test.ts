@@ -8,7 +8,7 @@
 //   - hidden wins over any role in the code table.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { classifyLayerName, layerNameTokens, layerRoleCodes, segRoles, ROLE_CODE, ROLE_HIDDEN, type LayerRole } from "../src/lib/layers.ts";
+import { classifyLayerName, layerNameTokens, layerRoleCodes, segRoles, buildLayerInfos, effectiveLayerRoles, sanitizeLayerOverrides, ROLE_CODE, ROLE_HIDDEN, type LayerRole } from "../src/lib/layers.ts";
 
 const role = (name: string): LayerRole => classifyLayerName(name).role;
 
@@ -71,4 +71,52 @@ test("layerRoleCodes + segRoles: hidden wins over role; −1/unknown stay 0; all
   // nothing classified → null, so buildMask takes the identical pre-#85 path
   assert.equal(segRoles(Int32Array.from([0, 1]), layerRoleCodes(["a", "b"], new Map())), null);
   assert.equal(segRoles(undefined, codes), null);
+});
+
+test("buildLayerInfos: joins ids + attribution to the document's declarations; undeclared ids refuse to classify", () => {
+  const byId = new Map([
+    ["oc1", { name: "A-WALL-FULL", visible: true }],
+    ["oc2", { name: "A-WALL-DEMO", visible: false }],
+  ]);
+  const infos = buildLayerInfos(["oc1", "oc2", "oc9"], Int32Array.from([0, 0, 1, -1, 0]), byId);
+  assert.equal(infos.length, 3);
+  assert.deepEqual(infos[0], { id: "oc1", name: "A-WALL-FULL", role: "boundary", confidence: 0.9, visible: true, seg_count: 3 });
+  assert.equal(infos[1].role, "demolition");
+  assert.equal(infos[1].visible, false);
+  assert.equal(infos[1].seg_count, 1);
+  // a dangling /OC ref the catalog never declared: unknown role, visible, no name
+  assert.deepEqual(infos[2], { id: "oc9", name: "", role: "unknown", confidence: 0, visible: true, seg_count: 0 });
+  assert.deepEqual(buildLayerInfos([], undefined, byId), []);
+});
+
+test("effectiveLayerRoles: include forces hard boundary, exclude drops, stale ids no-op — the MCP filter semantics", () => {
+  const infos = buildLayerInfos(["w", "p", "d"], Int32Array.from([0, 1, 2]), new Map([
+    ["w", { name: "A-WALL-FULL", visible: true }],
+    ["p", { name: "A-FLOR-PATT", visible: true }],
+    ["d", { name: "A-WALL-DEMO", visible: false }],
+  ]));
+  // no overrides: the classified table verbatim
+  const base = effectiveLayerRoles(infos);
+  assert.deepEqual(base.get("p"), { role: "finish-pattern", visible: true });
+  // include resurrects even a hidden demolition layer as hard boundary;
+  // exclude hides whatever the name says; an id the sheet no longer carries is inert
+  const ov = effectiveLayerRoles(infos, { d: "include", w: "exclude", gone: "exclude" });
+  assert.deepEqual(ov.get("d"), { role: "boundary", visible: true });
+  assert.deepEqual(ov.get("w"), { role: "boundary", visible: false });
+  assert.equal(ov.has("gone"), false);
+  // and through the code table: hidden-by-exclude wins over the boundary role
+  const codes = layerRoleCodes(["w", "p", "d"], ov);
+  assert.deepEqual([...codes], [ROLE_HIDDEN, ROLE_CODE["finish-pattern"], ROLE_CODE.boundary]);
+});
+
+test("sanitizeLayerOverrides: object-shape gate, value whitelist, else-clear on junk", () => {
+  assert.deepEqual(sanitizeLayerOverrides(undefined), {});
+  assert.deepEqual(sanitizeLayerOverrides(null), {});
+  assert.deepEqual(sanitizeLayerOverrides([1, 2]), {});
+  assert.deepEqual(sanitizeLayerOverrides("include"), {});
+  assert.deepEqual(sanitizeLayerOverrides({
+    "plan.pdf": { oc1: "include", oc2: "exclude", oc3: "banana", oc4: 7 },
+    "scan.pdf#2": "exclude",           // per-sheet value must be an object
+    "empty.pdf": { oc9: "nope" },      // sanitizes empty → the sheet key drops
+  }), { "plan.pdf": { oc1: "include", oc2: "exclude" } });
 });

@@ -40,6 +40,10 @@ import { isGoogleConfigured, isSignedIn, isAllowedDomain, getAccessToken, orgDom
 import { extractVectorGeometry, buildMask, floodRegionSealed, sealRadiiFor, doorWedgeCapPx, minPassRadiusFor, oneClickRing, ringArea, MASK_MAX_DIM, MIN_PASS_FT, SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE } from "../lib/oneclick";
 import { traceConfidence, floodSignals } from "../lib/confidence";
 import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS } from "../lib/rastermask";
+// PDF layer roles (#85): the pure name→role classifier and the override
+// plumbing shared with the MCP session — the canvas consumes buildMask's
+// opts.roles seam exactly the way the server does, one engine, one meaning.
+import { buildLayerInfos, effectiveLayerRoles, layerRoleCodes, segRoles, sanitizeLayerOverrides } from "../lib/layers";
 import { detectCandidateRule, buildRuleFromSeed, applyRuleToProject } from "../lib/rules";
 import { conditionTotals, verticalWallSf } from "../lib/totals.js";
 import { shapesInZone } from "../lib/zone.js";
@@ -61,6 +65,9 @@ import ImportSchedulePanel from "../components/ImportSchedulePanel.jsx";
 // here), lib/rollTakeoff.js the pure shapes→engine bridge; RollPanel is the
 // docked diagram/reorder desk. Cut edits commit through the rollcut command.
 import RollPanel from "../components/RollPanel.jsx";
+// Layers (#85 phase 2): the docked layer-table desk — stated roles + the
+// per-layer Auto/Wall/Off overrides that feed the mask's role short-circuit.
+import LayerPanel from "../components/LayerPanel.jsx";
 import { rollColorForType } from "../lib/rollgoods.js";
 import { computeRollTakeoff } from "../lib/rollTakeoff.js";
 // In-canvas takeoff agent — BYO-key tool-use loop (lib/agentLoop) aiming the
@@ -560,6 +567,16 @@ export default function TakeoffCanvas() {
   const snapGridsRef = useRef(new Map()); // sheetKey → {cell, map} spatial hash of vector endpoints
   const vectorSegsRef = useRef(new Map()); // sheetKey → flat [x1,y1,x2,y2,…] linework segments (One-Click boundary source)
   const segMetaRef = useRef(new Map());    // sheetKey → per-segment meta bytes (hatch classification input)
+  // PDF layers (#85): the op walk's per-segment OCG attribution + the sheet's
+  // classified layer table. Engine reads go through REFS (rolesForSheet runs
+  // inside click paths — a just-resolved table must be visible before React
+  // commits); sheetLayers STATE mirrors layerInfosRef for the panel render.
+  const layerGeoRef = useRef(new Map());   // sheetKey → { layerIds, layerOf }
+  const layerInfosRef = useRef(new Map()); // sheetKey → LayerInfo[] ([] = unlayered)
+  const layerOverridesRef = useRef({});    // mirror of layerOverrides — see above
+  const [sheetLayers, setSheetLayers] = useState({});        // sheetKey → LayerInfo[] (panel view)
+  const [layersOpen, setLayersOpen] = useState(false);       // docked Layers panel
+  const [layerOverrides, setLayerOverrides] = useState({});  // sheetKey → { ocgId: "include"|"exclude" } — persisted (additive `layer_overrides`)
   const maskCacheRef = useRef(new Map());  // sheetKey → built boundary mask (lazy, dropped on re-render)
   const sheetStatsRef = useRef(new Map()); // sheetKey → {segCount, imageFrac} — raster-fallback trigger signals
   const rasterMaskCacheRef = useRef(new Map()); // sheetKey → Promise<MaskObj|null> — scan-pixel mask (lazy, shared across clicks)
@@ -1130,6 +1147,14 @@ export default function TakeoffCanvas() {
     // Extracted to sanitizeSheetLevels (lib/sheetLevels.js) so this gate has
     // its own unit tests independent of the reducer.
     setSheetLevels(sanitizeSheetLevels(a.sheet_levels));
+    // additive `layer_overrides` (#85 — per-sheet PDF-layer Wall/Off overrides
+    // for the One-Click mask): same else-clear + shape gate as sheet_levels.
+    // Masks are a lazy per-sheet cache — drop them so a loaded snapshot's
+    // overrides govern the next flood, not the replaced project's.
+    const lov = sanitizeLayerOverrides(a.layer_overrides);
+    layerOverridesRef.current = lov;
+    setLayerOverrides(lov);
+    maskCacheRef.current.clear();
     // else-clear matters at runtime (snapshot load): a payload without groups/
     // tabs must not inherit the pre-load ones — autosave would persist a hybrid.
     // In group mode sheetGroup + lastGroup share ONE instance so the lastGroup-sync
@@ -1368,6 +1393,9 @@ export default function TakeoffCanvas() {
     snapGridsRef.current.clear();
     vectorSegsRef.current.clear();
     segMetaRef.current.clear();
+    layerGeoRef.current.clear();
+    layerInfosRef.current.clear();
+    setSheetLayers({});
     maskCacheRef.current.clear();
     sheetStatsRef.current.clear();
     rasterMaskCacheRef.current.clear();
@@ -1412,15 +1440,36 @@ export default function TakeoffCanvas() {
         await getCompositor().paintBase(canvas, m.key, m.w, m.h, darkModeRef.current);
         if (stale()) return;
         // snap-to-vector index per panel (best-effort; off until the user enables it)
-        m.pageObj.getOperatorList().then((ol) => {
+        m.pageObj.getOperatorList().then(async (ol) => {
           if (stale()) return;
-          const { points, segs, meta, imageArea } = extractVectorGeometry(ol, m.viewport.transform, pdfjsLib.OPS);
+          const { points, segs, meta, imageArea, layerOf, layerIds } = extractVectorGeometry(ol, m.viewport.transform, pdfjsLib.OPS);
           snapGridsRef.current.set(m.key, buildSnapGrid(points, SNAP_CELL));
           vectorSegsRef.current.set(m.key, segs);
           segMetaRef.current.set(m.key, meta);
           // raster-fallback trigger signals: how much of the sheet is placed
           // image, and whether the vector linework is dense enough to bound rooms
           sheetStatsRef.current.set(m.key, { segCount: segs.length >> 2, imageFrac: Math.min(1, imageArea / (m.w * m.h)) });
+          // classify the sheet's PDF layer table (#85): the walk attributed
+          // segments to OCG ids; the DOCUMENT declares id → (name, default
+          // visibility). buildLayerInfos is the same pure derivation the MCP
+          // session runs, so panel and sheet_info can never disagree. An empty
+          // table is the (common) unlayered case — the Layers control stays
+          // invisible and the mask path is byte-identical to pre-#85. Own
+          // try/catch: a failed config read degrades to unlayered, and must
+          // never trip the outer catch into the corrupt-op-list stats sentinel.
+          let infos = [];
+          if (layerIds.length) {
+            try {
+              const cfg = await (await docFor(m.file)).getOptionalContentConfig();
+              const groups = cfg ? cfg.getGroups() : null;
+              infos = buildLayerInfos(layerIds, layerOf, new Map(Object.entries(groups || {})));
+            } catch { /* no resolvable declarations — nothing is stated */ }
+          }
+          if (stale()) return;
+          layerGeoRef.current.set(m.key, { layerIds, layerOf });
+          layerInfosRef.current.set(m.key, infos);
+          maskCacheRef.current.delete(m.key);   // a mask built before the table resolved was roleless
+          setSheetLayers((prev) => ({ ...prev, [m.key]: infos }));
         }).catch(() => {
           if (stale()) return;
           // A rejected op-list (corrupt embedded JBIG2/CCITT — exactly the class of
@@ -1617,7 +1666,7 @@ export default function TakeoffCanvas() {
     // units is additive and diff-only (the sheet_levels convention): imperial —
     // the default — omits the key, so an old imperial project's payload is
     // byte-identical on round-trip; only a metric project carries the field.
-    return { project_name: projectName, ...(units === "metric" ? { units } : {}), ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}) })), conditions, ...(conditionColumns.length ? { condition_columns: conditionColumns } : {}), ...(shapeLabels.length ? { shape_labels: shapeLabels } : {}), ...(pinned.length ? { palette: pinned } : {}), shapes, markups, rfis, ...(approvals.length ? { approvals } : {}), ...(rules.length ? { rules } : {}), sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, ...(Object.keys(sheetLevels).length ? { sheet_levels: sheetLevels } : {}), ...(Object.keys(provCounters.shapes_deleted).length ? { provenance_counters: provCounters } : {}) };
+    return { project_name: projectName, ...(units === "metric" ? { units } : {}), ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}) })), conditions, ...(conditionColumns.length ? { condition_columns: conditionColumns } : {}), ...(shapeLabels.length ? { shape_labels: shapeLabels } : {}), ...(pinned.length ? { palette: pinned } : {}), shapes, markups, rfis, ...(approvals.length ? { approvals } : {}), ...(rules.length ? { rules } : {}), sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, ...(Object.keys(sheetLevels).length ? { sheet_levels: sheetLevels } : {}), ...(Object.keys(layerOverrides).length ? { layer_overrides: layerOverrides } : {}), ...(Object.keys(provCounters.shapes_deleted).length ? { provenance_counters: provCounters } : {}) };
   };
   // Runtime restore of a saved payload — the Revisions panel's Restore lands
   // here. A runtime load (unlike mount) can interrupt work in
@@ -1703,7 +1752,7 @@ export default function TakeoffCanvas() {
     // state it serializes, so listing buildPayload (a new identity each render)
     // would fire a save on every render instead of only on a real change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, markups, approvals, rfis, rules, provCounters, sheetGroup, sheetLevels, lastGroup, openTabs, projectName, clientInfo, units]);
+  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, markups, approvals, rfis, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, projectName, clientInfo, units]);
   useEffect(() => { saveStateRef.current = saveState; }, [saveState]);
 
   // Flush a pending debounced save on navigate-away (unmount), and warn before a
@@ -2983,6 +3032,18 @@ export default function TakeoffCanvas() {
   // takeoff until Create (⏎) — the gate where provenance is minted (origin on
   // each shape). Mask + proposal live in panel-LOCAL px; a proposal is bound to
   // one panel and dies on sheet change (render effect resets it).
+  // The sheet's stated layer roles as buildMask's per-segment codes (#85),
+  // with the estimator's Layers-panel overrides applied — include forces hard
+  // boundary, exclude drops the ink, the same semantics the MCP layers
+  // filters carry. Refs, not state: this runs inside click paths and must see
+  // a just-resolved table. null on unlayered sheets (or nothing classified) —
+  // buildMask then takes the byte-identical pre-#85 path.
+  function rolesForSheet(key) {
+    const geo = layerGeoRef.current.get(key);
+    const infos = layerInfosRef.current.get(key);
+    if (!geo || !infos || !infos.length) return null;
+    return segRoles(geo.layerOf, layerRoleCodes(geo.layerIds, effectiveLayerRoles(infos, layerOverridesRef.current[key])));
+  }
   function ensureMask(key) {
     let mo = maskCacheRef.current.get(key);
     if (!mo) {
@@ -3007,7 +3068,8 @@ export default function TakeoffCanvas() {
       const pgVp = pageObjsRef.current.get(key)?.getViewport({ scale: 1 });
       mo = buildMask(segs, dims.w, dims.h, MASK_MAX_DIM, segMetaRef.current.get(key), pxPerFt,
                      pxPerFt ? pxPerFt * RENDER_SCALE / rsNow : 0,
-                     pgVp ? { pageW: pgVp.width, pageH: pgVp.height, renderScale: rsNow, baseScale: RENDER_SCALE } : null);
+                     pgVp ? { pageW: pgVp.width, pageH: pgVp.height, renderScale: rsNow, baseScale: RENDER_SCALE } : null,
+                     rolesForSheet(key));
       maskCacheRef.current.set(key, mo);
     }
     return mo;
@@ -5044,6 +5106,36 @@ export default function TakeoffCanvas() {
   const faceTool = MEASURE_TOOLS.find((t) => t.id === (measureActive ? tool : lastMeasureRef.current)) || MEASURE_TOOLS[0];
   const finishOk = ((tool === "area" || tool === "deduct") && poly.length >= 3) || (tool === "zone" && poly.length >= 3 && !zoneTraceCross) || ((tool === "linear" || tool === "surface" || tool === "curve") && poly.length >= 2);
 
+  // ── Layers panel (#85 phase 2) wiring ──────────────────────────────────────
+  // Open sheets that actually carry a PDF layer table. Empty for the common
+  // flattened export — the rail button and the panel then render nothing at
+  // all (zero chrome; the fallback is invisible, not a degraded mode).
+  const layerEntries = groupKeys
+    .map((k) => ({ key: k, label: tabLabel(k), layers: sheetLayers[k] || [], overrides: layerOverrides[k] || {} }))
+    .filter((e) => e.layers.length);
+  // Override mutations funnel here: the ref is the engine's source of truth
+  // (rolesForSheet reads it inside click paths), state mirrors it for render/
+  // persistence, and the sheet's lazy mask drops so the NEXT flood rebuilds
+  // with the new roles. Existing staged proposals keep their traced rings —
+  // they're under review, and re-flooding an estimator's edit would be rude.
+  const setLayerOverride = (key, id, state) => {
+    const prev = layerOverridesRef.current;
+    const cur = { ...(prev[key] || {}) };
+    if (state) cur[id] = state; else delete cur[id];
+    const next = { ...prev };
+    if (Object.keys(cur).length) next[key] = cur; else delete next[key];
+    layerOverridesRef.current = next;
+    maskCacheRef.current.delete(key);
+    setLayerOverrides(next);
+  };
+  const resetLayerOverrides = (key) => {
+    const next = { ...layerOverridesRef.current };
+    delete next[key];
+    layerOverridesRef.current = next;
+    maskCacheRef.current.delete(key);
+    setLayerOverrides(next);
+  };
+
   // panel-toggle for the right-edge rail — square like the zoom cluster, count as a
   // tiny mono line under the icon. Lives on the canvas, costs the toolbar zero rows.
   const panelBtn = (onClick, iconName, label, isOn, count) => (
@@ -6871,6 +6963,7 @@ export default function TakeoffCanvas() {
           {panelBtn(toggleTakeoffs, "takeoffs", "Takeoffs — conditions + running totals", takeoffsOpen, visibleShapes.length)}
           {panelBtn(() => setAgentOpen((o) => !o), "target", "Agent — describe a takeoff; it stages dashed proposals you accept or reject (bring your own AI key)", agentOpen, agentProposals.length)}
           {rollByCond.size > 0 && panelBtn(() => setRollPanelOpen((o) => !o), "roll", "Roll goods — the cut diagram, cutting order, and figured order footage", rollPanelOpen, rollByCond.size)}
+          {layerEntries.length > 0 && panelBtn(() => setLayersOpen((o) => !o), "layers", "PDF layers — what this drawing's own layer table states each ink is; set what One-Click treats as wall and what it ignores", layersOpen, layerEntries.reduce((n, e) => n + e.layers.length, 0))}
           {panelBtn(() => setShowRevisions(true), "revisions", "Revisions — save the takeoff at each bid revision, compare what moved", showRevisions)}
         </div>
 
@@ -6915,6 +7008,20 @@ export default function TakeoffCanvas() {
             edit={rollEdit} onEdit={setRollEdit}
             onReorder={onReorderRollCuts} onResetOrder={onResetRollOrder}
             onClose={() => setRollPanelOpen(false)}
+          />
+        )}
+
+        {/* Layers panel (#85 phase 2) — DOCKED right-rail sibling like the Roll
+            panel: the sheet's PDF layer table (names + stated roles) with the
+            per-layer Auto/Wall/Off controls feeding One-Click's role
+            short-circuit. Its rail button renders only when an open sheet
+            actually carries layers, so a flattened export costs zero chrome. */}
+        {layersOpen && layerEntries.length > 0 && (
+          <LayerPanel
+            entries={layerEntries}
+            onOverride={setLayerOverride}
+            onReset={resetLayerOverrides}
+            onClose={() => setLayersOpen(false)}
           />
         )}
 
