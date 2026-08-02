@@ -11,6 +11,20 @@ import { z } from "zod";
 
 const point = z.tuple([z.number(), z.number()]);
 
+/** The sealed engine's account of one trace (RFC #60) — shared verbatim by
+ * one_click and each detect_rooms room, and mirrored 1:1 onto the committed
+ * shape's origin (commit() stamps both from one mapping, so the reply and the
+ * export can never disagree about how a shape was made). */
+const traceProvenance = {
+  confidence: z.number().optional().describe("0..1 — the trace scored from the engine's own signals (sealed openings, door wedges, min-passage rule, hatch tier, raster boundary, mask coarseness, implausible size). A review PRIORITIZER, not a verification: 1.0 means every signal came back clean, never that the trace is right. A low score is a view_sheet {overlay:true} audit prompt, not a fact to bid from"),
+  confidence_factors: z.array(z.string()).optional().describe("The named factors behind a sub-1.0 confidence (e.g. \"sealed-opening(10% synthetic boundary)\") — each names the edge worth putting eyes on; absent when every signal ran clean"),
+  gap_sealed_px: z.number().optional().describe("Present when the seal ladder closed a genuine OPENING this many mask px wide (doorway-scale — scaled by the sheet's feet, distinct from gap_bridged_px's drafting-pinhole rescue). Part of the boundary is synthetic, and confidence deducts by that share; rides origin.gap_sealed_px on the committed shape"),
+  min_pass_px: z.number().optional().describe("The feet-true minimum-passage rule (openings under ~0.5 ft never connect two spaces) ran at this dilation radius AND changed the answer — present only with min_pass_delta"),
+  min_pass_delta: z.number().optional().describe("Fraction of the verbatim flood the minimum-passage rule removed; 1 means the drawn linework bounds nothing here and the rule is the only reason there is a measurement — audit before trusting"),
+  door_wedges: z.number().int().optional().describe("Door-swing wedges annexed into the region under grow-but-verify — how many doorways' swings were included, the canvas's own door handling; rides origin.door_wedges"),
+  ring_interiors: z.number().int().optional().describe("Of those wedges, how many were a CLOSED ring's interior (round column, callout bubble) rather than a door swing — annexed floor you may want as a deduct instead"),
+};
+
 /** sheetSummary in session.ts — one sheet's identity + dims. */
 const sheetSummary = {
   sheet: z.string().describe('Sheet key: page 1 is the bare file name ("plan.pdf"), pages 2+ are "plan.pdf#2"'),
@@ -63,6 +77,7 @@ export const setScaleOutput = {
 export const oneClickOutput = {
   status: z.literal("ok"),
   nverts: z.number().int().describe("Vertex count of the traced polygon"),
+  ...traceProvenance,
   hatch_filtered: z.literal(true).optional().describe("Present when hatch/pattern linework was classified out of the boundary"),
   gap_bridged_px: z.number().optional().describe("Present when the seal ladder bridged a drafting pinhole this many px wide to close the region — the rescue rides provenance (origin.gap_bridged_px) rather than passing as a clean fill"),
   raster_traced: z.literal(true).optional().describe("Present when the region was bounded by the sheet's RENDERED PIXELS (the scanned-sheet raster fallback, #154) rather than vector linework — absent means the vector path ran. Rides origin.raster_traced on the committed shape; a raster ring's corners are unsnapped (a scan has no true endpoints), so audit it with view_sheet overlay before trusting the total"),
@@ -83,6 +98,7 @@ const detectedRoom = z.object({
   label: z.string().describe("The room-number text the seed was read from (e.g. \"104\", \"139A\")"),
   nverts: z.number().int().describe("Vertex count of the traced polygon"),
   merged_labels: z.array(z.string()).optional().describe("Other labels that flooded to this same region — the area is counted once, under `label`"),
+  ...traceProvenance,
   hatch_filtered: z.literal(true).optional().describe("Present when hatch/pattern linework was classified out of the boundary"),
   gap_bridged_px: z.number().optional().describe("Present when the seal ladder bridged a drafting pinhole this many px wide to close the region"),
   raster_traced: z.literal(true).optional().describe("Present when the room was bounded by rendered pixels (scanned-sheet raster fallback, #154) rather than vector linework — sheet-wide per sweep, and it rides origin.raster_traced on the committed shape"),

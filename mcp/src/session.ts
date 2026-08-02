@@ -12,14 +12,27 @@ import { buildSheetGraph, resolveTag, type SheetGraph, type SheetSpans } from ".
 import { UserError, round1, round2 } from "./format.ts";
 import { STANDARD_SCALES, RENDER_SCALE, detectScale, extractSheetNumber, type DetectedScale } from "../../web/src/lib/sheets.ts";
 import {
-  extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertices, ringArea,
+  extractVectorGeometry, buildMask, traceRegion, snapVertices, ringArea,
   hatchFamilies, MASK_MAX_DIM, SENS_BALANCED, type FloodResult, type MaskObj, type VectorGeometry, type Point, type HatchFamily,
 } from "../../web/src/lib/oneclick.ts";
+// The trace-confidence module (RFC #60 item D) — the engine's own account of a
+// flood scored 0–1 with named factors. floodSignals is THE adapter from a
+// FloodResult (audit A2: hand-listing the signal fields at call sites is how a
+// signal the engine emits goes silently inert), and every flood this server
+// commits or reports goes through it exactly once, in commit()'s central stamp.
+import { traceConfidence, floodSignals, type ConfidenceInput } from "../../web/src/lib/confidence.ts";
 // The canvas's raster-mask engine (#154), imported as-is — the scanned-sheet
 // fallback is the SAME Bradley-threshold module the canvas floods with, so an
 // agent's raster trace and a click's raster trace can never binarize differently.
 import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS } from "../../web/src/lib/rastermask.ts";
-import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
+// floodAtSeed is the ONE flood entry point every non-canvas surface measures
+// through (RFC #60 / PR #179, audit A6): floodRegionSealed with the sheet's own
+// scale-derived arguments — seal radii up to a door width, door-swing wedge
+// inclusion, the feet-true minimum-passage rule — exactly what the canvas
+// passes at a One-Click. This server used to call the raw floodRegion on
+// scale-unpinned masks here, so an MCP trace and a canvas click at the same
+// seed measured DIFFERENT square footage under the same origin.method.
+import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, floodAtSeed, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
 import { fingerprintSymbol, matchSymbol, SWEEP_TOL_PX, type SweepOptions, type SymbolFingerprint, type SweepMatch, type SweepWithheld } from "../../web/src/lib/symbolsweep.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
 // The approvals family (#176) — the canvas's own pure module, imported as-is
@@ -102,6 +115,32 @@ export interface ShapeOrigin {
    * to close the region (engine `gapBridged` — canvas parity: the rescue rides
    * provenance rather than passing itself off as a clean fill). */
   gap_bridged_px?: number;
+  /** one_click (RFC #60 item D): the trace scored 0–1 from the engine's own
+   * signals — sealed openings, door wedges, the minimum-passage rule, hatch
+   * escalation tier, raster boundary, mask coarseness, implausible size. A
+   * review PRIORITIZER, never a verification: 1.0 means every signal came
+   * back clean, not that the trace is right. Stamped centrally in commit()
+   * from the flood evidence, so no flood commit path can ship unscored. */
+  confidence?: number;
+  /** The named factors behind a sub-1.0 confidence (confidence.ts vocabulary,
+   * e.g. "sealed-opening(10% synthetic boundary)") — absent when none fired. */
+  confidence_factors?: string[];
+  /** one_click (RFC #60): the seal ladder closed a genuine OPENING this many
+   * mask px wide (a doorway-scale gap, distinct from gap_bridged_px's
+   * pinhole rescue) — the synthetic boundary share deducts confidence. */
+  gap_sealed_px?: number;
+  /** one_click (RFC #60): the feet-true minimum-passage rule ran at this
+   * dilation radius AND changed the answer — present only with
+   * min_pass_delta, the fraction of the verbatim flood it removed. */
+  min_pass_px?: number;
+  min_pass_delta?: number;
+  /** one_click (RFC #60): arc-cluster wedges annexed into the region under
+   * grow-but-verify — the count of doorways whose swing was included. */
+  door_wedges?: number;
+  /** one_click (RFC #60 / audit F7g): of those wedges, how many were a CLOSED
+   * ring's interior (round column, callout bubble) rather than a door swing —
+   * annexed floor the operator may want as a deduct instead. */
+  ring_interiors?: number;
   /** one_click (#85): the flood ran against a mask whose boundary was STATED
    * by the sheet's PDF layers (visible boundary/structure roles present) —
    * categorically stronger evidence than a pitch-heuristic boundary. */
@@ -240,6 +279,16 @@ export type ApprovalCommand =
 export const sanitizeApprovals = sanitizeApprovalsJs as unknown as (raw: unknown) => Approval[];
 const applyApprovalCommand = applyApprovalCommandJs as unknown as
   (approvals: Approval[], cmd: ApprovalCommand) => { approvals: Approval[]; inverse: ApprovalCommand };
+
+/** What a flood commit path hands commit() so the central provenance stamp
+ * (floodStamp) can score and record it — scalars only, never the region
+ * bitmap (see floodEvidence). */
+interface FloodEvidence {
+  signals: Omit<ConfidenceInput, "areaSF">;
+  raster: boolean;
+  gapBridged?: number;
+  ringWedges?: number;
+}
 
 interface SheetState {
   key: string;
@@ -743,15 +792,34 @@ export class Session {
     return segRoles(geo.layerOf, layerRoleCodes(geo.layerIds, infoById));
   }
 
+  /** The vector mask, built through buildMask's FULL scale-pinned signature
+   * (RFC #60 / PR #179 — the canvas's ensureMask, verbatim in intent):
+   * `pxPerFt` (the sheet scale as image px per foot) rides INTO the mask, so
+   * the hatch pitch cap, the seal radii, door-wedge caps and the minimum-
+   * passage rule are all feet-true through `mask.mppf` instead of guessing in
+   * raster px; the `page` pin (audit A1/F3) makes the working grid a property
+   * of the SHEET in points, never of a render. This server renders at the
+   * canvas BASELINE (RENDER_SCALE) always, so renderScale === baseScale and
+   * basePxPerFt === pxPerFt — the one degenerate case where the pin and the
+   * legacy reconstruction agree bit-for-bit. */
+  private buildVectorMask(s: SheetState, geo: VectorGeometry, layersOpt?: { include?: string[]; exclude?: string[] }): MaskObj | null {
+    if (!geo.segs.length) return null;
+    const pxPerFt = s.upp ? 1 / s.upp : 0;
+    return buildMask(geo.segs, s.widthPx, s.heightPx, MASK_MAX_DIM, geo.meta, pxPerFt, pxPerFt,
+      { pageW: s.widthPt, pageH: s.heightPt, renderScale: RENDER_SCALE, baseScale: RENDER_SCALE },
+      this.rolesFor(s, geo, layersOpt));
+  }
+
   /** v1 masks come from the sheet's vector linework only; a scanned sheet
    * (zero segments) is null here and the measuring tools fall back to
    * ensureRasterMask (#154). Layer roles (#85) ride in as the stated
-   * short-circuit; an unlayered sheet builds the identical pre-#85 mask. */
+   * short-circuit; an unlayered sheet builds the identical pre-#85 mask.
+   * The cached mask BAKES THE SCALE IN (mppf) — set_scale evicts it. */
   async ensureMask(name: string): Promise<MaskObj | null> {
     const s = this.sheet(name);
     if (s.mask === undefined) {
       const geo = await this.ensureGeometry(s);
-      s.mask = geo.segs.length ? buildMask(geo.segs, s.widthPx, s.heightPx, MASK_MAX_DIM, geo.meta, this.rolesFor(s, geo)) : null;
+      s.mask = this.buildVectorMask(s, geo);
     }
     return s.mask;
   }
@@ -763,17 +831,19 @@ export class Session {
     if (!layersOpt || (!layersOpt.include?.length && !layersOpt.exclude?.length)) return this.ensureMask(name);
     const s = this.sheet(name);
     const geo = await this.ensureGeometry(s);
-    if (!geo.segs.length) return null;
-    return buildMask(geo.segs, s.widthPx, s.heightPx, MASK_MAX_DIM, geo.meta, this.rolesFor(s, geo, layersOpt));
+    return this.buildVectorMask(s, geo, layersOpt);
   }
 
   /** The raster-fallback mask (#154): a dedicated render of the sheet at mask
    * scale (the view_sheet machinery — pdf.ts + @napi-rs/canvas), thresholded
    * by the canvas's own rastermask engine into the same MaskObj shape
-   * buildMask emits, so floodRegion/traceRegion run unchanged on scans.
-   * Cached per sheet like geo/mask; where the optional native canvas never
-   * installed, renderRgba throws its plain install-hint Error and the tool
-   * reply carries it — a stated inability, never a guessed polygon. */
+   * buildMask emits, so the sealed flood (floodAtSeed) and traceRegion run
+   * unchanged on scans. It carries NO mppf of its own (pixels cannot know
+   * the sheet scale), so flood call sites pass mask px per foot explicitly —
+   * ws / upp, the canvas's own raster-path convention — and set_scale evicts
+   * this cache alongside the vector mask. Where the optional native canvas
+   * never installed, renderRgba throws its plain install-hint Error and the
+   * tool reply carries it — a stated inability, never a guessed polygon. */
   private async ensureRasterMask(s: SheetState): Promise<MaskObj> {
     if (!s.rmask) {
       const ws = Math.min(1, MASK_MAX_DIM / Math.max(s.widthPx, s.heightPx, 1));
@@ -861,6 +931,17 @@ export class Session {
     } else {
       throw new UserError("Provide exactly one of: label, upp, calibrate, use_detected.");
     }
+    // Mask-cache eviction on recalibration — canvas parity (rescaleSheet):
+    // the vector mask bakes the scale in (its hatch-pitch cap, seal radii,
+    // wedge caps and minimum-passage rule are feet-true via mppf), so a mask
+    // built against the old calibration is exactly the failure class the
+    // scale pinning exists to remove. The raster mask is evicted too, the
+    // same call the canvas makes; geometry, snap grid and rendered PNGs are
+    // scale-free and stay. Re-picking the identical scale evicts nothing.
+    if (s.upp !== upp) {
+      s.mask = undefined;
+      s.rmask = undefined;
+    }
     s.upp = upp;
     // the tool reply keeps this session's source vocabulary; the stored value
     // uses the canvas's report vocabulary so export_report's scale_source
@@ -910,7 +991,50 @@ export class Session {
     return c;
   }
 
-  private commit(s: SheetState, tag: string, role: MeasureRole, vertsPx: Point[], computed: Shape["computed"], origin?: Shape["origin"]): Shape {
+  /** Slim flood evidence — the engine result's SCALAR signals, harvested the
+   * moment the flood returns so a batch sweep never pins N mask-sized region
+   * bitmaps just to score confidence at commit time. `signals` goes through
+   * floodSignals, THE adapter (audit A2: hand-listed signal fields are how an
+   * engine emission goes silently inert); gapBridged/ringWedges ride beside
+   * it because they are provenance the adapter does not carry. */
+  private static floodEvidence(f: Extract<FloodResult, { status: "ok" }>, raster: boolean, mppf: number): FloodEvidence {
+    return {
+      signals: floodSignals(f, { raster, mppf }),
+      raster,
+      ...(f.gapBridged ? { gapBridged: f.gapBridged } : {}),
+      ...(f.ringWedges ? { ringWedges: f.ringWedges } : {}),
+    };
+  }
+
+  /** THE flood → provenance mapping (the canvas Create gate's field set,
+   * TakeoffCanvas commitOneClickRegions). One function, spread into the
+   * committed origin by commit() and into the tool reply by the flood call
+   * sites, so the two surfaces cannot drift and no site hand-lists fields. */
+  private static floodStamp(ev: FloodEvidence, areaSF?: number): Partial<ShapeOrigin> {
+    const conf = traceConfidence({ ...ev.signals, areaSF });
+    const sig = ev.signals;
+    return {
+      confidence: conf.score,
+      ...(conf.factors.length ? { confidence_factors: conf.factors } : {}),
+      ...(sig.hatchFiltered ? { hatch_filtered: true as const } : {}),
+      ...(sig.sealedPx ? { gap_sealed_px: sig.sealedPx } : {}),
+      ...(ev.gapBridged ? { gap_bridged_px: ev.gapBridged } : {}),
+      // min-pass fields ride only when the rule CHANGED the answer — the
+      // canvas convention (minPassDelta gates minPassPx)
+      ...(sig.minPassDelta ? { min_pass_px: sig.minPassPx || 0, min_pass_delta: sig.minPassDelta } : {}),
+      ...(sig.wedges ? { door_wedges: sig.wedges } : {}),
+      ...(ev.ringWedges ? { ring_interiors: ev.ringWedges } : {}),
+      ...(ev.raster ? { raster_traced: true as const } : {}),
+    };
+  }
+
+  private commit(s: SheetState, tag: string, role: MeasureRole, vertsPx: Point[], computed: Shape["computed"], origin?: Shape["origin"], flood?: FloodEvidence): Shape {
+    // Flood provenance + confidence (RFC #60) stamp HERE, exactly where the
+    // assignment provenance already stamps: a commit path that hands over its
+    // flood evidence gets the full engine account — confidence, sealed
+    // openings, door wedges, min-passage — minted onto origin centrally, so
+    // no flood commit path can ship an unscored shape.
+    if (origin && flood) origin = { ...origin, ...Session.floodStamp(flood, computed.area_sf) };
     // assignment provenance (0.9.18) defaults HERE, not at the seven call
     // sites: an agent commit that stated no source asserted the tag itself,
     // and stamping centrally means no future commit path can ship unstamped.
@@ -942,7 +1066,13 @@ export class Session {
       const mask = await this.maskWithLayers(name, opts.layers);
       if (!mask && !rasterEligible) throw new UserError("This sheet has no vector linework and no scan image to flood — nothing here bounds a region. Trace the space with measure_polygon instead.");
       if (mask) {
-        const r = floodRegion(mask, x, y, opts.sensitivity ?? SENS_BALANCED);
+        // the sealed engine with the sheet's own feet-true arguments — the
+        // mask carries mppf (buildVectorMask baked the scale in), so
+        // floodAtSeed derives the same seal radii / wedge cap / min-passage
+        // radius the canvas computes at a click; scale unset degrades to the
+        // documented scale-blind fallbacks (a weaker measurement, and the
+        // px-only preview reply already says so)
+        const r = floodAtSeed(mask, x, y, opts.sensitivity ?? SENS_BALANCED);
         if (r.status === "ok") f = r;
         else if (!rasterEligible) {
           if (r.status === "leak") throw new UserError("That space isn't enclosed on the plan linework — the fill spilled through a gap or opening.");
@@ -953,16 +1083,23 @@ export class Session {
     if (!f) {
       // Raster fallback (#154): flood the sheet's rendered pixels with the
       // canvas's own engine. The raster mask is single-tier (softCount 0), so
-      // floodRegion's hatch escalation — and the sensitivity knob with it —
-      // is structurally inert here; no sensitivity is passed.
+      // the flood's hatch escalation — and the sensitivity knob with it — is
+      // structurally inert here; the default sensitivity rides along. Gap
+      // sealing, door wedges and the min-passage rule still apply — faded
+      // scan lines are the raster path's own flavor of open doorway — and
+      // because buildRasterMask cannot know the sheet scale, mask px per
+      // foot is passed explicitly (ws / upp), exactly as the canvas does.
       this.refuseLayersOnRaster(opts.layers);
       const rmask = await this.ensureRasterMask(s);
-      const r = floodRegion(rmask, x, y);
+      const r = floodAtSeed(rmask, x, y, SENS_BALANCED, s.upp ? rmask.ws / s.upp : 0);
       if (r.status === "leak") throw new UserError("That space isn't enclosed on the scan — the fill escaped through a gap (faded line or open doorway). Seed a more enclosed spot, or trace it with measure_polygon.");
       if (r.status !== "ok") throw new UserError("Landed on dense scan ink (text or hatching). Seed an open spot inside the room.");
       f = r;
       raster = true;
     }
+    // scalar evidence for the reply and the commit stamp — mppf explicit for
+    // the raster path (its MaskObj carries none; audit A2's silent-miss case)
+    const ev = Session.floodEvidence(f, raster, s.upp ? f.ws / s.upp : 0);
     // Raster trace differences, canvas parity: a looser RDP eps (scan
     // contours wobble) and NO vertex snapping — a scan has no true endpoints,
     // and pulling room corners onto the title block's few vector endpoints
@@ -973,20 +1110,15 @@ export class Session {
     if (ring.length < 3) throw new UserError("Couldn't trace that space into a polygon.");
     const areaPx2 = ringArea(ring);
     const perimPx = closedMetrics(ring).perim;
-    const common = {
-      status: "ok" as const,
-      nverts: ring.length,
-      ...(f.hatchFiltered ? { hatch_filtered: true } : {}),
-      ...(f.gapBridged ? { gap_bridged_px: f.gapBridged } : {}),
-      // which path ran, disclosed both ways (#154): present = pixels bounded
-      // this trace, absent = the vector linework did
-      ...(raster ? { raster_traced: true as const } : {}),
-      ...(opts.returnVerts ? { verts: ring.map(([vx, vy]) => [round1(vx), round1(vy)]) } : {}),
-    };
     if (s.upp == null) {
-      // preview only — px quantities, never committed without a scale
+      // preview only — px quantities, never committed without a scale. The
+      // engine account (confidence + factors) still rides: signals are
+      // signals, though the size deduction can't fire without real units.
       return {
-        ...common,
+        status: "ok" as const,
+        nverts: ring.length,
+        ...Session.floodStamp(ev),
+        ...(opts.returnVerts ? { verts: ring.map(([vx, vy]) => [round1(vx), round1(vy)]) } : {}),
         area_px2: round1(areaPx2),
         perimeter_px: round1(perimPx),
         warning: `No scale set for ${s.key} — quantities unavailable. Call set_scale${s.detected ? ` (detected: ${s.detected.label})` : ""}.`,
@@ -995,21 +1127,27 @@ export class Session {
     const upp = s.upp;
     const area_sf = round2(areaPx2 * upp * upp);
     const perimeter_lf = round2(perimPx * upp);
+    // the reply wears the same stamp commit() mints onto origin — one mapping
+    // (floodStamp), two surfaces, no drift. Present = disclosed both ways:
+    // raster_traced says pixels bounded this trace, gap_sealed_px says the
+    // boundary is partly synthetic, confidence says how clean the signals ran.
+    const common = {
+      status: "ok" as const,
+      nverts: ring.length,
+      ...Session.floodStamp(ev, area_sf),
+      ...(opts.returnVerts ? { verts: ring.map(([vx, vy]) => [round1(vx), round1(vy)]) } : {}),
+    };
     let shape_id: string | undefined;
     if (opts.condition) {
       // actor + reviewed: false — this is a machine-proposed trace no human
       // has affirmed; only an explicit human review gate may set reviewed.
+      // Flood provenance (hatch/seal/wedge/min-pass/raster + confidence)
+      // stamps centrally in commit() from `ev` — nothing hand-listed here.
       shape_id = this.commit(s, opts.condition, opts.role, ring, { area_sf, perimeter_lf }, {
         method: "one_click_v1",
         actor: "agent",
         seed_norm: [x / s.widthPx, y / s.heightPx],
         reviewed: false,
-        ...(f.hatchFiltered ? { hatch_filtered: true as const } : {}),
-        ...(f.gapBridged ? { gap_bridged_px: f.gapBridged } : {}),
-        // #154 — a trace whose boundary was scan PIXELS is a different claim
-        // than one bounded by vector linework; the record says which (the
-        // canvas's raster_traced vocabulary, contribution.v2)
-        ...(raster ? { raster_traced: true as const } : {}),
         // #85 — a trace bounded by DECLARED boundary layers is categorically
         // stronger evidence than one bounded by a pitch heuristic (vector
         // path only: the raster mask never saw the layer table)
@@ -1018,7 +1156,7 @@ export class Session {
         // how the shape was made (ShapeOrigin.fill_sensitivity) — vector path
         // only; the knob is inert on a single-tier raster mask
         ...(!raster && opts.sensitivity !== undefined && opts.sensitivity !== SENS_BALANCED ? { fill_sensitivity: opts.sensitivity } : {}),
-      }).id;
+      }, ev).id;
     }
     this.flushCommits("one_click");
     const mixed = this.scaleWarningFor(s, ring);
@@ -1104,14 +1242,22 @@ export class Session {
     // batch (dedupe needs to see every ring).
     const withheld = { degenerate: 0, duplicate: 0, bubble: 0, implausible: 0, unresolved: 0 };
     const unresolved: { label: string; reason: string; area_sf: number; perimeter_lf: number; seed: [number, number] }[] = [];
-    type Cand = { label: string; ring: Point[]; areaPx2: number; perimPx: number; seed: readonly [number, number] | number[]; hatch: boolean; gap: number; merged: string[] };
+    type Cand = { label: string; ring: Point[]; areaPx2: number; perimPx: number; seed: readonly [number, number] | number[]; ev: FloodEvidence; merged: string[] };
     const byRing = new Map<string, Cand>();
     const order: Cand[] = [];
+    // one mask, one mppf for the whole sweep — the raster mask carries no
+    // scale of its own (buildRasterMask cannot know it), so mask px per foot
+    // is passed explicitly there, exactly as oneClick does
+    const sweepMppf = raster ? (s.upp ? mask.ws / s.upp : 0) : (mask.mppf || 0);
     for (const lb of labels) {
-      let ring: Point[] | null = null, hatch = false, gap = 0, seed: [number, number] | null = null;
+      let ring: Point[] | null = null, ev: FloodEvidence | null = null, seed: [number, number] | null = null;
       let sawBubble = false, sawDegenerate = false;
       for (const probe of seedLadderPx(lb.bbox)) {
-        const f = floodRegion(mask, probe[0], probe[1], opts.sensitivity ?? SENS_BALANCED);
+        // the sealed engine at each ladder rung — floodAtSeed, the ONE entry
+        // point every non-canvas surface floods through (web detectRooms.ts),
+        // so a batch detection and a canvas click at the same seed can never
+        // measure different square footage again
+        const f = floodAtSeed(mask, probe[0], probe[1], opts.sensitivity ?? SENS_BALANCED, sweepMppf);
         if (f.status !== "ok") continue;
         // raster trace differences mirror oneClick (#154): looser eps, no snap
         const r = raster
@@ -1119,10 +1265,11 @@ export class Session {
           : snapVertices(traceRegion(f), (px, py, d) => (s.snap ? nearestSnap(s.snap, px, py, d) : null), SNAP_TOL);
         if (r.length < 3) { sawDegenerate = true; continue; }
         if (isLabelBubblePx(r as [number, number][], lb.bbox)) { sawBubble = true; continue; }
-        ring = r; hatch = !!f.hatchFiltered; gap = f.gapBridged || 0; seed = probe;
+        // harvest the scalar evidence now; the region bitmap goes with `f`
+        ring = r; ev = Session.floodEvidence(f, raster, sweepMppf); seed = probe;
         break;
       }
-      if (!ring || !seed) {
+      if (!ring || !ev || !seed) {
         if (sawBubble) withheld.bubble++;            // only its own bubble ever flooded clean
         else if (sawDegenerate) withheld.degenerate++;
         // a label with no clean flood at any probe simply isn't counted as a
@@ -1134,7 +1281,7 @@ export class Session {
       if (seen) { seen.merged.push(lb.str); withheld.duplicate++; continue; }
       const cand: Cand = {
         label: lb.str, ring, areaPx2: ringArea(ring), perimPx: closedMetrics(ring).perim,
-        seed, hatch, gap, merged: [],
+        seed, ev, merged: [],
       };
       byRing.set(key, cand);
       order.push(cand);
@@ -1143,21 +1290,29 @@ export class Session {
     const upp = s.upp;
     const rooms = order
       .map((c) => {
-        const common = {
-          label: c.label,
-          nverts: c.ring.length,
-          ...(c.merged.length ? { merged_labels: c.merged } : {}),
-          ...(c.hatch ? { hatch_filtered: true as const } : {}),
-          ...(c.gap ? { gap_bridged_px: c.gap } : {}),
-          ...(raster ? { raster_traced: true as const } : {}),
-          ...(opts.returnVerts ? { verts: c.ring.map(([vx, vy]) => [round1(vx), round1(vy)]) } : {}),
-        };
         if (upp == null) {
-          return { ...common, area_px2: round1(c.areaPx2), perimeter_px: round1(c.perimPx) };
+          // px-only preview — the engine account still rides (see oneClick)
+          return {
+            label: c.label,
+            nverts: c.ring.length,
+            ...(c.merged.length ? { merged_labels: c.merged } : {}),
+            ...Session.floodStamp(c.ev),
+            ...(opts.returnVerts ? { verts: c.ring.map(([vx, vy]) => [round1(vx), round1(vy)]) } : {}),
+            area_px2: round1(c.areaPx2), perimeter_px: round1(c.perimPx),
+          };
         }
         const area_sf = round2(c.areaPx2 * upp * upp);
         if (area_sf < minAreaSf) { withheld.implausible++; return null; }
         const perimeter_lf = round2(c.perimPx * upp);
+        // the same stamp commit() mints onto origin (floodStamp — confidence,
+        // sealed openings, door wedges, min-passage, raster), per room
+        const common = {
+          label: c.label,
+          nverts: c.ring.length,
+          ...(c.merged.length ? { merged_labels: c.merged } : {}),
+          ...Session.floodStamp(c.ev, area_sf),
+          ...(opts.returnVerts ? { verts: c.ring.map(([vx, vy]) => [round1(vx), round1(vy)]) } : {}),
+        };
         // schedule resolution runs AFTER the geometric gates: a bubble is
         // reported as a bubble, and an unresolved room still reports its real
         // area — withheld, never dropped, with the seed that turns "ask the
@@ -1176,16 +1331,15 @@ export class Session {
         }
         let shape_id: string | undefined;
         if (tag) {
+          // flood provenance + confidence stamp centrally in commit() from
+          // the harvested evidence — nothing hand-listed here (audit A2)
           shape_id = this.commit(s, tag, opts.role, c.ring, { area_sf, perimeter_lf }, {
             method: "one_click_v1",
             actor: "agent",
             seed_norm: [c.seed[0] / s.widthPx, c.seed[1] / s.heightPx],
             reviewed: false,
-            ...(c.hatch ? { hatch_filtered: true as const } : {}),
-            ...(c.gap ? { gap_bridged_px: c.gap } : {}),
-            ...(raster ? { raster_traced: true as const } : {}),
             ...(assignment ? { assignment } : {}),
-          }).id;
+          }, c.ev).id;
         }
         return { ...common, area_sf, perimeter_lf, ...(shape_id ? { shape_id, condition: tag } : {}) };
       })
