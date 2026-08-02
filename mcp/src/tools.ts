@@ -1,4 +1,4 @@
-// The thirty-five tools — thin zod-validated handlers over the Session. Replies are
+// The thirty-six tools — thin zod-validated handlers over the Session. Replies are
 // compact JSON (format.ts); view_sheet alone replies with an image content
 // item plus a JSON meta text item. Failures are isError results, never thrown
 // protocol errors.
@@ -13,7 +13,7 @@ import {
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
   editShapeOutput, undoLastOutput, sheetContextOutput,
   findTextOutput, editMaterialsOutput, editConditionOutput, exportReportOutput,
-  exportMarkedPdfOutput, listShapesOutput, deriveBaseOutput, importTakeoffOutput,
+  exportMarkedPdfOutput, listShapesOutput, deriveBaseOutput, deriveTransitionsOutput, importTakeoffOutput,
   annotateOutput, listAnnotationsOutput, linkAnnotationOutput,
   markVerdictOutput, deleteVerdictOutput,
   sheetGraphOutput, resolveTagOutput, findScheduleOutput, sweepScheduleRowOutput,
@@ -218,6 +218,18 @@ export function registerTools(server: McpServer, session: Session): void {
     },
     outputSchema: deriveBaseOutput,
   }, run("derive_base", (a) => session.deriveBase(a)));
+
+  server.registerTool("derive_transitions", {
+    description: `Mint the transition where two finishes MEET (#202) — the derivation that follows derive_base, and the line an estimator draws by hand on every job. Pass the two finish tags and the tag the transition commits under (e.g. condition_a 'CPT-1', condition_b 'PT-1', condition 'T-1'), and every committed room of each is compared against every committed room of the other.\n\nWHAT THE GEOMETRY ACTUALLY IS, because it decides what you get back: flood-traced rooms DO NOT SHARE EDGES. A trace fills to the wall linework, so two rooms across a partition are separated by four to eight inches of nothing — testing for a shared edge finds zero transitions on a real planset. What is there is proximity, in two flavours that mean completely different things:\n\n• BUTT JOINT — the two rings run together inside ONE open space (a lobby that changes from carpet to tile with no wall between). The transition IS that run, and it commits as a linear shape under your tag, origin.derived naming both parent shapes and the measured gap.\n\n• WALL-SEPARATED — the rings run parallel across a partition. The rooms are adjacent, but the transition is NOT the shared wall: it is a threshold, in the doorway, and NOTHING in the trace record says where the doorway is (the flood engine seals openings and reports how MUCH boundary it synthesised, never where). Committing 34 LF of threshold because two rooms share 34 LF of wall would be a wrong bid with a machine's confidence behind it. These come back in \`withheld\` — measured, with their length, their gap in inches, and an \`at\` point — as questions you answer by LOOKING (view_sheet at \`at\`, then measure_line or place_count the threshold yourself). The symbol_sweep doctrine: a near-match is never a silent commit and never a silent drop.\n\nTuning: max_gap_in (default 12) is how far apart two rings can be and still count as adjacent at all — raise it for thick walls, and every extra inch turns more of the plan into wall_separated questions, never into committed LF. min_run_in (default 12) drops corner artifacts. The butt-joint threshold is fixed at one inch and is not a knob: "these two finishes touch" is not a judgement call.\n\nAll-or-nothing, like derive_base: an unknown tag, a transition landing on either source tag, the same tag twice, or a sheet without a scale refuses the whole call before anything commits. The whole sweep is ONE undo step. After it, LOOK — view_sheet {overlay: true} over each run — before trusting total_lf. ${COORDS}`,
+    inputSchema: {
+      condition_a: z.string().describe("First finish tag, e.g. 'CPT-1' — its committed rooms are walked, and runs are traced along their boundaries"),
+      condition_b: z.string().describe("Second finish tag, e.g. 'PT-1'"),
+      condition: z.string().describe("Finish tag the transitions commit under (minted on first use), e.g. 'T-1'. Must differ from both sources"),
+      max_gap_in: z.number().positive().optional().describe("How far apart two rings can be and still count as adjacent, in inches (default 12 — a thick partition). Wider only produces more wall_separated QUESTIONS, never more committed LF"),
+      min_run_in: z.number().positive().optional().describe("Shortest run worth reporting, in inches (default 12) — below this is a corner where two rooms clip, not a transition"),
+    },
+    outputSchema: deriveTransitionsOutput,
+  }, run("derive_transitions", (a) => session.deriveTransitions(a)));
 
   server.registerTool("takeoff_summary", {
     description: `Per-condition totals (floor/wall/border SF, LF, EA, SY, with and without waste) plus grand totals — the Report's numbers, computed by the same rules. Numbers only: the deliverable that SHOWS the work on the drawings is export_marked_pdf. ${COORDS}`,

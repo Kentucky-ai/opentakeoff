@@ -35,6 +35,7 @@ import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS }
 import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, floodAtSeed, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
 import { fingerprintSymbol, matchSymbol, SWEEP_TOL_PX, type SweepOptions, type SymbolFingerprint, type SymbolMatchResult, type SweepMatch, type SweepWithheld } from "../../web/src/lib/symbolsweep.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
+import { sharedRuns, type SharedRun } from "../../web/src/lib/transitions.ts";
 // The approvals family (#176) — the canvas's own pure module, imported as-is
 // (the markedset.js/importTakeoff.js precedent), so a verdict this server
 // mints and a seal the canvas mints share ONE implementation of minting,
@@ -147,10 +148,19 @@ export interface ShapeOrigin {
   layer_bounded?: true;
   raster_traced?: true;
   fill_sensitivity?: number;
-  /** derive_base (#148): this linear shape was derived from a floor shape's
-   * perimeter — the source, the gross figure, and the openings the agent
-   * STATED (its claim to make; the tool never guesses doors). */
-  derived?: { from_shape_id: string; gross_lf: number; openings_lf: number };
+  /** A linear shape derived from committed floor shapes rather than traced.
+   *
+   * derive_base (#148): from ONE room's perimeter — the source, the gross
+   * figure, and the openings the agent STATED (its claim to make; the tool
+   * never guesses doors).
+   *
+   * derive_transitions (#202): from where TWO rooms meet — both parents, the
+   * two finish tags, and the measured gap. `case` is always "butt" on a
+   * committed shape: a wall-separated run is a question, and questions do not
+   * become shapes. */
+  derived?:
+    | { from_shape_id: string; gross_lf: number; openings_lf: number }
+    | { between_shape_ids: string[]; between: string[]; case: "butt"; gap_in: number };
   /** Where the shape's finish ASSIGNMENT came from (0.9.18): "schedule" =
    * resolved from the room's own schedule row (room_tag / surface /
    * schedule_sheet carry the citation), "asserted" = the agent chose the tag
@@ -1489,6 +1499,108 @@ export class Session {
       total_lf: round2(rooms.reduce((n, r) => n + r.net_lf, 0)),
       note: "Base runs trace each room's boundary; openings are your stated claim, recorded on origin.derived. Verify with view_sheet overlay:true.",
     };
+  }
+
+  /** Mint the transition where two finishes meet (#202) — the derivation that
+   * follows derive_base, and the one an estimator draws by hand on every job.
+   *
+   * The geometry lives in web/src/lib/transitions.ts, and its headline is that
+   * flood-traced rooms DO NOT SHARE EDGES: a partition puts four to eight
+   * inches between two rings, so what is actually there is proximity, in two
+   * flavours that mean different things. A BUTT JOINT (the rings run together
+   * inside one open space) is the transition, and commits. A WALL-SEPARATED run
+   * means the rooms are adjacent across a partition — the transition there is a
+   * threshold in the DOORWAY, and nothing in the trace record says where the
+   * doorway is: the flood engine seals openings and reports only how much
+   * boundary it synthesised, never where. Committing thirty-four feet of
+   * threshold because two rooms share thirty-four feet of wall would be a wrong
+   * bid with a machine's confidence behind it, so those come back in
+   * `withheld` — length, gap, and a point to look at — as questions.
+   *
+   * All-or-nothing like derive_base: unknown tags, a transition landing on
+   * either source tag, or an unscaled sheet refuses the whole call before
+   * anything commits. The sweep is ONE journal gesture. */
+  deriveTransitions(opts: { condition_a: string; condition_b: string; condition: string; max_gap_in?: number; min_run_in?: number }) {
+    const findCond = (tag: string) => {
+      const c = this.conditions.find((x) => x.finish_tag === tag);
+      if (!c) throw new UserError(`No condition ${JSON.stringify(tag)} — tags: ${this.conditions.map((x) => x.finish_tag).join(", ") || "(none)"}.`);
+      return c;
+    };
+    const a = findCond(opts.condition_a), b = findCond(opts.condition_b);
+    if (a.id === b.id) throw new UserError("condition_a and condition_b must be different finishes — a tag does not transition to itself.");
+    if (opts.condition === a.finish_tag || opts.condition === b.finish_tag) {
+      throw new UserError(`The transition must land on its OWN tag (e.g. 'T-1') — committing onto ${opts.condition} would add its LF to one of the finishes it separates.`);
+    }
+    const maxGapIn = opts.max_gap_in ?? 12;
+    const minRunIn = opts.min_run_in ?? 12;
+    if (!(maxGapIn > 0)) throw new UserError("max_gap_in must be > 0.");
+    if (!(minRunIn > 0)) throw new UserError("min_run_in must be > 0.");
+
+    const floors = (c: typeof a) => this.shapes.filter((x) => x.condition_id === c.id && x.measure_role === "floor_area");
+    const fa = floors(a), fb = floors(b);
+    for (const [tag, list] of [[a.finish_tag, fa], [b.finish_tag, fb]] as const) {
+      if (!list.length) throw new UserError(`${tag} has no floor_area shapes to derive from — commit rooms first (one_click / detect_rooms).`);
+    }
+    // a run is only measurable in FEET, so every sheet in play needs its scale
+    // before anything is compared — the derive_base refusal, one step earlier
+    const sheetsInPlay = [...new Set([...fa, ...fb].map((s) => s.sheet_id))];
+    for (const key of sheetsInPlay) {
+      const s = this.sheet(key);
+      if (s.upp == null) throw new UserError(`${key} has no scale — a transition is a real length, so set_scale first (${this.scaleGate(s)})`);
+    }
+
+    const committed: any[] = [], withheld: any[] = [];
+    for (const key of sheetsInPlay) {
+      const s = this.sheet(key);
+      const upp = s.upp!;                       // feet per image px, checked above
+      const pxPerFt = 1 / upp;
+      const toPx = (sh: typeof fa[number]) => sh.verts_norm.map(([x, y]) => [x * s.widthPx, y * s.heightPx] as [number, number]);
+      const onSheetA = fa.filter((x) => x.sheet_id === key), onSheetB = fb.filter((x) => x.sheet_id === key);
+      for (const ra of onSheetA) {
+        for (const rb of onSheetB) {
+          const runs = sharedRuns(toPx(ra), toPx(rb), {
+            step_px: Math.max(1, pxPerFt * 0.25),          // a quarter-foot walk — finer than any transition matters
+            touch_px: pxPerFt * (1 / 12),                  // within an inch: one open space, not two rooms
+            max_gap_px: pxPerFt * (maxGapIn / 12),
+            min_len_px: pxPerFt * (minRunIn / 12),
+          });
+          for (const r of runs) this.recordRun(s, r, upp, opts.condition, ra.id, rb.id, a.finish_tag, b.finish_tag, committed, withheld);
+        }
+      }
+    }
+    if (committed.length) this.flushCommits("derive_transitions");
+    return {
+      condition: opts.condition,
+      between: [a.finish_tag, b.finish_tag],
+      committed: committed.length,
+      total_lf: round2(committed.reduce((n, r) => n + r.length_lf, 0)),
+      runs: committed,
+      withheld,
+      withheld_lf: round2(withheld.reduce((n, r) => n + r.length_lf, 0)),
+      note: withheld.length
+        ? `${withheld.length} run(s) are adjacency ACROSS A WALL, not a butt joint — the transition there is a threshold in the doorway, and the trace record does not say where the doorway is. view_sheet each \`at\` and place them with measure_line / place_count.`
+        : "Every run was a butt joint inside one open space. Verify with view_sheet overlay:true before trusting the total.",
+    };
+  }
+
+  /** One shared run → committed transition, or a disclosed question. */
+  private recordRun(s: SheetState, r: SharedRun, upp: number, condition: string,
+                    aId: string, bId: string, aTag: string, bTag: string,
+                    committed: any[], withheld: any[]) {
+    const length_lf = round2(r.length_px * upp);
+    const gap_in = round1(r.gap_px * upp * 12);
+    const row = { sheet: s.key, between_shape_ids: [aId, bId], length_lf, gap_in, at: [Math.round(r.at[0]), Math.round(r.at[1])] };
+    if (r.kind === "wall") {
+      withheld.push({ ...row, reason: "wall_separated", detail: `${aTag} and ${bTag} run ${length_lf} LF apart across ${gap_in}" of wall — adjacent rooms, not a butt joint. If a door opens here the transition is a threshold at the door, which this cannot see.` });
+      return;
+    }
+    const shape = this.commit(s, condition, "linear", r.path, { area_sf: 0, perimeter_lf: length_lf }, {
+      method: "agent_v1",
+      actor: "agent",
+      reviewed: false,
+      derived: { between_shape_ids: [aId, bId], between: [aTag, bTag], case: "butt", gap_in },
+    });
+    committed.push({ ...row, shape_id: shape.id });
   }
 
   /** Count markers — the canvas's Count tool (commitCount): one point, one EA,

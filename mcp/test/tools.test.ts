@@ -63,11 +63,11 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // delete_verdict takes a record id — same reasoning.
 const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict"]);
 
-test("tools/list: all thirty-five tools, each described with the coordinate contract", async () => {
+test("tools/list: all thirty-six tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
-    "annotate", "delete_shape", "delete_verdict", "derive_base", "detect_rooms", "edit_condition", "edit_materials", "edit_shape", "export_marked_pdf", "export_report",
+    "annotate", "delete_shape", "delete_verdict", "derive_base", "derive_transitions", "detect_rooms", "edit_condition", "edit_materials", "edit_shape", "export_marked_pdf", "export_report",
     "export_takeoff", "find_schedule", "find_text", "import_takeoff",
     "link_annotation", "list_annotations", "list_shapes", "load_plan", "mark_verdict", "measure_line", "measure_polygon", "measure_surface", "one_click", "place_count",
     "read_sheet_text", "resolve_tag", "set_scale", "sheet_context", "sheet_graph", "sheet_info", "sweep_schedule_row", "symbol_sweep", "takeoff_summary", "undo_last", "view_sheet",
@@ -494,6 +494,60 @@ test("derive_base: nets stated openings per room, refuses bad claims whole, one 
   assert.equal(selfTag.isError, true);
   const rb2 = (await call(client, "takeoff_summary")).data.conditions.find((c: any) => c.finish_tag === "RB-2");
   assert.equal(rb2, undefined, "refused calls committed nothing");
+});
+
+// #202 — where two finishes meet: butt joints commit, shared walls are questions.
+test("derive_transitions: commits butt joints, withholds wall adjacency, refuses whole", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  await call(client, "set_scale", { sheet: KEY, use_detected: true });
+  await call(client, "detect_rooms", { sheet: KEY, condition: "CPT-1" });
+  const rooms = (await call(client, "list_shapes", { condition: "CPT-1" })).data.shapes;
+  assert.ok(rooms.length >= 2, "the demo plan gives us rooms to work with");
+
+  // reassign one room to a second finish so the two tags genuinely abut
+  await call(client, "edit_shape", { shape_id: rooms[1].id, condition: "PT-1" });
+
+  const r = await call(client, "derive_transitions", { condition_a: "CPT-1", condition_b: "PT-1", condition: "T-1" });
+  assert.equal(r.isError, false, JSON.stringify(r.data));
+  assert.deepEqual(r.data.between, ["CPT-1", "PT-1"]);
+  // whatever the demo geometry yields, the contract holds: committed LF is
+  // butt-joint LF only, and withheld LF is never folded into the total
+  assert.equal(r.data.committed, r.data.runs.length);
+  assert.equal(r.data.total_lf, +r.data.runs.reduce((n: number, x: any) => n + x.length_lf, 0).toFixed(2));
+  for (const w of r.data.withheld) {
+    assert.equal(w.reason, "wall_separated");
+    assert.ok(w.gap_in > 0, "a withheld run states the wall it measured");
+    assert.equal(w.at.length, 2, "and a point to go look at");
+  }
+  const summary = await call(client, "takeoff_summary");
+  const t1 = summary.data.conditions.find((c: any) => c.finish_tag === "T-1");
+  if (r.data.committed) {
+    assert.equal(t1.lf, r.data.total_lf, "committed transitions are the tag's LF");
+    // provenance names both parents and the case — never a wall
+    const payload = await call(client, "export_takeoff", {});
+    const shp = payload.data.shapes.find((s: any) => s.id === r.data.runs[0].shape_id);
+    assert.equal(shp.origin.derived.case, "butt");
+    assert.deepEqual(shp.origin.derived.between, ["CPT-1", "PT-1"]);
+    assert.equal(shp.origin.derived.between_shape_ids.length, 2);
+    await call(client, "undo_last", { n: 1 });   // the whole sweep is one step
+    const after = (await call(client, "takeoff_summary")).data.conditions.find((c: any) => c.finish_tag === "T-1");
+    assert.ok(!after || after.lf === 0, "one undo removes the whole derivation");
+  } else {
+    assert.equal(t1, undefined, "nothing committed means no tag was minted with LF");
+  }
+
+  // refusals — all-or-nothing, before anything commits
+  const sameTag = await call(client, "derive_transitions", { condition_a: "CPT-1", condition_b: "CPT-1", condition: "T-9" });
+  assert.equal(sameTag.isError, true);
+  assert.match(sameTag.data.error, /does not transition to itself/);
+  const ontoSource = await call(client, "derive_transitions", { condition_a: "CPT-1", condition_b: "PT-1", condition: "CPT-1" });
+  assert.equal(ontoSource.isError, true);
+  assert.match(ontoSource.data.error, /OWN tag/);
+  const unknown = await call(client, "derive_transitions", { condition_a: "CPT-1", condition_b: "NOPE-1", condition: "T-9" });
+  assert.equal(unknown.isError, true);
+  const t9 = (await call(client, "takeoff_summary")).data.conditions.find((c: any) => c.finish_tag === "T-9");
+  assert.equal(t9, undefined, "refused calls committed nothing");
 });
 
 // #150 — arrow and bubble: the two markup types flooring drawings use most.
