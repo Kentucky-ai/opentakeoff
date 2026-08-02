@@ -3,7 +3,7 @@
 // tolerance behavior, decoy rejection, determinism, and the reported work cap.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sweepSymbols, type Point } from "../src/lib/symbolsweep.ts";
+import { sweepSymbols, fingerprintSymbol, matchSymbol, type Point } from "../src/lib/symbolsweep.ts";
 
 // The test symbol — deliberately ASYMMETRIC under every rotation and mirror:
 // a 20×20 square, ONE diagonal, and a stub off the right side. Local coords,
@@ -150,6 +150,47 @@ test("an empty seed rect refuses with instruction, not a crash", () => {
   // a rect edge slicing the symbol: crossing segments don't count as the
   // symbol, and here NOTHING sits fully inside — same refusal
   assert.throws(() => sweepSymbols(segs, [[-5, -5], [10, 10]]), /fully inside the seed rect/);
+});
+
+// ── phase 2: fingerprint on one sheet, match on another ─────────────────────
+
+test("cross-sheet: a fingerprint from a detail sheet finds every instance on a plan sheet", () => {
+  // the "detail sheet": one instance, plus unrelated linework
+  const detail = place([{ at: [400, 300] }]);
+  detail.push(0, 0, 700, 0, 700, 0, 700, 500); // border runs, never the symbol
+  const fp = fingerprintSymbol(detail, [[395, 295], [439, 325]]);
+  assert.equal(fp.segments, 6);
+  assert.ok(Math.abs(fp.center[0] - 411.95) < 0.1 && Math.abs(fp.center[1] - 310) < 0.1);
+
+  // the "plan sheet": three instances, one rotated — different array entirely
+  const plan = place([{ at: [50, 50] }, { at: [250, 50] }, { at: [100, 200], rot: 90 }]);
+  const r = matchSymbol(fp, plan);
+  assert.equal(r.matches.length, 3, "no seed on this sheet — every instance counts");
+  assert.equal(r.matches.filter((m) => m.rotation !== 0).length, 1);
+  assert.ok(r.matches.every((m) => m.score === 1));
+  // deterministic: same fingerprint, same sheet, same result
+  assert.deepEqual(matchSymbol(fp, plan), r);
+});
+
+test("excludeCenter suppresses the seed's own location; omitting it keeps the self-match", () => {
+  const segs = place([{ at: [0, 0] }, { at: [100, 0] }]);
+  const fp = fingerprintSymbol(segs, RECT);
+  const withSeed = matchSymbol(fp, segs);
+  assert.equal(withSeed.matches.length, 2, "no exclusion: the seed instance matches itself at 1.0");
+  const excluded = matchSymbol(fp, segs, { excludeCenter: fp.center });
+  assert.equal(excluded.matches.length, 1, "excluded: only the other instance");
+});
+
+test("sweepSymbols is exactly fingerprint + match with the seed excluded", () => {
+  const segs = place([{ at: [0, 0] }, { at: [100, 0] }, { at: [200, 100], rot: 180 }]);
+  const composed = (() => {
+    const fp = fingerprintSymbol(segs, RECT);
+    return matchSymbol(fp, segs, { excludeCenter: fp.center });
+  })();
+  const whole = sweepSymbols(segs, RECT);
+  assert.deepEqual(whole.matches, composed.matches);
+  assert.deepEqual(whole.withheld, composed.withheld);
+  assert.deepEqual(whole.candidates, composed.candidates);
 });
 
 test("seed diagnostics: centroid and total length are the fingerprint's own", () => {

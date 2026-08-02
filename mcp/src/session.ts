@@ -20,7 +20,7 @@ import {
 // agent's raster trace and a click's raster trace can never binarize differently.
 import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS } from "../../web/src/lib/rastermask.ts";
 import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
-import { sweepSymbols, SWEEP_TOL_PX, type SweepOptions } from "../../web/src/lib/symbolsweep.ts";
+import { fingerprintSymbol, matchSymbol, SWEEP_TOL_PX, type SweepOptions, type SymbolFingerprint, type SweepMatch, type SweepWithheld } from "../../web/src/lib/symbolsweep.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
 // The approvals family (#176) — the canvas's own pure module, imported as-is
 // (the markedset.js/importTakeoff.js precedent), so a verdict this server
@@ -133,8 +133,23 @@ export interface ShapeOrigin {
   agent_edits?: number;
   /** symbol_sweep: how this count marker matched the seed exemplar — the
    * evidence that made it a commit (score against the commit bar, and the
-   * symmetry-group element it matched under). */
-  symbol?: { score: number; rotation: number; mirrored: boolean };
+   * symmetry-group element it matched under). Phase 2 adds `seed`, WHERE the
+   * fingerprint came from: "instance" = an example marqueed on a plan sheet
+   * (phase 1's contract); "detail_sheet" = marqueed on a non-plan reference
+   * sheet (its role recorded — that sheet defines the symbol and is excluded
+   * from counting); "schedule_row" = anchored from a schedule row's drawn tag,
+   * with the row citation riding along. */
+  symbol?: {
+    score: number;
+    rotation: number;
+    mirrored: boolean;
+    seed?: {
+      source: "instance" | "detail_sheet" | "schedule_row";
+      sheet: string;
+      role?: string;
+      row?: { sheet: string; key: string; table: string };
+    };
+  };
 }
 
 export interface Shape {
@@ -1351,18 +1366,32 @@ export class Session {
    * square symmetry group, score each as the length-weighted fraction of seed
    * segments reproduced within tolerance. This method is the plumbing plus
    * the wire shapes: rect clamping, the scan refusal, and the commit path —
-   * match centers through placeCount (ONE undo step, EA scale-free), origins
-   * telling the truth (`method: "symbol_sweep"`, per-match score/transform),
-   * withheld placements NEVER committed. */
+   * match centers through the placeCount path (ONE undo step, EA scale-free),
+   * origins telling the truth (`method: "symbol_sweep"`, per-match
+   * score/transform), withheld placements NEVER committed.
+   *
+   * scope "set" (phase 2) sweeps the whole working set, restricted to
+   * PLAN-role sheets by the sheet graph: a symbol instance drawn in a detail,
+   * legend, or schedule is a reference drawing, not installed work, and must
+   * never count itself. The seed rect may sit on ANY sheet — marqueeing the
+   * assembly on a detail sheet is the estimator's own gesture — and a
+   * non-plan seed sheet serves as the fingerprint SOURCE while staying
+   * excluded from counting. Every excluded sheet is disclosed in `skipped`
+   * with its role and reason; per-sheet results carry their own match /
+   * withheld / cap accounting plus wall-clock elapsed_ms. The whole set-wide
+   * commit is ONE undo step: the gesture the agent made was "sweep the set",
+   * and taking it back should not require one undo per sheet. */
   async symbolSweep(name: string, opts: {
     seedRect: [Point, Point];
     condition?: string;
     commit?: boolean;
+    scope?: "sheet" | "set";
     rotations?: boolean;
     mirror?: boolean;
     tolerancePx?: number;
   }) {
     const s = this.sheet(name);
+    const scope = opts.scope ?? "sheet";
     if (opts.commit && !opts.condition) {
       throw new UserError("commit: true needs a condition — the finish tag the match markers count under (e.g. 'FD-1').");
     }
@@ -1384,48 +1413,394 @@ export class Session {
       mirror: opts.mirror ?? true,
       tolPx: opts.tolerancePx ?? SWEEP_TOL_PX,
     };
-    let res;
+    let fp: SymbolFingerprint;
     try {
-      res = sweepSymbols(geo.segs, rect, sweepOpts);
+      fp = fingerprintSymbol(geo.segs, rect);
     } catch (e) {
       // the engine's refusals (empty marquee, region-sized marquee) are
       // user-facing instructions, not crashes
       throw new UserError(e instanceof Error ? e.message : String(e));
     }
+    const seedOut = {
+      sheet: s.key,
+      segments: fp.segments,
+      center: [round1(fp.center[0]), round1(fp.center[1])] as [number, number],
+      rect: [round1(rect[0][0]), round1(rect[0][1]), round1(rect[1][0]), round1(rect[1][1])],
+      length_px: round1(fp.totalLen),
+    };
 
-    let committed: { committed: number; shape_ids: string[]; condition: string; ea_total: number } | undefined;
-    if (opts.commit && res.matches.length) {
-      committed = this.placeCount(name, res.matches.map((m) => m.at), {
-        condition: opts.condition!,
-        tool: "symbol_sweep",
-        origins: res.matches.map((m) => ({
-          method: "symbol_sweep" as const,
-          actor: "agent" as const,
-          reviewed: false,
-          symbol: { score: m.score, rotation: m.rotation, mirrored: m.mirrored },
-        })),
-      });
+    if (scope === "sheet") {
+      const res = matchSymbol(fp, geo.segs, { ...sweepOpts, excludeCenter: fp.center });
+      let committed: { committed: number; shape_ids: string[]; condition: string; ea_total: number } | undefined;
+      if (opts.commit && res.matches.length) {
+        committed = this.placeCount(name, res.matches.map((m) => m.at), {
+          condition: opts.condition!,
+          tool: "symbol_sweep",
+          origins: res.matches.map((m) => ({
+            method: "symbol_sweep" as const,
+            actor: "agent" as const,
+            reviewed: false,
+            symbol: { score: m.score, rotation: m.rotation, mirrored: m.mirrored, seed: { source: "instance" as const, sheet: s.key } },
+          })),
+        });
+      }
+      return {
+        scope,
+        found: res.matches.length,
+        matches: res.matches.map((m) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored })),
+        withheld: res.withheld.map((w) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, reason: w.reason })),
+        seed: seedOut,
+        candidates: res.candidates,
+        ...(committed ? {
+          committed: committed.committed,
+          shape_ids: committed.shape_ids,
+          condition: committed.condition,
+          ea_total: committed.ea_total,
+        } : {}),
+        ...(opts.commit && !res.matches.length ? { note: "commit requested but nothing cleared the bar — no shapes were committed." } : {}),
+        ...(res.candidates.dropped > 0 ? { warning: `Work cap: ${res.candidates.dropped} candidate placement(s) were never scored — the seed's linework is too common on this sheet for an exhaustive sweep. Tighten the seed rect around more distinctive geometry, or sweep a region at a time and reconcile the counts.` } : {}),
+      };
     }
 
+    // ── scope "set" ────────────────────────────────────────────────────────
+    const graph = await this.ensureGraph();
+    if (!graph.available) {
+      throw new UserError("This set has no text layer, so sheet ROLES are unknown — a set-wide sweep counts PLAN sheets only, and it will not guess which sheets those are. Sweep each sheet explicitly with scope 'sheet'.");
+    }
+    const roleOf = new Map(graph.sheets.map((g) => [g.key, g.role] as const));
+    const seedRole = roleOf.get(s.key) ?? "unknown";
+    const seedSource: "instance" | "detail_sheet" = seedRole === "plan" ? "instance" : "detail_sheet";
+
+    const perSheet: { state: SheetState; matches: SweepMatch[]; withheld: SweepWithheld[]; candidates: { considered: number; dropped: number }; elapsed_ms: number }[] = [];
+    const skipped: { sheet: string; role: string; reason: string }[] = [];
+    for (const sh of this.sheetList()) {
+      const role = roleOf.get(sh.key) ?? "unknown";
+      if (role !== "plan") {
+        skipped.push({
+          sheet: sh.key,
+          role,
+          reason: sh.key === s.key
+            ? `the seed source — a symbol drawn on a ${role} sheet defines the fingerprint but is a reference drawing, never installed work`
+            : role === "unknown"
+              ? "role unknown (no classifiable title text) — sweep it explicitly with scope 'sheet' if it is a plan"
+              : `a ${role} sheet — symbol instances here are reference drawings, not installed work`,
+        });
+        continue;
+      }
+      const g2 = await this.ensureGeometry(sh);
+      if (!g2.segs.length) {
+        skipped.push({ sheet: sh.key, role, reason: "no vector linework (likely a scan) — symbol matching reads the drawn segments" });
+        continue;
+      }
+      const t0 = process.hrtime.bigint();
+      const res = matchSymbol(fp, g2.segs, { ...sweepOpts, ...(sh.key === s.key ? { excludeCenter: fp.center } : {}) });
+      const elapsed_ms = Math.round(Number(process.hrtime.bigint() - t0) / 1e4) / 100;
+      perSheet.push({ state: sh, ...res, elapsed_ms });
+    }
+
+    const found = perSheet.reduce((n, p) => n + p.matches.length, 0);
+    let committed: { committed: number; shape_ids: string[]; condition: string; ea_total: number } | undefined;
+    if (opts.commit && found) {
+      const ids: string[] = [];
+      for (const ps of perSheet) {
+        for (const m of ps.matches) {
+          ids.push(this.commit(ps.state, opts.condition!, "count", [m.at], { count: 1 }, {
+            method: "symbol_sweep",
+            actor: "agent",
+            reviewed: false,
+            symbol: { score: m.score, rotation: m.rotation, mirrored: m.mirrored, seed: { source: seedSource, sheet: s.key, role: seedRole } },
+          }).id);
+        }
+      }
+      this.flushCommits("symbol_sweep");
+      const c = this.conditions.find((x) => x.finish_tag === opts.condition)!;
+      const ea_total = this.shapes
+        .filter((x) => x.condition_id === c.id && x.measure_role === "count")
+        .reduce((n, x) => n + (x.computed.count || 1), 0);
+      committed = { committed: ids.length, shape_ids: ids, condition: c.finish_tag, ea_total };
+    }
+
+    const capped = perSheet.filter((p) => p.candidates.dropped > 0);
+    const notes: string[] = [];
+    if (!perSheet.length) notes.push("No plan-role sheet in the set was sweepable — nothing was counted; skipped[] says why, sheet by sheet.");
+    if (opts.commit && !found) notes.push("commit requested but nothing cleared the bar on any plan sheet — no shapes were committed.");
     return {
-      found: res.matches.length,
-      matches: res.matches.map((m) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored })),
-      withheld: res.withheld.map((w) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, reason: w.reason })),
-      seed: {
-        segments: res.seed.segments,
-        center: [round1(res.seed.center[0]), round1(res.seed.center[1])],
-        rect: [round1(rect[0][0]), round1(rect[0][1]), round1(rect[1][0]), round1(rect[1][1])],
-        length_px: res.seed.length_px,
+      scope,
+      found,
+      seed: { ...seedOut, role: seedRole },
+      sheets: perSheet.map((p) => ({
+        sheet: p.state.key,
+        found: p.matches.length,
+        matches: p.matches.map((m) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored })),
+        withheld: p.withheld.map((w) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, reason: w.reason })),
+        candidates: p.candidates,
+        elapsed_ms: p.elapsed_ms,
+      })),
+      skipped,
+      ...(committed ?? {}),
+      ...(notes.length ? { note: notes.join(" ") } : {}),
+      ...(capped.length ? { warning: `Work cap: candidate placements were dropped un-scored on ${capped.map((p) => p.state.key).join(", ")} — the seed's linework is too common there for an exhaustive sweep. Tighten the seed rect around more distinctive geometry, or sweep those sheets singly and reconcile the counts.` } : {}),
+    };
+  }
+
+  /** sweep_schedule_row (phase 2) — the estimator's story, honored: a
+   * transition type sometimes exists only as a schedule row plus tag markers
+   * scattered across the plan sheets. Given the ROW's key, this mints the
+   * condition FROM the row (the assign-from-schedule vocabulary: the tag is
+   * the schedule's claim, `origin.assignment {source: "schedule"}` with the
+   * citation) and sweeps every plan sheet for the marker the tag is drawn as.
+   *
+   * THE CONTRACT, stated precisely — refusal-honest, never text-to-geometry
+   * guessing:
+   *   1. The row must exist in a schedule table the sheet graph extracted
+   *      (one row — a key defined twice across tables is ambiguous, refused).
+   *   2. The tag must be DRAWN on at least one plan-role sheet. A row whose
+   *      tag appears nowhere on the plans cannot be geometrically anchored,
+   *      and a fingerprint is NEVER guessed from text alone — refused, with
+   *      the fix (marquee an instance with symbol_sweep).
+   *   3. The fingerprint is the linework around the tag's own drawn
+   *      occurrence (a deterministic pad ladder around the text bbox), and
+   *      where the tag occurs more than once it must CORROBORATE — recur at
+   *      a second occurrence — before it is trusted. No repeatable marker
+   *      geometry → refused.
+   *   4. A geometric match COUNTS only when the row's own tag text sits
+   *      within the marker's footprint — drafting reuses one bubble shape
+   *      across many tags, so geometry alone is not identity. A match
+   *      carrying a SIBLING row's tag is excluded (disclosed with the tag it
+   *      carries); a match carrying no tag is withheld as a question; a tag
+   *      occurrence with no matching geometry is disclosed as text_only.
+   * Commit is ONE undo step for the whole set-wide sweep. */
+  async sweepScheduleRow(tag: string, opts: {
+    commit?: boolean;
+    rotations?: boolean;
+    mirror?: boolean;
+    tolerancePx?: number;
+  } = {}) {
+    const t = (tag || "").trim().toUpperCase().replace(/\s+/g, "");
+    if (!t) throw new UserError('Pass a schedule-row tag as drawn, e.g. sweep_schedule_row { tag: "T1" }.');
+    const graph = await this.ensureGraph();
+    if (!graph.available) throw new UserError("This set has no text layer (a scan) — the sheet graph is unavailable, so schedule rows cannot be read.");
+
+    // 1. the row — the same tables resolve_tag / find_schedule read
+    const rowHits = graph.tables.flatMap((tb) => tb.rows.filter((r) => r.key === t).map((r) => ({ tb, r })));
+    if (!rowHits.length) {
+      const found = graph.tables.map((x) => `${x.kind} on ${x.sheet} (${x.rows.length} rows)`).join(" | ");
+      throw new UserError(`No schedule row "${t}" in the set — tables found: ${found || "none"}. Check the tag as drawn (find_schedule shows each table's region), or merge the schedule sheet in with load_plan.`);
+    }
+    if (rowHits.length > 1) {
+      throw new UserError(`Ambiguous: ${rowHits.length} schedule rows carry the key "${t}" — the same mark defined twice cannot seed one sweep. Marquee the marker yourself with symbol_sweep.`);
+    }
+    const { tb, r } = rowHits[0];
+    // sibling keys span EVERY table in the set, not just the row's own: a
+    // marker labeled with any other schedule key is that mark's instance, and
+    // disclosing it as "excluded, labeled 135" beats calling it unlabeled
+    const siblings = [...new Set(graph.tables.flatMap((x) => x.rows.map((row) => row.key)))].filter((k) => k !== t).sort();
+    const table = tb.title?.text || `${tb.kind} schedule`;
+
+    // 2. plan-role sheets, and every drawn occurrence of the tag on them
+    const roleOf = new Map(graph.sheets.map((g) => [g.key, g.role] as const));
+    const skipped: { sheet: string; role: string; reason: string }[] = [];
+    const planSheets: SheetState[] = [];
+    for (const sh of this.sheetList()) {
+      const role = roleOf.get(sh.key) ?? "unknown";
+      if (role === "plan") planSheets.push(sh);
+      else {
+        skipped.push({
+          sheet: sh.key,
+          role,
+          reason: role === "unknown"
+            ? "role unknown (no classifiable title text) — instances here are not counted"
+            : `a ${role} sheet — the tag's instances here are reference drawings, never installed work`,
+        });
+      }
+    }
+    type Occ = { cx: number; cy: number; h: number; bbox: [number, number, number, number] };
+    const occOf = (sh: SheetState, key: string): Occ[] => {
+      if (!sh.spans) sh.spans = textSpans(sh.page);
+      return sh.spans
+        .filter((sp) => sp.str.trim().toUpperCase() === key)
+        .map((sp) => ({ cx: (sp.x0 + sp.x1) / 2, cy: (sp.y0 + sp.y1) / 2, h: Math.max(sp.y1 - sp.y0, 6), bbox: [sp.x0, sp.y0, sp.x1, sp.y1] as [number, number, number, number] }))
+        .sort((a, b) => a.cy - b.cy || a.cx - b.cx);
+    };
+    const occBySheet = planSheets.map((sh) => ({ sh, occ: occOf(sh, t) }));
+    const totalOcc = occBySheet.reduce((n, e) => n + e.occ.length, 0);
+    if (!totalOcc) {
+      throw new UserError(`Schedule row "${t}" (${table} on ${tb.sheet}) cannot be geometrically anchored — its tag is not drawn on any plan sheet, and a fingerprint is never guessed from text alone. If the marker is drawn untagged, marquee one instance with symbol_sweep {scope: "set"}.`);
+    }
+
+    // 3. anchor + pad ladder + corroboration. Anchor sheet = the plan sheet
+    // with the MOST occurrences (ord breaks ties) so corroboration can run on
+    // the anchor's own sheet whenever the set allows it; anchor occurrence =
+    // first in reading order. Deterministic throughout.
+    const withOcc = occBySheet.filter((e) => e.occ.length > 0)
+      .sort((a, b) => b.occ.length - a.occ.length || a.sh.ord - b.sh.ord);
+    const anchorSheet = withOcc[0].sh;
+    const anchor = withOcc[0].occ[0];
+    const anchorGeo = await this.ensureGeometry(anchorSheet);
+    if (!anchorGeo.segs.length) {
+      throw new UserError(`${anchorSheet.key} carries the tag "${t}" but no vector linework — the marker cannot be fingerprinted on a scan.`);
+    }
+    const sweepOpts: SweepOptions = {
+      rotations: opts.rotations ?? true,
+      mirror: opts.mirror ?? true,
+      tolPx: opts.tolerancePx ?? SWEEP_TOL_PX,
+    };
+    // corroborators: the tag's OTHER occurrences — same sheet when it has
+    // them, else the next sheet that does; a tag drawn exactly once has none
+    let corro: { segs: number[]; occ: Occ[] } | null = null;
+    if (withOcc[0].occ.length > 1) corro = { segs: anchorGeo.segs, occ: withOcc[0].occ.slice(1) };
+    else if (withOcc.length > 1) corro = { segs: (await this.ensureGeometry(withOcc[1].sh)).segs, occ: withOcc[1].occ };
+
+    const cX = (v: number) => Math.max(0, Math.min(v, anchorSheet.widthPx));
+    const cY = (v: number) => Math.max(0, Math.min(v, anchorSheet.heightPx));
+    let fp: SymbolFingerprint | null = null;
+    let anchorRect: [Point, Point] | null = null;
+    let corroborated = false;
+    for (const padK of [1, 2, 3]) {
+      const pad = padK * anchor.h;
+      const rect: [Point, Point] = [
+        [cX(anchor.bbox[0] - pad), cY(anchor.bbox[1] - pad)],
+        [cX(anchor.bbox[2] + pad), cY(anchor.bbox[3] + pad)],
+      ];
+      let cand: SymbolFingerprint;
+      try {
+        cand = fingerprintSymbol(anchorGeo.segs, rect);
+      } catch (e) {
+        // nothing fully inside yet → widen; a region-sized grab → bigger pads only get worse
+        if (e instanceof Error && /region, not one symbol/.test(e.message)) break;
+        continue;
+      }
+      if (!corro) { fp = cand; anchorRect = rect; break; }
+      const probe = matchSymbol(cand, corro.segs, sweepOpts);
+      const pr = cand.footprint / 2 + anchor.h;
+      if (corro.occ.some((o) => probe.matches.some((m) => Math.hypot(m.at[0] - o.cx, m.at[1] - o.cy) <= pr))) {
+        fp = cand; anchorRect = rect; corroborated = true;
+        break;
+      }
+    }
+    if (!fp || !anchorRect) {
+      throw new UserError(corro
+        ? `Schedule row "${t}" cannot be anchored: the linework around its drawn tag on ${anchorSheet.key} does not recur at the tag's other occurrences — no repeatable marker geometry to fingerprint. Marquee one instance with symbol_sweep instead.`
+        : `Schedule row "${t}" cannot be anchored: no fingerprintable marker linework sits around its drawn tag on ${anchorSheet.key}. Marquee one instance with symbol_sweep instead.`);
+    }
+
+    // 4. the full plan-only sweep + tag corroboration per match
+    const R = fp.footprint / 2 + anchor.h;
+    const byPos = <T extends { at: Point }>(a: T, b: T): number => a.at[1] - b.at[1] || a.at[0] - b.at[0];
+    type CountedMatch = SweepMatch & { tag_at: [number, number, number, number] };
+    const perSheet: {
+      state: SheetState;
+      matches: CountedMatch[];
+      withheld: SweepWithheld[];
+      excluded: { at: Point; tag: string }[];
+      text_only: { at: Point }[];
+      candidates: { considered: number; dropped: number };
+      elapsed_ms: number;
+    }[] = [];
+    for (const { sh, occ } of occBySheet) {
+      const g2 = await this.ensureGeometry(sh);
+      if (!g2.segs.length) {
+        skipped.push({ sheet: sh.key, role: "plan", reason: "no vector linework (likely a scan) — symbol matching reads the drawn segments" });
+        continue;
+      }
+      const t0 = process.hrtime.bigint();
+      const res = matchSymbol(fp, g2.segs, sweepOpts);
+      const elapsed_ms = Math.round(Number(process.hrtime.bigint() - t0) / 1e4) / 100;
+      const sibSpans: { key: string; cx: number; cy: number }[] = [];
+      for (const k of siblings) for (const o of occOf(sh, k)) sibSpans.push({ key: k, cx: o.cx, cy: o.cy });
+      const matches: CountedMatch[] = [];
+      const excluded: { at: Point; tag: string }[] = [];
+      const withheld: SweepWithheld[] = [];
+      const matchedOcc = new Set<number>();
+      for (const m of res.matches) {
+        let oi = -1;
+        for (let k = 0; k < occ.length; k++) {
+          if (Math.hypot(m.at[0] - occ[k].cx, m.at[1] - occ[k].cy) <= R) { oi = k; break; }
+        }
+        if (oi >= 0) { matchedOcc.add(oi); matches.push({ ...m, tag_at: occ[oi].bbox }); continue; }
+        const sib = sibSpans.find((sp) => Math.hypot(m.at[0] - sp.cx, m.at[1] - sp.cy) <= R);
+        if (sib) { excluded.push({ at: m.at, tag: sib.key }); continue; }
+        withheld.push({ ...m, reason: `the marker geometry matches but carries no "${t}" tag within its footprint — an unlabeled instance or a shared marker shape; look before counting it` });
+      }
+      for (const w of res.withheld) {
+        const near = occ.some((o) => Math.hypot(w.at[0] - o.cx, w.at[1] - o.cy) <= R);
+        withheld.push(near ? { ...w, reason: `${w.reason} — and the "${t}" tag is drawn beside it` } : w);
+      }
+      matches.sort(byPos); excluded.sort(byPos); withheld.sort(byPos);
+      const text_only = occ
+        .filter((o, k) => !matchedOcc.has(k) && !res.withheld.some((w) => Math.hypot(w.at[0] - o.cx, w.at[1] - o.cy) <= R))
+        .map((o) => ({ at: [round1(o.cx), round1(o.cy)] as Point }));
+      perSheet.push({ state: sh, matches, withheld, excluded, text_only, candidates: res.candidates, elapsed_ms });
+    }
+
+    // 5. commit — condition minted FROM the row (its key IS the tag), the
+    // schedule verdict and the seed citation on every marker, one undo step
+    const found = perSheet.reduce((n, p) => n + p.matches.length, 0);
+    let committed: { committed: number; shape_ids: string[]; condition: string; ea_total: number } | undefined;
+    if (opts.commit && found) {
+      const ids: string[] = [];
+      for (const ps of perSheet) {
+        for (const m of ps.matches) {
+          ids.push(this.commit(ps.state, t, "count", [m.at], { count: 1 }, {
+            method: "symbol_sweep",
+            actor: "agent",
+            reviewed: false,
+            assignment: { source: "schedule", schedule_sheet: tb.sheet },
+            symbol: {
+              score: m.score, rotation: m.rotation, mirrored: m.mirrored,
+              seed: { source: "schedule_row", sheet: anchorSheet.key, row: { sheet: tb.sheet, key: t, table } },
+            },
+          }).id);
+        }
+      }
+      this.flushCommits("sweep_schedule_row");
+      const c = this.conditions.find((x) => x.finish_tag === t)!;
+      const ea_total = this.shapes
+        .filter((x) => x.condition_id === c.id && x.measure_role === "count")
+        .reduce((n, x) => n + (x.computed.count || 1), 0);
+      committed = { committed: ids.length, shape_ids: ids, condition: c.finish_tag, ea_total };
+    }
+
+    const cells: Record<string, string> = {};
+    for (const [k, v] of Object.entries(r.cells)) cells[k] = v.text;
+    const firstCell = r.cells[Object.keys(r.cells)[0]];
+    const capped = perSheet.filter((p) => p.candidates.dropped > 0);
+    const notes: string[] = [];
+    if (!corroborated) notes.push(`The tag "${t}" is drawn ${totalOcc === 1 ? "exactly once" : "too sparsely to cross-check"} — the fingerprint could not corroborate at a second occurrence; audit the matches with view_sheet before trusting the count.`);
+    if (opts.commit && !found) notes.push("commit requested but nothing cleared the bar — no shapes were committed.");
+    return {
+      tag: t,
+      row: {
+        sheet: tb.sheet,
+        table,
+        key: t,
+        cells,
+        citation: { sheet: tb.sheet, text: `${table} row ${t}`, bbox: Session.wireBox(firstCell?.bbox || tb.region) },
       },
-      candidates: res.candidates,
-      ...(committed ? {
-        committed: committed.committed,
-        shape_ids: committed.shape_ids,
-        condition: committed.condition,
-        ea_total: committed.ea_total,
-      } : {}),
-      ...(opts.commit && !res.matches.length ? { note: "commit requested but nothing cleared the bar — no shapes were committed." } : {}),
-      ...(res.candidates.dropped > 0 ? { warning: `Work cap: ${res.candidates.dropped} candidate placement(s) were never scored — the seed's linework is too common on this sheet for an exhaustive sweep. Tighten the seed rect around more distinctive geometry, or sweep a region at a time and reconcile the counts.` } : {}),
+      anchor: {
+        sheet: anchorSheet.key,
+        at: [round1(anchor.cx), round1(anchor.cy)],
+        rect: [round1(anchorRect[0][0]), round1(anchorRect[0][1]), round1(anchorRect[1][0]), round1(anchorRect[1][1])],
+        segments: fp.segments,
+        length_px: round1(fp.totalLen),
+        corroborated,
+        occurrences: totalOcc,
+      },
+      found,
+      sheets: perSheet.map((p) => ({
+        sheet: p.state.key,
+        found: p.matches.length,
+        matches: p.matches.map((m) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored, tag_at: Session.wireBox(m.tag_at) })),
+        withheld: p.withheld.map((w) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, reason: w.reason })),
+        excluded: p.excluded.map((e) => ({ at: [round1(e.at[0]), round1(e.at[1])], tag: e.tag })),
+        text_only: p.text_only,
+        candidates: p.candidates,
+        elapsed_ms: p.elapsed_ms,
+      })),
+      skipped,
+      ...(committed ?? {}),
+      ...(notes.length ? { note: notes.join(" ") } : {}),
+      ...(capped.length ? { warning: `Work cap: candidate placements were dropped un-scored on ${capped.map((p) => p.state.key).join(", ")} — sweep those sheets singly with symbol_sweep and reconcile the counts.` } : {}),
     };
   }
 

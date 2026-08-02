@@ -1,0 +1,173 @@
+%PDF-1.5
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R 8 0 R 10 0 R] /Count 4 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 612] /Contents 5 0 R /Resources << /Font << /F1 3 0 R >> >> >>
+endobj
+5 0 obj
+<< /Length 1232 >>
+stream
+BT /F1 14 Tf 40 580 Td (FLOOR PLAN) Tj ET
+1 w
+30 30 552 552 re S
+0.5 w
+120 430 m 140 430 l S
+140 430 m 140 450 l S
+140 450 m 120 450 l S
+120 450 m 120 430 l S
+120 430 m 140 450 l S
+140 440 m 154 440 l S
+260 430 m 280 430 l S
+280 430 m 280 450 l S
+280 450 m 260 450 l S
+260 450 m 260 430 l S
+260 430 m 280 450 l S
+280 440 m 294 440 l S
+400 430 m 420 430 l S
+420 430 m 420 450 l S
+420 450 m 400 450 l S
+400 450 m 400 430 l S
+400 430 m 420 450 l S
+420 440 m 434 440 l S
+140 330 m 140 350 l S
+140 350 m 120 350 l S
+120 350 m 120 330 l S
+120 330 m 140 330 l S
+140 330 m 120 350 l S
+130 350 m 130 364 l S
+138 200 m 150 212 l S
+150 212 m 162 200 l S
+162 200 m 150 188 l S
+150 188 m 138 200 l S
+BT /F1 10 Tf 144.2 196.5 Td (T1) Tj ET
+288 200 m 300 212 l S
+300 212 m 312 200 l S
+312 200 m 300 188 l S
+300 188 m 288 200 l S
+BT /F1 10 Tf 294.2 196.5 Td (T1) Tj ET
+438 200 m 450 212 l S
+450 212 m 462 200 l S
+462 200 m 450 188 l S
+450 188 m 438 200 l S
+BT /F1 10 Tf 444.2 196.5 Td (T1) Tj ET
+438 120 m 450 132 l S
+450 132 m 462 120 l S
+462 120 m 450 108 l S
+450 108 m 438 120 l S
+BT /F1 10 Tf 444.2 116.5 Td (T2) Tj ET
+138 120 m 150 132 l S
+150 132 m 162 120 l S
+162 120 m 150 108 l S
+150 108 m 138 120 l S
+BT /F1 10 Tf 294.2 86.5 Td (T1) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 612] /Contents 7 0 R /Resources << /Font << /F1 3 0 R >> >> >>
+endobj
+7 0 obj
+<< /Length 589 >>
+stream
+BT /F1 14 Tf 40 580 Td (FINISH PLAN) Tj ET
+1 w
+30 30 552 552 re S
+0.5 w
+150 400 m 170 400 l S
+170 400 m 170 420 l S
+170 420 m 150 420 l S
+150 420 m 150 400 l S
+150 400 m 170 420 l S
+170 410 m 184 410 l S
+370 400 m 350 400 l S
+350 400 m 350 420 l S
+350 420 m 370 420 l S
+370 420 m 370 400 l S
+370 400 m 350 420 l S
+350 410 m 336 410 l S
+138 250 m 150 262 l S
+150 262 m 162 250 l S
+162 250 m 150 238 l S
+150 238 m 138 250 l S
+BT /F1 10 Tf 144.2 246.5 Td (T1) Tj ET
+388 250 m 400 262 l S
+400 262 m 412 250 l S
+412 250 m 400 238 l S
+400 238 m 388 250 l S
+BT /F1 10 Tf 394.2 246.5 Td (T1) Tj ET
+endstream
+endobj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 612] /Contents 9 0 R /Resources << /Font << /F1 3 0 R >> >> >>
+endobj
+9 0 obj
+<< /Length 303 >>
+stream
+BT /F1 14 Tf 40 580 Td (DETAILS) Tj ET
+0.5 w
+300 300 m 320 300 l S
+320 300 m 320 320 l S
+320 320 m 300 320 l S
+300 320 m 300 300 l S
+300 300 m 320 320 l S
+320 310 m 334 310 l S
+138 150 m 150 162 l S
+150 162 m 162 150 l S
+162 150 m 150 138 l S
+150 138 m 138 150 l S
+BT /F1 10 Tf 144.2 146.5 Td (T1) Tj ET
+endstream
+endobj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 612] /Contents 11 0 R /Resources << /Font << /F1 3 0 R >> >> >>
+endobj
+11 0 obj
+<< /Length 678 >>
+stream
+BT /F1 14 Tf 40 580 Td (FINISH SCHEDULE) Tj ET
+BT /F1 9 Tf 60 540 Td (CODE) Tj ET
+BT /F1 9 Tf 200 540 Td (MATERIAL) Tj ET
+BT /F1 9 Tf 400 540 Td (DESCRIPTION) Tj ET
+BT /F1 9 Tf 60 515 Td (T1) Tj ET
+BT /F1 9 Tf 200 515 Td (TRANSITION) Tj ET
+BT /F1 9 Tf 400 515 Td (EDGE STRIP RESILIENT) Tj ET
+BT /F1 9 Tf 60 490 Td (T2) Tj ET
+BT /F1 9 Tf 200 490 Td (TRANSITION) Tj ET
+BT /F1 9 Tf 400 490 Td (EDGE STRIP METAL) Tj ET
+BT /F1 9 Tf 60 465 Td (T9) Tj ET
+BT /F1 9 Tf 200 465 Td (JOINT COVER) Tj ET
+BT /F1 9 Tf 400 465 Td (NOT DRAWN ON PLANS) Tj ET
+0.5 w
+450 300 m 470 300 l S
+470 300 m 470 320 l S
+470 320 m 450 320 l S
+450 320 m 450 300 l S
+450 300 m 470 320 l S
+470 310 m 484 310 l S
+endstream
+endobj
+xref
+0 12
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000134 00000 n 
+0000000204 00000 n 
+0000000330 00000 n 
+0000001614 00000 n 
+0000001740 00000 n 
+0000002380 00000 n 
+0000002506 00000 n 
+0000002860 00000 n 
+0000002988 00000 n 
+trailer
+<< /Size 12 /Root 1 0 R >>
+startxref
+3718
+%%EOF

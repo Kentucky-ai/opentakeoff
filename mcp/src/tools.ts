@@ -1,4 +1,4 @@
-// The thirty-four tools — thin zod-validated handlers over the Session. Replies are
+// The thirty-five tools — thin zod-validated handlers over the Session. Replies are
 // compact JSON (format.ts); view_sheet alone replies with an image content
 // item plus a JSON meta text item. Failures are isError results, never thrown
 // protocol errors.
@@ -16,7 +16,7 @@ import {
   exportMarkedPdfOutput, listShapesOutput, deriveBaseOutput, importTakeoffOutput,
   annotateOutput, listAnnotationsOutput, linkAnnotationOutput,
   markVerdictOutput, deleteVerdictOutput,
-  sheetGraphOutput, resolveTagOutput, findScheduleOutput,
+  sheetGraphOutput, resolveTagOutput, findScheduleOutput, sweepScheduleRowOutput,
 } from "./outputs.ts";
 import { exportMarkedPdf } from "./marked.ts";
 import { importTakeoff } from "./importing.ts";
@@ -166,13 +166,14 @@ export function registerTools(server: McpServer, session: Session): void {
   }, run("place_count", (a) => session.placeCount(a.sheet, a.points, { condition: a.condition })));
 
   server.registerTool("symbol_sweep", {
-    description: `Find EVERY instance of a repeated plan symbol from ONE example — drains, thresholds, fixtures, transition markers: marquee a tight seed_rect around a single instance and the sheet's vector linework is searched for every other placement of that same segment cluster. Deterministic geometry, not vision: each placement scores as the length-weighted fraction of the seed's segments reproduced within tolerance_px, under translation plus 0/90/180/270 rotation and mirroring (symbols rotate on plans — both ON by default; turn them off to pin orientation). Score ≥ 0.92 is a match; the 0.75–0.92 band comes back in \`withheld\` with a reason — a near-match is a question you answer by LOOKING (view_sheet at its \`at\`), never a silent commit and never a silent drop. The seed's own location is reported in \`seed\` and never double-committed. Work is capped and the cap is disclosed: a reply with candidates.dropped > 0 says exactly that some placements were never scored — tighten the seed rect around more distinctive geometry rather than trusting a truncated count. Marquee discipline: the rect must hug ONE instance — only segments FULLY inside it define the symbol, so a loose rect that swallows wall linework fingerprints the wall, not the symbol. commit: true (requires condition) commits every match center as an EA count marker through the same path as place_count — the whole sweep is ONE undo step, each marker carries origin.method "symbol_sweep" with its score and transform, and withheld placements are NEVER committed. No scale needed: EA is scale-free. After any batch commit, LOOK at what landed — view_sheet {overlay: true} over the swept area — and audit the markers against the drawing before trusting the EA total. ${COORDS}`,
+    description: `Find EVERY instance of a repeated plan symbol from ONE example — drains, thresholds, fixtures, transition markers: marquee a tight seed_rect around a single instance and the vector linework is searched for every other placement of that same segment cluster. Deterministic geometry, not vision: each placement scores as the length-weighted fraction of the seed's segments reproduced within tolerance_px, under translation plus 0/90/180/270 rotation and mirroring (symbols rotate on plans — both ON by default; turn them off to pin orientation). Score ≥ 0.92 is a match; the 0.75–0.92 band comes back in \`withheld\` with a reason — a near-match is a question you answer by LOOKING (view_sheet at its \`at\`), never a silent commit and never a silent drop. The seed's own location is reported in \`seed\` and never double-committed. Work is capped and the cap is disclosed: a reply with candidates.dropped > 0 says exactly that some placements were never scored — tighten the seed rect around more distinctive geometry rather than trusting a truncated count. Marquee discipline: the rect must hug ONE instance — only segments FULLY inside it define the symbol, so a loose rect that swallows wall linework fingerprints the wall, not the symbol. scope "set" sweeps the WHOLE working set, counting on PLAN-role sheets only (the sheet graph decides): a symbol drawn in a detail, legend, or schedule is a reference drawing and never counts itself — which is also how you seed from one: marquee the assembly on the detail sheet and its plan-sheet occurrences are counted while the detail stays excluded (the exclusion disclosed in \`skipped\`, per-sheet results with per-sheet caps and wall-clock in \`sheets\`; the fingerprint is size-true, so a detail drawn at an enlarged scale will not match plan-size instances). commit: true (requires condition) commits every match center as an EA count marker through the same path as place_count — the whole sweep (set-wide included) is ONE undo step, each marker carries origin.method "symbol_sweep" with its score, transform, and seed source, and withheld placements are NEVER committed. No scale needed: EA is scale-free. After any batch commit, LOOK at what landed — view_sheet {overlay: true} over the swept area — and audit the markers against the drawing before trusting the EA total. ${COORDS}`,
     inputSchema: {
-      sheet: z.string(),
+      sheet: z.string().describe("The sheet the seed rect sits on — in scope 'set' it may be ANY sheet (a detail/legend seed sheet is fingerprint source only, never counted)"),
       seed_rect: z.tuple([pointSchema, pointSchema])
         .describe("Marquee around ONE example instance, [[x0,y0],[x1,y1]] in image px — tight: segments fully inside define the symbol"),
       condition: z.string().optional().describe("Finish tag to commit match markers under (minted on first use), e.g. 'FD-1'. Required when commit is true"),
       commit: z.boolean().default(false).describe("Commit every MATCH center as one EA count marker (withheld placements never commit)"),
+      scope: z.enum(["sheet", "set"]).default("sheet").describe('"sheet" = this sheet only; "set" = every PLAN-role sheet in the working set (needs a text layer for the sheet graph; non-plan sheets are excluded and disclosed)'),
       rotations: z.boolean().default(true).describe("Also match 90/180/270-rotated placements"),
       mirror: z.boolean().default(true).describe("Also match mirrored placements"),
       tolerance_px: z.number().positive().max(20).default(2).describe("Endpoint match tolerance in image px (default 2 — CAD jitter, not drift)"),
@@ -181,6 +182,24 @@ export function registerTools(server: McpServer, session: Session): void {
   }, run("symbol_sweep", (a) => session.symbolSweep(a.sheet, {
     seedRect: a.seed_rect,
     condition: a.condition,
+    commit: a.commit,
+    scope: a.scope,
+    rotations: a.rotations,
+    mirror: a.mirror,
+    tolerancePx: a.tolerance_px,
+  })));
+
+  server.registerTool("sweep_schedule_row", {
+    description: `Take off a schedule row's mark from the row itself — the estimator's own gesture: a transition type sometimes exists only as a schedule row plus tag markers scattered across the plan sheets, and this tool mints the condition FROM the row and finds every occurrence. Pass the row's key (e.g. 'T1') and the tool (1) reads the row from the set's schedule tables (the sheet_graph/find_schedule machinery — the row is the condition's cited source), (2) anchors a geometric fingerprint on the marker the tag is DRAWN as on a plan sheet (a deterministic pad ladder around the tag text; where the tag occurs more than once the fingerprint must recur at a second occurrence before it is trusted — \`anchor.corroborated\`), and (3) sweeps every PLAN-role sheet for it. The count is geometry AND text agreeing: drafting reuses one bubble shape across many marks, so a match counts ONLY when the row's own tag sits within the marker footprint (its bbox rides the match as \`tag_at\` evidence); a match labeled with a SIBLING row's tag is excluded and says whose it is, an unlabeled match is withheld as a question, and a tag drawn with no matching marker is disclosed as text_only. REFUSAL over guessing, with the reason and the fix: no such row; the same key in two tables (ambiguous); a tag drawn on no plan sheet; no repeatable marker linework around the tag — a fingerprint is never guessed from text alone (the fallback is always: marquee one instance with symbol_sweep). commit: true commits the counted matches as EA markers under the row's own key — one undo step for the whole set-wide sweep, every marker carrying origin.assignment {source: "schedule"} plus the anchor and row citation on origin.symbol.seed. No scale needed: EA is scale-free. After committing, LOOK: view_sheet {overlay: true} over each swept sheet. ${COORDS}`,
+    inputSchema: {
+      tag: z.string().min(1).describe("The schedule row's key exactly as drawn, e.g. 'T1', 'TR-2' — it becomes the condition tag on commit"),
+      commit: z.boolean().default(false).describe("Commit every counted match as one EA count marker (excluded/withheld/text_only never commit)"),
+      rotations: z.boolean().default(true).describe("Also match 90/180/270-rotated markers"),
+      mirror: z.boolean().default(true).describe("Also match mirrored markers"),
+      tolerance_px: z.number().positive().max(20).default(2).describe("Endpoint match tolerance in image px (default 2 — CAD jitter, not drift)"),
+    },
+    outputSchema: sweepScheduleRowOutput,
+  }, run("sweep_schedule_row", (a) => session.sweepScheduleRow(a.tag, {
     commit: a.commit,
     rotations: a.rotations,
     mirror: a.mirror,
