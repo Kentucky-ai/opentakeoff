@@ -46,7 +46,17 @@ Thirty-four tools, in the order an agent tends to reach for them:
   schedule row → each code's finish/material definition, every edge carrying
   a citation; unresolved comes back *with a reason*, never as silence),
   `find_schedule` (kind → sheet + title + headers + a `view_sheet`-ready
-  region)
+  region). Three real-set shapes are handled natively (#87 phase 2): a
+  schedule **continued across sheets** ("… SCHEDULE — CONT'D") reads as ONE
+  table — rows resolve regardless of which sheet carries them, each citing
+  the sheet the ink is on, and `find_schedule` returns one match whose
+  `parts` list every fragment; **rotated column headers** (a quarter-turn
+  header band) anchor the table and are flagged `rotated_headers`; and on a
+  **multi-building set** the room key is (building, number), not the number
+  alone — rooms and tables carry their building, an unqualified reused
+  number refuses *listing the candidate rows per building* instead of
+  first-matching, and a qualified tag (`"A-134"`) picks the building the
+  set names
 - **Measure** — `one_click`, `detect_rooms` (both take `layers {include,
   exclude}` to override the sheet's stated layer roles for a call),
   `measure_polygon`, `measure_line`, `measure_surface` (wall SF: an open run
