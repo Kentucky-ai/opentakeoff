@@ -298,7 +298,7 @@ export function createTileCompositor() {
    *  cancel for sheet/group changes, where in-flight tiles really are garbage. */
   function paintDetail(
     canvas: HTMLCanvasElement, sheetKey: string, panelXOffset: number, x0: number, y0: number, x1: number, y1: number,
-    density: number, dark: boolean, onDone: () => void,
+    density: number, dark: boolean, onDone: () => void, panelYOffset = 0,
   ) {
     const dims = dimsBySheet.get(sheetKey);
     const levels = levelsBySheet.get(sheetKey);
@@ -378,7 +378,7 @@ export function createTileCompositor() {
       if (swapped || !live || myGen !== generation) return;
       swapped = true;
       canvas.width = bw; canvas.height = bh;
-      canvas.style.left = `${panelXOffset + x0}px`; canvas.style.top = `${y0}px`;
+      canvas.style.left = `${panelXOffset + x0}px`; canvas.style.top = `${panelYOffset + y0}px`;
       canvas.style.width = `${x1 - x0}px`; canvas.style.height = `${y1 - y0}px`;
       canvas.style.display = "block";
       canvas.getContext("2d")?.drawImage(back, 0, 0);

@@ -2,6 +2,23 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-02 — stitched sheets: a floor split at a match line becomes ONE working surface (#161)
+
+### Added
+- **Stitch sheets** — plans that arrive cut at a match line (a floor split across two or more sheets) can now be joined into one continuous working surface. In the gallery, select 2–4 sheets and hit **Stitch N into one surface**: the sheets butt edge-to-edge (no gap — this is one drawing, not a side-by-side group), open as ONE panel, and a room that crosses the match line traces as ONE shape. The design call from the issue holds: the composite wins over cross-sheet shapes — a stitch is a first-class surface with its own key (`stitch:<uid>`), so shapes bind to it exactly like any sheet's (`sheet_id` per shape is preserved) and totals, the report, undo, exports, and persistence all work unchanged. Every tool works on the composite: manual measure kit, count, markups, calibrate/standard scales (the stitch carries its own scale, seeded from its members when they agree), and **One-Click Area** — the members' vector geometry merges into one snap grid and one flood mask, so a room straddling the match line fills wall-to-wall across it. Verified against ground truth on a split-sheet fixture (the bundled VA plan cut into overlapping halves): a rect spanning the seam computes the same 2,469.1 SF the unsplit sheet gives, and one-click across the match line returns the identical 59.64 SF the same click returns on the original.
+- **Align — the two-click match-line joiner** (toolbar, visible when a stitch is open; the Calibrate idiom): click a point near the joint, then the SAME point where the other sheet draws it — that sheet slides so the two coincide. Where sheets overlap after alignment, the overlap splits at its midline and each member shows its own half (a seam-clip wrapper does the clipping), so the neighbor's margin/border strip never overpaints the plan. Align is guarded once takeoffs live on the stitch — shape coordinates are composite-relative, and moving members under committed quantities would silently shift their ink. Gesture accuracy is click-limited like Calibrate: zoom in for a tight joint (the E2E gesture at 24% zoom landed within 0.002 px of exact).
+- **Persistence + management** — stitches ride the project payload as an additive `stitches` field, sanitize-gated on hydrate (the approvals precedent: a corrupt entry drops, never wedges the canvas), omitted while empty so existing projects round-trip byte-identical. The gallery gains a **Stitched surfaces** strip (reopen / delete); deleting is refused while takeoffs or markups live on the stitch. A stitch reopens from its tab or the strip and restores exactly across reloads.
+- **Cross-sheet traces in a plain side-by-side group now refuse at commit** — the gap between grouped sheets is not real distance, and a shape spanning panels would bind to one sheet with vertices hanging off its edge. Area/rect/linear/curve/surface traces whose points span two panels refuse with the fix in the message: *stitch the sheets*. (Calibrate and Check already refused cross-panel spans; this closes the same hole for quantity-bearing traces.)
+
+### Fixed
+- **Composite extents accumulate exact member dimensions, not ceil'd canvas sizes** — a stitch extent computed from rounded-up member widths drifted the composite up to N px wide, and the One-Click mask downscale is measurably resolution-sensitive: a 6049 px composite of a 6048 px drawing broke flood fills the original sustains (reproduced both ways on the fixture — feeding 6049 to the *original* sheet's mask breaks it identically). Extents and seam math now use exact viewport dims and round once.
+
+### Deliberate limits (documented, not silent)
+- The **Marked Set PDF** skips stitch surfaces for now (no single source page to burn ink onto) and says so in the export toast — stitch quantities still ride the Report/CSV/XLSX. A composite marked-set page is the follow-up.
+- One-click across a match line depends on the seam being clean ink: members' merged geometry assigns every segment to exactly one owner (midpoint rule — segments are never cut, so hatch-row statistics survive), but a heavy border/title strip drawn exactly on the match line can still wall a flood the way it would on paper. Scanned (raster-fallback) members aren't merged yet — the composite one-click path is vector-only; scans on a stitch fall back to the graceful refusal.
+
+
+
 ## 2026-08-02 — symbol sweep phase 2: set-wide sweeps, and seeding from a detail sheet or a schedule row
 
 ### Added

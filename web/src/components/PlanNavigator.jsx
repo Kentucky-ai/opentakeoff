@@ -55,6 +55,9 @@ export default function PlanNavigator({
   onAddFiles, onClosePdf, onRemoveFromProject,
   onCloseProject, onBrowseProjects,
   levels = {}, onAssignLevel,
+  // stitches (#161): persisted match-line composites — created from a 2..MAX_GROUP
+  // selection, reopened/deleted from their strip
+  stitches = [], onStitch, onOpenStitch, onDeleteStitch,
   // browse (Drive) data
   listFolder, addSheets, onAdded,
 }) {
@@ -577,6 +580,19 @@ export default function PlanNavigator({
           </div>
         )}
       </div>
+      {stitches.length > 0 && (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "9px 18px", borderTop: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
+          <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--ink-muted)" }}>Stitched surfaces</span>
+          {stitches.map((st) => (
+            <span key={st.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--ink-faint)", padding: "4px 8px", fontSize: 12 }}>
+              <button onClick={() => onOpenStitch && onOpenStitch(st.id)} title={`Open ${st.name} — ${st.members.length} sheets as one working surface`}
+                style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontWeight: 600, fontSize: 12, padding: 0 }}>{st.name}</button>
+              <button onClick={() => onDeleteStitch && onDeleteStitch(st.id)} title="Delete this stitch (refused while takeoffs live on it)"
+                style={{ border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12, padding: 0 }}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
       {sheets.length > 0 && (
         <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "12px 18px", borderTop: "1px solid var(--ink)", background: "var(--paper-bright)" }}>
           <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)" }}>{sel.length ? `${sel.length} selected` : "select sheets, or hover a card and hit View"}</span>
@@ -597,6 +613,13 @@ export default function PlanNavigator({
             style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 14px", border: "none", background: sel.length >= 2 && sel.length <= MAX_GROUP ? "var(--cobalt)" : "var(--ink-faint)", color: "var(--paper-bright)", cursor: sel.length >= 2 && sel.length <= MAX_GROUP ? "pointer" : "default", fontWeight: 700, fontSize: 12.5 }}>
             <Icon name="sideBySide" size={14} />Open {sel.length >= 2 ? sel.length : ""} side-by-side
           </button>
+          {onStitch && (
+            <button disabled={sel.length < 2 || sel.length > MAX_GROUP} onClick={() => onStitch(sel)}
+              title={sel.length > MAX_GROUP ? `A stitch maxes at ${MAX_GROUP} sheets` : "Stitch — join a floor split at a match line into ONE working surface: the sheets butt edge-to-edge (no gap), you align the match line with two clicks, then a room crossing it traces as one shape"}
+              style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 14px", border: "1px solid var(--ink)", background: "transparent", color: sel.length >= 2 && sel.length <= MAX_GROUP ? "var(--ink)" : "var(--ink-faint)", cursor: sel.length >= 2 && sel.length <= MAX_GROUP ? "pointer" : "default", fontWeight: 700, fontSize: 12.5 }}>
+              <Icon name="calibrate" size={14} />Stitch {sel.length >= 2 ? sel.length : ""} into one surface
+            </button>
+          )}
         </div>
       )}
     </>

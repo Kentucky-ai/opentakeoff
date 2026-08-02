@@ -32,6 +32,7 @@ import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../compone
 import { Icon } from "../brand/icons.jsx";
 import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText } from "../lib/sheets";
 import { normalizeLoadedGroups } from "../lib/sheetGroups";
+import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
 import { parseSchedule, rowToSeed } from "../lib/scheduleParse";
 import { normalizeScanRows, postScanWithRetry, SCAN_ENDPOINT, scanRasterScale } from "../lib/scheduleScan";
@@ -217,6 +218,10 @@ export default function TakeoffCanvas() {
   const [sheetLevels, setSheetLevels] = useState({}); // sheetKey → level label ("L1") — persisted (additive `sheet_levels` key); groups the gallery for multi-floor sets
   const [lastGroup, setLastGroup] = useState([]);     // most recent side-by-side composition — "Regroup" restores it
   const [focusKey, setFocusKey] = useState("");         // panel of the last click — scale/calibrate target in group mode
+  // Stitches (#161): persisted match-line composites (lib/stitches.ts) — a
+  // stitch opens as ONE panel; its members are a render-time concern only.
+  const [stitches, setStitches] = useState([]);
+  const [alignPt, setAlignPt] = useState(null);       // stitch-align first click (stage px) — ephemeral, never persisted
   const [zoneCheck, setZoneCheck] = useState(null);   // ephemeral zone-check region {key, pts (norm)} — never persisted (buildPayload doesn't read it)
   const [zoneExpand, setZoneExpand] = useState(null); // zone panel: condition id with materials expanded
   // Shared reset for the two zone transients — every site that discards
@@ -579,6 +584,7 @@ export default function TakeoffCanvas() {
   const [layerOverrides, setLayerOverrides] = useState({});  // sheetKey → { ocgId: "include"|"exclude" } — persisted (additive `layer_overrides`)
   const maskCacheRef = useRef(new Map());  // sheetKey → built boundary mask (lazy, dropped on re-render)
   const sheetStatsRef = useRef(new Map()); // sheetKey → {segCount, imageFrac} — raster-fallback trigger signals
+  const panelSourceDimsRef = useRef(new Map()); // stitchKey → { memberKey: {w,h} } — member dims resolved by the render effect (#161)
   const rasterMaskCacheRef = useRef(new Map()); // sheetKey → Promise<MaskObj|null> — scan-pixel mask (lazy, shared across clicks)
   const snapMarkRef = useRef(null);    // SVG snap indicator
   const angleRef = useRef(null);       // current angle-locked image point (or null) — the click commits it
@@ -685,7 +691,10 @@ export default function TakeoffCanvas() {
   // not whatever sheet the pager held before you grouped — shapes/markups all
   // carry their own sheet_id, so nothing is lost either way.
   const ungroup = () => {
-    const k = (focusKey && sheetGroup.includes(focusKey)) ? focusKey : (sheetGroup[0] || sheetKey);
+    let k = (focusKey && sheetGroup.includes(focusKey)) ? focusKey : (sheetGroup[0] || sheetKey);
+    // ungrouping a stitch lands on its first member — the stitch id itself is
+    // not a pageable single sheet (active/page never carry stitch keys)
+    if (isStitchKey(k)) k = stitchById[k]?.members[0]?.key || sheets[0]?.name || k;
     const t = parseSheetKey(k);
     setSheetGroup([]);
     if (t.file !== active) setActive(t.file);
@@ -702,10 +711,58 @@ export default function TakeoffCanvas() {
   };
   // single-view a sheet by key (tab click, gallery View, tab restore)
   function goToSheet(key) {
+    if (isStitchKey(key)) { openStitch(key); return; }   // a stitch opens as a group of one (#161)
     const t = parseSheetKey(key);
     if (t.file !== active) setActive(t.file);
     setPage(t.page);
     setSheetGroup([]);
+  }
+  // ── stitches (#161): open / create / delete ────────────────────────────────
+  function openStitch(id) {
+    if (!stitchById[id]) return;
+    setOpenTabs((t) => (t.includes(id) ? t : [...t, id]));
+    setSheetGroup([id]);
+    setFocusKey(id);
+    setView("canvas");
+  }
+  // Mint a stitch from 2..MAX_GROUP sheet keys: members butt flush left-to-
+  // right (match-line alignment is the Align gesture's job), the stitch opens
+  // immediately, and it inherits the members' scale when they all agree.
+  async function createStitch(keys) {
+    const ks = [...new Set(keys)].slice(0, MAX_GROUP);
+    if (ks.length < 2 || ks.some((k) => isStitchKey(k))) return;
+    const dims = {};
+    try {
+      for (const k of ks) {
+        const t = parseSheetKey(k);
+        const pdf = await docFor(t.file);
+        const pg = await pdf.getPage(Math.min(Math.max(1, t.page), pdf.numPages || 1));
+        const vp = pg.getViewport({ scale: RENDER_SCALE });
+        // EXACT dims — a butt layout at ceil'd widths would open a hairline gap
+        // and drift the composite extent (see resolveSource's wf/hf note)
+        dims[k] = { w: vp.width, h: vp.height };
+      }
+    } catch (e) { setCommitMsg(`Couldn't read those sheets to stitch them: ${e.message || e}`); return; }
+    const st = { id: mintStitchId(), name: ks.map((k) => tabLabel(k)).join(" + "), members: autoButt(ks, dims), created_at: nowIso() };
+    setStitches((s) => [...s, st]);
+    const upps = ks.map((k) => scales[k]);
+    if (upps.every((u) => u != null && Math.abs(u - upps[0]) < 1e-12)) setScales((s) => ({ ...s, [st.id]: upps[0] }));
+    setOpenTabs((t) => (t.includes(st.id) ? t : [...t, st.id]));
+    setSheetGroup([st.id]);
+    setFocusKey(st.id);
+    setView("canvas");
+    setCommitMsg("Stitched — drag to pan, then Align (toolbar) joins the match line: click the same point on both sheets.");
+  }
+  // Deleting a stitch is refused while takeoffs live on it — quantities are
+  // never silently orphaned (the close-PDF confirm precedent, but stricter:
+  // a stitch has no file to re-add, so there is no restore path).
+  function deleteStitch(id) {
+    const n = shapes.filter((s) => s.sheet_id === id).length + markups.filter((m) => m.sheet_id === id).length;
+    if (n) { setCommitMsg(`This stitch carries ${n} takeoff${n === 1 ? "" : "s"}/markup${n === 1 ? "" : "s"} — delete or move them first.`); return; }
+    setStitches((s) => s.filter((st) => st.id !== id));
+    setOpenTabs((t) => t.filter((k) => k !== id));
+    if (sheetGroup.includes(id)) { const f = sheetGroup.filter((k) => k !== id); setSheetGroup(f.length >= 2 || (f.length === 1 && isStitchKey(f[0])) ? f : []); }
+    setLastGroup((g) => (g.includes(id) ? [] : g));
   }
   // gallery open: every key becomes a tab; side-by-side also groups (2–4)
   function openSheets(keys, sideBySide) {
@@ -719,11 +776,12 @@ export default function TakeoffCanvas() {
     const i = openTabs.indexOf(key);
     const next = openTabs.filter((k) => k !== key);
     setOpenTabs(next);
-    if (sheetGroup.includes(key)) { const f = sheetGroup.filter((k) => k !== key); setSheetGroup(f.length >= 2 ? f : []); }
+    if (sheetGroup.includes(key)) { const f = sheetGroup.filter((k) => k !== key); setSheetGroup(f.length >= 2 || (f.length === 1 && isStitchKey(f[0])) ? f : []); }
     if (!next.length) { setView("gallery"); return; }
     if (!sheetGroup.length && key === sheetKey) { const nb = next[Math.min(Math.max(i, 0), next.length - 1)]; if (nb) goToSheet(nb); }
   }
   const tabLabel = (k) => {
+    if (isStitchKey(k)) return stitchById[k]?.name || "Stitched sheets";
     const lvl = sheetLevels[k] ? `${sheetLevels[k]} · ` : "";   // assigned floor/level rides every tab label
     if (galleryLabels[k]) return lvl + galleryLabels[k];
     const t = parseSheetKey(k);
@@ -737,19 +795,42 @@ export default function TakeoffCanvas() {
   // its xOffset. With one panel xOffset is 0, so stage space IS image space and
   // all the original single-sheet math is unchanged.
   const groupKeys = sheetGroup.length ? sheetGroup : [sheetKey];
+  const stitchById = useMemo(() => Object.fromEntries(stitches.map((s) => [s.id, s])), [stitches]);
   // docEpoch re-keys groupSig when a re-dropped file's BYTES changed under the
   // same name (store.addPdf → revised): the render effect keyed on groupSig is
   // the one path that resets every cache (compositor, pageObjs, snap grids) and
   // reloads docs, so bumping it is how new revision bytes reach the screen
   // without a reload. Same-name-same-bytes drops don't bump — no wasted repaint.
+  // The stitch-layout signature joins it (#161): re-aligning a stitch moves its
+  // members under the SAME keys, and this effect is the one path that rebuilds
+  // the merged snap/mask geometry and member placement.
   const [docEpoch, setDocEpoch] = useState(0);
-  const groupSig = JSON.stringify(groupKeys) + "@" + docEpoch;
+  const groupSig = JSON.stringify(groupKeys) + "@" + docEpoch + "|" + stitchLayoutSig(groupKeys, stitches);
   let _px = 0;
   const panels = groupKeys.map((key) => {
     const dims = panelImgs[key] || { w: 0, h: 0 };
     const p = { key, ...parseSheetKey(key), img: dims, xOffset: _px };
     if (dims.w) _px += dims.w + PANEL_GAP;
     return p;
+  });
+  // Draw-time expansion (#161): a stitch panel paints as its MEMBER canvases
+  // (each positioned at its stitch offset, seam-clipped); a plain panel paints
+  // as itself with drawKey === key, so the non-stitch DOM is byte-identical.
+  // Input math (panelAt/stage space) reads `panels` only and never sees this.
+  const drawPanels = panels.flatMap((p) => {
+    const st = stitchById[p.key];
+    if (!st) return [{ drawKey: p.key, compKey: p.key, x: p.xOffset, y: 0, w: p.img.w, h: p.img.h, clip: null }];
+    const dims = panelSourceDimsRef.current.get(p.key);
+    if (!dims) return [];   // members not resolved yet — the render effect paints nothing until phase A lands
+    const clips = seamClips(st.members, dims);
+    return st.members.map((m, i) => ({
+      drawKey: `${p.key}::${m.key}`, compKey: `${p.key}::${m.key}`,
+      x: p.xOffset + m.dx, y: m.dy,
+      // ceil to match the base canvas's integer backing store (dims are exact)
+      w: Math.ceil(dims[m.key]?.w || 0), h: Math.ceil(dims[m.key]?.h || 0),
+      // clip is the member's VISIBLE box in stage space (wrapper div bounds)
+      clip: { x: p.xOffset + clips[i].x0, y: clips[i].y0, w: clips[i].x1 - clips[i].x0, h: clips[i].y1 - clips[i].y0 },
+    }));
   });
   // Pure panel-row math (stage extent, nearest-panel routing, the px→feet
   // scale factors) lives in lib/panelGeometry.js; these thin wrappers bind the
@@ -781,7 +862,7 @@ export default function TakeoffCanvas() {
   // the FOCUSED panel (the one last clicked); single mode focuses the lone panel.
   const focusPanel = (focusKey && groupKeys.includes(focusKey) && panelByKey(focusKey)) || panels[0];
   const unitsPerPx = scales[focusPanel.key] ?? null;
-  const labelFor = (p) => (p.file === active && pageLabels[p.page]) || (p.page > 1 ? `Sheet ${p.page}` : p.file);
+  const labelFor = (p) => stitchById[p.key]?.name || (p.file === active && pageLabels[p.page]) || (p.page > 1 ? `Sheet ${p.page}` : p.file);
   // Scale semantics (why geometry divides by factorFor and calibration
   // multiplies back to baseline) are documented on the pure functions in
   // lib/panelGeometry.js; these wrappers bind the live scales/renderScalesRef.
@@ -1155,12 +1236,20 @@ export default function TakeoffCanvas() {
     layerOverridesRef.current = lov;
     setLayerOverrides(lov);
     maskCacheRef.current.clear();
+    // additive `stitches` (#161) — sanitize-gated like approvals; else-clear so a
+    // snapshot load can't inherit the replaced project's composites. Sanitized
+    // BEFORE group normalization: a solo stitch key in sheet_group is only a
+    // legitimate group of one while its stitch actually exists.
+    const loadedStitches = sanitizeStitches(a.stitches, MAX_GROUP);
+    setStitches(loadedStitches);
+    setAlignPt(null);
     // else-clear matters at runtime (snapshot load): a payload without groups/
     // tabs must not inherit the pre-load ones — autosave would persist a hybrid.
     // In group mode sheetGroup + lastGroup share ONE instance so the lastGroup-sync
     // effect below is a reference-equal no-op — otherwise its follow-up commit would
     // escape the one-shot save suppression and spuriously re-save (see normalizeLoadedGroups).
-    const { sheetGroup: grp, lastGroup: lgFinal } = normalizeLoadedGroups(a, MAX_GROUP);
+    const { sheetGroup: grp, lastGroup: lgFinal } = normalizeLoadedGroups(a, MAX_GROUP,
+      (k) => loadedStitches.some((s) => s.id === k));
     setSheetGroup(grp);
     setLastGroup(lgFinal);
     // gallery-first: tabs restore directly; legacy pinned pages migrate once
@@ -1295,6 +1384,7 @@ export default function TakeoffCanvas() {
   // Also keeps Create out of the ACTION slot while Finish occupies it, so the
   // slot's reserved width always fits its content (issue #61).
   useEffect(() => { if (tool !== "oneclick") setProposal(null); }, [tool]);
+  useEffect(() => { if (tool !== "stitch-align") setAlignPt(null); }, [tool]);   // leaving the align gesture drops its half-set match point
   // Proposal gone (created, discarded, sheet changed) ⇒ drop any handle selection/hover.
   useEffect(() => { if (!proposal) { setOcSel(null); ocHoverRef.current = -1; setOcHover(-1); } }, [proposal]);
   // Switching to a different shape (or clearing the selection) drops the vertex pick.
@@ -1305,13 +1395,18 @@ export default function TakeoffCanvas() {
   useEffect(() => { if (sheetGroup.length >= 2) setLastGroup(sheetGroup); }, [sheetGroup]);
 
   // a persisted group may reference a since-deleted file — drop those keys; a
-  // group of one collapses back to single-sheet mode
+  // group of one collapses back to single-sheet mode. A stitch key is live
+  // while its stitch exists and every member's file survives (#161), and a
+  // solo stitch is a legitimate group of one.
   useEffect(() => {
     if (!sheets.length) return;
     const names = new Set(sheets.map((s) => s.name));
+    const keyLive = (k) => (isStitchKey(k)
+      ? !!stitchById[k] && stitchAlive(stitchById[k], names)
+      : names.has(parseSheetKey(k).file));
     const liveKeys = (g) => {
-      const f = g.filter((k) => names.has(parseSheetKey(k).file));
-      return f.length === g.length ? g : (f.length >= 2 ? f : []);
+      const f = g.filter(keyLive);
+      return f.length === g.length ? g : (f.length >= 2 || (f.length === 1 && isStitchKey(f[0])) ? f : []);
     };
     setSheetGroup(liveKeys);
     setLastGroup(liveKeys);
@@ -1323,8 +1418,10 @@ export default function TakeoffCanvas() {
       legacyPinnedRef.current = null;
       setOpenTabs((t) => (t.length ? t : tabs));
     }
-    setOpenTabs((t) => { const f = t.filter((k) => names.has(parseSheetKey(k).file)); return f.length === t.length ? t : f; });
-  }, [sheets]);
+    setOpenTabs((t) => { const f = t.filter(keyLive); return f.length === t.length ? t : f; });
+    // stitchById joins the deps: a stitch created/deleted this session must
+    // re-run the same liveness pass its members' files do.
+  }, [sheets, stitchById]);
 
   // land on the first restored tab (the sheet-list effect defaults to sheets[0])
   useEffect(() => {
@@ -1367,9 +1464,9 @@ export default function TakeoffCanvas() {
   useEffect(() => {
     darkModeRef.current = darkMode;
     if (status !== "ready") return;
-    for (const p of panels) {
-      const cv = panelCanvasRefs.current.get(p.key);
-      if (cv && p.img?.w) getCompositor().paintBase(cv, p.key, p.img.w, p.img.h, darkMode);
+    for (const d of drawPanels) {
+      const cv = panelCanvasRefs.current.get(d.drawKey);
+      if (cv && d.w) getCompositor().paintBase(cv, d.drawKey, d.w, d.h, darkMode);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [darkMode]);
@@ -1387,7 +1484,7 @@ export default function TakeoffCanvas() {
     if (!active) return;
     const seq = ++renderSeqRef.current;
     const stale = () => seq !== renderSeqRef.current;
-    setStatus("rendering"); setErr(""); setPoly([]); setCalib([]); setPendingLen(""); setCheck([]); setCheckStated(""); setScaleGuide(null); setPrevScale(null); selectShape(null); setProposal(null); resetZone();
+    setStatus("rendering"); setErr(""); setPoly([]); setCalib([]); setPendingLen(""); setCheck([]); setCheckStated(""); setScaleGuide(null); setPrevScale(null); selectShape(null); setProposal(null); setAlignPt(null); resetZone();
     for (const [, rt] of renderTasksRef.current) { try { rt.cancel(); } catch { /* done */ } }
     renderTasksRef.current.clear();
     snapGridsRef.current.clear();
@@ -1408,37 +1505,109 @@ export default function TakeoffCanvas() {
     detailKeysRef.current.clear();
     for (const [, cv] of detailCanvasRefs.current) cv.style.display = "none";
     (async () => {
-      // phase A — logical dimensions for every panel
-      const metas = [];
-      for (const key of groupKeys) {
-        const { file, page: pn } = parseSheetKey(key);
-        const pdf = await docFor(file); if (stale()) return;
+      // resolve one drawable source: doc → page → viewport at the FIXED logical scale
+      const resolveSource = async (memberKey) => {
+        const { file, page: pn } = parseSheetKey(memberKey);
+        const pdf = await docFor(file); if (stale()) return null;
         if (file === active) setPageCount(pdf.numPages || 1);
         const pageNum = Math.min(Math.max(1, pn), pdf.numPages || 1);
-        const pageObj = await pdf.getPage(pageNum); if (stale()) return;
+        const pageObj = await pdf.getPage(pageNum); if (stale()) return null;
         const viewport = pageObj.getViewport({ scale: RENDER_SCALE });
-        pageObjsRef.current.set(key, pageObj);     // kept for getOperatorList/getTextContent and the independent one-off render paths (raster-mask, agent vision, schedule marquee) — unrelated to painting, still main-thread
-        renderScalesRef.current.set(key, RENDER_SCALE);
-        metas.push({ key, file, pageNum, pageObj, viewport, w: Math.ceil(viewport.width), h: Math.ceil(viewport.height) });
+        // wf/hf: the EXACT logical dims — stitch extents must accumulate these,
+        // not the ceil'd canvas dims, or a composite of N members drifts up to
+        // N px wide. That drift is not cosmetic: the one-click mask downscale
+        // (MASK_MAX_DIM/width) is resolution-sensitive, and a 6049px stitch of
+        // a 6048px drawing measurably breaks flood fills the 6048px original
+        // sustains (reproduced on the split-sheet fixture; same failure occurs
+        // feeding 6049 to the ORIGINAL sheet's mask — the drift was the bug,
+        // not the merge).
+        return { key: memberKey, file, pageNum, pageObj, viewport, w: Math.ceil(viewport.width), h: Math.ceil(viewport.height), wf: viewport.width, hf: viewport.height };
+      };
+      // phase A — logical dimensions for every panel. A stitch panel (#161)
+      // resolves each MEMBER and takes the composite extent; its members'
+      // pageObjs register under their own keys (one-off render paths address
+      // sheets, not composites), while the merged snap/mask geometry below
+      // registers under the STITCH key — the only key the input model sees.
+      const metas = [];
+      for (const key of groupKeys) {
+        const st = stitchById[key];
+        if (st) {
+          const sources = [];
+          const dims = {};   // EXACT member dims — extent, seams and align math all read these
+          for (const mem of st.members) {
+            const s = await resolveSource(mem.key); if (stale()) return; if (!s) return;
+            pageObjsRef.current.set(mem.key, s.pageObj);
+            renderScalesRef.current.set(mem.key, RENDER_SCALE);
+            dims[mem.key] = { w: s.wf, h: s.hf };
+            sources.push({ ...s, drawKey: `${key}::${mem.key}`, dx: mem.dx, dy: mem.dy });
+          }
+          panelSourceDimsRef.current.set(key, dims);
+          renderScalesRef.current.set(key, RENDER_SCALE);
+          const ext = stitchExtent(st.members, dims);
+          metas.push({ key, file: key, stitch: st, dims, sources, w: ext.w, h: ext.h });
+        } else {
+          const s = await resolveSource(key); if (stale()) return; if (!s) return;
+          pageObjsRef.current.set(key, s.pageObj);     // kept for getOperatorList/getTextContent and the independent one-off render paths (raster-mask, agent vision, schedule marquee) — unrelated to painting, still main-thread
+          renderScalesRef.current.set(key, RENDER_SCALE);
+          metas.push({ ...s, sources: [{ ...s, drawKey: key, dx: 0, dy: 0 }] });
+        }
       }
       setPanelImgs(Object.fromEntries(metas.map((m) => [m.key, { w: m.w, h: m.h }])));
       let rw = 0, rh = 0;
       for (const m of metas) { rw += (rw ? PANEL_GAP : 0) + m.w; rh = Math.max(rh, m.h); }
       fitToView(rw, rh);
-      // phase B — open each sheet in the worker pool + paint its coarse base
-      // layer. Sheets are independent pdf.js docs in the pool now (not one
-      // shared canvas context), so there's no reason to serialize them the
-      // way the old left-to-right raster loop had to.
-      await Promise.all(metas.map(async (m) => {
-        getCompositor().openSheet(m.key, m.pageNum, store.loadPdfData(m.file), m.w, m.h);
-        let canvas = panelCanvasRefs.current.get(m.key);
+      // phase B — open each source sheet in the worker pool + paint its coarse
+      // base layer (a stitch contributes one canvas per member, positioned by
+      // the drawPanels expansion). Sheets are independent pdf.js docs in the
+      // pool now (not one shared canvas context), so there's no reason to
+      // serialize them the way the old left-to-right raster loop had to.
+      await Promise.all(metas.flatMap((m) => m.sources.map(async (s) => {
+        getCompositor().openSheet(s.drawKey, s.pageNum, store.loadPdfData(s.file), s.w, s.h);
+        let canvas = panelCanvasRefs.current.get(s.drawKey);
         for (let t = 0; !canvas && t < 10; t++) {
           await new Promise((r) => requestAnimationFrame(r)); if (stale()) return;
-          canvas = panelCanvasRefs.current.get(m.key);
+          canvas = panelCanvasRefs.current.get(s.drawKey);
         }
         if (!canvas || stale()) return;
-        await getCompositor().paintBase(canvas, m.key, m.w, m.h, darkModeRef.current);
-        if (stale()) return;
+        await getCompositor().paintBase(canvas, s.drawKey, s.w, s.h, darkModeRef.current);
+      })));
+      if (stale()) return;
+      // vector geometry per PANEL (best-effort; snap is off until enabled).
+      // Plain panels keep the old per-sheet path byte-for-byte; a stitch merges
+      // its members' geometry into stitch space, seam-clipped so hidden ink
+      // near the match line neither offers snap targets nor walls off the
+      // one-click mask (lib/stitches.ts mergePoints/mergeSegs).
+      for (const m of metas) {
+        if (m.stitch) {
+          const clips = seamClips(m.stitch.members, m.dims);
+          Promise.all(m.sources.map((s) => s.pageObj.getOperatorList().then((ol) => ({ s, g: extractVectorGeometry(ol, s.viewport.transform, pdfjsLib.OPS) })))).then((parts) => {
+            if (stale()) return;
+            const byIdx = parts.map(({ s, g }, i) => ({
+              points: g.points, segs: g.segs, meta: g.meta, imageArea: g.imageArea,
+              dx: s.dx, dy: s.dy,
+              clip: { x0: clips[i].x0, y0: clips[i].y0, x1: clips[i].x1, y1: clips[i].y1 },
+            }));
+            const pts = mergePoints(byIdx);
+            const merged = mergeSegs(byIdx);
+            snapGridsRef.current.set(m.key, buildSnapGrid(pts, SNAP_CELL));
+            vectorSegsRef.current.set(m.key, merged.segs);
+            segMetaRef.current.set(m.key, merged.meta);
+            sheetStatsRef.current.set(m.key, { segCount: merged.segs.length >> 2, imageFrac: Math.min(1, merged.imageArea / (m.w * m.h)) });
+            // verbose stitch tracing, gated like __OT_DETAIL_DEBUG
+            if (window.__OT_STITCH_DEBUG) window.__stitchGeom = { key: m.key, clips, members: m.stitch.members, dims: m.dims, w: m.w, h: m.h, segs: merged.segs.length >> 2, perMember: byIdx.map((b) => ({ dx: b.dx, dy: b.dy, clip: b.clip, n: b.segs.length >> 2 })) };
+          }).catch(() => {
+            if (stale()) return;
+            sheetStatsRef.current.set(m.key, { segCount: 0, imageFrac: 1 });
+          });
+          // scale note: the first member speaks for the composite (members
+          // plot at one scale by construction — see createStitch's seeding)
+          m.sources[0].pageObj.getTextContent().then((tc) => {
+            if (stale()) return;
+            const det = detectScale(tc, m.sources[0].viewport);
+            if (det) setDetectedScales((d) => (d[m.key]?.label === det.label ? d : { ...d, [m.key]: det }));
+          }).catch(() => {});
+          continue;
+        }
         // snap-to-vector index per panel (best-effort; off until the user enables it)
         m.pageObj.getOperatorList().then(async (ol) => {
           if (stale()) return;
@@ -1487,7 +1656,7 @@ export default function TakeoffCanvas() {
           const det = detectScale(tc, m.viewport);
           if (det) setDetectedScales((d) => (d[m.key]?.label === det.label ? d : { ...d, [m.key]: det }));
         }).catch(() => {});
-      }));
+      }
       if (stale()) return;
       setStatus("ready");
       // title-block labels — current page now, then once per file scan the rest so
@@ -1568,31 +1737,43 @@ export default function TakeoffCanvas() {
       const r = cont.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       const density = tileRequiredDensity(t.scale, dpr);
-      for (const p of panels) {
-        const cv = detailCanvasRefs.current.get(p.key);
-        if (!cv || !p.img?.w) continue;
-        const hide = () => { cv.style.display = "none"; detailKeysRef.current.delete(p.key); };
-        // visible region of THIS panel, in image px (stage space minus xOffset)
-        let x0 = Math.max((-t.x) / t.scale, p.xOffset) - p.xOffset;
-        let y0 = Math.max((-t.y) / t.scale, 0);
-        let x1 = Math.min((r.width - t.x) / t.scale, p.xOffset + p.img.w) - p.xOffset;
-        let y1 = Math.min((r.height - t.y) / t.scale, p.img.h);
-        if (x1 <= x0 || y1 <= y0) { hide(); continue; }         // panel off-screen
+      // draw-time entries, not input panels: a stitch (#161) sharpens one crop
+      // per MEMBER, each clipped to its seam box (the wrapper div does the
+      // clipping; the canvas positions relative to it via the x/y bases).
+      for (const d of drawPanels) {
+        const cv = detailCanvasRefs.current.get(d.drawKey);
+        if (!cv || !d.w) continue;
+        const hide = () => { cv.style.display = "none"; detailKeysRef.current.delete(d.drawKey); };
+        // visible region of THIS source, in ITS image px (stage space minus its
+        // stage origin), intersected with the seam-visible box when clipped
+        const vx0 = d.clip ? Math.max(d.x, d.clip.x) : d.x;
+        const vy0 = d.clip ? Math.max(d.y, d.clip.y) : d.y;
+        const vx1 = d.clip ? Math.min(d.x + d.w, d.clip.x + d.clip.w) : d.x + d.w;
+        const vy1 = d.clip ? Math.min(d.y + d.h, d.clip.y + d.clip.h) : d.y + d.h;
+        let x0 = Math.max((-t.x) / t.scale, vx0) - d.x;
+        let y0 = Math.max((-t.y) / t.scale, vy0) - d.y;
+        let x1 = Math.min((r.width - t.x) / t.scale, vx1) - d.x;
+        let y1 = Math.min((r.height - t.y) / t.scale, vy1) - d.y;
+        if (x1 <= x0 || y1 <= y0) { hide(); continue; }         // source off-screen
         const mw = (x1 - x0) * DETAIL_MARGIN, mh = (y1 - y0) * DETAIL_MARGIN;
         x0 = Math.max(0, x0 - mw); y0 = Math.max(0, y0 - mh);
-        x1 = Math.min(p.img.w, x1 + mw); y1 = Math.min(p.img.h, y1 + mh);
+        x1 = Math.min(d.w, x1 + mw); y1 = Math.min(d.h, y1 + mh);
         // one composite per distinct crop — the sync loop re-fires this several
         // times around a settle with identical inputs
-        const renderKey = `${p.key}|${x0.toFixed(1)},${y0.toFixed(1)}|${x1.toFixed(1)},${y1.toFixed(1)}|${density.toFixed(2)}|${darkModeRef.current ? 1 : 0}`;
-        if (renderKey === detailKeysRef.current.get(p.key)) continue;
-        detailKeysRef.current.set(p.key, renderKey);
-        try { detailCancelsRef.current.get(p.key)?.cancel(); } catch { /* done */ }
+        const renderKey = `${d.drawKey}|${x0.toFixed(1)},${y0.toFixed(1)}|${x1.toFixed(1)},${y1.toFixed(1)}|${density.toFixed(2)}|${darkModeRef.current ? 1 : 0}`;
+        if (renderKey === detailKeysRef.current.get(d.drawKey)) continue;
+        detailKeysRef.current.set(d.drawKey, renderKey);
+        try { detailCancelsRef.current.get(d.drawKey)?.cancel(); } catch { /* done */ }
         // paintDetail owns position/size/pixels together now and applies all
         // three atomically on reveal — setting them here first would show a
         // correctly-positioned canvas with the OLD crop's (wrongly scaled)
         // pixels for a frame, which is its own flavor of flicker.
-        const cancel = getCompositor().paintDetail(cv, p.key, p.xOffset, x0, y0, x1, y1, density, darkModeRef.current, () => {});
-        detailCancelsRef.current.set(p.key, cancel);
+        // Position bases are relative to the canvas's offset parent: the stage
+        // for a plain panel, the clipping wrapper for a stitch member.
+        const xBase = d.clip ? d.x - d.clip.x : d.x;
+        const yBase = d.clip ? d.y - d.clip.y : d.y;
+        const cancel = getCompositor().paintDetail(cv, d.drawKey, xBase, x0, y0, x1, y1, density, darkModeRef.current, () => {}, yBase);
+        detailCancelsRef.current.set(d.drawKey, cancel);
       }
     };
   });
@@ -1666,7 +1847,7 @@ export default function TakeoffCanvas() {
     // units is additive and diff-only (the sheet_levels convention): imperial —
     // the default — omits the key, so an old imperial project's payload is
     // byte-identical on round-trip; only a metric project carries the field.
-    return { project_name: projectName, ...(units === "metric" ? { units } : {}), ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}) })), conditions, ...(conditionColumns.length ? { condition_columns: conditionColumns } : {}), ...(shapeLabels.length ? { shape_labels: shapeLabels } : {}), ...(pinned.length ? { palette: pinned } : {}), shapes, markups, rfis, ...(approvals.length ? { approvals } : {}), ...(rules.length ? { rules } : {}), sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, ...(Object.keys(sheetLevels).length ? { sheet_levels: sheetLevels } : {}), ...(Object.keys(layerOverrides).length ? { layer_overrides: layerOverrides } : {}), ...(Object.keys(provCounters.shapes_deleted).length ? { provenance_counters: provCounters } : {}) };
+    return { project_name: projectName, ...(units === "metric" ? { units } : {}), ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}) })), conditions, ...(conditionColumns.length ? { condition_columns: conditionColumns } : {}), ...(shapeLabels.length ? { shape_labels: shapeLabels } : {}), ...(pinned.length ? { palette: pinned } : {}), shapes, markups, rfis, ...(approvals.length ? { approvals } : {}), ...(rules.length ? { rules } : {}), sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, ...(stitches.length ? { stitches } : {}), ...(Object.keys(sheetLevels).length ? { sheet_levels: sheetLevels } : {}), ...(Object.keys(layerOverrides).length ? { layer_overrides: layerOverrides } : {}), ...(Object.keys(provCounters.shapes_deleted).length ? { provenance_counters: provCounters } : {}) };
   };
   // Runtime restore of a saved payload — the Revisions panel's Restore lands
   // here. A runtime load (unlike mount) can interrupt work in
@@ -1752,7 +1933,7 @@ export default function TakeoffCanvas() {
     // state it serializes, so listing buildPayload (a new identity each render)
     // would fire a save on every render instead of only on a real change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, markups, approvals, rfis, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, projectName, clientInfo, units]);
+  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, markups, approvals, rfis, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo, units]);
   useEffect(() => { saveStateRef.current = saveState; }, [saveState]);
 
   // Flush a pending debounced save on navigate-away (unmount), and warn before a
@@ -2056,7 +2237,7 @@ export default function TakeoffCanvas() {
         // tool's points, on-screen or hidden
         else if (tool === "calibrate") { setCalib((c) => c.slice(0, -1)); }
         else if (tool === "check") { setCheck((c) => c.slice(0, -1)); }
-      } else if (e.key === "Escape") { if (agentOfferFnsRef.current?.pending()) { agentOfferFnsRef.current.dismiss(); } else if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { setPoly([]); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); resetZone(); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; } }
+      } else if (e.key === "Escape") { if (agentOfferFnsRef.current?.pending()) { agentOfferFnsRef.current.dismiss(); } else if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { setPoly([]); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); setAlignPt(null); resetZone(); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; } }
       // ⌘Z: the drawing context wins — mid-trace it still pops the last placed
       // point (with or without ⇧, matching the old behavior byte-for-byte);
       // only with no trace in progress does the command stack engage
@@ -2176,6 +2357,30 @@ export default function TakeoffCanvas() {
     else if (tool === "cloud" || tool === "callout" || tool === "text" || tool === "highlight") placeMarkup(p);
     else if (tool === "stamp") placeStamp(p);
     else if (tool === "approve") placeApproval(p);
+    else if (tool === "stitch-align") stitchAlignAt(p);
+  }
+  // ── stitch align (#161) — the Calibrate idiom on the composite: click a
+  // point near the match line, then the SAME point where the other sheet
+  // draws it; the second sheet translates so the two coincide. Guarded while
+  // takeoffs live on the stitch (verts_norm are extent-relative — moving
+  // members under committed shapes would silently shift their quantities' ink).
+  function stitchAlignAt(p) {
+    const st = stitchById[groupKeys[0]];
+    if (!st || panels.length !== 1) { setTool("pan"); return; }
+    const n = shapes.filter((s) => s.sheet_id === st.id).length;
+    if (n) { setCommitMsg(`Align before tracing — ${n} takeoff${n === 1 ? "" : "s"} already live on this stitch. Delete them (or a fresh stitch) to re-align.`); setTool("pan"); return; }
+    if (!alignPt) {
+      setAlignPt(p);
+      setCommitMsg("Match point set — now click the SAME point where the other sheet draws it.");
+      return;
+    }
+    const dims = panelSourceDimsRef.current.get(st.id) || {};
+    const res = alignMembers(st.members, dims, [alignPt[0], alignPt[1]], [p[0], p[1]]);
+    setAlignPt(null);
+    if (res.error) { setCommitMsg(res.error); return; }
+    setStitches((list) => list.map((s) => (s.id === st.id ? { ...s, members: res.members } : s)));
+    setTool("pan");
+    setCommitMsg("Match line joined — the sheets now read as one surface. Trace straight across it.");
   }
   // Markups carry no verts_norm (cloud rect / callout at+target / text at), so
   // hitShape can't test them — this is a purpose-built bbox/point test in the
@@ -2944,8 +3149,21 @@ export default function TakeoffCanvas() {
       },
     };
   }
+  // A trace whose points span two side-by-side panels has no coherent
+  // quantity — the inter-panel gap would be measured as real feet, and the
+  // shape would bind to one sheet with vertices hanging off its edge. Refuse
+  // at commit (the calibrate cross-panel precedent) and point at the fix:
+  // stitching joins the sheets into ONE panel, where a spanning trace is
+  // exactly right (#161).
+  function spansPanels(points) {
+    if (panels.length < 2) return false;
+    const first = panelAt(points[0][0]);
+    return points.some((q) => panelAt(q[0]) !== first);
+  }
+  const SPAN_MSG = "That trace crosses onto another sheet — the gap between sheets isn't real distance. To work a floor split at a match line as one surface, stitch the sheets (Sheets → gallery → select both → Stitch).";
   function commitPoly(points, asDeduct) {
     if (points.length < 3) return;
+    if (spansPanels(points)) { setCommitMsg(SPAN_MSG); return; }
     const tp = panelAt(points[0][0]);
     const upp = uppFor(tp.key);
     if (!upp) { setCommitMsg(`Set the scale for ${labelFor(tp)} first.`); return; }
@@ -2978,6 +3196,7 @@ export default function TakeoffCanvas() {
   }
   function commitLinear(points, curved = false) {
     if (points.length < 2) return;
+    if (spansPanels(points)) { setCommitMsg(SPAN_MSG); return; }
     const tp = panelAt(points[0][0]);
     const upp = uppFor(tp.key);
     if (!upp) { setCommitMsg(`Set the scale for ${labelFor(tp)} first.`); return; }
@@ -2999,6 +3218,7 @@ export default function TakeoffCanvas() {
   // height. The wall-tile "stack" workflow: set tile height once, trace walls.
   function commitSurface(points) {
     if (points.length < 2) return;
+    if (spansPanels(points)) { setCommitMsg(SPAN_MSG); return; }
     const tp = panelAt(points[0][0]);
     const upp = uppFor(tp.key);
     if (!upp) { setCommitMsg(`Set the scale for ${labelFor(tp)} first.`); return; }
@@ -3623,7 +3843,12 @@ export default function TakeoffCanvas() {
       const exportMarkups = includeMarkups ? markups : [];
       // approval seals are ink, not markups — the include-markups checkbox
       // never drops them, and a sheet carrying only a seal still exports
-      const keys = [...new Set([...shapes.map((s) => s.sheet_id), ...exportMarkups.map((m) => m.sheet_id), ...approvals.map((a) => a.sheet_id)])];
+      const allKeys = [...new Set([...shapes.map((s) => s.sheet_id), ...exportMarkups.map((m) => m.sheet_id), ...approvals.map((a) => a.sheet_id)])];
+      // Stitched surfaces (#161) have no single source page to burn ink onto —
+      // phase 1 skips them here (their quantities still ride the Report/CSV;
+      // a composite marked-set page is the documented follow-up).
+      const keys = allKeys.filter((k) => !isStitchKey(k));
+      const skippedStitches = allKeys.length - keys.length;
       const sheetMeta = keys.map((key) => {
         const { file, page } = parseSheetKey(key);
         return { key, file, page, label: tabLabel(key) };
@@ -3638,7 +3863,7 @@ export default function TakeoffCanvas() {
         loadPdfData: (file) => store.loadPdfData(file),
       });
       downloadBytes(filename, bytes);
-      setCommitMsg(`Marked set downloaded — ${filename}`);
+      setCommitMsg(`Marked set downloaded — ${filename}${skippedStitches ? ` (stitched surfaces aren't burned in yet — their quantities are in the Report)` : ""}`);
     } catch (e) {
       setCommitMsg(`Marked set failed: ${e.message || e}`);
     }
@@ -5407,8 +5632,9 @@ export default function TakeoffCanvas() {
   // mid-row and shifting everything after them.
   // assigned floor/level rides the sheet chip + page entries (sheet key: page 1 is the bare file name)
   const levelOfPage = (n) => sheetLevels[n > 1 ? `${active}#${n}` : active] || "";
+  const soloStitch = sheetGroup.length === 1 && isStitchKey(sheetGroup[0]) ? stitchById[sheetGroup[0]] : null;
   const sheetChipLabel = sheetGroup.length
-    ? `${sheetGroup.length} sheets side-by-side`
+    ? (soloStitch ? `Stitched — ${soloStitch.name}` : `${sheetGroup.length} sheets side-by-side`)
     : `${levelOfPage(page) ? `${levelOfPage(page)} · ` : ""}${pageLabels[page] || (pageCount > 1 ? `Sheet ${page}` : active)}${pageCount > 1 ? ` · ${page}/${pageCount}` : ""}`;
   const sheetMenuItems = [];
   if (!sheetGroup.length && pageCount > 1) {
@@ -5420,7 +5646,9 @@ export default function TakeoffCanvas() {
     for (const s of sheets) sheetMenuItems.push({ id: `f-${s.name}`, label: s.name, active: s.name === active, onSelect: () => { setActive(s.name); setPage(1); } });
   }
   if (sheetMenuItems.length && (sheetGroup.length || lastGroup.length >= 2)) sheetMenuItems.push("divider");
-  if (sheetGroup.length) sheetMenuItems.push({ id: "ungroup", label: "Ungroup — back to one sheet", title: "Back to one sheet — you land on the sheet you were last working; every sheet keeps its takeoffs and markups", onSelect: ungroup });
+  if (sheetGroup.length) sheetMenuItems.push(soloStitch
+    ? { id: "ungroup", label: "Leave stitch — back to one sheet", title: "Back to a single sheet (the stitch's first member) — the stitch keeps its takeoffs and reopens from the gallery or its tab", onSelect: ungroup }
+    : { id: "ungroup", label: "Ungroup — back to one sheet", title: "Back to one sheet — you land on the sheet you were last working; every sheet keeps its takeoffs and markups", onSelect: ungroup });
   if (!sheetGroup.length && lastGroup.length >= 2) sheetMenuItems.push({ id: "regroup", label: `Regroup (${lastGroup.length})`, title: `Side-by-side again with the same ${lastGroup.length} sheets — each keeps its own scale, takeoffs and markups`, onSelect: regroup });
   if (sheetMenuItems.length) sheetMenuItems.push("divider");
   sheetMenuItems.push({ id: "gallery", icon: "sheets", label: "Open gallery…", shortcut: "G", onSelect: () => setView("gallery") });
@@ -5677,6 +5905,13 @@ export default function TakeoffCanvas() {
         </>)}
         {vRule}
         {cluster("Aids", <>
+          {panels.length === 1 && isStitchKey(panels[0].key) && (
+            <button onClick={() => setTool((t) => (t === "stitch-align" ? "pan" : "stitch-align"))}
+              title="Align the match line — click a point near the joint, then the SAME point where the other sheet draws it; that sheet slides so the two coincide. Do this before tracing (a stitch with takeoffs on it won't re-align)."
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${tool === "stitch-align" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: tool === "stitch-align" ? "var(--cobalt)" : "transparent", color: tool === "stitch-align" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
+              <Icon name="calibrate" size={15} />Align
+            </button>
+          )}
           <button onClick={() => setTool((t) => (t === "zone" ? "select" : "zone"))}
             title="Zone check — trace a region (an apartment, a wing) to read every condition's quantities inside it, materials included. Nothing is saved; the outline clears when you leave the tool."
             style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${tool === "zone" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: tool === "zone" ? "var(--cobalt)" : "transparent", color: tool === "zone" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
@@ -6159,16 +6394,29 @@ export default function TakeoffCanvas() {
                 to the panel's full logical footprint (see tileCompositor.ts's
                 paintBase); the backing store is NOT sheet-sized, only its CSS box is,
                 which is what keeps this a bounded canvas regardless of sheet size */}
-            {panels.map((p) => (
-              <canvas key={p.key} ref={(el) => { if (el) panelCanvasRefs.current.set(p.key, el); else panelCanvasRefs.current.delete(p.key); }}
-                style={{ position: "absolute", left: p.xOffset, top: 0, width: p.img.w || undefined, height: p.img.h || undefined, boxShadow: "0 2px 20px rgba(0,0,0,.18)" }} />
+            {drawPanels.filter((d) => !d.clip).map((d) => (
+              <canvas key={d.drawKey} ref={(el) => { if (el) panelCanvasRefs.current.set(d.drawKey, el); else panelCanvasRefs.current.delete(d.drawKey); }}
+                style={{ position: "absolute", left: d.x, top: d.y, width: d.w || undefined, height: d.h || undefined, boxShadow: "0 2px 20px rgba(0,0,0,.18)" }} />
             ))}
-            {/* detail layer — one PER PANEL, a crop of the visible region + margin
+            {/* detail layer — one PER SOURCE, a crop of the visible region + margin
                 composited from cached tiles at the current zoom (see the detail-view
                 effect); group mode no longer shares a single global detail canvas */}
-            {panels.map((p) => (
-              <canvas key={`detail-${p.key}`} ref={(el) => { if (el) detailCanvasRefs.current.set(p.key, el); else detailCanvasRefs.current.delete(p.key); }}
+            {drawPanels.filter((d) => !d.clip).map((d) => (
+              <canvas key={`detail-${d.drawKey}`} ref={(el) => { if (el) detailCanvasRefs.current.set(d.drawKey, el); else detailCanvasRefs.current.delete(d.drawKey); }}
                 style={{ position: "absolute", left: 0, top: 0, display: "none", pointerEvents: "none" }} />
+            ))}
+            {/* stitch members (#161): base + detail together inside a seam-clip
+                wrapper — the div does ALL clipping (overflow:hidden at the member's
+                visible box), so the neighbor's margin/border strip near the match
+                line can't overpaint the plan. The shadow rides the wrapper: the
+                composite reads as one sheet of paper, not N taped panels. */}
+            {drawPanels.filter((d) => d.clip).map((d) => (
+              <div key={`wrap-${d.drawKey}`} style={{ position: "absolute", left: d.clip.x, top: d.clip.y, width: d.clip.w, height: d.clip.h, overflow: "hidden", boxShadow: "0 2px 20px rgba(0,0,0,.18)" }}>
+                <canvas ref={(el) => { if (el) panelCanvasRefs.current.set(d.drawKey, el); else panelCanvasRefs.current.delete(d.drawKey); }}
+                  style={{ position: "absolute", left: d.x - d.clip.x, top: d.y - d.clip.y, width: d.w || undefined, height: d.h || undefined }} />
+                <canvas ref={(el) => { if (el) detailCanvasRefs.current.set(d.drawKey, el); else detailCanvasRefs.current.delete(d.drawKey); }}
+                  style={{ position: "absolute", left: 0, top: 0, display: "none", pointerEvents: "none" }} />
+              </div>
             ))}
             <svg width={stage.w} height={stage.h} viewBox={`0 0 ${stage.w} ${stage.h}`} style={{ position: "absolute", top: 0, left: 0, overflow: "visible", pointerEvents: "none" }}>
               <defs>
@@ -6687,6 +6935,7 @@ export default function TakeoffCanvas() {
               })}
               {calib.length === 2 && <line x1={calib[0][0]} y1={calib[0][1]} x2={calib[1][0]} y2={calib[1][1]} stroke="#1f3fc7" strokeWidth={2 / tf.scale} />}
               {calib.map((p, i) => <path key={i} d={starPath(p[0], p[1], 3.5 / tf.scale)} fill="#1f3fc7" />)}
+              {alignPt && <path d={starPath(alignPt[0], alignPt[1], 4.5 / tf.scale)} fill="#1f3fc7" stroke="#fff" strokeWidth={1 / tf.scale} />}
               {/* check tool — dashed so it never reads as calibrate's solid line */}
               {tool === "check" && check.length === 2 && !checkCross && (
                 <>
@@ -7072,6 +7321,7 @@ export default function TakeoffCanvas() {
           onDetect={(k, det) => setDetectedScales((d) => (d[k]?.label === det.label ? d : { ...d, [k]: det }))}
           thumbCacheRef={thumbCacheRef} busyRef={statusRef}
           openTabs={openTabs} onOpen={openSheets}
+          stitches={stitches} onStitch={createStitch} onOpenStitch={openStitch} onDeleteStitch={deleteStitch}
           onAddFiles={handleFiles}
           levels={sheetLevels}
           onAssignLevel={(keys, label) => setSheetLevels((m) => {

@@ -279,7 +279,7 @@ test("loadAnnotations returns the localStore default shape when absent", async (
   const drive = fakeDrive();
   const store = createCloudStore("folder1", drive as any, { local: fakeLocal() as any });
   assert.deepEqual(await store.loadAnnotations(), {
-    schema: ANN_SCHEMA, conditions: [], shapes: [], markups: [], sheets: [], sheet_group: [], last_group: [], sheet_tabs: [], rules: [], approvals: [],
+    schema: ANN_SCHEMA, conditions: [], shapes: [], markups: [], sheets: [], sheet_group: [], last_group: [], sheet_tabs: [], rules: [], approvals: [], stitches: [],
   });
 });
 
