@@ -2,6 +2,15 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-02 — the MCP server floods through the sealed engine: canvas parity, proven against the corpus
+
+### Changed
+- **`one_click` and `detect_rooms` now run the full RFC #60 sealed accuracy engine with feet-true arguments** — the last surface still measuring through the raw flood. The MCP session's vector masks are built with `buildMask`'s scale-pinned signature (the sheet scale rides in as px-per-foot, the working grid pinned to the sheet in points — audit A1/F3), every flood goes through `floodAtSeed`, the one entry point every non-canvas surface shares (`web/src/lib/detectRooms.ts`, following the fork's session wiring pattern), and the raster fallback passes its mask-px-per-foot explicitly, exactly as the canvas does. Consequence on the bundled VA plan: gap sealing stops two rooms conjoining through an open doorway, door swings annex as the canvas annexes them, and the minimum-passage rule severs hairline connections — e.g. room 142's raw-flood 285.96 SF corrects to the canvas's 161.00 SF. A recalibration (`set_scale`) evicts the sheet's cached masks, the same eviction the canvas performs, so no measurement ever runs against a mask baked at the old scale.
+- **The parity proof** — `mcp/test/parity.test.ts` asserts the MCP `one_click` against the bench corpus's own pinned goldens (`web/bench/corpus/va-finish-plan.json`: patient-room-137, patient-toilet-137a, ward-vestibule — same seeds, same real plan) within the corpus's per-room absolute gate (1.0 SF; measured deltas ≤ 0.03 SF). The e2e truths shifted by the sealed wiring are re-pinned with the measurement-policy reasons in place.
+
+### Added
+- **Trace confidence + sealed provenance on the wire and in the record (RFC #60 item D).** Every `one_click`/`detect_rooms` trace now carries the engine's account of itself — `confidence` (0–1) with `confidence_factors` naming each deduction, `gap_sealed_px` (synthetic boundary across a real opening), `door_wedges`/`ring_interiors`, `min_pass_px`/`min_pass_delta` — on the tool reply AND on the committed shape's `origin`, stamped centrally in the session's one commit path (beside the assignment-provenance stamp) so no flood commit can ship unscored; `export_takeoff` round-trips it into the app unchanged. The score is a review prioritizer, never a verification: a low-confidence trace is a `view_sheet {overlay: true}` audit prompt, not a fact.
+
 ## 2026-08-02 — stitched sheets: a floor split at a match line becomes ONE working surface (#161)
 
 ### Added

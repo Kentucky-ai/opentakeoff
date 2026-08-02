@@ -132,11 +132,24 @@ Two rules carry over from the app unchanged:
   with the exact hint (`Set the scale for <sheet> first — use set_scale
   (detected: 1/4" = 1'-0").`), and a bare `one_click` returns px-only numbers
   with a warning rather than fabricating square feet.
-- **Provenance.** Every shape committed by `one_click` carries the same
-  `origin` receipt the canvas mints: method, normalized seed, hatch-filter
-  flag — and `raster_traced` when the boundary came from scan pixels rather
-  than vector linework, so a pixel-bounded trace is distinguishable from a
-  vector-snapped one in the record.
+- **Provenance.** Every shape committed by `one_click`/`detect_rooms` carries
+  the same `origin` receipt the canvas mints: method, normalized seed,
+  hatch-filter flag — and `raster_traced` when the boundary came from scan
+  pixels rather than vector linework, so a pixel-bounded trace is
+  distinguishable from a vector-snapped one in the record. The sealed engine's
+  own account of each trace rides too, stamped centrally at the commit so no
+  flood path can ship without it: `confidence` (0–1, with
+  `confidence_factors` naming every deduction) scores the trace from the
+  engine's internal signals — `gap_sealed_px` when part of the boundary is a
+  synthetic seal across a real opening, `door_wedges`/`ring_interiors` for
+  annexed door swings and closed-ring interiors, `min_pass_px`/
+  `min_pass_delta` when the feet-true minimum-passage rule changed the
+  answer, `gap_bridged_px` for the pinhole rescue. Read the score as a review
+  prioritizer, never a verification: 1.0 means every signal the engine can
+  see came back clean, not that the trace is right, and a low-confidence
+  trace is a `view_sheet {overlay: true}` audit prompt, not a fact. The same
+  fields appear on the tool replies, so an agent can triage before it
+  commits.
 
 ## An example session
 
