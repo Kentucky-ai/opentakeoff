@@ -64,6 +64,18 @@ Press `G` (or click **Sheets** in the toolbar) for the visual gallery: one card 
 
 Open sheets ride a **Sheets** tab strip: click a tab to view it, **⊞** to put it side-by-side with the current sheet, **✕** to close the tab. The sheet chip's dropdown lists every page and file, and holds **Ungroup — back to one sheet** and **Regroup (N)** — one click to restore your last side-by-side composition after working sheets individually. Each sheet in a group keeps its own scale, takeoffs, and markups.
 
+One caveat that side-by-side makes possible: a trace can't span two grouped sheets. The gap between panels isn't real distance, so a quantity across it would be wrong — the commit refuses and points you at the fix, which is:
+
+### Stitching (a floor split at a match line)
+
+Large floors often arrive cut across sheets at a **match line** — half the building on each. Side-by-side viewing doesn't help you *measure* across the cut; stitching does.
+
+1. In the gallery, select the split sheets (2–4, left-to-right selection order) and hit **Stitch N into one surface**. They butt edge-to-edge — no gap — and open as **one** sheet with its own tab and scale (inherited when the members' scales agree).
+2. **Join the match line**: hit **Align** in the toolbar (it appears while a stitch is open), click a recognizable point near the joint, then click the **same drawn point** on the other sheet. That sheet slides so the two coincide — zoom in first for a tight joint, exactly like calibrating. Where the sheets overlap, each shows its own half up to the seam, so borders near the match line don't cover the plan.
+3. Work it like any sheet. A room that crosses the match line traces as **one shape** — manual tools and **One-Click** both work straight across the seam (the members' linework merges into one snap grid and one flood mask). Quantities, the Report, undo, and revisions treat the stitch as a normal sheet.
+
+Notes: align the match line **before** tracing — once takeoffs live on a stitch it won't re-align (their coordinates ride the composite). Deleting a stitch is refused while takeoffs or markups live on it; reopen one anytime from its tab or the gallery's **Stitched surfaces** strip. The Marked Set PDF doesn't burn stitch surfaces in yet (their quantities still ride the Report and every export).
+
 ### Levels (multi-floor sets)
 
 In the gallery, select sheets and hit **Assign level…** (`"L1"`, `"Level 2"`, `"Garage"` — empty clears). The gallery groups by level with unassigned sheets last, cards wear their level chip, and tabs plus the page picker carry the label. Levels save with the project.

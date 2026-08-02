@@ -54,3 +54,23 @@ test("malformed (non-array) group fields degrade to empty, not a throw", () => {
   assert.deepEqual(r.sheetGroup, []);
   assert.deepEqual(r.lastGroup, []);
 });
+
+// ── #161: soloOk — a stitch key alone is a legitimate group of one ──────────
+
+test("soloOk: a solo stitch group keeps the SAME-INSTANCE invariant", () => {
+  const r = normalizeLoadedGroups({ sheet_group: ["stitch:x"], last_group: ["stitch:x"] }, MAX, (k) => k.startsWith("stitch:"));
+  assert.deepEqual(r.sheetGroup, ["stitch:x"]);
+  assert.equal(r.lastGroup, r.sheetGroup); // ref-shared, exactly like a >=2 group
+});
+
+test("soloOk: a solo NON-stitch group still collapses lastGroup (no behavior change)", () => {
+  const r = normalizeLoadedGroups({ sheet_group: ["plan.pdf"], last_group: [] }, MAX, (k) => k.startsWith("stitch:"));
+  assert.deepEqual(r.sheetGroup, ["plan.pdf"]);
+  assert.deepEqual(r.lastGroup, []);
+});
+
+test("soloOk omitted: byte-identical to the old behavior", () => {
+  const r = normalizeLoadedGroups({ sheet_group: ["stitch:x"], last_group: [] }, MAX);
+  assert.deepEqual(r.sheetGroup, ["stitch:x"]);
+  assert.deepEqual(r.lastGroup, []);
+});

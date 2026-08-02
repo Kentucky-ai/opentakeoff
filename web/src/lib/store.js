@@ -64,7 +64,9 @@ export function emptyAnnotations() {
   // approvals: approval seals (lib/approvals.js) — estimator APPROVED ink +
   // agent AGENT marks. Same scope boundary as rules: project data, never on
   // the MCP export or contribution wire (the estimator tool is human-only).
-  return { schema: ANN_SCHEMA, conditions: [], shapes: [], markups: [], sheets: [], sheet_group: [], last_group: [], sheet_tabs: [], rules: [], approvals: [] };
+  // stitches (#161): match-line composite surfaces — additive, sanitize-gated
+  // on hydrate (lib/stitches.ts), omitted from saves while empty.
+  return { schema: ANN_SCHEMA, conditions: [], shapes: [], markups: [], sheets: [], sheet_group: [], last_group: [], sheet_tabs: [], rules: [], approvals: [], stitches: [] };
 }
 
 function openDB() {
