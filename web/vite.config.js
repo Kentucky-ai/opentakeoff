@@ -26,7 +26,15 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/ai": "http://localhost:8000",
+      // The sandbox's /ai routes are key-locked (server/README.md). Export the
+      // same OT_SANDBOX_API_KEY in the shell running `npm run dev` and the
+      // proxy stamps the header on — the browser never handles the secret.
+      "/ai": {
+        target: "http://localhost:8000",
+        headers: process.env.OT_SANDBOX_API_KEY
+          ? { "X-API-Key": process.env.OT_SANDBOX_API_KEY }
+          : {},
+      },
     },
   },
   build: {

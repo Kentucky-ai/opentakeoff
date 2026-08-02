@@ -13,14 +13,23 @@ to a `TakeoffAI` implementation (see adapters/base.py and adapters/heuristic.py)
 It deliberately does NOT include any estimate, pricing, risk, or scope engine —
 this is just the takeoff canvas's optional AI playground.
 
-Run:  uvicorn app:app --reload --port 8000
+The AI endpoints are LOCKED until you set an API key — pick any secret you like:
+
+Run:  OT_SANDBOX_API_KEY=<any-secret> uvicorn app:app --reload --port 8000
+
+Callers must send the same value in an `X-API-Key` header. With the env var
+unset, /ai/* answers 401 — never "open because unconfigured": a server this
+socket may one day front (your GPU box, your API budget) should refuse
+strangers even when someone forgets to configure it, or exposes a dev
+instance beyond localhost. /health stays open as a liveness probe.
 """
 from __future__ import annotations
 
 import importlib
 import os
+import secrets
 
-from fastapi import FastAPI
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, field_validator, model_validator
 
@@ -29,14 +38,38 @@ from adapters.heuristic import HeuristicAdapter
 
 app = FastAPI(title="OpenTakeoff AI sandbox", version="0.1.0")
 
-# Wide-open CORS by default — this is a local dev sandbox. Lock it down if you
-# expose it beyond localhost.
+# Wide-open CORS — fine because every /ai route also demands the API key; a
+# browser page can only call this with a key its user configured.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
+    """Gate every /ai route on `X-API-Key` matching OT_SANDBOX_API_KEY.
+
+    The env var is read at CALL time (not import) so it's rotatable and
+    testable, and the compare is constant-time. Fail-closed in both
+    directions: no key configured ⇒ 401 regardless of what's presented
+    (never open-because-unconfigured); key configured ⇒ anything but an
+    exact match is 401. The secret rides a header, never a URL path or
+    query string, so it stays out of access logs and proxy caches.
+    """
+    expected = os.environ.get("OT_SANDBOX_API_KEY", "").strip()
+    if not expected:
+        raise HTTPException(
+            status_code=401,
+            detail="sandbox locked: start the server with OT_SANDBOX_API_KEY set, "
+            "then send that value in the X-API-Key header",
+        )
+    if not (x_api_key and secrets.compare_digest(x_api_key, expected)):
+        raise HTTPException(status_code=401, detail="invalid or missing X-API-Key")
+
+
+ai = APIRouter(prefix="/ai", dependencies=[Depends(require_api_key)])
 
 
 def _load_adapter() -> TakeoffAI:
@@ -151,23 +184,23 @@ def health() -> dict:
     return {"ok": True, "adapter": adapter.name}
 
 
-@app.post("/ai/suggest-scale", response_model=SuggestScaleOut)
+@ai.post("/suggest-scale", response_model=SuggestScaleOut)
 def suggest_scale(body: SuggestScaleIn) -> SuggestScaleOut:
     return SuggestScaleOut(**adapter.suggest_scale(body.page_text))
 
 
-@app.post("/ai/detect-rooms", response_model=DetectRoomsOut)
+@ai.post("/detect-rooms", response_model=DetectRoomsOut)
 def detect_rooms(body: DetectRoomsIn) -> DetectRoomsOut:
     out = adapter.detect_rooms(body.width, body.height, body.segments)
     return DetectRoomsOut(**out)
 
 
-@app.post("/ai/classify-finish", response_model=ClassifyFinishOut)
+@ai.post("/classify-finish", response_model=ClassifyFinishOut)
 def classify_finish(body: ClassifyFinishIn) -> ClassifyFinishOut:
     return ClassifyFinishOut(**adapter.classify_finish(body.context))
 
 
-@app.post("/ai/parse-schedule", response_model=ParseScheduleOut)
+@ai.post("/parse-schedule", response_model=ParseScheduleOut)
 def parse_schedule(body: ParseScheduleIn) -> ParseScheduleOut:
     out = adapter.parse_schedule(body.image_b64, body.width, body.height)
     # Validate/coerce each row through ScheduleRow and drop untagged ones (a row
@@ -176,3 +209,6 @@ def parse_schedule(body: ParseScheduleIn) -> ParseScheduleOut:
     rows = [ScheduleRow(**r) for r in out.get("rows", []) if isinstance(r, dict)]
     rows = [r for r in rows if r.finish_tag.strip()]
     return ParseScheduleOut(rows=rows, note=out.get("note", ""))
+
+
+app.include_router(ai)
