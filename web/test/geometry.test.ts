@@ -7,6 +7,7 @@ import {
   extractVectorGeometry, classifyHatchSegs, classifyOffsetAnnotationSegs, markPolylineArcs, SEG_CURVE, SEG_CLIP, SEG_FILLONLY, SEG_POLYARC,
   SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE, MASK_CURVE_BIT,
   floodRegionSealed, dilateHardMask, SEAL_RADII, sealRadiiFor, DOOR_SEAL_MAX_FT, SEAL_R_MAX, doorWedgeCapPx,
+  splitMergedArcs, doorLeafCells, arcClusterFit,
   type Point, type MaskObj,
 } from "../src/lib/oneclick.ts";
 import { cloudBezier, cloudPath, arrowheadPath, reflectVertsNorm, closedMetrics } from "../src/lib/geometry.js";
@@ -708,6 +709,92 @@ test("offset annotation: an unscaled sheet gets no annotation plane at all", () 
   const withScale = buildMask(segs, 600, 400, 600, meta, 18);
   assert.equal(mo.softCount, 0, "scale unknown ⇒ nothing softened");
   assert.ok(withScale.softCount > 0, "scale known ⇒ the ring is soft");
+});
+
+// ── door leaves and glued arc clusters (the in-swing sector) ────────────────
+// A tiny hand-built mask: MW×MH cells, arcs plotted as curve cells, leaves as
+// plain hard ink, so each test states one geometric fact and nothing else.
+const MW = 200, MH = 200;
+function blank() { return new Uint8Array(MW * MH); }
+function putArc(m: Uint8Array, cx: number, cy: number, r: number, a0: number, a1: number, step = 0.02) {
+  const cells: number[] = [];
+  for (let a = a0; a <= a1; a += step) {
+    const x = Math.round(cx + r * Math.cos(a)), y = Math.round(cy + r * Math.sin(a));
+    const i = y * MW + x;
+    if (!(m[i] & MASK_CURVE_BIT)) cells.push(i);
+    m[i] |= 1 | MASK_CURVE_BIT;
+  }
+  return cells;
+}
+function putLeaf(m: Uint8Array, cx: number, cy: number, r: number, a: number) {
+  const ux = Math.cos(a), uy = Math.sin(a);
+  for (let t = 0; t <= r; t += 0.25) {
+    for (const o of [-0.5, 0, 0.5]) {
+      const x = Math.round(cx + ux * t - uy * o), y = Math.round(cy + uy * t + ux * o);
+      m[y * MW + x] |= 1;                       // hard, NOT curve — that is what makes it a leaf
+    }
+  }
+}
+
+test("splitMergedArcs: one clean arc is returned untouched", () => {
+  const m = blank();
+  const cl = putArc(m, 100, 100, 30, 0, Math.PI / 2);
+  assert.deepEqual(splitMergedArcs(cl, MW, m, 18), [cl], "a cluster that fits one circle is never parted");
+});
+
+test("splitMergedArcs: two doors glued into one cluster are parted", () => {
+  const m = blank();
+  const a = putArc(m, 60, 100, 28, 0, Math.PI / 2);
+  const b = putArc(m, 140, 100, 28, Math.PI / 2, Math.PI);   // a different hinge
+  const glued = [...a, ...b];
+  assert.equal(arcClusterFit(glued, MW, m).good, false, "one circle cannot explain two doors");
+  const parts = splitMergedArcs(glued, MW, m, 18);
+  assert.equal(parts.length, 2, "parted into its two arcs");
+  for (const p of parts) assert.equal(arcClusterFit(p, MW, m).good, true, "and each part fits its own circle");
+});
+
+test("splitMergedArcs: a DASHED arc is put back together, not shattered", () => {
+  // the reason the 3-cell bridge exists: pieces of ONE arc share a circle, so
+  // they must re-merge even though the tight re-split separates them
+  const m = blank();
+  const cl: number[] = [];
+  for (let k = 0; k < 6; k++) cl.push(...putArc(m, 100, 100, 30, k * 0.28, k * 0.28 + 0.16));
+  const parts = splitMergedArcs(cl, MW, m, 18);
+  assert.equal(parts.length, 1, "one dashed arc stays one cluster");
+});
+
+test("doorLeafCells: finds the straight radius at the arc's end, and only hard ink", () => {
+  const m = blank();
+  const cl = putArc(m, 100, 100, 30, 0, Math.PI / 2);
+  putLeaf(m, 100, 100, 30, 0);                  // leaf along the 0° end of the sweep
+  const fit = arcClusterFit(cl, MW, m);
+  const leaf = doorLeafCells(fit, cl, MW, MH, m, 18);
+  assert.ok(leaf && leaf.length > 10, "the leaf is found");
+  for (const i of leaf as number[]) assert.equal(m[i] & MASK_CURVE_BIT, 0, "never returns arc cells — the arc must stay hard");
+});
+
+test("doorLeafCells: an arc with no leaf drawn returns null", () => {
+  const m = blank();
+  const cl = putArc(m, 100, 100, 30, 0, Math.PI / 2);
+  assert.equal(doorLeafCells(arcClusterFit(cl, MW, m), cl, MW, MH, m, 18), null);
+});
+
+test("doorLeafCells: opens a CONTIGUOUS run — a dotted opening does not breach a barrier", () => {
+  const m = blank();
+  const cl = putArc(m, 100, 100, 30, 0, Math.PI / 2);
+  putLeaf(m, 100, 100, 30, 0);
+  const leaf = doorLeafCells(arcClusterFit(cl, MW, m), cl, MW, MH, m, 18) as number[];
+  // walking the opened cells 8-connected must reach them all: a gap anywhere
+  // leaves a hard bridge and the retry silently reports "no growth"
+  const set = new Set(leaf), seen = new Set([leaf[0]]), stack = [leaf[0]];
+  while (stack.length) {
+    const i = stack.pop() as number, y = (i / MW) | 0, x = i - y * MW;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const j = (y + dy) * MW + (x + dx);
+      if (set.has(j) && !seen.has(j)) { seen.add(j); stack.push(j); }
+    }
+  }
+  assert.equal(seen.size, leaf.length, "the opened leaf is one connected run");
 });
 
 // ── polyline arc detection + periodicity classification (issue #184 item C) ─
