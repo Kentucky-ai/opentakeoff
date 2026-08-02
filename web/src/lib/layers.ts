@@ -116,3 +116,66 @@ export function segRoles(layerOf: Int32Array | number[] | undefined, codes: Uint
   }
   return any ? out : null;   // an all-unknown sheet short-circuits to the heuristic path
 }
+
+/** One document-declared OCG as pdf.js reports it —
+ * `getOptionalContentConfig().getGroups()[id]` (name + default-config
+ * visibility; everything else on the group is render plumbing). */
+export interface OcgGroup { name?: string | null; visible?: boolean }
+
+/** The classified per-sheet layer table: the extraction's id list + per-segment
+ * attribution, joined to the document's OCG declarations. This is the ONE
+ * derivation both consumers run — the MCP session for `sheet_info.layers`, the
+ * canvas for its Layers panel — extracted pure so their tables can never
+ * drift. Ids the document doesn't declare (a dangling /OC ref) keep an empty
+ * name → `unknown` role, visible: the refusal default. */
+export function buildLayerInfos(layerIds: string[], layerOf: Int32Array | number[] | undefined, byId: Map<string, OcgGroup>): LayerInfo[] {
+  if (!layerIds.length) return [];
+  const counts = new Map<number, number>();
+  if (layerOf) for (let i = 0; i < layerOf.length; i++) { const li = layerOf[i]; if (li >= 0) counts.set(li, (counts.get(li) || 0) + 1); }
+  return layerIds.map((id, k) => {
+    const g = byId.get(id);
+    const name = String(g?.name ?? "");
+    const { role, confidence } = classifyLayerName(name);
+    return { id, name, role, confidence, visible: g ? g.visible !== false : true, seg_count: counts.get(k) || 0 };
+  });
+}
+
+/** A per-layer estimator/agent override: `include` forces hard boundary,
+ * `exclude` drops the layer's ink outright — the SAME semantics the MCP
+ * `layers {include, exclude}` filters apply (mcp/src/session.ts rolesFor), so
+ * a panel toggle and an agent argument can never mean different things. */
+export type LayerOverride = "include" | "exclude";
+
+/** The effective (role, visibility) table for layerRoleCodes: the classified
+ * infos with a sheet's overrides applied on top. Overrides for ids not in the
+ * table are ignored — a persisted override can outlive its layer (the sheet
+ * was re-exported) and must degrade to a no-op, never a throw. */
+export function effectiveLayerRoles(infos: LayerInfo[], overrides?: Record<string, LayerOverride> | null): Map<string, { role: LayerRole; visible: boolean }> {
+  const m = new Map<string, { role: LayerRole; visible: boolean }>(infos.map((l) => [l.id, { role: l.role, visible: l.visible }]));
+  for (const [id, ov] of Object.entries(overrides || {})) {
+    const l = m.get(id);
+    if (!l) continue;
+    if (ov === "include") m.set(id, { role: "boundary", visible: true });
+    else if (ov === "exclude") m.set(id, { role: l.role, visible: false });
+  }
+  return m;
+}
+
+/** hydrate() sanitizer for the additive `layer_overrides` payload key
+ * (sheetKey → ocgId → override). Object-shape gate + value whitelist,
+ * mirroring sanitizeSheetLevels: an ELSE-CLEAR — a payload without the key
+ * (every pre-#85 save) sanitizes to {}, never a no-op, so a snapshot load
+ * can't inherit the replaced project's overrides. */
+export function sanitizeLayerOverrides(raw: unknown): Record<string, Record<string, LayerOverride>> {
+  const out: Record<string, Record<string, LayerOverride>> = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [sheet, ov] of Object.entries(raw as Record<string, unknown>)) {
+    if (!ov || typeof ov !== "object" || Array.isArray(ov)) continue;
+    const clean: Record<string, LayerOverride> = {};
+    for (const [id, v] of Object.entries(ov as Record<string, unknown>)) {
+      if (v === "include" || v === "exclude") clean[id] = v;
+    }
+    if (Object.keys(clean).length) out[sheet] = clean;
+  }
+  return out;
+}
