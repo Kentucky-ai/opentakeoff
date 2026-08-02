@@ -46,10 +46,22 @@
 // builds the centroid-relative fingerprint from ONE sheet's segments, and
 // matchSymbol (steps 2–4) searches ANY sheet's segments for it — so a symbol
 // marqueed on a detail or legend sheet can be counted across the plan sheets.
-// The fingerprint is size-true (translation + the square symmetry group, no
-// scaling): a detail drawn at an enlarged scale will not match plan-size
-// instances, deliberately — a scale-searching match would trade exactness for
-// guesses. sweepSymbols composes the two on one sheet, unchanged.
+//
+// Scale (#186). The fingerprint is size-true — translation plus the square
+// symmetry group, no scaling — and the search stays that way: a scale SEARCH
+// would trade exactness for guesses. But a detail sheet is drawn enlarged
+// (1-1/2" = 1'-0" against a 1/8" plan is a 12× ratio), so a size-true search
+// finds nothing there and, worse, finds it silently: no placement clears
+// scoreLow, so zero matches with zero near-misses reads exactly like "that
+// symbol isn't on these sheets." The fix is a STATED ratio, never a searched
+// one — `opts.scale` is seed-sheet px per target-sheet px, which the caller
+// computes from the two sheets' own committed scales (upp_seed / upp_target).
+// One number, derived from data the estimator already stated. The endpoint
+// test stays exactly as strict; tolerance rides the ratio only when the seed
+// is being MAGNIFIED (its jitter magnifies with it), so scale ≤ 1 and the
+// whole one-sheet surface are bit-for-bit unchanged.
+//
+// sweepSymbols composes the two on one sheet, unchanged.
 
 export type Point = [number, number];
 
@@ -112,6 +124,17 @@ export const ANCHOR_COUNT = 3;
 const MIN_SEG_LEN = 0.5;
 /** A marquee holding more segments than this is not one symbol instance. */
 const MAX_SEED_SEGS = 2000;
+/** Stated size ratios outside this band say the two sheets disagree by more
+ * than any real drawing set does — 64× is already past a full-size detail
+ * against a 1/16" plan — so the likelier reading is a wrong `set_scale` on one
+ * of them than a genuine ratio. Refused rather than swept. */
+export const SWEEP_MIN_SCALE = 1 / 64;
+export const SWEEP_MAX_SCALE = 64;
+/** A scaled-down symbol must still be this many tolerance balls across, or
+ * "matching" degenerates: every tolerance ball covers the whole symbol and
+ * anything scores. The refusal is the honest answer — the detail is drawn too
+ * large relative to the plan for its linework to survive the trip. */
+const MIN_FOOTPRINT_TOLS = 6;
 
 interface Xform { rotation: number; mirrored: boolean; m: [number, number, number, number]; }
 
@@ -187,12 +210,25 @@ export interface SymbolFingerprint {
    * Half of it is the shadow-suppression radius: two REAL instances can never
    * sit closer without physically overlapping. */
   footprint: number;
+  /** Seed segments that fell below MIN_SEG_LEN when the fingerprint was scaled
+   * down to a target sheet — detail that cannot survive the trip and is
+   * excluded from the score rather than depressing it. Present only on a
+   * scaled fingerprint, and only when something was actually dropped: the
+   * caller discloses it, because "matched 100% of what was left" is a
+   * different claim from "matched 100% of the symbol". */
+  subPixelDropped?: number;
 }
 
 export interface SymbolMatchResult {
   matches: SweepMatch[];
   withheld: SweepWithheld[];
   candidates: { considered: number; dropped: number };
+  /** Present ONLY when a stated ratio ≠ 1 was applied (#186), so a same-scale
+   * result is the same object it always was. What the ratio cost, so the
+   * caller can disclose it: the searched-for symbol's size on the target
+   * sheet, how many seed segments went sub-pixel getting there, and the
+   * tolerance the endpoints were actually tested at. */
+  scaled?: { ratio: number; segments: number; sub_pixel_dropped: number; footprint_px: number; tol_px: number };
 }
 
 export interface MatchOptions extends SweepOptions {
@@ -200,6 +236,52 @@ export interface MatchOptions extends SweepOptions {
    * own location when matching the sheet it was marqueed on. Omit when the
    * fingerprint came from a DIFFERENT sheet: there is no seed here to shadow. */
   excludeCenter?: Point;
+  /** Stated seed→target size ratio: seed-sheet image px per target-sheet image
+   * px, i.e. `upp_seed / upp_target` (#186). Default 1 — the same-scale case,
+   * bit-for-bit the pre-#186 search. A symbol marqueed on a 1-1/2" = 1'-0"
+   * detail and swept across a 1/8" plan passes ~1/12. NEVER searched: the
+   * caller states it from two committed scales or doesn't sweep across them. */
+  scale?: number;
+}
+
+/** A fingerprint resized by a stated ratio, for matching against a sheet drawn
+ * at a different scale (#186). Pure and separately testable.
+ *
+ * Sub-pixel casualties are real and are dropped, not carried: a seed segment
+ * that scales below MIN_SEG_LEN cannot be matched at any honest tolerance, so
+ * leaving it in `totalLen` would permanently depress every score on that sheet
+ * and push real instances under the commit bar. `totalLen` is recomputed over
+ * the survivors and the count of the fallen rides `subPixelDropped` — the
+ * score stays a truthful fraction of what was actually searched for, and the
+ * caller can say so. */
+export function scaleFingerprint(fp: SymbolFingerprint, k: number): SymbolFingerprint {
+  if (!Number.isFinite(k) || !(k > 0)) {
+    throw new Error(`Size ratio must be a positive, finite number (seed-sheet px per target-sheet px) — got ${k}.`);
+  }
+  if (k === 1) return fp;
+  if (k < SWEEP_MIN_SCALE || k > SWEEP_MAX_SCALE) {
+    throw new Error(`Size ratio ${k.toFixed(4)} is outside the sane band (${SWEEP_MIN_SCALE} – ${SWEEP_MAX_SCALE}) — that is a larger disagreement than any real sheet pair, so the likelier cause is a wrong scale on one of the two sheets. Check set_scale on both before sweeping across them.`);
+  }
+  const rel: number[][] = [];
+  let totalLen = 0;
+  let subPixelDropped = 0;
+  for (const r of fp.rel) {
+    const len = r[4] * k;
+    if (len < MIN_SEG_LEN) { subPixelDropped++; continue; }
+    rel.push([r[0] * k, r[1] * k, r[2] * k, r[3] * k, len]);
+    totalLen += len;
+  }
+  if (!rel.length) {
+    throw new Error(`At a ${k.toFixed(4)} size ratio every segment of this symbol falls below ${MIN_SEG_LEN} px on the target sheet — there is no linework left to match. Marquee an instance drawn on the target sheet itself.`);
+  }
+  return {
+    rel,
+    totalLen,
+    segments: rel.length,
+    center: fp.center,
+    footprint: fp.footprint * k,
+    ...(subPixelDropped ? { subPixelDropped } : {}),
+  };
 }
 
 /** Step 1 alone: the segments fully inside the seed rect, expressed relative
@@ -259,13 +341,30 @@ export function fingerprintSymbol(segs: number[], seedRect: [Point, Point]): Sym
  * prunes differently on sheets with different length histograms, which is the
  * point of rarity-first anchors. */
 export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOptions = {}): SymbolMatchResult {
-  const tol = opts.tolPx ?? SWEEP_TOL_PX;
+  const scale = opts.scale ?? 1;
+  // The seed's own drawn jitter is magnified along with the seed, so tolerance
+  // follows the ratio UP and never down: the target sheet's jitter is its own
+  // and does not shrink because the fingerprint did. max(1, scale) also makes
+  // every scale ≤ 1 path — including the whole one-sheet surface — take the
+  // identical tolerance it took before #186.
+  const tol = (opts.tolPx ?? SWEEP_TOL_PX) * Math.max(1, scale);
   const scoreHigh = opts.scoreHigh ?? SWEEP_SCORE_HIGH;
   const scoreLow = opts.scoreLow ?? SWEEP_SCORE_LOW;
   const maxCandidates = opts.maxCandidates ?? SWEEP_MAX_CANDIDATES;
   const xforms = transformsFor(opts.rotations ?? true, opts.mirror ?? true);
   const n = segs.length >> 2;
-  const { rel, totalLen } = fp;
+  if (scale !== 1 && opts.excludeCenter) {
+    throw new Error("excludeCenter is a point on the SEED sheet and means nothing on a target sheet at a different scale — omit it when sweeping across sheets (there is no seed there to shadow).");
+  }
+  const fpS = scale === 1 ? fp : scaleFingerprint(fp, scale);
+  // Only the scaling trip is guarded. A caller who widens tolPx on a same-scale
+  // sweep is making a deliberate, long-standing choice about ITS OWN sheet and
+  // is not owed a refusal; a symbol that shrank into the tolerance did not
+  // choose anything, and its "matches" would be noise.
+  if (scale !== 1 && fpS.footprint < MIN_FOOTPRINT_TOLS * tol) {
+    throw new Error(`At a ${scale.toFixed(4)} size ratio this symbol is ${fpS.footprint.toFixed(1)} px across on the target sheet — inside the ${tol.toFixed(1)} px matching tolerance, where every placement scores alike and a "match" means nothing. The seed is drawn too large relative to the target for its linework to survive the trip: marquee an instance on the target sheet itself, or count the tag text with sweep_schedule_row.`);
+  }
+  const { rel, totalLen } = fpS;
 
   // ── 2. candidates ──────────────────────────────────────────────────────────
   // Sheet-wide length histogram (bucket = round(len)) for anchor rarity and
@@ -389,7 +488,7 @@ export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOp
   // other without physically overlapping, so anything that close to the seed
   // or to an accepted match is the same ink read sideways, and listing it as
   // withheld would bury the real near-misses in symmetry noise.
-  const suppressR = Math.max(mergeR, fp.footprint / 2);
+  const suppressR = Math.max(mergeR, fpS.footprint / 2);
   const ex = opts.excludeCenter;
   const away = ex ? kept.filter((s) => Math.hypot(s.at[0] - ex[0], s.at[1] - ex[1]) > suppressR) : kept;
 
@@ -413,7 +512,20 @@ export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOp
   matches.sort(order);
   withheld.sort(order);
 
-  return { matches, withheld, candidates: { considered, dropped } };
+  return {
+    matches,
+    withheld,
+    candidates: { considered, dropped },
+    ...(scale === 1 ? {} : {
+      scaled: {
+        ratio: Math.round(scale * 1e6) / 1e6,
+        segments: fpS.segments,
+        sub_pixel_dropped: fpS.subPixelDropped ?? 0,
+        footprint_px: Math.round(fpS.footprint * 10) / 10,
+        tol_px: Math.round(tol * 100) / 100,
+      },
+    }),
+  };
 }
 
 /** The one-sheet sweep, unchanged: fingerprint the marquee, match the same

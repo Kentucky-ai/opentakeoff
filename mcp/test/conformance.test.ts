@@ -632,6 +632,17 @@ test("symbol_sweep scope 'set' and sweep_schedule_row: replies round-trip their 
   const client = await pair();
   await callOk(client, "load_plan", { path: SYMSET });
 
+  // #186: a detail seed is drawn at its own scale, so both ends must be stated
+  // before the sweep will run — the fixture draws its detail at plan size, so
+  // one label everywhere is truthful and the ratio comes out 1
+  assert.match(
+    await callErr(client, "symbol_sweep", { sheet: "symbol-set.pdf#3", seed_rect: [[590, 574], [678, 634]], scope: "set" }),
+    /drawn at its own enlarged scale .* set_scale/,
+  );
+  for (const sheet of ["symbol-set.pdf", "symbol-set.pdf#2", "symbol-set.pdf#3"]) {
+    await callOk(client, "set_scale", { sheet, upp: 0.25 });
+  }
+
   // set scope, seeded from the DETAIL sheet's drain — plan-only counting
   const set = await callOk(client, "symbol_sweep", { sheet: "symbol-set.pdf#3", seed_rect: [[590, 574], [678, 634]], scope: "set" });
   assert.deepEqual(z.object(symbolSweepOutput).parse(set), set, "schema states every returned field — nothing stripped");

@@ -1451,10 +1451,20 @@ const SYMSET = fileURLToPath(new URL("./fixtures/symbol-set.pdf", import.meta.ur
 // the detail sheet's drain at PDF pt (300..334, 300..320) → image px, with margin
 const DETAIL_SEED = [[590, 574], [678, 634]];
 const stripTimings = (r: any) => ({ ...r, sheets: r.sheets.map(({ elapsed_ms, ...p }: any) => p) });
+/** #186: a detail-seeded sweep needs both ends' scales stated before it will
+ * run. The fixture draws its detail at PLAN size, so one label everywhere is
+ * the truthful statement here and the ratio comes out 1 — every count below is
+ * the phase-2 number, unchanged. */
+const scaleSet = async (client: any): Promise<void> => {
+  for (const sheet of ["symbol-set.pdf", "symbol-set.pdf#2", "symbol-set.pdf#3"]) {
+    await call(client, "set_scale", { sheet, upp: 0.25 });
+  }
+};
 
 test("symbol_sweep scope 'set': detail-seeded, counts plan sheets only, per-sheet results, deterministic", async () => {
   const client = await pair();
   await call(client, "load_plan", { path: SYMSET });
+  await scaleSet(client);
 
   const r = await call(client, "symbol_sweep", { sheet: "symbol-set.pdf#3", seed_rect: DETAIL_SEED, scope: "set" });
   assert.equal(r.isError, false);
@@ -1496,6 +1506,7 @@ test("symbol_sweep scope 'set': detail-seeded, counts plan sheets only, per-shee
 test("symbol_sweep scope 'set' commit: one undo step across sheets, seed-source provenance on every marker", async () => {
   const client = await pair();
   await call(client, "load_plan", { path: SYMSET });
+  await scaleSet(client);
 
   const r = await call(client, "symbol_sweep", { sheet: "symbol-set.pdf#3", seed_rect: DETAIL_SEED, scope: "set", commit: true, condition: "FD-1" });
   assert.equal(r.isError, false);
@@ -1524,6 +1535,72 @@ test("symbol_sweep scope 'set' commit: one undo step across sheets, seed-source 
   assert.equal(undo.data.steps[0].tool, "symbol_sweep");
   assert.equal(undo.data.steps[0].shapes, 6);
   assert.equal(undo.data.shape_count, 0);
+});
+
+// ── #186: the size ratio across sheets ──────────────────────────────────────
+
+test("#186 symbol_sweep: a detail seed with no scale REFUSES — reason, fix, and the trap named", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMSET });
+
+  const r = await call(client, "symbol_sweep", { sheet: "symbol-set.pdf#3", seed_rect: DETAIL_SEED, scope: "set" });
+  assert.equal(r.isError, true, "sweeping blind would report a confident zero on an enlarged detail");
+  assert.match(r.data.error, /drawn at its own enlarged scale/);
+  assert.match(r.data.error, /set_scale/, "the fix is named");
+  assert.match(r.data.error, /confident zero/, "and so is what it is protecting against");
+
+  // scale only the seed — the plan targets are still unstated, so it still refuses
+  await call(client, "set_scale", { sheet: "symbol-set.pdf#3", upp: 0.25 });
+  const half = await call(client, "symbol_sweep", { sheet: "symbol-set.pdf#3", seed_rect: DETAIL_SEED, scope: "set" });
+  assert.equal(half.isError, true);
+  assert.match(half.data.error, /symbol-set\.pdf/, "the sheets still missing a scale are named");
+
+  // both ends stated → it runs, and at this fixture's true ratio of 1 the
+  // phase-2 count is untouched
+  await scaleSet(client);
+  const ok = await call(client, "symbol_sweep", { sheet: "symbol-set.pdf#3", seed_rect: DETAIL_SEED, scope: "set" });
+  assert.equal(ok.isError, false);
+  assert.equal(ok.data.found, 6);
+  assert.ok(ok.data.sheets.every((p: any) => p.scaled === undefined && p.scale_assumed === undefined),
+    "a ratio of 1 is the reply it always was — no new keys");
+});
+
+test("#186 symbol_sweep: an enlarged detail is found at the stated ratio, and says what the resize cost", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMSET });
+  // the detail sheet declares itself drawn 4× the plans: upp is real feet per
+  // image px, so a LARGER drawing is a SMALLER upp
+  await call(client, "set_scale", { sheet: "symbol-set.pdf", upp: 0.25 });
+  await call(client, "set_scale", { sheet: "symbol-set.pdf#2", upp: 0.25 });
+  await call(client, "set_scale", { sheet: "symbol-set.pdf#3", upp: 0.0625 });
+
+  const r = await call(client, "symbol_sweep", { sheet: "symbol-set.pdf#3", seed_rect: DETAIL_SEED, scope: "set" });
+  assert.equal(r.isError, false);
+  for (const p of r.data.sheets) {
+    assert.equal(p.scaled.ratio, 0.25, `${p.sheet} resized by the sheets' own scales`);
+    assert.equal(p.scaled.tol_px, 2, "shrinking never loosens the endpoint test");
+    assert.ok(p.scaled.footprint_px > 0);
+  }
+  assert.match(r.data.note, /Size ratio applied from the sheets' own scales/);
+  // the fixture's detail is NOT actually drawn 4× — so a stated 4× finds
+  // nothing, which is the honest answer to a false statement about the sheets
+  assert.equal(r.data.found, 0, "a wrong stated ratio produces an empty sweep, not a wrong count");
+});
+
+test("#186 symbol_sweep: a plan-seeded sweep with no scales still runs, and discloses the assumption", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMSET });
+
+  // plan → plan is the ordinary case: one set's plan sheets share a scale
+  // nearly always, so this stays permissive rather than demanding set_scale
+  const r = await call(client, "symbol_sweep", { sheet: "symbol-set.pdf", seed_rect: [[230, 314], [318, 374]], scope: "set" });
+  assert.equal(r.isError, false);
+  assert.equal(r.data.found, 5, "unchanged: 6 instances minus the seed itself");
+  const other = r.data.sheets.find((p: any) => p.sheet === "symbol-set.pdf#2");
+  assert.match(other.scale_assumed, /swept at 1:1/, "the cross-sheet leg says it assumed same-size drafting");
+  assert.equal(r.data.sheets.find((p: any) => p.sheet === "symbol-set.pdf").scale_assumed, undefined,
+    "a sheet swept against ITSELF has a known ratio of 1 — nothing was assumed");
+  assert.match(r.data.note, /Swept at 1:1 on symbol-set\.pdf#2/);
 });
 
 test("symbol_sweep scope 'set' refusal: no text layer means roles are unknown — refused, never guessed", async () => {

@@ -2,6 +2,17 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-02 — the symbol sweep crosses scales: a stated ratio, never a searched one (#186)
+
+### Fixed
+- **A symbol seeded on an enlarged detail sheet no longer counts a silent zero across the plans.** `symbol_sweep {scope: "set"}` and `sweep_schedule_row` exist to serve one story — a transition assembly drawn once on a detail sheet becomes a condition counted across every floor plan — and detail sheets are drawn enlarged: `1-1/2" = 1'-0"` against a `1/8"` plan is a 12× ratio. The fingerprint is size-true, so every transformed seed segment landed ~12× off the plan's linework, no placement cleared `scoreLow`, and the sweep returned **zero matches with zero near-misses** — indistinguishable from "that symbol isn't on these sheets". An engine that refuses loudly everywhere else was handing back a confident empty answer.
+- **The fix is a stated ratio, not a scale search.** The session already knows both scales exactly (`SheetState.upp`, real feet per image px, gated before any measurement), so the seed→target ratio is arithmetic on numbers the estimator already committed: `matchSymbol` takes `scale` and resizes the fingerprint before matching. The endpoint test stays exactly as strict — tolerance rides the ratio **up** only when the seed is magnified (its drawn jitter magnifies with it) and never down, so `scale ≤ 1` and the entire one-sheet surface are bit-for-bit the pre-#186 search. A scale-searching match would trade exactness for guesses and is still refused.
+- **Refusals where the ratio is unknowable, disclosure where it is assumed.** Seeding from a detail/legend/schedule sheet now **refuses** until both ends carry a scale, naming the sheets, the fix (`set_scale`), and the confident zero it is preventing — that half was a bug on its own. Plan-to-plan stays permissive (one set's plan sheets share a scale nearly always, and demanding `set_scale` there would break sweeps that work today) but says so: `scale_assumed` on the sheet, and a note that names an unstated ratio as a live explanation whenever such a sheet comes back empty. An applied ratio reports what it cost — `scaled {ratio, segments, sub_pixel_dropped, footprint_px, tol_px}` per sheet.
+- Two correctness details the resize forced into the open: seed segments that scale below matchable length are **dropped from `totalLen`**, not carried (carrying them would depress every score on that sheet and push real instances under the commit bar) and the count of the fallen is disclosed; and the tag-proximity radius in `sweep_schedule_row` now rides the ratio with the fingerprint, since a marker resized to a 12×-smaller plan has a 12×-smaller footprint. A symbol that shrinks inside the matching tolerance is refused outright — at that size every placement scores alike and a "match" means nothing.
+
+### Released
+- **opentakeoff-mcp 0.9.27** — cross-scale symbol sweeps by stated ratio, with the detail-seed refusal and per-sheet scale disclosure; 35 tools (no tool-count change).
+
 ## 2026-08-02 — the MCP server floods through the sealed engine: canvas parity, proven against the corpus
 
 ### Changed
