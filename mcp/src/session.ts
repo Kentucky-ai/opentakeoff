@@ -33,7 +33,7 @@ import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS }
 // scale-unpinned masks here, so an MCP trace and a canvas click at the same
 // seed measured DIFFERENT square footage under the same origin.method.
 import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, floodAtSeed, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
-import { fingerprintSymbol, matchSymbol, SWEEP_TOL_PX, type SweepOptions, type SymbolFingerprint, type SweepMatch, type SweepWithheld } from "../../web/src/lib/symbolsweep.ts";
+import { fingerprintSymbol, matchSymbol, SWEEP_TOL_PX, type SweepOptions, type SymbolFingerprint, type SymbolMatchResult, type SweepMatch, type SweepWithheld } from "../../web/src/lib/symbolsweep.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
 // The approvals family (#176) — the canvas's own pure module, imported as-is
 // (the markedset.js/importTakeoff.js precedent), so a verdict this server
@@ -1514,6 +1514,41 @@ export class Session {
     return { committed: ids.length, shape_ids: ids, condition: c.finish_tag, ea_total };
   }
 
+  /** The seed→target size ratio for a cross-sheet sweep (#186): seed-sheet
+   * image px per target-sheet image px, which is exactly `upp_seed /
+   * upp_target` — both sheets' own committed scales, no search and no guess.
+   *
+   * `known: false` means at least one of the two sheets has no scale set. The
+   * sweep can still run at 1.0 (same-size drafting is the norm across the plan
+   * sheets of one set) but the caller MUST disclose the assumption, because an
+   * unknown ratio and a zero count together are indistinguishable from "the
+   * symbol isn't there" — the exact silent wrong answer #186 exists to kill. */
+  private sweepRatio(seed: SheetState, target: SheetState): { scale: number; known: boolean } {
+    if (seed.key === target.key) return { scale: 1, known: true };
+    if (seed.upp && target.upp) return { scale: seed.upp / target.upp, known: true };
+    return { scale: 1, known: false };
+  }
+
+  /** The refusal that has to fire before a detail-seeded sweep runs blind. A
+   * detail, legend, or schedule sheet is drawn at ITS own enlarged scale — a
+   * 1-1/2" = 1'-0" detail against a 1/8" plan is 12× — so sweeping it against
+   * the plans without the ratio searches for a symbol twelve times too large
+   * and reports a confident zero. Plan-to-plan is different and stays
+   * permissive: one set's plan sheets are drawn at one scale nearly always,
+   * and requiring set_scale there would break sweeps that work today. */
+  private requireCrossScale(seed: SheetState, seedRole: string, targets: SheetState[]): void {
+    if (seedRole === "plan") return;
+    const seen = new Set<string>();
+    const missing = [seed, ...targets].filter((sh) => !sh.upp && !seen.has(sh.key) && (seen.add(sh.key), true));
+    if (!missing.length) return;
+    const names = missing.map((sh) => sh.key);
+    throw new UserError(
+      `The seed sits on a ${seedRole} sheet (${seed.key}), which is drawn at its own enlarged scale — matching it against the plans needs BOTH scales stated, and ${names.length === 1 ? `${names[0]} has none` : `these have none: ${names.join(", ")}`}. ` +
+      `Sweeping without the ratio would search the plans for a symbol several times too large and report a confident zero, so it refuses instead. ` +
+      `Run set_scale on ${names.join(", ")} first${missing.some((sh) => sh.detected) ? ` (detected: ${missing.filter((sh) => sh.detected).map((sh) => `${sh.key} → ${sh.detected!.label}`).join(", ")})` : ""}, or marquee an instance drawn on a plan sheet itself and sweep with scope 'sheet'.`,
+    );
+  }
+
   /** symbol_sweep — every placement of ONE example symbol, from the linework.
    * The engine is pure (web/src/lib/symbolsweep.ts): fingerprint the seed
    * rect's segments, propose placements by constellation anchoring under the
@@ -1625,7 +1660,12 @@ export class Session {
     const seedRole = roleOf.get(s.key) ?? "unknown";
     const seedSource: "instance" | "detail_sheet" = seedRole === "plan" ? "instance" : "detail_sheet";
 
-    const perSheet: { state: SheetState; matches: SweepMatch[]; withheld: SweepWithheld[]; candidates: { considered: number; dropped: number }; elapsed_ms: number }[] = [];
+    // #186: the scale gate fires BEFORE any sweeping, over the plan sheets the
+    // sweep is actually going to touch — a refusal after ten sheets of blind
+    // matching would be a slow way to say the same thing.
+    this.requireCrossScale(s, seedRole, this.sheetList().filter((sh) => (roleOf.get(sh.key) ?? "unknown") === "plan"));
+
+    const perSheet: { state: SheetState; matches: SweepMatch[]; withheld: SweepWithheld[]; candidates: { considered: number; dropped: number }; elapsed_ms: number; scale: { scale: number; known: boolean }; scaled?: NonNullable<SymbolMatchResult["scaled"]> }[] = [];
     const skipped: { sheet: string; role: string; reason: string }[] = [];
     for (const sh of this.sheetList()) {
       const role = roleOf.get(sh.key) ?? "unknown";
@@ -1646,10 +1686,25 @@ export class Session {
         skipped.push({ sheet: sh.key, role, reason: "no vector linework (likely a scan) — symbol matching reads the drawn segments" });
         continue;
       }
+      const ratio = this.sweepRatio(s, sh);
       const t0 = process.hrtime.bigint();
-      const res = matchSymbol(fp, g2.segs, { ...sweepOpts, ...(sh.key === s.key ? { excludeCenter: fp.center } : {}) });
+      let res: SymbolMatchResult;
+      try {
+        res = matchSymbol(fp, g2.segs, {
+          ...sweepOpts,
+          ...(ratio.scale === 1 ? {} : { scale: ratio.scale }),
+          ...(sh.key === s.key ? { excludeCenter: fp.center } : {}),
+        });
+      } catch (e) {
+        // the engine's scale refusals (symbol shrinks inside tolerance, ratio
+        // out of band) are instructions about THIS sheet, not a dead sweep —
+        // disclose and keep going, so one impossible pairing doesn't cost the
+        // estimator the sheets that were fine
+        skipped.push({ sheet: sh.key, role, reason: e instanceof Error ? e.message : String(e) });
+        continue;
+      }
       const elapsed_ms = Math.round(Number(process.hrtime.bigint() - t0) / 1e4) / 100;
-      perSheet.push({ state: sh, ...res, elapsed_ms });
+      perSheet.push({ state: sh, ...res, elapsed_ms, scale: ratio });
     }
 
     const found = perSheet.reduce((n, p) => n + p.matches.length, 0);
@@ -1678,6 +1733,26 @@ export class Session {
     const notes: string[] = [];
     if (!perSheet.length) notes.push("No plan-role sheet in the set was sweepable — nothing was counted; skipped[] says why, sheet by sheet.");
     if (opts.commit && !found) notes.push("commit requested but nothing cleared the bar on any plan sheet — no shapes were committed.");
+    // #186 disclosure. A ratio that was APPLIED is reported because the count
+    // depends on it; a ratio that was ASSUMED is reported harder when the
+    // sweep came back empty, because that pairing — unknown scale, zero found
+    // — is precisely the confident-zero this issue was filed about.
+    const rescaled = perSheet.filter((p) => p.scaled);
+    const assumed = perSheet.filter((p) => !p.scale.known);
+    if (rescaled.length) {
+      notes.push(`Size ratio applied from the sheets' own scales: ${rescaled.map((p) => `${p.state.key} ×${p.scaled!.ratio}`).join(", ")} — the seed was resized to each target sheet before matching, never scale-searched.`);
+      const thinned = rescaled.filter((p) => p.scaled!.sub_pixel_dropped > 0);
+      if (thinned.length) {
+        notes.push(`Scaling down cost detail: ${thinned.map((p) => `${p.state.key} dropped ${p.scaled!.sub_pixel_dropped} sub-pixel segment(s)`).join(", ")} — scores there are a fraction of the linework that survived the trip, not of the whole seed.`);
+      }
+    }
+    if (assumed.length) {
+      const empty = assumed.filter((p) => !p.matches.length).map((p) => p.state.key);
+      notes.push(
+        `Swept at 1:1 on ${assumed.map((p) => p.state.key).join(", ")} — no scale is set on the seed sheet or on those, so the true size ratio is unknown and same-size drafting was assumed.` +
+        (empty.length ? ` ${empty.join(", ")} found nothing, and an unstated ratio is a live explanation for that: if any of those sheets is drawn at a different scale than ${s.key}, the search was for a wrong-sized symbol. set_scale on both ends turns this from an assumption into arithmetic.` : ""),
+      );
+    }
     return {
       scope,
       found,
@@ -1689,6 +1764,8 @@ export class Session {
         withheld: p.withheld.map((w) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, reason: w.reason })),
         candidates: p.candidates,
         elapsed_ms: p.elapsed_ms,
+        ...(p.scaled ? { scaled: p.scaled } : {}),
+        ...(p.scale.known ? {} : { scale_assumed: "no scale set on the seed sheet or this one — swept at 1:1" }),
       })),
       skipped,
       ...(committed ?? {}),
@@ -1801,9 +1878,13 @@ export class Session {
     };
     // corroborators: the tag's OTHER occurrences — same sheet when it has
     // them, else the next sheet that does; a tag drawn exactly once has none
-    let corro: { segs: number[]; occ: Occ[] } | null = null;
-    if (withOcc[0].occ.length > 1) corro = { segs: anchorGeo.segs, occ: withOcc[0].occ.slice(1) };
-    else if (withOcc.length > 1) corro = { segs: (await this.ensureGeometry(withOcc[1].sh)).segs, occ: withOcc[1].occ };
+    // the corroborator may live on ANOTHER sheet, so it carries that sheet:
+    // the probe has to cross the same size ratio the real sweep will (#186),
+    // or a fingerprint gets rejected as "doesn't recur" for the sole reason
+    // that the two plan sheets are drawn at different scales
+    let corro: { sh: SheetState; segs: number[]; occ: Occ[] } | null = null;
+    if (withOcc[0].occ.length > 1) corro = { sh: anchorSheet, segs: anchorGeo.segs, occ: withOcc[0].occ.slice(1) };
+    else if (withOcc.length > 1) corro = { sh: withOcc[1].sh, segs: (await this.ensureGeometry(withOcc[1].sh)).segs, occ: withOcc[1].occ };
 
     const cX = (v: number) => Math.max(0, Math.min(v, anchorSheet.widthPx));
     const cY = (v: number) => Math.max(0, Math.min(v, anchorSheet.heightPx));
@@ -1825,8 +1906,16 @@ export class Session {
         continue;
       }
       if (!corro) { fp = cand; anchorRect = rect; break; }
-      const probe = matchSymbol(cand, corro.segs, sweepOpts);
-      const pr = cand.footprint / 2 + anchor.h;
+      const cr = this.sweepRatio(anchorSheet, corro.sh);
+      let probe: SymbolMatchResult;
+      try {
+        probe = matchSymbol(cand, corro.segs, { ...sweepOpts, ...(cr.scale === 1 ? {} : { scale: cr.scale }) });
+      } catch {
+        // this pad's fingerprint can't survive the trip to the corroborator
+        // (too small once scaled) — a wider pad may; never a hard stop
+        continue;
+      }
+      const pr = (probe.scaled ? probe.scaled.footprint_px : cand.footprint) / 2 + anchor.h;
       if (corro.occ.some((o) => probe.matches.some((m) => Math.hypot(m.at[0] - o.cx, m.at[1] - o.cy) <= pr))) {
         fp = cand; anchorRect = rect; corroborated = true;
         break;
@@ -1838,8 +1927,13 @@ export class Session {
         : `Schedule row "${t}" cannot be anchored: no fingerprintable marker linework sits around its drawn tag on ${anchorSheet.key}. Marquee one instance with symbol_sweep instead.`);
     }
 
-    // 4. the full plan-only sweep + tag corroboration per match
-    const R = fp.footprint / 2 + anchor.h;
+    // 4. the full plan-only sweep + tag corroboration per match.
+    // The tag-proximity radius is the marker's footprint AS DRAWN ON THE SHEET
+    // being read, so it rides the size ratio with the fingerprint (#186): a
+    // marker resized to a 12×-smaller plan has a 12×-smaller footprint, and a
+    // radius left at the seed's size would sweep up whatever tag happened to
+    // be nearby. Unscaled sheets take the identical radius they always did.
+    const radiusFor = (sc?: { footprint_px: number }): number => (sc ? sc.footprint_px : fp!.footprint) / 2 + anchor.h;
     const byPos = <T extends { at: Point }>(a: T, b: T): number => a.at[1] - b.at[1] || a.at[0] - b.at[0];
     type CountedMatch = SweepMatch & { tag_at: [number, number, number, number] };
     const perSheet: {
@@ -1850,6 +1944,8 @@ export class Session {
       text_only: { at: Point }[];
       candidates: { considered: number; dropped: number };
       elapsed_ms: number;
+      scale: { scale: number; known: boolean };
+      scaled?: NonNullable<SymbolMatchResult["scaled"]>;
     }[] = [];
     for (const { sh, occ } of occBySheet) {
       const g2 = await this.ensureGeometry(sh);
@@ -1857,8 +1953,16 @@ export class Session {
         skipped.push({ sheet: sh.key, role: "plan", reason: "no vector linework (likely a scan) — symbol matching reads the drawn segments" });
         continue;
       }
+      const ratio = this.sweepRatio(anchorSheet, sh);
       const t0 = process.hrtime.bigint();
-      const res = matchSymbol(fp, g2.segs, sweepOpts);
+      let res: SymbolMatchResult;
+      try {
+        res = matchSymbol(fp, g2.segs, { ...sweepOpts, ...(ratio.scale === 1 ? {} : { scale: ratio.scale }) });
+      } catch (e) {
+        skipped.push({ sheet: sh.key, role: "plan", reason: e instanceof Error ? e.message : String(e) });
+        continue;
+      }
+      const R = radiusFor(res.scaled);
       const elapsed_ms = Math.round(Number(process.hrtime.bigint() - t0) / 1e4) / 100;
       const sibSpans: { key: string; cx: number; cy: number }[] = [];
       for (const k of siblings) for (const o of occOf(sh, k)) sibSpans.push({ key: k, cx: o.cx, cy: o.cy });
@@ -1884,7 +1988,7 @@ export class Session {
       const text_only = occ
         .filter((o, k) => !matchedOcc.has(k) && !res.withheld.some((w) => Math.hypot(w.at[0] - o.cx, w.at[1] - o.cy) <= R))
         .map((o) => ({ at: [round1(o.cx), round1(o.cy)] as Point }));
-      perSheet.push({ state: sh, matches, withheld, excluded, text_only, candidates: res.candidates, elapsed_ms });
+      perSheet.push({ state: sh, matches, withheld, excluded, text_only, candidates: res.candidates, elapsed_ms, scale: ratio, ...(res.scaled ? { scaled: res.scaled } : {}) });
     }
 
     // 5. commit — condition minted FROM the row (its key IS the tag), the
@@ -1922,6 +2026,17 @@ export class Session {
     const notes: string[] = [];
     if (!corroborated) notes.push(`The tag "${t}" is drawn ${totalOcc === 1 ? "exactly once" : "too sparsely to cross-check"} — the fingerprint could not corroborate at a second occurrence; audit the matches with view_sheet before trusting the count.`);
     if (opts.commit && !found) notes.push("commit requested but nothing cleared the bar — no shapes were committed.");
+    // #186, same disclosure discipline as symbol_sweep: a ratio the count
+    // depends on is stated, and an assumed ratio over an empty sheet is named
+    // as the live explanation rather than left to read as absence.
+    const rowRescaled = perSheet.filter((p) => p.scaled);
+    if (rowRescaled.length) {
+      notes.push(`Size ratio applied from the sheets' own scales: ${rowRescaled.map((p) => `${p.state.key} ×${p.scaled!.ratio}`).join(", ")} — the marker was resized from ${anchorSheet.key} before matching.`);
+    }
+    const rowAssumed = perSheet.filter((p) => !p.scale.known && !p.matches.length);
+    if (rowAssumed.length) {
+      notes.push(`${rowAssumed.map((p) => p.state.key).join(", ")} found nothing and were swept at 1:1 — no scale is set on ${anchorSheet.key} or on them, so a different drawn scale there is a live explanation for the zero. set_scale on both ends to rule it out.`);
+    }
     return {
       tag: t,
       row: {
@@ -1950,6 +2065,8 @@ export class Session {
         text_only: p.text_only,
         candidates: p.candidates,
         elapsed_ms: p.elapsed_ms,
+        ...(p.scaled ? { scaled: p.scaled } : {}),
+        ...(p.scale.known ? {} : { scale_assumed: `no scale set on ${anchorSheet.key} or this sheet — swept at 1:1` }),
       })),
       skipped,
       ...(committed ?? {}),

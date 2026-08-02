@@ -3,7 +3,7 @@
 // tolerance behavior, decoy rejection, determinism, and the reported work cap.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sweepSymbols, fingerprintSymbol, matchSymbol, type Point } from "../src/lib/symbolsweep.ts";
+import { sweepSymbols, fingerprintSymbol, matchSymbol, scaleFingerprint, type Point } from "../src/lib/symbolsweep.ts";
 
 // The test symbol — deliberately ASYMMETRIC under every rotation and mirror:
 // a 20×20 square, ONE diagonal, and a stub off the right side. Local coords,
@@ -24,12 +24,14 @@ const SYMBOL: [number, number, number, number][] = [
 /** Place segment sets into one flat segs array. Each placement transforms the
  * local symbol: translate, optional rotation (deg CW, y-down frame) about the
  * local origin, optional mirror (x → −x) before rotation. */
-function place(sets: { at: Point; rot?: number; mir?: boolean; segs?: [number, number, number, number][]; jitter?: number }[]): number[] {
+function place(sets: { at: Point; rot?: number; mir?: boolean; sc?: number; segs?: [number, number, number, number][]; jitter?: number }[]): number[] {
   const out: number[] = [];
   for (const s of sets) {
     const th = ((s.rot ?? 0) * Math.PI) / 180;
     const c = Math.cos(th), sn = Math.sin(th);
-    const tx = (x: number, y: number): Point => {
+    const k = s.sc ?? 1;   // drawn size — a detail sheet draws the same mark larger
+    const tx = (x0: number, y0: number): Point => {
+      const x = x0 * k, y = y0 * k;
       const mx = s.mir ? -x : x;
       return [mx * c - y * sn + s.at[0], mx * sn + y * c + s.at[1]];
     };
@@ -191,6 +193,89 @@ test("sweepSymbols is exactly fingerprint + match with the seed excluded", () =>
   assert.deepEqual(whole.matches, composed.matches);
   assert.deepEqual(whole.withheld, composed.withheld);
   assert.deepEqual(whole.candidates, composed.candidates);
+});
+
+// ── #186: the stated size ratio ─────────────────────────────────────────────
+// A detail sheet draws the same mark enlarged. Size-true matching finds nothing
+// there, and finds it SILENTLY — zero matches with zero near-misses reads
+// exactly like absence. The ratio is stated by the caller from two committed
+// scales, never searched.
+
+/** The seed as a detail sheet draws it: 12× (1-1/2" = 1'-0" against a 1/8"
+ * plan), plus border linework that is not the symbol. */
+const detail12 = (): number[] => {
+  const d = place([{ at: [400, 300], sc: 12 }]);
+  d.push(0, 0, 2000, 0, 2000, 0, 2000, 1500);
+  return d;
+};
+const DETAIL12_RECT: [Point, Point] = [[380, 280], [830, 560]];
+
+test("#186 the bug: an enlarged detail seed finds NOTHING on the plans, silently, without a ratio", () => {
+  const fp = fingerprintSymbol(detail12(), DETAIL12_RECT);
+  assert.equal(fp.segments, 6, "the whole symbol is fingerprinted at detail size");
+  const plan = place([{ at: [50, 50] }, { at: [250, 50] }, { at: [100, 200], rot: 90 }]);
+  const blind = matchSymbol(fp, plan);
+  assert.equal(blind.matches.length, 0);
+  assert.equal(blind.withheld.length, 0, "not even a near-miss — indistinguishable from absence");
+});
+
+test("#186 the fix: the stated ratio resizes the seed and every plan instance is found", () => {
+  const fp = fingerprintSymbol(detail12(), DETAIL12_RECT);
+  const plan = place([{ at: [50, 50] }, { at: [250, 50] }, { at: [100, 200], rot: 90 }]);
+  const r = matchSymbol(fp, plan, { scale: 1 / 12 });
+  assert.equal(r.matches.length, 3, "all three, including the rotated one");
+  assert.equal(r.matches.filter((m) => m.rotation !== 0).length, 1);
+  assert.ok(r.matches.every((m) => m.score === 1), "exact linework, exact score — no tolerance was loosened to get here");
+  assert.equal(r.scaled?.segments, 6);
+  assert.equal(r.scaled?.sub_pixel_dropped, 0);
+  assert.equal(r.scaled?.tol_px, 2, "shrinking never loosens the endpoint test");
+  assert.deepEqual(matchSymbol(fp, plan, { scale: 1 / 12 }), r, "deterministic");
+});
+
+test("#186 the reverse trip: a plan seed swept across an enlarged detail sheet", () => {
+  const fp = fingerprintSymbol(place([{ at: [0, 0] }]), RECT);
+  const detail = place([{ at: [400, 300], sc: 12 }]);
+  assert.equal(matchSymbol(fp, detail).matches.length, 0, "size-true finds nothing");
+  const r = matchSymbol(fp, detail, { scale: 12 });
+  assert.equal(r.matches.length, 1);
+  assert.equal(r.scaled?.tol_px, 24, "magnifying the seed magnifies its drawn jitter — tolerance rides UP with it");
+});
+
+test("#186 scale 1 is the pre-#186 search, bit for bit", () => {
+  const segs = place([{ at: [0, 0] }, { at: [100, 0] }, { at: [200, 100], rot: 180 }]);
+  const fp = fingerprintSymbol(segs, RECT);
+  const plan = place([{ at: [50, 50] }, { at: [250, 50] }, { at: [100, 200], rot: 90 }]);
+  const bare = matchSymbol(fp, plan);
+  assert.deepEqual(matchSymbol(fp, plan, { scale: 1 }), bare);
+  assert.equal(bare.scaled, undefined, "a same-scale result is the object it always was — no new key");
+  assert.equal(scaleFingerprint(fp, 1), fp, "and the fingerprint is not even copied");
+});
+
+test("#186 sub-pixel detail is dropped from the score, not carried, and is disclosed", () => {
+  // the detail carries a 4-px tick the plan-size mark cannot resolve: at 1/12
+  // it is 0.33 px, below any honest tolerance
+  const withTick = detail12();
+  withTick.push(400, 300, 404, 300);
+  const fp = fingerprintSymbol(withTick, DETAIL12_RECT);
+  assert.equal(fp.segments, 7);
+  const plan = place([{ at: [50, 50] }, { at: [250, 50] }]);
+  const r = matchSymbol(fp, plan, { scale: 1 / 12 });
+  assert.equal(r.scaled?.sub_pixel_dropped, 1);
+  assert.equal(r.scaled?.segments, 6, "scored against what survived the trip");
+  assert.equal(r.matches.length, 2);
+  assert.ok(r.matches.every((m) => m.score === 1), "an unmatchable speck must not depress every real instance below the bar");
+});
+
+test("#186 refusals: a symbol that shrinks inside tolerance, a ratio no sheet pair has, a bad number", () => {
+  const fp = fingerprintSymbol(place([{ at: [0, 0] }]), RECT);   // footprint ≈ 39.5 px
+  const plan = place([{ at: [50, 50] }]);
+  assert.throws(() => matchSymbol(fp, plan, { scale: 1 / 8 }), /inside the .* matching tolerance/,
+    "≈4.9 px across is not a symbol, and every placement would score alike");
+  assert.throws(() => matchSymbol(fp, plan, { scale: 200 }), /outside the sane band/);
+  assert.throws(() => matchSymbol(fp, plan, { scale: 0 }), /positive, finite/);
+  assert.throws(() => matchSymbol(fp, plan, { scale: Number.NaN }), /positive, finite/);
+  assert.throws(() => matchSymbol(fp, plan, { scale: 2, excludeCenter: fp.center }), /means nothing on a target sheet/,
+    "the seed's own location is a SOURCE-sheet point");
 });
 
 test("seed diagnostics: centroid and total length are the fingerprint's own", () => {

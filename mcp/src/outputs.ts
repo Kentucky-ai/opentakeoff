@@ -179,6 +179,18 @@ const sweepCandidates = z.object({
   dropped: z.number().int().describe("Placements never scored because the work cap bit — always disclosed, never silent"),
 });
 
+/** What a stated size ratio (#186) cost on one sheet. Present ONLY when the
+ * ratio was not 1 — a same-scale sweep is the reply it always was. */
+const sweepScaled = z.object({
+  ratio: z.number().describe("Seed-sheet px per target-sheet px, computed from the two sheets' own committed scales (upp_seed / upp_target) — stated, never scale-searched"),
+  segments: z.number().int().describe("Fingerprint segments that survived the resize and were actually searched for"),
+  sub_pixel_dropped: z.number().int().describe("Seed segments that fell below matchable length when scaled down — excluded from the score rather than depressing it, so a score here is a fraction of what survived, not of the whole seed"),
+  footprint_px: z.number().describe("The symbol's size on THIS sheet after the resize"),
+  tol_px: z.number().describe("The endpoint tolerance actually applied — it rides the ratio up when the seed is magnified (its drawn jitter magnifies too) and never down"),
+}).describe("#186: present only when the seed was resized for this sheet");
+
+const sweepScaleAssumed = z.string().describe("#186: present when the true ratio is UNKNOWN (a scale is missing on the seed sheet or this one) and the sweep ran at 1:1 — an unstated ratio plus a zero count is not evidence of absence");
+
 /** One plan sheet's results inside a set-wide sweep — its own match/withheld
  * lists, its own cap accounting, its own wall-clock. */
 const sweepSheetBlock = z.object({
@@ -188,6 +200,8 @@ const sweepSheetBlock = z.object({
   withheld: z.array(z.object({ ...sweepPlacement, reason: z.string() })),
   candidates: sweepCandidates.describe("The work cap applies PER SHEET; dropped > 0 here names exactly where the count is incomplete"),
   elapsed_ms: z.number().describe("Wall-clock for this sheet's sweep"),
+  scaled: sweepScaled.optional(),
+  scale_assumed: sweepScaleAssumed.optional(),
 });
 
 /** Sheets excluded from counting, disclosed one by one — a symbol drawn in a
@@ -597,6 +611,8 @@ export const sweepScheduleRowOutput = {
       .describe("The tag drawn with NO matching marker geometry nearby — a note reference or a variant marker; a question, never a count"),
     candidates: z.object({ considered: z.number().int(), dropped: z.number().int() }),
     elapsed_ms: z.number().describe("Wall-clock for this sheet's sweep"),
+    scaled: sweepScaled.optional(),
+    scale_assumed: sweepScaleAssumed.optional(),
   })).describe("One entry per swept PLAN-role sheet, load order"),
   skipped: z.array(z.object({ sheet: z.string(), role: z.string(), reason: z.string() }))
     .describe("Sheets excluded from counting (schedule/detail/legend/unknown), each with its reason"),
