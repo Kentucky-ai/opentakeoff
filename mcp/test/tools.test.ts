@@ -1425,6 +1425,8 @@ test("verdicts round-trip: export_takeoff → import_takeoff (wholesale and merg
   const again = await call(c, "import_takeoff", { path: exported });
   assert.equal(again.isError, false);
   assert.equal((await call(c, "list_annotations", {})).data.verdict_count, 3, "re-import is idempotent for verdicts too");
+});
+
 // ── symbol_sweep phase 2: set-wide sweeps, plan-only counting ────────────────
 // The fixture (test/fixtures/symbol-set.pdf, scripts/make-symbol-fixture.mjs):
 // four sheets — FLOOR PLAN (4 drains: 3 plain + 1 rotated), FINISH PLAN
