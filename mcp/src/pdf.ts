@@ -43,6 +43,13 @@ export interface PageHandle {
     longEdge: number,
     draw?: (ctx: object, toCanvas: (x: number, y: number) => [number, number]) => void,
   ): Promise<{ png: Uint8Array; width: number; height: number; zoom: number }>;
+  /** Rasterize the page at the given scale into RAW RGBA bytes on a
+   * width×height canvas (the caller states the ceil'd dims) — the pixel
+   * source for the raster-mask fallback (#154), which needs pixels, not a
+   * PNG. Rendered on an explicit white background, matching the canvas's
+   * dedicated mask render (dark themes must never invert the ink). Same
+   * @napi-rs/canvas requirement as renderPng. */
+  renderRgba(scale: number, width: number, height: number): Promise<Uint8ClampedArray>;
 }
 
 /** The document's NodeCanvasFactory — present on the proxy at runtime, absent
@@ -119,6 +126,21 @@ export async function openPdf(filePath: string): Promise<DocHandle> {
           try {
             await page.render({ canvasContext: target.context as never, viewport: rvp }).promise;
             return new Uint8Array(target.canvas.toBuffer("image/png"));
+          } finally {
+            factory.destroy(target);
+          }
+        },
+        async renderRgba(scale: number, width: number, height: number): Promise<Uint8ClampedArray> {
+          await ensureCanvasGlobals();
+          const rvp = page.getViewport({ scale });
+          const factory = (doc as unknown as { canvasFactory: CanvasFactory }).canvasFactory;
+          const target = factory.create(width, height);
+          try {
+            await page.render({ canvasContext: target.context as never, viewport: rvp, background: "#ffffff" }).promise;
+            // getImageData copies into a fresh buffer, so destroying the
+            // canvas afterwards (finally) never frees the returned bytes
+            const ctx = target.context as unknown as { getImageData(x: number, y: number, w: number, h: number): { data: Uint8ClampedArray } };
+            return ctx.getImageData(0, 0, width, height).data;
           } finally {
             factory.destroy(target);
           }

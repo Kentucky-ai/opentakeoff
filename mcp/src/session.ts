@@ -13,8 +13,12 @@ import { UserError, round1, round2 } from "./format.ts";
 import { STANDARD_SCALES, RENDER_SCALE, detectScale, extractSheetNumber, type DetectedScale } from "../../web/src/lib/sheets.ts";
 import {
   extractVectorGeometry, buildMask, floodRegion, traceRegion, snapVertices, ringArea,
-  hatchFamilies, MASK_MAX_DIM, SENS_BALANCED, type MaskObj, type VectorGeometry, type Point, type HatchFamily,
+  hatchFamilies, MASK_MAX_DIM, SENS_BALANCED, type FloodResult, type MaskObj, type VectorGeometry, type Point, type HatchFamily,
 } from "../../web/src/lib/oneclick.ts";
+// The canvas's raster-mask engine (#154), imported as-is — the scanned-sheet
+// fallback is the SAME Bradley-threshold module the canvas floods with, so an
+// agent's raster trace and a click's raster trace can never binarize differently.
+import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS } from "../../web/src/lib/rastermask.ts";
 import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
 import { sweepSymbols, SWEEP_TOL_PX, type SweepOptions } from "../../web/src/lib/symbolsweep.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
@@ -203,6 +207,9 @@ interface SheetState {
   snap?: ReturnType<typeof buildSnapGrid>;
   /** undefined = not built yet; null = sheet has zero vector segments (a scan) */
   mask?: MaskObj | null;
+  /** raster-fallback mask (#154): the sheet's rendered pixels thresholded by
+   * rastermask.ts — built on first raster-path flood, cached like `mask` */
+  rmask?: MaskObj;
   /** rendered-page PNG at IMAGE_MAX_EDGE, built on first resource read */
   png?: Uint8Array;
   /** hatch-family instances (image px), built with geo on first sheet_context */
@@ -672,9 +679,9 @@ export class Session {
     return segRoles(geo.layerOf, layerRoleCodes(geo.layerIds, infoById));
   }
 
-  /** v1 masks come from the sheet's vector linework only. Raster seam: a scanned
-   * sheet would render via a node canvas into a future rastermask module that
-   * returns this same MaskObj shape. Layer roles (#85) ride in as the stated
+  /** v1 masks come from the sheet's vector linework only; a scanned sheet
+   * (zero segments) is null here and the measuring tools fall back to
+   * ensureRasterMask (#154). Layer roles (#85) ride in as the stated
    * short-circuit; an unlayered sheet builds the identical pre-#85 mask. */
   async ensureMask(name: string): Promise<MaskObj | null> {
     const s = this.sheet(name);
@@ -694,6 +701,49 @@ export class Session {
     const geo = await this.ensureGeometry(s);
     if (!geo.segs.length) return null;
     return buildMask(geo.segs, s.widthPx, s.heightPx, MASK_MAX_DIM, geo.meta, this.rolesFor(s, geo, layersOpt));
+  }
+
+  /** The raster-fallback mask (#154): a dedicated render of the sheet at mask
+   * scale (the view_sheet machinery — pdf.ts + @napi-rs/canvas), thresholded
+   * by the canvas's own rastermask engine into the same MaskObj shape
+   * buildMask emits, so floodRegion/traceRegion run unchanged on scans.
+   * Cached per sheet like geo/mask; where the optional native canvas never
+   * installed, renderRgba throws its plain install-hint Error and the tool
+   * reply carries it — a stated inability, never a guessed polygon. */
+  private async ensureRasterMask(s: SheetState): Promise<MaskObj> {
+    if (!s.rmask) {
+      const ws = Math.min(1, MASK_MAX_DIM / Math.max(s.widthPx, s.heightPx, 1));
+      const mw = Math.max(2, Math.ceil(s.widthPx * ws));
+      const mh = Math.max(2, Math.ceil(s.heightPx * ws));
+      const rgba = await s.page.renderRgba(RENDER_SCALE * ws, mw, mh);
+      s.rmask = buildRasterMask(rgba, mw, mh, ws);
+    }
+    return s.rmask;
+  }
+
+  /** The canvas's trigger policy (#154), verbatim (TakeoffCanvas.jsx /
+   * rastermask.ts constants): raster-ELIGIBLE = placed-image area covers
+   * ≥ RASTER_MIN_IMG_FRAC of the sheet (a scan wrapper or photo underlay);
+   * vector-VIABLE = enough segments that the vector mask can bound rooms.
+   * Vector is exact and always wins where it works — a pure-vector sheet
+   * never touches pixels; a scan wrapper with near-zero linework runs raster
+   * primary; a mixed sheet retries on pixels only after the vector flood
+   * fails. */
+  private rasterPolicy(s: SheetState, geo: VectorGeometry): { rasterEligible: boolean; vectorViable: boolean } {
+    const sheetArea = s.widthPx * s.heightPx;
+    return {
+      rasterEligible: sheetArea > 0 && geo.imageArea / sheetArea >= RASTER_MIN_IMG_FRAC,
+      vectorViable: (geo.segs.length >> 2) >= RASTER_MIN_SEGS,
+    };
+  }
+
+  /** Layer overrides (#85) name PDF Optional Content — scan pixels carry
+   * none, so a raster-path call that stated them is refused rather than
+   * silently no-opped (the rolesFor resolve-or-error doctrine). */
+  private refuseLayersOnRaster(layersOpt?: { include?: string[]; exclude?: string[] }): void {
+    if (layersOpt && (layersOpt.include?.length || layersOpt.exclude?.length)) {
+      throw new UserError("Layer overrides can't apply here — this flood runs on the sheet's rendered pixels (raster fallback), and scan ink carries no PDF layers. Retry without layers.");
+    }
   }
 
   async sheetInfo(name: string) {
@@ -818,12 +868,44 @@ export class Session {
 
   async oneClick(name: string, x: number, y: number, opts: { condition?: string; role: "floor_area" | "deduct"; returnVerts: boolean; sensitivity?: number; layers?: { include?: string[]; exclude?: string[] } }) {
     const s = this.sheet(name);
-    const mask = await this.maskWithLayers(name, opts.layers);
-    if (!mask) throw new UserError("This sheet has no vector linework (likely a scan); raster fallback not yet available in the MCP server.");
-    const f = floodRegion(mask, x, y, opts.sensitivity ?? SENS_BALANCED);
-    if (f.status === "leak") throw new UserError("That space isn't enclosed on the plan linework — the fill spilled through a gap or opening.");
-    if (f.status !== "ok") throw new UserError("Landed in dense linework (hatching or text).");
-    const ring = snapVertices(traceRegion(f), (px, py, d) => (s.snap ? nearestSnap(s.snap, px, py, d) : null), SNAP_TOL);
+    // Trigger policy — canvas parity (#154, see rasterPolicy): vector first
+    // wherever it can work, raster only where it can't; the vector path below
+    // is byte-identical to the pre-#154 behavior on any pure-vector sheet.
+    const { rasterEligible, vectorViable } = this.rasterPolicy(s, await this.ensureGeometry(s));
+    let f: Extract<FloodResult, { status: "ok" }> | null = null;
+    let raster = false;
+    if (!rasterEligible || vectorViable) {
+      const mask = await this.maskWithLayers(name, opts.layers);
+      if (!mask && !rasterEligible) throw new UserError("This sheet has no vector linework and no scan image to flood — nothing here bounds a region. Trace the space with measure_polygon instead.");
+      if (mask) {
+        const r = floodRegion(mask, x, y, opts.sensitivity ?? SENS_BALANCED);
+        if (r.status === "ok") f = r;
+        else if (!rasterEligible) {
+          if (r.status === "leak") throw new UserError("That space isn't enclosed on the plan linework — the fill spilled through a gap or opening.");
+          throw new UserError("Landed in dense linework (hatching or text).");
+        }
+      }
+    }
+    if (!f) {
+      // Raster fallback (#154): flood the sheet's rendered pixels with the
+      // canvas's own engine. The raster mask is single-tier (softCount 0), so
+      // floodRegion's hatch escalation — and the sensitivity knob with it —
+      // is structurally inert here; no sensitivity is passed.
+      this.refuseLayersOnRaster(opts.layers);
+      const rmask = await this.ensureRasterMask(s);
+      const r = floodRegion(rmask, x, y);
+      if (r.status === "leak") throw new UserError("That space isn't enclosed on the scan — the fill escaped through a gap (faded line or open doorway). Seed a more enclosed spot, or trace it with measure_polygon.");
+      if (r.status !== "ok") throw new UserError("Landed on dense scan ink (text or hatching). Seed an open spot inside the room.");
+      f = r;
+      raster = true;
+    }
+    // Raster trace differences, canvas parity: a looser RDP eps (scan
+    // contours wobble) and NO vertex snapping — a scan has no true endpoints,
+    // and pulling room corners onto the title block's few vector endpoints
+    // would corrupt the ring.
+    const ring = raster
+      ? traceRegion(f, RASTER_RDP_EPS)
+      : snapVertices(traceRegion(f), (px, py, d) => (s.snap ? nearestSnap(s.snap, px, py, d) : null), SNAP_TOL);
     if (ring.length < 3) throw new UserError("Couldn't trace that space into a polygon.");
     const areaPx2 = ringArea(ring);
     const perimPx = closedMetrics(ring).perim;
@@ -832,6 +914,9 @@ export class Session {
       nverts: ring.length,
       ...(f.hatchFiltered ? { hatch_filtered: true } : {}),
       ...(f.gapBridged ? { gap_bridged_px: f.gapBridged } : {}),
+      // which path ran, disclosed both ways (#154): present = pixels bounded
+      // this trace, absent = the vector linework did
+      ...(raster ? { raster_traced: true as const } : {}),
       ...(opts.returnVerts ? { verts: ring.map(([vx, vy]) => [round1(vx), round1(vy)]) } : {}),
     };
     if (s.upp == null) {
@@ -857,12 +942,18 @@ export class Session {
         reviewed: false,
         ...(f.hatchFiltered ? { hatch_filtered: true as const } : {}),
         ...(f.gapBridged ? { gap_bridged_px: f.gapBridged } : {}),
+        // #154 — a trace whose boundary was scan PIXELS is a different claim
+        // than one bounded by vector linework; the record says which (the
+        // canvas's raster_traced vocabulary, contribution.v2)
+        ...(raster ? { raster_traced: true as const } : {}),
         // #85 — a trace bounded by DECLARED boundary layers is categorically
-        // stronger evidence than one bounded by a pitch heuristic
-        ...((s.layers || []).some((l) => l.visible && (l.role === "boundary" || l.role === "structure")) ? { layer_bounded: true as const } : {}),
+        // stronger evidence than one bounded by a pitch heuristic (vector
+        // path only: the raster mask never saw the layer table)
+        ...(!raster && (s.layers || []).some((l) => l.visible && (l.role === "boundary" || l.role === "structure")) ? { layer_bounded: true as const } : {}),
         // canvas-parity provenance: a non-default fill sensitivity is part of
-        // how the shape was made (ShapeOrigin.fill_sensitivity)
-        ...(opts.sensitivity !== undefined && opts.sensitivity !== SENS_BALANCED ? { fill_sensitivity: opts.sensitivity } : {}),
+        // how the shape was made (ShapeOrigin.fill_sensitivity) — vector path
+        // only; the knob is inert on a single-tier raster mask
+        ...(!raster && opts.sensitivity !== undefined && opts.sensitivity !== SENS_BALANCED ? { fill_sensitivity: opts.sensitivity } : {}),
       }).id;
     }
     this.flushCommits("one_click");
@@ -917,8 +1008,23 @@ export class Session {
         throw new UserError("No room-finish schedule in the working set — load_plan the schedule sheet with merge: true, or pass condition to commit every room under one tag.");
       }
     }
-    const mask = await this.maskWithLayers(name, opts.layers);
-    if (!mask) throw new UserError("This sheet has no vector linework (likely a scan); raster fallback not yet available in the MCP server.");
+    // Mask resolution (#154) — one mask for the whole sweep, canvas trigger
+    // policy (rasterPolicy): vector wherever it can bound rooms, raster only
+    // where it can't (an OCR'd scan has a text layer to seed from but no
+    // linework to flood). Deliberately NO per-seed vector→raster retry: a
+    // batch that mixed boundary sources within one sweep would commit rings
+    // whose provenance disagrees on what bounded them.
+    const geo = await this.ensureGeometry(s);
+    const { rasterEligible, vectorViable } = this.rasterPolicy(s, geo);
+    let mask: MaskObj | null = null;
+    let raster = false;
+    if (!rasterEligible || vectorViable) mask = await this.maskWithLayers(name, opts.layers);
+    if (!mask) {
+      if (!rasterEligible) throw new UserError("This sheet has no vector linework and no scan image to flood — nothing here bounds a region. Trace rooms with measure_polygon instead.");
+      this.refuseLayersOnRaster(opts.layers);
+      mask = await this.ensureRasterMask(s);
+      raster = true;
+    }
     const minAreaSf = opts.minAreaSf ?? 5;
     if (!s.spans) s.spans = textSpans(s.page);
     // labels with BBOXES: same tokenization as roomLabelSeeds, but the ladder
@@ -943,7 +1049,10 @@ export class Session {
       for (const probe of seedLadderPx(lb.bbox)) {
         const f = floodRegion(mask, probe[0], probe[1], opts.sensitivity ?? SENS_BALANCED);
         if (f.status !== "ok") continue;
-        const r = snapVertices(traceRegion(f), (px, py, d) => (s.snap ? nearestSnap(s.snap, px, py, d) : null), SNAP_TOL);
+        // raster trace differences mirror oneClick (#154): looser eps, no snap
+        const r = raster
+          ? traceRegion(f, RASTER_RDP_EPS)
+          : snapVertices(traceRegion(f), (px, py, d) => (s.snap ? nearestSnap(s.snap, px, py, d) : null), SNAP_TOL);
         if (r.length < 3) { sawDegenerate = true; continue; }
         if (isLabelBubblePx(r as [number, number][], lb.bbox)) { sawBubble = true; continue; }
         ring = r; hatch = !!f.hatchFiltered; gap = f.gapBridged || 0; seed = probe;
@@ -976,6 +1085,7 @@ export class Session {
           ...(c.merged.length ? { merged_labels: c.merged } : {}),
           ...(c.hatch ? { hatch_filtered: true as const } : {}),
           ...(c.gap ? { gap_bridged_px: c.gap } : {}),
+          ...(raster ? { raster_traced: true as const } : {}),
           ...(opts.returnVerts ? { verts: c.ring.map(([vx, vy]) => [round1(vx), round1(vy)]) } : {}),
         };
         if (upp == null) {
@@ -1009,6 +1119,7 @@ export class Session {
             reviewed: false,
             ...(c.hatch ? { hatch_filtered: true as const } : {}),
             ...(c.gap ? { gap_bridged_px: c.gap } : {}),
+            ...(raster ? { raster_traced: true as const } : {}),
             ...(assignment ? { assignment } : {}),
           }).id;
         }

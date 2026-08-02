@@ -2,6 +2,16 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-02 — one_click reads scans: the canvas's raster fallback reaches the MCP server
+
+### Added
+- **Raster `one_click` for scanned sheets (#154)** — the canvas has flooded scans since July (`web/src/lib/rastermask.ts`: Bradley–Roth adaptive threshold over one integral image, polarity check for negative scans, one binary closing); the MCP server refused them (*"raster fallback not yet available"*). Now the SAME engine, imported as-is, runs behind the same trigger policy the canvas uses: vector is exact and always wins where it works — a pure-vector sheet never touches pixels; a scan wrapper (placed image ≥ 10 % of the sheet, under 500 vector segments) floods the sheet's rendered pixels primary; a mixed sheet retries on pixels only after the vector flood fails. `detect_rooms` rides the same seam — an OCR'd scan has labels to seed from but no linework to flood — with one mask per sweep, never mixed within a batch. Raster rings trace at the scan-calibrated RDP eps and are deliberately NOT vertex-snapped (a scan has no true endpoints; pulling room corners onto the title block's few vector endpoints would corrupt the ring).
+- **`raster_traced`, disclosed both ways** — replies and committed `origin`s carry `raster_traced: true` on the pixel path and nothing on the vector path (the canvas's contribution.v2 vocabulary; `origin.method` stays `one_click_v1` — raster is a boundary source, not a new method), so an agent-committed raster trace is distinguishable from a vector trace in the record. `fill_sensitivity` and `layer_bounded` never stamp on a raster trace (the sensitivity knob is structurally inert on a single-tier mask; the raster mask never saw the layer table), and `layers {include, exclude}` on the raster path is refused rather than silently no-opped — scan pixels carry no PDF layers. Refusal over guessing holds at the ends: featureless white space refuses with a reason, and a sheet with neither linework nor a scan image refuses with the `measure_polygon` hint, never a garbage polygon.
+- **The plumbing and the proof** — `renderRgba` on the pdf handle (the `view_sheet` render machinery returning raw pixels instead of PNG, explicit white background so themes can never invert the ink); `mcp/test/fixtures/scanned-plan.pdf`, an image-only rasterization of the bundled demo plan (generator: `mcp/scripts/make-scan-fixture.mjs` — same MediaBox, so the vector e2e's room seeds land in the same rooms on the scan and the two paths are directly comparable); e2e both ways (raster ≈ the vector ground truth within 5 %, ink-edge vs stroke-centerline accounts for the small negative bias) plus the refusal cases.
+
+### Released
+- **opentakeoff-mcp 0.9.21** — raster `one_click`/`detect_rooms` for scanned sheets, `raster_traced` provenance; 32 tools.
+
 ## 2026-08-02 — symbol sweep: one example, every instance; the dimension annotation; opentakeoff-mcp 0.9.20
 
 ### Added
