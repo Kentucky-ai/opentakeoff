@@ -24,7 +24,7 @@ import {
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
   findTextOutput, editMaterialsOutput, editConditionOutput, undoLastOutput,
   exportReportOutput, sheetGraphOutput, resolveTagOutput, findScheduleOutput,
-  symbolSweepOutput, annotateOutput, listAnnotationsOutput,
+  symbolSweepOutput, sweepScheduleRowOutput, annotateOutput, listAnnotationsOutput,
   markVerdictOutput, deleteVerdictOutput,
 } from "../src/outputs.ts";
 
@@ -54,6 +54,7 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   resolve_tag: z.object(resolveTagOutput),
   find_schedule: z.object(findScheduleOutput),
   symbol_sweep: z.object(symbolSweepOutput),
+  sweep_schedule_row: z.object(sweepScheduleRowOutput),
   annotate: z.object(annotateOutput),
   list_annotations: z.object(listAnnotationsOutput),
   mark_verdict: z.object(markVerdictOutput),
@@ -360,6 +361,9 @@ test("schema-invalid arguments: -32602 validation error naming the tool; the ses
   await callViolation(client, "symbol_sweep", { sheet: KEY });                             // missing seed_rect
   await callViolation(client, "symbol_sweep", { sheet: KEY, seed_rect: [[0, 0]] });        // one corner is not a rect
   await callViolation(client, "symbol_sweep", { sheet: KEY, seed_rect: [[0, 0], [50, 50]], tolerance_px: 0 }); // tolerance must be positive
+  await callViolation(client, "symbol_sweep", { sheet: KEY, seed_rect: [[0, 0], [50, 50]], scope: "document" }); // bad scope enum
+  await callViolation(client, "sweep_schedule_row", {});                                   // missing tag
+  await callViolation(client, "sweep_schedule_row", { tag: "" });                          // empty tag fails the min-1 gate
   await callViolation(client, "annotate", { sheet: KEY, type: "measure" });                // bad type enum
   await callViolation(client, "edit_materials", { condition: "CPT-1", add: [{ per: 250 }] }); // add row missing name
   await callViolation(client, "edit_condition", { condition: "CPT-1", waste_pct: -5 });    // negative waste
@@ -617,6 +621,37 @@ test("symbol_sweep: reply validates AND round-trips the schema unstripped, in re
   assert.equal(commit.committed, commit.found);
   assert.equal(commit.shape_ids.length, commit.found);
   assert.equal(commit.condition, "FD-1");
+});
+
+// phase 2 — set-wide sweeps + schedule-row seeding: both output contracts
+// round-trip unstripped on the multi-sheet fixture, and the refusals are
+// clean error surfaces with the reason and the fix.
+const SYMSET = fileURLToPath(new URL("./fixtures/symbol-set.pdf", import.meta.url));
+
+test("symbol_sweep scope 'set' and sweep_schedule_row: replies round-trip their schemas unstripped; refusals name reason and fix", async () => {
+  const client = await pair();
+  await callOk(client, "load_plan", { path: SYMSET });
+
+  // set scope, seeded from the DETAIL sheet's drain — plan-only counting
+  const set = await callOk(client, "symbol_sweep", { sheet: "symbol-set.pdf#3", seed_rect: [[590, 574], [678, 634]], scope: "set" });
+  assert.deepEqual(z.object(symbolSweepOutput).parse(set), set, "schema states every returned field — nothing stripped");
+  assert.equal(set.scope, "set");
+  assert.equal(set.found, set.sheets.reduce((n: number, p: any) => n + p.found, 0), "the total reconciles to the per-sheet counts");
+  assert.ok(set.sheets.every((p: any) => typeof p.elapsed_ms === "number"), "every swept sheet reports its wall-clock");
+  assert.ok(set.skipped.length >= 2 && set.skipped.every((s: any) => s.reason.length > 0), "every excluded sheet says why");
+
+  // schedule-row seeding, read then commit
+  const row = await callOk(client, "sweep_schedule_row", { tag: "T1" });
+  assert.deepEqual(z.object(sweepScheduleRowOutput).parse(row), row, "schema states every returned field — nothing stripped");
+  assert.equal(row.committed, undefined, "read mode commits nothing");
+  const committed = await callOk(client, "sweep_schedule_row", { tag: "T1", commit: true });
+  assert.deepEqual(z.object(sweepScheduleRowOutput).parse(committed), committed);
+  assert.equal(committed.committed, committed.found);
+  assert.equal(committed.condition, "T1", "the condition is the row's own key");
+
+  // refusals: reason + fix, never a guess
+  assert.match(await callErr(client, "sweep_schedule_row", { tag: "T9" }), /cannot be geometrically anchored .* never guessed from text alone/);
+  assert.match(await callErr(client, "sweep_schedule_row", { tag: "ZZ" }), /No schedule row "ZZ" .* tables found/);
 });
 
 // dimension annotation (0.9.20): the annotate reply's schema covers the new

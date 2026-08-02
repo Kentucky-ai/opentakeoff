@@ -63,14 +63,14 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // delete_verdict takes a record id — same reasoning.
 const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict"]);
 
-test("tools/list: all thirty-four tools, each described with the coordinate contract", async () => {
+test("tools/list: all thirty-five tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
     "annotate", "delete_shape", "delete_verdict", "derive_base", "detect_rooms", "edit_condition", "edit_materials", "edit_shape", "export_marked_pdf", "export_report",
     "export_takeoff", "find_schedule", "find_text", "import_takeoff",
     "link_annotation", "list_annotations", "list_shapes", "load_plan", "mark_verdict", "measure_line", "measure_polygon", "measure_surface", "one_click", "place_count",
-    "read_sheet_text", "resolve_tag", "set_scale", "sheet_context", "sheet_graph", "sheet_info", "symbol_sweep", "takeoff_summary", "undo_last", "view_sheet",
+    "read_sheet_text", "resolve_tag", "set_scale", "sheet_context", "sheet_graph", "sheet_info", "sweep_schedule_row", "symbol_sweep", "takeoff_summary", "undo_last", "view_sheet",
   ]);
   for (const t of tools) {
     if (NO_COORDS.has(t.name)) continue;
@@ -1425,4 +1425,207 @@ test("verdicts round-trip: export_takeoff → import_takeoff (wholesale and merg
   const again = await call(c, "import_takeoff", { path: exported });
   assert.equal(again.isError, false);
   assert.equal((await call(c, "list_annotations", {})).data.verdict_count, 3, "re-import is idempotent for verdicts too");
+});
+
+// ── symbol_sweep phase 2: set-wide sweeps, plan-only counting ────────────────
+// The fixture (test/fixtures/symbol-set.pdf, scripts/make-symbol-fixture.mjs):
+// four sheets — FLOOR PLAN (4 drains: 3 plain + 1 rotated), FINISH PLAN
+// (2 drains: 1 plain + 1 mirrored), DETAILS (1 drain — the seed source),
+// FINISH SCHEDULE (1 reference drain). Plan-only counting = exactly 6.
+const SYMSET = fileURLToPath(new URL("./fixtures/symbol-set.pdf", import.meta.url));
+// the detail sheet's drain at PDF pt (300..334, 300..320) → image px, with margin
+const DETAIL_SEED = [[590, 574], [678, 634]];
+const stripTimings = (r: any) => ({ ...r, sheets: r.sheets.map(({ elapsed_ms, ...p }: any) => p) });
+
+test("symbol_sweep scope 'set': detail-seeded, counts plan sheets only, per-sheet results, deterministic", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMSET });
+
+  const r = await call(client, "symbol_sweep", { sheet: "symbol-set.pdf#3", seed_rect: DETAIL_SEED, scope: "set" });
+  assert.equal(r.isError, false);
+  assert.equal(r.data.scope, "set");
+  assert.equal(r.data.found, 6, "4 on the floor plan + 2 on the finish plan — the detail and schedule instances never count");
+  assert.deepEqual(r.data.seed.sheet, "symbol-set.pdf#3");
+  assert.equal(r.data.seed.role, "detail", "the seed sheet's role is stated");
+  assert.equal(r.data.matches, undefined, "set scope reports per sheet, not as one flat pile");
+
+  // per-sheet results in load order, each with its own cap accounting and wall-clock
+  assert.deepEqual(r.data.sheets.map((p: any) => [p.sheet, p.found]), [["symbol-set.pdf", 4], ["symbol-set.pdf#2", 2]]);
+  for (const p of r.data.sheets) {
+    assert.equal(p.candidates.dropped, 0);
+    assert.ok(typeof p.elapsed_ms === "number" && p.elapsed_ms >= 0, `${p.sheet} reports wall-clock`);
+  }
+  assert.equal(r.data.sheets[0].matches.filter((m: any) => m.rotation !== 0).length, 1, "the rotated instance");
+  assert.equal(r.data.sheets[1].matches.filter((m: any) => m.mirrored).length, 1, "the mirrored instance");
+
+  // every excluded sheet is disclosed with role and reason — the seed's own
+  // sheet is named as the source, and the schedule's reference drawing never counts
+  const skipped = Object.fromEntries(r.data.skipped.map((s: any) => [s.sheet, s]));
+  assert.equal(skipped["symbol-set.pdf#3"].role, "detail");
+  assert.match(skipped["symbol-set.pdf#3"].reason, /seed source/);
+  assert.equal(skipped["symbol-set.pdf#4"].role, "schedule");
+  assert.match(skipped["symbol-set.pdf#4"].reason, /reference drawings/);
+
+  // deterministic up to wall-clock: same call, same counts, same order
+  const again = await call(client, "symbol_sweep", { sheet: "symbol-set.pdf#3", seed_rect: DETAIL_SEED, scope: "set" });
+  assert.deepEqual(stripTimings(again.data), stripTimings(r.data));
+
+  // a plan-role seed sheet participates in the counting with its seed suppressed
+  const fromPlan = await call(client, "symbol_sweep", { sheet: "symbol-set.pdf", seed_rect: [[230, 314], [318, 374]], scope: "set" });
+  assert.equal(fromPlan.isError, false);
+  assert.equal(fromPlan.data.seed.role, "plan");
+  assert.equal(fromPlan.data.found, 5, "6 instances minus the seed itself");
+  assert.ok(fromPlan.data.sheets.some((p: any) => p.sheet === "symbol-set.pdf"), "the seed's own sheet is swept, not skipped");
+});
+
+test("symbol_sweep scope 'set' commit: one undo step across sheets, seed-source provenance on every marker", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMSET });
+
+  const r = await call(client, "symbol_sweep", { sheet: "symbol-set.pdf#3", seed_rect: DETAIL_SEED, scope: "set", commit: true, condition: "FD-1" });
+  assert.equal(r.isError, false);
+  assert.equal(r.data.committed, 6);
+  assert.equal(r.data.ea_total, 6);
+
+  // the markers landed on their own sheets
+  const p1 = await call(client, "list_shapes", { sheet: "symbol-set.pdf" });
+  const p2 = await call(client, "list_shapes", { sheet: "symbol-set.pdf#2" });
+  assert.equal(p1.data.count, 4);
+  assert.equal(p2.data.count, 2);
+
+  // provenance: method, per-marker score/transform, AND the seed source —
+  // fingerprinted on the detail sheet, its role recorded
+  const payload = await call(client, "export_takeoff", {});
+  assert.equal(payload.data.shapes.length, 6);
+  for (const shp of payload.data.shapes) {
+    assert.equal(shp.origin.method, "symbol_sweep");
+    assert.ok(shp.origin.symbol.score >= 0.92);
+    assert.deepEqual(shp.origin.symbol.seed, { source: "detail_sheet", sheet: "symbol-set.pdf#3", role: "detail" });
+    assert.deepEqual(shp.origin.assignment, { source: "asserted" }, "the caller chose the tag — asserted, not schedule");
+  }
+
+  // the whole set-wide sweep is ONE undo step
+  const undo = await call(client, "undo_last", { n: 1 });
+  assert.equal(undo.data.steps[0].tool, "symbol_sweep");
+  assert.equal(undo.data.steps[0].shapes, 6);
+  assert.equal(undo.data.shape_count, 0);
+});
+
+test("symbol_sweep scope 'set' refusal: no text layer means roles are unknown — refused, never guessed", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMPLAN });   // the phase-1 fixture has no text layer
+  const r = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SEED_RECT, scope: "set" });
+  assert.equal(r.isError, true);
+  assert.match(r.data.error, /sheet ROLES are unknown .* scope 'sheet'/);
+  // sheet scope still works on the same set
+  const single = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SEED_RECT });
+  assert.equal(single.isError, false);
+  assert.equal(single.data.found, 5);
+});
+
+// ── sweep_schedule_row: mint the condition from the row, count where geometry
+// and tag agree ──────────────────────────────────────────────────────────────
+// Fixture truth for T1: 5 tagged markers on plan sheets (3 + 2), 1 marker
+// tagged T2 (excluded), 1 untagged marker (withheld), 1 bare "T1" text with
+// no marker (text_only), 1 T1 marker on the DETAILS sheet (never swept).
+test("sweep_schedule_row: row citation, corroborated anchor, text-corroborated counting, full disclosure", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMSET });
+
+  const r = await call(client, "sweep_schedule_row", { tag: "T1" });
+  assert.equal(r.isError, false);
+
+  // the row is the cited source, cells included
+  assert.equal(r.data.row.sheet, "symbol-set.pdf#4");
+  assert.equal(r.data.row.cells.MATERIAL, "TRANSITION");
+  assert.match(r.data.row.citation.text, /FINISH SCHEDULE row T1/);
+
+  // the anchor: fingerprinted at a drawn occurrence, corroborated at another
+  assert.equal(r.data.anchor.sheet, "symbol-set.pdf");
+  assert.equal(r.data.anchor.corroborated, true);
+  assert.equal(r.data.anchor.segments, 4, "the marker bubble's linework, not the text");
+  assert.equal(r.data.anchor.occurrences, 6, "drawn occurrences across plan sheets only — the detail sheet's does not count");
+
+  // the honest count: geometry AND tag agree
+  assert.equal(r.data.found, 5);
+  assert.deepEqual(r.data.sheets.map((p: any) => [p.sheet, p.found]), [["symbol-set.pdf", 3], ["symbol-set.pdf#2", 2]]);
+  assert.ok(r.data.sheets[0].matches.every((m: any) => m.tag_at.x1 > m.tag_at.x0), "every counted match carries its tag-text evidence bbox");
+
+  // full disclosure of everything that did NOT count, each with its story
+  const p1 = r.data.sheets[0];
+  assert.equal(p1.excluded.length, 1, "the same bubble shape tagged T2 belongs to T2");
+  assert.equal(p1.excluded[0].tag, "T2");
+  assert.equal(p1.withheld.length, 1, "the untagged marker is a question, not a count");
+  assert.match(p1.withheld[0].reason, /carries no "T1" tag/);
+  assert.equal(p1.text_only.length, 1, "the tag drawn with no marker is disclosed, never counted");
+
+  // non-plan sheets are excluded and say so
+  const skipped = Object.fromEntries(r.data.skipped.map((s: any) => [s.sheet, s.role]));
+  assert.deepEqual(skipped, { "symbol-set.pdf#3": "detail", "symbol-set.pdf#4": "schedule" });
+
+  // read mode committed nothing
+  assert.equal((await call(client, "takeoff_summary")).data.conditions.length, 0);
+});
+
+test("sweep_schedule_row commit: condition minted FROM the row, schedule provenance + row citation, one undo step", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMSET });
+
+  const r = await call(client, "sweep_schedule_row", { tag: "T1", commit: true });
+  assert.equal(r.isError, false);
+  assert.equal(r.data.committed, 5);
+  assert.equal(r.data.condition, "T1", "the condition IS the row's key");
+  assert.equal(r.data.ea_total, 5);
+
+  const summary = await call(client, "takeoff_summary");
+  assert.equal(summary.data.conditions.length, 1);
+  assert.equal(summary.data.conditions[0].finish_tag, "T1");
+  assert.equal(summary.data.conditions[0].ea, 5, "excluded/withheld/text_only never reached the takeoff");
+
+  const payload = await call(client, "export_takeoff", {});
+  for (const shp of payload.data.shapes) {
+    assert.equal(shp.origin.method, "symbol_sweep");
+    assert.deepEqual(shp.origin.assignment, { source: "schedule", schedule_sheet: "symbol-set.pdf#4" }, "the tag came from the schedule, and the record says so");
+    assert.equal(shp.origin.symbol.seed.source, "schedule_row");
+    assert.deepEqual(shp.origin.symbol.seed.row, { sheet: "symbol-set.pdf#4", key: "T1", table: "FINISH SCHEDULE" });
+  }
+  const inv = await call(client, "list_shapes", {});
+  assert.ok(inv.data.shapes.every((x: any) => x.assignment === "schedule"));
+
+  // one undo step for the whole set-wide sweep
+  const undo = await call(client, "undo_last", { n: 1 });
+  assert.equal(undo.data.steps[0].tool, "sweep_schedule_row");
+  assert.equal(undo.data.steps[0].shapes, 5);
+  assert.equal(undo.data.shape_count, 0);
+});
+
+test("sweep_schedule_row refusals: unanchorable row, unknown row, ambiguous key — reasons and fixes, nothing minted", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMSET });
+
+  // T9 exists as a row but its tag is drawn on no plan sheet — a fingerprint
+  // is never guessed from text alone
+  const t9 = await call(client, "sweep_schedule_row", { tag: "T9" });
+  assert.equal(t9.isError, true);
+  assert.match(t9.data.error, /cannot be geometrically anchored/);
+  assert.match(t9.data.error, /never guessed from text alone/);
+  assert.match(t9.data.error, /symbol_sweep/, "the refusal names the fallback");
+
+  // an unknown key names what WAS found
+  const zz = await call(client, "sweep_schedule_row", { tag: "ZZ" });
+  assert.equal(zz.isError, true);
+  assert.match(zz.data.error, /No schedule row "ZZ" .* finish on symbol-set\.pdf#4 \(3 rows\)/);
+
+  // the same key defined in two tables (the fixture merged in twice under a
+  // second name) is ambiguous — refused, never a coin flip
+  const dir = await mkdtemp(path.join(tmpdir(), "ot-rowsweep-"));
+  const twin = path.join(dir, "symbol-set-addendum.pdf");
+  await copyFile(SYMSET, twin);
+  await call(client, "load_plan", { path: twin, merge: true });
+  const dup = await call(client, "sweep_schedule_row", { tag: "T1" });
+  assert.equal(dup.isError, true);
+  assert.match(dup.data.error, /Ambiguous: 2 schedule rows/);
+
+  // none of the refusals minted anything
+  assert.equal((await call(client, "takeoff_summary")).data.conditions.length, 0);
 });

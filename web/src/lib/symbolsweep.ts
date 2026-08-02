@@ -41,6 +41,15 @@
 // Work is CAPPED and the cap is REPORTED: candidates.dropped > 0 means some
 // placements were never scored, and the caller is told rather than handed a
 // silently truncated count (the sheet_context decimation doctrine).
+//
+// Phase 2 splits the pipeline at its natural seam: fingerprintSymbol (step 1)
+// builds the centroid-relative fingerprint from ONE sheet's segments, and
+// matchSymbol (steps 2–4) searches ANY sheet's segments for it — so a symbol
+// marqueed on a detail or legend sheet can be counted across the plan sheets.
+// The fingerprint is size-true (translation + the square symmetry group, no
+// scaling): a detail drawn at an enlarged scale will not match plan-size
+// instances, deliberately — a scale-searching match would trade exactness for
+// guesses. sweepSymbols composes the two on one sheet, unchanged.
 
 export type Point = [number, number];
 
@@ -161,18 +170,46 @@ class EndpointGrid {
 const segLen = (segs: number[], i: number): number =>
   Math.hypot(segs[i * 4 + 2] - segs[i * 4], segs[i * 4 + 3] - segs[i * 4 + 1]);
 
-export function sweepSymbols(segs: number[], seedRect: [Point, Point], opts: SweepOptions = {}): SweepResult {
-  const tol = opts.tolPx ?? SWEEP_TOL_PX;
-  const scoreHigh = opts.scoreHigh ?? SWEEP_SCORE_HIGH;
-  const scoreLow = opts.scoreLow ?? SWEEP_SCORE_LOW;
-  const maxCandidates = opts.maxCandidates ?? SWEEP_MAX_CANDIDATES;
-  const xforms = transformsFor(opts.rotations ?? true, opts.mirror ?? true);
-  const n = segs.length >> 2;
+/** A symbol's fingerprint, detached from the sheet it was marqueed on:
+ * centroid-relative segments plus the diagnostics every consumer reports.
+ * Pure data — matchSymbol can run it against any sheet's segments. */
+export interface SymbolFingerprint {
+  /** Centroid-relative seed segments: [ax, ay, bx, by, len] per entry. */
+  rel: number[][];
+  /** Total seed linework length, px. */
+  totalLen: number;
+  /** Seed segment count. */
+  segments: number;
+  /** The seed instance's own length-weighted centroid, SOURCE-sheet image px
+   * — meaningful only on the sheet the fingerprint was built from. */
+  center: Point;
+  /** Diagonal of the seed's tight bbox, px — the symbol's physical footprint.
+   * Half of it is the shadow-suppression radius: two REAL instances can never
+   * sit closer without physically overlapping. */
+  footprint: number;
+}
 
+export interface SymbolMatchResult {
+  matches: SweepMatch[];
+  withheld: SweepWithheld[];
+  candidates: { considered: number; dropped: number };
+}
+
+export interface MatchOptions extends SweepOptions {
+  /** Suppress placements within half a footprint of this point — the seed's
+   * own location when matching the sheet it was marqueed on. Omit when the
+   * fingerprint came from a DIFFERENT sheet: there is no seed here to shadow. */
+  excludeCenter?: Point;
+}
+
+/** Step 1 alone: the segments fully inside the seed rect, expressed relative
+ * to their length-weighted centroid. Throws the same instructive refusals
+ * sweepSymbols always has (empty marquee, region-sized marquee). */
+export function fingerprintSymbol(segs: number[], seedRect: [Point, Point]): SymbolFingerprint {
+  const n = segs.length >> 2;
   const rx0 = Math.min(seedRect[0][0], seedRect[1][0]), rx1 = Math.max(seedRect[0][0], seedRect[1][0]);
   const ry0 = Math.min(seedRect[0][1], seedRect[1][1]), ry1 = Math.max(seedRect[0][1], seedRect[1][1]);
 
-  // ── 1. fingerprint ─────────────────────────────────────────────────────────
   const inside = (x: number, y: number): boolean => x >= rx0 && x <= rx1 && y >= ry0 && y <= ry1;
   const seedIdx: number[] = [];
   for (let i = 0; i < n; i++) {
@@ -202,12 +239,33 @@ export function sweepSymbols(segs: number[], seedRect: [Point, Point], opts: Swe
     segLen(segs, i),
   ]);
   // the symbol's own footprint (tight bbox over the seed segments) — the
-  // shadow-suppression radius below is half its diagonal
+  // shadow-suppression radius in matchSymbol is half its diagonal
   let sbx0 = Infinity, sby0 = Infinity, sbx1 = -Infinity, sby1 = -Infinity;
   for (const i of seedIdx) {
     sbx0 = Math.min(sbx0, segs[i * 4], segs[i * 4 + 2]); sby0 = Math.min(sby0, segs[i * 4 + 1], segs[i * 4 + 3]);
     sbx1 = Math.max(sbx1, segs[i * 4], segs[i * 4 + 2]); sby1 = Math.max(sby1, segs[i * 4 + 1], segs[i * 4 + 3]);
   }
+  return {
+    rel,
+    totalLen,
+    segments: seedIdx.length,
+    center: [seedCx, seedCy],
+    footprint: Math.hypot(sbx1 - sbx0, sby1 - sby0),
+  };
+}
+
+/** Steps 2–4 against ANY sheet's segments: constellation candidates, scoring,
+ * classification. Anchor rarity is judged per TARGET sheet — the same seed
+ * prunes differently on sheets with different length histograms, which is the
+ * point of rarity-first anchors. */
+export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOptions = {}): SymbolMatchResult {
+  const tol = opts.tolPx ?? SWEEP_TOL_PX;
+  const scoreHigh = opts.scoreHigh ?? SWEEP_SCORE_HIGH;
+  const scoreLow = opts.scoreLow ?? SWEEP_SCORE_LOW;
+  const maxCandidates = opts.maxCandidates ?? SWEEP_MAX_CANDIDATES;
+  const xforms = transformsFor(opts.rotations ?? true, opts.mirror ?? true);
+  const n = segs.length >> 2;
+  const { rel, totalLen } = fp;
 
   // ── 2. candidates ──────────────────────────────────────────────────────────
   // Sheet-wide length histogram (bucket = round(len)) for anchor rarity and
@@ -331,8 +389,9 @@ export function sweepSymbols(segs: number[], seedRect: [Point, Point], opts: Swe
   // other without physically overlapping, so anything that close to the seed
   // or to an accepted match is the same ink read sideways, and listing it as
   // withheld would bury the real near-misses in symmetry noise.
-  const suppressR = Math.max(mergeR, Math.hypot(sbx1 - sbx0, sby1 - sby0) / 2);
-  const away = kept.filter((s) => Math.hypot(s.at[0] - seedCx, s.at[1] - seedCy) > suppressR);
+  const suppressR = Math.max(mergeR, fp.footprint / 2);
+  const ex = opts.excludeCenter;
+  const away = ex ? kept.filter((s) => Math.hypot(s.at[0] - ex[0], s.at[1] - ex[1]) > suppressR) : kept;
 
   const matches: SweepMatch[] = [];
   const withheld: SweepWithheld[] = [];
@@ -354,14 +413,22 @@ export function sweepSymbols(segs: number[], seedRect: [Point, Point], opts: Swe
   matches.sort(order);
   withheld.sort(order);
 
+  return { matches, withheld, candidates: { considered, dropped } };
+}
+
+/** The one-sheet sweep, unchanged: fingerprint the marquee, match the same
+ * sheet, suppress the seed's own location. */
+export function sweepSymbols(segs: number[], seedRect: [Point, Point], opts: SweepOptions = {}): SweepResult {
+  const fp = fingerprintSymbol(segs, seedRect);
+  const m = matchSymbol(fp, segs, { ...opts, excludeCenter: fp.center });
   return {
     seed: {
-      segments: seedIdx.length,
-      center: [Math.round(seedCx * 10) / 10, Math.round(seedCy * 10) / 10],
-      length_px: Math.round(totalLen * 10) / 10,
+      segments: fp.segments,
+      center: [Math.round(fp.center[0] * 10) / 10, Math.round(fp.center[1] * 10) / 10],
+      length_px: Math.round(fp.totalLen * 10) / 10,
     },
-    matches,
-    withheld,
-    candidates: { considered, dropped },
+    matches: m.matches,
+    withheld: m.withheld,
+    candidates: m.candidates,
   };
 }

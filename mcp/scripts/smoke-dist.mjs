@@ -123,6 +123,7 @@ assert.deepEqual(names, [
   "sheet_context",
   "sheet_graph",
   "sheet_info",
+  "sweep_schedule_row",
   "symbol_sweep",
   "takeoff_summary",
   "undo_last",

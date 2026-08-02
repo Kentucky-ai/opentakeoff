@@ -158,21 +158,47 @@ const sweepPlacement = {
   mirrored: z.boolean(),
 };
 
+const sweepCandidates = z.object({
+  considered: z.number().int(),
+  dropped: z.number().int().describe("Placements never scored because the work cap bit — always disclosed, never silent"),
+});
+
+/** One plan sheet's results inside a set-wide sweep — its own match/withheld
+ * lists, its own cap accounting, its own wall-clock. */
+const sweepSheetBlock = z.object({
+  sheet: z.string(),
+  found: z.number().int(),
+  matches: z.array(z.object(sweepPlacement)),
+  withheld: z.array(z.object({ ...sweepPlacement, reason: z.string() })),
+  candidates: sweepCandidates.describe("The work cap applies PER SHEET; dropped > 0 here names exactly where the count is incomplete"),
+  elapsed_ms: z.number().describe("Wall-clock for this sheet's sweep"),
+});
+
+/** Sheets excluded from counting, disclosed one by one — a symbol drawn in a
+ * detail, legend, or schedule is a reference drawing, never installed work. */
+const sweepSkipped = z.array(z.object({
+  sheet: z.string(),
+  role: z.string().describe("The sheet's graph role (plan / schedule / legend / detail / …)"),
+  reason: z.string(),
+}));
+
 export const symbolSweepOutput = {
-  found: z.number().int().describe("Placements that cleared the commit bar — matches.length"),
-  matches: z.array(z.object(sweepPlacement)).describe("Deterministic reading order (y, then x). The seed's own location is never listed here"),
-  withheld: z.array(z.object({ ...sweepPlacement, reason: z.string() }))
-    .describe("Near-matches in the [0.75, 0.92) band — reported with a reason, NEVER committed. A withheld placement is a question you can answer with view_sheet; a hidden one is a miscount"),
+  scope: z.enum(["sheet", "set"]).describe('"sheet" = the swept sheet alone (matches/withheld/candidates at top level); "set" = every PLAN-role sheet in the working set (per-sheet results in sheets[], exclusions in skipped[])'),
+  found: z.number().int().describe("Placements that cleared the commit bar — across every swept sheet in set scope"),
+  matches: z.array(z.object(sweepPlacement)).optional().describe("Sheet scope only. Deterministic reading order (y, then x). The seed's own location is never listed here"),
+  withheld: z.array(z.object({ ...sweepPlacement, reason: z.string() })).optional()
+    .describe("Sheet scope only. Near-matches in the [0.75, 0.92) band — reported with a reason, NEVER committed. A withheld placement is a question you can answer with view_sheet; a hidden one is a miscount"),
   seed: z.object({
+    sheet: z.string().describe("The sheet the seed rect was marqueed on"),
+    role: z.string().optional().describe("Set scope: the seed sheet's graph role — a non-plan seed sheet is the fingerprint SOURCE and is excluded from counting"),
     segments: z.number().int().describe("Vector segments fully inside the seed rect — the fingerprint"),
     center: z.tuple([z.number(), z.number()]).describe("The seed instance's own centroid (image px) — reported here, never double-committed as a match"),
     rect: z.array(z.number()).length(4).describe("The seed rect actually used, post-clamp [x0, y0, x1, y1]"),
     length_px: z.number().describe("Total seed linework length, image px"),
   }),
-  candidates: z.object({
-    considered: z.number().int(),
-    dropped: z.number().int().describe("Placements never scored because the work cap bit — always disclosed, never silent"),
-  }),
+  candidates: sweepCandidates.optional().describe("Sheet scope only — set scope accounts per sheet in sheets[]"),
+  sheets: z.array(sweepSheetBlock).optional().describe("Set scope only: one entry per swept PLAN-role sheet, load order"),
+  skipped: sweepSkipped.optional().describe("Set scope only: every sheet excluded from counting, with role and reason — including the seed's own sheet when it is not a plan"),
   committed: z.number().int().optional().describe("commit mode: count shapes committed — one per match"),
   shape_ids: z.array(z.string()).optional(),
   condition: z.string().optional().describe("commit mode: the finish tag the markers counted under"),
@@ -512,6 +538,58 @@ export const findScheduleOutput = {
     parts: z.array(z.object({ sheet: z.string(), title: z.string(), rows: z.number().int(), region: wireBox }))
       .optional().describe("Present when the table CONTINUES across sheets ('… SCHEDULE — CONT'D'): every fragment, base first, each with its own viewable region"),
   })),
+};
+
+/** sweep_schedule_row — a schedule row's tag, anchored to its drawn marker
+ * and swept across the plan sheets. A match counts ONLY when the row's own
+ * tag text sits within the marker footprint; everything else is disclosed. */
+const rowSweepPlacement = {
+  at: z.tuple([z.number(), z.number()]).describe("The matched marker's centroid (image px)"),
+  score: z.number().describe("Length-weighted fraction of the anchor's segments matched within tolerance, 0..1"),
+  rotation: z.number().describe("Detected rotation in degrees (0 | 90 | 180 | 270)"),
+  mirrored: z.boolean(),
+};
+
+export const sweepScheduleRowOutput = {
+  tag: z.string().describe("The row key as normalized (the tag as drawn)"),
+  row: z.object({
+    sheet: z.string(),
+    table: z.string().describe("The table's title (or kind, when untitled)"),
+    key: z.string(),
+    cells: z.record(z.string()).describe("The row's cells, header → text — what the schedule SAYS this mark is"),
+    citation: wireEvidence,
+  }).describe("The schedule row the sweep was seeded from — the condition's source"),
+  anchor: z.object({
+    sheet: z.string().describe("The plan sheet the fingerprint was anchored on"),
+    at: z.tuple([z.number(), z.number()]).describe("The anchoring tag occurrence's center (image px)"),
+    rect: z.array(z.number()).length(4).describe("The fingerprint rect actually used [x0, y0, x1, y1] — the pad ladder's winning step"),
+    segments: z.number().int().describe("Vector segments in the marker fingerprint"),
+    length_px: z.number(),
+    corroborated: z.boolean().describe("true = the fingerprint recurred at a second tag occurrence before being trusted; false = the tag is drawn too sparsely to cross-check (see note)"),
+    occurrences: z.number().int().describe("Drawn occurrences of the tag across all plan sheets"),
+  }),
+  found: z.number().int().describe("Matches carrying the row's own tag — the honest count, across every plan sheet"),
+  sheets: z.array(z.object({
+    sheet: z.string(),
+    found: z.number().int(),
+    matches: z.array(z.object({ ...rowSweepPlacement, tag_at: wireBox.describe("The corroborating tag text's bbox — the evidence that this marker is THIS row's") })),
+    withheld: z.array(z.object({ ...rowSweepPlacement, reason: z.string() }))
+      .describe("Questions, never counts: markers matching the geometry but carrying no tag (an unlabeled instance or a shared bubble shape), and near-miss scores in the [0.75, 0.92) band"),
+    excluded: z.array(z.object({ at: z.tuple([z.number(), z.number()]), tag: z.string() }))
+      .describe("Markers matching the geometry but labeled with a SIBLING row's tag — the bubble shape is shared across marks, so these belong to that row, not this one"),
+    text_only: z.array(z.object({ at: z.tuple([z.number(), z.number()]) }))
+      .describe("The tag drawn with NO matching marker geometry nearby — a note reference or a variant marker; a question, never a count"),
+    candidates: z.object({ considered: z.number().int(), dropped: z.number().int() }),
+    elapsed_ms: z.number().describe("Wall-clock for this sheet's sweep"),
+  })).describe("One entry per swept PLAN-role sheet, load order"),
+  skipped: z.array(z.object({ sheet: z.string(), role: z.string(), reason: z.string() }))
+    .describe("Sheets excluded from counting (schedule/detail/legend/unknown), each with its reason"),
+  committed: z.number().int().optional().describe("commit mode: count shapes committed — one per counted match, the whole sweep ONE undo step"),
+  shape_ids: z.array(z.string()).optional(),
+  condition: z.string().optional().describe("commit mode: the condition minted FROM the row — its key is the tag"),
+  ea_total: z.number().optional(),
+  note: z.string().optional(),
+  warning: z.string().optional().describe("Present when the per-sheet work cap dropped candidates"),
 };
 
 /** sheet_context (issue #29): vectors + text + hatch families of one region,

@@ -32,7 +32,7 @@ which is the MCP wire. `node --import tsx` is the whole invocation.
 
 ## What the agent gets
 
-Thirty-four tools, in the order an agent tends to reach for them:
+Thirty-five tools, in the order an agent tends to reach for them:
 
 - **Open and orient** — `load_plan`, `sheet_info` (including the sheet's PDF
   layer table — Optional Content Groups with a classified role, confidence,
@@ -61,12 +61,23 @@ Thirty-four tools, in the order an agent tends to reach for them:
   exclude}` to override the sheet's stated layer roles for a call),
   `measure_polygon`, `measure_line`, `measure_surface` (wall SF: an open run
   × the condition's height — the H knob), `place_count` (EA markers, no scale
-  required) — all five of the engine's measure roles — and `symbol_sweep`
+  required) — all five of the engine's measure roles — plus `symbol_sweep`
   (marquee ONE example of a repeated plan symbol — a drain, a threshold
   marker — and every placement is found deterministically from the vector
   linework, under rotation and mirroring, scored against a commit bar with
   near-misses *withheld with reasons*; `commit: true` places the matches as
-  EA count markers in one undo step). Scanned sheets work
+  EA count markers in one undo step; `scope: "set"` sweeps the whole working
+  set counting on plan-role sheets only, so the seed can be the assembly on a
+  detail or legend sheet — the fingerprint source, itself never counted, its
+  exclusion disclosed) and `sweep_schedule_row` (take a mark off from its
+  schedule row: the row is read as the condition's cited source, the marker
+  the tag is drawn as is fingerprinted at a drawn occurrence — corroborated
+  at a second one where the set allows — and every plan sheet is swept, a
+  match counting only where geometry AND the row's own tag text agree;
+  markers labeled with a sibling key are excluded and say whose they are,
+  unlabeled ones are withheld as questions, and a row whose tag cannot be
+  geometrically anchored is *refused with the reason* — a fingerprint is
+  never guessed from text alone). Scanned sheets work
   (#154): where vectors can't bound the room — an image-only scan, or a scan
   wrapper whose only linework is the title block — `one_click` and
   `detect_rooms` fall back automatically to flooding the sheet's rendered
