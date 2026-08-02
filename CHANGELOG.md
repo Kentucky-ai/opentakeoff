@@ -15,6 +15,9 @@ The engine work RFC #60 asked for, built and staged for upstream by **Kevin Murp
 - **The scored benchmark corpus (item E — the instrument)** — `npm run bench` is now part of `check`: synthetic truth-by-construction fixtures plus pinned, adjudicated real-plan traces over the bundled demo PDFs, scored by rasterized IoU with refusal/leak/correct-refusal rates, confidence gating, and cross-resolution gates. Current scoreboard: mean IoU 0.999, floor 0.990, refusal 0.0%, leak 0.0% over 21 gating goldens; every golden that ever moved carries its adjudication in the corpus JSON. `npm run bench:callouts` cross-checks the engine against the plan's own printed `NNN SF` annotations (reports, never gates); `npm run bench:batch` scoreboards the batch detector.
 - **Batch parity + label precision (item F precursor)** — `detectRegions` runs the same sealed engine as a click (mean IoU 0.817 → 0.999 on the VA plan's pinned probes; sheet-wide double-counted floor 16.6% → 0.0%), and `roomLabelSeeds` stops proposing printed areas, dimension strings, drawing numbers, and title-block numerals as rooms, seeding below the tag so a boxed room number doesn't measure its own bubble.
 
+### Released
+- **opentakeoff-mcp 0.9.22** — the lattice hatch classifier and min-passage boundaries reach the MCP's flood paths through the shared engine (two standing VA truths re-pinned per the slice's measurement-policy notes: room 161 no longer annexes its patterned border, 269.71 SF; the assign sweep resolves 6 rooms/6 rows). Full sealed-ladder parity for the MCP call sites is the filed follow-up.
+
 ## 2026-08-02 — one_click reads scans: the canvas's raster fallback reaches the MCP server
 
 ### Added
