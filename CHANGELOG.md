@@ -2,6 +2,15 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-02 — symbol sweep: one example, every instance; the dimension annotation; opentakeoff-mcp 0.9.20
+
+### Added
+- **`symbol_sweep` — every instance of a repeated plan symbol, from ONE example** (tool 32). Plan symbols — drains, thresholds, fixtures, transition markers — are repeated vector blocks, and counting them by eye across an E-size sheet is exactly the mechanical sweep a machine should do. Marquee a tight `seed_rect` around a single instance and the engine (`web/src/lib/symbolsweep.ts`, pure and node-tested like `oneclick.ts`) fingerprints the segments fully inside it relative to their length-weighted centroid, proposes placements by constellation anchoring — up to three seed segments of distinct, sheet-rare length each vote for candidate centroids, so a 100k-segment sheet is never scanned naively and a placement stays discoverable even with one perturbed segment — and scores each placement as the length-weighted fraction of seed segments reproduced within `tolerance_px` (default 2), under translation plus 0/90/180/270 rotation and mirroring (both on by default; symbols rotate on plans). Refusal over guessing at every edge: score ≥ 0.92 is a match, the 0.75–0.92 band returns in `withheld` with a reason (a near-match is a question you answer with `view_sheet`, never a silent commit and never a silent drop), symmetry shadows of already-matched instances are suppressed rather than listed as noise, the seed's own location is reported in `seed` and never double-committed, and the candidate work cap is disclosed on the reply when it bites (`candidates.dropped` + a warning naming the fix). `commit: true` (requires `condition`) commits every match center as an EA count marker through the same path as `place_count` — the whole sweep is ONE undo step, and every marker's `origin` tells the truth: `method: "symbol_sweep"` with the per-match score and transform. No scale needed — EA is scale-free. Deterministic fixture (`mcp/test/fixtures/symbol-plan.pdf` + generator) pins exact counts end to end: 5 matches (3 translations, 1 rotated, 1 mirrored), 1 withheld near-miss, 1 ignored decoy.
+- **`annotate` grows `dimension`** — `from` + `to`, drawn as a dimension line with perpendicular end ticks and the measured length centered beside it (ASCII feet-and-inches, WinAnsi-safe through the marked set), on the canvas and in the marked-set PDF alike. A dimension states a REAL length, so it is the one annotation the scale gate applies to: on an unscaled sheet it refuses with the measure tools' exact hint instead of dressing a px figure up as feet. The measured `len_ft` is snapshotted onto the markup at annotate time, so both renderers draw the label with no scale plumbing of their own; `list_annotations` returns it as `length_lf`, and moving the annotation on the canvas translates both endpoints together (length preserved). Still a note ABOUT the work: it touches no quantity.
+
+### Released
+- **opentakeoff-mcp 0.9.20** — `symbol_sweep`, the `dimension` annotation type; 32 tools.
+
 ## 2026-08-02 — approval stamps: ink over pencil
 
 ### Added

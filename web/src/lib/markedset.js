@@ -25,6 +25,7 @@ import { transformPath, svgPlacedBox } from "./svgpath.js";
 import { rfiStatus } from "./rfi.js";
 import { RENDER_SCALE } from "./sheets";
 import { pdfDashFor, boostForDark, clampWeight } from "./lineStyles.js";
+import { dimLabel } from "./units";
 
 const COBALT = "#1f3fc7";
 const DEDUCT_RED = "#b03a26";
@@ -613,6 +614,27 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         pg.drawSvgPath(arrowheadPath(pfx, -pfy, ptx, -pty, 6 * mw), { x: 0, y: 0, color: mcol, opacity: 0.95 });
         const t = lbl(m.text);
         if (t) text(t, (m.from[0] + m.to[0]) / 2 * W, (m.from[1] + m.to[1]) / 2 * H - 6 / ptScale, 8, mcol, bold);
+      } else if (m.type === "dimension" && m.from && m.to) {
+        // a dimension line: perpendicular ticks at both ends, the measured
+        // length centered beside it. m.len_ft was snapshotted at annotate
+        // time from the sheet scale, so this draws with no scale plumbing —
+        // and dimLabel is ASCII feet-inches, safe through the WinAnsi funnel.
+        const fx = m.from[0] * W, fy = m.from[1] * H, dxq = m.to[0] * W, dyq = m.to[1] * H;
+        line(fx, fy, dxq, dyq, mcol, 1.1 * mw, 0.95, mdash);
+        const dl = Math.hypot(dxq - fx, dyq - fy) || 1;
+        const dnx = -(dyq - fy) / dl, dny = (dxq - fx) / dl;
+        const tk = 5 / ptScale;
+        line(fx - dnx * tk, fy - dny * tk, fx + dnx * tk, fy + dny * tk, mcol, 1.1 * mw, 0.95);
+        line(dxq - dnx * tk, dyq - dny * tk, dxq + dnx * tk, dyq + dny * tk, mcol, 1.1 * mw, 0.95);
+        const t = lbl([Number(m.len_ft) > 0 ? dimLabel(m.len_ft, M ? "metric" : "imperial") : "", m.text].filter(Boolean).join(" · "));
+        if (t) {
+          // centered on the offset midpoint (the bubble's centering), so a
+          // vertical dimension's label sits beside the line, not across it
+          const size = 8;
+          const tw = bold.widthOfTextAtSize(winAnsiSafe(t), size);
+          const [pmx, pmy] = toPage((fx + dxq) / 2 + dnx * (14 / ptScale), (fy + dyq) / 2 + dny * (14 / ptScale));
+          pg.drawText(winAnsiSafe(t), { x: pmx - tw / 2, y: pmy - size / 2.7, size, font: bold, color: mcol, rotate: chipRot });
+        }
       } else if (m.type === "bubble" && m.at) {
         // a circle carrying centered text — detail/section/keynote bubbles and
         // pattern-origin markers. Radius is normalized to sheet WIDTH, so it maps

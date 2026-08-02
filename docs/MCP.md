@@ -32,7 +32,7 @@ which is the MCP wire. `node --import tsx` is the whole invocation.
 
 ## What the agent gets
 
-Twenty-five tools, in the order an agent tends to reach for them:
+Thirty-two tools, in the order an agent tends to reach for them:
 
 - **Open and orient** — `load_plan`, `sheet_info` (including the sheet's PDF
   layer table — Optional Content Groups with a classified role, confidence,
@@ -51,7 +51,12 @@ Twenty-five tools, in the order an agent tends to reach for them:
   exclude}` to override the sheet's stated layer roles for a call),
   `measure_polygon`, `measure_line`, `measure_surface` (wall SF: an open run
   × the condition's height — the H knob), `place_count` (EA markers, no scale
-  required) — all five of the engine's measure roles
+  required) — all five of the engine's measure roles — and `symbol_sweep`
+  (marquee ONE example of a repeated plan symbol — a drain, a threshold
+  marker — and every placement is found deterministically from the vector
+  linework, under rotation and mirroring, scored against a commit bar with
+  near-misses *withheld with reasons*; `commit: true` places the matches as
+  EA count markers in one undo step)
 - **Revise** — `edit_shape` (all five roles), `edit_materials`,
   `edit_condition` (waste %, ×N multiplier, `height_ft`, and the roll-goods
   `roll_setup` opt-in — the reply echoes the figured order), `delete_shape`,
@@ -61,7 +66,9 @@ Twenty-five tools, in the order an agent tends to reach for them:
   sheet or crop to PNG with an optional calibrated measuring grid and
   committed-shapes overlay — the agent's eyes and its self-check)
 - **Annotate** — `annotate` (cloud, highlight, text, callout, arrow —
-  plank/seam direction — and keynote bubble), `list_annotations`,
+  plank/seam direction — keynote bubble, and dimension: two endpoints, drawn
+  as a dimension line labelled with the measured length at the sheet's scale,
+  refused on an unscaled sheet), `list_annotations`,
   `link_annotation` (notes *about* the work, never measurements of it;
   attaching one to a finish tag is what makes it part of that scope rather
   than a floating remark — it then wears the condition's colour on the canvas

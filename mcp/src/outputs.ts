@@ -148,6 +148,37 @@ export const placeCountOutput = {
   ea_total: z.number().describe("The condition's total EA after this call"),
 };
 
+/** symbol_sweep — one row per found placement; withheld rows carry the reason. */
+const sweepPlacement = {
+  at: z.tuple([z.number(), z.number()]).describe("The placed symbol's centroid (image px) — the point a commit places its count marker at"),
+  score: z.number().describe("Length-weighted fraction of the seed's segments matched within tolerance, 0..1"),
+  rotation: z.number().describe("Detected rotation in degrees (0 | 90 | 180 | 270)"),
+  mirrored: z.boolean(),
+};
+
+export const symbolSweepOutput = {
+  found: z.number().int().describe("Placements that cleared the commit bar — matches.length"),
+  matches: z.array(z.object(sweepPlacement)).describe("Deterministic reading order (y, then x). The seed's own location is never listed here"),
+  withheld: z.array(z.object({ ...sweepPlacement, reason: z.string() }))
+    .describe("Near-matches in the [0.75, 0.92) band — reported with a reason, NEVER committed. A withheld placement is a question you can answer with view_sheet; a hidden one is a miscount"),
+  seed: z.object({
+    segments: z.number().int().describe("Vector segments fully inside the seed rect — the fingerprint"),
+    center: z.tuple([z.number(), z.number()]).describe("The seed instance's own centroid (image px) — reported here, never double-committed as a match"),
+    rect: z.array(z.number()).length(4).describe("The seed rect actually used, post-clamp [x0, y0, x1, y1]"),
+    length_px: z.number().describe("Total seed linework length, image px"),
+  }),
+  candidates: z.object({
+    considered: z.number().int(),
+    dropped: z.number().int().describe("Placements never scored because the work cap bit — always disclosed, never silent"),
+  }),
+  committed: z.number().int().optional().describe("commit mode: count shapes committed — one per match"),
+  shape_ids: z.array(z.string()).optional(),
+  condition: z.string().optional().describe("commit mode: the finish tag the markers counted under"),
+  ea_total: z.number().optional().describe("commit mode: the condition's total EA after this call"),
+  note: z.string().optional(),
+  warning: z.string().optional().describe("Present when the work cap dropped candidates — what a tighter seed rect would recover"),
+};
+
 export const measureLineOutput = {
   length_lf: z.number(),
   npts: z.number().int(),
@@ -509,9 +540,10 @@ const annotationRow = z.object({
   at: z.tuple([z.number(), z.number()]).optional(),
   target: z.tuple([z.number(), z.number()]).optional(),
   rect: z.array(z.tuple([z.number(), z.number()]).optional()).optional(),
-  from: z.tuple([z.number(), z.number()]).optional().describe("Arrow tail (image px)"),
-  to: z.tuple([z.number(), z.number()]).optional().describe("Arrow head (image px)"),
+  from: z.tuple([z.number(), z.number()]).optional().describe("Arrow tail / dimension start (image px)"),
+  to: z.tuple([z.number(), z.number()]).optional().describe("Arrow head / dimension end (image px)"),
   r: z.number().optional().describe("Bubble radius (image px)"),
+  length_lf: z.number().optional().describe("Dimension only: the measured length in real feet, snapshotted at annotate time from the sheet scale"),
 });
 
 export const annotateOutput = {
@@ -521,6 +553,7 @@ export const annotateOutput = {
   text: z.string(),
   condition: z.string(),
   condition_id: z.string(),
+  length_lf: z.number().optional().describe("Dimension only: the measured length (real feet) the annotation will label itself with"),
   note: z.string(),
 };
 

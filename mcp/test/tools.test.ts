@@ -59,14 +59,14 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // import_takeoff takes a file path — same reasoning.
 const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "link_annotation", "list_shapes", "derive_base", "import_takeoff"]);
 
-test("tools/list: all thirty-one tools, each described with the coordinate contract", async () => {
+test("tools/list: all thirty-two tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
     "annotate", "delete_shape", "derive_base", "detect_rooms", "edit_condition", "edit_materials", "edit_shape", "export_marked_pdf", "export_report",
     "export_takeoff", "find_schedule", "find_text", "import_takeoff",
     "link_annotation", "list_annotations", "list_shapes", "load_plan", "measure_line", "measure_polygon", "measure_surface", "one_click", "place_count",
-    "read_sheet_text", "resolve_tag", "set_scale", "sheet_context", "sheet_graph", "sheet_info", "takeoff_summary", "undo_last", "view_sheet",
+    "read_sheet_text", "resolve_tag", "set_scale", "sheet_context", "sheet_graph", "sheet_info", "symbol_sweep", "takeoff_summary", "undo_last", "view_sheet",
   ]);
   for (const t of tools) {
     if (NO_COORDS.has(t.name)) continue;
@@ -1049,4 +1049,155 @@ test("annotate: a shape-less type mismatch is refused before anything is written
   const noTarget = await call(client, "annotate", { sheet: KEY, type: "callout", text: "x", at: [10, 10] });
   assert.equal(noTarget.isError, true);
   assert.equal((await call(client, "list_annotations", {})).data.count, 0);   // nothing written
+});
+
+// dimension — the one annotation the scale gate applies to: it LABELS a real
+// length, so an unscaled sheet refuses exactly like the measure tools, and a
+// scaled one snapshots the measured feet onto the markup (len_ft) so the
+// canvas and the marked set draw the label with no scale plumbing of their own.
+test("annotate dimension: scale-gated, labels itself with the measured length, round-trips, burns into the marked set", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+
+  // endpoints are required, like arrow
+  const noEnds = await call(client, "annotate", { sheet: KEY, type: "dimension", from: [600, 400] });
+  assert.equal(noEnds.isError, true);
+  assert.match(noEnds.data.error, /dimension needs from.*and to/);
+
+  // unscaled: the measure tools' exact refusal, and nothing is written
+  const unscaled = await call(client, "annotate", { sheet: KEY, type: "dimension", from: [600, 400], to: [960, 400] });
+  assert.equal(unscaled.isError, true);
+  assert.equal(unscaled.data.error, `Set the scale for ${KEY} first — use set_scale (detected: 1/4" = 1'-0").`);
+  assert.equal((await call(client, "list_annotations", {})).data.count, 0);
+
+  // scaled: 360 px at 1/4" = 1'-0" (36 px per real foot) = exactly 10 LF
+  await call(client, "set_scale", { sheet: KEY, use_detected: true });
+  const dim = await call(client, "annotate", { sheet: KEY, type: "dimension", from: [600, 400], to: [960, 400], text: "VIF", condition: "CPT-1" });
+  assert.equal(dim.isError, false);
+  assert.equal(dim.data.length_lf, 10);
+  assert.equal(dim.data.condition, "CPT-1");
+
+  // round-trip: endpoints come back in image px, the length rides along
+  const listed = await call(client, "list_annotations", {});
+  const ld = listed.data.annotations.find((m: any) => m.type === "dimension");
+  assert.deepEqual(ld.from, [600, 400]);
+  assert.deepEqual(ld.to, [960, 400]);
+  assert.equal(ld.length_lf, 10);
+  assert.equal(ld.text, "VIF");
+
+  // the app payload carries it (normalized, len_ft on the markup)
+  const payload = await call(client, "export_takeoff", {});
+  const exported = payload.data.markups.find((m: any) => m.type === "dimension");
+  assert.equal(exported.len_ft, 10);
+  assert.ok(exported.from[0] > 0 && exported.from[0] < 1, "stored normalized, like arrow");
+
+  // burns into the marked set (annotations alone mark a sheet)
+  const dir = await mkdtemp(path.join(tmpdir(), "ot-dim-"));
+  const out = path.join(dir, "dim.pdf");
+  const pdf = await call(client, "export_marked_pdf", { path: out });
+  assert.equal(pdf.isError, false);
+  assert.equal(pdf.data.annotations_drawn, 1);
+  assert.equal((await readFile(out)).subarray(0, 5).toString(), "%PDF-");
+});
+
+// ── symbol_sweep: one example instance → every placement, from the linework ──
+// The fixture (test/fixtures/symbol-plan.pdf, scripts/make-symbol-fixture.mjs)
+// pins exact counts: seed + 3 identical translations + 1 rotated + 1 mirrored
+// + 1 perturbed near-miss (withheld) + 1 square-only decoy (ignored).
+const SYMPLAN = fileURLToPath(new URL("./fixtures/symbol-plan.pdf", import.meta.url));
+const SYMKEY = "symbol-plan.pdf";
+// seed instance at PDF (100..134, 100..120) pt → image px, with margin
+const SEED_RECT = [[196, 980], [272, 1028]];
+
+test("symbol_sweep: exact counts on the fixture — matches, rotation/mirror flags, the withheld near-miss, the ignored decoy", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMPLAN });
+  // deliberately NO set_scale — the sweep and its EA commits are scale-free
+
+  const r = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SEED_RECT });
+  assert.equal(r.isError, false);
+  assert.equal(r.data.found, 5, "3 identical + 1 rotated + 1 mirrored; seed and decoy never counted");
+  assert.equal(r.data.seed.segments, 6);
+  assert.equal(r.data.matches.filter((m: any) => m.rotation === 0 && !m.mirrored).length, 3);
+  assert.equal(r.data.matches.filter((m: any) => m.rotation !== 0 && !m.mirrored).length, 1, "the rotated instance");
+  assert.equal(r.data.matches.filter((m: any) => m.mirrored).length, 1, "the mirrored instance");
+  assert.ok(r.data.matches.every((m: any) => m.score >= 0.92));
+
+  // the near-miss is REPORTED, with its location and a reason — never silent
+  assert.equal(r.data.withheld.length, 1);
+  const w = r.data.withheld[0];
+  assert.ok(w.score >= 0.75 && w.score < 0.92, `withheld band: ${w.score}`);
+  assert.match(w.reason, /commit bar/);
+  assert.ok(Math.abs(w.at[0] - 623.9) < 3 && Math.abs(w.at[1] - 564) < 3, "sits where the perturbed instance sits");
+
+  // the seed's own location is diagnostics, never a match
+  assert.ok(Math.abs(r.data.seed.center[0] - 223.9) < 2 && Math.abs(r.data.seed.center[1] - 1004) < 2);
+  assert.ok(r.data.matches.every((m: any) => Math.hypot(m.at[0] - r.data.seed.center[0], m.at[1] - r.data.seed.center[1]) > 50));
+  assert.equal(r.data.candidates.dropped, 0);
+  assert.equal(r.data.warning, undefined);
+
+  // orientation pinning: rotations/mirror off finds only the translations
+  const pinned = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SEED_RECT, rotations: false, mirror: false });
+  assert.equal(pinned.data.found, 3);
+
+  // determinism: same call, same reply
+  const again = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SEED_RECT });
+  assert.deepEqual(again.data, r.data);
+});
+
+test("symbol_sweep commit: match centers through the place_count path — one undo step, symbol_sweep provenance, withheld never committed", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMPLAN });
+
+  // commit without a condition is a contradiction, refused before any work
+  const bare = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SEED_RECT, commit: true });
+  assert.equal(bare.isError, true);
+  assert.match(bare.data.error, /needs a condition/);
+
+  const r = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SEED_RECT, commit: true, condition: "FD-1" });
+  assert.equal(r.isError, false);
+  assert.equal(r.data.committed, 5, "one count marker per MATCH");
+  assert.equal(r.data.ea_total, 5);
+  assert.equal(r.data.shape_ids.length, 5);
+  assert.equal(r.data.withheld.length, 1, "the near-miss is still reported");
+
+  const summary = await call(client, "takeoff_summary");
+  assert.equal(summary.data.conditions[0].ea, 5, "withheld never reached the takeoff");
+
+  // provenance: method, score, and transform ride every marker
+  const payload = await call(client, "export_takeoff", {});
+  assert.equal(payload.data.shapes.length, 5);
+  for (const shp of payload.data.shapes) {
+    assert.equal(shp.origin.method, "symbol_sweep");
+    assert.equal(shp.origin.actor, "agent");
+    assert.equal(shp.origin.reviewed, false);
+    assert.ok(shp.origin.symbol.score >= 0.92, "the evidence that made it a commit");
+    assert.equal(typeof shp.origin.symbol.rotation, "number");
+    assert.equal(typeof shp.origin.symbol.mirrored, "boolean");
+  }
+
+  // the whole sweep is ONE undo step
+  const undo = await call(client, "undo_last", { n: 1 });
+  assert.equal(undo.data.steps[0].op, "commit");
+  assert.equal(undo.data.steps[0].tool, "symbol_sweep");
+  assert.equal(undo.data.steps[0].shapes, 5);
+  assert.equal(undo.data.shape_count, 0);
+});
+
+test("symbol_sweep refusals: empty marquee, marquee off the ink, and a loose rect are instructions, not crashes", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMPLAN });
+
+  // a marquee over blank paper names the fix
+  const blank = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: [[1000, 100], [1100, 200]] });
+  assert.equal(blank.isError, true);
+  assert.match(blank.data.error, /fully inside the seed rect/);
+
+  // a degenerate rect
+  const degenerate = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: [[500, 500], [500, 500]] });
+  assert.equal(degenerate.isError, true);
+  assert.match(degenerate.data.error, /Empty seed rect/);
+
+  // nothing above minted anything
+  assert.equal((await call(client, "takeoff_summary")).data.conditions.length, 0);
 });
