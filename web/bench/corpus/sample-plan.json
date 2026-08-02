@@ -1,0 +1,114 @@
+{
+ "pdf": "../../../demo/sample-plan.pdf",
+ "scale": 2,
+ "ptPerFt": 36,
+ "wallSemantics": "drawn-path-vertex",
+ "note": "4 identical quadrant rooms; traces reviewed as exact rectangles (issue #184 round 3)",
+ "pinnedAt": "reviewed traces, issue #184",
+ "probes": [
+  {
+   "name": "break-103",
+   "seed": [
+    432,
+    216
+   ],
+   "expect": "golden",
+   "golden": [
+    [
+     240,
+     204
+    ],
+    [
+     1220,
+     204
+    ],
+    [
+     1219,
+     783
+    ],
+    [
+     240,
+     784
+    ]
+   ]
+  },
+  {
+   "name": "corridor-104",
+   "seed": [
+    1296,
+    216
+   ],
+   "expect": "golden",
+   "golden": [
+    [
+     1220,
+     204
+    ],
+    [
+     2200,
+     204
+    ],
+    [
+     2200,
+     784
+    ],
+    [
+     1221,
+     783
+    ]
+   ]
+  },
+  {
+   "name": "office-101",
+   "seed": [
+    432,
+    864
+   ],
+   "expect": "golden",
+   "golden": [
+    [
+     240,
+     784
+    ],
+    [
+     1219,
+     785
+    ],
+    [
+     1220,
+     1364
+    ],
+    [
+     240,
+     1364
+    ]
+   ]
+  },
+  {
+   "name": "office-102",
+   "seed": [
+    1296,
+    864
+   ],
+   "expect": "golden",
+   "golden": [
+    [
+     1221,
+     785
+    ],
+    [
+     2200,
+     784
+    ],
+    [
+     2200,
+     1364
+    ],
+    [
+     1220,
+     1364
+    ]
+   ]
+  }
+ ]
+}

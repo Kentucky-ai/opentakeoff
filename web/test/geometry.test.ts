@@ -4,8 +4,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildMask, floodRegion, traceRegion, snapVertices, ringArea, rdpClosed,
-  extractVectorGeometry, classifyHatchSegs, SEG_CURVE, SEG_CLIP, SEG_FILLONLY,
-  SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE,
+  extractVectorGeometry, classifyHatchSegs, markPolylineArcs, SEG_CURVE, SEG_CLIP, SEG_FILLONLY, SEG_POLYARC,
+  SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE, MASK_CURVE_BIT,
+  floodRegionSealed, dilateHardMask, SEAL_RADII, sealRadiiFor, DOOR_SEAL_MAX_FT, SEAL_R_MAX, doorWedgeCapPx,
   type Point, type MaskObj,
 } from "../src/lib/oneclick.ts";
 import { cloudBezier, cloudPath, arrowheadPath, reflectVertsNorm, closedMetrics } from "../src/lib/geometry.js";
@@ -261,6 +262,242 @@ test("escalation: Aggressive sensitivity accepts a larger growth that Balanced r
   assert.ok(aggressive.count > balanced.count, "Aggressive recovers the larger region");
 });
 
+// ── leak recovery: door-gap sealing (floodRegionSealed) ────────────────────
+// A room whose top wall has an OPEN gap (an undrawn doorway). At ws=1 the open
+// run is (gapTo − gapFrom − 1) cells; a seal radius r closes runs ≤ 2r.
+function gappedRoomSegs(gapFrom: number, gapTo: number): number[] {
+  return [
+    20, 20, gapFrom, 20,
+    gapTo, 20, 100, 20,
+    100, 20, 100, 100,
+    100, 100, 20, 100,
+    20, 100, 20, 20,
+  ];
+}
+
+test("seal: a doorway gap leaks the plain flood but seals — smallest radius wins", () => {
+  const mask = buildMask(gappedRoomSegs(55, 58), 300, 300);   // 2 open cells
+  // Since upstream's gap bridging, the PLAIN flood also recovers this pinhole —
+  // as a bridged rescue that says so (gapBridged), never as a clean fill.
+  const plain = floodRegion(mask, 60, 60);
+  assert.equal(plain.status, "ok", "the plain flood bridges the pinhole");
+  assert.equal(plain.status === "ok" && plain.gapBridged, 1, "…and carries the bridge provenance");
+  const f = floodRegionSealed(mask, 60, 60);
+  assert.equal(f.status, "ok");
+  if (f.status !== "ok") return;
+  assert.equal(f.sealedPx, 1, "a 2-cell gap seals at the smallest radius");
+});
+
+test("seal: a wider doorway escalates the radius; growback restores the true room area", () => {
+  const mask = buildMask(gappedRoomSegs(55, 63), 300, 300);   // 7 open cells → needs r=4
+  const f = floodRegionSealed(mask, 60, 60);
+  assert.equal(f.status, "ok");
+  if (f.status !== "ok") return;
+  assert.equal(f.sealedPx, 4);
+  const ring = traceRegion(f);
+  const area = ringArea(ring);
+  // growback recovers the 4-px band the dilation stole along every wall: the
+  // ring must land in the same band as an intact room (~6400), not (80−2r)²
+  assert.ok(area > 5600 && area < 6800, `sealed+grown area ≈ intact room, got ${area}`);
+  for (const [x, y] of ring) {
+    assert.ok(x > 17 && x < 103 && y > 15 && y < 103, `ring stays on the room's walls, got ${x},${y}`);
+  }
+});
+
+test("seal: an opening wider than the largest radius still refuses — the leak stands", () => {
+  const mask = buildMask(gappedRoomSegs(55, 68), 300, 300);   // 12 open cells > 2×max(SEAL_RADII)
+  assert.ok(2 * Math.max(...SEAL_RADII) < 12, "fixture must exceed the seal reach");
+  assert.equal(floodRegionSealed(mask, 60, 60).status, "leak");
+});
+
+test("seal: a non-leak result passes through untouched (no sealedPx, identical fill)", () => {
+  const mask = buildMask(squareSegs(20, 20, 100, 100), 300, 300);
+  const plain = floodRegion(mask, 60, 60);
+  const sealed = floodRegionSealed(mask, 60, 60);
+  assert.equal(plain.status, "ok"); assert.equal(sealed.status, "ok");
+  if (plain.status !== "ok" || sealed.status !== "ok") return;
+  assert.equal(sealed.sealedPx, undefined);
+  assert.equal(sealed.count, plain.count);
+});
+
+test("dilateHardMask: hard cells fatten by r (diamond), soft (hatch) cells are never dilated", () => {
+  const mw = 9, mh = 9;
+  const mask = new Uint8Array(mw * mh);
+  mask[4 * mw + 4] = 1;                               // one hard cell, center
+  mask[1 * mw + 1] = 2;                               // one soft cell, corner-ish
+  const d = dilateHardMask({ mask, mw, mh, ws: 1, softCount: 1 }, 2);
+  assert.equal(d.mask[4 * mw + 6] & 1, 1, "hard reaches city-block distance 2 on-axis");
+  assert.equal(d.mask[3 * mw + 3] & 1, 1, "diagonal at city-block distance 2 is in the diamond");
+  assert.equal(d.mask[2 * mw + 2] & 1, 0, "diagonal at city-block distance 4 stays open");
+  assert.equal(d.mask[4 * mw + 7] & 1, 0, "on-axis distance 3 stays open");
+  assert.equal(d.mask[1 * mw + 1], 2, "soft cell survives, un-fattened");
+  assert.equal(d.mask[1 * mw + 2] & 2, 0, "soft never dilates");
+  assert.equal(d.softCount, 1, "soft bookkeeping carries over");
+});
+
+test("seal: hatch semantics survive sealing — a hatched room behind a doorway still escalates", () => {
+  // the hatched-room fixture from the hatch suite, but with a doorway gap in the
+  // top wall: strict flood leaks; the sealed retry must still run the tiered
+  // escalation (hatch transparent) and come back hatchFiltered.
+  const gapped = [
+    100, 100, 380, 100, 388, 100, 700, 100,           // 7-image-px gap → ~3 mask px at ws=0.5 → r=2
+    700, 100, 700, 500, 700, 500, 100, 500, 100, 500, 100, 100,
+  ];
+  const hatch: number[] = [];
+  for (let x = 104; x <= 696; x += 4) hatch.push(x, 100, x, 500);
+  const all = [...border, ...gapped, ...hatch];
+  const m = buildMask(all, IMG_W, IMG_H, MAXDIM, zeroMeta(all));
+  assert.notEqual(floodRegion(m, 400, 300).status, "ok", "unsealed: the doorway defeats the fill");
+  const f = floodRegionSealed(m, 400, 300);
+  assert.equal(f.status, "ok");
+  if (f.status !== "ok") return;
+  assert.equal(f.hatchFiltered, true, "escalation still fires on the sealed mask");
+  assert.ok(f.sealedPx! >= 1 && f.sealedPx! <= 4, `sealed at a small radius, got ${f.sealedPx}`);
+  assert.ok(approx(ringArea(traceRegion(f)), 240000, 0.04), "ring ≈ room area");
+});
+
+test("sealRadiiFor: doubling ladder up to the door-bridging radius, capped, fallback on junk", () => {
+  // 20 mask px per foot → max radius ceil(5·20/2) = 50 → 1,2,4,…,32,50
+  assert.deepEqual(sealRadiiFor(20), [1, 2, 4, 8, 16, 32, 50]);
+  assert.equal(sealRadiiFor(20).at(-1), Math.ceil((DOOR_SEAL_MAX_FT * 20) / 2));
+  assert.equal(sealRadiiFor(1e6).at(-1), SEAL_R_MAX, "absurd resolution hits the hard cap");
+  assert.deepEqual(sealRadiiFor(0), SEAL_RADII, "unknown scale falls back");
+  assert.deepEqual(sealRadiiFor(NaN), SEAL_RADII);
+});
+
+test("seal: a DOOR-scale opening seals with scale-aware radii — and growback stays out of the corridor", () => {
+  // 3-ft door at ~18 px/ft: a 54-px opening in the south wall of a 216×180 room
+  // floating on a 1000×800 sheet (ws=1 under the default mask cap). The old
+  // fixed 1/2/4 ladder can't bridge it; sealRadiiFor(18) reaches r=45.
+  const room = [
+    100, 100, 316, 100,                      // top
+    316, 100, 316, 280,                      // right
+    316, 280, 262, 280,                      // bottom, right of the door
+    208, 280, 100, 280,                      // bottom, left of the door (gap 209..261 = 53 open cells)
+    100, 280, 100, 100,                      // left
+  ];
+  const mask = buildMask([...squareSegs(2, 2, 998, 798), ...room], 1000, 800);
+  assert.equal(floodRegionSealed(mask, 200, 200).status, "leak", "the fallback ladder cannot bridge a door");
+  const f = floodRegionSealed(mask, 200, 200, SENS_BALANCED, sealRadiiFor(18));
+  assert.equal(f.status, "ok");
+  if (f.status !== "ok") return;
+  assert.ok(f.sealedPx! >= 27 && f.sealedPx! <= 45, `bridged at a door-scale radius, got ${f.sealedPx}`);
+  const ring = traceRegion(f);
+  const area = ringArea(ring);
+  // interior ≈ 214×178 = 38,092; monotone growback must recover the wall band
+  // WITHOUT annexing a lobe of the sheet beyond the doorway (naive growback
+  // at r≈32 would add thousands of px² outside the south wall)
+  assert.ok(approx(area, 214 * 178, 0.04), `sealed room ≈ its true area, got ${area}`);
+  for (const [x, y] of ring) {
+    assert.ok(x > 97 && x < 319 && y > 97, `ring stays on the room, got ${x},${y}`);
+    assert.ok(y < 280 + 6, `growback must not dive through the doorway, got ${x},${y}`);
+  }
+});
+
+test("seal guards: dilation must not resurrect a too-big space the leak cap rejected", () => {
+  // A 260×260 enclosure on a 300×300 sheet: 75% of the mask, so the plain
+  // flood correctly calls it a leak (not a room). Aggressive dilation starves
+  // the interior under the cap mid-flood — but the grown-back region busts the
+  // room-size gate, so sealing must decline rather than mint a giant blob.
+  const mask = buildMask(squareSegs(20, 20, 280, 280), 300, 300);
+  assert.equal(floodRegion(mask, 150, 150).status, "leak", "75% of the sheet is not a room");
+  assert.equal(floodRegionSealed(mask, 150, 150, SENS_BALANCED, [64]).status, "leak", "sealing must not resurrect it");
+});
+
+test("seal: a room with TWO doorways seals both at once (virtual boundary stays small)", () => {
+  const twoGaps = [
+    20, 20, 50, 20, 57, 20, 100, 20,                   // north wall, 6-cell gap
+    100, 20, 100, 100,
+    100, 100, 62, 100, 55, 100, 20, 100,               // south wall, 6-cell gap
+    20, 100, 20, 20,
+  ];
+  const mask = buildMask(twoGaps, 300, 300);
+  assert.equal(floodRegion(mask, 60, 60).status, "leak");
+  const f = floodRegionSealed(mask, 60, 60);
+  assert.equal(f.status, "ok");
+  if (f.status !== "ok") return;
+  assert.equal(f.sealedPx, 4, "one radius bridges both openings");
+  const area = ringArea(traceRegion(f));
+  assert.ok(area > 5600 && area < 6800, `both doors sealed, room area intact, got ${area}`);
+});
+
+test("door swing: drawn leaf + swing arc bounds the room WITHOUT sealing (the common doorway)", () => {
+  // Same room and 53-px opening as the door-scale fixture, but with the usual
+  // door symbol drawn: leaf at the open position (perpendicular, into the
+  // room) + a quarter-circle swing arc from leaf tip to the strike jamb —
+  // fed as chords, exactly how extractVectorGeometry emits beziers. The plain
+  // flood must bound at the arc: no sealing, area ≈ room minus the swing wedge.
+  const room = [
+    100, 100, 316, 100,
+    316, 100, 316, 280,
+    316, 280, 262, 280,
+    208, 280, 100, 280,
+    100, 280, 100, 100,
+  ];
+  const R = 54;                                        // swing radius = the opening width
+  const leaf = [208, 280, 208, 280 - R];               // hinge at the left jamb, leaf into the room
+  const arc: number[] = [];
+  let px = 208, py = 280 - R;                          // tip → strike jamb, quarter circle about the hinge
+  for (let k = 1; k <= 8; k++) {
+    const a = (k / 8) * (Math.PI / 2);
+    const qx = 208 + R * Math.sin(a), qy = 280 - R * Math.cos(a);
+    arc.push(px, py, qx, qy); px = qx; py = qy;
+  }
+  // curve chords carry SEG_CURVE meta so buildMask can mark them bit-4
+  const all = [...squareSegs(2, 2, 998, 798), ...room, ...leaf, ...arc];
+  const meta = zeroMeta(all);
+  const arcStart = (all.length - arc.length) >> 2;
+  for (let k = 0; k < arc.length >> 2; k++) meta[arcStart + k] = SEG_CURVE;
+  const mask = buildMask(all, 1000, 800, 3000, meta);
+
+  // without a wedge cap: the arc bounds the fill, wedge excluded (pre-annex contract)
+  const f = floodRegionSealed(mask, 200, 200, SENS_BALANCED, sealRadiiFor(18));
+  assert.equal(f.status, "ok");
+  if (f.status !== "ok") return;
+  assert.equal(f.sealedPx, undefined, "the door linework bounds the fill — sealing must not fire");
+  const bare = ringArea(traceRegion(f));
+  const minusWedge = 214 * 178 - (Math.PI * R * R) / 4;
+  assert.ok(approx(bare, minusWedge, 0.05), `room minus swing wedge ≈ ${Math.round(minusWedge)}, got ${bare}`);
+
+  // with the scale-aware wedge cap: the swing pocket annexes — flooring runs
+  // under the door, so the measurement reads to the wall opening
+  const fw = floodRegionSealed(mask, 200, 200, SENS_BALANCED, sealRadiiFor(18), doorWedgeCapPx(18));
+  assert.equal(fw.status, "ok");
+  if (fw.status !== "ok") return;
+  assert.equal(fw.wedges, 1, "exactly one swing wedge annexed");
+  const ringFull = traceRegion(fw);
+  const full = ringArea(ringFull);
+  assert.ok(approx(full, 214 * 178, 0.04), `wedge included ≈ full room ${214 * 178}, got ${full}`);
+  // the leaf line must be absorbed, not left as a slit — a crack would send
+  // the ring up and back down the leaf, inflating perimeter by ~2 leaf lengths
+  const perim = closedMetrics(ringFull).perim;
+  assert.ok(approx(perim, 2 * (214 + 178), 0.03), `perimeter ≈ the walls (${2 * (214 + 178)}), got ${perim}`);
+});
+
+test("door wedge: a curved WALL does not annex the room behind it (cap holds)", () => {
+  // same room, but the curve is a partition arc bowing across the middle —
+  // the space beyond it is a half-room, far over the door-wedge cap
+  const room = squareSegs(100, 100, 316, 280);
+  const part: number[] = [];
+  let px = 208, py = 100;
+  for (let k = 1; k <= 8; k++) {                       // shallow arc from top wall to bottom wall
+    const t = k / 8;
+    const qx = 208 + Math.sin(t * Math.PI) * 24, qy = 100 + t * 180;
+    part.push(px, py, qx, qy); px = qx; py = qy;
+  }
+  const all = [...squareSegs(2, 2, 998, 798), ...room, ...part];
+  const meta = zeroMeta(all);
+  const partStart = (all.length - part.length) >> 2;
+  for (let k = 0; k < part.length >> 2; k++) meta[partStart + k] = SEG_CURVE;
+  const mask = buildMask(all, 1000, 800, 3000, meta);
+  const f = floodRegionSealed(mask, 150, 190, SENS_BALANCED, sealRadiiFor(18), doorWedgeCapPx(18));
+  assert.equal(f.status, "ok");
+  if (f.status !== "ok") return;
+  assert.ok(!f.wedges, "the far half-room must NOT annex");
+  const area = ringArea(traceRegion(f));
+  assert.ok(area < 214 * 178 * 0.7, `one side of the partition only, got ${area}`);
+});
+
 // ── revision-cloud beziers (marked-set PDF scallops) ────────────────────────
 test("cloudBezier: closed loop of cubic segments, more segments for a longer perimeter", () => {
   const small = cloudBezier(0, 0, 100, 60);
@@ -392,6 +629,177 @@ test("classifyHatchSegs: extremal rows hard, wide member hard, curve exempt, cli
   assert.equal(soft[n], 0, "heavy-pen member protected");
   assert.equal(soft[n + 1], 0, "curve chord exempt");
   assert.equal(soft[n + 2], 1, "clip-only soft");
+});
+
+// ── polyline arc detection + periodicity classification (issue #184 item C) ─
+// Chords of a circle: tessellated like CAD exports draw door swings (lineTo
+// runs, no bezier ops). dashEvery drops every 2nd chord to fake a dash pattern.
+function arcChords(cx: number, cy: number, r: number, a0: number, a1: number, steps: number, dashed = false): number[] {
+  const segs: number[] = [];
+  let px = cx + r * Math.cos(a0), py = cy + r * Math.sin(a0);
+  for (let k = 1; k <= steps; k++) {
+    const a = a0 + (a1 - a0) * (k / steps);
+    const qx = cx + r * Math.cos(a), qy = cy + r * Math.sin(a);
+    if (!dashed || k % 2 === 1) segs.push(px, py, qx, qy);
+    px = qx; py = qy;
+  }
+  return segs;
+}
+
+test("markPolylineArcs: a tessellated quarter-arc polyline gets SEG_CURVE|SEG_POLYARC", () => {
+  const arc = arcChords(200, 200, 54, 0, Math.PI / 2, 10);
+  const meta = new Uint8Array(arc.length >> 2);
+  const marked = markPolylineArcs(arc, meta);
+  assert.equal(marked, 10, "every chord marked");
+  for (let i = 0; i < meta.length; i++) assert.equal(meta[i], SEG_CURVE | SEG_POLYARC);
+});
+
+test("markPolylineArcs: a DASHED arc (gaps between dashes, dash-split chords) still detects", () => {
+  // 9° dashes with 3° gaps around a quarter circle — gaps run shorter than
+  // dashes, like real dash patterns. One dash is split into two collinear
+  // halves (dash patterns cut chords mid-segment, leaving an isolated
+  // near-zero turn inside the arc).
+  const segs: number[] = [];
+  const r = 54, deg = Math.PI / 180;
+  for (let a = 0; a + 9 <= 90; a += 12) {
+    const p = (t: number): [number, number] => [200 + r * Math.cos(t * deg), 200 + r * Math.sin(t * deg)];
+    const [ax, ay] = p(a), [mx, my] = p(a + 4.5), [bx, by] = p(a + 9);
+    if (a === 24) {  // split this dash's first chord collinearly
+      const qx = (ax + mx) / 2, qy = (ay + my) / 2;
+      segs.push(ax, ay, qx, qy, qx, qy, mx, my, mx, my, bx, by);
+    } else {
+      segs.push(ax, ay, mx, my, mx, my, bx, by);
+    }
+  }
+  const meta = new Uint8Array(segs.length >> 2);
+  const marked = markPolylineArcs(segs, meta);
+  assert.ok(marked >= (segs.length >> 2) - 2, `dashed arc chords marked (got ${marked}/${segs.length >> 2})`);
+  let curveBits = 0;
+  for (let i = 0; i < meta.length; i++) if (meta[i] & SEG_POLYARC) curveBits++;
+  assert.ok(curveBits >= (segs.length >> 2) - 2, "chords carry the polyarc provenance bit");
+});
+
+test("markPolylineArcs: a joined off-circle stub doesn't kill the arc — trimmed, arc marked, stub not (review round 8)", () => {
+  // a straight stub meets the arc start at a plausible signed turn; its
+  // vertex is off the circle, so an all-or-nothing fit would reject the
+  // whole window. The trim-retry must recover the arc without the stub.
+  const arc = arcChords(200, 200, 54, 0, Math.PI / 2, 10);
+  const [ax, ay] = [arc[0], arc[1]];
+  const dir = Math.atan2(arc[3] - ay, arc[2] - ax) - (30 * Math.PI) / 180;  // 30° turn into the arc
+  const stub = [ax - 10 * Math.cos(dir), ay - 10 * Math.sin(dir), ax, ay];
+  const segs = [...stub, ...arc];
+  const meta = new Uint8Array(segs.length >> 2);
+  const marked = markPolylineArcs(segs, meta);
+  assert.ok(marked >= 9, `arc chords recovered despite the stub (got ${marked})`);
+  assert.equal(meta[0] & SEG_POLYARC, 0, "the stub itself is not marked");
+  let arcMarked = 0;
+  for (let i = 1; i < meta.length; i++) if (meta[i] & SEG_POLYARC) arcMarked++;
+  assert.ok(arcMarked >= 9, `arc body carries the bit (got ${arcMarked}/10)`);
+});
+
+test("markPolylineArcs: straight dashed lines, zigzags, and ellipses are NOT arcs", () => {
+  const dashedLine: number[] = [];
+  for (let x = 100; x < 180; x += 8) dashedLine.push(x, 50, x + 4.5, 50);
+  const zigzag: number[] = [];
+  for (let k = 0; k < 12; k++) zigzag.push(100 + k * 10, k % 2 ? 60 : 50, 110 + k * 10, k % 2 ? 50 : 60);
+  const ellipse: number[] = [];
+  { // 2:1 ellipse, 24 chords — turns are arc-like but no single circle fits
+    let px = 260, py = 300;
+    for (let k = 1; k <= 24; k++) {
+      const a = (k / 24) * 2 * Math.PI;
+      const qx = 200 + 60 * Math.cos(a), qy = 300 + 30 * Math.sin(a);
+      ellipse.push(px, py, qx, qy); px = qx; py = qy;
+    }
+  }
+  for (const [name, segs] of [["dashed line", dashedLine], ["zigzag", zigzag], ["ellipse", ellipse]] as const) {
+    const meta = new Uint8Array(segs.length >> 2);
+    markPolylineArcs(segs, meta);
+    for (let i = 0; i < meta.length; i++) assert.equal(meta[i] & SEG_POLYARC, 0, `${name} seg ${i} must not be an arc`);
+  }
+});
+
+test("markPolylineArcs → buildMask: detected arc cells carry MASK_CURVE_BIT (door-swing unification path)", () => {
+  const segs = [...squareSegs(20, 20, 380, 380), ...arcChords(200, 200, 54, 0, Math.PI / 2, 10)];
+  const meta = new Uint8Array(segs.length >> 2);
+  markPolylineArcs(segs, meta);
+  const m = buildMask(segs, 400, 400, 400, meta);
+  const mid = [200 + 54 * Math.cos(Math.PI / 4), 200 + 54 * Math.sin(Math.PI / 4)];
+  const cell = m.mask[Math.round(mid[1] * m.ws) * m.mw + Math.round(mid[0] * m.ws)];
+  assert.equal(cell & 1, 1, "arc cell is a hard barrier");
+  assert.equal(cell & MASK_CURVE_BIT, MASK_CURVE_BIT, "arc cell is recognizable as curve linework");
+});
+
+test("periodicity: resolvably-IRREGULAR pitch is not hatch (the old ±35% band said it was)", () => {
+  // gaps jitter by several mask cells around a ~33 px rhythm — every one of
+  // them inside the old regularity band, none of them a lattice at raster
+  // precision. (Sub-cell jitter at tight pitches is a different story: the
+  // raster genuinely cannot resolve it, so it may classify — honestly.)
+  const segs: number[] = [];
+  let x = 100;
+  for (const gap of [0, 30, 36, 31, 38, 33, 30.5, 37, 32, 35.5, 30, 36.5]) {
+    x += gap;
+    segs.push(x, 100, x, 500);
+  }
+  const soft = classifyHatchSegs(segs, new Uint8Array(segs.length >> 2), 0.5);
+  for (let i = 0; i < soft.length; i++) assert.equal(soft[i], 0, `irregular row ${i} stays hard`);
+});
+
+test("periodicity: a pattern edge with a FAR same-pen stroke beyond it stays hard (clipped-guard tautology, review round 8)", () => {
+  // hatch patch rows at pitch 4 image px; one unrelated same-pen parallel
+  // stroke 4 pitches beyond the bottom edge (open space, not a bounding
+  // wall). The clipped-edge clause must test the bound on the side OPPOSITE
+  // its lattice — the edge row only softens when clipped within ONE pitch.
+  const segs: number[] = [];
+  for (const y of [100, 104, 108, 112, 116]) segs.push(200, y, 400, y);
+  segs.push(200, 84, 400, 84);                         // far stroke, 4 pitches below the y=100 edge
+  const soft = classifyHatchSegs(segs, new Uint8Array(segs.length >> 2), 0.5);
+  assert.equal(soft[0], 0, "the y=100 pattern edge stays hard (far stroke is not a clip bound)");
+  assert.equal(soft[5], 0, "the lone far stroke stays hard");
+  assert.equal(soft[2], 1, "interior rows still classify");
+});
+
+test("periodicity: door-arc chords are not a periodic family (unmarked arcs, the round-7 failure)", () => {
+  // six identical door swings along a wall — WITHOUT arc marking, straight to
+  // the classifier: same-angle chords repeat across doors, but their normal
+  // offsets are door positions, not a fill pitch. The old run heuristic
+  // soft-flagged exactly these (VA plan, round 7).
+  const segs: number[] = [];
+  for (let d = 0; d < 6; d++) segs.push(...arcChords(150 + d * 90, 200, 54, 0, Math.PI / 2, 10));
+  const soft = classifyHatchSegs(segs, new Uint8Array(segs.length >> 2), 0.5);
+  for (let i = 0; i < soft.length; i++) assert.equal(soft[i], 0, `arc chord ${i} stays hard`);
+});
+
+test("periodicity: dashed hatch rows (pieces) still classify soft", () => {
+  const segs: number[] = [];
+  for (let k = 0; k < 14; k++) {
+    const y = 100 + k * 4;
+    for (let x = 100; x < 300; x += 20) segs.push(x, y, x + 14, y);   // dashes per row
+  }
+  const soft = classifyHatchSegs(segs, new Uint8Array(segs.length >> 2), 0.5);
+  let cnt = 0; for (let i = 0; i < soft.length; i++) cnt += soft[i];
+  assert.ok(cnt > soft.length * 0.6, `interior dashed rows classify soft (got ${cnt}/${soft.length})`);
+});
+
+test("periodicity: a floating hatch patch is a finish zone — two clicks, two regions, both measured", () => {
+  // 600×400 room; the left quarter carries a floor pattern whose edge row
+  // (the outermost hatch line) has no lattice beyond it, so it stays hard:
+  // it IS the finish boundary. A click in the open side reads up to it; a
+  // click inside the pattern escalates and measures the patch wall-to-wall
+  // (dense hatch, failure mode #1 — the VA toilet-room case).
+  const hatch: number[] = [];
+  for (let x = 104; x <= 240; x += 4) hatch.push(x, 100, x, 500);
+  const all = [...border, ...room, ...hatch];
+  const m = buildMask(all, IMG_W, IMG_H, MAXDIM, zeroMeta(all));
+  const open = floodRegion(m, 500, 300);               // open (unhatched) side
+  assert.equal(open.status, "ok");
+  if (open.status !== "ok") return;
+  const openArea = ringArea(traceRegion(open));
+  assert.ok(approx(openArea, (700 - 240) * 400, 0.04), `open side reads to the pattern edge, got ${openArea}`);
+  const patch = floodRegion(m, 170, 300);              // inside the pattern
+  assert.equal(patch.status, "ok");
+  if (patch.status !== "ok") return;
+  assert.equal(patch.hatchFiltered, true, "the dense-hatch click escalates instead of refusing");
+  assert.ok(approx(ringArea(traceRegion(patch)), (240 - 100) * 400, 0.06), `patch reads wall-to-wall, got ${ringArea(traceRegion(patch))}`);
 });
 
 test("extractVectorGeometry: meta emission — paint ops, line width, form XObject matrix", () => {
@@ -537,4 +945,34 @@ test("extractVectorGeometry: a folded *Repeat op's area still scales with the am
   };
   const g = extractVectorGeometry(opList as any, [1, 0, 0, 1, 0, 0], OPS);
   assert.ok(Math.abs(g.imageArea - 96) < 1e-9, `imageArea ${g.imageArea}`);
+});
+
+// The O(N²) lattice-query fix (adversarial review, round 8) shipped with NO
+// regression test — reverting the bisect + prefix-max in rowHas to the naive
+// full-row scan left the whole suite AND the bench green (audit finding D7).
+// This is the missing guard.
+//
+// The degenerate shape is the one the comment at oneclick.ts:532-536 names: a
+// dense band of same-angle, same-pen, NON-overlapping pieces. Note it needs many
+// pieces in FEW rows, not many rows — a first attempt at this test used 400 rows
+// of 100 and passed happily against the reverted code, because the naive scan
+// over 100 pieces is cheap. Measured here at 40k segments in 4 rows:
+// fixed ~123 ms, naive ~5,671 ms. The 1.5 s bound sits 12× above the fixed path
+// and 3.8× below the naive one.
+test("classifyHatchSegs stays sub-quadratic on a dense same-angle tick swarm", () => {
+  const ROWS = 4, PER_ROW = 10000;            // 40,000 segments, 4 rows
+  const segs: number[] = [];
+  for (let r = 0; r < ROWS; r++) {
+    const y = 100 + r * 3;                    // distinct rows, inside the pitch cap
+    for (let i = 0; i < PER_ROW; i++) {
+      const x = 100 + i * 11;                 // staggered, non-overlapping ticks
+      segs.push(x, y, x + 6, y);
+    }
+  }
+  const meta = new Uint8Array(segs.length / 4);
+  const t0 = performance.now();
+  const soft = classifyHatchSegs(segs, meta, 1, 24);
+  const ms = performance.now() - t0;
+  assert.equal(soft.length, segs.length / 4);
+  assert.ok(ms < 1500, `classifyHatchSegs took ${Math.round(ms)} ms on 40k same-angle segments in ${ROWS} rows — the row query has gone quadratic again`);
 });

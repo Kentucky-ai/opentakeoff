@@ -34,7 +34,8 @@
 // hands the pixels over — never read the panel canvas (dark mode bakes an
 // inversion into those pixels).
 
-import type { MaskObj } from "./oneclick";
+import { baselineImgDims } from "./oneclick";
+import type { MaskObj, OpList, OpsTable } from "./oneclick";
 
 // ── trigger policy (consumed by the canvas; exported for tests) ─────────────
 export const RASTER_MIN_IMG_FRAC = 0.10; // placed-image area ≥ this fraction of the sheet ⇒ raster-eligible
@@ -48,7 +49,151 @@ export const RASTER_WIN_DIV = 32;  // window ≈ min(mw,mh)/32, forced odd
 export const INVERT_MEAN = 128;    // global mean below this ⇒ negative scan, invert
 export const RASTER_RDP_EPS = 2.5; // traceRegion eps for wobbly scan contours (vector uses 1.5)
 
-export interface RasterMaskOpts { t?: number; absInk?: number; bridge?: boolean; }
+// ── working-raster scale (audit A1, raster half) ─────────────────────────────
+// The vector path's fix (buildMask's basePxPerFt) maps into the BASELINE render
+// before choosing the raster, so the mask is a property of the sheet and the
+// per-sheet "Hi-Res render" toggle can't move a measurement. The raster path
+// used to duplicate the OLD formula inline in the canvas — ws = min(1, maxDim /
+// max(imgW, imgH)) against THIS render's bitmap dims, then a pdf.js render at
+// `rs * ws`. On any sheet rendering under the cap that collapses to a render at
+// `rs`: the same bug, and worse, vector and raster masks of one sheet could sit
+// on different grids. rasterMaskScale is the raster analogue of that fix and the
+// single place the numbers are chosen, so the two paths cannot drift apart.
+//
+// THE DPI CEILING — the honest difference between the two paths. The vector mask
+// is drawn from linework, so its resolution is free: ask for more mask px and you
+// get more real detail. The raster mask is thresholded from a RENDERED BITMAP of
+// a scan, and a scan has a fixed number of real pixels. Rendering the page above
+// the scan's own resolution resamples pixels that don't exist — no new edge
+// information, 4× the memory per doubling, and a slower threshold pass over it.
+// So the raster mask is clamped at the scan's native resolution when we can
+// measure it (scanNativeScale), and says so: `dpiLimited` rides onto the MaskObj
+// and the canvas tells the estimator the scan — not the app — set the detail
+// level. This is a real ceiling; nothing here makes the raster path
+// resolution-free, it only makes it render-INDEPENDENT up to that ceiling.
+export const RASTER_MIN_SCAN_DPI = 50;   // floor on the DPI clamp. A mis-measured
+// scan — a title-block logo taken for the plan image, an image nested under a
+// form matrix we mis-walk — must never shrink the working raster to uselessness.
+// Nothing anyone runs through a plotter-scanner is under 50 DPI, so a measurement
+// below this is not believable: the floor fires only on a bad measurement, and
+// there it hands the decision back to maxDim.
+
+/** What the mask render should be. `vs` is the pdf.js viewport scale to render
+ *  at; `mw`/`mh` the mask bitmap; `ws` converts panel-image px AT THIS RENDER to
+ *  mask px (what MaskObj.ws means downstream — traceRegion divides by it); `wsBase`
+ *  the same for the baseline render. `dpiLimited` = the scan's own resolution,
+ *  not maxDim, chose the scale. */
+export interface RasterScalePlan {
+  vs: number; mw: number; mh: number; ws: number; wsBase: number;
+  dpiLimited: boolean; scanDpi: number;
+}
+export interface RasterScaleInput {
+  pageW: number; pageH: number;      // page size in PDF POINTS — the render-free truth
+  renderScale: number;               // this sheet's pdf render scale (renderScalesRef)
+  baseScale: number;                 // sheets.RENDER_SCALE — the pin
+  maxDim: number;                    // oneclick.MASK_MAX_DIM — the working-raster cap
+  scanPxPerPt?: number;              // scanNativeScale's answer; 0/absent = unknown ⇒ no clamp
+}
+
+/** Choose the mask render for a scanned sheet.
+ *
+ *  Everything returned except `ws` is computed from the PAGE and the BASELINE
+ *  render alone, so it is bit-identical at every render scale; `ws` is just
+ *  vs/renderScale — mask px per point over panel px per point — the one number
+ *  that has to speak this panel's pixels.
+ *
+ *  The input is the page in POINTS, deliberately, not the panel's bitmap dims:
+ *  the bitmap is a ceil() of pageDim × renderScale, and reconstructing the
+ *  baseline from it carries that rounding into the mask, leaving a ±1 px
+ *  dependence on the render — the exact class of thing this function exists to
+ *  remove. It also keeps `ws` consistent with the app's own px↔feet model
+ *  (panelGeometry.uppFor scales strictly with renderScale, ceil ignored). */
+export function rasterMaskScale(o: RasterScaleInput): RasterScalePlan {
+  const bs = Number.isFinite(o.baseScale) && o.baseScale > 0 ? o.baseScale : 1;
+  const rs = Number.isFinite(o.renderScale) && o.renderScale > 0 ? o.renderScale : bs;
+  // the BASELINE bitmap — through the shared helper, which is also what
+  // buildMask's `page` argument resolves to, so the raster and vector masks of
+  // one sheet land on ONE grid rather than on two that agree by coincidence
+  // (audit F3: they did not agree — 1224×1584 here vs 1225×1585 there).
+  const { w: bW, h: bH } = baselineImgDims(o.pageW, o.pageH, bs);
+  const cap = Math.min(1, o.maxDim / Math.max(bW, bH, 1));     // the working-raster cap
+  const scanPxPerPt = Number.isFinite(o.scanPxPerPt) && (o.scanPxPerPt as number) > 0 ? (o.scanPxPerPt as number) : 0;
+  let wsBase = cap, dpiLimited = false;
+  // mask px per point = bs × wsBase; the render invents pixels iff that exceeds
+  // the scan's own px per point. Below the believability floor, don't clamp.
+  if (scanPxPerPt > 0) {
+    const floor = Math.min(cap, RASTER_MIN_SCAN_DPI / 72 / bs);
+    const want = Math.max(scanPxPerPt / bs, floor);
+    if (want < cap) { wsBase = want; dpiLimited = true; }
+  }
+  const vs = bs * wsBase;
+  return {
+    vs,
+    mw: Math.max(2, Math.ceil(bW * wsBase)),
+    mh: Math.max(2, Math.ceil(bH * wsBase)),
+    ws: vs / rs,                       // mask px per panel px at THIS render
+    wsBase,
+    dpiLimited,
+    scanDpi: scanPxPerPt > 0 ? scanPxPerPt * 72 : 0,
+  };
+}
+
+/** The dominant placed image's NATIVE resolution, in scan px per PDF point.
+ *
+ *  Walks the same op list extractVectorGeometry walks, but tracks only image
+ *  paints and keeps the one with the largest placed area — on a scan wrapper
+ *  that is the plan scan itself, not the logo in the title block. `transform`
+ *  must be the SCALE-1 viewport transform, so placed sizes come out in points
+ *  and the answer is render-independent. pdf.js carries the intrinsic pixel dims
+ *  in the op args: paintImageXObject → [objId, w, h]; the inline and image-mask
+ *  ops → [imgData] with .width/.height.
+ *
+ *  Only the SINGULAR paint ops are measured. The *Repeat / *Group folded ops are
+ *  runs of small tiles (stipple, glyph-like masks) — never a plan scan — and
+ *  giving them a resolution would risk clamping a real scan to a tile's DPI.
+ *  Unmeasurable ⇒ { pxPerPt: 0 } ⇒ rasterMaskScale does not clamp at all. */
+export interface ScanNative { pxPerPt: number; areaFrac: number; }
+export function scanNativeScale(opList: OpList, transform: number[], OPS: OpsTable, pageW: number, pageH: number): ScanNative {
+  let m = transform.slice();
+  const stack: number[][] = [];
+  const mul = (a: number[], b: number[]): number[] => [a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1], a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3], a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5]];
+  const fns = opList.fnArray, A = opList.argsArray;
+  let bestArea = 0, bestPxPerPt = 0;
+  const consider = (w: number, h: number) => {
+    if (!(w > 0) || !(h > 0)) return;
+    // the image's unit square maps through m: (m0,m1) is its width edge in
+    // points, (m2,m3) its height edge — rotation and mirroring included.
+    const pw = Math.hypot(m[0], m[1]), ph = Math.hypot(m[2], m[3]);
+    if (pw < 1 || ph < 1) return;                 // sub-point placement — a stamp, not a plan
+    const area = Math.abs(m[0] * m[3] - m[1] * m[2]);
+    if (area <= bestArea) return;
+    bestArea = area;
+    // max, not min: the conservative call. Over-reporting the scan's resolution
+    // clamps LESS, and an unclamped mask is only wasteful, never wrong.
+    bestPxPerPt = Math.max(w / pw, h / ph);
+  };
+  for (let i = 0; i < fns.length; i++) {
+    const fn = fns[i], args = A[i];
+    if (fn === OPS.save) stack.push(m.slice());
+    else if (fn === OPS.restore) { const p = stack.pop(); if (p) m = p; }
+    else if (fn === OPS.transform) m = mul(m, args);
+    else if (fn === OPS.paintFormXObjectBegin) { stack.push(m.slice()); if (args && args[0]) m = mul(m, args[0]); }
+    else if (fn === OPS.paintFormXObjectEnd) { const p = stack.pop(); if (p) m = p; }
+    else if (fn === OPS.paintImageXObject) { if (args) consider(args[1], args[2]); }
+    else if (fn === OPS.paintInlineImageXObject || fn === OPS.paintImageMaskXObject) {
+      const d = args && args[0];
+      if (d) consider(d.width, d.height);
+    }
+  }
+  const pageArea = pageW * pageH;
+  return { pxPerPt: bestPxPerPt, areaFrac: pageArea > 0 ? Math.min(1, bestArea / pageArea) : 0 };
+}
+
+/** `dpiLimited`/`scanDpi` are provenance, not inputs: the canvas passes the
+ *  rasterMaskScale verdict through so a trace made at the scan's own ceiling can
+ *  SAY so instead of silently measuring a blurrier drawing. */
+export interface RasterMaskOpts { t?: number; absInk?: number; bridge?: boolean; dpiLimited?: boolean; scanDpi?: number; }
+export interface RasterMaskObj extends MaskObj { dpiLimited?: boolean; scanDpi?: number; }
 
 /** RGBA → 8-bit gray (integer Rec.601) + the global mean (for polarity). */
 export function toGray(rgba: Uint8Array | Uint8ClampedArray, n: number): { gray: Uint8Array; mean: number } {
@@ -147,7 +292,7 @@ export function closeMask(mask: Uint8Array, mw: number, mh: number): Uint8Array 
 export function buildRasterMask(
   rgba: Uint8Array | Uint8ClampedArray, mw: number, mh: number, ws = 1,
   opts: RasterMaskOpts = {},
-): MaskObj {
+): RasterMaskObj {
   const n = mw * mh;
   const { gray } = toGray(rgba, n);
   // interior-only mean for the polarity call (see interiorMean) — a full-bleed
@@ -156,5 +301,9 @@ export function buildRasterMask(
   if (polarityMean < INVERT_MEAN) for (let i = 0; i < n; i++) gray[i] = 255 - gray[i]; // negative scan
   let mask = adaptiveThreshold(gray, mw, mh, opts.t, opts.absInk);
   if (opts.bridge !== false) mask = closeMask(mask, mw, mh);
-  return { mask, mw, mh, ws, softCount: 0 };
+  return {
+    mask, mw, mh, ws, softCount: 0,
+    ...(opts.dpiLimited ? { dpiLimited: true } : {}),
+    ...(opts.scanDpi ? { scanDpi: opts.scanDpi } : {}),
+  };
 }

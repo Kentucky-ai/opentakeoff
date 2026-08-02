@@ -1,0 +1,186 @@
+{
+ "cases": [
+  {
+   "caseName": "va-finish-plan",
+   "rows": [
+    {
+     "raw": "21 SF",
+     "printed_sf": 21,
+     "engine_sf": 7.0497280000009255,
+     "err": -0.6642986666666226,
+     "agreement": 8,
+     "seeds": 25,
+     "regions": 8,
+     "refused": 0,
+     "stable": false,
+     "context": [
+      "169",
+      "ROOM",
+      "VOLTAGE",
+      "OXYGEN",
+      "167",
+      "LOW"
+     ]
+    },
+    {
+     "raw": "16 SF",
+     "printed_sf": 16,
+     "engine_sf": 86.44697599999826,
+     "err": 4.402935999999891,
+     "agreement": 9,
+     "seeds": 25,
+     "regions": 6,
+     "refused": 0,
+     "stable": false,
+     "context": [
+      "134A",
+      "STORAGE",
+      "OFFICE",
+      "136",
+      "1",
+      "TOILET"
+     ]
+    },
+    {
+     "raw": "557 SF",
+     "printed_sf": 557,
+     "engine_sf": 605.8563839999935,
+     "err": 0.0877134362656974,
+     "agreement": 9,
+     "seeds": 25,
+     "regions": 12,
+     "refused": 0,
+     "stable": false,
+     "context": [
+      "CE-5",
+      "CORRIDOR",
+      "CPT",
+      "CG",
+      "-",
+      "1"
+     ]
+    },
+    {
+     "raw": "706 SF",
+     "printed_sf": 706,
+     "engine_sf": 262.4957439999993,
+     "err": -0.6281929971671397,
+     "agreement": 4,
+     "seeds": 25,
+     "regions": 15,
+     "refused": 1,
+     "stable": false,
+     "context": [
+      "CE-3",
+      "CORRIDOR",
+      "CG",
+      "CG",
+      "CG",
+      "CPT"
+     ]
+    },
+    {
+     "raw": "250 SF",
+     "printed_sf": 250,
+     "engine_sf": 229.29177600000182,
+     "err": -0.08283289599999273,
+     "agreement": 8,
+     "seeds": 25,
+     "regions": 12,
+     "refused": 2,
+     "stable": false,
+     "context": [
+      "CE-4",
+      "CORRIDOR",
+      "7",
+      "AE213",
+      "3",
+      "-"
+     ]
+    },
+    {
+     "raw": "411 SF",
+     "printed_sf": 411,
+     "engine_sf": 20.150890666667735,
+     "err": -0.950971068937548,
+     "agreement": 6,
+     "seeds": 25,
+     "regions": 14,
+     "refused": 0,
+     "stable": false,
+     "context": [
+      "CE-2",
+      "CORRIDOR",
+      "58'-5\"",
+      "3",
+      "-",
+      "P"
+     ]
+    },
+    {
+     "raw": "270 SF",
+     "printed_sf": 270,
+     "engine_sf": 151.7447679999987,
+     "err": -0.4379823407407456,
+     "agreement": 10,
+     "seeds": 25,
+     "regions": 7,
+     "refused": 0,
+     "stable": true,
+     "context": [
+      "T1",
+      "CORRIDOR",
+      "CONNECTING",
+      "VENDING"
+     ]
+    },
+    {
+     "raw": "189 SF",
+     "printed_sf": 189,
+     "engine_sf": 143.1960320000003,
+     "err": -0.24234903703703553,
+     "agreement": 10,
+     "seeds": 25,
+     "regions": 4,
+     "refused": 0,
+     "stable": true,
+     "context": [
+      "6",
+      "CORRIDOR",
+      "LINK"
+     ]
+    },
+    {
+     "raw": "640 SF",
+     "printed_sf": 640,
+     "engine_sf": 392.4202240000013,
+     "err": -0.38684339999999795,
+     "agreement": 10,
+     "seeds": 25,
+     "regions": 10,
+     "refused": 0,
+     "stable": true,
+     "context": [
+      "-",
+      "LOBBY",
+      "ELEVATOR"
+     ]
+    }
+   ],
+   "summary": {
+    "matched": 3,
+    "unstable": 6,
+    "total": 9,
+    "meanAbsErr": 0.35572492592592636,
+    "medianAbsErr": 0.38684339999999795,
+    "meanSignedErr": -0.35572492592592636,
+    "minErr": -0.4379823407407456,
+    "maxErr": -0.24234903703703553,
+    "uniformSign": true,
+    "fitFactor": 0.6391412527664148,
+    "fitSpread": 0.15360945862383354,
+    "verdict": "no single multiplier explains these (best fit ×0.639, log-sd 0.154 — too wide) — so this is not ONE scale error; but the spread is also too wide to rule a scale error out row by row, and the shared sign still suggests something systematic"
+   }
+  }
+ ]
+}
