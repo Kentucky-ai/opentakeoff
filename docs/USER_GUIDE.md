@@ -339,7 +339,7 @@ Labels drive the Report's *Group: Label* mode and its by-label export sections (
 
 `⌘Z` undoes, `⇧⌘Z` redoes — real undo, over a stack of up to 100 steps.
 
-**What's a step.** Creating shapes (a whole One-Click *Create* batch or an agent *Accept* batch is **one** step), every completed edit gesture (a vertex drag, an edge drag, a body move, a vertex delete), a reassign, a label change, a delete, a paste, a duplicate. A drag that ends where it started records nothing — zero motion is not an edit.
+**What's a step.** Creating shapes (a whole One-Click *Create* batch or an agent *Accept* batch is **one** step), every completed edit gesture (a vertex drag, an edge drag, a body move, a vertex delete), a reassign, a label change, a delete, a paste, a duplicate, and placing or lifting an **approval seal** (§9). A drag that ends where it started records nothing — zero motion is not an edit.
 
 **What undo restores.** Everything, exactly: geometry, quantities, stacking order, and provenance. Undoing an edit removes the *edited* flag it stamped; undoing a delete resurrects the shapes byte-for-byte at their original positions in the stack. Redo replays the step; making any new edit discards the redone future, as you'd expect.
 
@@ -349,7 +349,7 @@ Labels drive the Report's *Group: Label* mode and its by-label export sections (
 
 - **Deleting a condition.** The confirm says *"This can't be undone"* and means it: the cascade delete of its shapes doesn't record. A condition delete is a decision about the takeoff's structure, not a gesture (Revisions are your parachute — §11).
 - **Rescaling a sheet** and **restoring a revision** both **reset the stack**. Every recorded step froze quantities at the old scale (or the old timeline); undoing across that boundary would resurrect stale numbers, so the boundary clears it. A restore always banks the live takeoff first, so nothing is lost — it's just not on the `⌘Z` stack.
-- **Markups and condition edits.** The undo stack is for measured shapes. Moving a cloud or changing a waste % is a plain edit — change it back by hand.
+- **Markups and condition edits.** The undo stack is for measured shapes (and approval seals). Moving a cloud or changing a waste % is a plain edit — change it back by hand.
 
 One more distinction: **Undo last shape** (Edit menu) and `⌫`-with-nothing-in-progress are not `⌘Z` — they *delete the newest shape* on the sheets you're viewing. That delete records normally, so `⌘Z` can bring the shape back.
 
@@ -376,6 +376,14 @@ Every markup is editable after the fact: with Select, click to pick it, drag to 
 A **stamp** is a reusable annotation — one or several markup elements saved as a named group and placed with a click. The library seeds with flooring basics (**Plank / tile direction**, **Seam direction**, **Pattern origin**) and is browser-global: build it once, use it on every plan.
 
 Hit **Place** on a stamp and the canvas arms it: *click the plan to place it* — every click drops a copy until `Esc` or another tool. Placed stamps are normal, editable markups. Make your own: select any markup and **Save selected markup as stamp**, or **Import** an `.svg` vector symbol (or a stamp-library `.json`); **Export** shares your library the same way.
+
+### Approval stamps
+
+Agent marks are pencil; the estimator's stamp is ink. The **Approve** button in the toolbar arms the approval tool: **click a committed takeoff** to approve it — the seal records which shape it covers — or **click empty plan** to approve the sheet at that point. Click an existing seal to lift it. Unlike markup moves, placing and lifting are real undo steps: `⌘Z` takes the last one back, `⇧⌘Z` re-applies it.
+
+Two glyphs, deliberately unmistakable: the estimator's seal is a green circular ring reading **APPROVED**; an agent's verdict is a graphite diamond always labeled **AGENT**. Only the toolbar tool — a human hand — places the estimator seal: no agent, MCP, or import path mints one. Agent verdict marks are the same record family (`actor: "agent"`) and render, persist, and undo identically, but nothing ships that creates them yet — the door is built, not yet opened.
+
+Seals ride the project autosave and burn into the **Marked Set PDF** above the markups, and the cover gains a tally line — *N estimator-approved · N agent-marked* — so a PM reading the set knows exactly how much of it a person has looked at. The "Include markups" export checkbox never drops seals: approvals are ink, not annotations.
 
 ### RFIs
 

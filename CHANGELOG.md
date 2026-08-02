@@ -2,6 +2,14 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-02 — approval stamps: ink over pencil
+
+### Added
+- **Estimator approval stamp** — a new human-only canvas tool (**Approve**, in the toolbar's annotate cluster). Click a committed shape to approve it (the record carries the shape's id) or empty plan to approve the sheet at that point; click an existing seal to lift it. The seal is a circular APPROVED ring in the positive token ink, sheet-normalized so it prints proportionally, legible in light and dark view. Deliberately NOT exposed through MCP or the in-canvas agent — the mark means a person looked, so only a person's click can mint it.
+- **Agent verdict marks (data model + rendering)** — the same `approvals` record family with `actor: "agent"`, rendered as a clearly different glyph: a graphite diamond always labeled AGENT. Persistence, rendering, undo, and marked-set inclusion are fully wired; no tool creates one yet (MCP exposure is a separate track), so the ink/pencil doctrine stays enforceable at the surface where marks are minted.
+- **Real undo for seals** — placing and lifting are family-tagged commands on the SAME `⌘Z` stack as shape edits (pure apply in `web/src/lib/approvals.js`, every command returning its exact-restore inverse; the shapeCommands pattern one size smaller), so an approval interleaves with shape gestures in one history.
+- **Marked-set disclosure** — seals burn into the Marked Set PDF above the markups (rotation-safe, dark-aware), a sheet carrying only a seal still exports, and the legend cover gains a tally line: `Approval stamps: N estimator-approved · N agent-marked`. Drawn only when seals exist, so a seal-free export stays byte-identical; the "Include markups" checkbox never drops seals — approvals are ink, not annotations.
+
 ## 2026-08-01 — assign-from-schedule: the accurate path becomes the easy path; opentakeoff-mcp 0.9.19
 
 ### Added

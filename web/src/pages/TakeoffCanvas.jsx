@@ -109,6 +109,7 @@ import { requiredDensity as tileRequiredDensity } from "../lib/tiles";
 // nowIso stays imported for the non-shape records (markups, RFIs, conditions).
 import { nowIso, mintUuid } from "../lib/provenance.js";
 import { applyShapeCommand, geomSnapshot, vertsEqual, recordCommand } from "../lib/shapeCommands.js";
+import { applyApprovalCommand, sanitizeApprovals, approvalInk, APPROVAL_R } from "../lib/approvals.js";
 import { findCutoutParent, subtractCutout, recomposeCutouts } from "../lib/cutout.js";
 import { computeShapeMetrics, needsMetrics } from "../lib/shapeMetrics.js";
 import { fmtCheckLen, parseLenInput, checkVerdict, M_PER_FT, areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, heightVal, heightUnit, heightInputToFeet, heightStep, dimInputStr } from "../lib/units";
@@ -217,6 +218,7 @@ export default function TakeoffCanvas() {
   // matching `poly` (pending zone trace) reset, which has its own rule.
   const resetZone = () => { setZoneCheck(null); setZoneExpand(null); };
   const [markups, setMarkups] = useState([]);                // cloud/callout/text annotations (separate from measurement shapes)
+  const [approvals, setApprovals] = useState([]);            // approval seals — estimator APPROVED ink + agent AGENT marks (lib/approvals.js; its own family, not markups)
   const [markupDraft, setMarkupDraft] = useState(null);      // in-progress markup first point (cloud/callout/highlight)
   // Docked LEFT panel — one at a time, never overlapping: null | "markup" | "stamp" | "rfi".
   // The right-rail buttons switch tabs; the dock reflows the canvas (mirrors the
@@ -421,6 +423,14 @@ export default function TakeoffCanvas() {
     const entry = undoStackRef.current[undoStackRef.current.length - 1];
     if (!entry) return;
     undoStackRef.current = undoStackRef.current.slice(0, -1);
+    // approval entries share the ONE gesture history (family tag, recorded by
+    // dispatchApproval below) — same stacks, different pure apply + array.
+    if (entry.family === "approval") {
+      const res = applyApprovalCommand(approvals, entry.inverse);
+      setApprovals(res.approvals);
+      redoStackRef.current = [...redoStackRef.current, { family: "approval", cmd: res.inverse, inverse: entry.inverse }];
+      return;
+    }
     const res = applyShapeCommand(shapes, entry.inverse);
     setShapes(res.shapes);
     redoStackRef.current = [...redoStackRef.current, { cmd: res.inverse, inverse: entry.inverse }];
@@ -430,10 +440,32 @@ export default function TakeoffCanvas() {
     const entry = redoStackRef.current[redoStackRef.current.length - 1];
     if (!entry) return;
     redoStackRef.current = redoStackRef.current.slice(0, -1);
+    if (entry.family === "approval") {
+      const res = applyApprovalCommand(approvals, entry.cmd);
+      setApprovals(res.approvals);
+      undoStackRef.current = [...undoStackRef.current, { family: "approval", cmd: entry.cmd, inverse: res.inverse }];
+      return;
+    }
     const res = applyShapeCommand(shapes, entry.cmd);
     setShapes(res.shapes);
     undoStackRef.current = [...undoStackRef.current, { cmd: entry.cmd, inverse: res.inverse }];
     setSelVert(null);   // same stale-index guard as undo
+  }
+  // ── the approval-command wrapper ──────────────────────────────────────────
+  // dispatchShape one size smaller: pure apply (lib/approvals.js) +
+  // setApprovals + the SHARED undo/redo stacks, entries tagged family:
+  // "approval" so ⌘Z pops seals and shapes in one gesture history. No
+  // counters and no reset path — hydrate sets the array directly, and the
+  // shape replace-reset clears the shared stacks (approval entries included).
+  function dispatchApproval(cmd, { record = true } = {}) {
+    const res = applyApprovalCommand(approvals, cmd);
+    setApprovals(res.approvals);
+    if (record && res.inverse) {
+      const st = recordCommand(undoStackRef.current, { family: "approval", cmd, inverse: res.inverse });
+      undoStackRef.current = st.undo;
+      redoStackRef.current = st.redo;   // a new command discards the redone future
+    }
+    return res;
   }
   // selecting a shape clears any markup selection and vice-versa — one live
   // selection at a time (bidirectional mutual exclusivity). Passing null clears both.
@@ -1081,6 +1113,7 @@ export default function TakeoffCanvas() {
     // (pre-dating the id field) — seed a stable id + default rfi_id so the new
     // select / edit / delete / move / RFI-link flows (all keyed on m.id) work on them.
     setMarkups(Array.isArray(a.markups) ? a.markups.map((m) => ({ ...m, id: m.id || uid("mk"), rfi_id: m.rfi_id || "", condition_id: m.condition_id || "" })) : []);
+    setApprovals(sanitizeApprovals(a.approvals));   // additive — old saves load as []; load-gated so one corrupt seal can't wedge the render loop
     setRfis(Array.isArray(a.rfis) ? a.rfis : []);   // additive — old saves without rfis load as []
     // additive provenance_counters — unconditional set (the else-clear rule: a
     // snapshot load must not inherit the replaced project's deletion tallies).
@@ -1583,7 +1616,7 @@ export default function TakeoffCanvas() {
     // units is additive and diff-only (the sheet_levels convention): imperial —
     // the default — omits the key, so an old imperial project's payload is
     // byte-identical on round-trip; only a metric project carries the field.
-    return { project_name: projectName, ...(units === "metric" ? { units } : {}), ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}) })), conditions, ...(conditionColumns.length ? { condition_columns: conditionColumns } : {}), ...(shapeLabels.length ? { shape_labels: shapeLabels } : {}), ...(pinned.length ? { palette: pinned } : {}), shapes, markups, rfis, ...(rules.length ? { rules } : {}), sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, ...(Object.keys(sheetLevels).length ? { sheet_levels: sheetLevels } : {}), ...(Object.keys(provCounters.shapes_deleted).length ? { provenance_counters: provCounters } : {}) };
+    return { project_name: projectName, ...(units === "metric" ? { units } : {}), ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}) })), conditions, ...(conditionColumns.length ? { condition_columns: conditionColumns } : {}), ...(shapeLabels.length ? { shape_labels: shapeLabels } : {}), ...(pinned.length ? { palette: pinned } : {}), shapes, markups, rfis, ...(approvals.length ? { approvals } : {}), ...(rules.length ? { rules } : {}), sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, ...(Object.keys(sheetLevels).length ? { sheet_levels: sheetLevels } : {}), ...(Object.keys(provCounters.shapes_deleted).length ? { provenance_counters: provCounters } : {}) };
   };
   // Runtime restore of a saved payload — the Revisions panel's Restore lands
   // here. A runtime load (unlike mount) can interrupt work in
@@ -1669,7 +1702,7 @@ export default function TakeoffCanvas() {
     // state it serializes, so listing buildPayload (a new identity each render)
     // would fire a save on every render instead of only on a real change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, markups, rfis, rules, provCounters, sheetGroup, sheetLevels, lastGroup, openTabs, projectName, clientInfo, units]);
+  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, markups, approvals, rfis, rules, provCounters, sheetGroup, sheetLevels, lastGroup, openTabs, projectName, clientInfo, units]);
   useEffect(() => { saveStateRef.current = saveState; }, [saveState]);
 
   // Flush a pending debounced save on navigate-away (unmount), and warn before a
@@ -1990,7 +2023,9 @@ export default function TakeoffCanvas() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [tool, selectedId, selVert, selectedMarkupId, showMarkups, poly, proposal, ocSel, shapes, sheetKey, groupSig, scales, focusKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    // approvals is a real dep: ⌘Z's undoShapeCommand closes over it (the
+    // family branch), and a stale capture would undo against a pre-seal array.
+  }, [tool, selectedId, selVert, selectedMarkupId, showMarkups, poly, proposal, ocSel, shapes, approvals, sheetKey, groupSig, scales, focusKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // The typed "drawing says" value belongs to ONE completed two-point check.
   // The moment the measurement is no longer complete — third-click restart,
@@ -2090,6 +2125,7 @@ export default function TakeoffCanvas() {
     }
     else if (tool === "cloud" || tool === "callout" || tool === "text" || tool === "highlight") placeMarkup(p);
     else if (tool === "stamp") placeStamp(p);
+    else if (tool === "approve") placeApproval(p);
   }
   // Markups carry no verts_norm (cloud rect / callout at+target / text at), so
   // hitShape can't test them — this is a purpose-built bbox/point test in the
@@ -3471,7 +3507,9 @@ export default function TakeoffCanvas() {
     try {
       setCommitMsg("Building the marked set…");
       const exportMarkups = includeMarkups ? markups : [];
-      const keys = [...new Set([...shapes.map((s) => s.sheet_id), ...exportMarkups.map((m) => m.sheet_id)])];
+      // approval seals are ink, not markups — the include-markups checkbox
+      // never drops them, and a sheet carrying only a seal still exports
+      const keys = [...new Set([...shapes.map((s) => s.sheet_id), ...exportMarkups.map((m) => m.sheet_id), ...approvals.map((a) => a.sheet_id)])];
       const sheetMeta = keys.map((key) => {
         const { file, page } = parseSheetKey(key);
         return { key, file, page, label: tabLabel(key) };
@@ -3481,7 +3519,7 @@ export default function TakeoffCanvas() {
       const brand = resolveBranding({ ...(await loadBrandingSelection(projectIdFromUrl())), profiles: loadProfiles().profiles });
       const { bytes, filename } = await buildMarkedSetPdf({
         projectName, clientInfo, company: brand.company, credit: brand.credit, coverTitle: brand.coverTitle,
-        dark: darkMode, units, sheets: sheetMeta, shapes, markups: exportMarkups, rfis, conditions,
+        dark: darkMode, units, sheets: sheetMeta, shapes, markups: exportMarkups, approvals, rfis, conditions,
         getPage: async (file, pageNum) => (await docFor(file)).getPage(pageNum),
         loadPdfData: (file) => store.loadPdfData(file),
       });
@@ -3628,6 +3666,31 @@ export default function TakeoffCanvas() {
     }
     setCommitMsg(`Placed “${armedStamp.name}”.`);
     if (promptId) openTextEditor({ anchorStage: p, commit: (t) => updateMarkup(promptId, { text: (t || "").trim() }) });
+  }
+  // ── approval seal (ink, human-only) — the estimator's stamp. One click: on
+  // a committed shape → seal that shape (records its id); on empty plan →
+  // seal the sheet at that point. A click on an existing seal LIFTS it, so the
+  // tool is its own eraser. Both directions are real undo steps — family-
+  // tagged entries on the shared ⌘Z stack (dispatchApproval above).
+  // Deliberately NOT exposed through MCP or the in-canvas agent: machine
+  // verdicts arrive as actor "agent" records through data paths, never here.
+  function placeApproval(p) {
+    const tp = panelAt(p[0]);
+    if (!tp?.img?.w) return;
+    const nx = (p[0] - tp.xOffset) / tp.img.w, ny = p[1] / tp.img.h;
+    // lift first — distance in width-normalized units (the seal radius is
+    // normalized to sheet WIDTH, the bubble convention), topmost wins
+    const seal = [...approvals].reverse().find((a) => a.sheet_id === tp.key
+      && Math.hypot(nx - a.at[0], (ny - a.at[1]) * (tp.img.h / tp.img.w)) <= APPROVAL_R);
+    if (seal) { dispatchApproval({ type: "delete", ids: [seal.id] }); setCommitMsg("Approval seal lifted (⌘Z restores it)."); return; }
+    // topmost committed shape under the click — the selectAt scan, this panel only
+    const thr = 8 / tfRef.current.scale;
+    const shape = [...stackedShapes].reverse().find((s) => s.sheet_id === tp.key
+      && hitShapeC(s, p[0] - tp.xOffset, p[1], tp.img.w, tp.img.h, thr));
+    dispatchApproval({ type: "add", approvals: [{ actor: "estimator", sheet_id: tp.key, at: [nx, ny], ...(shape ? { shape_id: shape.id } : {}) }] });
+    setCommitMsg(shape
+      ? `Approved — seal on ${condById[shape.condition_id]?.finish_tag || "shape"} (⌘Z undoes).`
+      : "Sheet point approved — seal placed (⌘Z undoes).");
   }
   // Save the selected markup as a single-element stamp (the palette's define
   // flow). markupToStampElement re-expresses its coords as anchor-relative
@@ -5433,6 +5496,14 @@ export default function TakeoffCanvas() {
               </div>
             )}
           </span>
+          {/* Approval stamp — ink over pencil. Human-only by design: this
+              button is the ONLY way an estimator seal is minted (no MCP tool,
+              no agent path), so the mark means a person looked. */}
+          <button onClick={() => setTool((t) => (t === "approve" ? "select" : "approve"))}
+            title="Approval stamp — the estimator's ink. Click a committed takeoff to approve it (records the shape), or empty plan to approve the sheet at that point; click a seal to lift it. ⌘Z undoes. Human-only: no agent or MCP path places this mark."
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${tool === "approve" ? "var(--c-positive)" : "var(--ink-faint)"}`, background: tool === "approve" ? "var(--c-positive)" : "transparent", color: tool === "approve" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
+            <Icon name="approve" size={15} />Approve
+          </button>
           <ToolMenu
             title="Edit takeoffs"
             onOpenChange={onMenuDepth}
@@ -6221,6 +6292,36 @@ export default function TakeoffCanvas() {
                           <rect x={x * p.img.w - 3 / z} y={y * p.img.h - 14 / z} width={lw} height={20 / z} fill="rgba(255,247,237,.92)" stroke={mk} strokeWidth={(1 * w) / z} strokeDasharray={dash} rx={3 / z} />
                           <text x={x * p.img.w + 2 / z} y={y * p.img.h} fill="#0e1a2e" fontSize={12 / z} fontWeight="600">{m.text}</text>
                           {badge(x * p.img.w, y * p.img.h - 22 / z)}
+                        </g>
+                      );
+                    })}
+                    {/* approval seals — ink over pencil (lib/approvals.js): the
+                        estimator's APPROVED ring, the agent's AGENT diamond. Its
+                        own layer above markups and NOT gated on showMarkups — a
+                        seal is the record of review, so it never hides with the
+                        annotations. Sizes are sheet-normalized (the bubble
+                        convention) so seals print proportionally; inks are token
+                        literals via approvalInk (SVG attrs don't resolve CSS vars). */}
+                    {approvals.filter((a) => a.sheet_id === p.key).map((a) => {
+                      const cx = a.at[0] * p.img.w, cy = a.at[1] * p.img.h;
+                      const rad = APPROVAL_R * p.img.w;
+                      const ink = approvalInk(a.actor, darkMode);
+                      const backing = darkMode ? "rgba(12,15,20,.72)" : "rgba(255,255,255,.72)";
+                      if (a.actor === "agent") {
+                        const dia = (k) => `M${cx},${cy - rad * k} L${cx + rad * k},${cy} L${cx},${cy + rad * k} L${cx - rad * k},${cy} Z`;
+                        return (
+                          <g key={a.id} style={{ pointerEvents: "none" }}>
+                            <path d={dia(1)} fill={backing} stroke={ink} strokeWidth={rad * 0.07} strokeLinejoin="round" />
+                            <path d={dia(0.72)} fill="none" stroke={ink} strokeWidth={rad * 0.035} strokeLinejoin="round" />
+                            <text x={cx} y={cy} fill={ink} fontSize={rad * 0.3} fontWeight="700" letterSpacing={rad * 0.02} textAnchor="middle" dominantBaseline="central">AGENT</text>
+                          </g>
+                        );
+                      }
+                      return (
+                        <g key={a.id} style={{ pointerEvents: "none" }}>
+                          <circle cx={cx} cy={cy} r={rad} fill={backing} stroke={ink} strokeWidth={rad * 0.07} />
+                          <circle cx={cx} cy={cy} r={rad * 0.78} fill="none" stroke={ink} strokeWidth={rad * 0.035} />
+                          <text x={cx} y={cy} fill={ink} fontSize={rad * 0.26} fontWeight="700" letterSpacing={rad * 0.03} textAnchor="middle" dominantBaseline="central">APPROVED</text>
                         </g>
                       );
                     })}
