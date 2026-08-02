@@ -3578,7 +3578,19 @@ export default function TakeoffCanvas() {
       // pre-edit ring only when Create didn't already.
       origin: { method: "one_click_v1", seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, confidence: r.cf ?? 1, ...(r.cff?.length ? { confidence_factors: r.cff } : {}), ...(r.hf ? { hatch_filtered: true } : {}), ...(r.sl ? { gap_sealed_px: r.sl } : {}), ...(r.gap ? { gap_bridged_px: r.gap } : {}), ...(r.mp ? { min_pass_px: r.mp, min_pass_delta: r.mpd } : {}), ...(r.wg ? { door_wedges: r.wg } : {}), ...(r.rw ? { ring_interiors: r.rw } : {}), ...(r.rt ? { raster_traced: true } : {}), ...(r.sens != null ? { fill_sensitivity: r.sens } : {}), ...(r.touched ? { edited_before_create: true, proposed_verts_norm: r.poly0.map(([x, y]) => [x / tp.img.w, y / tp.img.h]) } : {}) },
     }));
-    dispatchShape({ type: "add", shapes: made });   // the creation gate — id/created_at minted by the command
+    const res = dispatchShape({ type: "add", shapes: made });   // the creation gate — id/created_at minted by the command
+    // ...and the new takeoff is SELECTED. Without this, Create left nothing
+    // selected, so the ⌫ that had been deleting the proposal a moment earlier
+    // suddenly did nothing and the only way to undo a bad fill was the Edit
+    // menu — the one moment in the flow where the keyboard stopped working.
+    // Same idiom as pasteClipboard: a plain add appends, so the minted shapes
+    // are the array's last N. Deliberately WITHOUT pasteClipboard's
+    // setTool("select") — the status message says "Click the next room" and
+    // it has to stay true. Selecting while One-Click is armed is safe: a
+    // shape's own handles only grab under tool === "select", and the
+    // proposal branch sits ahead of `selectedId` in the ⌫ chain, so the next
+    // fill's ⌫ still discards that proposal first.
+    if (res?.shapes?.length) selectShape(res.shapes[res.shapes.length - 1].id);
     const sf = prop.regions.reduce((n, r) => n + (r.kind === "neg" ? -r.area_sf : r.area_sf), 0);
     // condById is a render closure — a condition minted THIS utterance is only
     // in the live mirror, so fall through to it for the tag
