@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildMask, floodRegion, traceRegion, snapVertices, ringArea, rdpClosed,
-  extractVectorGeometry, classifyHatchSegs, markPolylineArcs, SEG_CURVE, SEG_CLIP, SEG_FILLONLY, SEG_POLYARC,
+  extractVectorGeometry, classifyHatchSegs, classifyOffsetAnnotationSegs, markPolylineArcs, SEG_CURVE, SEG_CLIP, SEG_FILLONLY, SEG_POLYARC,
   SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE, MASK_CURVE_BIT,
   floodRegionSealed, dilateHardMask, SEAL_RADII, sealRadiiFor, DOOR_SEAL_MAX_FT, SEAL_R_MAX, doorWedgeCapPx,
   type Point, type MaskObj,
@@ -629,6 +629,85 @@ test("classifyHatchSegs: extremal rows hard, wide member hard, curve exempt, cli
   assert.equal(soft[n], 0, "heavy-pen member protected");
   assert.equal(soft[n + 1], 0, "curve chord exempt");
   assert.equal(soft[n + 2], 1, "clip-only soft");
+});
+
+// ── offset annotation rings (oneclick.ts section 2c) ────────────────────────
+// Every case is the same geometry with one fact changed, because the rule is
+// exactly "heavier alongside on one side, open floor on the other" and each
+// test removes one clause of it. Units: mask px at ws = 1, 18 px/ft — so the
+// 2 ft offset cap is 36 px and the 2 ft minimum run length is 36 px.
+const A_MAX = 2 * 18, A_MIN = 0.25 * 18, A_LEN = 2 * 18;
+/** wall at y=`wy` (pen `wpen`) with a parallel run `off` px inboard (pen `rpen`),
+ *  both spanning x 100..500; returns [segs, meta] with the ring at index 1. */
+function offsetPair(off: number, wpen: number, rpen: number): [number[], Uint8Array] {
+  const segs = [100, 100, 500, 100, 100, 100 + off, 500, 100 + off];
+  const meta = new Uint8Array(2);
+  meta[0] = wpen << 4; meta[1] = rpen << 4;
+  return [segs, meta];
+}
+
+test("offset annotation: a hairline run inboard of a heavier wall is soft", () => {
+  const [segs, meta] = offsetPair(27, 2, 1);          // 1.5 ft inboard, pen 1 vs 2
+  const soft = classifyOffsetAnnotationSegs(segs, meta, 1, A_MAX, A_MIN, A_LEN);
+  assert.equal(soft[1], 1, "the hairline ring classifies");
+  assert.equal(soft[0], 0, "the wall does not — what it shadows is LIGHTER");
+});
+
+test("offset annotation: same pen is no evidence, so nothing is softened", () => {
+  const [segs, meta] = offsetPair(27, 1, 1);
+  const soft = classifyOffsetAnnotationSegs(segs, meta, 1, A_MAX, A_MIN, A_LEN);
+  assert.deepEqual([...soft], [0, 0], "wall and ring drawn alike cannot be told apart");
+});
+
+test("offset annotation: past the offset cap the pair is unrelated linework", () => {
+  const [segs, meta] = offsetPair(A_MAX + 4, 2, 1);
+  assert.equal(classifyOffsetAnnotationSegs(segs, meta, 1, A_MAX, A_MIN, A_LEN)[1], 0);
+});
+
+test("offset annotation: a wall's own two faces are below the minimum offset", () => {
+  const [segs, meta] = offsetPair(2, 2, 1);           // 2 px apart — one drawn wall
+  assert.equal(classifyOffsetAnnotationSegs(segs, meta, 1, A_MAX, A_MIN, A_LEN)[1], 0);
+});
+
+test("offset annotation: a run with something alongside on BOTH sides stays hard", () => {
+  // the partition-bank shape: hairline 27 px inboard of a heavy shell, but with
+  // a sibling hairline 22 px further in. Only the far side being EMPTY makes a
+  // ring a ring; this is what keeps repetitive real architecture measurable.
+  const [segs, meta] = offsetPair(27, 3, 1);
+  segs.push(100, 149, 500, 149);
+  const m3 = new Uint8Array(3); m3[0] = meta[0]; m3[1] = meta[1]; m3[2] = 1 << 4;
+  assert.equal(classifyOffsetAnnotationSegs(segs, m3, 1, A_MAX, A_MIN, A_LEN)[1], 0);
+});
+
+test("offset annotation: a short stroke is not a wall-spanning run", () => {
+  const segs = [100, 100, 500, 100, 100, 127, 130, 127];   // 30 px < 2 ft
+  const meta = new Uint8Array(2); meta[0] = 2 << 4; meta[1] = 1 << 4;
+  assert.equal(classifyOffsetAnnotationSegs(segs, meta, 1, A_MAX, A_MIN, A_LEN)[1], 0);
+});
+
+test("offset annotation: a heavier neighbour that only CROSSES nearby is not alongside", () => {
+  const segs = [100, 100, 500, 100, 100, 127, 500, 127];
+  const meta = new Uint8Array(2); meta[0] = 2 << 4; meta[1] = 1 << 4;
+  segs[0] = 100; segs[2] = 180;                      // shorten the wall to 20% overlap
+  assert.equal(classifyOffsetAnnotationSegs(segs, meta, 1, A_MAX, A_MIN, A_LEN)[1], 0);
+});
+
+test("offset annotation: curve, clip and fill-only strokes are exempt", () => {
+  for (const bit of [SEG_CURVE, SEG_CLIP, SEG_FILLONLY]) {
+    const [segs, meta] = offsetPair(27, 2, 1);
+    meta[1] |= bit;
+    assert.equal(classifyOffsetAnnotationSegs(segs, meta, 1, A_MAX, A_MIN, A_LEN)[1], 0, `bit ${bit} exempt`);
+  }
+});
+
+test("offset annotation: an unscaled sheet gets no annotation plane at all", () => {
+  // buildMask only runs the classifier when mppf > 0 — every threshold here is
+  // a physical distance, and guessing them in raw px would soften on no evidence
+  const [segs, meta] = offsetPair(27, 2, 1);
+  const mo = buildMask(segs, 600, 400, 600, meta);     // no pxPerFt
+  const withScale = buildMask(segs, 600, 400, 600, meta, 18);
+  assert.equal(mo.softCount, 0, "scale unknown ⇒ nothing softened");
+  assert.ok(withScale.softCount > 0, "scale known ⇒ the ring is soft");
 });
 
 // ── polyline arc detection + periodicity classification (issue #184 item C) ─

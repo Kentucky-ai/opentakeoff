@@ -256,8 +256,8 @@
    "probeName": "patient-room-137",
    "expect": "golden",
    "status": "ok",
-   "iou": 0.9958630788943804,
-   "sfErr": 0.0001655992387951975,
+   "iou": 0.9995130413610493,
+   "sfErr": 0.0000907872764549977,
    "leak": false,
    "refused": false,
    "confidence": 0.93,
@@ -382,7 +382,7 @@
  ],
  "aggregate": {
   "goldenProbes": 21,
-  "meanIoU": 0.9991266017471044,
+  "meanIoU": 0.9993004094836125,
   "floorIoU": 0.9903403448587162,
   "refusalRate": 0,
   "leakRate": 0,
@@ -406,9 +406,9 @@
   {
    "caseName": "va-finish-plan",
    "probes": 8,
-   "sumGoldenSF": 2580.2223456790225,
-   "sumEngineSF": 2580.3752807589763,
-   "ratio": 1.0000592720546777,
+   "sumGoldenSF": 2614.3091975308735,
+   "sumEngineSF": 2614.4159740923087,
+   "ratio": 1.0000408431265653,
    "overlapSF": 0,
    "maxSfErr": 0.0006276338205593411,
    "maxSfAbs": 0.050546087710870324,
@@ -887,9 +887,9 @@
    ],
    "statusAgree": true,
    "iouByRes": [
-    0.9994893120303494,
-    0.8665601858574126,
-    0.8092293054234063
+    0.999694357845834,
+    0.9480418068236425,
+    0.8811152630066111
    ],
    "subFloorRes": [
     0.75,
@@ -1305,9 +1305,9 @@
   {
    "caseName": "va-finish-plan",
    "probeName": "patient-room-137",
-   "onVertex": 42,
-   "verts": 43,
-   "cov": 0.9767441860465116
+   "onVertex": 27,
+   "verts": 30,
+   "cov": 0.9
   },
   {
    "caseName": "va-finish-plan",
@@ -1511,10 +1511,10 @@
    {
     "caseName": "va-finish-plan",
     "probeName": "patient-room-137",
-    "iou": 0.9552757749881052,
-    "sfErr": 0.039509780388077946,
-    "prodIou": 0.9958630788943804,
-    "prodSfErr": 0.0001655992387951975
+    "iou": 0.9702490669510244,
+    "sfErr": 0.026846036672001906,
+    "prodIou": 0.9995130413610493,
+    "prodSfErr": 0.0000907872764549977
    },
    {
     "caseName": "va-finish-plan",
@@ -1573,7 +1573,7 @@
     "prodSfErr": 0.00015917263913391673
    }
   ],
-  "meanIoU": 0.9686618631480247,
+  "meanIoU": 0.9693748770510208,
   "floorIoU": 0.8602150537634409,
   "worstSfErr": 0.07834835470271602,
   "crossFloorIoU": 0.9618671926364234,
