@@ -24,7 +24,8 @@ import {
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
   findTextOutput, editMaterialsOutput, editConditionOutput, undoLastOutput,
   exportReportOutput, sheetGraphOutput, resolveTagOutput, findScheduleOutput,
-  symbolSweepOutput, annotateOutput,
+  symbolSweepOutput, annotateOutput, listAnnotationsOutput,
+  markVerdictOutput, deleteVerdictOutput,
 } from "../src/outputs.ts";
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
@@ -54,6 +55,9 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   find_schedule: z.object(findScheduleOutput),
   symbol_sweep: z.object(symbolSweepOutput),
   annotate: z.object(annotateOutput),
+  list_annotations: z.object(listAnnotationsOutput),
+  mark_verdict: z.object(markVerdictOutput),
+  delete_verdict: z.object(deleteVerdictOutput),
 };
 
 async function pair() {
@@ -557,6 +561,43 @@ test("annotate dimension: reply validates against the schema, length rides the r
   const dim = await callOk(client, "annotate", { sheet: KEY, type: "dimension", from: [100, 100], to: [460, 100] });
   assert.deepEqual(z.object(annotateOutput).parse(dim), dim, "schema states every returned field");
   assert.equal(dim.length_lf, 10);
+});
+
+// verdict marks (#176): both directions for the two new tools plus the
+// extended list_annotations, with the unstripped deepEqual proving the
+// schemas state EVERY field the tools actually return.
+test("mark_verdict / delete_verdict / list_annotations verdicts: replies validate and round-trip the schema unstripped", async () => {
+  const client = await pair();
+  await callOk(client, "load_plan", { path: PLAN });
+  await callOk(client, "set_scale", { sheet: KEY, use_detected: true });
+  const poly = await callOk(client, "measure_polygon", { sheet: KEY, verts: [[100, 100], [460, 100], [460, 460], [100, 460]], condition: "CPT-1" });
+
+  const onShape = await callOk(client, "mark_verdict", { shape_id: poly.shape_id, text: "checked against walls" });
+  assert.deepEqual(z.object(markVerdictOutput).parse(onShape), onShape, "schema states every returned field");
+  assert.equal(onShape.actor, "agent");
+  assert.equal(onShape.condition, "CPT-1");
+  const onSheet = await callOk(client, "mark_verdict", { sheet: KEY, at: [900, 900] });
+  assert.deepEqual(z.object(markVerdictOutput).parse(onSheet), onSheet);
+
+  const listed = await callOk(client, "list_annotations", {});
+  assert.deepEqual(z.object(listAnnotationsOutput).parse(listed), listed, "verdicts[] and verdict_count are fully stated");
+  assert.equal(listed.verdict_count, 2);
+
+  const del = await callOk(client, "delete_verdict", { verdict_id: onSheet.id });
+  assert.deepEqual(z.object(deleteVerdictOutput).parse(del), del);
+
+  // semantic misuse is a clean isError surface
+  await callErr(client, "mark_verdict", {});                                              // no target
+  await callErr(client, "mark_verdict", { shape_id: poly.shape_id, sheet: KEY, at: [1, 1] }); // both targets
+  await callErr(client, "mark_verdict", { shape_id: "shp-nope" });                        // unknown shape
+  await callErr(client, "delete_verdict", { verdict_id: "apr-nope" });                    // unknown record
+
+  // schema violations are -32602, session unharmed
+  await callViolation(client, "mark_verdict", { sheet: KEY, at: [100] });                 // one coordinate is not a point
+  await callViolation(client, "mark_verdict", { shape_id: 42 });                          // wrong type
+  await callViolation(client, "delete_verdict", {});                                      // missing id
+  const alive = await callOk(client, "list_annotations", {});
+  assert.equal(alive.verdict_count, 1, "the violations changed nothing");
 });
 
 // 0.9.18 — assign-from-schedule's output contract. The deepEqual is the

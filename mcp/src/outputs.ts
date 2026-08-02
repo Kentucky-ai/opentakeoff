@@ -248,6 +248,7 @@ export const exportTakeoffOutput = {
     origin: z.object({}).passthrough().optional().describe("Provenance: method (manual|one_click_v1), actor (omitted=human, 'agent'=MCP/automation), reviewed (human affirmed at an explicit gate), assignment (where the finish tag came from — {source: 'schedule', room_tag, surface, schedule_sheet} when the room's own schedule row decided it, {source: 'asserted'} when the agent chose; stamped on every agent commit), and correction fields (edited, edited_before_create, copied, proposed_verts_norm, edits)"),
   }).passthrough()),
   markups: z.array(z.unknown()),
+  approvals: z.array(z.unknown()).optional().describe("Approval-family records (#176) — the estimator's APPROVED seals and the agent's verdict marks {id, actor, ts, sheet_id, at:[nx,ny], shape_id?, text?}. Present only when any exist (the canvas payload's own convention), so a verdict-free export stays byte-identical"),
   sheet_group: z.array(z.unknown()),
   last_group: z.array(z.unknown()),
   sheet_tabs: z.array(z.unknown()),
@@ -329,9 +330,9 @@ export const undoLastOutput = {
   undone: z.number().int().describe("Steps actually reversed"),
   steps: z.array(z.object({
     seq: z.number().int(),
-    op: z.enum(["commit", "edit", "delete", "materials", "condition"]),
+    op: z.enum(["commit", "edit", "delete", "materials", "condition", "approval"]),
     tool: z.string().describe("The tool call this step came from"),
-    shapes: z.number().int().describe("Shapes affected by reversing this step — 0 for a materials step (it restores a condition's supporting-materials rows, not shapes) and for a condition step (it restores the waste/multiplier pair)"),
+    shapes: z.number().int().describe("Shapes affected by reversing this step — 0 for a materials step (it restores a condition's supporting-materials rows, not shapes), for a condition step (it restores the waste/multiplier pair), and for an approval step (it re-seats or removes a verdict mark)"),
   })).describe("Newest first"),
   shape_count: z.number().int().describe("Committed shapes after the undo"),
   remaining: z.number().int().describe("Steps still available to undo"),
@@ -419,9 +420,10 @@ export const exportReportOutput = {
 export const exportMarkedPdfOutput = {
   path: z.string().describe("Absolute path of the written marked-set PDF — hand this to the user"),
   pages: z.number().int().describe("Legend cover + one page per marked sheet"),
-  sheets_marked: z.number().int().describe("Sheets carrying shapes or annotations — unmarked sheets are omitted"),
+  sheets_marked: z.number().int().describe("Sheets carrying shapes, annotations, or approval marks — unmarked sheets are omitted"),
   shapes_drawn: z.number().int(),
   annotations_drawn: z.number().int(),
+  approvals_drawn: z.number().int().describe("Approval-family glyphs burned in (#176) — estimator APPROVED rings + agent AGENT diamonds; the cover tallies the split when any exist"),
   note: z.string(),
 };
 
@@ -559,10 +561,44 @@ export const annotateOutput = {
   note: z.string(),
 };
 
+// ── verdict marks (#176) — the agent half of the approval family ─────────────
+/** One approval-family record as the inventory reports it. actor is whose
+ * mark it is: only "agent" records are mintable or liftable over MCP — the
+ * estimator's ring appears here solely when a file carried it in. */
+const verdictRow = z.object({
+  id: z.string(),
+  actor: z.enum(["estimator", "agent"]).describe('"estimator" = the human APPROVED ring (ink — import-borne here, never minted over MCP), "agent" = the AGENT diamond'),
+  sheet: z.string(),
+  at: z.tuple([z.number(), z.number()]).optional().describe("Render anchor (image px) — absent only when the record rides a sheet from a file this session hasn't loaded (#152)"),
+  ts: z.string().optional().describe("ISO-8601 mint time"),
+  shape_id: z.string().optional().describe("Present when the verdict targets a committed shape — WHAT was marked, not where it draws"),
+  condition: z.string().describe("The targeted shape's finish tag, resolved — '' for sheet-point marks"),
+  text: z.string().optional().describe("The optional short note riding the record"),
+});
+
+export const markVerdictOutput = {
+  id: z.string().describe('The minted record id ("apr-…")'),
+  actor: z.literal("agent").describe("Always agent — this tool is structurally incapable of minting the estimator's seal"),
+  sheet: z.string(),
+  at: z.tuple([z.number(), z.number()]).optional().describe("Where the AGENT diamond renders (image px) — absent only when the marked shape rides a sheet from a file this session hasn't loaded (#152)"),
+  ts: z.string().describe("ISO-8601 mint time"),
+  shape_id: z.string().optional().describe("Shape mode: the committed shape this verdict is about"),
+  condition: z.string().optional().describe("Shape mode: the marked shape's finish tag, resolved"),
+  text: z.string().optional(),
+  note: z.string(),
+};
+
+export const deleteVerdictOutput = {
+  deleted: z.string().describe("The lifted record's id"),
+  verdicts_remaining: z.number().int().describe("Approval-family records still on the takeoff (both actors)"),
+};
+
 export const listAnnotationsOutput = {
   annotations: z.array(annotationRow),
   count: z.number().int(),
   unattached: z.number().int().describe("How many carry no condition — candidates for link_annotation"),
+  verdicts: z.array(verdictRow).describe("Approval-family records (#176) under the same filters: sheet applies directly; a condition filter reaches a verdict THROUGH its target shape (a sheet-point mark carries no scope and drops out)"),
+  verdict_count: z.number().int(),
 };
 
 export const linkAnnotationOutput = {

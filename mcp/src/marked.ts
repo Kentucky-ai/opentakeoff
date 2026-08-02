@@ -64,7 +64,9 @@ export interface MarkedPdfOpts {
 export async function exportMarkedPdf(session: Session, opts: MarkedPdfOpts) {
   const { file, filePath } = session;
   if (!file || !filePath) throw new UserError("No plan loaded — call load_plan first.");
-  if (!session.shapes.length && !session.markups.length) {
+  // a sheet carrying only an approval mark still exports (markedset.js's own
+  // rule — a seal is work on paper), so verdicts count toward "anything to mark"
+  if (!session.shapes.length && !session.markups.length && !session.approvals.length) {
     throw new UserError("Nothing to mark yet — commit shapes (one_click / detect_rooms / measure_polygon / measure_line with a condition) or annotate before exporting the marked set.");
   }
 
@@ -122,6 +124,10 @@ export async function exportMarkedPdf(session: Session, opts: MarkedPdfOpts) {
     sheets,
     shapes: session.shapes,
     markups: session.markups,
+    // approval marks (#176): the estimator's APPROVED rings and the agent's
+    // AGENT diamonds burn in above the markups, and the cover tallies the
+    // ink/pencil split — the same builder path the canvas's MARKED SET uses
+    approvals: session.approvals,
     rfis: [],
     conditions: session.conditions,
     getPage,
@@ -134,13 +140,14 @@ export async function exportMarkedPdf(session: Session, opts: MarkedPdfOpts) {
   const outPath = path.resolve(opts.path ?? path.join(path.dirname(filePath), `${base} - marked set.pdf`));
   await writeFile(outPath, bytes);
 
-  const markedKeys = new Set([...session.shapes.map((s) => s.sheet_id), ...session.markups.map((m) => m.sheet_id)]);
+  const markedKeys = new Set([...session.shapes.map((s) => s.sheet_id), ...session.markups.map((m) => m.sheet_id), ...session.approvals.map((a) => a.sheet_id)]);
   return {
     path: outPath,
     pages: 1 + markedKeys.size,
     sheets_marked: markedKeys.size,
     shapes_drawn: session.shapes.length,
     annotations_drawn: session.markups.length,
+    approvals_drawn: session.approvals.length,
     note: "The takeoff burned into the plan sheets, with a legend cover — hand this to the user to review. To revise in the app, import the export_takeoff payload; agent shapes arrive as pencil proposals there until accepted.",
   };
 }

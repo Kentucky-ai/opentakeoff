@@ -17,6 +17,7 @@
 // idempotent — an accepted shape does not come back as a second pencil copy).
 
 import { ANN_SCHEMA } from "./store.js";
+import { sanitizeApprovals } from "./approvals.js";
 
 /** Parse + gate an import file's text. Throws with copy the message bar shows
  * verbatim — "Couldn't…" is the canvas's danger convention (isDangerMsg), so
@@ -73,8 +74,10 @@ export function mergeTakeoffImport(current, imported, knownFiles = null) {
   // Nothing measured or marked up yet → the import IS the project. Seeded
   // default conditions and an untouched tab list are not user work, so they
   // don't block the clean-replace path (a pre-traced calibration would be rare
-  // enough here that predictability wins over preserving it).
-  if (!arr(cur.shapes).length && !arr(cur.markups).length) {
+  // enough here that predictability wins over preserving it). Approval seals
+  // DO block it (#176): a seal is ink someone placed — operator state wins,
+  // so a sealed-but-untraced project merges instead of being replaced.
+  if (!arr(cur.shapes).length && !arr(cur.markups).length && !arr(cur.approvals).length) {
     // …except the VIEW. An MCP export typically carries empty tab/group
     // state (the session has no such concept), and adopting an empty list
     // would close the operator's open sheet and bounce them to the gallery
@@ -117,6 +120,13 @@ export function mergeTakeoffImport(current, imported, knownFiles = null) {
   const addedMarkups = arr(imported.markups).filter((m) => m && typeof m === "object" && (!m.id || !markupIds.has(m.id)));
   const rfiIds = new Set(arr(cur.rfis).map((r) => r?.id).filter(Boolean));
   const addedRfis = arr(imported.rfis).filter((r) => r && typeof r === "object" && r.id && !rfiIds.has(r.id));
+  // ── approvals (#176): transport, not minting ──────────────────────────────
+  // The markup rule (append new ids, skip ones already here) behind the same
+  // load gate the canvas hydrate runs — an estimator seal arriving by file
+  // stays an estimator seal (the actor field is the authority), and a corrupt
+  // record is dropped here rather than wedging the render loop later.
+  const approvalIds = new Set(arr(cur.approvals).map((a) => a?.id).filter(Boolean));
+  const addedApprovals = sanitizeApprovals(imported.approvals).filter((a) => !approvalIds.has(a.id));
 
   // ── scales: the operator's calibration wins per sheet ────────────────────
   const sheets = [...arr(cur.sheets)];
@@ -135,6 +145,7 @@ export function mergeTakeoffImport(current, imported, knownFiles = null) {
     shapes: [...arr(cur.shapes), ...addedShapes],
     markups: [...arr(cur.markups), ...addedMarkups],
     ...(addedRfis.length ? { rfis: [...arr(cur.rfis), ...addedRfis] } : {}),
+    ...(addedApprovals.length ? { approvals: [...arr(cur.approvals), ...addedApprovals] } : {}),
     sheets,
   };
   return {

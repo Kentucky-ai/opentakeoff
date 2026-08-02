@@ -12,7 +12,7 @@ import {
   mergeTakeoffImport as mergeJs,
 } from "../../web/src/lib/importTakeoff.js";
 import { UserError } from "./format.ts";
-import type { Session, Shape, Condition, Markup } from "./session.ts";
+import { sanitizeApprovals, type Session, type Shape, type Condition, type Markup } from "./session.ts";
 
 // untyped canvas JS — typed facades state the contract at the boundary
 const parseTakeoffImport = parseJs as unknown as (text: string) => Record<string, unknown>;
@@ -46,6 +46,12 @@ export async function importTakeoff(session: Session, filePath: string) {
   session.conditions = (payload.conditions as Condition[]) ?? [];
   session.shapes = (payload.shapes as Shape[]) ?? [];
   session.markups = (payload.markups as Markup[]) ?? [];
+  // approvals (#176): transport, not minting — an estimator seal arriving by
+  // file stays an estimator seal (the actor field is the authority; only
+  // mark_verdict MINTS, and only agent). The same load gate the canvas
+  // hydrate runs (sanitizeApprovals) applies before anything lands, so one
+  // corrupt record in a hand-edited file can't wedge the session.
+  session.approvals = sanitizeApprovals(payload.approvals);
   // scales: mergeTakeoffImport already applied "the session's calibration wins
   // per sheet" — adopt the merged rows onto sheets this document actually has
   for (const row of (payload.sheets as { sheet_id: string; units_per_px: number; scale_source?: string }[]) ?? []) {
@@ -57,8 +63,9 @@ export async function importTakeoff(session: Session, filePath: string) {
   }
 
   // the imported SHAPES journal as one reversible gesture; adopted conditions,
-  // scales, and annotations stay on undo (documented on the tool) — an import
-  // is a document merge, not a trace, and shapes are the half that moves totals
+  // scales, annotations, and approval marks stay on undo (documented on the
+  // tool) — an import is a document merge, not a trace, and shapes are the
+  // half that moves totals
   const addedIds = session.shapes.filter((s) => !prevShapeIds.has(s.id)).map((s) => s.id);
   if (addedIds.length) session.journalCommit("import_takeoff", addedIds);
 

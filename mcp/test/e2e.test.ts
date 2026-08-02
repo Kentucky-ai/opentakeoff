@@ -42,12 +42,21 @@ test("e2e: load → set_scale(detected) → one_click × 4 rooms → summary →
   await call("set_scale", { sheet: KEY, use_detected: true });
 
   let total = 0;
+  const shapeIds: string[] = [];
   for (const [room, x, y] of ROOMS) {
     const r = await call("one_click", { sheet: KEY, x, y, condition: "CPT-1" });
     assert.ok(r.shape_id, `${room} committed`);
     assert.ok(approx(r.area_sf, 438.6, 0.05), `${room} ≈ 438.6 SF, got ${r.area_sf}`);
     total += r.area_sf;
+    shapeIds.push(r.shape_id);
   }
+
+  // the agent signs its own work (#176): a verdict mark on the first room —
+  // actor is agent by construction, and it must not move a single quantity
+  const verdict = await call("mark_verdict", { shape_id: shapeIds[0], text: "traced and checked" });
+  assert.match(verdict.id, /^apr-/);
+  assert.equal(verdict.actor, "agent");
+  assert.equal(verdict.condition, "CPT-1");
 
   const summary = await call("takeoff_summary");
   assert.equal(summary.conditions.length, 1);
@@ -76,6 +85,14 @@ test("e2e: load → set_scale(detected) → one_click × 4 rooms → summary →
       assert.deepEqual(shp.origin.assignment, { source: "asserted" }, "an agent commit that stated no source asserted the tag — stamped centrally, never omitted");
       for (const [vx, vy] of shp.verts_norm) assert.ok(vx >= 0 && vx <= 1 && vy >= 0 && vy <= 1);
     }
+    // the verdict rides the payload the app hydrates — actor agent, target recorded
+    assert.equal(exported.approvals.length, 1);
+    assert.deepEqual(
+      { actor: exported.approvals[0].actor, shape_id: exported.approvals[0].shape_id, text: exported.approvals[0].text },
+      { actor: "agent", shape_id: shapeIds[0], text: "traced and checked" },
+    );
+    const [anx, any_] = exported.approvals[0].at;
+    assert.ok(anx > 0 && anx < 1 && any_ > 0 && any_ < 1, "anchor stored normalized, like verts_norm");
   } finally {
     await rm(out, { force: true });
   }

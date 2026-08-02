@@ -128,8 +128,10 @@ includes document text, shape vertices, or result payload content.
 | `list_shapes` | The **mid-session inventory**: every committed shape's id, sheet, condition, role, quantities, review state, and assignment verdict (`schedule` \| `asserted` — where its finish tag came from) in one compact read — the ids `edit_shape`/`delete_shape` assume you have, without pulling the whole `export_takeoff` payload. Filters by sheet/condition narrow; empty is a result, not an error. |
 | `undo_last` | Step back over your own last `n` mutations, newest first. Exact inverses: a commit is removed, an edit restored verbatim, a delete re-inserted where it was, a materials edit's whole array restored, a condition edit's waste/multiplier pair restored. A whole `detect_rooms` sweep is **one** step. |
 | `annotate` | Place a note ABOUT the work — cloud/highlight (`rect`), text (`at`), callout (`at` + `target`), **arrow** (`from` + `to` — plank/seam direction), **bubble** (`at` + optional `r` — keynote circle, centered text), **dimension** (`from` + `to` — a dimension line with end ticks, labelled with the measured length at the sheet's scale; the one annotation the scale gate applies to — an unscaled sheet refuses like the measure tools). Attach to a condition and it wears that scope's colour on the canvas and in the marked set. No review gate: notes are not geometry. |
-| `list_annotations` | Every annotation with its condition RESOLVED to a finish tag, coordinates back in image px; filter by sheet/condition. `unattached` counts the link_annotation candidates. |
+| `list_annotations` | Every annotation with its condition RESOLVED to a finish tag, coordinates back in image px; filter by sheet/condition. `unattached` counts the link_annotation candidates. `verdicts[]` is the approval family's inventory — every mark with its actor stated, a condition filter reaching a verdict through its target shape. |
 | `link_annotation` | Attach an existing annotation to a condition (or detach with an empty tag) — the canvas's Attach/Detach control, reachable by an agent. |
+| `mark_verdict` | The **agent's pencil-signature** on work it checked — the agent half of the approval family (#176). Mints the graphite AGENT diamond, and structurally nothing else: the tool takes no actor input, so the estimator's APPROVED ring stays behind the canvas's human-only Approve tool. Target a committed `shape_id` (anchored on the shape — a room's centroid, a run's midpoint — with the id recorded as provenance) or a `sheet` + `at` point; optional short `text` rides the record. Touches no quantity; renders on the canvas and in the marked set, whose cover tallies the split (`Approval stamps: N estimator-approved · M agent-marked`); rides the annotations payload through `export_takeoff`/`import_takeoff` and the app's own saves. One mark per shape. |
+| `delete_verdict` | Lift an agent verdict mark by id. Agent marks only — the estimator's seal is human ink and is refused, the same line `edit_shape` holds on reviewed shapes. `undo_last` re-seats a lifted mark exactly where it was. |
 | `read_sheet_text` | Positioned page text (image px), optionally restricted to a region — title blocks, room labels, finish schedules. |
 | `find_text` | **Locate** a known string — the complement to `read_sheet_text` (which returns what a region *says*; this finds *where* a string sits). Case-insensitive substring match per pdf.js text run; each hit's center feeds straight into `one_click`'s seed. |
 | `sheet_graph` | The plan-set INDEX (#87): every sheet's role with evidence, the schedule tables found, every room tag with its stacked name, the detail callouts — how an agent decides WHAT to measure without a human enumerating rooms. |
@@ -152,7 +154,10 @@ Two rules hold the surface honest:
 - **Ink is not pencil.** A shape carrying `origin.reviewed === true` is work a
   human affirmed, and no agent verb touches it. This server has no review gate
   of its own, so the guard is inert here — it is the contract that makes the
-  surface safe to port to a host that *does* have one.
+  surface safe to port to a host that *does* have one. The approval family
+  holds the same line at the mark itself: `mark_verdict` can mint only the
+  AGENT diamond (there is no actor input to misuse), and `delete_verdict`
+  refuses the estimator's APPROVED seal outright.
 - **Self-revision is not correction.** `edit_shape` bumps `origin.agent_edits`
   and touches nothing in the human-correction vocabulary (`edited`, `edits`,
   `proposed_verts_norm`). Those fields mean *a human corrected the machine*;
