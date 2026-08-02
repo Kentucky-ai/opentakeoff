@@ -20,14 +20,30 @@ playground.
 ```bash
 cd server
 pip install -r requirements.txt
-uvicorn app:app --reload --port 8000
-# or: docker build -t opentakeoff-ai . && docker run -p 8000:8000 opentakeoff-ai
+OT_SANDBOX_API_KEY=<any-secret> uvicorn app:app --reload --port 8000
+# or: docker build -t opentakeoff-ai . && docker run -p 8000:8000 -e OT_SANDBOX_API_KEY=<any-secret> opentakeoff-ai
 ```
 
 Then `GET http://localhost:8000/health` → `{"ok": true, "adapter": "heuristic (no model)"}`.
 
 In dev, the web app proxies `/ai/*` to `localhost:8000` (see `web/vite.config.js`),
-so browser calls to `/ai/suggest-scale` reach this server.
+so browser calls to `/ai/suggest-scale` reach this server. Export the same
+`OT_SANDBOX_API_KEY` in the shell that runs `npm run dev` and the proxy attaches
+the header for you.
+
+## The lock
+
+The `/ai/*` endpoints require an `X-API-Key` header matching the server's
+`OT_SANDBOX_API_KEY` — any secret you choose. **With the env var unset the
+endpoints answer 401**: an unconfigured sandbox is locked, never open by
+accident, so a dev instance that ends up reachable beyond localhost (a tunnel,
+a `--host 0.0.0.0`) exposes nothing. `/health` stays open as a liveness probe.
+
+```bash
+curl -s -X POST localhost:8000/ai/classify-finish \
+  -H "Content-Type: application/json" -H "X-API-Key: <your-secret>" \
+  -d '{"context": "LVT-1 luxury vinyl tile"}'
+```
 
 ## Endpoints
 

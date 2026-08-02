@@ -152,3 +152,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 capture/capture_server.py selftest
+
+  server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: python -m pytest -q
