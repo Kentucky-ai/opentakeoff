@@ -11,7 +11,10 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
-    "check": "npm run typecheck && npm run lint && npm test && npm run build",
+    "bench": "node --import tsx bench/run.mts",
+    "bench:callouts": "node --import tsx bench/callouts.mts",
+    "bench:batch": "node --import tsx bench/batch.mts",
+    "check": "npm run typecheck && npm run lint && npm test && npm run bench && npm run build",
     "lint": "eslint src netlify/functions"
   },
   "engines": {

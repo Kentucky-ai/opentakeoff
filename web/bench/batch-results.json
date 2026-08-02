@@ -1,0 +1,165 @@
+{
+ "cases": [
+  {
+   "caseName": "sample-plan",
+   "metrics": {
+    "labels": 4,
+    "proposals": 4,
+    "refused": 0,
+    "sumProposedSF": 1744.7037037037037,
+    "overlapSF": 0,
+    "overlapFrac": 0,
+    "duplicates": [],
+    "nested": [],
+    "tiny": [],
+    "minSF": 436.1759259259259,
+    "medianSF": 436.1759259259259,
+    "maxSF": 436.1759259259259
+   },
+   "reach": {
+    "goldens": 4,
+    "withLabel": 4,
+    "recallHalf": 4,
+    "recallNine": 4
+   },
+   "tagReach": {
+    "goldens": 4,
+    "withLabel": 4,
+    "recallHalf": 4,
+    "recallNine": 4
+   },
+   "coverage": {
+    "knownSF": 1751.9135802469136,
+    "coveredSF": 1751.9135802469136,
+    "frac": 1,
+    "rows": [
+     {
+      "name": "break-103",
+      "knownSF": 437.9783950617284,
+      "coveredSF": 438.58024691358025,
+      "frac": 1
+     },
+     {
+      "name": "corridor-104",
+      "knownSF": 437.9783950617284,
+      "coveredSF": 438.58024691358025,
+      "frac": 1
+     },
+     {
+      "name": "office-101",
+      "knownSF": 437.9783950617284,
+      "coveredSF": 438.58024691358025,
+      "frac": 1
+     },
+     {
+      "name": "office-102",
+      "knownSF": 437.9783950617284,
+      "coveredSF": 438.58024691358025,
+      "frac": 1
+     }
+    ]
+   }
+  },
+  {
+   "caseName": "va-finish-plan",
+   "metrics": {
+    "labels": 41,
+    "proposals": 40,
+    "refused": 1,
+    "sumProposedSF": 3187.2735999999845,
+    "overlapSF": 85.92592592592592,
+    "overlapFrac": 0.02695906806554867,
+    "duplicates": [
+     [
+      "136",
+      "134A"
+     ]
+    ],
+    "nested": [],
+    "tiny": [
+     "125",
+     "164",
+     "161A",
+     "167",
+     "168",
+     "135",
+     "138A",
+     "144A",
+     "159",
+     "160",
+     "169"
+    ],
+    "minSF": 0.6146559999999878,
+    "medianSF": 52.211263999998295,
+    "maxSF": 262.4957439999993
+   },
+   "reach": {
+    "goldens": 8,
+    "withLabel": 2,
+    "recallHalf": 2,
+    "recallNine": 1
+   },
+   "tagReach": {
+    "goldens": 8,
+    "withLabel": 2,
+    "recallHalf": 2,
+    "recallNine": 1
+   },
+   "coverage": {
+    "knownSF": 2580.2223456790225,
+    "coveredSF": 198.5679012345679,
+    "frac": 0.07695767055389635,
+    "rows": [
+     {
+      "name": "elevator-e01",
+      "knownSF": 142.6282407407423,
+      "coveredSF": 0,
+      "frac": 0
+     },
+     {
+      "name": "ward-room",
+      "knownSF": 235.25654320987582,
+      "coveredSF": 0,
+      "frac": 0
+     },
+     {
+      "name": "ward-vestibule",
+      "knownSF": 68.91805555556044,
+      "coveredSF": 0,
+      "frac": 0
+     },
+     {
+      "name": "cloud-corridor",
+      "knownSF": 1743.072438271607,
+      "coveredSF": 0,
+      "frac": 0
+     },
+     {
+      "name": "shaded-wing-office",
+      "knownSF": 160.52529320987674,
+      "coveredSF": 0,
+      "frac": 0
+     },
+     {
+      "name": "patient-room-137-band",
+      "knownSF": 20.65370370370313,
+      "coveredSF": 0.14814814814814814,
+      "frac": 0.007172957948534226
+     },
+     {
+      "name": "patient-toilet-137a",
+      "knownSF": 41.203441358024804,
+      "coveredSF": 38.76543209876543,
+      "frac": 0.9408299603405689
+     },
+     {
+      "name": "patient-room-137",
+      "knownSF": 167.96462962963227,
+      "coveredSF": 159.65432098765433,
+      "frac": 0.9505234604434133
+     }
+    ]
+   }
+  }
+ ]
+}

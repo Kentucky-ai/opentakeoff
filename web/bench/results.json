@@ -1,0 +1,1584 @@
+{
+ "scores": [
+  {
+   "caseName": "enclosed-room",
+   "probeName": "center",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 1,
+   "sfErr": 0,
+   "leak": false,
+   "refused": false,
+   "confidence": 1
+  },
+  {
+   "caseName": "enclosed-room",
+   "probeName": "near-wall",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 1,
+   "sfErr": 0,
+   "leak": false,
+   "refused": false,
+   "confidence": 1,
+   "tags": [
+    "near-wall-seed"
+   ]
+  },
+  {
+   "caseName": "cased-opening-3ft",
+   "probeName": "center",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 1,
+   "sfErr": 0,
+   "leak": false,
+   "refused": false,
+   "confidence": 0.94,
+   "tags": [
+    "gap-seal"
+   ]
+  },
+  {
+   "caseName": "door-swing-3ft",
+   "probeName": "center",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 1,
+   "sfErr": 0,
+   "leak": false,
+   "refused": false,
+   "confidence": 0.93,
+   "tags": [
+    "door-swing",
+    "wedge-included"
+   ]
+  },
+  {
+   "caseName": "door-swing-3ft",
+   "probeName": "in-doorway",
+   "expect": "refusal",
+   "status": "leak",
+   "correctRefusal": true,
+   "tags": [
+    "doorway-interior",
+    "known-limit"
+   ]
+  },
+  {
+   "caseName": "two-doorways",
+   "probeName": "center",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 1,
+   "sfErr": 0,
+   "leak": false,
+   "refused": false,
+   "confidence": 0.85,
+   "tags": [
+    "gap-seal",
+    "multi-gap"
+   ]
+  },
+  {
+   "caseName": "hatched-room",
+   "probeName": "center",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 1,
+   "sfErr": 0,
+   "leak": false,
+   "refused": false,
+   "confidence": 0.93,
+   "tags": [
+    "hatch"
+   ]
+  },
+  {
+   "caseName": "tile-grid-room",
+   "probeName": "in-cell",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 1,
+   "sfErr": 0,
+   "leak": false,
+   "refused": false,
+   "confidence": 0.85,
+   "tags": [
+    "hatch",
+    "tile-grid"
+   ]
+  },
+  {
+   "caseName": "curved-partition",
+   "probeName": "left-half",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 0.9903403448587162,
+   "sfErr": 0.009648639554615701,
+   "leak": false,
+   "refused": false,
+   "confidence": 0.84,
+   "tags": [
+    "curved-wall",
+    "no-false-wedge"
+   ]
+  },
+  {
+   "caseName": "two-door-room",
+   "probeName": "center",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 1,
+   "sfErr": 0,
+   "leak": false,
+   "refused": false,
+   "confidence": 0.92,
+   "tags": [
+    "door-swing",
+    "multi-door"
+   ]
+  },
+  {
+   "caseName": "annotation-ring-room",
+   "probeName": "center",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 0.6666666666666666,
+   "sfErr": 0.3333333333333333,
+   "leak": false,
+   "refused": false,
+   "confidence": 1,
+   "knownFail": true,
+   "tags": [
+    "annotation-ring",
+    "known-limit"
+   ]
+  },
+  {
+   "caseName": "partition-bank-15in",
+   "probeName": "mid-bay",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 0.19642857142857142,
+   "sfErr": 4,
+   "leak": true,
+   "refused": false,
+   "confidence": 0.85,
+   "knownFail": true,
+   "tags": [
+    "partition-bank",
+    "known-limit"
+   ]
+  },
+  {
+   "caseName": "tile-demising-same-pen",
+   "probeName": "room-a",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 0.5,
+   "sfErr": 1,
+   "leak": false,
+   "refused": false,
+   "confidence": 0.85,
+   "knownFail": true,
+   "tags": [
+    "demising-wall",
+    "known-limit"
+   ]
+  },
+  {
+   "caseName": "open-space",
+   "probeName": "outside-room",
+   "expect": "refusal",
+   "status": "leak",
+   "correctRefusal": true,
+   "tags": [
+    "open-space"
+   ]
+  },
+  {
+   "caseName": "oversized-enclosure",
+   "probeName": "center",
+   "expect": "refusal",
+   "status": "leak",
+   "correctRefusal": true,
+   "tags": [
+    "room-size-cap"
+   ]
+  },
+  {
+   "caseName": "sample-plan",
+   "probeName": "break-103",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 1,
+   "sfErr": 0,
+   "leak": false,
+   "refused": false,
+   "confidence": 1
+  },
+  {
+   "caseName": "sample-plan",
+   "probeName": "corridor-104",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 1,
+   "sfErr": 0,
+   "leak": false,
+   "refused": false,
+   "confidence": 1
+  },
+  {
+   "caseName": "sample-plan",
+   "probeName": "office-101",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 1,
+   "sfErr": 0,
+   "leak": false,
+   "refused": false,
+   "confidence": 1
+  },
+  {
+   "caseName": "sample-plan",
+   "probeName": "office-102",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 1,
+   "sfErr": 0,
+   "leak": false,
+   "refused": false,
+   "confidence": 1
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "patient-room-137",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 0.9958630788943804,
+   "sfErr": 0.0001655992387951975,
+   "leak": false,
+   "refused": false,
+   "confidence": 0.93,
+   "tags": [
+    "door-swing"
+   ]
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "patient-room-137-band",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 0.9988047213506649,
+   "sfErr": 0.000627633820559373,
+   "leak": false,
+   "refused": false,
+   "confidence": 1,
+   "tags": [
+    "annotation-band"
+   ]
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "patient-toilet-137a",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 0.9994753410283316,
+   "sfErr": 0.00002520765116189168,
+   "leak": false,
+   "refused": false,
+   "confidence": 0.9,
+   "tags": [
+    "hatch",
+    "dense-hatch-room"
+   ]
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "elevator-e01",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 0.9979244589540138,
+   "sfErr": 0.00027502215351562093,
+   "leak": false,
+   "refused": false,
+   "confidence": 0.97,
+   "tags": [
+    "door-swing"
+   ]
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "ward-room",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 0.9997899518201988,
+   "sfErr": 0.00021485518328721225,
+   "leak": false,
+   "refused": false,
+   "confidence": 0.94,
+   "tags": [
+    "door-swing"
+   ]
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "ward-vestibule",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 0.9997761561534674,
+   "sfErr": 0.00006143068856726402,
+   "leak": false,
+   "refused": false,
+   "confidence": 0.89,
+   "tags": [
+    "door-swing",
+    "vestibule"
+   ]
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "cloud-corridor",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 0.999895513639012,
+   "sfErr": 0.000004841033235448539,
+   "leak": false,
+   "refused": false,
+   "confidence": 0.98,
+   "tags": [
+    "cloud-boundary",
+    "corridor"
+   ]
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "shaded-wing-office",
+   "expect": "golden",
+   "status": "ok",
+   "iou": 0.9997890699904123,
+   "sfErr": 0.00015917263913391673,
+   "leak": false,
+   "refused": false,
+   "confidence": 0.97,
+   "tags": [
+    "shaded-wing"
+   ]
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "open-margin",
+   "expect": "refusal",
+   "status": "ok",
+   "correctRefusal": false,
+   "confidence": 0.65,
+   "knownFail": true,
+   "tags": [
+    "sheet-margin",
+    "known-limit"
+   ]
+  }
+ ],
+ "aggregate": {
+  "goldenProbes": 21,
+  "meanIoU": 0.9991266017471044,
+  "floorIoU": 0.9903403448587162,
+  "refusalRate": 0,
+  "leakRate": 0,
+  "refusalProbes": 3,
+  "correctRefusalRate": 1,
+  "knownFails": 4
+ },
+ "coverages": [
+  {
+   "caseName": "sample-plan",
+   "probes": 4,
+   "sumGoldenSF": 1751.9135802469136,
+   "sumEngineSF": 1751.9135802469136,
+   "ratio": 1,
+   "overlapSF": 0,
+   "maxSfErr": 0,
+   "maxSfAbs": 0,
+   "maxSfAbsProbe": "break-103",
+   "humanMeasured": false
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probes": 8,
+   "sumGoldenSF": 2580.2223456790225,
+   "sumEngineSF": 2580.3752807589763,
+   "ratio": 1.0000592720546777,
+   "overlapSF": 0,
+   "maxSfErr": 0.0006276338205593411,
+   "maxSfAbs": 0.050546087710870324,
+   "maxSfAbsProbe": "ward-room",
+   "humanMeasured": false
+  }
+ ],
+ "crossScores": [
+  {
+   "caseName": "enclosed-room",
+   "probeName": "center",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "minPairIoU": 1,
+   "iouByRes": [
+    1,
+    1,
+    1
+   ]
+  },
+  {
+   "caseName": "enclosed-room",
+   "probeName": "near-wall",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "minPairIoU": 1,
+   "iouByRes": [
+    1,
+    1,
+    1
+   ],
+   "tags": [
+    "near-wall-seed"
+   ]
+  },
+  {
+   "caseName": "cased-opening-3ft",
+   "probeName": "center",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "minPairIoU": 1,
+   "iouByRes": [
+    1,
+    1,
+    1
+   ],
+   "tags": [
+    "gap-seal"
+   ]
+  },
+  {
+   "caseName": "door-swing-3ft",
+   "probeName": "center",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "minPairIoU": 1,
+   "iouByRes": [
+    1,
+    1,
+    1
+   ],
+   "tags": [
+    "door-swing",
+    "wedge-included"
+   ]
+  },
+  {
+   "caseName": "door-swing-3ft",
+   "probeName": "in-doorway",
+   "expect": "refusal",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "leak",
+    "leak",
+    "leak"
+   ],
+   "statusAgree": true,
+   "tags": [
+    "doorway-interior",
+    "known-limit"
+   ]
+  },
+  {
+   "caseName": "two-doorways",
+   "probeName": "center",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "minPairIoU": 1,
+   "iouByRes": [
+    1,
+    1,
+    1
+   ],
+   "tags": [
+    "gap-seal",
+    "multi-gap"
+   ]
+  },
+  {
+   "caseName": "hatched-room",
+   "probeName": "center",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "minPairIoU": 1,
+   "iouByRes": [
+    1,
+    1,
+    1
+   ],
+   "tags": [
+    "hatch"
+   ]
+  },
+  {
+   "caseName": "tile-grid-room",
+   "probeName": "in-cell",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "minPairIoU": 1,
+   "iouByRes": [
+    1,
+    1,
+    1
+   ],
+   "tags": [
+    "hatch",
+    "tile-grid"
+   ]
+  },
+  {
+   "caseName": "curved-partition",
+   "probeName": "left-half",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "minPairIoU": 0.9936189608021878,
+   "iouByRes": [
+    0.9904263005780347,
+    0.990606936416185,
+    0.9846459537572254
+   ],
+   "tags": [
+    "curved-wall",
+    "no-false-wedge"
+   ]
+  },
+  {
+   "caseName": "two-door-room",
+   "probeName": "center",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "minPairIoU": 1,
+   "iouByRes": [
+    1,
+    1,
+    1
+   ],
+   "tags": [
+    "door-swing",
+    "multi-door"
+   ]
+  },
+  {
+   "caseName": "annotation-ring-room",
+   "probeName": "center",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "minPairIoU": 1,
+   "iouByRes": [
+    0.6666666666666666,
+    0.6666666666666666,
+    0.6666666666666666
+   ],
+   "knownFail": true,
+   "tags": [
+    "annotation-ring",
+    "known-limit"
+   ]
+  },
+  {
+   "caseName": "partition-bank-15in",
+   "probeName": "mid-bay",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "minPairIoU": 1,
+   "iouByRes": [
+    0.21428571428571427,
+    0.21428571428571427,
+    0.21428571428571427
+   ],
+   "knownFail": true,
+   "tags": [
+    "partition-bank",
+    "known-limit"
+   ]
+  },
+  {
+   "caseName": "tile-demising-same-pen",
+   "probeName": "room-a",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "minPairIoU": 1,
+   "iouByRes": [
+    0.5,
+    0.5,
+    0.5
+   ],
+   "knownFail": true,
+   "tags": [
+    "demising-wall",
+    "known-limit"
+   ]
+  },
+  {
+   "caseName": "open-space",
+   "probeName": "outside-room",
+   "expect": "refusal",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "leak",
+    "leak",
+    "leak"
+   ],
+   "statusAgree": true,
+   "tags": [
+    "open-space"
+   ]
+  },
+  {
+   "caseName": "oversized-enclosure",
+   "probeName": "center",
+   "expect": "refusal",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "leak",
+    "leak",
+    "leak"
+   ],
+   "statusAgree": true,
+   "tags": [
+    "room-size-cap"
+   ]
+  },
+  {
+   "caseName": "sample-plan",
+   "probeName": "break-103",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "minPairIoU": 0.9972554345913764,
+   "iouByRes": [
+    1,
+    0.9986347546428899,
+    0.9972554345913764
+   ]
+  },
+  {
+   "caseName": "sample-plan",
+   "probeName": "corridor-104",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "minPairIoU": 0.997262491203378,
+   "iouByRes": [
+    1,
+    0.9986277269528501,
+    0.997262491203378
+   ]
+  },
+  {
+   "caseName": "sample-plan",
+   "probeName": "office-101",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "minPairIoU": 0.9972554345913764,
+   "iouByRes": [
+    1,
+    0.9986347546428899,
+    0.9972554345913764
+   ]
+  },
+  {
+   "caseName": "sample-plan",
+   "probeName": "office-102",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "minPairIoU": 0.997262491203378,
+   "iouByRes": [
+    1,
+    0.9986277269528501,
+    0.997262491203378
+   ]
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "patient-room-137",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "iouByRes": [
+    0.9994893120303494,
+    0.8665601858574126,
+    0.8092293054234063
+   ],
+   "subFloorRes": [
+    0.75,
+    0.5
+   ],
+   "ungated": true,
+   "tags": [
+    "door-swing"
+   ]
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "patient-room-137-band",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "iouByRes": [
+    0.9994054696789536,
+    0.8699360341151386,
+    0.8642533936651584
+   ],
+   "subFloorRes": [
+    0.75,
+    0.5
+   ],
+   "ungated": true,
+   "tags": [
+    "annotation-band"
+   ]
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "patient-toilet-137a",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "iouByRes": [
+    0.9994001199760048,
+    0.848892626857303,
+    0.3695652173913043
+   ],
+   "subFloorRes": [
+    0.75,
+    0.5
+   ],
+   "ungated": true,
+   "tags": [
+    "hatch",
+    "dense-hatch-room"
+   ]
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "elevator-e01",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "iouByRes": [
+    0.9998267198059262,
+    0.9603188355570959,
+    0.9312944030497314
+   ],
+   "subFloorRes": [
+    0.75,
+    0.5
+   ],
+   "ungated": true,
+   "tags": [
+    "door-swing"
+   ]
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "ward-room",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "iouByRes": [
+    0.9995268387571631,
+    0.4775177491454115,
+    0.6354319949548034
+   ],
+   "subFloorRes": [
+    0.75,
+    0.5
+   ],
+   "ungated": true,
+   "tags": [
+    "door-swing"
+   ]
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "ward-vestibule",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "iouByRes": [
+    0.9998215241834731,
+    0.9609307171383921,
+    0.9209646189051224
+   ],
+   "subFloorRes": [
+    0.75,
+    0.5
+   ],
+   "ungated": true,
+   "tags": [
+    "door-swing",
+    "vestibule"
+   ]
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "cloud-corridor",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "iouByRes": [
+    0.9999858403069821,
+    0.9882082641122618,
+    0.9765518411434954
+   ],
+   "subFloorRes": [
+    0.75,
+    0.5
+   ],
+   "ungated": true,
+   "tags": [
+    "cloud-boundary",
+    "corridor"
+   ]
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "shaded-wing-office",
+   "expect": "golden",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "iouByRes": [
+    0.9997708524289642,
+    0.9785921072680177,
+    0.92525523511439
+   ],
+   "subFloorRes": [
+    0.75,
+    0.5
+   ],
+   "ungated": true,
+   "tags": [
+    "shaded-wing"
+   ]
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "open-margin",
+   "expect": "refusal",
+   "resolutions": [
+    1,
+    0.75,
+    0.5
+   ],
+   "statuses": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "statusAgree": true,
+   "subFloorRes": [
+    0.75,
+    0.5
+   ],
+   "ungated": true,
+   "knownFail": true,
+   "tags": [
+    "sheet-margin",
+    "known-limit"
+   ]
+  }
+ ],
+ "crossAggregate": {
+  "crossProbes": 16,
+  "disagreements": 0,
+  "crossFloorIoU": 0.9936189608021878,
+  "crossMeanIoU": 0.9986657547993614,
+  "ungated": 9,
+  "knownFails": 4
+ },
+ "confidenceGate": {
+  "accurate": [
+   {
+    "probe": "enclosed-room/center",
+    "confidence": 1
+   },
+   {
+    "probe": "enclosed-room/near-wall",
+    "confidence": 1
+   },
+   {
+    "probe": "cased-opening-3ft/center",
+    "confidence": 0.94
+   },
+   {
+    "probe": "door-swing-3ft/center",
+    "confidence": 0.93
+   },
+   {
+    "probe": "hatched-room/center",
+    "confidence": 0.93
+   },
+   {
+    "probe": "two-door-room/center",
+    "confidence": 0.92
+   },
+   {
+    "probe": "sample-plan/break-103",
+    "confidence": 1
+   },
+   {
+    "probe": "sample-plan/corridor-104",
+    "confidence": 1
+   },
+   {
+    "probe": "sample-plan/office-101",
+    "confidence": 1
+   },
+   {
+    "probe": "sample-plan/office-102",
+    "confidence": 1
+   },
+   {
+    "probe": "va-finish-plan/patient-room-137",
+    "confidence": 0.93
+   },
+   {
+    "probe": "va-finish-plan/patient-room-137-band",
+    "confidence": 1
+   },
+   {
+    "probe": "va-finish-plan/patient-toilet-137a",
+    "confidence": 0.9
+   },
+   {
+    "probe": "va-finish-plan/elevator-e01",
+    "confidence": 0.97
+   },
+   {
+    "probe": "va-finish-plan/ward-room",
+    "confidence": 0.94
+   },
+   {
+    "probe": "va-finish-plan/ward-vestibule",
+    "confidence": 0.89
+   },
+   {
+    "probe": "va-finish-plan/cloud-corridor",
+    "confidence": 0.98
+   },
+   {
+    "probe": "va-finish-plan/shaded-wing-office",
+    "confidence": 0.97
+   }
+  ],
+  "inaccurate": [
+   {
+    "probe": "partition-bank-15in/mid-bay",
+    "confidence": 0.85,
+    "why": "SF error 400.0%"
+   },
+   {
+    "probe": "tile-demising-same-pen/room-a",
+    "confidence": 0.85,
+    "why": "SF error 100.0%"
+   },
+   {
+    "probe": "va-finish-plan/open-margin",
+    "confidence": 0.65,
+    "why": "traced (ok) where the answer key says refuse"
+   }
+  ],
+  "exempt": [
+   {
+    "probe": "two-doorways/center",
+    "confidence": 0.85
+   },
+   {
+    "probe": "tile-grid-room/in-cell",
+    "confidence": 0.85
+   },
+   {
+    "probe": "annotation-ring-room/center",
+    "confidence": 1
+   }
+  ],
+  "medianInaccurate": 0.85,
+  "minAccurate": 0.89,
+  "failures": []
+ },
+ "resFactors": [
+  1,
+  0.75,
+  0.5
+ ],
+ "thresholds": {
+  "floorIoU": 0.97,
+  "meanIoU": 0.99,
+  "maxRefusalRate": 0,
+  "maxLeakRate": 0,
+  "minCorrectRefusal": 1,
+  "maxCrossDisagreements": 0,
+  "crossFloorIoU": 0.97,
+  "rawFloorIoU": 0.8,
+  "rawCrossFloorIoU": 0.9,
+  "humanMaxSfErr": 0.025,
+  "humanCoverageBand": 0.02,
+  "pairwiseOverlapFrac": 0.005,
+  "maxRoomSfAbs": 1,
+  "wallSemanticsMinVertexCoverage": 0.6
+ },
+ "wallSemantics": "drawn-path-vertex",
+ "semanticsCoverage": [
+  {
+   "caseName": "sample-plan",
+   "probeName": "break-103",
+   "onVertex": 3,
+   "verts": 4,
+   "cov": 0.75
+  },
+  {
+   "caseName": "sample-plan",
+   "probeName": "corridor-104",
+   "onVertex": 3,
+   "verts": 4,
+   "cov": 0.75
+  },
+  {
+   "caseName": "sample-plan",
+   "probeName": "office-101",
+   "onVertex": 3,
+   "verts": 4,
+   "cov": 0.75
+  },
+  {
+   "caseName": "sample-plan",
+   "probeName": "office-102",
+   "onVertex": 3,
+   "verts": 4,
+   "cov": 0.75
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "patient-room-137",
+   "onVertex": 42,
+   "verts": 43,
+   "cov": 0.9767441860465116
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "patient-room-137-band",
+   "onVertex": 10,
+   "verts": 10,
+   "cov": 1
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "patient-toilet-137a",
+   "onVertex": 21,
+   "verts": 23,
+   "cov": 0.9130434782608695
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "elevator-e01",
+   "onVertex": 21,
+   "verts": 21,
+   "cov": 1
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "ward-room",
+   "onVertex": 33,
+   "verts": 33,
+   "cov": 1
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "ward-vestibule",
+   "onVertex": 24,
+   "verts": 25,
+   "cov": 0.96
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "cloud-corridor",
+   "onVertex": 79,
+   "verts": 79,
+   "cov": 1
+  },
+  {
+   "caseName": "va-finish-plan",
+   "probeName": "shaded-wing-office",
+   "onVertex": 39,
+   "verts": 39,
+   "cov": 1
+  }
+ ],
+ "maskFidelity": {
+  "probes": [
+   {
+    "caseName": "enclosed-room",
+    "probeName": "center",
+    "iou": 0.9797325102880658,
+    "sfErr": 0.020267489711934157,
+    "prodIou": 1,
+    "prodSfErr": 0,
+    "minPairIoU": 0.9795232594770555
+   },
+   {
+    "caseName": "enclosed-room",
+    "probeName": "near-wall",
+    "iou": 0.9797325102880658,
+    "sfErr": 0.020267489711934157,
+    "prodIou": 1,
+    "prodSfErr": 0,
+    "minPairIoU": 0.9795232594770555
+   },
+   {
+    "caseName": "cased-opening-3ft",
+    "probeName": "center",
+    "iou": 0.9797325102880658,
+    "sfErr": 0.020267489711934157,
+    "prodIou": 1,
+    "prodSfErr": 0,
+    "minPairIoU": 0.9795232594770555
+   },
+   {
+    "caseName": "door-swing-3ft",
+    "probeName": "center",
+    "iou": 0.9797325102880658,
+    "sfErr": 0.020267489711934157,
+    "prodIou": 1,
+    "prodSfErr": 0,
+    "minPairIoU": 0.9795232594770555
+   },
+   {
+    "caseName": "two-doorways",
+    "probeName": "center",
+    "iou": 0.95671875,
+    "sfErr": 0.04328125,
+    "prodIou": 1,
+    "prodSfErr": 0,
+    "minPairIoU": 0.9618671926364234
+   },
+   {
+    "caseName": "hatched-room",
+    "probeName": "center",
+    "iou": 0.9916833333333334,
+    "sfErr": 0.008316666666666667,
+    "prodIou": 1,
+    "prodSfErr": 0,
+    "minPairIoU": 0.991647199206736
+   },
+   {
+    "caseName": "tile-grid-room",
+    "probeName": "in-cell",
+    "iou": 0.9916833333333334,
+    "sfErr": 0.008316666666666667,
+    "prodIou": 1,
+    "prodSfErr": 0,
+    "minPairIoU": 0.991647199206736
+   },
+   {
+    "caseName": "curved-partition",
+    "probeName": "left-half",
+    "iou": 0.9679064728717162,
+    "sfErr": 0.0319914645589667,
+    "prodIou": 0.9903403448587162,
+    "prodSfErr": 0.009648639554615701,
+    "minPairIoU": 0.9708069914466344
+   },
+   {
+    "caseName": "two-door-room",
+    "probeName": "center",
+    "iou": 0.9797325102880658,
+    "sfErr": 0.020267489711934157,
+    "prodIou": 1,
+    "prodSfErr": 0,
+    "minPairIoU": 0.9795232594770555
+   },
+   {
+    "caseName": "annotation-ring-room",
+    "probeName": "center",
+    "iou": 0.6501028806584362,
+    "sfErr": 0.3498971193415638,
+    "prodIou": 0.6666666666666666,
+    "prodSfErr": 0.3333333333333333,
+    "minPairIoU": 0.9748377907896819,
+    "knownFail": true
+   },
+   {
+    "caseName": "partition-bank-15in",
+    "probeName": "mid-bay",
+    "iou": 0.19745977984758678,
+    "sfErr": 3.8419753086419752,
+    "prodIou": 0.19642857142857142,
+    "prodSfErr": 4,
+    "minPairIoU": 0.9632933104631218,
+    "knownFail": true
+   },
+   {
+    "caseName": "tile-demising-same-pen",
+    "probeName": "room-a",
+    "iou": 0.49678344300261,
+    "sfErr": 0.9744320257140769,
+    "prodIou": 0.5,
+    "prodSfErr": 1,
+    "minPairIoU": 0.9871244635193133,
+    "knownFail": true
+   },
+   {
+    "caseName": "sample-plan",
+    "probeName": "break-103",
+    "iou": 0.9958863251582487,
+    "sfErr": 0.004115429336527959,
+    "prodIou": 1,
+    "prodSfErr": 0,
+    "minPairIoU": 0.9945018787016792
+   },
+   {
+    "caseName": "sample-plan",
+    "probeName": "corridor-104",
+    "iou": 0.9958828161748773,
+    "sfErr": 0.004115429336527959,
+    "prodIou": 1,
+    "prodSfErr": 0,
+    "minPairIoU": 0.9945018787016792
+   },
+   {
+    "caseName": "sample-plan",
+    "probeName": "office-101",
+    "iou": 0.9958863251582487,
+    "sfErr": 0.004115429336527959,
+    "prodIou": 1,
+    "prodSfErr": 0,
+    "minPairIoU": 0.9945018787016792
+   },
+   {
+    "caseName": "sample-plan",
+    "probeName": "office-102",
+    "iou": 0.9958828161748773,
+    "sfErr": 0.004115429336527959,
+    "prodIou": 1,
+    "prodSfErr": 0,
+    "minPairIoU": 0.9945018787016792
+   },
+   {
+    "caseName": "va-finish-plan",
+    "probeName": "patient-room-137",
+    "iou": 0.9552757749881052,
+    "sfErr": 0.039509780388077946,
+    "prodIou": 0.9958630788943804,
+    "prodSfErr": 0.0001655992387951975
+   },
+   {
+    "caseName": "va-finish-plan",
+    "probeName": "patient-room-137-band",
+    "iou": 0.8602150537634409,
+    "sfErr": 0.07834835470271602,
+    "prodIou": 0.9988047213506649,
+    "prodSfErr": 0.000627633820559373
+   },
+   {
+    "caseName": "va-finish-plan",
+    "probeName": "patient-toilet-137a",
+    "iou": 0.9316783994071879,
+    "sfErr": 0.04725317337227408,
+    "prodIou": 0.9994753410283316,
+    "prodSfErr": 0.00002520765116189168
+   },
+   {
+    "caseName": "va-finish-plan",
+    "probeName": "elevator-e01",
+    "iou": 0.9506654033334769,
+    "sfErr": 0.041180853877427696,
+    "prodIou": 0.9979244589540138,
+    "prodSfErr": 0.00027502215351562093
+   },
+   {
+    "caseName": "va-finish-plan",
+    "probeName": "ward-room",
+    "iou": 0.9731840939474167,
+    "sfErr": 0.025354309506081422,
+    "prodIou": 0.9997899518201988,
+    "prodSfErr": 0.00021485518328721225
+   },
+   {
+    "caseName": "va-finish-plan",
+    "probeName": "ward-vestibule",
+    "iou": 0.9481530930129061,
+    "sfErr": 0.04506742870967435,
+    "prodIou": 0.9997761561534674,
+    "prodSfErr": 0.00006143068856726402
+   },
+   {
+    "caseName": "va-finish-plan",
+    "probeName": "cloud-corridor",
+    "iou": 0.9781940564330809,
+    "sfErr": 0.021079719617413534,
+    "prodIou": 0.999895513639012,
+    "prodSfErr": 0.000004841033235448539
+   },
+   {
+    "caseName": "va-finish-plan",
+    "probeName": "shaded-wing-office",
+    "iou": 0.9543405275779376,
+    "sfErr": 0.042586467672352926,
+    "prodIou": 0.9997890699904123,
+    "prodSfErr": 0.00015917263913391673
+   }
+  ],
+  "meanIoU": 0.9686618631480247,
+  "floorIoU": 0.8602150537634409,
+  "worstSfErr": 0.07834835470271602,
+  "crossFloorIoU": 0.9618671926364234,
+  "gated": true,
+  "floorGate": 0.8,
+  "crossFloorGate": 0.9
+ }
+}
