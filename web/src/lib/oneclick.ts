@@ -967,6 +967,146 @@ function sweepHatchRuns(segs: number[], meta: Uint8Array, ws: number): { clipSof
   return { clipSoft, runs };
 }
 
+// ── 2c. offset annotation rings — the finish tag's own outline ─────────────
+// A second, independent reason a stroke is not a wall, and the one that costs
+// the most square footage on a real finish plan.
+//
+// Room-finish sheets label each WALL, not just each room, and the drafting
+// convention for that is an inset ring: a hairline offset run parallel to each
+// wall a foot or two inside the room, 45° ties at the corners, with the finish
+// tag (`P-1`, `P-2`) boxed on the run. It is a closed loop — the tag box
+// straddles the line rather than breaking it — so a flood started inside the
+// room stops on the ring and the perimeter band between ring and wall is lost.
+// On demo/sample-finish-plan.pdf that is EVERY patient room: 137 measures
+// 161.3 SF against roughly 200 wall-to-wall, and the band is only measurable
+// as its own separate click (the corpus pins one at 20.65 SF).
+//
+// The hatch classifier cannot see this: a ring is ONE run per wall, and a
+// lattice needs five. What identifies it is the pen. The ring is drawn
+// hairline and the wall it shadows is drawn heavy — nibble 1 against nibble 2
+// on the VA sheet — so the test is: the FIRST stroke you meet walking
+// perpendicular off this one, within a couple of feet, on either side, is
+// substantially heavier and runs alongside it. A wall fails it (walking inward
+// from a wall you meet the ring, which is LIGHTER). A tile grid fails it (the
+// neighbour is another grid line at the same pen). Poché fails it on length.
+// An interior partition fails it unless it is genuinely shadowing a heavier
+// parallel line within two feet, and where it does, the escalation's
+// grow-but-verify cap is the backstop — this feeds the SAME soft plane hatch
+// does, so the strict pass still treats a ring as a barrier and only an
+// escalation that stays bounded and doesn't balloon is ever accepted.
+// 2 ft, and the ceiling is set by a DOUBLE-COUNT hazard, not by what rings
+// measure. On the VA sheet patient room 137's four rings stand off 1.6–2.18 ft,
+// so 2 ft recovers three walls and leaves the west band. Raising the cap to 2.5
+// takes that band too — and the bench immediately reports 20.7 SF double
+// counted, because a click INSIDE the 1.15 ft band still traces the band alone
+// (growing it into the room is an 11× jump, which grow-but-verify rejects), so
+// the same floor is now billable twice depending where the estimator clicks.
+// Under-measuring is visible on a bid; double-measuring is not. The west band
+// needs the sliver rule — a 1.15 ft × 16 ft strip is not a room and should
+// escalate unbounded — which is its own change with its own evidence.
+export const ANNOT_OFFSET_MAX_FT = 2;      // ft — how far off a wall an annotation ring is drawn
+export const ANNOT_OFFSET_MIN_FT = 0.25;   // ft — below this the pair is one drawn wall's two faces, not a ring
+// 4 ft, because "spans a wall" is the actual claim and a wall is rarely
+// shorter. At 2 ft the rule picked up four 2.6 ft hairline stubs beside the
+// ward vestibule — door jamb pieces, not ring runs — and bought +0.68 SF (1%)
+// for a real confidence deduction, which is a bad trade twice over: the
+// measurement barely moved and the engine got less sure of it. The ring runs
+// this rule exists for are 7.8–14 ft on the VA sheet, so the floor has room.
+export const ANNOT_MIN_LEN_FT = 4;         // ft — a ring run spans a wall; poché ticks and symbol edges don't
+export const ANNOT_OVERLAP_FRAC = 0.6;     // the heavier neighbour must run ALONGSIDE, not merely cross nearby
+export const ANNOT_MIN_PEN_STEP = 1;       // nibbles the neighbour must exceed this stroke by
+const ANNOT_MAX_SCAN = 64;                 // neighbours probed per direction — dense linework stays linear
+
+/** Strokes that are an inset offset of a heavier parallel stroke — annotation
+ *  rings, not boundaries. Same contract as classifyHatchSegs: one byte per
+ *  segment, 1 = soft. `ws` scales segs into mask px; `maxOffsetPx` /
+ *  `minLenPx` are mask px (feet-true when the caller knows the scale). */
+export function classifyOffsetAnnotationSegs(
+  segs: number[], meta: Uint8Array, ws: number,
+  maxOffsetPx: number, minOffsetPx: number, minLenPx: number,
+): Uint8Array {
+  const n = segs.length >> 2;
+  const soft = new Uint8Array(n);
+  if (!meta || !n || !(maxOffsetPx > 0) || !(minLenPx > 0)) return soft;
+  interface Run { i: number; ang: number; d: number; t0: number; t1: number; w: number }
+  const cand: Array<{ i: number; ang: number; x1: number; y1: number; x2: number; y2: number; w: number }> = [];
+  for (let i = 0; i < n; i++) {
+    const mt = meta[i];
+    // curves are never a straight offset run; clip-only ink is already soft;
+    // a filled outline bounds solid ink and must stay hard (same exemptions
+    // the hatch classifier makes, for the same reasons)
+    if (mt & (SEG_CURVE | SEG_CLIP | SEG_FILLONLY)) continue;
+    const x1 = segs[i * 4] * ws, y1 = segs[i * 4 + 1] * ws, x2 = segs[i * 4 + 2] * ws, y2 = segs[i * 4 + 3] * ws;
+    const dx = x2 - x1, dy = y2 - y1;
+    if (Math.hypot(dx, dy) < minLenPx) continue;
+    let ang = Math.atan2(dy, dx) * 180 / Math.PI;
+    if (ang < 0) ang += 180; if (ang >= 180) ang -= 180;
+    cand.push({ i, ang, x1, y1, x2, y2, w: meta[i] >> 4 });
+  }
+  if (cand.length < 2) return soft;
+  // Fixed interleaved angle bins — a stroke's family must be a property of its
+  // own angle, not of what else the sheet happens to contain. (A single-linkage
+  // sweep chains an entire real drawing into one cluster; measured on the VA
+  // sheet, 17,820 candidates collapse to 1.) Two grids offset by half a bin, so
+  // a pair straddling one grid's boundary is intact in the other.
+  const BIN = HATCH_ANGLE_TOL, NBINS = Math.max(1, Math.round(180 / BIN));
+  for (const shift of [0, BIN / 2]) {
+    const bins = new Map<number, Run[]>();
+    for (const c of cand) {
+      let b = Math.floor((c.ang + shift) / BIN);
+      if (b >= NBINS) b -= NBINS;              // the 0°/180° seam is one family
+      const th = c.ang * Math.PI / 180;
+      const dxu = Math.cos(th), dyu = Math.sin(th);
+      const nxu = -dyu, nyu = dxu;
+      const r: Run = {
+        i: c.i, ang: c.ang,
+        d: ((c.x1 + c.x2) / 2) * nxu + ((c.y1 + c.y2) / 2) * nyu,
+        t0: Math.min(c.x1 * dxu + c.y1 * dyu, c.x2 * dxu + c.y2 * dyu),
+        t1: Math.max(c.x1 * dxu + c.y1 * dyu, c.x2 * dxu + c.y2 * dyu),
+        w: c.w,
+      };
+      const arr = bins.get(b);
+      if (arr) arr.push(r); else bins.set(b, [r]);
+    }
+    for (const runs of bins.values()) {
+      if (runs.length < 2) continue;
+      runs.sort((a, b) => a.d - b.d);
+      for (let k = 0; k < runs.length; k++) {
+        const c = runs[k];
+        if (soft[c.i]) continue;
+        const need = ANNOT_OVERLAP_FRAC * (c.t1 - c.t0);
+        // The FIRST neighbour that runs alongside, each way. First and not
+        // best, deliberately: a ring is the innermost line of its pair, so
+        // anything between it and the wall would mean it is shadowing
+        // something else and the evidence does not hold.
+        const alongside = (dir: 1 | -1): Run | null => {
+          for (let step = 1, j = k + dir; step <= ANNOT_MAX_SCAN && j >= 0 && j < runs.length; step++, j += dir) {
+            const o = runs[j];
+            const gap = Math.abs(o.d - c.d);
+            if (gap > maxOffsetPx) break;
+            if (gap < minOffsetPx) continue;                                    // the same wall's two faces
+            if (Math.min(o.t1, c.t1) - Math.max(o.t0, c.t0) < need) continue;   // crosses nearby, doesn't run alongside
+            return o;
+          }
+          return null;
+        };
+        const up = alongside(1), dn = alongside(-1);
+        // A ring is a wall's shadow with OPEN FLOOR inboard of it: heavier
+        // partner on exactly one side, nothing running alongside on the other.
+        // The second half of that is what keeps a repetitive real bank of
+        // partitions hard — its outermost member is also hairline a couple of
+        // feet off a heavy shell, and only the sibling partition inboard of it
+        // tells the two apart (corpus: partition-bank-15in). Requiring the
+        // far side to be EMPTY also means this can never soften a stroke that
+        // sits between two things, which is the shape of every real boundary.
+        const heavier = (o: Run | null, other: Run | null) => !!o && !other && o.w >= c.w + ANNOT_MIN_PEN_STEP;
+        if (heavier(up, dn) || heavier(dn, up)) soft[c.i] = 1;
+      }
+    }
+  }
+  return soft;
+}
+
 // Signature quantization for the stable family id (issue #29): coarse enough
 // to absorb CAD jitter (≪ the classifier's own tolerances), fine enough that
 // distinct pattern specs never collide. The RAW signature values ride along
@@ -1105,6 +1245,16 @@ export function buildMask(segs: number[], imgW: number, imgH: number, maxDim = M
   // mppf = pxPerFt*k*wsB = basePxPerFt*wsB — the render scale cancels exactly.
   const mppf = Number.isFinite(pxPerFt) && pxPerFt > 0 ? pxPerFt * ws : 0;
   const soft = meta ? classifyHatchSegs(segs, meta, ws, mppf > 0 ? HATCH_MAX_PITCH_FT * mppf : HATCH_MAX_PITCH) : null;
+  // Second, independent contributor to the SAME soft plane: inset annotation
+  // rings (section 2c). Feet-true only — every threshold it uses is a physical
+  // distance, and guessing them in raw mask px on a sheet of unknown scale
+  // would soften linework on no evidence at all. Unioned, never subtracted: a
+  // stroke either classifier calls non-boundary is soft, and the escalation
+  // ladder decides what that is worth.
+  const annot = meta && mppf > 0
+    ? classifyOffsetAnnotationSegs(segs, meta, ws, ANNOT_OFFSET_MAX_FT * mppf, ANNOT_OFFSET_MIN_FT * mppf, ANNOT_MIN_LEN_FT * mppf)
+    : null;
+  if (soft && annot) for (let i = 0; i < soft.length; i++) if (annot[i]) soft[i] = 1;
   // curve chords that are demonstrably not door swings (closed circles, cloud
   // scallops) — a SEPARATE plane from SEG_CURVE, so refusing them never makes
   // them hatch-eligible (classifyHatchSegs still skips every SEG_CURVE chord)

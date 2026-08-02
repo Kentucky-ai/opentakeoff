@@ -40,80 +40,28 @@
      735.4
     ],
     [
-     2669.3,
-     735.4
-    ],
-    [
-     2667.1,
-     724.1
-    ],
-    [
-     2645,
-     724.1
-    ],
-    [
-     2642.9,
-     735.4
-    ],
-    [
-     2579,
-     735.4
-    ],
-    [
-     2642.9,
-     735.4
-    ],
-    [
-     2645,
-     746.2
-    ],
-    [
-     2667.1,
-     746.2
-    ],
-    [
-     2669.3,
-     735.4
-    ],
-    [
-     2742.2,
-     735.4
-    ],
-    [
      2745.8,
      745.9
     ],
     [
-     2745.8,
-     933.6
+     2768.9,
+     715.9
     ],
     [
-     2736,
-     935.8
+     2769.1,
+     1177
     ],
     [
-     2736,
-     957.8
+     2753.9,
+     1175.3
     ],
     [
-     2745.8,
-     960.2
+     2765.5,
+     1173.6
     ],
     [
-     2743.2,
-     1146.5
-    ],
-    [
-     2743.9,
-     1153.4
-    ],
-    [
-     2743.9,
-     1156.1
-    ],
-    [
-     2743.9,
-     1153.4
+     2753.9,
+     1153.2
     ],
     [
      2689.9,
@@ -208,6 +156,14 @@
      "delta_pct": 4.08,
      "iou_old_new": 0.948,
      "reason": "A5b: the bench pinned bare traceRegion(); production pins the SNAPPED ring and reports area_sf from it. Nothing about the flood changed (43 verts before and after, IoU 0.948, same region) — the 43 corners moved outward onto the drawing`s own wall vertices. On this sheet the working mask is ws 0.496 (mppf 8.93), so one cell is 1.34in of building and the raster contour sat ~half a cell inside each wall: over a 102.7 ft perimeter that is a 0.78in uniform outward shift = +6.59 SF. 167.96 SF is the number TakeoffCanvas.jsx and mcp/src/session.ts return for this click; 161.37 was never displayed anywhere."
+    },
+    {
+     "at": "2026-08-02",
+     "from_sf": 167.96,
+     "to_sf": 202.05,
+     "delta_pct": 20.29,
+     "iou_old_new": 0.824,
+     "reason": "The room now reads WALL-TO-WALL instead of to its finish-tag annotation ring. The +34.09 SF (167.96 -> 202.05) is floor the engine was losing, not floor it invented. This sheet labels each WALL, not just each room: a hairline offset run is drawn 1.6-2.18 ft inside every wall with 45-degree corner ties and the P-1/P-2/P-3 tag boxes STRADDLING it, so the ring is a closed loop and a flood started in the room stopped on it -- the corpus already documented the loss (the perimeter band was only measurable as its own click, pinned separately at 20.65 SF) and pinned the wall-to-wall intent as the synthetic annotation-ring-room known-fail. classifyOffsetAnnotationSegs (oneclick.ts section 2c) supplies the missing evidence: a stroke is annotation when the first thing running alongside it within 2 ft on one side is substantially heavier (ring pen nibble 1, wall pen 2 on this sheet) and NOTHING runs alongside on the other. It feeds the SAME soft plane hatch does, so the strict pass still treated the ring as a barrier and this result came from the moderate GROW-BUT-VERIFY tier (hatchTier bounded, 1.22x growth), never an unbounded override. REVIEWED ON SCREEN: the traced boundary sits on the inside face of the heavy wall on all four sides, the 45-degree corner ties remain as small hard nubs, and toilet 137A is NOT annexed. Corpus-wide this probe is the ONLY one that moves -- all seven other probes on this case, and every probe on sample-plan, are unchanged at IoU 1.000, and all four known-fails hold their exact baseline values with pair IoU 1.000. The WEST band is deliberately still excluded: its ring stands off 2.18 ft, past the 2 ft cap, and widening the cap to reach it makes a click inside the 1.15 ft band double-count 20.7 SF against the room, which the bench catches. That residual needs the sliver rule -- a 1.15 ft x 16 ft strip is not a room and should escalate unbounded -- not a wider cap."
     }
    ]
   },
