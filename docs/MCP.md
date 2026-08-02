@@ -56,7 +56,14 @@ Thirty-two tools, in the order an agent tends to reach for them:
   marker — and every placement is found deterministically from the vector
   linework, under rotation and mirroring, scored against a commit bar with
   near-misses *withheld with reasons*; `commit: true` places the matches as
-  EA count markers in one undo step)
+  EA count markers in one undo step). Scanned sheets work
+  (#154): where vectors can't bound the room — an image-only scan, or a scan
+  wrapper whose only linework is the title block — `one_click` and
+  `detect_rooms` fall back automatically to flooding the sheet's rendered
+  pixels with the same raster engine the canvas uses, disclosed as
+  `raster_traced` on the reply and on the shape's origin; vector always wins
+  where it works, and a raster ring's corners are unsnapped (a scan has no
+  true endpoints)
 - **Revise** — `edit_shape` (all five roles), `edit_materials`,
   `edit_condition` (waste %, ×N multiplier, `height_ft`, and the roll-goods
   `roll_setup` opt-in — the reply echoes the figured order), `delete_shape`,
@@ -100,7 +107,9 @@ Two rules carry over from the app unchanged:
   with a warning rather than fabricating square feet.
 - **Provenance.** Every shape committed by `one_click` carries the same
   `origin` receipt the canvas mints: method, normalized seed, hatch-filter
-  flag.
+  flag — and `raster_traced` when the boundary came from scan pixels rather
+  than vector linework, so a pixel-bounded trace is distinguishable from a
+  vector-snapped one in the record.
 
 ## An example session
 
