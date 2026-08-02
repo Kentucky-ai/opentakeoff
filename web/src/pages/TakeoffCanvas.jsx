@@ -3376,6 +3376,16 @@ export default function TakeoffCanvas() {
       area_sf,
       perim_lf,
       hf: !!f.hatchFiltered,
+      // Whether SENSITIVITY had anything to act on for THIS fill. The knob
+      // only tunes escalation past ink the classifier called hatch, so a fill
+      // whose boundary is entirely hard ink returns the same region at every
+      // setting — and the estimator, watching it stop short, reasonably reaches
+      // for the knob and gets nothing. Sheet-level softCount can't answer this
+      // (the VA plan classifies plenty of toilet poché while the rooms that
+      // stop short touch none of it); only this region's own softHits can.
+      // Raster-traced fills are single-tier, where sensitivity is inert by
+      // construction.
+      shs: raster ? 0 : (f.softHits || 0),
       sl: f.sealedPx || 0,
       gap: f.gapBridged || 0,
       mp: f.minPassDelta ? (f.minPassPx || 0) : 0, mpd: f.minPassDelta || 0,
@@ -5730,15 +5740,36 @@ export default function TakeoffCanvas() {
     const NOTCHES = [SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE];
     const label = fillSens === SENS_STRICT ? "Strict" : fillSens === SENS_BALANCED ? "Balanced" : fillSens === SENS_AGGRESSIVE ? "Aggressive" : `${Math.round(fillSens * 100)}%`;
     const snap = (v) => { for (const n of NOTCHES) if (Math.abs(v - n) <= 0.06) return n; return v; };
+    // A knob that cannot move must SAY so. Sensitivity tunes one thing — how
+    // eagerly a fill escalates past ink the classifier called hatch — so a
+    // fill whose boundary is entirely hard ink returns a bit-identical region
+    // at every notch, and the estimator watching it stop short reaches for
+    // this slider and gets nothing (measured on the VA finish plan: Strict,
+    // Balanced and Aggressive agree to the square foot on every room).
+    //
+    // The claim is made from the LAST FILL's own softHits, not the sheet's
+    // softCount. Sheet level cannot answer it: AF101 classifies thousands of
+    // poché strokes in its toilet rooms — nonzero softCount all day — while
+    // the patient rooms that stop short touch none of them. Undefined means
+    // no fill yet, and discloses nothing.
+    const inert = proposal?.regions?.length
+      ? proposal.regions.every((r) => r.shs === 0)
+      : false;
     return (
-      <div title={"One-Click fill sensitivity — how far a fill reaches past a room's hatch pattern.\nStrict: stop at the linework (original behavior).\nBalanced: recover hatch-lined rooms to the walls (default).\nAggressive: cross more pattern and tolerate more growth.\nLower it if fills spill; raise it if hatched rooms come up short.\nScanned sheets trace from pixels — sensitivity doesn't apply there."}
-        style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px" }}>
+      <div title={"One-Click fill sensitivity — how far a fill reaches past a room's hatch pattern.\nStrict: stop at the linework (original behavior).\nBalanced: recover hatch-lined rooms to the walls (default).\nAggressive: cross more pattern and tolerate more growth.\nLower it if fills spill; raise it if hatched rooms come up short.\nScanned sheets trace from pixels — sensitivity doesn't apply there."
+        + (inert ? "\n\nNothing on this fill's boundary classified as a hatch or tile pattern, so every setting returns the same region. It is stopping on ink the engine still reads as a wall." : "")}
+        style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", flexWrap: "wrap" }}>
         <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)" }}>Fill</span>
         <input name="fill-sensitivity" type="range" min={SENS_STRICT} max={SENS_AGGRESSIVE} step={0.01} value={fillSens} list="fill-sens-notches"
           onChange={(e) => setFillSens(snap(parseFloat(e.target.value)))}
-          style={{ flex: 1, accentColor: "var(--cobalt)", cursor: "pointer" }} />
+          style={{ flex: 1, accentColor: "var(--cobalt)", cursor: "pointer", opacity: inert ? 0.45 : 1 }} />
         <datalist id="fill-sens-notches"><option value={SENS_STRICT} /><option value={SENS_BALANCED} /><option value={SENS_AGGRESSIVE} /></datalist>
-        <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, fontWeight: 600, color: "var(--cobalt)", minWidth: 58 }}>{label}</span>
+        <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, fontWeight: 600, color: inert ? "var(--ink-faint)" : "var(--cobalt)", minWidth: 58 }}>{label}</span>
+        {inert && (
+          <span style={{ flexBasis: "100%", fontSize: 10.5, lineHeight: 1.35, color: "var(--ink-soft)" }}>
+            This fill is bounded entirely by hard ink — every setting returns the same region.
+          </span>
+        )}
       </div>
     );
   })();
