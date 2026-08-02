@@ -2094,7 +2094,7 @@ export class Session {
         inputs.push({
           key: s.key,
           sheet_number: s.sheetNumber,
-          spans: s.spans.map((t) => ({ str: t.str, x: t.x0, y: t.y0, w: t.x1 - t.x0, h: t.y1 - t.y0 })),
+          spans: s.spans.map((t) => ({ str: t.str, x: t.x0, y: t.y0, w: t.x1 - t.x0, h: t.y1 - t.y0, ...(t.rot ? { rot: t.rot } : {}) })),
         });
       }
       this.graph = buildSheetGraph(inputs);
@@ -2116,10 +2116,17 @@ export class Session {
       sheets: g.sheets.map((s) => ({
         sheet: s.key, role: s.role, confidence: s.confidence,
         ...(s.evidence ? { evidence: Session.wireEvidence(s.evidence) } : {}),
-        schedules: s.schedules.map((t) => ({ kind: t.kind, title: t.title, rows: t.rows, region: Session.wireBox(t.region) })),
+        ...(s.building ? { building: s.building } : {}),
+        schedules: s.schedules.map((t) => ({
+          kind: t.kind, title: t.title, rows: t.rows, region: Session.wireBox(t.region),
+          ...(t.continues ? { continues: t.continues } : {}),
+          ...(t.rotated_headers ? { rotated_headers: true } : {}),
+        })),
       })),
-      rooms: g.rooms.map((r) => ({ tag: r.tag, name: r.name, sheet: r.sheet, bbox: Session.wireBox(r.bbox) })),
+      rooms: g.rooms.map((r) => ({ tag: r.tag, name: r.name, sheet: r.sheet, bbox: Session.wireBox(r.bbox), ...(r.building ? { building: r.building } : {}) })),
       callouts: g.callouts.map((c) => ({ detail: c.detail, target_sheet: c.target_sheet, sheet: c.sheet, bbox: Session.wireBox(c.bbox) })),
+      ...(g.buildings.length ? { buildings: g.buildings } : {}),
+      ...(g.notes.length ? { notes: g.notes } : {}),
       counts: { rooms: g.rooms.length, schedules: g.tables.length, callouts: g.callouts.length },
     };
   }
@@ -2148,12 +2155,18 @@ export class Session {
     const g = await this.ensureGraph();
     if (!g.available) throw new UserError("This set has no text layer (a scan) — the sheet graph is unavailable, not empty.");
     const res = resolveTag(g, tag);
-    const room = res.room ? { tag: res.room.tag, name: res.room.name, sheet: res.room.sheet, bbox: Session.wireBox(res.room.bbox) } : null;
-    if (res.status === "unresolved") return { status: "unresolved" as const, tag: res.tag, room, reason: res.reason };
+    const room = res.room ? { tag: res.room.tag, name: res.room.name, sheet: res.room.sheet, bbox: Session.wireBox(res.room.bbox), ...(res.room.building ? { building: res.room.building } : {}) } : null;
+    if (res.status === "unresolved") {
+      return {
+        status: "unresolved" as const, tag: res.tag, room, reason: res.reason,
+        ...(res.candidates?.length ? { candidates: res.candidates } : {}),
+      };
+    }
     return {
       status: "resolved" as const,
       tag: res.tag,
       room,
+      ...(res.building ? { building: res.building } : {}),
       finishes: res.finishes.map((f) => ({
         surface: f.surface, code: f.code, source: Session.wireEvidence(f.source),
         ...(f.definition ? { definition: { cells: f.definition.cells, source: Session.wireEvidence(f.definition.source) } } : {}),
@@ -2176,6 +2189,9 @@ export class Session {
       matches: hits.map((t) => ({
         sheet: t.sheet, kind: t.kind, title: t.title?.text || "", rows: t.rows.length,
         headers: t.headers, region: Session.wireBox(t.region),
+        ...(t.building ? { building: t.building } : {}),
+        ...(t.rotated_headers ? { rotated_headers: true } : {}),
+        ...(t.parts ? { parts: t.parts.map((p) => ({ sheet: p.sheet, title: p.title, rows: p.rows, region: Session.wireBox(p.region) })) } : {}),
       })),
     };
   }

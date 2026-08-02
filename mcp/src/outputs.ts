@@ -454,7 +454,13 @@ export const readSheetTextOutput = {
 const wireBox = z.object({ x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() });
 const wireEvidence = z.object({ sheet: z.string(), text: z.string(), bbox: wireBox })
   .describe("An evidence pointer — the sheet, the literal text, and where it sits (image px). Every edge in the graph carries one; pass the bbox to view_sheet to LOOK at the source.");
-const graphRoom = z.object({ tag: z.string(), name: z.string().describe("The name span stacked over the tag ('' when none)"), sheet: z.string(), bbox: wireBox });
+const graphRoom = z.object({
+  tag: z.string(),
+  name: z.string().describe("The name span stacked over the tag ('' when none)"),
+  sheet: z.string(),
+  bbox: wireBox,
+  building: z.string().optional().describe("The building the room belongs to, when the set names one — its plan sheet's BUILDING/BLDG context, or the tag's own qualifier ('A-134')"),
+});
 
 export const sheetGraphOutput = {
   available: z.boolean().describe("false = the set has no text layer (a scan) — the graph degrades to unavailable, never half-populates"),
@@ -463,17 +469,25 @@ export const sheetGraphOutput = {
     role: z.enum(["plan", "schedule", "legend", "detail", "elevation", "demolition", "unknown"]),
     confidence: z.number().describe("0..1; mixed title signals halve it, a bare sheet-number convention stays under 0.5"),
     evidence: wireEvidence.optional(),
-    schedules: z.array(z.object({ kind: z.string(), title: z.string(), rows: z.number().int(), region: wireBox })),
+    building: z.string().optional().describe("The sheet's building context, when it names exactly one (BUILDING A / BLDG 2)"),
+    schedules: z.array(z.object({
+      kind: z.string(), title: z.string(), rows: z.number().int(), region: wireBox,
+      continues: z.string().optional().describe("Present on a continuation fragment ('… SCHEDULE — CONT'D'): the sheet carrying the table's base fragment. The fragments read as ONE table — resolve_tag and find_schedule already see the union"),
+      rotated_headers: z.boolean().optional().describe("true when the column headers were read at a quarter-turn"),
+    })),
   })),
   rooms: z.array(graphRoom).describe("Room tags read off plan-role sheets — schedule sheets contribute rows, never phantom rooms"),
   callouts: z.array(z.object({ detail: z.string(), target_sheet: z.string(), sheet: z.string(), bbox: wireBox })).describe("Detail callouts (3/A-601) — edges to their target sheets"),
-  counts: z.object({ rooms: z.number().int(), schedules: z.number().int(), callouts: z.number().int() }),
+  buildings: z.array(z.string()).optional().describe("Every building designator the set names (sorted) — present only on multi-building-aware sets. Room numbers reused across these need qualified tags ('A-134')"),
+  notes: z.array(z.string()).optional().describe("Named gaps found while indexing (e.g. a continuation whose rows could not be aligned) — the graph refuses silently dropping anything"),
+  counts: z.object({ rooms: z.number().int(), schedules: z.number().int().describe("LOGICAL tables — a schedule continued across sheets counts once"), callouts: z.number().int() }),
 };
 
 export const resolveTagOutput = {
   status: z.enum(["resolved", "unresolved"]),
   tag: z.string(),
-  room: graphRoom.nullable().describe("The plan tag, when the room appears on a plan sheet — cited even when resolution fails"),
+  room: graphRoom.nullable().describe("The plan tag, when the room appears on a plan sheet — cited even when resolution fails. null on a multi-building ambiguity: citing one building's tag would be quietly wrong"),
+  building: z.string().optional().describe("resolved only — the building whose schedule row answered, when the set names buildings"),
   finishes: z.array(z.object({
     surface: z.string().describe("The schedule column: FLOOR / BASE / WALL / …"),
     code: z.string(),
@@ -481,14 +495,22 @@ export const resolveTagOutput = {
     definition: z.object({ cells: z.record(z.string()), source: wireEvidence }).optional()
       .describe("The finish/material-schedule row this code chains to, when one exists"),
   })).optional(),
-  sources: z.array(wireEvidence).optional().describe("The chain: plan tag → schedule row"),
+  sources: z.array(wireEvidence).optional().describe("The chain: plan tag → schedule row (the row cites the sheet that CARRIES it — under a continuation that is the CONT'D sheet)"),
   reason: z.string().optional().describe("unresolved only — WHY (no schedule row / ambiguous / no schedule found). A room that appears on the plan with no row comes back here, never as a silent omission"),
+  candidates: z.array(z.object({
+    key: z.string(), building: z.string().optional(), sheet: z.string(), table: z.string(),
+  })).optional().describe("unresolved only — every schedule row that COULD have answered (an ambiguous multi-building tag lists one per building; qualify the tag, e.g. \"A-134\", to pick)"),
 };
 
 export const findScheduleOutput = {
   matches: z.array(z.object({
-    sheet: z.string(), kind: z.string(), title: z.string(), rows: z.number().int(),
-    headers: z.array(z.string()), region: wireBox.describe("Pass to view_sheet to look at the table"),
+    sheet: z.string(), kind: z.string(), title: z.string(),
+    rows: z.number().int().describe("Total data rows — a continued schedule counts every fragment's rows"),
+    headers: z.array(z.string()), region: wireBox.describe("Pass to view_sheet to look at the table (the BASE fragment's region when the table continues)"),
+    building: z.string().optional().describe("The building this table answers for, when its title or sheet names one"),
+    rotated_headers: z.boolean().optional().describe("true when the column headers were read at a quarter-turn"),
+    parts: z.array(z.object({ sheet: z.string(), title: z.string(), rows: z.number().int(), region: wireBox }))
+      .optional().describe("Present when the table CONTINUES across sheets ('… SCHEDULE — CONT'D'): every fragment, base first, each with its own viewable region"),
   })),
 };
 
@@ -527,7 +549,7 @@ export const sheetContextOutput = {
     note: z.string().optional(),
   }),
   text: z.object({
-    spans: z.array(z.object({ str: z.string(), x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() })).describe("Text with bboxes, image px, same frame as the vectors"),
+    spans: z.array(z.object({ str: z.string(), x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number(), rot: z.number().optional().describe("Run direction in degrees, clockwise, y down — present only when rotated (90/270 = a quarter-turn, e.g. rotated schedule headers)") })).describe("Text with bboxes, image px, same frame as the vectors"),
     count: z.number().int(),
   }),
   hatch: z.object({ families: z.array(hatchFamilyRow), count: z.number().int() }),

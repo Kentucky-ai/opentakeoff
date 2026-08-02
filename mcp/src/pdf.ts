@@ -209,15 +209,24 @@ export function textItemsInRegion(ph: PageHandle, r: { x0: number; y0: number; x
   return { items };
 }
 
-export interface TextSpan { str: string; x0: number; y0: number; x1: number; y1: number }
+export interface TextSpan { str: string; x0: number; y0: number; x1: number; y1: number; rot?: number }
 
 /** Positioned page text as BBOX SPANS in image px (issue #29's sheet_context
  * needs boxes, not points, to answer "which text is inside this region").
  * Same composed transform as positionedText: t[4], t[5] is the baseline's
  * bottom-left in device space. item.width/height are user-space units; this
  * server's viewports are unrotated at RENDER_SCALE (openPdf), so device
- * extent is a straight scale — glyphs rise from the baseline, y is down, so
- * the box spans [y − h, y]. */
+ * extent is a straight scale.
+ *
+ * Rotation-aware (#87 phase 2): the composed transform's columns are the text
+ * run's device-space direction (t[0], t[1]) and up vector (t[2], t[3]) — the
+ * box is the hull of the run's four corners, so text written at a quarter-turn
+ * (rotated schedule headers) gets its TRUE tall-narrow box instead of a
+ * horizontal one laid over the wrong cells. `rot` is the run direction in
+ * degrees, clockwise in device space (y down), emitted only when nonzero —
+ * unrotated sets stay byte-identical on the wire. For unrotated text this
+ * reduces exactly to the old math: glyphs rise from the baseline, y is down,
+ * so the box spans [y − h, y]. */
 export function textSpans(ph: PageHandle): TextSpan[] {
   const out: TextSpan[] = [];
   for (const it of ph.textContent.items || []) {
@@ -229,7 +238,19 @@ export function textSpans(ph: PageHandle): TextSpan[] {
     // pdf.js gives height on most items; the composed transform's column
     // norm is the font's device height when it doesn't
     const h = (it.height || 0) * RENDER_SCALE || Math.hypot(t[2], t[3]);
-    out.push({ str, x0: +x.toFixed(1), y0: +(y - h).toFixed(1), x1: +(x + w).toFixed(1), y1: +y.toFixed(1) });
+    const dn = Math.hypot(t[0], t[1]) || 1;
+    const un = Math.hypot(t[2], t[3]) || 1;
+    const dx = t[0] / dn, dy = t[1] / dn;   // along the run
+    const ux = t[2] / un, uy = t[3] / un;   // glyph ascent
+    const xs = [x, x + w * dx, x + h * ux, x + w * dx + h * ux];
+    const ys = [y, y + w * dy, y + h * uy, y + w * dy + h * uy];
+    const rot = ((Math.round((Math.atan2(dy, dx) * 180) / Math.PI) % 360) + 360) % 360;
+    out.push({
+      str,
+      x0: +Math.min(...xs).toFixed(1), y0: +Math.min(...ys).toFixed(1),
+      x1: +Math.max(...xs).toFixed(1), y1: +Math.max(...ys).toFixed(1),
+      ...(rot ? { rot } : {}),
+    });
   }
   return out;
 }

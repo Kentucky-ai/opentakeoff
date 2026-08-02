@@ -1,0 +1,137 @@
+%PDF-1.5
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R 6 0 R 7 0 R] /Count 5 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 612] /Contents 8 0 R /Resources << /Font << /F1 13 0 R >> >> >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 612] /Contents 9 0 R /Resources << /Font << /F1 13 0 R >> >> >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 612] /Contents 10 0 R /Resources << /Font << /F1 13 0 R >> >> >>
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 612] /Contents 11 0 R /Resources << /Font << /F1 13 0 R >> >> >>
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 612] /Contents 12 0 R /Resources << /Font << /F1 13 0 R >> >> >>
+endobj
+8 0 obj
+<< /Length 238 >>
+stream
+1 w 40 40 532 532 re S
+BT /F1 12 Tf 120 570 Td (BUILDING A - FIRST FLOOR FINISH PLAN) Tj ET
+BT /F1 10 Tf 100 400 Td (OFFICE) Tj ET
+BT /F1 10 Tf 102 388 Td (134) Tj ET
+BT /F1 10 Tf 300 400 Td (LAB) Tj ET
+BT /F1 10 Tf 302 388 Td (135) Tj ET
+endstream
+endobj
+9 0 obj
+<< /Length 242 >>
+stream
+1 w 40 40 532 532 re S
+BT /F1 12 Tf 120 570 Td (BUILDING B - FIRST FLOOR FINISH PLAN) Tj ET
+BT /F1 10 Tf 100 400 Td (STORAGE) Tj ET
+BT /F1 10 Tf 102 388 Td (134) Tj ET
+BT /F1 10 Tf 300 400 Td (OFFICE) Tj ET
+BT /F1 10 Tf 302 388 Td (201) Tj ET
+endstream
+endobj
+10 0 obj
+<< /Length 1239 >>
+stream
+1 w 40 40 532 532 re S
+BT /F1 12 Tf 100 580 Td (ROOM FINISH SCHEDULE - BUILDING A) Tj ET
+BT /F1 10 Tf 0 1 -1 0 100 520 Tm (NO) Tj ET
+BT /F1 10 Tf 0 1 -1 0 160 520 Tm (NAME) Tj ET
+BT /F1 10 Tf 0 1 -1 0 300 520 Tm (FLOOR) Tj ET
+BT /F1 10 Tf 0 1 -1 0 400 520 Tm (BASE) Tj ET
+BT /F1 10 Tf 0 1 -1 0 500 520 Tm (WALL) Tj ET
+BT /F1 10 Tf 100 490 Td (134) Tj ET
+BT /F1 10 Tf 160 490 Td (OFFICE) Tj ET
+BT /F1 10 Tf 300 490 Td (CPT-1) Tj ET
+BT /F1 10 Tf 400 490 Td (RB-1) Tj ET
+BT /F1 10 Tf 500 490 Td (P-1) Tj ET
+BT /F1 10 Tf 100 470 Td (135) Tj ET
+BT /F1 10 Tf 160 470 Td (LAB) Tj ET
+BT /F1 10 Tf 300 470 Td (LVT-1) Tj ET
+BT /F1 10 Tf 400 470 Td (RB-1) Tj ET
+BT /F1 10 Tf 500 470 Td (P-1) Tj ET
+BT /F1 12 Tf 100 380 Td (MATERIAL SCHEDULE) Tj ET
+BT /F1 10 Tf 100 350 Td (CODE) Tj ET
+BT /F1 10 Tf 200 350 Td (MATERIAL) Tj ET
+BT /F1 10 Tf 380 350 Td (MANUFACTURER) Tj ET
+BT /F1 10 Tf 100 330 Td (CPT-1) Tj ET
+BT /F1 10 Tf 200 330 Td (CARPET TILE) Tj ET
+BT /F1 10 Tf 380 330 Td (EXAMPLECO) Tj ET
+BT /F1 10 Tf 100 310 Td (LVT-1) Tj ET
+BT /F1 10 Tf 200 310 Td (LUXURY VINYL TILE) Tj ET
+BT /F1 10 Tf 380 310 Td (EXAMPLECO) Tj ET
+BT /F1 10 Tf 100 290 Td (RB-1) Tj ET
+BT /F1 10 Tf 200 290 Td (RESILIENT BASE) Tj ET
+BT /F1 10 Tf 380 290 Td (EXAMPLECO) Tj ET
+endstream
+endobj
+11 0 obj
+<< /Length 459 >>
+stream
+1 w 40 40 532 532 re S
+BT /F1 12 Tf 100 580 Td (ROOM FINISH SCHEDULE - BUILDING B) Tj ET
+BT /F1 10 Tf 100 550 Td (NO) Tj ET
+BT /F1 10 Tf 160 550 Td (NAME) Tj ET
+BT /F1 10 Tf 300 550 Td (FLOOR) Tj ET
+BT /F1 10 Tf 400 550 Td (BASE) Tj ET
+BT /F1 10 Tf 500 550 Td (WALL) Tj ET
+BT /F1 10 Tf 100 530 Td (134) Tj ET
+BT /F1 10 Tf 160 530 Td (STORAGE) Tj ET
+BT /F1 10 Tf 300 530 Td (VCT-2) Tj ET
+BT /F1 10 Tf 400 530 Td (RB-2) Tj ET
+BT /F1 10 Tf 500 530 Td (P-2) Tj ET
+endstream
+endobj
+12 0 obj
+<< /Length 467 >>
+stream
+1 w 40 40 532 532 re S
+BT /F1 12 Tf 100 580 Td (ROOM FINISH SCHEDULE - BUILDING B - CONT'D) Tj ET
+BT /F1 10 Tf 100 550 Td (NO) Tj ET
+BT /F1 10 Tf 160 550 Td (NAME) Tj ET
+BT /F1 10 Tf 300 550 Td (FLOOR) Tj ET
+BT /F1 10 Tf 400 550 Td (BASE) Tj ET
+BT /F1 10 Tf 500 550 Td (WALL) Tj ET
+BT /F1 10 Tf 100 530 Td (201) Tj ET
+BT /F1 10 Tf 160 530 Td (OFFICE) Tj ET
+BT /F1 10 Tf 300 530 Td (CPT-2) Tj ET
+BT /F1 10 Tf 400 530 Td (RB-2) Tj ET
+BT /F1 10 Tf 500 530 Td (P-2) Tj ET
+endstream
+endobj
+13 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 14
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000139 00000 n 
+0000000266 00000 n 
+0000000393 00000 n 
+0000000521 00000 n 
+0000000649 00000 n 
+0000000777 00000 n 
+0000001066 00000 n 
+0000001359 00000 n 
+0000002651 00000 n 
+0000003162 00000 n 
+0000003681 00000 n 
+trailer
+<< /Size 14 /Root 1 0 R >>
+startxref
+3752
+%%EOF

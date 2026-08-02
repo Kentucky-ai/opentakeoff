@@ -531,6 +531,73 @@ test("sheet graph (#87): index, resolve with citations, refusal with reasons, fi
   assert.match(await callErr(client, "find_schedule", { kind: "door" }), /No "door" schedule found .* Found: /);
 });
 
+// ── the sheet graph, phase 2 (#87): continuation sheets, rotated headers, ───
+// multi-building keys — the five-page fixture pins all three lanes end to end
+// (generator: scripts/make-sheetgraph-fixture.mjs). Room 134 exists in BOTH
+// buildings; building A's schedule is only readable through its rotated
+// header band; building B's schedule continues onto page 5.
+const MB_SET = fileURLToPath(new URL("./fixtures/multibuilding-set.pdf", import.meta.url));
+
+test("sheet graph phase 2 (#87): continuation merges to ONE table, rotated headers anchor, multi-building refuses with candidates", async () => {
+  const client = await pair();
+  await callOk(client, "load_plan", { path: MB_SET });
+
+  const g = await callOk(client, "sheet_graph");
+  assert.deepEqual(g.buildings, ["A", "B"], "the set's building designators");
+  assert.equal(g.sheets[0].building, "A");
+  assert.equal(g.sheets[1].building, "B");
+  assert.equal(g.counts.schedules, 3, "LOGICAL tables: room-finish A, room-finish B (incl. its continuation), material");
+  // rooms carry their building — the same number, twice, honestly
+  const r134 = g.rooms.filter((r: any) => r.tag === "134");
+  assert.deepEqual(r134.map((r: any) => r.building).sort(), ["A", "B"]);
+  // the rotated header band is read and disclosed
+  const schedA = g.sheets.find((s: any) => s.sheet === "multibuilding-set.pdf#3");
+  assert.equal(schedA.schedules.find((x: any) => x.kind === "room-finish").rotated_headers, true);
+  // the continuation fragment names its base
+  const contd = g.sheets.find((s: any) => s.sheet === "multibuilding-set.pdf#5");
+  assert.equal(contd.schedules[0].continues, "multibuilding-set.pdf#4");
+
+  // refusal over first-match: unqualified 134 lists the candidates per building
+  const amb = await callOk(client, "resolve_tag", { tag: "134" });
+  assert.equal(amb.status, "unresolved");
+  assert.match(amb.reason, /ambiguous: room 134 appears in 2 buildings/);
+  assert.match(amb.reason, /qualify the tag/);
+  assert.equal(amb.room, null, "citing one building's plan tag would be quietly wrong");
+  assert.deepEqual(amb.candidates.map((c: any) => c.building).sort(), ["A", "B"]);
+
+  // qualified tags pick the building the set names — through the ROTATED table
+  const a = await callOk(client, "resolve_tag", { tag: "A-134" });
+  assert.equal(a.status, "resolved");
+  assert.equal(a.building, "A");
+  assert.equal(a.room.name, "OFFICE", "building A's 134, not B's STORAGE");
+  const aFloor = a.finishes.find((f: any) => f.surface === "FLOOR");
+  assert.equal(aFloor.code, "CPT-1");
+  assert.equal(aFloor.definition.cells.MATERIAL, "CARPET TILE", "the chain still reaches the material schedule");
+  const b = await callOk(client, "resolve_tag", { tag: "B-134" });
+  assert.equal(b.finishes.find((f: any) => f.surface === "FLOOR").code, "VCT-2");
+
+  // a row carried by the CONT'D sheet resolves and cites the CONT'D sheet
+  const cont = await callOk(client, "resolve_tag", { tag: "201" });
+  assert.equal(cont.status, "resolved");
+  assert.equal(cont.building, "B");
+  assert.ok(cont.finishes.every((f: any) => f.source.sheet === "multibuilding-set.pdf#5"), "evidence points at the ink");
+
+  // a building the set never names refuses by name, with the candidates
+  const c = await callOk(client, "resolve_tag", { tag: "C-134" });
+  assert.equal(c.status, "unresolved");
+  assert.match(c.reason, /names no building "C"/);
+  assert.equal(c.candidates.length, 2);
+
+  // find_schedule: the continued table is ONE match with parts, base first
+  const found = await callOk(client, "find_schedule", { kind: "room finish" });
+  assert.equal(found.matches.length, 2, "two logical room-finish tables — A and B — not three fragments");
+  const matchA = found.matches.find((m: any) => m.building === "A");
+  assert.equal(matchA.rotated_headers, true);
+  const matchB = found.matches.find((m: any) => m.building === "B");
+  assert.equal(matchB.rows, 2, "total rows across fragments");
+  assert.deepEqual(matchB.parts.map((p: any) => [p.sheet, p.rows]), [["multibuilding-set.pdf#4", 1], ["multibuilding-set.pdf#5", 1]]);
+});
+
 // 0.9.20 — symbol_sweep's output contract, both modes, schema round-tripped
 // unstripped (the assign-mode deepEqual discipline: zod strips unknown keys,
 // so equality proves the schema states EVERY returned field).
