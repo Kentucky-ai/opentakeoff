@@ -1886,7 +1886,8 @@ export function doorWedgeCapPx(maskPxPerFt: number): number {
  *  spaces through doorways the seal ladder can't all close. (Per-click
  *  build, no cache — the retry only runs on curve-adjacent rooms, and the
  *  hover path already caches per room.) */
-function boundaryCurveClusters(mo: MaskObj, region: Uint8Array): number[][] {
+/** Exported for the door-arc tests and diagnostics — see doorArcs.test.ts. */
+export function boundaryCurveClusters(mo: MaskObj, region: Uint8Array): number[][] {
   const { mw, mh } = mo;
   const src = mo.mask;
   const near: number[] = [];
@@ -1947,6 +1948,202 @@ function boundaryCurveClusters(mo: MaskObj, region: Uint8Array): number[][] {
     clusters.push(cl);
   }
   return clusters;
+}
+
+// ── separating two doors that the bridge glued together (in-swing wedges) ────
+// The 3-cell bridge above exists so a DASHED arc stays one cluster, and it has
+// to stay. But two doors meeting near a corner — a patient room's own door and
+// its toilet's, hinged a couple of feet apart — come within three cells of each
+// other too, and then one cluster holds two arcs. Every consequence of that is
+// bad, and they compound:
+//   • arcClusterFit puts ONE circle through both, so the fit is garbage
+//     (measured on demo/sample-finish-plan.pdf, patient room 138: 120 cells,
+//     241° sweep, rms 10.35, good=false, where a clean single door reads ~40
+//     cells / 89° / rms 0.31);
+//   • good=false drops doorLikeness from 8.0 to 1.0, so a real pair of doors
+//     ranks below anything with a clean fit and can lose the budget entirely;
+//   • good=false also takes wedgeAllowance's fallback branch, which is far
+//     LOOSER than either door deserves;
+//   • and the retry opens both arcs at once, so the re-flood has two openings
+//     to get through and the seal ladder has to close both or nothing is
+//     annexed. Room 138 measured 159.4 SF against 190–228 for its neighbours —
+//     its own swing sector, cut off by the leaf, never came back.
+//
+// The cure is to split ONLY what fails the fit, and then to put back together
+// whatever the split shouldn't have separated. A dashed arc's pieces all lie on
+// the SAME circle, so re-fitting each piece and re-merging pieces whose centre
+// and radius agree reconstructs it exactly; two doors have centres feet apart
+// and stay separate. A cluster that already fits one circle is returned
+// untouched, so this is a no-op everywhere the fit was fine (rooms 137 and 140
+// re-cluster to a single part and are bit-identical).
+const SPLIT_GAP = 1;                       // Chebyshev gap for the re-split — tight enough to part two arcs
+const SPLIT_MIN_SEED = 8;                  // cells: below this a circle fit means nothing, so a piece can't seed a group
+export const SAME_ARC_CENTRE_FT = 0.5;     // two pieces of ONE arc share a hinge to within this
+export const SAME_ARC_RADIUS_FRAC = 0.15;  // ...and a radius to within this fraction
+
+/** Split a cluster that does not fit one circle into its constituent arcs,
+ *  re-merging pieces that share a circle (a dashed arc). Returns the original
+ *  cluster unchanged when it already fits, when it cannot be parted, or when
+ *  the split explains less than the whole — nothing is ever dropped. */
+export function splitMergedArcs(cl: number[], mw: number, mask: Uint8Array, mppf: number): number[][] {
+  if (cl.length < 2 * SPLIT_MIN_SEED) return [cl];
+  if (arcClusterFit(cl, mw, mask).good) return [cl];
+  // connected components at the tight gap
+  const set = new Set(cl);
+  const seen = new Set<number>();
+  const parts: number[][] = [];
+  for (const start of cl) {
+    if (seen.has(start)) continue;
+    seen.add(start);
+    const comp = [start];
+    const stack = [start];
+    while (stack.length) {
+      const i = stack.pop() as number;
+      const y = (i / mw) | 0, x = i - y * mw;
+      for (let dy = -SPLIT_GAP; dy <= SPLIT_GAP; dy++) {
+        for (let dx = -SPLIT_GAP; dx <= SPLIT_GAP; dx++) {
+          if (!dx && !dy) continue;
+          const j = (y + dy) * mw + (x + dx);
+          if (set.has(j) && !seen.has(j)) { seen.add(j); comp.push(j); stack.push(j); }
+        }
+      }
+    }
+    parts.push(comp);
+  }
+  if (parts.length < 2) return [cl];
+  // group pieces by the circle they sit on — this is what puts a dashed arc
+  // back together. Only pieces big enough for a fit to mean anything may open
+  // a group; the rest ride along with the nearest group that claims them, and
+  // anything unclaimed goes back as its own cluster rather than being lost.
+  const centreTol = mppf > 0 ? Math.max(2, SAME_ARC_CENTRE_FT * mppf) : 4;
+  const groups: Array<{ cx: number; cy: number; r: number; cells: number[] }> = [];
+  const orphans: number[] = [];
+  for (const p of parts.slice().sort((a, b) => b.length - a.length)) {
+    const f = p.length >= SPLIT_MIN_SEED ? arcClusterFit(p, mw, mask) : null;
+    const claim = f && f.good
+      ? groups.find((gp) => Math.hypot(gp.cx - f.cx, gp.cy - f.cy) <= centreTol
+          && Math.abs(gp.r - f.r) <= SAME_ARC_RADIUS_FRAC * Math.max(gp.r, f.r))
+      : undefined;
+    if (claim) { claim.cells.push(...p); continue; }
+    if (f && f.good) { groups.push({ cx: f.cx, cy: f.cy, r: f.r, cells: p.slice() }); continue; }
+    orphans.push(...p);
+  }
+  // Fewer than two explained arcs means the split found no real separation —
+  // keep the original so a genuinely messy cluster (a cloud, curved millwork)
+  // is judged exactly as it was, not shattered into fragments that each look
+  // door-sized.
+  if (groups.length < 2) return [cl];
+  const out = groups.map((gp) => gp.cells);
+  if (orphans.length) out.push(orphans);
+  return out;
+}
+
+// ── the IN-SWING sector, and why opening the arc could never reach it ────────
+// A drawn door is two marks: the LEAF (a straight double line from the hinge to
+// where the panel stands open) and the ARC (the swept edge, hinge-centred,
+// running from the leaf's tip round to the closed jamb). The sector between
+// them is floor — flooring runs under a door — and which mark separates it from
+// the room depends entirely on which way the door swings:
+//
+//   OUT-swing — leaf and sector are on the CORRIDOR side. The room's boundary
+//     at the doorway is the opening itself, and the ARC is what closes it.
+//     Opening the arc and re-flooding re-measures the room to the wall. This is
+//     what the retry has always done, and it works.
+//
+//   IN-swing — leaf and sector are INSIDE the room. The room's boundary at the
+//     doorway is the LEAF. The arc is on the far side of the sector, closing it
+//     off from the corridor. Opening the arc lets the room out toward the
+//     corridor; it does not, and cannot, reach the sector, because the leaf
+//     still stands between them. Every in-swing door on a plan therefore lost
+//     its sector no matter how the cluster ranked — measured on
+//     demo/sample-finish-plan.pdf, patient room 138 read 159.4 SF against
+//     190–228 for its neighbours.
+//
+// So the in-swing retry opens the LEAF and leaves the arc hard. That is not
+// just the correct mark, it is the SAFE one: with the arc still standing, the
+// sector is completely enclosed by leaf-gone + arc + jamb, so the re-flood can
+// gain the sector and nothing else. There is no opening for it to escape
+// through and no dilation needed to close one. On an out-swing door the leaf is
+// not on the room's boundary at all, so opening it changes nothing — the arc is
+// still there sealing the doorway — which is exactly the "don't disturb what
+// already works" property this needs.
+export const LEAF_MIN_SECTOR_FRAC = 0.15;  // a leaf wedge must recover at least this much of the fitted sector, or it is a crack not a door
+export const LEAF_MIN_COVER = 0.55;   // fraction of the ray that must actually be inked for it to be a leaf
+/** Half-thickness of a drawn door leaf. FEET-TRUE, like every other physical
+ *  threshold in this file: a leaf is a panel drawn as a thin rectangle — two
+ *  parallel strokes a few inches apart — and at 1.5 mask px the outer stroke
+ *  survived the opening, so the barrier held and every retry reported "no
+ *  growth" with the leaf apparently opened. 0.3 ft = 3.6in covers a 1.75in
+ *  panel plus its line weight either side. The px floor is the raster-honesty
+ *  fallback when the sheet scale is unknown. */
+export const LEAF_HALF_FT = 0.3;
+const LEAF_HALF_FLOOR_PX = 1.5;
+const LEAF_T0 = 0.2, LEAF_T1 = 0.95;  // sample the ray between these fractions of r (skip the hinge knuckle and the tip)
+
+/** The door leaf belonging to an arc cluster: the hard, NON-curve ink lying
+ *  along a radius of the fitted circle at one end of the arc's sweep. Returns
+ *  null when neither end carries a leaf (an out-swing door seen from the
+ *  corridor, a curved wall, a cloud scallop) — the caller then has nothing to
+ *  open and behaves exactly as before. */
+export function doorLeafCells(fit: ArcClusterFit, cl: number[], mw: number, mh: number, mask: Uint8Array, mppf = 0): number[] | null {
+  if (!fit.good || !(fit.r > 2)) return null;
+  const LEAF_HALF_W = mppf > 0 ? Math.max(LEAF_HALF_FLOOR_PX, LEAF_HALF_FT * mppf) : LEAF_HALF_FLOOR_PX;
+  // the arc's own extreme angles about the fitted hinge — the leaf stands at
+  // one of them (unwrapped the same way arcClusterFit measures its sweep)
+  const angs = cl.map((i) => Math.atan2(((i / mw) | 0) - fit.cy, (i % mw) - fit.cx)).sort((a, b) => a - b);
+  if (angs.length < 2) return null;
+  let gapAt = -1, gapMax = angs[0] + 2 * Math.PI - angs[angs.length - 1];
+  for (let k = 1; k < angs.length; k++) { const gp = angs[k] - angs[k - 1]; if (gp > gapMax) { gapMax = gp; gapAt = k; } }
+  const ends = gapAt < 0 ? [angs[0], angs[angs.length - 1]] : [angs[gapAt], angs[gapAt - 1]];
+  let best: number[] | null = null, bestCover = LEAF_MIN_COVER;
+  for (const th of ends) {
+    const ux = Math.cos(th), uy = Math.sin(th);
+    const ax = fit.cx + ux * fit.r * LEAF_T0, ay = fit.cy + uy * fit.r * LEAF_T0;
+    const bx = fit.cx + ux * fit.r * LEAF_T1, by = fit.cy + uy * fit.r * LEAF_T1;
+    // SWEEP THE BOX, don't sample the ray. Sampling leaves gaps: a barrier is
+    // 8-connected, so a single cell missed anywhere along the leaf still blocks
+    // the 4-connected fill and the retry reports no growth with the leaf
+    // apparently opened. (Measured: room 138's leaves opened as dotted lines
+    // and every retry came back "no growth".) Taking every hard cell within
+    // LEAF_HALF_W of the SEGMENT is contiguous by construction.
+    const x0 = Math.max(0, Math.floor(Math.min(ax, bx) - LEAF_HALF_W - 1));
+    const x1 = Math.min(mw - 1, Math.ceil(Math.max(ax, bx) + LEAF_HALF_W + 1));
+    const y0 = Math.max(0, Math.floor(Math.min(ay, by) - LEAF_HALF_W - 1));
+    const y1 = Math.min(mh - 1, Math.ceil(Math.max(ay, by) + LEAF_HALF_W + 1));
+    const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+    if (!(L2 > 0)) continue;
+    const cells: number[] = [];
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        let t = ((x - ax) * dx + (y - ay) * dy) / L2;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const ex = ax + t * dx - x, ey = ay + t * dy - y;
+        if (ex * ex + ey * ey > LEAF_HALF_W * LEAF_HALF_W) continue;
+        const i = y * mw + x;
+        // the leaf is STRAIGHT ink: curve cells belong to the arc (or to a
+        // second door) and must stay hard, or the retry re-opens the doorway
+        if ((mask[i] & 1) && !(mask[i] & MASK_CURVE_BIT)) cells.push(i);
+      }
+    }
+    // coverage is still measured ALONG the ray — "is there a leaf here at all"
+    // is a question about the line, not about how many cells a band contains
+    let hit = 0, tries = 0;
+    for (let t = 0; t <= 1; t += 0.02) {
+      tries++;
+      const px = ax + t * dx, py = ay + t * dy;
+      let inked = false;
+      for (let o = -LEAF_HALF_W; o <= LEAF_HALF_W && !inked; o += 0.5) {
+        const x = Math.round(px - (dy / Math.sqrt(L2)) * o), y = Math.round(py + (dx / Math.sqrt(L2)) * o);
+        if (x < 0 || y < 0 || x >= mw || y >= mh) continue;
+        const i = y * mw + x;
+        if ((mask[i] & 1) && !(mask[i] & MASK_CURVE_BIT)) inked = true;
+      }
+      if (inked) hit++;
+    }
+    const cover = tries ? hit / tries : 0;
+    if (cover > bestCover && cells.length) { bestCover = cover; best = cells; }
+  }
+  return best && best.length ? best : null;
 }
 
 /** A boundary curve cluster, re-fitted as geometry.
@@ -2078,7 +2275,8 @@ export function wedgeAllowance(fit: ArcClusterFit, mppf: number, wedgeCapPx: num
 /** How door-like a cluster is, for RANKING (the wedge budget is finite, and
  *  taking clusters in scanline order let a row of curved fixtures spend it
  *  before the room's real doors were ever reached). Higher is more door-like. */
-function doorLikeness(fit: ArcClusterFit, mppf: number): number {
+/** Exported for the door-arc tests and diagnostics — see doorArcs.test.ts. */
+export function doorLikeness(fit: ArcClusterFit, mppf: number): number {
   let s = 1 - fit.noDoorFrac;
   const swDeg = (fit.sweep * 180) / Math.PI;
   if (fit.good) {
@@ -2340,13 +2538,58 @@ function floodRegionSealedInner(mo: MaskObj, ix: number, iy: number, sensitivity
   // door-like ones. Ranking, not scanline order: a room ringed with curved
   // millwork used to exhaust the budget before its real doors were reached.
   // Ties break on first-cell index, so the order stays deterministic.
-  const ranked = clusters
-    .map((cl) => {
-      const fit = arcClusterFit(cl, mw, mo.mask);
-      return { cl, fit, allow: wedgeAllowance(fit, mo.mppf || 0, wedgeCapPx), rank: doorLikeness(fit, mo.mppf || 0), at: cl[0] };
-    })
-    .filter((c) => c.allow >= 1)
-    .sort((a, b) => (b.rank - a.rank) || (a.at - b.at));
+  // Every opening the retry may try, in THREE passes. The passes exist because
+  // the wedge budget is shared and the accepted wedges union: an opening tried
+  // earlier can spend budget a later one needed, so the only way to add
+  // openings without ever taking area away is to run the old ones first,
+  // unchanged, and let the new ones have what is left.
+  //   pass 0 — the cluster exactly as boundaryCurveClusters found it. Bit-for-
+  //            bit what shipped before, and it must stay first: the ward room's
+  //            double doors are ONE cluster whose two arcs have to open
+  //            TOGETHER for the pair's wedge to be reachable, and offering only
+  //            the split pieces cost it 2.21 SF.
+  //   pass 1 — the same cluster parted into single arcs (splitMergedArcs), for
+  //            the opposite case: two unrelated doors the 3-cell bridge glued
+  //            into one unfittable blob.
+  //   pass 2 — door LEAVES, the in-swing sector (see doorLeafCells).
+  // A cluster that neither splits nor carries a leaf yields exactly one entry,
+  // which is why this is a no-op on everything that already worked.
+  interface Opening { cl: number[]; fit: ArcClusterFit; allow: number; rank: number; at: number; pass: number; minGrow: number }
+  const entry = (cl: number[], pass: number, fit?: ArcClusterFit): Opening => {
+    const f = fit ?? arcClusterFit(cl, mw, mo.mask);
+    // A leaf opening must return a SECTOR or nothing. Accepting a few cells
+    // is not free: the traced ring is re-contoured and re-snapped around
+    // whatever is added, and a sliver can move a corner onto a different
+    // vertex and enclose LESS area than before — ward-room gained 5 cells
+    // this way and lost 2.21 SF off its ring. A real in-swing sector is a
+    // quarter-disc about the hinge; anything under LEAF_MIN_SECTOR_FRAC of
+    // that is the retry finding a crack, not a door. Arc openings keep no
+    // floor at all, so pass 0 stays bit-identical.
+    const ideal = 0.5 * f.r * f.r * f.sweep;
+    return {
+      cl, fit: f, allow: wedgeAllowance(f, mo.mppf || 0, wedgeCapPx),
+      rank: doorLikeness(f, mo.mppf || 0), at: cl[0], pass,
+      minGrow: pass === 2 ? Math.max(1, Math.round(LEAF_MIN_SECTOR_FRAC * ideal)) : 0,
+    };
+  };
+  const ranked: Opening[] = [];
+  for (const cl of clusters) {
+    const fit = arcClusterFit(cl, mw, mo.mask);
+    ranked.push(entry(cl, 0, fit));
+    const parts = splitMergedArcs(cl, mw, mo.mask, mo.mppf || 0);
+    const pieces = parts.length > 1 ? parts : [cl];
+    if (parts.length > 1) for (const p of parts) ranked.push(entry(p, 1));
+    // a leaf per ARC, taken from the parted pieces so a glued pair offers both
+    for (const p of pieces) {
+      const pf = p === cl ? fit : arcClusterFit(p, mw, mo.mask);
+      const leaf = doorLeafCells(pf, p, mw, mh, mo.mask, mo.mppf || 0);
+      if (leaf) ranked.push({ ...entry(leaf, 2, pf), cl: leaf });
+    }
+  }
+  ranked
+    .splice(0, ranked.length, ...ranked
+      .filter((c) => c.allow >= 1)
+      .sort((a, b) => (a.pass - b.pass) || (b.rank - a.rank) || (a.at - b.at)));
   // ONE mask buffer and ONE distance field for the whole ladder of clusters
   // (A8): each cluster used to slice a fresh copy of the mask and run a fresh
   // hardDT over it, so a six-door room allocated and refilled twelve
@@ -2361,7 +2604,10 @@ function floodRegionSealedInner(mo: MaskObj, ix: number, iy: number, sensitivity
   let base = sealCache.get(mo.mask);
   if (!base) { base = { dt: hardDT(mo.mask, mw, mh) }; sealCache.set(mo.mask, base); }
   const baseDT = base.dt;
-  for (const { cl, fit, allow: clusterAllowance } of ranked.slice(0, WEDGE_MAX_DOORS)) {
+  // 2× because a door now contributes up to TWO openings (arc and leaf) and
+  // WEDGE_MAX_DOORS counts DOORS — capping entries at 12 would silently halve
+  // the ceiling to six doors the moment leaves started being offered.
+  for (const { cl, fit, allow: clusterAllowance, minGrow } of ranked.slice(0, 2 * WEDGE_MAX_DOORS)) {
     // open ONLY this cluster's cells, and undo the previous cluster's — mask
     // and distance field alike — so both buffers hold exactly "the sheet with
     // this one arc opened" without either being rebuilt from scratch
@@ -2392,6 +2638,7 @@ function floodRegionSealedInner(mo: MaskObj, ix: number, iy: number, sensitivity
     const r2 = sealAttempt(m2, sx, sy, sensitivity, radii, minPassPx, sc2);
     if (r2.status !== "ok" || r2.count <= r1.count) continue;
     const growth = r2.count - r1.count;
+    if (growth < minGrow) continue;                  // a leaf must return a SECTOR, not a sliver (see entry())
     if (growth > clusterAllowance) continue;           // curved wall / open paper, not a door
     if (count - r1.count + growth > globalAllowance) continue;
     if (!region) { region = r1.region.slice(); regionBox.set(region, { ...rb1 }); }
