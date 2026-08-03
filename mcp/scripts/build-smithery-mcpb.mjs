@@ -116,7 +116,7 @@ writeFileSync(resolve(staging, 'manifest.json'), JSON.stringify({
   long_description: 'Construction takeoff for AI agents: load plan PDFs, browse the sheet set as resources, set and verify drawing scale, one-click room areas, measure, and export takeoff quantities with provenance. The same measuring engine as the OpenTakeoff web app.',
   author: { name: 'Kentucky AI', url: 'https://github.com/Kentucky-ai' },
   repository: { type: 'git', url: 'https://github.com/Kentucky-ai/opentakeoff' },
-  homepage: 'https://opentakeoff.netlify.app',
+  homepage: 'https://opentakeoff.kentucky-ai.com',
   documentation: 'https://github.com/Kentucky-ai/opentakeoff/blob/main/mcp/README.md',
   license: pkg.license,
   keywords: ['construction', 'takeoff', 'estimating', 'blueprints', 'measurement'],

@@ -2,7 +2,7 @@
 
 How OpenTakeoff ships: every change lands on `main` through a pull request,
 and every merge to `main` is automatically deployed to production at
-<https://opentakeoff.netlify.app>. There is no manual deploy step and no
+<https://opentakeoff.kentucky-ai.com>. There is no manual deploy step and no
 "deploy later" state — **a merge is a deploy**.
 
 (This file's mechanism description is accurate for this repo — it originally
@@ -20,7 +20,7 @@ branch → npm run check (local) → PR → CI (`web` check) → squash-merge
                                           npm ci → npm run check → netlify deploy
                                                              │
                                                              ▼
-                                          https://opentakeoff.netlify.app
+                                          https://opentakeoff.kentucky-ai.com
 ```
 
 - **CI** (`.github/workflows/ci.yml`) runs on every PR: `npm ci` then

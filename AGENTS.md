@@ -19,12 +19,12 @@ npm run check    # typecheck + lint + test + build — exactly what CI runs; gre
 `main` is protected on GitHub via a ruleset (PR-only, one approving review,
 green `web` check, branch up to date — the repo owner has a standing bypass
 as the solo maintainer). **Merging to `main` deploys to production**
-(<https://opentakeoff.netlify.app>) via `.github/workflows/deploy.yml`, which
+(<https://opentakeoff.kentucky-ai.com>) via `.github/workflows/deploy.yml`, which
 re-runs `npm run check` and publishes `web/dist` to Netlify with `--no-build`
 — Netlify never builds anything itself.
 
 > **This is the canonical `Kentucky-ai/opentakeoff` repo — production is
-> <https://opentakeoff.netlify.app>, nothing else.** A downstream fork
+> <https://opentakeoff.kentucky-ai.com>, nothing else.** A downstream fork
 > (`knmurphy/opentakeoff`) tracks this repo as its own upstream and deploys
 > separately to `takeoff.345flooring.com` — that URL belongs to *that* fork,
 > not this repo. If you're seeing `takeoff.345flooring.com` referenced

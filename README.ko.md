@@ -9,10 +9,10 @@
 브라우저에서 실행 — 계정 없음, 업로드 없음, 설치 없음.
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Live demo](https://img.shields.io/badge/demo-opentakeoff.netlify.app-2ea44f.svg)](https://opentakeoff.netlify.app)
+[![Live demo](https://img.shields.io/badge/demo-opentakeoff.kentucky--ai.com-2ea44f.svg)](https://opentakeoff.kentucky-ai.com)
 [![Built with React + Vite](https://img.shields.io/badge/React%2018-Vite-444.svg)](#기술-스택)
 
-[**▶ 라이브 데모 실행**](https://opentakeoff.netlify.app) · [빠른 시작](#빠른-시작) · [기능](#주요-기능) · [AI 에이전트용](mcp/) · [English](README.md) · [日本語](README.ja.md) · [简体中文](README.zh-Hans.md)
+[**▶ 라이브 데모 실행**](https://opentakeoff.kentucky-ai.com) · [빠른 시작](#빠른-시작) · [기능](#주요-기능) · [AI 에이전트용](mcp/) · [English](README.md) · [日本語](README.ja.md) · [简体中文](README.zh-Hans.md)
 
 <br/>
 
@@ -51,7 +51,7 @@ OpenTakeoff가 바로 그 도구입니다. 업계에 무상으로 제공되는 �
 
 ## 빠른 시작
 
-쓰기만 할 거라면 설치할 것이 없습니다 — [**라이브 데모**](https://opentakeoff.netlify.app)를 열고
+쓰기만 할 거라면 설치할 것이 없습니다 — [**라이브 데모**](https://opentakeoff.kentucky-ai.com)를 열고
 도면을 끌어다 놓으면 됩니다.
 
 직접 실행하려면:

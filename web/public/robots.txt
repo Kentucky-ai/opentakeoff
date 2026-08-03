@@ -20,4 +20,4 @@ Allow: /
 User-agent: CCBot
 Allow: /
 
-Sitemap: https://opentakeoff.netlify.app/sitemap.xml
+Sitemap: https://opentakeoff.kentucky-ai.com/sitemap.xml

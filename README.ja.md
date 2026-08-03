@@ -9,10 +9,10 @@
 ブラウザで動作 — アカウント不要、アップロード不要、インストール不要。
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Live demo](https://img.shields.io/badge/demo-opentakeoff.netlify.app-2ea44f.svg)](https://opentakeoff.netlify.app)
+[![Live demo](https://img.shields.io/badge/demo-opentakeoff.kentucky--ai.com-2ea44f.svg)](https://opentakeoff.kentucky-ai.com)
 [![Built with React + Vite](https://img.shields.io/badge/React%2018-Vite-444.svg)](#技術スタック)
 
-[**▶ ライブデモを試す**](https://opentakeoff.netlify.app) · [クイックスタート](#クイックスタート) · [機能](#主な機能) · [AI エージェント向け](mcp/) · [English](README.md) · [한국어](README.ko.md) · [简体中文](README.zh-Hans.md)
+[**▶ ライブデモを試す**](https://opentakeoff.kentucky-ai.com) · [クイックスタート](#クイックスタート) · [機能](#主な機能) · [AI エージェント向け](mcp/) · [English](README.md) · [한국어](README.ko.md) · [简体中文](README.zh-Hans.md)
 
 <br/>
 
@@ -51,7 +51,7 @@ OpenTakeoff は、建築図面から数量を測る — **拾い出し**（takeo
 
 ## クイックスタート
 
-使うだけならインストールは不要です — [**ライブデモ**](https://opentakeoff.netlify.app)を開いて、
+使うだけならインストールは不要です — [**ライブデモ**](https://opentakeoff.kentucky-ai.com)を開いて、
 図面をドラッグするだけです。
 
 自分で動かす場合:

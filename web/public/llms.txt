@@ -6,7 +6,7 @@ OpenTakeoff is the open-source alternative to subscription takeoff tools (STACK,
 
 ## Docs
 
-- [Live app](https://opentakeoff.netlify.app): try it in the browser — includes a one-click sample plan (a real medical-center floor finish plan)
+- [Live app](https://opentakeoff.kentucky-ai.com): try it in the browser — includes a one-click sample plan (a real medical-center floor finish plan)
 - [README](https://github.com/Kentucky-ai/opentakeoff#readme): features, quick start, deploy-it-yourself, build-on-top-of-it
 - [MCP server](https://github.com/Kentucky-ai/opentakeoff/blob/main/mcp/README.md): `npx -y opentakeoff-mcp` on the [npm registry](https://www.npmjs.com/package/opentakeoff-mcp) — `load_plan`, `read_sheet_text`, `set_scale`, `one_click`, `view_sheet`, `takeoff_summary`, `export_takeoff`, and more
 - [Agent usage guide + example transcript](https://github.com/Kentucky-ai/opentakeoff/blob/main/docs/MCP.md): how an agent opens a plan, adopts the scale, traces rooms, and exports a takeoff over MCP
