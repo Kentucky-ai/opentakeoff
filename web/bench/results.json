@@ -48,7 +48,7 @@
    "sfErr": 0,
    "leak": false,
    "refused": false,
-   "confidence": 0.93,
+   "confidence": 0.92,
    "tags": [
     "door-swing",
     "wedge-included"
@@ -133,7 +133,7 @@
    "sfErr": 0,
    "leak": false,
    "refused": false,
-   "confidence": 0.92,
+   "confidence": 0.91,
    "tags": [
     "door-swing",
     "multi-door"
@@ -299,11 +299,11 @@
    "probeName": "elevator-e01",
    "expect": "golden",
    "status": "ok",
-   "iou": 0.9979244589540138,
-   "sfErr": 0.00027502215351562093,
+   "iou": 0.9920689506942355,
+   "sfErr": 0.005964405002622087,
    "leak": false,
    "refused": false,
-   "confidence": 0.97,
+   "confidence": 0.92,
    "tags": [
     "door-swing"
    ]
@@ -382,7 +382,7 @@
  ],
  "aggregate": {
   "goldenProbes": 21,
-  "meanIoU": 0.9993004094836125,
+  "meanIoU": 0.9990215757569564,
   "floorIoU": 0.9903403448587162,
   "refusalRate": 0,
   "leakRate": 0,
@@ -407,12 +407,12 @@
    "caseName": "va-finish-plan",
    "probes": 8,
    "sumGoldenSF": 2614.3091975308735,
-   "sumEngineSF": 2614.4159740923087,
-   "ratio": 1.0000408431265653,
+   "sumEngineSF": 2615.2274407589775,
+   "ratio": 1.000351237424009,
    "overlapSF": 0,
-   "maxSfErr": 0.0006276338205593411,
-   "maxSfAbs": 0.050546087710870324,
-   "maxSfAbsProbe": "ward-room",
+   "maxSfErr": 0.005964405002622073,
+   "maxSfAbs": 0.8506925925892688,
+   "maxSfAbsProbe": "elevator-e01",
    "humanMeasured": false
   }
  ],
@@ -975,7 +975,7 @@
    ],
    "statusAgree": true,
    "iouByRes": [
-    0.9998267198059262,
+    0.9937139412727116,
     0.9603188355570959,
     0.9312944030497314
    ],
@@ -1006,7 +1006,7 @@
    "iouByRes": [
     0.9995268387571631,
     0.4775177491454115,
-    0.6354319949548034
+    0.6285143727994115
    ],
    "subFloorRes": [
     0.75,
@@ -1064,8 +1064,8 @@
    "statusAgree": true,
    "iouByRes": [
     0.9999858403069821,
-    0.9882082641122618,
-    0.9765518411434954
+    0.9879686605862363,
+    0.982298198045529
    ],
    "subFloorRes": [
     0.75,
@@ -1157,7 +1157,7 @@
    },
    {
     "probe": "door-swing-3ft/center",
-    "confidence": 0.93
+    "confidence": 0.92
    },
    {
     "probe": "hatched-room/center",
@@ -1165,7 +1165,7 @@
    },
    {
     "probe": "two-door-room/center",
-    "confidence": 0.92
+    "confidence": 0.91
    },
    {
     "probe": "sample-plan/break-103",
@@ -1194,10 +1194,6 @@
    {
     "probe": "va-finish-plan/patient-toilet-137a",
     "confidence": 0.9
-   },
-   {
-    "probe": "va-finish-plan/elevator-e01",
-    "confidence": 0.97
    },
    {
     "probe": "va-finish-plan/ward-room",
@@ -1535,10 +1531,10 @@
    {
     "caseName": "va-finish-plan",
     "probeName": "elevator-e01",
-    "iou": 0.9506654033334769,
-    "sfErr": 0.041180853877427696,
-    "prodIou": 0.9979244589540138,
-    "prodSfErr": 0.00027502215351562093
+    "iou": 0.9491873835678036,
+    "sfErr": 0.03177031923836624,
+    "prodIou": 0.9920689506942355,
+    "prodSfErr": 0.005964405002622087
    },
    {
     "caseName": "va-finish-plan",
@@ -1573,7 +1569,7 @@
     "prodSfErr": 0.00015917263913391673
    }
   ],
-  "meanIoU": 0.9693748770510208,
+  "meanIoU": 0.9693044951574175,
   "floorIoU": 0.8602150537634409,
   "worstSfErr": 0.07834835470271602,
   "crossFloorIoU": 0.9618671926364234,
