@@ -105,6 +105,23 @@ jobs:
             exit 1
           fi
 
+          # ...and the DEPLOYED manifest, which is the surface nobody remembers.
+          # AGENTS.md has always said the version lives on three surfaces, but
+          # this guard only ever checked two, so the third silently rotted: at
+          # 0.9.29 the well-known file still said 0.9.27 while npm and the
+          # registry served 0.9.29. It is not cosmetic — directory indexers
+          # (Smithery among them) cache whatever they last scanned, and the same
+          # drift once had them describing the 17-tool era of a 31-tool server.
+          # It ships from web/, not mcp/, which is exactly why a change confined
+          # to mcp/ forgets it, so it is checked HERE where mcp/ is the trigger.
+          WK=web/public/.well-known/mcp.json
+          WKV=$(jq -r .version "$WK")
+          WKPKG=$(jq -r '.packages[0].version' "$WK")
+          if [ "$PKG" != "$WKV" ] || [ "$PKG" != "$WKPKG" ]; then
+            echo "::error file=$WK::the deployed manifest still says $WKV/$WKPKG while mcp/ is $PKG — bump BOTH version fields in $WK too, or the directories keep advertising the old server"
+            exit 1
+          fi
+
           BASE_PKG=$(git show "$BASE:mcp/package.json" | jq -r .version)
           if [ "$PKG" = "$BASE_PKG" ]; then
             echo "::error file=mcp/package.json::mcp/ changed but the version is still $PKG. Bump mcp/package.json AND mcp/server.json (.version and .packages[0].version), or the change ships to nobody: the registry only ever sees a published mcp-v* tag."
