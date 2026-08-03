@@ -102,13 +102,37 @@ export function mergeTakeoffImport(current, imported, knownFiles = null) {
   const byTag = new Map(conditions.map((c) => [tagKey(c.finish_tag), c.id]));
   const condIds = new Set(conditions.map((c) => c.id));
   const condMap = new Map();   // imported cond id -> id in the merged doc
+  const addedCondIds = new Set();   // ids the import CREATED (vs merged onto an operator's own)
   let condMerged = 0, condAdded = 0;
   for (const c of impConds) {
     const hit = byTag.get(tagKey(c.finish_tag));
     if (hit) { condMap.set(c.id, hit); condMerged++; continue; }
     const id = condIds.has(c.id) ? freeId(c.id, condIds) : c.id;
     const next = id === c.id ? c : { ...c, id };
-    conditions.push(next); condIds.add(id); byTag.set(tagKey(c.finish_tag), id); condMap.set(c.id, id); condAdded++;
+    conditions.push(next); condIds.add(id); byTag.set(tagKey(c.finish_tag), id); condMap.set(c.id, id);
+    addedCondIds.add(id); condAdded++;
+  }
+  // ── twin lineage: re-point it, or cut it, never leave it dangling ─────────
+  // A twin's `variant_of` is an id, so an added twin has to follow its parent through condMap
+  // (a de-collided id would otherwise point at a stranger). And lineage only survives when the
+  // PARENT also arrived as a new condition: if the parent merged into the operator's own
+  // condition, the twin's rows carry origin_ids into a materials list that never had them, so
+  // following it would mean following nothing. In that case the twin keeps its materials as its
+  // own — the numbers the file actually carried — and simply stops being a twin. Grouping
+  // (`family_id`) is a cosmetic string and rides along either way.
+  for (let i = 0; i < conditions.length; i++) {
+    const c = conditions[i];
+    if (!c?.variant_of || !addedCondIds.has(c.id)) continue;   // operator conditions stay untouched
+    const mapped = condMap.get(c.variant_of);
+    const parentArrived = !!mapped && addedCondIds.has(mapped);
+    if (parentArrived && mapped !== c.variant_of) {
+      conditions[i] = { ...c, variant_of: mapped };
+    } else if (!parentArrived) {
+      const next = { ...c, materials: (c.materials || []).map(({ origin_id: _o, inherited: _i, ...m }) => m) };
+      delete next.variant_of;
+      delete next.materials_dropped;
+      conditions[i] = next;
+    }
   }
 
   // ── shapes / markups: append new ids, skip ones already here ─────────────

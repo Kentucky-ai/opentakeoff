@@ -162,3 +162,49 @@ test("a sealed-but-untraced project MERGES instead of being replaced — a seal 
   assert.equal(payload.approvals.length, 1, "the operator's seal survives");
   assert.equal(payload.shapes.length, 1, "the imported work still lands");
 });
+
+// ── twin lineage across an import ────────────────────────────────────────────
+// variant_of is an ID, so it has to travel through condMap; and it only means anything when the
+// PARENT arrived too — a twin whose parent merged into the operator's own condition would be
+// following a materials list that never had its origin_ids.
+test("an imported twin follows its parent through a de-collided id", () => {
+  const cur = { conditions: [{ id: "cnd-1", finish_tag: "CPT-1", materials: [] }],
+    shapes: [{ id: "s-mine", sheet_id: "va.pdf#1", condition_id: "cnd-1" }], sheets: [] };   // non-empty: the merge path, not clean-replace
+  const imported = {
+    schema: "opentakeoff.takeoff.v1",
+    conditions: [
+      { id: "cnd-1", finish_tag: "SV-9", family_id: "fam-1", materials: [{ id: "m1", name: "Adhesive", per: 185 }] },
+      { id: "cnd-2", finish_tag: "SV-9 – Level 2", family_id: "fam-1", variant_of: "cnd-1",
+        materials: [{ id: "m2", name: "Adhesive", per: 185, origin_id: "m1", inherited: true }] },
+    ],
+    shapes: [], sheets: [],
+  };
+  const { payload } = mergeTakeoffImport(cur, imported);
+  const twin = payload.conditions.find((c: any) => c.finish_tag === "SV-9 – Level 2") as any;
+  const parent = payload.conditions.find((c: any) => c.finish_tag === "SV-9") as any;
+  assert.notEqual(parent.id, "cnd-1", "the parent's id collided with the operator's and was freed");
+  assert.equal(twin.variant_of, parent.id, "the twin follows the parent's NEW id");
+  assert.equal(twin.materials[0].inherited, true);
+});
+
+test("a twin whose parent merged into the operator's own condition keeps its materials and stops being a twin", () => {
+  const cur = { conditions: [{ id: "cnd-mine", finish_tag: "SV-9", materials: [{ id: "mine-1", name: "My adhesive", per: 200 }] }],
+    shapes: [{ id: "s-mine", sheet_id: "va.pdf#1", condition_id: "cnd-mine" }], sheets: [] };
+  const imported = {
+    schema: "opentakeoff.takeoff.v1",
+    conditions: [
+      { id: "cnd-a", finish_tag: "SV-9", family_id: "fam-1", materials: [{ id: "m1", name: "Adhesive", per: 185 }] },
+      { id: "cnd-b", finish_tag: "SV-9 – Level 2", family_id: "fam-1", variant_of: "cnd-a",
+        materials: [{ id: "m2", name: "Adhesive", per: 185, origin_id: "m1", inherited: true }] },
+    ],
+    shapes: [], sheets: [],
+  };
+  const { payload } = mergeTakeoffImport(cur, imported);
+  const twin = payload.conditions.find((c: any) => c.finish_tag === "SV-9 – Level 2") as any;
+  assert.equal(twin.variant_of, undefined, "nothing to follow — the parent is the operator's condition");
+  assert.equal(twin.family_id, "fam-1", "grouping is cosmetic and rides along");
+  assert.equal(twin.materials.length, 1);
+  assert.equal(twin.materials[0].per, 185, "it keeps the numbers the file carried");
+  assert.equal(twin.materials[0].origin_id, undefined);
+  assert.equal(twin.materials[0].inherited, undefined);
+});

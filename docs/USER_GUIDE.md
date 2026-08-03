@@ -217,6 +217,42 @@ Below that, list what actually goes on the order: adhesive, sealer, polyurethane
 
 Order quantity = measured basis ÷ coverage, **rounded up to whole units**. The Report sums every condition's lines into one combined buy list (§10).
 
+### One finish, two areas — condition twins
+
+The same finish measured in two places is often not the same *scope*. The same sheet goods over a
+slab and over a raised deck take the same field material and different preparation underneath: one
+wants a moisture barrier, the other a primer and a different adhesive. Making a second condition
+by hand means re-entering the whole materials list; measuring both areas into one condition throws
+away the per-area buy list, which was the thing you were producing.
+
+**⎘ Duplicate for another area…** at the bottom of Supporting Materials solves it. Name the area
+inline — `Level 2` — and you get `SV-1 – Level 2` carrying the whole materials list, still
+**following** the original:
+
+- Change a coverage rate on the original and every twin that hasn't touched that row gets it. One
+  edit, every area.
+- Edit a row on the twin and **only that row** stops following. It shows `✎` instead of `↳`, and
+  `↺ follow` hands it back to the family whenever you want.
+- Remove a row on the twin and it stays visible, struck through, as *removed here*. "This area has
+  no moisture barrier" is a decision, so a later change on the original can't quietly put it back.
+  `↺ restore` if you change your mind.
+- The condition list nests a twin under its original with `↳` and a count of the rows that have
+  gone their own way.
+- **⤴ Split out** freezes every following row where it stands and ends the inheritance. The twin
+  keeps its name and still groups with its family — only the following stops.
+
+Two things worth knowing:
+
+- **A twin gets its own finish tag, and that matters.** Every export row and every MCP tool
+  resolves a condition by its tag, so two conditions sharing one would make the second
+  unreachable and collapse into a single condition if you ever re-imported the takeoff. That's why
+  the area label is required, and why a label already in use is refused.
+- **No takeoffs come along.** The twin starts empty — you measure the new area into it. To move
+  existing shapes across, select one and click the twin's row (the reassign gesture).
+
+Deleting an original doesn't orphan its twins: the eldest is promoted in its place and the rest
+follow it.
+
 ### Roll goods — broadloom, sheet vinyl, and the seams
 
 Tile and plank come in boxes, so SF plus waste is the whole order. Roll goods don't: a 12′ roll
