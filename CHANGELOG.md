@@ -2,6 +2,17 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-03 — one finish, two areas: a duplicate that stays in the family
+
+### Added
+- **Twin a condition** — the same finish measured somewhere else, with its own supporting materials. One finish in two areas is not two conditions and it is not one either: the same sheet goods over a slab and over a raised deck take the same field material and different preparation underneath, so a plain copy makes a stranger (fix a coverage rate on one and the other keeps the old number) while measuring both areas into a single condition throws away the per-area material list, which was the thing you were producing. **⎘ Duplicate for another area…** in the panel names the variant inline — `SV-1` + `Level 2` → `SV-1 – Level 2` — and the copy arrives carrying the whole materials list, still **following** the original.
+- **Following, with per-row override.** `family_id` groups a family, `variant_of` links a twin to the condition it follows, and each copied row carries `origin_id` + `inherited`. Change a rate on the original and every twin that has not touched that row gets it; edit a row on the twin and **only that row** stops following (`✎`, with `↺ follow` to hand it back). Removing a row on a twin leaves a tombstone that renders struck-through as *removed here* — "this area has no moisture barrier" is a decision, not an absence, and a later family edit cannot quietly put it back (`↺ restore` if you change your mind). **⤴ Split out** freezes every following row where it stands and ends the inheritance, keeping the name and the grouping.
+- **Propagation happens on WRITE, not on read**, which is why `totals.js`, `reportColumns`, `rollTakeoff`, the marked set, every export and the MCP session keep reading `condition.materials` completely unchanged: a twin always carries a fully populated list. The rule lives in one pure module, `web/src/lib/variants.ts`, called from the material write paths — so the panel's row markers and the exports can never disagree about what a twin actually holds.
+- A twin needs its **own finish tag**, and that is not cosmetic: every export row and every MCP tool resolves a condition by tag, so two conditions sharing one make the second unreachable (`session` resolves first-match) and collapse into one on a takeoff re-import. The variant label is what makes the tag distinct, and a label already in use is refused with the tag it clashes with.
+- Deleting a family parent **promotes its eldest twin** instead of orphaning the rest: the heir owns its rows outright and the remaining siblings re-point at it with their origin ids remapped.
+- **Import carries lineage honestly.** `variant_of` is an id, so an imported twin follows its parent through the merge's id map — and when the parent instead merged onto one of the operator's own conditions, the twin keeps the numbers the file carried and simply stops being a twin, rather than following a materials list that never had its origin ids.
+- The duplicate flow is an inline input, never a `window.prompt` — those freeze a CDP/automation-driven session dead, and this panel is scripted in demos.
+
 ## 2026-08-02 — the transition where two finishes meet, and the wall it refuses to call one (#202)
 
 ### Added

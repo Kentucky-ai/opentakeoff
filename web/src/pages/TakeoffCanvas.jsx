@@ -38,6 +38,11 @@ import { isCanvasBusy } from "../lib/canvasBusy";
 import { parseSchedule, rowToSeed } from "../lib/scheduleParse";
 import { normalizeScanRows, postScanWithRetry, SCAN_ENDPOINT, scanRasterScale } from "../lib/scheduleScan";
 import { normalizeTag } from "../lib/scheduleEdit";
+// Condition twins — the whole inheritance rule is in lib/variants.ts (test/variants.test.ts);
+// this file only calls it from the material write paths and the condition deletes.
+import { mintTwin, variantTag,
+  propagateRowPatch, propagateRowAdd, propagateRowRemove,
+  markRowLocal, dropRowLocal, followFamily, splitFromFamily, promoteOnDelete } from "../lib/variants.ts";
 import { isGoogleConfigured, isSignedIn, isAllowedDomain, getAccessToken, orgDomainHint } from "../lib/google/auth.js";
 import { extractVectorGeometry, buildMask, floodRegionSealed, sealRadiiFor, doorWedgeCapPx, minPassRadiusFor, oneClickRing, ringArea, MASK_MAX_DIM, MIN_PASS_FT, SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE } from "../lib/oneclick";
 import { traceConfidence, floodSignals } from "../lib/confidence";
@@ -5118,7 +5123,10 @@ export default function TakeoffCanvas() {
     if (!c) return;
     const owned = shapes.filter((s) => s.condition_id === id);
     if (owned.length && !window.confirm(`Delete ${c.finish_tag} and its ${owned.length} takeoff${owned.length === 1 ? "" : "s"}? This can't be undone.`)) return;
-    const next = conditions.filter((x) => x.id !== id);
+    // Lineage first, removal second: deleting a family parent must not orphan its twins. The
+    // eldest survivor is promoted to root (its rows are already materialized — propagate-on-write
+    // guarantees that) and the rest re-point at it, origin_ids remapped.
+    const next = promoteOnDelete(conditions, new Set([id])).filter((x) => x.id !== id);
     // cascade delete of the condition's OWNED shapes — counted centrally by the
     // command, but record:false keeps it off the undo stack: the confirm just
     // said "can't be undone", and ⌘Z restoring shapes without their condition
@@ -5179,10 +5187,86 @@ export default function TakeoffCanvas() {
     setShapes((sh) => renameShapeLabel(sh, oldV, newV));   // assignments follow the vocabulary
   };
 
+  // ── the family seam (lib/variants.ts) ─────────────────────────────────────
+  // Every material write on a condition that belongs to a family goes through one of these, so
+  // inheritance can never be half-applied. Two directions, and they are opposites:
+  //   editing a FAMILY PARENT's row → the same patch lands on every twin still following it
+  //   editing a TWIN's row          → that row goes local and stops following, for good
+  const isFamilyParent = (cs, id) => cs.some((c) => c.variant_of === id);
   // supporting-materials editing (operates on the active condition)
-  const addMaterial = () => updateCond({ materials: [...(aCond?.materials || []), { id: uid("mat"), name: "", per: 0, basis: "area", unit: "", round: true }] });
-  const updateMaterial = (mid, patch) => updateCond({ materials: (aCond?.materials || []).map((m) => (m.id === mid ? matEditPatch(m, patch) : m)) });   // NAME edits re-classify a geometry-less line's kind
-  const removeMaterial = (mid) => updateCond({ materials: (aCond?.materials || []).filter((m) => m.id !== mid) });
+  const addMaterial = () => setConditions((cs) => {
+    const row = { id: uid("mat"), name: "", per: 0, basis: "area", unit: "", round: true };
+    const next = cs.map((c) => (c.id === activeCond
+      ? { ...c, materials: [...(c.materials || []), row], updated_at: nowIso() } : c));
+    // a row added to the family reaches every area; a row added ON a twin is that twin's own
+    // (minted with no origin_id, so nothing upstream ever touches it)
+    return isFamilyParent(cs, activeCond) ? propagateRowAdd(next, activeCond, row, uid) : next;
+  });
+  const updateMaterial = (mid, patch) => setConditions((cs) => {
+    const cur = cs.find((c) => c.id === activeCond);
+    // NAME edits re-classify a geometry-less line's kind
+    const next = cs.map((c) => (c.id === activeCond ? {
+      ...c, updated_at: nowIso(),
+      materials: (c.materials || []).map((m) => (m.id === mid ? matEditPatch(m, patch) : m)),
+    } : c));
+    if (cur?.variant_of) return next.map((c) => (c.id === activeCond ? markRowLocal(c, mid) : c));
+    if (!isFamilyParent(cs, activeCond)) return next;
+    const row = (next.find((c) => c.id === activeCond)?.materials || []).find((m) => m.id === mid);
+    return row ? propagateRowPatch(next, activeCond, mid, row) : next;
+  });
+  // Removing a row: on a twin it leaves a tombstone (so the panel can show it, and so a later
+  // family edit can't bring it back); on a parent it clears the twins' following copies but
+  // never a row a twin has taken over.
+  const removeMaterial = (mid) => setConditions((cs) => {
+    const cur = cs.find((c) => c.id === activeCond);
+    if (cur?.variant_of) return cs.map((c) => (c.id === activeCond ? { ...dropRowLocal(c, mid), updated_at: nowIso() } : c));
+    const next = cs.map((c) => (c.id === activeCond
+      ? { ...c, materials: (c.materials || []).filter((m) => m.id !== mid), updated_at: nowIso() } : c));
+    return isFamilyParent(cs, activeCond) ? propagateRowRemove(next, activeCond, mid) : next;
+  });
+  // The per-row undo of an override: this row follows the family again.
+  const followFamilyRow = (mid) => setConditions((cs) => {
+    const row = (cs.find((c) => c.id === activeCond)?.materials || []).find((m) => m.id === mid);
+    return row?.origin_id ? followFamily(cs, activeCond, row.origin_id, uid) : cs;
+  });
+  // A tombstoned row has no row left to carry the id, so the panel restores it by origin.
+  const restoreDroppedRow = (originId) => setConditions((cs) => followFamily(cs, activeCond, originId, uid));
+  // Twin the active condition: same finish somewhere else, its own materials, still following
+  // this one. The label is REQUIRED and becomes the tag suffix — every export and every MCP tool
+  // resolves a condition by tag, so two conditions sharing one make the second unreachable and
+  // collapse on a takeoff re-import.
+  const duplicateCondition = (id, label) => {
+    const src = conditions.find((c) => c.id === id);
+    const lab = String(label || "").trim();
+    if (!src || !lab) return null;
+    const tag = variantTag(src.finish_tag, lab);
+    if (conditions.some((c) => normalizeTag(c.finish_tag) === normalizeTag(tag))) {
+      setCommitMsg(`A condition is already called ${tag} — pick another label.`);
+      return null;
+    }
+    const { twin, parentPatch } = mintTwin(src, {
+      label: lab, tag, mintId: uid, nowIso,
+      // keep the family's colour, advance only the hatch: variants of one finish should read as
+      // related on the sheet, not as unrelated scopes
+      nextHatch: HATCHES[1 + ((conditions.length + 1) % (HATCHES.length - 1))].id,
+    });
+    agentStateRef.current = { ...agentStateRef.current, conditions: [...agentStateRef.current.conditions, twin] };
+    setConditions((cs) => [...cs.map((c) => (c.id === src.id && parentPatch ? { ...c, ...parentPatch } : c)), twin]);
+    activateCondition(twin.id, { reassign: false });
+    setCommitMsg(`Added ${twin.finish_tag} — its materials follow ${src.finish_tag} until you change them here.`);
+    return twin;
+  };
+  // Cut a twin loose: every following row freezes where it stands. It KEEPS its family_id, so it
+  // still groups and subtotals with its siblings — only the inheritance ends.
+  const splitCondition = (id) => {
+    const c = conditions.find((x) => x.id === id);
+    if (!c?.variant_of) return;
+    const par = conditions.find((x) => x.id === c.variant_of);
+    const n = (c.materials || []).filter((r) => r.inherited).length;
+    if (!window.confirm(`Split ${c.finish_tag} out of its family?\n\n${n} row${n === 1 ? "" : "s"} freeze at ${n === 1 ? "its" : "their"} current values, and edits to ${par?.finish_tag || "the original"} stop reaching it.\nIt keeps its name and still subtotals with the family.`)) return;
+    setConditions((cs) => splitFromFamily(cs, id));
+    setCommitMsg(`${c.finish_tag} no longer follows ${par?.finish_tag || "its family"}.`);
+  };
   // Height/Thickness are LIVE parameters (Kreo-style): changing them re-flows
   // every dependent shape on this condition — wall SF tracks the tile height.
   const setCondParam = (field, raw) => {
@@ -5476,7 +5560,7 @@ export default function TakeoffCanvas() {
     // name what dies while the list still reads at a glance (≤5); count beyond
     const what = live.length <= 5 ? live.map((c) => c.finish_tag).join(", ") : `${live.length} conditions`;
     if (!window.confirm(`Delete ${what}${owned ? ` and their ${owned} takeoff${owned === 1 ? "" : "s"}` : ""}? This can't be undone.`)) return false;
-    setConditions((cs) => cs.filter((c) => !ids.has(c.id)));
+    setConditions((cs) => promoteOnDelete(cs, ids).filter((c) => !ids.has(c.id)));   // lineage repaired first
     // same cascade rule as deleteCondition: counted centrally, off the stack
     if (owned) dispatchShape({ type: "delete", ids: dead.map((s) => s.id), reason: "condition-delete" }, { record: false });
     setPalette((p) => p.filter((id) => !ids.has(id)));   // deleted conditions can't stay pinned
@@ -5614,6 +5698,8 @@ export default function TakeoffCanvas() {
     onAddCondition: addCondition, onDeleteCondition: deleteCondition,
     onUpdateCond: updateCond, onSetCondParam: setCondParam, onAssignAttr: assignAttr,
     onAddMaterial: addMaterial, onUpdateMaterial: updateMaterial, onRemoveMaterial: removeMaterial,
+    onDuplicateCondition: duplicateCondition, onSplitCondition: splitCondition,
+    onFollowFamilyRow: followFamilyRow, onRestoreDroppedRow: restoreDroppedRow,
     onBulkWaste: bulkWasteConditions, onBulkColor: bulkColorConditions, onBulkDelete: bulkDeleteConditions,
     onSaveTemplate: saveActiveAsTemplate, onApplyTemplate: applyTemplate,
     onRenameTemplate: renameTemplate, onDeleteTemplate: deleteTemplate,
