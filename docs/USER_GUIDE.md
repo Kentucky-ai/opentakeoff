@@ -22,6 +22,7 @@ This manual takes you from a blank browser tab to a finished, exported takeoff, 
 14. [AI settings & driving OpenTakeoff from an agent](#14-ai-settings--driving-opentakeoff-from-an-agent)
 15. [Keyboard reference](#15-keyboard-reference)
 16. [Troubleshooting](#16-troubleshooting)
+17. [Voice & the Command box](#17-voice--the-command-box)
 
 ---
 
@@ -93,6 +94,25 @@ Panning is always at hand, whatever tool is armed:
 ### Rendering: crisp at any zoom
 
 Past ~115% zoom the visible region re-renders straight from the PDF vectors at your current zoom, so fine callouts and hatching stay razor-sharp at any depth. Per sheet, the **Render & fill settings** menu (the sliders icon beside the 45° and Snap toggles) offers **Hi-Res render (this sheet)** — a higher base raster quality budget (~28 MP) for dense sheets. Hi-Res is a display setting, saved per sheet per browser; **quantities are never affected by render quality**.
+
+### Layers (CAD-exported sheets)
+
+A sheet exported from CAD often carries an **Optional Content** table — the layer names the
+drafter worked in. When it does, a **Layers** rail button appears and the docked panel lists
+every layer with the role OpenTakeoff classified it as and whether the PDF has it visible by
+default. Each layer takes one of three settings:
+
+- **Auto** — use the classified role (the default, and what One-Click reads).
+- **Wall** — treat this layer's ink as hard boundary, so a fill stops at it.
+- **Off** — ignore this layer's ink entirely, so a fill passes through it.
+
+This is why One-Click doesn't have to *infer* a room boundary from hatch on a layered sheet: the
+drawing already states what its ink is. On the measured fixture corpus, honoring the declared
+roles takes mean region IoU from 0.543 to 1.000 across tile-grid, grid-line,
+hidden-demolition, furniture, and xref-dialect scenes. Overrides save per sheet, and **Return
+every layer on this sheet to Auto** resets them. Sheets with no layer table show no rail button
+and no panel — the fill path is byte-identical to a sheet without layers, so nothing changes for
+scans or flattened plots.
 
 ### Dark view (☾)
 
@@ -195,6 +215,45 @@ Below that, list what actually goes on the order: adhesive, sealer, polyurethane
 
 Order quantity = measured basis ÷ coverage, **rounded up to whole units**. The Report sums every condition's lines into one combined buy list (§10).
 
+### Roll goods — broadloom, sheet vinyl, and the seams
+
+Tile and plank come in boxes, so SF plus waste is the whole order. Roll goods don't: a 12′ roll
+laid into a 14′ room means a seam, and the footage you buy depends on how the cuts nest down the
+roll. Open the condition's **+ roll goods…** picker and choose **Broadloom carpet**, **Sheet
+vinyl**, or **Sheet rubber**, and every floor area on that condition gets figured into cuts.
+
+The setup sits inline on the condition:
+
+- **Roll width** — a preset, or type feet and inches for an odd width.
+- **max** (roll length, ft) — the usable length of one physical roll. **0 = continuous**, cut off
+  a single roll. Set it and the cuts pack **across** rolls, with the roll breaks marked on the
+  diagram.
+- **Direction** — `auto`, or force **N–S** / **E–W** when the pattern or the corridor decides it.
+- **Sell unit** — SY, SF, or LF, for how the order reads.
+- Seam and wall allowances.
+
+The condition row then shows the figured order: how far down the roll the cuts reach (side-by-side
+cuts share length), rounded up to the inch, plus the roll count when a max length is set. If a
+single cut can't come off one roll you get **· a cut exceeds one roll** in red — that's a
+re-plan, not a rounding note.
+
+**On the canvas.** The cuts draw to scale over their own rooms in material-true colors, numbered
+in cutting order. The **Roll goods** panel (rail) shows those same cuts nested **on the roll**
+with dimensions, and dragging a cut in the panel re-packs the layout in your order; **reset
+order** clears manual sequencing and lets the packer sort widest-then-longest again. Hit **edit**
+in the panel to draw the figured cuts over the plan and slide or resize them by hand — those
+edits are real undo steps, and double-clicking a cut resets it. One note the panel states
+outright: a condition's **×N multiplier applies to the order**, while the diagram always shows
+one unit's cuts.
+
+**On the report.** **Roll Order LF** and **Rolls** ride the Report, CSV, and Excel next to the
+measured quantities, and they're in the `report.v1` export document, so a pricing consumer reads
+the figured order rather than re-deriving it. Removing a roll setup stops the figuring; manual
+cut edits on shapes are kept but go inert.
+
+Agents get the same thing headlessly — `roll_setup` is a field on the MCP server's
+`edit_condition`, and the reply echoes the figured order ([§14](#14-ai-settings--driving-opentakeoff-from-an-agent)).
+
 ### Import from schedule
 
 <img src="img/verify-import-schedule-dialog.png" alt="The Import from schedule verify dialog — parsed finishes grouped by category, checked for approval" width="640"/>
@@ -271,6 +330,11 @@ One-Click Area (`O`) is the fastest way to measure a room: click inside it, and 
 2. Keep clicking — each click adds a space to the selection (the readout totals them live). **`⌥`-click carves a cutout**: an enclosed area *inside* an already-selected space — a column, a shaft — that will commit as a deduct.
 3. **Create** with `⏎`, a double-click, or the **Create (N)** toolbar button. Every space commits as a shape on the active condition; cutouts commit as deducts. The toast confirms: *"Created N takeoff(s) — 〈SF〉 〈TAG〉. Click the next room."*
 
+**Create leaves the newest takeoff selected**, so if you watch a fill land wrong the very next
+`⌫` deletes it — no trip to the Edit menu. One-Click stays armed (the message means what it says:
+click the next room), and because the proposal branch comes first in the `⌫` chain, the next
+fill's backspace still walks that selection back instead of touching the committed shape.
+
 `⌫` walks the selection back (last region drops), and `Esc` discards it all. The readout keeps the crib sheet on screen: *click adds a space · ⌥-click carves a cutout · ⏎ Create · ⌫ undo · Esc cancel*.
 
 ### Review before Create
@@ -302,6 +366,15 @@ The **Fill** slider lives in the **Render & fill settings** menu (sliders icon),
 - **Aggressive** — cross more pattern and tolerate more growth.
 
 Lower it if fills spill; raise it if hatched rooms come up short. The setting is per browser, and a non-default sensitivity is recorded on the shapes it produced.
+
+**When the slider can't help, it says so.** Sensitivity tunes exactly one thing — how eagerly a
+fill escalates past ink the classifier called hatch — so a fill whose boundary is *entirely* hard
+ink comes back identical at every notch. Rather than let you crank Strict → Aggressive and
+conclude the control is broken, the menu adds the reason for the last fill: *"Nothing on this
+fill's boundary classified as a hatch or tile pattern, so every setting returns the same region.
+It is stopping on ink the engine still reads as a wall."* That's a different problem — trace it
+with Area (`A`), or check the sheet's **Layers** panel ([§2](#2-opening-plans--moving-around)) if
+it's a CAD export whose ink is mislabeled.
 
 ### Scanned plans
 
@@ -393,7 +466,14 @@ Hit **Place** on a stamp and the canvas arms it: *click the plan to place it* �
 
 Agent marks are pencil; the estimator's stamp is ink. The **Approve** button in the toolbar arms the approval tool: **click a committed takeoff** to approve it — the seal records which shape it covers — or **click empty plan** to approve the sheet at that point. Click an existing seal to lift it. Unlike markup moves, placing and lifting are real undo steps: `⌘Z` takes the last one back, `⇧⌘Z` re-applies it.
 
-Two glyphs, deliberately unmistakable: the estimator's seal is a green circular ring reading **APPROVED**; an agent's verdict is a graphite diamond always labeled **AGENT**. Only the toolbar tool — a human hand — places the estimator seal: no agent, MCP, or import path mints one. Agent verdict marks are the same record family (`actor: "agent"`) and render, persist, and undo identically, but nothing ships that creates them yet — the door is built, not yet opened.
+Two glyphs, deliberately unmistakable: the estimator's seal is a green circular ring reading
+**APPROVED**; an agent's verdict is a graphite diamond always labeled **AGENT**. Only the toolbar
+tool — a human hand — places the estimator seal: no agent, MCP, or import path mints one. Agent
+verdict marks are the same record family (`actor: "agent"`), and they render, persist, and undo
+identically. An agent working over MCP signs its own work with `mark_verdict` (and clears it with
+`delete_verdict`); the tool takes no actor argument, so it can only ever produce the graphite
+diamond. That's the whole point of two glyphs: the agent can say *"I measured this and I stand by
+it"* without ever being able to claim a person checked it.
 
 Seals ride the project autosave and burn into the **Marked Set PDF** above the markups, and the cover gains a tally line — *N estimator-approved · N agent-marked* — so a PM reading the set knows exactly how much of it a person has looked at. The "Include markups" export checkbox never drops seals: approvals are ink, not annotations.
 
@@ -423,7 +503,7 @@ Open **Report** for the whole takeoff on one page: a per-condition table, the su
 
 ### Columns, grouping, templates, theme
 
-- **Columns** — choose what the table (and the CSV) shows. Defaults: Finish, Shapes, Floor SF, Wall SF, Border SF, LF, EA, Waste, SF w/Waste, SY w/Waste. Opt-ins: Total SF, Waste SF, Waste LF, Perimeter LF (reference only — includes openings, never totaled). Custom condition columns, imported product-spec columns (manufacturer, style, color, size, description — from a schedule import), and Labor Type / Subfloor Type (typed into a condition's Supporting Materials panel) appear once they exist. **Labor view** switches to a no-waste actuals set (Total SF in, SF/SY w/Waste out) for tying quantities to labor — attach your own rates externally.
+- **Columns** — choose what the table (and the CSV) shows. Defaults: Finish, Shapes, Floor SF, Wall SF, Border SF, LF, EA, Waste, SF w/Waste, SY w/Waste. Opt-ins: Total SF, Waste SF, Waste LF, Perimeter LF (reference only — includes openings, never totaled). Roll-goods conditions add **Roll Order LF** and **Rolls** ([§4](#4-conditions--your-finishes)). Custom condition columns, imported product-spec columns (manufacturer, style, color, size, description — from a schedule import), and Labor Type / Subfloor Type (typed into a condition's Supporting Materials panel) appear once they exist. **Labor view** switches to a no-waste actuals set (Total SF in, SF/SY w/Waste out) for tying quantities to labor — attach your own rates externally.
 - **Group** — break the table into sections with subtotals: by **Sheet**, by **Label** (once shapes carry labels), or by any custom column. Grouping by a column always carries that column into the CSV.
 - **Templates** — save a column-plus-grouping layout by name and recall it on this device. Signed in on a team build, **Push to Drive / Load from Drive** carries templates across your own devices — Load only adds what this device doesn't have; it never overwrites a same-name template.
 - **Theme** — import a design-token file (a `tokens.json`) to reskin the report's palette and fonts for output. **Reset** returns the house style.
@@ -559,7 +639,45 @@ What's sent, and only when you run an AI feature: the sheet region in question a
 
 ### MCP — for agent users
 
-The same engine speaks [MCP](https://modelcontextprotocol.io), one command away: `npx -y opentakeoff-mcp` (or the one-click `opentakeoff-mcp.mcpb` bundle for Claude Desktop). An MCP client gets twelve tools — `load_plan`, `sheet_info`, `set_scale`, `one_click`, `detect_rooms`, `measure_polygon`, `measure_line`, `takeoff_summary`, `export_takeoff`, `delete_shape`, `read_sheet_text`, `view_sheet` — plus browsable sheet resources, over the very same measuring engine, with the same scale gate and the same provenance receipts; `detect_rooms` batches `one_click` across every room-number label on a sheet in one call; `view_sheet` renders a sheet or a tight crop with a calibrated 1-ft/5-ft measuring grid and a committed-shapes overlay, so an agent measures off grid cells and verifies its own work by looking; `export_takeoff` emits the app's own save payload. Setup, the coordinate contract, and a full example transcript: [MCP.md](MCP.md) and [`mcp/README.md`](../mcp/README.md).
+The same engine speaks [MCP](https://modelcontextprotocol.io), one command away:
+`npx -y opentakeoff-mcp` (or the one-click `opentakeoff-mcp.mcpb` bundle for Claude Desktop). An
+MCP client gets **35 tools** plus browsable sheet resources, over the very same measuring engine,
+with the same scale gate and the same provenance receipts:
+
+| Group | Tools |
+|---|---|
+| Open & orient | `load_plan` · `sheet_info` · `sheet_context` · `read_sheet_text` · `find_text` · `view_sheet` |
+| Scale | `set_scale` |
+| Measure | `one_click` · `detect_rooms` · `measure_polygon` · `measure_line` · `measure_surface` · `place_count` |
+| Repeat & derive | `symbol_sweep` · `sweep_schedule_row` · `derive_base` |
+| Read the drawing set | `sheet_graph` · `resolve_tag` · `find_schedule` |
+| Edit & audit | `list_shapes` · `edit_shape` · `edit_condition` · `edit_materials` · `delete_shape` · `undo_last` |
+| Mark & sign | `annotate` · `list_annotations` · `link_annotation` · `mark_verdict` · `delete_verdict` |
+| Hand off | `takeoff_summary` · `export_takeoff` · `export_report` · `export_marked_pdf` · `import_takeoff` |
+
+A few worth knowing about from the canvas side, because they're the same features you use:
+
+- `detect_rooms` batches `one_click` across every room-number label on a sheet in one call, and
+  can commit each room under its own schedule row's floor finish — withholding, with a reason,
+  whatever the schedule can't answer.
+- `symbol_sweep` finds every instance of a repeated symbol from one marqueed example, and
+  `sweep_schedule_row` mints a condition from a schedule row and counts its drawn markers across
+  the plan sheets.
+- `sheet_graph` / `resolve_tag` / `find_schedule` answer *"what finish is in room 134, and how do
+  you know"* with a citation per cell — across continuation sheets and multi-building keys.
+- `edit_condition` reaches the waste %, the ×N multiplier, and `roll_setup`
+  ([§4](#4-conditions--your-finishes)), so an agent's takeoff doesn't come back with net === gross.
+- `view_sheet` renders a sheet or a tight crop with a calibrated 1-ft/5-ft measuring grid and a
+  committed-shapes overlay, so an agent measures off grid cells and verifies its own work by
+  looking.
+- `export_takeoff` emits the app's own save payload and `import_takeoff` reads one back, so a
+  session can be resumed, extended, or audited from either side. `export_marked_pdf` produces the
+  marked planset, with machine-traced work disclosed as pending review.
+- `load_plan merge` makes the **bid set** the unit of work — plans plus schedule plus addenda —
+  without disturbing existing scales, conditions, or shapes.
+
+Multi-document sessions, the coordinate contract, and a full annotated transcript: [MCP.md](MCP.md)
+and [`mcp/README.md`](../mcp/README.md).
 
 ---
 
@@ -645,6 +763,11 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 **A sheet renders blank or slow.** Big sheets rasterize on open — give it a beat. If linework goes soft mid-zoom, that's the detail view re-rendering; it sharpens when the gesture settles. For dense sheets, flip **Hi-Res render (this sheet)** in the Render & fill settings menu — display only, quantities unaffected. Side-by-side groups multiply the render load; work single-sheet on a struggling machine.
 
 **One-Click refuses a room.** Read the message — it names the cause. *Fill spilled* = a real gap in the linework: click a more enclosed spot, or trace with Area (`A`). *Dense linework* = you hit text or heavy hatching: zoom in, click open floor. A hatched room that keeps coming up short wants a higher **Fill** sensitivity; fills that leak want it lower — or Strict. On scans, verify the badged edges before Create, and remember the sensitivity slider doesn't apply there.
+
+**The Fill slider does nothing.** Check the note under it. If it says nothing on that fill's
+boundary classified as hatch, the slider genuinely has no work to do — the fill is stopping on ink
+the engine reads as a wall, at every notch. Trace it with Area (`A`), or on a CAD export open the
+**Layers** panel and set the offending layer to **Off** so the fill passes through it.
 
 **The numbers look wrong — everywhere.** That's a scale symptom, not a math symptom. Run **Check a dimension** (`K`) against a printed dimension string. If the verdict is red, **Recalibrate to this** — every shape on the sheet re-prices instantly (and the old scale sits in **Revert scale** if you change your mind). Remember scale is per sheet: a plan set is never one uniform scale.
 
