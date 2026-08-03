@@ -80,7 +80,14 @@ export default function PlanNavigator({
     const onKey = (e) => {
       if (e.key === "Escape") { e.stopPropagation(); escRef.current(); return; }
       const tag = e.target?.tagName;
-      if (tag !== "INPUT" && tag !== "SELECT" && tag !== "TEXTAREA") e.stopPropagation();
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      // "?" is app-level help, not a canvas tool shortcut, so it is not ours to
+      // swallow — and this screen is exactly where someone reaches for it. With
+      // no plan open the navigator is what's mounted, so suppressing "?" here
+      // meant the manual could not be opened by keyboard by the one person most
+      // likely to want it: a first-time visitor who has not loaded anything yet.
+      if (e.key === "?") return;
+      e.stopPropagation();
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);

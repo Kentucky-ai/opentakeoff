@@ -27,6 +27,7 @@ import ToolMenu from "../components/ToolMenu.jsx";
 import PlanNavigator from "../components/PlanNavigator.jsx";
 import ReportPanel from "../components/ReportPanel.jsx";
 import RevisionsPanel from "../components/RevisionsPanel.jsx";
+import UserGuide from "../components/UserGuide.jsx";
 import TakeoffsPanel, { clampPanelW, CONDITION_DND_MIME, ConditionAppearanceEditor } from "../components/TakeoffsPanel.jsx";
 import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../components/hatches.jsx";
 import { Icon } from "../brand/icons.jsx";
@@ -335,6 +336,7 @@ export default function TakeoffCanvas() {
   const [palette, setPalette] = useState([]);   // ordered condition ids pinned to the top-bar quick-access palette (≤ PALETTE_MAX)
   const [shapes, setShapes] = useState([]);
   const [poly, setPoly] = useState([]);
+  const [guideOpen, setGuideOpen] = useState(false);   // the in-app manual overlay (? / the toolbar button)
   const [proposal, setProposal] = useState(null);  // One-Click selection under review: { key, regions: [{kind:'pos'|'neg', seed, poly, area_sf, perim_lf}] } — panel-LOCAL px
   // ── in-canvas takeoff agent state ──────────────────────────────────────────
   // agentProposals are NOT shapes: committed truth stays committed. Each entry
@@ -2158,6 +2160,10 @@ export default function TakeoffCanvas() {
       if (tg === "INPUT" || tg === "SELECT" || tg === "TEXTAREA") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (menuDepthRef.current > 0) return;
+      // "?" opens the manual. Here rather than in its own listener so it
+      // inherits this effect's guards — a "?" typed into a condition tag or
+      // with a toolbar menu open must not pop a dialog over the work.
+      if (e.key === "?") { e.preventDefault(); setGuideOpen(true); return; }
       if (e.key === "Enter") {
         // router offer confirm takes the key FIRST (RFC #59 slice 5): the
         // offer is the most recent thing the user was told ⏎ does, and it
@@ -5834,6 +5840,11 @@ export default function TakeoffCanvas() {
         )}
         <div style={{ flex: 1 }} />
         <span style={{ fontSize: 11, color: "var(--ink-muted)", minWidth: 44, fontFamily: "var(--f-mono)" }}>{saveState === "saving" ? "saving…" : saveState === "saved" ? "saved ✓" : ""}</span>
+        <button onClick={() => setGuideOpen(true)} title="How OpenTakeoff works — the five-minute path and every shortcut (?)"
+          aria-label="How OpenTakeoff works"
+          style={{ display: "inline-flex", alignItems: "center", padding: "6px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 13, fontWeight: 700, lineHeight: 1 }}>
+          ?
+        </button>
         <button onClick={toggleTheme} title="App theme — light / dark chrome (sheets unaffected; use ☾ on the canvas to invert the print)"
           aria-label="App theme — light / dark chrome" aria-pressed={theme === "dark"}
           style={{ display: "inline-flex", alignItems: "center", padding: "6px 9px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 14, lineHeight: 1 }}>
@@ -7430,6 +7441,8 @@ export default function TakeoffCanvas() {
           (the Agent panel links here; closing re-renders, so `configured`
           re-reads immediately). */}
       {showAiSettings && <AiSettings onClose={() => setShowAiSettings(false)} />}
+      {/* the manual, last in the tree so it sits above every panel and dock */}
+      {guideOpen && <UserGuide onClose={() => setGuideOpen(false)} />}
     </div>
   );
 }
