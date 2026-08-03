@@ -17,6 +17,21 @@
   directory    = "netlify/functions"
   node_bundler = "esbuild"
 
+# One canonical host. Netlify is *documented* to 301 the .netlify.app subdomain
+# to the primary custom domain on its own, but it was still answering 200 on
+# both hosts after the domain was promoted — so this is declared rather than
+# assumed. Two hostnames serving identical 200s splits link equity and is the
+# duplicate-content case search engines penalise; the canonical tag in
+# index.html alone does not stop a crawler indexing the other host.
+# force = true is required: without it the rule loses to an existing static
+# asset at the same path, which is every path on this site.
+# This must stay FIRST — the /* catch-all below would otherwise swallow it.
+[[redirects]]
+  from   = "https://opentakeoff.netlify.app/*"
+  to     = "https://opentakeoff.kentucky-ai.com/:splat"
+  status = 301
+  force  = true
+
 # Gated "Import from scanned schedule" — must precede the SPA catch-all, else
 # /* swallows it and the POST returns index.html.
 [[redirects]]
