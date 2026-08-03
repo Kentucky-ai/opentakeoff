@@ -4,6 +4,8 @@ OpenTakeoff is a takeoff canvas that runs in your browser. Open a plan, set the 
 
 This manual takes you from a blank browser tab to a finished, exported takeoff, and covers every shipped feature along the way. Shortcuts appear inline as you meet each tool; the complete table is in [§15](#15-keyboard-reference).
 
+In a hurry, or already in the app? Press **`?`** (or the **?** button in the top deck) for the in-app quick reference — the five-minute path and every key binding, without leaving the canvas. This document is the long form.
+
 **Contents**
 
 1. [Five minutes to a takeoff](#1-five-minutes-to-a-takeoff)
@@ -704,6 +706,7 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `P` | Pan |
 | `G` | Sheet gallery |
 | Hold `M` | Push-to-talk dictation — release runs the command, `Esc` discards (see [§17](#17-voice--the-command-box)) |
+| `?` | The in-app quick reference — the five-minute path and every shortcut (`Esc` closes) |
 
 ### Conditions
 
