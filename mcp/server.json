@@ -3,7 +3,7 @@
   "name": "io.github.Kentucky-ai/opentakeoff",
   "title": "OpenTakeoff",
   "description": "Construction takeoff for AI agents: load plans, set scale, measure, count, export with provenance.",
-  "websiteUrl": "https://opentakeoff.netlify.app",
+  "websiteUrl": "https://opentakeoff.kentucky-ai.com",
   "repository": {
     "url": "https://github.com/Kentucky-ai/opentakeoff",
     "source": "github"

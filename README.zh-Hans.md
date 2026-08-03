@@ -9,10 +9,10 @@
 无需账号，无需上传，无需安装。
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Live demo](https://img.shields.io/badge/demo-opentakeoff.netlify.app-2ea44f.svg)](https://opentakeoff.netlify.app)
+[![Live demo](https://img.shields.io/badge/demo-opentakeoff.kentucky--ai.com-2ea44f.svg)](https://opentakeoff.kentucky-ai.com)
 [![Built with React + Vite](https://img.shields.io/badge/React%2018-Vite-444.svg)](#技术栈)
 
-[**▶ 打开在线演示**](https://opentakeoff.netlify.app) · [快速开始](#快速开始) · [功能](#主要功能) · [给 AI 智能体](mcp/) · [English](README.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
+[**▶ 打开在线演示**](https://opentakeoff.kentucky-ai.com) · [快速开始](#快速开始) · [功能](#主要功能) · [给 AI 智能体](mcp/) · [English](README.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
 <br/>
 
@@ -49,7 +49,7 @@ OpenTakeoff 就是这个工具：一个免费开源的替代品，交给这个�
 
 ## 快速开始
 
-只是想用的话，什么都不用装 —— 打开[**在线演示**](https://opentakeoff.netlify.app)，
+只是想用的话，什么都不用装 —— 打开[**在线演示**](https://opentakeoff.kentucky-ai.com)，
 把图纸拖进去就行。
 
 想自己跑：
