@@ -97,6 +97,7 @@ assert.deepEqual(names, [
   "delete_shape",
   "delete_verdict",
   "derive_base",
+  "derive_transitions",
   "detect_rooms",
   "edit_condition",
   "edit_materials",
