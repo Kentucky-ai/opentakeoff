@@ -38,7 +38,7 @@ otherwise, and nothing an autonomous agent could call.
 
 OpenTakeoff is that engine, with two front ends over identical geometry:
 
-- **A stdio MCP server** — `npx -y opentakeoff-mcp`, 35 tools, on the
+- **A stdio MCP server** — `npx -y opentakeoff-mcp`, 36 tools, on the
   [official MCP registry](https://registry.modelcontextprotocol.io). An agent opens a plan,
   reads the title block, sets the scale, floods the rooms, checks its own work on a rendered
   overlay, and hands back a marked-up planset PDF.
@@ -74,6 +74,13 @@ second use is not a side effect; see [the data layer](#the-data-layer--why-this-
   seams: lanes, multi-roll splits, cuts drawn to scale over their rooms in cutting order, a
   to-scale roll diagram with drag-to-reorder, and order footage beside the measured quantities
   ([#136](https://github.com/Kentucky-ai/opentakeoff/issues/136))
+- **`derive_transitions`** — the line where two finishes meet, derived from committed rooms.
+  Flood-traced rooms don't share edges, so what's actually there is proximity in two flavors that
+  mean different things: finishes changing inside one open space commit as a butt joint, while
+  rooms parallel across a partition come back **withheld as questions** — the transition is a
+  threshold in a doorway, and nothing in a trace record says where the doorway is. Committing
+  34 LF of threshold because two rooms share 34 LF of wall would be a wrong bid with a machine's
+  confidence behind it ([#202](https://github.com/Kentucky-ai/opentakeoff/issues/202))
 - **`symbol_sweep`** — every instance of a repeated symbol from one marqueed example, crossing
   scales only by a *stated* ratio, never a searched one
 - **`mark_verdict` / `delete_verdict`** — an agent signs its own work as a graphite `AGENT`
@@ -120,14 +127,14 @@ run. Docker and a local clone are both supported: [`mcp/README.md`](mcp/README.m
 exporting after each commit. Every shape lands in the app as a dashed **pencil proposal** and
 becomes ink only when the operator clicks Accept.*
 
-### The 35 tools
+### The 36 tools
 
 | Group | Tools |
 |---|---|
 | **Open & orient** | `load_plan` · `sheet_info` · `sheet_context` · `read_sheet_text` · `find_text` · `view_sheet` |
 | **Scale** | `set_scale` |
 | **Measure** | `one_click` · `detect_rooms` · `measure_polygon` · `measure_line` · `measure_surface` · `place_count` |
-| **Repeat & derive** | `symbol_sweep` · `sweep_schedule_row` · `derive_base` |
+| **Repeat & derive** | `symbol_sweep` · `sweep_schedule_row` · `derive_base` · `derive_transitions` |
 | **Read the drawing set** | `sheet_graph` · `resolve_tag` · `find_schedule` |
 | **Edit & audit** | `list_shapes` · `edit_shape` · `edit_condition` · `edit_materials` · `delete_shape` · `undo_last` |
 | **Mark & sign** | `annotate` · `list_annotations` · `link_annotation` · `mark_verdict` · `delete_verdict` |
@@ -395,7 +402,7 @@ plus a vision-capable model id.
 | **Voice** | Push-to-talk takeoff commands, recognized on-device in WebAssembly; audio never leaves the browser |
 | **View** | Light or **dark (negative print)** — sheet pixels inverted at draw time, exports follow |
 | **Storage** | IndexedDB + localStorage — client-only, nothing uploaded |
-| **MCP server** | 35 tools + browsable sheet resources on stdio, multi-document sessions ([`mcp/`](mcp/README.md)) |
+| **MCP server** | 36 tools + browsable sheet resources on stdio, multi-document sessions ([`mcp/`](mcp/README.md)) |
 | **Provenance** | Every shape records its scale, its method, its confidence, and whether a person or an agent made it |
 | **Capture (opt-in)** | Bundled [capture server](capture/README.md) banks each contributed takeoff as (geometry → label) training rows |
 | **Deploy** | One static build — Netlify, Vercel, GitHub Pages, Cloudflare Pages, S3, any static host |

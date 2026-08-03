@@ -32,7 +32,7 @@ which is the MCP wire. `node --import tsx` is the whole invocation.
 
 ## What the agent gets
 
-Thirty-five tools, in the order an agent tends to reach for them:
+Thirty-six tools, in the order an agent tends to reach for them:
 
 - **Open and orient** — `load_plan`, `sheet_info` (including the sheet's PDF
   layer table — Optional Content Groups with a classified role, confidence,
@@ -85,6 +85,22 @@ Thirty-five tools, in the order an agent tends to reach for them:
   `raster_traced` on the reply and on the shape's origin; vector always wins
   where it works, and a raster ring's corners are unsnapped (a scan has no
   true endpoints)
+- **Derive** — the quantities that follow from rooms already committed, instead
+  of measuring them a second time. `derive_base` mints base LF per room
+  (perimeter *minus the door openings you state* — your claim, recorded on
+  `origin.derived`; the tool never guesses a door). `derive_transitions` mints
+  the line where two finishes meet, and is built around a fact worth knowing
+  before you call it: **flood-traced rooms do not share edges.** A trace fills
+  to the wall linework, so two rooms across a partition sit four to eight inches
+  apart and a shared-edge test finds nothing. What is there is proximity, in two
+  kinds that are never conflated — a **butt joint** (rings running together
+  inside one open space, within an inch) *is* the transition and commits; a
+  **wall-separated** run means adjacent rooms whose transition is a threshold in
+  a doorway, and nothing in the trace record locates a doorway (the flood engine
+  reports how *much* boundary it sealed, never where). Those come back in
+  `withheld` with their length, their gap in inches, and an `at` point to
+  `view_sheet` — questions to answer by looking, and `withheld_lf` is never
+  folded into `total_lf`. Both refuse all-or-nothing and land as one undo step
 - **Revise** — `edit_shape` (all five roles), `edit_materials`,
   `edit_condition` (waste %, ×N multiplier, `height_ft`, and the roll-goods
   `roll_setup` opt-in — the reply echoes the figured order), `delete_shape`,
@@ -184,13 +200,39 @@ verbatim, replies abridged:
 ▸ one_click  { "sheet": "sample-plan.pdf", "x": 1600, "y": 464,  "condition": "CPT-1" }
   … three more rooms, ~438 SF each …
 
-▸ takeoff_summary  {}
-  { "conditions": [{ "finish_tag": "CPT-1", "shape_count": 4, "floor_sf": 1751.92,
-                     "total_sf": 1751.92, "sy_net": 194.66, … }],
-    "totals": { "total_sf": 1751.92, … } }
+    Two of those rooms are actually tile — reassign, then let the derivations
+    do the work that follows from the rooms instead of measuring it again:
 
-▸ export_takeoff  { "path": "/plans/sample-takeoff.json" }
-  { "schema": "opentakeoff.takeoff_canvas.v1", "conditions": [...], "shapes": [...], … }
+▸ edit_shape  { "shape_id": "shp-…", "condition": "PT-1" }     … and one more
+
+▸ derive_transitions  { "condition_a": "CPT-1", "condition_b": "PT-1", "condition": "T-1" }
+  { "between": ["CPT-1", "PT-1"], "committed": 2, "total_lf": 53.88,
+    "runs": [{ "length_lf": 26.94, "gap_in": 0.3, "at": [725, 784], … },
+             { "length_lf": 26.94, "gap_in": 0.3, "at": [1715, 784], … }],
+    "withheld": [], "withheld_lf": 0 }
+
+    Both runs are butt joints (gap under an inch — one open space). Had the
+    rooms been a partition apart, they would have come back in `withheld`
+    instead: adjacency across a wall is a threshold in a doorway this cannot
+    locate, so it is handed back as a question with a point to look at.
+
+▸ takeoff_summary  {}
+  { "conditions": [{ "finish_tag": "CPT-1", "shape_count": 2, … },
+                   { "finish_tag": "PT-1",  "shape_count": 2, … },
+                   { "finish_tag": "T-1",   "shape_count": 2, "lf": 53.88, … }],
+    "totals": { … } }
+
+    Look before trusting any of it, then finish with the deliverable:
+
+▸ view_sheet  { "sheet": "sample-plan.pdf", "overlay": true,
+                "region": { "x0": 500, "y0": 600, "x1": 1900, "y1": 1000 } }
+  … PNG: committed shapes burned in, unreviewed machine work dashed …
+
+▸ export_marked_pdf  {}
+  { "path": "/plans/sample-plan - marked set.pdf", "sheets": 1, … }
+
+▸ export_report  { "path": "/plans/sample-report.json" }
+  { "schema": "opentakeoff.report.v1", "conditions": [...], … }
 ```
 
 A click that misses is a readable answer, not a stack trace — outside the
@@ -205,5 +247,9 @@ dense linework (hatching or text).`
 - The **[AI sandbox](../server/README.md)** (`server/`) is the other socket —
   a FastAPI adapter interface for plugging your own local *vision model* under
   the canvas's suggestion endpoints.
-- Scanned (raster-only) sheets aren't supported by the MCP server yet; the
-  seam for a raster mask is marked in `mcp/src/session.ts`.
+- Scanned (raster-only) sheets **are** supported (#154): where vectors cannot
+  bound a room, `one_click` and `detect_rooms` fall back automatically to
+  flooding the sheet's rendered pixels with the same raster engine the canvas
+  uses, disclosed as `raster_traced` on the reply and on the shape's origin.
+  Vector wins wherever it works — a raster ring's corners are unsnapped,
+  because a scan has no true endpoints to snap to.

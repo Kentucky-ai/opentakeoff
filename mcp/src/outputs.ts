@@ -342,6 +342,31 @@ export const deriveBaseOutput = {
   note: z.string(),
 };
 
+/** derive_transitions (#202) — what committed, and what came back as a question.
+ *  The two arrays carry the SAME row shape on purpose: a withheld run is not a
+ *  lesser record, it is a run the tool measured and declined to bid. */
+const transitionRun = {
+  sheet: z.string(),
+  between_shape_ids: z.array(z.string()).describe("The two floor_area shapes this run separates"),
+  length_lf: z.number().describe("Run length along the first shape's boundary"),
+  gap_in: z.number().describe("Median distance between the two rings across the run, in inches — 0-ish is one open space, 4-8 is a partition"),
+  at: z.array(z.number()).describe("Run midpoint (image px) — pass to view_sheet to look at it"),
+};
+export const deriveTransitionsOutput = {
+  condition: z.string().describe("The tag the transitions committed under"),
+  between: z.array(z.string()).describe("The two finish tags"),
+  committed: z.number().int(),
+  total_lf: z.number().describe("Sum of committed run lengths — butt joints only"),
+  runs: z.array(z.object({ ...transitionRun, shape_id: z.string() })),
+  withheld: z.array(z.object({
+    ...transitionRun,
+    reason: z.literal("wall_separated"),
+    detail: z.string(),
+  })).describe("Adjacency across a wall: real, measured, and NOT committed — the transition there is a threshold at a doorway this cannot locate"),
+  withheld_lf: z.number().describe("Shared-wall length held back — never part of total_lf"),
+  note: z.string(),
+};
+
 /** list_shapes (#149) — the compact inventory; quantities appear per role. */
 export const listShapesOutput = {
   shapes: z.array(z.object({

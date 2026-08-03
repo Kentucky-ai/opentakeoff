@@ -643,7 +643,7 @@ What's sent, and only when you run an AI feature: the sheet region in question a
 
 The same engine speaks [MCP](https://modelcontextprotocol.io), one command away:
 `npx -y opentakeoff-mcp` (or the one-click `opentakeoff-mcp.mcpb` bundle for Claude Desktop). An
-MCP client gets **35 tools** plus browsable sheet resources, over the very same measuring engine,
+MCP client gets **36 tools** plus browsable sheet resources, over the very same measuring engine,
 with the same scale gate and the same provenance receipts:
 
 | Group | Tools |
@@ -651,7 +651,7 @@ with the same scale gate and the same provenance receipts:
 | Open & orient | `load_plan` · `sheet_info` · `sheet_context` · `read_sheet_text` · `find_text` · `view_sheet` |
 | Scale | `set_scale` |
 | Measure | `one_click` · `detect_rooms` · `measure_polygon` · `measure_line` · `measure_surface` · `place_count` |
-| Repeat & derive | `symbol_sweep` · `sweep_schedule_row` · `derive_base` |
+| Repeat & derive | `symbol_sweep` · `sweep_schedule_row` · `derive_base` · `derive_transitions` |
 | Read the drawing set | `sheet_graph` · `resolve_tag` · `find_schedule` |
 | Edit & audit | `list_shapes` · `edit_shape` · `edit_condition` · `edit_materials` · `delete_shape` · `undo_last` |
 | Mark & sign | `annotate` · `list_annotations` · `link_annotation` · `mark_verdict` · `delete_verdict` |
@@ -667,6 +667,15 @@ A few worth knowing about from the canvas side, because they're the same feature
   the plan sheets.
 - `sheet_graph` / `resolve_tag` / `find_schedule` answer *"what finish is in room 134, and how do
   you know"* with a citation per cell — across continuation sheets and multi-building keys.
+- `derive_base` computes base LF from committed rooms (perimeter minus stated openings), and
+  `derive_transitions` finds where two finishes meet. The second one is worth understanding before
+  you read its output: flood-traced rooms **don't share edges** — a trace fills to the wall
+  linework, so two rooms across a partition are separated by inches of nothing. Finishes changing
+  inside one open space commit as a butt-joint run. Rooms parallel across a wall come back
+  **withheld**, with their length and a point to look at, because the real transition is a
+  threshold in a doorway and nothing in the trace record locates the doorway. Answer those by
+  looking at the sheet and measuring the threshold yourself — the same doctrine as `symbol_sweep`,
+  where a near-match is never a silent commit and never a silent drop.
 - `edit_condition` reaches the waste %, the ×N multiplier, and `roll_setup`
   ([§4](#4-conditions--your-finishes)), so an agent's takeoff doesn't come back with net === gross.
 - `view_sheet` renders a sheet or a tight crop with a calibrated 1-ft/5-ft measuring grid and a

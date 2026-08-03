@@ -2,6 +2,17 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-02 — the transition where two finishes meet, and the wall it refuses to call one (#202)
+
+### Added
+- **`derive_transitions`** — the derivation that follows `derive_base`, and the line an estimator redraws on every job: pass two finish tags and the tag to commit under, and every committed room of each is compared against every room of the other.
+- **The catch it is built around: flood-traced rooms do not share edges.** A trace fills to the wall linework, so two rooms across a partition are separated by four to eight inches of nothing — testing for a shared edge finds exactly zero transitions on a real planset. What is actually there is proximity, and proximity comes in two flavours that mean completely different things to an estimator. A **butt joint** — the rings running together inside one open space, within an inch — *is* the transition, and commits as a linear shape whose `origin.derived` names both parent shapes, both tags, and the measured gap. A **wall-separated** run means the rooms are adjacent across a partition, where the transition is a threshold in a *doorway* — and nothing in the trace record says where the doorway is, because the flood engine seals openings and reports how MUCH boundary it synthesised (`sealedPx`), never where. Committing 34 LF of threshold because two rooms share 34 LF of wall would be a wrong bid with a machine's confidence behind it, so those come back in `withheld` with their length, their gap in inches, and an `at` point to `view_sheet` — the `symbol_sweep` near-miss doctrine: a question you answer by looking, never a silent commit and never a silent drop. `withheld_lf` is never folded into `total_lf`.
+- **Proximity alone was not enough, and the tests are what said so.** Distance says "close to B", which is not "running alongside B", and the difference is every corner on the plan: walking A's top wall toward the corner where B begins, the last foot of it sits within a partition's thickness of B's corner *vertex* — near, but pointing straight at it. Left in, that tail lengthened every run by the gap tolerance at both ends (a 4 LF joint measured as 6) and invented 2 LF runs where two rooms merely clip corners diagonally. Two boundaries run together when the direction from A to B is **perpendicular** to the way A is heading, so that is the rule (`|cos| ≤ 0.5`), and both cases now measure correctly. The kind is decided on the run's **median** gap, not its mean — one sample pinching to zero where two walls corner together must not turn a wall into a joint. A run crossing the ring's start vertex is stitched back into one, because "a 3 LF and a 9 LF transition" on one piece of floor is not what is there.
+- All-or-nothing like `derive_base`: an unknown tag, a transition landing on either source tag, the same tag twice, or a sheet without a scale refuses the whole call before anything commits. The sweep is one undo step. Geometry lives in `web/src/lib/transitions.ts` — pure, so the canvas can mount the same computation.
+
+### Released
+- **opentakeoff-mcp 0.9.29** — `derive_transitions`; 36 tools. (0.9.28 was taken by #190, which shipped the bump without a changelog entry and left `.well-known` behind at 0.9.27 — the #171 drift class. All three version surfaces agree again here.)
+
 ## 2026-08-02 — the symbol sweep crosses scales: a stated ratio, never a searched one (#186)
 
 ### Fixed
