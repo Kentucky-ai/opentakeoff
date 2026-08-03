@@ -2,7 +2,7 @@
 
 **Project:** Open-source browser-based construction takeoff tool for flooring.
 
-**Live demo:** https://opentakeoff.netlify.app
+**Live demo:** https://opentakeoff.kentucky-ai.com
 
 **Repo:** https://github.com/Kentucky-ai/opentakeoff
 

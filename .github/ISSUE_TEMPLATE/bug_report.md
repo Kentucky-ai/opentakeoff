@@ -19,7 +19,7 @@ Measured value vs. expected value, the sheet's scale, and whether waste/multipli
 
 **Environment**
 - Browser + version:
-- Where: opentakeoff.netlify.app / self-hosted / local dev
+- Where: opentakeoff.kentucky-ai.com / self-hosted / local dev
 - Plan source: PDF / image / .zip (vector or scanned?)
 
 **Screenshots**

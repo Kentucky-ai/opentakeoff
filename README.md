@@ -11,13 +11,13 @@ Same flood fill, same scale gate, same math, same record. Every measurement stor
 what makes it training data.
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Live demo](https://img.shields.io/badge/demo-opentakeoff.netlify.app-2ea44f.svg)](https://opentakeoff.netlify.app)
+[![Live demo](https://img.shields.io/badge/demo-opentakeoff.kentucky--ai.com-2ea44f.svg)](https://opentakeoff.kentucky-ai.com)
 [![MCP registry](https://img.shields.io/badge/MCP-io.github.Kentucky--ai%2Fopentakeoff-6f42c1.svg)](https://registry.modelcontextprotocol.io)
 [![npm](https://img.shields.io/npm/v/opentakeoff-mcp?label=opentakeoff-mcp)](https://www.npmjs.com/package/opentakeoff-mcp)
 [![Benchmark](https://img.shields.io/badge/benchmark-OpenTakeoff%20Academy-orange.svg)](https://aec.kentucky-ai.com)
 [![Sponsor](https://img.shields.io/github/sponsors/Kentucky-ai?logo=githubsponsors&label=sponsor&color=EA4AAA)](https://github.com/sponsors/Kentucky-ai)
 
-[**For agents**](#for-agents--start-here) · [**Try the canvas**](https://opentakeoff.netlify.app) · [The engine's contract](#the-contract-that-makes-it-drivable) · [For the person at the canvas](#for-the-person-at-the-canvas) · [The data layer](#the-data-layer--why-this-engine-exists) · [Research](#the-research-program) · [Build on it](#build-on-top-of-it) · [Contribute](#contributing)
+[**For agents**](#for-agents--start-here) · [**Try the canvas**](https://opentakeoff.kentucky-ai.com) · [The engine's contract](#the-contract-that-makes-it-drivable) · [For the person at the canvas](#for-the-person-at-the-canvas) · [The data layer](#the-data-layer--why-this-engine-exists) · [Research](#the-research-program) · [Build on it](#build-on-top-of-it) · [Contribute](#contributing)
 
 **Read this in:** [日本語](README.ja.md) · [한국어](README.ko.md) · [简体中文](README.zh-Hans.md)
 
@@ -199,7 +199,7 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-Or just open the [**live demo**](https://opentakeoff.netlify.app). Drag in
+Or just open the [**live demo**](https://opentakeoff.kentucky-ai.com). Drag in
 `demo/sample-plan.pdf`, accept the detected scale, pick a condition, hit **One-Click Area**,
 click inside a room. Open **Report** for the breakdown and the exports. The complete
 zero-to-exported walkthrough is the [**user manual**](docs/USER_GUIDE.md).
