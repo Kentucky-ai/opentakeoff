@@ -2,22 +2,24 @@
 
 # OpenTakeoff
 
-**The first takeoff canvas built for people _and_ AI agents.**
+**The measurement engine for building plans — built so an AI agent can drive it, and so an estimator wants to.**
 
-Open a building plan and measure it — trace the rooms yourself, or point an AI agent at the
-**same engine**. Every measurement carries its **scale** and **how it was made**. Free,
-open-source, and it runs in your browser — no account, no upload, no install.
+A takeoff is the act of measuring quantities off a construction drawing. OpenTakeoff does it
+two ways over one engine: **35 MCP tools** for an agent, and a browser canvas for a person.
+Same flood fill, same scale gate, same math, same record. Every measurement stores its
+**scale**, its **method**, and **who made it** — which is what makes the output auditable, and
+what makes it training data.
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Live demo](https://img.shields.io/badge/demo-opentakeoff.netlify.app-2ea44f.svg)](https://opentakeoff.netlify.app)
-[![Built with React + Vite](https://img.shields.io/badge/React%2018-Vite-444.svg)](#tech-stack)
+[![MCP registry](https://img.shields.io/badge/MCP-io.github.Kentucky--ai%2Fopentakeoff-6f42c1.svg)](https://registry.modelcontextprotocol.io)
+[![npm](https://img.shields.io/npm/v/opentakeoff-mcp?label=opentakeoff-mcp)](https://www.npmjs.com/package/opentakeoff-mcp)
+[![Benchmark](https://img.shields.io/badge/benchmark-OpenTakeoff%20Academy-orange.svg)](https://aec.kentucky-ai.com)
 [![Sponsor](https://img.shields.io/github/sponsors/Kentucky-ai?logo=githubsponsors&label=sponsor&color=EA4AAA)](https://github.com/sponsors/Kentucky-ai)
 
-[**▶ Try the live demo**](https://opentakeoff.netlify.app) · [Quick start](#quick-start) · [Features](#features) · [For AI agents](mcp/) · [Deploy it](#run-it--deploy-it) · [Own your data](#own-your-data--the-capture-layer) · [Build on top](#build-on-top-of-it) · [Contributing](CONTRIBUTING.md)
+[**For agents**](#for-agents--start-here) · [**Try the canvas**](https://opentakeoff.netlify.app) · [The engine's contract](#the-contract-that-makes-it-drivable) · [For the person at the canvas](#for-the-person-at-the-canvas) · [The data layer](#the-data-layer--why-this-engine-exists) · [Research](#the-research-program) · [Build on it](#build-on-top-of-it) · [Contribute](#contributing)
 
 **Read this in:** [日本語](README.ja.md) · [한국어](README.ko.md) · [简体中文](README.zh-Hans.md)
-
-**New — July 2026:** **Roll goods** — opt a condition into broadloom / sheet goods and the engine figures the seams: cuts drawn to scale over their rooms, a to-scale roll diagram with drag-to-reorder, order footage beside the measured quantities ([#136](https://github.com/Kentucky-ai/opentakeoff/issues/136)) · **The sheet graph** — an agent asks *"what finish is in room 134, and how do you know"* and gets the schedule row with a citation per cell: `sheet_graph` / `resolve_tag` / `find_schedule` ([#87](https://github.com/Kentucky-ai/opentakeoff/issues/87)) · **PDF layers** — CAD-exported sheets *state* what their ink is; One-Click reads the layer tree instead of guessing at hatch ([#85](https://github.com/Kentucky-ai/opentakeoff/issues/85)) · **MCP server, 35 tools** — your AI agent drives the same engine (`npx opentakeoff-mcp`, on the [official MCP registry](mcp/)) and finishes every takeoff with a **marked-up planset PDF** (`export_marked_pdf`), not just numbers — now with multi-document working sets, base derivation, and takeoff import · **Voice takeoff** — hold M and say `carpet one, waste seven`; speech recognized on-device, audio never leaves your machine ([docs/VOICE.md](docs/VOICE.md)) · One-Click Area traces **hatched rooms** and **scanned plans** — [full changelog](CHANGELOG.md)
 
 <br/>
 
@@ -27,23 +29,169 @@ open-source, and it runs in your browser — no account, no upload, no install.
 
 ---
 
-OpenTakeoff is a free, open-source canvas for measuring quantities off a building plan — a **takeoff**. What makes it different is who can run it: a person **or** an AI agent, on the **same engine**. You click inside a room and it traces itself; an agent calls the same tool over [MCP](mcp/) and gets the same number. And every measurement records **how it was made** — its scale, whether it was one-click or hand-drawn, and whether a person or an agent made it. The proof travels with the number.
+## What this is
 
-That makes OpenTakeoff the first place an AI agent can measure a real building the way an estimator does — and it's still a genuinely great tool for the person at the canvas.
+Measuring quantities off a plan is the input to every construction bid — how much floor, how
+much wall, how many fixtures, at what scale, on which sheet. It happens thousands of times a
+day. Until OpenTakeoff there was **no open-source takeoff engine at all**, web-based or
+otherwise, and nothing an autonomous agent could call.
 
-Until now there has been **no open-source, web-based takeoff canvas at all** — let alone one built for flooring. OpenTakeoff is that tool: a free, open-source alternative, given to the trade.
+OpenTakeoff is that engine, with two front ends over identical geometry:
 
-It started as the takeoff module of a private flooring estimating app, then got carved out, cleaned up, and released. **This is the real measuring engine, not a demo** — including **One-Click Area**, the flood-fill room tracer the $300/mo tools gate behind a subscription.
+- **A stdio MCP server** — `npx -y opentakeoff-mcp`, 35 tools, on the
+  [official MCP registry](https://registry.modelcontextprotocol.io). An agent opens a plan,
+  reads the title block, sets the scale, floods the rooms, checks its own work on a rendered
+  overlay, and hands back a marked-up planset PDF.
+- **A browser canvas** — no backend, no account, no upload. An estimator drags in a plan set
+  and traces it, with One-Click room detection, CAD hatches, roll-goods seam layout, a
+  materials buy list, and exports.
 
-**Built for flooring, useful for any takeoff.** The measuring engine is general — area, linear, count, and deduct work on anything you'd scale off a plan (drywall, paint, concrete, sitework). What makes it *flooring's* tool is the finish-aware layer on top: conditions with CAD hatches, per-condition waste %, square-yard output, and a coverage-rate **materials buy list** nobody else hands the trade for free.
+Neither is a wrapper around the other. The MCP server imports
+`web/src/lib/{oneclick,sheets,geometry,totals}` directly, so a shape committed by an agent is
+field-identical to one committed by a hand at the canvas — same flood mask, same corner snap,
+same waste math, same refusal messages.
 
-And there's nothing to set up. Open the page, drag in a plan, start measuring. Your PDFs, your takeoffs — and your voice, if you use dictation — never leave your machine: there is no server in the loop.
+**Provenance is the load-bearing part.** Every shape records the scale it was measured at, the
+method that produced it (vector flood, raster trace, hand-drawn, agent-proposed), whether a
+human corrected it, and the machine's original boundary frozen beside the correction.
+Downstream, that's an audit trail a PM can read. Upstream, it's a labeled
+*(geometry → finish)* pair — the training signal takeoff models have never had at scale. That
+second use is not a side effect; see [the data layer](#the-data-layer--why-this-engine-exists).
 
-## Quick start
+## Recently shipped
 
-You don't need to install anything to *use* it — just open the [**live demo**](https://opentakeoff.netlify.app), drag in a plan, and go.
+- **Stitched sheets** — a floor split across a match line becomes one working surface; a room
+  that crosses the seam traces as one shape, One-Click included
+  ([#161](https://github.com/Kentucky-ai/opentakeoff/issues/161))
+- **PDF layer roles** — CAD-exported sheets *state* what their ink is, so One-Click reads the
+  layer tree instead of inferring boundaries from hatch, with a Layers panel on the canvas and
+  scored corpus IoU ([#85](https://github.com/Kentucky-ai/opentakeoff/issues/85))
+- **The sheet graph** — an agent asks *"what finish is in room 134, and how do you know"* and
+  gets the schedule row with a citation per cell, across continuation sheets, rotated headers,
+  and multi-building keys: `sheet_graph` / `resolve_tag` / `find_schedule`
+  ([#87](https://github.com/Kentucky-ai/opentakeoff/issues/87))
+- **Roll goods** — opt a condition into broadloom or sheet material and the engine figures the
+  seams: lanes, multi-roll splits, cuts drawn to scale over their rooms in cutting order, a
+  to-scale roll diagram with drag-to-reorder, and order footage beside the measured quantities
+  ([#136](https://github.com/Kentucky-ai/opentakeoff/issues/136))
+- **`symbol_sweep`** — every instance of a repeated symbol from one marqueed example, crossing
+  scales only by a *stated* ratio, never a searched one
+- **`mark_verdict` / `delete_verdict`** — an agent signs its own work as a graphite `AGENT`
+  diamond; only a human hand mints the green `APPROVED` seal
+- **One-Click accuracy wave** — face extraction and gap tolerance from
+  [RFC #60](https://github.com/Kentucky-ai/opentakeoff/issues/60) (contributed by
+  [@knmurphy](https://github.com/knmurphy)), hairline runs shadowing a heavier wall classified
+  as annotation rather than boundary, and an in-swing door's sector taken behind the leaf
+  instead of the arc
+- **Voice takeoff** — hold `M` and say `carpet one, waste seven`; recognition is
+  whisper-tiny.en in WebAssembly on your machine, audio never leaves the browser
+  ([docs/VOICE.md](docs/VOICE.md))
 
-To run it yourself:
+Full history: [CHANGELOG.md](CHANGELOG.md) · every capability mapped to its code:
+[FEATURES.md](FEATURES.md)
+
+---
+
+## For agents — start here
+
+Point any stdio MCP client at the published package. Node 20+, no clone, no build:
+
+```json
+{
+  "mcpServers": {
+    "opentakeoff": {
+      "command": "npx",
+      "args": ["-y", "opentakeoff-mcp"]
+    }
+  }
+}
+```
+
+Claude Code: `claude mcp add opentakeoff -- npx -y opentakeoff-mcp`. Claude Desktop users can
+double-click the `opentakeoff-mcp.mcpb` bundle from the
+[latest release](https://github.com/Kentucky-ai/opentakeoff/releases) instead — it excludes the
+optional native canvas on purpose, so every JSON tool works everywhere and the rendering
+surfaces (`view_sheet`, the sheet-image resource) say exactly what's missing where they can't
+run. Docker and a local clone are both supported: [`mcp/README.md`](mcp/README.md).
+
+<img src="docs/img/mcp-live-demo.gif" alt="A real run, real time at 3×: an AI agent in a terminal one-clicks three patient rooms on a VA medical center finish plan over MCP; each export lands in the web app as dashed pencil proposals, and the operator accepts them — 743.64 SF, pencil to ink" width="900"/>
+
+*A real run (3× speed): the agent takes off patient rooms 161–163 on a federal finish plan,
+exporting after each commit. Every shape lands in the app as a dashed **pencil proposal** and
+becomes ink only when the operator clicks Accept.*
+
+### The 35 tools
+
+| Group | Tools |
+|---|---|
+| **Open & orient** | `load_plan` · `sheet_info` · `sheet_context` · `read_sheet_text` · `find_text` · `view_sheet` |
+| **Scale** | `set_scale` |
+| **Measure** | `one_click` · `detect_rooms` · `measure_polygon` · `measure_line` · `measure_surface` · `place_count` |
+| **Repeat & derive** | `symbol_sweep` · `sweep_schedule_row` · `derive_base` |
+| **Read the drawing set** | `sheet_graph` · `resolve_tag` · `find_schedule` |
+| **Edit & audit** | `list_shapes` · `edit_shape` · `edit_condition` · `edit_materials` · `delete_shape` · `undo_last` |
+| **Mark & sign** | `annotate` · `list_annotations` · `link_annotation` · `mark_verdict` · `delete_verdict` |
+| **Hand off** | `takeoff_summary` · `export_takeoff` · `export_report` · `export_marked_pdf` · `import_takeoff` |
+
+Plus browsable sheet resources (`takeoff://sheets`) so an agent can *see* the working set, not
+only act on it. Multi-document sessions are first-class: a bid set is plans **plus** schedule
+**plus** addenda, and `load_plan --merge` adds a document without disturbing existing scales,
+conditions, or shapes — the sheet graph then spans the whole set, so a room tag on one file
+resolves to a schedule row in another. `edit_condition` reaches the waste %, the ×N multiplier,
+and `roll_setup`, so an agent's takeoff doesn't ship with net === gross.
+
+Setup, the coordinate contract, and a full annotated transcript: [`docs/MCP.md`](docs/MCP.md).
+
+### The contract that makes it drivable
+
+Most measurement APIs are hostile to an agent because they let it be confidently wrong. These
+are the rules that make this one safe to hand a model, and why each one exists:
+
+1. **One coordinate frame, stated everywhere.** Image pixels at render scale 2.0 — PDF points
+   × 2, origin top-left, y down, the browser canvas's native space. Every sheet payload carries
+   dims in both px and pt. No tool takes a coordinate in units it has to guess.
+2. **Scale is a gate, not a default.** The drawn scale note is *read* off the sheet but never
+   applied silently; adopting it is always an explicit `set_scale`. Measuring an unscaled sheet
+   refuses. Pixels × a wrong scale² is every number wrong at once, so the engine would rather
+   stop than guess. Disagreeing scale notes inside a measured region raise a warning rather
+   than a silent pick.
+3. **The engine traces; the model doesn't invent.** `one_click` returns the ring the flood fill
+   produced from a seed point you name. A model cannot hand back a polygon it imagined and have
+   it counted.
+4. **Every record carries how it was made.** Method, seed point, whether hatch filtering
+   engaged, whether it came off scan pixels, non-default fill sensitivity, confidence factors,
+   and the machine's original ring if a human later moves it.
+5. **Agent work is pencil until a person inks it.** Exports land in the canvas as dashed
+   proposals. `mark_verdict` lets an agent sign its own work as a graphite `AGENT` diamond; the
+   green `APPROVED` seal has exactly one code path and it is the toolbar button under a human
+   hand. No MCP call, no import, mints one.
+6. **The deliverable is a marked-up planset, not JSON.** `export_marked_pdf` burns the work
+   into the drawings as drawn — condition colors, hatches, quantity chips, count markers —
+   behind a legend cover with totals and a tally of how much of the set a person has actually
+   reviewed. A takeoff nobody can check is not a takeoff.
+7. **Refusals are actionable strings.** *"That space isn't enclosed on the plan linework — the
+   fill spilled"* tells a model what to do next. A silent zero doesn't. Tools that can't answer
+   withhold with a stated reason rather than returning a plausible number.
+
+### Prove it — OpenTakeoff Academy
+
+[**aec.kentucky-ai.com**](https://aec.kentucky-ai.com) is a standalone open benchmark and
+certification arena for agents that do takeoff. Bring any model and your own harness; you are
+scored on **operating a real takeoff tool** against geometry you don't control — a wrong
+calibration yields a wrong area — not on emitting a plausible-looking number. Runs emit a
+signed bundle with full provenance of every tool call, scoring is against held-out ground truth
+and a human Senior Estimator baseline, and clearing a tier earns a credential that's
+independently verifiable. The Certified path drives this engine (`opentakeoff-mcp`) behind the
+task tools. Repo:
+[Kentucky-ai/opentakeoff-academy](https://github.com/Kentucky-ai/opentakeoff-academy).
+
+---
+
+## For the person at the canvas
+
+The agent path exists because the human path is real. Everything below is the production
+measuring engine carved out of a commercial Division 9 estimating system — not a demo
+reimplementation.
 
 ```bash
 cd web
@@ -51,88 +199,303 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-Drag **`demo/sample-plan.pdf`** onto the canvas. The scale auto-detects; pick a condition, hit **One-Click Area**, and click inside a room. Open **Report** to see the breakdown and export CSV / JSON.
+Or just open the [**live demo**](https://opentakeoff.netlify.app). Drag in
+`demo/sample-plan.pdf`, accept the detected scale, pick a condition, hit **One-Click Area**,
+click inside a room. Open **Report** for the breakdown and the exports. The complete
+zero-to-exported walkthrough is the [**user manual**](docs/USER_GUIDE.md).
 
-## Features
+### Open anything, instantly
+A plan **PDF**, an **image** (scan, screenshot, photo), or a whole **`.zip` plan set** straight
+off a bid platform. Zips are unpacked and images wrapped to PDF *in your browser* — multi-page,
+multi-file, up to **4 sheets side-by-side**, with hostile-archive guards so a malformed zip
+fails cleanly instead of ballooning the tab. No upload step, no conversion service, no account.
 
-### 1. Open anything, instantly
-Drag in a plan **PDF**, an **image** (a scan or a screenshot), or a whole **`.zip` plan set** straight off a bid platform. Zips are unpacked and images wrapped to PDF *in your browser* — multi-page and multi-sheet, with up to **4 sheets side-by-side**. No upload step, no conversion service, no account.
+### A real measuring engine
+**One-Click Area** is the headline: click inside a room, the linework bounds a flood fill, the
+polygon traces itself, the vertices snap to true corners. **Hatching and poché don't fool it** —
+tile grids, plank lines, and section fills classify as pattern rather than wall, and the
+escalation is conservative enough that a misread can never come out worse than the strict fill.
+**Scanned sheets work too**: with no vector linework the engine reads rendered pixels —
+adaptive thresholding, polarity detection for blueprint negatives, a gap-bridging pass for
+faded ink — and badges the result so you verify the edges before committing. On CAD exports
+that publish a layer tree, One-Click reads the declared roles instead of inferring them.
 
-### 2. A real measuring engine — not a counter with a ruler
-**One-Click Area** is the headline: click inside a room and the linework bounds it, the polygon traces itself, and the vertices snap to true corners. It reads the drawing the way an estimator does — **hatching and poché don't fool it**: tile grids, plank lines, and section fills are classified as pattern, not wall, so a click inside a fully hatched room still traces the room (and a misread can never make the result worse than the strict fill — it escalates only when the strict pass comes back trapped). **Scanned plans work too**: when a sheet is a scan (no vector linework), the engine reads the rendered pixels instead — adaptive thresholding with a gap-bridging pass — and the same flood/trace machinery runs on the scan ink; the result is badged so you verify the edges before Create. Plus the full manual kit — **Area, Rectangle, Linear, Surface-Area (walls), Count,** and **Deduct** (for columns, voids, and openings). This is the same engine pulled out of a commercial estimating app, not a toy reimplementation.
+Plus the full manual kit — **Area, Rectangle, Linear, Curved Line, Surface Area (walls),
+Count**, and **Cut Out** deducts — and a **Zone check** that answers "what's in this wing?"
+without touching the takeoff.
 
 <div align="center">
 <img src="docs/img/one-click-area.gif" alt="One-Click Area on a real finish plan: one click inside a patient room and the whole room traces itself wall to wall — 240.7 SF, committed on Enter" width="820"/>
 </div>
 
-Manual tracing gets a real drafting aid: **45°/90° angle lock**. Come within a few degrees of square or diagonal and the segment you're drawing locks onto the axis — the click commits the locked point, so walls come out dead square (hold **⇧** to force the lock at any angle). On the canvas the crosshair **is** the cursor: the OS pointer hides, a star marks the crossing, and in-progress work draws in the instrument's own cobalt (committed shapes wear their condition color). The lock reads quietly — the star swells, the preview thickens, and a chip by the cursor shows the locked angle plus the **live segment length**. No extra chrome on your sheet.
+### Drafting aids that behave like drafting aids
+**45°/90° angle lock**: come within a few degrees of square or diagonal and the segment locks
+to the axis — the click commits the *exactly* on-axis point, so walls come out dead square
+(hold `⇧` to force it at any angle). On the canvas the crosshair **is** the cursor: the OS
+pointer hides, a star marks the crossing, in-progress work draws in the instrument's own
+cobalt, committed shapes wear their condition color. The lock reads quietly — the star swells,
+the preview thickens, a chip shows the locked angle and the live segment length. **Snap**
+(beta) pulls onto true PDF endpoints, and a corner beats an axis.
 
-### 3. Scale that matches real plan sets
-Auto-detects the drawn scale note off the sheet, or **calibrate** from any known dimension (click two points, type the real length). Scale is remembered **per sheet** — because plan sets are never one uniform scale, and tools that assume they are get the numbers wrong.
+### Scale that matches real plan sets
+Auto-detects the drawn scale note, or **calibrate** from any known dimension. Scale is
+remembered **per sheet**, because plan sets are never one uniform scale and tools that assume
+they are get the numbers wrong. **Check a dimension** (`K`) is calibrate's read-only twin: pick
+a printed dimension string, type what the drawing says, and get a graded verdict (green within
+1%, amber within 5%, red past it) plus a one-tap **Recalibrate to this**. Every scale
+acceptance drops an ephemeral calibrated ruler bar on the sheet, so a 2×-off scale is obvious
+before anything gets traced. Imperial or metric (m²/m, 1:50-style ratios) is a display toggle —
+takeoffs are stored unit-agnostically, so flipping it never changes a measurement.
 
-### 4. Conditions that read like the drawing
-A condition is one finish (LVP, carpet, tile, base, …). Each carries a **line/fill color** and a **CAD hatch pattern** (plank, herringbone, tile, terrazzo) so the canvas looks like the real drawing — plus a per-condition **waste %**, an **×N multiplier** for repeated identical units, a default **height** for wall traces, and a **thickness** that turns a linear run into border/feature-strip SF.
+### Conditions, materials, and the buy list
+A **condition** is one finish (LVP, carpet, tile, base…), carrying a line/fill color, a **CAD
+hatch pattern** so the canvas reads like the real drawing, a per-condition **waste %**, an
+**×N multiplier**, a default wall **height**, and a **thickness** that turns a linear run into
+border SF. **Import from schedule** parses the architect's finish table off the sheet into
+conditions behind a verify dialog — you approve what becomes a condition, and the product spec
+rides along as read-only report columns.
 
-### 5. Supporting Materials — labor, subfloor, and the consumables, done right
-Per condition: a free-text **labor type** (glue-down, float, nail-down, …) and **subfloor type** (ply, concrete slab, OSB, …), plus the consumables that actually go on the order — adhesive, sealer, polyurethane, thinset, grout, cove-base adhesive. Each material has a **coverage rate** and a **basis** (floor SF / linear LF / each), and the order quantity derives automatically — measured ÷ coverage, **rounded up** to whole units. Adhesive and mortar lines get **coverage presets** (trowel notches, rollers) that fill the spread rate, and grout lines get a **calculator** that derives SF/bag from tile size, thickness, joint width, and bag weight. This is the layer most takeoff tools punt on. It's shipped here.
+**Supporting Materials** is the layer most takeoff tools punt on: per condition, a labor type
+and a subfloor type, plus the consumables that actually go on the order — adhesive, sealer,
+thinset, grout, cove-base adhesive — each with a **coverage rate** and a **basis** (floor SF /
+linear LF / each). Order quantity derives automatically: measured ÷ coverage, **rounded up** to
+whole units. Adhesive and mortar lines get coverage presets; grout lines get a calculator that
+derives SF/bag from tile size, thickness, joint width, and bag weight. Preset values are
+industry-typical round numbers — always verify against the product data sheet.
 
-### 6. Reports & export
-A per-condition breakdown — **Floor / Wall / Border SF, LF, EA, total SF, SY**, with and without waste — plus a combined **materials buy list**. Export to **CSV**, **JSON**, or a real **Excel workbook** (Summary, By-sheet, Materials, and Shapes-audit tabs — full-precision cells, formula-shaped names stay inert text), or print it. Waste is applied only in the report (the order quantity), never to the live measured number, so your takeoff and your buy list stay honest about which is which.
+### Roll goods — the seams, figured
+Opt a condition into broadloom or sheet material (material class, roll width, max roll length,
+seam and wall allowances, direction, sell unit) and the engine lays out the cuts: lanes, seam
+placement, multi-roll splits, and order footage. Cuts draw to scale over their own rooms in
+material-true colors, numbered in cutting order, and slide or resize in an edit mode that's on
+the undo stack. The docked Roll panel shows those cuts nested **on the roll** with dimensions
+and drag-to-reorder re-packing, and **Roll Order LF** plus **Rolls** ride the Report, CSV, and
+Excel next to the measured quantities. Available headlessly too, via `roll_setup` on
+`edit_condition`. (The roll-layout engine was contributed by Michael Hartman.)
 
-And when the numbers need to leave the app: **Marked Set PDF**. One click builds a distribution-ready PDF entirely in your browser — every sheet with the work burned in as drawn (condition colors, hatches, quantity chips, count markers, markups) behind a legend cover with the full totals and a by-sheet breakdown. Send it to a GC who will never install anything.
+### Multi-sheet reality
+**Stitching**: a floor split across a match line becomes one working surface — align the joint
+by picking the same drawn point on both sheets, then trace straight across the seam.
+**Levels** group a multi-floor set. A visual **gallery** (`G`) picks and opens sheets, and
+**Regroup** restores a side-by-side composition in one click. A trace can't span two *grouped*
+sheets — the gap between panels isn't real distance, so the commit refuses and points you at
+stitching.
 
-When the addendum lands: **Revisions**. Save the takeoff as a named revision at each bid revision, then compare any two — or a revision against the live takeoff — as **quantity deltas** per condition, per sheet, and on the buy list, with a compare CSV. Restore auto-banks the live takeoff first, so it's never a one-way door.
+### Reports, exports, and revisions
+A per-condition breakdown — **Floor / Wall / Border SF, LF, EA, total SF, SY**, with and
+without waste — plus a combined **materials buy list**. Waste applies only in the report's
+order quantity, never to the live measured number, so the takeoff and the buy list stay honest
+about which is which. Export **CSV**, **JSON**, a real **Excel workbook** (Summary / By-sheet /
+Materials / Shapes-audit, full-precision cells, formula-shaped names kept inert text), print,
+or **Marked Set PDF** — a distribution-ready planset built entirely in your browser for a GC
+who will never install anything.
 
-### 7. A vector-sharp canvas + plan-set tools
-Zoom in and the linework stays **razor-sharp**: past ~1.15× zoom **times your display's pixel ratio** (so it kicks in sooner on a 2×/Retina screen than a 1× monitor) the visible region re-renders straight from the PDF vectors at your current zoom — Bluebeam/AutoCAD-style — instead of magnifying a fixed bitmap, so fine callouts and hatching never blur. It engages after a brief pause in scrolling/pinching rather than on every frame, so a continuous zoom stays on the fast base layer until you stop moving. It overlays just what's on screen, so there's no giant full-sheet bitmap to hold. Plus a **dark view** (☾) that inverts the sheet itself — a true negative print, white linework on black, not a CSS filter — with hatches retuned so takeoffs read as well at night as they do at noon. And a visual **gallery** (`G`) to pick and open sheets, **Regroup** to restore a side-by-side composition in one click, per-sheet **Hi-Res** base rendering, **Snap** (beta) to plan lines and corners, and a separate **markup layer** (revision clouds, callouts, text notes) that's never counted in the totals.
-
-### 8. Yours, locally
-Every drawing, scale, condition, and markup autosaves to **your browser** (IndexedDB + localStorage). Nothing is uploaded, there's no account, and there's no server in the default build. Host the static build yourself and it stays exactly that way.
+When the addendum lands, **Revisions** makes it data instead of archaeology: save a named
+revision at each bid revision, then compare any two as quantity deltas per condition, per
+sheet, and on the buy list, with a compare CSV. The compare is deliberately quantity-level
+rather than geometric — it tells you which numbers moved, not which wall did. Restore banks the
+live takeoff first, so it's never a one-way door.
 
 <div align="center">
 <img src="docs/img/report.png" alt="OpenTakeoff report — per-condition breakdown and materials buy list" width="780"/>
 </div>
 
-### Optional: team cloud mode (Google sign-in + Drive)
+### Markups, seals, and RFIs
+A separate layer the totals never count: revision clouds, callouts, text notes, highlighter
+ink, and reusable **stamps** (plank direction, seam direction, pattern origin — build your own,
+or import an `.svg`). **Approval seals** are the estimator's ink: click a committed takeoff to
+approve it, and the Marked Set's cover gains a tally line — *N estimator-approved · N
+agent-marked* — so a PM knows exactly how much of the set a person has looked at. The **RFI
+register** turns any markup into a tracked question with status, priority, ball-in-court, and
+cost/schedule impact flags, exporting as CSV/JSON and as an RFI schedule page in the marked set.
 
-Everything above is the default, and it's unchanged: open the page and you're an
-anonymous, local-only user — no account, no upload, nothing to configure. A team
-on Google Workspace can *optionally* sign in to unlock a shared mode instead:
-projects live as folders in the team's own Google **Drive**, the project list is
-deep-linked from your existing **Glide** app, and material costs come from a
-synced `pricing.json`. It's strictly additive — turn it off (set nothing) and the
-app is exactly the local tool it always was. The security posture stays honest:
-still a plain static site, **no secrets in the bundle**, team-only because the
-Google OAuth app is **Internal** to your domain, and your data sits in **your own
-Drive**. To set it up, see [`docs/GOOGLE_SETUP.md`](docs/GOOGLE_SETUP.md) and
-[`docs/GLIDE_INTEGRATION.md`](docs/GLIDE_INTEGRATION.md). A cloud deployment can
-also opt into **local-first sync** (`VITE_CLOUD_SYNC=1`): annotations stay canonical
-in the browser and sync to Drive in the background, so the canvas is instant and
-survives a flaky network — see [`docs/SYNC_ARCHITECTURE.md`](docs/SYNC_ARCHITECTURE.md).
+### The Agent panel, in the browser
+The same proposer/reviewer split as MCP without leaving the canvas: describe a takeoff in a
+sentence and a model — **yours**, on your key, from your browser — works the sheet with the
+app's own deterministic tools and stages dashed proposals you accept, correct, or reject. It
+cannot invent geometry (`propose_shapes` rejects anything uncited) and it cannot set a scale.
+There's a keyless deterministic mock server in `scripts/` if you want to watch the loop with no
+AI account at all.
+
+### A vector-sharp canvas
+Past ~1.15× zoom **times your display's pixel ratio**, the visible region re-renders straight
+from the PDF vectors at your current zoom rather than magnifying a fixed bitmap, so fine
+callouts and hatching never blur — and it engages after a pause in the gesture, so a continuous
+zoom stays on the fast base layer while you're still moving. It overlays only what's on screen,
+so there's no full-sheet bitmap to hold. **Dark view** (☾) inverts the sheet pixels
+themselves — a true negative print, white linework on black, not a CSS filter — with hatches
+retuned, and exports follow it.
+
+### Yours, locally
+Every drawing, scale, condition, markup, and RFI autosaves to **your browser** (IndexedDB +
+localStorage). Nothing is uploaded, there's no account, and there's no server in the default
+build. The flip side is stated plainly in the manual: storage is per browser, per origin, and
+clearing site data clears your work.
+
+<details>
+<summary><strong>Optional: team cloud mode (Google sign-in + Drive)</strong></summary>
+
+<br/>
+
+Everything above is the default and it's unchanged: open the page and you're an anonymous,
+local-only user. A team on Google Workspace can *optionally* sign in to unlock a shared mode
+instead: projects live as folders in the team's own Google **Drive**, the project list is
+deep-linked from an existing **Glide** app, and material costs come from a synced
+`pricing.json`. It's strictly additive — set nothing and it doesn't exist. The security posture
+stays honest: still a plain static site, **no secrets in the bundle**, team-only because the
+Google OAuth app is **Internal** to your domain, and the data sits in **your own Drive**. See
+[`docs/GOOGLE_SETUP.md`](docs/GOOGLE_SETUP.md) and
+[`docs/GLIDE_INTEGRATION.md`](docs/GLIDE_INTEGRATION.md). A cloud deployment can also opt into
+**local-first sync** (`VITE_CLOUD_SYNC=1`): annotations stay canonical in the browser and sync
+to Drive in the background, so the canvas is instant and survives a flaky network —
+[`docs/SYNC_ARCHITECTURE.md`](docs/SYNC_ARCHITECTURE.md).
+
+</details>
+
+<details>
+<summary><strong>Optional: bring your own vision model</strong></summary>
+
+<br/>
+
+OpenTakeoff can ask a vision model **you** provide to read things off the plan — starting with
+the drawn scale when a sheet's text doesn't state one (scans, rotated notes, image title
+blocks). Click **AI** in the toolbar and point it at an **OpenAI-style** endpoint (the default;
+local runtimes on your own machine speak it and need no key) or an **Anthropic-style** one,
+plus a vision-capable model id.
+
+- **What's sent, and only when you click an AI button:** one snapshot of the sheet region in
+  question, plus the question — to *your* endpoint. Never the whole plan file, file names,
+  project names, or your takeoff.
+- **Nothing configured = nothing exists.** Unconfigured builds add zero UI beyond the button
+  and make zero AI network calls. No telemetry either way.
+- The answer is only ever a **suggestion**, landing in the same confirm-to-apply flow as a
+  text-detected scale, with the calibrated guide bar shown on acceptance.
+- The key is stored in this browser's localStorage — use one you can revoke. Deployers:
+  `VITE_AI_ENDPOINT` / `VITE_AI_MODEL` / `VITE_AI_PROVIDER` bake team defaults, but **never set
+  `VITE_AI_KEY` on a public deploy** — Vite inlines it into the shipped bundle.
+
+</details>
+
 ## What's in the box
 
 | Area | What you get |
 |---|---|
-| **Ingest** | PDF, image, or `.zip` plan set — unpacked in-browser, multi-page, up to 4 sheets side-by-side |
-| **Scale** | Auto-detect the drawn scale note, or calibrate from a known dimension — per sheet |
-| **Measure** | One-Click Area (flood-fill), Area, Rectangle, Linear, Surface-Area (walls), Count, Eraser (deduct), Zone check (per-region breakdown) — imperial or metric (m²/m, 1:50-style scales) |
-| **Drawing aids** | 45°/90° angle lock with ⇧ hard-lock, live angle + segment-length readout at the cursor, endpoint Snap (beta) |
-| **Conditions** | Color + CAD hatch per finish, waste %, ×N multiplier, height, thickness → border SF |
-| **Supporting Materials** | Per-condition labor type + subfloor type (free text), plus supporting materials with coverage rates → rounded order quantities, per-material coverage presets + grout calculator |
-| **Report** | Per-condition Floor/Wall/Border SF, LF, EA, SY, with/without waste + materials buy list |
-| **Export** | CSV, JSON, **Excel (.xlsx)**, print, **Marked Set PDF** (sheets + burned-in takeoff + legend cover, built in-browser) |
-| **Revisions** | Save the takeoff at each bid revision, compare what moved — quantity deltas per condition, per sheet, and on the buy list; guarded restore |
-| **Markups** | Revision clouds, callouts, text notes — separate layer, never counted |
-| **View** | Light or **dark (negative print)** — sheet pixels inverted at draw time, persists per browser |
+| **Ingest** | PDF, image, or `.zip` plan set — unpacked in-browser, multi-page, multi-file, up to 4 sheets side-by-side |
+| **Scale** | Auto-detect the drawn note, calibrate from a known dimension, or verify one with a graded check — per sheet |
+| **Measure** | One-Click Area (vector flood + raster fallback), Area, Rectangle, Linear, Curved Line, Surface Area, Count, Cut Out deducts, Zone check — imperial or metric |
+| **Drawing aids** | 45°/90° angle lock with `⇧` hard-lock, live angle + segment-length readout at the cursor, endpoint Snap (beta) |
+| **Conditions** | Color + CAD hatch per finish, waste %, ×N multiplier, wall height, border thickness, schedule import, browser-wide library |
+| **Supporting Materials** | Labor + subfloor type, coverage rate × basis → rounded order quantities, trowel/roller presets, grout calculator |
+| **Roll goods** | Per-condition roll setup → lanes, seams, multi-roll splits, to-scale cuts with drag-to-reorder nesting, Roll Order LF + Rolls on every export |
+| **Multi-sheet** | Sheet gallery, tabs and side-by-side groups, Regroup, levels, **stitching across a match line**, PDF layer roles |
+| **Report** | Per-condition Floor/Wall/Border SF, LF, EA, SY with and without waste, plus the combined buy list; columns, grouping, saved templates |
+| **Export** | CSV, JSON, **Excel (.xlsx)**, print, **Marked Set PDF**, RFI CSV/JSON |
+| **Revisions** | Save at each bid revision, compare quantity deltas per condition/sheet/buy list, guarded restore |
+| **Markups** | Clouds, callouts, notes, highlighter, stamps, **approval seals**, RFI register — separate layer, never counted |
+| **Voice** | Push-to-talk takeoff commands, recognized on-device in WebAssembly; audio never leaves the browser |
+| **View** | Light or **dark (negative print)** — sheet pixels inverted at draw time, exports follow |
 | **Storage** | IndexedDB + localStorage — client-only, nothing uploaded |
-| **Capture (opt-in)** | Bundled [capture server](capture/README.md) banks each contributed takeoff as (geometry → label) training rows — a corpus you own, mirrorable to a synced company share |
-| **MCP server** | The engine on stdio for your MCP client — load a plan, set the scale, one-click rooms, export the takeoff ([`mcp/`](mcp/README.md)) |
-| **Provenance** | Every shape records how it was measured — its scale, one-click or hand-drawn, and whether a person or an agent made it |
-| **Deploy** | One static build, hostable on Netlify, Vercel, GitHub Pages, S3, or any static host |
+| **MCP server** | 35 tools + browsable sheet resources on stdio, multi-document sessions ([`mcp/`](mcp/README.md)) |
+| **Provenance** | Every shape records its scale, its method, its confidence, and whether a person or an agent made it |
+| **Capture (opt-in)** | Bundled [capture server](capture/README.md) banks each contributed takeoff as (geometry → label) training rows |
+| **Deploy** | One static build — Netlify, Vercel, GitHub Pages, Cloudflare Pages, S3, any static host |
+
+---
+
+## The data layer — why this engine exists
+
+Every finished takeoff is a set of expert decisions: *this* region gets *this* finish, at
+*this* waste, yielding *these* quantities. Done once, that's a bid. Recorded every time, it's a
+**labeled dataset that does not currently exist** — plan geometry paired with the finish an
+expert assigned it, which is the exact raw material for training a model that can do takeoff.
+Today that data evaporates the moment the bid goes out.
+
+The thesis, stated so it can be attacked: **markup is label.** Professional takeoff software
+already stores every drawn region as vector geometry, and reconstructing those polygons
+reproduces the recorded quantities exactly — so two decades of estimating work is an exact,
+*verifiable* corpus rather than a noisy one. That claim is what the whole research program
+tests, and it's patent pending.
+
+OpenTakeoff is the instrument that produces the corpus, with the collection path opt-in and
+auditable:
+
+- The **Contribute** button in the Report builds a derived-only payload — condition labels,
+  shape roles, quantities, geometry normalized 0-to-1 against the sheet, and per-shape
+  provenance (hand-traced vs. machine-proposed, and whether a human corrected it, with the
+  machine's original ring beside the fix). The builder is ~150 audited lines
+  ([`web/src/lib/contribute.js`](web/src/lib/contribute.js)); the normative wire contract is
+  [`docs/CONTRIBUTION_SPEC.md`](docs/CONTRIBUTION_SPEC.md).
+- **Never sent**, enforced by a whitelist in the builder: the PDF or any render of it, file or
+  sheet names, project/client names, markup text, absolute coordinates, scale *values* (only
+  the scale's provenance — calibrated vs. detected vs. standard), and edit timing beyond a
+  creation stamp. One linkage is deliberate and disclosed: shapes carry opaque, locally-minted
+  IDs so a re-contribution after an addendum supersedes rather than duplicates.
+- The bundled **capture server** ([`capture/`](capture/README.md)) — one stdlib-only Python
+  file, no pip install — receives it on localhost and banks one training row per labeled shape,
+  hash-gated so re-contributions never duplicate. v2 rows distinguish what the machine got
+  right from what an expert had to fix, which is the signal that actually teaches a takeoff
+  model. Point it at a synced folder with `--mirror` and the corpus rides existing company
+  storage sync, atomically.
+
+```bash
+python3 capture/capture_server.py    # then, in the app's browser console:
+# localStorage.opentakeoff_contribute_endpoint = "http://localhost:8787/contribute"
+```
+
+Run OpenTakeoff as-is and none of this exists for you — nothing is captured, nothing leaves
+your machine. Install it and every takeoff you *choose* to contribute compounds into an asset
+you own. This is the open edition of the capture layer inside
+[Spline](https://spline.quisutdeus.io), the commercial Division 9 estimating system OpenTakeoff
+was carved from, where capture runs ambient on autosave and commit instead of behind a button.
+The row schema and the training angle are in [`capture/README.md`](capture/README.md).
+
+## The research program
+
+OpenTakeoff is the open half of an applied-research program run by a working commercial
+flooring estimator who builds the AI his own department uses
+([Kentucky AI](https://kentucky-ai.com)). The open-core boundary is the same one the better
+open scientific software draws: **the measurement engine — rendering, scale, geometry, exports,
+the MCP server — is Apache-2.0 and stays open. The models trained on our own estimating archive
+are proprietary.** You get a real tool with no seat licenses; the part only our data can build
+stays ours.
+
+The research side is run as a lab, and the receipts are the point:
+
+- **Parameter-efficient tuning, not pretraining.** QLoRA adapters on open-weights bases
+  (~0.1% of parameters trained), specialized from a verified bid archive — cheap enough to
+  retrain when the data says retrain, small enough to ship. The flagship adapter predicts bid
+  totals at **12.3% median absolute percentage error on a 51-project temporal holdout**,
+  against **62.8%** for the untuned base; full method and honest caveats on the
+  [model card](https://huggingface.co/Kentucky-ai/div9-flooring-estimator-gemma4-31b).
+- **Verified labels in.** Before a historical bid becomes training data it passes a
+  dual-document verification gate: totals must reconcile between the bid workbook and the
+  separately filed proposal, change orders only count when corroborated by an actual
+  change-order document, and line-item arithmetic is recomputed and forensically checked.
+  Unverifiable projects don't train.
+- **Verifiable rulers out.** Models are scored against temporally held-out projects — future
+  bids, not a random split — with a geometry scorer whose **own error floor is measured
+  (0.4%)**, so a number can be attributed to model error versus measurement error.
+- **Multi-seed replication.** No result is promoted from a single training run; promotion
+  requires seed replication with paired bootstrap confidence intervals, and the cross-seed
+  spread gets published alongside the best seed.
+- **Negative results are kept.** The experiment ledger records what failed and why — an
+  unfreeze recipe that destroyed detection, a vertical-specialist model that lost to the
+  generalist's cross-vertical transfer — next to what worked.
+- **Leak-audited before release.** Identifiers are replaced *before* training, so the weights
+  never see a real name, and every public artifact passes a differential red-team: adversarial
+  extraction probes against the tuned model with the untuned base as control.
+
+Sanitized artifacts — model cards, benchmark specs, papers — publish as they clear review:
+[Hugging Face](https://huggingface.co/Kentucky-ai) ·
+[kentucky-ai.com](https://kentucky-ai.com). The agent-side evaluation lives in
+[OpenTakeoff Academy](https://aec.kentucky-ai.com).
+
+---
 
 ## Run it / deploy it
 
-**To use it, all you need is a browser.** To self-host, it's one static build you can drop anywhere — there's no backend, no database, no environment to stand up.
+To use it, all you need is a browser. To self-host, it's one static build you can drop
+anywhere — no backend, no database, no environment to stand up.
 
 ```bash
 cd web
@@ -142,100 +505,104 @@ npm run build      # → web/dist/  (static; host it anywhere)
 
 [![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/Kentucky-ai/opentakeoff)
 
-The repo ships a root `netlify.toml`, so the button above is genuinely one-click. The same `web/dist/` works on **Vercel, GitHub Pages, Cloudflare Pages, S3** — anywhere that serves static files.
-
-## Own your data — the capture layer
-
-Here's the part of a takeoff nobody talks about: every one you finish is a set of expert decisions — *this* region gets *this* finish, at *this* waste %, yielding *these* quantities. Done once, that's a bid. Banked every time, it's a **labeled dataset nobody else has** — the exact raw material for training a takeoff model on your trade and your market. Today that data evaporates the moment the bid goes out. It doesn't have to.
-
-OpenTakeoff ships an optional **capture layer** so you can keep it:
-
-- The **Contribute** button in the Report builds a derived-only payload — condition labels, shape roles, quantities, normalized geometry, and per-shape provenance (hand-traced vs. machine-proposed, and whether a human corrected it). Never the PDF, file names, project/client names, markups, absolute coordinates, or scale values. The builder is ~150 audited lines: [`web/src/lib/contribute.js`](web/src/lib/contribute.js); the normative wire contract is [`docs/CONTRIBUTION_SPEC.md`](docs/CONTRIBUTION_SPEC.md).
-- The bundled **capture server** ([`capture/`](capture/README.md)) — one stdlib-only Python file, no pip install — receives it on localhost and banks one training row per labeled shape, hash-gated so re-contributions never duplicate. v2 rows distinguish what the machine got right from what an expert had to fix — the exact signal a takeoff model trains on. Point it at a synced folder with `--mirror` and the corpus rides your existing OneDrive/SharePoint/Dropbox sync into company storage, atomically, ready to train on.
-
-```bash
-python3 capture/capture_server.py    # then, in the app's browser console:
-# localStorage.opentakeoff_contribute_endpoint = "http://localhost:8787/contribute"
-```
-
-Run OpenTakeoff as-is and none of this exists for you — nothing is captured, nothing leaves your machine. Install it and every takeoff you *choose* to contribute compounds into an asset you own. This is the open edition of the capture layer inside [Spline](https://spline.quisutdeus.io), the commercial Division-9 estimating system OpenTakeoff was carved from, where capture runs far deeper — ambient on autosave and commit, no button: provisional rows bank while you draw, certified rows land on commit with the exploded materials assembly, edits carry a decision trail, and each job's corpus files itself into that GC's folder on the company share. The full pitch, the row schema, and the training angle live in [`capture/README.md`](capture/README.md).
-
-## The research behind OpenTakeoff
-
-OpenTakeoff is the open half of an applied-research program run by a working commercial flooring estimator who builds the AI his own department uses ([Kentucky AI](https://kentucky-ai.com)). The boundary is deliberate, and it's the same one the best open-core scientific software draws: **the measurement engine — rendering, scale, geometry, exports, the MCP server — is Apache-2.0 and stays open. The AI models we train on our own estimating archive are proprietary.** You get a real tool with no seat licenses; we keep the part that only our data can build.
-
-The research side runs like a lab, not a demo reel:
-
-- **Markup-as-label training data (patent pending).** Every takeoff an estimator saves in professional takeoff software stores the drawn regions as vector geometry, and reconstructing those polygons reproduces the recorded quantities exactly. Two decades of estimating work is an exact, verifiable training corpus — that's the thesis the whole program tests.
-- **Parameter-efficient tuning, not pretraining.** The models are QLoRA adapters on open-weights bases (~0.1% of parameters trained), specialized from a verified bid archive — cheap enough to retrain when the data says retrain, small enough to ship. The flagship adapter predicts bid totals at **12.3% median absolute percentage error on a 51-project temporal holdout**, against 62.8% for the untuned base — full method and honest caveats on the [model card](https://huggingface.co/Kentucky-ai/div9-flooring-estimator-gemma4-31b).
-- **Verified labels in, verified rulers out.** Before any historical bid becomes training data it passes a dual-document verification gate: totals must reconcile between the bid workbook and the separately filed proposal, change orders only count when corroborated by an actual change-order document, and line-item arithmetic is recomputed and forensically checked. Unverifiable projects don't train.
-- **Frozen holdouts and verifiable rulers.** Every model is scored against temporally held-out projects it never trained on — future bids, not a random split — with a geometry scorer whose own error floor is measured (0.4%), so we know when a number is model error versus measurement error.
-- **Multi-seed replication.** No result is promoted from a single training run; promotion requires seed replication with paired bootstrap confidence intervals — and the cross-seed spread gets published, not just the best seed.
-- **Negative results are kept.** The experiment ledger records what failed and why — an unfreeze recipe that destroyed detection, a vertical-specialist model that lost to the generalist's cross-vertical transfer — alongside what worked.
-- **Leak-audited before release.** Identifiers are replaced *before* training (the weights never see a real name), and every public artifact passes a differential red-team: adversarial extraction probes against the tuned model with the untuned base as control.
-
-Sanitized research artifacts — model cards, benchmark specs, papers — are published as they clear review: [Hugging Face](https://huggingface.co/Kentucky-ai) · [kentucky-ai.com](https://kentucky-ai.com).
-
-## Bring your own AI (optional)
-
-OpenTakeoff can ask a vision model **you** provide to read things off the plan — starting with the drawn scale when a sheet's text doesn't state one (scans, rotated notes, image title blocks). Click **AI** in the toolbar and point it at an **OpenAI-style** endpoint (the default — local runtimes on your own machine speak it and need no key) or an **Anthropic-style** endpoint, plus a vision-capable model id.
-
-- **What's sent, and only when you click an AI button:** one snapshot of the sheet region in question, plus the question — to *your* endpoint. Never the whole plan file, file names, project names, or your takeoff.
-- **Nothing configured = nothing exists.** Unconfigured builds add zero UI beyond the button and make zero AI network calls. No telemetry either way.
-- The model's answer is only ever a **suggestion** — it lands in the same confirm-to-apply flow as the text-detected scale, and the calibrated guide bar shows on acceptance so you can sanity-check it.
-- The key (if any) is stored in this browser's localStorage — use one you can revoke. Deployers: `VITE_AI_ENDPOINT` / `VITE_AI_MODEL` / `VITE_AI_PROVIDER` can bake defaults into a team build, but **never set `VITE_AI_KEY` on a public deploy** — Vite inlines it into the shipped bundle.
-
-## Use it from an AI agent
-
-The same engine speaks [MCP](https://modelcontextprotocol.io): [`mcp/`](mcp/README.md) is a stdio server your MCP client can drive, one command away — `npx -y opentakeoff-mcp` — with `load_plan`, `read_sheet_text`, `set_scale`, `one_click`, `view_sheet`, `takeoff_summary`, `export_takeoff` and friends. An agent opens a plan, reads the title block, adopts the scale (never applied silently), clicks the rooms, checks its work on a rendered overlay with a calibrated measuring grid (`view_sheet`), and finishes with the two exports a takeoff owes: the **marked-up planset PDF** (`export_marked_pdf` — shapes, hatches, and quantity chips burned into the drawings, with machine-traced work disclosed as pending review) and the exact payload the app autosaves — same math, same provenance receipts, same scale gate. Setup and a full example transcript: [`docs/MCP.md`](docs/MCP.md).
-
-<img src="docs/img/mcp-live-demo.gif" alt="A real run, real time at 3×: an AI agent in a terminal one-clicks three patient rooms on a VA medical center finish plan over MCP; each export lands in the web app as dashed pencil proposals, and the operator accepts them — 743.64 SF, pencil to ink" width="900"/>
-
-*A real run (3× speed): the agent takes off patient rooms 161–163 on a federal VA finish plan, exporting after each commit; every shape lands in the app as a dashed **pencil proposal** and becomes ink only when the operator clicks Accept.*
+The repo ships a root `netlify.toml`, so the button is genuinely one-click. The same
+`web/dist/` works on **Vercel, GitHub Pages, Cloudflare Pages, S3** — anywhere that serves
+static files. Deployment notes and the optional AI backend:
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ## Build on top of it
 
-OpenTakeoff is **Apache-2.0**: fork it, change it, ship it — for your own crew or as the base of your own product. The codebase is deliberately small and readable so you can add the features *you* want:
+Apache-2.0: fork it, change it, ship it — for your own crew or as the base of your own product.
+The codebase is deliberately small and readable, and the geometry libraries are pure so you can
+lift them straight out:
 
-- **Geometry & measurement** — [`web/src/lib/oneclick.ts`](web/src/lib/oneclick.ts), [`web/src/lib/sheets.ts`](web/src/lib/sheets.ts) (typed and tested)
-- **Totals & materials math** — [`web/src/lib/totals.js`](web/src/lib/totals.js)
-- **State & persistence** — [`web/src/lib/store.js`](web/src/lib/store.js)
-- **UI** — [`web/src/pages/TakeoffCanvas.jsx`](web/src/pages/TakeoffCanvas.jsx) and [`web/src/components/`](web/src/components/)
+| What | Where |
+|---|---|
+| Flood fill, face extraction, corner snap, raster fallback | [`web/src/lib/oneclick.ts`](web/src/lib/oneclick.ts) — pure TS, tested |
+| Scale detection, sheet helpers, polygon area | [`web/src/lib/sheets.ts`](web/src/lib/sheets.ts) — pure TS, tested |
+| Waste, square-yard, coverage → order quantity | [`web/src/lib/totals.js`](web/src/lib/totals.js) |
+| Roll-goods lane and seam layout | [`web/src/lib/rollgoods.js`](web/src/lib/rollgoods.js) — pure, tested |
+| Persistence (IndexedDB + localStorage) | [`web/src/lib/store.js`](web/src/lib/store.js) |
+| PDF / image / zip ingest | [`web/src/lib/ingest.js`](web/src/lib/ingest.js) |
+| The canvas (one large component, ~90% of the app) | [`web/src/pages/TakeoffCanvas.jsx`](web/src/pages/TakeoffCanvas.jsx) |
+| MCP server (imports the same libs) | [`mcp/src/`](mcp/src/) |
+| Design tokens — source of truth for color and spacing | [`web/src/styles/tokens.css`](web/src/styles/tokens.css) |
 
-Run `npm run typecheck && npm test && npm run build` before a PR; keep the geometry libs pure and tested; never commit real plans. See [CONTRIBUTING.md](CONTRIBUTING.md) and the [user manual](docs/USER_GUIDE.md) — the complete zero-to-exported-takeoff guide.
+Third-party integrations and downstream forks run on this engine today; the parent/fork port
+protocol is [`docs/PARENT_FORK_PORTS.md`](docs/PARENT_FORK_PORTS.md).
 
-## Contributing — there's a ladder
+`cd web && npm run check` is the exact CI gate — typecheck, lint, test, build. Keep
+`oneclick.ts` and `sheets.ts` free of React and DOM; that purity is what makes them reusable and
+testable. Never commit real construction plans. See [CONTRIBUTING.md](CONTRIBUTING.md) and
+[AGENTS.md](AGENTS.md) — the repo's own instructions for coding agents — plus the
+[user manual](docs/USER_GUIDE.md) and [`docs/QA_PLAN.md`](docs/QA_PLAN.md).
 
-Every open issue is a real need, not a manufactured chore, and there's a rung for wherever you're starting from:
+## Contributing
 
-- **First PR:** issues labeled [`good first issue`](https://github.com/Kentucky-ai/opentakeoff/labels/good%20first%20issue) are small, fully specified, and point at the exact files. Claim one in a comment and go.
-- **The flagship:** [#29 — expose plan sheets as MCP resources](https://github.com/Kentucky-ai/opentakeoff/issues/29) is an open design-and-build challenge. Multiple entries welcome; the best one merges with credit in the release notes, and it ships to every client that pulls [`opentakeoff-mcp`](https://www.npmjs.com/package/opentakeoff-mcp) off npm.
+The open work is architectural, and it's posted as RFCs with a stated finish line rather than a
+manufactured chore list. Currently open:
 
-Ground rules live in [CONTRIBUTING.md](CONTRIBUTING.md). Tested PRs with green CI merge fast — the last three external PRs did.
+- [**RFC #60** — make One-Click Area genuinely great](https://github.com/Kentucky-ai/opentakeoff/issues/60):
+  face extraction, gap tolerance, confidence. Partially landed — a first slice merged in
+  [#179](https://github.com/Kentucky-ai/opentakeoff/pull/179), contributed by
+  [@knmurphy](https://github.com/knmurphy) and credited in the release notes — and the accuracy
+  ceiling is still open.
+- [**RFC #87** — the sheet graph](https://github.com/Kentucky-ai/opentakeoff/issues/87):
+  resolve room tags, schedules, legends, and detail callouts into one queryable graph with a
+  citation per answer. Two phases shipped; revision clouds and detail-callout chains are open.
+- Anything labeled [`rfc`](https://github.com/Kentucky-ai/opentakeoff/labels/rfc) or
+  [`flagship`](https://github.com/Kentucky-ai/opentakeoff/labels/flagship) — a flagship is an
+  open design-and-build challenge where multiple entries are welcome and the best one merges
+  with credit.
+- Smaller, fully-specified entry points are labeled
+  [`good first issue`](https://github.com/Kentucky-ai/opentakeoff/labels/good%20first%20issue) —
+  they name the exact files. Claim one in a comment and go.
+
+Ground rules are in [CONTRIBUTING.md](CONTRIBUTING.md). The bar is a green `npm run check` plus
+a test for anything touching the geometry libraries; tested PRs merge fast. External
+contributions are credited by name in the commit and the release notes — and because
+`opentakeoff-mcp` publishes to npm off a `mcp-v*` tag, engine work you land ships to every
+agent that pulls the package.
 
 ## Tech stack
 
-- **Frontend:** React 18 + Vite, plain JSX
-- **Drawing:** raw HTML5 Canvas + SVG (no charting/canvas frameworks)
-- **Geometry:** TypeScript (`oneclick.ts`, `sheets.ts`)
+- **Frontend:** React 18 + Vite 6, plain JSX
+- **Drawing:** raw HTML5 Canvas + SVG — no charting or canvas frameworks
+- **Geometry:** TypeScript (`oneclick.ts`, `sheets.ts`), pure and unit-tested
 - **PDF rendering:** [pdf.js](https://github.com/mozilla/pdf.js)
 - **Plan-set ingest:** fflate (zip) + pdf-lib (image → PDF), lazy-loaded
+- **Speech:** transformers.js, whisper-tiny.en (q8 encoder + uint8 decoder) in a Web Worker —
+  benchmarked against the alternatives in [`docs/VOICE.md`](docs/VOICE.md)
+- **MCP:** TypeScript stdio server importing the web engine's own libraries
 - **Storage:** IndexedDB + localStorage — no backend required
 - **Tests:** `node --test` + `tsx`
 - **No paid dependencies.** See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## Status
 
-OpenTakeoff is a **working tool**, not a preview. The measuring engine — One-Click Area, conditions, supporting materials, the report and exports — is the production engine carved out of a commercial flooring estimating app. The same engine answers to a person at the canvas or an AI agent over MCP, and every measurement it makes carries its scale and origin. **Snap** is marked beta. It's used on real commercial flooring bids; issues and pull requests are welcome.
+A working tool used on real commercial bids, not a preview. The measuring engine is the
+production engine carved out of a commercial estimating system, and the same engine answers to
+a person at the canvas or an agent over MCP with the same math, the same scale gate, and the
+same provenance record. Named limits, so you don't find them the hard way: **Snap** is beta,
+the Marked Set PDF doesn't burn stitched surfaces in yet (their quantities do ride the report
+and every export), revision compare is quantity-level rather than geometric, and the translated
+READMEs lag the English one. Issues and pull requests are welcome.
 
-## A note from the maker
+## Who's building this
 
-I run estimating for a commercial flooring company — and I build the AI that runs my department. OpenTakeoff is the open half of that work: the measuring engine a person or an agent drives the same way, given free to the trade. The models I train on our own estimating archive stay ours.
+I run estimating for a commercial flooring company and build the AI that runs my department.
+OpenTakeoff is the open half of that work: the measuring engine, given to anyone — human or
+agent — who needs to read a building. The models trained on our own estimating archive stay
+ours, and the boundary is drawn in public so it can be held to account.
 
-I built the tool I actually wanted: open a plan, trace your rooms (or let an agent do it), hand off a clean report — and every number tells you how it was made.
+What makes the data worth anything is that it comes from bids that were actually submitted, won
+or lost, and reconciled against a separately filed proposal. That's also why the engine had to
+be free: a corpus is only as good as the number of real takeoffs that flow through the
+instrument producing it.
 
-— Michael · Kentucky AI
+— Michael · [Kentucky AI](https://kentucky-ai.com)
 
 ## License
 
-[Apache License 2.0](LICENSE) — use it, fork it, ship it, build on top of it. Given to the flooring community. See [NOTICE](NOTICE) for attribution.
+[Apache License 2.0](LICENSE) — use it, fork it, ship it, build on top of it. See
+[NOTICE](NOTICE) for attribution.
