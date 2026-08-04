@@ -209,13 +209,22 @@ Open **Supporting Materials** on a condition. Two free-text fields sit above the
 
 Below that, list what actually goes on the order: adhesive, sealer, polyurethane, thinset, grout, cove-base adhesive. Each line carries:
 
-- a **coverage rate** — *1 unit per N* — and a **basis**: floor SF, linear LF, or each;
+- a **coverage rate** — *1 unit per N* — and a **basis**: floor SF, linear LF, each, or **seam LF**;
 - a **round up** flag (on by default — you buy whole buckets and bags);
 - a **preset picker** for adhesive and mortar lines: real trowel-notch and roller spread rates (PSA rollers at 300 SF/gal down to coarse wood notches at 40 SF/gal; mortar trowels from 90 to 30 SF per 50-lb bag). Generic industry-typical values — always verify against the product data sheet;
 - for **grout** lines, an inline **calculator**: enter tile L × W × thickness, joint width (1/32″–1/2″), and bag weight, and the SF/bag rate derives itself, writing its work into the note (`12×24×3/8″ @ 1/8″ · 25 lb`);
 - a **note** field for coats, notch, anything the order needs to remember.
 
 Order quantity = measured basis ÷ coverage, **rounded up to whole units**. The Report sums every condition's lines into one combined buy list (§10).
+
+**The seam LF basis** is the one that isn't measured off the drawing — it's *figured* off the
+condition's roll layout (§4, Roll goods): the length where two cuts actually meet on the floor,
+which is what a heat-weld rod or a carpet seam tape is bought by. That matters because seam
+quantity has no relationship to area. A 20-ft-wide room off a 12-ft roll seams once down its
+whole length; the same square footage as two separate 10-ft rooms seams not at all — and the
+percentage-of-perimeter rule most estimators fall back on can't tell those two jobs apart.
+Set the condition's roll goods first: without a roll setup, or with nothing traced yet, a seam
+LF line reads **0**, which means *needs a layout* rather than a number you shouldn't trust.
 
 ### One finish, two areas — condition twins
 
@@ -284,9 +293,14 @@ edits are real undo steps, and double-clicking a cut resets it. One note the pan
 outright: a condition's **×N multiplier applies to the order**, while the diagram always shows
 one unit's cuts.
 
-**On the report.** **Roll Order LF** and **Rolls** ride the Report, CSV, and Excel next to the
-measured quantities, and they're in the `report.v1` export document, so a pricing consumer reads
-the figured order rather than re-deriving it. Removing a roll setup stops the figuring; manual
+**On the report.** **Roll Order LF**, **Rolls**, and **Seam LF** ride the Report, CSV, and Excel
+next to the measured quantities, and they're in the `report.v1` export document, so a pricing
+consumer reads the figured order rather than re-deriving it. Seam LF is the weld-rod/seam-tape
+quantity, counted between adjacent lanes of the same room (two rooms are separated by a wall and
+a threshold, not welded together), measured net of the wall overage — a weld doesn't run up the
+wall — and only where two lanes actually face each other, so an L-shaped room seams along the
+part that does. Point a supporting-materials line at the **seam LF** basis (§4) to turn it into
+an order quantity. Removing a roll setup stops the figuring; manual
 cut edits on shapes are kept but go inert.
 
 Agents get the same thing headlessly — `roll_setup` is a field on the MCP server's
@@ -536,12 +550,12 @@ Open **Report** for the whole takeoff on one page: a per-condition table, the su
 - **Measured vs. w/Waste.** Waste lives only in the w/Waste column: *SF w/Waste = measured × (1 + waste %)*. The measured quantity is never inflated, so your takeoff and your buy list stay honest about which is which. Waste applies to SF and LF, never EA.
 - **SY** = w/Waste SF ÷ 9.
 - **Multipliers** show as ×N beside the finish tag and multiply every quantity.
-- **Buy list**: each material's quantity = measured basis (floor SF / linear LF / each) ÷ its coverage rate, **rounded up to whole units** — the number you order, not a theoretical gallon and a half. The combined list sums same-name materials after per-condition rounding.
+- **Buy list**: each material's quantity = measured basis (floor SF / linear LF / each / figured seam LF) ÷ its coverage rate, **rounded up to whole units** — the number you order, not a theoretical gallon and a half. The combined list sums same-name materials after per-condition rounding.
 - The footer says it plainly: *Quantities derived from drawings at stated scales; verify in field.*
 
 ### Columns, grouping, templates, theme
 
-- **Columns** — choose what the table (and the CSV) shows. Defaults: Finish, Shapes, Floor SF, Wall SF, Border SF, LF, EA, Waste, SF w/Waste, SY w/Waste. Opt-ins: Total SF, Waste SF, Waste LF, Perimeter LF (reference only — includes openings, never totaled). Roll-goods conditions add **Roll Order LF** and **Rolls** ([§4](#4-conditions--your-finishes)). Custom condition columns, imported product-spec columns (manufacturer, style, color, size, description — from a schedule import), and Labor Type / Subfloor Type (typed into a condition's Supporting Materials panel) appear once they exist. **Labor view** switches to a no-waste actuals set (Total SF in, SF/SY w/Waste out) for tying quantities to labor — attach your own rates externally.
+- **Columns** — choose what the table (and the CSV) shows. Defaults: Finish, Shapes, Floor SF, Wall SF, Border SF, LF, EA, Waste, SF w/Waste, SY w/Waste. Opt-ins: Total SF, Waste SF, Waste LF, Perimeter LF (reference only — includes openings, never totaled). Roll-goods conditions add **Roll Order LF**, **Rolls**, and **Seam LF** ([§4](#4-conditions--your-finishes)). Custom condition columns, imported product-spec columns (manufacturer, style, color, size, description — from a schedule import), and Labor Type / Subfloor Type (typed into a condition's Supporting Materials panel) appear once they exist. **Labor view** switches to a no-waste actuals set (Total SF in, SF/SY w/Waste out) for tying quantities to labor — attach your own rates externally.
 - **Group** — break the table into sections with subtotals: by **Sheet**, by **Label** (once shapes carry labels), or by any custom column. Grouping by a column always carries that column into the CSV.
 - **Templates** — save a column-plus-grouping layout by name and recall it on this device. Signed in on a team build, **Push to Drive / Load from Drive** carries templates across your own devices — Load only adds what this device doesn't have; it never overwrites a same-name template.
 - **Theme** — import a design-token file (a `tokens.json`) to reskin the report's palette and fonts for output. **Reset** returns the house style.
@@ -551,7 +565,7 @@ Open **Report** for the whole takeoff on one page: a per-condition table, the su
 | Export | What you get |
 |---|---|
 | **CSV** | The condition table, exactly the columns you're showing. |
-| **Excel** | A real workbook — **Summary**, **By sheet**, **Materials**, **Shapes** (the audit trail; deducts carry their sign). Full-precision cells; formula-shaped names stay inert text. |
+| **Excel** | A real workbook — **Summary**, **By sheet**, **Materials**, **Shapes** (the audit trail; deducts carry their sign), and **By floor × room** — the cross-section the others each flatten one axis out of: what goes down in *that room on that floor*, ordered quantities per cell, with a floor's unlabeled work rolled up so its rooms still add to the floor. Full-precision cells; formula-shaped names stay inert text. |
 | **JSON** | The full structured report — works markups-only and RFI-only too. |
 | **Shapes CSV / JSON** | Per-shape measured quantities — no multiplier, no waste; the audit layer. |
 | **Print** | The report through your browser's print dialog. |

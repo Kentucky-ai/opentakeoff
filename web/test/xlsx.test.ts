@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { unzipSync, strFromU8 } from "fflate";
 // xlsx.js is plain JS (allowJs); the tsx loader resolves it from the .ts test.
 import { escXml, colLetter, sanitizeSheetName, sheetXml, buildXlsx, reportWorkbook } from "../src/lib/xlsx.js";
-import { conditionTotals, sheetTotals } from "../src/lib/totals.js";
+import { conditionTotals, sheetTotals, sheetLabelGroupedRows } from "../src/lib/totals.js";
 import { CSV_PROFILE, customColProfile, specColProfile, visibleCols } from "../src/lib/reportColumns.js";
 import { shapesDetail } from "../src/lib/shapesExport.js";
 
@@ -97,9 +97,9 @@ test("sheetXml: leading/trailing whitespace gets xml:space=preserve", () => {
 // ---------------------------------------------------------------------------
 // the report workbook
 
-test("reportWorkbook: four tabs, Conditions mirrors the CSV columns and numbers", () => {
+test("reportWorkbook: five tabs, Conditions mirrors the CSV columns and numbers", () => {
   const tabs = reportWorkbook(workbookArgs());
-  assert.deepEqual(tabs.map((t: any) => t.name), ["Conditions", "By sheet", "Materials", "Shapes"]);
+  assert.deepEqual(tabs.map((t: any) => t.name), ["Conditions", "By sheet", "Materials", "Shapes", "By floor × room"]);
 
   const [cTab, sheetTab, matTab, shapeTab] = tabs;
   // header row = the same headers the CSV emits
@@ -184,7 +184,43 @@ test("reportWorkbook: materials quantity matches conditionTotals (measured basis
 // ---------------------------------------------------------------------------
 // the zipped package
 
-test("buildXlsx: package parts exist, workbook lists four sheets, XML well-formed, values escaped", async () => {
+// ── the floor × room tab ────────────────────────────────────────────────────
+// The cross-section the other tabs each flatten one axis out of. Its whole job
+// is reconciliation: a reader adding up a floor's rooms must land on the
+// floor's own total, which is why an unlabeled floor still gets a roll-up row.
+
+test("reportWorkbook: floor × room tab — one row per (floor, room, finish), ordered quantities", () => {
+  const labeled = [
+    { id: "s1", sheet_id: "plan.pdf#1", condition_id: "c1", label: "101", measure_role: "floor_area", computed: { area_sf: 60, perimeter_lf: 32 } },
+    { id: "s2", sheet_id: "plan.pdf#1", condition_id: "c1", label: "102", measure_role: "floor_area", computed: { area_sf: 40, perimeter_lf: 26 } },
+    { id: "s3", sheet_id: "plan.pdf#2", condition_id: "c2", measure_role: "linear", computed: { perimeter_lf: 25, area_sf: 0 } },
+  ];
+  const tabs = reportWorkbook({
+    ...workbookArgs(),
+    byFloorRoom: sheetLabelGroupedRows(conds as any, labeled as any, ["101", "102"]),
+  });
+  const tab = tabs[4];
+  assert.deepEqual(tab.rows[1], ["Sheet", "Sheet ID", "Room", "Finish", "Floor SF", "Wall SF", "Border SF", "LF", "EA", "Total SF", "Total SF w/Waste"]);
+  const body = tab.rows.slice(2);
+  assert.deepEqual(body.map((r: any[]) => [r[1], r[2], r[3]]), [
+    ["plan.pdf#1", "101", NASTY],
+    ["plan.pdf#1", "102", NASTY],
+    ["plan.pdf#2", "Unlabeled", "VCT-1"],   // an unlabeled floor still rolls up, so its rooms reconcile
+  ]);
+  assert.equal(body[0][4], 60);
+  assert.equal(body[0][10], 66, "10% waste applied per slice, like the report's grouped views");
+  // the two rooms add back to the floor's own by-sheet total
+  assert.equal(body[0][4] + body[1][4], 100);
+  assert.equal(body[2][7], 50, "×2 multiplier applied per slice — ORDERED, unlike the base By-sheet tab");
+});
+
+test("reportWorkbook: floor × room tab is always present, header-only when nothing is grouped", () => {
+  const tab = reportWorkbook(workbookArgs())[4];         // workbookArgs passes no byFloorRoom
+  assert.equal(tab.name, "By floor × room");
+  assert.equal(tab.rows.length, 2, "note + header, no body");
+});
+
+test("buildXlsx: package parts exist, workbook lists five sheets, XML well-formed, values escaped", async () => {
   const bytes = await buildXlsx(reportWorkbook(workbookArgs()));
   assert.ok(bytes instanceof Uint8Array && bytes.length > 0);
   // zip magic
@@ -193,13 +229,13 @@ test("buildXlsx: package parts exist, workbook lists four sheets, XML well-forme
 
   const parts = unzipSync(bytes);
   for (const name of ["[Content_Types].xml", "_rels/.rels", "xl/workbook.xml", "xl/_rels/workbook.xml.rels", "xl/styles.xml",
-    "xl/worksheets/sheet1.xml", "xl/worksheets/sheet2.xml", "xl/worksheets/sheet3.xml", "xl/worksheets/sheet4.xml"]) {
+    "xl/worksheets/sheet1.xml", "xl/worksheets/sheet2.xml", "xl/worksheets/sheet3.xml", "xl/worksheets/sheet4.xml", "xl/worksheets/sheet5.xml"]) {
     assert.ok(parts[name], `missing ${name}`);
   }
 
   const wb = strFromU8(parts["xl/workbook.xml"]);
   assertBalanced(wb);
-  for (const [i, name] of ["Conditions", "By sheet", "Materials", "Shapes"].entries()) {
+  for (const [i, name] of ["Conditions", "By sheet", "Materials", "Shapes", "By floor × room"].entries()) {
     assert.ok(wb.includes(`<sheet name="${name}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`), `workbook missing ${name}`);
   }
 
@@ -209,7 +245,7 @@ test("buildXlsx: package parts exist, workbook lists four sheets, XML well-forme
   assert.ok(!sheet1.includes(NASTY), "raw specials must not appear");
   assert.ok(sheet1.includes("<v>110</v>"), "numeric order quantity as a number cell");
 
-  for (const n of [2, 3, 4]) assertBalanced(strFromU8(parts[`xl/worksheets/sheet${n}.xml`]));
+  for (const n of [2, 3, 4, 5]) assertBalanced(strFromU8(parts[`xl/worksheets/sheet${n}.xml`]));
   assertBalanced(strFromU8(parts["[Content_Types].xml"]));
   assertBalanced(strFromU8(parts["xl/_rels/workbook.xml.rels"]));
 });

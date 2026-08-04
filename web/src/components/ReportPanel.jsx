@@ -5,9 +5,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import ToolMenu from "./ToolMenu.jsx";
-import { conditionTotals, grandTotals, sheetTotals, sheetGroupedRows, labelGroupedRows, round2, totalsToCsv, downloadText, materialsSummary, reportJson, hasMultipliers, BY_SHEET_BASE_NOTE } from "../lib/totals.js";
+import { conditionTotals, grandTotals, sheetTotals, sheetGroupedRows, labelGroupedRows, sheetLabelGroupedRows, round2, totalsToCsv, downloadText, materialsSummary, reportJson, hasMultipliers, BY_SHEET_BASE_NOTE } from "../lib/totals.js";
 import { TABLE_PROFILE, CSV_PROFILE, colGetter, customColProfile, specColProfile, laborColProfile, rollColProfile, partitionRowsBy, forceIncludeGroupCol, loadColPrefs, saveColPrefs, loadGroupBy, saveGroupBy, visibleCols, floorPerimeterLf, applyUnits } from "../lib/reportColumns.js";
-import { rollReportRows } from "../lib/rollTakeoff.js";
+import { rollReportRows, seamLfByShape } from "../lib/rollTakeoff.js";
 import { areaVal, areaUnit, lenVal, lenUnit } from "../lib/units";
 import { columnLabel } from "../lib/conditionColumns.js";
 import { shapeLabelValue } from "../lib/shapeLabels.js";
@@ -74,7 +74,13 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   };
   const resetTheme = () => { clearActiveTheme(); setTheme({ vars: {}, name: null, warnings: [] }); };
 
-  const rows = useMemo(() => conditionTotals(conditions, shapes).filter((r) => r.shape_count > 0), [conditions, shapes]);
+  // Figured seam LF per shape (#147) — what a materials row with basis
+  // "seam_lf" (weld rod, seam tape) divides against. Per SHAPE, so the grouped
+  // views below slice it for free instead of repeating the whole condition's
+  // welding on every sheet. Empty map for a project with no roll goods, which
+  // makes every seam_lf row read 0 — the honest answer before a layout exists.
+  const seamCtx = useMemo(() => ({ seamByShape: seamLfByShape(rollByCond) }), [rollByCond]);
+  const rows = useMemo(() => conditionTotals(conditions, shapes, seamCtx).filter((r) => r.shape_count > 0), [conditions, shapes, seamCtx]);
   const bySheet = useMemo(() => sheetTotals(conditions, shapes), [conditions, shapes]);
   const g = useMemo(() => grandTotals(rows), [rows]);
   const matSummary = useMemo(() => materialsSummary(rows), [rows]);
@@ -181,10 +187,10 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   // still suppressed — it would duplicate the grand TOTAL directly below it.
   const groupCol = groupBy && groupBy !== "sheet" ? conditionColumns.find((cc) => cc.id === groupBy) : null;
   const colGroups = useMemo(() => (groupCol ? partitionRowsBy(rows, groupCol, attrsByCond) : null), [rows, groupCol, attrsByCond]);
-  const sheetGroups = useMemo(() => (groupBy === "sheet" ? sheetGroupedRows(conditions, shapes) : null), [groupBy, conditions, shapes]);
+  const sheetGroups = useMemo(() => (groupBy === "sheet" ? sheetGroupedRows(conditions, shapes, seamCtx) : null), [groupBy, conditions, shapes, seamCtx]);
   // label mode: ORDERED per-bucket rows (waste + ×N per slice), already shaped
   // { value, label, rows, perimByCond } like the sheet groups after mapping.
-  const labelGroups = useMemo(() => (groupBy === "label" ? labelGroupedRows(conditions, shapes, shapeLabels) : null), [groupBy, conditions, shapes, shapeLabels]);
+  const labelGroups = useMemo(() => (groupBy === "label" ? labelGroupedRows(conditions, shapes, shapeLabels, seamCtx) : null), [groupBy, conditions, shapes, shapeLabels, seamCtx]);
   const groups = sheetGroups
     ? sheetGroups.map((gp) => ({ value: gp.sheet_id, label: sheetLabel ? sheetLabel(gp.sheet_id) : gp.sheet_id, rows: gp.rows, perimByCond: gp.perimByCond }))
     : labelGroups || colGroups;
@@ -192,7 +198,12 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   // exports always carry the by-label breakdown when any shape is labeled,
   // independent of the current group-by view; empty (→ CSV/JSON byte-unchanged)
   // for label-less projects.
-  const byLabelExport = useMemo(() => (shapes.some((s) => shapeLabelValue(s)) ? labelGroupedRows(conditions, shapes, shapeLabels) : []), [conditions, shapes, shapeLabels]);
+  const byLabelExport = useMemo(() => (shapes.some((s) => shapeLabelValue(s)) ? labelGroupedRows(conditions, shapes, shapeLabels, seamCtx) : []), [conditions, shapes, shapeLabels, seamCtx]);
+  // The workbook's floor × room tab. Unlike byLabelExport this is NOT gated on
+  // a label existing: an unlabeled project's tab is one Unlabeled roll-up per
+  // floor, which still reconciles to By sheet — and the workbook's tab list
+  // stays fixed whatever the project carries.
+  const byFloorRoom = useMemo(() => sheetLabelGroupedRows(conditions, shapes, shapeLabels, seamCtx), [conditions, shapes, shapeLabels, seamCtx]);
 
   // while the report is up, the print stylesheet (app.css @media print) hides
   // the canvas chrome behind it and lets the report flow across pages
@@ -310,7 +321,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   // Excel workbook — same sources as the CSV/JSON (Conditions tab follows the
   // column picker like the CSV); buildXlsx lazy-loads fflate on first use
   const exportXlsx = async () => {
-    const sheets = reportWorkbook({ rows, bySheet, shapeRows: shapesDetail(conditions, shapes, sheetLabel), cols: csvCols, ctx, sheetLabel, units });
+    const sheets = reportWorkbook({ rows, bySheet, shapeRows: shapesDetail(conditions, shapes, sheetLabel), cols: csvCols, ctx, sheetLabel, units, byFloorRoom });
     const bytes = await buildXlsx(sheets);
     downloadText(`${baseName}.xlsx`, bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   };

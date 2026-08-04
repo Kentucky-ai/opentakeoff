@@ -95,7 +95,7 @@ const COL_DIM = {
   floor_sf: "area", wall_sf: "area", border_sf: "area", total_sf: "area",
   total_sf_net: "area", waste_sf: "area",
   lf: "len", lf_net: "len", waste_lf: "len", perimeter_ref: "len",
-  "roll:order_lf": "len",
+  "roll:order_lf": "len", "roll:seam_lf": "len",
 };
 export const METRIC_LABELS = { area: "m²", len: "m" };        // on-screen table
 export const METRIC_CSV_LABELS = { area: "m2", len: "m" };    // CSV/XLSX (ASCII, matches the legend PDF)
@@ -230,6 +230,12 @@ export function laborColProfile(conditions) {
 export const ROLL_FIELDS = [
   { key: "roll:order_lf", header: "Roll Order LF", get: (ri, mult) => round2(ri.orderFt * mult) },
   { key: "roll:rolls", header: "Rolls", get: (ri, mult) => ri.rollCount * mult },
+  // The figured weld-rod / seam-tape length — where two cuts meet on the
+  // floor, read off the layout rather than guessed as a share of perimeter.
+  // 0 is a real answer: a layout whose rooms each take one strip has nothing
+  // to weld. Appended last, so the two pre-existing roll columns keep their
+  // order in every export that already carried them.
+  { key: "roll:seam_lf", header: "Seam LF", get: (ri, mult) => round2((ri.seamLf || 0) * mult) },
 ];
 
 export function rollColProfile(rollByCond) {

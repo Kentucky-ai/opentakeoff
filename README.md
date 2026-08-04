@@ -265,8 +265,8 @@ rides along as read-only report columns.
 **Supporting Materials** is the layer most takeoff tools punt on: per condition, a labor type
 and a subfloor type, plus the consumables that actually go on the order — adhesive, sealer,
 thinset, grout, cove-base adhesive — each with a **coverage rate** and a **basis** (floor SF /
-linear LF / each). Order quantity derives automatically: measured ÷ coverage, **rounded up** to
-whole units. Adhesive and mortar lines get coverage presets; grout lines get a calculator that
+linear LF / each / **figured seam LF**). Order quantity derives automatically: measured ÷
+coverage, **rounded up** to whole units. Adhesive and mortar lines get coverage presets; grout lines get a calculator that
 derives SF/bag from tile size, thickness, joint width, and bag weight. Preset values are
 industry-typical round numbers — always verify against the product data sheet.
 
@@ -276,9 +276,15 @@ seam and wall allowances, direction, sell unit) and the engine lays out the cuts
 placement, multi-roll splits, and order footage. Cuts draw to scale over their own rooms in
 material-true colors, numbered in cutting order, and slide or resize in an edit mode that's on
 the undo stack. The docked Roll panel shows those cuts nested **on the roll** with dimensions
-and drag-to-reorder re-packing, and **Roll Order LF** plus **Rolls** ride the Report, CSV, and
-Excel next to the measured quantities. Available headlessly too, via `roll_setup` on
-`edit_condition`. (The roll-layout engine was contributed by Michael Hartman.)
+and drag-to-reorder re-packing, and **Roll Order LF**, **Rolls**, and **Seam LF** ride the
+Report, CSV, and Excel next to the measured quantities. Seam LF is the weld-rod / seam-tape
+quantity read straight off that layout — counted between adjacent lanes of the same room, net
+of the wall overage, only where two lanes actually face each other — so a supporting-materials
+line on the **seam LF** basis prices the rod off where the cuts meet instead of off a share of
+the perimeter. A 20-ft-wide room off a 12-ft roll seams once down its length; the same square
+footage as two separate 10-ft rooms seams not at all, and no factor on area can tell those
+apart. Available headlessly too, via `roll_setup` on `edit_condition`. (The roll-layout engine
+was contributed by Michael Hartman.)
 
 ### Multi-sheet reality
 **Stitching**: a floor split across a match line becomes one working surface — align the joint
@@ -293,7 +299,8 @@ A per-condition breakdown — **Floor / Wall / Border SF, LF, EA, total SF, SY**
 without waste — plus a combined **materials buy list**. Waste applies only in the report's
 order quantity, never to the live measured number, so the takeoff and the buy list stay honest
 about which is which. Export **CSV**, **JSON**, a real **Excel workbook** (Summary / By-sheet /
-Materials / Shapes-audit, full-precision cells, formula-shaped names kept inert text), print,
+Materials / Shapes-audit / **By floor × room**, full-precision cells, formula-shaped names kept
+inert text), print,
 or **Marked Set PDF** — a distribution-ready planset built entirely in your browser for a GC
 who will never install anything.
 
@@ -392,8 +399,8 @@ plus a vision-capable model id.
 | **Measure** | One-Click Area (vector flood + raster fallback), Area, Rectangle, Linear, Curved Line, Surface Area, Count, Cut Out deducts, Zone check — imperial or metric |
 | **Drawing aids** | 45°/90° angle lock with `⇧` hard-lock, live angle + segment-length readout at the cursor, endpoint Snap (beta) |
 | **Conditions** | Color + CAD hatch per finish, waste %, ×N multiplier, wall height, border thickness, schedule import, browser-wide library |
-| **Supporting Materials** | Labor + subfloor type, coverage rate × basis → rounded order quantities, trowel/roller presets, grout calculator |
-| **Roll goods** | Per-condition roll setup → lanes, seams, multi-roll splits, to-scale cuts with drag-to-reorder nesting, Roll Order LF + Rolls on every export |
+| **Supporting Materials** | Labor + subfloor type, coverage rate × basis (incl. figured seam LF) → rounded order quantities, trowel/roller presets, grout calculator |
+| **Roll goods** | Per-condition roll setup → lanes, seams, multi-roll splits, to-scale cuts with drag-to-reorder nesting, Roll Order LF + Rolls + figured Seam LF on every export |
 | **Multi-sheet** | Sheet gallery, tabs and side-by-side groups, Regroup, levels, **stitching across a match line**, PDF layer roles |
 | **Report** | Per-condition Floor/Wall/Border SF, LF, EA, SY with and without waste, plus the combined buy list; columns, grouping, saved templates |
 | **Export** | CSV, JSON, **Excel (.xlsx)**, print, **Marked Set PDF**, RFI CSV/JSON |

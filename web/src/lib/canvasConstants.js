@@ -101,7 +101,15 @@ export const FLOORING_DEFAULTS = [
     { name: "Polyurethane (2K finish)", per: 136, basis: "area", unit: "gal", note: "≈3 coats @ ~408 SF/gal/coat (2K 10:1)" },
   ] },
   { finish_tag: "VCT-1", color: "#2563eb", hatch: "checker", waste_pct: 5,  materials: [{ name: "Adhesive", kind: "adhesive", per: 350, basis: "area", unit: "gal" }] },                  // Vinyl composition tile
-  { finish_tag: "SV-1",  color: "#0d9488", hatch: "solid",   waste_pct: 10, materials: [{ name: "Adhesive", kind: "adhesive", per: 150, basis: "area", unit: "gal" }] },                  // Sheet vinyl
+  { finish_tag: "SV-1",  color: "#0d9488", hatch: "solid",   waste_pct: 10, materials: [                                                                                                  // Sheet vinyl
+    { name: "Adhesive", kind: "adhesive", per: 150, basis: "area", unit: "gal" },
+    // Seam welding is figured off the ROLL LAYOUT, never off a share of the
+    // perimeter: basis "seam_lf" is the length where two cuts meet on the
+    // floor (lib/rollgoods.js seamLfBySrc). It reads 0 until the condition
+    // carries a roll setup — which is the honest answer, since nothing has
+    // decided yet how the sheet gets cut.
+    { name: "Heat-weld rod", per: 1, basis: "seam_lf", unit: "lf", note: "runs the figured seams — set the roll width on this condition" },
+  ] },
   { finish_tag: "CT-1",  color: "#9333ea", hatch: "grid",    waste_pct: 10, materials: [                                                                                                  // Ceramic / porcelain tile
     { name: "Thinset mortar", kind: "mortar", per: 65, basis: "area", unit: "bag", note: '1/4″×3/8″×1/4″ sq' },
     { name: "Grout", kind: "grout", per: 512, basis: "area", unit: "bag", grout: { ...GROUT_DEFAULTS }, note: '12×24×3/8″ @ 1/8″ · 25 lb' },

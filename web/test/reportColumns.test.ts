@@ -369,16 +369,23 @@ test("rollColProfile: empty without figured layouts; ×N-applied getters through
   const { rollColProfile, applyUnits } = await import("../src/lib/reportColumns.js");
   assert.deepEqual(rollColProfile(null), []);
   assert.deepEqual(rollColProfile(new Map()), [], "no roll conditions → zero extra columns (golden CSV byte-safe)");
-  const rollByCond = new Map([["c1", { orderFt: 29, rollCount: 2 }]]);
+  const rollByCond = new Map([["c1", { orderFt: 29, rollCount: 2, seamLf: 30 }]]);
   const cols = rollColProfile(rollByCond);
-  assert.deepEqual(cols.map((c: any) => [c.key, c.header]), [["roll:order_lf", "Roll Order LF"], ["roll:rolls", "Rolls"]]);
+  assert.deepEqual(cols.map((c: any) => [c.key, c.header]),
+    [["roll:order_lf", "Roll Order LF"], ["roll:rolls", "Rolls"], ["roll:seam_lf", "Seam LF"]]);
   const ctx = { rollByCond };
   const row = { id: "c1", multiplier: 3 };
   assert.equal(cols[0].get(row, ctx), 87, "order LF ×N");
   assert.equal(cols[1].get(row, ctx), 6, "rolls ×N");
+  assert.equal(cols[2].get(row, ctx), 90, "figured seam LF ×N — N units are N cuttings of the same layout");
   assert.equal(cols[0].get({ id: "other", multiplier: 1 }, ctx), "", "a non-roll condition's cell is blank");
-  // metric: the LF column converts at the descriptor like every dimensioned column
-  const [mOrder] = applyUnits(cols, "metric");
+  // a summary predating the seam figure reads 0, never NaN
+  const legacy = new Map([["c1", { orderFt: 10, rollCount: 1 }]]);
+  assert.equal(rollColProfile(legacy)[2].get(row, { rollByCond: legacy }), 0);
+  // metric: the LF columns convert at the descriptor like every dimensioned column
+  const [mOrder, , mSeam] = applyUnits(cols, "metric");
   assert.equal(mOrder.header, "Roll Order m");
   assert.equal(mOrder.get(row, ctx), round2(87 * 0.3048));
+  assert.equal(mSeam.header, "Seam m");
+  assert.equal(mSeam.get(row, ctx), round2(90 * 0.3048));
 });

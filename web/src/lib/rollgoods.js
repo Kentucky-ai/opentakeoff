@@ -186,6 +186,57 @@ export function layoutRingStrips(item, direction, config) {
 }
 export function sumStripLengthsFt(strips) { return strips.reduce((s, st) => s + Math.max(0, st.runMax - st.runMin), 0); }
 
+/**
+ * SEAM linear feet in a figured layout, per source ring — where two cuts meet on the floor.
+ *
+ * This is the quantity a heat-weld rod (sheet vinyl) or a seam tape (broadloom carpet) is
+ * bought by, and it is not a factor off the area: it is a property of the CUT LAYOUT this
+ * engine already figured. A 20-ft-wide room off a 12-ft roll seams once down its length; the
+ * same square footage as two 10-ft rooms seams not at all. Taking it as a percentage of the
+ * perimeter — the guess this replaces — cannot tell those two jobs apart.
+ *
+ * Measured on the COVERAGE extent, not the physical piece: `runMin`/`runMax` carry the wall
+ * and doorway overage (material that tucks past the room), and a weld does not run up the
+ * wall. So each lane's in-room extent is its run minus its own overages, and the seam between
+ * two adjacent lanes is where those extents OVERLAP — an L-shaped room whose lanes only
+ * partly face each other seams only along the part that does.
+ *
+ * Lanes are grouped by `srcId` (one shape = one room) and read in lane order; a shape figured
+ * as a single lane has no seam. Cross-ROOM seams are deliberately not counted: two rooms are
+ * separated by a wall and a threshold, not welded together.
+ *
+ * @param {any[]} strips layoutRingStrips/computeRollLayout output
+ * @returns {Map<any, number>} srcId → seam LF (rounded to 1/100 ft), zero entries omitted
+ */
+export function seamLfBySrc(strips) {
+  const bySrc = new Map();
+  for (const st of strips || []) {
+    if (!bySrc.has(st.srcId)) bySrc.set(st.srcId, []);
+    bySrc.get(st.srcId).push(st);
+  }
+  const out = new Map();
+  for (const [srcId, lanes] of bySrc) {
+    lanes.sort((a, b) => (a.laneIndex || 0) - (b.laneIndex || 0));
+    let total = 0;
+    for (let i = 0; i + 1 < lanes.length; i++) {
+      const a = lanes[i], b = lanes[i + 1];
+      if ((b.laneIndex || 0) !== (a.laneIndex || 0) + 1) continue;   // a dropped lane leaves no seam
+      const aLo = a.runMin + (a.minOverageFt || 0), aHi = a.runMax - (a.maxOverageFt || 0);
+      const bLo = b.runMin + (b.minOverageFt || 0), bHi = b.runMax - (b.maxOverageFt || 0);
+      total += Math.max(0, Math.min(aHi, bHi) - Math.max(aLo, bLo));
+    }
+    if (total > 0) out.set(srcId, Math.round(total * 100) / 100);
+  }
+  return out;
+}
+// The whole layout's seam length — the same rule, summed. Rounded once at the
+// end, so it can differ in the last hundredth from adding up seamLfBySrc.
+export function seamLfForStrips(strips) {
+  let total = 0;
+  for (const v of seamLfBySrc(strips).values()) total += v;
+  return Math.round(total * 100) / 100;
+}
+
 // ── skyline bottom-left nesting (default / reset placement) ──────────────────
 // seqById (optional): { [stripId]: number } — a MANUAL order the estimator chose.
 // Cuts with a seq pack first, in that order; the rest fall back to the default

@@ -46,7 +46,7 @@ import { sharedRuns, type SharedRun } from "../../web/src/lib/transitions.ts";
 // load-gating, and exact-restore inverses.
 import { sanitizeApprovals as sanitizeApprovalsJs, applyApprovalCommand as applyApprovalCommandJs } from "../../web/src/lib/approvals.js";
 import { conditionTotals, grandTotals, sheetTotals, reportJson } from "../../web/src/lib/totals.js";
-import { hasRollSetup, mintRollSetup, computeRollTakeoff, rollReportRows } from "../../web/src/lib/rollTakeoff.js";
+import { hasRollSetup, mintRollSetup, computeRollTakeoff, rollReportRows, seamLfByShape } from "../../web/src/lib/rollTakeoff.js";
 import { gridPxPerFoot, drawGrid, drawShapes, type Ctx2D, type ToCanvas } from "./view.ts";
 
 // Copied from the canvas (web/src/pages/TakeoffCanvas.jsx) so conditions and
@@ -81,7 +81,12 @@ export interface MaterialRow {
   id: string;
   name: string;
   per: number;
-  basis: "area" | "linear" | "count";
+  /** Which of the condition's totals this row divides. "seam_lf" is the
+   * FIGURED roll-layout seam length (weld rod, seam tape — where two cuts meet
+   * on the floor), not a share of the perimeter: it reads 0 until the
+   * condition carries a roll_setup and has committed floor shapes to lay out,
+   * which is the honest answer rather than a guess. */
+  basis: "area" | "linear" | "count" | "seam_lf";
   unit: string;
   round: boolean;
   note?: string;
@@ -219,6 +224,14 @@ export interface Shape {
   /** surface_area only: the height this shape was quantified at (canvas
    * commitSurface snapshots the condition's H onto the shape). */
   height_ft?: number;
+  /** The room (or phase, or area) this shape belongs to — the canvas's
+   * per-shape label (#112, web/src/lib/shapeLabels.js), which is what the
+   * Report groups by and what the workbook's floor × room tab reads. Optional
+   * because a shape without one is legitimate ("unlabeled" is a real bucket);
+   * absent, never "". detect_rooms stamps the room number it traced from, so a
+   * batch detection arrives already sliced by room instead of as one
+   * undifferentiated pile of square feet. */
+  label?: string;
   origin?: ShapeOrigin;
 }
 
@@ -1352,13 +1365,20 @@ export class Session {
         if (tag) {
           // flood provenance + confidence stamp centrally in commit() from
           // the harvested evidence — nothing hand-listed here (audit A2)
-          shape_id = this.commit(s, tag, opts.role, c.ring, { area_sf, perimeter_lf }, {
+          const shape = this.commit(s, tag, opts.role, c.ring, { area_sf, perimeter_lf }, {
             method: "one_click_v1",
             actor: "agent",
             seed_norm: [c.seed[0] / s.widthPx, c.seed[1] / s.heightPx],
             reviewed: false,
             ...(assignment ? { assignment } : {}),
-          }, c.ev).id;
+          }, c.ev);
+          // The room number this ring was traced FROM becomes the shape's
+          // label — the same field the canvas's room/phase grouping reads. A
+          // sweep that knows it flooded room 134 and then reports 40 anonymous
+          // areas has thrown away the one thing that makes the total auditable
+          // room by room, and no downstream reader can recover it.
+          shape.label = c.label;
+          shape_id = shape.id;
         }
         return { ...common, area_sf, perimeter_lf, ...(shape_id ? { shape_id, condition: tag } : {}) };
       })
@@ -2220,6 +2240,7 @@ export class Session {
         ...(x.computed.perimeter_lf !== undefined ? { perimeter_lf: x.computed.perimeter_lf } : {}),
         ...(x.computed.count !== undefined ? { count: x.computed.count } : {}),
         ...(x.height_ft !== undefined ? { height_ft: x.height_ft } : {}),
+        ...(x.label ? { label: x.label } : {}),
         nverts: x.verts_norm.length,
         reviewed: x.origin?.reviewed === true,
         ...(x.origin?.assignment ? { assignment: x.origin.assignment.source } : {}),
@@ -2230,7 +2251,7 @@ export class Session {
   }
 
   summary() {
-    const rows = conditionTotals(this.conditions, this.shapes) as Record<string, unknown>[];
+    const rows = conditionTotals(this.conditions, this.shapes, this.seamCtx()) as Record<string, unknown>[];
     // strip presentation fields for a compact agent-facing reply
     const lean = rows.map(({ color, fill, hatch, materials, ...rest }) => rest);
     return { conditions: lean, totals: grandTotals(rows) };
@@ -2256,6 +2277,11 @@ export class Session {
    * makes this surface portable to a host that DOES have a review gate, and it
    * belongs in the code rather than in a host's good intentions.
    *
+   * `label` is the room (or phase, or area) the shape belongs to — the same
+   * per-shape field the canvas groups the Report by. A visible string sets it,
+   * "" clears it, and the whole shape is snapshotted before the write, so undo
+   * restores a cleared label as exactly as it restores geometry.
+   *
    * Provenance: agent self-revision bumps origin.agent_edits and touches
    * NOTHING in the human-correction vocabulary (edited / edits /
    * proposed_verts_norm — see web/src/lib/provenance.js). Those fields grade a
@@ -2264,15 +2290,15 @@ export class Session {
    * layer exists to collect. Freezing proposed_verts_norm stays correct on the
    * human's first edit, because the geometry a reviewer saw IS the agent's
    * final revision, not its first draft. */
-  editShape(id: string, patch: { verts?: Point[]; condition?: string; role?: MeasureRole }) {
+  editShape(id: string, patch: { verts?: Point[]; condition?: string; role?: MeasureRole; label?: string }) {
     const i = this.shapes.findIndex((x) => x.id === id);
     if (i < 0) throw new UserError(`No shape with id ${JSON.stringify(id)}.`);
     const cur = this.shapes[i];
     if (cur.origin?.reviewed === true) {
       throw new UserError(`Shape ${JSON.stringify(id)} was affirmed by a human — reviewed work is ink, not pencil, and cannot be edited by an agent.`);
     }
-    if (patch.verts === undefined && patch.condition === undefined && patch.role === undefined) {
-      throw new UserError("Nothing to change — pass at least one of verts, condition, role.");
+    if (patch.verts === undefined && patch.condition === undefined && patch.role === undefined && patch.label === undefined) {
+      throw new UserError("Nothing to change — pass at least one of verts, condition, role, label.");
     }
     const s = this.sheet(cur.sheet_id);
     const role = patch.role ?? cur.measure_role;
@@ -2314,12 +2340,17 @@ export class Session {
 
     const before: Shape = structuredClone(cur);
     const condition_id = patch.condition !== undefined ? this.conditionFor(patch.condition).id : cur.condition_id;
+    // label: a visible string sets it, "" (or whitespace) CLEARS it — the
+    // canvas's own rule (web/src/lib/shapeLabels.js), where unassigned is the
+    // key being absent rather than an empty string sitting in the payload.
+    const nextLabel = patch.label !== undefined ? patch.label.trim() : (cur.label ?? "");
     this.shapes[i] = {
       ...cur,
       condition_id,
       measure_role: role,
       verts_norm: vertsPx.map(([x, y]) => [x / s.widthPx, y / s.heightPx]),
       computed,
+      ...(nextLabel ? { label: nextLabel } : {}),
       ...(role === "surface_area" ? { height_ft: Number(cur.height_ft) || heightFor() } : {}),
       ...(cur.origin ? { origin: {
         ...cur.origin,
@@ -2330,12 +2361,16 @@ export class Session {
           ? { assignment: { source: "asserted" as const } } : {}),
       } } : {}),
     };
+    // the spread above carried the old label through — clearing means the key
+    // GOES, so an export never ships label: "" for "no room"
+    if (!nextLabel) delete this.shapes[i].label;
     this.record({ op: "edit", tool: "edit_shape", before });
 
     const changed = [
       ...(patch.verts !== undefined ? ["verts"] : []),
       ...(patch.condition !== undefined ? ["condition"] : []),
       ...(patch.role !== undefined ? ["role"] : []),
+      ...(patch.label !== undefined ? ["label"] : []),
     ];
     return {
       shape_id: id,
@@ -2343,6 +2378,7 @@ export class Session {
       measure_role: role,
       nverts: vertsPx.length,
       ...computed,
+      ...(nextLabel ? { label: nextLabel } : {}),
       agent_edits: this.shapes[i].origin?.agent_edits ?? 0,
     };
   }
@@ -2482,6 +2518,17 @@ export class Session {
       dimsFor: (sheetId: string) => { const s = this.sheets.get(sheetId); return s ? { w: s.widthPx, h: s.heightPx } : null; },
       uppFor: (sheetId: string) => this.sheets.get(sheetId)?.upp ?? null,
     };
+  }
+
+  /** The figured seam length per SHAPE, as conditionTotals wants it — the
+   * basis a materials row with basis "seam_lf" (weld rod, seam tape) divides
+   * against. computeRollTakeoff returns immediately when no condition carries
+   * a roll setup, so this costs nothing on a job that has none, and every
+   * seam_lf row on such a job reads 0 rather than guessing. */
+  private seamCtx() {
+    const { dimsFor, uppFor } = this.rollInputs();
+    const { byCond } = computeRollTakeoff(this.conditions, this.shapes, dimsFor, uppFor) as { byCond: Map<string, unknown> };
+    return { seamByShape: seamLfByShape(byCond) as Map<string, number> };
   }
 
   editCondition(tag: string, opts: { waste_pct?: number; multiplier?: number; height_ft?: number; roll_setup?: Record<string, unknown> | null }) {
@@ -3008,11 +3055,13 @@ export class Session {
    * document carries the computed order quantities. */
   exportReport(projectName = "") {
     if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
-    const rows = (conditionTotals(this.conditions, this.shapes) as Record<string, unknown>[]).filter((r) => (r.shape_count as number) > 0);
     // roll goods (#147): the same pure seam the canvas report uses — figured
-    // here so the report.v1 block fills the moment a condition carries a setup
+    // here so the report.v1 block fills the moment a condition carries a setup.
+    // It runs BEFORE the rows because a materials row with basis "seam_lf"
+    // divides against the layout's figured seams, not against an area.
     const { dimsFor, uppFor } = this.rollInputs();
     const { byCond } = computeRollTakeoff(this.conditions, this.shapes, dimsFor, uppFor) as { byCond: Map<string, unknown> };
+    const rows = (conditionTotals(this.conditions, this.shapes, { seamByShape: seamLfByShape(byCond) }) as Record<string, unknown>[]).filter((r) => (r.shape_count as number) > 0);
     return reportJson({
       projectName,
       rows,
