@@ -378,6 +378,7 @@ export const listShapesOutput = {
     perimeter_lf: z.number().optional(),
     count: z.number().optional(),
     height_ft: z.number().optional().describe("surface_area shapes — the height they were quantified at"),
+    label: z.string().optional().describe("The room (or phase/area) this shape belongs to — detect_rooms stamps the room number it traced from; edit_shape sets or clears it. Absent when unlabeled"),
     nverts: z.number().int(),
     reviewed: z.boolean().describe("true = human-affirmed ink, refused by every agent mutation"),
     assignment: z.enum(["schedule", "asserted"]).optional().describe('Where the finish tag came from: "schedule" = resolved from the room\'s own schedule row, "asserted" = the agent chose it. origin.assignment in export_takeoff carries the citation. Absent on human canvas shapes'),
@@ -396,12 +397,13 @@ export const deleteShapeOutput = {
  * re-measures (closed area vs open length). */
 export const editShapeOutput = {
   shape_id: z.string(),
-  changed: z.array(z.enum(["verts", "condition", "role"])).describe("Which fields this call actually changed"),
+  changed: z.array(z.enum(["verts", "condition", "role", "label"])).describe("Which fields this call actually changed"),
   measure_role: z.enum(["floor_area", "deduct", "linear", "surface_area", "count"]),
   nverts: z.number().int(),
   area_sf: z.number().optional().describe("0 for linear shapes; LF × height for surface_area; absent for count"),
   perimeter_lf: z.number().optional().describe("Length for linear/surface runs, perimeter for closed ones; absent for count"),
   count: z.number().optional().describe("count shapes only — the marker's EA (preserved across the edit)"),
+  label: z.string().optional().describe("The shape's room/phase label after this call — absent when it carries none (a cleared label reports as absent, not as an empty string)"),
   agent_edits: z.number().int().describe("How many times the agent has revised this shape — separate from the human-correction tally"),
 };
 
@@ -439,7 +441,7 @@ const materialRow = z.object({
   id: z.string(),
   name: z.string(),
   per: z.number().describe("Coverage rate: basis ÷ per = order quantity"),
-  basis: z.enum(["area", "linear", "count"]).describe("Which of the condition's totals this row's quantity is computed against"),
+  basis: z.enum(["area", "linear", "count", "seam_lf"]).describe("Which of the condition's totals this row's quantity is computed against — 'seam_lf' is the FIGURED roll-layout seam length (weld rod, seam tape), 0 until the condition carries a roll_setup"),
   unit: z.string(),
   round: z.boolean().describe("true = round up to whole purchase units (the default — you buy whole bags/buckets)"),
   note: z.string().optional(),
@@ -465,9 +467,9 @@ const reportMaterialLine = z.object({
   name: z.string(),
   unit: z.string().describe("Purchase unit, e.g. 'gal', 'bag'"),
   per: z.number().describe("Coverage rate — basis units per purchase unit"),
-  basis: z.enum(["area", "linear", "count"]),
+  basis: z.enum(["area", "linear", "count", "seam_lf"]),
   round: z.boolean(),
-  basis_qty: z.number().describe("The condition total this row divides (SF, LF, or EA — multiplier applied, waste not)"),
+  basis_qty: z.number().describe("The condition total this row divides (SF, LF, EA, or figured seam LF — multiplier applied, waste not)"),
   qty: z.number().describe("Computed order quantity"),
 }).passthrough();
 

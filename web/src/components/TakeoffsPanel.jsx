@@ -238,6 +238,7 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
               <option value="area">floor SF</option>
               <option value="linear">linear LF</option>
               <option value="count">each</option>
+              <option value="seam_lf" title="Figured seam length from the roll layout — 0 until this condition carries a roll setup">seam LF</option>
             </select>
             {ov("basis") && rv(m, "basis")}
             <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: ov("round") ? "var(--c-warning)" : "var(--ink-muted)" }} title="Round up to whole units (you buy whole buckets/bags)">
@@ -1025,6 +1026,7 @@ function TakeoffsPanel({
                       <option value="area">floor SF</option>
                       <option value="linear">linear LF</option>
                       <option value="count">each</option>
+                      <option value="seam_lf" title="Figured seam length from the roll layout — 0 until the condition carries a roll setup">seam LF</option>
                     </select>
                     <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--ink-muted)" }} title="Round up to whole units">
                       <input name="library-material-round" type="checkbox" checked={lm.round !== false} onChange={(e) => onUpdateLibMaterial(lm.id, { round: e.target.checked })} />round up

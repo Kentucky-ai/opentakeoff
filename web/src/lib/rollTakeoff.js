@@ -17,6 +17,7 @@
 import {
   isRollType, defaultRollSetup, computeRollLayout, rollLayoutOrderLengthFt,
   rollLayoutRollCount, rollCutNumbers, rollQtyForUnit, roundUpToInch,
+  seamLfBySrc, seamLfForStrips,
 } from "./rollgoods.js";
 import { round2 } from "./num.js";
 
@@ -94,9 +95,13 @@ export function stripSheetRect(strip, upp) {
 // the AREA quantities, not the roll.
 //
 // summary: { material, config, direction, strips, nums, orderFt, rollCount,
-//            oversize, qty, unit, cutCount }
+//            oversize, qty, unit, cutCount, seamLf, seamByShape }
 //   orderFt is roundUpToInch'd (you order to the inch) and PER UNIT — the
 //   condition ×N multiplier applies at the report seam like every quantity.
+//   seamLf is the figured weld-rod / seam-tape length for the whole condition
+//   and seamByShape is the same rule kept per source shape (rollgoods
+//   seamLfBySrc), so a per-sheet or per-room slice of the takeoff can total
+//   its OWN seams instead of inheriting the condition's.
 export function computeRollTakeoff(conditions, shapes, dimsFor, uppFor) {
   const byCond = new Map();
   const cutsBySheet = new Map();
@@ -126,6 +131,7 @@ export function computeRollTakeoff(conditions, shapes, dimsFor, uppFor) {
       oversize: layout.strips.some((s) => s.overRoll),
       qty: round2(rollQtyForUnit(orderFt, config.rollWidthFt, unit)), unit,
       cutCount: layout.strips.length,
+      seamLf: seamLfForStrips(layout.strips), seamByShape: seamLfBySrc(layout.strips),
     });
     for (const strip of layout.strips) {
       const src = shapeById.get(strip.srcId);
@@ -168,7 +174,29 @@ export function rollReportRows(rollByCond, rows) {
       order_lf: round2(ri.orderFt * mult), rolls: ri.rollCount * mult,
       order_qty: round2(ri.qty * mult), order_unit: ri.unit,
       oversize: ri.oversize,
+      // seam_lf APPENDS last (the additive-only convention the roll_goods
+      // block already follows): the figured weld-rod / seam-tape length, ×N
+      // like every other reported quantity. 0 is a real answer — a layout
+      // whose rooms each fit one strip has no seams to weld.
+      seam_lf: round2((ri.seamLf || 0) * mult),
     });
   }
+  return out;
+}
+
+// Per-SHAPE figured seam LF across every roll-goods condition —
+// computeRollTakeoff's summaries re-keyed by shape id, which is what a
+// materials row with basis "seam_lf" divides against (web/src/lib/totals.js).
+// Per shape rather than per condition on purpose: the report's group-by-sheet
+// and group-by-room slices run the SAME conditionTotals over a subset of
+// shapes, and a condition-level figure handed to a slice would report the
+// whole project's welding on every page of it.
+export function seamLfByShape(rollByCond) {
+  const out = new Map();
+  if (!rollByCond || typeof rollByCond.forEach !== "function") return out;
+  rollByCond.forEach((ri) => {
+    if (!ri || !(ri.seamByShape instanceof Map)) return;
+    ri.seamByShape.forEach((lf, shapeId) => out.set(shapeId, (out.get(shapeId) || 0) + lf));
+  });
   return out;
 }

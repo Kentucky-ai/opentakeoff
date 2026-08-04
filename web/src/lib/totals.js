@@ -53,7 +53,17 @@ function accumulateRole(acc, s) {
   }
 }
 
-export function conditionTotals(conditions, shapes) {
+/**
+ * @param {{seamByShape?: Map<any, number>}|null} [ctx] the figured roll-layout
+ *   seam length per SHAPE (lib/rollTakeoff.js seamLfByShape) — what a
+ *   materials row with basis "seam_lf" divides against. Omitted (every caller
+ *   that has no roll context) those rows read 0, which is the honest answer:
+ *   a weld rod has no quantity until the layout that produces the seams is
+ *   figured. Per shape, not per condition, so this function keeps slicing
+ *   correctly when it is handed one sheet's or one room's shapes.
+ */
+export function conditionTotals(conditions, shapes, ctx = null) {
+  const seamByShape = ctx?.seamByShape instanceof Map ? ctx.seamByShape : null;
   return conditions.map((c) => {
     const mult = c.multiplier || 1;
     const waste = Math.max(0, Number(c.waste_pct) || 0);
@@ -62,14 +72,19 @@ export function conditionTotals(conditions, shapes) {
     const acc = { floor: 0, wall: 0, border: 0, lf: 0, ea: 0 };
     for (const s of cs) accumulateRole(acc, s);
     let { floor, wall, border, lf, ea } = acc;
-    floor *= mult; wall *= mult; border *= mult; lf *= mult; ea *= mult;
+    // Seams are a property of the CUT LAYOUT, not of a role — they come in
+    // pre-figured per shape and are summed here, then multiplied like every
+    // other quantity: N identical units are N cuttings of the same layout.
+    let seam = seamByShape ? cs.reduce((n, s) => n + (seamByShape.get(s.id) || 0), 0) : 0;
+    floor *= mult; wall *= mult; border *= mult; lf *= mult; ea *= mult; seam *= mult;
     const total = floor + wall + border;
     // supporting materials: deterministic quantity = basis ÷ coverage, rounded up
     // to whole units (you buy whole buckets/bags). basis = this condition's measured
-    // area (SF), linear (LF), or count (EA). Coverage comes off the product data sheet.
+    // area (SF), linear (LF), count (EA), or figured seam length (LF — weld rod,
+    // seam tape). Coverage comes off the product data sheet.
     const materials = (c.materials || []).filter((m) => m && m.name).map((m) => {
       const per = Math.max(0, Number(m.per) || 0);
-      const basisVal = m.basis === "linear" ? lf : m.basis === "count" ? ea : total;
+      const basisVal = m.basis === "linear" ? lf : m.basis === "count" ? ea : m.basis === "seam_lf" ? seam : total;
       let qty = per > 0 ? basisVal / per : 0;
       qty = m.round === false ? round2(qty) : Math.ceil(qty - 1e-9);
       return { name: m.name, unit: m.unit || "", per, basis: m.basis || "area", round: m.round !== false, note: m.note || "", basis_qty: round2(basisVal), qty };
@@ -157,7 +172,8 @@ export function sheetTotals(conditions, shapes) {
 //     by-sheet section's red-paren style.
 //   - Empty groups dropped: orphan shapes (dead condition_id) can make a
 //     sheet all-orphan, mirroring the sheetTotals guard.
-export function sheetGroupedRows(conditions, shapes) {
+/** @param {{seamByShape?: Map<any, number>}|null} [ctx] passed straight to conditionTotals */
+export function sheetGroupedRows(conditions, shapes, ctx = null) {
   const bySheet = new Map();        // sheet_id → that sheet's shapes
   for (const s of shapes) {
     let arr = bySheet.get(s.sheet_id);
@@ -170,7 +186,7 @@ export function sheetGroupedRows(conditions, shapes) {
     const sheetShapes = bySheet.get(sheet_id);
     return {
       sheet_id,
-      rows: conditionTotals(conditions, sheetShapes).filter((r) => r.shape_count > 0),
+      rows: conditionTotals(conditions, sheetShapes, ctx).filter((r) => r.shape_count > 0),
       perimByCond: floorPerimeterLf(sheetShapes),
     };
   }).filter((g) => g.rows.length);
@@ -189,7 +205,11 @@ export function sheetGroupedRows(conditions, shapes) {
 // sheetGroupedRows: per-bucket ceils overstate the buy — tbody display only,
 // never aggregate (the combined materials summary stays computed ungrouped).
 // Empty buckets dropped.
-export function labelGroupedRows(conditions, shapes, shapeLabels = []) {
+/**
+ * @param {string[]} [shapeLabels] the project's label vocabulary, for ordering
+ * @param {{seamByShape?: Map<any, number>}|null} [ctx] passed straight to conditionTotals
+ */
+export function labelGroupedRows(conditions, shapes, shapeLabels = [], ctx = null) {
   const byLabel = new Map();        // label value → that bucket's shapes ("" key = Unlabeled)
   for (const s of shapes) {
     const v = shapeLabelValue(s);   // "" when unassigned
@@ -205,10 +225,48 @@ export function labelGroupedRows(conditions, shapes, shapeLabels = []) {
     return {
       value: v || null,               // null = Unlabeled
       label: v || "Unlabeled",
-      rows: conditionTotals(conditions, bucketShapes).filter((r) => r.shape_count > 0),
+      rows: conditionTotals(conditions, bucketShapes, ctx).filter((r) => r.shape_count > 0),
       perimByCond: floorPerimeterLf(bucketShapes),
     };
   }).filter((g) => g.rows.length);
+}
+
+// Sheet × label grouping — the FLOOR × ROOM cross-section, and the shape an
+// estimator actually hands a superintendent: what goes down in room 112 on the
+// second floor, not what goes down in room 112 anywhere in the building.
+// sheetGroupedRows and labelGroupedRows each collapse one of the two axes; this
+// keeps both, running the same conditionTotals over each (sheet, label) cell so
+// every column keeps its ungrouped meaning (waste % and ×N applied per slice).
+//
+//   - Sheets in the canonical file→page order (compareSheetKeys, the same order
+//     the by-sheet section and the Marked Set use); within a sheet, labels in
+//     labelGroupedRows' order — vocabulary first, then ad-hoc sorted, then the
+//     unlabeled bucket last.
+//   - A sheet with shapes but NO labeled ones still appears, as a single
+//     unlabeled group. That is what makes the tab reconcile: every shape the
+//     by-sheet section counted is somewhere in here, so a reader adding up a
+//     floor's rooms lands on the floor's total rather than short of it.
+//   - Same per-slice materials caveat as the other two: per-cell coverage
+//     ceils are display, never a buy list (summing them overstates the order).
+// Returns [{ sheet_id, groups: [{ value, label, rows, perimByCond }] }];
+// cells with no rows (orphan shapes on a dead condition_id) are dropped, and a
+// sheet left with no groups drops with them.
+/**
+ * @param {string[]} [shapeLabels] the project's label vocabulary, for ordering
+ * @param {{seamByShape?: Map<any, number>}|null} [ctx] passed straight to conditionTotals
+ */
+export function sheetLabelGroupedRows(conditions, shapes, shapeLabels = [], ctx = null) {
+  const bySheet = new Map();
+  for (const s of shapes) {
+    let arr = bySheet.get(s.sheet_id);
+    if (!arr) { arr = []; bySheet.set(s.sheet_id, arr); }
+    arr.push(s);
+  }
+  const order = [...bySheet.keys()].sort((ka, kb) => compareSheetKeys(String(ka), String(kb)));
+  return order.map((sheet_id) => ({
+    sheet_id,
+    groups: labelGroupedRows(conditions, bySheet.get(sheet_id), shapeLabels, ctx),
+  })).filter((g) => g.groups.length);
 }
 
 // The one base-quantities footnote, shared by CSV ("# " prefix, golden-
@@ -330,7 +388,7 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
   // supporting materials — per condition, then a combined buy list. Coverage
   // rates deliberately stay as entered (SF/LF-based) in metric mode — the
   // upstream metric contract; the report panel carries the footnote.
-  const basisLabel = (b) => (b === "linear" ? "LF" : b === "count" ? "EA" : "SF");
+  const basisLabel = (b) => (b === "linear" ? "LF" : b === "count" ? "EA" : b === "seam_lf" ? "seam LF" : "SF");
   const perCond = [];
   for (const r of rows) for (const m of (r.materials || [])) perCond.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || "unit"} / ${m.per} ${basisLabel(m.basis)}`, m.note || ""]);
   if (perCond.length) {

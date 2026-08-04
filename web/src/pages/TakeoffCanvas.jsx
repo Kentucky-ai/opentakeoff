@@ -76,7 +76,7 @@ import RollPanel from "../components/RollPanel.jsx";
 // per-layer Auto/Wall/Off overrides that feed the mask's role short-circuit.
 import LayerPanel from "../components/LayerPanel.jsx";
 import { rollColorForType } from "../lib/rollgoods.js";
-import { computeRollTakeoff } from "../lib/rollTakeoff.js";
+import { computeRollTakeoff, seamLfByShape } from "../lib/rollTakeoff.js";
 // In-canvas takeoff agent — BYO-key tool-use loop (lib/agentLoop) aiming the
 // registry of deterministic tools (lib/agentTools); this file provides the
 // CAPABILITIES those tools close over and the review gate their proposals
@@ -896,6 +896,11 @@ export default function TakeoffCanvas() {
   );
   const rollByCond = rollTakeoff.byCond;
   const rollCutsByPanel = rollTakeoff.cutsBySheet;
+  // Figured seam LF per shape — the basis a "seam_lf" materials row (weld rod,
+  // seam tape) divides against. Handed to every conditionTotals scope below so
+  // the HUD, the project roll-up, and a zone check agree with the Report on
+  // what the layout welds.
+  const seamCtx = useMemo(() => ({ seamByShape: seamLfByShape(rollByCond) }), [rollByCond]);
 
   // Cut drag (#136) — the self-contained element-drag pattern (the panel-resize
   // handle's): the cut's own <g> opts into pointer events in edit mode, captures
@@ -5338,7 +5343,7 @@ export default function TakeoffCanvas() {
   // VISIBLE shapes through the same conditionTotals rules the Report uses —
   // one source of role math, two scopes. Memoized: visRowById is a prop of the
   // memoized panel, so its identity must only change when the totals can.
-  const visRows = useMemo(() => conditionTotals(conditions, visibleShapes), [conditions, visibleShapes]);
+  const visRows = useMemo(() => conditionTotals(conditions, visibleShapes, seamCtx), [conditions, visibleShapes, seamCtx]);
   const visRowById = useMemo(() => new Map(visRows.map((r) => [r.id, r])), [visRows]);
   // Whole-project per-condition totals — the number the bid is built on. The
   // panel's rows lead with the visible-sheet slice (what you're looking at);
@@ -5346,7 +5351,7 @@ export default function TakeoffCanvas() {
   // open sheets show, so a condition whose takeoffs live on closed sheets
   // reads "Σ 412 SF" instead of a dead "—" (the whole-project number used to
   // exist only in the Report/exports). Same conditionTotals rules, no filter.
-  const projRows = useMemo(() => conditionTotals(conditions, shapes), [conditions, shapes]);
+  const projRows = useMemo(() => conditionTotals(conditions, shapes, seamCtx), [conditions, shapes, seamCtx]);
   const projRowById = useMemo(() => new Map(projRows.map((r) => [r.id, r])), [projRows]);
   // ── load-time quantity heal (#137) ─────────────────────────────────────────
   // A shape can ARRIVE without the numbers its role requires (an import that
@@ -5392,8 +5397,8 @@ export default function TakeoffCanvas() {
   // sits inside the traced zone (lib/zone.js) — third scope of the one role math.
   const zoneShapes = useMemo(() => (zoneCheck ? shapesInZone(shapes, zoneCheck) : null), [shapes, zoneCheck]);
   const zoneRows = useMemo(
-    () => (zoneShapes ? conditionTotals(conditions, zoneShapes).filter((r) => r.shape_count > 0) : null),
-    [conditions, zoneShapes]
+    () => (zoneShapes ? conditionTotals(conditions, zoneShapes, seamCtx).filter((r) => r.shape_count > 0) : null),
+    [conditions, zoneShapes, seamCtx]
   );
   const zoneIds = useMemo(() => (zoneShapes ? new Set(zoneShapes.map((sh) => sh.id)) : null), [zoneShapes]);
   const condRow = visRowById.get(activeCond);

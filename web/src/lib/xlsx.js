@@ -148,15 +148,21 @@ export async function buildXlsx(sheets) {
 }
 
 // ---------------------------------------------------------------------------
-// The takeoff report workbook: Conditions / By sheet / Materials / Shapes
+// The takeoff report workbook: Conditions / By sheet / Materials / Shapes /
+// By floor × room
 
 /**
- * Map the report's data sources onto the four workbook tabs. Pure (no fflate)
+ * Map the report's data sources onto the workbook tabs. Pure (no fflate)
  * so tests can assert the cell values directly.
  * @param {object} args
  * @param {any[]} args.rows conditionTotals() rows (shapeless conditions filtered out)
  * @param {Array<{sheet_id: any, rows: any[]}>} args.bySheet sheetTotals() result
  * @param {any[]} args.shapeRows shapesDetail() result
+ * @param {Array<{sheet_id: any, groups: any[]}>} [args.byFloorRoom]
+ *   sheetLabelGroupedRows() result — the floor × room cross-section. Empty
+ *   (the default) still emits the tab, with its header row alone: the workbook
+ *   keeps a fixed tab list so a consumer never has to test for a sheet's
+ *   existence.
  * @param {Array<{key: string, header: string}>} [args.cols] visible CSV_PROFILE
  *   columns — the Conditions tab honors the same column picker the CSV uses
  * @param {{perimByCond?: Map<any, number>, attrsByCond?: Map<any, object>, specByCond?: Map<any, object>}|null}
@@ -168,7 +174,7 @@ export async function buildXlsx(sheets) {
  *   its note line says so. "imperial" (default) is byte-identical.
  * @returns {Array<{name: string, rows: any[][]}>}
  */
-export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols = null, ctx = null, sheetLabel = null, units = "imperial" }) {
+export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols = null, ctx = null, sheetLabel = null, units = "imperial", byFloorRoom = [] }) {
   const columns = applyUnits(cols || [], units, METRIC_CSV_LABELS);
   const label = (id) => (sheetLabel ? sheetLabel(id) : id);
   const M = units === "metric";
@@ -201,7 +207,7 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
   if (hasMultipliers(bySheet)) bySheetRows.push([], [BY_SHEET_BASE_NOTE]);
 
   // Materials — per condition, then the combined buy list (mirrors the CSV)
-  const basisLabel = (b) => (b === "linear" ? "LF" : b === "count" ? "EA" : "SF");
+  const basisLabel = (b) => (b === "linear" ? "LF" : b === "count" ? "EA" : b === "seam_lf" ? "seam LF" : "SF");
   const materials = [["Finish", "Material", "Qty", "Unit", "Coverage", "Note"]];
   for (const r of rows) for (const m of (r.materials || [])) {
     materials.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || "unit"} / ${m.per} ${basisLabel(m.basis)}`, m.note || ""]);
@@ -225,10 +231,34 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
       r.area_sf, r.lf, r.ea, r.height_ft, r.height_override ? "yes" : "", r.origin]);
   }
 
+  // By floor × room — the cross-section the other tabs each flatten one axis
+  // out of: Conditions totals the job, By sheet totals the floor, and this
+  // says what goes down in THAT room on THAT floor. ORDERED quantities per
+  // cell (waste % and ×N applied per slice, like the report's grouped views
+  // and unlike the base By-sheet tab above), so a room's numbers are the ones
+  // that get bought — and every shape a floor carries appears under one of
+  // its rooms or under its Unlabeled roll-up, so a floor's rooms add back up
+  // to the floor. Cells are one row per (floor, room, finish); the Sheet ID
+  // rides along because display labels are session-volatile.
+  const floorRoom = [
+    ["Ordered quantities per floor × room — waste % and xN applied per slice; each floor's rooms reconcile to that floor's shapes. Coverage ceils are per-cell display, not a buy list"],
+    ["Sheet", "Sheet ID", "Room", "Finish", `Floor ${AU}`, `Wall ${AU}`, `Border ${AU}`, LU, "EA", `Total ${AU}`, `Total ${AU} w/Waste`],
+  ];
+  for (const gp of byFloorRoom) {
+    for (const grp of gp.groups) {
+      for (const row of grp.rows) {
+        floorRoom.push([String(label(gp.sheet_id)), String(gp.sheet_id), grp.label, row.finish_tag,
+          A(row.floor_sf), A(row.wall_sf), A(row.border_sf), L(row.lf), row.ea,
+          A(row.total_sf), A(row.total_sf_net)]);
+      }
+    }
+  }
+
   return [
     { name: "Conditions", rows: conditions },
     { name: "By sheet", rows: bySheetRows },
     { name: "Materials", rows: materials },
     { name: "Shapes", rows: shapesTab },
+    { name: "By floor × room", rows: floorRoom },
   ];
 }
