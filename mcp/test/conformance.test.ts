@@ -25,7 +25,7 @@ import {
   findTextOutput, editMaterialsOutput, editConditionOutput, undoLastOutput,
   exportReportOutput, sheetGraphOutput, resolveTagOutput, findScheduleOutput,
   symbolSweepOutput, sweepScheduleRowOutput, annotateOutput, listAnnotationsOutput,
-  markVerdictOutput, deleteVerdictOutput,
+  markVerdictOutput, deleteVerdictOutput, duplicateConditionOutput, splitConditionOutput,
 } from "../src/outputs.ts";
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
@@ -59,6 +59,8 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   list_annotations: z.object(listAnnotationsOutput),
   mark_verdict: z.object(markVerdictOutput),
   delete_verdict: z.object(deleteVerdictOutput),
+  duplicate_condition: z.object(duplicateConditionOutput),
+  split_condition: z.object(splitConditionOutput),
 };
 
 async function pair() {
@@ -222,6 +224,24 @@ test("every tool: canonical valid call → schema-valid structuredContent mirror
   assert.equal(undone.steps[0].op, "condition");
   const revRow = (await callOk(client, "takeoff_summary")).conditions.find((r: any) => r.finish_tag === "CPT-1");
   assert.deepEqual({ w: revRow.waste_pct, m: revRow.multiplier }, { w: 0, m: 1 }, "undo restores both knobs verbatim");
+
+  // condition twins (#205): mint → follow → split → exact inverses, then the
+  // session goes back to pre-twins state so the later tests see what they expect
+  const twin = await callOk(client, "duplicate_condition", { condition: "CPT-1", label: "Level 2" });
+  assert.equal(twin.condition, "CPT-1 – Level 2");
+  assert.equal(twin.inherited_rows, 1, "the adhesive row arrived following");
+  assert.match(await callErr(client, "duplicate_condition", { condition: "CPT-1", label: "level 2" }),
+    /already called/);                              // collision is case-insensitive, refused not de-collided
+  const familyEdit = await callOk(client, "edit_materials", { condition: "CPT-1",
+    patch: [{ id: materials.materials[0].id, fields: { per: 275 } }] });
+  assert.equal(familyEdit.materials[0].per, 275);
+  const cut = await callOk(client, "split_condition", { condition: "CPT-1 – Level 2" });
+  assert.deepEqual({ s: cut.split, f: cut.frozen_rows }, { s: true, f: 1 });
+  const twinUndo = await callOk(client, "undo_last", { n: 3 });   // split, family edit, mint
+  assert.deepEqual(twinUndo.steps.map((s: any) => s.op), ["split_condition", "materials", "duplicate_condition"],
+    "the journal names the twin ops and the SDK's output validation accepts them");
+  const postTwins = await callOk(client, "takeoff_summary");
+  assert.equal(postTwins.conditions.some((r: any) => r.finish_tag === "CPT-1 – Level 2"), false, "the twin is gone whole");
 
   // export_report: the canvas Report document over MCP (#130) — computed buy
   // list included, math parity with the app's totals.js

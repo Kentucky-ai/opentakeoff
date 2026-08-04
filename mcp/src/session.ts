@@ -12,7 +12,8 @@ import { buildSheetGraph, resolveTag, type SheetGraph, type SheetSpans } from ".
 import { UserError, round1, round2 } from "./format.ts";
 // Condition twins — the inheritance rule, shared with the canvas so a headless session and
 // the app can never disagree about what a twin holds (web/test/variants.test.ts).
-import { mintTwin, splitFromFamily, variantTag, type VariantCond } from "../../web/src/lib/variants.ts";
+import { mintTwin, splitFromFamily, variantTag, propagateRowAdd, propagateRowPatch, propagateRowRemove,
+         markRowLocal, dropRowLocal, type VariantCond, type VariantRow } from "../../web/src/lib/variants.ts";
 import { STANDARD_SCALES, RENDER_SCALE, detectScale, extractSheetNumber, type DetectedScale } from "../../web/src/lib/sheets.ts";
 import {
   extractVectorGeometry, buildMask, traceRegion, snapVertices, ringArea,
@@ -412,7 +413,8 @@ export type JournalPayload =
   | { op: "commit"; tool: string; ids: string[] }
   | { op: "edit"; tool: string; before: Shape }
   | { op: "delete"; tool: string; removed: { shape: Shape; index: number }[] }
-  | { op: "materials"; tool: string; condition_id: string; before: MaterialRow[] }
+  | { op: "materials"; tool: string; condition_id: string; before: MaterialRow[]; dropped_before?: string[];
+      family?: { condition_id: string; before: MaterialRow[]; dropped_before?: string[] }[] }
   | { op: "condition"; tool: string; condition_id: string; before: { waste_pct: number; multiplier: number; height_ft?: number; roll_setup?: Record<string, unknown> } }
   | { op: "duplicate_condition"; tool: string; condition_id: string; parent_id: string; parent_had_family: boolean }
   | { op: "split_condition"; tool: string; condition_id: string; before: { variant_of?: string; materials?: unknown; materials_dropped?: string[] } }
@@ -2382,7 +2384,29 @@ export class Session {
     }
 
     const c = this.conditionFor(tag);
-    const before = structuredClone(c.materials);
+    // Snapshot BEFORE anything is written — the target AND its descendants.
+    // Materials edits propagate (variants.ts, the same propagate-on-write the
+    // canvas runs per row gesture), so undo has to restore every condition the
+    // write could reach, tombstones included: a remove on a twin writes
+    // materials_dropped, and undo must take that back too.
+    const cid = c.id;
+    const snap = [cid, ...this.descendantConditionIds(cid)].map((id) => {
+      const x = this.conditions.find((q) => q.id === id)! as unknown as VariantCond;
+      return { condition_id: id, before: structuredClone(x.materials) as unknown as MaterialRow[],
+               ...(x.materials_dropped ? { dropped_before: [...x.materials_dropped] } : {}) };
+    });
+
+    // The family rules are the canvas's, verb for verb (TakeoffCanvas.jsx):
+    // add on a parent reaches every twin still listening; remove on a twin
+    // tombstones a following row (so a later family edit cannot bring it
+    // back); a patch on a twin's own row takes THAT row local. The functions
+    // are pure and return fresh objects, so this section works functionally
+    // over `conds` and writes the array back once at the end.
+    let conds = this.conditions as unknown as VariantCond[];
+    const isParent = () => conds.some((x) => x.variant_of === cid);
+    const target = () => conds.find((x) => x.id === cid)!;
+    const mint = (p: string) => uid(p);
+
     const added: string[] = [];
     for (const a of add) {
       const row: MaterialRow = {
@@ -2390,23 +2414,55 @@ export class Session {
         basis: a.basis ?? "area", unit: a.unit ?? "", round: a.round ?? true,
         ...(a.note ? { note: a.note } : {}),
       };
-      c.materials.push(row);
+      conds = conds.map((x) => (x.id !== cid ? x : { ...x, materials: [...(x.materials || []), row as unknown as VariantRow] }));
       added.push(row.id);
+      if (isParent()) conds = propagateRowAdd(conds, cid, row as unknown as VariantRow, mint);
     }
     const removed = new Set(remove);
-    if (removed.size) c.materials = c.materials.filter((m) => !removed.has(m.id));
+    for (const id of remove) {
+      if (target().variant_of) {
+        conds = conds.map((x) => (x.id !== cid ? x : dropRowLocal(x, id)));
+      } else {
+        conds = conds.map((x) => (x.id !== cid ? x : { ...x, materials: (x.materials || []).filter((r) => r.id !== id) }));
+        conds = propagateRowRemove(conds, cid, id);
+      }
+    }
     const patched: string[] = [];
     for (const p of patch) {
-      const m = c.materials.find((x) => x.id === p.id)!;
-      Object.assign(m, p.fields);
+      conds = conds.map((x) => (x.id !== cid ? x : {
+        ...x,
+        materials: (x.materials || []).map((r) => {
+          if (r.id !== p.id) return r;
+          // fields is an open record at the schema — the row's link fields
+          // (id/origin_id/inherited) are pinned back so a patch cannot forge
+          // or shed a family link
+          const merged = { ...r, ...p.fields, id: r.id } as VariantRow;
+          if (r.origin_id === undefined) delete merged.origin_id; else merged.origin_id = r.origin_id;
+          if (r.inherited === undefined) delete merged.inherited; else merged.inherited = r.inherited;
+          return merged;
+        }),
+      }));
       patched.push(p.id);
+      const cur = target();
+      if (cur.variant_of) {
+        conds = conds.map((x) => (x.id !== cid ? x : markRowLocal(x, p.id)));
+      } else if (isParent()) {
+        const row = (cur.materials || []).find((r) => r.id === p.id);
+        if (row) conds = propagateRowPatch(conds, cid, p.id, row as unknown as Record<string, unknown>);
+      }
     }
-    this.record({ op: "materials", tool: "edit_materials", condition_id: c.id, before });
+    this.conditions = conds as unknown as Condition[];
+
+    const [primary, ...familySnap] = snap;
+    this.record({ op: "materials", tool: "edit_materials", condition_id: cid,
+                  before: primary.before,
+                  ...(primary.dropped_before ? { dropped_before: primary.dropped_before } : {}),
+                  ...(familySnap.length ? { family: familySnap } : {}) });
 
     return {
-      condition: tag, condition_id: c.id,
+      condition: tag, condition_id: cid,
       changed: { added, removed: [...removed], patched },
-      materials: c.materials,
+      materials: target().materials as unknown as MaterialRow[],
     };
   }
 
@@ -2493,6 +2549,27 @@ export class Session {
    * make the second permanently unreachable — and a takeoff re-import collapses them last-wins.
    * So the label is required and a collision is refused rather than de-collided.
    */
+  /** Every condition below `rootId` in the family tree, children first. The
+   * propagate functions walk this same tree; undo snapshots ride it so a
+   * family edit's inverse restores exactly the set the write could touch.
+   * The `seen` guard mirrors variants.ts — a hand-edited payload with a
+   * cycle must not hang the session. */
+  private descendantConditionIds(rootId: string): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>([rootId]);
+    const walk = (pid: string) => {
+      for (const child of this.conditions as unknown as VariantCond[]) {
+        if (child.variant_of === pid && !seen.has(child.id)) {
+          seen.add(child.id);
+          out.push(child.id);
+          walk(child.id);
+        }
+      }
+    };
+    walk(rootId);
+    return out;
+  }
+
   duplicateCondition(tag: string, label: string) {
     const src = this.conditions.find((x) => x.finish_tag === tag);
     if (!src) {
@@ -2539,6 +2616,12 @@ export class Session {
                                      materials_dropped: cond.materials_dropped });
     const [next] = splitFromFamily([cond], cond.id);
     Object.assign(c, next);
+    // splitFromFamily cuts variant_of and the tombstones BY OMISSION —
+    // Object.assign cannot delete, so take them off the live object
+    // explicitly or the "split" twin would still carry its link in every
+    // export and read as a follower to the canvas.
+    delete (c as unknown as VariantCond).variant_of;
+    delete (c as unknown as VariantCond).materials_dropped;
     this.record({ op: "split_condition", tool: "split_condition", condition_id: c.id, before });
     return { condition: tag, condition_id: c.id, split: true, frozen_rows: frozen,
              family_id: cond.family_id as string | undefined,
@@ -2565,11 +2648,19 @@ export class Session {
         if (i >= 0) this.shapes[i] = e.before;
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: i >= 0 ? 1 : 0 });
       } else if (e.op === "materials") {
-        const c = this.conditions.find((x) => x.id === e.condition_id);
-        // the condition itself is never deleted (no delete_condition tool), so
-        // this only misses if a fresh session's journal outlived a load_plan —
-        // which load_plan already clears the journal for.
-        if (c) c.materials = e.before;
+        // the write may have PROPAGATED (variants.ts — the same
+        // propagate-on-write the canvas runs), so the entry carries snapshots
+        // for every condition it could reach: the target plus its
+        // descendants, tombstones included. Each goes back verbatim.
+        const put = (condition_id: string, before: MaterialRow[], dropped?: string[]) => {
+          const cc = this.conditions.find((x) => x.id === condition_id) as unknown as VariantCond | undefined;
+          if (!cc) return;
+          cc.materials = before as unknown as VariantRow[];
+          if (dropped === undefined) delete cc.materials_dropped;
+          else cc.materials_dropped = dropped;
+        };
+        put(e.condition_id, e.before, e.dropped_before);
+        for (const f of e.family ?? []) put(f.condition_id, f.before, f.dropped_before);
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
       } else if (e.op === "condition") {
         const c = this.conditions.find((x) => x.id === e.condition_id);
