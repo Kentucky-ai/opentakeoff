@@ -52,6 +52,7 @@ import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS }
 // opts.roles seam exactly the way the server does, one engine, one meaning.
 import { buildLayerInfos, effectiveLayerRoles, layerRoleCodes, segRoles, sanitizeLayerOverrides } from "../lib/layers";
 import { detectCandidateRule, buildRuleFromSeed, applyRuleToProject } from "../lib/rules";
+import { deriveTransitionRuns, transitionRefusal } from "../lib/transitions";
 import { conditionTotals, verticalWallSf } from "../lib/totals.js";
 import { shapesInZone } from "../lib/zone.js";
 import { sanitizeSheetLevels } from "../lib/sheetLevels.js";
@@ -4312,6 +4313,19 @@ export default function TakeoffCanvas() {
     setTfNow({ x: (r.width - w * scale) / 2 - x0 * scale, y: (r.height - h * scale) / 2 - y0 * scale, scale });
   }
 
+  // A withheld transition is a QUESTION, and the answer is at a PLACE on the
+  // sheet — so its row in the panel jumps there rather than printing raw image
+  // pixels at someone. Centers the point at a working zoom; the estimator looks
+  // for the door and measures the threshold.
+  function locateSheetPoint(sheetId, at) {
+    const el = containerRef.current;
+    const sp = panelByKey(sheetId);
+    if (!el || !sp?.img?.w || !Array.isArray(at)) return;
+    const r = el.getBoundingClientRect();
+    const scale = clamp(1.2);
+    setTfNow({ x: r.width / 2 - (at[0] + sp.xOffset) * scale, y: r.height / 2 - at[1] * scale, scale });
+  }
+
   // ONE condition-minting path — the human +condition button and the agent's
   // create_condition tool both come through here, so the field set and the
   // color/hatch auto-rotation can never drift between the two.
@@ -4870,6 +4884,80 @@ export default function TakeoffCanvas() {
     // the rule persists WITH its audit trail — inspectable in the project file
     setRules((rs) => [...rs.filter((r) => r.id !== rule.id), { ...rule, applied_to: ids }]);
     setCommitMsg(`Rule applied — ${made.length} deduct${made.length === 1 ? "" : "s"} added (⌘Z undoes all). ${rule.label}.`);
+  }
+
+  // ── ⟂ Transitions (#202, canvas side) ──────────────────────────────────────
+  // Where two finishes meet is the most mechanical line left on a Division 9
+  // takeoff, and an estimator draws it by hand on every job. derive_transitions
+  // handed that to the agent; this hands the same thing — and the same refusal —
+  // to the person at the canvas.
+  //
+  // A BUTT JOINT (the two rooms running together inside one open space) commits
+  // as dashed pencil on the ACTIVE condition, so the Accept pill already on
+  // screen is the gate and ⌘Z undoes the sweep in one step. A WALL-SEPARATED
+  // pair never commits: the transition across a partition is a threshold in a
+  // doorway, and nothing in a flood trace says where the doorway is. Those come
+  // back as a report — length, gap, and a point to look at — for the estimator
+  // to place with the drawing in front of them.
+  //
+  // Sources are scoped to the OPEN sheets (the rule preview's rule): the
+  // derivation only proposes what you can see and review.
+  const transitionSources = useMemo(() => {
+    const rooms = new Map();
+    for (const s of visibleShapes) {
+      if (s.measure_role !== "floor_area") continue;
+      rooms.set(s.condition_id, (rooms.get(s.condition_id) || 0) + 1);
+    }
+    return conditions.filter((c) => rooms.has(c.id)).map((c) => ({ id: c.id, finish_tag: c.finish_tag, rooms: rooms.get(c.id) }));
+  }, [conditions, visibleShapes]);
+
+  function deriveTransitionsOnto(idA, idB) {
+    const target = condById[activeCond];
+    if (!target) return { error: "Pick the condition the transitions land on first." };
+    const ca = condById[idA], cb = condById[idB];
+    if (!ca || !cb) return { error: "Pick the two finishes that meet." };
+    const roomsOf = (id) => visibleShapes
+      .filter((s) => s.condition_id === id && s.measure_role === "floor_area" && (s.verts_norm || []).length >= 3)
+      .map((s) => ({ id: s.id, sheet_id: s.sheet_id, verts_norm: s.verts_norm }));
+    const a = { tag: ca.finish_tag, shapes: roomsOf(idA) };
+    const b = { tag: cb.finish_tag, shapes: roomsOf(idB) };
+    // frames for the open panels those rooms actually sit on; an unscaled one
+    // refuses the WHOLE call rather than deriving a partial answer — a
+    // transition is a real length, and half a sweep reads like a whole one.
+    const frames = new Map(), unscaled = [];
+    const inPlay = new Set([...a.shapes, ...b.shapes].map((s) => s.sheet_id));
+    for (const p of panels) {
+      if (!p.img?.w || !inPlay.has(p.key)) continue;
+      const upp = uppFor(p.key);
+      if (!upp) { unscaled.push(labelFor(p)); continue; }
+      frames.set(p.key, { widthPx: p.img.w, heightPx: p.img.h, upp });
+    }
+    const refusal = transitionRefusal({ activeTag: target.finish_tag, a, b, sheets: frames, unscaled });
+    if (refusal) return { error: refusal };
+    const { runs, withheld } = deriveTransitionRuns(a, b, frames);
+    const tIn = Number(target.thickness_in) || 0;   // a transition strip with a width prices border SF, exactly like a drawn line
+    const made = runs.map((r) => ({
+      sheet_id: r.sheet_id, condition_id: target.id, measure_role: "linear",
+      verts_norm: r.verts_norm.map((v) => [...v]),
+      computed: { perimeter_lf: r.length_lf, area_sf: tIn > 0 ? +((r.length_lf * tIn) / 12).toFixed(2) : 0 },
+      // the MCP verb's provenance vocabulary, verbatim: both parents, both
+      // tags, the measured gap, and `case` always "butt" — a wall-separated run
+      // is a question, and questions do not become shapes.
+      origin: {
+        method: "derived", actor: "canvas", reviewed: false, proposed_ts: nowIso(),
+        derived: { between_shape_ids: r.between_shape_ids, between: r.between, case: "butt", gap_in: r.gap_in },
+      },
+    }));
+    if (made.length) dispatchShape({ type: "add", shapes: made });   // ONE command — one undo entry for the whole sweep
+    const total_lf = +made.reduce((n, s) => n + s.computed.perimeter_lf, 0).toFixed(2);
+    if (made.length) {
+      setCommitMsg(`${made.length} transition${made.length === 1 ? "" : "s"} derived between ${a.tag} and ${b.tag} — ${total_lf} LF onto ${target.finish_tag}, dashed until you Accept (⌘Z undoes the sweep).`);
+    } else if (withheld.length) {
+      setCommitMsg(`Nothing to commit — every ${a.tag}/${b.tag} run is across a wall. See the Transitions panel.`);
+    } else {
+      setCommitMsg(`${a.tag} and ${b.tag} never meet on the open sheets.`);
+    }
+    return { committed: made.length, total_lf, withheld, between: [a.tag, b.tag], onto: target.finish_tag };
   }
 
   // ── the accept gate, for shapes already IN the data ─────────────────────────
@@ -5704,6 +5792,8 @@ export default function TakeoffCanvas() {
     onUpdateCond: updateCond, onSetCondParam: setCondParam, onAssignAttr: assignAttr,
     onAddMaterial: addMaterial, onUpdateMaterial: updateMaterial, onRemoveMaterial: removeMaterial,
     onDuplicateCondition: duplicateCondition, onSplitCondition: splitCondition,
+    onDeriveTransitions: deriveTransitionsOnto,   // returns its result synchronously — the panel renders the withheld report from it
+    onLocateTransition: locateSheetPoint,
     onFollowFamilyRow: followFamilyRow, onRestoreDroppedRow: restoreDroppedRow,
     onBulkWaste: bulkWasteConditions, onBulkColor: bulkColorConditions, onBulkDelete: bulkDeleteConditions,
     onSaveTemplate: saveActiveAsTemplate, onApplyTemplate: applyTemplate,
@@ -7440,6 +7530,7 @@ export default function TakeoffCanvas() {
           templates={templates}
           palette={palette}
           rollByCond={rollByCond}
+          transitionSources={transitionSources}
           matLib={matLib}
           matLibById={matLibById}
           linkedCountById={linkedCountById}

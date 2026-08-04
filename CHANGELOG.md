@@ -2,6 +2,14 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-03 — the transition, at the canvas
+
+### Added
+- **⟂ Transitions…** in the Takeoffs panel — with the transition condition active, pick the two finishes that meet and derive the runs between them. `derive_transitions` gave an agent the most mechanical line left on a Division 9 takeoff back in [#202](https://github.com/Kentucky-ai/opentakeoff/issues/202); an estimator at the canvas was still drawing it by hand on every job. Same geometry, same verdict, same refusal.
+- **Butt joints commit as dashed pencil** on the active condition — one `add` command, so ⌘Z undoes the whole sweep in one step — and the **Accept N proposed shapes** pill that already handles an imported MCP takeoff inks them. Each carries `origin.derived` with both parent shape ids, both finish tags, and the measured gap, so a derived transition can be traced back to the two rooms that made it.
+- **Wall-separated pairs are reported and never counted.** Flood-traced rooms don't share edges — a trace fills to the wall linework, so two rooms across a partition are separated by inches of nothing. Finishes changing inside one open space *are* the transition and commit. Rooms running parallel across a wall are adjacent, and the transition there is a threshold in a doorway that nothing in the trace record locates. Those come back under **Reported, never counted** with their length, the measured wall thickness, and a **look** link that centers the sheet on the run, so you answer it by looking at the drawing rather than reading 34 LF of threshold off a machine.
+- The transition must land on its **own** condition — deriving CPT-1/CT-1 onto CPT-1 would add the joint's LF to a finish it separates, and that error is invisible in the totals. Refused before anything commits, along with an unscaled sheet (a transition is a real length) and two finishes with no rooms on the open sheets.
+
 ## 2026-08-03 — the weld rod comes off the layout, and the takeoff arrives sliced by room
 
 ### Added

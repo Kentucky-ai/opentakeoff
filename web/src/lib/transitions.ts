@@ -30,8 +30,9 @@
 // same doctrine symbol_sweep's 0.75–0.92 band follows: a near-match is a
 // question you answer by LOOKING, never a silent commit and never a silent drop.
 //
-// Pure geometry, no engine imports beyond distToSeg — so it tests directly and
-// the canvas can mount the same computation when the UI side lands.
+// Pure geometry, no engine imports beyond distToSeg — so it tests directly, and
+// both callers mount the same computation: the MCP verb derive_transitions
+// (#202, agent-side) and the canvas's ⟂ Transitions button (estimator-side).
 // (geometry.js's distToSeg returns distance only; a run needs the closest POINT
 // too — see the perpendicularity rule below — so the projection is done here.)
 
@@ -214,4 +215,190 @@ export function sharedRuns(ringA: Pt[], ringB: Pt[], opts: SharedRunOpts): Share
     });
   }
   return runs;
+}
+
+// ── the shape-level derivation ───────────────────────────────────────────────
+// sharedRuns above is pure geometry on two rings in image px. Everything below
+// is the layer between it and a takeoff: which committed rooms to compare,
+// against which sheet's scale, and what the answer becomes — a linear shape you
+// can accept, or a question you cannot.
+//
+// It is deliberately a SEPARATE, pure entry point rather than a canvas method:
+// the same orchestration is what mcp/src/session.ts deriveTransitions does
+// around its own store, and pulling it here means the two can be reconciled in
+// the next MCP release without the canvas having to grow a session. Until then
+// the sequencing exists twice on purpose and this is the copy the UI drives.
+
+/** A committed floor shape, as little of one as the derivation needs. */
+export interface TransitionSourceShape {
+  id: string;
+  sheet_id: string;
+  verts_norm: [number, number][];
+}
+
+/** A sheet's logical image frame — the same baseline verts_norm normalizes
+ *  against — plus its scale. `upp` is FEET per image px; a sheet without one
+ *  cannot take part (a transition is a real length, so an unscaled sheet is a
+ *  refusal, never a guess). */
+export interface SheetFrame {
+  widthPx: number;
+  heightPx: number;
+  upp: number;
+}
+
+/** One derived run: a linear shape's worth of geometry plus the provenance the
+ *  origin.derived record carries (both parents, both tags, the measured gap). */
+export interface DerivedTransition {
+  sheet_id: string;
+  between_shape_ids: [string, string];
+  between: [string, string];
+  length_lf: number;
+  gap_in: number;
+  /** Run midpoint in image px — where to point the view. */
+  at: [number, number];
+  /** The run, normalized to its sheet frame: ready to become verts_norm. */
+  verts_norm: [number, number][];
+}
+
+/** The same measurement, refused: two rooms across a partition. Adjacency is
+ *  real, the number is not — the transition there is a threshold in a doorway
+ *  and nothing in the trace record says where the doorway is. Reported with its
+ *  length, its gap and a point to look at; never committed. */
+export interface WithheldTransition extends DerivedTransition {
+  reason: "wall_separated";
+}
+
+export interface DeriveTransitionsOpts {
+  /** Beyond this the two rooms are not adjacent at all (inches). */
+  max_gap_in?: number;
+  /** Runs shorter than this are corner artifacts, not transitions (inches). */
+  min_run_in?: number;
+}
+
+/** Defaults shared with the MCP verb — a wall is under a foot thick, and a
+ *  transition under a foot long is a corner clip. */
+export const TRANSITION_DEFAULTS = { max_gap_in: 12, min_run_in: 12 };
+
+const round2 = (n: number): number => +n.toFixed(2);
+const round1 = (n: number): number => +n.toFixed(1);
+
+/**
+ * Drop the interpolated points sharing a straight line with their neighbours.
+ *
+ * sharedRuns walks A's boundary every quarter-foot, so a straight thirty-foot
+ * butt joint comes back as a hundred and twenty vertices — correct, and a
+ * miserable shape to own: every one of them is a drag handle on a line with two
+ * real ends. The samples along one segment are exact linear interpolations, so
+ * their cross product against the chord is float noise (~1e-10 px on a sheet
+ * measured in thousands); a 1e-6 px cut removes them and cannot reach a corner
+ * that any drafted geometry actually turns. Length is preserved — which matters,
+ * because the committed LF is measured on the FULL path before this runs.
+ */
+export function dropCollinear(path: Pt[], tol = 1e-6): Pt[] {
+  if (path.length < 3) return path.map((p) => [p[0], p[1]] as Pt);
+  const out: Pt[] = [[path[0][0], path[0][1]]];
+  for (let i = 1; i < path.length - 1; i++) {
+    const a = out[out.length - 1], b = path[i], c = path[i + 1];
+    const abx = b[0] - a[0], aby = b[1] - a[1];
+    const acx = c[0] - a[0], acy = c[1] - a[1];
+    const len = Math.hypot(acx, acy);
+    // distance from b to the a→c chord; degenerate chord keeps the vertex
+    const off = len > 0 ? Math.abs(abx * acy - aby * acx) / len : Infinity;
+    if (off > tol) out.push([b[0], b[1]]);
+  }
+  out.push([path[path.length - 1][0], path[path.length - 1][1]]);
+  return out;
+}
+
+/**
+ * Every transition between two finishes' committed rooms, split into the runs
+ * that commit and the ones that are questions.
+ *
+ * Rooms are paired only WITHIN a sheet (a room on A-101 does not butt a room on
+ * A-102), and a sheet takes part only if `sheets` carries its frame and scale —
+ * scoping is the caller's, so the canvas can derive across exactly the sheets
+ * the estimator has open and can review.
+ *
+ * The kind decision is sharedRuns': median gap under an inch is one open space
+ * (butt) and becomes a shape; anything wider is a partition (wall) and becomes
+ * a reported question. Nothing here decides that twice.
+ */
+export function deriveTransitionRuns(
+  a: { tag: string; shapes: TransitionSourceShape[] },
+  b: { tag: string; shapes: TransitionSourceShape[] },
+  sheets: Map<string, SheetFrame>,
+  opts: DeriveTransitionsOpts = {},
+): { runs: DerivedTransition[]; withheld: WithheldTransition[] } {
+  const maxGapIn = opts.max_gap_in ?? TRANSITION_DEFAULTS.max_gap_in;
+  const minRunIn = opts.min_run_in ?? TRANSITION_DEFAULTS.min_run_in;
+  const runs: DerivedTransition[] = [], withheld: WithheldTransition[] = [];
+  if (!(maxGapIn > 0) || !(minRunIn > 0)) return { runs, withheld };
+
+  for (const [key, frame] of sheets) {
+    if (!(frame.upp > 0) || !(frame.widthPx > 0) || !(frame.heightPx > 0)) continue;
+    const onA = a.shapes.filter((s) => s.sheet_id === key);
+    const onB = b.shapes.filter((s) => s.sheet_id === key);
+    if (!onA.length || !onB.length) continue;
+    const pxPerFt = 1 / frame.upp;
+    const toPx = (s: TransitionSourceShape): Pt[] =>
+      s.verts_norm.map(([x, y]) => [x * frame.widthPx, y * frame.heightPx] as Pt);
+    const runOpts: SharedRunOpts = {
+      step_px: Math.max(1, pxPerFt * 0.25),   // a quarter-foot walk — finer than any transition matters
+      touch_px: pxPerFt * (1 / 12),           // within an inch: one open space, not two rooms
+      max_gap_px: pxPerFt * (maxGapIn / 12),
+      min_len_px: pxPerFt * (minRunIn / 12),
+    };
+    for (const ra of onA) {
+      for (const rb of onB) {
+        if (ra.id === rb.id) continue;        // the same shape on both sides is not a transition
+        for (const r of sharedRuns(toPx(ra), toPx(rb), runOpts)) {
+          const row: DerivedTransition = {
+            sheet_id: key,
+            between_shape_ids: [ra.id, rb.id],
+            between: [a.tag, b.tag],
+            length_lf: round2(r.length_px * frame.upp),
+            gap_in: round1(r.gap_px * frame.upp * 12),
+            at: [Math.round(r.at[0]), Math.round(r.at[1])],
+            verts_norm: dropCollinear(r.path).map(([x, y]) => [x / frame.widthPx, y / frame.heightPx] as [number, number]),
+          };
+          if (r.kind === "wall") withheld.push({ ...row, reason: "wall_separated" });
+          else runs.push(row);
+        }
+      }
+    }
+  }
+  return { runs, withheld };
+}
+
+/**
+ * The all-or-nothing gate, ahead of any commit — the MCP verb's refusals, said
+ * to an estimator instead of an agent. Returns the reason to refuse, or null.
+ *
+ * The one that is not obvious: a transition must land on its OWN tag. Committing
+ * carpet-meets-tile onto the carpet condition adds linear feet to the finish it
+ * separates, and that error is invisible in the totals — it just makes carpet
+ * read long.
+ */
+export function transitionRefusal(gate: {
+  activeTag: string;
+  a: { tag: string; shapes: TransitionSourceShape[] };
+  b: { tag: string; shapes: TransitionSourceShape[] };
+  sheets: Map<string, SheetFrame>;
+  unscaled?: string[];
+}): string | null {
+  const { activeTag, a, b, sheets, unscaled = [] } = gate;
+  if (!a.tag || !b.tag) return "Pick the two finishes that meet.";
+  if (a.tag === b.tag) return "Pick two DIFFERENT finishes — a tag does not transition to itself.";
+  if (activeTag === a.tag || activeTag === b.tag) {
+    return `The transition has to land on its own condition (e.g. T-1) — committing onto ${activeTag} would add its LF to one of the finishes it separates.`;
+  }
+  for (const side of [a, b]) {
+    if (!side.shapes.length) return `${side.tag} has no rooms on the open sheets — measure them first (One-Click or Area).`;
+  }
+  if (unscaled.length) {
+    return `${unscaled.join(", ")} ${unscaled.length === 1 ? "has" : "have"} no scale — a transition is a real length, so calibrate before deriving.`;
+  }
+  const shared = [...sheets.keys()].filter((k) => a.shapes.some((s) => s.sheet_id === k) && b.shapes.some((s) => s.sheet_id === k));
+  if (!shared.length) return `${a.tag} and ${b.tag} have no rooms on the same open sheet — nothing can meet.`;
+  return null;
 }

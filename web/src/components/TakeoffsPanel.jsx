@@ -561,15 +561,108 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
   );
 }
 
+// ── ⟂ Transitions — where two finishes meet, onto the active condition ───────
+// The estimator's half of derive_transitions (#202). Two finishes go in; the
+// runs where their rooms BUTT — meeting inside one open space, no wall between
+// them — come back as dashed linear shapes on this condition, waiting on the
+// Accept pill like any other machine proposal.
+//
+// What does NOT come back as a shape is the whole point. Two rooms across a
+// partition are adjacent, not joined: the transition there is a threshold in a
+// doorway, and a flood trace records how much boundary it sealed, never where.
+// Committing 34 LF of threshold because two rooms share 34 LF of wall would be
+// a wrong bid with a machine's confidence behind it — so those are listed here
+// with their length and their gap, reported and never counted, for someone to
+// place with the drawing in front of them.
+function TransitionsAction({ cond: c, sources, draft, setDraft, result, setResult, onDerive, onLocate2 }) {
+  const open = draft.id === c.id;
+  // the transition lands on its OWN tag, so this condition is never a source —
+  // deriving onto C-1 would add the joint's LF to the carpet it separates
+  const opts = sources.filter((s) => s.id !== c.id);
+  const ready = open && draft.a && draft.b && draft.a !== draft.b;
+  const close = () => { setDraft({ id: "", a: "", b: "" }); setResult(null); };
+  const run = () => { if (ready) setResult(onDerive(draft.a, draft.b)); };
+  const selStyle = { ...ip, background: "var(--paper-bright)", color: "var(--ink)", maxWidth: 110 };
+  return (
+    <div style={{ padding: "7px 12px 9px", background: "var(--paper-cream)", borderTop: "1px solid var(--ink-faint)", fontSize: 11.5 }}>
+      {!open ? (
+        <button onClick={() => { setDraft({ id: c.id, a: opts[0]?.id || "", b: opts[1]?.id || "" }); setResult(null); }}
+          disabled={opts.length < 2}
+          title={opts.length < 2
+            ? "Two finishes with measured rooms on the open sheets are needed before anything can meet."
+            : `Derive where two finishes meet onto ${c.finish_tag}. Runs where the rooms butt inside one open space commit dashed, pending Accept; runs across a wall are reported and never counted — that transition is a threshold in a doorway no trace can locate.`}
+          style={{ padding: "3px 9px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent",
+            color: opts.length < 2 ? "var(--ink-faint)" : "var(--ink)", cursor: opts.length < 2 ? "default" : "pointer", fontSize: 11.5 }}>
+          ⟂ Transitions…
+        </button>
+      ) : (
+        <div>
+          <div style={{ color: "var(--ink-muted)", marginBottom: 5 }}>
+            Derive onto <b style={{ color: "var(--ink)" }}>{c.finish_tag}</b> — where these two meet.
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+            <select name="transition-a" value={draft.a} onChange={(e) => setDraft({ ...draft, a: e.target.value })} style={selStyle}>
+              {opts.map((s) => <option key={s.id} value={s.id}>{s.finish_tag} ({s.rooms})</option>)}
+            </select>
+            <span style={{ color: "var(--ink-muted)" }}>meets</span>
+            <select name="transition-b" value={draft.b} onChange={(e) => setDraft({ ...draft, b: e.target.value })} style={selStyle}>
+              {opts.map((s) => <option key={s.id} value={s.id}>{s.finish_tag} ({s.rooms})</option>)}
+            </select>
+            <button name="transition-derive" onClick={run} disabled={!ready}
+              style={{ padding: "2px 9px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent",
+                color: ready ? "var(--ink)" : "var(--ink-faint)", cursor: ready ? "pointer" : "default", fontSize: 11 }}>Derive</button>
+            <button onClick={close} style={{ padding: "2px 6px", border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>Cancel</button>
+          </div>
+          {result?.error && (
+            <div style={{ marginTop: 6, padding: "4px 6px", border: "1px solid var(--c-warning)", color: "var(--ink)", background: "var(--paper-bright)" }}>{result.error}</div>
+          )}
+          {result && !result.error && (
+            <div style={{ marginTop: 6 }}>
+              <div style={{ color: result.committed ? "var(--c-positive)" : "var(--ink-muted)" }}>
+                {result.committed
+                  ? `${result.committed} run${result.committed === 1 ? "" : "s"} · ${result.total_lf} LF proposed on ${result.onto} — dashed until you Accept.`
+                  : "No butt joints between these two on the open sheets."}
+              </div>
+              {result.withheld?.length > 0 && (
+                <div style={{ marginTop: 5, paddingTop: 5, borderTop: "1px solid var(--ink-faint)" }}>
+                  <div style={{ color: "var(--ink-muted)", fontSize: 10.5, letterSpacing: 0.4, textTransform: "uppercase" }}
+                    title="These rooms are adjacent across a partition. The transition is a threshold in the doorway, and nothing in the trace record says where the doorway is — so it is reported, never counted. Measure it at the door.">
+                    Reported, never counted
+                  </div>
+                  <ul style={{ margin: "3px 0 0", paddingLeft: 14, color: "var(--ink)" }}>
+                    {result.withheld.map((w, i) => (
+                      <li key={`${w.between_shape_ids.join("-")}-${i}`} style={{ marginBottom: 1 }}>
+                        {w.length_lf} LF across {w.gap_in}″ of wall
+                        <span style={{ color: "var(--ink-muted)" }}> — {w.between.join(" / ")}</span>
+                        {onLocate2 && (
+                          <button onClick={() => onLocate2(w.sheet_id, w.at)} title="Center the sheet on this run — find the door and measure the threshold there"
+                            style={{ marginLeft: 5, padding: 0, border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11, textDecoration: "underline" }}>look</button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  <div style={{ marginTop: 3, color: "var(--ink-muted)" }}>Adjacent, not joined — measure the threshold at the door.</div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TakeoffsPanel({
   open, width, multiSheet, units = "imperial",
   conditions, activeCond, visRowById, projRowById = new Map(), conditionColumns, shapeLabels = [], templates, palette = [], rollByCond = null,
+  transitionSources = [],
   matLib, matLibById, linkedCountById,
   panelPrefs, onPanelPrefs, reassigning, epoch, clearSelectionRef,
   onActivate, onSetActive, onLocate,
   onAddCondition, onDeleteCondition, onUpdateCond, onSetCondParam, onAssignAttr,
   onAddMaterial, onUpdateMaterial, onRemoveMaterial,
   onDuplicateCondition, onSplitCondition, onFollowFamilyRow, onRestoreDroppedRow,
+  onDeriveTransitions, onLocateTransition,
   onBulkWaste, onBulkColor, onBulkDelete,
   onSaveTemplate, onApplyTemplate, onRenameTemplate, onDeleteTemplate,
   onAttachLibMaterial, onPromoteMaterial, onRevertMatField, matFieldOverridden,
@@ -590,6 +683,11 @@ function TakeoffsPanel({
   const checkAnchorRef = useRef(null);
   const [panelMatOpen, setPanelMatOpen] = useState(false);    // supporting-materials editor expanded inline under the active row
   const [twinDraft, setTwinDraft] = useState({ id: "", label: "" });   // inline "duplicate for another area" input (never a prompt)
+  // ⟂ Transitions — the two finishes to compare, and the last run's report.
+  // Inline for the same reason the twin input is: a window.prompt freezes a
+  // CDP/automation-driven session dead, and this panel is scripted in demos.
+  const [transDraft, setTransDraft] = useState({ id: "", a: "", b: "" });
+  const [transResult, setTransResult] = useState(null);   // { committed, total_lf, withheld[], between, onto } | { error }
   const rootRef = useRef(null);   // panel root — mid-drag width writes bypass React
   const dragRef = useRef(null);   // { sx, sw, w } — w is the live width during the drag
 
@@ -603,6 +701,8 @@ function TakeoffsPanel({
     checkAnchorRef.current = null;
     setCondQuery("");
     setClosedGroups((s) => (s.size ? new Set() : s));
+    setTransDraft((d) => (d.id ? { id: "", a: "", b: "" } : d));
+    setTransResult(null);   // a report about shapes that no longer exist is worse than no report
   }, [epoch]);
 
   // the canvas's activateCondition (rows, strip, 1–9 hotkeys) dismisses a live
@@ -798,6 +898,8 @@ function TakeoffsPanel({
             ConditionAppearanceEditor so the docked panel AND the top-bar band
             render the same editor from one source of truth. */}
         {on && <ConditionAppearanceEditor cond={c} onUpdateCond={onUpdateCond} onSetCondParam={onSetCondParam} onAssignAttr={onAssignAttr} conditionColumns={conditionColumns} units={units} rollInfo={rollByCond?.get(c.id) || null} />}
+        {on && onDeriveTransitions && <TransitionsAction cond={c} sources={transitionSources} draft={transDraft} setDraft={setTransDraft}
+          result={transResult} setResult={setTransResult} onDerive={onDeriveTransitions} onLocate2={onLocateTransition} />}
         {matOn && (
           <div style={{ padding: "8px 12px 10px", background: "var(--paper-cream)", borderTop: "1px solid var(--ink-faint)", fontSize: 11.5 }}>
             <div style={{ marginBottom: 6, color: "var(--ink-muted)" }}>Supporting Materials — order qty = measured ÷ coverage, rounded up.</div>

@@ -352,6 +352,44 @@ One click, one marker, one EA. Counts commit immediately on click and are the on
 
 The **Cut Out** menu subtracts voids: **Deduct shape** (`D`) traces a polygon, **Deduct rectangle** (`⇧D`) boxes one. A deduct belongs to the active condition and subtracts its SF from that condition's floor total — columns, shafts, casework, anything inside a traced area that doesn't get flooring. Deducts draw in dashed red and carry their negative sign into the report's shape audit.
 
+### ⟂ Transitions — where two finishes meet
+
+Carpet meets tile and somebody draws a line there, by hand, on every job. Once both finishes are
+measured, the canvas can derive it. Activate the condition the transition belongs to — `TR-1`, its
+own tag, not one of the two finishes — open the Takeoffs panel, and click **⟂ Transitions…** under
+that condition. Pick the two finishes and press **Derive**.
+
+What comes back depends on something worth understanding, because it decides whether a number is
+real: **traced rooms don't share edges.** A trace fills to the wall linework, so two rooms on
+opposite sides of a partition are separated by four to eight inches of nothing. What's actually
+there is proximity, in two flavors that mean completely different things:
+
+- **A butt joint** — the two rooms running together inside *one open space*, a lobby that changes
+  from carpet to tile with no wall between them. That run **is** the transition. It commits onto
+  the active condition as a dashed linear shape, and the **Accept N proposed shapes** pill inks it
+  the same way it inks an imported agent takeoff. `⌘Z` undoes the whole sweep in one step; to drop
+  one, select it and press Delete.
+- **Wall-separated** — the two rooms running parallel across a partition. They're adjacent, but the
+  transition is not the whole shared wall: it's a *threshold, in the doorway*, and nothing in the
+  trace record says where the doorway is. Committing 34 LF of threshold because two rooms share
+  34 LF of wall would be a wrong number with a machine's confidence behind it. Those are listed
+  under **Reported, never counted** with their length and the measured wall thickness, and a
+  **look** link that centers the sheet on the run. Find the door and measure the threshold there,
+  with the Linear tool.
+
+Three things it refuses outright, before anything commits:
+
+- **Deriving onto one of the two finishes.** A transition has to land on its own condition;
+  committing carpet-meets-tile onto the carpet would add the joint's LF to a finish it separates,
+  and nothing downstream would show you that.
+- **An unscaled sheet.** A transition is a real length.
+- **A finish with no rooms on the open sheets.** The derivation only proposes what you can see and
+  review — it reads the sheets you have open, not the whole set.
+
+The same derivation is `derive_transitions` over MCP
+([§14](#14-ai-settings--driving-opentakeoff-from-an-agent)), with the same verdict and the same
+refusal.
+
 ### Zone check
 
 **Zone** (toolbar button; no hotkey) answers "what's in this wing?" without touching the takeoff. Trace a region the way you'd trace an area — an apartment, a phase — and close it with `⏎`, double-click, or **Finish**. A panel lists every condition whose shapes sit inside, with quantities **and its supporting materials scaled to the zone**, computed by the same rules as the Report. Shapes count by their center point, same sheet only, and counted shapes glow cobalt so inclusion is visible. It's a reading, not a takeoff: nothing is saved, redrawing replaces the zone, and `Esc` or leaving the tool clears it.
@@ -718,7 +756,8 @@ A few worth knowing about from the canvas side, because they're the same feature
 - `sheet_graph` / `resolve_tag` / `find_schedule` answer *"what finish is in room 134, and how do
   you know"* with a citation per cell — across continuation sheets and multi-building keys.
 - `derive_base` computes base LF from committed rooms (perimeter minus stated openings), and
-  `derive_transitions` finds where two finishes meet. The second one is worth understanding before
+  `derive_transitions` finds where two finishes meet — the same derivation the canvas's
+  **⟂ Transitions…** button runs ([§5](#5-the-measuring-tools)). The second one is worth understanding before
   you read its output: flood-traced rooms **don't share edges** — a trace fills to the wall
   linework, so two rooms across a partition are separated by inches of nothing. Finishes changing
   inside one open space commit as a butt-joint run. Rooms parallel across a wall come back
