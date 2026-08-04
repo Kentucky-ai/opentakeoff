@@ -10,6 +10,9 @@ import { expandForScaleNotes, mixedScaleWarning } from "./scalewarn.ts";
 import { classifyLayerName, layerRoleCodes, segRoles, type LayerInfo } from "../../web/src/lib/layers.ts";
 import { buildSheetGraph, resolveTag, type SheetGraph, type SheetSpans } from "../../web/src/lib/sheetgraph.ts";
 import { UserError, round1, round2 } from "./format.ts";
+// Condition twins — the inheritance rule, shared with the canvas so a headless session and
+// the app can never disagree about what a twin holds (web/test/variants.test.ts).
+import { mintTwin, splitFromFamily, variantTag, type VariantCond } from "../../web/src/lib/variants.ts";
 import { STANDARD_SCALES, RENDER_SCALE, detectScale, extractSheetNumber, type DetectedScale } from "../../web/src/lib/sheets.ts";
 import {
   extractVectorGeometry, buildMask, traceRegion, snapVertices, ringArea,
@@ -62,6 +65,8 @@ const mintUuid = (): string =>
     ? globalThis.crypto.randomUUID()
     : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 const uid = (p: string): string => `${p}-${mintUuid()}`;
+// mirrors web/src/lib/provenance.js nowIso — a twin is born now, not when its parent was
+const nowIso = (): string => new Date().toISOString();
 
 export const ANN_SCHEMA = "opentakeoff.takeoff_canvas.v1"; // web/src/lib/store.js
 
@@ -409,6 +414,8 @@ export type JournalPayload =
   | { op: "delete"; tool: string; removed: { shape: Shape; index: number }[] }
   | { op: "materials"; tool: string; condition_id: string; before: MaterialRow[] }
   | { op: "condition"; tool: string; condition_id: string; before: { waste_pct: number; multiplier: number; height_ft?: number; roll_setup?: Record<string, unknown> } }
+  | { op: "duplicate_condition"; tool: string; condition_id: string; parent_id: string; parent_had_family: boolean }
+  | { op: "split_condition"; tool: string; condition_id: string; before: { variant_of?: string; materials?: unknown; materials_dropped?: string[] } }
   | { op: "approval"; tool: string; inverse: ApprovalCommand };
 
 export type JournalEntry = JournalPayload & { seq: number };
@@ -2471,6 +2478,73 @@ export class Session {
     };
   }
 
+  /**
+   * Twin a condition — the same finish measured somewhere else, with its own materials.
+   *
+   * The same sheet goods over a slab and over a raised deck take the same field material and
+   * different preparation underneath. The twin carries the original's whole materials list and
+   * keeps FOLLOWING it: change a coverage rate on the original and every twin that hasn't
+   * touched that row gets it; edit a row on the twin and only that row goes local. The rule
+   * lives in web/src/lib/variants.ts — one copy, shared with the canvas, so a headless session
+   * and the app can never disagree about what a twin holds.
+   *
+   * A twin needs its OWN tag, and that is not cosmetic here: every tool in this server resolves
+   * a condition by finish tag and takes the FIRST match, so two conditions sharing one would
+   * make the second permanently unreachable — and a takeoff re-import collapses them last-wins.
+   * So the label is required and a collision is refused rather than de-collided.
+   */
+  duplicateCondition(tag: string, label: string) {
+    const src = this.conditions.find((x) => x.finish_tag === tag);
+    if (!src) {
+      const known = this.conditions.map((x) => x.finish_tag);
+      throw new UserError(`No condition ${JSON.stringify(tag)} to duplicate.${known.length ? ` Known tags: ${known.join(", ")}.` : ""}`);
+    }
+    const lab = String(label || "").trim();
+    if (!lab) throw new UserError("label is required — it is what gives the twin its own finish tag, and a tag is how every tool here resolves a condition.");
+    const newTag = variantTag(src.finish_tag, lab);
+    if (this.conditions.some((x) => x.finish_tag.trim().toUpperCase() === newTag.trim().toUpperCase())) {
+      throw new UserError(`A condition is already called ${JSON.stringify(newTag)} — pick a different label. Two conditions sharing a tag would make one of them unreachable to every tool.`);
+    }
+    const { twin, parentPatch } = mintTwin(src as unknown as VariantCond, {
+      label: lab, tag: newTag, mintId: (p: string) => uid(p), nowIso,
+      nextHatch: HATCH_IDS[1 + ((this.conditions.length + 1) % (HATCH_IDS.length - 1))],
+    });
+    if (parentPatch) Object.assign(src, parentPatch);
+    this.conditions.push(twin as unknown as Condition);
+    this.record({ op: "duplicate_condition", tool: "duplicate_condition", condition_id: twin.id, parent_id: src.id,
+                  parent_had_family: !parentPatch });
+    return {
+      condition: newTag, condition_id: twin.id, variant_of: src.id, variant_label: lab,
+      family_id: twin.family_id as string,
+      inherited_rows: (twin.materials || []).length,
+      note: `Materials follow ${src.finish_tag} until you edit them on this condition. No takeoffs came along — measure into ${newTag}.`,
+    };
+  }
+
+  /** Cut a twin loose: every following row freezes where it stands. It KEEPS its family_id, so
+   * it still groups with its siblings — only the inheritance ends. */
+  splitCondition(tag: string) {
+    const c = this.conditions.find((x) => x.finish_tag === tag);
+    if (!c) {
+      const known = this.conditions.map((x) => x.finish_tag);
+      throw new UserError(`No condition ${JSON.stringify(tag)}.${known.length ? ` Known tags: ${known.join(", ")}.` : ""}`);
+    }
+    const cond = c as unknown as VariantCond;
+    if (!cond.variant_of) {
+      return { condition: tag, condition_id: c.id, split: false, frozen_rows: 0,
+               note: "Already owns its materials — nothing was following." };
+    }
+    const frozen = (cond.materials || []).filter((r) => r.inherited).length;
+    const before = structuredClone({ variant_of: cond.variant_of, materials: cond.materials,
+                                     materials_dropped: cond.materials_dropped });
+    const [next] = splitFromFamily([cond], cond.id);
+    Object.assign(c, next);
+    this.record({ op: "split_condition", tool: "split_condition", condition_id: c.id, before });
+    return { condition: tag, condition_id: c.id, split: true, frozen_rows: frozen,
+             family_id: cond.family_id as string | undefined,
+             note: "Frozen at its current values; edits to the original no longer reach it. It still groups with its family." };
+  }
+
   /** Step back over this session's own last n mutations, newest first. Each
    * entry's inverse is exact (see JournalEntry), so this restores state rather
    * than approximating it. Reads are not journaled, so undo never has to step
@@ -2506,6 +2580,28 @@ export class Session {
           else c.height_ft = e.before.height_ft;
           if (e.before.roll_setup === undefined) delete c.roll_setup;
           else c.roll_setup = e.before.roll_setup;
+        }
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "duplicate_condition") {
+        // a twin is removed whole — and the family_id the mint may have stamped on the PARENT
+        // comes off too when the parent had no family before, so undo leaves no orphan grouping
+        const at = this.conditions.findIndex((x) => x.id === e.condition_id);
+        if (at >= 0) this.conditions.splice(at, 1);
+        if (!e.parent_had_family) {
+          const parent = this.conditions.find((x) => x.id === e.parent_id) as unknown as VariantCond | undefined;
+          if (parent) delete parent.family_id;
+        }
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "split_condition") {
+        // the link and every row's inherited/origin_id flag go back verbatim — a split is
+        // reversible, so an agent that cut a twin loose by mistake is not stuck with it
+        const c = this.conditions.find((x) => x.id === e.condition_id) as unknown as VariantCond | undefined;
+        if (c) {
+          if (e.before.variant_of === undefined) delete c.variant_of;
+          else c.variant_of = e.before.variant_of;
+          c.materials = structuredClone(e.before.materials) as VariantCond["materials"];
+          if (e.before.materials_dropped === undefined) delete c.materials_dropped;
+          else c.materials_dropped = structuredClone(e.before.materials_dropped);
         }
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
       } else if (e.op === "approval") {

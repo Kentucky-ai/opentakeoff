@@ -508,6 +508,25 @@ export const exportMarkedPdfOutput = {
   note: z.string(),
 };
 
+export const duplicateConditionOutput = {
+  condition: z.string().describe("The twin's finish tag — base tag + the label, e.g. 'CPT-1 – Level 2'"),
+  condition_id: z.string().describe("The TWIN — measure the new area against this"),
+  variant_of: z.string().describe("The condition whose material rows this one follows"),
+  variant_label: z.string(),
+  family_id: z.string().describe("Shared by every variant of this finish — survives a split"),
+  inherited_rows: z.number().int().describe("Material rows copied, all still following the original"),
+  note: z.string(),
+};
+
+export const splitConditionOutput = {
+  condition: z.string(),
+  condition_id: z.string(),
+  split: z.boolean().describe("false = it already owned its materials; nothing was following"),
+  frozen_rows: z.number().int().describe("Following rows frozen at their current values"),
+  family_id: z.string().optional().describe("Kept — it still groups with its siblings"),
+  note: z.string(),
+};
+
 export const editConditionOutput = {
   condition: z.string().describe("The finish tag passed in"),
   condition_id: z.string(),

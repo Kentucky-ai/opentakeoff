@@ -2,6 +2,17 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-03 — twins reach the wire (#205)
+
+### Added
+- **`duplicate_condition` / `split_condition`** — the canvas's condition twins as agent verbs. A twin arrives carrying the original's whole materials list and keeps FOLLOWING it; editing a row on the twin takes that row local; `split_condition` freezes the following rows and ends the inheritance while keeping the family grouping. The rule is not reimplemented here: both call `web/src/lib/variants.ts`, the same module the canvas uses, so a headless session and the app can never disagree about what a twin holds.
+- **`label` is required, and a collision is refused rather than de-collided.** Every tool in this server resolves a condition by finish tag and takes the FIRST match, so two conditions sharing a tag make one of them permanently unreachable — and a takeoff re-import collapses them last-wins. The label is what makes the tag distinct (`CPT-1` + `Level 2` → `CPT-1 – Level 2`).
+- Both are reversible with `undo_last`, and the inverses are exact: undoing a duplicate removes the twin whole **and** takes the `family_id` back off the parent when the mint had stamped it there, so no orphan grouping survives; undoing a split restores the link and every row's `inherited`/`origin_id` flag verbatim.
+- No takeoffs come along with a twin — the reply says so and returns the `condition_id` to measure into.
+
+### Released
+- **opentakeoff-mcp 0.9.32** — `duplicate_condition` + `split_condition`; 38 tools.
+
 ## 2026-08-03 — one finish, two areas: a duplicate that stays in the family
 
 ### Added

@@ -13,6 +13,7 @@ import {
   exportTakeoffOutput, deleteShapeOutput, readSheetTextOutput,
   editShapeOutput, undoLastOutput, sheetContextOutput,
   findTextOutput, editMaterialsOutput, editConditionOutput, exportReportOutput,
+  duplicateConditionOutput, splitConditionOutput,
   exportMarkedPdfOutput, listShapesOutput, deriveBaseOutput, deriveTransitionsOutput, importTakeoffOutput,
   annotateOutput, listAnnotationsOutput, linkAnnotationOutput,
   markVerdictOutput, deleteVerdictOutput,
@@ -367,6 +368,23 @@ export function registerTools(server: McpServer, session: Session): void {
     },
     outputSchema: editConditionOutput,
   }, run("edit_condition", (a) => session.editCondition(a.condition, { waste_pct: a.waste_pct, multiplier: a.multiplier, height_ft: a.height_ft, roll_setup: a.roll_setup })));
+
+  server.registerTool("duplicate_condition", {
+    description: `Twin a condition — the same finish measured somewhere else, with its own supporting materials. One finish in two areas is not two conditions and it is not one either: the same sheet goods over a slab and over a raised deck take the same field material and different preparation underneath (one wants a moisture barrier, the other a primer and a different adhesive). The twin arrives carrying the original's whole materials list and keeps FOLLOWING it — change a coverage rate on the original and every twin that has not touched that row gets it; edit a row on the twin and only THAT row stops following. \`label\` is REQUIRED and becomes the tag suffix ('CPT-1' + 'Level 2' → 'CPT-1 – Level 2'), because every tool in this server resolves a condition by finish tag and takes the FIRST match: two conditions sharing a tag would make one permanently unreachable, and a takeoff re-import collapses them last-wins. A label already in use is refused rather than de-collided. No takeoffs come along — measure the new area against the returned condition_id. Reversible with undo_last; use split_condition to end the inheritance permanently.`,
+    inputSchema: {
+      condition: z.string().describe("Finish tag of the condition to twin, e.g. 'CPT-1'"),
+      label: z.string().describe("What makes this one different, usually the area: 'Level 2', 'Building B', 'Phase 2'"),
+    },
+    outputSchema: duplicateConditionOutput,
+  }, run("duplicate_condition", (a) => session.duplicateCondition(a.condition, a.label)));
+
+  server.registerTool("split_condition", {
+    description: `Cut a twin loose from its family: every following material row freezes at its current values and edits to the original stop reaching it. It keeps its finish tag and still groups with its siblings — only the inheritance ends. Use when two variants have diverged far enough that following one another is wrong. A condition that already owns its materials returns split:false rather than erroring. Reversible with undo_last.`,
+    inputSchema: {
+      condition: z.string().describe("Finish tag of the twin to split, e.g. 'CPT-1 – Level 2'"),
+    },
+    outputSchema: splitConditionOutput,
+  }, run("split_condition", (a) => session.splitCondition(a.condition)));
 
   server.registerTool("undo_last", {
     description: `Step back over your OWN last n mutations, newest first — a committed one_click, a whole detect_rooms sweep, an edit_shape, a delete_shape, an edit_materials call, or an edit_condition call. Each step is reversed exactly (a commit is removed, an edit is restored verbatim, a delete is re-inserted where it was, a materials edit's whole array is restored, a condition edit's waste/multiplier pair is restored), so this restores state rather than approximating it. Reads are never journaled, so n counts gestures that changed something, not tool calls you made. Use it when a sweep committed against the wrong condition or a batch went in on the wrong sheet — one call instead of N deletes. Scope: this session's own history only. It is not the browser canvas's undo stack, and load_plan clears it along with the shapes it refers to.`,
