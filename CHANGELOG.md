@@ -2,6 +2,26 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-03 — twins reach the wire (#205)
+
+### Added
+- **`duplicate_condition` / `split_condition`** — the canvas's condition twins as agent verbs. A twin arrives carrying the original's whole materials list and keeps FOLLOWING it; editing a row on the twin takes that row local; `split_condition` freezes the following rows and ends the inheritance while keeping the family grouping. The rule is not reimplemented here: both call `web/src/lib/variants.ts`, the same module the canvas uses, so a headless session and the app can never disagree about what a twin holds.
+- **`label` is required, and a collision is refused rather than de-collided.** Every tool in this server resolves a condition by finish tag and takes the FIRST match, so two conditions sharing a tag make one of them permanently unreachable — and a takeoff re-import collapses them last-wins. The label is what makes the tag distinct (`CPT-1` + `Level 2` → `CPT-1 – Level 2`).
+- Both are reversible with `undo_last`, and the inverses are exact: undoing a duplicate removes the twin whole **and** takes the `family_id` back off the parent when the mint had stamped it there, so no orphan grouping survives; undoing a split restores the link and every row's `inherited`/`origin_id` flag verbatim.
+- No takeoffs come along with a twin — the reply says so and returns the `condition_id` to measure into.
+
+### Fixed
+- **`edit_materials` now runs the family rules** (`variants.ts` — the same propagate-on-write the canvas runs per row gesture): an add on a family parent reaches every twin still listening, a remove on a twin tombstones the following row so a later family edit cannot bring it back, and a patch on a twin's own row takes THAT row local. Before this, a headless session's family sat inert — the exact canvas/agent disagreement the shared module exists to prevent. `undo_last` covers the propagation: one journal entry snapshots the target AND its descendants, tombstones included, and restores them verbatim.
+- **`split_condition` actually cuts the link now.** `splitFromFamily` removes `variant_of` and the tombstones *by omission*, and the session applied its result with `Object.assign` — which cannot delete — so a "split" twin still carried its `variant_of` into every export and read as a follower to the canvas. The dangling fields come off the live object explicitly.
+- **`undo_last` survives undoing a twin op** — the output schema's op enum learned `duplicate_condition`/`split_condition` (the #133 journal-op class: without it the SDK's output validation kills the reply with an opaque MCP error).
+- A `patch` cannot forge or shed a family link: `id`/`origin_id`/`inherited` are pinned server-side (the `fields` record is open at the schema), and the materials reply now discloses `origin_id`/`inherited` so an agent can see which rows still follow.
+
+### Tests
+- **15 behavioral tests** for the pair (`mcp/test/twins.test.ts`): mint/follow/go-local/tombstone/split semantics and the exact `undo_last` inverses, including family-wide materials restore. The conformance flow exercises mint → family edit → split → 3-step undo over the SDK's output validation, and an over-the-wire stdio acceptance run verified the lifecycle against the built dist.
+
+### Released
+- **opentakeoff-mcp 0.9.32** — `duplicate_condition` + `split_condition`; 38 tools.
+
 ## 2026-08-03 — one finish, two areas: a duplicate that stays in the family
 
 ### Added

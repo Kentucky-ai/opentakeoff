@@ -411,7 +411,7 @@ export const undoLastOutput = {
   undone: z.number().int().describe("Steps actually reversed"),
   steps: z.array(z.object({
     seq: z.number().int(),
-    op: z.enum(["commit", "edit", "delete", "materials", "condition", "approval"]),
+    op: z.enum(["commit", "edit", "delete", "materials", "condition", "approval", "duplicate_condition", "split_condition"]),
     tool: z.string().describe("The tool call this step came from"),
     shapes: z.number().int().describe("Shapes affected by reversing this step — 0 for a materials step (it restores a condition's supporting-materials rows, not shapes), for a condition step (it restores the waste/multiplier pair), and for an approval step (it re-seats or removes a verdict mark)"),
   })).describe("Newest first"),
@@ -443,6 +443,8 @@ const materialRow = z.object({
   unit: z.string(),
   round: z.boolean().describe("true = round up to whole purchase units (the default — you buy whole bags/buckets)"),
   note: z.string().optional(),
+  origin_id: z.string().optional().describe("On a twin: the parent row this one follows (the variants.ts family link)"),
+  inherited: z.boolean().optional().describe("On a twin: true while the row still follows the family — a patch on it takes it local, split_condition freezes them all"),
 });
 
 export const editMaterialsOutput = {
@@ -505,6 +507,25 @@ export const exportMarkedPdfOutput = {
   shapes_drawn: z.number().int(),
   annotations_drawn: z.number().int(),
   approvals_drawn: z.number().int().describe("Approval-family glyphs burned in (#176) — estimator APPROVED rings + agent AGENT diamonds; the cover tallies the split when any exist"),
+  note: z.string(),
+};
+
+export const duplicateConditionOutput = {
+  condition: z.string().describe("The twin's finish tag — base tag + the label, e.g. 'CPT-1 – Level 2'"),
+  condition_id: z.string().describe("The TWIN — measure the new area against this"),
+  variant_of: z.string().describe("The condition whose material rows this one follows"),
+  variant_label: z.string(),
+  family_id: z.string().describe("Shared by every variant of this finish — survives a split"),
+  inherited_rows: z.number().int().describe("Material rows copied, all still following the original"),
+  note: z.string(),
+};
+
+export const splitConditionOutput = {
+  condition: z.string(),
+  condition_id: z.string(),
+  split: z.boolean().describe("false = it already owned its materials; nothing was following"),
+  frozen_rows: z.number().int().describe("Following rows frozen at their current values"),
+  family_id: z.string().optional().describe("Kept — it still groups with its siblings"),
   note: z.string(),
 };
 

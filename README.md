@@ -38,7 +38,7 @@ otherwise, and nothing an autonomous agent could call.
 
 OpenTakeoff is that engine, with two front ends over identical geometry:
 
-- **A stdio MCP server** — `npx -y opentakeoff-mcp`, 36 tools, on the
+- **A stdio MCP server** — `npx -y opentakeoff-mcp`, 38 tools, on the
   [official MCP registry](https://registry.modelcontextprotocol.io). An agent opens a plan,
   reads the title block, sets the scale, floods the rooms, checks its own work on a rendered
   overlay, and hands back a marked-up planset PDF.
@@ -127,7 +127,7 @@ run. Docker and a local clone are both supported: [`mcp/README.md`](mcp/README.m
 exporting after each commit. Every shape lands in the app as a dashed **pencil proposal** and
 becomes ink only when the operator clicks Accept.*
 
-### The 36 tools
+### The 38 tools
 
 | Group | Tools |
 |---|---|
@@ -402,7 +402,7 @@ plus a vision-capable model id.
 | **Voice** | Push-to-talk takeoff commands, recognized on-device in WebAssembly; audio never leaves the browser |
 | **View** | Light or **dark (negative print)** — sheet pixels inverted at draw time, exports follow |
 | **Storage** | IndexedDB + localStorage — client-only, nothing uploaded |
-| **MCP server** | 36 tools + browsable sheet resources on stdio, multi-document sessions ([`mcp/`](mcp/README.md)) |
+| **MCP server** | 38 tools + browsable sheet resources on stdio, multi-document sessions ([`mcp/`](mcp/README.md)) |
 | **Provenance** | Every shape records its scale, its method, its confidence, and whether a person or an agent made it |
 | **Capture (opt-in)** | Bundled [capture server](capture/README.md) banks each contributed takeoff as (geometry → label) training rows |
 | **Deploy** | One static build — Netlify, Vercel, GitHub Pages, Cloudflare Pages, S3, any static host |
