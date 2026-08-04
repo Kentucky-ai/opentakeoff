@@ -74,7 +74,8 @@ second use is not a side effect; see [the data layer](#the-data-layer--why-this-
   seams: lanes, multi-roll splits, cuts drawn to scale over their rooms in cutting order, a
   to-scale roll diagram with drag-to-reorder, and order footage beside the measured quantities
   ([#136](https://github.com/Kentucky-ai/opentakeoff/issues/136))
-- **`derive_transitions`** — the line where two finishes meet, derived from committed rooms.
+- **Transitions, at the canvas** — **⟂ Transitions…** in the Takeoffs panel derives the line where
+  two finishes meet from rooms you already measured; `derive_transitions` does the same over MCP.
   Flood-traced rooms don't share edges, so what's actually there is proximity in two flavors that
   mean different things: finishes changing inside one open space commit as a butt joint, while
   rooms parallel across a partition come back **withheld as questions** — the transition is a
@@ -230,6 +231,12 @@ that publish a layer tree, One-Click reads the declared roles instead of inferri
 Plus the full manual kit — **Area, Rectangle, Linear, Curved Line, Surface Area (walls),
 Count**, and **Cut Out** deducts — and a **Zone check** that answers "what's in this wing?"
 without touching the takeoff.
+
+**⟂ Transitions** derives the line where two finishes meet, from rooms you already measured.
+Finishes changing inside one open space commit as a dashed butt-joint run you accept; rooms
+parallel across a wall are **reported and never counted**, because that transition is a
+threshold in a doorway no trace can locate — you get its length, the wall thickness, and a link
+that puts it on screen.
 
 <div align="center">
 <img src="docs/img/one-click-area.gif" alt="One-Click Area on a real finish plan: one click inside a patient room and the whole room traces itself wall to wall — 240.7 SF, committed on Enter" width="820"/>
@@ -396,7 +403,7 @@ plus a vision-capable model id.
 |---|---|
 | **Ingest** | PDF, image, or `.zip` plan set — unpacked in-browser, multi-page, multi-file, up to 4 sheets side-by-side |
 | **Scale** | Auto-detect the drawn note, calibrate from a known dimension, or verify one with a graded check — per sheet |
-| **Measure** | One-Click Area (vector flood + raster fallback), Area, Rectangle, Linear, Curved Line, Surface Area, Count, Cut Out deducts, Zone check — imperial or metric |
+| **Measure** | One-Click Area (vector flood + raster fallback), Area, Rectangle, Linear, Curved Line, Surface Area, Count, Cut Out deducts, ⟂ Transitions, Zone check — imperial or metric |
 | **Drawing aids** | 45°/90° angle lock with `⇧` hard-lock, live angle + segment-length readout at the cursor, endpoint Snap (beta) |
 | **Conditions** | Color + CAD hatch per finish, waste %, ×N multiplier, wall height, border thickness, schedule import, browser-wide library |
 | **Supporting Materials** | Labor + subfloor type, coverage rate × basis (incl. figured seam LF) → rounded order quantities, trowel/roller presets, grout calculator |
