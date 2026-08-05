@@ -5,7 +5,7 @@
 // door openings (NOT healed — an opening merges spaces, honestly).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { nodeSegments, snapSegments, extendDangles, polygonizeFaces, detectAllRooms, hardWallSegments } from "../src/lib/polygonize.ts";
+import { nodeSegments, snapSegments, extendDangles, polygonizeFaces, detectAllRooms, detectAllRoomsDetailed, hardWallSegments } from "../src/lib/polygonize.ts";
 import type { VectorGeometry } from "../src/lib/oneclick.ts";
 
 const rect = (x0: number, y0: number, x1: number, y1: number): number[] => [
@@ -74,6 +74,30 @@ test("short-drawn wall heals: dangle extends to the wall it was drawn to meet", 
   assert.equal(unhealed.length, 1, "under-cap shortfall stays open — one merged space");
 });
 
+test("door-line seal: a doorway splits the rooms at the threshold when scale is known", () => {
+  // same doorway geometry that merges when scale-blind (30px opening, blind
+  // bridge cap 24): at 10 px/ft the opening is a 3ft door and the 6ft bridge
+  // seals it — two rooms, both carrying seal provenance
+  const doorway = [
+    0, 0, 200, 0,  200, 0, 200, 80,  200, 80, 0, 80,  0, 80, 0, 0,
+    100, 0, 100, 25,   100, 55, 100, 80,
+  ];
+  const rooms = detectAllRooms(doorway, { pxPerFt: 10 });
+  assert.equal(rooms.length, 2, "the doorway is a threshold, not a merger");
+  assert.ok(rooms.every((r) => r.sealed), "both rings record the door-line seal");
+  for (const r of rooms) assert.ok(Math.abs(r.areaPx - 100 * 80) < 1);
+});
+
+test("door-line seal is blocked when solid linework crosses the gap", () => {
+  const doorway = [
+    0, 0, 200, 0,  200, 0, 200, 80,  200, 80, 0, 80,  0, 80, 0, 0,
+    100, 0, 100, 25,   100, 55, 100, 80,
+    80, 40, 120, 40,   // a stroke crossing the opening — jambs must not bridge through it
+  ];
+  const rooms = detectAllRooms(doorway, { pxPerFt: 10 });
+  assert.ok(rooms.every((r) => !r.sealed), "no bridge through solid ink");
+});
+
 test("nodeSegments splits at a proper crossing", () => {
   const out = nodeSegments([0, 0, 10, 10, 0, 10, 10, 0]);
   assert.equal(out.length >> 2, 4, "an X becomes four segments");
@@ -118,6 +142,52 @@ test("snapSegments: points that collide in a packed numeric key stay distinct", 
   // round(x/tol) at tol=1e-6 — the exact-weld tolerance polygonizeFaces uses
   const { verts } = snapSegments([0.262144, 0, 10, 10, 0, 0.000001, -10, 10], 1e-6);
   assert.equal(verts.length, 4, "four distinct endpoints, four vertices");
+});
+
+/** a regular polygon approximating a circle, as segment quads */
+const circle = (cx: number, cy: number, r: number, sides = 16): number[] => {
+  const out: number[] = [];
+  for (let i = 0; i < sides; i++) {
+    const a0 = (2 * Math.PI * i) / sides, a1 = (2 * Math.PI * (i + 1)) / sides;
+    out.push(cx + r * Math.cos(a0), cy + r * Math.sin(a0), cx + r * Math.cos(a1), cy + r * Math.sin(a1));
+  }
+  return out;
+};
+
+test("room-number bubble: a small near-circle is culled as a tag, the room stands", () => {
+  const { rooms, culled } = detectAllRoomsDetailed([...rect(0, 0, 300, 200), ...circle(150, 100, 12)]);
+  assert.equal(rooms.length, 1, "the room survives");
+  assert.ok(Math.abs(rooms[0].areaPx - 300 * 200) < 1, "room ring is the rect");
+  assert.equal(culled.tags, 1, "the bubble is counted, not silently dropped");
+});
+
+test("islands: schedule grid, casework and detail boxes die whole; the island room survives", () => {
+  const segs = [
+    ...rect(0, 0, 1000, 800),        // the plate
+    ...rect(100, 100, 400, 400),     // an island room inside the plate (11% of it — over the 5% bar)
+    ...rect(150, 150, 200, 190),     // casework drawn inside that room (its own tiny island)
+    ...rect(1100, 100, 1180, 160),   // a closed box outside the plate (detail border)
+    // a detached finish schedule: border + 8 uniform cells, all tiny islands
+    ...rect(1100, 300, 1344, 380),
+    ...Array.from({ length: 8 }, (_, i) => rect(1104 + i * 30, 304, 1104 + i * 30 + 26, 320)).flat(),
+  ];
+  const { rooms, culled } = detectAllRoomsDetailed(segs);
+  assert.equal(rooms.length, 3, "plate + island room (+ the in-room box: known residue, the area floor's job)");
+  const plate = rooms.find((r) => r.suspectOuter);
+  assert.ok(plate && Math.abs(plate.areaPx - 1000 * 800) < 1, "the plate is kept but flagged (dominant)");
+  assert.ok(rooms.some((r) => !r.suspectOuter && Math.abs(r.areaPx - 300 * 300) < 1), "the island room is a room");
+  assert.equal(culled.floaters, 10, "detail box + schedule border + 8 cells, all counted");
+});
+
+test("small island rooms inside a sparse plate are never culled (chain rule)", () => {
+  // 8 uniform island rooms of 150 SF inside a wing — each island is under the
+  // 5% component bar on its own, but the containment chain reaches the wing
+  const wing: number[] = [...rect(0, 0, 1300, 300)];
+  for (let i = 0; i < 8; i++) wing.push(...rect(10 + i * 160, 10, 10 + i * 160 + 150, 110));
+  const w = detectAllRoomsDetailed(wing, { pxPerFt: 10 });
+  assert.equal(w.rooms.length, 9, "wing face + 8 rooms all stand");
+  assert.equal(w.culled.floaters, 0, "nothing culled");
+  assert.equal(w.rooms.filter((r) => r.suspectOuter).length, 1, "the wing ring is flagged (dominant) — committing it would double-count");
 });
 
 test("hardWallSegments honors the mask's feet-true pitch cap", () => {

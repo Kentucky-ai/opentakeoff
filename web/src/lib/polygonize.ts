@@ -53,12 +53,20 @@ export interface RoomFace {
   /** true when an extended dangle participates in this ring's boundary —
    *  the ring exists partly because of a heal, so review it first. */
   healed: boolean;
+  /** true when a door-line bridge participates in this ring's boundary — the
+   *  space was separated from its neighbor at a doorway (expected takeoff
+   *  behavior, recorded for provenance). */
+  sealed: boolean;
   /** true when this face is bigger than the sum of all the others. On a
    *  degenerate trace that is the floor plate leaking through the sign
    *  filter; on a real sheet it can simply be the one big open room — the
    *  two are undecidable here, so the face is flagged for review, never
    *  silently dropped. */
   suspectOuter: boolean;
+  /** indices into opts.labelPts that landed in this face (each label binds to
+   *  the smallest face containing it — its room). One index = a named room;
+   *  several = spaces merged through an open doorway. */
+  labels?: number[];
 }
 
 export interface PolygonizeOptions {
@@ -72,6 +80,11 @@ export interface PolygonizeOptions {
   extendFt?: number;
   /** px fallback for extension when scale is unknown */
   extendPxFallback?: number;
+  /** widest doorway sealed at the door line, feet (default 6 — a double door;
+   *  0 disables sealing and open spaces merge honestly) */
+  bridgeFt?: number;
+  /** px fallback for the door-line bridge when scale is unknown */
+  bridgePxFallback?: number;
   /** smallest face kept, SF (default 4 — detectRooms' tiny threshold) */
   minAreaSf?: number;
   /** px² fallback when scale is unknown */
@@ -81,13 +94,33 @@ export interface PolygonizeOptions {
   minThickFt?: number;
   /** px fallback for thinness when scale is unknown */
   minThickPxFallback?: number;
+  /** largest face the round-tag cull may touch, SF (default 30) */
+  tagMaxSf?: number;
+  /** roundness (4πA/P²) above which a small face reads as a tag bubble
+   *  (default 0.88 — a square is ≈0.785, a circle ≈1) */
+  tagMinRoundness?: number;
+  /** a connected linework island is culled whole when its faces total less
+   *  than this fraction of the biggest island (default 0.05 — a schedule or
+   *  legend is sub-percent of the building; a second wing is comparable) */
+  minComponentFrac?: number;
+  /** room-tag text anchor points, image px (the sheet's own room numbers —
+   *  roomLabelSeeds' seed points). With ≥5 of them, the smallest face holding
+   *  most of them IS the plan region: linework neither connected to it,
+   *  contained in it, nor chained under a kept face is annotation (title
+   *  blocks, legends, schedules, detail blow-ups) regardless of its size —
+   *  at 1/8" scale a schedule cell spans more "plan feet" than a real room,
+   *  so no size rule can separate them. */
+  labelPts?: Pt[];
 }
 
 const D = {
   snapFt: 0.15, snapPxFloor: 2,
   extendFt: 1.0, extendPxFallback: 8,
+  bridgeFt: 6, bridgePxFallback: 24,
   minAreaSf: 4, minAreaPxFallback: 400,
   minThickFt: 0.75, minThickPxFallback: 6,
+  tagMaxSf: 30, tagMinRoundness: 0.88,
+  minComponentFrac: 0.05,
 };
 
 /** The hard-barrier segments of a sheet, flat quads [x1,y1,x2,y2,…] — the
@@ -259,13 +292,81 @@ export function extendDangles(
   return { added, count: added.length >> 2 };
 }
 
+/** Bridge doorway openings: pair MUTUAL-nearest degree-1 endpoints within
+ *  `maxBridge` px and connect them, unless anything solid crosses the gap.
+ *  Door jambs are exactly this — two wall ends facing each other across an
+ *  opening — and a flooring takeoff WANTS the room to end at the door line
+ *  (the transition lives at the threshold; Div 9 practice, and what the
+ *  seeded flood already does with its door-width seals). Bounded by door
+ *  width so a storefront or a genuinely open bay stays open. */
+export function bridgeDangles(
+  segs: number[], ends: number[], maxBridge: number, cell = 64,
+): { added: number[]; count: number } {
+  if (maxBridge <= 0) return { added: [], count: 0 };
+  const deg = new Map<number, number>();
+  for (const v of ends) deg.set(v, (deg.get(v) || 0) + 1);
+  // collect degree-1 endpoints with the direction their wall was heading
+  const tips: { x: number; y: number; dx: number; dy: number; v: number; seg: number }[] = [];
+  const n = segs.length >> 2;
+  for (let i = 0; i < n; i++) for (const end of [0, 1] as const) {
+    const v = ends[i * 2 + end];
+    if (deg.get(v) !== 1) continue;
+    const tx = segs[i * 4 + (end ? 2 : 0)], ty = segs[i * 4 + (end ? 3 : 1)];
+    const fx = segs[i * 4 + (end ? 0 : 2)], fy = segs[i * 4 + (end ? 1 : 3)];
+    const len = Math.hypot(tx - fx, ty - fy) || 1;
+    tips.push({ x: tx, y: ty, dx: (tx - fx) / len, dy: (ty - fy) / len, v, seg: i });
+  }
+  const grid = segGrid(segs, cell);
+  const blocked = (x1: number, y1: number, x2: number, y2: number): boolean => {
+    const cx0 = Math.floor(Math.min(x1, x2) / cell), cx1 = Math.floor(Math.max(x1, x2) / cell);
+    const cy0 = Math.floor(Math.min(y1, y2) / cell), cy1 = Math.floor(Math.max(y1, y2) / cell);
+    for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) {
+      for (const j of grid.get(cy * 131071 + cx) || []) {
+        if (segIntersect(x1, y1, x2, y2, segs[j * 4], segs[j * 4 + 1], segs[j * 4 + 2], segs[j * 4 + 3])) return true;
+      }
+    }
+    return false;
+  };
+  // mutual-nearest pairing; the connector must CONTINUE both walls (a door
+  // opening interrupts a wall line — leader lines and stray strokes point in
+  // arbitrary directions and must never seal a space shut)
+  const COLL = Math.cos((25 * Math.PI) / 180);
+  const collinear = (a: number, b: number): boolean => {
+    const cx = tips[b].x - tips[a].x, cy = tips[b].y - tips[a].y;
+    const len = Math.hypot(cx, cy) || 1;
+    return Math.abs((cx * tips[a].dx + cy * tips[a].dy) / len) >= COLL
+        && Math.abs((cx * tips[b].dx + cy * tips[b].dy) / len) >= COLL;
+  };
+  // nearest COLLINEAR candidate — on a double-line wall a jamb's two line
+  // ends sit wall-thickness apart, perpendicular; they must not consume each
+  // other's pairing, the opposite jamb's matching line must
+  const nearest = new Array<number>(tips.length).fill(-1);
+  for (let a = 0; a < tips.length; a++) {
+    let best = maxBridge * maxBridge, bi = -1;
+    for (let b = 0; b < tips.length; b++) {
+      if (b === a || tips[b].seg === tips[a].seg || !collinear(a, b)) continue;
+      const d = (tips[a].x - tips[b].x) ** 2 + (tips[a].y - tips[b].y) ** 2;
+      if (d > 0 && d < best) { best = d; bi = b; }
+    }
+    nearest[a] = bi;
+  }
+  const added: number[] = [];
+  for (let a = 0; a < tips.length; a++) {
+    const b = nearest[a];
+    if (b > a && nearest[b] === a && !blocked(tips[a].x, tips[a].y, tips[b].x, tips[b].y)) {
+      added.push(tips[a].x, tips[a].y, tips[b].x, tips[b].y);
+    }
+  }
+  return { added, count: added.length >> 2 };
+}
+
 /** Trace all faces of the arrangement via the rotation system: at each vertex
  *  the outgoing edges sort by angle; next(u→v) is the edge after (v→u) in
  *  clockwise order. Interior faces come back with one orientation sign, the
  *  outer face of each component with the other — the caller filters by sign
  *  (positive shoelace here, with y-down image coordinates). Dangles are
  *  trimmed first (a dead-end bounds nothing). */
-export function polygonizeFaces(segs: number[]): { ring: Pt[]; areaPx: number; perimPx: number }[] {
+export function polygonizeFaces(segs: number[]): { ring: Pt[]; areaPx: number; perimPx: number; holes: Pt[][] }[] {
   // weld exact coords → vertex ids (inputs already welded; this is just ids)
   const { verts, ends } = snapSegments(segs, 1e-6);
   // iteratively trim degree-1 vertices
@@ -301,9 +402,12 @@ export function polygonizeFaces(segs: number[]): { ring: Pt[]; areaPx: number; p
     const k = at.indexOf(hes[h].twin);
     hes[h].next = at[(k - 1 + at.length) % at.length];   // clockwise successor of the reverse
   }
-  // walk faces
+  // walk faces — positive rings are faces; negative rings are the hole
+  // boundaries of whichever face's region they puncture (a component's
+  // outside walk: the building outline is a hole of the sheet-frame face)
   const seen = new Uint8Array(hes.length);
-  const faces: { ring: Pt[]; areaPx: number; perimPx: number }[] = [];
+  const faces: { ring: Pt[]; areaPx: number; perimPx: number; holes: Pt[][] }[] = [];
+  const negRings: Pt[][] = [];
   for (let h0 = 0; h0 < hes.length; h0++) {
     if (seen[h0]) continue;
     const ring: Pt[] = [];
@@ -318,49 +422,280 @@ export function polygonizeFaces(segs: number[]): { ring: Pt[]; areaPx: number; p
       h = hes[h].next;
     } while (h !== h0 && ring.length <= hes.length);
     const areaPx = area2 / 2;
-    if (areaPx > EPS) faces.push({ ring, areaPx, perimPx: perim });
+    if (areaPx > EPS) faces.push({ ring, areaPx, perimPx: perim, holes: [] });
+    else if (areaPx < -EPS) negRings.push(ring);
+  }
+  // assign each hole to the smallest face whose ring contains it — the owner
+  // must be BIGGER than the hole (the hole's vertices lie on the rings of the
+  // faces it bounds, so containment against those is unreliable)
+  for (const hole of negRings) {
+    const holeArea = Math.abs(ringAreaOf(hole));
+    const [hx, hy] = hole[0];
+    let best = -1;
+    for (let i = 0; i < faces.length; i++) {
+      if (faces[i].areaPx <= holeArea) continue;
+      if (!pointInRing(hx, hy, faces[i].ring)) continue;
+      if (best === -1 || faces[i].areaPx < faces[best].areaPx) best = i;
+    }
+    if (best >= 0) faces[best].holes.push(hole);
   }
   return faces;
+}
+
+/** Signed shoelace area of a ring. */
+function ringAreaOf(ring: Pt[]): number {
+  let a2 = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const [x1, y1] = ring[i], [x2, y2] = ring[(i + 1) % ring.length];
+    a2 += x1 * y2 - x2 * y1;
+  }
+  return a2 / 2;
 }
 
 /** Whole-floor detection: hard segments → node → weld → heal → faces →
  *  room-plausible faces. All thresholds feet-true when `pxPerFt` is known,
  *  with documented px fallbacks when it isn't (weaker measurement, same
  *  posture as oneClickArgs' scaleBlind). */
+/** Ray-cast point-in-ring (ring implicitly closed). */
+function pointInRing(x: number, y: number, ring: Pt[]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** Area centroid of a ring (falls back to the first vertex when degenerate). */
+function ringCentroid(ring: Pt[]): Pt {
+  let a2 = 0, cx = 0, cy = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const [x1, y1] = ring[i], [x2, y2] = ring[(i + 1) % ring.length];
+    const c = x1 * y2 - x2 * y1;
+    a2 += c; cx += (x1 + x2) * c; cy += (y1 + y2) * c;
+  }
+  return a2 ? [cx / (3 * a2), cy / (3 * a2)] : [ring[0][0], ring[0][1]];
+}
+
+/** What the room-vs-annotation layer removed, by reason — surfaced so no cull
+ *  is ever silent. */
+export interface CullStats {
+  /** small near-circles: room-number bubbles, column tags */
+  tags: number;
+  /** faces in linework islands tiny next to the building: finish schedules,
+   *  legends, title-block cells, detail borders, freestanding annotation */
+  floaters: number;
+}
+
 export function detectAllRooms(hardSegs: number[], opts: PolygonizeOptions = {}): RoomFace[] {
+  return detectAllRoomsDetailed(hardSegs, opts).rooms;
+}
+
+/** Whole-floor detection with the room-vs-annotation layer and its receipts.
+ *
+ *  The arrangement gives every bounded face; a drawing also encloses things
+ *  that are NOT rooms — finish-schedule grids, legends, title-block cells,
+ *  room-number bubbles, casework. Turning faces into rooms is a containment
+ *  problem: build the tree of who sits inside whom (border ⊃ plate ⊃ rooms ⊃
+ *  annotation) and keep the faces that live directly under a plate-like
+ *  container. Every cull is counted in `culled` — never silent. */
+export function detectAllRoomsDetailed(hardSegs: number[], opts: PolygonizeOptions = {}): { rooms: RoomFace[]; culled: CullStats } {
   const ppf = Number.isFinite(opts.pxPerFt) && (opts.pxPerFt as number) > 0 ? (opts.pxPerFt as number) : 0;
   const snapTol = ppf > 0 ? Math.max(opts.snapPxFloor ?? D.snapPxFloor, (opts.snapFt ?? D.snapFt) * ppf) : (opts.snapPxFloor ?? D.snapPxFloor);
   const extPx = ppf > 0 ? (opts.extendFt ?? D.extendFt) * ppf : (opts.extendPxFallback ?? D.extendPxFallback);
   const minArea = ppf > 0 ? (opts.minAreaSf ?? D.minAreaSf) * ppf * ppf : (opts.minAreaPxFallback ?? D.minAreaPxFallback);
   const minThick = ppf > 0 ? (opts.minThickFt ?? D.minThickFt) * ppf : (opts.minThickPxFallback ?? D.minThickPxFallback);
+  // a room-number bubble is a small, nearly round face; rooms are rectangular
+  // (a square's roundness 4πA/P² is ≈0.785, a circle's ≈1)
+  const tagMaxArea = ppf > 0 ? (opts.tagMaxSf ?? D.tagMaxSf) * ppf * ppf : (opts.tagMaxSf ?? D.tagMaxSf) * (opts.minAreaPxFallback ?? D.minAreaPxFallback) / D.minAreaSf;
+  const tagRoundness = opts.tagMinRoundness ?? D.tagMinRoundness;
+  const culled: CullStats = { tags: 0, floaters: 0 };
+
+  const bridgePx = ppf > 0 ? (opts.bridgeFt ?? D.bridgeFt) * ppf : (opts.bridgePxFallback ?? D.bridgePxFallback);
 
   const noded = nodeSegments(hardSegs);
   const welded = snapSegments(noded, snapTol);
   const healed = extendDangles(welded.segs, welded.ends, extPx);
-  // re-node the union so each heal splits the segment it landed on (its hit
-  // point is a T-junction the arrangement must have)
-  const finalSegs = healed.count ? nodeSegments(welded.segs.concat(healed.added)) : welded.segs;
+  // door-line bridges pair the jambs the heal didn't own: a healed tip is
+  // already resolved, so it must not also bridge
+  const healedTips = new Set<string>();
+  for (let i = 0; i < healed.added.length; i += 4)
+    healedTips.add(`${Math.round(healed.added[i] * 8)},${Math.round(healed.added[i + 1] * 8)}`);
+  const bridgedRaw = bridgeDangles(welded.segs, welded.ends, bridgePx);
+  const bridged: number[] = [];
+  for (let i = 0; i < bridgedRaw.added.length; i += 4) {
+    const aKey = `${Math.round(bridgedRaw.added[i] * 8)},${Math.round(bridgedRaw.added[i + 1] * 8)}`;
+    const bKey = `${Math.round(bridgedRaw.added[i + 2] * 8)},${Math.round(bridgedRaw.added[i + 3] * 8)}`;
+    if (!healedTips.has(aKey) && !healedTips.has(bKey)) bridged.push(...bridgedRaw.added.slice(i, i + 4));
+  }
+  // re-node the union so each heal/bridge splits the segment it landed on
+  // (its hit point is a T-junction the arrangement must have)
+  const finalSegs = healed.count || bridged.length
+    ? nodeSegments(welded.segs.concat(healed.added, bridged))
+    : welded.segs;
   const healSet = new Set<string>();
   for (let i = 0; i < healed.added.length; i += 4)
     healSet.add(`${Math.round(healed.added[i])},${Math.round(healed.added[i + 1])}`);
+  const sealSet = new Set<string>();
+  for (let i = 0; i < bridged.length; i += 2)
+    sealSet.add(`${Math.round(bridged[i])},${Math.round(bridged[i + 1])}`);
   const faces = polygonizeFaces(finalSegs);
-  const rooms: RoomFace[] = [];
+  let rooms: RoomFace[] = [];
+  let holesOf: Pt[][][] = [];
   for (const f of faces) {
     if (f.areaPx < minArea) continue;
     if ((2 * f.areaPx) / f.perimPx < minThick) continue;     // wall-cavity sliver
+    if (f.areaPx < tagMaxArea && (4 * Math.PI * f.areaPx) / (f.perimPx * f.perimPx) > tagRoundness) { culled.tags++; continue; }
     const isHealed = f.ring.some(([x, y]) => healSet.has(`${Math.round(x)},${Math.round(y)}`));
-    rooms.push({ ring: f.ring, areaPx: f.areaPx, perimPx: f.perimPx, healed: isHealed, suspectOuter: false });
+    const isSealed = f.ring.some(([x, y]) => sealSet.has(`${Math.round(x)},${Math.round(y)}`));
+    rooms.push({ ring: f.ring, areaPx: f.areaPx, perimPx: f.perimPx, healed: isHealed, sealed: isSealed, suspectOuter: false });
+    holesOf.push(f.holes);
   }
-  // the outer face of a component can survive the sign filter only when the
-  // component is traversed inside-out (degenerate inputs). A face bigger than
-  // the sum of all the others is EITHER that floor plate OR a genuinely big
-  // open room (a warehouse floor with two closets) — undecidable from area
-  // alone, so it is flagged for review, never dropped.
+
+  // ── linework islands ────────────────────────────────────────────────────
+  // A finish schedule, legend or title block never shares a welded vertex
+  // with the building's walls — it is its own connected island of linework.
+  // ── containment tree ────────────────────────────────────────────────────
+  // Arrangement faces are disjoint, but their RINGS nest (an island room's
+  // ring sits inside the plate's outline ring). parent = smallest strictly-
+  // larger ring containing the centroid.
+  const n = rooms.length;
+  const order = rooms.map((_, i) => i).sort((a, b) => rooms[a].areaPx - rooms[b].areaPx);
+  const parent = new Array<number>(n).fill(-1);
+  const children: number[][] = Array.from({ length: n }, () => []);
+  for (let oi = 0; oi < n; oi++) {
+    const i = order[oi];
+    const [cx, cy] = ringCentroid(rooms[i].ring);
+    for (let oj = oi + 1; oj < n; oj++) {           // candidates ascend by area — first hit is the smallest container
+      const j = order[oj];
+      if (rooms[j].areaPx <= rooms[i].areaPx) continue;
+      if (pointInRing(cx, cy, rooms[j].ring)) { parent[i] = j; children[j].push(i); break; }
+    }
+  }
+
+  // ── label binding ───────────────────────────────────────────────────────
+  // Each room-tag point binds to the SMALLEST face containing it — its room.
+  // (`order` ascends by area, so the first hit is the smallest.)
+  const labelPts = opts.labelPts ?? [];
+  const labelFace = new Array<number>(labelPts.length).fill(-1);
+  for (let li = 0; li < labelPts.length; li++) {
+    for (let oi = 0; oi < n; oi++) {
+      const i = order[oi];
+      if (pointInRing(labelPts[li][0], labelPts[li][1], rooms[i].ring)) {
+        labelFace[li] = i;
+        (rooms[i].labels ??= []).push(li);
+        break;
+      }
+    }
+  }
+
+  // ── linework islands ────────────────────────────────────────────────────
+  // A finish schedule, legend or title block never shares a welded vertex
+  // with the building's walls — it is its own island of linework. With
+  // enough room tags, the plan region is FOUND, not guessed: the smallest
+  // face holding most of the tags is the building; keep its island, whatever
+  // its ring contains, and whatever chains under a kept face. Without tags,
+  // fall back to island size: keep islands carrying real area next to the
+  // biggest one. Schedule cells chain only to their own border and die.
+  const minFrac = opts.minComponentFrac ?? D.minComponentFrac;
+  {
+    const compOf = new Map<string, number>();      // welded vertex key → union-find node
+    const up: number[] = [];
+    const find = (a: number): number => { while (up[a] !== a) { up[a] = up[up[a]]; a = up[a]; } return a; };
+    const faceComp: number[] = [];
+    for (const r of rooms) {
+      let fc = -1;
+      for (const [x, y] of r.ring) {
+        const k = `${Math.round(x * 8)},${Math.round(y * 8)}`;
+        let c = compOf.get(k);
+        if (c === undefined) { c = up.length; up.push(c); compOf.set(k, c); }
+        if (fc === -1) fc = c;
+        else { const ra = find(fc), rb = find(c); if (ra !== rb) up[rb] = ra; }
+      }
+      faceComp.push(fc);
+    }
+    const compArea = new Map<number, number>();
+    const roots = faceComp.map((c) => (c === -1 ? -1 : find(c)));
+    roots.forEach((c, i) => compArea.set(c, (compArea.get(c) || 0) + rooms[i].areaPx));
+    const keep = new Array<boolean>(n).fill(false);
+    const maxArea = Math.max(0, ...compArea.values());
+    for (let oi = n - 1; oi >= 0; oi--) {           // descend by area so parents resolve before children
+      const i = order[oi];
+      keep[i] = (compArea.get(roots[i]) || 0) >= maxArea * minFrac || (parent[i] >= 0 && keep[parent[i]]);
+    }
+    if (keep.some((k) => !k)) {
+      culled.floaters = keep.filter((k) => !k).length;
+      const remap = new Array<number>(n).fill(-1);
+      let w = 0;
+      for (let i = 0; i < n; i++) if (keep[i]) remap[i] = w++;
+      const keptRooms: RoomFace[] = [], keptParent: number[] = [], keptChildren: number[][] = [], keptHoles: Pt[][][] = [];
+      for (let i = 0; i < n; i++) {
+        if (!keep[i]) continue;
+        keptRooms.push(rooms[i]);
+        keptHoles.push(holesOf[i]);
+        keptParent.push(parent[i] >= 0 && keep[parent[i]] ? remap[parent[i]] : -1);
+        keptChildren.push(children[i].filter((c) => keep[c]).map((c) => remap[c]));
+      }
+      rooms = keptRooms;
+      holesOf = keptHoles;
+      parent.length = 0; parent.push(...keptParent);
+      children.length = 0; children.push(...keptChildren);
+    }
+  }
+
+  // Review flags — never silent drops: a face whose children cover most of it
+  // (the sheet border over the plate, the plate over a dense floor) or that
+  // dwarfs everything else combined (the plate / corridor network / a huge
+  // open room — undecidable from area alone). Committing a flagged ring
+  // double-counts the rooms inside it, so the reviewer decides.
+  for (let i = 0; i < rooms.length; i++) {
+    const cov = children[i].reduce((s, c) => s + rooms[c].areaPx, 0) / rooms[i].areaPx;
+    if (children[i].length && cov > 0.5) rooms[i].suspectOuter = true;
+  }
   if (rooms.length > 2) {
     let mi = 0;
     for (let i = 1; i < rooms.length; i++) if (rooms[i].areaPx > rooms[mi].areaPx) mi = i;
     const rest = rooms.reduce((s, r) => s + r.areaPx, 0) - rooms[mi].areaPx;
     if (rooms[mi].areaPx > rest) rooms[mi].suspectOuter = true;
   }
-  return rooms;
+
+  // ── the region cull ─────────────────────────────────────────────────────
+  // A flagged face's REGION is its ring minus its holes. Rooms live in the
+  // holes (the building outline is a hole of the sheet-frame face); legends,
+  // notes and title blocks live in the region itself. Anything unflagged
+  // whose centroid sits in a flagged region is annotation — and whatever
+  // nests under a culled face goes with it.
+  {
+    const m = rooms.length;
+    const cullSet = new Array<boolean>(m).fill(false);
+    const flagged: number[] = [];
+    for (let i = 0; i < m; i++) if (rooms[i].suspectOuter) flagged.push(i);
+    // a hole is only sanctuary if the sheet's own room tags vouch for it —
+    // the building outline holds them, a legend's outline holds none. With
+    // too few tags to judge, every hole is sanctuary (never over-cull).
+    const holeHasTags = (holes: Pt[][], h: number): boolean =>
+      labelPts.length < 5 || labelPts.some(([lx, ly]) => pointInRing(lx, ly, holes[h]));
+    for (let i = 0; i < m; i++) {
+      if (rooms[i].suspectOuter) continue;
+      const [cx, cy] = ringCentroid(rooms[i].ring);
+      for (const f of flagged) {
+        if (f === i || rooms[f].areaPx <= rooms[i].areaPx) continue;
+        if (!pointInRing(cx, cy, rooms[f].ring)) continue;
+        let sanctuary = false;
+        for (let h = 0; h < holesOf[f].length; h++) {
+          if (pointInRing(cx, cy, holesOf[f][h]) && holeHasTags(holesOf[f], h)) { sanctuary = true; break; }
+        }
+        if (!sanctuary) { cullSet[i] = true; break; }
+      }
+    }
+    // descend: a face under a culled parent dies with it (legend cells under
+    // a culled legend box). Parents are larger, so walk by descending area.
+    const byAreaDesc = rooms.map((_, i) => i).sort((a, b) => rooms[b].areaPx - rooms[a].areaPx);
+    for (const i of byAreaDesc) if (!cullSet[i] && parent[i] >= 0 && cullSet[parent[i]]) cullSet[i] = true;
+    if (cullSet.some(Boolean)) {
+      culled.floaters += cullSet.filter(Boolean).length;
+      rooms = rooms.filter((_, i) => !cullSet[i]);
+    }
+  }
+  return { rooms, culled };
 }
