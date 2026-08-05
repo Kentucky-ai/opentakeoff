@@ -193,9 +193,18 @@ test("small island rooms inside a sparse plate are never culled (chain rule)", (
 const geomOf = (segs: number[], metaFlags: number[], dashed?: number[]) =>
   ({ points: [], segs, meta: Uint8Array.from(metaFlags), imageArea: 0, ...(dashed ? { dashed: Uint8Array.from(dashed) } : {}) } as unknown as VectorGeometry);
 
-test("dashed ink is never a wall", () => {
-  const g = geomOf([0, 0, 100, 0, 0, 5, 100, 5], [0, 0], [0, 1]);
-  assert.equal(hardWallSegments(g, 1).length >> 2, 1, "the dashed twin is dropped");
+test("unpaired dashed ink is never a wall; a dashed PAIR is an existing wall", () => {
+  // a lone dashed stroke far from anything (a match line) is dropped
+  const lone = geomOf([0, 0, 100, 0, 0, 30, 100, 30], [0, 0], [0, 1]);
+  assert.equal(hardWallSegments(lone, 1).length >> 2, 1, "the unpaired dashed stroke is dropped");
+  // dashed twins at wall thickness = an existing wall on a renovation plan
+  // (a solid pair rides along so the sheet has enough proven linework to
+  // engage walls mode — coverage is judged on solid ink only)
+  const pair = geomOf(
+    [0, 0, 100, 0, 0, 5, 100, 5, 0, 50, 100, 50, 0, 55, 100, 55],
+    [0, 0, 0, 0], [0, 0, 1, 1],
+  );
+  assert.equal(hardWallSegments(pair, 1).length >> 2, 4, "the dashed pair survives as an existing wall");
 });
 
 test("a door swing arc becomes its straight chord — the room ends at the door line", () => {
@@ -251,6 +260,28 @@ test("a revision-cloud squiggle never bounds a room; a radius wall still does", 
   assert.ok(rrooms[0].areaPx > 100 * 80, "…and includes the bay beyond the square corner");
 });
 
+test("wall-first: only paired linework bounds; keynote boxes stop existing", () => {
+  // a double-line room (6" wall at 12 px/ft) with a finish-keynote box inside —
+  // the box is wall-thickness tall, but a wall RUNS and a box doesn't
+  const segs = [...rect(0, 0, 212, 172), ...rect(6, 6, 206, 166), ...rect(50, 50, 90, 62)];
+  const meta = new Array(segs.length >> 2).fill(0);
+  const info: import("../src/lib/polygonize.ts").WallInfo = {};
+  const hard = hardWallSegments({ points: [], segs, meta: Uint8Array.from(meta), imageArea: 0 } as never, 1, undefined, 12, info);
+  assert.equal(info.mode, "walls", "paired coverage engages wall-first");
+  assert.equal(hard.length >> 2, 8, "eight wall faces — the keynote box paired with nothing");
+  const rooms = detectAllRooms(hard, { pxPerFt: 12 });
+  assert.equal(rooms.length, 1, "one room, no keynote-box phantom");
+  assert.ok(Math.abs(rooms[0].areaPx - 200 * 160) < 1, "bounded at the INNER wall face");
+});
+
+test("wall-first falls back to open linework on single-stroke plans", () => {
+  const segs = [...rect(0, 0, 200, 160), 100, 0, 100, 160, 0, 80, 200, 80];
+  const info: import("../src/lib/polygonize.ts").WallInfo = {};
+  const hard = hardWallSegments({ points: [], segs, meta: new Uint8Array(segs.length >> 2), imageArea: 0 } as never, 1, undefined, 12, info);
+  assert.equal(info.mode, "linework", "nothing pairs — subtractive mode");
+  assert.equal(detectAllRooms(hard, { pxPerFt: 12 }).length, 4, "the single-line grid still detects");
+});
+
 test("hardWallSegments honors the mask's feet-true pitch cap", () => {
   // a pitch-16 hatch field: soft under the scale-blind cap (24 px), HARD
   // under a feet-true cap of 12 px — hardWallSegments must land wherever the
@@ -263,5 +294,11 @@ test("hardWallSegments honors the mask's feet-true pitch cap", () => {
   // default cap: the field interior reads as hatch; the classifier keeps a
   // run's two bounding strokes hard (they may be real walls edging the field)
   assert.equal(hardWallSegments(geom, 1).length >> 2, 4 + 2, "default cap: field interior is soft");
-  assert.equal(hardWallSegments(geom, 1, 12).length >> 2, 4 + nLines, "tighter feet-true cap: the field is not hatch, its lines are walls");
+  // tighter cap: the field is DECLARED not-hatch, and its periodic parallel
+  // lines then pair as walls (wall-first can't re-litigate what the hatch
+  // classifier was told) — the unpaired outer rect drops in walls mode
+  const info: import("../src/lib/polygonize.ts").WallInfo = {};
+  const tight = hardWallSegments(geom, 1, 12, undefined, info);
+  assert.equal(info.mode, "walls");
+  assert.equal(tight.length >> 2, nLines, "the declared-hard field pairs as walls");
 });

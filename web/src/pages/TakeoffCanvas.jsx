@@ -3688,7 +3688,8 @@ export default function TakeoffCanvas() {
     // arrangement shatters on 2-ft tile/ceiling grids the flood just paints
     // over, so room-scale grids classify as fill here; demising-wall rhythm
     // (≥ 3 ft) stays hard on both surfaces
-    const hard = hardWallSegments({ points: [], segs, meta, imageArea: 0, dashed: segDashedRef.current.get(tp.key) }, mo.ws, Math.max(HATCH_MAX_PITCH_FT, 2.25) * pxPerFt * mo.ws, pxPerFt);
+    const wallInfo = {};
+    const hard = hardWallSegments({ points: [], segs, meta, imageArea: 0, dashed: segDashedRef.current.get(tp.key) }, mo.ws, Math.max(HATCH_MAX_PITCH_FT, 2.25) * pxPerFt * mo.ws, pxPerFt, wallInfo);
     // 12 SF floor: drops door leaves and fixture clusters, keeps closets
     const { rooms, culled } = detectAllRoomsDetailed(hard, { pxPerFt, minAreaSf: 12, labelPts: seeds.map((s) => s.seed) });
     const ms = Math.round(performance.now() - t0);
@@ -3717,7 +3718,7 @@ export default function TakeoffCanvas() {
     const namedN = regions.filter((r) => r.label).length, suspectN = regions.filter((r) => r.so).length;
     const cullBits = culled.tags + culled.floaters;
     const parts = [
-      `${regions.length} space${regions.length === 1 ? "" : "s"} proposed in ${ms}ms`,
+      `${regions.length} space${regions.length === 1 ? "" : "s"} proposed in ${ms}ms (${wallInfo.mode === "walls" ? "wall-first" : "open linework"})`,
       namedN ? `${namedN} named from room tags` : "",
       suspectN ? `${suspectN} red = sheet frame/plate, ⌫ it` : "",
       cullBits ? `${cullBits} annotation face${cullBits === 1 ? "" : "s"} auto-skipped` : "",

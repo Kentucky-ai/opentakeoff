@@ -136,7 +136,11 @@ const D = {
  *    and stays.
  *  buildMask's inset-annotation-ring softening is NOT replicated here — a
  *  known, accepted gap. */
-export function hardWallSegments(geom: VectorGeometry, ws: number, pitchCapPx?: number, pxPerFt?: number): number[] {
+/** Optional out-parameter for hardWallSegments: which classification mode ran
+ *  and how much of the long linework proved itself as walls. */
+export interface WallInfo { mode?: "walls" | "linework"; coverage?: number; }
+
+export function hardWallSegments(geom: VectorGeometry, ws: number, pitchCapPx?: number, pxPerFt?: number, info?: WallInfo): number[] {
   const n = geom.segs.length >> 2;
   const soft = classifyHatchSegs(geom.segs, geom.meta, ws, pitchCapPx);
   const s = geom.segs;
@@ -174,15 +178,129 @@ export function hardWallSegments(geom: VectorGeometry, ws: number, pitchCapPx?: 
     } else if (runStart >= 0) closeRun(i);
   }
   closeRun(n);
-  const out: number[] = [];
+  // candidates that survived the subtractive filters, with provenance:
+  // auto = 1 for kept curve chords (radius walls — concentric arcs don't pair
+  // chord-by-chord) and door chords (they exist only because a swing marked a
+  // doorway) — they are walls by construction. Dashed candidates ride along
+  // UNPAIRED-dropped but PAIRABLE: a dashed PAIR is an existing wall on a
+  // renovation plan; a lone dashed stroke is a match line.
+  const cand: number[] = [];
+  const auto: number[] = [];
+  const dashCand: number[] = [];
   for (let i = 0; i < n; i++) {
     if (geom.meta[i] & SEG_CLIP) continue;   // invisible ink
     if (soft[i]) continue;                   // periodic fill, not a wall
-    if (geom.dashed && geom.dashed[i]) continue;  // dashed ink is never a wall
     if (dropCurve[i]) continue;              // swing / cloud / circle
-    out.push(s[i * 4], s[i * 4 + 1], s[i * 4 + 2], s[i * 4 + 3]);
+    cand.push(s[i * 4], s[i * 4 + 1], s[i * 4 + 2], s[i * 4 + 3]);
+    auto.push(geom.meta[i] & SEG_CURVE ? 1 : 0);
+    dashCand.push(geom.dashed && geom.dashed[i] ? 1 : 0);
   }
-  out.push(...chordAdd);
+  for (let k = 0; k < chordAdd.length; k += 4) { cand.push(chordAdd[k], chordAdd[k + 1], chordAdd[k + 2], chordAdd[k + 3]); auto.push(1); dashCand.push(0); }
+
+  // ── wall-first: a boundary must PROVE it is a wall ──────────────────────
+  // A drawn wall is two near-parallel strokes a wall-thickness apart running
+  // together. Keynote boxes, text, leaders, grid lines can't pair — they stop
+  // existing as boundaries. Engages only when the sheet's long linework pairs
+  // convincingly; single-line plans fall back to the subtractive set.
+  const walled = wallPairFilter(cand, auto, dashCand, pxPerFt);
+  if (info) { info.mode = walled ? "walls" : "linework"; info.coverage = wallCoverageLast; }
+  if (walled) return walled;
+  // fallback: the subtractive set, minus dashed ink (unpaired dash = annotation)
+  const out: number[] = [];
+  for (let k = 0; k < cand.length >> 2; k++) {
+    if (dashCand[k]) continue;
+    out.push(cand[k * 4], cand[k * 4 + 1], cand[k * 4 + 2], cand[k * 4 + 3]);
+  }
+  return out;
+}
+
+let wallCoverageLast = 0;
+
+/** Perpendicular distance from point to an infinite line through (x1,y1)→dir. */
+function perpDist(px: number, py: number, x1: number, y1: number, dx: number, dy: number): number {
+  return Math.abs((px - x1) * dy - (py - y1) * dx);
+}
+
+/** Mark segments that pair as wall faces (near-parallel, wall-thickness
+ *  offset, real overlap), plus end caps bridging two marked faces, plus the
+ *  auto set. Returns the marked quads, or null when paired coverage of the
+ *  long straight linework is too low to trust (single-line plan). */
+function wallPairFilter(cand: number[], auto: number[], dashCand: number[], pxPerFt?: number): number[] | null {
+  const m = cand.length >> 2;
+  const ppf = pxPerFt && pxPerFt > 0 ? pxPerFt : 0;
+  const minLen = ppf ? Math.max(6, 0.9 * ppf) : 12;          // pairing considers strokes ≥ ~1 ft
+  const bandLo = ppf ? Math.max(1.5, (2.5 / 12) * ppf) : 2;  // thinnest wall ≈ 2.5"
+  const bandHi = ppf ? 1.5 * ppf : 20;                       // thickest assembly ≈ 18"
+  const SIN_TOL = Math.sin((4 * Math.PI) / 180);
+  const grid = segGrid(cand, 64);
+  const mark = new Uint8Array(m);
+  const dir = (i: number): [number, number, number] => {
+    const dx = cand[i * 4 + 2] - cand[i * 4], dy = cand[i * 4 + 3] - cand[i * 4 + 1];
+    const len = Math.hypot(dx, dy) || 1;
+    return [dx / len, dy / len, len];
+  };
+  for (let i = 0; i < m; i++) {
+    if (auto[i]) { mark[i] = 1; continue; }
+    if (mark[i]) continue;
+    const [dxi, dyi, li] = dir(i);
+    if (li < minLen) continue;
+    const seen = new Set<number>();
+    const cx0 = Math.floor((Math.min(cand[i * 4], cand[i * 4 + 2]) - bandHi) / 64), cx1 = Math.floor((Math.max(cand[i * 4], cand[i * 4 + 2]) + bandHi) / 64);
+    const cy0 = Math.floor((Math.min(cand[i * 4 + 1], cand[i * 4 + 3]) - bandHi) / 64), cy1 = Math.floor((Math.max(cand[i * 4 + 1], cand[i * 4 + 3]) + bandHi) / 64);
+    outer: for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) {
+      for (const j of grid.get(cy * 131071 + cx) || []) {
+        if (j === i || seen.has(j)) continue; seen.add(j);
+        const [dxj, dyj, lj] = dir(j);
+        if (lj < minLen) continue;
+        if (Math.abs(dxi * dyj - dyi * dxj) > SIN_TOL) continue;          // not parallel
+        const d0 = perpDist(cand[j * 4], cand[j * 4 + 1], cand[i * 4], cand[i * 4 + 1], dxi, dyi);
+        const d1 = perpDist(cand[j * 4 + 2], cand[j * 4 + 3], cand[i * 4], cand[i * 4 + 1], dxi, dyi);
+        const d = (d0 + d1) / 2;
+        if (d < bandLo || d > bandHi || Math.abs(d0 - d1) > bandLo) continue;  // outside the thickness band / skewed
+        const s0 = (cand[j * 4] - cand[i * 4]) * dxi + (cand[j * 4 + 1] - cand[i * 4 + 1]) * dyi;
+        const s1 = (cand[j * 4 + 2] - cand[i * 4]) * dxi + (cand[j * 4 + 3] - cand[i * 4 + 1]) * dyi;
+        const ov = Math.min(li, Math.max(s0, s1)) - Math.max(0, Math.min(s0, s1));
+        if (ov < 0.5 * Math.min(li, lj)) continue;                        // barely alongside
+        if (ov < 3.5 * d) continue;   // a wall RUNS — a keynote/tag box is wall-thickness tall but never 3.5× longer than it
+        mark[i] = 1; mark[j] = 1;
+        break outer;
+      }
+    }
+  }
+  // coverage check BEFORE caps: how much of the real (long, straight,
+  // undashed) linework proved itself?
+  let markedLen = 0, totalLen = 0;
+  for (let i = 0; i < m; i++) {
+    if (auto[i] || dashCand[i]) continue;
+    const [, , len] = dir(i);
+    if (len < minLen) continue;
+    totalLen += len;
+    if (mark[i]) markedLen += len;
+  }
+  wallCoverageLast = totalLen > 0 ? markedLen / totalLen : 0;
+  if (wallCoverageLast < 0.35) return null;
+  // end caps: a stroke whose BOTH endpoints land on marked walls closes a
+  // wall end / jamb — it belongs to the assembly
+  const capTol = ppf ? Math.max(2, 0.25 * ppf) : 3;
+  const near = (px: number, py: number): boolean => {
+    const cxm = Math.floor(px / 64), cym = Math.floor(py / 64);
+    for (let cy = cym - 1; cy <= cym + 1; cy++) for (let cx = cxm - 1; cx <= cxm + 1; cx++) {
+      for (const j of grid.get(cy * 131071 + cx) || []) {
+        if (!mark[j]) continue;
+        const [djx, djy, ljn] = dir(j);
+        const t = Math.max(0, Math.min(ljn, (px - cand[j * 4]) * djx + (py - cand[j * 4 + 1]) * djy));
+        const qx = cand[j * 4] + djx * t, qy = cand[j * 4 + 1] + djy * t;
+        if (Math.hypot(px - qx, py - qy) <= capTol) return true;
+      }
+    }
+    return false;
+  };
+  for (let i = 0; i < m; i++) {
+    if (mark[i]) continue;
+    if (near(cand[i * 4], cand[i * 4 + 1]) && near(cand[i * 4 + 2], cand[i * 4 + 3])) mark[i] = 1;
+  }
+  const out: number[] = [];
+  for (let i = 0; i < m; i++) if (mark[i]) out.push(cand[i * 4], cand[i * 4 + 1], cand[i * 4 + 2], cand[i * 4 + 3]);
   return out;
 }
 
@@ -587,8 +705,16 @@ export function detectAllRoomsDetailed(hardSegs: number[], opts: PolygonizeOptio
   let rooms: RoomFace[] = [];
   let holesOf: Pt[][][] = [];
   for (const f of faces) {
-    if (f.areaPx < minArea) continue;
-    if ((2 * f.areaPx) / f.perimPx < minThick) continue;     // wall-cavity sliver
+    // filters run on the NET region — ring minus holes — or a nested cavity
+    // (outer wall line wrapping the inner) masquerades as a room-sized face
+    let holeArea = 0, holePerim = 0;
+    for (const h of f.holes) {
+      holeArea += Math.abs(ringAreaOf(h));
+      for (let k = 0; k < h.length; k++) { const [x1, y1] = h[k], [x2, y2] = h[(k + 1) % h.length]; holePerim += Math.hypot(x2 - x1, y2 - y1); }
+    }
+    const net = f.areaPx - holeArea;
+    if (net < minArea) continue;
+    if ((2 * net) / (f.perimPx + holePerim) < minThick) continue;   // wall-cavity sliver
     if (f.areaPx < tagMaxArea && (4 * Math.PI * f.areaPx) / (f.perimPx * f.perimPx) > tagRoundness) { culled.tags++; continue; }
     const isHealed = f.ring.some(([x, y]) => healSet.has(`${Math.round(x)},${Math.round(y)}`));
     const isSealed = f.ring.some(([x, y]) => sealSet.has(`${Math.round(x)},${Math.round(y)}`));
