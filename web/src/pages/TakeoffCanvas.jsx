@@ -582,6 +582,7 @@ export default function TakeoffCanvas() {
   const snapGridsRef = useRef(new Map()); // sheetKey → {cell, map} spatial hash of vector endpoints
   const vectorSegsRef = useRef(new Map()); // sheetKey → flat [x1,y1,x2,y2,…] linework segments (One-Click boundary source)
   const segMetaRef = useRef(new Map());    // sheetKey → per-segment meta bytes (hatch classification input)
+  const segDashedRef = useRef(new Map());  // sheetKey → per-segment dash flags (whole-floor wall classification)
   // PDF layers (#85): the op walk's per-segment OCG attribution + the sheet's
   // classified layer table. Engine reads go through REFS (rolesForSheet runs
   // inside click paths — a just-resolved table must be visible before React
@@ -1626,10 +1627,11 @@ export default function TakeoffCanvas() {
         // snap-to-vector index per panel (best-effort; off until the user enables it)
         m.pageObj.getOperatorList().then(async (ol) => {
           if (stale()) return;
-          const { points, segs, meta, imageArea, layerOf, layerIds } = extractVectorGeometry(ol, m.viewport.transform, pdfjsLib.OPS);
+          const { points, segs, meta, imageArea, layerOf, layerIds, dashed } = extractVectorGeometry(ol, m.viewport.transform, pdfjsLib.OPS);
           snapGridsRef.current.set(m.key, buildSnapGrid(points, SNAP_CELL));
           vectorSegsRef.current.set(m.key, segs);
           segMetaRef.current.set(m.key, meta);
+          segDashedRef.current.set(m.key, dashed);
           // raster-fallback trigger signals: how much of the sheet is placed
           // image, and whether the vector linework is dense enough to bound rooms
           sheetStatsRef.current.set(m.key, { segCount: segs.length >> 2, imageFrac: Math.min(1, imageArea / (m.w * m.h)) });
@@ -3682,7 +3684,11 @@ export default function TakeoffCanvas() {
     if (toolRef.current !== "oneclick" || proposalRef.current) return { ok: false, message: "" };  // stale after await
     const pxPerFt = 1 / upp;
     const t0 = performance.now();
-    const hard = hardWallSegments({ points: [], segs, meta, imageArea: 0 }, mo.ws, HATCH_MAX_PITCH_FT * pxPerFt * mo.ws);
+    // pitch cap DELIBERATELY wider than the mask's (2.25 ft vs 4/3 ft): the
+    // arrangement shatters on 2-ft tile/ceiling grids the flood just paints
+    // over, so room-scale grids classify as fill here; demising-wall rhythm
+    // (≥ 3 ft) stays hard on both surfaces
+    const hard = hardWallSegments({ points: [], segs, meta, imageArea: 0, dashed: segDashedRef.current.get(tp.key) }, mo.ws, Math.max(HATCH_MAX_PITCH_FT, 2.25) * pxPerFt * mo.ws, pxPerFt);
     // 12 SF floor: drops door leaves and fixture clusters, keeps closets
     const { rooms, culled } = detectAllRoomsDetailed(hard, { pxPerFt, minAreaSf: 12, labelPts: seeds.map((s) => s.seed) });
     const ms = Math.round(performance.now() - t0);

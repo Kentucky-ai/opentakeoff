@@ -42,7 +42,7 @@ export type OpsTable = Record<string, number>;
  *  this module never resolves it, which is what keeps it pure. Optional so
  *  hand-built geometry (rastermask, tests) needs no ceremony; extraction
  *  always emits both (empty table on an unlayered sheet). */
-export interface VectorGeometry { points: Point[]; segs: number[]; meta: Uint8Array; imageArea: number; layerOf?: Int32Array; layerIds?: string[]; }
+export interface VectorGeometry { points: Point[]; segs: number[]; meta: Uint8Array; imageArea: number; layerOf?: Int32Array; layerIds?: string[]; /** 1 = drawn with a dash pattern (match lines, property lines, hidden edges) — never a wall */ dashed?: Uint8Array; }
 export interface MaskObj { mask: Uint8Array; mw: number; mh: number; ws: number; softCount: number; mppf?: number; }  // mppf: mask px per foot (0/absent = scale unknown)
 export interface RegionResult { region: Uint8Array; mw: number; mh: number; ws: number; count?: number; }
 export type FloodResult =
@@ -253,7 +253,9 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
   let imageArea = 0;
   let m = transform.slice();
   let lw = 1;                          // graphics-state line width (user space)
-  const stack: Array<[number[], number]> = [];
+  let dash = false;                    // graphics-state dash pattern active
+  const dashedArr: number[] = [];
+  const stack: Array<[number[], number, boolean]> = [];
   // Marked-content / Optional Content (#85): a purely SEQUENTIAL stack — not
   // graphics state, so save/restore never touches it, and a Form XObject with
   // /OC arrives as its own begin/end pair around the form's ops (the worker
@@ -287,13 +289,14 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
   };
   for (let i = 0; i < fns.length; i++) {
     const fn = fns[i], args = A[i];
-    if (fn === OPS.save) stack.push([m.slice(), lw]);
-    else if (fn === OPS.restore) { const p = stack.pop(); if (p) { m = p[0]; lw = p[1]; } }
+    if (fn === OPS.save) stack.push([m.slice(), lw, dash]);
+    else if (fn === OPS.restore) { const p = stack.pop(); if (p) { m = p[0]; lw = p[1]; dash = p[2]; } }
     else if (fn === OPS.transform) m = mul(m, args);
     else if (fn === OPS.setLineWidth) lw = args[0];
-    else if (fn === OPS.setGState) { for (const pr of args[0] || []) if (pr && pr[0] === "LW") lw = pr[1]; }
-    else if (fn === OPS.paintFormXObjectBegin) { stack.push([m.slice(), lw]); if (args && args[0]) m = mul(m, args[0]); }
-    else if (fn === OPS.paintFormXObjectEnd) { const p = stack.pop(); if (p) { m = p[0]; lw = p[1]; } }
+    else if (fn === OPS.setDash) dash = !!(args[0] && args[0].length);
+    else if (fn === OPS.setGState) { for (const pr of args[0] || []) { if (pr && pr[0] === "LW") lw = pr[1]; else if (pr && pr[0] === "D") dash = !!(pr[1] && pr[1][0] && pr[1][0].length); } }
+    else if (fn === OPS.paintFormXObjectBegin) { stack.push([m.slice(), lw, dash]); if (args && args[0]) m = mul(m, args[0]); }
+    else if (fn === OPS.paintFormXObjectEnd) { const p = stack.pop(); if (p) { m = p[0]; lw = p[1]; dash = p[2]; } }
     else if (fn === OPS.beginMarkedContent) { mcStack.push(-1); }
     else if (fn === OPS.beginMarkedContentProps) {
       // worker emits ["OC", data] where data is {type:"OCG", id}, an OCMD
@@ -366,8 +369,9 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
       const ops = args[0], co = args[1];
       let c = 0, cur: Point | null = null, start: Point | null = null;
       const pathLayer = curLayer;   // one path = one marked-content scope (#85)
+      const pd = dash ? 1 : 0;      // one path = one dash state (setDash is a graphics op)
       const visit = (p: Point) => { points.push(p); };
-      const lineTo = (p: Point) => { if (cur) { segs.push(cur[0], cur[1], p[0], p[1]); metaArr.push(flags); layerOfArr.push(pathLayer); } cur = p; visit(p); };
+      const lineTo = (p: Point) => { if (cur) { segs.push(cur[0], cur[1], p[0], p[1]); metaArr.push(flags); layerOfArr.push(pathLayer); dashedArr.push(pd); } cur = p; visit(p); };
       for (const op of ops) {
         if (op === OPS.moveTo) { cur = tx(co[c], co[c + 1]); start = cur; visit(cur); c += 2; }
         else if (op === OPS.lineTo) { lineTo(tx(co[c], co[c + 1])); c += 2; }
@@ -385,16 +389,16 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
               u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
               u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1],
             ];
-            if (cur) { segs.push(cur[0], cur[1], q[0], q[1]); metaArr.push(flags | SEG_CURVE); layerOfArr.push(pathLayer); }
+            if (cur) { segs.push(cur[0], cur[1], q[0], q[1]); metaArr.push(flags | SEG_CURVE); layerOfArr.push(pathLayer); dashedArr.push(pd); }
             cur = q;
           }
           visit(p3);
         }
-        else if (op === OPS.closePath) { if (cur && start) { segs.push(cur[0], cur[1], start[0], start[1]); metaArr.push(flags); layerOfArr.push(pathLayer); cur = start; } }
+        else if (op === OPS.closePath) { if (cur && start) { segs.push(cur[0], cur[1], start[0], start[1]); metaArr.push(flags); layerOfArr.push(pathLayer); dashedArr.push(pd); cur = start; } }
         else if (op === OPS.rectangle) {
           const x = co[c], y = co[c + 1], w = co[c + 2], h = co[c + 3]; c += 4;
           const q: Point[] = [tx(x, y), tx(x + w, y), tx(x + w, y + h), tx(x, y + h)];
-          for (let k = 0; k < 4; k++) { const a = q[k], b = q[(k + 1) % 4]; segs.push(a[0], a[1], b[0], b[1]); metaArr.push(flags); layerOfArr.push(pathLayer); visit(a); }
+          for (let k = 0; k < 4; k++) { const a = q[k], b = q[(k + 1) % 4]; segs.push(a[0], a[1], b[0], b[1]); metaArr.push(flags); layerOfArr.push(pathLayer); dashedArr.push(pd); visit(a); }
           cur = q[0]; start = q[0];
         }
       }
@@ -402,7 +406,7 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
   }
   const meta = Uint8Array.from(metaArr);
   markPolylineArcs(segs, meta);
-  return { points, segs, meta, imageArea, layerOf: Int32Array.from(layerOfArr), layerIds };
+  return { points, segs, meta, imageArea, layerOf: Int32Array.from(layerOfArr), layerIds, dashed: Uint8Array.from(dashedArr) };
 }
 
 // ── 1b. polyline arc detection ─────────────────────────────────────────────

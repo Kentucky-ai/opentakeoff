@@ -190,6 +190,67 @@ test("small island rooms inside a sparse plate are never culled (chain rule)", (
   assert.equal(w.rooms.filter((r) => r.suspectOuter).length, 1, "the wing ring is flagged (dominant) — committing it would double-count");
 });
 
+const geomOf = (segs: number[], metaFlags: number[], dashed?: number[]) =>
+  ({ points: [], segs, meta: Uint8Array.from(metaFlags), imageArea: 0, ...(dashed ? { dashed: Uint8Array.from(dashed) } : {}) } as unknown as VectorGeometry);
+
+test("dashed ink is never a wall", () => {
+  const g = geomOf([0, 0, 100, 0, 0, 5, 100, 5], [0, 0], [0, 1]);
+  assert.equal(hardWallSegments(g, 1).length >> 2, 1, "the dashed twin is dropped");
+});
+
+test("a door swing arc becomes its straight chord — the room ends at the door line", () => {
+  // doorway walls + a swing drawn as a bulging arc whose chord IS the threshold
+  const walls = [
+    0, 0, 200, 0,  200, 0, 200, 80,  200, 80, 0, 80,  0, 80, 0, 0,
+    100, 0, 100, 25,   100, 55, 100, 80,
+  ];
+  const arc: number[] = [];
+  const meta: number[] = new Array(walls.length >> 2).fill(0);
+  const cx = 100, cy = 40, r = 15;
+  for (let k = 0; k < 4; k++) {
+    const a0 = -Math.PI / 2 + (k * Math.PI) / 4, a1 = -Math.PI / 2 + ((k + 1) * Math.PI) / 4;
+    arc.push(cx + r * Math.cos(a0), cy + r * Math.sin(a0), cx + r * Math.cos(a1), cy + r * Math.sin(a1));
+    meta.push(1);   // SEG_CURVE
+  }
+  const hard = hardWallSegments(geomOf([...walls, ...arc], meta), 1, undefined, 10);
+  assert.equal(hard.length >> 2, (walls.length >> 2) + 1, "four arc chords → one straight chord");
+  const rooms = detectAllRooms(hard, { pxPerFt: 10 });
+  assert.equal(rooms.length, 2, "the chord closes the doorway");
+  for (const r2 of rooms) assert.ok(Math.abs(r2.areaPx - 100 * 80) < 1, "straight threshold — exact halves, no scallop");
+});
+
+test("a revision-cloud squiggle never bounds a room; a radius wall still does", () => {
+  // cloud: three semicircle bumps chained across the room interior
+  const cloud: number[] = [];
+  const cmeta: number[] = [];
+  for (let b = 0; b < 3; b++) {
+    const cx = 70 + b * 20, cy = 40, r = 10;
+    for (let k = 0; k < 4; k++) {
+      const a0 = Math.PI + (k * Math.PI) / 4, a1 = Math.PI + ((k + 1) * Math.PI) / 4;
+      cloud.push(cx + r * Math.cos(a0), cy + r * Math.sin(a0), cx + r * Math.cos(a1), cy + r * Math.sin(a1));
+      cmeta.push(1);
+    }
+  }
+  const rect1 = rect(0, 0, 200, 80);
+  const g = geomOf([...rect1, ...cloud], [...new Array(rect1.length >> 2).fill(0), ...cmeta]);
+  const rooms = detectAllRooms(hardWallSegments(g, 1, undefined, 10), { pxPerFt: 10 });
+  assert.equal(rooms.length, 1, "the cloud is ignored — one room, unsplit");
+
+  // radius wall: a quarter arc (span 113 px, gentle) must stay a boundary
+  const rw: number[] = [0, 0, 100, 0];
+  const rmeta: number[] = [0];
+  for (let k = 0; k < 6; k++) {
+    const a0 = -Math.PI / 2 + (k * Math.PI) / 12, a1 = -Math.PI / 2 + ((k + 1) * Math.PI) / 12;
+    rw.push(100 + 80 * Math.cos(a0), 80 + 80 * Math.sin(a0), 100 + 80 * Math.cos(a1), 80 + 80 * Math.sin(a1));
+    rmeta.push(1);
+  }
+  rw.push(180, 80, 0, 80,  0, 80, 0, 0);
+  rmeta.push(0, 0);
+  const rrooms = detectAllRooms(hardWallSegments(geomOf(rw, rmeta), 1, undefined, 10), { pxPerFt: 10 });
+  assert.equal(rrooms.length, 1, "the curved room closes through its radius wall");
+  assert.ok(rrooms[0].areaPx > 100 * 80, "…and includes the bay beyond the square corner");
+});
+
 test("hardWallSegments honors the mask's feet-true pitch cap", () => {
   // a pitch-16 hatch field: soft under the scale-blind cap (24 px), HARD
   // under a feet-true cap of 12 px — hardWallSegments must land wherever the

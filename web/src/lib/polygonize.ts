@@ -39,7 +39,7 @@
 // with a px floor, and every ring reports which healing steps produced it
 // (`healed`) so a reviewer can distrust exactly the welded ones.
 
-import { classifyHatchSegs, SEG_CLIP, type VectorGeometry } from "./oneclick.ts";
+import { classifyHatchSegs, SEG_CLIP, SEG_CURVE, type VectorGeometry } from "./oneclick.ts";
 
 export type Pt = [number, number];
 
@@ -123,22 +123,66 @@ const D = {
   minComponentFrac: 0.05,
 };
 
-/** The hard-barrier segments of a sheet, flat quads [x1,y1,x2,y2,…] — the
- *  same authority buildMask plots as bit 1. `ws` is the mask scale hatch
- *  classification runs at, and `pitchCapPx` the hatch pitch cap — pass the
- *  SAME values the mask build uses (feet-true `HATCH_MAX_PITCH_FT * mppf`
- *  when the scale is known, see buildMask) so the two surfaces cannot
- *  disagree about what is hatch. buildMask's second soft contributor (inset
- *  annotation rings) is NOT replicated here — a known, accepted gap. */
-export function hardWallSegments(geom: VectorGeometry, ws: number, pitchCapPx?: number): number[] {
+/** The hard-barrier segments of a sheet, flat quads [x1,y1,x2,y2,…] — what
+ *  the arrangement may treat as a wall. Starts from the mask's authority
+ *  (`ws` + `pitchCapPx` = the same hatch classification buildMask runs) and
+ *  removes what a wall can never be:
+ *  - DASHED ink (match lines, property lines, hidden edges) — geom.dashed.
+ *  - SHORT-SPAN curve runs: door/window swings. Dropping the arc leaves the
+ *    jambs as tips and bridgeDangles seals the threshold STRAIGHT — the room
+ *    ends at the door line instead of scalloping around the swing.
+ *  - HIGH-BEND curve runs (arc length ≫ end-to-end span): revision clouds,
+ *    scallop chains, circles. A radius WALL is a gentle arc (ratio ≈1.1)
+ *    and stays.
+ *  buildMask's inset-annotation-ring softening is NOT replicated here — a
+ *  known, accepted gap. */
+export function hardWallSegments(geom: VectorGeometry, ws: number, pitchCapPx?: number, pxPerFt?: number): number[] {
   const n = geom.segs.length >> 2;
   const soft = classifyHatchSegs(geom.segs, geom.meta, ws, pitchCapPx);
+  const s = geom.segs;
+  // curve-run analysis: the extractor emits an arc's chords consecutively, so
+  // a run = consecutive SEG_CURVE segs chained end-to-start. A short-span run
+  // (a swing) is REPLACED by its chord — dropping it outright would leave the
+  // doorway open when the straight door leaf keeps the hinge jamb busy, and
+  // the chord is the straight closure the scallops were approximating. A
+  // high-bend run (cloud, scallop chain, circle) is dropped outright.
+  const dropCurve = new Uint8Array(n);
+  const chordAdd: number[] = [];
+  const swingSpan = pxPerFt && pxPerFt > 0 ? 5 * pxPerFt : 40;   // widest door swing, px
+  let runStart = -1;
+  const closeRun = (endExcl: number) => {
+    if (runStart < 0) return;
+    let arcLen = 0;
+    for (let k = runStart; k < endExcl; k++) arcLen += Math.hypot(s[k * 4 + 2] - s[k * 4], s[k * 4 + 3] - s[k * 4 + 1]);
+    const x0 = s[runStart * 4], y0 = s[runStart * 4 + 1];
+    const x1 = s[(endExcl - 1) * 4 + 2], y1 = s[(endExcl - 1) * 4 + 3];
+    const span = Math.hypot(x1 - x0, y1 - y0);
+    if (span > 1e-6 && span <= swingSpan) {
+      for (let k = runStart; k < endExcl; k++) dropCurve[k] = 1;
+      chordAdd.push(x0, y0, x1, y1);
+    } else if (arcLen >= Math.max(span, 1e-6) * 1.4) {
+      for (let k = runStart; k < endExcl; k++) dropCurve[k] = 1;
+    }
+    runStart = -1;
+  };
+  for (let i = 0; i < n; i++) {
+    const isCurve = (geom.meta[i] & SEG_CURVE) !== 0;
+    const chains = i > 0 && s[i * 4] === s[(i - 1) * 4 + 2] && s[i * 4 + 1] === s[(i - 1) * 4 + 3];
+    if (isCurve) {
+      if (runStart >= 0 && !chains) closeRun(i);
+      if (runStart < 0) runStart = i;
+    } else if (runStart >= 0) closeRun(i);
+  }
+  closeRun(n);
   const out: number[] = [];
   for (let i = 0; i < n; i++) {
     if (geom.meta[i] & SEG_CLIP) continue;   // invisible ink
     if (soft[i]) continue;                   // periodic fill, not a wall
-    out.push(geom.segs[i * 4], geom.segs[i * 4 + 1], geom.segs[i * 4 + 2], geom.segs[i * 4 + 3]);
+    if (geom.dashed && geom.dashed[i]) continue;  // dashed ink is never a wall
+    if (dropCurve[i]) continue;              // swing / cloud / circle
+    out.push(s[i * 4], s[i * 4 + 1], s[i * 4 + 2], s[i * 4 + 3]);
   }
+  out.push(...chordAdd);
   return out;
 }
 
