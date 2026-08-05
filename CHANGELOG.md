@@ -2,6 +2,17 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-05 — the exports stop being able to lose your work
+
+### Added
+- **The MCP export tools refuse to overwrite a file they didn't write.** `path` stays unconfined — the marked set belongs in the estimator's job folder, not in whatever directory the agent host happened to start in, and constraining it would break the deliverable the tool exists to produce. So the line is drawn at authorship instead of location: a **previous export of ours** at that path is replaced silently, because that loop runs constantly (fix a condition, export again, same path), while **any other existing file** is refused until the caller passes `overwrite: true`. Corrupt, encrypted, or unreadable counts as *not ours* and fails closed — an unrecognizable file is exactly the kind worth not destroying. Recognition is cheap and specific: both JSON exports stamp `schema` as their first key, so a 4KB head read settles it, and a marked set is identified by its PDF `Producer`. The check runs before the render, so a refused write never costs a full marked-set build. Nothing about "export the takeoff" implied "and destroy whatever is sitting there."
+- **The marked set now carries its own provenance** — `Producer`/`Creator` = `OpenTakeoff` on every PDF the marked-set builder writes, from the canvas's MARKED SET button as well as the MCP tool. A document that gets emailed around should say what produced it, and it's what lets the next export recognize its own prior output.
+- **`SECURITY.md`**, with private vulnerability reporting enabled on the repo. It states the threat model plainly, because that's the part automated scanners keep getting wrong: the app is client-only with no backend, and the MCP server is a local stdio subprocess running as the invoking user with no listener, so a caller-supplied `path` is the documented feature rather than path traversal. It also says what **is** in scope — the Netlify functions, token and audience validation, remote input (file content, not arguments) reaching a filesystem sink, dependency vulnerabilities with a stated reachable path, a crafted PDF achieving execution or XSS — and is explicit that the overwrite guard is data-loss protection and not a sandbox.
+
+### Fixed
+- **All five open Dependabot alerts** cleared ([#211](https://github.com/Kentucky-ai/opentakeoff/pull/211)) — `fast-uri` 3.1.5, `ip-address` 10.3.1, `hono` 4.12.34, every one of them transitive in `mcp/package-lock.json` and pinned to the exact version its advisory names rather than the newest in range. This server speaks stdio, so the CORS ReDoS and the rate-limiter's address parsing were never on our surface; the bump is hygiene. The repo had Dependabot *alerts* on but security *updates* off, which is why five of them accumulated with no auto-fix PR — now enabled.
+- The `mcp/package-lock.json` self-version had drifted to 0.9.30 while the package said 0.9.33.
+
 ## 2026-08-03 — the transition, at the canvas
 
 ### Added

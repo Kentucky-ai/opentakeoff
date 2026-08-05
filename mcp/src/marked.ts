@@ -16,6 +16,7 @@ import { buildMarkedSetPdf as buildMarkedSetPdfJs } from "../../web/src/lib/mark
 import { pointInPoly } from "../../web/src/lib/geometry.js";
 import { RENDER_SCALE } from "../../web/src/lib/sheets.ts";
 import { UserError } from "./format.ts";
+import { assertWritable } from "./safewrite.ts";
 import type { Session, Shape } from "./session.ts";
 
 /** The cover's assignment-provenance line (0.9.18): where the finish tags on
@@ -59,6 +60,7 @@ const buildMarkedSetPdf = buildMarkedSetPdfJs as unknown as
 export interface MarkedPdfOpts {
   path?: string;
   project_name?: string;
+  overwrite?: boolean;
 }
 
 export async function exportMarkedPdf(session: Session, opts: MarkedPdfOpts) {
@@ -69,6 +71,13 @@ export async function exportMarkedPdf(session: Session, opts: MarkedPdfOpts) {
   if (!session.shapes.length && !session.markups.length && !session.approvals.length) {
     throw new UserError("Nothing to mark yet — commit shapes (one_click / detect_rooms / measure_polygon / measure_line with a condition) or annotate before exporting the marked set.");
   }
+
+  const base = file.replace(/\.pdf$/i, "");
+  // Resolve and vet the destination up front: a refused write shouldn't cost a
+  // whole marked-set render first, and a wrong path is worth hearing about
+  // before the agent waits on the build.
+  const outPath = path.resolve(opts.path ?? path.join(path.dirname(filePath), `${base} - marked set.pdf`));
+  await assertWritable(outPath, "pdf", opts.overwrite);
 
   const sheetStates = session.sheetList();
   // #152: the working set can span documents — pages resolve per (file, page)
@@ -108,7 +117,6 @@ export async function exportMarkedPdf(session: Session, opts: MarkedPdfOpts) {
     return bytes;
   };
 
-  const base = file.replace(/\.pdf$/i, "");
   // truth-in-provenance: everything this server commits is reviewed:false, and
   // the marked set draws shapes in full condition colors — so the document
   // itself must say a machine traced it and a human hasn't signed off yet.
@@ -137,7 +145,6 @@ export async function exportMarkedPdf(session: Session, opts: MarkedPdfOpts) {
     coverTitle: "OpenTakeoff · Marked Set",
   });
 
-  const outPath = path.resolve(opts.path ?? path.join(path.dirname(filePath), `${base} - marked set.pdf`));
   await writeFile(outPath, bytes);
 
   const markedKeys = new Set([...session.shapes.map((s) => s.sheet_id), ...session.markups.map((m) => m.sheet_id), ...session.approvals.map((a) => a.sheet_id)]);

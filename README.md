@@ -585,6 +585,12 @@ contributions are credited by name in the commit and the release notes — and b
 `opentakeoff-mcp` publishes to npm off a `mcp-v*` tag, engine work you land ships to every
 agent that pulls the package.
 
+Found something exploitable? Please use
+[private vulnerability reporting](https://github.com/Kentucky-ai/opentakeoff/security/advisories/new)
+rather than a public issue. [SECURITY.md](SECURITY.md) states the threat model up front — worth a
+read before reporting, since it explains what the trust boundary actually is for a client-only app
+and a local stdio MCP server, and what that does and doesn't make a vulnerability.
+
 ## Tech stack
 
 - **Frontend:** React 18 + Vite 6, plain JSX

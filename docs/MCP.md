@@ -134,6 +134,13 @@ Thirty-six tools, in the order an agent tends to reach for them:
   deliverable a human reviews, with machine-traced work disclosed as pending
   review on the document itself)
 
+  All three write wherever you point them — `path` is not confined to a working
+  directory, because the marked set belongs in the job folder. They will not
+  overwrite a file they didn't write, though: a previous export of ours is
+  replaced silently (the ordinary re-export loop), and anything else is refused
+  until you pass `overwrite: true`. Data-loss protection, not a sandbox — see
+  [`SECURITY.md`](../SECURITY.md).
+
 The full reference — including the coordinate contract (image px at render
 scale 2.0, origin top-left) and the scale-gate rules — is in
 [`mcp/README.md`](../mcp/README.md), which is the list to trust: this page is
