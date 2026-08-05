@@ -203,6 +203,7 @@ export function hardWallSegments(geom: VectorGeometry, ws: number, pitchCapPx?: 
     auto.push(geom.meta[i] & SEG_CURVE ? 1 : 0);
     dashCand.push(geom.dashed && geom.dashed[i] ? 1 : 0);
   }
+  const chordFrom = cand.length >> 2;   // swing chords sit at the tail — see below
   for (let k = 0; k < chordAdd.length; k += 4) { cand.push(chordAdd[k], chordAdd[k + 1], chordAdd[k + 2], chordAdd[k + 3]); auto.push(1); dashCand.push(0); }
 
   // ── wall-first: a boundary must PROVE it is a wall ──────────────────────
@@ -210,7 +211,14 @@ export function hardWallSegments(geom: VectorGeometry, ws: number, pitchCapPx?: 
   // together. Keynote boxes, text, leaders, grid lines can't pair — they stop
   // existing as boundaries. Engages only when the sheet's long linework pairs
   // convincingly; single-line plans fall back to the subtractive set.
-  const walled = wallPairFilter(cand, auto, dashCand, pxPerFt, info?.collectPairs ? (info.pairs = []) : undefined);
+  // In walls mode the swing CHORD must not ride along: the door leaf is
+  // already gone (unpaired), so chording the arc hinge-to-latch draws a
+  // DIAGONAL slice across the opening. Excluding the chord leaves the jambs
+  // as degree-1 tips and bridgeDangles seals the threshold STRAIGHT — and
+  // the same tip-bridge closes window openings whose sill ink didn't pair.
+  // The fallback (single-line) mode keeps the chord: there the leaf stays
+  // hard and the hinge jamb is busy, so the chord is the only closure.
+  const walled = wallPairFilter(cand, auto, dashCand, pxPerFt, info?.collectPairs ? (info.pairs = []) : undefined, chordFrom);
   if (info) { info.mode = walled ? "walls" : "linework"; info.coverage = wallCoverageLast; }
   if (walled) return walled;
   // fallback: the subtractive set, minus dashed ink (unpaired dash = annotation)
@@ -233,7 +241,7 @@ function perpDist(px: number, py: number, x1: number, y1: number, dx: number, dy
  *  offset, real overlap), plus end caps bridging two marked faces, plus the
  *  auto set. Returns the marked quads, or null when paired coverage of the
  *  long straight linework is too low to trust (single-line plan). */
-function wallPairFilter(cand: number[], auto: number[], dashCand: number[], pxPerFt?: number, pairsOut?: number[][]): number[] | null {
+function wallPairFilter(cand: number[], auto: number[], dashCand: number[], pxPerFt?: number, pairsOut?: number[][], chordFrom = Infinity): number[] | null {
   const m = cand.length >> 2;
   const ppf = pxPerFt && pxPerFt > 0 ? pxPerFt : 0;
   const minLen = ppf ? Math.max(6, 0.9 * ppf) : 12;          // pairing considers strokes ≥ ~1 ft
@@ -311,7 +319,7 @@ function wallPairFilter(cand: number[], auto: number[], dashCand: number[], pxPe
     if (near(cand[i * 4], cand[i * 4 + 1]) && near(cand[i * 4 + 2], cand[i * 4 + 3])) mark[i] = 1;
   }
   const out: number[] = [];
-  for (let i = 0; i < m; i++) if (mark[i]) out.push(cand[i * 4], cand[i * 4 + 1], cand[i * 4 + 2], cand[i * 4 + 3]);
+  for (let i = 0; i < m; i++) if (mark[i] && i < chordFrom) out.push(cand[i * 4], cand[i * 4 + 1], cand[i * 4 + 2], cand[i * 4 + 3]);
   return out;
 }
 
