@@ -115,7 +115,7 @@ test("the signed contract nobody wants overwritten is refused", async () => {
   assert.deepEqual(new Uint8Array(await readFile(p)), new Uint8Array(bytes));
 });
 
-test("a corrupt or unreadable file fails CLOSED — unknown is protected, not clobbered", async () => {
+test("a corrupt file fails CLOSED — unknown is protected, not clobbered", async () => {
   const d = await dir();
   const truncated = path.join(d, "half.pdf");
   await writeFile(truncated, "%PDF-1.7\nthis stops mid-object and never had an xref");
@@ -124,7 +124,16 @@ test("a corrupt or unreadable file fails CLOSED — unknown is protected, not cl
   const empty = path.join(d, "empty.json");
   await writeFile(empty, "");
   await refuses(empty, "json");
+});
 
+// POSIX only: chmod 000 doesn't withdraw read on Windows (Node maps mode to the
+// read-only attribute at most), so there the file stays readable and there is no
+// unreadable case to assert. The behavior itself is platform-independent — an
+// unreadable file is not recognizable, so it is not ours, so it is refused.
+test("an unreadable file fails CLOSED", {
+  skip: process.platform === "win32" ? "chmod cannot withdraw read access on Windows" : false,
+}, async () => {
+  const d = await dir();
   const unreadable = path.join(d, "locked.json");
   await writeFile(unreadable, JSON.stringify({ schema: "opentakeoff.report.v1" }));
   await chmod(unreadable, 0o000);
