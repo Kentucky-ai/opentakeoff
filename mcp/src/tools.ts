@@ -20,6 +20,7 @@ import {
   sheetGraphOutput, resolveTagOutput, findScheduleOutput, sweepScheduleRowOutput,
 } from "./outputs.ts";
 import { exportMarkedPdf } from "./marked.ts";
+import { assertWritable, OVERWRITE_DESC } from "./safewrite.ts";
 import { importTakeoff } from "./importing.ts";
 
 // The coordinate contract, stated on every tool so any agent reading any one
@@ -240,11 +241,15 @@ export function registerTools(server: McpServer, session: Session): void {
 
   server.registerTool("export_takeoff", {
     description: `The full "opentakeoff.takeoff_canvas.v1" annotations payload — exactly what the app autosaves, importable by it. Returned inline; pass path to also write it to disk as JSON. ${COORDS}`,
-    inputSchema: { path: z.string().optional().describe("File path to write the payload to") },
+    inputSchema: {
+      path: z.string().optional().describe("File path to write the payload to"),
+      overwrite: z.boolean().optional().describe(OVERWRITE_DESC),
+    },
     outputSchema: exportTakeoffOutput,
-  }, run("export_takeoff", async ({ path: outPath }) => {
+  }, run("export_takeoff", async ({ path: outPath, overwrite }) => {
     const payload = session.exportPayload();
     if (outPath) {
+      await assertWritable(outPath, "json", overwrite);
       const { writeFile } = await import("node:fs/promises");
       await writeFile(outPath, JSON.stringify(payload));
     }
@@ -256,11 +261,13 @@ export function registerTools(server: McpServer, session: Session): void {
     inputSchema: {
       path: z.string().optional().describe("File path to write the document to"),
       project_name: z.string().optional().describe("Label for the document's project_name field (a headless session has no project of its own; omitted → null)"),
+      overwrite: z.boolean().optional().describe(OVERWRITE_DESC),
     },
     outputSchema: exportReportOutput,
-  }, run("export_report", async ({ path: outPath, project_name: projectName }) => {
+  }, run("export_report", async ({ path: outPath, project_name: projectName, overwrite }) => {
     const doc = session.exportReport(projectName);
     if (outPath) {
+      await assertWritable(outPath, "json", overwrite);
       const { writeFile } = await import("node:fs/promises");
       await writeFile(outPath, JSON.stringify(doc));
     }
@@ -280,6 +287,7 @@ export function registerTools(server: McpServer, session: Session): void {
     inputSchema: {
       path: z.string().optional().describe('Where to write the PDF (default: "<plan dir>/<plan> - marked set.pdf")'),
       project_name: z.string().optional().describe("Cover-page project name (default: the plan file's name)"),
+      overwrite: z.boolean().optional().describe(OVERWRITE_DESC),
     },
     outputSchema: exportMarkedPdfOutput,
   }, run("export_marked_pdf", (a) => exportMarkedPdf(session, a)));
