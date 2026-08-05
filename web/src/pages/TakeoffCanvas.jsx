@@ -44,7 +44,8 @@ import { mintTwin, variantTag,
   propagateRowPatch, propagateRowAdd, propagateRowRemove,
   markRowLocal, dropRowLocal, followFamily, splitFromFamily, promoteOnDelete } from "../lib/variants.ts";
 import { isGoogleConfigured, isSignedIn, isAllowedDomain, getAccessToken, orgDomainHint } from "../lib/google/auth.js";
-import { extractVectorGeometry, buildMask, floodRegionSealed, sealRadiiFor, doorWedgeCapPx, minPassRadiusFor, oneClickRing, ringArea, MASK_MAX_DIM, MIN_PASS_FT, SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE } from "../lib/oneclick";
+import { extractVectorGeometry, buildMask, floodRegionSealed, sealRadiiFor, doorWedgeCapPx, minPassRadiusFor, oneClickRing, ringArea, MASK_MAX_DIM, MIN_PASS_FT, SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE, HATCH_MAX_PITCH_FT } from "../lib/oneclick";
+import { hardWallSegments, detectAllRooms } from "../lib/polygonize";
 import { traceConfidence, floodSignals } from "../lib/confidence";
 import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS } from "../lib/rastermask";
 // PDF layer roles (#85): the pure name→role classifier and the override
@@ -2242,7 +2243,9 @@ export default function TakeoffCanvas() {
         e.preventDefault();
         if (poly.length) { setPoly((q) => q.slice(0, -1)); }
         else if (ocSel && proposal) { deleteSelectedOcVertex(); }
-        else if (proposal?.regions.length) { setProposal((pr) => { const rg = pr.regions.slice(0, -1); return rg.length ? { ...pr, regions: rg } : null; }); }
+        // hovering a ring deletes THAT ring (a whole-floor proposal is many
+        // rings — review means culling specific ones); otherwise pop the last
+        else if (proposal?.regions.length) { const hi = ocHoverRef.current; setProposal((pr) => { const rg = hi >= 0 && hi < pr.regions.length ? pr.regions.filter((_, ri) => ri !== hi) : pr.regions.slice(0, -1); return rg.length ? { ...pr, regions: rg } : null; }); }
         else if (selVert != null && selectedId) { deleteSelectedShapeVertex(); }
         // route through deleteSelected — a reconciled Cut Out (#137) must
         // revert its hole out of the parent, keyboard and menu alike
@@ -2359,7 +2362,7 @@ export default function TakeoffCanvas() {
     if (scaleGuide) setScaleGuide(null);
     if (tool === "calibrate") setCalib((c) => (c.length >= 2 ? [p] : [...c, p]));
     else if (tool === "check") setCheck((c) => (c.length >= 2 ? [p] : [...c, p]));
-    else if (tool === "oneclick") oneClickAt(p, !!(ev && ev.altKey));
+    else if (tool === "oneclick") { if (ev && ev.shiftKey && !ev.altKey) detectAllRoomsAt(p); else oneClickAt(p, !!(ev && ev.altKey)); }
     else if (tool === "area" || tool === "deduct" || tool === "linear" || tool === "curve" || tool === "surface" || tool === "zone") setPoly((q) => [...q, p]);
     else if (tool === "count") commitCount(p);
     else if (tool === "rect" || tool === "deduct-rect") {
@@ -3603,7 +3606,7 @@ export default function TakeoffCanvas() {
       // region's verts ARE the proposal, so nothing extra rides. Post-Create
       // edits are stamped by stampEdit, which freezes the same field from the
       // pre-edit ring only when Create didn't already.
-      origin: { method: "one_click_v1", seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, confidence: r.cf ?? 1, ...(r.cff?.length ? { confidence_factors: r.cff } : {}), ...(r.hf ? { hatch_filtered: true } : {}), ...(r.sl ? { gap_sealed_px: r.sl } : {}), ...(r.gap ? { gap_bridged_px: r.gap } : {}), ...(r.mp ? { min_pass_px: r.mp, min_pass_delta: r.mpd } : {}), ...(r.wg ? { door_wedges: r.wg } : {}), ...(r.rw ? { ring_interiors: r.rw } : {}), ...(r.rt ? { raster_traced: true } : {}), ...(r.sens != null ? { fill_sensitivity: r.sens } : {}), ...(r.touched ? { edited_before_create: true, proposed_verts_norm: r.poly0.map(([x, y]) => [x / tp.img.w, y / tp.img.h]) } : {}) },
+      origin: { method: r.method || "one_click_v1", seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, confidence: r.cf ?? 1, ...(r.hl ? { healed: true } : {}), ...(r.so ? { suspect_outer: true } : {}), ...(r.cff?.length ? { confidence_factors: r.cff } : {}), ...(r.hf ? { hatch_filtered: true } : {}), ...(r.sl ? { gap_sealed_px: r.sl } : {}), ...(r.gap ? { gap_bridged_px: r.gap } : {}), ...(r.mp ? { min_pass_px: r.mp, min_pass_delta: r.mpd } : {}), ...(r.wg ? { door_wedges: r.wg } : {}), ...(r.rw ? { ring_interiors: r.rw } : {}), ...(r.rt ? { raster_traced: true } : {}), ...(r.sens != null ? { fill_sensitivity: r.sens } : {}), ...(r.touched ? { edited_before_create: true, proposed_verts_norm: r.poly0.map(([x, y]) => [x / tp.img.w, y / tp.img.h]) } : {}) },
     }));
     const res = dispatchShape({ type: "add", shapes: made });   // the creation gate — id/created_at minted by the command
     // ...and the new takeoff is SELECTED. Without this, Create left nothing
@@ -3630,6 +3633,63 @@ export default function TakeoffCanvas() {
     if (!proposal || !proposal.regions.length) return;
     commitOneClickRegions(proposal);
     setProposal(null);
+  }
+  // ── Whole-floor detection (polygonize.ts, RFC item A) ──────────────────────
+  // Shift+click with One-Click armed proposes EVERY enclosed space on the
+  // clicked sheet at once — the planar arrangement of the same hard linework
+  // the flood runs against, with the same feet-true hatch pitch cap the mask
+  // uses so the two surfaces cannot disagree about what is a wall. Results
+  // land in the SAME proposal state as single clicks: dashed rings, per-vertex
+  // editing, ⏎ creates one takeoff per ring on the active condition, Esc
+  // discards. A healed ring (a drafting gap was extended shut) draws amber; a
+  // face bigger than all the others combined (probable floor plate — or a
+  // genuinely big open room) draws red — review those first.
+  function detectAllRoomsAt(p) {
+    const say = (message) => { setCommitMsg(message); return { ok: false, message }; };
+    const tp = panelAt(p[0]);
+    const upp = uppFor(tp.key);
+    if (!upp) return say(`Set the scale for ${labelFor(tp)} first.`);
+    if (!activeCond) return say("Pick or add a condition first.");
+    if (proposal) {
+      return say(`Finish the selection on ${labelFor(panelByKey(proposal.key))} first — ⏎ creates it, Esc discards.`);
+    }
+    const segs = vectorSegsRef.current.get(tp.key);
+    const meta = segMetaRef.current.get(tp.key);
+    const stats = sheetStatsRef.current.get(tp.key);
+    if (stats && stats.imageFrac >= RASTER_MIN_IMG_FRAC && stats.segCount < RASTER_MIN_SEGS) {
+      return say("This sheet is a scan — whole-floor detection needs vector linework. One-Click reads scans; or trace with Area (A).");
+    }
+    if (!segs || !segs.length || !meta) return say("Still reading this sheet's linework — try again in a second.");
+    const mo = ensureMask(tp.key);
+    if (!mo) return say("Still reading this sheet's linework — try again in a second.");
+    const pxPerFt = 1 / upp;
+    const t0 = performance.now();
+    const hard = hardWallSegments({ points: [], segs, meta, imageArea: 0 }, mo.ws, HATCH_MAX_PITCH_FT * pxPerFt * mo.ws);
+    const rooms = detectAllRooms(hard, { pxPerFt });
+    const ms = Math.round(performance.now() - t0);
+    if (!rooms.length) return say("No enclosed spaces found in this sheet's linework — One-Click a room, or trace with Area (A).");
+    const regions = rooms.map((r) => {
+      // seed star at the ring's area centroid — polygonize has no click to record
+      let a2 = 0, cx = 0, cy = 0;
+      for (let i = 0; i < r.ring.length; i++) {
+        const [x1, y1] = r.ring[i], [x2, y2] = r.ring[(i + 1) % r.ring.length];
+        const c = x1 * y2 - x2 * y1;
+        a2 += c; cx += (x1 + x2) * c; cy += (y1 + y2) * c;
+      }
+      const seed = a2 ? [cx / (3 * a2), cy / (3 * a2)] : [r.ring[0][0], r.ring[0][1]];
+      const poly = r.ring.map(([x, y]) => [x, y]);
+      return {
+        kind: "pos", seed, poly, poly0: poly.map(([x, y]) => [x, y]),
+        ...ocMetrics(poly, tp.key),
+        method: "polygonize_v1",
+        ...(r.healed ? { hl: true } : {}),
+        ...(r.suspectOuter ? { so: true } : {}),
+      };
+    });
+    setProposal({ key: tp.key, regions });
+    const healedN = regions.filter((r) => r.hl).length, suspectN = regions.filter((r) => r.so).length;
+    const flags = [healedN ? `${healedN} healed (amber)` : "", suspectN ? `${suspectN} flagged (red)` : ""].filter(Boolean).join(", ");
+    return say(`${regions.length} space${regions.length === 1 ? "" : "s"} proposed in ${ms}ms${flags ? ` — ${flags}, review those first` : ""} · ⏎ creates all, hover a ring to edit, Esc discards.`);
   }
 
   // ── One-Click proposal geometry editing — correct a fill BEFORE Create ──────
@@ -7013,7 +7073,11 @@ export default function TakeoffCanvas() {
                         region: drag a corner, drag an edge to move the whole line, Shift-click
                         an edge to add a point, select a corner + Delete to remove it. */}
                     {proposal && proposal.key === p.key && proposal.regions.map((r, i) => {
-                      const col = r.kind === "neg" ? "#b03a26" : "#1f3fc7";
+                      // whole-floor review tints: healed = a drafting gap was
+                      // extended shut (amber); suspect = dominant face, probable
+                      // floor plate (red stroke, but the pos blue fill — it is
+                      // NOT a deduct)
+                      const col = r.kind === "neg" ? "#b03a26" : r.so ? "#b03a26" : r.hl ? "#b8791f" : "#1f3fc7";
                       const s = tf.scale;
                       const grip = darkMode ? "#0b0e14" : "#faf6ea";
                       const show = i === ocHover || (ocSel && ocSel.ri === i);
@@ -7021,7 +7085,9 @@ export default function TakeoffCanvas() {
                       <g key={"oc" + i}>
                         <polygon points={r.poly.map((q) => q.join(",")).join(" ")}
                           fill={r.kind === "neg" ? "rgba(176,58,38,.18)" : "rgba(31,63,199,.10)"}
-                          stroke={col} strokeWidth={2.5 / s} strokeDasharray={`${7 / s} ${4 / s}`} />
+                          stroke={col} strokeWidth={2.5 / s} strokeDasharray={`${7 / s} ${4 / s}`}>
+                          {(r.hl || r.so) && <title>{r.so ? "Biggest face on the sheet — likely the floor plate, not a room. Delete it if so." : "A drafting gap was healed shut to close this ring — verify the boundary."}</title>}
+                        </polygon>
                         <path d={starPath(r.seed[0], r.seed[1], 5 / s)} fill={col} stroke="#fff" strokeWidth={1 / s} />
                         {show && r.poly.map((a, k) => {
                           const b = r.poly[(k + 1) % r.poly.length];
@@ -7312,9 +7378,12 @@ export default function TakeoffCanvas() {
                 <div style={{ fontSize: 22, fontWeight: 700, color: "var(--cobalt)" }}>{num(areaVal(sf, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)} selected</span></div>
                 <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{pos.length} space{pos.length === 1 ? "" : "s"}{neg.length ? ` − ${neg.length} cutout${neg.length === 1 ? "" : "s"}` : ""}{units === "metric" ? "" : ` · ${num(sf / 9)} SY`}</div>
                 <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{ocSel ? "drag to move · Delete drops this point · Esc deselects" : "hover a fill to edit: drag a corner or edge · shift-click an edge adds a point"}</div>
-                <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>click adds a space · ⌥-click carves a cutout · ⏎ Create · ⌫ undo · Esc cancel</div>
+                <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>click adds a space · ⌥-click carves a cutout · ⏎ Create · ⌫ drops the hovered ring (else the last) · Esc cancel</div>
                 {proposal.regions.some((r) => r.rt) && (
                   <div style={{ fontSize: 11.5, color: "var(--c-warning)", marginTop: 4 }}>Traced from scan pixels — verify edges before Create.</div>
+                )}
+                {proposal.regions.some((r) => r.hl || r.so) && (
+                  <div style={{ fontSize: 11.5, color: "var(--c-warning)", marginTop: 4 }}>Amber rings were healed shut; red is likely the floor plate — review or delete those before Create.</div>
                 )}
               </>
             );
@@ -7344,7 +7413,7 @@ export default function TakeoffCanvas() {
               {condH > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>@H {num(heightVal(condH, units), 2)}{units === "metric" ? " m" : "′"}: {fa(livePerim * condH)} vert{units === "metric" ? "" : ` · ${num((liveArea * condH) / 27)} CY`}</div>}
             </>
           ) : (
-            <div style={{ fontSize: 12.5, opacity: 0.6 }}>{!unitsPerPx ? "Set scale first" : tool === "zone" ? "Trace a region (an apartment, a wing) — ⏎ closes it and lists every condition inside" : !activeCond ? "Pick a condition" : tool === "oneclick" ? "Click inside a room — it selects itself" : tool === "surface" ? "Trace the wall run" : "Click to trace an area"}</div>
+            <div style={{ fontSize: 12.5, opacity: 0.6 }}>{!unitsPerPx ? "Set scale first" : tool === "zone" ? "Trace a region (an apartment, a wing) — ⏎ closes it and lists every condition inside" : !activeCond ? "Pick a condition" : tool === "oneclick" ? "Click inside a room — it selects itself · ⇧-click proposes every room on the sheet" :tool === "surface" ? "Trace the wall run" : "Click to trace an area"}</div>
           )}
           {selShape?.measure_role === "surface_area" && (
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }} title="Height for THIS wall only — full-height tile here, 4-ft wainscot there, same condition. ↺ returns to the condition height.">
