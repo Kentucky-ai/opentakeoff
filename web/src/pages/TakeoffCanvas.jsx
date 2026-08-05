@@ -3688,8 +3688,12 @@ export default function TakeoffCanvas() {
     // arrangement shatters on 2-ft tile/ceiling grids the flood just paints
     // over, so room-scale grids classify as fill here; demising-wall rhythm
     // (≥ 3 ft) stays hard on both surfaces
-    const wallInfo = {};
+    const wallInfo = { collectPairs: !!window.__OT_WALL_DEBUG };
     const hard = hardWallSegments({ points: [], segs, meta, imageArea: 0, dashed: segDashedRef.current.get(tp.key) }, mo.ws, Math.max(HATCH_MAX_PITCH_FT, 2.25) * pxPerFt * mo.ws, pxPerFt, wallInfo);
+    // forensics, gated like __OT_STITCH_DEBUG: every admitted wall pairing
+    // ([ax1,ay1,ax2,ay2, bx1,by1,bx2,by2, offsetPx] in image px) — the "why
+    // is THIS a wall" record for any boundary a reviewer disputes
+    if (window.__OT_WALL_DEBUG) window.__wallDump = { key: tp.key, mode: wallInfo.mode, coverage: wallInfo.coverage, pairs: wallInfo.pairs, hardCount: hard.length >> 2 };
     // 12 SF floor: drops door leaves and fixture clusters, keeps closets
     const { rooms, culled } = detectAllRoomsDetailed(hard, { pxPerFt, minAreaSf: 12, labelPts: seeds.map((s) => s.seed) });
     const ms = Math.round(performance.now() - t0);
