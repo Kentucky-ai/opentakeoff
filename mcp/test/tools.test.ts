@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
-import { mkdtemp, copyFile, readFile } from "node:fs/promises";
+import { mkdtemp, copyFile, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -13,6 +13,10 @@ import { Session, sanitizeApprovals } from "../src/session.ts";
 import { openPdf, positionedText } from "../src/pdf.ts";
 // the canvas's own tally — the same function the marked-set cover prints from
 import { approvalTally } from "../../web/src/lib/approvals.js";
+// the rules engine's own mask builder — the #207 test plants a synthetic
+// linework mask in the session cache so candidate production is deterministic
+// (the demo plan's rooms are clean rectangles with no islands to find)
+import { buildMask } from "../../web/src/lib/oneclick.ts";
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
 const KEY = "sample-plan.pdf";
@@ -61,13 +65,13 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // derive_base takes shape ids and lineal feet — same reasoning.
 // import_takeoff takes a file path — same reasoning.
 // delete_verdict takes a record id — same reasoning.
-const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict", "duplicate_condition", "split_condition"]);
+const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict", "duplicate_condition", "split_condition", "apply_rules"]);
 
-test("tools/list: all thirty-eight tools, each described with the coordinate contract", async () => {
+test("tools/list: all thirty-nine tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
-    "annotate", "delete_shape", "delete_verdict", "derive_base", "derive_transitions", "detect_rooms", "duplicate_condition", "edit_condition", "edit_materials", "edit_shape", "export_marked_pdf", "export_report",
+    "annotate", "apply_rules", "delete_shape", "delete_verdict", "derive_base", "derive_transitions", "detect_rooms", "duplicate_condition", "edit_condition", "edit_materials", "edit_shape", "export_marked_pdf", "export_report",
     "export_takeoff", "find_schedule", "find_text", "import_takeoff",
     "link_annotation", "list_annotations", "list_shapes", "load_plan", "mark_verdict", "measure_line", "measure_polygon", "measure_surface", "one_click", "place_count",
     "read_sheet_text", "resolve_tag", "set_scale", "sheet_context", "sheet_graph", "sheet_info", "split_condition", "sweep_schedule_row", "symbol_sweep", "takeoff_summary", "undo_last", "view_sheet",
@@ -448,6 +452,108 @@ test("import_takeoff: empty session adopts wholesale; worked session merges by t
   // undo removes the imported shapes as one step; the local trace stays
   await call(c, "undo_last", { n: 1 });
   assert.equal((await call(c, "takeoff_summary")).data.conditions[0].shape_count, 1);
+});
+
+// #207 — imported correction rules re-run through the canvas's own engine:
+// one reviewed:false batch, per-rule disclosure, idempotent, undone whole.
+// The mask is synthetic (planted in the session's cache — ensureMask returns
+// it verbatim) because the demo plan's rooms hold no enclosed islands; the
+// ENGINE's behavior against real masks is web/test/rules.test.ts's job, and
+// this test owns the wiring: import hydration + remap, provenance, journal.
+test("apply_rules: refuses without rules, re-runs an imported rule as one batch, idempotent, one undo step", async () => {
+  const session = new Session();
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  await buildServer(session).connect(st);
+  const client = new Client({ name: "test-client", version: "0.0.0" });
+  await client.connect(ct);
+
+  await call(client, "load_plan", { path: PLAN });
+  const noRules = await call(client, "apply_rules", {});
+  assert.equal(noRules.isError, true);
+  assert.match(noRules.data.error, /import_takeoff/);
+
+  await call(client, "set_scale", { sheet: KEY, upp: 0.1 });
+  const s = session.sheet(KEY);
+  // synthetic linework in the sheet's real px frame: one room, a closed
+  // column island (40×40 px = 16 SF at upp 0.1), and an open box (no bottom
+  // wall — connects to the field, must never propose)
+  const rect = (x0: number, y0: number, x1: number, y1: number) => [
+    x0, y0, x1, y0,  x1, y0, x1, y1,  x1, y1, x0, y1,  x0, y1, x0, y0,
+  ];
+  const segs = [
+    ...rect(100, 100, 500, 700),
+    ...rect(200, 300, 240, 340),
+    300, 500, 340, 500,  300, 500, 300, 540,  340, 500, 340, 540,
+  ];
+  s.mask = buildMask(segs, s.widthPx, s.heightPx);
+
+  const room = await call(client, "measure_polygon", { sheet: KEY,
+    verts: [[100, 100], [500, 100], [500, 700], [100, 700]], condition: "CPT-1", role: "floor_area" });
+  assert.equal(room.isError, false);
+
+  // the rules ride a canvas file: tag identity remaps the file's condition id
+  // onto this session's own CPT-1
+  const dir = await mkdtemp(path.join(tmpdir(), "ot-rules-"));
+  const rulesFile = path.join(dir, "taught.json");
+  const mkRule = (id: string, extra: Record<string, unknown> = {}) => ({
+    id, created_at: "2026-08-05T00:00:00Z", seed_shape_id: "shp-canvas-seed",
+    seed_condition_id: "cnd-file-1", predicate: { kind: "enclosed_subpolygon_deduct", max_area_sf: 25 },
+    label: `rule ${id}`, applied_to: [], active: true, ...extra,
+  });
+  await writeFile(rulesFile, JSON.stringify({
+    schema: "opentakeoff.takeoff_canvas.v1",
+    conditions: [{ id: "cnd-file-1", finish_tag: "CPT-1", color: "#888", fill: "#888", hatch: "none", multiplier: 1, waste_pct: 0, materials: [] },
+                 { id: "cnd-file-2", finish_tag: "GHOST-9", color: "#888", fill: "#888", hatch: "none", multiplier: 1, waste_pct: 0, materials: [] }],
+    shapes: [], markups: [], sheets: [],
+    rules: [mkRule("rul-live"), mkRule("rul-off", { active: false }),
+            mkRule("rul-ghost", { seed_condition_id: "cnd-file-2" })],
+  }));
+  const imp = await call(client, "import_takeoff", { path: rulesFile });
+  assert.equal(imp.isError, false);
+  assert.equal(imp.data.rules_imported, 3, "rules ride the file into the session");
+
+  // GHOST-9's condition arrived via the merge, so its rule evaluates too —
+  // deactivate the condition path honestly by removing it from the session
+  session.conditions = session.conditions.filter((c) => c.finish_tag !== "GHOST-9");
+
+  const run1 = await call(client, "apply_rules", { sheet: KEY });
+  assert.equal(run1.isError, false);
+  assert.equal(run1.data.committed, 1, "the column island, once");
+  const live = run1.data.rules.find((r: any) => r.rule_id === "rul-live");
+  assert.equal(live.produced, 1);
+  assert.equal(live.condition, "CPT-1");
+  assert.ok(Math.abs(live.deduct_sf - 16) < 2, `~16 SF column, got ${live.deduct_sf}`);
+  assert.deepEqual(run1.data.skipped_rules.map((r: any) => [r.rule_id, r.reason]).sort(),
+    [["rul-ghost", "condition_not_in_session"], ["rul-off", "inactive"]]);
+
+  // provenance: the canvas's third actor, reviewed false, full citation
+  const minted = session.shapes.find((x) => x.id === live.shape_ids[0])!;
+  assert.equal(minted.measure_role, "deduct");
+  assert.equal(minted.origin?.method, "rule_v1");
+  assert.equal(minted.origin?.actor, "rule");
+  assert.equal(minted.origin?.reviewed, false);
+  assert.equal(minted.origin?.rule_id, "rul-live");
+  assert.equal(minted.origin?.seed_shape_id, "shp-canvas-seed");
+  assert.equal(minted.origin?.container_shape_id, room.data.shape_id);
+  const rule = session.rules.find((r) => r.id === "rul-live")!;
+  assert.deepEqual(rule.applied_to, live.shape_ids, "audit trail mirrors the canvas's Apply");
+
+  // the deduct nets out of the summary through the same totals the canvas sums
+  const sum1 = await call(client, "takeoff_summary");
+  const cpt = sum1.data.conditions.find((c: any) => c.finish_tag === "CPT-1");
+  assert.ok(cpt.floor_sf < room.data.area_sf, "deduct netted");
+
+  // idempotent: the committed deduct covers its own island on the re-run
+  const run2 = await call(client, "apply_rules", { sheet: KEY });
+  assert.equal(run2.data.committed, 0, "re-run mints nothing");
+  assert.match(run2.data.note, /idempotent/);
+
+  // one undo step takes the whole batch back — and only the batch
+  const before = session.shapes.length;
+  const undo = await call(client, "undo_last", { n: 1 });
+  assert.equal(undo.data.steps[0].tool, "apply_rules");
+  assert.equal(session.shapes.length, before - 1);
+  assert.ok(session.shapes.some((x) => x.id === room.data.shape_id), "the room survives the undo");
 });
 
 // #148 — perimeter − stated openings → committed base runs, all-or-nothing.

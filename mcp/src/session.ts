@@ -40,6 +40,11 @@ import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, floodAtSeed, type LabelBB
 import { fingerprintSymbol, matchSymbol, SWEEP_TOL_PX, type SweepOptions, type SymbolFingerprint, type SymbolMatchResult, type SweepMatch, type SweepWithheld } from "../../web/src/lib/symbolsweep.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
 import { sharedRuns, type SharedRun } from "../../web/src/lib/transitions.ts";
+// Correction rules (#88 / #207) — the canvas's own pure module, imported as-is
+// (the approvals/totals precedent): apply_rules re-runs an imported rule with
+// the exact predicate engine the canvas's Preview→Apply runs, so a headless
+// session and the app can never disagree about what a rule matches.
+import { applyRuleToProject, type Rule, type RuleShape, type SheetRuleData } from "../../web/src/lib/rules.ts";
 // The approvals family (#176) — the canvas's own pure module, imported as-is
 // (the markedset.js/importTakeoff.js precedent), so a verdict this server
 // mints and a seal the canvas mints share ONE implementation of minting,
@@ -115,9 +120,12 @@ export interface Condition {
  * after a human affirmed the shape at an explicit review gate — this server
  * has no such gate, so everything it commits is reviewed: false. */
 export interface ShapeOrigin {
-  method: "manual" | "one_click_v1" | "agent_v1" | "symbol_sweep";
-  /** Omitted = human. "agent" = the shape was produced by MCP/automation. */
-  actor?: "agent";
+  method: "manual" | "one_click_v1" | "agent_v1" | "symbol_sweep" | "rule_v1";
+  /** Omitted = human. "agent" = the shape was produced by MCP/automation.
+   * "rule" = minted by a correction rule's deterministic re-run (#88/#207) —
+   * the canvas's own third actor, kept distinct so capture and the marked-set
+   * split can tell a taught rule from a fresh agent guess. */
+  actor?: "agent" | "rule";
   /** A human affirmed this shape at an explicit review gate. */
   reviewed?: boolean;
   /** one_click: the flood-fill seed, normalized to sheet dims. */
@@ -172,6 +180,12 @@ export interface ShapeOrigin {
   derived?:
     | { from_shape_id: string; gross_lf: number; openings_lf: number }
     | { between_shape_ids: string[]; between: string[]; case: "butt"; gap_in: number };
+  /** rule_v1 (#88/#207): the correction rule that minted this deduct, the
+   * estimator's seed correction it re-ran, and the room it landed in — the
+   * same three-way citation the canvas's Apply stamps. */
+  rule_id?: string;
+  seed_shape_id?: string;
+  container_shape_id?: string;
   /** Where the shape's finish ASSIGNMENT came from (0.9.18): "schedule" =
    * resolved from the room's own schedule row (room_tag / surface /
    * schedule_sheet carry the citation), "asserted" = the agent chose the tag
@@ -468,6 +482,11 @@ export class Session {
    * normalized so the export-time staleness drop can test them against
    * committed rings in verts_norm space. */
   scheduleWithheld: { sheet_id: string; label: string; reason: string; seed_norm: [number, number] }[] = [];
+  /** Correction rules (#207) — imported from a canvas takeoff file, never
+   * minted here (a rule IS an estimator's correction by definition; minting
+   * stays behind the canvas's human Preview→Apply gate). apply_rules re-runs
+   * them; applied_to mirrors the canvas's audit-trail semantics. */
+  rules: Rule[] = [];
 
   /** Newest-last. Capped at UNDO_CAP; the oldest entry falls off the front. */
   private journal: JournalEntry[] = [];
@@ -512,6 +531,7 @@ export class Session {
       this.filePath = null;
       this.nextOrd = 1;
       this.scheduleWithheld = [];
+      this.rules = [];
       // the journal's entries reference shapes that no longer exist — undoing
       // across a document swap would be a lie, so the history goes with them
       this.journal = [];
@@ -1527,6 +1547,80 @@ export class Session {
       committed: rooms.length,
       total_lf: round2(rooms.reduce((n, r) => n + r.net_lf, 0)),
       note: "Base runs trace each room's boundary; openings are your stated claim, recorded on origin.derived. Verify with view_sheet overlay:true.",
+    };
+  }
+
+  /** apply_rules (#207): re-run the correction rules an estimator taught the
+   * canvas (#88). Rules arrive with import_takeoff — they are never minted
+   * here, because a rule IS an estimator's correction by definition and the
+   * v1 predicate's known label-box false-positive stays safe behind the
+   * canvas's human Preview→Apply gate. Evaluation is the same pure rules.ts
+   * engine the canvas Preview runs; the commit is the one batch the canvas's
+   * Apply makes (ONE journal entry, undo_last takes it all back). Everything
+   * lands reviewed: false — this server has no review gate — and the reply's
+   * per-rule disclosure IS the preview an agent gets. Idempotent by
+   * construction: the engine drops any candidate an existing deduct already
+   * covers, and rule N's mints are rule N+1's dedup targets, exactly like
+   * consecutive Applies on the canvas. */
+  async applyRules(opts: { sheet?: string } = {}) {
+    if (!this.rules.length) {
+      throw new UserError("No rules in this session — rules ride import_takeoff from a canvas file (an estimator's taught corrections, #88). Minting new rules is the canvas's job; this verb only re-runs what a human already taught.");
+    }
+    const activeCondIds = new Set(this.rules.filter((r) => r.active).map((r) => r.seed_condition_id));
+    const sheetKeys = opts.sheet
+      ? [this.sheet(opts.sheet).key]
+      : [...new Set(this.shapes
+          .filter((x) => x.measure_role === "floor_area" && activeCondIds.has(x.condition_id))
+          .map((x) => x.sheet_id))];
+    const skipped_sheets: { sheet_id: string; reason: "no_scale" | "no_vector_mask" }[] = [];
+    const sheetData = new Map<string, SheetRuleData>();
+    for (const key of sheetKeys) {
+      const s = this.sheet(key);
+      if (!(s.upp && s.upp > 0)) { skipped_sheets.push({ sheet_id: key, reason: "no_scale" }); continue; }
+      const mask = await this.ensureMask(key);
+      if (!mask) { skipped_sheets.push({ sheet_id: key, reason: "no_vector_mask" }); continue; }
+      sheetData.set(key, { mask, upp: s.upp, imgW: s.widthPx, imgH: s.heightPx });
+    }
+    const rulesOut: { rule_id: string; label: string; condition: string; produced: number; shape_ids: string[]; deduct_sf: number }[] = [];
+    const skipped_rules: { rule_id: string; label: string; reason: "inactive" | "condition_not_in_session" }[] = [];
+    for (const rule of this.rules) {
+      if (!rule.active) { skipped_rules.push({ rule_id: rule.id, label: rule.label, reason: "inactive" }); continue; }
+      const cond = this.conditions.find((c) => c.id === rule.seed_condition_id);
+      if (!cond) { skipped_rules.push({ rule_id: rule.id, label: rule.label, reason: "condition_not_in_session" }); continue; }
+      const candidates = applyRuleToProject(rule, this.shapes as RuleShape[], sheetData);
+      const ids: string[] = [];
+      let sf = 0;
+      for (const cand of candidates) {
+        const d = sheetData.get(cand.sheet_id)!;
+        const vertsPx: Point[] = cand.verts_norm.map(([nx, ny]) => [nx * d.imgW, ny * d.imgH]);
+        const shape = this.commit(this.sheet(cand.sheet_id), cond.finish_tag, "deduct", vertsPx,
+          { area_sf: cand.area_sf, perimeter_lf: round2(closedMetrics(vertsPx).perim * d.upp) }, {
+            method: "rule_v1",
+            actor: "rule",
+            reviewed: false,
+            rule_id: rule.id,
+            seed_shape_id: rule.seed_shape_id,
+            container_shape_id: cand.container_shape_id,
+          });
+        ids.push(shape.id);
+        sf += cand.area_sf;
+      }
+      // canvas semantics (applyStagedRule): the audit trail is the LAST run's
+      // mints — a re-run that produced nothing leaves the prior trail standing
+      if (ids.length) rule.applied_to = ids;
+      rulesOut.push({ rule_id: rule.id, label: rule.label, condition: cond.finish_tag, produced: ids.length, shape_ids: ids, deduct_sf: round2(sf) });
+    }
+    this.flushCommits("apply_rules");
+    const committed = rulesOut.reduce((n, r) => n + r.produced, 0);
+    return {
+      rules: rulesOut,
+      committed,
+      total_deduct_sf: round2(rulesOut.reduce((n, r) => n + r.deduct_sf, 0)),
+      skipped_rules,
+      skipped_sheets,
+      note: committed
+        ? "One batch, one undo step, everything reviewed: false — this disclosure is your preview; verify with view_sheet overlay:true. Re-running is idempotent: anything a deduct already covers is dropped by the engine."
+        : "No new candidates — every match is already covered by an existing deduct (re-running is idempotent by construction), or the rules' rooms are not on the evaluated sheets.",
     };
   }
 

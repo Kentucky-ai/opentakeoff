@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-05 — an imported rule an agent can re-run; opentakeoff-mcp 0.9.37
+
+### Added
+- **`apply_rules` — re-run the correction rules the takeoff arrived with** (#207, tool 39). The canvas turns an estimator's correction into a deterministic, re-runnable rule (#88); over the wire there was no verb — an agent receiving a takeoff whose estimator taught it "every room like this loses the mechanical chase" could only re-derive the geometry from scratch. Now: rules ride `import_takeoff` (hydrated from the file with `seed_condition_id` re-pointed through the merge's own tag-identity rule; `rules_imported` on the reply), and `apply_rules {sheet?}` evaluates them with the same pure `web/src/lib/rules.ts` engine the canvas Preview runs, committing the staged candidates as the ONE batch the canvas's Apply makes — one journal entry, `undo_last` takes it all back, everything `reviewed: false` as this server always commits. Provenance is the canvas's own third actor: `origin {method: rule_v1, actor: rule, rule_id, seed_shape_id, container_shape_id}`. The reply's per-rule disclosure (produced / skipped, with ids) is the preview an agent gets; skipped rules and unscannable sheets are named, never dropped. Idempotent by construction — anything an existing deduct covers is dropped by the engine, and rule N's mints are rule N+1's dedup targets. Minting NEW rules stays canvas-side: a rule is an estimator's correction by definition, and the v1 predicate's known label-box false-positive stays safe behind the human Preview→Apply gate.
+
 ## 2026-08-05 — the exports stop being able to lose your work
 
 ### Added
