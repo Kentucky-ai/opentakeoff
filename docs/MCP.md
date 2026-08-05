@@ -32,7 +32,7 @@ which is the MCP wire. `node --import tsx` is the whole invocation.
 
 ## What the agent gets
 
-Thirty-six tools, in the order an agent tends to reach for them:
+Thirty-eight tools, in the order an agent tends to reach for them:
 
 - **Open and orient** — `load_plan`, `sheet_info` (including the sheet's PDF
   layer table — Optional Content Groups with a classified role, confidence,
@@ -106,6 +106,13 @@ Thirty-six tools, in the order an agent tends to reach for them:
   `roll_setup` opt-in — the reply echoes the figured order), `delete_shape`,
   `undo_last`, with `list_shapes` as the mid-session inventory the mutating
   verbs assume you have
+- **Condition twins** — `duplicate_condition` (the same finish measured
+  somewhere else with its own preparation underneath: the twin arrives carrying
+  the original's materials and keeps *following* them, so a coverage-rate fix on
+  the original reaches every twin that hasn't touched that row) and
+  `split_condition` (cut a twin loose — following rows freeze at their current
+  values and the original stops reaching it). One finish in two areas is neither
+  one condition nor two; both are reversible with `undo_last`
 - **Read the sheet** — `read_sheet_text`, `find_text`, `view_sheet` (render a
   sheet or crop to PNG with an optional calibrated measuring grid and
   committed-shapes overlay — the agent's eyes and its self-check)
