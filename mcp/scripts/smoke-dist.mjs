@@ -94,6 +94,7 @@ const listed = await responseFor(2);
 const names = listed.tools.map((tool) => tool.name).sort();
 assert.deepEqual(names, [
   "annotate",
+  "apply_rules",
   "delete_shape",
   "delete_verdict",
   "derive_base",

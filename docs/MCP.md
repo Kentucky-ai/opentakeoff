@@ -32,7 +32,7 @@ which is the MCP wire. `node --import tsx` is the whole invocation.
 
 ## What the agent gets
 
-Thirty-eight tools, in the order an agent tends to reach for them:
+Thirty-nine tools, in the order an agent tends to reach for them:
 
 - **Open and orient** — `load_plan`, `sheet_info` (including the sheet's PDF
   layer table — Optional Content Groups with a classified role, confidence,
@@ -100,7 +100,16 @@ Thirty-eight tools, in the order an agent tends to reach for them:
   reports how *much* boundary it sealed, never where). Those come back in
   `withheld` with their length, their gap in inches, and an `at` point to
   `view_sheet` — questions to answer by looking, and `withheld_lf` is never
-  folded into `total_lf`. Both refuse all-or-nothing and land as one undo step
+  folded into `total_lf`. Both refuse all-or-nothing and land as one undo step.
+  `apply_rules` re-runs the **correction rules** an estimator taught the canvas
+  (#88) — "every room like this loses the mechanical chase" — which arrive with
+  `import_takeoff` and are never minted over the wire (a rule *is* an
+  estimator's correction; minting stays behind the canvas's human
+  Preview→Apply gate). Evaluation is the same pure `rules.ts` engine the
+  canvas Preview runs, the commit is the one batch its Apply makes
+  (`reviewed: false`, one undo step), the per-rule disclosure in the reply is
+  the preview an agent gets, and re-running is idempotent by construction —
+  anything an existing deduct covers is dropped by the engine
 - **Revise** — `edit_shape` (all five roles), `edit_materials`,
   `edit_condition` (waste %, ×N multiplier, `height_ft`, and the roll-goods
   `roll_setup` opt-in — the reply echoes the figured order), `delete_shape`,

@@ -321,7 +321,32 @@ export const importTakeoffOutput = {
   conditions_added: z.number().int(),
   scales_adopted: z.number().int().describe("Sheets whose calibration came from the file (this session's own always wins)"),
   unknown_files: z.array(z.string()).describe("Files referenced by imported shapes that this document doesn't have — they count in totals but can't be viewed here"),
+  rules_imported: z.number().int().describe("Correction rules (#88) that arrived with the file — apply_rules re-runs them"),
   shapes_total: z.number().int(),
+  note: z.string(),
+};
+
+/** apply_rules (#207) — the per-rule disclosure IS the preview an agent gets. */
+export const applyRulesOutput = {
+  rules: z.array(z.object({
+    rule_id: z.string(),
+    label: z.string().describe("The rule's own plain-language statement, minted at creation"),
+    condition: z.string().describe("The finish tag whose rooms were scanned"),
+    produced: z.number().int(),
+    shape_ids: z.array(z.string()).describe("The committed deducts — reviewed: false, one batch"),
+    deduct_sf: z.number(),
+  })),
+  committed: z.number().int().describe("Deducts committed across all rules — 0 is a result (idempotence)"),
+  total_deduct_sf: z.number(),
+  skipped_rules: z.array(z.object({
+    rule_id: z.string(),
+    label: z.string(),
+    reason: z.enum(["inactive", "condition_not_in_session"]),
+  })).describe("Rules not evaluated, named — never silently dropped"),
+  skipped_sheets: z.array(z.object({
+    sheet_id: z.string(),
+    reason: z.enum(["no_scale", "no_vector_mask"]),
+  })).describe("Sheets that could not be scanned (uncalibrated, or scanned raster with no linework mask)"),
   note: z.string(),
 };
 

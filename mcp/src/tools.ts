@@ -1,4 +1,4 @@
-// The thirty-six tools — thin zod-validated handlers over the Session. Replies are
+// The thirty-nine tools — thin zod-validated handlers over the Session. Replies are
 // compact JSON (format.ts); view_sheet alone replies with an image content
 // item plus a JSON meta text item. Failures are isError results, never thrown
 // protocol errors.
@@ -14,7 +14,7 @@ import {
   editShapeOutput, undoLastOutput, sheetContextOutput,
   findTextOutput, editMaterialsOutput, editConditionOutput, exportReportOutput,
   duplicateConditionOutput, splitConditionOutput,
-  exportMarkedPdfOutput, listShapesOutput, deriveBaseOutput, deriveTransitionsOutput, importTakeoffOutput,
+  exportMarkedPdfOutput, listShapesOutput, deriveBaseOutput, deriveTransitionsOutput, importTakeoffOutput, applyRulesOutput,
   annotateOutput, listAnnotationsOutput, linkAnnotationOutput,
   markVerdictOutput, deleteVerdictOutput,
   sheetGraphOutput, resolveTagOutput, findScheduleOutput, sweepScheduleRowOutput,
@@ -281,6 +281,14 @@ export function registerTools(server: McpServer, session: Session): void {
     },
     outputSchema: importTakeoffOutput,
   }, run("import_takeoff", (a) => importTakeoff(session, a.path)));
+
+  server.registerTool("apply_rules", {
+    description: `Re-run the correction rules the takeoff arrived with (#207) — the lessons an estimator TAUGHT the canvas (#88): "every room like this loses the mechanical chase." A rule is a deterministic predicate (enclosed linework islands under a size cap, inside the rule's condition's rooms), never a re-prompt. Evaluation is the same pure rules.ts engine the canvas Preview runs; the commit is the one batch the canvas's Apply makes — ONE journal entry, undo_last takes the whole batch back. Everything lands reviewed: false (this server has no review gate), and the reply's per-rule disclosure — what each rule produced, what was skipped, with ids — IS your preview: read it, then view_sheet overlay:true. Idempotent by construction: any candidate an existing deduct already covers is dropped by the engine, so re-running after new rooms commit is the intended workflow and never double-deducts. Rules arrive ONLY via import_takeoff (minting a new rule is an estimator's correction and stays behind the canvas's human Preview→Apply gate); with none imported this refuses. Pass sheet to scan one sheet; omit it to scan every sheet holding the rules' rooms. Uncalibrated and scanned-raster sheets come back in skipped_sheets, named.`,
+    inputSchema: {
+      sheet: z.string().optional().describe("Scan only this sheet (default: every sheet holding the rules' conditions' rooms)"),
+    },
+    outputSchema: applyRulesOutput,
+  }, run("apply_rules", (a) => session.applyRules(a)));
 
   server.registerTool("export_marked_pdf", {
     description: `The MARKED-UP PLANSET — the deliverable of every takeoff. Writes a distribution-ready PDF to disk: a legend cover (per-condition totals, swatches, a by-sheet breakdown) followed by every sheet that carries takeoff shapes or annotations, vector-copied from the source plan with the work burned in as drawn — condition colors and hatches, a quantity chip on every shape, annotation clouds/callouts/highlights, and approval marks (the estimator's APPROVED rings, the agent's AGENT diamonds — the cover tallies the split). Built by the same module as the canvas's MARKED SET button, so agent output and app output are one implementation. A construction takeoff is no good without markup: finish EVERY takeoff by writing this file and giving the user its path (export_report carries the numbers for pricing; this carries the evidence). When the shapes were machine-traced and unreviewed, the document says so on its last page — the review path is importing the export_takeoff payload into the app, where agent shapes arrive as pencil proposals. Default path: next to the loaded plan as "<plan> - marked set.pdf". Needs no native canvas — pure vector copy, so it works even where view_sheet cannot render.`,

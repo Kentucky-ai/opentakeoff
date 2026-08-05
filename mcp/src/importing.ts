@@ -13,6 +13,7 @@ import {
 } from "../../web/src/lib/importTakeoff.js";
 import { UserError } from "./format.ts";
 import { sanitizeApprovals, type Session, type Shape, type Condition, type Markup } from "./session.ts";
+import type { Rule } from "../../web/src/lib/rules.ts";
 
 // untyped canvas JS — typed facades state the contract at the boundary
 const parseTakeoffImport = parseJs as unknown as (text: string) => Record<string, unknown>;
@@ -62,6 +63,29 @@ export async function importTakeoff(session: Session, filePath: string) {
     }
   }
 
+  // correction rules (#207): the canvas merge deliberately keeps the OPERATOR'S
+  // rules (a workspace concern there) — but a headless session HAS no rules of
+  // its own, and the file's rules are the estimator's taught corrections, the
+  // exact cargo apply_rules exists to re-run. Hydrate them from the file
+  // directly, seed_condition_id re-pointed through the merge's own tag-identity
+  // rule (an imported condition that merged onto a session condition changed
+  // id; the rule follows its condition). A rule whose condition can't be
+  // resolved rides along unmapped — apply_rules reports it skipped, named.
+  const tagKey = (t: unknown) => String(t || "").trim().toUpperCase();
+  const importedConds = Array.isArray(imported.conditions) ? imported.conditions as Condition[] : [];
+  const tagById = new Map(importedConds.map((c) => [c.id, tagKey(c.finish_tag)]));
+  const sessionByTag = new Map(session.conditions.map((c) => [tagKey(c.finish_tag), c.id]));
+  const knownRuleIds = new Set(session.rules.map((r) => r.id));
+  let rulesImported = 0;
+  for (const raw of (Array.isArray(imported.rules) ? imported.rules as Rule[] : [])) {
+    if (!raw || typeof raw !== "object" || !raw.id || knownRuleIds.has(raw.id)) continue;
+    if (raw.predicate?.kind !== "enclosed_subpolygon_deduct" || !(raw.predicate.max_area_sf > 0)) continue;
+    const mapped = sessionByTag.get(tagById.get(raw.seed_condition_id) ?? "");
+    session.rules.push({ ...raw, applied_to: [...(raw.applied_to ?? [])], seed_condition_id: mapped ?? raw.seed_condition_id });
+    knownRuleIds.add(raw.id);
+    rulesImported++;
+  }
+
   // the imported SHAPES journal as one reversible gesture; adopted conditions,
   // scales, annotations, and approval marks stay on undo (documented on the
   // tool) — an import is a document merge, not a trace, and shapes are the
@@ -72,9 +96,11 @@ export async function importTakeoff(session: Session, filePath: string) {
   return {
     file: path.basename(filePath),
     ...note,
+    rules_imported: rulesImported,
     shapes_total: session.shapes.length,
-    note: note.replaced
+    note: (note.replaced
       ? "Empty session — the import IS the takeoff now. Unreviewed machine shapes stay pencil; verify with view_sheet overlay:true."
-      : "Merged: same finish tags joined your conditions, new ids appended, duplicates skipped (re-import is idempotent), this session's calibration won per sheet.",
+      : "Merged: same finish tags joined your conditions, new ids appended, duplicates skipped (re-import is idempotent), this session's calibration won per sheet.")
+      + (rulesImported ? ` ${rulesImported} correction rule(s) arrived — apply_rules re-runs them.` : ""),
   };
 }
