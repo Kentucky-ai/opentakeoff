@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-05 — a real hole, reconciled; opentakeoff-mcp 0.9.38
+
+### Added
+- **`cut_out` — a real hole in a committed floor shape** (#206, tool 40). An agent had `role: "deduct"` — an independent overlay nothing linked to a parent, painted as a decal and netted by arithmetic. The canvas has had real holes since #137; now the wire runs the SAME `web/src/lib/cutout.js` boolean subtract: `cut_out {parent_shape_id, verts}` lands the hole on the parent (`verts_norm_holes` + netted `computed` — N cuts compose, overlap never double-deducts, a hole ADDS perimeter) and commits the deduct carrying `cuts_shape_id`, which `totals.js` already skips — report, summary, and legend read the reconciled number with no double count. Refusal over guessing: a ring not FULLY inside the parent refuses (the canvas's edge-clip stays a canvas affordance), as does a cut that would erase or split the parent, and cutting human-reviewed ink. One journal entry — `undo_last` restores parent and hole together. The `delete_shape`/`edit_shape` interplay ports the canvas's answer as the spec: deleting the deduct reverts its cut (a multi-cut parent rebuilds from the chain's pristine snapshot minus the survivors — `recomposeCutouts`), a rebuild that degenerates falls back to a plain delete with the bake-in disclosed, deleting a parent orphans its reconciled deducts exactly as the canvas does (disclosed, ignored by totals), and `edit_shape` refuses to move either half of a reconciled pair (a stranded hole is the canvas's own #137 follow-up, not something to reproduce over the wire). The four `@turf/*` boolean deps ride `mcp/package.json` now, so the published bundle resolves them.
+
 ## 2026-08-05 — an imported rule an agent can re-run; opentakeoff-mcp 0.9.37
 
 ### Added

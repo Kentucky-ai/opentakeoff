@@ -32,7 +32,7 @@ which is the MCP wire. `node --import tsx` is the whole invocation.
 
 ## What the agent gets
 
-Thirty-nine tools, in the order an agent tends to reach for them:
+Forty tools, in the order an agent tends to reach for them:
 
 - **Open and orient** — `load_plan`, `sheet_info` (including the sheet's PDF
   layer table — Optional Content Groups with a classified role, confidence,
@@ -110,6 +110,15 @@ Thirty-nine tools, in the order an agent tends to reach for them:
   (`reviewed: false`, one undo step), the per-rule disclosure in the reply is
   the preview an agent gets, and re-running is idempotent by construction —
   anything an existing deduct covers is dropped by the engine
+- **Cut** — `cut_out` puts a real hole in a committed floor shape, the way the
+  canvas's Eraser does (#137): the same `cutout.js` boolean subtract, so the
+  parent's net is set subtraction (overlapping cuts never double-deduct) and a
+  hole *adds* perimeter. The ring must sit fully inside the parent — an
+  edge-crossing cut is a boundary correction and refuses (the canvas clips it;
+  over the wire the rule is refusal-over-guessing). One undo step restores
+  parent and hole together, and deleting the deduct later reverts the cut
+  (multi-cut parents rebuild from the pristine snapshot minus survivors —
+  the canvas's own delete semantics, ported as the spec)
 - **Revise** — `edit_shape` (all five roles), `edit_materials`,
   `edit_condition` (waste %, ×N multiplier, `height_ft`, and the roll-goods
   `roll_setup` opt-in — the reply echoes the figured order), `delete_shape`,

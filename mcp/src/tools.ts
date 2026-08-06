@@ -1,4 +1,4 @@
-// The thirty-nine tools — thin zod-validated handlers over the Session. Replies are
+// The forty tools — thin zod-validated handlers over the Session. Replies are
 // compact JSON (format.ts); view_sheet alone replies with an image content
 // item plus a JSON meta text item. Failures are isError results, never thrown
 // protocol errors.
@@ -14,7 +14,7 @@ import {
   editShapeOutput, undoLastOutput, sheetContextOutput,
   findTextOutput, editMaterialsOutput, editConditionOutput, exportReportOutput,
   duplicateConditionOutput, splitConditionOutput,
-  exportMarkedPdfOutput, listShapesOutput, deriveBaseOutput, deriveTransitionsOutput, importTakeoffOutput, applyRulesOutput,
+  exportMarkedPdfOutput, listShapesOutput, deriveBaseOutput, deriveTransitionsOutput, importTakeoffOutput, applyRulesOutput, cutOutOutput,
   annotateOutput, listAnnotationsOutput, linkAnnotationOutput,
   markVerdictOutput, deleteVerdictOutput,
   sheetGraphOutput, resolveTagOutput, findScheduleOutput, sweepScheduleRowOutput,
@@ -135,6 +135,15 @@ export function registerTools(server: McpServer, session: Session): void {
     },
     outputSchema: measurePolygonOutput,
   }, run("measure_polygon", (a) => session.measurePolygon(a.sheet, a.verts, { condition: a.condition, role: a.role })));
+
+  server.registerTool("cut_out", {
+    description: `Cut a REAL hole in a committed floor_area shape (#206) — the way the canvas cuts one (#137): the same lib/cutout.js boolean subtract, so the two surfaces can never disagree about what a hole holds. The parent keeps its outer ring plus the reconciled hole(s) (verts_norm_holes), its computed nets for real — N cuts compose, overlap between cuts never double-deducts (set subtraction), a hole ADDS perimeter — and the deduct commits carrying cuts_shape_id so the report and legend read the reconciled number, never a second arithmetic pass. This is the verb for a column, a floor drain, an island of casework INSIDE a room; an independent measure_polygon role:"deduct" stays the tool for a deduction that isn't a hole in one parent. Refusal over guessing: the ring must sit FULLY inside the parent's outer ring (an edge-crossing cut is a boundary correction — edit_shape the parent instead), and a cut that would erase the parent or split it in two refuses whole (trace the pieces as rooms). One journal entry — undo_last restores parent and hole together; delete_shape on the deduct later reverts the cut too (a multi-cut parent rebuilds from the chain's pristine snapshot minus the survivors). ${COORDS}`,
+    inputSchema: {
+      parent_shape_id: z.string().describe("A committed floor_area shape id (list_shapes)"),
+      verts: z.array(pointSchema).min(3).describe("The hole's ring, image px, fully inside the parent"),
+    },
+    outputSchema: cutOutOutput,
+  }, run("cut_out", (a) => session.cutOut(a)));
 
   server.registerTool("measure_line", {
     description: `Measure an open polyline (min 2 points, image px): length_lf at the sheet's scale. Requires the scale to be set. Pass condition to commit it as a linear shape (base, transitions, feature strips). ${COORDS}`,
