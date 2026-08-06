@@ -2,6 +2,8 @@
 
 # OpenTakeoff
 
+[![MCP Toplist](https://mcptoplist.com/badge/io.github.Kentucky-ai%2Fopentakeoff.svg)](https://mcptoplist.com/server/io.github.Kentucky-ai%2Fopentakeoff)
+
 **The measurement engine for building plans — built so an AI agent can drive it, and so an estimator wants to.**
 
 A takeoff is the act of measuring quantities off a construction drawing. OpenTakeoff does it
