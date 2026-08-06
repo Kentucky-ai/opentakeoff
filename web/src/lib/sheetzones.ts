@@ -110,7 +110,10 @@ export function inZones(zones: Zone[], x: number, y: number): boolean {
 /** Text-decoration test for one segment: its midpoint sits inside an
  *  (inflated) text box and it is no longer than that text run — underlines,
  *  strikeouts, tag boxes, table rules WITHIN a cell. A wall PASSING under
- *  text is longer than the text and survives. */
+ *  text is longer than the text and survives. The inflation is generous
+ *  (±0.8·h sideways, ±1.0·h vertically) because room-tag BOXES pad beyond
+ *  their text — and this architect parks tags AT door openings, where a
+ *  surviving box rail cap-qualifies and steals the jamb's seal partner. */
 export function isTextDecoration(spans: TextSpanBox[], grid: Map<number, number[]>, cell: number, x1: number, y1: number, x2: number, y2: number): boolean {
   const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
   const len = Math.hypot(x2 - x1, y2 - y1);
@@ -119,8 +122,8 @@ export function isTextDecoration(spans: TextSpanBox[], grid: Map<number, number[
   for (const i of b) {
     const s = spans[i];
     const h = Math.max(s.y1 - s.y0, 4);
-    if (mx >= s.x0 - h * 0.4 && mx <= s.x1 + h * 0.4 && my >= s.y0 - h * 0.5 && my <= s.y1 + h * 0.5
-        && len <= 1.35 * Math.max(s.x1 - s.x0, s.y1 - s.y0)) return true;
+    if (mx >= s.x0 - h * 0.8 && mx <= s.x1 + h * 0.8 && my >= s.y0 - h && my <= s.y1 + h
+        && len <= 1.6 * Math.max(s.x1 - s.x0, s.y1 - s.y0) + 6) return true;
   }
   return false;
 }

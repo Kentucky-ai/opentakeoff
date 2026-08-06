@@ -620,6 +620,262 @@ export function bridgeDangles(
   return { added, count: added.length >> 2 };
 }
 
+/** Face-line gap seals (Stage 2, the robust half). The cap-pair detector
+ *  below models an idealized jamb; the corpus showed drawn reality is a
+ *  MULTI-LINE wall assembly (finish + structure lines 1–2px apart per face)
+ *  whose jambs span only some lines, shredded further by door frames and
+ *  noding. The invariant that survives all of that: at a door or window,
+ *  each wall FACE LINE stops and then CONTINUES on the same infinite line
+ *  after a door-sized gap. So every long stroke seals its own collinear
+ *  gaps: both faces of the wall do it independently and the threshold ends
+ *  up closed — no cap detection, no fragmentation sensitivity. Runs on the
+ *  PRE-NODED hard set (drawn strokes intact). Over-wide gaps stay open;
+ *  strictly-crossing ink blocks (a stroke merely ENDING on the line — a
+ *  frame tip, a leaf hinge — does not). */
+export function sealFaceGaps(segs: number[], pxPerFt?: number, cell = 64): { added: number[]; count: number } {
+  const ppf = pxPerFt && pxPerFt > 0 ? pxPerFt : 0;
+  // pieces join a line group down to ~4" (noding shreds face lines into
+  // fragments; the interval merge below reassembles them) — but a GAP only
+  // seals between merged runs of real face length
+  const minPiece = ppf ? 0.35 * ppf : 6;
+  const minRun = ppf ? 1.5 * ppf : 15;
+  // a gap under 18" is not an opening (aligned separate boxes on a plan sit
+  // about that far apart — sealing them invents enclosures; a real cased
+  // opening is wider). Scale-blind the cap collapses to the bridge's
+  // conservative fallback — without feet, a wide gap is undecidable.
+  const gapMin = ppf ? 1.5 * ppf : 12;
+  const gapMax = ppf ? 8 * ppf : 24;
+  const LINE_TOL = 1.5;
+  const n = segs.length >> 2;
+  const grid = segGrid(segs, cell);
+  const CROSS_MARGIN = 1.5;
+  const blocked = (x1: number, y1: number, x2: number, y2: number): boolean => {
+    const sl = Math.hypot(x2 - x1, y2 - y1) || 1;
+    const cx0 = Math.floor(Math.min(x1, x2) / cell), cx1 = Math.floor(Math.max(x1, x2) / cell);
+    const cy0 = Math.floor(Math.min(y1, y2) / cell), cy1 = Math.floor(Math.max(y1, y2) / cell);
+    for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) {
+      for (const j of grid.get(cy * 131071 + cx) || []) {
+        const r = segIntersect(x1, y1, x2, y2, segs[j * 4], segs[j * 4 + 1], segs[j * 4 + 2], segs[j * 4 + 3]);
+        if (!r) continue;
+        const jl = Math.hypot(segs[j * 4 + 2] - segs[j * 4], segs[j * 4 + 3] - segs[j * 4 + 1]) || 1;
+        if (Math.min(r[0], 1 - r[0]) * sl >= CROSS_MARGIN && Math.min(r[1], 1 - r[1]) * jl >= CROSS_MARGIN) return true;
+      }
+    }
+    return false;
+  };
+  // group long strokes by their infinite line: angle (5° buckets, mod 180)
+  // + signed offset (1.5px buckets); neighbor buckets checked via double
+  // registration so bucket edges don't split a line
+  interface Piece { t0: number; t1: number; p0: Pt; p1: Pt }
+  const lines = new Map<string, Piece[]>();
+  for (let i = 0; i < n; i++) {
+    const x1 = segs[i * 4], y1 = segs[i * 4 + 1], x2 = segs[i * 4 + 2], y2 = segs[i * 4 + 3];
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.hypot(dx, dy);
+    if (len < minPiece) continue;
+    let ux = dx / len, uy = dy / len;
+    if (uy < 0 || (uy === 0 && ux < 0)) { ux = -ux; uy = -uy; }
+    const angDeg = (Math.atan2(uy, ux) * 180) / Math.PI;
+    const off = -x1 * uy + y1 * ux;                 // signed distance of the line from origin
+    const t0v = x1 * ux + y1 * uy, t1v = x2 * ux + y2 * uy;
+    const piece: Piece = t0v <= t1v ? { t0: t0v, t1: t1v, p0: [x1, y1], p1: [x2, y2] } : { t0: t1v, t1: t0v, p0: [x2, y2], p1: [x1, y1] };
+    for (const a of [Math.round(angDeg / 5) - 1, Math.round(angDeg / 5), Math.round(angDeg / 5) + 1]) {
+      for (const o of [Math.floor(off / LINE_TOL), Math.floor(off / LINE_TOL) + 1]) {
+        const k = `${a}:${o}`;
+        let g = lines.get(k); if (!g) { g = []; lines.set(k, g); }
+        g.push(piece);
+      }
+    }
+  }
+  const added: number[] = [];
+  const emitted = new Set<string>();
+  for (const g of lines.values()) {
+    if (g.length < 2) continue;
+    g.sort((p, q) => p.t0 - q.t0);
+    // pass 1: reassemble the drawn line — merge overlapping/near-touching
+    // fragments (noding splits, weld shifts) into runs. The tolerance is
+    // reassembly-scale, NOT opening-scale: a sub-door gap must stay a gap.
+    const MERGE_TOL = 4;
+    const runs: Piece[] = [];
+    let cur = { ...g[0] };
+    for (let t = 1; t < g.length; t++) {
+      const nx = g[t];
+      if (nx.t0 <= cur.t1 + MERGE_TOL) {
+        if (nx.t1 > cur.t1) { cur.t1 = nx.t1; cur.p1 = nx.p1; }
+        continue;
+      }
+      runs.push(cur); cur = { ...nx };
+    }
+    runs.push(cur);
+    // pass 2: a door-sized break between two REAL face runs seals — the
+    // wall face continues on the same line after the opening
+    for (let t = 0; t + 1 < runs.length; t++) {
+      const a = runs[t], b = runs[t + 1];
+      const gap = b.t0 - a.t1;
+      if (gap < gapMin || gap > gapMax) continue;
+      if (Math.min(a.t1 - a.t0, b.t1 - b.t0) < 0.5 * minRun) continue;
+      if (Math.max(a.t1 - a.t0, b.t1 - b.t0) < minRun) continue;
+      const k = `${a.p1[0].toFixed(1)},${a.p1[1].toFixed(1)}→${b.p0[0].toFixed(1)},${b.p0[1].toFixed(1)}`;
+      if (emitted.has(k) || blocked(a.p1[0], a.p1[1], b.p0[0], b.p0[1])) continue;
+      emitted.add(k);
+      added.push(a.p1[0], a.p1[1], b.p0[0], b.p0[1]);
+    }
+  }
+  return { added, count: added.length >> 2 };
+}
+
+/** Cap-to-cap opening seals (Stage 2 — the capped-jamb root cause). A
+ *  properly drawn double-line wall ENDS in a cap stroke at every door and
+ *  window: the jamb. Cap endpoints are degree-2, so bridgeDangles (which
+ *  wants degree-1 tips) never fires there and the assembly stays
+ *  topologically open — rooms merge through every doorway (measured: the
+ *  whole A123 fitness wing traced as one face). The seal is geometric, not
+ *  degree-based: two cap-length strokes, near-parallel, FACING each other
+ *  across a door-sized run of empty space, are an opening's two jambs; join
+ *  their corresponding endpoints with two seal segments so both wall faces
+ *  continue straight through the threshold — which is exactly where Div 9
+ *  ends a room. Openings wider than `gapMax` (a storefront, a genuinely
+ *  open bay) stay open, like the bridge. Blocked by any ink crossing the
+ *  gap. Same provenance as the door-line bridge (`sealed`). */
+export function sealOpenings(segs: number[], pxPerFt?: number, cell = 64): { added: number[]; count: number } {
+  const ppf = pxPerFt && pxPerFt > 0 ? pxPerFt : 0;
+  const capMax = ppf ? 1.8 * ppf : 22;          // thickest assembly + a margin
+  const capMin = 2;
+  const gapMax = ppf ? 8 * ppf : 60;            // widest sealed opening: a double door
+  const gapMin = ppf ? 0.5 * ppf : 4;
+  const PAR = Math.sin((10 * Math.PI) / 180);
+  const n = segs.length >> 2;
+  // a cap is not just SHORT — it TERMINATES a wall: both its endpoints must
+  // continue into a run markedly longer than the cap and roughly ⊥ to it
+  // (the wall faces). Without this, a tag bubble's short chords read as caps
+  // and seal across the circle (measured: the bubble cull died).
+  const atPt = new Map<string, number[]>();
+  const pkey = (x: number, y: number) => `${Math.round(x * 8)},${Math.round(y * 8)}`;
+  for (let i = 0; i < n; i++) {
+    for (const e of [0, 2] as const) {
+      const k = pkey(segs[i * 4 + e], segs[i * 4 + e + 1]);
+      let a = atPt.get(k); if (!a) { a = []; atPt.set(k, a); }
+      a.push(i);
+    }
+  }
+  const COS25 = Math.cos((25 * Math.PI) / 180);
+  const caps: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const dx = segs[i * 4 + 2] - segs[i * 4], dy = segs[i * 4 + 3] - segs[i * 4 + 1];
+    const len = Math.hypot(dx, dy);
+    if (len < capMin || len > capMax) continue;
+    const sx = -dy / len, sy = dx / len;   // seal direction: ⊥ to the cap, along the wall
+    let ok = true;
+    for (const e of [0, 2] as const) {
+      let found = false;
+      for (const j of atPt.get(pkey(segs[i * 4 + e], segs[i * 4 + e + 1])) || []) {
+        if (j === i) continue;
+        const jdx = segs[j * 4 + 2] - segs[j * 4], jdy = segs[j * 4 + 3] - segs[j * 4 + 1];
+        const jlen = Math.hypot(jdx, jdy) || 1;
+        if (jlen >= 2.5 * len && Math.abs((jdx * sx + jdy * sy) / jlen) >= COS25) { found = true; break; }
+      }
+      if (!found) { ok = false; break; }
+    }
+    if (ok) caps.push(i);
+  }
+  const grid = segGrid(segs, cell);
+  // STRICT crossing only: door FRAMES terminate ON the wall face lines at
+  // every opening (measured: they T-junction into the seal line and killed
+  // every real door seal on the corpus). Ink that merely ENDS on the seal
+  // doesn't divide the gap; ink that RUNS THROUGH it does. The 1.5px margin
+  // tolerates frame tips overshooting the face line by drafting slop.
+  const CROSS_MARGIN = 1.5;
+  const blocked = (x1: number, y1: number, x2: number, y2: number): boolean => {
+    const sealLen = Math.hypot(x2 - x1, y2 - y1) || 1;
+    const cx0 = Math.floor(Math.min(x1, x2) / cell), cx1 = Math.floor(Math.max(x1, x2) / cell);
+    const cy0 = Math.floor(Math.min(y1, y2) / cell), cy1 = Math.floor(Math.max(y1, y2) / cell);
+    for (let cy = cy0; cy <= cy1; cy++) for (let cx = cx0; cx <= cx1; cx++) {
+      for (const j of grid.get(cy * 131071 + cx) || []) {
+        const r = segIntersect(x1, y1, x2, y2, segs[j * 4], segs[j * 4 + 1], segs[j * 4 + 2], segs[j * 4 + 3]);
+        if (!r) continue;
+        const jl = Math.hypot(segs[j * 4 + 2] - segs[j * 4], segs[j * 4 + 3] - segs[j * 4 + 1]) || 1;
+        if (Math.min(r[0], 1 - r[0]) * sealLen >= CROSS_MARGIN && Math.min(r[1], 1 - r[1]) * jl >= CROSS_MARGIN) return true;
+      }
+    }
+    return false;
+  };
+  // a seal whose line already lies on existing ink is not sealing a gap —
+  // emitting it would stamp `sealed` provenance on rings that were never
+  // open (and double-draw the wall face)
+  const SIN3 = Math.sin((3 * Math.PI) / 180);
+  const covered = (x1: number, y1: number, x2: number, y2: number): boolean => {
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+    const dx = x2 - x1, dy = y2 - y1;
+    const dl = Math.hypot(dx, dy) || 1;
+    const b = grid.get(Math.floor(my / cell) * 131071 + Math.floor(mx / cell));
+    if (!b) return false;
+    for (const j of b) {
+      const jdx = segs[j * 4 + 2] - segs[j * 4], jdy = segs[j * 4 + 3] - segs[j * 4 + 1];
+      const jl = Math.hypot(jdx, jdy) || 1;
+      if (Math.abs((dx * jdy - dy * jdx) / (dl * jl)) > SIN3) continue;
+      const t = ((mx - segs[j * 4]) * jdx + (my - segs[j * 4 + 1]) * jdy) / (jl * jl);
+      if (t < 0 || t > 1) continue;
+      const qx = segs[j * 4] + jdx * t, qy = segs[j * 4 + 1] + jdy * t;
+      if (Math.hypot(mx - qx, my - qy) <= 0.75) return true;
+    }
+    return false;
+  };
+  // ── cluster caps by the WALL they terminate, then seal CONSECUTIVE gaps ──
+  // Mutual-nearest pairing failed on the real corpus two ways (measured):
+  // noding fragments a jamb into pieces that fail any length-ratio test, and
+  // a door with a frame pocket next to it seals the 2-ft pocket and strands
+  // the 3-ft door (nearest ≠ the opening that matters). Caps of one wall are
+  // parallel, and their midpoints share the wall's centerline: same angle
+  // bucket, same lateral offset. Sorted along the wall, EVERY consecutive
+  // facing gap up to door width seals — a run of [wall | pocket | door |
+  // wall] closes at each break, which is how the assembly is actually built.
+  interface Cap { i: number; ax: number; lat: number; d: [number, number]; len: number }
+  const groups = new Map<string, Cap[]>();
+  const LAT_TOL = ppf ? 0.5 * ppf : 8;
+  for (const i of caps) {
+    const dx = segs[i * 4 + 2] - segs[i * 4], dy = segs[i * 4 + 3] - segs[i * 4 + 1];
+    const len = Math.hypot(dx, dy) || 1;
+    let ux = dx / len, uy = dy / len;
+    if (uy < 0 || (uy === 0 && ux < 0)) { ux = -ux; uy = -uy; }           // canonical half-turn
+    const mx = (segs[i * 4] + segs[i * 4 + 2]) / 2, my = (segs[i * 4 + 1] + segs[i * 4 + 3]) / 2;
+    const angle = Math.round((Math.atan2(uy, ux) * 180) / Math.PI / 10);  // 10° buckets
+    const lat = mx * ux + my * uy;                                        // centerline offset (along the cap)
+    const ax = -mx * uy + my * ux;                                        // position along the wall
+    const cap: Cap = { i, ax, lat, d: [ux, uy], len };
+    for (const a of [angle - 1, angle, angle + 1]) {
+      const k = `${a}:${Math.round(lat / LAT_TOL)}`;
+      let g = groups.get(k); if (!g) { g = []; groups.set(k, g); }
+      g.push(cap);
+    }
+  }
+  const added: number[] = [];
+  const sealedPair = new Set<string>();
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    g.sort((p, q) => p.ax - q.ax);
+    for (let t = 0; t + 1 < g.length; t++) {
+      const a = g[t], b = g[t + 1];
+      if (a.i === b.i) continue;
+      const pk = a.i < b.i ? `${a.i}:${b.i}` : `${b.i}:${a.i}`;
+      if (sealedPair.has(pk)) continue;
+      if (Math.abs(a.d[0] * b.d[1] - a.d[1] * b.d[0]) > PAR) continue;    // parallel jambs only
+      if (Math.abs(a.lat - b.lat) > LAT_TOL) continue;                    // same centerline (bucket edges overlap)
+      const gap = b.ax - a.ax;
+      if (gap < Math.max(gapMin, 0.6 * Math.max(a.len, b.len)) || gap > gapMax) continue;
+      // endpoint orientation match: each end of a joins its nearest end of b
+      const a1: Pt = [segs[a.i * 4], segs[a.i * 4 + 1]], a2: Pt = [segs[a.i * 4 + 2], segs[a.i * 4 + 3]];
+      let b1: Pt = [segs[b.i * 4], segs[b.i * 4 + 1]], b2: Pt = [segs[b.i * 4 + 2], segs[b.i * 4 + 3]];
+      if (Math.hypot(a1[0] - b1[0], a1[1] - b1[1]) + Math.hypot(a2[0] - b2[0], a2[1] - b2[1])
+        > Math.hypot(a1[0] - b2[0], a1[1] - b2[1]) + Math.hypot(a2[0] - b1[0], a2[1] - b1[1])) { const t2 = b1; b1 = b2; b2 = t2; }
+      if (covered(a1[0], a1[1], b1[0], b1[1]) && covered(a2[0], a2[1], b2[0], b2[1])) { sealedPair.add(pk); continue; }
+      if (blocked(a1[0], a1[1], b1[0], b1[1]) || blocked(a2[0], a2[1], b2[0], b2[1])) continue;
+      sealedPair.add(pk);
+      added.push(a1[0], a1[1], b1[0], b1[1], a2[0], a2[1], b2[0], b2[1]);
+    }
+  }
+  return { added, count: added.length >> 3 };
+}
+
 /** Trace all faces of the arrangement via the rotation system: at each vertex
  *  the outgoing edges sort by angle; next(u→v) is the edge after (v→u) in
  *  clockwise order. Interior faces come back with one orientation sign, the
@@ -788,6 +1044,13 @@ export function detectAllRoomsDetailed(hardSegs: number[], opts: PolygonizeOptio
     const bKey = `${Math.round(bridgedRaw.added[i + 2] * 8)},${Math.round(bridgedRaw.added[i + 3] * 8)}`;
     if (!healedTips.has(aKey) && !healedTips.has(bKey)) bridged.push(...bridgedRaw.added.slice(i, i + 4));
   }
+  // opening seals (Stage 2): jambs are degree-2, the bridge can't see them.
+  // Face-line gap seals carry the load (robust to multi-line assemblies and
+  // fragmentation, computed on welded strokes); the cap-pair detector adds
+  // the openings whose faces don't continue collinearly. Same provenance as
+  // the bridge.
+  bridged.push(...sealFaceGaps(welded.segs, opts.pxPerFt).added);
+  bridged.push(...sealOpenings(welded.segs, opts.pxPerFt).added);
   // re-node the union so each heal/bridge splits the segment it landed on
   // (its hit point is a T-junction the arrangement must have)
   const finalSegs = healed.count || bridged.length

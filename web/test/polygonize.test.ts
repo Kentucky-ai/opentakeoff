@@ -98,6 +98,42 @@ test("door-line seal is blocked when solid linework crosses the gap", () => {
   assert.ok(rooms.every((r) => !r.sealed), "no bridge through solid ink");
 });
 
+test("cap-to-cap seal: a capped doorway splits rooms at the threshold; a capped corner does not seal", () => {
+  // double-line room split by a double-line partition whose door opening is
+  // properly CAPPED at both jambs — every wall end is degree-2, so
+  // bridgeDangles never fires; the geometric cap-pair seal must
+  const ppf = 10;
+  const segs = [
+    ...rect(0, 0, 412, 206), ...rect(6, 6, 406, 200),           // outer wall pair
+    197, 6, 197, 80,   203, 6, 203, 80,    197, 80, 203, 80,    // partition upper leg + jamb cap
+    197, 116, 197, 200,  203, 116, 203, 200,  197, 116, 203, 116,  // lower leg + jamb cap
+  ];
+  const { rooms } = detectAllRoomsDetailed(segs, { pxPerFt: ppf });
+  assert.equal(rooms.length, 2, "the capped opening seals at the door line");
+  assert.ok(rooms.every((r) => r.sealed), "both rings carry seal provenance");
+  const areas = rooms.map((r) => r.areaPx).sort((a, b) => a - b);
+  assert.ok(Math.abs(areas[0] - 191 * 194) < 1 && Math.abs(areas[1] - 203 * 194) < 1, "exact rooms at the inner faces, split at the door line");
+});
+
+test("sealOpenings: an over-wide opening and a blocked gap stay open", () => {
+  // same geometry with a 10 ft gap (> 8 ft door cap): stays open
+  const wide = [
+    ...rect(0, 0, 412, 206), ...rect(6, 6, 406, 200),
+    197, 6, 197, 50,   203, 6, 203, 50,    197, 50, 203, 50,
+    197, 150, 197, 200,  203, 150, 203, 200,  197, 150, 203, 150,
+  ];
+  assert.equal(detectAllRoomsDetailed(wide, { pxPerFt: 10 }).rooms.length, 1, "a 10ft bay is not a door");
+  // door-width gap with a stroke crossing it: blocked, no seal
+  const crossed = [
+    ...rect(0, 0, 412, 206), ...rect(6, 6, 406, 200),
+    197, 6, 197, 80,   203, 6, 203, 80,    197, 80, 203, 80,
+    197, 116, 197, 200,  203, 116, 203, 200,  197, 116, 203, 116,
+    180, 98, 220, 98,
+  ];
+  const r2 = detectAllRoomsDetailed(crossed, { pxPerFt: 10 }).rooms;
+  assert.ok(r2.every((r) => !r.sealed), "no seal through crossing ink");
+});
+
 test("nodeSegments splits at a proper crossing", () => {
   const out = nodeSegments([0, 0, 10, 10, 0, 10, 10, 0]);
   assert.equal(out.length >> 2, 4, "an X becomes four segments");
