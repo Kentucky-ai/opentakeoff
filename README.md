@@ -5,7 +5,7 @@
 **The measurement engine for building plans — built so an AI agent can drive it, and so an estimator wants to.**
 
 A takeoff is the act of measuring quantities off a construction drawing. OpenTakeoff does it
-two ways over one engine: **35 MCP tools** for an agent, and a browser canvas for a person.
+two ways over one engine: **40 MCP tools** for an agent, and a browser canvas for a person.
 Same flood fill, same scale gate, same math, same record. Every measurement stores its
 **scale**, its **method**, and **who made it** — which is what makes the output auditable, and
 what makes it training data.
@@ -137,7 +137,7 @@ becomes ink only when the operator clicks Accept.*
 | **Measure** | `one_click` · `detect_rooms` · `measure_polygon` · `cut_out` · `measure_line` · `measure_surface` · `place_count` |
 | **Repeat & derive** | `symbol_sweep` · `sweep_schedule_row` · `derive_base` · `derive_transitions` · `apply_rules` |
 | **Read the drawing set** | `sheet_graph` · `resolve_tag` · `find_schedule` |
-| **Edit & audit** | `list_shapes` · `edit_shape` · `edit_condition` · `edit_materials` · `delete_shape` · `undo_last` |
+| **Edit & audit** | `list_shapes` · `edit_shape` · `edit_condition` · `edit_materials` · `duplicate_condition` · `split_condition` · `delete_shape` · `undo_last` |
 | **Mark & sign** | `annotate` · `list_annotations` · `link_annotation` · `mark_verdict` · `delete_verdict` |
 | **Hand off** | `takeoff_summary` · `export_takeoff` · `export_report` · `export_marked_pdf` · `import_takeoff` |
 
