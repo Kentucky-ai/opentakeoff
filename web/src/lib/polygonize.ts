@@ -40,6 +40,7 @@
 // (`healed`) so a reviewer can distrust exactly the welded ones.
 
 import { classifyHatchSegs, SEG_CLIP, SEG_CURVE, type VectorGeometry } from "./oneclick.ts";
+import { inZones, isTextDecoration, spanGrid, type TextSpanBox, type Zone } from "./sheetzones.ts";
 
 export type Pt = [number, number];
 
@@ -139,8 +140,17 @@ const D = {
 /** Optional out-parameter for hardWallSegments: which classification mode ran
  *  and how much of the long linework proved itself as walls. */
 export interface WallInfo {
-  mode?: "walls" | "linework";
+  /** "weight" = the sheet draws walls on a heavy pen and that tier IS the
+   *  candidate set (pairing demoted to forensics); "walls" = no usable weight
+   *  tier, pairing gatekeeps; "linework" = nothing pairs either — subtractive
+   *  fallback. */
+  mode?: "weight" | "walls" | "linework";
   coverage?: number;
+  /** weight-tier stats when mode = "weight": the tier floor (devW) and the
+   *  share of long solid ink it carries. */
+  tier?: { min: number; share: number };
+  /** segments excluded by sheet zoning / text-decoration tests (Stage 0). */
+  zoned?: number;
   /** set collectPairs=true before calling to get the forensic record: every
    *  admitted pairing as [segA quad…, segB quad…, offsetPx] — the "why is
    *  THIS a wall" answer for any boundary a reviewer disputes. */
@@ -148,7 +158,12 @@ export interface WallInfo {
   pairs?: number[][];
 }
 
-export function hardWallSegments(geom: VectorGeometry, ws: number, pitchCapPx?: number, pxPerFt?: number, info?: WallInfo): number[] {
+/** Stage-0 context for hardWallSegments: the sheet's annotation zones and
+ *  text span boxes (image px). Optional — headless tests and hand-built
+ *  geometry run without them. */
+export interface SheetContext { zones?: Zone[]; spans?: TextSpanBox[] }
+
+export function hardWallSegments(geom: VectorGeometry, ws: number, pitchCapPx?: number, pxPerFt?: number, info?: WallInfo, ctx?: SheetContext): number[] {
   const n = geom.segs.length >> 2;
   const soft = classifyHatchSegs(geom.segs, geom.meta, ws, pitchCapPx);
   const s = geom.segs;
@@ -192,19 +207,64 @@ export function hardWallSegments(geom: VectorGeometry, ws: number, pitchCapPx?: 
   // doorway) — they are walls by construction. Dashed candidates ride along
   // UNPAIRED-dropped but PAIRABLE: a dashed PAIR is an existing wall on a
   // renovation plan; a lone dashed stroke is a match line.
+  // ── Stage 0: sheet zoning + text decoration (sheetzones.ts) ─────────────
+  // A segment inside an annotation zone (title-block margin, schedule/notes
+  // column) or sitting under its own text run (underlines, tag boxes) never
+  // becomes a candidate — junk dies here, not in downstream culls.
+  const zones = ctx?.zones ?? [];
+  const spans = ctx?.spans ?? [];
+  const sGrid = spans.length ? spanGrid(spans) : null;
+  let zoned = 0;
+
   const cand: number[] = [];
   const auto: number[] = [];
   const dashCand: number[] = [];
+  const wCand: number[] = [];
   for (let i = 0; i < n; i++) {
     if (geom.meta[i] & SEG_CLIP) continue;   // invisible ink
     if (soft[i]) continue;                   // periodic fill, not a wall
     if (dropCurve[i]) continue;              // swing / cloud / circle
-    cand.push(s[i * 4], s[i * 4 + 1], s[i * 4 + 2], s[i * 4 + 3]);
+    const x1 = s[i * 4], y1 = s[i * 4 + 1], x2 = s[i * 4 + 2], y2 = s[i * 4 + 3];
+    if (zones.length && inZones(zones, (x1 + x2) / 2, (y1 + y2) / 2)) { zoned++; continue; }
+    if (sGrid && isTextDecoration(spans, sGrid, 64, x1, y1, x2, y2)) { zoned++; continue; }
+    cand.push(x1, y1, x2, y2);
     auto.push(geom.meta[i] & SEG_CURVE ? 1 : 0);
     dashCand.push(geom.dashed && geom.dashed[i] ? 1 : 0);
+    wCand.push(geom.meta[i] >> 4);           // device pen weight (high nibble)
   }
   const chordFrom = cand.length >> 2;   // swing chords sit at the tail — see below
-  for (let k = 0; k < chordAdd.length; k += 4) { cand.push(chordAdd[k], chordAdd[k + 1], chordAdd[k + 2], chordAdd[k + 3]); auto.push(1); dashCand.push(0); }
+  for (let k = 0; k < chordAdd.length; k += 4) { cand.push(chordAdd[k], chordAdd[k + 1], chordAdd[k + 2], chordAdd[k + 3]); auto.push(1); dashCand.push(0); wCand.push(0); }
+  if (info) info.zoned = zoned;
+
+  // ── Stage 1, the weight tier: a ONE-WAY signal. Verified at full res on
+  // the Prospect Cove corpus, then corrected by it: heavy ink (w≥2) is wall
+  // with high precision — but not all wall is heavy; A123's interior
+  // partitions ride w1, and a tier-only candidate set collapsed detection to
+  // 7 rings. So the tier ADDS to the paired set (heavy ∪ paired), never
+  // replaces it. Heavy ink enters at ANY length — jamb caps and wall stubs
+  // (< 1 ft) that minLen kept out of pairing are exactly what the opening
+  // bridge needs. Engagement is per-sheet share statistics, never assumed
+  // convention (AIA pen standards exist, compliance doesn't): too little
+  // heavy ink = no tier drawn; too much = the architect draws EVERYTHING
+  // heavy and weight carries no signal (junk would ride the union). Lone
+  // dashed heavy ink = match line; a dashed heavy PAIR = existing wall.
+  const TIER_MIN_W = 2;
+  const TIER_MIN_SHARE = 0.12;
+  const TIER_MAX_SHARE = 0.85;
+  const TIER_MIN_LF = 150;
+  const minLenStat = pxPerFt && pxPerFt > 0 ? Math.max(6, 0.9 * pxPerFt) : 12;
+  let heavyLen = 0, totLen = 0;
+  for (let k = 0; k < chordFrom; k++) {
+    if (auto[k] || dashCand[k]) continue;
+    const len = Math.hypot(cand[k * 4 + 2] - cand[k * 4], cand[k * 4 + 3] - cand[k * 4 + 1]);
+    if (len < minLenStat) continue;
+    totLen += len;
+    if (wCand[k] >= TIER_MIN_W) heavyLen += len;
+  }
+  const tierShare = totLen > 0 ? heavyLen / totLen : 0;
+  const tierOn = tierShare >= TIER_MIN_SHARE && tierShare <= TIER_MAX_SHARE
+    && (!pxPerFt || pxPerFt <= 0 || heavyLen / pxPerFt >= TIER_MIN_LF);
+  if (info && tierOn) info.tier = { min: TIER_MIN_W, share: tierShare };
 
   // ── wall-first: a boundary must PROVE it is a wall ──────────────────────
   // A drawn wall is two near-parallel strokes a wall-thickness apart running
@@ -218,9 +278,23 @@ export function hardWallSegments(geom: VectorGeometry, ws: number, pitchCapPx?: 
   // the same tip-bridge closes window openings whose sill ink didn't pair.
   // The fallback (single-line) mode keeps the chord: there the leaf stays
   // hard and the hinge jamb is busy, so the chord is the only closure.
-  const walled = wallPairFilter(cand, auto, dashCand, pxPerFt, info?.collectPairs ? (info.pairs = []) : undefined, chordFrom);
-  if (info) { info.mode = walled ? "walls" : "linework"; info.coverage = wallCoverageLast; }
-  if (walled) return walled;
+  // v2 lesson, measured on the corpus before simplifying to this: blanket
+  // heavy admission (tier as candidate set, then tier ∪ paired at any
+  // length) pulled in door leaves, casework and fixtures and subdivided
+  // every room — A123 went 2/31 → 0/31 with every room 20–90% under. The
+  // pen tier stays a REPORTED signal (info.tier, Stage-2 opening evidence);
+  // admission is pairing + LENGTH-LIMITED end caps. Swing chords (the tail)
+  // stay out of walls mode — the bridge seals thresholds straight.
+  const pairMark = wallPairFilter(cand, auto, dashCand, pxPerFt, info?.collectPairs ? (info.pairs = []) : undefined);
+  if (pairMark) {
+    const out: number[] = [];
+    for (let k = 0; k < chordFrom; k++) {
+      if (pairMark[k] || auto[k]) out.push(cand[k * 4], cand[k * 4 + 1], cand[k * 4 + 2], cand[k * 4 + 3]);
+    }
+    if (info) { info.mode = "walls"; info.coverage = wallCoverageLast; }
+    return out;
+  }
+  if (info) { info.mode = "linework"; info.coverage = wallCoverageLast; }
   // fallback: the subtractive set, minus dashed ink (unpaired dash = annotation)
   const out: number[] = [];
   for (let k = 0; k < cand.length >> 2; k++) {
@@ -239,9 +313,10 @@ function perpDist(px: number, py: number, x1: number, y1: number, dx: number, dy
 
 /** Mark segments that pair as wall faces (near-parallel, wall-thickness
  *  offset, real overlap), plus end caps bridging two marked faces, plus the
- *  auto set. Returns the marked quads, or null when paired coverage of the
- *  long straight linework is too low to trust (single-line plan). */
-function wallPairFilter(cand: number[], auto: number[], dashCand: number[], pxPerFt?: number, pairsOut?: number[][], chordFrom = Infinity): number[] | null {
+ *  auto set. Returns the MARK array (the caller unions it with the pen
+ *  tier), or null when paired coverage of the long straight linework is too
+ *  low to trust (single-line plan). */
+function wallPairFilter(cand: number[], auto: number[], dashCand: number[], pxPerFt?: number, pairsOut?: number[][]): Uint8Array | null {
   const m = cand.length >> 2;
   const ppf = pxPerFt && pxPerFt > 0 ? pxPerFt : 0;
   const minLen = ppf ? Math.max(6, 0.9 * ppf) : 12;          // pairing considers strokes ≥ ~1 ft
@@ -286,6 +361,10 @@ function wallPairFilter(cand: number[], auto: number[], dashCand: number[], pxPe
       }
     }
   }
+  // end caps are wall-thickness-scale by definition — without the length
+  // limit, any stroke spanning wall to wall (a counter front, a shelf run)
+  // rode in and subdivided the room it crossed (measured on the corpus)
+  const capLenMax = 2 * bandHi;
   // coverage check BEFORE caps: how much of the real (long, straight,
   // undashed) linework proved itself?
   let markedLen = 0, totalLen = 0;
@@ -316,11 +395,11 @@ function wallPairFilter(cand: number[], auto: number[], dashCand: number[], pxPe
   };
   for (let i = 0; i < m; i++) {
     if (mark[i]) continue;
+    const [, , li] = dir(i);
+    if (li > capLenMax) continue;
     if (near(cand[i * 4], cand[i * 4 + 1]) && near(cand[i * 4 + 2], cand[i * 4 + 3])) mark[i] = 1;
   }
-  const out: number[] = [];
-  for (let i = 0; i < m; i++) if (mark[i] && i < chordFrom) out.push(cand[i * 4], cand[i * 4 + 1], cand[i * 4 + 2], cand[i * 4 + 3]);
-  return out;
+  return mark;
 }
 
 // ── geometry helpers ────────────────────────────────────────────────────────

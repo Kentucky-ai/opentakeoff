@@ -282,6 +282,45 @@ test("wall-first falls back to open linework on single-stroke plans", () => {
   assert.equal(detectAllRooms(hard, { pxPerFt: 12 }).length, 4, "the single-line grid still detects");
 });
 
+test("the pen tier adds jamb stubs; text-row impostors die to their own text", () => {
+  // a double-line room at pen weight 2, a 6px heavy jamb stub the pairing
+  // minLen always dropped, three light text-row pairs at wall-ish offsets
+  // (they PAIR — wave 4 admitted them; their own span boxes kill them now),
+  // and two lone light leader lines that keep the tier share in band
+  const wallSegs = [...rect(0, 0, 412, 312), ...rect(6, 6, 406, 306)];
+  const lightRows: number[] = [];
+  for (let r = 0; r < 3; r++) lightRows.push(40, 60 + r * 40, 140, 60 + r * 40, 40, 68 + r * 40, 140, 68 + r * 40);
+  const leaders = [500, 50, 800, 50, 500, 400, 800, 400];
+  const cap = [406, 150, 412, 150];   // spans the wall pair, inner face to outer
+  const segs = [...wallSegs, ...lightRows, ...leaders, ...cap];
+  const meta = [
+    ...new Array(wallSegs.length >> 2).fill(2 << 4),
+    ...new Array(lightRows.length >> 2).fill(1 << 4),
+    1 << 4, 1 << 4,
+    2 << 4,
+  ];
+  const spans = Array.from({ length: 3 }, (_, r) => ({ str: "NOTE ROW TEXT", x0: 38, y0: 56 + r * 40, x1: 142, y1: 70 + r * 40 }));
+  const info: import("../src/lib/polygonize.ts").WallInfo = {};
+  const hard = hardWallSegments(geomOf(segs, meta), 1, undefined, 12, info, { spans });
+  assert.equal(info.mode, "walls");
+  assert.ok(info.tier, "the pen tier engaged alongside pairing");
+  assert.equal(hard.length >> 2, (wallSegs.length >> 2) + 1, "walls + the short heavy cap; text rows and lone leaders gone");
+  const rooms = detectAllRooms(hard, { pxPerFt: 12 });
+  assert.equal(rooms.length, 1, "one room, no text-row phantoms");
+  assert.ok(Math.abs(rooms[0].areaPx - 400 * 300) < 1, "bounded at the inner wall face");
+});
+
+test("the pen tier stands down when the sheet draws everything heavy", () => {
+  // uniform heavy ink carries no signal — pairing must gatekeep alone or the
+  // union would admit every heavy annotation on the sheet
+  const segs = [...rect(0, 0, 212, 172), ...rect(6, 6, 206, 166)];
+  const meta = new Array(segs.length >> 2).fill(2 << 4);
+  const info: import("../src/lib/polygonize.ts").WallInfo = {};
+  hardWallSegments(geomOf(segs, meta), 1, undefined, 12, info);
+  assert.equal(info.mode, "walls", "pairing carries the all-heavy sheet");
+  assert.equal(info.tier, undefined, "no tier claimed");
+});
+
 test("hardWallSegments honors the mask's feet-true pitch cap", () => {
   // a pitch-16 hatch field: soft under the scale-blind cap (24 px), HARD
   // under a feet-true cap of 12 px — hardWallSegments must land wherever the

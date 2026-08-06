@@ -46,6 +46,7 @@ import { mintTwin, variantTag,
 import { isGoogleConfigured, isSignedIn, isAllowedDomain, getAccessToken, orgDomainHint } from "../lib/google/auth.js";
 import { extractVectorGeometry, buildMask, floodRegionSealed, sealRadiiFor, doorWedgeCapPx, minPassRadiusFor, oneClickRing, ringArea, MASK_MAX_DIM, MIN_PASS_FT, SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE, HATCH_MAX_PITCH_FT } from "../lib/oneclick";
 import { hardWallSegments, detectAllRoomsDetailed } from "../lib/polygonize";
+import { annotationZones, inZones } from "../lib/sheetzones";
 import { roomLabelSeeds } from "../lib/detectRooms";
 import { traceConfidence, floodSignals } from "../lib/confidence";
 import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS } from "../lib/rastermask";
@@ -3665,19 +3666,33 @@ export default function TakeoffCanvas() {
     if (!segs || !segs.length || !meta) return say("Still reading this sheet's linework — try again in a second.");
     const mo = ensureMask(tp.key);
     if (!mo) return say("Still reading this sheet's linework — try again in a second.");
-    // the sheet's own room tags: they name the detected rooms AND anchor the
-    // annotation cull (legends/title blocks live in tagless territory)
+    // the sheet's own text, twice over: room tags name the detected rooms,
+    // and the FULL span boxes drive Stage-0 zoning (schedule tables, notes
+    // columns, title-block margin) + the text-decoration test — junk dies
+    // before wall classification instead of after face tracing
     let seeds = [];
+    let spans = [];
     try {
       const pageObj = pageObjsRef.current.get(tp.key);
       if (pageObj) {
         const rs = renderScalesRef.current.get(tp.key) || RENDER_SCALE;
         const vp = pageObj.getViewport({ scale: rs });
         const tc = await pageObj.getTextContent();
-        const items = tc.items.filter((it) => it.str && it.str.trim()).map((it) => {
+        const items = [];
+        for (const it of tc.items) {
+          if (!it.str || !it.str.trim()) continue;
           const t = pdfjsLib.Util.transform(vp.transform, it.transform);
-          return { str: it.str, x: t[4], y: t[5], h: Math.hypot(t[2], t[3]) };
-        });
+          const h = (it.height || 0) * rs || Math.hypot(t[2], t[3]);
+          items.push({ str: it.str, x: t[4], y: t[5], h });
+          // span box: run direction × width, ascent direction × height — the
+          // same composed-transform math mcp/src/pdf.ts textSpans uses
+          const w = (it.width || 0) * rs;
+          const dn = Math.hypot(t[0], t[1]) || 1, un = Math.hypot(t[2], t[3]) || 1;
+          const dx = t[0] / dn, dy = t[1] / dn, ux = t[2] / un, uy = t[3] / un;
+          const xs = [t[4], t[4] + w * dx, t[4] + h * ux, t[4] + w * dx + h * ux];
+          const ys = [t[5], t[5] + w * dy, t[5] + h * uy, t[5] + w * dy + h * uy];
+          spans.push({ str: it.str, x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) });
+        }
         seeds = roomLabelSeeds(items);
       }
     } catch { /* no text layer — detection still runs, rooms just come back unnamed */ }
@@ -3689,13 +3704,29 @@ export default function TakeoffCanvas() {
     // over, so room-scale grids classify as fill here; demising-wall rhythm
     // (≥ 3 ft) stays hard on both surfaces
     const wallInfo = { collectPairs: !!window.__OT_WALL_DEBUG };
-    const hard = hardWallSegments({ points: [], segs, meta, imageArea: 0, dashed: segDashedRef.current.get(tp.key) }, mo.ws, Math.max(HATCH_MAX_PITCH_FT, 2.25) * pxPerFt * mo.ws, pxPerFt, wallInfo);
+    const zones = annotationZones(spans, segs, tp.img.w, tp.img.h);
+    const hard = hardWallSegments({ points: [], segs, meta, imageArea: 0, dashed: segDashedRef.current.get(tp.key) }, mo.ws, Math.max(HATCH_MAX_PITCH_FT, 2.25) * pxPerFt * mo.ws, pxPerFt, wallInfo, { zones, spans });
     // forensics, gated like __OT_STITCH_DEBUG: every admitted wall pairing
     // ([ax1,ay1,ax2,ay2, bx1,by1,bx2,by2, offsetPx] in image px) — the "why
     // is THIS a wall" record for any boundary a reviewer disputes
-    if (window.__OT_WALL_DEBUG) window.__wallDump = { key: tp.key, mode: wallInfo.mode, coverage: wallInfo.coverage, pairs: wallInfo.pairs, hardCount: hard.length >> 2 };
+    if (window.__OT_WALL_DEBUG) window.__wallDump = { key: tp.key, mode: wallInfo.mode, coverage: wallInfo.coverage, tier: wallInfo.tier, zoned: wallInfo.zoned, zones, pairs: wallInfo.pairs, hardCount: hard.length >> 2 };
     // 12 SF floor: drops door leaves and fixture clusters, keeps closets
-    const { rooms, culled } = detectAllRoomsDetailed(hard, { pxPerFt, minAreaSf: 12, labelPts: seeds.map((s) => s.seed) });
+    const det = detectAllRoomsDetailed(hard, { pxPerFt, minAreaSf: 12, labelPts: seeds.map((s) => s.seed) });
+    // Stage-0 belt-and-suspenders: a ring whose centroid landed in an
+    // annotation zone anyway (border rectangles ring even with their interior
+    // ink zoned out) is annotation, counted with the floaters
+    const culled = det.culled;
+    const rooms = det.rooms.filter((r) => {
+      let a2 = 0, cx = 0, cy = 0;
+      for (let i = 0; i < r.ring.length; i++) {
+        const [ax, ay] = r.ring[i], [bx, by] = r.ring[(i + 1) % r.ring.length];
+        const c = ax * by - bx * ay;
+        a2 += c; cx += (ax + bx) * c; cy += (ay + by) * c;
+      }
+      const inside = a2 ? inZones(zones, cx / (3 * a2), cy / (3 * a2)) : inZones(zones, r.ring[0][0], r.ring[0][1]);
+      if (inside) culled.floaters++;
+      return !inside;
+    });
     const ms = Math.round(performance.now() - t0);
     if (!rooms.length) return say("No enclosed spaces found in this sheet's linework — One-Click a room, or trace with Area (A).");
     const regions = rooms.map((r) => {
@@ -3722,7 +3753,7 @@ export default function TakeoffCanvas() {
     const namedN = regions.filter((r) => r.label).length, suspectN = regions.filter((r) => r.so).length;
     const cullBits = culled.tags + culled.floaters;
     const parts = [
-      `${regions.length} space${regions.length === 1 ? "" : "s"} proposed in ${ms}ms (${wallInfo.mode === "walls" ? "wall-first" : "open linework"})`,
+      `${regions.length} space${regions.length === 1 ? "" : "s"} proposed in ${ms}ms (${wallInfo.mode === "weight" ? "weight-first" : wallInfo.mode === "walls" ? "wall-first" : "open linework"})`,
       namedN ? `${namedN} named from room tags` : "",
       suspectN ? `${suspectN} red = sheet frame/plate, ⌫ it` : "",
       cullBits ? `${cullBits} annotation face${cullBits === 1 ? "" : "s"} auto-skipped` : "",
