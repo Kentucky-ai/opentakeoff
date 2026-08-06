@@ -40,6 +40,9 @@ import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, floodAtSeed, type LabelBB
 import { fingerprintSymbol, matchSymbol, SWEEP_TOL_PX, type SweepOptions, type SymbolFingerprint, type SymbolMatchResult, type SweepMatch, type SweepWithheld } from "../../web/src/lib/symbolsweep.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
 import { sharedRuns, type SharedRun } from "../../web/src/lib/transitions.ts";
+// Real polygon boolean subtraction (#137/#206) — the canvas's own module, so a
+// headless cut and the app's Eraser can never disagree about what a hole holds.
+import { subtractCutout, recomposeCutouts, ringFullyInside } from "../../web/src/lib/cutout.js";
 // Correction rules (#88 / #207) — the canvas's own pure module, imported as-is
 // (the approvals/totals precedent): apply_rules re-runs an imported rule with
 // the exact predicate engine the canvas's Preview→Apply runs, so a headless
@@ -120,7 +123,7 @@ export interface Condition {
  * after a human affirmed the shape at an explicit review gate — this server
  * has no such gate, so everything it commits is reviewed: false. */
 export interface ShapeOrigin {
-  method: "manual" | "one_click_v1" | "agent_v1" | "symbol_sweep" | "rule_v1";
+  method: "manual" | "one_click_v1" | "agent_v1" | "symbol_sweep" | "rule_v1" | "cutout_v1";
   /** Omitted = human. "agent" = the shape was produced by MCP/automation.
    * "rule" = minted by a correction rule's deterministic re-run (#88/#207) —
    * the canvas's own third actor, kept distinct so capture and the marked-set
@@ -186,6 +189,11 @@ export interface ShapeOrigin {
   rule_id?: string;
   seed_shape_id?: string;
   container_shape_id?: string;
+  /** cutout_v1 (#137/#206): the parent this deduct cut, and the parent's
+   * frozen pre-cut snapshot — the same durable pair the canvas stamps
+   * (resolveCutout), so delete can revert the cut after the journal is gone. */
+  cuts_shape_id?: string;
+  parent_prev?: CutoutParentPrev;
   /** Where the shape's finish ASSIGNMENT came from (0.9.18): "schedule" =
    * resolved from the room's own schedule row (room_tag / surface /
    * schedule_sheet carry the citation), "asserted" = the agent chose the tag
@@ -246,7 +254,23 @@ export interface Shape {
    * batch detection arrives already sliced by room instead of as one
    * undifferentiated pile of square feet. */
   label?: string;
+  /** cut_out (#137/#206): a floor_area parent's reconciled hole rings — the
+   * REAL geometry the boolean subtract produced, netted into `computed` at
+   * cut time. Same field the canvas stores (shapeCommands' cutout). */
+  verts_norm_holes?: [number, number][][];
+  /** cut_out (#137/#206): set on a deduct that was reconciled INTO a parent
+   * as a real hole — totals.js skips it (the parent's computed already nets
+   * the hole), and delete restores the parent it cut. */
+  cuts_shape_id?: string;
   origin?: ShapeOrigin;
+}
+
+/** The frozen pre-cut snapshot of a cutout parent (canvas resolveCutout's
+ * parent_prev) — durable on the deduct's origin, read back by delete. */
+export interface CutoutParentPrev {
+  verts_norm: [number, number][];
+  verts_norm_holes?: [number, number][][];
+  computed?: Shape["computed"];
 }
 
 /** An annotation — a note ABOUT the work, never a measurement of it.
@@ -445,7 +469,13 @@ export type JournalPayload =
   | { op: "condition"; tool: string; condition_id: string; before: { waste_pct: number; multiplier: number; height_ft?: number; roll_setup?: Record<string, unknown> } }
   | { op: "duplicate_condition"; tool: string; condition_id: string; parent_id: string; parent_had_family: boolean }
   | { op: "split_condition"; tool: string; condition_id: string; before: { variant_of?: string; materials?: unknown; materials_dropped?: string[] } }
-  | { op: "approval"; tool: string; inverse: ApprovalCommand };
+  | { op: "approval"; tool: string; inverse: ApprovalCommand }
+  // cut_out (#206): one entry per cut — undo removes the deduct AND restores
+  // the parent's pre-cut snapshot together, the canvas's one-gesture rule
+  | { op: "cutout"; tool: string; deduct_id: string; parent_id: string; parent_prev: CutoutParentPrev }
+  // deleting a reconciled deduct (#206): undo re-seats the deduct at its index
+  // and puts the parent's cut state back — the inverse of the revert
+  | { op: "cutout_restore"; tool: string; removed: { shape: Shape; index: number }; parent_id: string; parent_after: CutoutParentPrev };
 
 export type JournalEntry = JournalPayload & { seq: number };
 
@@ -1624,6 +1654,108 @@ export class Session {
     };
   }
 
+  /** cut_out (#206): a REAL hole, reconciled the way the canvas cuts one
+   * (#137) — the same lib/cutout.js boolean subtract, so a headless session
+   * and the app can never disagree about what a hole holds. The parent's
+   * outer ring + existing holes minus the new ring lands back on the parent
+   * (verts_norm_holes + netted computed); the deduct commits carrying
+   * cuts_shape_id, so totals.js skips it (set subtraction — N cuts compose,
+   * overlap never double-deducts). One journal entry: undo_last restores
+   * parent and hole together. Refusal over guessing: a cut not FULLY inside
+   * the parent refuses (the canvas's edge-clip is a canvas affordance), and
+   * a subtract that erases or splits the parent refuses whole. */
+  cutOut(opts: { parent_shape_id: string; verts: Point[] }) {
+    const parent = this.shapes.find((x) => x.id === opts.parent_shape_id);
+    if (!parent) throw new UserError(`No shape with id ${JSON.stringify(opts.parent_shape_id)} — list_shapes for real ids.`);
+    if (parent.measure_role !== "floor_area") {
+      throw new UserError(`cut_out subtracts from a floor_area shape — ${parent.id} is ${parent.measure_role}. An opening in a linear run is derive_base's openings claim; a count marker has no area to cut.`);
+    }
+    if (parent.origin?.reviewed === true) {
+      throw new UserError(`Shape ${parent.id} was affirmed by a human — reviewed work is ink, and cutting a hole in it would mutate what the estimator signed. Commit an independent deduct with measure_polygon instead.`);
+    }
+    const s = this.sheet(parent.sheet_id);
+    if (s.upp == null) throw new UserError(this.scaleGate(s));
+    if (opts.verts.length < 3) throw new UserError(`A cut needs at least 3 vertices — got ${opts.verts.length}.`);
+    const upp = s.upp;
+    const toPx = (ring: [number, number][]): Point[] => ring.map(([nx, ny]) => [nx * s.widthPx, ny * s.heightPx]);
+    const toNorm = (ring: number[][]): [number, number][] => ring.map(([x, y]) => [x / s.widthPx, y / s.heightPx]);
+    const outerPx = toPx(parent.verts_norm);
+    if (!ringFullyInside(outerPx, opts.verts)) {
+      throw new UserError("The cut is not fully inside the parent's outer ring. The canvas resolves an edge-crossing cut as a boundary clip; over the wire the rule is refusal-over-guessing — reshape the parent with edit_shape, or commit an independent deduct with measure_polygon.");
+    }
+    const holesPx = (parent.verts_norm_holes ?? []).map(toPx);
+    const r = subtractCutout(outerPx, holesPx, opts.verts);
+    if (!r) {
+      throw new UserError("The subtract degenerates — this cut would erase the parent or split it into disjoint pieces. That is a re-trace decision, not a hole: measure_polygon the pieces as their own rooms.");
+    }
+    const parentPrev: CutoutParentPrev = {
+      verts_norm: parent.verts_norm.map((v) => [...v] as [number, number]),
+      ...(parent.verts_norm_holes ? { verts_norm_holes: parent.verts_norm_holes.map((h) => h.map((v) => [...v] as [number, number])) } : {}),
+      ...(parent.computed ? { computed: { ...parent.computed } } : {}),
+    };
+    const met = closedMetrics(opts.verts);
+    const deduct: Shape = {
+      id: uid("shp"),
+      sheet_id: s.key,
+      condition_id: parent.condition_id,
+      measure_role: "deduct",
+      verts_norm: opts.verts.map(([x, y]) => [x / s.widthPx, y / s.heightPx] as [number, number]),
+      // face value for the hover label — totals skip it, the parent nets it
+      computed: { area_sf: round2(met.area * upp * upp), perimeter_lf: round2(met.perim * upp) },
+      cuts_shape_id: parent.id,
+      origin: { method: "cutout_v1", actor: "agent", reviewed: false, cuts_shape_id: parent.id, parent_prev: parentPrev },
+    };
+    const prevNet = parentPrev.computed?.area_sf ?? 0;
+    parent.verts_norm = toNorm(r.outer);
+    parent.verts_norm_holes = r.holes.map(toNorm);
+    parent.computed = { area_sf: round2(r.area * upp * upp), perimeter_lf: round2(r.perim * upp) };
+    this.shapes.push(deduct);
+    this.record({ op: "cutout", tool: "cut_out", deduct_id: deduct.id, parent_id: parent.id, parent_prev: parentPrev });
+    return {
+      deduct_shape_id: deduct.id,
+      parent_shape_id: parent.id,
+      hole_sf: round2(Math.max(0, prevNet - (parent.computed.area_sf ?? 0))),
+      parent_net: { area_sf: parent.computed.area_sf ?? 0, perimeter_lf: parent.computed.perimeter_lf ?? 0 },
+      holes: parent.verts_norm_holes.length,
+      note: "The parent's computed nets the hole for real (boolean subtract, not arithmetic) — overlap with an earlier cut never double-deducts. One undo step restores parent and hole together; deleting the deduct later reverts the cut too.",
+    };
+  }
+
+  /** The canvas's cutoutParentPrevSans, ported verbatim in spirit (#206 —
+   * "the canvas's answer is the spec"): rebuilding a multi-cut parent after
+   * ONE cut is deleted starts from the chain's EARLIEST pristine snapshot and
+   * re-subtracts every survivor in commit order. Null when the rebuild can't
+   * be trusted — the caller falls back to a plain delete that leaves the cut
+   * baked in, never reverts over survivors. */
+  private cutoutParentPrevSans(doomed: Shape): CutoutParentPrev | null {
+    const chain = this.shapes.filter((x) => x.cuts_shape_id === doomed.cuts_shape_id && x.origin?.parent_prev);
+    const rest = chain.filter((x) => x.id !== doomed.id);
+    if (!rest.length) return doomed.origin!.parent_prev!;
+    const parent = this.shapes.find((x) => x.id === doomed.cuts_shape_id)!;
+    const s = this.sheet(parent.sheet_id);
+    if (s.upp == null) return null;
+    const upp = s.upp;
+    const px = (ring: [number, number][]): Point[] => ring.map(([nx, ny]) => [nx * s.widthPx, ny * s.heightPx]);
+    const base = chain[0].origin!.parent_prev!;
+    const r = recomposeCutouts(px(base.verts_norm), (base.verts_norm_holes ?? []).map(px), rest.map((x) => px(x.verts_norm)));
+    if (!r) return null;
+    const norm = (ring: number[][]): [number, number][] => ring.map(([x, y]) => [x / s.widthPx, y / s.heightPx]);
+    return {
+      verts_norm: norm(r.outer),
+      ...(r.holes.length ? { verts_norm_holes: r.holes.map(norm) } : {}),
+      computed: { area_sf: round2(r.area * upp * upp), perimeter_lf: round2(r.perim * upp) },
+    };
+  }
+
+  /** Write a cutout snapshot back onto a parent — the one place the restore
+   * shape is defined, used by undo and by delete's revert. */
+  private static restoreCutoutSnapshot(p: Shape, snap: CutoutParentPrev): void {
+    p.verts_norm = snap.verts_norm.map((v) => [...v] as [number, number]);
+    if (snap.verts_norm_holes) p.verts_norm_holes = snap.verts_norm_holes.map((h) => h.map((v) => [...v] as [number, number]));
+    else delete p.verts_norm_holes;
+    if (snap.computed) p.computed = { ...snap.computed };
+  }
+
   /** Mint the transition where two finishes meet (#202) — the derivation that
    * follows derive_base, and the one an estimator draws by hand on every job.
    *
@@ -2354,9 +2486,49 @@ export class Session {
   deleteShape(id: string) {
     const i = this.shapes.findIndex((x) => x.id === id);
     if (i < 0) throw new UserError(`No shape with id ${JSON.stringify(id)}.`);
-    const [shape] = this.shapes.splice(i, 1);
+    const shape = this.shapes[i];
+    // #206 — the canvas's answer is the spec (deleteSelected): deleting a
+    // reconciled deduct reverts its cut out of the parent too. The sole cut
+    // restores the frozen parent_prev; one of SEVERAL rebuilds from the
+    // chain's earliest snapshot minus the survivors. A rebuild that can't be
+    // trusted falls through to the plain delete — the shape goes, its cut
+    // stays baked in, and the reply says so instead of staying silent.
+    if (shape.cuts_shape_id && shape.origin?.parent_prev) {
+      const parent = this.shapes.find((x) => x.id === shape.cuts_shape_id);
+      if (parent) {
+        const parentPrev = this.cutoutParentPrevSans(shape);
+        if (parentPrev) {
+          const parentAfter: CutoutParentPrev = {
+            verts_norm: parent.verts_norm.map((v) => [...v] as [number, number]),
+            ...(parent.verts_norm_holes ? { verts_norm_holes: parent.verts_norm_holes.map((h) => h.map((v) => [...v] as [number, number])) } : {}),
+            computed: { ...parent.computed },
+          };
+          this.shapes.splice(i, 1);
+          Session.restoreCutoutSnapshot(parent, parentPrev);
+          this.record({ op: "cutout_restore", tool: "delete_shape", removed: { shape, index: i }, parent_id: parent.id, parent_after: parentAfter });
+          return {
+            deleted: id, shape_count: this.shapes.length,
+            note: `Reconciled cutout: the cut was reverted out of parent ${parent.id} too (its net is back to ${parent.computed.area_sf} SF).`,
+          };
+        }
+        this.shapes.splice(i, 1);
+        this.record({ op: "delete", tool: "delete_shape", removed: [{ shape, index: i }] });
+        return {
+          deleted: id, shape_count: this.shapes.length,
+          note: `The cut could not be rebuilt out of parent ${parent.id} (a re-subtract degenerates) — the deduct is gone but its hole stays baked into the parent's geometry, the canvas's own fallback.`,
+        };
+      }
+    }
+    this.shapes.splice(i, 1);
     this.record({ op: "delete", tool: "delete_shape", removed: [{ shape, index: i }] });
-    return { deleted: id, shape_count: this.shapes.length };
+    // deleting a PARENT with reconciled cuts: the canvas has no cascade — the
+    // deduct children stay, orphaned (skipped by totals, dangling on the
+    // sheet). Same behavior here, disclosed rather than silent.
+    const orphans = this.shapes.filter((x) => x.cuts_shape_id === id).length;
+    return {
+      deleted: id, shape_count: this.shapes.length,
+      ...(orphans ? { note: `${orphans} reconciled deduct(s) pointed at this shape and are now orphaned (their holes died with the parent; totals ignore them) — the canvas behaves the same. delete_shape them too, or undo_last.` } : {}),
+    };
   }
 
   /** Revise a committed shape in place: new geometry, a different condition, a
@@ -2393,6 +2565,18 @@ export class Session {
     }
     if (patch.verts === undefined && patch.condition === undefined && patch.role === undefined && patch.label === undefined) {
       throw new UserError("Nothing to change — pass at least one of verts, condition, role, label.");
+    }
+    // #206 — a reconciled cutout pair is one geometry, not two shapes to edit
+    // independently. Moving/re-roling the deduct would desync the hole it cut
+    // (the parent's computed would keep netting the OLD ring); moving a holed
+    // parent's outer ring would strand its holes at their frozen coordinates
+    // (the canvas has the same limitation — its hole rings don't track a
+    // reshape either, #137 follow-up). Label edits stay fine on both.
+    if (cur.cuts_shape_id && (patch.verts !== undefined || patch.role !== undefined || patch.condition !== undefined)) {
+      throw new UserError(`Shape ${JSON.stringify(id)} is a reconciled cutout — its ring IS the hole in ${cur.cuts_shape_id}. delete_shape it (the parent's geometry is restored) and cut_out again where you mean it.`);
+    }
+    if (cur.verts_norm_holes?.length && (patch.verts !== undefined || patch.role !== undefined)) {
+      throw new UserError(`Shape ${JSON.stringify(id)} carries ${cur.verts_norm_holes.length} reconciled hole(s) — reshaping its outer ring would strand them. delete_shape the cutout deduct(s) first (each restores the parent), reshape, then cut_out again.`);
     }
     const s = this.sheet(cur.sheet_id);
     const role = patch.role ?? cur.measure_role;
@@ -2836,6 +3020,20 @@ export class Session {
           else c.materials_dropped = structuredClone(e.before.materials_dropped);
         }
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "cutout") {
+        // parent and hole go back TOGETHER — the deduct vanishes and the
+        // parent re-takes its frozen pre-cut snapshot, one gesture (#206)
+        this.shapes = this.shapes.filter((x) => x.id !== e.deduct_id);
+        const p = this.shapes.find((x) => x.id === e.parent_id);
+        if (p) Session.restoreCutoutSnapshot(p, e.parent_prev);
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 1 });
+      } else if (e.op === "cutout_restore") {
+        // inverse of deleting a reconciled deduct: the deduct returns at its
+        // index and the parent re-takes the cut state it held before
+        this.shapes.splice(Math.min(e.removed.index, this.shapes.length), 0, e.removed.shape);
+        const p = this.shapes.find((x) => x.id === e.parent_id);
+        if (p) Session.restoreCutoutSnapshot(p, e.parent_after);
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 1 });
       } else if (e.op === "approval") {
         // the stored inverse came from the canvas's own pure apply — exact
         // restore, array order included (a lifted verdict returns to its

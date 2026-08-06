@@ -67,11 +67,11 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // delete_verdict takes a record id — same reasoning.
 const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict", "duplicate_condition", "split_condition", "apply_rules"]);
 
-test("tools/list: all thirty-nine tools, each described with the coordinate contract", async () => {
+test("tools/list: all forty tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
-    "annotate", "apply_rules", "delete_shape", "delete_verdict", "derive_base", "derive_transitions", "detect_rooms", "duplicate_condition", "edit_condition", "edit_materials", "edit_shape", "export_marked_pdf", "export_report",
+    "annotate", "apply_rules", "cut_out", "delete_shape", "delete_verdict", "derive_base", "derive_transitions", "detect_rooms", "duplicate_condition", "edit_condition", "edit_materials", "edit_shape", "export_marked_pdf", "export_report",
     "export_takeoff", "find_schedule", "find_text", "import_takeoff",
     "link_annotation", "list_annotations", "list_shapes", "load_plan", "mark_verdict", "measure_line", "measure_polygon", "measure_surface", "one_click", "place_count",
     "read_sheet_text", "resolve_tag", "set_scale", "sheet_context", "sheet_graph", "sheet_info", "split_condition", "sweep_schedule_row", "symbol_sweep", "takeoff_summary", "undo_last", "view_sheet",
@@ -554,6 +554,123 @@ test("apply_rules: refuses without rules, re-runs an imported rule as one batch,
   assert.equal(undo.data.steps[0].tool, "apply_rules");
   assert.equal(session.shapes.length, before - 1);
   assert.ok(session.shapes.some((x) => x.id === room.data.shape_id), "the room survives the undo");
+});
+
+// #206 — a real hole, reconciled the way the canvas cuts one: boolean
+// subtract on the parent, compose without double-deducting, one undo step,
+// and the canvas's delete semantics as the spec.
+test("cut_out: real holes compose on the parent, refusals hold, delete reverts, parent delete orphans", async () => {
+  const session = new Session();
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  await buildServer(session).connect(st);
+  const client = new Client({ name: "test-client", version: "0.0.0" });
+  await client.connect(ct);
+
+  await call(client, "load_plan", { path: PLAN });
+  await call(client, "set_scale", { sheet: KEY, upp: 0.1 });
+  // a clean 40×40 ft room: 1600 SF, 160 LF
+  const room = await call(client, "measure_polygon", { sheet: KEY,
+    verts: [[100, 100], [500, 100], [500, 500], [100, 500]], condition: "CPT-1", role: "floor_area" });
+  const parentId = room.data.shape_id;
+  assert.equal(room.data.area_sf, 1600);
+
+  // refusals: unknown parent, non-floor parent, edge-crossing ring, and a cut
+  // that would erase the parent outright — nothing commits on any of them
+  const ghost = await call(client, "cut_out", { parent_shape_id: "shp-nope", verts: [[200, 200], [240, 200], [240, 240], [200, 240]] });
+  assert.equal(ghost.isError, true);
+  const overlay = await call(client, "measure_polygon", { sheet: KEY,
+    verts: [[600, 600], [640, 600], [640, 640], [600, 640]], condition: "CPT-1", role: "deduct" });
+  const notFloor = await call(client, "cut_out", { parent_shape_id: overlay.data.shape_id, verts: [[610, 610], [620, 610], [620, 620], [610, 620]] });
+  assert.equal(notFloor.isError, true);
+  assert.match(notFloor.data.error, /floor_area/);
+  const crossing = await call(client, "cut_out", { parent_shape_id: parentId, verts: [[450, 450], [550, 450], [550, 550], [450, 550]] });
+  assert.equal(crossing.isError, true);
+  assert.match(crossing.data.error, /not fully inside/);
+  const erases = await call(client, "cut_out", { parent_shape_id: parentId, verts: [[100, 100], [500, 100], [500, 500], [100, 500]] });
+  assert.equal(erases.isError, true);
+
+  // the real cut: 4×4 ft column → parent nets 1584, hole ADDS perimeter
+  const cut1 = await call(client, "cut_out", { parent_shape_id: parentId, verts: [[200, 200], [240, 200], [240, 240], [200, 240]] });
+  assert.equal(cut1.isError, false);
+  assert.equal(cut1.data.hole_sf, 16);
+  assert.equal(cut1.data.parent_net.area_sf, 1584);
+  assert.equal(cut1.data.parent_net.perimeter_lf, 176);
+  assert.equal(cut1.data.holes, 1);
+  const parent = session.shapes.find((x) => x.id === parentId)!;
+  assert.equal(parent.verts_norm_holes?.length, 1);
+  const deduct1 = session.shapes.find((x) => x.id === cut1.data.deduct_shape_id)!;
+  assert.equal(deduct1.cuts_shape_id, parentId);
+  assert.equal(deduct1.origin?.method, "cutout_v1");
+  assert.equal(deduct1.origin?.reviewed, false);
+  assert.ok(deduct1.origin?.parent_prev, "the pre-cut snapshot rides the deduct");
+
+  // totals read the reconciled number ONCE — the reconciled deduct is skipped,
+  // the legacy overlay deduct still subtracts arithmetically
+  const sum = await call(client, "takeoff_summary");
+  const cpt = sum.data.conditions.find((c: any) => c.finish_tag === "CPT-1");
+  assert.equal(cpt.floor_sf, 1584 - overlay.data.area_sf);
+
+  // an overlapping second cut never double-deducts: 16 SF ring, 4 SF already
+  // inside the first hole → nets 12, and the two holes merge into one ring
+  const cut2 = await call(client, "cut_out", { parent_shape_id: parentId, verts: [[220, 220], [260, 220], [260, 260], [220, 260]] });
+  assert.equal(cut2.data.hole_sf, 12);
+  assert.equal(cut2.data.parent_net.area_sf, 1572);
+
+  // one undo step takes ONE cut back — parent and hole together
+  await call(client, "undo_last", { n: 1 });
+  assert.equal(session.shapes.find((x) => x.id === parentId)!.computed.area_sf, 1584);
+  assert.equal(session.shapes.find((x) => x.id === cut2.data.deduct_shape_id), undefined);
+
+  // edit_shape treats the pair as one geometry: outer-ring reshape and
+  // deduct moves refuse; a label ride-along stays fine
+  const editParent = await call(client, "edit_shape", { shape_id: parentId, verts: [[100, 100], [520, 100], [520, 500], [100, 500]] });
+  assert.equal(editParent.isError, true);
+  assert.match(editParent.data.error, /strand/);
+  const editDeduct = await call(client, "edit_shape", { shape_id: cut1.data.deduct_shape_id, verts: [[210, 210], [250, 210], [250, 250], [210, 250]] });
+  assert.equal(editDeduct.isError, true);
+  const editLabel = await call(client, "edit_shape", { shape_id: cut1.data.deduct_shape_id, label: "column C4" });
+  assert.equal(editLabel.isError, false);
+
+  // canvas delete semantics, half 1: deleting the sole reconciled deduct
+  // reverts the parent to its pristine ring
+  const del1 = await call(client, "delete_shape", { shape_id: cut1.data.deduct_shape_id });
+  assert.match(del1.data.note ?? "", /reverted/i);
+  const restored = session.shapes.find((x) => x.id === parentId)!;
+  assert.equal(restored.computed.area_sf, 1600);
+  assert.equal(restored.verts_norm_holes, undefined);
+  // and its undo puts the cut state back
+  await call(client, "undo_last", { n: 1 });
+  assert.equal(session.shapes.find((x) => x.id === parentId)!.computed.area_sf, 1584);
+  assert.ok(session.shapes.some((x) => x.id === cut1.data.deduct_shape_id));
+
+  // half 1b: one of SEVERAL cuts rebuilds from the pristine base minus the
+  // survivors — delete the FIRST cut of two, the second's hole survives
+  const cut3 = await call(client, "cut_out", { parent_shape_id: parentId, verts: [[300, 300], [340, 300], [340, 340], [300, 340]] });
+  assert.equal(cut3.data.parent_net.area_sf, 1568);
+  await call(client, "delete_shape", { shape_id: cut1.data.deduct_shape_id });
+  const rebuilt = session.shapes.find((x) => x.id === parentId)!;
+  assert.equal(rebuilt.computed.area_sf, 1584, "pristine 1600 minus the surviving 16 SF cut");
+  assert.equal(rebuilt.verts_norm_holes?.length, 1);
+
+  // canvas delete semantics, half 2: deleting the PARENT does not cascade —
+  // the reconciled deduct orphans, disclosed, and totals ignore it
+  const delParent = await call(client, "delete_shape", { shape_id: parentId });
+  assert.match(delParent.data.note ?? "", /orphaned/);
+  assert.ok(session.shapes.some((x) => x.id === cut3.data.deduct_shape_id), "the orphan stays, as on the canvas");
+  const sumAfter = await call(client, "takeoff_summary");
+  const cptAfter = sumAfter.data.conditions.find((c: any) => c.finish_tag === "CPT-1");
+  assert.equal(cptAfter.floor_sf, -overlay.data.area_sf, "only the legacy overlay subtracts; the orphan is ignored");
+
+  // reviewed parent: ink is never cut
+  session.shapes.push({ ...structuredClone(session.shapes.find((x) => x.id === cut3.data.deduct_shape_id)!), id: "shp-ink", measure_role: "floor_area", cuts_shape_id: undefined, verts_norm: [[0.05, 0.05], [0.2, 0.05], [0.2, 0.2], [0.05, 0.2]], origin: { method: "manual", reviewed: true } });
+  const inkCut = await call(client, "cut_out", { parent_shape_id: "shp-ink", verts: [[150, 150], [160, 150], [160, 160], [150, 160]] });
+  assert.equal(inkCut.isError, true);
+  assert.match(inkCut.data.error, /ink/);
+  // final census: the legacy overlay, the orphaned reconciled deduct, and the
+  // ink probe — every refusal along the way committed nothing
+  assert.deepEqual(
+    session.shapes.map((x) => x.id).sort(),
+    [overlay.data.shape_id, cut3.data.deduct_shape_id, "shp-ink"].sort());
 });
 
 // #148 — perimeter − stated openings → committed base runs, all-or-nothing.

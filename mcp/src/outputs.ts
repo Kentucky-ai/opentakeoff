@@ -326,6 +326,19 @@ export const importTakeoffOutput = {
   note: z.string(),
 };
 
+/** cut_out (#206) — the reply carries the parent's recomputed net. */
+export const cutOutOutput = {
+  deduct_shape_id: z.string().describe("The reconciled deduct — carries cuts_shape_id; totals skip it (the parent nets the hole)"),
+  parent_shape_id: z.string(),
+  hole_sf: z.number().describe("What this cut actually removed from the parent's net — 0 when the ring fell entirely inside an existing hole"),
+  parent_net: z.object({
+    area_sf: z.number().describe("The parent's recomputed net after the subtract"),
+    perimeter_lf: z.number().describe("Outer ring + hole boundaries — a hole ADDS perimeter"),
+  }),
+  holes: z.number().int().describe("Holes the parent now carries"),
+  note: z.string(),
+};
+
 /** apply_rules (#207) — the per-rule disclosure IS the preview an agent gets. */
 export const applyRulesOutput = {
   rules: z.array(z.object({
@@ -415,6 +428,7 @@ export const listShapesOutput = {
 export const deleteShapeOutput = {
   deleted: z.string().describe("The removed shape's id"),
   shape_count: z.number().int().describe("Committed shapes remaining"),
+  note: z.string().optional().describe("Cutout interplay (#206), when it applies: the parent's cut was reverted, could not be rebuilt, or reconciled deducts were orphaned by a parent delete"),
 };
 
 /** edit_shape: the revised shape's re-measured quantities. Quantities are
@@ -438,7 +452,7 @@ export const undoLastOutput = {
   undone: z.number().int().describe("Steps actually reversed"),
   steps: z.array(z.object({
     seq: z.number().int(),
-    op: z.enum(["commit", "edit", "delete", "materials", "condition", "approval", "duplicate_condition", "split_condition"]),
+    op: z.enum(["commit", "edit", "delete", "materials", "condition", "approval", "duplicate_condition", "split_condition", "cutout", "cutout_restore"]),
     tool: z.string().describe("The tool call this step came from"),
     shapes: z.number().int().describe("Shapes affected by reversing this step — 0 for a materials step (it restores a condition's supporting-materials rows, not shapes), for a condition step (it restores the waste/multiplier pair), and for an approval step (it re-seats or removes a verdict mark)"),
   })).describe("Newest first"),

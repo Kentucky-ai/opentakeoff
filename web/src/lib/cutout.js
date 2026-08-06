@@ -75,6 +75,24 @@ function touches(ringA, ringB) {
 }
 
 /**
+ * True when `innerRingPx` sits FULLY inside `outerRingPx` — the MCP server's
+ * cut_out gate (#206): over the wire the house rule is refusal-over-guessing,
+ * so an edge-crossing cut (which the canvas clips as a boundary affordance)
+ * is refused rather than resolved. Malformed rings fail closed.
+ * @param {number[][]} outerRingPx
+ * @param {number[][]} innerRingPx
+ * @returns {boolean}
+ */
+export function ringFullyInside(outerRingPx, innerRingPx) {
+  if (outerRingPx.length < 3 || innerRingPx.length < 3) return false;
+  try {
+    return booleanContains(turfPolygon([closeRing(outerRingPx)]), turfPolygon([closeRing(innerRingPx)]));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Finds the ONE candidate this deduct ring resolves against.
  * @param {Array<{id: string, ringPx: number[][]}>} candidates floor_area
  *   shapes on the SAME sheet as the deduct, outer ring already denormalized
