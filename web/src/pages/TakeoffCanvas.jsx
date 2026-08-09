@@ -893,6 +893,7 @@ export default function TakeoffCanvas() {
   // to RENDER_SCALE, so the dep list is honest.
   const rollTakeoff = useMemo(
     () => computeRollTakeoff(conditions, shapes, (k) => panelImgs[k] || null, (k) => uppFor(k)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- uppFor reads scales (listed) + renderScalesRef pinned to RENDER_SCALE; listing it would re-figure rolls on every render
     [conditions, shapes, panelImgs, scales]   // uppFor: scales + a pinned ref
   );
   const rollByCond = rollTakeoff.byCond;
