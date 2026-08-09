@@ -176,6 +176,27 @@ jobs:
             echo "::warning::mcp v$PKG has no mcp-v$PKG tag — not published yet"
           fi
 
+  # Doc-link rot is how a contributor's first click lands on nothing (#197):
+  # a doc moves, a section is renamed, and the link stays. Tier 1 (paths +
+  # anchors) is offline and deterministic, so it gates every PR. The closed-
+  # issue nudge (--issues) is a network call to a third-party API, so it runs
+  # only on pushes to main and can never turn the build red — the point is a
+  # reminder to reword, not a block, and a red build must never depend on
+  # api.github.com being up.
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: node scripts/check-doc-links.mjs
+      - name: Nudge on links to closed issues (never gating)
+        if: github.event_name == 'push'
+        continue-on-error: true
+        run: node scripts/check-doc-links.mjs --issues
+
   capture:
     runs-on: ubuntu-latest
     steps:
