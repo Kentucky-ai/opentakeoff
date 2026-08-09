@@ -64,7 +64,7 @@ const START = [
   ["Read the report", "REPORT totals every condition, applies waste, and gives you order quantities, a buy list, and CSV / Excel export."],
 ];
 
-const TOOLS = [
+export const TOOLS = [
   [["O"], "One-Click Area — click inside a room, it selects itself"],
   [["A"], "Area"], [["R"], "Rectangle"], [["L"], "Linear"], [["Q"], "Curved Line"],
   [["S"], "Surface Area (walls)"], [["C"], "Count"],
@@ -75,7 +75,7 @@ const TOOLS = [
   [["hold", "M"], "Push-to-talk dictation — release runs it, Esc discards"],
 ];
 
-const DRAW = [
+export const DRAW = [
   [["⏎"], "Finish the shape. In One-Click: Create the selection"],
   [["⌫"], "Back out one step — the last point, then the picked vertex, the region, the selected shape, the markup"],
   [["⌘", "Z"], "Mid-trace pops the last point; otherwise undo"],
@@ -87,7 +87,7 @@ const DRAW = [
   [["⌘", "C"], "Copy"], [["⌘", "V"], "Paste under the cursor"], [["⌘", "D"], "Duplicate"],
 ];
 
-const VIEW = [
+export const VIEW = [
   [["scroll"], "Zoom toward the cursor"],
   [["two-finger"], "Pan, both axes"],
   [["⇧", "scroll"], "Pan"],
