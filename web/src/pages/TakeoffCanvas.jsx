@@ -45,6 +45,7 @@ import { mintTwin, variantTag,
   markRowLocal, dropRowLocal, followFamily, splitFromFamily, promoteOnDelete } from "../lib/variants.ts";
 import { isGoogleConfigured, isSignedIn, isAllowedDomain, getAccessToken, orgDomainHint } from "../lib/google/auth.js";
 import { extractVectorGeometry, buildMask, floodRegionSealed, sealRadiiFor, doorWedgeCapPx, minPassRadiusFor, oneClickRing, ringArea, MASK_MAX_DIM, MIN_PASS_FT, SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE } from "../lib/oneclick";
+import { tidyRing, axisLockPoint } from "../lib/ringTidy";
 import { traceConfidence, floodSignals } from "../lib/confidence";
 import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS } from "../lib/rastermask";
 // PDF layer roles (#85): the pure name→role classifier and the override
@@ -2864,7 +2865,23 @@ export default function TakeoffCanvas() {
         const sp = panelByKey(d.shape.sheet_id);
         let vn;
         if (d.kind === "vertex") {
-          const [slx, sly] = ocSnap(sp.key, p[0] - sp.xOffset, p[1], !!d.shape.origin?.raster_traced);   // snap the corner to true endpoints (never on a raster-traced shape — see ocSnap)
+          let [slx, sly] = ocSnap(sp.key, p[0] - sp.xOffset, p[1], !!d.shape.origin?.raster_traced);   // snap the corner to true endpoints (never on a raster-traced shape — see ocSnap)
+          // auto-straighten (45° toggle): when no endpoint claimed the point,
+          // the dragged vertex locks onto its neighbors' axes — an edited wall
+          // stays straight instead of drifting a pixel off square. Osnap wins;
+          // toggle 45° off to place genuinely angled vertices freely.
+          if (angleOn && slx === p[0] - sp.xOffset && sly === p[1]) {
+            const base = d.prev.verts_norm, n0 = base.length;
+            const closed = d.shape.measure_role !== "linear" && d.shape.measure_role !== "surface_area";
+            const pick = (i) => {
+              let k = i;
+              if (closed) k = ((i % n0) + n0) % n0; else if (k < 0 || k >= n0) return null;
+              const v = base[k];
+              return v ? [v[0] * sp.img.w, v[1] * sp.img.h] : null;
+            };
+            const lock = axisLockPoint([slx, sly], pick(d.vIndex - 1), pick(d.vIndex + 1), 8 / tfRef.current.scale);
+            if (lock.locked) [slx, sly] = lock.pt;
+          }
           vn = d.prev.verts_norm.map((v, i) => (i === d.vIndex ? [slx / sp.img.w, sly / sp.img.h] : v));
         } else if (d.kind === "edge") {
           // translate BOTH endpoints of the line by the drag delta; each end snaps
@@ -3851,6 +3868,34 @@ export default function TakeoffCanvas() {
       type: "geom", id: sel.id, editKind: "vertex",
       verts_norm: vn, computed: recomputeShape({ ...sel, verts_norm: vn }), prev: geomSnapshot(sel),
     });
+  }
+  // ── Tidy — one geometry pass on the selected takeoff (ringTidy) ────────────
+  // A mask-derived ring (One-Click, detect_rooms, a raster trace) carries
+  // dozens–hundreds of staircase vertices no hand can drag straight. One pass:
+  // collinear/micro-segment chains collapse, vertices on CAD corners hold
+  // (drifted ones pull home), near-square walls square up between anchors;
+  // genuinely angled walls survive. Closed rings only — a linear run's
+  // vertices are its measurement. The lib refuses any result that moves area
+  // >3%; worst case the shape comes back untouched. One command = one ⌘Z.
+  function tidySelected() {
+    const sel = shapes.find((s) => s.id === selectedId);
+    if (!sel) return;
+    if (sel.measure_role === "count" || sel.measure_role === "linear" || sel.measure_role === "surface_area") {
+      setCommitMsg("Tidy works on area takeoffs — a linear run's vertices are its measurement."); return;
+    }
+    const sp = panelByKey(sel.sheet_id);
+    if (!sp || !sp.img.w || (sel.verts_norm || []).length < 3) return;
+    const grid = snapGridsRef.current.get(sel.sheet_id);
+    const rt = !!sel.origin?.raster_traced;   // no true endpoints on a scan — pure simplify+square
+    const ringPx = sel.verts_norm.map(([nx, ny]) => [nx * sp.img.w, ny * sp.img.h]);
+    const r = tidyRing(ringPx, { nearest: (x, y, dd) => (!rt && grid ? nearestSnap(grid, x, y, dd) : null) });
+    if (!r.changed) { setCommitMsg("Nothing to tidy — this takeoff is already clean."); return; }
+    const vn = r.ring.map(([x, y]) => [x / sp.img.w, y / sp.img.h]);
+    dispatchShape({
+      type: "geom", id: sel.id, editKind: "tidy",
+      verts_norm: vn, computed: recomputeShape({ ...sel, verts_norm: vn }), prev: geomSnapshot(sel),
+    });
+    setCommitMsg(`Tidied — ${ringPx.length} → ${r.ring.length} vertices; corners held to plan lines, near-square walls squared. ⌘Z undoes.`);
   }
   // ── markup (cloud / callout / text) — annotations, not measurements ─────────
   // markupDraft holds STAGE px (so the live preview spans panels); a markup
@@ -6129,6 +6174,7 @@ export default function TakeoffCanvas() {
               "divider",
               { id: "flipH", label: "Flip Horizontal", disabled: !selectedId, onSelect: () => flipSelected("h") },
               { id: "flipV", label: "Flip Vertical", disabled: !selectedId, onSelect: () => flipSelected("v") },
+              { id: "tidy", label: "Tidy shape", disabled: !selectedId, onSelect: tidySelected },
               "divider",
               { id: "finish", icon: "check", label: `Finish shape${poly.length ? ` (${poly.length} pts)` : ""}`, shortcut: "↵", disabled: !finishOk, onSelect: finishShape },
               { id: "undopt", icon: "undo", label: "Undo last point", shortcut: "⌘Z", disabled: !poly.length, onSelect: () => setPoly((q) => q.slice(0, -1)) },
