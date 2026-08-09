@@ -35,6 +35,18 @@ jobs:
       - run: node scripts/fetch-voice-model.mjs
       - run: npm run typecheck
       - run: npm test
+      # The bench is a ruler, and a ruler that silently stops matching the
+      # engine is worse than no ruler (#198): results.json is committed, the
+      # runner rewrites it on every run, and nothing used to compare the two —
+      # so an engine PR could change flood-fill behavior without the numbers
+      # moving in the same PR, where a reviewer would see the delta.
+      - run: npm run bench
+      - name: bench/results.json must match what the engine produces (#198)
+        run: |
+          git diff --exit-code -- bench/results.json || {
+            echo "::error file=web/bench/results.json::the engine no longer produces the committed bench numbers — run 'cd web && npm run bench' and commit the regenerated results.json in this PR so the delta is reviewed with the change that caused it"
+            exit 1
+          }
       - run: npm run build
 
   mcp:
