@@ -2831,7 +2831,7 @@ function perpDist(p: Point, a: Point, b: Point): number {
   if (!L) return Math.hypot(p[0] - a[0], p[1] - a[1]);
   return Math.abs(dy * p[0] - dx * p[1] + b[0] * a[1] - b[1] * a[0]) / L;
 }
-function rdpOpen(pts: Point[], eps: number): Point[] {
+export function rdpOpen(pts: Point[], eps: number): Point[] {
   if (pts.length < 3) return pts.slice();
   let imax = 0, dmax = -1;
   const a = pts[0], b = pts[pts.length - 1];

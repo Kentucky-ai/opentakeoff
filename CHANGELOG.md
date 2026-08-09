@@ -2,6 +2,12 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-09 — rings you can live with: Tidy + drag auto-straighten
+
+### Added
+- **Tidy shape** (Edit menu) — one geometry pass on the selected area takeoff: collinear/micro-segment staircase chains collapse, vertices sitting on CAD endpoints hold exactly (drifted ones pull home), near-square walls square up between those anchors, and genuinely angled walls (beyond 8°) are left alone. Built for mask-derived rings — a One-Click or detect_rooms trace carries vertices no hand can drag straight. One ⌘Z undoes the pass, and a result that would move the shape's area by more than 3% is refused outright: worst case the ring comes back untouched. Raster-traced shapes tidy without endpoint anchoring (a scan has no true endpoints), which is exactly simplify + square. New pure lib `web/src/lib/ringTidy.ts` (no React, no DOM; `test/ringTidy.test.ts`), stamped on provenance as `edits.tidy`.
+- **Vertex drag auto-straighten** — with the 45° toggle on, a dragged vertex locks onto its neighbors' axes, so the wall being edited stays straight instead of drifting a pixel off square; near a corner both axes lock and the corner lands square. Endpoint snap still wins (a real corner beats an inferred axis); toggling 45° off frees the hand for genuinely angled work.
+
 ## 2026-08-05 — a real hole, reconciled; opentakeoff-mcp 0.9.38
 
 ### Added
