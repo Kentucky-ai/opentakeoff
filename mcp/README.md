@@ -103,6 +103,19 @@ includes document text, shape vertices, or result payload content.
 
 ## Tools
 
+**Staged exposure (opt-in, #230).** By default every client gets the full
+forty on `tools/list` — the contract below, unchanged. Set
+`OPENTAKEOFF_MCP_STAGED_TOOLS=1` in the server's environment and only the ten
+setup/discovery tools (`load_plan` through `view_sheet`) plus one more,
+`open_tool_stage`, are enabled at connect; the rest sit registered-but-disabled
+until `open_tool_stage({stage: "measure" | "revise" | "handoff"})` turns a
+group on and fires `tools/list_changed` — useful for a client or agent
+harness that wants a short tool list for an idle session instead of forty
+descriptions up front. A client that doesn't refetch `tools/list` on that
+notification won't see the newly-enabled tools, so this is opt-in rather than
+the default. Open to refinements on the group boundaries or the opener's
+shape — see the issue.
+
 | Tool | What it does |
 |---|---|
 | `load_plan` | Open a plan PDF from disk. Default replaces the whole session; **`merge: true` ADDS the document to the working set** (#152) — plans + schedule + addenda as one takeoff, sheet graph spanning the whole set, marked set covering every worked sheet. Returns per-sheet dims, title-block `sheet_number`, and the detected drawn scale where present. |
