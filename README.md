@@ -19,7 +19,7 @@ what makes it training data.
 
 [**For agents**](#for-agents--start-here) · [**Try the canvas**](https://opentakeoff.kentucky-ai.com) · [The engine's contract](#the-contract-that-makes-it-drivable) · [For the person at the canvas](#for-the-person-at-the-canvas) · [The data layer](#the-data-layer--why-this-engine-exists) · [Research](#the-research-program) · [Build on it](#build-on-top-of-it) · [Contribute](#contributing)
 
-**Read this in:** [日本語](README.ja.md) · [한국어](README.ko.md) · [简体中文](README.zh-Hans.md)
+**Read this in:** [日本語](README.ja.md) · [한국어](README.ko.md) · [简体中文](README.zh-Hans.md) · Español — doesn't exist yet, and it's the translation we want most: [#199](https://github.com/Kentucky-ai/opentakeoff/issues/199)
 
 <br/>
 
@@ -580,7 +580,10 @@ manufactured chore list. Currently open:
   they name the exact files. Claim one in a comment and go.
 
 Ground rules are in [CONTRIBUTING.md](CONTRIBUTING.md). The bar is a green `npm run check` plus
-a test for anything touching the geometry libraries; tested PRs merge fast. External
+a test for anything touching the geometry libraries; tested PRs merge fast. CI also holds two
+lines `npm run check` doesn't: every relative link and anchor in the docs must resolve
+(`node scripts/check-doc-links.mjs` runs it locally), and `web/bench/results.json` must match
+what the engine actually produces — an engine change carries its bench delta in the same PR. External
 contributions are credited by name in the commit and the release notes — and because
 `opentakeoff-mcp` publishes to npm off a `mcp-v*` tag, engine work you land ships to every
 agent that pulls the package.
