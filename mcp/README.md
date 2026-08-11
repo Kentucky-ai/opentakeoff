@@ -107,7 +107,7 @@ includes document text, shape vertices, or result payload content.
 |---|---|
 | `load_plan` | Open a plan PDF from disk. Default replaces the whole session; **`merge: true` ADDS the document to the working set** (#152) — plans + schedule + addenda as one takeoff, sheet graph spanning the whole set, marked set covering every worked sheet. Returns per-sheet dims, title-block `sheet_number`, and the detected drawn scale where present. |
 | `sheet_info` | One sheet's dims, vector segment count, scale status, detected suggestion, committed shape count. |
-| `set_scale` | Set a sheet's scale — exactly one of `label`, `upp`, `calibrate {p1, p2, feet}`, `use_detected`. |
+| `set_scale` | Set a sheet's scale — exactly one of `label`, `upp`, `calibrate {p1, p2, feet}`, `use_detected`. **Lands unconfirmed** (`confirmed: false`) until a human confirms in the canvas — see Scale rules. |
 | `one_click` | One-Click Area at (x, y): the sealed flood engine bounded by the plan linework, traced, vertices snapped — the SAME feet-true arguments the canvas passes at a click (gap sealing up to a door width, door-swing wedge inclusion, the half-foot minimum-passage rule), so an MCP trace and a canvas click at one seed measure the same square footage (pinned against the bench corpus goldens in `test/parity.test.ts`). Every trace carries the engine's account of itself: `confidence` 0–1 with `confidence_factors` naming each deduction (`gap_sealed_px`, `door_wedges`, `min_pass_delta`, …) — a review prioritizer, never a verification; a low score is a `view_sheet {overlay: true}` audit prompt, not a fact. On a SCANNED sheet (no usable linework) the flood falls back automatically to the rendered pixels — same engine as the canvas — with `raster_traced` disclosed on the reply and on the shape's origin (#154). Pass `condition` to commit (the full account stamps `origin` centrally at the commit); `role: "deduct"` subtracts. |
 | `detect_rooms` | Batch One-Click: reads every room-number label off the sheet's text layer and floods each — one call instead of `read_sheet_text` + reasoning + N `one_click` calls, through the SAME sealed engine per room (confidence + the engine account ride each room and its committed origin). Only cleanly-traced rooms come back; everything skipped is counted and reasoned in `withheld` (degenerate / duplicate / implausible / unresolved), never dropped silently. To commit: `assign_from_schedule: true` routes each room through its OWN room-finish schedule row and commits under the FLOOR finish that row states (rooms the schedule can't answer for return in `unresolved[]` with reasons and re-seedable coordinates); or pass `condition` to commit every room under one stated tag. |
 | `measure_polygon` | Area + perimeter of a polygon you supply (min 3 verts). Requires scale. |
@@ -216,6 +216,14 @@ space, which makes them usable directly as click targets.
 
 - A detected scale is a **suggestion** — it is never applied automatically.
   Adopting it is always an explicit `set_scale { use_detected: true }`.
+- **Agent proposes, human confirms.** `set_scale` is the agent surface, so a
+  scale set here lands **unconfirmed** (`confirmed: false` in the reply).
+  Quantities still flow — the gate is a flag, never a refusal — but
+  `takeoff_summary` names the affected sheets in
+  `scale_unconfirmed`, and the export/report carry `scale_confirmed` so the
+  canvas can ask the estimator to confirm (its scale menu grows a
+  **Confirm agent-set scale** row on import). Only a human act in the canvas
+  clears the flag.
 - `measure_polygon` and `measure_line` refuse without a scale:
   `Set the scale for <sheet> first — use set_scale (detected: <label>).`
 - `one_click` without a scale returns a **px-only preview**

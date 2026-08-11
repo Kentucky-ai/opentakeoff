@@ -55,11 +55,15 @@ export async function importTakeoff(session: Session, filePath: string) {
   session.approvals = sanitizeApprovals(payload.approvals);
   // scales: mergeTakeoffImport already applied "the session's calibration wins
   // per sheet" — adopt the merged rows onto sheets this document actually has
-  for (const row of (payload.sheets as { sheet_id: string; units_per_px: number; scale_source?: string }[]) ?? []) {
+  for (const row of (payload.sheets as { sheet_id: string; units_per_px: number; scale_source?: string; scale_confirmed?: boolean }[]) ?? []) {
     const s = session.sheetOrNull(row.sheet_id);
     if (s && s.upp == null && row.units_per_px > 0) {
       s.upp = row.units_per_px;
       s.scaleSource = row.scale_source ?? "upp";
+      // scale gate — transport, not minting (the approvals rule): an
+      // unconfirmed agent scale arriving by file STAYS unconfirmed; absent
+      // means confirmed (a human-era payload, or one a human confirmed)
+      if (row.scale_confirmed === false) s.scaleConfirmed = false;
     }
   }
 

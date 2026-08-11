@@ -175,7 +175,10 @@ registers.
 Two rules carry over from the app unchanged:
 
 - **The scale gate.** No quantity leaves the server without a scale on that
-  sheet. A detected scale note is a suggestion the agent must adopt
+  sheet — and a scale the agent sets is **unconfirmed until a human confirms
+  it in the canvas** (`confirmed: false` on the reply,
+  `scale_unconfirmed` on the summary, `scale_confirmed` on the
+  export/report). A detected scale note is a suggestion the agent must adopt
   explicitly (`set_scale { use_detected: true }`); measuring tools refuse
   with the exact hint (`Set the scale for <sheet> first — use set_scale
   (detected: 1/4" = 1'-0").`), and a bare `one_click` returns px-only numbers

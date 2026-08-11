@@ -375,6 +375,11 @@ interface SheetState {
   /** how the scale was set — report provenance (export_report scale_source),
    * canvas vocabulary: "standard" | "upp" | "calibrated" | "detected" */
   scaleSource?: string;
+  /** scale gate — agent proposes, human confirms. set_scale is the AGENT
+   * surface, so a scale set here is false until a human confirms it in the
+   * canvas (the flag rides export/import). undefined = confirmed: a human's
+   * own canvas act, or a payload that predates the flag. */
+  scaleConfirmed?: boolean;
   text: { str: string; x: number; y: number }[];
   page: PageHandle;
   // lazy per-sheet caches (built once, reused by identity)
@@ -1029,8 +1034,13 @@ export class Session {
     // uses the canvas's report vocabulary so export_report's scale_source
     // reads the same as an app-side report.v1
     s.scaleSource = source === "label" ? "standard" : source === "calibrate" ? "calibrated" : source;
+    // Scale gate: this is the agent surface, so the scale lands UNCONFIRMED —
+    // quantities still flow (the gate is a flag, never a refusal), but every
+    // scaled reply carries the caveat and the canvas asks the estimator to
+    // confirm. Only a human act (canvas scale UI) clears it.
+    s.scaleConfirmed = false;
     return {
-      sheet: s.key, upp, ...(label ? { label } : {}), source,
+      sheet: s.key, upp, ...(label ? { label } : {}), source, confirmed: false,
       // #153 — several DISTINCT scale notes on one sheet means enlarged plans
       // or details are likely; region measurements will warn when a
       // disagreeing note sits inside them, but say it up front too
@@ -1050,6 +1060,11 @@ export class Session {
     }
     const region = expandForScaleNotes({ x0, y0, x1, y1 });
     const adoptedLabel = s.detected && Math.abs(s.detected.upp - s.upp) / s.upp <= 1e-6 ? s.detected.label : undefined;
+    // (scale gate: the unconfirmed flag deliberately does NOT ride every
+    // measure reply — the agent set the scale itself, so repeating it per
+    // quantity is noise. It surfaces where the numbers cross a boundary:
+    // set_scale's confirmed:false, takeoff_summary's scale_unconfirmed, the
+    // export/report scale_confirmed, and the canvas's confirm affordance.)
     return mixedScaleWarning(textItemsInRegion(s.page, region), s.page.viewport, s.upp, adoptedLabel);
   }
 
@@ -2480,7 +2495,10 @@ export class Session {
     const rows = conditionTotals(this.conditions, this.shapes, this.seamCtx()) as Record<string, unknown>[];
     // strip presentation fields for a compact agent-facing reply
     const lean = rows.map(({ color, fill, hatch, materials, ...rest }) => rest);
-    return { conditions: lean, totals: grandTotals(rows) };
+    // Scale gate: name every sheet whose scale is agent-set and unconfirmed —
+    // a totals reply must say what its numbers stand on
+    const unconfirmed = [...this.sheets.values()].filter((s) => s.upp != null && s.scaleConfirmed === false).map((s) => s.key);
+    return { conditions: lean, totals: grandTotals(rows), ...(unconfirmed.length ? { scale_unconfirmed: unconfirmed } : {}) };
   }
 
   deleteShape(id: string) {
@@ -3323,7 +3341,14 @@ export class Session {
       schema: ANN_SCHEMA,
       project_name: "",
       units: "imperial",
-      sheets: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => ({ sheet_id: s.key, units_per_px: s.upp })),
+      sheets: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => ({
+        sheet_id: s.key, units_per_px: s.upp,
+        // provenance rides the payload (it used to be dropped here): the canvas
+        // hydrates scale_source for its report and scale_confirmed for the
+        // scale gate's confirm affordance — absent = confirmed (pre-flag docs)
+        ...(s.scaleSource ? { scale_source: s.scaleSource } : {}),
+        ...(s.scaleConfirmed === false ? { scale_confirmed: false } : {}),
+      })),
       conditions: this.conditions,
       shapes: this.shapes,
       markups: this.markups,
@@ -3358,7 +3383,7 @@ export class Session {
       projectName,
       rows,
       bySheet: sheetTotals(this.conditions, this.shapes),
-      scaleInfo: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => ({ sheet_id: s.key, scale_source: s.scaleSource ?? "unknown" })),
+      scaleInfo: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => ({ sheet_id: s.key, scale_source: s.scaleSource ?? "unknown", scale_confirmed: s.scaleConfirmed !== false })),
       markups: this.markups,
       rfis: [],
       rollGoods: rollReportRows(byCond, rows),
