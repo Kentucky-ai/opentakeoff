@@ -466,7 +466,11 @@ export function reportJson({ projectName = "", rows = [], bySheet = [], scaleInf
     schema: "opentakeoff.report.v1",
     project_name: projectName || null,
     generated_with: "OpenTakeoff",
-    sheets: scaleInfo.map((si) => ({ sheet_id: si.sheet_id, sheet: label(si.sheet_id), scale_source: si.scale_source ?? si.source ?? "unknown" })),
+    // scale_confirmed (scale gate): false = an agent set this sheet's scale and
+    // no human confirmed it — the report's consumer should treat those sheets'
+    // quantities as standing on an unverified number. Absent input = true
+    // (human-era payloads predate the flag).
+    sheets: scaleInfo.map((si) => ({ sheet_id: si.sheet_id, sheet: label(si.sheet_id), scale_source: si.scale_source ?? si.source ?? "unknown", scale_confirmed: si.scale_confirmed !== false })),
     // custom-column values APPEND after materials (row key order otherwise
     // untouched). Iterating the DEFINED columns — never raw attrs — naturally
     // drops orphaned colIds; attrValue (the shared assigned-value rule) keeps

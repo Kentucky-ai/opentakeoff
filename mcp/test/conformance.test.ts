@@ -128,6 +128,9 @@ test("every tool: canonical valid call → schema-valid structuredContent mirror
   const scale = await callOk(client, "set_scale", { sheet: KEY, use_detected: true });
   assert.equal(scale.source, "detected");
   assert.ok(Math.abs(scale.upp - UPP) < 1e-12);
+  // scale gate: set_scale is the agent surface — the scale lands UNCONFIRMED
+  // and every downstream surface says so until a human confirms in the canvas
+  assert.equal(scale.confirmed, false);
 
   // measure-only batch detection: every returned room is scaled, nothing commits
   const rooms = await callOk(client, "detect_rooms", { sheet: KEY });
@@ -158,6 +161,7 @@ test("every tool: canonical valid call → schema-valid structuredContent mirror
 
   const summary = await callOk(client, "takeoff_summary");
   assert.equal(summary.conditions.length, 3);
+  assert.deepEqual(summary.scale_unconfirmed, [KEY], "totals name the sheets standing on an unconfirmed agent-set scale");
   const byTag = Object.fromEntries(summary.conditions.map((r: any) => [r.finish_tag, r]));
   assert.equal(byTag["VCT-1"].floor_sf, 100);
   assert.equal(byTag["RB-1"].lf, 20);
@@ -166,7 +170,9 @@ test("every tool: canonical valid call → schema-valid structuredContent mirror
 
   const exported = await callOk(client, "export_takeoff");
   assert.equal(exported.schema, "opentakeoff.takeoff_canvas.v1");
-  assert.deepEqual(exported.sheets, [{ sheet_id: KEY, units_per_px: UPP }]);
+  // scale gate: provenance rides the payload — scale_source for the report,
+  // scale_confirmed:false so the canvas asks the estimator to confirm on import
+  assert.deepEqual(exported.sheets, [{ sheet_id: KEY, units_per_px: UPP, scale_source: "detected", scale_confirmed: false }]);
   assert.equal(exported.conditions.length, 3);
   assert.equal(exported.shapes.length, 3);
   assert.deepEqual(exported.shapes.map((s: any) => s.measure_role), ["floor_area", "floor_area", "linear"]);
@@ -257,6 +263,7 @@ test("every tool: canonical valid call → schema-valid structuredContent mirror
   assert.equal(mLine.qty, Math.ceil(mLine.basis_qty / 300 - 1e-9), "order qty = basis ÷ coverage, rounded up to whole purchase units");
   assert.deepEqual(report.materials, [{ name: "Adhesive", unit: "gal", qty: mLine.qty }], "project-wide roll-up sums by (name, unit)");
   assert.ok(["standard", "upp", "calibrated", "detected"].includes(report.sheets[0].scale_source), "scale provenance rides the report");
+  assert.equal(report.sheets[0].scale_confirmed, false, "an MCP-set scale reports UNCONFIRMED until a human confirms it in the canvas");
   assert.ok(report.totals.total_sf_net > report.totals.total_sf, "grand totals carry waste");
   assert.equal(report.project_name, null, "a headless session has no project of its own — null, never ''");
   assert.deepEqual(report.roll_goods, [], "roll_goods (#136) always emitted — empty until a condition carries a roll_setup");

@@ -68,6 +68,7 @@ export const setScaleOutput = {
   upp: z.number().describe("Real feet per image px at render scale 2.0"),
   label: z.string().optional().describe("The standard scale label, when set by label or detected note"),
   source: z.enum(["label", "upp", "calibrate", "detected"]),
+  confirmed: z.boolean().describe("Always false here: set_scale is the agent surface, and an agent-set scale stays UNCONFIRMED until a human confirms it in the canvas — quantities still flow, wearing the caveat"),
   warning: z.string().optional().describe("Present when the sheet carries MULTIPLE distinct scale notes (#153) — enlarged plans/details likely; region measurements under a disagreeing note will warn"),
 };
 
@@ -275,6 +276,7 @@ export const takeoffSummaryOutput = {
     ea: z.number(),
     sy_net: z.number(),
   }).passthrough(),
+  scale_unconfirmed: z.array(z.string()).optional().describe("Sheets whose scale is agent-set and no human has confirmed — these totals stand on an unverified scale; verify against a stated dimension or confirm in the canvas"),
 };
 
 /** The app's exact save payload (opentakeoff.takeoff_canvas.v1). */

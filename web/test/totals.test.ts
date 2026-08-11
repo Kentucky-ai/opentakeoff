@@ -142,10 +142,12 @@ test("reportJson: v1 key set pinned — top level, sheets[], markups[], by_sheet
   assert.equal(j.rfis[0].linked_markups, 1);          // the mk-2 cloud links to rfi-1
   assert.deepEqual(j.rfis[0].linked_sheets, ["Sheet sh1"]);
   assert.equal(j.rfis[0].sheet, "Sheet sh1");
-  // sheets: provenance under scale_source (the persisted-payload key); NO
+  // sheets: provenance under scale_source (the persisted-payload key) +
+  // scale_confirmed (the scale gate — absent input = true, human-era); NO
   // units_per_px — that figure is internal (RENDER_SCALE-coupled)
-  assert.deepEqual(Object.keys(j.sheets[0]), ["sheet_id", "sheet", "scale_source"]);
+  assert.deepEqual(Object.keys(j.sheets[0]), ["sheet_id", "sheet", "scale_source", "scale_confirmed"]);
   assert.equal(j.sheets[0].scale_source, "calibrated");
+  assert.equal(j.sheets[0].scale_confirmed, true);
   assert.equal(j.sheets[0].sheet, "Sheet sh1");
   // id + rfi_id appended after the original four (additive-only v1 schema)
   // condition_id + condition APPEND after rfi_id (additive-only v1). `condition`
@@ -202,6 +204,15 @@ test("reportJson: unrecorded provenance exports as the literal 'unknown'", () =>
 test("reportJson: legacy 'source' key still read as a fallback", () => {
   const j = reportJson({ scaleInfo: [{ sheet_id: "s1", source: "detected" }] });
   assert.equal(j.sheets[0].scale_source, "detected");
+});
+
+test("reportJson: scale gate — agent-set unconfirmed rides through as false, absent = true", () => {
+  const j = reportJson({ scaleInfo: [
+    { sheet_id: "s1", scale_source: "detected", scale_confirmed: false },
+    { sheet_id: "s2", scale_source: "calibrated" },
+  ] });
+  assert.equal(j.sheets[0].scale_confirmed, false);
+  assert.equal(j.sheets[1].scale_confirmed, true);
 });
 
 test("reportJson: custom columns — definitions emitted; row values filter orphans/non-strings/empties", () => {

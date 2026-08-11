@@ -658,7 +658,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
           {/* meta footer: scale provenance · attribution · disclaimer */}
           <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--ink-muted)", lineHeight: 1.6, borderTop: "1px solid var(--ink-faint)", paddingTop: 6, marginBottom: 12 }}>
             {scaleInfo.map((si) => (
-              <div key={si.sheet_id}>{sheetLabel ? sheetLabel(si.sheet_id) : si.sheet_id} — {!si.scale_source || si.scale_source === "unknown" ? "scale set — provenance unrecorded" : si.scale_source}</div>
+              <div key={si.sheet_id}>{sheetLabel ? sheetLabel(si.sheet_id) : si.sheet_id} — {!si.scale_source || si.scale_source === "unknown" ? "scale set — provenance unrecorded" : si.scale_source}{si.scale_confirmed === false ? <span style={{ color: "var(--c-warning)", fontWeight: 700 }}> · agent-set, UNCONFIRMED</span> : null}</div>
             ))}
             <div>Generated {new Date().toLocaleDateString()}</div>
             <div>{DISCLAIMER}</div>

@@ -164,6 +164,10 @@ Change a sheet's scale after tracing and **every shape on that sheet re-prices t
 
 If the scale you set disagrees with the note printed on the sheet, the chip warns you: **≠ 1/4″ = 1′-0″** in amber, with the tooltip *"You set X, but the plan notes Y — double-check before tracing."*
 
+### Agent-set scales need your confirmation
+
+A scale that arrives from an agent takeoff (an MCP session's export, imported here) is **unconfirmed**: the Scale chip reads **⚠ 1/4″ = 1′-0″ — confirm** in amber, the gallery badge reads **scale ⚠ confirm**, and the Report's provenance footer marks the sheet *agent-set, UNCONFIRMED*. Quantities still compute — but they stand on a number no person has verified. Check a printed dimension (K) first, then pick **Confirm agent-set scale** from the Scale menu; any scale action of your own (a standard pick, plan-says, calibrate, or recalibrate) also counts as confirmation, because your act is the verification.
+
 ### Metric
 
 The **`ft` / `m`** toggle beside the Scale chip switches the whole display layer: readouts, shape chips, panels, the Report, CSV, and the Marked Set legend read in m² / m (the SY column retires), and Calibrate takes meters. It's display only — takeoffs are stored unit-agnostically, so flipping it never changes a measurement. Supporting-material coverage rates stay as entered.
