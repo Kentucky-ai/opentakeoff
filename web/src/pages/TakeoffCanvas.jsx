@@ -276,7 +276,7 @@ export default function TakeoffCanvas() {
   const [status, setStatus] = useState("loading");
   const [err, setErr] = useState("");
 
-  const [tool, setTool] = useState("pan");
+  const [tool, setTool] = useState("select");
   const [panelImgs, setPanelImgs] = useState({}); // { sheetKey: {w,h} } rendered bitmap dims per panel
   const [tf, setTf] = useState({ x: 0, y: 0, scale: 1 }); // render mirror of tfRef
 
@@ -620,7 +620,7 @@ export default function TakeoffCanvas() {
   const insGhostRef = useRef(null);     // edge-insert ghost "+" badge (DOM-direct like the hover readout)
   const hoverIdRef = useRef("");        // shape id currently described by the tooltip
   const lastMeasureRef = useRef("area"); // last armed measure tool — shown on the Measure menu face
-  const prevToolRef = useRef("pan");   // previous armed tool — detects a LEAVE-zone transition so the shared `poly` array only clears when zone itself was left, not on every tool change
+  const prevToolRef = useRef("select");   // previous armed tool — detects a LEAVE-zone transition so the shared `poly` array only clears when zone itself was left, not on every tool change
   const menuDepthRef = useRef(0);      // >0 while a toolbar menu is open (letter shortcuts pause)
   // ONE stable open/close listener for every toolbar menu — ToolMenu re-fires
   // its onOpenChange effect when the callback identity changes, so an inline
@@ -2210,7 +2210,8 @@ export default function TakeoffCanvas() {
       if (viewRef.current === "gallery") return;
       if (lower === "g") { setView("gallery"); return; }
       if (e.key === "D" && e.shiftKey) { setTool("deduct-rect"); return; }
-      const map = { p: "pan", v: "select", a: "area", r: "rect", l: "linear", q: "curve", s: "surface", c: "count", d: "deduct", o: "oneclick", k: "check", h: "highlighter" };
+      // no `p` binding: pan is not a tool — drag open canvas, or Space/middle/right-drag
+      const map = { v: "select", a: "area", r: "rect", l: "linear", q: "curve", s: "surface", c: "count", d: "deduct", o: "oneclick", k: "check", h: "highlighter" };
       const t = map[lower];
       if (t) setTool(t);
     };
@@ -2324,8 +2325,10 @@ export default function TakeoffCanvas() {
     // inline editor open: the blur that follows this click commits it; swallow the
     // canvas interaction so pan/zoom stays frozen and no stray point is placed
     if (editingRef.current) return;
-    // Pan WITHOUT leaving the draw tool: middle-drag, right-drag, Space-drag, or Pan tool.
-    if (tool === "pan" || e.button === 1 || e.button === 2 || spaceRef.current) {
+    // Pan WITHOUT leaving the draw tool: middle-drag, right-drag, or Space-drag.
+    // (There is no Pan tool — Select's open-canvas drag and the deferred-click
+    // hold-drag below cover the rest of the modeless-pan doctrine.)
+    if (e.button === 1 || e.button === 2 || spaceRef.current) {
       panRef.current = { sx: e.clientX, sy: e.clientY, ox: tfRef.current.x, oy: tfRef.current.y };
       e.currentTarget.setPointerCapture(e.pointerId);
       if (containerRef.current) containerRef.current.style.cursor = "grabbing";
@@ -2399,9 +2402,9 @@ export default function TakeoffCanvas() {
   // members under committed shapes would silently shift their quantities' ink).
   function stitchAlignAt(p) {
     const st = stitchById[groupKeys[0]];
-    if (!st || panels.length !== 1) { setTool("pan"); return; }
+    if (!st || panels.length !== 1) { setTool("select"); return; }
     const n = shapes.filter((s) => s.sheet_id === st.id).length;
-    if (n) { setCommitMsg(`Align before tracing — ${n} takeoff${n === 1 ? "" : "s"} already live on this stitch. Delete them (or a fresh stitch) to re-align.`); setTool("pan"); return; }
+    if (n) { setCommitMsg(`Align before tracing — ${n} takeoff${n === 1 ? "" : "s"} already live on this stitch. Delete them (or a fresh stitch) to re-align.`); setTool("select"); return; }
     if (!alignPt) {
       setAlignPt(p);
       setCommitMsg("Match point set — now click the SAME point where the other sheet draws it.");
@@ -2412,7 +2415,7 @@ export default function TakeoffCanvas() {
     setAlignPt(null);
     if (res.error) { setCommitMsg(res.error); return; }
     setStitches((list) => list.map((s) => (s.id === st.id ? { ...s, members: res.members } : s)));
-    setTool("pan");
+    setTool("select");
     setCommitMsg("Match line joined — the sheets now read as one surface. Trace straight across it.");
   }
   // Markups carry no verts_norm (cloud rect / callout at+target / text at), so
@@ -2649,7 +2652,7 @@ export default function TakeoffCanvas() {
   }
   function moveCrosshair(e) {
     if (editingRef.current) return;   // inline editor open — no aim crosshair (ref check, never per-mousemove state)
-    if (tool === "pan" || tool === "select" || status !== "ready" || !containerRef.current) return;
+    if (tool === "select" || status !== "ready" || !containerRef.current) return;
     // snap-to-vector: nearest PDF endpoint within threshold becomes the active
     // point — looked up in the hovered panel's grid, in that panel's local frame
     let cur = toImage(e.clientX, e.clientY);
@@ -6191,10 +6194,11 @@ export default function TakeoffCanvas() {
 
       {/* deck 2 — the work bar: drafting-style captions above each cluster */}
       <div style={{ display: "flex", gap: 7, alignItems: "center", padding: "20px 14px 8px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", whiteSpace: "nowrap" }}>
-        {cluster("Mode",
+        {/* pan is not a mode: drag open canvas, hold-drag mid-trace, or
+            Space/middle/right-drag — Select is the resting state */}
+        {cluster("Select",
           <span style={{ display: "inline-flex", border: "1px solid var(--ink-faint)" }}>
-            {segBtn("pan", "pan", "Pan (P) — or hold right-click / Space mid-measure")}
-            {segBtn("select", "select", "Select (V) — pick a takeoff, drag points", true)}
+            {segBtn("select", "select", "Select (V) — pick a takeoff, drag points; drag open canvas to pan", true)}
           </span>
         )}
         {vRule}
@@ -6281,7 +6285,7 @@ export default function TakeoffCanvas() {
         {vRule}
         {cluster("Aids", <>
           {panels.length === 1 && isStitchKey(panels[0].key) && (
-            <button onClick={() => setTool((t) => (t === "stitch-align" ? "pan" : "stitch-align"))}
+            <button onClick={() => setTool((t) => (t === "stitch-align" ? "select" : "stitch-align"))}
               title="Align the match line — click a point near the joint, then the SAME point where the other sheet draws it; that sheet slides so the two coincide. Do this before tracing (a stitch with takeoffs on it won't re-align)."
               style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${tool === "stitch-align" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: tool === "stitch-align" ? "var(--cobalt)" : "transparent", color: tool === "stitch-align" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
               <Icon name="calibrate" size={15} />Align
@@ -6733,7 +6737,7 @@ export default function TakeoffCanvas() {
         <div ref={containerRef} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp} onPointerLeave={leaveCanvas} onContextMenu={(e) => e.preventDefault()}
           onDoubleClick={(e) => { if (tool === "oneclick") { if (proposal?.regions.length) createProposal(); } else if (tool === "area" || tool === "deduct" || tool === "linear" || tool === "curve" || tool === "surface" || tool === "zone") finishShape(); else if (tool === "select") editMarkupAt(e); }}
-          style={{ position: "absolute", inset: 0, background: darkMode ? "#0b0e14" : "var(--paper-cream)", cursor: tool === "pan" ? "grab" : tool === "select" ? "default" : "none", touchAction: "none" }}>
+          style={{ position: "absolute", inset: 0, background: darkMode ? "#0b0e14" : "var(--paper-cream)", cursor: tool === "select" ? "default" : "none", touchAction: "none" }}>
           {/* aim crosshair (draw modes): the OS cursor is hidden on the canvas — the
               crosshair IS the cursor. Two crisp full-page hairlines riding the
               EFFECTIVE point (angle-locked / endpoint-snapped), the SPLINE STAR at
@@ -7198,7 +7202,7 @@ export default function TakeoffCanvas() {
                       const pts = ap.verts_norm.map(([x, y]) => [x * p.img.w, y * p.img.h]);
                       const ded = ap.measure_role === "deduct";
                       const col = ded ? "#b03a26" : "#1f3fc7";
-                      const clickable = tool === "select" || tool === "pan";
+                      const clickable = tool === "select";
                       const ev = ap.evidence || {};
                       const evBits = [
                         ev.schedule_row_tag ? `schedule ${ev.schedule_row_tag}` : "",
