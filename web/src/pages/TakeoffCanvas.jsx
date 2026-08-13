@@ -7374,18 +7374,17 @@ export default function TakeoffCanvas() {
             </div>
           )}
 
-          {/* zoom buttons — stop left presses here: the container's onPointerDown
-              setPointerCapture()s every left press, which retargets the pointerup
-              and the composed click never reaches these buttons. Right/middle/
-              Space presses still bubble so a pan can start on top of the stack,
-              and dblclick is stopped so rapid zoom clicks can't finishShape() */}
+          {/* corner cluster — fit + sheet-invert only. Zoom buttons are gone:
+              wheel-notch/pinch zoom toward the cursor already owns zooming
+              (precision-instrument rule: no control that duplicates a gesture).
+              Left presses stop here (the container's onPointerDown
+              setPointerCapture()s every left press, which retargets pointerup
+              so the composed click never reaches these buttons); right/middle/
+              Space presses still bubble so a pan can start on top, and dblclick
+              is stopped so rapid clicks can't finishShape() */}
           <div onPointerDown={(e) => { if (e.button === 0 && !spaceRef.current) e.stopPropagation(); }} onDoubleClick={(e) => e.stopPropagation()}
             style={{ position: "absolute", left: 14, bottom: 14, display: "flex", flexDirection: "column", gap: 6 }}>
-            {[["+", 1.25], ["−", 0.8]].map(([lbl, f]) => (
-              <button key={lbl} onClick={() => { const r = containerRef.current.getBoundingClientRect(); zoomAround(r.width / 2, r.height / 2, f); }}
-                style={{ width: 34, height: 34, borderRadius: 0, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", fontSize: 18, fontWeight: 700 }}>{lbl}</button>
-            ))}
-            <button onClick={() => stage.w && fitToView(stage.w, stage.h)} title="Fit" style={{ width: 34, height: 34, borderRadius: 0, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", fontSize: 12 }}>fit</button>
+            <button onClick={() => stage.w && fitToView(stage.w, stage.h)} title="Fit sheet to view" style={{ width: 34, height: 34, borderRadius: 0, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", fontSize: 12 }}>fit</button>
             <button onClick={() => setDarkMode((d) => !d)} title={darkMode ? "Sheet back to positive print" : "Invert sheet — negative print (affects marked-set export)"}
               style={{ width: 34, height: 34, borderRadius: 0, border: `1px solid ${darkMode ? "var(--cobalt)" : "var(--ink-faint)"}`, background: darkMode ? "var(--cobalt)" : "var(--paper-bright)", color: darkMode ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontSize: 13 }}>
               {darkMode ? "☀" : "☾"}</button>
