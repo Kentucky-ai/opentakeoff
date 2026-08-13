@@ -638,6 +638,7 @@ export default function TakeoffCanvas() {
   const lastMeasureRef = useRef("area"); // last armed measure tool — shown on the Measure menu face
   const prevToolRef = useRef("select");   // previous armed tool — detects a LEAVE-zone transition so the shared `poly` array only clears when zone itself was left, not on every tool change
   const statusCoordRef = useRef(null);   // status-bar coords span — direct DOM writes from onPointerMove, never React state per mousemove
+  const markTileTopRef = useRef(0);      // MARK tile's viewport top — anchors the fixed highlighter popover beside the rail
   const menuDepthRef = useRef(0);      // >0 while a toolbar menu is open (letter shortcuts pause)
   // ONE stable open/close listener for every toolbar menu — ToolMenu re-fires
   // its onOpenChange effect when the callback identity changes, so an inline
@@ -6543,17 +6544,22 @@ export default function TakeoffCanvas() {
          {railLabel("CUT")}
          {CUT_TOOLS.map((t) => railTile(t.id, t.icon, t.label, t.shortcut, null, { tint: "var(--c-danger)" }))}
          {railLabel("MARK")}
-         <span style={{ position: "relative", display: "inline-flex" }}>
+         <span ref={(el) => { if (el) markTileTopRef.current = el.getBoundingClientRect().top; }} style={{ position: "relative", display: "inline-flex" }}>
            <ToolMenu
              title="Markup — annotations, not measurements"
              active={MARKUP_IDS.includes(tool)}
              onOpenChange={onMenuDepth}
+             flyout="right"
              face={<Icon name="markup" size={17} />}
-             items={MARKUP_TOOLS.map((t) => ({ id: t.id, icon: t.icon, label: t.label, shortcut: t.shortcut, active: tool === t.id, onSelect: () => { setTool(t.id); setMarkupDraft(null); } }))}
+             items={[
+               { section: "Markup — notes on the plan, never measured" },
+               ...MARKUP_TOOLS.map((t) => ({ id: t.id, icon: t.icon, label: t.label, shortcut: t.shortcut, active: tool === t.id, onSelect: () => { setTool(t.id); setMarkupDraft(null); } })),
+             ]}
            />
-           {/* highlighter style popover — flies out beside the rail while armed */}
+           {/* highlighter style popover — fixed beside the rail while armed
+               (fixed, not absolute: the rail's scroll box would clip it) */}
            {tool === "highlighter" && (
-             <div style={{ position: "absolute", top: 0, left: "calc(100% + 8px)", zIndex: Z.popover, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "var(--shadow-pop)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
+             <div style={{ position: "fixed", left: "calc(var(--rail-w) + 8px)", top: markTileTopRef.current || 200, zIndex: Z.popover, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "var(--shadow-pop)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
                <div style={{ display: "flex", gap: 6 }} title="Ink">
                  {HL_INKS.map((c) => (
                    <button key={c} onClick={() => setHlStyle((st) => ({ ...st, color: c }))}
