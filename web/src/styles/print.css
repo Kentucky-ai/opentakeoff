@@ -1,0 +1,94 @@
+
+/* ── print (Takeoff report) ───────────────────────────────────────────────── */
+
+/* print-only chrome — invisible on screen. The report body sits in a layout
+   table (.report-flow) whose thead is the per-page print strip; on screen the
+   table is transparent and the strip hidden. */
+.report-print-header { display: none; }
+.report-flow { width: 100%; border-collapse: collapse; }
+.report-flow > thead { display: none; }
+.report-flow > tbody > tr > td { padding: 0; }
+
+@page { margin: 12mm 9mm 14mm; }
+
+@media print {
+  /* Only the report subtree prints; the canvas chrome behind it does not.
+     The background must go white too: the body's beige propagates to the
+     document CANVAS, which paints every page regardless of the body's
+     visibility:hidden — with "Background graphics" on it printed as a beige
+     block after the last report section. */
+  body.report-open { visibility: hidden; color-scheme: light; background: #fff !important; }
+  body.report-open .report-panel,
+  body.report-open .report-panel * { visibility: visible; }
+
+  /* Un-clip the panel: on screen it's inset:0 with an inner scroller inside a
+     100vh shell, which window.print() would clip to one viewport — and Gecko
+     clips position:absolute subtrees to the FIRST page outright. So the panel
+     goes back into normal flow (static), every fixed-height ancestor collapses
+     to auto, and the shell's other children leave layout entirely (they're
+     visibility:hidden but would still reserve a viewport of space above the
+     report — the flex:1 canvas region in particular). */
+  html { height: auto !important; overflow: visible !important; }
+  body.report-open, body.report-open #root { height: auto !important; overflow: visible !important; }
+  body.report-open .app-shell { height: auto !important; display: block !important; }
+  body.report-open .app-shell > :not(.report-panel) { display: none !important; }
+  body.report-open .report-panel {
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+    background: #fff !important;   /* the app's dark view must never print dark */
+    /* var(--ink) not a hard #111: print resolves the light palette (dark
+       overrides are @media screen), and an imported theme's ink reaches text
+       that relies on inherited color (e.g. the masthead title) */
+    color: var(--ink);
+    /* render element fills in the PDF regardless of the browser's "Background
+       graphics" toggle (off by default): the condition color swatches, the
+       totals band, and the grouped section-head fills all rely on background
+       color to read. Scoped to the panel so only the document — not app chrome —
+       forces exact colors. */
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    /* lift the lighter text for print contrast — the on-screen greys read too
+       faint on paper. Print-scoped, so the app UI is untouched. --ink-faint also
+       carries hairline rules, so it darkens modestly (crisper rows), while the
+       muted/faint TEXT tones go clearly darker. */
+    --ink-muted: #45423a;
+    --text-faint: #45423a;
+    --ink-faint: #7c7a68;
+  }
+  body.report-open .report-scroll {
+    overflow: visible !important;
+    height: auto !important;
+    flex: none !important;
+  }
+  body.report-open .report-panel table { background: #fff !important; }
+
+  /* buttons / inputs don't print; neither does an open modal */
+  .report-toolbar { display: none !important; }
+  .report-modal   { display: none !important; }
+
+  /* masthead: project, date, per-sheet scale provenance, generator, disclaimer */
+  .report-print-header { display: block; }
+
+  /* one-line strip repeated at the top of every printed page: the flow-table's
+     thead re-renders at each page break (a fixed footer would overlay the last
+     row of intermediate pages — no @page margin boxes in Chromium) */
+  .report-flow > thead { display: table-header-group; }
+  .report-flow > thead td {
+    font-family: var(--f-mono);
+    font-size: 10.5px;
+    color: var(--ink);
+    border-bottom: 1px solid var(--ink-faint);
+    padding: 0 0 4px;
+  }
+
+  /* tables paginate; header rows repeat at the top of every page */
+  table { break-inside: auto; }
+  tr    { break-inside: avoid; }
+  thead { display: table-header-group; }
+  /* …but the flow-table's single wrapper row MUST break, or the whole report
+     tries to fit one page */
+  .report-flow > tbody > tr { break-inside: auto; }
+}
