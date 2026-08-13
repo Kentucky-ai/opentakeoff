@@ -5688,8 +5688,6 @@ export default function TakeoffCanvas() {
       return { ...next, computed: recomputeShape(next) };
     }));
   };
-  const measureActive = MEASURE_TOOLS.some((t) => t.id === tool);
-  const faceTool = MEASURE_TOOLS.find((t) => t.id === (measureActive ? tool : lastMeasureRef.current)) || MEASURE_TOOLS[0];
   const finishOk = ((tool === "area" || tool === "deduct") && poly.length >= 3) || (tool === "zone" && poly.length >= 3 && !zoneTraceCross) || ((tool === "linear" || tool === "surface" || tool === "curve") && poly.length >= 2);
 
   // ── Layers panel (#85 phase 2) wiring ──────────────────────────────────────
@@ -5984,11 +5982,21 @@ export default function TakeoffCanvas() {
   );
   // MODE segmented control — shared border, ink-filled active (cobalt stays
   // reserved for the armed DRAW face so only one control ever claims it)
-  const segBtn = (key, iconName, hint, last = false) => (
-    <button key={key} type="button" onClick={() => setTool(key)} title={hint}
-      style={{ display: "inline-flex", alignItems: "center", padding: "6px 9px", border: "none", borderRight: last ? "none" : "1px solid var(--ink-faint)", background: tool === key ? "var(--ink)" : "transparent", color: tool === key ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", lineHeight: 1 }}>
-      <Icon name={iconName} size={15} />
-    </button>
+  // rail tile — a machined tool face for the left rail: 36px, keycap corner,
+  // filled cobalt (+ HUD glow) when armed. Tooltip = label · shortcut.
+  const railTile = (id, iconName, label, shortcut, onArm, opts = {}) => {
+    const armed = opts.armed ?? (tool === id);
+    return (
+      <button key={id} type="button" onClick={onArm || (() => setTool(id))}
+        title={shortcut ? `${label} · ${shortcut}` : label} aria-label={label} aria-pressed={armed}
+        style={{ position: "relative", width: "var(--ctl-l)", height: "var(--ctl-l)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid transparent", borderRadius: "var(--r-1)", background: armed ? (opts.tint || "var(--cobalt)") : "transparent", color: armed ? "var(--accent-contrast)" : (opts.tint || "var(--ink)"), boxShadow: armed ? "var(--glow)" : "none", cursor: "pointer", lineHeight: 1 }}>
+        <Icon name={iconName} size={17} />
+        {shortcut && <span aria-hidden="true" style={{ position: "absolute", bottom: 1, right: 3, fontFamily: "var(--f-mono)", fontSize: 8, color: armed ? "var(--accent-contrast)" : "var(--ink-muted)", opacity: armed ? 0.75 : 1 }}>{shortcut}</span>}
+      </button>
+    );
+  };
+  const railLabel = (text) => (
+    <span style={{ fontFamily: "var(--f-mono)", fontSize: "var(--fs-2xs)", letterSpacing: ".1em", color: "var(--ink-muted)", userSelect: "none", margin: "var(--sp-2) 0 2px" }}>{text}</span>
   );
 
   // deck-1 sheet-nav chip — ONE home for "which sheet am I on": pages, files,
@@ -6225,72 +6233,9 @@ export default function TakeoffCanvas() {
 
       {/* deck 2 — the work bar: drafting-style captions above each cluster */}
       <div style={{ display: "flex", gap: 7, alignItems: "center", padding: "20px 14px 8px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", whiteSpace: "nowrap" }}>
-        {/* pan is not a mode: drag open canvas, hold-drag mid-trace, or
-            Space/middle/right-drag — Select is the resting state */}
-        {cluster("Select",
-          <span style={{ display: "inline-flex", border: "1px solid var(--ink-faint)" }}>
-            {segBtn("select", "select", "Select (V) — pick a takeoff, drag points; drag open canvas to pan", true)}
-          </span>
-        )}
-        {vRule}
-        {cluster("Draw", <>
-          <ToolMenu
-            title="Measure — the face shows the armed tool"
-            active={measureActive}
-            onOpenChange={onMenuDepth}
-            face={<><Icon name={faceTool.icon} size={15} /><span style={{ opacity: measureActive ? 1 : 0.6 }}>{faceTool.label}</span></>}
-            items={MEASURE_TOOLS.map((t) => ({ id: t.id, icon: t.icon, label: t.label, shortcut: t.shortcut, active: tool === t.id, onSelect: () => setTool(t.id) }))}
-          />
-          <ToolMenu
-            title="Cut Out — subtract voids/columns (counts negative)"
-            active={tool === "deduct"} accent="danger"
-            onOpenChange={onMenuDepth}
-            face={<><Icon name="deduct" size={15} /><span>Cut Out</span></>}
-            items={CUT_TOOLS.map((t) => ({ id: t.id, icon: t.icon, label: t.label, shortcut: t.shortcut, active: tool === t.id, tint: "var(--c-danger)", onSelect: () => setTool(t.id) }))}
-          />
-          <span style={{ position: "relative", display: "inline-flex" }}>
-            <ToolMenu
-              title="Markup — annotations, not measurements"
-              active={MARKUP_IDS.includes(tool)}
-              onOpenChange={onMenuDepth}
-              face={<><Icon name="markup" size={15} /><span>Markup</span></>}
-              items={MARKUP_TOOLS.map((t) => ({ id: t.id, icon: t.icon, label: t.label, shortcut: t.shortcut, active: tool === t.id, onSelect: () => { setTool(t.id); setMarkupDraft(null); } }))}
-            />
-            {/* highlighter style popover — visible while the tool is armed (hatch-picker chrome) */}
-            {tool === "highlighter" && (
-              <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 30, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "0 6px 22px rgba(0,0,0,.16)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
-                <div style={{ display: "flex", gap: 6 }} title="Ink">
-                  {HL_INKS.map((c) => (
-                    <button key={c} onClick={() => setHlStyle((st) => ({ ...st, color: c }))}
-                      style={{ width: 16, height: 16, padding: 0, background: c, border: hlStyle.color === c ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />
-                  ))}
-                </div>
-                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  {HL_SIZES.map(([lbl, px]) => (
-                    <button key={lbl} onClick={() => setHlStyle((st) => ({ ...st, size: px }))} title={`${lbl === "F" ? "Fine" : lbl === "M" ? "Medium" : "Broad"} tip`}
-                      style={{ width: 22, height: 20, padding: 0, fontFamily: "var(--f-mono)", fontSize: 10, cursor: "pointer", border: hlStyle.size === px ? "1px solid var(--ink)" : "1px solid var(--ink-faint)", background: hlStyle.size === px ? "var(--ink)" : "transparent", color: hlStyle.size === px ? "var(--paper-bright)" : "var(--ink)" }}>{lbl}</button>
-                  ))}
-                  <span style={{ width: 1, alignSelf: "stretch", background: "var(--ink-faint)" }} />
-                  {[["chisel", "M4 16 L14 6 L18 10 L8 20 Z"], ["round", "M5 17 Q12 3 19 13"]].map(([tip, d]) => (
-                    <button key={tip} onClick={() => setHlStyle((st) => ({ ...st, tip }))} title={`${tip} tip`}
-                      style={{ width: 24, height: 20, padding: 1, cursor: "pointer", border: hlStyle.tip === tip ? "1px solid var(--ink)" : "1px solid var(--ink-faint)", background: "transparent" }}>
-                      <svg viewBox="0 0 24 24" width="18" height="14">{tip === "chisel"
-                        ? <path d={d} fill="currentColor" stroke="none" />
-                        : <path d={d} fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />}</svg>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </span>
-          {/* Approval stamp — ink over pencil. Human-only by design: this
-              button is the ONLY way an estimator seal is minted (no MCP tool,
-              no agent path), so the mark means a person looked. */}
-          <button onClick={() => setTool((t) => (t === "approve" ? "select" : "approve"))}
-            title="Approval stamp — the estimator's ink. Click a committed takeoff to approve it (records the shape), or empty plan to approve the sheet at that point; click a seal to lift it. ⌘Z undoes. Human-only: no agent or MCP path places this mark."
-            style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${tool === "approve" ? "var(--c-positive)" : "var(--ink-faint)"}`, background: tool === "approve" ? "var(--c-positive)" : "transparent", color: tool === "approve" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
-            <Icon name="approve" size={15} />Approve
-          </button>
+        {/* tools live on the left rail now — deck 2 keeps the ACTIONS: the
+            Edit menu, aids, command/voice, scale. */}
+        {cluster("Edit", <>
           <ToolMenu
             title="Edit takeoffs"
             onOpenChange={onMenuDepth}
@@ -6606,6 +6551,64 @@ export default function TakeoffCanvas() {
 
       {/* canvas + issue desk */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
+       {/* tool rail — machined faces grouped by MCP module (the concept shell).
+           Individual tiles replace deck 2's Measure/Cut Out menus; Markup keeps
+           its variety flyout on one tile (five markup kinds don't earn five
+           faces). Lives in the canvas row so docked panels + canvas reflow
+           beside it; survives focus mode — it IS the tool access. */}
+       {view === "canvas" && (
+       <nav role="toolbar" aria-label="Tools" style={{ width: "var(--rail-w)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-1)", paddingTop: "var(--sp-2)", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflowY: "auto", overflowX: "visible" }}>
+         {railLabel("SEL")}
+         {railTile("select", "select", "Select — pick a takeoff, drag points; drag open canvas to pan", "V")}
+         {railLabel("MEAS")}
+         {MEASURE_TOOLS.map((t) => railTile(t.id, t.icon, t.label, t.shortcut))}
+         {railLabel("CUT")}
+         {CUT_TOOLS.map((t) => railTile(t.id, t.icon, t.label, t.shortcut, null, { tint: "var(--c-danger)" }))}
+         {railLabel("MARK")}
+         <span style={{ position: "relative", display: "inline-flex" }}>
+           <ToolMenu
+             title="Markup — annotations, not measurements"
+             active={MARKUP_IDS.includes(tool)}
+             onOpenChange={onMenuDepth}
+             face={<Icon name="markup" size={17} />}
+             items={MARKUP_TOOLS.map((t) => ({ id: t.id, icon: t.icon, label: t.label, shortcut: t.shortcut, active: tool === t.id, onSelect: () => { setTool(t.id); setMarkupDraft(null); } }))}
+           />
+           {/* highlighter style popover — flies out beside the rail while armed */}
+           {tool === "highlighter" && (
+             <div style={{ position: "absolute", top: 0, left: "calc(100% + 8px)", zIndex: Z.popover, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "var(--shadow-pop)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
+               <div style={{ display: "flex", gap: 6 }} title="Ink">
+                 {HL_INKS.map((c) => (
+                   <button key={c} onClick={() => setHlStyle((st) => ({ ...st, color: c }))}
+                     style={{ width: 16, height: 16, padding: 0, background: c, border: hlStyle.color === c ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />
+                 ))}
+               </div>
+               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                 {HL_SIZES.map(([lbl, px]) => (
+                   <button key={lbl} onClick={() => setHlStyle((st) => ({ ...st, size: px }))} title={`${lbl === "F" ? "Fine" : lbl === "M" ? "Medium" : "Broad"} tip`}
+                     style={{ width: 22, height: 20, padding: 0, fontFamily: "var(--f-mono)", fontSize: 10, cursor: "pointer", border: hlStyle.size === px ? "1px solid var(--ink)" : "1px solid var(--ink-faint)", background: hlStyle.size === px ? "var(--ink)" : "transparent", color: hlStyle.size === px ? "var(--paper-bright)" : "var(--ink)" }}>{lbl}</button>
+                 ))}
+                 <span style={{ width: 1, alignSelf: "stretch", background: "var(--ink-faint)" }} />
+                 {[["chisel", "M4 16 L14 6 L18 10 L8 20 Z"], ["round", "M5 17 Q12 3 19 13"]].map(([tip, d]) => (
+                   <button key={tip} onClick={() => setHlStyle((st) => ({ ...st, tip }))} title={`${tip} tip`}
+                     style={{ width: 24, height: 20, padding: 1, cursor: "pointer", border: hlStyle.tip === tip ? "1px solid var(--ink)" : "1px solid var(--ink-faint)", background: "transparent" }}>
+                     <svg viewBox="0 0 24 24" width="18" height="14">{tip === "chisel"
+                       ? <path d={d} fill="currentColor" stroke="none" />
+                       : <path d={d} fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />}</svg>
+                   </button>
+                 ))}
+               </div>
+             </div>
+           )}
+         </span>
+         {/* Approval stamp — ink over pencil. Human-only by design: this tile
+             is the ONLY way an estimator seal is minted (no MCP tool, no agent
+             path), so the mark means a person looked. */}
+         {railTile("approve", "approve", "Approval stamp — the estimator's ink. Click a committed takeoff to approve it, or empty plan to approve the sheet; click a seal to lift it. ⌘Z undoes. Human-only.", null,
+           () => setTool((t) => (t === "approve" ? "select" : "approve")), { tint: tool === "approve" ? "var(--c-positive)" : undefined, armed: tool === "approve" })}
+         {railLabel("CAL")}
+         {railTile("calibrate", "calibrate", "Calibrate — click two points of a known dimension", null)}
+       </nav>
+       )}
        {/* docked LEFT panel — one of Markups/Stamps/RFIs at a time. Reflows the
            canvas (a flex sibling), mirroring the docked Takeoffs panel on the right. */}
        {leftTab && (
