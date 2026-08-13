@@ -89,7 +89,7 @@ Panning is always at hand, whatever tool is armed:
 
 - **Trackpad**: two-finger scroll pans both axes; pinch zooms.
 - **Mouse**: a wheel notch zooms toward the cursor (~12% per notch, glided); `⇧`+wheel pans.
-- **Any device**: middle-drag, right-drag, or hold `Space` and drag. The **Pan** tool (`P`) is there if you want it.
+- **Any device**: middle-drag, right-drag, or hold `Space` and drag. There is no Pan tool — pan is never a mode you switch into.
 - **Select tool**: dragging open canvas pans — the instinct you brought from desktop takeoff tools just works.
 - **Mid-measure**: a held click that moves becomes a pan instead of placing a point. Click-release places; press-drag travels.
 
@@ -805,7 +805,6 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `H` | Highlighter |
 | `K` | Check a dimension |
 | `V` | Select |
-| `P` | Pan |
 | `G` | Sheet gallery |
 | Hold `M` | Push-to-talk dictation — release runs the command, `Esc` discards (see [§17](#17-voice--the-command-box)) |
 | `?` | The in-app quick reference — the five-minute path and every shortcut (`Esc` closes) |
