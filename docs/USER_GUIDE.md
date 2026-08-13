@@ -850,6 +850,7 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `⇧`+wheel | Pan |
 | Hold `Space` + drag | Pan (any tool) |
 | Middle-drag / right-drag | Pan (any tool) |
+| `F` | Focus mode — collapse the chrome, trade it for canvas height |
 | `Esc` (gallery open) | Close the gallery; in Browse Drive, back to the plan set |
 | `Esc` (menu open) | Close the menu |
 

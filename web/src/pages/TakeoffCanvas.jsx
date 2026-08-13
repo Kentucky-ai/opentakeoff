@@ -19,6 +19,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { store, isStaleTabError, STALE_TAB_MESSAGE, projectIdFromUrl } from "../lib/store.js";
 import { Z } from "../lib/ui.js";
+import { getFocusMode, toggleFocusMode, onFocusModeChange } from "../lib/focusMode.js";
 import { seedStampLibrary, instantiateStamp, markupToStampElement } from "../lib/stamps.js";
 import { extractSvgPrimitives, svgToStamp } from "../lib/svgImport.js";
 import { transformPath, svgPlacedBox } from "../lib/svgpath.js";
@@ -524,6 +525,8 @@ export default function TakeoffCanvas() {
   });
   useEffect(() => { try { localStorage.setItem("opentakeoff_fill_sens", String(fillSens)); } catch { /* private mode */ } }, [fillSens]);
   const [saveState, setSaveState] = useState("idle");
+  const [focusMode, setFocusModeState] = useState(getFocusMode);   // chrome-collapse (F) — lib/focusMode.js is the store+broadcast
+  useEffect(() => onFocusModeChange(setFocusModeState), []);
   const [loadError, setLoadError] = useState("");   // annotations load failed — autosave stays disarmed
   // internal state is { text }, minted FRESH on every setCommitMsg call — a
   // byte-identical message (e.g. two "Couldn't open X" in a row) still gets a
@@ -2223,6 +2226,7 @@ export default function TakeoffCanvas() {
       const lower = e.key.toLowerCase();
       if (viewRef.current === "gallery") return;
       if (lower === "g") { setView("gallery"); return; }
+      if (lower === "f") { toggleFocusMode(); return; }
       if (e.key === "D" && e.shiftKey) { setTool("deduct-rect"); return; }
       // no `p` binding: pan is not a tool — drag open canvas, or Space/middle/right-drag
       const map = { v: "select", a: "area", r: "rect", l: "linear", q: "curve", s: "surface", c: "count", d: "deduct", o: "oneclick", k: "check", h: "highlighter" };
@@ -6138,7 +6142,9 @@ export default function TakeoffCanvas() {
           PROJECT (open, navigate, export, account); deck 2 = things you do to
           the SHEET (arm tools, toggle aids, set scale). Neither row wraps, and
           conditional UI renders only into deck 2's reserved ACTION slot, so no
-          control ever changes position. */}
+          control ever changes position. Focus mode (F) collapses deck 1 and
+          every band below deck 2 — chrome trades for canvas height. */}
+      {!focusMode && (
       <div style={{ display: "flex", gap: 7, alignItems: "center", padding: "6px 14px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-shadow)", whiteSpace: "nowrap" }}>
         <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--ink)", letterSpacing: "-0.02em" }}>open<span style={{ fontStyle: "italic", color: "var(--cobalt)" }}>takeoff</span></strong>
         {/* team cloud mode: always a way to leave this project, plus a way to
@@ -6215,6 +6221,7 @@ export default function TakeoffCanvas() {
         )}
         <AccountChip note={cloudMode ? "Synced to Google Drive" : "Local workspace"} onOpenChange={onMenuDepth} />
       </div>
+      )}
 
       {/* deck 2 — the work bar: drafting-style captions above each cluster */}
       <div style={{ display: "flex", gap: 7, alignItems: "center", padding: "20px 14px 8px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", whiteSpace: "nowrap" }}>
@@ -6440,7 +6447,7 @@ export default function TakeoffCanvas() {
           — the same one the docked panel row renders — so line/fill/hatch/height
           are editable without opening the sidebar. Shown once there's a
           condition to pin, so the drop zone is discoverable. */}
-      {conditions.length > 0 && (
+      {!focusMode && conditions.length > 0 && (
         <div
           onDragOver={(e) => { if (e.dataTransfer.types.includes(CONDITION_DND_MIME)) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "copy"; } }}
           onDrop={(e) => { if (!e.dataTransfer.types.includes(CONDITION_DND_MIME)) return; e.preventDefault(); e.stopPropagation(); const id = e.dataTransfer.getData(CONDITION_DND_MIME); if (id) pinToPalette(id); }}
@@ -6493,7 +6500,7 @@ export default function TakeoffCanvas() {
 
       {/* open-sheet tabs — what you opened from the gallery; click to view,
           ⊞ to side-by-side, ✕ to close; the dropdown lists every open sheet */}
-      {openTabs.length > 0 && (
+      {!focusMode && openTabs.length > 0 && (
         <div style={{ display: "flex", gap: 5, alignItems: "center", padding: "5px 14px", flexWrap: "wrap", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
           <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.14em", color: "var(--ink-muted)" }}>Sheets</span>
           {openTabs.slice(0, 8).map((k) => {
@@ -6524,7 +6531,7 @@ export default function TakeoffCanvas() {
           the same state (activate/reassign, hotkey badges, + condition) for
           users who want max panel-collapse and one-click switching. Toggled
           from the panel header, persisted with the panel prefs. */}
-      {panelPrefs.strip && (
+      {!focusMode && panelPrefs.strip && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "7px 14px", flexWrap: "wrap", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
           <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--ink-muted)" }}>Conditions</span>
           {conditions.map((c, i) => {
@@ -7412,6 +7419,8 @@ export default function TakeoffCanvas() {
             <button onClick={() => setDarkMode((d) => !d)} title={darkMode ? "Sheet back to positive print" : "Invert sheet — negative print (affects marked-set export)"}
               style={{ width: 34, height: 34, borderRadius: 0, border: `1px solid ${darkMode ? "var(--cobalt)" : "var(--ink-faint)"}`, background: darkMode ? "var(--cobalt)" : "var(--paper-bright)", color: darkMode ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontSize: 13 }}>
               {darkMode ? "☀" : "☾"}</button>
+            <button onClick={() => toggleFocusMode()} title={focusMode ? "Focus off — show all chrome (F)" : "Focus — trade chrome for canvas height (F)"}
+              style={{ width: 34, height: 34, borderRadius: 0, border: `1px solid ${focusMode ? "var(--cobalt)" : "var(--ink-faint)"}`, background: focusMode ? "var(--cobalt)" : "var(--paper-bright)", color: focusMode ? "var(--accent-contrast)" : "var(--ink)", cursor: "pointer", fontSize: 13 }}>⛶</button>
           </div>
         </div>
 
