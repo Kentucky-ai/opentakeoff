@@ -15,6 +15,7 @@ what makes it training data.
 [![MCP registry](https://img.shields.io/badge/MCP-io.github.Kentucky--ai%2Fopentakeoff-6f42c1.svg)](https://registry.modelcontextprotocol.io)
 [![npm](https://img.shields.io/npm/v/opentakeoff-mcp?label=opentakeoff-mcp)](https://www.npmjs.com/package/opentakeoff-mcp)
 [![Benchmark](https://img.shields.io/badge/benchmark-OpenTakeoff%20Academy-orange.svg)](https://aec.kentucky-ai.com)
+[![OpenArena](https://openarena.to/api/badge/cmsgykvsq0000mkuv7byhlgnl)](https://openarena.to/en/projects/cmsgykvsq0000mkuv7byhlgnl)
 [![Sponsor](https://img.shields.io/github/sponsors/Kentucky-ai?logo=githubsponsors&label=sponsor&color=EA4AAA)](https://github.com/sponsors/Kentucky-ai)
 
 [**For agents**](#for-agents--start-here) · [**Try the canvas**](https://opentakeoff.kentucky-ai.com) · [The engine's contract](#the-contract-that-makes-it-drivable) · [For the person at the canvas](#for-the-person-at-the-canvas) · [The data layer](#the-data-layer--why-this-engine-exists) · [Research](#the-research-program) · [Build on it](#build-on-top-of-it) · [Contribute](#contributing)
