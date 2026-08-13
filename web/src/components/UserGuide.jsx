@@ -71,7 +71,7 @@ export const TOOLS = [
   [["S"], "Surface Area (walls)"], [["C"], "Count"],
   [["D"], "Deduct shape (Cut Out)"], [["⇧", "D"], "Deduct rectangle"],
   [["H"], "Highlighter"], [["K"], "Check a dimension against what the drawing says"],
-  [["V"], "Select"], [["P"], "Pan"], [["G"], "Sheet gallery"],
+  [["V"], "Select"], [["G"], "Sheet gallery"],
   [["1", "–", "9"], "Arm condition N"],
   [["hold", "M"], "Push-to-talk dictation — release runs it, Esc discards"],
 ];
