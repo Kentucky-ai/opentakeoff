@@ -93,6 +93,7 @@ export const VIEW = [
   [["two-finger"], "Pan, both axes"],
   [["⇧", "scroll"], "Pan"],
   [["hold", "Space"], "Pan with any tool armed — as does middle-drag or right-drag"],
+  [["F"], "Focus mode — collapse the chrome, trade it for canvas height"],
   [["?"], "Open this guide"],
 ];
 
