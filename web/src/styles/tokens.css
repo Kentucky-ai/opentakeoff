@@ -1,4 +1,4 @@
-/* OpenTakeoff design tokens — single source of truth. Change the look here.
+/* Design tokens — single source of truth, byte-synced between OpenTakeoff and Spline (npm run styles:sync). Change the look here.
    Brand (2026-08): precision-instrument UI. Light = "ice" — bright white
    surfaces on a cool field, cobalt the one saturated thing. Dark = "HUD" —
    true-black cockpit, electric blue, phosphor glow on the active instrument. */
