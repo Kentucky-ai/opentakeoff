@@ -76,11 +76,12 @@ The tests cover the pure math (`web/test/geometry.test.ts`, `web/test/totals.tes
 
 ## Conventions
 
-- **SVG presentation attributes take literal colors** (CSS vars don't resolve there): cobalt `#1f3fc7`, danger `#b03a26`, positive `#1f6b4a`. DOM/HTML chrome may use `var(--…)` from `tokens.css`.
+- **SVG presentation attributes take literal colors** (CSS vars don't resolve there): cobalt `#1f3fc7`, danger `#b03a26`, positive `#1f6b4a` — centralized in `web/src/lib/ui.js` (`SVG`, with HUD-dark counterparts via `svgAccent(isDark)`). DOM/HTML chrome may use `var(--…)` from `tokens.css`.
 - Condition palettes (`PALETTE` in `web/src/components/hatches.jsx`, the seeded condition colors in `FLOORING_DEFAULTS` in `web/src/lib/canvasConstants.js`, and the mirrored copies in `mcp/src/session.ts`) are **user data** — don't re-theme them.
 - Waste applies only in the report (order quantities), never to live measured numbers.
 - Keyboard shortcuts are single letters registered on `window` (see `docs/USER_GUIDE.md` §15); toolbar menus pause them via `menuDepthRef`.
-- Brand voice: paper/ink/cobalt, drafting-table language. No vendor mimicry.
+- Brand voice: **precision instrument** (2026-08 overhaul). Light theme = "ice": bright white surfaces on a cool field, cool-slate neutrals, cobalt the one saturated thing. Dark theme = "HUD": true-black cockpit, electric blue `#3f8cff`, phosphor `--glow` on exactly five elements (active tool face, status verb, hero quantity, primary CTA, calibration dot). Square corners; the single sanctioned radius is `--r-1` on floating chrome. Mono tabular numerals on every readout. Drafting-table language stays. No vendor mimicry.
+- Layout/spacing/type come from the token scales in `tokens.css` (`--sp-*`, `--fs-*`, `--ctl-*`); zIndex comes from the `Z` ladder in `web/src/lib/ui.js`. No new magic numbers.
 
 ## Docs to keep in sync when you change behavior
 

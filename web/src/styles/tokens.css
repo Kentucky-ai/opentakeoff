@@ -1,18 +1,22 @@
-/* OpenTakeoff design tokens — single source of truth. Change the look here. */
+/* OpenTakeoff design tokens — single source of truth. Change the look here.
+   Brand (2026-08): precision-instrument UI. Light = "ice" — bright white
+   surfaces on a cool field, cobalt the one saturated thing. Dark = "HUD" —
+   true-black cockpit, electric blue, phosphor glow on the active instrument. */
 
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root {
-  /* paper substrates */
-  --paper-cream: #ece5d2;        /* default warm paper */
-  --paper-bright: #f4efe0;       /* brighter, money-paper alt */
-  --paper-shadow: #d8d1bd;       /* deeper fold tone */
+  /* surfaces — role names kept from the paper era: bright = base surface,
+     cream = raised card, shadow = hover/pressed */
+  --paper-cream: #ffffff;        /* raised card / panel */
+  --paper-bright: #fafcfe;       /* base surface / chrome */
+  --paper-shadow: #e3e9f1;       /* hover / pressed */
 
-  /* ink */
-  --ink:        #0e1a2e;         /* primary ink-navy */
-  --ink-soft:   #2a3346;
-  --ink-muted:  #6c6a5e;         /* mono labels */
-  --ink-faint:  #a39e8d;         /* hairlines */
+  /* ink — cool near-black */
+  --ink:        #0d1526;
+  --ink-soft:   #2a3a52;
+  --ink-muted:  #5c6b82;         /* mono labels */
+  --ink-faint:  #d8e0ec;         /* hairlines */
 
   /* primary accent */
   --cobalt:     #1f3fc7;
@@ -24,23 +28,23 @@
   --fleck-moss:  #1f6b4a;
   --fleck-blue:  #1f3fc7;
 
-  /* semantic */
+  /* semantic — values match the sanctioned SVG literals (lib/ui.js SVG.*) */
   --c-positive: #1f6b4a;
   --c-warning:  #c47a10;
   --c-danger:   #b03a26;
 
   /* chrome theming — novel colors pulled out of inline styles */
-  --ink-secondary: #5b544a;      /* secondary readout text */
-  --text-faint:    #a39e8d;      /* faint text/fills — --ink-faint stays hairline-only */
+  --ink-secondary: #4e5d73;      /* secondary readout text */
+  --text-faint:    #8b99ac;      /* faint text/fills — --ink-faint stays hairline-only */
   --tint-select:   #e8eefc;      /* checked-row cobalt tint */
-  --tint-active:   #f3f8f4;      /* active-row green tint */
+  --tint-active:   #edf6f1;      /* active-row green tint */
   --surface-pop:   #ffffff;      /* active chip / lifted fills */
   --well:          #ffffff;      /* media wells (PDF thumbs, stamp previews) — light in ALL themes */
   --accent-contrast: #ffffff;    /* text/rules on cobalt surfaces */
-  --hairline-warm: #f0d9c0;      /* calibration-prompt border */
-  --divider-soft:  #eee6d8;      /* readout divider fill */
-  --scrim:         rgba(14, 26, 46, .45);
-  --shadow-pop:    0 6px 22px rgba(0, 0, 0, .16);
+  --hairline-warm: #f0e2c8;      /* calibration-prompt border — stays amber-warm on purpose */
+  --divider-soft:  #e7ecf3;      /* readout divider fill */
+  --scrim:         rgba(13, 21, 38, .45);
+  --shadow-pop:    0 6px 22px rgba(13, 21, 38, .14);
   --grain-rgb:     0, 0, 0;      /* paper-grain channel triplet */
   --grain-inverse-rgb: 255, 255, 255;
 
@@ -55,69 +59,128 @@
   --rule-soft: 1px solid var(--ink-faint);
   --rule-thick: 2px solid var(--ink);
 
-  /* motion — sparing, editorial; the 1 transition already in the app uses .15s */
+  /* motion — sparing, precise; active states press with translateY(1px)
+     at --t-fast (the machined click), never scale/bounce */
   --t-fast: .12s;
   --t:      .2s;
   --t-slow: .35s;
   --ease:   cubic-bezier(.4, 0, .2, 1);
 
-  /* depth — kept subtle so it reads "paper", not "SaaS card" */
-  --shadow-1: 0 1px 2px rgba(14, 26, 46, .06), 0 2px 8px rgba(14, 26, 46, .06);
-  --shadow-2: 0 12px 36px rgba(14, 26, 46, .20);
+  /* depth — shadow-1 = resting chrome; shadow-2 = floating (sheet card,
+     popovers, modals). Nothing else. --shadow-pop is a legacy alias. */
+  --shadow-1: 0 1px 2px rgba(13, 21, 38, .05), 0 2px 8px rgba(13, 21, 38, .05);
+  --shadow-2: 0 12px 36px rgba(13, 21, 38, .16);
 
   /* focus ring — translucent cobalt, sits outside the border */
   --ring: 0 0 0 3px rgba(31, 63, 199, .18);
+
+  /* ── instrument scales (2026-08 overhaul) ─────────────────────────── */
+  /* spacing — strict 4px grid; 2px stays a literal for hairline nudges */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px;
+
+  /* type scale — collapses the ad-hoc inline sizes to 7 stops.
+     Mapping: ≤9.5→2xs · 10–11→xs · 11.5–12→s · 12.5–13→m ·
+              14–15→l · 16–18→xl · 20+→2xl */
+  --fs-2xs: 9px;   /* badges, keycaps, rail group labels */
+  --fs-xs:  11px;  /* mono labels, chips, buttons, status bar */
+  --fs-s:   12px;  /* dense table/readout text */
+  --fs-m:   13px;  /* default UI text */
+  --fs-l:   15px;  /* section titles, inputs */
+  --fs-xl:  18px;  /* hero quantity readouts */
+  --fs-2xl: 22px;  /* display headings */
+
+  /* radius — square is the brand; ONE sanctioned radius for floating
+     chrome (chips, tooltips, keycaps, qty tags, rail tiles). Panels,
+     cards, buttons, inputs stay 0. */
+  --r-0: 0;
+  --r-1: 3px;
+
+  /* ergonomic control faces */
+  --ctl-s: 26px;   /* compact: zoom steppers, tab close */
+  --ctl-m: 32px;   /* standard buttons / inputs */
+  --ctl-l: 36px;   /* tool-rail faces — min comfortable hit target */
+
+  /* shell dimensions */
+  --topbar-h: 44px; --rail-w: 56px; --props-w: 264px; --status-h: 28px;
+
+  /* canvas stage — one step below chrome so sheets read as objects */
+  --stage: #edf1f7;
+
+  /* accent tints — hover / selected fills */
+  --tint-08: rgba(31, 63, 199, .07);
+  --tint-14: rgba(31, 63, 199, .13);
+
+  /* phosphor glow — HUD dark only; light is matte. Applied ONLY to:
+     active tool face, status verb, hero quantity, primary CTA, cal dot */
+  --glow: none;
+
+  /* status bar (instrument strip) — dark ink even in light theme */
+  --status-bg: #0d1526;
+  --status-fg: #e8eef8;
+  --status-acc: #8fb0f5;
 }
 
 /* ── themes ──────────────────────────────────────────────────────────────────
    Light values live in :root above; a theme is one override block keyed off
    <html data-theme="…"> (set pre-paint by the inline script in index.html).
-   Scoped to screen so print always resolves the light palette. Roles keep
-   their meaning across themes: paper-bright = base surface, paper-cream =
-   raised card, paper-shadow = hover/pressed (goes LIGHTER in dark). */
+   Scoped to screen so print always resolves the light palette.
+
+   HUD dark is a re-derivation, not a flip: true-black field, chrome barely
+   off black, electric blue (#3F8CFF — red pulled out so it can't go purple),
+   glow on the five sanctioned elements. Role meanings hold: paper-bright =
+   base surface, paper-cream = raised card, paper-shadow = hover/pressed
+   (goes LIGHTER in dark). */
 :root { color-scheme: light; }
 
 @media screen {
   :root[data-theme="dark"] {
     color-scheme: dark;
 
-    /* paper → dark drafting navy — deliberately warmer/lighter than the
-       canvas dark stage (#0b0e14) so an inverted sheet still reads as
-       "the work area" inside dark chrome */
-    --paper-bright: #121c2c;
-    --paper-cream:  #1a2536;
-    --paper-shadow: #263449;
+    /* cockpit surfaces */
+    --paper-bright: #030405;
+    --paper-cream:  #07090c;
+    --paper-shadow: #12161c;
 
-    /* ink → cream */
-    --ink:        #e9e3d1;
-    --ink-soft:   #c9c4b3;
-    --ink-muted:  #9d9a8c;
-    --ink-faint:  #3c4a63;     /* hairlines only — fails contrast as text */
-    --text-faint: #8a93a8;
+    /* ink → cool phosphor text */
+    --ink:        #d6e2f2;
+    --ink-soft:   #a9bbd2;
+    --ink-muted:  #566476;
+    --ink-faint:  #161c24;     /* hairlines only — fails contrast as text */
+    --text-faint: #7e8ca0;
 
-    /* accent, lifted for dark contrast */
-    --cobalt:      #6d87f2;
-    --cobalt-deep: #8ea4f6;
+    /* accent → true HUD blue */
+    --cobalt:      #3f8cff;
+    --cobalt-deep: #6fb4ff;
 
-    /* semantics, lifted (mirrors boostForDark's intent) */
-    --c-positive: #55b083;
-    --c-warning:  #e0a04a;
-    --c-danger:   #e0705c;
+    /* semantics, lifted for black */
+    --c-positive: #35d48f;
+    --c-warning:  #ffae42;
+    --c-danger:   #ff6b57;
 
-    --ink-secondary:   #aba490;
-    --tint-select:     #19243f;   /* dark enough that 11px cobalt/danger text clears 4.5:1 */
-    --tint-active:     #1b2f2a;
-    --surface-pop:     #253352;
+    --ink-secondary:   #8fa0b8;
+    --tint-select:     #0b1526;
+    --tint-active:     #0a1f18;
+    --surface-pop:     #0e1420;
     /* --well stays white: PDF thumbnails and stamp previews are light media */
-    --accent-contrast: #0e1a2e;
-    --hairline-warm:   #2e3c54;
-    --divider-soft:    #263449;
-    --scrim:           rgba(0, 0, 0, .55);
+    --accent-contrast: #000000;
+    --hairline-warm:   #3a2e14;
+    --divider-soft:    #12181f;
+    --scrim:           rgba(0, 0, 0, .65);
 
-    --shadow-1: 0 1px 2px rgba(0, 0, 0, .35), 0 2px 8px rgba(0, 0, 0, .35);
-    --shadow-2: 0 12px 36px rgba(0, 0, 0, .6);
-    --shadow-pop: 0 6px 22px rgba(0, 0, 0, .5);
-    --ring: 0 0 0 3px rgba(109, 135, 242, .7);   /* .3 blends to 1.6:1 on the dark page — the ring is the only focus indicator */
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, .5), 0 2px 8px rgba(0, 0, 0, .5);
+    --shadow-2: 0 0 0 1px #161c24, 0 14px 44px rgba(0, 0, 0, .85);
+    --shadow-pop: 0 0 0 1px #161c24, 0 6px 22px rgba(0, 0, 0, .7);
+    --ring: 0 0 0 3px rgba(63, 140, 255, .7);   /* the ring is the only focus indicator */
+
+    --stage: #000000;
+    --tint-08: rgba(63, 140, 255, .10);
+    --tint-14: rgba(63, 140, 255, .20);
+    --glow: 0 0 9px rgba(63, 140, 255, .55);
+
+    --status-bg: #000000;
+    --status-fg: #a9c3e6;
+    --status-acc: #6fb4ff;
 
     --grain-rgb: 255, 255, 255;
     --grain-inverse-rgb: 0, 0, 0;
@@ -163,14 +226,22 @@
   background-size: 23px 23px, 31px 31px, 27px 27px, 19px 19px, 17px 17px, 29px 29px, 21px 21px, 25px 25px, 33px 33px, 15px 15px, 22px 22px;
 }
 
-/* ink panel */
+/* ink panel — the instrument strip (status bar, dark readouts) */
 .ink-panel {
-  background-color: var(--ink);
-  color: var(--paper-cream);
+  background-color: var(--status-bg);
+  color: var(--status-fg);
   background-image:
     radial-gradient(circle at 17% 23%, rgba(var(--grain-inverse-rgb), .025) 0, transparent 1.2px),
     radial-gradient(circle at 73% 81%, rgba(var(--grain-inverse-rgb), .02) 0, transparent 1px);
   background-size: 9px 9px, 13px 13px;
+}
+
+/* tick-mark hairline — status-bar top edge + calibration chip ONLY */
+.ticks {
+  background-image: repeating-linear-gradient(90deg, rgba(143, 176, 245, .18) 0 1px, transparent 1px 24px);
+  background-size: 100% 3px;
+  background-repeat: no-repeat;
+  background-position: top;
 }
 
 /* type helpers */
@@ -178,7 +249,7 @@
 .t-display-italic { font-family: var(--f-display); font-style: italic; font-weight: 700; letter-spacing: -0.025em; line-height: 0.9; }
 .t-body { font-family: var(--f-body); font-weight: 400; line-height: 1.45; }
 .t-mono { font-family: var(--f-mono); font-weight: 500; letter-spacing: 0.02em; text-transform: uppercase; }
-.t-mono-data { font-family: var(--f-mono); font-weight: 500; }
+.t-mono-data { font-family: var(--f-mono); font-weight: 500; font-variant-numeric: tabular-nums; }
 .t-label { font-family: var(--f-mono); font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; font-size: 10px; color: var(--ink-muted); }
 
 /* the blue square pip — replaces crosshair */

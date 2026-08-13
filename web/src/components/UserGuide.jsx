@@ -14,6 +14,7 @@
 // USER_GUIDE.md §15, which is itself maintained against the code — if a
 // shortcut changes, §15 and this table move together.
 import { useEffect } from "react";
+import { Z } from "../lib/ui.js";
 
 const GUIDE_URL = "https://github.com/Kentucky-ai/opentakeoff/blob/main/docs/USER_GUIDE.md";
 
@@ -118,7 +119,7 @@ export default function UserGuide({ onClose }) {
     <div
       onClick={onClose}
       style={{
-        position: "fixed", inset: 0, zIndex: 9000, background: "rgba(0,0,0,0.45)",
+        position: "fixed", inset: 0, zIndex: Z.modal, background: "var(--scrim)",
         display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "5vh 16px", overflow: "auto",
       }}>
       <div
@@ -129,7 +130,7 @@ export default function UserGuide({ onClose }) {
         className="panel"
         style={{
           width: "min(760px, 100%)", background: "var(--paper-bright)", color: "var(--ink)",
-          border: "1px solid var(--ink-faint)", borderRadius: 12, padding: "22px 26px 26px",
+          border: "1px solid var(--ink-faint)", borderRadius: 0, padding: "22px 26px 26px",
           boxShadow: "var(--shadow-2)",
         }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, marginBottom: 4 }}>
