@@ -486,7 +486,7 @@ Arm **Select** (`V`) and click a shape. Shapes stack by kind — filled Areas at
 
 - **Drag a corner** to move that vertex (it snaps to true drawing endpoints). **Click a corner first** to select it — `⌫` then deletes just that vertex. A closed shape keeps at least 3 points, a run keeps 2; at the floor, the message tells you *"⌫ again deletes the whole shape."*
 - **Drag an edge grip** (mid-edge) to move the whole line — both endpoints together.
-- **`⇧`-click an edge** to insert a new anchor at its exact midpoint and drag it out in one gesture.
+- **Press anywhere else along an edge** to insert a new anchor at that exact spot and drag it out in one gesture — a **`+` ghost** rides the edge under your cursor to show where the point will land (it stays clear of the corner and mid-edge grips, so those gestures still win). `⇧`-click at the mid-edge grip still inserts at the exact midpoint.
 - **Drag the body** to move the whole shape. Moving never re-prices — translation doesn't change area.
 - **`⌫` with nothing else picked** deletes the shape.
 
