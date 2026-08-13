@@ -616,6 +616,7 @@ export default function TakeoffCanvas() {
   const voiceAimMarkRef = useRef(0);   // aim is LIVE for deixis only while aimSeq > this; re-marked at utterance begin (Command box focus / every run) and on canvas-leave + tab-hide, so a parked-off-canvas or refocus ghost seed can never place a trace
   const pendingClickRef = useRef(null); // deferred draw click {p,cx,cy} — drag >5px converts to a pan
   const hoverRef = useRef(null);        // hover tooltip div (DOM-direct like the crosshair)
+  const insGhostRef = useRef(null);     // edge-insert ghost "+" badge (DOM-direct like the hover readout)
   const hoverIdRef = useRef("");        // shape id currently described by the tooltip
   const lastMeasureRef = useRef("area"); // last armed measure tool — shown on the Measure menu face
   const prevToolRef = useRef("pan");   // previous armed tool — detects a LEAVE-zone transition so the shared `poly` array only clears when zone itself was left, not on every tool change
@@ -1411,6 +1412,9 @@ export default function TakeoffCanvas() {
   useEffect(() => { if (tool !== "stitch-align") setAlignPt(null); }, [tool]);   // leaving the align gesture drops its half-set match point
   // Proposal gone (created, discarded, sheet changed) ⇒ drop any handle selection/hover.
   useEffect(() => { if (!proposal) { setOcSel(null); ocHoverRef.current = -1; setOcHover(-1); } }, [proposal]);
+  // selection/tool changed under a parked cursor ⇒ the edge-insert ghost's
+  // promise is stale — hide it until the next pointer move re-earns it.
+  useEffect(() => { if (insGhostRef.current) insGhostRef.current.style.display = "none"; }, [selectedId, tool]);
   // Switching to a different shape (or clearing the selection) drops the vertex pick.
   useEffect(() => { setSelVert(null); }, [selectedId]);
 
@@ -2497,7 +2501,9 @@ export default function TakeoffCanvas() {
     //    editable rather than being shielded by the markup's hit area. Same edit
     //    model as One-Click proposals: click a corner to select it (Delete removes
     //    just it), drag a corner to move it, drag an edge grip to move the whole
-    //    line (both endpoints), Shift-click an edge to insert a new anchor point.
+    //    line (both endpoints), Shift-click an edge to insert a new anchor point —
+    //    or just press anywhere else along the edge (where the hover ghost shows
+    //    a "+") to insert an anchor at that exact spot, no modifier needed.
     if (sel && selSp && sel.measure_role !== "count") {
       const pts = sel.verts_norm.map(([nx, ny]) => [nx * selSp.img.w + selSp.xOffset, ny * selSp.img.h]);
       const closed = sel.measure_role !== "linear" && sel.measure_role !== "surface_area";
@@ -2538,6 +2544,23 @@ export default function TakeoffCanvas() {
           }
           e.currentTarget.setPointerCapture(e.pointerId); return;
         }
+      }
+      // anywhere else ALONG an edge (the hover ghost's promise): drop a new
+      // anchor at the point projected onto the edge and drag it out in the
+      // same gesture — no modifier needed. Same LIVE-insert semantics as the
+      // ⇧-midpoint path above (a zero-motion click leaves a collinear,
+      // unstamped anchor; any drag commits ONE geom command on release).
+      const insHit = edgeInsertHitAt(p);
+      if (insHit) {
+        const va = sel.verts_norm[insHit.i], vb = sel.verts_norm[insHit.j];
+        const nv = [va[0] + (vb[0] - va[0]) * insHit.t, va[1] + (vb[1] - va[1]) * insHit.t];
+        const vnIns = [...sel.verts_norm.slice(0, insHit.i + 1), nv, ...sel.verts_norm.slice(insHit.i + 1)];
+        const inserted = { ...sel, verts_norm: vnIns, computed: recomputeShape({ ...sel, verts_norm: vnIns }) };
+        setShapes((ss) => ss.map((s) => (s.id === sel.id ? inserted : s)));
+        setSelVert(insHit.i + 1);
+        dragRef.current = { kind: "vertex", shapeId: selectedId, vIndex: insHit.i + 1, prev: geomSnapshot(inserted), shape: inserted, gx: e.clientX, gy: e.clientY };
+        if (insGhostRef.current) insGhostRef.current.style.display = "none";
+        e.currentTarget.setPointerCapture(e.pointerId); return;
       }
     }
     // 2. markups render ON TOP of shapes (:2137 > :2093), so a markup hit wins over a
@@ -2801,6 +2824,50 @@ export default function TakeoffCanvas() {
     if (s.measure_role === "linear") return `${tag} · ${fl(lf)}${a > 0 ? ` · ${fa(a)} border` : ""}`;
     return `${tag} · ${faSY(a)}`;
   }
+  // Edge-insert affordance: the nearest point ON an edge of the selected shape,
+  // away from its corner diamonds and midpoint grip (those gestures keep
+  // priority). A press there drops a new anchor at the projected point and
+  // drags it out in the same gesture; the hover ghost telegraphs it first.
+  function edgeInsertHitAt(p) {
+    if (!selectedId) return null;
+    const sel = shapes.find((s) => s.id === selectedId);
+    if (!sel || sel.measure_role === "count" || !panelKeySet.has(sel.sheet_id)) return null;
+    const sp = panelByKey(sel.sheet_id);
+    const thr = 8 / tfRef.current.scale;
+    const pts = sel.verts_norm.map(([nx, ny]) => [nx * sp.img.w + sp.xOffset, ny * sp.img.h]);
+    const closed = sel.measure_role !== "linear" && sel.measure_role !== "surface_area";
+    const edges = closed ? pts.length : pts.length - 1;
+    let best = null;
+    for (let i = 0; i < edges; i++) {
+      const j = (i + 1) % pts.length;
+      const a = pts[i], b = pts[j];
+      const dx = b[0] - a[0], dy = b[1] - a[1];
+      const len2 = dx * dx + dy * dy;
+      if (!len2) continue;
+      const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2));
+      const qx = a[0] + t * dx, qy = a[1] + t * dy;
+      const d = Math.hypot(qx - p[0], qy - p[1]);
+      if (d >= thr || (best && d >= best.d)) continue;
+      // clear of the corner diamonds (thr*1.6 hit radius) and the edge grip
+      // (thr*1.4) with a little margin, so the ghost never shadows a grip
+      if (Math.hypot(qx - a[0], qy - a[1]) < thr * 1.8 || Math.hypot(qx - b[0], qy - b[1]) < thr * 1.8) continue;
+      if (Math.hypot((a[0] + b[0]) / 2 - qx, (a[1] + b[1]) / 2 - qy) < thr * 1.6) continue;
+      best = { i, j, t, d, qx, qy };
+    }
+    return best;
+  }
+  function updateInsGhost(e) {
+    const el = insGhostRef.current;
+    if (!el) return;
+    const off = () => { el.style.display = "none"; };
+    if (tool !== "select" || panRef.current || dragRef.current || pendingClickRef.current || status !== "ready") return off();
+    const hit = edgeInsertHitAt(toImage(e.clientX, e.clientY));
+    if (!hit) return off();
+    const t = tfRef.current;
+    el.style.left = `${hit.qx * t.scale + t.x - 8}px`;
+    el.style.top = `${hit.qy * t.scale + t.y - 8}px`;
+    el.style.display = "flex";
+  }
   // STACK-style hover readout: small, follows the cursor, gone on hover-off
   function updateHover(e) {
     const el = hoverRef.current;
@@ -2847,6 +2914,7 @@ export default function TakeoffCanvas() {
       }
     }
     updateHover(e);
+    if (tool === "select") updateInsGhost(e);
     // One-Click proposal editing: dragging a corner/edge grip, else revealing
     // handles on the region under the cursor. Both work in panel-LOCAL px.
     if (ocDragRef.current) { ocDragMove(e); return; }
@@ -6684,6 +6752,9 @@ export default function TakeoffCanvas() {
           <div ref={aimChipRef} style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none", display: "none", zIndex: 6, padding: "2px 8px", background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-1)", fontFamily: "var(--f-mono)", fontSize: 10.5, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", willChange: "transform" }} />
           {/* hover readout — what takeoff is under the cursor (DOM-direct) */}
           <div ref={hoverRef} style={{ position: "absolute", display: "none", pointerEvents: "none", zIndex: 8, background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-1)", padding: "4px 8px", fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink)", whiteSpace: "nowrap" }} />
+          {/* edge-insert ghost — the "+" that rides the selected shape's edge under
+              the cursor; pressing there inserts a vertex at that exact spot */}
+          <div ref={insGhostRef} style={{ position: "absolute", display: "none", pointerEvents: "none", zIndex: 8, width: 16, height: 16, alignItems: "center", justifyContent: "center", borderRadius: "50%", background: "#1f3fc7", border: "1.5px solid #fff", boxShadow: "var(--shadow-1)", color: "#fff", fontFamily: "var(--f-mono)", fontSize: 12, lineHeight: 1 }}>+</div>
           {/* inline on-canvas text editor — a screen-space overlay pinned to its anchor
               (pan/zoom is frozen while open). Enter commits, Esc cancels, blur commits;
               all on the input's OWN handlers so the global keydown (which returns early
