@@ -18,6 +18,7 @@ import { Link, useNavigate } from "react-router";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { store, isStaleTabError, STALE_TAB_MESSAGE, projectIdFromUrl } from "../lib/store.js";
+import { Z } from "../lib/ui.js";
 import { seedStampLibrary, instantiateStamp, markupToStampElement } from "../lib/stamps.js";
 import { extractSvgPrimitives, svgToStamp } from "../lib/svgImport.js";
 import { transformPath, svgPlacedBox } from "../lib/svgpath.js";
@@ -7387,19 +7388,24 @@ export default function TakeoffCanvas() {
           </div>
         </div>
 
+        {/* bottom-center stack: status line + correction-rule banner share one
+            flex column so they can never overlap, even when either wraps.
+            column-reverse keeps the status line pinned at the bottom with the
+            banner above it — a commitMsg never hides the decision. */}
+        {(commitMsg || ruleOffer || ruleStage) && (
+        <div style={{ position: "absolute", left: "50%", bottom: 14, transform: "translateX(-50%)", zIndex: Z.canvasUi, display: "flex", flexDirection: "column-reverse", alignItems: "center", gap: 8, maxWidth: "82%", pointerEvents: "none" }}>
         {/* status line — the transient message bar (was the right end of the old
             conditions bar): floats bottom-center over the canvas, never blocks input */}
         {commitMsg && (
-          <div style={{ position: "absolute", left: "50%", bottom: 14, transform: "translateX(-50%)", maxWidth: "70%", zIndex: 6, pointerEvents: "none", padding: "6px 12px", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", boxShadow: "var(--shadow-1)", fontSize: 12, color: isDangerMsg(commitMsg) ? "var(--c-danger)" : "var(--c-positive)" }}>
+          <div style={{ maxWidth: "85%", padding: "6px 12px", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", boxShadow: "var(--shadow-1)", fontSize: 12, color: isDangerMsg(commitMsg) ? "var(--c-danger)" : "var(--c-positive)" }}>
             {commitMsg}
           </div>
         )}
         {/* correction-rule banner (#88): offer after a qualifying Cut Out, then
-            the staged batch's Apply/Cancel. Sits above the status line so a
-            commitMsg never hides the decision. Dismiss/Cancel are always one
+            the staged batch's Apply/Cancel. Dismiss/Cancel are always one
             click — a rule is never applied silently. */}
         {(ruleOffer || ruleStage) && (
-          <div style={{ position: "absolute", left: "50%", bottom: 44, transform: "translateX(-50%)", zIndex: 7, display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: "var(--paper-bright)", border: "1.5px dashed var(--c-danger)", boxShadow: "var(--shadow-1)", fontSize: 12.5, color: "var(--ink)", maxWidth: "82%" }}>
+          <div style={{ pointerEvents: "auto", display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: "var(--paper-bright)", border: "1.5px dashed var(--c-danger)", boxShadow: "var(--shadow-1)", fontSize: 12.5, color: "var(--ink)", maxWidth: "100%" }}>
             {ruleOffer ? (<>
               <span>Make this a rule for all <b>{ruleOffer.tag}</b> rooms? Excludes enclosed regions under <b>{ruleOffer.seed.max_area_sf} SF</b>.</span>
               <button onClick={previewRule}
@@ -7419,31 +7425,39 @@ export default function TakeoffCanvas() {
             </>)}
           </div>
         )}
-        {/* live dictation chip (RFC #59 recognizer): top-center, fixed — NOT
-            cursor-following, the cursor is busy aiming for deixis. Shows the
-            hold state, decode state, and a brief flash of the heard transcript
-            (the receipt); outcomes land in the commitMsg bar like every command. */}
-        {voiceChip && (
-          <div style={{ position: "absolute", left: "50%", top: 14, transform: "translateX(-50%)", zIndex: 6, pointerEvents: "none", padding: "5px 12px", background: "var(--surface-pop)", border: `1px solid ${voiceChip.tone === "live" || voiceChip.tone === "offer" ? "var(--cobalt)" : "var(--ink-faint)"}`, boxShadow: "var(--shadow-1)", fontFamily: "var(--f-mono)", fontSize: 11.5, color: "var(--ink)", display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
-            {voiceChip.tone === "live" && <span className="pip" />}
-            {voiceChip.text}
-          </div>
+        </div>
         )}
-
+        {/* top-center stack: accept pill + dictation chip share one flex column
+            so simultaneous voice + pending proposals can never overlap. */}
+        {(voiceChip || pendingCommitted.length > 0) && (
+        <div style={{ position: "absolute", left: "50%", top: 12, transform: "translateX(-50%)", zIndex: Z.canvasUi, display: "flex", flexDirection: "column", alignItems: "center", gap: 6, pointerEvents: "none" }}>
         {/* accept pill — visible while committed-but-unreviewed shapes (an
             imported MCP takeoff) are on the visible sheets; they render dashed
             pencil until accepted. One click, one undo entry. */}
         {pendingCommitted.length > 0 && (
           <button onClick={acceptPendingShapes}
             title={`${pendingCommitted.length} machine-proposed shape${pendingCommitted.length === 1 ? "" : "s"} render${pendingCommitted.length === 1 ? "s" : ""} dashed pending your review. Accept makes them ink (⌘Z undoes); to reject one, select it and press Delete.`}
-            style={{ position: "absolute", left: "50%", top: 12, transform: "translateX(-50%)", zIndex: 6, padding: "6px 14px", background: "var(--paper-bright)", border: "1.5px dashed var(--cobalt)", boxShadow: "var(--shadow-1)", fontSize: 12.5, fontWeight: 600, color: "var(--cobalt)", cursor: "pointer" }}>
+            style={{ pointerEvents: "auto", padding: "6px 14px", background: "var(--paper-bright)", border: "1.5px dashed var(--cobalt)", boxShadow: "var(--shadow-1)", fontSize: 12.5, fontWeight: 600, color: "var(--cobalt)", cursor: "pointer" }}>
             Accept {pendingCommitted.length} proposed shape{pendingCommitted.length === 1 ? "" : "s"}
           </button>
         )}
+        {/* live dictation chip (RFC #59 recognizer): top-center, fixed — NOT
+            cursor-following, the cursor is busy aiming for deixis. Shows the
+            hold state, decode state, and a brief flash of the heard transcript
+            (the receipt); outcomes land in the commitMsg bar like every command. */}
+        {voiceChip && (
+          <div style={{ padding: "5px 12px", background: "var(--surface-pop)", border: `1px solid ${voiceChip.tone === "live" || voiceChip.tone === "offer" ? "var(--cobalt)" : "var(--ink-faint)"}`, boxShadow: "var(--shadow-1)", fontFamily: "var(--f-mono)", fontSize: 11.5, color: "var(--ink)", display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}>
+            {voiceChip.tone === "live" && <span className="pip" />}
+            {voiceChip.text}
+          </div>
+        )}
+        </div>
+        )}
 
-        {/* live readout — top-right. Height is capped short of the panel rail's centered
-            band (same right:14 column) so populated totals never cover the rail buttons. */}
-        <div style={{ position: "absolute", right: 14, top: 14, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, padding: "12px 16px", minWidth: 200, maxWidth: 260, maxHeight: "calc(50% - 110px)", overflowY: "auto", boxShadow: "0 4px 18px rgba(0,0,0,.12)", fontVariantNumeric: "tabular-nums", zIndex: 6 }}>
+        {/* live readout — top-right, at right:56 so it clears the panel rail's
+            column entirely (right:14, 34px wide — same clearance the zone panel
+            uses) instead of the old magic maxHeight tuned to the rail's height. */}
+        <div style={{ position: "absolute", right: 56, top: 14, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, padding: "12px 16px", minWidth: 200, maxWidth: 260, maxHeight: "calc(100% - 28px)", overflowY: "auto", boxShadow: "var(--shadow-pop)", fontVariantNumeric: "tabular-nums", zIndex: Z.canvasUi }}>
           <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.55, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tool === "zone" ? "Zone check" : (aCond?.finish_tag || "No condition")}</div>
           {tool === "oneclick" && proposal?.regions.length ? (() => {
             const pos = proposal.regions.filter((r) => r.kind === "pos");
