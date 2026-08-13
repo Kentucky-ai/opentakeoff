@@ -185,6 +185,19 @@ const PANEL_DEFAULTS = { w: 320, collapsed: true, strip: false, az: false, group
 // not the per-user panel prefs. Capped at 9 so it maps 1:1 onto the 1–9 hotkeys.
 const PALETTE_MAX = 9;
 
+// status-bar verb column — the armed tool spoken as its MCP verb, so agent and
+// human activity read in the same instrument language.
+const TOOL_VERB = {
+  select: "select", area: "measure_polygon", rect: "measure_polygon",
+  deduct: "cut_out", "deduct-rect": "cut_out",
+  linear: "measure_line", curve: "measure_line", surface: "measure_surface",
+  count: "place_count", oneclick: "one_click", calibrate: "set_scale",
+  check: "check_dimension", zone: "zone_check", "stitch-align": "stitch_align",
+  schedule: "find_schedule", highlighter: "annotate", cloud: "annotate",
+  callout: "annotate", text: "annotate", highlight: "annotate",
+  arrow: "annotate", dimension: "annotate", stamp: "annotate", bubble: "annotate",
+};
+
 // Pure geometry helpers (star/cloud paths, snap grid, angle lock, metrics,
 // hit-testing) live in lib/geometry.js — byte-identical with Spline's copy.
 
@@ -621,6 +634,7 @@ export default function TakeoffCanvas() {
   const hoverIdRef = useRef("");        // shape id currently described by the tooltip
   const lastMeasureRef = useRef("area"); // last armed measure tool — shown on the Measure menu face
   const prevToolRef = useRef("select");   // previous armed tool — detects a LEAVE-zone transition so the shared `poly` array only clears when zone itself was left, not on every tool change
+  const statusCoordRef = useRef(null);   // status-bar coords span — direct DOM writes from onPointerMove, never React state per mousemove
   const menuDepthRef = useRef(0);      // >0 while a toolbar menu is open (letter shortcuts pause)
   // ONE stable open/close listener for every toolbar menu — ToolMenu re-fires
   // its onOpenChange effect when the callback identity changes, so an inline
@@ -2893,6 +2907,16 @@ export default function TakeoffCanvas() {
   function onPointerMove(e) {
     lastPtrRef.current = [e.clientX, e.clientY];   // paste targets the sheet under the cursor
     aimSeqRef.current++;                           // deixis freshness tick — see getAimSeed
+    // status-bar coords — direct DOM (instrument readout; no React render per move).
+    // Sheet feet when the hovered panel has a scale, raw image px otherwise.
+    if (statusCoordRef.current) {
+      const q = toImage(e.clientX, e.clientY);
+      const sp = panelAt(q[0]);
+      const u = scales[sp.key];
+      statusCoordRef.current.textContent = u
+        ? `x ${fmtCheckLen((q[0] - sp.xOffset) * u, units)} · y ${fmtCheckLen(q[1] * u, units)}`
+        : `x ${Math.round(q[0] - sp.xOffset)} · y ${Math.round(q[1])} px`;
+    }
     if (hlRef.current) {
       // paint: distance-thin at capture, live preview via DOM (no React render per move)
       const st = hlRef.current;
@@ -7391,22 +7415,12 @@ export default function TakeoffCanvas() {
           </div>
         </div>
 
-        {/* bottom-center stack: status line + correction-rule banner share one
-            flex column so they can never overlap, even when either wraps.
-            column-reverse keeps the status line pinned at the bottom with the
-            banner above it — a commitMsg never hides the decision. */}
-        {(commitMsg || ruleOffer || ruleStage) && (
-        <div style={{ position: "absolute", left: "50%", bottom: 14, transform: "translateX(-50%)", zIndex: Z.canvasUi, display: "flex", flexDirection: "column-reverse", alignItems: "center", gap: 8, maxWidth: "82%", pointerEvents: "none" }}>
-        {/* status line — the transient message bar (was the right end of the old
-            conditions bar): floats bottom-center over the canvas, never blocks input */}
-        {commitMsg && (
-          <div style={{ maxWidth: "85%", padding: "6px 12px", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", boxShadow: "var(--shadow-1)", fontSize: 12, color: isDangerMsg(commitMsg) ? "var(--c-danger)" : "var(--c-positive)" }}>
-            {commitMsg}
-          </div>
-        )}
         {/* correction-rule banner (#88): offer after a qualifying Cut Out, then
-            the staged batch's Apply/Cancel. Dismiss/Cancel are always one
-            click — a rule is never applied silently. */}
+            the staged batch's Apply/Cancel. Floats alone bottom-center (the
+            transient commitMsg text lives in the status bar now); Dismiss/
+            Cancel are always one click — a rule is never applied silently. */}
+        {(ruleOffer || ruleStage) && (
+        <div style={{ position: "absolute", left: "50%", bottom: 14, transform: "translateX(-50%)", zIndex: Z.canvasUi, display: "flex", flexDirection: "column-reverse", alignItems: "center", gap: 8, maxWidth: "82%", pointerEvents: "none" }}>
         {(ruleOffer || ruleStage) && (
           <div style={{ pointerEvents: "auto", display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: "var(--paper-bright)", border: "1.5px dashed var(--c-danger)", boxShadow: "var(--shadow-1)", fontSize: 12.5, color: "var(--ink)", maxWidth: "100%" }}>
             {ruleOffer ? (<>
@@ -7778,6 +7792,30 @@ export default function TakeoffCanvas() {
         />
       )}
 
+      {/* status bar — the 28px instrument strip, the grid shell's bottom row.
+          Mono, tabular, tick-ruled top edge. The verb column keeps tool/agent
+          activity legible at all times; the coords span updates via direct DOM
+          from onPointerMove (never React state per mousemove); transient
+          commitMsg text lives here now (the old floating pill is gone — the
+          rule banner still floats, it has buttons). Print: the report-only
+          visibility rules already hide this. */}
+      <footer className="ink-panel ticks"
+        style={{ height: "var(--status-h)", flex: "0 0 auto", display: "flex", alignItems: "center", gap: 12, padding: "0 14px", fontFamily: "var(--f-mono)", fontSize: "var(--fs-xs)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", overflow: "hidden", userSelect: "none" }}>
+        <span style={{ color: "var(--status-acc)", textShadow: "var(--glow)" }}>{TOOL_VERB[tool] || tool}</span>
+        <span style={{ opacity: 0.25 }} aria-hidden="true">|</span>
+        <span ref={statusCoordRef} aria-hidden="true" style={{ minWidth: 150 }} />
+        <span style={{ opacity: 0.25 }} aria-hidden="true">|</span>
+        <span>{scaleFace}</span>
+        {commitMsg && (
+          <span title={commitMsg} style={{ marginLeft: 8, color: isDangerMsg(commitMsg) ? "var(--c-danger)" : "var(--c-positive)", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
+            {commitMsg}
+          </span>
+        )}
+        <span style={{ marginLeft: "auto", display: "flex", gap: 12, opacity: 0.75 }} aria-live="polite">
+          <span>{shapes.filter((s) => panelKeySet.has(s.sheet_id)).length} shapes</span>
+          <span>{cloudMode ? "drive" : "local"}{saveState === "saving" ? " · saving…" : saveState === "saved" ? " · saved" : ""}</span>
+        </span>
+      </footer>
       {/* BYO-key AI settings — the single config surface for the ai.js seam
           (the Agent panel links here; closing re-renders, so `configured`
           re-reads immediately). */}
