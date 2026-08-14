@@ -15,9 +15,10 @@ import { Icon } from "../brand/icons.jsx";
 
 const MENU_W = 232;
 
-export default function ToolMenu({ face, active = false, accent = "cobalt", title = "", items, onOpenChange, faceStyle, menuStyle, disabled = false }) {
+export default function ToolMenu({ face, active = false, accent = "cobalt", title = "", items, onOpenChange, faceStyle, menuStyle, disabled = false, flyout = null }) {
   const [open, setOpen] = useState(false);
   const [flip, setFlip] = useState(false);
+  const [flyAt, setFlyAt] = useState(null);   // {left, top} for flyout="right" — fixed, so ancestor overflow can't clip it (the rail)
   const rootRef = useRef(null);
 
   useEffect(() => {
@@ -47,6 +48,13 @@ export default function ToolMenu({ face, active = false, accent = "cobalt", titl
     if (!open && rootRef.current) {
       const r = rootRef.current.getBoundingClientRect();
       setFlip(r.left + menuW > window.innerWidth - 16);
+      // flyout="right": open beside the trigger (position:fixed escapes the
+      // rail's scroll clipping); clamp the top so a low trigger's menu stays
+      // on-screen — ~44px/row is the honest estimate for these short menus.
+      if (flyout === "right") {
+        const estH = Math.min(items.length, 8) * 40 + 12;
+        setFlyAt({ left: r.right + 6, top: Math.max(8, Math.min(r.top, window.innerHeight - estH - 8)) });
+      }
     }
     setOpen((v) => !v);
   };
@@ -68,7 +76,10 @@ export default function ToolMenu({ face, active = false, accent = "cobalt", titl
       </button>
       {open && (
         <div style={{
-          position: "absolute", top: "calc(100% + 4px)", [flip ? "right" : "left"]: 0, zIndex: 60,
+          ...(flyout === "right" && flyAt
+            ? { position: "fixed", left: flyAt.left, top: flyAt.top }
+            : { position: "absolute", top: "calc(100% + 4px)", [flip ? "right" : "left"]: 0 }),
+          zIndex: 60,
           minWidth: MENU_W, background: "var(--paper-bright)", border: "1px solid var(--ink)",
           boxShadow: "var(--shadow-2)", padding: "4px 0",
           ...menuStyle,

@@ -638,6 +638,7 @@ export default function TakeoffCanvas() {
   const lastMeasureRef = useRef("area"); // last armed measure tool — shown on the Measure menu face
   const prevToolRef = useRef("select");   // previous armed tool — detects a LEAVE-zone transition so the shared `poly` array only clears when zone itself was left, not on every tool change
   const statusCoordRef = useRef(null);   // status-bar coords span — direct DOM writes from onPointerMove, never React state per mousemove
+  const markTileTopRef = useRef(0);      // MARK tile's viewport top — anchors the fixed highlighter popover beside the rail
   const menuDepthRef = useRef(0);      // >0 while a toolbar menu is open (letter shortcuts pause)
   // ONE stable open/close listener for every toolbar menu — ToolMenu re-fires
   // its onOpenChange effect when the callback identity changes, so an inline
@@ -6146,35 +6147,22 @@ export default function TakeoffCanvas() {
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer?.files); }}
       style={{ position: "relative", display: "flex", flexDirection: "column", height: "100vh" }}>
-      {/* toolbar — two fixed decks (issue #61). Deck 1 = things you do to the
-          PROJECT (open, navigate, export, account); deck 2 = things you do to
-          the SHEET (arm tools, toggle aids, set scale). Neither row wraps, and
-          conditional UI renders only into deck 2's reserved ACTION slot, so no
-          control ever changes position. Focus mode (F) collapses deck 1 and
-          every band below deck 2 — chrome trades for canvas height. */}
+      {/* file inputs — always mounted (drag-drop and the ⋯ import path need
+          the refs even while focus mode hides the bar) */}
+      <input name="sheet-file" ref={fileInputRef} type="file" accept=".pdf,application/pdf,image/*,.zip,application/zip,application/x-zip-compressed" multiple style={{ display: "none" }}
+        onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }} />
+      <input name="takeoff-import" ref={importInputRef} type="file" accept=".json,application/json" style={{ display: "none" }}
+        onChange={(e) => { importTakeoffFile(e.target.files?.[0]); e.target.value = ""; }} />
+      {/* THE top bar — one row (the two decks of issue #61 merged once the
+          tool rail absorbed the draw menus). Project verbs left, work verbs
+          center, Report + the ⋯ overflow (guide, theme, schedule import,
+          cloud moves) right. Cluster captions stay — they're the drafting
+          language. The row never wraps; rarely-used controls live in ⋯ so
+          nothing shifts position mid-work. Focus mode (F) hides the whole
+          bar — the rail and status bar carry the essentials. */}
       {!focusMode && (
-      <div style={{ display: "flex", gap: 7, alignItems: "center", padding: "6px 14px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-shadow)", whiteSpace: "nowrap" }}>
+      <div style={{ display: "flex", gap: 7, alignItems: "center", padding: "16px 14px 6px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", whiteSpace: "nowrap" }}>
         <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--ink)", letterSpacing: "-0.02em" }}>open<span style={{ fontStyle: "italic", color: "var(--cobalt)" }}>takeoff</span></strong>
-        {/* team cloud mode: always a way to leave this project, plus a way to
-            browse the rest of the team's projects when the build names a root
-            — fixed presence for the whole session (cloudMode is set before the
-            canvas mounts), so neither ever shifts deck-1 mid-work */}
-        {cloudMode && (
-          <button type="button" onClick={closeProject} title="Close this project and return to the local canvas"
-            style={{ padding: "6px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12.5, lineHeight: 1 }}>
-            Close project
-          </button>
-        )}
-        {cloudMode && browseProjects && (
-          <button type="button" onClick={browseProjects} title="Back to your team's projects"
-            style={{ padding: "6px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12.5, lineHeight: 1 }}>
-            Projects
-          </button>
-        )}
-        <input name="sheet-file" ref={fileInputRef} type="file" accept=".pdf,application/pdf,image/*,.zip,application/zip,application/x-zip-compressed" multiple style={{ display: "none" }}
-          onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }} />
-        <input name="takeoff-import" ref={importInputRef} type="file" accept=".json,application/json" style={{ display: "none" }}
-          onChange={(e) => { importTakeoffFile(e.target.files?.[0]); e.target.value = ""; }} />
         <button type="button" onClick={() => fileInputRef.current?.click()} title="Open plans — PDF, image, or a .zip plan set (or just drag them onto the canvas)"
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
           <Icon name="plus" size={14} />Open</button>
@@ -6190,7 +6178,7 @@ export default function TakeoffCanvas() {
             <ToolMenu
               title="Sheet — the sheets in this set, files, grouping, and the gallery"
               onOpenChange={onMenuDepth}
-              face={<span style={{ display: "inline-block", maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sheetChipLabel}</span>}
+              face={<span style={{ display: "inline-block", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sheetChipLabel}</span>}
               faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 12, fontWeight: 400, padding: "6px 8px" }}
               menuStyle={{ minWidth: 260, maxHeight: "min(480px, 60vh)", overflowY: "auto" }}
               items={sheetMenuItems}
@@ -6199,42 +6187,7 @@ export default function TakeoffCanvas() {
               style={{ padding: "5px 8px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", opacity: (!!sheetGroup.length || page >= pageCount) ? 0.4 : 1 }}><Icon name="chevronRight" size={12} /></button>
           </span>
         )}
-        <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 11, color: "var(--ink-muted)", minWidth: 44, fontFamily: "var(--f-mono)" }}>{saveState === "saving" ? "saving…" : saveState === "saved" ? "saved ✓" : ""}</span>
-        <button onClick={() => setGuideOpen(true)} title="How OpenTakeoff works — the five-minute path and every shortcut (?)"
-          aria-label="How OpenTakeoff works"
-          style={{ display: "inline-flex", alignItems: "center", padding: "6px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 13, fontWeight: 700, lineHeight: 1 }}>
-          ?
-        </button>
-        <button onClick={toggleTheme} title="App theme — light / dark chrome (sheets unaffected; use ☾ on the canvas to invert the print)"
-          aria-label="App theme — light / dark chrome" aria-pressed={theme === "dark"}
-          style={{ display: "inline-flex", alignItems: "center", padding: "6px 9px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 14, lineHeight: 1 }}>
-          {theme === "dark" ? "◐" : "◑"}
-        </button>
-        <button onClick={() => { setScheduleAnchor(null); setTool((t) => (t === "schedule" ? "select" : "schedule")); }}
-          title="Import from schedule — arm, then drag a box around the finish/material schedule to create conditions (two clicks: corner, corner)"
-          style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${tool === "schedule" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: tool === "schedule" ? "var(--cobalt)" : "transparent", color: tool === "schedule" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
-          <Icon name="rectTool" size={15} />Schedule
-        </button>
-        <button onClick={() => setShowReport(true)} disabled={!conditions.length} title="Open the takeoff report — per-condition breakdown with waste, plus CSV / JSON export."
-          style={{ padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>Report</button>
-        {/* Deliberately subtle, not a button: local-first app, cloud mode is an
-            opt-in extra. Only when ALREADY signed in (never a sign-in entry
-            point in the toolbar — that lives solely on the landing link), no
-            cloud project is open, and the build names a Projects root. */}
-        {!cloudMode && googleUser && isGoogleConfigured() && projectHomeFolderId() && (
-          <Link to="/projects" style={{ fontSize: 11.5, color: "var(--ink-muted)", whiteSpace: "nowrap" }}>
-            browse team projects
-          </Link>
-        )}
-        <AccountChip note={cloudMode ? "Synced to Google Drive" : "Local workspace"} onOpenChange={onMenuDepth} />
-      </div>
-      )}
-
-      {/* deck 2 — the work bar: drafting-style captions above each cluster */}
-      <div style={{ display: "flex", gap: 7, alignItems: "center", padding: "20px 14px 8px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", whiteSpace: "nowrap" }}>
-        {/* tools live on the left rail now — deck 2 keeps the ACTIONS: the
-            Edit menu, aids, command/voice, scale. */}
+        {vRule}
         {cluster("Edit", <>
           <ToolMenu
             title="Edit takeoffs"
@@ -6377,7 +6330,33 @@ export default function TakeoffCanvas() {
             )}
           </span>
         )}
+        <div style={{ flex: 1 }} />
+        <button onClick={() => setShowReport(true)} disabled={!conditions.length} title="Open the takeoff report — per-condition breakdown with waste, plus CSV / JSON export."
+          style={{ padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>Report</button>
+        {/* ⋯ overflow — rarely-used project controls, so the row never wraps
+            and nothing shifts position mid-work (issue #61's contract). */}
+        <ToolMenu
+          title="More — guide, theme, schedule import, project moves"
+          onOpenChange={onMenuDepth}
+          face={<span style={{ fontWeight: 700, letterSpacing: "0.08em" }}>⋯</span>}
+          items={[
+            { id: "guide", label: "How OpenTakeoff works", shortcut: "?", onSelect: () => setGuideOpen(true) },
+            { id: "theme", label: theme === "dark" ? "Light chrome" : "Dark chrome", onSelect: toggleTheme },
+            { id: "schedule", icon: "rectTool", label: "Import from schedule", active: tool === "schedule", onSelect: () => { setScheduleAnchor(null); setTool((t) => (t === "schedule" ? "select" : "schedule")); } },
+            ...(cloudMode ? [
+              "divider",
+              { id: "closeproj", label: "Close project", onSelect: closeProject },
+              ...(browseProjects ? [{ id: "projects", label: "Team projects", onSelect: browseProjects }] : []),
+            ] : []),
+            ...(!cloudMode && googleUser && isGoogleConfigured() && projectHomeFolderId() ? [
+              "divider",
+              { id: "browse", label: "Browse team projects", onSelect: () => navigate("/projects") },
+            ] : []),
+          ]}
+        />
+        <AccountChip note={cloudMode ? "Synced to Google Drive" : "Local workspace"} onOpenChange={onMenuDepth} />
       </div>
+      )}
 
       {/* quick-access condition palette — its own slim band under the toolbar
           (like the sheet-tabs / conditions-strip rows), not crammed into the
@@ -6565,17 +6544,22 @@ export default function TakeoffCanvas() {
          {railLabel("CUT")}
          {CUT_TOOLS.map((t) => railTile(t.id, t.icon, t.label, t.shortcut, null, { tint: "var(--c-danger)" }))}
          {railLabel("MARK")}
-         <span style={{ position: "relative", display: "inline-flex" }}>
+         <span ref={(el) => { if (el) markTileTopRef.current = el.getBoundingClientRect().top; }} style={{ position: "relative", display: "inline-flex" }}>
            <ToolMenu
              title="Markup — annotations, not measurements"
              active={MARKUP_IDS.includes(tool)}
              onOpenChange={onMenuDepth}
+             flyout="right"
              face={<Icon name="markup" size={17} />}
-             items={MARKUP_TOOLS.map((t) => ({ id: t.id, icon: t.icon, label: t.label, shortcut: t.shortcut, active: tool === t.id, onSelect: () => { setTool(t.id); setMarkupDraft(null); } }))}
+             items={[
+               { section: "Markup — notes on the plan, never measured" },
+               ...MARKUP_TOOLS.map((t) => ({ id: t.id, icon: t.icon, label: t.label, shortcut: t.shortcut, active: tool === t.id, onSelect: () => { setTool(t.id); setMarkupDraft(null); } })),
+             ]}
            />
-           {/* highlighter style popover — flies out beside the rail while armed */}
+           {/* highlighter style popover — fixed beside the rail while armed
+               (fixed, not absolute: the rail's scroll box would clip it) */}
            {tool === "highlighter" && (
-             <div style={{ position: "absolute", top: 0, left: "calc(100% + 8px)", zIndex: Z.popover, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "var(--shadow-pop)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
+             <div style={{ position: "fixed", left: "calc(var(--rail-w) + 8px)", top: markTileTopRef.current || 200, zIndex: Z.popover, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "var(--shadow-pop)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
                <div style={{ display: "flex", gap: 6 }} title="Ink">
                  {HL_INKS.map((c) => (
                    <button key={c} onClick={() => setHlStyle((st) => ({ ...st, color: c }))}
