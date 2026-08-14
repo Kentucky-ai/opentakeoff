@@ -101,6 +101,28 @@ Each tool call writes one JSON line to stderr with the tool name, duration,
 sheet, result size, and error flag. The trace never writes to stdout and never
 includes document text, shape vertices, or result payload content.
 
+### Staged tool exposure (opt-in)
+
+By default every client gets all 40 tool schemas on `tools/list` — the flat
+contract every published client already expects. Forty descriptions is real
+token weight for an agent session that may never touch half of them, so the
+server can instead stage the surface along the workflow it already teaches:
+
+```bash
+OPENTAKEOFF_MCP_STAGED_TOOLS=1 npx -y opentakeoff-mcp
+```
+
+Staged, only the **setup** stage (load, scale, read the set — 10 tools) starts
+enabled, plus one opener: `open_tool_stage`. Calling it with `"measure"`,
+`"revise"`, or `"handoff"` enables that stage's tools and fires
+`tools/list_changed`, so any client that supports dynamic tool lists (Claude
+Code, Claude Desktop, anything built against the current spec) sees the group
+appear the moment the agent asks for it. Opening is idempotent and never
+closes anything — the surface only grows. The initialize instructions state
+the scheme, so an agent knows to open a stage before it needs one. Requires a
+client that honors `tools/list_changed`; leave the flag unset for one that
+reads the tool list once. ([#230](https://github.com/Kentucky-ai/opentakeoff/issues/230))
+
 ## Tools
 
 | Tool | What it does |

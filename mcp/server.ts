@@ -8,9 +8,16 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { Session } from "./src/session.ts";
 import { registerTools } from "./src/tools.ts";
 import { registerResources } from "./src/resources.ts";
+import { applyStagedTools, STAGED_INSTRUCTIONS } from "./src/staging.ts";
 import pkg from "./package.json" with { type: "json" };
 
-export function buildServer(session: Session = new Session()): McpServer {
+export function buildServer(
+  session: Session = new Session(),
+  // #230 — staged exposure is opt-in: every published client expects the flat
+  // forty and gets it by default. The option exists so tests don't mutate env.
+  opts: { stagedTools?: boolean } = {},
+): McpServer {
+  const staged = opts.stagedTools ?? process.env.OPENTAKEOFF_MCP_STAGED_TOOLS === "1";
   const server = new McpServer({ name: "opentakeoff", version: pkg.version }, {
     // Served to every client at initialize — the discipline that makes agent
     // takeoffs land as reviewable work instead of a bare numbers report.
@@ -23,10 +30,12 @@ export function buildServer(session: Session = new Session()): McpServer {
       "4. LOOK at what landed with view_sheet overlay:true and fix misses with edit_shape before trusting totals — crop the work region tight (full-sheet renders downsample too far to audit a ring).",
       "5. Finish by writing the marked-up planset with export_marked_pdf and give the user its file path, alongside export_report for the numbers. Never end a takeoff with numbers alone.",
       "WITHHELD IS NOT A FAILURE — IT IS THE ANSWER. detect_rooms, symbol_sweep, sweep_schedule_row and derive_transitions all measure things they then decline to commit, and say why: a near-match in the score band, a room the schedule cannot answer for, adjacency across a WALL rather than a butt joint. Read those arrays, view_sheet the coordinates they hand you, and resolve them or report them. A withheld item you ignore is a hole in the bid; one you never mention is worse.",
+      ...(staged ? [STAGED_INSTRUCTIONS] : []),
     ].join("\n"),
   });
-  registerTools(server, session);
+  const registered = registerTools(server, session);
   registerResources(server, session);
+  if (staged) applyStagedTools(server, registered);
   return server;
 }
 

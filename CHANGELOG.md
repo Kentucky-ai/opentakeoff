@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-13 — the tool surface grows as the takeoff does (opt-in)
+
+### Added
+- **Staged tool exposure on the MCP server** (#230, opt-in). The flat forty stays the default for every published client. Behind `OPENTAKEOFF_MCP_STAGED_TOOLS=1`, only the **setup** stage (load, scale, read the set — 10 tools) starts enabled, plus one always-on opener: `open_tool_stage`. Calling it with `measure`, `revise`, or `handoff` enables that group and fires `tools/list_changed`, so a client with dynamic tool lists sees the surface grow on demand instead of paying the token cost of forty descriptions up front — the same phase structure the initialize instructions already teach, made structural. Opening is idempotent and never closes anything; the initialize instructions gain one line stating the scheme so an agent knows to ask. The stage table is held as an exact partition of the registered set by test, so a future tool can't land stageless. New `mcp/src/staging.ts`; `registerTools` now returns its `RegisteredTool` map.
+
 ## 2026-08-09 — rings you can live with: Tidy + drag auto-straighten
 
 ### Added

@@ -3,7 +3,7 @@
 // item plus a JSON meta text item. Failures are isError results, never thrown
 // protocol errors.
 import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer, RegisteredTool } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ok, okImage, fail, UserError, type ToolReply } from "./format.ts";
 import { UNDO_CAP, CONTEXT_MIN_LEN_PX, CONTEXT_MAX_SEGMENTS, CONTEXT_MAX_SEGMENTS_CEIL, type Session } from "./session.ts";
 import { traceToolCall } from "./trace.ts";
@@ -51,7 +51,19 @@ const run = (tool: string, fn: (args: any) => unknown | Promise<unknown>) =>
     return reply;
   };
 
-export function registerTools(server: McpServer, session: Session): void {
+// Returns every RegisteredTool by name so staged exposure (#230) can disable
+// and re-enable groups after the fact. The wrapper keeps all forty call sites
+// below byte-identical: `server` here is a recording facade over the real one.
+export function registerTools(realServer: McpServer, session: Session): Map<string, RegisteredTool> {
+  const registered = new Map<string, RegisteredTool>();
+  const server = {
+    registerTool(name: string, meta: unknown, handler: unknown): RegisteredTool {
+      const tool = (realServer.registerTool as (n: string, m: unknown, h: unknown) => RegisteredTool)(name, meta, handler);
+      registered.set(name, tool);
+      return tool;
+    },
+    sendResourceListChanged: () => realServer.sendResourceListChanged(),
+  };
   server.registerTool("load_plan", {
     description: `Open a plan PDF from disk. Default: replace the whole session (previous documents, scales, conditions, and shapes are cleared). merge: true ADDS the document to the working set instead (#152) — a bid set is plans + schedule + addenda, not one PDF — keeping every scale, condition, and shape; sheet keys carry file names so documents never collide, the sheet graph spans the whole set (resolve_tag can chain a plan tag on one file to a schedule row in another), and the marked set covers every worked sheet. Re-loading an already-merged file is refused — reload = replace, deliberately. Returns file, files, page_count, and one entry per sheet. The loaded sheets also become browsable resources (takeoff://sheets). ${COORDS}`,
     inputSchema: {
@@ -554,4 +566,6 @@ export function registerTools(server: McpServer, session: Session): void {
     },
     outputSchema: deleteVerdictOutput,
   }, run("delete_verdict", ({ verdict_id }) => session.deleteVerdict(verdict_id)));
+
+  return registered;
 }
