@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-14 — stitching is human-only, in writing
+
+### Docs
+- **The stitch/align boundary is now documented as design intent, not a gap** — for humans and agents both. Aligning a match line means judging that two drawn wall junctions are the same point, and a subtly sloppy join silently skews every quantity that crosses the seam — so no MCP verb creates, aligns, or addresses a stitch, and none is staged for later. `docs/MCP.md` states the doctrine (the scale gate taken one step further: the agent doesn't even propose), `mcp/README.md` Limits adds the stance plus the round-trip caveat (the server doesn't read the `stitches` payload field, so `import_takeoff` → `export_takeoff` drops stitches — the app's own save is the one to keep), and `docs/USER_GUIDE.md` tells the human driving an agent to stitch and align first, or have the agent measure member sheets individually.
+
 ## 2026-08-13 — the tool surface grows as the takeoff does (opt-in)
 
 ### Added
