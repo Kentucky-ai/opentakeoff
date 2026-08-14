@@ -91,7 +91,10 @@ jobs:
         if: github.ref_type == 'tag'
         run: |
           VERSION=$(jq -r .version package.json)
-          curl -fsS "https://registry.modelcontextprotocol.io/v0/servers?search=opentakeoff" -o /tmp/registry.json
+          # version=latest, not the bare list: the list endpoint pages at 30 entries,
+          # so a fresh release lands past the cursor and a bare search misses it
+          # (bit us on mcp-v0.9.41 — publish succeeded, verify cried wolf).
+          curl -fsS "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.Kentucky-ai/opentakeoff&version=latest" -o /tmp/registry.json
           if ! jq -e --arg v "$VERSION" \
             '[.servers[]? | (.server // .) | select(.name == "io.github.Kentucky-ai/opentakeoff" and .version == $v)] | length > 0' \
             /tmp/registry.json > /dev/null; then
