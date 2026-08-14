@@ -20,7 +20,9 @@ what makes it training data.
 
 [**For agents**](#for-agents--start-here) · [**Try the canvas**](https://opentakeoff.kentucky-ai.com) · [The engine's contract](#the-contract-that-makes-it-drivable) · [For the person at the canvas](#for-the-person-at-the-canvas) · [The data layer](#the-data-layer--why-this-engine-exists) · [Research](#the-research-program) · [Build on it](#build-on-top-of-it) · [Contribute](#contributing)
 
-**Read this in:** [日本語](README.ja.md) · [한국어](README.ko.md) · [简体中文](README.zh-Hans.md) · Español — doesn't exist yet, and it's the translation we want most: [#199](https://github.com/Kentucky-ai/opentakeoff/issues/199)
+**Read this in:** [日本語](README.ja.md) · [한국어](README.ko.md) · [简体中文](README.zh-Hans.md)
+
+**Watch it:** [an autonomous agent runs a takeoff, live, no cuts (2:47)](https://youtu.be/e--kXxSGv7Y) · [hospital finish plan → report in about a minute (1:14)](https://youtu.be/cNDpPkTLY1k) · [canvas walkthrough (1:10)](https://youtu.be/aHiW8H2TSBs) · [One-Click Area (0:51)](https://youtu.be/YIjWZ-BAhLE)
 
 <br/>
 
@@ -127,7 +129,8 @@ run. Docker and a local clone are both supported: [`mcp/README.md`](mcp/README.m
 
 *A real run (3× speed): the agent takes off patient rooms 161–163 on a federal finish plan,
 exporting after each commit. Every shape lands in the app as a dashed **pencil proposal** and
-becomes ink only when the operator clicks Accept.*
+becomes ink only when the operator clicks Accept.* The full run, live and uncut, is
+[on YouTube (2:47)](https://youtu.be/e--kXxSGv7Y).
 
 ### The 40 tools
 
@@ -210,7 +213,9 @@ npm run dev        # http://localhost:5173
 
 Or just open the [**live demo**](https://opentakeoff.kentucky-ai.com). Drag in
 `demo/sample-plan.pdf`, accept the detected scale, pick a condition, hit **One-Click Area**,
-click inside a room. Open **Report** for the breakdown and the exports. The complete
+click inside a room. Open **Report** for the breakdown and the exports. That whole loop on
+video: [walkthrough (1:10)](https://youtu.be/aHiW8H2TSBs) ·
+[One-Click Area (0:51)](https://youtu.be/YIjWZ-BAhLE). The complete
 zero-to-exported walkthrough is the [**user manual**](docs/USER_GUIDE.md).
 
 ### Open anything, instantly
