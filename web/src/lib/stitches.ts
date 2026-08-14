@@ -228,6 +228,72 @@ export function mergeSegs(
   return { segs, meta: Uint8Array.from(meta), imageArea };
 }
 
+// ── marked-set composite page (#200) ────────────────────────────────────────
+// The Marked Set burns a stitch as ONE page at its composite dimensions — the
+// honest rendering of what was measured: shapes were traced on the composite,
+// their verts_norm are normalized to its extent, and a room crossing the
+// match line is one ring with one quantity. Projecting back onto the members'
+// source pages was considered and rejected for the deliverable: it splits a
+// measured-once room into clipped fragments whose chip must land on an
+// arbitrary half, and a reviewer reading either member page sees a partial
+// ring that LOOKS like a wrong trace. One page that matches the canvas the
+// work was reviewed on beats two pages that each show half the truth.
+
+export interface StitchPagePlan {
+  extent: Dim;
+  members: Array<{ key: string; dx: number; dy: number; clip: Box }>;
+}
+
+/** Everything the PDF builder needs to lay out a stitch page: the composite
+ * extent plus each member's offset and VISIBLE (seam-clipped) box, all in
+ * stitch-local image px. Same seam rule as the canvas — overlapping members
+ * split at the midline, so ink never double-draws at the match line. */
+export function stitchPagePlan(members: StitchMember[], dims: Record<string, Dim>): StitchPagePlan {
+  const clips = seamClips(members, dims);
+  return {
+    extent: stitchExtent(members, dims),
+    members: members.map((m, i) => ({ key: m.key, dx: m.dx, dy: m.dy, clip: clips[i] })),
+  };
+}
+
+/** The light-mode embed math for one member, kept pure so it's testable: map
+ * the member's source-page user space onto the composite page and clip it to
+ * its seam box.
+ *
+ * `vpTransform` is the pdf.js viewport transform at the baseline render scale
+ * (user space → member visual px, y down, rotation + viewBox offsets
+ * included). The returned `matrix` is the PDF form matrix (x' = a·x + c·y + e,
+ * y' = b·x + d·y + f) taking user space to composite-page points (y up), with
+ * the member placed at its stitch offset; `bbox` is the seam-clip box mapped
+ * back into user space (axis-aligned — page rotation is always a multiple of
+ * 90°), which is the space a form XObject's BBox clips in. */
+export function memberEmbed(
+  vpTransform: ArrayLike<number>, member: { dx: number; dy: number; clip: Box },
+  pageH: number, renderScale: number,
+): { bbox: { left: number; bottom: number; right: number; top: number }; matrix: [number, number, number, number, number, number] } {
+  const [a, b, c, d, e, f] = Array.from(vpTransform);
+  const det = a * d - b * c;
+  // seam box (stitch-local px) → member-local visual px → source user space
+  const inv = (x: number, y: number): [number, number] =>
+    [(d * (x - e) - c * (y - f)) / det, (-b * (x - e) + a * (y - f)) / det];
+  const { clip, dx, dy } = member;
+  const corners = [
+    inv(clip.x0 - dx, clip.y0 - dy), inv(clip.x1 - dx, clip.y0 - dy),
+    inv(clip.x0 - dx, clip.y1 - dy), inv(clip.x1 - dx, clip.y1 - dy),
+  ];
+  const xs = corners.map((p) => p[0]), ys = corners.map((p) => p[1]);
+  const z = (n: number) => n + 0 || 0;   // −0 → 0 (a rotated inverse mints −0 at the origin)
+  return {
+    bbox: { left: z(Math.min(...xs)), bottom: z(Math.min(...ys)), right: z(Math.max(...xs)), top: z(Math.max(...ys)) },
+    // user → visual px (vpTransform), + stitch offset, ÷ renderScale into
+    // points, y flipped into PDF's y-up — composed into one affine
+    matrix: [
+      a / renderScale, -b / renderScale, c / renderScale, -d / renderScale,
+      (e + dx) / renderScale, pageH - (f + dy) / renderScale,
+    ],
+  };
+}
+
 // ── liveness + labels ───────────────────────────────────────────────────────
 
 /** A stitch is openable while every member's file is still in the working

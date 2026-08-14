@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import {
   isStitchKey, mintStitchId, sanitizeStitches, normalizeMembers, autoButt,
   stitchExtent, memberBoxes, memberAtPoint, alignMembers, seamClips,
-  mergePoints, mergeSegs, stitchAlive, stitchLayoutSig,
+  mergePoints, mergeSegs, stitchAlive, stitchLayoutSig, stitchPagePlan, memberEmbed,
 } from "../src/lib/stitches.js";
 
 const MAX = 4;
@@ -157,4 +157,54 @@ test("stitchLayoutSig: re-keys on offset changes, ignores non-stitch keys", () =
   const s2 = stitchLayoutSig(["stitch:x"], [{ ...st[0], members: [{ key: "a", dx: 0, dy: 0 }, { key: "b", dx: 12, dy: 0 }] }]);
   assert.notEqual(s1, s2);
   assert.equal(stitchLayoutSig(["plan.pdf"], st), "");
+});
+
+// ── marked-set composite page (#200) ────────────────────────────────────────
+
+test("stitchPagePlan: extent + seam-clipped member boxes in one plan", () => {
+  // A and B overlap 20px along x — the seam splits the overlap at its midline
+  const members = [{ key: "A", dx: 0, dy: 0 }, { key: "B", dx: 80, dy: 0 }];
+  const { extent, members: plan } = stitchPagePlan(members, dims);
+  assert.deepEqual(extent, { w: 140, h: 80 });
+  assert.equal(plan.length, 2);
+  assert.deepEqual(plan[0], { key: "A", dx: 0, dy: 0, clip: { x0: 0, y0: 0, x1: 90, y1: 80 } });
+  assert.deepEqual(plan[1], { key: "B", dx: 80, dy: 0, clip: { x0: 90, y0: 0, x1: 140, y1: 80 } });
+});
+
+test("memberEmbed: matrix agrees with the definition for an unrotated page", () => {
+  // pdf.js viewport transform at scale 2, unrotated page 300×200pt:
+  // vx = 2·ux, vy = 2·(200 − uy) → T = [2, 0, 0, −2, 0, 400]
+  const T = [2, 0, 0, -2, 0, 400];
+  const m = { dx: 80, dy: 10, clip: { x0: 90, y0: 10, x1: 300, y1: 170 } };
+  const pageH = 250;   // composite page height (points)
+  const { bbox, matrix } = memberEmbed(T, m, pageH, 2);
+  const [a, b, c, d, e, f] = matrix;
+  const map = (ux: number, uy: number) => [a * ux + c * uy + e, b * ux + d * uy + f];
+  // definition: page point = [(T(u).x + dx)/RS, pageH − (T(u).y + dy)/RS]
+  const want = (ux: number, uy: number) => [(2 * ux + m.dx) / 2, pageH - (2 * (200 - uy) + m.dy) / 2];
+  for (const [ux, uy] of [[0, 0], [300, 200], [123.4, 56.7]]) {
+    const got = map(ux, uy), w = want(ux, uy);
+    assert.ok(Math.abs(got[0] - w[0]) < 1e-9 && Math.abs(got[1] - w[1]) < 1e-9, `${ux},${uy}: ${got} vs ${w}`);
+  }
+  // bbox: the seam box mapped back to user space — member-local visual px
+  // (clip − offset) through T⁻¹: x0v=10 → ux=5, y span [0,160]v → uy [120,200]
+  assert.deepEqual(bbox, { left: 5, bottom: 120, right: 110, top: 200 });
+});
+
+test("memberEmbed: holds for a rotated (b,c ≠ 0) viewport transform", () => {
+  // a 90°-rotated page's transform shape: vx = s·uy, vy = s·ux (one of the
+  // quarter-turn forms) — the algebra must hold with a=d=0
+  const s = 2, T = [0, s, s, 0, 0, 0];
+  const m = { dx: 40, dy: 20, clip: { x0: 40, y0: 20, x1: 140, y1: 220 } };
+  const pageH = 300;
+  const { bbox, matrix } = memberEmbed(T, m, pageH, s);
+  const [a, b, c, d, e, f] = matrix;
+  const map = (ux: number, uy: number) => [a * ux + c * uy + e, b * ux + d * uy + f];
+  const want = (ux: number, uy: number) => [(s * uy + m.dx) / s, pageH - (s * ux + m.dy) / s];
+  for (const [ux, uy] of [[0, 0], [70, 30], [12.5, 99]]) {
+    const got = map(ux, uy), w = want(ux, uy);
+    assert.ok(Math.abs(got[0] - w[0]) < 1e-9 && Math.abs(got[1] - w[1]) < 1e-9, `${ux},${uy}: ${got} vs ${w}`);
+  }
+  // clip corners through T⁻¹: v=(0..100, 0..200) local → u=(v.y/s, v.x/s)
+  assert.deepEqual(bbox, { left: 0, bottom: 0, right: 100, top: 50 });
 });

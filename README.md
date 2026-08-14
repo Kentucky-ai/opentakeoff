@@ -622,8 +622,7 @@ A working tool used on real commercial bids, not a preview. The measuring engine
 production engine carved out of a commercial estimating system, and the same engine answers to
 a person at the canvas or an agent over MCP with the same math, the same scale gate, and the
 same provenance record. Named limits, so you don't find them the hard way: **Snap** is beta,
-the Marked Set PDF doesn't burn stitched surfaces in yet (their quantities do ride the report
-and every export), revision compare is quantity-level rather than geometric, and the translated
+revision compare is quantity-level rather than geometric, and the translated
 READMEs lag the English one. Issues and pull requests are welcome.
 
 ## Who's building this
