@@ -79,6 +79,8 @@ Large floors often arrive cut across sheets at a **match line** — half the bui
 
 Notes: align the match line **before** tracing — once takeoffs live on a stitch it won't re-align (their coordinates ride the composite). Deleting a stitch is refused while takeoffs or markups live on it; reopen one anytime from its tab or the gallery's **Stitched surfaces** strip. The Marked Set PDF burns a stitch in as one composite page — members placed at their aligned offsets, each showing its own half up to the seam, shapes drawn once in the frame you measured them in — stamped as a stitched composite so nobody mistakes it for a sheet the architect issued.
 
+Stitching and aligning are yours alone — an AI agent driving OpenTakeoff [over MCP](MCP.md) has no stitch verb, on purpose: judging that two wall junctions are the same drawn point is human work, and a sloppy join quietly skews everything measured across the seam. If an agent will be doing the takeoff on a split floor, do the stitch and align yourself first, or have the agent measure the member sheets individually.
+
 ### Levels (multi-floor sets)
 
 In the gallery, select sheets and hit **Assign level…** (`"L1"`, `"Level 2"`, `"Garage"` — empty clears). The gallery groups by level with unassigned sheets last, cards wear their level chip, and tabs plus the page picker carry the label. Levels save with the project.

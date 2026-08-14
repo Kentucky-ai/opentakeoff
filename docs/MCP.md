@@ -210,6 +210,17 @@ Two rules carry over from the app unchanged:
   fields appear on the tool replies, so an agent can triage before it
   commits.
 
+And one capability deliberately does **not** carry over: **stitching**. The
+canvas can join sheets split at a match line into one composite surface, but
+there is no agent verb for it — aligning the match line means clicking the
+same drawn wall junction on both halves, a human-judgment act whose failure
+mode (a subtly sloppy join) silently skews every quantity that crosses the
+seam. Same doctrine as the scale gate, taken one step further: here the agent
+doesn't even propose. A human stitches and aligns in the canvas; an agent
+works the member sheets individually and leaves seam-crossing rooms to the
+person at the screen. See the Limits section of
+[`mcp/README.md`](../mcp/README.md) for the round-trip caveat that follows.
+
 ## An example session
 
 An agent asked to *"take off the carpet on this floor plan"* — tool calls
