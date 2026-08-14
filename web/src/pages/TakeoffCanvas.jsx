@@ -4040,15 +4040,24 @@ export default function TakeoffCanvas() {
       // approval seals are ink, not markups — the include-markups checkbox
       // never drops them, and a sheet carrying only a seal still exports
       const allKeys = [...new Set([...shapes.map((s) => s.sheet_id), ...exportMarkups.map((m) => m.sheet_id), ...approvals.map((a) => a.sheet_id)])];
-      // Stitched surfaces (#161) have no single source page to burn ink onto —
-      // phase 1 skips them here (their quantities still ride the Report/CSV;
-      // a composite marked-set page is the documented follow-up).
-      const keys = allKeys.filter((k) => !isStitchKey(k));
-      const skippedStitches = allKeys.length - keys.length;
-      const sheetMeta = keys.map((key) => {
+      const plainMeta = allKeys.filter((k) => !isStitchKey(k)).map((key) => {
         const { file, page } = parseSheetKey(key);
         return { key, file, page, label: tabLabel(key) };
       }).sort((a, b) => compareSheetKeys(a.key, b.key));   // canonical sheet order — shared comparator
+      // Stitched surfaces (#161 → #200) burn in as composite pages, after the
+      // source sheets: each member placed at its stitch offset, seam-clipped,
+      // shapes drawn once in the frame they were measured in. A stitch whose
+      // record is gone (member file dropped from the set) has nowhere to draw
+      // and is skipped — its shapes still ride the Report, as before.
+      const stitchMeta = allKeys.filter(isStitchKey).map((key) => {
+        const st = stitchById[key];
+        if (!st) return null;
+        return {
+          key, label: st.name || "Stitched sheets",
+          stitch: { members: st.members.map((m) => ({ key: m.key, ...parseSheetKey(m.key), label: tabLabel(m.key), dx: m.dx, dy: m.dy })) },
+        };
+      }).filter(Boolean);
+      const sheetMeta = [...plainMeta, ...stitchMeta];
       // branding mode decides the cover identity + wordmark + parent credit;
       // resolved per-project (folderId "" ⇒ the single browser-only setting)
       const brand = resolveBranding({ ...(await loadBrandingSelection(projectIdFromUrl())), profiles: loadProfiles().profiles });
@@ -4059,7 +4068,7 @@ export default function TakeoffCanvas() {
         loadPdfData: (file) => store.loadPdfData(file),
       });
       downloadBytes(filename, bytes);
-      setCommitMsg(`Marked set downloaded — ${filename}${skippedStitches ? ` (stitched surfaces aren't burned in yet — their quantities are in the Report)` : ""}`);
+      setCommitMsg(`Marked set downloaded — ${filename}`);
     } catch (e) {
       setCommitMsg(`Marked set failed: ${e.message || e}`);
     }

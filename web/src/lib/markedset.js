@@ -24,6 +24,7 @@ import { pointInPoly, starPath, arrowheadPath, cloudBezier, chiselRibbon } from 
 import { transformPath, svgPlacedBox } from "./svgpath.js";
 import { rfiStatus } from "./rfi.js";
 import { RENDER_SCALE } from "./sheets";
+import { stitchPagePlan, memberEmbed } from "./stitches";
 import { pdfDashFor, boostForDark, clampWeight } from "./lineStyles.js";
 import { dimLabel } from "./units";
 
@@ -367,7 +368,9 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     for (const sh of marked) {
       if (y < 90) break;
       const items = shapesBy.get(sh.key) || [];
-      draw(`${sh.label} · page ${sh.page} · ${items.length + (marksBy.get(sh.key) || []).length + (apBy.get(sh.key) || []).length} item(s)`, { x: 52, y, size: 9.5, font: bold, color: ink }); y -= 13;
+      // a stitch has no single source page — the cover names it for what it is
+      const where = sh.stitch ? `stitched · ${sh.stitch.members.length} sheets` : `page ${sh.page}`;
+      draw(`${sh.label} · ${where} · ${items.length + (marksBy.get(sh.key) || []).length + (apBy.get(sh.key) || []).length} item(s)`, { x: 52, y, size: 9.5, font: bold, color: ink }); y -= 13;
       for (const r of bySheetId.get(sh.key)?.rows || []) {
         if (y < 92) break;   // stop above the fixed footnote slot at y=60 — rows never collide with it
         const c = condById[r.id] || {};
@@ -448,12 +451,89 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
   }
 
   // ── marked sheets ──────────────────────────────────────────────────────────
-  const srcDocs = new Map();   // file → PDFDocument (light-mode page copies)
+  const srcDocs = new Map();   // file → PDFDocument (light-mode page copies + stitch member embeds)
+  const srcDocFor = async (file) => {
+    let src = srcDocs.get(file);
+    if (!src) { src = await PDFDocument.load(await loadPdfData(file), { ignoreEncryption: true }); srcDocs.set(file, src); }
+    return src;
+  };
   for (const sh of marked) {
+    let pg, toPage, chipRot = degrees(0), W, H;
+
+    if (sh.stitch) {
+      // ── composite stitch page (#200): the stitched surface as ONE page at
+      // its composite dimensions — the space the shapes were traced in
+      // (verts_norm are normalized to the stitch extent, per lib/stitches).
+      // Each member is placed at its stitch offset and clipped to its seam
+      // box, so ink never double-draws at the match line — the same rule the
+      // canvas paints by. The page exists in no source planset, and says so
+      // in its stamp; the alternative (projecting shapes back onto member
+      // pages) splits a measured-once room into fragments that read as wrong
+      // traces — see the design note in lib/stitches.ts.
+      const members = sh.stitch.members;
+      const pages = [];
+      const dims = {};
+      for (const m of members) {
+        const page = await getPage(m.file, m.page);
+        const vpR = page.getViewport({ scale: RENDER_SCALE });
+        dims[m.key] = { w: vpR.width, h: vpR.height };
+        pages.push({ m, page, vpR });
+      }
+      const plan = stitchPagePlan(members, dims);
+      W = plan.extent.w; H = plan.extent.h;
+      const pageW = W / RENDER_SCALE, pageH = H / RENDER_SCALE;
+      if (dark) {
+        // one composite raster: members painted seam-clipped onto a white
+        // ground (so the gap outside every member inverts to the dark stage),
+        // then the whole canvas inverted ONCE — the involution stays exact.
+        const s = Math.min(RASTER_MAX / Math.max(pageW, pageH), 4);
+        const cv = document.createElement("canvas");
+        cv.width = Math.ceil(pageW * s); cv.height = Math.ceil(pageH * s);
+        const ctx = cv.getContext("2d");
+        ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+        const k = s / RENDER_SCALE;   // stitch-local image px → canvas px
+        for (let i = 0; i < pages.length; i++) {
+          const { page } = pages[i], pm = plan.members[i];
+          const vp = page.getViewport({ scale: s });
+          const mc = document.createElement("canvas");
+          mc.width = Math.ceil(vp.width); mc.height = Math.ceil(vp.height);
+          await page.render({ canvasContext: mc.getContext("2d"), viewport: vp }).promise;
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(pm.clip.x0 * k, pm.clip.y0 * k, (pm.clip.x1 - pm.clip.x0) * k, (pm.clip.y1 - pm.clip.y0) * k);
+          ctx.clip();
+          // vp(scale s).width === member points × s — exactly the member's
+          // footprint on the composite canvas, so the raster draws 1:1
+          ctx.drawImage(mc, pm.dx * k, pm.dy * k);
+          ctx.restore();
+        }
+        invertPixels(cv);
+        const png = await doc.embedPng(cv.toDataURL("image/png"));
+        pg = doc.addPage([pageW, pageH]);
+        pg.drawImage(png, { x: 0, y: 0, width: pageW, height: pageH });
+      } else {
+        // vector: each member's source page embedded as a form XObject whose
+        // BBox is the seam box in the member's own user space and whose
+        // matrix lands it at its stitch offset on the composite page —
+        // rotation and viewBox offsets ride the viewport transform, exactly
+        // like the plain-sheet inverse-transform path (lib/stitches
+        // memberEmbed holds the math, node-tested).
+        pg = doc.addPage([pageW, pageH]);
+        for (let i = 0; i < pages.length; i++) {
+          const { m, vpR } = pages[i], pm = plan.members[i];
+          const src = await srcDocFor(m.file);
+          const { bbox, matrix } = memberEmbed(vpR.transform, pm, pageH, RENDER_SCALE);
+          const emb = await doc.embedPage(src.getPage(m.page - 1), bbox, matrix);
+          pg.drawPage(emb, { x: 0, y: 0 });
+        }
+      }
+      // shapes ride the composite frame directly — no derotation (the stitch
+      // page is unrotated by construction, like the dark raster path)
+      toPage = (x, y) => [x / RENDER_SCALE, pageH - y / RENDER_SCALE];
+    } else {
     const page = await getPage(sh.file, sh.page);
     const vpR = page.getViewport({ scale: RENDER_SCALE });   // the space verts are normalized to
-    const W = vpR.width, H = vpR.height;
-    let pg, toPage, chipRot = degrees(0);
+    W = vpR.width; H = vpR.height;
 
     if (dark) {
       // raster → invert → image page (unrotated by construction)
@@ -480,6 +560,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
       const det = a * d - b * c;
       toPage = (x, y) => [(d * (x - e) - c * (y - f)) / det, (-b * (x - e) + a * (y - f)) / det];
       chipRot = degrees(page.rotate || 0);
+    }
     }
     const ptScale = Math.hypot(...(() => { const p0 = toPage(0, 0), p1 = toPage(1, 0); return [p1[0] - p0[0], p1[1] - p0[1]]; })());
     const svgPath = (pts) => pts.map(([x, y], i) => { const [px, py] = toPage(x, y); return `${i ? "L" : "M"}${px},${-py}`; }).join(" ") + " Z";
@@ -710,8 +791,13 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
       const tw = bold.widthOfTextAtSize(label, size);
       pg.drawText(label, { x: pcx - tw / 2, y: pcy - size / 2.7, size, font: bold, color: acol, rotate: chipRot });
     }
-    // sheet stamp, top-left in visual space
-    text(`${sh.label} · marked set`, 14, 20, 8, muted);
+    // sheet stamp, top-left in visual space. A stitch page exists in no source
+    // planset, so its stamp says so — the composite is disclosed, not passed
+    // off as a drawing the architect issued.
+    const stamp = sh.stitch
+      ? `${sh.label} · stitched composite (${sh.stitch.members.map((m) => m.label || m.key).join(" + ")}) · marked set`
+      : `${sh.label} · marked set`;
+    text(stamp, 14, 20, 8, muted);
   }
 
   // small tool credit on the LAST page only — the subtle parent credit shown in
