@@ -529,7 +529,9 @@ npm run build      # → web/dist/  (static; host it anywhere)
 
 The repo ships a root `netlify.toml`, so the button is genuinely one-click. The same
 `web/dist/` works on **Vercel, GitHub Pages, Cloudflare Pages, S3** — anywhere that serves
-static files. Deployment notes and the optional AI backend:
+static files. Running your own reverse proxy (nginx, Docker, Tailscale, etc.)? Check
+[`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md) first — there's one MIME-type gotcha worth
+knowing about. Deployment notes and the optional AI backend:
 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ## Build on top of it
