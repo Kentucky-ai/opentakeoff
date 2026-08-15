@@ -49,13 +49,17 @@
 // mode while looking at the same tiles) for zero main-thread pixel work.
 
 import { RENDER_SCALE } from "./sheets";
+import { LOW_MEMORY_DEVICE } from "./deviceClass";
 import { createTilePool } from "./tilePool";
 import { TileLRU, buildLevels, pickLevel, levelDims, visibleTiles, visibleTilesAtDensity, fitDensity, BASE_LEVEL, tileKey as rawTileKey, TILE_SIZE } from "./tiles";
 
 // ~450MB shared across every open sheet/panel — the old per-group ceiling
 // ("4-up ≈ 450MB" per canvasConstants.js), now a BUDGET instead of a floor
 // that individual panels could each independently blow past.
-const BYTE_BUDGET = 450 * 1024 * 1024;
+// Phone-class devices get a far smaller bitmap cache — mobile Safari's
+// per-tab budget is a fraction of desktop's, and blowing it gets the render
+// workers jetsam-killed (see tilePool.ts). Desktop budget is unchanged.
+const BYTE_BUDGET = (LOW_MEMORY_DEVICE ? 120 : 450) * 1024 * 1024;
 // The base layer's phase-2 target — deliberately the SAME number as the old
 // codebase's MAX_PANEL_AREA (canvasConstants.js), not a new tuning constant.
 // The goal isn't a new budget, it's parity with the raster quality that

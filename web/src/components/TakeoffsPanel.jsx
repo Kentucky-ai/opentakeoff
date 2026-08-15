@@ -37,6 +37,7 @@ import { materialKind, MATERIAL_PRESETS, GROUT_DEFAULTS, groutDerivedFields, sho
 import { draftCommitValue, blurCommitValue, blurCommitNonNegative } from "../lib/draftInput.js";
 import { ROLL_FLOORING_TYPES } from "../lib/rollgoods.js";
 import { hasRollSetup, mintRollSetup } from "../lib/rollTakeoff.js";
+import { Z } from "../lib/ui.js";
 import { ftIn } from "../lib/units";
 
 export const PANEL_MIN_W = 240;
@@ -653,7 +654,7 @@ function TransitionsAction({ cond: c, sources, draft, setDraft, result, setResul
 }
 
 function TakeoffsPanel({
-  open, width, multiSheet, units = "imperial",
+  open, width, overlay = false, multiSheet, units = "imperial",
   conditions, activeCond, visRowById, projRowById = new Map(), conditionColumns, shapeLabels = [], templates, palette = [], rollByCond = null,
   transitionSources = [],
   matLib, matLibById, linkedCountById,
@@ -976,11 +977,17 @@ function TakeoffsPanel({
 
   if (!open) return null;
   return (
-    <div ref={rootRef} style={{ width, flexShrink: 0, display: "flex", background: "var(--paper-bright)", borderLeft: "1px solid var(--ink-faint)", fontSize: 12.5 }}>
-      <div onPointerDown={onResizeDown} onPointerMove={onResizeMove} onPointerUp={onResizeEnd}
+    // Narrow screens (`overlay`): the panel slides OVER the canvas instead of
+    // docking beside it — a docked 240px+ column plus the canvas doesn't fit a
+    // phone (the panel was covering the whole screen). Desktop docked layout
+    // is unchanged. The header's » collapse button is the close affordance.
+    <div ref={rootRef} style={overlay
+      ? { position: "absolute", top: 0, right: 0, bottom: 0, width: "min(100%, 420px)", zIndex: Z.drawer, boxShadow: "var(--shadow-pop)", display: "flex", background: "var(--paper-bright)", borderLeft: "1px solid var(--ink-faint)", fontSize: 12.5 }
+      : { width, flexShrink: 0, display: "flex", background: "var(--paper-bright)", borderLeft: "1px solid var(--ink-faint)", fontSize: 12.5 }}>
+      {!overlay && <div onPointerDown={onResizeDown} onPointerMove={onResizeMove} onPointerUp={onResizeEnd}
         onPointerCancel={onResizeEnd} onLostPointerCapture={onResizeEnd}
         title="Drag to resize"
-        style={{ width: 5, flexShrink: 0, cursor: "col-resize", touchAction: "none", background: "transparent", borderRight: "1px solid var(--ink-faint)" }} />
+        style={{ width: 5, flexShrink: 0, cursor: "col-resize", touchAction: "none", background: "transparent", borderRight: "1px solid var(--ink-faint)" }} />}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "7px 12px", background: "var(--ink)", color: "var(--paper-cream)", flexShrink: 0 }}>
           <span style={{ display: "inline-flex", gap: 2 }}>

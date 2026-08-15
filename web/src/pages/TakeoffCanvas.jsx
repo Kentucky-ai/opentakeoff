@@ -180,6 +180,22 @@ const PANEL_PREFS_KEY = "opentakeoff_panel";
 // choice being honored). An explicit COLLAPSE made under the old default is
 // preserved; any later toggle re-persists normally.
 const PANEL_DEFAULTS = { w: 320, collapsed: true, strip: false, az: false, group: false };
+
+// Narrow-viewport switch (phones). Everything it gates is layout-only — the
+// Takeoffs panel presents as an overlay instead of docking (a 240px+ dock
+// covers a phone screen), and the live readout drops to a bottom strip.
+// ≥701px is byte-for-byte the existing desktop layout.
+const NARROW_MQ = "(max-width: 700px)";
+function useIsNarrow() {
+  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.matchMedia(NARROW_MQ).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(NARROW_MQ);
+    const on = () => setNarrow(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return narrow;
+}
 // Top-bar quick-access condition palette: a curated handful (≤9) of pinned
 // conditions for one-click activation without leaving the canvas. Palette holds
 // condition ids (workspace-scoped), so it persists with the annotation payload,
@@ -303,6 +319,7 @@ export default function TakeoffCanvas() {
   const [scaleUnconfirmed, setScaleUnconfirmed] = useState({});
   const confirmScale = (key) => setScaleUnconfirmed((m) => { if (!(key in m)) return m; const n = { ...m }; delete n[key]; return n; });
   const [detectedScales, setDetectedScales] = useState({}); // { sheetKey: {upp,label,multi} } read off the plan text
+  const isNarrow = useIsNarrow();
   const [darkMode, setDarkMode] = useState(() => { try { return localStorage.getItem("opentakeoff_dark") === "1"; } catch { return false; } });
   useEffect(() => { try { localStorage.setItem("opentakeoff_dark", darkMode ? "1" : "0"); } catch { /* private mode */ } }, [darkMode]);
   // App chrome theme (light/dark tokens) — independent of the canvas ☾ invert
@@ -6538,7 +6555,7 @@ export default function TakeoffCanvas() {
       )}
 
       {/* canvas + issue desk */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0 }}>
+      <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0, position: "relative" /* anchors the narrow-screen panel overlay */ }}>
        {/* tool rail — machined faces grouped by MCP module (the concept shell).
            Individual tiles replace deck 2's Measure/Cut Out menus; Markup keeps
            its variety flyout on one tile (five markup kinds don't earn five
@@ -7479,7 +7496,12 @@ export default function TakeoffCanvas() {
         {/* live readout — top-right, at right:56 so it clears the panel rail's
             column entirely (right:14, 34px wide — same clearance the zone panel
             uses) instead of the old magic maxHeight tuned to the rail's height. */}
-        <div style={{ position: "absolute", right: 56, top: 14, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, padding: "12px 16px", minWidth: 200, maxWidth: 260, maxHeight: "calc(100% - 28px)", overflowY: "auto", boxShadow: "var(--shadow-pop)", fontVariantNumeric: "tabular-nums", zIndex: Z.canvasUi }}>
+        <div style={{ position: "absolute", ...(isNarrow
+          // phones: a bottom strip — the top-right box plus the panel rail was
+          // covering the entire screen. bottom:64 clears the bottom-center toast.
+          ? { left: 10, right: 10, bottom: 64, maxHeight: "36%", padding: "8px 12px" }
+          : { right: 56, top: 14, minWidth: 200, maxWidth: 260, maxHeight: "calc(100% - 28px)", padding: "12px 16px" }),
+          background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, overflowY: "auto", boxShadow: "var(--shadow-pop)", fontVariantNumeric: "tabular-nums", zIndex: Z.canvasUi }}>
           <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.55, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tool === "zone" ? "Zone check" : (aCond?.finish_tag || "No condition")}</div>
           {tool === "oneclick" && proposal?.regions.length ? (() => {
             const pos = proposal.regions.filter((r) => r.kind === "pos");
@@ -7698,6 +7720,7 @@ export default function TakeoffCanvas() {
         <TakeoffsPanel
           open={takeoffsOpen}
           width={panelW}
+          overlay={isNarrow}
           multiSheet={groupKeys.length > 1}
           units={units}
           conditions={conditions}
