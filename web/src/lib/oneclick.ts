@@ -55,7 +55,7 @@ export type FloodResult =
   // see floodRegionSealedInner.
   | { status: "leak"; leakedDilationPx?: number }
   | { status: "tiny"; count: number }
-  | { status: "ok"; region: Uint8Array; count: number; mw: number; mh: number; ws: number; mppf?: number; hardHits?: number; softHits?: number; hatchFiltered?: boolean; hatchTier?: HatchTier; sealedPx?: number; virtualFrac?: number; wedges?: number; ringWedges?: number; wedgeGrowth?: number; curveFrac?: number; minPassPx?: number; minPassDelta?: number; gapBridged?: number };
+  | { status: "ok"; region: Uint8Array; count: number; mw: number; mh: number; ws: number; mppf?: number; hardHits?: number; softHits?: number; hatchFiltered?: boolean; hatchTier?: HatchTier; sealedPx?: number; virtualFrac?: number; wedges?: number; ringWedges?: number; wedgesRefused?: number; wedgeGrowth?: number; curveFrac?: number; minPassPx?: number; minPassDelta?: number; gapBridged?: number };
 /** Caller's snap-grid lookup: nearest true endpoint to (x,y) within maxDist, or null. */
 export type NearestFn = (x: number, y: number, maxDist: number) => Point | null | undefined;
 
@@ -194,6 +194,27 @@ export const MASK_NODOOR_BIT = 8;
 // below it and the cusp rule catches the rest.
 export const DOOR_R_MIN_FT = 1.5;
 export const DOOR_R_MAX_FT = 4.5;
+/** Radius ceiling for a swing whose own LEAF the engine found (doorLeafCells):
+ *  straight, non-curve ink running along a radius at one end of a clean
+ *  circular sweep. A curved WALL — the thing DOOR_R_MAX_FT exists to refuse —
+ *  has no leaf: its fitted centre is tens of feet away, in another room, with
+ *  no radial stroke covering LEAF_MIN_COVER of the way out to it. So a found
+ *  leaf is positive evidence of a door, and the bare-radius ceiling may widen
+ *  to the widest leaf anyone actually draws as ONE swing (a 6'-0" equipment or
+ *  OR door), with margin for the fit's own bias.
+ *
+ *  WHY THIS EXISTS (#257). At DOOR_R_MAX_FT the refusal is a CLIFF, and it sits
+ *  where real doors are: measured on a synthetic room at 18 mask px/ft, a
+ *  nominal 4'-6" leaf fits at r = 4.56 ft — over the ceiling by raster bias
+ *  alone, since the arc rasters 1–2 px thick and the least-squares circle rides
+ *  its outer edge. wedgeAllowance returned 0, the opening was filtered out of
+ *  the ranking entirely, and the room came back 18.0 SF short on a 15.9 SF
+ *  sector — the whole wedge, silently. A 4'-0" leaf fit at 4.02 and survived
+ *  with 12% to spare, which is the margin the entire in-swing path was resting
+ *  on. Widening only where a leaf corroborates leaves pass 0/1 (arc openings)
+ *  bit-identical, so the curved-wall protection this ceiling was written for is
+ *  untouched. */
+export const DOOR_R_LEAF_MAX_FT = 7;
 export const CLUSTER_FIT_TOL_FRAC = 0.05;  // per-cluster circle-fit RMS cap (fraction of the fitted radius) — cells are integer-quantized and the arc rasters 1–2 px thick, so the absolute floor below matters more
 export const CLUSTER_FIT_TOL_PX = 1.5;
 
@@ -2261,9 +2282,10 @@ export function wedgeRimPx(maskPxPerFt: number): number {
  *      every scale) let a 30 ft × 2.5 ft wall annex the ~50 SF behind it. Only
  *      the upper edge of the band refuses — an arc SHORTER than a closet leaf
  *      is bounded by its own tiny sector, so DOOR_R_MIN_FT governs ranking. */
-export function wedgeAllowance(fit: ArcClusterFit, mppf: number, wedgeCapPx: number): number {
+export function wedgeAllowance(fit: ArcClusterFit, mppf: number, wedgeCapPx: number, leafFound = false): number {
   if (fit.noDoorFrac > 0.5 && !fit.good) return 0;
-  if (fit.good && mppf > 0 && fit.r / mppf > DOOR_R_MAX_FT) return 0;
+  const rMax = leafFound ? DOOR_R_LEAF_MAX_FT : DOOR_R_MAX_FT;
+  if (fit.good && mppf > 0 && fit.r / mppf > rMax) return 0;
   const rim = wedgeRimPx(mppf);
   const bu = fit.good ? fit.buH : fit.bu, bn = fit.good ? fit.bnH : fit.bn;
   let area = bu * bn;
@@ -2276,12 +2298,15 @@ export function wedgeAllowance(fit: ArcClusterFit, mppf: number, wedgeCapPx: num
  *  taking clusters in scanline order let a row of curved fixtures spend it
  *  before the room's real doors were ever reached). Higher is more door-like. */
 /** Exported for the door-arc tests and diagnostics — see doorArcs.test.ts. */
-export function doorLikeness(fit: ArcClusterFit, mppf: number): number {
+export function doorLikeness(fit: ArcClusterFit, mppf: number, leafFound = false): number {
   let s = 1 - fit.noDoorFrac;
   const swDeg = (fit.sweep * 180) / Math.PI;
   if (fit.good) {
     s += 1;
-    if (mppf > 0 && fit.r / mppf >= DOOR_R_MIN_FT && fit.r / mppf <= DOOR_R_MAX_FT) s += 4;
+    // the band widens with the allowance's, or a wide door would keep its
+    // allowance and then lose the finite budget to narrower neighbours
+    const rMax = leafFound ? DOOR_R_LEAF_MAX_FT : DOOR_R_MAX_FT;
+    if (mppf > 0 && fit.r / mppf >= DOOR_R_MIN_FT && fit.r / mppf <= rMax) s += 4;
     if (swDeg >= 45 && swDeg <= 190) s += 2;
   }
   return s;
@@ -2528,7 +2553,7 @@ function floodRegionSealedInner(mo: MaskObj, ix: number, iy: number, sensitivity
   const { mw, mh } = mo;
   let region: Uint8Array | null = null;
   let count = r1.count;
-  let wedges = 0, ringWedges = 0;
+  let wedges = 0, ringWedges = 0, refused = 0;
   let hatchFiltered = !!r1.hatchFiltered;
   let hatchTier = r1.hatchTier;
   let sealedPx = r1.sealedPx, virtualFrac = r1.virtualFrac;
@@ -2555,7 +2580,7 @@ function floodRegionSealedInner(mo: MaskObj, ix: number, iy: number, sensitivity
   // A cluster that neither splits nor carries a leaf yields exactly one entry,
   // which is why this is a no-op on everything that already worked.
   interface Opening { cl: number[]; fit: ArcClusterFit; allow: number; rank: number; at: number; pass: number; minGrow: number }
-  const entry = (cl: number[], pass: number, fit?: ArcClusterFit): Opening => {
+  const entry = (cl: number[], pass: number, fit?: ArcClusterFit, leafFound = false): Opening => {
     const f = fit ?? arcClusterFit(cl, mw, mo.mask);
     // A leaf opening must return a SECTOR or nothing. Accepting a few cells
     // is not free: the traced ring is re-contoured and re-snapped around
@@ -2566,25 +2591,40 @@ function floodRegionSealedInner(mo: MaskObj, ix: number, iy: number, sensitivity
     // that is the retry finding a crack, not a door. Arc openings keep no
     // floor at all, so pass 0 stays bit-identical.
     const ideal = 0.5 * f.r * f.r * f.sweep;
+    const allow = wedgeAllowance(f, mo.mppf || 0, wedgeCapPx, leafFound);
+    // a clean circular sweep in the door band, refused ONLY by the radius
+    // ceiling, is a withheld wedge — count it so the refusal is not silent
+    if (!allow && f.good && (mo.mppf || 0) > 0 && f.r / (mo.mppf as number) > (leafFound ? DOOR_R_LEAF_MAX_FT : DOOR_R_MAX_FT)) refused++;
     return {
-      cl, fit: f, allow: wedgeAllowance(f, mo.mppf || 0, wedgeCapPx),
-      rank: doorLikeness(f, mo.mppf || 0), at: cl[0], pass,
+      cl, fit: f, allow,
+      rank: doorLikeness(f, mo.mppf || 0, leafFound), at: cl[0], pass,
       minGrow: pass === 2 ? Math.max(1, Math.round(LEAF_MIN_SECTOR_FRAC * ideal)) : 0,
     };
   };
   const ranked: Opening[] = [];
   for (const cl of clusters) {
     const fit = arcClusterFit(cl, mw, mo.mask);
-    ranked.push(entry(cl, 0, fit));
     const parts = splitMergedArcs(cl, mw, mo.mask, mo.mppf || 0);
     const pieces = parts.length > 1 ? parts : [cl];
-    if (parts.length > 1) for (const p of parts) ranked.push(entry(p, 1));
-    // a leaf per ARC, taken from the parted pieces so a glued pair offers both
-    for (const p of pieces) {
+    // a leaf per ARC, taken from the parted pieces so a glued pair offers both.
+    // Computed BEFORE anything is ranked (#257): a found leaf is what widens
+    // the radius ceiling, and it is evidence about the ARC — not about which
+    // opening we happen to be trying. Attaching it to the leaf opening alone
+    // left the ARC opening (pass 0) refused at DOOR_R_MAX_FT, and pass 0 is the
+    // opening that actually recovers an in-swing sector on a wide door: the
+    // measured leaf retry came back with NEGATIVE growth (−1469 cells on a
+    // 4'-6" leaf), because opening the leaf alone re-opens the doorway and the
+    // seal ladder must then dilate hard enough to close it, eroding more of the
+    // room than the sector returns. Opening the ARC lets the doorway close at
+    // the wall plane instead, which is the whole "doorways UNIFY" design above.
+    const leaves = pieces.map((p) => {
       const pf = p === cl ? fit : arcClusterFit(p, mw, mo.mask);
-      const leaf = doorLeafCells(pf, p, mw, mh, mo.mask, mo.mppf || 0);
-      if (leaf) ranked.push({ ...entry(leaf, 2, pf), cl: leaf });
-    }
+      return { p, pf, leaf: doorLeafCells(pf, p, mw, mh, mo.mask, mo.mppf || 0) };
+    });
+    const anyLeaf = leaves.some((l) => !!l.leaf);
+    ranked.push(entry(cl, 0, fit, anyLeaf));
+    if (parts.length > 1) for (const { p, pf, leaf } of leaves) ranked.push(entry(p, 1, pf, !!leaf));
+    for (const { pf, leaf } of leaves) if (leaf) ranked.push({ ...entry(leaf, 2, pf, true), cl: leaf });
   }
   ranked
     .splice(0, ranked.length, ...ranked
@@ -2674,13 +2714,17 @@ function floodRegionSealedInner(mo: MaskObj, ix: number, iy: number, sensitivity
     if (r2.minPassPx && (!minPassPxOut || r2.minPassPx > minPassPxOut)) minPassPxOut = r2.minPassPx;
     if (r2.minPassDelta != null && (minPassDelta == null || r2.minPassDelta > minPassDelta)) minPassDelta = r2.minPassDelta;
   }
-  if (!wedges || !region) return r1;
+  if (!wedges || !region) {
+    if (refused) r1.wedgesRefused = refused;
+    return r1;
+  }
   const out: FloodResult & { status: "ok" } = {
     status: "ok", region, count, mw, mh, ws: r1.ws, mppf: r1.mppf,
     hardHits: r1.hardHits, softHits: r1.softHits,
     hatchFiltered: hatchFiltered || undefined, hatchTier, sealedPx, virtualFrac,
     minPassPx: minPassPxOut, minPassDelta,
     ...(ringWedges ? { ringWedges } : {}),
+    ...(refused ? { wedgesRefused: refused } : {}),
   };
   // Absorb the door LEAF: the straight leaf line stays a barrier through the
   // retry, leaving a 1–2 px slit between the room and the annexed wedge. The
