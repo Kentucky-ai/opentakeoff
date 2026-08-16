@@ -2,6 +2,19 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-16 — a wider corpus, and the shapes it exposed; opentakeoff-mcp 0.9.47
+
+The eval corpus grows to a fourth general contractor and a fourth building typology — a municipal treatment plant drawn in a hand-lettered CAD font, which broke the parser in two new ways.
+
+### Fixed
+- **Cell alignment is READ, not assumed.** Some schedules left-align their cells and some centre them; it is a property of the sheet. On a centred set a long value (`PNT-1, FRP-1`) starts far to the left of a short one (`PNT-1`) in the same column, so left-edge banding pushed it into the column before it and BASE read `RB-1 PNT-1, FRP-1`. Both alignments are now derived and **scored by how well they explain the data**; the better fit wins, left wins a near tie, and a map that fits *badly* is discarded rather than trusted — a mediocre map looks authoritative and quietly merges a column into its neighbour, where falling back to nearest-anchor reads the table correctly. Measured across real sets: a true alignment scores 0.82–0.90, a wrong one 0.54.
+- **A header cell naming two vocabulary words gives up the second.** `ROOM #` and `ROOM NAME` both lead with ROOM, so the name column was deduped away, lost its anchor, and every room name merged into the finish column beside it (`FLOOR` read `CHEM FEED SC-1`). A cell now falls through to its next vocabulary word when the first is taken — after parent-naming has had its chance, so `FLOOR FINISH` / `CEILING FINISH` still resolve as before.
+- **Casework columns are vocabulary.** `CASEWORK`, `CABINET`, `COUNTER`, `COUNTERTOP` anchor their own columns instead of spilling into WALL.
+- **`graph-render.mjs` keeps the page number** in its output names — every sheet of a combined single-file set was overwriting the last — and skips sheets with no tables unless `--all` is passed.
+
+### Measured
+Four real sets, four general contractors, four typologies (two gyms, retail, municipal), keys read independently off the renders: **cell precision 1.000 / recall 1.000 (434 cells, 0 wrong, 0 missed)** and **tag precision 1.000 / recall 1.000 (86 rooms, 0 non-rooms reported)**.
+
 ## 2026-08-16 — the sheet graph gets a ruler; opentakeoff-mcp 0.9.46
 
 A scored evaluation loop against **real bid sets**, and the parser changes it forced. Every fix below was found by measuring, not by reading code — and each ships with a fixture reproducing the real failure.

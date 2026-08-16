@@ -28,11 +28,17 @@ const outDir = join(corpus, "renders");
 mkdirSync(outDir, { recursive: true });
 
 const s = new Session();
-for (let i = 0; i < set.files.length; i++) await s.loadPlan(join(spec.root, set.files[i]), { merge: i > 0 });
+for (let i = 0; i < set.files.length; i++) await s.loadPlan(join(set.root ?? spec.root, set.files[i]), { merge: i > 0 });
 const g = await s.sheetGraph();
 
 const sheetOf = (key) => s.sheet(key);
-const slug = (k) => k.replace(/\.pdf.*$/i, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(-28);
+const slug = (k) => {
+  // keep the PAGE: a combined single-file set has every sheet under one file
+  // name, and dropping the "#N" made every render overwrite the last.
+  const page = /#(\d+)$/.exec(k)?.[1] ?? "1";
+  const base = k.replace(/#\d+$/, "").replace(/\.pdf$/i, "").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(-24);
+  return `${base}-p${page}`;
+};
 
 // every table region the graph found, per sheet
 const regions = new Map();
@@ -48,6 +54,7 @@ for (const sh of g.sheets) {
   const page = sheetOf(sh.sheet).page;
   const tables = regions.get(sh.sheet) ?? [];
   if (!tables.length) {
+    if (!process.argv.includes("--all")) continue;
     // no table found here — render the WHOLE sheet, because "the graph saw
     // nothing" is exactly the case a label needs to check
     const png = await page.renderPng(0.5);
