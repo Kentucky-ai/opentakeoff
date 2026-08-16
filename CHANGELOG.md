@@ -2,6 +2,23 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-16 — a wide in-swing door keeps its floor; opentakeoff-mcp 0.9.48
+
+### Fixed
+- **An in-swing door wider than 4'-6" cost the room its whole swing sector (#257).** The engine already unifies a doorway by opening the swing arc and letting the seal ladder close the opening at the wall plane, so the room reads to the threshold with the wedge included. That path was gated on the arc's fitted radius against `DOOR_R_MAX_FT` (4.5 ft) — a ceiling written to stop a CURVED WALL annexing the space behind it, and correct for that. But it is a cliff, and it sits where real doors are. Measured on a 20 × 15 ft room at 18 mask px/ft: a nominal **4'-6" leaf fits at r = 4.56 ft** — over the ceiling by raster bias alone, since the arc rasters 1–2 px thick and the least-squares circle rides its outer edge. `wedgeAllowance` returned 0, the opening was filtered out of the ranking before it was ever tried, and the room came back **282.0 SF against 300 — 18.0 SF short on a 15.9 SF sector**, the entire wedge, with nothing said about it. A 4'-0" leaf fit at 4.02 and cleared the ceiling with 12% to spare, which is the margin the whole in-swing path was resting on.
+
+  The fix is **corroboration, not a wider constant**: a cluster whose own **leaf** the engine finds — straight, non-curve ink running along a radius at one end of a clean circular sweep, which `doorLeafCells` already computed and the allowance already ignored — may widen its ceiling to `DOOR_R_LEAF_MAX_FT` (7 ft, the widest leaf anyone draws as one swing). A curved wall has no leaf: its fitted centre is tens of feet away, in another room, with no radial stroke covering `LEAF_MIN_COVER` of the way out to it. So the refusal this ceiling exists for is untouched, and a 46 ft radius is still refused whether a leaf is found or not.
+
+  The evidence is a property of the **arc**, not of which opening is being tried. Attaching it to the leaf opening alone fixed nothing: the leaf retry came back with **negative growth (−1469 cells on a 4'-6" leaf)**, because opening the leaf by itself re-opens the doorway and the seal ladder must then dilate hard enough to close it, eroding more of the room than the sector returns. Opening the **arc** lets the doorway close at the wall plane instead — which is the whole "doorways UNIFY" design — so the corroboration is computed per cluster and carried into every pass.
+
+- **A swing refused on radius alone is now counted, not swallowed.** A clean circular sweep in the door band that the ceiling turns away reports `wedgesRefused` on the flood result. A lost wedge leaves a trace.
+
+### Measured
+`web/test/doorWedge.test.ts` — 24 assertions. Leaf widths 2'-6" through 5'-0" at 18, 12 and 9 mask px/ft, each stated against a **no-door control** of the same room so the test measures the wedge and not the raster. All recover their sector to within 15%; with the widening neutralized, **7 of them fail**. The bench corpus is **byte-identical to main** — no golden moved, and `door-swing-3ft/center` still traces at 0.92 confidence. 30 lib tests plus the new file, 166 MCP tests.
+
+### Known boundary
+A **6'-0"** single leaf still loses its sector: the arc opening leaks because a 6 ft opening is wider than `DOOR_SEAL_MAX_FT` will bridge. That is the seal's own documented limit with its own rationale, not this ceiling, and it is left standing rather than widened by side effect.
+
 ## 2026-08-16 — a wider corpus, and the shapes it exposed; opentakeoff-mcp 0.9.47
 
 The eval corpus grows to a fourth general contractor and a fourth building typology — a municipal treatment plant drawn in a hand-lettered CAD font, which broke the parser in two new ways.
