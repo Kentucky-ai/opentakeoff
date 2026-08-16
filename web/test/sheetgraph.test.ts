@@ -1024,3 +1024,60 @@ test("corroboration: a keynote legend row never becomes a room, and the reason s
   // and the disclosure still cites the ink, so a genuinely omitted room is findable
   assert.ok(g.unmatched_tags.every((u) => u.sheet && u.bbox));
 });
+
+test("cell alignment is READ, not assumed: a schedule that CENTRES its cells bands correctly", () => {
+  // Field-found on a municipal set drawn in a hand-lettered CAD font: cells
+  // are centred, not left-aligned, so a long value ("PNT-1, FRP-1") starts
+  // far left of a short one ("PNT-1") in the same column and left-edge
+  // banding pushed it into the column before it.
+  const centred: SheetSpans = {
+    key: "ctr.pdf#1", sheet_number: "A-624",
+    spans: [
+      sp("ROOM FINISH SCHEDULE", 100, 20),
+      { str: "ROOM #", x: 96, y: 60, w: 60, h: 8 },
+      { str: "ROOM NAME", x: 200, y: 60, w: 90, h: 8 },
+      { str: "FLOOR", x: 380, y: 60, w: 60, h: 8 },
+      { str: "BASE", x: 540, y: 60, w: 50, h: 8 },
+      { str: "WALL", x: 700, y: 60, w: 50, h: 8 },
+      // every cell CENTRED on its column: 126 / 245 / 410 / 565 / 725
+      { str: "100", x: 111, y: 85, w: 30, h: 8 }, { str: "CHEM FEED", x: 200, y: 85, w: 90, h: 8 },
+      { str: "SC-1", x: 390, y: 85, w: 40, h: 8 }, { str: "RB-1", x: 545, y: 85, w: 40, h: 8 },
+      { str: "PNT-1", x: 700, y: 85, w: 50, h: 8 },
+      { str: "102", x: 111, y: 105, w: 30, h: 8 }, { str: "MECH./JAN.", x: 197, y: 105, w: 96, h: 8 },
+      { str: "SC-1", x: 390, y: 105, w: 40, h: 8 }, { str: "RB-1", x: 545, y: 105, w: 40, h: 8 },
+      // the long one: centred, so it STARTS left of the short values above
+      { str: "PNT-1, FRP-1", x: 665, y: 105, w: 120, h: 8 },
+      { str: "104", x: 111, y: 125, w: 30, h: 8 }, { str: "TLT/SHWR", x: 202, y: 125, w: 86, h: 8 },
+      { str: "HTF-1", x: 387, y: 125, w: 46, h: 8 }, { str: "HTB-1", x: 542, y: 125, w: 46, h: 8 },
+      { str: "PNT-1", x: 700, y: 125, w: 50, h: 8 },
+    ],
+  };
+  const tab = extractTable(centred, "room-finish")!;
+  assert.deepEqual(tab.rows.map((r) => r.key), ["100", "102", "104"]);
+  const r102 = tab.rows.find((r) => r.key === "102")!;
+  assert.equal(r102.cells.BASE.text, "RB-1", "the long wall value did not spill into BASE");
+  assert.equal(r102.cells.WALL.text, "PNT-1, FRP-1");
+  assert.equal(tab.rows.find((r) => r.key === "104")!.cells.FLOOR.text, "HTF-1");
+});
+
+test("a header cell naming two vocabulary words gives up the second: ROOM # | ROOM NAME", () => {
+  // Both cells lead with ROOM. Deduping on the leading word alone left the
+  // NAME column with no anchor, and the room name merged into FLOOR.
+  const sched: SheetSpans = {
+    key: "rn.pdf#1", sheet_number: "A-625",
+    spans: [
+      sp("ROOM FINISH SCHEDULE", 100, 20),
+      sp("ROOM #", 100, 60), sp("ROOM NAME", 200, 60), sp("FLOOR", 400, 60), sp("BASE", 520, 60), sp("WALL", 640, 60),
+      sp("100", 100, 85), sp("CHEM FEED", 200, 85), sp("SC-1", 400, 85), sp("RB-1", 520, 85), sp("PNT-1", 640, 85),
+      sp("101", 100, 105), sp("LAB", 200, 105), sp("SC-1", 400, 105), sp("RB-1", 520, 105), sp("PNT-1", 640, 105),
+      sp("102", 100, 125), sp("CONTROL RM", 200, 125), sp("HTF-1", 400, 125), sp("HTB-1", 520, 125), sp("PNT-1", 640, 125),
+    ],
+  };
+  const tab = extractTable(sched, "room-finish")!;
+  assert.ok(tab.headers.includes("NAME"), `the name column keeps an anchor: ${tab.headers.join(" | ")}`);
+  for (const r of tab.rows) {
+    assert.ok(!/CHEM FEED|LAB|CONTROL RM/.test(r.cells.FLOOR.text), `room name leaked into FLOOR on ${r.key}: "${r.cells.FLOOR.text}"`);
+  }
+  assert.equal(tab.rows.find((r) => r.key === "100")!.cells.FLOOR.text, "SC-1");
+  assert.equal(tab.rows.find((r) => r.key === "102")!.cells.BASE.text, "HTB-1");
+});

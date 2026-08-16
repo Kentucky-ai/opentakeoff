@@ -100,7 +100,7 @@ const f1 = (p, r) => (p + r ? (2 * p * r) / (p + r) : 0);
 // ── run one set ─────────────────────────────────────────────────────────────
 async function evalSet(set) {
   const s = new Session();
-  const files = set.files.map((f) => join(spec.root, f));
+  const files = set.files.map((f) => join(set.root ?? spec.root, f));
   for (let i = 0; i < files.length; i++) await s.loadPlan(files[i], { merge: i > 0 });
   const g = await s.sheetGraph();
 
