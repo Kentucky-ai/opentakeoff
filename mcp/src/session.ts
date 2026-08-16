@@ -2022,6 +2022,7 @@ export class Session {
         withheld: res.withheld.map((w) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, reason: w.reason })),
         seed: seedOut,
         candidates: res.candidates,
+        complete: res.complete,
         ...(committed ? {
           committed: committed.committed,
           shape_ids: committed.shape_ids,
@@ -2029,7 +2030,7 @@ export class Session {
           ea_total: committed.ea_total,
         } : {}),
         ...(opts.commit && !res.matches.length ? { note: "commit requested but nothing cleared the bar — no shapes were committed." } : {}),
-        ...(res.candidates.dropped > 0 ? { warning: `Work cap: ${res.candidates.dropped} candidate placement(s) were never scored — the seed's linework is too common on this sheet for an exhaustive sweep. Tighten the seed rect around more distinctive geometry, or sweep a region at a time and reconcile the counts.` } : {}),
+        ...(res.candidates.dropped > 0 ? { warning: `Work ceiling: ${res.candidates.dropped} candidate placement(s) were never scored — this count is a FLOOR, not a total. The seed's linework is too common on this sheet for an exhaustive sweep; tighten the seed rect around more distinctive geometry, or sweep a region at a time and reconcile the counts.` } : {}),
       };
     }
 
@@ -2047,7 +2048,7 @@ export class Session {
     // matching would be a slow way to say the same thing.
     this.requireCrossScale(s, seedRole, this.sheetList().filter((sh) => (roleOf.get(sh.key) ?? "unknown") === "plan"));
 
-    const perSheet: { state: SheetState; matches: SweepMatch[]; withheld: SweepWithheld[]; candidates: { considered: number; dropped: number }; elapsed_ms: number; scale: { scale: number; known: boolean }; scaled?: NonNullable<SymbolMatchResult["scaled"]> }[] = [];
+    const perSheet: { state: SheetState; matches: SweepMatch[]; withheld: SweepWithheld[]; candidates: { considered: number; dropped: number }; complete: boolean; elapsed_ms: number; scale: { scale: number; known: boolean }; scaled?: NonNullable<SymbolMatchResult["scaled"]> }[] = [];
     const skipped: { sheet: string; role: string; reason: string }[] = [];
     for (const sh of this.sheetList()) {
       const role = roleOf.get(sh.key) ?? "unknown";
@@ -2145,14 +2146,16 @@ export class Session {
         matches: p.matches.map((m) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored })),
         withheld: p.withheld.map((w) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, reason: w.reason })),
         candidates: p.candidates,
+        complete: p.complete,
         elapsed_ms: p.elapsed_ms,
         ...(p.scaled ? { scaled: p.scaled } : {}),
         ...(p.scale.known ? {} : { scale_assumed: "no scale set on the seed sheet or this one — swept at 1:1" }),
       })),
+      complete: perSheet.every((p) => p.complete),
       skipped,
       ...(committed ?? {}),
       ...(notes.length ? { note: notes.join(" ") } : {}),
-      ...(capped.length ? { warning: `Work cap: candidate placements were dropped un-scored on ${capped.map((p) => p.state.key).join(", ")} — the seed's linework is too common there for an exhaustive sweep. Tighten the seed rect around more distinctive geometry, or sweep those sheets singly and reconcile the counts.` } : {}),
+      ...(capped.length ? { warning: `Work ceiling: candidate placements were dropped un-scored on ${capped.map((p) => p.state.key).join(", ")} — counts there are FLOORS, not totals. The seed's linework is too common there for an exhaustive sweep; tighten the seed rect around more distinctive geometry, or sweep those sheets singly and reconcile the counts.` } : {}),
     };
   }
 
@@ -2325,6 +2328,7 @@ export class Session {
       excluded: { at: Point; tag: string }[];
       text_only: { at: Point }[];
       candidates: { considered: number; dropped: number };
+      complete: boolean;
       elapsed_ms: number;
       scale: { scale: number; known: boolean };
       scaled?: NonNullable<SymbolMatchResult["scaled"]>;
@@ -2370,7 +2374,7 @@ export class Session {
       const text_only = occ
         .filter((o, k) => !matchedOcc.has(k) && !res.withheld.some((w) => Math.hypot(w.at[0] - o.cx, w.at[1] - o.cy) <= R))
         .map((o) => ({ at: [round1(o.cx), round1(o.cy)] as Point }));
-      perSheet.push({ state: sh, matches, withheld, excluded, text_only, candidates: res.candidates, elapsed_ms, scale: ratio, ...(res.scaled ? { scaled: res.scaled } : {}) });
+      perSheet.push({ state: sh, matches, withheld, excluded, text_only, candidates: res.candidates, complete: res.complete, elapsed_ms, scale: ratio, ...(res.scaled ? { scaled: res.scaled } : {}) });
     }
 
     // 5. commit — condition minted FROM the row (its key IS the tag), the
@@ -2446,10 +2450,12 @@ export class Session {
         excluded: p.excluded.map((e) => ({ at: [round1(e.at[0]), round1(e.at[1])], tag: e.tag })),
         text_only: p.text_only,
         candidates: p.candidates,
+        complete: p.complete,
         elapsed_ms: p.elapsed_ms,
         ...(p.scaled ? { scaled: p.scaled } : {}),
         ...(p.scale.known ? {} : { scale_assumed: `no scale set on ${anchorSheet.key} or this sheet — swept at 1:1` }),
       })),
+      complete: perSheet.every((p) => p.complete),
       skipped,
       ...(committed ?? {}),
       ...(notes.length ? { note: notes.join(" ") } : {}),

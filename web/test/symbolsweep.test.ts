@@ -135,15 +135,28 @@ test("a decoy cluster sharing some segments does NOT match", () => {
   assert.equal(r.withheld.length, 0, "0.688 is below the withhold floor — not the symbol, not a near-miss");
 });
 
-test("the work cap is reported, never silent", () => {
+test("the work ceiling is reported, never silent — a truncated count says so", () => {
   const many = Array.from({ length: 40 }, (_, i) => ({ at: [i * 50, 0] as Point }));
   const segs = place(many);
   const r = sweepSymbols(segs, RECT, { maxCandidates: 10 });
   assert.equal(r.candidates.considered, 10);
   assert.ok(r.candidates.dropped > 0, "overflow counted");
+  assert.equal(r.complete, false, "a truncated count is a floor and must say so");
   const full = sweepSymbols(segs, RECT);
   assert.equal(full.candidates.dropped, 0);
+  assert.equal(full.complete, true);
   assert.equal(full.matches.length, 39);
+});
+
+test("the default scores every proposal — no caller-side cap needed for a complete count (#261)", () => {
+  // 40 instances of a symbol whose segment lengths repeat sheet-wide: the
+  // anchor-rarity walk proposes far more placements than instances exist,
+  // which is exactly the small-dense-symbol case the old 20k default bit on.
+  const many = Array.from({ length: 40 }, (_, i) => ({ at: [(i % 8) * 55, Math.floor(i / 8) * 55] as Point }));
+  const segs = place(many);
+  const r = sweepSymbols(segs, RECT);
+  assert.equal(r.complete, true, "default sweep runs to completion");
+  assert.equal(r.matches.length, 39, "every instance found without touching maxCandidates");
 });
 
 test("an empty seed rect refuses with instruction, not a crash", () => {
