@@ -629,6 +629,56 @@ test("sheet graph phase 2 (#87): continuation merges to ONE table, rotated heade
   assert.deepEqual(matchB.parts.map((p: any) => [p.sheet, p.rows]), [["multibuilding-set.pdf#4", 1], ["multibuilding-set.pdf#5", 1]]);
 });
 
+// ── the sheet graph, phase 3 (#87): revision markers on the wire. The fixture
+// carries "REV 2" in the margin beside building B's row 134 — the flag that
+// the row's ink changed under revision 2. The marker must never band into a
+// cell, and must ride sheet_graph, resolve_tag, and find_schedule.
+test("sheet graph phase 3 (#87): a revision marker rides the wire and never corrupts the row", async () => {
+  const client = await pair();
+  await callOk(client, "load_plan", { path: MB_SET });
+
+  const g = await callOk(client, "sheet_graph");
+  assert.equal(g.revisions.length, 2, "both markers are listed: the text REV tag and the drawn delta");
+  const textM = g.revisions.find((r: any) => !r.drawn);
+  assert.equal(textM.rev, "2");
+  assert.equal(textM.sheet, "multibuilding-set.pdf#4");
+  assert.ok(textM.bbox.x1 > textM.bbox.x0, "the marker carries its bbox");
+  // the DRAWN delta: a bare digit "1" inside a triangle of linework on the
+  // rotated-header sheet — text alone refuses a bare digit; geometry proves it
+  const drawnM = g.revisions.find((r: any) => r.drawn);
+  assert.equal(drawnM.rev, "1");
+  assert.equal(drawnM.sheet, "multibuilding-set.pdf#3");
+  assert.ok(drawnM.bbox.x1 - drawnM.bbox.x0 > 20, "the bbox spans the triangle, not just the digit");
+
+  // the revised row resolves to its post-revision codes AND says the ink changed
+  const b = await callOk(client, "resolve_tag", { tag: "B-134" });
+  assert.equal(b.status, "resolved");
+  assert.equal(b.finishes.find((f: any) => f.surface === "FLOOR").code, "VCT-2", "the marker stayed out of the cells");
+  assert.equal(b.revisions.length, 1);
+  assert.equal(b.revisions[0].rev, "2");
+  assert.equal(b.revisions[0].source.text, "REV 2");
+  assert.equal(b.revisions[0].source.sheet, "multibuilding-set.pdf#4");
+
+  // an unrevised row carries no revisions field
+  const a = await callOk(client, "resolve_tag", { tag: "A-134" });
+  assert.equal(a.revisions, undefined);
+
+  // the drawn delta attaches to row 135 THROUGH the rotated-header table, and
+  // the bare digit "1" minted no row anywhere
+  const d = await callOk(client, "resolve_tag", { tag: "A-135" });
+  assert.equal(d.status, "resolved");
+  assert.equal(d.finishes.find((f: any) => f.surface === "FLOOR").code, "LVT-1", "the digit stayed out of the cells");
+  assert.equal(d.revisions.length, 1);
+  assert.equal(d.revisions[0].rev, "1");
+  assert.equal(d.revisions[0].drawn, true);
+  assert.equal(d.revisions[0].source.text, "1", "evidence text is the literal ink");
+
+  // find_schedule discloses the revised-row count per table
+  const found = await callOk(client, "find_schedule", { kind: "room finish" });
+  assert.equal(found.matches.find((m: any) => m.building === "B").revised_rows, 1);
+  assert.equal(found.matches.find((m: any) => m.building === "A").revised_rows, 1, "the drawn delta counts too");
+});
+
 // 0.9.20 — symbol_sweep's output contract, both modes, schema round-tripped
 // unstripped (the assign-mode deepEqual discipline: zod strips unknown keys,
 // so equality proves the schema states EVERY returned field).

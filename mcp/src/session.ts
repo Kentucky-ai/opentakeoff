@@ -8,7 +8,7 @@ import path from "node:path";
 import { openPdf, positionedText, textSpans, textItemsInRegion, OPS, type DocHandle, type PageHandle, type TextSpan, type OcgEntry } from "./pdf.ts";
 import { expandForScaleNotes, mixedScaleWarning } from "./scalewarn.ts";
 import { classifyLayerName, layerRoleCodes, segRoles, type LayerInfo } from "../../web/src/lib/layers.ts";
-import { buildSheetGraph, resolveTag, type SheetGraph, type SheetSpans } from "../../web/src/lib/sheetgraph.ts";
+import { buildSheetGraph, resolveTag, classifySheetRole, type SheetGraph, type SheetSpans } from "../../web/src/lib/sheetgraph.ts";
 import { UserError, round1, round2 } from "./format.ts";
 // Condition twins — the inheritance rule, shared with the canvas so a headless session and
 // the app can never disagree about what a twin holds (web/test/variants.test.ts).
@@ -3406,15 +3406,38 @@ export class Session {
     if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
     if (!this.graph) {
       const inputs: SheetSpans[] = [];
+      // The drawn delta-triangle hunt needs linework — but the hunt is a BONUS
+      // lane and must never take the graph down. On a monster set (a 287-sheet
+      // combined pricing set is real), extracting-and-retaining every sheet's
+      // vectors OOMs the process, so: only plan/schedule-shaped sheets that
+      // carry a bare 1–2 digit span are hunted, extraction is THROWAWAY (the
+      // cached s.geo is reused when a tool already paid for it, otherwise the
+      // op list is dropped and the page cleaned), and a global vector budget
+      // bounds the whole pass. Sheets past the budget are NAMED in notes —
+      // text markers are still read everywhere.
+      let vecBudget = 30_000_000; // segments across the whole hunt
+      let skippedHeavy = 0;
       for (const s of this.sheets.values()) {
         if (!s.spans) s.spans = textSpans(s.page);
-        inputs.push({
-          key: s.key,
-          sheet_number: s.sheetNumber,
-          spans: s.spans.map((t) => ({ str: t.str, x: t.x0, y: t.y0, w: t.x1 - t.x0, h: t.y1 - t.y0, ...(t.rot ? { rot: t.rot } : {}) })),
-        });
+        const spans = s.spans.map((t) => ({ str: t.str, x: t.x0, y: t.y0, w: t.x1 - t.x0, h: t.y1 - t.y0, ...(t.rot ? { rot: t.rot } : {}) }));
+        let segs: number[] | undefined;
+        if (spans.some((t) => /^\d{1,2}$/.test(t.str.trim()))) {
+          const role = classifySheetRole({ key: s.key, sheet_number: s.sheetNumber, spans }).role;
+          if (role === "plan" || role === "schedule" || role === "demolition" || role === "unknown") {
+            if (vecBudget <= 0) skippedHeavy++;
+            else if (s.geo) { segs = s.geo.segs; vecBudget -= segs.length / 4; }
+            else {
+              const opList = await s.page.operatorList();
+              segs = extractVectorGeometry(opList, s.page.viewport.transform, OPS).segs;
+              vecBudget -= segs.length / 4;
+              s.page.cleanup();
+            }
+          }
+        }
+        inputs.push({ key: s.key, sheet_number: s.sheetNumber, spans, ...(segs?.length ? { segs } : {}) });
       }
       this.graph = buildSheetGraph(inputs);
+      if (skippedHeavy) this.graph.notes.push(`drawn-delta hunt skipped on ${skippedHeavy} sheet(s) — the set's linework exceeded the vector budget; text revision markers (Δ2 / REV 2) were still read everywhere`);
     }
     return this.graph;
   }
@@ -3424,6 +3447,13 @@ export class Session {
   }
   private static wireEvidence(e: { sheet: string; text: string; bbox: [number, number, number, number] }) {
     return { sheet: e.sheet, text: e.text, bbox: Session.wireBox(e.bbox) };
+  }
+  private static wireRoom(r: SheetGraph["rooms"][number]) {
+    return {
+      tag: r.tag, name: r.name, sheet: r.sheet, bbox: Session.wireBox(r.bbox),
+      ...(r.building ? { building: r.building } : {}),
+      ...(r.revision ? { revision: { rev: r.revision.rev, source: Session.wireEvidence(r.revision.source), ...(r.revision.drawn ? { drawn: true } : {}) } } : {}),
+    };
   }
 
   async sheetGraph() {
@@ -3440,9 +3470,10 @@ export class Session {
           ...(t.rotated_headers ? { rotated_headers: true } : {}),
         })),
       })),
-      rooms: g.rooms.map((r) => ({ tag: r.tag, name: r.name, sheet: r.sheet, bbox: Session.wireBox(r.bbox), ...(r.building ? { building: r.building } : {}) })),
+      rooms: g.rooms.map(Session.wireRoom),
       callouts: g.callouts.map((c) => ({ detail: c.detail, target_sheet: c.target_sheet, sheet: c.sheet, bbox: Session.wireBox(c.bbox) })),
       ...(g.buildings.length ? { buildings: g.buildings } : {}),
+      ...(g.revisions.length ? { revisions: g.revisions.map((r) => ({ rev: r.rev, sheet: r.sheet, bbox: Session.wireBox(r.bbox), ...(r.drawn ? { drawn: true } : {}) })) } : {}),
       ...(g.notes.length ? { notes: g.notes } : {}),
       counts: { rooms: g.rooms.length, schedules: g.tables.length, callouts: g.callouts.length },
     };
@@ -3472,7 +3503,7 @@ export class Session {
     const g = await this.ensureGraph();
     if (!g.available) throw new UserError("This set has no text layer (a scan) — the sheet graph is unavailable, not empty.");
     const res = resolveTag(g, tag);
-    const room = res.room ? { tag: res.room.tag, name: res.room.name, sheet: res.room.sheet, bbox: Session.wireBox(res.room.bbox), ...(res.room.building ? { building: res.room.building } : {}) } : null;
+    const room = res.room ? Session.wireRoom(res.room) : null;
     if (res.status === "unresolved") {
       return {
         status: "unresolved" as const, tag: res.tag, room, reason: res.reason,
@@ -3489,6 +3520,7 @@ export class Session {
         ...(f.definition ? { definition: { cells: f.definition.cells, source: Session.wireEvidence(f.definition.source) } } : {}),
       })),
       sources: res.sources.map(Session.wireEvidence),
+      ...(res.revisions?.length ? { revisions: res.revisions.map((v) => ({ rev: v.rev, source: Session.wireEvidence(v.source), ...(v.drawn ? { drawn: true } : {}) })) } : {}),
     };
   }
 
@@ -3508,6 +3540,7 @@ export class Session {
         headers: t.headers, region: Session.wireBox(t.region),
         ...(t.building ? { building: t.building } : {}),
         ...(t.rotated_headers ? { rotated_headers: true } : {}),
+        ...(t.rows.some((r) => r.revision) ? { revised_rows: t.rows.filter((r) => r.revision).length } : {}),
         ...(t.parts ? { parts: t.parts.map((p) => ({ sheet: p.sheet, title: p.title, rows: p.rows, region: Session.wireBox(p.region) })) } : {}),
       })),
     };

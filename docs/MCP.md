@@ -54,7 +54,7 @@ Forty tools, in the order an agent tends to reach for them:
   schedule row → each code's finish/material definition, every edge carrying
   a citation; unresolved comes back *with a reason*, never as silence),
   `find_schedule` (kind → sheet + title + headers + a `view_sheet`-ready
-  region). Three real-set shapes are handled natively (#87 phase 2): a
+  region). Real-set shapes are handled natively (#87 phases 2–3): a
   schedule **continued across sheets** ("… SCHEDULE — CONT'D") reads as ONE
   table — rows resolve regardless of which sheet carries them, each citing
   the sheet the ink is on, and `find_schedule` returns one match whose
@@ -64,7 +64,18 @@ Forty tools, in the order an agent tends to reach for them:
   alone — rooms and tables carry their building, an unqualified reused
   number refuses *listing the candidate rows per building* instead of
   first-matching, and a qualified tag (`"A-134"`) picks the building the
-  set names
+  set names; and **revision markers** — a text marker (`Δ2`, `REV 2`) or a
+  **drawn delta** (a bare digit inside a digit-scale triangle of linework —
+  the common CAD convention, proven from the sheet's vector geometry and
+  flagged `drawn: true`) beside a schedule row or a room bubble attaches
+  there and rides
+  `resolve_tag` as `revisions` (the codes returned are the post-revision
+  answer, but the ink changed under that delta — view the marker and check
+  the addendum before pricing), the set-wide list is `sheet_graph.revisions`,
+  `find_schedule` counts `revised_rows` per table, and a marker never bands
+  into a cell or mints a room key. A revision **cloud** with no text marker
+  is linework — invisible to this text-layer pass, and stated as such rather
+  than guessed at
 - **Measure** — `one_click`, `detect_rooms` (both take `layers {include,
   exclude}` to override the sheet's stated layer roles for a call),
   `measure_polygon`, `measure_line`, `measure_surface` (wall SF: an open run
