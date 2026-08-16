@@ -266,16 +266,16 @@ test("loadGroupBy returns '' without localStorage; saveGroupBy swallows too", ()
 // fixture rows (shape_count > 0): ct1, lvt2, rb1, wt1, cnt — none carry a spec.
 
 test("specValue: the visible-string rule — object required, non-strings/empties/whitespace are nothing", () => {
-  assert.equal(specValue({ manufacturer: "Shaw" }, "manufacturer"), "Shaw");
+  assert.equal(specValue({ manufacturer: "Vendor A" }, "manufacturer"), "Vendor A");
   assert.equal(specValue({ manufacturer: "  keep spaces  " }, "manufacturer"), "  keep spaces  "); // untrimmed
   assert.equal(specValue({ style: "" }, "style"), "");
   assert.equal(specValue({ style: "   " }, "style"), "");        // whitespace-only
   assert.equal(specValue({ size: 12 } as any, "size"), "");      // non-string coerced away
-  assert.equal(specValue({ manufacturer: "Shaw" }, "color"), ""); // missing field
+  assert.equal(specValue({ manufacturer: "Vendor A" }, "color"), ""); // missing field
   assert.equal(specValue(undefined, "manufacturer"), "");
   assert.equal(specValue(null, "manufacturer"), "");
-  assert.equal(specValue("Shaw" as any, "manufacturer"), "");    // non-object
-  assert.equal(specValue(["Shaw"] as any, "manufacturer"), "");  // arrays aren't specs
+  assert.equal(specValue("Vendor A" as any, "manufacturer"), "");    // non-object
+  assert.equal(specValue(["Vendor A"] as any, "manufacturer"), "");  // arrays aren't specs
 });
 
 test("specColProfile: no spec anywhere → [] (byte-stable), so the report/CSV/XLSX are unchanged", () => {
@@ -289,7 +289,7 @@ test("specColProfile: no spec anywhere → [] (byte-stable), so the report/CSV/X
 
 test("specColProfile: a field-column appears only when some condition carries that field", () => {
   const withSpec = [
-    { id: "ct1", spec: { manufacturer: "Shaw", style: "Grand", color: "Slate 5", size: '24\"x24\"' } },
+    { id: "ct1", spec: { manufacturer: "Vendor A", style: "Grand", color: "Slate 5", size: '24\"x24\"' } },
     { id: "lvt2", spec: { manufacturer: "Mohawk" } },  // only manufacturer present
     { id: "rb1" },                                      // no spec at all
   ];
@@ -302,7 +302,7 @@ test("specColProfile: a field-column appears only when some condition carries th
     ["spec:size", "Size", true, true],
   ]);
   // only manufacturer populated anywhere → exactly one column
-  const one = specColProfile([{ id: "a", spec: { manufacturer: "Shaw" } }] as any);
+  const one = specColProfile([{ id: "a", spec: { manufacturer: "Vendor A" } }] as any);
   assert.deepEqual(one.map((c: any) => c.key), ["spec:manufacturer"]);
   // headers cover every SPEC_FIELD, and none collides with the appearance "Color".
   // "Description" is appended last so shipped spec-column order is preserved.
@@ -312,20 +312,20 @@ test("specColProfile: a field-column appears only when some condition carries th
 test("specColProfile: description is a spec column, appended after size, only when populated", () => {
   // populated description → its own column, LAST (after the original four)
   const withDesc = specColProfile([
-    { id: "wp1", spec: { manufacturer: "Shaw", description: "WOOD WALL PANEL" } },
+    { id: "wp1", spec: { manufacturer: "Vendor A", description: "WOOD WALL PANEL" } },
   ] as any);
   assert.deepEqual(withDesc.map((c: any) => c.key), ["spec:manufacturer", "spec:description"]);
   assert.equal(withDesc[1].header, "Description");
   // empty/absent description → no column (empty-gate), so legacy 4-field specs
   // produce byte-identical output
-  const noDesc = specColProfile([{ id: "a", spec: { manufacturer: "Shaw", size: "12x24" } }] as any);
+  const noDesc = specColProfile([{ id: "a", spec: { manufacturer: "Vendor A", size: "12x24" } }] as any);
   assert.deepEqual(noDesc.map((c: any) => c.key), ["spec:manufacturer", "spec:size"]);
 });
 
 test("spec column getter: reads ctx.specByCond by row id; blank for unspec'd / no ctx", () => {
-  const cols = specColProfile([{ id: "ct1", spec: { manufacturer: "Shaw" } }] as any);
-  const ctx = { specByCond: new Map([["ct1", { manufacturer: "Shaw" }]]) };
-  assert.equal(cols[0].get({ id: "ct1" }, ctx), "Shaw");
+  const cols = specColProfile([{ id: "ct1", spec: { manufacturer: "Vendor A" } }] as any);
+  const ctx = { specByCond: new Map([["ct1", { manufacturer: "Vendor A" }]]) };
+  assert.equal(cols[0].get({ id: "ct1" }, ctx), "Vendor A");
   assert.equal(cols[0].get({ id: "lvt2" }, ctx), "");   // condition with no spec entry
   assert.equal(cols[0].get({ id: "ct1" }), "");         // no ctx at all
 });
@@ -333,7 +333,7 @@ test("spec column getter: reads ctx.specByCond by row id; blank for unspec'd / n
 test("CSV with spec columns: appended after the frozen 13, values per row, unspec'd rows blank, TOTAL blank", () => {
   // ct1 fully spec'd, lvt2 formula-shaped value (guarded), others unspec'd
   const specByCond = new Map<string, any>([
-    ["ct1", { manufacturer: "Shaw", style: "Grand, Deluxe", color: "Slate 5", size: '24\"x24\"' }],
+    ["ct1", { manufacturer: "Vendor A", style: "Grand, Deluxe", color: "Slate 5", size: '24\"x24\"' }],
     ["lvt2", { manufacturer: "=cmd", style: "", color: "Oak", size: "6x48" }],
   ]);
   const specDefs = [...specByCond.values()].map((s) => ({ spec: s }));
@@ -344,7 +344,7 @@ test("CSV with spec columns: appended after the frozen 13, values per row, unspe
   // frozen 13 header cells byte-identical; spec headers appended, schedule order
   assert.equal(lines[1], goldenLines[1] + ",Manufacturer,Style,Spec Color,Size");
   // CT-1 body row = golden row + its four spec cells (comma value quoted)
-  assert.equal(lines[2], goldenLines[2] + ',Shaw,"Grand, Deluxe",Slate 5,"24""x24"""');
+  assert.equal(lines[2], goldenLines[2] + ',Vendor A,"Grand, Deluxe",Slate 5,"24""x24"""');
   // LVT-2: formula-shaped manufacturer guarded, empty style blank
   assert.deepEqual(lines[3].split(",").slice(-4), ["'=cmd", "", "Oak", "6x48"]);
   // RB-1: no spec entry → all four cells blank

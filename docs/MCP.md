@@ -84,7 +84,8 @@ Forty tools, in the order an agent tends to reach for them:
   `SYMBOL` (no CODE, no MARK) extract and chain; and a **DOOR / WINDOW /
   PARTITION schedule is refused as a finish table** by title — those carry a
   MARK column too, and a finish code chaining to a door mark is a confidently
-  wrong product — with the refusal named in `notes`
+    wrong product — with the refusal named in `notes`. How this is measured, what
+  it scores, and what it still cannot read: [docs/SHEET-GRAPH-EVAL.md](SHEET-GRAPH-EVAL.md)
 - **Measure** — `one_click`, `detect_rooms` (both take `layers {include,
   exclude}` to override the sheet's stated layer roles for a call),
   `measure_polygon`, `measure_line`, `measure_surface` (wall SF: an open run

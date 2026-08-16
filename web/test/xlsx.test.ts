@@ -156,19 +156,19 @@ test("reportWorkbook: custom column in cols — header, per-row value, blank TOT
 
 test("reportWorkbook: read-only spec columns in cols — header, per-row value, blank TOTAL cell", () => {
   const spec = specColProfile([
-    { id: "c1", spec: { manufacturer: "Shaw", color: "Slate 5" } },  // both fields present
+    { id: "c1", spec: { manufacturer: "Vendor A", color: "Slate 5" } },  // both fields present
   ] as any);
   assert.deepEqual(spec.map((c: any) => c.header), ["Manufacturer", "Spec Color"]); // only populated fields
   const tabs = reportWorkbook({
     ...workbookArgs(),
     cols: [...cols, ...spec],
-    ctx: { specByCond: new Map([["c1", { manufacturer: "Shaw", color: "Slate 5" }]]) },
+    ctx: { specByCond: new Map([["c1", { manufacturer: "Vendor A", color: "Slate 5" }]]) },
   });
   const cTab = tabs[0];
   const mi = cols.length;          // Manufacturer appended after the CSV columns
   assert.equal(cTab.rows[0][mi], "Manufacturer");
   assert.equal(cTab.rows[0][mi + 1], "Spec Color");
-  assert.equal(cTab.rows[1][mi], "Shaw");         // c1 spec'd
+  assert.equal(cTab.rows[1][mi], "Vendor A");         // c1 spec'd
   assert.equal(cTab.rows[1][mi + 1], "Slate 5");
   assert.equal(cTab.rows[2][mi], "");             // c2 has no spec → cell skipped in the XML
   assert.equal(cTab.rows[cTab.rows.length - 1][mi], ""); // TOTAL stays blank

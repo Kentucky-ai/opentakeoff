@@ -40,9 +40,9 @@ const schedSheet: SheetSpans = {
     // a finish/material schedule lower on the same sheet
     sp("MATERIAL SCHEDULE", 100, 300),
     sp("CODE", 100, 320), sp("MATERIAL", 200, 320), sp("MANUFACTURER", 360, 320), sp("COLOR", 520, 320),
-    sp("CPT-1", 100, 340), sp("CARPET TILE", 200, 340), sp("SHAW", 360, 340), sp("NIGHTFALL", 520, 340),
-    sp("LVT-1", 100, 360), sp("LUXURY VINYL TILE", 200, 360), sp("MANNINGTON", 360, 360), sp("OAK", 520, 360),
-    sp("RB-1", 100, 380), sp("RESILIENT BASE", 200, 380), sp("TARKETT", 360, 380), sp("SLATE", 520, 380),
+    sp("CPT-1", 100, 340), sp("CARPET TILE", 200, 340), sp("VENDOR-A", 360, 340), sp("NIGHTFALL", 520, 340),
+    sp("LVT-1", 100, 360), sp("LUXURY VINYL TILE", 200, 360), sp("VENDOR-B", 360, 360), sp("OAK", 520, 360),
+    sp("RB-1", 100, 380), sp("RESILIENT BASE", 200, 380), sp("VENDOR-C", 360, 380), sp("SLATE", 520, 380),
   ],
 };
 
@@ -72,7 +72,7 @@ test("table extraction: header anchors, evidence per cell, titles found above", 
   assert.ok(r101.cells.FLOOR.bbox[0] >= 300 && r101.cells.FLOOR.bbox[1] >= 80, "the cell knows where it came from");
   const fin = extractTable(schedSheet, "finish")!;
   assert.equal(fin.rows.length, 3);
-  assert.equal(fin.rows.find((r) => r.key === "CPT-1")!.cells.MANUFACTURER.text, "SHAW");
+  assert.equal(fin.rows.find((r) => r.key === "CPT-1")!.cells.MANUFACTURER.text, "VENDOR-A");
   // a sheet with no such structure yields null, never invented rows
   assert.equal(extractTable(planSheet, "room-finish"), null);
 });
@@ -113,7 +113,7 @@ test("SCORED: room → finish → citation, cell-level precision/recall against 
     }
     // resolution chains to the finish definition where one exists
     const floor = res.finishes.find((f) => f.surface === "FLOOR")!;
-    if (tag === "101") assert.equal(floor.definition?.cells.MANUFACTURER, "SHAW");
+    if (tag === "101") assert.equal(floor.definition?.cells.MANUFACTURER, "VENDOR-A");
   }
   const precision = tp / Math.max(1, tp + fp);
   const recall = tp / expected;
@@ -774,14 +774,14 @@ test("finish tables headed SYMBOL extract and chain — the INTERIOR FINISH SCHE
     spans: [
       sp("INTERIOR FINISH SCHEDULE", 100, 40),
       sp("SYMBOL", 100, 60), sp("MATERIAL DESCRIPTION", 200, 60), sp("MANUFACTURER", 420, 60), sp("PRODUCT", 600, 60),
-      sp("TL-9", 100, 80), sp("CERAMIC TILE", 200, 80), sp("DALTILE", 420, 80), sp("CW9763651PR", 600, 80),
-      sp("RF-9", 100, 100), sp("RUBBER", 200, 100), sp("ECORE", 420, 100), sp("PERFORMANCE RUBBER", 600, 100),
+      sp("TL-9", 100, 80), sp("CERAMIC TILE", 200, 80), sp("VENDOR-D", 420, 80), sp("CW9763651PR", 600, 80),
+      sp("RF-9", 100, 100), sp("RUBBER", 200, 100), sp("VENDOR-E", 420, 100), sp("PERFORMANCE RUBBER", 600, 100),
     ],
   };
   const fin = extractTable(symSched, "finish")!;
   assert.ok(fin, "SYMBOL anchors the finish table");
   assert.equal(fin.rows.length, 2);
-  assert.equal(fin.rows.find((r) => r.key === "TL-9")!.cells.MANUFACTURER.text, "DALTILE");
+  assert.equal(fin.rows.find((r) => r.key === "TL-9")!.cells.MANUFACTURER.text, "VENDOR-D");
 });
 
 // ── two-tier headers: a merged parent over N/E/S/W sub-columns ──────────────
@@ -895,7 +895,7 @@ test("a DOOR SCHEDULE never becomes a finish table — and the drop is NAMED", (
   const floor = res.finishes.find((f) => f.surface === "FLOOR")!;
   assert.equal(floor.code, "CPT-1");
   assert.equal(floor.definition?.cells.MATERIAL, "CARPET TILE", "chained to the material schedule, never to the door schedule");
-  assert.equal(floor.definition?.cells.MANUFACTURER, "SHAW");
+  assert.equal(floor.definition?.cells.MANUFACTURER, "VENDOR-A");
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
