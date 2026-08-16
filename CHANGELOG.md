@@ -2,6 +2,14 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-16 — how the sheet graph is tested, written down; opentakeoff-mcp 0.9.49
+
+### Docs
+- **`docs/SHEET-GRAPH-EVAL.md`** — a short methods-and-results note for #87, so the next person to improve the sheet graph starts from the number rather than from scratch. It records the two metrics and why either alone is gameable (cell accuracy can sit at a perfect 1.000 while the graph invents thirty rooms that do not exist), the independent-channel labelling rule that makes a score mean anything (the key is read off the RENDER, the parser reads the TEXT LAYER), the current results, the five header shapes covered, what real sets broke that fixtures never would, and the known gaps — including the one no parser fixes, a plan carrying no room numbers in its text layer at all. Two rules learned the hard way are stated: the scorer **throws** on an unknown surface in a key rather than skipping the row, and a set the task is not well posed for stays **unlabelled** rather than scored around. Linked from `docs/MCP.md` and the scorer's own header.
+
+### Fixed
+- **Test fixtures are vendor-neutral again.** Real flooring manufacturer names had crept into the `sheetgraph`, `reportColumns` and `xlsx` fixtures; they are invented `VENDOR-A`-style names now, with the affected assertions updated. No behaviour change.
+
 ## 2026-08-16 — a wide in-swing door keeps its floor; opentakeoff-mcp 0.9.48
 
 ### Fixed
