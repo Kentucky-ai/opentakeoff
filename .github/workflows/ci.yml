@@ -100,12 +100,21 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          if git diff --quiet "$BASE" HEAD -- mcp/; then
-            echo "mcp/ untouched — nothing to check."
+          # Container-only files are excluded from the trigger. The guard exists
+          # because a change to the PUBLISHED server must ship, and the npm
+          # tarball is exactly four entries — dist/, README.md, package.json
+          # ("files": ["dist","README.md"]). mcp/Dockerfile is not one of them:
+          # it is how Glama and other registries build an image, never something
+          # a user installs. Demanding a version bump for it would publish a
+          # release whose tarball is byte-identical to the one before it, and a
+          # version number that means nothing is worse than one nobody bumped.
+          PUBLISHED=(mcp/ ':(exclude)mcp/Dockerfile')
+          if git diff --quiet "$BASE" HEAD -- "${PUBLISHED[@]}"; then
+            echo "no change to published mcp/ files — nothing to check."
             exit 0
           fi
-          echo "mcp/ changed in this PR:"
-          git diff --name-only "$BASE" HEAD -- mcp/ | sed 's/^/  /'
+          echo "published mcp/ files changed in this PR:"
+          git diff --name-only "$BASE" HEAD -- "${PUBLISHED[@]}" | sed 's/^/  /'
 
           PKG=$(jq -r .version mcp/package.json)
           SRV=$(jq -r .version mcp/server.json)

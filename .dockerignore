@@ -1,0 +1,44 @@
+# Docker build context — keep it to what the build actually needs.
+#
+# Both Dockerfiles COPY the repo root, because mcp/ bundles the takeoff engine
+# out of web/src/lib at build time. Without this file that COPY also ships the
+# git history and every local artifact: ~109 MB of .git and, on a developer's
+# machine, ~1.1 GB of node_modules, dist output and the fetched voice model —
+# none of which the build reads. Tracked sources are ~22 MB.
+#
+# This is not only a speed fix. A remote builder (Glama's, among others) pays
+# for that context on every build, and a build that fails for being too big or
+# too slow looks exactly like a build that fails for being broken.
+
+.git
+.github
+.gitignore
+
+# Installed trees — every stage runs its own `npm ci`.
+**/node_modules
+
+# Build output — regenerated in the build stage.
+**/dist
+mcp/*.mcpb
+
+# Fetched at deploy time by web/scripts/fetch-voice-model.mjs (~44 MB), never
+# read by the MCP server.
+web/public/models
+
+# Docs, media and fixtures: nothing in the bundle imports them.
+docs
+demo
+web/public/demo
+web/test
+web/bench
+capture
+server
+*.md
+!mcp/README.md
+
+# Local noise.
+.DS_Store
+**/.DS_Store
+.env
+.env.*
+*.log
