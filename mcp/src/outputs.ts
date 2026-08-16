@@ -613,6 +613,7 @@ const graphRoom = z.object({
   bbox: wireBox,
   building: z.string().optional().describe("The building the room belongs to, when the set names one — its plan sheet's BUILDING/BLDG context, or the tag's own qualifier ('A-134')"),
   revision: wireRevision.optional(),
+  corroboration: z.string().optional().describe("Why this number is believed to be a room: \"schedule\" (a room-finish row answers for it), \"name\" (a name is drawn with it and the set has no room-finish schedule), or \"name+schedule\""),
 });
 
 export const sheetGraphOutput = {
@@ -629,13 +630,19 @@ export const sheetGraphOutput = {
       rotated_headers: z.boolean().optional().describe("true when the column headers were read at a quarter-turn"),
     })),
   })),
-  rooms: z.array(graphRoom).describe("Room tags read off plan-role sheets — schedule sheets contribute rows, never phantom rooms"),
+  rooms: z.array(graphRoom).describe("Numbers CORROBORATED as rooms — a room-finish row answers for them, or (where the set carries no room-finish schedule) a room name is drawn with them. Each says which in `corroboration`. Schedule sheets contribute rows, never phantom rooms"),
+  unmatched_tags: z.array(z.object({
+    tag: z.string(), sheet: z.string(), bbox: wireBox,
+    building: z.string().optional(),
+    name: z.string().optional().describe("Text drawn with the number, when there is any — on a keynote legend this is the accessory description, not a room name"),
+    reason: z.string().describe("WHY this number is not counted as a room. Read these: one of them may be a room the schedule left out, which is a hole in the bid"),
+  })).optional().describe("Numbered tags on plan sheets that are NOT counted as rooms — keynote hexagons, detail markers, dimension fragments, legend rows. Listed with a reason, never dropped. A real finish plan is covered in 2–3 digit numbers that are not rooms; counting them as rooms makes every one come back \"no schedule row\", which reads exactly like the lost-bid case and buries it"),
   callouts: z.array(z.object({ detail: z.string(), target_sheet: z.string(), sheet: z.string(), bbox: wireBox })).describe("Detail callouts (3/A-601) — edges to their target sheets"),
   buildings: z.array(z.string()).optional().describe("Every building designator the set names (sorted) — present only on multi-building-aware sets. Room numbers reused across these need qualified tags ('A-134')"),
   revisions: z.array(z.object({ rev: z.string(), sheet: z.string(), bbox: wireBox, drawn: z.boolean().optional() })).optional()
     .describe("Every delta-triangle / REV-tag marker the set carries — text markers ('Δ2', 'REV 2') and DRAWN deltas (a bare digit inside a triangle of linework, drawn: true) — where one sits, the ink changed under that revision. Markers on a schedule row or room bubble also attach there (and ride resolve_tag). A revision CLOUD is arc-chain linework these detectors do not read — absence here is not absence of revisions"),
   notes: z.array(z.string()).optional().describe("Named gaps found while indexing (e.g. a continuation whose rows could not be aligned) — the graph refuses silently dropping anything"),
-  counts: z.object({ rooms: z.number().int(), schedules: z.number().int().describe("LOGICAL tables — a schedule continued across sheets counts once"), callouts: z.number().int() }),
+  counts: z.object({ rooms: z.number().int(), unmatched_tags: z.number().int().optional(), schedules: z.number().int().describe("LOGICAL tables — a schedule continued across sheets counts once"), callouts: z.number().int() }),
 };
 
 export const resolveTagOutput = {

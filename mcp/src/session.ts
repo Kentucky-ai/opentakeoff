@@ -3452,6 +3452,7 @@ export class Session {
     return {
       tag: r.tag, name: r.name, sheet: r.sheet, bbox: Session.wireBox(r.bbox),
       ...(r.building ? { building: r.building } : {}),
+      ...(r.corroboration ? { corroboration: r.corroboration } : {}),
       ...(r.revision ? { revision: { rev: r.revision.rev, source: Session.wireEvidence(r.revision.source), ...(r.revision.drawn ? { drawn: true } : {}) } } : {}),
     };
   }
@@ -3471,11 +3472,19 @@ export class Session {
         })),
       })),
       rooms: g.rooms.map(Session.wireRoom),
+      ...(g.unmatched_tags.length ? {
+        unmatched_tags: g.unmatched_tags.map((u) => ({
+          tag: u.tag, sheet: u.sheet, bbox: Session.wireBox(u.bbox),
+          ...(u.building ? { building: u.building } : {}),
+          ...(u.name ? { name: u.name } : {}),
+          reason: u.reason,
+        })),
+      } : {}),
       callouts: g.callouts.map((c) => ({ detail: c.detail, target_sheet: c.target_sheet, sheet: c.sheet, bbox: Session.wireBox(c.bbox) })),
       ...(g.buildings.length ? { buildings: g.buildings } : {}),
       ...(g.revisions.length ? { revisions: g.revisions.map((r) => ({ rev: r.rev, sheet: r.sheet, bbox: Session.wireBox(r.bbox), ...(r.drawn ? { drawn: true } : {}) })) } : {}),
       ...(g.notes.length ? { notes: g.notes } : {}),
-      counts: { rooms: g.rooms.length, schedules: g.tables.length, callouts: g.callouts.length },
+      counts: { rooms: g.rooms.length, unmatched_tags: g.unmatched_tags.length, schedules: g.tables.length, callouts: g.callouts.length },
     };
   }
 
