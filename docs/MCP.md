@@ -75,7 +75,16 @@ Forty tools, in the order an agent tends to reach for them:
   `find_schedule` counts `revised_rows` per table, and a marker never bands
   into a cell or mints a room key. A revision **cloud** with no text marker
   is linework — invisible to this text-layer pass, and stated as such rather
-  than guessed at
+  than guessed at. Real-set column shapes are read too (#87 phase 3b, every
+  one of them found by running a real bid set): a **two-tier header** — a
+  merged `WALLS (PLAN DIRECTION)` parent over `N | E | S | W` — anchors each
+  sub-column under its parent as `WALLS N` … `WALLS W` with real bounds, so a
+  left-aligned wall code never lands in the narrow BASE column beside it; a
+  neighbouring legend cannot bleed into the last column; finish tables headed
+  `SYMBOL` (no CODE, no MARK) extract and chain; and a **DOOR / WINDOW /
+  PARTITION schedule is refused as a finish table** by title — those carry a
+  MARK column too, and a finish code chaining to a door mark is a confidently
+  wrong product — with the refusal named in `notes`
 - **Measure** — `one_click`, `detect_rooms` (both take `layers {include,
   exclude}` to override the sheet's stated layer roles for a call),
   `measure_polygon`, `measure_line`, `measure_surface` (wall SF: an open run

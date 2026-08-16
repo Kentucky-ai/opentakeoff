@@ -2,6 +2,23 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-16 — the sheet graph meets real sets; opentakeoff-mcp 0.9.45
+
+Everything here was found by running `graph-audit` on actual bid sets across five general contractors — none of it was reachable from synthetic fixtures, and each fix ships with a fixture that reproduces the real failure.
+
+### Fixed
+- **Two-tier column headers** (`WALLS (PLAN DIRECTION)` spanning `N | E | S | W`). The sub-labels are single letters, not vocabulary words, so they anchored nothing and every wall column banded to whichever neighbour was nearest — N and E into BASE, S and W into CEILING. On a real gym set BASE read `VWB-1 - FRP-1, FRP-1A, PT` instead of `VWB-1`; **a polluted base column is a wrong number in the bid**, not a cosmetic smear. A run of ≥2 adjacent non-vocabulary tokens inside the header's own span is now read as a sub-tier, the parent is the span above that actually covers the run, and each sub-anchor is labelled `WALLS N` so the column keeps both halves of its meaning. Sub-columns under a merged parent are equal-width by drafting convention, so they carry real **bounds** rather than centers: a bounded anchor claims only what falls inside it, which is what keeps a left-aligned wall code out of the narrow BASE column next door. No parent above the run, no sub-tier — an unexplained token never mints a column.
+- **A DOOR / WINDOW / PARTITION schedule is no longer read as a finish schedule.** Those tables carry a MARK column, so the finish hunt happily indexed one — and a finish code colliding with a door mark would then chain to a door, a confidently wrong product in the bid. Found on a real grocery set whose DOOR SCHEDULE extracted as 54 "finish" rows. Refused by title, and only when the title does not also say FINISH or MATERIAL (when in doubt the table is kept), with the drop NAMED in `graph.notes`.
+- **A neighbouring table no longer bleeds into the last column.** The generous right band edge — correct for a wide REMARKS column — swallowed a finish legend sitting ~300 px right of a room schedule, so every CEILING cell read `SC-1 TL-3 CERAMIC TILE`. The edge is now generous only when the last column is prose-shaped (REMARKS / DESCRIPTION / NOTES); a code column hugs its anchor.
+- **Finish tables headed `SYMBOL` extract and chain.** A real set headed its table `SYMBOL | MATERIAL DESCRIPTION | MANUFACTURER | PRODUCT` — no CODE, no MARK — so it never extracted and **zero** rooms chained to a product definition. `SYMBOL` and `COMMENTS` join the finish vocabulary; that set now chains 165 of 273 finish cells.
+- **Room names carrying an apostrophe** (`KID'S CRUNCH`, `MEN'S SAUNA`) are read as names again.
+
+### Added
+- **`mcp/scripts/graph-audit.mjs`** — the field-eval loop this release came out of. Point it at a real set (addenda merge in as extra arguments) and it prints every sheet's role with evidence, every table, every revision marker, the named gaps, then resolves every room tag and tallies refusals by reason. A set you bid is the held-out key; real plans never enter the repo.
+
+### Known, and named rather than papered over
+- **Keynote and detail bubbles still read as room tags.** Bare 2-digit numbers in bubbles (`11`–`23` on one set, `10`–`27` on another) come back as rooms that refuse with "no schedule row" — the refusal is honest but the tag was never a room. Distinguishing them needs the bubble's geometry, not its text; tracked on #87.
+
 ## 2026-08-15 — sheet graph phase 3: revision markers, wide-REMARKS banding; opentakeoff-mcp 0.9.44
 
 ### Added
