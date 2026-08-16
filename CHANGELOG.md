@@ -2,6 +2,14 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-15 — sheet graph phase 3: revision markers, wide-REMARKS banding; opentakeoff-mcp 0.9.44
+
+### Added
+- **Revision markers in the sheet graph** (#87 phase 3). A delta triangle (`Δ2`, `2▲`) or `REV 2` tag is drafting's flag that the ink nearby changed under a revision — reading the row without surfacing the delta prices a superseded number confidently, the same class of error as reading a demolition schedule as the finish schedule. The graph now detects markers set-wide (`sheet_graph.revisions`), attaches each to the schedule row or plan room bubble it sits beside (margin deltas attach from OUTSIDE the table's data band — that's where they live), and rides them through `resolve_tag` as `revisions` with evidence: the codes returned are the post-revision answer, and the consumer is told to view the marker and check the addendum. `find_schedule` discloses `revised_rows` per table. The honest limit is stated where it binds: a revision **cloud** with no text marker is linework, invisible to a text-layer pass — absence of markers is not absence of revisions. Killed along the way, with a pinning test: a delta left of the key column used to strip to its bare digit and **mint a phantom room** (`Δ2` → row key "2") because `rowKeyOf` sanitizes non-alphanumerics; markers are now excluded from banding entirely.
+
+### Fixed
+- **Banding precision on very wide REMARKS gaps** (#87 phase 3, the fixture-first lane). Two reproduced failures, both silent: a baseline-offset or **wrapped** remark line (smaller font, its own y-band) clustered into a keyless fragment row and was dropped — the remark simply vanished from the cell; and in a very wide REMARKS column, a left-aligned remark's left-x could tie against the WALL anchor and band into the wrong column, corrupting a finish cell. Fixes: column anchors and data tokens now band **center-to-center** (a header centered over a wide column claims cells at that column's far edge), and a keyless in-band fragment within 0.6× the table's median row pitch merges into its nearest keyed row — in reading order, with the cell's evidence bbox grown to span every line. Beyond the radius nothing is absorbed: a GENERAL NOTES block under the table stays out, pinned by test. Cell-level precision/recall on the phase-3 fixtures: 1.000/1.000 (18/18); phases 1–2 corpora unchanged at 1.000/1.000.
+
 ## 2026-08-15 — a truncated count now says so; opentakeoff-mcp 0.9.43
 
 ### Fixed

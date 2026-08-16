@@ -9,7 +9,7 @@
 //   - schedule sheets never mint phantom room tags.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildSheetGraph, resolveTag, classifySheetRole, extractTable, roomTags, detailCallouts, type GraphSpan, type SheetSpans, type SheetGraph } from "../src/lib/sheetgraph.ts";
+import { buildSheetGraph, resolveTag, classifySheetRole, extractTable, roomTags, detailCallouts, revisionOf, type GraphSpan, type SheetSpans, type SheetGraph } from "../src/lib/sheetgraph.ts";
 
 // span builder: 8pt-tall text, width ~5px/char — the shape the MCP server serves
 const sp = (str: string, x: number, y: number): GraphSpan => ({ str, x, y, w: str.length * 5, h: 8 });
@@ -462,4 +462,180 @@ test("the failure modes REFUSE with reasons — never silent omission", () => {
   const scanned = buildSheetGraph([{ key: "scan.pdf#1", spans: [] }]);
   assert.equal(scanned.available, false);
   assert.deepEqual(scanned.rooms, []);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Phase 3 (#87): revision markers, and banding precision on very wide REMARKS
+// gaps. Same doctrine, two more ways a real set produces a confident wrong
+// number:
+//   - a delta triangle beside a schedule row is drafting's flag that the ink
+//     CHANGED — reading the row without surfacing the delta prices a revision
+//     silently, and a delta left of the key column used to strip to its digit
+//     and MINT a room;
+//   - a wide REMARKS column wraps and baseline-shifts its text — the fragment
+//     rows used to drop silently, and a left-aligned remark could band into
+//     the WALL column on a left-x tie.
+// ═════════════════════════════════════════════════════════════════════════════
+
+// a small-font span (a remark cell's 6pt text): the baseline-offset shape
+const rsp = (str: string, x: number, y: number): GraphSpan => ({ str, x, y, w: str.length * 5, h: 6 });
+
+test("revisionOf: whole-span markers only — a bare number or running text never matches", () => {
+  assert.equal(revisionOf("Δ2"), "2");
+  assert.equal(revisionOf("∆ 3"), "3");
+  assert.equal(revisionOf("2▲"), "2");
+  assert.equal(revisionOf("REV 2"), "2");
+  assert.equal(revisionOf("REVISION 12"), "12");
+  assert.equal(revisionOf("rev. #4"), "4");
+  assert.equal(revisionOf("2"), null, "a bare number is never a marker");
+  assert.equal(revisionOf("102"), null);
+  assert.equal(revisionOf("SEE REV 2 NOTES"), null, "running text never matches");
+  assert.equal(revisionOf("REVISED PER ADDENDUM"), null);
+});
+
+// ── revision fixture: a delta on a schedule row, a delta on a plan bubble ───
+const revPlan: SheetSpans = {
+  key: "rev.pdf#1",
+  sheet_number: "A-104",
+  spans: [
+    sp("FOURTH FLOOR FINISH PLAN", 300, 900),
+    sp("OFFICE", 100, 100), sp("401", 104, 112),
+    sp("LAB", 300, 100), sp("402", 310, 112), sp("Δ2", 330, 108), // delta ON the bubble
+    sp("STOR", 500, 100), sp("403", 508, 112),
+  ],
+};
+const revSched: SheetSpans = {
+  key: "rev.pdf#2",
+  sheet_number: "A-604",
+  spans: [
+    sp("ROOM FINISH SCHEDULE", 100, 40),
+    sp("NO", 100, 60), sp("NAME", 160, 60), sp("FLOOR", 300, 60), sp("BASE", 400, 60), sp("WALL", 500, 60),
+    sp("401", 100, 80), sp("OFFICE", 160, 80), sp("CPT-4", 300, 80), sp("RB-4", 400, 80), sp("P-4", 500, 80),
+    // the delta sits LEFT of the key column, in the margin — the classic spot
+    sp("Δ2", 70, 100),
+    sp("402", 100, 100), sp("LAB", 160, 100), sp("EPX-1", 300, 100), sp("RB-4", 400, 100), sp("P-4", 500, 100),
+    sp("REV 3", 62, 120),
+    sp("403", 100, 120), sp("STOR", 160, 120), sp("VCT-4", 300, 120), sp("RB-4", 400, 120), sp("P-4", 500, 120),
+  ],
+};
+const REV_KEY: Record<string, Record<string, string>> = {
+  "401": { FLOOR: "CPT-4", BASE: "RB-4", WALL: "P-4" },
+  "402": { FLOOR: "EPX-1", BASE: "RB-4", WALL: "P-4" },
+  "403": { FLOOR: "VCT-4", BASE: "RB-4", WALL: "P-4" },
+};
+
+test("revision markers: a delta never mints a room key, and never corrupts a cell", () => {
+  const tab = extractTable(revSched, "room-finish")!;
+  assert.ok(!tab.rows.some((r) => r.key === "2"), "'Δ2' left of the key column must not strip to row key '2'");
+  assert.ok(!tab.rows.some((r) => r.key === "3"), "'REV 3' must not mint a row either");
+  assert.deepEqual(tab.rows.map((r) => r.key), ["401", "402", "403"]);
+  const r402 = tab.rows.find((r) => r.key === "402")!;
+  assert.equal(r402.cells.NO.text, "402", "the marker stayed out of the key cell");
+  assert.equal(r402.cells.FLOOR.text, "EPX-1");
+  // the marker attached as the row's revision, with evidence at the ink
+  assert.equal(r402.revision?.rev, "2");
+  assert.equal(r402.revision?.source.text, "Δ2");
+  assert.ok(r402.revision!.source.bbox[0] < 100, "the evidence bbox points at the margin delta");
+  assert.equal(tab.rows.find((r) => r.key === "403")!.revision?.rev, "3", "REV-style tags attach too");
+  assert.equal(tab.rows.find((r) => r.key === "401")!.revision, undefined, "unrevised rows carry nothing");
+});
+
+test("revision markers: they ride the graph, the plan bubble, and every resolution", () => {
+  const g = buildSheetGraph([revPlan, revSched]);
+  assert.equal(g.revisions.length, 3, "every marker the set carries is listed");
+  assert.deepEqual([...new Set(g.revisions.map((r) => r.rev))].sort(), ["2", "3"]);
+  // the plan bubble's delta attaches to room 402, not its neighbours
+  assert.equal(g.rooms.find((r) => r.tag === "402")!.revision?.rev, "2");
+  assert.equal(g.rooms.find((r) => r.tag === "401")!.revision, undefined);
+  assert.equal(g.rooms.find((r) => r.tag === "403")!.revision, undefined);
+  // resolution surfaces the delta — the codes are the POST-revision answer,
+  // and the consumer is told the ink changed (row + bubble dedupe to one)
+  const res = resolveTag(g, "402");
+  assert.equal(res.status, "resolved");
+  if (res.status === "resolved") {
+    assert.equal(res.finishes.find((f) => f.surface === "FLOOR")!.code, "EPX-1");
+    assert.equal(res.revisions?.length, 1);
+    assert.equal(res.revisions![0].rev, "2");
+    assert.ok(res.revisions![0].source.sheet, "the revision carries evidence like every other edge");
+  }
+  const clean = resolveTag(g, "401");
+  assert.equal(clean.status, "resolved");
+  if (clean.status === "resolved") assert.equal(clean.revisions, undefined, "no marker, no revisions field");
+});
+
+// ── wide-REMARKS fixture: wrapped + baseline-offset remark, wide column gap ─
+const widePlan: SheetSpans = {
+  key: "wide.pdf#1",
+  sheet_number: "A-105",
+  spans: [
+    sp("FIFTH FLOOR FINISH PLAN", 300, 900),
+    sp("OFFICE", 100, 100), sp("501", 104, 112),
+    sp("LAB", 300, 100), sp("502", 310, 112),
+    sp("STOR", 500, 100), sp("503", 508, 112),
+  ],
+};
+const wideSched: SheetSpans = {
+  key: "wide.pdf#2",
+  sheet_number: "A-605",
+  spans: [
+    sp("ROOM FINISH SCHEDULE", 100, 40),
+    // REMARKS sits far right — a very wide column, header centered over it
+    sp("NO", 100, 60), sp("NAME", 160, 60), sp("FLOOR", 300, 60), sp("BASE", 400, 60), sp("WALL", 500, 60), sp("REMARKS", 900, 60),
+    sp("501", 100, 80), sp("OFFICE", 160, 80), sp("CPT-8", 300, 80), sp("RB-8", 400, 80), sp("P-8", 500, 80),
+    // the remark: smaller font, baseline-offset, left-aligned at the wide
+    // column's far-left edge — and WRAPPED onto a second line
+    rsp("SEE FINISH PLAN FOR", 700, 84),
+    rsp("EXTENT OF CPT-8", 700, 94),
+    sp("502", 100, 110), sp("LAB", 160, 110), sp("EPX-2", 300, 110), sp("RB-8", 400, 110), sp("P-8", 500, 110),
+    sp("503", 100, 140), sp("STOR", 160, 140), sp("VCT-8", 300, 140), sp("RB-8", 400, 140), sp("P-8", 500, 140), sp("ATTIC STOCK", 905, 140),
+    // a notes block BELOW the table — near-ish, but beyond the repair radius
+    sp("GENERAL NOTES:", 100, 200),
+    sp("ALL FINISHES PER SPEC SECTION 09", 100, 212),
+  ],
+};
+const WIDE_KEY: Record<string, Record<string, string>> = {
+  "501": { FLOOR: "CPT-8", BASE: "RB-8", WALL: "P-8" },
+  "502": { FLOOR: "EPX-2", BASE: "RB-8", WALL: "P-8" },
+  "503": { FLOOR: "VCT-8", BASE: "RB-8", WALL: "P-8" },
+};
+
+test("wide REMARKS: wrapped and baseline-offset remark lines merge into their row — in order, cited", () => {
+  const tab = extractTable(wideSched, "room-finish")!;
+  assert.deepEqual(tab.rows.map((r) => r.key), ["501", "502", "503"], "notes below the table mint nothing");
+  const r501 = tab.rows.find((r) => r.key === "501")!;
+  // the left-aligned wide-column remark bands to REMARKS, not WALL — and the
+  // wrapped second line rides along in reading order
+  assert.equal(r501.cells.REMARKS?.text, "SEE FINISH PLAN FOR EXTENT OF CPT-8");
+  assert.equal(r501.cells.WALL.text, "P-8", "the wall finish is not polluted by the remark");
+  assert.ok(r501.cells.REMARKS!.bbox[3] >= 94, "the cell's evidence bbox spans both lines");
+  assert.equal(tab.rows.find((r) => r.key === "503")!.cells.REMARKS?.text, "ATTIC STOCK");
+  assert.equal(tab.rows.find((r) => r.key === "502")!.cells.REMARKS, undefined, "no remark, no invented cell");
+  // the notes block stayed OUT — beyond the repair radius
+  for (const r of tab.rows) for (const c of Object.values(r.cells)) assert.ok(!/GENERAL NOTES|PER SPEC/.test(c.text), `notes leaked into ${r.key}`);
+});
+
+// ── phase-3 SCORED: both lanes, cell-level P/R pinned like every phase ──────
+test("SCORED phase 3: revisions + wide REMARKS, precision/recall against the held-out keys", () => {
+  const graphs: Array<[SheetGraph, Record<string, Record<string, string>>]> = [
+    [buildSheetGraph([revPlan, revSched]), REV_KEY],
+    [buildSheetGraph([widePlan, wideSched]), WIDE_KEY],
+  ];
+  let tp = 0, fp = 0, expected = 0;
+  for (const [g, key] of graphs) {
+    expected += Object.values(key).reduce((n, v) => n + Object.keys(v).length, 0);
+    for (const tag of Object.keys(key)) {
+      const res = resolveTag(g, tag);
+      assert.equal(res.status, "resolved", tag);
+      if (res.status !== "resolved") continue;
+      for (const f of res.finishes) {
+        assert.ok(f.source.sheet && f.source.bbox, `every cell carries a citation: ${tag}/${f.surface}`);
+        if (key[tag][f.surface] === f.code) tp++; else fp++;
+      }
+    }
+  }
+  const precision = tp / Math.max(1, tp + fp);
+  const recall = tp / expected;
+  console.log(`  sheetgraph phase-3 cell-level: precision ${precision.toFixed(3)} recall ${recall.toFixed(3)} (${tp}/${expected})`);
+  assert.ok(precision >= 0.99, `precision ${precision}`);
+  assert.ok(recall >= 0.99, `recall ${recall}`);
 });

@@ -60,11 +60,16 @@ const pages = [
     T(100, 310, 10, "LVT-1"), T(200, 310, 10, "LUXURY VINYL TILE"), T(380, 310, 10, "EXAMPLECO"),
     T(100, 290, 10, "RB-1"), T(200, 290, 10, "RESILIENT BASE"), T(380, 290, 10, "EXAMPLECO"),
   ],
-  // page 4 — Building B room-finish schedule, base fragment
+  // page 4 — Building B room-finish schedule, base fragment. Row 134 carries a
+  // revision marker in the margin (phase 3): ASCII "REV 2" — the Δ glyph is
+  // not in WinAnsi, and the REV form exercises the same attachment path. Kept
+  // a real margin's distance from the key column: closer and pdf.js glues the
+  // marker and the key into one span ("REV 2134").
   [
     BORDER,
     T(100, 580, 12, "ROOM FINISH SCHEDULE - BUILDING B"),
     ...rfHeader(550, false),
+    T(50, 530, 10, "REV 2"),
     ...rfRow(530, ["134", "STORAGE", "VCT-2", "RB-2", "P-2"]),
   ],
   // page 5 — the continuation: header repeated, the rest of the rows

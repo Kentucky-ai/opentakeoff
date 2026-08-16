@@ -629,6 +629,39 @@ test("sheet graph phase 2 (#87): continuation merges to ONE table, rotated heade
   assert.deepEqual(matchB.parts.map((p: any) => [p.sheet, p.rows]), [["multibuilding-set.pdf#4", 1], ["multibuilding-set.pdf#5", 1]]);
 });
 
+// ── the sheet graph, phase 3 (#87): revision markers on the wire. The fixture
+// carries "REV 2" in the margin beside building B's row 134 — the flag that
+// the row's ink changed under revision 2. The marker must never band into a
+// cell, and must ride sheet_graph, resolve_tag, and find_schedule.
+test("sheet graph phase 3 (#87): a revision marker rides the wire and never corrupts the row", async () => {
+  const client = await pair();
+  await callOk(client, "load_plan", { path: MB_SET });
+
+  const g = await callOk(client, "sheet_graph");
+  assert.equal(g.revisions.length, 1, "the set's one marker is listed");
+  assert.equal(g.revisions[0].rev, "2");
+  assert.equal(g.revisions[0].sheet, "multibuilding-set.pdf#4");
+  assert.ok(g.revisions[0].bbox.x1 > g.revisions[0].bbox.x0, "the marker carries its bbox");
+
+  // the revised row resolves to its post-revision codes AND says the ink changed
+  const b = await callOk(client, "resolve_tag", { tag: "B-134" });
+  assert.equal(b.status, "resolved");
+  assert.equal(b.finishes.find((f: any) => f.surface === "FLOOR").code, "VCT-2", "the marker stayed out of the cells");
+  assert.equal(b.revisions.length, 1);
+  assert.equal(b.revisions[0].rev, "2");
+  assert.equal(b.revisions[0].source.text, "REV 2");
+  assert.equal(b.revisions[0].source.sheet, "multibuilding-set.pdf#4");
+
+  // an unrevised row carries no revisions field
+  const a = await callOk(client, "resolve_tag", { tag: "A-134" });
+  assert.equal(a.revisions, undefined);
+
+  // find_schedule discloses the revised-row count per table
+  const found = await callOk(client, "find_schedule", { kind: "room finish" });
+  assert.equal(found.matches.find((m: any) => m.building === "B").revised_rows, 1);
+  assert.equal(found.matches.find((m: any) => m.building === "A").revised_rows, undefined);
+});
+
 // 0.9.20 — symbol_sweep's output contract, both modes, schema round-tripped
 // unstripped (the assign-mode deepEqual discipline: zod strips unknown keys,
 // so equality proves the schema states EVERY returned field).

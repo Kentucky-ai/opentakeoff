@@ -3425,6 +3425,13 @@ export class Session {
   private static wireEvidence(e: { sheet: string; text: string; bbox: [number, number, number, number] }) {
     return { sheet: e.sheet, text: e.text, bbox: Session.wireBox(e.bbox) };
   }
+  private static wireRoom(r: SheetGraph["rooms"][number]) {
+    return {
+      tag: r.tag, name: r.name, sheet: r.sheet, bbox: Session.wireBox(r.bbox),
+      ...(r.building ? { building: r.building } : {}),
+      ...(r.revision ? { revision: { rev: r.revision.rev, source: Session.wireEvidence(r.revision.source) } } : {}),
+    };
+  }
 
   async sheetGraph() {
     const g = await this.ensureGraph();
@@ -3440,9 +3447,10 @@ export class Session {
           ...(t.rotated_headers ? { rotated_headers: true } : {}),
         })),
       })),
-      rooms: g.rooms.map((r) => ({ tag: r.tag, name: r.name, sheet: r.sheet, bbox: Session.wireBox(r.bbox), ...(r.building ? { building: r.building } : {}) })),
+      rooms: g.rooms.map(Session.wireRoom),
       callouts: g.callouts.map((c) => ({ detail: c.detail, target_sheet: c.target_sheet, sheet: c.sheet, bbox: Session.wireBox(c.bbox) })),
       ...(g.buildings.length ? { buildings: g.buildings } : {}),
+      ...(g.revisions.length ? { revisions: g.revisions.map((r) => ({ rev: r.rev, sheet: r.sheet, bbox: Session.wireBox(r.bbox) })) } : {}),
       ...(g.notes.length ? { notes: g.notes } : {}),
       counts: { rooms: g.rooms.length, schedules: g.tables.length, callouts: g.callouts.length },
     };
@@ -3472,7 +3480,7 @@ export class Session {
     const g = await this.ensureGraph();
     if (!g.available) throw new UserError("This set has no text layer (a scan) — the sheet graph is unavailable, not empty.");
     const res = resolveTag(g, tag);
-    const room = res.room ? { tag: res.room.tag, name: res.room.name, sheet: res.room.sheet, bbox: Session.wireBox(res.room.bbox), ...(res.room.building ? { building: res.room.building } : {}) } : null;
+    const room = res.room ? Session.wireRoom(res.room) : null;
     if (res.status === "unresolved") {
       return {
         status: "unresolved" as const, tag: res.tag, room, reason: res.reason,
@@ -3489,6 +3497,7 @@ export class Session {
         ...(f.definition ? { definition: { cells: f.definition.cells, source: Session.wireEvidence(f.definition.source) } } : {}),
       })),
       sources: res.sources.map(Session.wireEvidence),
+      ...(res.revisions?.length ? { revisions: res.revisions.map((v) => ({ rev: v.rev, source: Session.wireEvidence(v.source) })) } : {}),
     };
   }
 
@@ -3508,6 +3517,7 @@ export class Session {
         headers: t.headers, region: Session.wireBox(t.region),
         ...(t.building ? { building: t.building } : {}),
         ...(t.rotated_headers ? { rotated_headers: true } : {}),
+        ...(t.rows.some((r) => r.revision) ? { revised_rows: t.rows.filter((r) => r.revision).length } : {}),
         ...(t.parts ? { parts: t.parts.map((p) => ({ sheet: p.sheet, title: p.title, rows: p.rows, region: Session.wireBox(p.region) })) } : {}),
       })),
     };

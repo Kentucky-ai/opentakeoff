@@ -1,8 +1,9 @@
-// The sheet graph (#87, phases 1–2) — a pure, client-side plan-set index built
+// The sheet graph (#87, phases 1–3) — a pure, client-side plan-set index built
 // from positioned text spans: sheet roles, schedule tables (including tables
 // that CONTINUE across sheets and tables with rotated column headers), room
-// tags qualified by building, detail callouts, and the resolution
-// room tag → schedule row → finish definition.
+// tags qualified by building, detail callouts, revision markers (delta
+// triangles / REV tags — the flag that a row's answer changed under an
+// addendum), and the resolution room tag → schedule row → finish definition.
 // No pdf.js, no DOM — the MCP server and the canvas both feed it spans.
 //
 // Doctrine (the RFC's): every edge carries an EVIDENCE pointer (sheet, text,
@@ -119,6 +120,35 @@ export function sheetBuilding(sheet: SheetSpans): { building: string; evidence: 
   return { building, evidence: { sheet: sheet.key, text: span.str.trim(), bbox: bboxOf(span) } };
 }
 
+// ── revision markers (#87 phase 3) ──────────────────────────────────────────
+// A delta triangle ("Δ2", "2▲") or a REV tag ("REV 2") is drafting's flag that
+// the ink nearby CHANGED under a revision — the printed value is the current
+// answer, but reading it without surfacing the delta is how a superseded
+// number gets priced confidently. Two failure modes this section kills:
+//   - a delta sitting left of a schedule row's key column used to strip to its
+//     bare digit and MINT a room ("Δ2" → row key "2") — markers are excluded
+//     from banding entirely;
+//   - a revised row read as if nothing happened — the marker attaches to the
+//     row (and to a plan tag it sits beside) and rides every resolution.
+// The honest limit, named: a revision CLOUD is linework, not text — a clouded
+// row with no delta/REV text is invisible to a spans-only pass. That gap is
+// phase 4 (geometry), not something to fake here.
+export interface RevisionMarker { rev: string; sheet: string; bbox: Bbox }
+export interface RowRevision { rev: string; source: Evidence }
+const DELTA_MARK_RE = /^[Δ∆△▲]\s*(\d{1,2}[A-Z]?)$|^(\d{1,2}[A-Z]?)\s*[Δ∆△▲]$/;
+const REV_MARK_RE = /^REV(?:ISION)?\.?\s*#?\s*(\d{1,2}[A-Z]?)$/;
+
+/** The revision a span IS a marker for, or null. Tight on purpose: a bare
+ * number is never a marker, and running text never matches (whole-span only). */
+export const revisionOf = (s: string): string | null => {
+  const t = norm(s);
+  if (!t || t.length > 12) return null;
+  const d = t.match(DELTA_MARK_RE);
+  if (d) return d[1] ?? d[2];
+  const r = t.match(REV_MARK_RE);
+  return r ? r[1] : null;
+};
+
 // ── row clustering (the scheduleParse idiom, span-shaped) ───────────────────
 function clusterRows(spans: GraphSpan[]): GraphSpan[][] {
   const toks = spans.filter((t) => t.str && t.str.trim()).sort((a, b) => a.y - b.y || a.x - b.x);
@@ -153,7 +183,7 @@ export interface TableCell { text: string; bbox: Bbox }
  * continuation it differs from the table's base sheet, and the row's evidence
  * must cite where the ink actually is. `building` is the row-level qualifier
  * (a qualified key's prefix, or the BLDG column) when one exists. */
-export interface TableRow { key: string; sheet: string; building?: string; cells: Record<string, TableCell> }
+export interface TableRow { key: string; sheet: string; building?: string; cells: Record<string, TableCell>; revision?: RowRevision }
 export interface TablePart { sheet: string; title: string; rows: number; region: Bbox; rotated_headers?: boolean }
 export interface ScheduleTable {
   kind: TableKind;
@@ -189,7 +219,11 @@ function findHeaderRow(rows: GraphSpan[][], vocab: string[], required: string[],
     const seen = new Set<string>();
     for (const t of rows[i]) {
       const w = headerLabel(t.str, vocab);
-      if (w && !seen.has(w)) { seen.add(w); anchors.push({ label: w, x: t.x }); }
+      // anchor at the header span's CENTER — data bands by center too, so a
+      // header centered over a wide column (the REMARKS case) claims cells
+      // left-aligned at that column's far edge instead of losing them to the
+      // neighbour on a left-x tie
+      if (w && !seen.has(w)) { seen.add(w); anchors.push({ label: w, x: t.x + (t.w || 0) / 2 }); }
     }
     if (anchors.length < minHits || !required.some((r) => seen.has(r))) continue;
     return { anchors: anchors.sort((a, b) => a.x - b.x), rowIndex: i };
@@ -273,6 +307,97 @@ function rowKeyOf(raw: string, kind: "room-finish" | "finish", buildings?: Set<s
 /** The number part of a row key — "A-134" and "134" both answer for 134. */
 const numOf = (key: string): string => key.match(QUALIFIED_KEY_RE)?.[2] ?? key;
 
+const centerX = (t: GraphSpan) => t.x + (t.w || 0) / 2;
+
+// Band clustered rows to column anchors — shared by extractTable and the
+// title-only continuation path. Phase-3 hardening lives here:
+//   - a revision marker never bands: a delta left of the key column used to
+//     strip to its digit and mint a room ("Δ2" → key "2"), and a delta beside
+//     a cell corrupted its text. Markers attach to the nearest keyed row
+//     within the repair radius as that row's `revision` instead;
+//   - a keyless in-band fragment (a baseline-offset remark span, the wrapped
+//     second line of a wide REMARKS cell) within 0.6× the table's median row
+//     pitch of a keyed row is that row's own ink and merges into its cells —
+//     beyond the radius it is left alone (a NOTES block under the table is
+//     not a remark), exactly as before.
+function bandDataRows(
+  rows: GraphSpan[][],
+  anchors: Array<{ label: string; x: number }>,
+  kind: "room-finish" | "finish",
+  sheetKey: string,
+  buildings: Set<string> | undefined,
+  cfg: { fromIdx: number; belowY: number; keyAlign?: { x: number; tol: number } },
+): { out: TableRow[]; region: Bbox | null } {
+  const { x0, x1, medGap } = bandLimits(anchors);
+  const out: TableRow[] = [];
+  const outY: number[] = [];
+  let region: Bbox | null = null;
+  const add = (row: TableRow, toks: GraphSpan[]) => {
+    for (const t of toks) {
+      const label = nearestAnchor(centerX(t), anchors);
+      const text = t.str.trim();
+      if (!row.cells[label]) row.cells[label] = { text, bbox: bboxOf(t) };
+      else row.cells[label] = { text: `${row.cells[label].text} ${text}`, bbox: merge(row.cells[label].bbox, bboxOf(t)) };
+      region = region ? merge(region, bboxOf(t)) : bboxOf(t);
+    }
+  };
+  const orphans: Array<{ toks: GraphSpan[]; y: number }> = [];
+  const markers: Array<{ rev: string; span: GraphSpan }> = [];
+  for (let i = Math.max(cfg.fromIdx, 0); i < rows.length; i++) {
+    if (rowY(rows[i]) <= cfg.belowY) continue;
+    const banded: GraphSpan[] = [];
+    for (const t of rows[i]) {
+      const rev = revisionOf(t.str);
+      // a delta usually sits in the MARGIN beside its row — outside the data
+      // band — so the marker gate is wider than the cell gate
+      if (rev != null) {
+        if (centerX(t) >= x0 - 2.5 * medGap && centerX(t) <= x1 + medGap) markers.push({ rev, span: t });
+        continue;
+      }
+      if (t.x >= x0 && t.x <= x1) banded.push(t);
+    }
+    if (!banded.length) continue;
+    const keyed = rowKeyOf(banded[0].str, kind, buildings);
+    if (!keyed) { orphans.push({ toks: banded, y: rowY(rows[i]) }); continue; }
+    // continuation adoption: a keyed row whose key column does not line up
+    // with the base's belongs to some OTHER structure — skipped, never merged
+    if (cfg.keyAlign && Math.abs(centerX(banded[0]) - cfg.keyAlign.x) > cfg.keyAlign.tol) continue;
+    const row: TableRow = { key: keyed.key, sheet: sheetKey, cells: {} };
+    if (keyed.building) row.building = keyed.building;
+    add(row, banded);
+    out.push(row);
+    outY.push(rowY(rows[i]));
+  }
+  // the repair radius: median gap between consecutive keyed rows; a lone-row
+  // table falls back to a couple of text heights
+  const gaps = outY.slice(1).map((y, i) => y - outY[i]).filter((d) => d > 0).sort((a, b) => a - b);
+  const pitch = gaps.length ? gaps[gaps.length >> 1] : 0;
+  const nearest = (y: number): { i: number; d: number } => {
+    let bi = -1, bd = Infinity;
+    outY.forEach((ry, i) => { const d = Math.abs(y - ry); if (d < bd) { bd = d; bi = i; } });
+    return { i: bi, d: bd };
+  };
+  const radius = (h: number) => (pitch ? pitch * 0.6 : Math.max(h, 8) * 1.6);
+  for (const o of orphans) {
+    const { i, d } = nearest(o.y);
+    if (i < 0 || d > radius(Math.max(...o.toks.map((t) => t.h || 8)))) continue;
+    add(out[i], o.toks);
+  }
+  for (const m of markers) {
+    const { i, d } = nearest(m.span.y);
+    if (i < 0 || d > radius(m.span.h || 8) || out[i].revision) continue;
+    out[i].revision = { rev: m.rev, source: { sheet: sheetKey, text: m.span.str.trim(), bbox: bboxOf(m.span) } };
+  }
+  // row-level building off the BLDG/BUILDING column, where the key itself
+  // did not carry one
+  for (const row of out) {
+    if (row.building) continue;
+    const cellB = norm(row.cells.BLDG?.text || row.cells.BUILDING?.text || "");
+    if (DESIGNATOR_RE.test(cellB)) row.building = cellB;
+  }
+  return { out, region };
+}
+
 /** Extract one kind of table from a sheet's spans. Returns null when the
  * header structure isn't there — never invented rows. Horizontal header rows
  * are tried first; a sheet without one is re-tried against a rotated
@@ -310,32 +435,13 @@ export function extractTable(sheet: SheetSpans, kind: "room-finish" | "finish", 
     if (titleFrom < -1) titleFrom = rows.length - 1;
   }
 
-  const out: TableRow[] = [];
   let region: Bbox | null = null;
   for (const t of headerSpans) region = region ? merge(region, bboxOf(t)) : bboxOf(t);
-  const { x0, x1 } = bandLimits(anchors);
-  for (let i = Math.max(dataFrom, 0); i < rows.length; i++) {
-    if (rotated && rowY(rows[i]) <= dataBelowY) continue;
-    const inBand = rows[i].filter((t) => t.x >= x0 && t.x <= x1);
-    if (!inBand.length) continue;
-    const keyed = rowKeyOf(inBand[0].str, kind, opts.buildings);
-    if (!keyed) continue;
-    const cells: Record<string, TableCell> = {};
-    for (const t of inBand) {
-      const label = nearestAnchor(t.x, anchors);
-      const text = t.str.trim();
-      if (!cells[label]) cells[label] = { text, bbox: bboxOf(t) };
-      else { cells[label] = { text: `${cells[label].text} ${text}`, bbox: merge(cells[label].bbox, bboxOf(t)) }; }
-      region = region ? merge(region, bboxOf(t)) : bboxOf(t);
-    }
-    const row: TableRow = { key: keyed.key, sheet: sheet.key, cells };
-    // row-level building: the qualified key's prefix, else the BLDG column
-    const cellB = norm(cells.BLDG?.text || cells.BUILDING?.text || "");
-    const b = keyed.building ?? (DESIGNATOR_RE.test(cellB) ? cellB : undefined);
-    if (b) row.building = b;
-    out.push(row);
-  }
+  const banded = bandDataRows(rows, anchors, kind, sheet.key, opts.buildings, { fromIdx: dataFrom, belowY: dataBelowY });
+  const out = banded.out;
+  if (banded.region) region = region ? merge(region, banded.region) : banded.region;
   if (!out.length) return null;
+  const { x0, x1 } = bandLimits(anchors);
   // the table's title: the nearest "… SCHEDULE" span above the header WITHIN
   // the table's own x-band — on a dense sheet the neighbouring table's title
   // shares the y-band and must not label this one
@@ -394,38 +500,22 @@ function mergeContinuation(base: ScheduleTable, frag: ScheduleTable): void {
 function adoptContinuationRows(sheet: SheetSpans, titleSpan: GraphSpan, base: ScheduleTable, buildings: Set<string>): ScheduleTable | null {
   if (!base.anchors?.length || base.kind === "unknown") return null;
   const rows = clusterRows(sheet.spans.filter((s) => !isVertical(s)));
-  const { x0, x1, medGap } = bandLimits(base.anchors);
+  const { medGap } = bandLimits(base.anchors);
   const keyTol = Math.max(40, medGap / 2);
-  const out: TableRow[] = [];
-  let region: Bbox = bboxOf(titleSpan);
-  for (const row of rows) {
-    if (rowY(row) <= titleSpan.y) continue;
-    const inBand = row.filter((t) => t.x >= x0 && t.x <= x1);
-    if (!inBand.length) continue;
-    const keyed = rowKeyOf(inBand[0].str, base.kind, buildings);
-    if (!keyed || Math.abs(inBand[0].x - base.anchors[0].x) > keyTol) continue;
-    const cells: Record<string, TableCell> = {};
-    for (const t of inBand) {
-      const label = nearestAnchor(t.x, base.anchors);
-      const text = t.str.trim();
-      if (!cells[label]) cells[label] = { text, bbox: bboxOf(t) };
-      else { cells[label] = { text: `${cells[label].text} ${text}`, bbox: merge(cells[label].bbox, bboxOf(t)) }; }
-      region = merge(region, bboxOf(t));
-    }
-    const r: TableRow = { key: keyed.key, sheet: sheet.key, cells };
-    if (keyed.building) r.building = keyed.building;
-    out.push(r);
-  }
-  if (!out.length) return null;
+  const banded = bandDataRows(rows, base.anchors, base.kind, sheet.key, buildings, {
+    fromIdx: 0, belowY: titleSpan.y, keyAlign: { x: base.anchors[0].x, tol: keyTol },
+  });
+  if (!banded.out.length) return null;
+  const region = banded.region ? merge(bboxOf(titleSpan), banded.region) : bboxOf(titleSpan);
   return {
     kind: base.kind, sheet: sheet.key,
     title: { sheet: sheet.key, text: titleSpan.str.trim(), bbox: bboxOf(titleSpan) },
-    headers: base.headers, rows: out, region,
+    headers: base.headers, rows: banded.out, region,
   };
 }
 
 // ── room tags on plans ──────────────────────────────────────────────────────
-export interface RoomTag { tag: string; name: string; sheet: string; bbox: Bbox; building?: string }
+export interface RoomTag { tag: string; name: string; sheet: string; bbox: Bbox; building?: string; revision?: RowRevision }
 const QUALIFIED_TAG_RE = /^([A-Z]{1,2})-(\d{2,3}[A-Z]?)$/;
 
 export interface RoomTagOpts {
@@ -471,6 +561,23 @@ export function roomTags(sheet: SheetSpans, opts: RoomTagOpts = {}): RoomTag[] {
     if (a.building) tag.building = a.building;
     out.push(tag);
   }
+  // a delta beside the bubble flags the ROOM as revised — the finish stated
+  // for it changed under that revision; nearest marker within ~2.5 tag
+  // heights of the bubble's edge attaches, farther ones are someone else's
+  const markers = spans.filter((c) => revisionOf(c.str) != null);
+  for (const tag of out) {
+    const hgt = Math.max(tag.bbox[3] - tag.bbox[1], 6);
+    let bestM: GraphSpan | null = null;
+    let bd = Infinity;
+    for (const m of markers) {
+      const mb = bboxOf(m);
+      const dx = Math.max(tag.bbox[0] - mb[2], mb[0] - tag.bbox[2], 0);
+      const dy = Math.max(tag.bbox[1] - mb[3], mb[1] - tag.bbox[3], 0);
+      const d = Math.hypot(dx, dy);
+      if (d <= hgt * 2.5 && d < bd) { bd = d; bestM = m; }
+    }
+    if (bestM) tag.revision = { rev: revisionOf(bestM.str)!, source: { sheet: sheet.key, text: bestM.str.trim(), bbox: bboxOf(bestM) } };
+  }
   return out;
 }
 
@@ -497,13 +604,24 @@ export interface SheetGraph {
   tables: ScheduleTable[];            // LOGICAL tables — a continued schedule is one entry
   callouts: DetailCallout[];
   buildings: string[];                // every building designator the set names, sorted
+  revisions: RevisionMarker[];        // every delta/REV marker the set carries — the sheet is under revision where these sit
   notes: string[];                    // named gaps found while building — never silent drops
 }
 
 export function buildSheetGraph(sheets: SheetSpans[]): SheetGraph {
   const withText = sheets.filter((s) => s.spans.length > 0);
-  if (!withText.length) return { available: false, sheets: [], rooms: [], tables: [], callouts: [], buildings: [], notes: [] };
+  if (!withText.length) return { available: false, sheets: [], rooms: [], tables: [], callouts: [], buildings: [], revisions: [], notes: [] };
   const notes: string[] = [];
+
+  // revision markers, set-wide — where these sit, the current answer is the
+  // POST-revision answer and the consumer should know the ink changed
+  const revisions: RevisionMarker[] = [];
+  for (const s of withText) {
+    for (const sp of s.spans) {
+      const rev = revisionOf(sp.str);
+      if (rev != null) revisions.push({ rev, sheet: s.key, bbox: bboxOf(sp) });
+    }
+  }
 
   // pass 0 — building vocabulary from TEXT (sheet titles, table titles): the
   // gate for qualified row keys, known before any extraction
@@ -614,7 +732,7 @@ export function buildSheetGraph(sheets: SheetSpans[]): SheetGraph {
     return entry;
   });
 
-  return { available: true, sheets: outSheets, rooms, tables, callouts, buildings: [...buildings].sort(), notes };
+  return { available: true, sheets: outSheets, rooms, tables, callouts, buildings: [...buildings].sort(), revisions, notes };
 }
 
 // ── resolution ──────────────────────────────────────────────────────────────
@@ -628,7 +746,7 @@ export function buildSheetGraph(sheets: SheetSpans[]): SheetGraph {
 export interface ResolvedFinish { surface: string; code: string; source: Evidence; definition?: { cells: Record<string, string>; source: Evidence } }
 export interface ResolveCandidate { key: string; building?: string; sheet: string; table: string }
 export type ResolveResult =
-  | { status: "resolved"; tag: string; room: RoomTag | null; building?: string; finishes: ResolvedFinish[]; sources: Evidence[] }
+  | { status: "resolved"; tag: string; room: RoomTag | null; building?: string; finishes: ResolvedFinish[]; sources: Evidence[]; revisions?: RowRevision[] }
   | { status: "unresolved"; tag: string; room: RoomTag | null; reason: string; candidates?: ResolveCandidate[] };
 
 const SURFACE_HEADERS = ["FLOOR", "BASE", "WALL", "WALLS", "NORTH", "SOUTH", "EAST", "WEST", "CEILING", "WAINSCOT"];
@@ -722,5 +840,12 @@ export function resolveTag(graph: SheetGraph, tag: string): ResolveResult {
     finishes.push(fin);
   }
   if (!finishes.length) return { status: "unresolved", tag: t, room, reason: `schedule row ${t} exists but carries no finish cells the extractor could band` };
-  return { status: "resolved", tag: t, room, ...(chosen.building ? { building: chosen.building } : {}), finishes, sources };
+  // revision markers on the answering row or the plan bubble ride the result:
+  // the codes above are the POST-revision answer, but the consumer must know
+  // the ink changed — a delta read silently is a superseded number priced
+  // confidently
+  const revs: RowRevision[] = [];
+  if (r.revision) revs.push(r.revision);
+  if (room?.revision && !revs.some((v) => v.rev === room.revision!.rev)) revs.push(room.revision);
+  return { status: "resolved", tag: t, room, ...(chosen.building ? { building: chosen.building } : {}), finishes, sources, ...(revs.length ? { revisions: revs } : {}) };
 }
