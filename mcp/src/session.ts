@@ -8,7 +8,7 @@ import path from "node:path";
 import { openPdf, positionedText, textSpans, textItemsInRegion, OPS, type DocHandle, type PageHandle, type TextSpan, type OcgEntry } from "./pdf.ts";
 import { expandForScaleNotes, mixedScaleWarning } from "./scalewarn.ts";
 import { classifyLayerName, layerRoleCodes, segRoles, type LayerInfo } from "../../web/src/lib/layers.ts";
-import { buildSheetGraph, resolveTag, type SheetGraph, type SheetSpans } from "../../web/src/lib/sheetgraph.ts";
+import { buildSheetGraph, resolveTag, classifySheetRole, type SheetGraph, type SheetSpans } from "../../web/src/lib/sheetgraph.ts";
 import { UserError, round1, round2 } from "./format.ts";
 // Condition twins — the inheritance rule, shared with the canvas so a headless session and
 // the app can never disagree about what a twin holds (web/test/variants.test.ts).
@@ -3406,21 +3406,38 @@ export class Session {
     if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
     if (!this.graph) {
       const inputs: SheetSpans[] = [];
+      // The drawn delta-triangle hunt needs linework — but the hunt is a BONUS
+      // lane and must never take the graph down. On a monster set (a 287-sheet
+      // combined pricing set is real), extracting-and-retaining every sheet's
+      // vectors OOMs the process, so: only plan/schedule-shaped sheets that
+      // carry a bare 1–2 digit span are hunted, extraction is THROWAWAY (the
+      // cached s.geo is reused when a tool already paid for it, otherwise the
+      // op list is dropped and the page cleaned), and a global vector budget
+      // bounds the whole pass. Sheets past the budget are NAMED in notes —
+      // text markers are still read everywhere.
+      let vecBudget = 30_000_000; // segments across the whole hunt
+      let skippedHeavy = 0;
       for (const s of this.sheets.values()) {
         if (!s.spans) s.spans = textSpans(s.page);
-        // the drawn delta-triangle hunt needs linework: extract (cached) vector
-        // geometry for sheets that carry bare 1–2 digit spans — the only spans
-        // a drawn delta can label. Sheets without one skip the extraction.
-        let segs: Float64Array | number[] | undefined;
-        if (s.spans.some((t) => /^\d{1,2}$/.test(t.str.trim()))) segs = (await this.ensureGeometry(s)).segs;
-        inputs.push({
-          key: s.key,
-          sheet_number: s.sheetNumber,
-          spans: s.spans.map((t) => ({ str: t.str, x: t.x0, y: t.y0, w: t.x1 - t.x0, h: t.y1 - t.y0, ...(t.rot ? { rot: t.rot } : {}) })),
-          ...(segs?.length ? { segs } : {}),
-        });
+        const spans = s.spans.map((t) => ({ str: t.str, x: t.x0, y: t.y0, w: t.x1 - t.x0, h: t.y1 - t.y0, ...(t.rot ? { rot: t.rot } : {}) }));
+        let segs: number[] | undefined;
+        if (spans.some((t) => /^\d{1,2}$/.test(t.str.trim()))) {
+          const role = classifySheetRole({ key: s.key, sheet_number: s.sheetNumber, spans }).role;
+          if (role === "plan" || role === "schedule" || role === "demolition" || role === "unknown") {
+            if (vecBudget <= 0) skippedHeavy++;
+            else if (s.geo) { segs = s.geo.segs; vecBudget -= segs.length / 4; }
+            else {
+              const opList = await s.page.operatorList();
+              segs = extractVectorGeometry(opList, s.page.viewport.transform, OPS).segs;
+              vecBudget -= segs.length / 4;
+              s.page.cleanup();
+            }
+          }
+        }
+        inputs.push({ key: s.key, sheet_number: s.sheetNumber, spans, ...(segs?.length ? { segs } : {}) });
       }
       this.graph = buildSheetGraph(inputs);
+      if (skippedHeavy) this.graph.notes.push(`drawn-delta hunt skipped on ${skippedHeavy} sheet(s) — the set's linework exceeded the vector budget; text revision markers (Δ2 / REV 2) were still read everywhere`);
     }
     return this.graph;
   }

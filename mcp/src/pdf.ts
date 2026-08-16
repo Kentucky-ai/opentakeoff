@@ -30,6 +30,10 @@ export interface PageHandle {
   viewport: ViewportLike;
   textContent: TextContentLike;
   operatorList(): Promise<OpList>;
+  /** Drop pdf.js's cached op list/resources for this page — the sheet-graph
+   * delta hunt extracts throwaway geometry across MANY pages and must not
+   * accumulate 287 sheets' op lists in the worker cache. Best-effort. */
+  cleanup(): void;
   /** Rasterize the page at the given scale (px per PDF pt) to PNG bytes.
    * Needs @napi-rs/canvas (pdfjs-dist's own optional dependency); throws a
    * plain Error naming it when the platform has no prebuilt binary. */
@@ -118,6 +122,7 @@ export async function openPdf(filePath: string): Promise<DocHandle> {
         viewport: { width: vp.width, height: vp.height, transform: vp.transform },
         textContent,
         operatorList: async () => (await page.getOperatorList()) as unknown as OpList,
+        cleanup: () => { try { page.cleanup(); } catch { /* pending render keeps the cache — fine */ } },
         async renderPng(scale: number): Promise<Uint8Array> {
           await ensureCanvasGlobals();
           const rvp = page.getViewport({ scale });
