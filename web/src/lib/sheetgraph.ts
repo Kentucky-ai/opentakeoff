@@ -291,21 +291,28 @@ export interface ScheduleTable {
    * base first. rows[] above is already the union. */
   parts?: TablePart[];
   /** Header anchors (label + x), kept for continuation adoption. */
-  anchors?: Array<{ label: string; x: number }>;
+  anchors?: Anchor[];
 }
 
 const ROOM_HEADERS = ["ROOM", "NO", "NUMBER", "NAME", "FLOOR", "BASE", "WALL", "WALLS", "NORTH", "SOUTH", "EAST", "WEST", "CEILING", "WAINSCOT", "REMARKS", "CLG", "HT", "BLDG", "BUILDING"];
-const FINISH_HEADERS = ["CODE", "MARK", "MATERIAL", "MANUFACTURER", "PRODUCT", "STYLE", "COLOR", "SIZE", "REMARKS", "DESCRIPTION", "PATTERN"];
+const FINISH_HEADERS = ["CODE", "MARK", "SYMBOL", "MATERIAL", "MANUFACTURER", "PRODUCT", "STYLE", "COLOR", "SIZE", "REMARKS", "DESCRIPTION", "PATTERN", "COMMENTS"];
 // A header CELL is often a multi-word span ("FLOOR FINISH", "CEILING FINISH")
 // — the vocabulary word inside it names the column.
+/** A column anchor. `x` is the header's center. A two-tier SUB-column also
+ * carries explicit bounds [x0, x1]: sub-columns under a merged parent are
+ * equal-width by drafting convention, and bounds are the only honest way to
+ * band them — nearest-center puts a left-aligned wall code in the BASE
+ * column when BASE is narrow and the wall column is wide. */
+type Anchor = { label: string; x: number; x0?: number; x1?: number };
+
 const headerLabel = (s: string, vocab: string[]): string | null => {
   for (const w of norm(s).split(/[^A-Z]+/)) if (w && vocab.includes(w)) return w;
   return null;
 };
 
-function findHeaderRow(rows: GraphSpan[][], vocab: string[], required: string[], minHits: number): { anchors: Array<{ label: string; x: number }>; rowIndex: number } | null {
+function findHeaderRow(rows: GraphSpan[][], vocab: string[], required: string[], minHits: number): { anchors: Anchor[]; rowIndex: number } | null {
   for (let i = 0; i < rows.length; i++) {
-    const anchors: Array<{ label: string; x: number }> = [];
+    const anchors: Anchor[] = [];
     const seen = new Set<string>();
     for (const t of rows[i]) {
       const w = headerLabel(t.str, vocab);
@@ -316,9 +323,78 @@ function findHeaderRow(rows: GraphSpan[][], vocab: string[], required: string[],
       if (w && !seen.has(w)) { seen.add(w); anchors.push({ label: w, x: t.x + (t.w || 0) / 2 }); }
     }
     if (anchors.length < minHits || !required.some((r) => seen.has(r))) continue;
-    return { anchors: anchors.sort((a, b) => a.x - b.x), rowIndex: i };
+    return { anchors: subTierAnchors(rows, i, anchors.sort((a, b) => a.x - b.x), vocab), rowIndex: i };
   }
   return null;
+}
+
+// ── two-tier headers (#87 phase 3b) ─────────────────────────────────────────
+// A merged parent cell over sub-columns — WALLS (PLAN DIRECTION) spanning
+// N | E | S | W — is standard on room-finish schedules. The sub-labels are
+// not vocabulary words, so the anchor hunt above went blind to them and every
+// wall column banded to whichever neighbour was nearest: N and E landed in
+// BASE, S and W in CEILING. Field-found on a real gym set, where BASE read
+// "VWB-1 - FRP-1, FRP-1A, PT" instead of "VWB-1" — a polluted base column is
+// a wrong number in the bid, not a cosmetic smear.
+// A run of ≥2 adjacent non-vocabulary tokens INSIDE the header's own span is
+// a sub-tier. The parent is the nearest span above whose box actually covers
+// the run, and each sub-anchor is labelled "<PARENT> <SUB>" ("WALLS N") so
+// the column keeps both halves of its meaning. No parent above, no sub-tier:
+// an unexplained token never mints a column.
+const SUB_LABEL_RE = /^[A-Z0-9][A-Z0-9.\/-]{0,5}$/;
+
+function parentLabelOver(rows: GraphSpan[][], hdrIdx: number, gx0: number, gx1: number, vocab: string[]): string | null {
+  const width = Math.max(gx1 - gx0, 1);
+  for (let j = hdrIdx - 1; j >= 0 && j >= hdrIdx - 2; j--) {
+    for (const t of rows[j]) {
+      if (Math.min(t.x + (t.w || 0), gx1) - Math.max(t.x, gx0) <= width * 0.3) continue;
+      const lbl = headerLabel(t.str, vocab);
+      if (lbl) return lbl;
+    }
+  }
+  return null;
+}
+
+function subTierAnchors(rows: GraphSpan[][], hdrIdx: number, anchors: Anchor[], vocab: string[]): Anchor[] {
+  const lo = anchors[0].x, hi = anchors[anchors.length - 1].x;
+  const loose = rows[hdrIdx]
+    .filter((t) => !headerLabel(t.str, vocab) && SUB_LABEL_RE.test(norm(t.str)))
+    .filter((t) => t.x + (t.w || 0) / 2 > lo && t.x + (t.w || 0) / 2 < hi)
+    .sort((a, b) => a.x - b.x);
+  if (loose.length < 2) return anchors;
+  const mid = (t: GraphSpan) => t.x + (t.w || 0) / 2;
+  const gaps = loose.slice(1).map((t, i) => mid(t) - mid(loose[i])).sort((a, b) => a - b);
+  const med = gaps[gaps.length >> 1] || 1;
+  const runs: GraphSpan[][] = [];
+  let run: GraphSpan[] = [loose[0]];
+  for (let i = 1; i < loose.length; i++) {
+    if (mid(loose[i]) - mid(loose[i - 1]) > med * 3) { runs.push(run); run = []; }
+    run.push(loose[i]);
+  }
+  runs.push(run);
+  const out = anchors.slice();
+  const used = new Set(anchors.map((a) => a.label));
+  for (const r of runs) {
+    if (r.length < 2) continue;
+    const last = r[r.length - 1];
+    const parent = parentLabelOver(rows, hdrIdx, r[0].x, last.x + (last.w || 0), vocab);
+    if (!parent) continue;
+    // sub-columns under a merged parent are equal-width: the pitch between
+    // their labels IS the column width, so each one's bounds are its center
+    // ± half a pitch. Those bounds are what keep a left-aligned wall code out
+    // of the narrow BASE column next door.
+    const pitch = r.length > 1
+      ? r.slice(1).map((t, i) => mid(t) - mid(r[i])).sort((a, b) => a - b)[(r.length - 1) >> 1]
+      : 0;
+    for (const t of r) {
+      const label = `${parent} ${norm(t.str)}`;
+      if (used.has(label)) continue;
+      used.add(label);
+      const c = mid(t);
+      out.push(pitch > 0 ? { label, x: c, x0: c - pitch / 2, x1: c + pitch / 2 } : { label, x: c });
+    }
+  }
+  return out.sort((a, b) => a.x - b.x);
 }
 
 // Rotated headers (#87 phase 2): column labels written at 90° stack each word
@@ -327,7 +403,7 @@ function findHeaderRow(rows: GraphSpan[][], vocab: string[], required: string[],
 // hunt: vocabulary matches whose y-extents overlap form the header BAND;
 // each member's x-center is its column anchor; data rows band below the
 // band's bottom edge exactly as they would under a horizontal header.
-function findRotatedHeader(vert: GraphSpan[], vocab: string[], required: string[], minHits: number): { anchors: Array<{ label: string; x: number }>; top: number; bottom: number; spans: GraphSpan[] } | null {
+function findRotatedHeader(vert: GraphSpan[], vocab: string[], required: string[], minHits: number): { anchors: Anchor[]; top: number; bottom: number; spans: GraphSpan[] } | null {
   const cands = vert
     .map((sp) => ({ sp, label: headerLabel(sp.str, vocab) }))
     .filter((c): c is { sp: GraphSpan; label: string } => !!c.label)
@@ -337,7 +413,7 @@ function findRotatedHeader(vert: GraphSpan[], vocab: string[], required: string[
   const flush = (): ReturnType<typeof findRotatedHeader> => {
     const seen = new Set(band.map((c) => c.label));
     if (band.length < minHits || seen.size < minHits || !required.some((r) => seen.has(r))) return null;
-    const anchors: Array<{ label: string; x: number }> = [];
+    const anchors: Anchor[] = [];
     const used = new Set<string>();
     for (const c of band) if (!used.has(c.label)) { used.add(c.label); anchors.push({ label: c.label, x: c.sp.x + (c.sp.w || 0) / 2 }); }
     return { anchors: anchors.sort((a, b) => a.x - b.x), top: y0, bottom: y1, spans: band.map((c) => c.sp) };
@@ -356,21 +432,40 @@ function findRotatedHeader(vert: GraphSpan[], vocab: string[], required: string[
   return band.length ? flush() : null;
 }
 
-const nearestAnchor = (x: number, anchors: Array<{ label: string; x: number }>) => {
-  let best = anchors[0];
-  for (const a of anchors) if (Math.abs(a.x - x) < Math.abs(best.x - x)) best = a;
-  return best.label;
+// A BOUNDED anchor claims only what falls inside it — that is the whole point
+// of knowing a sub-column's edges. Everything else bands to the nearest
+// UNBOUNDED header center, so a narrow BASE column keeps its own cell and
+// never inherits the wall code drawn just past its rule line.
+const nearestAnchor = (x: number, anchors: Anchor[]) => {
+  let inside: Anchor | null = null;
+  for (const a of anchors) {
+    if (a.x0 == null || a.x1 == null || x < a.x0 || x > a.x1) continue;
+    if (!inside || Math.abs(a.x - x) < Math.abs(inside.x - x)) inside = a;
+  }
+  if (inside) return inside.label;
+  let best: Anchor | null = null;
+  for (const a of anchors) {
+    if (a.x0 != null) continue;
+    if (!best || Math.abs(a.x - x) < Math.abs(best.x - x)) best = a;
+  }
+  return (best ?? anchors[0]).label;
 };
 
 // The ANCHORS bound the table, not the whole clustered row — on a dense sheet
 // a neighbouring table's header can share the y-band, and its x-range must
 // not leak in. Left margin is generous (data cells sit left of a centered
-// header); the right edge extends past the last anchor by three median column
-// gaps so a wide REMARKS cell stays in while the next table over stays out.
-function bandLimits(anchors: Array<{ label: string; x: number }>): { x0: number; x1: number; medGap: number } {
+// header). The RIGHT edge depends on what the last column IS: a prose column
+// (REMARKS / DESCRIPTION / NOTES) earns three median gaps so a wide wrapped
+// remark stays in; a code column (CEILING, WALL, COLOR) hugs its anchor —
+// field-found on a real gym set: a finish legend sitting 300px right of a
+// room schedule bled into every CEILING cell under the generous edge.
+const WIDE_LAST = new Set(["REMARKS", "DESCRIPTION", "NOTES"]);
+function bandLimits(anchors: Anchor[]): { x0: number; x1: number; medGap: number } {
   const gaps = anchors.slice(1).map((a, i) => a.x - anchors[i].x).sort((a, b) => a - b);
   const medGap = gaps.length ? gaps[gaps.length >> 1] : 150;
-  return { x0: anchors[0].x - Math.max(80, medGap / 2), x1: anchors[anchors.length - 1].x + Math.max(300, medGap * 3), medGap };
+  const last = anchors[anchors.length - 1];
+  const rightMargin = WIDE_LAST.has(last.label) ? Math.max(300, medGap * 3) : Math.max(120, medGap);
+  return { x0: anchors[0].x - Math.max(80, medGap / 2), x1: last.x + rightMargin, medGap };
 }
 
 // A finish code: scheduleParse's pattern. A schedule ROW key is looser than a
@@ -384,6 +479,16 @@ const ROW_KEY_RE = /^\d{1,3}[A-Z]{0,2}$/;
 const QUALIFIED_KEY_RE = /^([A-Z]{1,2})-(\d{1,3}[A-Z]{0,2})$/;
 
 export interface ExtractOpts { buildings?: Set<string>; deltas?: DeltaIndex }
+
+// Schedule families that are NOT finish/material schedules but share the
+// MARK/DESCRIPTION column shape. A title naming one of these is refused as a
+// finish table — unless it ALSO says FINISH or MATERIAL, in which case the
+// safe reading is to keep it and let the caller look.
+const OTHER_FAMILY_RE = /\b(DOOR|WINDOW|PARTITION|EQUIPMENT|HARDWARE|LOUVER|SIGNAGE|LIGHTING|LUMINAIRE|PLUMBING|MECHANICAL|ELECTRICAL|STOREFRONT|GLAZING|CASEWORK|MILLWORK|APPLIANCE)S?\b/;
+export const isNonFinishSchedule = (title: string): boolean => {
+  const u = norm(title);
+  return OTHER_FAMILY_RE.test(u) && !/\b(FINISH|MATERIAL)S?\b/.test(u);
+};
 
 function rowKeyOf(raw: string, kind: "room-finish" | "finish", buildings?: Set<string>): { key: string; building?: string } | null {
   const key = norm(raw).replace(/[^A-Z0-9-]/g, "");
@@ -412,7 +517,7 @@ const centerX = (t: GraphSpan) => t.x + (t.w || 0) / 2;
 //     not a remark), exactly as before.
 function bandDataRows(
   rows: GraphSpan[][],
-  anchors: Array<{ label: string; x: number }>,
+  anchors: Anchor[],
   kind: "room-finish" | "finish",
   sheetKey: string,
   buildings: Set<string> | undefined,
@@ -501,10 +606,10 @@ export function extractTable(sheet: SheetSpans, kind: "room-finish" | "finish", 
   const vert = sheet.spans.filter(isVertical);
   const rows = clusterRows(horiz);
   const vocab = kind === "room-finish" ? ROOM_HEADERS : FINISH_HEADERS;
-  const required = kind === "room-finish" ? ["FLOOR", "BASE"] : ["CODE", "MARK"];
+  const required = kind === "room-finish" ? ["FLOOR", "BASE"] : ["CODE", "MARK", "SYMBOL"];
   const minHits = kind === "room-finish" ? 4 : 3;
 
-  let anchors: Array<{ label: string; x: number }>;
+  let anchors: Anchor[];
   let headerSpans: GraphSpan[];
   let dataFrom: number;           // first row index eligible as data
   let dataBelowY = -Infinity;     // rotated: data rows must sit below the band
@@ -652,7 +757,7 @@ export function roomTags(sheet: SheetSpans, opts: RoomTagOpts = {}): RoomTag[] {
       const dy = b[1] - cb[3];
       if (dy < -hgt * 0.2 || dy > hgt * 2.2) continue;
       if (cb[2] < b[0] - hgt || cb[0] > b[2] + hgt) continue;
-      if (!/^[A-Z][A-Z .\/&-]{2,}$/.test(norm(cand.str))) continue;
+      if (!/^[A-Z][A-Z .'’\/&-]{2,}$/.test(norm(cand.str))) continue;
       if (dy < best) { best = dy; name = cand.str.trim(); }
     }
     const tag: RoomTag = { tag: t, name, sheet: sheet.key, bbox: b };
@@ -757,6 +862,17 @@ export function buildSheetGraph(sheets: SheetSpans[]): SheetGraph {
     for (const kind of ["room-finish", "finish"] as const) {
       const t = extractTable(s, kind, { buildings, deltas: deltasBySheet.get(s.key) });
       if (!t) continue;
+      // A DOOR / WINDOW / PARTITION schedule carries a MARK column, so the
+      // finish-table hunt happily reads one as a finish/material schedule —
+      // and then a finish code that collides with a door mark chains to a
+      // door, which is a confidently wrong product in the bid. Field-found on
+      // a real grocery set whose DOOR SCHEDULE extracted as 54 "finish" rows.
+      // Refuse by TITLE, and only when the title does not also say finish or
+      // material: when in doubt the table is kept, and the drop is NAMED.
+      if (kind === "finish" && t.title && isNonFinishSchedule(t.title.text)) {
+        notes.push(`${s.key}: "${t.title.text}" names another schedule family, not a finish/material schedule — its ${t.rows.length} rows are NOT indexed as finish definitions`);
+        continue;
+      }
       // table-level building: its own title first, the sheet's context second
       const titleB = t.title ? buildingMentions(t.title.text) : [];
       const b = titleB.length === 1 ? titleB[0] : ctxBySheet.get(s.key);
@@ -865,6 +981,10 @@ export type ResolveResult =
   | { status: "unresolved"; tag: string; room: RoomTag | null; reason: string; candidates?: ResolveCandidate[] };
 
 const SURFACE_HEADERS = ["FLOOR", "BASE", "WALL", "WALLS", "NORTH", "SOUTH", "EAST", "WEST", "CEILING", "WAINSCOT"];
+/** A surface column, including a two-tier sub-column ("WALLS N"): the LEADING
+ * word names the surface, the rest qualifies it. Ranked so a row's finishes
+ * always come back FLOOR-first regardless of the sheet's column order. */
+const surfaceRank = (label: string): number => SURFACE_HEADERS.indexOf(label.split(" ")[0]);
 
 export function resolveTag(graph: SheetGraph, tag: string): ResolveResult {
   const t = norm(tag).replace(/\s+/g, "");
@@ -938,7 +1058,10 @@ export function resolveTag(graph: SheetGraph, tag: string): ResolveResult {
   const finishes: ResolvedFinish[] = [];
   const sources: Evidence[] = [{ sheet: r.sheet, text: `${tab.title?.text || "room-finish schedule"} row ${r.key}`, bbox: r.cells[Object.keys(r.cells)[0]]?.bbox || tab.region }];
   if (room) sources.unshift({ sheet: room.sheet, text: `${room.name ? room.name + " " : ""}${room.tag}`.trim(), bbox: room.bbox });
-  for (const surface of SURFACE_HEADERS) {
+  const surfaces = Object.keys(r.cells)
+    .filter((k) => surfaceRank(k) >= 0)
+    .sort((a, b) => surfaceRank(a) - surfaceRank(b) || a.localeCompare(b));
+  for (const surface of surfaces) {
     const cell = r.cells[surface];
     if (!cell || !cell.text.trim()) continue;
     const code = norm(cell.text).replace(/[^A-Z0-9-]/g, "");

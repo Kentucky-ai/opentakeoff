@@ -720,3 +720,169 @@ test("drawn deltas ride the graph: attach to the row and the bubble, mint nothin
     assert.ok(res.revisions![0].source.bbox[2] - res.revisions![0].source.bbox[0] >= 20, "evidence bbox spans the triangle");
   }
 });
+
+// ── side-by-side tables: field-found on a real gym set ──────────────────────
+// A ROOM SCHEDULE whose LAST column is a code column (CEILING), with the
+// finish legend sitting a few hundred px to its right, sharing the y band.
+// The generous right band edge — correct for a wide REMARKS column — swallowed
+// the legend: every CEILING cell grew legend ink ("SC-1 TL-3 CERAMIC TILE").
+// The edge is wide ONLY when the last column is prose-shaped.
+const sideSched: SheetSpans = {
+  key: "side.pdf#1",
+  sheet_number: "A-607",
+  spans: [
+    sp("ROOM SCHEDULE", 100, 40),
+    sp("NO", 100, 60), sp("NAME", 160, 60), sp("FLOOR", 300, 60), sp("BASE", 400, 60), sp("CEILING", 500, 60),
+    sp("701", 100, 80), sp("GYM", 160, 80), sp("RF-1", 300, 80), sp("VWB-1", 400, 80), sp("EXP-1", 500, 80),
+    sp("702", 100, 100), sp("OFFICE", 160, 100), sp("TL-1", 300, 100), sp("VWB-1", 400, 100), sp("SC-1", 500, 100),
+    // the legend to the RIGHT, rows sharing the y band with the schedule's
+    sp("FINISH LEGEND", 700, 40),
+    sp("RF-1", 700, 80), sp("RUBBER FLOORING", 760, 80),
+    sp("TL-1", 700, 100), sp("CERAMIC TILE", 760, 100),
+  ],
+};
+
+test("side-by-side tables: a code-column right edge hugs the table — the legend next door stays out", () => {
+  const tab = extractTable(sideSched, "room-finish")!;
+  assert.equal(tab.rows.length, 2);
+  const r701 = tab.rows.find((r) => r.key === "701")!;
+  assert.equal(r701.cells.CEILING.text, "EXP-1", "the legend did not bleed into CEILING");
+  assert.equal(tab.rows.find((r) => r.key === "702")!.cells.CEILING.text, "SC-1");
+  for (const r of tab.rows) for (const c of Object.values(r.cells)) {
+    assert.ok(!/RUBBER FLOORING|CERAMIC TILE|LEGEND/.test(c.text), `legend ink leaked into row ${r.key}: "${c.text}"`);
+  }
+});
+
+test("finish tables headed SYMBOL extract and chain — the INTERIOR FINISH SCHEDULE shape", () => {
+  // field-found: a real set's finish table is headed SYMBOL | MATERIAL
+  // DESCRIPTION | MANUFACTURER | PRODUCT — no CODE/MARK anywhere, so the
+  // definitions never chained and every resolution lost its manufacturer
+  const symSched: SheetSpans = {
+    key: "sym.pdf#1",
+    sheet_number: "A-608",
+    spans: [
+      sp("INTERIOR FINISH SCHEDULE", 100, 40),
+      sp("SYMBOL", 100, 60), sp("MATERIAL DESCRIPTION", 200, 60), sp("MANUFACTURER", 420, 60), sp("PRODUCT", 600, 60),
+      sp("TL-9", 100, 80), sp("CERAMIC TILE", 200, 80), sp("DALTILE", 420, 80), sp("CW9763651PR", 600, 80),
+      sp("RF-9", 100, 100), sp("RUBBER", 200, 100), sp("ECORE", 420, 100), sp("PERFORMANCE RUBBER", 600, 100),
+    ],
+  };
+  const fin = extractTable(symSched, "finish")!;
+  assert.ok(fin, "SYMBOL anchors the finish table");
+  assert.equal(fin.rows.length, 2);
+  assert.equal(fin.rows.find((r) => r.key === "TL-9")!.cells.MANUFACTURER.text, "DALTILE");
+});
+
+// ── two-tier headers: a merged parent over N/E/S/W sub-columns ──────────────
+// The real shape, field-found: a WALLS parent spanning four direction columns
+// whose labels are single letters — not vocabulary words. Before the sub-tier
+// hunt, N and E banded into BASE and S and W into CEILING, so BASE read
+// "VWB-1 FRP-1 PT" instead of "VWB-1". A polluted base column is a wrong
+// number in the bid.
+const twoTierSched: SheetSpans = {
+  key: "tier.pdf#1",
+  sheet_number: "A-609",
+  spans: [
+    sp("ROOM SCHEDULE", 100, 20),
+    // tier 1: the merged parent, centered over the wall block
+    sp('WALLS (PLAN DIRECTION: N = "PLAN NORTH")', 480, 45),
+    // tier 2: the real header row
+    sp("NUMBER", 100, 65), sp("ROOM NAME", 200, 65), sp("FLOOR", 330, 65), sp("BASE", 400, 65),
+    sp("N", 480, 65), sp("E", 560, 65), sp("S", 640, 65), sp("W", 720, 65), sp("CEILING", 790, 65),
+    sp("801", 100, 90), sp("GYM", 200, 90), sp("RF-1", 330, 90), sp("VWB-1", 400, 90),
+    sp("FRP-1", 480, 90), sp("FRP-2", 560, 90), sp("PT-1", 640, 90), sp("PT-2", 720, 90), sp("EXP-1", 790, 90),
+    sp("802", 100, 115), sp("LOBBY", 200, 115), sp("TL-1", 330, 115), sp("VWB-1", 400, 115),
+    sp("PT-1", 480, 115), sp("PT-1", 560, 115), sp("PT-1", 640, 115), sp("PT-1", 720, 115), sp("SC-1", 790, 115),
+  ],
+};
+
+test("two-tier headers: N/E/S/W sub-columns anchor under their parent — BASE and CEILING stay clean", () => {
+  const tab = extractTable(twoTierSched, "room-finish")!;
+  assert.ok(tab.headers.includes("WALLS N"), `sub-columns are named by parent+sub: ${tab.headers.join(" | ")}`);
+  assert.deepEqual(tab.headers.filter((h) => h.startsWith("WALLS ")), ["WALLS N", "WALLS E", "WALLS S", "WALLS W"]);
+  const r801 = tab.rows.find((r) => r.key === "801")!;
+  assert.equal(r801.cells.BASE.text, "VWB-1", "the north wall no longer smears into BASE");
+  assert.equal(r801.cells.CEILING.text, "EXP-1", "the south and west walls no longer smear into CEILING");
+  assert.equal(r801.cells["WALLS N"].text, "FRP-1");
+  assert.equal(r801.cells["WALLS E"].text, "FRP-2");
+  assert.equal(r801.cells["WALLS S"].text, "PT-1");
+  assert.equal(r801.cells["WALLS W"].text, "PT-2");
+  // the schedule alone still answers — it just cites no plan tag
+  const solo = resolveTag(buildSheetGraph([twoTierSched]), "801");
+  assert.equal(solo.status, "resolved");
+  assert.equal(solo.room, null, "no plan sheet in the set, so no bubble to cite");
+  // resolution surfaces every wall face separately, FLOOR still first
+  const tierPlan: SheetSpans = {
+    key: "tier.pdf#0", sheet_number: "A-107",
+    spans: [sp("SEVENTH FLOOR FINISH PLAN", 300, 900), sp("GYM", 100, 300), sp("801", 104, 312)],
+  };
+  const g2 = buildSheetGraph([tierPlan, twoTierSched]);
+  const r = resolveTag(g2, "801");
+  assert.equal(r.status, "resolved");
+  if (r.status !== "resolved") return;
+  assert.equal(r.finishes[0].surface, "FLOOR", "FLOOR still leads the list");
+  assert.equal(r.finishes.find((f) => f.surface === "BASE")!.code, "VWB-1");
+  assert.deepEqual(
+    r.finishes.filter((f) => f.surface.startsWith("WALLS ")).map((f) => [f.surface, f.code]),
+    [["WALLS E", "FRP-2"], ["WALLS N", "FRP-1"], ["WALLS S", "PT-1"], ["WALLS W", "PT-2"]],
+  );
+  assert.equal(r.finishes.find((f) => f.surface === "CEILING")!.code, "EXP-1");
+});
+
+test("a lone unexplained token never mints a column — the sub-tier needs a parent above it", () => {
+  const noParent: SheetSpans = {
+    key: "np.pdf#1", sheet_number: "A-610",
+    spans: [
+      sp("ROOM SCHEDULE", 100, 20),
+      sp("NO", 100, 65), sp("NAME", 200, 65), sp("FLOOR", 330, 65), sp("BASE", 400, 65),
+      sp("X", 480, 65), sp("Y", 560, 65), sp("CEILING", 790, 65),   // no parent span above
+      sp("901", 100, 90), sp("GYM", 200, 90), sp("RF-1", 330, 90), sp("VWB-1", 400, 90), sp("EXP-1", 790, 90),
+    ],
+  };
+  const tab = extractTable(noParent, "room-finish")!;
+  assert.ok(!tab.headers.some((h) => / [XY]$/.test(h)), `no phantom sub-columns: ${tab.headers.join(" | ")}`);
+});
+
+// ── other schedule families: a DOOR schedule is not a finish schedule ───────
+// Field-found on a real grocery set: DOOR SCHEDULE (MARK | DESCRIPTION |
+// MATERIAL | COMMENTS) extracted as 54 "finish" rows, so a finish code
+// colliding with a door mark would chain to a DOOR — a confidently wrong
+// product in the bid. Refused by title, and the drop is named.
+import { isNonFinishSchedule } from "../src/lib/sheetgraph.ts";
+
+test("isNonFinishSchedule: other families refuse, anything naming FINISH or MATERIAL is kept", () => {
+  for (const t of ["DOOR SCHEDULE", "DOOR AND WINDOW SCHEDULE", "PARTITION SCHEDULE", "EQUIPMENT SCHEDULE", "LIGHTING SCHEDULE"]) {
+    assert.equal(isNonFinishSchedule(t), true, t);
+  }
+  for (const t of ["INTERIOR FINISH SCHEDULE", "MATERIAL SCHEDULE", "ROOM FINISH SCHEDULE", "DOOR FINISH SCHEDULE", "FINISH LEGEND"]) {
+    assert.equal(isNonFinishSchedule(t), false, `${t} must be kept — when in doubt, keep and let the caller look`);
+  }
+});
+
+test("a DOOR SCHEDULE never becomes a finish table — and the drop is NAMED", () => {
+  const doorSheet: SheetSpans = {
+    key: "door.pdf#1",
+    sheet_number: "A-611",
+    spans: [
+      sp("DOOR SCHEDULE", 100, 20),
+      sp("MARK", 100, 60), sp("DESCRIPTION", 200, 60), sp("MATERIAL", 400, 60), sp("COMMENTS", 560, 60),
+      // a door mark that genuinely COLLIDES with room 101's floor code
+      sp("CPT-1", 100, 80), sp("HOLLOW METAL DOOR", 200, 80), sp("HM", 400, 80), sp("PAIR", 560, 80),
+      sp("D-2", 100, 100), sp("WOOD DOOR", 200, 100), sp("WD", 400, 100), sp("SINGLE", 560, 100),
+    ],
+  };
+  // extractTable is the raw reader — it still sees any MARK table's shape
+  assert.equal(extractTable(doorSheet, "finish")!.rows.length, 2);
+  // the door sheet is loaded FIRST, so an ungated graph would chain to it
+  const g = buildSheetGraph([doorSheet, planSheet, schedSheet]);
+  assert.ok(!g.tables.some((t) => t.title?.text === "DOOR SCHEDULE"), "no door schedule among the indexed tables");
+  assert.ok(g.notes.some((n) => /DOOR SCHEDULE/.test(n) && /NOT indexed/.test(n)), `the drop is named: ${g.notes.join(" | ")}`);
+  // room 101's FLOOR chains to the MATERIAL schedule's CPT-1, never the door's
+  const res = resolveTag(g, "101");
+  assert.equal(res.status, "resolved");
+  if (res.status !== "resolved") return;
+  const floor = res.finishes.find((f) => f.surface === "FLOOR")!;
+  assert.equal(floor.code, "CPT-1");
+  assert.equal(floor.definition?.cells.MATERIAL, "CARPET TILE", "chained to the material schedule, never to the door schedule");
+  assert.equal(floor.definition?.cells.MANUFACTURER, "SHAW");
+});
