@@ -8,7 +8,7 @@
 #   docker run --rm -i opentakeoff-mcp        # -i: MCP speaks JSON-RPC over stdio
 
 # ---- build stage: bundle server.ts (+ web/src/lib) into dist/ ----------------
-FROM node:20-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 WORKDIR /app
 COPY . .
 WORKDIR /app/mcp
@@ -16,7 +16,7 @@ RUN npm ci
 RUN npm run build
 
 # ---- runtime stage: prod deps + the bundled server only ----------------------
-FROM node:20-bookworm-slim AS runtime
+FROM node:24-bookworm-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app/mcp
 
