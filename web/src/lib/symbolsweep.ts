@@ -38,9 +38,13 @@
 // under the square's symmetry group — 0/90/180/270 rotation × optional
 // mirror — with both options ON by default and independently switchable.
 //
-// Work is CAPPED and the cap is REPORTED: candidates.dropped > 0 means some
-// placements were never scored, and the caller is told rather than handed a
-// silently truncated count (the sheet_context decimation doctrine).
+// Work is CEILINGED and the ceiling is REPORTED: by default every proposed
+// placement is scored (proposal enumeration is paid before the cap ever
+// applied, so the cap only ever saved scoring time — #261 measured 19 of 62
+// receptacles surviving a 20k cap that saved ~1 s), up to a hard ceiling for
+// pathological sheets. `complete: false` plus candidates.dropped > 0 means
+// some placements were never scored, and the caller is told rather than
+// handed a silently truncated count (the sheet_context decimation doctrine).
 //
 // Phase 2 splits the pipeline at its natural seam: fingerprintSymbol (step 1)
 // builds the centroid-relative fingerprint from ONE sheet's segments, and
@@ -76,7 +80,9 @@ export interface SweepOptions {
   scoreHigh?: number;
   /** Withhold floor: [scoreLow, scoreHigh) is a reported near-match (default 0.75). */
   scoreLow?: number;
-  /** Cap on scored placements (default 20000). Overflow is counted, never silent. */
+  /** Cap on scored placements (default SWEEP_CANDIDATE_CEILING — every
+   * proposal is scored unless the sheet is pathological). Overflow is
+   * counted in candidates.dropped and flips `complete` false, never silent. */
   maxCandidates?: number;
 }
 
@@ -105,15 +111,25 @@ export interface SweepResult {
   };
   matches: SweepMatch[];
   withheld: SweepWithheld[];
-  /** Work accounting: dropped > 0 means the candidate cap bit and some
+  /** Work accounting: dropped > 0 means the candidate ceiling bit and some
    * placements were never scored — the caller must be told. */
   candidates: { considered: number; dropped: number };
+  /** True when every proposed placement was scored — the count is a total.
+   * False means the ceiling bit: the count is a FLOOR, not a total (#261). */
+  complete: boolean;
 }
 
 export const SWEEP_TOL_PX = 2;
 export const SWEEP_SCORE_HIGH = 0.92;
 export const SWEEP_SCORE_LOW = 0.75;
-export const SWEEP_MAX_CANDIDATES = 20000;
+/** Hard ceiling on scored placements. Proposals are fully enumerated before
+ * this ever applies, so it bounds SCORING time only — measured ~1.6 s at 87.5k
+ * on a 50k-segment sheet (#261), so the ceiling costs single-digit seconds at
+ * worst. It exists for pathological sheets, not as a tuning knob: small dense
+ * device symbols (short, common segment lengths — most of an electrical sheet)
+ * legitimately propose ~90k placements, and the old 20k default silently hid
+ * 43 of 62 receptacles behind a plausible-looking count. */
+export const SWEEP_CANDIDATE_CEILING = 250000;
 /** Distinct-length anchors used for candidate generation. Three means a
  * placement survives discovery even with one perturbed segment — the
  * near-miss band exists to be populated, and a single anchor would hide
@@ -223,6 +239,9 @@ export interface SymbolMatchResult {
   matches: SweepMatch[];
   withheld: SweepWithheld[];
   candidates: { considered: number; dropped: number };
+  /** True when every proposed placement was scored — the count is a total.
+   * False means the ceiling bit: the count is a FLOOR, not a total (#261). */
+  complete: boolean;
   /** Present ONLY when a stated ratio ≠ 1 was applied (#186), so a same-scale
    * result is the same object it always was. What the ratio cost, so the
    * caller can disclose it: the searched-for symbol's size on the target
@@ -350,7 +369,7 @@ export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOp
   const tol = (opts.tolPx ?? SWEEP_TOL_PX) * Math.max(1, scale);
   const scoreHigh = opts.scoreHigh ?? SWEEP_SCORE_HIGH;
   const scoreLow = opts.scoreLow ?? SWEEP_SCORE_LOW;
-  const maxCandidates = opts.maxCandidates ?? SWEEP_MAX_CANDIDATES;
+  const maxCandidates = opts.maxCandidates ?? SWEEP_CANDIDATE_CEILING;
   const xforms = transformsFor(opts.rotations ?? true, opts.mirror ?? true);
   const n = segs.length >> 2;
   if (scale !== 1 && opts.excludeCenter) {
@@ -516,6 +535,7 @@ export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOp
     matches,
     withheld,
     candidates: { considered, dropped },
+    complete: dropped === 0,
     ...(scale === 1 ? {} : {
       scaled: {
         ratio: Math.round(scale * 1e6) / 1e6,
@@ -542,5 +562,6 @@ export function sweepSymbols(segs: number[], seedRect: [Point, Point], opts: Swe
     matches: m.matches,
     withheld: m.withheld,
     candidates: m.candidates,
+    complete: m.complete,
   };
 }
