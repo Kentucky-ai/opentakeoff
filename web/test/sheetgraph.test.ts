@@ -639,3 +639,84 @@ test("SCORED phase 3: revisions + wide REMARKS, precision/recall against the hel
   assert.ok(precision >= 0.99, `precision ${precision}`);
   assert.ok(recall >= 0.99, `recall ${recall}`);
 });
+
+// ── drawn deltas: geometry proves what the text layer can't say ─────────────
+// Real CAD sets rarely emit "Δ2" as text — the convention is a DRAWN triangle
+// with a bare digit inside, and the text layer carries just "2" (which the
+// text pass rightly refuses: a bare number can't be a marker). The geometric
+// lane accepts exactly that shape, and nothing else.
+import { drawnDeltaMarkers } from "../src/lib/sheetgraph.ts";
+
+const tri = (a: [number, number], b: [number, number], c: [number, number]): number[] =>
+  [a[0], a[1], b[0], b[1], b[0], b[1], c[0], c[1], c[0], c[1], a[0], a[1]];
+
+test("drawn deltas: a bare digit inside a digit-scale triangle — circles, roofs, and open shapes are not", () => {
+  const digit = sp("2", 100, 100); // bbox [100,100,105,108], center (102.5, 104)
+  // a closed digit-scale triangle around the digit → marker
+  const hit = drawnDeltaMarkers([digit], tri([90, 96], [115, 96], [102, 122]));
+  assert.equal(hit.length, 1);
+  assert.equal(hit[0].span, digit);
+  assert.ok(hit[0].tri[0] <= 90 && hit[0].tri[3] >= 122, "the triangle bbox is reported");
+  // an OPEN shape (third side missing) is not a marker
+  assert.equal(drawnDeltaMarkers([digit], tri([90, 96], [115, 96], [102, 122]).slice(0, 8)).length, 0);
+  // a roof-scale triangle around the digit is not a marker (side ≫ digit scale)
+  assert.equal(drawnDeltaMarkers([digit], tri([0, 0], [300, 0], [150, 260])).length, 0);
+  // a circle (many short chords) is not a marker — grid bubbles stay out
+  const circle: number[] = [];
+  for (let i = 0; i < 12; i++) {
+    const a0 = (i / 12) * 2 * Math.PI, a1 = ((i + 1) / 12) * 2 * Math.PI;
+    circle.push(102.5 + 12 * Math.cos(a0), 104 + 12 * Math.sin(a0), 102.5 + 12 * Math.cos(a1), 104 + 12 * Math.sin(a1));
+  }
+  assert.equal(drawnDeltaMarkers([digit], circle).length, 0);
+  // a triangle beside (not around) the digit is not this digit's marker
+  assert.equal(drawnDeltaMarkers([digit], tri([140, 96], [165, 96], [152, 122])).length, 0);
+  // three or more digits are never delta digits
+  assert.equal(drawnDeltaMarkers([sp("102", 100, 100)], tri([90, 96], [125, 96], [107, 126])).length, 0);
+});
+
+test("drawn deltas ride the graph: attach to the row and the bubble, mint nothing, and say drawn", () => {
+  const dPlan: SheetSpans = {
+    key: "dd.pdf#1",
+    sheet_number: "A-106",
+    spans: [
+      sp("SIXTH FLOOR FINISH PLAN", 300, 900),
+      sp("OFFICE", 100, 100), sp("601", 104, 112),
+      sp("LAB", 300, 100), sp("602", 310, 112), sp("1", 332, 110),
+    ],
+    segs: tri([326, 104], [346, 104], [336, 124]),
+  };
+  const dSched: SheetSpans = {
+    key: "dd.pdf#2",
+    sheet_number: "A-606",
+    spans: [
+      sp("ROOM FINISH SCHEDULE", 100, 40),
+      sp("NO", 100, 60), sp("NAME", 160, 60), sp("FLOOR", 300, 60), sp("BASE", 400, 60), sp("WALL", 500, 60),
+      sp("601", 100, 80), sp("OFFICE", 160, 80), sp("CPT-6", 300, 80), sp("RB-6", 400, 80), sp("P-6", 500, 80),
+      sp("1", 66, 100),
+      sp("602", 100, 100), sp("LAB", 160, 100), sp("EPX-6", 300, 100), sp("RB-6", 400, 100), sp("P-6", 500, 100),
+    ],
+    segs: tri([60, 94], [80, 94], [70, 114]),
+  };
+  const g = buildSheetGraph([dPlan, dSched]);
+  // the graph lists both drawn markers, flagged, bbox spanning the triangle
+  assert.equal(g.revisions.length, 2);
+  assert.ok(g.revisions.every((r) => r.drawn === true && r.rev === "1"));
+  // the bare digit minted neither a room nor a schedule row
+  assert.ok(!g.rooms.some((r) => r.tag === "1"), "the delta digit is not a room");
+  const tab = g.tables.find((t) => t.kind === "room-finish")!;
+  assert.deepEqual(tab.rows.map((r) => r.key), ["601", "602"]);
+  // attachment: the schedule row and the plan bubble, both flagged drawn
+  assert.equal(tab.rows.find((r) => r.key === "602")!.revision?.drawn, true);
+  assert.equal(g.rooms.find((r) => r.tag === "602")!.revision?.drawn, true);
+  assert.equal(g.rooms.find((r) => r.tag === "601")!.revision, undefined);
+  // resolution surfaces it once (row + bubble dedupe by rev), evidence literal
+  const res = resolveTag(g, "602");
+  assert.equal(res.status, "resolved");
+  if (res.status === "resolved") {
+    assert.equal(res.finishes.find((f) => f.surface === "FLOOR")!.code, "EPX-6");
+    assert.equal(res.revisions?.length, 1);
+    assert.equal(res.revisions![0].drawn, true);
+    assert.equal(res.revisions![0].source.text, "1", "evidence text is the literal ink");
+    assert.ok(res.revisions![0].source.bbox[2] - res.revisions![0].source.bbox[0] >= 20, "evidence bbox spans the triangle");
+  }
+});

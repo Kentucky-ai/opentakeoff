@@ -638,10 +638,17 @@ test("sheet graph phase 3 (#87): a revision marker rides the wire and never corr
   await callOk(client, "load_plan", { path: MB_SET });
 
   const g = await callOk(client, "sheet_graph");
-  assert.equal(g.revisions.length, 1, "the set's one marker is listed");
-  assert.equal(g.revisions[0].rev, "2");
-  assert.equal(g.revisions[0].sheet, "multibuilding-set.pdf#4");
-  assert.ok(g.revisions[0].bbox.x1 > g.revisions[0].bbox.x0, "the marker carries its bbox");
+  assert.equal(g.revisions.length, 2, "both markers are listed: the text REV tag and the drawn delta");
+  const textM = g.revisions.find((r: any) => !r.drawn);
+  assert.equal(textM.rev, "2");
+  assert.equal(textM.sheet, "multibuilding-set.pdf#4");
+  assert.ok(textM.bbox.x1 > textM.bbox.x0, "the marker carries its bbox");
+  // the DRAWN delta: a bare digit "1" inside a triangle of linework on the
+  // rotated-header sheet — text alone refuses a bare digit; geometry proves it
+  const drawnM = g.revisions.find((r: any) => r.drawn);
+  assert.equal(drawnM.rev, "1");
+  assert.equal(drawnM.sheet, "multibuilding-set.pdf#3");
+  assert.ok(drawnM.bbox.x1 - drawnM.bbox.x0 > 20, "the bbox spans the triangle, not just the digit");
 
   // the revised row resolves to its post-revision codes AND says the ink changed
   const b = await callOk(client, "resolve_tag", { tag: "B-134" });
@@ -656,10 +663,20 @@ test("sheet graph phase 3 (#87): a revision marker rides the wire and never corr
   const a = await callOk(client, "resolve_tag", { tag: "A-134" });
   assert.equal(a.revisions, undefined);
 
+  // the drawn delta attaches to row 135 THROUGH the rotated-header table, and
+  // the bare digit "1" minted no row anywhere
+  const d = await callOk(client, "resolve_tag", { tag: "A-135" });
+  assert.equal(d.status, "resolved");
+  assert.equal(d.finishes.find((f: any) => f.surface === "FLOOR").code, "LVT-1", "the digit stayed out of the cells");
+  assert.equal(d.revisions.length, 1);
+  assert.equal(d.revisions[0].rev, "1");
+  assert.equal(d.revisions[0].drawn, true);
+  assert.equal(d.revisions[0].source.text, "1", "evidence text is the literal ink");
+
   // find_schedule discloses the revised-row count per table
   const found = await callOk(client, "find_schedule", { kind: "room finish" });
   assert.equal(found.matches.find((m: any) => m.building === "B").revised_rows, 1);
-  assert.equal(found.matches.find((m: any) => m.building === "A").revised_rows, undefined);
+  assert.equal(found.matches.find((m: any) => m.building === "A").revised_rows, 1, "the drawn delta counts too");
 });
 
 // 0.9.20 — symbol_sweep's output contract, both modes, schema round-tripped

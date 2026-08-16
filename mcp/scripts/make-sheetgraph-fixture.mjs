@@ -47,13 +47,18 @@ const pages = [
     T(100, 400, 10, "STORAGE"), T(102, 388, 10, "134"),
     T(300, 400, 10, "OFFICE"), T(302, 388, 10, "201"),
   ],
-  // page 3 — Building A room-finish schedule (ROTATED headers) + material schedule
+  // page 3 — Building A room-finish schedule (ROTATED headers) + material
+  // schedule. Row 135 carries a DRAWN revision delta (phase 3): a bare digit
+  // "1" inside a triangle of linework — the real CAD convention, where the
+  // text layer carries only the digit and the geometry proves the marker.
   [
     BORDER,
     T(100, 580, 12, "ROOM FINISH SCHEDULE - BUILDING A"),
     ...rfHeader(520, true),
     ...rfRow(490, ["134", "OFFICE", "CPT-1", "RB-1", "P-1"]),
     ...rfRow(470, ["135", "LAB", "LVT-1", "RB-1", "P-1"]),
+    T(58, 470, 10, "1"),
+    "1 w 46 464 m 74 464 l 60 488 l 46 464 l S",
     T(100, 380, 12, "MATERIAL SCHEDULE"),
     T(100, 350, 10, "CODE"), T(200, 350, 10, "MATERIAL"), T(380, 350, 10, "MANUFACTURER"),
     T(100, 330, 10, "CPT-1"), T(200, 330, 10, "CARPET TILE"), T(380, 330, 10, "EXAMPLECO"),

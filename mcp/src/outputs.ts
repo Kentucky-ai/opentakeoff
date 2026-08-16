@@ -601,8 +601,11 @@ export const readSheetTextOutput = {
 const wireBox = z.object({ x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() });
 const wireEvidence = z.object({ sheet: z.string(), text: z.string(), bbox: wireBox })
   .describe("An evidence pointer — the sheet, the literal text, and where it sits (image px). Every edge in the graph carries one; pass the bbox to view_sheet to LOOK at the source.");
-const wireRevision = z.object({ rev: z.string(), source: wireEvidence })
-  .describe("A revision marker (delta triangle 'Δ2' / 'REV 2' tag) attached to this item: the ink CHANGED under that revision. The value read is the post-revision answer — view_sheet the marker's bbox and check the addendum before pricing");
+const wireRevision = z.object({
+  rev: z.string(),
+  source: wireEvidence,
+  drawn: z.boolean().optional().describe("true = a DRAWN delta: a bare digit inside a triangle of linework (the common CAD convention — the text layer carries only the digit; the geometry proved the triangle). The evidence bbox spans digit and triangle"),
+}).describe("A revision marker (delta triangle / 'REV 2' tag) attached to this item: the ink CHANGED under that revision. The value read is the post-revision answer — view_sheet the marker's bbox and check the addendum before pricing");
 const graphRoom = z.object({
   tag: z.string(),
   name: z.string().describe("The name span stacked over the tag ('' when none)"),
@@ -629,8 +632,8 @@ export const sheetGraphOutput = {
   rooms: z.array(graphRoom).describe("Room tags read off plan-role sheets — schedule sheets contribute rows, never phantom rooms"),
   callouts: z.array(z.object({ detail: z.string(), target_sheet: z.string(), sheet: z.string(), bbox: wireBox })).describe("Detail callouts (3/A-601) — edges to their target sheets"),
   buildings: z.array(z.string()).optional().describe("Every building designator the set names (sorted) — present only on multi-building-aware sets. Room numbers reused across these need qualified tags ('A-134')"),
-  revisions: z.array(z.object({ rev: z.string(), sheet: z.string(), bbox: wireBox })).optional()
-    .describe("Every delta-triangle / REV-tag marker the set carries — where one sits, the ink changed under that revision. Markers on a schedule row or room bubble also attach there (and ride resolve_tag). A revision CLOUD with no text marker is linework and stays invisible to this text-layer pass — absence here is not absence of revisions"),
+  revisions: z.array(z.object({ rev: z.string(), sheet: z.string(), bbox: wireBox, drawn: z.boolean().optional() })).optional()
+    .describe("Every delta-triangle / REV-tag marker the set carries — text markers ('Δ2', 'REV 2') and DRAWN deltas (a bare digit inside a triangle of linework, drawn: true) — where one sits, the ink changed under that revision. Markers on a schedule row or room bubble also attach there (and ride resolve_tag). A revision CLOUD is arc-chain linework these detectors do not read — absence here is not absence of revisions"),
   notes: z.array(z.string()).optional().describe("Named gaps found while indexing (e.g. a continuation whose rows could not be aligned) — the graph refuses silently dropping anything"),
   counts: z.object({ rooms: z.number().int(), schedules: z.number().int().describe("LOGICAL tables — a schedule continued across sheets counts once"), callouts: z.number().int() }),
 };

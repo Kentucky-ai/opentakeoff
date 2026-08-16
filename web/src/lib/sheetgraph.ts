@@ -28,7 +28,10 @@ import { ROOM_LABEL_RE } from "./detectRooms";
  * long whose box is more than twice as tall as it is wide is treated as
  * vertical — a real horizontal token that long cannot be taller than wide. */
 export interface GraphSpan { str: string; x: number; y: number; w: number; h: number; rot?: number }
-export interface SheetSpans { key: string; sheet_number?: string | null; spans: GraphSpan[] }
+/** segs (optional): the sheet's vector linework as flat [x1,y1,x2,y2, ...] in
+ * the same px space as the spans (VectorGeometry.segs) — feeds the drawn
+ * delta-triangle hunt. Text-only callers omit it and lose only that lane. */
+export interface SheetSpans { key: string; sheet_number?: string | null; spans: GraphSpan[]; segs?: ArrayLike<number> }
 
 export type SheetRole = "plan" | "schedule" | "legend" | "detail" | "elevation" | "demolition" | "unknown";
 export type Bbox = [number, number, number, number];
@@ -133,8 +136,10 @@ export function sheetBuilding(sheet: SheetSpans): { building: string; evidence: 
 // The honest limit, named: a revision CLOUD is linework, not text — a clouded
 // row with no delta/REV text is invisible to a spans-only pass. That gap is
 // phase 4 (geometry), not something to fake here.
-export interface RevisionMarker { rev: string; sheet: string; bbox: Bbox }
-export interface RowRevision { rev: string; source: Evidence }
+export interface RevisionMarker { rev: string; sheet: string; bbox: Bbox; drawn?: boolean }
+export interface RowRevision { rev: string; source: Evidence; drawn?: boolean }
+/** Per-sheet drawn-delta index: the bare-digit span → its triangle's bbox. */
+export type DeltaIndex = Map<GraphSpan, Bbox>;
 const DELTA_MARK_RE = /^[Δ∆△▲]\s*(\d{1,2}[A-Z]?)$|^(\d{1,2}[A-Z]?)\s*[Δ∆△▲]$/;
 const REV_MARK_RE = /^REV(?:ISION)?\.?\s*#?\s*(\d{1,2}[A-Z]?)$/;
 
@@ -148,6 +153,91 @@ export const revisionOf = (s: string): string | null => {
   const r = t.match(REV_MARK_RE);
   return r ? r[1] : null;
 };
+
+// ── drawn delta triangles ───────────────────────────────────────────────────
+// Real CAD sets rarely EMIT "Δ2" as text: the convention is a drawn triangle
+// (three linework segments) with a bare digit inside, and the text layer
+// carries just "2" — which the text pass rightly refuses (a bare number can't
+// be a marker, or every dimension becomes a revision). The geometry closes
+// that gap: a 1–2 digit span becomes a marker exactly when three segments of
+// digit scale close into a triangle around it. Guards, each killing a real
+// false-positive class: side length is bounded to digit scale (a roof slope
+// or a big triangular region never qualifies), the three sides must roughly
+// agree (max/min ≤ 2.5 — drafting deltas are near-equilateral), the loop must
+// CLOSE corner-to-corner (a circle's many short chords never form a 3-cycle,
+// so grid bubbles and detail circles stay out), and a dense neighbourhood
+// (hatch) refuses rather than guesses.
+const BARE_DIGIT_RE = /^\d{1,2}$/;
+
+/** segs: flat [x1,y1,x2,y2, ...] in the SAME px space as the spans (the
+ * VectorGeometry.segs shape the engine already extracts). Returns each bare-
+ * digit span that sits inside a digit-scale drawn triangle, with the
+ * triangle's bbox. Pure; O(spans·nearby) with a coarse grid prefilter. */
+export function drawnDeltaMarkers(spans: GraphSpan[], segs: ArrayLike<number>): Array<{ span: GraphSpan; tri: Bbox }> {
+  const cands = spans.filter((s) => BARE_DIGIT_RE.test((s.str || "").trim()));
+  if (!cands.length || !segs.length) return [];
+  // coarse grid over segment midpoints, digit-scale segments only
+  const CELL = 64;
+  const grid = new Map<string, number[]>();
+  const nSeg = Math.floor(segs.length / 4);
+  for (let i = 0; i < nSeg; i++) {
+    const dx = segs[i * 4 + 2] - segs[i * 4], dy = segs[i * 4 + 3] - segs[i * 4 + 1];
+    const len = Math.hypot(dx, dy);
+    if (len < 4 || len > 400) continue;                     // digit-scale window, generous
+    const mx = (segs[i * 4] + segs[i * 4 + 2]) / 2, my = (segs[i * 4 + 1] + segs[i * 4 + 3]) / 2;
+    const k = `${Math.floor(mx / CELL)},${Math.floor(my / CELL)}`;
+    let cell = grid.get(k);
+    if (!cell) grid.set(k, (cell = []));
+    cell.push(i);
+  }
+  const out: Array<{ span: GraphSpan; tri: Bbox }> = [];
+  for (const sp of cands) {
+    const h = Math.max(sp.h || 8, 6);
+    const cx = sp.x + (sp.w || 0) / 2, cy = sp.y + h / 2;
+    const R = h * 5;
+    const near: number[] = [];
+    for (let gx = Math.floor((cx - R) / CELL); gx <= Math.floor((cx + R) / CELL); gx++) {
+      for (let gy = Math.floor((cy - R) / CELL); gy <= Math.floor((cy + R) / CELL); gy++) {
+        for (const i of grid.get(`${gx},${gy}`) || []) {
+          const mx = (segs[i * 4] + segs[i * 4 + 2]) / 2, my = (segs[i * 4 + 1] + segs[i * 4 + 3]) / 2;
+          const len = Math.hypot(segs[i * 4 + 2] - segs[i * 4], segs[i * 4 + 3] - segs[i * 4 + 1]);
+          if (Math.hypot(mx - cx, my - cy) <= R && len >= h * 1.2 && len <= h * 8) near.push(i);
+        }
+      }
+    }
+    if (near.length < 3 || near.length > 60) continue;      // dense hatch → refuse, never guess
+    const tol = Math.max(2, h * 0.35);
+    let best: Bbox | null = null;
+    let bestArea = Infinity;
+    const P = (i: number, end: 0 | 1): [number, number] => [segs[i * 4 + end * 2], segs[i * 4 + 1 + end * 2]];
+    const close = (a: [number, number], b: [number, number]) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= tol;
+    for (let a = 0; a < near.length; a++) for (let b = a + 1; b < near.length; b++) for (let c = b + 1; c < near.length; c++) {
+      // a 3-cycle: each segment's ends pair corner-to-corner with the other two
+      for (const fa of [0, 1] as const) for (const fb of [0, 1] as const) for (const fc of [0, 1] as const) {
+        const [a0, a1] = [P(near[a], fa), P(near[a], (1 - fa) as 0 | 1)];
+        const [b0, b1] = [P(near[b], fb), P(near[b], (1 - fb) as 0 | 1)];
+        const [c0, c1] = [P(near[c], fc), P(near[c], (1 - fc) as 0 | 1)];
+        if (!close(a1, b0) || !close(b1, c0) || !close(c1, a0)) continue;
+        const v: Array<[number, number]> = [a0, b0, c0];
+        const side = (p: [number, number], q: [number, number]) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+        const s01 = side(v[0], v[1]), s12 = side(v[1], v[2]), s20 = side(v[2], v[0]);
+        const mx = Math.max(s01, s12, s20), mn = Math.min(s01, s12, s20);
+        if (mn < h * 1.2 || mx > h * 8 || mx / mn > 2.5) continue;
+        // the digit strictly inside (consistent cross-product sign)
+        const cross = (p: [number, number], q: [number, number]) => (q[0] - p[0]) * (cy - p[1]) - (q[1] - p[1]) * (cx - p[0]);
+        const d0 = cross(v[0], v[1]), d1 = cross(v[1], v[2]), d2 = cross(v[2], v[0]);
+        if (!((d0 > 0 && d1 > 0 && d2 > 0) || (d0 < 0 && d1 < 0 && d2 < 0))) continue;
+        const area = Math.abs((v[1][0] - v[0][0]) * (v[2][1] - v[0][1]) - (v[2][0] - v[0][0]) * (v[1][1] - v[0][1])) / 2;
+        if (area < bestArea) {
+          bestArea = area;
+          best = [Math.min(v[0][0], v[1][0], v[2][0]), Math.min(v[0][1], v[1][1], v[2][1]), Math.max(v[0][0], v[1][0], v[2][0]), Math.max(v[0][1], v[1][1], v[2][1])];
+        }
+      }
+    }
+    if (best) out.push({ span: sp, tri: best });
+  }
+  return out;
+}
 
 // ── row clustering (the scheduleParse idiom, span-shaped) ───────────────────
 function clusterRows(spans: GraphSpan[]): GraphSpan[][] {
@@ -293,7 +383,7 @@ const CODE_RE = /^[A-Z]{1,4}(-?[A-Z0-9]{1,4})?$/;
 const ROW_KEY_RE = /^\d{1,3}[A-Z]{0,2}$/;
 const QUALIFIED_KEY_RE = /^([A-Z]{1,2})-(\d{1,3}[A-Z]{0,2})$/;
 
-export interface ExtractOpts { buildings?: Set<string> }
+export interface ExtractOpts { buildings?: Set<string>; deltas?: DeltaIndex }
 
 function rowKeyOf(raw: string, kind: "room-finish" | "finish", buildings?: Set<string>): { key: string; building?: string } | null {
   const key = norm(raw).replace(/[^A-Z0-9-]/g, "");
@@ -326,7 +416,7 @@ function bandDataRows(
   kind: "room-finish" | "finish",
   sheetKey: string,
   buildings: Set<string> | undefined,
-  cfg: { fromIdx: number; belowY: number; keyAlign?: { x: number; tol: number } },
+  cfg: { fromIdx: number; belowY: number; keyAlign?: { x: number; tol: number }; deltas?: DeltaIndex },
 ): { out: TableRow[]; region: Bbox | null } {
   const { x0, x1, medGap } = bandLimits(anchors);
   const out: TableRow[] = [];
@@ -342,16 +432,17 @@ function bandDataRows(
     }
   };
   const orphans: Array<{ toks: GraphSpan[]; y: number }> = [];
-  const markers: Array<{ rev: string; span: GraphSpan }> = [];
+  const markers: Array<{ rev: string; span: GraphSpan; drawn?: boolean; tri?: Bbox }> = [];
   for (let i = Math.max(cfg.fromIdx, 0); i < rows.length; i++) {
     if (rowY(rows[i]) <= cfg.belowY) continue;
     const banded: GraphSpan[] = [];
     for (const t of rows[i]) {
-      const rev = revisionOf(t.str);
+      const tri = cfg.deltas?.get(t);
+      const rev = tri ? norm(t.str) : revisionOf(t.str);
       // a delta usually sits in the MARGIN beside its row — outside the data
       // band — so the marker gate is wider than the cell gate
       if (rev != null) {
-        if (centerX(t) >= x0 - 2.5 * medGap && centerX(t) <= x1 + medGap) markers.push({ rev, span: t });
+        if (centerX(t) >= x0 - 2.5 * medGap && centerX(t) <= x1 + medGap) markers.push({ rev, span: t, ...(tri ? { drawn: true, tri } : {}) });
         continue;
       }
       if (t.x >= x0 && t.x <= x1) banded.push(t);
@@ -386,7 +477,10 @@ function bandDataRows(
   for (const m of markers) {
     const { i, d } = nearest(m.span.y);
     if (i < 0 || d > radius(m.span.h || 8) || out[i].revision) continue;
-    out[i].revision = { rev: m.rev, source: { sheet: sheetKey, text: m.span.str.trim(), bbox: bboxOf(m.span) } };
+    // a drawn delta's evidence bbox spans digit AND triangle — view_sheet
+    // shows the symbol, not just the bare digit
+    const ebox = m.tri ? merge(bboxOf(m.span), m.tri) : bboxOf(m.span);
+    out[i].revision = { rev: m.rev, source: { sheet: sheetKey, text: m.span.str.trim(), bbox: ebox }, ...(m.drawn ? { drawn: true } : {}) };
   }
   // row-level building off the BLDG/BUILDING column, where the key itself
   // did not carry one
@@ -437,7 +531,7 @@ export function extractTable(sheet: SheetSpans, kind: "room-finish" | "finish", 
 
   let region: Bbox | null = null;
   for (const t of headerSpans) region = region ? merge(region, bboxOf(t)) : bboxOf(t);
-  const banded = bandDataRows(rows, anchors, kind, sheet.key, opts.buildings, { fromIdx: dataFrom, belowY: dataBelowY });
+  const banded = bandDataRows(rows, anchors, kind, sheet.key, opts.buildings, { fromIdx: dataFrom, belowY: dataBelowY, deltas: opts.deltas });
   const out = banded.out;
   if (banded.region) region = region ? merge(region, banded.region) : banded.region;
   if (!out.length) return null;
@@ -497,13 +591,13 @@ function mergeContinuation(base: ScheduleTable, frag: ScheduleTable): void {
  * band the rows below the title — but only where the key column actually
  * lines up; adopting misaligned columns would caption cells with the wrong
  * headers, which is worse than refusing. */
-function adoptContinuationRows(sheet: SheetSpans, titleSpan: GraphSpan, base: ScheduleTable, buildings: Set<string>): ScheduleTable | null {
+function adoptContinuationRows(sheet: SheetSpans, titleSpan: GraphSpan, base: ScheduleTable, buildings: Set<string>, deltas?: DeltaIndex): ScheduleTable | null {
   if (!base.anchors?.length || base.kind === "unknown") return null;
   const rows = clusterRows(sheet.spans.filter((s) => !isVertical(s)));
   const { medGap } = bandLimits(base.anchors);
   const keyTol = Math.max(40, medGap / 2);
   const banded = bandDataRows(rows, base.anchors, base.kind, sheet.key, buildings, {
-    fromIdx: 0, belowY: titleSpan.y, keyAlign: { x: base.anchors[0].x, tol: keyTol },
+    fromIdx: 0, belowY: titleSpan.y, keyAlign: { x: base.anchors[0].x, tol: keyTol }, deltas,
   });
   if (!banded.out.length) return null;
   const region = banded.region ? merge(bboxOf(titleSpan), banded.region) : bboxOf(titleSpan);
@@ -525,6 +619,9 @@ export interface RoomTagOpts {
   /** Normalized tags that are actually sheet numbers in the set ("A-601",
    * "A601") — a title block's own number must never mint a room. */
   exclude?: Set<string>;
+  /** Drawn delta triangles on this sheet — a bare digit inside one is a
+   * revision marker, never a room, and attaches to the bubble it sits by. */
+  deltas?: DeltaIndex;
 }
 
 /** Room-number tags on a sheet, with the name span sitting just above the
@@ -539,6 +636,7 @@ export function roomTags(sheet: SheetSpans, opts: RoomTagOpts = {}): RoomTag[] {
     return { ok: false };
   };
   for (const sp of spans) {
+    if (opts.deltas?.has(sp)) continue; // a digit inside a drawn delta is a marker, never a room
     const t = sp.str.trim();
     const a = accept(t);
     if (!a.ok) continue;
@@ -564,19 +662,26 @@ export function roomTags(sheet: SheetSpans, opts: RoomTagOpts = {}): RoomTag[] {
   // a delta beside the bubble flags the ROOM as revised — the finish stated
   // for it changed under that revision; nearest marker within ~2.5 tag
   // heights of the bubble's edge attaches, farther ones are someone else's
-  const markers = spans.filter((c) => revisionOf(c.str) != null);
+  const markers: Array<{ rev: string; span: GraphSpan; box: Bbox; drawn?: boolean }> = [];
+  for (const c of spans) {
+    const tri = opts.deltas?.get(c);
+    if (tri) markers.push({ rev: norm(c.str), span: c, box: merge(bboxOf(c), tri), drawn: true });
+    else {
+      const rev = revisionOf(c.str);
+      if (rev != null) markers.push({ rev, span: c, box: bboxOf(c) });
+    }
+  }
   for (const tag of out) {
     const hgt = Math.max(tag.bbox[3] - tag.bbox[1], 6);
-    let bestM: GraphSpan | null = null;
+    let bestM: (typeof markers)[number] | null = null;
     let bd = Infinity;
     for (const m of markers) {
-      const mb = bboxOf(m);
-      const dx = Math.max(tag.bbox[0] - mb[2], mb[0] - tag.bbox[2], 0);
-      const dy = Math.max(tag.bbox[1] - mb[3], mb[1] - tag.bbox[3], 0);
+      const dx = Math.max(tag.bbox[0] - m.box[2], m.box[0] - tag.bbox[2], 0);
+      const dy = Math.max(tag.bbox[1] - m.box[3], m.box[1] - tag.bbox[3], 0);
       const d = Math.hypot(dx, dy);
       if (d <= hgt * 2.5 && d < bd) { bd = d; bestM = m; }
     }
-    if (bestM) tag.revision = { rev: revisionOf(bestM.str)!, source: { sheet: sheet.key, text: bestM.str.trim(), bbox: bboxOf(bestM) } };
+    if (bestM) tag.revision = { rev: bestM.rev, source: { sheet: sheet.key, text: bestM.span.str.trim(), bbox: bestM.box }, ...(bestM.drawn ? { drawn: true } : {}) };
   }
   return out;
 }
@@ -614,12 +719,22 @@ export function buildSheetGraph(sheets: SheetSpans[]): SheetGraph {
   const notes: string[] = [];
 
   // revision markers, set-wide — where these sit, the current answer is the
-  // POST-revision answer and the consumer should know the ink changed
+  // POST-revision answer and the consumer should know the ink changed. Two
+  // detectors: text markers ("Δ2", "REV 2"), and DRAWN deltas — a bare digit
+  // inside a digit-scale triangle of linework — on sheets that supplied segs.
+  const deltasBySheet = new Map<string, DeltaIndex>();
   const revisions: RevisionMarker[] = [];
   for (const s of withText) {
+    const deltas: DeltaIndex = new Map();
+    if (s.segs?.length) for (const d of drawnDeltaMarkers(s.spans, s.segs)) deltas.set(d.span, d.tri);
+    if (deltas.size) deltasBySheet.set(s.key, deltas);
     for (const sp of s.spans) {
-      const rev = revisionOf(sp.str);
-      if (rev != null) revisions.push({ rev, sheet: s.key, bbox: bboxOf(sp) });
+      const tri = deltas.get(sp);
+      if (tri) revisions.push({ rev: norm(sp.str), sheet: s.key, bbox: merge(bboxOf(sp), tri), drawn: true });
+      else {
+        const rev = revisionOf(sp.str);
+        if (rev != null) revisions.push({ rev, sheet: s.key, bbox: bboxOf(sp) });
+      }
     }
   }
 
@@ -640,7 +755,7 @@ export function buildSheetGraph(sheets: SheetSpans[]): SheetGraph {
   for (const s of withText) {
     roles.set(s.key, classifySheetRole(s));
     for (const kind of ["room-finish", "finish"] as const) {
-      const t = extractTable(s, kind, { buildings });
+      const t = extractTable(s, kind, { buildings, deltas: deltasBySheet.get(s.key) });
       if (!t) continue;
       // table-level building: its own title first, the sheet's context second
       const titleB = t.title ? buildingMentions(t.title.text) : [];
@@ -676,7 +791,7 @@ export function buildSheetGraph(sheets: SheetSpans[]): SheetGraph {
       const base = [...tables].reverse().find((t) => t.kind !== "unknown" && t.title && baseTitleOf(t.title.text) === fragBase
         && t.sheet !== s.key && !t.parts?.some((p) => p.sheet === s.key));
       if (!base || fragmentKinds.get(s.key)?.has(base.kind)) continue;
-      const adopted = adoptContinuationRows(s, sp, base, buildings);
+      const adopted = adoptContinuationRows(s, sp, base, buildings, deltasBySheet.get(s.key));
       if (adopted) {
         if (adopted.building == null && ctxBySheet.get(s.key)) adopted.building = ctxBySheet.get(s.key);
         mergeContinuation(base, adopted);
@@ -702,7 +817,7 @@ export function buildSheetGraph(sheets: SheetSpans[]): SheetGraph {
     const role = roles.get(s.key)!;
     if (role.role === "plan" || role.role === "unknown" || role.role === "demolition") {
       const ctxB = ctxBySheet.get(s.key);
-      for (const r of roomTags(s, { buildings, exclude: sheetNumbers })) {
+      for (const r of roomTags(s, { buildings, exclude: sheetNumbers, deltas: deltasBySheet.get(s.key) })) {
         if (r.building == null && ctxB) r.building = ctxB;
         rooms.push(r);
       }

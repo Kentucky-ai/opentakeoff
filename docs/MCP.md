@@ -64,8 +64,11 @@ Forty tools, in the order an agent tends to reach for them:
   alone — rooms and tables carry their building, an unqualified reused
   number refuses *listing the candidate rows per building* instead of
   first-matching, and a qualified tag (`"A-134"`) picks the building the
-  set names; and **revision markers** — a delta triangle (`Δ2`) or `REV 2`
-  tag beside a schedule row or a room bubble attaches there and rides
+  set names; and **revision markers** — a text marker (`Δ2`, `REV 2`) or a
+  **drawn delta** (a bare digit inside a digit-scale triangle of linework —
+  the common CAD convention, proven from the sheet's vector geometry and
+  flagged `drawn: true`) beside a schedule row or a room bubble attaches
+  there and rides
   `resolve_tag` as `revisions` (the codes returned are the post-revision
   answer, but the ink changed under that delta — view the marker and check
   the addendum before pricing), the set-wide list is `sheet_graph.revisions`,

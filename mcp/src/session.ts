@@ -3408,10 +3408,16 @@ export class Session {
       const inputs: SheetSpans[] = [];
       for (const s of this.sheets.values()) {
         if (!s.spans) s.spans = textSpans(s.page);
+        // the drawn delta-triangle hunt needs linework: extract (cached) vector
+        // geometry for sheets that carry bare 1–2 digit spans — the only spans
+        // a drawn delta can label. Sheets without one skip the extraction.
+        let segs: Float64Array | number[] | undefined;
+        if (s.spans.some((t) => /^\d{1,2}$/.test(t.str.trim()))) segs = (await this.ensureGeometry(s)).segs;
         inputs.push({
           key: s.key,
           sheet_number: s.sheetNumber,
           spans: s.spans.map((t) => ({ str: t.str, x: t.x0, y: t.y0, w: t.x1 - t.x0, h: t.y1 - t.y0, ...(t.rot ? { rot: t.rot } : {}) })),
+          ...(segs?.length ? { segs } : {}),
         });
       }
       this.graph = buildSheetGraph(inputs);
@@ -3429,7 +3435,7 @@ export class Session {
     return {
       tag: r.tag, name: r.name, sheet: r.sheet, bbox: Session.wireBox(r.bbox),
       ...(r.building ? { building: r.building } : {}),
-      ...(r.revision ? { revision: { rev: r.revision.rev, source: Session.wireEvidence(r.revision.source) } } : {}),
+      ...(r.revision ? { revision: { rev: r.revision.rev, source: Session.wireEvidence(r.revision.source), ...(r.revision.drawn ? { drawn: true } : {}) } } : {}),
     };
   }
 
@@ -3450,7 +3456,7 @@ export class Session {
       rooms: g.rooms.map(Session.wireRoom),
       callouts: g.callouts.map((c) => ({ detail: c.detail, target_sheet: c.target_sheet, sheet: c.sheet, bbox: Session.wireBox(c.bbox) })),
       ...(g.buildings.length ? { buildings: g.buildings } : {}),
-      ...(g.revisions.length ? { revisions: g.revisions.map((r) => ({ rev: r.rev, sheet: r.sheet, bbox: Session.wireBox(r.bbox) })) } : {}),
+      ...(g.revisions.length ? { revisions: g.revisions.map((r) => ({ rev: r.rev, sheet: r.sheet, bbox: Session.wireBox(r.bbox), ...(r.drawn ? { drawn: true } : {}) })) } : {}),
       ...(g.notes.length ? { notes: g.notes } : {}),
       counts: { rooms: g.rooms.length, schedules: g.tables.length, callouts: g.callouts.length },
     };
@@ -3497,7 +3503,7 @@ export class Session {
         ...(f.definition ? { definition: { cells: f.definition.cells, source: Session.wireEvidence(f.definition.source) } } : {}),
       })),
       sources: res.sources.map(Session.wireEvidence),
-      ...(res.revisions?.length ? { revisions: res.revisions.map((v) => ({ rev: v.rev, source: Session.wireEvidence(v.source) })) } : {}),
+      ...(res.revisions?.length ? { revisions: res.revisions.map((v) => ({ rev: v.rev, source: Session.wireEvidence(v.source), ...(v.drawn ? { drawn: true } : {}) })) } : {}),
     };
   }
 
