@@ -2,6 +2,31 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-16 — the sheet graph gets a ruler; opentakeoff-mcp 0.9.46
+
+A scored evaluation loop against **real bid sets**, and the parser changes it forced. Every fix below was found by measuring, not by reading code — and each ships with a fixture reproducing the real failure.
+
+### Added
+- **`mcp/scripts/graph-eval.mjs` — the ruler.** Scores the graph against a corpus of real plansets held OUTSIDE the repo, on two metrics, because either alone is gameable:
+  - **cell accuracy** — for every (room, surface) the answer key states, did `resolve_tag` return the same code? precision / recall / F1.
+  - **tag classification** — of the numbers the graph calls rooms, how many are rooms? This is the one that catches keynote bubbles; cell accuracy can sit at 1.000 while the graph invents thirty rooms that do not exist.
+  The scorer is deliberately dumb and stable so a number measured today is comparable after a rule change, and it **throws on an unknown surface in a key** rather than silently dropping the row and flattering itself. `graph-render.mjs` renders each set's tables for labelling, so the key is read off the RENDER while the parser reads the TEXT LAYER — two independent channels, which is the only thing that makes the score mean anything.
+- **`unmatched_tags` on `sheet_graph`.** A finish plan is covered in 2–3 digit numbers that are not rooms. Counting them as rooms made every one come back "no schedule row" — which reads exactly like a room the schedule forgot, and buries the real case among the noise. Numbers are now CORROBORATED before being called rooms (a schedule row answers for them, or a room name is drawn with them and the set has no schedule to check against), each saying which in `corroboration`. The rest are listed in `unmatched_tags` **with a reason**, never dropped, and `resolve_tag` still cites their plan bubble — that ink is the evidence a room may have been left out.
+
+### Fixed
+- **Columns come from where the DATA starts, not where the header sits.** Headers are centred over their column; cells are left-aligned in it. On a real gym schedule "PT-1" and "SEE INT. ELEVATIONS" both start at x=2342, so centre-banding put the short one in BASE and the long one in WALL. Column starts are now clustered off the data's own left edges and merely NAMED by the headers; each anchor takes the LEFTMOST cluster that belongs to it, because taking any other lets the first token of every cell fall into the column before it.
+- **Three-tier headers.** `ROOM | FLOOR | WALLS | CEILING` over `MARK | LOCATION | FINISH | BASE | NORTH | … | FINISH | HEIGHT`. The parent row carries enough vocabulary to look like the header, and taking it read every sub-header as data — BASE landed in WALLS and the whole row shifted. Where consecutive rows both qualify the LOWEST defines the columns; a column that spans both tiers (REMARKS, on its own line between them) no longer stops the descent; and a label repeated in the row takes its parent's name (`FLOOR FINISH`, `CEILING FINISH`) while a surface word is never renamed — "FLOOR BASE" would rank as a floor.
+- **A table ends where its rows stop.** Rows cluster across the whole sheet, so a keyed-looking row belonging to a legend or to the plan drawn beside the schedule joined the table and surfaced as "ambiguous: 3 schedule rows match 100". Rows must now start their key at the key column, and a gap eight row pitches deep ends the table.
+- **A weak role guess no longer hides a sheet's rooms.** A real finish plan whose title block the role hunt could not parse came back `detail` at **0.3 confidence**, and that one soft signal suppressed room-tag reading entirely. Only a CONFIDENT (≥ 0.6) schedule/legend/elevation/detail suppresses it now.
+- **A table's region bounds that table.** `find_schedule` hands its region to `view_sheet`; merging the whole clustered header row advertised a region five times the table's width, putting two tables in one crop.
+- **Room names follow drafting convention** — set in CAPS, and never a table word. Mixed-case title-block prose ("Fax", "Story") was pairing with a nearby number and inventing rooms out of a fax number.
+
+### Measured
+Against three real sets from three general contractors, keys read independently off the renders: **cell precision 1.000 / recall 1.000 (413 cells, 0 wrong, 0 missed)** and **tag precision 1.000 / recall 1.000 (79 rooms, 0 non-rooms reported)**. The synthetic corpora are unchanged at 1.000/1.000.
+
+### Named, not papered over
+Three further sets in the corpus are deliberately unlabelled because the task is not well posed from the sheets given: one plan carries **no room numbers in its text layer at all** (nothing to read), one sheet's schedule shape is still unread, and one carries a wall sub-tier headed `1 2 3 4` with no parent to name it, plus a boxed material code inside the floor cell that is dropped. Those are the next lanes on #87, stated rather than scored around.
+
 ## 2026-08-16 — the sheet graph meets real sets; opentakeoff-mcp 0.9.45
 
 Everything here was found by running `graph-audit` on actual bid sets across five general contractors — none of it was reachable from synthetic fixtures, and each fix ships with a fixture that reproduces the real failure.

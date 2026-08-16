@@ -532,7 +532,12 @@ test("sheet graph (#87): index, resolve with citations, refusal with reasons, fi
   const roles = Object.fromEntries(g.sheets.map((s: any) => [s.sheet, s.role]));
   assert.equal(roles["sample-finish-plan.pdf"], "plan", "page 1 is the finish plan");
   assert.equal(roles["sample-finish-plan.pdf#2"], "schedule", "page 2 is the schedule sheet — its room-number column must NOT mint phantom rooms");
-  assert.ok(g.counts.rooms >= 40, `the plan's room tags: ${g.counts.rooms}`);
+  // `rooms` now means numbers CORROBORATED as rooms; everything else the tag
+  // reader found is surfaced in unmatched_tags with a reason. Between them
+  // every numbered tag on the plan is still accounted for — nothing dropped.
+  assert.ok(g.counts.rooms + (g.counts.unmatched_tags ?? 0) >= 40, `tags accounted for: ${g.counts.rooms} rooms + ${g.counts.unmatched_tags} unmatched`);
+  assert.ok(g.rooms.every((r: any) => r.corroboration), "every room states WHY it is believed to be one");
+  assert.ok((g.unmatched_tags ?? []).every((u: any) => u.reason && u.bbox), "every uncounted tag names its reason and cites its ink");
   assert.ok(g.counts.schedules >= 2, "a room-finish table AND a finish/material table");
   assert.ok(g.rooms.every((r: any) => r.sheet === "sample-finish-plan.pdf"), "rooms come from the plan sheet only");
   const r134 = g.rooms.find((r: any) => r.tag === "134");
@@ -556,7 +561,9 @@ test("sheet graph (#87): index, resolve with citations, refusal with reasons, fi
   assert.match(missing.reason, /no schedule row for 999/);
 
   const found = await callOk(client, "find_schedule", { kind: "room finish" });
-  assert.ok(found.matches[0].rows >= 30);
+  // 29, verified against the sheet: the key column carries exactly 29 room
+  // numbers. The old floor of 30 was counting rows the extractor invented.
+  assert.equal(found.matches[0].rows, 29, "every row of the schedule, and none that is not one");
   assert.match(found.matches[0].title, /ROOM FINISH SCHEDULE/);
   assert.ok(found.matches[0].region.x1 > found.matches[0].region.x0, "the region is viewable");
   assert.match(await callErr(client, "find_schedule", { kind: "door" }), /No "door" schedule found .* Found: /);

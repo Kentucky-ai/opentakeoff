@@ -294,7 +294,9 @@ export interface ScheduleTable {
   anchors?: Anchor[];
 }
 
-const ROOM_HEADERS = ["ROOM", "NO", "NUMBER", "NAME", "FLOOR", "BASE", "WALL", "WALLS", "NORTH", "SOUTH", "EAST", "WEST", "CEILING", "WAINSCOT", "REMARKS", "CLG", "HT", "BLDG", "BUILDING"];
+/** Columns that ARE a surface in their own right — never renamed by a parent. */
+const SURFACE_WORDS = new Set(["FLOOR", "BASE", "WALL", "WALLS", "CEILING", "NORTH", "SOUTH", "EAST", "WEST", "WAINSCOT"]);
+const ROOM_HEADERS = ["ROOM", "NO", "NUMBER", "NAME", "MARK", "LOCATION", "FLOOR", "BASE", "WALL", "WALLS", "NORTH", "SOUTH", "EAST", "WEST", "CEILING", "WAINSCOT", "REMARKS", "CLG", "HT", "HEIGHT", "FINISH", "BLDG", "BUILDING"];
 const FINISH_HEADERS = ["CODE", "MARK", "SYMBOL", "MATERIAL", "MANUFACTURER", "PRODUCT", "STYLE", "COLOR", "SIZE", "REMARKS", "DESCRIPTION", "PATTERN", "COMMENTS"];
 // A header CELL is often a multi-word span ("FLOOR FINISH", "CEILING FINISH")
 // — the vocabulary word inside it names the column.
@@ -310,20 +312,89 @@ const headerLabel = (s: string, vocab: string[]): string | null => {
   return null;
 };
 
+/** The vocabulary labels a row carries, in x order (duplicates kept — two
+ * columns can both be headed FINISH, one under FLOOR and one under CEILING). */
+function headerHits(row: GraphSpan[], vocab: string[]): Array<{ label: string; span: GraphSpan }> {
+  const out: Array<{ label: string; span: GraphSpan }> = [];
+  for (const t of row) {
+    const w = headerLabel(t.str, vocab);
+    if (w) out.push({ label: w, span: t });
+  }
+  return out.sort((a, b) => a.span.x - b.span.x);
+}
+const qualifies = (hits: Array<{ label: string }>, required: string[], minHits: number) => {
+  const seen = new Set(hits.map((h) => h.label));
+  return seen.size >= minHits && required.some((r) => seen.has(r));
+};
+
 function findHeaderRow(rows: GraphSpan[][], vocab: string[], required: string[], minHits: number): { anchors: Anchor[]; rowIndex: number } | null {
   for (let i = 0; i < rows.length; i++) {
-    const anchors: Anchor[] = [];
-    const seen = new Set<string>();
-    for (const t of rows[i]) {
-      const w = headerLabel(t.str, vocab);
-      // anchor at the header span's CENTER — data bands by center too, so a
-      // header centered over a wide column (the REMARKS case) claims cells
-      // left-aligned at that column's far edge instead of losing them to the
-      // neighbour on a left-x tie
-      if (w && !seen.has(w)) { seen.add(w); anchors.push({ label: w, x: t.x + (t.w || 0) / 2 }); }
+    let hits = headerHits(rows[i], vocab);
+    if (!qualifies(hits, required, minHits)) continue;
+    // A three-tier header puts PARENTS on top (ROOM | FLOOR | WALLS | CEILING)
+    // and the real columns underneath (MARK | LOCATION | FINISH | BASE |
+    // NORTH | …). The parent row carries enough vocabulary to look like the
+    // header, and taking it read every sub-header as data — BASE landed in
+    // WALLS and the whole row shifted. Where consecutive rows BOTH qualify,
+    // the LOWER one defines the columns; the rows above only name them.
+    let idx = i;
+    for (;;) {
+      // Look a couple of rows down, not just one: a column that spans both
+      // tiers (REMARKS, centred across them) lands on its own row between
+      // them and would otherwise stop the descent dead.
+      let next = -1;
+      for (let j = idx + 1; j < Math.min(idx + 4, rows.length); j++) {
+        const h = headerHits(rows[j], vocab);
+        // A header row is almost ENTIRELY header words. A data row carries a
+        // few by accident — a material schedule's "VINYL WALL BASE" hits WALL
+        // and BASE — and descending into one shifts every column by a row.
+        const ratio = h.length / Math.max(1, rows[j].length);
+        if (qualifies(h, required, minHits) && h.length > hits.length && ratio >= 0.6) { next = j; break; }
+      }
+      if (next < 0) break;
+      idx = next;
+      hits = headerHits(rows[idx], vocab);
     }
-    if (anchors.length < minHits || !required.some((r) => seen.has(r))) continue;
-    return { anchors: subTierAnchors(rows, i, anchors.sort((a, b) => a.x - b.x), vocab), rowIndex: i };
+    // A label repeated in the row (two FINISH columns) is ambiguous on its
+    // own and takes its parent's name: FLOOR FINISH, CEILING FINISH. The
+    // parent is the label above whose centre falls inside THIS column's own
+    // interval — a parent's text is narrow and centred over a wide column, so
+    // testing against the sub-header's own span finds nothing.
+    const dup = new Set<string>();
+    const once = new Set<string>();
+    for (const h of hits) (once.has(h.label) ? dup : once).add(h.label);
+    const anchors: Anchor[] = [];
+    const used = new Set<string>();
+    for (let j = 0; j < hits.length; j++) {
+      const h = hits[j];
+      let label = h.label;
+      if (dup.has(h.label) && !SURFACE_WORDS.has(h.label)) {
+        const hi = j + 1 < hits.length ? hits[j + 1].span.x : Infinity;
+        const parent = parentLabelOver(rows, idx, i, h.span.x, hi, vocab);
+        if (parent && parent !== h.label) label = `${parent} ${h.label}`;
+      }
+      if (used.has(label)) continue;
+      used.add(label);
+      anchors.push({ label, x: h.span.x + (h.span.w || 0) / 2 });
+    }
+    if (anchors.length < minHits) continue;
+    // A column that exists ONLY at a parent tier (REMARKS spanning the whole
+    // header block) is a real column: keep it when it sits outside every
+    // descended anchor's reach, drop it when it is merely a parent naming
+    // columns that are already anchored below it.
+    if (idx > i) {
+      const lo = Math.min(...anchors.map((a) => a.x)), hi = Math.max(...anchors.map((a) => a.x));
+      for (let j = i; j < idx; j++) {
+        for (const h of headerHits(rows[j], vocab)) {
+          const cx = h.span.x + (h.span.w || 0) / 2;
+          if (cx >= lo && cx <= hi) continue;
+          if (used.has(h.label)) continue;
+          used.add(h.label);
+          anchors.push({ label: h.label, x: cx });
+        }
+      }
+    }
+    return { anchors: subTierAnchors(rows, idx, anchors.sort((a, b) => a.x - b.x), vocab), rowIndex: idx };
   }
   return null;
 }
@@ -343,11 +414,23 @@ function findHeaderRow(rows: GraphSpan[][], vocab: string[], required: string[],
 // an unexplained token never mints a column.
 const SUB_LABEL_RE = /^[A-Z0-9][A-Z0-9.\/-]{0,5}$/;
 
-function parentLabelOver(rows: GraphSpan[][], hdrIdx: number, gx0: number, gx1: number, vocab: string[]): string | null {
-  const width = Math.max(gx1 - gx0, 1);
-  for (let j = hdrIdx - 1; j >= 0 && j >= hdrIdx - 2; j--) {
+function parentLabelOver(rows: GraphSpan[][], hdrIdx: number, topIdx: number, gx0: number, gx1: number, vocab: string[]): string | null {
+  const width = Math.max(Math.min(gx1, gx0 + 4000) - gx0, 1);
+  // Search UPWARD by distance, not by row count. Dotted leaders and a
+  // neighbouring table's rows interleave between the tiers of one header
+  // block, so "two rows up" can fall short of the parent that is physically
+  // sitting right above the column.
+  const hs = rows[hdrIdx].map((t) => t.h || 8).sort((a, b) => a - b);
+  const near = Math.max(24, (hs[hs.length >> 1] || 8) * 4);
+  const hy = rowY(rows[hdrIdx]);
+  const floorIdx = Math.max(0, Math.min(topIdx, hdrIdx - 8));
+  for (let j = hdrIdx - 1; j >= floorIdx; j--) {
+    if (hy - rowY(rows[j]) > near) break;
     for (const t of rows[j]) {
-      if (Math.min(t.x + (t.w || 0), gx1) - Math.max(t.x, gx0) <= width * 0.3) continue;
+      const cx = t.x + (t.w || 0) / 2;
+      const inInterval = cx >= gx0 && cx < gx1;
+      const overlaps = Math.min(t.x + (t.w || 0), gx1) - Math.max(t.x, gx0) > width * 0.3;
+      if (!inInterval && !overlaps) continue;
       const lbl = headerLabel(t.str, vocab);
       if (lbl) return lbl;
     }
@@ -377,7 +460,7 @@ function subTierAnchors(rows: GraphSpan[][], hdrIdx: number, anchors: Anchor[], 
   for (const r of runs) {
     if (r.length < 2) continue;
     const last = r[r.length - 1];
-    const parent = parentLabelOver(rows, hdrIdx, r[0].x, last.x + (last.w || 0), vocab);
+    const parent = parentLabelOver(rows, hdrIdx, hdrIdx - 2, r[0].x, last.x + (last.w || 0), vocab);
     if (!parent) continue;
     // sub-columns under a merged parent are equal-width: the pitch between
     // their labels IS the column width, so each one's bounds are its center
@@ -504,6 +587,67 @@ const numOf = (key: string): string => key.match(QUALIFIED_KEY_RE)?.[2] ?? key;
 
 const centerX = (t: GraphSpan) => t.x + (t.w || 0) / 2;
 
+/** Column starts read off the DATA. Left edges of in-band tokens cluster on
+ * the column rule lines, because cells are left-aligned even where headers
+ * are centered. Each cluster is then NAMED by the anchor whose header center
+ * falls inside it. Returns null — and banding falls back to nearest-anchor —
+ * unless every anchor ends up owning a column, so a table this does not fit
+ * is never mangled by a half-built column map. */
+function columnStarts(
+  rows: GraphSpan[][],
+  anchors: Anchor[],
+  cfg: { fromIdx: number; belowY: number },
+  x0: number,
+  x1: number,
+): Array<{ start: number; label: string }> | null {
+  const xs: number[] = [];
+  const hs: number[] = [];
+  for (let i = Math.max(cfg.fromIdx, 0); i < rows.length; i++) {
+    if (rowY(rows[i]) <= cfg.belowY) continue;
+    for (const t of rows[i]) {
+      if (t.x < x0 || t.x > x1 || revisionOf(t.str) != null) continue;
+      xs.push(t.x);
+      hs.push(t.h || 8);
+    }
+  }
+  if (xs.length < anchors.length * 2) return null;
+  hs.sort((a, b) => a - b);
+  const tol = Math.max(4, hs[hs.length >> 1] * 0.5);
+  xs.sort((a, b) => a - b);
+  const clusters: Array<{ start: number; n: number }> = [];
+  for (const x of xs) {
+    const last = clusters[clusters.length - 1];
+    if (last && x - last.start <= tol) { last.n++; continue; }
+    clusters.push({ start: x, n: 1 });
+  }
+  // A real column start appears on nearly every data row; a cell split into
+  // several spans makes a weaker cluster part-way across its own column.
+  // Threshold against the STRONGEST cluster rather than a row count — the
+  // clustered rows span the whole sheet, not just this table, so counting
+  // them sets the bar far too high and throws the map away.
+  const maxN = Math.max(...clusters.map((c) => c.n));
+  const kept = clusters.filter((c) => c.n >= Math.max(2, maxN * 0.25));
+  if (kept.length < anchors.length) return null;
+  // Assign each cluster to the FIRST anchor whose header center sits at or
+  // right of it — a column's cells start left of the header centered over
+  // them — then take the LEFTMOST cluster per anchor as that column's start.
+  // Taking anything else lets the first token of every cell fall into the
+  // column before it, which is how this went wrong the first time.
+  const byLabel = new Map<string, number>();
+  for (const c of kept) {
+    const own = anchors.find((a) => a.x >= c.start);
+    if (!own) continue;
+    const cur = byLabel.get(own.label);
+    if (cur == null || c.start < cur) byLabel.set(own.label, c.start);
+  }
+  if (byLabel.size !== anchors.length) return null;
+  const named = [...byLabel.entries()].map(([label, start]) => ({ label, start })).sort((a, b) => a.start - b.start);
+  // starts must stay in the anchors' own order, or the map is not this table
+  const order = anchors.map((a) => a.label).join("|");
+  if (named.map((n) => n.label).join("|") !== order) return null;
+  return named;
+}
+
 // Band clustered rows to column anchors — shared by extractTable and the
 // title-only continuation path. Phase-3 hardening lives here:
 //   - a revision marker never bands: a delta left of the key column used to
@@ -524,12 +668,33 @@ function bandDataRows(
   cfg: { fromIdx: number; belowY: number; keyAlign?: { x: number; tol: number }; deltas?: DeltaIndex },
 ): { out: TableRow[]; region: Bbox | null } {
   const { x0, x1, medGap } = bandLimits(anchors);
+  // Columns are defined by where the DATA starts, not by where the header
+  // sits. Headers are centered over their column; cells are left-aligned in
+  // it — so a short cell and a long cell in the same column share a left edge
+  // but have wildly different centers. Measured on a real gym schedule:
+  // "PT-1" and "SEE INT. ELEVATIONS" both start at x=2342, and center-banding
+  // put the short one in BASE and the long one in WALL. Clustering the left
+  // edges recovers the true column starts; the headers only NAME them.
+  const cols = columnStarts(rows, anchors, cfg, x0, x1);
+  // A key belongs to the key column when it sits nearer that column's start
+  // than the next column's — sized from the table's own pitch, not from text
+  // height, so a wider key ("139A") or a hair of indent still counts.
+  const keyTol = cols && cols.length > 1 ? Math.max(8, (cols[1].start - cols[0].start) * 0.5) : 40;
   const out: TableRow[] = [];
   const outY: number[] = [];
   let region: Bbox | null = null;
+  /** Which column a token belongs to: its LEFT edge against the data-derived
+   * column starts when those were recoverable, else the old nearest-anchor
+   * reading of its center. */
+  const columnOf = (t: GraphSpan): string => {
+    if (!cols) return nearestAnchor(centerX(t), anchors);
+    let label = cols[0].label;
+    for (const c of cols) { if (t.x + 1 >= c.start) label = c.label; else break; }
+    return label;
+  };
   const add = (row: TableRow, toks: GraphSpan[]) => {
     for (const t of toks) {
-      const label = nearestAnchor(centerX(t), anchors);
+      const label = columnOf(t);
       const text = t.str.trim();
       if (!row.cells[label]) row.cells[label] = { text, bbox: bboxOf(t) };
       else row.cells[label] = { text: `${row.cells[label].text} ${text}`, bbox: merge(row.cells[label].bbox, bboxOf(t)) };
@@ -555,6 +720,11 @@ function bandDataRows(
     if (!banded.length) continue;
     const keyed = rowKeyOf(banded[0].str, kind, buildings);
     if (!keyed) { orphans.push({ toks: banded, y: rowY(rows[i]) }); continue; }
+    // Every row of THIS table starts its key at the key column. Rows are
+    // clustered across the whole sheet, so a keyed-looking row belonging to
+    // something else — a legend, a room tag drawn beside the schedule —
+    // otherwise joins the table and shows up as a duplicate key.
+    if (cols && Math.abs(banded[0].x - cols[0].start) > keyTol) continue;
     // continuation adoption: a keyed row whose key column does not line up
     // with the base's belongs to some OTHER structure — skipped, never merged
     if (cfg.keyAlign && Math.abs(centerX(banded[0]) - cfg.keyAlign.x) > cfg.keyAlign.tol) continue;
@@ -563,6 +733,25 @@ function bandDataRows(
     add(row, banded);
     out.push(row);
     outY.push(rowY(rows[i]));
+  }
+  // A table ends where its rows stop. Rows are clustered across the WHOLE
+  // sheet, so a keyed-looking row far below — a legend, a note block, a room
+  // tag on the plan drawn beside the schedule — otherwise joins the table and
+  // shows up as a duplicate key ("ambiguous: 3 schedule rows match 100").
+  // Keep the run that starts at the first row and break at the first gap
+  // wider than eight times the table's own row pitch — a real schedule
+  // can carry section breaks and blank bands, so the bar has to be high.
+  // Key-column alignment above bounds the table sideways; a gap eight row
+  // pitches deep bounds it downwards, for the case where something keyed the
+  // same way sits far below.
+  if (out.length > 2) {
+    const d = outY.slice(1).map((y, i) => y - outY[i]).filter((g) => g > 0).sort((a, b) => a - b);
+    const pitch0 = d.length ? d[d.length >> 1] : 0;
+    if (pitch0 > 0) {
+      let end = out.length;
+      for (let i = 1; i < outY.length; i++) if (outY[i] - outY[i - 1] > pitch0 * 8) { end = i; break; }
+      if (end < out.length) { out.length = end; outY.length = end; }
+    }
   }
   // the repair radius: median gap between consecutive keyed rows; a lone-row
   // table falls back to a couple of text heights
@@ -634,8 +823,17 @@ export function extractTable(sheet: SheetSpans, kind: "room-finish" | "finish", 
     if (titleFrom < -1) titleFrom = rows.length - 1;
   }
 
+  // The region is what an agent is told to LOOK at, so it must bound THIS
+  // table and no other. A clustered header row on a dense sheet sweeps in the
+  // neighbouring table's tokens, and merging all of them advertised a region
+  // five times the table's width — two tables in one crop. Only header spans
+  // inside the anchors' own band count.
+  const hdrBand = bandLimits(anchors);
   let region: Bbox | null = null;
-  for (const t of headerSpans) region = region ? merge(region, bboxOf(t)) : bboxOf(t);
+  for (const t of headerSpans) {
+    if (centerX(t) < hdrBand.x0 || centerX(t) > hdrBand.x1) continue;
+    region = region ? merge(region, bboxOf(t)) : bboxOf(t);
+  }
   const banded = bandDataRows(rows, anchors, kind, sheet.key, opts.buildings, { fromIdx: dataFrom, belowY: dataBelowY, deltas: opts.deltas });
   const out = banded.out;
   if (banded.region) region = region ? merge(region, banded.region) : banded.region;
@@ -714,8 +912,18 @@ function adoptContinuationRows(sheet: SheetSpans, titleSpan: GraphSpan, base: Sc
 }
 
 // ── room tags on plans ──────────────────────────────────────────────────────
-export interface RoomTag { tag: string; name: string; sheet: string; bbox: Bbox; building?: string; revision?: RowRevision }
+export interface RoomTag { tag: string; name: string; sheet: string; bbox: Bbox; building?: string; revision?: RowRevision;
+  /** WHY this number is believed to be a room: a name drawn with it, a
+   * room-finish row answering for it, or both. Uncorroborated numbers are not
+   * rooms — they are listed in SheetGraph.unmatched_tags with a reason. */
+  corroboration?: "name" | "schedule" | "name+schedule" }
+/** A numbered tag on a plan sheet that is NOT counted as a room, and why.
+ * Listed rather than dropped: a room the schedule genuinely forgot shows up
+ * here, and so does every keynote hexagon — the reason separates them. */
+export interface UnmatchedTag { tag: string; sheet: string; bbox: Bbox; building?: string; name?: string; reason: string }
 const QUALIFIED_TAG_RE = /^([A-Z]{1,2})-(\d{2,3}[A-Z]?)$/;
+/** Words that sit next to a number in a TABLE, never over a room bubble. */
+const NON_ROOM_NAME = new Set(["NUMBER", "NO", "NAME", "MARK", "SYMBOL", "CODE", "TYPE", "QTY", "SIZE", "TOTAL", "SHEET", "DATE", "SCALE", "REV", "REVISION", "DESCRIPTION", "REMARKS", "COMMENTS", "DETAIL", "ROOM"]);
 
 export interface RoomTagOpts {
   /** Building designators the set names — a qualified plan tag ("A-134") is
@@ -757,7 +965,13 @@ export function roomTags(sheet: SheetSpans, opts: RoomTagOpts = {}): RoomTag[] {
       const dy = b[1] - cb[3];
       if (dy < -hgt * 0.2 || dy > hgt * 2.2) continue;
       if (cb[2] < b[0] - hgt || cb[0] > b[2] + hgt) continue;
-      if (!/^[A-Z][A-Z .'’\/&-]{2,}$/.test(norm(cand.str))) continue;
+      const raw = cand.str.trim();
+      // A room name is drafted in CAPS ("KID'S CRUNCH", "IT"). Mixed-case
+      // prose is title-block or note text — "Fax", "Story" — and pairing it
+      // with a nearby number invents a room out of a fax number.
+      if (/[a-z]/.test(raw)) continue;
+      if (!/^[A-Z][A-Z .'’\/&-]{1,}$/.test(norm(raw))) continue;
+      if (NON_ROOM_NAME.has(norm(raw))) continue;
       if (dy < best) { best = dy; name = cand.str.trim(); }
     }
     const tag: RoomTag = { tag: t, name, sheet: sheet.key, bbox: b };
@@ -810,7 +1024,8 @@ export interface SheetGraphSheet { key: string; role: SheetRole; confidence: num
 export interface SheetGraph {
   available: boolean;                 // false = no text layer anywhere (a scanned set) — nothing half-populates
   sheets: SheetGraphSheet[];
-  rooms: RoomTag[];
+  rooms: RoomTag[];                   // numbers CORROBORATED as rooms
+  unmatched_tags: UnmatchedTag[];     // numbers that are not, each with its reason — listed, never dropped
   tables: ScheduleTable[];            // LOGICAL tables — a continued schedule is one entry
   callouts: DetailCallout[];
   buildings: string[];                // every building designator the set names, sorted
@@ -820,7 +1035,7 @@ export interface SheetGraph {
 
 export function buildSheetGraph(sheets: SheetSpans[]): SheetGraph {
   const withText = sheets.filter((s) => s.spans.length > 0);
-  if (!withText.length) return { available: false, sheets: [], rooms: [], tables: [], callouts: [], buildings: [], revisions: [], notes: [] };
+  if (!withText.length) return { available: false, sheets: [], rooms: [], unmatched_tags: [], tables: [], callouts: [], buildings: [], revisions: [], notes: [] };
   const notes: string[] = [];
 
   // revision markers, set-wide — where these sit, the current answer is the
@@ -927,18 +1142,72 @@ export function buildSheetGraph(sheets: SheetSpans[]): SheetGraph {
     const n = norm(s.sheet_number || "").replace(/[^A-Z0-9]/g, "");
     if (n) sheetNumbers.add(n);
   }
-  const rooms: RoomTag[] = [];
+  const found: RoomTag[] = [];
   const callouts: DetailCallout[] = [];
   for (const s of withText) {
     const role = roles.get(s.key)!;
-    if (role.role === "plan" || role.role === "unknown" || role.role === "demolition") {
+    // Read tags unless the sheet is CONFIDENTLY something that carries room
+    // numbers as table content rather than as drawing tags. A weak guess must
+    // not suppress the reading: a real finish plan whose title block the role
+    // hunt could not parse came back "detail" at 0.3 confidence, and that
+    // single soft signal silently hid every room on the sheet.
+    const suppresses = (role.role === "schedule" || role.role === "legend" || role.role === "elevation" || role.role === "detail") && role.confidence >= 0.6;
+    if (!suppresses) {
       const ctxB = ctxBySheet.get(s.key);
       for (const r of roomTags(s, { buildings, exclude: sheetNumbers, deltas: deltasBySheet.get(s.key) })) {
         if (r.building == null && ctxB) r.building = ctxB;
-        rooms.push(r);
+        found.push(r);
       }
     }
     callouts.push(...detailCallouts(s));
+  }
+
+  // ── pass 3b: is that number actually a ROOM? (#87 phase 4) ────────────────
+  // A finish plan is covered in 2–3 digit numbers that are not rooms: keynote
+  // hexagons, detail markers, dimension fragments. Measured across five real
+  // sets, they were a third of everything the tag reader returned — and every
+  // one came back "no schedule row", which reads like a room missing from the
+  // schedule (the lost-bid case) when it is nothing of the kind. Two honest
+  // signals CORROBORATE a number as a room:
+  //   name     — a room name sits stacked with it, the drafting convention;
+  //   schedule — a room-finish row answers for that number.
+  // A number with neither is not called a room and is not dropped either: it
+  // goes to unmatched_tags WITH its reason, so a real room the schedule
+  // forgot is still visible — just not counted as an answered room.
+  const roomRows = tables.filter((t) => t.kind === "room-finish");
+  const scheduleNums = new Set<string>();
+  for (const t of roomRows) for (const r of t.rows) scheduleNums.add(numOf(norm(r.key)));
+  const rooms: RoomTag[] = [];
+  const unmatched: UnmatchedTag[] = [];
+  for (const r of found) {
+    const num = numOf(norm(r.tag).replace(/\s+/g, ""));
+    const byName = !!r.name.trim();
+    const bySchedule = scheduleNums.has(num);
+    // Where the set HAS a room-finish schedule, that schedule is the
+    // authority on which numbers are rooms. A drawn name is not enough on its
+    // own: a keynote legend ("10  LOCKER ROOM ACCESSORY", "13  MIRROR") pairs
+    // a number with a description exactly the way a room bubble pairs one
+    // with a name, and measured across real sets the name-only signal fired
+    // on legend rows and never on a genuine room the schedule had missed.
+    // So a named number the schedule does not list is still surfaced — under
+    // its OWN reason, which is the one an estimator needs to read.
+    if (bySchedule || (byName && !roomRows.length)) {
+      r.corroboration = bySchedule ? (byName ? "name+schedule" : "schedule") : "name";
+      rooms.push(r);
+    } else {
+      unmatched.push({
+        tag: r.tag, sheet: r.sheet, bbox: r.bbox, ...(r.building ? { building: r.building } : {}),
+        ...(byName ? { name: r.name } : {}),
+        reason: !roomRows.length
+          ? "no room name drawn with it, and the set carries no room-finish schedule to check it against"
+          : byName
+            ? `"${r.name}" is drawn with it but no room-finish row answers for it — either a room the schedule omits, or a keynote/legend row; LOOK before pricing it`
+            : "no room name drawn with it and no room-finish row answers for it — reads as a keynote, detail marker or dimension fragment rather than a room",
+      });
+    }
+  }
+  if (unmatched.length) {
+    notes.push(`${unmatched.length} numbered tag(s) on plan sheets are NOT counted as rooms — no name drawn with them and no schedule row answers for them; see unmatched_tags (they are listed, never dropped)`);
   }
 
   // compose the per-sheet view from the LOGICAL tables' parts
@@ -963,7 +1232,7 @@ export function buildSheetGraph(sheets: SheetSpans[]): SheetGraph {
     return entry;
   });
 
-  return { available: true, sheets: outSheets, rooms, tables, callouts, buildings: [...buildings].sort(), revisions, notes };
+  return { available: true, sheets: outSheets, rooms, unmatched_tags: unmatched, tables, callouts, buildings: [...buildings].sort(), revisions, notes };
 }
 
 // ── resolution ──────────────────────────────────────────────────────────────
@@ -992,7 +1261,14 @@ export function resolveTag(graph: SheetGraph, tag: string): ResolveResult {
   const wantB = q ? q[1] : null;
   const num = q ? q[2] : t;
 
-  const rooms = graph.rooms.filter((r) => {
+  // Citation draws on the UNCORROBORATED tags too. A number the schedule
+  // never lists is not counted as a room, but when someone asks about it the
+  // refusal must still point at the ink on the plan — that plan bubble is the
+  // whole evidence that a room may have been left out of the schedule, and
+  // dropping it is how the bid loses the room.
+  const asRoom = (u: UnmatchedTag): RoomTag => ({ tag: u.tag, name: u.name ?? "", sheet: u.sheet, bbox: u.bbox, ...(u.building ? { building: u.building } : {}) });
+  const candidates: RoomTag[] = [...graph.rooms, ...graph.unmatched_tags.map(asRoom)];
+  const rooms = candidates.filter((r) => {
     const rt = norm(r.tag).replace(/\s+/g, "");
     return rt === t || numOf(rt) === num;
   });

@@ -81,7 +81,17 @@ test("room tags pair the stacked name; schedule sheets never mint phantom rooms"
   const tags = roomTags(planSheet);
   assert.deepEqual(tags.map((t) => [t.tag, t.name]).sort(), [["101", "OFFICE"], ["102", "WORKROOM"], ["103", "CORRIDOR"], ["104", "STORAGE"]]);
   const g = buildSheetGraph([planSheet, schedSheet]);
-  assert.equal(g.rooms.length, 4, "the schedule sheet's NO column contributes rows, not room tags");
+  // 104 is drawn on the plan and absent from the schedule. Where a
+  // room-finish schedule EXISTS it is the authority on which numbers are
+  // rooms (a keynote legend pairs a number with a description exactly the way
+  // a bubble pairs one with a name), so 104 is not counted as an answered
+  // room — it is surfaced under its own reason instead, never dropped.
+  assert.deepEqual(g.rooms.map((r) => r.tag).sort(), ["101", "102", "103"], "the schedule sheet's NO column contributes rows, not room tags");
+  assert.ok(g.rooms.every((r) => r.corroboration), "every room says WHY it is believed to be one");
+  assert.deepEqual(g.unmatched_tags.map((u) => u.tag), ["104"]);
+  assert.equal(g.unmatched_tags[0].name, "STORAGE");
+  assert.match(g.unmatched_tags[0].reason, /no room-finish row answers for it/);
+  assert.ok(g.notes.some((n) => /NOT counted as rooms/.test(n)), "the demotion is named in notes");
 });
 
 test("detail callouts parse and point at their sheet", () => {
@@ -448,7 +458,8 @@ test("the failure modes REFUSE with reasons — never silent omission", () => {
   const missing = resolveTag(g, "104");
   assert.equal(missing.status, "unresolved");
   assert.match((missing as { reason: string }).reason, /no schedule row for 104/);
-  assert.equal(missing.room?.name, "STORAGE", "the room is still cited — the gap is named, not hidden");
+  assert.equal(missing.room?.name, "STORAGE", "the plan bubble is STILL cited even though 104 is uncorroborated — that ink is the evidence the schedule may have missed a room");
+  assert.equal(missing.room?.sheet, "set.pdf#1");
   // reused room numbers across buildings — ambiguity refuses
   const dupSheet: SheetSpans = { ...schedSheet, key: "set.pdf#3", spans: schedSheet.spans.map((s) => ({ ...s })) };
   const g2 = buildSheetGraph([planSheet, schedSheet, dupSheet]);
@@ -885,4 +896,131 @@ test("a DOOR SCHEDULE never becomes a finish table — and the drop is NAMED", (
   assert.equal(floor.code, "CPT-1");
   assert.equal(floor.definition?.cells.MATERIAL, "CARPET TILE", "chained to the material schedule, never to the door schedule");
   assert.equal(floor.definition?.cells.MANUFACTURER, "SHAW");
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Phase 4 (#87): what a SCORED run against real bid sets forced. Each of these
+// reproduces a failure measured on an actual planset, not an imagined one.
+// ═════════════════════════════════════════════════════════════════════════════
+
+test("columns come from where the DATA starts, not where the header sits", () => {
+  // Field-found: headers centred, cells left-aligned. "PT-1" and
+  // "SEE INT. ELEVATIONS" share a left edge but their centres differ by 120px,
+  // so centre-banding put the short one in BASE and the long one in WALL.
+  const sched: SheetSpans = {
+    key: "align.pdf#1", sheet_number: "A-620",
+    spans: [
+      sp("ROOM SCHEDULE", 100, 20),
+      // header cells are WIDE and centred over their columns
+      { str: "NO.", x: 100, y: 60, w: 30, h: 8 },
+      { str: "NAME", x: 200, y: 60, w: 90, h: 8 },
+      { str: "FLOOR FINISH", x: 360, y: 60, w: 150, h: 8 },
+      { str: "BASE FINISH", x: 560, y: 60, w: 140, h: 8 },
+      { str: "WALL FINISH", x: 800, y: 60, w: 140, h: 8 },
+      // data is LEFT-ALIGNED at each column's own start
+      sp("601", 100, 85), sp("LOBBY", 200, 85), sp("CT-1", 355, 85), sp("VB-1", 545, 85), sp("SEE INT. ELEVATIONS", 745, 85),
+      sp("602", 100, 105), sp("STORAGE", 200, 105), sp("SC-1", 355, 105), sp("VB-1", 545, 105), sp("PT-1", 745, 105),
+      sp("603", 100, 125), sp("OFFICE", 200, 125), sp("SC-1", 355, 125), sp("VB-1", 545, 125), sp("PT-1", 745, 125),
+    ],
+  };
+  const tab = extractTable(sched, "room-finish")!;
+  for (const key of ["601", "602", "603"]) {
+    const r = tab.rows.find((x) => x.key === key)!;
+    assert.equal(r.cells.BASE.text, "VB-1", `${key}: BASE keeps its own cell`);
+  }
+  assert.equal(tab.rows.find((r) => r.key === "602")!.cells.WALL.text, "PT-1", "a SHORT wall cell lands in WALL, not BASE");
+  assert.equal(tab.rows.find((r) => r.key === "601")!.cells.WALL.text, "SEE INT. ELEVATIONS");
+});
+
+test("three-tier headers: the LOWEST tier defines the columns, the tiers above NAME them", () => {
+  // Field-found: ROOM | FLOOR | WALLS | CEILING over
+  // MARK | LOCATION | FINISH | BASE | NORTH | … | FINISH | HEIGHT.
+  // The parent row carries enough vocabulary to look like the header; taking
+  // it read every sub-header as data. Two columns are both headed FINISH, so
+  // each takes its parent's name.
+  const sched: SheetSpans = {
+    key: "tier3.pdf#1", sheet_number: "A-621",
+    spans: [
+      sp("ROOM FINISH SCHEDULE", 100, 20),
+      // tier 1 — parents, centred over their groups
+      { str: "ROOM", x: 130, y: 45, w: 60, h: 8 },
+      { str: "FLOOR", x: 330, y: 45, w: 70, h: 8 },
+      { str: "CEILING", x: 660, y: 45, w: 90, h: 8 },
+      // a column that spans BOTH tiers, on its own row between them
+      { str: "REMARKS", x: 860, y: 58, w: 90, h: 8 },
+      // tier 2 — the real columns
+      sp("MARK", 100, 70), sp("LOCATION", 180, 70), sp("FINISH", 300, 70), sp("BASE", 400, 70),
+      sp("FINISH", 640, 70), sp("HEIGHT", 740, 70),
+      sp("701", 100, 95), sp("LOBBY", 180, 95), sp("PT-1", 300, 95), sp("WB-1", 400, 95), sp("ACT-1", 640, 95), sp("9'-0\"", 740, 95),
+      sp("702", 100, 115), sp("OFFICE", 180, 115), sp("RT-1", 300, 115), sp("WB-2", 400, 115), sp("ACT-2", 640, 115), sp("13'-0\"", 740, 115),
+    ],
+  };
+  const tab = extractTable(sched, "room-finish")!;
+  assert.ok(tab.headers.includes("FLOOR FINISH"), `floor column takes its parent's name: ${tab.headers.join(" | ")}`);
+  assert.ok(tab.headers.includes("CEILING FINISH"), "the second FINISH is named by ITS parent, not dropped as a duplicate");
+  assert.ok(tab.headers.includes("BASE"), "BASE is its own surface and is never renamed 'FLOOR BASE'");
+  const r = tab.rows.find((x) => x.key === "701")!;
+  assert.equal(r.cells["FLOOR FINISH"].text, "PT-1");
+  assert.equal(r.cells.BASE.text, "WB-1");
+  assert.equal(r.cells["CEILING FINISH"].text, "ACT-1");
+  // resolution ranks by the LEADING word, so the parent-named columns still
+  // read as their surfaces, FLOOR first
+  const plan: SheetSpans = {
+    key: "tier3.pdf#0", sheet_number: "A-108",
+    spans: [sp("EIGHTH FLOOR FINISH PLAN", 300, 900), sp("LOBBY", 100, 300), sp("701", 104, 312)],
+  };
+  const res = resolveTag(buildSheetGraph([plan, sched]), "701");
+  assert.equal(res.status, "resolved");
+  if (res.status !== "resolved") return;
+  assert.equal(res.finishes[0].surface, "FLOOR FINISH");
+  assert.equal(res.finishes[0].code, "PT-1");
+  assert.equal(res.finishes.find((f) => f.surface === "BASE")!.code, "WB-1");
+});
+
+test("a table ends where its rows stop — a legend far below is not extra rows", () => {
+  const sched: SheetSpans = {
+    key: "end.pdf#1", sheet_number: "A-622",
+    spans: [
+      sp("ROOM SCHEDULE", 100, 20),
+      sp("NO", 100, 60), sp("NAME", 200, 60), sp("FLOOR", 300, 60), sp("BASE", 400, 60), sp("CEILING", 500, 60),
+      sp("801", 100, 80), sp("LOBBY", 200, 80), sp("CT-1", 300, 80), sp("VB-1", 400, 80), sp("ACT-1", 500, 80),
+      sp("802", 100, 100), sp("OFFICE", 200, 100), sp("CT-1", 300, 100), sp("VB-1", 400, 100), sp("ACT-1", 500, 100),
+      sp("803", 100, 120), sp("STORAGE", 200, 120), sp("SC-1", 300, 120), sp("VB-1", 400, 120), sp("ACT-2", 500, 120),
+      // far below: a keyed-looking row from something else entirely
+      sp("801", 100, 900), sp("DUPLICATE", 200, 900), sp("XX-9", 300, 900), sp("XX-9", 400, 900), sp("XX-9", 500, 900),
+    ],
+  };
+  const tab = extractTable(sched, "room-finish")!;
+  assert.deepEqual(tab.rows.map((r) => r.key), ["801", "802", "803"], "the far-below row is not part of this table");
+  assert.equal(tab.rows.find((r) => r.key === "801")!.cells.FLOOR.text, "CT-1");
+});
+
+test("corroboration: a keynote legend row never becomes a room, and the reason says so", () => {
+  const plan: SheetSpans = {
+    key: "kn.pdf#1", sheet_number: "A-109",
+    spans: [
+      sp("NINTH FLOOR FINISH PLAN", 300, 900),
+      sp("LOBBY", 100, 100), sp("901", 104, 112),
+      // a keynote legend: a number paired with a description, exactly the way
+      // a bubble pairs one with a name
+      sp("LOCKER ROOM ACCESSORY", 600, 300), sp("10", 604, 312),
+      sp("MIRROR", 600, 340), sp("13", 604, 352),
+    ],
+  };
+  const sched: SheetSpans = {
+    key: "kn.pdf#2", sheet_number: "A-623",
+    spans: [
+      sp("ROOM SCHEDULE", 100, 20),
+      sp("NO", 100, 60), sp("NAME", 200, 60), sp("FLOOR", 300, 60), sp("BASE", 400, 60), sp("CEILING", 500, 60),
+      sp("901", 100, 80), sp("LOBBY", 200, 80), sp("CT-1", 300, 80), sp("VB-1", 400, 80), sp("ACT-1", 500, 80),
+      sp("902", 100, 100), sp("OFFICE", 200, 100), sp("CT-1", 300, 100), sp("VB-1", 400, 100), sp("ACT-1", 500, 100),
+    ],
+  };
+  const g = buildSheetGraph([plan, sched]);
+  assert.deepEqual(g.rooms.map((r) => r.tag), ["901"], "the legend numbers are not rooms");
+  assert.equal(g.rooms[0].corroboration, "name+schedule");
+  assert.deepEqual(g.unmatched_tags.map((u) => u.tag).sort(), ["10", "13"]);
+  for (const u of g.unmatched_tags) assert.match(u.reason, /keynote\/legend row|keynote, detail marker/);
+  // and the disclosure still cites the ink, so a genuinely omitted room is findable
+  assert.ok(g.unmatched_tags.every((u) => u.sheet && u.bbox));
 });
