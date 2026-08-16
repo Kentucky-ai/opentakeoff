@@ -2,6 +2,16 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-15 — a truncated count now says so; opentakeoff-mcp 0.9.43
+
+### Fixed
+- **`symbol_sweep` scores every proposed placement by default** (#261 → #262). The field report that drove this — measured on a real electrical set — showed the old 20k candidate cap returning 19 receptacles where 62 exist, and the truncated number looked entirely plausible. Verification found the cap was cheaper to remove than it appeared: placements are fully enumerated *before* the cap ever applied, so it only ever limited scoring — hiding 43 of 62 instances to save about one second. Small dense device symbols (short, common segment lengths — most of an electrical or low-voltage sheet) propose placements in proportion to anchor commonness rather than instance count, so the default bit exactly where the symbols are densest. The default is now `SWEEP_CANDIDATE_CEILING` (250k, sized from the report's own timings — single-digit seconds at worst), kept only for pathological sheets; an explicit `maxCandidates` is still respected.
+- **`complete: boolean` on every sweep reply** — engine result, sheet scope, set scope (top-level and per-sheet), and `sweep_schedule_row`, which runs the same matcher and had the same exposure. A count that isn't a total must not read as one: `complete: false` announces the number is a **floor**, in those words, instead of waiting to be discovered in `candidates.dropped`. This also closes a gap the report exposed at the agent surface: `maxCandidates` was never in the MCP input schema, so an agent could *see* the truncation and do nothing about it — with the default running to completion, that dead end is gone without adding a knob. Withheld work is an answer only if the caller can act on it.
+
+### Decisions
+- **#259 (negative seeds) and #260 (per-segment stroke colour) stay open deliberately** — they are design contributions mid-conversation with their author, not backlog. #259's crossing-mode discriminator needs a segment-level spatial index that doesn't exist (the endpoint grid can't see a 337px line whose endpoints sit far from the symbol), the reporter has a working prototype against a live sheet, and the PR is his if he wants it. #260 is measured on one drafting office's export pipeline and its headline case is the same one #259's crossing negatives solve — second-office data decides whether a luminance channel is an urgent fallback or a rare-export nicety, and `VectorGeometry` doesn't grow fields ahead of that answer.
+- **The reply pattern for a strong field report, now practiced:** verify the claims against source → confirm with citations → adopt the reporter's own measurements as the acceptance criteria (the 19-of-62 case is quoted in `symbolsweep.ts` as design rationale) → ask for the next measurement. Field report → verified → merged → published on npm, the MCP registry, and Smithery inside six hours.
+
 ## 2026-08-14 — stitching is human-only, in writing
 
 ### Docs
