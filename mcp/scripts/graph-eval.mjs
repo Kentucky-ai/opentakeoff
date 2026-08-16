@@ -1,4 +1,5 @@
 // Scored evaluation for the sheet graph (#87) against REAL plan sets.
+// Method, current results and known gaps: docs/SHEET-GRAPH-EVAL.md
 //
 //   node --import tsx scripts/graph-eval.mjs <corpus-dir> [setId ...]
 //

@@ -993,7 +993,7 @@ export function roomTags(sheet: SheetSpans, opts: RoomTagOpts = {}): RoomTag[] {
       if (dy < -hgt * 0.2 || dy > hgt * 2.2) continue;
       if (cb[2] < b[0] - hgt || cb[0] > b[2] + hgt) continue;
       const raw = cand.str.trim();
-      // A room name is drafted in CAPS ("KID'S CRUNCH", "IT"). Mixed-case
+      // A room name is drafted in CAPS ("MEN'S SAUNA", "IT"). Mixed-case
       // prose is title-block or note text — "Fax", "Story" — and pairing it
       // with a nearby number invents a room out of a fax number.
       if (/[a-z]/.test(raw)) continue;
