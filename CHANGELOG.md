@@ -2,6 +2,16 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-16 — the docs split by audience: an agent manual, and an estimator's working order
+
+### Docs
+- **`docs/AGENT_GUIDE.md` — the agent's manual, the counterpart to the user manual.** The MCP docs were a setup page and a tool reference, which between them told an agent what every verb *does* and nothing about how a takeoff is *run*. The doctrine that decides whether the numbers are any good lived only in the server's `initialize` instructions, where no human reads it. It's now a document: the operating model in six facts (one coordinate frame, the scale gate, unconfirmed-until-a-human-confirms, the engine traces and the model doesn't invent, provenance on every commit, pencil until a person inks it), the five-step standard finish, the **withheld-is-the-answer** table naming what each of the four withholding tools withholds and what to do about it, what has no agent verb and why (stitching, the `APPROVED` seal, confirming a scale, minting a rule, touching human-affirmed work), staged tool exposure and when it's the right call, a worked session, and a refusal → next-move table.
+- **The user manual gained the two things an estimator asks for that a feature tour doesn't answer.** *The working order on a real bid* (§1) — the ten-step sequence for a forty-sheet set rather than the five-minute path on one sample sheet, each step linked to its section, ending on the honest note that steps 8–10 are the ones skipped under time pressure and the ones that decide whether a disputed quantity is a conversation or a re-takeoff. And **§18, a glossary** of the 23 terms that mean something specific here — condition, twin, proposal, pencil/ink, provenance, *reported never counted*, basis, figured seam LF, stitch, unconfirmed scale, and the rest.
+- **`README.md` routes by audience up front.** A three-row *Start here* table (estimator / agent / developer) above the fold, and the canvas section now opens with a seven-step plain-language account of what a real bid looks like on it, before the feature prose. The agent section points at the new manual.
+- **`AGENT_BRIEF.md` rewritten.** It had drifted into an internal to-do list — "Visibility Goals", "Quick wins", "Success Metrics" with checkboxes, and no mention of the MCP server at all — on a public repo. It's a genuine one-page orientation now: what this is, why it exists, the five rules that shape the code, the stack, where the value is concentrated, and a routing table to the four real documents.
+- **`AGENTS.md`** states the doc set and who each document is for, so a change lands in the right one; the MCP sync list now names `mcp/src/staging.ts`'s stage table and the doctrine/tool-count surfaces. Fixed a dangling reference to `docs/MCP_AND_API.md`, which does not exist — the architecture note it meant is the end of `docs/MCP.md`.
+- **Corrected the tool count in `docs/USER_GUIDE.md` §14**: 38 → 40, with `cut_out`, `apply_rules`, `duplicate_condition`, and `split_condition` added to the table they'd been missing from. `mcp/src/tools.ts` registers 40.
+
 ## 2026-08-16 — how the sheet graph is tested, written down; opentakeoff-mcp 0.9.49
 
 ### Docs

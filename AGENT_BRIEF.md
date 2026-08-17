@@ -1,127 +1,99 @@
 # OpenTakeoff — Agent Brief
 
-**Project:** Open-source browser-based construction takeoff tool for flooring.
+The one-pager. If you're an agent about to work *on* this repo, read
+[`AGENTS.md`](AGENTS.md) next. If you're an agent about to *drive the takeoff engine*, read
+[`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) instead — that's your manual, this is orientation.
 
-**Live demo:** https://opentakeoff.kentucky-ai.com
-
-**Repo:** https://github.com/Kentucky-ai/opentakeoff
-
----
-
-## What It Does
-
-Users drag in a floor plan (PDF/image), set the scale, trace rooms/areas with simple clicks, define finishes, add materials, then export quantities and a buy list. Everything runs in the browser — no server, no account.
+**Repo:** <https://github.com/Kentucky-ai/opentakeoff> · **Live:**
+<https://opentakeoff.kentucky-ai.com> · **License:** Apache-2.0
 
 ---
 
-## Why It Matters
+## What it is
 
-- **First open-source takeoff tool for flooring** (before this, only paid SaaS)
-- **Real production engine** (carved from a commercial estimating app, not a demo)
-- **One-Click Area** is the headline: click inside a room → auto-traces the boundary
-- Given to the flooring community (Apache 2.0)
+A takeoff is the act of measuring quantities off a construction drawing — how much floor, how
+much wall, how many fixtures, at what scale, on which sheet. OpenTakeoff is an open-source
+engine for doing that, with two front ends over identical geometry:
 
----
+- **A stdio MCP server** (`npx -y opentakeoff-mcp`) — 40 tools plus browsable sheet resources.
+  An agent opens a plan, reads the title block, sets the scale, floods the rooms, checks its own
+  work on a rendered overlay, and hands back a marked-up planset.
+- **A browser canvas** — client-only React. An estimator drags in a plan set and traces it. No
+  backend, no database, no account, no upload.
 
-## The Tech
+Neither wraps the other. `mcp/` imports `web/src/lib/{oneclick,sheets,geometry,totals}` directly,
+so a shape committed by an agent is field-identical to one committed by a hand at the canvas —
+same flood mask, same corner snap, same waste math, same refusal messages.
 
-- **Frontend:** React 18 + Vite, HTML5 Canvas + SVG
-- **Geometry:** TypeScript (`oneclick.ts`, `sheets.ts`) — pure, tested math
-- **PDF:** pdf.js (Mozilla)
-- **Storage:** IndexedDB + localStorage (client-only)
-- **Optional Backend:** FastAPI + Python (pluggable AI adapter for scale/room detection/finish classification)
-- **No paid dependencies**
+## Why it exists
 
----
+Two reasons, and the second is the load-bearing one.
 
-## Key Files to Know
+1. **There was no open-source takeoff engine at all** — web-based or otherwise — and nothing an
+   autonomous agent could call. Agents are first-class users here, not an integration bolted on
+   the side.
+2. **Every shape records how it was made**: the scale it was measured at, the method (vector
+   flood, raster trace, hand-drawn, agent-proposed), whether a human corrected it, and the
+   machine's original boundary frozen beside the correction. Downstream that's an audit trail.
+   Upstream it's a labeled *(geometry → finish)* pair — the training signal takeoff models have
+   never had at scale. See the README's [data layer](README.md#the-data-layer--why-this-engine-exists).
 
-### Core Geometry (This is the Gold)
-- `web/src/lib/oneclick.ts` — Flood-fill room detection. Pure TypeScript, tested.
-- `web/src/lib/sheets.ts` — Scale math, coordinate transforms, polygon area. Pure TypeScript, tested.
-- `web/src/lib/totals.js` — Materials math, report calculation, rounding logic.
+## The rules that shape the code
 
-### UI & State
-- `web/src/pages/TakeoffCanvas.jsx` — Main canvas component (plan display, tool dispatch).
-- `web/src/components/` — Condition editor, supporting-materials editor, report, file upload, etc.
-- `web/src/lib/store.js` — Persistence (IndexedDB + localStorage).
+Change anything here and you'll hit these. They are deliberate, and they hold identically on both
+front ends:
 
-### Optional AI Backend
-- `server/adapters/base.py` — Interface for custom models.
-- `server/adapters/heuristic.py` — Default (no model, transparent fallback).
-- `server/adapters/ollama.py` — Example Ollama integration.
-- **Endpoints:** `POST /ai/suggest-scale`, `POST /ai/detect-rooms`, `POST /ai/classify-finish`
+- **Scale is a gate, not a default.** A detected scale note is a suggestion; adopting it is an
+  explicit act. Measuring an unscaled sheet refuses.
+- **The engine traces; the model doesn't invent.** No path accepts a polygon a model imagined
+  and counts it.
+- **Machine work is pencil until a person inks it.** The green `APPROVED` seal has exactly one
+  code path — the toolbar button under a human hand.
+- **Withholding is an answer.** Tools that can't answer say why, with coordinates to look at,
+  rather than returning a plausible number.
+- **Waste applies only in the report's order quantity**, never to the live measured number.
 
----
+## The stack
 
-## Visibility Goals
+React 18 + Vite 6 (plain JSX) · raw HTML5 Canvas + SVG, no drawing frameworks · pure, unit-tested
+TypeScript geometry (`oneclick.ts`, `sheets.ts`) · pdf.js · IndexedDB + localStorage ·
+TypeScript stdio MCP server · `node --test` + `tsx` · no paid dependencies.
 
-**Current state:** Great README, live demo, solid codebase. But agents need more structure.
+An optional FastAPI adapter interface lives in `server/` for plugging your own vision model under
+the canvas's suggestion endpoints. The app is fully functional without it.
 
-**Quick wins:**
+## Where the value is concentrated
 
-1. ✅ **Add GitHub Topics** → `flooring`, `takeoff`, `construction-takeoff`, `estimating`, `measurement`, `open-source`, `construction`, `react`, `pdf-tools`
+| What | Where |
+|---|---|
+| Flood fill, face extraction, corner snap, raster fallback | `web/src/lib/oneclick.ts` — pure TS, tested |
+| Scale detection, sheet helpers, polygon area | `web/src/lib/sheets.ts` — pure TS, tested |
+| Waste, square-yard, coverage → order quantity | `web/src/lib/totals.js` |
+| Roll-goods lane and seam layout | `web/src/lib/rollgoods.js` — pure, tested |
+| The canvas (one large component, ~90% of the app) | `web/src/pages/TakeoffCanvas.jsx` |
+| MCP server (imports the same libs) | `mcp/src/` |
 
-2. ✅ **Add FEATURES.md** → Map all capabilities to code files (so agents know what's buildable)
+The geometry libraries are React-free and DOM-free on purpose — lift them straight out.
 
-3. ✅ **Add JSDoc blocks** to core geometry (`oneclick.ts`, `sheets.ts`) → Pure functions are easier for agents to reuse
-
-4. **Update repo description** → Include keywords: "browser-based construction takeoff tool, flooring estimating, open-source, React"
-
-5. **Add ROADMAP.md** → What's planned, what's wanted, how to contribute
-
----
-
-## What an Agent Should Be Able to Do
-
-- [ ] Understand the full measurement engine (area, linear, count, etc.)
-- [ ] Find and reuse the geometry math (oneclick, polygon calculation)
-- [ ] Extend supporting materials with new material types or cost logic
-- [ ] Wire a custom AI model to the backend
-- [ ] Add new export formats (XLSX, JSON, etc.)
-- [ ] Understand the scale detection and calibration flow
-- [ ] Fork it and customize for a specific trade (drywall, paint, concrete, etc.)
-
----
-
-## Quick Start (For Agents)
+## Run it
 
 ```bash
-# Run it
-cd web
-npm install
-npm run dev        # http://localhost:5173
-
-# Test the geometry
-npm test           # oneclick and sheets tests
-
-# Build it
-npm run build      # → web/dist/ (static, host anywhere)
-
-# Optional: Run the AI backend
-cd ../server
-pip install -r requirements.txt
-uvicorn app:app --reload --port 8000
+cd web && npm install && npm run dev     # http://localhost:5173
+npm run check                            # typecheck + lint + test + build — exactly what CI runs
 ```
 
----
+## The doc set
 
-## Success Metrics
-
-- [ ] Agents can find and understand the project in <5 min
-- [ ] Agents can locate and reuse specific modules (geometry, materials math)
-- [ ] Agents can extend or fork it without asking questions
-- [ ] Issues/PRs show agents building on top (custom finishes, cost calcs, integrations)
-
----
-
-## Resources
-
-- **User Guide:** `docs/USER_GUIDE.md`
-- **Contributing:** `CONTRIBUTING.md`
-- **Features Deep Dive:** `FEATURES.md`
-- **License:** Apache 2.0 (use it, fork it, ship it)
+| Document | For |
+|---|---|
+| [`README.md`](README.md) | The project, all audiences |
+| [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | The estimator at the canvas |
+| [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) | The agent driving the engine over MCP |
+| [`mcp/README.md`](mcp/README.md) | Tool-by-tool MCP reference |
+| [`AGENTS.md`](AGENTS.md) | Working *on* this repo — map, conventions, ship discipline |
+| [`FEATURES.md`](FEATURES.md) | Capability → the code that implements it |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Ground rules, and the open RFCs |
 
 ---
 
-*One-pager by Kentucky Ai — give this to agents, let them explore.*
+*Kentucky AI — the measuring engine, given to anyone who needs to read a building.*

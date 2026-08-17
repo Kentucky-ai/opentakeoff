@@ -25,6 +25,7 @@ In a hurry, or already in the app? Press **`?`** (or the **?** button in the top
 15. [Keyboard reference](#15-keyboard-reference)
 16. [Troubleshooting](#16-troubleshooting)
 17. [Voice & the Command box](#17-voice--the-command-box)
+18. [Glossary — what the words mean here](#18-glossary--what-the-words-mean-here)
 
 ---
 
@@ -39,6 +40,42 @@ The fastest way to learn the canvas is to run one takeoff end to end on the bund
 5. **Read the report.** Open **Report** for the per-condition breakdown — SF, SY, waste-adjusted order quantities, and the materials buy list. Export **CSV**, **Excel**, or a **Marked set** PDF.
 
 That's the whole loop: open → scale → condition → measure → report. Everything autosaves to your browser as you go — reload the tab and your takeoff is still there.
+
+### The working order on a real bid
+
+The sample plan is one sheet. A bid set is forty, and the order you work it in is what keeps the
+number defensible. This is the sequence, with the section that covers each step:
+
+1. **Open the whole set at once** — drag the `.zip` straight off the bid platform. Plans, the
+   finish schedule, the addenda, all of it ([§2](#2-opening-plans--moving-around)).
+2. **Scale every sheet you'll measure, and check one dimension on each** (`K`). Ten seconds a
+   sheet. A plan set is never one uniform scale, and a wrong scale is every number wrong at once
+   ([§3](#3-scale--set-it-first)).
+3. **Build your conditions off the architect's schedule**, not off memory — **Schedule** in the
+   toolbar parses the finish table and you approve what becomes a condition. The product spec
+   rides along as report columns, so the submittal answers itself later
+   ([§4](#4-conditions--your-finishes)).
+4. **Set waste and materials before you trace**, not after. Waste is per condition and matched to
+   the install; the supporting-materials lines are what turn square feet into an order
+   ([§4](#4-conditions--your-finishes)).
+5. **Stitch anything split at a match line, and align it, before a single shape lands on it.**
+   Once takeoffs live on a stitch it won't re-align ([§2](#2-opening-plans--moving-around)).
+6. **Measure the floors first** — `O`, room by room, condition by condition. Floors are the bulk
+   of the number and everything else derives from them ([§6](#6-one-click-area)).
+7. **Derive what follows instead of measuring it twice**: base off the rooms you just traced,
+   **⟂ Transitions** for the line where two finishes meet — and read what it *reports and never
+   counts*, because those are doorway thresholds you still owe
+   ([§5](#5-the-measuring-tools)).
+8. **Walk the set and look at what landed.** Every sheet, at a zoom where you can see a ring
+   overshoot into a corridor. Fix with the grips ([§7](#7-selecting--editing-shapes)).
+9. **Save a revision** the moment the takeoff is whole. Do it again at every addendum — that's
+   what makes the next round a comparison instead of an archaeology dig
+   ([§11](#11-revisions)).
+10. **Export both**: the Report/Excel for pricing, and the **Marked set** PDF for anyone who has
+    to check you — the GC, the PM, your own reviewer ([§10](#10-the-report--exports)).
+
+Steps 8 through 10 are the ones under time pressure people skip, and they're the ones that decide
+whether a disputed quantity is a five-minute conversation or a re-takeoff.
 
 ---
 
@@ -737,19 +774,23 @@ What's sent, and only when you run an AI feature: the sheet region in question a
 
 The same engine speaks [MCP](https://modelcontextprotocol.io), one command away:
 `npx -y opentakeoff-mcp` (or the one-click `opentakeoff-mcp.mcpb` bundle for Claude Desktop). An
-MCP client gets **38 tools** plus browsable sheet resources, over the very same measuring engine,
+MCP client gets **40 tools** plus browsable sheet resources, over the very same measuring engine,
 with the same scale gate and the same provenance receipts:
 
 | Group | Tools |
 |---|---|
 | Open & orient | `load_plan` · `sheet_info` · `sheet_context` · `read_sheet_text` · `find_text` · `view_sheet` |
 | Scale | `set_scale` |
-| Measure | `one_click` · `detect_rooms` · `measure_polygon` · `measure_line` · `measure_surface` · `place_count` |
-| Repeat & derive | `symbol_sweep` · `sweep_schedule_row` · `derive_base` · `derive_transitions` |
+| Measure | `one_click` · `detect_rooms` · `measure_polygon` · `cut_out` · `measure_line` · `measure_surface` · `place_count` |
+| Repeat & derive | `symbol_sweep` · `sweep_schedule_row` · `derive_base` · `derive_transitions` · `apply_rules` |
 | Read the drawing set | `sheet_graph` · `resolve_tag` · `find_schedule` |
-| Edit & audit | `list_shapes` · `edit_shape` · `edit_condition` · `edit_materials` · `delete_shape` · `undo_last` |
+| Edit & audit | `list_shapes` · `edit_shape` · `edit_condition` · `edit_materials` · `duplicate_condition` · `split_condition` · `delete_shape` · `undo_last` |
 | Mark & sign | `annotate` · `list_annotations` · `link_annotation` · `mark_verdict` · `delete_verdict` |
 | Hand off | `takeoff_summary` · `export_takeoff` · `export_report` · `export_marked_pdf` · `import_takeoff` |
+
+If you're the one wiring an agent up rather than the one reading its output, the operating manual
+for that side is [`AGENT_GUIDE.md`](AGENT_GUIDE.md) — the same shape as this document, written for
+the agent.
 
 A few worth knowing about from the canvas side, because they're the same features you use:
 
@@ -932,4 +973,37 @@ the model, the feature says so plainly; details in
 
 ---
 
-*OpenTakeoff is Apache-2.0 and the codebase is deliberately readable — when you outgrow the manual, [`FEATURES.md`](../FEATURES.md) maps every capability to its code.*
+## 18. Glossary — what the words mean here
+
+Most of these are ordinary estimating words. A few are specific to how OpenTakeoff works, and
+those are the ones worth pinning down before you rely on a number.
+
+| Term | What it means here |
+|---|---|
+| **Condition** | One finish — `LVT-1`, `CPT-2`, `RB-1` — carrying its own color, hatch, waste %, multiplier, height, thickness, and materials. Everything you measure commits into one ([§4](#4-conditions--your-finishes)). |
+| **Twin** | The same finish measured in a second area that needs different preparation underneath. Gets its own tag (`SV-1 – Level 2`) and follows the original's materials until you edit a row ([§4](#4-conditions--your-finishes)). |
+| **Proposal** | A dashed, uncommitted shape — what One-Click traces and what an agent stages. Nothing is in your takeoff until you Create or Accept it ([§6](#6-one-click-area), [§13](#13-the-agent-panel)). |
+| **Pencil / ink** | Machine work is pencil (dashed proposals, the graphite `AGENT` diamond); your acceptance is ink (committed shapes, the green `APPROVED` seal). Only a human hand mints the seal ([§9](#9-markups-stamps--rfis)). |
+| **Provenance** | The record attached to every shape: the scale it was measured at, how it was made, whether a machine proposed it, and whether you corrected it — with the machine's original boundary frozen beside your fix ([§6](#6-one-click-area)). |
+| **Reported, never counted** | A quantity the engine found but refuses to commit, with the reason. Transitions across a wall are the common one: the real transition is a threshold in a doorway nothing can locate from a trace. Go measure it ([§5](#5-the-measuring-tools)). |
+| **Deduct / Cut Out** | A void subtracted from a condition's floor total — a column, a shaft, casework. Draws dashed red and carries its negative sign into the audit ([§5](#5-the-measuring-tools)). |
+| **Measured vs. w/Waste** | Measured is what's on the drawing. w/Waste is what you order. Waste lives only in the order column, never in the measured number ([§10](#10-the-report--exports)). |
+| **Basis** | What a supporting material is bought against: floor SF, linear LF, each, or figured seam LF. Order quantity = basis ÷ coverage rate, rounded up ([§4](#4-conditions--your-finishes)). |
+| **Figured seam LF** | Seam length read off the roll layout — where two cuts actually meet — not a percentage of perimeter. Needs a roll setup; without one it reads 0, meaning *needs a layout* ([§4](#4-conditions--your-finishes)). |
+| **Roll goods** | Broadloom, sheet vinyl, sheet rubber — material that comes off a roll, so the order depends on how the cuts nest, not just on area ([§4](#4-conditions--your-finishes)). |
+| **Stitch** | Two to four sheets split at a match line, joined into one working surface so a room crossing the seam traces as one shape. Align it before you trace on it ([§2](#2-opening-plans--moving-around)). |
+| **Level** | A label grouping sheets by floor — `L1`, `Level 2`, `Garage`. Drives gallery grouping and the Excel by-floor sheet ([§2](#2-opening-plans--moving-around)). |
+| **Label** | Which part of the job a shape belongs to — *Phase 1*, *East Wing*, *Alt-2*. Classification, not correction; drives report grouping ([§7](#7-selecting--editing-shapes)). |
+| **Scale gate** | Nothing prices without a scale on that sheet. Counts are the exception — EA doesn't depend on scale ([§3](#3-scale--set-it-first)). |
+| **Unconfirmed scale** | A scale an agent set, which no person has verified. Quantities compute, but the chip, the gallery badge, and the report all say so until you confirm it ([§3](#3-scale--set-it-first)). |
+| **Calibrate vs. Check** | Calibrate sets the scale from a dimension you type. Check (`K`) is its read-only twin — it grades the scale you already have ([§3](#3-scale--set-it-first)). |
+| **Hatch / poché** | The pattern fill inside a room or wall on the drawing. One-Click classifies it as pattern rather than boundary, so a hatched room still traces to the real walls ([§6](#6-one-click-area)). |
+| **Fill sensitivity** | How eagerly a fill escalates past ink the engine called hatch — Strict, Balanced, Aggressive. It cannot help when the boundary is all hard ink, and it says so ([§6](#6-one-click-area)). |
+| **Zone check** | A reading, not a takeoff: trace a wing and see what's inside it, with materials scaled to the zone. Nothing is saved ([§5](#5-the-measuring-tools)). |
+| **Marked set** | The distribution-ready PDF — your work burned into the drawings behind a legend cover, with a tally of how much of it a person has approved. The deliverable a GC can check ([§10](#10-the-report--exports)). |
+| **Revision** | A named snapshot of the whole takeoff. Compare two and you get quantity deltas per condition, per sheet, and on the buy list ([§11](#11-revisions)). |
+| **Contribute** | The opt-in button that donates a takeoff's labels and normalized shapes — never the plan, the names, or the coordinates — to a training corpus ([§12](#12-saving-your-data--contribute)). |
+
+---
+
+*OpenTakeoff is Apache-2.0 and the codebase is deliberately readable — when you outgrow the manual, [`FEATURES.md`](../FEATURES.md) maps every capability to its code. Driving it from an agent instead? [`AGENT_GUIDE.md`](AGENT_GUIDE.md) is this document's counterpart.*

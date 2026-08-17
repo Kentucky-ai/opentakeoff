@@ -20,6 +20,8 @@ what makes it training data.
 
 [**For agents**](#for-agents--start-here) · [**Try the canvas**](https://opentakeoff.kentucky-ai.com) · [The engine's contract](#the-contract-that-makes-it-drivable) · [For the person at the canvas](#for-the-person-at-the-canvas) · [The data layer](#the-data-layer--why-this-engine-exists) · [Research](#the-research-program) · [Build on it](#build-on-top-of-it) · [Contribute](#contributing)
 
+**The two manuals:** [agent manual](docs/AGENT_GUIDE.md) · [user manual](docs/USER_GUIDE.md)
+
 **Read this in:** [日本語](README.ja.md) · [한국어](README.ko.md) · [简体中文](README.zh-Hans.md)
 
 **Watch it:** [an autonomous agent runs a takeoff, live, no cuts (2:47)](https://youtu.be/e--kXxSGv7Y) · [hospital finish plan → report in about a minute (1:14)](https://youtu.be/cNDpPkTLY1k) · [canvas walkthrough (1:10)](https://youtu.be/aHiW8H2TSBs) · [One-Click Area (0:51)](https://youtu.be/YIjWZ-BAhLE)
@@ -31,6 +33,14 @@ what makes it training data.
 </div>
 
 ---
+
+## Start here
+
+| You are | Go here |
+|---|---|
+| **An estimator with a bid due** | [Open the canvas](https://opentakeoff.kentucky-ai.com) — drag in a plan, no account, nothing uploads. The [**user manual**](docs/USER_GUIDE.md) gets you from a blank tab to an exported takeoff in five minutes, and its [working order](docs/USER_GUIDE.md#the-working-order-on-a-real-bid) is the sequence to run on a real bid set. |
+| **An AI agent** — or the person wiring one up | `npx -y opentakeoff-mcp`, then the [**agent manual**](docs/AGENT_GUIDE.md): the operating model, the standard finish every takeoff ends with, what the engine refuses to guess, and why. Tool-by-tool reference is [`mcp/README.md`](mcp/README.md). |
+| **A developer building on the engine** | [`AGENTS.md`](AGENTS.md) is the repo map and the ship discipline; [`FEATURES.md`](FEATURES.md) maps every capability to the code that does it. Apache-2.0 — fork it. |
 
 ## What this is
 
@@ -152,7 +162,11 @@ conditions, or shapes — the sheet graph then spans the whole set, so a room ta
 resolves to a schedule row in another. `edit_condition` reaches the waste %, the ×N multiplier,
 and `roll_setup`, so an agent's takeoff doesn't ship with net === gross.
 
-Setup, the coordinate contract, and a full annotated transcript: [`docs/MCP.md`](docs/MCP.md).
+**The agent's manual is [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md)** — the counterpart to the
+estimator's: the operating model in six facts, the standard finish every takeoff ends with, the
+withheld-is-the-answer doctrine, what has no agent verb and why, and a refusal-to-next-move table.
+Tool-by-tool reference: [`mcp/README.md`](mcp/README.md). The same surface in prose, with the
+sheet-graph and sweep behavior in depth: [`docs/MCP.md`](docs/MCP.md).
 
 ### The contract that makes it drivable
 
@@ -217,6 +231,24 @@ click inside a room. Open **Report** for the breakdown and the exports. That who
 video: [walkthrough (1:10)](https://youtu.be/aHiW8H2TSBs) ·
 [One-Click Area (0:51)](https://youtu.be/YIjWZ-BAhLE). The complete
 zero-to-exported walkthrough is the [**user manual**](docs/USER_GUIDE.md).
+
+**What a real bid looks like on it**, in the order an estimator works one:
+
+1. Drag in the whole `.zip` off the bid platform — plans, finish schedule, addenda.
+2. Set the scale on every sheet you'll measure, and **check a dimension** (`K`) on each. Ten
+   seconds a sheet, and it's the only mistake that gets every number at once.
+3. Pull your conditions off the architect's finish schedule instead of typing them, and set waste
+   and materials *before* you trace.
+4. Stitch anything split at a match line, align it, and only then start measuring.
+5. **One-Click** the floors room by room. Derive base and transitions off the rooms you just
+   traced rather than measuring them a second time — and read what the derivation *reports and
+   never counts*, because those are doorway thresholds you still owe.
+6. Walk the set and look at what landed, fix with the grips, save a **revision**.
+7. Export both: the Report for pricing, the **Marked set** PDF for whoever has to check you.
+
+The full version of that sequence, with the section for each step, is the manual's
+[working order](docs/USER_GUIDE.md#the-working-order-on-a-real-bid). What every term above means
+is in its [glossary](docs/USER_GUIDE.md#18-glossary--what-the-words-mean-here).
 
 ### Open anything, instantly
 A plan **PDF**, an **image** (scan, screenshot, photo), or a whole **`.zip` plan set** straight
