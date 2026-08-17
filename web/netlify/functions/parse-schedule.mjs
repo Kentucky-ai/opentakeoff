@@ -29,7 +29,8 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.1-flash-lite";
 // — an org whose one Google Workspace spans several domains lists them all here.
 // Empty ⇒ any verified Google account. This is the AUTHORITATIVE org gate; the
 // client mirrors it in isAllowedDomain() (src/lib/google/auth.js) as a build-time
-// VITE_GOOGLE_HD — keep the two lists in sync (see .github/workflows/deploy.yml).
+// VITE_GOOGLE_HD — keep the two lists in sync (they are set in the Netlify site
+// environment; deploy.yml, which used to carry them, was deleted in e701f1a).
 // The client stamps its VITE_GOOGLE_HD on each request so hdDriftWarning() below
 // logs a warning if the two ever fall out of sync (#91).
 const ALLOWED_HDS = parseHdList(process.env.ALLOWED_HD);

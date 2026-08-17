@@ -85,3 +85,42 @@ test("staging: staged instructions ride initialize only when the flag is on", as
   assert.ok(!flat.getInstructions()?.includes("TOOL EXPOSURE IS STAGED"));
   assert.ok(staged.getInstructions()?.includes("TOOL EXPOSURE IS STAGED"));
 });
+
+// A REFUSAL NAMES THE NEXT MOVE — the rule this server keeps everywhere else,
+// and the one place staging used to break it. The bare SDK string
+// ("Tool one_click disabled") tells a model nothing it can act on: no stage, no
+// opener. A model that got the tool name from the docs rather than tools/list
+// has nowhere to go, and it reads as a broken product.
+test("staging: a closed tool's refusal names its stage and the call that opens it", async () => {
+  const client = await connect(true);
+
+  for (const [tool, stage] of [["one_click", "measure"], ["edit_shape", "revise"], ["export_marked_pdf", "handoff"]] as const) {
+    const r = await client.callTool({ name: tool, arguments: {} }) as { isError?: boolean; content: { text: string }[] };
+    assert.ok(r.isError, `${tool} must refuse while ${stage} is closed`);
+    const text = r.content[0].text;
+    assert.match(text, new RegExp(`"${stage}"`), `${tool}: the refusal must name its stage`);
+    assert.match(text, /open_tool_stage/, `${tool}: the refusal must name the opener`);
+    assert.match(text, new RegExp(tool), `${tool}: the refusal must name the tool to retry`);
+  }
+
+  // ...and nothing else is rewritten. An unknown tool is still unknown, and an
+  // OPEN tool's own validation refusal is its own.
+  const unknown = await client.callTool({ name: "no_such_tool", arguments: {} }) as { content: { text: string }[] };
+  assert.match(unknown.content[0].text, /not found/);
+  assert.doesNotMatch(unknown.content[0].text, /open_tool_stage/);
+
+  const setupTool = await client.callTool({ name: "load_plan", arguments: {} }) as { content: { text: string }[] };
+  assert.doesNotMatch(setupTool.content[0].text, /open_tool_stage/, "an enabled tool's refusal is untouched");
+
+  // once the stage is open the tool runs and answers for itself
+  await client.callTool({ name: "open_tool_stage", arguments: { stage: "measure" } });
+  const after = await client.callTool({ name: "one_click", arguments: { sheet: KEY, x: 600, y: 1084 } }) as { content: { text: string }[] };
+  assert.doesNotMatch(after.content[0].text, /not open yet/, "the tool must actually work after its stage opens");
+});
+
+// The flat build has no stages, so nothing may be rewritten there either.
+test("staging: the flat build's refusals are untouched", async () => {
+  const client = await connect(false);
+  const r = await client.callTool({ name: "one_click", arguments: {} }) as { content: { text: string }[] };
+  assert.doesNotMatch(r.content[0].text, /open_tool_stage/);
+});

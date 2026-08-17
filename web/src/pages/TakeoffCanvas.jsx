@@ -6166,6 +6166,36 @@ export default function TakeoffCanvas() {
     );
   })();
 
+  // ?hatchqa — density-tuning wall: every pattern at three scales in two palette
+  // colors, real components, dark-aware. Unreachable from the UI; kept for retunes.
+  // Added 2026-07-07 (d02032a) and lost, not removed, in the fork merge 1317d07
+  // (PR #26, 2026-07-13) — FEATURES.md has advertised it the whole time.
+  if (new URLSearchParams(window.location.search).has("hatchqa")) {
+    const qaColors = [PALETTE[0], PALETTE[2]];
+    return (
+      <div style={{ padding: 20, background: darkMode ? "#14120e" : "var(--paper-bright)", minHeight: "100vh", overflow: "auto" }}>
+        <button onClick={() => setDarkMode((v) => !v)} style={{ marginBottom: 14, padding: "4px 12px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", fontSize: 12 }}>☾ toggle dark</button>
+        {HATCHES.map((h) => (
+          <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 10 }}>
+            <span style={{ width: 120, fontFamily: "var(--f-mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", color: darkMode ? "#c9c2b2" : "var(--ink-muted)" }}>{h.label}</span>
+            {qaColors.map((col) => (
+              <svg key={col} width={392} height={64} style={{ border: "1px solid var(--ink-faint)", background: darkMode ? "#1c1914" : "#fff" }}>
+                <defs>
+                  <HatchPattern id={`qa-${h.id}-${col.slice(1)}`} type={h.id} line={col} fill={col} dark={darkMode} />
+                </defs>
+                {[[0.5, 0], [1, 132], [3, 264]].map(([sc, x]) => (
+                  <g key={sc} transform={`translate(${x},0) scale(${sc})`}>
+                    <rect width={128 / sc} height={64 / sc} fill={`url(#qa-${h.id}-${col.slice(1)})`} />
+                  </g>
+                ))}
+              </svg>
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     // .app-shell: the print stylesheet collapses this 100vh flex column while the report is open
     <div
