@@ -33,7 +33,7 @@ import { areaVal, areaUnit, lenVal, lenUnit, heightUnit, heightInputToFeet, heig
 import { HATCHES, PALETTE, NO_FILL, HatchSwatch } from "./hatches.jsx";
 import { LINE_STYLES, LINE_STYLE_IDS } from "../lib/lineStyles.js";
 import { baseTagOf, localCount } from "../lib/variants.ts";
-import { materialKind, MATERIAL_PRESETS, GROUT_DEFAULTS, groutDerivedFields, showsGroutCalc, showsGroutDeriveAffordance } from "../lib/coverage.js";
+import { materialKind, MATERIAL_PRESETS, GROUT_DEFAULTS, groutDerivedFields, showsGroutCalc, showsGroutDeriveAffordance, isLinearGrout, baseGroutParams, baseCourses, groutRateStale, inFrac } from "../lib/coverage.js";
 import { draftCommitValue, blurCommitValue, blurCommitNonNegative } from "../lib/draftInput.js";
 import { ROLL_FLOORING_TYPES } from "../lib/rollgoods.js";
 import { hasRollSetup, mintRollSetup } from "../lib/rollTakeoff.js";
@@ -183,7 +183,8 @@ function CoveragePresetSelect({ material: m, onPick }) {
 
 // Editable supporting-materials rows for a condition (coverage-derived order qty).
 function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libById, overridden, onRevert, onAttach, onPromote,
-    twin = false, parentTag = "", dropped = [], parentRows = [], onFollowFamilyRow, onRestoreDroppedRow }) {
+    twin = false, parentTag = "", dropped = [], parentRows = [], onFollowFamilyRow, onRestoreDroppedRow,
+    heightFt = 0 }) {
   // library link affordances (#47, all optional so the editor works standalone):
   // linked lines show ⛓; a field differing from its library entry tints amber
   // and grows a per-field ↺ revert; unlinked lines can be promoted to the library
@@ -197,7 +198,11 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
       {(materials || []).map((m) => {
         const lm = libById ? libById[m.lib_id] : null;
         const ov = (f) => (lm && overridden ? overridden(m, lm, f) : false);
-        const g = { ...GROUT_DEFAULTS, ...(m.grout || {}) };
+        // On a base (linear) line the piece's long dimension is the CONDITION's height,
+        // so it is derived in, not stored on the row — and the calculator below renders
+        // it read-only for the same reason.
+        const g = baseGroutParams({ ...GROUT_DEFAULTS, ...(m.grout || {}) },
+          isLinearGrout(m) ? heightFt : 0);
         // grout coverage derives from tile geometry — a param change re-derives
         // per + writes the derivation into the note so the Report shows its
         // work, but ONLY while the whole geometry is valid: an incomplete edit
@@ -205,7 +210,7 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
         // silently committing a rate of 0 into the buy list and exports
         const setGrout = (patch) => {
           const grout = { ...g, ...patch };
-          onUpdate(m.id, { grout, ...(groutDerivedFields(grout) || {}) });
+          onUpdate(m.id, { grout, ...(groutDerivedFields(grout, m.basis, heightFt) || {}) });
         };
         const gi = (key, title, extra) => (
           <GroutParamInput name={`grout-${key}`} value={g[key]} title={title} override={ov("grout")}
@@ -260,10 +265,37 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
                 opt-in below — never a calculator backfilled with defaults */}
             {showsGroutCalc(m) && (
               <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", paddingLeft: 14, color: "var(--ink-muted)", fontSize: 12 }}>
-                <span>tile</span>
-                {gi("tileL", "Tile length (in)")}
-                <span>×</span>
-                {gi("tileW", "Tile width (in)")}
+                {isLinearGrout(m) ? (
+                  <>
+                    <span>base</span>
+                    {/* read-only: the height belongs to the CONDITION, and an editable copy
+                        here would be a second owner of one number. No height = not figurable,
+                        which says so rather than deriving off a default. */}
+                    <span title="Base height — set on the condition, not here"
+                      style={{ fontFamily: "var(--f-mono, monospace)", padding: "2px 5px", border: "1px dashed var(--ink-faint)",
+                        color: Number(heightFt) > 0 ? "var(--ink)" : "var(--c-warning)" }}>
+                      {Number(heightFt) > 0 ? `${inFrac(Number(heightFt) * 12)}″ H` : "set height on condition"}
+                    </span>
+                    {/* piece height defaults to the base height (one course); a SHORTER one
+                        is multi-course base, where the interior horizontal joints are real */}
+                    <span>· pc</span>
+                    {gi("tileL", "Piece height (in) — defaults to the base height (one course). Enter a SHORTER piece for multi-course base (a 6″ band of 2×2 mosaic is three courses)", { width: 52 })}
+                    <span>×</span>
+                    {gi("tileW", "Piece width (in) — for field-cut base, the parent tile dimension you did NOT rip")}
+                    {baseCourses(g, heightFt) > 1 && (
+                      <span title="Courses of base — a fractional last course is a CUT (waste), not more grout">
+                        ({Math.round(baseCourses(g, heightFt) * 100) / 100} crs)
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <span>tile</span>
+                    {gi("tileL", "Tile length (in)")}
+                    <span>×</span>
+                    {gi("tileW", "Tile width (in)")}
+                  </>
+                )}
                 <span>× thick</span>
                 {gi("tileT", "Tile thickness (in)")}
                 <span>″ · joint</span>
@@ -272,14 +304,23 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
                 {gi("bagLbs", "Bag size (lbs)")}
                 <span>lb</span>
                 {ov("grout") && rv(m, "grout")}
+                {groutRateStale(m, heightFt) && (
+                  <button onClick={() => setGrout({})}
+                    title={`This line's rate (${m.per} per LF-basis unit) is not what its geometry and this condition's base height derive. A rate figured for a different base height — from a library entry or a hand edit — does not follow the height here. Click to re-derive.`}
+                    style={{ padding: "1px 6px", borderRadius: 0, border: "1px solid var(--c-warning)", background: "transparent", color: "var(--c-warning)", cursor: "pointer", fontSize: 11 }}>
+                    ⚠ rate ≠ geometry · re-derive
+                  </button>
+                )}
               </div>
             )}
             {showsGroutDeriveAffordance(m) && (
               <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 6, paddingLeft: 14 }}>
                 <button onClick={() => setGrout({})}
-                  title="Start the grout calculator with standard tile geometry (12×24×3/8″ @ 1/8″, 25 lb bag) — REPLACES this line's coverage rate and note with the derived values"
+                  title={isLinearGrout(m)
+                    ? "Start the base-grout calculator with standard geometry (3/8″ thick @ 1/8″ joint, 25 lb bag) — the piece height comes from the condition. REPLACES this line's coverage rate and note"
+                    : "Start the grout calculator with standard tile geometry (12×24×3/8″ @ 1/8″, 25 lb bag) — REPLACES this line's coverage rate and note with the derived values"}
                   style={{ padding: "2px 7px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>
-                  derive from tile geometry…
+                  {isLinearGrout(m) ? "derive from base geometry…" : "derive from tile geometry…"}
                 </button>
                 {ov("grout") && rv(m, "grout")}
               </div>
@@ -942,7 +983,8 @@ function TakeoffsPanel({
               onAttach={onAttachLibMaterial} onPromote={onPromoteMaterial}
               twin={!!c.variant_of} parentTag={(conditions.find((x) => x.id === c.variant_of) || {}).finish_tag || ""}
               dropped={c.materials_dropped || []} parentRows={(conditions.find((x) => x.id === c.variant_of) || {}).materials || []}
-              onFollowFamilyRow={onFollowFamilyRow} onRestoreDroppedRow={onRestoreDroppedRow} />
+              onFollowFamilyRow={onFollowFamilyRow} onRestoreDroppedRow={onRestoreDroppedRow}
+              heightFt={c.height_ft} />
             {/* Duplicate, inline — deliberately NOT a window.prompt: those freeze a
                 CDP/automation-driven session dead, and this panel is scripted in demos. */}
             {onDuplicateCondition && (twinDraft.id === c.id ? (
