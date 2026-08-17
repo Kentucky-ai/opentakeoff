@@ -99,11 +99,34 @@ you got them all:
    decision tree every client receives before its first call. A new *verb* does
    not belong here; a new *step in the standard finish* does.
 6. `mcp/README.md` (the tool table) and `docs/MCP.md` (the reach-for-it ordering,
-   the example session, and the tool count in its opening line).
+   the example session, and the tool count in its opening line). A new tool also
+   needs a row in `mcp/src/staging.ts`'s `TOOL_STAGES` — the four lists must
+   partition the tool set exactly, and a test fails CI if one doesn't. If the
+   change alters *doctrine* rather than adding a verb — what withholds, what
+   refuses, what has no agent verb — it belongs in `docs/AGENT_GUIDE.md` too,
+   and the tool count appears there and in `docs/USER_GUIDE.md` §14.
 7. **Version, on three surfaces that must agree**: `mcp/package.json`,
    `mcp/server.json`, `web/public/.well-known/mcp.json`. They have drifted
    before (#171, and again at 0.9.28). Check `git show HEAD:mcp/package.json`
    before bumping — a concurrent branch may already have claimed the number.
 
 Architecture rather than behavior — what MCP is versus what the `/ai` sandbox
-is, and why the server is in-process — lives in `docs/MCP_AND_API.md`.
+is, and why the server imports the web engine in-process — lives at the end of
+[`docs/MCP.md`](docs/MCP.md) ("Where this sits") and in
+[`server/README.md`](server/README.md).
+
+## The doc set, and who each one is for
+
+Four documents carry the product, and they're deliberately split by audience —
+don't answer an estimator's question in the agent manual or vice versa:
+
+| Document | Audience | What belongs in it |
+|---|---|---|
+| [`README.md`](README.md) | everyone, ~60 seconds | what this is, the three doors, what's in the box |
+| [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | the estimator at the canvas | every shipped UI behavior, the working order on a real bid, the glossary |
+| [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) | an agent driving the engine | the operating model, the standard finish, withheld doctrine, staging, refusal→next-move |
+| [`mcp/README.md`](mcp/README.md) | an agent's integrator | tool-by-tool reference, resources, coordinate contract, limits |
+
+[`AGENT_BRIEF.md`](AGENT_BRIEF.md) is the one-page orientation that routes to
+all four. A behavior change usually touches two of them; a new MCP tool touches
+three plus this file's sync list above.

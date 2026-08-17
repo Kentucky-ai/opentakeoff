@@ -7,6 +7,11 @@ your MCP client. Not a wrapper around the UI: the server imports the same
 vertex snapping, and the totals math behave identically, and everything it
 commits round-trips into the app as a normal saved takeoff.
 
+This page walks the surface in depth, in the order an agent reaches for it. Two
+shorter reads sit either side of it: [`AGENT_GUIDE.md`](AGENT_GUIDE.md) is the
+operating manual — how a takeoff is run, what withholds, what refuses — and
+[`mcp/README.md`](../mcp/README.md) is the tool-by-tool reference.
+
 ## Setup
 
 ```bash

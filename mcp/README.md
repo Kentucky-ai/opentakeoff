@@ -4,6 +4,12 @@ Listed in the [official MCP registry](https://registry.modelcontextprotocol.io) 
 `io.github.Kentucky-ai/opentakeoff`, on [Glama](https://glama.ai/mcp/servers/Kentucky-ai/opentakeoff),
 and on [Smithery](https://smithery.ai/servers/Kentucky-ai/opentakeoff).
 
+**This page is the reference — every tool, every rule, every limit.** For *how to run a
+takeoff well* with it — the operating model, the standard finish, what the engine withholds
+and why, and the move that answers each refusal — read
+[`docs/AGENT_GUIDE.md`](../docs/AGENT_GUIDE.md) first. It's short, and it's the half that
+decides whether the numbers are any good.
+
 ## Run it in 60 seconds (npx)
 
 No clone, no build — point your MCP client at the published package:
