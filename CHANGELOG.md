@@ -2,6 +2,16 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-17 — a refusal names its stage; the ship doctrine names what actually ships; opentakeoff-mcp 0.9.52
+
+### Fixed
+- **A staged tool's refusal was a dead end.** This server's rule everywhere else is that a refusal names the next move — an unscaled sheet says to call `set_scale`, a withheld room hands back the coordinate to look at. With `OPENTAKEOFF_MCP_STAGED_TOOLS=1`, calling a closed tool returned `MCP error -32602: Tool one_click disabled`: no stage, no opener, no next move. A model that got the tool name from the docs rather than from `tools/list` has nowhere to go, and it reads as a broken product rather than a client that needs `tools/list_changed`. The refusal now names the stage the tool is in, the exact `open_tool_stage` call that opens it, and says to retry. The SDK checks `enabled` before dispatch and exposes no hook, so `staging.ts` wraps that handler and rewrites ONLY the disabled-tool refusal — an unknown tool is still `not found`, an enabled tool's own validation refusal is its own, and the flat build is untouched. Defensive about the internals it has to reach: if the SDK changes shape the wrapper is not installed and behaviour is exactly what shipped before.
+- **`?hatchqa` — the hatch QA wall `FEATURES.md` advertises — was missing from `web/src`, and it was LOST rather than removed.** Added 2026-07-07 in `d02032a`, present on `main`, and dropped in the wholesale fork merge `1317d07` (PR #26, 2026-07-13) — the same merge that dragged in the fork's own docs. Nothing in that PR was about deleting a QA wall. Restored verbatim and loaded in the running app, because Vite does not flag an undefined identifier in JSX.
+
+### Docs
+- **The ship doctrine described a workflow deleted in July.** `AGENTS.md` and `docs/DEPLOYMENT.md` both said merging deploys through `.github/workflows/deploy.yml`, which publishes `web/dist` with `--no-build` — "Netlify never builds anything itself." That workflow was **deleted on 2026-07-13 in `e701f1a`**; only `ci.yml` and `publish-mcp.yml` remain. Netlify's own git integration builds `main` from source via `netlify.toml` and is now the only thing that builds production — exactly backwards from the claim. *Merge = deploy* is unchanged. What is newly written down is the consequence: because nothing re-runs the check after the merge, the PR's green check is the last gate before production.
+- **`FEATURES.md` carried two rows twice.** Approval stamps appeared in full and in a stale copy still claiming "no UI or MCP tool mints one yet" (`mark_verdict` does); Symbol sweep appeared in full and in a copy predating set-wide scope and `sweep_schedule_row`. The stale one of each pair is gone. Sheet graph is **not** duplicated — one row, checked.
+
 ## 2026-08-17 — a double door's ray is not a leaf; opentakeoff-mcp 0.9.51
 
 ### Fixed
