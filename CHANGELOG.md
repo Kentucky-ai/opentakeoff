@@ -2,6 +2,21 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-17 — a double door's ray is not a leaf; opentakeoff-mcp 0.9.51
+
+### Fixed
+- **Two ordinary clicks returned rings that shared floor (#191 follow-up).** On the bundled VA finish plan, PATIENT ROOM 158 (208.98 SF) and CORRIDOR CE-5 (640.11 SF) both annexed the same **16.18 SF door sector**, and both said so — `door-swing-crossed(11.6% annexed swing)` on the room, `12.7%` on the corridor. An estimator who sweeps and then clicks the corridor by hand buys that floor twice. This was live in a shipping release and it inflates area on a bid.
+
+  #191 offers a door's LEAF as its own flood opening, and argues the move is safe two ways: the in-swing sector is enclosed by leaf-gone + arc + jamb so the re-flood "gains the sector and nothing else", and "on an out-swing door the leaf is not on the room's boundary, so opening it changes nothing." Both statements are about a **leaf**. Neither holds for what the ray finder returns on a **double door**: a pair of leaves fits ONE circle whose sweep is ~180°, and the extreme angles of that sweep point at the two **jambs** rather than at a panel tip. The ray therefore lands along the **wall** and comes back as a short stub of it. Opening that stub punches a hole in room 158's own wall; the re-flood walks out through the doorway and annexes the sector on the far side, which is the corridor's floor. The corridor reaches the same sector honestly, across its arc, at pass 0 — the out-swing recovery that has always worked, and untouched here.
+
+  The rule is that **a door panel spans the radius it swept**, so a mark shorter than `r` never swept that arc and may not be opened as a leaf (`LEAF_MIN_SPAN_R`). Measured, not fitted: across the demo plan and five real GC finish plans, every one of the **91 accepted leaf wedges spans at least 1.17 r**; the room-158 wall stub spans **0.90 r**. The leaf remains *evidence* for its arc either way — `anyLeaf` still widens the radius ceiling to `DOOR_R_LEAF_MAX_FT`, so #257's wide in-swing doors are unaffected. Refusals are not silent: `leafStubsRefused` rides the result like `wedgesRefused`.
+
+### Measured
+`mcp` 167/167, `web` 1352/1352, `npm run bench` passes with **every golden unchanged** (#191's in-swing gains all hold), and `bench:callouts` is bit-identical at mean |error| **33.8%** — the fix costs nothing on the ruler. Two door-swing probes *gain* a point of confidence (0.92 → 0.93, 0.91 → 0.92) because a spurious wedge is no longer deducted for. Five real GC plansets (Crunch Mishawaka, Planet Fitness New Castle, Ulta Bowling Green, VEG Greenwood, Spot Freight Indy) are unchanged.
+
+### Added
+- **`mcp/test/overlap.test.ts` — no two regions the engine hands over may share floor.** `web/bench/run.mts`'s `pairwiseOverlapFrac` is the right invariant and structurally cannot express this: it compares a case's **eight pinned probes**, and reports 0.000% on this sheet while 16 SF of it is counted twice. The new test runs **every region the engine hands over** — all 22 `detect_rooms` rings plus the hand clicks an estimator makes on the spaces the sweep never named — through an all-pairs intersection measured off the returned vertex rings, deliberately not by asking the engine whether it thinks it overlapped. Two remaining overlaps are adjudicated in the test with their reasons and SF ceilings (`detect_rooms` naming the corridor off its printed "557 SF", and the #188 annotation-ring sliver inside room 140); anything new fails outright and has to be looked at by a person.
+
 ## 2026-08-16 — the docs split by audience: an agent manual, and an estimator's working order; opentakeoff-mcp 0.9.50
 
 ### Docs
