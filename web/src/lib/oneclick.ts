@@ -55,7 +55,7 @@ export type FloodResult =
   // see floodRegionSealedInner.
   | { status: "leak"; leakedDilationPx?: number }
   | { status: "tiny"; count: number }
-  | { status: "ok"; region: Uint8Array; count: number; mw: number; mh: number; ws: number; mppf?: number; hardHits?: number; softHits?: number; hatchFiltered?: boolean; hatchTier?: HatchTier; sealedPx?: number; virtualFrac?: number; wedges?: number; ringWedges?: number; wedgesRefused?: number; wedgeGrowth?: number; curveFrac?: number; minPassPx?: number; minPassDelta?: number; gapBridged?: number };
+  | { status: "ok"; region: Uint8Array; count: number; mw: number; mh: number; ws: number; mppf?: number; hardHits?: number; softHits?: number; hatchFiltered?: boolean; hatchTier?: HatchTier; sealedPx?: number; virtualFrac?: number; wedges?: number; ringWedges?: number; wedgesRefused?: number; leafStubsRefused?: number; wedgeGrowth?: number; curveFrac?: number; minPassPx?: number; minPassDelta?: number; gapBridged?: number };
 /** Caller's snap-grid lookup: nearest true endpoint to (x,y) within maxDist, or null. */
 export type NearestFn = (x: number, y: number, maxDist: number) => Point | null | undefined;
 
@@ -2090,6 +2090,32 @@ export function splitMergedArcs(cl: number[], mw: number, mask: Uint8Array, mppf
 // already works" property this needs.
 export const LEAF_MIN_SECTOR_FRAC = 0.15;  // a leaf wedge must recover at least this much of the fitted sector, or it is a crack not a door
 export const LEAF_MIN_COVER = 0.55;   // fraction of the ray that must actually be inked for it to be a leaf
+/** A door panel SPANS THE RADIUS IT SWEPT. The mark `doorLeafCells` returns is
+ *  the hard ink within LEAF_HALF_FT of a radius segment, so a real panel —
+ *  drawn as two parallel strokes down the full radius — comes back at roughly
+ *  2r cells. A mark SHORTER than r never swept that arc.
+ *
+ *  WHY THIS EXISTS. #191 opens a door's leaf as its own flood opening, on the
+ *  reasoning that the in-swing sector is enclosed by leaf-gone + arc + jamb so
+ *  the re-flood "gains the sector and nothing else", and that on an out-swing
+ *  door "the leaf is not on the room's boundary, so opening it changes
+ *  nothing". Both statements are about a LEAF. Neither holds for what the ray
+ *  finder returns on a DOUBLE door: two leaves fit ONE circle whose sweep is
+ *  ~180 degrees, and the extreme angles of that sweep point at the two JAMBS
+ *  rather than at a panel tip, so the ray lands along the WALL and comes back
+ *  as a short stub of it. Opening that stub punches a hole in the room's own
+ *  wall; the re-flood then walks out through the doorway and annexes the swing
+ *  sector on the FAR side — floor belonging to the space the doors swing into.
+ *  Both spaces then report it, and an estimator who clicks both buys it twice.
+ *  On the bundled VA finish plan that is PATIENT ROOM 158 taking 16.18 SF of
+ *  CORRIDOR CE-5, which the corridor also reports (mcp/test/overlap.test.ts).
+ *
+ *  Measured, not fitted: across the demo plan and five real GC finish plans
+ *  (Crunch Mishawaka, Planet Fitness New Castle, Ulta Bowling Green, VEG
+ *  Greenwood, Spot Freight Indy) every one of the 91 ACCEPTED leaf wedges spans
+ *  at least 1.17 r; the room-158 wall stub spans 0.90 r. The rule states the
+ *  physical fact — the panel reaches the arc — and 1.0 sits clear of both. */
+export const LEAF_MIN_SPAN_R = 1.0;
 /** Half-thickness of a drawn door leaf. FEET-TRUE, like every other physical
  *  threshold in this file: a leaf is a panel drawn as a thin rectangle — two
  *  parallel strokes a few inches apart — and at 1.5 mask px the outer stroke
@@ -2553,7 +2579,7 @@ function floodRegionSealedInner(mo: MaskObj, ix: number, iy: number, sensitivity
   const { mw, mh } = mo;
   let region: Uint8Array | null = null;
   let count = r1.count;
-  let wedges = 0, ringWedges = 0, refused = 0;
+  let wedges = 0, ringWedges = 0, refused = 0, leafStubs = 0;
   let hatchFiltered = !!r1.hatchFiltered;
   let hatchTier = r1.hatchTier;
   let sealedPx = r1.sealedPx, virtualFrac = r1.virtualFrac;
@@ -2624,7 +2650,16 @@ function floodRegionSealedInner(mo: MaskObj, ix: number, iy: number, sensitivity
     const anyLeaf = leaves.some((l) => !!l.leaf);
     ranked.push(entry(cl, 0, fit, anyLeaf));
     if (parts.length > 1) for (const { p, pf, leaf } of leaves) ranked.push(entry(p, 1, pf, !!leaf));
-    for (const { pf, leaf } of leaves) if (leaf) ranked.push({ ...entry(leaf, 2, pf, true), cl: leaf });
+    // Only a mark that SPANS the radius may be opened as a leaf — see
+    // LEAF_MIN_SPAN_R. A shorter one is the ray landing on the wall between the
+    // two arcs of a double door, and opening it breaches the room. The leaf is
+    // still EVIDENCE for the arc either way (`anyLeaf`, above, widens the radius
+    // ceiling for #257) — this gates only whether it becomes its own opening.
+    for (const { pf, leaf } of leaves) {
+      if (!leaf) continue;
+      if (leaf.length < LEAF_MIN_SPAN_R * pf.r) { leafStubs++; continue; }
+      ranked.push({ ...entry(leaf, 2, pf, true), cl: leaf });
+    }
   }
   ranked
     .splice(0, ranked.length, ...ranked
@@ -2716,6 +2751,7 @@ function floodRegionSealedInner(mo: MaskObj, ix: number, iy: number, sensitivity
   }
   if (!wedges || !region) {
     if (refused) r1.wedgesRefused = refused;
+    if (leafStubs) r1.leafStubsRefused = leafStubs;
     return r1;
   }
   const out: FloodResult & { status: "ok" } = {
@@ -2725,6 +2761,7 @@ function floodRegionSealedInner(mo: MaskObj, ix: number, iy: number, sensitivity
     minPassPx: minPassPxOut, minPassDelta,
     ...(ringWedges ? { ringWedges } : {}),
     ...(refused ? { wedgesRefused: refused } : {}),
+    ...(leafStubs ? { leafStubsRefused: leafStubs } : {}),
   };
   // Absorb the door LEAF: the straight leaf line stays a barrier through the
   // retry, leaving a 1–2 px slit between the room and the annexed wedge. The
