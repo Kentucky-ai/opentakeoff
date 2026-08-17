@@ -88,4 +88,78 @@ export function applyStagedTools(server: McpServer, registered: Map<string, Regi
       return fail(e);
     }
   });
+
+  nameTheStageInRefusals(server);
+}
+
+/** Which stage owns a tool — for the refusal string below. */
+export function stageOf(tool: string): string | null {
+  for (const [stage, names] of Object.entries(TOOL_STAGES)) if (names.includes(tool)) return stage;
+  return null;
+}
+
+/** The actionable refusal for a tool whose stage is still closed. */
+export function closedToolMessage(tool: string): string {
+  const stage = stageOf(tool);
+  return stage
+    ? `Tool ${tool} is in the "${stage}" stage, which is not open yet. Call open_tool_stage {stage:"${stage}"} and then call ${tool} again. Opening a stage is instant, idempotent, and never closes anything.`
+    : `Tool ${tool} is not enabled.`;
+}
+
+/**
+ * A REFUSAL NAMES THE NEXT MOVE. That is this server's rule everywhere else —
+ * an unscaled sheet says to call set_scale, a withheld room hands back the
+ * coordinate to look at — and staging was the one place that broke it. The SDK
+ * checks `enabled` before dispatch and throws a bare
+ * `MCP error -32602: Tool one_click disabled`: no stage name, no opener, no
+ * next move. A model that reached the tool name from the docs rather than from
+ * tools/list has nowhere to go, and it reads as a broken product rather than as
+ * a client that needs tools/list_changed.
+ *
+ * The check we need to reach sits inside the handler McpServer installed in its
+ * own constructor, and the SDK exposes no hook to it, so this wraps that
+ * handler: delegate, and rewrite ONLY the disabled-tool error. Everything else
+ * — dispatch, validation, results, every other error — passes through
+ * untouched.
+ *
+ * Deliberately defensive about the internals it has to touch. If the SDK ever
+ * changes shape, the wrapper is not installed and behaviour is exactly what it
+ * is today: a bare refusal, which is what we already ship. It never throws on
+ * its own account.
+ */
+function nameTheStageInRefusals(server: McpServer): void {
+  try {
+    const low = server.server as unknown as {
+      _requestHandlers?: Map<string, (req: unknown, extra: unknown) => Promise<unknown>>;
+    };
+    const handlers = low._requestHandlers;
+    const inner = handlers?.get("tools/call");
+    if (!handlers || typeof inner !== "function") return;   // shape changed — leave it alone
+    handlers.set("tools/call", async (req: unknown, extra: unknown) => {
+      const name = (req as { params?: { name?: string } })?.params?.name;
+      const closed = !!name && !!stageOf(name);
+      const bare = new RegExp(`Tool ${name} disabled$`);
+      try {
+        const res = await inner(req, extra);
+        // The SDK catches its own McpError and hands back an isError result
+        // rather than throwing, so the string has to be rewritten here.
+        const r = res as { isError?: boolean; content?: { type: string; text?: string }[] };
+        if (closed && r?.isError) {
+          for (const c of r.content ?? []) {
+            if (c.type === "text" && typeof c.text === "string" && bare.test(c.text)) {
+              c.text = closedToolMessage(name as string);
+            }
+          }
+        }
+        return res;
+      } catch (e) {
+        // ...and rewrite it on the throwing path too, in case that ever changes
+        const msg = e instanceof Error ? e.message : String(e);
+        if (closed && bare.test(msg)) (e as Error).message = closedToolMessage(name as string);
+        throw e;
+      }
+    });
+  } catch {
+    // never let the courtesy of a good error message break the server
+  }
 }

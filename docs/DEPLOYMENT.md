@@ -16,21 +16,29 @@ merge, which is why earlier revisions named that fork's own deployment,
 branch → npm run check (local) → PR → CI (`web` check) → squash-merge
                                                              │
                                                              ▼
-                                          .github/workflows/deploy.yml
-                                          npm ci → npm run check → netlify deploy
+                                          Netlify git integration
+                                          (netlify.toml: base web/, npm run build)
                                                              │
                                                              ▼
                                           https://opentakeoff.kentucky-ai.com
 ```
 
 - **CI** (`.github/workflows/ci.yml`) runs on every PR: `npm ci` then
-  `npm run check` (typecheck → lint → tests → build) inside `web/`.
-- **Deploy** (`.github/workflows/deploy.yml`) runs on every push to `main`
-  (which, given branch protection, means every merged PR). It re-runs the same
-  check, then publishes `web/dist` to Netlify with `--no-build`.
-- **Netlify never builds.** It only hosts what Actions uploads. The
-  `netlify.toml` build section exists for one-click deploys of forks; the
-  production site is upload-only.
+  `npm run check` (typecheck → lint → tests → build) inside `web/`. This is the
+  `web` check the branch ruleset gates on, and it is the ONLY gate — nothing
+  re-runs it after the merge.
+- **Deploy** is Netlify's own git integration, watching `main`. It builds the
+  merge commit from source using `netlify.toml` (`base = "web"`,
+  `command = npm run build`, `publish = "dist"`) and publishes the result.
+  Nothing is uploaded from Actions.
+- **Netlify is the only thing that builds production.** An earlier revision of
+  this file said the opposite — that Actions published `web/dist` with
+  `--no-build` and "Netlify never builds". That was true until
+  `.github/workflows/deploy.yml` was **deleted on 2026-07-13 in `e701f1a`**
+  ("deploys here are manual CLI; it fails on every push without the fork's
+  secrets"). Only `ci.yml` and `publish-mcp.yml` remain. The consequence worth
+  knowing: because CI does not re-run after the merge, **the PR's green check is
+  the last gate before production.**
 
 ## Local/CI parity
 

@@ -19,9 +19,18 @@ npm run check    # typecheck + lint + test + build — exactly what CI runs; gre
 `main` is protected on GitHub via a ruleset (PR-only, one approving review,
 green `web` check, branch up to date — the repo owner has a standing bypass
 as the solo maintainer). **Merging to `main` deploys to production**
-(<https://opentakeoff.kentucky-ai.com>) via `.github/workflows/deploy.yml`, which
-re-runs `npm run check` and publishes `web/dist` to Netlify with `--no-build`
-— Netlify never builds anything itself.
+(<https://opentakeoff.kentucky-ai.com>) — Netlify's own git integration builds
+the merge commit and publishes it. `netlify.toml` holds the whole recipe
+(`base = "web"`, `command = npm run build`, `publish = "dist"`), so the deploy
+runs a fresh build from the merged source; nothing is uploaded from CI.
+
+`.github/workflows/deploy.yml` used to do this by publishing `web/dist` with
+`--no-build`, and it was **deleted on 2026-07-13 in `e701f1a`** ("deploys here
+are manual CLI; it fails on every push without the fork's secrets"). Only
+`ci.yml` (the `web` check the ruleset gates on) and `publish-mcp.yml` (fires on
+an `mcp-v*` tag) remain. The old line here said "Netlify never builds anything
+itself", which is now exactly backwards — Netlify is the only thing that
+builds production. **Merge = deploy either way: that part has never changed.**
 
 > **This is the canonical `Kentucky-ai/opentakeoff` repo — production is
 > <https://opentakeoff.kentucky-ai.com>, nothing else.** A downstream fork
