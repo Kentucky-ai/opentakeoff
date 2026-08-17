@@ -25,8 +25,8 @@
     {
      "raw": "16 SF",
      "printed_sf": 16,
-     "engine_sf": 86.44697599999826,
-     "err": 4.402935999999891,
+     "engine_sf": 89.5892479999981,
+     "err": 4.599327999999881,
      "agreement": 9,
      "seeds": 25,
      "regions": 6,
@@ -44,8 +44,8 @@
     {
      "raw": "557 SF",
      "printed_sf": 557,
-     "engine_sf": 605.8563839999935,
-     "err": 0.0877134362656974,
+     "engine_sf": 620.8966399999881,
+     "err": 0.11471569120285119,
      "agreement": 9,
      "seeds": 25,
      "regions": 12,
@@ -63,11 +63,11 @@
     {
      "raw": "706 SF",
      "printed_sf": 706,
-     "engine_sf": 262.4957439999993,
-     "err": -0.6281929971671397,
-     "agreement": 4,
+     "engine_sf": 278.7214079999957,
+     "err": -0.6052104702549637,
+     "agreement": 5,
      "seeds": 25,
-     "regions": 15,
+     "regions": 14,
      "refused": 1,
      "stable": false,
      "context": [
@@ -120,8 +120,8 @@
     {
      "raw": "270 SF",
      "printed_sf": 270,
-     "engine_sf": 151.7447679999987,
-     "err": -0.4379823407407456,
+     "engine_sf": 166.14528000000092,
+     "err": -0.38464711111110766,
      "agreement": 10,
      "seeds": 25,
      "regions": 7,
@@ -171,15 +171,15 @@
     "matched": 3,
     "unstable": 6,
     "total": 9,
-    "meanAbsErr": 0.35572492592592636,
-    "medianAbsErr": 0.38684339999999795,
-    "meanSignedErr": -0.35572492592592636,
-    "minErr": -0.4379823407407456,
+    "meanAbsErr": 0.33794651604938036,
+    "medianAbsErr": 0.38464711111110766,
+    "meanSignedErr": -0.33794651604938036,
+    "minErr": -0.38684339999999795,
     "maxErr": -0.24234903703703553,
     "uniformSign": true,
-    "fitFactor": 0.6391412527664148,
-    "fitSpread": 0.15360945862383354,
-    "verdict": "no single multiplier explains these (best fit ×0.639, log-sd 0.154 — too wide) — so this is not ONE scale error; but the spread is also too wide to rule a scale error out row by row, and the shared sign still suggests something systematic"
+    "fitFactor": 0.658751489557139,
+    "fitSpread": 0.12114974844316986,
+    "verdict": "no single multiplier explains these (best fit ×0.659, log-sd 0.121 — too wide) — so this is not ONE scale error; but the spread is also too wide to rule a scale error out row by row, and the shared sign still suggests something systematic"
    }
   }
  ]
