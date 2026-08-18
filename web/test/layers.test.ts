@@ -36,7 +36,7 @@ test("the precedence that prevents confident wrong numbers: DEMO and PATT beat W
 
 test("field variants: xref prefixes, bind separators, spaces, truncation, bare words", () => {
   assert.equal(role("ARCH-FLOOR|A-WALL-FULL"), "boundary", "xref path strips to the last pipe");
-  assert.equal(role("XREF$0$A-WALL-FULL"), "boundary", "AutoCAD bind separator folds");
+  assert.equal(role("XREF$0$A-WALL-FULL"), "boundary", "CAD xref bind separator folds");
   assert.equal(role("A-WALL FULL HT"), "boundary", "spaces tokenize like dashes");
   assert.equal(role("A-WALL-1"), "boundary", "renumbered variant");
   assert.equal(role("WALL"), "boundary", "bare word still identifies…");

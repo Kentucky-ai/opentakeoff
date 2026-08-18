@@ -8,7 +8,7 @@
 //
 // Fixtures are synthetic op-list scenes (the layerExtract fake-OPS idiom;
 // mcp/scripts/make-layered-fixture.mjs is the on-disk precedent): each states
-// its layers the way a Revit/AutoCAD export does and carries the truth
+// its layers the way a CAD/BIM export does and carries the truth
 // rectangle for every labeled room. The eval loop is the REAL room-detection
 // path — roomLabelSeeds → detectRegions over the built mask — so a lift here
 // is a lift in detect_rooms, not in a bespoke harness. A room the detector

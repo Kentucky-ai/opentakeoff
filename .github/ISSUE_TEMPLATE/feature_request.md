@@ -13,4 +13,4 @@ What you're estimating and where the current tools fall short. Real workflow bea
 What it should do, ideally down to the click-by-click.
 
 **What you use today**
-If another tool does this (STACK, PlanSwift, Bluebeam, …), say which and what you'd keep or change — we build our own take, not copies.
+If another tool does this, describe the behavior and what you'd keep or change — describe what it does, not the brand; we build our own take, not copies.

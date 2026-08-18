@@ -60,7 +60,7 @@ const BOUNDARY = new Set([
 const DISCIPLINES = new Set(["A", "S", "M", "E", "P", "F", "C", "L", "T", "I", "Q", "G", "H", "V", "W", "X", "Z"]);
 
 /** Normalize a raw layer name to comparable tokens: strip the xref path
- * (everything before the LAST `|`), fold AutoCAD bind separators (`$n$`),
+ * (everything before the LAST `|`), fold CAD xref bind separators (`$n$`),
  * uppercase, split on every non-alphanumeric run. */
 export function layerNameTokens(raw: string): string[] {
   const base = String(raw || "").split("|").pop() || "";

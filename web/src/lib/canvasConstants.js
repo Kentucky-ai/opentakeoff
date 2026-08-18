@@ -24,7 +24,7 @@ export const MAX_CANVAS_AREA = 16384 * 16384 * 0.9;  // per-canvas pixel cap —
 export const MAX_PANEL_AREA  = 28e6;                 // base-raster pixel budget per panel (~112MB RGBA; 4-up ≈ 450MB)
 // Detail view: once zoomed past the base raster's 1:1 IN DEVICE PIXELS, we overlay a
 // crop of JUST the visible region, re-rendered from the PDF vectors at the current zoom —
-// Bluebeam/AutoCAD-style. Crispness becomes unbounded (up to the per-region canvas cap)
+// the way desktop CAD viewers do. Crispness becomes unbounded (up to the per-region canvas cap)
 // without ever holding a giant full-sheet bitmap; the region is ~viewport-sized so the cap
 // effectively never binds. Engage compares t.scale × devicePixelRatio (softness starts
 // when the raster is upscaled in device px — on a 2× display that's t.scale 0.5, not 1).

@@ -708,7 +708,7 @@ The engine work RFC #60 asked for, built and staged for upstream by **Kevin Murp
 - User guide: new "Angle lock (45°/90°)" section + ⇧ shortcut row.
 
 ## 2026-06-28
-- **Crisp detail-view canvas** — past ~1.15× zoom the visible region re-renders straight from the PDF vectors at the current zoom (Bluebeam/AutoCAD-style), so deep zoom never pixelates.
+- **Crisp detail-view canvas** — past ~1.15× zoom the visible region re-renders straight from the PDF vectors at the current zoom (the way desktop CAD viewers do), so deep zoom never pixelates.
 
 ## 2026-06-23
 - **Bundled sample plan** — a real (public, architect-sealed) medical-center floor finish plan with one-click **Load sample plan**; social card + README hero.

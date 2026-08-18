@@ -2,7 +2,7 @@
 
 > Free, open-source (Apache-2.0) construction takeoff engine that a person and an AI agent drive the same way. Open a plan (PDF, image, or .zip plan set), set the scale, trace areas — with one-click room detection and a 45°/90° angle lock — then apply waste % and per-condition supporting materials, and export quantities (SF/SY/LF/EA) as CSV/JSON. A person clicks the canvas; an agent calls the identical engine over MCP (`npx opentakeoff-mcp`) and gets the identical number, with the scale and origin of every measurement recorded. Built for flooring; the measuring engine works for any trade (drywall, paint, concrete, sitework). No account, no upload — plans never leave the machine.
 
-OpenTakeoff is the open-source alternative to subscription takeoff tools (STACK, PlanSwift, Kreo, Togal, Bluebeam quantity takeoff) — and the first of them an AI agent can drive natively, not through screen scraping or a bolted-on chat layer. It is a static web app: self-hosting is one `npm run build` and any static file host.
+OpenTakeoff is an open-source alternative to subscription takeoff software — and the first takeoff engine an AI agent can drive natively, not through screen scraping or a bolted-on chat layer. It is a static web app: self-hosting is one `npm run build` and any static file host.
 
 ## Docs
 

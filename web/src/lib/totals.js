@@ -297,7 +297,7 @@ export function roundSheetRow(r) {
   };
 }
 
-// Kreo-style derived metric: vertical wall SF = floor-area perimeters × the
+// Derived metric: vertical wall SF = floor-area perimeters × the
 // condition's height. Display-only (never in condition rows or the CSV): a
 // floor perimeter includes door openings and shared walls, so this is a
 // read-it-yourself ceiling estimate, not an order quantity.
