@@ -5647,7 +5647,7 @@ export default function TakeoffCanvas() {
     setConditions((cs) => splitFromFamily(cs, id));
     setCommitMsg(`${c.finish_tag} no longer follows ${par?.finish_tag || "its family"}.`);
   };
-  // Height/Thickness are LIVE parameters (Kreo-style): changing them re-flows
+  // Height/Thickness are LIVE parameters: changing them re-flows
   // every dependent shape on this condition — wall SF tracks the tile height.
   const setCondParam = (field, raw) => {
     const v = raw === "" ? null : Math.max(0, parseFloat(raw) || 0);
@@ -5782,7 +5782,7 @@ export default function TakeoffCanvas() {
   const countTotal = condRow?.ea || 0;
   const wallTotal = condRow?.wall_sf || 0;
   const borderTotal = condRow?.border_sf || 0;
-  // display-only Kreo-style derived metric: floor-area perimeters × the condition height
+  // display-only derived metric: floor-area perimeters × the condition height
   const condH = Number(aCond?.height_ft) || 0; // the live-readout JSX below still reads this
   const vertTotal = verticalWallSf(visibleShapes, activeCond, aCond?.height_ft, condMult);
   const num = (v, d = 1) => v.toLocaleString(undefined, { maximumFractionDigits: d });

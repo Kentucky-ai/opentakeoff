@@ -67,7 +67,7 @@ A new browser-global asset mirroring templates/materials/stamps:
 
 ## Phase 4 — estimate worksheet plus proposal PDF
 
-**Worksheet (StackCT-style, editable).** Extend `ReportPanel.jsx` (or a new
+**Worksheet (spreadsheet-style, editable).** Extend `ReportPanel.jsx` (or a new
 `EstimatePanel.jsx`) into a worksheet: each condition row expands to its item
 lines with **Qty | Unit | Material Unit $ | Material Ext $ | Labor Unit $ | Labor
 Ext $ | Line Total**, editable qty/unit-cost/waste/markup, live condition

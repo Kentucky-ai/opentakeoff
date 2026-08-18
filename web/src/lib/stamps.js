@@ -2,7 +2,7 @@
 //
 // A stamp is a reusable annotation — a named group of markup-like primitives
 // with local coordinates — that drops onto any sheet with a click (the
-// tool-chest pattern estimators know from Bluebeam). Unlike conditions and
+// tool-chest pattern estimators know from desktop markup tools). Unlike conditions and
 // markups (per-project), the stamp library is the app's FIRST cross-project
 // asset: it lives under its own key in the keyPath-less meta store, shared
 // across every project in the browser (the condition-template / material-

@@ -329,7 +329,7 @@ export function syntheticCorpus(): SyntheticCase[] {
 
   {
     // Same-pen demising wall on a SHARED tile module (flattened exports draw
-    // everything hairline; AutoCAD's global hatch origin makes adjacent
+    // everything hairline; the CAD tool's global hatch origin makes adjacent
     // same-pattern fills share the lattice). The wall sits in a perfect
     // lattice of its own pen → soft → rooms merge. Pre-existing exposure
     // (the old classifier's protects were width-based too); KNOWN-FAIL
