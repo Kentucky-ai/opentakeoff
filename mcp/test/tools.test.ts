@@ -582,7 +582,7 @@ test("cut_out: real holes compose on the parent, refusals hold, delete reverts, 
     verts: [[600, 600], [640, 600], [640, 640], [600, 640]], condition: "CPT-1", role: "deduct" });
   const notFloor = await call(client, "cut_out", { parent_shape_id: overlay.data.shape_id, verts: [[610, 610], [620, 610], [620, 620], [610, 620]] });
   assert.equal(notFloor.isError, true);
-  assert.match(notFloor.data.error, /floor_area/);
+  assert.match(notFloor.data.error, /an area or clips a run/);
   const crossing = await call(client, "cut_out", { parent_shape_id: parentId, verts: [[450, 450], [550, 450], [550, 550], [450, 550]] });
   assert.equal(crossing.isError, true);
   assert.match(crossing.data.error, /not fully inside/);
@@ -671,6 +671,61 @@ test("cut_out: real holes compose on the parent, refusals hold, delete reverts, 
   assert.deepEqual(
     session.shapes.map((x) => x.id).sort(),
     [overlay.data.shape_id, cut3.data.deduct_shape_id, "shp-ink"].sort());
+});
+
+// Wall tile is a RUN, not a polygon — cut_out clips it (the bug: a deduct over
+// a wall run used to land as an overlay whose SF came off the FLOOR total).
+test("cut_out on an open run: clips the stretch, splits at a middle cut, refuses the misses — one undo step", async () => {
+  const session = new Session();
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  await buildServer(session).connect(st);
+  const client = new Client({ name: "test-client", version: "0.0.0" });
+  await client.connect(ct);
+  await call(client, "load_plan", { path: PLAN });
+  await call(client, "set_scale", { sheet: KEY, upp: 0.1 });
+  // a 40-ft wall run at 8 ft tall → 40 LF, 320 SF
+  const wall = await call(client, "measure_surface", { sheet: KEY,
+    pts: [[100, 800], [500, 800]], condition: "WT-1", height_ft: 8 });
+  const wallId = wall.data.shape_id;
+  assert.equal(wall.data.length_lf, 40);
+  assert.equal(wall.data.area_sf, 320);
+
+  // a ring that misses the run refuses — nothing silently commits
+  const miss = await call(client, "cut_out", { parent_shape_id: wallId, verts: [[100, 200], [140, 200], [140, 240], [100, 240]] });
+  assert.equal(miss.isError, true);
+  assert.match(miss.data.error, /does not cross/);
+
+  // the real cut: 10 ft out of the MIDDLE → two runs, 15 LF each
+  const cut = await call(client, "cut_out", { parent_shape_id: wallId, verts: [[250, 780], [350, 780], [350, 820], [250, 820]] });
+  assert.equal(cut.isError, false);
+  assert.equal(cut.data.deduct_shape_id, undefined, "a run mints NO deduct receipt — its SF would count against the floor");
+  assert.equal(cut.data.pieces.length, 2);
+  assert.deepEqual(cut.data.pieces.map((p: any) => p.lf), [15, 15]);
+  assert.deepEqual(cut.data.pieces.map((p: any) => p.sf), [120, 120], "SF rides the surviving length: 15 LF x 8 ft");
+  assert.equal(cut.data.removed_lf, 10);
+  assert.equal(cut.data.removed_sf, 80);
+  const far = session.shapes.find((x) => x.id === cut.data.pieces[1].shape_id)!;
+  assert.equal(far.measure_role, "surface_area");
+  assert.equal(far.height_ft, 8, "the far side carries the height that makes it a wall");
+  assert.equal(far.condition_id, session.shapes.find((x) => x.id === wallId)!.condition_id);
+
+  // totals move in the WALL bucket, not the floor
+  const sum = await call(client, "takeoff_summary");
+  const wt = sum.data.conditions.find((c: any) => c.finish_tag === "WT-1");
+  assert.equal(wt.wall_sf, 240);
+  assert.equal(wt.floor_sf, 0);
+
+  // one undo_last puts the run back whole and unmints the far side
+  await call(client, "undo_last", { n: 1 });
+  assert.equal(session.shapes.find((x) => x.id === wallId)!.computed.area_sf, 320);
+  assert.equal(session.shapes.find((x) => x.id === cut.data.pieces[1].shape_id), undefined);
+  assert.deepEqual(session.shapes.map((x) => x.id), [wallId]);
+
+  // a ring that swallows the run whole is a delete, and says so
+  const all = await call(client, "cut_out", { parent_shape_id: wallId, verts: [[50, 700], [600, 700], [600, 900], [50, 900]] });
+  assert.equal(all.isError, true);
+  assert.match(all.data.error, /delete_shape/);
+  assert.equal(session.shapes.length, 1, "every refusal committed nothing");
 });
 
 // #148 — perimeter − stated openings → committed base runs, all-or-nothing.

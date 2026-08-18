@@ -330,16 +330,31 @@ export const importTakeoffOutput = {
   note: z.string(),
 };
 
-/** cut_out (#206) — the reply carries the parent's recomputed net. */
+/** cut_out (#206) — the reply carries the parent's recomputed net.
+ *
+ * Two shapes of reply, one per kind of parent, which is why every field but
+ * `note` is optional: an AREA parent nets a real hole (deduct_shape_id …
+ * holes), while an open RUN — wall tile, base — is CLIPPED and comes back as
+ * the pieces that survived (shape_id … removed_sf). Read whichever set is
+ * present; they never both are. */
 export const cutOutOutput = {
-  deduct_shape_id: z.string().describe("The reconciled deduct — carries cuts_shape_id; totals skip it (the parent nets the hole)"),
-  parent_shape_id: z.string(),
-  hole_sf: z.number().describe("What this cut actually removed from the parent's net — 0 when the ring fell entirely inside an existing hole"),
+  deduct_shape_id: z.string().optional().describe("Area parent: the reconciled deduct — carries cuts_shape_id; totals skip it (the parent nets the hole)"),
+  parent_shape_id: z.string().optional(),
+  hole_sf: z.number().optional().describe("Area parent: what this cut actually removed from the parent's net — 0 when the ring fell entirely inside an existing hole"),
   parent_net: z.object({
     area_sf: z.number().describe("The parent's recomputed net after the subtract"),
     perimeter_lf: z.number().describe("Outer ring + hole boundaries — a hole ADDS perimeter"),
-  }),
-  holes: z.number().int().describe("Holes the parent now carries"),
+  }).optional(),
+  holes: z.number().int().optional().describe("Area parent: holes the parent now carries"),
+  shape_id: z.string().optional().describe("Run parent: the run that was clipped — it keeps its id and takes the first surviving stretch"),
+  measure_role: z.string().optional().describe("Run parent: surface_area or linear"),
+  pieces: z.array(z.object({
+    shape_id: z.string(),
+    lf: z.number().describe("This piece's own length"),
+    sf: z.number().describe("LF × the height (wall) or the thickness (border) it was measured at"),
+  })).optional().describe("Run parent: every stretch that survived the cut — more than one when the ring fell in the middle"),
+  removed_lf: z.number().optional().describe("Run parent: length the cut took out"),
+  removed_sf: z.number().optional().describe("Run parent: the SF that rode on that length"),
   note: z.string(),
 };
 
@@ -456,7 +471,7 @@ export const undoLastOutput = {
   undone: z.number().int().describe("Steps actually reversed"),
   steps: z.array(z.object({
     seq: z.number().int(),
-    op: z.enum(["commit", "edit", "delete", "materials", "condition", "approval", "duplicate_condition", "split_condition", "cutout", "cutout_restore"]),
+    op: z.enum(["commit", "edit", "delete", "materials", "condition", "approval", "duplicate_condition", "split_condition", "cutout", "cutout_restore", "runcut"]),
     tool: z.string().describe("The tool call this step came from"),
     shapes: z.number().int().describe("Shapes affected by reversing this step — 0 for a materials step (it restores a condition's supporting-materials rows, not shapes), for a condition step (it restores the waste/multiplier pair), and for an approval step (it re-seats or removes a verdict mark)"),
   })).describe("Newest first"),

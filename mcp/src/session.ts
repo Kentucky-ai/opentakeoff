@@ -42,7 +42,7 @@ import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/sr
 import { sharedRuns, type SharedRun } from "../../web/src/lib/transitions.ts";
 // Real polygon boolean subtraction (#137/#206) — the canvas's own module, so a
 // headless cut and the app's Eraser can never disagree about what a hole holds.
-import { subtractCutout, recomposeCutouts, ringFullyInside } from "../../web/src/lib/cutout.js";
+import { subtractCutout, recomposeCutouts, ringFullyInside, cutRun } from "../../web/src/lib/cutout.js";
 // Correction rules (#88 / #207) — the canvas's own pure module, imported as-is
 // (the approvals/totals precedent): apply_rules re-runs an imported rule with
 // the exact predicate engine the canvas's Preview→Apply runs, so a headless
@@ -480,7 +480,11 @@ export type JournalPayload =
   | { op: "cutout"; tool: string; deduct_id: string; parent_id: string; parent_prev: CutoutParentPrev }
   // deleting a reconciled deduct (#206): undo re-seats the deduct at its index
   // and puts the parent's cut state back — the inverse of the revert
-  | { op: "cutout_restore"; tool: string; removed: { shape: Shape; index: number }; parent_id: string; parent_after: CutoutParentPrev };
+  | { op: "cutout_restore"; tool: string; removed: { shape: Shape; index: number }; parent_id: string; parent_after: CutoutParentPrev }
+  // cut_out on an open RUN: the run keeps its id and takes what survives; the
+  // far side of a middle cut lands as its own shape. Undo puts the run back
+  // whole and unmints the far side, one gesture like every cut
+  | { op: "runcut"; tool: string; target_id: string; target_prev: CutoutParentPrev; minted_ids: string[] };
 
 export type JournalEntry = JournalPayload & { seq: number };
 
@@ -1682,8 +1686,9 @@ export class Session {
   cutOut(opts: { parent_shape_id: string; verts: Point[] }) {
     const parent = this.shapes.find((x) => x.id === opts.parent_shape_id);
     if (!parent) throw new UserError(`No shape with id ${JSON.stringify(opts.parent_shape_id)} — list_shapes for real ids.`);
+    if (parent.measure_role === "surface_area" || parent.measure_role === "linear") return this.cutRunOut(parent, opts.verts);
     if (parent.measure_role !== "floor_area") {
-      throw new UserError(`cut_out subtracts from a floor_area shape — ${parent.id} is ${parent.measure_role}. An opening in a linear run is derive_base's openings claim; a count marker has no area to cut.`);
+      throw new UserError(`cut_out subtracts from an area or clips a run — ${parent.id} is ${parent.measure_role}. A count marker has nothing to cut: delete_shape it.`);
     }
     if (parent.origin?.reviewed === true) {
       throw new UserError(`Shape ${parent.id} was affirmed by a human — reviewed work is ink, and cutting a hole in it would mutate what the estimator signed. Commit an independent deduct with measure_polygon instead.`);
@@ -1733,6 +1738,74 @@ export class Session {
       parent_net: { area_sf: parent.computed.area_sf ?? 0, perimeter_lf: parent.computed.perimeter_lf ?? 0 },
       holes: parent.verts_norm_holes.length,
       note: "The parent's computed nets the hole for real (boolean subtract, not arithmetic) — overlap with an earlier cut never double-deducts. One undo step restores parent and hole together; deleting the deduct later reverts the cut too.",
+    };
+  }
+
+  /** cut_out on an OPEN RUN — wall tile (surface_area) and base/transitions
+   * (linear) are polylines traced in plan, not polygons, so the ring CLIPS
+   * them instead of subtracting: what falls outside the ring survives, and a
+   * cut through the middle leaves the far side as its own shape. Quantities
+   * ride the surviving length, which is exact for both roles — wall SF is
+   * LF × height, a border's SF is LF × thickness. No deduct receipt is minted:
+   * there is no area for one to sit on, and totals would count it against the
+   * FLOOR, which is the bug that made this necessary. Refusal over guessing
+   * stays: a ring that misses, that swallows the run whole, or that lands on a
+   * curved run (whose verts are control points, not the line) refuses and says
+   * what to do instead. */
+  private cutRunOut(parent: Shape, verts: Point[]) {
+    if (parent.origin?.reviewed === true) {
+      throw new UserError(`Shape ${parent.id} was affirmed by a human — reviewed work is ink, and clipping it would mutate what the estimator signed.`);
+    }
+    if ((parent as { curved?: boolean }).curved) {
+      throw new UserError(`Shape ${parent.id} is a curved run — its vertices are control points, not the line itself, so clipping them would move the curve. Reshape it with edit_shape.`);
+    }
+    const s = this.sheet(parent.sheet_id);
+    if (s.upp == null) throw new UserError(this.scaleGate(s));
+    if (verts.length < 3) throw new UserError(`A cut needs at least 3 vertices — got ${verts.length}.`);
+    const upp = s.upp;
+    const runPx: Point[] = parent.verts_norm.map(([nx, ny]) => [nx * s.widthPx, ny * s.heightPx]);
+    const r = cutRun(runPx, verts);
+    if (!r) {
+      throw new UserError(`The cut does not cross ${parent.id} — nothing came off it. view_sheet the run's coordinates and place the ring over the stretch you mean to remove.`);
+    }
+    if (r.kind === "erased") {
+      throw new UserError(`That ring covers the whole of ${parent.id}. Removing a run outright is delete_shape, not a cut.`);
+    }
+    const target_prev: CutoutParentPrev = {
+      verts_norm: parent.verts_norm.map((v) => [...v] as [number, number]),
+      ...(parent.computed ? { computed: { ...parent.computed } } : {}),
+    };
+    const wasLf = parent.computed?.perimeter_lf ?? 0;
+    const wasSf = parent.computed?.area_sf ?? 0;
+    const qty = (lenPx: number) => {
+      const lf = round2(lenPx * upp);
+      const k = wasLf > 0 ? lf / wasLf : 0;
+      return { area_sf: round2(wasSf * k), perimeter_lf: lf };
+    };
+    const toNorm = (run: number[][]): [number, number][] => run.map(([x, y]) => [x / s.widthPx, y / s.heightPx]);
+    const survivors = r.runs ?? [];
+    const [head, ...rest] = survivors;
+    if (!head) throw new UserError(`That ring covers the whole of ${parent.id}. Removing a run outright is delete_shape, not a cut.`);
+    parent.verts_norm = toNorm(head);
+    parent.computed = qty(openLen(head));
+    const minted: Shape[] = rest.map((piece) => ({
+      ...structuredClone(parent),
+      id: uid("shp"),
+      verts_norm: toNorm(piece),
+      computed: qty(openLen(piece)),
+    }));
+    this.shapes.push(...minted);
+    this.record({ op: "runcut", tool: "cut_out", target_id: parent.id, target_prev, minted_ids: minted.map((m) => m.id) });
+    const pieces = [parent, ...minted].map((x) => ({ shape_id: x.id, lf: x.computed.perimeter_lf ?? 0, sf: x.computed.area_sf ?? 0 }));
+    return {
+      shape_id: parent.id,
+      measure_role: parent.measure_role,
+      pieces,
+      removed_lf: round2(Math.max(0, wasLf - pieces.reduce((n, p) => n + p.lf, 0))),
+      removed_sf: round2(Math.max(0, wasSf - pieces.reduce((n, p) => n + p.sf, 0))),
+      note: minted.length
+        ? `The cut fell inside the run, so it comes back in ${pieces.length} pieces — same condition, same height, each measured on its own. One undo_last puts the run back whole.`
+        : "The run keeps its id and its condition; only its length (and the SF that rides on it) changed. One undo_last puts it back whole.",
     };
   }
 
@@ -3051,6 +3124,13 @@ export class Session {
         const p = this.shapes.find((x) => x.id === e.parent_id);
         if (p) Session.restoreCutoutSnapshot(p, e.parent_prev);
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 1 });
+      } else if (e.op === "runcut") {
+        // the far-side pieces vanish and the run re-takes its pre-cut geometry
+        const dead = new Set(e.minted_ids);
+        this.shapes = this.shapes.filter((x) => !dead.has(x.id));
+        const t = this.shapes.find((x) => x.id === e.target_id);
+        if (t) Session.restoreCutoutSnapshot(t, e.target_prev);
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 1 + e.minted_ids.length });
       } else if (e.op === "cutout_restore") {
         // inverse of deleting a reconciled deduct: the deduct returns at its
         // index and the parent re-takes the cut state it held before

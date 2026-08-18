@@ -129,7 +129,7 @@ import { requiredDensity as tileRequiredDensity } from "../lib/tiles";
 import { nowIso, mintUuid } from "../lib/provenance.js";
 import { applyShapeCommand, geomSnapshot, vertsEqual, recordCommand } from "../lib/shapeCommands.js";
 import { applyApprovalCommand, sanitizeApprovals, approvalInk, APPROVAL_R } from "../lib/approvals.js";
-import { findCutoutParent, subtractCutout, recomposeCutouts } from "../lib/cutout.js";
+import { findCutoutParent, subtractCutout, recomposeCutouts, cutRunsAcross } from "../lib/cutout.js";
 import { computeShapeMetrics, needsMetrics } from "../lib/shapeMetrics.js";
 import { fmtCheckLen, parseLenInput, checkVerdict, M_PER_FT, areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, heightVal, heightUnit, heightInputToFeet, heightStep, dimInputStr, dimLabel } from "../lib/units";
 import * as panelGeom from "../lib/panelGeometry.js";
@@ -3327,6 +3327,66 @@ export default function TakeoffCanvas() {
       },
     };
   }
+  // WALL TILE IS NOT A POLYGON. A Surface Area takeoff is an OPEN run traced
+  // in plan × the condition's height, and base/transitions are the same run
+  // without one — but every path the Cut Out tool could take resolved against
+  // `floor_area` shapes only. Drawing one over a wall run therefore did the
+  // worst available thing quietly: it landed an independent deduct overlay
+  // whose area came off the condition's FLOOR total, a bucket a wall run
+  // never fills (lib/totals accumulateRole), so the wall SF never moved and
+  // the floor went negative instead. There was no other way to take a stretch
+  // of wall tile back out.
+  //
+  // Runs now cut: the ring CLIPS the polyline (lib/cutout.cutRunsAcross),
+  // quantities scale with the surviving length — exactly right for both
+  // roles, since wall SF is LF × height and a border's SF is LF × thickness —
+  // and a cut through the middle leaves the far side as its own shape. Every
+  // run the ring touches is cut, not one unambiguous parent: a ring dropped
+  // on a corner where two runs meet cuts both, which is what was drawn. A
+  // CURVED run is left alone — its verts are control points, not the line
+  // itself, so clipping them would move the curve it re-smooths through.
+  // Returns null when the ring crosses no run at all.
+  const RUN_ROLES = new Set(["surface_area", "linear"]);
+  function resolveRunCuts(tp, ringPx) {
+    const upp = uppFor(tp.key);
+    if (!upp) return null;
+    const candidates = shapes
+      .filter((s) => s.sheet_id === tp.key && RUN_ROLES.has(s.measure_role) && !s.curved && (s.verts_norm || []).length >= 2)
+      .map((s) => ({ id: s.id, runPx: s.verts_norm.map(([x, y]) => [x * tp.img.w + tp.xOffset, y * tp.img.h]) }));
+    if (!candidates.length) return null;
+    const hits = cutRunsAcross(candidates, ringPx);
+    if (!hits.length) return null;
+    const norm = (run) => run.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]);
+    const byId = new Map(shapes.map((s) => [s.id, s]));
+    const targets = [], mint = [], deleteIds = [];
+    for (const h of hits) {
+      if (h.kind === "erased") { deleteIds.push(h.id); continue; }
+      const src = byId.get(h.id);
+      // quantities ride the length: SF/LF scale by (survived / original), so a
+      // per-shape height or a condition thickness stays honoured without this
+      // reaching back into the condition at all
+      const was = src?.computed?.perimeter_lf || 0;
+      const qty = (lenPx) => {
+        const lf = +(lenPx * upp).toFixed(2);
+        const k = was > 0 ? lf / was : 0;
+        return { perimeter_lf: lf, area_sf: +((src?.computed?.area_sf || 0) * k).toFixed(2) };
+      };
+      const [head, ...rest] = h.runs;
+      targets.push({ id: h.id, next: { verts_norm: norm(head), computed: qty(openLen(head)) } });
+      for (const piece of rest) {
+        const { id: _id, created_at: _ct, ...carry } = src;
+        mint.push({ ...carry, verts_norm: norm(piece), computed: qty(openLen(piece)) });
+      }
+    }
+    return { targets, mint, deleteIds };
+  }
+  const runCutMsg = (runs) => {
+    const bits = [];
+    if (runs.targets.length) bits.push(`cut ${runs.targets.length} run${runs.targets.length === 1 ? "" : "s"}`);
+    if (runs.mint.length) bits.push(`${runs.mint.length} left on the far side of the cut`);
+    if (runs.deleteIds.length) bits.push(`removed ${runs.deleteIds.length} outright`);
+    return `Cut Out: ${bits.join(" \u00b7 ")}.`;
+  };
   // A trace whose points span two side-by-side panels has no coherent
   // quantity — the inter-panel gap would be measured as real feet, and the
   // shape would bind to one sheet with vertices hanging off its edge. Refuse
@@ -3360,10 +3420,22 @@ export default function TakeoffCanvas() {
     // (see resolveCutout) falls straight back to the independent-overlay
     // commit below, unchanged.
     if (asDeduct) {
+      // the run half of the ring rides inside the SAME command, so one drawn
+      // ring stays one ⌘Z whether it crossed an area, some runs, or both
+      const runs = resolveRunCuts(tp, points);
       const cut = resolveCutout(tp, points, shape);
       if (cut) {
-        const res = dispatchShape({ type: "cutout", shape: cut.deductShape, parentId: cut.parentId, parentNext: cut.parentNext });
-        maybeOfferRule(res.shapes[res.shapes.length - 1], res.shapes);
+        const res = dispatchShape({ type: "cutout", shape: cut.deductShape, parentId: cut.parentId, parentNext: cut.parentNext, ...(runs ? { runs } : {}) });
+        if (runs) setCommitMsg(runCutMsg(runs));
+        // the deduct is pushed first, any far-side run pieces after it
+        maybeOfferRule(res.shapes[res.shapes.length - 1 - (runs ? runs.mint.length : 0)], res.shapes);
+        return;
+      }
+      if (runs) {
+        // nothing but runs under the ring — there is no area for a deduct
+        // receipt to sit on, so none is minted
+        dispatchShape({ type: "cutout", runs });
+        setCommitMsg(runCutMsg(runs));
         return;
       }
     }

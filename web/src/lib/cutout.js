@@ -38,7 +38,7 @@ import { polygon as turfPolygon, featureCollection } from "@turf/helpers";
 import turfDifference from "@turf/difference";
 import booleanOverlap from "@turf/boolean-overlap";
 import booleanContains from "@turf/boolean-contains";
-import { polyWithHolesMetrics } from "./geometry.js";
+import { polyWithHolesMetrics, openLen, pointInPoly } from "./geometry.js";
 
 // GeoJSON rings are CLOSED (first === last); this canvas's rings are OPEN
 // (verts_norm never repeats the closing vertex — see closedMetrics). These
@@ -163,4 +163,111 @@ export function recomposeCutouts(baseOuterPx, baseHolesPx, deductRingsPx) {
   }
   const metrics = polyWithHolesMetrics(outer, holes);
   return { outer, holes, area: metrics.area, perim: metrics.perim };
+}
+
+// ── the deduct on an OPEN RUN (surface_area / linear) ────────────────────────
+// Wall tile is not a polygon. The Surface Area tool traces the wall RUN in
+// plan and multiplies its length by the condition's height (commitSurface);
+// wall base and transitions are the same open polyline without the height.
+// Everything above this line — and, before this, every path the Cut Out tool
+// could take — resolves against `floor_area` shapes only, so an estimator who
+// took a wall off and then needed a stretch of it back OUT (a wet wall to be
+// re-traced under a waterproofed condition, say) had nothing to do it with:
+// the deduct landed as an independent overlay whose area was subtracted from
+// the condition's FLOOR total, a bucket a wall run never contributes to. The
+// wall SF never moved.
+//
+// Subtracting a ring from a run means CLIPPING: keep every part of the
+// polyline OUTSIDE the ring. A run cut in the middle comes back as two runs,
+// and that split is legitimate here in a way a polygon split is not — length
+// is additive, and each piece keeps the condition, the height and the label
+// that made it. A polygon split asks "which piece is the room?"; a run split
+// asks nothing.
+//
+// Pixel-space in, pixel-space out, same as everything above.
+
+// Parametric position along a→b where it crosses c→d, or null (parallel, or
+// the crossing lies off either segment). Endpoint-exact hits are kept — the
+// caller drops the degenerate slivers they produce.
+function segCrossT(a, b, c, d) {
+  const rx = b[0] - a[0], ry = b[1] - a[1];
+  const sx = d[0] - c[0], sy = d[1] - c[1];
+  const den = rx * sy - ry * sx;
+  if (Math.abs(den) < 1e-12) return null;              // parallel / collinear
+  const t = ((c[0] - a[0]) * sy - (c[1] - a[1]) * sx) / den;
+  const u = ((c[0] - a[0]) * ry - (c[1] - a[1]) * rx) / den;
+  if (t < 0 || t > 1 || u < 0 || u > 1) return null;
+  return t;
+}
+const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+
+/**
+ * Clips an open run against a ring, keeping what falls OUTSIDE the ring.
+ * @param {number[][]} runPx the run's points, px space (2+ points).
+ * @param {number[][]} ringPx the deduct ring, px space (3+ points, open).
+ * @returns {number[][][]} the surviving runs in draw order — [] when the ring
+ *   swallowed the whole run, [runPx] when it missed entirely.
+ */
+export function clipRunOutside(runPx, ringPx) {
+  if (runPx.length < 2 || ringPx.length < 3) return [runPx];
+  const EPS = 1e-9;
+  const runs = [];
+  let cur = null;                                       // the run being extended; null = the last piece was cut away
+  for (let i = 1; i < runPx.length; i++) {
+    const a = runPx[i - 1], b = runPx[i];
+    const ts = [0, 1];
+    for (let j = 0; j < ringPx.length; j++) {
+      const t = segCrossT(a, b, ringPx[j], ringPx[(j + 1) % ringPx.length]);
+      if (t !== null && t > EPS && t < 1 - EPS) ts.push(t);
+    }
+    ts.sort((p, q) => p - q);
+    for (let k = 1; k < ts.length; k++) {
+      const t0 = ts[k - 1], t1 = ts[k];
+      if (t1 - t0 < EPS) continue;
+      const mid = lerp(a, b, (t0 + t1) / 2);
+      if (pointInPoly(mid[0], mid[1], ringPx)) { cur = null; continue; }
+      // sub-segments partition the run IN ORDER, so "contiguous with what came
+      // before" is exactly "the previous sub-segment survived too"
+      if (!cur) { cur = [lerp(a, b, t0)]; runs.push(cur); }
+      cur.push(lerp(a, b, t1));
+    }
+  }
+  return runs.filter((r) => r.length >= 2 && openLen(r) > EPS);
+}
+
+/**
+ * One run vs the deduct ring — the open-polyline twin of subtractCutout, with
+ * the degenerate cases NAMED rather than collapsed to null:
+ *   null                              the ring never touched this run
+ *   { kind: "erased" }                the ring swallowed it whole — DELETE it
+ *   { kind: "cut", runs, len }        what survives (1+ runs, px space) and
+ *                                     their total length in px
+ * A run cut never refuses: splitting a run is a normal outcome, not the
+ * identity problem splitting a polygon is.
+ */
+export function cutRun(runPx, deductRingPx) {
+  if (runPx.length < 2) return null;
+  const before = openLen(runPx);
+  const runs = clipRunOutside(runPx, deductRingPx);
+  const len = runs.reduce((n, r) => n + openLen(r), 0);
+  if (before - len < 1e-9) return null;                 // nothing came off
+  if (!runs.length) return { kind: "erased" };
+  return { kind: "cut", runs, len };
+}
+
+/**
+ * Every run the ring touches, each clipped independently — order-independent,
+ * and unlike the floor_area path it does NOT need one unambiguous parent: a
+ * ring dropped over a corner where two wall runs meet cuts both, which is what
+ * the estimator drew.
+ * @param {Array<{id: string, runPx: number[][]}>} runs
+ * @param {number[][]} deductRingPx
+ */
+export function cutRunsAcross(runs, deductRingPx) {
+  const out = [];
+  for (const r of runs) {
+    const c = cutRun(r.runPx, deductRingPx);
+    if (c) out.push({ id: r.id, ...c });
+  }
+  return out;
 }
