@@ -76,7 +76,7 @@ export const PROVENANCE_POLICY = {
   replace: "no stamp, no counted, no undo entry (whole-array non-edit)",
   review: "origin.reviewed → true + accepted_ts per still-pending shape; restore puts the prior origin back verbatim",
   ruleApply: "add semantics (created_at + id mint per shape, ONE undo entry per batch); caller-built rule_v1 origin carries rule_id + seed_shape_id",
-  cutout: "#137 — mints the deduct (id + created_at) AND patches its parent's verts_norm/verts_norm_holes/computed as ONE undo entry; parent patch stamps nothing, nothing counts; restore unmints the deduct and reverts the parent verbatim",
+  cutout: "#137 — mints the deduct (id + created_at) AND patches its parent's verts_norm/verts_norm_holes/computed as ONE undo entry; parent patch stamps nothing, nothing counts; restore unmints the deduct and reverts the parent verbatim. `runs` carries the OPEN-RUN half of the same ring — wall tile and base are polylines, so the deduct CLIPS them (patch + mint the far side of a middle cut + delete a run swallowed whole) inside this one entry, and a ring that crosses only runs mints no deduct at all",
   rollcut: "#136 — NO stamp: a manual roll-cut override (slide/resize/reorder/reset) writes LAYOUT metadata (shape.roll_layout) over the shape, never its geometry or provenance; a row without roll_layout clears the key; `prev` (grab-time rows) builds the inverse when a live preview already wrote the final state",
 };
 
@@ -290,33 +290,78 @@ export function applyShapeCommand(shapes, cmd) {
       // and a rescale invalidates every recorded `computed`).
       return { shapes: Array.isArray(cmd.shapes) ? cmd.shapes : [], inverse: null };
     case "cutout": {
-      // restore (undo of a draw, or an explicit delete of the reconciled
-      // deduct — see TakeoffCanvas.deleteSelected): drop the deduct shape,
-      // put the parent back exactly as the caller says (the pre-cut snapshot,
-      // or a multi-cut rebuild — see cutout.recomposeCutouts).
+      // `runs` (optional, both directions) is the OPEN-RUN half of the same
+      // gesture: wall tile and base are polylines, not polygons, so a deduct
+      // over them CLIPS (lib/cutout.cutRunsAcross) instead of subtracting —
+      // `runs.targets` patches what survives, `runs.mint` lands the far side
+      // of a cut that fell in the middle of a run, `runs.deleteIds` drops a
+      // run the ring swallowed whole. It rides inside this command rather
+      // than beside it so one drawn ring is still one ⌘Z, and it works with
+      // no deduct/parent at all — the ring that crosses only wall runs mints
+      // no receipt shape, because there is no area for one to sit on.
+      const runsIn = cmd.runs || null;
       if (cmd.restore) {
-        const removed = shapes.find((s) => s.id === cmd.deductId);
-        if (!removed) return { shapes, inverse: null };
-        let redoParentNext = null;
-        const next = shapes.filter((s) => s.id !== cmd.deductId).map((s) => {
-          if (s.id !== cmd.parentId) return s;
-          redoParentNext = cutoutSnapshot(s);
-          return withCutout(s, cmd.parentPrev);
-        });
-        if (!redoParentNext) return { shapes, inverse: null };   // parent vanished — refuse rather than orphan the patch
-        return { shapes: next, inverse: { type: "cutout", shape: removed, parentId: cmd.parentId, parentNext: redoParentNext } };
+        const removed = cmd.deductId ? shapes.find((s) => s.id === cmd.deductId) : null;
+        if (cmd.deductId && !removed) return { shapes, inverse: null };
+        const unmint = new Set(runsIn?.unmintIds || []);
+        const remint = unmint.size ? shapes.filter((s) => unmint.has(s.id)) : [];
+        const runPrev = new Map((runsIn?.targets || []).map((t) => [t.id, t]));
+        const runRedo = [];
+        let redoParentNext = cmd.parentId ? null : undefined;
+        let next = shapes
+          .filter((s) => !(cmd.deductId && s.id === cmd.deductId) && !unmint.has(s.id))
+          .map((s) => {
+            if (cmd.parentId && s.id === cmd.parentId) {
+              redoParentNext = cutoutSnapshot(s);
+              return withCutout(s, cmd.parentPrev);
+            }
+            const t = runPrev.get(s.id);
+            if (!t) return s;
+            runRedo.push({ id: s.id, next: cutoutSnapshot(s) });
+            return withCutout(s, t.prev);
+          });
+        if (redoParentNext === null) return { shapes, inverse: null };   // parent vanished — refuse rather than orphan the patch
+        const rez = runsIn?.resurrect || { shapes: [], at: [] };
+        rez.shapes.forEach((s, k) => next.splice(Math.min(rez.at[k] ?? next.length, next.length), 0, s));
+        const runsBack = (runRedo.length || remint.length || rez.shapes.length)
+          ? { targets: runRedo, ...(remint.length ? { mint: remint } : {}), ...(rez.shapes.length ? { deleteIds: rez.shapes.map((s) => s.id) } : {}) }
+          : null;
+        return { shapes: next, inverse: {
+          type: "cutout",
+          ...(removed ? { shape: removed, parentId: cmd.parentId, parentNext: redoParentNext } : {}),
+          ...(runsBack ? { runs: runsBack } : {}),
+        } };
       }
       // forward: mint the deduct shape (add semantics), patch the parent in place.
-      const minted = cmd.shape.id ? cmd.shape : { id: `shp-${mintUuid()}`, created_at: nowIso(), ...cmd.shape };
-      let parentPrev = null;
-      const next = shapes.map((s) => {
-        if (s.id !== cmd.parentId) return s;
-        parentPrev = cutoutSnapshot(s);
-        return withCutout(s, cmd.parentNext);
+      const minted = !cmd.shape ? null : (cmd.shape.id ? cmd.shape : { id: `shp-${mintUuid()}`, created_at: nowIso(), ...cmd.shape });
+      const runNext = new Map((runsIn?.targets || []).map((t) => [t.id, t]));
+      const runDel = new Set(runsIn?.deleteIds || []);
+      const runPrevs = [], runRemoved = [], runAt = [];
+      shapes.forEach((s, i) => { if (runDel.has(s.id)) { runRemoved.push(s); runAt.push(i); } });
+      let parentPrev = cmd.parentId ? null : undefined;
+      const next = shapes.filter((s) => !runDel.has(s.id)).map((s) => {
+        if (cmd.parentId && s.id === cmd.parentId) {
+          parentPrev = cutoutSnapshot(s);
+          return withCutout(s, cmd.parentNext);
+        }
+        const t = runNext.get(s.id);
+        if (!t) return s;
+        runPrevs.push({ id: s.id, prev: cutoutSnapshot(s) });
+        return withCutout(s, t.next);
       });
-      if (!parentPrev) return { shapes, inverse: null };   // parent vanished mid-gesture — refuse rather than mint an orphaned deduct
-      next.push(minted);
-      return { shapes: next, inverse: { type: "cutout", restore: true, deductId: minted.id, parentId: cmd.parentId, parentPrev } };
+      if (parentPrev === null) return { shapes, inverse: null };   // parent vanished mid-gesture — refuse rather than mint an orphaned deduct
+      const runMinted = (runsIn?.mint || []).map((m) => (m.id ? m : { id: `shp-${mintUuid()}`, created_at: nowIso(), ...m }));
+      if (minted) next.push(minted);
+      if (runMinted.length) next.push(...runMinted);
+      if (!minted && !runPrevs.length && !runMinted.length && !runRemoved.length) return { shapes, inverse: null };   // nothing landed — never a phantom undo entry
+      const runsBack = (runPrevs.length || runMinted.length || runRemoved.length)
+        ? { targets: runPrevs, ...(runMinted.length ? { unmintIds: runMinted.map((m) => m.id) } : {}), ...(runRemoved.length ? { resurrect: { shapes: runRemoved, at: runAt } } : {}) }
+        : null;
+      return { shapes: next, inverse: {
+        type: "cutout", restore: true,
+        ...(minted ? { deductId: minted.id, parentId: cmd.parentId, parentPrev } : {}),
+        ...(runsBack ? { runs: runsBack } : {}),
+      } };
     }
     case "rollcut": {
       // #136 — patch shape.roll_layout across one or more shapes as ONE undo

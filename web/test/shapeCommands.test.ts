@@ -122,6 +122,95 @@ test("cutout: parent missing → refuses (inverse null, nothing minted); restore
   assert.equal(res2.inverse, null);
 });
 
+test("cutout runs: a ring through the middle of a wall run cuts it and lands the far side, ONE entry", () => {
+  const wall = {
+    id: "shp-wall", created_at: "2026-01-01T00:00:00Z", sheet_id: "a.pdf#1",
+    condition_id: "cnd-wt", measure_role: "surface_area", height_ft: 8,
+    label: "WT-1 wet wall",
+    verts_norm: [[0, 0.5], [1, 0.5]] as number[][],
+    computed: { area_sf: 160, perimeter_lf: 20 },
+    origin: { method: "manual" },
+  };
+  const before = [clone(wall)];
+  const { id: _id, created_at: _ct, ...carry } = clone(wall) as any;
+  const cmd = {
+    type: "cutout",
+    runs: {
+      targets: [{ id: "shp-wall", next: { verts_norm: [[0, 0.5], [0.4, 0.5]], computed: { area_sf: 64, perimeter_lf: 8 } } }],
+      mint: [{ ...carry, verts_norm: [[0.6, 0.5], [1, 0.5]], computed: { area_sf: 64, perimeter_lf: 8 } }],
+    },
+  };
+  const res = applyShapeCommand(before, cmd as any);
+  assert.equal(res.shapes.length, 2, "the run comes back in two pieces");
+  assert.ok(!res.shapes.some((s: any) => s.measure_role === "deduct"), "runs alone mint NO deduct receipt");
+  const [head, far] = res.shapes as any[];
+  assert.equal(head.computed.area_sf, 64, "the head keeps its id and carries what survived");
+  assert.ok(far.id.startsWith("shp-") && far.id !== "shp-wall" && far.created_at, "the far side is a real new shape");
+  assert.equal(far.height_ft, 8, "carrying the height that makes it a wall");
+  assert.equal(far.label, "WT-1 wet wall");
+  assert.equal(far.condition_id, "cnd-wt");
+  const undone = applyShapeCommand(res.shapes, res.inverse);
+  assert.deepEqual(undone.shapes, before, "one undo puts the whole run back");
+  const redone = applyShapeCommand(undone.shapes, undone.inverse);
+  assert.deepEqual(redone.shapes, res.shapes, "redo re-cuts verbatim — same ids, same order");
+});
+
+test("cutout runs: an area cut and a run cut drawn in one ring are ONE undo entry", () => {
+  const parent = {
+    id: "shp-parent", created_at: "2026-01-01T00:00:00Z", sheet_id: "a.pdf#1",
+    condition_id: "cnd-1", measure_role: "floor_area",
+    verts_norm: [[0, 0], [1, 0], [1, 1], [0, 1]] as number[][],
+    computed: { area_sf: 100, perimeter_lf: 40 },
+    origin: { method: "manual" },
+  };
+  const base = {
+    id: "shp-base", created_at: "2026-01-01T00:00:00Z", sheet_id: "a.pdf#1",
+    condition_id: "cnd-wb", measure_role: "linear",
+    verts_norm: [[0, 0.5], [1, 0.5]] as number[][],
+    computed: { area_sf: 0, perimeter_lf: 20 },
+    origin: { method: "manual" },
+  };
+  const before = [clone(parent), clone(base)];
+  const res = applyShapeCommand(before, {
+    type: "cutout",
+    parentId: "shp-parent",
+    parentNext: {
+      verts_norm: parent.verts_norm,
+      verts_norm_holes: [[[0.4, 0.4], [0.6, 0.4], [0.6, 0.6], [0.4, 0.6]]],
+      computed: { area_sf: 96, perimeter_lf: 48 },
+    },
+    shape: {
+      sheet_id: "a.pdf#1", condition_id: "cnd-1", measure_role: "deduct",
+      verts_norm: [[0.4, 0.4], [0.6, 0.4], [0.6, 0.6], [0.4, 0.6]],
+      computed: { area_sf: 4, perimeter_lf: 8 },
+      cuts_shape_id: "shp-parent",
+    },
+    runs: { targets: [{ id: "shp-base", next: { verts_norm: [[0, 0.5], [0.4, 0.5]], computed: { area_sf: 0, perimeter_lf: 8 } } }], mint: [] },
+  } as any);
+  assert.equal(res.shapes.find((s: any) => s.id === "shp-parent").computed.area_sf, 96);
+  assert.equal(res.shapes.find((s: any) => s.id === "shp-base").computed.perimeter_lf, 8);
+  assert.ok(res.shapes.some((s: any) => s.measure_role === "deduct"), "the area still gets its receipt");
+  const undone = applyShapeCommand(res.shapes, res.inverse);
+  assert.deepEqual(undone.shapes, before, "ONE undo puts back both the area and the run");
+});
+
+test("cutout runs: a run swallowed whole is deleted and resurrected at its old index", () => {
+  const a = { id: "shp-a", created_at: "t", sheet_id: "s", condition_id: "c", measure_role: "floor_area", verts_norm: [[0, 0], [1, 0], [1, 1]], computed: { area_sf: 1, perimeter_lf: 3 } };
+  const run = { id: "shp-run", created_at: "t", sheet_id: "s", condition_id: "c2", measure_role: "surface_area", height_ft: 4, verts_norm: [[0, 0.5], [0.2, 0.5]], computed: { area_sf: 8, perimeter_lf: 2 } };
+  const z = { id: "shp-z", created_at: "t", sheet_id: "s", condition_id: "c", measure_role: "count", verts_norm: [[0.9, 0.9]], computed: { count: 1 } };
+  const before = [clone(a), clone(run), clone(z)];
+  const res = applyShapeCommand(before, { type: "cutout", runs: { targets: [], mint: [], deleteIds: ["shp-run"] } } as any);
+  assert.deepEqual(res.shapes.map((s: any) => s.id), ["shp-a", "shp-z"]);
+  const undone = applyShapeCommand(res.shapes, res.inverse);
+  assert.deepEqual(undone.shapes, before, "back at index 1, not appended to the end");
+});
+
+test("cutout runs: a ring that lands on nothing records no undo entry", () => {
+  const res = applyShapeCommand([], { type: "cutout", runs: { targets: [], mint: [] } } as any);
+  assert.equal(res.inverse, null);
+  assert.equal(res.shapes.length, 0);
+});
+
 // ── add ──────────────────────────────────────────────────────────────────────
 
 test("add: stamps created_at once and mints a shp- id, caller fields verbatim", () => {
