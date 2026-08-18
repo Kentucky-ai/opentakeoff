@@ -589,14 +589,13 @@ lift them straight out:
 | MCP server (imports the same libs) | [`mcp/src/`](mcp/src/) |
 | Design tokens — source of truth for color and spacing | [`web/src/styles/tokens.css`](web/src/styles/tokens.css) |
 
-Third-party integrations and downstream forks run on this engine today; the parent/fork port
-protocol is [`docs/PARENT_FORK_PORTS.md`](docs/PARENT_FORK_PORTS.md).
+Third-party integrations and downstream forks run on this engine today.
 
 `cd web && npm run check` is the exact CI gate — typecheck, lint, test, build. Keep
 `oneclick.ts` and `sheets.ts` free of React and DOM; that purity is what makes them reusable and
 testable. Never commit real construction plans. See [CONTRIBUTING.md](CONTRIBUTING.md) and
 [AGENTS.md](AGENTS.md) — the repo's own instructions for coding agents — plus the
-[user manual](docs/USER_GUIDE.md) and [`docs/QA_PLAN.md`](docs/QA_PLAN.md).
+[user manual](docs/USER_GUIDE.md).
 
 ## Contributing
 

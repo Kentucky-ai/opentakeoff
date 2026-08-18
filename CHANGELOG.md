@@ -2,10 +2,13 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
-## Unreleased
+## 2026-08-17 — the dimension line joins the canvas
 
 ### Added
 - **The Dimension line is now drawable in the canvas (`N`), not just over the wire.** #150's inverse gap, closed: the `dimension` markup has existed end-to-end since #177 — record type, SVG renderer, marked-set burn, `annotate` verb — but the only way to place one was MCP. Now it's a Markup-menu tool: click one end, a live length chip follows the cursor (the Check tool's readout), click the other end, and the dimension string commits with `len_ft` snapshotted at the sheet's scale. It answers the plan that prints no dimension where you need one — a width or a height stated as its own standalone annotation, tied to nothing but the sheet's scale. It stays a markup: never counted, out of every quantity, on the marked set. Scale-gated on the FIRST click with the measure tools' own refusal (a dimension labels a real length — the one markup the scale gate applies to), refuses to span sheets (the gap between panels isn't real distance), and a zero-length click-in-place is a misfire, not a dimension. The Markups dock shows each one's length the way the canvas label composes it.
+
+### Docs
+- **Two fork-era documents that read as this repo's guidance are gone.** `docs/PARENT_FORK_PORTS.md` was the downstream fork's own port-tracking handoff ("into this fork") — content that rode along in the 2026-07-13 wholesale history merge and that `AGENTS.md` had to carry a warning about; the warning now stands without naming a file that no longer exists. `docs/QA_PLAN.md` was the pre-release phased checklist ("don't open-source until Phase 7 is green") for a release that happened in July. README references updated; the cloud-mode guides (`GOOGLE_SETUP`, `GLIDE_INTEGRATION`, `SYNC_ARCHITECTURE`) stay — they document the real optional `VITE_CLOUD_SYNC` layer.
 
 ## 2026-08-17 — a refusal names its stage; the ship doctrine names what actually ships; opentakeoff-mcp 0.9.52
 
