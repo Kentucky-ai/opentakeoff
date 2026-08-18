@@ -14,7 +14,7 @@ back to `application/octet-stream`. Browsers enforce strict MIME checking on
 `<script type="module">`, so the module is silently refused and the app fails
 to load with no obvious error beyond the browser console.
 
-**Fix — if you control `mime.types`:** add `mjs` to the existing
+**Fix—if you control `mime.types`:** add `mjs` to the existing
 `application/javascript` line:
 
 ```nginx
@@ -25,7 +25,7 @@ types {
 }
 ```
 
-**Fix — if you're on a base image and don't want to fork `mime.types`**
+**Fix—if you're on a base image and don't want to fork `mime.types`**
 (for example, a minimal `nginx:alpine` Docker image), override only this extension in
 your server block instead—this doesn't touch the rest of the type table:
 

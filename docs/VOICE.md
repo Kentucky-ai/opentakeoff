@@ -60,11 +60,11 @@ node --import tsx scripts/voice-benchmark.mjs --dir …    # over any WAVs
 (s1), 28 quiet + 9 noisy takes**—additional speakers are invited and slot
 in by filename alone (`s2-…`), no harness changes. Two gates:
 
-1. **Hard invariant — zero wrong actions.** A mishear may cost a re-say
+1. **Hard invariant—zero wrong actions.** A mishear may cost a re-say
    (safe refusal) or drift note prose; it must never mutate state
    differently than the speaker intended. Held over 400+ recognition
    attempts (real + synthetic stress audio); one violation fails the build.
-2. **Regression floor — quiet ≥ 0.75, noisy ≥ 0.55 intent recall**, set just
+2. **Regression floor—quiet ≥ 0.75, noisy ≥ 0.55 intent recall**, set just
    under the committed corpus's measured baseline (82.1% / 66.7%,
    whisper-tiny.en greedy) so any change that degrades recall fails the
    build. The bar's words are "regressions fail the build"—the floor is a

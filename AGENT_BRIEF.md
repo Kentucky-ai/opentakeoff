@@ -96,4 +96,4 @@ npm run check                            # typecheck + lint + test + build — e
 
 ---
 
-*Kentucky AI — the measuring engine, given to anyone who needs to read a building.*
+*Kentucky AI—the measuring engine, given to anyone who needs to read a building.*

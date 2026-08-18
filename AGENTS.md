@@ -62,7 +62,7 @@ The tests cover the pure math (`web/test/geometry.test.ts`, `web/test/totals.tes
 
 | Concern | Path |
 |---|---|
-| **The canvas — 90% of the app** | `web/src/pages/TakeoffCanvas.jsx` (one large, deliberately monolithic component) |
+| **The canvas—90% of the app** | `web/src/pages/TakeoffCanvas.jsx` (one large, deliberately monolithic component) |
 | Geometry: vector extraction, One-Click flood fill, vertex snap | `web/src/lib/oneclick.ts` |
 | Sheet/page helpers, scale detection | `web/src/lib/sheets.ts` |
 | Totals and materials math (waste, SY, coverage → order qty) | `web/src/lib/totals.js` |

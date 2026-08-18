@@ -2,7 +2,7 @@
 
 # OpenTakeoff
 
-**The measurement engine for building plans — built so an AI agent can drive it, and so an estimator wants to.**
+**The measurement engine for building plans—built so an AI agent can drive it, and so an estimator wants to.**
 
 A takeoff is the act of measuring quantities off a construction drawing. OpenTakeoff does it
 two ways over one engine: **40 MCP tools** for an agent, and a browser canvas for a person.
@@ -267,7 +267,7 @@ faded ink—and badges the result so you verify the edges before committing. On 
 that publish a layer tree, One-Click reads the declared roles instead of inferring them.
 
 Plus the full manual kit—**Area, Rectangle, Linear, Curved Line, Surface Area (walls),
-Count**, and **Cut Out** deducts — and a **Zone check** that answers "what's in this wing?"
+Count**, and **Cut Out** deducts—and a **Zone check** that answers "what's in this wing?"
 without touching the takeoff.
 
 **⟂ Transitions** derives the line where two finishes meet, from rooms you already measured.

@@ -919,7 +919,7 @@ boundary classified as hatch, the slider genuinely has no work to do—the fill 
 the engine reads as a wall, at every notch. Trace it with Area (`A`), or on a CAD export open the
 **Layers** panel and set the offending layer to **Off** so the fill passes through it.
 
-**The numbers look wrong — everywhere.** That's a scale symptom, not a math symptom. Run **Check a dimension** (`K`) against a printed dimension string. If the verdict is red, **Recalibrate to this**—every shape on the sheet re-prices instantly (and the old scale sits in **Revert scale** if you change your mind). Remember scale is per sheet: a plan set is never one uniform scale.
+**The numbers look wrong—everywhere.** That's a scale symptom, not a math symptom. Run **Check a dimension** (`K`) against a printed dimension string. If the verdict is red, **Recalibrate to this**—every shape on the sheet re-prices instantly (and the old scale sits in **Revert scale** if you change your mind). Remember scale is per sheet: a plan set is never one uniform scale.
 
 **⌘Z won't bring something back.** Three known cases: condition deletes cascade their shapes outside the undo stack (deliberate—the confirm warned you); rescaling a sheet resets the stack; restoring a revision resets the stack (but banked your live takeoff first—check Revisions). The stack also caps at 100 steps, and markup moves aren't on it at all.
 
@@ -1008,4 +1008,4 @@ those are the ones worth pinning down before you rely on a number.
 
 ---
 
-*OpenTakeoff is Apache-2.0 and the codebase is deliberately readable — when you outgrow the manual, [`FEATURES.md`](../FEATURES.md) maps every capability to its code. Driving it from an agent instead? [`AGENT_GUIDE.md`](AGENT_GUIDE.md) is this document's counterpart.*
+*OpenTakeoff is Apache-2.0 and the codebase is deliberately readable—when you outgrow the manual, [`FEATURES.md`](../FEATURES.md) maps every capability to its code. Driving it from an agent instead? [`AGENT_GUIDE.md`](AGENT_GUIDE.md) is this document's counterpart.*

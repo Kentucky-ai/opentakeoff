@@ -4,7 +4,7 @@ Listed in the [official MCP registry](https://registry.modelcontextprotocol.io) 
 `io.github.Kentucky-ai/opentakeoff`, on [Glama](https://glama.ai/mcp/servers/Kentucky-ai/opentakeoff),
 and on [Smithery](https://smithery.ai/servers/Kentucky-ai/opentakeoff).
 
-**This page is the reference — every tool, every rule, every limit.** For *how to run a
+**This page is the reference—every tool, every rule, every limit.** For *how to run a
 takeoff well* with it—the operating model, the standard finish, what the engine withholds
 and why, and the move that answers each refusal—read
 [`docs/AGENT_GUIDE.md`](../docs/AGENT_GUIDE.md) first. It's short, and it's the half that
@@ -317,7 +317,7 @@ sheet number (`A-101`) wherever a sheet is named.
   has nothing for `detect_rooms`/`sheet_graph`/`resolve_tag` to read: seeds
   come from you (`view_sheet`, then `one_click`). The raster path needs the
   same optional `@napi-rs/canvas` as `view_sheet`.
-- **Stitching is human-only — deliberately, not a gap.** The canvas can join
+- **Stitching is human-only—deliberately, not a gap.** The canvas can join
   2–4 sheets split at a match line into one composite surface (#200), but no
   MCP verb creates, aligns, or addresses a stitch. Joining the match line
   means clicking the same drawn wall junction on both halves—a judgment

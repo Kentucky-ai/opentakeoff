@@ -35,7 +35,7 @@ Four sets, four general contractors, four building typologies:
 | retail set | retail | 1.000 / 1.000 | 1.000 / 1.000 |
 | municipal set | treatment plant | 1.000 / 1.000 | 1.000 / 1.000 |
 
-**434 finish cells — 0 wrong, 0 missed. 86 room tags — 0 non-rooms reported.**
+**434 finish cells—0 wrong, 0 missed. 86 room tags—0 non-rooms reported.**
 
 Five distinct header shapes are covered: a two-tier `WALLS` parent over `N | E | S | W`; a single `WALL FINISH` column; a three-tier block with *two* columns both headed `FINISH`; a hand-lettered set that **centers** its cells and carries a `CASEWORK` tier; and `ROOM #` / `ROOM NAME` cells that both lead with the same vocabulary word.
 

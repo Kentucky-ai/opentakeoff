@@ -123,7 +123,7 @@ pieces fit together is in [`SYNC_ARCHITECTURE.md`](SYNC_ARCHITECTURE.md).
 VITE_CLOUD_SYNC=1
 ```
 
-**Roll it out to the whole fleet at once — this is a safety rule, not a preference.**
+**Roll it out to the whole fleet at once—this is a safety rule, not a preference.**
 Only a build with the flag on honors the sync **revision precondition** that keeps
 two devices from overwriting each other. A build with it off does an unconditional
 write. So if some teammates are on an enabled build and others aren't, the flag-off
