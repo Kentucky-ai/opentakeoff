@@ -5,11 +5,11 @@ issues, and ideas are all welcome.
 
 ## Where to start
 
-- [`good first issue`](https://github.com/Kentucky-ai/opentakeoff/labels/good%20first%20issue)
-  — small, fully specified, exact files named. Claim one in a comment.
-- [The flagship challenge](https://github.com/Kentucky-ai/opentakeoff/issues/29)
-  — an open design-and-build bake-off. Post a design comment first; multiple
-  entries welcome; the best one merges with credit.
+- [`good first issue`](https://github.com/Kentucky-ai/opentakeoff/labels/good%20first%20issue)—small,
+  fully specified, exact files named. Claim one in a comment.
+- [The flagship challenge](https://github.com/Kentucky-ai/opentakeoff/issues/29)—an open
+  design-and-build bake-off. Post a design comment first; multiple entries
+  welcome; the best one merges with credit.
 
 ## Dev setup
 
@@ -28,57 +28,81 @@ npm run build      # vite build -> dist/
 ```
 
 The optional AI sandbox lives in [`server/`](server/README.md) and the optional
-capture layer in [`capture/`](capture/README.md) — neither is needed for canvas
+capture layer in [`capture/`](capture/README.md)—neither is needed for canvas
 work. If you touch `capture/`, run `python3 capture/capture_server.py selftest`
 (stdlib only, no setup).
 
 ## Pull requests — how we work
 
-- **One concern per PR.** A feature, a fix, or a refactor — not all three. Small
+- **One concern per PR.** A feature, a fix, or a refactor—not all three. Small
   PRs get reviewed fast; grab-bags stall.
 - **Open an issue first for anything big.** Typo fixes and small bugs can go
   straight to a PR. New tools, new panels, or anything that changes the canvas
   feel should start as an issue so we agree on the shape before you build it.
 - **`main` is protected.** Changes land by pull request with green CI
-  (typecheck, tests, build — plus the capture selftest); force-pushes and branch
-  deletion are blocked. Write commit subjects the way the history does —
-  `feat(canvas): …`, `fix(oneclick): …`, `docs: …` — they become the changelog.
+  (typecheck, tests, build—plus the capture selftest); force-pushes and branch
+  deletion are blocked. Write commit subjects the way the history does—`feat(canvas):
+  …`, `fix(oneclick): …`, `docs: …`—they become the changelog.
 - **Show your work.** Canvas-visible changes want a screenshot or GIF in the PR;
   quantity-affecting changes want a measured-vs-expected check against the
   bundled sample plan (the PR template asks for both).
-- **Stay vendor-neutral.** Generic, industry-typical rates and terms only — no
+- **Stay vendor-neutral.** Generic, industry-typical rates and terms only—no
   manufacturer or product brand names in code, docs, or sample data.
 - **Update the paper trail.** A `CHANGELOG.md` entry and a `FEATURES.md` row
   when behavior changes; `docs/USER_GUIDE.md` when the flow a user follows
-  changes.
+  changes. Docs follow the house style below.
 - **Review etiquette.** Comments are about the code, never the author; every
   conversation gets resolved before merge. Expect a review within a few days.
-  Maintainers may push small fixups onto your branch to land a PR faster — say
+  Maintainers may push small fixups onto your branch to land a PR faster—say
   so in the PR if you'd rather make the changes yourself.
+
+## Docs house style
+
+The READMEs and the manuals follow the [Apple Style Guide](https://support.apple.com/guide/applestyleguide/welcome/web).
+The rules that come up:
+
+- **Write to the reader, in the present tense, in the active voice.** "You" is
+  the estimator or the agent's operator; the app is "OpenTakeoff", never "we".
+- **Sentence-style capitalization in headings**, and "and" rather than "&".
+  Heading text is a public anchor—renaming one means fixing every link to it
+  (`node scripts/check-doc-links.mjs` catches what you miss).
+- **Name the real gesture**: *click* a button, *choose* a menu item, *select* a
+  shape or a checkbox, *press* a key, *enter* text, *drag* a grip. Not "hit".
+- **Quote the interface verbatim.** A message, a menu item, or a button label
+  is copied from the code, punctuation and all—so a reader can search for it.
+- **No Latin abbreviations.** "For example" instead of "e.g.", "and so on"
+  instead of "etc.", "versus" instead of "vs." Drop "via" as well—"through",
+  "using", or "with" says which one you meant.
+- **No filler**: "just", "simply", "please", "easy", "obviously".
+- **Em dashes close up**—no spaces around them—except inside quoted interface
+  text, which stays exactly as the app writes it.
+- **US spelling**: color, labeled, centered, neighboring.
+- **Say what a thing does before you say how it's built.** Refusals and limits
+  are features here; state them plainly rather than burying them.
 
 ## Architecture in one minute
 
-- **`web/src/pages/TakeoffCanvas.jsx`** — the canvas: pdf.js render, pan/zoom
+- **`web/src/pages/TakeoffCanvas.jsx`**—the canvas: pdf.js render, pan/zoom
   (written straight to the DOM transform), drawing tools, conditions. Stays JSX.
-- **`web/src/lib/oneclick.ts`** — pure One-Click flood-fill geometry (typed,
+- **`web/src/lib/oneclick.ts`**—pure One-Click flood-fill geometry (typed,
   node-tested). No DOM, no pdf.js import.
-- **`web/src/lib/sheets.ts`** — scale table, scale-note detection, sheet-number
+- **`web/src/lib/sheets.ts`**—scale table, scale-note detection, sheet-number
   extraction.
-- **`web/src/lib/store.js`** — the storage seam (IndexedDB + localStorage). The
+- **`web/src/lib/store.js`**—the storage seam (IndexedDB + localStorage). The
   canvas only ever talks to `store`, so a backend can be added by implementing
   the same four methods.
-- **`web/src/lib/totals.js`** + **`components/ReportPanel.jsx`** — role-aware
+- **`web/src/lib/totals.js`** + **`components/ReportPanel.jsx`**—role-aware
   totaling, the Report, and CSV/JSON export.
-- **`web/src/lib/contribute.js`** — the opt-in "contribute to the open flooring
+- **`web/src/lib/contribute.js`**—the opt-in "contribute to the open flooring
   model" payload builder (derived data only).
-- **`capture/capture_server.py`** — the optional local capture server: banks
+- **`capture/capture_server.py`**—the optional local capture server: banks
   Contribute payloads as (geometry → label) training rows in a corpus you own.
 
 ## Scope
 
 In scope: the takeoff canvas, measuring, One-Click, conditions, reports/export,
 and the bring-your-own-model AI socket. Out of scope: estimating/pricing/bidding
-engines — OpenTakeoff is a takeoff tool, not an ERP.
+engines—OpenTakeoff is a takeoff tool, not an ERP.
 
 ## Ground rules
 

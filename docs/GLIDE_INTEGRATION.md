@@ -5,7 +5,7 @@ app to OpenTakeoff so an estimator can open any project's takeoff in one tap,
 against the shared Google Drive.
 
 This is part of the optional team cloud mode. It assumes the one-time Google
-setup is done — see [`GOOGLE_SETUP.md`](GOOGLE_SETUP.md).
+setup is done—see [`GOOGLE_SETUP.md`](GOOGLE_SETUP.md).
 
 ---
 
@@ -18,8 +18,8 @@ setup is done — see [`GOOGLE_SETUP.md`](GOOGLE_SETUP.md).
   under `OpenTakeoff/Projects/`. Optionally keep a second column with the full
   folder URL for humans.
 - **The folder id is the handle.** OpenTakeoff opens a project by its Drive
-  folder id, passed in the URL. Everything else — the plan PDFs, the takeoff
-  payload, the generated proposal — lives inside that folder in Drive.
+  folder id, passed in the URL. Everything else—the plan PDFs, the takeoff
+  payload, the generated proposal—lives inside that folder in Drive.
 
 ```
 OpenTakeoff/ (Shared Drive)
@@ -37,7 +37,7 @@ https://takeoff.345flooring.com/?project=<driveFolderId>
 
 In Glide:
 
-1. Add a **template column** — call it *Takeoff URL* — that builds the link from
+1. Add a **template column**—call it *Takeoff URL*—that builds the link from
    your folder-id column. The template is:
 
    ```
@@ -61,19 +61,19 @@ Passing `?project=<driveFolderId>` is **not** handing out a credential:
   the signed-in user's own token; Google checks that user's Drive permissions on
   each call. Someone without access to the Shared Drive gets nothing, folder id
   or not.
-- **Login is still required and domain-enforced.** The Internal OAuth app means
+- **Signing in is still required and domain-enforced.** The Internal OAuth app means
   only accounts in your Workspace domain can even sign in (see
   [`GOOGLE_SETUP.md`](GOOGLE_SETUP.md)).
 
 So a folder-id link is safe to store in Glide, put in a button, or paste in a
-team chat — it's only useful to someone Google already lets in.
+team chat—it's only useful to someone Google already lets in.
 
 ## Optional: auto-create the Drive folder from Glide
 
 To avoid creating folders by hand, add a Glide **automation / workflow** that
 fires when a project row is created:
 
-1. Create a folder under `OpenTakeoff/Projects/` (via a Drive step, or a call
+1. Create a folder under `OpenTakeoff/Projects/` (through a Drive step, or a call
    out to Apps Script / a small automation).
 2. **Write the new folder id back** to that project row's folder-id column.
 
@@ -82,17 +82,17 @@ From then on the *Open takeoff* button works the moment a project exists.
 ## The pricing feed
 
 Material costs come from a `pricing.json` file in the shared Drive
-(`material`, `unit`, `unit_cost`). Its source of truth is your pricing database —
-**Postgres/Neon**, or **Glide Big Tables**.
+(`material`, `unit`, `unit_cost`). Its source of truth is your pricing database—**Postgres/Neon**,
+or **Glide Big Tables**.
 
 A background **sync job** exports that data to `pricing.json` and drops it in the
-`OpenTakeoff/` Drive folder; the app reads the file (via `VITE_PRICING_FILE_ID`)
+`OpenTakeoff/` Drive folder; the app reads the file (through `VITE_PRICING_FILE_ID`)
 with the signed-in user's token.
 
 Key points, kept brief:
 
 - **The sync job is the only place credentials live.** Database URLs and any
-  Glide/Neon API keys stay in that job's own environment — **never** in the
+  Glide/Neon API keys stay in that job's own environment—**never** in the
   browser bundle.
 - **It can start simple.** A manual export or a scheduled **Glide automation**
   writing `pricing.json` is enough to begin. A live API proxy that serves prices

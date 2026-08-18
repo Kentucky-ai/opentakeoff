@@ -2,17 +2,17 @@
 
 **You do not need this to use OpenTakeoff.** The takeoff canvas runs entirely in
 your browser. This is an *optional* backend that adds a **bring-your-own-model
-socket** — a few takeoff-scoped AI endpoints you can wire a local model behind
+socket**—a few takeoff-scoped AI endpoints you can wire a local model behind
 to experiment and build.
 
 This sandbox is the **server-side adapter socket**: the place to plug your own
 local *vision model* under the canvas's suggestion endpoints. If you want an
-**AI agent to drive the takeoff itself** — open plans, set scales, click rooms,
-export quantities — that's the MCP server, [`mcp/`](../mcp/README.md), not this.
+**AI agent to drive the takeoff itself**—open plans, set scales, click rooms,
+export quantities—that's the MCP server, [`mcp/`](../mcp/README.md), not this.
 
 It ships **empty of any trained model**. The default adapter is a transparent
 heuristic so the endpoints work immediately and show you the contract. There is
-**no estimate, pricing, risk, or scope engine here** — just the canvas's AI
+**no estimate, pricing, risk, or scope engine here**—only the canvas's AI
 playground.
 
 ## Run it
@@ -34,7 +34,7 @@ the header for you.
 ## The lock
 
 The `/ai/*` endpoints require an `X-API-Key` header matching the server's
-`OT_SANDBOX_API_KEY` — any secret you choose. **With the env var unset the
+`OT_SANDBOX_API_KEY`—any secret you choose. **With the env var unset the
 endpoints answer 401**: an unconfigured sandbox is locked, never open by
 accident, so a dev instance that ends up reachable beyond localhost (a tunnel,
 a `--host 0.0.0.0`) exposes nothing. `/health` stays open as a liveness probe.

@@ -1,4 +1,4 @@
-# Estimating Roadmap — Pricing, Material Kits, Estimate Worksheet & Proposals
+# Estimating roadmap — pricing, material kits, estimate worksheet, and proposals
 
 > **Status: PLANNED, not yet built.** This documents the follow-up phases to the
 > optional team cloud mode (PR #58: Google sign-in + Drive-backed storage).
@@ -17,22 +17,22 @@ rendered to a PDF and saved to the project's Drive folder.
 ## Core model (maps onto existing code)
 
 - **Item** = a priced material/labor line: `{ id, name, unit, material_cost, labor_cost, category }` where `category ∈ material | labor | sub | equipment`. Items are the existing browser-global **material library** (`web/src/lib/materials.js`, sanitized by `sanitizeMaterialLibrary`) enriched with `material_cost` + `labor_cost` fed from the pricing table.
-- **Kit** = a reusable, named bundle of item-lines, each carrying a coverage/basis: `{ id, name, lines: [{ item_id|name, unit, per, basis }] }`. This is the SAME shape `conditionTotals` already computes per condition — `materials: [{ name, unit, per, basis, qty }]` with `qty = basisVal ÷ per`, rounded up (`web/src/lib/totals.js:62-68`). A kit makes that list reusable and attachable to a condition in one action — a new library asset following the exact pattern of templates/materials/stamps (browser-global meta record + `sanitize*` load gate + Drive-backed later). Distinct from a condition's own Supporting Materials list (§ the docked panel) — a kit is the reusable, named source; "Apply kit" seeds a condition's list from it.
+- **Kit** = a reusable, named bundle of item-lines, each carrying a coverage/basis: `{ id, name, lines: [{ item_id|name, unit, per, basis }] }`. This is the SAME shape `conditionTotals` already computes per condition—`materials: [{ name, unit, per, basis, qty }]` with `qty = basisVal ÷ per`, rounded up (`web/src/lib/totals.js:62-68`). A kit makes that list reusable and attachable to a condition in one action—a new library asset following the exact pattern of templates/materials/stamps (browser-global meta record + `sanitize*` load gate + Drive-backed later). Distinct from a condition's own Supporting Materials list (§ the docked panel)—a kit is the reusable, named source; "Apply kit" seeds a condition's list from it.
 - **Unit-cost estimate** = attach an item or kit to each takeoff condition → its measured quantity (floor/wall/border SF, LF, EA from `conditionTotals`) explodes into item quantities → `qty × material_cost` and `qty × labor_cost` = extended costs → roll up to condition subtotals and grand totals, with waste (already in `conditionTotals`) and markup.
 
-## Phase 3a — Pricing ingest + unit-cost join (the simple estimate)
+## Phase 3a — pricing ingest plus unit-cost join (the simple estimate)
 
 **Pricing source.** A shared `pricing.json` in the team Drive, synced from
 Neon/Glide Big Tables by a background job (the only place DB/Glide creds live).
 Shape: `[{ item, unit, material_cost, labor_cost, category? }]`.
 
-**Ingest seam.** Read by known file id `VITE_PRICING_FILE_ID` via
+**Ingest seam.** Read by known file id `VITE_PRICING_FILE_ID` through
 `createDrive(...).getJson(fileId)` (`web/src/lib/google/drive.js`). Env read
 follows the `import.meta.env.VITE_*` guard in `auth.js`/`contribute.js`. Add
 `loadPricing()` to the cloud store (`web/src/lib/cloudStore.js`); local mode
 returns `null` (pricing is cloud-only). Load once in `TakeoffCanvas` after
-sign-in — same shape as the existing `loadTemplates`/`loadMaterialLibrary` mount
-effects (`TakeoffCanvas.jsx:627-632`) — hold in state, pass to `ReportPanel`.
+sign-in—same shape as the existing `loadTemplates`/`loadMaterialLibrary` mount
+effects (`TakeoffCanvas.jsx:627-632`)—hold in state, pass to `ReportPanel`.
 
 **Join.** By item **name** (normalized) → `{ material_cost, labor_cost }`. Reuse
 the material identity already on condition `materials[].name`.
@@ -43,29 +43,29 @@ carries `material_ext = qty × material_cost` and `labor_ext = qty × labor_cost
 `grandTotals`-style roll-ups for material, labor, and combined (`round2` from
 `num.js`).
 
-**Columns.** Add opt-in report/CSV columns via `web/src/lib/reportColumns.js`:
+**Columns.** Add opt-in report/CSV columns through `web/src/lib/reportColumns.js`:
 new `GETTERS` (`unit_cost_material`, `unit_cost_labor`, `material_ext`,
 `labor_ext`, `line_total`) appended to `TABLE_PROFILE`/`CSV_PROFILE` with
 `defaultVisible: false` (shown only when pricing is loaded), `foot` delegating to
-the new grand totals — the additive, golden-safe pattern the file documents. No
+the new grand totals—the additive, golden-safe pattern the file documents. No
 existing currency util exists; add a small `money(n)` to `num.js`
 (`toLocaleString(undefined, { style: 'currency', currency: 'USD' })`).
 
-## Phase 3b — Material Kits library
+## Phase 3b — material kits library
 
 A new browser-global asset mirroring templates/materials/stamps:
-- `web/src/lib/materialKits.js` — `sanitizeMaterialKitLibrary` load gate (the
+- `web/src/lib/materialKits.js`—`sanitizeMaterialKitLibrary` load gate (the
   `sanitizeMaterialLibrary`/`sanitizeTemplates` precedent).
-- `store.js` — `loadMaterialKitLibrary`/`saveMaterialKitLibrary` (own
-  `MATERIAL_KIT_KEY` in the keyPath-less meta store, no DB version bump — the
+- `store.js`—`loadMaterialKitLibrary`/`saveMaterialKitLibrary` (own
+  `MATERIAL_KIT_KEY` in the keyPath-less meta store, no DB version bump—the
   stamp-library precedent at `store.js`), delegated in `cloudStore` like the
   other libraries.
-- UI — a **Kits** tab beside Materials in the left dock; "Apply kit" on a
+- UI—a **Kits** tab beside Materials in the left dock; "Apply kit" on a
   condition seeds/overwrites its Supporting Materials list from the kit's
   lines (so the existing `conditionTotals` math produces item quantities and
   costs with no new engine).
 
-## Phase 4 — Estimate worksheet + proposal PDF
+## Phase 4 — estimate worksheet plus proposal PDF
 
 **Worksheet (StackCT-style, editable).** Extend `ReportPanel.jsx` (or a new
 `EstimatePanel.jsx`) into a worksheet: each condition row expands to its item
@@ -84,7 +84,7 @@ with material/labor columns and totals.
 
 **Save.** Local: `downloadBytes('proposal.pdf', bytes)` (`markedset.js`). Cloud:
 a `saveProposal(bytes)` on `cloudStore` mirroring `saveAnnotations`'
-locate-or-update (via `drive.uploadFile`/`putJson`) so re-generating replaces
+locate-or-update (through `drive.uploadFile`/`putJson`) so re-generating replaces
 `proposal.pdf` in the project folder instead of duplicating it. Reuse the
 `addPdf` File-like `{ name, arrayBuffer() }` contract if convenient.
 
@@ -104,7 +104,7 @@ own token; the proposal is written to the team's own Drive. Everything is gated
 behind the Internal-OAuth sign-in. Credentials for Neon/Glide live only in the
 sync job.
 
-## Sequencing & tests
+## Sequencing and tests
 
 1. **3a** pricing ingest + unit-cost/labor columns (pure cost-math unit tests in
    the `totals.test.ts` style: `qty × cost`, missing price → blank/0, grand
