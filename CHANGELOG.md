@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased
+
+### Added
+- **The Dimension line is now drawable in the canvas (`N`), not just over the wire.** #150's inverse gap, closed: the `dimension` markup has existed end-to-end since #177 — record type, SVG renderer, marked-set burn, `annotate` verb — but the only way to place one was MCP. Now it's a Markup-menu tool: click one end, a live length chip follows the cursor (the Check tool's readout), click the other end, and the dimension string commits with `len_ft` snapshotted at the sheet's scale. It answers the plan that prints no dimension where you need one — a width or a height stated as its own standalone annotation, tied to nothing but the sheet's scale. It stays a markup: never counted, out of every quantity, on the marked set. Scale-gated on the FIRST click with the measure tools' own refusal (a dimension labels a real length — the one markup the scale gate applies to), refuses to span sheets (the gap between panels isn't real distance), and a zero-length click-in-place is a misfire, not a dimension. The Markups dock shows each one's length the way the canvas label composes it.
+
 ## 2026-08-17 — a refusal names its stage; the ship doctrine names what actually ships; opentakeoff-mcp 0.9.52
 
 ### Fixed

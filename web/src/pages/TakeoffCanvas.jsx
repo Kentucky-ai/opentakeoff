@@ -610,6 +610,7 @@ export default function TakeoffCanvas() {
   const rectRef = useRef(null);
   const cloudRef = useRef(null);       // live cloud preview (first corner → cursor)
   const highlightRef = useRef(null);   // live highlight-box preview (first corner → cursor; own translucent fill, NOT rectRef's condition fill)
+  const dimRef = useRef(null);         // live dimension-line preview (first end → cursor; own ref — rubberRef belongs to the measure trace)
   const hlRef = useRef(null);          // in-progress highlighter stroke {pts (stage px), key}
   const hlPathRef = useRef(null);      // live highlighter preview path (imperative, WYSIWYG ink)
   const [hlStyle, setHlStyle] = useState(() => {
@@ -2247,7 +2248,7 @@ export default function TakeoffCanvas() {
       if (lower === "f") { toggleFocusMode(); return; }
       if (e.key === "D" && e.shiftKey) { setTool("deduct-rect"); return; }
       // no `p` binding: pan is not a tool — drag open canvas, or Space/middle/right-drag
-      const map = { v: "select", a: "area", r: "rect", l: "linear", q: "curve", s: "surface", c: "count", d: "deduct", o: "oneclick", k: "check", h: "highlighter" };
+      const map = { v: "select", a: "area", r: "rect", l: "linear", q: "curve", s: "surface", c: "count", d: "deduct", o: "oneclick", k: "check", h: "highlighter", n: "dimension" };
       const t = map[lower];
       if (t) setTool(t);
     };
@@ -2426,7 +2427,7 @@ export default function TakeoffCanvas() {
       if (!scheduleAnchor) setScheduleAnchor(p);
       else { importScheduleFromRect(scheduleAnchor, p); setScheduleAnchor(null); setTool("select"); }
     }
-    else if (tool === "cloud" || tool === "callout" || tool === "text" || tool === "highlight") placeMarkup(p);
+    else if (tool === "cloud" || tool === "callout" || tool === "text" || tool === "highlight" || tool === "dimension") placeMarkup(p);
     else if (tool === "stamp") placeStamp(p);
     else if (tool === "approve") placeApproval(p);
     else if (tool === "stitch-align") stitchAlignAt(p);
@@ -2767,6 +2768,12 @@ export default function TakeoffCanvas() {
         // No CARPET_ROLL_FT amber here — a dimension string is not a seam plan.
         const u = uppFor(panelAt(check[0][0]).key);
         if (u) txt = fmtCheckLen(Math.hypot(cur[0] - check[0][0], cur[1] - check[0][1]) * u, units) + (lock ? ` · ${lock.deg}°` : "");
+      } else if (tool === "dimension" && markupDraft) {
+        // live length while picking the dimension's second end — same readout
+        // as check, and like check no roll-width amber: a dimension string is
+        // a label, not a seam plan
+        const u = uppFor(panelAt(markupDraft[0]).key);
+        if (u) txt = fmtCheckLen(Math.hypot(cur[0] - markupDraft[0], cur[1] - markupDraft[1]) * u, units);
       } else if ((tool === "rect" || tool === "deduct-rect") && poly.length === 1 && liveUpp) {
         // rectangle: live W × H + area (SF and SY imperial — carpet is bought in SY)
         const a = poly[0];
@@ -2832,9 +2839,17 @@ export default function TakeoffCanvas() {
         highlightRef.current.style.display = "block";
       } else highlightRef.current.style.display = "none";
     }
+    // live dimension-line preview: first end (markupDraft) → cursor
+    if (dimRef.current) {
+      if (!panRef.current && tool === "dimension" && markupDraft) {
+        dimRef.current.setAttribute("x1", markupDraft[0]); dimRef.current.setAttribute("y1", markupDraft[1]);
+        dimRef.current.setAttribute("x2", cur[0]); dimRef.current.setAttribute("y2", cur[1]);
+        dimRef.current.style.display = "block";
+      } else dimRef.current.style.display = "none";
+    }
   }
   function hideCrosshair() {
-    for (const ref of [crossVRef, crossHRef, rubberRef, rectRef, cloudRef, highlightRef, snapMarkRef, aimMarkRef, aimChipRef]) if (ref.current) ref.current.style.display = "none";
+    for (const ref of [crossVRef, crossHRef, rubberRef, rectRef, cloudRef, highlightRef, dimRef, snapMarkRef, aimMarkRef, aimChipRef]) if (ref.current) ref.current.style.display = "none";
     if (hlRef.current == null && hlPathRef.current) hlPathRef.current.style.display = "none";
     if (hoverRef.current) hoverRef.current.style.display = "none";
     hoverIdRef.current = "";
@@ -4191,6 +4206,23 @@ export default function TakeoffCanvas() {
         setMarkupDraft(null);
         // empty callout text is not committed (preserves the old reject)
         openTextEditor({ anchorStage: p, commit: (t) => { const tx = (t || "").trim(); if (tx) addMarkup({ type: "callout", target, at, text: tx }, dp.key); } });
+      }
+    } else if (tool === "dimension") {
+      // a dimension LABELS a real length, so it is the one markup the scale
+      // gate applies to — same refusal the measure tools give (mirrors the
+      // MCP annotate verb's doctrine). Gate on the FIRST click so the user
+      // isn't refused after carefully picking both ends.
+      if (!markupDraft) {
+        if (!uppFor(tp.key)) { setCommitMsg(`Set the scale for ${labelFor(tp)} first.`); return; }
+        setMarkupDraft(p);
+      } else {
+        if (spansPanels([markupDraft, p])) { setCommitMsg(SPAN_MSG); return; }
+        const dp = panelAt(markupDraft[0]);
+        const upp = uppFor(dp.key);
+        const lenFt = Math.hypot(p[0] - markupDraft[0], p[1] - markupDraft[1]) * (upp || 0);
+        if (!(lenFt > 0)) return;   // a zero-length click-in-place is a misfire, not a dimension
+        addMarkup({ type: "dimension", from: norm(markupDraft, dp), to: norm(p, dp), len_ft: +lenFt.toFixed(2), text: "" }, dp.key);
+        setMarkupDraft(null);
       }
     }
   }
@@ -6377,7 +6409,7 @@ export default function TakeoffCanvas() {
         )}
         {cluster("Action",
           <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "flex-end", gap: 6, minWidth: 150 }}>
-            {markupDraft && (tool === "cloud" || tool === "callout" || tool === "highlight") && <span style={{ fontSize: 11, color: "var(--cobalt)" }}>click the {tool === "callout" ? "label spot" : "opposite corner"}…</span>}
+            {markupDraft && (tool === "cloud" || tool === "callout" || tool === "highlight" || tool === "dimension") && <span style={{ fontSize: 11, color: "var(--cobalt)" }}>click the {tool === "callout" ? "label spot" : tool === "dimension" ? "other end" : "opposite corner"}…</span>}
             {finishOk && (
               <button onClick={finishShape} title="Finish shape (↵ or double-click)" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", border: "none", background: "var(--c-positive)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}><Icon name="check" size={14} />Finish ({poly.length})</button>
             )}
@@ -6679,7 +6711,7 @@ export default function TakeoffCanvas() {
                    </button>
                  </div>
                  <div style={{ padding: "8px 10px", color: "var(--ink-muted)" }}>
-                   Pick <b>☁ Cloud</b>, <b>▨ Highlight</b>, <b>💬 Callout</b>, or <b>T Text</b> above, then click the plan to annotate it.
+                   Pick <b>☁ Cloud</b>, <b>▨ Highlight</b>, <b>💬 Callout</b>, <b>T Text</b>, or <b>⟷ Dimension</b> above, then click the plan to annotate it.
                  </div>
                  {markups.filter((m) => panelKeySet.has(m.sheet_id)).length === 0 && (
                    <div style={{ padding: "4px 12px 14px", color: "var(--ink-muted)" }}>No markups {groupKeys.length > 1 ? "on these sheets" : "on this sheet"} yet.</div>
@@ -6697,7 +6729,7 @@ export default function TakeoffCanvas() {
                            onBlur={(e) => { updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); }}
                            style={{ flex: 1, minWidth: 0, fontSize: 12.5, padding: "1px 4px", border: "1px solid var(--cobalt)", borderRadius: 0, outline: "none" }} />
                        ) : (
-                         <span style={{ flex: 1, color: "var(--ink)" }}>{m.type === "svg" ? <em style={{ color: "var(--ink-muted)" }}>(vector symbol)</em> : (m.text || <em style={{ color: "var(--ink-muted)" }}>(no text)</em>)}</span>
+                         <span style={{ flex: 1, color: "var(--ink)" }}>{m.type === "svg" ? <em style={{ color: "var(--ink-muted)" }}>(vector symbol)</em> : ([m.type === "dimension" && Number(m.len_ft) > 0 ? dimLabel(m.len_ft) : "", m.text].filter(Boolean).join(" · ") || <em style={{ color: "var(--ink-muted)" }}>(no text)</em>)}</span>
                        )}
                        {m.type !== "svg" && <button onClick={() => setPanelEditId((id) => (id === m.id ? null : m.id))} title="Edit text" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>}
                        <button onClick={() => deleteMarkup(m.id)} title="Delete markup" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
@@ -7375,6 +7407,7 @@ export default function TakeoffCanvas() {
               <rect ref={rectRef} fill={tool === "deduct" ? "rgba(176,58,38,.22)" : shapeFill(aCond)} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={2 / tf.scale} style={{ display: "none" }} />
               <path ref={cloudRef} fill="rgba(37,99,235,.06)" stroke="#1f3fc7" strokeWidth={2 / tf.scale} strokeDasharray={`${5 / tf.scale} ${4 / tf.scale}`} style={{ display: "none" }} />
               <rect ref={highlightRef} fill="rgba(196,122,16,.18)" stroke="#c47a10" strokeWidth={2 / tf.scale} style={{ display: "none" }} />
+              <line ref={dimRef} stroke="#1f3fc7" strokeWidth={2 / tf.scale} strokeDasharray={`${5 / tf.scale} ${4 / tf.scale}`} style={{ display: "none" }} />
               <path ref={hlPathRef} style={{ display: "none" }} />
               {poly.length >= 2 && (tool === "linear" || tool === "curve" || tool === "surface"
                 ? <polyline points={(tool === "curve" ? flattenCurve(poly) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={tool === "surface" ? activeColor : "#1f3fc7"} strokeWidth={(tool === "surface" ? 3.5 : 2.5) / tf.scale} strokeDasharray={tool === "surface" ? `${10 / tf.scale} ${3 / tf.scale} ${2 / tf.scale} ${3 / tf.scale}` : undefined} strokeLinecap="round" strokeLinejoin="round" />

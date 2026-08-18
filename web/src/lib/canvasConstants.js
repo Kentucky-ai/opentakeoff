@@ -69,6 +69,8 @@ export const MARKUP_TOOLS = [
   { id: "callout", icon: "callout", label: "Callout" },
   { id: "text", icon: "textNote", label: "Text note" },
   { id: "highlight", icon: "highlight", label: "Highlight box" },
+  // N, not M — M is the push-to-talk dictation hold, globally
+  { id: "dimension", icon: "dimension", label: "Dimension line", shortcut: "N" },
 ];
 export const MARKUP_IDS = MARKUP_TOOLS.map((t) => t.id);
 // highlighter inks — literal hex (SVG attrs; CSS vars don't resolve there).

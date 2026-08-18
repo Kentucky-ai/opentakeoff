@@ -579,13 +579,14 @@ The markup layer is communication, never quantity: clouds, callouts, notes, high
 
 ### The markup tools
 
-The **Markup** menu holds five tools:
+The **Markup** menu holds six tools:
 
 - **Highlighter** (`H`) — freehand marker ink. Press and **drag to paint**, stroke after stroke, no dialog between them. While it's armed, a style popover hangs under the menu: five inks (yellow default), **F / M / B** tip sizes, and a **chisel or round** nib — remembered per browser. Because press-drag paints, press-drag panning is off while the highlighter is armed; pan with `Space`-drag, middle-drag, or right-drag. Strokes stick to their sheet, scale like real ink, and are real objects: with Select, click one (it glows), drag to move it, `⌫` deletes it.
 - **Revision cloud** — two corner clicks; the cloud lands immediately, then an optional note editor opens (`Esc` keeps the cloud, skips the note). Clouds can carry a **Rev △** revision number from the panel.
 - **Callout** — first click is the *target* (the thing you're pointing at), second is the label spot, then type the text.
 - **Text note** — one click, type in place. Empty text doesn't commit.
 - **Highlight box** — two corners, done.
+- **Dimension line** (`N`) — a standalone dimension string for the width or height the plan never printed: click one end, a live length chip follows the cursor, click the other end. It lands as a line with end ticks labelled with the measured length at the sheet's scale (`12'-6"`), tied to nothing — no condition, no quantity, just the sheet's scale. It needs that scale set (the first click refuses otherwise, same as the measure tools) and won't span sheets. Double-click it to add a note after the length; it prints on the Marked Set like any markup.
 
 Every markup is editable after the fact: with Select, click to pick it, drag to move it, **double-click to edit its text in place**. The Markups panel lists them all with an edit pencil, a **color** row (auto or any palette color), **line style** and **weight** controls, and a **Hide layer / Show layer** toggle for the whole layer. (Markup moves are plain edits, not undo steps — the `⌘Z` stack is for measured shapes.)
 
@@ -846,6 +847,7 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `D` | Deduct shape (Cut Out) |
 | `⇧D` | Deduct rectangle |
 | `H` | Highlighter |
+| `N` | Dimension line — a standalone length label at the sheet's scale (markup, never counted) |
 | `K` | Check a dimension |
 | `V` | Select |
 | `G` | Sheet gallery |
