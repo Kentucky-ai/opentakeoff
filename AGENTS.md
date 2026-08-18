@@ -36,11 +36,11 @@ builds production. **Merge = deploy either way: that part has never changed.**
 > <https://opentakeoff.kentucky-ai.com>, nothing else.** A downstream fork
 > (`knmurphy/opentakeoff`) tracks this repo as its own upstream and deploys
 > separately to `takeoff.345flooring.com` — that URL belongs to *that* fork,
-> not this repo. If you're seeing `takeoff.345flooring.com` referenced
-> elsewhere in this repo's docs (`docs/DEPLOYMENT.md`,
-> `docs/PARENT_FORK_PORTS.md`), it's leftover content from that fork's own
-> `AGENTS.md`/docs that rode along in a wholesale history merge (2026-07-13) —
-> treat it as describing the *downstream* fork's deployment, not this one's.
+> not this repo. If you see `takeoff.345flooring.com` referenced elsewhere in
+> this repo's docs, it's either an example value in the optional cloud-mode
+> guides or leftover content from that fork's docs that rode along in a
+> wholesale history merge (2026-07-13) — treat it as describing the
+> *downstream* fork's deployment, not this one's.
 
 So:
 
