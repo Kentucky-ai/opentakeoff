@@ -9,22 +9,22 @@ In a hurry, or already in the app? Press **`?`** (or the **?** button in the top
 **Contents**
 
 1. [Five minutes to a takeoff](#1-five-minutes-to-a-takeoff)
-2. [Opening plans & moving around](#2-opening-plans--moving-around)
+2. [Opening plans and moving around](#2-opening-plans-and-moving-around)
 3. [Scale — set it first](#3-scale--set-it-first)
 4. [Conditions — your finishes](#4-conditions--your-finishes)
 5. [The measuring tools](#5-the-measuring-tools)
 6. [One-Click Area](#6-one-click-area)
-7. [Selecting & editing shapes](#7-selecting--editing-shapes)
-8. [Undo & redo](#8-undo--redo)
-9. [Markups, stamps & RFIs](#9-markups-stamps--rfis)
-10. [The report & exports](#10-the-report--exports)
+7. [Selecting and editing shapes](#7-selecting-and-editing-shapes)
+8. [Undo and redo](#8-undo-and-redo)
+9. [Markups, stamps, and RFIs](#9-markups-stamps-and-rfis)
+10. [The report and exports](#10-the-report-and-exports)
 11. [Revisions](#11-revisions)
-12. [Saving, your data & Contribute](#12-saving-your-data--contribute)
+12. [Saving, your data, and Contribute](#12-saving-your-data-and-contribute)
 13. [The Agent panel](#13-the-agent-panel)
-14. [AI settings & driving OpenTakeoff from an agent](#14-ai-settings--driving-opentakeoff-from-an-agent)
+14. [AI settings and driving OpenTakeoff from an agent](#14-ai-settings-and-driving-opentakeoff-from-an-agent)
 15. [Keyboard reference](#15-keyboard-reference)
 16. [Troubleshooting](#16-troubleshooting)
-17. [Voice & the Command box](#17-voice--the-command-box)
+17. [Voice and the Command box](#17-voice-and-the-command-box)
 18. [Glossary — what the words mean here](#18-glossary--what-the-words-mean-here)
 
 ---
@@ -35,7 +35,7 @@ The fastest way to learn the canvas is to run one takeoff end to end on the bund
 
 1. **Load the sample.** On the opening screen, click **Load sample plan** — a real medical-center floor finish plan. (Your own plans: drag a PDF anywhere onto the page.)
 2. **Accept the scale.** Open the **Set scale…** chip in the toolbar. The plan's drawn scale note has already been read off the sheet — click **Plan says 1/4″ = 1′-0″ — use it**. A calibrated ruler bar flashes on the sheet for a few seconds so you can eyeball that it's right (a door opening is about 3′).
-3. **Pick a condition.** A fresh workspace ships with a starter set of flooring conditions — CPT-1, LVT-1, CT-1, and friends. Press `1` to arm the first (the number keys answer in list order until you pin your own palette), or open the **☰ Takeoffs** rail button and click one.
+3. **Choose a condition.** A fresh workspace ships with a starter set of flooring conditions — CPT-1, LVT-1, CT-1, and friends. Press `1` to arm the first (the number keys answer in list order until you pin your own palette), or open the **☰ Takeoffs** rail button and click one.
 4. **One-Click the rooms.** Press `O`, then click inside a room. The room traces itself, wall to wall, as a dashed proposal. Click the next room, and the next. Press `⏎` to create them all.
 5. **Read the report.** Open **Report** for the per-condition breakdown — SF, SY, waste-adjusted order quantities, and the materials buy list. Export **CSV**, **Excel**, or a **Marked set** PDF.
 
@@ -47,7 +47,7 @@ The sample plan is one sheet. A bid set is forty, and the order you work it in i
 number defensible. This is the sequence, with the section that covers each step:
 
 1. **Open the whole set at once** — drag the `.zip` straight off the bid platform. Plans, the
-   finish schedule, the addenda, all of it ([§2](#2-opening-plans--moving-around)).
+   finish schedule, the addenda, all of it ([§2](#2-opening-plans-and-moving-around)).
 2. **Scale every sheet you'll measure, and check one dimension on each** (`K`). Ten seconds a
    sheet. A plan set is never one uniform scale, and a wrong scale is every number wrong at once
    ([§3](#3-scale--set-it-first)).
@@ -59,7 +59,7 @@ number defensible. This is the sequence, with the section that covers each step:
    the install; the supporting-materials lines are what turn square feet into an order
    ([§4](#4-conditions--your-finishes)).
 5. **Stitch anything split at a match line, and align it, before a single shape lands on it.**
-   Once takeoffs live on a stitch it won't re-align ([§2](#2-opening-plans--moving-around)).
+   Once takeoffs live on a stitch it won't re-align ([§2](#2-opening-plans-and-moving-around)).
 6. **Measure the floors first** — `O`, room by room, condition by condition. Floors are the bulk
    of the number and everything else derives from them ([§6](#6-one-click-area)).
 7. **Derive what follows instead of measuring it twice**: base off the rooms you just traced,
@@ -67,19 +67,19 @@ number defensible. This is the sequence, with the section that covers each step:
    counts*, because those are doorway thresholds you still owe
    ([§5](#5-the-measuring-tools)).
 8. **Walk the set and look at what landed.** Every sheet, at a zoom where you can see a ring
-   overshoot into a corridor. Fix with the grips ([§7](#7-selecting--editing-shapes)).
+   overshoot into a corridor. Fix with the grips ([§7](#7-selecting-and-editing-shapes)).
 9. **Save a revision** the moment the takeoff is whole. Do it again at every addendum — that's
    what makes the next round a comparison instead of an archaeology dig
    ([§11](#11-revisions)).
 10. **Export both**: the Report/Excel for pricing, and the **Marked set** PDF for anyone who has
-    to check you — the GC, the PM, your own reviewer ([§10](#10-the-report--exports)).
+    to check you — the GC, the PM, your own reviewer ([§10](#10-the-report-and-exports)).
 
 Steps 8 through 10 are the ones under time pressure people skip, and they're the ones that decide
 whether a disputed quantity is a five-minute conversation or a re-takeoff.
 
 ---
 
-## 2. Opening plans & moving around
+## 2. Opening plans and moving around
 
 ### What you can open
 
@@ -95,9 +95,9 @@ Nothing uploads anywhere. The file is read locally, rendered locally, and stored
 
 Press `G` (or click **Sheets** in the toolbar) for the visual gallery: one card per sheet, with its title-block sheet number, a thumbnail, and status badges — a level chip, **open** if it's already a tab, a shape count, and a scale status (**scale ✓** green, **plan: 1/4″ = 1′-0″** amber when a scale note was detected but not yet adopted, **no scale** red).
 
-- **Open one sheet**: hover a card and hit **View**.
+- **Open one sheet**: point to a card and click **View**.
 - **Open several**: click cards to select them — each gets a numbered badge, and that order is the left-to-right order. Then **Open N as tabs** or **Open N side-by-side** (side-by-side maxes at **4 sheets**; one pan/zoom moves the whole row).
-- **Close a PDF**: hover the file's first card and hit **✕**. Takeoffs on its sheets are preserved and restore if you re-add the same file.
+- **Close a PDF**: point to the file's first card and click **✕**. Takeoffs on its sheets are preserved and restore if you re-add the same file.
 - `Esc` closes the gallery (when a sheet is open behind it).
 
 ### Tabs, groups, and Regroup
@@ -110,8 +110,8 @@ One caveat that side-by-side makes possible: a trace can't span two grouped shee
 
 Large floors often arrive cut across sheets at a **match line** — half the building on each. Side-by-side viewing doesn't help you *measure* across the cut; stitching does.
 
-1. In the gallery, select the split sheets (2–4, left-to-right selection order) and hit **Stitch N into one surface**. They butt edge-to-edge — no gap — and open as **one** sheet with its own tab and scale (inherited when the members' scales agree).
-2. **Join the match line**: hit **Align** in the toolbar (it appears while a stitch is open), click a recognizable point near the joint, then click the **same drawn point** on the other sheet. That sheet slides so the two coincide — zoom in first for a tight joint, exactly like calibrating. Where the sheets overlap, each shows its own half up to the seam, so borders near the match line don't cover the plan.
+1. In the gallery, select the split sheets (2–4, left-to-right selection order) and click **Stitch N into one surface**. They butt edge-to-edge — no gap — and open as **one** sheet with its own tab and scale (inherited when the members' scales agree).
+2. **Join the match line**: click **Align** in the toolbar (it appears while a stitch is open), click a recognizable point near the joint, then click the **same drawn point** on the other sheet. That sheet slides so the two coincide — zoom in first for a tight joint, exactly like calibrating. Where the sheets overlap, each shows its own half up to the seam, so borders near the match line don't cover the plan.
 3. Work it like any sheet. A room that crosses the match line traces as **one shape** — manual tools and **One-Click** both work straight across the seam (the members' linework merges into one snap grid and one flood mask). Quantities, the Report, undo, and revisions treat the stitch as a normal sheet.
 
 Notes: align the match line **before** tracing — once takeoffs live on a stitch it won't re-align (their coordinates ride the composite). Deleting a stitch is refused while takeoffs or markups live on it; reopen one anytime from its tab or the gallery's **Stitched surfaces** strip. The Marked Set PDF burns a stitch in as one composite page — members placed at their aligned offsets, each showing its own half up to the seam, shapes drawn once in the frame you measured them in — stamped as a stitched composite so nobody mistakes it for a sheet the architect issued.
@@ -120,16 +120,16 @@ Stitching and aligning are yours alone — an AI agent driving OpenTakeoff [over
 
 ### Levels (multi-floor sets)
 
-In the gallery, select sheets and hit **Assign level…** (`"L1"`, `"Level 2"`, `"Garage"` — empty clears). The gallery groups by level with unassigned sheets last, cards wear their level chip, and tabs plus the page picker carry the label. Levels save with the project.
+In the gallery, select sheets and click **Assign level…** (`"L1"`, `"Level 2"`, `"Garage"` — empty clears). The gallery groups by level with unassigned sheets last, cards wear their level chip, and tabs plus the page picker carry the label. Levels save with the project.
 
-### Pan & zoom
+### Pan and zoom
 
 Panning is always at hand, whatever tool is armed:
 
 - **Trackpad**: two-finger scroll pans both axes; pinch zooms.
 - **Mouse**: a wheel notch zooms toward the cursor (~12% per notch, glided); `⇧`+wheel pans.
 - **Any device**: middle-drag, right-drag, or hold `Space` and drag. There is no Pan tool — pan is never a mode you switch into.
-- **Select tool**: dragging open canvas pans — the instinct you brought from desktop takeoff tools just works.
+- **Select tool**: dragging open canvas pans — the instinct you brought from desktop takeoff tools works here.
 - **Mid-measure**: a held click that moves becomes a pan instead of placing a point. Click-release places; press-drag travels.
 
 ### Rendering: crisp at any zoom
@@ -173,7 +173,7 @@ This is deliberate. A takeoff tool that silently measures in pixels produces con
 
 ### Adopting the plan's own note
 
-When a sheet's title block states a scale, OpenTakeoff reads it as you open the sheet. The Scale menu then leads with **Plan says 1/4″ = 1′-0″ — use it** under the heading *From the plan*. **Hovering the item previews the calibrated guide bar on the sheet behind the menu** — sanity-check before you commit. If the sheet shows several different scales (details are often larger), the suggestion is marked **±** and the tooltip tells you to confirm against a known dimension; when the text shows several scales and no title-block note, nothing is suggested at all — ambiguity is not a suggestion.
+When a sheet's title block states a scale, OpenTakeoff reads it as you open the sheet. The Scale menu then leads with **Plan says 1/4″ = 1′-0″ — use it** under the heading *From the plan*. **Pointing at the item previews the calibrated guide bar on the sheet behind the menu** — sanity-check before you commit. If the sheet shows several different scales (details are often larger), the suggestion is marked **±** and the tooltip tells you to confirm against a known dimension; when the text shows several scales and no title-block note, nothing is suggested at all — ambiguity is not a suggestion.
 
 ### Standard scales
 
@@ -191,7 +191,7 @@ No usable note? **Calibrate two points…**: click both ends of something the dr
 - **Amber**, within 5%: *off — re-check or recalibrate*.
 - **Red**, past 5%: *wrong scale; recalibrate*.
 
-One tap on **Recalibrate to this** turns your check into the calibration. Run a check on every new sheet before tracing — it's ten seconds against re-doing a takeoff.
+One click on **Recalibrate to this** turns your check into the calibration. Run a check on every new sheet before tracing — it's ten seconds against re-doing a takeoff.
 
 ### The guide bar
 
@@ -205,7 +205,7 @@ If the scale you set disagrees with the note printed on the sheet, the chip warn
 
 ### Agent-set scales need your confirmation
 
-A scale that arrives from an agent takeoff (an MCP session's export, imported here) is **unconfirmed**: the Scale chip reads **⚠ 1/4″ = 1′-0″ — confirm** in amber, the gallery badge reads **scale ⚠ confirm**, and the Report's provenance footer marks the sheet *agent-set, UNCONFIRMED*. Quantities still compute — but they stand on a number no person has verified. Check a printed dimension (K) first, then pick **Confirm agent-set scale** from the Scale menu; any scale action of your own (a standard pick, plan-says, calibrate, or recalibrate) also counts as confirmation, because your act is the verification.
+A scale that arrives from an agent takeoff (an MCP session's export, imported here) is **unconfirmed**: the Scale chip reads **⚠ 1/4″ = 1′-0″ — confirm** in amber, the gallery badge reads **scale ⚠ confirm**, and the Report's provenance footer marks the sheet *agent-set, UNCONFIRMED*. Quantities still compute — but they stand on a number no person has verified. Check a printed dimension (K) first, then choose **Confirm agent-set scale** from the Scale menu; any scale action of your own (a standard pick, plan-says, calibrate, or recalibrate) also counts as confirmation, because your act is the verification.
 
 ### Metric
 
@@ -226,7 +226,7 @@ A **condition** is one finish — `LVT-1`, `CPT-2`, `RB-1` — and it's what eve
 - **Waste %** — the allowance the Report adds on top of the measured quantity. Per condition, matched to the install: ~8% straight-lay LVP, ~15% diagonal, ~20% herringbone.
 - **Line** color, **Fill** color (or **No fill**), and the **hatch pattern** — a picker grid of CAD hatches (plank, herringbone, tile, terrazzo…) that names the pattern under your cursor, so the canvas reads like the real drawing.
 - **Line style** — the outline dash for this finish's floor and linear takeoffs, on canvas and in the Marked Set.
-- **H** (height, ft) — the default for **new** wall traces (Surface Area SF = LF × H) and the vertical-SF display. Existing walls keep the height they were drawn at — select a wall to change just that one (§5).
+- **H** (height, ft) — the default for **new** wall traces (Surface Area SF = LF × H) and the vertical-SF display. Existing walls keep the height they were drawn at — select a wall to change only that one (§5).
 - **T** (thickness, in) — a Linear run with thickness also computes border/feature-strip SF = LF × T⁄12. Changing it re-flows existing runs.
 
 **Delete** (the row's ✕) asks first when the condition owns shapes — *"Delete 〈TAG〉 and its N takeoff(s)? This can't be undone."* — and means it: the cascade is deliberately outside the undo stack (§8).
@@ -244,7 +244,7 @@ The **☰ Takeoffs** rail button docks the panel (it starts collapsed; the palet
 - **Takeoffs** — every condition with live totals for the open sheets (`SF · SF wall · LF · EA`), a shape count, a **⌖** that zooms the canvas to the condition's takeoffs (double-clicking the row does the same), the Supporting Materials button, the pin, and delete. Above the list: a filter box, **A→Z** natural sort and **≡ grp** tag-family grouping (views only — hotkey numbering never changes). **⌘-click / ⇧-click** rows to bulk-select conditions, then set waste or line color on all of them, or bulk-delete.
 - **Library** — reusable condition templates, shared across every plan in this browser. **+ save 〈tag〉 to the library** snapshots the active condition (appearance, waste, H/T, materials); **Apply** adds it to any project as a fresh condition. A fresh workspace seeds from this library — tune your house conditions once and every new job starts with them.
 - **Materials** — a browser-wide materials library. Attaching a library material to a condition copies its values and keeps a link (⛓); library edits reach linked lines only when you push them, and overridden fields show amber with a per-field ↺ revert.
-- **Columns** — project-wide **custom columns** (e.g. *CSI Division*) that classify conditions for report grouping and exports, and the **shape-label vocabulary** (§7).
+- **Columns** — project-wide **custom columns** (for example, *CSI Division*) that classify conditions for report grouping and exports, and the **shape-label vocabulary** (§7).
 
 ### Supporting materials — the buy list's source
 
@@ -330,7 +330,7 @@ re-plan, not a rounding note.
 **On the canvas.** The cuts draw to scale over their own rooms in material-true colors, numbered
 in cutting order. The **Roll goods** panel (rail) shows those same cuts nested **on the roll**
 with dimensions, and dragging a cut in the panel re-packs the layout in your order; **reset
-order** clears manual sequencing and lets the packer sort widest-then-longest again. Hit **edit**
+order** clears manual sequencing and lets the packer sort widest-then-longest again. Click **edit**
 in the panel to draw the figured cuts over the plan and slide or resize them by hand — those
 edits are real undo steps, and double-clicking a cut resets it. One note the panel states
 outright: a condition's **×N multiplier applies to the order**, while the diagram always shows
@@ -347,7 +347,7 @@ an order quantity. Removing a roll setup stops the figuring; manual
 cut edits on shapes are kept but go inert.
 
 Agents get the same thing headlessly — `roll_setup` is a field on the MCP server's
-`edit_condition`, and the reply echoes the figured order ([§14](#14-ai-settings--driving-opentakeoff-from-an-agent)).
+`edit_condition`, and the reply echoes the figured order ([§14](#14-ai-settings-and-driving-opentakeoff-from-an-agent)).
 
 ### Import from schedule
 
@@ -400,7 +400,7 @@ The **Cut Out** menu subtracts voids: **Deduct shape** (`D`) traces a polygon, *
 Carpet meets tile and somebody draws a line there, by hand, on every job. Once both finishes are
 measured, the canvas can derive it. Activate the condition the transition belongs to — `TR-1`, its
 own tag, not one of the two finishes — open the Takeoffs panel, and click **⟂ Transitions…** under
-that condition. Pick the two finishes and press **Derive**.
+that condition. Choose the two finishes and click **Derive**.
 
 What comes back depends on something worth understanding, because it decides whether a number is
 real: **traced rooms don't share edges.** A trace fills to the wall linework, so two rooms on
@@ -430,7 +430,7 @@ Three things it refuses outright, before anything commits:
   review — it reads the sheets you have open, not the whole set.
 
 The same derivation is `derive_transitions` over MCP
-([§14](#14-ai-settings--driving-opentakeoff-from-an-agent)), with the same verdict and the same
+([§14](#14-ai-settings-and-driving-opentakeoff-from-an-agent)), with the same verdict and the same
 refusal.
 
 ### Zone check
@@ -472,10 +472,10 @@ fill's backspace still walks that selection back instead of touching the committ
 
 ### Review before Create
 
-Hover a proposed region and its grips reveal:
+Point to a proposed region and its grips appear:
 
 - **Drag a corner** to move it (it snaps to true drawing endpoints as you drag).
-- **Click a corner** to select it — `⌫` then deletes just that point (a space keeps a 3-point floor).
+- **Click a corner** to select it — `⌫` then deletes only that point (a space keeps a 3-point floor).
 - **Drag an edge grip** to move the whole line — both endpoints together.
 - **`⇧`-click an edge** to insert a new anchor at its midpoint and drag it out in the same gesture.
 
@@ -488,7 +488,7 @@ Hatch and poché don't fool the fill: tile grids, plank lines, and section fills
 When One-Click refuses, it says why, and the answer is always actionable:
 
 - *"That space isn't enclosed on the plan linework — the fill spilled."* — there's a genuine gap (an open doorway, a break in the wall). Click a more enclosed spot, or trace it with Area (`A`). A hatched room with a real door gap **refuses rather than guessing** — that's deliberate.
-- *"Landed in dense linework (hatching/text)."* — the click hit a text block or hatching too dense to read as a room. Zoom in and click an open spot, or use Area.
+- *"Landed in dense linework (hatching/text)."* — the click landed on a text block, or on hatching too dense to read as a room. Zoom in and click an open spot, or use Area.
 
 ### Fill sensitivity
 
@@ -506,7 +506,7 @@ ink comes back identical at every notch. Rather than let you crank Strict → Ag
 conclude the control is broken, the menu adds the reason for the last fill: *"Nothing on this
 fill's boundary classified as a hatch or tile pattern, so every setting returns the same region.
 It is stopping on ink the engine still reads as a wall."* That's a different problem — trace it
-with Area (`A`), or check the sheet's **Layers** panel ([§2](#2-opening-plans--moving-around)) if
+with Area (`A`), or check the sheet's **Layers** panel ([§2](#2-opening-plans-and-moving-around)) if
 it's a CAD export whose ink is mislabeled.
 
 ### Scanned plans
@@ -519,11 +519,11 @@ Every shape One-Click creates records how it was made: the method, the seed poin
 
 ---
 
-## 7. Selecting & editing shapes
+## 7. Selecting and editing shapes
 
-Arm **Select** (`V`) and click a shape. Shapes stack by kind — filled Areas at the bottom, Cut Outs just above the fill they punch, Linear and Surface runs above that, Count pins on top — and clicking picks whatever reads as on-top at that spot. So a big Area drawn over a Counter, Line, or Surface never blocks it: the covered element stays clickable through the fill, and the Area itself still selects anywhere in its open fill. Selection is one shape at a time on the canvas, and the same edit grammar as One-Click proposals applies:
+Arm **Select** (`V`) and click a shape. Shapes stack by kind — filled Areas at the bottom, Cut Outs directly above the fill they punch, Linear and Surface runs above that, Count pins on top — and clicking picks whatever reads as on-top at that spot. So a big Area drawn over a Counter, Line, or Surface never blocks it: the covered element stays clickable through the fill, and the Area itself still selects anywhere in its open fill. Selection is one shape at a time on the canvas, and the same edit grammar as One-Click proposals applies:
 
-- **Drag a corner** to move that vertex (it snaps to true drawing endpoints). **Click a corner first** to select it — `⌫` then deletes just that vertex. A closed shape keeps at least 3 points, a run keeps 2; at the floor, the message tells you *"⌫ again deletes the whole shape."*
+- **Drag a corner** to move that vertex (it snaps to true drawing endpoints). **Click a corner first** to select it — `⌫` then deletes only that vertex. A closed shape keeps at least 3 points, a run keeps 2; at the floor, the message tells you *"⌫ again deletes the whole shape."*
 - **Drag an edge grip** (mid-edge) to move the whole line — both endpoints together.
 - **Press anywhere else along an edge** to insert a new anchor at that exact spot and drag it out in one gesture — a **`+` ghost** rides the edge under your cursor to show where the point will land (it stays clear of the corner and mid-edge grips, so those gestures still win). `⇧`-click at the mid-edge grip still inserts at the exact midpoint.
 - **Drag the body** to move the whole shape. Moving never re-prices — translation doesn't change area.
@@ -534,7 +534,7 @@ Quantities recompute live as you edit. Every completed gesture is one undo step 
 ### Copy, paste, duplicate
 
 - `⌘C` copies the selected shape — the toast reminds you: *"Copied — ⌘V pastes onto the sheet under your cursor."*
-- `⌘V` pastes **onto the sheet you're hovering** — cross-sheet included. A same-sheet paste lands slightly offset so you can see it; a cross-sheet paste keeps the same relative spot and **re-prices against the target sheet's own scale** — never carrying stale square feet (an unscaled target refuses).
+- `⌘V` pastes **onto the sheet the pointer is over** — cross-sheet included. A same-sheet paste lands slightly offset so you can see it; a cross-sheet paste keeps the same relative spot and **re-prices against the target sheet's own scale** — never carrying stale square feet (an unscaled target refuses).
 - `⌘D` duplicates in place.
 - A wall's height override rides along with copies — even an explicit 0. Pasted clones carry their source's lineage, marked as copies in provenance.
 
@@ -553,7 +553,7 @@ Labels drive the Report's *Group: Label* mode and its by-label export sections (
 
 ---
 
-## 8. Undo & redo
+## 8. Undo and redo
 
 `⌘Z` undoes, `⇧⌘Z` redoes — real undo, over a stack of up to 100 steps.
 
@@ -566,14 +566,14 @@ Labels drive the Report's *Group: Label* mode and its by-label export sections (
 **What's deliberately outside the stack:**
 
 - **Deleting a condition.** The confirm says *"This can't be undone"* and means it: the cascade delete of its shapes doesn't record. A condition delete is a decision about the takeoff's structure, not a gesture (Revisions are your parachute — §11).
-- **Rescaling a sheet** and **restoring a revision** both **reset the stack**. Every recorded step froze quantities at the old scale (or the old timeline); undoing across that boundary would resurrect stale numbers, so the boundary clears it. A restore always banks the live takeoff first, so nothing is lost — it's just not on the `⌘Z` stack.
+- **Rescaling a sheet** and **restoring a revision** both **reset the stack**. Every recorded step froze quantities at the old scale (or the old timeline); undoing across that boundary would resurrect stale numbers, so the boundary clears it. A restore always banks the live takeoff first, so nothing is lost — it isn't on the `⌘Z` stack.
 - **Markups and condition edits.** The undo stack is for measured shapes (and approval seals). Moving a cloud or changing a waste % is a plain edit — change it back by hand.
 
 One more distinction: **Undo last shape** (Edit menu) and `⌫`-with-nothing-in-progress are not `⌘Z` — they *delete the newest shape* on the sheets you're viewing. That delete records normally, so `⌘Z` can bring the shape back.
 
 ---
 
-## 9. Markups, stamps & RFIs
+## 9. Markups, stamps, and RFIs
 
 The markup layer is communication, never quantity: clouds, callouts, notes, highlighter ink, and stamps live on a separate layer the totals never count. The left dock (rail buttons on the canvas's right edge) carries three tabs — **Markups**, **Stamps**, **RFIs**.
 
@@ -586,15 +586,15 @@ The **Markup** menu holds six tools:
 - **Callout** — first click is the *target* (the thing you're pointing at), second is the label spot, then type the text.
 - **Text note** — one click, type in place. Empty text doesn't commit.
 - **Highlight box** — two corners, done.
-- **Dimension line** (`N`) — a standalone dimension string for the width or height the plan never printed: click one end, a live length chip follows the cursor, click the other end. It lands as a line with end ticks labelled with the measured length at the sheet's scale (`12'-6"`), tied to nothing — no condition, no quantity, just the sheet's scale. It needs that scale set (the first click refuses otherwise, same as the measure tools) and won't span sheets. Double-click it to add a note after the length; it prints on the Marked Set like any markup.
+- **Dimension line** (`N`) — a standalone dimension string for the width or height the plan never printed: click one end, a live length chip follows the cursor, click the other end. It lands as a line with end ticks labeled with the measured length at the sheet's scale (`12'-6"`), tied to nothing — no condition, no quantity, only the sheet's scale. It needs that scale set (the first click refuses otherwise, same as the measure tools) and won't span sheets. Double-click it to add a note after the length; it prints on the Marked Set like any markup.
 
-Every markup is editable after the fact: with Select, click to pick it, drag to move it, **double-click to edit its text in place**. The Markups panel lists them all with an edit pencil, a **color** row (auto or any palette color), **line style** and **weight** controls, and a **Hide layer / Show layer** toggle for the whole layer. (Markup moves are plain edits, not undo steps — the `⌘Z` stack is for measured shapes.)
+Every markup is editable after the fact: with Select, click to select it, drag to move it, **double-click to edit its text in place**. The Markups panel lists them all with an edit pencil, a **color** row (auto or any palette color), **line style** and **weight** controls, and a **Hide layer / Show layer** toggle for the whole layer. (Markup moves are plain edits, not undo steps — the `⌘Z` stack is for measured shapes.)
 
 ### Stamps
 
 A **stamp** is a reusable annotation — one or several markup elements saved as a named group and placed with a click. The library seeds with flooring basics (**Plank / tile direction**, **Seam direction**, **Pattern origin**) and is browser-global: build it once, use it on every plan.
 
-Hit **Place** on a stamp and the canvas arms it: *click the plan to place it* — every click drops a copy until `Esc` or another tool. Placed stamps are normal, editable markups. Make your own: select any markup and **Save selected markup as stamp**, or **Import** an `.svg` vector symbol (or a stamp-library `.json`); **Export** shares your library the same way.
+Click **Place** on a stamp and the canvas arms it: *click the plan to place it* — every click drops a copy until `Esc` or another tool. Placed stamps are normal, editable markups. Make your own: select any markup and **Save selected markup as stamp**, or **Import** an `.svg` vector symbol (or a stamp-library `.json`); **Export** shares your library the same way.
 
 ### Approval stamps
 
@@ -621,7 +621,7 @@ RFIs export as **RFI CSV** and **RFI JSON** from the Report, and they ride the M
 
 ---
 
-## 10. The report & exports
+## 10. The report and exports
 
 <img src="img/report.png" alt="The takeoff report — per-condition breakdown and materials buy list" width="780"/>
 
@@ -629,7 +629,7 @@ Open **Report** for the whole takeoff on one page: a per-condition table, the su
 
 ### The numbers, honestly
 
-- **Measured vs. w/Waste.** Waste lives only in the w/Waste column: *SF w/Waste = measured × (1 + waste %)*. The measured quantity is never inflated, so your takeoff and your buy list stay honest about which is which. Waste applies to SF and LF, never EA.
+- **Measured versus w/Waste.** Waste lives only in the w/Waste column: *SF w/Waste = measured × (1 + waste %)*. The measured quantity is never inflated, so your takeoff and your buy list stay honest about which is which. Waste applies to SF and LF, never EA.
 - **SY** = w/Waste SF ÷ 9.
 - **Multipliers** show as ×N beside the finish tag and multiply every quantity.
 - **Buy list**: each material's quantity = measured basis (floor SF / linear LF / each / figured seam LF) ÷ its coverage rate, **rounded up to whole units** — the number you order, not a theoretical gallon and a half. The combined list sums same-name materials after per-condition rounding.
@@ -670,7 +670,7 @@ Addenda happen. **Revisions** (the clock icon on the rail) makes them data inste
 
 ---
 
-## 12. Saving, your data & Contribute
+## 12. Saving, your data, and Contribute
 
 ### Autosave, locally
 
@@ -682,7 +682,7 @@ If a saved project fails to load, autosave **pauses itself** and a banner says s
 
 ### Optional: projects on Drive
 
-Team deployments can wire a Google Drive "Projects" root. Then a **project is a Drive folder**: sign in from the opening screen, pick the folder, and the plan PDFs live in it while OpenTakeoff keeps its own sidecars (the takeoff JSON and the working-set manifest) in a hidden `.opentakeoff` subfolder. The gallery grows a **Browse Drive** mode that lists the folder's PDFs — nothing downloads until you add it, so spec books and as-builts stay unopened. Revision snapshots stay in your browser but scope per project; condition and material libraries, stamps, and report preferences stay local to your browser either way. Run OpenTakeoff without signing in and none of this exists.
+Team deployments can wire a Google Drive "Projects" root. Then a **project is a Drive folder**: sign in from the opening screen, choose the folder, and the plan PDFs live in it while OpenTakeoff keeps its own sidecars (the takeoff JSON and the working-set manifest) in a hidden `.opentakeoff` subfolder. The gallery grows a **Browse Drive** mode that lists the folder's PDFs — nothing downloads until you add it, so spec books and as-builts stay unopened. Revision snapshots stay in your browser but scope per project; condition and material libraries, stamps, and report preferences stay local to your browser either way. Run OpenTakeoff without signing in and none of this exists.
 
 ### Contribute — what's sent, what never is
 
@@ -701,7 +701,7 @@ What is **never** sent — this list is normative, enforced by a whitelist in th
 - project, client, or customer names;
 - markup text, or any text you typed on the plan;
 - absolute coordinates;
-- scale **values** — only the scale's *provenance* rides ("calibrated" vs. "detected" vs. "standard");
+- scale **values** — only the scale's *provenance* rides ("calibrated", "detected", or "standard");
 - edit timing of any kind beyond each shape's creation stamp.
 
 One linkage is deliberate and disclosed: shapes carry **opaque, locally-minted IDs**, so re-contributing after an addendum supersedes rather than duplicates. The IDs contain nothing and reverse to nothing.
@@ -716,7 +716,7 @@ The Agent panel is the newest way to run the engine: describe a takeoff in a sen
 
 ### What it is, structurally
 
-Open it from the rail (the target icon: *Agent — describe a takeoff; it stages dashed proposals you accept or reject*). Type a goal — *"Take off the carpet per the finish schedule on this sheet"* — and hit **Run** (`⌘⏎`). The model runs a tool-use loop against a registry of the app's own deterministic tools:
+Open it from the rail (the target icon: *Agent — describe a takeoff; it stages dashed proposals you accept or reject*). Type a goal — *"Take off the carpet per the finish schedule on this sheet"* — and click **Run** (`⌘⏎`). The model runs a tool-use loop against a registry of the app's own deterministic tools:
 
 - **`list_sheets`** — what's open, with sizes and scale status;
 - **`read_sheet_text`** — the sheet's positioned text layer;
@@ -748,7 +748,7 @@ The panel is honest when unconfigured: it explains itself and offers **AI settin
 
 ### The keyless demo
 
-Want to see the loop without any AI account? The repo ships a deterministic mock:
+To see the loop without an AI account, run the deterministic mock the repo ships:
 
 ```bash
 node scripts/mock-agent-server.mjs        # listens on http://localhost:8787
@@ -758,7 +758,7 @@ Point AI settings at it — endpoint `http://localhost:8787`, API style **Anthro
 
 ---
 
-## 14. AI settings & driving OpenTakeoff from an agent
+## 14. AI settings and driving OpenTakeoff from an agent
 
 ### AI settings (BYO everything)
 
@@ -780,13 +780,13 @@ with the same scale gate and the same provenance receipts:
 
 | Group | Tools |
 |---|---|
-| Open & orient | `load_plan` · `sheet_info` · `sheet_context` · `read_sheet_text` · `find_text` · `view_sheet` |
+| Open and orient | `load_plan` · `sheet_info` · `sheet_context` · `read_sheet_text` · `find_text` · `view_sheet` |
 | Scale | `set_scale` |
 | Measure | `one_click` · `detect_rooms` · `measure_polygon` · `cut_out` · `measure_line` · `measure_surface` · `place_count` |
-| Repeat & derive | `symbol_sweep` · `sweep_schedule_row` · `derive_base` · `derive_transitions` · `apply_rules` |
+| Repeat and derive | `symbol_sweep` · `sweep_schedule_row` · `derive_base` · `derive_transitions` · `apply_rules` |
 | Read the drawing set | `sheet_graph` · `resolve_tag` · `find_schedule` |
-| Edit & audit | `list_shapes` · `edit_shape` · `edit_condition` · `edit_materials` · `duplicate_condition` · `split_condition` · `delete_shape` · `undo_last` |
-| Mark & sign | `annotate` · `list_annotations` · `link_annotation` · `mark_verdict` · `delete_verdict` |
+| Edit and audit | `list_shapes` · `edit_shape` · `edit_condition` · `edit_materials` · `duplicate_condition` · `split_condition` · `delete_shape` · `undo_last` |
+| Mark and sign | `annotate` · `list_annotations` · `link_annotation` · `mark_verdict` · `delete_verdict` |
 | Hand off | `takeoff_summary` · `export_takeoff` · `export_report` · `export_marked_pdf` · `import_takeoff` |
 
 If you're the one wiring an agent up rather than the one reading its output, the operating manual
@@ -821,8 +821,8 @@ A few worth knowing about from the canvas side, because they're the same feature
 - `export_takeoff` emits the app's own save payload and `import_takeoff` reads one back, so a
   session can be resumed, extended, or audited from either side. `export_marked_pdf` produces the
   marked planset, with machine-traced work disclosed as pending review.
-- `load_plan merge` makes the **bid set** the unit of work — plans plus schedule plus addenda —
-  without disturbing existing scales, conditions, or shapes.
+- `load_plan merge` makes the **bid set** the unit of work — plans plus schedule plus addenda — without
+  disturbing existing scales, conditions, or shapes.
 
 Multi-document sessions, the coordinate contract, and a full annotated transcript: [MCP.md](MCP.md)
 and [`mcp/README.md`](../mcp/README.md).
@@ -851,7 +851,7 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `K` | Check a dimension |
 | `V` | Select |
 | `G` | Sheet gallery |
-| Hold `M` | Push-to-talk dictation — release runs the command, `Esc` discards (see [§17](#17-voice--the-command-box)) |
+| Hold `M` | Push-to-talk dictation — release runs the command, `Esc` discards (see [§17](#17-voice-and-the-command-box)) |
 | `?` | The in-app quick reference — the five-minute path and every shortcut (`Esc` closes) |
 
 ### Conditions
@@ -880,12 +880,12 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | Key / action | Action |
 |---|---|
 | `⌘C` | Copy the shape |
-| `⌘V` | Paste under the cursor — lands on the sheet you're hovering |
+| `⌘V` | Paste under the cursor — lands on the sheet the pointer is over |
 | `⌘D` | Duplicate |
 | `⌫` | Delete (a picked vertex first, else the shape or markup) |
 | Double-click a markup | Edit its text in place |
 
-### View & navigation
+### View and navigation
 
 | Key / action | Effect |
 |---|---|
@@ -899,7 +899,7 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `Esc` (gallery open) | Close the gallery; in Browse Drive, back to the plan set |
 | `Esc` (menu open) | Close the menu |
 
-### In panels & fields
+### In panels and fields
 
 | Key | Action |
 |---|---|
@@ -912,7 +912,7 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 
 **A sheet renders blank or slow.** Big sheets rasterize on open — give it a beat. If linework goes soft mid-zoom, that's the detail view re-rendering; it sharpens when the gesture settles. For dense sheets, flip **Hi-Res render (this sheet)** in the Render & fill settings menu — display only, quantities unaffected. Side-by-side groups multiply the render load; work single-sheet on a struggling machine.
 
-**One-Click refuses a room.** Read the message — it names the cause. *Fill spilled* = a real gap in the linework: click a more enclosed spot, or trace with Area (`A`). *Dense linework* = you hit text or heavy hatching: zoom in, click open floor. A hatched room that keeps coming up short wants a higher **Fill** sensitivity; fills that leak want it lower — or Strict. On scans, verify the badged edges before Create, and remember the sensitivity slider doesn't apply there.
+**One-Click refuses a room.** Read the message — it names the cause. *Fill spilled* = a real gap in the linework: click a more enclosed spot, or trace with Area (`A`). *Dense linework* = the click landed on text or heavy hatching: zoom in, then click open floor. A hatched room that keeps coming up short wants a higher **Fill** sensitivity; fills that leak want it lower — or Strict. On scans, verify the badged edges before Create, and remember the sensitivity slider doesn't apply there.
 
 **The Fill slider does nothing.** Check the note under it. If it says nothing on that fill's
 boundary classified as hatch, the slider genuinely has no work to do — the fill is stopping on ink
@@ -933,7 +933,7 @@ the engine reads as a wall, at every notch. Trace it with Area (`A`), or on a CA
 
 ---
 
-## 17. Voice & the Command box
+## 17. Voice and the Command box
 
 Your hands are busy — one on the mouse tracing, one on the tool keys.
 The Command box and push-to-talk dictation set takeoff metadata without
@@ -951,8 +951,8 @@ deterministic command language through the exact actions the buttons run:
 | `note verify sheet vinyl with GC` | Drops a text markup on the focused sheet and opens the Markups dock |
 | `carpet one, this room` (pointer resting on a room) | Arms CPT-1 and one-click-traces the room under your cursor — committed as your work, undo covers it |
 
-Anything ambiguous is refused with a red explanation, never guessed —
-"carpet one seven" could be CPT-1 + waste 7 or a mis-heard CPT-17, so it
+Anything ambiguous is refused with a red explanation, never guessed — "carpet
+one seven" could be CPT-1 + waste 7 or a mis-heard CPT-17, so it
 asks you to say it again.
 
 **When it isn't a command.** If what you said (or typed) isn't in the grammar
@@ -961,8 +961,8 @@ rejection adds an offer: press `⏎` — or say **"ask the agent"** — to hand
 that exact text to the agent as a task. It runs on *your* endpoint with
 *your* key, its proposals land as dashed outlines for your review, and
 nothing is ever sent without that explicit confirm (`Esc` or 20 seconds
-dismisses the offer). Near-miss commands — a garbled number, extra words —
-never get the offer; they just ask you to say it again.
+dismisses the offer). Near-miss commands — a garbled number, extra words — never
+get the offer; they ask you to say it again.
 
 **Push-to-talk.** Hold **M** (or hold the **Voice** toolbar button), speak,
 release to run — the transcript flashes in a chip so you can see what was
@@ -985,26 +985,26 @@ those are the ones worth pinning down before you rely on a number.
 | **Condition** | One finish — `LVT-1`, `CPT-2`, `RB-1` — carrying its own color, hatch, waste %, multiplier, height, thickness, and materials. Everything you measure commits into one ([§4](#4-conditions--your-finishes)). |
 | **Twin** | The same finish measured in a second area that needs different preparation underneath. Gets its own tag (`SV-1 – Level 2`) and follows the original's materials until you edit a row ([§4](#4-conditions--your-finishes)). |
 | **Proposal** | A dashed, uncommitted shape — what One-Click traces and what an agent stages. Nothing is in your takeoff until you Create or Accept it ([§6](#6-one-click-area), [§13](#13-the-agent-panel)). |
-| **Pencil / ink** | Machine work is pencil (dashed proposals, the graphite `AGENT` diamond); your acceptance is ink (committed shapes, the green `APPROVED` seal). Only a human hand mints the seal ([§9](#9-markups-stamps--rfis)). |
+| **Pencil / ink** | Machine work is pencil (dashed proposals, the graphite `AGENT` diamond); your acceptance is ink (committed shapes, the green `APPROVED` seal). Only a human hand mints the seal ([§9](#9-markups-stamps-and-rfis)). |
 | **Provenance** | The record attached to every shape: the scale it was measured at, how it was made, whether a machine proposed it, and whether you corrected it — with the machine's original boundary frozen beside your fix ([§6](#6-one-click-area)). |
 | **Reported, never counted** | A quantity the engine found but refuses to commit, with the reason. Transitions across a wall are the common one: the real transition is a threshold in a doorway nothing can locate from a trace. Go measure it ([§5](#5-the-measuring-tools)). |
 | **Deduct / Cut Out** | A void subtracted from a condition's floor total — a column, a shaft, casework. Draws dashed red and carries its negative sign into the audit ([§5](#5-the-measuring-tools)). |
-| **Measured vs. w/Waste** | Measured is what's on the drawing. w/Waste is what you order. Waste lives only in the order column, never in the measured number ([§10](#10-the-report--exports)). |
+| **Measured versus w/Waste** | Measured is what's on the drawing. w/Waste is what you order. Waste lives only in the order column, never in the measured number ([§10](#10-the-report-and-exports)). |
 | **Basis** | What a supporting material is bought against: floor SF, linear LF, each, or figured seam LF. Order quantity = basis ÷ coverage rate, rounded up ([§4](#4-conditions--your-finishes)). |
 | **Figured seam LF** | Seam length read off the roll layout — where two cuts actually meet — not a percentage of perimeter. Needs a roll setup; without one it reads 0, meaning *needs a layout* ([§4](#4-conditions--your-finishes)). |
-| **Roll goods** | Broadloom, sheet vinyl, sheet rubber — material that comes off a roll, so the order depends on how the cuts nest, not just on area ([§4](#4-conditions--your-finishes)). |
-| **Stitch** | Two to four sheets split at a match line, joined into one working surface so a room crossing the seam traces as one shape. Align it before you trace on it ([§2](#2-opening-plans--moving-around)). |
-| **Level** | A label grouping sheets by floor — `L1`, `Level 2`, `Garage`. Drives gallery grouping and the Excel by-floor sheet ([§2](#2-opening-plans--moving-around)). |
-| **Label** | Which part of the job a shape belongs to — *Phase 1*, *East Wing*, *Alt-2*. Classification, not correction; drives report grouping ([§7](#7-selecting--editing-shapes)). |
+| **Roll goods** | Broadloom, sheet vinyl, sheet rubber — material that comes off a roll, so the order depends on how the cuts nest, not on area alone ([§4](#4-conditions--your-finishes)). |
+| **Stitch** | Two to four sheets split at a match line, joined into one working surface so a room crossing the seam traces as one shape. Align it before you trace on it ([§2](#2-opening-plans-and-moving-around)). |
+| **Level** | A label grouping sheets by floor — `L1`, `Level 2`, `Garage`. Drives gallery grouping and the Excel by-floor sheet ([§2](#2-opening-plans-and-moving-around)). |
+| **Label** | Which part of the job a shape belongs to — *Phase 1*, *East Wing*, *Alt-2*. Classification, not correction; drives report grouping ([§7](#7-selecting-and-editing-shapes)). |
 | **Scale gate** | Nothing prices without a scale on that sheet. Counts are the exception — EA doesn't depend on scale ([§3](#3-scale--set-it-first)). |
 | **Unconfirmed scale** | A scale an agent set, which no person has verified. Quantities compute, but the chip, the gallery badge, and the report all say so until you confirm it ([§3](#3-scale--set-it-first)). |
-| **Calibrate vs. Check** | Calibrate sets the scale from a dimension you type. Check (`K`) is its read-only twin — it grades the scale you already have ([§3](#3-scale--set-it-first)). |
+| **Calibrate versus Check** | Calibrate sets the scale from a dimension you type. Check (`K`) is its read-only twin — it grades the scale you already have ([§3](#3-scale--set-it-first)). |
 | **Hatch / poché** | The pattern fill inside a room or wall on the drawing. One-Click classifies it as pattern rather than boundary, so a hatched room still traces to the real walls ([§6](#6-one-click-area)). |
 | **Fill sensitivity** | How eagerly a fill escalates past ink the engine called hatch — Strict, Balanced, Aggressive. It cannot help when the boundary is all hard ink, and it says so ([§6](#6-one-click-area)). |
 | **Zone check** | A reading, not a takeoff: trace a wing and see what's inside it, with materials scaled to the zone. Nothing is saved ([§5](#5-the-measuring-tools)). |
-| **Marked set** | The distribution-ready PDF — your work burned into the drawings behind a legend cover, with a tally of how much of it a person has approved. The deliverable a GC can check ([§10](#10-the-report--exports)). |
+| **Marked set** | The distribution-ready PDF — your work burned into the drawings behind a legend cover, with a tally of how much of it a person has approved. The deliverable a GC can check ([§10](#10-the-report-and-exports)). |
 | **Revision** | A named snapshot of the whole takeoff. Compare two and you get quantity deltas per condition, per sheet, and on the buy list ([§11](#11-revisions)). |
-| **Contribute** | The opt-in button that donates a takeoff's labels and normalized shapes — never the plan, the names, or the coordinates — to a training corpus ([§12](#12-saving-your-data--contribute)). |
+| **Contribute** | The opt-in button that donates a takeoff's labels and normalized shapes — never the plan, the names, or the coordinates — to a training corpus ([§12](#12-saving-your-data-and-contribute)). |
 
 ---
 

@@ -1,4 +1,4 @@
-# Local-first sync — architecture & adding another provider
+# Local-first sync — architecture and adding another provider
 
 A developer's map of the optional local-first sync layer (enabled by
 `VITE_CLOUD_SYNC=1`; see [`GOOGLE_SETUP.md`](GOOGLE_SETUP.md) for the operator side).
@@ -43,13 +43,13 @@ does it with an **app-level revision precondition**, not HTTP preconditions:
   marker-before-push; `synced_rev` advanced only after a confirmed push).
 
 Snapshots are immutable, so they need none of this — a pushed record can't conflict,
-and a pulled one enters via `putSnapshot` and never becomes a push candidate, so a
+and a pulled one enters through `putSnapshot` and never becomes a push candidate, so a
 delete can't be resurrected.
 
 ## The provider seam (Drive now, OneDrive/O365 later)
 
 The sync modules depend on **injected providers**, never on `drive.js`. Two small
-interfaces, both satisfied today by Google via thin adapters:
+interfaces, both satisfied today by Google through thin adapters:
 
 **Annotation provider** — `web/src/lib/sync/provider.js` (`createDriveProvider`):
 
@@ -64,7 +64,7 @@ interfaces, both satisfied today by Google via thin adapters:
 Auth stays **outside** the provider — the app shell owns sign-in and hands the
 sync layer a ready `drive` client.
 
-### To add a provider (e.g. OneDrive / SharePoint / O365)
+### To add a provider (for example, OneDrive, SharePoint, or Microsoft 365)
 
 1. Implement the two small shapes above against the new backend's SDK (a `pull`/`push`
    pair, and the six-method file API). Nothing else in `sync/` changes.

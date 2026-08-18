@@ -16,7 +16,7 @@ npm run check    # typecheck + lint + test + build — exactly what CI runs; gre
 
 ## Shipping — the required steps, every change
 
-`main` is protected on GitHub via a ruleset (PR-only, one approving review,
+`main` is protected on GitHub by a ruleset (PR-only, one approving review,
 green `web` check, branch up to date — the repo owner has a standing bypass
 as the solo maintainer). **Merging to `main` deploys to production**
 (<https://opentakeoff.kentucky-ai.com>) — Netlify's own git integration builds
@@ -65,7 +65,7 @@ The tests cover the pure math (`web/test/geometry.test.ts`, `web/test/totals.tes
 | **The canvas — 90% of the app** | `web/src/pages/TakeoffCanvas.jsx` (one large, deliberately monolithic component) |
 | Geometry: vector extraction, One-Click flood fill, vertex snap | `web/src/lib/oneclick.ts` |
 | Sheet/page helpers, scale detection | `web/src/lib/sheets.ts` |
-| Totals & materials math (waste, SY, coverage → order qty) | `web/src/lib/totals.js` |
+| Totals and materials math (waste, SY, coverage → order qty) | `web/src/lib/totals.js` |
 | Persistence (IndexedDB + localStorage) | `web/src/lib/store.js` |
 | PDF/image/zip ingest | `web/src/lib/ingest.js` |
 | Icon set | `web/src/brand/icons.jsx` |
@@ -78,17 +78,17 @@ The tests cover the pure math (`web/test/geometry.test.ts`, `web/test/totals.tes
 
 - Each open sheet renders into a `<canvas>` bitmap; **all takeoff geometry is an SVG overlay** on top; pan/zoom is a single CSS transform on the stage div, written imperatively (`tfRef` → `style.transform`) to avoid React re-renders per frame.
 - Coordinates: pointer events (client px) → `toImage()` → **stage px**; committed shapes store **normalized [0..1] vertices per sheet** (`verts_norm`), so quantities survive re-renders and zoom.
-- Cursor-following UI (crosshair hairlines, readout chip, rubber band) updates via **direct DOM writes in `moveCrosshair`** — never React state per mousemove. Keep it that way.
+- Cursor-following UI (crosshair hairlines, readout chip, rubber band) updates through **direct DOM writes in `moveCrosshair`** — never React state per mousemove. Keep it that way.
 - Angle snapping: `angleSnap()` locks in-progress segments to the 45° family; endpoint snap (`nearestSnap` over a spatial hash of PDF vector endpoints) takes priority. The committed click reuses the same locked point (`angleRef`).
 - Past ~1.15× zoom, a **detail-view canvas** re-renders the visible region from PDF vectors at the current zoom (crispness); the base bitmap stays as first paint.
 - pdf.js rendering schedules work on `requestAnimationFrame` — a fully hidden/occluded window will pause mid-render by design; it resumes when visible.
 
 ## Conventions
 
-- **SVG presentation attributes take literal colors** (CSS vars don't resolve there): cobalt `#1f3fc7`, danger `#b03a26`, positive `#1f6b4a` — centralized in `web/src/lib/ui.js` (`SVG`, with HUD-dark counterparts via `svgAccent(isDark)`). DOM/HTML chrome may use `var(--…)` from `tokens.css`.
+- **SVG presentation attributes take literal colors** (CSS vars don't resolve there): cobalt `#1f3fc7`, danger `#b03a26`, positive `#1f6b4a` — centralized in `web/src/lib/ui.js` (`SVG`, with HUD-dark counterparts through `svgAccent(isDark)`). DOM/HTML chrome may use `var(--…)` from `tokens.css`.
 - Condition palettes (`PALETTE` in `web/src/components/hatches.jsx`, the seeded condition colors in `FLOORING_DEFAULTS` in `web/src/lib/canvasConstants.js`, and the mirrored copies in `mcp/src/session.ts`) are **user data** — don't re-theme them.
 - Waste applies only in the report (order quantities), never to live measured numbers.
-- Keyboard shortcuts are single letters registered on `window` (see `docs/USER_GUIDE.md` §15); toolbar menus pause them via `menuDepthRef`.
+- Keyboard shortcuts are single letters registered on `window` (see `docs/USER_GUIDE.md` §15); toolbar menus pause them through `menuDepthRef`.
 - Brand voice: **precision instrument** (2026-08 overhaul). Light theme = "ice": bright white surfaces on a cool field, cool-slate neutrals, cobalt the one saturated thing. Dark theme = "HUD": true-black cockpit, electric blue `#3f8cff`, phosphor `--glow` on exactly five elements (active tool face, status verb, hero quantity, primary CTA, calibration dot). Square corners; the single sanctioned radius is `--r-1` on floating chrome. Mono tabular numerals on every readout. Drafting-table language stays. No vendor mimicry.
 - Layout/spacing/type come from the token scales in `tokens.css` (`--sp-*`, `--fs-*`, `--ctl-*`); zIndex comes from the `Z` ladder in `web/src/lib/ui.js`. No new magic numbers.
 
@@ -126,8 +126,8 @@ is, and why the server imports the web engine in-process — lives at the end of
 
 ## The doc set, and who each one is for
 
-Four documents carry the product, and they're deliberately split by audience —
-don't answer an estimator's question in the agent manual or vice versa:
+Four documents carry the product, and they're deliberately split by audience — don't
+answer an estimator's question in the agent manual or vice versa:
 
 | Document | Audience | What belongs in it |
 |---|---|---|
@@ -135,6 +135,11 @@ don't answer an estimator's question in the agent manual or vice versa:
 | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | the estimator at the canvas | every shipped UI behavior, the working order on a real bid, the glossary |
 | [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) | an agent driving the engine | the operating model, the standard finish, withheld doctrine, staging, refusal→next-move |
 | [`mcp/README.md`](mcp/README.md) | an agent's integrator | tool-by-tool reference, resources, coordinate contract, limits |
+
+All of them follow one house style — the Apple Style Guide, with the rules that
+actually come up written out in [`CONTRIBUTING.md`](CONTRIBUTING.md#docs-house-style).
+Interface text quoted in a doc is copied from the code verbatim, so changing a
+message means changing it in both places.
 
 [`AGENT_BRIEF.md`](AGENT_BRIEF.md) is the one-page orientation that routes to
 all four. A behavior change usually touches two of them; a new MCP tool touches

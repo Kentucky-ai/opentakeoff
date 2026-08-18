@@ -1,8 +1,7 @@
 # Driving OpenTakeoff from an AI agent (MCP)
 
-OpenTakeoff ships an [MCP](https://modelcontextprotocol.io) server —
-[`mcp/`](../mcp/README.md) — that puts the real takeoff engine on stdio for
-your MCP client. Not a wrapper around the UI: the server imports the same
+OpenTakeoff ships an [MCP](https://modelcontextprotocol.io) server — [`mcp/`](../mcp/README.md) — that
+puts the real takeoff engine on stdio for your MCP client. Not a wrapper around the UI: the server imports the same
 `web/src/lib` modules the canvas runs, so One-Click Area, scale detection,
 vertex snapping, and the totals math behave identically, and everything it
 commits round-trips into the app as a normal saved takeoff.
@@ -70,8 +69,8 @@ Forty tools, in the order an agent tends to reach for them:
   number refuses *listing the candidate rows per building* instead of
   first-matching, and a qualified tag (`"A-134"`) picks the building the
   set names; and **revision markers** — a text marker (`Δ2`, `REV 2`) or a
-  **drawn delta** (a bare digit inside a digit-scale triangle of linework —
-  the common CAD convention, proven from the sheet's vector geometry and
+  **drawn delta** (a bare digit inside a digit-scale triangle of linework — the
+  common CAD convention, proven from the sheet's vector geometry and
   flagged `drawn: true`) beside a schedule row or a room bubble attaches
   there and rides
   `resolve_tag` as `revisions` (the codes returned are the post-revision
@@ -85,7 +84,7 @@ Forty tools, in the order an agent tends to reach for them:
   merged `WALLS (PLAN DIRECTION)` parent over `N | E | S | W` — anchors each
   sub-column under its parent as `WALLS N` … `WALLS W` with real bounds, so a
   left-aligned wall code never lands in the narrow BASE column beside it; a
-  neighbouring legend cannot bleed into the last column; finish tables headed
+  neighboring legend cannot bleed into the last column; finish tables headed
   `SYMBOL` (no CODE, no MARK) extract and chain; and a **DOOR / WINDOW /
   PARTITION schedule is refused as a finish table** by title — those carry a
   MARK column too, and a finish code chaining to a door mark is a confidently
@@ -142,8 +141,8 @@ Forty tools, in the order an agent tends to reach for them:
   Preview→Apply gate). Evaluation is the same pure `rules.ts` engine the
   canvas Preview runs, the commit is the one batch its Apply makes
   (`reviewed: false`, one undo step), the per-rule disclosure in the reply is
-  the preview an agent gets, and re-running is idempotent by construction —
-  anything an existing deduct covers is dropped by the engine
+  the preview an agent gets, and re-running is idempotent by construction — anything
+  an existing deduct covers is dropped by the engine
 - **Cut** — `cut_out` puts a real hole in a committed floor shape, the way the
   canvas's Eraser does (#137): the same `cutout.js` boolean subtract, so the
   parent's net is set subtraction (overlapping cuts never double-deduct) and a
@@ -151,8 +150,8 @@ Forty tools, in the order an agent tends to reach for them:
   edge-crossing cut is a boundary correction and refuses (the canvas clips it;
   over the wire the rule is refusal-over-guessing). One undo step restores
   parent and hole together, and deleting the deduct later reverts the cut
-  (multi-cut parents rebuild from the pristine snapshot minus survivors —
-  the canvas's own delete semantics, ported as the spec)
+  (multi-cut parents rebuild from the pristine snapshot minus survivors — the
+  canvas's own delete semantics, ported as the spec)
 - **Revise** — `edit_shape` (all five roles), `edit_materials`,
   `edit_condition` (waste %, ×N multiplier, `height_ft`, and the roll-goods
   `roll_setup` opt-in — the reply echoes the figured order), `delete_shape`,
@@ -168,13 +167,13 @@ Forty tools, in the order an agent tends to reach for them:
 - **Read the sheet** — `read_sheet_text`, `find_text`, `view_sheet` (render a
   sheet or crop to PNG with an optional calibrated measuring grid and
   committed-shapes overlay — the agent's eyes and its self-check)
-- **Annotate** — `annotate` (cloud, highlight, text, callout, arrow —
-  plank/seam direction — keynote bubble, and dimension: two endpoints, drawn
-  as a dimension line labelled with the measured length at the sheet's scale,
+- **Annotate** — `annotate` (cloud, highlight, text, callout, arrow — plank/seam
+  direction — keynote bubble, and dimension: two endpoints, drawn
+  as a dimension line labeled with the measured length at the sheet's scale,
   refused on an unscaled sheet), `list_annotations`,
   `link_annotation` (notes *about* the work, never measurements of it;
   attaching one to a finish tag is what makes it part of that scope rather
-  than a floating remark — it then wears the condition's colour on the canvas
+  than a floating remark — it then wears the condition's color on the canvas
   and in the marked set)
 - **Sign** — `mark_verdict`, `delete_verdict` (the agent half of the approval
   family: the graphite AGENT diamond, the agent's pencil-signature on work it
@@ -183,8 +182,8 @@ Forty tools, in the order an agent tends to reach for them:
   other half and stays human-only: these tools take no actor input, so no
   agent path can mint or lift the human's ink. A verdict touches no quantity)
 - **Report** — `takeoff_summary` (quantities only — materials stripped),
-  `export_takeoff` (the raw `opentakeoff.takeoff_canvas.v1` canvas payload —
-  materials as config rows, importable by the app), `export_report` (the
+  `export_takeoff` (the raw `opentakeoff.takeoff_canvas.v1` canvas payload — materials
+  as config rows, importable by the app), `export_report` (the
   computed `opentakeoff.report.v1` Report document — waste-adjusted nets, the
   materials buy list as order quantities, per-sheet subtotals, scale
   provenance; the contract for pricing consumers), `export_marked_pdf` (**the
@@ -324,8 +323,8 @@ dense linework (hatching or text).`
 
 - The **MCP server** is the agent-integration surface: real tools, real
   quantities, stdio.
-- The **[AI sandbox](../server/README.md)** (`server/`) is the other socket —
-  a FastAPI adapter interface for plugging your own local *vision model* under
+- The **[AI sandbox](../server/README.md)** (`server/`) is the other socket — a
+  FastAPI adapter interface for plugging your own local *vision model* under
   the canvas's suggestion endpoints.
 - Scanned (raster-only) sheets **are** supported (#154): where vectors cannot
   bound a room, `one_click` and `detect_rooms` fall back automatically to

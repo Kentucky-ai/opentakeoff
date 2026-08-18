@@ -15,7 +15,7 @@ traced or accepted its boundary, and stood behind the quantities. Humans and
 agents both produce demonstrations, and the wire records which was which. The
 highest-value rows are the **corrections**: a machine proposed a boundary, a
 human fixed it, and both the machine's trace and the expert's final answer
-survive side by side. That pair — what the model would have said vs. what the
+survive side by side. That pair — what the model would have said versus what the
 expert made it say — is precisely the supervision a takeoff model trains on,
 and v2 exists to stop flattening it.
 
@@ -30,7 +30,7 @@ A conforming contribution **MUST NOT** contain:
 - markup text or shape-label text (any free text a user typed onto the plan);
 - absolute coordinates (geometry is normalized 0..1 against the sheet);
 - scale values (`units_per_px` or anything derived from it — only the scale's
-  *provenance* rides, e.g. `"calibrated"`);
+  *provenance* rides, for example, `"calibrated"`);
 - edit timing of any kind beyond each shape's `created_at` — no `updated_at`,
   no per-edit timestamps, no gesture data, no dwell times.
 
@@ -58,7 +58,7 @@ spread of whatever a build happened to store.
 | `conditions` | array | required | anonymized condition labels (below) |
 | `shapes` | array | required | the demonstrations (below) |
 | `totals` | array | required | per-condition quantity rollup, ids/colors stripped |
-| `counters` | object | when non-empty | aggregate provenance tallies, e.g. `{"shapes_deleted": {"one_click_v1": 2}}` |
+| `counters` | object | when non-empty | aggregate provenance tallies, for example, `{"shapes_deleted": {"one_click_v1": 2}}` |
 | `contributor` | string | optional | free-text credit the user typed at the gate |
 
 ### `sheets[]`
@@ -151,7 +151,7 @@ proposal the estimator corrected:
 The previous wire: no `sheets` array (a `sheet_count` integer instead), no
 per-shape `id`/`created_at`/`origin`, provenance flattened to an optional
 `origin_method` string. Servers keep accepting it (§6); rows derived from it
-simply lack the v2 columns.
+lack the v2 columns.
 
 ## 4. The capture row — `opentakeoff.capture.v2`
 
@@ -196,8 +196,8 @@ provenance is recoverable by re-deriving (delete `state.json` and replay
 
 ### `raw/` archive and mirror discipline
 
-Every distinct payload is archived verbatim at `corpus/raw/<hash>.json` —
-the row format can evolve and old contributions re-derive. The optional
+Every distinct payload is archived verbatim at `corpus/raw/<hash>.json` — the
+row format can evolve and old contributions re-derive. The optional
 `--mirror` copies the label file into a synced share **whole and atomically**
 after each write, never live-appending inside a sync folder (append churn
 there breeds conflict copies); a wedged share can strand an expendable mirror
@@ -213,7 +213,7 @@ should rely on:
 |---|---|---|
 | `method` | string | how the geometry came to exist: `"manual"` (hand-traced), `"one_click_v1"` (machine flood-fill proposal), or `"agent_v1"` (in-canvas agent proposal accepted at the review gate); `"import"` reserved |
 | `actor` | string | omitted = a human at the canvas; `"agent"` = an MCP client or the in-canvas agent produced it |
-| `reviewed` | bool | a human affirmed the shape at an explicit gate (e.g. clicked Create on a proposal, or Accept on an agent proposal) |
+| `reviewed` | bool | a human affirmed the shape at an explicit gate (for example, clicked Create on a proposal, or Accept on an agent proposal) |
 | `edited` | bool | corrected after Create |
 | `edited_before_create` | bool | corrected between proposal and Create (grip drags on the live region) |
 | `copied` | bool | pasted clone — carries its source's lineage but no fresh evidence; excluded from correction stats |
@@ -222,7 +222,7 @@ should rely on:
 | `hatch_filtered` | bool | one-click ran with hatch filtering |
 | `raster_traced` | bool | traced from scan pixels rather than vector linework |
 | `fill_sensitivity` | number | non-default one-click fill sensitivity |
-| `edits` | object | per-kind correction tally, e.g. `{"vertex": 2, "move": 1}` |
+| `edits` | object | per-kind correction tally, for example, `{"vertex": 2, "move": 1}` |
 | `evidence` | object | `agent_v1` only: the agent's cited basis for the proposal. **Deep-whitelisted** to exactly `{schedule_row_tag?, matched_text?, seed_norm?}` — never a spread. |
 
 **`evidence` privacy note.** `evidence` carries only the matched TOKEN: the

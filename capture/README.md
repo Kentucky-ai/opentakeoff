@@ -25,10 +25,10 @@ corpus/
 ```
 
 A row is the WHERE, the WHAT, and the HOW: normalized polygon + bbox, sheet,
-measure role, then the label — finish tag, hatch, waste %, multiplier, height —
-the quantities you accepted, and the shape's provenance. Current builds send
+measure role, then the label — finish tag, hatch, waste %, multiplier, height — the
+quantities you accepted, and the shape's provenance. Current builds send
 `opentakeoff.contribution.v2`, and those rows carry the full origin record:
-hand-traced (`manual`) vs. machine-proposed (`one_click_v1`), whether a human
+hand-traced (`manual`) versus machine-proposed (`one_click_v1`), whether a human
 corrected it, and — for corrected shapes — the machine's original trace
 (`proposed_verts_norm`) alongside the final geometry, so what the machine got
 right and what an expert had to fix stay distinguishable. Rows also carry the
@@ -101,13 +101,13 @@ run the server from a terminal.
 
 This is the open edition of the capture layer inside
 [Spline](https://spline.quisutdeus.io), the commercial Division-9 estimating
-system OpenTakeoff was carved from. Spline's version goes much deeper —
-capture is *ambient*, riding autosave and commit with no Contribute click:
+system OpenTakeoff was carved from. Spline's version goes much deeper — capture
+is *ambient*, riding autosave and commit with no Contribute click:
 provisional rows bank while you draw, certified rows land on commit with the
 exploded supporting-materials assembly, deletions leave records, edits carry a
 decision trail, and each job's corpus files itself into that GC's project
-folder on the company share. Same schema philosophy, same mirror discipline —
-this file gives you the data-ownership half, on the honest terms of a
+folder on the company share. Same schema philosophy, same mirror discipline — this
+file gives you the data-ownership half, on the honest terms of a
 client-only app: you choose what to capture, and it goes only where you point
 it.
 
@@ -116,6 +116,6 @@ it.
 `takeoff_labels.jsonl` is deliberately model-agnostic — newline-delimited
 JSON, normalized geometry, string labels. Fine-tune a small local model to
 propose conditions for traced regions, cluster your finishes by geometry,
-benchmark One-Click against your human traces, or just keep it until the
+benchmark One-Click against your human traces, or keep it until the
 tooling catches up to your dataset. It's your data; the point is that now it
 exists.

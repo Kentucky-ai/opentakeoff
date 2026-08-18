@@ -12,7 +12,7 @@ export quantities — that's the MCP server, [`mcp/`](../mcp/README.md), not thi
 
 It ships **empty of any trained model**. The default adapter is a transparent
 heuristic so the endpoints work immediately and show you the contract. There is
-**no estimate, pricing, risk, or scope engine here** — just the canvas's AI
+**no estimate, pricing, risk, or scope engine here** — only the canvas's AI
 playground.
 
 ## Run it

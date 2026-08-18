@@ -1,7 +1,7 @@
 # Voice dictation — on-device push-to-talk (RFC #59)
 
-Hold **M** (or the **Voice** toolbar button) and speak a takeoff command —
-*"carpet one, waste seven"*, *"label phase two"*, *"note verify sheet vinyl
+Hold **M** (or the **Voice** toolbar button) and speak a takeoff command — *"carpet
+one, waste seven"*, *"label phase two"*, *"note verify sheet vinyl
 with GC"*, or *"CPT-1, this room"* with the pointer resting on a room.
 Release to run; **Esc** discards. The transcript flashes in a chip
 (the receipt), and the outcome lands in the message bar exactly like a typed
@@ -36,7 +36,7 @@ Measured on the committed real-speaker corpus (28 quiet + 9 noisy recordings):
 | engine / configuration | model size | intent recall (quiet / noisy) | decode speed | notes |
 |---|---|---|---|---|
 | **transformers.js, whisper-tiny.en, greedy** (q8 encoder + uint8 decoder) | 43.5 MB | **82.1% / 66.7%** | ~4× realtime (Node) / ~1.2× realtime (browser wasm, single thread) | **shipped.** Same artifact runs headless in CI and in the browser Worker — the corpus numbers ARE the browser engine's numbers. Cold init ~1.5 s Node / ~8 s browser; ~685 MB RSS (Node). |
-| transformers.js, whisper-**base**.en, greedy | 76.9 MB | 60.7% / 44.4% | 2.3× realtime (Node) | rejected: bigger AND worse on the real corpus (its keyword mishears just differ — "carpet wand", "rubber bass one"). |
+| transformers.js, whisper-**base**.en, greedy | 76.9 MB | 60.7% / 44.4% | 2.3× realtime (Node) | rejected: bigger AND worse on the real corpus (its keyword mishears differ — "carpet wand", "rubber bass one"). |
 | transformers.js, whisper-tiny.en, **beam 5** | 43.5 MB | 75.0% / 55.6% | 2.5× realtime (Node) | rejected: worse than greedy, plus a repetition pathology on noisy audio ("1.0.0.0.0…"). |
 | whisper.cpp WASM | — | — | — | **not browser-viable here:** maintained wrappers require `SharedArrayBuffer`, and OpenTakeoff deliberately ships no COOP/COEP (adding them would break the cross-origin font/Google-Identity loads under the current CSP). That constraint decided the benchmark. |
 | (variant) q4 decoder | 99.5 MB total | — | — | rejected: 2.8× the size AND audibly worse transcripts on identical audio. |

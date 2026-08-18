@@ -4,7 +4,7 @@ OpenTakeoff's own production deploy is Netlify-only (see
 [`DEPLOYMENT.md`](DEPLOYMENT.md)), and Netlify's CDN gets content types right
 automatically. If you build `web/dist` yourself and serve it from your own
 reverse proxy instead — nginx behind Docker or Tailscale, for example — there's
-one gotcha worth knowing about before you hit it blind.
+one gotcha worth knowing about before you run into it blind.
 
 ## `.mjs` served as `application/octet-stream`
 
@@ -26,7 +26,7 @@ types {
 ```
 
 **Fix — if you're on a base image and don't want to fork `mime.types`**
-(e.g. a minimal `nginx:alpine` Docker image), override just this extension in
+(for example, a minimal `nginx:alpine` Docker image), override only this extension in
 your server block instead — this doesn't touch the rest of the type table:
 
 ```nginx
@@ -35,5 +35,5 @@ location ~* \.mjs$ {
 }
 ```
 
-Confirmed against a real self-hosted deployment (Docker + nginx + Tailscale) —
-not hypothetical.
+Confirmed against a real self-hosted deployment (Docker + nginx + Tailscale) — not
+hypothetical.

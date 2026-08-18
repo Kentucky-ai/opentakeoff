@@ -5,11 +5,11 @@ issues, and ideas are all welcome.
 
 ## Where to start
 
-- [`good first issue`](https://github.com/Kentucky-ai/opentakeoff/labels/good%20first%20issue)
-  — small, fully specified, exact files named. Claim one in a comment.
-- [The flagship challenge](https://github.com/Kentucky-ai/opentakeoff/issues/29)
-  — an open design-and-build bake-off. Post a design comment first; multiple
-  entries welcome; the best one merges with credit.
+- [`good first issue`](https://github.com/Kentucky-ai/opentakeoff/labels/good%20first%20issue) — small,
+  fully specified, exact files named. Claim one in a comment.
+- [The flagship challenge](https://github.com/Kentucky-ai/opentakeoff/issues/29) — an open
+  design-and-build bake-off. Post a design comment first; multiple entries
+  welcome; the best one merges with credit.
 
 ## Dev setup
 
@@ -41,8 +41,8 @@ work. If you touch `capture/`, run `python3 capture/capture_server.py selftest`
   feel should start as an issue so we agree on the shape before you build it.
 - **`main` is protected.** Changes land by pull request with green CI
   (typecheck, tests, build — plus the capture selftest); force-pushes and branch
-  deletion are blocked. Write commit subjects the way the history does —
-  `feat(canvas): …`, `fix(oneclick): …`, `docs: …` — they become the changelog.
+  deletion are blocked. Write commit subjects the way the history does — `feat(canvas):
+  …`, `fix(oneclick): …`, `docs: …` — they become the changelog.
 - **Show your work.** Canvas-visible changes want a screenshot or GIF in the PR;
   quantity-affecting changes want a measured-vs-expected check against the
   bundled sample plan (the PR template asks for both).
@@ -50,11 +50,35 @@ work. If you touch `capture/`, run `python3 capture/capture_server.py selftest`
   manufacturer or product brand names in code, docs, or sample data.
 - **Update the paper trail.** A `CHANGELOG.md` entry and a `FEATURES.md` row
   when behavior changes; `docs/USER_GUIDE.md` when the flow a user follows
-  changes.
+  changes. Docs follow the house style below.
 - **Review etiquette.** Comments are about the code, never the author; every
   conversation gets resolved before merge. Expect a review within a few days.
   Maintainers may push small fixups onto your branch to land a PR faster — say
   so in the PR if you'd rather make the changes yourself.
+
+## Docs house style
+
+The READMEs and the manuals follow the [Apple Style Guide](https://support.apple.com/guide/applestyleguide/welcome/web).
+The rules that come up:
+
+- **Write to the reader, in the present tense, in the active voice.** "You" is
+  the estimator or the agent's operator; the app is "OpenTakeoff", never "we".
+- **Sentence-style capitalization in headings**, and "and" rather than "&".
+  Heading text is a public anchor — renaming one means fixing every link to it
+  (`node scripts/check-doc-links.mjs` catches what you miss).
+- **Name the real gesture**: *click* a button, *choose* a menu item, *select* a
+  shape or a checkbox, *press* a key, *enter* text, *drag* a grip. Not "hit".
+- **Quote the interface verbatim.** A message, a menu item, or a button label
+  is copied from the code, punctuation and all — so a reader can search for it.
+- **No Latin abbreviations.** "For example" instead of "e.g.", "and so on"
+  instead of "etc.", "versus" instead of "vs." Drop "via" as well — "through",
+  "using", or "with" says which one you meant.
+- **No filler**: "just", "simply", "please", "easy", "obviously".
+- **Em dashes close up** — no spaces around them — except inside quoted interface
+  text, which stays exactly as the app writes it.
+- **US spelling**: color, labeled, centered, neighboring.
+- **Say what a thing does before you say how it's built.** Refusals and limits
+  are features here; state them plainly rather than burying them.
 
 ## Architecture in one minute
 

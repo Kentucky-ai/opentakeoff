@@ -56,7 +56,7 @@ OpenTakeoff is that engine, with two front ends over identical geometry:
   reads the title block, sets the scale, floods the rooms, checks its own work on a rendered
   overlay, and hands back a marked-up planset PDF.
 - **A browser canvas** — no backend, no account, no upload. An estimator drags in a plan set
-  and traces it, with One-Click room detection, CAD hatches, roll-goods seam layout, a
+  and traces it, using One-Click room detection, CAD hatches, roll-goods seam layout, a
   materials buy list, and exports.
 
 Neither is a wrapper around the other. The MCP server imports
@@ -146,13 +146,13 @@ becomes ink only when the operator clicks Accept.* The full run, live and uncut,
 
 | Group | Tools |
 |---|---|
-| **Open & orient** | `load_plan` · `sheet_info` · `sheet_context` · `read_sheet_text` · `find_text` · `view_sheet` |
+| **Open and orient** | `load_plan` · `sheet_info` · `sheet_context` · `read_sheet_text` · `find_text` · `view_sheet` |
 | **Scale** | `set_scale` |
 | **Measure** | `one_click` · `detect_rooms` · `measure_polygon` · `cut_out` · `measure_line` · `measure_surface` · `place_count` |
-| **Repeat & derive** | `symbol_sweep` · `sweep_schedule_row` · `derive_base` · `derive_transitions` · `apply_rules` |
+| **Repeat and derive** | `symbol_sweep` · `sweep_schedule_row` · `derive_base` · `derive_transitions` · `apply_rules` |
 | **Read the drawing set** | `sheet_graph` · `resolve_tag` · `find_schedule` |
-| **Edit & audit** | `list_shapes` · `edit_shape` · `edit_condition` · `edit_materials` · `duplicate_condition` · `split_condition` · `delete_shape` · `undo_last` |
-| **Mark & sign** | `annotate` · `list_annotations` · `link_annotation` · `mark_verdict` · `delete_verdict` |
+| **Edit and audit** | `list_shapes` · `edit_shape` · `edit_condition` · `edit_materials` · `duplicate_condition` · `split_condition` · `delete_shape` · `undo_last` |
+| **Mark and sign** | `annotate` · `list_annotations` · `link_annotation` · `mark_verdict` · `delete_verdict` |
 | **Hand off** | `takeoff_summary` · `export_takeoff` · `export_report` · `export_marked_pdf` · `import_takeoff` |
 
 Plus browsable sheet resources (`takeoff://sheets`) so an agent can *see* the working set, not
@@ -192,8 +192,8 @@ are the rules that make this one safe to hand a model, and why each one exists:
    green `APPROVED` seal has exactly one code path and it is the toolbar button under a human
    hand. No MCP call, no import, mints one.
 6. **The deliverable is a marked-up planset, not JSON.** `export_marked_pdf` burns the work
-   into the drawings as drawn — condition colors, hatches, quantity chips, count markers —
-   behind a legend cover with totals and a tally of how much of the set a person has actually
+   into the drawings as drawn — condition colors, hatches, quantity chips, count markers — behind
+   a legend cover with totals and a tally of how much of the set a person has actually
    reviewed. A takeoff nobody can check is not a takeoff.
 7. **Refusals are actionable strings.** *"That space isn't enclosed on the plan linework — the
    fill spilled"* tells a model what to do next. A silent zero doesn't. Tools that can't answer
@@ -225,9 +225,9 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-Or just open the [**live demo**](https://opentakeoff.kentucky-ai.com). Drag in
-`demo/sample-plan.pdf`, accept the detected scale, pick a condition, hit **One-Click Area**,
-click inside a room. Open **Report** for the breakdown and the exports. That whole loop on
+Or open the [**live demo**](https://opentakeoff.kentucky-ai.com). Drag in
+`demo/sample-plan.pdf`, accept the detected scale, choose a condition, click **One-Click Area**,
+then click inside a room. Open **Report** for the breakdown and the exports. That whole loop on
 video: [walkthrough (1:10)](https://youtu.be/aHiW8H2TSBs) ·
 [One-Click Area (0:51)](https://youtu.be/YIjWZ-BAhLE). The complete
 zero-to-exported walkthrough is the [**user manual**](docs/USER_GUIDE.md).
@@ -258,11 +258,11 @@ fails cleanly instead of ballooning the tab. No upload step, no conversion servi
 
 ### A real measuring engine
 **One-Click Area** is the headline: click inside a room, the linework bounds a flood fill, the
-polygon traces itself, the vertices snap to true corners. **Hatching and poché don't fool it** —
-tile grids, plank lines, and section fills classify as pattern rather than wall, and the
+polygon traces itself, the vertices snap to true corners. **Hatching and poché don't fool it** — tile
+grids, plank lines, and section fills classify as pattern rather than wall, and the
 escalation is conservative enough that a misread can never come out worse than the strict fill.
-**Scanned sheets work too**: with no vector linework the engine reads rendered pixels —
-adaptive thresholding, polarity detection for blueprint negatives, a gap-bridging pass for
+**Scanned sheets work too**: with no vector linework the engine reads rendered pixels — adaptive
+thresholding, polarity detection for blueprint negatives, a gap-bridging pass for
 faded ink — and badges the result so you verify the edges before committing. On CAD exports
 that publish a layer tree, One-Click reads the declared roles instead of inferring them.
 
@@ -294,10 +294,10 @@ Auto-detects the drawn scale note, or **calibrate** from any known dimension. Sc
 remembered **per sheet**, because plan sets are never one uniform scale and tools that assume
 they are get the numbers wrong. **Check a dimension** (`K`) is calibrate's read-only twin: pick
 a printed dimension string, type what the drawing says, and get a graded verdict (green within
-1%, amber within 5%, red past it) plus a one-tap **Recalibrate to this**. Every scale
+1%, amber within 5%, red past it) plus a one-click **Recalibrate to this**. Every scale
 acceptance drops an ephemeral calibrated ruler bar on the sheet, so a 2×-off scale is obvious
-before anything gets traced. Imperial or metric (m²/m, 1:50-style ratios) is a display toggle —
-takeoffs are stored unit-agnostically, so flipping it never changes a measurement.
+before anything gets traced. Imperial or metric (m²/m, 1:50-style ratios) is a display toggle — takeoffs
+are stored unit-agnostically, so flipping it never changes a measurement.
 
 ### Conditions, materials, and the buy list
 A **condition** is one finish (LVP, carpet, tile, base…), carrying a line/fill color, a **CAD
@@ -328,13 +328,13 @@ of the wall overage, only where two lanes actually face each other — so a supp
 line on the **seam LF** basis prices the rod off where the cuts meet instead of off a share of
 the perimeter. A 20-ft-wide room off a 12-ft roll seams once down its length; the same square
 footage as two separate 10-ft rooms seams not at all, and no factor on area can tell those
-apart. Available headlessly too, via `roll_setup` on `edit_condition`. (The roll-layout engine
+apart. Available headlessly too, through `roll_setup` on `edit_condition`. (The roll-layout engine
 was contributed by Michael Hartman.)
 
 ### Multi-sheet reality
 **Stitching**: a floor split across a match line becomes one working surface — align the joint
 by picking the same drawn point on both sheets, then trace straight across the seam.
-**Levels** group a multi-floor set. A visual **gallery** (`G`) picks and opens sheets, and
+**Levels** group a multi-floor set. A visual **gallery** (`G`) is where you choose and open sheets, and
 **Regroup** restores a side-by-side composition in one click. A trace can't span two *grouped*
 sheets — the gap between panels isn't real distance, so the commit refuses and points you at
 stitching.
@@ -373,8 +373,8 @@ The same proposer/reviewer split as MCP without leaving the canvas: describe a t
 sentence and a model — **yours**, on your key, from your browser — works the sheet with the
 app's own deterministic tools and stages dashed proposals you accept, correct, or reject. It
 cannot invent geometry (`propose_shapes` rejects anything uncited) and it cannot set a scale.
-There's a keyless deterministic mock server in `scripts/` if you want to watch the loop with no
-AI account at all.
+To watch the loop with no AI account at all, run the keyless deterministic mock server in
+`scripts/`.
 
 ### A vector-sharp canvas
 Past ~1.15× zoom **times your display's pixel ratio**, the visible region re-renders straight
@@ -406,8 +406,7 @@ Google OAuth app is **Internal** to your domain, and the data sits in **your own
 [`docs/GOOGLE_SETUP.md`](docs/GOOGLE_SETUP.md) and
 [`docs/GLIDE_INTEGRATION.md`](docs/GLIDE_INTEGRATION.md). A cloud deployment can also opt into
 **local-first sync** (`VITE_CLOUD_SYNC=1`): annotations stay canonical in the browser and sync
-to Drive in the background, so the canvas is instant and survives a flaky network —
-[`docs/SYNC_ARCHITECTURE.md`](docs/SYNC_ARCHITECTURE.md).
+to Drive in the background, so the canvas is instant and survives a flaky network — [`docs/SYNC_ARCHITECTURE.md`](docs/SYNC_ARCHITECTURE.md).
 
 </details>
 
@@ -480,13 +479,13 @@ auditable:
 
 - The **Contribute** button in the Report builds a derived-only payload — condition labels,
   shape roles, quantities, geometry normalized 0-to-1 against the sheet, and per-shape
-  provenance (hand-traced vs. machine-proposed, and whether a human corrected it, with the
+  provenance (hand-traced versus machine-proposed, and whether a human corrected it, with the
   machine's original ring beside the fix). The builder is ~150 audited lines
   ([`web/src/lib/contribute.js`](web/src/lib/contribute.js)); the normative wire contract is
   [`docs/CONTRIBUTION_SPEC.md`](docs/CONTRIBUTION_SPEC.md).
 - **Never sent**, enforced by a whitelist in the builder: the PDF or any render of it, file or
   sheet names, project/client names, markup text, absolute coordinates, scale *values* (only
-  the scale's provenance — calibrated vs. detected vs. standard), and edit timing beyond a
+  the scale's provenance — calibrated, detected, or standard), and edit timing beyond a
   creation stamp. One linkage is deliberate and disclosed: shapes carry opaque, locally-minted
   IDs so a re-contribution after an addendum supersedes rather than duplicates.
 - The bundled **capture server** ([`capture/`](capture/README.md)) — one stdlib-only Python
@@ -566,7 +565,7 @@ npm run build      # → web/dist/  (static; host it anywhere)
 
 The repo ships a root `netlify.toml`, so the button is genuinely one-click. The same
 `web/dist/` works on **Vercel, GitHub Pages, Cloudflare Pages, S3** — anywhere that serves
-static files. Running your own reverse proxy (nginx, Docker, Tailscale, etc.)? Check
+static files. Running your own reverse proxy — nginx, Docker, Tailscale? Check
 [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md) first — there's one MIME-type gotcha worth
 knowing about. Deployment notes and the optional AI backend:
 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
@@ -615,8 +614,8 @@ manufactured chore list. Currently open:
   open design-and-build challenge where multiple entries are welcome and the best one merges
   with credit.
 - Smaller, fully-specified entry points are labeled
-  [`good first issue`](https://github.com/Kentucky-ai/opentakeoff/labels/good%20first%20issue) —
-  they name the exact files. Claim one in a comment and go.
+  [`good first issue`](https://github.com/Kentucky-ai/opentakeoff/labels/good%20first%20issue) — they
+  name the exact files. Claim one in a comment and go.
 
 Ground rules are in [CONTRIBUTING.md](CONTRIBUTING.md). The bar is a green `npm run check` plus
 a test for anything touching the geometry libraries; tested PRs merge fast. CI also holds two
@@ -627,7 +626,7 @@ contributions are credited by name in the commit and the release notes — and b
 `opentakeoff-mcp` publishes to npm off a `mcp-v*` tag, engine work you land ships to every
 agent that pulls the package.
 
-Found something exploitable? Please use
+Found something exploitable? Report it through
 [private vulnerability reporting](https://github.com/Kentucky-ai/opentakeoff/security/advisories/new)
 rather than a public issue. [SECURITY.md](SECURITY.md) states the threat model up front — worth a
 read before reporting, since it explains what the trust boundary actually is for a client-only app
@@ -640,8 +639,8 @@ and a local stdio MCP server, and what that does and doesn't make a vulnerabilit
 - **Geometry:** TypeScript (`oneclick.ts`, `sheets.ts`), pure and unit-tested
 - **PDF rendering:** [pdf.js](https://github.com/mozilla/pdf.js)
 - **Plan-set ingest:** fflate (zip) + pdf-lib (image → PDF), lazy-loaded
-- **Speech:** transformers.js, whisper-tiny.en (q8 encoder + uint8 decoder) in a Web Worker —
-  benchmarked against the alternatives in [`docs/VOICE.md`](docs/VOICE.md)
+- **Speech:** transformers.js, whisper-tiny.en (q8 encoder + uint8 decoder) in a Web Worker — benchmarked
+  against the alternatives in [`docs/VOICE.md`](docs/VOICE.md)
 - **MCP:** TypeScript stdio server importing the web engine's own libraries
 - **Storage:** IndexedDB + localStorage — no backend required
 - **Tests:** `node --test` + `tsx`

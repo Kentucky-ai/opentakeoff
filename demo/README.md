@@ -1,7 +1,7 @@
 # Demo plans
 
-Two sample plans ship with OpenTakeoff so you can try a takeoff in seconds —
-no account, no upload. In the app, click **Load sample plan** on the empty
+Two sample plans ship with OpenTakeoff so you can try a takeoff in seconds — no
+account, no upload. In the app, click **Load sample plan** on the empty
 canvas (it opens `sample-finish-plan.pdf`), or drag either file in yourself.
 
 ## `sample-finish-plan.pdf` — what the "Load sample plan" button opens
@@ -14,7 +14,7 @@ rubber, and welded-seam sheet, called out room-by-room with a matching finish
 schedule. The drawn scale (`1/8" = 1'-0"`) auto-detects.
 
 1. `npm run dev` in `../web`, open the app, click **Load sample plan**
-2. The scale auto-detects; pick a condition (e.g. `CPT-1`) and click **One-Click
+2. The scale auto-detects; choose a condition (for example, `CPT-1`) and click **One-Click
    Area** inside a room, or trace one with **Area**
 3. Add a waste %, open **Report**, and export your quantities + buy list
 

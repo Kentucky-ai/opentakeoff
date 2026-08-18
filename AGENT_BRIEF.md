@@ -22,8 +22,8 @@ engine for doing that, with two front ends over identical geometry:
   backend, no database, no account, no upload.
 
 Neither wraps the other. `mcp/` imports `web/src/lib/{oneclick,sheets,geometry,totals}` directly,
-so a shape committed by an agent is field-identical to one committed by a hand at the canvas —
-same flood mask, same corner snap, same waste math, same refusal messages.
+so a shape committed by an agent is field-identical to one committed by a hand at the canvas — same
+flood mask, same corner snap, same waste math, same refusal messages.
 
 ## Why it exists
 
@@ -40,7 +40,7 @@ Two reasons, and the second is the load-bearing one.
 
 ## The rules that shape the code
 
-Change anything here and you'll hit these. They are deliberate, and they hold identically on both
+Change anything here and you'll run into these. They are deliberate, and they hold identically on both
 front ends:
 
 - **Scale is a gate, not a default.** A detected scale note is a suggestion; adopting it is an

@@ -91,8 +91,8 @@ Then register it with your MCP client (any stdio MCP client works):
 
 Point `command` at `node` directly, as above — **never `npm start` in a client
 config**: npm prints its banner to stdout, and stdout is the MCP wire. (Same
-reason the server redirects `console.log` to stderr before pdf.js loads —
-see `src/hush.ts`.)
+reason the server redirects `console.log` to stderr before pdf.js loads — see
+`src/hush.ts`.)
 
 `tsx` is a runtime dependency, not a build tool: the engine is imported
 straight from `web/src/lib` as TypeScript, so plain `node` can't run it.
@@ -146,7 +146,7 @@ reads the tool list once. ([#230](https://github.com/Kentucky-ai/opentakeoff/iss
 | `measure_surface` | **Wall SF**: an open run traced along the wall, quantified as traced LF × the condition's height (the canvas's H knob — pass `height_ft` to set it, or set it once with `edit_condition`). Wall tile, wainscot, wall systems. Refuses without a height, minting nothing. |
 | `place_count` | **EA markers**: one point, one each — thresholds, stair nosings, floor boxes. No scale required (EA is scale-free). One shape per point; the whole call is one undo step. |
 | `symbol_sweep` | **Every instance of a repeated plan symbol, from ONE example**: marquee a tight `seed_rect` around a single drain/threshold/fixture symbol and the vector linework is searched deterministically for every other placement — translation plus 0/90/180/270 rotation and mirroring (both on by default). Score = length-weighted fraction of the seed's segments matched within `tolerance_px`; ≥ 0.92 is a match, the 0.75–0.92 band returns in `withheld` with reasons (never committed, never dropped silently), and the work cap is disclosed when it bites. **`scope: "set"` sweeps the whole working set, counting on PLAN-role sheets only** (the sheet graph decides; every excluded sheet disclosed in `skipped` with role and reason) — and the seed rect may sit on a detail or legend sheet, which then serves as the fingerprint SOURCE while staying excluded from counting: the estimator's "click the assembly in the detail, count it on the plans" gesture. Per-sheet results carry their own match/withheld lists, per-sheet cap accounting, and wall-clock `elapsed_ms`. `commit: true` + `condition` commits every match center as an EA count marker — the whole sweep (set-wide included) is one undo step, `origin.method "symbol_sweep"` with per-marker score, transform, and seed source (`origin.symbol.seed`). No scale required. |
-| `sweep_schedule_row` | **Take off a schedule row's mark from the row itself**: pass the row's key (e.g. `T1`) and the tool reads the row from the set's schedule tables (the row is the condition's cited source), anchors a fingerprint on the marker the tag is DRAWN as on a plan sheet (a deterministic pad ladder around the tag text; where the tag occurs more than once the fingerprint must recur at a second occurrence — `anchor.corroborated` — before it is trusted), and sweeps every plan-role sheet. **The count is geometry AND text agreeing**: drafting reuses one bubble shape across many marks, so a match counts only when the row's own tag sits within the marker footprint (its bbox rides the match as `tag_at` evidence); a match labeled with a sibling key is `excluded` and says whose it is, an unlabeled match is `withheld` as a question, a tag drawn with no matching marker is `text_only`. Refusal over guessing, each with the reason and the fix: no such row, an ambiguous key, a tag drawn on no plan sheet, no repeatable marker linework — a fingerprint is never guessed from text alone. `commit: true` commits the counted matches under the row's own key — one undo step, `origin.assignment {source: "schedule"}` plus the anchor and row citation on `origin.symbol.seed`. No scale required. |
+| `sweep_schedule_row` | **Take off a schedule row's mark from the row itself**: pass the row's key (for example, `T1`) and the tool reads the row from the set's schedule tables (the row is the condition's cited source), anchors a fingerprint on the marker the tag is DRAWN as on a plan sheet (a deterministic pad ladder around the tag text; where the tag occurs more than once the fingerprint must recur at a second occurrence — `anchor.corroborated` — before it is trusted), and sweeps every plan-role sheet. **The count is geometry AND text agreeing**: drafting reuses one bubble shape across many marks, so a match counts only when the row's own tag sits within the marker footprint (its bbox rides the match as `tag_at` evidence); a match labeled with a sibling key is `excluded` and says whose it is, an unlabeled match is `withheld` as a question, a tag drawn with no matching marker is `text_only`. Refusal over guessing, each with the reason and the fix: no such row, an ambiguous key, a tag drawn on no plan sheet, no repeatable marker linework — a fingerprint is never guessed from text alone. `commit: true` commits the counted matches under the row's own key — one undo step, `origin.assignment {source: "schedule"}` plus the anchor and row citation on `origin.symbol.seed`. No scale required. |
 | `takeoff_summary` | Per-condition totals + grand totals, computed by the Report's rules. |
 | `export_takeoff` | The full `opentakeoff.takeoff_canvas.v1` payload — exactly what the app autosaves. Inline, and to disk with `path` (see **Writing to disk** below). |
 | `delete_shape` | Remove a committed shape by id. |
@@ -157,11 +157,11 @@ reads the tool list once. ([#230](https://github.com/Kentucky-ai/opentakeoff/iss
 | `split_condition` | **Cut a twin loose** from its family: every following material row freezes at its current values and edits to the original stop reaching it. It keeps its finish tag and still groups with its siblings — only the inheritance ends. For when two variants have diverged far enough that following each other is wrong. A condition that already owns its materials returns `split: false` rather than erroring. Reversible with `undo_last`. |
 | `export_report` | The **computed Report document** — `opentakeoff.report.v1`, the same JSON the canvas Report exports: gross + waste-adjusted quantities, the computed materials **buy list** per condition plus the project-wide roll-up, per-sheet base subtotals, and scale provenance. The contract for pricing consumers — `export_takeoff` carries materials as config rows, `takeoff_summary` strips them. Inline, and to disk with `path` (see **Writing to disk** below). |
 | `import_takeoff` | **The way back in**: load a `takeoff_canvas.v1` file (a prior `export_takeoff`, or the app's own save) through the SAME merge rules as the app's Sheet-menu import — finish-tag identity joins conditions (this session's knobs win), new ids append, duplicates skip (idempotent re-import), this session's calibration wins per sheet. Resume, extend, or audit. Correction rules (#88) ride the file too — `apply_rules` re-runs them. |
-| `apply_rules` | **Re-run the correction rules the takeoff arrived with** (#207) — the lessons an estimator TAUGHT the canvas (#88), e.g. "every room like this loses the mechanical chase". Same pure `rules.ts` engine the canvas Preview runs; committed as the ONE batch its Apply makes (`reviewed: false`, one undo step, `origin {method rule_v1, actor rule}` with the rule/seed/room citation). The reply's per-rule disclosure — produced, skipped, ids — IS the preview an agent gets. Idempotent by construction: anything an existing deduct covers is dropped by the engine, so re-running after new rooms commit is the intended workflow. Rules arrive ONLY via `import_takeoff`; minting one is an estimator's correction and stays behind the canvas's human Preview→Apply gate. |
+| `apply_rules` | **Re-run the correction rules the takeoff arrived with** (#207) — the lessons an estimator TAUGHT the canvas (#88), for example, "every room like this loses the mechanical chase". Same pure `rules.ts` engine the canvas Preview runs; committed as the ONE batch its Apply makes (`reviewed: false`, one undo step, `origin {method rule_v1, actor rule}` with the rule/seed/room citation). The reply's per-rule disclosure — produced, skipped, ids — IS the preview an agent gets. Idempotent by construction: anything an existing deduct covers is dropped by the engine, so re-running after new rooms commit is the intended workflow. Rules arrive ONLY through `import_takeoff`; minting one is an estimator's correction and stays behind the canvas's human Preview→Apply gate. |
 | `export_marked_pdf` | The **marked-up planset** — the deliverable. Writes a distribution-ready PDF: a legend cover (per-condition totals, swatches, by-sheet breakdown) plus every sheet that carries work, vector-copied from the source with shapes, hatches, per-shape quantity chips, and annotations burned in — built by the same module as the canvas's MARKED SET button. Machine-traced shapes are disclosed as pending human review on the document itself, and the cover states where the finish tags came from (`Finish assignment: N schedule-resolved · N agent-asserted · …`, plus any rooms the last assign run withheld). Default path: `<plan> - marked set.pdf` next to the plan (see **Writing to disk** below). Works without `@napi-rs/canvas`. |
 | `list_shapes` | The **mid-session inventory**: every committed shape's id, sheet, condition, role, quantities, room `label`, review state, and assignment verdict (`schedule` \| `asserted` — where its finish tag came from) in one compact read — the ids `edit_shape`/`delete_shape` assume you have, without pulling the whole `export_takeoff` payload. Filters by sheet/condition narrow; empty is a result, not an error. |
 | `undo_last` | Step back over your own last `n` mutations, newest first. Exact inverses: a commit is removed, an edit restored verbatim, a delete re-inserted where it was, a materials edit's whole array restored, a condition edit's waste/multiplier pair restored. A whole `detect_rooms` sweep is **one** step. |
-| `annotate` | Place a note ABOUT the work — cloud/highlight (`rect`), text (`at`), callout (`at` + `target`), **arrow** (`from` + `to` — plank/seam direction), **bubble** (`at` + optional `r` — keynote circle, centered text), **dimension** (`from` + `to` — a dimension line with end ticks, labelled with the measured length at the sheet's scale; the one annotation the scale gate applies to — an unscaled sheet refuses like the measure tools). Attach to a condition and it wears that scope's colour on the canvas and in the marked set. No review gate: notes are not geometry. |
+| `annotate` | Place a note ABOUT the work — cloud/highlight (`rect`), text (`at`), callout (`at` + `target`), **arrow** (`from` + `to` — plank/seam direction), **bubble** (`at` + optional `r` — keynote circle, centered text), **dimension** (`from` + `to` — a dimension line with end ticks, labeled with the measured length at the sheet's scale; the one annotation the scale gate applies to — an unscaled sheet refuses like the measure tools). Attach to a condition and it wears that scope's color on the canvas and in the marked set. No review gate: notes are not geometry. |
 | `list_annotations` | Every annotation with its condition RESOLVED to a finish tag, coordinates back in image px; filter by sheet/condition. `unattached` counts the link_annotation candidates. `verdicts[]` is the approval family's inventory — every mark with its actor stated, a condition filter reaching a verdict through its target shape. |
 | `link_annotation` | Attach an existing annotation to a condition (or detach with an empty tag) — the canvas's Attach/Detach control, reachable by an agent. |
 | `mark_verdict` | The **agent's pencil-signature** on work it checked — the agent half of the approval family (#176). Mints the graphite AGENT diamond, and structurally nothing else: the tool takes no actor input, so the estimator's APPROVED ring stays behind the canvas's human-only Approve tool. Target a committed `shape_id` (anchored on the shape — a room's centroid, a run's midpoint — with the id recorded as provenance) or a `sheet` + `at` point; optional short `text` rides the record. Touches no quantity; renders on the canvas and in the marked set, whose cover tallies the split (`Approval stamps: N estimator-approved · M agent-marked`); rides the annotations payload through `export_takeoff`/`import_takeoff` and the app's own saves. One mark per shape. |
@@ -177,8 +177,8 @@ reads the tool list once. ([#230](https://github.com/Kentucky-ai/opentakeoff/iss
 ### The agent revises its own work
 
 `edit_shape` and `undo_last` exist because an agent that can only *append* has
-one recovery move: delete and re-derive. The loop they enable instead —
-**commit → `view_sheet overlay:true` → see the ring overshot into the corridor
+one recovery move: delete and re-derive. The loop they enable instead — **commit
+→ `view_sheet overlay:true` → see the ring overshot into the corridor
 → move those two vertices → look again** — is the loop a human estimator
 already runs, and it is the difference between an agent that drafts and one
 that works.
@@ -199,8 +199,8 @@ Two rules hold the surface honest:
   measures whether the machine is getting better.
 
 Every JSON tool declares an **`outputSchema`**, and every reply carries the
-payload as **`structuredContent`** — typed, machine-validated on every call —
-alongside the same compact JSON in a single text item for clients that predate
+payload as **`structuredContent`** — typed, machine-validated on every call — alongside
+the same compact JSON in a single text item for clients that predate
 structured output. `view_sheet` is the one image tool: its reply is a PNG
 content item plus a JSON meta text item (image replies aren't structured
 output, so it declares no schema by design). Failures come back as
@@ -209,7 +209,7 @@ output, so it declares no schema by design). Failures come back as
 ## Resources — browse before you measure
 
 Tools let an agent act; resources let it **see**. When a plan loads, the sheet
-set becomes browsable natively (`resources/list` re-announces itself via
+set becomes browsable natively (`resources/list` re-announces itself through
 `list_changed`):
 
 | URI | Contents |
@@ -292,12 +292,12 @@ set belongs in the job folder, wherever that is. What the export tools will not
 do is destroy a file they didn't write:
 
 - **Nothing at the path** → written.
-- **A previous export of ours at the path** → overwritten silently. Fix a
+- **A previous export of OpenTakeoff's own at the path** → overwritten silently. Fix a
   condition and export again to the same path as often as you like; that's the
   normal loop, and it needs no flag.
 - **Any other existing file** → refused, with the path named. Pass
   `overwrite: true` to replace it anyway.
-- **Corrupt, encrypted, or unreadable** → treated as *not* ours, so refused. An
+- **Corrupt, encrypted, or unreadable** → treated as *not* OpenTakeoff's, so refused. An
   unrecognizable file is exactly the kind worth not overwriting.
 
 A marked set is recognized by its PDF `Producer`; the JSON exports by the
@@ -345,11 +345,11 @@ npm test        # session + tool-layer + e2e, against demo/sample-plan.pdf
 ## Releasing (maintainers)
 
 MCP releases live in the **`mcp-v*`** tag namespace — bare `v*` tags belong to
-the app (v0.2.0, v0.3.0 are app releases). Releases publish via **npm trusted
+the app (v0.2.0, v0.3.0 are app releases). Releases publish through **npm trusted
 publishing**: the tag push fires `.github/workflows/publish-mcp.yml`, which
 runs straight through — no approval click — and publishes the npm artifact
-over OIDC with a **provenance attestation** (no npm token exists anywhere —
-the npm package designates that exact repo + workflow as its trusted
+over OIDC with a **provenance attestation** (no npm token exists anywhere — the
+npm package designates that exact repo + workflow as its trusted
 publisher), followed by the MCP registry entry, the GitHub release, and the
 MCPB bundle. The `release` environment's required-reviewer gate existed
 briefly and was deliberately removed (2026-07-22) — the tag push is the one
@@ -364,8 +364,8 @@ git tag mcp-v<version> && git push origin mcp-v<version>
 ```
 
 ⚠️ Because there's no approval step, an accidental or mistyped `mcp-v*` tag
-publishes to npm immediately, and npm unpublish is heavily restricted —
-double-check the version before tagging.
+publishes to npm immediately, and npm unpublish is heavily restricted — double-check
+the version before tagging.
 
 The workflow checks version consistency, runs the full publish gate
 (`prepublishOnly` = typecheck + tests + build), publishes to npm and the

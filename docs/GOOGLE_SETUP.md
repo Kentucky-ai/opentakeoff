@@ -6,21 +6,21 @@ done once for the whole team.
 
 None of this changes the default app. Anonymous visitors keep the local-only
 browser experience — no account, no upload, nothing here required. Signing in
-just unlocks the shared-Drive mode for your crew. All the values you produce
+only unlocks the shared-Drive mode for your crew. All the values you produce
 below are **public** (a client id, a domain, folder/file ids) and are safe to
 ship in the bundle; the actual access boundary is enforced by Google, not by a
 secret. See the security model at the end.
 
 You'll need: a Google Cloud account, and a team that's on **Google Workspace**
-(a shared domain, e.g. `345flooring.com`). Workspace is what makes the "Internal"
-consent screen — and therefore the whole "just our team" guarantee — possible.
+(a shared domain, for example, `345flooring.com`). Workspace is what makes the "Internal"
+consent screen — and therefore the whole "only our team" guarantee — possible.
 
 ---
 
 ## 1. Create a Google Cloud project and enable APIs
 
 1. In the [Google Cloud Console](https://console.cloud.google.com/), create a
-   project (or choose an existing one) — e.g. `opentakeoff`.
+   project (or choose an existing one) — for example, `opentakeoff`.
 2. Enable the APIs the app calls, under **APIs & Services → Library**:
    - **Google Drive API** — reads/writes project files in the shared Drive.
    - **Google Sheets API** — reads tabular per-project data and the pricing feed.
@@ -39,8 +39,8 @@ Under **APIs & Services → OAuth consent screen**:
 
 **Why Internal is the whole security win.** An Internal app can only be used by
 accounts inside your Workspace domain — **Google itself refuses the login** for
-anyone outside it. That single setting is what enforces "just our team": there's
-no allow-list for us to maintain and no way for an outside Google account to get
+anyone outside it. That single setting is what enforces "only our team": there's
+no allow-list to maintain and no way for an outside Google account to get
 in. Internal apps also **skip Google's app-verification / review** process, even
 with the broad `drive` scope, because the audience is your own organization.
 
@@ -81,7 +81,7 @@ of ours.
 
 1. Create a **Shared Drive** named `OpenTakeoff`.
 2. Inside it, create a `Projects/` folder.
-3. **Share the Shared Drive with your team's Google group** (e.g. the group that
+3. **Share the Shared Drive with your team's Google group** (for example, the group that
    maps to your Workspace domain). Drive's own sharing is what decides who can
    read and write the files — grant it to the team, no wider.
 
@@ -143,7 +143,7 @@ flag is therefore **deployment-wide on purpose** (not a per-user toggle):
 
 Mixed-fleet protection is a *net*, not a guarantee: an enabled client treats a
 flag-off teammate's write as an authoritative external edit and **snapshots the
-local side before adopting it** (recoverable via the Snapshots panel), rather than
+local side before adopting it** (recoverable through the Snapshots panel), rather than
 losing it silently. The actual guarantee is the process rule above — flip everyone,
 then share.
 

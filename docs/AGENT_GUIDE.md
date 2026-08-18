@@ -101,7 +101,7 @@ numbers report.**
 3. **Derive what follows from the rooms.** `derive_base` for base LF (each room's perimeter minus
    the door openings *you state* — the tool never guesses a door), `derive_transitions` for the
    line where two finishes meet. Both read committed floor shapes, so they come after step 2, and
-   their output gets audited in step 4 like anything else.
+   you audit their output in step 4 like anything else.
 4. **Look at what landed.** `view_sheet { overlay: true }` and fix misses with `edit_shape` before
    trusting a total. Crop the work region tight — a full-sheet render downsamples too far to
    audit a ring. Solid outlines are human-affirmed, dashed are unreviewed.
@@ -110,7 +110,7 @@ numbers report.**
    check is not a takeoff.
 
 Between steps 3 and 4, `list_shapes` is the cheap inventory — ids, sheets, conditions,
-quantities, room labels, review state, and where each finish tag came from (`schedule` vs.
+quantities, room labels, review state, and where each finish tag came from (`schedule` or
 `asserted`) — without pulling a whole `export_takeoff` payload.
 
 ## 4. Withheld is not a failure — it is the answer
@@ -148,7 +148,7 @@ rooms share 34 LF of wall would be a wrong number with a machine's confidence be
   input to misuse; `delete_verdict` refuses a human seal outright.
 - **Confirming a scale.** Only a human act in the canvas clears `confirmed: false`.
 - **Minting a correction rule.** `apply_rules` re-runs the rules an estimator taught the canvas,
-  and rules arrive only via `import_takeoff`. A rule *is* an estimator's correction, so minting
+  and rules arrive only through `import_takeoff`. A rule *is* an estimator's correction, so minting
   one stays behind the canvas's human Preview→Apply gate.
 - **Touching human-affirmed work.** `edit_shape` refuses a shape carrying
   `origin.reviewed === true`.
@@ -245,10 +245,10 @@ next."*
 |---|---|---|
 | `Set the scale for <sheet> first — use set_scale (detected: 1/4" = 1'-0").` | the scale gate | adopt the detected note, or calibrate from a known dimension |
 | *That space isn't enclosed on the plan linework — the fill spilled.* | a real gap: an open doorway, a break in the wall | seed a more enclosed spot, or `measure_polygon` it |
-| *Landed in dense linework (hatching or text).* | the seed hit a text block or heavy hatch | `view_sheet` a crop, pick open floor, re-seed |
+| *Landed in dense linework (hatching or text).* | the seed landed on a text block or heavy hatch | `view_sheet` a crop, pick open floor, re-seed |
 | a ring not fully inside the parent (`cut_out`) | an edge-crossing cut is a boundary correction, not a hole | fix the parent with `edit_shape` instead |
 | `measure_surface` refuses with no height | wall SF = traced LF × the condition's height | `edit_condition { height_ft }`, then retrace |
-| an export refuses a path | that file wasn't written by us, and overwriting it would destroy someone's work | pass `overwrite: true`, or pick another path |
+| an export refuses a path | OpenTakeoff didn't write that file, and overwriting it would destroy someone's work | pass `overwrite: true`, or pick another path |
 | a `sweep_schedule_row` key that won't anchor | a fingerprint is never guessed from text alone | anchor it yourself: `find_text` the tag, `view_sheet` the marker, count by hand |
 
 ## 9. Where to look next

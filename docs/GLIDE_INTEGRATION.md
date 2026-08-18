@@ -61,7 +61,7 @@ Passing `?project=<driveFolderId>` is **not** handing out a credential:
   the signed-in user's own token; Google checks that user's Drive permissions on
   each call. Someone without access to the Shared Drive gets nothing, folder id
   or not.
-- **Login is still required and domain-enforced.** The Internal OAuth app means
+- **Signing in is still required and domain-enforced.** The Internal OAuth app means
   only accounts in your Workspace domain can even sign in (see
   [`GOOGLE_SETUP.md`](GOOGLE_SETUP.md)).
 
@@ -73,7 +73,7 @@ team chat — it's only useful to someone Google already lets in.
 To avoid creating folders by hand, add a Glide **automation / workflow** that
 fires when a project row is created:
 
-1. Create a folder under `OpenTakeoff/Projects/` (via a Drive step, or a call
+1. Create a folder under `OpenTakeoff/Projects/` (through a Drive step, or a call
    out to Apps Script / a small automation).
 2. **Write the new folder id back** to that project row's folder-id column.
 
@@ -82,11 +82,11 @@ From then on the *Open takeoff* button works the moment a project exists.
 ## The pricing feed
 
 Material costs come from a `pricing.json` file in the shared Drive
-(`material`, `unit`, `unit_cost`). Its source of truth is your pricing database —
-**Postgres/Neon**, or **Glide Big Tables**.
+(`material`, `unit`, `unit_cost`). Its source of truth is your pricing database — **Postgres/Neon**,
+or **Glide Big Tables**.
 
 A background **sync job** exports that data to `pricing.json` and drops it in the
-`OpenTakeoff/` Drive folder; the app reads the file (via `VITE_PRICING_FILE_ID`)
+`OpenTakeoff/` Drive folder; the app reads the file (through `VITE_PRICING_FILE_ID`)
 with the signed-in user's token.
 
 Key points, kept brief:

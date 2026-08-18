@@ -2,7 +2,7 @@
 
 ## Reporting
 
-Use GitHub's **[private vulnerability reporting](https://github.com/Kentucky-ai/opentakeoff/security/advisories/new)** — Security tab → Report a vulnerability. It is enabled on this repo, it keeps the report private until there's a fix, and it gets a real answer. Please don't open a public issue for something you believe is exploitable.
+Use GitHub's **[private vulnerability reporting](https://github.com/Kentucky-ai/opentakeoff/security/advisories/new)** — Security tab → Report a vulnerability. It is enabled on this repo, it keeps the report private until there's a fix, and it gets a real answer. Don't open a public issue for something you believe is exploitable.
 
 Expect a first response within about a week. If a report is valid we'll agree on a disclosure date with you and credit you in the advisory unless you'd rather not be named.
 

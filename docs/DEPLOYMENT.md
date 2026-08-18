@@ -1,4 +1,4 @@
-# Deployment & CI
+# Deployment and CI
 
 How OpenTakeoff ships: every change lands on `main` through a pull request,
 and every merge to `main` is automatically deployed to production at
@@ -46,7 +46,7 @@ CI failures that don't reproduce locally are almost always environment drift.
 This repo pins the environment so drift can't happen:
 
 - **Node version** lives in `web/.nvmrc` (one source of truth). `nvm use`
-  reads it locally; both workflows read it via `node-version-file`.
+  reads it locally; both workflows read it through `node-version-file`.
 - **`npm run check`** is the exact command CI runs — same order, same steps.
   Green locally ⇒ green in CI.
 - **`npm ci`** in CI installs strictly from `package-lock.json`; if your
@@ -60,7 +60,7 @@ team-only cloud mode (Google sign-in + shared Drive) adds three build-time
 variables, read by Vite and inlined into `web/dist` at build:
 
 - `VITE_GOOGLE_CLIENT_ID` — the public OAuth 2.0 Web client id.
-- `VITE_GOOGLE_HD` — your Google Workspace domain (e.g. `345flooring.com`).
+- `VITE_GOOGLE_HD` — your Google Workspace domain (for example, `345flooring.com`).
 - `VITE_PRICING_FILE_ID` — the Drive file id of the synced `pricing.json`.
 
 All three are **non-secret public identifiers** and are meant to ship in the
@@ -75,7 +75,7 @@ one-time setup is in [`GOOGLE_SETUP.md`](GOOGLE_SETUP.md).
 
 Enforced by GitHub branch protection (admins included):
 
-- Changes land via PR only; direct pushes are rejected.
+- Changes land by pull request only; direct pushes are rejected.
 - The `web` CI check must be green.
 - The branch must be up to date with `main` before merging.
 - No force-pushes, no branch deletion.
@@ -106,4 +106,4 @@ Merge with `gh pr merge <n> --squash --delete-branch`, then
 - **Deploy run red after a merge**: the site keeps serving the previous
   deploy (Netlify deploys are atomic). Fix forward with a new PR, or re-run
   the failed run from the Actions tab once the cause is external
-  (e.g. a secrets/config issue).
+  (for example, a secrets or config issue).
