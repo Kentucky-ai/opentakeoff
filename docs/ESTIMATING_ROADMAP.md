@@ -17,7 +17,7 @@ rendered to a PDF and saved to the project's Drive folder.
 ## Core model (maps onto existing code)
 
 - **Item** = a priced material/labor line: `{ id, name, unit, material_cost, labor_cost, category }` where `category ∈ material | labor | sub | equipment`. Items are the existing browser-global **material library** (`web/src/lib/materials.js`, sanitized by `sanitizeMaterialLibrary`) enriched with `material_cost` + `labor_cost` fed from the pricing table.
-- **Kit** = a reusable, named bundle of item-lines, each carrying a coverage/basis: `{ id, name, lines: [{ item_id|name, unit, per, basis }] }`. This is the SAME shape `conditionTotals` already computes per condition — `materials: [{ name, unit, per, basis, qty }]` with `qty = basisVal ÷ per`, rounded up (`web/src/lib/totals.js:62-68`). A kit makes that list reusable and attachable to a condition in one action — a new library asset following the exact pattern of templates/materials/stamps (browser-global meta record + `sanitize*` load gate + Drive-backed later). Distinct from a condition's own Supporting Materials list (§ the docked panel) — a kit is the reusable, named source; "Apply kit" seeds a condition's list from it.
+- **Kit** = a reusable, named bundle of item-lines, each carrying a coverage/basis: `{ id, name, lines: [{ item_id|name, unit, per, basis }] }`. This is the SAME shape `conditionTotals` already computes per condition—`materials: [{ name, unit, per, basis, qty }]` with `qty = basisVal ÷ per`, rounded up (`web/src/lib/totals.js:62-68`). A kit makes that list reusable and attachable to a condition in one action—a new library asset following the exact pattern of templates/materials/stamps (browser-global meta record + `sanitize*` load gate + Drive-backed later). Distinct from a condition's own Supporting Materials list (§ the docked panel)—a kit is the reusable, named source; "Apply kit" seeds a condition's list from it.
 - **Unit-cost estimate** = attach an item or kit to each takeoff condition → its measured quantity (floor/wall/border SF, LF, EA from `conditionTotals`) explodes into item quantities → `qty × material_cost` and `qty × labor_cost` = extended costs → roll up to condition subtotals and grand totals, with waste (already in `conditionTotals`) and markup.
 
 ## Phase 3a — pricing ingest plus unit-cost join (the simple estimate)
@@ -31,8 +31,8 @@ Shape: `[{ item, unit, material_cost, labor_cost, category? }]`.
 follows the `import.meta.env.VITE_*` guard in `auth.js`/`contribute.js`. Add
 `loadPricing()` to the cloud store (`web/src/lib/cloudStore.js`); local mode
 returns `null` (pricing is cloud-only). Load once in `TakeoffCanvas` after
-sign-in — same shape as the existing `loadTemplates`/`loadMaterialLibrary` mount
-effects (`TakeoffCanvas.jsx:627-632`) — hold in state, pass to `ReportPanel`.
+sign-in—same shape as the existing `loadTemplates`/`loadMaterialLibrary` mount
+effects (`TakeoffCanvas.jsx:627-632`)—hold in state, pass to `ReportPanel`.
 
 **Join.** By item **name** (normalized) → `{ material_cost, labor_cost }`. Reuse
 the material identity already on condition `materials[].name`.
@@ -47,20 +47,20 @@ carries `material_ext = qty × material_cost` and `labor_ext = qty × labor_cost
 new `GETTERS` (`unit_cost_material`, `unit_cost_labor`, `material_ext`,
 `labor_ext`, `line_total`) appended to `TABLE_PROFILE`/`CSV_PROFILE` with
 `defaultVisible: false` (shown only when pricing is loaded), `foot` delegating to
-the new grand totals — the additive, golden-safe pattern the file documents. No
+the new grand totals—the additive, golden-safe pattern the file documents. No
 existing currency util exists; add a small `money(n)` to `num.js`
 (`toLocaleString(undefined, { style: 'currency', currency: 'USD' })`).
 
 ## Phase 3b — material kits library
 
 A new browser-global asset mirroring templates/materials/stamps:
-- `web/src/lib/materialKits.js` — `sanitizeMaterialKitLibrary` load gate (the
+- `web/src/lib/materialKits.js`—`sanitizeMaterialKitLibrary` load gate (the
   `sanitizeMaterialLibrary`/`sanitizeTemplates` precedent).
-- `store.js` — `loadMaterialKitLibrary`/`saveMaterialKitLibrary` (own
-  `MATERIAL_KIT_KEY` in the keyPath-less meta store, no DB version bump — the
+- `store.js`—`loadMaterialKitLibrary`/`saveMaterialKitLibrary` (own
+  `MATERIAL_KIT_KEY` in the keyPath-less meta store, no DB version bump—the
   stamp-library precedent at `store.js`), delegated in `cloudStore` like the
   other libraries.
-- UI — a **Kits** tab beside Materials in the left dock; "Apply kit" on a
+- UI—a **Kits** tab beside Materials in the left dock; "Apply kit" on a
   condition seeds/overwrites its Supporting Materials list from the kit's
   lines (so the existing `conditionTotals` math produces item quantities and
   costs with no new engine).

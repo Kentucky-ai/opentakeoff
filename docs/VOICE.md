@@ -1,17 +1,17 @@
 # Voice dictation — on-device push-to-talk (RFC #59)
 
-Hold **M** (or the **Voice** toolbar button) and speak a takeoff command — *"carpet
+Hold **M** (or the **Voice** toolbar button) and speak a takeoff command—*"carpet
 one, waste seven"*, *"label phase two"*, *"note verify sheet vinyl
 with GC"*, or *"CPT-1, this room"* with the pointer resting on a room.
 Release to run; **Esc** discards. The transcript flashes in a chip
 (the receipt), and the outcome lands in the message bar exactly like a typed
-Command-box entry — because it IS one: speech feeds the same deterministic
+Command-box entry—because it IS one: speech feeds the same deterministic
 grammar, dispatcher, and app actions the Command box runs. No AI in the loop,
 no new mutation path.
 
 **Audio never leaves the browser.** Recognition is whisper-tiny.en running in
 WebAssembly inside a Web Worker, on your machine. There is no cloud
-recognizer, no fallback to one, and no telemetry — see the privacy proof
+recognizer, no fallback to one, and no telemetry—see the privacy proof
 below.
 
 ## Staging the model (self-hosters, deploys, contributors)
@@ -25,7 +25,7 @@ node scripts/fetch-voice-model.mjs     # → web/public/models/ (gitignored)
 ```
 
 Serve the build and voice lights up. Without the staged model the feature
-says so plainly ("Voice isn't installed on this deployment") — feature
+says so plainly ("Voice isn't installed on this deployment")—feature
 absence, never breakage. CI stages it behind `actions/cache`; a deploy that
 wants voice enabled runs the same script before `vite build`.
 
@@ -35,8 +35,8 @@ Measured on the committed real-speaker corpus (28 quiet + 9 noisy recordings):
 
 | engine / configuration | model size | intent recall (quiet / noisy) | decode speed | notes |
 |---|---|---|---|---|
-| **transformers.js, whisper-tiny.en, greedy** (q8 encoder + uint8 decoder) | 43.5 MB | **82.1% / 66.7%** | ~4× realtime (Node) / ~1.2× realtime (browser wasm, single thread) | **shipped.** Same artifact runs headless in CI and in the browser Worker — the corpus numbers ARE the browser engine's numbers. Cold init ~1.5 s Node / ~8 s browser; ~685 MB RSS (Node). |
-| transformers.js, whisper-**base**.en, greedy | 76.9 MB | 60.7% / 44.4% | 2.3× realtime (Node) | rejected: bigger AND worse on the real corpus (its keyword mishears differ — "carpet wand", "rubber bass one"). |
+| **transformers.js, whisper-tiny.en, greedy** (q8 encoder + uint8 decoder) | 43.5 MB | **82.1% / 66.7%** | ~4× realtime (Node) / ~1.2× realtime (browser wasm, single thread) | **shipped.** Same artifact runs headless in CI and in the browser Worker—the corpus numbers ARE the browser engine's numbers. Cold init ~1.5 s Node / ~8 s browser; ~685 MB RSS (Node). |
+| transformers.js, whisper-**base**.en, greedy | 76.9 MB | 60.7% / 44.4% | 2.3× realtime (Node) | rejected: bigger AND worse on the real corpus (its keyword mishears differ—"carpet wand", "rubber bass one"). |
 | transformers.js, whisper-tiny.en, **beam 5** | 43.5 MB | 75.0% / 55.6% | 2.5× realtime (Node) | rejected: worse than greedy, plus a repetition pathology on noisy audio ("1.0.0.0.0…"). |
 | whisper.cpp WASM | — | — | — | **not browser-viable here:** maintained wrappers require `SharedArrayBuffer`, and OpenTakeoff deliberately ships no COOP/COEP (adding them would break the cross-origin font/Google-Identity loads under the current CSP). That constraint decided the benchmark. |
 | (variant) q4 decoder | 99.5 MB total | — | — | rejected: 2.8× the size AND audibly worse transcripts on identical audio. |
@@ -57,7 +57,7 @@ node --import tsx scripts/voice-benchmark.mjs --dir …    # over any WAVs
 `web/test/fixtures/voice/` holds the recorded fixture corpus (see
 `RECORDING.md` there): scripted phrases run through the REAL chain
 (WAV → whisper → intent parser) in CI. **Current coverage: one real speaker
-(s1), 28 quiet + 9 noisy takes** — additional speakers are invited and slot
+(s1), 28 quiet + 9 noisy takes**—additional speakers are invited and slot
 in by filename alone (`s2-…`), no harness changes. Two gates:
 
 1. **Hard invariant — zero wrong actions.** A mishear may cost a re-say
@@ -67,20 +67,20 @@ in by filename alone (`s2-…`), no harness changes. Two gates:
 2. **Regression floor — quiet ≥ 0.75, noisy ≥ 0.55 intent recall**, set just
    under the committed corpus's measured baseline (82.1% / 66.7%,
    whisper-tiny.en greedy) so any change that degrades recall fails the
-   build. The bar's words are "regressions fail the build" — the floor is a
+   build. The bar's words are "regressions fail the build"—the floor is a
    tripwire under measured reality, not an aspiration above it. Rejection
    phrases count as correct only when the chain refuses them.
 
 Two grammar normalizations were EARNED by corpus evidence and are pinned by
 tests: `bass→base` (true homophone, heard in "rubber bass one") and
-number-slot-only `to/too→two, won→one` ("transition to") — slot-restricted so
+number-slot-only `to/too→two, won→one` ("transition to")—slot-restricted so
 note prose keeps its literal words, and `for→four` deliberately excluded (a
 literal preposition there could mint a wrong waste value).
 
 ## The synthetic accent stress set (what it proved)
 
 Before the recorded corpus landed, a 185-clip TTS set (ElevenLabs, five
-synthetic accent voices — **not committed**: generated voices aren't corpus
+synthetic accent voices—**not committed**: generated voices aren't corpus
 material per the recording rules, and redistribution licensing is
 tier-dependent) was run through the full chain as a stress test. The
 finding that matters:
@@ -92,18 +92,18 @@ finding that matters:
 > was right and the free text drifted by a homophone ("seams" → "seems").
 
 Raw intent recall on that synthetic-accent audio was low (tiny 36–40%,
-base 49–60% — synthetic accented speech is a known whisper weak spot and a
+base 49–60%—synthetic accented speech is a known whisper weak spot and a
 stress floor, not a forecast), but the safety property held absolutely:
 a mishear costs a re-say, never corrupted takeoff data. The committed
 corpus of real recorded speech is what the CI floor applies to.
 
 ## The two-tier router (slice 5)
 
-The grammar is the entire fast path — deterministic, zero AI. When a
+The grammar is the entire fast path—deterministic, zero AI. When a
 transcript is **fully unrecognized** (and only then), and the bring-your-own
 agent is configured, the red rejection gains one *offered* escape hatch:
 
-> not a command — ⏎ or say "ask the agent" to run it on YOUR agent
+> not a command—⏎ or say "ask the agent" to run it on YOUR agent
 > (your endpoint, your key) · proposals land for review · Esc dismisses
 
 The hard lines, all pinned by tests:
@@ -112,14 +112,14 @@ The hard lines, all pinned by tests:
   it runs on your configured endpoint), and expires after 20 s so a stale ⏎
   can't become a surprise agent run. Unconfigured deployments never see it.
 - **Near-misses never route.** `bad_number`, `trailing_words`, `unknown_tag`
-  and the deixis rejects are almost-valid grammar — routing them would
+  and the deixis rejects are almost-valid grammar—routing them would
   launder a mishear into a mutation. They keep asking for a re-say
   (table-tested across every rejection reason).
 - **"ask the agent" is a fixed literal**, matched whole-utterance after
-  punctuation strip — not a grammar production; "no second grammar" stays
+  punctuation strip—not a grammar production; "no second grammar" stays
   honest. Spoken with nothing pending it says so and sends nothing.
 - **The bridge grows nothing.** Confirmation calls the same `runAgent` the
-  Agent panel runs — same config, same tool registry, and agent-inferred work
+  Agent panel runs—same config, same tool registry, and agent-inferred work
   stays on the dashed-proposals → Accept gate. The router changes who reads
   the words, never who owns the work; the zero-wrong-actions invariant never
   sees the agent path because the router only exists where the dispatcher
@@ -131,7 +131,7 @@ The hard lines, all pinned by tests:
   with recorders before the engine loads and asserts a full init + transcribe
   cycle records **zero** network calls.
 - Manual half (browser): open devtools → Network, complete one dictation
-  after the model is cached — the log stays empty. Screenshot in the PR.
+  after the model is cached—the log stays empty. Screenshot in the PR.
 - `Permissions-Policy` grants the mic to `self` only; camera and geolocation
   stay fully disabled.
 
@@ -143,27 +143,27 @@ Every state below is wired to a loud, specific message. Verified per release
 | state | expected behavior | verified |
 |---|---|---|
 | model not staged on origin | "Voice isn't installed on this deployment — see docs/VOICE.md" | ✓ automated |
-| PTT while model downloading | chip shows "voice model loading… N%" — never a silent drop; the press also kicks/retries the load | ✓ automated + manual |
+| PTT while model downloading | chip shows "voice model loading… N%"—never a silent drop; the press also kicks/retries the load | ✓ automated + manual |
 | model download failure | red sticky "Couldn't load the voice model — … Hold M to retry."; retry works | ✓ automated |
 | mic permission denied | red sticky "Couldn't start dictation — microphone permission denied." | ✓ automated |
 | no microphone device | red sticky "… no microphone found." | code-pathed with mic-denied; untested (needs mic-less hardware) |
 | mic revoked mid-hold (site toggle) | session discarded; "… the microphone was revoked." | ✓ manual |
 | tab backgrounded mid-dictation | session discarded; "Dictation discarded — the tab went to the background." | ✓ manual |
 | Esc mid-hold | session discarded silently (deliberate cancel) | ✓ manual |
-| key-tap (<0.1 s) | ignored — a tap is not an utterance | ✓ automated |
-| unmount / navigate away | AudioContext closed, tracks stopped, worker terminated | ✓ manual — `chrome://media-internals` clean after tab close |
-| unsupported browser (no getUserMedia) | Voice button hidden entirely — feature absence, not breakage | by construction (`captureSupported()` gates the render) |
+| key-tap (<0.1 s) | ignored—a tap is not an utterance | ✓ automated |
+| unmount / navigate away | AudioContext closed, tracks stopped, worker terminated | ✓ manual—`chrome://media-internals` clean after tab close |
+| unsupported browser (no getUserMedia) | Voice button hidden entirely—feature absence, not breakage | by construction (`captureSupported()` gates the render) |
 
 ## Browser matrix
 
 | browser | platform | status |
 |---|---|---|
-| Chrome (latest) | Windows x64 | ✓ full flow — automated fake-mic drives + manual real-mic pass (all lifecycle states) |
-| Firefox (latest) | Windows x64 | ✓ manual — dictation end-to-end |
-| Edge (latest) | Windows x64 | ✓ manual — dictation end-to-end |
-| Safari (latest) | macOS Apple Silicon | **requested from maintainer** — no Mac access on the contributing side |
+| Chrome (latest) | Windows x64 | ✓ full flow—automated fake-mic drives + manual real-mic pass (all lifecycle states) |
+| Firefox (latest) | Windows x64 | ✓ manual—dictation end-to-end |
+| Edge (latest) | Windows x64 | ✓ manual—dictation end-to-end |
+| Safari (latest) | macOS Apple Silicon | **requested from maintainer**—no Mac access on the contributing side |
 | Safari (latest) | macOS x86 | **requested from maintainer** |
 
 WASM SIMD is required (baseline in all evergreen browsers since 2021);
-without it ORT fails init and voice reports the load error — the feature
+without it ORT fails init and voice reports the load error—the feature
 degrades to absent, the canvas is untouched.

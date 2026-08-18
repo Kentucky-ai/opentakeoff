@@ -12,9 +12,9 @@ no second implementation to drift.
 **Contents**
 
 1. [Connect in 60 seconds](#1-connect-in-60-seconds)
-2. [The operating model — six facts before your first call](#2-the-operating-model--six-facts-before-your-first-call)
-3. [The standard finish — how a takeoff ends](#3-the-standard-finish--how-a-takeoff-ends)
-4. [Withheld is not a failure — it is the answer](#4-withheld-is-not-a-failure--it-is-the-answer)
+2. [The operating model—six facts before your first call](#2-the-operating-model--six-facts-before-your-first-call)
+3. [The standard finish—how a takeoff ends](#3-the-standard-finish--how-a-takeoff-ends)
+4. [Withheld is not a failure—it is the answer](#4-withheld-is-not-a-failure--it-is-the-answer)
 5. [What has no agent verb, and why](#5-what-has-no-agent-verb-and-why)
 6. [Staged tool exposure](#6-staged-tool-exposure)
 7. [A worked session](#7-a-worked-session)
@@ -43,12 +43,12 @@ the `opentakeoff-mcp.mcpb` bundle from the
 [latest release](https://github.com/Kentucky-ai/opentakeoff/releases). Docker, a local clone, and
 the debugging trace flag are in [`mcp/README.md`](../mcp/README.md).
 
-Confirm you're live by reading the `takeoff://sheets` resource before any plan loads — it answers
+Confirm you're live by reading the `takeoff://sheets` resource before any plan loads—it answers
 with what it is and points at `load_plan`, which is a cheaper handshake than a failed tool call.
 
 ## 2. The operating model — six facts before your first call
 
-**One coordinate frame, stated everywhere.** Image pixels at render scale 2.0 — PDF points × 2,
+**One coordinate frame, stated everywhere.** Image pixels at render scale 2.0—PDF points × 2,
 origin top-left, y down. That is the browser canvas's native space, so a coordinate round-trips
 1:1 with the app. Every sheet payload carries dims in px *and* pt. Text positions from
 `read_sheet_text` come back in the same space, which makes a room label directly usable as a
@@ -62,8 +62,8 @@ once, which is why the engine would rather stop than guess.
 
 **The scale you set is unconfirmed until a human confirms it.** `set_scale` returns
 `confirmed: false`, `takeoff_summary` names those sheets in `scale_unconfirmed`, and the exports
-carry `scale_confirmed` so the canvas can ask the estimator. Quantities still flow — the flag is
-disclosure, not a second refusal — but say so when you hand the work over.
+carry `scale_confirmed` so the canvas can ask the estimator. Quantities still flow—the flag is
+disclosure, not a second refusal—but say so when you hand the work over.
 
 **The engine traces; you don't invent.** `one_click` returns the ring the flood fill produced
 from the seed point you named. There is no tool that accepts a polygon you imagined and counts
@@ -81,7 +81,7 @@ every signal the engine can see came back clean, not that the trace is right. A 
 dashed proposal. `mark_verdict` lets you sign work you checked as a graphite `AGENT` diamond; the
 green `APPROVED` seal has exactly one code path and it is the toolbar button under a human hand.
 `edit_shape` refuses a shape a human already affirmed, and self-revision bumps
-`origin.agent_edits` rather than touching the human-correction fields — merging those would
+`origin.agent_edits` rather than touching the human-correction fields—merging those would
 corrupt the one signal that measures whether the machine is getting better.
 
 ## 3. The standard finish — how a takeoff ends
@@ -91,7 +91,7 @@ contract rather than a suggestion. **A takeoff's deliverable is the marked-up pl
 numbers report.**
 
 1. **Open and scale.** `load_plan`, then `set_scale` on each sheet you intend to measure. Use
-   `load_plan { merge: true }` to add the schedule sheet and the addenda — a bid set is plans
+   `load_plan { merge: true }` to add the schedule sheet and the addenda—a bid set is plans
    *plus* schedule *plus* addenda, and merging leaves existing scales, conditions, and shapes
    alone.
 2. **Commit shapes under finish-tag conditions.** `one_click` / `detect_rooms` /
@@ -99,19 +99,19 @@ numbers report.**
    schedule, prefer `detect_rooms { assign_from_schedule: true }` so each room commits under its
    *own* row instead of one tag you picked for all of them.
 3. **Derive what follows from the rooms.** `derive_base` for base LF (each room's perimeter minus
-   the door openings *you state* — the tool never guesses a door), `derive_transitions` for the
+   the door openings *you state*—the tool never guesses a door), `derive_transitions` for the
    line where two finishes meet. Both read committed floor shapes, so they come after step 2, and
    you audit their output in step 4 like anything else.
 4. **Look at what landed.** `view_sheet { overlay: true }` and fix misses with `edit_shape` before
-   trusting a total. Crop the work region tight — a full-sheet render downsamples too far to
+   trusting a total. Crop the work region tight—a full-sheet render downsamples too far to
    audit a ring. Solid outlines are human-affirmed, dashed are unreviewed.
 5. **Write the planset.** `export_marked_pdf`, and give the user the file path. `export_report`
    alongside it for the numbers. Never end a takeoff with numbers alone: a takeoff nobody can
    check is not a takeoff.
 
-Between steps 3 and 4, `list_shapes` is the cheap inventory — ids, sheets, conditions,
+Between steps 3 and 4, `list_shapes` is the cheap inventory—ids, sheets, conditions,
 quantities, room labels, review state, and where each finish tag came from (`schedule` or
-`asserted`) — without pulling a whole `export_takeoff` payload.
+`asserted`)—without pulling a whole `export_takeoff` payload.
 
 ## 4. Withheld is not a failure — it is the answer
 
@@ -138,7 +138,7 @@ rooms share 34 LF of wall would be a wrong number with a machine's confidence be
 
 - **Stitching.** The canvas joins 2–4 sheets split at a match line into one composite surface. No
   MCP verb creates, aligns, or addresses a stitch, and this is not staged for later exposure.
-  Aligning a match line means clicking the same drawn wall junction on both halves — judgment
+  Aligning a match line means clicking the same drawn wall junction on both halves—judgment
   whose failure mode is a subtly sloppy join that silently skews every quantity crossing the seam.
   On a split floor: measure each member sheet as its own surface, and tell the user a
   seam-crossing room needs their stitch in the app. Never approximate one by combining sheets
@@ -155,7 +155,7 @@ rooms share 34 LF of wall would be a wrong number with a machine's confidence be
 
 ## 6. Staged tool exposure
 
-By default every client gets all 40 tool schemas on `tools/list` — the flat contract every
+By default every client gets all 40 tool schemas on `tools/list`—the flat contract every
 published client already expects.
 
 Forty descriptions is real token weight for a session that may never touch half of them, so the
@@ -165,9 +165,9 @@ server can stage the surface along the workflow it already teaches:
 OPENTAKEOFF_MCP_STAGED_TOOLS=1 npx -y opentakeoff-mcp
 ```
 
-Staged, only the **setup** stage starts enabled — 10 tools that orient you: `load_plan`,
+Staged, only the **setup** stage starts enabled—10 tools that orient you: `load_plan`,
 `sheet_info`, `set_scale`, `sheet_graph`, `resolve_tag`, `find_schedule`, `read_sheet_text`,
-`find_text`, `sheet_context`, `view_sheet` — plus one opener, `open_tool_stage`. Call it with
+`find_text`, `sheet_context`, `view_sheet`—plus one opener, `open_tool_stage`. Call it with
 `"measure"`, `"revise"`, or `"handoff"` and that group's tools enable and fire
 `tools/list_changed`. Opening is instant, idempotent, and never closes anything: the surface only
 grows, and the reply names exactly which tools just appeared.
@@ -183,7 +183,7 @@ The stages are the same phase structure the instructions already describe in pro
 
 **When to turn it on:** your client honors `tools/list_changed` (Claude Code, Claude Desktop,
 anything built against the current spec) *and* you care about the context cost of the tool list.
-**When to leave it off:** a client that reads the tool list once at startup — there, a staged
+**When to leave it off:** a client that reads the tool list once at startup—there, a staged
 server looks like a server with 11 tools that refuses everything else.
 
 Staging is context economy, not a permission boundary. Nothing is safer when a stage is closed;
@@ -192,7 +192,7 @@ identically in both modes.
 
 ## 7. A worked session
 
-*"Take off the carpet on this floor plan"* — tool calls verbatim, replies abridged.
+*"Take off the carpet on this floor plan"*—tool calls verbatim, replies abridged.
 
 ```
 ▸ load_plan  { "path": "/plans/sample-plan.pdf" }
@@ -238,7 +238,7 @@ agent-set and awaiting the estimator's confirmation.
 
 ## 8. Refusals, and the move that answers each one
 
-Refusals are actionable strings by design — *"a silent zero doesn't tell a model what to do
+Refusals are actionable strings by design—*"a silent zero doesn't tell a model what to do
 next."*
 
 | What you get | What it means | Next move |
@@ -253,14 +253,14 @@ next."*
 
 ## 9. Where to look next
 
-- [`mcp/README.md`](../mcp/README.md) — the tool-by-tool reference, the resource URIs, the
+- [`mcp/README.md`](../mcp/README.md)—the tool-by-tool reference, the resource URIs, the
   coordinate contract, the write-to-disk rules, and the v1 limits. This is the list to trust.
-- [`docs/MCP.md`](MCP.md) — the same surface in prose, ordered the way an agent reaches for it,
+- [`docs/MCP.md`](MCP.md)—the same surface in prose, ordered the way an agent reaches for it,
   with the sheet-graph and sweep behavior in depth.
-- [`docs/USER_GUIDE.md`](USER_GUIDE.md) — the human half. Worth reading the parts you hand work
+- [`docs/USER_GUIDE.md`](USER_GUIDE.md)—the human half. Worth reading the parts you hand work
   to: proposals, the Accept pill, and how an estimator confirms your scale.
-- [`docs/SHEET-GRAPH-EVAL.md`](SHEET-GRAPH-EVAL.md) — what the plan-set reader scores on real
+- [`docs/SHEET-GRAPH-EVAL.md`](SHEET-GRAPH-EVAL.md)—what the plan-set reader scores on real
   bid sets, and what it still cannot read.
-- [**OpenTakeoff Academy**](https://aec.kentucky-ai.com) — an open benchmark for agents that do
+- [**OpenTakeoff Academy**](https://aec.kentucky-ai.com)—an open benchmark for agents that do
   takeoff. Bring any model and your own harness; you're scored on operating a real tool against
   geometry you don't control.

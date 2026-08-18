@@ -2,7 +2,7 @@
 
 ## Reporting
 
-Use GitHub's **[private vulnerability reporting](https://github.com/Kentucky-ai/opentakeoff/security/advisories/new)** — Security tab → Report a vulnerability. It is enabled on this repo, it keeps the report private until there's a fix, and it gets a real answer. Don't open a public issue for something you believe is exploitable.
+Use GitHub's **[private vulnerability reporting](https://github.com/Kentucky-ai/opentakeoff/security/advisories/new)**—Security tab → Report a vulnerability. It is enabled on this repo, it keeps the report private until there's a fix, and it gets a real answer. Don't open a public issue for something you believe is exploitable.
 
 Expect a first response within about a week. If a report is valid we'll agree on a disclosure date with you and credit you in the advisory unless you'd rather not be named.
 
@@ -19,14 +19,14 @@ Most of the reports this project receives are about caller-supplied file paths. 
 ## In scope
 
 - Anything crossing a real boundary: the Netlify functions in `web/netlify/functions/`, token or audience validation, secrets reachable from a build or a published artifact.
-- Remote input controlling local execution — a crafted PDF or takeoff file that achieves code execution, prototype pollution, or XSS in the browser app.
+- Remote input controlling local execution—a crafted PDF or takeoff file that achieves code execution, prototype pollution, or XSS in the browser app.
 - Path handling where the path comes from **file content or a remote response** rather than from the caller. A sheet name or schedule cell that reaches a filesystem sink is a real finding; a `path` argument is not.
 - Dependency vulnerabilities **with a reachable path through this code.** Say which of our call sites reaches it. We patch unreachable ones as hygiene, but the reachability argument is what makes it a report rather than a Dependabot alert we already have.
 - Denial of service that a normal-sized plan set can trigger. A 4,000-page adversarial PDF is not interesting; a 40-sheet real one that hangs the tab is.
 
 ## Not vulnerabilities
 
-- **`path` arguments on MCP tools writing or reading where you asked.** `export_takeoff`, `export_report`, `export_marked_pdf`, `load_plan`, and `import_takeoff` all take a caller-supplied path by design, and the README documents them doing exactly that. Confining them to the working directory would break the deliverable the tool exists to produce — an estimator's marked set belongs in the job folder, not in whatever directory the agent host happened to start in.
+- **`path` arguments on MCP tools writing or reading where you asked.** `export_takeoff`, `export_report`, `export_marked_pdf`, `load_plan`, and `import_takeoff` all take a caller-supplied path by design, and the README documents them doing exactly that. Confining them to the working directory would break the deliverable the tool exists to produce—an estimator's marked set belongs in the job folder, not in whatever directory the agent host happened to start in.
 - **Prompt injection reaching a tool.** If an attacker can make a model call our tools with arguments of their choosing, they are inside the host's trust boundary, and that host's own file and shell tools are already available to them. Constraining one MCP server does not change that exposure. Tool-call approval is the host's job, and the protocol is designed that way.
 - **The server acting with the privileges of the user who started it.** There is no privilege boundary between you and a subprocess you launched.
 - Missing hardening headers on a static demo site that stores nothing and authenticates no one.
@@ -36,4 +36,4 @@ Most of the reports this project receives are about caller-supplied file paths. 
 
 ## Supported versions
 
-The latest `main` and the most recent published `opentakeoff-mcp` on npm. There are no maintained release branches — fixes ship forward.
+The latest `main` and the most recent published `opentakeoff-mcp` on npm. There are no maintained release branches—fixes ship forward.

@@ -2,21 +2,21 @@
 
 This is the normative contract for what leaves the app when a user clicks
 **Contribute**, and for what the bundled capture server banks. Two audited
-files implement it end to end — [`web/src/lib/contribute.js`](../web/src/lib/contribute.js)
+files implement it end to end—[`web/src/lib/contribute.js`](../web/src/lib/contribute.js)
 (builds the payload) and [`capture/capture_server.py`](../capture/capture_server.py)
-(receives it) — and this document is the ruler both are held to. If the code
+(receives it)—and this document is the ruler both are held to. If the code
 and this spec disagree, one of them has a bug.
 
 ## 1. Expert demonstrations, not takeoffs
 
-A contribution is not a takeoff — it is a set of **expert demonstrations**: an
+A contribution is not a takeoff—it is a set of **expert demonstrations**: an
 estimator (or an agent acting for one) looked at a region, decided what it is,
 traced or accepted its boundary, and stood behind the quantities. Humans and
 agents both produce demonstrations, and the wire records which was which. The
 highest-value rows are the **corrections**: a machine proposed a boundary, a
 human fixed it, and both the machine's trace and the expert's final answer
-survive side by side. That pair — what the model would have said versus what the
-expert made it say — is precisely the supervision a takeoff model trains on,
+survive side by side. That pair—what the model would have said versus what the
+expert made it say—is precisely the supervision a takeoff model trains on,
 and v2 exists to stop flattening it.
 
 ## 2. Privacy invariants (normative)
@@ -25,18 +25,18 @@ A conforming contribution **MUST NOT** contain:
 
 - the raw PDF, or any rendered image of it;
 - file names, sheet names, or any raw sheet identifier (sheets go out as
-  `sheet_1`, `sheet_2`, … — positional tokens minted per payload);
+  `sheet_1`, `sheet_2`, …—positional tokens minted per payload);
 - project, client, or customer names;
 - markup text or shape-label text (any free text a user typed onto the plan);
 - absolute coordinates (geometry is normalized 0..1 against the sheet);
-- scale values (`units_per_px` or anything derived from it — only the scale's
+- scale values (`units_per_px` or anything derived from it—only the scale's
   *provenance* rides, for example, `"calibrated"`);
-- edit timing of any kind beyond each shape's `created_at` — no `updated_at`,
+- edit timing of any kind beyond each shape's `created_at`—no `updated_at`,
   no per-edit timestamps, no gesture data, no dwell times.
 
 One linkage is deliberate and disclosed: shapes and payloads carry **opaque
 durable UUIDs**, so repeated contributions from the same document link over
-time — a re-contribution after an addendum supersedes rather than duplicates,
+time—a re-contribution after an addendum supersedes rather than duplicates,
 and a corpus can follow one shape across revisions. The ids are minted
 locally, contain no content, and reverse to nothing; the linkage is the
 feature, and this paragraph is its disclosure.
@@ -65,16 +65,16 @@ spread of whatever a build happened to store.
 
 | field | type | presence | meaning |
 |---|---|---|---|
-| `sheet` | string | required | positional token (`"sheet_1"`) — never a file name |
+| `sheet` | string | required | positional token (`"sheet_1"`)—never a file name |
 | `scale_source` | string | when recorded | how the sheet's scale was established: `"calibrated"` (user drew a known length), `"detected"` (read from the sheet's text and explicitly adopted), `"standard"` (picked from the standard-scale list), `"unknown"` (predates recording). Newer builds may write other strings; consumers treat unrecognized values as opaque. |
 
-No scale *value* ever appears — a sheet's `units_per_px` stays local.
+No scale *value* ever appears—a sheet's `units_per_px` stays local.
 
 ### `conditions[]`
 
 | field | type | meaning |
 |---|---|---|
-| `finish` | string | the finish tag (`"LVT-9"`) — the label vocabulary |
+| `finish` | string | the finish tag (`"LVT-9"`)—the label vocabulary |
 | `hatch` | string | fill pattern name |
 | `multiplier` | number | condition multiplier |
 | `waste_pct` | number | waste percentage the estimator tuned |
@@ -88,13 +88,13 @@ No scale *value* ever appears — a sheet's `units_per_px` stays local.
 | `sheet` | string | required | positional sheet token |
 | `verts_norm` | number[][] | required | final geometry, normalized 0..1 |
 | `computed` | object | required | the quantities the expert accepted (SF / LF / EA) |
-| `curved` | boolean | when true | curved linear run: `verts_norm` are spline control points (centripetal Catmull-Rom), not a polyline — consumers must flatten before treating them as drawn geometry |
+| `curved` | boolean | when true | curved linear run: `verts_norm` are spline control points (centripetal Catmull-Rom), not a polyline—consumers must flatten before treating them as drawn geometry |
 | `height_ft` | number | when set | wall height override |
 | `id` | string | when present | opaque durable UUID (see §2) |
 | `created_at` | string | when present | ISO-8601 UTC creation stamp; legacy shapes predate stamping and omit it |
 | `origin` | object | when present | whitelisted provenance (§5); absent on legacy shapes |
 
-v1's flat `origin_method` string is gone from the wire — the server derives it
+v1's flat `origin_method` string is gone from the wire—the server derives it
 from `origin.method` (§4).
 
 ### Full example — the provenance triad
@@ -157,7 +157,7 @@ lack the v2 columns.
 
 The capture server flattens each contribution into one JSONL row per labeled
 shape (`corpus/takeoff_labels.jsonl`). Both wire versions produce v2 rows;
-v2-only columns are **key-omitted** on rows a v1 payload produced — absence
+v2-only columns are **key-omitted** on rows a v1 payload produced—absence
 means "the wire didn't carry it", never an empty-string placeholder.
 
 | field | presence | meaning |
@@ -166,14 +166,14 @@ means "the wire didn't carry it", never an empty-string placeholder.
 | `schema` | always | `"opentakeoff.capture.v2"` |
 | `sheet` | always | positional sheet token from the payload |
 | `measure_role` | always | shape role |
-| `verts_norm` / `bbox_norm` | always | WHERE — normalized polygon + its bbox |
-| `finish_tag` | always | WHAT — the condition is the label |
+| `verts_norm` / `bbox_norm` | always | WHERE—normalized polygon + its bbox |
+| `finish_tag` | always | WHAT—the condition is the label |
 | `hatch` / `waste_pct` / `multiplier` | always | the label's tuned parameters |
 | `height_ft` | always (may be null) | wall height override |
 | `computed` | always | accepted quantities |
 | `origin_method` | always | derived: `origin.method`, else v1's flat `origin_method`, else `"unknown"` (§5) |
 | `contributor` | always | credit string, `""` if none |
-| `contribution` | always | 12-hex prefix of the payload hash — joins the row to its `raw/` archive file |
+| `contribution` | always | 12-hex prefix of the payload hash—joins the row to its `raw/` archive file |
 | `shape_id` | v2, when present | the shape's opaque durable UUID |
 | `created_at` | v2, when present | the shape's creation stamp |
 | `origin` | v2, when present | the whitelisted origin object, verbatim |
@@ -183,11 +183,11 @@ means "the wire didn't carry it", never an empty-string placeholder.
 
 ### Fingerprint / dedup semantics
 
-Rows are hash-gated by `_fingerprint` — a SHA-1 over the label-relevant tuple
+Rows are hash-gated by `_fingerprint`—a SHA-1 over the label-relevant tuple
 (`verts_norm`, `measure_role`, `finish_tag`, `computed`, `hatch`, `waste_pct`,
 `multiplier`, `height_ft`). Re-contributing an unchanged takeoff appends
 nothing; retag or reshape and it re-captures. The fingerprint is **deliberately
-unchanged from v1** so the upgrade can't double-bank existing corpora — with
+unchanged from v1** so the upgrade can't double-bank existing corpora—with
 one documented consequence: a v2 re-contribution of a shape already banked
 from a v1 payload is dup-skipped, so its JSONL row keeps the v1-era columns.
 The full v2 payload still lands verbatim in the `raw/` archive, so the richer
@@ -196,7 +196,7 @@ provenance is recoverable by re-deriving (delete `state.json` and replay
 
 ### `raw/` archive and mirror discipline
 
-Every distinct payload is archived verbatim at `corpus/raw/<hash>.json` — the
+Every distinct payload is archived verbatim at `corpus/raw/<hash>.json`—the
 row format can evolve and old contributions re-derive. The optional
 `--mirror` copies the label file into a synced share **whole and atomically**
 after each write, never live-appending inside a sync folder (append churn
@@ -205,7 +205,7 @@ thread, never the capture itself.
 
 ## 5. Provenance vocabulary
 
-The `origin` object is a registry, not a convention — these are the only keys
+The `origin` object is a registry, not a convention—these are the only keys
 the client will send (`pickOrigin` whitelist), and the only keys a consumer
 should rely on:
 
@@ -216,24 +216,24 @@ should rely on:
 | `reviewed` | bool | a human affirmed the shape at an explicit gate (for example, clicked Create on a proposal, or Accept on an agent proposal) |
 | `edited` | bool | corrected after Create |
 | `edited_before_create` | bool | corrected between proposal and Create (grip drags on the live region) |
-| `copied` | bool | pasted clone — carries its source's lineage but no fresh evidence; excluded from correction stats |
+| `copied` | bool | pasted clone—carries its source's lineage but no fresh evidence; excluded from correction stats |
 | `seed_norm` | [x, y] | normalized one-click seed point |
 | `proposed_verts_norm` | number[][] | the machine's original trace, frozen at the first human correction |
 | `hatch_filtered` | bool | one-click ran with hatch filtering |
 | `raster_traced` | bool | traced from scan pixels rather than vector linework |
 | `fill_sensitivity` | number | non-default one-click fill sensitivity |
 | `edits` | object | per-kind correction tally, for example, `{"vertex": 2, "move": 1}` |
-| `evidence` | object | `agent_v1` only: the agent's cited basis for the proposal. **Deep-whitelisted** to exactly `{schedule_row_tag?, matched_text?, seed_norm?}` — never a spread. |
+| `evidence` | object | `agent_v1` only: the agent's cited basis for the proposal. **Deep-whitelisted** to exactly `{schedule_row_tag?, matched_text?, seed_norm?}`—never a spread. |
 
 **`evidence` privacy note.** `evidence` carries only the matched TOKEN: the
 schedule row code (`schedule_row_tag`) and/or the room-tag/schedule text the
 agent matched (`matched_text`), each truncated to 80 characters, plus the
 one-click seed (`seed_norm`, normalized). It is never a transcription of the
-sheet, the estimator's goal text, or any model output — the client's whitelist
+sheet, the estimator's goal text, or any model output—the client's whitelist
 drops everything else, and any richer key an agent (or a patched build) stuffs
 into evidence stays local until deliberately registered here. The agent's
 accept-gate timestamps (`proposed_ts` / `accepted_ts`) exist locally on the
-shape's origin but are **not** registered fields — the no-edit-timing MUST NOT
+shape's origin but are **not** registered fields—the no-edit-timing MUST NOT
 in §2 covers them.
 
 **Computing correction magnitude.** For a corrected machine shape
@@ -245,7 +245,7 @@ means a heavier correction. `edits` gives the gesture-count view of the same
 fact; the geometry is the ground truth.
 
 **`origin_method: "unknown"` semantics.** A row whose shape carried neither an
-`origin` object nor a v1 `origin_method` string banks as `"unknown"` — the
+`origin` object nor a v1 `origin_method` string banks as `"unknown"`—the
 shape predates provenance stamping, or came from a build that didn't record
 it. This is a deliberate change from the v1 server's default of `"human"`:
 absence of evidence is not evidence of a hand trace, and a corpus that
@@ -258,7 +258,7 @@ on it. Treat `"unknown"` as unlabeled, not as manual.
   on `contribution.v2` payloads and `capture.v2` rows without a schema bump;
   consumers ignore keys they don't know. No field is renamed, retyped, or
   removed within a version.
-- **Anything non-additive is a new version** — a new schema string, never a
+- **Anything non-additive is a new version**—a new schema string, never a
   mutation of the old one.
 - **Servers accept N and N−1.** The bundled capture server accepts
   `contribution.v2` and `contribution.v1` and rejects everything else with
@@ -268,9 +268,9 @@ on it. Treat `"unknown"` as unlabeled, not as manual.
 
 This spec covers exactly what the explicit **Contribute** gate emits: a
 final-state snapshot, sent only when a user clicks the button, containing only
-the fields above. The ambient event-stream edition — rows banking on autosave
+the fields above. The ambient event-stream edition—rows banking on autosave
 and commit, deletion records with geometry, decision trails, rejected
-proposals and their dismissal context, per-edit timing — is the commercial
+proposals and their dismissal context, per-edit timing—is the commercial
 capture layer inside [Spline](https://spline.quisutdeus.io), and its schemas
 are deliberately not specified here. The boundary is drawn on purpose and
 we'd rather say so than blur it: OpenTakeoff's gate gives you (and the open
