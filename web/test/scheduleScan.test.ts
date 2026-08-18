@@ -14,7 +14,7 @@ import { normalizeScanRows, postScanWithRetry, SCAN_ENDPOINT, SCAN_MAX_DIM, SCAN
 test("normalizes a well-formed { rows } payload", () => {
   const rows = normalizeScanRows({
     rows: [
-      { finish_tag: "cpt-1", section: "flooring", category: "floor", description: "Broadloom", manufacturer: "J+J", style: "Pay Day", spec_color: "1408", size: "" },
+      { finish_tag: "cpt-1", section: "flooring", category: "floor", description: "Broadloom", manufacturer: "A+B", style: "Half Step", spec_color: "1408", size: "" },
       { finish_tag: "act-1", category: "ceiling", description: "ACT" },
     ],
   });

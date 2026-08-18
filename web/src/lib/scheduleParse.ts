@@ -19,7 +19,7 @@ export type ScheduleRow = {
   description: string;       // MATERIAL/PRODUCT cell
   manufacturer: string;      // MANUFACTURER cell
   style: string;             // STYLE cell
-  spec_color: string;        // COLOR cell (the spec'd color, e.g. "1408 HIGH ROLLER")
+  spec_color: string;        // COLOR cell (the spec'd color, e.g. "1408 RIVERSTONE")
   size: string;              // SIZE cell
   suggested: boolean;        // default-checked in the dialog (ceiling/other start off)
 };
