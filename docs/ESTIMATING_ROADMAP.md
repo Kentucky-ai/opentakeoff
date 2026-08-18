@@ -8,7 +8,7 @@
 
 ## Goal
 
-Give OpenTakeoff the flexibility of a **StackCT-style estimate worksheet**: a
+Give OpenTakeoff flexibility 
 simple **unit-cost estimate** driven by **items** and **kits** of
 materials, with **material and labor costs as separate columns**, fed by takeoff
 quantities. The first proposal deliverable is exactly this unit-cost estimate,
