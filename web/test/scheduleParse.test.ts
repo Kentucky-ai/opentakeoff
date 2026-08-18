@@ -42,17 +42,17 @@ function sampleTokens(): Token[] {
   return [
     ...headerRow(),
     ...sectionRow("FLOORING"),
-    ...dataRow({ CODE: "CPT-1", MATERIAL: "BROADLOOM CARPET", MANUFACTURER: "J+J INVISION", STYLE: "PAY DAY", COLOR: "1408 HIGH ROLLER" }),
-    ...dataRow({ CODE: "VCT-1", MATERIAL: "VINYL COMPOSITION TILE", MANUFACTURER: "ARMSTRONG", STYLE: "STANDARD EXCELON IMPERIAL", COLOR: "FORTRESS WHITE 51839", SIZE: '12" x 12"' }),
-    ...dataRow({ CODE: "C", MATERIAL: "CONCRETE SEALER", MANUFACTURER: "SHERWIN WILLIAMS", STYLE: "H&C DECORATIVE", COLOR: "CLEAR" }),
+    ...dataRow({ CODE: "CPT-1", MATERIAL: "BROADLOOM CARPET", MANUFACTURER: "A+B TEXTILES", STYLE: "HALF STEP", COLOR: "1408 RIVERSTONE" }),
+    ...dataRow({ CODE: "VCT-1", MATERIAL: "VINYL COMPOSITION TILE", MANUFACTURER: "NORTHRIDGE MILLS", STYLE: "STANDARD COMPOSITION SERIES", COLOR: "BASALT WHITE 51839", SIZE: '12" x 12"' }),
+    ...dataRow({ CODE: "C", MATERIAL: "CONCRETE SEALER", MANUFACTURER: "MERIDIAN COATINGS", STYLE: "D&C DECORATIVE", COLOR: "CLEAR" }),
     ...sectionRow("BASE"),
-    ...dataRow({ CODE: "RB-1", MATERIAL: "RESILIENT BASE", MANUFACTURER: "VPI FLOORING", STYLE: "RUBBER WALL BASE", COLOR: "97 FAWN", SIZE: '4"' }),
+    ...dataRow({ CODE: "RB-1", MATERIAL: "RESILIENT BASE", MANUFACTURER: "RVB FLOORING", STYLE: "RUBBER WALL BASE", COLOR: "97 SANDSTONE", SIZE: '4"' }),
     ...sectionRow("WALLS"),
-    ...dataRow({ CODE: "P-1", MATERIAL: "PAINT", MANUFACTURER: "BENJAMIN MOORE", STYLE: "ECO SPEC EGGSHELL", COLOR: "WHITE 962" }),
+    ...dataRow({ CODE: "P-1", MATERIAL: "PAINT", MANUFACTURER: "HALLMARK PAINTS", STYLE: "LOW-VOC EGGSHELL", COLOR: "WHITE 962" }),
     ...sectionRow("CEILINGS"),
-    ...dataRow({ CODE: "ACT-1", MATERIAL: "ACOUSTICAL CEILING TILE", MANUFACTURER: "USG", STYLE: "2110 RADAR", COLOR: "WHITE", SIZE: "2' x 2'" }),
+    ...dataRow({ CODE: "ACT-1", MATERIAL: "ACOUSTICAL CEILING TILE", MANUFACTURER: "PANELCO", STYLE: "2110 LATTICE", COLOR: "WHITE", SIZE: "2' x 2'" }),
     ...sectionRow("MILLWORK"),
-    ...dataRow({ CODE: "PLAM-1", MATERIAL: "PLASTIC LAMINATE", MANUFACTURER: "WILSONART", STYLE: "STANDARD HPL", COLOR: "MANITOBA MAPLE" }),
+    ...dataRow({ CODE: "PLAM-1", MATERIAL: "PLASTIC LAMINATE", MANUFACTURER: "LAMCORE", STYLE: "STANDARD HPL", COLOR: "PRAIRIE MAPLE" }),
   ];
 }
 
@@ -79,13 +79,13 @@ test("column banding: blank SIZE cell does not steal COLOR, multi-word cells sta
   const rows = parseSchedule(sampleTokens());
   const cpt = rows.find((r) => r.finish_tag === "CPT-1")!;
   assert.equal(cpt.description, "BROADLOOM CARPET");
-  assert.equal(cpt.manufacturer, "J+J INVISION");
-  assert.equal(cpt.style, "PAY DAY");
-  assert.equal(cpt.spec_color, "1408 HIGH ROLLER"); // not smeared into SIZE
+  assert.equal(cpt.manufacturer, "A+B TEXTILES");
+  assert.equal(cpt.style, "HALF STEP");
+  assert.equal(cpt.spec_color, "1408 RIVERSTONE"); // not smeared into SIZE
   assert.equal(cpt.size, "");                        // genuinely empty
   const vct = rows.find((r) => r.finish_tag === "VCT-1")!;
   assert.equal(vct.size, '12" x 12"');
-  assert.equal(vct.spec_color, "FORTRESS WHITE 51839");
+  assert.equal(vct.spec_color, "BASALT WHITE 51839");
 });
 
 test("lone-letter code 'C' is a row; section words are never rows", () => {
@@ -106,7 +106,7 @@ test("rowToSeed applies category defaults and carries the product spec", () => {
   assert.equal(act.color, palette[4 % palette.length]); // wraps the palette
   const vct = rowToSeed(rows.find((r) => r.finish_tag === "VCT-1")!, 1, palette);
   // spec carries description (the MATERIAL/PRODUCT cell) alongside mfr/style/color/size (#103)
-  assert.deepEqual(vct.spec, { manufacturer: "ARMSTRONG", style: "STANDARD EXCELON IMPERIAL", color: "FORTRESS WHITE 51839", size: '12" x 12"', description: "VINYL COMPOSITION TILE" });
+  assert.deepEqual(vct.spec, { manufacturer: "NORTHRIDGE MILLS", style: "STANDARD COMPOSITION SERIES", color: "BASALT WHITE 51839", size: '12" x 12"', description: "VINYL COMPOSITION TILE" });
 });
 
 test("no header structure → no rows (nothing invented)", () => {

@@ -290,7 +290,7 @@ test("specColProfile: no spec anywhere → [] (byte-stable), so the report/CSV/X
 test("specColProfile: a field-column appears only when some condition carries that field", () => {
   const withSpec = [
     { id: "ct1", spec: { manufacturer: "Vendor A", style: "Grand", color: "Slate 5", size: '24\"x24\"' } },
-    { id: "lvt2", spec: { manufacturer: "Mohawk" } },  // only manufacturer present
+    { id: "lvt2", spec: { manufacturer: "Vendor B" } },  // only manufacturer present
     { id: "rb1" },                                      // no spec at all
   ];
   const cols = specColProfile(withSpec);
