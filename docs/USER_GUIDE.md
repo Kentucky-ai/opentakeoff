@@ -369,7 +369,17 @@ On the canvas the crosshair **is** the cursor: the OS pointer hides in draw mode
 
 ### Area (`A`)
 
-Click vertex by vertex around the space; `⏎`, double-click, or the **Finish** button closes it at three or more points. The live readout shows the running segment length while you trace, and the committed shape reads SF, SY, and perimeter LF.
+Click vertex by vertex around the space; `⏎`, double-click, or the **Finish** button closes it at three or more points. The live readout shows the running segment length while you trace, and the committed shape reads SF, SY, and perimeter LF—select it any time later and the readout gives you both numbers again, so a footprint's LF never needs a second trace with the Linear tool.
+
+**Curved boundaries.** Buildings are not all right angles: a bowed wall, a radius corner, a curved curb or pool edge. You don't leave the tool for them—the readout carries a **╱ Straight / ⌒ Curve** switch, and you flip it *mid measurement*, as often as you like inside one shape.
+
+- **Curve** mode: every click you place is a point the boundary **bends smoothly through** instead of turning a corner at. Curve points draw as round handles instead of stars, and the readout says how many are in play.
+- **`Q`** flips the switch once a trace is going. (With nothing traced yet, `Q` is still the Curved Line tool.)
+- **`⌥`-click** always places the *other* kind for exactly one point—one curve point without leaving Straight, or one hard corner without leaving Curve.
+
+So a bowed room is: click the straight walls, flip to Curve, click along the bow, flip back, close it. Click a few points along the curve rather than one—the boundary passes through exactly the points you gave it, so more points on a tight arc is a truer arc.
+
+The same switch works on **Line**, **Cut Out**, and **Surface Area**: a curved feature strip, a bowed deduct, a radius wall. On `⏎` the shape commits as **one ordinary geometry**—the curve is flattened into the ring or the run, so SF, LF, Cut Out, the marked set, and every export treat it as the polygon or polyline it now is, and its `origin` records that it was traced with curves. (The dedicated **Curved Line** (`Q`) tool is the other case: an all-curve line whose control points stay draggable afterward.)
 
 ### Rectangle (`R`)
 
@@ -377,7 +387,7 @@ Two clicks: one corner, then the opposite corner. Between them the cursor chip r
 
 ### Linear (`L`)
 
-An open run, two or more points → LF. If the condition carries a **thickness**, the run also yields border SF (LF × thickness ÷ 12)—feature strips, borders, transitions. The live chip reads the running segment length, amber at 12′.
+An open run, two or more points → LF. The **╱ Straight / ⌒ Curve** switch works here too (see Area, above)—a run that bends partway along commits as one line. If the condition carries a **thickness**, the run also yields border SF (LF × thickness ÷ 12)—feature strips, borders, transitions. The live chip reads the running segment length, amber at 12′.
 
 ### Curved Line (`Q`)
 
@@ -676,7 +686,9 @@ Addenda happen. **Revisions** (the clock icon on the rail) makes them data inste
 
 Everything—drawings, scales, conditions, markups, RFIs, levels, tabs—autosaves to **this browser** (IndexedDB + localStorage) about a second after every change; the toolbar ticks *saving… / saved ✓*. Reload, close the tab, come back tomorrow: it's there.
 
-**"Client-only" means exactly this:** in the default build there is no server in the loop. Your PDFs are rendered and stored in your browser; your takeoff never leaves your machine; there's no account and no telemetry. The flip side: storage is **per browser, per origin**—a different browser profile, a different machine, even a different `localhost` port is a fresh, empty workspace. Clearing site data clears your work (save revisions and exports first; the browser's storage is the only copy).
+**"Client-only" means exactly this:** in the default build there is no server in the loop. Your PDFs are rendered and stored in your browser; your takeoff never leaves your machine; there's no account and no telemetry. The flip side: storage is **per browser, per origin**—a different browser profile, a different machine, even a different `localhost` port is a fresh, empty workspace. Clearing site data clears your work.
+
+So take the takeoff out of the browser: **Sheet → Export takeoff…** writes `〈project〉.takeoff.json`—the exact document autosave writes, every shape, condition, scale, markup, RFI and seal—to a normal file you can back up, archive for years, carry to another machine, or hand to another estimator. **Sheet → Import takeoff…** reads it back as an editable takeoff, not a report. The plan PDF is not inside it: open the same PDF first, then import.
 
 If a saved project fails to load, autosave **pauses itself** and a banner says so—a load failure never overwrites your saved work with an empty canvas. And if OpenTakeoff updates in another tab, the stale tab asks for a reload instead of writing over the newer one.
 
@@ -872,6 +884,8 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `⇧⌘Z` | Redo |
 | `Esc` | Back out one level: clear the vertex pick first, then everything in progress (trace, proposal, calibration, check, selection, markup draft, armed stamp, zone) |
 | Hold `⇧` | Force the 45° angle lock at any cursor angle |
+| `Q` mid-trace | Flip the ╱ Straight / ⌒ Curve switch (Area, Cut Out, Line, Surface) |
+| `⌥`-click (Area / Cut Out / Line / Surface) | Place the *other* kind of point for one click—a curve point in Straight mode, a corner in Curve mode |
 | `⌥`-click (One-Click) | Carve a cutout inside a selected space |
 | `⇧`-click an edge | Insert a vertex at the edge midpoint (selected shape or One-Click proposal) and drag it |
 

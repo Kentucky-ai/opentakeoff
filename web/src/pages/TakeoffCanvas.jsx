@@ -65,7 +65,7 @@ import { buildMarkedSetPdf, downloadBytes } from "../lib/markedset.js";
 import { loadProfiles } from "../lib/identity.js";
 import { resolveBranding, loadBrandingSelection } from "../lib/branding.js";
 import { starPath, cloudPath, thinStroke, strokePathD, chiselRibbon, buildSnapGrid, nearestSnap, ANGLE_TOL, angleSnap, closedMetrics, openLen, pointInPoly, hitShape, arrowheadPath, distToSeg, reflectVertsNorm } from "../lib/geometry.js";
-import { flattenCurve } from "../lib/curve.js";
+import { flattenCurve, flattenRing } from "../lib/curve.js";
 import { dashArrayFor, boostForDark, clampWeight, snapWeight, LINE_STYLES, LINE_STYLE_IDS, WEIGHT_STEPS } from "../lib/lineStyles.js";
 import { nextRfiNumber } from "../lib/rfi.js";
 import { libFields, matFieldOverridden, libPushPatch, libRevertPatch, libEntryPatch, matEditPatch } from "../lib/materials.js";
@@ -149,6 +149,10 @@ const CARPET_ROLL_FT = 12;
 const ROLE_TIER = { floor_area: 0, deduct: 1, linear: 2, surface_area: 2, count: 3 };
 const tierOf = (s) => ROLE_TIER[s.measure_role] ?? 0;
 
+// The tools whose boundary can bend mid-measure (#284): the same click, the
+// same commit, the curve is just a property of the points you placed. Zone is
+// a query region, not a quantity, and One-Click traces its own ring.
+const CURVABLE = new Set(["area", "deduct", "linear", "surface"]);
 // Click-select against a curved line's DRAWN path: flatten the control points and
 // hand hitShape a stand-in shape (lib/geometry.js stays byte-identical with Spline's).
 function hitShapeC(s, x, y, w, h, thr) {
@@ -381,6 +385,22 @@ export default function TakeoffCanvas() {
   const [palette, setPalette] = useState([]);   // ordered condition ids pinned to the top-bar quick-access palette (≤ PALETTE_MAX)
   const [shapes, setShapes] = useState([]);
   const [poly, setPoly] = useState([]);
+  // #284 — which of the in-progress trace's points are CURVE points (⌥-click).
+  // Parallel to poly and written ONLY through the three helpers below, so it
+  // can never drift out of step with the points it describes.
+  const [polyCurve, setPolyCurve] = useState([]);
+  // Sticky curve mode — the STACK-style straight/curve switch you flip mid
+  // measurement, so a long arc is a run of ordinary clicks instead of a held
+  // modifier. ⌥ still works, and it INVERTS whatever the mode is: ⌥-click in
+  // straight mode drops one curve point, ⌥-click in curve mode drops one
+  // corner. The mode is trace-local; it clears with the trace.
+  const [curveMode, setCurveMode] = useState(false);
+  const clearPoly = () => { setPoly([]); setPolyCurve([]); setCurveMode(false); };
+  const dropLastPoint = () => { setPoly((q) => q.slice(0, -1)); setPolyCurve((q) => q.slice(0, -1)); };
+  const addPoint = (pt, curved) => { setPoly((q) => [...q, pt]); setPolyCurve((q) => [...q, !!curved]); };
+  // the drawn boundary of the in-progress trace: straight where it was clicked
+  // straight, splined through every run of curve points
+  const curveIdx = useMemo(() => polyCurve.reduce((a, c, i) => (c ? (a.push(i), a) : a), []), [polyCurve]);
   const [guideOpen, setGuideOpen] = useState(false);   // the in-app manual overlay (? / the toolbar button)
   const [proposal, setProposal] = useState(null);  // One-Click selection under review: { key, regions: [{kind:'pos'|'neg', seed, poly, area_sf, perim_lf}] } — panel-LOCAL px
   // ── in-canvas takeoff agent state ──────────────────────────────────────────
@@ -1549,7 +1569,7 @@ export default function TakeoffCanvas() {
     if (!active) return;
     const seq = ++renderSeqRef.current;
     const stale = () => seq !== renderSeqRef.current;
-    setStatus("rendering"); setErr(""); setPoly([]); setCalib([]); setPendingLen(""); setCheck([]); setCheckStated(""); setScaleGuide(null); setPrevScale(null); selectShape(null); setProposal(null); setAlignPt(null); resetZone();
+    setStatus("rendering"); setErr(""); clearPoly(); setCalib([]); setPendingLen(""); setCheck([]); setCheckStated(""); setScaleGuide(null); setPrevScale(null); selectShape(null); setProposal(null); setAlignPt(null); resetZone();
     for (const [, rt] of renderTasksRef.current) { try { rt.cancel(); } catch { /* done */ } }
     renderTasksRef.current.clear();
     snapGridsRef.current.clear();
@@ -1927,7 +1947,7 @@ export default function TakeoffCanvas() {
   // re-fire the autosave effect and the restored payload persists (and pushes,
   // on the sync path) like any other edit.
   const restoreSavedPayload = (payload) => {
-    setPoly([]); setCalib([]); setPendingLen(""); selectShape(null); setProposal(null);
+    clearPoly(); setCalib([]); setPendingLen(""); selectShape(null); setProposal(null);
     setCheck([]); setCheckStated(""); setScaleGuide(null); setPrevScale(null);
     resetZone();
     hydrate(payload || {});
@@ -2269,6 +2289,11 @@ export default function TakeoffCanvas() {
       if (lower === "f") { toggleFocusMode(); return; }
       if (e.key === "D" && e.shiftKey) { setTool("deduct-rect"); return; }
       // no `p` binding: pan is not a tool — drag open canvas, or Space/middle/right-drag
+      // Q with a bendable trace in flight flips the straight/curve switch
+      // instead of jumping to the Curve Line tool — switching tools mid-trace
+      // would abandon the points already placed, so this binding can only be
+      // an improvement on the one it shadows.
+      if (lower === "q" && CURVABLE.has(tool) && poly.length) { setCurveMode((c) => !c); return; }
       const map = { v: "select", a: "area", r: "rect", l: "linear", q: "curve", s: "surface", c: "count", d: "deduct", o: "oneclick", k: "check", h: "highlighter", n: "dimension" };
       const t = map[lower];
       if (t) setTool(t);
@@ -2315,7 +2340,7 @@ export default function TakeoffCanvas() {
       if (viewRef.current === "gallery") return;
       if (e.key === "Backspace" || e.key === "Delete") {
         e.preventDefault();
-        if (poly.length) { setPoly((q) => q.slice(0, -1)); }
+        if (poly.length) { dropLastPoint(); }
         else if (ocSel && proposal) { deleteSelectedOcVertex(); }
         else if (proposal?.regions.length) { setProposal((pr) => { const rg = pr.regions.slice(0, -1); return rg.length ? { ...pr, regions: rg } : null; }); }
         else if (selVert != null && selectedId) { deleteSelectedShapeVertex(); }
@@ -2329,14 +2354,14 @@ export default function TakeoffCanvas() {
         // tool's points, on-screen or hidden
         else if (tool === "calibrate") { setCalib((c) => c.slice(0, -1)); }
         else if (tool === "check") { setCheck((c) => c.slice(0, -1)); }
-      } else if (e.key === "Escape") { if (agentOfferFnsRef.current?.pending()) { agentOfferFnsRef.current.dismiss(); } else if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { setPoly([]); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); setAlignPt(null); resetZone(); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; } }
+      } else if (e.key === "Escape") { if (agentOfferFnsRef.current?.pending()) { agentOfferFnsRef.current.dismiss(); } else if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { clearPoly(); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); setAlignPt(null); resetZone(); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; } }
       // ⌘Z: the drawing context wins — mid-trace it still pops the last placed
       // point (with or without ⇧, matching the old behavior byte-for-byte);
       // only with no trace in progress does the command stack engage
       // (⌘Z = undo, ⇧⌘Z = redo).
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
-        if (poly.length) setPoly((q) => q.slice(0, -1));
+        if (poly.length) dropLastPoint();
         else if (e.shiftKey) redoShapeCommand();
         else undoShapeCommand();
       }
@@ -2373,7 +2398,7 @@ export default function TakeoffCanvas() {
   // e.g. area → linear must not discard a legitimate in-progress trace.
   useEffect(() => {
     if (tool !== "zone") resetZone();
-    if (prevToolRef.current === "zone" && tool !== "zone") setPoly([]);
+    if (prevToolRef.current === "zone" && tool !== "zone") clearPoly();
     prevToolRef.current = tool;
   }, [tool]);
 
@@ -2437,11 +2462,14 @@ export default function TakeoffCanvas() {
     if (tool === "calibrate") setCalib((c) => (c.length >= 2 ? [p] : [...c, p]));
     else if (tool === "check") setCheck((c) => (c.length >= 2 ? [p] : [...c, p]));
     else if (tool === "oneclick") oneClickAt(p, !!(ev && ev.altKey));
-    else if (tool === "area" || tool === "deduct" || tool === "linear" || tool === "curve" || tool === "surface" || tool === "zone") setPoly((q) => [...q, p]);
+    // ⌥-click on an area/deduct trace drops a CURVE point (#284): the boundary
+    // bends through it instead of turning a corner at it. Every other
+    // point-placing tool takes the click as it always has.
+    else if (tool === "area" || tool === "deduct" || tool === "linear" || tool === "curve" || tool === "surface" || tool === "zone") addPoint(p, CURVABLE.has(tool) && (curveMode !== !!(ev && ev.altKey)));
     else if (tool === "count") commitCount(p);
     else if (tool === "rect" || tool === "deduct-rect") {
-      if (poly.length === 0) setPoly([p]);
-      else { const a = poly[0]; commitPoly([[a[0], a[1]], [p[0], a[1]], [p[0], p[1]], [a[0], p[1]]], tool === "deduct-rect"); setPoly([]); }
+      if (poly.length === 0) addPoint(p, false);
+      else { const a = poly[0]; commitPoly([[a[0], a[1]], [p[0], a[1]], [p[0], p[1]], [a[0], p[1]]], tool === "deduct-rect"); clearPoly(); }
     }
     else if (tool === "schedule") {
       // two-click marquee, isolated state: first click drops the anchor, second reads the box
@@ -3422,7 +3450,7 @@ export default function TakeoffCanvas() {
     return points.some((q) => panelAt(q[0]) !== first);
   }
   const SPAN_MSG = "That trace crosses onto another sheet — the gap between sheets isn't real distance. To work a floor split at a match line as one surface, stitch the sheets (Sheets → gallery → select both → Stitch).";
-  function commitPoly(points, asDeduct) {
+  function commitPoly(points, asDeduct, opts = {}) {
     if (points.length < 3) return;
     if (spansPanels(points)) { setCommitMsg(SPAN_MSG); return; }
     const tp = panelAt(points[0][0]);
@@ -3437,7 +3465,7 @@ export default function TakeoffCanvas() {
       verts_norm: points.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]),
       computed: { area_sf: +(met.area * upp * upp).toFixed(2), perimeter_lf: +(met.perim * upp).toFixed(2) },
       ...(activeLabel ? { label: activeLabel } : {}),
-      origin: { method: "manual" },
+      origin: { method: "manual", ...(opts.curved ? { curved: true } : {}) },
     };
     // #137 — a deduct tries the real-hole path first; anything ambiguous
     // (see resolveCutout) falls straight back to the independent-overlay
@@ -3467,7 +3495,7 @@ export default function TakeoffCanvas() {
     // offer to make it a rule (#88). Detection only; nothing applies here.
     if (asDeduct) maybeOfferRule(res.shapes[res.shapes.length - 1], res.shapes);
   }
-  function commitLinear(points, curved = false) {
+  function commitLinear(points, curved = false, baked = false) {
     if (points.length < 2) return;
     if (spansPanels(points)) { setCommitMsg(SPAN_MSG); return; }
     const tp = panelAt(points[0][0]);
@@ -3484,12 +3512,12 @@ export default function TakeoffCanvas() {
       verts_norm: points.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]),
       computed: { perimeter_lf: +LF.toFixed(2), area_sf: tIn > 0 ? +((LF * tIn) / 12).toFixed(2) : 0 },
       ...(activeLabel ? { label: activeLabel } : {}),
-      origin: { method: "manual" },
+      origin: { method: "manual", ...(baked ? { curved: true } : {}) },
     }] });
   }
   // Surface Area — trace the wall run in plan; SF = traced LF × the condition's
   // height. The wall-tile "stack" workflow: set tile height once, trace walls.
-  function commitSurface(points) {
+  function commitSurface(points, baked = false) {
     if (points.length < 2) return;
     if (spansPanels(points)) { setCommitMsg(SPAN_MSG); return; }
     const tp = panelAt(points[0][0]);
@@ -3504,7 +3532,7 @@ export default function TakeoffCanvas() {
       verts_norm: points.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]),
       computed: { area_sf: +(LF * h).toFixed(2), perimeter_lf: +LF.toFixed(2) },
       ...(activeLabel ? { label: activeLabel } : {}),
-      origin: { method: "manual" },
+      origin: { method: "manual", ...(baked ? { curved: true } : {}) },
     }] });
   }
   function commitCount(p) {
@@ -4543,10 +4571,19 @@ export default function TakeoffCanvas() {
         setZoneCheck({ key: tp.key, pts: poly.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]) });
         setZoneExpand(null);
       }
-      setPoly([]);
+      clearPoly();
       return;
     }
-    if (tool === "surface") commitSurface(poly); else if (tool === "linear") commitLinear(poly); else if (tool === "curve") commitLinear(poly, true); else commitPoly(poly, tool === "deduct"); setPoly([]);
+    // A curved area commits as ONE closed polygon (#284) — the spline is
+    // flattened here, at the boundary, so nothing downstream (area, perimeter,
+    // Cut Out, hit-testing, the marked PDF, every export) has to learn a second
+    // kind of geometry. flattenRing is the identity on an all-straight trace.
+    const drawn = curveIdx.length ? flattenRing(poly, curveIdx, false) : poly;
+    if (tool === "surface") commitSurface(drawn, curveIdx.length > 0);
+    else if (tool === "linear") commitLinear(drawn, false, curveIdx.length > 0);
+    else if (tool === "curve") commitLinear(poly, true);
+    else commitPoly(curveIdx.length ? flattenRing(poly, curveIdx, true) : poly, tool === "deduct", { curved: curveIdx.length > 0 });
+    clearPoly();
   }
   // #137 — the parent state deleting a reconciled deduct should restore. The
   // deduct's own frozen origin.parent_prev is only correct when it is the
@@ -5722,7 +5759,8 @@ export default function TakeoffCanvas() {
     if (cond.hatch && cond.hatch !== "solid") return `url(#${patId(cond)})`;
     return solid ? solid + (darkMode ? "4d" : "33") : "none";
   };
-  const mm = closedMetrics(poly);
+  // the drawn boundary — flattenRing is the identity on an all-straight trace
+  const mm = closedMetrics(curveIdx.length ? flattenRing(poly, curveIdx, true) : poly);
   // the live readout prices the IN-PROGRESS poly with its own panel's scale
   const liveUpp = poly.length ? uppFor(panelAt(poly[0][0]).key) : uppFor(focusPanel.key);
   const liveArea = liveUpp ? mm.area * liveUpp * liveUpp : null;
@@ -6391,7 +6429,7 @@ export default function TakeoffCanvas() {
               { id: "tidy", label: "Tidy shape", disabled: !selectedId, onSelect: tidySelected },
               "divider",
               { id: "finish", icon: "check", label: `Finish shape${poly.length ? ` (${poly.length} pts)` : ""}`, shortcut: "↵", disabled: !finishOk, onSelect: finishShape },
-              { id: "undopt", icon: "undo", label: "Undo last point", shortcut: "⌘Z", disabled: !poly.length, onSelect: () => setPoly((q) => q.slice(0, -1)) },
+              { id: "undopt", icon: "undo", label: "Undo last point", shortcut: "⌘Z", disabled: !poly.length, onSelect: dropLastPoint },
               { id: "undoshape", icon: "undo", label: "Undo last shape", disabled: !visibleShapes.length, onSelect: undoLast },
               { id: "redo", label: "Redo", shortcut: "⇧⌘Z", onSelect: redoShapeCommand },
               "divider",
@@ -7510,8 +7548,8 @@ export default function TakeoffCanvas() {
               <line ref={dimRef} stroke="#1f3fc7" strokeWidth={2 / tf.scale} strokeDasharray={`${5 / tf.scale} ${4 / tf.scale}`} style={{ display: "none" }} />
               <path ref={hlPathRef} style={{ display: "none" }} />
               {poly.length >= 2 && (tool === "linear" || tool === "curve" || tool === "surface"
-                ? <polyline points={(tool === "curve" ? flattenCurve(poly) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={tool === "surface" ? activeColor : "#1f3fc7"} strokeWidth={(tool === "surface" ? 3.5 : 2.5) / tf.scale} strokeDasharray={tool === "surface" ? `${10 / tf.scale} ${3 / tf.scale} ${2 / tf.scale} ${3 / tf.scale}` : undefined} strokeLinecap="round" strokeLinejoin="round" />
-                : <polygon points={poly.map((p) => p.join(",")).join(" ")} fill={poly.length >= 3 ? (tool === "deduct" ? "rgba(176,58,38,.22)" : tool === "zone" ? "rgba(31,63,199,.06)" : shapeFill(aCond)) : "none"} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={2 / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : undefined} />)}
+                ? <polyline points={(tool === "curve" ? flattenCurve(poly) : curveIdx.length ? flattenRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={tool === "surface" ? activeColor : "#1f3fc7"} strokeWidth={(tool === "surface" ? 3.5 : 2.5) / tf.scale} strokeDasharray={tool === "surface" ? `${10 / tf.scale} ${3 / tf.scale} ${2 / tf.scale} ${3 / tf.scale}` : undefined} strokeLinecap="round" strokeLinejoin="round" />
+                : <polygon points={(curveIdx.length ? flattenRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill={poly.length >= 3 ? (tool === "deduct" ? "rgba(176,58,38,.22)" : tool === "zone" ? "rgba(31,63,199,.06)" : shapeFill(aCond)) : "none"} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={2 / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : undefined} />)}
               {/* bold the most recent segment so you see where you just clicked */}
               {poly.length >= 2 && (
                 <line x1={poly[poly.length - 2][0]} y1={poly[poly.length - 2][1]} x2={poly[poly.length - 1][0]} y2={poly[poly.length - 1][1]}
@@ -7519,6 +7557,12 @@ export default function TakeoffCanvas() {
               )}
               {poly.map((p, i) => {
                 const isLast = i === poly.length - 1;
+                // a CURVE point reads as a round handle, a corner as the usual
+                // star — the gesture is visible on the sheet, not just in a hint
+                if (polyCurve[i]) {
+                  return <circle key={i} cx={p[0]} cy={p[1]} r={(isLast ? 4.5 : 3.4) / tf.scale}
+                    fill={isLast ? "#fff" : "#1f3fc7"} stroke="#1f3fc7" strokeWidth={(isLast ? 2 : 1.4) / tf.scale} />;
+                }
                 return <path key={i} d={starPath(p[0], p[1], (isLast ? 4.5 : 3) / tf.scale)}
                   fill={isLast ? "#fff" : "#1f3fc7"} stroke="#1f3fc7" strokeWidth={(isLast ? 2 : 1) / tf.scale} />;
               })}
@@ -7666,6 +7710,25 @@ export default function TakeoffCanvas() {
           : { right: 56, top: 14, minWidth: 200, maxWidth: 260, maxHeight: "calc(100% - 28px)", padding: "12px 16px" }),
           background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, overflowY: "auto", boxShadow: "var(--shadow-pop)", fontVariantNumeric: "tabular-nums", zIndex: Z.canvasUi }}>
           <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.55, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tool === "zone" ? "Zone check" : (aCond?.finish_tag || "No condition")}</div>
+          {/* The straight/curve switch (#284) — a mode you flip mid
+              measurement, not a modifier you hold, so an arc is a run of
+              ordinary clicks. Lives in the readout because that is where the
+              eye already is while tracing; the canvas stays chrome-free. */}
+          {CURVABLE.has(tool) && (
+            <div style={{ display: "flex", gap: 0, marginBottom: 8, border: "1px solid var(--ink-faint)" }}
+              title="Straight places corners; Curve bends the boundary through the points you place. Switch as often as you like inside one measurement — Q flips it once a trace is going, and ⌥-click always places the OTHER kind for one point.">
+              {[["straight", "Straight", "╱"], ["curve", "Curve", "⌒"]].map(([k, label, glyph]) => {
+                const on = (k === "curve") === curveMode;
+                return (
+                  <button key={k} onClick={() => setCurveMode(k === "curve")}
+                    style={{ flex: 1, padding: "3px 6px", border: "none", cursor: "pointer", fontSize: 11.5, fontWeight: on ? 700 : 500,
+                      background: on ? "var(--cobalt)" : "transparent", color: on ? "var(--accent-contrast)" : "var(--ink-secondary)" }}>
+                    <span style={{ fontSize: 13 }}>{glyph}</span> {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {tool === "oneclick" && proposal?.regions.length ? (() => {
             const pos = proposal.regions.filter((r) => r.kind === "pos");
             const neg = proposal.regions.filter((r) => r.kind === "neg");
@@ -7683,7 +7746,7 @@ export default function TakeoffCanvas() {
             );
           })() : tool === "surface" && poly.length >= 2 && liveUpp ? (
             (() => {
-              const liveLF = openLen(poly) * liveUpp;
+              const liveLF = openLen(curveIdx.length ? flattenRing(poly, curveIdx, false) : poly) * liveUpp;
               return condH > 0 ? (
                 <>
                   <div style={{ fontSize: 22, fontWeight: 700, color: "var(--ink)" }}>{num(areaVal(liveLF * condH, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)} wall</span></div>
@@ -7705,6 +7768,7 @@ export default function TakeoffCanvas() {
               <div style={{ fontSize: 22, fontWeight: 700, color: tool === "deduct" ? "var(--c-danger)" : "var(--ink)" }}>{tool === "deduct" ? "−" : ""}{num(areaVal(liveArea, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)}</span></div>
               <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{units === "metric" ? `${fl(livePerim)} perim` : `${num(liveArea / 9)} SY  ·  ${num(livePerim)} LF perim`}</div>
               {condH > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>@H {num(heightVal(condH, units), 2)}{units === "metric" ? " m" : "′"}: {fa(livePerim * condH)} vert{units === "metric" ? "" : ` · ${num((liveArea * condH) / 27)} CY`}</div>}
+              {CURVABLE.has(tool) && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{curveIdx.length ? `${curveIdx.length} curve point${curveIdx.length === 1 ? "" : "s"} — the boundary bends through them` : "Q or the switch above bends the boundary · ⌥-click bends one point"}</div>}
             </>
           ) : selShape ? (
             // #283 — a FINISHED takeoff reads the same as it did mid-trace.
