@@ -17,7 +17,7 @@ import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { store, isStaleTabError, STALE_TAB_MESSAGE, projectIdFromUrl } from "../lib/store.js";
+import { store, isStaleTabError, STALE_TAB_MESSAGE, projectIdFromUrl, ANN_SCHEMA } from "../lib/store.js";
 import { Z } from "../lib/ui.js";
 import { getFocusMode, toggleFocusMode, onFocusModeChange } from "../lib/focusMode.js";
 import { seedStampLibrary, instantiateStamp, markupToStampElement } from "../lib/stamps.js";
@@ -56,7 +56,7 @@ import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS }
 import { buildLayerInfos, effectiveLayerRoles, layerRoleCodes, segRoles, sanitizeLayerOverrides } from "../lib/layers";
 import { detectCandidateRule, buildRuleFromSeed, applyRuleToProject } from "../lib/rules";
 import { deriveTransitionRuns, transitionRefusal } from "../lib/transitions";
-import { conditionTotals, verticalWallSf } from "../lib/totals.js";
+import { conditionTotals, verticalWallSf, downloadText } from "../lib/totals.js";
 import { shapesInZone } from "../lib/zone.js";
 import { sanitizeSheetLevels } from "../lib/sheetLevels.js";
 import { sanitizeConditionColumns, sanitizeConditionAttrs, renameColumnValue, columnLabel } from "../lib/conditionColumns.js";
@@ -1958,6 +1958,27 @@ export default function TakeoffCanvas() {
       // anything unexpected gets wrapped into it rather than aging out unread
       setCommitMsg(String(e?.message || "").startsWith("Couldn't") ? e.message : `Couldn't import takeoff: ${e?.message || e}`);
     }
+  };
+
+  // "Export takeoff…" (Sheet menu) — the other half of the file pair (#285).
+  // The app has always READ takeoff_canvas.v1 and never written one to disk,
+  // so the only copy of a finished takeoff lived in this browser profile's
+  // IndexedDB: a cleared profile, a new machine, or a second estimator and
+  // the work was unreachable. This writes the EXACT document autosave writes
+  // — no export-only shape, no report flattening — so Import takeoff reads it
+  // back into an editable takeoff, and a diff between two exports is a diff
+  // between two saves.
+  //
+  // The plan PDF is deliberately NOT in it: this is the annotation record, the
+  // same one the MCP export_takeoff emits, and it names its sheets by file.
+  // Restoring means opening the same PDF first — the message says so, since a
+  // backup that silently restores to nothing is worse than no backup.
+  const exportTakeoffFile = () => {
+    const payload = { schema: ANN_SCHEMA, ...buildPayload() };
+    const base = (projectName || "takeoff").trim().replace(/[^\w.\- ]+/g, "").replace(/\s+/g, "-").replace(/^[-.]+|[-.]+$/g, "") || "takeoff";
+    downloadText(`${base}.takeoff.json`, JSON.stringify(payload, null, 2), "application/json");
+    const n = shapes.length;
+    setCommitMsg(`Exported ${base}.takeoff.json — ${n} takeoff${n === 1 ? "" : "s"}, ${conditions.length} condition${conditions.length === 1 ? "" : "s"}. The plan PDF isn't in it: to restore, open the same PDF, then Import takeoff.`);
   };
 
   // markups MUST be in the deps (a cloud/callout/text or an RFI link is real work);
@@ -6158,6 +6179,11 @@ export default function TakeoffCanvas() {
   if (!sheetGroup.length && lastGroup.length >= 2) sheetMenuItems.push({ id: "regroup", label: `Regroup (${lastGroup.length})`, title: `Side-by-side again with the same ${lastGroup.length} sheets — each keeps its own scale, takeoffs and markups`, onSelect: regroup });
   if (sheetMenuItems.length) sheetMenuItems.push("divider");
   sheetMenuItems.push({ id: "gallery", icon: "sheets", label: "Open gallery…", shortcut: "G", onSelect: () => setView("gallery") });
+  sheetMenuItems.push({
+    id: "export-takeoff", icon: "document", label: "Export takeoff…",
+    title: "Save this whole takeoff to a JSON file on your computer — every shape, condition, scale, markup and RFI, in the app's own format. Import takeoff reads it back as an editable takeoff (the plan PDF isn't in the file: open it first, then import).",
+    onSelect: exportTakeoffFile,
+  });
   sheetMenuItems.push({
     id: "import-takeoff", icon: "document", label: "Import takeoff…",
     title: "Load a takeoff JSON — the app's own export or an agent session's export_takeoff. Machine shapes land dashed in their condition colors for your review; on merge, your calibration, conditions, and workspace win.",
