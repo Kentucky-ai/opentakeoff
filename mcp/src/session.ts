@@ -37,7 +37,7 @@ import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS }
 // scale-unpinned masks here, so an MCP trace and a canvas click at the same
 // seed measured DIFFERENT square footage under the same origin.method.
 import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, floodAtSeed, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
-import { fingerprintSymbol, matchSymbol, SWEEP_TOL_PX, type SweepOptions, type SymbolFingerprint, type SymbolMatchResult, type SweepMatch, type SweepWithheld } from "../../web/src/lib/symbolsweep.ts";
+import { fingerprintSymbol, matchSymbol, buildNegative, SWEEP_TOL_PX, type SweepOptions, type SymbolFingerprint, type SymbolMatchResult, type SweepMatch, type SweepWithheld, type SweepRejected, type SymbolNegative } from "../../web/src/lib/symbolsweep.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
 import { sharedRuns, type SharedRun } from "../../web/src/lib/transitions.ts";
 // Real polygon boolean subtraction (#137/#206) — the canvas's own module, so a
@@ -2033,6 +2033,7 @@ export class Session {
     rotations?: boolean;
     mirror?: boolean;
     tolerancePx?: number;
+    exclude?: [Point, Point][];
   }) {
     const s = this.sheet(name);
     const scope = opts.scope ?? "sheet";
@@ -2065,6 +2066,27 @@ export class Session {
       // user-facing instructions, not crashes
       throw new UserError(e instanceof Error ? e.message : String(e));
     }
+    // #259 — counter-examples, read ONCE on the seed sheet. They travel with
+    // the fingerprint the same way it does: the engine resizes them by the
+    // same stated ratio on a cross-scale sheet, so "not this one" means the
+    // same thing on every sheet swept.
+    const negatives: SymbolNegative[] = [];
+    for (let i = 0; i < (opts.exclude ?? []).length; i++) {
+      const er = opts.exclude![i];
+      const nr: [Point, Point] = [
+        [clampX(er[0][0]), clampY(er[0][1])],
+        [clampX(er[1][0]), clampY(er[1][1])],
+      ];
+      const neg = buildNegative(fp, geo.segs, nr, sweepOpts);
+      if (!neg) {
+        // A negative that reads as nothing is worse than no negative: the
+        // estimator believes they excluded something. Refuse with the two
+        // reasons it can happen, in the marquee's own terms.
+        throw new UserError(`Counter-example ${i + 1} holds nothing that separates it from the seed. Either the seed symbol is not drawn inside that rect — a negative must be an instance of what you seeded PLUS whatever makes it not the one you mean — or the rect holds the very same symbol with nothing extra, which would reject every real match. Marquee the lookalike itself (the flush variant with its box, the keynote with its letter), or the empty position whose background line a real instance would break.`);
+      }
+      negatives.push(neg);
+    }
+
     const seedOut = {
       sheet: s.key,
       segments: fp.segments,
@@ -2074,7 +2096,7 @@ export class Session {
     };
 
     if (scope === "sheet") {
-      const res = matchSymbol(fp, geo.segs, { ...sweepOpts, excludeCenter: fp.center });
+      const res = matchSymbol(fp, geo.segs, { ...sweepOpts, excludeCenter: fp.center, ...(negatives.length ? { negatives } : {}) });
       let committed: { committed: number; shape_ids: string[]; condition: string; ea_total: number } | undefined;
       if (opts.commit && res.matches.length) {
         committed = this.placeCount(name, res.matches.map((m) => m.at), {
@@ -2094,6 +2116,8 @@ export class Session {
         matches: res.matches.map((m) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored })),
         withheld: res.withheld.map((w) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, reason: w.reason })),
         seed: seedOut,
+        ...(res.rejected.length ? { rejected: res.rejected.map((r) => ({ at: [round1(r.at[0]), round1(r.at[1])], score: r.score, rotation: r.rotation, mirrored: r.mirrored, by: r.by + 1, mode: r.mode, evidence: r.evidence, reason: r.reason })) } : {}),
+        ...(res.negatives ? { negatives: res.negatives.filter((n) => !!n).map((n) => ({ mode: n!.mode, segments: n!.segments, center: [round1(n!.center[0]), round1(n!.center[1])] as [number, number] })) } : {}),
         candidates: res.candidates,
         complete: res.complete,
         ...(committed ? {
@@ -2121,7 +2145,7 @@ export class Session {
     // matching would be a slow way to say the same thing.
     this.requireCrossScale(s, seedRole, this.sheetList().filter((sh) => (roleOf.get(sh.key) ?? "unknown") === "plan"));
 
-    const perSheet: { state: SheetState; matches: SweepMatch[]; withheld: SweepWithheld[]; candidates: { considered: number; dropped: number }; complete: boolean; elapsed_ms: number; scale: { scale: number; known: boolean }; scaled?: NonNullable<SymbolMatchResult["scaled"]> }[] = [];
+    const perSheet: { state: SheetState; matches: SweepMatch[]; withheld: SweepWithheld[]; rejected: SweepRejected[]; candidates: { considered: number; dropped: number }; complete: boolean; elapsed_ms: number; scale: { scale: number; known: boolean }; scaled?: NonNullable<SymbolMatchResult["scaled"]> }[] = [];
     const skipped: { sheet: string; role: string; reason: string }[] = [];
     for (const sh of this.sheetList()) {
       const role = roleOf.get(sh.key) ?? "unknown";
@@ -2150,6 +2174,7 @@ export class Session {
           ...sweepOpts,
           ...(ratio.scale === 1 ? {} : { scale: ratio.scale }),
           ...(sh.key === s.key ? { excludeCenter: fp.center } : {}),
+          ...(negatives.length ? { negatives } : {}),
         });
       } catch (e) {
         // the engine's scale refusals (symbol shrinks inside tolerance, ratio
@@ -2209,15 +2234,22 @@ export class Session {
         (empty.length ? ` ${empty.join(", ")} found nothing, and an unstated ratio is a live explanation for that: if any of those sheets is drawn at a different scale than ${s.key}, the search was for a wrong-sized symbol. set_scale on both ends turns this from an assumption into arithmetic.` : ""),
       );
     }
+    const rejectedTotal = perSheet.reduce((n, p) => n + p.rejected.length, 0);
+    if (rejectedTotal) {
+      notes.push(`${rejectedTotal} placement(s) the geometry accepted were rejected by your counter-example(s) and are NOT in found — each is named per sheet in rejected[] with what it saw. Look before accepting the exclusion: place_count reinstates one by hand.`);
+    }
     return {
       scope,
       found,
       seed: { ...seedOut, role: seedRole },
+      ...(rejectedTotal ? { rejected_total: rejectedTotal } : {}),
+      ...(negatives.length ? { negatives: negatives.map((n) => ({ mode: n.mode, segments: n.rel.length, center: [round1(n.center[0]), round1(n.center[1])] as [number, number] })) } : {}),
       sheets: perSheet.map((p) => ({
         sheet: p.state.key,
         found: p.matches.length,
         matches: p.matches.map((m) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored })),
         withheld: p.withheld.map((w) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, reason: w.reason })),
+        ...(p.rejected.length ? { rejected: p.rejected.map((r) => ({ at: [round1(r.at[0]), round1(r.at[1])], score: r.score, rotation: r.rotation, mirrored: r.mirrored, by: r.by + 1, mode: r.mode, evidence: r.evidence, reason: r.reason })) } : {}),
         candidates: p.candidates,
         complete: p.complete,
         elapsed_ms: p.elapsed_ms,
