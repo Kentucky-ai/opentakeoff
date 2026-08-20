@@ -42,7 +42,17 @@ export type OpsTable = Record<string, number>;
  *  this module never resolves it, which is what keeps it pure. Optional so
  *  hand-built geometry (rastermask, tests) needs no ceremony; extraction
  *  always emits both (empty table on an unlayered sheet). */
-export interface VectorGeometry { points: Point[]; segs: number[]; meta: Uint8Array; imageArea: number; layerOf?: Int32Array; layerIds?: string[]; }
+/*  lum (#260, reported by @FrankAtGHub): per-segment STROKE LUMINANCE, 0–255,
+ *  Rec. 709 over the graphics-state stroke color at the time the path was
+ *  built. The fallback rung of the "recover what the file already states"
+ *  ladder (#85): layers where they survive, pen weight (meta's high nibble)
+ *  where they don't, luminance where neither made the trip. On a flattened
+ *  export — 0 OCGs, every segment at one pen — a black fixture outline over a
+ *  grey ceiling grid is still stated in the file, and until now the pipeline
+ *  dropped it before anything downstream could see it. One byte per segment,
+ *  the same shape as `meta`. Optional so hand-built geometry (rastermask,
+ *  tests) needs no ceremony; extraction always emits it. */
+export interface VectorGeometry { points: Point[]; segs: number[]; meta: Uint8Array; imageArea: number; lum?: Uint8Array; layerOf?: Int32Array; layerIds?: string[]; }
 export interface MaskObj { mask: Uint8Array; mw: number; mh: number; ws: number; softCount: number; mppf?: number; }  // mppf: mask px per foot (0/absent = scale unknown)
 export interface RegionResult { region: Uint8Array; mw: number; mh: number; ws: number; count?: number; }
 export type FloodResult =
@@ -267,14 +277,45 @@ export function escalationParams(sensitivity: number): { escalateFrac: number; g
 // in the high nibble (setLineWidth / setGState "LW", scaled by the CTM). Form
 // XObjects push/pop their matrix so hatch living inside a form lands where it
 // draws. `transform` is viewport.transform; OPS is pdfjs's op-code table.
+/** Rec. 709 luminance of a pdf.js stroke-color arg list, 0–255 (#260). Accepts
+ *  the components either as three args or as one array — pdf.js has emitted
+ *  both shapes across versions — and anything else leaves the state alone by
+ *  returning null. Rec. 709 rather than a plain mean because the case this
+ *  exists for is black-vs-grey linework, where every weighting agrees, and
+ *  because a green annotation layer should not read as light as a yellow one. */
+export function strokeLuminance(args: unknown[]): number | null {
+  // pdf.js has emitted the components as three args, one plain array, and one
+  // typed array across versions — read all three shapes, refuse the rest.
+  const first = args?.[0];
+  const a = Array.isArray(first) || (ArrayBuffer.isView(first) && !(first instanceof DataView))
+    ? (first as ArrayLike<unknown>)
+    : args;
+  if (!a || a.length < 3) return null;
+  const [r, g, b] = [a[0], a[1], a[2]].map((v) => (typeof v === "number" && Number.isFinite(v) ? v : NaN));
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return null;
+  // pdf.js emits 0–255 components; a 0–1 file that reached here unscaled would
+  // otherwise read as black. All three at or under 1 is the only ambiguous
+  // case, and there it is the darkest corner of the 0–255 cube either way.
+  const k = r <= 1 && g <= 1 && b <= 1 ? 255 : 1;
+  const L = (0.2126 * r + 0.7152 * g + 0.0722 * b) * k;
+  return Math.max(0, Math.min(255, Math.round(L)));
+}
+
 export function extractVectorGeometry(opList: OpList, transform: number[], OPS: OpsTable): VectorGeometry {
   const points: Point[] = [];
   const segs: number[] = [];
   const metaArr: number[] = [];
+  const lumArr: number[] = [];
   let imageArea = 0;
   let m = transform.slice();
   let lw = 1;                          // graphics-state line width (user space)
-  const stack: Array<[number[], number]> = [];
+  // graphics-state STROKE luminance (#260). PDF's initial stroke color is
+  // black, so 0 is the right default and an uncolored file costs nothing.
+  // pdf.js normalizes every simple stroke colorspace to setStrokeRGBColor
+  // (0–255 components); a pattern stroke (setStrokeColorN) states no single
+  // color, so it keeps whatever the state carried rather than inventing one.
+  let lum = 0;
+  const stack: Array<[number[], number, number]> = [];
   // Marked-content / Optional Content (#85): a purely SEQUENTIAL stack — not
   // graphics state, so save/restore never touches it, and a Form XObject with
   // /OC arrives as its own begin/end pair around the form's ops (the worker
@@ -308,13 +349,14 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
   };
   for (let i = 0; i < fns.length; i++) {
     const fn = fns[i], args = A[i];
-    if (fn === OPS.save) stack.push([m.slice(), lw]);
-    else if (fn === OPS.restore) { const p = stack.pop(); if (p) { m = p[0]; lw = p[1]; } }
+    if (fn === OPS.save) stack.push([m.slice(), lw, lum]);
+    else if (fn === OPS.restore) { const p = stack.pop(); if (p) { m = p[0]; lw = p[1]; lum = p[2]; } }
     else if (fn === OPS.transform) m = mul(m, args);
     else if (fn === OPS.setLineWidth) lw = args[0];
     else if (fn === OPS.setGState) { for (const pr of args[0] || []) if (pr && pr[0] === "LW") lw = pr[1]; }
-    else if (fn === OPS.paintFormXObjectBegin) { stack.push([m.slice(), lw]); if (args && args[0]) m = mul(m, args[0]); }
-    else if (fn === OPS.paintFormXObjectEnd) { const p = stack.pop(); if (p) { m = p[0]; lw = p[1]; } }
+    else if (fn === OPS.setStrokeRGBColor && args) { const L = strokeLuminance(args); if (L !== null) lum = L; }
+    else if (fn === OPS.paintFormXObjectBegin) { stack.push([m.slice(), lw, lum]); if (args && args[0]) m = mul(m, args[0]); }
+    else if (fn === OPS.paintFormXObjectEnd) { const p = stack.pop(); if (p) { m = p[0]; lw = p[1]; lum = p[2]; } }
     else if (fn === OPS.beginMarkedContent) { mcStack.push(-1); }
     else if (fn === OPS.beginMarkedContentProps) {
       // worker emits ["OC", data] where data is {type:"OCG", id}, an OCMD
@@ -387,8 +429,9 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
       const ops = args[0], co = args[1];
       let c = 0, cur: Point | null = null, start: Point | null = null;
       const pathLayer = curLayer;   // one path = one marked-content scope (#85)
+      const pathLum = lum;          // stroke color cannot change mid-path (#260)
       const visit = (p: Point) => { points.push(p); };
-      const lineTo = (p: Point) => { if (cur) { segs.push(cur[0], cur[1], p[0], p[1]); metaArr.push(flags); layerOfArr.push(pathLayer); } cur = p; visit(p); };
+      const lineTo = (p: Point) => { if (cur) { segs.push(cur[0], cur[1], p[0], p[1]); metaArr.push(flags); lumArr.push(pathLum); layerOfArr.push(pathLayer); } cur = p; visit(p); };
       for (const op of ops) {
         if (op === OPS.moveTo) { cur = tx(co[c], co[c + 1]); start = cur; visit(cur); c += 2; }
         else if (op === OPS.lineTo) { lineTo(tx(co[c], co[c + 1])); c += 2; }
@@ -406,16 +449,16 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
               u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
               u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1],
             ];
-            if (cur) { segs.push(cur[0], cur[1], q[0], q[1]); metaArr.push(flags | SEG_CURVE); layerOfArr.push(pathLayer); }
+            if (cur) { segs.push(cur[0], cur[1], q[0], q[1]); metaArr.push(flags | SEG_CURVE); lumArr.push(pathLum); layerOfArr.push(pathLayer); }
             cur = q;
           }
           visit(p3);
         }
-        else if (op === OPS.closePath) { if (cur && start) { segs.push(cur[0], cur[1], start[0], start[1]); metaArr.push(flags); layerOfArr.push(pathLayer); cur = start; } }
+        else if (op === OPS.closePath) { if (cur && start) { segs.push(cur[0], cur[1], start[0], start[1]); metaArr.push(flags); lumArr.push(pathLum); layerOfArr.push(pathLayer); cur = start; } }
         else if (op === OPS.rectangle) {
           const x = co[c], y = co[c + 1], w = co[c + 2], h = co[c + 3]; c += 4;
           const q: Point[] = [tx(x, y), tx(x + w, y), tx(x + w, y + h), tx(x, y + h)];
-          for (let k = 0; k < 4; k++) { const a = q[k], b = q[(k + 1) % 4]; segs.push(a[0], a[1], b[0], b[1]); metaArr.push(flags); layerOfArr.push(pathLayer); visit(a); }
+          for (let k = 0; k < 4; k++) { const a = q[k], b = q[(k + 1) % 4]; segs.push(a[0], a[1], b[0], b[1]); metaArr.push(flags); lumArr.push(pathLum); layerOfArr.push(pathLayer); visit(a); }
           cur = q[0]; start = q[0];
         }
       }
@@ -423,7 +466,7 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
   }
   const meta = Uint8Array.from(metaArr);
   markPolylineArcs(segs, meta);
-  return { points, segs, meta, imageArea, layerOf: Int32Array.from(layerOfArr), layerIds };
+  return { points, segs, meta, imageArea, lum: Uint8Array.from(lumArr), layerOf: Int32Array.from(layerOfArr), layerIds };
 }
 
 // ── 1b. polyline arc detection ─────────────────────────────────────────────

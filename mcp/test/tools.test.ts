@@ -1572,6 +1572,63 @@ test("symbol_sweep exclude: a counter-example that separates nothing is refused,
   assert.match(empty.data.error, /must be an instance of what you seeded/);
 });
 
+// #260, reported by @FrankAtGHub: on a flattened export — no layer tree, one
+// pen everywhere — the only thing left separating a device from the background
+// structure it is drawn over can be stroke color, and the file still states it
+// unambiguously. The fixture (symbol-lum.pdf) is that case distilled: the SAME
+// drain glyph seven times, four black and three grey RGB(219,219,219),
+// geometrically identical. This drives the whole path — pdf.js stroke-color
+// ops → extractVectorGeometry's lum channel → the stated luminance_tolerance
+// gate — over the real stdio server, not a hand-built segment list.
+const SYMLUM = fileURLToPath(new URL("./fixtures/symbol-lum.pdf", import.meta.url));
+const SYMLUMKEY = "symbol-lum.pdf";
+
+test("symbol_sweep luminance_tolerance: the stated gate separates black devices from grey twins, and says what it cost (#260)", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMLUM });
+
+  // ungated, the grey twins count — nothing in the geometry separates them
+  const plain = await call(client, "symbol_sweep", { sheet: SYMLUMKEY, seed_rect: SEED_RECT });
+  assert.equal(plain.isError, false);
+  assert.equal(plain.data.found, 6, "2 black translations + 1 black rotated + 3 grey twins; the seed never counts itself");
+  assert.equal(plain.data.lum_gate, undefined, "no tolerance stated, no gate, nothing to disclose");
+
+  // stated: black seed, tolerance 32 — the grey twins (lum 219) fail the pen
+  const gated = await call(client, "symbol_sweep", { sheet: SYMLUMKEY, seed_rect: SEED_RECT, luminance_tolerance: 32 });
+  assert.equal(gated.isError, false);
+  assert.equal(gated.data.found, 3, "only the black instances survive, the rotated one included");
+  assert.equal(gated.data.withheld.length, 0, "the twins are gone, not parked in the near-miss band");
+  assert.ok(gated.data.lum_gate, "a gate that removed matches has to say so");
+  assert.equal(gated.data.lum_gate.tol, 32);
+  assert.deepEqual(gated.data.lum_gate.seed_lum, [0], "the seed's own luminance band — black");
+  assert.equal(gated.data.lum_gate.rejected, 3, "and what it cost, placement by placement");
+  // each rejection is named where the grey twin actually sits — addressable
+  // with view_sheet, reinstatable with place_count
+  for (const [gx, gy] of [[224, 404], [524, 404], [824, 404]]) {
+    assert.ok(gated.data.lum_gate.at.some(([x, y]: [number, number]) => Math.hypot(x - gx, y - gy) < 6),
+      `the grey twin near ${gx},${gy} is named in lum_gate.at`);
+  }
+  // and none of them leaked into the count
+  for (const m of gated.data.matches) {
+    assert.ok(!gated.data.lum_gate.at.some(([x, y]: [number, number]) => Math.hypot(x - m.at[0], y - m.at[1]) < 6));
+  }
+
+  // a tolerance wide enough to span black-to-grey gates nothing — it is a
+  // tolerance, not a color match
+  const wide = await call(client, "symbol_sweep", { sheet: SYMLUMKEY, seed_rect: SEED_RECT, luminance_tolerance: 250 });
+  assert.equal(wide.data.found, 6);
+  assert.equal(wide.data.lum_gate.rejected, 0);
+
+  // commit composes with the gate: only the surviving black instances mint
+  const c = await call(client, "symbol_sweep", { sheet: SYMLUMKEY, seed_rect: SEED_RECT, luminance_tolerance: 32, commit: true, condition: "FX-1" });
+  assert.equal(c.data.committed, 3);
+  assert.equal(c.data.ea_total, 3);
+
+  // determinism: same call, same reply
+  const again = await call(client, "symbol_sweep", { sheet: SYMLUMKEY, seed_rect: SEED_RECT, luminance_tolerance: 32 });
+  assert.deepEqual(again.data, gated.data);
+});
+
 test("symbol_sweep commit: match centers through the place_count path — one undo step, symbol_sweep provenance, withheld never committed", async () => {
   const client = await pair();
   await call(client, "load_plan", { path: SYMPLAN });
