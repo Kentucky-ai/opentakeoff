@@ -373,13 +373,15 @@ Click vertex by vertex around the space; `⏎`, double-click, or the **Finish** 
 
 **Curved boundaries.** Buildings are not all right angles: a bowed wall, a radius corner, a curved curb or pool edge. You don't leave the tool for them—the readout carries a **╱ Straight / ⌒ Curve** switch, and you flip it *mid measurement*, as often as you like inside one shape.
 
-- **Curve** mode: every click you place is a point the boundary **bends smoothly through** instead of turning a corner at. Curve points draw as round handles instead of stars, and the readout says how many are in play.
-- **`Q`** flips the switch once a trace is going. (With nothing traced yet, `Q` is still the Curved Line tool.)
-- **`⌥`-click** always places the *other* kind for exactly one point—one curve point without leaving Straight, or one hard corner without leaving Curve.
+- **Curve** mode: **an arc is three clicks, and it is a real circle.** The clicks alternate—the first lands anywhere **on the bow**, the second on its **far end**—and together with the vertex you were already on, those three points define exactly one circle. That is the whole difference: a radius wall *is* a circle, so the arc **sits on it** instead of near it. The bow point draws as a round handle, and the arc redraws live as you aim the far end.
+- **`Q`** flips the switch once a trace is going.
+- **`⌥`-click** always places the *other* kind for exactly one point—one bow point without leaving Straight, or one hard corner without leaving Curve.
 
-So a bowed room is: click the straight walls, flip to Curve, click along the bow, flip back, close it. Click a few points along the curve rather than one—the boundary passes through exactly the points you gave it, so more points on a tight arc is a truer arc.
+The live chip reads the length **along the arc**, not across it, and sweeps past half a circle are fine: put the bow where the wall actually goes and the arc follows it round. `⏎` waits until the far end is placed—a bow on its own is half a gesture.
 
-The same switch works on **Line**, **Cut Out**, and **Surface Area**: a curved feature strip, a bowed deduct, a radius wall. On `⏎` the shape commits as **one ordinary geometry**—the curve is flattened into the ring or the run, so SF, LF, Cut Out, the marked set, and every export treat it as the polygon or polyline it now is, and its `origin` records that it was traced with curves. (The dedicated **Curved Line** (`Q`) tool is the other case: an all-curve line whose control points stay draggable afterward.)
+So a bowed room is: click the straight walls, flip to Curve, click the bow and the far end, flip back, close it.
+
+The same switch works on **Line**, **Cut Out**, and **Surface Area**: a curved feature strip, a bowed deduct, a radius wall. On `⏎` the shape commits as **one ordinary geometry**—the arc is flattened into the ring or the run, passing exactly through the point you clicked, so SF, LF, Cut Out, the marked set, and every export treat it as the polygon or polyline it now is, and its `origin` records that it was traced with curves.
 
 ### Rectangle (`R`)
 
@@ -388,10 +390,6 @@ Two clicks: one corner, then the opposite corner. Between them the cursor chip r
 ### Linear (`L`)
 
 An open run, two or more points → LF. The **╱ Straight / ⌒ Curve** switch works here too (see Area, above)—a run that bends partway along commits as one line. If the condition carries a **thickness**, the run also yields border SF (LF × thickness ÷ 12)—feature strips, borders, transitions. The live chip reads the running segment length, amber at 12′.
-
-### Curved Line (`Q`)
-
-Like Linear, but the line bends smoothly through your clicks—radius walls, curved transitions, winding corridors. Click a few points along the curve, **⏎** or double-click finishes; drag any point later and the curve re-smooths through it. LF comes from the true curved length (a spline through your points, not the chords between them), and a condition **thickness** yields border SF the same way Linear's does.
 
 ### Surface Area (`S`)
 
@@ -853,7 +851,6 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `A` | Area |
 | `R` | Rectangle |
 | `L` | Linear |
-| `Q` | Curved Line |
 | `S` | Surface Area (walls) |
 | `C` | Count |
 | `D` | Deduct shape (Cut Out) |
@@ -884,8 +881,8 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `⇧⌘Z` | Redo |
 | `Esc` | Back out one level: clear the vertex pick first, then everything in progress (trace, proposal, calibration, check, selection, markup draft, armed stamp, zone) |
 | Hold `⇧` | Force the 45° angle lock at any cursor angle |
-| `Q` mid-trace | Flip the ╱ Straight / ⌒ Curve switch (Area, Cut Out, Line, Surface) |
-| `⌥`-click (Area / Cut Out / Line / Surface) | Place the *other* kind of point for one click—a curve point in Straight mode, a corner in Curve mode |
+| `Q` | Flip the ╱ Straight / ⌒ Curve switch mid-trace (Area, Cut Out, Line, Surface) |
+| `⌥`-click (Area / Cut Out / Line / Surface) | Place the *other* kind of point for one click—a bow point in Straight mode, a corner in Curve mode |
 | `⌥`-click (One-Click) | Carve a cutout inside a selected space |
 | `⇧`-click an edge | Insert a vertex at the edge midpoint (selected shape or One-Click proposal) and drag it |
 
