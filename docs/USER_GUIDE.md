@@ -810,7 +810,9 @@ A few worth knowing about from the canvas side, because they're the same feature
   whatever the schedule can't answer.
 - `symbol_sweep` finds every instance of a repeated symbol from one marqueed example, and
   `sweep_schedule_row` mints a condition from a schedule row and counts its drawn markers across
-  the plan sheets.
+  the plan sheets. Where drafting reuses one generic shape for different devices, `exclude` takes
+  counter-example rects around instances you do *not* mean — count the triangles, not the keynote
+  ones — and every rejection comes back disclosed and reinstatable, never silently dropped.
 - `sheet_graph` / `resolve_tag` / `find_schedule` answer *"what finish is in room 134, and how do
   you know"* with a citation per cell—across continuation sheets and multi-building keys.
 - `derive_base` computes base LF from committed rooms (perimeter minus stated openings), and
