@@ -175,6 +175,19 @@ const sweepPlacement = {
   mirrored: z.boolean(),
 };
 
+/** A placement a counter-example rejected (#259, reported by @FrankAtGHub).
+ * Disclosed exactly the way `withheld` is: an exclusion is a judgement, and a
+ * judgement the estimator cannot see is a count they cannot check. Everything
+ * needed to reinstate one by hand is here — place_count at `at` — without
+ * re-running the sweep. */
+const sweepRejected = z.object({
+  ...sweepPlacement,
+  by: z.number().int().describe("Which counter-example rejected it — 1-based index into the `exclude` rects you passed"),
+  mode: z.enum(["shape", "crossing"]).describe('What that counter-example was read as. "shape": it carries extra linework the seed does not, and that linework is present here too. "crossing": it carries no extra linework of its own — what marks it is a line running THROUGH it, and that line runs unbroken through this placement'),
+  evidence: z.number().describe("Fraction of that counter-example's discriminating linework found at this placement, 0..1 (rejection bar 0.5)"),
+  reason: z.string(),
+});
+
 const sweepCandidates = z.object({
   considered: z.number().int(),
   dropped: z.number().int().describe("Placements never scored because the work cap bit — always disclosed, never silent"),
@@ -199,6 +212,7 @@ const sweepSheetBlock = z.object({
   found: z.number().int(),
   matches: z.array(z.object(sweepPlacement)),
   withheld: z.array(z.object({ ...sweepPlacement, reason: z.string() })),
+  rejected: z.array(sweepRejected).optional().describe("Placements a counter-example rejected on this sheet (#259) — never counted, always named"),
   candidates: sweepCandidates.describe("The work ceiling applies PER SHEET; dropped > 0 here names exactly where the count is incomplete"),
   complete: z.boolean().describe("True when every proposed placement on this sheet was scored — false means this sheet's count is a FLOOR, not a total (#261)"),
   elapsed_ms: z.number().describe("Wall-clock for this sheet's sweep"),
@@ -208,6 +222,16 @@ const sweepSheetBlock = z.object({
 
 /** Sheets excluded from counting, disclosed one by one — a symbol drawn in a
  * detail, legend, or schedule is a reference drawing, never installed work. */
+/** What each counter-example was READ AS (#259), in `exclude` order — the
+ * mechanic inferred from the rect's own contents, never chosen by the caller.
+ * Reported so a negative that fired differently than intended is visible
+ * rather than mysterious. */
+const sweepNegatives = z.array(z.object({
+  mode: z.enum(["shape", "crossing"]),
+  segments: z.number().int().describe("Discriminating segments this counter-example contributes — the linework that is NOT the seed"),
+  center: z.tuple([z.number(), z.number()]).describe("Where the seed's own geometry was located inside that rect, image px — what the negative aligned to"),
+}));
+
 const sweepSkipped = z.array(z.object({
   sheet: z.string(),
   role: z.string().describe("The sheet's graph role (plan / schedule / legend / detail / …)"),
@@ -228,6 +252,9 @@ export const symbolSweepOutput = {
     rect: z.array(z.number()).length(4).describe("The seed rect actually used, post-clamp [x0, y0, x1, y1]"),
     length_px: z.number().describe("Total seed linework length, image px"),
   }),
+  rejected: z.array(sweepRejected).optional().describe("Sheet scope only. Placements the geometry accepted and a counter-example refused (#259) — NEVER counted in found, and never silent: each says which negative did it and what it saw. Reinstate one by hand with place_count at its `at` if you disagree"),
+  negatives: sweepNegatives.optional().describe("What each `exclude` rect was read as, in the order you passed them (#259)"),
+  rejected_total: z.number().int().optional().describe("Set scope: placements counter-examples rejected across every swept sheet"),
   candidates: sweepCandidates.optional().describe("Sheet scope only — set scope accounts per sheet in sheets[]"),
   complete: z.boolean().describe("True when every proposed placement was scored (every swept sheet, in set scope) and the count is a total. FALSE MEANS THE COUNT IS A FLOOR — acknowledge it before trusting found (#261)"),
   sheets: z.array(sweepSheetBlock).optional().describe("Set scope only: one entry per swept PLAN-role sheet, load order"),

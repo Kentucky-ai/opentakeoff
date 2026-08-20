@@ -123,6 +123,7 @@ asked.
 |---|---|---|---|
 | `detect_rooms` | rooms in `withheld` (degenerate, duplicate, implausible) and `unresolved[]` | the flood failed, or the schedule can't answer for that room | re-seed the coordinates it hands back, or state the condition yourself and say you did |
 | `symbol_sweep` | matches scoring 0.75–0.92 | a near-match the fingerprint can't call | `view_sheet` the coordinates; commit the real ones by hand |
+| `symbol_sweep` | placements your own counter-example rejected, in `rejected[]` — which negative, its mode (shape / crossing), and the fraction of its evidence found | the geometry accepted it and your exclusion refused it: an exclusion is a judgement, and judgements get revised | look at each; `place_count` at its `at` reinstates one you disagree with, no re-run |
 | `sweep_schedule_row` | `excluded` (labeled with a sibling key), `withheld` (unlabeled), `text_only` (a tag with no marker) | drafting reuses one bubble shape across many marks, so geometry alone would over-count | look at each; the exclusions are usually right and the unlabeled ones are usually yours |
 | `derive_transitions` | wall-separated runs, in `withheld` with a length, a gap in inches, and an `at` point | the two rooms are adjacent across a partition, so the real transition is a threshold in a doorway that nothing in the trace record locates | measure the threshold at the door with `measure_line`, or hand the run to the estimator |
 

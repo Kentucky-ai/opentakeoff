@@ -84,6 +84,16 @@ export interface SweepOptions {
    * proposal is scored unless the sheet is pathological). Overflow is
    * counted in candidates.dropped and flips `complete` false, never silent. */
   maxCandidates?: number;
+  /** Counter-examples: rects around instances you do NOT mean (#259, reported
+   * by @FrankAtGHub). The same gesture as the seed — drag a box around the
+   * thing that is not it — and the engine works out WHY it is not it. See
+   * `buildNegative` for the two mechanics and how the mode is inferred. Read
+   * against the segments handed to THIS call; for a sweep that crosses sheets,
+   * build them once on the seed sheet and pass `negatives` instead. */
+  exclude?: Array<[Point, Point]>;
+  /** Counter-examples already read (canonical frame) — the cross-sheet form of
+   * `exclude`, scaled with the fingerprint when a size ratio applies. */
+  negatives?: SymbolNegative[];
 }
 
 export interface SweepMatch {
@@ -97,6 +107,21 @@ export interface SweepMatch {
 }
 
 export interface SweepWithheld extends SweepMatch {
+  reason: string;
+}
+
+/** A placement a counter-example rejected (#259). Disclosed the way `withheld`
+ * is — with the negative that did it and what it saw — because an exclusion is
+ * a judgement and judgements get revised: everything needed to reinstate it by
+ * hand is here, without re-running the sweep. */
+export interface SweepRejected extends SweepMatch {
+  /** Index into the `exclude` array — which counter-example rejected it. */
+  by: number;
+  /** "shape": the negative's extra linework is present here. "crossing": a
+   * line the negative sits ON runs through this placement unbroken. */
+  mode: "shape" | "crossing";
+  /** Fraction of that negative's discriminating evidence found here, 0..1. */
+  evidence: number;
   reason: string;
 }
 
@@ -117,6 +142,16 @@ export interface SweepResult {
   /** True when every proposed placement was scored — the count is a total.
    * False means the ceiling bit: the count is a FLOOR, not a total (#261). */
   complete: boolean;
+  /** Placements a counter-example rejected (#259) — named, with which negative
+   * did it and what it saw, so an exclusion can be revised without re-running
+   * the sweep. Empty when no counter-example was given. */
+  rejected: SweepRejected[];
+  /** What each counter-example was read AS (#259), in `exclude` order: the
+   * mechanic inferred from the rect's own contents, how much discriminating
+   * linework it carries, and where the engine found the instance it aligned
+   * to. A negative that read as nothing usable is reported null — silence
+   * there would look like a negative that simply never fired. */
+  negatives?: Array<{ mode: "shape" | "crossing"; segments: number; center: Point } | null>;
 }
 
 export const SWEEP_TOL_PX = 2;
@@ -173,6 +208,10 @@ function transformsFor(rotations: boolean, mirror: boolean): Xform[] {
 
 const apply = (m: [number, number, number, number], x: number, y: number): Point =>
   [m[0] * x + m[1] * y, m[2] * x + m[3] * y];
+
+/** m ∘ t — apply t first, then m. Both are orthogonal 2×2s from transformsFor. */
+const compose = (m: [number, number, number, number], t: [number, number, number, number]): [number, number, number, number] =>
+  [m[0] * t[0] + m[1] * t[2], m[0] * t[1] + m[1] * t[3], m[2] * t[0] + m[3] * t[2], m[2] * t[1] + m[3] * t[3]];
 
 /** Endpoint spatial hash over the sheet's segments: cell → segment indices
  * with an endpoint in that cell. Cell size ≥ 2×tol so a tolerance ball around
@@ -248,6 +287,14 @@ export interface SymbolMatchResult {
    * sheet, how many seed segments went sub-pixel getting there, and the
    * tolerance the endpoints were actually tested at. */
   scaled?: { ratio: number; segments: number; sub_pixel_dropped: number; footprint_px: number; tol_px: number };
+  /** Placements a counter-example rejected (#259) — named, with the negative
+   * that did it and what it saw, so an exclusion can be revised without
+   * re-running the sweep. Empty when no counter-example was given. */
+  rejected: SweepRejected[];
+  /** What each counter-example was read as, in `exclude` order (#259) — the
+   * mechanic inferred from the rect's own contents. null means the rect held
+   * nothing usable, which is a report, not a silence. */
+  negatives?: Array<{ mode: "shape" | "crossing"; segments: number; center: Point } | null>;
 }
 
 export interface MatchOptions extends SweepOptions {
@@ -352,6 +399,234 @@ export function fingerprintSymbol(segs: number[], seedRect: [Point, Point]): Sym
     segments: seedIdx.length,
     center: [seedCx, seedCy],
     footprint: Math.hypot(sbx1 - sbx0, sby1 - sby0),
+  };
+}
+
+// ── counter-examples ────────────────────────────────────────────────────────
+// #259, reported by @FrankAtGHub, from counting a wall-mounted data outlet on
+// an electrical set: the flush-floor variant of the same device is the SAME
+// TRIANGLE inside a square, so it contains the wall symbol by drafting
+// convention and matches on every sheet drawn that way. Asking drafting
+// offices to stop reusing generic shapes is not a remedy — the matcher has to
+// absorb the ambiguity.
+//
+// A negative is one more marquee: drag a box around the thing you do not mean.
+// The caller never chooses a mechanism; the rect's own contents decide which
+// of the two applies, because both are the same gesture to the person doing
+// it.
+//
+//   SHAPE — the negative holds extra linework the positive does not (the
+//   square around the flush outlet, the letter inside a keynote triangle).
+//   The discriminator is local, so it fingerprints exactly like a positive.
+//
+//   CROSSING — the negative holds NO extra contained linework; what
+//   distinguishes it is a line that passes THROUGH it. This mode exists
+//   because `fingerprintSymbol` admits only segments FULLY INSIDE the rect,
+//   which structurally excludes background structure — background structure
+//   is long by nature. Frank's measured case: a 2×4 ceiling fixture on a 2 ft
+//   grid, where two empty tiles reproduce the fixture's outline exactly. The
+//   empty tile still has the grid line running through its middle at 337 px;
+//   the real fixture, drawn over the grid, BREAKS it. A clean presence/absence
+//   discriminator that no contained fingerprint can express.
+//
+// Both are expressed in the POSITIVE's canonical frame, so a rejection applies
+// under every rotation and mirror the sweep searches.
+
+/** Evidence bar: a placement is rejected when this fraction of the negative's
+ * discriminating linework (by length) is present at it. Half is the honest
+ * reading of "the negative explains this placement at least as well" — a
+ * lookalike carries the whole feature or none of it, and demanding all of it
+ * would let one clipped segment reinstate a phantom. */
+export const EXCLUDE_EVIDENCE_BAR = 0.5;
+
+/** A negative resized for a target sheet drawn at another scale (#186's rule
+ * applied to #259's counter-examples): sub-pixel casualties are dropped rather
+ * than carried, so the evidence fraction stays a truthful fraction of what was
+ * actually searched for. */
+export function scaleNegative(neg: SymbolNegative, k: number): SymbolNegative {
+  if (k === 1) return neg;
+  const rel: number[][] = [];
+  for (const r of neg.rel) {
+    const len = r[4] * k;
+    if (len < MIN_SEG_LEN) continue;
+    rel.push([r[0] * k, r[1] * k, r[2] * k, r[3] * k, len]);
+  }
+  return { mode: neg.mode, rel, totalLen: rel.reduce((t, r) => t + r[4], 0), center: neg.center };
+}
+
+export interface SymbolNegative {
+  mode: "shape" | "crossing";
+  /** Discriminating segments in the POSITIVE's canonical frame:
+   * [ax, ay, bx, by, len] — contained extras (shape) or rect-clipped
+   * crossings (crossing). */
+  rel: number[][];
+  totalLen: number;
+  /** The negative instance's own centroid on the seed sheet — reported so a
+   * caller can show what it read. */
+  center: Point;
+}
+
+/** Cell index over segment BODIES — the endpoint hash cannot answer "is a
+ * long line running through here", because a 337 px grid line's endpoints are
+ * nowhere near the symbol it crosses. Built lazily, and only when a crossing
+ * negative is in play. */
+class BodyGrid {
+  private cells = new Map<number, number[]>();
+  constructor(private segs: number[], private cell: number) {
+    const n = segs.length >> 2;
+    for (let i = 0; i < n; i++) {
+      const ax = segs[i * 4], ay = segs[i * 4 + 1], bx = segs[i * 4 + 2], by = segs[i * 4 + 3];
+      const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / cell));
+      let last = -1;
+      for (let k = 0; k <= steps; k++) {
+        const t = k / steps;
+        const key = this.key(Math.floor((ax + (bx - ax) * t) / cell), Math.floor((ay + (by - ay) * t) / cell));
+        if (key === last) continue;
+        last = key;
+        const a = this.cells.get(key);
+        if (a) { if (a[a.length - 1] !== i) a.push(i); } else this.cells.set(key, [i]);
+      }
+    }
+  }
+  private key(cx: number, cy: number): number { return cx * 73856093 ^ cy * 19349663; }
+  /** Segment indices whose body passes through the cell holding (x, y) or any neighbour. */
+  near(x: number, y: number): number[] {
+    const out: number[] = [];
+    const cx = Math.floor(x / this.cell), cy = Math.floor(y / this.cell);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+      const a = this.cells.get(this.key(cx + dx, cy + dy));
+      if (a) for (const i of a) if (!out.includes(i)) out.push(i);
+    }
+    return out;
+  }
+}
+
+/** Clip a segment to a rect (Liang–Barsky), or null when it misses. */
+function clipToRect(ax: number, ay: number, bx: number, by: number, x0: number, y0: number, x1: number, y1: number): [number, number, number, number] | null {
+  let t0 = 0, t1 = 1;
+  const dx = bx - ax, dy = by - ay;
+  const p = [-dx, dx, -dy, dy];
+  const q = [ax - x0, x1 - ax, ay - y0, y1 - ay];
+  for (let k = 0; k < 4; k++) {
+    if (p[k] === 0) { if (q[k] < 0) return null; continue; }
+    const r = q[k] / p[k];
+    if (p[k] < 0) { if (r > t1) return null; if (r > t0) t0 = r; }
+    else { if (r < t0) return null; if (r < t1) t1 = r; }
+  }
+  return [ax + t0 * dx, ay + t0 * dy, ax + t1 * dx, ay + t1 * dy];
+}
+
+/** Distance from (px,py) to the segment (ax,ay)-(bx,by). */
+function distToSeg(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax, dy = by - ay;
+  const L2 = dx * dx + dy * dy;
+  const t = L2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / L2)) : 0;
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+/**
+ * Read one counter-example rect into a negative, in the positive's frame.
+ *
+ * Alignment first: the negative is an instance of the positive PLUS whatever
+ * makes it not one, so the positive is located inside the rect (best scoring
+ * placement whose centroid lands there) and everything is expressed relative
+ * to THAT placement. Without this step a negative marqueed at a different
+ * rotation, or a few px off-centre, would describe geometry that never lines
+ * up with a candidate.
+ *
+ * Returns null when the rect holds no recognisable instance of the positive
+ * (nothing to subtract from — the caller refuses rather than guessing) or when
+ * it holds no discriminating geometry at all (a negative identical to the
+ * positive would reject every real match).
+ */
+export function buildNegative(fp: SymbolFingerprint, segs: number[], rect: [Point, Point], opts: MatchOptions = {}): SymbolNegative | null {
+  const tol = opts.tolPx ?? SWEEP_TOL_PX;
+  const rx0 = Math.min(rect[0][0], rect[1][0]), rx1 = Math.max(rect[0][0], rect[1][0]);
+  const ry0 = Math.min(rect[0][1], rect[1][1]), ry1 = Math.max(rect[0][1], rect[1][1]);
+  const pad = fp.footprint + 4 * tol;
+  // work against the rect's neighbourhood only: alignment is a local question
+  const localIdx: number[] = [];
+  const local: number[] = [];
+  const n = segs.length >> 2;
+  for (let i = 0; i < n; i++) {
+    const ax = segs[i * 4], ay = segs[i * 4 + 1], bx = segs[i * 4 + 2], by = segs[i * 4 + 3];
+    if (Math.max(ax, bx) < rx0 - pad || Math.min(ax, bx) > rx1 + pad) continue;
+    if (Math.max(ay, by) < ry0 - pad || Math.min(ay, by) > ry1 + pad) continue;
+    localIdx.push(i);
+    local.push(ax, ay, bx, by);
+  }
+  if (!local.length) return null;
+
+  // align: score the positive against the neighbourhood and keep the best
+  // placement centred inside the rect
+  const aligned = matchSymbol(fp, local, {
+    rotations: opts.rotations ?? true,
+    mirror: opts.mirror ?? true,
+    tolPx: tol,
+    scoreHigh: 1.01,          // classify nothing; we only want the scored list
+    scoreLow: 0.5,
+  });
+  const inRect = aligned.withheld.filter((w) => w.at[0] >= rx0 && w.at[0] <= rx1 && w.at[1] >= ry0 && w.at[1] <= ry1);
+  if (!inRect.length) return null;
+  const best = inRect.reduce((a, b) => (b.score > a.score ? b : a));
+  const xf = transformsFor(opts.rotations ?? true, opts.mirror ?? true)
+    .find((x) => x.rotation === best.rotation && x.mirrored === best.mirrored);
+  if (!xf) return null;
+  // canonical frame: undo the negative instance's own placement. The
+  // transforms are orthogonal, so the inverse is the transpose.
+  const inv: [number, number, number, number] = [xf.m[0], xf.m[2], xf.m[1], xf.m[3]];
+  const toCanon = (x: number, y: number): Point => apply(inv, x - best.at[0], y - best.at[1]);
+
+  // which local segments the positive already explains at that placement
+  const explained = new Set<number>();
+  for (const r of fp.rel) {
+    const a = apply(xf.m, r[0], r[1]);
+    const b = apply(xf.m, r[2], r[3]);
+    const ax = a[0] + best.at[0], ay = a[1] + best.at[1], bx = b[0] + best.at[0], by = b[1] + best.at[1];
+    for (let k = 0; k < localIdx.length; k++) {
+      const px = local[k * 4], py = local[k * 4 + 1], qx = local[k * 4 + 2], qy = local[k * 4 + 3];
+      const hit = (Math.hypot(px - ax, py - ay) <= tol && Math.hypot(qx - bx, qy - by) <= tol)
+        || (Math.hypot(qx - ax, qy - ay) <= tol && Math.hypot(px - bx, py - by) <= tol);
+      // no break: EVERY local segment the positive explains is explained.
+      // Drafting duplicates coincident linework constantly — adjacent ceiling
+      // tiles each draw the edge they share — and stopping at the first hit
+      // would leave the twin looking like extra evidence, which flips the
+      // inferred mode and turns a background line into a "shape" negative.
+      if (hit) explained.add(k);
+    }
+  }
+
+  const inside = (x: number, y: number): boolean => x >= rx0 && x <= rx1 && y >= ry0 && y <= ry1;
+  const extras: number[][] = [];
+  const crossings: number[][] = [];
+  for (let k = 0; k < localIdx.length; k++) {
+    if (explained.has(k)) continue;
+    const ax = local[k * 4], ay = local[k * 4 + 1], bx = local[k * 4 + 2], by = local[k * 4 + 3];
+    const L = Math.hypot(bx - ax, by - ay);
+    if (L < MIN_SEG_LEN) continue;
+    if (inside(ax, ay) && inside(bx, by)) {
+      const a = toCanon(ax, ay), b = toCanon(bx, by);
+      extras.push([a[0], a[1], b[0], b[1], L]);
+    } else {
+      const c = clipToRect(ax, ay, bx, by, rx0, ry0, rx1, ry1);
+      // a crossing must genuinely PASS THROUGH: a stub poking into the rect is
+      // an alignment artifact, not background structure
+      if (c && Math.hypot(c[2] - c[0], c[3] - c[1]) >= 2 * tol && L > fp.footprint) {
+        const a = toCanon(c[0], c[1]), b = toCanon(c[2], c[3]);
+        crossings.push([a[0], a[1], b[0], b[1], Math.hypot(c[2] - c[0], c[3] - c[1])]);
+      }
+    }
+  }
+  // Contained extras win where they exist: they are local evidence, and a
+  // symbol that carries its own distinguishing mark should not be judged by
+  // what happens to run past it.
+  const rel = extras.length ? extras : crossings;
+  if (!rel.length) return null;
+  return {
+    mode: extras.length ? "shape" : "crossing",
+    rel,
+    totalLen: rel.reduce((t, r) => t + r[4], 0),
+    center: [Math.round(best.at[0] * 10) / 10, Math.round(best.at[1] * 10) / 10],
   };
 }
 
@@ -511,6 +786,112 @@ export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOp
   const ex = opts.excludeCenter;
   const away = ex ? kept.filter((s) => Math.hypot(s.at[0] - ex[0], s.at[1] - ex[1]) > suppressR) : kept;
 
+  // ── 4b. counter-examples (#259) ───────────────────────────────────────────
+  // Read each negative rect once, then test every surviving placement against
+  // it. Rejection is disclosed, never silent: a placement that the geometry
+  // accepted and a negative refused is the most interesting thing the sweep
+  // has to say.
+  // A counter-example's discriminating linework is expressed in the POSITIVE's
+  // canonical frame — but a symbol that maps onto ITSELF under a rotation or a
+  // mirror has no single canonical frame, and the transform a match reports is
+  // then arbitrary among its equivalents (the merge keeps the earliest on a
+  // tie). A square seed is the extreme case: eight transforms, one shape. So
+  // the negative is tested under every transform that maps the SEED onto
+  // itself, and the best reading wins. Without this, a rotated instance of the
+  // very thing you excluded comes back counted, which is the same miscount the
+  // issue is about, wearing a different hat.
+  const selfSym: Array<[number, number, number, number]> = [];
+  {
+    const relPts = rel.map((r) => [r[0], r[1], r[2], r[3], r[4]] as const);
+    const hasSeg = (ax: number, ay: number, bx: number, by: number): boolean =>
+      relPts.some((q) =>
+        (Math.hypot(q[0] - ax, q[1] - ay) <= tol && Math.hypot(q[2] - bx, q[3] - by) <= tol)
+        || (Math.hypot(q[2] - ax, q[3] - ay) <= tol && Math.hypot(q[0] - bx, q[1] - by) <= tol));
+    for (const xf of xforms) {
+      let same = true;
+      for (const r of relPts) {
+        const a = apply(xf.m, r[0], r[1]);
+        const b = apply(xf.m, r[2], r[3]);
+        if (!hasSeg(a[0], a[1], b[0], b[1])) { same = false; break; }
+      }
+      if (same) selfSym.push(xf.m);
+    }
+    if (!selfSym.length) selfSym.push([1, 0, 0, 1]);
+  }
+
+  const negRects = opts.exclude || [];
+  const negatives: Array<SymbolNegative | null> = opts.negatives
+    ? opts.negatives.map((neg) => (scale === 1 ? neg : scaleNegative(neg, scale)))
+    : negRects.map((r) => buildNegative(fp, segs, r, { ...opts, exclude: undefined, negatives: undefined }));
+  const liveNegs = negatives.filter((neg): neg is SymbolNegative => !!neg);
+  const needsBody = liveNegs.some((neg) => neg.mode === "crossing");
+  const body = needsBody ? new BodyGrid(segs, Math.max(32, fpS.footprint)) : null;
+  // how much of a negative's discriminating linework is present at a placement
+  const evidenceOne = (neg: SymbolNegative, m: [number, number, number, number], tx: number, ty: number): number => {
+    let found = 0;
+    for (const r of neg.rel) {
+      const a = apply(m, r[0], r[1]);
+      const b = apply(m, r[2], r[3]);
+      const ax = a[0] + tx, ay = a[1] + ty, bx = b[0] + tx, by = b[1] + ty;
+      if (neg.mode === "shape") {
+        // the extra mark itself, endpoint-matched exactly like the positive
+        let hit = false;
+        for (const j of grid.near(ax, ay, scratch)) {
+          const px = segs[j * 4], py = segs[j * 4 + 1], qx = segs[j * 4 + 2], qy = segs[j * 4 + 3];
+          if ((near(px, py, ax, ay) && near(qx, qy, bx, by)) || (near(qx, qy, ax, ay) && near(px, py, bx, by))) { hit = true; break; }
+        }
+        if (hit) found += r[4];
+      } else {
+        // the line that passes through: present when ONE sheet segment covers
+        // the whole chord. A broken line — the fixture drawn over the grid —
+        // has no such segment, which is the whole discriminator.
+        let covered = false;
+        for (const j of body!.near((ax + bx) / 2, (ay + by) / 2)) {
+          const px = segs[j * 4], py = segs[j * 4 + 1], qx = segs[j * 4 + 2], qy = segs[j * 4 + 3];
+          if (distToSeg(ax, ay, px, py, qx, qy) <= tol && distToSeg(bx, by, px, py, qx, qy) <= tol) { covered = true; break; }
+        }
+        if (covered) found += r[4];
+      }
+    }
+    return neg.totalLen ? found / neg.totalLen : 0;
+  };
+  /** The best reading across the seed's own symmetry group (see selfSym). */
+  const evidenceAt = (neg: SymbolNegative, m: [number, number, number, number], tx: number, ty: number): number => {
+    let best = 0;
+    for (const t of selfSym) {
+      best = Math.max(best, evidenceOne(neg, compose(m, t), tx, ty));
+      if (best >= 1) break;
+    }
+    return best;
+  };
+  const rejected: SweepRejected[] = [];
+  const survivors: Scored[] = [];
+  for (const sc of away) {
+    let killed: { by: number; neg: SymbolNegative; ev: number } | null = null;
+    for (let bi = 0; bi < negatives.length; bi++) {
+      const neg = negatives[bi];
+      if (!neg) continue;
+      const ev = evidenceAt(neg, xforms[sc.xf].m, sc.at[0], sc.at[1]);
+      if (ev >= EXCLUDE_EVIDENCE_BAR && (!killed || ev > killed.ev)) killed = { by: bi, neg, ev };
+    }
+    if (killed) {
+      rejected.push({
+        at: [Math.round(sc.at[0] * 10) / 10, Math.round(sc.at[1] * 10) / 10] as Point,
+        score: Math.round(sc.score * 1000) / 1000,
+        rotation: sc.rotation,
+        mirrored: sc.mirrored,
+        by: killed.by,
+        mode: killed.neg.mode,
+        evidence: Math.round(killed.ev * 1000) / 1000,
+        reason: killed.neg.mode === "shape"
+          ? `matched the seed at ${Math.round(sc.score * 100)}%, but ${Math.round(killed.ev * 100)}% of counter-example ${killed.by + 1}'s extra linework is here too — the negative explains this placement at least as well`
+          : `matched the seed at ${Math.round(sc.score * 100)}%, but the line counter-example ${killed.by + 1} sits on runs through this placement UNBROKEN (${Math.round(killed.ev * 100)}% of it) — a real instance drawn over it would break it`,
+      });
+      continue;
+    }
+    survivors.push(sc);
+  }
+
   const matches: SweepMatch[] = [];
   const withheld: SweepWithheld[] = [];
   const pct = (v: number): number => Math.round(v * 1000) / 1000;
@@ -520,8 +901,8 @@ export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOp
     rotation: s.rotation,
     mirrored: s.mirrored,
   });
-  for (const s of away) if (s.score >= scoreHigh) matches.push(row(s));
-  for (const s of away) {
+  for (const s of survivors) if (s.score >= scoreHigh) matches.push(row(s));
+  for (const s of survivors) {
     if (s.score >= scoreHigh) continue;
     if (matches.some((m) => Math.hypot(m.at[0] - s.at[0], m.at[1] - s.at[1]) <= suppressR)) continue;
     withheld.push({ ...row(s), reason: `matched ${Math.round(s.score * 100)}% of the seed's linework (commit bar ${Math.round(scoreHigh * 100)}%) — likely a variant or an overlapped instance; look before counting it` });
@@ -530,10 +911,13 @@ export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOp
     a.at[1] - b.at[1] || a.at[0] - b.at[0] || a.rotation - b.rotation || Number(a.mirrored) - Number(b.mirrored);
   matches.sort(order);
   withheld.sort(order);
+  rejected.sort(order);
 
   return {
     matches,
     withheld,
+    rejected,
+    ...(negatives.length ? { negatives: negatives.map((neg) => (neg ? { mode: neg.mode, segments: neg.rel.length, center: neg.center } : null)) } : {}),
     candidates: { considered, dropped },
     complete: dropped === 0,
     ...(scale === 1 ? {} : {
@@ -561,6 +945,8 @@ export function sweepSymbols(segs: number[], seedRect: [Point, Point], opts: Swe
     },
     matches: m.matches,
     withheld: m.withheld,
+    rejected: m.rejected,
+    ...(m.negatives ? { negatives: m.negatives } : {}),
     candidates: m.candidates,
     complete: m.complete,
   };

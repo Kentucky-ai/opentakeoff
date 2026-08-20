@@ -1498,6 +1498,80 @@ test("symbol_sweep: exact counts on the fixture — matches, rotation/mirror fla
   assert.deepEqual(again.data, r.data);
 });
 
+// #259, reported by @FrankAtGHub: the seed legitimately matches things you do
+// not mean, because drafting reuses one generic shape for several devices —
+// his case was a wall-mounted data outlet drawn as a plain triangle whose
+// flush-floor sibling is the SAME triangle inside a square. The fixture has
+// that exact structure already: the square-only decoy is a bare shape, and
+// every drain instance is that same square PLUS a diagonal and a stub. So
+// seeding the decoy matches all seven, and excluding one drain teaches the
+// sweep what "plus" means.
+const SQUARE_RECT = [[892, 272], [948, 332]];
+
+test("symbol_sweep exclude: a counter-example rejects the lookalikes, discloses every rejection, and never rejects on thin evidence (#259)", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMPLAN });
+
+  // the bare square is a real sub-shape of the drain, so it matches every
+  // instance that contains one — the ambiguity the issue is about
+  const bare = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SQUARE_RECT });
+  assert.equal(bare.isError, false);
+  assert.equal(bare.data.seed.segments, 4, "the square alone");
+  assert.equal(bare.data.found, 7, "every drain contains this square; the decoy is the seed and is excluded");
+  assert.equal(bare.data.rejected, undefined, "no counter-example, no rejections");
+
+  // one drain marqueed as "not this one" — the caller never says WHY
+  const r = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SQUARE_RECT, exclude: [SEED_RECT] });
+  assert.equal(r.isError, false);
+  // the rect's own contents chose the mechanic: extra contained linework
+  assert.deepEqual(r.data.negatives, [{ mode: "shape", segments: 2, center: [220, 1004] }], "the diagonal and the stub — the drain minus the square");
+
+  assert.equal(r.data.found, 1, "six drains rejected; only the perturbed instance survives");
+  assert.equal(r.data.rejected.length, 6);
+  assert.ok(r.data.rejected.every((x: any) => x.by === 1 && x.mode === "shape" && x.evidence === 1));
+  assert.match(r.data.rejected[0].reason, /explains this placement at least as well/);
+  // rejections are placements, addressable on the sheet — reinstating one by
+  // hand is place_count at its `at`, no re-run
+  assert.ok(r.data.rejected.every((x: any) => Array.isArray(x.at) && x.at.length === 2));
+  // and they are NOT quietly folded into matches
+  assert.ok(r.data.matches.every((m: any) => !r.data.rejected.some((x: any) => x.at[0] === m.at[0] && x.at[1] === m.at[1])));
+
+  // the survivor is the instance whose extra linework genuinely differs: its
+  // diagonal is perturbed past tolerance, so only the stub is found and the
+  // evidence bar is not met. Under-reject rather than falsely reject.
+  assert.deepEqual(r.data.matches.map((m: any) => m.at), [[620, 564]]);
+
+  // rotation and mirroring do not smuggle an excluded instance back in: a
+  // square maps onto itself eight ways, so the negative is read under the
+  // seed's own symmetry group rather than one arbitrary frame
+  assert.ok(r.data.rejected.some((x: any) => x.at[0] === 820 && x.at[1] === 764), "the rotated drain");
+  assert.ok(r.data.rejected.some((x: any) => x.at[0] === 220 && x.at[1] === 564), "the mirrored drain");
+
+  // an exclusion is never counted, and commit never commits one
+  const c = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SQUARE_RECT, exclude: [SEED_RECT], commit: true, condition: "SQ-1" });
+  assert.equal(c.data.committed, 1);
+  assert.equal(c.data.ea_total, 1);
+
+  // determinism
+  const again = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SQUARE_RECT, exclude: [SEED_RECT] });
+  assert.deepEqual(again.data, r.data);
+});
+
+test("symbol_sweep exclude: a counter-example that separates nothing is refused, not silently ignored (#259)", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMPLAN });
+
+  // the same symbol with nothing extra — it would reject every real match
+  const same = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SEED_RECT, exclude: [[[396, 980], [472, 1028]]] });
+  assert.equal(same.isError, true);
+  assert.match(same.data.error, /separates it from the seed/);
+
+  // empty paper — no instance of the seed to subtract from
+  const empty = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SEED_RECT, exclude: [[[1000, 1100], [1080, 1180]]] });
+  assert.equal(empty.isError, true);
+  assert.match(empty.data.error, /must be an instance of what you seeded/);
+});
+
 test("symbol_sweep commit: match centers through the place_count path — one undo step, symbol_sweep provenance, withheld never committed", async () => {
   const client = await pair();
   await call(client, "load_plan", { path: SYMPLAN });
