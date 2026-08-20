@@ -2034,6 +2034,7 @@ export class Session {
     mirror?: boolean;
     tolerancePx?: number;
     exclude?: [Point, Point][];
+    luminanceTolerance?: number;
   }) {
     const s = this.sheet(name);
     const scope = opts.scope ?? "sheet";
@@ -2057,10 +2058,13 @@ export class Session {
       rotations: opts.rotations ?? true,
       mirror: opts.mirror ?? true,
       tolPx: opts.tolerancePx ?? SWEEP_TOL_PX,
+      // #260 — the stated stroke-luminance gate. The tolerance travels in the
+      // shared opts; the CHANNEL is per target sheet, passed at each match.
+      ...(typeof opts.luminanceTolerance === "number" ? { lumTol: opts.luminanceTolerance } : {}),
     };
     let fp: SymbolFingerprint;
     try {
-      fp = fingerprintSymbol(geo.segs, rect);
+      fp = fingerprintSymbol(geo.segs, rect, geo.lum);
     } catch (e) {
       // the engine's refusals (empty marquee, region-sized marquee) are
       // user-facing instructions, not crashes
@@ -2096,7 +2100,7 @@ export class Session {
     };
 
     if (scope === "sheet") {
-      const res = matchSymbol(fp, geo.segs, { ...sweepOpts, excludeCenter: fp.center, ...(negatives.length ? { negatives } : {}) });
+      const res = matchSymbol(fp, geo.segs, { ...sweepOpts, lum: geo.lum, excludeCenter: fp.center, ...(negatives.length ? { negatives } : {}) });
       let committed: { committed: number; shape_ids: string[]; condition: string; ea_total: number } | undefined;
       if (opts.commit && res.matches.length) {
         committed = this.placeCount(name, res.matches.map((m) => m.at), {
@@ -2118,6 +2122,7 @@ export class Session {
         seed: seedOut,
         ...(res.rejected.length ? { rejected: res.rejected.map((r) => ({ at: [round1(r.at[0]), round1(r.at[1])], score: r.score, rotation: r.rotation, mirrored: r.mirrored, by: r.by + 1, mode: r.mode, evidence: r.evidence, reason: r.reason })) } : {}),
         ...(res.negatives ? { negatives: res.negatives.filter((n) => !!n).map((n) => ({ mode: n!.mode, segments: n!.segments, center: [round1(n!.center[0]), round1(n!.center[1])] as [number, number] })) } : {}),
+        ...(res.lum_gate ? { lum_gate: res.lum_gate } : {}),
         candidates: res.candidates,
         complete: res.complete,
         ...(committed ? {
@@ -2145,7 +2150,7 @@ export class Session {
     // matching would be a slow way to say the same thing.
     this.requireCrossScale(s, seedRole, this.sheetList().filter((sh) => (roleOf.get(sh.key) ?? "unknown") === "plan"));
 
-    const perSheet: { state: SheetState; matches: SweepMatch[]; withheld: SweepWithheld[]; rejected: SweepRejected[]; candidates: { considered: number; dropped: number }; complete: boolean; elapsed_ms: number; scale: { scale: number; known: boolean }; scaled?: NonNullable<SymbolMatchResult["scaled"]> }[] = [];
+    const perSheet: { state: SheetState; matches: SweepMatch[]; withheld: SweepWithheld[]; rejected: SweepRejected[]; candidates: { considered: number; dropped: number }; complete: boolean; elapsed_ms: number; scale: { scale: number; known: boolean }; scaled?: NonNullable<SymbolMatchResult["scaled"]>; lum_gate?: NonNullable<SymbolMatchResult["lum_gate"]> }[] = [];
     const skipped: { sheet: string; role: string; reason: string }[] = [];
     for (const sh of this.sheetList()) {
       const role = roleOf.get(sh.key) ?? "unknown";
@@ -2172,6 +2177,7 @@ export class Session {
       try {
         res = matchSymbol(fp, g2.segs, {
           ...sweepOpts,
+          lum: g2.lum,
           ...(ratio.scale === 1 ? {} : { scale: ratio.scale }),
           ...(sh.key === s.key ? { excludeCenter: fp.center } : {}),
           ...(negatives.length ? { negatives } : {}),
@@ -2238,6 +2244,10 @@ export class Session {
     if (rejectedTotal) {
       notes.push(`${rejectedTotal} placement(s) the geometry accepted were rejected by your counter-example(s) and are NOT in found — each is named per sheet in rejected[] with what it saw. Look before accepting the exclusion: place_count reinstates one by hand.`);
     }
+    const lumRejectedTotal = perSheet.reduce((n, p) => n + (p.lum_gate?.rejected ?? 0), 0);
+    if (lumRejectedTotal) {
+      notes.push(`${lumRejectedTotal} placement(s) the geometry would have committed were pulled under the bar by your stated luminance tolerance — each is named per sheet in lum_gate.at. Look before trusting the gate: a symbol somebody redrew in a different pen fails it honestly.`);
+    }
     return {
       scope,
       found,
@@ -2250,6 +2260,7 @@ export class Session {
         matches: p.matches.map((m) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored })),
         withheld: p.withheld.map((w) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, reason: w.reason })),
         ...(p.rejected.length ? { rejected: p.rejected.map((r) => ({ at: [round1(r.at[0]), round1(r.at[1])], score: r.score, rotation: r.rotation, mirrored: r.mirrored, by: r.by + 1, mode: r.mode, evidence: r.evidence, reason: r.reason })) } : {}),
+        ...(p.lum_gate ? { lum_gate: p.lum_gate } : {}),
         candidates: p.candidates,
         complete: p.complete,
         elapsed_ms: p.elapsed_ms,

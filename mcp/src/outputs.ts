@@ -188,6 +188,17 @@ const sweepRejected = z.object({
   reason: z.string(),
 });
 
+/** The stated stroke-luminance gate and what it cost (#260, reported by
+ * @FrankAtGHub). Present only when luminance_tolerance was stated: a gate
+ * that pulls placements under the commit bar has to say so, placement by
+ * placement, or a stated tolerance becomes a silent drop. */
+const sweepLumGate = z.object({
+  tol: z.number().describe("The luminance tolerance that was applied, 0–254"),
+  seed_lum: z.array(z.number()).describe("The seed's own stroke luminances, deduplicated — the band candidates were held to"),
+  rejected: z.number().int().describe("Placements the geometry alone would have COMMITTED and the gate did not — one entry per physical spot"),
+  at: z.array(z.tuple([z.number(), z.number()])).describe("Where each of them is, image px — view_sheet and look before trusting the gate; place_count reinstates one you disagree with"),
+});
+
 const sweepCandidates = z.object({
   considered: z.number().int(),
   dropped: z.number().int().describe("Placements never scored because the work cap bit — always disclosed, never silent"),
@@ -213,6 +224,7 @@ const sweepSheetBlock = z.object({
   matches: z.array(z.object(sweepPlacement)),
   withheld: z.array(z.object({ ...sweepPlacement, reason: z.string() })),
   rejected: z.array(sweepRejected).optional().describe("Placements a counter-example rejected on this sheet (#259) — never counted, always named"),
+  lum_gate: sweepLumGate.optional().describe("This sheet's stated-luminance-gate accounting (#260) — present only when luminance_tolerance was stated"),
   candidates: sweepCandidates.describe("The work ceiling applies PER SHEET; dropped > 0 here names exactly where the count is incomplete"),
   complete: z.boolean().describe("True when every proposed placement on this sheet was scored — false means this sheet's count is a FLOOR, not a total (#261)"),
   elapsed_ms: z.number().describe("Wall-clock for this sheet's sweep"),
@@ -255,6 +267,7 @@ export const symbolSweepOutput = {
   rejected: z.array(sweepRejected).optional().describe("Sheet scope only. Placements the geometry accepted and a counter-example refused (#259) — NEVER counted in found, and never silent: each says which negative did it and what it saw. Reinstate one by hand with place_count at its `at` if you disagree"),
   negatives: sweepNegatives.optional().describe("What each `exclude` rect was read as, in the order you passed them (#259)"),
   rejected_total: z.number().int().optional().describe("Set scope: placements counter-examples rejected across every swept sheet"),
+  lum_gate: sweepLumGate.optional().describe("Sheet scope only. The stated stroke-luminance gate's accounting (#260): the tolerance, the seed's own luminance band, and every placement the geometry would have committed that the pen pulled under the bar — NEVER counted in found, never silent. Set scope accounts per sheet in sheets[]"),
   candidates: sweepCandidates.optional().describe("Sheet scope only — set scope accounts per sheet in sheets[]"),
   complete: z.boolean().describe("True when every proposed placement was scored (every swept sheet, in set scope) and the count is a total. FALSE MEANS THE COUNT IS A FLOOR — acknowledge it before trusting found (#261)"),
   sheets: z.array(sweepSheetBlock).optional().describe("Set scope only: one entry per swept PLAN-role sheet, load order"),

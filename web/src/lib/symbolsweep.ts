@@ -84,6 +84,18 @@ export interface SweepOptions {
    * proposal is scored unless the sheet is pathological). Overflow is
    * counted in candidates.dropped and flips `complete` false, never silent. */
   maxCandidates?: number;
+  /** The sheet's per-segment stroke luminance (#260), aligned to `segs`.
+   * Carried through on its own; it gates NOTHING unless `lumTol` is stated. */
+  lum?: Uint8Array;
+  /** Stated luminance tolerance, 0–255: a sheet segment only answers for a
+   * seed segment when their stroke luminances are within it (#260, reported by
+   * @FrankAtGHub). Opt-in and disclosed, in the spirit of `tolPx` — a hidden
+   * color heuristic would silently drop a symbol somebody redrew in a
+   * different pen. The case it exists for is a flattened export where a black
+   * fixture outline and a grey ceiling grid are geometrically identical: 0 vs
+   * 219 is not a near miss, so a tolerance of 32–64 separates them without
+   * touching anti-aliasing wobble. Ignored when no `lum` is supplied. */
+  lumTol?: number;
   /** Counter-examples: rects around instances you do NOT mean (#259, reported
    * by @FrankAtGHub). The same gesture as the seed — drag a box around the
    * thing that is not it — and the engine works out WHY it is not it. See
@@ -152,6 +164,10 @@ export interface SweepResult {
    * to. A negative that read as nothing usable is reported null — silence
    * there would look like a negative that simply never fired. */
   negatives?: Array<{ mode: "shape" | "crossing"; segments: number; center: Point } | null>;
+  /** The stated luminance gate and what it cost, when one was applied (#260):
+   * every placement the geometry would have committed and the pen did not,
+   * named — a rejection is a question answered, and the caller can look. */
+  lum_gate?: { tol: number; seed_lum: number[]; rejected: number; at: Point[] };
 }
 
 export const SWEEP_TOL_PX = 2;
@@ -265,6 +281,10 @@ export interface SymbolFingerprint {
    * Half of it is the shadow-suppression radius: two REAL instances can never
    * sit closer without physically overlapping. */
   footprint: number;
+  /** Per-rel-entry stroke luminance, 0–255, when the caller handed in the
+   * sheet's `lum` channel (#260). Only consulted when a luminance tolerance is
+   * STATED — see MatchOptions.lumTol. */
+  lum?: number[];
   /** Seed segments that fell below MIN_SEG_LEN when the fingerprint was scaled
    * down to a target sheet — detail that cannot survive the trip and is
    * excluded from the score rather than depressing it. Present only on a
@@ -295,6 +315,11 @@ export interface SymbolMatchResult {
    * mechanic inferred from the rect's own contents. null means the rect held
    * nothing usable, which is a report, not a silence. */
   negatives?: Array<{ mode: "shape" | "crossing"; segments: number; center: Point } | null>;
+  /** Present ONLY when a luminance tolerance was stated and the sheet supplied
+   * the channel (#260). What the gate was and what it cost: the seed's own
+   * luminance band, and how many placements it pulled under the commit bar —
+   * a stated gate that removes 152 matches has to say so. */
+  lum_gate?: { tol: number; seed_lum: number[]; rejected: number; at: Point[] };
 }
 
 export interface MatchOptions extends SweepOptions {
@@ -329,12 +354,15 @@ export function scaleFingerprint(fp: SymbolFingerprint, k: number): SymbolFinger
     throw new Error(`Size ratio ${k.toFixed(4)} is outside the sane band (${SWEEP_MIN_SCALE} – ${SWEEP_MAX_SCALE}) — that is a larger disagreement than any real sheet pair, so the likelier cause is a wrong scale on one of the two sheets. Check set_scale on both before sweeping across them.`);
   }
   const rel: number[][] = [];
+  const lum: number[] = [];
   let totalLen = 0;
   let subPixelDropped = 0;
-  for (const r of fp.rel) {
+  for (let i = 0; i < fp.rel.length; i++) {
+    const r = fp.rel[i];
     const len = r[4] * k;
     if (len < MIN_SEG_LEN) { subPixelDropped++; continue; }
     rel.push([r[0] * k, r[1] * k, r[2] * k, r[3] * k, len]);
+    if (fp.lum) lum.push(fp.lum[i]);
     totalLen += len;
   }
   if (!rel.length) {
@@ -346,6 +374,7 @@ export function scaleFingerprint(fp: SymbolFingerprint, k: number): SymbolFinger
     segments: rel.length,
     center: fp.center,
     footprint: fp.footprint * k,
+    ...(fp.lum ? { lum } : {}),
     ...(subPixelDropped ? { subPixelDropped } : {}),
   };
 }
@@ -353,7 +382,7 @@ export function scaleFingerprint(fp: SymbolFingerprint, k: number): SymbolFinger
 /** Step 1 alone: the segments fully inside the seed rect, expressed relative
  * to their length-weighted centroid. Throws the same instructive refusals
  * sweepSymbols always has (empty marquee, region-sized marquee). */
-export function fingerprintSymbol(segs: number[], seedRect: [Point, Point]): SymbolFingerprint {
+export function fingerprintSymbol(segs: number[], seedRect: [Point, Point], lum?: Uint8Array): SymbolFingerprint {
   const n = segs.length >> 2;
   const rx0 = Math.min(seedRect[0][0], seedRect[1][0]), rx1 = Math.max(seedRect[0][0], seedRect[1][0]);
   const ry0 = Math.min(seedRect[0][1], seedRect[1][1]), ry1 = Math.max(seedRect[0][1], seedRect[1][1]);
@@ -399,6 +428,7 @@ export function fingerprintSymbol(segs: number[], seedRect: [Point, Point]): Sym
     segments: seedIdx.length,
     center: [seedCx, seedCy],
     footprint: Math.hypot(sbx1 - sbx0, sby1 - sby0),
+    ...(lum && lum.length ? { lum: seedIdx.map((i) => lum[i] ?? 0) } : {}),
   };
 }
 
@@ -735,19 +765,34 @@ export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOp
   const tol2 = tol * tol;
   const near = (x1: number, y1: number, x2: number, y2: number): boolean =>
     (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2) <= tol2;
-  const scoreAt = (m: [number, number, number, number], tx: number, ty: number): number => {
-    let matched = 0;
-    for (const r of rel) {
+  // #260 — the stated luminance gate. Live only when the caller supplied the
+  // sheet's channel AND a tolerance: a sheet segment answers for a seed
+  // segment only if their stroke luminances are within it. Off by default, so
+  // every existing sweep scores exactly as it did.
+  const sheetLum = opts.lum;
+  const lumTol = opts.lumTol;
+  const lumGate = sheetLum && sheetLum.length && fpS.lum && typeof lumTol === "number" && lumTol >= 0 && lumTol < 255;
+  const lumOk = (j: number, k: number): boolean =>
+    !lumGate || Math.abs((sheetLum as Uint8Array)[j] - (fpS.lum as number[])[k]) <= (lumTol as number);
+  const scoreAt = (m: [number, number, number, number], tx: number, ty: number, ungated?: { v: number }): number => {
+    let matched = 0, matchedAny = 0;
+    for (let k = 0; k < rel.length; k++) {
+      const r = rel[k];
       const a = apply(m, r[0], r[1]);
       const b = apply(m, r[2], r[3]);
       const ax = a[0] + tx, ay = a[1] + ty, bx = b[0] + tx, by = b[1] + ty;
-      let hit = false;
+      let hit = false, hitAny = false;
       for (const j of grid.near(ax, ay, scratch)) {
         const px = segs[j * 4], py = segs[j * 4 + 1], qx = segs[j * 4 + 2], qy = segs[j * 4 + 3];
-        if ((near(px, py, ax, ay) && near(qx, qy, bx, by)) || (near(qx, qy, ax, ay) && near(px, py, bx, by))) { hit = true; break; }
+        if ((near(px, py, ax, ay) && near(qx, qy, bx, by)) || (near(qx, qy, ax, ay) && near(px, py, bx, by))) {
+          hitAny = true;
+          if (lumOk(j, k)) { hit = true; break; }
+        }
       }
       if (hit) matched += r[4];
+      if (hitAny) matchedAny += r[4];
     }
+    if (ungated) ungated.v = matchedAny / totalLen;
     return matched / totalLen;
   };
 
@@ -758,9 +803,17 @@ export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOp
   // on ties: the plainest reading wins deterministically).
   type Scored = SweepMatch & { xf: number };
   const scored: Scored[] = [];
+  const ungated = { v: 0 };
+  // Placements the geometry alone would have COMMITTED and the stated
+  // luminance gate did not — the gate's cost, collected as placements rather
+  // than tallied as proposals: one physical spot is proposed by several
+  // anchors and transforms, and a count that says 16 for 8 phantoms is a
+  // count nobody can check against the sheet.
+  const lumOut: Point[] = [];
   for (let k = 0; k < considered; k++) {
     const c = proposals[k];
-    const score = scoreAt(xforms[c.xf].m, c.tx, c.ty);
+    const score = scoreAt(xforms[c.xf].m, c.tx, c.ty, lumGate ? ungated : undefined);
+    if (lumGate && ungated.v >= scoreHigh && score < scoreHigh) lumOut.push([c.tx, c.ty]);
     if (score < scoreLow) continue;
     scored.push({ at: [c.tx, c.ty], score, rotation: xforms[c.xf].rotation, mirrored: xforms[c.xf].mirrored, xf: c.xf });
   }
@@ -785,6 +838,16 @@ export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOp
   const suppressR = Math.max(mergeR, fpS.footprint / 2);
   const ex = opts.excludeCenter;
   const away = ex ? kept.filter((s) => Math.hypot(s.at[0] - ex[0], s.at[1] - ex[1]) > suppressR) : kept;
+
+  // one physical spot per entry, seed shadow excluded, reading order — the
+  // same treatment matches and withheld get, so the numbers are comparable
+  const lumRejectedAt: Point[] = [];
+  for (const p of lumOut) {
+    if (ex && Math.hypot(p[0] - ex[0], p[1] - ex[1]) <= suppressR) continue;
+    if (lumRejectedAt.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) <= mergeR)) continue;
+    lumRejectedAt.push([Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10]);
+  }
+  lumRejectedAt.sort((a, b) => a[1] - b[1] || a[0] - b[0]);
 
   // ── 4b. counter-examples (#259) ───────────────────────────────────────────
   // Read each negative rect once, then test every surviving placement against
@@ -920,6 +983,12 @@ export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOp
     ...(negatives.length ? { negatives: negatives.map((neg) => (neg ? { mode: neg.mode, segments: neg.rel.length, center: neg.center } : null)) } : {}),
     candidates: { considered, dropped },
     complete: dropped === 0,
+    ...(lumGate ? { lum_gate: {
+      tol: lumTol as number,
+      seed_lum: [...new Set(fpS.lum as number[])].sort((a, b) => a - b),
+      rejected: lumRejectedAt.length,
+      at: lumRejectedAt,
+    } } : {}),
     ...(scale === 1 ? {} : {
       scaled: {
         ratio: Math.round(scale * 1e6) / 1e6,
@@ -935,7 +1004,7 @@ export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOp
 /** The one-sheet sweep, unchanged: fingerprint the marquee, match the same
  * sheet, suppress the seed's own location. */
 export function sweepSymbols(segs: number[], seedRect: [Point, Point], opts: SweepOptions = {}): SweepResult {
-  const fp = fingerprintSymbol(segs, seedRect);
+  const fp = fingerprintSymbol(segs, seedRect, opts.lum);
   const m = matchSymbol(fp, segs, { ...opts, excludeCenter: fp.center });
   return {
     seed: {
@@ -949,5 +1018,6 @@ export function sweepSymbols(segs: number[], seedRect: [Point, Point], opts: Swe
     ...(m.negatives ? { negatives: m.negatives } : {}),
     candidates: m.candidates,
     complete: m.complete,
+    ...(m.lum_gate ? { lum_gate: m.lum_gate } : {}),
   };
 }

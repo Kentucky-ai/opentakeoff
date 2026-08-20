@@ -812,7 +812,10 @@ A few worth knowing about from the canvas side, because they're the same feature
   `sweep_schedule_row` mints a condition from a schedule row and counts its drawn markers across
   the plan sheets. Where drafting reuses one generic shape for different devices, `exclude` takes
   counter-example rects around instances you do *not* mean — count the triangles, not the keynote
-  ones — and every rejection comes back disclosed and reinstatable, never silently dropped.
+  ones — and every rejection comes back disclosed and reinstatable, never silently dropped. On a
+  flattened export where layers and pen weights are gone but stroke color survives, a stated
+  `luminance_tolerance` holds candidates to the seed's own pen — black devices, not their grey
+  background twins — with the gate's full cost disclosed the same way.
 - `sheet_graph` / `resolve_tag` / `find_schedule` answer *"what finish is in room 134, and how do
   you know"* with a citation per cell—across continuation sheets and multi-building keys.
 - `derive_base` computes base LF from committed rooms (perimeter minus stated openings), and

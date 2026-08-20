@@ -35,6 +35,16 @@
 //        DESCRIPTION; rows T1, T2, T9) plus 1 reference drain: never counted.
 //        T9 exists as a row but is drawn on no plan sheet — the
 //        cannot-anchor refusal.
+//
+// 3. test/fixtures/symbol-lum.pdf — the #260 stroke-luminance fixture
+//    (612×612 pt, no text layer): the SAME drain symbol drawn SEVEN times,
+//    geometrically identical everywhere — four in black (the devices; one of
+//    them the seed) and three in grey RGB(219,219,219) (the background twins).
+//    Nothing in the geometry separates them; the stroke color does. Pins the
+//    end-to-end path: pdf.js stroke-color ops → extractVectorGeometry's lum
+//    channel → symbol_sweep's stated luminance_tolerance gate.
+//      black: (100,100) seed · (200,100) · (300,100) · (400,220) rotated 90°
+//      grey:  (100,400) · (250,400) · (400,400)
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,6 +52,7 @@ import { fileURLToPath } from "node:url";
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "..", "test", "fixtures");
 const OUT = join(FIXTURES, "symbol-plan.pdf");
 const OUT_SET = join(FIXTURES, "symbol-set.pdf");
+const OUT_LUM = join(FIXTURES, "symbol-lum.pdf");
 
 // the symbol, local pt (y up): square + one diagonal + right stub
 const SYMBOL = [
@@ -203,3 +214,44 @@ setPdf += `trailer\n<< /Size ${setObjects.length + 1} /Root 1 0 R >>\nstartxref\
 
 writeFileSync(OUT_SET, setPdf, "latin1");
 console.log(`wrote ${OUT_SET} (${setPdf.length} bytes)`);
+
+// ── symbol-lum.pdf — the #260 stroke-luminance fixture ───────────────────────
+// The same drain glyph seven times, geometrically identical; only the stroke
+// color separates device from background twin. 219/255 = 0.858824 — the grey
+// the field report measured on a real ceiling grid.
+
+const lumContent = [
+  "0 0 0 RG",
+  "1 w",
+  "40 40 532 532 re S",                       // border — long segments, never the symbol
+  "0.5 w",
+  ...place(SYMBOL, [100, 100]),               // seed (black)
+  ...place(SYMBOL, [200, 100]),
+  ...place(SYMBOL, [300, 100]),
+  ...place(SYMBOL, [400, 220], { rot90: true }),
+  "0.858824 0.858824 0.858824 RG",            // the grey twins — same ink, different pen
+  ...place(SYMBOL, [100, 400]),
+  ...place(SYMBOL, [250, 400]),
+  ...place(SYMBOL, [400, 400]),
+].join("\n");
+
+const lumObjects = [
+  "<< /Type /Catalog /Pages 2 0 R >>",
+  "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+  "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 612] /Contents 4 0 R /Resources << >> >>",
+  `<< /Length ${lumContent.length} >>\nstream\n${lumContent}\nendstream`,
+];
+
+let lumPdf = "%PDF-1.5\n";
+const lumOffsets = [];
+lumObjects.forEach((body, i) => {
+  lumOffsets.push(lumPdf.length);
+  lumPdf += `${i + 1} 0 obj\n${body}\nendobj\n`;
+});
+const lumXrefAt = lumPdf.length;
+lumPdf += `xref\n0 ${lumObjects.length + 1}\n0000000000 65535 f \n`;
+for (const off of lumOffsets) lumPdf += `${String(off).padStart(10, "0")} 00000 n \n`;
+lumPdf += `trailer\n<< /Size ${lumObjects.length + 1} /Root 1 0 R >>\nstartxref\n${lumXrefAt}\n%%EOF\n`;
+
+writeFileSync(OUT_LUM, lumPdf, "latin1");
+console.log(`wrote ${OUT_LUM} (${lumPdf.length} bytes)`);
