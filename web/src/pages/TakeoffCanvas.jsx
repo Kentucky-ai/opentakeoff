@@ -2867,7 +2867,9 @@ export default function TakeoffCanvas() {
     const tag = condById[s.condition_id]?.finish_tag || "?";
     const a = s.computed?.area_sf || 0, lf = s.computed?.perimeter_lf || 0;
     if (s.measure_role === "count") return `${tag} · ${num(s.computed?.count || 1, 0)} EA`;
-    if (s.measure_role === "deduct") return `${tag} · −${fa(a)} deduct`;
+    // closed shapes carry their ring length too (#283) — a footprint's LF is
+    // as much a takeoff number as its SF, and it's already computed
+    if (s.measure_role === "deduct") return `${tag} · −${fa(a)} deduct${lf > 0 ? ` · ${fl(lf)} perim` : ""}`;
     if (s.measure_role === "surface_area") {
       // same height semantics as recomputeShape: an override wins outright (even 0).
       // Heights stay feet in both systems — they're ENTERED in feet everywhere.
@@ -2877,7 +2879,7 @@ export default function TakeoffCanvas() {
       return `${tag} · ${fa(a)} wall (${fl(lf)} × ${num(h, 2)}′)`;
     }
     if (s.measure_role === "linear") return `${tag} · ${fl(lf)}${a > 0 ? ` · ${fa(a)} border` : ""}`;
-    return `${tag} · ${faSY(a)}`;
+    return `${tag} · ${faSY(a)}${lf > 0 ? ` · ${fl(lf)} perim` : ""}`;
   }
   // Edge-insert affordance: the nearest point ON an edge of the selected shape,
   // away from its corner diamonds and midpoint grip (those gestures keep
@@ -7678,6 +7680,40 @@ export default function TakeoffCanvas() {
               <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{units === "metric" ? `${fl(livePerim)} perim` : `${num(liveArea / 9)} SY  ·  ${num(livePerim)} LF perim`}</div>
               {condH > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>@H {num(heightVal(condH, units), 2)}{units === "metric" ? " m" : "′"}: {fa(livePerim * condH)} vert{units === "metric" ? "" : ` · ${num((liveArea * condH) / 27)} CY`}</div>}
             </>
+          ) : selShape ? (
+            // #283 — a FINISHED takeoff reads the same as it did mid-trace.
+            // The perimeter is already computed and stored on every closed
+            // shape (shapeMetrics); before this it simply had nowhere to be
+            // read, so an estimator who wanted the footprint's LF traced the
+            // ring a second time with the linear tool.
+            (() => {
+              const c = selShape.computed || {};
+              const a = c.area_sf || 0, lf = c.perimeter_lf || 0;
+              const shTag = condById[selShape.condition_id]?.finish_tag || "—";
+              const big = (txt, unit, col) => (
+                <div style={{ fontSize: 22, fontWeight: 700, color: col || "var(--ink)" }}>{txt} <span style={{ fontSize: 13, fontWeight: 600 }}>{unit}</span></div>
+              );
+              const sub = (txt) => <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{txt}</div>;
+              const foot = <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{shTag} · selected{selShape.origin === "agent" ? " · agent" : ""}</div>;
+              if (selShape.measure_role === "count") return <>{big(num(c.count || 1, 0), "EA")}{foot}</>;
+              if (selShape.measure_role === "linear") {
+                return <>{big(num(lenVal(lf, units)), lenUnit(units))}{a > 0 ? sub(`${fa(a)} border`) : null}{foot}</>;
+              }
+              if (selShape.measure_role === "surface_area") {
+                const h = selShape.height_override === true
+                  ? Number(selShape.height_ft) || 0
+                  : Number(selShape.height_ft) || Number(condById[selShape.condition_id]?.height_ft) || 0;
+                return <>{big(num(areaVal(a, units)), `${areaUnit(units)} wall`)}{sub(`${fl(lf)} × ${num(heightVal(h, units), 2)}${units === "metric" ? " m" : " ft"}`)}{foot}</>;
+              }
+              const ded = selShape.measure_role === "deduct";
+              return (
+                <>
+                  {big(`${ded ? "−" : ""}${num(areaVal(a, units))}`, areaUnit(units), ded ? "var(--c-danger)" : undefined)}
+                  {sub(units === "metric" ? `${fl(lf)} perim` : `${num(a / 9)} SY  ·  ${num(lf)} LF perim`)}
+                  {foot}
+                </>
+              );
+            })()
           ) : (
             <div style={{ fontSize: 12.5, opacity: 0.6 }}>{!unitsPerPx ? "Set scale first" : tool === "zone" ? "Trace a region (an apartment, a wing) — ⏎ closes it and lists every condition inside" : !activeCond ? "Pick a condition" : tool === "oneclick" ? "Click inside a room — it selects itself" : tool === "surface" ? "Trace the wall run" : "Click to trace an area"}</div>
           )}
