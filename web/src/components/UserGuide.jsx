@@ -67,7 +67,7 @@ const START = [
 
 export const TOOLS = [
   [["O"], "One-Click Area — click inside a room, it selects itself"],
-  [["A"], "Area"], [["R"], "Rectangle"], [["L"], "Linear"], [["Q"], "Curved Line"],
+  [["A"], "Area"], [["R"], "Rectangle"], [["L"], "Linear"], [["Q"], "Straight ⇄ Curve (mid-trace)"],
   [["S"], "Surface Area (walls)"], [["C"], "Count"],
   [["D"], "Deduct shape (Cut Out)"], [["⇧", "D"], "Deduct rectangle"],
   [["H"], "Highlighter"], [["K"], "Check a dimension against what the drawing says"],
