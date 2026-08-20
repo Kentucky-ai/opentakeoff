@@ -369,7 +369,9 @@ On the canvas the crosshair **is** the cursor: the OS pointer hides in draw mode
 
 ### Area (`A`)
 
-Click vertex by vertex around the space; `⏎`, double-click, or the **Finish** button closes it at three or more points. The live readout shows the running segment length while you trace, and the committed shape reads SF, SY, and perimeter LF.
+Click vertex by vertex around the space; `⏎`, double-click, or the **Finish** button closes it at three or more points. The live readout shows the running segment length while you trace, and the committed shape reads SF, SY, and perimeter LF—select it any time later and the readout gives you both numbers again, so a footprint's LF never needs a second trace with the Linear tool.
+
+**Curved boundaries.** Buildings are not all right angles: a bowed wall, a radius corner, a curved curb or pool edge. `⌥`-click a point instead of clicking it and the boundary **bends smoothly through** that point rather than turning a corner at it—the point draws as a round handle instead of a star, and the readout says how many curve points are in play. Mix them freely: straight clicks for the straight walls, `⌥`-clicks along the arc, in one trace. Click a few points along the curve rather than one—the boundary passes through exactly the points you gave it, so more points on a tight arc is a truer arc. On `⏎` the whole thing commits as **one closed area**: the curve is flattened into the ring, so SF, perimeter LF, Cut Out, the marked set, and every export treat it as the ordinary polygon it now is.
 
 ### Rectangle (`R`)
 
@@ -676,7 +678,9 @@ Addenda happen. **Revisions** (the clock icon on the rail) makes them data inste
 
 Everything—drawings, scales, conditions, markups, RFIs, levels, tabs—autosaves to **this browser** (IndexedDB + localStorage) about a second after every change; the toolbar ticks *saving… / saved ✓*. Reload, close the tab, come back tomorrow: it's there.
 
-**"Client-only" means exactly this:** in the default build there is no server in the loop. Your PDFs are rendered and stored in your browser; your takeoff never leaves your machine; there's no account and no telemetry. The flip side: storage is **per browser, per origin**—a different browser profile, a different machine, even a different `localhost` port is a fresh, empty workspace. Clearing site data clears your work (save revisions and exports first; the browser's storage is the only copy).
+**"Client-only" means exactly this:** in the default build there is no server in the loop. Your PDFs are rendered and stored in your browser; your takeoff never leaves your machine; there's no account and no telemetry. The flip side: storage is **per browser, per origin**—a different browser profile, a different machine, even a different `localhost` port is a fresh, empty workspace. Clearing site data clears your work.
+
+So take the takeoff out of the browser: **Sheet → Export takeoff…** writes `〈project〉.takeoff.json`—the exact document autosave writes, every shape, condition, scale, markup, RFI and seal—to a normal file you can back up, archive for years, carry to another machine, or hand to another estimator. **Sheet → Import takeoff…** reads it back as an editable takeoff, not a report. The plan PDF is not inside it: open the same PDF first, then import.
 
 If a saved project fails to load, autosave **pauses itself** and a banner says so—a load failure never overwrites your saved work with an empty canvas. And if OpenTakeoff updates in another tab, the stale tab asks for a reload instead of writing over the newer one.
 
@@ -872,6 +876,7 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `⇧⌘Z` | Redo |
 | `Esc` | Back out one level: clear the vertex pick first, then everything in progress (trace, proposal, calibration, check, selection, markup draft, armed stamp, zone) |
 | Hold `⇧` | Force the 45° angle lock at any cursor angle |
+| `⌥`-click (Area / Cut Out) | Place a **curve** point—the boundary bends through it |
 | `⌥`-click (One-Click) | Carve a cutout inside a selected space |
 | `⇧`-click an edge | Insert a vertex at the edge midpoint (selected shape or One-Click proposal) and drag it |
 
