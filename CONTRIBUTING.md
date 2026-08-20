@@ -1,6 +1,6 @@
 # Contributing to OpenTakeoff
 
-Thanks for helping build a free takeoff tool for flooring contractors. PRs,
+Thanks for helping build a free takeoff tool for contractors. PRs,
 issues, and ideas are all welcome.
 
 ## Where to start
