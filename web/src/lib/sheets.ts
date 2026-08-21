@@ -29,6 +29,7 @@ interface TextItemLike {
   str?: string;
   transform: number[];
   height?: number;
+  width?: number;
 }
 interface TextContentLike {
   items: TextItemLike[];
@@ -86,16 +87,61 @@ export const STANDARD_SCALES: Scale[] = [
 const SHEET_NO_RE = /^[A-Z]{1,3}[-. ]?\d{1,3}(\.\d{1,2})?[A-Z]?$/;
 export function extractSheetNumber(textContent: TextContentLike, viewport: Viewport): string | null {
   const W = viewport.width, H = viewport.height;
-  let best: string | null = null, bestH = 0;
+
+  // CAD exports often split one drawn string into several glyph runs — "M-121A"
+  // arrives as "M" + "-" + "121A", and no single item matches the sheet-number
+  // shape while some other lone token (a sheet-issue row's "GMP-3") does. So
+  // collect the title-block region's items positioned, then test BOTH the
+  // singles and the baseline-joined runs; a join that isn't a sheet number
+  // simply fails the regex, so joining can only add candidates, never hide one.
+  type Placed = { raw: string; x: number; y: number; h: number; w: number };
+  const placed: Placed[] = [];
+  // pdf.js item.width is font-scaled user units — device width scales by the
+  // viewport scale alone, not the glyph transform
+  const vscale = Math.hypot(viewport.transform?.[0] ?? 1, viewport.transform?.[1] ?? 0) || 1;
   for (const it of textContent.items || []) {
     const raw = (it.str || "").trim().toUpperCase().replace(/\s+/g, "");
-    if (raw.length < 2 || raw.length > 8 || !SHEET_NO_RE.test(raw)) continue;
+    if (!raw) continue;
     const t = pdfjsLib.Util.transform(viewport.transform, it.transform);
     const x = t[4], y = t[5], h = Math.hypot(t[2], t[3]) || it.height || 0;
-    // title block lives lower-right; require it there and prefer the biggest text
+    // title block lives lower-right; require it there
     if (x < W * 0.60 || y < H * 0.55) continue;
+    const w = it.width != null ? it.width * vscale : raw.length * 0.62 * h; // gap math only
+    placed.push({ raw, x, y, h, w });
+  }
+
+  let best: string | null = null, bestScore = 0;
+  const consider = (raw: string, x: number, y: number, h: number) => {
+    if (raw.length < 2 || raw.length > 8 || !SHEET_NO_RE.test(raw)) return;
     const score = h + (x / W) * 4 + (y / H) * 4; // bigger + further to lower-right wins
-    if (score > bestH) { bestH = score; best = raw; }
+    if (score > bestScore) { bestScore = score; best = raw; }
+  };
+
+  for (const p of placed) consider(p.raw, p.x, p.y, p.h);
+
+  // group into baseline rows, join adjacent fragments, test the joined runs
+  const rows: Placed[][] = [];
+  for (const p of [...placed].sort((a, b) => a.y - b.y || a.x - b.x)) {
+    const row = rows[rows.length - 1];
+    if (row && Math.abs(p.y - row[0].y) <= Math.max(2, row[0].h * 0.35)) row.push(p);
+    else rows.push([p]);
+  }
+  for (const row of rows) {
+    row.sort((a, b) => a.x - b.x);
+    let run: Placed[] = [];
+    const flush = () => {
+      if (run.length > 1) {
+        const h = Math.max(...run.map((r) => r.h));
+        consider(run.map((r) => r.raw).join(""), run[0].x, run[0].y, h);
+      }
+      run = [];
+    };
+    for (const p of row) {
+      const prev = run[run.length - 1];
+      if (prev && p.x - (prev.x + prev.w) > Math.max(...run.map((r) => r.h)) * 1.2) flush();
+      run.push(p);
+    }
+    flush();
   }
   return best;
 }

@@ -9,7 +9,7 @@
 //   - schedule sheets never mint phantom room tags.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildSheetGraph, resolveTag, classifySheetRole, extractTable, roomTags, detailCallouts, revisionOf, type GraphSpan, type SheetSpans, type SheetGraph } from "../src/lib/sheetgraph.ts";
+import { buildSheetGraph, resolveTag, classifySheetRole, rowKeyAnswersFor, extractTable, roomTags, detailCallouts, revisionOf, type GraphSpan, type SheetSpans, type SheetGraph } from "../src/lib/sheetgraph.ts";
 
 // span builder: 8pt-tall text, width ~5px/char — the shape the MCP server serves
 const sp = (str: string, x: number, y: number): GraphSpan => ({ str, x, y, w: str.length * 5, h: 8 });
@@ -61,6 +61,27 @@ test("sheet roles classify from what the sheet SAYS, with evidence", () => {
   // titleless sheet falls back to the number convention — stated as weak
   const bare = classifySheetRole({ key: "x", sheet_number: "A-101", spans: [sp("nothing here", 0, 0)] });
   assert.deepEqual({ r: bare.role, weak: bare.confidence < 0.5 }, { r: "plan", weak: true });
+  // every discipline draws plans — a mechanical sheet's ductwork plan title
+  // must classify plan, not lose to an incidental LEGEND note
+  const mech = classifySheetRole({
+    key: "m", sheet_number: "M-121A",
+    spans: [sp("SECOND FLOOR DUCTWORK PLAN AREA A", 100, 700), sp("WALL RATING LEGEND:", 620, 640)],
+  });
+  assert.equal(mech.role, "plan");
+  assert.ok(mech.confidence >= 0.8);
+  // and the number-convention fallback knows discipline prefixes
+  const mBare = classifySheetRole({ key: "y", sheet_number: "M-101", spans: [sp("nothing here", 0, 0)] });
+  assert.deepEqual({ r: mBare.role, weak: mBare.confidence < 0.5 }, { r: "plan", weak: true });
+});
+
+test("a compound schedule-row key answers for each of its marks", () => {
+  assert.equal(rowKeyAnswersFor("R1/E1", "R1"), true);
+  assert.equal(rowKeyAnswersFor("R1/E1", "E1"), true);
+  assert.equal(rowKeyAnswersFor("R1/E1", "R1/E1"), true);
+  assert.equal(rowKeyAnswersFor("R1 / E1", "E1"), true);
+  assert.equal(rowKeyAnswersFor("R1/E1", "E2"), false);
+  assert.equal(rowKeyAnswersFor("S1", "S1"), true);
+  assert.equal(rowKeyAnswersFor("S1", "S"), false);
 });
 
 test("table extraction: header anchors, evidence per cell, titles found above", () => {

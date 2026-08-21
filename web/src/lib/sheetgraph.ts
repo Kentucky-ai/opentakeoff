@@ -58,7 +58,9 @@ const isVertical = (s: GraphSpan): boolean =>
 const SCHEDULE_TITLE_RE = /^[A-Z][A-Z ()/&.'’-]* SCHEDULE( *[-–] *[A-Z0-9 ()/&.'’-]+)?( *\(?(?:CONTINUATION|CONTINUED|CONT['’]?D?)\.?\)?)?$/;
 const ROLE_SIGNALS: Array<{ re: RegExp; role: SheetRole; conf: number }> = [
   { re: /DEMOLITION\s+PLAN|DEMO\s+PLAN/, role: "demolition", conf: 0.9 },
-  { re: /FINISH\s+PLAN|FLOOR\s+PLAN|FURNITURE\s+PLAN|CEILING\s+PLAN/, role: "plan", conf: 0.85 },
+  // every discipline draws plans, not just finishes — an M-sheet's "SECOND
+  // FLOOR DUCTWORK PLAN" is as much a plan title as an A-sheet's finish plan
+  { re: /(?:FINISH|FLOOR|FURNITURE|CEILING|DUCTWORK|PIPING|MECHANICAL|ELECTRICAL|LIGHTING|POWER|PLUMBING|SPRINKLER|HVAC|FRAMING|FOUNDATION|ROOF|SITE|EQUIPMENT)\s+PLAN\b/, role: "plan", conf: 0.85 },
   { re: SCHEDULE_TITLE_RE, role: "schedule", conf: 0.85 },
   { re: /SCHEDULE/, role: "schedule", conf: 0.5 },
   { re: /LEGEND/, role: "legend", conf: 0.5 },
@@ -77,9 +79,9 @@ export function classifySheetRole(sheet: SheetSpans): { role: SheetRole; confide
     for (const sig of ROLE_SIGNALS) if (sig.re.test(u)) { hits.push({ role: sig.role, conf: sig.conf, span: sp }); break; }
   }
   if (!hits.length) {
-    // sheet-number fallback: A-1xx is conventionally a plan — weak, stated as weak
+    // sheet-number fallback: <discipline>-1xx is conventionally a plan — weak, stated as weak
     const n = norm(sheet.sheet_number || "");
-    if (/^A-?1\d\d/.test(n)) return { role: "plan", confidence: 0.4, evidence: null };
+    if (/^(A|M|E|P|S|FP)-?1\d\d/.test(n)) return { role: "plan", confidence: 0.4, evidence: null };
     return { role: "unknown", confidence: 0, evidence: null };
   }
   // strongest signal wins; disagreement between DISTINCT roles halves confidence
@@ -590,13 +592,30 @@ export const isNonFinishSchedule = (title: string): boolean => {
 };
 
 function rowKeyOf(raw: string, kind: "room-finish" | "finish", buildings?: Set<string>): { key: string; building?: string } | null {
-  const key = norm(raw).replace(/[^A-Z0-9-]/g, "");
-  if (kind === "finish") return CODE_RE.test(key) ? { key } : null;
+  const kept = norm(raw).replace(/[^A-Z0-9/-]/g, "");
+  const key = kept.replace(/\//g, "");
+  if (kind === "finish") {
+    // a compound cell keys one row for several marks — "R1 / E1" is the same
+    // device scheduled for two services; keep the slash so the row can answer
+    // for each mark on its own (checked first: slash-stripped "R1E1" would
+    // otherwise pass CODE_RE and bury the compound)
+    const parts = kept.split("/").filter(Boolean);
+    if (parts.length > 1 && parts.every((p) => CODE_RE.test(p))) return { key: parts.join("/") };
+    return CODE_RE.test(key) ? { key } : null;
+  }
   if (ROW_KEY_RE.test(key)) return { key };
   const q = key.match(QUALIFIED_KEY_RE);
   if (q && buildings?.has(q[1])) return { key, building: q[1] };
   return null;
 }
+
+/** Does a schedule-row key answer for a mark? Exact, or one of a compound
+ * key's slash-separated parts ("R1/E1" answers for "R1" and for "E1"). */
+export const rowKeyAnswersFor = (key: string, want: string): boolean => {
+  const c = norm(key).replace(/\s+/g, "");
+  const w = norm(want).replace(/\s+/g, "");
+  return c === w || c.split("/").filter(Boolean).includes(w);
+};
 
 /** The number part of a row key — "A-134" and "134" both answer for 134. */
 const numOf = (key: string): string => key.match(QUALIFIED_KEY_RE)?.[2] ?? key;
@@ -1370,7 +1389,7 @@ export function resolveTag(graph: SheetGraph, tag: string): ResolveResult {
     const code = norm(cell.text).replace(/[^A-Z0-9-]/g, "");
     const fin: ResolvedFinish = { surface, code: cell.text.trim(), source: { sheet: r.sheet, text: cell.text.trim(), bbox: cell.bbox } };
     for (const ft of finTables) {
-      const def = ft.rows.find((fr) => norm(fr.key) === code);
+      const def = ft.rows.find((fr) => rowKeyAnswersFor(fr.key, code));
       if (def) {
         const cells: Record<string, string> = {};
         for (const [k, v] of Object.entries(def.cells)) cells[k] = v.text;
