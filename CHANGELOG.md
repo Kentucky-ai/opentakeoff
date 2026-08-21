@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-21 — the marquee comes to the canvas
+
+### Added
+- **The Symbol tool (#264) — marquee one device, count every placement, by hand.** The sweep engine has been reachable only over the wire since it shipped; an agent could count a sheet's drains in two seconds while the estimator with the app open could not do it at all. The canvas face closes that, built the estimator's way: arm **Symbol (Y)** on the rail, drag a tight two-click marquee around ONE instance (the schedule tool's own idiom), and every placement lights up for review — matches as translucent ×'s in the armed condition's color, near-misses as orange **?**-circles the keyboard walks (**↵** accept · **X** dismiss · **→** next), the seed as a violet double ring: the same glyph language the MCP's `view_sheet` marks ship, drawn see-through on purpose so review never obstructs the ink it sits on. **Labels ride the review** (#308, the same pure `symbollabels` resolution the server runs — canvas and agent cannot disagree): the panel says "drawing says P-7 on all 4" instead of making the estimator infer it, and a confident match with no label in a labeled family is flagged first. `complete: false` is a loud **FLOOR — NOT A TOTAL** banner in the panel, never a tooltip. **Commit** mints every match + accepted question as EA counts under the armed condition — one dispatch, ONE undo step, `origin.method "symbol_sweep"` with per-marker score and transform — and the seed counts by default (#296's lesson: it is installed work in front of you), one checkbox to leave it out. Verified live on the pinned fixture: 5 matched, the 77% near-miss asked and dismissed, the decoy silent, commit minted 6 EA, one ⌘Z took all six back. Exclusions ("not this one") and the pen-color gate are the engine's next canvas gestures — the review lane is built so they slot into the same rails.
+
 ## 2026-08-21 — the picture shows what the reply names; opentakeoff-mcp 0.9.62
 
 Both found in one live validation session, by the estimator doing the right thing — auditing the rendered overlay against the sheet — and both the same disease: **the reply disclosed what the picture did not show.**

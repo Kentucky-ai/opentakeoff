@@ -808,6 +808,12 @@ A few worth knowing about from the canvas side, because they're the same feature
 - `detect_rooms` batches `one_click` across every room-number label on a sheet in one call, and
   can commit each room under its own schedule row's floor finish—withholding, with a reason,
   whatever the schedule can't answer.
+- The canvas has the same engine as a tool: arm **Symbol (Y)**, marquee ONE instance tight, and
+  every placement lights up for review — matches in your condition's color, near-misses as orange
+  question marks you answer from the keyboard (↵ accept · X dismiss · → next), your seed as a
+  violet ring. The panel reads the drawing's own labels back to you, warns loudly when a count is
+  a floor rather than a total, and Commit mints everything as EA counts in one undo step — seed
+  included unless you untick it.
 - `symbol_sweep` finds every instance of a repeated symbol from one marqueed example, and
   `sweep_schedule_row` mints a condition from a schedule row and counts its drawn markers across
   the plan sheets. Where drafting reuses one generic shape for different devices, `exclude` takes
