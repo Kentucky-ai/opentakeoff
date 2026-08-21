@@ -26,6 +26,7 @@ import { transformPath, svgPlacedBox } from "../lib/svgpath.js";
 import { ingestFiles } from "../lib/ingest.js";
 import { parseTakeoffImport, mergeTakeoffImport } from "../lib/importTakeoff.js";
 import { buildProjectArchive, parseProjectArchive, isProjectArchive, downloadArchive } from "../lib/projectArchive.js";
+import { buildProfile, parseProfile, applyProfile, resetProfileDefaults, isProfileFile } from "../lib/profile.js";
 import ToolMenu from "../components/ToolMenu.jsx";
 import PlanNavigator from "../components/PlanNavigator.jsx";
 import ReportPanel from "../components/ReportPanel.jsx";
@@ -602,6 +603,7 @@ export default function TakeoffCanvas() {
   const [clientInfo, setClientInfo] = useState({});      // per-project client/job fields for branded output; additive payload field
   const fileInputRef = useRef(null);                    // hidden <input type=file> for "Open PDF"
   const importInputRef = useRef(null);                  // hidden <input type=file> for "Import takeoff…" (the agent-JSON handoff)
+  const profileInputRef = useRef(null);                 // hidden <input type=file> for "Import profile…" (#299)
 
   const containerRef = useRef(null);
   const stageRef = useRef(null);
@@ -1231,6 +1233,10 @@ export default function TakeoffCanvas() {
       if (incoming.length > 1) setCommitMsg((m) => `${m} Other dropped files were ignored — open plans separately from a project archive.`);
       return;
     }
+    // a dropped .otprofile is the working ENVIRONMENT (#299) — apply it, never
+    // ingest it as a plan
+    const prof = incoming.find((f) => isProfileFile(f.name));
+    if (prof) { await importProfileFile(prof); return; }
     setCommitMsg("Reading files…");
     let pdfs = [], skipped = [];
     try { ({ pdfs, skipped } = await ingestFiles(incoming, { onProgress: setCommitMsg })); }
@@ -2150,6 +2156,52 @@ export default function TakeoffCanvas() {
     } catch (e) {
       setCommitMsg(String(e?.message || "").startsWith("Couldn't") ? e.message : `Couldn't open project: ${e?.message || e}`);
     }
+  };
+
+  // ── estimator profile (#299) — export / import / reset the working
+  // environment (condition templates, materials, stamps, report setup),
+  // never project data. Import and reset both DOWNLOAD the current profile
+  // first: the receipt is the rollback (Import profile restores it), so
+  // neither needs a second confirmation step.
+  const refreshLibraries = async () => {
+    const tpl = await store.loadTemplates().catch(() => []);
+    templatesRef.current = tpl; setTemplates(tpl);
+    setMatLib(await store.loadMaterialLibrary().catch(() => []));
+    const lib = await store.loadStampLibrary().catch(() => ({ stamps: [], sets: [] }));
+    stampLibRef.current = lib; setStampLib(lib);
+  };
+  const profileSummary = (p) =>
+    `${(p.condition_templates || []).length} condition template${(p.condition_templates || []).length === 1 ? "" : "s"}, ${(p.material_library || []).length} material${(p.material_library || []).length === 1 ? "" : "s"}, ${(p.stamp_library?.stamps || []).length} stamp${(p.stamp_library?.stamps || []).length === 1 ? "" : "s"}, ${(p.report_templates || []).length} report template${(p.report_templates || []).length === 1 ? "" : "s"}`;
+  const exportProfileFile = async () => {
+    try {
+      const p = await buildProfile();
+      downloadText("opentakeoff-profile.otprofile", JSON.stringify(p, null, 2), "application/json");
+      setCommitMsg(`Exported opentakeoff-profile.otprofile — ${profileSummary(p)}. Import it on another machine to carry your setup over.`);
+    } catch (e) { setCommitMsg(`Couldn't export profile: ${e?.message || e}`); }
+  };
+  const backupProfileFile = async () => {
+    const backup = await buildProfile();
+    downloadText("opentakeoff-profile-backup.otprofile", JSON.stringify(backup, null, 2), "application/json");
+  };
+  const importProfileFile = async (file) => {
+    if (!file) return;
+    try {
+      const p = parseProfile(await file.text());
+      await backupProfileFile();
+      const n = await applyProfile(p);
+      await refreshLibraries();
+      setCommitMsg(`Applied profile${p.name ? ` "${p.name}"` : ""} — ${n.templates} condition template${n.templates === 1 ? "" : "s"}, ${n.materials} material${n.materials === 1 ? "" : "s"}, ${n.stamps} stamp${n.stamps === 1 ? "" : "s"}, ${n.reportTemplates} report template${n.reportTemplates === 1 ? "" : "s"}. Your previous setup downloaded as opentakeoff-profile-backup.otprofile.`);
+    } catch (e) {
+      setCommitMsg(String(e?.message || "").startsWith("Couldn't") ? e.message : `Couldn't apply profile: ${e?.message || e}`);
+    }
+  };
+  const resetProfile = async () => {
+    try {
+      await backupProfileFile();
+      await resetProfileDefaults();
+      await refreshLibraries();
+      setCommitMsg("Profile reset to OpenTakeoff defaults — your previous setup downloaded as opentakeoff-profile-backup.otprofile (Import profile restores it). Project takeoffs are untouched.");
+    } catch (e) { setCommitMsg(`Couldn't reset profile: ${e?.message || e}`); }
   };
 
   // markups MUST be in the deps (a cloud/callout/text or an RFI link is real work);
@@ -6404,6 +6456,22 @@ export default function TakeoffCanvas() {
     title: "Save the WHOLE job as one portable .otk file — every plan PDF plus the full takeoff. Open it on any machine (drop it like a plan, or Add plans), archive it, or hand it to another estimator; unlike Export takeoff, the plans travel inside.",
     onSelect: exportProjectArchive,
   });
+  sheetMenuItems.push({ section: "Profile — your templates, stamps & report setup" });
+  sheetMenuItems.push({
+    id: "export-profile", icon: "document", label: "Export profile…",
+    title: "Save your working environment — condition templates, material library, stamps, report templates/theme/columns — as one portable .otprofile. Import it on another machine or hand a company setup to another estimator; project takeoffs are never in it.",
+    onSelect: exportProfileFile,
+  });
+  sheetMenuItems.push({
+    id: "import-profile", icon: "document", label: "Import profile…",
+    title: "Replace your working environment with a .otprofile (you can also drop the file on the canvas). Your current setup downloads as a backup first — importing that backup restores it. Project takeoffs are untouched.",
+    onSelect: () => profileInputRef.current?.click(),
+  });
+  sheetMenuItems.push({
+    id: "reset-profile", icon: "undo", label: "Reset profile to defaults",
+    title: "Back to a stock OpenTakeoff setup — empty template/material libraries, the default stamps, no report customization. Your current setup downloads as a backup first; project takeoffs are untouched.",
+    onSelect: resetProfile,
+  });
 
   // deck-2 scale chip — the four scale controls collapsed to one status face:
   // red dashed = unset ("you can't trace yet"), green = set, warning = the
@@ -6554,6 +6622,8 @@ export default function TakeoffCanvas() {
           the refs even while focus mode hides the bar) */}
       <input name="sheet-file" ref={fileInputRef} type="file" accept=".pdf,application/pdf,image/*,.zip,application/zip,application/x-zip-compressed,.otk" multiple style={{ display: "none" }}
         onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }} />
+      <input name="profile-import" ref={profileInputRef} type="file" accept=".otprofile,application/json" style={{ display: "none" }}
+        onChange={(e) => { importProfileFile(e.target.files?.[0]); e.target.value = ""; }} />
       <input name="takeoff-import" ref={importInputRef} type="file" accept=".json,application/json" style={{ display: "none" }}
         onChange={(e) => { importTakeoffFile(e.target.files?.[0]); e.target.value = ""; }} />
       {/* THE top bar — one row (the two decks of issue #61 merged once the
