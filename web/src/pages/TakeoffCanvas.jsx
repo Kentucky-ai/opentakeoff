@@ -25,6 +25,7 @@ import { extractSvgPrimitives, svgToStamp } from "../lib/svgImport.js";
 import { transformPath, svgPlacedBox } from "../lib/svgpath.js";
 import { ingestFiles } from "../lib/ingest.js";
 import { parseTakeoffImport, mergeTakeoffImport } from "../lib/importTakeoff.js";
+import { buildProjectArchive, parseProjectArchive, isProjectArchive, downloadArchive } from "../lib/projectArchive.js";
 import ToolMenu from "../components/ToolMenu.jsx";
 import PlanNavigator from "../components/PlanNavigator.jsx";
 import ReportPanel from "../components/ReportPanel.jsx";
@@ -1222,6 +1223,14 @@ export default function TakeoffCanvas() {
   async function handleFiles(fileList) {
     const incoming = Array.from(fileList || []);
     if (!incoming.length) return;
+    // a dropped .otk is a PROJECT, not a plan — it replaces the workspace
+    // (snapshot first) instead of joining the plan set (#300)
+    const otk = incoming.find((f) => isProjectArchive(f.name));
+    if (otk) {
+      await importProjectArchive(otk);
+      if (incoming.length > 1) setCommitMsg((m) => `${m} Other dropped files were ignored — open plans separately from a project archive.`);
+      return;
+    }
     setCommitMsg("Reading files…");
     let pdfs = [], skipped = [];
     try { ({ pdfs, skipped } = await ingestFiles(incoming, { onProgress: setCommitMsg })); }
@@ -2092,6 +2101,55 @@ export default function TakeoffCanvas() {
     setCommitMsg(saved
       ? `Workspace cleared — ${names.length} PDF${names.length === 1 ? "" : "s"} removed. The takeoff was snapshotted first: Revisions → restore brings it back (re-open the same PDFs to see its shapes).`
       : `Workspace cleared — ${names.length} PDF${names.length === 1 ? "" : "s"} removed.`);
+  };
+
+  // "Export project archive…" (#300) — the whole job as ONE portable .otk:
+  // every stored plan's bytes plus the exact autosave payload. The other half
+  // of the #285 pair: Export takeoff is the annotation record alone (open the
+  // same PDF to restore); this is the archive that carries its own paper.
+  const exportProjectArchive = async () => {
+    if (!sheets.length) { setCommitMsg("Couldn't export project: no plans are open."); return; }
+    const base = (projectName || "project").trim().replace(/[^\w.\- ]+/g, "").replace(/\s+/g, "-").replace(/^[-.]+|[-.]+$/g, "") || "project";
+    try {
+      const data = await buildProjectArchive({
+        takeoff: { schema: ANN_SCHEMA, ...buildPayload() },
+        sheets,
+        loadPdfData: (n) => store.loadPdfData(n),
+        projectName,
+        onProgress: setCommitMsg,
+      });
+      downloadArchive(`${base}.otk`, data);
+      setCommitMsg(`Exported ${base}.otk — ${sheets.length} PDF${sheets.length === 1 ? "" : "s"} + the full takeoff (${shapes.length} shape${shapes.length === 1 ? "" : "s"}). Self-contained: open it on any machine, or hand it to another estimator.`);
+    } catch (e) {
+      setCommitMsg(`Couldn't export project: ${e?.message || e}`);
+    }
+  };
+
+  // Open a .otk (drop or file picker): REPLACE the workspace with the archived
+  // project. Commit before risk — the current takeoff, if non-empty, is
+  // snapshotted first so opening an archive is never a silent overwrite.
+  const importProjectArchive = async (file) => {
+    try {
+      setCommitMsg(`Opening ${file.name}…`);
+      const { takeoff, pdfs } = await parseProjectArchive(new Uint8Array(await file.arrayBuffer()));
+      if (shapes.length || conditions.length || markups.length) {
+        try { await store.saveSnapshot(`Before opening ${file.name} — ${new Date().toLocaleString()}`, buildPayload()); }
+        catch { /* best-effort — the open continues; archives are additive to PDFs */ }
+      }
+      for (const f of pdfs) {
+        setCommitMsg(`Restoring ${f.name}…`);
+        await store.addPdf(f);        // same-name different-bytes archives a revision (CO-1), never a silent overwrite
+        evictDoc(f.name);             // stale docs must re-read the restored bytes
+      }
+      forgetPages(pdfs.map((f) => f.name));
+      setDocEpoch((e) => e + 1);
+      await refreshSheets();
+      restoreSavedPayload(takeoff);
+      const n = Array.isArray(takeoff.shapes) ? takeoff.shapes.length : 0;
+      setCommitMsg(`Opened ${file.name} — ${pdfs.length} PDF${pdfs.length === 1 ? "" : "s"}, ${n} takeoff${n === 1 ? "" : "s"}.${shapes.length || conditions.length ? " Your previous takeoff was snapshotted — Revisions restores it." : ""}`);
+    } catch (e) {
+      setCommitMsg(String(e?.message || "").startsWith("Couldn't") ? e.message : `Couldn't open project: ${e?.message || e}`);
+    }
   };
 
   // markups MUST be in the deps (a cloud/callout/text or an RFI link is real work);
@@ -6341,6 +6399,11 @@ export default function TakeoffCanvas() {
     title: "Load a takeoff JSON — the app's own export or an agent session's export_takeoff. Machine shapes land dashed in their condition colors for your review; on merge, your calibration, conditions, and workspace win.",
     onSelect: () => importInputRef.current?.click(),
   });
+  sheetMenuItems.push({
+    id: "export-project", icon: "document", label: "Export project archive…",
+    title: "Save the WHOLE job as one portable .otk file — every plan PDF plus the full takeoff. Open it on any machine (drop it like a plan, or Add plans), archive it, or hand it to another estimator; unlike Export takeoff, the plans travel inside.",
+    onSelect: exportProjectArchive,
+  });
 
   // deck-2 scale chip — the four scale controls collapsed to one status face:
   // red dashed = unset ("you can't trace yet"), green = set, warning = the
@@ -6489,7 +6552,7 @@ export default function TakeoffCanvas() {
       style={{ position: "relative", display: "flex", flexDirection: "column", height: "100vh" }}>
       {/* file inputs — always mounted (drag-drop and the ⋯ import path need
           the refs even while focus mode hides the bar) */}
-      <input name="sheet-file" ref={fileInputRef} type="file" accept=".pdf,application/pdf,image/*,.zip,application/zip,application/x-zip-compressed" multiple style={{ display: "none" }}
+      <input name="sheet-file" ref={fileInputRef} type="file" accept=".pdf,application/pdf,image/*,.zip,application/zip,application/x-zip-compressed,.otk" multiple style={{ display: "none" }}
         onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }} />
       <input name="takeoff-import" ref={importInputRef} type="file" accept=".json,application/json" style={{ display: "none" }}
         onChange={(e) => { importTakeoffFile(e.target.files?.[0]); e.target.value = ""; }} />
