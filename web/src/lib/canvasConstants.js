@@ -57,6 +57,7 @@ export const MEASURE_TOOLS = [
   { id: "linear", icon: "linear", label: "Linear", shortcut: "L" },
   { id: "surface", icon: "surface", label: "Surface Area", shortcut: "S" },
   { id: "count", icon: "count", label: "Count", shortcut: "C" },
+  { id: "symbol", icon: "symbol", label: "Symbol — marquee ONE instance, count every placement (#264)", shortcut: "Y" },
 ];
 export const CUT_TOOLS = [
   { id: "deduct", icon: "deduct", label: "Deduct shape", shortcut: "D" },

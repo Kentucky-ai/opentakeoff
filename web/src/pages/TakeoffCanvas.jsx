@@ -50,6 +50,11 @@ import { mintTwin, variantTag,
 import { isGoogleConfigured, isSignedIn, isAllowedDomain, getAccessToken, orgDomainHint } from "../lib/google/auth.js";
 import { extractVectorGeometry, buildMask, floodRegionSealed, sealRadiiFor, doorWedgeCapPx, minPassRadiusFor, oneClickRing, ringArea, MASK_MAX_DIM, MIN_PASS_FT, SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE } from "../lib/oneclick";
 import { tidyRing, axisLockPoint } from "../lib/ringTidy";
+// The Symbol tool (#264) — the canvas face for the sweep engine. The engine,
+// counter-examples, the luminance channel, and label corroboration all live
+// as pure web libs already; this file adds only the gesture and the review.
+import { sweepSymbols } from "../lib/symbolsweep";
+import { labelPlacements } from "../lib/symbollabels";
 import { traceConfidence, floodSignals } from "../lib/confidence";
 import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS } from "../lib/rastermask";
 // PDF layer roles (#85): the pure name→role classifier and the override
@@ -216,6 +221,7 @@ const TOOL_VERB = {
   deduct: "cut_out", "deduct-rect": "cut_out",
   linear: "measure_line", surface: "measure_surface",
   count: "place_count", oneclick: "one_click", calibrate: "set_scale",
+  symbol: "symbol_sweep",
   check: "check_dimension", zone: "zone_check", "stitch-align": "stitch_align",
   schedule: "find_schedule", highlighter: "annotate", cloud: "annotate",
   callout: "annotate", text: "annotate", highlight: "annotate",
@@ -599,6 +605,11 @@ export default function TakeoffCanvas() {
   const [showRevisions, setShowRevisions] = useState(false); // Revisions overlay (save / compare any two, buy-list deltas, CSV, auto-banked restore)
   const [importRows, setImportRows] = useState(null);        // Import-from-schedule approval rows (null = dialog closed)
   const [scheduleAnchor, setScheduleAnchor] = useState(null); // first marquee corner for the "schedule" tool — ISOLATED from poly so it can never leak into a measure shape
+  // ── the Symbol tool (#264) — same two-click marquee idiom as schedule ─────
+  const [symbolAnchor, setSymbolAnchor] = useState(null);     // first marquee corner, isolated like scheduleAnchor
+  const [sweep, setSweep] = useState(null);                   // the live review: matches / questions / seed, one sheet, dies on commit or discard
+  const sweepRef = useRef(null);
+  useEffect(() => { sweepRef.current = sweep; }, [sweep]);
   const [projectName, setProjectName] = useState("");   // optional label for the report header
   const [clientInfo, setClientInfo] = useState({});      // per-project client/job fields for branded output; additive payload field
   const fileInputRef = useRef(null);                    // hidden <input type=file> for "Open PDF"
@@ -651,6 +662,9 @@ export default function TakeoffCanvas() {
   const snapGridsRef = useRef(new Map()); // sheetKey → {cell, map} spatial hash of vector endpoints
   const vectorSegsRef = useRef(new Map()); // sheetKey → flat [x1,y1,x2,y2,…] linework segments (One-Click boundary source)
   const segMetaRef = useRef(new Map());    // sheetKey → per-segment meta bytes (hatch classification input)
+  const segLumRef = useRef(new Map());     // sheetKey → per-segment stroke luminance (#260) — the Symbol tool's label leader-chase pen separator
+  const textSpansRef = useRef(new Map());  // sheetKey → label text spans (built lazily on first sweep)
+  const textTfRef = useRef(new Map());     // sheetKey → viewport transform, for positioning text spans in image px
   // PDF layers (#85): the op walk's per-segment OCG attribution + the sheet's
   // classified layer table. Engine reads go through REFS (rolesForSheet runs
   // inside click paths — a just-resolved table must be visible before React
@@ -1778,10 +1792,12 @@ export default function TakeoffCanvas() {
         // snap-to-vector index per panel (best-effort; off until the user enables it)
         m.pageObj.getOperatorList().then(async (ol) => {
           if (stale()) return;
-          const { points, segs, meta, imageArea, layerOf, layerIds } = extractVectorGeometry(ol, m.viewport.transform, pdfjsLib.OPS);
+          const { points, segs, meta, imageArea, lum, layerOf, layerIds } = extractVectorGeometry(ol, m.viewport.transform, pdfjsLib.OPS);
           snapGridsRef.current.set(m.key, buildSnapGrid(points, SNAP_CELL));
           vectorSegsRef.current.set(m.key, segs);
           segMetaRef.current.set(m.key, meta);
+          if (lum) segLumRef.current.set(m.key, lum);
+          textTfRef.current.set(m.key, m.viewport.transform);
           // raster-fallback trigger signals: how much of the sheet is placed
           // image, and whether the vector linework is dense enough to bound rooms
           sheetStatsRef.current.set(m.key, { segCount: segs.length >> 2, imageFrac: Math.min(1, imageArea / (m.w * m.h)) });
@@ -2497,7 +2513,37 @@ export default function TakeoffCanvas() {
       // would abandon the points already placed, so this binding can only be
       // an improvement on the one it shadows.
       if (lower === "q" && CURVABLE.has(tool) && poly.length) { setCurveMode((c) => !c); return; }
-      const map = { v: "select", a: "area", r: "rect", l: "linear", s: "surface", c: "count", d: "deduct", o: "oneclick", k: "check", h: "highlighter", n: "dimension" };
+      // Symbol review (#264): while a sweep is under review the keyboard walks
+      // the questions — one keystroke per answer, taking priority over tool
+      // bindings (stopImmediatePropagation keeps the proposal-Enter handler,
+      // registered after this one, from double-acting).
+      if (sweepRef.current) {
+        const sw = sweepRef.current;
+        const hasOpen = sw.questions.some((q) => q.state === "open");
+        if ((e.key === "Enter" || lower === "x") && hasOpen) {
+          e.preventDefault(); e.stopImmediatePropagation();
+          const verdict = e.key === "Enter" ? "accepted" : "dismissed";
+          setSweep((s) => {
+            const qs = s.questions.map((q, i) => (i === s.qIndex && q.state === "open" ? { ...q, state: verdict } : q));
+            let j = s.qIndex;
+            for (let i = 1; i <= qs.length; i++) { const k = (s.qIndex + i) % qs.length; if (qs[k].state === "open") { j = k; break; } }
+            return { ...s, questions: qs, qIndex: j };
+          });
+          return;
+        }
+        if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && hasOpen) {
+          e.preventDefault(); e.stopImmediatePropagation();
+          const dir = e.key === "ArrowRight" ? 1 : -1;
+          setSweep((s) => {
+            let j = s.qIndex;
+            for (let i = 1; i <= s.questions.length; i++) { const k = (s.qIndex + dir * i + s.questions.length * i) % s.questions.length; if (s.questions[k].state === "open") { j = k; break; } }
+            return { ...s, qIndex: j };
+          });
+          return;
+        }
+        if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); setSweep(null); return; }
+      }
+      const map = { v: "select", a: "area", r: "rect", l: "linear", s: "surface", c: "count", d: "deduct", o: "oneclick", k: "check", h: "highlighter", n: "dimension", y: "symbol" };
       const t = map[lower];
       if (t) setTool(t);
     };
@@ -2557,7 +2603,7 @@ export default function TakeoffCanvas() {
         // tool's points, on-screen or hidden
         else if (tool === "calibrate") { setCalib((c) => c.slice(0, -1)); }
         else if (tool === "check") { setCheck((c) => c.slice(0, -1)); }
-      } else if (e.key === "Escape") { if (agentOfferFnsRef.current?.pending()) { agentOfferFnsRef.current.dismiss(); } else if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { clearPoly(); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); setAlignPt(null); resetZone(); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; } }
+      } else if (e.key === "Escape") { if (agentOfferFnsRef.current?.pending()) { agentOfferFnsRef.current.dismiss(); } else if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { clearPoly(); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); setSymbolAnchor(null); setAlignPt(null); resetZone(); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; } }
       // ⌘Z: the drawing context wins — mid-trace it still pops the last placed
       // point (with or without ⇧, matching the old behavior byte-for-byte);
       // only with no trace in progress does the command stack engage
@@ -2683,6 +2729,11 @@ export default function TakeoffCanvas() {
       // two-click marquee, isolated state: first click drops the anchor, second reads the box
       if (!scheduleAnchor) setScheduleAnchor(p);
       else { importScheduleFromRect(scheduleAnchor, p); setScheduleAnchor(null); setTool("select"); }
+    }
+    else if (tool === "symbol") {
+      // the Symbol tool's marquee (#264): tight box around ONE instance
+      if (!symbolAnchor) setSymbolAnchor(p);
+      else { runSymbolSweep(symbolAnchor, p); setSymbolAnchor(null); }
     }
     else if (tool === "cloud" || tool === "callout" || tool === "text" || tool === "highlight" || tool === "dimension") placeMarkup(p);
     else if (tool === "stamp") placeStamp(p);
@@ -3088,8 +3139,9 @@ export default function TakeoffCanvas() {
     }
     if (rectRef.current) {
       const schedDraw = tool === "schedule" && scheduleAnchor;
-      if (!panRef.current && ((tool === "rect" || tool === "deduct-rect") && poly.length === 1 || schedDraw)) {
-        const a = schedDraw ? scheduleAnchor : poly[0];
+      const symDraw = tool === "symbol" && symbolAnchor;
+      if (!panRef.current && ((tool === "rect" || tool === "deduct-rect") && poly.length === 1 || schedDraw || symDraw)) {
+        const a = symDraw ? symbolAnchor : schedDraw ? scheduleAnchor : poly[0];
         rectRef.current.setAttribute("x", Math.min(a[0], cur[0])); rectRef.current.setAttribute("y", Math.min(a[1], cur[1]));
         rectRef.current.setAttribute("width", Math.abs(cur[0] - a[0])); rectRef.current.setAttribute("height", Math.abs(cur[1] - a[1]));
         rectRef.current.style.display = "block";
@@ -3760,6 +3812,98 @@ export default function TakeoffCanvas() {
       origin: { method: "manual", ...(baked ? { curved: true } : {}) },
     }] });
   }
+  // ── the Symbol tool (#264): marquee one instance → the engine finds every
+  // placement; matches light up, near-misses ask, and nothing commits until
+  // the estimator says so. Engine + labels are the same pure libs the MCP
+  // ships (sweepSymbols / labelPlacements) — canvas and agent cannot disagree.
+  async function ensureTextSpans(key) {
+    if (textSpansRef.current.has(key)) return textSpansRef.current.get(key);
+    const spans = [];
+    try {
+      const pg = pageObjsRef.current.get(key);
+      const vt = textTfRef.current.get(key);
+      if (pg && vt) {
+        const tc = await pg.getTextContent();
+        for (const it of tc.items || []) {
+          const str = (it.str || "");
+          if (!str.trim()) continue;
+          const t = pdfjsLib.Util.transform(vt, it.transform);
+          const w = (it.width || 0) * Math.hypot(t[0], t[1]);
+          const h = (it.height || 0) * Math.hypot(t[2], t[3]) || Math.hypot(t[2], t[3]);
+          spans.push({ str, x0: t[4], y0: t[5] - h, x1: t[4] + w, y1: t[5] });
+        }
+      }
+    } catch { /* no text layer — labels simply stay absent */ }
+    textSpansRef.current.set(key, spans);
+    return spans;
+  }
+  async function runSymbolSweep(a, b) {
+    const tp = panelAt(a[0]);
+    const key = tp.key;
+    const rect = [[a[0] - tp.xOffset, a[1]], [b[0] - tp.xOffset, b[1]]];
+    const segs = vectorSegsRef.current.get(key);
+    if (!segs || !segs.length) { setCommitMsg("This sheet has no vector linework (likely a scan) — the Symbol tool reads drawn segments."); return; }
+    const lum = segLumRef.current.get(key);
+    let res;
+    try {
+      res = sweepSymbols(segs, rect, lum ? { lum } : {});
+    } catch (e) {
+      // the engine's refusals (empty marquee, region-sized marquee) are
+      // instructions, exactly as the MCP surfaces them
+      setCommitMsg(String((e && e.message) || e));
+      return;
+    }
+    let labels = [];
+    try {
+      const spans = await ensureTextSpans(key);
+      labels = labelPlacements(
+        [res.seed.center, ...res.matches.map((m) => m.at), ...res.withheld.map((w) => w.at)],
+        spans, segs, lum,
+      );
+    } catch { labels = []; }
+    const L = (i) => labels[i] || null;
+    const nM = res.matches.length;
+    setSweep({
+      key, img: tp.img,
+      seed: { center: res.seed.center, rect: res.seed.rect, label: L(0) },
+      matches: res.matches.map((m, i) => ({ ...m, label: L(1 + i) })),
+      questions: res.withheld.map((w, i) => ({ ...w, label: L(1 + nM + i), state: "open" })),
+      complete: res.complete, dropped: res.candidates.dropped,
+      includeSeed: true, qIndex: 0,
+    });
+    setTool("select");
+  }
+  /** The label story in one line: "drawing says P-7 on all 4", or the mix. */
+  function sweepLabelLine(rows, seedTag) {
+    const tags = rows.map((r) => r.label?.label || null);
+    const named = tags.filter(Boolean);
+    if (!named.length) return null;
+    if (seedTag && named.length === rows.length && named.every((t) => t === seedTag)) return `drawing says ${seedTag} on all ${rows.length}`;
+    const byTag = {};
+    for (const t of tags) byTag[t || "no label"] = (byTag[t || "no label"] || 0) + 1;
+    return Object.entries(byTag).map(([t, n]) => `${t} ×${n}`).join(" · ");
+  }
+  function commitSweep() {
+    const sw = sweep;
+    if (!sw) return;
+    if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
+    const rows = [];
+    if (sw.includeSeed) rows.push({ at: sw.seed.center, score: 1, rotation: 0, mirrored: false, seedRow: true });
+    for (const m of sw.matches) rows.push(m);
+    for (const q of sw.questions) if (q.state === "accepted") rows.push(q);
+    if (!rows.length) { setCommitMsg("Nothing to commit — no matches and no accepted questions."); return; }
+    // ONE dispatch = one undo step, the whole gesture — same batch discipline
+    // as the MCP's set-wide commit
+    dispatchShape({ type: "add", shapes: rows.map((m) => ({
+      sheet_id: sw.key, condition_id: activeCond, measure_role: "count",
+      verts_norm: [[m.at[0] / sw.img.w, m.at[1] / sw.img.h]], computed: { count: 1 },
+      ...(activeLabel ? { label: activeLabel } : {}),
+      origin: { method: "symbol_sweep", symbol: { score: m.score, rotation: m.rotation, mirrored: m.mirrored, seed: { source: "instance", sheet: sw.key, ...(m.seedRow ? { seed_instance: true } : {}) } } },
+    })) });
+    setCommitMsg(`Committed ${rows.length} EA under ${condById[activeCond]?.finish_tag || "condition"}${sw.includeSeed ? " — seed included" : ""} · one undo step (⌘Z).`);
+    setSweep(null);
+  }
+
   function commitCount(p) {
     if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
     const tp = panelAt(p[0]);
@@ -7795,6 +7939,40 @@ export default function TakeoffCanvas() {
               <rect ref={highlightRef} fill="rgba(196,122,16,.18)" stroke="#c47a10" strokeWidth={2 / tf.scale} style={{ display: "none" }} />
               <line ref={dimRef} stroke="#1f3fc7" strokeWidth={2 / tf.scale} strokeDasharray={`${5 / tf.scale} ${4 / tf.scale}`} style={{ display: "none" }} />
               <path ref={hlPathRef} style={{ display: "none" }} />
+              {/* Symbol sweep review overlay (#264) — the same glyph language the
+                  MCP renders ship: seed = violet double ring, question = orange
+                  ?-circle, accepted/committed-to-be = the condition color. */}
+              {sweep && (() => {
+                const pp = panels.find((x) => x.key === sweep.key);
+                if (!pp) return null;
+                const ox = pp.xOffset;
+                const k = 1 / tf.scale;
+                // translucent like the highlighter — the estimator's own rule:
+                // review glyphs must never obstruct the ink they sit on
+                const X = (at, color, w) => (
+                  <g stroke={color} strokeWidth={w * k} strokeOpacity={0.6}>
+                    <line x1={at[0] + ox - 8 * k} y1={at[1] - 8 * k} x2={at[0] + ox + 8 * k} y2={at[1] + 8 * k} />
+                    <line x1={at[0] + ox - 8 * k} y1={at[1] + 8 * k} x2={at[0] + ox + 8 * k} y2={at[1] - 8 * k} />
+                  </g>
+                );
+                return (
+                  <g pointerEvents="none">
+                    <circle cx={sweep.seed.center[0] + ox} cy={sweep.seed.center[1]} r={15 * k} fill="none" stroke="#7a00e6" strokeWidth={2 * k} strokeOpacity={0.65} />
+                    <circle cx={sweep.seed.center[0] + ox} cy={sweep.seed.center[1]} r={9 * k} fill="none" stroke="#7a00e6" strokeWidth={2 * k} strokeOpacity={0.65} />
+                    {sweep.matches.map((m, i) => <g key={`m${i}`}>{X(m.at, activeColor, 2.4)}</g>)}
+                    {sweep.questions.map((q, i) => {
+                      if (q.state === "dismissed") return null;
+                      if (q.state === "accepted") return <g key={`q${i}`}>{X(q.at, activeColor, 2.4)}</g>;
+                      return (
+                        <g key={`q${i}`}>
+                          <circle cx={q.at[0] + ox} cy={q.at[1]} r={13 * k} fill="none" stroke="#ff8c00" strokeWidth={(i === sweep.qIndex ? 3.4 : 2.2) * k} strokeOpacity={i === sweep.qIndex ? 0.85 : 0.6} />
+                          <text x={q.at[0] + ox} y={q.at[1] + 5 * k} textAnchor="middle" fill="#ff8c00" fillOpacity={0.85} fontSize={14 * k} fontWeight="700" fontFamily="JetBrains Mono, monospace">?</text>
+                        </g>
+                      );
+                    })}
+                  </g>
+                );
+              })()}
               {poly.length >= 2 && (tool === "linear" || tool === "surface"
                 ? <polyline points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={tool === "surface" ? activeColor : "#1f3fc7"} strokeWidth={(tool === "surface" ? 3.5 : 2.5) / tf.scale} strokeDasharray={tool === "surface" ? `${10 / tf.scale} ${3 / tf.scale} ${2 / tf.scale} ${3 / tf.scale}` : undefined} strokeLinecap="round" strokeLinejoin="round" />
                 : <polygon points={(curveIdx.length ? flattenArcRing(poly, curveIdx, tool !== "zone" && !bowOpen) : poly).map((p) => p.join(",")).join(" ")} fill={poly.length >= 3 ? (tool === "deduct" ? "rgba(176,58,38,.22)" : tool === "zone" ? "rgba(31,63,199,.06)" : shapeFill(aCond)) : "none"} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={2 / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : undefined} />)}
@@ -8346,6 +8524,57 @@ export default function TakeoffCanvas() {
           commitMsg text lives here now (the old floating pill is gone — the
           rule banner still floats, it has buttons). Print: the report-only
           visibility rules already hide this. */}
+      {/* ── Symbol sweep review panel (#264) — floats while a sweep is live ── */}
+      {sweep && view === "canvas" && (() => {
+        const seedTag = sweep.seed.label?.label || null;
+        const mLine = sweepLabelLine(sweep.matches, seedTag);
+        const openQ = sweep.questions.filter((q) => q.state === "open").length;
+        const accQ = sweep.questions.filter((q) => q.state === "accepted").length;
+        const commitN = (sweep.includeSeed ? 1 : 0) + sweep.matches.length + accQ;
+        const unlabeled = (seedTag || sweep.matches.some((m) => m.label)) ? sweep.matches.filter((m) => !m.label).length : 0;
+        return (
+          <div style={{ position: "fixed", right: 12, top: "calc(var(--topbar-h) + 12px)", width: 288, zIndex: Z.popover, background: "var(--paper-cream)", border: "1px solid var(--ink-faint)", boxShadow: "var(--shadow-pop)", display: "flex", flexDirection: "column", fontSize: "var(--fs-m)" }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "10px 12px", borderBottom: "1px solid var(--ink-faint)" }}>
+              <span className="field-label">SYMBOL SWEEP</span>
+              <span style={{ flex: 1 }} />
+              {sweep.complete
+                ? <span style={{ fontFamily: "var(--f-mono)", fontSize: "var(--fs-2xs)", letterSpacing: ".1em", color: "var(--c-positive)", border: "1px solid var(--c-positive)", padding: "2px 6px" }}>COMPLETE</span>
+                : <span style={{ fontFamily: "var(--f-mono)", fontSize: "var(--fs-2xs)", letterSpacing: ".1em", color: "#fff", background: "var(--c-warning)", padding: "3px 6px" }}>FLOOR — NOT A TOTAL</span>}
+            </div>
+            {!sweep.complete && (
+              <div style={{ padding: "8px 12px", background: "var(--c-warning)", color: "#fff", fontSize: "var(--fs-s)", lineHeight: 1.45 }}>
+                {sweep.dropped} placement(s) were never scored — tighten the marquee around more distinctive linework before trusting this as a total.
+              </div>
+            )}
+            <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div><b style={{ fontFamily: "var(--f-display)", fontSize: "var(--fs-xl)" }}>{sweep.matches.length}</b> matched{mLine ? <span style={{ color: "var(--ink-soft)" }}> — {mLine}</span> : null}</div>
+              {unlabeled > 0 && <div style={{ fontSize: "var(--fs-s)", color: "var(--c-warning)" }}>{unlabeled} match(es) carry no label while this family is labeled — look at those first.</div>}
+              <div><b style={{ fontFamily: "var(--f-display)", fontSize: "var(--fs-xl)", color: openQ ? "var(--c-warning)" : "var(--ink)" }}>{sweep.questions.length}</b> question(s){openQ ? <span style={{ color: "var(--ink-soft)" }}> — ↵ accept · X dismiss · → next</span> : <span style={{ color: "var(--ink-soft)" }}> — all answered</span>}</div>
+              {sweep.questions.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 150, overflowY: "auto" }}>
+                  {sweep.questions.map((q, i) => (
+                    <button key={i} type="button" onClick={() => setSweep((s) => ({ ...s, qIndex: i }))}
+                      style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", fontFamily: "var(--f-body)", fontSize: "var(--fs-s)", textAlign: "left", background: i === sweep.qIndex ? "var(--tint-select)" : "transparent", border: `1px solid ${i === sweep.qIndex ? "var(--c-warning)" : "var(--ink-faint)"}`, color: q.state === "dismissed" ? "var(--text-faint)" : "var(--ink)", textDecoration: q.state === "dismissed" ? "line-through" : "none", cursor: "pointer" }}>
+                      <span style={{ fontFamily: "var(--f-mono)", fontWeight: 700, color: q.state === "accepted" ? "var(--c-positive)" : q.state === "dismissed" ? "var(--text-faint)" : "#ff8c00" }}>{q.state === "accepted" ? "✓" : q.state === "dismissed" ? "×" : "?"}</span>
+                      <span>{Math.round(q.score * 100)}%{q.label ? ` · ${q.label.label}` : ""}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-s)", cursor: "pointer" }}>
+                <input type="checkbox" checked={sweep.includeSeed} onChange={(e) => setSweep((s) => ({ ...s, includeSeed: e.target.checked }))} />
+                <span>Count the seed{seedTag ? <span> — drawing says <b style={{ fontFamily: "var(--f-mono)" }}>{seedTag}</b></span> : null}</span>
+              </label>
+            </div>
+            <div style={{ padding: "10px 12px", borderTop: "1px solid var(--ink-faint)", display: "flex", flexDirection: "column", gap: 6 }}>
+              <button type="button" className="btn-primary" onClick={commitSweep} style={{ justifyContent: "center" }}>
+                Commit {commitN} as {condById[activeCond]?.finish_tag || "…"}
+              </button>
+              <button type="button" className="btn-ghost" onClick={() => setSweep(null)} style={{ justifyContent: "center" }}>Discard (Esc)</button>
+            </div>
+          </div>
+        );
+      })()}
       <footer className="ink-panel ticks"
         style={{ height: "var(--status-h)", flex: "0 0 auto", display: "flex", alignItems: "center", gap: 12, padding: "0 14px", fontFamily: "var(--f-mono)", fontSize: "var(--fs-xs)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", overflow: "hidden", userSelect: "none" }}>
         <span style={{ color: "var(--status-acc)", textShadow: "var(--glow)" }}>{TOOL_VERB[tool] || tool}</span>
