@@ -426,7 +426,7 @@ export default function PlanNavigator({
         </div>
       )}
       {onAddFiles && (
-        <input name="sheet-file" ref={fileRef} type="file" accept=".pdf,application/pdf,image/*,.zip,application/zip,application/x-zip-compressed" multiple style={{ display: "none" }}
+        <input name="sheet-file" ref={fileRef} type="file" accept=".pdf,application/pdf,image/*,.zip,application/zip,application/x-zip-compressed,.otk" multiple style={{ display: "none" }}
           onChange={(e) => { onAddFiles(e.target.files); e.target.value = ""; }} />
       )}
       <AuthChip />
