@@ -25,9 +25,9 @@ const connect = async (staged: boolean) => {
 const toolNames = async (client: Client) =>
   new Set((await client.listTools()).tools.map((t) => t.name));
 
-test("staging: default build is the flat forty — no opener, nothing disabled", async () => {
+test("staging: default build is the flat forty-one — no opener, nothing disabled", async () => {
   const names = await toolNames(await connect(false));
-  assert.equal(names.size, 40);
+  assert.equal(names.size, 41);
   assert.ok(!names.has("open_tool_stage"));
   for (const stage of Object.values(TOOL_STAGES)) for (const n of stage) assert.ok(names.has(n), n);
 });
@@ -72,7 +72,7 @@ test("staging: setup-only at start, open_tool_stage grows the surface, idempoten
   await client.callTool({ name: "open_tool_stage", arguments: { stage: "revise" } });
   await client.callTool({ name: "open_tool_stage", arguments: { stage: "handoff" } });
   const all = await toolNames(client);
-  assert.equal(all.size, 41);
+  assert.equal(all.size, 42);
 
   // an unknown stage is a validation refusal, not a crash
   const bad: any = await client.callTool({ name: "open_tool_stage", arguments: { stage: "cleanup" } });

@@ -904,3 +904,35 @@ export const linkAnnotationOutput = {
   condition_id: z.string().optional(),
   note: z.string(),
 };
+
+/** count_marks — the deterministic census: value-annotated mark tags on the
+ * plan sheets, counted per schedule mark, residue withheld with reasons. */
+const censusOccurrence = {
+  at: z.tuple([z.number(), z.number()]).describe("The tag's center (image px)"),
+  value: z.string().describe("The paired value drawn under the tag (CFM, GPM, a count — the annotation that makes it an instance)"),
+  sheet: z.string(),
+};
+const censusWithheld = {
+  at: z.tuple([z.number(), z.number()]).describe("The tag's center (image px) — view_sheet here"),
+  sheet: z.string(),
+  reason: z.string(),
+};
+export const countMarksOutput = {
+  marks: z.array(z.object({
+    mark: z.string(),
+    count: z.number().int().describe("Value-paired instances counted on plan-role sheets"),
+    row: z.object({ sheet: z.string(), key: z.string(), table: z.string() }).optional()
+      .describe("The schedule row that answers for this mark (a compound key answers for each part)"),
+    unscheduled: z.boolean().optional().describe("true when the mark was stated by the caller but no schedule row answers for it"),
+    occurrences: z.array(z.object(censusOccurrence)),
+    occurrences_elided: z.number().int().optional(),
+    withheld: z.array(z.object(censusWithheld)).describe("Tag occurrences that did NOT count, each with the reason — read them, look, resolve or report"),
+    withheld_elided: z.number().int().optional(),
+    committed: z.object({ committed: z.number().int(), ea_total: z.number() }).optional(),
+  })),
+  total: z.number().int().describe("All counted instances across every mark"),
+  per_sheet: z.array(z.object({ sheet: z.string(), counts: z.record(z.number().int()) })),
+  excluded_in_tables: z.number().int().optional().describe("Tag occurrences inside a schedule table's own region — row labels, never instances"),
+  skipped: z.array(z.object({ sheet: z.string(), role: z.string(), reason: z.string() })),
+  complete: z.boolean(),
+};
