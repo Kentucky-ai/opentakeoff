@@ -132,6 +132,13 @@ asked.
 `withheld_lf` is never folded into `total_lf`. A withheld item you ignore is a hole in the bid;
 one you never mention is worse. Report them in your summary even when you can't resolve them.
 
+And SHOW them (#297): `view_sheet` takes `marks` — pass `withheld` coordinates as `question`,
+`rejected[]`/`lum_gate.at` as `struck`, and the sweep's `seed.center` as `ring` — so the render
+the estimator audits carries every disclosure, in colors no CAD pen uses. An overlay without
+marks shows committed ink only; on a real validation sheet that read as "it missed 37 fittings"
+when all 37 were disclosed questions. In sheet scope, remember the seed is installed work:
+`commit_seed: true` puts it in the count (#296), and the reply reminds you when it is left out.
+
 The reason `derive_transitions` behaves this way is worth carrying into every judgment you make
 here: **flood-traced rooms do not share edges.** A trace fills to the wall linework, so two rooms
 across a partition sit four to eight inches apart. Committing 34 LF of threshold because two

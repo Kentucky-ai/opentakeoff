@@ -56,7 +56,7 @@ import { applyRuleToProject, type Rule, type RuleShape, type SheetRuleData } fro
 import { sanitizeApprovals as sanitizeApprovalsJs, applyApprovalCommand as applyApprovalCommandJs } from "../../web/src/lib/approvals.js";
 import { conditionTotals, grandTotals, sheetTotals, reportJson } from "../../web/src/lib/totals.js";
 import { hasRollSetup, mintRollSetup, computeRollTakeoff, rollReportRows, seamLfByShape } from "../../web/src/lib/rollTakeoff.js";
-import { gridPxPerFoot, drawGrid, drawShapes, type Ctx2D, type ToCanvas } from "./view.ts";
+import { gridPxPerFoot, drawGrid, drawShapes, drawMarks, type Ctx2D, type ToCanvas, type ViewMarks } from "./view.ts";
 
 // Copied from the canvas (web/src/pages/TakeoffCanvas.jsx) so conditions and
 // snap behavior minted here are identical to the browser's. PALETTE/HATCH_IDS
@@ -702,7 +702,7 @@ export class Session {
   /** view_sheet: render a sheet (or an image-px crop of it) to PNG, with an
    * optional committed-shapes overlay and calibrated measuring grid. The grid
    * draws under the overlay, both in canvas space after the page rasterizes. */
-  async viewSheet(name: string, opts: { region?: { x0: number; y0: number; x1: number; y1: number }; px?: number; overlay?: boolean; grid?: string }) {
+  async viewSheet(name: string, opts: { region?: { x0: number; y0: number; x1: number; y1: number }; px?: number; overlay?: boolean; grid?: string; marks?: ViewMarks }) {
     const s = this.sheet(name);
     const px = Math.max(VIEW_MIN_PX, Math.min(VIEW_MAX_PX, Math.round(opts.px ?? VIEW_DEFAULT_PX)));
     const clampX = (v: number) => Math.max(0, Math.min(v, s.widthPx));
@@ -715,9 +715,12 @@ export class Session {
     }
     const ppf = gridPxPerFoot(opts.grid, s.upp);
     const sheetShapes = this.shapes.filter((x) => x.sheet_id === s.key);
+    let marksDrawn = 0;
     const { png, width, height, zoom } = await s.page.renderRegionPng(r, px, (ctx, toCanvas) => {
       if (ppf) drawGrid(ctx as Ctx2D, toCanvas as ToCanvas, r, ppf);
       if (opts.overlay) drawShapes(ctx as Ctx2D, toCanvas as ToCanvas, sheetShapes, s.widthPx, s.heightPx, px);
+      // #297 — disclosure marks: what the reply names, the picture shows
+      if (opts.marks) marksDrawn = drawMarks(ctx as Ctx2D, toCanvas as ToCanvas, opts.marks, px);
     });
     return {
       png,
@@ -730,6 +733,7 @@ export class Session {
         zoom: +zoom.toFixed(4),
         overlay: !!opts.overlay,
         ...(opts.overlay ? { shapes_drawn: sheetShapes.length } : {}),
+        ...(opts.marks ? { marks_drawn: marksDrawn } : {}),
         grid_px_per_foot: ppf ? round2(ppf) : 0,
       },
     };
@@ -2251,11 +2255,22 @@ export class Session {
     tolerancePx?: number;
     exclude?: [Point, Point][];
     luminanceTolerance?: number;
+    commitSeed?: boolean;
   }) {
     const s = this.sheet(name);
     const scope = opts.scope ?? "sheet";
     if (opts.commit && !opts.condition) {
       throw new UserError("commit: true needs a condition — the finish tag the match markers count under (e.g. 'FD-1').");
+    }
+    // #296 — the seed is installed work in sheet scope, and the count that
+    // quietly excluded it read as a miss on a visual audit (four × on a plan
+    // with five drains). commit_seed opts it into the same batch; anywhere
+    // else it is a mistake worth naming.
+    if (opts.commitSeed && !opts.commit) {
+      throw new UserError("commit_seed: true needs commit: true — the seed joins the same one-undo-step batch as the matches.");
+    }
+    if (opts.commitSeed && scope === "set") {
+      throw new UserError("commit_seed applies to sheet scope only — in a set-wide sweep the seed may sit on a detail or legend sheet, where it is a reference drawing. If the seed instance is installed work, place_count it on its sheet explicitly.");
     }
     const geo = await this.ensureGeometry(s);
     if (!geo.segs.length) {
@@ -2323,16 +2338,25 @@ export class Session {
       if (!s.spans) s.spans = textSpans(s.page);
       const lbl = this.sweepLabels(s.spans, geo, fp.center, res.matches, res.withheld);
       let committed: { committed: number; shape_ids: string[]; condition: string; ea_total: number } | undefined;
-      if (opts.commit && res.matches.length) {
-        committed = this.placeCount(name, res.matches.map((m) => m.at), {
+      if (opts.commit && (res.matches.length || opts.commitSeed)) {
+        // #296 — commit_seed puts the seed instance first in the SAME batch:
+        // one undo step covers the whole gesture, seed included.
+        const points = [...(opts.commitSeed ? [fp.center] : []), ...res.matches.map((m) => m.at)];
+        const seedOrigin = {
+          method: "symbol_sweep" as const,
+          actor: "agent" as const,
+          reviewed: false,
+          symbol: { score: 1, rotation: 0, mirrored: false, seed: { source: "instance" as const, sheet: s.key } },
+        };
+        committed = this.placeCount(name, points, {
           condition: opts.condition!,
           tool: "symbol_sweep",
-          origins: res.matches.map((m) => ({
+          origins: [...(opts.commitSeed ? [seedOrigin] : []), ...res.matches.map((m) => ({
             method: "symbol_sweep" as const,
             actor: "agent" as const,
             reviewed: false,
             symbol: { score: m.score, rotation: m.rotation, mirrored: m.mirrored, seed: { source: "instance" as const, sheet: s.key } },
-          })),
+          }))],
         });
       }
       const labelNote = Session.sweepLabelNote(lbl);
@@ -2352,10 +2376,14 @@ export class Session {
           shape_ids: committed.shape_ids,
           condition: committed.condition,
           ea_total: committed.ea_total,
+          ...(opts.commitSeed ? { seed_committed: true } : {}),
         } : {}),
         ...((): { note?: string } => {
           const parts: string[] = [];
-          if (opts.commit && !res.matches.length) parts.push("commit requested but nothing cleared the bar — no shapes were committed.");
+          if (opts.commit && !res.matches.length && !opts.commitSeed) parts.push("commit requested but nothing cleared the bar — no shapes were committed.");
+          // #296 — a count that excludes something the estimator can see must
+          // say so: the seed is almost always installed work in sheet scope.
+          if (committed && !opts.commitSeed) parts.push(`The seed instance at (${round1(fp.center[0])}, ${round1(fp.center[1])}) is NOT in this count — if it is installed work, re-run with commit_seed: true or place_count it.`);
           if (labelNote) parts.push(labelNote);
           return parts.length ? { note: parts.join(" ") } : {};
         })(),

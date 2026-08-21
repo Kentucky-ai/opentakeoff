@@ -139,3 +139,73 @@ export function drawShapes(ctx: Ctx2D, toCanvas: ToCanvas, shapes: Shape[], shee
   }
   ctx.setLineDash([]);
 }
+
+// ── disclosure marks (#297) ─────────────────────────────────────────────────
+// The render contract the validation session exposed: the reply named 37
+// withheld placements and the overlay showed five committed ×'s — an audit of
+// the picture read "it misses elbows" while the answer sat in an array nobody
+// could see. `marks` lets a caller burn the disclosure layers into the render:
+// what the reply names, the picture shows. Colors sit deliberately OFF the
+// common CAD pens (red/blue/green/black) — the estimator's own ask, from a
+// color-plotted set where a same-hue marker would vanish into the work.
+
+export interface ViewMarks {
+  /** Open questions — withheld placements, spots to look at. Orange ?-in-circle. */
+  question?: [number, number][];
+  /** Refusals — #259 rejected, #260 lum_gate.at. Magenta struck ×. */
+  struck?: [number, number][];
+  /** Reference points — the sweep's seed, an anchor. Violet double ring. */
+  ring?: [number, number][];
+}
+
+const MARK_QUESTION = "#ff8c00";
+const MARK_STRUCK = "#e10ee1";
+const MARK_RING = "#7a00e6";
+
+function polyCircle(ctx: Ctx2D, x: number, y: number, r: number): void {
+  ctx.beginPath();
+  for (let i = 0; i <= 16; i++) {
+    const a = (i / 16) * 2 * Math.PI;
+    const px = x + r * Math.cos(a), py = y + r * Math.sin(a);
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+}
+
+export function drawMarks(ctx: Ctx2D, toCanvas: ToCanvas, marks: ViewMarks, longEdge: number): number {
+  const r = Math.max(7, longEdge / 110);
+  const w = Math.max(1.6, longEdge / 600);
+  ctx.setLineDash([]);
+  ctx.lineWidth = w;
+  let drawn = 0;
+  for (const [mx, my] of marks.question ?? []) {
+    const [x, y] = toCanvas(mx, my);
+    ctx.strokeStyle = MARK_QUESTION;
+    polyCircle(ctx, x, y, r);
+    ctx.fillStyle = MARK_QUESTION;
+    ctx.font = `bold ${Math.round(r * 1.4)}px sans-serif`;
+    ctx.fillText("?", x - r * 0.35, y + r * 0.5);
+    drawn++;
+  }
+  for (const [mx, my] of marks.struck ?? []) {
+    const [x, y] = toCanvas(mx, my);
+    ctx.strokeStyle = MARK_STRUCK;
+    const m = r * 0.8;
+    ctx.beginPath();
+    ctx.moveTo(x - m, y - m); ctx.lineTo(x + m, y + m);
+    ctx.moveTo(x - m, y + m); ctx.lineTo(x + m, y - m);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x - r * 1.2, y); ctx.lineTo(x + r * 1.2, y);
+    ctx.stroke();
+    drawn++;
+  }
+  for (const [mx, my] of marks.ring ?? []) {
+    const [x, y] = toCanvas(mx, my);
+    ctx.strokeStyle = MARK_RING;
+    polyCircle(ctx, x, y, r);
+    polyCircle(ctx, x, y, r * 0.6);
+    drawn++;
+  }
+  return drawn;
+}

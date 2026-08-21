@@ -271,6 +271,7 @@ export const symbolSweepOutput = {
   rejected: z.array(sweepRejected).optional().describe("Sheet scope only. Placements the geometry accepted and a counter-example refused (#259) — NEVER counted in found, and never silent: each says which negative did it and what it saw. Reinstate one by hand with place_count at its `at` if you disagree"),
   negatives: sweepNegatives.optional().describe("What each `exclude` rect was read as, in the order you passed them (#259)"),
   rejected_total: z.number().int().optional().describe("Set scope: placements counter-examples rejected across every swept sheet"),
+  seed_committed: z.boolean().optional().describe("Present when commit_seed: true minted the seed instance into the batch (#296) — ea_total then includes it"),
   lum_gate: sweepLumGate.optional().describe("Sheet scope only. The stated stroke-luminance gate's accounting (#260): the tolerance, the seed's own luminance band, and every placement the geometry would have committed that the pen pulled under the bar — NEVER counted in found, never silent. Set scope accounts per sheet in sheets[]"),
   candidates: sweepCandidates.optional().describe("Sheet scope only — set scope accounts per sheet in sheets[]"),
   complete: z.boolean().describe("True when every proposed placement was scored (every swept sheet, in set scope) and the count is a total. FALSE MEANS THE COUNT IS A FLOOR — acknowledge it before trusting found (#261)"),
