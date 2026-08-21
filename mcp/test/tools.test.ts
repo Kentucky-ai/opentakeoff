@@ -67,11 +67,11 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // delete_verdict takes a record id — same reasoning.
 const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict", "duplicate_condition", "split_condition", "apply_rules"]);
 
-test("tools/list: all forty tools, each described with the coordinate contract", async () => {
+test("tools/list: all forty-one tools, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [
-    "annotate", "apply_rules", "cut_out", "delete_shape", "delete_verdict", "derive_base", "derive_transitions", "detect_rooms", "duplicate_condition", "edit_condition", "edit_materials", "edit_shape", "export_marked_pdf", "export_report",
+    "annotate", "apply_rules", "count_marks", "cut_out", "delete_shape", "delete_verdict", "derive_base", "derive_transitions", "detect_rooms", "duplicate_condition", "edit_condition", "edit_materials", "edit_shape", "export_marked_pdf", "export_report",
     "export_takeoff", "find_schedule", "find_text", "import_takeoff",
     "link_annotation", "list_annotations", "list_shapes", "load_plan", "mark_verdict", "measure_line", "measure_polygon", "measure_surface", "one_click", "place_count",
     "read_sheet_text", "resolve_tag", "set_scale", "sheet_context", "sheet_graph", "sheet_info", "split_condition", "sweep_schedule_row", "symbol_sweep", "takeoff_summary", "undo_last", "view_sheet",
@@ -2185,3 +2185,61 @@ test("sweep_schedule_row refusals: unanchorable row, unknown row, ambiguous key 
   assert.equal((await call(client, "takeoff_summary")).data.conditions.length, 0);
 });
 
+
+// ── count_marks: the deterministic census ────────────────────────────────────
+// The fixture (test/fixtures/annotated-set.pdf, scripts/make-symbol-fixture.mjs):
+// a DUCTWORK PLAN carrying three value-annotated S1 devices + one R1, a tag
+// amid linework with no value, and a bare tag; an AIR DISTRIBUTION SCHEDULE
+// whose rows include compound keys ("R1 / E1").
+const ANNSET = fileURLToPath(new URL("./fixtures/annotated-set.pdf", import.meta.url));
+
+test("count_marks: value-paired tags count, residue withheld with reasons, rows cited, one call commits", async () => {
+  const c = await pair();
+  await call(c, "load_plan", { path: ANNSET });
+  const r = await call(c, "count_marks", { commit: true });
+  assert.equal(r.isError, false, JSON.stringify(r.data).slice(0, 300));
+  const byMark: Record<string, any> = Object.fromEntries(r.data.marks.map((m: any) => [m.mark, m]));
+
+  // the annotated-device pattern counts; every occurrence carries its value
+  assert.equal(byMark.S1.count, 3);
+  assert.deepEqual(byMark.S1.occurrences.map((o: any) => o.value).sort(), ["175", "200", "200"]);
+  assert.equal(byMark.R1.count, 1);
+  assert.equal(byMark.R1.occurrences[0].value, "1150");
+
+  // a compound row answers for each of its marks, cited on both
+  assert.equal(byMark.R1.row.key, "R1/E1");
+  assert.equal(byMark.E1.row.key, "R1/E1");
+  assert.equal(byMark.E1.count, 0);
+
+  // residue is withheld with the reason, never counted and never dropped
+  assert.equal(byMark.S1.withheld.length, 2);
+  assert.ok(byMark.S1.withheld.some((w: any) => /amid linework/.test(w.reason)), "unvalued tag at a device is a question");
+  assert.ok(byMark.S1.withheld.some((w: any) => /bare tag/.test(w.reason)), "a note mention is disclosed as such");
+
+  // commit: EA markers under each mark's own tag, schedule citation on origin
+  assert.equal(byMark.S1.committed.committed, 3);
+  assert.equal(byMark.S1.committed.ea_total, 3);
+  assert.equal(r.data.total, 4);
+  const shapes = await call(c, "list_shapes", { condition: "S1" });
+  assert.equal(shapes.data.shapes.length, 3);
+
+  // the schedule sheet is skipped by role, disclosed
+  assert.ok(r.data.skipped.some((s: any) => s.role === "schedule"));
+
+  // a caller-stated mark no schedule row answers for is disclosed, not refused
+  const zz = await call(c, "count_marks", { marks: ["ZZ9"] });
+  assert.equal(zz.isError, false);
+  assert.equal(zz.data.marks[0].unscheduled, true);
+  assert.equal(zz.data.marks[0].count, 0);
+});
+
+test("count_marks: tags drawn ON their marker with no value are sweep_schedule_row's family — all withheld here", async () => {
+  const c = await pair();
+  await call(c, "load_plan", { path: SYMSET });
+  const r = await call(c, "count_marks", {});
+  assert.equal(r.isError, false, JSON.stringify(r.data).slice(0, 300));
+  const t1 = r.data.marks.find((m: any) => m.mark === "T1");
+  assert.equal(t1.count, 0, "bubble tags carry no paired value — nothing counts");
+  assert.ok(t1.withheld.length >= 3, "every plan-sheet T1 occurrence is disclosed as a question");
+  assert.ok(t1.withheld.every((w: any) => /amid linework|bare tag/.test(w.reason)));
+});

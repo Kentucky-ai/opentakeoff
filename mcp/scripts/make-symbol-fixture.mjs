@@ -255,3 +255,69 @@ lumPdf += `trailer\n<< /Size ${lumObjects.length + 1} /Root 1 0 R >>\nstartxref\
 
 writeFileSync(OUT_LUM, lumPdf, "latin1");
 console.log(`wrote ${OUT_LUM} (${lumPdf.length} bytes)`);
+
+// ── annotated-set.pdf — the count_marks census fixture ───────────────────────
+// Two sheets. Page 1: a DUCTWORK PLAN (the discipline-plan title) carrying the
+// annotated-device pattern — a mark tag with its value drawn under it beside
+// device linework — plus the two residue cases the census must withhold: a tag
+// amid linework with NO value, and a bare tag with neither. Page 2: an AIR
+// DISTRIBUTION SCHEDULE whose rows include compound keys ("R1 / E1"), which
+// answer for each mark.
+
+const OUT_ANN = join(FIXTURES, "annotated-set.pdf");
+/** A tag with its value drawn under it (the annotated-device convention). */
+const annotated = (tag, value, [x, y]) => [
+  `BT /F1 10 Tf ${fmt(x)} ${fmt(y)} Td (${tag}) Tj ET`,
+  `BT /F1 10 Tf ${fmt(x)} ${fmt(y - 12)} Td (${value}) Tj ET`,
+];
+
+const ANN_PAGES = [
+  [
+    title("SECOND FLOOR DUCTWORK PLAN"),
+    "1 w",
+    "30 30 552 552 re S",
+    "0.5 w",
+    // three S1 devices, each tag+value beside its square-X symbol
+    ...place(SYMBOL, [140, 430]), ...annotated("S1", "200", [110, 440]),
+    ...place(SYMBOL, [300, 430]), ...annotated("S1", "200", [270, 440]),
+    ...place(SYMBOL, [440, 430]), ...annotated("S1", "175", [410, 440]),
+    // one R1 return, same pattern
+    ...place(SQUARE_ONLY, [300, 300]), ...annotated("R1", "1150", [270, 310]),
+    // residue 1: a tag amid device linework but with NO value — withheld, look
+    ...place(SYMBOL, [430, 120]), `BT /F1 10 Tf 425 145 Td (S1) Tj ET`,
+    // residue 2: a bare tag — no value, no linework — a note mention
+    `BT /F1 10 Tf 120 90 Td (S1) Tj ET`,
+  ],
+  [
+    title("AIR DISTRIBUTION SCHEDULE"),
+    cell("MARK", 60, 540), cell("MATERIAL", 200, 540), cell("DESCRIPTION", 400, 540),
+    cell("S1", 60, 515), cell("ALUMINUM", 200, 515), cell("MULTI-CONE DIFFUSER", 400, 515),
+    cell("R1 / E1", 60, 490), cell("ALUMINUM", 200, 490), cell("PERFORATED FACE", 400, 490),
+    cell("R2 / E2", 60, 465), cell("ALUMINUM", 200, 465), cell("BLADE GRILLE", 400, 465),
+  ],
+];
+
+const annObjects = [
+  `<< /Type /Catalog /Pages 2 0 R >>`,
+  `<< /Type /Pages /Kids [${ANN_PAGES.map((_, i) => `${4 + i * 2} 0 R`).join(" ")}] /Count ${ANN_PAGES.length} >>`,
+  `<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>`,
+];
+for (let i = 0; i < ANN_PAGES.length; i++) {
+  const stream = ANN_PAGES[i].join("\n");
+  annObjects.push(
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 612] /Contents ${5 + i * 2} 0 R /Resources << /Font << /F1 3 0 R >> >> >>`,
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+  );
+}
+let annPdf = "%PDF-1.5\n";
+const annOffsets = [];
+annObjects.forEach((body, i) => {
+  annOffsets.push(annPdf.length);
+  annPdf += `${i + 1} 0 obj\n${body}\nendobj\n`;
+});
+const annXrefAt = annPdf.length;
+annPdf += `xref\n0 ${annObjects.length + 1}\n0000000000 65535 f \n`;
+for (const off of annOffsets) annPdf += `${String(off).padStart(10, "0")} 00000 n \n`;
+annPdf += `trailer\n<< /Size ${annObjects.length + 1} /Root 1 0 R >>\nstartxref\n${annXrefAt}\n%%EOF\n`;
+writeFileSync(OUT_ANN, annPdf, "latin1");
+console.log(`wrote ${OUT_ANN} (${annPdf.length} bytes)`);

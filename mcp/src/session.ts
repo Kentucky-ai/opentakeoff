@@ -8,7 +8,7 @@ import path from "node:path";
 import { openPdf, positionedText, textSpans, textItemsInRegion, OPS, type DocHandle, type PageHandle, type TextSpan, type OcgEntry } from "./pdf.ts";
 import { expandForScaleNotes, mixedScaleWarning } from "./scalewarn.ts";
 import { classifyLayerName, layerRoleCodes, segRoles, type LayerInfo } from "../../web/src/lib/layers.ts";
-import { buildSheetGraph, resolveTag, classifySheetRole, rowKeyAnswersFor, type SheetGraph, type SheetSpans } from "../../web/src/lib/sheetgraph.ts";
+import { buildSheetGraph, resolveTag, classifySheetRole, rowKeyAnswersFor, type SheetGraph, type SheetSpans, type Bbox } from "../../web/src/lib/sheetgraph.ts";
 import { UserError, round1, round2 } from "./format.ts";
 // Condition twins — the inheritance rule, shared with the canvas so a headless session and
 // the app can never disagree about what a twin holds (web/test/variants.test.ts).
@@ -1956,6 +1956,179 @@ export class Session {
    * through this same path while telling the truth about the method —
    * symbol_sweep stamps `{method: "symbol_sweep", …, symbol: {score, …}}` per
    * marker; a bare place_count stays exactly the manual agent gesture it is. */
+  /** count_marks — the deterministic census, the whole count takeoff in ONE
+   * call: every VALUE-ANNOTATED mark tag on the plan sheets, counted per
+   * schedule mark, committed as EA markers, residue disclosed.
+   *
+   * The identity rule is the annotated-device drafting pattern: a device is
+   * drawn with its mark tag and a value under it ("S1" over "200" — CFM, GPM,
+   * a fixture count). Tag text WITH a paired value counts; a tag inside a
+   * schedule table's own region is a row label and is excluded; everything
+   * else is WITHHELD with a reason and coordinates — a tag amid linework but
+   * unvalued may be a real device (look), a bare tag is probably a note. A
+   * mark drawn ON its marker with no value is sweep_schedule_row's family,
+   * not this one. Refusal-honest throughout: scans refuse (no text layer),
+   * a set with no mark-shaped schedule rows refuses unless the marks are
+   * stated, and non-plan sheets are skipped with the role that excused them. */
+  async countMarks(opts: { marks?: string[]; commit?: boolean } = {}) {
+    const graph = await this.ensureGraph();
+    if (!graph.available) {
+      throw new UserError("This set has no text layer (a scan) — the census reads drawn tag text, so it cannot run. Marquee one device with symbol_sweep instead.");
+    }
+    const canon = (k: string) => (k || "").trim().toUpperCase().replace(/\s+/g, "");
+    const MARK_RE = /^[A-Z]{1,3}-?\d{1,3}[A-Z]?$/;
+
+    // mark vocabulary: stated, or read off the schedule tables' row keys —
+    // a compound key ("R1 / E1") contributes each of its marks
+    type RowCite = { sheet: string; key: string; table: string };
+    const rowCite = new Map<string, RowCite>();
+    for (const tb of graph.tables) {
+      const table = tb.title?.text || `${tb.kind} schedule`;
+      for (const row of tb.rows) {
+        for (const part of canon(row.key).split("/").filter(Boolean)) {
+          if (!rowCite.has(part)) rowCite.set(part, { sheet: tb.sheet, key: row.key, table });
+        }
+      }
+    }
+    let marks: string[];
+    if (opts.marks?.length) {
+      marks = [...new Set(opts.marks.map(canon).filter(Boolean))];
+    } else {
+      marks = [...rowCite.keys()].filter((k) => MARK_RE.test(k)).sort();
+      if (!marks.length) {
+        throw new UserError('No mark-shaped schedule row keys in the set to census — state the marks yourself: count_marks { marks: ["S1", "R1"] }.');
+      }
+    }
+
+    // plan-role sheets only (the sheet graph decides), skips disclosed
+    const roleOf = new Map(graph.sheets.map((g) => [g.key, g.role] as const));
+    const skipped: { sheet: string; role: string; reason: string }[] = [];
+    const planSheets: SheetState[] = [];
+    for (const sh of this.sheetList()) {
+      const role = roleOf.get(sh.key) ?? "unknown";
+      if (role === "plan") planSheets.push(sh);
+      else {
+        skipped.push({
+          sheet: sh.key, role,
+          reason: role === "unknown"
+            ? "role unknown (no classifiable title text) — tags here are not censused"
+            : `a ${role} sheet — tags here are reference text, never installed work`,
+        });
+      }
+    }
+    if (!planSheets.length) {
+      throw new UserError("No plan-role sheet in the set — the census counts installed work, and every sheet classified as schedule/legend/detail/unknown. sheet_graph shows each sheet's role and evidence.");
+    }
+
+    // a tag inside a schedule table's own region is that table's row label
+    const tableRegions = new Map<string, Bbox[]>();
+    for (const tb of graph.tables) {
+      const arr = tableRegions.get(tb.sheet) ?? [];
+      arr.push(tb.region);
+      tableRegions.set(tb.sheet, arr);
+    }
+
+    const VAL_RE = /^[0-9][0-9,]{0,6}$/;
+    type Hit = { at: Point; value: string; sheet: string };
+    type WithheldOcc = { at: Point; sheet: string; reason: string };
+    const perMark = new Map<string, { counted: Hit[]; withheld: WithheldOcc[] }>();
+    for (const m of marks) perMark.set(m, { counted: [], withheld: [] });
+    let excludedInTables = 0;
+    const perSheetRows: { sheet: string; counts: Record<string, number> }[] = [];
+
+    for (const sh of planSheets) {
+      if (!sh.spans) sh.spans = textSpans(sh.page);
+      const regions = tableRegions.get(sh.key) ?? [];
+      const values = sh.spans.filter((sp) => VAL_RE.test(sp.str.trim()));
+      const counts: Record<string, number> = {};
+      let segs: ArrayLike<number> | null = null; // lazy — only withheld occurrences look at linework
+      for (const m of marks) {
+        const rec = perMark.get(m)!;
+        for (const sp of sh.spans) {
+          if (canon(sp.str) !== m) continue;
+          const cx = (sp.x0 + sp.x1) / 2, cy = (sp.y0 + sp.y1) / 2;
+          const h = Math.max(sp.y1 - sp.y0, 6);
+          if (regions.some((r) => cx >= r[0] && cx <= r[2] && cy >= r[1] && cy <= r[3])) { excludedInTables++; continue; }
+          const paired = values.find((v) =>
+            Math.abs((v.x0 + v.x1) / 2 - cx) <= Math.max(sp.x1 - sp.x0, 1.5 * h) &&
+            v.y0 >= sp.y1 - 0.4 * h && v.y0 <= sp.y1 + 2.4 * h);
+          if (paired) {
+            rec.counted.push({ at: [round1(cx), round1(cy)], value: paired.str.trim(), sheet: sh.key });
+            counts[m] = (counts[m] || 0) + 1;
+          } else {
+            if (segs === null) segs = (await this.ensureGeometry(sh)).segs;
+            const pad = 2.5 * h;
+            const bx0 = sp.x0 - pad, by0 = sp.y0 - pad, bx1 = sp.x1 + pad, by1 = sp.y1 + pad;
+            let n = 0;
+            for (let i = 0; i + 3 < segs.length && n < 3; i += 4) {
+              if (segs[i] >= bx0 && segs[i] <= bx1 && segs[i + 1] >= by0 && segs[i + 1] <= by1 &&
+                  segs[i + 2] >= bx0 && segs[i + 2] <= bx1 && segs[i + 3] >= by0 && segs[i + 3] <= by1) n++;
+            }
+            rec.withheld.push({
+              at: [round1(cx), round1(cy)], sheet: sh.key,
+              reason: n >= 3
+                ? "tag amid linework but no paired value — may be a device labeled without one, or a legend/detail reference; look before counting it"
+                : "bare tag text — no paired value, no adjacent linework; likely a note mention, not an instance",
+            });
+          }
+        }
+      }
+      perSheetRows.push({ sheet: sh.key, counts });
+    }
+
+    // commit — every counted occurrence as one EA marker under its mark's own
+    // tag, the schedule citation on origin where a row answers for the mark;
+    // the WHOLE census is one undo step
+    const committedByMark: Record<string, { committed: number; ea_total: number }> = {};
+    if (opts.commit) {
+      for (const m of marks) {
+        const rec = perMark.get(m)!;
+        if (!rec.counted.length) continue;
+        const cite = rowCite.get(m);
+        let n = 0;
+        for (const occ of rec.counted) {
+          this.commit(this.sheet(occ.sheet), m, "count", [occ.at], { count: 1 }, {
+            method: "manual", actor: "agent", reviewed: false,
+            ...(cite ? { assignment: { source: "schedule", schedule_sheet: cite.sheet } } : {}),
+          });
+          n++;
+        }
+        const c = this.conditions.find((x) => x.finish_tag === m)!;
+        const ea_total = this.shapes
+          .filter((x) => x.condition_id === c.id && x.measure_role === "count")
+          .reduce((t2, x) => t2 + (x.computed.count || 1), 0);
+        committedByMark[m] = { committed: n, ea_total };
+      }
+      if (Object.keys(committedByMark).length) this.flushCommits("count_marks");
+    }
+
+    const cap = <T,>(a: T[], n: number): { list: T[]; elided: number } =>
+      a.length > n ? { list: a.slice(0, n), elided: a.length - n } : { list: a, elided: 0 };
+    return {
+      marks: marks.map((m) => {
+        const rec = perMark.get(m)!;
+        const cite = rowCite.get(m);
+        const c = cap(rec.counted, 150);
+        const w = cap(rec.withheld, 60);
+        return {
+          mark: m,
+          count: rec.counted.length,
+          ...(cite ? { row: cite } : { unscheduled: true }),
+          occurrences: c.list,
+          ...(c.elided ? { occurrences_elided: c.elided } : {}),
+          withheld: w.list,
+          ...(w.elided ? { withheld_elided: w.elided } : {}),
+          ...(committedByMark[m] ? { committed: committedByMark[m] } : {}),
+        };
+      }),
+      total: [...perMark.values()].reduce((n, r) => n + r.counted.length, 0),
+      per_sheet: perSheetRows,
+      ...(excludedInTables ? { excluded_in_tables: excludedInTables } : {}),
+      skipped,
+      complete: true,
+    };
+  }
+
   placeCount(name: string, points: Point[], opts: { condition: string; origins?: ShapeOrigin[]; tool?: string }) {
     const s = this.sheet(name);
     const ids = points.map(([x, y], i) =>

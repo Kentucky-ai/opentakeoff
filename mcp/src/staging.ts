@@ -1,5 +1,5 @@
 // Staged tool exposure (#230) — opt-in via OPENTAKEOFF_MCP_STAGED_TOOLS=1.
-// The flat forty stay the default for every published client; behind the flag
+// The flat forty-one stay the default for every published client; behind the flag
 // only the setup stage starts enabled and `open_tool_stage` grows the surface
 // on demand, so an agent session pays for the tool descriptions it actually
 // uses. The stage map is the same phase structure the initialize instructions
@@ -19,7 +19,7 @@ export const TOOL_STAGES: Record<string, readonly string[]> = {
   ],
   measure: [
     "one_click", "detect_rooms", "measure_polygon", "cut_out", "measure_line",
-    "measure_surface", "place_count", "symbol_sweep", "sweep_schedule_row",
+    "measure_surface", "place_count", "count_marks", "symbol_sweep", "sweep_schedule_row",
     "derive_base", "derive_transitions",
   ],
   revise: [
