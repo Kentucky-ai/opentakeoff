@@ -660,6 +660,37 @@ export function buildNegative(fp: SymbolFingerprint, segs: number[], rect: [Poin
   };
 }
 
+/** One physical placement, one entry (#293). A dense symbol proposes the same
+ * instance from many anchor pairs at centers spread wider than the merge
+ * radius, so clustering keeps the old walking semantics — an entry follows
+ * the best-scoring proposal of its neighborhood — but that walk could END
+ * with two entries on the same peak: each walker absorbed its own chain, and
+ * nothing re-checked the pairwise invariant after a move. Measured on a real
+ * plumbing sheet as one floor drain committed twice, 0.2 px apart (0.921 and
+ * 0.925), the two markers stacked into what renders as a single ×. The final
+ * pass restores the invariant greedily by score — greedy never moves a
+ * position, so it cannot re-break what it enforces. Exported for the tests:
+ * the failure is a property of proposal ORDER, which drawn-ink fixtures
+ * cannot pin down deterministically. */
+export function mergeProposals<T extends { at: Point; score: number; xf: number; rotation: number; mirrored: boolean }>(scored: T[], mergeR: number): T[] {
+  const kept: T[] = [];
+  for (const s of scored) {
+    const twin = kept.find((k) => Math.hypot(k.at[0] - s.at[0], k.at[1] - s.at[1]) <= mergeR);
+    if (!twin) { kept.push({ ...s }); continue; }
+    if (s.score > twin.score || (s.score === twin.score && s.xf < twin.xf)) {
+      twin.at = s.at; twin.score = s.score; twin.rotation = s.rotation; twin.mirrored = s.mirrored; twin.xf = s.xf;
+    }
+  }
+  const byBest = [...kept].sort((a, b) =>
+    b.score - a.score || a.xf - b.xf || a.at[1] - b.at[1] || a.at[0] - b.at[0]);
+  const out: T[] = [];
+  for (const s of byBest) {
+    if (out.some((k) => Math.hypot(k.at[0] - s.at[0], k.at[1] - s.at[1]) <= mergeR)) continue;
+    out.push(s);
+  }
+  return out;
+}
+
 /** Steps 2–4 against ANY sheet's segments: constellation candidates, scoring,
  * classification. Anchor rarity is judged per TARGET sheet — the same seed
  * prunes differently on sheets with different length histograms, which is the
@@ -818,14 +849,7 @@ export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOp
     scored.push({ at: [c.tx, c.ty], score, rotation: xforms[c.xf].rotation, mirrored: xforms[c.xf].mirrored, xf: c.xf });
   }
   const mergeR = Math.max(2 * tol, 4);
-  const kept: Scored[] = [];
-  for (const s of scored) {
-    const twin = kept.find((k) => Math.hypot(k.at[0] - s.at[0], k.at[1] - s.at[1]) <= mergeR);
-    if (!twin) { kept.push(s); continue; }
-    if (s.score > twin.score || (s.score === twin.score && s.xf < twin.xf)) {
-      twin.at = s.at; twin.score = s.score; twin.rotation = s.rotation; twin.mirrored = s.mirrored; twin.xf = s.xf;
-    }
-  }
+  const kept = mergeProposals(scored, mergeR);
 
   // Shadow suppression. A partially-symmetric symbol reads ALMOST as itself
   // under the wrong transform — square + diagonal without the stub — at a
