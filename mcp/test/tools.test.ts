@@ -2169,7 +2169,7 @@ test("sweep_schedule_row refusals: unanchorable row, unknown row, ambiguous key 
   // an unknown key names what WAS found
   const zz = await call(client, "sweep_schedule_row", { tag: "ZZ" });
   assert.equal(zz.isError, true);
-  assert.match(zz.data.error, /No schedule row "ZZ" .* finish on symbol-set\.pdf#4 \(3 rows\)/);
+  assert.match(zz.data.error, /No schedule row "ZZ" .* finish on symbol-set\.pdf#4 \(3 rows: T1, T2, T9\)/);
 
   // the same key defined in two tables (the fixture merged in twice under a
   // second name) is ambiguous — refused, never a coin flip

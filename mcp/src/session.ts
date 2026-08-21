@@ -8,7 +8,7 @@ import path from "node:path";
 import { openPdf, positionedText, textSpans, textItemsInRegion, OPS, type DocHandle, type PageHandle, type TextSpan, type OcgEntry } from "./pdf.ts";
 import { expandForScaleNotes, mixedScaleWarning } from "./scalewarn.ts";
 import { classifyLayerName, layerRoleCodes, segRoles, type LayerInfo } from "../../web/src/lib/layers.ts";
-import { buildSheetGraph, resolveTag, classifySheetRole, type SheetGraph, type SheetSpans } from "../../web/src/lib/sheetgraph.ts";
+import { buildSheetGraph, resolveTag, classifySheetRole, rowKeyAnswersFor, type SheetGraph, type SheetSpans } from "../../web/src/lib/sheetgraph.ts";
 import { UserError, round1, round2 } from "./format.ts";
 // Condition twins — the inheritance rule, shared with the canvas so a headless session and
 // the app can never disagree about what a twin holds (web/test/variants.test.ts).
@@ -2313,10 +2313,17 @@ export class Session {
     const graph = await this.ensureGraph();
     if (!graph.available) throw new UserError("This set has no text layer (a scan) — the sheet graph is unavailable, so schedule rows cannot be read.");
 
-    // 1. the row — the same tables resolve_tag / find_schedule read
-    const rowHits = graph.tables.flatMap((tb) => tb.rows.filter((r) => r.key === t).map((r) => ({ tb, r })));
+    // 1. the row — the same tables resolve_tag / find_schedule read. A
+    // schedule often keys one row for several marks ("R1 / E1" — same device,
+    // return vs exhaust service): that row ANSWERS for each mark, and the
+    // sweep runs on the mark as drawn on the plans, not the compound key.
+    const canonKey = (k: string) => (k || "").trim().toUpperCase().replace(/\s+/g, "");
+    const rowHits = graph.tables.flatMap((tb) => tb.rows.filter((r) => rowKeyAnswersFor(r.key, t)).map((r) => ({ tb, r })));
     if (!rowHits.length) {
-      const found = graph.tables.map((x) => `${x.kind} on ${x.sheet} (${x.rows.length} rows)`).join(" | ");
+      const found = graph.tables.map((x) => {
+        const keys = x.rows.map((row) => row.key).slice(0, 12).join(", ");
+        return `${x.kind} on ${x.sheet} (${x.rows.length} rows: ${keys}${x.rows.length > 12 ? ", …" : ""})`;
+      }).join(" | ");
       throw new UserError(`No schedule row "${t}" in the set — tables found: ${found || "none"}. Check the tag as drawn (find_schedule shows each table's region), or merge the schedule sheet in with load_plan.`);
     }
     if (rowHits.length > 1) {
@@ -2326,7 +2333,7 @@ export class Session {
     // sibling keys span EVERY table in the set, not just the row's own: a
     // marker labeled with any other schedule key is that mark's instance, and
     // disclosing it as "excluded, labeled 135" beats calling it unlabeled
-    const siblings = [...new Set(graph.tables.flatMap((x) => x.rows.map((row) => row.key)))].filter((k) => k !== t).sort();
+    const siblings = [...new Set(graph.tables.flatMap((x) => x.rows.flatMap((row) => canonKey(row.key).split("/").filter(Boolean))))].filter((k) => k !== t).sort();
     const table = tb.title?.text || `${tb.kind} schedule`;
 
     // 2. plan-role sheets, and every drawn occurrence of the tag on them
@@ -2406,6 +2413,12 @@ export class Session {
         if (e instanceof Error && /region, not one symbol/.test(e.message)) break;
         continue;
       }
+      // a degenerate grab is not a marker: one or two short strokes at the tag
+      // are its own underline/leader, which recur at EVERY tagged mark and
+      // "corroborate" trivially — matching on them counts tags' furniture, not
+      // devices. Widen instead; if no pad ever captures real marker geometry,
+      // the refusal below states it.
+      if (cand.segments < 3) continue;
       if (!corro) { fp = cand; anchorRect = rect; break; }
       const cr = this.sweepRatio(anchorSheet, corro.sh);
       let probe: SymbolMatchResult;
