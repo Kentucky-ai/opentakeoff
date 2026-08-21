@@ -3828,8 +3828,14 @@ export default function TakeoffCanvas() {
           const str = (it.str || "");
           if (!str.trim()) continue;
           const t = pdfjsLib.Util.transform(vt, it.transform);
-          const w = (it.width || 0) * Math.hypot(t[0], t[1]);
-          const h = (it.height || 0) * Math.hypot(t[2], t[3]) || Math.hypot(t[2], t[3]);
+          // it.width/height are USER-SPACE units (font size already in them) —
+          // scale by the VIEWPORT alone, never the composed norm (which folds
+          // the font size in a second time and inflates every box ~10×; found
+          // live when a 12 px tag grew a 440 px adjacency and labeled the
+          // wrong diamond). Same math as the MCP's textSpans, deliberately.
+          const vs = Math.hypot(vt[0], vt[1]) || 2;
+          const w = (it.width || 0) * vs;
+          const h = (it.height || 0) * vs || Math.hypot(t[2], t[3]);
           spans.push({ str, x0: t[4], y0: t[5] - h, x1: t[4] + w, y1: t[5] });
         }
       }
@@ -3863,13 +3869,27 @@ export default function TakeoffCanvas() {
     } catch { labels = []; }
     const L = (i) => labels[i] || null;
     const nM = res.matches.length;
+    // One physical spot, ONE question. The engine discloses every rotational
+    // reading of a near-miss (an instrument's honesty); the review lane must
+    // not draw them as stacked rings — and must never let two readings of the
+    // same symbol both be accepted into the count. Cluster at a quarter of
+    // the marquee diagonal: readings of one instance sit a few px apart,
+    // while genuinely adjacent instances (abutting tiles) stay separate.
+    const clusterR = Math.max(6, Math.hypot(rect[1][0] - rect[0][0], rect[1][1] - rect[0][1]) / 4);
+    const rawQ = res.withheld.map((w, i) => ({ ...w, label: L(1 + nM + i) }));
+    const questions = [];
+    for (const q of rawQ.sort((a, b) => b.score - a.score)) {
+      const twin = questions.find((k) => Math.hypot(k.at[0] - q.at[0], k.at[1] - q.at[1]) <= clusterR);
+      if (twin) { twin.readings += 1; continue; }
+      questions.push({ ...q, readings: 1, state: "open" });
+    }
     setSweep({
       key, img: tp.img,
-      seed: { center: res.seed.center, rect: res.seed.rect, label: L(0) },
+      seed: { center: res.seed.center, rect: res.seed.rect, segments: res.seed.segments, label: L(0) },
       matches: res.matches.map((m, i) => ({ ...m, label: L(1 + i) })),
-      questions: res.withheld.map((w, i) => ({ ...w, label: L(1 + nM + i), state: "open" })),
+      questions,
       complete: res.complete, dropped: res.candidates.dropped,
-      includeSeed: true, qIndex: 0,
+      includeSeed: true, qIndex: 0, excludedTags: [],
     });
     setTool("select");
   }
@@ -3888,8 +3908,10 @@ export default function TakeoffCanvas() {
     if (!sw) return;
     if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
     const rows = [];
+    const off = new Set(sw.excludedTags);
+    const tagKey = (m) => (m.label && m.label.label) || "\u2205";
     if (sw.includeSeed) rows.push({ at: sw.seed.center, score: 1, rotation: 0, mirrored: false, seedRow: true });
-    for (const m of sw.matches) rows.push(m);
+    for (const m of sw.matches) if (!off.has(tagKey(m))) rows.push(m);
     for (const q of sw.questions) if (q.state === "accepted") rows.push(q);
     if (!rows.length) { setCommitMsg("Nothing to commit — no matches and no accepted questions."); return; }
     // ONE dispatch = one undo step, the whole gesture — same batch discipline
@@ -3900,7 +3922,8 @@ export default function TakeoffCanvas() {
       ...(activeLabel ? { label: activeLabel } : {}),
       origin: { method: "symbol_sweep", symbol: { score: m.score, rotation: m.rotation, mirrored: m.mirrored, seed: { source: "instance", sheet: sw.key, ...(m.seedRow ? { seed_instance: true } : {}) } } },
     })) });
-    setCommitMsg(`Committed ${rows.length} EA under ${condById[activeCond]?.finish_tag || "condition"}${sw.includeSeed ? " — seed included" : ""} · one undo step (⌘Z).`);
+    const skippedN = sw.matches.length - sw.matches.filter((m) => !off.has(tagKey(m))).length;
+    setCommitMsg(`Committed ${rows.length} EA under ${condById[activeCond]?.finish_tag || "condition"}${sw.includeSeed ? " — seed included" : ""}${skippedN ? ` · ${skippedN} excluded by label` : ""} · one undo step (⌘Z).`);
     setSweep(null);
   }
 
@@ -7959,7 +7982,10 @@ export default function TakeoffCanvas() {
                   <g pointerEvents="none">
                     <circle cx={sweep.seed.center[0] + ox} cy={sweep.seed.center[1]} r={15 * k} fill="none" stroke="#7a00e6" strokeWidth={2 * k} strokeOpacity={0.65} />
                     <circle cx={sweep.seed.center[0] + ox} cy={sweep.seed.center[1]} r={9 * k} fill="none" stroke="#7a00e6" strokeWidth={2 * k} strokeOpacity={0.65} />
-                    {sweep.matches.map((m, i) => <g key={`m${i}`}>{X(m.at, activeColor, 2.4)}</g>)}
+                    {sweep.matches.map((m, i) => {
+                      const offTag = sweep.excludedTags.includes((m.label && m.label.label) || "\u2205");
+                      return <g key={`m${i}`} opacity={offTag ? 0.22 : 1}>{X(m.at, activeColor, 2.4)}</g>;
+                    })}
                     {sweep.questions.map((q, i) => {
                       if (q.state === "dismissed") return null;
                       if (q.state === "accepted") return <g key={`q${i}`}>{X(q.at, activeColor, 2.4)}</g>;
@@ -8530,7 +8556,21 @@ export default function TakeoffCanvas() {
         const mLine = sweepLabelLine(sweep.matches, seedTag);
         const openQ = sweep.questions.filter((q) => q.state === "open").length;
         const accQ = sweep.questions.filter((q) => q.state === "accepted").length;
-        const commitN = (sweep.includeSeed ? 1 : 0) + sweep.matches.length + accQ;
+        // per-tag groups (#308 → commit-by-label): the drawing names the
+        // matches; a tag the estimator unticks is excluded from the commit —
+        // the sibling-fixture answer in one click, sweep_schedule_row's
+        // excluded-by-tag discipline brought to the canvas.
+        const tagKeyOf = (m) => (m.label && m.label.label) || "\u2205";
+        const tagGroups = [];
+        for (const m of sweep.matches) {
+          const k = tagKeyOf(m);
+          const g = tagGroups.find((x) => x.tag === k);
+          if (g) g.n += 1; else tagGroups.push({ tag: k, n: 1 });
+        }
+        tagGroups.sort((a, b) => b.n - a.n);
+        const offSet = new Set(sweep.excludedTags);
+        const matchN = sweep.matches.filter((m) => !offSet.has(tagKeyOf(m))).length;
+        const commitN = (sweep.includeSeed ? 1 : 0) + matchN + accQ;
         const unlabeled = (seedTag || sweep.matches.some((m) => m.label)) ? sweep.matches.filter((m) => !m.label).length : 0;
         return (
           <div style={{ position: "fixed", right: 12, top: "calc(var(--topbar-h) + 12px)", width: 288, zIndex: Z.popover, background: "var(--paper-cream)", border: "1px solid var(--ink-faint)", boxShadow: "var(--shadow-pop)", display: "flex", flexDirection: "column", fontSize: "var(--fs-m)" }}>
@@ -8541,14 +8581,38 @@ export default function TakeoffCanvas() {
                 ? <span style={{ fontFamily: "var(--f-mono)", fontSize: "var(--fs-2xs)", letterSpacing: ".1em", color: "var(--c-positive)", border: "1px solid var(--c-positive)", padding: "2px 6px" }}>COMPLETE</span>
                 : <span style={{ fontFamily: "var(--f-mono)", fontSize: "var(--fs-2xs)", letterSpacing: ".1em", color: "#fff", background: "var(--c-warning)", padding: "3px 6px" }}>FLOOR — NOT A TOTAL</span>}
             </div>
+            {sweep.seed.segments <= 3 && (
+              <div style={{ padding: "8px 12px", background: "var(--tint-select)", color: "var(--ink)", fontSize: "var(--fs-s)", lineHeight: 1.45 }}>
+                The seed is only {sweep.seed.segments} segment(s) — likely a FRAGMENT, and fragments match everywhere (every square corner reads as one). Marquee the whole symbol.
+              </div>
+            )}
             {!sweep.complete && (
               <div style={{ padding: "8px 12px", background: "var(--c-warning)", color: "#fff", fontSize: "var(--fs-s)", lineHeight: 1.45 }}>
                 {sweep.dropped} placement(s) were never scored — tighten the marquee around more distinctive linework before trusting this as a total.
               </div>
             )}
             <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-              <div><b style={{ fontFamily: "var(--f-display)", fontSize: "var(--fs-xl)" }}>{sweep.matches.length}</b> matched{mLine ? <span style={{ color: "var(--ink-soft)" }}> — {mLine}</span> : null}</div>
-              {unlabeled > 0 && <div style={{ fontSize: "var(--fs-s)", color: "var(--c-warning)" }}>{unlabeled} match(es) carry no label while this family is labeled — look at those first.</div>}
+              <div><b style={{ fontFamily: "var(--f-display)", fontSize: "var(--fs-xl)" }}>{matchN}</b> of {sweep.matches.length} matched will commit{mLine && tagGroups.length <= 1 ? <span style={{ color: "var(--ink-soft)" }}> — {mLine}</span> : null}</div>
+              {tagGroups.length > 1 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  <div className="field-label">BY LABEL — UNTICK A TAG TO EXCLUDE IT</div>
+                  {tagGroups.map((g) => {
+                    const isSeedTag = seedTag && g.tag === seedTag;
+                    const isOff = offSet.has(g.tag);
+                    return (
+                      <label key={g.tag} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-s)", cursor: "pointer", color: isOff ? "var(--text-faint)" : !isSeedTag && g.tag !== "\u2205" ? "var(--c-warning)" : "var(--ink)" }}>
+                        <input type="checkbox" checked={!isOff}
+                          onChange={() => setSweep((sw2) => ({ ...sw2, excludedTags: isOff ? sw2.excludedTags.filter((t) => t !== g.tag) : [...sw2.excludedTags, g.tag] }))} />
+                        <span style={{ fontFamily: "var(--f-mono)", fontWeight: 600 }}>{g.tag === "\u2205" ? "no label" : g.tag}</span>
+                        <span>×{g.n}</span>
+                        {isSeedTag && <span style={{ fontSize: "var(--fs-2xs)", color: "var(--ink-muted)" }}>seed's tag</span>}
+                        {!isSeedTag && g.tag !== "\u2205" && !isOff && <span style={{ fontSize: "var(--fs-2xs)" }}>different device?</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+              {unlabeled > 0 && tagGroups.length <= 1 && <div style={{ fontSize: "var(--fs-s)", color: "var(--c-warning)" }}>{unlabeled} match(es) carry no label while this family is labeled — look at those first.</div>}
               <div><b style={{ fontFamily: "var(--f-display)", fontSize: "var(--fs-xl)", color: openQ ? "var(--c-warning)" : "var(--ink)" }}>{sweep.questions.length}</b> question(s){openQ ? <span style={{ color: "var(--ink-soft)" }}> — ↵ accept · X dismiss · → next</span> : <span style={{ color: "var(--ink-soft)" }}> — all answered</span>}</div>
               {sweep.questions.length > 0 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 150, overflowY: "auto" }}>
@@ -8556,7 +8620,7 @@ export default function TakeoffCanvas() {
                     <button key={i} type="button" onClick={() => setSweep((s) => ({ ...s, qIndex: i }))}
                       style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", fontFamily: "var(--f-body)", fontSize: "var(--fs-s)", textAlign: "left", background: i === sweep.qIndex ? "var(--tint-select)" : "transparent", border: `1px solid ${i === sweep.qIndex ? "var(--c-warning)" : "var(--ink-faint)"}`, color: q.state === "dismissed" ? "var(--text-faint)" : "var(--ink)", textDecoration: q.state === "dismissed" ? "line-through" : "none", cursor: "pointer" }}>
                       <span style={{ fontFamily: "var(--f-mono)", fontWeight: 700, color: q.state === "accepted" ? "var(--c-positive)" : q.state === "dismissed" ? "var(--text-faint)" : "#ff8c00" }}>{q.state === "accepted" ? "✓" : q.state === "dismissed" ? "×" : "?"}</span>
-                      <span>{Math.round(q.score * 100)}%{q.label ? ` · ${q.label.label}` : ""}</span>
+                      <span>{Math.round(q.score * 100)}%{q.label ? ` · ${q.label.label}` : ""}{q.readings > 1 ? ` · read ${q.readings} ways` : ""}</span>
                     </button>
                   ))}
                 </div>
