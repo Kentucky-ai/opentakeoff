@@ -153,6 +153,11 @@ export function activeThemeVars() {
 
 // saveActiveThemeFile(json)/clearActiveTheme() — the import + reset seam a UI
 // picker calls. Stores the raw file so re-parsing always reflects the importer.
+// The RAW stored file (or null) — what a profile export must carry so the
+// re-parse on another machine reflects the original import, not a re-render.
+export function activeThemeFileRaw() {
+  try { return localStorage.getItem(ACTIVE_KEY); } catch { return null; }
+}
 export function saveActiveThemeFile(json) {
   try { localStorage.setItem(ACTIVE_KEY, typeof json === "string" ? json : JSON.stringify(json)); } catch { /* private mode */ }
 }
