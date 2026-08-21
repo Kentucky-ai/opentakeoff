@@ -2,6 +2,18 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-21 — the field pass: commit by label, one ring per question
+
+Three findings from the first real field session on the Symbol tool — a school mechanical set, supply diffusers — each shipped the day it was found.
+
+### Added
+- **Commit by label.** A diffuser sweep came back "72 matched — S1 ×58 · T ×7 · R1 ×5 · IDF ×1 · E1 ×1": the geometry cannot tell a return from a supply when drafting reuses one square-X box, but the drawing names every one. The review panel now shows one row per tag with a checkbox — untick `R1` and those matches dim on the sheet and leave the commit — sweep_schedule_row's excluded-by-tag discipline, brought to the canvas as one click. The commit toast counts what a label excluded.
+- **A tiny-seed caution.** A 2–3-segment marquee is a fragment, and fragments match everywhere (every square corner reads as one — measured: 31 "matches" from one mis-aimed sliver). The panel now says so instead of letting confetti read as a count.
+
+### Fixed
+- **One physical near-miss, ONE question.** The engine honestly reports each rotational reading of a near-miss; the review lane drew them all — stacked orange rings on one diffuser, and a path to counting a symbol twice by accepting two of its readings. Readings now cluster per physical spot (a quarter of the marquee diagonal — one instance's readings sit a few px apart, abutting real instances stay separate), best score kept, the row saying "read N ways".
+- **Canvas label boxes were ~10× oversized.** `getTextContent` widths/heights are user-space units with the font size already in them; the canvas scaled them by the composed transform norm — folding the font size in twice. A 12 px tag grew a 440 px adjacency and labeled the wrong symbol (found live: a T2 landing on an unlabeled marker; on the field sheet, some sibling-tag assignments were wrong the same way). Now scaled by the viewport alone — the MCP's own `textSpans` math, verified byte-equal against it on the fixture.
+
 ## 2026-08-21 — the marquee comes to the canvas
 
 ### Added
