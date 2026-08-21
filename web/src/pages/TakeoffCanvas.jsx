@@ -17,7 +17,7 @@ import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { store, isStaleTabError, STALE_TAB_MESSAGE, projectIdFromUrl, ANN_SCHEMA } from "../lib/store.js";
+import { store, isStaleTabError, STALE_TAB_MESSAGE, projectIdFromUrl, ANN_SCHEMA, emptyAnnotations, metaGet, metaPut } from "../lib/store.js";
 import { Z } from "../lib/ui.js";
 import { getFocusMode, toggleFocusMode, onFocusModeChange } from "../lib/focusMode.js";
 import { seedStampLibrary, instantiateStamp, markupToStampElement } from "../lib/stamps.js";
@@ -1131,6 +1131,50 @@ export default function TakeoffCanvas() {
   // read at call time, so [] deps are correct.
   const pickerListFolder = useCallback((id) => store.listFolder(id), []);
   const pickerAddSheets = useCallback((items) => store.addSheets(items), []);
+  // ── page-count cache (#302) ────────────────────────────────────────────────
+  // The gallery used to learn every file's page count by loading its FULL bytes
+  // into a pdf.js doc the moment it opened — the one eager read left in an
+  // otherwise lazy pipeline (thumbnails render on scroll, the canvas rasters
+  // only open tabs). On a large plan set that read IS the sluggishness, so
+  // counts persist in the meta store once discovered and the gallery opens a
+  // known set without touching a byte of it. Keyed per project scope; entries
+  // drop on the only two paths that can change a file's pages — a revision
+  // (addPdf revised) and a removal — so the cache can't go stale.
+  const pageCacheKey = "sheet_pages:" + (projectIdFromUrl() || "local");
+  const [knownPages, setKnownPages] = useState({});
+  const knownPagesRef = useRef(knownPages);
+  useEffect(() => {
+    let off = false;
+    metaGet(pageCacheKey).then((m) => {
+      if (off || !m || typeof m !== "object") return;
+      knownPagesRef.current = m;
+      setKnownPages(m);
+    }).catch(() => {});
+    return () => { off = true; };
+  }, [pageCacheKey]);
+  const rememberPages = useCallback((name, count) => {
+    if (!Number.isFinite(count) || count < 1 || knownPagesRef.current[name] === count) return;
+    const next = { ...knownPagesRef.current, [name]: count };
+    knownPagesRef.current = next;
+    setKnownPages(next);
+    metaPut(pageCacheKey, next).catch(() => { /* cache only — rediscovered next open */ });
+  }, [pageCacheKey]);
+  const forgetPages = useCallback((names) => {
+    const next = { ...knownPagesRef.current };
+    let hit = false;
+    for (const n of names) if (n in next) { delete next[n]; hit = true; }
+    if (!hit) return;
+    knownPagesRef.current = next;
+    setKnownPages(next);
+    metaPut(pageCacheKey, next).catch(() => {});
+  }, [pageCacheKey]);
+  // Free a departing file's pdf.js worker doc — the doc cache is deliberately
+  // long-lived (thumbnails + reopen speed), but a file that LEFT the working
+  // set would otherwise hold worker memory for the rest of the session (#302).
+  const evictDoc = useCallback((name) => {
+    const t = pdfDocsRef.current.get(name);
+    if (t) { t.then((task) => { try { task.destroy(); } catch { /* already gone */ } }).catch(() => {}); pdfDocsRef.current.delete(name); }
+  }, []);
   // Reconcile the canvas after a PDF leaves the working set. For a non-empty
   // result the [sheets] effect already prunes openTabs/sheetGroup, but it can't:
   //   • fix `active` when the CLOSED pdf was the one on screen (it never resets
@@ -1151,8 +1195,21 @@ export default function TakeoffCanvas() {
   // Shapes on the closed sheets persist in annotations and restore on re-add.
   const closePdf = useCallback(async (name) => {
     await store.removePdf(name);
+    evictDoc(name);
+    forgetPages([name]);
     reconcileAfterRemoval(name, await refreshSheets());
-  }, [refreshSheets, reconcileAfterRemoval]);
+  }, [refreshSheets, reconcileAfterRemoval, evictDoc, forgetPages]);
+  // Bulk close (#301): one pass over the manage-mode selection, ONE refresh and
+  // reconcile at the end. Per-file semantics are exactly closePdf's — shapes
+  // persist in annotations and restore if the same file is re-added.
+  const closePdfs = useCallback(async (names) => {
+    if (!names.length) return;
+    for (const n of names) { await store.removePdf(n); evictDoc(n); }
+    forgetPages(names);
+    const list = await refreshSheets();
+    reconcileAfterRemoval(names.includes(active) ? active : "", list);
+    setCommitMsg(`Removed ${names.length} PDF${names.length === 1 ? "" : "s"} from the plan set — takeoffs on them stay in the project and restore on re-add.`);
+  }, [refreshSheets, reconcileAfterRemoval, evictDoc, forgetPages, active]);
   // Remove-from-project (cloud only): the DESTRUCTIVE variant — delete the Drive
   // file, then drop it from the working set.
   const removeFromProject = useCallback(async (name) => {
@@ -1184,10 +1241,10 @@ export default function TakeoffCanvas() {
     // must re-key so the new revision actually reaches the screen.
     const revised = results.filter((r) => r?.revised);
     if (revised.length) {
-      for (const r of revised) {
-        const t = pdfDocsRef.current.get(r.name);
-        if (t) { t.then((task) => { try { task.destroy(); } catch { /* already gone */ } }).catch(() => {}); pdfDocsRef.current.delete(r.name); }
-      }
+      for (const r of revised) evictDoc(r.name);
+      // a revision can change the page count — drop the cached counts so the
+      // gallery re-learns them from the new bytes (#302)
+      forgetPages(revised.map((r) => r.name));
       setDocEpoch((e) => e + 1);
     }
     const names = pdfs.map((f) => f.name);
@@ -1543,6 +1600,10 @@ export default function TakeoffCanvas() {
     let t = pdfDocsRef.current.get(file);
     if (!t) {
       t = store.loadPdfData(file).then((data) => pdfjsLib.getDocument({ data }));
+      // never cache a FAILED load: a file removed and re-added under the same
+      // name (Manage → remove, then re-open) would otherwise pin the removal-
+      // race rejection for the life of the view and refuse to ever render
+      t.catch(() => { if (pdfDocsRef.current.get(file) === t) pdfDocsRef.current.delete(file); });
       pdfDocsRef.current.set(file, t);
     }
     return t.then((task) => task.promise);
@@ -2005,6 +2066,32 @@ export default function TakeoffCanvas() {
     downloadText(`${base}.takeoff.json`, JSON.stringify(payload, null, 2), "application/json");
     const n = shapes.length;
     setCommitMsg(`Exported ${base}.takeoff.json — ${n} takeoff${n === 1 ? "" : "s"}, ${conditions.length} condition${conditions.length === 1 ? "" : "s"}. The plan PDF isn't in it: to restore, open the same PDF, then Import takeoff.`);
+  };
+
+  // "Clear workspace" (#301) — the deliberate start-fresh: every stored PDF
+  // goes and the takeoff resets to empty, without touching browser storage by
+  // hand. Local mode only (a cloud project's canon lives in Drive — Close
+  // project is that mode's exit). Commit before risk: a non-empty takeoff is
+  // snapshotted first, so the work is one Revisions-panel restore away — the
+  // PDFs themselves are gone either way (local plans aren't stored elsewhere);
+  // restored shapes re-attach by sheet name when the same files are re-opened.
+  const clearWorkspace = async () => {
+    const names = sheets.map((s) => s.name);
+    let saved = false;
+    if (shapes.length || conditions.length || markups.length) {
+      try { await store.saveSnapshot(`Before Clear workspace — ${new Date().toLocaleString()}`, buildPayload()); saved = true; }
+      catch { /* best-effort (quota) — clearing continues; message says what happened */ }
+    }
+    for (const n of names) { try { await store.removePdf(n); } catch { /* already gone */ } evictDoc(n); }
+    forgetPages(names);
+    thumbCacheRef.current.clear();
+    setGalleryLabels({});
+    setDetectedScales({});
+    reconcileAfterRemoval("", await refreshSheets());
+    restoreSavedPayload(emptyAnnotations());
+    setCommitMsg(saved
+      ? `Workspace cleared — ${names.length} PDF${names.length === 1 ? "" : "s"} removed. The takeoff was snapshotted first: Revisions → restore brings it back (re-open the same PDFs to see its shapes).`
+      : `Workspace cleared — ${names.length} PDF${names.length === 1 ? "" : "s"} removed.`);
   };
 
   // markups MUST be in the deps (a cloud/callout/text or an RFI link is real work);
@@ -8063,6 +8150,9 @@ export default function TakeoffCanvas() {
             return next;
           })}
           onClosePdf={closePdf}
+          onCloseMany={closePdfs}
+          onClearWorkspace={cloudMode ? undefined : clearWorkspace}
+          knownPages={knownPages} onPages={rememberPages}
           onRemoveFromProject={cloudMode ? removeFromProject : undefined}
           onCloseProject={cloudMode ? closeProject : undefined}
           onBrowseProjects={cloudMode ? browseProjects : undefined}

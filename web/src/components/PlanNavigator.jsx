@@ -53,6 +53,9 @@ export default function PlanNavigator({
   sheets, getDoc, scales, detectedScales, scaleUnconfirmed = {}, shapes, labels, onLabel, onDetect,
   thumbCacheRef, busyRef, openTabs, onOpen,
   onAddFiles, onClosePdf, onRemoveFromProject,
+  // manage mode (#301/#302): bulk close + workspace reset, and the persisted
+  // page-count cache that lets a known set open without reading its bytes
+  onCloseMany, onClearWorkspace, knownPages = {}, onPages,
   onCloseProject, onBrowseProjects,
   levels = {}, onAssignLevel,
   // stitches (#161): persisted match-line composites — created from a 2..MAX_GROUP
@@ -146,6 +149,11 @@ export default function PlanNavigator({
   const [driveErr, setDriveErr] = useState("");
   const [addMenu, setAddMenu] = useState(false);
   const [confirmClose, setConfirmClose] = useState(null);   // { file, shapeCount } | null
+  // ══ MANAGE state (#301) ═══════════════════════════════════════════════════
+  const [mSel, setMSel] = useState([]);            // file names checked in manage mode
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [working, setWorking] = useState(false);   // a bulk remove / clear in flight
   const [, bump] = useState(0);
   const seqRef = useRef(0);
   const queueRef = useRef([]);
@@ -176,24 +184,38 @@ export default function PlanNavigator({
       .finally(() => setDriveBusy(false));
   };
 
-  // enumerate: learn every file's page count through the shared doc cache
+  // enumerate page counts. The persisted cache answers a known file instantly —
+  // no byte read, no pdf.js doc — which is what lets a large plan set's gallery
+  // open without loading the set (#302). Only files the cache can't answer for
+  // load a doc here, and what they learn is reported up (onPages) so the NEXT
+  // open is instant too. Thumbnails stay scroll-lazy either way (the observer/
+  // pump below loads a doc only when a card actually becomes visible).
+  const pageOf = (name) => pages[name] !== undefined ? pages[name] : knownPages[name];
   useEffect(() => {
     const seq = ++seqRef.current;
     (async () => {
       for (const s of sheets) {
+        // truthy counts are settled; a 0 (unreadable last try) retries on the
+        // next sheets change, matching the old enumerate's healing behavior —
+        // a removed-and-re-added file must not stay hidden behind a stale 0
+        if (pageOf(s.name)) continue;
         try {
           const pdf = await getDoc(s.name);
           if (seq !== seqRef.current) return;
-          setPages((m) => (m[s.name] ? m : { ...m, [s.name]: pdf.numPages || 1 }));
+          const n = pdf.numPages || 1;
+          setPages((m) => (m[s.name] ? m : { ...m, [s.name]: n }));
+          onPages?.(s.name, n);
         } catch { if (seq === seqRef.current) setPages((m) => (m[s.name] !== undefined ? m : { ...m, [s.name]: 0 })); }
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
     return () => { seqRef.current++; };
-  }, [sheets, getDoc]);
+    // pageOf/onPages are stable per render pass — knownPages is the real signal
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sheets, getDoc, knownPages]);
 
   const allKeys = sheets.flatMap((s) => {
-    const n = pages[s.name];
+    const n = pageOf(s.name);
     if (!n) return [];
     return Array.from({ length: n }, (_, i) => (i ? `${s.name}#${i + 1}` : s.name));
   });
@@ -203,11 +225,11 @@ export default function PlanNavigator({
   // remount: reopening the gallery for a 1-sheet project would enumerate, auto-
   // open, and bounce straight back to the canvas — leaving Add plans / Browse
   // Drive permanently unreachable.
-  const enumerated = sheets.length > 0 && sheets.every((s) => pages[s.name] !== undefined);
+  const enumerated = sheets.length > 0 && sheets.every((s) => pageOf(s.name) !== undefined);
   useEffect(() => {
     if (mode === "plan" && enumerated && allKeys.length === 1 && openTabs.length === 0) onOpen([allKeys[0]], false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pages, mode]);
+  }, [pages, knownPages, mode]);
 
   const pump = async () => {
     if (pumpingRef.current) return;
@@ -288,14 +310,15 @@ export default function PlanNavigator({
       else setMode("plan");
       return;
     }
+    if (mode === "manage") { setMode("plan"); return; }
     if (canClose) onExit();
   }, [mode, path.length, canClose, onExit]);
-  const canGoBack = mode === "browse" || canClose;
-  // Esc: leave the current mode in one press (browse → plan, plan → canvas),
-  // independent of the back button's per-level folder climb.
+  const canGoBack = mode === "browse" || mode === "manage" || canClose;
+  // Esc: leave the current mode in one press (browse/manage → plan, plan →
+  // canvas), independent of the back button's per-level folder climb.
   useEffect(() => {
     escRef.current = () => {
-      if (mode === "browse") { setMode("plan"); return; }
+      if (mode === "browse" || mode === "manage") { setMode("plan"); return; }
       if (canClose) onExit();
     };
   }, [mode, canClose, onExit]);
@@ -314,10 +337,12 @@ export default function PlanNavigator({
   };
 
   // ══ RENDER ════════════════════════════════════════════════════════════════
-  const title = mode === "browse" ? "Add sheets from Drive" : "Plan set";
+  const title = mode === "browse" ? "Add sheets from Drive" : mode === "manage" ? "Manage plan set" : "Plan set";
   const subtitle = mode === "browse"
     ? "pick the PDFs to open — specs & as-builts stay unopened"
-    : `${allKeys.length || "…"} sheets · pick one or several — the order you pick is the left-to-right order`;
+    : mode === "manage"
+      ? `${sheets.length} PDF${sheets.length === 1 ? "" : "s"} stored in this workspace — remove what this takeoff doesn't need`
+      : `${allKeys.length || "…"} sheets · pick one or several — the order you pick is the left-to-right order`;
 
   const header = (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 18px", borderBottom: "1px solid var(--ink)", background: "var(--paper-bright)", flexWrap: "wrap" }}>
@@ -370,6 +395,13 @@ export default function PlanNavigator({
             <option value="date">Modified</option>
           </select>
         </>
+      )}
+      {mode === "plan" && sheets.length > 0 && (onCloseMany || onClearWorkspace) && (
+        <button onClick={() => { setMSel([]); setMode("manage"); }}
+          title="Manage the plan set — remove several PDFs at once, or clear the whole workspace"
+          style={ctrlBtn}>
+          <Icon name="sheets" size={13} />Manage
+        </button>
       )}
       {mode === "plan" && onAddFiles && (
         <div style={{ position: "relative" }}>
@@ -633,6 +665,106 @@ export default function PlanNavigator({
     </>
   );
 
+  // ── MANAGE body + footer (#301) ─────────────────────────────────────────
+  // The bulk counterpart of the per-card ✕: pick several PDFs and remove them
+  // in one operation, or clear the whole workspace. Removal here is closePdf's
+  // semantics exactly — takeoffs persist in the project and restore on re-add —
+  // the row says which PDFs actually carry takeoffs so nothing is assumed unused.
+  const mToggle = (name) => setMSel((g) => (g.includes(name) ? g.filter((n) => n !== name) : [...g, name]));
+  const mAll = sheets.length > 0 && mSel.length === sheets.length;
+  const mSelShapes = mSel.reduce((n, f) => n + pdfShapeCount(f), 0);
+  const doBulkRemove = async () => {
+    setConfirmBulk(false); setWorking(true);
+    try { await onCloseMany(mSel); setMSel([]); setMode("plan"); }
+    finally { setWorking(false); }
+  };
+  const doClear = async () => {
+    setConfirmClear(false); setWorking(true);
+    try { await onClearWorkspace(); setMSel([]); setMode("plan"); }
+    finally { setWorking(false); }
+  };
+  const manageBody = (
+    <>
+      <div style={{ flex: 1, overflow: "auto" }}>
+        <label style={{ ...rowBase, cursor: "pointer", background: "var(--well)" }}>
+          <input name="manage-all" type="checkbox" checked={mAll} onChange={() => setMSel(mAll ? [] : sheets.map((s) => s.name))} style={{ width: 16, height: 16, cursor: "pointer" }} />
+          <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" }}>{mAll ? "Clear selection" : "Select all"}</span>
+        </label>
+        {sheets.map((s) => {
+          const pg = pageOf(s.name);
+          const cnt = pdfShapeCount(s.name);
+          const tabsOpen = openTabs.filter((k) => parseSheetKey(k).file === s.name).length;
+          return (
+            <label key={s.name} style={{ ...rowBase, cursor: "pointer" }}>
+              <input name="manage-pick" type="checkbox" checked={mSel.includes(s.name)} onChange={() => mToggle(s.name)} style={{ width: 16, height: 16, cursor: "pointer" }} />
+              <span style={{ fontFamily: "var(--f-mono)", fontSize: 13, color: "var(--ink)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.name}>{s.name}</span>
+              {tabsOpen > 0 && <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, color: "var(--cobalt)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{tabsOpen} open</span>}
+              <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)", minWidth: 74, textAlign: "right" }}>{pg !== undefined ? `${pg || "?"} sheet${pg === 1 ? "" : "s"}` : "…"}</span>
+              <span title={cnt ? "This PDF carries takeoffs — they persist in the project and restore if you re-add the same file" : undefined}
+                style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: cnt ? "var(--c-warning)" : "var(--text-faint)", minWidth: 88, textAlign: "right" }}>
+                {cnt ? `${cnt} takeoff${cnt === 1 ? "" : "s"}` : "no takeoffs"}
+              </span>
+            </label>
+          );
+        })}
+        {!sheets.length && (
+          <div style={{ padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>The workspace is empty — nothing stored.</div>
+        )}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 18px", borderTop: "1px solid var(--ink)", background: "var(--paper-bright)", flexWrap: "wrap" }}>
+        <span style={{ fontFamily: "var(--f-mono)", fontSize: 11.5, color: "var(--ink-muted)" }}>
+          {working ? "Working…" : mSel.length ? `${mSel.length} PDF${mSel.length === 1 ? "" : "s"} selected${mSelShapes ? ` · ${mSelShapes} takeoff${mSelShapes === 1 ? "" : "s"} on them` : ""}` : "check the PDFs to remove — removing never deletes takeoff data"}
+        </span>
+        <div style={{ flex: 1 }} />
+        {onClearWorkspace && (
+          <button onClick={() => setConfirmClear(true)} disabled={working}
+            title="Remove every stored PDF and reset the takeoff — a snapshot of a non-empty takeoff is saved first (Revisions restores it)"
+            style={{ ...ctrlBtn, border: "1px solid var(--c-danger)", color: "var(--c-danger)", opacity: working ? 0.5 : 1 }}>Clear workspace…</button>
+        )}
+        <button onClick={() => setConfirmBulk(true)} disabled={!mSel.length || working}
+          style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 16px", border: "1px solid var(--ink)", background: mSel.length && !working ? "var(--ink)" : "var(--ink-faint)", color: "var(--paper-bright)", cursor: mSel.length && !working ? "pointer" : "default", fontWeight: 700, fontSize: 13 }}>
+          Remove {mSel.length || ""} selected
+        </button>
+      </div>
+    </>
+  );
+
+  const bulkDialog = confirmBulk && (
+    <div onClick={() => setConfirmBulk(false)} style={{ position: "absolute", inset: 0, zIndex: 5, background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={(e) => e.stopPropagation()} className="panel" style={{ width: 460, maxWidth: "100%", background: "var(--paper-bright)", boxShadow: "var(--shadow-2)", padding: "18px 20px" }}>
+        <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--ink)" }}>Remove {mSel.length} PDF{mSel.length === 1 ? "" : "s"} from the plan set?</strong>
+        <p style={{ fontSize: 12.5, color: "var(--ink-muted)", lineHeight: 1.6, margin: "10px 0 4px" }}>
+          {cloudMode
+            ? "They stop loading in this plan set — the files stay in your Drive project and re-add any time from Browse Drive."
+            : "Their stored bytes are removed from this browser. Local plans aren't stored anywhere else, so you'd re-open the files to get them back."}
+          {mSelShapes > 0 && (
+            <><br /><span style={{ color: "var(--c-warning)" }}>{mSelShapes} takeoff{mSelShapes === 1 ? "" : "s"} live on these PDFs — they're preserved in the project and restore if you re-add the same files.</span></>
+          )}
+        </p>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={() => setConfirmBulk(false)} style={{ ...ctrlBtn, color: "var(--ink-muted)" }}>Cancel</button>
+          <button onClick={doBulkRemove} style={{ ...ctrlBtn, border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", fontWeight: 700 }}>Remove {mSel.length}</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const clearDialog = confirmClear && (
+    <div onClick={() => setConfirmClear(false)} style={{ position: "absolute", inset: 0, zIndex: 5, background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={(e) => e.stopPropagation()} className="panel" style={{ width: 460, maxWidth: "100%", background: "var(--paper-bright)", boxShadow: "var(--shadow-2)", padding: "18px 20px" }}>
+        <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--c-danger)" }}>Clear the whole workspace?</strong>
+        <p style={{ fontSize: 12.5, color: "var(--ink-muted)", lineHeight: 1.6, margin: "10px 0 4px" }}>
+          Every stored PDF ({sheets.length}) is removed and the takeoff resets to empty — a clean start without touching browser storage by hand.
+          <br /><span style={{ color: "var(--ink)" }}>A non-empty takeoff is snapshotted first</span> — Revisions → restore brings it back (you'd re-open the same PDFs to see its shapes). The PDFs themselves aren't stored anywhere else.
+        </p>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
+          <button onClick={() => setConfirmClear(false)} style={{ ...ctrlBtn, color: "var(--ink-muted)" }}>Cancel</button>
+          <button onClick={doClear} style={{ ...ctrlBtn, border: "1px solid var(--c-danger)", background: "var(--c-danger)", color: "var(--paper-bright)", fontWeight: 700 }}>Clear workspace</button>
+        </div>
+      </div>
+    </div>
+  );
+
   // ── close/remove confirmation ───────────────────────────────────────────
   const confirmDialog = confirmClose && (
     <div onClick={() => setConfirmClose(null)} style={{ position: "absolute", inset: 0, zIndex: 5, background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -670,8 +802,10 @@ export default function PlanNavigator({
         ? { position: "relative", width: "min(1100px, 92vw)", height: "85vh", display: "flex", flexDirection: "column", background: "var(--paper-cream)", boxShadow: "var(--shadow-2)", overflow: "hidden" }
         : { position: "absolute", inset: 0, display: "flex", flexDirection: "column", background: "var(--paper-cream)" }}>
       {header}
-      {mode === "browse" ? browseBody : planBody}
+      {mode === "browse" ? browseBody : mode === "manage" ? manageBody : planBody}
       {confirmDialog}
+      {bulkDialog}
+      {clearDialog}
     </div>
   );
 
