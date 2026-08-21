@@ -1572,6 +1572,71 @@ test("symbol_sweep exclude: a counter-example that separates nothing is refused,
   assert.match(empty.data.error, /must be an instance of what you seeded/);
 });
 
+// #296 — the seed is installed work in sheet scope. Found in live validation:
+// four × on a plumbing plan with five drains, and the unmarked one was the
+// seed, correctly flagged as a miss by the estimator auditing the render.
+test("symbol_sweep commit_seed: the seed joins the batch, and leaving it out is said out loud (#296)", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMPLAN });
+
+  // without commit_seed: 5 matches commit, and the reply says the seed is out
+  const without = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SEED_RECT, commit: true, condition: "FD-1" });
+  assert.equal(without.data.committed, 5);
+  assert.equal(without.data.ea_total, 5);
+  assert.equal(without.data.seed_committed, undefined);
+  assert.match(without.data.note, /seed instance at \(/, "the exclusion is named");
+  assert.match(without.data.note, /commit_seed/, "and the fix is named");
+
+  const undo = await call(client, "undo_last", {});
+  assert.equal(undo.data.undone, 1, "the whole sweep commit is one undo step");
+
+  // with commit_seed: six markers, one batch, one undo step, no seed note
+  const withSeed = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SEED_RECT, commit: true, commit_seed: true, condition: "FD-1" });
+  assert.equal(withSeed.data.committed, 6, "5 matches + the seed");
+  assert.equal(withSeed.data.ea_total, 6);
+  assert.equal(withSeed.data.seed_committed, true);
+  assert.ok(!/seed instance at \(/.test(withSeed.data.note ?? ""), "nothing excluded, nothing to flag");
+  const undo2 = await call(client, "undo_last", {});
+  assert.equal(undo2.data.undone, 1, "seed included, still one undo step");
+
+  // refusals: commit_seed is meaningless without commit, and wrong in set scope
+  const noCommit = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SEED_RECT, commit_seed: true });
+  assert.equal(noCommit.isError, true);
+  assert.match(noCommit.data.error, /needs commit: true/);
+});
+
+test("symbol_sweep commit_seed refuses in set scope — a detail seed is a reference drawing (#296)", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMSET });
+  const r = await call(client, "symbol_sweep", { sheet: "symbol-set.pdf#3", seed_rect: [[590, 574], [678, 634]], scope: "set", commit: true, commit_seed: true, condition: "FD-1" });
+  assert.equal(r.isError, true);
+  assert.match(r.data.error, /sheet scope only/);
+  assert.match(r.data.error, /place_count/, "the explicit path is named");
+});
+
+// #297 — disclosure marks: what the reply names, the picture shows.
+// view_sheet replies image-first (PNG item + meta text item), so it gets its
+// own reader instead of the single-item `call` harness.
+test("view_sheet marks: question / struck / ring burn into the render and are counted (#297)", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMPLAN });
+  const viewMeta = async (args: Record<string, unknown>) => {
+    const res: any = await client.callTool({ name: "view_sheet", arguments: args });
+    assert.equal(!!res.isError, false, `view_sheet failed: ${res.content?.[0]?.text}`);
+    assert.equal(res.content[0].type, "image");
+    return JSON.parse(res.content[1].text);
+  };
+  const meta = await viewMeta({
+    sheet: SYMKEY,
+    region: { x0: 100, y0: 400, x1: 900, y1: 1100 },
+    marks: { question: [[623.9, 564], [820, 764]], struck: [[220, 564]], ring: [[223.9, 1004]] },
+  });
+  assert.equal(meta.marks_drawn, 4, "every mark drawn and accounted");
+  // and without marks the field stays absent — the default render is unchanged
+  const plain = await viewMeta({ sheet: SYMKEY, region: { x0: 100, y0: 400, x1: 900, y1: 1100 } });
+  assert.equal(plain.marks_drawn, undefined);
+});
+
 // #260, reported by @FrankAtGHub: on a flattened export — no layer tree, one
 // pen everywhere — the only thing left separating a device from the background
 // structure it is drawn over can be stroke color, and the file still states it

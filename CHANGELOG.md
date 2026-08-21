@@ -2,6 +2,14 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-21 — the picture shows what the reply names; opentakeoff-mcp 0.9.62
+
+Both found in one live validation session, by the estimator doing the right thing — auditing the rendered overlay against the sheet — and both the same disease: **the reply disclosed what the picture did not show.**
+
+### Added
+- **`view_sheet` takes disclosure marks (#297).** A fitting sweep on a real plumbing sheet committed 5 matches and withheld **37** near-misses; the overlay drew committed shapes only, so the audit read "it misses elbows" while the answer sat in `withheld[]` the whole time. `marks` burns the disclosure layers into the render: `question` (withheld placements — orange ?-in-circle), `struck` (#259 rejections, #260 `lum_gate.at` — magenta struck ×), `ring` (the sweep's own seed, any anchor — violet double ring), each list plain image-px coordinates straight off a sweep reply, `marks_drawn` echoed in the meta. The colors sit deliberately **off the common CAD pens** — the estimator's own ask, from a color-plotted set where a same-hue marker would vanish into the work. Stateless by design: no hidden last-sweep memory, the caller passes what it wants shown, so the same verb serves any tool's disclosures.
+- **`symbol_sweep` gains `commit_seed` (#296).** Four × on a plumbing plan with five drains — the unmarked one was the seed, flagged as a miss by a correct visual audit. Not a matcher bug (the seed is deliberately never double-committed); an accounting-surface bug: in **sheet scope** the seed is almost always installed work, and `ea_total` one short of the hand tally is a bid one drain short with the reply telling the truth the whole way down. `commit_seed: true` mints the seed instance into the **same one-undo-step batch** (origin score 1, `origin.symbol.seed` source intact, `seed_committed` echoed); leaving it out now says so in the note, with the fix named. Refused in set scope — a detail/legend seed is a reference drawing, and if that instance is installed work the explicit path is `place_count`, which the refusal names.
+
 ## 2026-08-21 — the drawing already says what it is; opentakeoff-mcp 0.9.61
 
 ### Added
