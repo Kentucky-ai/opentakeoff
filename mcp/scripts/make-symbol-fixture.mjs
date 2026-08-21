@@ -321,3 +321,47 @@ for (const off of annOffsets) annPdf += `${String(off).padStart(10, "0")} 00000 
 annPdf += `trailer\n<< /Size ${annObjects.length + 1} /Root 1 0 R >>\nstartxref\n${annXrefAt}\n%%EOF\n`;
 writeFileSync(OUT_ANN, annPdf, "latin1");
 console.log(`wrote ${OUT_ANN} (${annPdf.length} bytes)`);
+
+// ── symbol-labels.pdf — the #308 label-corroboration fixture ─────────────────
+// One 612×612 page, MULTI-PEN (grey work, black annotation), three identical
+// drain symbols and the three label situations the feature must tell apart:
+//   A  (150,400)  the SEED — named "FD1" by a black LEADER LINE from the text
+//   B  (400,400)  no label anywhere — a shape-only count, flagged in the note
+//   C  (400,150)  named "FD2" by an ADJACENT token written beside it
+// Grey is RGB(219,219,219) — the same pen the #260 fixture uses — so the
+// leader chase has a dark pen to follow and a work pen to ignore.
+const OUT_LBL = join(FIXTURES, "symbol-labels.pdf");
+const lblText = (t, x, y) => `BT /F1 10 Tf ${fmt(x)} ${fmt(y)} Td (${t}) Tj ET`;
+const lblContent = [
+  "0.858824 0.858824 0.858824 RG",
+  "0.5 w",
+  ...place(SYMBOL, [150, 400]),               // A — the seed
+  ...place(SYMBOL, [400, 400]),               // B — unlabeled
+  ...place(SYMBOL, [400, 150]),               // C — adjacent token
+  "0 0 0 RG",
+  lblText("FD1", 60, 396),                    // A's label…
+  "82 399.5 m 152 400 l S",                   // …its leader tail
+  "152 400 m 146 402.5 l S",                  // …and arrowhead
+  "152 400 m 146 397.5 l S",
+  lblText("FD2", 415, 156),                   // C's label, written beside it
+].join("\n");
+
+const lblObjects = [
+  "<< /Type /Catalog /Pages 2 0 R >>",
+  "<< /Type /Pages /Kids [4 0 R] /Count 1 >>",
+  "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 612] /Contents 5 0 R /Resources << /Font << /F1 3 0 R >> >> >>",
+  `<< /Length ${lblContent.length} >>\nstream\n${lblContent}\nendstream`,
+];
+let lblPdf = "%PDF-1.5\n";
+const lblOffsets = [];
+lblObjects.forEach((body, i) => {
+  lblOffsets.push(lblPdf.length);
+  lblPdf += `${i + 1} 0 obj\n${body}\nendobj\n`;
+});
+const lblXrefAt = lblPdf.length;
+lblPdf += `xref\n0 ${lblObjects.length + 1}\n0000000000 65535 f \n`;
+for (const off of lblOffsets) lblPdf += `${String(off).padStart(10, "0")} 00000 n \n`;
+lblPdf += `trailer\n<< /Size ${lblObjects.length + 1} /Root 1 0 R >>\nstartxref\n${lblXrefAt}\n%%EOF\n`;
+writeFileSync(OUT_LBL, lblPdf, "latin1");
+console.log(`wrote ${OUT_LBL} (${lblPdf.length} bytes)`);

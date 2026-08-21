@@ -1583,6 +1583,64 @@ test("symbol_sweep exclude: a counter-example that separates nothing is refused,
 const SYMLUM = fileURLToPath(new URL("./fixtures/symbol-lum.pdf", import.meta.url));
 const SYMLUMKEY = "symbol-lum.pdf";
 
+// #308 — labels. The fixture (symbol-labels.pdf) is the two real conventions
+// distilled onto one multi-pen page: three identical grey drains where A (the
+// seed) is named "FD1" by a black LEADER LINE, C is named "FD2" by a token
+// written BESIDE it, and B has no label anywhere — the shape-only count the
+// note must flag. Proven on two real sets before building (10/11 named on a
+// gym set; 5 named + 2 false matches vetoed on a renovation set).
+const SYMLBL = fileURLToPath(new URL("./fixtures/symbol-labels.pdf", import.meta.url));
+const SYMLBLKEY = "symbol-labels.pdf";
+
+test("symbol_sweep labels: a leader names the seed, an adjacent token names a match, the unlabeled match is flagged (#308)", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMLBL });
+
+  // seed = drain A at pt (150,400) → px [300..368, 384..424]
+  const r = await call(client, "symbol_sweep", { sheet: SYMLBLKEY, seed_rect: [[296, 380], [372, 428]] });
+  assert.equal(r.isError, false);
+  assert.equal(r.data.found, 2, "B and C — identical glyphs");
+
+  // the seed's own tag came down its leader line
+  assert.equal(r.data.seed.label, "FD1");
+  assert.equal(r.data.seed.label_via, "leader");
+
+  // C — pt y 150, so the BOTTOM half in image px — is named by the token
+  // written beside it
+  const c = r.data.matches.find((m: any) => m.at[1] > 600);
+  assert.equal(c.label, "FD2");
+  assert.equal(c.label_via, "adjacent");
+
+  // B carries nothing — and the reply says so in words
+  const b = r.data.matches.find((m: any) => m.at[1] < 600);
+  assert.equal(b.label, undefined, "no label reaches B");
+  assert.match(r.data.note, /carry NO label/, "a shape-only count in a labeled family is flagged");
+  assert.match(r.data.note, /"FD1"/, "the family identity is named");
+
+  // determinism
+  const again = await call(client, "symbol_sweep", { sheet: SYMLBLKEY, seed_rect: [[296, 380], [372, 428]] });
+  assert.deepEqual(again.data, r.data);
+});
+
+test("symbol_sweep labels: adjacent tags on the diamond markers — same tag confirms, a different tag is questioned (#308)", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMSET });
+
+  // seed = the T1 diamond at pt (150,200) → px center (300, 824)
+  const r = await call(client, "symbol_sweep", { sheet: "symbol-set.pdf", seed_rect: [[270, 794], [330, 854]] });
+  assert.equal(r.isError, false);
+  assert.equal(r.data.seed.label, "T1", "the tag drawn inside the seed's own bubble");
+  assert.equal(r.data.found, 4, "the four other diamonds on the floor plan");
+
+  const tags = r.data.matches.map((m: any) => m.label ?? null).sort((a: any, b: any) => String(a).localeCompare(String(b)));
+  assert.deepEqual(tags, ["T1", "T1", "T2", null].sort((a, b) => String(a).localeCompare(String(b))),
+    "two T1 siblings, the T2, and the unlabeled marker");
+  // drafting reuses one bubble shape across tags — the geometry matched T2,
+  // the drawing disagrees, and the reply says to check it
+  assert.match(r.data.note, /names differently \(T2\)/);
+  assert.match(r.data.note, /carry NO label/, "the unlabeled marker is the other flag");
+});
+
 test("symbol_sweep luminance_tolerance: the stated gate separates black devices from grey twins, and says what it cost (#260)", async () => {
   const client = await pair();
   await call(client, "load_plan", { path: SYMLUM });

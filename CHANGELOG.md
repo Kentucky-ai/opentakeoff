@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-21 — the drawing already says what it is; opentakeoff-mcp 0.9.61
+
+### Added
+- **`symbol_sweep` reads the labels (#308).** For a labeled family — fixtures, tagged equipment, keyed devices — the drawing names every instance, and a sweep that ignores those names leaves identity on the table in both directions. Proven by measurement on two real sets from two offices *before* building: on a gym set (leader-line convention, color-plotted), following the black leader from each `P-7`/`P-6`/`P-6A` label named **10 of 11** drain spots — every committed match confirmed as the seed's own tag, five of six withheld resolved as a *different* fixture by name, one true question left for a human; on a mixed-use renovation (labels written beside symbols, one pen), nearest-token adjacency named **all five** real drains and flagged **two 0.97+ matches with no label anywhere near them** — circles inside a backflow-preventer assembly, headed onto a bid as drains until the absent label caught what the shape could not. The resolution is pure and shared (`web/src/lib/symbollabels.ts`, ready for the canvas Symbol tool #264): fixture-shaped tokens (own text run, 1–4 letters + optional digits, never a bare keynote number) name a placement either **adjacent** — within a radius scaled off the token's *own text height*, the measured line between true pairs (~1.2–1.9×) and the nearest impostor (2.6×) — or by **leader**, chasing the annotation pen a few hops from the token's edges, armed only on multi-pen sheets where #260's luminance channel separates the leader from the work (on a one-pen sheet the same walk would flood through walls, so adjacency carries it alone). Every match and withheld row gains `label` + `label_via`, the seed's tag rides `seed.label`, and the reply says the three sentences worth saying: a committed match with **no** label in a labeled family was counted on shape alone; a withheld row carrying the **seed's own** tag is the drawing vouching for a near-miss; a row named a **different** tag is a sibling fixture answered, not a missed count. Disclosure, never a recount — the judgement stays with the estimator.
+
 ## 2026-08-21 — one drain, one row; opentakeoff-mcp 0.9.60
 
 ### Fixed
