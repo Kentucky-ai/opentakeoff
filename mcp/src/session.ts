@@ -38,6 +38,7 @@ import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS }
 // seed measured DIFFERENT square footage under the same origin.method.
 import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, floodAtSeed, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
 import { fingerprintSymbol, matchSymbol, buildNegative, SWEEP_TOL_PX, type SweepOptions, type SymbolFingerprint, type SymbolMatchResult, type SweepMatch, type SweepWithheld, type SweepRejected, type SymbolNegative } from "../../web/src/lib/symbolsweep.ts";
+import { labelPlacements, type PlacementLabel } from "../../web/src/lib/symbollabels.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
 import { sharedRuns, type SharedRun } from "../../web/src/lib/transitions.ts";
 // Real polygon boolean subtraction (#137/#206) — the canvas's own module, so a
@@ -2129,6 +2130,48 @@ export class Session {
     };
   }
 
+  /** #308 — resolve the drawing's own tag for a sweep's placements. Pure
+   * resolution lives in web/src/lib/symbollabels.ts (shared with the canvas
+   * Symbol tool, #264); this just lines the answers back up with the rows
+   * they belong to. */
+  private sweepLabels(spans: TextSpan[], geo: { segs: number[]; lum?: Uint8Array }, seedCenter: Point | null, matches: SweepMatch[], withheld: SweepWithheld[]) {
+    const centers: Point[] = [...(seedCenter ? [seedCenter as Point] : []), ...matches.map((m) => m.at), ...withheld.map((w) => w.at)];
+    const named = labelPlacements(centers, spans, geo.segs, geo.lum);
+    const off = seedCenter ? 1 : 0;
+    return {
+      seed: seedCenter ? named[0] : null,
+      matches: named.slice(off, off + matches.length),
+      withheld: named.slice(off + matches.length),
+    };
+  }
+
+  private static labelFields(l: PlacementLabel | null | undefined): { label?: string; label_via?: "adjacent" | "leader" } {
+    return l ? { label: l.label, label_via: l.via } : {};
+  }
+
+  /** The label findings worth a sentence, in both directions (#308): a match
+   * with no label in a labeled family is a shape-only count to look at; a
+   * withheld row carrying the seed's own tag is the drawing vouching for it;
+   * a withheld row carrying a different tag is a sibling fixture, answered. */
+  private static sweepLabelNote(lbl: { seed: PlacementLabel | null; matches: (PlacementLabel | null)[]; withheld: (PlacementLabel | null)[] }): string | null {
+    const parts: string[] = [];
+    const seedTag = lbl.seed?.label;
+    const anyLabeled = !!seedTag || lbl.matches.some(Boolean);
+    const unlabeledMatches = lbl.matches.filter((l) => !l).length;
+    if (anyLabeled && unlabeledMatches) {
+      parts.push(`${unlabeledMatches} committed match(es) carry NO label while this family is labeled${seedTag ? ` (the seed reads "${seedTag}")` : ""} — counted on shape alone; view_sheet them before trusting the total.`);
+    }
+    if (seedTag) {
+      const diffMatches = [...new Set(lbl.matches.filter((l): l is PlacementLabel => !!l && l.label !== seedTag).map((l) => l.label))];
+      if (diffMatches.length) parts.push(`Committed match(es) the drawing names differently (${diffMatches.join(", ")}) — the geometry matched but the tag disagrees; check they belong in this count, or exclude one as a counter-example.`);
+      const same = lbl.withheld.filter((l) => l && l.label === seedTag).length;
+      const others = [...new Set(lbl.withheld.filter((l): l is PlacementLabel => !!l && l.label !== seedTag).map((l) => l.label))];
+      if (same) parts.push(`${same} withheld placement(s) carry the seed's own tag "${seedTag}" — the drawing says they are real; look, then place_count.`);
+      if (others.length) parts.push(`Withheld placements the drawing names differently (${others.join(", ")}) are sibling fixtures, not missed counts.`);
+    }
+    return parts.length ? parts.join(" ") : null;
+  }
+
   placeCount(name: string, points: Point[], opts: { condition: string; origins?: ShapeOrigin[]; tool?: string }) {
     const s = this.sheet(name);
     const ids = points.map(([x, y], i) =>
@@ -2274,6 +2317,11 @@ export class Session {
 
     if (scope === "sheet") {
       const res = matchSymbol(fp, geo.segs, { ...sweepOpts, lum: geo.lum, excludeCenter: fp.center, ...(negatives.length ? { negatives } : {}) });
+      // #308 — the drawing's own names. For a labeled family the sheet says
+      // what each placement IS (a tag written beside it, or connected by a
+      // leader); resolved as disclosure on every row, never a recount.
+      if (!s.spans) s.spans = textSpans(s.page);
+      const lbl = this.sweepLabels(s.spans, geo, fp.center, res.matches, res.withheld);
       let committed: { committed: number; shape_ids: string[]; condition: string; ea_total: number } | undefined;
       if (opts.commit && res.matches.length) {
         committed = this.placeCount(name, res.matches.map((m) => m.at), {
@@ -2287,12 +2335,13 @@ export class Session {
           })),
         });
       }
+      const labelNote = Session.sweepLabelNote(lbl);
       return {
         scope,
         found: res.matches.length,
-        matches: res.matches.map((m) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored })),
-        withheld: res.withheld.map((w) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, reason: w.reason })),
-        seed: seedOut,
+        matches: res.matches.map((m, i) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored, ...Session.labelFields(lbl.matches[i]) })),
+        withheld: res.withheld.map((w, i) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, ...Session.labelFields(lbl.withheld[i]), reason: w.reason })),
+        seed: { ...seedOut, ...Session.labelFields(lbl.seed) },
         ...(res.rejected.length ? { rejected: res.rejected.map((r) => ({ at: [round1(r.at[0]), round1(r.at[1])], score: r.score, rotation: r.rotation, mirrored: r.mirrored, by: r.by + 1, mode: r.mode, evidence: r.evidence, reason: r.reason })) } : {}),
         ...(res.negatives ? { negatives: res.negatives.filter((n) => !!n).map((n) => ({ mode: n!.mode, segments: n!.segments, center: [round1(n!.center[0]), round1(n!.center[1])] as [number, number] })) } : {}),
         ...(res.lum_gate ? { lum_gate: res.lum_gate } : {}),
@@ -2304,7 +2353,12 @@ export class Session {
           condition: committed.condition,
           ea_total: committed.ea_total,
         } : {}),
-        ...(opts.commit && !res.matches.length ? { note: "commit requested but nothing cleared the bar — no shapes were committed." } : {}),
+        ...((): { note?: string } => {
+          const parts: string[] = [];
+          if (opts.commit && !res.matches.length) parts.push("commit requested but nothing cleared the bar — no shapes were committed.");
+          if (labelNote) parts.push(labelNote);
+          return parts.length ? { note: parts.join(" ") } : {};
+        })(),
         ...(res.candidates.dropped > 0 ? { warning: `Work ceiling: ${res.candidates.dropped} candidate placement(s) were never scored — this count is a FLOOR, not a total. The seed's linework is too common on this sheet for an exhaustive sweep; tighten the seed rect around more distinctive geometry, or sweep a region at a time and reconcile the counts.` } : {}),
       };
     }
@@ -2323,7 +2377,7 @@ export class Session {
     // matching would be a slow way to say the same thing.
     this.requireCrossScale(s, seedRole, this.sheetList().filter((sh) => (roleOf.get(sh.key) ?? "unknown") === "plan"));
 
-    const perSheet: { state: SheetState; matches: SweepMatch[]; withheld: SweepWithheld[]; rejected: SweepRejected[]; candidates: { considered: number; dropped: number }; complete: boolean; elapsed_ms: number; scale: { scale: number; known: boolean }; scaled?: NonNullable<SymbolMatchResult["scaled"]>; lum_gate?: NonNullable<SymbolMatchResult["lum_gate"]> }[] = [];
+    const perSheet: { state: SheetState; matches: SweepMatch[]; withheld: SweepWithheld[]; rejected: SweepRejected[]; candidates: { considered: number; dropped: number }; complete: boolean; elapsed_ms: number; scale: { scale: number; known: boolean }; scaled?: NonNullable<SymbolMatchResult["scaled"]>; lum_gate?: NonNullable<SymbolMatchResult["lum_gate"]>; labels: { seed: PlacementLabel | null; matches: (PlacementLabel | null)[]; withheld: (PlacementLabel | null)[] } }[] = [];
     const skipped: { sheet: string; role: string; reason: string }[] = [];
     for (const sh of this.sheetList()) {
       const role = roleOf.get(sh.key) ?? "unknown";
@@ -2364,7 +2418,10 @@ export class Session {
         continue;
       }
       const elapsed_ms = Math.round(Number(process.hrtime.bigint() - t0) / 1e4) / 100;
-      perSheet.push({ state: sh, ...res, elapsed_ms, scale: ratio });
+      // #308 — each target sheet's own text names its own placements
+      if (!sh.spans) sh.spans = textSpans(sh.page);
+      const labels = this.sweepLabels(sh.spans, g2, null, res.matches, res.withheld);
+      perSheet.push({ state: sh, ...res, elapsed_ms, scale: ratio, labels });
     }
 
     const found = perSheet.reduce((n, p) => n + p.matches.length, 0);
@@ -2421,17 +2478,26 @@ export class Session {
     if (lumRejectedTotal) {
       notes.push(`${lumRejectedTotal} placement(s) the geometry would have committed were pulled under the bar by your stated luminance tolerance — each is named per sheet in lum_gate.at. Look before trusting the gate: a symbol somebody redrew in a different pen fails it honestly.`);
     }
+    // #308 — the seed's tag from its own sheet, and one aggregate label note
+    if (!s.spans) s.spans = textSpans(s.page);
+    const seedLbl = this.sweepLabels(s.spans, geo, fp.center, [], []).seed;
+    const labelNote = Session.sweepLabelNote({
+      seed: seedLbl,
+      matches: perSheet.flatMap((p) => p.labels.matches),
+      withheld: perSheet.flatMap((p) => p.labels.withheld),
+    });
+    if (labelNote) notes.push(labelNote);
     return {
       scope,
       found,
-      seed: { ...seedOut, role: seedRole },
+      seed: { ...seedOut, role: seedRole, ...Session.labelFields(seedLbl) },
       ...(rejectedTotal ? { rejected_total: rejectedTotal } : {}),
       ...(negatives.length ? { negatives: negatives.map((n) => ({ mode: n.mode, segments: n.rel.length, center: [round1(n.center[0]), round1(n.center[1])] as [number, number] })) } : {}),
       sheets: perSheet.map((p) => ({
         sheet: p.state.key,
         found: p.matches.length,
-        matches: p.matches.map((m) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored })),
-        withheld: p.withheld.map((w) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, reason: w.reason })),
+        matches: p.matches.map((m, i) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored, ...Session.labelFields(p.labels.matches[i]) })),
+        withheld: p.withheld.map((w, i) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, ...Session.labelFields(p.labels.withheld[i]), reason: w.reason })),
         ...(p.rejected.length ? { rejected: p.rejected.map((r) => ({ at: [round1(r.at[0]), round1(r.at[1])], score: r.score, rotation: r.rotation, mirrored: r.mirrored, by: r.by + 1, mode: r.mode, evidence: r.evidence, reason: r.reason })) } : {}),
         ...(p.lum_gate ? { lum_gate: p.lum_gate } : {}),
         candidates: p.candidates,

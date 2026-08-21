@@ -173,6 +173,8 @@ const sweepPlacement = {
   score: z.number().describe("Length-weighted fraction of the seed's segments matched within tolerance, 0..1"),
   rotation: z.number().describe("Detected rotation in degrees (0 | 90 | 180 | 270)"),
   mirrored: z.boolean(),
+  label: z.string().optional().describe("The drawing's own tag for this placement (#308) — a fixture token written beside it or connected by a drawn leader (e.g. \"P-7\", \"FD1\"). Disclosure, never a recount: a match with NO label in a labeled family was counted on shape alone (look before trusting), and a withheld row carrying the seed's own tag is the drawing vouching for it"),
+  label_via: z.enum(["adjacent", "leader"]).optional().describe("How the tag reached this placement: written beside it, or followed along a drawn leader line (leader-following arms only on multi-pen sheets, where the annotation pen separates from the work)"),
 };
 
 /** A placement a counter-example rejected (#259, reported by @FrankAtGHub).
@@ -263,6 +265,8 @@ export const symbolSweepOutput = {
     center: z.tuple([z.number(), z.number()]).describe("The seed instance's own centroid (image px) — reported here, never double-committed as a match"),
     rect: z.array(z.number()).length(4).describe("The seed rect actually used, post-clamp [x0, y0, x1, y1]"),
     length_px: z.number().describe("Total seed linework length, image px"),
+    label: z.string().optional().describe("The drawing's own tag for the seed instance (#308) — the family's identity, e.g. seeding a drain the sheet labels \"P-7\""),
+    label_via: z.enum(["adjacent", "leader"]).optional(),
   }),
   rejected: z.array(sweepRejected).optional().describe("Sheet scope only. Placements the geometry accepted and a counter-example refused (#259) — NEVER counted in found, and never silent: each says which negative did it and what it saw. Reinstate one by hand with place_count at its `at` if you disagree"),
   negatives: sweepNegatives.optional().describe("What each `exclude` rect was read as, in the order you passed them (#259)"),

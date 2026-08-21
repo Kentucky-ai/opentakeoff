@@ -815,7 +815,10 @@ A few worth knowing about from the canvas side, because they're the same feature
   ones — and every rejection comes back disclosed and reinstatable, never silently dropped. On a
   flattened export where layers and pen weights are gone but stroke color survives, a stated
   `luminance_tolerance` holds candidates to the seed's own pen — black devices, not their grey
-  background twins — with the gate's full cost disclosed the same way.
+  background twins — with the gate's full cost disclosed the same way. And for labeled families
+  the sweep reads the drawing's own names: the tag written beside each placement, or connected by
+  its leader line, comes back on every row — so a count isn't just "shapes matched," it's the
+  drafter agreeing, and a confident match with *no* label is flagged as the first thing to look at.
 - `sheet_graph` / `resolve_tag` / `find_schedule` answer *"what finish is in room 134, and how do
   you know"* with a citation per cell—across continuation sheets and multi-building keys.
 - `derive_base` computes base LF from committed rooms (perimeter minus stated openings), and
