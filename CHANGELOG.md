@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-21 — one drain, one row; opentakeoff-mcp 0.9.60
+
+### Fixed
+- **`symbol_sweep` could commit one symbol twice (#293).** Found the day 0.9.56 shipped, validating against a real plumbing sheet: one floor drain came back as two matches **0.2 px apart** (0.921 and 0.925), both above the commit bar, both committed — `ea_total` said 5 where 4 symbols are drawn, and the overlay stacked the two markers into what renders as a single ×. A drain counted twice with a machine's confidence behind it. The mechanism is in the dedupe: a kept entry *migrates* (`twin.at = s.at`) toward better-scoring proposals, so two cluster seeds that started farther apart than the merge radius can both walk onto the same peak — and nothing re-checked the invariant after a move. The bundled fixtures never tripped it because their 6-segment drain is too clean; the trigger is a **dense** symbol (a circle flattened to dozens of short segments) proposing the same instance from many anchor pairs. `mergeProposals` (extracted from the inline loop, exported for the mechanism test — the failure is a property of proposal ORDER, which drawn ink cannot pin deterministically) keeps the walking cluster semantics and then restores the invariant with a final greedy-by-score pass **at the merge radius**: greedy never moves a position, so it cannot re-break what it enforces. The radius is `mergeR` deliberately, not the shadow radius — the first attempt coalesced at `suppressR` and the ceiling-grid test caught it immediately, swallowing **adjacent real instances**: abutting 2×4 tiles sit closer than half a symbol diagonal, and an estimator counting a tiled symbol must get every tile. That wrong turn is pinned as its own regression test. Re-run against the sheet that found it: found 4, one row per drain, the survivor the better reading.
+
 ## 2026-08-21 — the workspace becomes portable; opentakeoff-mcp 0.9.59
 
 Four requests from @Seekr42 (#299–#302), filed overnight as one coherent architecture — the project, the profile, and the workspace as first-class objects instead of "whatever this browser profile has accumulated." Shipped as #303, #305, #306.
