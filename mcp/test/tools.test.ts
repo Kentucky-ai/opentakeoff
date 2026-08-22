@@ -808,6 +808,13 @@ test("derive_transitions: commits butt joints, withholds wall adjacency, refuses
     assert.equal(shp.origin.derived.case, "butt");
     assert.deepEqual(shp.origin.derived.between, ["CPT-1", "PT-1"]);
     assert.equal(shp.origin.derived.between_shape_ids.length, 2);
+    // the fold onto deriveTransitionRuns commits the CLEANED path (canvas
+    // parity, #208): a straight run is two ends, not a quarter-foot sample
+    // every step — but its LF was measured on the full walk before the cut
+    assert.ok(
+      shp.verts_norm.length <= Math.max(4, Math.ceil(r.data.runs[0].length_lf)),
+      `committed run keeps corners, not samples (${shp.verts_norm.length} verts for ${r.data.runs[0].length_lf} LF)`,
+    );
     await call(client, "undo_last", { n: 1 });   // the whole sweep is one step
     const after = (await call(client, "takeoff_summary")).data.conditions.find((c: any) => c.finish_tag === "T-1");
     assert.ok(!after || after.lf === 0, "one undo removes the whole derivation");

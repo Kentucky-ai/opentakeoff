@@ -40,7 +40,7 @@ import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, floodAtSeed, type LabelBB
 import { fingerprintSymbol, matchSymbol, buildNegative, SWEEP_TOL_PX, type SweepOptions, type SymbolFingerprint, type SymbolMatchResult, type SweepMatch, type SweepWithheld, type SweepRejected, type SymbolNegative } from "../../web/src/lib/symbolsweep.ts";
 import { labelPlacements, type PlacementLabel } from "../../web/src/lib/symbollabels.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
-import { sharedRuns, type SharedRun } from "../../web/src/lib/transitions.ts";
+import { deriveTransitionRuns, type SheetFrame, type TransitionSourceShape } from "../../web/src/lib/transitions.ts";
 // Real polygon boolean subtraction (#137/#206) — the canvas's own module, so a
 // headless cut and the app's Eraser can never disagree about what a hole holds.
 import { subtractCutout, recomposeCutouts, ringFullyInside, cutRun } from "../../web/src/lib/cutout.js";
@@ -1897,24 +1897,41 @@ export class Session {
       if (s.upp == null) throw new UserError(`${key} has no scale — a transition is a real length, so set_scale first (${this.scaleGate(s)})`);
     }
 
-    const committed: any[] = [], withheld: any[] = [];
+    // the sheet/pair sweep, the sampling opts and the butt-vs-wall decision are
+    // deriveTransitionRuns' — one orchestration, driven by the canvas and this
+    // verb alike (the #208 fold). This side keeps the store: refusals above,
+    // the journal commit below, and the wire rows the schema promises.
+    const frames = new Map<string, SheetFrame>();
     for (const key of sheetsInPlay) {
       const s = this.sheet(key);
-      const upp = s.upp!;                       // feet per image px, checked above
-      const pxPerFt = 1 / upp;
-      const toPx = (sh: typeof fa[number]) => sh.verts_norm.map(([x, y]) => [x * s.widthPx, y * s.heightPx] as [number, number]);
-      const onSheetA = fa.filter((x) => x.sheet_id === key), onSheetB = fb.filter((x) => x.sheet_id === key);
-      for (const ra of onSheetA) {
-        for (const rb of onSheetB) {
-          const runs = sharedRuns(toPx(ra), toPx(rb), {
-            step_px: Math.max(1, pxPerFt * 0.25),          // a quarter-foot walk — finer than any transition matters
-            touch_px: pxPerFt * (1 / 12),                  // within an inch: one open space, not two rooms
-            max_gap_px: pxPerFt * (maxGapIn / 12),
-            min_len_px: pxPerFt * (minRunIn / 12),
-          });
-          for (const r of runs) this.recordRun(s, r, upp, opts.condition, ra.id, rb.id, a.finish_tag, b.finish_tag, committed, withheld);
-        }
-      }
+      frames.set(key, { widthPx: s.widthPx, heightPx: s.heightPx, upp: s.upp! });
+    }
+    const src = (sh: typeof fa[number]): TransitionSourceShape => ({ id: sh.id, sheet_id: sh.sheet_id, verts_norm: sh.verts_norm });
+    const derived = deriveTransitionRuns(
+      { tag: a.finish_tag, shapes: fa.map(src) },
+      { tag: b.finish_tag, shapes: fb.map(src) },
+      frames,
+      { max_gap_in: maxGapIn, min_run_in: minRunIn },
+    );
+
+    const committed: any[] = [], withheld: any[] = [];
+    for (const w of derived.withheld) {
+      withheld.push({
+        sheet: w.sheet_id, between_shape_ids: w.between_shape_ids, length_lf: w.length_lf, gap_in: w.gap_in, at: w.at,
+        reason: "wall_separated",
+        detail: `${a.finish_tag} and ${b.finish_tag} run ${w.length_lf} LF apart across ${w.gap_in}" of wall — adjacent rooms, not a butt joint. If a door opens here the transition is a threshold at the door, which this cannot see.`,
+      });
+    }
+    for (const r of derived.runs) {
+      const s = this.sheet(r.sheet_id);
+      const pathPx = r.verts_norm.map(([x, y]) => [x * s.widthPx, y * s.heightPx] as Point);
+      const shape = this.commit(s, opts.condition, "linear", pathPx, { area_sf: 0, perimeter_lf: r.length_lf }, {
+        method: "agent_v1",
+        actor: "agent",
+        reviewed: false,
+        derived: { between_shape_ids: r.between_shape_ids, between: [a.finish_tag, b.finish_tag], case: "butt", gap_in: r.gap_in },
+      });
+      committed.push({ sheet: r.sheet_id, between_shape_ids: r.between_shape_ids, length_lf: r.length_lf, gap_in: r.gap_in, at: r.at, shape_id: shape.id });
     }
     if (committed.length) this.flushCommits("derive_transitions");
     return {
@@ -1929,26 +1946,6 @@ export class Session {
         ? `${withheld.length} run(s) are adjacency ACROSS A WALL, not a butt joint — the transition there is a threshold in the doorway, and the trace record does not say where the doorway is. view_sheet each \`at\` and place them with measure_line / place_count.`
         : "Every run was a butt joint inside one open space. Verify with view_sheet overlay:true before trusting the total.",
     };
-  }
-
-  /** One shared run → committed transition, or a disclosed question. */
-  private recordRun(s: SheetState, r: SharedRun, upp: number, condition: string,
-                    aId: string, bId: string, aTag: string, bTag: string,
-                    committed: any[], withheld: any[]) {
-    const length_lf = round2(r.length_px * upp);
-    const gap_in = round1(r.gap_px * upp * 12);
-    const row = { sheet: s.key, between_shape_ids: [aId, bId], length_lf, gap_in, at: [Math.round(r.at[0]), Math.round(r.at[1])] };
-    if (r.kind === "wall") {
-      withheld.push({ ...row, reason: "wall_separated", detail: `${aTag} and ${bTag} run ${length_lf} LF apart across ${gap_in}" of wall — adjacent rooms, not a butt joint. If a door opens here the transition is a threshold at the door, which this cannot see.` });
-      return;
-    }
-    const shape = this.commit(s, condition, "linear", r.path, { area_sf: 0, perimeter_lf: length_lf }, {
-      method: "agent_v1",
-      actor: "agent",
-      reviewed: false,
-      derived: { between_shape_ids: [aId, bId], between: [aTag, bTag], case: "butt", gap_in },
-    });
-    committed.push({ ...row, shape_id: shape.id });
   }
 
   /** Count markers — the canvas's Count tool (commitCount): one point, one EA,

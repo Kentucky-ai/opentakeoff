@@ -224,10 +224,9 @@ export function sharedRuns(ringA: Pt[], ringB: Pt[], opts: SharedRunOpts): Share
 // can accept, or a question you cannot.
 //
 // It is deliberately a SEPARATE, pure entry point rather than a canvas method:
-// the same orchestration is what mcp/src/session.ts deriveTransitions does
-// around its own store, and pulling it here means the two can be reconciled in
-// the next MCP release without the canvas having to grow a session. Until then
-// the sequencing exists twice on purpose and this is the copy the UI drives.
+// this is the ONE copy of the sequencing — the canvas drives it for the
+// Transitions button, and mcp/src/session.ts deriveTransitions drives it around
+// its own store (refusals, journal commit, wire rows stay session-side).
 
 /** A committed floor shape, as little of one as the derivation needs. */
 export interface TransitionSourceShape {
