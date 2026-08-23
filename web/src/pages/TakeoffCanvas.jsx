@@ -36,7 +36,6 @@ import UserGuide from "../components/UserGuide.jsx";
 import TakeoffsPanel, { clampPanelW, CONDITION_DND_MIME, ConditionAppearanceEditor } from "../components/TakeoffsPanel.jsx";
 import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../components/hatches.jsx";
 import { Icon } from "../brand/icons.jsx";
-import { drawnRegions as computeDrawnRegions, roomAtPoint } from "../lib/drawnrooms";
 import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks } from "../lib/sheets";
 import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
@@ -670,7 +669,6 @@ export default function TakeoffCanvas() {
   // them, so a composite simply carries none and classification degrades to
   // exactly today's behaviour (the optional-field contract).
   const subpathsRef = useRef(new Map());
-  const drawnRoomsRef = useRef(new Map());  // sheetKey → DrawnRegion[] (the rooms the SHEET drew)
   const textMarksRef = useRef(new Map());  // sheetKey → positioned text (label-box classification)
   const segLumRef = useRef(new Map());     // sheetKey → per-segment stroke luminance (#260) — the Symbol tool's label leader-chase pen separator
   const textSpansRef = useRef(new Map());  // sheetKey → label text spans (built lazily on first sweep)
@@ -1682,7 +1680,6 @@ export default function TakeoffCanvas() {
     vectorSegsRef.current.clear();
     segMetaRef.current.clear();
     subpathsRef.current.clear();
-    drawnRoomsRef.current.clear();
     textMarksRef.current.clear();
     layerGeoRef.current.clear();
     layerInfosRef.current.clear();
@@ -4058,54 +4055,6 @@ export default function TakeoffCanvas() {
   // contours wobble) and NO vertex snapping — there are no true endpoints on a
   // scan, and pulling room corners onto the title-block's vector corners would
   // corrupt the ring. null = no scale, or the ring collapsed (too tiny/thin).
-  // ── the room the SHEET drew ────────────────────────────────────────────────
-  // Before flooding pixels, ask whether the drafter already drew this room as
-  // a closed figure — on a finish plan the pattern is CLIPPED to each room, so
-  // the clip path is the room's outline to the vertex. Measured against an
-  // estimator's hand takeoff of one such sheet: 9 of 13 rooms within 5% and
-  // usable with no hand-correction, against 2 of 13 (and 0 usable) for the
-  // flood on the same rooms. Where the sheet drew nothing, roomAtPoint returns
-  // null and the flood runs exactly as before.
-  function drawnRoomAt(key, local, upp) {
-    const segs = vectorSegsRef.current.get(key);
-    const subs = subpathsRef.current.get(key);
-    if (!segs || !subs || !upp) return null;
-    const ftPx = 1 / upp;                       // image px per foot
-    let regions = drawnRoomsRef.current.get(key);
-    if (!regions) {
-      const tp = panelByKey(key);
-      const sheetSF = tp?.img?.w ? (tp.img.w * ftPx > 0 ? (tp.img.w / ftPx) * (tp.img.h / ftPx) : Infinity) : Infinity;
-      regions = computeDrawnRegions(segs, subs, ftPx, sheetSF);
-      drawnRoomsRef.current.set(key, regions);
-    }
-    if (!regions.length) return null;
-    return roomAtPoint(regions, local[0], local[1], { segs, meta: segMetaRef.current.get(key), ftPx });
-  }
-  // A drawn room needs no trace and no snap — the vertices ARE the drafter's.
-  // Same record shape buildOneClickRegion returns, so the propose/Create gate,
-  // the undo path and the provenance stamp are all unchanged.
-  function buildDrawnRegion(dr, tp, local, negative) {
-    const upp = uppFor(tp.key);
-    if (!upp || !dr || dr.verts.length < 3) return null;
-    const ring = dr.verts.map(([x, y]) => [x, y]);
-    const area_sf = +(ringArea(ring) * upp * upp).toFixed(2);
-    const perim_lf = +(closedMetrics(ring).perim * upp).toFixed(2);
-    return {
-      kind: negative ? "neg" : "pos",
-      seed: local,
-      poly: ring,
-      poly0: ring.map(([x, y]) => [x, y]),
-      area_sf, perim_lf,
-      hf: false, shs: 0, sl: 0, gap: 0, mp: 0, mpd: 0, wg: 0, rw: 0, rt: false,
-      drawn: dr.source,
-      // A clip path is the boundary a pattern had to fill EXACTLY, so it is
-      // drawn to the finish face and claims full confidence; a stroked or
-      // filled outline rides a pen centreline and measured a few percent
-      // looser against the same hand takeoff.
-      cf: dr.source === "clip" ? 1 : 0.95,
-      cff: dr.source === "clip" ? [] : [{ factor: "drawn-outline", why: "the sheet drew this room as a " + dr.source + " outline, which follows a pen centreline rather than the finish face" }],
-    };
-  }
   function buildOneClickRegion(f, tp, local, negative, raster) {
     const upp = uppFor(tp.key);
     if (!upp) return null;
