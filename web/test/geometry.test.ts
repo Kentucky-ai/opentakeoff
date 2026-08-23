@@ -772,6 +772,59 @@ test("dimension string: a witness glued into longer linework is evidence, never 
   assert.equal(soft[4], 0, "the long witness stays hard");
 });
 
+// ── text-anchored interior strings (path B) + the region merge ──────────────
+
+test("dim text anchors an interior line: pieces and ticks soften; without text, nothing", () => {
+  // an interior dim line has no comb-clean surroundings — path A must refuse
+  // it, and the TEXT is what identifies it
+  const segs = [200, 90, 200, 400];                       // the line, vertical, 17 ft
+  segs.push(195, 195, 205, 205, 195, 295, 205, 305);      // 45° ticks on it
+  const meta = new Uint8Array(segs.length >> 2);
+  const none = classifyDimensionStringSegs(segs, meta, 1, D_FT);
+  assert.deepEqual([...none], [0, 0, 0], "no text ⇒ an isolated interior line stays hard");
+  const withText = classifyDimensionStringSegs(segs, meta, 1, D_FT, [{ x: 203, y: 240, ang: 90, wPx: 60 }]);
+  assert.deepEqual([...withText], [1, 1, 1], "text on the line ⇒ line and ticks soften");
+});
+
+test("dim text: a room label's underline is not a dimension line", () => {
+  const segs = [180, 240, 250, 240];                      // 70 px underline under 60 px text
+  const soft = classifyDimensionStringSegs(segs, new Uint8Array(1), 1, D_FT, [{ x: 215, y: 236, ang: 0, wPx: 60 }]);
+  assert.deepEqual([...soft], [0], "the line must dwarf its text");
+});
+
+test("dim text: schedule-table rules self-protect through the wall guard", () => {
+  // dim-pattern text INSIDE a table cell: the row rules above and below ride
+  // 0.5 ft apart for their whole length — partnered linework, never softened
+  const segs = [100, 231, 500, 231, 100, 249, 500, 249];
+  const soft = classifyDimensionStringSegs(segs, new Uint8Array(2), 1, D_FT, [{ x: 300, y: 244, ang: 0, wPx: 60 }]);
+  assert.deepEqual([...soft], [0, 0], "partnered rules stay hard");
+});
+
+test("a room chopped by a text-anchored dim line floods WHOLE, from either side", () => {
+  // 30×15 ft room, an interior dimension line splitting it 2:1, dim text on
+  // the line. Without the text the flood chops at the line; with it, the
+  // region merge unions the strict pieces and both sides click to ONE answer.
+  const segs = squareSegs(100, 100, 640, 370);
+  segs.push(280, 100, 280, 370);                          // the chopping line
+  segs.push(275, 175, 285, 185, 275, 285, 285, 295);      // its ticks
+  const meta = new Uint8Array(segs.length >> 2);
+  const dimText = [{ x: 283, y: 235, ang: 90, wPx: 60 }];
+  const moPlain = buildMask(segs, 1000, 600, 1000, meta, D_FT);
+  const moText = buildMask(segs, 1000, 600, 1000, meta, D_FT, 0, null, null, dimText);
+  const flood = (mo: MaskObj, x: number, y: number) => {
+    const r = floodRegionSealed(mo, x, y, 0.5, sealRadiiFor(mo.mppf || D_FT), 0, 0);
+    assert.equal(r.status, "ok");
+    return r.status === "ok" ? r.count : 0;
+  };
+  const chopLeft = flood(moPlain, 190, 235);
+  const wholeLeft = flood(moText, 190, 235);
+  const wholeRight = flood(moText, 460, 235);
+  assert.ok(chopLeft < wholeLeft * 0.5, `text heals the chop (${chopLeft} → ${wholeLeft})`);
+  assert.equal(wholeLeft, wholeRight, "either side of the chop clicks to the same union");
+  // and the union is the room: 540×270 px interior, ring a hair inside the walls
+  assert.ok(Math.abs(wholeLeft - 540 * 270) / (540 * 270) < 0.03, `union ≈ the room (${wholeLeft})`);
+});
+
 test("dimension string: buildMask unions the plane only when the scale is known", () => {
   const [segs, meta] = dimComb();
   const noScale = buildMask(segs, 600, 400, 600, meta);

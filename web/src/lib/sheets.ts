@@ -201,6 +201,28 @@ export function detectScale(textContent: TextContentLike, viewport: Viewport): D
   return null;
 }
 
+// ── dimension-pattern text (#320) ────────────────────────────────────────────
+// The positioned `12'-4"`-pattern text items the dim-string classifier anchors
+// interior strings on (oneclick.sweepDimensionStrings path B). The pattern is
+// a FULL-string match, deliberately: a room-size note (`19'-2" x 21'-1"`), a
+// ceiling note (`9'-0" CLG`) or a leader with trailing words must never
+// anchor a line. Rotation comes from the item's own baseline transform.
+export const DIMTEXT_RE = /^\s*\d+'\s*(?:-?\s*\d+(?:\s+\d+\/\d+)?\s*")?\s*$/;
+export interface DimTextItem { x: number; y: number; ang: number; wPx: number }
+export function extractDimTexts(textContent: TextContentLike, viewport: Viewport): DimTextItem[] {
+  const out: DimTextItem[] = [];
+  const vs = Math.hypot(viewport.transform[0], viewport.transform[1]) || 1;
+  for (const it of textContent.items || []) {
+    const str = (it.str || "").trim();
+    if (!str || !DIMTEXT_RE.test(str)) continue;
+    const t = pdfjsLib.Util.transform(viewport.transform, it.transform);
+    let ang = Math.atan2(t[1], t[0]) * 180 / Math.PI;
+    ang = ((ang % 180) + 180) % 180;
+    out.push({ x: t[4], y: t[5], ang, wPx: (it.width || 0) * vs });
+  }
+  return out;
+}
+
 // ── marquee → tokens: the text-layer half of "Import from schedule" ──────────
 // Turn the page text layer into positioned tokens inside a viewport-px rect (the
 // box the estimator dragged around the schedule). x is the glyph's left edge, y

@@ -36,7 +36,7 @@ import UserGuide from "../components/UserGuide.jsx";
 import TakeoffsPanel, { clampPanelW, CONDITION_DND_MIME, ConditionAppearanceEditor } from "../components/TakeoffsPanel.jsx";
 import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../components/hatches.jsx";
 import { Icon } from "../brand/icons.jsx";
-import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText } from "../lib/sheets";
+import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractDimTexts } from "../lib/sheets";
 import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
@@ -621,6 +621,7 @@ export default function TakeoffCanvas() {
   const stageRef = useRef(null);
   const panelCanvasRefs = useRef(new Map()); // sheetKey → <canvas> (base layer — small backing store, coarse pyramid placeholder)
   const pageObjsRef = useRef(new Map());     // sheetKey → pdf.js page object (getOperatorList/getTextContent only — painting moved to the tile worker pool)
+  const dimTextsRef = useRef(new Map());     // sheetKey → positioned dim-pattern texts (#320) — RENDER_SCALE px, rescaled at buildMask time
   const renderScalesRef = useRef(new Map()); // sheetKey → RENDER_SCALE, always (see factorFor comment above) — kept so the ~20 factorFor/uppFor call sites are untouched
   // Tile-pyramid compositor (#86) — one instance owning the worker pool +
   // tile LRU cache (see lib/tileCompositor.ts). Lazily created on first
@@ -1834,11 +1835,15 @@ export default function TakeoffCanvas() {
           // instead (rasterEligible true, vectorViable false).
           sheetStatsRef.current.set(m.key, { segCount: 0, imageFrac: 1 });
         });
-        // read the drawn scale note off this panel's page text (best-effort)
+        // read the drawn scale note off this panel's page text (best-effort),
+        // and the positioned dimension-pattern texts the dim-string classifier
+        // anchors on (#320) — a mask built before they resolved was textless
         m.pageObj.getTextContent().then((tc) => {
           if (stale()) return;
           const det = detectScale(tc, m.viewport);
           if (det) setDetectedScales((d) => (d[m.key]?.label === det.label ? d : { ...d, [m.key]: det }));
+          const dts = extractDimTexts(tc, m.viewport);
+          if (dts.length) { dimTextsRef.current.set(m.key, dts); maskCacheRef.current.delete(m.key); }
         }).catch(() => {});
       }
       if (stale()) return;
@@ -3980,10 +3985,13 @@ export default function TakeoffCanvas() {
       // too. The mask is cached, so the extra getViewport is once per sheet per
       // calibration.
       const pgVp = pageObjsRef.current.get(key)?.getViewport({ scale: 1 });
+      // dim texts were positioned at RENDER_SCALE; segs live at this render —
+      // rescale so text and ink share a frame whatever the Hi-Res toggle says
+      const dtk = rsNow === RENDER_SCALE ? dimTextsRef.current.get(key) : (dimTextsRef.current.get(key) || []).map((t) => ({ ...t, x: t.x * rsNow / RENDER_SCALE, y: t.y * rsNow / RENDER_SCALE, wPx: t.wPx * rsNow / RENDER_SCALE }));
       mo = buildMask(segs, dims.w, dims.h, MASK_MAX_DIM, segMetaRef.current.get(key), pxPerFt,
                      pxPerFt ? pxPerFt * RENDER_SCALE / rsNow : 0,
                      pgVp ? { pageW: pgVp.width, pageH: pgVp.height, renderScale: rsNow, baseScale: RENDER_SCALE } : null,
-                     rolesForSheet(key));
+                     rolesForSheet(key), dtk && dtk.length ? dtk : null);
       maskCacheRef.current.set(key, mo);
     }
     return mo;
