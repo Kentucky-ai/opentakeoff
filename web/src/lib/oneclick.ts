@@ -73,7 +73,20 @@ export interface SubPath {
   /** SEG_CLIP / SEG_FILLONLY / 0 (stroked), and the pen nibble — the paint
    *  facts, read once per figure instead of per segment. */
   flags: number;
+  /** Rec.709 luminance of the FILL colour in force when the figure was built,
+   *  0 (black) to 255 (white). Meaningful on a filled figure: dark is solid
+   *  material — poché — and pale is a finish wash. */
+  fillLum: number;
 }
+/** A positioned text item, image px: (x, y) is the baseline START, w/h the
+ *  rendered extent. The text layer is evidence about the DRAWING that the
+ *  linework alone cannot supply — what a box is for. */
+export interface TextMark { x: number; y: number; w: number; h: number }
+/** The sheet context ink classification reads. Every field optional: a caller
+ *  that supplies none gets exactly the pre-classification mask, which is what
+ *  keeps hand-built geometry (rastermask, tests) and stitched composites
+ *  working unchanged. */
+export interface InkContext { subpaths?: SubPath[] | null; texts?: TextMark[] | null }
 export interface VectorGeometry { points: Point[]; segs: number[]; meta: Uint8Array; imageArea: number; lum?: Uint8Array; layerOf?: Int32Array; layerIds?: string[]; subpaths?: SubPath[]; }
 export interface MaskObj { mask: Uint8Array; mw: number; mh: number; ws: number; softCount: number; mppf?: number; }  // mppf: mask px per foot (0/absent = scale unknown)
 export interface RegionResult { region: Uint8Array; mw: number; mh: number; ws: number; count?: number; }
@@ -338,10 +351,11 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
     if (sp && sp.i1 > sp.i0) subpaths.push(sp);
     sp = null;
   };
+  let pathFill = 0;                 // the fill colour of the path being built
   const openSub = (flags: number, at: Point) => {
     sealSub();
     const k = metaArr.length;
-    sp = { i0: k, i1: k, x0: at[0], y0: at[1], x1: at[0], y1: at[1], closed: false, flags };
+    sp = { i0: k, i1: k, x0: at[0], y0: at[1], x1: at[0], y1: at[1], closed: false, flags, fillLum: pathFill };
   };
   // every segment push goes through this, so a subpath's range and bbox can
   // never drift from what actually landed in segs
@@ -363,7 +377,10 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
   // (0–255 components); a pattern stroke (setStrokeColorN) states no single
   // color, so it keeps whatever the state carried rather than inventing one.
   let lum = 0;
-  const stack: Array<[number[], number, number]> = [];
+  // PDF's initial fill colour is black, same as stroke, so 0 is the right
+  // default and an uncoloured file costs nothing.
+  let fillLum = 0;
+  const stack: Array<[number[], number, number, number]> = [];
   // Marked-content / Optional Content (#85): a purely SEQUENTIAL stack — not
   // graphics state, so save/restore never touches it, and a Form XObject with
   // /OC arrives as its own begin/end pair around the form's ops (the worker
@@ -397,14 +414,22 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
   };
   for (let i = 0; i < fns.length; i++) {
     const fn = fns[i], args = A[i];
-    if (fn === OPS.save) stack.push([m.slice(), lw, lum]);
-    else if (fn === OPS.restore) { const p = stack.pop(); if (p) { m = p[0]; lw = p[1]; lum = p[2]; } }
+    if (fn === OPS.save) stack.push([m.slice(), lw, lum, fillLum]);
+    else if (fn === OPS.restore) { const p = stack.pop(); if (p) { m = p[0]; lw = p[1]; lum = p[2]; fillLum = p[3]; } }
     else if (fn === OPS.transform) m = mul(m, args);
     else if (fn === OPS.setLineWidth) lw = args[0];
     else if (fn === OPS.setGState) { for (const pr of args[0] || []) if (pr && pr[0] === "LW") lw = pr[1]; }
     else if (fn === OPS.setStrokeRGBColor && args) { const L = strokeLuminance(args); if (L !== null) lum = L; }
-    else if (fn === OPS.paintFormXObjectBegin) { stack.push([m.slice(), lw, lum]); if (args && args[0]) m = mul(m, args[0]); }
-    else if (fn === OPS.paintFormXObjectEnd) { const p = stack.pop(); if (p) { m = p[0]; lw = p[1]; lum = p[2]; } }
+    // FILL luminance, the same device strokeLuminance already applies to
+    // strokes (#260) — and the fact that finally answers "is this ink WALL".
+    // A drafter poches a wall in dark grey or black because it is solid
+    // material; the pale washes over a finish plan's rooms are the finish
+    // legend, not structure. Both arrive as SEG_FILLONLY and were
+    // indistinguishable until now, which is why a wall test had to fall back
+    // to guessing at a figure's shape.
+    else if (fn === OPS.setFillRGBColor && args) { const L = strokeLuminance(args); if (L !== null) fillLum = L; }
+    else if (fn === OPS.paintFormXObjectBegin) { stack.push([m.slice(), lw, lum, fillLum]); if (args && args[0]) m = mul(m, args[0]); }
+    else if (fn === OPS.paintFormXObjectEnd) { const p = stack.pop(); if (p) { m = p[0]; lw = p[1]; lum = p[2]; fillLum = p[3]; } }
     else if (fn === OPS.beginMarkedContent) { mcStack.push(-1); }
     else if (fn === OPS.beginMarkedContentProps) {
       // worker emits ["OC", data] where data is {type:"OCG", id}, an OCMD
@@ -478,6 +503,7 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
       let c = 0, cur: Point | null = null, start: Point | null = null;
       const pathLayer = curLayer;   // one path = one marked-content scope (#85)
       const pathLum = lum;          // stroke color cannot change mid-path (#260)
+      pathFill = fillLum;           // …and neither can the fill colour
       const visit = (p: Point) => { points.push(p); };
       const lineTo = (p: Point) => { if (cur) { segs.push(cur[0], cur[1], p[0], p[1]); metaArr.push(flags); lumArr.push(pathLum); layerOfArr.push(pathLayer); noteSeg(cur, p); } cur = p; visit(p); };
       for (const op of ops) {
@@ -1291,6 +1317,73 @@ export function classifyFleckSegs(
   return soft;
 }
 
+// ── 2e. label boxes ────────────────────────────────────────────────────────
+// The most common way an estimator's click goes wrong, and the one the mask
+// can never see: a room tag (`111`), a finish tag (`PC-01`), a keynote
+// bubble — each a CLOSED box drawn inside the room it labels. Click inside
+// one and the flood is bounded by the box, so the answer is 0.5 SF instead of
+// the room. Measured on a commercial finish plan: in one 24 SF storeroom,
+// 55% of clicks landed in a tag box and traced it.
+//
+// What identifies a label box is not its size — it is that THE BOX EXISTS TO
+// FRAME THE TEXT. A tag hugs its label; a room dwarfs its label. Measured
+// across two sheets as the ratio of contained-text bbox area to figure area:
+// figures under a room's size average 1.70 and 1.57, room-scale figures
+// average 0.59 and 0.29, and the outliers on the high side at room scale are
+// sheet borders and title blocks that enclose ALL the text on the page — which
+// is why the ratio alone is not enough and the size cap below it is.
+//
+// The cap is set beneath the smallest space anyone takes off (a broom closet
+// is 15-20 SF; the largest genuine tag box measured is 1.5 SF), so no room
+// can be inside it whatever its text. And because this feeds the SAME soft
+// plane, a misjudged box does not delete a boundary: the strict pass still
+// stops at it, the escalation ladder sees a wholly-soft boundary and reflows
+// to the room behind it, and any escalation that leaks is discarded.
+export const TAGBOX_MAX_SF = 6;         // well under any real space; measured tag boxes top out at 1.5 SF
+export const TAGBOX_TEXT_FRAC = 0.25;   // the text must FILL the box — rooms sit far below this
+export function classifyTagBoxSegs(
+  segs: number[], meta: Uint8Array, subpaths: SubPath[] | null | undefined,
+  texts: TextMark[] | null | undefined, ws: number, ftPx: number,
+): Uint8Array {
+  const n = segs.length >> 2;
+  const soft = new Uint8Array(n);
+  if (!meta || !n || !subpaths?.length || !texts?.length || !(ftPx > 0)) return soft;
+  const maxArea = TAGBOX_MAX_SF * ftPx * ftPx;
+  // text lookup on a coarse grid — a sheet carries thousands of items and
+  // every small closed figure would otherwise scan all of them
+  const cell = Math.max(1, 4 * ftPx);
+  const grid = new Map<string, TextMark[]>();
+  for (const t of texts) {
+    const k = `${Math.floor(t.x * ws / cell)},${Math.floor(t.y * ws / cell)}`;
+    const a = grid.get(k); if (a) a.push(t); else grid.set(k, [t]);
+  }
+  for (const sp of subpaths) {
+    if (!sp.closed || sp.i1 <= sp.i0) continue;
+    if (sp.flags & SEG_CLIP) continue;          // invisible ink is soft already
+    const x0 = sp.x0 * ws, y0 = sp.y0 * ws, x1 = sp.x1 * ws, y1 = sp.y1 * ws;
+    const w = x1 - x0, h = y1 - y0;
+    if (!(w > 0) || !(h > 0) || w * h > maxArea) continue;
+    // contained text, and its own extent
+    let tx0 = Infinity, ty0 = Infinity, tx1 = -Infinity, ty1 = -Infinity, found = 0;
+    const gx = Math.floor(x0 / cell), gy = Math.floor(y0 / cell);
+    const gx1 = Math.floor(x1 / cell), gy1 = Math.floor(y1 / cell);
+    for (let a = gx; a <= gx1; a++) for (let b = gy; b <= gy1; b++) {
+      for (const t of grid.get(`${a},${b}`) || []) {
+        const px = t.x * ws, py = t.y * ws, pw = t.w * ws, ph = (t.h || 0) * ws;
+        if (px < x0 || px > x1 || py < y0 - ph || py > y1 + ph) continue;
+        found++;
+        if (px < tx0) tx0 = px; if (px + pw > tx1) tx1 = px + pw;
+        if (py - ph < ty0) ty0 = py - ph; if (py > ty1) ty1 = py;
+      }
+    }
+    if (!found) continue;                       // an empty small box is a fixture, not a label
+    const ta = Math.max(0, tx1 - tx0) * Math.max(0, ty1 - ty0);
+    if (ta < TAGBOX_TEXT_FRAC * w * h) continue;  // the text does not fill it: not a frame
+    for (let i = sp.i0; i < sp.i1; i++) soft[i] = 1;
+  }
+  return soft;
+}
+
 // Signature quantization for the stable family id (issue #29): coarse enough
 // to absorb CAD jitter (≪ the classifier's own tolerances), fine enough that
 // distinct pattern specs never collide. The RAW signature values ride along
@@ -1364,9 +1457,9 @@ export function hatchFamilies(segs: number[], meta: Uint8Array): HatchFamily[] {
 // (roles sixth, no scale pinning) so layered callers without a scale need no
 // placeholder zeros; the canonical order keeps roles last.
 export const MASK_CURVE_BIT = 4;
-export function buildMask(segs: number[], imgW: number, imgH: number, maxDim?: number, meta?: Uint8Array | null, pxPerFt?: number, basePxPerFt?: number, page?: MaskPage | null, roles?: Uint8Array | null, subpaths?: SubPath[] | null): MaskObj;
+export function buildMask(segs: number[], imgW: number, imgH: number, maxDim?: number, meta?: Uint8Array | null, pxPerFt?: number, basePxPerFt?: number, page?: MaskPage | null, roles?: Uint8Array | null, ink?: InkContext | null): MaskObj;
 export function buildMask(segs: number[], imgW: number, imgH: number, maxDim?: number, meta?: Uint8Array | null, roles?: Uint8Array | null): MaskObj;
-export function buildMask(segs: number[], imgW: number, imgH: number, maxDim = MASK_MAX_DIM, meta: Uint8Array | null = null, pxPerFt: number | Uint8Array | null = 0, basePxPerFt = 0, page: MaskPage | null = null, roles: Uint8Array | null = null, subpaths: SubPath[] | null = null): MaskObj {
+export function buildMask(segs: number[], imgW: number, imgH: number, maxDim = MASK_MAX_DIM, meta: Uint8Array | null = null, pxPerFt: number | Uint8Array | null = 0, basePxPerFt = 0, page: MaskPage | null = null, roles: Uint8Array | null = null, ink: InkContext | null = null): MaskObj {
   // the compat overload: a Uint8Array (or explicit null) in the pxPerFt slot
   // is a roles table, scale unknown
   if (pxPerFt instanceof Uint8Array || pxPerFt === null) { if (!roles) roles = pxPerFt; pxPerFt = 0; }
@@ -1442,8 +1535,14 @@ export function buildMask(segs: number[], imgW: number, imgH: number, maxDim = M
   // Third contributor to the SAME soft plane: finish texture (section 2d).
   // Feet-true and subpath-fed — it reads what the ink IS, where the two above
   // infer it from neighbourhood geometry. Unioned, never subtracted.
-  const fleck = meta && mppf > 0 && subpaths ? classifyFleckSegs(segs, meta, subpaths, ws, mppf) : null;
+  const fleck = meta && mppf > 0 && ink?.subpaths ? classifyFleckSegs(segs, meta, ink.subpaths, ws, mppf) : null;
   if (soft && fleck) for (let i = 0; i < soft.length; i++) if (fleck[i]) soft[i] = 1;
+  // Fourth contributor: label boxes (section 2e). Also subpath-fed, and the
+  // first classifier to read the TEXT layer — what a box is FOR is a fact the
+  // linework cannot state.
+  const tagbox = meta && mppf > 0 && ink?.subpaths && ink?.texts
+    ? classifyTagBoxSegs(segs, meta, ink.subpaths, ink.texts, ws, mppf) : null;
+  if (soft && tagbox) for (let i = 0; i < soft.length; i++) if (tagbox[i]) soft[i] = 1;
   // curve chords that are demonstrably not door swings (closed circles, cloud
   // scallops) — a SEPARATE plane from SEG_CURVE, so refusing them never makes
   // them hatch-eligible (classifyHatchSegs still skips every SEG_CURVE chord)

@@ -698,7 +698,7 @@ function fleckField(x0: number, y0: number, cols: number, rows: number, pitch: n
     const x = x0 + c * pitch, y = y0 + r * pitch;
     const i = segs.length >> 2;
     segs.push(x, y, x + 2, y + 2);
-    subpaths.push({ i0: i, i1: i + 1, x0: x, y0: y, x1: x + 2, y1: y + 2, closed: false, flags: 0 });
+    subpaths.push({ i0: i, i1: i + 1, x0: x, y0: y, x1: x + 2, y1: y + 2, closed: false, flags: 0, fillLum: 0 });
   }
   return { segs, subpaths };
 }
@@ -711,7 +711,7 @@ test("finish texture: a dense field of sub-wall flecks classifies soft", () => {
 
 test("finish texture: a LONE tiny mark is a detail, not texture", () => {
   const segs = [100, 100, 102, 102];
-  const subpaths: SubPath[] = [{ i0: 0, i1: 1, x0: 100, y0: 100, x1: 102, y1: 102, closed: false, flags: 0 }];
+  const subpaths: SubPath[] = [{ i0: 0, i1: 1, x0: 100, y0: 100, x1: 102, y1: 102, closed: false, flags: 0, fillLum: 0 }];
   assert.equal(classifyFleckSegs(segs, new Uint8Array(1), subpaths, 1, 18)[0], 0);
 });
 
@@ -742,7 +742,7 @@ test("finish texture: no subpaths and no scale are both no-ops (the optional-fie
   // changes nothing, and passing them can only ADD to the same plane
   const noSub = buildMask(segs, 600, 400, 600, meta, 18);
   const noSubAgain = buildMask(segs, 600, 400, 600, meta, 18, 0, null, null, null);
-  const withSub = buildMask(segs, 600, 400, 600, meta, 18, 0, null, null, subpaths);
+  const withSub = buildMask(segs, 600, 400, 600, meta, 18, 0, null, null, { subpaths });
   assert.equal(noSubAgain.softCount, noSub.softCount, "an explicit null is the same as omitting it");
   assert.ok(withSub.softCount > noSub.softCount, "figures add to the soft plane, never subtract");
 });
