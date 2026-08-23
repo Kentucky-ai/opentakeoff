@@ -663,6 +663,12 @@ export default function TakeoffCanvas() {
   const snapGridsRef = useRef(new Map()); // sheetKey → {cell, map} spatial hash of vector endpoints
   const vectorSegsRef = useRef(new Map()); // sheetKey → flat [x1,y1,x2,y2,…] linework segments (One-Click boundary source)
   const segMetaRef = useRef(new Map());    // sheetKey → per-segment meta bytes (hatch classification input)
+  // sheetKey → drawn-figure ranges (SubPath[]): the ink-classification input.
+  // Single-panel sheets only — a STITCHED composite merges several sheets'
+  // segment arrays, and a subpath's meaning is a contiguous range into ONE of
+  // them, so a composite simply carries none and classification degrades to
+  // exactly today's behaviour (the optional-field contract).
+  const subpathsRef = useRef(new Map());
   const segLumRef = useRef(new Map());     // sheetKey → per-segment stroke luminance (#260) — the Symbol tool's label leader-chase pen separator
   const textSpansRef = useRef(new Map());  // sheetKey → label text spans (built lazily on first sweep)
   const textTfRef = useRef(new Map());     // sheetKey → viewport transform, for positioning text spans in image px
@@ -1672,6 +1678,7 @@ export default function TakeoffCanvas() {
     snapGridsRef.current.clear();
     vectorSegsRef.current.clear();
     segMetaRef.current.clear();
+    subpathsRef.current.clear();
     layerGeoRef.current.clear();
     layerInfosRef.current.clear();
     setSheetLayers({});
@@ -1793,10 +1800,11 @@ export default function TakeoffCanvas() {
         // snap-to-vector index per panel (best-effort; off until the user enables it)
         m.pageObj.getOperatorList().then(async (ol) => {
           if (stale()) return;
-          const { points, segs, meta, imageArea, lum, layerOf, layerIds } = extractVectorGeometry(ol, m.viewport.transform, pdfjsLib.OPS);
+          const { points, segs, meta, imageArea, lum, layerOf, layerIds, subpaths } = extractVectorGeometry(ol, m.viewport.transform, pdfjsLib.OPS);
           snapGridsRef.current.set(m.key, buildSnapGrid(points, SNAP_CELL));
           vectorSegsRef.current.set(m.key, segs);
           segMetaRef.current.set(m.key, meta);
+          if (subpaths) subpathsRef.current.set(m.key, subpaths);
           if (lum) segLumRef.current.set(m.key, lum);
           textTfRef.current.set(m.key, m.viewport.transform);
           // raster-fallback trigger signals: how much of the sheet is placed
@@ -3983,7 +3991,7 @@ export default function TakeoffCanvas() {
       mo = buildMask(segs, dims.w, dims.h, MASK_MAX_DIM, segMetaRef.current.get(key), pxPerFt,
                      pxPerFt ? pxPerFt * RENDER_SCALE / rsNow : 0,
                      pgVp ? { pageW: pgVp.width, pageH: pgVp.height, renderScale: rsNow, baseScale: RENDER_SCALE } : null,
-                     rolesForSheet(key));
+                     rolesForSheet(key), subpathsRef.current.get(key) || null);
       maskCacheRef.current.set(key, mo);
     }
     return mo;

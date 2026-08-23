@@ -52,7 +52,29 @@ export type OpsTable = Record<string, number>;
  *  dropped it before anything downstream could see it. One byte per segment,
  *  the same shape as `meta`. Optional so hand-built geometry (rastermask,
  *  tests) needs no ceremony; extraction always emits it. */
-export interface VectorGeometry { points: Point[]; segs: number[]; meta: Uint8Array; imageArea: number; lum?: Uint8Array; layerOf?: Int32Array; layerIds?: string[]; }
+/*  subpaths (#320 follow-on, the ink-classification foundation): the drawn
+ *  FIGURE each segment belongs to. A `constructPath` op carries one or more
+ *  subpaths — each `moveTo` starts one, each `rectangle` is one — and every
+ *  segment a subpath contributes is appended to `segs` consecutively, so a
+ *  subpath is exactly a contiguous index RANGE. That is what makes this cheap
+ *  (two numbers per figure, no per-segment table) and what makes path-level
+ *  facts available at all: whether ink is a closed figure, how big the figure
+ *  is, how many segments it took. Rasterizing to a 1-bit mask destroys all of
+ *  it, and every classifier that came before had to infer it back from
+ *  neighbourhood geometry. Optional, like lum/layerOf: hand-built geometry
+ *  (rastermask, tests) needs no ceremony; extraction always emits it. */
+export interface SubPath {
+  /** segment index range [i0, i1) into segs/meta. */
+  i0: number; i1: number;
+  /** tight bbox over the subpath's segment endpoints, image px. */
+  x0: number; y0: number; x1: number; y1: number;
+  /** the figure returns to its own start (a fleck, a poché outline, a box). */
+  closed: boolean;
+  /** SEG_CLIP / SEG_FILLONLY / 0 (stroked), and the pen nibble — the paint
+   *  facts, read once per figure instead of per segment. */
+  flags: number;
+}
+export interface VectorGeometry { points: Point[]; segs: number[]; meta: Uint8Array; imageArea: number; lum?: Uint8Array; layerOf?: Int32Array; layerIds?: string[]; subpaths?: SubPath[]; }
 export interface MaskObj { mask: Uint8Array; mw: number; mh: number; ws: number; softCount: number; mppf?: number; }  // mppf: mask px per foot (0/absent = scale unknown)
 export interface RegionResult { region: Uint8Array; mw: number; mh: number; ws: number; count?: number; }
 export type FloodResult =
@@ -306,6 +328,32 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
   const segs: number[] = [];
   const metaArr: number[] = [];
   const lumArr: number[] = [];
+  const subpaths: SubPath[] = [];
+  // the subpath under construction: opened by moveTo/rectangle, sealed when
+  // the next one opens or the op stream ends. A figure that contributed no
+  // segment (a lone moveTo, a degenerate rect) is dropped rather than
+  // recorded as an empty range.
+  let sp: SubPath | null = null;
+  const sealSub = () => {
+    if (sp && sp.i1 > sp.i0) subpaths.push(sp);
+    sp = null;
+  };
+  const openSub = (flags: number, at: Point) => {
+    sealSub();
+    const k = metaArr.length;
+    sp = { i0: k, i1: k, x0: at[0], y0: at[1], x1: at[0], y1: at[1], closed: false, flags };
+  };
+  // every segment push goes through this, so a subpath's range and bbox can
+  // never drift from what actually landed in segs
+  const closeSub = () => { if (sp) sp.closed = true; };
+  const noteSeg = (a: Point, b: Point) => {
+    if (!sp) return;
+    sp.i1 = metaArr.length;
+    if (a[0] < sp.x0) sp.x0 = a[0]; if (a[0] > sp.x1) sp.x1 = a[0];
+    if (a[1] < sp.y0) sp.y0 = a[1]; if (a[1] > sp.y1) sp.y1 = a[1];
+    if (b[0] < sp.x0) sp.x0 = b[0]; if (b[0] > sp.x1) sp.x1 = b[0];
+    if (b[1] < sp.y0) sp.y0 = b[1]; if (b[1] > sp.y1) sp.y1 = b[1];
+  };
   let imageArea = 0;
   let m = transform.slice();
   let lw = 1;                          // graphics-state line width (user space)
@@ -431,9 +479,9 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
       const pathLayer = curLayer;   // one path = one marked-content scope (#85)
       const pathLum = lum;          // stroke color cannot change mid-path (#260)
       const visit = (p: Point) => { points.push(p); };
-      const lineTo = (p: Point) => { if (cur) { segs.push(cur[0], cur[1], p[0], p[1]); metaArr.push(flags); lumArr.push(pathLum); layerOfArr.push(pathLayer); } cur = p; visit(p); };
+      const lineTo = (p: Point) => { if (cur) { segs.push(cur[0], cur[1], p[0], p[1]); metaArr.push(flags); lumArr.push(pathLum); layerOfArr.push(pathLayer); noteSeg(cur, p); } cur = p; visit(p); };
       for (const op of ops) {
-        if (op === OPS.moveTo) { cur = tx(co[c], co[c + 1]); start = cur; visit(cur); c += 2; }
+        if (op === OPS.moveTo) { cur = tx(co[c], co[c + 1]); start = cur; openSub(flags, cur); visit(cur); c += 2; }
         else if (op === OPS.lineTo) { lineTo(tx(co[c], co[c + 1])); c += 2; }
         else if (op === OPS.curveTo || op === OPS.curveTo2 || op === OPS.curveTo3) {
           // cubic bezier, sampled as chords; control points transform first
@@ -449,24 +497,27 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
               u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
               u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1],
             ];
-            if (cur) { segs.push(cur[0], cur[1], q[0], q[1]); metaArr.push(flags | SEG_CURVE); lumArr.push(pathLum); layerOfArr.push(pathLayer); }
+            if (cur) { segs.push(cur[0], cur[1], q[0], q[1]); metaArr.push(flags | SEG_CURVE); lumArr.push(pathLum); layerOfArr.push(pathLayer); noteSeg(cur, q); }
             cur = q;
           }
           visit(p3);
         }
-        else if (op === OPS.closePath) { if (cur && start) { segs.push(cur[0], cur[1], start[0], start[1]); metaArr.push(flags); lumArr.push(pathLum); layerOfArr.push(pathLayer); cur = start; } }
+        else if (op === OPS.closePath) { if (cur && start) { segs.push(cur[0], cur[1], start[0], start[1]); metaArr.push(flags); lumArr.push(pathLum); layerOfArr.push(pathLayer); noteSeg(cur, start); closeSub(); cur = start; } }
         else if (op === OPS.rectangle) {
           const x = co[c], y = co[c + 1], w = co[c + 2], h = co[c + 3]; c += 4;
           const q: Point[] = [tx(x, y), tx(x + w, y), tx(x + w, y + h), tx(x, y + h)];
-          for (let k = 0; k < 4; k++) { const a = q[k], b = q[(k + 1) % 4]; segs.push(a[0], a[1], b[0], b[1]); metaArr.push(flags); lumArr.push(pathLum); layerOfArr.push(pathLayer); visit(a); }
+          openSub(flags, q[0]);                       // a rect is its own figure
+          for (let k = 0; k < 4; k++) { const a = q[k], b = q[(k + 1) % 4]; segs.push(a[0], a[1], b[0], b[1]); metaArr.push(flags); lumArr.push(pathLum); layerOfArr.push(pathLayer); noteSeg(a, b); visit(a); }
+          closeSub();
           cur = q[0]; start = q[0];
         }
       }
     }
   }
+  sealSub();
   const meta = Uint8Array.from(metaArr);
   markPolylineArcs(segs, meta);
-  return { points, segs, meta, imageArea, lum: Uint8Array.from(lumArr), layerOf: Int32Array.from(layerOfArr), layerIds };
+  return { points, segs, meta, imageArea, lum: Uint8Array.from(lumArr), layerOf: Int32Array.from(layerOfArr), layerIds, subpaths };
 }
 
 // ── 1b. polyline arc detection ─────────────────────────────────────────────
@@ -1171,6 +1222,75 @@ export function classifyOffsetAnnotationSegs(
   return soft;
 }
 
+// ── 2d. finish texture: figures smaller than a wall ────────────────────────
+// The first classifier that reads WHAT THE INK IS rather than inferring it
+// from neighbourhood geometry. Rasterizing to a 1-bit mask destroys the
+// distinction between a wall and a speckle fleck; `subpaths` preserves it, so
+// this asks the one question the mask cannot: is this figure even large
+// enough to BE a wall?
+//
+// The threshold is not a new guess — it is MIN_THICK_FT, the minimum wall
+// thickness the flood already recognizes (a passage narrower than this is not
+// a room boundary but a drafting artifact). A closed figure whose entire
+// bounding box fits inside the thinnest drawable wall cannot be one.
+//
+// FIELD, not fleck. A lone tiny mark is a fixture detail, a hardware tick, a
+// leader terminator — softening it buys nothing and costs ring stability
+// (measured on the VA sheet: softening every sub-wall figure left SF within
+// 1% but roughened 7 of 12 traced rings, because the fill then weaves one
+// cell further into scattered detail). What actually chops a room is a
+// POPULATION: concrete stipple, terrazzo speckle, carpet noise — hundreds of
+// flecks blanketing a floor. So a fleck softens only where it has company,
+// counted on a coarse grid. Measured on a stipple-filled commercial finish
+// plan: 4,906 flecks over ~8 rooms, every one with dozens of neighbours in
+// its own cell; the VA sheet's scattered detail marks mostly sit alone.
+//
+// Same contract as the other classifiers: one byte per segment, 1 = soft,
+// pure, total, never throws. Feeds the SAME soft plane, so the escalation
+// ladder still verifies by boundedness — a misjudged field either leaks or
+// balloons and the strict result stands.
+export const FLECK_FIELD_FT = 2;        // grid cell for the population count — a room's worth of texture, not a sheet's
+export const FLECK_FIELD_MIN = 6;       // flecks in a cell (with its neighbours) before any of them is texture
+export function classifyFleckSegs(
+  segs: number[], meta: Uint8Array, subpaths: SubPath[] | null | undefined, ws: number, ftPx: number,
+): Uint8Array {
+  const n = segs.length >> 2;
+  const soft = new Uint8Array(n);
+  if (!meta || !n || !subpaths || !subpaths.length || !(ftPx > 0)) return soft;
+  const lim = MIN_THICK_FT * ftPx;
+  interface Fleck { sp: SubPath; cx: number; cy: number }
+  const flecks: Fleck[] = [];
+  for (const s of subpaths) {
+    // clip ink is already soft; a filled figure bounds solid ink and must stay
+    // hard (the exemptions every classifier here makes, for the same reasons)
+    if (s.flags & (SEG_CLIP | SEG_FILLONLY)) continue;
+    if (s.i1 <= s.i0) continue;
+    if (Math.max(s.x1 - s.x0, s.y1 - s.y0) * ws >= lim) continue;
+    flecks.push({ sp: s, cx: ((s.x0 + s.x1) / 2) * ws, cy: ((s.y0 + s.y1) / 2) * ws });
+  }
+  if (flecks.length < FLECK_FIELD_MIN) return soft;
+  const cell = FLECK_FIELD_FT * ftPx;
+  const bins = new Map<string, number>();
+  const key = (gx: number, gy: number) => `${gx},${gy}`;
+  for (const f of flecks) {
+    const k = key(Math.floor(f.cx / cell), Math.floor(f.cy / cell));
+    bins.set(k, (bins.get(k) || 0) + 1);
+  }
+  for (const f of flecks) {
+    const gx = Math.floor(f.cx / cell), gy = Math.floor(f.cy / cell);
+    let pop = 0;
+    for (let dx = -1; dx <= 1 && pop < FLECK_FIELD_MIN; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        pop += bins.get(key(gx + dx, gy + dy)) || 0;
+        if (pop >= FLECK_FIELD_MIN) break;
+      }
+    }
+    if (pop < FLECK_FIELD_MIN) continue;      // alone: a detail mark, not texture
+    for (let i = f.sp.i0; i < f.sp.i1; i++) soft[i] = 1;
+  }
+  return soft;
+}
+
 // Signature quantization for the stable family id (issue #29): coarse enough
 // to absorb CAD jitter (≪ the classifier's own tolerances), fine enough that
 // distinct pattern specs never collide. The RAW signature values ride along
@@ -1244,9 +1364,9 @@ export function hatchFamilies(segs: number[], meta: Uint8Array): HatchFamily[] {
 // (roles sixth, no scale pinning) so layered callers without a scale need no
 // placeholder zeros; the canonical order keeps roles last.
 export const MASK_CURVE_BIT = 4;
-export function buildMask(segs: number[], imgW: number, imgH: number, maxDim?: number, meta?: Uint8Array | null, pxPerFt?: number, basePxPerFt?: number, page?: MaskPage | null, roles?: Uint8Array | null): MaskObj;
+export function buildMask(segs: number[], imgW: number, imgH: number, maxDim?: number, meta?: Uint8Array | null, pxPerFt?: number, basePxPerFt?: number, page?: MaskPage | null, roles?: Uint8Array | null, subpaths?: SubPath[] | null): MaskObj;
 export function buildMask(segs: number[], imgW: number, imgH: number, maxDim?: number, meta?: Uint8Array | null, roles?: Uint8Array | null): MaskObj;
-export function buildMask(segs: number[], imgW: number, imgH: number, maxDim = MASK_MAX_DIM, meta: Uint8Array | null = null, pxPerFt: number | Uint8Array | null = 0, basePxPerFt = 0, page: MaskPage | null = null, roles: Uint8Array | null = null): MaskObj {
+export function buildMask(segs: number[], imgW: number, imgH: number, maxDim = MASK_MAX_DIM, meta: Uint8Array | null = null, pxPerFt: number | Uint8Array | null = 0, basePxPerFt = 0, page: MaskPage | null = null, roles: Uint8Array | null = null, subpaths: SubPath[] | null = null): MaskObj {
   // the compat overload: a Uint8Array (or explicit null) in the pxPerFt slot
   // is a roles table, scale unknown
   if (pxPerFt instanceof Uint8Array || pxPerFt === null) { if (!roles) roles = pxPerFt; pxPerFt = 0; }
@@ -1319,6 +1439,11 @@ export function buildMask(segs: number[], imgW: number, imgH: number, maxDim = M
     ? classifyOffsetAnnotationSegs(segs, meta, ws, ANNOT_OFFSET_MAX_FT * mppf, ANNOT_OFFSET_MIN_FT * mppf, ANNOT_MIN_LEN_FT * mppf)
     : null;
   if (soft && annot) for (let i = 0; i < soft.length; i++) if (annot[i]) soft[i] = 1;
+  // Third contributor to the SAME soft plane: finish texture (section 2d).
+  // Feet-true and subpath-fed — it reads what the ink IS, where the two above
+  // infer it from neighbourhood geometry. Unioned, never subtracted.
+  const fleck = meta && mppf > 0 && subpaths ? classifyFleckSegs(segs, meta, subpaths, ws, mppf) : null;
+  if (soft && fleck) for (let i = 0; i < soft.length; i++) if (fleck[i]) soft[i] = 1;
   // curve chords that are demonstrably not door swings (closed circles, cloud
   // scallops) — a SEPARATE plane from SEG_CURVE, so refusing them never makes
   // them hatch-eligible (classifyHatchSegs still skips every SEG_CURVE chord)
