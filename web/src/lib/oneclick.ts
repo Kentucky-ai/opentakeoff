@@ -1171,6 +1171,276 @@ export function classifyOffsetAnnotationSegs(
   return soft;
 }
 
+// ── 2d. dimension strings (issue #320) ──────────────────────────────────────
+// On a FLATTENED sheet the layer path is dead (`classifyLayerName` returns
+// role unknown at confidence 0 — correctly: nothing is stated) and neither
+// geometric classifier sees a dimension string: it has no heavier parallel
+// neighbour within 2 ft (the run is drawn 2–6 ft off the building face, often
+// stacked), its witness lines run PERPENDICULAR to everything nearby, and its
+// pen weight matches thin partition linework. So One-Click reads the string as
+// boundary: the flood leaks into the dimension band beside the building, or a
+// witness line crossing a room chops it. Field report, flattened multifamily.
+//
+// What identifies a dimension string is its ANATOMY, not its pen. Measured on
+// two real flattened sets (a Revit multifamily permit sheet at 1/4" = 1'-0",
+// 18 px/ft; an AutoCAD-exported commercial finish plan at 3/32" = 1'-0",
+// 6.75 px/ft, its linework exploded to ~1 px dashes):
+//   • one long straight RUN (measured 4.7–31 ft), text between witnesses —
+//     text is showText ops, never vectors, so a real run sits in an EMPTY band;
+//   • short WITNESS lines meeting it at 90°, one per dimensioned feature —
+//     0.5–1.2 ft on the Revit sheet — spaced at ROOM-scale intervals (never
+//     the sub-foot rhythm of hatch, coursing, or stipple);
+//   • an oblique TICK or arrow ON the run at each junction: 45° slashes
+//     0.94 ft long (heavier pen) on the Revit sheet, ~30° arrow strokes
+//     0.34 ft long (same pen) on the AutoCAD sheet;
+//   • at every junction, ink CONTINUES PAST the joint — the run overshoots
+//     the end witnesses (0.39 ft measured) or the witness extends past the
+//     run. A rectangle's corner has neither, which is what separates a
+//     two-witness dim from every legend swatch and tag box on the sheet;
+//   • nothing runs alongside: a wall face has its partner face 0.33–1 ft
+//     away for its whole length, a stacked dim string's neighbour run is
+//     ≥ 1.5 ft off (3/8" paper at 1/4" scale) and is another dim, not a wall.
+//
+// The classifier reassembles collinear CHAINS first (the AutoCAD sheet's
+// exploded dashes — same device markPolylineArcs uses for arc chords), then
+// accepts a chain as a dim RUN only on the full conjunction: isolated, ≥ 2
+// sparse witness junctions each continuing past the joint, ticks at ≥ 2 of
+// them (and at least half), and an otherwise-empty band. Every threshold is
+// feet-true — this runs only when the sheet scale is known — with small
+// absolute px floors where the phenomenon is ink/quantization, not geometry
+// (the CLUSTER_FIT_TOL_PX precedent).
+//
+// Softening is deliberately narrower than evidence: a witness is often drawn
+// COLLINEAR with the wall edge it dimensions, and on the Revit sheet the
+// 0.25 ft witness-to-wall drafting gap sits BELOW the 0.5 ft dash gaps of the
+// sheet's own centreline patterns — no gap threshold separates them — so a
+// witness chain that merged into longer linework, or one with a wall-length
+// parallel partner of its own, is counted as evidence but never softened.
+// Union into the same soft plane as hatch and annotation rings; never
+// subtracted; the escalation ladder decides what soft is worth.
+export const DIMSTR_ANGLE_TOL = 2;        // deg — CAD angle jitter ≪ 1° (HATCH_ANGLE_TOL's evidence)
+export const DIMSTR_CHAIN_GAP_FT = 0.6;   // collinear pieces closer than this are one drawn line
+export const DIMSTR_CHAIN_GAP_PX = 3;     // floor — dash/quantization gaps are ink-scale, not feet
+export const DIMSTR_CHAIN_OFF_FT = 0.06;  // perpendicular jitter within one drawn line
+export const DIMSTR_CHAIN_OFF_PX = 1.25;  // floor — sub-px offsets are float noise at coarse scales
+export const DIMSTR_RUN_MIN_FT = 4;       // shortest measured real run is 4.7 ft; ANNOT_MIN_LEN_FT's reasoning
+export const DIMSTR_ISO_OFF_FT = 1.0;     // a parallel partner within a wall's breadth …
+export const DIMSTR_ISO_OVERLAP = 0.4;    // … spanning this fraction of the RUN makes it a wall face
+export const DIMSTR_WITNESS_MIN_FT = 0.3; // below the shortest measured witness (0.5 ft) with margin
+export const DIMSTR_WITNESS_SOFT_MAX_FT = 8;  // soften cap — longer chains are glued linework: evidence only
+export const DIMSTR_ATTACH_FT = 0.35;     // junction slop: witness end / tick centre to the run line
+export const DIMSTR_ATTACH_PX = 2;        // floor — a junction is an ink joint, ≥ pen scale
+export const DIMSTR_JUNCTION_MIN_FT = 1.5;// witnesses are room-spaced; coursing/stipple rhythms are sub-foot
+export const DIMSTR_WIT_PER_JUNCTION_MAX = 2; // a dim junction is ONE witness (two at a shared boundary)
+export const DIMSTR_TICK_MIN_FT = 0.2;    // measured ticks 0.34–0.94 ft; stipple dots sit below this
+export const DIMSTR_TICK_MAX_FT = 1.5;    // a longer oblique is drawing, not a tick
+export const DIMSTR_TICK_ANG_LO = 20;     // deg off the run — covers ~30° arrows …
+export const DIMSTR_TICK_ANG_HI = 70;     // … and 45° slashes with jitter margin
+export const DIMSTR_TICK_AT_JUNCTION_FT = 0.5;  // a tick marks ITS junction, not the run at large
+export const DIMSTR_MIN_JUNCTIONS = 2;    // a dimension has two ends
+export const DIMSTR_MIN_TICKED = 2;       // … and marks both
+export const DIMSTR_TICKED_FRAC = 0.5;    // most junctions carry their mark (jamb clutter does not)
+export const DIMSTR_OVERSHOOT_FT = 0.1;   // ink past a joint (0.39 ft measured); a corner has none
+export const DIMSTR_OVERSHOOT_PX = 2;     // floor — overshoot is ink, not geometry
+export const DIMSTR_TOUCH_CLUTTER_MAX = 1;// non-witness/tick chains allowed to TOUCH the run
+export const DIMSTR_BAND_FT = 0.7;        // the empty band a real run sits in …
+export const DIMSTR_BAND_CLUTTER_MAX = 4; // … and the stray chains tolerated inside it (hex keynote
+                                          // tags ride the band on the Revit sheet; a stipple field
+                                          // or a table's cell text boxes blow far past this)
+
+interface DimChain {
+  axis: number;               // deg, [0, 180) — the bin axis the chain merged on
+  d: number;                  // mean perpendicular offset of members, mask px
+  t0: number; t1: number;     // extent along the axis, mask px
+  len: number;
+  members: number[];          // segment indices
+  p0: [number, number]; p1: [number, number];  // endpoints in mask px
+}
+
+/** Collinear-chain reassembly + dimension-string comb detection. Pure and
+ *  deterministic; all inputs in mask px, `ftPx` = mask px per foot (> 0 —
+ *  the caller gates on scale). Exported for calibration and tests; the
+ *  boundary-mask contract is `classifyDimensionStringSegs` below. */
+export function sweepDimensionStrings(segs: number[], meta: Uint8Array, ws: number, ftPx: number): { soft: Uint8Array; runs: DimChain[] } {
+  const n = segs.length >> 2;
+  const soft = new Uint8Array(n);
+  const hits: DimChain[] = [];
+  if (!meta || !n || !(ftPx > 0)) return { soft, runs: hits };
+  interface Cand { i: number; ang: number; x1: number; y1: number; x2: number; y2: number; L: number }
+  const cand: Cand[] = [];
+  for (let i = 0; i < n; i++) {
+    if (meta[i] & (SEG_CURVE | SEG_CLIP | SEG_FILLONLY)) continue;
+    const x1 = segs[i * 4] * ws, y1 = segs[i * 4 + 1] * ws, x2 = segs[i * 4 + 2] * ws, y2 = segs[i * 4 + 3] * ws;
+    const L = Math.hypot(x2 - x1, y2 - y1);
+    if (!(L > 0)) continue;
+    let ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+    if (ang < 0) ang += 180; if (ang >= 180) ang -= 180;
+    cand.push({ i, ang, x1, y1, x2, y2, L });
+  }
+  if (cand.length < 4) return { soft, runs: hits };   // a comb needs run + 2 witnesses + a tick
+  // 1. collinear chains, on the hatch classifier's interleaved angle grids so
+  // a family straddling one grid's bin boundary is intact in the other. A
+  // multi-member chain claims its segs in pass 1; singletons re-bin in pass 2.
+  const BIN = DIMSTR_ANGLE_TOL, NB = Math.round(180 / BIN);
+  const gap = Math.max(DIMSTR_CHAIN_GAP_PX, DIMSTR_CHAIN_GAP_FT * ftPx);
+  const offTol = Math.max(DIMSTR_CHAIN_OFF_PX, DIMSTR_CHAIN_OFF_FT * ftPx);
+  const chains: DimChain[] = [];
+  const claimed = new Uint8Array(n);
+  interface Row { c: Cand; d: number; t0: number; t1: number }
+  for (const shift of [0, BIN / 2]) {
+    const bins = new Map<number, Row[]>();
+    for (const c of cand) {
+      if (claimed[c.i]) continue;
+      let b = Math.floor((c.ang + shift) / BIN);
+      if (b >= NB) b -= NB;                             // the 0°/180° seam is one family
+      const axis = ((b * BIN - shift + BIN / 2) % 180 + 180) % 180;
+      const th = axis * Math.PI / 180, dx = Math.cos(th), dy = Math.sin(th), nx = -dy, ny = dx;
+      const r: Row = { c,
+        d: ((c.x1 + c.x2) / 2) * nx + ((c.y1 + c.y2) / 2) * ny,
+        t0: Math.min(c.x1 * dx + c.y1 * dy, c.x2 * dx + c.y2 * dy),
+        t1: Math.max(c.x1 * dx + c.y1 * dy, c.x2 * dx + c.y2 * dy) };
+      const arr = bins.get(b);
+      if (arr) arr.push(r); else bins.set(b, [r]);
+    }
+    for (const [b, rows] of bins) {
+      const axis = ((b * BIN - shift + BIN / 2) % 180 + 180) % 180;
+      rows.sort((a, z) => a.d - z.d || a.t0 - z.t0);
+      let g0 = 0;
+      for (let k = 1; k <= rows.length; k++) {
+        if (k < rows.length && rows[k].d - rows[k - 1].d <= offTol) continue;
+        const grp = rows.slice(g0, k).sort((a, z) => a.t0 - z.t0 || a.t1 - z.t1);
+        let cur: (DimChain & { dSum: number }) | null = null;
+        const flush = () => {
+          if (!cur) return;
+          if (shift === 0 || cur.members.length > 1 || !claimed[cur.members[0]]) {
+            if (shift === 0 && cur.members.length < 2) { cur = null; return; }  // singleton: retry on the shifted grid
+            cur.d = cur.dSum / cur.members.length;
+            cur.len = cur.t1 - cur.t0;
+            const th = axis * Math.PI / 180, dx = Math.cos(th), dy = Math.sin(th), nx = -dy, ny = dx;
+            cur.p0 = [cur.t0 * dx + cur.d * nx, cur.t0 * dy + cur.d * ny];
+            cur.p1 = [cur.t1 * dx + cur.d * nx, cur.t1 * dy + cur.d * ny];
+            chains.push(cur);
+            for (const m of cur.members) claimed[m] = 1;
+          }
+          cur = null;
+        };
+        for (const r of grp) {
+          if (cur && r.t0 - cur.t1 <= gap) { cur.t1 = Math.max(cur.t1, r.t1); cur.members.push(r.c.i); cur.dSum += r.d; }
+          else { flush(); cur = { axis, d: 0, dSum: r.d, t0: r.t0, t1: r.t1, len: 0, members: [r.c.i], p0: [0, 0], p1: [0, 0] }; }
+        }
+        flush();
+        g0 = k;
+      }
+    }
+  }
+  // 2. comb detection over the chains
+  const runMin = DIMSTR_RUN_MIN_FT * ftPx, isoOff = DIMSTR_ISO_OFF_FT * ftPx;
+  const wMin = DIMSTR_WITNESS_MIN_FT * ftPx, wSoftMax = DIMSTR_WITNESS_SOFT_MAX_FT * ftPx;
+  const attach = Math.max(DIMSTR_ATTACH_PX, DIMSTR_ATTACH_FT * ftPx);
+  const jMin = DIMSTR_JUNCTION_MIN_FT * ftPx;
+  const tickMin = DIMSTR_TICK_MIN_FT * ftPx, tickMax = DIMSTR_TICK_MAX_FT * ftPx;
+  const tickAt = DIMSTR_TICK_AT_JUNCTION_FT * ftPx;
+  const over = Math.max(DIMSTR_OVERSHOOT_PX, DIMSTR_OVERSHOOT_FT * ftPx);
+  const band = DIMSTR_BAND_FT * ftPx;
+  // has this chain a same-axis partner alongside for most of its length?
+  const hasParallelPartner = (C: DimChain, skip: DimChain | null): boolean => {
+    const th = C.axis * Math.PI / 180, dx = Math.cos(th), dy = Math.sin(th), nx = -dy, ny = dx;
+    for (const O of chains) {
+      if (O === C || O === skip) continue;
+      let rel = Math.abs(O.axis - C.axis); if (rel > 90) rel = 180 - rel;
+      if (rel > 3 * DIMSTR_ANGLE_TOL) continue;
+      const d0 = O.p0[0] * nx + O.p0[1] * ny - C.d, d1 = O.p1[0] * nx + O.p1[1] * ny - C.d;
+      if (Math.min(Math.abs(d0), Math.abs(d1)) > isoOff) continue;
+      const t0 = Math.min(O.p0[0] * dx + O.p0[1] * dy, O.p1[0] * dx + O.p1[1] * dy);
+      const t1 = Math.max(O.p0[0] * dx + O.p0[1] * dy, O.p1[0] * dx + O.p1[1] * dy);
+      if (Math.min(t1, C.t1) - Math.max(t0, C.t0) >= DIMSTR_ISO_OVERLAP * C.len) return true;
+    }
+    return false;
+  };
+  for (const R of chains) {
+    if (R.len < runMin) continue;
+    if (hasParallelPartner(R, null)) continue;          // a wall face, never a dim run
+    const th = R.axis * Math.PI / 180, dx = Math.cos(th), dy = Math.sin(th), nx = -dy, ny = dx;
+    interface Joint { t: number; C: DimChain; past: boolean }
+    const wit: Joint[] = [], ticks: Joint[] = [];
+    let touchClutter = 0;
+    for (const C of chains) {
+      if (C === R) continue;
+      const d0 = C.p0[0] * nx + C.p0[1] * ny - R.d, d1 = C.p1[0] * nx + C.p1[1] * ny - R.d;
+      const near0 = Math.abs(d0) <= attach, near1 = Math.abs(d1) <= attach;
+      const crosses = (d0 < -attach && d1 > attach) || (d1 < -attach && d0 > attach);
+      if (!near0 && !near1 && !crosses) continue;
+      const t0 = C.p0[0] * dx + C.p0[1] * dy, t1 = C.p1[0] * dx + C.p1[1] * dy;
+      const tm = (t0 + t1) / 2;
+      const tRef = near0 && !near1 ? t0 : near1 && !near0 ? t1 : tm;
+      if (tRef < R.t0 - attach || tRef > R.t1 + attach) continue;
+      let rel = Math.abs(C.axis - R.axis); if (rel > 90) rel = 180 - rel;
+      if (rel >= 90 - 2 * DIMSTR_ANGLE_TOL && C.len >= wMin) {
+        // continues past the joint: crosses outright, or reaches the line at
+        // both extremes of its own extent (an overshooting witness does; a
+        // stroke that merely ENDS on the line does not)
+        wit.push({ t: tRef, C, past: crosses || (near0 && near1) });
+      } else if (rel >= DIMSTR_TICK_ANG_LO && rel <= DIMSTR_TICK_ANG_HI
+          && C.len >= tickMin && C.len <= tickMax && Math.abs((d0 + d1) / 2) <= attach) {
+        ticks.push({ t: tm, C, past: false });
+      } else if (++touchClutter > DIMSTR_TOUCH_CLUTTER_MAX) break;
+    }
+    if (touchClutter > DIMSTR_TOUCH_CLUTTER_MAX) continue;
+    // box-corner rejection: keep a junction only where ink continues past it
+    const live = wit.filter((w) => w.past || (w.t >= R.t0 + over && w.t <= R.t1 - over));
+    if (live.length < DIMSTR_MIN_JUNCTIONS) continue;
+    live.sort((a, z) => a.t - z.t);
+    interface Junction { t: number; n: number }
+    const junc: Junction[] = [];
+    let dense = false;
+    for (const w of live) {
+      const j = junc[junc.length - 1];
+      if (j && w.t - j.t < jMin) { if (++j.n > DIMSTR_WIT_PER_JUNCTION_MAX) { dense = true; break; } }
+      else junc.push({ t: w.t, n: 1 });
+    }
+    if (dense || junc.length < DIMSTR_MIN_JUNCTIONS) continue;
+    let ticked = 0;
+    const usedTicks: Joint[] = [];
+    for (const j of junc) {
+      const t = ticks.find((tk) => Math.abs(tk.t - j.t) <= tickAt);
+      if (t) { ticked++; usedTicks.push(t); }
+    }
+    if (ticked < DIMSTR_MIN_TICKED || ticked < DIMSTR_TICKED_FRAC * junc.length) continue;
+    // empty-band check: beyond its own comb, nothing shares a real run's band
+    const witSet = new Set(live.map((w) => w.C)), tickSet = new Set(usedTicks.map((t) => t.C));
+    let bandClutter = 0;
+    for (const C of chains) {
+      if (C === R || witSet.has(C) || tickSet.has(C)) continue;
+      const mx = (C.p0[0] + C.p1[0]) / 2, my = (C.p0[1] + C.p1[1]) / 2;
+      if (Math.abs(mx * nx + my * ny - R.d) > band) continue;
+      const tt = mx * dx + my * dy;
+      if (tt < R.t0 || tt > R.t1) continue;
+      if (++bandClutter > DIMSTR_BAND_CLUTTER_MAX) break;
+    }
+    if (bandClutter > DIMSTR_BAND_CLUTTER_MAX) continue;
+    hits.push(R);
+    for (const m of R.members) soft[m] = 1;
+    for (const t of usedTicks) for (const m of t.C.members) soft[m] = 1;
+    for (const w of live) {
+      // soften a witness only when it is demonstrably NOT wall linework: short
+      // enough to be a witness alone (not glued across a drafting gap) and
+      // without a wall-length parallel partner of its own
+      if (w.C.len > wSoftMax) continue;
+      if (hasParallelPartner(w.C, R)) continue;
+      for (const m of w.C.members) soft[m] = 1;
+    }
+  }
+  return { soft, runs: hits };
+}
+
+/** Strokes belonging to a dimension string — run, witnesses, ticks — are
+ *  annotation, not boundary. Same contract as classifyHatchSegs /
+ *  classifyOffsetAnnotationSegs: one byte per segment, 1 = soft, pure, total,
+ *  never throws. `ftPx` is mask px per foot; the caller gates on scale. */
+export function classifyDimensionStringSegs(segs: number[], meta: Uint8Array, ws: number, ftPx: number): Uint8Array {
+  return sweepDimensionStrings(segs, meta, ws, ftPx).soft;
+}
+
 // Signature quantization for the stable family id (issue #29): coarse enough
 // to absorb CAD jitter (≪ the classifier's own tolerances), fine enough that
 // distinct pattern specs never collide. The RAW signature values ride along
@@ -1319,6 +1589,11 @@ export function buildMask(segs: number[], imgW: number, imgH: number, maxDim = M
     ? classifyOffsetAnnotationSegs(segs, meta, ws, ANNOT_OFFSET_MAX_FT * mppf, ANNOT_OFFSET_MIN_FT * mppf, ANNOT_MIN_LEN_FT * mppf)
     : null;
   if (soft && annot) for (let i = 0; i < soft.length; i++) if (annot[i]) soft[i] = 1;
+  // Third independent contributor to the SAME soft plane: dimension strings
+  // (section 2d, issue #320). Feet-true only, for the same reason as the
+  // annotation classifier above; unioned, never subtracted.
+  const dimstr = meta && mppf > 0 ? classifyDimensionStringSegs(segs, meta, ws, mppf) : null;
+  if (soft && dimstr) for (let i = 0; i < soft.length; i++) if (dimstr[i]) soft[i] = 1;
   // curve chords that are demonstrably not door swings (closed circles, cloud
   // scallops) — a SEPARATE plane from SEG_CURVE, so refusing them never makes
   // them hatch-eligible (classifyHatchSegs still skips every SEG_CURVE chord)

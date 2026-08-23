@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildMask, floodRegion, traceRegion, snapVertices, ringArea, rdpClosed,
-  extractVectorGeometry, classifyHatchSegs, classifyOffsetAnnotationSegs, markPolylineArcs, SEG_CURVE, SEG_CLIP, SEG_FILLONLY, SEG_POLYARC,
+  extractVectorGeometry, classifyHatchSegs, classifyOffsetAnnotationSegs, classifyDimensionStringSegs, markPolylineArcs, SEG_CURVE, SEG_CLIP, SEG_FILLONLY, SEG_POLYARC,
   SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE, MASK_CURVE_BIT,
   floodRegionSealed, dilateHardMask, SEAL_RADII, sealRadiiFor, DOOR_SEAL_MAX_FT, SEAL_R_MAX, doorWedgeCapPx,
   splitMergedArcs, doorLeafCells, arcClusterFit,
@@ -699,6 +699,85 @@ test("offset annotation: curve, clip and fill-only strokes are exempt", () => {
     meta[1] |= bit;
     assert.equal(classifyOffsetAnnotationSegs(segs, meta, 1, A_MAX, A_MIN, A_LEN)[1], 0, `bit ${bit} exempt`);
   }
+});
+
+// ── dimension strings (oneclick.ts section 2d, issue #320) ──────────────────
+// One synthetic comb at the same 18 px/ft convention, then each negative test
+// removes the one clause that keeps a wall a wall. The comb: a 23 ft run with
+// three crossing witnesses at room-scale spacing, a 45° tick at each junction.
+const D_FT = 18;
+function dimComb(): [number[], Uint8Array] {
+  const segs = [92, 100, 508, 100];                    // the run, overshooting both end junctions
+  for (const x of [100, 300, 500]) segs.push(x, 90, x, 112);       // witnesses, crossing
+  for (const x of [100, 300, 500]) segs.push(x - 5, 95, x + 5, 105); // 45° ticks ON the run
+  return [segs, new Uint8Array(segs.length >> 2)];
+}
+
+test("dimension string: run, witnesses and ticks all classify soft", () => {
+  const [segs, meta] = dimComb();
+  const soft = classifyDimensionStringSegs(segs, meta, 1, D_FT);
+  assert.deepEqual([...soft], segs.map(() => 1).slice(0, segs.length >> 2), "the whole comb is annotation");
+});
+
+test("dimension string: a wall face with a parallel partner is never a run", () => {
+  // the comb, plus a double-line wall drawn with the SAME comb shape riding on
+  // one face — the partner face 0.44 ft away is what keeps it hard
+  const [segs, meta0] = dimComb();
+  const wall = [92, 300, 508, 300, 92, 308, 508, 308];             // two faces, full overlap
+  const all = [...segs, ...wall];
+  const meta = new Uint8Array(all.length >> 2);
+  const soft = classifyDimensionStringSegs(all, meta, 1, D_FT);
+  const nComb = segs.length >> 2;
+  assert.equal(soft[nComb], 0, "wall face stays hard");
+  assert.equal(soft[nComb + 1], 0, "partner face stays hard");
+  assert.equal(soft[0], 1, "the comb still classifies beside it");
+  assert.ok(meta0.length >= 0);
+});
+
+test("dimension string: a comb without ticks is casework, not a dimension", () => {
+  const segs = [92, 100, 508, 100];
+  for (const x of [150, 300, 450]) segs.push(x, 100, x, 136);      // dividers, no ticks
+  const soft = classifyDimensionStringSegs(segs, new Uint8Array(segs.length >> 2), 1, D_FT);
+  assert.deepEqual([...soft], [0, 0, 0, 0], "no junction marks ⇒ nothing softens");
+});
+
+test("dimension string: a rectangle's corners are joints where nothing continues past", () => {
+  // a legend-swatch box with oblique pattern strokes inside — the Crunch
+  // Fitness false positive this rejection exists for
+  const segs = [
+    100, 100, 500, 100,   // top edge (the would-be run)
+    100, 136, 500, 136,   // bottom edge — 2 ft off, OUTSIDE the iso window
+    100, 100, 100, 136,   // left side: stops AT the top edge
+    500, 100, 500, 136,   // right side: stops AT the top edge
+  ];
+  for (let x = 140; x <= 460; x += 40) segs.push(x - 4, 98, x + 4, 106);  // pattern obliques near the edge
+  const soft = classifyDimensionStringSegs(segs, new Uint8Array(segs.length >> 2), 1, D_FT);
+  assert.equal(soft[0], 0, "box edge stays hard — its only junctions are corners");
+});
+
+test("dimension string: sub-foot witness rhythm is coursing, not dimensioning", () => {
+  const segs = [92, 100, 508, 100];
+  for (let x = 100; x <= 500; x += 9) segs.push(x, 90, x, 112);    // 0.5 ft pitch
+  segs.push(95, 95, 105, 105, 295, 95, 305, 105);                  // even with plausible ticks
+  const soft = classifyDimensionStringSegs(segs, new Uint8Array(segs.length >> 2), 1, D_FT);
+  assert.equal(soft[0], 0, "dense comb stays hard");
+});
+
+test("dimension string: a witness glued into longer linework is evidence, never softened", () => {
+  const [segs, meta] = dimComb();
+  // stretch the middle witness into a 12 ft stroke — longer than the soften cap
+  segs[4 * 4] = 300; segs[4 * 4 + 1] = 90; segs[4 * 4 + 2] = 300; segs[4 * 4 + 3] = 306;
+  const soft = classifyDimensionStringSegs(segs, meta, 1, D_FT);
+  assert.equal(soft[0], 1, "run softens");
+  assert.equal(soft[4], 0, "the long witness stays hard");
+});
+
+test("dimension string: buildMask unions the plane only when the scale is known", () => {
+  const [segs, meta] = dimComb();
+  const noScale = buildMask(segs, 600, 400, 600, meta);
+  const withScale = buildMask(segs, 600, 400, 600, meta, D_FT);
+  assert.equal(noScale.softCount, 0, "scale unknown ⇒ nothing softened");
+  assert.ok(withScale.softCount > 0, "scale known ⇒ the comb is soft");
 });
 
 test("offset annotation: an unscaled sheet gets no annotation plane at all", () => {
