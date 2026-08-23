@@ -15,6 +15,7 @@
 // shortcut changes, §15 and this table move together.
 import { useEffect } from "react";
 import { Z } from "../lib/ui.js";
+import { keyLabel, keyText, isApplePlatform } from "../lib/keys.ts";
 
 const GUIDE_URL = "https://github.com/Kentucky-ai/opentakeoff/blob/main/docs/USER_GUIDE.md";
 
@@ -28,9 +29,11 @@ function Kbd({ children }) {
 }
 
 function Keys({ combo }) {
+  // Labels only — the handlers already treat ⌘ and Ctrl as one key. See lib/keys.ts.
+  const apple = isApplePlatform();
   return (
     <span style={{ display: "inline-flex", gap: 3, alignItems: "center" }}>
-      {combo.map((k, i) => <Kbd key={i}>{k}</Kbd>)}
+      {combo.map((k, i) => <Kbd key={i}>{keyLabel(k, apple)}</Kbd>)}
     </span>
   );
 }
@@ -41,7 +44,7 @@ function Table({ rows }) {
       {rows.map(([combo, what], i) => (
         <div key={i} style={{ display: "contents" }}>
           <div style={{ justifySelf: "start" }}><Keys combo={combo} /></div>
-          <div style={{ fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.45 }}>{what}</div>
+          <div style={{ fontSize: 12.5, color: "var(--ink-soft)", lineHeight: 1.45 }}>{keyText(what)}</div>
         </div>
       ))}
     </div>
@@ -150,7 +153,7 @@ export default function UserGuide({ onClose }) {
             {START.map(([t, d]) => (
               <li key={t} style={{ fontSize: 12.5, lineHeight: 1.5 }}>
                 <strong style={{ color: "var(--ink)" }}>{t}</strong>
-                <span style={{ color: "var(--ink-soft)" }}> — {d}</span>
+                <span style={{ color: "var(--ink-soft)" }}> — {keyText(d)}</span>
               </li>
             ))}
           </ol>

@@ -7,6 +7,7 @@
 // Create gate. Unconfigured builds get the honest empty state (the Contribute
 // modal pattern): no key, no run, and a link to AI settings.
 import { useEffect, useRef, useState } from "react";
+import { keyText } from "../lib/keys.ts";
 import { Icon } from "../brand/icons.jsx";
 
 const evidenceText = (ev) => {
@@ -74,7 +75,7 @@ export default function AgentPanel({
               ) : (
                 <button onClick={run} disabled={!goal.trim()} className="btn-primary" style={{ padding: "5px 14px", fontSize: 12, cursor: goal.trim() ? "pointer" : "default", opacity: goal.trim() ? 1 : 0.5 }}>Run</button>
               )}
-              <span style={{ fontSize: 10.5, color: "var(--ink-muted)" }}>{running ? "Working — proposals land as dashed outlines." : "⌘⏎ runs. Your key, your endpoint."}</span>
+              <span style={{ fontSize: 10.5, color: "var(--ink-muted)" }}>{running ? "Working — proposals land as dashed outlines." : keyText("⌘⏎ runs. Your key, your endpoint.")}</span>
               <span style={{ flex: 1 }} />
               <button onClick={onOpenSettings} title="AI settings (endpoint / model / key)" style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--ink-muted)" }}><Icon name="sliders" size={13} /></button>
             </div>
@@ -94,7 +95,7 @@ export default function AgentPanel({
               <strong style={{ flex: 1, fontSize: 11.5 }}>Proposals · {proposals.length}</strong>
               {proposals.length > 0 && (
                 <>
-                  <button onClick={onAcceptAll} style={{ ...ctl, color: "var(--c-positive)", fontWeight: 600 }} title="Accept every visible proposal (⏎ on the canvas does the same)">Accept all</button>
+                  <button onClick={onAcceptAll} style={{ ...ctl, color: "var(--c-positive)", fontWeight: 600 }} title={keyText("Accept every visible proposal (⏎ on the canvas does the same)")}>Accept all</button>
                   <button onClick={onRejectAll} style={{ ...ctl, color: "var(--c-danger)" }} title="Discard every pending proposal (local only — nothing is recorded)">Reject all</button>
                 </>
               )}

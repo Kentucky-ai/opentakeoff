@@ -11,6 +11,7 @@
 // preview its effect while pointed at (the scale menu's plan-says item shows
 // the calibrated guide bar on the sheet behind the open menu).
 import React, { useEffect, useRef, useState } from "react";
+import { keyText } from "../lib/keys.ts";
 import { Icon } from "../brand/icons.jsx";
 
 const MENU_W = 232;
@@ -111,7 +112,7 @@ export default function ToolMenu({ face, active = false, accent = "cobalt", titl
                 {checkable && <span style={{ display: "inline-flex", width: 15, justifyContent: "center", color: "var(--c-positive)", visibility: it.checked ? "visible" : "hidden" }}><Icon name="check" size={14} /></span>}
                 {it.icon && <span style={{ display: "inline-flex", width: 17, justifyContent: "center", color: it.tint || fg }}><Icon name={it.icon} size={16} /></span>}
                 <span style={{ flex: 1, fontFamily: "var(--f-body)", fontSize: 13, fontWeight: it.active ? 600 : 400 }}>{it.label}</span>
-                {it.shortcut && <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--ink-muted)" }}>{it.shortcut}</span>}
+                {it.shortcut && <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--ink-muted)" }}>{keyText(it.shortcut)}</span>}
               </button>
             );
           })}
