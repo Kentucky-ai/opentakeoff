@@ -5,7 +5,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import ToolMenu from "./ToolMenu.jsx";
-import { conditionTotals, grandTotals, sheetTotals, sheetGroupedRows, labelGroupedRows, sheetLabelGroupedRows, round2, totalsToCsv, downloadText, materialsSummary, reportJson, hasMultipliers, BY_SHEET_BASE_NOTE } from "../lib/totals.js";
+import { conditionTotals, grandTotals, sheetTotals, sheetGroupedRows, labelGroupedRows, authorGroupedRows, sheetLabelGroupedRows, round2, totalsToCsv, downloadText, materialsSummary, reportJson, hasMultipliers, BY_SHEET_BASE_NOTE } from "../lib/totals.js";
 import { TABLE_PROFILE, CSV_PROFILE, colGetter, customColProfile, specColProfile, laborColProfile, rollColProfile, partitionRowsBy, forceIncludeGroupCol, loadColPrefs, saveColPrefs, loadGroupBy, saveGroupBy, visibleCols, floorPerimeterLf, applyUnits } from "../lib/reportColumns.js";
 import { rollReportRows, seamLfByShape } from "../lib/rollTakeoff.js";
 import { areaVal, areaUnit, lenVal, lenUnit } from "../lib/units";
@@ -158,7 +158,8 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   // global string, so a leftover "label" opened on a label-less project (or a
   // template carrying it) must fall back to ungrouped, exactly as a stale
   // custom-column id does.
-  const groupBy = groupByRaw === "sheet" || (groupByRaw === "label" && shapeLabels.length > 0) || conditionColumns.some((cc) => cc.id === groupByRaw) ? groupByRaw : "";
+  const hasAuthors = shapes.some((s) => typeof s.author === "string" && s.author.trim());
+  const groupBy = groupByRaw === "sheet" || (groupByRaw === "label" && shapeLabels.length > 0) || (groupByRaw === "author" && hasAuthors) || conditionColumns.some((cc) => cc.id === groupByRaw) ? groupByRaw : "";
   // grouping force-includes its column in the CSV/XLSX even when hidden in
   // the picker (D7) — a grouped report's export always carries its grouping
   const csvCols = forceIncludeGroupCol(visibleCols([...CSV_PROFILE, ...customCols, ...specCols, ...laborCols, ...rollCols], colPrefs), customCols, groupBy);
@@ -191,10 +192,12 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   // label mode: ORDERED per-bucket rows (waste + ×N per slice), already shaped
   // { value, label, rows, perimByCond } like the sheet groups after mapping.
   const labelGroups = useMemo(() => (groupBy === "label" ? labelGroupedRows(conditions, shapes, shapeLabels, seamCtx) : null), [groupBy, conditions, shapes, shapeLabels, seamCtx]);
+  // per-author rollups (#314) — same contract as the label groups
+  const authorGroups = useMemo(() => (groupBy === "author" ? authorGroupedRows(conditions, shapes, seamCtx) : null), [groupBy, conditions, shapes, seamCtx]);
   const groups = sheetGroups
     ? sheetGroups.map((gp) => ({ value: gp.sheet_id, label: sheetLabel ? sheetLabel(gp.sheet_id) : gp.sheet_id, rows: gp.rows, perimByCond: gp.perimByCond }))
-    : labelGroups || colGroups;
-  const grouped = Boolean(groups && (groups.length > 1 || ((groupCol || groupBy === "label") && groups.length === 1 && groups[0].value !== null)));
+    : labelGroups || authorGroups || colGroups;
+  const grouped = Boolean(groups && (groups.length > 1 || ((groupCol || groupBy === "label" || groupBy === "author") && groups.length === 1 && groups[0].value !== null)));
   // exports always carry the by-label breakdown when any shape is labeled,
   // independent of the current group-by view; empty (→ CSV/JSON byte-unchanged)
   // for label-less projects.
@@ -410,6 +413,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
             <option value="">None</option>
             <option value="sheet">Sheet</option>
             {shapeLabels.length > 0 && <option value="label">Label</option>}
+            {hasAuthors && <option value="author">Author</option>}
             {conditionColumns.map((cc) => (
               <option key={cc.id} value={cc.id}>{columnLabel(cc)}</option>
             ))}
@@ -682,7 +686,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               the partition degenerates to one group. */}
           {grouped && (
             <p style={{ maxWidth: 980, margin: "0 auto 8px", fontSize: 11.5, color: "var(--ink-muted)" }}>
-              Grouped by <strong>{groupCol ? columnLabel(groupCol) : groupBy === "label" ? "label" : "sheet"}</strong>
+              Grouped by <strong>{groupCol ? columnLabel(groupCol) : groupBy === "label" ? "label" : groupBy === "author" ? "author" : "sheet"}</strong>
             </p>
           )}
           <table style={{ width: "100%", maxWidth: 980, margin: "0 auto", borderCollapse: "collapse", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)" }}>

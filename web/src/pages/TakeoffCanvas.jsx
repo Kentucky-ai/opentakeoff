@@ -135,7 +135,7 @@ import { requiredDensity as tileRequiredDensity } from "../lib/tiles";
 // setShapes (the label-vocabulary renames, live drag PREVIEW frames, the
 // hydrate-time sanitizers, per-shape height/thickness re-pricing).
 // nowIso stays imported for the non-shape records (markups, RFIs, conditions).
-import { nowIso, mintUuid } from "../lib/provenance.js";
+import { nowIso, mintUuid, setAuthorName } from "../lib/provenance.js";
 import { applyShapeCommand, geomSnapshot, vertsEqual, recordCommand } from "../lib/shapeCommands.js";
 import { applyApprovalCommand, sanitizeApprovals, approvalInk, APPROVAL_R } from "../lib/approvals.js";
 import { findCutoutParent, subtractCutout, recomposeCutouts, cutRunsAcross } from "../lib/cutout.js";
@@ -5335,6 +5335,9 @@ export default function TakeoffCanvas() {
       // and addMarkup auto-opens the Markups dock, so the note is immediately
       // visible and draggable — the anchor is a starting point, not a commitment
       addNote: (text) => addMarkup({ type: "text", at: [0.5, 0.06], text }, focusPanel.key),
+      // author declaration (#314) — provenance's one localStorage key; new
+      // commits pick it up at mint, nothing re-stamps retroactively
+      setAuthor: (v) => setAuthorName(v),
       getAimSeed,
       traceAt: (seed, conditionId, label) => voiceTraceAt(seed, conditionId, label),
     };
@@ -6917,7 +6920,7 @@ export default function TakeoffCanvas() {
           <input
             type="text"
             placeholder="cpt 1 · waste 7 · this room"
-            title={'Command line (RFC #59): a condition tag ("CPT-1", "carpet one", "tile 2 waste 5"), "waste 7", "label Phase 1", "clear label", or "note …" — Enter runs it through the same actions the buttons use. End with "this room" / "here" while the pointer rests on a room to trace and commit it there ("carpet one, this room"). Push-to-talk dictation will feed this box.'}
+            title={'Command line (RFC #59): a condition tag ("CPT-1", "carpet one", "tile 2 waste 5"), "waste 7", "label Phase 1", "clear label", "author <your name>" (new marks sign it — the report can group by author), or "note …" — Enter runs it through the same actions the buttons use. End with "this room" / "here" while the pointer rests on a room to trace and commit it there ("carpet one, this room"). Push-to-talk dictation will feed this box.'}
             onFocus={() => { voiceAimMarkRef.current = aimSeqRef.current; }}
             onKeyDown={(e) => {
               if (e.key !== "Enter") return;

@@ -24,6 +24,8 @@ export type Intent =
   | { kind: "set_waste"; waste: number }
   | { kind: "set_label"; label: string; known: boolean }
   | { kind: "clear_label" }
+  | { kind: "set_author"; name: string }
+  | { kind: "clear_author" }
   | { kind: "add_note"; text: string }
   // deixis (RFC #59 deixis slice): the utterance ended in "this room"/"here"/
   // "this one"/"right here" — the speaker AIMED. The parser marks that they
@@ -386,7 +388,8 @@ function parseDeixisUtterance(transcript: string, head: string[], ctx: VoiceCont
 /**
  * Parse one push-to-talk transcript into one intent, or a typed rejection.
  * Grammar (keyword-first):
- *   clear label | label <text> | note <text> | waste <n> | <tag> [waste <n>]
+ *   clear label | label <text> | note <text> | author <name> | clear author
+ *   | waste <n> | <tag> [waste <n>]
  *   | [tag] [waste <n>] [label <text>] <deixis>   (deixis = utterance-terminal
  *     "this room" / "here" / "this one" / "right here" → trace_at_cursor)
  * Anything else — including a matched production with leftover tokens —
@@ -404,7 +407,7 @@ export function parseVoiceIntent(transcript: string, ctx: VoiceContext): VoicePa
   // through to the existing productions unchanged.
   const head = takeTerminalDeixis(tokens);
   if (head !== null) {
-    if (head[0] === "note" || (head[0] === "clear" && head[1] === "label"))
+    if (head[0] === "note" || head[0] === "author" || (head[0] === "clear" && (head[1] === "label" || head[1] === "author")))
       return { ok: false, reason: "deixis_target" };
     return parseDeixisUtterance(transcript, head, ctx);
   }
@@ -413,6 +416,20 @@ export function parseVoiceIntent(transcript: string, ctx: VoiceContext): VoicePa
   if (tokens[0] === "clear" && tokens[1] === "label") {
     if (tokens.length > 2) return { ok: false, reason: "trailing_words" };
     return { ok: true, intent: { kind: "clear_label" } };
+  }
+
+  // clear author (#314)
+  if (tokens[0] === "clear" && tokens[1] === "author") {
+    if (tokens.length > 2) return { ok: false, reason: "trailing_words" };
+    return { ok: true, intent: { kind: "clear_author" } };
+  }
+
+  // author <name> (#314) — free text like note/label: raw remainder, original
+  // casing intact (a name is presentation text, not vocabulary)
+  if (tokens[0] === "author") {
+    const name = rawRemainder(transcript, "author");
+    if (!name) return { ok: false, reason: "unrecognized" };
+    return { ok: true, intent: { kind: "set_author", name } };
   }
 
   // label <text>
