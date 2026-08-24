@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, M_PER_FT, M2_PER_SF, ftIn, dimLabel, fmtCheckLen, parseLenInput, checkVerdict, heightVal, heightUnit, heightInputToFeet, heightStep, thickVal, thickUnit, thickInputToInches, thickStep, dimInputStr } from "../src/lib/units.js";
 import { STANDARD_SCALES, RENDER_SCALE } from "../src/lib/sheets.js";
 import { totalsToCsv } from "../src/lib/totals.js";
+import { readFileSync } from "node:fs";
 
 test("area/length convert only in metric", () => {
   assert.equal(areaVal(1000, "imperial"), 1000);
@@ -52,6 +53,23 @@ test("metric CSV converts measured columns and drops SY", () => {
   const imperial = totalsToCsv(rows, "P");
   assert.match(imperial, /Floor SF/);
   assert.match(imperial, /SY w\/Waste/);
+});
+
+test("metric CSV converts human-readable material coverage while keeping quantity canonical", () => {
+  const rows = [{
+    id: "c1", finish_tag: "LVT-1", shape_count: 1, multiplier: 1, waste_pct: 0,
+    floor_sf: 100, wall_sf: 0, border_sf: 0, total_sf: 100, lf: 0, ea: 0,
+    total_sf_net: 100, lf_net: 0, sy_net: 11.11,
+    materials: [{ name: "Adhesive", qty: 1, unit: "bucket", per: 100, basis: "area" }],
+  }];
+  const csv = totalsToCsv(rows, "P", null, null, null, null, null, "OpenTakeoff", "metric");
+  assert.match(csv, /1 bucket \/ 9\.29 m²/);
+  assert.match(csv, /,1,bucket,/);
+});
+
+test("canvas dimension annotation passes the global unit system to dimLabel", () => {
+  const source = readFileSync(new URL("../src/pages/TakeoffCanvas.jsx", import.meta.url), "utf8");
+  assert.match(source, /dimLabel\(m\.len_ft, units\)/);
 });
 
 // ── Check-a-dimension helpers (ftIn / fmtCheckLen / parseLenInput) ──────────

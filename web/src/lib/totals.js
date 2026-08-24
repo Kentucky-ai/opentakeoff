@@ -22,6 +22,7 @@ import { round2 } from "./num.js";
 import { csvEsc as esc } from "./csv.js";
 import { GETTERS, getCsvProfile, colGetter, floorPerimeterLf, applyUnits, METRIC_CSV_LABELS } from "./reportColumns.js";
 import { M_PER_FT, M2_PER_SF } from "./units";
+import { coverageRateForDisplay } from "./coverage.js";
 import { attrValue } from "./conditionColumns.js";
 import { shapeLabelValue } from "./shapeLabels.js";
 import { compareSheetKeys } from "./sheetKey"; // NOT ./sheets — that module imports pdfjs-dist
@@ -390,9 +391,12 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
   // supporting materials — per condition, then a combined buy list. Coverage
   // rates deliberately stay as entered (SF/LF-based) in metric mode — the
   // upstream metric contract; the report panel carries the footnote.
-  const basisLabel = (b) => (b === "linear" ? _t("basis.lf") : b === "count" ? _t("basis.ea") : b === "seam_lf" ? _t("basis.seam_lf") : _t("basis.sf"));
+  const basisLabel = (b) => (b === "linear" ? (M ? "m" : _t("basis.lf")) : b === "count" ? _t("basis.ea") : b === "seam_lf" ? (M ? "seam m" : _t("basis.seam_lf")) : (M ? "m²" : _t("basis.sf")));
   const perCond = [];
-  for (const r of rows) for (const m of (r.materials || [])) perCond.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || _t("basis.unit")} / ${m.per} ${basisLabel(m.basis)}`, m.note || ""]);
+  for (const r of rows) for (const m of (r.materials || [])) {
+    const per = M ? round2(coverageRateForDisplay(m.per, m.basis, units)) : m.per;
+    perCond.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || _t("basis.unit")} / ${per} ${basisLabel(m.basis)}`, m.note || ""]);
+  }
   if (perCond.length) {
     lines.push("");
     lines.push([_t("csv_header.finish"), _t("csv_header.material"), _t("csv_header.qty"), _t("csv_header.unit"), _t("csv_header.coverage"), _t("csv_header.note")].map(esc).join(","));

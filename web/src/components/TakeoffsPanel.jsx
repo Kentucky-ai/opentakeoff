@@ -30,16 +30,15 @@ import { Icon } from "../brand/icons.jsx";
 import { attrValue, columnLabel } from "../lib/conditionColumns.js";
 import { SPEC_FIELDS } from "../lib/reportColumns.js";
 import { num } from "../lib/num.js";
-import { areaVal, areaUnit, lenVal, lenUnit, heightUnit, heightInputToFeet, heightStep, thickUnit, thickInputToInches, thickStep, dimInputStr } from "../lib/units";
+import { areaVal, areaUnit, lenVal, lenUnit, heightUnit, heightInputToFeet, heightStep, thickUnit, thickInputToInches, thickStep, dimInputStr, MM_PER_IN, ftIn, M_PER_FT, thickVal } from "../lib/units";
 import { HATCHES, PALETTE, NO_FILL, HatchSwatch } from "./hatches.jsx";
 import { getLineStyles, LINE_STYLE_IDS } from "../lib/lineStyles.js";
 import { baseTagOf, localCount } from "../lib/variants.ts";
-import { materialKind, getMaterialPresets, GROUT_DEFAULTS, groutDerivedFields, showsGroutCalc, showsGroutDeriveAffordance } from "../lib/coverage.js";
-import { draftCommitValue, blurCommitValue, blurCommitNonNegative } from "../lib/draftInput.js";
+import { materialKind, getMaterialPresets, GROUT_DEFAULTS, groutDerivedFields, coverageRateForDisplay, coverageRateToCanonical, showsGroutCalc, showsGroutDeriveAffordance } from "../lib/coverage.js";
+import { blurCommitNonNegative } from "../lib/draftInput.js";
 import { ROLL_FLOORING_TYPES } from "../lib/rollgoods.js";
 import { hasRollSetup, mintRollSetup } from "../lib/rollTakeoff.js";
 import { Z } from "../lib/ui.js";
-import { ftIn, M_PER_FT, thickVal } from "../lib/units";
 
 export const PANEL_MIN_W = 240;
 export const PANEL_MAX_W = 560;
@@ -88,15 +87,24 @@ const btnClearX = { border: "none", background: "none", color: "var(--ink-muted)
 // a fully valid in-range value; blur clamps an out-of-range value into range
 // and abandons an empty/invalid draft, so the last good committed value
 // redisplays.
-function GroutParamInput({ name, value, title, min = 0, max, width = 52, override, onCommit }) {
-  const [draft, setDraft] = useState(null);   // raw text mid-edit; null = mirror the committed value
+// Grout geometry param — tile dimensions (tileL, tileW, tileT) and joint are
+// stored in inches internally; metric users enter/display in millimetres via
+// the existing thickInputToInches / thickVal conversion. bagLbs stays in lbs.
+function GroutParamInput({ name, value, title, min = 0, max, width = 52, override, onCommit, units = "imperial", kind = "thick" }) {
+  const [draft, setDraft] = useState(null);
+  // metric: display mm, commit inches; imperial: display inches, commit inches
+  const M = units === "metric";
+  const display = M && kind === "thick" ? thickVal(value || 0, "metric") : (value > 0 ? value : "");
+  const toInternal = (n) => M && kind === "thick" ? thickInputToInches(n, "metric") : n;
   return (
-    <input name={name} type="number" min={min || 0} max={max} step="any" title={title}
-      value={draft ?? (value > 0 ? String(value) : "")}
-      onChange={(e) => { const t = e.target.value; setDraft(t); const v = draftCommitValue(t, min, max); if (v != null) onCommit(v); }}
+    <input name={name} type="number" min={min || 0} max={max} step={M ? 1 : "any"} title={title}
+      value={draft ?? (display !== "" ? String(Number(display.toFixed(M ? 1 : 6))) : "")}
+      onChange={(e) => { const t = e.target.value; setDraft(t); const n = parseFloat(t); if (Number.isFinite(n) && n >= (min || 0)) onCommit(toInternal(n)); }}
       onBlur={() => {
-        const v = blurCommitValue(draft, min, max);
-        if (v != null) onCommit(v);
+        if (draft != null) {
+          const n = parseFloat(draft);
+          if (Number.isFinite(n) && n >= (min || 0)) onCommit(toInternal(n));
+        }
         setDraft(null);
       }}
       style={{ ...ip, width, ...(override ? { border: "1px solid var(--c-warning)" } : {}) }} />
@@ -170,27 +178,50 @@ function LibDraftInput({ name, value, number, placeholder, width, onCommitText }
   );
 }
 
+// Material coverage rates are stored as canonical SF/LF per unit. The field
+// shows m²/m per unit in SI and converts back only at commit, preserving the
+// persisted material contract and preventing conversion churn while typing.
+function MaterialRateInput({ name, material: m, units, width = 66, override = false, onCommit }) {
+  const [draft, setDraft] = useState(null);
+  useEffect(() => { setDraft(null); }, [units, m.basis, m.per]);
+  const shown = coverageRateForDisplay(m.per, m.basis, units);
+  return (
+    <input name={name} type="number" min="0" step="any" value={draft ?? (m.per ? String(Number(shown.toFixed(units === "metric" ? 3 : 6))) : "")}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        if (draft != null) {
+          const n = parseFloat(draft);
+          if (Number.isFinite(n) && n >= 0) onCommit(coverageRateToCanonical(n, m.basis, units));
+        }
+        setDraft(null);
+      }}
+      onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) e.currentTarget.blur(); }}
+      placeholder="0" style={{ ...ip, width, ...(override ? { border: "1px solid var(--c-warning)" } : {}) }} />
+  );
+}
+
 // Coverage preset picker — shared by the condition-line editor and the
 // Materials tab so a library "Adhesive" and an attached line offer the same
 // notch/roller list. Renders nothing when the kind has no preset table.
-function CoveragePresetSelect({ material: m, onPick }) {
+function CoveragePresetSelect({ material: m, onPick, units = "imperial" }) {
   const { t } = useTranslation("panels");
   const presets = (m.basis || "area") === "area" ? getMaterialPresets()[materialKind(m)] : undefined;
   if (!presets) return null;
+  const areaU = units === "metric" ? "m²" : "SF";
   return (
     <select name="coverage-preset" value={presets.some((t) => t.label === m.note) ? m.note : ""}
       onChange={(e) => { const t = presets.find((x) => x.label === e.target.value); if (t) onPick({ note: t.label, per: t.per }); }}
       title={t('takeoffs.coverage_preset_title')}
       style={{ ...ip, background: "var(--paper-bright)" }}>
       <option value="">{t('takeoffs.coverage_preset_option')}</option>
-      {presets.map((t) => <option key={t.label} value={t.label}>{t.label} · {t.per} SF/{m.unit || "unit"}</option>)}
+      {presets.map((t) => <option key={t.label} value={t.label}>{t.label} · {Number(coverageRateForDisplay(t.per, "area", units).toFixed(units === "metric" ? 2 : 0))} {areaU}/{m.unit || "unit"}</option>)}
     </select>
   );
 }
 
 // Editable supporting-materials rows for a condition (coverage-derived order qty).
 function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libById, overridden, onRevert, onAttach, onPromote,
-    twin = false, parentTag = "", dropped = [], parentRows = [], onFollowFamilyRow, onRestoreDroppedRow }) {
+    twin = false, parentTag = "", dropped = [], parentRows = [], onFollowFamilyRow, onRestoreDroppedRow, units = "imperial" }) {
   const { t } = useTranslation("panels");
   // library link affordances (#47, all optional so the editor works standalone):
   // linked lines show ⛓; a field differing from its library entry tints amber
@@ -213,11 +244,11 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
         // silently committing a rate of 0 into the buy list and exports
         const setGrout = (patch) => {
           const grout = { ...g, ...patch };
-          onUpdate(m.id, { grout, ...(groutDerivedFields(grout) || {}) });
+          onUpdate(m.id, { grout, ...(groutDerivedFields(grout, units) || {}) });
         };
         const gi = (key, title, extra) => (
           <GroutParamInput name={`grout-${key}`} value={g[key]} title={title} override={ov("grout")}
-            onCommit={(v) => setGrout({ [key]: v })} {...extra} />
+            onCommit={(v) => setGrout({ [key]: v })} units={units} kind="thick" {...extra} />
         );
         return (
           <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
@@ -241,20 +272,20 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
             <input name="material-unit" value={m.unit} onChange={(e) => onUpdate(m.id, { unit: e.target.value })} placeholder={t('takeoffs.mat_unit_placeholder')} style={{ ...ip, width: 60, ...(ov("unit") ? { border: OV } : {}) }} />
             {ov("unit") && rv(m, "unit")}
             <span style={{ color: "var(--ink-muted)" }}>per</span>
-            <input name="material-per" type="number" min="0" step="any" value={m.per || ""} onChange={(e) => onUpdate(m.id, { per: Math.max(0, parseFloat(e.target.value) || 0) })} placeholder="0" style={{ ...ip, width: 66, ...(ov("per") ? { border: OV } : {}) }} />
+            <MaterialRateInput name="material-per" material={m} units={units} override={ov("per")} onCommit={(per) => onUpdate(m.id, { per })} />
             {ov("per") && rv(m, "per")}
             <select name="material-basis" value={m.basis || "area"} onChange={(e) => onUpdate(m.id, { basis: e.target.value })} style={{ ...ip, background: "var(--paper-bright)", ...(ov("basis") ? { border: OV } : {}) }}>
-              <option value="area">{t('takeoffs.mat_basis_floor_sf')}</option>
-              <option value="linear">{t('takeoffs.mat_basis_linear_lf')}</option>
+              <option value="area">{units === "metric" ? t('takeoffs.mat_basis_floor_sf').replace("SF", "m²") : t('takeoffs.mat_basis_floor_sf')}</option>
+              <option value="linear">{units === "metric" ? t('takeoffs.mat_basis_linear_lf').replace("LF", "m") : t('takeoffs.mat_basis_linear_lf')}</option>
               <option value="count">{t('takeoffs.mat_basis_each')}</option>
-              <option value="seam_lf" title={t('takeoffs.mat_basis_seam_lf_title')}>{t('takeoffs.mat_basis_seam_lf')}</option>
+              <option value="seam_lf" title={t('takeoffs.mat_basis_seam_lf_title')}>{units === "metric" ? t('takeoffs.mat_basis_seam_lf').replace("LF", "m") : t('takeoffs.mat_basis_seam_lf')}</option>
             </select>
             {ov("basis") && rv(m, "basis")}
             <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: ov("round") ? "var(--c-warning)" : "var(--ink-muted)" }} title={t('takeoffs.mat_round_title')}>
               <input name="material-round" type="checkbox" checked={m.round !== false} onChange={(e) => onUpdate(m.id, { round: e.target.checked })} />{t('takeoffs.mat_round')}
             </label>
             {ov("round") && rv(m, "round")}
-            <CoveragePresetSelect material={m} onPick={(patch) => onUpdate(m.id, patch)} />
+            <CoveragePresetSelect material={m} onPick={(patch) => onUpdate(m.id, patch)} units={units} />
             <input name="material-note" value={m.note || ""} onChange={(e) => onUpdate(m.id, { note: e.target.value })} placeholder={t('takeoffs.mat_note_placeholder')} style={{ ...ip, width: 150, ...(ov("note") ? { border: OV } : {}) }} />
             {ov("note") && rv(m, "note")}
             {!lm && onPromote && (
@@ -269,15 +300,16 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
             {showsGroutCalc(m) && (
               <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", paddingLeft: 14, color: "var(--ink-muted)", fontSize: 12 }}>
                 <span>{t('takeoffs.grout_tile')}</span>
-                {gi("tileL", "Tile length (in)")}
+                {gi("tileL", units === "metric" ? "Tile length (mm)" : "Tile length (in)")}
                 <span>×</span>
-                {gi("tileW", "Tile width (in)")}
+                {gi("tileW", units === "metric" ? "Tile width (mm)" : "Tile width (in)")}
                 <span>{t('takeoffs.grout_tile_thick')}</span>
-                {gi("tileT", "Tile thickness (in)")}
+                {gi("tileT", units === "metric" ? "Tile thickness (mm)" : "Tile thickness (in)")}
                 <span>{t('takeoffs.grout_joint')}</span>
-                {gi("joint", "Joint width (in) — 1/32″ to 1/2″", { min: 0.03125, max: 0.5, width: 62 })}
+                {gi("joint", units === "metric" ? "Joint width (mm)" : "Joint width (in) — 1/32″ to 1/2″", { min: units === "metric" ? 0.8 : 0.03125, max: units === "metric" ? 12.7 : 0.5, width: 62 })}
                 <span>{t('takeoffs.grout_bag')}</span>
-                {gi("bagLbs", "Bag size (lbs)")}
+                <GroutParamInput name="grout-bagLbs" value={g.bagLbs} title="Bag size (lbs)" override={ov("grout")}
+                  onCommit={(v) => setGrout({ bagLbs: v })} units={units} kind="weight" width={52} />
                 <span>lb</span>
                 {ov("grout") && rv(m, "grout")}
               </div>
@@ -595,9 +627,9 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
               )}
               <select name="condition-roll-unit" value={rs.price_unit || "sf"} onChange={(e) => patch({ price_unit: e.target.value })} style={sel}
                 title={t('takeoffs.roll_unit_title')}>
-                <option value="sy">SY</option>
-                <option value="sf">SF</option>
-                <option value="lf">LF</option>
+                <option value="sy">{M ? "SY" : "SY"}</option>
+                <option value="sf">{M ? "m²" : "SF"}</option>
+                <option value="lf">{M ? "m" : "LF"}</option>
               </select>
             </div>
             {rollInfo && (
@@ -1008,7 +1040,7 @@ function TakeoffsPanel({
             })()}
             <MaterialsEditor materials={c.materials} onAdd={onAddMaterial} onUpdate={onUpdateMaterial} onRemove={onRemoveMaterial}
               library={matLib} libById={matLibById} overridden={matFieldOverridden} onRevert={onRevertMatField}
-              onAttach={onAttachLibMaterial} onPromote={onPromoteMaterial}
+              onAttach={onAttachLibMaterial} onPromote={onPromoteMaterial} units={units}
               twin={!!c.variant_of} parentTag={(conditions.find((x) => x.id === c.variant_of) || {}).finish_tag || ""}
               dropped={c.materials_dropped || []} parentRows={(conditions.find((x) => x.id === c.variant_of) || {}).materials || []}
               onFollowFamilyRow={onFollowFamilyRow} onRestoreDroppedRow={onRestoreDroppedRow} />
@@ -1198,18 +1230,18 @@ function TakeoffsPanel({
                     <span style={{ color: "var(--ink-muted)" }}>1</span>
                     <input name="library-material-unit" value={lm.unit} onChange={(e) => onUpdateLibMaterial(lm.id, { unit: e.target.value })} placeholder={t('takeoffs.mat_unit_placeholder')} style={{ ...ip, width: 54 }} />
             <span style={{ color: "var(--ink-muted)" }}>{t('takeoffs.mat_per')}</span>
-                    <LibDraftInput name="library-material-per" number value={lm.per || ""} placeholder="0" width={62}
-                      onCommitText={(t) => onUpdateLibMaterial(lm.id, { per: Math.max(0, parseFloat(t) || 0) })} />
+                    <MaterialRateInput name="library-material-per" material={lm} units={units} width={62}
+                      onCommit={(per) => onUpdateLibMaterial(lm.id, { per })} />
                     <select name="library-material-basis" value={lm.basis || "area"} onChange={(e) => onUpdateLibMaterial(lm.id, { basis: e.target.value })} style={{ ...ip, background: "var(--paper-bright)" }}>
-                      <option value="area">{t('takeoffs.mat_basis_floor_sf')}</option>
-                      <option value="linear">{t('takeoffs.mat_basis_linear_lf')}</option>
+                      <option value="area">{units === "metric" ? t('takeoffs.mat_basis_floor_sf').replace("SF", "m²") : t('takeoffs.mat_basis_floor_sf')}</option>
+                      <option value="linear">{units === "metric" ? t('takeoffs.mat_basis_linear_lf').replace("LF", "m") : t('takeoffs.mat_basis_linear_lf')}</option>
                       <option value="count">{t('takeoffs.mat_basis_each')}</option>
-                      <option value="seam_lf" title={t('takeoffs.mat_basis_seam_lf_title')}>{t('takeoffs.mat_basis_seam_lf')}</option>
+                      <option value="seam_lf" title={t('takeoffs.mat_basis_seam_lf_title')}>{units === "metric" ? t('takeoffs.mat_basis_seam_lf').replace("LF", "m") : t('takeoffs.mat_basis_seam_lf')}</option>
                     </select>
                     <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--ink-muted)" }} title={t('takeoffs.mat_round_title')}>
                       <input name="library-material-round" type="checkbox" checked={lm.round !== false} onChange={(e) => onUpdateLibMaterial(lm.id, { round: e.target.checked })} />{t('takeoffs.mat_round')}
                     </label>
-                    <CoveragePresetSelect material={lm} onPick={(patch) => onUpdateLibMaterial(lm.id, patch)} />
+                    <CoveragePresetSelect material={lm} onPick={(patch) => onUpdateLibMaterial(lm.id, patch)} units={units} />
                     <LibDraftInput name="library-material-note" value={lm.note || ""} placeholder={t('takeoffs.mat_note_placeholder')} width={120}
                       onCommitText={(t) => onUpdateLibMaterial(lm.id, { note: t })} />
                   </div>

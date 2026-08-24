@@ -17,6 +17,7 @@ import { GETTERS, colGetter, applyUnits, METRIC_CSV_LABELS } from "./reportColum
 import { grandTotals, materialsSummary, roundSheetRow, hasMultipliers, BY_SHEET_BASE_NOTE } from "./totals.js";
 import { round2 } from "./num.js";
 import { M_PER_FT, M2_PER_SF } from "./units";
+import { coverageRateForDisplay } from "./coverage.js";
 import i18n from '../i18n/index.js';
 const _t = (key, options) => i18n.t(key, { ns: 'lib', ...options });
 
@@ -218,10 +219,11 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
   if (hasMultipliers(bySheet)) bySheetRows.push([], [_t("markedset.by_sheet_base_note")]);
 
   // Materials — per condition, then the combined buy list (mirrors the CSV)
-  const basisLabel = (b) => (b === "linear" ? "LF" : b === "count" ? "EA" : b === "seam_lf" ? "seam LF" : "SF");
+  const basisLabel = (b) => (b === "linear" ? (M ? "m" : "LF") : b === "count" ? "EA" : b === "seam_lf" ? (M ? "seam m" : "seam LF") : (M ? "m²" : "SF"));
   const materials = [[_t("csv_header.finish"), _t("csv_header.material"), _t("csv_header.qty"), _t("csv_header.unit"), _t("csv_header.coverage"), _t("csv_header.note")]];
   for (const r of rows) for (const m of (r.materials || [])) {
-    materials.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || _t("basis.unit")} / ${m.per} ${basisLabel(m.basis)}`, m.note || ""]);
+    const per = M ? round2(coverageRateForDisplay(m.per, m.basis, units)) : m.per;
+    materials.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || _t("basis.unit")} / ${per} ${basisLabel(m.basis)}`, m.note || ""]);
   }
   const combined = materialsSummary(rows);
   if (combined.length) {

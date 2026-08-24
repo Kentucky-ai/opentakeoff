@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 // coverage.js is plain JS (allowJs); the tsx loader resolves it from the .ts test.
-import { materialKind, MATERIAL_PRESETS, GROUT_DEFAULTS, GROUT_PARAM_KEYS, groutCoverageSfPerBag, groutDerivedFields, groutParamsEqual, groutNote, inFrac, showsGroutCalc, showsGroutDeriveAffordance } from "../src/lib/coverage.js";
+import { materialKind, MATERIAL_PRESETS, GROUT_DEFAULTS, GROUT_PARAM_KEYS, groutCoverageSfPerBag, groutDerivedFields, groutParamsEqual, groutNote, coverageRateForDisplay, coverageRateToCanonical, inFrac, showsGroutCalc, showsGroutDeriveAffordance } from "../src/lib/coverage.js";
 
 const within = (actual: number, expected: number, tolPct: number) =>
   Math.abs(actual - expected) <= expected * (tolPct / 100);
@@ -73,6 +73,19 @@ test("presets: every kind with a preset table has positive generic rates", () =>
 
 test("groutDerivedFields: valid geometry → rounded per + derivation note", () => {
   assert.deepEqual(groutDerivedFields({ ...GROUT_DEFAULTS }), { per: 512, note: "12×24×3/8″ @ 1/8″ · 25 lb" });
+});
+
+test("grout metric display converts lengths at the UI edge and keeps canonical math", () => {
+  const metric = { tileL: 12, tileW: 24, tileT: 0.375, joint: 0.125, bagLbs: 25 };
+  assert.equal(groutNote(metric, "metric"), "305×610×10 mm @ 3.2 mm · 25 lb");
+  assert.equal(groutDerivedFields(metric, "metric")?.per, groutDerivedFields(metric)?.per);
+});
+
+test("material coverage rates round-trip between canonical SF/LF and metric m²/m", () => {
+  for (const [per, basis, shown] of [[100, "area", 9.290304], [25, "linear", 7.62], [25, "seam_lf", 7.62], [4, "count", 4]] as const) {
+    assert.ok(Math.abs(coverageRateForDisplay(per, basis, "metric") - shown) < 1e-9);
+    assert.ok(Math.abs(coverageRateToCanonical(shown, basis, "metric") - per) < 1e-9);
+  }
 });
 
 test("groutDerivedFields: any invalid/incomplete param → null (keep the last good per + note)", () => {

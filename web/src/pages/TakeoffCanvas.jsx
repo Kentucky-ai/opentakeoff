@@ -7089,7 +7089,7 @@ export default function TakeoffCanvas() {
                         const dl = Math.hypot(tx - fx, ty - fy) || 1;
                         const dnx = -(ty - fy) / dl, dny = (tx - fx) / dl;   // unit normal
                         const tick = 7 / z;
-                        const dimText = [Number(m.len_ft) > 0 ? dimLabel(m.len_ft) : "", m.text].filter(Boolean).join(" · ");
+                        const dimText = [Number(m.len_ft) > 0 ? dimLabel(m.len_ft, units) : "", m.text].filter(Boolean).join(" · ");
                         const hx0 = Math.min(fx, tx), hy0 = Math.min(fy, ty), hx1 = Math.max(fx, tx), hy1 = Math.max(fy, ty);
                         const pad = (6 * w) / z;
                         return (

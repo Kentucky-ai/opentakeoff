@@ -139,6 +139,14 @@ test("reportWorkbook: five tabs, Conditions mirrors the CSV columns and numbers"
   assert.equal(s2![6], 25); // measured LF — no multiplier
 });
 
+test("reportWorkbook: metric material coverage converts canonical rates and labels", () => {
+  const tabs = reportWorkbook({ ...workbookArgs(), units: "metric" });
+  const materials = tabs[2].rows;
+  const adhesive = materials.find((r: any[]) => r[1] === "Adhesive");
+  assert.ok(adhesive);
+  assert.equal(adhesive![4], "1 bucket / 9.29 m²");
+});
+
 test("reportWorkbook: custom column in cols — header, per-row value, blank TOTAL cell", () => {
   const custom = customColProfile([{ id: "div", name: "CSI Division", values: ["09 30 00"] }]);
   const tabs = reportWorkbook({

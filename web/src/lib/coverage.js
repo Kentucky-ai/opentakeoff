@@ -1,4 +1,5 @@
 // Vendor-neutral coverage helpers. Values are generic industry-typical spread
+import { M_PER_FT, M2_PER_SF, MM_PER_IN } from "./units";
 import i18n from '../i18n/index.js';
 const _t = (key) => i18n.t(key, { ns: 'lib' });
 // rates for estimating — always verify against the product data sheet.
@@ -28,6 +29,22 @@ export const getMaterialPresets = () => ({
   ],
 });
 export const MATERIAL_PRESETS = getMaterialPresets();
+
+// Material coverage rates are persisted in canonical SF/LF per unit. These
+// helpers are the display/input edge for the UI and human-readable exports;
+// totals and JSON/API payloads continue to consume the canonical value.
+export function coverageRateForDisplay(per, basis = "area", units = "imperial") {
+  const n = Number(per) || 0;
+  if (units !== "metric") return n;
+  return basis === "linear" || basis === "seam_lf" ? n * M_PER_FT : basis === "count" ? n : n * M2_PER_SF;
+}
+
+export function coverageRateToCanonical(value, basis = "area", units = "imperial") {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  if (units !== "metric") return n;
+  return basis === "linear" || basis === "seam_lf" ? n / M_PER_FT : basis === "count" ? n : n / M2_PER_SF;
+}
 export const GROUT_DENSITY = 8.33;         // industry-standard grout density factor
 export const GROUT_DEFAULTS = { tileL: 12, tileW: 24, tileT: 0.375, joint: 0.125, bagLbs: 25 };
 export const GROUT_PARAM_KEYS = ["tileL", "tileW", "tileT", "joint", "bagLbs"];
@@ -78,7 +95,16 @@ export function inFrac(v) {
   if (!rem) return String(whole);
   return whole ? `${whole} ${rem}/${d}` : `${rem}/${d}`;
 }
-export const groutNote = (g) => `${g.tileL}×${g.tileW}×${inFrac(g.tileT)}″ @ ${inFrac(g.joint)}″ · ${g.bagLbs} lb`;
+export const groutNote = (g, units = "imperial") => {
+  if (units === "metric") {
+    const tl = Math.round((g.tileL || 0) * MM_PER_IN);
+    const tw = Math.round((g.tileW || 0) * MM_PER_IN);
+    const tt = Math.round((g.tileT || 0) * MM_PER_IN);
+    const jw = Math.round((g.joint || 0) * MM_PER_IN * 10) / 10;
+    return `${tl}×${tw}×${tt} mm @ ${jw} mm · ${g.bagLbs} lb`;
+  }
+  return `${g.tileL}×${g.tileW}×${inFrac(g.tileT)}″ @ ${inFrac(g.joint)}″ · ${g.bagLbs} lb`;
+};
 
 // The { per, note } patch a grout-geometry edit derives, or null when the
 // geometry is incomplete/invalid (a cleared input mid-edit, a zero, NaN) —
@@ -86,10 +112,10 @@ export const groutNote = (g) => `${g.tileL}×${g.tileW}×${inFrac(g.tileT)}″ @
 // that silently zeroes the line's quantity in the buy list and every export.
 // Small rates keep two decimals so mosaic-scale coverages (e.g. 2.49 SF/bag)
 // don't round away up to ~20% of the order — and never floor to 0.
-export function groutDerivedFields(grout) {
+export function groutDerivedFields(grout, units = "imperial") {
   const rate = groutCoverageSfPerBag(grout);
   if (!Number.isFinite(rate) || rate <= 0) return null;
   const per = rate >= 10 ? Math.round(rate) : Math.round(rate * 100) / 100;
   if (!(per > 0)) return null;
-  return { per, note: groutNote(grout) };
+  return { per, note: groutNote(grout, units) };
 }
