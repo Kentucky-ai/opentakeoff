@@ -2,6 +2,15 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-24 — the 365 path exists, and self-hosters are the proof
+
+### Added
+- **Microsoft 365 annotation sync, end to end and dark by default (#315, experimental).** The Graph client shipped engine-proven this morning; this closes the loop a real shop needs: browser-side MSAL sign-in against **your own tenant** (tokens live in your browser — no relay, no token store, no server of ours in the path), a configured document library as the transport, and the same sidecar, rev discipline, three-way merge, and presence heartbeats every other transport uses. Dark unless the build sets `VITE_MSAL_CLIENT_ID` + `VITE_GRAPH_DRIVE_ID`, and per-browser opt-in even then — an unconfigured build renders no 365 UI at all. Stated plainly in the UI and `SELF_HOSTING.md`: the engine passes the full reconciler suite against a mock tenant, but **no one on this project has a 365 tenant** — self-hosters who do are the validation path, every failure state is written to be reportable, and #315 stays open until a live tenant round-trip is on the record.
+- **One synced-workspace composite.** The folder (#316) and 365 (#315) transports now assemble through a single shared composite (`sync/workspaceComposite.js`) — reconciler + snapshots + presence wired once, so the transports cannot drift apart.
+
+### Fixed
+- **An anonymous presence pass no longer litters.** Reading the room (no author declared) now resolves the sidecar without creating it — a read-only viewer on a fresh transport leaves the folder or library byte-untouched, the same no-litter discipline the pull path has always had.
+
 ## 2026-08-24 — two estimators, one project, zero losers
 
 ### Added

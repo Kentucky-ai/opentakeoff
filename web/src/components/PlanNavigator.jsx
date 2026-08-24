@@ -27,6 +27,8 @@ import { isGoogleConfigured } from "../lib/google/auth.js";
 import { projectHomeFolderId } from "../lib/projectHome.js";
 import { isFolderSyncSupported, loadFolderLink, linkFolder, forgetFolder, queryFolderPermission } from "../lib/fs/fsAccess.js";
 import { listConflictCopies } from "../lib/fs/fsProvider.js";
+import { m365Config, M365_ENABLED_KEY } from "../lib/msgraph/config.js";
+import { metaGet, metaPut, metaDelete } from "../lib/store.js";
 import { groupSheetsByLevel, sortGalleryGroups } from "../lib/sheetLevels.js";
 
 const THUMB_W = 380;
@@ -71,12 +73,48 @@ export default function PlanNavigator({
   const browseEnabled = cloudMode && typeof listFolder === "function";
   const [mode, setMode] = useState(browseEnabled && initialMode === "browse" ? "browse" : "plan");
 
+  // ── 365 sync (#315, experimental): opt-in state + preloaded auth ────────
+  // Rendered only when the BUILD is configured for a document library; the
+  // MSAL module preloads on mount so the click handler keeps its user gesture
+  // for the popup. Activating 365 hides the folder entry (one shadow at a
+  // time — the workspace gate picks 365 first).
+  const m365Cfg = !cloudMode ? m365Config() : null;
+  const [m365Active, setM365Active] = useState(false);
+  const [m365Err, setM365Err] = useState("");
+  const m365AuthRef = useRef(null);
+  useEffect(() => {
+    if (!m365Cfg) return;
+    let live = true;
+    metaGet(M365_ENABLED_KEY).then((v) => { if (live) setM365Active(v === true); }).catch(() => {});
+    import("../lib/msgraph/auth.js")
+      .then(({ createMsalAuth }) => { if (live) m365AuthRef.current = createMsalAuth(m365Cfg); })
+      .catch(() => { /* module load failure surfaces on click as a readable error */ });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const doLinkM365 = async () => {
+    setM365Err("");
+    try {
+      const auth = m365AuthRef.current;
+      if (!auth) throw new Error("sign-in module didn't load — check the console and report on issue #315");
+      await auth.signIn(); // popup — needs this click's gesture
+      await metaPut(M365_ENABLED_KEY, true);
+      window.location.reload(); // the workspace gate installs the 365 store
+    } catch (e) {
+      setM365Err(String(e?.message || e));
+    }
+  };
+  const doStopM365 = async () => {
+    await metaDelete(M365_ENABLED_KEY);
+    window.location.reload();
+  };
+
   // ── folder sync (#316): the local workspace's link state ────────────────
   // Local mode + Chromium only; on other engines (or in cloud mode) none of
   // this UI renders — degrade with no dead controls. Conflict copies are the
   // sync client's fork files ("annotations (1).json") — surfaced by name so a
   // fork is a visible thing to resolve, never an orphan.
-  const folderUiOn = !cloudMode && isFolderSyncSupported();
+  const folderUiOn = !cloudMode && isFolderSyncSupported() && !m365Active;
   const [folderLink, setFolderLink] = useState(null);
   const [folderCopies, setFolderCopies] = useState([]);
   useEffect(() => {
@@ -629,6 +667,29 @@ export default function PlanNavigator({
                     )}
                   </div>
                 )}
+                {m365Cfg && (
+                  <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6 }}>
+                    {!m365Active ? (
+                      <>
+                        <button type="button" onClick={doLinkM365}
+                          title="Sign in with your work account and sync this workspace through the configured document library. Experimental (issue #315) — tokens stay in this browser."
+                          style={{ border: "none", background: "transparent", padding: 0, color: "var(--cobalt)", cursor: "pointer", fontSize: 12, textDecoration: "underline", fontFamily: "var(--f-body)" }}>
+                          or sync through your Microsoft 365 library (experimental)
+                        </button>
+                        {m365Err ? <div style={{ color: "var(--c-danger)", fontSize: 11.5, marginTop: 5 }}>365 sign-in failed: {m365Err}</div> : null}
+                      </>
+                    ) : (
+                      <span style={{ color: "var(--ink-muted)" }}>
+                        syncing through your <strong style={{ color: "var(--ink)" }}>Microsoft 365 library</strong>
+                        {" · "}
+                        <button type="button" onClick={doStopM365}
+                          style={{ border: "none", background: "transparent", padding: 0, color: "var(--c-danger)", cursor: "pointer", fontSize: 12, textDecoration: "underline", fontFamily: "var(--f-body)" }}>
+                          stop
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                )}
                 {folderUiOn && (
                   <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6 }}>
                     {!folderLink ? (
@@ -770,6 +831,16 @@ export default function PlanNavigator({
           {working ? "Working…" : mSel.length ? `${mSel.length} PDF${mSel.length === 1 ? "" : "s"} selected${mSelShapes ? ` · ${mSelShapes} takeoff${mSelShapes === 1 ? "" : "s"} on them` : ""}` : "check the PDFs to remove — removing never deletes takeoff data"}
         </span>
         <div style={{ flex: 1 }} />
+        {m365Cfg && m365Active && (
+          <span title="Annotations sync through the configured Microsoft 365 document library (experimental — issue #315)"
+            style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)" }}>
+            ⇄ 365 library{" "}
+            <button onClick={doStopM365} title="Stop syncing through the 365 library — local work stays in this browser"
+              style={{ border: "none", background: "transparent", padding: 0, color: "var(--c-danger)", cursor: "pointer", fontSize: 11, textDecoration: "underline", fontFamily: "var(--f-mono)" }}>
+              stop
+            </button>
+          </span>
+        )}
         {folderUiOn && (folderLink ? (
           <span title={folderCopies.length ? `The folder's sync client forked the annotations file — someone should reconcile these by hand:\n${folderCopies.join("\n")}` : `Annotations sync through “${folderLink.name}” — the folder's own sync client replicates them`}
             style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: folderCopies.length ? "var(--c-warning)" : "var(--ink-muted)" }}>

@@ -46,6 +46,10 @@ export async function ensureDeviceId() {
  * @param {() => Promise<string>} opts.ensureSidecarId  the shared `.opentakeoff`
  *   resolver for this transport (same injection discipline as snapshotSync —
  *   one sidecar, no split-brain)
+ * @param {() => Promise<string|null>} [opts.findSidecarId] NON-creating resolver
+ *   for the read path: an anonymous session (no author declared) only READS
+ *   the room and must never litter an empty sidecar into a fresh transport.
+ *   When omitted, anonymous reads fall back to ensureSidecarId (tests/standalone).
  * @param {string} opts.deviceId  this device's heartbeat file key
  * @param {() => string|null} opts.getAuthor  declared author name; null → no writes
  * @param {() => string|null} [opts.getSheet] label of the sheet currently open
@@ -61,6 +65,7 @@ export async function ensureDeviceId() {
 export function createPresence({
   provider,
   ensureSidecarId,
+  findSidecarId,
   deviceId,
   getAuthor,
   getSheet = () => null,
@@ -97,14 +102,24 @@ export function createPresence({
   // throws: presence is advisory and must not surface transport blips.
   async function beat() {
     try {
-      const presId = await ensurePresenceFolderId();
       const name = getAuthor();
+      let presId;
       if (name) {
+        presId = await ensurePresenceFolderId();
         await provider.putJson({
           folderId: presId,
           name: `${deviceId}.json`,
           data: { device: deviceId, name, sheet: getSheet() ?? null, at: new Date(now()).toISOString() },
         });
+      } else {
+        // Anonymous: read-only pass. Resolve without creating — a fresh
+        // transport with no presence yet stays untouched (no litter), and an
+        // empty room is simply an empty room.
+        const sidecarId = await (findSidecarId ? findSidecarId() : ensureSidecarId());
+        if (!sidecarId) { peersCache = []; notify(); return; }
+        const child = await provider.findChild(sidecarId, PRESENCE_FOLDER);
+        if (!child) { peersCache = []; notify(); return; }
+        presId = child.id;
       }
       const children = await provider.listChildren(presId);
       const next = [];

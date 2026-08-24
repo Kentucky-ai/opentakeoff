@@ -7,9 +7,10 @@ import "./styles/print.css";   // OT-only print block — kept out of app.css so
 import TakeoffCanvas from "./pages/TakeoffCanvas.jsx";
 import ProjectHome from "./components/ProjectHome.jsx";
 import { GoogleAuthProvider, useGoogleAuth } from "./lib/google/AuthContext.jsx";
-import { projectIdFromUrl, setActiveStore } from "./lib/store.js";
+import { projectIdFromUrl, setActiveStore, metaGet, metaDelete } from "./lib/store.js";
 import { isGoogleConfigured, getAccessToken } from "./lib/google/auth.js";
 import { loadFolderLink, queryFolderPermission, requestFolderPermission, forgetFolder } from "./lib/fs/fsAccess.js";
+import { m365Config, M365_ENABLED_KEY } from "./lib/msgraph/config.js";
 import { cloudSyncEnabled } from "./lib/prefs.js";
 import { projectHomeFolderId } from "./lib/projectHome.js";
 import { initTheme } from "./lib/theme.js";
@@ -318,6 +319,153 @@ function FolderGate() {
   );
 }
 
+// 365-synced workspace (#315, EXPERIMENTAL — awaiting a live tenant proof):
+// when the build is configured for a document library (msgraph/config.js) AND
+// this browser opted in, wrap the anonymous workspace with the Graph-backed
+// composite. Same install-then-mount discipline as the other gates; every
+// state is readable, never a wedge. MSAL and all Graph code load only here.
+function M365Gate({ cfg }) {
+  // status: checking | signin | building | ready | local | dead
+  const [status, setStatus] = useState("checking");
+  const [err, setErr] = useState("");
+  const modRef = React.useRef(null);
+  const storeRef = React.useRef(null);
+
+  async function loadModules() {
+    if (modRef.current) return modRef.current;
+    const [{ createMsalAuth }, { buildM365Store }, { createGraphDrive }] = await Promise.all([
+      import("./lib/msgraph/auth.js"),
+      import("./lib/msgraph/composite.js"),
+      import("./lib/msgraph/graphDrive.js"),
+    ]);
+    modRef.current = { auth: createMsalAuth(cfg), buildM365Store, createGraphDrive };
+    return modRef.current;
+  }
+  async function install() {
+    const m = await loadModules();
+    const graph = m.createGraphDrive({ getToken: m.auth.getToken, driveId: cfg.driveId });
+    const next = m.buildM365Store(cfg, graph);
+    setActiveStore(next);
+    storeRef.current = next;
+    setStatus("ready");
+  }
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const m = await loadModules();
+        const acc = await m.auth.currentAccount();
+        if (!live) return;
+        if (acc) await install();
+        else setStatus("signin"); // cached session gone — one readable click re-enters
+      } catch (e) {
+        if (live) { setErr(String(e?.message || e)); setStatus("dead"); }
+      }
+    })();
+    return () => { live = false; setActiveStore(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Lazy remote poll: Graph reads cost quota, so 2 minutes + a focus check —
+  // still inside one coffee refill for noticing a teammate's push.
+  useEffect(() => {
+    if (status !== "ready") return;
+    const check = () => {
+      const bridge = storeRef.current?.syncBridge;
+      bridge?.checkRemote?.();
+      bridge?.presence?.beat?.();
+    };
+    const t = setInterval(() => storeRef.current?.syncBridge?.checkRemote?.(), 120_000);
+    window.addEventListener("focus", check);
+    return () => { clearInterval(t); window.removeEventListener("focus", check); };
+  }, [status]);
+
+  const stop = async () => {
+    try { await modRef.current?.auth.signOut(); } catch { /* local cache clear is best-effort */ }
+    await metaDelete(M365_ENABLED_KEY);
+    window.location.reload();
+  };
+
+  if (status === "checking" || status === "building") return null;
+  if (status === "ready") return <TakeoffCanvas key={`m365:${cfg.driveId}:${cfg.folderId}`} />;
+  if (status === "local") return <TakeoffCanvas />;
+
+  const linkBtn = { border: "none", background: "transparent", color: "var(--ink-muted)", fontSize: 12.5, cursor: "pointer", textDecoration: "underline" };
+  if (status === "signin") {
+    return (
+      <div style={centered}>
+        {brand}
+        <div style={{ fontSize: 15, fontWeight: 600 }}>This workspace syncs through your Microsoft 365 library</div>
+        <div style={{ fontSize: 13, color: "var(--ink-muted)", maxWidth: 460 }}>
+          Sign in with your work account to keep syncing. The token stays in this browser —
+          there is no server of ours between you and your tenant. (Experimental — issue #315.)
+        </div>
+        <button type="button"
+          onClick={async () => {
+            setErr("");
+            try {
+              const m = await loadModules();
+              await m.auth.signIn();
+              setStatus("building");
+              await install();
+            } catch (e) {
+              setErr(`Sign-in failed: ${String(e?.message || e)} — if this is an admin-consent block, SELF_HOSTING.md names the scope to consent.`);
+            }
+          }}
+          style={{ padding: "9px 16px", border: "1px solid var(--ink)", background: "var(--ink)",
+            color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 13.5 }}>
+          Sign in with Microsoft
+        </button>
+        {err ? <div style={{ fontSize: 12.5, color: "var(--c-danger)", maxWidth: 460 }}>{err}</div> : null}
+        <div style={{ display: "flex", gap: 16 }}>
+          <button type="button" onClick={() => setStatus("local")} style={linkBtn}>not now — work locally</button>
+          <button type="button" onClick={stop} style={{ ...linkBtn, color: "var(--c-danger)" }}>stop syncing through 365</button>
+        </div>
+      </div>
+    );
+  }
+  // dead: modules or store failed — say exactly that, local work is safe.
+  return (
+    <div style={centered}>
+      {brand}
+      <div style={{ fontSize: 15, fontWeight: 600 }}>365 sync can't start</div>
+      <div style={{ fontSize: 13, color: "var(--ink-muted)", maxWidth: 460 }}>
+        {err || "The Microsoft sign-in layer failed to load."} Your takeoff is safe in this browser.
+        This path is experimental (issue #315) — a report of this exact message is exactly the
+        external testing it needs.
+      </div>
+      <div style={{ display: "flex", gap: 16 }}>
+        <button type="button" onClick={() => setStatus("local")}
+          style={{ padding: "9px 16px", border: "1px solid var(--ink)", background: "var(--ink)",
+            color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 13.5 }}>
+          Work locally
+        </button>
+        <button type="button" onClick={stop} style={{ ...linkBtn, color: "var(--c-danger)" }}>stop syncing through 365</button>
+      </div>
+    </div>
+  );
+}
+
+// Pick the local workspace's shadow: the 365 library when configured AND this
+// browser opted in, else the folder link, else the plain local canvas —
+// decided before any store installs, so the canvas never mounts twice.
+function WorkspaceGate() {
+  const cfg = m365Config();
+  const [pick, setPick] = useState(cfg ? null : "folder");
+  useEffect(() => {
+    if (!cfg) return;
+    let live = true;
+    metaGet(M365_ENABLED_KEY)
+      .then((v) => { if (live) setPick(v === true ? "m365" : "folder"); })
+      .catch(() => { if (live) setPick("folder"); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (pick === null) return null; // ~ms IDB read — no flash
+  return pick === "m365" ? <M365Gate cfg={cfg} /> : <FolderGate />;
+}
+
 function App() {
   // Subscribe to navigation: react-router bails out of re-rendering the same
   // element on navigate(), so App must watch the location itself. The store.js
@@ -331,8 +479,9 @@ function App() {
   // open the bundled demo plan or drop your own, no sign-in required.
   // Google sign-in (to browse team projects at /projects) is a subtle,
   // opt-in link on that screen, never a wall in front of it. A persisted
-  // folder link (#316) wraps this same local workspace with folder sync.
-  return <FolderGate />;
+  // folder link (#316) or 365 opt-in (#315) wraps this same local workspace
+  // with sync.
+  return <WorkspaceGate />;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(
