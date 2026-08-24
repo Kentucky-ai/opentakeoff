@@ -651,7 +651,9 @@ export function build(g, ftPx, texts){
   // never sits inside a text box; (2) a wall LANDS on other walls at both
   // ends — a leaf, a dimension, a grain arrow floats free at one end.
   if(!OPTS.NOANNOT){
-    const tb=(texts||[]).map(t=>[t.x-0.15*ftPx, t.y-t.h-0.15*ftPx, t.x+t.w+0.15*ftPx, t.y+0.15*ftPx]);
+    // rotated marks ("GRAIN") report w/h in their own frame — box the larger
+    // extent both ways so a vertical label is covered too
+    const tb=(texts||[]).map(t=>{ const e=Math.max(t.w,t.h); return [t.x-0.2*ftPx, t.y-e-0.2*ftPx, t.x+e+0.2*ftPx, t.y+0.2*ftPx]; });
     const inText=(x,y)=>{ for(const b of tb){ if(x>=b[0]&&x<=b[2]&&y>=b[1]&&y<=b[3]) return true; } return false; };
     const pool=[];
     for(const ring of poche) for(let i=0;i<ring.length;i++){const p=ring[i],q=ring[(i+1)%ring.length];pool.push([p[0],p[1],q[0],q[1]]);}
@@ -672,13 +674,31 @@ export function build(g, ftPx, texts){
       // text outline: the WHOLE stroke inside one text box (a midpoint test
       // dropped wall strokes passing under a tag — measured CI 28→27, AU 15→14)
       if(!OPTS.NOANNOT_TEXT && len<4*ftPx && inText(L[0],L[1]) && inText(L[2],L[3]) && inText(mx,my)) return;
-      if(len<6*ftPx){
-        // BOTH ends free = floating annotation (dimension, grain arrow). One
-        // free end stays: a wall stub at a cased opening ends free too
-        // (measured: one-end rule cost CI 28→25, AU 15→12).
+      if(len<7*ftPx){
         const k=base+i;
         const e1=near(L[0],L[1],0.4*ftPx,k), e2=near(L[2],L[3],0.4*ftPx,k);
+        // BOTH ends free = floating annotation (dimension, grain arrow).
         if(!OPTS.NOANNOT_FREE && !e1&&!e2) return;
+        // ONE free end AND unpaired = an open door leaf along the wall, a
+        // witness line, a counter edge. A wall stub at a cased opening ends
+        // free too, but it is PAIRED (its other face line, or poché) — that
+        // is what protects it (a bare one-end rule cost CI 28→25, AU 15→12).
+        if(!OPTS.NOANNOT_LEAF && (!e1||!e2)){
+          const u=unit(L), n=[-u[1],u[0]];
+          let paired=false;
+          for(let q=0;q<pool.length&&!paired;q++){
+            if(q===k) continue;
+            const T=pool[q], v=unit(T);
+            if(Math.abs(u[0]*v[0]+u[1]*v[1])<0.985) continue;
+            const d=Math.abs((T[0]-L[0])*n[0]+(T[1]-L[1])*n[1]);
+            if(d<0.15*ftPx||d>1.5*ftPx) continue;
+            const t=(x,y)=>(x-L[0])*u[0]+(y-L[1])*u[1];
+            const a0=Math.min(t(L[0],L[1]),t(L[2],L[3])), a1=Math.max(t(L[0],L[1]),t(L[2],L[3]));
+            const b0=Math.min(t(T[0],T[1]),t(T[2],T[3])), b1=Math.max(t(T[0],T[1]),t(T[2],T[3]));
+            if(Math.min(a1,b1)-Math.max(a0,b0) >= 0.8*ftPx) paired=true;
+          }
+          if(!paired) return;
+        }
       }
       kept.push(L); keptStage.push(strokeStage[i]);
     });
