@@ -1626,6 +1626,9 @@ export function netRoomAt(net, x, y, ftPx){
     fi = best;
   }
   if (fi < 0) return null;
+  // a label box / tag / fixture pocket is not a room — refuse rather than
+  // propose a 2 SF ring around "WB-01"
+  if (arr.faces[fi].area < 8*ftPx*ftPx) return null;
   const GATE = Math.max(Math.min(OPTS.GATESF*ftPx*ftPx, 0.5*arr.faces[fi].area), 6*ftPx*ftPx);
   const POCKET = OPTS.POCKETSF*ftPx*ftPx;
   const set = growRoom(arr, fi, solid, GATE, undefined, narrowFace, null, POCKET||undefined, false, fixtureFace, !starved);
@@ -1636,5 +1639,54 @@ export function netRoomAt(net, x, y, ftPx){
   let area = shoe(out.ring);
   const holes = [];
   for (const h of out.holes) { const hA = shoe(h); if (hA >= OPTS.HOLESF*ftPx*ftPx) { area -= hA; holes.push(h); } }
-  return { ring: out.ring, holes, areaPx: area, faces: set.length, seedFace: fi, starved };
+  // The arrangement rings carry a vertex at EVERY noded intersection along a
+  // straight wall and every hairline jog where the band was refused — a
+  // 60-handle ring for a 4-corner room. Simplify to what an estimator draws:
+  // merge collinear runs (0.12 ft lateral) and drop notches shallower than
+  // 0.4 ft (jamb pockets, band cavities) that his ruler runs straight past.
+  const ring = simplifyRing(out.ring, 0.12*ftPx, 0.4*ftPx);
+  return { ring, holes, areaPx: area, faces: set.length, seedFace: fi, starved };
+}
+
+function simplifyRing(ring, colTol, notchTol){
+  if (ring.length < 4) return ring;
+  let pts = ring.slice();
+  // 1. RDP-style collinear merge on the closed ring
+  const rdp = (arr) => {
+    const n = arr.length; if (n < 4) return arr;
+    const keep = new Array(n).fill(false);
+    // seed with the two farthest-apart points so the closed ring has anchors
+    let a0=0,a1=0,best=-1;
+    for(let i=0;i<n;i++) for(let j=i+1;j<n;j++){ const d=Math.hypot(arr[i][0]-arr[j][0],arr[i][1]-arr[j][1]); if(d>best){best=d;a0=i;a1=j;} }
+    keep[a0]=keep[a1]=true;
+    const rec=(i0,i1)=>{ // indices along the ring from i0 to i1 (wrapping)
+      const span=(i1-i0+n)%n; if(span<2) return;
+      const A=arr[i0],B=arr[i1]; const dx=B[0]-A[0],dy=B[1]-A[1]; const L=Math.hypot(dx,dy)||1;
+      let mi=-1,md=-1;
+      for(let k=1;k<span;k++){ const i=(i0+k)%n; const P=arr[i];
+        const d=Math.abs((P[0]-A[0])*dy-(P[1]-A[1])*dx)/L; if(d>md){md=d;mi=i;} }
+      if(md>colTol){ keep[mi]=true; rec(i0,mi); rec(mi,i1); }
+    };
+    rec(a0,a1); rec(a1,a0);
+    return arr.filter((_,i)=>keep[i]);
+  };
+  pts = rdp(pts);
+  // 2. notch removal: a vertex pair (i, i+1) forming a short jog whose both
+  //    legs return within notchTol of the line through its neighbours
+  let changed=true, guard=0;
+  while(changed && guard++<8 && pts.length>4){
+    changed=false;
+    const n=pts.length;
+    for(let i=0;i<n && pts.length>4;i++){
+      const P=pts[(i-1+n)%n], A=pts[i], B=pts[(i+1)%n], Q=pts[(i+2)%n];
+      const dx=Q[0]-P[0], dy=Q[1]-P[1], L=Math.hypot(dx,dy)||1;
+      const dA=Math.abs((A[0]-P[0])*dy-(A[1]-P[1])*dx)/L;
+      const dB=Math.abs((B[0]-P[0])*dy-(B[1]-P[1])*dx)/L;
+      const jog=Math.hypot(B[0]-A[0],B[1]-A[1]);
+      if(dA<=notchTol && dB<=notchTol && jog<=2*notchTol){
+        pts.splice(i, 2); changed=true; break;
+      }
+    }
+  }
+  return pts.length>=3 ? pts : ring;
 }
