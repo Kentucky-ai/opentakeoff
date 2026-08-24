@@ -354,6 +354,8 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
       const cell = col.spec ? { ...td, textAlign: "left", whiteSpace: "normal", maxWidth: 240 } : { ...td, textAlign: "left" };
       return <td key={col.key} style={cell}>{v || "—"}</td>;
     }
+    // Distinguish numeric zero from blank/null/undefined: a legitimate 0
+    // renders "0"; only missing values render em dash.
     switch (col.key) {
       case "finish":
         return (
@@ -366,19 +368,19 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
           </td>
         );
       case "shapes":
-        return <td key={col.key} style={td}>{v}</td>;
+        return <td key={col.key} style={td}>{v != null ? v : "—"}</td>;
       case "waste_pct":
-        return <td key={col.key} style={td}>{v ? `${num(v, 0)}%` : "—"}</td>;
+        return <td key={col.key} style={td}>{v != null ? `${num(v, 0)}%` : "—"}</td>;
       case "ea":
-        return <td key={col.key} style={td}>{v ? num(v, 0) : "—"}</td>;
+        return <td key={col.key} style={td}>{v != null ? num(v, 0) : "—"}</td>;
       case "total_sf_net":
-        return <td key={col.key} style={{ ...td, fontWeight: 700, color: "var(--cobalt)" }}>{r.total_sf ? num(v) : "—"}</td>;
+        return <td key={col.key} style={{ ...td, fontWeight: 700, color: "var(--cobalt)" }}>{r.total_sf != null ? num(v) : "—"}</td>;
       case "sy_net":
-        return <td key={col.key} style={{ ...td, color: "var(--cobalt)" }}>{r.total_sf ? num(v) : "—"}</td>;
+        return <td key={col.key} style={{ ...td, color: "var(--cobalt)" }}>{r.total_sf != null ? num(v) : "—"}</td>;
       case "perimeter_ref":
-        return <td key={col.key} style={{ ...td, color: "var(--ink-muted)" }}>{v ? num(v) : "—"}</td>;
+        return <td key={col.key} style={{ ...td, color: "var(--ink-muted)" }}>{v != null ? num(v) : "—"}</td>;
       default: // floor_sf, wall_sf, border_sf, lf, waste_sf, waste_lf, …
-        return <td key={col.key} style={td}>{v ? num(v) : "—"}</td>;
+        return <td key={col.key} style={td}>{v != null ? num(v) : "—"}</td>;
     }
   };
 

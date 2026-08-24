@@ -7692,6 +7692,7 @@ export default function TakeoffCanvas() {
             edit={rollEdit} onEdit={setRollEdit}
             onReorder={onReorderRollCuts} onResetOrder={onResetRollOrder}
             onClose={() => setRollPanelOpen(false)}
+            units={units}
           />
         )}
 

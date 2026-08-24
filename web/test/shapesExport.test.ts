@@ -145,34 +145,35 @@ test("shapesToJson: schema envelope wraps the rows", () => {
 
 // ── metric unit-system (Task 4) ─────────────────────────────────────────────
 // shapes CSV/JSON are raw canonical exports — data stays in internal feet.
-// In metric mode, shapesToCsv appends a note to the comment line so the
-// reader isn't misled, matching the XLSX shapes tab convention.
+// In metric mode, shapesToCsv converts values and headers to m²/m/m for
+// human readability, matching the XLSX shapes tab convention.
 
-test("shapesToCsv with metric: appends raw-data note, data stays canonical (internal feet)", () => {
+test("shapesToCsv with metric: converts headers and values to m²/m/m", () => {
   const conds2 = [{ id: "ct", finish_tag: "CT-1" }];
   const shapes2 = [floor("a", 100, 40)];
   const csv = shapesToCsv(shapesDetail(conds2, shapes2), "Job 42", "OpenTakeoff", "metric");
   const lines = csv.split("\n");
   // title line is first ("# Job 42 — OpenTakeoff shapes"), comment is second
-  assert.ok(lines[1].includes("Raw internal SF/LF (display units: metric)"),
-    "metric note appended to comment line");
-  // data values stay in canonical internal feet (100, not 100 × 0.09290304)
-  // find the data row (after header which is lines[2])
+  assert.ok(lines[1].startsWith("# Per-shape measured quantities"),
+    "semantics comment line present");
+  // headers use metric labels
+  assert.equal(lines[2], "Shape,Sheet,Sheet ID,Finish,Role,Area m²,m,EA,Height m,Height override,Origin",
+    "headers use metric labels");
+  // data values are converted: 100 SF → 9.29 m², 40 LF → 12.19 m
   const dataRow = lines[3];
-  assert.ok(dataRow.includes(",100,") || dataRow.startsWith("a,sh1,sh1,CT-1,floor_area,100,"),
-    "area_sf stays in canonical feet");
-  // headers unchanged (raw labels describe the raw data)
-  assert.equal(lines[2], "Shape,Sheet,Sheet ID,Finish,Role,Area SF,LF,EA,Height ft,Height override,Origin",
-    "headers stay imperial (describe raw internal values)");
+  const cells = dataRow.split(",");
+  assert.ok(cells[5].includes("9.29"), `area_sf converted: ${cells[5]}`);
+  assert.ok(cells[6].includes("12.19"), `lf converted: ${cells[6]}`);
 });
 
-test("shapesToCsv with imperial (default): no metric note, byte-compatible", () => {
+test("shapesToCsv with imperial (default): no conversion, byte-compatible", () => {
   const conds2 = [{ id: "ct", finish_tag: "CT-1" }];
   const shapes2 = [floor("a", 100)];
   const csvDefault = shapesToCsv(shapesDetail(conds2, shapes2), "Job 42");
   const csvExplicit = shapesToCsv(shapesDetail(conds2, shapes2), "Job 42", "OpenTakeoff", "imperial");
   assert.equal(csvDefault, csvExplicit, "default (no units) matches explicit imperial");
-  assert.ok(!csvDefault.includes("Raw internal"), "no metric note in imperial");
+  assert.ok(!csvDefault.includes("m²"), "no m² in imperial headers");
+  assert.ok(!csvDefault.includes("9.29"), "no metric conversion in imperial data");
 });
 
 test("shapesToJson: always raw canonical regardless of units context", () => {

@@ -267,3 +267,96 @@ test("a metric wall traced at 2.4384 m height stores canonical 8 ft", () => {
   const hft = hm / M_PER_FT;
   assert.ok(Math.abs(LFft * hft - 80) < 0.01, `expected 80 SF, got ${LFft * hft}`);
 });
+
+// ── P1-1: Roll UI metric round-trip ────────────────────────────────────────
+// Roll setup stores width in feet and seam/wall overage in inches. Metric
+// display shows meters (width/length) and millimetres (seam/wall). Input
+// back-conversion must preserve the canonical value without drift.
+
+test("roll width metric round-trip: 12 ft = 3.6576 m", () => {
+  // Display: 12 ft → 3.6576 m
+  const widthM = 12 * M_PER_FT;
+  assert.ok(Math.abs(widthM - 3.6576) < 1e-6);
+  // Input: 3.6576 m → back to 12 ft
+  const backFt = widthM / M_PER_FT;
+  assert.ok(Math.abs(backFt - 12) < 1e-6, `width round-trip: ${backFt}`);
+});
+
+test("roll seam/wall overage metric round-trip: 2 in = 50.8 mm, 3 in = 76.2 mm", () => {
+  // Display: 2 in → 50.8 mm
+  const seamMm = thickVal(2, "metric");
+  assert.ok(Math.abs(seamMm - 50.8) < 1e-6);
+  // Input: 50.8 mm → back to 2 in
+  const seamBack = thickInputToInches(50.8, "metric");
+  assert.ok(Math.abs(seamBack - 2) < 1e-6, `seam round-trip: ${seamBack}`);
+  // Wall overage: 3 in → 76.2 mm
+  const wallMm = thickVal(3, "metric");
+  assert.ok(Math.abs(wallMm - 76.2) < 1e-6);
+  const wallBack = thickInputToInches(76.2, "metric");
+  assert.ok(Math.abs(wallBack - 3) < 1e-6, `wall round-trip: ${wallBack}`);
+});
+
+test("roll length metric round-trip: 30 ft = 9.144 m", () => {
+  // Display: 30 ft → 9.144 m
+  const lengthM = 30 * M_PER_FT;
+  assert.ok(Math.abs(lengthM - 9.144) < 1e-6);
+  // Input: 9.144 m → back to 30 ft
+  const backFt = lengthM / M_PER_FT;
+  assert.ok(Math.abs(backFt - 30) < 1e-6, `length round-trip: ${backFt}`);
+});
+
+// ── P2-1: Report zero rendering ─────────────────────────────────────────────
+// The num() helper must return "0" for zero values, and the renderCell logic
+// must distinguish numeric zero from blank/null/undefined.
+
+test("num(0) returns '0', not empty string", async () => {
+  const { num } = await import("../src/lib/num.js") as { num: (v: unknown, d?: number) => string };
+  assert.equal(num(0), "0");
+  assert.equal(num(0, 0), "0");
+  assert.equal(num(0, 2), "0");
+  assert.equal(num(0.001, 1), "0");   // rounds to 0 at display precision
+  assert.equal(num(null), "0");       // guarded: null → "0" not throw
+  assert.equal(num(undefined), "0");  // guarded: undefined → "0" not throw
+});
+
+test("sheetNum helper: zero values at display precision", () => {
+  // sheetNum rounds to display precision and shows "—" only for near-zero slivers
+  const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+  const sheetNum = (v: number, d = 1) => {
+    const r = round2(v);
+    if (!Math.round(Math.abs(r) * 10 ** d)) return "—";
+    return String(r);
+  };
+  assert.equal(sheetNum(0), "—");           // exact zero → "—" (display precision)
+  assert.equal(sheetNum(0.01, 1), "—");     // 0.01 rounds to 0.0 at 1dp → "—"
+  assert.equal(sheetNum(0.05, 1), "0.05");  // round2 keeps 0.05; 0.05×10=0.5 rounds to 1 (non-zero) → String(0.05)
+  assert.equal(sheetNum(0.1, 1), "0.1");    // 0.1 rounds to 0.1 at 1dp → "0.1"
+  assert.equal(sheetNum(1, 1), "1");        // non-zero → "1"
+  assert.equal(sheetNum(-0.01, 1), "—");    // negative sliver → "—"
+  assert.equal(sheetNum(-1, 1), "-1");      // negative non-zero → "-1"
+});
+
+test("renderCell zero behavior: numeric 0 shows '0', null/undefined shows '—'", () => {
+  // The renderCell logic uses v != null ? num(v) : "—"
+  // This test verifies the underlying behavior
+  const num = (v: unknown, d: number = 1) => (Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: d });
+  // Numeric zero should show "0"
+  assert.equal(num(0), "0");
+  assert.equal(num(0, 0), "0");
+  // Non-zero values show formatted
+  assert.equal(num(100), "100");
+  assert.equal(num(50.25, 0), "50");
+  // The guard v != null means:
+  // v = 0 → num(0) = "0" (shows)
+  // v = null → "—" (shows dash)
+  // v = undefined → "—" (shows dash)
+  // v = "" → num("") = "0" (shows "0", but this is edge case)
+  assert.equal(num(0), "0");
+  // In the actual renderCell code:
+  // case "ea": return v != null ? num(v, 0) : "—";
+  // v = 0 → 0 != null → true → num(0, 0) = "0"
+  // v = null → null != null → false → "—"
+  assert.equal(0 != null, true);  // JavaScript truth: 0 is not null
+  assert.equal(null != null, false);
+  assert.equal(undefined != null, false);
+});

@@ -39,7 +39,7 @@ import { draftCommitValue, blurCommitValue, blurCommitNonNegative } from "../lib
 import { ROLL_FLOORING_TYPES } from "../lib/rollgoods.js";
 import { hasRollSetup, mintRollSetup } from "../lib/rollTakeoff.js";
 import { Z } from "../lib/ui.js";
-import { ftIn } from "../lib/units";
+import { ftIn, M_PER_FT, thickVal } from "../lib/units";
 
 export const PANEL_MIN_W = 240;
 export const PANEL_MAX_W = 560;
@@ -488,9 +488,15 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
       {!isRow && hasRollSetup(c) && (() => {
         const rs = c.roll_setup;
         const patch = (p) => onUpdateCond({ roll_setup: { ...rs, ...p } });
+        const M = units === "metric";
         const wFt = Math.floor(Number(rs.roll_width_ft) || 0);
         const wIn = Math.round(((Number(rs.roll_width_ft) || 0) - wFt) * 12);
         const setW = (ft, inch) => patch({ roll_width_ft: Math.max(0.5, (Number(ft) || 0) + (Number(inch) || 0) / 12) });
+        // Metric: roll width/length displayed in meters, seam/wall in mm
+        const setWM = (m) => patch({ roll_width_ft: Math.max(0.5, (Number(m) || 0) / M_PER_FT) });
+        const setLM = (m) => patch({ roll_length_ft: Math.max(0, (Number(m) || 0) / M_PER_FT) });
+        const setSeam = (v) => patch({ seam_allowance_in: Math.max(0, M ? thickInputToInches(Number(v) || 0, units) : parseFloat(v) || 0) });
+        const setWall = (v) => patch({ wall_overage_in: Math.max(0, M ? thickInputToInches(Number(v) || 0, units) : parseFloat(v) || 0) });
         const numIp = { width: 46, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 };
         const sel = { padding: "2px 4px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", fontSize: 11.5 };
         return (
@@ -510,9 +516,25 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
               {rs.material === "carpet" ? (
                 <select name="condition-roll-width" value={String(rs.roll_width_ft)} onChange={(e) => patch({ roll_width_ft: parseFloat(e.target.value) || 12 })} style={sel}
                   title={t('takeoffs.roll_width_broadloom_title')}>
-                  <option value="12">12′</option>
-                  <option value="15">15′</option>
+                  {M ? (
+                    <>
+                      <option value="12">12′ ({(12 * M_PER_FT).toFixed(2)} m)</option>
+                      <option value="15">15′ ({(15 * M_PER_FT).toFixed(2)} m)</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="12">12′</option>
+                      <option value="15">15′</option>
+                    </>
+                  )}
                 </select>
+              ) : M ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title={t('takeoffs.roll_width_resilient_title')}>
+                  <input name="condition-roll-width-m" type="number" min="0" step="0.01"
+                    value={(Number(rs.roll_width_ft) * M_PER_FT).toFixed(2)}
+                    onChange={(e) => setWM(e.target.value)} style={numIp} />
+                  <span style={{ color: "var(--ink-muted)" }}>m</span>
+                </span>
               ) : (
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title={t('takeoffs.roll_width_resilient_title')}>
                   <input name="condition-roll-width-ft" type="number" min="0" step="1" value={wFt} onChange={(e) => setW(e.target.value, wIn)} style={numIp} /><span style={{ color: "var(--ink-muted)" }}>′</span>
@@ -520,9 +542,20 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
                 </span>
               )}
               <span style={{ color: "var(--ink-muted)" }} title={t('takeoffs.roll_max_title')}>max</span>
-              <input name="condition-roll-length" type="number" min="0" step="5" value={rs.roll_length_ft || 0}
-                onChange={(e) => patch({ roll_length_ft: Math.max(0, parseFloat(e.target.value) || 0) })} style={numIp} />
-              <span style={{ color: "var(--ink-muted)" }}>′</span>
+              {M ? (
+                <>
+                  <input name="condition-roll-length-m" type="number" min="0" step="0.1"
+                    value={((Number(rs.roll_length_ft) || 0) * M_PER_FT).toFixed(1)}
+                    onChange={(e) => setLM(e.target.value)} style={numIp} />
+                  <span style={{ color: "var(--ink-muted)" }}>m</span>
+                </>
+              ) : (
+                <>
+                  <input name="condition-roll-length" type="number" min="0" step="5" value={rs.roll_length_ft || 0}
+                    onChange={(e) => patch({ roll_length_ft: Math.max(0, parseFloat(e.target.value) || 0) })} style={numIp} />
+                  <span style={{ color: "var(--ink-muted)" }}>′</span>
+                </>
+              )}
               <select name="condition-roll-direction" value={rs.direction || "auto"} onChange={(e) => patch({ direction: e.target.value })} style={sel}
                 title={t('takeoffs.roll_direction_title')}>
                 <option value="auto">auto</option>
@@ -532,12 +565,34 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
               <span style={{ color: "var(--ink-muted)" }} title={t('takeoffs.roll_seam_title')}>{t('takeoffs.seam_label')}</span>
-              <input name="condition-roll-seam" type="number" min="0" step="0.5" value={rs.seam_allowance_in ?? 2}
-                onChange={(e) => patch({ seam_allowance_in: Math.max(0, parseFloat(e.target.value) || 0) })} style={numIp} />
-              <span style={{ color: "var(--ink-muted)" }}>″ · wall</span>
-              <input name="condition-roll-wall" type="number" min="0" step="0.5" value={rs.wall_overage_in ?? 3}
-                onChange={(e) => patch({ wall_overage_in: Math.max(0, parseFloat(e.target.value) || 0) })} style={numIp} />
-              <span style={{ color: "var(--ink-muted)" }}>″ · sells by</span>
+              {M ? (
+                <>
+                  <input name="condition-roll-seam-mm" type="number" min="0" step="1"
+                    value={thickVal(rs.seam_allowance_in ?? 2, units).toFixed(0)}
+                    onChange={(e) => setSeam(e.target.value)} style={numIp} />
+                  <span style={{ color: "var(--ink-muted)" }}>mm · wall</span>
+                </>
+              ) : (
+                <>
+                  <input name="condition-roll-seam" type="number" min="0" step="0.5" value={rs.seam_allowance_in ?? 2}
+                    onChange={(e) => patch({ seam_allowance_in: Math.max(0, parseFloat(e.target.value) || 0) })} style={numIp} />
+                  <span style={{ color: "var(--ink-muted)" }}>″ · wall</span>
+                </>
+              )}
+              {M ? (
+                <>
+                  <input name="condition-roll-wall-mm" type="number" min="0" step="1"
+                    value={thickVal(rs.wall_overage_in ?? 3, units).toFixed(0)}
+                    onChange={(e) => setWall(e.target.value)} style={numIp} />
+                  <span style={{ color: "var(--ink-muted)" }}>mm · sells by</span>
+                </>
+              ) : (
+                <>
+                  <input name="condition-roll-wall" type="number" min="0" step="0.5" value={rs.wall_overage_in ?? 3}
+                    onChange={(e) => patch({ wall_overage_in: Math.max(0, parseFloat(e.target.value) || 0) })} style={numIp} />
+                  <span style={{ color: "var(--ink-muted)" }}>″ · sells by</span>
+                </>
+              )}
               <select name="condition-roll-unit" value={rs.price_unit || "sf"} onChange={(e) => patch({ price_unit: e.target.value })} style={sel}
                 title={t('takeoffs.roll_unit_title')}>
                 <option value="sy">SY</option>
@@ -548,7 +603,7 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
             {rollInfo && (
               <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 11, color: "var(--ink)" }}
                 title={t('takeoffs.roll_figured_title')}>
-                {t('takeoffs.roll_figured')} {ftIn(rollInfo.orderFt)} · {rollInfo.qty} {rollInfo.unit.toUpperCase()}
+                {t('takeoffs.roll_figured')} {M ? `${(rollInfo.orderFt * M_PER_FT).toFixed(2)} m` : ftIn(rollInfo.orderFt)} · {rollInfo.qty} {rollInfo.unit.toUpperCase()}
                 {rollInfo.config.rollLengthFt > 0 ? ` · ${rollInfo.rollCount} roll${rollInfo.rollCount === 1 ? "" : "s"}` : ""}
                 {rollInfo.oversize && <span style={{ color: "var(--c-danger)" }}> {t('takeoffs.roll_oversize_inline')}</span>}
               </div>

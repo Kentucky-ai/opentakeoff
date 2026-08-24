@@ -7,6 +7,8 @@
 // LF total; only linear rows sum to it.
 
 import { csvEsc as esc } from "./csv.js";
+import { M_PER_FT, M2_PER_SF } from "./units.js";
+import { round2 } from "./num.js";
 import i18n from '../i18n/index.js';
 const _t = (key) => i18n.t(key, { ns: 'lib' });
 
@@ -46,15 +48,21 @@ export function shapesDetail(conditions, shapes, sheetLabel) {
 
 export function shapesToCsv(rows, projectName = "", brandName = "OpenTakeoff", units = "imperial") {
   const M = units === "metric";
-  const header = [_t("shape.shape"), _t("shape.sheet"), _t("shape.sheet_id"), _t("shape.finish"), _t("shape.role"), _t("shape.area_sf"), _t("shape.lf"), _t("shape.ea"), _t("shape.height_ft"), _t("shape.height_override"), _t("shape.origin")];
+  // In metric mode, headers use m²/m/m for human readability; raw canonical
+  // internal feet are converted to display units (like the Conditions tab).
+  const AU = M ? "m²" : "SF", LU = M ? "m" : "LF", HU = M ? "m" : "ft";
+  const header = [_t("shape.shape"), _t("shape.sheet"), _t("shape.sheet_id"), _t("shape.finish"), _t("shape.role"), _t("shape.area_sf").replace("SF", AU), _t("shape.lf").replace("LF", LU), _t("shape.ea"), _t("shape.height_ft").replace("ft", HU), _t("shape.height_override"), _t("shape.origin")];
   const lines = [
-    "# Per-shape measured quantities — no multiplier or waste; deducts negative; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF" + (M ? ". Raw internal SF/LF (display units: metric)" : ""),
+    "# Per-shape measured quantities — no multiplier or waste; deducts negative; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF",
     header.map(esc).join(","),
   ];
   for (const r of rows) {
     lines.push([
       r.shape_id, r.sheet, r.sheet_id, r.finish, r.role,
-      r.area_sf, r.lf, r.ea, r.height_ft,
+      M ? round2((Number(r.area_sf) || 0) * M2_PER_SF) : r.area_sf,
+      M ? round2((Number(r.lf) || 0) * M_PER_FT) : r.lf,
+      r.ea,
+      M ? round2((Number(r.height_ft) || 0) * M_PER_FT) : r.height_ft,
       r.height_override ? "yes" : "",
       r.origin,
     ].map(esc).join(","));

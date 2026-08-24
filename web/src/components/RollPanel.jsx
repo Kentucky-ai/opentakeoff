@@ -12,7 +12,7 @@
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Icon } from "../brand/icons.jsx";
-import { ftIn } from "../lib/units";
+import { ftIn, lenVal, lenUnit } from "../lib/units";
 import { rollColorForType } from "../lib/rollgoods.js";
 import { HatchSwatch } from "./hatches.jsx";
 
@@ -24,7 +24,7 @@ const PXFT = 9; // diagram scale, px per foot — a 12-ft roll draws 108px wide
 // dashed rules when a max roll length is set. Drag (when editable) previews
 // locally and hands the full new order up on release — the re-pack happens in
 // the engine, never here.
-function RollDiagram({ ri, editable, onReorder }) {
+function RollDiagram({ ri, editable, onReorder, units = "imperial" }) {
   const { t } = useTranslation("panels");
   const [drag, setDrag] = useState(null); // { id, dx, dy } — local preview only
   const svgRef = useRef(null);
@@ -60,6 +60,8 @@ function RollDiagram({ ri, editable, onReorder }) {
 
   const rollFill = rollColorForType(ri.material);
   const nRolls = ri.config.rollLengthFt > 0 ? Math.ceil(lenFt / ri.config.rollLengthFt - 1e-9) : 0;
+  // Imperial uses ft-in display; metric uses meters for lengths
+  const fmt = (ft) => units === "metric" ? `${lenVal(ft, units).toFixed(2)} ${lenUnit(units)}` : ftIn(ft);
   return (
     <svg ref={svgRef} width={W + pad * 2 + 46} height={H + pad * 2}
       style={{ display: "block", maxWidth: "100%", touchAction: "none" }}>
@@ -70,7 +72,7 @@ function RollDiagram({ ri, editable, onReorder }) {
         const y = pad + (k + 1) * ri.config.rollLengthFt * PXFT;
         return <g key={k}>
           <line x1={pad} y1={y} x2={pad + W} y2={y} stroke="var(--ink-muted)" strokeDasharray="5 4" />
-          <text x={pad + W + 4} y={y - 3} fontSize={9} fill="var(--ink-muted)" fontFamily="var(--f-mono)">roll {k + 2}</text>
+          <text x={pad + W + 4} y={y - 3} fontSize={9} fill="var(--ink-muted)" fontFamily="var(--f-mono)">{t('roll.roll')} {k + 2}</text>
         </g>;
       })}
       {/* cuts — cutY across the width (screen x), cutX down the length (screen y) */}
@@ -84,7 +86,7 @@ function RollDiagram({ ri, editable, onReorder }) {
         return (
           <g key={s.id} onPointerDown={(e) => startDrag(e, s)}
             style={editable ? { cursor: "grab" } : undefined}>
-            <title>{`Cut ${n}${s.label ? ` — ${s.label}` : ""}: ${ftIn(ln)} × ${ftIn(lw)}${s.overRoll ? t('roll.oversize') : ""}`}</title>
+            <title>{`Cut ${n}${s.label ? ` — ${s.label}` : ""}: ${fmt(ln)} × ${fmt(lw)}${s.overRoll ? t('roll.oversize') : ""}`}</title>
             <rect x={x} y={y} width={w} height={h}
               fill={rollFill + (isDrag ? "88" : "66")}
               stroke={s.overRoll ? "var(--c-danger)" : "var(--ink)"} strokeWidth={s.overRoll ? 1.6 : 0.8} />
@@ -95,12 +97,12 @@ function RollDiagram({ ri, editable, onReorder }) {
               </g>
             )}
             {/* leader dimension in the right margin */}
-            {h > 10 && <text x={pad + W + 4} y={y + h / 2 + 3} fontSize={8.5} fill="var(--ink-muted)" fontFamily="var(--f-mono)">{ftIn(ln)}</text>}
+            {h > 10 && <text x={pad + W + 4} y={y + h / 2 + 3} fontSize={8.5} fill="var(--ink-muted)" fontFamily="var(--f-mono)">{fmt(ln)}</text>}
           </g>
         );
       })}
       {/* width dimension under the roll */}
-      <text x={pad + W / 2} y={pad + H + 11} fontSize={9} fill="var(--ink-muted)" textAnchor="middle" fontFamily="var(--f-mono)">{ftIn(ri.config.rollWidthFt)} roll</text>
+      <text x={pad + W / 2} y={pad + H + 11} fontSize={9} fill="var(--ink-muted)" textAnchor="middle" fontFamily="var(--f-mono)">{fmt(ri.config.rollWidthFt)} {t('roll.roll')}</text>
     </svg>
   );
 }
@@ -109,9 +111,12 @@ export default function RollPanel({
   layouts, // [{ condId, tag, color, fill, hatch, multiplier, ri }] — ri = computeRollTakeoff summary
   show, onShow, edit, onEdit,
   onReorder, onResetOrder, onClose,
+  units = "imperial",
 }) {
   const { t } = useTranslation("panels");
   const ctl = (on) => ({ padding: "2px 8px", border: `1px solid ${on ? "var(--cobalt)" : "var(--ink-faint)"}`, background: on ? "var(--cobalt)" : "transparent", color: on ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 10.5, fontFamily: "var(--f-mono)", lineHeight: 1.5 });
+  // Imperial uses ft-in display; metric uses meters for lengths
+  const fmt = (ft) => units === "metric" ? `${lenVal(ft, units).toFixed(2)} ${lenUnit(units)}` : ftIn(ft);
   return (
     <div style={{ width: 320, flexShrink: 0, display: "flex", flexDirection: "column", borderLeft: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflow: "hidden", minHeight: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "var(--ink)", color: "var(--paper-cream)" }}>
@@ -137,8 +142,8 @@ export default function RollPanel({
                 <span style={{ marginLeft: "auto", color: "var(--ink-muted)", fontSize: 10.5, fontFamily: "var(--f-mono)" }}>{ri.direction === "ns" ? t('roll.run_ns') : t('roll.run_ew')}</span>
               </div>
               <div style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink)", marginBottom: 6 }}>
-                {t('roll.order')} {ftIn(ri.orderFt)} · {Math.round(ri.qty * 100) / 100} {ri.unit.toUpperCase()} · {ri.cutCount} {ri.cutCount === 1 ? t('roll.cut_suffix') : t('roll.cuts_suffix')}
-                {ri.config.rollLengthFt > 0 ? ` · ${ri.rollCount} ${ri.rollCount === 1 ? t('roll.roll_suffix') : t('roll.rolls_suffix')} @ ${ftIn(ri.config.rollLengthFt)}` : ""}
+                {t('roll.order')} {fmt(ri.orderFt)} · {Math.round(ri.qty * 100) / 100} {ri.unit.toUpperCase()} · {ri.cutCount} {ri.cutCount === 1 ? t('roll.cut_suffix') : t('roll.cuts_suffix')}
+                {ri.config.rollLengthFt > 0 ? ` · ${ri.rollCount} ${ri.rollCount === 1 ? t('roll.roll_suffix') : t('roll.rolls_suffix')} @ ${fmt(ri.config.rollLengthFt)}` : ""}
               </div>
               {ri.oversize && (
                 <div style={{ margin: "0 0 6px", padding: "5px 8px", border: "1px solid var(--c-danger)", color: "var(--c-danger)", fontSize: 11, lineHeight: 1.45 }}>
@@ -146,7 +151,7 @@ export default function RollPanel({
                 </div>
               )}
               <div style={{ overflowX: "auto" }}>
-                <RollDiagram ri={ri} editable onReorder={(ids) => onReorder(condId, ids)} />
+                <RollDiagram ri={ri} editable onReorder={(ids) => onReorder(condId, ids)} units={units} />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
                 <span style={{ fontSize: 10.5, color: "var(--ink-muted)" }}>{t('roll.drag_hint')}</span>
@@ -162,8 +167,8 @@ export default function RollPanel({
                   return (
                     <div key={s.id} style={{ display: "flex", gap: 7, alignItems: "baseline", fontSize: 10.5, fontFamily: "var(--f-mono)", color: "var(--ink-secondary)", padding: "1px 0" }}>
                       <span style={{ color: s.overRoll ? "var(--c-danger)" : "var(--ink)", fontWeight: 700, width: 18, flexShrink: 0 }}>{n}</span>
-                      <span>{t('roll.cut_item')} {ftIn(ln)} × {ftIn(lw)}</span>
-                      <span style={{ color: "var(--ink-muted)" }}>· {t('roll.covers')} {ftIn(cn)} × {ftIn(cw)}{s.label ? ` · ${s.label}` : ""}{s.laneCount > 1 ? ` · ${t('roll.lane')} ${s.laneIndex + 1}/${s.laneCount}` : ""}</span>
+                      <span>{t('roll.cut_item')} {fmt(ln)} × {fmt(lw)}</span>
+                      <span style={{ color: "var(--ink-muted)" }}>· {t('roll.covers')} {fmt(cn)} × {fmt(cw)}{s.label ? ` · ${s.label}` : ""}{s.laneCount > 1 ? ` · ${t('roll.lane')} ${s.laneIndex + 1}/${s.laneCount}` : ""}</span>
                     </div>
                   );
                 })}

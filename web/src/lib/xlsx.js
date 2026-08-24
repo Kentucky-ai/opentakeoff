@@ -230,16 +230,16 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
   }
 
   // Shapes — measured only: no multiplier, no waste (shapesDetail semantics).
-  // Deliberately RAW internal feet even in metric display mode — this tab
-  // mirrors the standalone shapes CSV/JSON (machine-consumable raw values);
-  // the note line flags it so a metric reader isn't surprised.
+  // In metric mode, values are converted to m²/m for human readability,
+  // matching the shapes CSV convention; imperial stays raw internal feet.
+  const SU = M ? "m²" : "SF", SUL = M ? "m" : "LF", SUH = M ? "m" : "ft";
   const shapesTab = [
-    [_t("xlsx.shapes_note") + (M ? _t("xlsx.shapes_note_metric") : "")],
-    [_t("shape.shape"), _t("shape.sheet"), _t("shape.sheet_id"), _t("shape.finish"), _t("shape.role"), _t("shape.area_sf"), _t("shape.lf"), _t("shape.ea"), _t("shape.height_ft"), _t("shape.height_override"), _t("shape.origin")],
+    [_t("xlsx.shapes_note")],
+    [_t("shape.shape"), _t("shape.sheet"), _t("shape.sheet_id"), _t("shape.finish"), _t("shape.role"), _t("shape.area_sf").replace("SF", SU), _t("shape.lf").replace("LF", SUL), _t("shape.ea"), _t("shape.height_ft").replace("ft", SUH), _t("shape.height_override"), _t("shape.origin")],
   ];
   for (const r of shapeRows) {
     shapesTab.push([String(r.shape_id), String(r.sheet), String(r.sheet_id), r.finish, r.role,
-      r.area_sf, r.lf, r.ea, r.height_ft, r.height_override ? "yes" : "", r.origin]);
+      A(r.area_sf), L(r.lf), r.ea, L(r.height_ft), r.height_override ? "yes" : "", r.origin]);
   }
 
   // By floor × room — the cross-section the other tabs each flatten one axis
