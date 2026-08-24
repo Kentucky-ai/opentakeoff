@@ -533,5 +533,15 @@
   "hatch.penny": "Moeda",
   "hatch.octagondot": "Octágono & ponto",
   "hatch.fleur": "Flor-de-lis",
-  "hatch.concrete": "Concreto / granulado"
+  "hatch.concrete": "Concreto / granulado",
+
+  "units.title": "Sistema de unidades",
+  "units.description": "Escolha como as dimensões são exibidas no aplicativo. Todos os dados de medição armazenados permanecem em pés imperiais — isso muda apenas a camada de exibição.",
+  "units.legend": "Unidades de exibição",
+  "units.imperial_label": "Imperial",
+  "units.imperial_units": "SF, LF, ft, in",
+  "units.metric_label": "Métrico",
+  "units.metric_units": "m\u00B2, m, m, mm",
+  "units.note": "Os dados de medição sempre permanecem em Imperial. Trocar aqui converte o que você vê — medições, leituras, relatórios — mas nunca reescreve a geometria ou quantidades armazenadas.",
+  "units.close": "Concluído"
 }

@@ -89,6 +89,8 @@ import { computeRollTakeoff, seamLfByShape } from "../lib/rollTakeoff.js";
 // pass through. AiSettings is the config surface for the ai.js seam.
 import AgentPanel from "../components/AgentPanel.jsx";
 import AiSettings from "../components/AiSettings.jsx";
+import UnitSettings from "../components/UnitSettings.jsx";
+import { useUnitSystem } from "../components/UnitSystemProvider.jsx";
 import { AGENT_TOOL_DEFS, executeAgentTool, agentScaleGate } from "../lib/agentTools.js";
 import { runAgentLoop } from "../lib/agentLoop.js";
 import { runVoiceCommand, isAgentHandoffTrigger, shouldOfferAgentHandoff } from "../lib/voiceActions";
@@ -361,12 +363,13 @@ export default function TakeoffCanvas() {
   const darkModeRef = useRef(darkMode);
   const [calib, setCalib] = useState([]);
   const [pendingLen, setPendingLen] = useState("");
-  // Display unit system (ft/m toggle beside the scale picker) — DISPLAY LAYER
-  // ONLY: all stored takeoff math stays feet (lib/units contract), so toggling
-  // never rewrites a shape, a scale, or a coverage rate. Browser default via
-  // localStorage; a project that saved a units field overrides on hydrate.
-  const [units, setUnits] = useState(() => { try { return localStorage.getItem("opentakeoff_units") === "metric" ? "metric" : "imperial"; } catch { return "imperial"; } });
-  useEffect(() => { try { localStorage.setItem("opentakeoff_units", units); } catch { /* private mode */ } }, [units]);
+  // Display unit system — GLOBAL via UnitSystemProvider, not per-project.
+  // The provider reads from localStorage on boot and the setter normalises +
+  // persists via writeUnitSystem (lib/unitPreference).  All stored takeoff math
+  // stays feet (lib/units contract), so toggling never rewrites a shape, a
+  // scale, or a coverage rate.
+  const { unitSystem: units, setUnitSystem: setUnits } = useUnitSystem();
+  const [showUnitSettings, setShowUnitSettings] = useState(false);
   const [check, setCheck] = useState([]);             // Check tool: 0–2 stage-px points along a printed dimension
   const [checkStated, setCheckStated] = useState(""); // what the drawing says that dimension is
   const [scaleGuide, setScaleGuide] = useState(null); // ephemeral calibrated ruler {key, feet, px, label, at:[x,y]} — never persisted (buildPayload doesn't read it)
@@ -6333,7 +6336,7 @@ export default function TakeoffCanvas() {
         <div style={{ flex: 1 }} />
         {cluster(`${t('toolbar.scale')} — ${labelFor(focusPanel)}`,
           <>
-            <button onClick={() => setUnits((u) => (u === "metric" ? "imperial" : "metric"))}
+            <button onClick={() => setShowUnitSettings(true)}
               title={units === "metric" ? t('scale.metric_hint') : t('scale.imperial_hint')}
               style={{ padding: "6px 10px", border: `1px solid ${units === "metric" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: units === "metric" ? "var(--cobalt)" : "transparent", color: units === "metric" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, lineHeight: 1 }}>
               {units === "metric" ? "m" : "ft"}
@@ -7846,6 +7849,7 @@ export default function TakeoffCanvas() {
           (the Agent panel links here; closing re-renders, so `configured`
           re-reads immediately). */}
       {showAiSettings && <AiSettings onClose={() => setShowAiSettings(false)} />}
+      {showUnitSettings && <UnitSettings onClose={() => setShowUnitSettings(false)} />}
       {/* the manual, last in the tree so it sits above every panel and dock */}
       {guideOpen && <UserGuide onClose={() => setGuideOpen(false)} />}
     </div>
