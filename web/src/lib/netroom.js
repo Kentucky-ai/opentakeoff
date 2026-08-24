@@ -1851,9 +1851,16 @@ function simplifyRing(ring, colTol, notchTol, ftPx_, doorAt){
       // door cell sits in the notch — a thick corner wall's jamb recess
       // (Breakroom) is deeper than a blind 0.65 ft; an alcove with no door
       // keeps its notch, the ruler follows it
+      // flattening joins P→Q, so P and Q must be COLLINEAR with the wall
+      // run (same depth both sides, and P→Q parallel to the edge before P) —
+      // at a corner recess the join would be a diagonal across the room
+      const Pp=pts[(i-2+n)%n];
+      const eL=Math.hypot(P[0]-Pp[0],P[1]-Pp[1])||1;
+      const cosPQ=Math.abs(((P[0]-Pp[0])*dx+(P[1]-Pp[1])*dy)/(eL*L));
+      const collinear = Math.abs(dA-dB)<=0.12*ftPx_ && cosPQ>=0.996;
       let doorNotch=false;
-      if(doorAt && deep<=1.3*ftPx_ && jog<=5*ftPx_){ const mx=(A[0]+B[0])/2, my=(A[1]+B[1])/2; doorNotch=doorAt(mx,my,1.2*ftPx_); }
-      if((dA<=notchTol && dB<=notchTol && jog<=2*notchTol) || (deep<=0.65*ftPx_ && jog<=4.5*ftPx_) || doorNotch){
+      if(doorAt && collinear && deep<=1.3*ftPx_ && jog<=5*ftPx_){ const mx=(A[0]+B[0])/2, my=(A[1]+B[1])/2; doorNotch=doorAt(mx,my,1.2*ftPx_); }
+      if((dA<=notchTol && dB<=notchTol && jog<=2*notchTol) || (collinear && deep<=0.65*ftPx_ && jog<=4.5*ftPx_) || doorNotch){
         pts.splice(i, 2); changed=true; break;
       }
     }

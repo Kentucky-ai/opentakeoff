@@ -4233,8 +4233,14 @@ export default function TakeoffCanvas() {
       const meta = segMetaRef.current.get(tp.key);
       if (!segs || !meta) return say("Still reading this sheet's linework — try again in a second.");
       if (!netWorker) return say("Net engine needs Web Workers — switch it off to use the fill.");
-      const ftPx = 1 / upp;
-      const ck = `${tp.key}:${upp}`;
+      // FRAMES: the vector segments live at the BASELINE render scale; a hi-res
+      // sheet's click and its upp are in the hi-res frame (uppFor divides by
+      // factorFor). Convert into the segments' frame for the engine and back
+      // out for the ring — at 207% zoom every foot-based threshold was off
+      // by the zoom factor (the "regressions" that appeared only zoomed in).
+      const kF = RENDER_SCALE / (renderScalesRef.current.get(tp.key) || RENDER_SCALE);   // hi-res px → baseline px
+      const ftPx = kF / upp;                     // baseline px per foot
+      const ck = `${tp.key}:${ftPx.toFixed(4)}`;
       let built = netCacheRef.current.get(ck);
       if (!built) {
         // one build per (sheet, scale); concurrent clicks share the promise
@@ -4247,11 +4253,11 @@ export default function TakeoffCanvas() {
       try { info = await built; }
       catch (err) { console.error("net engine build failed", err); return say("Net engine couldn't read this sheet — switch it off to use the fill."); }
       if (toolRef.current !== "oneclick" || (proposalRef.current && proposalRef.current.key !== tp.key)) { setCommitMsg(""); return { ok: false, message: "" }; }
-      const rm = await netCall({ type: "room", key: ck, x: local[0], y: local[1], ftPx });
+      const rm = await netCall({ type: "room", key: ck, x: local[0] * kF, y: local[1] * kF, ftPx });
       const r = rm.room;
       if (!r) return say("Net engine: that click isn't inside an enclosed space — click an open spot, or trace it with Area (A).");
-      const ring = r.ring.map(([x, y]) => [x, y]);
-      const area_sf = +(r.areaPx * upp * upp).toFixed(2);
+      const ring = r.ring.map(([x, y]) => [x / kF, y / kF]);      // back to the panel's frame
+      const area_sf = +(r.areaPx / (ftPx * ftPx)).toFixed(2);
       const perim_lf = +(closedMetrics(ring).perim * upp).toFixed(2);
       const region = {
         kind: negative ? "neg" : "pos", seed: local, poly: ring, poly0: ring.map(([x, y]) => [x, y]),
