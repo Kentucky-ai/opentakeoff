@@ -10,6 +10,7 @@
 // (node-testable); this file is only the screen, mirroring PlanNavigator's idiom.
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
 import AuthChip from "./AuthChip.jsx";
 import { projectHomeFolderId, listProjectFolders, createRecents, browserStorage } from "../lib/projectHome.js";
 import { getAccessToken } from "../lib/google/auth.js";
@@ -19,6 +20,7 @@ const sectionHead = { padding: "10px 18px 6px", fontFamily: "var(--f-mono)", fon
 const openBtn = { padding: "5px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 12, fontWeight: 600, lineHeight: 1, whiteSpace: "nowrap" };
 
 export default function ProjectHome() {
+  const { t } = useTranslation("panels");
   const navigate = useNavigate();
   const [folders, setFolders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -59,13 +61,13 @@ export default function ProjectHome() {
         <strong style={{ fontFamily: "var(--f-display)", fontSize: 20, letterSpacing: "-0.02em" }}>
           open<span style={{ fontStyle: "italic", color: "var(--cobalt)" }}>takeoff</span>
         </strong>
-        <strong style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)" }}>Projects</strong>
+        <strong style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)" }}>{t("home.title")}</strong>
         {/* Escape hatch sits WITH the title (top-left), matching PlanNavigator's
             back/up placement so the "get out of here" control is always in the
             same spot. client-side Link (not a plain anchor): a reload here would
             drop the in-memory Google token; App re-gates off the URL and keeps us
             signed in */}
-        <Link to="/" style={{ fontSize: 12, color: "var(--cobalt)" }}>use the local canvas</Link>
+        <Link to="/" style={{ fontSize: 12, color: "var(--cobalt)" }}>{t("home.use_local")}</Link>
         <div style={{ flex: 1 }} />
         <AuthChip />
       </div>
@@ -73,39 +75,39 @@ export default function ProjectHome() {
       {/* recently opened — this browser only; hidden entirely when empty */}
       {recents.length > 0 && (
         <div>
-          <div style={sectionHead}>Recently opened</div>
+          <div style={sectionHead}>{t("home.recently_opened")}</div>
           {recents.map((r) => (
             // row and button both open — same action, the button is just an
             // explicit affordance mirroring the project rows below.
             <div key={r.id} onClick={() => open(r)} style={{ ...rowBase, cursor: "pointer" }}>
               <strong style={{ fontFamily: "var(--f-body)", fontSize: 13.5, color: "var(--ink)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={r.name}>{r.name}</strong>
-              <button type="button" onClick={(e) => { e.stopPropagation(); open(r); }} style={openBtn}>Open</button>
+              <button type="button" onClick={(e) => { e.stopPropagation(); open(r); }} style={openBtn}>{t("home.open")}</button>
             </div>
           ))}
         </div>
       )}
 
       {/* the project list — flat: every folder here is one project */}
-      {recents.length > 0 && <div style={sectionHead}>All projects</div>}
+      {recents.length > 0 && <div style={sectionHead}>{t("home.all_projects")}</div>}
 
       {/* folder listing */}
       <div style={{ flex: 1, overflow: "auto" }}>
         {loading ? (
-          <div style={{ padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>Reading projects…</div>
+          <div style={{ padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>{t("home.reading_projects")}</div>
         ) : err ? (
           <div style={{ padding: 40, textAlign: "center", fontSize: 13 }}>
-            <div style={{ color: "var(--c-danger)", marginBottom: 12 }}>Couldn't list the projects: {err}</div>
+            <div style={{ color: "var(--c-danger)", marginBottom: 12 }}>{t("home.list_error", { error: err })}</div>
             {/* Retry must be a BUTTON: the click is a user gesture, so if the
                 token expired, the silent-refresh popup GIS may need to open
                 isn't popup-blocked — an auto-retry's would be. */}
             <button type="button" onClick={() => setAttempt((n) => n + 1)}
               style={{ padding: "7px 14px", border: "1px solid var(--ink)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>
-              Retry
+              {t("home.retry")}
             </button>
           </div>
         ) : folders.length === 0 ? (
           <div style={{ padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>
-            No projects yet — create a folder in the Projects drive.
+            {t("home.no_projects")}
           </div>
         ) : (
           folders.map((f) => (
@@ -116,7 +118,7 @@ export default function ProjectHome() {
             // the recents rows above.
             <div key={f.id} onClick={() => open(f)} style={{ ...rowBase, cursor: "pointer" }}>
               <strong style={{ fontFamily: "var(--f-body)", fontSize: 13.5, color: "var(--ink)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.name}>{f.name}</strong>
-              <button type="button" onClick={(e) => { e.stopPropagation(); open(f); }} style={openBtn}>Open</button>
+              <button type="button" onClick={(e) => { e.stopPropagation(); open(f); }} style={openBtn}>{t("home.open")}</button>
             </div>
           ))
         )}

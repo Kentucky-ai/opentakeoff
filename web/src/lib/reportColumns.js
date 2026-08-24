@@ -6,6 +6,9 @@
 import { round2 } from "./num.js";
 import { attrValue, columnLabel } from "./conditionColumns.js";
 import { M_PER_FT, M2_PER_SF } from "./units";
+import i18n from "../i18n/index.js";
+
+const _t = (key) => i18n.t(key, { ns: "lib" });
 
 // key → (row, ctx) => primitive. ctx (optional):
 //   { perimByCond: Map(condition_id → unrounded floor-perimeter LF) }
@@ -35,45 +38,50 @@ export const GETTERS = {
 
 // Table columns: order + header + default visibility. foot(g) fills the tfoot
 // cell from grandTotals(rows); undefined → blank. ref: never in the tfoot.
-export const TABLE_PROFILE = [
-  { key: "finish",        header: "Finish",     defaultVisible: true, locked: true },
-  { key: "shapes",        header: "Shapes",     defaultVisible: true },
-  { key: "floor_sf",      header: "Floor SF",   defaultVisible: true },
-  { key: "wall_sf",       header: "Wall SF",    defaultVisible: true },
-  { key: "border_sf",     header: "Border SF",  defaultVisible: true },
-  { key: "total_sf",      header: "Total SF",   defaultVisible: false, foot: (g) => g.total_sf },
-  { key: "lf",            header: "LF",         defaultVisible: true },
-  { key: "ea",            header: "EA",         defaultVisible: true },
-  { key: "waste_pct",     header: "Waste",      defaultVisible: true },
-  { key: "total_sf_net",  header: "SF w/Waste", defaultVisible: true,  accent: true, foot: (g) => g.total_sf_net },
-  { key: "sy_net",        header: "SY w/Waste", defaultVisible: true,  accent: true, foot: (g) => g.sy_net },
+// Getter function so headers resolve _t() at render time (language changes propagate).
+export const getTableProfile = () => [
+  { key: "finish",        header: _t("column.finish"),     defaultVisible: true, locked: true },
+  { key: "shapes",        header: _t("column.shapes"),     defaultVisible: true },
+  { key: "floor_sf",      header: _t("column.floor_sf"),   defaultVisible: true },
+  { key: "wall_sf",       header: _t("column.wall_sf"),    defaultVisible: true },
+  { key: "border_sf",     header: _t("column.border_sf"),  defaultVisible: true },
+  { key: "total_sf",      header: _t("column.total_sf"),   defaultVisible: false, foot: (g) => g.total_sf },
+  { key: "lf",            header: _t("column.lf"),         defaultVisible: true },
+  { key: "ea",            header: _t("column.ea"),         defaultVisible: true },
+  { key: "waste_pct",     header: _t("column.waste_pct"),  defaultVisible: true },
+  { key: "total_sf_net",  header: _t("column.total_sf_net"), defaultVisible: true,  accent: true, foot: (g) => g.total_sf_net },
+  { key: "sy_net",        header: _t("column.sy_net"),     defaultVisible: true,  accent: true, foot: (g) => g.sy_net },
   // grandTotals output carries all four keys the waste getters read, so the
   // TOTAL cells delegate to the same formulas as the body cells
-  { key: "waste_sf",      header: "Waste SF",   defaultVisible: false, foot: (g) => GETTERS.waste_sf(g) },
-  { key: "waste_lf",      header: "Waste LF",   defaultVisible: false, foot: (g) => GETTERS.waste_lf(g) },
-  { key: "perimeter_ref", header: "Perim LF (ref)", defaultVisible: false, ref: true },
+  { key: "waste_sf",      header: _t("column.waste_sf"),   defaultVisible: false, foot: (g) => GETTERS.waste_sf(g) },
+  { key: "waste_lf",      header: _t("column.waste_lf"),   defaultVisible: false, foot: (g) => GETTERS.waste_lf(g) },
+  { key: "perimeter_ref", header: _t("column.perimeter_ref"), defaultVisible: false, ref: true },
 ];
+// Legacy static export
+export const TABLE_PROFILE = getTableProfile();
 
 // CSV columns. The first 13 are the frozen v1 export (byte-stable, golden-
 // tested); opt-ins APPEND at the end — never reorder or rename the base 13.
-export const CSV_PROFILE = [
-  { key: "finish",       header: "Finish",              defaultVisible: true, locked: true },
-  { key: "shapes",       header: "Shapes",              defaultVisible: true },
-  { key: "multiplier",   header: "Multiplier",          defaultVisible: true },
-  { key: "waste_pct",    header: "Waste %",             defaultVisible: true },
-  { key: "floor_sf",     header: "Floor SF",            defaultVisible: true },
-  { key: "wall_sf",      header: "Wall SF",             defaultVisible: true },
-  { key: "border_sf",    header: "Border SF",           defaultVisible: true },
-  { key: "total_sf",     header: "Total SF",            defaultVisible: true },
-  { key: "lf",           header: "LF",                  defaultVisible: true },
-  { key: "ea",           header: "EA",                  defaultVisible: true },
-  { key: "total_sf_net", header: "Total SF w/Waste",    defaultVisible: true },
-  { key: "lf_net",       header: "LF w/Waste",          defaultVisible: true },
-  { key: "sy_net",       header: "SY w/Waste",          defaultVisible: true },
-  { key: "waste_sf",      header: "Waste SF", defaultVisible: false },
-  { key: "waste_lf",      header: "Waste LF", defaultVisible: false },
-  { key: "perimeter_ref", header: "Perimeter LF (ref, incl. openings)", defaultVisible: false },
+export const getCsvProfile = () => [
+  { key: "finish",       header: _t("column.finish"),    defaultVisible: true, locked: true },
+  { key: "shapes",       header: _t("column.shapes"),    defaultVisible: true },
+  { key: "multiplier",   header: _t("column.multiplier"), defaultVisible: true },
+  { key: "waste_pct",    header: _t("column.waste_pct_csv"), defaultVisible: true },
+  { key: "floor_sf",     header: _t("column.floor_sf"),  defaultVisible: true },
+  { key: "wall_sf",      header: _t("column.wall_sf"),   defaultVisible: true },
+  { key: "border_sf",    header: _t("column.border_sf"), defaultVisible: true },
+  { key: "total_sf",     header: _t("column.total_sf"),  defaultVisible: true },
+  { key: "lf",           header: _t("column.lf"),        defaultVisible: true },
+  { key: "ea",           header: _t("column.ea"),        defaultVisible: true },
+  { key: "total_sf_net", header: _t("column.total_sf_net_csv"), defaultVisible: true },
+  { key: "lf_net",       header: _t("column.lf_net"),    defaultVisible: true },
+  { key: "sy_net",       header: _t("column.sy_net"),    defaultVisible: true },
+  { key: "waste_sf",      header: _t("column.waste_sf"), defaultVisible: false },
+  { key: "waste_lf",      header: _t("column.waste_lf"), defaultVisible: false },
+  { key: "perimeter_ref", header: _t("column.perimeter_ref_csv"), defaultVisible: false },
 ];
+// Legacy static export
+export const CSV_PROFILE = getCsvProfile();
 
 // The one getter-resolution rule for a column descriptor: custom columns
 // carry their own get; built-ins come from GETTERS. Table (renderCell), CSV

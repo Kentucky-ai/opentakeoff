@@ -4,6 +4,7 @@
 // explicit landing link / deep-link walls). When signed in it's an initials
 // disc + menu (email, sync note, Sign out). The gallery header uses AuthChip.
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
 import ToolMenu from "./ToolMenu.jsx";
 
@@ -16,6 +17,7 @@ const initialsOf = (user) => {
 };
 
 export default function AccountChip({ note, onOpenChange }) {
+  const { t } = useTranslation("panels");
   const { user, signOut } = useGoogleAuth();
   // Nothing in the toolbar when signed out (or cloud mode off) — the local-first
   // app keeps its pre-Drive look and never shows a "Sign in" button here. Sign-in
@@ -25,22 +27,22 @@ export default function AccountChip({ note, onOpenChange }) {
 
   return (
     <ToolMenu
-      title={`Account — ${user.email}`}
+      title={t('account.title', { email: user.email })}
       onOpenChange={onOpenChange}
       faceStyle={{ padding: "4px 8px 4px 4px" }}
       menuStyle={{ minWidth: 224 }}
       face={
-        <span aria-label="Account" style={{
+        <span aria-label={t('account.aria')} style={{
           width: 20, height: 20, background: "var(--cobalt)", color: "var(--paper-bright)",
           fontFamily: "var(--f-mono)", fontSize: 9, fontWeight: 700,
           display: "inline-flex", alignItems: "center", justifyContent: "center",
         }}>{initialsOf(user)}</span>
       }
       items={[
-        { section: "Signed in" },
+        { section: t('account.signed_in') },
         { note: <>{user.email}{note ? <><br />{note}</> : null}</> },
         "divider",
-        { id: "signout", label: "Sign out", danger: true, title: "Sign out", onSelect: () => signOut() },
+        { id: "signout", label: t('account.sign_out'), danger: true, title: t('account.sign_out_title'), onSelect: () => signOut() },
       ]}
     />
   );

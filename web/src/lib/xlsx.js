@@ -17,6 +17,8 @@ import { GETTERS, colGetter, applyUnits, METRIC_CSV_LABELS } from "./reportColum
 import { grandTotals, materialsSummary, roundSheetRow, hasMultipliers, BY_SHEET_BASE_NOTE } from "./totals.js";
 import { round2 } from "./num.js";
 import { M_PER_FT, M2_PER_SF } from "./units";
+import i18n from '../i18n/index.js';
+const _t = (key, options) => i18n.t(key, { ns: 'lib', ...options });
 
 // ---------------------------------------------------------------------------
 // XML plumbing
@@ -189,13 +191,22 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
   for (const r of rows) conditions.push(columns.map((c) => colGetter(c)?.(r, ctx)));
   const g = grandTotals(rows);
   conditions.push(columns.map((c) => {
-    if (c.key === "finish") return "TOTAL";
+    if (c.key === "finish") return _t("csv_header.total");
     const v = (c.key === "waste_sf" || c.key === "waste_lf") ? GETTERS[c.key](g) : (g[c.key] !== undefined ? g[c.key] : "");
     return c.conv && v !== "" ? c.conv(v) : v;
   }));
 
   // By sheet — base (unmultiplied) quantities, rounded at serialization only
-  const bySheetRows = [["Sheet", "Sheet ID", "Finish", `Floor ${AU}`, `Wall ${AU}`, `Border ${AU}`, LU, "EA"]];
+  const bySheetRows = [[
+    _t("shape.sheet"),
+    _t("shape.sheet_id"),
+    _t("shape.finish"),
+    `${_t("shape.floor_sf").replace("SF", AU)}`,
+    `${_t("shape.wall_sf").replace("SF", AU)}`,
+    `${_t("shape.border_sf").replace("SF", AU)}`,
+    M ? _t("shape.lf").replace("LF", LU) : _t("shape.lf"),
+    _t("shape.ea"),
+  ]];
   for (const gp of bySheet) {
     for (const row of gp.rows) {
       const mult = row.multiplier || 1;
@@ -204,17 +215,17 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
       bySheetRows.push([String(label(gp.sheet_id)), String(gp.sheet_id), finish, A(r.floor_sf), A(r.wall_sf), A(r.border_sf), L(r.lf), r.ea]);
     }
   }
-  if (hasMultipliers(bySheet)) bySheetRows.push([], [BY_SHEET_BASE_NOTE]);
+  if (hasMultipliers(bySheet)) bySheetRows.push([], [_t("markedset.by_sheet_base_note")]);
 
   // Materials — per condition, then the combined buy list (mirrors the CSV)
   const basisLabel = (b) => (b === "linear" ? "LF" : b === "count" ? "EA" : b === "seam_lf" ? "seam LF" : "SF");
-  const materials = [["Finish", "Material", "Qty", "Unit", "Coverage", "Note"]];
+  const materials = [[_t("csv_header.finish"), _t("csv_header.material"), _t("csv_header.qty"), _t("csv_header.unit"), _t("csv_header.coverage"), _t("csv_header.note")]];
   for (const r of rows) for (const m of (r.materials || [])) {
-    materials.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || "unit"} / ${m.per} ${basisLabel(m.basis)}`, m.note || ""]);
+    materials.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || _t("basis.unit")} / ${m.per} ${basisLabel(m.basis)}`, m.note || ""]);
   }
   const combined = materialsSummary(rows);
   if (combined.length) {
-    materials.push([], ["Material (combined)", "Qty", "Unit"]);
+    materials.push([], [_t("csv_header.material_combined"), _t("csv_header.qty"), _t("csv_header.unit")]);
     for (const s of combined) materials.push([s.name, s.qty, s.unit]);
   }
 
@@ -223,8 +234,8 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
   // mirrors the standalone shapes CSV/JSON (machine-consumable raw values);
   // the note line flags it so a metric reader isn't surprised.
   const shapesTab = [
-    ["Per-shape measured quantities — no multiplier or waste; deducts negative; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF" + (M ? ". Raw internal SF/LF (display units: metric)" : "")],
-    ["Shape", "Sheet", "Sheet ID", "Finish", "Role", "Area SF", "LF", "EA", "Height ft", "Height override", "Origin"],
+    [_t("xlsx.shapes_note") + (M ? _t("xlsx.shapes_note_metric") : "")],
+    [_t("shape.shape"), _t("shape.sheet"), _t("shape.sheet_id"), _t("shape.finish"), _t("shape.role"), _t("shape.area_sf"), _t("shape.lf"), _t("shape.ea"), _t("shape.height_ft"), _t("shape.height_override"), _t("shape.origin")],
   ];
   for (const r of shapeRows) {
     shapesTab.push([String(r.shape_id), String(r.sheet), String(r.sheet_id), r.finish, r.role,
@@ -241,8 +252,8 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
   // to the floor. Cells are one row per (floor, room, finish); the Sheet ID
   // rides along because display labels are session-volatile.
   const floorRoom = [
-    ["Ordered quantities per floor × room — waste % and xN applied per slice; each floor's rooms reconcile to that floor's shapes. Coverage ceils are per-cell display, not a buy list"],
-    ["Sheet", "Sheet ID", "Room", "Finish", `Floor ${AU}`, `Wall ${AU}`, `Border ${AU}`, LU, "EA", `Total ${AU}`, `Total ${AU} w/Waste`],
+    [_t("xlsx.floor_room_note")],
+    [_t("csv_header.sheet"), _t("csv_header.sheet_id"), _t("xlsx.room"), _t("csv_header.finish"), `${_t("column.floor_sf").replace("SF", AU)}`, `${_t("column.wall_sf").replace("SF", AU)}`, `${_t("column.border_sf").replace("SF", AU)}`, LU, _t("column.ea"), `${_t("column.total_sf").replace("SF", AU)}`, `${_t("column.total_sf_net_csv").replace("SF", AU)}`],
   ];
   for (const gp of byFloorRoom) {
     for (const grp of gp.groups) {
@@ -255,10 +266,10 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
   }
 
   return [
-    { name: "Conditions", rows: conditions },
-    { name: "By sheet", rows: bySheetRows },
-    { name: "Materials", rows: materials },
-    { name: "Shapes", rows: shapesTab },
-    { name: "By floor × room", rows: floorRoom },
+    { name: _t("xlsx.tab_conditions"), rows: conditions },
+    { name: _t("xlsx.tab_by_sheet"), rows: bySheetRows },
+    { name: _t("xlsx.tab_materials"), rows: materials },
+    { name: _t("xlsx.tab_shapes"), rows: shapesTab },
+    { name: _t("xlsx.tab_floor_room"), rows: floorRoom },
   ];
 }

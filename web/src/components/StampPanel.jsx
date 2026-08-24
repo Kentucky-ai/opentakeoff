@@ -1,4 +1,4 @@
-// StampPanel — the stamp palette (the tool-chest, #40). A docked, project-
+﻿// StampPanel — the stamp palette (the tool-chest, #40). A docked, project-
 // global panel (like the RFI register, unlike the sheet-scoped markup panel):
 // the browser-global stamp library, one row per stamp with a live geometric
 // preview. Click "Place" to arm a stamp — the next canvas click(s) drop it as
@@ -14,6 +14,7 @@ import React, { useMemo, useRef, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import { arrowheadPath } from "../lib/geometry.js";
 import { transformPath } from "../lib/svgpath.js";
+import { useTranslation } from "react-i18next";
 
 // Live preview of a stamp's elements in a small box. Element coords are OFFSETS
 // (fractions of sheet w/h) from the anchor; K maps them into preview px, so a
@@ -57,6 +58,7 @@ function StampPreview({ elements = [], w = 54, h = 34 }) {
 }
 
 export default function StampPanel({ docked = false, library = { stamps: [], sets: [] }, armedStamp, selectedMarkup, onArm, onSaveSelected, onDelete, onRename, onExport, onImport, onImportSvg, onClose }) {
+  const { t } = useTranslation("panels");
   const [setFilter, setSetFilter] = useState("all");   // "all" | set id
   const [editId, setEditId] = useState(null);
   const fileRef = useRef(null);
@@ -93,16 +95,16 @@ export default function StampPanel({ docked = false, library = { stamps: [], set
       {docked ? (
         // docked: no blue title bar / ×; Export/Import become a slim light toolbar
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderBottom: "1px solid var(--ink-faint)" }}>
-          <button onClick={onExport} title="Export the stamp library as JSON" style={ctrl}>Export</button>
-          <button onClick={() => fileRef.current?.click()} title="Import a stamp library (.json, merges) or a vector symbol (.svg, added as a stamp)" style={ctrl}>Import</button>
+          <button onClick={onExport} title={t("stamp.export_title")} style={ctrl}>{t("stamp.export")}</button>
+          <button onClick={() => fileRef.current?.click()} title={t("stamp.import_title")} style={ctrl}>{t("stamp.import")}</button>
           {fileInput}
         </div>
       ) : (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", borderBottom: "1px solid var(--ink-faint)", background: "var(--cobalt)", color: "var(--accent-contrast)" }}>
-          <strong>Stamps · palette</strong>
+          <strong>{t("stamp.title")}</strong>
           <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button onClick={onExport} title="Export the stamp library as JSON" style={{ ...ctrl, border: "1px solid rgba(255,255,255,.5)", color: "var(--accent-contrast)" }}>Export</button>
-            <button onClick={() => fileRef.current?.click()} title="Import a stamp library (.json, merges) or a vector symbol (.svg, added as a stamp)" style={{ ...ctrl, border: "1px solid rgba(255,255,255,.5)", color: "var(--accent-contrast)" }}>Import</button>
+            <button onClick={onExport} title={t("stamp.export_title")} style={{ ...ctrl, border: "1px solid rgba(255,255,255,.5)", color: "var(--accent-contrast)" }}>{t("stamp.export")}</button>
+            <button onClick={() => fileRef.current?.click()} title={t("stamp.import_title")} style={{ ...ctrl, border: "1px solid rgba(255,255,255,.5)", color: "var(--accent-contrast)" }}>{t("stamp.import")}</button>
             {fileInput}
             <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--accent-contrast)", fontSize: 16, cursor: "pointer" }}>×</button>
           </span>
@@ -111,28 +113,28 @@ export default function StampPanel({ docked = false, library = { stamps: [], set
 
       <div style={{ padding: "8px 10px", color: "var(--ink-muted)" }}>
         {armedStamp
-          ? <span><b style={{ color: "var(--cobalt)" }}>“{armedStamp.name}” armed</b> — click the plan to place it. Esc to cancel.</span>
-          : <span>Click <b>Place</b> on a stamp, then click the plan. Placed stamps are normal, editable markups.</span>}
+          ? <span><b style={{ color: "var(--cobalt)" }} dangerouslySetInnerHTML={{ __html: t("stamp.armed_message", { name: armedStamp.name }) }} /></span>
+          : <span dangerouslySetInnerHTML={{ __html: t("stamp.place_message") }} />}
       </div>
 
       {/* set filter — the model carries StampSets; the palette groups by them */}
       {library.sets.length > 0 && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: "0 10px 8px" }}>
-          {chip("all", "All")}
-          {library.sets.map((s) => chip(s.id, s.name || "Set"))}
+          {chip("all", t("stamp.all"))}
+          {library.sets.map((s) => chip(s.id, s.name || t("stamp.set_default")))}
         </div>
       )}
 
       {/* define: save the selected markup as a new stamp */}
       <div style={{ padding: "0 10px 10px", borderBottom: "1px solid var(--ink-faint)" }}>
         <button onClick={() => selectedMarkup && onSaveSelected(selectedMarkup)} disabled={!selectedMarkup}
-          title={selectedMarkup ? "Save the selected markup as a reusable stamp" : "Select a markup on the canvas first"}
+          title={selectedMarkup ? t("stamp.save_selected_title") : t("stamp.save_selected_none_title")}
           style={{ ...ctrl, width: "100%", padding: "6px 8px", color: selectedMarkup ? "var(--cobalt)" : "var(--ink-muted)", fontWeight: 600, cursor: selectedMarkup ? "pointer" : "not-allowed" }}>
-          <Icon name="plus" size={12} /> Save selected markup as stamp
+          <Icon name="plus" size={12} /> {t("stamp.save_selected")}
         </button>
       </div>
 
-      {shown.length === 0 && <div style={{ padding: "12px", color: "var(--ink-muted)" }}>No stamps here yet.</div>}
+      {shown.length === 0 && <div style={{ padding: "12px", color: "var(--ink-muted)" }}>{t("stamp.empty")}</div>}
       {shown.map((s) => {
         const armed = armedStamp?.id === s.id;
         return (
@@ -147,14 +149,14 @@ export default function StampPanel({ docked = false, library = { stamps: [], set
               ) : (
                 <div style={{ fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.name}>{s.name}</div>
               )}
-              <div style={{ fontSize: 10.5, color: "var(--ink-muted)" }}>{s.elements.length} element{s.elements.length === 1 ? "" : "s"}</div>
+              <div style={{ fontSize: 10.5, color: "var(--ink-muted)" }}>{t("stamp.element_count", { count: s.elements.length })}</div>
             </div>
-            <button onClick={() => onArm(s)} title="Arm this stamp for placement"
+            <button onClick={() => onArm(s)} title={t("stamp.save_selected_title")}
               style={{ ...ctrl, color: armed ? "var(--accent-contrast)" : "var(--cobalt)", background: armed ? "var(--cobalt)" : "transparent", border: `1px solid var(--cobalt)`, fontWeight: 600 }}>
-              {armed ? "Armed" : "Place"}
+              {armed ? t("stamp.armed_button") : t("stamp.place_button")}
             </button>
-            <button onClick={() => setEditId((id) => (id === s.id ? null : s.id))} title="Rename stamp" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>
-            <button onClick={() => { if (window.confirm(`Delete stamp “${s.name}”?`)) onDelete(s.id); }} title="Delete stamp" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
+            <button onClick={() => setEditId((id) => (id === s.id ? null : s.id))} title={t("stamp.rename_title")} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>
+            <button onClick={() => { if (window.confirm(t("stamp.delete_confirm", { name: s.name }))) onDelete(s.id); }} title={t("stamp.delete_title")} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
           </div>
         );
       })}
