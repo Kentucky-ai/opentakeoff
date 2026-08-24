@@ -368,7 +368,7 @@ export default function TakeoffCanvas() {
   // persists via writeUnitSystem (lib/unitPreference).  All stored takeoff math
   // stays feet (lib/units contract), so toggling never rewrites a shape, a
   // scale, or a coverage rate.
-  const { unitSystem: units, setUnitSystem: setUnits } = useUnitSystem();
+  const { unitSystem: units } = useUnitSystem();
   const [showUnitSettings, setShowUnitSettings] = useState(false);
   const [check, setCheck] = useState([]);             // Check tool: 0–2 stage-px points along a printed dimension
   const [checkStated, setCheckStated] = useState(""); // what the drawing says that dimension is
@@ -1346,9 +1346,6 @@ export default function TakeoffCanvas() {
     setScales(sc);
     setScaleSources(src);
     setScaleUnconfirmed(unconf);
-    // display units ride the payload (additive) — a metric project opens metric
-    // on any machine; payloads without the field keep this browser's toggle
-    if (a.units === "metric" || a.units === "imperial") setUnits(a.units);
   };
   useEffect(() => {
     let off = false;
@@ -1915,10 +1912,9 @@ export default function TakeoffCanvas() {
     // delete already prunes) and omit the key entirely when nothing survives,
     // mirroring the condition_columns omit-when-empty convention.
     const pinned = palette.filter((id) => conditions.some((c) => c.id === id));
-    // units is additive and diff-only (the sheet_levels convention): imperial —
-    // the default — omits the key, so an old imperial project's payload is
-    // byte-identical on round-trip; only a metric project carries the field.
-    return { project_name: projectName, ...(units === "metric" ? { units } : {}), ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}), ...(scaleUnconfirmed[sheet_id] === false ? { scale_confirmed: false } : {}) })), conditions, ...(conditionColumns.length ? { condition_columns: conditionColumns } : {}), ...(shapeLabels.length ? { shape_labels: shapeLabels } : {}), ...(pinned.length ? { palette: pinned } : {}), shapes, markups, rfis, ...(approvals.length ? { approvals } : {}), ...(rules.length ? { rules } : {}), sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, ...(stitches.length ? { stitches } : {}), ...(Object.keys(sheetLevels).length ? { sheet_levels: sheetLevels } : {}), ...(Object.keys(layerOverrides).length ? { layer_overrides: layerOverrides } : {}), ...(Object.keys(provCounters.shapes_deleted).length ? { provenance_counters: provCounters } : {}) };
+    // NOTE: per-project `units` was removed — the global UnitSystemProvider/
+    // localStorage preference is the single source of truth (Task 2 spec).
+    return { project_name: projectName, ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}), ...(scaleUnconfirmed[sheet_id] === false ? { scale_confirmed: false } : {}) })), conditions, ...(conditionColumns.length ? { condition_columns: conditionColumns } : {}), ...(shapeLabels.length ? { shape_labels: shapeLabels } : {}), ...(pinned.length ? { palette: pinned } : {}), shapes, markups, rfis, ...(approvals.length ? { approvals } : {}), ...(rules.length ? { rules } : {}), sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, ...(stitches.length ? { stitches } : {}), ...(Object.keys(sheetLevels).length ? { sheet_levels: sheetLevels } : {}), ...(Object.keys(layerOverrides).length ? { layer_overrides: layerOverrides } : {}), ...(Object.keys(provCounters.shapes_deleted).length ? { provenance_counters: provCounters } : {}) };
   };
   // Runtime restore of a saved payload — the Revisions panel's Restore lands
   // here. A runtime load (unlike mount) can interrupt work in

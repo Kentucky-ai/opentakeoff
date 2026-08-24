@@ -60,12 +60,7 @@ export default function UnitSettings({ onClose }) {
                 onChange={() => setUnitSystem("imperial")}
                 style={{ accentColor: "var(--cobalt)" }}
               />
-              <span>
-                <strong>{t("units.imperial_label")}</strong>
-                <span style={{ marginLeft: 6, color: "var(--ink-muted)", fontSize: 12 }}>
-                  {t("units.imperial_units")}
-                </span>
-              </span>
+              <span style={{ fontSize: 13 }}>{t("units.imperial_option")}</span>
             </label>
 
             {/* SI / Metric option */}
@@ -86,12 +81,7 @@ export default function UnitSettings({ onClose }) {
                 onChange={() => setUnitSystem("metric")}
                 style={{ accentColor: "var(--cobalt)" }}
               />
-              <span>
-                <strong>{t("units.metric_label")}</strong>
-                <span style={{ marginLeft: 6, color: "var(--ink-muted)", fontSize: 12 }}>
-                  {t("units.metric_units")}
-                </span>
-              </span>
+              <span style={{ fontSize: 13 }}>{t("units.metric_option")}</span>
             </label>
           </fieldset>
 

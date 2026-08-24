@@ -538,10 +538,8 @@
   "units.title": "Unit system",
   "units.description": "Choose how dimensions are displayed across the app. All stored takeoff data stays in Imperial feet — this only changes the display layer.",
   "units.legend": "Display units",
-  "units.imperial_label": "Imperial",
-  "units.imperial_units": "SF, LF, ft, in",
-  "units.metric_label": "SI / Metric",
-  "units.metric_units": "m\u00B2, m, m, mm",
+  "units.imperial_option": "Imperial \u2014 SF, LF, ft, in",
+  "units.metric_option": "SI/M\u00E9trico \u2014 m\u00B2, m, m, mm",
   "units.note": "The underlying takeoff data always stays in Imperial. Switching here converts what you see — measurements, readouts, reports — but never rewrites the stored geometry or quantities.",
   "units.close": "Done"
 }
