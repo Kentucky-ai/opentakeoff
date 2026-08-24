@@ -1712,6 +1712,14 @@ export function netRoomAt(net, x, y, ftPx){
   // a label box / tag / fixture pocket is not a room — refuse rather than
   // propose a 2 SF ring around "WB-01"
   if (arr.faces[fi].area < 8*ftPx*ftPx) return null;
+  // ...and the SHEET is not a room either: a click outside the building lands
+  // in the face bounded by the drawing border. Refuse a face that spans most
+  // of the whole arrangement in both directions.
+  {
+    if (!arr.hull) { let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; for (const F of arr.faces) { x0=Math.min(x0,F.x0); y0=Math.min(y0,F.y0); x1=Math.max(x1,F.x1); y1=Math.max(y1,F.y1); } arr.hull=[x0,y0,x1,y1]; }
+    const F=arr.faces[fi], H=arr.hull;
+    if ((F.x1-F.x0) > 0.6*(H[2]-H[0]) && (F.y1-F.y0) > 0.6*(H[3]-H[1])) return null;
+  }
   const GATE = Math.max(Math.min(OPTS.GATESF*ftPx*ftPx, 0.5*arr.faces[fi].area), 6*ftPx*ftPx);
   const POCKET = OPTS.POCKETSF*ftPx*ftPx;
   const set = growRoom(arr, fi, solid, GATE, undefined, narrowFace, null, POCKET||undefined, false, fixtureFace, !starved);
