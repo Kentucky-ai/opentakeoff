@@ -1,4 +1,6 @@
+import "./i18n";
 import React, { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from "react-router";
 import "./styles/tokens.css";
@@ -59,24 +61,25 @@ function Centered({ title, body }) {
 // extra element under the button (the home flavor's skip link).
 function SignInScreen({
   ready, signIn,
-  title = "This project is stored in your team's Google Drive",
-  body = "Sign in with your team Google account to open it. Only accounts on the team domain can sign in.",
+  title,
+  body,
   footer = null,
 }) {
+  const { t } = useTranslation("panels");
   const [err, setErr] = useState("");
   return (
     <div style={centered}>
       {brand}
-      <div style={{ fontSize: 15, fontWeight: 600 }}>{title}</div>
-      <div style={{ fontSize: 13, color: "var(--ink-muted)", maxWidth: 460 }}>{body}</div>
+      <div style={{ fontSize: 15, fontWeight: 600 }}>{title || t('cloud.project_stored_title')}</div>
+      <div style={{ fontSize: 13, color: "var(--ink-muted)", maxWidth: 460 }}>{body || t('cloud.project_stored_body')}</div>
       <button type="button" disabled={!ready}
         onClick={() => { setErr(""); signIn().catch((e) => setErr(String(e?.message || e))); }}
         style={{ padding: "9px 16px", border: "1px solid var(--ink)", background: "var(--ink)",
           color: "var(--paper-bright)", cursor: ready ? "pointer" : "default", fontWeight: 600,
           fontSize: 13.5, opacity: ready ? 1 : 0.5 }}>
-        Sign in with Google
+        {t('cloud.sign_in_button')}
       </button>
-      {err ? <div style={{ fontSize: 12.5, color: "var(--c-danger)", maxWidth: 460 }}>Sign-in failed: {err}</div> : null}
+      {err ? <div style={{ fontSize: 12.5, color: "var(--c-danger)", maxWidth: 460 }}>{t('cloud.sign_in_failed', { error: err })}</div> : null}
       {footer}
     </div>
   );
@@ -87,6 +90,7 @@ function SignInScreen({
 // dynamically imported so the anonymous bundle never pulls them in.
 function ProjectGate({ projectId }) {
   const { user, ready, signIn } = useGoogleAuth();
+  const { t } = useTranslation("panels");
   const [storeReady, setStoreReady] = useState(false);
   const [error, setError] = useState("");
 
@@ -145,8 +149,8 @@ function ProjectGate({ projectId }) {
   useEffect(() => () => { setActiveStore(); }, []);
 
   if (!user) return <SignInScreen ready={ready} signIn={signIn} />;
-  if (error) return <Centered title="Couldn't open this project" body={error} />;
-  if (!storeReady) return <Centered title="Opening project…" />;
+  if (error) return <Centered title={t('cloud.project_open_error')} body={error} />;
+  if (!storeReady) return <Centered title={t('cloud.project_opening')} />;
   // key on projectId so switching projects (or sign-in) remounts a fresh canvas
   return <TakeoffCanvas key={projectId} />;
 }
@@ -159,15 +163,16 @@ function ProjectGate({ projectId }) {
 // projects, so a build with no root configured just bounces back to `/`.
 function ProjectHomeGate() {
   const { user, ready, signIn } = useGoogleAuth();
+  const { t } = useTranslation("panels");
   if (!isGoogleConfigured() || !projectHomeFolderId()) return <Navigate to="/" replace />;
   if (!user) {
     return (
       <SignInScreen ready={ready} signIn={signIn}
-        title="Your team's projects live in Google Drive"
-        body="Sign in with your team Google account to browse and open them. Only accounts on the team domain can sign in."
+        title={t('cloud.projects_drive_title')}
+        body={t('cloud.projects_drive_body')}
         footer={
           <Link to="/" style={{ fontSize: 12.5, color: "var(--ink-muted)" }}>
-            skip — use the local canvas
+            {t('cloud.skip_local')}
           </Link>
         } />
     );

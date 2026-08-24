@@ -1,4 +1,6 @@
 // Roll-goods layout — the packing/nesting/collision engine for fixed-width
+import i18n from '../i18n/index.js';
+const _t = (key) => i18n.t(key, { ns: 'lib' });
 // roll materials (broadloom carpet, sheet vinyl, sheet rubber): how many
 // strips, where the seams fall, what footage to order. Contributed by
 // Michael Hartman; decoupled from any room model — it operates on a polygon

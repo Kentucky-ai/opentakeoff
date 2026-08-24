@@ -1,0 +1,218 @@
+{
+  "title": "Takeoff report",
+  "untitled": "Untitled project",
+  "disclaimer": "Quantities derived from drawings at stated scales; verify in field.",
+  "project_name_placeholder": "Project name (optional)",
+  "masthead_report": "Takeoff Report",
+  "generated": "Generated {{date}}",
+
+  "toolbar": {
+    "project_info": "Project info",
+    "group": "Group:",
+    "group_none": "None",
+    "group_sheet": "Sheet",
+    "group_label": "Label",
+    "columns": "Columns",
+    "columns_title": "Choose which columns the table and CSV show",
+    "templates": "Templates",
+    "templates_title": "Save and recall report layouts (columns + grouping)",
+    "theme": "Theme",
+    "theme_title": "Apply an imported design-token theme to the report (colors + fonts)",
+    "export": "Export",
+    "export_title": "Download the report and shape data",
+    "print": "Print",
+    "print_title": "Print the report, or generate the marked-set PDF",
+    "rfi_csv": "RFI CSV",
+    "rfi_csv_title": "RFI log — one row per RFI with linked markups/sheets derived",
+    "rfi_json": "RFI JSON",
+    "rfi_json_title": "RFI log as JSON",
+    "contribute": "Contribute",
+    "contribute_title": "Optionally contribute this takeoff's derived data to the open flooring model",
+    "close": "Close",
+    "close_title": "Back to the canvas (Esc)",
+    "group_select_title": "Break the condition table into sections with subtotals"
+  },
+
+  "columns": {
+    "title": "Columns",
+    "labor_view": "Labor view",
+    "labor_view_title": "No-waste actuals per condition — hides SF/SY w/Waste, shows Total SF",
+    "reset": "Reset",
+    "reset_title": "Back to the default column set",
+    "optional": "Optional",
+    "custom": "Custom columns",
+    "no_custom": "No custom columns yet — define them from the condition bar in the canvas.",
+    "product_spec": "Product spec (imported)",
+    "labor_subfloor": "Labor & subfloor",
+    "csv_note": "Also applies to the CSV export. Grouping by a custom column always exports that column."
+  },
+
+  "hints": {
+    "waste_lf": "Waste SF/LF = (w/Waste) − measured",
+    "perimeter_ref": "Perimeter is reference only — includes openings; not totaled"
+  },
+
+  "templates": {
+    "title": "Templates",
+    "description": "Saved column + grouping layouts (this device). Click one to apply.",
+    "empty": "No saved templates yet.",
+    "save_placeholder": "Name this layout",
+    "save": "Save",
+    "save_title": "Save the current columns + grouping under this name",
+    "apply_title": "Apply this layout",
+    "rename_title": "Rename",
+    "delete_title": "Delete this template",
+    "drive_description": "Carry these across your own devices via Drive. Load only adds templates this device doesn't have — a same-name template is never overwritten (rename or delete it here first to pull a newer copy).",
+    "push": "Push to Drive",
+    "push_title": "Write your saved templates to your private Drive file",
+    "load": "Load from Drive",
+    "load_title": "Merge templates from your Drive file into this device"
+  },
+
+  "theme": {
+    "title": "Report theme",
+    "description": "Import a design-token file (e.g. a Claude Design <code>tokens.json</code>) to reskin this report — palette and fonts only. Your company identity stays where it is.",
+    "default": "Using the default house style.",
+    "import_btn": "Import theme…",
+    "import_title": "Choose a design-token file to import",
+    "reset": "Reset",
+    "reset_title": "Remove the imported theme and return to the default",
+    "import_error": "That file isn't valid JSON — expected a design-token file."
+  },
+
+  "export": {
+    "report_section": "Report",
+    "csv": "CSV",
+    "excel": "Excel",
+    "json": "JSON",
+    "excel_title": "Excel workbook — Conditions / By sheet / Materials / Shapes",
+    "json_title": "JSON — works markups-only / RFI-only too",
+    "shapes_section": "Shapes",
+    "shapes_csv": "Shapes CSV",
+    "shapes_json": "Shapes JSON",
+    "shapes_title": "Per-shape measured quantities — no multiplier, no waste"
+  },
+
+  "print": {
+    "report": "Print report",
+    "report_title": "Print the on-screen report (browser print / save as PDF)",
+    "marked_set_section": "Marked set",
+    "include_markups": "Include markups",
+    "include_markups_title": "Include your markups (clouds, callouts, notes, highlights) in the Marked Set PDF. Independent of the canvas layer toggle.",
+    "marked_set": "Download marked set{{suffix}}",
+    "marked_set_title": "Distribution PDF — marked sheets with the takeoff burned in, plus a legend cover{{suffix}}"
+  },
+
+  "grouped_by": "Grouped by",
+  "subtotal": "Subtotal",
+  "total": "Total",
+
+  "empty": "Nothing measured yet — trace some areas, then come back for the breakdown.",
+
+  "col": {
+    "finish": "Finish",
+    "floor": "Floor {{AU}}",
+    "wall": "Wall {{AU}}",
+    "border": "Border {{AU}}",
+    "lf": "{{LU}}",
+    "ea": "EA"
+  },
+
+  "info": {
+    "title": "Project info",
+    "company": "Company — your trade names, saved on this device",
+    "no_trade_name": "No trade name yet — add one",
+    "active_trade_name": "Active trade name",
+    "untitled_trade": "Untitled trade name",
+    "add": "+ Add",
+    "add_trade_name_title": "Add another trade name (e.g. a second brand)",
+    "delete": "Delete",
+    "delete_trade_name_title": "Delete the selected trade name",
+    "name": "Name",
+    "name_placeholder": "Your trade name",
+    "address": "Address",
+    "address_placeholder": "Street\nCity, ST",
+    "logo": "Logo",
+    "logo_alt": "Company logo",
+    "remove_logo": "Remove logo",
+    "save_failed": "Couldn't save on this device",
+    "branding": "Branding — how this project's documents present",
+    "trade_name_brand": "Trade name — brand as your company",
+    "add_trade_first": "(add a trade name first)",
+    "brand_project_title": "Brand this project as this trade name",
+    "client_section": "Client / job — saved with this project",
+    "client_name": "Client name",
+    "client_address": "Client address",
+    "po_reference": "PO / reference",
+    "date_label": "Date",
+    "done": "Done",
+    "client": "Client",
+    "reference": "Reference",
+    "date": "Date",
+    "prepared_by": "Prepared by"
+  },
+
+  "scale": {
+    "unknown": "scale set — provenance unrecorded",
+    "unconfirmed": "· agent-set, UNCONFIRMED"
+  },
+
+  "revisions": {
+    "title": "Revisions noted",
+    "type": "Type",
+    "sheet": "Sheet",
+    "note": "Note",
+    "footnote": "Markups are annotations, not measurements — quantities above are unaffected.",
+    "by_sheet": "By sheet"
+  },
+
+  "materials": {
+    "title": "Supporting materials — buy list",
+    "material": "Material",
+    "quantity": "Quantity",
+    "unit": "Unit",
+    "by_finish": "By finish:",
+    "formula": "Each quantity = measured {area / linear / count} ÷ your coverage rate, rounded up to whole units."
+  },
+
+  "footnote": {
+    "waste": "{{AU}} w/Waste = measured quantity × waste %. Waste is set per condition in the canvas. Wall {{AU}} comes from Surface-Area traces (run × height); Border {{AU}} from Linear runs with a thickness.",
+    "waste_metric": " Supporting-material coverage rates stay as entered (SF/LF-based).",
+    "perimeter": "Perim {{LU}} (ref) sums floor-trace perimeters — includes door openings and shared walls; reference only, never totaled or waste-adjusted.",
+    "base": "Base quantities as measured per sheet — waste not applied.",
+    "reconcile": " — sheet subtotals × multiplier reconcile to the condition table.",
+    "sheet_groups": " Groups show w/Waste quantities (waste and ×N applied per sheet); the By-sheet section below shows base measured quantities."
+  },
+
+  "contribute": {
+    "title": "Contribute to the open flooring model",
+    "description": "Help grow a shared, flooring-tuned open model. We send only the",
+    "derived_takeoff": "derived takeoff",
+    "li1": "condition labels, shape types, and quantities (SF / LF / EA)",
+    "li2": "normalized room geometry (shape only — no scale, no location)",
+    "li3": "how each shape was made (hand-traced vs. machine-proposed) and whether you corrected it",
+    "never_sent": "Never sent: the PDF itself, file names, project or client names, your markups, or any absolute coordinates.",
+    "no_endpoint": "This build has no contribution endpoint configured, so nothing can be sent. (Set VITE_CONTRIBUTE_ENDPOINT at build time, or localStorage.opentakeoff_contribute_endpoint in your browser.)",
+    "credit_label": "Credit (optional)",
+    "credit_placeholder": "Name or company to credit",
+    "attest": "I have the right to share this takeoff data and am contributing it to the open flooring model.",
+    "close": "Close",
+    "cancel": "Cancel",
+    "sending": "Sending…",
+    "submit": "Contribute",
+    "thanks": "Thank you — your takeoff is now helping train the open flooring model."
+  },
+
+  "drive": {
+    "pushing": "Pushing…",
+    "pushed": "Pushed {{count}} to Drive.",
+    "push_failed": "Push failed: {{error}}",
+    "loading": "Loading…",
+    "loaded": "Loaded {{count}} from Drive.",
+    "empty": "Nothing saved on Drive yet.",
+    "up_to_date": "Already up to date — no new templates.",
+    "load_failed": "Load failed: {{error}}"
+  },
+
+  "rename_template": "Rename template:"
+}

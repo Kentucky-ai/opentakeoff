@@ -15,9 +15,11 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
+import i18n from "../i18n/index.js";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { store, isStaleTabError, STALE_TAB_MESSAGE, projectIdFromUrl } from "../lib/store.js";
+import { store, isStaleTabError, projectIdFromUrl } from "../lib/store.js";
 import { Z } from "../lib/ui.js";
 import { getFocusMode, toggleFocusMode, onFocusModeChange } from "../lib/focusMode.js";
 import { seedStampLibrary, instantiateStamp, markupToStampElement } from "../lib/stamps.js";
@@ -66,7 +68,7 @@ import { loadProfiles } from "../lib/identity.js";
 import { resolveBranding, loadBrandingSelection } from "../lib/branding.js";
 import { starPath, cloudPath, thinStroke, strokePathD, chiselRibbon, buildSnapGrid, nearestSnap, ANGLE_TOL, angleSnap, closedMetrics, openLen, pointInPoly, hitShape, arrowheadPath, distToSeg, reflectVertsNorm } from "../lib/geometry.js";
 import { flattenCurve } from "../lib/curve.js";
-import { dashArrayFor, boostForDark, clampWeight, snapWeight, LINE_STYLES, LINE_STYLE_IDS, WEIGHT_STEPS } from "../lib/lineStyles.js";
+import { dashArrayFor, boostForDark, clampWeight, snapWeight, getLineStyles, LINE_STYLE_IDS, WEIGHT_STEPS } from "../lib/lineStyles.js";
 import { nextRfiNumber } from "../lib/rfi.js";
 import { libFields, matFieldOverridden, libPushPatch, libRevertPatch, libEntryPatch, matEditPatch } from "../lib/materials.js";
 import RfiPanel from "../components/RfiPanel.jsx";
@@ -108,6 +110,7 @@ import { getTheme, toggleTheme, onThemeChange } from "../lib/theme.js";
 import {
   PANEL_GAP, DETAIL_ENGAGE, DETAIL_MARGIN, MAX_CANVAS_DIM, MAX_CANVAS_AREA, SYNC_MS, GESTURE_MS, SNAP_CELL,
   MEASURE_TOOLS, CUT_TOOLS, MARKUP_TOOLS, MARKUP_IDS, HL_INKS, HL_SIZES,
+  getMeasureTools, getCutTools, getMarkupTools,
 } from "../lib/canvasConstants.js";
 import { uid, clamp, isDangerMsg, instantiateTemplate, seedConditions } from "../lib/canvasUtil.js";
 // Tile-pyramid rendering (#86) — pure math in lib/tiles.ts (tested), worker
@@ -222,6 +225,8 @@ const TOOL_VERB = {
 // live in components/TakeoffsPanel.jsx — the panel is their only surface now.
 
 export default function TakeoffCanvas() {
+  const { t } = useTranslation("canvas");
+  const LINE_STYLES = getLineStyles();
   // Client-only: a single local workspace in this browser (no project id, no backend).
   const [sheets, setSheets] = useState([]);
   const [active, setActive] = useState("");      // active source PDF file name
@@ -794,7 +799,7 @@ export default function TakeoffCanvas() {
         // and drift the composite extent (see resolveSource's wf/hf note)
         dims[k] = { w: vp.width, h: vp.height };
       }
-    } catch (e) { setCommitMsg(`Couldn't read those sheets to stitch them: ${e.message || e}`); return; }
+    } catch (e) { setCommitMsg(t('status.stitch_read_err', { error: e.message || e })); return; }
     const st = { id: mintStitchId(), name: ks.map((k) => tabLabel(k)).join(" + "), members: autoButt(ks, dims), created_at: nowIso() };
     setStitches((s) => [...s, st]);
     const upps = ks.map((k) => scales[k]);
@@ -803,14 +808,14 @@ export default function TakeoffCanvas() {
     setSheetGroup([st.id]);
     setFocusKey(st.id);
     setView("canvas");
-    setCommitMsg("Stitched — drag to pan, then Align (toolbar) joins the match line: click the same point on both sheets.");
+    setCommitMsg(t('status.stitched'));
   }
   // Deleting a stitch is refused while takeoffs live on it — quantities are
   // never silently orphaned (the close-PDF confirm precedent, but stricter:
   // a stitch has no file to re-add, so there is no restore path).
   function deleteStitch(id) {
     const n = shapes.filter((s) => s.sheet_id === id).length + markups.filter((m) => m.sheet_id === id).length;
-    if (n) { setCommitMsg(`This stitch carries ${n} takeoff${n === 1 ? "" : "s"}/markup${n === 1 ? "" : "s"} — delete or move them first.`); return; }
+    if (n) { setCommitMsg(t('status.stitch_delete_blocked', { count: n })); return; }
     setStitches((s) => s.filter((st) => st.id !== id));
     setOpenTabs((t) => t.filter((k) => k !== id));
     if (sheetGroup.includes(id)) { const f = sheetGroup.filter((k) => k !== id); setSheetGroup(f.length >= 2 || (f.length === 1 && isStitchKey(f[0])) ? f : []); }
@@ -1138,18 +1143,18 @@ export default function TakeoffCanvas() {
   async function handleFiles(fileList) {
     const incoming = Array.from(fileList || []);
     if (!incoming.length) return;
-    setCommitMsg("Reading files…");
+    setCommitMsg(t('status.reading_files'));
     let pdfs = [], skipped = [];
     try { ({ pdfs, skipped } = await ingestFiles(incoming, { onProgress: setCommitMsg })); }
-    catch (e) { setCommitMsg(`Couldn't read those files: ${e.message || e}`); return; }
+    catch (e) { setCommitMsg(t('status.couldnt_read_files', { error: e.message || e })); return; }
     if (!pdfs.length) {
       setCommitMsg(skipped.length
-        ? `Nothing to open — ${skipped.length} file${skipped.length === 1 ? "" : "s"} skipped. OpenTakeoff reads PDFs, images, and .zip plan sets.`
-        : "No supported files found. Drop a PDF, an image, or a .zip plan set.");
+        ? t('status.nothing_to_open', { count: skipped.length })
+        : t('status.no_supported'));
       return;
     }
     const results = [];
-    for (const f of pdfs) { try { results.push(await store.addPdf(f)); } catch (e) { setCommitMsg(`Couldn't open ${f.name}: ${e.message || e}`); } }
+    for (const f of pdfs) { try { results.push(await store.addPdf(f)); } catch (e) { setCommitMsg(t('status.couldnt_open', { name: f.name, error: e.message || e })); } }
     await refreshSheets();
     // CO-1: a re-drop whose bytes CHANGED is a plan revision, not a re-open.
     // The store archived the old bytes; here the stale pdf.js docs must go
@@ -1164,7 +1169,6 @@ export default function TakeoffCanvas() {
       setDocEpoch((e) => e + 1);
     }
     const names = pdfs.map((f) => f.name);
-    const tail = skipped.length ? ` · ${skipped.length} skipped` : "";
     if (names.length === 1) {
       setOpenTabs((t) => (t.includes(names[0]) ? t : [...t, names[0]]));
       goToSheet(names[0]);
@@ -1180,10 +1184,10 @@ export default function TakeoffCanvas() {
       const hot = revised.filter((r) => inked(r.name));
       const label = (r) => `${r.name} → rev ${r.rev}`;
       setCommitMsg(hot.length
-        ? `Sheet changed under your markups: ${hot.map(label).join(", ")} — earlier revision kept; re-check the affected takeoff.`
-        : `Sheet updated: ${revised.map(label).join(", ")} — earlier revision kept.`);
+        ? t('status.sheet_changed_markups', { sheets: hot.map(label).join(", ") })
+        : t('status.sheet_updated', { sheets: revised.map(label).join(", ") }));
     } else {
-      setCommitMsg(`Opened ${names.length} sheet${names.length === 1 ? "" : "s"}${tail}.`);
+      setCommitMsg(t('status.opened', { count: names.length, tail: skipped.length ? ` · ${skipped.length} ${t('commit.skipped')}` : "" }));
     }
   }
   // The empty-project landing view (the Drive picker for an empty cloud project,
@@ -1362,11 +1366,11 @@ export default function TakeoffCanvas() {
       // blocked tab recovered here with hydrated=true, its still-empty defaults
       // would autosave straight over the other tab's real data. The reload
       // message is the whole story for this tab.
-      if (isStaleTabError(e)) { setCommitMsg(STALE_TAB_MESSAGE); return; }
+      if (isStaleTabError(e)) { setCommitMsg(t('status.stale_tab')); return; }
       // Cloud project whose saved takeoff couldn't be read (Drive error / unreadable
       // annotations): same rule as a stale tab — leave autosave DISARMED so empty
       // defaults can't overwrite the real project in Drive. (cloudStore tags these.)
-      if (e?.name === "CloudLoadError") { setCommitMsg(e.message || "Couldn't load this project from Drive — reload to retry."); return; }
+      if (e?.name === "CloudLoadError") { setCommitMsg(e.message || t('status.couldnt_load_drive')); return; }
       // Do NOT arm autosave on any other failed load either: the in-memory
       // state is empty, so the first edit would overwrite the intact saved
       // takeoff with nothing. Leave it disarmed (hydrated stays false) and say
@@ -1946,16 +1950,16 @@ export default function TakeoffCanvas() {
       const imported = parseTakeoffImport(await file.text());
       const { payload, note } = mergeTakeoffImport(buildPayload(), imported, sheets.map((s) => s.name));
       restoreSavedPayload(payload);
-      const parts = [`Imported ${note.shapes_added} shape${note.shapes_added === 1 ? "" : "s"}`];
-      if (note.shapes_pending) parts.push(`${note.shapes_pending} dashed pending your review — Accept turns pencil to ink`);
-      if (note.conditions_added) parts.push(`${note.conditions_added} new condition${note.conditions_added === 1 ? "" : "s"}`);
-      if (note.conditions_merged) parts.push(`${note.conditions_merged} matched your finish tags`);
-      if (note.unknown_files.length) parts.push(`some shapes reference ${note.unknown_files.join(", ")} — open that file to see them`);
+      const parts = [t('status.imported_takeoff', { count: note.shapes_added })];
+      if (note.shapes_pending) parts.push(t('status.imported_pending', { count: note.shapes_pending }));
+      if (note.conditions_added) parts.push(t('status.imported_new_conds', { count: note.conditions_added }));
+      if (note.conditions_merged) parts.push(t('status.imported_matched', { count: note.conditions_merged }));
+      if (note.unknown_files.length) parts.push(t('status.imported_unknown_files', { files: note.unknown_files.join(", ") }));
       setCommitMsg(parts.join(" · ") + ".");
     } catch (e) {
       // module copy already speaks "Couldn't…" (the sticky danger convention);
       // anything unexpected gets wrapped into it rather than aging out unread
-      setCommitMsg(String(e?.message || "").startsWith("Couldn't") ? e.message : `Couldn't import takeoff: ${e?.message || e}`);
+      setCommitMsg(String(e?.message || "").startsWith("Couldn't") ? e.message : t('status.import_takeoff_err', { error: e?.message || e }));
     }
   };
 
@@ -1988,7 +1992,7 @@ export default function TakeoffCanvas() {
       // can drain and re-hydrate. Closes the last pre-scheduled-save loss window.
       if (remotePendingRender.current) { setSaveState("idle"); return; }
       store.saveAnnotations(payload).then(() => setSaveState("saved")).catch((e) => {
-        if (isStaleTabError(e)) setCommitMsg(STALE_TAB_MESSAGE);
+        if (isStaleTabError(e)) setCommitMsg(t('status.stale_tab'));
         setSaveState("idle");
       });
     }, 700);
@@ -2440,10 +2444,10 @@ export default function TakeoffCanvas() {
     const st = stitchById[groupKeys[0]];
     if (!st || panels.length !== 1) { setTool("select"); return; }
     const n = shapes.filter((s) => s.sheet_id === st.id).length;
-    if (n) { setCommitMsg(`Align before tracing — ${n} takeoff${n === 1 ? "" : "s"} already live on this stitch. Delete them (or a fresh stitch) to re-align.`); setTool("select"); return; }
+    if (n) { setCommitMsg(t('status.stitch_delete_blocked', { count: n })); setTool("select"); return; }
     if (!alignPt) {
       setAlignPt(p);
-      setCommitMsg("Match point set — now click the SAME point where the other sheet draws it.");
+      setCommitMsg(t('status.align_point_set'));
       return;
     }
     const dims = panelSourceDimsRef.current.get(st.id) || {};
@@ -2452,7 +2456,7 @@ export default function TakeoffCanvas() {
     if (res.error) { setCommitMsg(res.error); return; }
     setStitches((list) => list.map((s) => (s.id === st.id ? { ...s, members: res.members } : s)));
     setTool("select");
-    setCommitMsg("Match line joined — the sheets now read as one surface. Trace straight across it.");
+    setCommitMsg(t('status.align_joined'));
   }
   // Markups carry no verts_norm (cloud rect / callout at+target / text at), so
   // hitShape can't test them — this is a purpose-built bbox/point test in the
@@ -2661,7 +2665,7 @@ export default function TakeoffCanvas() {
     const closed = sel.measure_role !== "linear" && sel.measure_role !== "surface_area";
     const min = closed ? 3 : 2;
     if (sel.verts_norm.length <= min) {
-      setCommitMsg(closed ? "A shape needs at least 3 points — ⌫ again deletes the whole shape." : "A run needs at least 2 points — ⌫ again deletes the whole run.");
+      setCommitMsg(closed ? t('status.shape_min_points') : t('status.linear_min_points'));
       setSelVert(null); return;
     }
     // dropping a corner is as real an edit as dragging one — the vertexDelete
@@ -3228,7 +3232,7 @@ export default function TakeoffCanvas() {
     if (!(feet > 0) || calib.length !== 2) return;
     const pa = panelAt(calib[0][0]), pb = panelAt(calib[1][0]);
     if (pa.key !== pb.key) {
-      setCommitMsg("Calibrate on one sheet — those two clicks landed on different sheets.");
+      setCommitMsg(t('status.calibrate_cross_sheet'));
       setCalib([]); setPendingLen(""); return;
     }
     const px = Math.hypot(calib[1][0] - calib[0][0], calib[1][1] - calib[0][1]);
@@ -3323,14 +3327,14 @@ export default function TakeoffCanvas() {
     const first = panelAt(points[0][0]);
     return points.some((q) => panelAt(q[0]) !== first);
   }
-  const SPAN_MSG = "That trace crosses onto another sheet — the gap between sheets isn't real distance. To work a floor split at a match line as one surface, stitch the sheets (Sheets → gallery → select both → Stitch).";
+  const SPAN_MSG = t('status.span_cross_sheet');
   function commitPoly(points, asDeduct) {
     if (points.length < 3) return;
     if (spansPanels(points)) { setCommitMsg(SPAN_MSG); return; }
     const tp = panelAt(points[0][0]);
     const upp = uppFor(tp.key);
-    if (!upp) { setCommitMsg(`Set the scale for ${labelFor(tp)} first.`); return; }
-    if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
+    if (!upp) { setCommitMsg(t('status.set_scale_first', { sheet: labelFor(tp) })); return; }
+    if (!activeCond) { setCommitMsg(t('status.pick_condition_first')); return; }
     const met = closedMetrics(points);
     // id + created_at are minted by the add command — the ONE creation gate
     const shape = {
@@ -3362,8 +3366,8 @@ export default function TakeoffCanvas() {
     if (spansPanels(points)) { setCommitMsg(SPAN_MSG); return; }
     const tp = panelAt(points[0][0]);
     const upp = uppFor(tp.key);
-    if (!upp) { setCommitMsg(`Set the scale for ${labelFor(tp)} first.`); return; }
-    if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
+    if (!upp) { setCommitMsg(t('status.set_scale_first', { sheet: labelFor(tp) })); return; }
+    if (!activeCond) { setCommitMsg(t('status.pick_condition_first')); return; }
     // curved: verts stay the clicked CONTROL points (drag one → re-smooths);
     // length always comes from the flattened spline
     const LF = openLen(curved ? flattenCurve(points) : points) * upp;
@@ -3384,10 +3388,10 @@ export default function TakeoffCanvas() {
     if (spansPanels(points)) { setCommitMsg(SPAN_MSG); return; }
     const tp = panelAt(points[0][0]);
     const upp = uppFor(tp.key);
-    if (!upp) { setCommitMsg(`Set the scale for ${labelFor(tp)} first.`); return; }
-    if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
+    if (!upp) { setCommitMsg(t('status.set_scale_first', { sheet: labelFor(tp) })); return; }
+    if (!activeCond) { setCommitMsg(t('status.pick_condition_first')); return; }
     const h = Number(aCond?.height_ft) || 0;
-    if (!(h > 0)) { setCommitMsg(`Set a height for ${aCond?.finish_tag || "this condition"} (H in the condition editor) — Surface Area = traced LF × height.`); return; }
+    if (!(h > 0)) { setCommitMsg(t('status.set_height', { tag: aCond?.finish_tag || t('status.this_condition') })); return; }
     const LF = openLen(points) * upp;
     dispatchShape({ type: "add", shapes: [{
       sheet_id: tp.key, condition_id: activeCond, measure_role: "surface_area", height_ft: h,
@@ -3398,7 +3402,7 @@ export default function TakeoffCanvas() {
     }] });
   }
   function commitCount(p) {
-    if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
+    if (!activeCond) { setCommitMsg(t('status.pick_condition_first')); return; }
     const tp = panelAt(p[0]);
     dispatchShape({ type: "add", shapes: [{
       sheet_id: tp.key, condition_id: activeCond, measure_role: "count",
@@ -3565,7 +3569,7 @@ export default function TakeoffCanvas() {
   function proposeRegion(f, tp, local, negative, raster) {
     const region = buildOneClickRegion(f, tp, local, negative, raster);
     if (!region) {
-      if (uppFor(tp.key)) setCommitMsg("Couldn't trace that space — trace it with Area (A).");
+      if (uppFor(tp.key)) setCommitMsg(t('status.couldnt_trace_space'));
       return;
     }
     // Decide accept/dup/carve-reject INSIDE the functional updater, against
@@ -3616,18 +3620,18 @@ export default function TakeoffCanvas() {
         return { key: tp.key, regions: [...rs, region] };
       });
     });
-    if (outcome === "dup") setCommitMsg(negative ? "That cutout is already carved." : "Already selected — ⌥-click carves an enclosed cutout; ⏎ creates.");
-    else if (outcome === "needsPos") setCommitMsg("⌥-click carves an enclosed area INSIDE the selection (a column or shaft) — click its room first.");
+    if (outcome === "dup") setCommitMsg(negative ? t('status.cutout_dup') : t('status.already_selected'));
+    else if (outcome === "needsPos") setCommitMsg(t('status.needs_positive'));
     // The measurement-policy receipts: when the engine sealed, wedged, or
     // ruled a passage out, the estimator hears it at stage time — the trace is
     // reviewable while the edge in question is still under the cursor.
-    else if (f.wedges && f.ringWedges >= f.wedges) setCommitMsg(`Measured to include the floor inside ${f.ringWedges === 1 ? "a closed ring" : `${f.ringWedges} closed rings`} drawn on the plan (a round column or a callout bubble) — no door swing was involved. If that is a column you deduct rather than floor you cover, ⌥-click carves it out. ⏎ creates.`);
-    else if (f.wedges && f.ringWedges) setCommitMsg(`Measured through the drawn door to the wall opening — the swing area is included. It also includes the floor inside ${f.ringWedges === 1 ? "a closed ring" : `${f.ringWedges} closed rings`} (a round column or callout bubble), which is not a door swing; ⌥-click carves one out if it should be deducted. ⏎ creates.`);
-    else if (f.wedges) setCommitMsg("Measured through the drawn door to the wall opening — the swing area is included. ⏎ creates.");
+    else if (f.wedges && f.ringWedges >= f.wedges) setCommitMsg(t('status.measured_ring', { rings: f.ringWedges === 1 ? t('status.measured_ring_single') : t('status.measured_ring_multi', { count: f.ringWedges }) }));
+    else if (f.wedges && f.ringWedges) setCommitMsg(t('status.measured_door_ring', { rings: f.ringWedges === 1 ? t('status.measured_ring_single') : t('status.measured_ring_multi', { count: f.ringWedges }) }));
+    else if (f.wedges) setCommitMsg(t('status.measured_door'));
     else if (f.sealedPx) setCommitMsg(f.minPassPx
-      ? `That space isn't closed on the drawing — the gap is under ${MIN_PASS_FT} ft, so the minimum-passage rule bridged it rather than measuring through it. That call is at the limit of what this sheet's resolution can decide; review the edge, then ⏎ creates.`
-      : "That space wasn't fully enclosed — a small opening (a doorway or line gap) was sealed to bound it. Review the edge, then ⏎ creates.");
-    else if (f.minPassDelta) setCommitMsg(`A passage under ${MIN_PASS_FT} ft wide was treated as not connecting — measuring through it would have added ${Math.round(f.minPassDelta * 100)}% more area. Review that edge, then ⏎ creates.`);
+      ? t('status.gap_bridged', { ft: MIN_PASS_FT })
+      : t('status.space_not_closed'));
+    else if (f.minPassDelta) setCommitMsg(t('status.passage_excluded', { ft: MIN_PASS_FT, pct: Math.round(f.minPassDelta * 100) }));
     else setCommitMsg("");
   }
   // `direct` (voice deixis, RFC #59): { conditionId, label } — the human aimed
@@ -3642,15 +3646,15 @@ export default function TakeoffCanvas() {
     const say = (message) => { setCommitMsg(message); return { ok: false, message }; };
     const tp = panelAt(p[0]);
     const upp = uppFor(tp.key);
-    if (!upp) return say(`Set the scale for ${labelFor(tp)} first.`);
-    if (!(direct ? direct.conditionId : activeCond)) return say("Pick or add a condition first.");
+    if (!upp) return say(t('status.set_scale_first', { sheet: labelFor(tp) }));
+    if (!(direct ? direct.conditionId : activeCond)) return say(t('status.pick_condition_first'));
     // a click may EXTEND a same-sheet proposal; voice deixis commits whole and
     // must never swallow a selection the human is still reviewing — ANY pending
     // proposal rejects the utterance
     if (proposal && (direct || proposal.key !== tp.key)) {
       return say(direct
-        ? "Finish the pending one-click selection first — ⏎ creates it, Esc discards."
-        : `Finish the selection on ${labelFor(panelByKey(proposal.key))} first — ⏎ creates it, Esc discards.`);
+        ? t('status.finish_first')
+        : t('status.finish_first_sheet', { sheet: labelFor(panelByKey(proposal.key)) }));
     }
     const local = [p[0] - tp.xOffset, p[1]];
     // Trigger policy: vector is exact and always wins where it works — including
@@ -3664,7 +3668,7 @@ export default function TakeoffCanvas() {
     const vectorViable = !!stats && stats.segCount >= RASTER_MIN_SEGS;
     if (!rasterEligible || vectorViable) {
       const mo = ensureMask(tp.key);
-      if (!mo && !rasterEligible) return say("Still reading this sheet's linework — try again in a second.");
+      if (!mo && !rasterEligible) return say(t('status.oneclick_still_reading'));
       if (mo) {
         // seal radii + wedge cap scale with the sheet: bridge up to a door-width
         // opening (mask px per foot = mask-per-image-px / units-per-image-px)
@@ -3678,13 +3682,13 @@ export default function TakeoffCanvas() {
         }
       }
     }
-    setCommitMsg("Reading the scan…");
+    setCommitMsg(t('status.oneclick_reading_scan'));
     const seq = renderSeqRef.current;
     const rmo = await ensureRasterMask(tp.key);
     if (seq !== renderSeqRef.current) {   // sheet group changed mid-render — the new sheet must not be left showing a stale "Reading the scan…" ("…" messages never auto-expire, see commitMsg's 6s-timer effect
       setCommitMsg("");
       return direct
-        ? say("Couldn't place that — the sheet changed while reading the scan. Say it again.")
+        ? say(t('status.oneclick_view_changed'))
         : { ok: false, message: "" };
     }
     // The raster render can take real time on a large scan; the user may have
@@ -3700,10 +3704,10 @@ export default function TakeoffCanvas() {
     if (direct ? proposalRef.current : (toolRef.current !== "oneclick" || (proposalRef.current && proposalRef.current.key !== tp.key))) {
       setCommitMsg("");
       return direct
-        ? say("Couldn't place that — a one-click selection started while reading the scan. Finish it (⏎/Esc), then say it again.")
+        ? say(t('status.oneclick_tool_changed'))
         : { ok: false, message: "" };
     }
-    if (!rmo) return say("Couldn't read this scan — trace it with Area (A).");
+    if (!rmo) return say(t('status.oneclick_couldnt_scan'));
     // The raster mask is single-tier (softCount 0), so the flood's hatch
     // escalation — and with it the Fill sensitivity knob — is structurally
     // inert on scans; the default sensitivity rides along. Gap sealing still
@@ -3723,7 +3727,7 @@ export default function TakeoffCanvas() {
   function settleRegion(f, tp, local, negative, raster, direct) {
     if (!direct) { proposeRegion(f, tp, local, negative, raster); return { ok: true, message: "" }; }
     const region = buildOneClickRegion(f, tp, local, negative, raster);
-    if (!region) return { ok: false, message: "Couldn't trace that space — trace it with Area (A)." };
+    if (!region) return { ok: false, message: t('status.couldnt_trace_space') };
     return commitOneClickRegions({ key: tp.key, regions: [region] }, direct);
   }
   // The ONE commit gate for one-click regions — the ⏎/dblclick Create AND a
@@ -3768,7 +3772,7 @@ export default function TakeoffCanvas() {
     // condById is a render closure — a condition minted THIS utterance is only
     // in the live mirror, so fall through to it for the tag
     const tag = (condById[condId] || agentStateRef.current.conditions.find((c) => c.id === condId))?.finish_tag || "";
-    const message = `Created ${made.length} takeoff${made.length === 1 ? "" : "s"} — ${fa(sf)} ${tag}. Click the next room.`;
+    const message = t('status.created', { count: made.length, area: fa(sf), tag });
     setCommitMsg(message);
     return { ok: true, message };
   }
@@ -3915,7 +3919,7 @@ export default function TakeoffCanvas() {
     // Can't thin a triangle further. Deselect so the NEXT ⌫ falls through to the
     // remove-last-region branch — otherwise the ocSel guard keeps re-firing this
     // message and the space can never be dropped without an Esc first.
-    if (r.poly.length <= 3) { setOcSel(null); setCommitMsg("A space needs at least 3 points — ⌫ again drops the whole space."); return; }
+    if (r.poly.length <= 3) { setOcSel(null); setCommitMsg(t('status.space_min_points')); return; }
     setProposal((pr) => {
       if (!pr) return pr;
       const regions = pr.regions.map((rr, ri) => {
@@ -3951,15 +3955,15 @@ export default function TakeoffCanvas() {
                                 ...(sel.height_override ? { height_override: true } : {}), ...(sel.label ? { label: sel.label } : {}), ...cloneOrigin(sel.origin) });
   function copySelected() {
     const sel = shapes.find((s) => s.id === selectedId);
-    if (!sel) { setCommitMsg("Select a takeoff to copy."); return; }
+    if (!sel) { setCommitMsg(t('status.copied_err')); return; }
     clipRef.current = [clipEntry(sel)];
-    setCommitMsg("Copied — ⌘V pastes onto the sheet under your cursor.");
+    setCommitMsg(t('status.copied'));
   }
   function pasteClipboard(offset = 0.03) {
     if (!clipRef.current.length) return;
     const tp = lastPtrRef.current ? panelAt(toImage(lastPtrRef.current[0], lastPtrRef.current[1])[0]) : focusPanel;
     const needsScale = clipRef.current.some((c) => c.measure_role !== "count");
-    if (needsScale && !uppFor(tp.key)) { setCommitMsg(`Set the scale for ${labelFor(tp)} first — paste recomputes SF/LF there.`); return; }
+    if (needsScale && !uppFor(tp.key)) { setCommitMsg(t('status.set_scale_paste', { sheet: labelFor(tp) })); return; }
     let cross = false;
     const made = clipRef.current.map((c) => {
       const same = c.from === tp.key;
@@ -3975,11 +3979,11 @@ export default function TakeoffCanvas() {
     const res = dispatchShape({ type: "add", shapes: made });
     selectShape(res.shapes[res.shapes.length - 1].id);
     setTool("select");
-    setCommitMsg(`Pasted ${made.length} takeoff${made.length === 1 ? "" : "s"}${cross ? ` onto ${labelFor(tp)}` : ""} — drag to position.`);
+    setCommitMsg(t('status.pasted', { count: made.length, cross: cross ? ` ${t('status.pasted_cross', { sheet: labelFor(tp) })}` : "" }));
   }
   function duplicateSelected() {
     const sel = shapes.find((s) => s.id === selectedId);
-    if (!sel) { setCommitMsg("Select a takeoff to duplicate."); return; }
+    if (!sel) { setCommitMsg(t('status.duplicated_err')); return; }
     clipRef.current = [clipEntry(sel)];
     pasteClipboard();
   }
@@ -3989,7 +3993,7 @@ export default function TakeoffCanvas() {
   function flipSelected(axis) {
     const sel = shapes.find((s) => s.id === selectedId);
     if (!sel || !Array.isArray(sel.verts_norm) || sel.verts_norm.length < 2) {
-      setCommitMsg("Select an area or linear takeoff to flip."); return;
+      setCommitMsg(t('status.flip_err')); return;
     }
     const vn = reflectVertsNorm(sel.verts_norm, axis);
     dispatchShape({
@@ -4009,7 +4013,7 @@ export default function TakeoffCanvas() {
     const sel = shapes.find((s) => s.id === selectedId);
     if (!sel) return;
     if (sel.measure_role === "count" || sel.measure_role === "linear" || sel.measure_role === "surface_area") {
-      setCommitMsg("Tidy works on area takeoffs — a linear run's vertices are its measurement."); return;
+      setCommitMsg(t('status.tidy_err')); return;
     }
     const sp = panelByKey(sel.sheet_id);
     if (!sp || !sp.img.w || (sel.verts_norm || []).length < 3) return;
@@ -4017,13 +4021,13 @@ export default function TakeoffCanvas() {
     const rt = !!sel.origin?.raster_traced;   // no true endpoints on a scan — pure simplify+square
     const ringPx = sel.verts_norm.map(([nx, ny]) => [nx * sp.img.w, ny * sp.img.h]);
     const r = tidyRing(ringPx, { nearest: (x, y, dd) => (!rt && grid ? nearestSnap(grid, x, y, dd) : null) });
-    if (!r.changed) { setCommitMsg("Nothing to tidy — this takeoff is already clean."); return; }
+    if (!r.changed) { setCommitMsg(t('status.tidy_clean')); return; }
     const vn = r.ring.map(([x, y]) => [x / sp.img.w, y / sp.img.h]);
     dispatchShape({
       type: "geom", id: sel.id, editKind: "tidy",
       verts_norm: vn, computed: recomputeShape({ ...sel, verts_norm: vn }), prev: geomSnapshot(sel),
     });
-    setCommitMsg(`Tidied — ${ringPx.length} → ${r.ring.length} vertices; corners held to plan lines, near-square walls squared. ⌘Z undoes.`);
+    setCommitMsg(t('status.tidy_done', { from: ringPx.length, to: r.ring.length }));
   }
   // ── markup (cloud / callout / text) — annotations, not measurements ─────────
   // markupDraft holds STAGE px (so the live preview spans panels); a markup
@@ -4052,7 +4056,7 @@ export default function TakeoffCanvas() {
   // PDF. Off → pass []; the RFI-only export still works (empty-guard unaffected).
   async function exportMarkedSet(includeMarkups = true) {
     try {
-      setCommitMsg("Building the marked set…");
+      setCommitMsg(t('status.building_marked_set'));
       const exportMarkups = includeMarkups ? markups : [];
       // approval seals are ink, not markups — the include-markups checkbox
       // never drops them, and a sheet carrying only a seal still exports
@@ -4085,9 +4089,9 @@ export default function TakeoffCanvas() {
         loadPdfData: (file) => store.loadPdfData(file),
       });
       downloadBytes(filename, bytes);
-      setCommitMsg(`Marked set downloaded — ${filename}`);
+      setCommitMsg(t('status.marked_set_ok', { filename }));
     } catch (e) {
-      setCommitMsg(`Marked set failed: ${e.message || e}`);
+      setCommitMsg(t('status.marked_set_err', { error: e.message || e }));
     }
   }
 
@@ -4203,7 +4207,7 @@ export default function TakeoffCanvas() {
   // save, sanitized at the store boundary.
   const persistStampLib = (next) => {
     stampLibRef.current = next; setStampLib(next);
-    store.saveStampLibrary(next).catch((e) => setCommitMsg(`Couldn't save the stamp library: ${e.message || e}`));
+    store.saveStampLibrary(next).catch((e) => setCommitMsg(t('status.save_stamp_err', { error: e.message || e })));
   };
   // Arm a stamp for placement: switch to the stamp tool and hold it in
   // armedStamp. Repeated clicks place multiple copies until you pick another
@@ -4217,7 +4221,7 @@ export default function TakeoffCanvas() {
     const tp = panelAt(p[0]);
     const cx = (p[0] - tp.xOffset) / tp.img.w, cy = p[1] / tp.img.h;
     const instances = instantiateStamp(armedStamp, [cx, cy]);
-    if (!instances.length) { setCommitMsg("This stamp has no placeable elements."); return; }
+    if (!instances.length) { setCommitMsg(t('status.select_stamp_err')); return; }
     let promptId = null;
     for (const inst of instances) {
       const { _prompt, ...m } = inst;
@@ -4225,7 +4229,7 @@ export default function TakeoffCanvas() {
       addMarkup({ ...m, id }, tp.key);
       if (_prompt && !promptId) promptId = id;
     }
-    setCommitMsg(`Placed “${armedStamp.name}”.`);
+    setCommitMsg(t('status.placed_stamp', { name: armedStamp.name }));
     if (promptId) openTextEditor({ anchorStage: p, commit: (t) => updateMarkup(promptId, { text: (t || "").trim() }) });
   }
   // ── approval seal (ink, human-only) — the estimator's stamp. One click: on
@@ -4243,27 +4247,27 @@ export default function TakeoffCanvas() {
     // normalized to sheet WIDTH, the bubble convention), topmost wins
     const seal = [...approvals].reverse().find((a) => a.sheet_id === tp.key
       && Math.hypot(nx - a.at[0], (ny - a.at[1]) * (tp.img.h / tp.img.w)) <= APPROVAL_R);
-    if (seal) { dispatchApproval({ type: "delete", ids: [seal.id] }); setCommitMsg("Approval seal lifted (⌘Z restores it)."); return; }
+    if (seal) { dispatchApproval({ type: "delete", ids: [seal.id] }); setCommitMsg(t('status.approval_lifted')); return; }
     // topmost committed shape under the click — the selectAt scan, this panel only
     const thr = 8 / tfRef.current.scale;
     const shape = [...stackedShapes].reverse().find((s) => s.sheet_id === tp.key
       && hitShapeC(s, p[0] - tp.xOffset, p[1], tp.img.w, tp.img.h, thr));
     dispatchApproval({ type: "add", approvals: [{ actor: "estimator", sheet_id: tp.key, at: [nx, ny], ...(shape ? { shape_id: shape.id } : {}) }] });
     setCommitMsg(shape
-      ? `Approved — seal on ${condById[shape.condition_id]?.finish_tag || "shape"} (⌘Z undoes).`
-      : "Sheet point approved — seal placed (⌘Z undoes).");
+      ? t('status.approved_shape', { tag: condById[shape.condition_id]?.finish_tag || t('commit.shape') })
+      : t('status.approved_point'));
   }
   // Save the selected markup as a single-element stamp (the palette's define
   // flow). markupToStampElement re-expresses its coords as anchor-relative
   // offsets so the stamp is position independent.
   function saveMarkupAsStamp(m) {
     const el = markupToStampElement(m);
-    if (!el) { setCommitMsg("This markup can't be saved as a stamp."); return; }
-    const name = (window.prompt("Name this stamp:", (m.text || el.type).trim() || "Stamp") || "").trim();
+    if (!el) { setCommitMsg(t('status.markup_not_stamp')); return; }
+    const name = (window.prompt(t('prompt.stamp_name'), (m.text || el.type).trim() || t('prompt.stamp_default')) || "").trim();
     if (!name) return;
     const stamp = { id: uid("stmp"), name, elements: [el] };
     persistStampLib({ ...stampLibRef.current, stamps: [...stampLibRef.current.stamps, stamp] });
-    setCommitMsg(`Saved stamp “${name}”.`);
+    setCommitMsg(t('status.saved_stamp', { name }));
     setLeftTab("stamp");
   }
   const deleteStamp = (id) => {
@@ -4299,10 +4303,10 @@ export default function TakeoffCanvas() {
         sets: [...cur.sets.filter((s) => !inSetIds.has(s.id)), ...inSets],
       };
       persistStampLib(merged);   // persistStampLib → store sanitizes, dropping any malformed items
-      setCommitMsg(`Imported ${inStamps.length} stamp${inStamps.length === 1 ? "" : "s"}.`);
+      setCommitMsg(t('status.imported_stamps', { count: inStamps.length }));
       setLeftTab("stamp");
     } catch (e) {
-      setCommitMsg(`Couldn't import stamps: ${e.message || e}`);
+      setCommitMsg(t('status.imported_stamp_err', { error: e.message || e }));
     }
   }
   // Import a real .svg FILE as a stamp: the browser's DOMParser extracts the
@@ -4315,12 +4319,12 @@ export default function TakeoffCanvas() {
       const base = (file.name || "Imported SVG").replace(/\.svg$/i, "");
       const extracted = extractSvgPrimitives(text, { name: base });
       const stamp = extracted && svgToStamp(extracted);
-      if (!stamp || !stamp.elements.length) { setCommitMsg("Couldn't read that SVG — no drawable vector shapes found."); return; }
+      if (!stamp || !stamp.elements.length) { setCommitMsg(t('status.imported_svg_no_draw')); return; }
       persistStampLib({ ...stampLibRef.current, stamps: [...stampLibRef.current.stamps, { id: uid("stmp"), name: stamp.name, elements: stamp.elements }] });
-      setCommitMsg(`Imported “${stamp.name}” as a stamp.`);
+      setCommitMsg(t('status.imported_svg_stamp', { name: stamp.name }));
       setLeftTab("stamp");
     } catch (e) {
-      setCommitMsg(`Couldn't import SVG: ${e.message || e}`);
+      setCommitMsg(t('status.imported_svg_err', { error: e.message || e }));
     }
   }
 
@@ -4341,7 +4345,7 @@ export default function TakeoffCanvas() {
     setRfis((rs) => [...rs, rec]);
     updateMarkup(markup.id, { rfi_id: id });
     setLeftTab("rfi");
-    setCommitMsg(`Raised ${number}.`);
+    setCommitMsg(t('status.raise_rfi', { number }));
   }
   const linkRfi = (markup, rfiId) => { if (markup && rfiId) updateMarkup(markup.id, { rfi_id: rfiId }); };
   const unlinkRfi = (markup) => { if (markup) updateMarkup(markup.id, { rfi_id: "" }); };
@@ -4489,7 +4493,7 @@ export default function TakeoffCanvas() {
         found = true;
       }
     }
-    if (!found) { setCommitMsg(`No takeoffs for ${condById[id]?.finish_tag || "this condition"} on the open sheet${groupKeys.length > 1 ? "s" : ""} yet.`); return; }
+    if (!found) { setCommitMsg(t('status.no_takeoffs', { tag: condById[id]?.finish_tag || t('status.this_condition') })); return; }
     const r = el.getBoundingClientRect();
     const w = Math.max(x1 - x0, 1), h = Math.max(y1 - y0, 1), pad = 90;
     const scale = clamp(Math.min((r.width - pad) / w, (r.height - pad) / h, 1.5));
@@ -4533,7 +4537,7 @@ export default function TakeoffCanvas() {
     return c;
   }
   function addCondition() {
-    const tag = (window.prompt("Finish tag for this condition (e.g. LVT-1):") || "").trim();
+    const tag = (window.prompt(t('prompt.finish_tag')) || "").trim();
     if (!tag) return;
     const c = mintCondition(tag);
     activateCondition(c.id, { reassign: false });   // no reassign affordance on +condition; still dismisses a live bulk selection
@@ -4559,7 +4563,7 @@ export default function TakeoffCanvas() {
   async function agentTextTokens(key, region) {
     const p = agentPanelFor(key);
     const pageObj = pageObjsRef.current.get(key);
-    if (!p || !pageObj) throw new Error(`Sheet ${key} isn't rendered yet.`);
+    if (!p || !pageObj) throw new Error(t('commit.sheet_not_rendered', { key }));
     const rs = renderScalesRef.current.get(key) || RENDER_SCALE;
     const vp = pageObj.getViewport({ scale: rs });
     const tc = await pageObj.getTextContent();
@@ -4586,7 +4590,7 @@ export default function TakeoffCanvas() {
   async function agentViewRegion(key, region) {
     const p = agentPanelFor(key);
     const pageObj = pageObjsRef.current.get(key);
-    if (!p || !pageObj) throw new Error(`Sheet ${key} isn't rendered yet.`);
+    if (!p || !pageObj) throw new Error(t('commit.sheet_not_rendered', { key }));
     const rs = renderScalesRef.current.get(key) || RENDER_SCALE;
     const x0 = region.x0 * p.img.w, y0 = region.y0 * p.img.h;
     const regW = Math.max(1, (region.x1 - region.x0) * p.img.w);
@@ -4611,7 +4615,7 @@ export default function TakeoffCanvas() {
   // this probes and returns the ring; committing anything stays behind the gate.
   async function agentOneClickProbe(key, xn, yn) {
     const p = agentPanelFor(key);
-    if (!p) return { error: `Sheet ${key} isn't rendered yet — try again in a moment.` };
+    if (!p) return { error: t('commit.sheet_not_rendered_retry', { key }) };
     const upp = agentUpp(key);
     if (upp == null) return { error: agentScaleGate(key, agentStateRef.current.detectedScales[key]?.label || "") };
     const local = [xn * p.img.w, yn * p.img.h];
@@ -4621,7 +4625,7 @@ export default function TakeoffCanvas() {
     let f = null, raster = false;
     if (!rasterEligible || vectorViable) {
       const mo = ensureMask(key);
-      if (!mo && !rasterEligible) return { error: "Still reading this sheet's linework — try again in a second." };
+      if (!mo && !rasterEligible) return { error: t('status.oneclick_still_reading') };
       if (mo) {
         const r = floodRegionSealed(mo, local[0], local[1], fillSens, sealRadiiFor(mo.ws / upp), doorWedgeCapPx(mo.ws / upp), minPassRadiusFor(mo.ws / upp));
         if (r.status === "ok") f = r;
@@ -4634,7 +4638,7 @@ export default function TakeoffCanvas() {
     }
     if (!f) {
       const rmo = await ensureRasterMask(key);
-      if (!rmo) return { error: "Couldn't read this scan — the estimator will have to trace it by hand." };
+      if (!rmo) return { error: t('status.oneclick_scan_raster_err') };
       const r = floodRegionSealed(rmo, local[0], local[1], undefined, sealRadiiFor(rmo.ws / upp), doorWedgeCapPx(rmo.ws / upp), minPassRadiusFor(rmo.ws / upp));
       if (r.status !== "ok") {
         return { error: r.status === "leak"
@@ -4647,7 +4651,7 @@ export default function TakeoffCanvas() {
     const ring = raster
       ? oneClickRing(f, { raster: true, rasterEps: RASTER_RDP_EPS })
       : oneClickRing(f, { nearest: (x, y, d) => (grid ? nearestSnap(grid, x, y, d) : null) });
-    if (ring.length < 3) return { error: "Couldn't trace that space into a polygon." };
+    if (ring.length < 3) return { error: t('status.oneclick_couldnt_trace') };
     const area_sf = +(ringArea(ring) * upp * upp).toFixed(2);
     const conf = traceConfidence(floodSignals(f, { raster, mppf: f.ws / upp, areaSF: area_sf }));
     return {
@@ -4744,11 +4748,11 @@ export default function TakeoffCanvas() {
   // stale. Failures wrap into the commitMsg bar's "Couldn't" convention.
   async function voiceTraceAt(seed, conditionId, label) {
     const tp = panelByKey(seed.sheetId);
-    if (!tp || tp.key !== seed.sheetId || !tp.img.w) return { ok: false, message: "Couldn't place that — aim at a sheet." };
+    if (!tp || tp.key !== seed.sheetId || !tp.img.w) return { ok: false, message: t('commit.couldnt_place_aim_sheet') };
     const out = await oneClickAt([seed.x + tp.xOffset, seed.y], false, { conditionId, label });
     if (out.ok) return out;
-    const m = out.message || "Couldn't place that — the view changed mid-trace. Say it again.";
-    return { ok: false, message: /^couldn'?t/i.test(m) ? m : `Couldn't place that — ${m.charAt(0).toLowerCase()}${m.slice(1)}` };
+    const m = out.message || t('status.oneclick_view_changed');
+    return { ok: false, message: /^couldn'?t/i.test(m) ? m : t('commit.couldnt_place_generic', { detail: m.charAt(0).toLowerCase() + m.slice(1) }) };
   }
   // Voice-command capabilities (RFC #59 slice 2) — every entry binds an action
   // the UI already exposes; the dispatcher (voiceActions.ts) never touches
@@ -4850,8 +4854,8 @@ export default function TakeoffCanvas() {
         voiceModelRef.current = s;
         if (s.phase === "loading") setVoiceChip({ text: `voice model loading… ${s.pct}%`, tone: "busy" });
         else if (s.phase === "ready") setVoiceChip((c) => (c && c.tone === "busy" ? null : c));
-        else if (s.phase === "uninstalled") { setVoiceChip(null); setCommitMsg("Voice isn't installed on this deployment — see docs/VOICE.md to stage the model."); }
-        else if (s.phase === "error") { setVoiceChip(null); setCommitMsg(`Couldn't load the voice model — ${s.message} Hold M to retry.`); }
+        else if (s.phase === "uninstalled") { setVoiceChip(null); setCommitMsg(t('status.voice_not_installed')); }
+        else if (s.phase === "error") { setVoiceChip(null); setCommitMsg(t('status.voice_load_err', { error: s.message })); }
       });
     }
     return voiceClientRef.current;
@@ -4874,15 +4878,15 @@ export default function TakeoffCanvas() {
         session.cancel();
         voiceCaptureRef.current = null;
         setVoiceChip(null);
-        setCommitMsg("Couldn't finish dictation — the microphone was revoked.");
+        setCommitMsg(t('status.dictation_revoked'));
       });
       voiceCaptureRef.current = session;
       setVoiceChip({ text: "listening… release M to run · Esc to discard", tone: "live" });
     } catch (err) {
       setCommitMsg(
-        err?.reason === "mic_denied" ? "Couldn't start dictation — microphone permission denied. Allow the mic and try again."
-        : err?.reason === "no_mic_device" ? "Couldn't start dictation — no microphone found."
-        : "Couldn't start dictation — microphone unavailable.",
+        err?.reason === "mic_denied" ? t('status.mic_denied')
+        : err?.reason === "no_mic_device" ? t('status.mic_not_found')
+        : t('status.mic_unavailable'),
       );
     }
   }
@@ -4912,7 +4916,7 @@ export default function TakeoffCanvas() {
       clearTimeout(voiceFlashRef.current);
       voiceFlashRef.current = setTimeout(() => setVoiceChip((c) => (c && c.tone === "info" ? null : c)), 2400);
       return Promise.resolve(onVoiceCommandRef.current(t));
-    }).catch(() => { setVoiceChip(null); setCommitMsg("Couldn't decode that — try again."); });
+    }).catch(() => { setVoiceChip(null); setCommitMsg(t('status.dictation_failed')); });
   }
   // live refs — the mount-once keyboard effect must never see stale closures
   const onVoiceCommandRef = useRef(null);
@@ -4941,7 +4945,7 @@ export default function TakeoffCanvas() {
       if (document.visibilityState === "hidden" && voiceCaptureRef.current) {
         voiceHoldRef.current = false;
         voiceFnsRef.current.end(false);
-        setCommitMsg("Dictation discarded — the tab went to the background.");
+        setCommitMsg(t('status.dictation_discarded'));
       }
     };
     window.addEventListener("keydown", down);
@@ -4959,7 +4963,7 @@ export default function TakeoffCanvas() {
       clearTimeout(agentOfferTimerRef.current);
       pendingAgentOfferRef.current = null;
     };
-  }, []);
+  }, [t]);
 
   // ── the accept gate ─────────────────────────────────────────────────────────
   // Accept = the explicit human review one-click's Create models: the shape
@@ -4995,8 +4999,8 @@ export default function TakeoffCanvas() {
     }
     if (made.length) dispatchShape({ type: "add", shapes: made });   // ONE command — one undo entry for the batch
     setAgentProposals((ps) => ps.filter((p) => !accepted.has(p.id)));
-    if (made.length) setCommitMsg(`Accepted ${made.length} agent proposal${made.length === 1 ? "" : "s"}.${skippedClosed ? ` ${skippedClosed} skipped — open their sheet (with its scale set) to accept.` : ""}`);
-    else if (skippedClosed) setCommitMsg("Open that proposal's sheet (with its scale set) to accept it.");
+    if (made.length) setCommitMsg(t('status.accepted_proposals', { count: made.length, skipped: skippedClosed ? ` ${skippedClosed} ${t('commit.skipped_open_sheet')}` : "" }));
+    else if (skippedClosed) setCommitMsg(t('status.open_agent_sheet'));
   }
   const acceptAgentProposal = (id) => acceptAgentProposals([id]);
   const acceptAllVisibleAgentProposals = () => acceptAgentProposals(agentProposals.filter((p) => panelKeySet.has(p.sheet_id)).map((p) => p.id));
@@ -5032,7 +5036,7 @@ export default function TakeoffCanvas() {
     }
     const candidates = applyRuleToProject(rule, shapes, sheetData);
     setRuleOffer(null);
-    if (!candidates.length) { setCommitMsg("No other enclosed regions match this rule on the open sheets."); return; }
+    if (!candidates.length) { setCommitMsg(t('status.no_rule_match')); return; }
     setRuleStage({ rule, candidates, proposed_ts: nowIso() });
   }
   function applyStagedRule() {
@@ -5066,7 +5070,7 @@ export default function TakeoffCanvas() {
     const ids = res.shapes.slice(-made.length).map((s) => s.id);
     // the rule persists WITH its audit trail — inspectable in the project file
     setRules((rs) => [...rs.filter((r) => r.id !== rule.id), { ...rule, applied_to: ids }]);
-    setCommitMsg(`Rule applied — ${made.length} deduct${made.length === 1 ? "" : "s"} added (⌘Z undoes all). ${rule.label}.`);
+    setCommitMsg(t('status.rule_applied', { count: made.length, label: rule.label }));
   }
 
   // ── ⟂ Transitions (#202, canvas side) ──────────────────────────────────────
@@ -5134,11 +5138,11 @@ export default function TakeoffCanvas() {
     if (made.length) dispatchShape({ type: "add", shapes: made });   // ONE command — one undo entry for the whole sweep
     const total_lf = +made.reduce((n, s) => n + s.computed.perimeter_lf, 0).toFixed(2);
     if (made.length) {
-      setCommitMsg(`${made.length} transition${made.length === 1 ? "" : "s"} derived between ${a.tag} and ${b.tag} — ${total_lf} LF onto ${target.finish_tag}, dashed until you Accept (⌘Z undoes the sweep).`);
+      setCommitMsg(t('commit.transitions_derived', { count: made.length, tagA: a.tag, tagB: b.tag, lf: total_lf, target: target.finish_tag }));
     } else if (withheld.length) {
-      setCommitMsg(`Nothing to commit — every ${a.tag}/${b.tag} run is across a wall. See the Transitions panel.`);
+      setCommitMsg(t('commit.nothing_commit_wall', { tagA: a.tag, tagB: b.tag }));
     } else {
-      setCommitMsg(`${a.tag} and ${b.tag} never meet on the open sheets.`);
+      setCommitMsg(t('status.never_meet', { a: a.tag, b: b.tag }));
     }
     return { committed: made.length, total_lf, withheld, between: [a.tag, b.tag], onto: target.finish_tag };
   }
@@ -5153,7 +5157,7 @@ export default function TakeoffCanvas() {
   function acceptPendingShapes() {
     if (!pendingCommitted.length) return;
     dispatchShape({ type: "review", ids: pendingCommitted.map((s) => s.id) });
-    setCommitMsg(`Accepted ${pendingCommitted.length} proposed shape${pendingCommitted.length === 1 ? "" : "s"} — pencil is now ink.`);
+    setCommitMsg(t('status.accepted_agent', { count: pendingCommitted.length }));
   }
   const rejectAllAgentProposals = () => setAgentProposals([]);
 
@@ -5166,21 +5170,21 @@ export default function TakeoffCanvas() {
       : ev.type === "tool_end" ? (ev.result?.error
           ? { kind: "error", text: `✗ ${ev.name}: ${ev.result.error}` }
           : { kind: "status", text: `✓ ${ev.name} ${trimJson({ ...ev.result, image_data_url: undefined, items: Array.isArray(ev.result?.items) ? `${ev.result.items.length} items` : undefined }, 160)}` })
-      : ev.type === "error" ? { kind: "error", text: `Error: ${ev.message}` }
-      : ev.type === "aborted" ? { kind: "status", text: "Stopped." }
-      : ev.type === "max_iterations" ? { kind: "status", text: `Stopped at the ${ev.limit}-step cap — review what's staged.` }
-      : ev.type === "done" ? { kind: "status", text: "Done — review the dashed proposals." }
+      : ev.type === "error" ? { kind: "error", text: t('commit.agent_error', { message: ev.message }) }
+      : ev.type === "aborted" ? { kind: "status", text: t('agent.stopped') }
+      : ev.type === "max_iterations" ? { kind: "status", text: t('agent.stopped_cap', { limit: ev.limit }) }
+      : ev.type === "done" ? { kind: "status", text: t('agent.done') }
       : null;
     if (entry) setAgentLog((l) => [...l.slice(-199), entry]);
   }
   async function runAgent(goal) {
     if (agentRunning) return;
     if (!isAiConfigured()) { setShowAiSettings(true); return; }
-    if (agentStateRef.current.status !== "ready") { setCommitMsg("Sheet still loading — try again in a moment."); return; }
+    if (agentStateRef.current.status !== "ready") { setCommitMsg(t('status.still_loading')); return; }
     const ctl = new AbortController();
     agentAbortRef.current = ctl;
     setAgentRunning(true);
-    setAgentLog([{ kind: "status", text: `Goal: ${goal}` }]);
+    setAgentLog([{ kind: "status", text: t('agent.goal', { goal }) }]);
     const ctx = buildAgentCtx();
     try {
       await runAgentLoop({
@@ -5206,11 +5210,11 @@ export default function TakeoffCanvas() {
   //     login-gated (see importScheduleFromScan).
   // Corners a,b are stage px (raw cursor, snapping exempted at pointer-down).
   async function importScheduleFromRect(a, b) {
-    if (status !== "ready") { setCommitMsg("Sheet still loading — try again in a moment."); return; }
+    if (status !== "ready") { setCommitMsg(t('status.still_loading')); return; }
     const panel = panelAt(a[0]);
-    if (panelAt(b[0]).key !== panel.key) { setCommitMsg("Draw the box within a single sheet, around its schedule table."); return; }
+    if (panelAt(b[0]).key !== panel.key) { setCommitMsg(t('status.draw_box')); return; }
     const pageObj = pageObjsRef.current.get(panel.key);
-    if (!pageObj) { setCommitMsg("Open a sheet first."); return; }
+    if (!pageObj) { setCommitMsg(t('status.open_sheet_first')); return; }
     const rs = renderScalesRef.current.get(panel.key) || RENDER_SCALE;
     const rect = { x0: a[0] - panel.xOffset, y0: a[1], x1: b[0] - panel.xOffset, y1: b[1] };
     const seq = renderSeqRef.current;                 // a sheet switch mid-await must not pop a dialog for a page you left
@@ -5220,7 +5224,7 @@ export default function TakeoffCanvas() {
       const tc = await pageObj.getTextContent();
       if (seq !== renderSeqRef.current) return;
       tokens = extractRegionText(tc, vp, rect);
-    } catch { setCommitMsg("Couldn't read that region."); return; }
+    } catch { setCommitMsg(t('status.couldnt_read_region')); return; }
     // Vector-vs-scan decision. Tokens present ⇒ TRY the text layer first (a real
     // vector schedule parses straight from it, no OCR cost). But token presence
     // isn't proof of a vector page: scanned plans often carry a stray text layer
@@ -5236,7 +5240,7 @@ export default function TakeoffCanvas() {
       // advice is to re-drag around the table header. Don't fire a paid OCR call
       // and don't claim the page is scanned.
       if (!isGoogleConfigured() || !isSignedIn() || !isAllowedDomain()) {
-        setCommitMsg("No schedule found in that box — drag around the finish/material schedule (its CODE / MATERIAL / … header).");
+        setCommitMsg(t('status.no_schedule_vector'));
         return;
       }
       // else: the reader is available — let it read the pixels below.
@@ -5258,31 +5262,31 @@ export default function TakeoffCanvas() {
   async function importScheduleFromScan(pageObj, rs, rect, seq, tokenCount) {
     const hadTokens = tokenCount > 0;
     if (!isGoogleConfigured()) {
-      setCommitMsg("No schedule found — this looks like a scanned page (no text layer). Importing from scanned plans needs the AI backend.");
+      setCommitMsg(t('status.no_schedule_scan'));
       return;
     }
-    if (!isSignedIn()) { setCommitMsg("Sign in to import from scanned plans."); return; }
+    if (!isSignedIn()) { setCommitMsg(t('status.sign_in_schedule')); return; }
     // Org-only: a signed-in account outside the configured domain must not reach
     // the paid reader (the server 403s it too — this just avoids the round-trip).
-    if (!isAllowedDomain()) { setCommitMsg("Your sign-in doesn't have access to the scanned-schedule reader."); return; }
+    if (!isAllowedDomain()) { setCommitMsg(t('status.no_access_reader')); return; }
     // A paid read is already in flight — a rapid re-draw of the marquee must not
     // fire a second Gemini call. Surface it (the first call may not have printed
     // "Reading…" yet) so the redraw doesn't look ignored. Clears in finally below.
-    if (scanBusyRef.current) { setCommitMsg("Still reading the last schedule — one moment."); return; }
+    if (scanBusyRef.current) { setCommitMsg(t('status.still_reading')); return; }
     scanBusyRef.current = true;
     try {
       let png;
       try { png = await rasterizeRegion(pageObj, rs, rect); }
-      catch { setCommitMsg("Couldn't read that region."); return; }
+      catch { setCommitMsg(t('status.couldnt_read_region')); return; }
       if (seq !== renderSeqRef.current) return;
       // The token is what actually authorizes the paid read — the server verifies
       // it before spending. A missing/expired token here means re-consent, not a
       // silent public call.
       let token;
       try { token = await getAccessToken(); }
-      catch { setCommitMsg("Sign in again to import from scanned plans."); return; }
+      catch { setCommitMsg(t('status.sign_in_again')); return; }
       if (seq !== renderSeqRef.current) return;
-      setCommitMsg("Reading the scanned schedule…");
+      setCommitMsg(t('status.reading_schedule'));
       // #104: record WHY the paid reader was reached, right before the call fires
       // (rasterize + token succeeded), so the log correlates 1:1 with paid reads.
       // no-text-layer = truly raster (AI-only); text-present-unparsed = tokens were
@@ -5307,26 +5311,26 @@ export default function TakeoffCanvas() {
             // token + ALLOWED_HD gate ignores it.
             body: JSON.stringify({ image_b64: png.b64, width: png.width, height: png.height, client_hd: orgDomainHint() }),
           }),
-          { onRetry: () => setCommitMsg("The reader was warming up — retrying…") },
+          { onRetry: () => setCommitMsg(t('status.warming_up')) },
         );
         if (seq !== renderSeqRef.current) return;
-        if (res.status === 401 || res.status === 403) { setCommitMsg("Your sign-in doesn't have access to the scanned-schedule reader."); return; }
-        if (res.status === 501) { setCommitMsg("Importing from scanned plans isn't enabled on this deployment."); return; }
+        if (res.status === 401 || res.status === 403) { setCommitMsg(t('status.no_access_reader')); return; }
+        if (res.status === 501) { setCommitMsg(t('status.scan_not_enabled')); return; }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const rows = normalizeScanRows(await res.json());
         if (!rows.length) {
           setCommitMsg(hadTokens
-            ? "No schedule found in that box — drag around the finish/material schedule (its CODE / MATERIAL / … header)."
-            : "No schedule found in that scanned region — the reader returned nothing.");
+            ? t('status.no_schedule_vector')
+            : t('status.no_schedule_reader'));
           return;
         }
         // #104: say why the AI reader ran — honest about the token-bearing case (we
         // read the pixels; we do NOT claim the vector parser has a bug).
         setCommitMsg(hadTokens
-          ? `Read ${rows.length} finish${rows.length === 1 ? "" : "es"} from the image — the box had text but we couldn't read it as a table.`
-          : `Read ${rows.length} finish${rows.length === 1 ? "" : "es"} — scanned page (no text layer).`);
+          ? t('status.read_finishes_text', { count: rows.length })
+          : t('status.read_finishes_scan', { count: rows.length }));
         setImportRows(rows);
-      } catch { setCommitMsg("Couldn't reach the schedule reader — try again in a moment."); }
+      } catch { setCommitMsg(t('status.couldnt_reach_reader')); }
     } finally {
       scanBusyRef.current = false;
       bumpIdle();   // scan done → let the idle-drain observe the busy→idle edge (Slice 5b)
@@ -5380,10 +5384,10 @@ export default function TakeoffCanvas() {
       existing.add(tag);
     }
     setImportRows(null);
-    if (!made.length) { setCommitMsg("Those finishes already exist as conditions."); return; }
+    if (!made.length) { setCommitMsg(t('status.schedule_exists')); return; }
     setConditions((cs) => [...cs, ...made]);
     activateCondition(made[0].id, { reassign: false });
-    setCommitMsg(`Created ${made.length} condition${made.length === 1 ? "" : "s"} from the schedule.`);
+    setCommitMsg(t('status.schedule_created', { count: made.length }));
   }
   // every condition-editor save lands here — a bare updated_at is the whole
   // provenance story for conditions (no origin machinery; they're all manual)
@@ -5398,7 +5402,7 @@ export default function TakeoffCanvas() {
     const c = condById[id];
     if (!c) return;
     const owned = shapes.filter((s) => s.condition_id === id);
-    if (owned.length && !window.confirm(`Delete ${c.finish_tag} and its ${owned.length} takeoff${owned.length === 1 ? "" : "s"}? This can't be undone.`)) return;
+    if (owned.length && !window.confirm(t('confirm.delete_condition_with_takeoffs', { tag: c.finish_tag, count: owned.length }))) return;
     // Lineage first, removal second: deleting a family parent must not orphan its twins. The
     // eldest survivor is promoted to root (its rows are already materialized — propagate-on-write
     // guarantees that) and the rest re-point at it, origin_ids remapped.
@@ -5420,7 +5424,7 @@ export default function TakeoffCanvas() {
     // no bulk-selection pruning needed here: the panel derives liveness from
     // the conditions prop (liveChecked = conditions ∩ checked), so a deleted
     // id left in its checked set is inert by construction
-    setCommitMsg(`Deleted ${c.finish_tag}${owned.length ? ` and ${owned.length} takeoff${owned.length === 1 ? "" : "s"}` : ""}.`);
+    setCommitMsg(t('status.deleted_condition', { tag: c.finish_tag, takeoffs: owned.length ? ` and ${owned.length} takeoff(s)` : "" }));
   }
 
   // custom columns: project-scoped vocabulary editing + per-condition assignment.
@@ -5439,7 +5443,7 @@ export default function TakeoffCanvas() {
   const addColumnValue = (colId, v) => setConditionColumns((cols) => cols.map((cc) => (cc.id === colId && !cc.values.includes(v) ? { ...cc, values: [...cc.values, v] } : cc)));
   const removeColumnValue = (colId, v) => setConditionColumns((cols) => cols.map((cc) => (cc.id === colId ? { ...cc, values: cc.values.filter((x) => x !== v) } : cc)));   // assigned conditions keep the string — selects show "(removed)"
   const renameColumnVal = (colId, oldV) => {
-    const newV = (window.prompt("Rename value:", oldV) || "").trim();
+    const newV = (window.prompt(t('prompt.rename_value'), oldV) || "").trim();
     if (!newV || newV === oldV) return;
     // rename into an existing value = merge (values are unique — they key the chips and the select options)
     setConditionColumns((cols) => cols.map((cc) => (cc.id === colId ? { ...cc, values: cc.values.includes(newV) ? cc.values.filter((x) => x !== oldV) : cc.values.map((x) => (x === oldV ? newV : x)) } : cc)));
@@ -5447,7 +5451,7 @@ export default function TakeoffCanvas() {
   };
   const deleteColumn = (colId) => {
     const cc = conditionColumns.find((c) => c.id === colId);
-    if (!window.confirm(`Delete column "${columnLabel(cc)}" for the whole project? Conditions keep their values but they're no longer shown or exported.`)) return;
+    if (!window.confirm(t('confirm.delete_column', { column: columnLabel(cc) }))) return;
     setConditionColumns((cols) => cols.filter((c) => c.id !== colId));   // orphaned attrs[colId] stay behind — harmless, nothing iterates raw attrs
   };
 
@@ -5456,7 +5460,7 @@ export default function TakeoffCanvas() {
   const addLabel = (v) => setShapeLabels((ls) => (ls.includes(v) ? ls : [...ls, v]));
   const removeLabel = (v) => setShapeLabels((ls) => ls.filter((x) => x !== v));   // labeled shapes keep the string — it falls into an ad-hoc report group, nothing disappears from totals
   const renameLabel = (oldV) => {
-    const newV = (window.prompt("Rename label:", oldV) || "").trim();
+    const newV = (window.prompt(t('prompt.rename_label'), oldV) || "").trim();
     if (!newV || newV === oldV) return;
     // rename into an existing value = merge (labels are unique — they key the chips and the report's group headers)
     setShapeLabels((ls) => (ls.includes(newV) ? ls.filter((x) => x !== oldV) : ls.map((x) => (x === oldV ? newV : x))));
@@ -5517,7 +5521,7 @@ export default function TakeoffCanvas() {
     if (!src || !lab) return null;
     const tag = variantTag(src.finish_tag, lab);
     if (conditions.some((c) => normalizeTag(c.finish_tag) === normalizeTag(tag))) {
-      setCommitMsg(`A condition is already called ${tag} — pick another label.`);
+      setCommitMsg(t('status.condition_renamed', { tag }));
       return null;
     }
     const { twin, parentPatch } = mintTwin(src, {
@@ -5529,7 +5533,7 @@ export default function TakeoffCanvas() {
     agentStateRef.current = { ...agentStateRef.current, conditions: [...agentStateRef.current.conditions, twin] };
     setConditions((cs) => [...cs.map((c) => (c.id === src.id && parentPatch ? { ...c, ...parentPatch } : c)), twin]);
     activateCondition(twin.id, { reassign: false });
-    setCommitMsg(`Added ${twin.finish_tag} — its materials follow ${src.finish_tag} until you change them here.`);
+    setCommitMsg(t('status.condition_added', { tag: twin.finish_tag, src: src.finish_tag }));
     return twin;
   };
   // Cut a twin loose: every following row freezes where it stands. It KEEPS its family_id, so it
@@ -5539,9 +5543,9 @@ export default function TakeoffCanvas() {
     if (!c?.variant_of) return;
     const par = conditions.find((x) => x.id === c.variant_of);
     const n = (c.materials || []).filter((r) => r.inherited).length;
-    if (!window.confirm(`Split ${c.finish_tag} out of its family?\n\n${n} row${n === 1 ? "" : "s"} freeze at ${n === 1 ? "its" : "their"} current values, and edits to ${par?.finish_tag || "the original"} stop reaching it.\nIt keeps its name and still subtotals with the family.`)) return;
+    if (!window.confirm(t('confirm.split_family', { tag: c.finish_tag, count: n, possessive: n === 1 ? t('confirm.its') : t('confirm.their'), parent: par?.finish_tag || t('confirm.the_original') }))) return;
     setConditions((cs) => splitFromFamily(cs, id));
-    setCommitMsg(`${c.finish_tag} no longer follows ${par?.finish_tag || "its family"}.`);
+    setCommitMsg(t('status.condition_split', { tag: c.finish_tag, parent: par?.finish_tag || t('status.its_family') }));
   };
   // Height/Thickness are LIVE parameters (Kreo-style): changing them re-flows
   // every dependent shape on this condition — wall SF tracks the tile height.
@@ -5660,7 +5664,7 @@ export default function TakeoffCanvas() {
         .map((s) => [s.id, computeShapeMetrics(s, dimsBy.get(s.sheet_id), uppFor(s.sheet_id) || 0, condById[s.condition_id])]));
       if (!healed.size) return;
       dispatchShape({ type: "replace", shapes: shapes.map((s) => (healed.has(s.id) ? { ...s, computed: healed.get(s.id) } : s)) }, { reset: true });
-      setCommitMsg(`Repriced ${healed.size} takeoff${healed.size === 1 ? "" : "s"} that loaded without quantities.`);
+      setCommitMsg(t('status.repriced', { count: healed.size }));
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reruns on load/shape/scale change; docFor/uppFor/condById read from the same render
   }, [status, shapes, scales, conditions]);
@@ -5790,7 +5794,7 @@ export default function TakeoffCanvas() {
   // condition — the "don't open the sidebar unless double-clicked" contract.
   const pinToPalette = (id) => {
     if (palette.includes(id)) return;   // already pinned — silent no-op (dropping a chip back on the band)
-    if (palette.length >= PALETTE_MAX) { setCommitMsg(`Palette is full (${PALETTE_MAX}) — unpin one first.`); return; }
+    if (palette.length >= PALETTE_MAX) { setCommitMsg(t('status.palette_full', { count: PALETTE_MAX })); return; }
     setPalette((p) => (p.includes(id) || p.length >= PALETTE_MAX ? p : [...p, id]));
   };
   const unpinFromPalette = (id) => setPalette((p) => p.filter((x) => x !== id));
@@ -5822,7 +5826,7 @@ export default function TakeoffCanvas() {
   // so counts and names here can never claim rows the list already lost.
   const bulkWasteConditions = (ids, v) => {
     setConditions((cs) => cs.map((c) => (ids.has(c.id) ? { ...c, waste_pct: v } : c)));
-    setCommitMsg(`Waste set to ${v}% on ${ids.size} condition${ids.size === 1 ? "" : "s"}.`);
+    setCommitMsg(t('status.waste_set', { pct: v, count: ids.size }));
   };
   const bulkColorConditions = (ids, color) => setConditions((cs) => cs.map((c) => (ids.has(c.id) ? { ...c, color } : c)));
   // returns whether the delete went through — the panel clears its selection only then
@@ -5833,20 +5837,20 @@ export default function TakeoffCanvas() {
     const owned = dead.length;
     // name what dies while the list still reads at a glance (≤5); count beyond
     const what = live.length <= 5 ? live.map((c) => c.finish_tag).join(", ") : `${live.length} conditions`;
-    if (!window.confirm(`Delete ${what}${owned ? ` and their ${owned} takeoff${owned === 1 ? "" : "s"}` : ""}? This can't be undone.`)) return false;
+    if (!window.confirm(t('confirm.delete_with_takeoffs', { what, count: owned }))) return false;
     setConditions((cs) => promoteOnDelete(cs, ids).filter((c) => !ids.has(c.id)));   // lineage repaired first
     // same cascade rule as deleteCondition: counted centrally, off the stack
     if (owned) dispatchShape({ type: "delete", ids: dead.map((s) => s.id), reason: "condition-delete" }, { record: false });
     setPalette((p) => p.filter((id) => !ids.has(id)));   // deleted conditions can't stay pinned
     if (ids.has(activeCond)) setActiveCond(conditions.find((c) => !ids.has(c.id))?.id || "");
-    setCommitMsg(`Deleted ${live.length} condition${live.length === 1 ? "" : "s"}${owned ? ` and ${owned} takeoff${owned === 1 ? "" : "s"}` : ""}.`);
+    setCommitMsg(t('status.deleted_conditions', { count: live.length, takeoffs: owned ? ` and ${owned} takeoff(s)` : "" }));
     return true;
   };
 
   // ── condition template library ops (browser-global; store meta key) ───────
   const persistTemplates = (next) => {
     templatesRef.current = next; setTemplates(next);
-    store.saveTemplates(next).catch((e) => setCommitMsg(`Couldn't save the library: ${e.message || e}`));
+    store.saveTemplates(next).catch((e) => setCommitMsg(t('status.template_err', { error: e.message || e })));
   };
   const condToTemplate = (c) => ({
     finish_tag: c.finish_tag, color: c.color, fill: c.fill, hatch: c.hatch || "solid",
@@ -5862,9 +5866,9 @@ export default function TakeoffCanvas() {
     if (!aCond) return;
     const tpl = condToTemplate(aCond);
     const at = templates.findIndex((t) => t.finish_tag === tpl.finish_tag);
-    if (at >= 0 && !window.confirm(`A “${tpl.finish_tag}” template is already in the library — replace it?`)) return;
+    if (at >= 0 && !window.confirm(t('confirm.template_exists', { tag: tpl.finish_tag }))) return;
     persistTemplates(at >= 0 ? templates.map((t, i) => (i === at ? tpl : t)) : [...templates, tpl]);
-    setCommitMsg(`Saved ${tpl.finish_tag} to the library.`);
+    setCommitMsg(t('status.saved_template', { tag: tpl.finish_tag }));
   };
   const applyTemplate = (t) => {
     const c = instantiateTemplate(t);
@@ -5873,7 +5877,7 @@ export default function TakeoffCanvas() {
     // still dismisses a live bulk selection like every other activation surface
     activateCondition(c.id, { reassign: false });
     // the panel switches itself back to the Takeoffs tab (its Apply handler)
-    setCommitMsg(`Added ${c.finish_tag} from the library.`);
+    setCommitMsg(t('status.added_from_lib', { tag: c.finish_tag }));
   };
   // idx addresses the template BY POSITION (the panel's plain templates.map
   // index — it doesn't filter/sort). The focus-refresh above now skips the
@@ -5885,15 +5889,15 @@ export default function TakeoffCanvas() {
   // reports rather than throwing.
   const renameTemplate = (idx) => {
     const t = templates[idx];
-    if (!t) { setCommitMsg("The library changed in another tab — try again."); return; }
-    const tag = (window.prompt("Template tag:", t.finish_tag) || "").trim();
+    if (!t) { setCommitMsg(t('status.lib_changed')); return; }
+    const tag = (window.prompt(t('prompt.template_tag'), t.finish_tag) || "").trim();
     if (!tag || tag === t.finish_tag) return;
     persistTemplates(templates.map((x, i) => (i === idx ? { ...x, finish_tag: tag } : x)));
   };
   const deleteTemplate = (idx) => {
     const t = templates[idx];
-    if (!t) { setCommitMsg("The library changed in another tab — try again."); return; }
-    if (!window.confirm(`Remove the ${t.finish_tag} template from the library? Existing conditions are unaffected.`)) return;
+    if (!t) { setCommitMsg(t('status.lib_changed')); return; }
+    if (!window.confirm(t('confirm.remove_template', { tag: t.finish_tag }))) return;
     persistTemplates(templates.filter((_, i) => i !== idx));
   };
 
@@ -5906,7 +5910,7 @@ export default function TakeoffCanvas() {
   const matLibById = useMemo(() => Object.fromEntries(matLib.map((m) => [m.id, m])), [matLib]);
   const persistMatLib = (next) => {
     setMatLib(next);
-    store.saveMaterialLibrary(next).catch((e) => setCommitMsg(`Couldn't save the material library: ${e.message || e}`));
+    store.saveMaterialLibrary(next).catch((e) => setCommitMsg(t('status.material_lib_err', { error: e.message || e })));
   };
   // libFields / matFieldOverridden / the push+revert patch builders live in
   // lib/materials.js (pure, tested): they carry kind and the grout tile
@@ -5917,11 +5921,11 @@ export default function TakeoffCanvas() {
     updateCond({ materials: [...(aCond.materials || []), { id: uid("mat"), ...libFields(lm), lib_id: lm.id }] });
   };
   const promoteMaterial = (m) => {
-    if (!m.name) { setCommitMsg("Name the material before saving it to the library."); return; }
+    if (!m.name) { setCommitMsg(t('status.name_material_first')); return; }
     const entry = { id: uid("lib"), ...libFields(m) };
     persistMatLib([...matLib, entry]);
     updateMaterial(m.id, { lib_id: entry.id });
-    setCommitMsg(`Saved ${m.name} to the material library.`);
+    setCommitMsg(t('status.saved_material', { name: m.name }));
   };
   const revertMatField = (m, f) => {
     const lm = matLibById[m.lib_id];
@@ -5939,15 +5943,15 @@ export default function TakeoffCanvas() {
     const lm = matLibById[libId];
     if (!lm) return;
     const n = linkedCount(libId);
-    if (!n) { setCommitMsg("No condition lines link this material yet."); return; }
-    if (!window.confirm(`Update ${n} linked line${n === 1 ? "" : "s"} across conditions to the library values? Overrides on those lines are replaced.`)) return;
+    if (!n) { setCommitMsg(t('status.no_linked_lines')); return; }
+    if (!window.confirm(t('confirm.update_linked_lines', { count: n }))) return;
     setConditions((cs) => cs.map((c) => ({ ...c, materials: (c.materials || []).map((m) => (m.lib_id === libId ? libPushPatch(m, lm) : m)) })));
-    setCommitMsg(`Updated ${n} linked line${n === 1 ? "" : "s"} from the library.`);
+    setCommitMsg(t('status.updated_lines', { count: n }));
   };
   const deleteLibMaterial = (libId) => {
     const lm = matLibById[libId];
     const n = linkedCount(libId);
-    if (!window.confirm(`Remove ${lm?.name || "this material"} from the library?${n ? (n === 1 ? " 1 linked line keeps its values — only the link is removed." : ` ${n} linked lines keep their values — only the links are removed.`) : ""}`)) return;
+    if (!window.confirm(t('confirm.remove_material', { name: lm?.name || t('confirm.this_material'), linkedNote: n ? (n === 1 ? t('confirm.one_linked_line') : t('confirm.n_linked_lines', { count: n })) : "" }))) return;
     persistMatLib(matLib.filter((x) => x.id !== libId));
     if (n) setConditions((cs) => cs.map((c) => ({ ...c, materials: (c.materials || []).map((m) => { if (m.lib_id !== libId) return m; const { lib_id: _l, ...rest } = m; return rest; }) })));
     // condition templates carry lib_id too (so applying re-links to a live
@@ -6038,23 +6042,23 @@ export default function TakeoffCanvas() {
     : `${levelOfPage(page) ? `${levelOfPage(page)} · ` : ""}${pageLabels[page] || (pageCount > 1 ? `Sheet ${page}` : active)}${pageCount > 1 ? ` · ${page}/${pageCount}` : ""}`;
   const sheetMenuItems = [];
   if (!sheetGroup.length && pageCount > 1) {
-    sheetMenuItems.push({ section: "Sheets in this set" });
-    for (let n = 1; n <= pageCount; n++) sheetMenuItems.push({ id: `pg-${n}`, label: `${levelOfPage(n) ? `${levelOfPage(n)} · ` : ""}${pageLabels[n] || `Sheet ${n}`}`, shortcut: `${n}/${pageCount}`, active: n === page, onSelect: () => setPage(n) });
+    sheetMenuItems.push({ section: t('menu.sheets_in_set') });
+    for (let n = 1; n <= pageCount; n++) sheetMenuItems.push({ id: `pg-${n}`, label: `${levelOfPage(n) ? `${levelOfPage(n)} · ` : ""}${pageLabels[n] || t('menu.sheet_page', { page: n })}`, shortcut: `${n}/${pageCount}`, active: n === page, onSelect: () => setPage(n) });
   }
   if (!sheetGroup.length && sheets.length > 1) {
-    sheetMenuItems.push({ section: "Files" });
+    sheetMenuItems.push({ section: t('menu.files') });
     for (const s of sheets) sheetMenuItems.push({ id: `f-${s.name}`, label: s.name, active: s.name === active, onSelect: () => { setActive(s.name); setPage(1); } });
   }
   if (sheetMenuItems.length && (sheetGroup.length || lastGroup.length >= 2)) sheetMenuItems.push("divider");
   if (sheetGroup.length) sheetMenuItems.push(soloStitch
-    ? { id: "ungroup", label: "Leave stitch — back to one sheet", title: "Back to a single sheet (the stitch's first member) — the stitch keeps its takeoffs and reopens from the gallery or its tab", onSelect: ungroup }
-    : { id: "ungroup", label: "Ungroup — back to one sheet", title: "Back to one sheet — you land on the sheet you were last working; every sheet keeps its takeoffs and markups", onSelect: ungroup });
-  if (!sheetGroup.length && lastGroup.length >= 2) sheetMenuItems.push({ id: "regroup", label: `Regroup (${lastGroup.length})`, title: `Side-by-side again with the same ${lastGroup.length} sheets — each keeps its own scale, takeoffs and markups`, onSelect: regroup });
+    ? { id: "ungroup", label: t('menu.ungroup_stitch'), title: t('menu.ungroup_stitch_title'), onSelect: ungroup }
+    : { id: "ungroup", label: t('menu.ungroup'), title: t('menu.ungroup_title'), onSelect: ungroup });
+  if (!sheetGroup.length && lastGroup.length >= 2) sheetMenuItems.push({ id: "regroup", label: t('menu.regroup', { count: lastGroup.length }), title: t('menu.regroup_title', { count: lastGroup.length }), onSelect: regroup });
   if (sheetMenuItems.length) sheetMenuItems.push("divider");
-  sheetMenuItems.push({ id: "gallery", icon: "sheets", label: "Open gallery…", shortcut: "G", onSelect: () => setView("gallery") });
+  sheetMenuItems.push({ id: "gallery", icon: "sheets", label: t('menu.open_gallery'), shortcut: "G", onSelect: () => setView("gallery") });
   sheetMenuItems.push({
-    id: "import-takeoff", icon: "document", label: "Import takeoff…",
-    title: "Load a takeoff JSON — the app's own export or an agent session's export_takeoff. Machine shapes land dashed in their condition colors for your review; on merge, your calibration, conditions, and workspace win.",
+    id: "import-takeoff", icon: "document", label: t('menu.import_takeoff'),
+    title: t('menu.import_takeoff') + " — " + t('menu.open_file_title'),
     onSelect: () => importInputRef.current?.click(),
   });
 
@@ -6066,23 +6070,23 @@ export default function TakeoffCanvas() {
   // scale gate: an agent-set scale no human has confirmed wears the warning
   // face until it's confirmed (menu row below) or replaced by a human act
   const scaleNeedsConfirm = !!unitsPerPx && scaleUnconfirmed[focusPanel.key] === false;
-  const scaleFace = !unitsPerPx ? "Set scale…" : scaleNeedsConfirm ? `⚠ ${stdValue || "custom"} — confirm` : `${scaleMismatch ? "≠" : "✓"} ${stdValue || "custom"}`;
+  const scaleFace = !unitsPerPx ? t('scale.set_scale') : scaleNeedsConfirm ? t('scale.confirm_agent', { scale: stdValue || "custom" }) : `${scaleMismatch ? "≠" : "✓"} ${stdValue || "custom"}`;
   const scaleFaceStyle = !unitsPerPx
     ? { border: "1px dashed var(--c-danger)", color: "var(--c-danger)" }
     : scaleMismatch || scaleNeedsConfirm
       ? { border: "1px solid var(--c-warning)", color: "var(--c-warning)" }
       : { border: "1px solid var(--c-positive)", color: "var(--c-positive)" };
   const scaleTitle = scaleNeedsConfirm
-    ? `An agent set this sheet's scale — no person has confirmed it. Check it against a printed dimension (K), then confirm from this menu; quantities stand on this number.`
+    ? t('scale.title_confirm')
     : scaleMismatch
-      ? `You set ${stdValue}, but the plan notes ${scaleDet.label} on ${labelFor(focusPanel)} — double-check before tracing.`
-      : `Set the scale for ${labelFor(focusPanel)} — remembered per sheet${groupKeys.length > 1 ? " (targets the sheet you last clicked)" : ""}`;
+      ? t('scale.title_mismatch', { std: stdValue, detected: scaleDet.label, sheet: labelFor(focusPanel) })
+      : t('scale.title_default', { sheet: labelFor(focusPanel) }) + (groupKeys.length > 1 ? t('scale.title_group') : "");
   const scaleItems = [];
   if (scaleNeedsConfirm) {
     scaleItems.push({
       id: "confirm-scale", icon: "check", tint: "var(--c-warning)",
-      label: "Confirm agent-set scale",
-      title: `This scale arrived from an agent takeoff and no person has verified it. Best practice: Check a dimension (K) against a printed dimension string first — a wrong scale poisons every quantity on the sheet.`,
+      label: t('scale.confirm_label'),
+      title: t('scale.confirm_title'),
       onSelect: () => confirmScale(focusPanel.key),
     });
     scaleItems.push("divider");
@@ -6094,18 +6098,18 @@ export default function TakeoffCanvas() {
       || (prevScale.source === "calibrated" ? "calibrated" : "custom");
     scaleItems.push({
       id: "revert-scale", icon: "undo",
-      label: `Revert scale (was ${wasLabel})`,
-      title: `Put ${labelFor(focusPanel)} back on the scale the last rescale replaced and re-price its takeoffs. One step, kept only until the sheet view changes — reverting is itself revertible.`,
+      label: t('scale.revert', { label: wasLabel }),
+      title: t('scale.revert_title', { sheet: labelFor(focusPanel) }),
       onSelect: revertScale,
     });
     scaleItems.push("divider");
   }
   if (scaleDet) {
-    scaleItems.push({ section: "From the plan" });
+    scaleItems.push({ section: t('scale.plan_header') });
     scaleItems.push({
       id: "use-detected", icon: "target", tint: "var(--c-positive)",
-      label: `Plan says ${scaleDet.label}${scaleDet.multi ? " ±" : ""} — use it`,
-      title: `The plan notes ${scaleDet.label} on ${labelFor(focusPanel)}${scaleDet.multi ? " — this sheet shows several scales (details are often larger); confirm against a known dimension" : ""}. Hover previews a calibrated guide bar on the sheet so you can sanity-check it.`,
+      label: t('scale.plan_use', { label: scaleDet.label, multi: scaleDet.multi ? " ±" : "" }),
+      title: t('scale.plan_title', { label: scaleDet.label, sheet: labelFor(focusPanel), multiDetail: scaleDet.multi ? " — this sheet shows several scales (details are often larger); confirm against a known dimension" : "" }),
       onSelect: () => { rescaleSheet(focusPanel.key, scaleDet.upp); setScaleSources((s) => ({ ...s, [focusPanel.key]: "detected" })); showScaleGuide(focusPanel.key, scaleDet.upp, scaleDet.label); },
       // hover previews the guide bar behind the open menu — only while the
       // sheet is still UNSCALED (upstream's gate: on a scaled sheet the bar
@@ -6116,12 +6120,12 @@ export default function TakeoffCanvas() {
       onHover: (on) => { if (on) { if (!scales[focusPanel.key]) showScaleGuide(focusPanel.key, scaleDet.upp, scaleDet.label, true); } else clearPreviewGuide(); },
     });
   }
-  scaleItems.push({ section: "Standard" });
+  scaleItems.push({ section: t('scale.standard_header') });
   for (const s of STANDARD_SCALES) scaleItems.push({ id: s.label, label: s.label, active: stdValue === s.label, onSelect: () => { rescaleSheet(focusPanel.key, s.upp); setScaleSources((sc) => ({ ...sc, [focusPanel.key]: "standard" })); showScaleGuide(focusPanel.key, s.upp, s.label); } });
   scaleItems.push("divider");
-  scaleItems.push({ id: "calibrate", icon: "calibrate", label: "Calibrate two points…", title: "Calibrate — click two points of a known dimension", active: tool === "calibrate", onSelect: () => setTool("calibrate") });
-  scaleItems.push({ id: "check", icon: "check", label: "Check a dimension…", shortcut: "K", title: "Check a dimension (K) — click both ends of a printed dimension string; compares the measured length against what the drawing says", active: tool === "check", onSelect: () => setTool("check") });
-  scaleItems.push({ note: "Remembered per sheet." });
+  scaleItems.push({ id: "calibrate", icon: "calibrate", label: t('scale.calibrate'), title: t('tool.calibrate'), active: tool === "calibrate", onSelect: () => setTool("calibrate") });
+  scaleItems.push({ id: "check", icon: "check", label: t('scale.check'), shortcut: "K", title: t('check.tool', { count: 2 }), active: tool === "check", onSelect: () => setTool("check") });
+  scaleItems.push({ note: t('scale.remembered') });
 
   // One-Click fill sensitivity — lives in the render menu now, so arming
   // One-Click never reshapes the toolbar. Detents at Strict / Balanced /
@@ -6130,7 +6134,7 @@ export default function TakeoffCanvas() {
   // and flood math can't drift if a preset is ever retuned.
   const fillRow = (() => {
     const NOTCHES = [SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE];
-    const label = fillSens === SENS_STRICT ? "Strict" : fillSens === SENS_BALANCED ? "Balanced" : fillSens === SENS_AGGRESSIVE ? "Aggressive" : `${Math.round(fillSens * 100)}%`;
+    const label = fillSens === SENS_STRICT ? t('fill.strict') : fillSens === SENS_BALANCED ? t('fill.balanced') : fillSens === SENS_AGGRESSIVE ? t('fill.aggressive') : `${Math.round(fillSens * 100)}%`;
     const snap = (v) => { for (const n of NOTCHES) if (Math.abs(v - n) <= 0.06) return n; return v; };
     // A knob that cannot move must SAY so. Sensitivity tunes one thing — how
     // eagerly a fill escalates past ink the classifier called hatch — so a
@@ -6148,10 +6152,9 @@ export default function TakeoffCanvas() {
       ? proposal.regions.every((r) => r.shs === 0)
       : false;
     return (
-      <div title={"One-Click fill sensitivity — how far a fill reaches past a room's hatch pattern.\nStrict: stop at the linework (original behavior).\nBalanced: recover hatch-lined rooms to the walls (default).\nAggressive: cross more pattern and tolerate more growth.\nLower it if fills spill; raise it if hatched rooms come up short.\nScanned sheets trace from pixels — sensitivity doesn't apply there."
-        + (inert ? "\n\nNothing on this fill's boundary classified as a hatch or tile pattern, so every setting returns the same region. It is stopping on ink the engine still reads as a wall." : "")}
+      <div title={t('fill.title') + (inert ? "\n\n" + t('fill.inert_title') : "")}
         style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", flexWrap: "wrap" }}>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)" }}>Fill</span>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)" }}>{t('fill.label')}</span>
         <input name="fill-sensitivity" type="range" min={SENS_STRICT} max={SENS_AGGRESSIVE} step={0.01} value={fillSens} list="fill-sens-notches"
           onChange={(e) => setFillSens(snap(parseFloat(e.target.value)))}
           style={{ flex: 1, accentColor: "var(--cobalt)", cursor: "pointer", opacity: inert ? 0.45 : 1 }} />
@@ -6159,7 +6162,7 @@ export default function TakeoffCanvas() {
         <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, fontWeight: 600, color: inert ? "var(--ink-faint)" : "var(--cobalt)", minWidth: 58 }}>{label}</span>
         {inert && (
           <span style={{ flexBasis: "100%", fontSize: 10.5, lineHeight: 1.35, color: "var(--ink-soft)" }}>
-            This fill is bounded entirely by hard ink — every setting returns the same region.
+            {t('fill.inert')}
           </span>
         )}
       </div>
@@ -6189,78 +6192,78 @@ export default function TakeoffCanvas() {
       {!focusMode && (
       <div style={{ display: "flex", gap: 7, alignItems: "center", padding: "16px 14px 6px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", whiteSpace: "nowrap" }}>
         <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--ink)", letterSpacing: "-0.02em" }}>open<span style={{ fontStyle: "italic", color: "var(--cobalt)" }}>takeoff</span></strong>
-        <button type="button" onClick={() => fileInputRef.current?.click()} title="Open plans — PDF, image, or a .zip plan set (or just drag them onto the canvas)"
+        <button type="button" onClick={() => fileInputRef.current?.click()} title={t('menu.open_plans')}
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
-          <Icon name="plus" size={14} />Open</button>
+          <Icon name="plus" size={14} />{t('menu.open')}</button>
         <button type="button" onClick={() => setView("gallery")}
-          title={`Plan set — the visual gallery; open one or several sheets (G)${sheetGroup.length ? ` · ${sheetGroup.length} side-by-side now` : ""}`}
+          title={t('menu.plan_set', { count: sheetGroup.length || 0 })}
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${sheetGroup.length ? "var(--cobalt)" : "var(--ink-faint)"}`, background: sheetGroup.length ? "var(--cobalt)" : "transparent", color: sheetGroup.length ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
-          <Icon name="sheets" size={15} />Sheets
+          <Icon name="sheets" size={15} />{t('menu.sheets')}
         </button>
         {sheets.length > 0 && (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={!!sheetGroup.length || page <= 1} title="Previous sheet"
+            <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={!!sheetGroup.length || page <= 1} title={t('menu.previous_sheet')}
               style={{ padding: "5px 8px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", opacity: (!!sheetGroup.length || page <= 1) ? 0.4 : 1 }}><Icon name="chevronLeft" size={12} /></button>
             <ToolMenu
-              title="Sheet — the sheets in this set, files, grouping, and the gallery"
+              title={t('menu.sheet_tooltip')}
               onOpenChange={onMenuDepth}
               face={<span style={{ display: "inline-block", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sheetChipLabel}</span>}
               faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 12, fontWeight: 400, padding: "6px 8px" }}
               menuStyle={{ minWidth: 260, maxHeight: "min(480px, 60vh)", overflowY: "auto" }}
               items={sheetMenuItems}
             />
-            <button type="button" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={!!sheetGroup.length || page >= pageCount} title="Next sheet"
+            <button type="button" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={!!sheetGroup.length || page >= pageCount} title={t('menu.next_sheet')}
               style={{ padding: "5px 8px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", opacity: (!!sheetGroup.length || page >= pageCount) ? 0.4 : 1 }}><Icon name="chevronRight" size={12} /></button>
           </span>
         )}
         {vRule}
-        {cluster("Edit", <>
+        {cluster(t('menu.action'), <>
           <ToolMenu
-            title="Edit takeoffs"
+            title={t('menu.edit_takeoffs')}
             onOpenChange={onMenuDepth}
-            face={<span>Edit</span>}
+            face={<span>{t('menu.finish')}</span>}
             items={[
-              { id: "copy", icon: "copy", label: "Copy", shortcut: "⌘C", disabled: !selectedId, onSelect: copySelected },
-              { id: "paste", icon: "paste", label: "Paste", shortcut: "⌘V", disabled: !clipRef.current.length, onSelect: () => pasteClipboard() },
-              { id: "dup", icon: "duplicate", label: "Duplicate", shortcut: "⌘D", disabled: !selectedId, onSelect: duplicateSelected },
+              { id: "copy", icon: "copy", label: t('menu.copy'), shortcut: "⌘C", disabled: !selectedId, onSelect: copySelected },
+              { id: "paste", icon: "paste", label: t('menu.paste'), shortcut: "⌘V", disabled: !clipRef.current.length, onSelect: () => pasteClipboard() },
+              { id: "dup", icon: "duplicate", label: t('menu.duplicate'), shortcut: "⌘D", disabled: !selectedId, onSelect: duplicateSelected },
               "divider",
-              { id: "flipH", label: "Flip Horizontal", disabled: !selectedId, onSelect: () => flipSelected("h") },
-              { id: "flipV", label: "Flip Vertical", disabled: !selectedId, onSelect: () => flipSelected("v") },
-              { id: "tidy", label: "Tidy shape", disabled: !selectedId, onSelect: tidySelected },
+              { id: "flipH", label: t('menu.flip_h'), disabled: !selectedId, onSelect: () => flipSelected("h") },
+              { id: "flipV", label: t('menu.flip_v'), disabled: !selectedId, onSelect: () => flipSelected("v") },
+              { id: "tidy", label: t('menu.tidy'), disabled: !selectedId, onSelect: tidySelected },
               "divider",
-              { id: "finish", icon: "check", label: `Finish shape${poly.length ? ` (${poly.length} pts)` : ""}`, shortcut: "↵", disabled: !finishOk, onSelect: finishShape },
-              { id: "undopt", icon: "undo", label: "Undo last point", shortcut: "⌘Z", disabled: !poly.length, onSelect: () => setPoly((q) => q.slice(0, -1)) },
-              { id: "undoshape", icon: "undo", label: "Undo last shape", disabled: !visibleShapes.length, onSelect: undoLast },
-              { id: "redo", label: "Redo", shortcut: "⇧⌘Z", onSelect: redoShapeCommand },
+              { id: "finish", icon: "check", label: poly.length ? t('menu.finish_shape_pts', { count: poly.length }) : t('menu.finish_shape'), shortcut: "↵", disabled: !finishOk, onSelect: finishShape },
+              { id: "undopt", icon: "undo", label: t('menu.undo_point'), shortcut: "⌘Z", disabled: !poly.length, onSelect: () => setPoly((q) => q.slice(0, -1)) },
+              { id: "undoshape", icon: "undo", label: t('menu.undo_shape'), disabled: !visibleShapes.length, onSelect: undoLast },
+              { id: "redo", label: t('menu.redo'), shortcut: "⇧⌘Z", onSelect: redoShapeCommand },
               "divider",
-              { id: "del", icon: "close", label: "Delete selected", shortcut: "⌫", disabled: !selectedId, tint: "var(--c-danger)", onSelect: deleteSelected },
+              { id: "del", icon: "close", label: t('menu.delete'), shortcut: "⌫", disabled: !selectedId, tint: "var(--c-danger)", onSelect: deleteSelected },
             ]}
           />
         </>)}
         {vRule}
-        {cluster("Aids", <>
+        {cluster(t('menu.zone'), <>
           {panels.length === 1 && isStitchKey(panels[0].key) && (
             <button onClick={() => setTool((t) => (t === "stitch-align" ? "select" : "stitch-align"))}
-              title="Align the match line — click a point near the joint, then the SAME point where the other sheet draws it; that sheet slides so the two coincide. Do this before tracing (a stitch with takeoffs on it won't re-align)."
+              title={t('menu.align')}
               style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${tool === "stitch-align" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: tool === "stitch-align" ? "var(--cobalt)" : "transparent", color: tool === "stitch-align" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
-              <Icon name="calibrate" size={15} />Align
+              <Icon name="calibrate" size={15} />{t('menu.align_label')}
             </button>
           )}
           <button onClick={() => setTool((t) => (t === "zone" ? "select" : "zone"))}
-            title="Zone check — trace a region (an apartment, a wing) to read every condition's quantities inside it, materials included. Nothing is saved; the outline clears when you leave the tool."
+            title={t('tool.zone')}
             style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${tool === "zone" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: tool === "zone" ? "var(--cobalt)" : "transparent", color: tool === "zone" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
-            <Icon name="zone" size={15} />Zone
+            <Icon name="zone" size={15} />{t('menu.zone_check')}
           </button>
-          <button onClick={() => setSnapOn((v) => !v)} title="Snap to plan lines/corners (beta)"
+          <button onClick={() => setSnapOn((v) => !v)} title={t('tool.snap')}
             style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${snapOn ? "var(--c-positive)" : "var(--ink-faint)"}`, background: snapOn ? "var(--c-positive)" : "transparent", color: snapOn ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
-            <Icon name="snap" size={15} />Snap
+            <Icon name="snap" size={15} />{t('menu.snap_label')}
           </button>
-          <button onClick={() => setAngleOn((v) => !v)} title="45°/90° angle guides — the next segment locks to the 45° family as you draw (hold ⇧ to force the lock at any angle)"
+          <button onClick={() => setAngleOn((v) => !v)} title={t('tool.angle')}
             style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${angleOn ? "var(--cobalt)" : "var(--ink-faint)"}`, background: angleOn ? "var(--cobalt)" : "transparent", color: angleOn ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
-            <Icon name="angle" size={15} />45°
+            <Icon name="angle" size={15} />{t('menu.angle_label')}
           </button>
           <ToolMenu
-            title="Render & fill settings — One-Click fill sensitivity"
+            title={t('menu.render_fill')}
             onOpenChange={onMenuDepth}
             face={<Icon name="sliders" size={15} />}
             menuStyle={{ minWidth: 252 }}
@@ -6275,13 +6278,13 @@ export default function TakeoffCanvas() {
             so changing it reliably re-labels that shape (a value-always-active
             select couldn't reassign to the already-active label — onChange wouldn't fire). */}
         {shapeLabels.length > 0 && cluster(
-          tool === "select" && selectedId ? `Label · ${activeLabel || "none"} → shape` : (activeLabel ? `Label · ${activeLabel}` : "Label"),
+          tool === "select" && selectedId ? t('label.label_shape', { label: activeLabel || t('label.no_label') }) : (activeLabel ? t('label.label_active', { label: activeLabel }) : t('label.label')),
           <select
             value={tool === "select" && selectedId ? shapeLabelValue(shapes.find((s) => s.id === selectedId)) : (activeLabel || "")}
             onChange={(e) => activateLabel(e.target.value || null)}
-            title="Phase/area label. The caption shows the ACTIVE label (what new takeoffs get). With a shape selected (Select tool), the dropdown shows and re-labels that shape. Manage the list in the Columns tab."
+            title={t('label.title')}
             style={{ fontFamily: "var(--f-mono)", fontSize: 11.5, padding: "5px 6px", border: `1px solid ${activeLabel ? "var(--cobalt)" : "var(--ink-faint)"}`, background: activeLabel ? "var(--cobalt)" : "transparent", color: activeLabel ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", maxWidth: 150 }}>
-            <option value="">No label</option>
+            <option value="">{t('label.no_label')}</option>
             {shapeLabels.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
         )}
@@ -6290,11 +6293,11 @@ export default function TakeoffCanvas() {
             path. Focus suppresses canvas shortcuts via the existing INPUT guards.
             Deixis: focus marks the utterance's start — "this room" then needs an
             aim placed AFTER it (park the pointer on the room, type, Enter). */}
-        {cluster("Command",
+        {cluster(t('command.placeholder').split('·')[0].trim(),
           <input
             type="text"
-            placeholder="cpt 1 · waste 7 · this room"
-            title={'Command line (RFC #59): a condition tag ("CPT-1", "carpet one", "tile 2 waste 5"), "waste 7", "label Phase 1", "clear label", or "note …" — Enter runs it through the same actions the buttons use. End with "this room" / "here" while the pointer rests on a room to trace and commit it there ("carpet one, this room"). Push-to-talk dictation will feed this box.'}
+            placeholder={t('command.placeholder')}
+            title={t('command.title')}
             onFocus={() => { voiceAimMarkRef.current = aimSeqRef.current; }}
             onKeyDown={(e) => {
               if (e.key !== "Enter") return;
@@ -6317,9 +6320,9 @@ export default function TakeoffCanvas() {
         {/* Push-to-talk (RFC #59 recognizer): hold the button (or M) to dictate
             into the same grammar the Command box runs. Hidden entirely where
             capture is unsupported — graceful feature-absence, never broken. */}
-        {captureSupported() && cluster("Voice",
+        {captureSupported() && cluster(t('voice.cluster'),
           <button
-            title={'Hold to talk (or hold M anywhere on the canvas): speak a command — "carpet one, waste seven", "label phase two", "note …", or end with "this room" to trace at the cursor. Release to run; Esc discards. Audio is processed on-device and never leaves the browser.'}
+            title={t('voice.hold_title')}
             onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); voiceHoldRef.current = true; voiceFnsRef.current.start(); }}
             onPointerUp={() => { if (voiceHoldRef.current) { voiceHoldRef.current = false; voiceFnsRef.current.end(true); } }}
             onPointerCancel={() => { if (voiceHoldRef.current) { voiceHoldRef.current = false; voiceFnsRef.current.end(false); } }}
@@ -6328,10 +6331,10 @@ export default function TakeoffCanvas() {
           </button>
         )}
         <div style={{ flex: 1 }} />
-        {cluster(`Scale — ${labelFor(focusPanel)}`,
+        {cluster(`${t('toolbar.scale')} — ${labelFor(focusPanel)}`,
           <>
             <button onClick={() => setUnits((u) => (u === "metric" ? "imperial" : "metric"))}
-              title={units === "metric" ? "Metric display (m² / m) — click for imperial. Calibrate in meters; 1:50-style scales in the list. Display only — stored takeoffs never change." : "Imperial display (SF / LF) — click for metric (m² / m, calibrate in meters, 1:50-style scales). Display only — stored takeoffs never change."}
+              title={units === "metric" ? t('scale.metric_hint') : t('scale.imperial_hint')}
               style={{ padding: "6px 10px", border: `1px solid ${units === "metric" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: units === "metric" ? "var(--cobalt)" : "transparent", color: units === "metric" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, lineHeight: 1 }}>
               {units === "metric" ? "m" : "ft"}
             </button>
@@ -6345,42 +6348,43 @@ export default function TakeoffCanvas() {
             />
           </>
         )}
-        {cluster("Action",
+        {cluster(t('toolbar.action'),
           <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "flex-end", gap: 6, minWidth: 150 }}>
-            {markupDraft && (tool === "cloud" || tool === "callout" || tool === "highlight") && <span style={{ fontSize: 11, color: "var(--cobalt)" }}>click the {tool === "callout" ? "label spot" : "opposite corner"}…</span>}
+            {markupDraft && (tool === "cloud" || tool === "callout" || tool === "highlight") && <span style={{ fontSize: 11, color: "var(--cobalt)" }}>{t('action.click_hint', { spot: tool === "callout" ? t('action.label_spot') : t('action.opposite_corner') })}…</span>}
             {finishOk && (
-              <button onClick={finishShape} title="Finish shape (↵ or double-click)" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", border: "none", background: "var(--c-positive)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}><Icon name="check" size={14} />Finish ({poly.length})</button>
+              <button onClick={finishShape} title={t('action.finish_title')} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", border: "none", background: "var(--c-positive)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}><Icon name="check" size={14} />{t('action.finish')} ({poly.length})</button>
             )}
             {proposal?.regions.length > 0 && (
-              <button onClick={createProposal} title="Create the selected takeoff(s) (↵). ⌫ removes the last click; Esc discards the selection." style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", border: "none", background: "var(--c-positive)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}><Icon name="check" size={14} />Create ({proposal.regions.length})</button>
+              <button onClick={createProposal} title={t('action.create_title')} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", border: "none", background: "var(--c-positive)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}><Icon name="check" size={14} />{t('action.create')} ({proposal.regions.length})</button>
             )}
           </span>
         )}
         <div style={{ flex: 1 }} />
-        <button onClick={() => setShowReport(true)} disabled={!conditions.length} title="Open the takeoff report — per-condition breakdown with waste, plus CSV / JSON export."
-          style={{ padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>Report</button>
+        <button onClick={() => setShowReport(true)} disabled={!conditions.length} title={t('menu.report_title')}
+          style={{ padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>{t('menu.report')}</button>
         {/* ⋯ overflow — rarely-used project controls, so the row never wraps
             and nothing shifts position mid-work (issue #61's contract). */}
         <ToolMenu
-          title="More — guide, theme, schedule import, project moves"
+          title={t('menu.more')}
           onOpenChange={onMenuDepth}
           face={<span style={{ fontWeight: 700, letterSpacing: "0.08em" }}>⋯</span>}
           items={[
-            { id: "guide", label: "How OpenTakeoff works", shortcut: "?", onSelect: () => setGuideOpen(true) },
-            { id: "theme", label: theme === "dark" ? "Light chrome" : "Dark chrome", onSelect: toggleTheme },
-            { id: "schedule", icon: "rectTool", label: "Import from schedule", active: tool === "schedule", onSelect: () => { setScheduleAnchor(null); setTool((t) => (t === "schedule" ? "select" : "schedule")); } },
+            { id: "guide", label: t('menu.how_works'), shortcut: "?", onSelect: () => setGuideOpen(true) },
+            { id: "theme", label: theme === "dark" ? t('menu.light_chrome') : t('menu.dark_chrome'), onSelect: toggleTheme },
+            { id: "language", label: i18n.language?.startsWith("pt") ? "English" : "Português (BR)", onSelect: () => i18n.changeLanguage(i18n.language?.startsWith("pt") ? "en" : "pt-br") },
+            { id: "schedule", icon: "rectTool", label: t('menu.import_schedule'), active: tool === "schedule", onSelect: () => { setScheduleAnchor(null); setTool((t) => (t === "schedule" ? "select" : "schedule")); } },
             ...(cloudMode ? [
               "divider",
-              { id: "closeproj", label: "Close project", onSelect: closeProject },
-              ...(browseProjects ? [{ id: "projects", label: "Team projects", onSelect: browseProjects }] : []),
+              { id: "closeproj", label: t('menu.close_project'), onSelect: closeProject },
+              ...(browseProjects ? [{ id: "projects", label: t('menu.team_projects'), onSelect: browseProjects }] : []),
             ] : []),
             ...(!cloudMode && googleUser && isGoogleConfigured() && projectHomeFolderId() ? [
               "divider",
-              { id: "browse", label: "Browse team projects", onSelect: () => navigate("/projects") },
+              { id: "browse", label: t('menu.browse_projects'), onSelect: () => navigate("/projects") },
             ] : []),
           ]}
         />
-        <AccountChip note={cloudMode ? "Synced to Google Drive" : "Local workspace"} onOpenChange={onMenuDepth} />
+        <AccountChip note={cloudMode ? t('status.synced_drive') : t('status.local')} onOpenChange={onMenuDepth} />
       </div>
       )}
 
@@ -6403,10 +6407,10 @@ export default function TakeoffCanvas() {
           onDrop={(e) => { if (!e.dataTransfer.types.includes(CONDITION_DND_MIME)) return; e.preventDefault(); e.stopPropagation(); const id = e.dataTransfer.getData(CONDITION_DND_MIME); if (id) pinToPalette(id); }}
           style={{ padding: "5px 14px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-            <span title="Quick-access conditions — drag a condition here (or use a row's pushpin) to pin it, up to 9. Press 1–9 to activate by this order; click a chip to activate; double-click to open the panel."
-              style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.14em", color: "var(--ink-muted)" }}>Conditions</span>
+            <span title={t('conditions.palette_title')}
+              style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.14em", color: "var(--ink-muted)" }}>{t('conditions.header')}</span>
             {paletteConds.length === 0 ? (
-              <span style={{ fontSize: 11.5, color: "var(--ink-muted)", fontStyle: "italic", padding: "3px 8px", border: "1px dashed var(--ink-faint)" }}>drag conditions here (or pin a row) for 1-9 one-click access</span>
+              <span style={{ fontSize: 11.5, color: "var(--ink-muted)", fontStyle: "italic", padding: "3px 8px", border: "1px dashed var(--ink-faint)" }}>{t('conditions.palette_hint')}</span>
             ) : paletteConds.map((c) => {
               const on = c.id === activeCond;
               const reassign = tool === "select" && selectedId;
@@ -6419,12 +6423,12 @@ export default function TakeoffCanvas() {
                     onDragStart={(e) => { e.dataTransfer.setData(CONDITION_DND_MIME, c.id); e.dataTransfer.effectAllowed = "copyMove"; }}
                     onClick={() => activateCondition(c.id)}
                     onDoubleClick={() => openConditionInPanel(c.id)}
-                    title={reassign ? `Reassign the selected takeoff to ${c.finish_tag} (double-click opens the panel)` : `${c.finish_tag} — press ${idx + 1} or click to activate, double-click to open in the panel, drag onto another chip to reorder`}
+                    title={reassign ? t('conditions.chip_reassign', { tag: c.finish_tag }) : t('conditions.chip_activate', { tag: c.finish_tag, num: idx + 1 })}
                     style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 8px 3px 5px", border: on ? `2px solid ${c.color}` : (reassign ? "1px dashed var(--cobalt)" : "1px solid var(--ink-faint)"), background: on ? "var(--surface-pop)" : "transparent", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 12.5, lineHeight: 1 }}>
                     {idx < 9 && <span style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: "var(--cobalt)", border: "1px solid var(--cobalt)", borderRadius: 3, padding: "0 3px" }}>{idx + 1}</span>}
                     <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>{c.finish_tag}
                   </button>
-                  <button type="button" onClick={() => unpinFromPalette(c.id)} title={`Unpin ${c.finish_tag} from the palette`}
+                  <button onClick={() => unpinFromPalette(c.id)} title={t('conditions.chip_unpin', { tag: c.finish_tag })}
                     style={{ border: "none", background: "none", cursor: "pointer", color: "var(--cobalt)", padding: "0 3px", lineHeight: 0, display: "inline-flex" }}>
                     <Icon name="pin" size={12} />
                   </button>
@@ -6432,11 +6436,11 @@ export default function TakeoffCanvas() {
               );
             })}
             {paletteConds.length >= PALETTE_MAX && (
-              <span style={{ fontSize: 10.5, color: "var(--ink-muted)", fontStyle: "italic" }}>full ({PALETTE_MAX})</span>
+              <span style={{ fontSize: 10.5, color: "var(--ink-muted)", fontStyle: "italic" }}>{t('conditions.palette_full', { count: PALETTE_MAX })}</span>
             )}
             {/* add a condition without opening the (now-collapsed) sidebar */}
-            <button type="button" onClick={addCondition} title="Add a new condition"
-              style={{ padding: "3px 9px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12, color: "var(--ink-muted)" }}>+ condition</button>
+            <button type="button" onClick={addCondition} title={t('conditions.add_title')}
+              style={{ padding: "3px 9px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12, color: "var(--ink-muted)" }}>{t('conditions.add')}</button>
           </div>
           {/* the active condition's appearance editor, restored to the top bar —
               same component the docked panel row renders (one source of truth) */}
@@ -6452,7 +6456,7 @@ export default function TakeoffCanvas() {
           ⊞ to side-by-side, ✕ to close; the dropdown lists every open sheet */}
       {!focusMode && openTabs.length > 0 && (
         <div style={{ display: "flex", gap: 5, alignItems: "center", padding: "5px 14px", flexWrap: "wrap", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
-          <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.14em", color: "var(--ink-muted)" }}>Sheets</span>
+          <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.14em", color: "var(--ink-muted)" }}>{t('takeoffs.strip')}</span>
           {openTabs.slice(0, 8).map((k) => {
             const inGroup = sheetGroup.includes(k);
             const on = sheetGroup.length ? inGroup : k === sheetKey;
@@ -6460,16 +6464,16 @@ export default function TakeoffCanvas() {
             return (
               <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 5, border: "1px solid var(--ink-faint)", borderBottom: on ? "2px solid var(--cobalt)" : "1px solid var(--ink-faint)", background: on ? "var(--paper-cream)" : "transparent", padding: "3px 6px 2px 9px", maxWidth: 190 }}>
                 <button onClick={() => goToSheet(k)} title={k} style={{ border: "none", background: "none", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 11.5, color: "var(--ink)", fontFamily: "var(--f-mono)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 140, padding: 0 }}>{lbl}</button>
-                <button onClick={() => toggleInGroup(k)} title={inGroup ? "Remove from side-by-side" : "Side-by-side with the current sheet"} style={{ border: "none", background: "none", cursor: "pointer", color: inGroup ? "var(--cobalt)" : "var(--ink-faint)", padding: 0, display: "inline-flex" }}><Icon name="sideBySide" size={11} /></button>
-                <button onClick={() => closeTab(k)} title="Close tab" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)", padding: 0, display: "inline-flex" }}><Icon name="close" size={10} /></button>
+                <button onClick={() => toggleInGroup(k)} title={inGroup ? t('menu.side_by_side_remove') : t('menu.side_by_side_add')} style={{ border: "none", background: "none", cursor: "pointer", color: inGroup ? "var(--cobalt)" : "var(--ink-faint)", padding: 0, display: "inline-flex" }}><Icon name="sideBySide" size={11} /></button>
+                <button onClick={() => closeTab(k)} title={t('menu.close_tab')} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)", padding: 0, display: "inline-flex" }}><Icon name="close" size={10} /></button>
               </span>
             );
           })}
           {openTabs.length > 1 && (
             <ToolMenu
-              title="Jump to an open sheet"
+              title={t('menu.jump_sheet')}
               onOpenChange={onMenuDepth}
-              face={<span style={{ fontFamily: "var(--f-mono)", fontSize: 11 }}>{openTabs.length} open</span>}
+              face={<span style={{ fontFamily: "var(--f-mono)", fontSize: 11 }}>{openTabs.length} {t('menu.open')}</span>}
               items={openTabs.map((k) => ({ id: k, icon: "document", label: tabLabel(k), active: sheetGroup.length ? sheetGroup.includes(k) : k === sheetKey, onSelect: () => goToSheet(k) }))}
             />
           )}
@@ -6483,33 +6487,31 @@ export default function TakeoffCanvas() {
           from the panel header, persisted with the panel prefs. */}
       {!focusMode && panelPrefs.strip && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "7px 14px", flexWrap: "wrap", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
-          <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--ink-muted)" }}>Conditions</span>
+          <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--ink-muted)" }}>{t('conditions.strip')}</span>
           {conditions.map((c, i) => {
             const on = c.id === activeCond;
-            // the 1–9 badge follows the same rule as the hotkeys: palette order
-            // when curated, condition order (fallback) when nothing is pinned
             const pinnedPal = palette.length > 0;
             const hIdx = pinnedPal ? palette.indexOf(c.id) : i;
             const hot = hIdx >= 0 && hIdx < 9;
             return (
-              <button key={c.id} draggable onDragStart={(e) => { e.dataTransfer.setData(CONDITION_DND_MIME, c.id); e.dataTransfer.effectAllowed = "copy"; }} onClick={() => activateCondition(c.id)} title={tool === "select" && selectedId ? "Reassign selected shape to this condition" : (hot ? `Press ${hIdx + 1} · drag to the palette to pin` : "Drag to the palette to pin")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px 3px 4px", borderRadius: 0, border: on ? `2px solid ${c.color}` : (tool === "select" && selectedId ? "1px dashed var(--cobalt)" : "1px solid var(--ink-faint)"), background: on ? "var(--surface-pop)" : "transparent", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 12.5 }}>
+              <button key={c.id} draggable onDragStart={(e) => { e.dataTransfer.setData(CONDITION_DND_MIME, c.id); e.dataTransfer.effectAllowed = "copy"; }} onClick={() => activateCondition(c.id)} title={tool === "select" && selectedId ? t('conditions.strip_reassign') : (hot ? t('conditions.strip_pin', { num: hIdx + 1 }) : t('conditions.strip_pin2'))} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px 3px 4px", borderRadius: 0, border: on ? `2px solid ${c.color}` : (tool === "select" && selectedId ? "1px dashed var(--cobalt)" : "1px solid var(--ink-faint)"), background: on ? "var(--surface-pop)" : "transparent", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 12.5 }}>
                 {hot && <span style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: pinnedPal ? "var(--cobalt)" : "var(--ink-muted)", border: `1px solid ${pinnedPal ? "var(--cobalt)" : "var(--ink-faint)"}`, borderRadius: 3, padding: "0 3px" }}>{hIdx + 1}</span>}
                 <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>{c.finish_tag}
               </button>
             );
           })}
-          <button onClick={addCondition} style={{ padding: "4px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--ink-muted)" }}>+ condition</button>
+          <button onClick={addCondition} style={{ padding: "4px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--ink-muted)" }}>{t('conditions.add')}</button>
         </div>
       )}
 
       {/* calibration prompt */}
       {tool === "calibrate" && (
         <div style={{ padding: "8px 14px", background: "var(--paper-bright)", borderBottom: "1px solid var(--hairline-warm)", fontSize: 14 }}>
-          {calib.length < 2 ? <span>Custom scale: click two points along a known dimension ({calib.length}/2). Tip: use the longest dimension. (Or just pick a standard scale above.)</span> : (
-            <span>Real length:{" "}
-              <input name="calibration-length" type="number" value={pendingLen} onChange={(e) => setPendingLen(e.target.value)} onKeyDown={(e) => e.key === "Enter" && applyCalibration()} placeholder={units === "metric" ? "meters" : "feet"} autoFocus style={{ width: 90, padding: 5, borderRadius: 0, border: "1px solid var(--ink-faint)" }} /> {units === "metric" ? "m" : "ft"}
-              <button onClick={applyCalibration} style={{ marginLeft: 8, padding: "5px 12px", borderRadius: 0, border: "none", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer" }}>Apply</button>
-              <button onClick={() => setCalib([])} style={{ marginLeft: 6, padding: "5px 10px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer" }}>Reset</button>
+          {calib.length < 2 ? <span>{t('calibrate.custom_scale', { count: calib.length })}</span> : (
+            <span>{t('calibrate.real_length')}{" "}
+              <input name="calibration-length" type="number" value={pendingLen} onChange={(e) => setPendingLen(e.target.value)} onKeyDown={(e) => e.key === "Enter" && applyCalibration()} placeholder={units === "metric" ? t('calibrate.placeholder_m') : t('calibrate.placeholder_ft')} autoFocus style={{ width: 90, padding: 5, borderRadius: 0, border: "1px solid var(--ink-faint)" }} /> {units === "metric" ? "m" : "ft"}
+              <button onClick={applyCalibration} style={{ marginLeft: 8, padding: "5px 12px", borderRadius: 0, border: "none", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer" }}>{t('calibrate.apply')}</button>
+              <button onClick={() => setCalib([])} style={{ marginLeft: 6, padding: "5px 10px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer" }}>{t('calibrate.reset')}</button>
             </span>
           )}
         </div>
@@ -6520,17 +6522,17 @@ export default function TakeoffCanvas() {
       {tool === "check" && (
         <div style={{ padding: "8px 14px", background: "var(--paper-bright)", borderBottom: "1px solid var(--hairline-warm)", fontSize: 14 }}>
           {check.length < 2 ? (
-            <span>Check a dimension: click both ends of a printed dimension ({check.length}/2). The measured length shows here — compare it with what the drawing says.</span>
+            <span>{t('check.tool', { count: check.length })}</span>
           ) : checkCross ? (
-            <span style={{ color: "var(--c-danger)" }}>Check on one sheet — those two clicks landed on different sheets. <button onClick={() => { setCheck([]); setCheckStated(""); }} style={{ marginLeft: 6, padding: "5px 10px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer" }}>Reset</button></span>
+            <span style={{ color: "var(--c-danger)" }}>{t('check.cross_sheet')} <button onClick={() => { setCheck([]); setCheckStated(""); }} style={{ marginLeft: 6, padding: "5px 10px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer" }}>{t('calibrate.reset')}</button></span>
           ) : !checkUpp ? (
-            <span style={{ color: "var(--c-danger)" }}>No scale set for {labelFor(checkPanel)} — pick a standard scale or calibrate first, then check it here.</span>
+            <span style={{ color: "var(--c-danger)" }}>{t('check.no_scale', { sheet: labelFor(checkPanel) })}</span>
           ) : checkPx <= 0 ? (
-            <span style={{ color: "var(--c-danger)" }}>Those two clicks landed on the same point — click the two <b>ends</b> of a printed dimension.</span>
+            <span style={{ color: "var(--c-danger)" }}>{t('check.same_point')}</span>
           ) : (
             <span>
-              measures <b style={{ fontFamily: "var(--f-mono)" }}>{fmtCheckLen(checkFeet, units)}</b> at {stdValue || "custom scale"} · drawing says{" "}
-              <input name="check-stated-length" value={checkStated} onChange={(e) => setCheckStated(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} placeholder={units === "metric" ? "meters" : `feet (12'6, 6" ok)`} autoFocus style={{ width: 100, padding: 5, borderRadius: 0, border: "1px solid var(--ink-faint)" }} /> {units === "metric" ? "m" : "ft"}
+              {t('check.measures')} <b style={{ fontFamily: "var(--f-mono)" }}>{fmtCheckLen(checkFeet, units)}</b> at {stdValue || t('check.custom_scale')} · {t('check.drawing_says')}{" "}
+              <input name="check-stated-length" value={checkStated} onChange={(e) => setCheckStated(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} placeholder={units === "metric" ? t('check.placeholder_m') : t('check.placeholder_ft')} autoFocus style={{ width: 100, padding: 5, borderRadius: 0, border: "1px solid var(--ink-faint)" }} /> {units === "metric" ? "m" : "ft"}
               {checkErrPct != null && (() => {
                 // checkVerdict grades the ROUNDED value the chip displays (and
                 // normalizes -0), so color and number can never contradict —
@@ -6539,16 +6541,16 @@ export default function TakeoffCanvas() {
                 const pct = `${v.shown >= 0 ? "+" : ""}${v.shown.toFixed(1)}%`;
                 return (
                   <b style={{ marginLeft: 8, color: v.grade === "match" ? "var(--c-positive)" : v.grade === "close" ? "var(--c-warning)" : "var(--c-danger)" }}>
-                    {v.grade === "match" ? `matches — scale checks out (${pct})`
-                      : v.grade === "close" ? `off by ${pct} — re-check or recalibrate`
-                      : `off by ${pct} — wrong scale; recalibrate`}
+                    {v.grade === "match" ? t('check.match', { pct })
+                      : v.grade === "close" ? t('check.close', { pct })
+                      : t('check.wrong', { pct })}
                   </b>
                 );
               })()}
               {checkStatedFeet > 0 && (
-                <button onClick={recalibrateFromCheck} style={{ marginLeft: 8, padding: "5px 12px", borderRadius: 0, border: "none", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer" }}>Recalibrate to this</button>
+                <button onClick={recalibrateFromCheck} style={{ marginLeft: 8, padding: "5px 12px", borderRadius: 0, border: "none", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer" }}>{t('check.recalibrate')}</button>
               )}
-              <button onClick={() => { setCheck([]); setCheckStated(""); }} style={{ marginLeft: 6, padding: "5px 10px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer" }}>Reset</button>
+              <button onClick={() => { setCheck([]); setCheckStated(""); }} style={{ marginLeft: 6, padding: "5px 10px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer" }}>{t('calibrate.reset')}</button>
             </span>
           )}
         </div>
@@ -6562,31 +6564,31 @@ export default function TakeoffCanvas() {
            faces). Lives in the canvas row so docked panels + canvas reflow
            beside it; survives focus mode — it IS the tool access. */}
        {view === "canvas" && (
-       <nav role="toolbar" aria-label="Tools" style={{ width: "var(--rail-w)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-1)", paddingTop: "var(--sp-2)", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflowY: "auto", overflowX: "visible" }}>
+       <nav role="toolbar" aria-label={t('a11y.tools')} style={{ width: "var(--rail-w)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-1)", paddingTop: "var(--sp-2)", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflowY: "auto", overflowX: "visible" }}>
          {railLabel("SEL")}
-         {railTile("select", "select", "Select — pick a takeoff, drag points; drag open canvas to pan", "V")}
+         {railTile("select", "select", t('tool.select_desc'), "V")}
          {railLabel("MEAS")}
-         {MEASURE_TOOLS.map((t) => railTile(t.id, t.icon, t.label, t.shortcut))}
+          {getMeasureTools().map((t) => railTile(t.id, t.icon, t.label, t.shortcut))}
          {railLabel("CUT")}
-         {CUT_TOOLS.map((t) => railTile(t.id, t.icon, t.label, t.shortcut, null, { tint: "var(--c-danger)" }))}
+          {getCutTools().map((t) => railTile(t.id, t.icon, t.label, t.shortcut, null, { tint: "var(--c-danger)" }))}
          {railLabel("MARK")}
          <span ref={(el) => { if (el) markTileTopRef.current = el.getBoundingClientRect().top; }} style={{ position: "relative", display: "inline-flex" }}>
-           <ToolMenu
-             title="Markup — annotations, not measurements"
-             active={MARKUP_IDS.includes(tool)}
-             onOpenChange={onMenuDepth}
-             flyout="right"
-             face={<Icon name="markup" size={17} />}
-             items={[
-               { section: "Markup — notes on the plan, never measured" },
-               ...MARKUP_TOOLS.map((t) => ({ id: t.id, icon: t.icon, label: t.label, shortcut: t.shortcut, active: tool === t.id, onSelect: () => { setTool(t.id); setMarkupDraft(null); } })),
-             ]}
-           />
+            <ToolMenu
+              title={t('markup.cluster')}
+              active={MARKUP_IDS.includes(tool)}
+              onOpenChange={onMenuDepth}
+              flyout="right"
+              face={<Icon name="markup" size={17} />}
+              items={[
+                { section: t('markup.section') },
+                 ...getMarkupTools().map((t) => ({ id: t.id, icon: t.icon, label: t.label, shortcut: t.shortcut, active: tool === t.id, onSelect: () => { setTool(t.id); setMarkupDraft(null); } })),
+              ]}
+            />
            {/* highlighter style popover — fixed beside the rail while armed
                (fixed, not absolute: the rail's scroll box would clip it) */}
            {tool === "highlighter" && (
              <div style={{ position: "fixed", left: "calc(var(--rail-w) + 8px)", top: markTileTopRef.current || 200, zIndex: Z.popover, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "var(--shadow-pop)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
-               <div style={{ display: "flex", gap: 6 }} title="Ink">
+                <div style={{ display: "flex", gap: 6 }} title={t('markup.ink_color')}>
                  {HL_INKS.map((c) => (
                    <button key={c} onClick={() => setHlStyle((st) => ({ ...st, color: c }))}
                      style={{ width: 16, height: 16, padding: 0, background: c, border: hlStyle.color === c ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />
@@ -6594,12 +6596,12 @@ export default function TakeoffCanvas() {
                </div>
                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                  {HL_SIZES.map(([lbl, px]) => (
-                   <button key={lbl} onClick={() => setHlStyle((st) => ({ ...st, size: px }))} title={`${lbl === "F" ? "Fine" : lbl === "M" ? "Medium" : "Broad"} tip`}
+                    <button key={lbl} onClick={() => setHlStyle((st) => ({ ...st, size: px }))} title={t('markup.tip_size', { size: lbl === "F" ? t('markup.fine') : lbl === "M" ? t('markup.medium') : t('markup.broad') })}
                      style={{ width: 22, height: 20, padding: 0, fontFamily: "var(--f-mono)", fontSize: 10, cursor: "pointer", border: hlStyle.size === px ? "1px solid var(--ink)" : "1px solid var(--ink-faint)", background: hlStyle.size === px ? "var(--ink)" : "transparent", color: hlStyle.size === px ? "var(--paper-bright)" : "var(--ink)" }}>{lbl}</button>
                  ))}
                  <span style={{ width: 1, alignSelf: "stretch", background: "var(--ink-faint)" }} />
                  {[["chisel", "M4 16 L14 6 L18 10 L8 20 Z"], ["round", "M5 17 Q12 3 19 13"]].map(([tip, d]) => (
-                   <button key={tip} onClick={() => setHlStyle((st) => ({ ...st, tip }))} title={`${tip} tip`}
+                    <button key={tip} onClick={() => setHlStyle((st) => ({ ...st, tip }))} title={t('markup.tip_type', { type: tip })}
                      style={{ width: 24, height: 20, padding: 1, cursor: "pointer", border: hlStyle.tip === tip ? "1px solid var(--ink)" : "1px solid var(--ink-faint)", background: "transparent" }}>
                      <svg viewBox="0 0 24 24" width="18" height="14">{tip === "chisel"
                        ? <path d={d} fill="currentColor" stroke="none" />
@@ -6613,10 +6615,10 @@ export default function TakeoffCanvas() {
          {/* Approval stamp — ink over pencil. Human-only by design: this tile
              is the ONLY way an estimator seal is minted (no MCP tool, no agent
              path), so the mark means a person looked. */}
-         {railTile("approve", "approve", "Approval stamp — the estimator's ink. Click a committed takeoff to approve it, or empty plan to approve the sheet; click a seal to lift it. ⌘Z undoes. Human-only.", null,
-           () => setTool((t) => (t === "approve" ? "select" : "approve")), { tint: tool === "approve" ? "var(--c-positive)" : undefined, armed: tool === "approve" })}
-         {railLabel("CAL")}
-         {railTile("calibrate", "calibrate", "Calibrate — click two points of a known dimension", null)}
+          {railTile("approve", "approve", t('tool.approve'), null,
+            () => setTool((t) => (t === "approve" ? "select" : "approve")), { tint: tool === "approve" ? "var(--c-positive)" : undefined, armed: tool === "approve" })}
+          {railLabel("CAL")}
+          {railTile("calibrate", "calibrate", t('tool.calibrate'), null)}
        </nav>
        )}
        {/* docked LEFT panel — one of Markups/Stamps/RFIs at a time. Reflows the
@@ -6625,13 +6627,13 @@ export default function TakeoffCanvas() {
          <div style={{ width: 360, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflow: "hidden", minHeight: 0 }}>
            {/* tab strip */}
            <div style={{ display: "flex", alignItems: "stretch", background: "var(--cobalt)", color: "var(--accent-contrast)" }}>
-             {[{ id: "markup", label: "Markups", n: markupCount }, { id: "stamp", label: "Stamps", n: stampLib.stamps.length }, { id: "rfi", label: "RFIs", n: rfis.length }].map((t) => (
+              {[{ id: "markup", label: t('markup.tab_markups'), n: markupCount }, { id: "stamp", label: t('markup.tab_stamps'), n: stampLib.stamps.length }, { id: "rfi", label: t('markup.tab_rfi'), n: rfis.length }].map((t) => (
                <button key={t.id} onClick={() => setLeftTab(t.id)} title={t.label}
                  style={{ flex: 1, padding: "9px 6px", border: "none", borderBottom: leftTab === t.id ? "2px solid var(--accent-contrast)" : "2px solid transparent", background: leftTab === t.id ? "rgba(255,255,255,.18)" : "transparent", color: "var(--accent-contrast)", cursor: "pointer", fontWeight: leftTab === t.id ? 700 : 500, fontSize: 12 }}>
                  {t.label}{t.n ? ` · ${t.n}` : ""}
                </button>
              ))}
-             <button onClick={() => setLeftTab(null)} title="Close panel" style={{ padding: "0 12px", border: "none", background: "transparent", color: "var(--accent-contrast)", fontSize: 16, cursor: "pointer" }}>×</button>
+              <button onClick={() => setLeftTab(null)} title={t('markup.close_panel')} style={{ padding: "0 12px", border: "none", background: "transparent", color: "var(--accent-contrast)", fontSize: 16, cursor: "pointer" }}>×</button>
            </div>
            {/* body of the active tab */}
            <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
@@ -6641,18 +6643,18 @@ export default function TakeoffCanvas() {
                      (can't select/delete/fly-to an invisible markup); orthogonal to the
                      marked-set export, which still includes markups. */}
                  <div style={{ display: "flex", justifyContent: "flex-end", padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)" }}>
-                   <button
-                     onClick={() => { const nv = !showMarkups; setShowMarkups(nv); if (!nv) setSelectedMarkupId(null); }}
-                     title={showMarkups ? "Hide the markup layer on the canvas" : "Show the markup layer on the canvas"}
-                     style={{ background: "transparent", border: "1px solid var(--ink-faint)", color: "var(--ink)", fontSize: 11, cursor: "pointer", padding: "2px 7px" }}>
-                     {showMarkups ? "Hide layer" : "Show layer"}
+                    <button
+                      onClick={() => { const nv = !showMarkups; setShowMarkups(nv); if (!nv) setSelectedMarkupId(null); }}
+                      title={showMarkups ? t('markup.hide_title') : t('markup.show_title')}
+                      style={{ background: "transparent", border: "1px solid var(--ink-faint)", color: "var(--ink)", fontSize: 11, cursor: "pointer", padding: "2px 7px" }}>
+                      {showMarkups ? t('markup.hide_layer') : t('markup.show_layer')}
                    </button>
                  </div>
-                 <div style={{ padding: "8px 10px", color: "var(--ink-muted)" }}>
-                   Pick <b>☁ Cloud</b>, <b>▨ Highlight</b>, <b>💬 Callout</b>, or <b>T Text</b> above, then click the plan to annotate it.
+                  <div style={{ padding: "8px 10px", color: "var(--ink-muted)" }}>
+                    {t('markup.pick_tool')}
                  </div>
                  {markups.filter((m) => panelKeySet.has(m.sheet_id)).length === 0 && (
-                   <div style={{ padding: "4px 12px 14px", color: "var(--ink-muted)" }}>No markups {groupKeys.length > 1 ? "on these sheets" : "on this sheet"} yet.</div>
+                    <div style={{ padding: "4px 12px 14px", color: "var(--ink-muted)" }}>{groupKeys.length > 1 ? t('markup.empty_multi') : t('markup.empty')}</div>
                  )}
                  {markups.filter((m) => panelKeySet.has(m.sheet_id)).map((m) => (
                    <div key={m.id} style={{ padding: "10px 12px", borderTop: "1px solid var(--ink-faint)" }}>
@@ -6667,34 +6669,34 @@ export default function TakeoffCanvas() {
                            onBlur={(e) => { updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); }}
                            style={{ flex: 1, minWidth: 0, fontSize: 12.5, padding: "1px 4px", border: "1px solid var(--cobalt)", borderRadius: 0, outline: "none" }} />
                        ) : (
-                         <span style={{ flex: 1, color: "var(--ink)" }}>{m.type === "svg" ? <em style={{ color: "var(--ink-muted)" }}>(vector symbol)</em> : (m.text || <em style={{ color: "var(--ink-muted)" }}>(no text)</em>)}</span>
+                          <span style={{ flex: 1, color: "var(--ink)" }}>{m.type === "svg" ? <em style={{ color: "var(--ink-muted)" }}>({t('markup.vector_symbol')})</em> : (m.text || <em style={{ color: "var(--ink-muted)" }}>({t('markup.no_text')})</em>)}</span>
                        )}
-                       {m.type !== "svg" && <button onClick={() => setPanelEditId((id) => (id === m.id ? null : m.id))} title="Edit text" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>}
-                       <button onClick={() => deleteMarkup(m.id)} title="Delete markup" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
+                        {m.type !== "svg" && <button onClick={() => setPanelEditId((id) => (id === m.id ? null : m.id))} title={t('markup.edit_text')} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>}
+                        <button onClick={() => deleteMarkup(m.id)} title={t('markup.delete_markup')} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
                      </div>
                      {/* appearance — per-markup color (reuse PALETTE) + line style; both
                          additive: unset color falls back to the cobalt(linked)/amber default,
                          unset style to solid. The RFI ⬢/number badge stays cobalt regardless. */}
                      <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 7, flexWrap: "wrap" }}>
-                       <span style={{ fontSize: 10.5, color: "var(--ink-muted)", marginRight: 2 }}>Color</span>
-                       <button title="Auto (linkage color)" onClick={() => updateMarkup(m.id, { color: "" })} style={{ width: 26, height: 15, borderRadius: 4, background: "var(--paper-bright)", border: !m.color ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 8.5, lineHeight: "11px", color: "var(--ink-muted)" }}>auto</button>
+                        <span style={{ fontSize: 10.5, color: "var(--ink-muted)", marginRight: 2 }}>{t('markup.color')}</span>
+                        <button title={t('markup.auto_color')} onClick={() => updateMarkup(m.id, { color: "" })} style={{ width: 26, height: 15, borderRadius: 4, background: "var(--paper-bright)", border: !m.color ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 8.5, lineHeight: "11px", color: "var(--ink-muted)" }}>{t('markup.auto')}</button>
                        {PALETTE.map((c) => <button key={c} title={c} onClick={() => updateMarkup(m.id, { color: c })} style={{ width: 15, height: 15, borderRadius: 4, background: c, border: m.color === c ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
-                       <select name="markup-line-style" value={m.line_style || "solid"} onChange={(e) => updateMarkup(m.id, { line_style: e.target.value })} title="Line style" style={{ marginLeft: 4, fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }}>
+                        <select name="markup-line-style" value={m.line_style || "solid"} onChange={(e) => updateMarkup(m.id, { line_style: e.target.value })} title={t('markup.line_style')} style={{ marginLeft: 4, fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }}>
                          {LINE_STYLE_IDS.map((id) => <option key={id} value={id}>{LINE_STYLES[id].label}</option>)}
                        </select>
                        {/* line weight — a multiplier over the element's base stroke width (default
                            ×1, clamped 0.5–3); additive, absent = ×1 so legacy markups are unchanged */}
-                       <span style={{ fontSize: 10.5, color: "var(--ink-muted)", marginLeft: 4 }}>Weight</span>
-                       <select name="markup-weight" value={String(snapWeight(m.weight))} onChange={(e) => updateMarkup(m.id, { weight: Number(e.target.value) })} title="Line weight (× base)" style={{ fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }}>
+                        <span style={{ fontSize: 10.5, color: "var(--ink-muted)", marginLeft: 4 }}>{t('markup.weight')}</span>
+                        <select name="markup-weight" value={String(snapWeight(m.weight))} onChange={(e) => updateMarkup(m.id, { weight: Number(e.target.value) })} title={t('markup.weight_title')} style={{ fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }}>
                          {WEIGHT_STEPS.map((wv) => <option key={wv} value={wv}>{wv}×</option>)}
                        </select>
                        {/* revision-delta △n — clouds only; blank clears it (no delta drawn) */}
                        {m.type === "cloud" && (
                          <>
-                           <span style={{ fontSize: 10.5, color: "var(--ink-muted)", marginLeft: 4 }} title="Revision-delta number (△) drawn at a cloud corner">Rev △</span>
-                           <input name="markup-rev" type="number" min="0" step="1" value={Number.isFinite(m.rev) ? m.rev : ""} placeholder="—"
-                             onChange={(e) => { const raw = e.target.value; updateMarkup(m.id, { rev: raw === "" ? undefined : Math.max(0, Math.floor(Number(raw) || 0)) }); }}
-                             title="Revision number for the △ delta (blank = none)"
+                            <span style={{ fontSize: 10.5, color: "var(--ink-muted)", marginLeft: 4 }} title={t('markup.rev_title')}>{t('markup.rev')}</span>
+                            <input name="markup-rev" type="number" min="0" step="1" value={Number.isFinite(m.rev) ? m.rev : ""} placeholder={t('markup.rev_placeholder')}
+                              onChange={(e) => { const raw = e.target.value; updateMarkup(m.id, { rev: raw === "" ? undefined : Math.max(0, Math.floor(Number(raw) || 0)) }); }}
+                              title={t('markup.rev_input_title')}
                              style={{ width: 40, fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }} />
                          </>
                        )}
@@ -6708,18 +6710,18 @@ export default function TakeoffCanvas() {
                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
                            {lc ? (
                              <>
-                               <span title={`Annotation is about ${lc.finish_tag}`}
-                                 style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700 }}>
-                                 <span style={{ width: 9, height: 9, background: lc.color, border: "1px solid var(--ink-faint)" }} />
-                                 {lc.finish_tag}
-                               </span>
-                               <button onClick={() => { setActiveCond(lc.id); }} style={{ ...ctrl, color: "var(--cobalt)" }} title="Make this the active condition">Select</button>
-                               <button onClick={() => unlinkCondition(m)} style={{ ...ctrl, color: "var(--ink-muted)" }} title="Detach this annotation from its condition">Detach</button>
+                          <span title={t('markup.linked_to', { tag: lc.finish_tag })}
+                                  style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700 }}>
+                                  <span style={{ width: 9, height: 9, background: lc.color, border: "1px solid var(--ink-faint)" }} />
+                                  {lc.finish_tag}
+                                </span>
+                                <button onClick={() => { setActiveCond(lc.id); }} style={{ ...ctrl, color: "var(--cobalt)" }} title={t('markup.select_condition')}>{t('markup.select')}</button>
+                                <button onClick={() => unlinkCondition(m)} style={{ ...ctrl, color: "var(--ink-muted)" }} title={t('markup.detach_condition')}>{t('markup.detach')}</button>
                              </>
                            ) : conditions.length > 0 && (
-                             <select name="link-condition" value="" onChange={(e) => { if (e.target.value) linkCondition(m, e.target.value); }}
-                               title="Attach this annotation to a condition" style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 170 }}>
-                               <option value="">Attach to condition…</option>
+                              <select name="link-condition" value="" onChange={(e) => { if (e.target.value) linkCondition(m, e.target.value); }}
+                                title={t('markup.attach_condition')} style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 170 }}>
+                                <option value="">{t('markup.attach_option')}</option>
                                {conditions.map((c) => <option key={c.id} value={c.id}>{c.finish_tag}</option>)}
                              </select>
                            )}
@@ -6735,16 +6737,16 @@ export default function TakeoffCanvas() {
                            {linked ? (
                              <>
                                <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700, color: "var(--cobalt)" }}>⬢ {String(linked.number ?? "")}</span>
-                               <button onClick={() => { setLeftTab("rfi"); }} style={{ ...ctrl, color: "var(--cobalt)" }} title="Open the RFI register">Open</button>
-                               <button onClick={() => unlinkRfi(m)} style={{ ...ctrl, color: "var(--ink-muted)" }} title="Unlink this markup from its RFI">Unlink</button>
+                                <button onClick={() => { setLeftTab("rfi"); }} style={{ ...ctrl, color: "var(--cobalt)" }} title={t('markup.open_rfi')}>{t('markup.tab_rfi')}</button>
+                                <button onClick={() => unlinkRfi(m)} style={{ ...ctrl, color: "var(--ink-muted)" }} title={t('markup.unlink_rfi')}>{t('markup.unlink_rfi')}</button>
                              </>
                            ) : (
                              <>
-                               <button onClick={() => raiseRfi(m)} style={{ ...ctrl, color: "var(--cobalt)", fontWeight: 600 }} title="Create a new RFI from this markup">Raise RFI</button>
-                               {rfis.length > 0 && (
-                                 <select name="link-rfi" value="" onChange={(e) => { if (e.target.value) linkRfi(m, e.target.value); }}
-                                   title="Link this markup to an existing RFI" style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 150 }}>
-                                   <option value="">Link existing…</option>
+                                <button onClick={() => raiseRfi(m)} style={{ ...ctrl, color: "var(--cobalt)", fontWeight: 600 }} title={t('markup.raise_rfi')}>{t('markup.raise_rfi')}</button>
+                                {rfis.length > 0 && (
+                                  <select name="link-rfi" value="" onChange={(e) => { if (e.target.value) linkRfi(m, e.target.value); }}
+                                    title={t('markup.link_rfi')} style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 150 }}>
+                                    <option value="">{t('markup.link_existing')}</option>
                                    {rfis.map((r) => <option key={r.id} value={r.id}>{r.number}{r.subject ? ` · ${r.subject}` : ""}</option>)}
                                  </select>
                                )}
@@ -6812,7 +6814,7 @@ export default function TakeoffCanvas() {
             <input name="inline-editor" autoComplete="off" ref={editorInputRef} autoFocus defaultValue={editor.value}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); finishEditor(true); } else if (e.key === "Escape") { e.preventDefault(); finishEditor(false); } }}
               onBlur={() => finishEditor(true)}
-              placeholder="Type, Enter to place · Esc cancels"
+              placeholder={t('markup.editor_placeholder')}
               style={{ position: "absolute", left: editor.left, top: editor.top, zIndex: 9, minWidth: 160, padding: "3px 6px", font: "13px var(--f-body, sans-serif)", color: "var(--ink)", background: "var(--paper-bright)", border: "1px solid var(--cobalt)", boxShadow: "0 2px 10px rgba(0,0,0,.18)", borderRadius: 0, cursor: "text", outline: "none" }} />
           )}
           <div ref={stageRef} style={{ position: "absolute", transformOrigin: "0 0", willChange: "transform", width: stage.w || undefined, height: stage.h || undefined }}>
@@ -7161,7 +7163,7 @@ export default function TakeoffCanvas() {
                           <g key={a.id} style={{ pointerEvents: "none" }}>
                             <path d={dia(1)} fill={backing} stroke={ink} strokeWidth={rad * 0.07} strokeLinejoin="round" />
                             <path d={dia(0.72)} fill="none" stroke={ink} strokeWidth={rad * 0.035} strokeLinejoin="round" />
-                            <text x={cx} y={cy} fill={ink} fontSize={rad * 0.3} fontWeight="700" letterSpacing={rad * 0.02} textAnchor="middle" dominantBaseline="central">AGENT</text>
+                            <text x={cx} y={cy} fill={ink} fontSize={rad * 0.3} fontWeight="700" letterSpacing={rad * 0.02} textAnchor="middle" dominantBaseline="central">{t('approval.agent')}</text>
                           </g>
                         );
                       }
@@ -7169,7 +7171,7 @@ export default function TakeoffCanvas() {
                         <g key={a.id} style={{ pointerEvents: "none" }}>
                           <circle cx={cx} cy={cy} r={rad} fill={backing} stroke={ink} strokeWidth={rad * 0.07} />
                           <circle cx={cx} cy={cy} r={rad * 0.78} fill="none" stroke={ink} strokeWidth={rad * 0.035} />
-                          <text x={cx} y={cy} fill={ink} fontSize={rad * 0.26} fontWeight="700" letterSpacing={rad * 0.03} textAnchor="middle" dominantBaseline="central">APPROVED</text>
+                          <text x={cx} y={cy} fill={ink} fontSize={rad * 0.26} fontWeight="700" letterSpacing={rad * 0.03} textAnchor="middle" dominantBaseline="central">{t('approval.approved')}</text>
                         </g>
                       );
                     })}
@@ -7257,7 +7259,7 @@ export default function TakeoffCanvas() {
                         <g key={ap.id} style={{ pointerEvents: clickable ? "auto" : "none", cursor: clickable ? "pointer" : undefined }}
                           onPointerDown={(e) => { if (clickable) e.stopPropagation(); }}
                           onClick={(e) => { if (clickable) { e.stopPropagation(); acceptAgentProposal(ap.id); } }}>
-                          <title>{`Agent proposal — ${condById[ap.condition_id]?.finish_tag || "?"}${ded ? " (deduct)" : ""}, ${fa(ap.area_sf)}. ${evBits ? `Evidence: ${evBits}. ` : ""}Click to accept (⏎ accepts all visible); reject from the Agent panel.`}</title>
+                          <title>{t('agent_proposal.title', { tag: condById[ap.condition_id]?.finish_tag || "?", deduct: ded ? t('agent_proposal.deduct') : "", area: fa(ap.area_sf), evidence: evBits ? evBits + ". " : "" })}</title>
                           <polygon points={pts.map((q) => q.join(",")).join(" ")}
                             fill={ded ? "rgba(176,58,38,.10)" : "rgba(31,63,199,.07)"}
                             stroke={col} strokeOpacity={0.9} strokeWidth={2 / s}
@@ -7279,7 +7281,7 @@ export default function TakeoffCanvas() {
                       const pts = c.verts_norm.map(([x, y]) => [x * p.img.w, y * p.img.h]);
                       return (
                         <g key={`rulecand-${i}`} style={{ pointerEvents: "none" }}>
-                          <title>{`Rule candidate — −${fa(c.area_sf)} deduct. ${ruleStage.rule.label}.`}</title>
+                          <title>{t('rule_candidate.title', { area: fa(c.area_sf), label: ruleStage.rule.label })}</title>
                           <polygon points={pts.map((q) => q.join(",")).join(" ")}
                             fill="rgba(176,58,38,.10)" stroke="#b03a26" strokeOpacity={0.9}
                             strokeWidth={2 / s} strokeDasharray={`${3.5 / s} ${3.5 / s}`} strokeLinejoin="round" />
@@ -7309,7 +7311,7 @@ export default function TakeoffCanvas() {
                           onPointerDown={(e) => beginRollCut(e, ct, "body")}
                           onPointerMove={moveRollCut} onPointerUp={endRollCut} onPointerCancel={endRollCut}
                           onDoubleClick={() => rollEdit && resetRollCut(ct)}>
-                          <title>{`Cut ${ct.num} — ${condById[ct.condId]?.finish_tag || "?"}: ${fmtCheckLen(ct.lenFt, units)} × ${fmtCheckLen(ct.widthFt, units)}${ct.multi ? ` · lane ${ct.laneIndex + 1}/${ct.laneCount}` : ""}${ct.overRoll ? " · LONGER THAN ONE ROLL — needs a cross-seam" : ""}${rollEdit ? " · drag to slide, pull the square handles to resize, double-click to reset" : ""}`}</title>
+                          <title>{t('roll_cut.title', { num: ct.num, tag: condById[ct.condId]?.finish_tag || "?", length: fmtCheckLen(ct.lenFt, units), width: fmtCheckLen(ct.widthFt, units), multi: ct.multi ? t('roll_cut.multi', { index: ct.laneIndex + 1, total: ct.laneCount }) : "", overRoll: ct.overRoll ? t('roll_cut.over_roll') : "", editMode: rollEdit ? t('roll_cut.edit_mode') : "" })}</title>
                           <rect x={ct.x} y={ct.y} width={ct.w} height={ct.h}
                             fill={col + "38"} stroke={strokeCol}
                             strokeWidth={(ct.overRoll ? 2.6 : 1.8) / s}
@@ -7386,7 +7388,7 @@ export default function TakeoffCanvas() {
                 // "at 1/8″ = 1′-0″" reads right for a scale string; a source word ("calibrated", "custom") reads better parenthesized
                 const scaleTxt = /[=:]/.test(scaleGuide.label) ? `at ${scaleGuide.label}` : `(${scaleGuide.label})`;
                 const lbl = units === "metric" ? `${nUnits} m ${scaleTxt}` : `${scaleGuide.feet}′ ${scaleTxt}`;
-                const cap = units === "metric" ? "a door is about 0.9 m — if this bar looks wildly off, the scale is wrong" : "a door opening is about 3′ — if this bar looks wildly off, the scale is wrong";
+                const cap = units === "metric" ? t('scale_guide.door_m') : t('scale_guide.door_ft');
                 return (
                   <g style={{ pointerEvents: "none" }}>
                     <line x1={gx} y1={gy} x2={gx + scaleGuide.px} y2={gy} stroke="#fff" strokeWidth={7 / z} strokeLinecap="round" />
@@ -7411,10 +7413,10 @@ export default function TakeoffCanvas() {
 
           {status !== "ready" && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-muted)", fontSize: 15 }}>
-              {status === "loading" && "Loading sheets…"}
-              {status === "rendering" && "Rendering sheet…"}
-              {status === "empty" && "No PDFs yet — click “Open PDF” or drag a plan onto the canvas."}
-              {status === "error" && <span style={{ color: "var(--c-danger)" }}>Error: {err}</span>}
+              {status === "loading" && t('status.loading')}
+              {status === "rendering" && t('status.rendering')}
+              {status === "empty" && t('status.empty')}
+              {status === "error" && <span style={{ color: "var(--c-danger)" }}>{t('status.error', { error: err })}</span>}
             </div>
           )}
 
@@ -7428,11 +7430,11 @@ export default function TakeoffCanvas() {
               is stopped so rapid clicks can't finishShape() */}
           <div onPointerDown={(e) => { if (e.button === 0 && !spaceRef.current) e.stopPropagation(); }} onDoubleClick={(e) => e.stopPropagation()}
             style={{ position: "absolute", left: 14, bottom: 14, display: "flex", flexDirection: "column", gap: 6 }}>
-            <button onClick={() => stage.w && fitToView(stage.w, stage.h)} title="Fit sheet to view" style={{ width: 34, height: 34, borderRadius: 0, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", fontSize: 12 }}>fit</button>
-            <button onClick={() => setDarkMode((d) => !d)} title={darkMode ? "Sheet back to positive print" : "Invert sheet — negative print (affects marked-set export)"}
+            <button onClick={() => stage.w && fitToView(stage.w, stage.h)} title={t('menu.fit_title')} style={{ width: 34, height: 34, borderRadius: 0, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", fontSize: 12 }}>{t('menu.fit_view')}</button>
+            <button onClick={() => setDarkMode((d) => !d)} title={darkMode ? t('menu.invert_title') : t('menu.invert_title_dark')}
               style={{ width: 34, height: 34, borderRadius: 0, border: `1px solid ${darkMode ? "var(--cobalt)" : "var(--ink-faint)"}`, background: darkMode ? "var(--cobalt)" : "var(--paper-bright)", color: darkMode ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontSize: 13 }}>
               {darkMode ? "☀" : "☾"}</button>
-            <button onClick={() => toggleFocusMode()} title={focusMode ? "Focus off — show all chrome (F)" : "Focus — trade chrome for canvas height (F)"}
+            <button onClick={() => toggleFocusMode()} title={focusMode ? t('menu.focus_title_on') : t('menu.focus_title_off')}
               style={{ width: 34, height: 34, borderRadius: 0, border: `1px solid ${focusMode ? "var(--cobalt)" : "var(--ink-faint)"}`, background: focusMode ? "var(--cobalt)" : "var(--paper-bright)", color: focusMode ? "var(--accent-contrast)" : "var(--ink)", cursor: "pointer", fontSize: 13 }}>⛶</button>
           </div>
         </div>
@@ -7445,23 +7447,27 @@ export default function TakeoffCanvas() {
         <div style={{ position: "absolute", left: "50%", bottom: 14, transform: "translateX(-50%)", zIndex: Z.canvasUi, display: "flex", flexDirection: "column-reverse", alignItems: "center", gap: 8, maxWidth: "82%", pointerEvents: "none" }}>
         {(ruleOffer || ruleStage) && (
           <div style={{ pointerEvents: "auto", display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: "var(--paper-bright)", border: "1.5px dashed var(--c-danger)", boxShadow: "var(--shadow-1)", fontSize: 12.5, color: "var(--ink)", maxWidth: "100%" }}>
-            {ruleOffer ? (<>
-              <span>Make this a rule for all <b>{ruleOffer.tag}</b> rooms? Excludes enclosed regions under <b>{ruleOffer.seed.max_area_sf} SF</b>.</span>
-              <button onClick={previewRule}
-                style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1.5px solid var(--cobalt)", color: "var(--cobalt)", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
-                Preview</button>
-              <button onClick={() => setRuleOffer(null)}
-                style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", color: "var(--ink-muted)", fontSize: 12, cursor: "pointer" }}>
-                Dismiss</button>
-            </>) : (<>
-              <span><b>{ruleStage.candidates.length}</b> matching region{ruleStage.candidates.length === 1 ? "" : "s"} staged as dashed deducts — {ruleStage.rule.label}.</span>
-              <button onClick={applyStagedRule}
-                style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1.5px solid var(--cobalt)", color: "var(--cobalt)", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
-                Apply {ruleStage.candidates.length}</button>
-              <button onClick={() => setRuleStage(null)}
-                style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", color: "var(--ink-muted)", fontSize: 12, cursor: "pointer" }}>
-                Cancel</button>
-            </>)}
+            {ruleOffer ? (
+              <React.Fragment>
+                <span dangerouslySetInnerHTML={{ __html: t('rule.offer', { tag: ruleOffer.tag, max: ruleOffer.seed.max_area_sf }) }} />
+                <button onClick={previewRule}
+                  style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1.5px solid var(--cobalt)", color: "var(--cobalt)", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  {t('rule.preview')}</button>
+                <button onClick={() => setRuleOffer(null)}
+                  style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", color: "var(--ink-muted)", fontSize: 12, cursor: "pointer" }}>
+                  {t('rule.dismiss')}</button>
+              </React.Fragment>
+            ) : (
+              <React.Fragment>
+                <span dangerouslySetInnerHTML={{ __html: t('rule.staged', { count: ruleStage.candidates.length, label: ruleStage.rule.label }) }} />
+                <button onClick={applyStagedRule}
+                  style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1.5px solid var(--cobalt)", color: "var(--cobalt)", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  {t('rule.apply', { count: ruleStage.candidates.length })}</button>
+                <button onClick={() => setRuleStage(null)}
+                  style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", color: "var(--ink-muted)", fontSize: 12, cursor: "pointer" }}>
+                  {t('rule.cancel')}</button>
+              </React.Fragment>
+            )}
           </div>
         )}
         </div>
@@ -7475,9 +7481,9 @@ export default function TakeoffCanvas() {
             pencil until accepted. One click, one undo entry. */}
         {pendingCommitted.length > 0 && (
           <button onClick={acceptPendingShapes}
-            title={`${pendingCommitted.length} machine-proposed shape${pendingCommitted.length === 1 ? "" : "s"} render${pendingCommitted.length === 1 ? "s" : ""} dashed pending your review. Accept makes them ink (⌘Z undoes); to reject one, select it and press Delete.`}
+            title={t('accept.shapes')}
             style={{ pointerEvents: "auto", padding: "6px 14px", background: "var(--paper-bright)", border: "1.5px dashed var(--cobalt)", boxShadow: "var(--shadow-1)", fontSize: 12.5, fontWeight: 600, color: "var(--cobalt)", cursor: "pointer" }}>
-            Accept {pendingCommitted.length} proposed shape{pendingCommitted.length === 1 ? "" : "s"}
+            {t('accept.pill', { count: pendingCommitted.length })}
           </button>
         )}
         {/* live dictation chip (RFC #59 recognizer): top-center, fixed — NOT
@@ -7502,19 +7508,19 @@ export default function TakeoffCanvas() {
           ? { left: 10, right: 10, bottom: 64, maxHeight: "36%", padding: "8px 12px" }
           : { right: 56, top: 14, minWidth: 200, maxWidth: 260, maxHeight: "calc(100% - 28px)", padding: "12px 16px" }),
           background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, overflowY: "auto", boxShadow: "var(--shadow-pop)", fontVariantNumeric: "tabular-nums", zIndex: Z.canvasUi }}>
-          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.55, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tool === "zone" ? "Zone check" : (aCond?.finish_tag || "No condition")}</div>
+          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.55, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tool === "zone" ? t('readout.zone_check') : (aCond?.finish_tag || t('readout.no_condition'))}</div>
           {tool === "oneclick" && proposal?.regions.length ? (() => {
             const pos = proposal.regions.filter((r) => r.kind === "pos");
             const neg = proposal.regions.filter((r) => r.kind === "neg");
             const sf = pos.reduce((n, r) => n + r.area_sf, 0) - neg.reduce((n, r) => n + r.area_sf, 0);
             return (
               <>
-                <div style={{ fontSize: 22, fontWeight: 700, color: "var(--cobalt)" }}>{num(areaVal(sf, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)} selected</span></div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "var(--cobalt)" }}>{num(areaVal(sf, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)} {t('readout.selected')}</span></div>
                 <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{pos.length} space{pos.length === 1 ? "" : "s"}{neg.length ? ` − ${neg.length} cutout${neg.length === 1 ? "" : "s"}` : ""}{units === "metric" ? "" : ` · ${num(sf / 9)} SY`}</div>
-                <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{ocSel ? "drag to move · Delete drops this point · Esc deselects" : "hover a fill to edit: drag a corner or edge · shift-click an edge adds a point"}</div>
-                <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>click adds a space · ⌥-click carves a cutout · ⏎ Create · ⌫ undo · Esc cancel</div>
+                <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{ocSel ? t('readout.occ_drag_hint') : t('readout.occ_hover_hint')}</div>
+                <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>{t('readout.occ_click_hint')}</div>
                 {proposal.regions.some((r) => r.rt) && (
-                  <div style={{ fontSize: 11.5, color: "var(--c-warning)", marginTop: 4 }}>Traced from scan pixels — verify edges before Create.</div>
+                  <div style={{ fontSize: 11.5, color: "var(--c-warning)", marginTop: 4 }}>{t('readout.occ_scan_warning')}</div>
                 )}
               </>
             );
@@ -7523,53 +7529,53 @@ export default function TakeoffCanvas() {
               const liveLF = openLen(poly) * liveUpp;
               return condH > 0 ? (
                 <>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: "var(--ink)" }}>{num(areaVal(liveLF * condH, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)} wall</span></div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: "var(--ink)" }}>{num(areaVal(liveLF * condH, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)} {t('readout.wall')}</span></div>
                   <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{fl(liveLF)} × {num(condH, 2)} ft</div>
                 </>
-              ) : <div style={{ fontSize: 12.5, color: "var(--c-danger)" }}>Set a height for {aCond?.finish_tag || "this condition"} — H in the condition editor</div>;
+              ) : <div style={{ fontSize: 12.5, color: "var(--c-danger)" }}>{t('status.set_height', { tag: aCond?.finish_tag || "this condition" })}</div>;
             })()
           ) : tool === "zone" && poly.length >= 1 ? (
             zoneTraceCross ? (
-              <span style={{ color: "var(--c-danger)", fontSize: 12.5 }}>Zone on one sheet — that point landed on a different sheet. Finish is disabled; Esc or Undo last point to fix it.</span>
+              <span style={{ color: "var(--c-danger)", fontSize: 12.5 }}>{t('readout.zone_cross_sheet')}</span>
             ) : (
               <>
-                {liveArea != null && poly.length >= 3 && <div style={{ fontSize: 22, fontWeight: 700, color: "var(--cobalt)" }}>{num(areaVal(liveArea, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)} in zone</span></div>}
-                <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>⏎, double-click, or the Finish button closes the zone and lists everything inside · Esc cancels</div>
+                {liveArea != null && poly.length >= 3 && <div style={{ fontSize: 22, fontWeight: 700, color: "var(--cobalt)" }}>{num(areaVal(liveArea, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)} {t('readout.in_zone')}</span></div>}
+                <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{t('readout.zone_finish_hint')}</div>
               </>
             )
           ) : liveArea != null && poly.length >= 3 ? (
             <>
               <div style={{ fontSize: 22, fontWeight: 700, color: tool === "deduct" ? "var(--c-danger)" : "var(--ink)" }}>{tool === "deduct" ? "−" : ""}{num(areaVal(liveArea, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)}</span></div>
-              <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{units === "metric" ? `${fl(livePerim)} perim` : `${num(liveArea / 9)} SY  ·  ${num(livePerim)} LF perim`}</div>
-              {condH > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>@H {num(heightVal(condH, units), 2)}{units === "metric" ? " m" : "′"}: {fa(livePerim * condH)} vert{units === "metric" ? "" : ` · ${num((liveArea * condH) / 27)} CY`}</div>}
+              <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{units === "metric" ? `${fl(livePerim)} ${t('readout.perim_short')}` : `${num(liveArea / 9)} SY  ·  ${num(livePerim)} LF ${t('readout.perim_short')}`}</div>
+              {condH > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>@H {num(heightVal(condH, units), 2)}{units === "metric" ? " m" : "′"}: {fa(livePerim * condH)} {t('readout.vert_short')}{units === "metric" ? "" : ` · ${num((liveArea * condH) / 27)} CY`}</div>}
             </>
           ) : (
-            <div style={{ fontSize: 12.5, opacity: 0.6 }}>{!unitsPerPx ? "Set scale first" : tool === "zone" ? "Trace a region (an apartment, a wing) — ⏎ closes it and lists every condition inside" : !activeCond ? "Pick a condition" : tool === "oneclick" ? "Click inside a room — it selects itself" : tool === "surface" ? "Trace the wall run" : "Click to trace an area"}</div>
+            <div style={{ fontSize: 12.5, opacity: 0.6 }}>{!unitsPerPx ? t('readout.set_scale_first') : tool === "zone" ? t('readout.zone_hint') : !activeCond ? t('readout.pick_condition') : tool === "oneclick" ? t('readout.oneclick_hint') : tool === "surface" ? t('readout.surface_hint') : t('readout.trace_hint')}</div>
           )}
           {selShape?.measure_role === "surface_area" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }} title="Height for THIS wall only — full-height tile here, 4-ft wainscot there, same condition. ↺ returns to the condition height.">
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }} title={t('readout.occ_drag_hint')}>
               <Icon name="height" size={12} />
-              <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>this wall</span>
+              <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>{t('readout.this_wall')}</span>
               <input name="shape-height-ft" type="number" min="0" step={heightStep(units)} value={shapeHDraft ?? dimInputStr(selShape.height_ft, units, "height")}
                 onChange={(e) => { setShapeHDraft(e.target.value); setShapeHeight(e.target.value); }}
                 onBlur={() => { if (shapeHDraft != null) setShapeHeight(shapeHDraft); setShapeHDraft(null); }}
                 style={{ width: 56, padding: "2px 5px", border: "1px solid var(--ink-faint)", fontSize: 12 }} />
               <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>{heightUnit(units)} → {fa(selShape.computed?.area_sf || 0)}</span>
               {condH > 0 && Number(selShape.height_ft) !== condH && (
-                <button onClick={clearShapeHeight} title="Set this wall to the condition height" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)", padding: 0 }}>↺</button>
+                <button onClick={clearShapeHeight} title={t('readout.set_wall_height')} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)", padding: 0 }}>↺</button>
               )}
             </div>
           )}
           <div style={{ height: 1, background: "var(--divider-soft)", margin: "8px 0" }} />
-          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, opacity: 0.5 }}>{aCond?.finish_tag || "—"} total ({condRow?.shape_count || 0}{condMult > 1 ? ` ×${condMult}` : ""})</div>
+          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, opacity: 0.5 }}>{aCond?.finish_tag || "—"} {t('readout.total_label')} ({condRow?.shape_count || 0}{condMult > 1 ? ` ×${condMult}` : ""})</div>
           {condTotal !== 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{num(areaVal(condTotal, units))} <span style={{ fontSize: 12, fontWeight: 600 }}>{areaUnit(units)}</span> {units === "imperial" && <span style={{ fontSize: 12, fontWeight: 500, color: "var(--ink-secondary)" }}>· {num(condTotal / 9)} SY</span>}</div>}
-          {wallTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{num(areaVal(wallTotal, units))} <span style={{ fontSize: 12, fontWeight: 600 }}>{areaUnit(units)} wall</span></div>}
-          {borderTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{num(areaVal(borderTotal, units))} <span style={{ fontSize: 12, fontWeight: 600 }}>{areaUnit(units)} border</span></div>}
+          {wallTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{num(areaVal(wallTotal, units))} <span style={{ fontSize: 12, fontWeight: 600 }}>{areaUnit(units)} {t('readout.wall')}</span></div>}
+          {borderTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{num(areaVal(borderTotal, units))} <span style={{ fontSize: 12, fontWeight: 600 }}>{areaUnit(units)} {t('readout.border')}</span></div>}
           {lfTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{num(lenVal(lfTotal, units))} <span style={{ fontSize: 12, fontWeight: 600 }}>{lenUnit(units)}</span></div>}
-          {countTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{num(countTotal, 0)} <span style={{ fontSize: 12, fontWeight: 600 }}>EA</span></div>}
-          {vertTotal > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }} title="Display only — floor-area perimeters × this condition's height (not committed)">{fa(vertTotal)} vert (perim × H)</div>}
+          {countTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{num(countTotal, 0)} <span style={{ fontSize: 12, fontWeight: 600 }}>{t('unit.ea')}</span></div>}
+          {vertTotal > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }} title={t('readout.vert_hint')}>{fa(vertTotal)} {t('readout.vert')}</div>}
           {condTotal === 0 && lfTotal === 0 && countTotal === 0 && wallTotal === 0 && borderTotal === 0 && <div style={{ fontSize: 12.5, color: "var(--ink-muted)", marginTop: 2 }}>—</div>}
-          <div style={{ fontSize: 10.5, opacity: 0.45, marginTop: 6 }}>{visibleShapes.length} shapes on {groupKeys.length > 1 ? `${groupKeys.length} sheets` : "sheet"} · zoom {(tf.scale * 100).toFixed(0)}%</div>
+          <div style={{ fontSize: 10.5, opacity: 0.45, marginTop: 6 }}>{visibleShapes.length} {t('readout.shapes_on')} {groupKeys.length > 1 ? `${groupKeys.length} ${t('readout.sheets')}` : t('readout.sheet')} · {t('readout.zoom', { pct: (tf.scale * 100).toFixed(0) })}</div>
         </div>
 
         {/* zone check results — ephemeral, clears with the tool/outline. Docked at
@@ -7582,12 +7588,12 @@ export default function TakeoffCanvas() {
         {zoneRows && (
           <div style={{ position: "absolute", right: 56, bottom: 14, width: 300, maxHeight: "calc(100% - 28px)", overflowY: "auto", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "0 6px 22px rgba(0,0,0,.16)", zIndex: 7, fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderBottom: "1px solid var(--ink-faint)" }}>
-              <b style={{ fontSize: 12.5 }}>Zone check</b>
-              <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, color: "var(--ink-muted)" }}>nothing saved</span>
+              <b style={{ fontSize: 12.5 }}>{t('readout.zone_title')}</b>
+              <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, color: "var(--ink-muted)" }}>{t('readout.zone_nothing_saved')}</span>
               <button onClick={resetZone} style={{ marginLeft: "auto", border: "none", background: "none", cursor: "pointer", fontSize: 15, lineHeight: 1, color: "var(--ink)" }}>×</button>
             </div>
             {zoneRows.length === 0 && (
-              <div style={{ padding: "10px 12px", color: "var(--ink-muted)", fontSize: 11.5 }}>No takeoffs inside this zone on this sheet.</div>
+              <div style={{ padding: "10px 12px", color: "var(--ink-muted)", fontSize: 11.5 }}>{t('readout.zone_result')}</div>
             )}
             {zoneRows.map((zr) => {
               const parts = [];
@@ -7608,7 +7614,7 @@ export default function TakeoffCanvas() {
                   {zr.materials.length > 0 && (
                     <button onClick={() => setZoneExpand(open ? null : zr.id)}
                       style={{ marginTop: 4, padding: 0, border: "none", background: "none", cursor: "pointer", fontSize: 10.5, color: "var(--ink-muted)" }}>
-                      {open ? "▾" : "▸"} materials · {zr.materials.length}
+                      {open ? "▾" : "▸"} {t('readout.zone_materials')} · {zr.materials.length}
                     </button>
                   )}
                   {open && zr.materials.map((m, i) => (
@@ -7621,17 +7627,9 @@ export default function TakeoffCanvas() {
               );
             })}
             <div style={{ padding: "7px 12px", fontSize: 10, color: "var(--ink-muted)" }}>
-              Shapes counted by their center point · same sheet only · counted shapes glow cobalt.
-              {zoneRows.some((r) => (r.multiplier || 1) > 1) && <> Rows marked ×N already have the condition's multiplier applied — the same convention as the Report's Groups section, not its base-quantity by-sheet rows.</>}
-              {/* A deduct classifies by its OWN center, independent of its positive
-                  area's center (same rule the Report's by-sheet "negative slices"
-                  note already documents for a cross-sheet split) — a zone edge
-                  can split a deduct from the shape it cuts, producing a negative
-                  row here. Flag it rather than guess a pairing: the deduct/positive
-                  link is never stored, only inferred by overlap, and geometric
-                  containment pairing would guess wrong for nested/overlapping
-                  positives. */}
-              {zoneRows.some((r) => r.total_sf < 0 || r.floor_sf < 0) && <> A negative row means a deduct here counted but its positive area's center fell outside the zone (or vice-versa) — the zone edge split a deduct from its shape.</>}
+              {t('readout.zone_footnote')}
+              {zoneRows.some((r) => (r.multiplier || 1) > 1) && <>{t('readout.zone_multiplier_note')}</>}
+              {zoneRows.some((r) => r.total_sf < 0 || r.floor_sf < 0) && <>{t('readout.zone_negative')}</>}
             </div>
           </div>
         )}
@@ -7641,14 +7639,14 @@ export default function TakeoffCanvas() {
             takeoffs toggle mirrors the DOCKED panel's collapsed pref — the rail
             rides the canvas edge, so it stays visible either way. */}
         <div style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", gap: 6, zIndex: 8 }}>
-          {panelBtn(() => setLeftTab((t) => (t === "markup" ? null : "markup")), "markup", "Markups on these sheets (clouds, callouts, notes)", leftTab === "markup", markupCount)}
-          {panelBtn(() => setLeftTab((t) => (t === "stamp" ? null : "stamp")), "stamp", "Stamps — reusable annotations dropped click-to-place", leftTab === "stamp", stampLib.stamps.length)}
-          {panelBtn(() => setLeftTab((t) => (t === "rfi" ? null : "rfi")), "rfi", "RFI register — raise, track, and export Requests For Information", leftTab === "rfi", rfis.length)}
-          {panelBtn(toggleTakeoffs, "takeoffs", "Takeoffs — conditions + running totals", takeoffsOpen, visibleShapes.length)}
-          {panelBtn(() => setAgentOpen((o) => !o), "target", "Agent — describe a takeoff; it stages dashed proposals you accept or reject (bring your own AI key)", agentOpen, agentProposals.length)}
-          {rollByCond.size > 0 && panelBtn(() => setRollPanelOpen((o) => !o), "roll", "Roll goods — the cut diagram, cutting order, and figured order footage", rollPanelOpen, rollByCond.size)}
-          {layerEntries.length > 0 && panelBtn(() => setLayersOpen((o) => !o), "layers", "PDF layers — what this drawing's own layer table states each ink is; set what One-Click treats as wall and what it ignores", layersOpen, layerEntries.reduce((n, e) => n + e.layers.length, 0))}
-          {panelBtn(() => setShowRevisions(true), "revisions", "Revisions — save the takeoff at each bid revision, compare what moved", showRevisions)}
+          {panelBtn(() => setLeftTab((t) => (t === "markup" ? null : "markup")), "markup", t('panel.markups_title'), leftTab === "markup", markupCount)}
+          {panelBtn(() => setLeftTab((t) => (t === "stamp" ? null : "stamp")), "stamp", t('panel.stamps_title'), leftTab === "stamp", stampLib.stamps.length)}
+          {panelBtn(() => setLeftTab((t) => (t === "rfi" ? null : "rfi")), "rfi", t('panel.rfi_title'), leftTab === "rfi", rfis.length)}
+          {panelBtn(toggleTakeoffs, "takeoffs", t('panel.takeoffs_label'), takeoffsOpen, visibleShapes.length)}
+          {panelBtn(() => setAgentOpen((o) => !o), "target", t('panel.agent_title'), agentOpen, agentProposals.length)}
+          {rollByCond.size > 0 && panelBtn(() => setRollPanelOpen((o) => !o), "roll", t('panel.roll_title'), rollPanelOpen, rollByCond.size)}
+          {layerEntries.length > 0 && panelBtn(() => setLayersOpen((o) => !o), "layers", t('panel.layers_title'), layersOpen, layerEntries.reduce((n, e) => n + e.layers.length, 0))}
+          {panelBtn(() => setShowRevisions(true), "revisions", t('panel.revisions_title'), showRevisions)}
         </div>
 
        </div>
@@ -7789,10 +7787,10 @@ export default function TakeoffCanvas() {
       {loadError && (
         <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 60, display: "flex", alignItems: "center", gap: 12, maxWidth: 640, padding: "10px 14px", background: "var(--paper-bright)", border: "1px solid var(--c-danger)", boxShadow: "var(--shadow-2)", fontSize: 12.5, color: "var(--ink)" }}>
           <span>
-            <strong style={{ color: "var(--c-danger)" }}>Couldn't load this project's saved takeoff</strong> ({loadError}).
+            <strong style={{ color: "var(--c-danger)" }}>{t('status.couldnt_open_drive')}</strong> ({loadError}).
             Autosave is paused so nothing overwrites your saved work — reload the tab to retry.
           </span>
-          <button onClick={() => window.location.reload()} style={{ whiteSpace: "nowrap", padding: "6px 12px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", fontSize: 12 }}>Reload</button>
+          <button onClick={() => window.location.reload()} style={{ whiteSpace: "nowrap", padding: "6px 12px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", fontSize: 12 }}>{t('status.reload')}</button>
         </div>
       )}
 

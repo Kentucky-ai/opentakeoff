@@ -18,6 +18,9 @@
 
 import { conditionTotals, grandTotals, materialsSummary } from "./totals.js";
 import { parseSheetKey } from "./sheets";
+import i18n from "../i18n/index.js";
+
+const _t = (key, options) => i18n.t(key, { ns: "lib", ...options });
 
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -178,27 +181,27 @@ export function diffToCsv(diff, { aName = "baseline", bName = "current", units =
   };
   const row = (cells) => cells.map(esc).join(",");
   const lines = [];
-  if (projectName) lines.push(`# ${projectName} — OpenTakeoff revision compare`);
+  if (projectName) lines.push(`# ${projectName} — ${_t("revision.title")}`);
   lines.push(`# ${aName} -> ${bName}`);
-  lines.push(row(["Finish", "Status", `d Floor ${AU}`, `d Wall ${AU}`, `d Border ${AU}`, `d ${LU}`, "d EA", `d Total ${AU}`,
-    `${AU} ordered (${aName})`, `${AU} ordered (${bName})`, `d ${AU} ordered`]));
+  lines.push(row([_t("csv_header.finish"), _t("rfi.csv_header.status"), _t("revision.d_floor", { unit: AU }), _t("revision.d_wall", { unit: AU }), _t("revision.d_border", { unit: AU }), _t("revision.d_lf", { unit: LU }), _t("revision.d_ea"), _t("revision.d_total", { unit: AU }),
+    _t("revision.ordered_name", { unit: AU, name: aName }), _t("revision.ordered_name", { unit: AU, name: bName }), _t("revision.d_ordered", { unit: AU })]));
   for (const c of diff.conditions) {
     lines.push(row([c.finish_tag, c.status, A(c.deltas.floor_sf), A(c.deltas.wall_sf), A(c.deltas.border_sf),
       L(c.deltas.lf), c.deltas.ea, A(c.deltas.total_sf),
       c.a ? A(c.a.total_sf_net) : "", c.b ? A(c.b.total_sf_net) : "", A(c.deltas.total_sf_net)]));
   }
   const t = diff.totals;
-  lines.push(row(["TOTAL", "", "", "", "", L(t.deltas.lf), t.deltas.ea, A(t.deltas.total_sf), A(t.a.total_sf_net), A(t.b.total_sf_net), A(t.deltas.total_sf_net)]));
+  lines.push(row([_t("csv_header.total"), "", "", "", "", L(t.deltas.lf), t.deltas.ea, A(t.deltas.total_sf), A(t.a.total_sf_net), A(t.b.total_sf_net), A(t.deltas.total_sf_net)]));
   if (diff.sheets.length) {
     lines.push("");
-    lines.push(row(["Sheet", "Status", `d Floor ${AU}`, `d Wall ${AU}`, `d Border ${AU}`, `d ${LU}`, "d EA"]));
+    lines.push(row([_t("csv_header.sheet"), _t("rfi.csv_header.status"), _t("revision.d_floor", { unit: AU }), _t("revision.d_wall", { unit: AU }), _t("revision.d_border", { unit: AU }), _t("revision.d_lf", { unit: LU }), _t("revision.d_ea")]));
     for (const s of diff.sheets) {
       lines.push(row([revSheetLabel(s.sheet_id), s.status, A(s.deltas.floor_sf), A(s.deltas.wall_sf), A(s.deltas.border_sf), L(s.deltas.lf), s.deltas.ea]));
     }
   }
   if (diff.materials.length) {
     lines.push("");
-    lines.push(row(["Material", "Unit", `Qty (${aName})`, `Qty (${bName})`, "d Qty"]));
+    lines.push(row([_t("csv_header.material"), _t("csv_header.unit"), `${_t("csv_header.qty")} (${aName})`, `${_t("csv_header.qty")} (${bName})`, _t("revision.d_qty")]));
     for (const m of diff.materials) lines.push(row([m.name, m.unit, m.a_qty, m.b_qty, m.delta]));
   }
   return lines.join("\n") + "\n";

@@ -9,9 +9,11 @@
 // affordance. All the trust lives in the Internal OAuth app + Drive sharing
 // (see lib/google/auth.js); this is just the surface.
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
 
 export default function AuthChip() {
+  const { t } = useTranslation("panels");
   const { user, signOut } = useGoogleAuth();
   if (!user) return null;   // signed out (or cloud mode off) → no toolbar UI
 
@@ -26,9 +28,9 @@ export default function AuthChip() {
       <span title={user.email} style={{ fontSize: 12, color: "var(--ink-muted)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {user.email}
       </span>
-      <button type="button" onClick={() => signOut()} title="Sign out"
+      <button type="button" onClick={() => signOut()} title={t('auth.sign_out_title')}
         style={{ ...base, padding: "5px 8px", color: "var(--ink-muted)" }}>
-        Sign out
+        {t('auth.sign_out')}
       </button>
     </span>
   );

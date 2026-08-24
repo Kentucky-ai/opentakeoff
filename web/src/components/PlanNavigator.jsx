@@ -19,6 +19,7 @@
 // keyed on "is this mounted", never on the canvas' view/mode staying in sync.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
 import { Icon } from "../brand/icons.jsx";
 import AuthChip from "./AuthChip.jsx";
 import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
@@ -61,6 +62,7 @@ export default function PlanNavigator({
   // browse (Drive) data
   listFolder, addSheets, onAdded,
 }) {
+  const { t } = useTranslation("panels");
   const navigate = useNavigate();
   const { user, signIn } = useGoogleAuth();
   const browseEnabled = cloudMode && typeof listFolder === "function";
@@ -262,9 +264,9 @@ export default function PlanNavigator({
   const pdfShapeCount = (file) => shapes.reduce((n, s) => n + (parseSheetKey(s.sheet_id).file === file ? 1 : 0), 0);
   const labelOf = (key) => {
     if (labels[key]) return labels[key];
-    const t = parseSheetKey(key);
-    const base = t.file.replace(/\.pdf$/i, "");
-    return t.page > 1 ? `${base} · ${t.page}` : base;
+    const pk = parseSheetKey(key);
+    const base = pk.file.replace(/\.pdf$/i, "");
+    return pk.page > 1 ? `${base} · ${pk.page}` : base;
   };
   // multi-floor: group by assigned level (natural sort), unassigned last; within a
   // group that itself has a level, order by the title-block label so A-sheets
@@ -273,7 +275,7 @@ export default function PlanNavigator({
   // comment for why this must be a PER-GROUP gate, not a whole-gallery one.
   const groups = sortGalleryGroups(groupSheetsByLevel(allKeys, levels), labelOf);
   const assignLevel = () => {
-    const label = window.prompt('Level for the selected sheets (e.g. "L1", "Level 2", "Garage") — empty clears:', "");
+    const label = window.prompt(t('plan.assign_level_prompt'), "");
     if (label === null) return;
     onAssignLevel?.(sel, label.trim());
     setSel([]);
@@ -314,24 +316,24 @@ export default function PlanNavigator({
   };
 
   // ══ RENDER ════════════════════════════════════════════════════════════════
-  const title = mode === "browse" ? "Add sheets from Drive" : "Plan set";
+  const title = mode === "browse" ? t('plan.title_browse') : t('plan.title_plan');
   const subtitle = mode === "browse"
-    ? "pick the PDFs to open — specs & as-builts stay unopened"
-    : `${allKeys.length || "…"} sheets · pick one or several — the order you pick is the left-to-right order`;
+    ? t('plan.subtitle_browse')
+    : t('plan.subtitle_plan', { count: allKeys.length || '…' });
 
   const header = (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 18px", borderBottom: "1px solid var(--ink)", background: "var(--paper-bright)", flexWrap: "wrap" }}>
       {/* LEFT up-chain: back + title + (cloud) Projects crumb + (browse) breadcrumb */}
-      <button onClick={back} disabled={!canGoBack} title={mode === "browse" ? "Back" : "Back to the canvas (Esc)"}
+      <button onClick={back} disabled={!canGoBack} title={mode === "browse" ? t('plan.back_title') : t('plan.back_canvas_title')}
         style={{ ...ctrlBtn, padding: "6px 8px", opacity: canGoBack ? 1 : 0.35, cursor: canGoBack ? "pointer" : "default" }}>
         <Icon name="chevronLeft" size={14} />
       </button>
       <Icon name="sheets" size={18} />
       <strong style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)" }}>{title}</strong>
       {onBrowseProjects && (
-        <button onClick={onBrowseProjects} title="Back to your team's projects"
+        <button onClick={onBrowseProjects} title={t('plan.projects_title')}
           style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontFamily: "var(--f-mono)", fontSize: 12, padding: "2px 4px" }}>
-          Projects
+          {t('plan.projects')}
         </button>
       )}
       {mode === "browse" ? (
@@ -355,38 +357,38 @@ export default function PlanNavigator({
       {/* RIGHT: source toggle · browse filters · add plans · account */}
       {browseEnabled && (
         <div style={{ display: "inline-flex", border: "1px solid var(--ink-faint)", borderRadius: 2, overflow: "hidden" }}>
-          <button onClick={() => setMode("plan")} style={{ ...ctrlBtn, border: "none", background: mode === "plan" ? "var(--ink)" : "transparent", color: mode === "plan" ? "var(--paper-bright)" : "var(--ink-muted)" }}>Plan set</button>
-          <button onClick={() => setMode("browse")} style={{ ...ctrlBtn, border: "none", background: mode === "browse" ? "var(--ink)" : "transparent", color: mode === "browse" ? "var(--paper-bright)" : "var(--ink-muted)" }}>Browse Drive</button>
+          <button onClick={() => setMode("plan")} style={{ ...ctrlBtn, border: "none", background: mode === "plan" ? "var(--ink)" : "transparent", color: mode === "plan" ? "var(--paper-bright)" : "var(--ink-muted)" }}>{t('plan.plan_set_button')}</button>
+          <button onClick={() => setMode("browse")} style={{ ...ctrlBtn, border: "none", background: mode === "browse" ? "var(--ink)" : "transparent", color: mode === "browse" ? "var(--paper-bright)" : "var(--ink-muted)" }}>{t('plan.browse_drive_button')}</button>
         </div>
       )}
       {mode === "browse" && (
         <>
-          <input name="drive-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter by name…"
+          <input name="drive-filter" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('plan.filter_placeholder')}
             style={{ padding: "6px 10px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", fontSize: 12.5, minWidth: 140 }} />
-          <select name="drive-sort" value={sort} onChange={(e) => setSort(e.target.value)} title="Sort files"
+          <select name="drive-sort" value={sort} onChange={(e) => setSort(e.target.value)} title={t('plan.sort_title')}
             style={{ padding: "6px 8px", border: "1px solid var(--ink-faint)", background: "transparent", fontSize: 12 }}>
-            <option value="name">Name</option>
-            <option value="size">Size</option>
-            <option value="date">Modified</option>
+            <option value="name">{t('plan.sort_name')}</option>
+            <option value="size">{t('plan.sort_size')}</option>
+            <option value="date">{t('plan.sort_date')}</option>
           </select>
         </>
       )}
       {mode === "plan" && onAddFiles && (
         <div style={{ position: "relative" }}>
           <button onClick={() => (browseEnabled ? setAddMenu((v) => !v) : fileRef.current?.click())}
-            title="Add plans — from your computer or Google Drive"
+            title={t('plan.add_plans_title')}
             style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5 }}>
-            <Icon name="plus" size={13} />Add plans{browseEnabled && <Icon name="chevronDown" size={12} />}
+            <Icon name="plus" size={13} />{t('plan.add_plans')}{browseEnabled && <Icon name="chevronDown" size={12} />}
           </button>
           {addMenu && browseEnabled && (
             <>
               <div onClick={() => setAddMenu(false)} style={{ position: "fixed", inset: 0, zIndex: 1 }} />
               <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 0, zIndex: 2, minWidth: 210, background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-2)" }}>
                 <button onClick={() => { setAddMenu(false); fileRef.current?.click(); }} style={{ ...ctrlBtn, width: "100%", border: "none", borderBottom: "1px solid var(--ink-faint)", justifyContent: "flex-start", padding: "10px 12px" }}>
-                  <Icon name="document" size={14} />From this computer
+                  <Icon name="document" size={14} />{t('plan.from_computer')}
                 </button>
                 <button onClick={() => { setAddMenu(false); setMode("browse"); }} style={{ ...ctrlBtn, width: "100%", border: "none", justifyContent: "flex-start", padding: "10px 12px" }}>
-                  <Icon name="cloud" size={14} />From Google Drive
+                  <Icon name="cloud" size={14} />{t('plan.from_drive')}
                 </button>
               </div>
             </>
@@ -399,11 +401,11 @@ export default function PlanNavigator({
       )}
       <AuthChip />
       {onCloseProject && (
-        <button onClick={onCloseProject} title="Close this project and return to the local canvas" style={{ ...ctrlBtn, color: "var(--ink-muted)" }}>Close project</button>
+        <button onClick={onCloseProject} title={t('plan.close_project_title')} style={{ ...ctrlBtn, color: "var(--ink-muted)" }}>{t('plan.close_project')}</button>
       )}
       {canClose && (
-        <button onClick={onExit} title="Back to the canvas (Esc)" style={ctrlBtn}>
-          <Icon name="close" size={12} />Close
+        <button onClick={onExit} title={t('plan.close_title')} style={ctrlBtn}>
+          <Icon name="close" size={12} />{t('plan.close')}
         </button>
       )}
     </div>
@@ -424,12 +426,12 @@ export default function PlanNavigator({
     <>
       <div style={{ flex: 1, overflow: "auto" }}>
         {bLoading ? (
-          <div style={{ padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>Reading folder…</div>
+          <div style={{ padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>{t('plan.browse_reading')}</div>
         ) : bErr ? (
-          <div style={{ padding: 40, textAlign: "center", color: "var(--c-danger)", fontSize: 13 }}>Couldn't read the folder: {bErr}</div>
+          <div style={{ padding: 40, textAlign: "center", color: "var(--c-danger)", fontSize: 13 }}>{t('plan.browse_error', { error: bErr })}</div>
         ) : (folders.length === 0 && pdfs.length === 0) ? (
           <div style={{ padding: 40, textAlign: "center", color: "var(--ink-muted)", fontSize: 13 }}>
-            {needle ? "Nothing matches that filter." : "This folder has no PDFs or subfolders."}
+            {needle ? t('plan.browse_no_match') : t('plan.browse_empty')}
           </div>
         ) : (
           <>
@@ -437,7 +439,7 @@ export default function PlanNavigator({
               <div key={f.id} onClick={() => drillInto(f)} style={{ ...rowBase, cursor: "pointer" }}>
                 <span style={{ fontSize: 15, width: 20, textAlign: "center", color: "var(--cobalt)" }}><Icon name="chevronRight" size={13} /></span>
                 <strong style={{ fontFamily: "var(--f-body)", fontSize: 13.5, color: "var(--ink)", flex: 1 }}>{f.name}</strong>
-                <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>folder</span>
+                <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{t('plan.browse_folder')}</span>
               </div>
             ))}
             {pdfs.map((f) => {
@@ -448,14 +450,14 @@ export default function PlanNavigator({
               const tagStyle = { fontFamily: "var(--f-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.08em", minWidth: 72, textAlign: "right" };
               return (
                 <label key={f.id} style={{ ...rowBase, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.6 : 1 }}
-                  title={conflict ? "Another selected PDF already uses this name — a project can't have two sheets with the same name" : undefined}>
+                  title={conflict ? t('plan.browse_conflict_title') : undefined}>
                   <input name="drive-file-pick" type="checkbox" checked={selPick || inSet} disabled={disabled} onChange={() => togglePick(f)}
                     style={{ width: 16, height: 16, cursor: disabled ? "default" : "pointer" }} />
                   <span style={{ fontFamily: "var(--f-mono)", fontSize: 13, color: "var(--ink)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.name}>{f.name}</span>
                   <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)", minWidth: 64, textAlign: "right" }}>{fmtSize(f.size)}</span>
                   <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)", minWidth: 84, textAlign: "right" }}>{fmtDate(f.modifiedTime)}</span>
-                  {inSet ? <span style={{ ...tagStyle, color: "var(--c-positive)" }}>added</span>
-                    : conflict ? <span style={{ ...tagStyle, color: "var(--c-warning)" }}>name in use</span>
+                  {inSet ? <span style={{ ...tagStyle, color: "var(--c-positive)" }}>{t('plan.browse_added')}</span>
+                    : conflict ? <span style={{ ...tagStyle, color: "var(--c-warning)" }}>{t('plan.browse_name_in_use')}</span>
                     : <span style={{ minWidth: 72 }} />}
                 </label>
               );
@@ -465,15 +467,15 @@ export default function PlanNavigator({
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 18px", borderTop: "1px solid var(--ink)", background: "var(--paper-bright)" }}>
         <span style={{ fontFamily: "var(--f-mono)", fontSize: 11.5, color: "var(--ink-muted)" }}>
-          {picked.length ? `${picked.length} selected to open` : "check the PDFs you want to open — nothing downloads until you add them"}
+          {picked.length ? t('plan.browse_footer_hint', { count: picked.length }) : t('plan.browse_footer_default')}
         </span>
         <div style={{ flex: 1 }} />
         {picked.length > 0 && (
-          <button onClick={() => setPicked([])} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>Clear</button>
+          <button onClick={() => setPicked([])} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>{t('plan.browse_clear')}</button>
         )}
         <button onClick={addPicked} disabled={!picked.length || adding}
           style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 16px", border: "1px solid var(--ink)", background: picked.length ? "var(--cobalt)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: picked.length && !adding ? "pointer" : "default", fontWeight: 700, fontSize: 13 }}>
-          <Icon name="plus" size={13} />{adding ? "Adding…" : `Add ${picked.length || ""} sheet${picked.length === 1 ? "" : "s"}`}
+          <Icon name="plus" size={13} />{adding ? t('plan.browse_adding') : t('plan.browse_add_count', { count: picked.length || '' })}
         </button>
       </div>
     </>
@@ -506,11 +508,11 @@ export default function PlanNavigator({
                 <span style={{ position: "absolute", top: 8, left: 8, zIndex: 2, width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", border: isSel ? "none" : "1.5px solid var(--ink-faint)", background: isSel ? "var(--cobalt)" : "var(--paper-bright)", color: "var(--paper-bright)", fontFamily: "var(--f-mono)", fontSize: 12, fontWeight: 700 }}>{isSel ? idx + 1 : ""}</span>
                 <div style={{ position: "absolute", top: 8, right: 8, zIndex: 2, display: "flex", gap: 6 }}>
                   {isFirstPageOfPdf && onClosePdf && (
-                    <button onClick={(e) => { e.stopPropagation(); requestClose(parsed.file); }} title={cloudMode ? "Close this PDF — unload it from the plan set (it stays in Drive)" : "Close this PDF — remove it from the plan set (local plans aren't stored elsewhere)"}
+                    <button onClick={(e) => { e.stopPropagation(); requestClose(parsed.file); }} title={cloudMode ? t('plan.close_pdf_cloud_title') : t('plan.close_pdf_local_title')}
                       style={{ padding: "5px 8px", border: "none", background: "var(--paper-bright)", color: "var(--ink-muted)", cursor: "pointer", fontFamily: "var(--f-mono)", fontSize: 11, boxShadow: "var(--shadow-1)" }}>✕</button>
                   )}
-                  <button onClick={(e) => { e.stopPropagation(); onOpen([key], false); }} title="Open just this sheet"
-                    style={{ padding: "5px 12px", border: "none", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase" }}>View</button>
+                  <button onClick={(e) => { e.stopPropagation(); onOpen([key], false); }} title={t('plan.view_sheet_title')}
+                    style={{ padding: "5px 12px", border: "none", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase" }}>{t('plan.view_button')}</button>
                 </div>
                 <div style={{ height: 185, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--well)", borderBottom: "1px solid var(--ink-faint)", overflow: "hidden" }}>
                   {thumb
@@ -519,12 +521,12 @@ export default function PlanNavigator({
                 </div>
                 <div style={{ padding: "8px 10px", display: "flex", alignItems: "baseline", gap: 8 }}>
                   <strong style={{ fontFamily: "var(--f-mono)", fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }} title={key}>{labelOf(key)}</strong>
-                  {levels[key] && <span title="Level" style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--ink-muted)", border: "1px solid var(--ink-faint)", padding: "1px 5px" }}>{levels[key]}</span>}
-                  {isOpenTab && <span title="Already open as a tab" style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--cobalt)", textTransform: "uppercase", letterSpacing: "0.08em" }}>open</span>}
+                  {levels[key] && <span title={t('plan.level_title')} style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--ink-muted)", border: "1px solid var(--ink-faint)", padding: "1px 5px" }}>{levels[key]}</span>}
+                  {isOpenTab && <span title={t('plan.already_open_title')} style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--cobalt)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{t('plan.already_open')}</span>}
                   {cnt > 0 && <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, color: "var(--ink-muted)" }}>{cnt}▦</span>}
                   <span style={{ fontSize: 10, fontWeight: 600, whiteSpace: "nowrap", color: scales[key] ? (scaleUnconfirmed[key] === false ? "var(--c-warning)" : "var(--c-positive)") : detectedScales[key] ? "var(--c-warning)" : "var(--c-danger)" }}
-                    title={scales[key] && scaleUnconfirmed[key] === false ? "Scale set by an agent — no person has confirmed it. Open the sheet and confirm from the scale menu." : undefined}>
-                    {scales[key] ? (scaleUnconfirmed[key] === false ? "scale ⚠ confirm" : "scale ✓") : detectedScales[key] ? `plan: ${detectedScales[key].label}` : "no scale"}
+                    title={scales[key] && scaleUnconfirmed[key] === false ? t('plan.scale_agent_title') : undefined}>
+                    {scales[key] ? (scaleUnconfirmed[key] === false ? t('plan.scale_unconfirmed') : t('plan.scale_confirmed')) : detectedScales[key] ? t('plan.scale_detected', { label: detectedScales[key].label }) : t('plan.no_scale')}
                   </span>
                 </div>
               </div>
@@ -537,65 +539,63 @@ export default function PlanNavigator({
           <div style={{ padding: 48, textAlign: "center", color: "var(--ink-muted)", fontSize: 13.5, lineHeight: 1.7 }}>
             {!sheets.length ? (
               <div style={{ maxWidth: 560, margin: "0 auto" }}>
-                <div style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--cobalt)", marginBottom: 6 }}>People &amp; agents · one engine</div>
-                <div style={{ fontFamily: "var(--f-display)", fontSize: 18, color: "var(--ink)", lineHeight: 1.32, marginBottom: 5 }}>Measure a plan by hand — or point an AI&nbsp;agent at the same engine.</div>
-                <div style={{ fontSize: 13, color: "var(--ink-muted)", lineHeight: 1.55, marginBottom: 20 }}>Every measurement keeps its scale and how it was made — a person, one click, or an agent.</div>
+                <div style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--cobalt)", marginBottom: 6 }}>{t('plan.empty_tagline')}</div>
+                <div style={{ fontFamily: "var(--f-display)", fontSize: 18, color: "var(--ink)", lineHeight: 1.32, marginBottom: 5 }}>{t('plan.empty_title')}</div>
+                <div style={{ fontSize: 13, color: "var(--ink-muted)", lineHeight: 1.55, marginBottom: 20 }}>{t('plan.empty_desc')}</div>
                 <button onClick={() => fileRef.current?.click()}
                   style={{ display: "block", width: "100%", margin: "24px auto 0", padding: "44px 24px", border: "2px dashed var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", color: "var(--ink-muted)", fontFamily: "var(--f-body)", fontSize: 13.5, lineHeight: 1.7 }}>
-                  <div style={{ fontFamily: "var(--f-display)", fontSize: 20, color: "var(--ink)", marginBottom: 8 }}>Open your plans</div>
-                  Drag a PDF, an image, or a whole .zip plan set here — or click to choose. Nothing leaves your browser.
+                  <div style={{ fontFamily: "var(--f-display)", fontSize: 20, color: "var(--ink)", marginBottom: 8 }}>{t('plan.open_plans_title')}</div>
+                  {t('plan.open_plans_desc')}
                 </button>
                 {isGoogleConfigured() && (!user || projectHomeFolderId()) && (
                   <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.6 }}>
                     {!user ? (
                       <>
                         <button type="button" onClick={handleDriveSignIn} disabled={driveBusy}
-                          title="Sign in with your team Google account to open projects stored in Drive"
+                          title={t('plan.sign_in_title')}
                           style={{ border: "none", background: "transparent", padding: 0, color: "var(--cobalt)", cursor: driveBusy ? "default" : "pointer", fontSize: 12, textDecoration: "underline", fontFamily: "var(--f-body)" }}>
-                          {driveBusy ? "Signing in…" : "or sign in with Google Drive"}
+                          {driveBusy ? t('plan.sign_in_busy') : t('plan.sign_in_link')}
                         </button>
-                        {driveErr ? <div style={{ color: "var(--c-danger)", fontSize: 11.5, marginTop: 5 }}>Sign-in failed: {driveErr}</div> : null}
+                        {driveErr ? <div style={{ color: "var(--c-danger)", fontSize: 11.5, marginTop: 5 }}>{t('plan.sign_in_error', { error: driveErr })}</div> : null}
                       </>
                     ) : (
                       <Link to="/projects" style={{ color: "var(--cobalt)", fontSize: 12, textDecoration: "underline" }}>
-                        browse your Google Drive projects
+                        {t('plan.browse_drive_projects')}
                       </Link>
                     )}
                   </div>
                 )}
                 <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "18px auto 16px", color: "var(--text-faint)", fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase" }}>
-                  <span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />new here?<span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />
+                  <span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />{t('plan.new_here')}<span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />
                 </div>
-                <button onClick={loadSample} disabled={sampleBusy} title="Open a real floor finish plan and try a takeoff"
+                <button onClick={loadSample} disabled={sampleBusy} title={t('plan.load_sample_title')}
                   style={{ display: "inline-flex", alignItems: "center", gap: 9, padding: "13px 22px", border: "1px solid var(--ink)", background: "var(--cobalt)", color: "var(--paper-bright)", cursor: sampleBusy ? "default" : "pointer", opacity: sampleBusy ? 0.65 : 1, fontWeight: 700, fontSize: 14, fontFamily: "var(--f-body)" }}>
-                  <Icon name="takeoff" size={16} />{sampleBusy ? "Loading sample…" : "Load sample plan"}
+                  <Icon name="takeoff" size={16} />{sampleBusy ? t('plan.loading_sample') : t('plan.load_sample')}
                 </button>
-                <div style={{ fontFamily: "var(--f-body)", fontSize: 12.5, color: "var(--ink-muted)", marginTop: 11, lineHeight: 1.6 }}>
-                  A real medical-center <strong style={{ color: "var(--ink)" }}>floor finish plan</strong> — the scale auto-detects;
-                  pick a finish and trace a flooring takeoff in seconds.
-                </div>
+                <div style={{ fontFamily: "var(--f-body)", fontSize: 12.5, color: "var(--ink-muted)", marginTop: 11, lineHeight: 1.6 }}
+                  dangerouslySetInnerHTML={{ __html: t('plan.sample_desc') }} />
                 <div style={{ marginTop: 30, fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.1em", color: "var(--text-faint)" }}>
-                  Apache-2.0 open source · an open project by{" "}
+                  {t('plan.open_source')}{" "}
                   <a href="https://kentucky-ai.com" target="_blank" rel="noopener" style={{ color: "var(--ink-muted)" }}>Kentucky&nbsp;AI</a>
                 </div>
               </div>
             ) : enumerated ? (
               <>
-                <div style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)", marginBottom: 6 }}>Couldn't read those PDFs</div>
-                None of the opened files would render — try opening them again.
+                <div style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)", marginBottom: 6 }}>{t('plan.read_error_title')}</div>
+                {t('plan.read_error_desc')}
               </>
-            ) : "Reading the plan set…"}
+            ) : t('plan.reading_plan_set')}
           </div>
         )}
       </div>
       {stitches.length > 0 && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "9px 18px", borderTop: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
-          <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--ink-muted)" }}>Stitched surfaces</span>
+          <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--ink-muted)" }}>{t('plan.stitched_surfaces')}</span>
           {stitches.map((st) => (
             <span key={st.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--ink-faint)", padding: "4px 8px", fontSize: 12 }}>
-              <button onClick={() => onOpenStitch && onOpenStitch(st.id)} title={`Open ${st.name} — ${st.members.length} sheets as one working surface`}
+              <button onClick={() => onOpenStitch && onOpenStitch(st.id)} title={t('plan.stitch_open_title', { name: st.name, count: st.members.length })}
                 style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontWeight: 600, fontSize: 12, padding: 0 }}>{st.name}</button>
-              <button onClick={() => onDeleteStitch && onDeleteStitch(st.id)} title="Delete this stitch (refused while takeoffs live on it)"
+              <button onClick={() => onDeleteStitch && onDeleteStitch(st.id)} title={t('plan.stitch_delete_title')}
                 style={{ border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12, padding: 0 }}>×</button>
             </span>
           ))}
@@ -603,29 +603,29 @@ export default function PlanNavigator({
       )}
       {sheets.length > 0 && (
         <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "12px 18px", borderTop: "1px solid var(--ink)", background: "var(--paper-bright)" }}>
-          <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)" }}>{sel.length ? `${sel.length} selected` : "select sheets, or hover a card and hit View"}</span>
+          <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)" }}>{sel.length ? t('plan.plan_selected', { count: sel.length }) : t('plan.plan_select_hint')}</span>
           <div style={{ flex: 1 }} />
           {sel.length > 0 && (
             <>
-              <button onClick={assignLevel} title="Group the selected sheets under a floor/level — the gallery sorts by it and tabs carry the label"
-                style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>Assign level…</button>
-              <button onClick={() => setSel([])} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>Clear</button>
+              <button onClick={assignLevel} title={t('plan.assign_level_title')}
+                style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>{t('plan.assign_level')}</button>
+              <button onClick={() => setSel([])} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>{t('plan.plan_clear')}</button>
             </>
           )}
           <button disabled={!sel.length} onClick={() => onOpen(sel, false)}
             style={{ padding: "8px 14px", border: "1px solid var(--ink)", background: "transparent", color: "var(--ink)", cursor: sel.length ? "pointer" : "default", opacity: sel.length ? 1 : 0.4, fontWeight: 700, fontSize: 12.5 }}>
-            Open {sel.length || ""} as tabs
+            {t('plan.plan_open_tabs', { count: sel.length || '' })}
           </button>
           <button disabled={sel.length < 2 || sel.length > MAX_GROUP} onClick={() => onOpen(sel, true)}
-            title={sel.length > MAX_GROUP ? `Side-by-side maxes at ${MAX_GROUP} — open as tabs instead` : "One pan/zoom moves the whole row"}
+            title={sel.length > MAX_GROUP ? t('plan.plan_open_side_max', { max: MAX_GROUP }) : t('plan.plan_open_side_title')}
             style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 14px", border: "none", background: sel.length >= 2 && sel.length <= MAX_GROUP ? "var(--cobalt)" : "var(--ink-faint)", color: "var(--paper-bright)", cursor: sel.length >= 2 && sel.length <= MAX_GROUP ? "pointer" : "default", fontWeight: 700, fontSize: 12.5 }}>
-            <Icon name="sideBySide" size={14} />Open {sel.length >= 2 ? sel.length : ""} side-by-side
+            <Icon name="sideBySide" size={14} />{t('plan.plan_open_side', { count: sel.length >= 2 ? sel.length : '' })}
           </button>
           {onStitch && (
             <button disabled={sel.length < 2 || sel.length > MAX_GROUP} onClick={() => onStitch(sel)}
-              title={sel.length > MAX_GROUP ? `A stitch maxes at ${MAX_GROUP} sheets` : "Stitch — join a floor split at a match line into ONE working surface: the sheets butt edge-to-edge (no gap), you align the match line with two clicks, then a room crossing it traces as one shape"}
+              title={sel.length > MAX_GROUP ? t('plan.plan_stitch_title_max', { max: MAX_GROUP }) : t('plan.plan_stitch_title')}
               style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "8px 14px", border: "1px solid var(--ink)", background: "transparent", color: sel.length >= 2 && sel.length <= MAX_GROUP ? "var(--ink)" : "var(--ink-faint)", cursor: sel.length >= 2 && sel.length <= MAX_GROUP ? "pointer" : "default", fontWeight: 700, fontSize: 12.5 }}>
-              <Icon name="calibrate" size={14} />Stitch {sel.length >= 2 ? sel.length : ""} into one surface
+              <Icon name="calibrate" size={14} />{t('plan.plan_stitch', { count: sel.length >= 2 ? sel.length : '' })}
             </button>
           )}
         </div>
@@ -637,24 +637,24 @@ export default function PlanNavigator({
   const confirmDialog = confirmClose && (
     <div onClick={() => setConfirmClose(null)} style={{ position: "absolute", inset: 0, zIndex: 5, background: "var(--scrim)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div onClick={(e) => e.stopPropagation()} className="panel" style={{ width: 440, maxWidth: "100%", background: "var(--paper-bright)", boxShadow: "var(--shadow-2)", padding: "18px 20px" }}>
-        <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--ink)" }}>Close “{confirmClose.file}”?</strong>
+        <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--ink)" }}>{t('plan.confirm_close_title', { file: confirmClose.file })}</strong>
         <p style={{ fontSize: 12.5, color: "var(--ink-muted)", lineHeight: 1.6, margin: "10px 0 4px" }}>
           {cloudMode
-            ? "Closing removes it from this plan set so it stops loading — the file stays in your Drive project and you can re-add it any time from Browse Drive."
-            : "This removes the PDF from the plan set. Local plans aren't stored anywhere else, so you'll have to re-open the file to get it back."}
+            ? t('plan.confirm_close_cloud')
+            : t('plan.confirm_close_local')}
           {confirmClose.shapeCount > 0 && (
-            <><br /><span style={{ color: "var(--c-warning)" }}>This PDF has {confirmClose.shapeCount} takeoff{confirmClose.shapeCount === 1 ? "" : "s"} — they're preserved and restore if you re-add the same file.</span></>
+            <><br /><span style={{ color: "var(--c-warning)" }}>{t('plan.confirm_close_shapes', { count: confirmClose.shapeCount })}</span></>
           )}
         </p>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16, flexWrap: "wrap" }}>
-          <button onClick={() => setConfirmClose(null)} style={{ ...ctrlBtn, color: "var(--ink-muted)" }}>Cancel</button>
+          <button onClick={() => setConfirmClose(null)} style={{ ...ctrlBtn, color: "var(--ink-muted)" }}>{t('plan.confirm_cancel')}</button>
           {cloudMode && onRemoveFromProject && (
-            <button onClick={doRemove} title="Permanently delete the PDF from the Drive project"
-              style={{ ...ctrlBtn, border: "1px solid var(--c-danger)", color: "var(--c-danger)" }}>Delete from Drive</button>
+            <button onClick={doRemove} title={t('plan.confirm_delete_drive_title')}
+              style={{ ...ctrlBtn, border: "1px solid var(--c-danger)", color: "var(--c-danger)" }}>{t('plan.confirm_delete_drive')}</button>
           )}
           <button onClick={doClose}
             style={{ ...ctrlBtn, border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", fontWeight: 700 }}>
-            {cloudMode ? "Close (keep in Drive)" : "Remove"}
+            {cloudMode ? t('plan.confirm_close_keep') : t('plan.confirm_remove')}
           </button>
         </div>
       </div>

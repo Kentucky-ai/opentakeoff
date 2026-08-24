@@ -14,22 +14,26 @@
 // the canvas uses elsewhere.
 
 import { csvEsc as esc } from "./csv.js";
+import i18n from '../i18n/index.js';
+const t = (key, options) => i18n.t(key, { ns: 'lib', ...options });
 
 // The four RFI states, in lifecycle order. `color` is a literal hex (used both
 // as an SVG fill and as DOM chrome), `label` is the human string.
-export const RFI_STATUSES = [
-  { id: "open", label: "Open", color: "#1f3fc7" },       // cobalt — awaiting an answer
-  { id: "answered", label: "Answered", color: "#1f6b4a" }, // positive green — response in
-  { id: "closed", label: "Closed", color: "#5a5346" },    // muted ink — resolved & filed
-  { id: "void", label: "Void", color: "#b03a26" },        // danger red — withdrawn / N/A
+export const getRfiStatuses = () => [
+  { id: "open", label: t("rfi.status.open"), color: "#1f3fc7" },
+  { id: "answered", label: t("rfi.status.answered"), color: "#1f6b4a" },
+  { id: "closed", label: t("rfi.status.closed"), color: "#5a5346" },
+  { id: "void", label: t("rfi.status.void"), color: "#b03a26" },
 ];
+export const RFI_STATUSES = getRfiStatuses();
 
-const STATUS_BY_ID = Object.fromEntries(RFI_STATUSES.map((s) => [s.id, s]));
+const STATUS_IDS = new Set(RFI_STATUSES.map((s) => s.id));
 
 // status → {id,label,color}; unknown/blank falls back to Open so a hand-edited
 // or future record never renders a blank chip or crashes a color lookup.
 export function rfiStatus(id) {
-  return STATUS_BY_ID[id] || RFI_STATUSES[0];
+  const statuses = getRfiStatuses();
+  return statuses.find((s) => STATUS_IDS.has(s.id) && s.id === id) || statuses[0];
 }
 
 // Next "RFI-###" — max existing number + 1, zero-padded to 3 digits. Only the
@@ -63,12 +67,12 @@ export function linkedMarkups(rfi, markups = []) {
 export function rfisToCsv(rfis = [], markups = [], projectName = "", sheetLabel = null, brandName = "OpenTakeoff") {
   const label = (id) => (sheetLabel ? sheetLabel(id) : id);
   const header = [
-    "Number", "Subject", "Status", "Ball in court", "Priority",
-    "Cost impact", "Schedule impact", "Date", "Question", "Response",
-    "Response date", "Linked markups", "Linked sheets",
+    t("rfi.csv_header.number"), t("rfi.csv_header.subject"), t("rfi.csv_header.status"), t("rfi.csv_header.ball_in_court"), t("rfi.csv_header.priority"),
+    t("rfi.csv_header.cost_impact"), t("rfi.csv_header.schedule_impact"), t("rfi.csv_header.date"), t("rfi.csv_header.question"), t("rfi.csv_header.response"),
+    t("rfi.csv_header.response_date"), t("rfi.csv_header.linked_markups"), t("rfi.csv_header.linked_sheets"),
   ];
   const lines = [
-    "# RFI log — one row per RFI; linked markups/sheets derived from markup.rfi_id",
+    t("rfi.csv_title"),
     header.map(esc).join(","),
   ];
   for (const r of rfis || []) {
@@ -90,7 +94,7 @@ export function rfisToCsv(rfis = [], markups = [], projectName = "", sheetLabel 
       sheets,
     ].map(esc).join(","));
   }
-  const title = projectName ? `# ${projectName} — ${brandName} RFI log\n` : "";
+  const title = projectName ? `# ${projectName} — ${brandName} ${t("rfi.log_title")}\n` : "";
   return title + lines.join("\n") + "\n";
 }
 
