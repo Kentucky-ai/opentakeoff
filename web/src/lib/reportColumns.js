@@ -27,9 +27,18 @@ export const GETTERS = {
   lf_net: (r) => r.lf_net,
   sy_net: (r) => r.sy_net,
   // opt-in derivations: order − base (total_sf = floor+wall+border, so
-  // waste_sf covers all three)
-  waste_sf: (r) => round2(r.total_sf_net - r.total_sf),
-  waste_lf: (r) => round2(r.lf_net - r.lf),
+  // waste_sf covers all three). When either operand is blank/null/undefined
+  // the result is blank (not 0 or NaN) — an incomplete row has no waste figure.
+  waste_sf: (r) => {
+    const a = r.total_sf_net, b = r.total_sf;
+    if (a == null || b == null || a === "" || b === "") return "";
+    return round2(a - b);
+  },
+  waste_lf: (r) => {
+    const a = r.lf_net, b = r.lf;
+    if (a == null || b == null || a === "" || b === "") return "";
+    return round2(a - b);
+  },
   // reference only: floor perimeters include door openings and shared walls —
   // never waste-adjusted, never in grand totals. ×N multiplies like every other
   // quantity (the verticalWallSf convention).

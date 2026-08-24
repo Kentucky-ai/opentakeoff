@@ -43,6 +43,66 @@ test("waste_sf / waste_lf getters: order minus base, rounded", () => {
   assert.equal(GETTERS.waste_lf(r), 0.5);
 });
 
+// ── blank/missing operand preservation in waste getters ──────────────────
+// When either operand of waste_sf or waste_lf is blank/null/undefined the
+// getter must return "" (blank) rather than 0 or NaN. Legitimate numeric zero
+// must remain zero.
+
+test("waste_sf / waste_lf: blank operands produce blank, not NaN or 0", () => {
+  // both blank → blank
+  assert.equal(GETTERS.waste_sf({ total_sf: "", total_sf_net: "" }), "");
+  assert.equal(GETTERS.waste_lf({ lf: "", lf_net: "" }), "");
+  // one blank, one numeric → blank
+  assert.equal(GETTERS.waste_sf({ total_sf: 100, total_sf_net: "" }), "");
+  assert.equal(GETTERS.waste_sf({ total_sf: "", total_sf_net: 100 }), "");
+  assert.equal(GETTERS.waste_lf({ lf: 10, lf_net: "" }), "");
+  assert.equal(GETTERS.waste_lf({ lf: "", lf_net: 10 }), "");
+  // null → blank
+  assert.equal(GETTERS.waste_sf({ total_sf: null, total_sf_net: 50 }), "");
+  assert.equal(GETTERS.waste_lf({ lf: null, lf_net: 50 }), "");
+  // undefined (missing key) → blank
+  assert.equal(GETTERS.waste_sf({ total_sf_net: 50 }), "");
+  assert.equal(GETTERS.waste_lf({ lf_net: 50 }), "");
+  // both undefined → blank
+  assert.equal(GETTERS.waste_sf({}), "");
+  assert.equal(GETTERS.waste_lf({}), "");
+});
+
+test("waste_sf / waste_lf: legitimate zero stays zero (not blank)", () => {
+  // equal values → zero waste
+  assert.equal(GETTERS.waste_sf({ total_sf: 100, total_sf_net: 100 }), 0);
+  assert.equal(GETTERS.waste_lf({ lf: 50, lf_net: 50 }), 0);
+  // both zero → zero
+  assert.equal(GETTERS.waste_sf({ total_sf: 0, total_sf_net: 0 }), 0);
+  assert.equal(GETTERS.waste_lf({ lf: 0, lf_net: 0 }), 0);
+});
+
+test("waste_sf / waste_lf: mixed blank and zero operands — blank wins", () => {
+  // 0 is numeric, "" is blank → result is blank
+  assert.equal(GETTERS.waste_sf({ total_sf: 0, total_sf_net: "" }), "");
+  assert.equal(GETTERS.waste_lf({ lf: 0, lf_net: "" }), "");
+  // 0 and null → blank
+  assert.equal(GETTERS.waste_sf({ total_sf: 0, total_sf_net: null }), "");
+  assert.equal(GETTERS.waste_lf({ lf: 0, lf_net: null }), "");
+});
+
+test("waste_sf / waste_lf: applyUnits metric conv preserves blank from blank operands", () => {
+  const cols = visibleCols(CSV_PROFILE, { waste_sf: true, waste_lf: true });
+  const metric = applyUnits(cols, "metric");
+  const wsGet = colGetter(metric.find((c: any) => c.key === "waste_sf")!);
+  const wlGet = colGetter(metric.find((c: any) => c.key === "waste_lf")!);
+  // blank operands → getter returns "" → conv sees "" → stays ""
+  const blankRow = { total_sf: "", total_sf_net: "", lf: "", lf_net: "" };
+  assert.equal(wsGet!(blankRow), "", "metric waste_sf blank preserved");
+  assert.equal(wlGet!(blankRow), "", "metric waste_lf blank preserved");
+  // one blank → blank preserved through conv
+  assert.equal(wsGet!({ total_sf: 100, total_sf_net: "" }), "", "metric waste_sf one-blank preserved");
+  assert.equal(wlGet!({ lf: 10, lf_net: "" }), "", "metric waste_lf one-blank preserved");
+  // legitimate zero → converted to 0
+  assert.equal(wsGet!({ total_sf: 100, total_sf_net: 100 }), 0, "metric waste_sf zero stays 0");
+  assert.equal(wlGet!({ lf: 50, lf_net: 50 }), 0, "metric waste_lf zero stays 0");
+});
+
 test("floorPerimeterLf: sums only floor_area shapes per condition, unrounded", () => {
   const m = floorPerimeterLf(shapes);
   assert.equal(m.get("ct1"), 44.4 + 90.12);      // deduct shape s3 excluded
@@ -493,7 +553,9 @@ test("applyUnits with metric: foot (tfoot) functions wrap with converter", () =>
   // waste_sf foot
   const wsCol = metric.find((c: any) => c.key === "waste_sf");
   if (wsCol?.foot) {
-    assert.equal(wsCol.foot(g), round2(GETTERS.waste_sf(g) * M2), "waste_sf foot converts");
+    // grandTotals always has numeric values, so waste_sf is numeric here
+    const wasteVal = GETTERS.waste_sf(g) as number;
+    assert.equal(wsCol.foot(g), round2(wasteVal * M2), "waste_sf foot converts");
   }
 });
 
