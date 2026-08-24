@@ -66,6 +66,8 @@ export function buildLocalFirstStore(projectId, drive, cloud) {
     const presence = createPresence({
       provider: driveSnapshotProvider(drive),
       ensureSidecarId: cloud.ensureSidecarId,   // shared resolver (F4 — one `.opentakeoff`)
+      findSidecarId: cloud.findSidecarFolder,   // non-creating read path — an anonymous
+                                                // presence pass never litters a fresh project
       deviceId,
       getAuthor: authorName,
       getSheet: () => bridge.getSheet?.() ?? null,
