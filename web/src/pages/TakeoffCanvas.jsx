@@ -597,13 +597,10 @@ export default function TakeoffCanvas() {
   useEffect(() => { try { localStorage.setItem("opentakeoff_net_engine", netEngine ? "1" : "0"); } catch { /* private mode */ } }, [netEngine]);
   const netCacheRef = useRef(new Map());   // `${sheetKey}:${upp}` → built net
   const netTickRef = useRef(null);          // ticking "reading the walls… N s" timer
-  // NET MODE — the dial (his call, L&N 2026-08-24): what bounds a click.
-  //   walls  — walls + doors only (offices, support rooms)
-  //   finish — + drawn finish transitions at openings (TR lines / hatch changes)
-  //   field  — the finish pattern itself: grow across same-family floor, stop
-  //            where the pattern stops (teller lines, lobbies, open plans)
-  const [netMode, setNetMode] = useState(() => { try { return localStorage.getItem("opentakeoff_net_mode") || "finish"; } catch { return "finish"; } });
-  useEffect(() => { try { localStorage.setItem("opentakeoff_net_mode", netMode); } catch { /* private mode */ } }, [netMode]);
+  // No mode dial (his call, 2026-08-24: "too technical for users"). A click
+  // is a room (walls + doors + drawn finish transitions); ⇧-click is the
+  // finish FIELD — grow across the same tile/plank pattern, stop where it
+  // stops (teller lines, lobbies, open plans). Same gesture STACK uses.
   const [saveState, setSaveState] = useState("idle");
   const [focusMode, setFocusModeState] = useState(getFocusMode);   // chrome-collapse (F) — lib/focusMode.js is the store+broadcast
   useEffect(() => onFocusModeChange(setFocusModeState), []);
@@ -2754,7 +2751,7 @@ export default function TakeoffCanvas() {
     if (scaleGuide) setScaleGuide(null);
     if (tool === "calibrate") setCalib((c) => (c.length >= 2 ? [p] : [...c, p]));
     else if (tool === "check") setCheck((c) => (c.length >= 2 ? [p] : [...c, p]));
-    else if (tool === "oneclick") oneClickAt(p, !!(ev && ev.altKey));
+    else if (tool === "oneclick") oneClickAt(p, !!(ev && ev.altKey), undefined, !!(ev && ev.shiftKey));
     // ⌥-click on an area/deduct trace drops a CURVE point (#284): the boundary
     // bends through it instead of turning a corner at it. Every other
     // point-placing tool takes the click as it always has.
@@ -4214,7 +4211,7 @@ export default function TakeoffCanvas() {
   // VALUE because the utterance armed it in this same handler (the activeCond
   // closure is a render behind). Click callers ignore the return value; their
   // message surface stays setCommitMsg, unchanged.
-  async function oneClickAt(p, negative, direct) {
+  async function oneClickAt(p, negative, direct, fieldClick) {
     const say = (message) => { setCommitMsg(message); return { ok: false, message }; };
     const tp = panelAt(p[0]);
     const upp = uppFor(tp.key);
@@ -4251,9 +4248,8 @@ export default function TakeoffCanvas() {
       // by the zoom factor (the "regressions" that appeared only zoomed in).
       const kF = RENDER_SCALE / (renderScalesRef.current.get(tp.key) || RENDER_SCALE);   // hi-res px → baseline px
       const ftPx = kF / upp;                     // baseline px per foot
-      // walls mode builds WITHOUT finish seals; finish and field share the sealed build
-      const buildOpts = netMode === "walls" ? { NOFINISH: 1 } : {};
-      const ck = `${tp.key}:${ftPx.toFixed(4)}:${netMode === "walls" ? "walls" : "finish"}`;
+      const buildOpts = {};
+      const ck = `${tp.key}:${ftPx.toFixed(4)}`;
       let built = netCacheRef.current.get(ck);
       if (!built) {
         // one build per (sheet, scale); concurrent clicks share the promise
@@ -4275,11 +4271,12 @@ export default function TakeoffCanvas() {
       catch (err) { console.error("net engine build failed", err); return say("Net engine couldn't read this sheet — switch it off to use the fill."); }
       finally { if (netTickRef.current) { clearInterval(netTickRef.current); netTickRef.current = null; } }
       if (toolRef.current !== "oneclick" || (proposalRef.current && proposalRef.current.key !== tp.key)) { setCommitMsg(""); return { ok: false, message: "" }; }
-      const rm = await netCall({ type: "room", key: ck, x: local[0] * kF, y: local[1] * kF, ftPx, mode: netMode });
+      const field = !!fieldClick;
+      const rm = await netCall({ type: "room", key: ck, x: local[0] * kF, y: local[1] * kF, ftPx, mode: field ? "field" : "room" });
       const r = rm.room;
-      if (!r) return say(netMode === "field"
-        ? "Field mode: no finish pattern under that click — click inside the tile/plank pattern, or switch the dial to Finish or Walls."
-        : "Net engine: that click isn't inside an enclosed space — click an open spot, or trace it with Area (A).");
+      if (!r) return say(field
+        ? "No finish pattern under that ⇧-click — ⇧-click inside the tile or plank pattern to select the whole field."
+        : "Net engine: that click isn't inside an enclosed space — click an open spot, ⇧-click an open finish field, or trace it with Area (A).");
       const ring = r.ring.map(([x, y]) => [x / kF, y / kF]);      // back to the panel's frame
       try { Object.assign(window.__netLast, { lastClick: [local[0], local[1]], lastRing: ring.map(([x, y]) => [+x.toFixed(1), +y.toFixed(1)]), lastFaces: r.faces }); } catch { /* diagnostics only */ }
       const area_sf = +(r.areaPx / (ftPx * ftPx)).toFixed(2);
@@ -4287,9 +4284,9 @@ export default function TakeoffCanvas() {
       const region = {
         kind: negative ? "neg" : "pos", seed: local, poly: ring, poly0: ring.map(([x, y]) => [x, y]),
         area_sf, perim_lf, hf: false, shs: 0, sl: 0, gap: 0, mp: 0, mpd: 0, wg: 0, rw: 0, rt: false,
-        cf: 1, cff: [], net: true, netFaces: r.faces, netStarved: !!r.starved, netMode,
+        cf: 1, cff: [], net: true, netFaces: r.faces, netStarved: !!r.starved, netMode: field ? "field" : "room",
       };
-      setCommitMsg(`Net engine (${netMode === "walls" ? "Walls" : netMode === "field" ? "Field" : "Finish"}): ${area_sf.toFixed(0)} SF from ${r.faces} face${r.faces === 1 ? "" : "s"}${r.holes.length ? ` (${r.holes.length} interior void${r.holes.length === 1 ? "" : "s"} not subtracted from the outline)` : ""}${info && info.ms ? ` · net built in ${(info.ms / 1000).toFixed(1)} s` : ""} — ⏎ creates, Esc discards.`);
+      setCommitMsg(`${field ? "Finish field" : "Room"}: ${area_sf.toFixed(0)} SF from ${r.faces} face${r.faces === 1 ? "" : "s"}${r.holes.length ? ` (${r.holes.length} interior void${r.holes.length === 1 ? "" : "s"} not subtracted from the outline)` : ""}${info && info.ms ? ` · net built in ${(info.ms / 1000).toFixed(1)} s` : ""} — ⏎ creates, Esc discards.`);
       proposeRegion(null, tp, local, negative, false, region);
       return { ok: true, message: "" };
     }
@@ -6836,30 +6833,20 @@ export default function TakeoffCanvas() {
         style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", flexWrap: "wrap" }}>
         <button type="button" onClick={() => { setNetEngine((v) => !v); setProposal(null); }}
           title={netEngine
-            ? "NET ENGINE ON — One-Click runs the wall-network room detector (test build). Click to switch back to the fill."
+            ? "NET ENGINE ON — One-Click runs the wall-network room detector (test build). Click a room to select it; ⇧-click an open floor to select the whole finish field (tile, plank). Click to switch back to the fill."
             : "One-Click runs the fill. Click to try the NET ENGINE (wall-network room detector, test build)."}
           style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.3, padding: "3px 8px", borderRadius: 6, cursor: "pointer",
                    border: `1px solid ${netEngine ? "var(--cobalt)" : "var(--line)"}`,
                    background: netEngine ? "var(--cobalt)" : "transparent", color: netEngine ? "#fff" : "var(--ink-soft)" }}>
           {netEngine ? "NET" : "FILL"}
         </button>
-        {netEngine ? (<>
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)" }}>Bound by</span>
-          <input name="net-mode" type="range" min={0} max={2} step={1} value={netMode === "walls" ? 0 : netMode === "field" ? 2 : 1} list="net-mode-notches"
-            title={"What bounds a One-Click room on the net engine.\nWalls: walls and doors only — offices, support rooms.\nFinish: also seal where a drawn finish transition crosses an opening.\nField: follow the finish pattern itself — teller lines, lobbies, open plans; stops where the tile/plank stops."}
-            onChange={(e) => { setNetMode(["walls", "finish", "field"][+e.target.value]); setProposal(null); }}
-            style={{ flex: 1, accentColor: "var(--cobalt)", cursor: "pointer" }} />
-          <datalist id="net-mode-notches"><option value={0} /><option value={1} /><option value={2} /></datalist>
-          <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, fontWeight: 600, color: "var(--cobalt)", minWidth: 58 }}>{netMode === "walls" ? "Walls" : netMode === "field" ? "Field" : "Finish"}</span>
-        </>) : (<>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)" }}>Fill</span>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)", opacity: netEngine ? 0.45 : 1 }}>Fill</span>
         <input name="fill-sensitivity" type="range" min={SENS_STRICT} max={SENS_AGGRESSIVE} step={0.01} value={fillSens} list="fill-sens-notches"
           onChange={(e) => setFillSens(snap(parseFloat(e.target.value)))}
           style={{ flex: 1, accentColor: "var(--cobalt)", cursor: "pointer", opacity: inert ? 0.45 : 1 }} />
         <datalist id="fill-sens-notches"><option value={SENS_STRICT} /><option value={SENS_BALANCED} /><option value={SENS_AGGRESSIVE} /></datalist>
         <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, fontWeight: 600, color: inert ? "var(--ink-faint)" : "var(--cobalt)", minWidth: 58 }}>{label}</span>
-        </>)}
-        {!netEngine && inert && (
+        {inert && (
           <span style={{ flexBasis: "100%", fontSize: 10.5, lineHeight: 1.35, color: "var(--ink-soft)" }}>
             This fill is bounded entirely by hard ink — every setting returns the same region.
           </span>
