@@ -379,7 +379,15 @@ export function build(g, ftPx, texts){
       const t=(x,y)=>(x-L[0])*u[0]+(y-L[1])*u[1];
       const a0=Math.min(t(L[0],L[1]),t(L[2],L[3])), a1=Math.max(t(L[0],L[1]),t(L[2],L[3]));
       const b0=Math.min(t(T[0],T[1]),t(T[2],T[3])), b1=Math.max(t(T[0],T[1]),t(T[2],T[3]));
-      return Math.min(a1,b1)-Math.max(a0,b0) >= 1.5*ftPx;
+      const ov=Math.min(a1,b1)-Math.max(a0,b0);
+      if(ov < 1.5*ftPx) return false;
+      // MUTUAL: a wall's two faces run the same length. A 3 ft door leaf
+      // standing 0.3 ft off a 12 ft jamb wall overlaps it fully but covers a
+      // quarter of it — that is a leaf, not the wall's other face (Park
+      // Breakroom/Workroom, his eye: "different weight").
+      // seeded sheets only: a starved sheet's face lines arrive fragmented
+      // (AU 15→10 with this on) — there the old overlap floor stands
+      return starved ? true : ov >= 0.5*Math.max(a1-a0, b1-b0);
     };
     const unadmitted=[];
     for(const L of lows){
@@ -645,6 +653,63 @@ export function build(g, ftPx, texts){
       }
     }
   }
+  // ── DOOR SWING ARCS: the drafter's own statement of every hinged opening ──
+  // chain curve chords (the flagNonDoorArcs chaining rule), circle-fit, accept
+  // door-radius quarter-ish sweeps; closure = hinge (center) -> strike endpoint.
+  const veto=O.flagNonDoorArcs(g.segs, g.meta);
+  const nseg=g.segs.length>>2;
+  const segLen=(i)=>Math.hypot(g.segs[i*4+2]-g.segs[i*4], g.segs[i*4+3]-g.segs[i*4+1]);
+  const arcs=[];
+  {
+    let chain=[];
+    const tryWindow=(win)=>{
+      if(win.length<3) return null;
+      const fit=kasa(win);
+      if(!fit) return null;
+      const r=fit.r;
+      if(r<1.8*ftPx || r>4.5*ftPx) return null;
+      const P0=[g.segs[win[0]*4], g.segs[win[0]*4+1]];
+      const P1=[g.segs[win[win.length-1]*4+2], g.segs[win[win.length-1]*4+3]];
+      const a0=Math.atan2(P0[1]-fit.cy,P0[0]-fit.cx), a1=Math.atan2(P1[1]-fit.cy,P1[0]-fit.cx);
+      let sweep=Math.abs(a1-a0); if(sweep>Math.PI) sweep=2*Math.PI-sweep;
+      if(!(sweep>0.7 && sweep<2.1)) return null;
+      return {C:[fit.cx,fit.cy], P0, P1, r};
+    };
+    const flush=()=>{
+      if(chain.length>=3 && !chain.some(i=>veto[i])){
+        const whole=tryWindow(chain);
+        if(whole) arcs.push(whole);
+      }
+      chain=[];
+    };
+    for(let i=0;i<nseg;i++){
+      if(segLen(i)<0.5) continue;
+      if(!(g.meta[i]&O.SEG_CURVE) || (g.meta[i]&O.SEG_CLIP)){ flush(); continue; }
+      if(chain.length){
+        const p=chain[chain.length-1];
+        const gap=Math.hypot(g.segs[i*4]-g.segs[p*4+2], g.segs[i*4+1]-g.segs[p*4+3]);
+        if(g.meta[i]!==g.meta[p] || gap>Math.max(segLen(i),segLen(p))) flush();
+      }
+      chain.push(i);
+    }
+    flush();
+  }
+  function kasa(chain){
+    const xs=[g.segs[chain[0]*4]], ys=[g.segs[chain[0]*4+1]];
+    for(const i of chain){ xs.push(g.segs[i*4+2]); ys.push(g.segs[i*4+3]); }
+    const m=xs.length; let mx=0,my=0;
+    for(let i=0;i<m;i++){mx+=xs[i];my+=ys[i];} mx/=m;my/=m;
+    let sxx=0,sxy=0,syy=0,sxz=0,syz=0;
+    for(let i=0;i<m;i++){const x=xs[i]-mx,y=ys[i]-my,z=x*x+y*y;sxx+=x*x;sxy+=x*y;syy+=y*y;sxz+=x*z;syz+=y*z;}
+    const det=sxx*syy-sxy*sxy; if(Math.abs(det)<1e-9) return null;
+    const cx=(sxz*syy-syz*sxy)/(2*det), cy=(syz*sxx-sxz*sxy)/(2*det);
+    let r=0; for(let i=0;i<m;i++) r+=Math.hypot(xs[i]-mx-cx,ys[i]-my-cy); r/=m;
+    if(!(r>0)) return null;
+    const tol=Math.max(0.75,r*0.06);
+    for(let i=0;i<m;i++){ if(Math.abs(Math.hypot(xs[i]-mx-cx,ys[i]-my-cy)-r)>tol) return null; }
+    return {cx:cx+mx, cy:cy+my, r};
+  }
+  // nearness to any wall face line (for strike-endpoint scoring)
   // ── ANNOTATION STROKES ARE NOT WALLS. Park plots dimension arrows, grain
   // marks and text outlines at the wall pen, so the pen gate admits them and
   // a ring notches around "GRAIN". Two facts the drawing states: (1) a wall
@@ -667,10 +732,38 @@ export function build(g, ftPx, texts){
       return false;
     };
     const base=poche.reduce((n,r)=>n+r.length,0)+lines.length;
+    // THE LEAF IS THE RADIUS OF ITS OWN SWING ARC. A stroke lying on the
+    // hinge→start or hinge→end radius of a detected swing, no longer than the
+    // swing radius, is the door leaf — drawn double, lying on the wall line,
+    // pairing with a short jamb stub: none of the other tests can see it.
+    const onRadius=(L)=>{
+      const len=Math.hypot(L[2]-L[0],L[3]-L[1]);
+      const u=unit(L);
+      for(const a of arcs){
+        if(len>1.25*a.r) continue;
+        for(const P of [a.P0,a.P1]){
+          const rx=P[0]-a.C[0], ry=P[1]-a.C[1], rl=Math.hypot(rx,ry)||1;
+          if(Math.abs((rx*u[0]+ry*u[1])/rl)<0.985) continue;         // parallel to the radius
+          const nx=-ry/rl, ny=rx/rl;
+          const d1=Math.abs((L[0]-a.C[0])*nx+(L[1]-a.C[1])*ny), d2=Math.abs((L[2]-a.C[0])*nx+(L[3]-a.C[1])*ny);
+          if(d1>0.35*ftPx||d2>0.35*ftPx) continue;
+          const t1=((L[0]-a.C[0])*rx+(L[1]-a.C[1])*ry)/rl, t2=((L[2]-a.C[0])*rx+(L[3]-a.C[1])*ry)/rl;
+          const lo=Math.max(0,Math.min(t1,t2)), hi=Math.min(rl,Math.max(t1,t2));
+          if(hi-lo>=0.6*len) return true;
+        }
+      }
+      return false;
+    };
+    // (arc-radius leaf drop: OPT-IN only — a swing's START radius is the leaf's
+    // closed position, i.e. the wall face itself; measured CI 28→20, AU 15→12)
+    if(OPTS.LEAFARC){
+      const keptL=lines.filter(L=>!onRadius(L)); lines.length=0; lines.push(...keptL);
+    }
     const kept=[], keptStage=[];
     strokes.forEach((L,i)=>{
       const mx=(L[0]+L[2])/2,my=(L[1]+L[3])/2;
       const len=Math.hypot(L[2]-L[0],L[3]-L[1]);
+      if(OPTS.LEAFARC && onRadius(L)) return;
       // text outline: the WHOLE stroke inside one text box (a midpoint test
       // dropped wall strokes passing under a tag — measured CI 28→27, AU 15→14)
       if(!OPTS.NOANNOT_TEXT && len<4*ftPx && inText(L[0],L[1]) && inText(L[2],L[3]) && inText(mx,my)) return;
@@ -701,7 +794,8 @@ export function build(g, ftPx, texts){
             const t=(x,y)=>(x-L[0])*u[0]+(y-L[1])*u[1];
             const a0=Math.min(t(L[0],L[1]),t(L[2],L[3])), a1=Math.max(t(L[0],L[1]),t(L[2],L[3]));
             const b0=Math.min(t(T[0],T[1]),t(T[2],T[3])), b1=Math.max(t(T[0],T[1]),t(T[2],T[3]));
-            if(Math.min(a1,b1)-Math.max(a0,b0) >= 0.6*len) paired=true;
+            const ov2=Math.min(a1,b1)-Math.max(a0,b0);
+            if(ov2 >= 0.6*len && ov2 >= 0.5*(b1-b0)) paired=true;   // mutual: not a leaf against a long wall
           }
           if(!paired) return;
         }
@@ -828,63 +922,6 @@ export function build(g, ftPx, texts){
     }
   }
 
-  // ── DOOR SWING ARCS: the drafter's own statement of every hinged opening ──
-  // chain curve chords (the flagNonDoorArcs chaining rule), circle-fit, accept
-  // door-radius quarter-ish sweeps; closure = hinge (center) -> strike endpoint.
-  const veto=O.flagNonDoorArcs(g.segs, g.meta);
-  const nseg=g.segs.length>>2;
-  const segLen=(i)=>Math.hypot(g.segs[i*4+2]-g.segs[i*4], g.segs[i*4+3]-g.segs[i*4+1]);
-  const arcs=[];
-  {
-    let chain=[];
-    const tryWindow=(win)=>{
-      if(win.length<3) return null;
-      const fit=kasa(win);
-      if(!fit) return null;
-      const r=fit.r;
-      if(r<1.8*ftPx || r>4.5*ftPx) return null;
-      const P0=[g.segs[win[0]*4], g.segs[win[0]*4+1]];
-      const P1=[g.segs[win[win.length-1]*4+2], g.segs[win[win.length-1]*4+3]];
-      const a0=Math.atan2(P0[1]-fit.cy,P0[0]-fit.cx), a1=Math.atan2(P1[1]-fit.cy,P1[0]-fit.cx);
-      let sweep=Math.abs(a1-a0); if(sweep>Math.PI) sweep=2*Math.PI-sweep;
-      if(!(sweep>0.7 && sweep<2.1)) return null;
-      return {C:[fit.cx,fit.cy], P0, P1, r};
-    };
-    const flush=()=>{
-      if(chain.length>=3 && !chain.some(i=>veto[i])){
-        const whole=tryWindow(chain);
-        if(whole) arcs.push(whole);
-      }
-      chain=[];
-    };
-    for(let i=0;i<nseg;i++){
-      if(segLen(i)<0.5) continue;
-      if(!(g.meta[i]&O.SEG_CURVE) || (g.meta[i]&O.SEG_CLIP)){ flush(); continue; }
-      if(chain.length){
-        const p=chain[chain.length-1];
-        const gap=Math.hypot(g.segs[i*4]-g.segs[p*4+2], g.segs[i*4+1]-g.segs[p*4+3]);
-        if(g.meta[i]!==g.meta[p] || gap>Math.max(segLen(i),segLen(p))) flush();
-      }
-      chain.push(i);
-    }
-    flush();
-  }
-  function kasa(chain){
-    const xs=[g.segs[chain[0]*4]], ys=[g.segs[chain[0]*4+1]];
-    for(const i of chain){ xs.push(g.segs[i*4+2]); ys.push(g.segs[i*4+3]); }
-    const m=xs.length; let mx=0,my=0;
-    for(let i=0;i<m;i++){mx+=xs[i];my+=ys[i];} mx/=m;my/=m;
-    let sxx=0,sxy=0,syy=0,sxz=0,syz=0;
-    for(let i=0;i<m;i++){const x=xs[i]-mx,y=ys[i]-my,z=x*x+y*y;sxx+=x*x;sxy+=x*y;syy+=y*y;sxz+=x*z;syz+=y*z;}
-    const det=sxx*syy-sxy*sxy; if(Math.abs(det)<1e-9) return null;
-    const cx=(sxz*syy-syz*sxy)/(2*det), cy=(syz*sxx-sxz*sxy)/(2*det);
-    let r=0; for(let i=0;i<m;i++) r+=Math.hypot(xs[i]-mx-cx,ys[i]-my-cy); r/=m;
-    if(!(r>0)) return null;
-    const tol=Math.max(0.75,r*0.06);
-    for(let i=0;i<m;i++){ if(Math.abs(Math.hypot(xs[i]-mx-cx,ys[i]-my-cy)-r)>tol) return null; }
-    return {cx:cx+mx, cy:cy+my, r};
-  }
-  // nearness to any wall face line (for strike-endpoint scoring)
   const arcClosures=[];
   for(const a of arcs){
     // a DOOR swing hinges ON a wall and strikes A wall; an arc that touches no
@@ -1438,7 +1475,23 @@ export function build(g, ftPx, texts){
     for(let i=0;i<f.ring.length;i++){const p=f.ring[i],q=f.ring[(i+1)%f.ring.length];per+=Math.hypot(q[0]-p[0],q[1]-p[1]);}
     v=per>0?(2*f.area)/per:0; widthMemo.set(fi,v); return v;
   };
-  const narrowFace=GROWMAXW>0 ? (fi)=>faceW(fi)<GROWMAXW*ftPx : null;
+  // a narrow face that touches a DOOR CELL is the door recess between leaf
+  // and jamb — his ruler runs through the door to the jamb, so growth must
+  // not refuse it as wall band
+  const doorCellsAll=[...doorQuads, ...closureStrips];
+  const doorTouchMemo=new Map();
+  const doorTouch=(fi)=>{
+    let v=doorTouchMemo.get(fi); if(v!==undefined) return v;
+    v=false; const F=arr.faces[fi]; const R=0.35*ftPx;
+    outer: for(let i=0;i<F.ring.length;i++){
+      const p=F.ring[i],q=F.ring[(i+1)%F.ring.length]; const mx=(p[0]+q[0])/2,my=(p[1]+q[1])/2;
+      const d=Math.hypot(q[0]-p[0],q[1]-p[1])||1; const nx=-(q[1]-p[1])/d, ny=(q[0]-p[0])/d;
+      for(const s9 of [1,-1]){ const x=mx+nx*R*s9,y=my+ny*R*s9; for(const poly of doorCellsAll){ if(pointInRing(poly,x,y)){v=true;break outer;} } }
+    }
+    doorTouchMemo.set(fi,v); return v;
+  };
+  // (door-recess absorb measured CI 29→26, AU 15→13 — opt-in until it earns)
+  const narrowFace=GROWMAXW>0 ? (fi)=>faceW(fi)<GROWMAXW*ftPx && !(OPTS.DOORRECESS && doorTouch(fi)) : null;
   // ── DOOR ACCESS: does this face's boundary touch a door cell? Every real
   // room has one; a cell carved off the room by casework does not (Kreo's
   // room-graph: rooms are nodes, doors are edges). Test: sample points just
