@@ -794,6 +794,10 @@ export function build(g, ftPx, texts){
   // an END: {x,y (center), dir (outward unit along axis), halfWidth, corners:[p1,p2]}
   const ends=[];
   for(const r of runs){
+    // a door hangs between WALL ends: a 1.9 ft dimension-tick pair is a run
+    // too, and its end paired with a partition's end sealed a 4.3 ft strip
+    // into a Park office (measured, both scales)
+    if(r.t1-r.t0 < 3*ftPx) continue;
     const n=[-r.uy,r.ux], h=r.thick/2;
     for(const [tt,sgn] of [[r.t0,-1],[r.t1,1]]){
       const cx=r.ax+r.ux*tt, cy=r.ay+r.uy*tt;
@@ -1159,7 +1163,9 @@ export function build(g, ftPx, texts){
       if(Math.abs(vx*anx+vy*any_) > Math.max(a.hw,b.hw,0.3*ftPx)) continue;
       if(Math.max(a.hw,b.hw)>2.2*Math.min(a.hw,b.hw)) continue;
       let blocked=false;
-      for(const t of [0.2,0.4,0.6,0.8]){ if(inMaterial(a.x+vx*t, a.y+vy*t)){blocked=true;break;} }
+      // include the near-end samples: a connector that begins INSIDE wall
+      // material is crossing a wall, not spanning an opening
+      for(const t of [0.06,0.2,0.4,0.6,0.8,0.94]){ if(inMaterial(a.x+vx*t, a.y+vy*t)){blocked=true;break;} }
       if(blocked) continue;
       if(inXboxPt(a.x+vx/2, a.y+vy/2)) continue;      // fixture interior: not a doorway
       valid.push([d,i,j]);
