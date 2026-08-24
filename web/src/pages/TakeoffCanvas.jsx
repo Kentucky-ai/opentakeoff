@@ -57,6 +57,7 @@ import { tidyRing, axisLockPoint } from "../lib/ringTidy";
 import { sweepSymbols } from "../lib/symbolsweep";
 import { labelPlacements } from "../lib/symbollabels";
 import { traceConfidence, floodSignals } from "../lib/confidence";
+import { buildNet, netRoomAt } from "../lib/netroom";
 import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS } from "../lib/rastermask";
 // PDF layer roles (#85): the pure name→role classifier and the override
 // plumbing shared with the MCP session — the canvas consumes buildMask's
@@ -575,6 +576,16 @@ export default function TakeoffCanvas() {
     try { const v = parseFloat(localStorage.getItem("opentakeoff_fill_sens")); return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : SENS_BALANCED; } catch { return SENS_BALANCED; }
   });
   useEffect(() => { try { localStorage.setItem("opentakeoff_fill_sens", String(fillSens)); } catch { /* private mode */ } }, [fillSens]);
+  // NET ENGINE (test drive, 2026-08-24): route One-Click through the wall-
+  // network room detector (lib/netroom) instead of the raster flood. Off by
+  // default; persisted so a test session survives a reload. The net for a
+  // sheet is built once per (sheet, scale) and cached — seconds on a dense
+  // sheet, instant after.
+  const [netEngine, setNetEngine] = useState(() => {
+    try { return localStorage.getItem("opentakeoff_net_engine") === "1"; } catch { return false; }
+  });
+  useEffect(() => { try { localStorage.setItem("opentakeoff_net_engine", netEngine ? "1" : "0"); } catch { /* private mode */ } }, [netEngine]);
+  const netCacheRef = useRef(new Map());   // `${sheetKey}:${upp}` → built net
   const [saveState, setSaveState] = useState("idle");
   const [focusMode, setFocusModeState] = useState(getFocusMode);   // chrome-collapse (F) — lib/focusMode.js is the store+broadcast
   useEffect(() => onFocusModeChange(setFocusModeState), []);
@@ -4167,6 +4178,7 @@ export default function TakeoffCanvas() {
     // The measurement-policy receipts: when the engine sealed, wedged, or
     // ruled a passage out, the estimator hears it at stage time — the trace is
     // reviewable while the edge in question is still under the cursor.
+    else if (!f) { /* net-engine region: the caller already set the message; there is no flood receipt to narrate */ }
     else if (f.wedges && f.ringWedges >= f.wedges) setCommitMsg(`Measured to include the floor inside ${f.ringWedges === 1 ? "a closed ring" : `${f.ringWedges} closed rings`} drawn on the plan (a round column or a callout bubble) — no door swing was involved. If that is a column you deduct rather than floor you cover, ${keyText("⌥-click carves it out. ⏎ creates.")}`);
     else if (f.wedges && f.ringWedges) setCommitMsg(`Measured through the drawn door to the wall opening — the swing area is included. It also includes the floor inside ${f.ringWedges === 1 ? "a closed ring" : `${f.ringWedges} closed rings`} (a round column or callout bubble), which is not a door swing; ${keyText("⌥-click carves one out if it should be deducted. ⏎ creates.")}`);
     else if (f.wedges) setCommitMsg("Measured through the drawn door to the wall opening — the swing area is included. ⏎ creates.");
@@ -4208,6 +4220,40 @@ export default function TakeoffCanvas() {
     const stats = sheetStatsRef.current.get(tp.key);
     const rasterEligible = !!stats && stats.imageFrac >= RASTER_MIN_IMG_FRAC;
     const vectorViable = !!stats && stats.segCount >= RASTER_MIN_SEGS;
+    // NET ENGINE branch — vector sheets only; a scan has no linework to network.
+    if (netEngine && !direct && vectorViable) {
+      const segs = vectorSegsRef.current.get(tp.key);
+      const meta = segMetaRef.current.get(tp.key);
+      if (!segs || !meta) return say("Still reading this sheet's linework — try again in a second.");
+      const ftPx = 1 / upp;
+      const ck = `${tp.key}:${upp}`;
+      let net = netCacheRef.current.get(ck);
+      if (!net) {
+        setCommitMsg("Building the wall network for this sheet…");
+        await new Promise((r) => setTimeout(r, 30));   // let the message paint before the synchronous build
+        try {
+          net = buildNet({ segs, meta, subpaths: subpathsRef.current.get(tp.key) || null }, ftPx, textMarksRef.current.get(tp.key) || []);
+        } catch (err) {
+          console.error("net engine build failed", err);
+          return say("Net engine couldn't read this sheet — switch it off to use the fill.");
+        }
+        netCacheRef.current.set(ck, net);
+        if (toolRef.current !== "oneclick") { setCommitMsg(""); return { ok: false, message: "" }; }
+      }
+      const r = netRoomAt(net, local[0], local[1], ftPx);
+      if (!r) return say("Net engine: that click isn't inside an enclosed space — click an open spot, or trace it with Area (A).");
+      const ring = r.ring.map(([x, y]) => [x, y]);
+      const area_sf = +(r.areaPx * upp * upp).toFixed(2);
+      const perim_lf = +(closedMetrics(ring).perim * upp).toFixed(2);
+      const region = {
+        kind: negative ? "neg" : "pos", seed: local, poly: ring, poly0: ring.map(([x, y]) => [x, y]),
+        area_sf, perim_lf, hf: false, shs: 0, sl: 0, gap: 0, mp: 0, mpd: 0, wg: 0, rw: 0, rt: false,
+        cf: 1, cff: [], net: true, netFaces: r.faces, netStarved: !!r.starved,
+      };
+      setCommitMsg(`Net engine: ${area_sf.toFixed(0)} SF from ${r.faces} face${r.faces === 1 ? "" : "s"}${r.holes.length ? ` (${r.holes.length} interior void${r.holes.length === 1 ? "" : "s"} not subtracted from the outline)` : ""} — ⏎ creates, Esc discards.`);
+      proposeRegion(null, tp, local, negative, false, region);
+      return { ok: true, message: "" };
+    }
     if (!rasterEligible || vectorViable) {
       const mo = ensureMask(tp.key);
       if (!mo && !rasterEligible) return say("Still reading this sheet's linework — try again in a second.");
@@ -4295,7 +4341,7 @@ export default function TakeoffCanvas() {
       // region's verts ARE the proposal, so nothing extra rides. Post-Create
       // edits are stamped by stampEdit, which freezes the same field from the
       // pre-edit ring only when Create didn't already.
-      origin: { method: "one_click_v1", seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, confidence: r.cf ?? 1, ...(r.cff?.length ? { confidence_factors: r.cff } : {}), ...(r.hf ? { hatch_filtered: true } : {}), ...(r.sl ? { gap_sealed_px: r.sl } : {}), ...(r.gap ? { gap_bridged_px: r.gap } : {}), ...(r.mp ? { min_pass_px: r.mp, min_pass_delta: r.mpd } : {}), ...(r.wg ? { door_wedges: r.wg } : {}), ...(r.rw ? { ring_interiors: r.rw } : {}), ...(r.rt ? { raster_traced: true } : {}), ...(r.sens != null ? { fill_sensitivity: r.sens } : {}), ...(r.touched ? { edited_before_create: true, proposed_verts_norm: r.poly0.map(([x, y]) => [x / tp.img.w, y / tp.img.h]) } : {}) },
+      origin: { method: r.net ? "net_v1" : "one_click_v1", ...(r.net ? { net_faces: r.netFaces, net_starved: r.netStarved } : {}), seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, confidence: r.cf ?? 1, ...(r.cff?.length ? { confidence_factors: r.cff } : {}), ...(r.hf ? { hatch_filtered: true } : {}), ...(r.sl ? { gap_sealed_px: r.sl } : {}), ...(r.gap ? { gap_bridged_px: r.gap } : {}), ...(r.mp ? { min_pass_px: r.mp, min_pass_delta: r.mpd } : {}), ...(r.wg ? { door_wedges: r.wg } : {}), ...(r.rw ? { ring_interiors: r.rw } : {}), ...(r.rt ? { raster_traced: true } : {}), ...(r.sens != null ? { fill_sensitivity: r.sens } : {}), ...(r.touched ? { edited_before_create: true, proposed_verts_norm: r.poly0.map(([x, y]) => [x / tp.img.w, y / tp.img.h]) } : {}) },
     }));
     const res = dispatchShape({ type: "add", shapes: made });   // the creation gate — id/created_at minted by the command
     // ...and the new takeoff is SELECTED. Without this, Create left nothing
@@ -6749,7 +6795,16 @@ export default function TakeoffCanvas() {
       <div title={"One-Click fill sensitivity — how far a fill reaches past a room's hatch pattern.\nStrict: stop at the linework (original behavior).\nBalanced: recover hatch-lined rooms to the walls (default).\nAggressive: cross more pattern and tolerate more growth.\nLower it if fills spill; raise it if hatched rooms come up short.\nScanned sheets trace from pixels — sensitivity doesn't apply there."
         + (inert ? "\n\nNothing on this fill's boundary classified as a hatch or tile pattern, so every setting returns the same region. It is stopping on ink the engine still reads as a wall." : "")}
         style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", flexWrap: "wrap" }}>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)" }}>Fill</span>
+        <button type="button" onClick={() => { setNetEngine((v) => !v); setProposal(null); }}
+          title={netEngine
+            ? "NET ENGINE ON — One-Click runs the wall-network room detector (test build). Click to switch back to the fill."
+            : "One-Click runs the fill. Click to try the NET ENGINE (wall-network room detector, test build)."}
+          style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.3, padding: "3px 8px", borderRadius: 6, cursor: "pointer",
+                   border: `1px solid ${netEngine ? "var(--cobalt)" : "var(--line)"}`,
+                   background: netEngine ? "var(--cobalt)" : "transparent", color: netEngine ? "#fff" : "var(--ink-soft)" }}>
+          {netEngine ? "NET" : "FILL"}
+        </button>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)", opacity: netEngine ? 0.45 : 1 }}>Fill</span>
         <input name="fill-sensitivity" type="range" min={SENS_STRICT} max={SENS_AGGRESSIVE} step={0.01} value={fillSens} list="fill-sens-notches"
           onChange={(e) => setFillSens(snap(parseFloat(e.target.value)))}
           style={{ flex: 1, accentColor: "var(--cobalt)", cursor: "pointer", opacity: inert ? 0.45 : 1 }} />
