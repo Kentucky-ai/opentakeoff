@@ -1491,7 +1491,12 @@ export function build(g, ftPx, texts){
     doorTouchMemo.set(fi,v); return v;
   };
   // (door-recess absorb measured CI 29→26, AU 15→13 — opt-in until it earns)
-  const narrowFace=GROWMAXW>0 ? (fi)=>faceW(fi)<GROWMAXW*ftPx && !(OPTS.DOORRECESS && doorTouch(fi)) : null;
+  // a door RECESS is a few square feet between leaf and jamb; a wall-band
+  // cavity touching a door strip is a long ribbon — size is the discriminator
+  const RECESS_MAX=(+OPTS.RECESSSF||3)*ftPx*ftPx;
+  // OPT-IN (DOORRECESS): measured CI 29→26, AU 15→13 at any size cap — the
+  // Workroom jamb lands visually but the count says it costs more elsewhere
+  const narrowFace=GROWMAXW>0 ? (fi)=>faceW(fi)<GROWMAXW*ftPx && !(OPTS.DOORRECESS && arr.faces[fi].area<=RECESS_MAX && doorTouch(fi)) : null;
   // ── DOOR ACCESS: does this face's boundary touch a door cell? Every real
   // room has one; a cell carved off the room by casework does not (Kreo's
   // room-graph: rooms are nodes, doors are edges). Test: sample points just
