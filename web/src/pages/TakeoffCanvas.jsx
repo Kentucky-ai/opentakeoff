@@ -1106,6 +1106,22 @@ export default function TakeoffCanvas() {
     const { x, y, scale } = tfRef.current;
     if (stageRef.current) stageRef.current.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
   }, []);
+  // Compositor-promote the stage layer for the DURATION OF A GESTURE only.
+  // A permanently-promoted layer (will-change: transform in the JSX) freezes
+  // its raster scale at promotion time — Chromium deliberately never re-rasters
+  // such a layer when only its transform scale changes — so after a zoom-in the
+  // SVG overlay (committed boundaries, the in-progress polygon, vertex handles)
+  // stays a GPU-magnified bitmap: pixelated, blurry edges while drawing. The
+  // detail canvases never showed it because they repaint their own pixels at
+  // settle. So promote when a pan/zoom gesture opens (per-frame moves stay
+  // compositor-only and cheap) and demote when it settles (in syncTilePanels,
+  // keyed off the same gestureUntilRef wheel-quiet signal the detail repaint
+  // uses) — a demoted stage transforms at paint time, re-rastering the overlay
+  // crisp at whatever zoom the user landed on.
+  const promoteStage = useCallback(() => {
+    const el = stageRef.current;
+    if (el && el.style.willChange !== "transform") el.style.willChange = "transform";
+  }, []);
   // Re-apply after every React render so an unrelated re-render mid-drag can't
   // snap the transform back to a stale value.
   useLayoutEffect(() => { applyTf(); });
@@ -1924,6 +1940,10 @@ export default function TakeoffCanvas() {
       // free; self-poll so the settle repaint is guaranteed even if no further
       // input event arrives before the gesture window expires.
       if (panRef.current || performance.now() < gestureUntilRef.current) { scheduleSync(); return; }
+      // Gesture settled: demote the stage layer (see promoteStage) so the SVG
+      // overlay re-rasters at the zoom the user landed on — this is what
+      // un-pixelates a drafted boundary after a scroll-zoom.
+      if (stageRef.current && stageRef.current.style.willChange !== "auto") stageRef.current.style.willChange = "auto";
       const r = cont.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       const density = tileRequiredDensity(t.scale, dpr);
@@ -2458,6 +2478,7 @@ export default function TakeoffCanvas() {
     const onWheel = (e) => {
       if (editingRef.current) return;   // freeze pan/zoom while the inline editor is pinned to its anchor
       e.preventDefault();
+      promoteStage();                   // gesture opening: composite the stage for cheap per-frame moves
       gestureUntilRef.current = performance.now() + GESTURE_MS;  // detail view waits for wheel quiet
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1;
       if (e.shiftKey) {
@@ -2485,7 +2506,7 @@ export default function TakeoffCanvas() {
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => { el.removeEventListener("wheel", onWheel); if (raf) cancelAnimationFrame(raf); };
-  }, [applyTf, scheduleSync, zoomAround]);
+  }, [applyTf, scheduleSync, zoomAround, promoteStage]);
 
   // Space = temporary pan (any tool)
   useEffect(() => {
@@ -2681,6 +2702,7 @@ export default function TakeoffCanvas() {
     // (There is no Pan tool — Select's open-canvas drag and the deferred-click
     // hold-drag below cover the rest of the modeless-pan doctrine.)
     if (e.button === 1 || e.button === 2 || spaceRef.current) {
+      promoteStage();
       panRef.current = { sx: e.clientX, sy: e.clientY, ox: tfRef.current.x, oy: tfRef.current.y };
       e.currentTarget.setPointerCapture(e.pointerId);
       if (containerRef.current) containerRef.current.style.cursor = "grabbing";
@@ -2977,6 +2999,7 @@ export default function TakeoffCanvas() {
     // desktop takeoff tools; no need to reach for the Pan tool). The plain
     // click (no drag) already cleared the selection above, so a stationary
     // press costs nothing.
+    promoteStage();
     panRef.current = { sx: e.clientX, sy: e.clientY, ox: tfRef.current.x, oy: tfRef.current.y };
     e.currentTarget.setPointerCapture(e.pointerId);
     if (containerRef.current) containerRef.current.style.cursor = "grabbing";
@@ -3142,7 +3165,10 @@ export default function TakeoffCanvas() {
         const last = poly[bowOpen ? poly.length - 2 : poly.length - 1];
         rubberRef.current.setAttribute("x1", last[0]); rubberRef.current.setAttribute("y1", last[1]);
         rubberRef.current.setAttribute("x2", cur[0]); rubberRef.current.setAttribute("y2", cur[1]);
-        rubberRef.current.setAttribute("stroke-width", lock ? 3 : 1.5);  // the lock reads in the band itself
+        // screen-constant width, like the JSX default and the dash below (÷ scale):
+        // the raw stage-px value this used to write drew a fat, smeared band at
+        // deep zoom. The lock still reads thicker within the band itself.
+        rubberRef.current.setAttribute("stroke-width", (lock ? 3 : 1.5) / tfRef.current.scale);
         const dash = bowOpen ? `${5 / tfRef.current.scale} ${4 / tfRef.current.scale}` : "";
         if (rubberRef.current.__dash !== dash) { rubberRef.current.setAttribute("stroke-dasharray", dash); rubberRef.current.__dash = dash; }
         rubberRef.current.style.display = "block";
@@ -3321,6 +3347,7 @@ export default function TakeoffCanvas() {
     if (pendingClickRef.current && !panRef.current) {
       const pc = pendingClickRef.current;
       if (Math.hypot(e.clientX - pc.cx, e.clientY - pc.cy) > 5) {
+        promoteStage();
         panRef.current = { sx: pc.cx, sy: pc.cy, ox: tfRef.current.x, oy: tfRef.current.y };
         pendingClickRef.current = null;
         if (containerRef.current) containerRef.current.style.cursor = "grabbing";
@@ -7456,7 +7483,11 @@ export default function TakeoffCanvas() {
               placeholder="Type, Enter to place · Esc cancels"
               style={{ position: "absolute", left: editor.left, top: editor.top, zIndex: 9, minWidth: 160, padding: "3px 6px", font: "13px var(--f-body, sans-serif)", color: "var(--ink)", background: "var(--paper-bright)", border: "1px solid var(--cobalt)", boxShadow: "0 2px 10px rgba(0,0,0,.18)", borderRadius: 0, cursor: "text", outline: "none" }} />
           )}
-          <div ref={stageRef} style={{ position: "absolute", transformOrigin: "0 0", willChange: "transform", width: stage.w || undefined, height: stage.h || undefined }}>
+          {/* No permanent will-change here: the stage is compositor-promoted only
+              for the duration of a gesture (promoteStage / syncTilePanels demote).
+              A permanent promotion froze the layer's raster scale and pixelated
+              every drawn boundary after a zoom-in. */}
+          <div ref={stageRef} style={{ position: "absolute", transformOrigin: "0 0", width: stage.w || undefined, height: stage.h || undefined }}>
             {/* base layer — a small, bounded coarse pyramid placeholder CSS-stretched
                 to the panel's full logical footprint (see tileCompositor.ts's
                 paintBase); the backing store is NOT sheet-sized, only its CSS box is,
