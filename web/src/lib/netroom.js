@@ -839,6 +839,80 @@ export function build(g, ftPx, texts){
   // ── LINE-END closures: two collinear wall-line ends facing each other across
   // a door-scale clear gap are one interrupted wall line — an OPENING. Bridge
   // each face line, so the doorway closes at the finish face (his ruler).
+  // ── FINISH FAMILY at a point: direction signature of LONG hatch strokes
+  // within reach. Tile grid = two orthogonal buckets; carpet stipple is
+  // short and never votes (reads as 'none'). Two openings' sides with
+  // DIFFERENT signatures = a drawn finish change = a boundary his ruler
+  // stops at (the TR-01 transition), even with no door and no wall.
+  const finishGrid=new Map(); const FG=2*ftPx;
+  {
+    const n=g.segs.length>>2;
+    for(let i=0;i<n;i++){
+      if(!hatchOnly[i]) continue;
+      const x1=g.segs[i*4],y1=g.segs[i*4+1],x2=g.segs[i*4+2],y2=g.segs[i*4+3];
+      const L=Math.hypot(x2-x1,y2-y1); if(L<1.5*ftPx) continue;
+      let ang=Math.atan2(y2-y1,x2-x1)*180/Math.PI; if(ang<0)ang+=180; if(ang>=180)ang-=180;
+      const bkt=Math.round(ang/15)%12;
+      // vote along the stroke so long tile lines register near openings too
+      const steps=Math.max(1,Math.round(L/(1.5*ftPx)));
+      for(let k=0;k<=steps;k++){
+        const px=x1+(x2-x1)*k/steps, py=y1+(y2-y1)*k/steps;
+        const key=Math.floor(px/FG)+','+Math.floor(py/FG);
+        const b=finishGrid.get(key); if(b)b.push(px,py,bkt); else finishGrid.set(key,[px,py,bkt]);
+      }
+    }
+  }
+  const finishSig=(x,y,r)=>{
+    const h=new Array(12).fill(0); let tot=0;
+    for(let gx=Math.floor((x-r)/FG);gx<=Math.floor((x+r)/FG);gx++)
+      for(let gy=Math.floor((y-r)/FG);gy<=Math.floor((y+r)/FG);gy++){
+        const b=finishGrid.get(gx+','+gy); if(!b) continue;
+        for(let i=0;i<b.length;i+=3){ if(Math.hypot(b[i]-x,b[i+1]-y)<=r){ h[b[i+2]]++; tot++; } }
+      }
+    if(tot<3) return null;
+    const order=h.map((c,b)=>[c,b]).sort((a,b)=>b[0]-a[0]);
+    const fam=new Set(); let cov=0;
+    for(const [c,b] of order){ if(cov/tot>=0.7||c===0) break; fam.add(b); cov+=c; }
+    return fam;
+  };
+  // the drafter DRAWS the transition (TR-01): a stroke spanning the connector,
+  // parallel, within 0.35 ft — a hatch difference alone fires across open
+  // plans (measured: Park 11→8, CI 28→22, AU 15→10 without this).
+  const transitionUnder=(ax,ay,bx,by)=>{
+    const dx=bx-ax, dy=by-ay, L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L;
+    const n=g.segs.length>>2;
+    for(let i=0;i<n;i++){
+      if(g.meta[i]&O.SEG_CLIP) continue;
+      const x1=g.segs[i*4],y1=g.segs[i*4+1],x2=g.segs[i*4+2],y2=g.segs[i*4+3];
+      const sl=Math.hypot(x2-x1,y2-y1); if(sl<0.5*L) continue;
+      const vx=(x2-x1)/sl, vy=(y2-y1)/sl;
+      if(Math.abs(vx*ux+vy*uy)<0.985) continue;
+      const lat1=Math.abs((x1-ax)*(-uy)+(y1-ay)*ux), lat2=Math.abs((x2-ax)*(-uy)+(y2-ay)*ux);
+      if(lat1>0.35*ftPx||lat2>0.35*ftPx) continue;
+      const t1=(x1-ax)*ux+(y1-ay)*uy, t2=(x2-ax)*ux+(y2-ay)*uy;
+      const lo=Math.max(0,Math.min(t1,t2)), hi=Math.min(L,Math.max(t1,t2));
+      if(hi-lo>=0.6*L) return true;
+    }
+    return false;
+  };
+  const crossesXbox=(ax,ay,bx,by)=>{
+    const M=0.55*ftPx;
+    for(let t=0;t<=1.0001;t+=0.1){ const x=ax+(bx-ax)*t, y=ay+(by-ay)*t;
+      for(const b of xboxes){ if(x>=b[0]-M&&x<=b[2]+M&&y>=b[1]-M&&y<=b[3]+M) return true; } }
+    return false;
+  };
+  const finishDiffers=(ax,ay,bx,by)=>{
+    if(crossesXbox(ax,ay,bx,by)) return false;        // a tub rim is not a transition (measured: sealed two baths through the tub)
+    if(!transitionUnder(ax,ay,bx,by)) return false;
+    // sample both sides of a connector: perpendicular offsets 1.2 ft
+    const dx=bx-ax, dy=by-ay, L=Math.hypot(dx,dy)||1;
+    const nx=-dy/L, ny=dx/L, mx=(ax+bx)/2, my=(ay+by)/2, off=1.2*ftPx;
+    const s1=finishSig(mx+nx*off,my+ny*off,1.5*ftPx), s2=finishSig(mx-nx*off,my-ny*off,1.5*ftPx);
+    if(!s1&&!s2) return false;
+    if(!s1||!s2) return true;                       // field on one side only
+    for(const b of s1) if(s2.has(b)) return false;  // share a direction: same field
+    return true;
+  };
   const lineEnds=[];
   const pushEnds=(x1,y1,x2,y2)=>{
     const d=Math.hypot(x2-x1,y2-y1); if(d<2.0*ftPx) return;
@@ -861,7 +935,12 @@ export function build(g, ftPx, texts){
     const a=lineEnds[i], b=lineEnds[j];
     if(a.ux*b.ux+a.uy*b.uy > -0.94) continue;                 // anti-parallel
     const vx=b.x-a.x, vy=b.y-a.y, d2=Math.hypot(vx,vy);
-    if(d2<(+OPTS.LCMIN||0.7)*ftPx||d2>7*ftPx) continue;
+    if(d2<(+OPTS.LCMIN||0.7)*ftPx) continue;
+    if(d2>7*ftPx){
+      // wider than a door: only a FINISH CHANGE across the gap earns a closure
+      if(OPTS.NOFINISH || d2>24*ftPx) continue;
+      if(!finishDiffers(a.x,a.y,b.x,b.y)) continue;
+    }
     const ux2=vx/d2, uy2=vy/d2;
     if(ux2*a.ux+uy2*a.uy<0.94) continue;                      // b lies ahead of a
     if(-ux2*b.ux-uy2*b.uy<0.94) continue;
@@ -892,7 +971,7 @@ export function build(g, ftPx, texts){
     if(leUsed.has(i)||leUsed.has(j)){ if(logIt) console.error(`SEAL skip used (${lineEnds[i].x.toFixed(0)},${lineEnds[i].y.toFixed(0)})-(${lineEnds[j].x.toFixed(0)},${lineEnds[j].y.toFixed(0)}) d=${(d9/ftPx).toFixed(2)}ft`); continue; }
     if(logIt) console.error(`SEAL PAIR (${lineEnds[i].x.toFixed(0)},${lineEnds[i].y.toFixed(0)})-(${lineEnds[j].x.toFixed(0)},${lineEnds[j].y.toFixed(0)}) d=${(d9/ftPx).toFixed(2)}ft`);
     leUsed.add(i); leUsed.add(j);
-    lineClosures.push({seg:[[lineEnds[i].x,lineEnds[i].y],[lineEnds[j].x,lineEnds[j].y]], door:false});
+    lineClosures.push({seg:[[lineEnds[i].x,lineEnds[i].y],[lineEnds[j].x,lineEnds[j].y]], door:false, finish:d9>7*ftPx});
   }
   // ── JAMB BRIDGES: a door at a corner ends against a PERPENDICULAR wall.
   // An unconsumed wall end raycasts along its own line; a perpendicular wall
@@ -913,7 +992,7 @@ export function build(g, ftPx, texts){
         if(Math.abs(den)<1e-9) continue;
         const t=((x1-e.x)*ey-(y1-e.y)*ex)/den;
         const u=((x1-e.x)*e.uy-(y1-e.y)*e.ux)/den;
-        if(t>1.5*ftPx && t<7*ftPx && u>=-0.001 && u<=1.001 && t<bestT) bestT=t;
+        if(t>1.5*ftPx && t<(OPTS.NOFINISH?7:24)*ftPx && u>=-0.001 && u<=1.001 && t<bestT) bestT=t;
       }
       if(bestT===Infinity) continue;
       const hx=e.x+e.ux*bestT, hy=e.y+e.uy*bestT;
@@ -986,7 +1065,11 @@ export function build(g, ftPx, texts){
           }
         }
       }
+      // finish evidence only at WIDE openings (>7 ft): door-scale gaps have
+      // their own machinery, and a tub rim reads as a 5 ft "transition"
+      if(!evidence && !OPTS.NOFINISH && bestT>7*ftPx && finishDiffers(e.x,e.y,hx,hy)){ evidence=true; kind='finish'; }
       if(!evidence) continue;
+      if(bestT>7*ftPx && kind!=='finish') continue;   // wide gaps close on finish evidence only
       if(inXboxPt((e.x+hx)/2,(e.y+hy)/2)) continue;   // no door lives inside a fixture symbol
       leUsed.add(i);
       lineClosures.push({seg:[[e.x,e.y],[hx+e.ux*0.5,hy+e.uy*0.5]], door:true, kind});
