@@ -645,6 +645,45 @@ export function build(g, ftPx, texts){
       }
     }
   }
+  // ── ANNOTATION STROKES ARE NOT WALLS. Park plots dimension arrows, grain
+  // marks and text outlines at the wall pen, so the pen gate admits them and
+  // a ring notches around "GRAIN". Two facts the drawing states: (1) a wall
+  // never sits inside a text box; (2) a wall LANDS on other walls at both
+  // ends — a leaf, a dimension, a grain arrow floats free at one end.
+  if(!OPTS.NOANNOT){
+    const tb=(texts||[]).map(t=>[t.x-0.15*ftPx, t.y-t.h-0.15*ftPx, t.x+t.w+0.15*ftPx, t.y+0.15*ftPx]);
+    const inText=(x,y)=>{ for(const b of tb){ if(x>=b[0]&&x<=b[2]&&y>=b[1]&&y<=b[3]) return true; } return false; };
+    const pool=[];
+    for(const ring of poche) for(let i=0;i<ring.length;i++){const p=ring[i],q=ring[(i+1)%ring.length];pool.push([p[0],p[1],q[0],q[1]]);}
+    for(const L of lines) pool.push(L);
+    for(const L of strokes) pool.push(L);
+    const near=(x,y,tol,skip)=>{
+      for(let k=0;k<pool.length;k++){ if(k===skip) continue; const T=pool[k];
+        const dx=T[2]-T[0],dy=T[3]-T[1],LL=dx*dx+dy*dy||1;
+        let t=((x-T[0])*dx+(y-T[1])*dy)/LL; t=Math.max(0,Math.min(1,t));
+        if(Math.hypot(x-T[0]-dx*t,y-T[1]-dy*t)<=tol) return true; }
+      return false;
+    };
+    const base=poche.reduce((n,r)=>n+r.length,0)+lines.length;
+    const kept=[], keptStage=[];
+    strokes.forEach((L,i)=>{
+      const mx=(L[0]+L[2])/2,my=(L[1]+L[3])/2;
+      const len=Math.hypot(L[2]-L[0],L[3]-L[1]);
+      // text outline: the WHOLE stroke inside one text box (a midpoint test
+      // dropped wall strokes passing under a tag — measured CI 28→27, AU 15→14)
+      if(!OPTS.NOANNOT_TEXT && len<4*ftPx && inText(L[0],L[1]) && inText(L[2],L[3]) && inText(mx,my)) return;
+      if(len<6*ftPx){
+        // BOTH ends free = floating annotation (dimension, grain arrow). One
+        // free end stays: a wall stub at a cased opening ends free too
+        // (measured: one-end rule cost CI 28→25, AU 15→12).
+        const k=base+i;
+        const e1=near(L[0],L[1],0.4*ftPx,k), e2=near(L[2],L[3],0.4*ftPx,k);
+        if(!OPTS.NOANNOT_FREE && !e1&&!e2) return;
+      }
+      kept.push(L); keptStage.push(strokeStage[i]);
+    });
+    strokes.length=0; strokes.push(...kept); strokeStage.length=0; strokeStage.push(...keptStage);
+  }
   // ── pair face lines into wall RUNS ──
   // sliver+sliver or sliver+stroke; NEVER stroke+stroke (furniture would become walls)
   const T_MIN=0.15*ftPx, T_MAX=1.5*ftPx, OVL_MIN=0.8*ftPx;
@@ -1578,6 +1617,8 @@ export function growRoom(A,seed,solid,maxAbsorb,bayThrough,narrow,doorless,pocke
           const F=A.faces[h];
           globalThis.POCKLOG.push(`pocket h[${F.x0.toFixed(0)},${F.y0.toFixed(0)}] ok=${ok} fat=${fat} hasFix=${hasFix} fixOnly=${pocketFixtureOnly} total=${total.toFixed(0)}`);
         }
+        // (tiny ≤6 SF pockets on seeded sheets: measured CI 28→26 — band
+        // cavities chain under the cap; wall-mounted panels stay a named miss)
         if(ok&&(fat||!pocketNeedFat)&&(!pocketFixtureOnly||hasFix)&&total<=pocketMax){
           for(const f of comp) seen.add(f);
           changed=true;
@@ -1735,11 +1776,11 @@ export function netRoomAt(net, x, y, ftPx){
   // 60-handle ring for a 4-corner room. Simplify to what an estimator draws:
   // merge collinear runs (0.12 ft lateral) and drop notches shallower than
   // 0.4 ft (jamb pockets, band cavities) that his ruler runs straight past.
-  const ring = simplifyRing(out.ring, 0.12*ftPx, 0.4*ftPx);
+  const ring = simplifyRing(out.ring, 0.12*ftPx, 0.4*ftPx, ftPx);
   return { ring, holes, areaPx: area, faces: set.length, seedFace: fi, starved };
 }
 
-function simplifyRing(ring, colTol, notchTol){
+function simplifyRing(ring, colTol, notchTol, ftPx_){
   if (ring.length < 4) return ring;
   let pts = ring.slice();
   // 1. RDP-style collinear merge on the closed ring
@@ -1774,7 +1815,11 @@ function simplifyRing(ring, colTol, notchTol){
       const dA=Math.abs((A[0]-P[0])*dy-(A[1]-P[1])*dx)/L;
       const dB=Math.abs((B[0]-P[0])*dy-(B[1]-P[1])*dx)/L;
       const jog=Math.hypot(B[0]-A[0],B[1]-A[1]);
-      if(dA<=notchTol && dB<=notchTol && jog<=2*notchTol){
+      // a hairline jog (band cavity) OR a door-scale jamb pocket — wall-deep
+      // (≤0.65 ft) and door-wide (≤4.5 ft) — both flatten: the ruler runs
+      // across the opening at the wall face
+      const deep=Math.max(dA,dB);
+      if((dA<=notchTol && dB<=notchTol && jog<=2*notchTol) || (deep<=0.65*ftPx_ && jog<=4.5*ftPx_)){
         pts.splice(i, 2); changed=true; break;
       }
     }
