@@ -242,6 +242,7 @@ export function build(g, ftPx, texts){
   const inXboxPt=(x,y,M=0.55*ftPx)=>{ for(const b of xboxes){ if(x>=b[0]-M&&x<=b[2]+M&&y>=b[1]-M&&y<=b[3]+M) return true; } return false; };
   const extractPools=(useVouch)=>{
   const poche=[];       // material rings
+  const pocheLum=[];    // fill luminance per poché ring (-1 unknown)
   const rawLines=[];    // [x0,y0,x1,y1] face-line candidates from slivers
   const rawStrokes=[];  // stroked straight segments heavier than the furniture pen
   const rawLow=[];      // modal-pen strokes: admitted only when paired with tier-1 evidence
@@ -325,7 +326,7 @@ export function build(g, ftPx, texts){
     a=Math.abs(a)/2;
     const w = per>0 ? 2*a/per : 0;
     const dia=Math.max(s.x1-s.x0, s.y1-s.y0);
-    if(w>=W_MIN && w<=W_MAX && dia>=POCHE_LEN){ poche.push(ring); continue; }
+    if(w>=W_MIN && w<=W_MAX && dia>=POCHE_LEN){ poche.push(ring); pocheLum.push(s.fillLum==null?-1:s.fillLum); continue; }
     if(w<W_MIN && dia>=SLIVER_LEN){
       // long edges of the sliver = wall face lines
       const minL=Math.max(SLIVER_LEN*0.6, 6*Math.max(w,0.5));
@@ -336,18 +337,35 @@ export function build(g, ftPx, texts){
     }
   }
 
-  return {poche, rawLines, rawStrokes, rawLow, rawVouch, rawLowFrag, rawSoft};
+  return {poche, pocheLum, rawLines, rawStrokes, rawLow, rawVouch, rawLowFrag, rawSoft};
   };
   // baseline pools first; only a STARVED sheet asks the network (measured:
   // on a seeded sheet the vouch admits casework and fragments rooms).
   mark("(pools-start)");
-  let {poche, rawLines, rawStrokes, rawLow, rawVouch, rawSoft} = extractPools(false);
+  let {poche, pocheLum, rawLines, rawStrokes, rawLow, rawVouch, rawSoft} = extractPools(false);
   let starved=false;
   if(poche.length===0 && rawLines.length===0 && rawStrokes.length===0){
     starved=true;
-    ({poche, rawLines, rawStrokes, rawLow, rawVouch, rawSoft} = extractPools(true));
+    ({poche, pocheLum, rawLines, rawStrokes, rawLow, rawVouch, rawSoft} = extractPools(true));
   }
   mark("extractPools");
+  // ── WALL FILL LUMINANCE (his eye, Liminal 2026-08-24: "the walls are a
+  // darker grey than the cabinets"). Among wall-scale filled bands, the lum
+  // class carrying the most extent is the wall fill. Bands at a LIGHTER lum
+  // are cabinets/fixtures: they leave the material pool. Only fires when one
+  // class dominates (≥50% of band extent) and is a real grey (not white) —
+  // a sheet whose walls are black or unfilled is untouched.
+  if(!OPTS.NOWALLLUM && pocheLum.length===poche.length && poche.length){
+    const ext=new Map();
+    poche.forEach((ring,i)=>{ let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9; for(const q of ring){x0=Math.min(x0,q[0]);y0=Math.min(y0,q[1]);x1=Math.max(x1,q[0]);y1=Math.max(y1,q[1]);} const l=pocheLum[i]; ext.set(l,(ext.get(l)||0)+Math.max(x1-x0,y1-y0)); });
+    let tot=0, best=-1, bestE=0; for(const [l,e] of ext){ tot+=e; if(e>bestE){bestE=e;best=l;} }
+    if(tot>0 && bestE/tot>=0.5 && best>=0 && best<250){
+      const keep=[], keepL=[];
+      poche.forEach((ring,i)=>{ if(pocheLum[i]>best+20) return; keep.push(ring); keepL.push(pocheLum[i]); });
+      if(OPTS.LUMLOG) console.error(`WALLLUM dominant lum=${best} share=${(bestE/tot).toFixed(2)} poche ${poche.length}→${keep.length}`);
+      poche.length=0; poche.push(...keep); pocheLum.length=0; pocheLum.push(...keepL);
+    }
+  }
   // ── dedup/merge collinear close lines (the sliver's two faces, double-draws) ──
   const DUP_D=0.12*ftPx;
   const lines=mergeLines(rawLines, DUP_D);
@@ -363,7 +381,6 @@ export function build(g, ftPx, texts){
   // ── staged admission of modal-pen lines: a furniture-pen line is a wall FACE
   // exactly when it runs parallel to tier-1 wall evidence at wall thickness
   // with real overlap (the other face of the same wall).
-  const tier1StrokeCount=strokes.length;
   let diagLows=[], diagLowsAdmitted=[];
   {
     const lows=mergeLines(rawLow, DUP_D);
@@ -1067,8 +1084,9 @@ export function build(g, ftPx, texts){
   // tier-1 spawns closures; so do STAGED admissions on a starved sheet (they
   // ARE its walls — softpair/lowpair rescued faces held every closure mouth
   // on AU). Elsewhere the old rule stands: paired lows never spawn closures.
-  const endCount = starved ? strokes.length : tier1StrokeCount;
-  for(let si=0;si<endCount;si++){const L=strokes[si]; pushEnds(L[0],L[1],L[2],L[3]);}
+  // stage tags survive the filters (tier1StrokeCount does not: the
+  // annotation filter shrinks the list under it — L&N crashed here)
+  strokes.forEach((L,si)=>{ if(starved || strokeStage[si]==="pen" || strokeStage[si]==="vouch" || strokeStage[si]==="stair") pushEnds(L[0],L[1],L[2],L[3]); });
   for(const ring of poche){
     const r=mergeRing(ring);
     for(let i=0;i<r.length;i++){const p=r[i],q=r[(i+1)%r.length];pushEnds(p[0],p[1],q[0],q[1]);}
@@ -1581,7 +1599,9 @@ export function build(g, ftPx, texts){
   const growSolid=solid;
   mark("solid+fixture");
   const doorCellPolys=[...doorQuads, ...closureStrips];
-  return {arr, solid, growSolid, narrowFace, doorAccess, doorCellPolys, fixtureFace, xboxes, starved, effSolid, poche, lines, strokes, runs, ends, doorQuads, material, arcs, arcClosures, extendedClosures, arrSegs:segs,
+  // per-segment hatch flag for the FIELD mode (finish-pattern flood)
+  const hatchFlags=hatchOnly;
+  return {arr, solid, growSolid, narrowFace, doorAccess, doorCellPolys, fixtureFace, xboxes, starved, effSolid, poche, hatchFlags, ftPx, segsIn:g.segs, lines, strokes, runs, ends, doorQuads, material, arcs, arcClosures, extendedClosures, arrSegs:segs,
           strokeStage,
           diag:{hatch:hatchOnly, annot, fleck, tagbox, soft, modalPen, penGate, lows:diagLows, lowsAdmitted:diagLowsAdmitted, W_MIN, W_MAX, SLIVER_LEN},
           stats:{poche:poche.length, lines:lines.length, strokes:strokes.length, strokeUsed:strokeUsed.size, runs:runs.length, ends:ends.length, doors:doorQuads.length, arcs:arcs.length, arcC:arcClosures.length, lineC:lineClosures.length,
@@ -1871,6 +1891,61 @@ export function roomOutline(A,set){
   return {ring:rings[0], holes:rings.slice(1)};
 }
 
+
+// ── FIELD mode: the finish pattern states its own region ─────────────────────
+// Direction-bucketed LONG hatch strokes form a family signature (tile grid =
+// two orthogonal buckets); the region grows over faces whose ink matches,
+// crosses DOOR CELLS only, and treats small ink-less faces as neutral
+// pockets. Measured: safe on Park (11/13 held), POISON as a default click
+// (Comfort Inn 23→4) — so it is a MODE the estimator picks for open plans
+// (teller lines, lobbies), never the default.
+function fieldIndex(net){
+  if (net._field) return net._field;
+  const {arr, hatchFlags, ftPx} = net; const segs = net.segsIn;
+  const grid=new Map(); const HG=4*ftPx;
+  const n=segs.length>>2;
+  for(let i=0;i<n;i++){
+    if(!hatchFlags[i]) continue;
+    const x1=segs[i*4],y1=segs[i*4+1],x2=segs[i*4+2],y2=segs[i*4+3];
+    const L=Math.hypot(x2-x1,y2-y1); if(L<1.5*ftPx) continue;
+    let ang=Math.atan2(y2-y1,x2-x1)*180/Math.PI; if(ang<0)ang+=180; if(ang>=180)ang-=180;
+    const bkt=Math.round(ang/15)%12; const mx=(x1+x2)/2, my=(y1+y2)/2;
+    const k=Math.floor(mx/HG)+','+Math.floor(my/HG); const b=grid.get(k); if(b)b.push(mx,my,bkt); else grid.set(k,[mx,my,bkt]);
+  }
+  const famMemo=new Map();
+  const inkFam=(fi)=>{ let v=famMemo.get(fi); if(v!==undefined) return v;
+    const F=arr.faces[fi]; const h=new Array(12).fill(0); let tot=0;
+    for(let gx=Math.floor(F.x0/HG);gx<=Math.floor(F.x1/HG);gx++) for(let gy=Math.floor(F.y0/HG);gy<=Math.floor(F.y1/HG);gy++){
+      const b=grid.get(gx+','+gy); if(!b) continue;
+      for(let i=0;i<b.length;i+=3){ if(b[i]<F.x0||b[i]>F.x1||b[i+1]<F.y0||b[i+1]>F.y1) continue; if(pointInRing(F.ring,b[i],b[i+1])){h[b[i+2]]++;tot++;} } }
+    v={h,tot}; famMemo.set(fi,v); return v; };
+  const inDoorCell=(fi)=>{ const F=arr.faces[fi]; const px=(F.x0+F.x1)/2,py=(F.y0+F.y1)/2; for(const q of net.doorCellPolys){ if(pointInRing(q,px,py)) return true; } return false; };
+  net._field={inkFam,inDoorCell}; return net._field;
+}
+export function netFieldAt(net, x, y, ftPx){
+  const {arr, solid} = net; const {inkFam,inDoorCell}=fieldIndex(net);
+  let seedF=faceAt(arr,x,y,solid); if(seedF<0) return null;
+  const {h,tot}=inkFam(seedF); if(tot<4) return null;             // no coherent field under the click
+  const order=h.map((c,b)=>[c,b]).sort((a,b)=>b[0]-a[0]); const fam=[]; let cov=0;
+  for(const [c,b] of order){ if(cov/tot>=0.7||c===0) break; fam.push(b); cov+=c; }
+  if(!fam.length||fam.length>3) return null;
+  const famMatch=(fi)=>{ const {h,tot}=inkFam(fi); if(!tot) return false; let s=0; for(const b of fam) s+=h[b]; return s/tot>=0.6; };
+  const NEUTRAL=12*ftPx*ftPx;
+  const open2=(o)=>famMatch(o)||(inkFam(o).tot===0&&arr.faces[o].area<=NEUTRAL);
+  const set=new Set([seedF]); const st=[seedF];
+  while(st.length){ const f=st.pop();
+    for(const o of arr.adj[f]){ if(set.has(o)) continue;
+      if(solid(o)){ if(!inDoorCell(o)) continue; let bey=false; for(const o2 of arr.adj[o]){ if(o2!==f&&!set.has(o2)&&!solid(o2)&&open2(o2)){bey=true;break;} } if(!bey) continue; set.add(o); st.push(o); continue; }
+      if(!open2(o)) continue; set.add(o); st.push(o); } }
+  const out=roomOutline(arr,[...set]); if(out.ring.length<3) return null;
+  const shoe=(r)=>{let a=0;for(let i=0;i<r.length;i++){const p=r[i],q=r[(i+1)%r.length];a+=p[0]*q[1]-q[0]*p[1];}return Math.abs(a)/2;};
+  let area=shoe(out.ring); const holes=[]; for(const hh of out.holes){ const hA=shoe(hh); if(hA>=OPTS.HOLESF*ftPx*ftPx){ area-=hA; holes.push(hh); } }
+  // a finish edge is a straight line the drafter drew — the arrangement ring
+  // notches at every tile grout crossing; merge collinear and drop sub-1 ft
+  // jogs (the ruler runs along the tile edge, not each grout joint)
+  const ring=simplifyRing(out.ring, 0.15*ftPx, 1.0*ftPx, ftPx, null);
+  return { ring, holes, areaPx: area, faces: set.size, seedFace: seedF, starved: !!net.starved, field: true };
+}
 
 // ── the click API ───────────────────────────────────────────────────────────
 /** Build the net for a sheet once (seconds on a dense sheet); cache per sheet. */

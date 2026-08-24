@@ -597,6 +597,13 @@ export default function TakeoffCanvas() {
   useEffect(() => { try { localStorage.setItem("opentakeoff_net_engine", netEngine ? "1" : "0"); } catch { /* private mode */ } }, [netEngine]);
   const netCacheRef = useRef(new Map());   // `${sheetKey}:${upp}` → built net
   const netTickRef = useRef(null);          // ticking "reading the walls… N s" timer
+  // NET MODE — the dial (his call, L&N 2026-08-24): what bounds a click.
+  //   walls  — walls + doors only (offices, support rooms)
+  //   finish — + drawn finish transitions at openings (TR lines / hatch changes)
+  //   field  — the finish pattern itself: grow across same-family floor, stop
+  //            where the pattern stops (teller lines, lobbies, open plans)
+  const [netMode, setNetMode] = useState(() => { try { return localStorage.getItem("opentakeoff_net_mode") || "finish"; } catch { return "finish"; } });
+  useEffect(() => { try { localStorage.setItem("opentakeoff_net_mode", netMode); } catch { /* private mode */ } }, [netMode]);
   const [saveState, setSaveState] = useState("idle");
   const [focusMode, setFocusModeState] = useState(getFocusMode);   // chrome-collapse (F) — lib/focusMode.js is the store+broadcast
   useEffect(() => onFocusModeChange(setFocusModeState), []);
@@ -4244,7 +4251,9 @@ export default function TakeoffCanvas() {
       // by the zoom factor (the "regressions" that appeared only zoomed in).
       const kF = RENDER_SCALE / (renderScalesRef.current.get(tp.key) || RENDER_SCALE);   // hi-res px → baseline px
       const ftPx = kF / upp;                     // baseline px per foot
-      const ck = `${tp.key}:${ftPx.toFixed(4)}`;
+      // walls mode builds WITHOUT finish seals; finish and field share the sealed build
+      const buildOpts = netMode === "walls" ? { NOFINISH: 1 } : {};
+      const ck = `${tp.key}:${ftPx.toFixed(4)}:${netMode === "walls" ? "walls" : "finish"}`;
       let built = netCacheRef.current.get(ck);
       if (!built) {
         // one build per (sheet, scale); concurrent clicks share the promise
@@ -4257,7 +4266,7 @@ export default function TakeoffCanvas() {
         const subpathsIn = subpathsRef.current.get(tp.key) || null, textsIn = textMarksRef.current.get(tp.key) || [];
         // diagnostic record of EXACTLY what the engine was handed (read from devtools as window.__netLast)
         try { window.__netLast = { key: ck, sheet: tp.key, nSegs: segs.length >> 2, nMeta: meta.length, nSubpaths: subpathsIn ? subpathsIn.length : 0, nTexts: textsIn.length, ftPx, upp, kF, img: tp.img && { w: tp.img.w, h: tp.img.h }, metaHead: Array.from(meta.slice(0, 12)), segsHead: Array.from(segs.slice(0, 8)).map((v) => +v.toFixed(1)), textHead: textsIn.slice(0, 2) }; } catch { /* diagnostics only */ }
-        built = netCall({ type: "build", key: ck, segs, meta, subpaths: subpathsIn, ftPx, texts: textsIn })
+        built = netCall({ type: "build", key: ck, segs, meta, subpaths: subpathsIn, ftPx, texts: textsIn, opts: buildOpts })
           .then((m) => { if (m.error) { netCacheRef.current.delete(ck); throw new Error(m.error); } try { Object.assign(window.__netLast, { faces: m.faces, starved: m.starved, ms: m.ms }); } catch { /* diagnostics only */ } return m; });
         netCacheRef.current.set(ck, built);
       }
@@ -4266,9 +4275,11 @@ export default function TakeoffCanvas() {
       catch (err) { console.error("net engine build failed", err); return say("Net engine couldn't read this sheet — switch it off to use the fill."); }
       finally { if (netTickRef.current) { clearInterval(netTickRef.current); netTickRef.current = null; } }
       if (toolRef.current !== "oneclick" || (proposalRef.current && proposalRef.current.key !== tp.key)) { setCommitMsg(""); return { ok: false, message: "" }; }
-      const rm = await netCall({ type: "room", key: ck, x: local[0] * kF, y: local[1] * kF, ftPx });
+      const rm = await netCall({ type: "room", key: ck, x: local[0] * kF, y: local[1] * kF, ftPx, mode: netMode });
       const r = rm.room;
-      if (!r) return say("Net engine: that click isn't inside an enclosed space — click an open spot, or trace it with Area (A).");
+      if (!r) return say(netMode === "field"
+        ? "Field mode: no finish pattern under that click — click inside the tile/plank pattern, or switch the dial to Finish or Walls."
+        : "Net engine: that click isn't inside an enclosed space — click an open spot, or trace it with Area (A).");
       const ring = r.ring.map(([x, y]) => [x / kF, y / kF]);      // back to the panel's frame
       try { Object.assign(window.__netLast, { lastClick: [local[0], local[1]], lastRing: ring.map(([x, y]) => [+x.toFixed(1), +y.toFixed(1)]), lastFaces: r.faces }); } catch { /* diagnostics only */ }
       const area_sf = +(r.areaPx / (ftPx * ftPx)).toFixed(2);
@@ -4276,9 +4287,9 @@ export default function TakeoffCanvas() {
       const region = {
         kind: negative ? "neg" : "pos", seed: local, poly: ring, poly0: ring.map(([x, y]) => [x, y]),
         area_sf, perim_lf, hf: false, shs: 0, sl: 0, gap: 0, mp: 0, mpd: 0, wg: 0, rw: 0, rt: false,
-        cf: 1, cff: [], net: true, netFaces: r.faces, netStarved: !!r.starved,
+        cf: 1, cff: [], net: true, netFaces: r.faces, netStarved: !!r.starved, netMode,
       };
-      setCommitMsg(`Net engine: ${area_sf.toFixed(0)} SF from ${r.faces} face${r.faces === 1 ? "" : "s"}${r.holes.length ? ` (${r.holes.length} interior void${r.holes.length === 1 ? "" : "s"} not subtracted from the outline)` : ""}${info && info.ms ? ` · net built in ${(info.ms / 1000).toFixed(1)} s` : ""} — ⏎ creates, Esc discards.`);
+      setCommitMsg(`Net engine (${netMode === "walls" ? "Walls" : netMode === "field" ? "Field" : "Finish"}): ${area_sf.toFixed(0)} SF from ${r.faces} face${r.faces === 1 ? "" : "s"}${r.holes.length ? ` (${r.holes.length} interior void${r.holes.length === 1 ? "" : "s"} not subtracted from the outline)` : ""}${info && info.ms ? ` · net built in ${(info.ms / 1000).toFixed(1)} s` : ""} — ⏎ creates, Esc discards.`);
       proposeRegion(null, tp, local, negative, false, region);
       return { ok: true, message: "" };
     }
@@ -4369,7 +4380,7 @@ export default function TakeoffCanvas() {
       // region's verts ARE the proposal, so nothing extra rides. Post-Create
       // edits are stamped by stampEdit, which freezes the same field from the
       // pre-edit ring only when Create didn't already.
-      origin: { method: r.net ? "net_v1" : "one_click_v1", ...(r.net ? { net_faces: r.netFaces, net_starved: r.netStarved } : {}), seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, confidence: r.cf ?? 1, ...(r.cff?.length ? { confidence_factors: r.cff } : {}), ...(r.hf ? { hatch_filtered: true } : {}), ...(r.sl ? { gap_sealed_px: r.sl } : {}), ...(r.gap ? { gap_bridged_px: r.gap } : {}), ...(r.mp ? { min_pass_px: r.mp, min_pass_delta: r.mpd } : {}), ...(r.wg ? { door_wedges: r.wg } : {}), ...(r.rw ? { ring_interiors: r.rw } : {}), ...(r.rt ? { raster_traced: true } : {}), ...(r.sens != null ? { fill_sensitivity: r.sens } : {}), ...(r.touched ? { edited_before_create: true, proposed_verts_norm: r.poly0.map(([x, y]) => [x / tp.img.w, y / tp.img.h]) } : {}) },
+      origin: { method: r.net ? "net_v1" : "one_click_v1", ...(r.net ? { net_faces: r.netFaces, net_starved: r.netStarved, net_mode: r.netMode } : {}), seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, confidence: r.cf ?? 1, ...(r.cff?.length ? { confidence_factors: r.cff } : {}), ...(r.hf ? { hatch_filtered: true } : {}), ...(r.sl ? { gap_sealed_px: r.sl } : {}), ...(r.gap ? { gap_bridged_px: r.gap } : {}), ...(r.mp ? { min_pass_px: r.mp, min_pass_delta: r.mpd } : {}), ...(r.wg ? { door_wedges: r.wg } : {}), ...(r.rw ? { ring_interiors: r.rw } : {}), ...(r.rt ? { raster_traced: true } : {}), ...(r.sens != null ? { fill_sensitivity: r.sens } : {}), ...(r.touched ? { edited_before_create: true, proposed_verts_norm: r.poly0.map(([x, y]) => [x / tp.img.w, y / tp.img.h]) } : {}) },
     }));
     const res = dispatchShape({ type: "add", shapes: made });   // the creation gate — id/created_at minted by the command
     // ...and the new takeoff is SELECTED. Without this, Create left nothing
@@ -6832,13 +6843,23 @@ export default function TakeoffCanvas() {
                    background: netEngine ? "var(--cobalt)" : "transparent", color: netEngine ? "#fff" : "var(--ink-soft)" }}>
           {netEngine ? "NET" : "FILL"}
         </button>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)", opacity: netEngine ? 0.45 : 1 }}>Fill</span>
+        {netEngine ? (<>
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)" }}>Bound by</span>
+          <input name="net-mode" type="range" min={0} max={2} step={1} value={netMode === "walls" ? 0 : netMode === "field" ? 2 : 1} list="net-mode-notches"
+            title={"What bounds a One-Click room on the net engine.\nWalls: walls and doors only — offices, support rooms.\nFinish: also seal where a drawn finish transition crosses an opening.\nField: follow the finish pattern itself — teller lines, lobbies, open plans; stops where the tile/plank stops."}
+            onChange={(e) => { setNetMode(["walls", "finish", "field"][+e.target.value]); setProposal(null); }}
+            style={{ flex: 1, accentColor: "var(--cobalt)", cursor: "pointer" }} />
+          <datalist id="net-mode-notches"><option value={0} /><option value={1} /><option value={2} /></datalist>
+          <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, fontWeight: 600, color: "var(--cobalt)", minWidth: 58 }}>{netMode === "walls" ? "Walls" : netMode === "field" ? "Field" : "Finish"}</span>
+        </>) : (<>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)" }}>Fill</span>
         <input name="fill-sensitivity" type="range" min={SENS_STRICT} max={SENS_AGGRESSIVE} step={0.01} value={fillSens} list="fill-sens-notches"
           onChange={(e) => setFillSens(snap(parseFloat(e.target.value)))}
           style={{ flex: 1, accentColor: "var(--cobalt)", cursor: "pointer", opacity: inert ? 0.45 : 1 }} />
         <datalist id="fill-sens-notches"><option value={SENS_STRICT} /><option value={SENS_BALANCED} /><option value={SENS_AGGRESSIVE} /></datalist>
         <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, fontWeight: 600, color: inert ? "var(--ink-faint)" : "var(--cobalt)", minWidth: 58 }}>{label}</span>
-        {inert && (
+        </>)}
+        {!netEngine && inert && (
           <span style={{ flexBasis: "100%", fontSize: 10.5, lineHeight: 1.35, color: "var(--ink-soft)" }}>
             This fill is bounded entirely by hard ink — every setting returns the same region.
           </span>
