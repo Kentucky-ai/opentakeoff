@@ -47,3 +47,8 @@ test("nullish input yields the empty string; control chars are replaced", () => 
   assert.equal(winAnsiSafe(undefined), "");
   assert.equal(winAnsiSafe("a\tb\nc"), "a?b?c");          // drawn strings are single-line by construction
 });
+
+test("metric area label 'm²' (U+00B2) passes through WinAnsi — the marked-set PDF can use it", () => {
+  assert.equal(winAnsiSafe("546.9 m²"), "546.9 m²");
+  assert.equal(winAnsiSafe("CT-1 · 50.81 m²"), "CT-1 · 50.81 m²");
+});

@@ -708,7 +708,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               // sheet groups carry a per-sheet perimByCond — the panel-wide
               // map would show whole-project perimeter next to per-slice
               // quantities
-              const gctx = gp.perimByCond ? { perimByCond: gp.perimByCond, attrsByCond, specByCond, laborByCond } : ctx;
+              const gctx = gp.perimByCond ? { perimByCond: gp.perimByCond, attrsByCond, specByCond, laborByCond, rollByCond } : ctx;
               return (
                 <tbody key={key}>
                   {/* breakAfter is a print nicety only — unreliable on table

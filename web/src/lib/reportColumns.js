@@ -113,8 +113,8 @@ export function applyUnits(cols, units, labels = METRIC_LABELS) {
     const dim = COL_DIM[c.key];
     if (!dim) return c;
     const conv = dim === "area"
-      ? (v) => round2((Number(v) || 0) * M2_PER_SF)
-      : (v) => round2((Number(v) || 0) * M_PER_FT);
+      ? (v) => (v === "" || v === null || v === undefined ? "" : round2((Number(v) || 0) * M2_PER_SF))
+      : (v) => (v === "" || v === null || v === undefined ? "" : round2((Number(v) || 0) * M_PER_FT));
     const base = colGetter(c);
     return {
       ...c,

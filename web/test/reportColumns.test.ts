@@ -592,3 +592,91 @@ test("applyUnits with metric CSV: by-sheet and by-label sections use correct con
   assert.ok(byLabelHeader, "by-label header exists");
   assert.ok(byLabelHeader.includes("m2"), `by-label header has m2: ${byLabelHeader}`);
 });
+
+// ── blank/missing value preservation in metric conversion ─────────────────
+
+test("applyUnits with metric: blank/null/undefined values stay blank, not converted to 0", () => {
+  const cols = visibleCols(CSV_PROFILE, { waste_lf: true, perimeter_ref: true });
+  const metric = applyUnits(cols, "metric");
+  const ctx = { perimByCond: new Map([["x", 150]]) };
+  // blank row — no perimeter data, so perimeter_ref getter returns 0 from ctx,
+  // but test a column whose getter would return the row value
+  const blankRow: any = { id: "x", lf: "", wall_sf: null, border_sf: undefined, waste_lf: "", perimeter_ref: "" };
+  for (const c of metric) {
+    const get = colGetter(c);
+    if (!get) continue;
+    if (c.key === "lf") {
+      // lf getter reads r.lf directly — "" must stay ""
+      assert.equal(get(blankRow, ctx), "", `lf blank preserved`);
+    } else if (c.key === "wall_sf") {
+      assert.equal(get(blankRow, ctx), "", `wall_sf null preserved`);
+    } else if (c.key === "border_sf") {
+      assert.equal(get(blankRow, ctx), "", `border_sf undefined preserved`);
+    } else if (c.key === "waste_lf") {
+      // waste_lf = lf_net - lf — both "" → NaN → round2(NaN) must not blow up
+      // the conv wrapper catches "" first, but the getter itself runs on the row
+    } else if (c.key === "perimeter_ref") {
+      // perimeter_ref reads from ctx.perimByCond, not the row
+      assert.equal(get(blankRow, ctx), round2(150 * 0.3048), `perimeter_ref converts from ctx`);
+    }
+  }
+  // a genuinely 0 value must NOT become blank — zero is numeric, not missing
+  const zeroRow: any = { id: "x", lf: 0, wall_sf: 0, border_sf: 0, waste_lf: 0 };
+  for (const c of metric) {
+    const get = colGetter(c);
+    if (!get) continue;
+    if (c.key === "lf" || c.key === "wall_sf" || c.key === "border_sf") {
+      const v = get(zeroRow, ctx);
+      assert.equal(typeof v, "number", `${c.key} zero stays numeric`);
+      assert.ok(Number.isFinite(v), `${c.key} zero is finite`);
+    }
+  }
+});
+
+test("applyUnits metric conv preserves blank in foot (tfoot) function", () => {
+  const tableCols = visibleCols(TABLE_PROFILE, { total_sf: true });
+  const metric = applyUnits(tableCols, "metric");
+  // waste_sf foot calls GETTERS.waste_sf(g) which can return 0
+  const gWithZeros = { total_sf: 0, total_sf_net: 0, lf: 0, lf_net: 0, ea: 0, sy_net: 0 };
+  const tsfCol = metric.find((c: any) => c.key === "total_sf");
+  assert.ok(tsfCol?.foot, "total_sf has foot");
+  // 0 * M2_PER_SF = 0, which is a legitimate zero, not blank
+  const footVal = tsfCol.foot(gWithZeros);
+  assert.equal(typeof footVal, "number", "foot returns number for zero");
+  assert.equal(footVal, 0, "foot returns 0 for zero input");
+});
+
+// ── roll columns with grouped context ─────────────────────────────────────
+
+test("roll columns read from ctx.rollByCond in grouped contexts", async () => {
+  const { rollColProfile } = await import("../src/lib/reportColumns.js");
+  const rollByCond = new Map([["c1", { orderFt: 29, rollCount: 2, seamLf: 30 }]]);
+  const cols = rollColProfile(rollByCond);
+  assert.ok(cols.length > 0, "roll columns present");
+  // grouped context that includes rollByCond — simulates what ReportPanel does
+  const groupedCtx = { rollByCond };
+  const row = { id: "c1", multiplier: 1 };
+  assert.equal(cols[0].get(row, groupedCtx), 29, "roll:order_lf reads from grouped ctx");
+  assert.equal(cols[1].get(row, groupedCtx), 2, "roll:rolls reads from grouped ctx");
+  assert.equal(cols[2].get(row, groupedCtx), 30, "roll:seam_lf reads from grouped ctx");
+  // non-roll condition: blank
+  const otherRow = { id: "other", multiplier: 1 };
+  assert.equal(cols[0].get(otherRow, groupedCtx), "", "non-roll condition stays blank");
+});
+
+test("roll columns metric conversion in grouped context preserves blank for non-roll", async () => {
+  const { rollColProfile, applyUnits } = await import("../src/lib/reportColumns.js");
+  const rollByCond = new Map([["c1", { orderFt: 29, rollCount: 2, seamLf: 30 }]]);
+  const cols = rollColProfile(rollByCond);
+  const metric = applyUnits(cols, "metric");
+  assert.equal(metric.length, 3, "all roll columns present in metric");
+  const groupedCtx = { rollByCond };
+  const row = { id: "c1", multiplier: 1 };
+  // converted values
+  assert.equal(metric[0].get(row, groupedCtx), round2(29 * 0.3048), "metric roll:order_lf converts");
+  assert.equal(metric[2].get(row, groupedCtx), round2(30 * 0.3048), "metric roll:seam_lf converts");
+  // non-roll: blank (not 0)
+  const otherRow = { id: "other", multiplier: 1 };
+  const blankVal = metric[0].get(otherRow, groupedCtx);
+  assert.equal(blankVal, "", "non-roll stays blank in metric (not converted to 0)");
+});

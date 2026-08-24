@@ -188,7 +188,7 @@ function shapeChip(shape, cond, M = false) {
   const tag = cond?.finish_tag || "";
   const uA = (sf) => (M ? sf * 0.09290304 : sf);
   const uL = (lf) => (M ? lf * 0.3048 : lf);
-  const AU = M ? "m2" : "SF", LU = M ? "m" : "LF";
+  const AU = M ? "m²" : "SF", LU = M ? "m" : "LF";
   switch (shape.measure_role) {
     case "floor_area": return `${tag} · ${num(uA(cp.area_sf || 0))} ${AU}`;
     case "deduct": return `-${num(uA(cp.area_sf || 0))} ${AU} ${_t("marked_set.deduct_suffix")}`;
@@ -217,11 +217,11 @@ function invertPixels(cv) {
 export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, markups, approvals = [], rfis = [], conditions, getPage, loadPdfData, company, clientInfo, credit = null, provenance = null, coverTitle = "Marked Set", units = "imperial" }) {
   // display-unit edge (lib/units contract): quantities arrive as internal feet;
   // metric converts at the drawn string only — legend rows, by-sheet rows, and
-  // the per-shape chips. ASCII "m2" (Helvetica WinAnsi has no superscript 2).
+  // the per-shape chips. Unicode "m²" (U+00B2, valid WinAnsi cp1252).
   const M = units === "metric";
   const uA = (sf) => (M ? sf * 0.09290304 : sf);
   const uL = (lf) => (M ? lf * 0.3048 : lf);
-  const AU = M ? "m2" : "SF", LU = M ? "m" : "LF";
+  const AU = M ? "m²" : "SF", LU = M ? "m" : "LF";
   const { PDFDocument, StandardFonts, rgb, degrees, LineCapStyle } = await import("pdf-lib");
   const condById = Object.fromEntries(conditions.map((c) => [c.id, c]));
   // resolve a linked markup's RFI number for the on-sheet marker (ASCII, WinAnsi-safe)
