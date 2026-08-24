@@ -13,25 +13,20 @@
 // pans. Geometry math reads tfRef (always current), so drawing stays accurate.
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { keyText } from "../lib/keys.ts";
 import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router";
+import { useTranslation } from "react-i18next";
+import i18n from "../i18n/index.js";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { store, isStaleTabError, STALE_TAB_MESSAGE, friendlyStoreError, projectIdFromUrl, ANN_SCHEMA, emptyAnnotations, metaGet, metaPut } from "../lib/store.js";
-import { forgetThumbs, releaseThumbs } from "../lib/thumbs.js";
+import { store, isStaleTabError, projectIdFromUrl } from "../lib/store.js";
 import { Z } from "../lib/ui.js";
 import { getFocusMode, toggleFocusMode, onFocusModeChange } from "../lib/focusMode.js";
 import { seedStampLibrary, instantiateStamp, markupToStampElement } from "../lib/stamps.js";
 import { extractSvgPrimitives, svgToStamp } from "../lib/svgImport.js";
 import { transformPath, svgPlacedBox } from "../lib/svgpath.js";
-import { imagePlacedBox, captureRectToImageGeom, resizeImageFromCorner, aspectFromDims, pickEmbedFormat, sourceCaption, filterCaptures } from "../lib/markupImage";
-import { rectMidpoint, pendingSourceOutcome, isTraceable, traceLabel } from "../lib/sourceTrace";
-import { relativeAge, absoluteUtc } from "../lib/reltime";
 import { ingestFiles } from "../lib/ingest.js";
 import { parseTakeoffImport, mergeTakeoffImport } from "../lib/importTakeoff.js";
-import { buildProjectArchive, parseProjectArchive, isProjectArchive, downloadArchive } from "../lib/projectArchive.js";
-import { buildProfile, parseProfile, applyProfile, resetProfileDefaults, isProfileFile } from "../lib/profile.js";
 import ToolMenu from "../components/ToolMenu.jsx";
 import PlanNavigator from "../components/PlanNavigator.jsx";
 import ReportPanel from "../components/ReportPanel.jsx";
@@ -40,7 +35,7 @@ import UserGuide from "../components/UserGuide.jsx";
 import TakeoffsPanel, { clampPanelW, CONDITION_DND_MIME, ConditionAppearanceEditor } from "../components/TakeoffsPanel.jsx";
 import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../components/hatches.jsx";
 import { Icon } from "../brand/icons.jsx";
-import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks, extractDimTexts } from "../lib/sheets";
+import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText } from "../lib/sheets";
 import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
@@ -55,23 +50,7 @@ import { mintTwin, variantTag,
 import { isGoogleConfigured, isSignedIn, isAllowedDomain, getAccessToken, orgDomainHint } from "../lib/google/auth.js";
 import { extractVectorGeometry, buildMask, floodRegionSealed, sealRadiiFor, doorWedgeCapPx, minPassRadiusFor, oneClickRing, ringArea, MASK_MAX_DIM, MIN_PASS_FT, SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE } from "../lib/oneclick";
 import { tidyRing, axisLockPoint } from "../lib/ringTidy";
-// The Symbol tool (#264) — the canvas face for the sweep engine. The engine,
-// counter-examples, the luminance channel, and label corroboration all live
-// as pure web libs already; this file adds only the gesture and the review.
-import { sweepSymbols } from "../lib/symbolsweep";
-import { labelPlacements } from "../lib/symbollabels";
 import { traceConfidence, floodSignals } from "../lib/confidence";
-// The scale-acceptance ruler (a calibrated bar drawn on the sheet after a scale
-// is set) — the owner's call, 2026-08-24: it serves no purpose on the sheet.
-const SHOW_SCALE_GUIDE = false;
-// net engine runs in a worker: a dense sheet's build is 30-90 s of pure
-// geometry and must never block the page (measured: "Page Unresponsive"
-// on Comfort Inn when it ran on the main thread)
-const netWorker = typeof Worker !== "undefined" ? new Worker(new URL("../lib/netroom.worker.js", import.meta.url), { type: "module" }) : null;
-const netPending = new Map();   // req → {resolve}
-let netReq = 0;
-if (netWorker) netWorker.onmessage = (ev) => { const m = ev.data; const p = netPending.get(m.req); if (p) { netPending.delete(m.req); p.resolve(m); } };
-function netCall(msg) { return new Promise((resolve) => { const req = ++netReq; netPending.set(req, { resolve }); netWorker.postMessage({ ...msg, req }); }); }
 import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS } from "../lib/rastermask";
 // PDF layer roles (#85): the pure name→role classifier and the override
 // plumbing shared with the MCP session — the canvas consumes buildMask's
@@ -79,8 +58,7 @@ import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS }
 import { buildLayerInfos, effectiveLayerRoles, layerRoleCodes, segRoles, sanitizeLayerOverrides } from "../lib/layers";
 import { detectCandidateRule, buildRuleFromSeed, applyRuleToProject } from "../lib/rules";
 import { deriveTransitionRuns, transitionRefusal } from "../lib/transitions";
-import { conditionTotals, verticalWallSf, downloadText } from "../lib/totals.js";
-import { measurementBreakdown } from "../lib/measurementBreakdown.js";
+import { conditionTotals, verticalWallSf } from "../lib/totals.js";
 import { shapesInZone } from "../lib/zone.js";
 import { sanitizeSheetLevels } from "../lib/sheetLevels.js";
 import { sanitizeConditionColumns, sanitizeConditionAttrs, renameColumnValue, columnLabel } from "../lib/conditionColumns.js";
@@ -88,15 +66,9 @@ import { sanitizeShapeLabels, sanitizeShapeLabelsOnShapes, renameShapeLabel, sha
 import { buildMarkedSetPdf, downloadBytes } from "../lib/markedset.js";
 import { loadProfiles } from "../lib/identity.js";
 import { resolveBranding, loadBrandingSelection } from "../lib/branding.js";
-import { starPath, cloudPath, thinStroke, strokePathD, chiselRibbon, buildSnapGrid, nearestSnap, ANGLE_TOL, angleSnap, closedMetrics, openLen, pointInPoly, hitShape, arrowheadPath, distToSeg, reflectVertsNorm, ringSelfIntersects } from "../lib/geometry.js";
-// Drawing style (draft chrome look) — one resolved token object (DS in JSX,
-// dsRef.current in the imperative movers) replaces the hardcoded cobalt/star
-// literals across the in-progress trace, cursor, and selection chrome.
-import { DRAW_STYLES, DRAW_STYLE_IDS, resolveDrawStyle, markerPath, drawDashFor, rgbaFromHex, getDrawStyle, setDrawStyle, onDrawStyleChange } from "../lib/drawStyles.js";
-import { getDraftOutline, setDraftOutline, onDraftOutlineChange } from "../lib/draftOutline.js";
+import { starPath, cloudPath, thinStroke, strokePathD, chiselRibbon, buildSnapGrid, nearestSnap, ANGLE_TOL, angleSnap, closedMetrics, openLen, pointInPoly, hitShape, arrowheadPath, distToSeg, reflectVertsNorm } from "../lib/geometry.js";
 import { flattenCurve } from "../lib/curve.js";
-import { flattenArcRing, arcPathD, arcLength } from "../lib/arc.js";
-import { dashArrayFor, boostForDark, clampWeight, snapWeight, LINE_STYLES, LINE_STYLE_IDS, WEIGHT_STEPS } from "../lib/lineStyles.js";
+import { dashArrayFor, boostForDark, clampWeight, snapWeight, getLineStyles, LINE_STYLE_IDS, WEIGHT_STEPS } from "../lib/lineStyles.js";
 import { nextRfiNumber } from "../lib/rfi.js";
 import { libFields, matFieldOverridden, libPushPatch, libRevertPatch, libEntryPatch, matEditPatch } from "../lib/materials.js";
 import RfiPanel from "../components/RfiPanel.jsx";
@@ -124,8 +96,6 @@ import { createVoiceRecognizerClient } from "../lib/voiceRecognizerClient";
 import { startCapture, captureSupported } from "../lib/voiceCapture";
 import { aiConfig, isAiConfigured } from "../lib/ai.js";
 import AccountChip from "../components/AccountChip.jsx";
-import PresenceChip from "../components/PresenceChip.jsx";
-import DrawStylePicker from "../components/DrawStylePicker.jsx";
 import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
 import { projectHomeFolderId } from "../lib/projectHome.js";
 import { getTheme, toggleTheme, onThemeChange } from "../lib/theme.js";
@@ -140,7 +110,7 @@ import { getTheme, toggleTheme, onThemeChange } from "../lib/theme.js";
 import {
   PANEL_GAP, DETAIL_ENGAGE, DETAIL_MARGIN, MAX_CANVAS_DIM, MAX_CANVAS_AREA, SYNC_MS, GESTURE_MS, SNAP_CELL,
   MEASURE_TOOLS, CUT_TOOLS, MARKUP_TOOLS, MARKUP_IDS, HL_INKS, HL_SIZES,
-  MARKUP_IMG_MAX, MAX_IMAGE_MARKUP_BYTES, MARKUP_UPLOAD_MAX_BYTES, MARKUP_DECODE_MAX_AREA,
+  getMeasureTools, getCutTools, getMarkupTools,
 } from "../lib/canvasConstants.js";
 import { uid, clamp, isDangerMsg, instantiateTemplate, seedConditions } from "../lib/canvasUtil.js";
 // Tile-pyramid rendering (#86) — pure math in lib/tiles.ts (tested), worker
@@ -159,10 +129,10 @@ import { requiredDensity as tileRequiredDensity } from "../lib/tiles";
 // setShapes (the label-vocabulary renames, live drag PREVIEW frames, the
 // hydrate-time sanitizers, per-shape height/thickness re-pricing).
 // nowIso stays imported for the non-shape records (markups, RFIs, conditions).
-import { nowIso, mintUuid, setAuthorName, authorName } from "../lib/provenance.js";
+import { nowIso, mintUuid } from "../lib/provenance.js";
 import { applyShapeCommand, geomSnapshot, vertsEqual, recordCommand } from "../lib/shapeCommands.js";
 import { applyApprovalCommand, sanitizeApprovals, approvalInk, APPROVAL_R } from "../lib/approvals.js";
-import { findCutoutParent, subtractCutout, recomposeCutouts, cutRunsAcross } from "../lib/cutout.js";
+import { findCutoutParent, subtractCutout, recomposeCutouts } from "../lib/cutout.js";
 import { computeShapeMetrics, needsMetrics } from "../lib/shapeMetrics.js";
 import { fmtCheckLen, parseLenInput, checkVerdict, M_PER_FT, areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, heightVal, heightUnit, heightInputToFeet, heightStep, dimInputStr, dimLabel } from "../lib/units";
 import * as panelGeom from "../lib/panelGeometry.js";
@@ -182,10 +152,6 @@ const CARPET_ROLL_FT = 12;
 const ROLE_TIER = { floor_area: 0, deduct: 1, linear: 2, surface_area: 2, count: 3 };
 const tierOf = (s) => ROLE_TIER[s.measure_role] ?? 0;
 
-// The tools whose boundary can bend mid-measure (#284): the same click, the
-// same commit, the curve is just a property of the points you placed. Zone is
-// a query region, not a quantity, and One-Click traces its own ring.
-const CURVABLE = new Set(["area", "deduct", "linear", "surface"]);
 // Click-select against a curved line's DRAWN path: flatten the control points and
 // hand hitShape a stand-in shape (lib/geometry.js stays byte-identical with Spline's).
 function hitShapeC(s, x, y, w, h, thr) {
@@ -244,9 +210,8 @@ const PALETTE_MAX = 9;
 const TOOL_VERB = {
   select: "select", area: "measure_polygon", rect: "measure_polygon",
   deduct: "cut_out", "deduct-rect": "cut_out",
-  linear: "measure_line", surface: "measure_surface",
+  linear: "measure_line", curve: "measure_line", surface: "measure_surface",
   count: "place_count", oneclick: "one_click", calibrate: "set_scale",
-  symbol: "symbol_sweep",
   check: "check_dimension", zone: "zone_check", "stitch-align": "stitch_align",
   schedule: "find_schedule", highlighter: "annotate", cloud: "annotate",
   callout: "annotate", text: "annotate", highlight: "annotate",
@@ -260,6 +225,8 @@ const TOOL_VERB = {
 // live in components/TakeoffsPanel.jsx — the panel is their only surface now.
 
 export default function TakeoffCanvas() {
+  const { t } = useTranslation("canvas");
+  const LINE_STYLES = getLineStyles();
   // Client-only: a single local workspace in this browser (no project id, no backend).
   const [sheets, setSheets] = useState([]);
   const [active, setActive] = useState("");      // active source PDF file name
@@ -289,16 +256,6 @@ export default function TakeoffCanvas() {
   const closeProject = () => navigate("/");
   const browseProjects = projectHomeFolderId() ? () => navigate("/projects") : null;
   const [openTabs, setOpenTabs] = useState([]);   // sheetKeys open as tabs across the top
-  // Sheet-tab strip: past MANY_TABS the row stops wrapping and becomes a
-  // horizontal strip with ◀ ▶ arrows (every open sheet stays a visible,
-  // clickable tab — no dropdown to hunt through). The active tab is kept in
-  // view whenever the sheet changes.
-  const MANY_TABS = 8;
-  const tabStripRef = useRef(null);
-  // Instant, not smooth: smooth scrollBy/scroll-behavior on this strip is cancelled
-  // every frame (the canvas render loop keeps the layout hot), so the arrows
-  // silently did nothing on prod. A direct scrollLeft write always lands.
-  const scrollTabStrip = (dir) => { const el = tabStripRef.current; if (el) el.scrollLeft = Math.max(0, el.scrollLeft + dir * Math.max(160, el.clientWidth * 0.6)); };
   const [galleryLabels, setGalleryLabels] = useState({}); // sheetKey → title-block number, all files
   const [pageLabels, setPageLabels] = useState({}); // { pageNum: "A003" } from the title block
   const [sheetGroup, setSheetGroup] = useState([]);   // sheetKeys shown side-by-side; [] = single-sheet mode
@@ -320,19 +277,6 @@ export default function TakeoffCanvas() {
   const [markups, setMarkups] = useState([]);                // cloud/callout/text annotations (separate from measurement shapes)
   const [approvals, setApprovals] = useState([]);            // approval seals — estimator APPROVED ink + agent AGENT marks (lib/approvals.js; its own family, not markups)
   const [markupDraft, setMarkupDraft] = useState(null);      // in-progress markup first point (cloud/callout/highlight)
-  // Source-trace flash (◎, wired by slice 3) — a transient highlight on a
-  // capture's ORIGIN region, rendered inside the SOURCE panel's own <g> (so it
-  // inherits that panel's xOffset like everything else there). Its OWN state —
-  // NEVER written onto a markup: { sheet_id, rect: [[nx0,ny0],[nx1,ny1]] (the
-  // src_rect shape, normalized 0..1), token } | null. `token` must change on
-  // every trace, even a repeat of the SAME region, so the render can key a
-  // fresh remount off it — see the render site for why. Slice 2 only defines
-  // and renders this; slice 3 SETS it (via the `flashSource` helper, see
-  // traceSource below) and owns its staleness/clear lifecycle — both the
-  // panel-left clear effect below AND the one-shot auto-clear timer that
-  // `flashSource` arms so the CSS pulse (which holds its last frame forever
-  // once its single run finishes) doesn't end up as a permanent opaque box.
-  const [sourceFlash, setSourceFlash] = useState(null);
   // Docked LEFT panel — one at a time, never overlapping: null | "markup" | "stamp" | "rfi".
   // The right-rail buttons switch tabs; the dock reflows the canvas (mirrors the
   // docked Takeoffs panel on the right).
@@ -340,7 +284,6 @@ export default function TakeoffCanvas() {
   const [showMarkups, setShowMarkups] = useState(true);       // markup SVG layer visibility (orthogonal to the export checkbox)
   const [editor, setEditor] = useState(null);                 // inline on-canvas text editor { left, top, value, multiline, commit } (retires window.prompt; screen-space overlay, NOT an SVG child)
   const [panelEditId, setPanelEditId] = useState(null);       // markup id whose text is being edited inline in the markup panel (off-screen fallback for the ✎ button)
-  const [captureQuery, setCaptureQuery] = useState("");       // always-on name filter over the GLOBAL Captures list (transient, mirrors condQuery)
   // Stamp library (browser-global, meta store) — reusable annotation stamps
   // dropped click-to-place (#40). armedStamp holds the stamp picked from the
   // palette; while tool==="stamp" each canvas click instantiates it as normal,
@@ -388,20 +331,6 @@ export default function TakeoffCanvas() {
   // above. lib/theme.js owns the DOM; this state just keeps the glyph current.
   const [theme, setTheme] = useState(getTheme);
   useEffect(() => onThemeChange(setTheme), []);
-  // Drawing style (draft chrome look) — same 3-line subscription pattern as the
-  // app theme above (picker / other tabs round-trip through the module event).
-  // resolveDrawStyle is memoized: the component re-renders ~11 Hz during
-  // gestures via the tf mirror, so no fresh deep-merge per render. dsRef is the
-  // imperative movers' handle, assigned in the RENDER BODY (never an effect — a
-  // pointermove can arrive before effects flush). Canvas ☾ (darkMode) picks the
-  // theme's dark deltas, mirroring the invert everything else on the sheet honors.
-  const [drawStyleId, setDrawStyleId] = useState(getDrawStyle);
-  useEffect(() => onDrawStyleChange(setDrawStyleId), []);
-  const [draftOutline, setDraftOutlineState] = useState(getDraftOutline);
-  useEffect(() => onDraftOutlineChange(setDraftOutlineState), []);
-  const DS = useMemo(() => resolveDrawStyle(drawStyleId, darkMode), [drawStyleId, darkMode]);
-  const dsRef = useRef(DS);
-  dsRef.current = DS;
   // diff-only prefs (cf. reportColumns): only keys that differ from the
   // defaults persist, so a future default change reaches existing users
   useEffect(() => {
@@ -457,59 +386,6 @@ export default function TakeoffCanvas() {
   const [palette, setPalette] = useState([]);   // ordered condition ids pinned to the top-bar quick-access palette (≤ PALETTE_MAX)
   const [shapes, setShapes] = useState([]);
   const [poly, setPoly] = useState([]);
-  // #284 — which of the in-progress trace's points are arc BOW points. Parallel
-  // to poly and written ONLY through the three helpers below, so it can never
-  // drift out of step with the points it describes.
-  const [polyCurve, setPolyCurve] = useState([]);
-  // Sticky curve mode — the STACK-style straight/curve switch you flip mid
-  // measurement rather than a modifier you hold. In Curve the clicks ALTERNATE:
-  // one lands on the bow, the next on the far end, and the circular arc through
-  // the vertex you were already on, the bow and the end is unique — so it sits
-  // ON a radius wall instead of near it. ⌥ still works, and it INVERTS whatever
-  // the mode is. The mode is trace-local; it clears with the trace.
-  const [curveMode, setCurveMode] = useState(false);
-  const clearPoly = () => { setPoly([]); setPolyCurve([]); setCurveMode(false); };
-  const dropLastPoint = () => { setPoly((q) => q.slice(0, -1)); setPolyCurve((q) => q.slice(0, -1)); };
-  const addPoint = (pt, curved) => { setPoly((q) => [...q, pt]); setPolyCurve((q) => [...q, !!curved]); };
-  // the drawn boundary of the in-progress trace: straight where it was clicked
-  // straight, splined through every run of curve points
-  const curveIdx = useMemo(() => polyCurve.reduce((a, c, i) => (c ? (a.push(i), a) : a), []), [polyCurve]);
-  // Mid-gesture: the last click was a bow point, so the NEXT click closes that
-  // arc rather than opening another. The live preview reads the same flag.
-  const bowOpen = polyCurve.length > 0 && polyCurve[polyCurve.length - 1] && poly.length >= 2;
-  // Ring-tool draft invalidity (drawing styles): a self-crossing area/deduct/
-  // zone draft recolors on a theme that sets invalidColor. `!!DS.invalidColor`
-  // is the FIRST guard, so drafting (invalidColor null) short-circuits before
-  // any geometry runs — parity is structural, not incidental. Computed on
-  // PLACED vertices only (per-point via the memo, never per mousemove); ring
-  // tools only — an open polyline has no closing edge and must never flip.
-  const isRingTool = tool === "area" || tool === "deduct" || tool === "zone";
-  const draftInvalid = useMemo(
-    () => !!DS.invalidColor && isRingTool && poly.length >= 4 && ringSelfIntersects(poly),
-    [DS.invalidColor, isRingTool, poly]
-  );
-  // ONE restore expression for the draft/rubber/trace stroke, shared by the JSX
-  // and the movers so React and imperative writes can never disagree: deduct
-  // red (a safety signal in every theme) → invalid flip → theme accent.
-  const draftStroke = (t, invalid, ds) => (t === "deduct" ? "#b03a26" : invalid && ds.invalidColor ? ds.invalidColor : ds.accent);
-  // Draft totals for the panel chip chromes (Contemporary panelDark / Precision
-  // panelCream): placed-edge length sum + partial shoelace cross-sum, assigned
-  // IN THE RENDER BODY (the dsRef pattern — a useEffect([poly]) recompute has a
-  // stale window: React does not guarantee passive-effect flush before
-  // continuous pointer events, so a pointermove could read old sums against a
-  // new poly). moveCrosshair adds only the cursor terms — O(1) per move. Gated
-  // on the panel chromes so Drafting Table (paper) does literally zero extra work.
-  const draftStatsRef = useRef({ len: 0, cross: 0 });
-  if (DS.chip.chrome === "panelDark" || DS.chip.chrome === "panelCream") {
-    let dLen = 0, dCross = 0;
-    for (let i = 1; i < poly.length; i++) {
-      const a = poly[i - 1], b = poly[i];
-      dLen += Math.hypot(b[0] - a[0], b[1] - a[1]);
-      dCross += a[0] * b[1] - b[0] * a[1];
-    }
-    draftStatsRef.current.len = dLen;
-    draftStatsRef.current.cross = dCross;
-  }
   const [guideOpen, setGuideOpen] = useState(false);   // the in-app manual overlay (? / the toolbar button)
   const [proposal, setProposal] = useState(null);  // One-Click selection under review: { key, regions: [{kind:'pos'|'neg', seed, poly, area_sf, perim_lf}] } — panel-LOCAL px
   // ── in-canvas takeoff agent state ──────────────────────────────────────────
@@ -661,37 +537,15 @@ export default function TakeoffCanvas() {
   const selectShape = (id) => { setSelectedId(id); setSelectedMarkupId(null); };
   const selectMarkup = (id) => { setSelectedMarkupId(id); setSelectedId(null); };
   const pendingFlyRef = useRef(null);   // fly-to target whose sheet is opening this tick (two-phase center once its bitmap loads)
-  // Source-trace (◎) equivalent of pendingFlyRef: { sheet_id, rect, token, attempts }
-  // for a trace whose SOURCE sheet is opening this tick. Unlike pendingFlyRef it
-  // carries no markup id to re-validate against — there's no markup on the source
-  // sheet, only a synthetic rect — so it is self-limiting via `attempts` (see the
-  // phase-2 effect below and lib/sourceTrace's pendingSourceOutcome, the "never
-  // leave a stale trace armed" guard the plan calls the riskiest part of this slice).
-  const pendingSourceRef = useRef(null);
-  const sourceTraceSeqRef = useRef(0);  // monotonic token minter for sourceFlash — see traceSource
 
   const [snapOn, setSnapOn] = useState(false);   // snap-to-vector (beta) — off until calibrated on real plans
   const [angleOn, setAngleOn] = useState(true);  // 45°/90° angle guides (polar tracking) — on by default; ⇧ = hard lock
   // One-Click fill sensitivity (0..1) — how eagerly a fill crosses a room's hatch;
   // per-user pref, defaults to the calibrated Balanced preset.
-  // scan-path flood sensitivity — fixed; the knob is gone with the fill UI
-  const fillSens = SENS_BALANCED;
-  // NET ENGINE (test drive, 2026-08-24): route One-Click through the wall-
-  // network room detector (lib/netroom) instead of the raster flood. Off by
-  // default; persisted so a test session survives a reload. The net for a
-  // sheet is built once per (sheet, scale) and cached — seconds on a dense
-  // sheet, instant after.
-  // The net engine IS One-Click on vector sheets (owner's call, 2026-08-25:
-  // the flood has no purpose there). The flood survives only as the SCAN
-  // path — a scan has no linework to network — and is never user-visible on
-  // a vector sheet.
-  const netEngine = true;
-  const netCacheRef = useRef(new Map());   // `${sheetKey}:${upp}` → built net
-  const netTickRef = useRef(null);          // ticking "reading the walls… N s" timer
-  // No mode dial (his call, 2026-08-24: "too technical for users"). A click
-  // is a room (walls + doors + drawn finish transitions); ⇧-click is the
-  // finish FIELD — grow across the same tile/plank pattern, stop where it
-  // stops (teller lines, lobbies, open plans). Same gesture STACK uses.
+  const [fillSens, setFillSens] = useState(() => {
+    try { const v = parseFloat(localStorage.getItem("opentakeoff_fill_sens")); return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : SENS_BALANCED; } catch { return SENS_BALANCED; }
+  });
+  useEffect(() => { try { localStorage.setItem("opentakeoff_fill_sens", String(fillSens)); } catch { /* private mode */ } }, [fillSens]);
   const [saveState, setSaveState] = useState("idle");
   const [focusMode, setFocusModeState] = useState(getFocusMode);   // chrome-collapse (F) — lib/focusMode.js is the store+broadcast
   useEffect(() => onFocusModeChange(setFocusModeState), []);
@@ -723,36 +577,15 @@ export default function TakeoffCanvas() {
   const [showRevisions, setShowRevisions] = useState(false); // Revisions overlay (save / compare any two, buy-list deltas, CSV, auto-banked restore)
   const [importRows, setImportRows] = useState(null);        // Import-from-schedule approval rows (null = dialog closed)
   const [scheduleAnchor, setScheduleAnchor] = useState(null); // first marquee corner for the "schedule" tool — ISOLATED from poly so it can never leak into a measure shape
-  // ── the Symbol tool (#264) — same two-click marquee idiom as schedule ─────
-  const [symbolAnchor, setSymbolAnchor] = useState(null);     // first marquee corner, isolated like scheduleAnchor
-  const [imageAnchor, setImageAnchor] = useState(null);       // first marquee corner for the "image" screenshot tool, isolated like scheduleAnchor/symbolAnchor
-  const [placingImageId, setPlacingImageId] = useState(null); // an image markup being (re)placed: it follows the cursor until the next click drops it (re-enterable from the panel, not just at capture)
-  const placeGrabRef = useRef(null);                          // {key, dx, dy}: cursor→image-centre offset captured on the pointer's FIRST canvas contact during a place, so the image is grabbed where it sits (no teleport) and moves relative after
-  // Cross-sheet place flag: holds the markup id when beginPlace (below) armed
-  // placement for an image whose CURRENT sheet ISN'T the one now open. Carries
-  // that decision to onPointerMove's first-contact grab (~3686), which runs
-  // frames later — by then `sheet_id` may already have been rewritten to the
-  // panel it first touched, so re-reading it there is unreliable. Keyed on the
-  // markup id (not a bare boolean) so a second Place on a DIFFERENT markup can't
-  // inherit a stale flag. Cleared everywhere placeGrabRef is cleared.
-  const placeCrossSheetRef = useRef(null);
-  const [imgThumbs, setImgThumbs] = useState({});             // markupId → tiny JPEG dataURL for the panel row — memory-only, built once per image, NEVER persisted (a 40px <img> of a full 1600px src would decode the whole bitmap and eat the byte budget)
-  const thumbBuildingRef = useRef(new Set());                 // ids with a thumb build in flight (dedupe the async decode)
-  const [sweep, setSweep] = useState(null);                   // the live review: matches / questions / seed, one sheet, dies on commit or discard
-  const sweepRef = useRef(null);
-  useEffect(() => { sweepRef.current = sweep; }, [sweep]);
   const [projectName, setProjectName] = useState("");   // optional label for the report header
   const [clientInfo, setClientInfo] = useState({});      // per-project client/job fields for branded output; additive payload field
   const fileInputRef = useRef(null);                    // hidden <input type=file> for "Open PDF"
   const importInputRef = useRef(null);                  // hidden <input type=file> for "Import takeoff…" (the agent-JSON handoff)
-  const profileInputRef = useRef(null);                 // hidden <input type=file> for "Import profile…" (#299)
-  const imageInputRef = useRef(null);                   // hidden <input type=file> for the Markups-dock "Upload image…" button
 
   const containerRef = useRef(null);
   const stageRef = useRef(null);
   const panelCanvasRefs = useRef(new Map()); // sheetKey → <canvas> (base layer — small backing store, coarse pyramid placeholder)
   const pageObjsRef = useRef(new Map());     // sheetKey → pdf.js page object (getOperatorList/getTextContent only — painting moved to the tile worker pool)
-  const dimTextsRef = useRef(new Map());     // sheetKey → positioned dim-pattern texts (#320) — RENDER_SCALE px, rescaled at buildMask time
   const renderScalesRef = useRef(new Map()); // sheetKey → RENDER_SCALE, always (see factorFor comment above) — kept so the ~20 factorFor/uppFor call sites are untouched
   // Tile-pyramid compositor (#86) — one instance owning the worker pool +
   // tile LRU cache (see lib/tileCompositor.ts). Lazily created on first
@@ -779,11 +612,9 @@ export default function TakeoffCanvas() {
   const crossVRef = useRef(null);
   const crossHRef = useRef(null);
   const rubberRef = useRef(null);
-  const arcRef = useRef(null);      // live 3-point arc preview (bow placed → cursor); the rubber band becomes its chord
   const rectRef = useRef(null);
   const cloudRef = useRef(null);       // live cloud preview (first corner → cursor)
   const highlightRef = useRef(null);   // live highlight-box preview (first corner → cursor; own translucent fill, NOT rectRef's condition fill)
-  const dimRef = useRef(null);         // live dimension-line preview (first end → cursor; own ref — rubberRef belongs to the measure trace)
   const hlRef = useRef(null);          // in-progress highlighter stroke {pts (stage px), key}
   const hlPathRef = useRef(null);      // live highlighter preview path (imperative, WYSIWYG ink)
   const [hlStyle, setHlStyle] = useState(() => {
@@ -795,16 +626,6 @@ export default function TakeoffCanvas() {
   const snapGridsRef = useRef(new Map()); // sheetKey → {cell, map} spatial hash of vector endpoints
   const vectorSegsRef = useRef(new Map()); // sheetKey → flat [x1,y1,x2,y2,…] linework segments (One-Click boundary source)
   const segMetaRef = useRef(new Map());    // sheetKey → per-segment meta bytes (hatch classification input)
-  // sheetKey → drawn-figure ranges (SubPath[]): the ink-classification input.
-  // Single-panel sheets only — a STITCHED composite merges several sheets'
-  // segment arrays, and a subpath's meaning is a contiguous range into ONE of
-  // them, so a composite simply carries none and classification degrades to
-  // exactly today's behaviour (the optional-field contract).
-  const subpathsRef = useRef(new Map());
-  const textMarksRef = useRef(new Map());  // sheetKey → positioned text (label-box classification)
-  const segLumRef = useRef(new Map());     // sheetKey → per-segment stroke luminance (#260) — the Symbol tool's label leader-chase pen separator
-  const textSpansRef = useRef(new Map());  // sheetKey → label text spans (built lazily on first sweep)
-  const textTfRef = useRef(new Map());     // sheetKey → viewport transform, for positioning text spans in image px
   // PDF layers (#85): the op walk's per-segment OCG attribution + the sheet's
   // classified layer table. Engine reads go through REFS (rolesForSheet runs
   // inside click paths — a just-resolved table must be visible before React
@@ -823,8 +644,6 @@ export default function TakeoffCanvas() {
   const angleRef = useRef(null);       // current angle-locked image point (or null) — the click commits it
   const aimMarkRef = useRef(null);     // four floating liquid-glass pickets thickening the crosshair crossing
   const aimChipRef = useRef(null);     // readout chip by the cursor (locked angle · live segment length)
-  const rubberCasingRef = useRef(null); // casing under-stroke twin of the rubber band (mounted only when DS.casing — Site Glass)
-  const closeRef = useRef(null);       // ring tools' close-preview ghost edge (mounted only when DS.closePreview — Contemporary)
   const dragRef = useRef(null);        // {kind:'move'|'vertex'|'edge'|'markupMove', shapeId?/markupId?, vIndex?, start:[x,y], orig:verts_norm/markup coords, moved?, prev: grab-time geomSnapshot (shape drags), shape: grab-time shape, lastVerts/lastComputed: latest preview frame — the release commit's geom command payload}
   const ocDragRef = useRef(null);      // One-Click proposal edit drag: {kind:'oc-vertex'|'oc-edge', ri, vi?/i?/j?, oa?, ob?, sx?, sy?} — poly is panel-LOCAL px
   const ocHoverRef = useRef(-1);       // mirror of ocHover (region index under cursor) — compared per-move to avoid stale-closure churn
@@ -847,7 +666,7 @@ export default function TakeoffCanvas() {
   // its onOpenChange effect when the callback identity changes, so an inline
   // arrow here would re-count an open menu on every canvas render
   const onMenuDepth = useCallback((o) => { menuDepthRef.current = Math.max(0, menuDepthRef.current + (o ? 1 : -1)); }, []);
-  const thumbCacheRef = useRef(new Map()); // sheetKey → thumbnail blob URL (lib/thumbs.js) — survives gallery close; persisted twin lives in the meta store
+  const thumbCacheRef = useRef(new Map()); // sheetKey → thumbnail dataURL — survives gallery close
   const legacyPinnedRef = useRef(null);    // old `pinned` page numbers awaiting their one-shot tab migration
   const tabInitRef = useRef(false);        // snap to the first restored tab exactly once
   const statusRef = useRef("loading");     // mirror for the gallery's thumbnail worker
@@ -980,7 +799,7 @@ export default function TakeoffCanvas() {
         // and drift the composite extent (see resolveSource's wf/hf note)
         dims[k] = { w: vp.width, h: vp.height };
       }
-    } catch (e) { setCommitMsg(`Couldn't read those sheets to stitch them: ${e.message || e}`); return; }
+    } catch (e) { setCommitMsg(t('status.stitch_read_err', { error: e.message || e })); return; }
     const st = { id: mintStitchId(), name: ks.map((k) => tabLabel(k)).join(" + "), members: autoButt(ks, dims), created_at: nowIso() };
     setStitches((s) => [...s, st]);
     const upps = ks.map((k) => scales[k]);
@@ -989,14 +808,14 @@ export default function TakeoffCanvas() {
     setSheetGroup([st.id]);
     setFocusKey(st.id);
     setView("canvas");
-    setCommitMsg("Stitched — drag to pan, then Align (toolbar) joins the match line: click the same point on both sheets.");
+    setCommitMsg(t('status.stitched'));
   }
   // Deleting a stitch is refused while takeoffs live on it — quantities are
   // never silently orphaned (the close-PDF confirm precedent, but stricter:
   // a stitch has no file to re-add, so there is no restore path).
   function deleteStitch(id) {
     const n = shapes.filter((s) => s.sheet_id === id).length + markups.filter((m) => m.sheet_id === id).length;
-    if (n) { setCommitMsg(`This stitch carries ${n} takeoff${n === 1 ? "" : "s"}/markup${n === 1 ? "" : "s"} — delete or move them first.`); return; }
+    if (n) { setCommitMsg(t('status.stitch_delete_blocked', { count: n })); return; }
     setStitches((s) => s.filter((st) => st.id !== id));
     setOpenTabs((t) => t.filter((k) => k !== id));
     if (sheetGroup.includes(id)) { const f = sheetGroup.filter((k) => k !== id); setSheetGroup(f.length >= 2 || (f.length === 1 && isStitchKey(f[0])) ? f : []); }
@@ -1026,18 +845,6 @@ export default function TakeoffCanvas() {
     if (t.file === active && pageLabels[t.page]) return lvl + pageLabels[t.page];
     const base = t.file.replace(/\.pdf$/i, "");
     return lvl + (t.page > 1 ? `${base} · ${t.page}` : base);
-  };
-  // A sheet's bare identifier for auto-naming an image markup (e.g. "AF101") —
-  // tabLabel WITHOUT the mutable "Level 1 · " prefix and with a hyphen so a page-2
-  // sheet reads "PLAN-2", not the compound "Level 1 · PLAN · 2" that would nest
-  // badly inside an image name like "…-01".
-  const sheetBaseLabel = (k) => {
-    if (isStitchKey(k)) return stitchById[k]?.name || "Stitched";
-    if (galleryLabels[k]) return galleryLabels[k];
-    const t = parseSheetKey(k);
-    if (t.file === active && pageLabels[t.page]) return pageLabels[t.page];
-    const base = t.file.replace(/\.pdf$/i, "");
-    return t.page > 1 ? `${base}-${t.page}` : base;
   };
 
   // ── panels: the ONE rendering model — single-sheet mode is a group of one ──
@@ -1257,22 +1064,6 @@ export default function TakeoffCanvas() {
     const { x, y, scale } = tfRef.current;
     if (stageRef.current) stageRef.current.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
   }, []);
-  // Compositor-promote the stage layer for the DURATION OF A GESTURE only.
-  // A permanently-promoted layer (will-change: transform in the JSX) freezes
-  // its raster scale at promotion time — Chromium deliberately never re-rasters
-  // such a layer when only its transform scale changes — so after a zoom-in the
-  // SVG overlay (committed boundaries, the in-progress polygon, vertex handles)
-  // stays a GPU-magnified bitmap: pixelated, blurry edges while drawing. The
-  // detail canvases never showed it because they repaint their own pixels at
-  // settle. So promote when a pan/zoom gesture opens (per-frame moves stay
-  // compositor-only and cheap) and demote when it settles (in syncTilePanels,
-  // keyed off the same gestureUntilRef wheel-quiet signal the detail repaint
-  // uses) — a demoted stage transforms at paint time, re-rastering the overlay
-  // crisp at whatever zoom the user landed on.
-  const promoteStage = useCallback(() => {
-    const el = stageRef.current;
-    if (el && el.style.willChange !== "transform") el.style.willChange = "transform";
-  }, []);
   // Re-apply after every React render so an unrelated re-render mid-drag can't
   // snap the transform back to a stale value.
   useLayoutEffect(() => { applyTf(); });
@@ -1318,52 +1109,6 @@ export default function TakeoffCanvas() {
   // read at call time, so [] deps are correct.
   const pickerListFolder = useCallback((id) => store.listFolder(id), []);
   const pickerAddSheets = useCallback((items) => store.addSheets(items), []);
-  // ── page-count cache (#302) ────────────────────────────────────────────────
-  // The gallery used to learn every file's page count by loading its FULL bytes
-  // into a pdf.js doc the moment it opened — the one eager read left in an
-  // otherwise lazy pipeline (thumbnails render on scroll, the canvas rasters
-  // only open tabs). On a large plan set that read IS the sluggishness, so
-  // counts persist in the meta store once discovered and the gallery opens a
-  // known set without touching a byte of it. Keyed per project scope; entries
-  // drop on the only two paths that can change a file's pages — a revision
-  // (addPdf revised) and a removal — so the cache can't go stale.
-  const pageCacheKey = "sheet_pages:" + (projectIdFromUrl() || "local");
-  const [knownPages, setKnownPages] = useState({});
-  const knownPagesRef = useRef(knownPages);
-  useEffect(() => {
-    let off = false;
-    metaGet(pageCacheKey).then((m) => {
-      if (off || !m || typeof m !== "object") return;
-      knownPagesRef.current = m;
-      setKnownPages(m);
-    }).catch(() => {});
-    return () => { off = true; };
-  }, [pageCacheKey]);
-  const rememberPages = useCallback((name, count) => {
-    if (!Number.isFinite(count) || count < 1 || knownPagesRef.current[name] === count) return;
-    const next = { ...knownPagesRef.current, [name]: count };
-    knownPagesRef.current = next;
-    setKnownPages(next);
-    metaPut(pageCacheKey, next).catch(() => { /* cache only — rediscovered next open */ });
-  }, [pageCacheKey]);
-  const forgetPages = useCallback((names) => {
-    // a file whose bytes are leaving (or changing) takes its thumbnails with it
-    forgetThumbs(names, thumbCacheRef.current);
-    const next = { ...knownPagesRef.current };
-    let hit = false;
-    for (const n of names) if (n in next) { delete next[n]; hit = true; }
-    if (!hit) return;
-    knownPagesRef.current = next;
-    setKnownPages(next);
-    metaPut(pageCacheKey, next).catch(() => {});
-  }, [pageCacheKey]);
-  // Free a departing file's pdf.js worker doc — the doc cache is deliberately
-  // long-lived (thumbnails + reopen speed), but a file that LEFT the working
-  // set would otherwise hold worker memory for the rest of the session (#302).
-  const evictDoc = useCallback((name) => {
-    const t = pdfDocsRef.current.get(name);
-    if (t) { t.then((task) => { try { task.destroy(); } catch { /* already gone */ } }).catch(() => {}); pdfDocsRef.current.delete(name); }
-  }, []);
   // Reconcile the canvas after a PDF leaves the working set. For a non-empty
   // result the [sheets] effect already prunes openTabs/sheetGroup, but it can't:
   //   • fix `active` when the CLOSED pdf was the one on screen (it never resets
@@ -1384,21 +1129,8 @@ export default function TakeoffCanvas() {
   // Shapes on the closed sheets persist in annotations and restore on re-add.
   const closePdf = useCallback(async (name) => {
     await store.removePdf(name);
-    evictDoc(name);
-    forgetPages([name]);
     reconcileAfterRemoval(name, await refreshSheets());
-  }, [refreshSheets, reconcileAfterRemoval, evictDoc, forgetPages]);
-  // Bulk close (#301): one pass over the manage-mode selection, ONE refresh and
-  // reconcile at the end. Per-file semantics are exactly closePdf's — shapes
-  // persist in annotations and restore if the same file is re-added.
-  const closePdfs = useCallback(async (names) => {
-    if (!names.length) return;
-    for (const n of names) { await store.removePdf(n); evictDoc(n); }
-    forgetPages(names);
-    const list = await refreshSheets();
-    reconcileAfterRemoval(names.includes(active) ? active : "", list);
-    setCommitMsg(`Removed ${names.length} PDF${names.length === 1 ? "" : "s"} from the plan set — takeoffs on them stay in the project and restore on re-add.`);
-  }, [refreshSheets, reconcileAfterRemoval, evictDoc, forgetPages, active]);
+  }, [refreshSheets, reconcileAfterRemoval]);
   // Remove-from-project (cloud only): the DESTRUCTIVE variant — delete the Drive
   // file, then drop it from the working set.
   const removeFromProject = useCallback(async (name) => {
@@ -1411,30 +1143,18 @@ export default function TakeoffCanvas() {
   async function handleFiles(fileList) {
     const incoming = Array.from(fileList || []);
     if (!incoming.length) return;
-    // a dropped .otk is a PROJECT, not a plan — it replaces the workspace
-    // (snapshot first) instead of joining the plan set (#300)
-    const otk = incoming.find((f) => isProjectArchive(f.name));
-    if (otk) {
-      await importProjectArchive(otk);
-      if (incoming.length > 1) setCommitMsg((m) => `${m} Other dropped files were ignored — open plans separately from a project archive.`);
-      return;
-    }
-    // a dropped .otprofile is the working ENVIRONMENT (#299) — apply it, never
-    // ingest it as a plan
-    const prof = incoming.find((f) => isProfileFile(f.name));
-    if (prof) { await importProfileFile(prof); return; }
-    setCommitMsg("Reading files…");
+    setCommitMsg(t('status.reading_files'));
     let pdfs = [], skipped = [];
     try { ({ pdfs, skipped } = await ingestFiles(incoming, { onProgress: setCommitMsg })); }
-    catch (e) { setCommitMsg(`Couldn't read those files: ${e.message || e}`); return; }
+    catch (e) { setCommitMsg(t('status.couldnt_read_files', { error: e.message || e })); return; }
     if (!pdfs.length) {
       setCommitMsg(skipped.length
-        ? `Nothing to open — ${skipped.length} file${skipped.length === 1 ? "" : "s"} skipped. OpenTakeoff reads PDFs, images, and .zip plan sets.`
-        : "No supported files found. Drop a PDF, an image, or a .zip plan set.");
+        ? t('status.nothing_to_open', { count: skipped.length })
+        : t('status.no_supported'));
       return;
     }
     const results = [];
-    for (const f of pdfs) { try { results.push(await store.addPdf(f)); } catch (e) { setCommitMsg(`Couldn't open ${f.name}: ${e.message || e}`); } }
+    for (const f of pdfs) { try { results.push(await store.addPdf(f)); } catch (e) { setCommitMsg(t('status.couldnt_open', { name: f.name, error: e.message || e })); } }
     await refreshSheets();
     // CO-1: a re-drop whose bytes CHANGED is a plan revision, not a re-open.
     // The store archived the old bytes; here the stale pdf.js docs must go
@@ -1442,14 +1162,13 @@ export default function TakeoffCanvas() {
     // must re-key so the new revision actually reaches the screen.
     const revised = results.filter((r) => r?.revised);
     if (revised.length) {
-      for (const r of revised) evictDoc(r.name);
-      // a revision can change the page count — drop the cached counts so the
-      // gallery re-learns them from the new bytes (#302)
-      forgetPages(revised.map((r) => r.name));
+      for (const r of revised) {
+        const t = pdfDocsRef.current.get(r.name);
+        if (t) { t.then((task) => { try { task.destroy(); } catch { /* already gone */ } }).catch(() => {}); pdfDocsRef.current.delete(r.name); }
+      }
       setDocEpoch((e) => e + 1);
     }
     const names = pdfs.map((f) => f.name);
-    const tail = skipped.length ? ` · ${skipped.length} skipped` : "";
     if (names.length === 1) {
       setOpenTabs((t) => (t.includes(names[0]) ? t : [...t, names[0]]));
       goToSheet(names[0]);
@@ -1465,10 +1184,10 @@ export default function TakeoffCanvas() {
       const hot = revised.filter((r) => inked(r.name));
       const label = (r) => `${r.name} → rev ${r.rev}`;
       setCommitMsg(hot.length
-        ? `Sheet changed under your markups: ${hot.map(label).join(", ")} — earlier revision kept; re-check the affected takeoff.`
-        : `Sheet updated: ${revised.map(label).join(", ")} — earlier revision kept.`);
+        ? t('status.sheet_changed_markups', { sheets: hot.map(label).join(", ") })
+        : t('status.sheet_updated', { sheets: revised.map(label).join(", ") }));
     } else {
-      setCommitMsg(`Opened ${names.length} sheet${names.length === 1 ? "" : "s"}${tail}.`);
+      setCommitMsg(t('status.opened', { count: names.length, tail: skipped.length ? ` · ${skipped.length} ${t('commit.skipped')}` : "" }));
     }
   }
   // The empty-project landing view (the Drive picker for an empty cloud project,
@@ -1647,11 +1366,11 @@ export default function TakeoffCanvas() {
       // blocked tab recovered here with hydrated=true, its still-empty defaults
       // would autosave straight over the other tab's real data. The reload
       // message is the whole story for this tab.
-      if (isStaleTabError(e)) { setCommitMsg(STALE_TAB_MESSAGE); return; }
+      if (isStaleTabError(e)) { setCommitMsg(t('status.stale_tab')); return; }
       // Cloud project whose saved takeoff couldn't be read (Drive error / unreadable
       // annotations): same rule as a stale tab — leave autosave DISARMED so empty
       // defaults can't overwrite the real project in Drive. (cloudStore tags these.)
-      if (e?.name === "CloudLoadError") { setCommitMsg(e.message || "Couldn't load this project from Drive — reload to retry."); return; }
+      if (e?.name === "CloudLoadError") { setCommitMsg(e.message || t('status.couldnt_load_drive')); return; }
       // Do NOT arm autosave on any other failed load either: the in-memory
       // state is empty, so the first edit would overwrite the intact saved
       // takeoff with nothing. Leave it disarmed (hydrated stays false) and say
@@ -1725,7 +1444,6 @@ export default function TakeoffCanvas() {
   // leaving the stamp tool disarms the pending stamp — a stray click under a
   // measure/select tool must never drop a stamp
   useEffect(() => { if (tool !== "stamp") setArmedStamp(null); }, [tool]);
-  useEffect(() => { if (tool !== "image") setImageAnchor(null); }, [tool]);   // leaving the image marquee drops a half-set anchor (mirrors scheduleAnchor/symbolAnchor reset)
   // A One-Click proposal is only actionable while One-Click is armed (Enter
   // already requires it) — discard it on tool switch, like the stamp above.
   // Also keeps Create out of the ACTION slot while Finish occupies it, so the
@@ -1780,12 +1498,6 @@ export default function TakeoffCanvas() {
     goToSheet(openTabs[0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openTabs, sheets]);
-  // keep the active tab visible in the scrolling strip (no-op while the row wraps)
-  useEffect(() => {
-    const strip = tabStripRef.current; if (!strip || openTabs.length <= MANY_TABS) return;
-    const el = strip.querySelector('[data-sheet-tab="active"]');
-    if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [sheetKey, sheetGroup, openTabs.length]);
 
   useEffect(() => { statusRef.current = status; }, [status]);
   useEffect(() => { viewRef.current = view; }, [view]);
@@ -1808,10 +1520,6 @@ export default function TakeoffCanvas() {
     let t = pdfDocsRef.current.get(file);
     if (!t) {
       t = store.loadPdfData(file).then((data) => pdfjsLib.getDocument({ data }));
-      // never cache a FAILED load: a file removed and re-added under the same
-      // name (Manage → remove, then re-open) would otherwise pin the removal-
-      // race rejection for the life of the view and refuse to ever render
-      t.catch(() => { if (pdfDocsRef.current.get(file) === t) pdfDocsRef.current.delete(file); });
       pdfDocsRef.current.set(file, t);
     }
     return t.then((task) => task.promise);
@@ -1844,14 +1552,12 @@ export default function TakeoffCanvas() {
     if (!active) return;
     const seq = ++renderSeqRef.current;
     const stale = () => seq !== renderSeqRef.current;
-    setStatus("rendering"); setErr(""); clearPoly(); setCalib([]); setPendingLen(""); setCheck([]); setCheckStated(""); setScaleGuide(null); setPrevScale(null); selectShape(null); setProposal(null); setAlignPt(null); resetZone();
+    setStatus("rendering"); setErr(""); setPoly([]); setCalib([]); setPendingLen(""); setCheck([]); setCheckStated(""); setScaleGuide(null); setPrevScale(null); selectShape(null); setProposal(null); setAlignPt(null); resetZone();
     for (const [, rt] of renderTasksRef.current) { try { rt.cancel(); } catch { /* done */ } }
     renderTasksRef.current.clear();
     snapGridsRef.current.clear();
     vectorSegsRef.current.clear();
     segMetaRef.current.clear();
-    subpathsRef.current.clear();
-    textMarksRef.current.clear();
     layerGeoRef.current.clear();
     layerInfosRef.current.clear();
     setSheetLayers({});
@@ -1973,13 +1679,10 @@ export default function TakeoffCanvas() {
         // snap-to-vector index per panel (best-effort; off until the user enables it)
         m.pageObj.getOperatorList().then(async (ol) => {
           if (stale()) return;
-          const { points, segs, meta, imageArea, lum, layerOf, layerIds, subpaths } = extractVectorGeometry(ol, m.viewport.transform, pdfjsLib.OPS);
+          const { points, segs, meta, imageArea, layerOf, layerIds } = extractVectorGeometry(ol, m.viewport.transform, pdfjsLib.OPS);
           snapGridsRef.current.set(m.key, buildSnapGrid(points, SNAP_CELL));
           vectorSegsRef.current.set(m.key, segs);
           segMetaRef.current.set(m.key, meta);
-          if (subpaths) subpathsRef.current.set(m.key, subpaths);
-          if (lum) segLumRef.current.set(m.key, lum);
-          textTfRef.current.set(m.key, m.viewport.transform);
           // raster-fallback trigger signals: how much of the sheet is placed
           // image, and whether the vector linework is dense enough to bound rooms
           sheetStatsRef.current.set(m.key, { segCount: segs.length >> 2, imageFrac: Math.min(1, imageArea / (m.w * m.h)) });
@@ -2015,19 +1718,11 @@ export default function TakeoffCanvas() {
           // instead (rasterEligible true, vectorViable false).
           sheetStatsRef.current.set(m.key, { segCount: 0, imageFrac: 1 });
         });
-        // read the drawn scale note off this panel's page text (best-effort),
-        // and the positioned dimension-pattern texts the dim-string classifier
-        // anchors on (#320) — a mask built before they resolved was textless
+        // read the drawn scale note off this panel's page text (best-effort)
         m.pageObj.getTextContent().then((tc) => {
           if (stale()) return;
           const det = detectScale(tc, m.viewport);
           if (det) setDetectedScales((d) => (d[m.key]?.label === det.label ? d : { ...d, [m.key]: det }));
-          // positioned text for ink classification — a mask built before this
-          // resolved simply had no text evidence (the layer-table precedent)
-          const marks = extractTextMarks(tc, m.viewport);
-          if (marks.length) { textMarksRef.current.set(m.key, marks); maskCacheRef.current.delete(m.key); }
-          const dts = extractDimTexts(tc, m.viewport);
-          if (dts.length) { dimTextsRef.current.set(m.key, dts); maskCacheRef.current.delete(m.key); }
         }).catch(() => {});
       }
       if (stale()) return;
@@ -2107,10 +1802,6 @@ export default function TakeoffCanvas() {
       // free; self-poll so the settle repaint is guaranteed even if no further
       // input event arrives before the gesture window expires.
       if (panRef.current || performance.now() < gestureUntilRef.current) { scheduleSync(); return; }
-      // Gesture settled: demote the stage layer (see promoteStage) so the SVG
-      // overlay re-rasters at the zoom the user landed on — this is what
-      // un-pixelates a drafted boundary after a scroll-zoom.
-      if (stageRef.current && stageRef.current.style.willChange !== "auto") stageRef.current.style.willChange = "auto";
       const r = cont.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       const density = tileRequiredDensity(t.scale, dpr);
@@ -2213,52 +1904,6 @@ export default function TakeoffCanvas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panelImgs, groupSig, status]);
 
-  // source-trace (◎) phase 2 — mirrors the fly-to phase-2 effect above, but
-  // pendingSourceRef has no markup id to re-validate against (there's no markup
-  // on the source sheet, only a synthetic {sheet_id, rect}), so it leans on
-  // pendingSourceOutcome's three guards instead: status==="error", the source
-  // sheet key no longer resolving to a real sheet (deleted file / bad key —
-  // same liveness test the sheetGroup-pruning effect uses), or a bounded
-  // attempt-budget cap. Every branch below either re-arms `attempts` or nulls
-  // the ref — it is NEVER left set past a terminal outcome (give-up or
-  // complete), which is the plan's central risk for this slice.
-  useEffect(() => {
-    const p = pendingSourceRef.current;
-    if (!p) return;
-    const sheetIsLive = isStitchKey(p.sheet_id)
-      ? !!stitchById[p.sheet_id] && stitchAlive(stitchById[p.sheet_id], new Set(sheets.map((s) => s.name)))
-      : sheets.some((s) => s.name === parseSheetKey(p.sheet_id).file);
-    const sp = panelKeySet.has(p.sheet_id) ? panels.find((pp) => pp.key === p.sheet_id) : null;
-    const outcome = pendingSourceOutcome(p, { status, sheetIsLive, panelReady: !!sp?.img?.w });
-    if (outcome.action === "give-up") { pendingSourceRef.current = null; return; }
-    if (outcome.action === "wait") { pendingSourceRef.current = { ...p, attempts: outcome.attempts }; return; }
-    // action === "complete": the rect was already validated (non-null midpoint)
-    // when traceSource armed this ref, but re-check rather than trust a ref that
-    // sat around — cheap, and keeps this path total on its own.
-    const mid = rectMidpoint(p.rect);
-    if (mid && centerOnPanelPoint(sp, mid[0], mid[1])) flashSource(p.sheet_id, p.rect, p.token);
-    pendingSourceRef.current = null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [panelImgs, groupSig, status]);
-
-  // A flash belongs to whichever sheet it's currently drawn on (the render site
-  // keys it to `sourceFlash.sheet_id === p.key`, per-panel). Once that sheet
-  // leaves the open set — tab closed, group changed, navigated away — clear it
-  // rather than let it sit armed: the panel's <g> unmounts and remounts on
-  // return, and a CSS keyframes animation restarts on mount, so a stale
-  // sourceFlash would silently re-pulse on a LATER, unrelated visit to that
-  // sheet. MUST be a functional updater, not a closure read of `sourceFlash`:
-  // the pendingSourceRef effect above can, in the SAME batch that just changed
-  // groupSig, call setSourceFlash(newFlash) for the sheet that just finished
-  // opening — a closure-captured `sourceFlash` here would still be the OLD
-  // (now off-panel) value and null out the flash that was just set, in the
-  // same flush, before it ever painted. Reading `f` at apply time instead of
-  // closure time avoids that race.
-  useEffect(() => {
-    setSourceFlash((f) => (f && !panelKeySet.has(f.sheet_id) ? null : f));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupSig]);
-
   // ── autosave (debounced) ──────────────────────────────────────────────────
   // buildPayload is the single serializer — autosave and snapshots must write
   // identical records for the same state (byte-stability matters downstream).
@@ -2285,7 +1930,7 @@ export default function TakeoffCanvas() {
   // re-fire the autosave effect and the restored payload persists (and pushes,
   // on the sync path) like any other edit.
   const restoreSavedPayload = (payload) => {
-    clearPoly(); setCalib([]); setPendingLen(""); selectShape(null); setProposal(null);
+    setPoly([]); setCalib([]); setPendingLen(""); selectShape(null); setProposal(null);
     setCheck([]); setCheckStated(""); setScaleGuide(null); setPrevScale(null);
     resetZone();
     hydrate(payload || {});
@@ -2305,159 +1950,17 @@ export default function TakeoffCanvas() {
       const imported = parseTakeoffImport(await file.text());
       const { payload, note } = mergeTakeoffImport(buildPayload(), imported, sheets.map((s) => s.name));
       restoreSavedPayload(payload);
-      const parts = [`Imported ${note.shapes_added} shape${note.shapes_added === 1 ? "" : "s"}`];
-      if (note.shapes_pending) parts.push(`${note.shapes_pending} dashed pending your review — Accept turns pencil to ink`);
-      if (note.conditions_added) parts.push(`${note.conditions_added} new condition${note.conditions_added === 1 ? "" : "s"}`);
-      if (note.conditions_merged) parts.push(`${note.conditions_merged} matched your finish tags`);
-      if (note.unknown_files.length) parts.push(`some shapes reference ${note.unknown_files.join(", ")} — open that file to see them`);
+      const parts = [t('status.imported_takeoff', { count: note.shapes_added })];
+      if (note.shapes_pending) parts.push(t('status.imported_pending', { count: note.shapes_pending }));
+      if (note.conditions_added) parts.push(t('status.imported_new_conds', { count: note.conditions_added }));
+      if (note.conditions_merged) parts.push(t('status.imported_matched', { count: note.conditions_merged }));
+      if (note.unknown_files.length) parts.push(t('status.imported_unknown_files', { files: note.unknown_files.join(", ") }));
       setCommitMsg(parts.join(" · ") + ".");
     } catch (e) {
       // module copy already speaks "Couldn't…" (the sticky danger convention);
       // anything unexpected gets wrapped into it rather than aging out unread
-      setCommitMsg(String(e?.message || "").startsWith("Couldn't") ? e.message : `Couldn't import takeoff: ${e?.message || e}`);
+      setCommitMsg(String(e?.message || "").startsWith("Couldn't") ? e.message : t('status.import_takeoff_err', { error: e?.message || e }));
     }
-  };
-
-  // "Export takeoff…" (Sheet menu) — the other half of the file pair (#285).
-  // The app has always READ takeoff_canvas.v1 and never written one to disk,
-  // so the only copy of a finished takeoff lived in this browser profile's
-  // IndexedDB: a cleared profile, a new machine, or a second estimator and
-  // the work was unreachable. This writes the EXACT document autosave writes
-  // — no export-only shape, no report flattening — so Import takeoff reads it
-  // back into an editable takeoff, and a diff between two exports is a diff
-  // between two saves.
-  //
-  // The plan PDF is deliberately NOT in it: this is the annotation record, the
-  // same one the MCP export_takeoff emits, and it names its sheets by file.
-  // Restoring means opening the same PDF first — the message says so, since a
-  // backup that silently restores to nothing is worse than no backup.
-  const exportTakeoffFile = () => {
-    const payload = { schema: ANN_SCHEMA, ...buildPayload() };
-    const base = (projectName || "takeoff").trim().replace(/[^\w.\- ]+/g, "").replace(/\s+/g, "-").replace(/^[-.]+|[-.]+$/g, "") || "takeoff";
-    downloadText(`${base}.takeoff.json`, JSON.stringify(payload, null, 2), "application/json");
-    const n = shapes.length;
-    setCommitMsg(`Exported ${base}.takeoff.json — ${n} takeoff${n === 1 ? "" : "s"}, ${conditions.length} condition${conditions.length === 1 ? "" : "s"}. The plan PDF isn't in it: to restore, open the same PDF, then Import takeoff.`);
-  };
-
-  // "Clear workspace" (#301) — the deliberate start-fresh: every stored PDF
-  // goes and the takeoff resets to empty, without touching browser storage by
-  // hand. Local mode only (a cloud project's canon lives in Drive — Close
-  // project is that mode's exit). Commit before risk: a non-empty takeoff is
-  // snapshotted first, so the work is one Revisions-panel restore away — the
-  // PDFs themselves are gone either way (local plans aren't stored elsewhere);
-  // restored shapes re-attach by sheet name when the same files are re-opened.
-  const clearWorkspace = async () => {
-    const names = sheets.map((s) => s.name);
-    let saved = false;
-    if (shapes.length || conditions.length || markups.length) {
-      try { await store.saveSnapshot(`Before Clear workspace — ${new Date().toLocaleString()}`, buildPayload()); saved = true; }
-      catch { /* best-effort (quota) — clearing continues; message says what happened */ }
-    }
-    for (const n of names) { try { await store.removePdf(n); } catch { /* already gone */ } evictDoc(n); }
-    forgetPages(names);
-    releaseThumbs(thumbCacheRef.current);
-    setGalleryLabels({});
-    setDetectedScales({});
-    reconcileAfterRemoval("", await refreshSheets());
-    restoreSavedPayload(emptyAnnotations());
-    setCommitMsg(saved
-      ? `Workspace cleared — ${names.length} PDF${names.length === 1 ? "" : "s"} removed. The takeoff was snapshotted first: Revisions → restore brings it back (re-open the same PDFs to see its shapes).`
-      : `Workspace cleared — ${names.length} PDF${names.length === 1 ? "" : "s"} removed.`);
-  };
-
-  // "Export project archive…" (#300) — the whole job as ONE portable .otk:
-  // every stored plan's bytes plus the exact autosave payload. The other half
-  // of the #285 pair: Export takeoff is the annotation record alone (open the
-  // same PDF to restore); this is the archive that carries its own paper.
-  const exportProjectArchive = async () => {
-    if (!sheets.length) { setCommitMsg("Couldn't export project: no plans are open."); return; }
-    const base = (projectName || "project").trim().replace(/[^\w.\- ]+/g, "").replace(/\s+/g, "-").replace(/^[-.]+|[-.]+$/g, "") || "project";
-    try {
-      const data = await buildProjectArchive({
-        takeoff: { schema: ANN_SCHEMA, ...buildPayload() },
-        sheets,
-        loadPdfData: (n) => store.loadPdfData(n),
-        projectName,
-        onProgress: setCommitMsg,
-      });
-      downloadArchive(`${base}.otk`, data);
-      setCommitMsg(`Exported ${base}.otk — ${sheets.length} PDF${sheets.length === 1 ? "" : "s"} + the full takeoff (${shapes.length} shape${shapes.length === 1 ? "" : "s"}). Self-contained: open it on any machine, or hand it to another estimator.`);
-    } catch (e) {
-      setCommitMsg(`Couldn't export project: ${e?.message || e}`);
-    }
-  };
-
-  // Open a .otk (drop or file picker): REPLACE the workspace with the archived
-  // project. Commit before risk — the current takeoff, if non-empty, is
-  // snapshotted first so opening an archive is never a silent overwrite.
-  const importProjectArchive = async (file) => {
-    try {
-      setCommitMsg(`Opening ${file.name}…`);
-      const { takeoff, pdfs } = await parseProjectArchive(new Uint8Array(await file.arrayBuffer()));
-      if (shapes.length || conditions.length || markups.length) {
-        try { await store.saveSnapshot(`Before opening ${file.name} — ${new Date().toLocaleString()}`, buildPayload()); }
-        catch { /* best-effort — the open continues; archives are additive to PDFs */ }
-      }
-      for (const f of pdfs) {
-        setCommitMsg(`Restoring ${f.name}…`);
-        await store.addPdf(f);        // same-name different-bytes archives a revision (CO-1), never a silent overwrite
-        evictDoc(f.name);             // stale docs must re-read the restored bytes
-      }
-      forgetPages(pdfs.map((f) => f.name));
-      setDocEpoch((e) => e + 1);
-      await refreshSheets();
-      restoreSavedPayload(takeoff);
-      const n = Array.isArray(takeoff.shapes) ? takeoff.shapes.length : 0;
-      setCommitMsg(`Opened ${file.name} — ${pdfs.length} PDF${pdfs.length === 1 ? "" : "s"}, ${n} takeoff${n === 1 ? "" : "s"}.${shapes.length || conditions.length ? " Your previous takeoff was snapshotted — Revisions restores it." : ""}`);
-    } catch (e) {
-      setCommitMsg(String(e?.message || "").startsWith("Couldn't") ? e.message : `Couldn't open project: ${e?.message || e}`);
-    }
-  };
-
-  // ── estimator profile (#299) — export / import / reset the working
-  // environment (condition templates, materials, stamps, report setup),
-  // never project data. Import and reset both DOWNLOAD the current profile
-  // first: the receipt is the rollback (Import profile restores it), so
-  // neither needs a second confirmation step.
-  const refreshLibraries = async () => {
-    const tpl = await store.loadTemplates().catch(() => []);
-    templatesRef.current = tpl; setTemplates(tpl);
-    setMatLib(await store.loadMaterialLibrary().catch(() => []));
-    const lib = await store.loadStampLibrary().catch(() => ({ stamps: [], sets: [] }));
-    stampLibRef.current = lib; setStampLib(lib);
-  };
-  const profileSummary = (p) =>
-    `${(p.condition_templates || []).length} condition template${(p.condition_templates || []).length === 1 ? "" : "s"}, ${(p.material_library || []).length} material${(p.material_library || []).length === 1 ? "" : "s"}, ${(p.stamp_library?.stamps || []).length} stamp${(p.stamp_library?.stamps || []).length === 1 ? "" : "s"}, ${(p.report_templates || []).length} report template${(p.report_templates || []).length === 1 ? "" : "s"}`;
-  const exportProfileFile = async () => {
-    try {
-      const p = await buildProfile();
-      downloadText("opentakeoff-profile.otprofile", JSON.stringify(p, null, 2), "application/json");
-      setCommitMsg(`Exported opentakeoff-profile.otprofile — ${profileSummary(p)}. Import it on another machine to carry your setup over.`);
-    } catch (e) { setCommitMsg(`Couldn't export profile: ${e?.message || e}`); }
-  };
-  const backupProfileFile = async () => {
-    const backup = await buildProfile();
-    downloadText("opentakeoff-profile-backup.otprofile", JSON.stringify(backup, null, 2), "application/json");
-  };
-  const importProfileFile = async (file) => {
-    if (!file) return;
-    try {
-      const p = parseProfile(await file.text());
-      await backupProfileFile();
-      const n = await applyProfile(p);
-      await refreshLibraries();
-      setCommitMsg(`Applied profile${p.name ? ` "${p.name}"` : ""} — ${n.templates} condition template${n.templates === 1 ? "" : "s"}, ${n.materials} material${n.materials === 1 ? "" : "s"}, ${n.stamps} stamp${n.stamps === 1 ? "" : "s"}, ${n.reportTemplates} report template${n.reportTemplates === 1 ? "" : "s"}. Your previous setup downloaded as opentakeoff-profile-backup.otprofile.`);
-    } catch (e) {
-      setCommitMsg(String(e?.message || "").startsWith("Couldn't") ? e.message : `Couldn't apply profile: ${e?.message || e}`);
-    }
-  };
-  const resetProfile = async () => {
-    try {
-      await backupProfileFile();
-      await resetProfileDefaults();
-      await refreshLibraries();
-      setCommitMsg("Profile reset to OpenTakeoff defaults — your previous setup downloaded as opentakeoff-profile-backup.otprofile (Import profile restores it). Project takeoffs are untouched.");
-    } catch (e) { setCommitMsg(`Couldn't reset profile: ${e?.message || e}`); }
   };
 
   // markups MUST be in the deps (a cloud/callout/text or an RFI link is real work);
@@ -2489,12 +1992,7 @@ export default function TakeoffCanvas() {
       // can drain and re-hydrate. Closes the last pre-scheduled-save loss window.
       if (remotePendingRender.current) { setSaveState("idle"); return; }
       store.saveAnnotations(payload).then(() => setSaveState("saved")).catch((e) => {
-        // surface the failure rather than dropping to a silent "idle" — with inline
-        // image markups a QuotaExceededError is a realistic failure mode, and a
-        // silent one loses the WHOLE payload (shapes, quantities, everything) with
-        // no signal. Stale-tab keeps its sticky lockout copy; anything else (quota,
-        // disk) shows the actionable friendlyStoreError text.
-        setCommitMsg(isStaleTabError(e) ? STALE_TAB_MESSAGE : friendlyStoreError(e));
+        if (isStaleTabError(e)) setCommitMsg(t('status.stale_tab'));
         setSaveState("idle");
       });
     }, 700);
@@ -2570,19 +2068,6 @@ export default function TakeoffCanvas() {
     // computeBusy + hydrate are stable for a given mount (they read only refs / call
     // setters), so capture once; listing them would re-register every render, opening
     // a null window where an arriving reconcile is dropped.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Presence (#317): tell the heartbeat which sheet is open. Ref-mirrored so
-  // the getter registers once (same discipline as the handlers above) yet
-  // always reads the current sheet.
-  const presenceSheetRef = useRef("");
-  presenceSheetRef.current = sheetKey || "";
-  useEffect(() => {
-    const bridge = store.syncBridge;
-    if (!bridge) return;
-    bridge.getSheet = () => presenceSheetRef.current || null;
-    return () => { bridge.getSheet = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -2696,7 +2181,6 @@ export default function TakeoffCanvas() {
     const onWheel = (e) => {
       if (editingRef.current) return;   // freeze pan/zoom while the inline editor is pinned to its anchor
       e.preventDefault();
-      promoteStage();                   // gesture opening: composite the stage for cheap per-frame moves
       gestureUntilRef.current = performance.now() + GESTURE_MS;  // detail view waits for wheel quiet
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1;
       if (e.shiftKey) {
@@ -2724,7 +2208,7 @@ export default function TakeoffCanvas() {
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => { el.removeEventListener("wheel", onWheel); if (raf) cancelAnimationFrame(raf); };
-  }, [applyTf, scheduleSync, zoomAround, promoteStage]);
+  }, [applyTf, scheduleSync, zoomAround]);
 
   // Space = temporary pan (any tool)
   useEffect(() => {
@@ -2753,7 +2237,7 @@ export default function TakeoffCanvas() {
         // agent-proposal accept resumes the key the moment the offer clears
         if (agentOfferFnsRef.current?.pending()) { e.preventDefault(); agentOfferFnsRef.current.confirm(); return; }
         if (tool === "oneclick" && proposal?.regions.length) { e.preventDefault(); createProposal(); return; }
-        const ok = !bowOpen && (((tool === "area" || tool === "deduct") && poly.length >= 3) || (tool === "zone" && poly.length >= 3 && !zoneTraceCross) || ((tool === "linear" || tool === "surface") && poly.length >= 2));
+        const ok = ((tool === "area" || tool === "deduct") && poly.length >= 3) || (tool === "zone" && poly.length >= 3 && !zoneTraceCross) || ((tool === "linear" || tool === "surface" || tool === "curve") && poly.length >= 2);
         if (ok) { e.preventDefault(); finishShape(); return; }
         // ⏎ with agent proposals pending on a visible sheet = accept them all —
         // the agent's analogue of one-click's Create gate. Only fires when no
@@ -2767,42 +2251,7 @@ export default function TakeoffCanvas() {
       if (lower === "f") { toggleFocusMode(); return; }
       if (e.key === "D" && e.shiftKey) { setTool("deduct-rect"); return; }
       // no `p` binding: pan is not a tool — drag open canvas, or Space/middle/right-drag
-      // Q with a bendable trace in flight flips the straight/curve switch
-      // instead of jumping to the Curve Line tool — switching tools mid-trace
-      // would abandon the points already placed, so this binding can only be
-      // an improvement on the one it shadows.
-      if (lower === "q" && CURVABLE.has(tool) && poly.length) { setCurveMode((c) => !c); return; }
-      // Symbol review (#264): while a sweep is under review the keyboard walks
-      // the questions — one keystroke per answer, taking priority over tool
-      // bindings (stopImmediatePropagation keeps the proposal-Enter handler,
-      // registered after this one, from double-acting).
-      if (sweepRef.current) {
-        const sw = sweepRef.current;
-        const hasOpen = sw.questions.some((q) => q.state === "open");
-        if ((e.key === "Enter" || lower === "x") && hasOpen) {
-          e.preventDefault(); e.stopImmediatePropagation();
-          const verdict = e.key === "Enter" ? "accepted" : "dismissed";
-          setSweep((s) => {
-            const qs = s.questions.map((q, i) => (i === s.qIndex && q.state === "open" ? { ...q, state: verdict } : q));
-            let j = s.qIndex;
-            for (let i = 1; i <= qs.length; i++) { const k = (s.qIndex + i) % qs.length; if (qs[k].state === "open") { j = k; break; } }
-            return { ...s, questions: qs, qIndex: j };
-          });
-          return;
-        }
-        if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && hasOpen) {
-          e.preventDefault(); e.stopImmediatePropagation();
-          const dir = e.key === "ArrowRight" ? 1 : -1;
-          setSweep((s) => {
-            let j = s.qIndex;
-            for (let i = 1; i <= s.questions.length; i++) { const k = (s.qIndex + dir * i + s.questions.length * i) % s.questions.length; if (s.questions[k].state === "open") { j = k; break; } }
-            return { ...s, qIndex: j };
-          });
-          return;
-        }
-        if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); setSweep(null); return; }
-      }
-      const map = { v: "select", a: "area", r: "rect", l: "linear", s: "surface", c: "count", d: "deduct", o: "oneclick", k: "check", h: "highlighter", n: "dimension", y: "symbol" };
+      const map = { v: "select", a: "area", r: "rect", l: "linear", q: "curve", s: "surface", c: "count", d: "deduct", o: "oneclick", k: "check", h: "highlighter" };
       const t = map[lower];
       if (t) setTool(t);
     };
@@ -2848,7 +2297,7 @@ export default function TakeoffCanvas() {
       if (viewRef.current === "gallery") return;
       if (e.key === "Backspace" || e.key === "Delete") {
         e.preventDefault();
-        if (poly.length) { dropLastPoint(); }
+        if (poly.length) { setPoly((q) => q.slice(0, -1)); }
         else if (ocSel && proposal) { deleteSelectedOcVertex(); }
         else if (proposal?.regions.length) { setProposal((pr) => { const rg = pr.regions.slice(0, -1); return rg.length ? { ...pr, regions: rg } : null; }); }
         else if (selVert != null && selectedId) { deleteSelectedShapeVertex(); }
@@ -2862,14 +2311,14 @@ export default function TakeoffCanvas() {
         // tool's points, on-screen or hidden
         else if (tool === "calibrate") { setCalib((c) => c.slice(0, -1)); }
         else if (tool === "check") { setCheck((c) => c.slice(0, -1)); }
-      } else if (e.key === "Escape") { if (agentOfferFnsRef.current?.pending()) { agentOfferFnsRef.current.dismiss(); } else if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { clearPoly(); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); setSymbolAnchor(null); setImageAnchor(null); setPlacingImageId(null); placeGrabRef.current = null; placeCrossSheetRef.current = null; setAlignPt(null); resetZone(); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; } }
+      } else if (e.key === "Escape") { if (agentOfferFnsRef.current?.pending()) { agentOfferFnsRef.current.dismiss(); } else if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { setPoly([]); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); setAlignPt(null); resetZone(); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; } }
       // ⌘Z: the drawing context wins — mid-trace it still pops the last placed
       // point (with or without ⇧, matching the old behavior byte-for-byte);
       // only with no trace in progress does the command stack engage
       // (⌘Z = undo, ⇧⌘Z = redo).
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
-        if (poly.length) dropLastPoint();
+        if (poly.length) setPoly((q) => q.slice(0, -1));
         else if (e.shiftKey) redoShapeCommand();
         else undoShapeCommand();
       }
@@ -2906,7 +2355,7 @@ export default function TakeoffCanvas() {
   // e.g. area → linear must not discard a legitimate in-progress trace.
   useEffect(() => {
     if (tool !== "zone") resetZone();
-    if (prevToolRef.current === "zone" && tool !== "zone") clearPoly();
+    if (prevToolRef.current === "zone" && tool !== "zone") setPoly([]);
     prevToolRef.current = tool;
   }, [tool]);
 
@@ -2920,50 +2369,12 @@ export default function TakeoffCanvas() {
     // (There is no Pan tool — Select's open-canvas drag and the deferred-click
     // hold-drag below cover the rest of the modeless-pan doctrine.)
     if (e.button === 1 || e.button === 2 || spaceRef.current) {
-      promoteStage();
       panRef.current = { sx: e.clientX, sy: e.clientY, ox: tfRef.current.x, oy: tfRef.current.y };
       e.currentTarget.setPointerCapture(e.pointerId);
       if (containerRef.current) containerRef.current.style.cursor = "grabbing";
       return;
     }
     if (e.button !== 0) return;   // only left-click places points
-    // an image (re)placement is armed → this left-click drops it where it now sits
-    // (onPointerMove has been centre-following the cursor). One click ends the mode.
-    if (placingImageId) {
-      const id = placingImageId;
-      // Zero-movement cross-sheet place guard: onPointerMove's first-contact
-      // grab (:3755) is the ONLY place that rewrites `sheet_id`/`at` onto the
-      // target panel, and it only runs on a pointermove. Click Place, then
-      // click the canvas again with NO intervening pointermove (cursor never
-      // left this spot) and that grab never fires — placeGrabRef.current is
-      // still null, so the image is still sitting on its ORIGIN sheet even
-      // though the message below is about to say "Image placed." Mirror the
-      // exact first-contact math here, keyed off THIS click's own position
-      // (which — since nothing moved — is the same position onPointerMove
-      // would have used), so a click-without-move still lands the image on
-      // the sheet under the cursor. Same-sheet reposition never sets
-      // placeCrossSheetRef, so this block is a no-op for that path.
-      if (placeCrossSheetRef.current === id) {
-        const q = toImage(e.clientX, e.clientY);
-        const tp = panelAt(q[0]);
-        if (tp?.img?.w && (!placeGrabRef.current || placeGrabRef.current.key !== tp.key)) {
-          const cx = (q[0] - tp.xOffset) / tp.img.w, cy = q[1] / tp.img.h;
-          setMarkups((ms) => ms.map((m) => (m.id === id ? { ...m, at: [cx, cy], sheet_id: tp.key } : m)));
-        }
-      }
-      setPlacingImageId(null);
-      placeGrabRef.current = null;
-      placeCrossSheetRef.current = null;
-      // Commit boundary for the place gesture (onPointerMove's centre-follow at
-      // :3676 is the live PREVIEW and must stay unstamped): stamp updated_at here
-      // so a cross-sheet place isn't silently reverted by a 3-way sync tie
-      // (merge tiebreak is updated_at || created_at; equal created_at + no
-      // updated_at ⇒ ties → remote wins ⇒ the move vanishes).
-      updateMarkup(id, { updated_at: nowIso() });
-      selectMarkup(id);
-      setCommitMsg("Image placed.");
-      return;
-    }
     // snapRef/angleRef are drawing-tool aids maintained by moveCrosshair, which
     // bails for the Select tool (:1577) — so in Select they'd be STALE. Select
     // does its own endpoint snap (ocSnap) on drop, so it always uses the raw
@@ -3007,38 +2418,19 @@ export default function TakeoffCanvas() {
     if (scaleGuide) setScaleGuide(null);
     if (tool === "calibrate") setCalib((c) => (c.length >= 2 ? [p] : [...c, p]));
     else if (tool === "check") setCheck((c) => (c.length >= 2 ? [p] : [...c, p]));
-    else if (tool === "oneclick") oneClickAt(p, !!(ev && ev.altKey), undefined, !!(ev && ev.shiftKey));
-    // ⌥-click on an area/deduct trace drops a CURVE point (#284): the boundary
-    // bends through it instead of turning a corner at it. Every other
-    // point-placing tool takes the click as it always has.
-    else if (tool === "area" || tool === "deduct" || tool === "linear" || tool === "surface" || tool === "zone") {
-      // Curve alternates bow → end → bow → end. A bow needs a vertex behind it
-      // to arc away from, so the first point of a trace is always a corner.
-      const wantCurve = CURVABLE.has(tool) && (curveMode !== !!(ev && ev.altKey));
-      addPoint(p, wantCurve && poly.length > 0 && !bowOpen);
-    }
+    else if (tool === "oneclick") oneClickAt(p, !!(ev && ev.altKey));
+    else if (tool === "area" || tool === "deduct" || tool === "linear" || tool === "curve" || tool === "surface" || tool === "zone") setPoly((q) => [...q, p]);
     else if (tool === "count") commitCount(p);
     else if (tool === "rect" || tool === "deduct-rect") {
-      if (poly.length === 0) addPoint(p, false);
-      else { const a = poly[0]; commitPoly([[a[0], a[1]], [p[0], a[1]], [p[0], p[1]], [a[0], p[1]]], tool === "deduct-rect"); clearPoly(); }
+      if (poly.length === 0) setPoly([p]);
+      else { const a = poly[0]; commitPoly([[a[0], a[1]], [p[0], a[1]], [p[0], p[1]], [a[0], p[1]]], tool === "deduct-rect"); setPoly([]); }
     }
     else if (tool === "schedule") {
       // two-click marquee, isolated state: first click drops the anchor, second reads the box
       if (!scheduleAnchor) setScheduleAnchor(p);
       else { importScheduleFromRect(scheduleAnchor, p); setScheduleAnchor(null); setTool("select"); }
     }
-    else if (tool === "symbol") {
-      // the Symbol tool's marquee (#264): tight box around ONE instance
-      if (!symbolAnchor) setSymbolAnchor(p);
-      else { runSymbolSweep(symbolAnchor, p); setSymbolAnchor(null); }
-    }
-    else if (tool === "image") {
-      // two-click marquee, isolated state like schedule/symbol — routes ONLY here,
-      // never through placeMarkup (which has no image case and would no-op)
-      if (!imageAnchor) setImageAnchor(p);
-      else { captureRegionMarkup(imageAnchor, p); setImageAnchor(null); setTool("select"); }
-    }
-    else if (tool === "cloud" || tool === "callout" || tool === "text" || tool === "highlight" || tool === "dimension") placeMarkup(p);
+    else if (tool === "cloud" || tool === "callout" || tool === "text" || tool === "highlight") placeMarkup(p);
     else if (tool === "stamp") placeStamp(p);
     else if (tool === "approve") placeApproval(p);
     else if (tool === "stitch-align") stitchAlignAt(p);
@@ -3052,10 +2444,10 @@ export default function TakeoffCanvas() {
     const st = stitchById[groupKeys[0]];
     if (!st || panels.length !== 1) { setTool("select"); return; }
     const n = shapes.filter((s) => s.sheet_id === st.id).length;
-    if (n) { setCommitMsg(`Align before tracing — ${n} takeoff${n === 1 ? "" : "s"} already live on this stitch. Delete them (or a fresh stitch) to re-align.`); setTool("select"); return; }
+    if (n) { setCommitMsg(t('status.stitch_delete_blocked', { count: n })); setTool("select"); return; }
     if (!alignPt) {
       setAlignPt(p);
-      setCommitMsg("Match point set — now click the SAME point where the other sheet draws it.");
+      setCommitMsg(t('status.align_point_set'));
       return;
     }
     const dims = panelSourceDimsRef.current.get(st.id) || {};
@@ -3064,7 +2456,7 @@ export default function TakeoffCanvas() {
     if (res.error) { setCommitMsg(res.error); return; }
     setStitches((list) => list.map((s) => (s.id === st.id ? { ...s, members: res.members } : s)));
     setTool("select");
-    setCommitMsg("Match line joined — the sheets now read as one surface. Trace straight across it.");
+    setCommitMsg(t('status.align_joined'));
   }
   // Markups carry no verts_norm (cloud rect / callout at+target / text at), so
   // hitShape can't test them — this is a purpose-built bbox/point test in the
@@ -3136,14 +2528,6 @@ export default function TakeoffCanvas() {
       // a vector symbol — hit its placed bbox (same uniform scale off the LONGER
       // viewBox extent the renderer uses, so hit size == render size).
       const { bw, bh } = svgPlacedBox(m.vb, m.w, W);
-      const cx = m.at[0] * W + ox, cy = m.at[1] * H;
-      return X >= cx - bw / 2 - thr && X <= cx + bw / 2 + thr && Y >= cy - bh / 2 - thr && Y <= cy + bh / 2 + thr;
-    }
-    if (m.type === "image" && Array.isArray(m.at) && Number(m.w) > 0 && pickEmbedFormat(m.src)) {
-      // a raster image — hit its placed box (width-anchored, same box the renderer
-      // draws). Gate on a PNG/JPEG DATA url (pickEmbedFormat) so an imported record
-      // with a non-data src (e.g. http(s)://) is neither rendered nor selectable.
-      const { bw, bh } = imagePlacedBox(m.w, m.aspect, W);
       const cx = m.at[0] * W + ox, cy = m.at[1] * H;
       return X >= cx - bw / 2 - thr && X <= cx + bw / 2 + thr && Y >= cy - bh / 2 - thr && Y <= cy + bh / 2 + thr;
     }
@@ -3223,28 +2607,6 @@ export default function TakeoffCanvas() {
         e.currentTarget.setPointerCapture(e.pointerId); return;
       }
     }
-    // 1b. a selected image's bottom-right RESIZE handle wins next (screen-constant,
-    //     /z). Gated on the resolved markup being type "image" so this never fires
-    //     on another selected markup. Fixed top-left; onPointerMove drives the live
-    //     resize via resizeImageFromCorner.
-    if (showMarkups && selectedMarkupId) {
-      const selMk = markups.find((mm) => mm.id === selectedMarkupId);
-      // require the image to be on a VISIBLE panel — panelByKey falls back to
-      // panels[0] for an off-group sheet, which would arm the resize against the
-      // wrong panel's dims and corrupt an off-view image's w/at.
-      if (selMk && selMk.type === "image" && selMk.at && panelKeySet.has(selMk.sheet_id)) {
-        const sp = panelByKey(selMk.sheet_id);
-        if (sp && sp.img.w) {
-          const { bw, bh } = imagePlacedBox(selMk.w, selMk.aspect, sp.img.w);
-          const brx = selMk.at[0] * sp.img.w + sp.xOffset + bw / 2, bry = selMk.at[1] * sp.img.h + bh / 2;
-          if (Math.hypot(p[0] - brx, p[1] - bry) < thr * 1.5) {
-            const tlx = selMk.at[0] * sp.img.w - bw / 2, tly = selMk.at[1] * sp.img.h - bh / 2;
-            dragRef.current = { kind: "markupResize", markupId: selMk.id, tl: { x: tlx, y: tly }, aspect: selMk.aspect, ox: sp.xOffset, imgW: sp.img.w, imgH: sp.img.h, moved: false };
-            e.currentTarget.setPointerCapture(e.pointerId); return;
-          }
-        }
-      }
-    }
     // 2. markups render ON TOP of shapes (:2137 > :2093), so a markup hit wins over a
     //    plain shape click — but NOT over the selected shape's handles above.
     //    When the markup layer is hidden (showMarkups false), skip the search
@@ -3254,12 +2616,8 @@ export default function TakeoffCanvas() {
       // a NON-highlight markup hit beats a highlight at the same point (test
       // highlights last), so a linked cloud/callout under a highlight stays
       // clickable; a highlight still wins over a plain shape (it shields it).
-      // three tiers: plain markups first, then highlight, then image LAST — so a
-      // large image never shadows another markup from selection (an image shields
-      // shapes beneath it like a highlight box does; move it to reach what's under).
-      const mHit = rev.find((m) => m.type !== "highlight" && m.type !== "image" && hitMarkup(m, p, thr))
-                || rev.find((m) => m.type === "highlight" && hitMarkup(m, p, thr))
-                || rev.find((m) => m.type === "image" && hitMarkup(m, p, thr));
+      const mHit = rev.find((m) => m.type !== "highlight" && hitMarkup(m, p, thr))
+                || rev.find((m) => m.type === "highlight" && hitMarkup(m, p, thr));
       if (mHit) {
         selectMarkup(mHit.id);
         // arm a move drag — snapshot the markup's current normalized coords (all four
@@ -3294,7 +2652,6 @@ export default function TakeoffCanvas() {
     // desktop takeoff tools; no need to reach for the Pan tool). The plain
     // click (no drag) already cleared the selection above, so a stationary
     // press costs nothing.
-    promoteStage();
     panRef.current = { sx: e.clientX, sy: e.clientY, ox: tfRef.current.x, oy: tfRef.current.y };
     e.currentTarget.setPointerCapture(e.pointerId);
     if (containerRef.current) containerRef.current.style.cursor = "grabbing";
@@ -3308,7 +2665,7 @@ export default function TakeoffCanvas() {
     const closed = sel.measure_role !== "linear" && sel.measure_role !== "surface_area";
     const min = closed ? 3 : 2;
     if (sel.verts_norm.length <= min) {
-      setCommitMsg(closed ? "A shape needs at least 3 points — ⌫ again deletes the whole shape." : "A run needs at least 2 points — ⌫ again deletes the whole run.");
+      setCommitMsg(closed ? t('status.shape_min_points') : t('status.linear_min_points'));
       setSelVert(null); return;
     }
     // dropping a corner is as real an edit as dragging one — the vertexDelete
@@ -3333,58 +2690,9 @@ export default function TakeoffCanvas() {
   function recomputeShape(s, uppOverride) {
     return computeShapeMetrics(s, panelByKey(s.sheet_id).img, uppOverride ?? (uppFor(s.sheet_id) || 0), condById[s.condition_id]);
   }
-  // The panel chip chromes' children — built imperatively by moveCrosshair on a
-  // __mode change (the chip element stays CHILDLESS in JSX for every chrome;
-  // React never renders content into it). textContent-only writes throughout:
-  // condition names are user data, so no innerHTML anywhere on this path.
-  function buildChipPanel(chip, chrome) {
-    chip.textContent = "";
-    const vals = {};
-    const row = (label, key, unit) => {
-      const r = document.createElement("div");
-      r.style.display = "flex"; r.style.justifyContent = "space-between"; r.style.gap = "12px";
-      const l = document.createElement("span");
-      l.textContent = label;
-      l.style.opacity = "0.62"; l.style.fontWeight = "500";
-      const v = document.createElement("span");
-      v.style.fontWeight = "700";
-      const val = document.createElement("span");
-      v.appendChild(val);
-      if (unit) {
-        // muted-gray unit span — reads as annotation beside the value, not value
-        const u = document.createElement("span");
-        u.textContent = " " + unit;
-        u.style.color = "#8a8577"; u.style.fontWeight = "500";
-        v.appendChild(u);
-      }
-      r.appendChild(l); r.appendChild(v);
-      chip.appendChild(r);
-      vals[key] = val;
-    };
-    if (chrome === "panelDark") {
-      row("This segment", "seg");
-      row("Total linear", "lin");
-      row("Total area", "area");
-    } else {
-      const head = document.createElement("div");
-      head.style.fontWeight = "700"; head.style.marginBottom = "1px";
-      chip.appendChild(head);
-      vals.head = head;
-      const sub = document.createElement("div");
-      sub.textContent = "This section only:";
-      sub.style.opacity = "0.62"; sub.style.fontSize = "9.5px"; sub.style.marginBottom = "1px";
-      chip.appendChild(sub);
-      row("Area", "area", areaUnit(units));
-      row("Linear", "lin", lenUnit(units));
-      row("Segments", "segs");
-      row("Points", "pts");
-    }
-    chip.__vals = vals;
-  }
   function moveCrosshair(e) {
     if (editingRef.current) return;   // inline editor open — no aim crosshair (ref check, never per-mousemove state)
     if (tool === "select" || status !== "ready" || !containerRef.current) return;
-    const ds = dsRef.current;   // resolved drawing style — refs only in this hot path (render-body assigned, never stale)
     // snap-to-vector: nearest PDF endpoint within threshold becomes the active
     // point — looked up in the hovered panel's grid, in that panel's local frame
     let cur = toImage(e.clientX, e.clientY);
@@ -3403,7 +2711,7 @@ export default function TakeoffCanvas() {
     }
 
     // rubber-band preview: last point → cur (area/deduct/zone); rect preview: corner → cur
-    const drawing = (tool === "area" || tool === "deduct" || tool === "linear" || tool === "surface" || tool === "zone");
+    const drawing = (tool === "area" || tool === "deduct" || tool === "linear" || tool === "curve" || tool === "surface" || tool === "zone");
 
     // polar tracking: endpoint snap wins (osnap beats polar); otherwise pull the
     // rubber band onto the 45° family. ⇧ forces the lock at any angle. The click
@@ -3415,7 +2723,7 @@ export default function TakeoffCanvas() {
       : (tool === "check" && check.length === 1 ? check[0] : null));
     angleRef.current = null;
     let lock = null;
-    if (angleOn && anchor && !bowOpen && !snapRef.current && !panRef.current) {
+    if (angleOn && anchor && !snapRef.current && !panRef.current) {
       const sc = tfRef.current.scale;
       if (Math.hypot(cur[0] - anchor[0], cur[1] - anchor[1]) >= 12 / sc)
         lock = angleSnap(anchor, cur, e.shiftKey);
@@ -3436,8 +2744,10 @@ export default function TakeoffCanvas() {
       el.style[prop] = `${val}px`; el.style.display = "block";
       if (el.__lock !== lockState) {
         el.__lock = lockState;
-        el.style.background = lock ? ds._hairlineLock.background : ds._hairline;
-        el.style.boxShadow = lock ? ds._hairlineLock.boxShadow : ds._hairlineLock.boxShadowBase;
+        el.style.background = lock ? "rgba(31,63,199,.85)" : "rgba(31,63,199,.55)";
+        el.style.boxShadow = lock
+          ? "0 0 0 0.5px rgba(255,255,255,.6), 0 0 6px rgba(31,63,199,.5)"
+          : "0 0 0 0.5px rgba(255,255,255,.55), 0 0 4px rgba(31,63,199,.3)";
       }
     }
     if (aimMarkRef.current) {
@@ -3448,32 +2758,19 @@ export default function TakeoffCanvas() {
         const star = el.firstChild;
         if (star) {
           star.style.transform = lock ? "scale(1.3)" : "scale(1)";
-          star.style.filter = lock ? `drop-shadow(0 0 5px ${ds._aimGlow}) drop-shadow(0 1px 2px rgba(14,26,46,.3))` : "drop-shadow(0 1px 2px rgba(14,26,46,.3))";
+          star.style.filter = lock ? "drop-shadow(0 0 5px rgba(31,63,199,.6)) drop-shadow(0 1px 2px rgba(14,26,46,.3))" : "drop-shadow(0 1px 2px rgba(14,26,46,.3))";
         }
       }
       el.style.display = "block";
     }
     if (aimChipRef.current) {
       const chip = aimChipRef.current;
-      const chipT = ds.chip;
-      // panel chromes (panelDark/panelCream) replace the single-row live-segment
-      // text with a small multi-row readout — ONLY during a poly draft with ≥1
-      // placed point on a scaled sheet; every other text (check length, rect
-      // W×H, bare angle, "snap") degrades to a single row in the same palette.
-      const panelChrome = chipT.chrome === "panelDark" || chipT.chrome === "panelCream";
-      const panelActive = panelChrome && drawing && anchor && liveUpp;
       let txt = "", over = false;
       if (tool === "check" && check.length === 1) {
         // live length to the cursor while picking the second end of the dimension.
         // No CARPET_ROLL_FT amber here — a dimension string is not a seam plan.
         const u = uppFor(panelAt(check[0][0]).key);
         if (u) txt = fmtCheckLen(Math.hypot(cur[0] - check[0][0], cur[1] - check[0][1]) * u, units) + (lock ? ` · ${lock.deg}°` : "");
-      } else if (tool === "dimension" && markupDraft) {
-        // live length while picking the dimension's second end — same readout
-        // as check, and like check no roll-width amber: a dimension string is
-        // a label, not a seam plan
-        const u = uppFor(panelAt(markupDraft[0]).key);
-        if (u) txt = fmtCheckLen(Math.hypot(cur[0] - markupDraft[0], cur[1] - markupDraft[1]) * u, units);
       } else if ((tool === "rect" || tool === "deduct-rect") && poly.length === 1 && liveUpp) {
         // rectangle: live W × H + area (SF and SY imperial — carpet is bought in SY)
         const a = poly[0];
@@ -3481,158 +2778,41 @@ export default function TakeoffCanvas() {
         const sf = w * h;
         txt = `${fmtCheckLen(w, units)} × ${fmtCheckLen(h, units)} · ${num(areaVal(sf, units))} ${areaUnit(units)}${units === "metric" ? "" : ` · ${num(sf / 9)} SY`}`;
         over = w >= CARPET_ROLL_FT - 0.02 || h >= CARPET_ROLL_FT - 0.02;
-      } else if (drawing && anchor && liveUpp && !panelActive) {
-        // line/polyline: live segment length, ALWAYS (not just under the 45° lock).
-        // With a bow open the segment IS the arc, so measure along it — reading
-        // the chord here would price a curved wall short the whole time you aim.
-        const len = bowOpen
-          ? arcLength(poly[poly.length - 2], anchor, cur) * liveUpp
-          : Math.hypot(cur[0] - anchor[0], cur[1] - anchor[1]) * liveUpp;
+      } else if (drawing && anchor && liveUpp) {
+        // line/polyline: live segment length, ALWAYS (not just under the 45° lock)
+        const len = Math.hypot(cur[0] - anchor[0], cur[1] - anchor[1]) * liveUpp;
         txt = lock ? `${lock.deg}° · ${fmtCheckLen(len, units)}` : fmtCheckLen(len, units);
         over = len >= CARPET_ROLL_FT - 0.02;
-      } else if (!panelActive && lock) {
+      } else if (lock) {
         txt = `${lock.deg}°`;
-      } else if (!panelActive && snapRef.current) txt = "snap";
-      if (panelActive) {
-        // The rebuild dirty-mark encodes MODE, not just chrome: the same chrome
-        // alternates panel (mid-draft) and single-row (check length, rect W×H,
-        // bare angle, "snap"), and a chrome-only key would leave the mover
-        // updating value nodes a textContent write already wiped, or chip.__t
-        // skipping a rewrite over stale panel children. (units joins the key so
-        // a ft/m flip rebuilds the panel's baked unit spans.)
-        const mode = chipT.chrome + ":panel:" + units;
-        if (chip.__mode !== mode) {
-          chip.__mode = mode;
-          delete chip.__t;   // every panel build clears __t — the next row-mode write must never skip
-          buildChipPanel(chip, chipT.chrome);
-        }
-        // totals = render-body placed sums (draftStatsRef) + O(1) cursor terms.
-        // With a bow open the live leg is the arc, so measure segLen along it.
-        const st = draftStatsRef.current;
-        const segPx = Math.hypot(cur[0] - anchor[0], cur[1] - anchor[1]);
-        const segLen = (bowOpen ? arcLength(poly[poly.length - 2], anchor, cur) : segPx) * liveUpp;
-        const totLen = (st.len + segPx) * liveUpp;
-        const p0 = poly[0], pn = poly[poly.length - 1];
-        const crossSum = st.cross + (pn[0] * cur[1] - cur[0] * pn[1]) + (cur[0] * p0[1] - p0[0] * cur[1]);
-        const areaSf = (Math.abs(crossSum) / 2) * liveUpp * liveUpp;
-        const v = chip.__vals;
-        // a shoelace area is meaningless for an OPEN run — the panel shows it
-        // only on ring tools (linear/surface drafts read "—" there)
-        const ringDraft = tool === "area" || tool === "deduct" || tool === "zone";
-        if (chipT.chrome === "panelDark") {
-          v.seg.textContent = lock ? `${lock.deg}° · ${fmtCheckLen(segLen, units)}` : fmtCheckLen(segLen, units);
-          v.lin.textContent = fmtCheckLen(totLen, units);
-          v.area.textContent = ringDraft ? `${num(areaVal(areaSf, units))} ${areaUnit(units)}` : "—";
-        } else {
-          v.head.textContent = aCond?.finish_tag || "No condition";
-          v.area.textContent = ringDraft ? num(areaVal(areaSf, units)) : "—";
-          v.lin.textContent = num(lenVal(totLen, units));
-          // chain counts INCLUDING the live leg: placed edges + the rubber =
-          // poly.length segments, placed vertices + the cursor = poly.length+1
-          v.segs.textContent = String(poly.length);
-          v.pts.textContent = String(poly.length + 1);
-        }
-        over = segLen >= CARPET_ROLL_FT - 0.02;
-      } else if (txt) {
-        const mode = chipT.chrome + ":row";
-        // a row-mode write goes through textContent, which wipes any panel
-        // children left by the previous mode
-        if (chip.__mode !== mode) { chip.__mode = mode; delete chip.__t; chip.__vals = null; }
+      } else if (snapRef.current) txt = "snap";
+      if (txt) {
         if (chip.__t !== txt) { chip.textContent = txt; chip.__t = txt; }
-      }
-      if (panelActive || txt) {
-        // 12 ft roll-width cue — the chip goes amber when a run reaches roll width
-        // (a seam falls here); the restore re-applies the ds-resolved base strings
-        // (for Drafting Table those are today's exact var(--…) strings)
+        // 12 ft roll-width cue — the chip goes amber when a run reaches roll width (a seam falls here)
         const os = over ? "1" : "";
         if (chip.__over !== os) {
           chip.__over = os;
-          chip.style.background = over ? chipT.warnBg : chipT.bg;
-          chip.style.color = over ? chipT.warnFg : chipT.fg;
-          chip.style.borderColor = over ? chipT.warnBorder : chipT.border;
+          chip.style.background = over ? "var(--c-warning)" : "var(--paper-bright)";
+          chip.style.color = over ? "var(--paper-bright)" : "var(--ink)";
+          chip.style.borderColor = over ? "var(--c-warning)" : "var(--ink)";
         }
-        // anchor "lastVertex" pins the chip to the last placed vertex during a
-        // poly draft (Site Glass); every other text and chrome rides the cursor
-        const anchorLast = chipT.anchor === "lastVertex" && drawing && poly.length > 0;
-        const ax = anchorLast ? poly[poly.length - 1][0] * t.scale + t.x : ex;
-        const ay = anchorLast ? poly[poly.length - 1][1] * t.scale + t.y : ey;
-        chip.style.transform = `translate3d(${ax + 14}px, ${ay + 18}px, 0)`;
+        chip.style.transform = `translate3d(${ex + 14}px, ${ey + 18}px, 0)`;
         chip.style.display = "block";
       } else chip.style.display = "none";
     }
     if (rubberRef.current) {
-      const cas = rubberCasingRef.current;
       if (!panRef.current && drawing && poly.length > 0) {
-        // With a bow open the band runs from the arc's START and goes dashed —
-        // it is the chord under the bow, a reference line, not the boundary.
-        const last = poly[bowOpen ? poly.length - 2 : poly.length - 1];
+        const last = poly[poly.length - 1];
         rubberRef.current.setAttribute("x1", last[0]); rubberRef.current.setAttribute("y1", last[1]);
         rubberRef.current.setAttribute("x2", cur[0]); rubberRef.current.setAttribute("y2", cur[1]);
-        // screen-constant width, like the JSX default and the dash below (÷ scale):
-        // the raw stage-px value this used to write drew a fat, smeared band at
-        // deep zoom. The lock reads thicker within the band (or, where a theme
-        // sets rubber.lockColor, recolored instead of thickened).
-        rubberRef.current.setAttribute("stroke-width", (lock ? ds.rubber.lockWidth : ds.rubber.width) / tfRef.current.scale);
-        if (ds.rubber.lockColor) {
-          // recolor on lock-CHANGE only (__lockColor dirty mark); the restore is
-          // the SAME deduct→invalid→accent expression the JSX declares.
-          if (rubberRef.current.__lockColor !== lockState) {
-            rubberRef.current.__lockColor = lockState;
-            rubberRef.current.setAttribute("stroke", lock ? ds.rubber.lockColor : draftStroke(tool, draftInvalid, ds));
-          }
-        }
-        // With a bow open the band is the dashed chord under the arc; otherwise
-        // the theme's own rubber dash (solid for drafting → "").
-        const dash = bowOpen ? `${5 / tfRef.current.scale} ${4 / tfRef.current.scale}` : (drawDashFor(ds.rubber.dash, tfRef.current.scale) || "");
-        if (rubberRef.current.__dash !== dash) { rubberRef.current.setAttribute("stroke-dasharray", dash); rubberRef.current.__dash = dash; }
+        rubberRef.current.setAttribute("stroke-width", lock ? 3 : 1.5);  // the lock reads in the band itself
         rubberRef.current.style.display = "block";
-        // casing under-stroke mirrors the STRAIGHT rubber band (Site Glass) — its
-        // JSX twin heals wheel-zoom with a stationary pointer, this mover write
-        // heals move cadence. Skipped while a bow is open: the band is then a
-        // dashed reference chord, and a white casing under it reads wrong.
-        if (cas && ds.casing && !bowOpen) {
-          cas.setAttribute("x1", last[0]); cas.setAttribute("y1", last[1]);
-          cas.setAttribute("x2", cur[0]); cas.setAttribute("y2", cur[1]);
-          cas.setAttribute("stroke-width", ds.casing.width / tfRef.current.scale);
-          cas.style.display = "block";
-        } else if (cas) cas.style.display = "none";
-      } else {
-        rubberRef.current.style.display = "none";
-        if (cas) cas.style.display = "none";   // the hide branch mirrors the casing too
-      }
-    }
-    // close preview — the ring tools' ghost cursor→first edge (theme-gated; the
-    // element only mounts when DS.closePreview is set). Width AND dash are
-    // dual-owned exactly like the rubber core: the JSX twin declares both from
-    // the ~11 Hz tf mirror, this mover re-writes both from tfRef per move — so
-    // width and dash always come from the SAME scale read, in both cadences.
-    if (closeRef.current) {
-      if (!panRef.current && ds.closePreview && (tool === "area" || tool === "deduct" || tool === "zone") && poly.length >= 2) {
-        const csc = tfRef.current.scale;
-        closeRef.current.setAttribute("x1", cur[0]); closeRef.current.setAttribute("y1", cur[1]);
-        closeRef.current.setAttribute("x2", poly[0][0]); closeRef.current.setAttribute("y2", poly[0][1]);
-        closeRef.current.setAttribute("stroke-width", ds.closePreview.width / csc);
-        const cd = drawDashFor(ds.closePreview.dash, csc);
-        if (cd) closeRef.current.setAttribute("stroke-dasharray", cd);
-        else closeRef.current.removeAttribute("stroke-dasharray");
-        closeRef.current.style.display = "block";
-      } else closeRef.current.style.display = "none";
-    }
-    // The arc itself — a real SVG conic through (start, bow, cursor), so what
-    // you aim with is what commits rather than a preview that flattens later.
-    if (arcRef.current) {
-      if (!panRef.current && drawing && bowOpen) {
-        arcRef.current.setAttribute("d", arcPathD(poly[poly.length - 2], poly[poly.length - 1], cur));
-        arcRef.current.setAttribute("stroke-width", ds.draft.lineWidth / tfRef.current.scale);
-        arcRef.current.style.display = "block";
-      } else arcRef.current.style.display = "none";
+      } else rubberRef.current.style.display = "none";
     }
     if (rectRef.current) {
       const schedDraw = tool === "schedule" && scheduleAnchor;
-      const symDraw = tool === "symbol" && symbolAnchor;
-      const imgDraw = tool === "image" && imageAnchor;
-      if (!panRef.current && ((tool === "rect" || tool === "deduct-rect") && poly.length === 1 || schedDraw || symDraw || imgDraw)) {
-        const a = imgDraw ? imageAnchor : symDraw ? symbolAnchor : schedDraw ? scheduleAnchor : poly[0];
+      if (!panRef.current && ((tool === "rect" || tool === "deduct-rect") && poly.length === 1 || schedDraw)) {
+        const a = schedDraw ? scheduleAnchor : poly[0];
         rectRef.current.setAttribute("x", Math.min(a[0], cur[0])); rectRef.current.setAttribute("y", Math.min(a[1], cur[1]));
         rectRef.current.setAttribute("width", Math.abs(cur[0] - a[0])); rectRef.current.setAttribute("height", Math.abs(cur[1] - a[1]));
         rectRef.current.style.display = "block";
@@ -3656,17 +2836,9 @@ export default function TakeoffCanvas() {
         highlightRef.current.style.display = "block";
       } else highlightRef.current.style.display = "none";
     }
-    // live dimension-line preview: first end (markupDraft) → cursor
-    if (dimRef.current) {
-      if (!panRef.current && tool === "dimension" && markupDraft) {
-        dimRef.current.setAttribute("x1", markupDraft[0]); dimRef.current.setAttribute("y1", markupDraft[1]);
-        dimRef.current.setAttribute("x2", cur[0]); dimRef.current.setAttribute("y2", cur[1]);
-        dimRef.current.style.display = "block";
-      } else dimRef.current.style.display = "none";
-    }
   }
   function hideCrosshair() {
-    for (const ref of [crossVRef, crossHRef, rubberRef, rubberCasingRef, closeRef, arcRef, rectRef, cloudRef, highlightRef, dimRef, snapMarkRef, aimMarkRef, aimChipRef]) if (ref.current) ref.current.style.display = "none";
+    for (const ref of [crossVRef, crossHRef, rubberRef, rectRef, cloudRef, highlightRef, snapMarkRef, aimMarkRef, aimChipRef]) if (ref.current) ref.current.style.display = "none";
     if (hlRef.current == null && hlPathRef.current) hlPathRef.current.style.display = "none";
     if (hoverRef.current) hoverRef.current.style.display = "none";
     hoverIdRef.current = "";
@@ -3684,9 +2856,7 @@ export default function TakeoffCanvas() {
     const tag = condById[s.condition_id]?.finish_tag || "?";
     const a = s.computed?.area_sf || 0, lf = s.computed?.perimeter_lf || 0;
     if (s.measure_role === "count") return `${tag} · ${num(s.computed?.count || 1, 0)} EA`;
-    // closed shapes carry their ring length too (#283) — a footprint's LF is
-    // as much a takeoff number as its SF, and it's already computed
-    if (s.measure_role === "deduct") return `${tag} · −${fa(a)} deduct${lf > 0 ? ` · ${fl(lf)} perim` : ""}`;
+    if (s.measure_role === "deduct") return `${tag} · −${fa(a)} deduct`;
     if (s.measure_role === "surface_area") {
       // same height semantics as recomputeShape: an override wins outright (even 0).
       // Heights stay feet in both systems — they're ENTERED in feet everywhere.
@@ -3696,7 +2866,7 @@ export default function TakeoffCanvas() {
       return `${tag} · ${fa(a)} wall (${fl(lf)} × ${num(h, 2)}′)`;
     }
     if (s.measure_role === "linear") return `${tag} · ${fl(lf)}${a > 0 ? ` · ${fa(a)} border` : ""}`;
-    return `${tag} · ${faSY(a)}${lf > 0 ? ` · ${fl(lf)} perim` : ""}`;
+    return `${tag} · ${faSY(a)}`;
   }
   // Edge-insert affordance: the nearest point ON an edge of the selected shape,
   // away from its corner diamonds and midpoint grip (those gestures keep
@@ -3763,36 +2933,6 @@ export default function TakeoffCanvas() {
   function onPointerMove(e) {
     lastPtrRef.current = [e.clientX, e.clientY];   // paste targets the sheet under the cursor
     aimSeqRef.current++;                           // deixis freshness tick — see getAimSeed
-    // (re)placing an image markup: it rides the cursor until the next click drops
-    // it. On the pointer's FIRST canvas contact (or when it crosses to a new sheet)
-    // we grab the image WHERE IT SITS — recording the cursor→centre offset so it
-    // doesn't teleport under the cursor — then move it by the cursor delta after.
-    // Live setMarkups mirrors the move-drag; committed on pointerdown below.
-    if (placingImageId) {
-      const q = toImage(e.clientX, e.clientY);
-      const tp = panelAt(q[0]);
-      if (tp?.img?.w) {
-        const cx = (q[0] - tp.xOffset) / tp.img.w, cy = q[1] / tp.img.h;
-        if (!placeGrabRef.current || placeGrabRef.current.key !== tp.key) {
-          // cross-sheet place (flagged at Place-button time in placeCrossSheetRef,
-          // not by re-reading the markup's sheet_id here — it may already have
-          // been rewritten to tp.key by an earlier contact this same gesture):
-          // the image's stored `at` is a position on the OTHER sheet and means
-          // nothing here, so zero the offset and let it center under the cursor
-          // instead of riding a bogus delta.
-          if (placeCrossSheetRef.current === placingImageId) {
-            placeGrabRef.current = { key: tp.key, dx: 0, dy: 0 };
-          } else {
-            const m0 = markups.find((m) => m.id === placingImageId);
-            const ax = m0 && Array.isArray(m0.at) ? m0.at[0] : cx, ay = m0 && Array.isArray(m0.at) ? m0.at[1] : cy;
-            placeGrabRef.current = { key: tp.key, dx: ax - cx, dy: ay - cy };
-          }
-        }
-        const g = placeGrabRef.current;
-        setMarkups((ms) => ms.map((m) => (m.id === placingImageId ? { ...m, at: [cx + g.dx, cy + g.dy], sheet_id: tp.key } : m)));
-      }
-      return;
-    }
     // status-bar coords — direct DOM (instrument readout; no React render per move).
     // Sheet feet when the hovered panel has a scale, raw image px otherwise.
     if (statusCoordRef.current) {
@@ -3822,7 +2962,6 @@ export default function TakeoffCanvas() {
     if (pendingClickRef.current && !panRef.current) {
       const pc = pendingClickRef.current;
       if (Math.hypot(e.clientX - pc.cx, e.clientY - pc.cy) > 5) {
-        promoteStage();
         panRef.current = { sx: pc.cx, sy: pc.cy, ox: tfRef.current.x, oy: tfRef.current.y };
         pendingClickRef.current = null;
         if (containerRef.current) containerRef.current.style.cursor = "grabbing";
@@ -3920,16 +3059,6 @@ export default function TakeoffCanvas() {
           if (o.from) return { ...m, from: [o.from[0] + dx, o.from[1] + dy], to: [o.to[0] + dx, o.to[1] + dy] };
           return { ...m, at: [o.at[0] + dx, o.at[1] + dy] };   // text + bubble
         }));
-      } else if (d.kind === "markupResize") {
-        // drag the BR corner while the top-left stays fixed — resizeImageFromCorner
-        // clamps width first, then derives the new center so the top-left is
-        // invariant even at the clamp rails. Live setMarkups (not commit-on-release);
-        // onPointerUp sees a non-shape kind and just releases capture.
-        const mp = toImage(e.clientX, e.clientY);
-        const pointerLocalX = mp[0] - d.ox;
-        const { w, at } = resizeImageFromCorner({ x: d.tl.x, y: d.tl.y }, { x: pointerLocalX, y: mp[1] }, d.aspect, d.imgW, d.imgH);
-        d.moved = true;   // a real resize tick occurred — onPointerUp's commit checks this
-        setMarkups((ms) => ms.map((m) => (m.id === d.markupId ? { ...m, w, at } : m)));
       }
       return;
     }
@@ -3990,17 +3119,6 @@ export default function TakeoffCanvas() {
           ...(d.lastComputed !== undefined ? { computed: d.lastComputed } : {}),
           prev: d.prev,
         });
-      } else if ((d.kind === "markupMove" || d.kind === "markupResize") && d.moved) {
-        // Same commit-boundary doctrine as the shape geom command above: the
-        // per-frame setMarkups calls in onPointerMove (:3799 body/handle drag,
-        // :3815 resize) are the live PREVIEW and stay unstamped; this is where
-        // the drag actually ends. `d.moved` gates out a plain select-click that
-        // arms the drag but never crosses the move threshold / never resizes —
-        // that's not an edit, so it gets no stamp (mirrors the shape branch's
-        // lastVerts-changed guard above). Without this, a cross-sheet move/resize
-        // that leaves created_at untouched is silently reverted on a 3-way sync
-        // tie (merge tiebreak: updated_at || created_at, ties → remote wins).
-        updateMarkup(d.markupId, { updated_at: nowIso() });
       }
       try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* gone */ }
       return;
@@ -4114,7 +3232,7 @@ export default function TakeoffCanvas() {
     if (!(feet > 0) || calib.length !== 2) return;
     const pa = panelAt(calib[0][0]), pb = panelAt(calib[1][0]);
     if (pa.key !== pb.key) {
-      setCommitMsg("Calibrate on one sheet — those two clicks landed on different sheets.");
+      setCommitMsg(t('status.calibrate_cross_sheet'));
       setCalib([]); setPendingLen(""); return;
     }
     const px = Math.hypot(calib[1][0] - calib[0][0], calib[1][1] - calib[0][1]);
@@ -4198,66 +3316,6 @@ export default function TakeoffCanvas() {
       },
     };
   }
-  // WALL TILE IS NOT A POLYGON. A Surface Area takeoff is an OPEN run traced
-  // in plan × the condition's height, and base/transitions are the same run
-  // without one — but every path the Cut Out tool could take resolved against
-  // `floor_area` shapes only. Drawing one over a wall run therefore did the
-  // worst available thing quietly: it landed an independent deduct overlay
-  // whose area came off the condition's FLOOR total, a bucket a wall run
-  // never fills (lib/totals accumulateRole), so the wall SF never moved and
-  // the floor went negative instead. There was no other way to take a stretch
-  // of wall tile back out.
-  //
-  // Runs now cut: the ring CLIPS the polyline (lib/cutout.cutRunsAcross),
-  // quantities scale with the surviving length — exactly right for both
-  // roles, since wall SF is LF × height and a border's SF is LF × thickness —
-  // and a cut through the middle leaves the far side as its own shape. Every
-  // run the ring touches is cut, not one unambiguous parent: a ring dropped
-  // on a corner where two runs meet cuts both, which is what was drawn. A
-  // CURVED run is left alone — its verts are control points, not the line
-  // itself, so clipping them would move the curve it re-smooths through.
-  // Returns null when the ring crosses no run at all.
-  const RUN_ROLES = new Set(["surface_area", "linear"]);
-  function resolveRunCuts(tp, ringPx) {
-    const upp = uppFor(tp.key);
-    if (!upp) return null;
-    const candidates = shapes
-      .filter((s) => s.sheet_id === tp.key && RUN_ROLES.has(s.measure_role) && !s.curved && (s.verts_norm || []).length >= 2)
-      .map((s) => ({ id: s.id, runPx: s.verts_norm.map(([x, y]) => [x * tp.img.w + tp.xOffset, y * tp.img.h]) }));
-    if (!candidates.length) return null;
-    const hits = cutRunsAcross(candidates, ringPx);
-    if (!hits.length) return null;
-    const norm = (run) => run.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]);
-    const byId = new Map(shapes.map((s) => [s.id, s]));
-    const targets = [], mint = [], deleteIds = [];
-    for (const h of hits) {
-      if (h.kind === "erased") { deleteIds.push(h.id); continue; }
-      const src = byId.get(h.id);
-      // quantities ride the length: SF/LF scale by (survived / original), so a
-      // per-shape height or a condition thickness stays honoured without this
-      // reaching back into the condition at all
-      const was = src?.computed?.perimeter_lf || 0;
-      const qty = (lenPx) => {
-        const lf = +(lenPx * upp).toFixed(2);
-        const k = was > 0 ? lf / was : 0;
-        return { perimeter_lf: lf, area_sf: +((src?.computed?.area_sf || 0) * k).toFixed(2) };
-      };
-      const [head, ...rest] = h.runs;
-      targets.push({ id: h.id, next: { verts_norm: norm(head), computed: qty(openLen(head)) } });
-      for (const piece of rest) {
-        const { id: _id, created_at: _ct, ...carry } = src;
-        mint.push({ ...carry, verts_norm: norm(piece), computed: qty(openLen(piece)) });
-      }
-    }
-    return { targets, mint, deleteIds };
-  }
-  const runCutMsg = (runs) => {
-    const bits = [];
-    if (runs.targets.length) bits.push(`cut ${runs.targets.length} run${runs.targets.length === 1 ? "" : "s"}`);
-    if (runs.mint.length) bits.push(`${runs.mint.length} left on the far side of the cut`);
-    if (runs.deleteIds.length) bits.push(`removed ${runs.deleteIds.length} outright`);
-    return `Cut Out: ${bits.join(" \u00b7 ")}.`;
-  };
   // A trace whose points span two side-by-side panels has no coherent
   // quantity — the inter-panel gap would be measured as real feet, and the
   // shape would bind to one sheet with vertices hanging off its edge. Refuse
@@ -4269,14 +3327,14 @@ export default function TakeoffCanvas() {
     const first = panelAt(points[0][0]);
     return points.some((q) => panelAt(q[0]) !== first);
   }
-  const SPAN_MSG = "That trace crosses onto another sheet — the gap between sheets isn't real distance. To work a floor split at a match line as one surface, stitch the sheets (Sheets → gallery → select both → Stitch).";
-  function commitPoly(points, asDeduct, opts = {}) {
+  const SPAN_MSG = t('status.span_cross_sheet');
+  function commitPoly(points, asDeduct) {
     if (points.length < 3) return;
     if (spansPanels(points)) { setCommitMsg(SPAN_MSG); return; }
     const tp = panelAt(points[0][0]);
     const upp = uppFor(tp.key);
-    if (!upp) { setCommitMsg(`Set the scale for ${labelFor(tp)} first.`); return; }
-    if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
+    if (!upp) { setCommitMsg(t('status.set_scale_first', { sheet: labelFor(tp) })); return; }
+    if (!activeCond) { setCommitMsg(t('status.pick_condition_first')); return; }
     const met = closedMetrics(points);
     // id + created_at are minted by the add command — the ONE creation gate
     const shape = {
@@ -4285,28 +3343,16 @@ export default function TakeoffCanvas() {
       verts_norm: points.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]),
       computed: { area_sf: +(met.area * upp * upp).toFixed(2), perimeter_lf: +(met.perim * upp).toFixed(2) },
       ...(activeLabel ? { label: activeLabel } : {}),
-      origin: { method: "manual", ...(opts.curved ? { curved: true } : {}) },
+      origin: { method: "manual" },
     };
     // #137 — a deduct tries the real-hole path first; anything ambiguous
     // (see resolveCutout) falls straight back to the independent-overlay
     // commit below, unchanged.
     if (asDeduct) {
-      // the run half of the ring rides inside the SAME command, so one drawn
-      // ring stays one ⌘Z whether it crossed an area, some runs, or both
-      const runs = resolveRunCuts(tp, points);
       const cut = resolveCutout(tp, points, shape);
       if (cut) {
-        const res = dispatchShape({ type: "cutout", shape: cut.deductShape, parentId: cut.parentId, parentNext: cut.parentNext, ...(runs ? { runs } : {}) });
-        if (runs) setCommitMsg(runCutMsg(runs));
-        // the deduct is pushed first, any far-side run pieces after it
-        maybeOfferRule(res.shapes[res.shapes.length - 1 - (runs ? runs.mint.length : 0)], res.shapes);
-        return;
-      }
-      if (runs) {
-        // nothing but runs under the ring — there is no area for a deduct
-        // receipt to sit on, so none is minted
-        dispatchShape({ type: "cutout", runs });
-        setCommitMsg(runCutMsg(runs));
+        const res = dispatchShape({ type: "cutout", shape: cut.deductShape, parentId: cut.parentId, parentNext: cut.parentNext });
+        maybeOfferRule(res.shapes[res.shapes.length - 1], res.shapes);
         return;
       }
     }
@@ -4315,13 +3361,13 @@ export default function TakeoffCanvas() {
     // offer to make it a rule (#88). Detection only; nothing applies here.
     if (asDeduct) maybeOfferRule(res.shapes[res.shapes.length - 1], res.shapes);
   }
-  function commitLinear(points, curved = false, baked = false) {
+  function commitLinear(points, curved = false) {
     if (points.length < 2) return;
     if (spansPanels(points)) { setCommitMsg(SPAN_MSG); return; }
     const tp = panelAt(points[0][0]);
     const upp = uppFor(tp.key);
-    if (!upp) { setCommitMsg(`Set the scale for ${labelFor(tp)} first.`); return; }
-    if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
+    if (!upp) { setCommitMsg(t('status.set_scale_first', { sheet: labelFor(tp) })); return; }
+    if (!activeCond) { setCommitMsg(t('status.pick_condition_first')); return; }
     // curved: verts stay the clicked CONTROL points (drag one → re-smooths);
     // length always comes from the flattened spline
     const LF = openLen(curved ? flattenCurve(points) : points) * upp;
@@ -4332,146 +3378,31 @@ export default function TakeoffCanvas() {
       verts_norm: points.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]),
       computed: { perimeter_lf: +LF.toFixed(2), area_sf: tIn > 0 ? +((LF * tIn) / 12).toFixed(2) : 0 },
       ...(activeLabel ? { label: activeLabel } : {}),
-      origin: { method: "manual", ...(baked ? { curved: true } : {}) },
+      origin: { method: "manual" },
     }] });
   }
   // Surface Area — trace the wall run in plan; SF = traced LF × the condition's
   // height. The wall-tile "stack" workflow: set tile height once, trace walls.
-  function commitSurface(points, baked = false) {
+  function commitSurface(points) {
     if (points.length < 2) return;
     if (spansPanels(points)) { setCommitMsg(SPAN_MSG); return; }
     const tp = panelAt(points[0][0]);
     const upp = uppFor(tp.key);
-    if (!upp) { setCommitMsg(`Set the scale for ${labelFor(tp)} first.`); return; }
-    if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
+    if (!upp) { setCommitMsg(t('status.set_scale_first', { sheet: labelFor(tp) })); return; }
+    if (!activeCond) { setCommitMsg(t('status.pick_condition_first')); return; }
     const h = Number(aCond?.height_ft) || 0;
-    if (!(h > 0)) { setCommitMsg(`Set a height for ${aCond?.finish_tag || "this condition"} (H in the condition editor) — Surface Area = traced LF × height.`); return; }
+    if (!(h > 0)) { setCommitMsg(t('status.set_height', { tag: aCond?.finish_tag || t('status.this_condition') })); return; }
     const LF = openLen(points) * upp;
     dispatchShape({ type: "add", shapes: [{
       sheet_id: tp.key, condition_id: activeCond, measure_role: "surface_area", height_ft: h,
       verts_norm: points.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]),
       computed: { area_sf: +(LF * h).toFixed(2), perimeter_lf: +LF.toFixed(2) },
       ...(activeLabel ? { label: activeLabel } : {}),
-      origin: { method: "manual", ...(baked ? { curved: true } : {}) },
+      origin: { method: "manual" },
     }] });
   }
-  // ── the Symbol tool (#264): marquee one instance → the engine finds every
-  // placement; matches light up, near-misses ask, and nothing commits until
-  // the estimator says so. Engine + labels are the same pure libs the MCP
-  // ships (sweepSymbols / labelPlacements) — canvas and agent cannot disagree.
-  async function ensureTextSpans(key) {
-    if (textSpansRef.current.has(key)) return textSpansRef.current.get(key);
-    const spans = [];
-    try {
-      const pg = pageObjsRef.current.get(key);
-      const vt = textTfRef.current.get(key);
-      if (pg && vt) {
-        const tc = await pg.getTextContent();
-        for (const it of tc.items || []) {
-          const str = (it.str || "");
-          if (!str.trim()) continue;
-          const t = pdfjsLib.Util.transform(vt, it.transform);
-          // it.width/height are USER-SPACE units (font size already in them) —
-          // scale by the VIEWPORT alone, never the composed norm (which folds
-          // the font size in a second time and inflates every box ~10×; found
-          // live when a 12 px tag grew a 440 px adjacency and labeled the
-          // wrong diamond). Same math as the MCP's textSpans, deliberately.
-          const vs = Math.hypot(vt[0], vt[1]) || 2;
-          const w = (it.width || 0) * vs;
-          const h = (it.height || 0) * vs || Math.hypot(t[2], t[3]);
-          spans.push({ str, x0: t[4], y0: t[5] - h, x1: t[4] + w, y1: t[5] });
-        }
-      }
-    } catch { /* no text layer — labels simply stay absent */ }
-    textSpansRef.current.set(key, spans);
-    return spans;
-  }
-  async function runSymbolSweep(a, b) {
-    const tp = panelAt(a[0]);
-    const key = tp.key;
-    const rect = [[a[0] - tp.xOffset, a[1]], [b[0] - tp.xOffset, b[1]]];
-    const segs = vectorSegsRef.current.get(key);
-    if (!segs || !segs.length) { setCommitMsg("This sheet has no vector linework (likely a scan) — the Symbol tool reads drawn segments."); return; }
-    const lum = segLumRef.current.get(key);
-    let res;
-    try {
-      res = sweepSymbols(segs, rect, lum ? { lum } : {});
-    } catch (e) {
-      // the engine's refusals (empty marquee, region-sized marquee) are
-      // instructions, exactly as the MCP surfaces them
-      setCommitMsg(String((e && e.message) || e));
-      return;
-    }
-    let labels = [];
-    try {
-      const spans = await ensureTextSpans(key);
-      labels = labelPlacements(
-        [res.seed.center, ...res.matches.map((m) => m.at), ...res.withheld.map((w) => w.at)],
-        spans, segs, lum,
-      );
-    } catch { labels = []; }
-    const L = (i) => labels[i] || null;
-    const nM = res.matches.length;
-    // One physical spot, ONE question. The engine discloses every rotational
-    // reading of a near-miss (an instrument's honesty); the review lane must
-    // not draw them as stacked rings — and must never let two readings of the
-    // same symbol both be accepted into the count. Cluster at a quarter of
-    // the marquee diagonal: readings of one instance sit a few px apart,
-    // while genuinely adjacent instances (abutting tiles) stay separate.
-    const clusterR = Math.max(6, Math.hypot(rect[1][0] - rect[0][0], rect[1][1] - rect[0][1]) / 4);
-    const rawQ = res.withheld.map((w, i) => ({ ...w, label: L(1 + nM + i) }));
-    const questions = [];
-    for (const q of rawQ.sort((a, b) => b.score - a.score)) {
-      const twin = questions.find((k) => Math.hypot(k.at[0] - q.at[0], k.at[1] - q.at[1]) <= clusterR);
-      if (twin) { twin.readings += 1; continue; }
-      questions.push({ ...q, readings: 1, state: "open" });
-    }
-    setSweep({
-      key, img: tp.img,
-      seed: { center: res.seed.center, rect: res.seed.rect, segments: res.seed.segments, label: L(0) },
-      matches: res.matches.map((m, i) => ({ ...m, label: L(1 + i) })),
-      questions,
-      complete: res.complete, dropped: res.candidates.dropped,
-      includeSeed: true, qIndex: 0, excludedTags: [],
-    });
-    setTool("select");
-  }
-  /** The label story in one line: "drawing says P-7 on all 4", or the mix. */
-  function sweepLabelLine(rows, seedTag) {
-    const tags = rows.map((r) => r.label?.label || null);
-    const named = tags.filter(Boolean);
-    if (!named.length) return null;
-    if (seedTag && named.length === rows.length && named.every((t) => t === seedTag)) return `drawing says ${seedTag} on all ${rows.length}`;
-    const byTag = {};
-    for (const t of tags) byTag[t || "no label"] = (byTag[t || "no label"] || 0) + 1;
-    return Object.entries(byTag).map(([t, n]) => `${t} ×${n}`).join(" · ");
-  }
-  function commitSweep() {
-    const sw = sweep;
-    if (!sw) return;
-    if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
-    const rows = [];
-    const off = new Set(sw.excludedTags);
-    const tagKey = (m) => (m.label && m.label.label) || "\u2205";
-    if (sw.includeSeed) rows.push({ at: sw.seed.center, score: 1, rotation: 0, mirrored: false, seedRow: true });
-    for (const m of sw.matches) if (!off.has(tagKey(m))) rows.push(m);
-    for (const q of sw.questions) if (q.state === "accepted") rows.push(q);
-    if (!rows.length) { setCommitMsg("Nothing to commit — no matches and no accepted questions."); return; }
-    // ONE dispatch = one undo step, the whole gesture — same batch discipline
-    // as the MCP's set-wide commit
-    dispatchShape({ type: "add", shapes: rows.map((m) => ({
-      sheet_id: sw.key, condition_id: activeCond, measure_role: "count",
-      verts_norm: [[m.at[0] / sw.img.w, m.at[1] / sw.img.h]], computed: { count: 1 },
-      ...(activeLabel ? { label: activeLabel } : {}),
-      origin: { method: "symbol_sweep", symbol: { score: m.score, rotation: m.rotation, mirrored: m.mirrored, seed: { source: "instance", sheet: sw.key, ...(m.seedRow ? { seed_instance: true } : {}) } } },
-    })) });
-    const skippedN = sw.matches.length - sw.matches.filter((m) => !off.has(tagKey(m))).length;
-    setCommitMsg(`Committed ${rows.length} EA under ${condById[activeCond]?.finish_tag || "condition"}${sw.includeSeed ? " — seed included" : ""}${skippedN ? ` · ${skippedN} excluded by label` : ""} · one undo step (${keyText("⌘Z")}).`);
-    setSweep(null);
-  }
-
   function commitCount(p) {
-    if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
+    if (!activeCond) { setCommitMsg(t('status.pick_condition_first')); return; }
     const tp = panelAt(p[0]);
     dispatchShape({ type: "add", shapes: [{
       sheet_id: tp.key, condition_id: activeCond, measure_role: "count",
@@ -4522,14 +3453,10 @@ export default function TakeoffCanvas() {
       // too. The mask is cached, so the extra getViewport is once per sheet per
       // calibration.
       const pgVp = pageObjsRef.current.get(key)?.getViewport({ scale: 1 });
-      // dim texts were positioned at RENDER_SCALE; segs live at this render —
-      // rescale so text and ink share a frame whatever the Hi-Res toggle says
-      const dtk = rsNow === RENDER_SCALE ? dimTextsRef.current.get(key) : (dimTextsRef.current.get(key) || []).map((t) => ({ ...t, x: t.x * rsNow / RENDER_SCALE, y: t.y * rsNow / RENDER_SCALE, wPx: t.wPx * rsNow / RENDER_SCALE }));
       mo = buildMask(segs, dims.w, dims.h, MASK_MAX_DIM, segMetaRef.current.get(key), pxPerFt,
                      pxPerFt ? pxPerFt * RENDER_SCALE / rsNow : 0,
                      pgVp ? { pageW: pgVp.width, pageH: pgVp.height, renderScale: rsNow, baseScale: RENDER_SCALE } : null,
-                     rolesForSheet(key),
-                     { subpaths: subpathsRef.current.get(key) || null, texts: textMarksRef.current.get(key) || null, dimTexts: dtk && dtk.length ? dtk : null });
+                     rolesForSheet(key));
       maskCacheRef.current.set(key, mo);
     }
     return mo;
@@ -4639,10 +3566,10 @@ export default function TakeoffCanvas() {
   // The propose tail (physical clicks): stage the region for the Create (⏎)
   // gate. Duplicate/carve checks run inside a FUNCTIONAL setProposal so a
   // click racing the first raster render can't clobber state.
-  function proposeRegion(f, tp, local, negative, raster, prebuilt) {
-    const region = prebuilt || buildOneClickRegion(f, tp, local, negative, raster);
+  function proposeRegion(f, tp, local, negative, raster) {
+    const region = buildOneClickRegion(f, tp, local, negative, raster);
     if (!region) {
-      if (uppFor(tp.key)) setCommitMsg("Couldn't trace that space — trace it with Area (A).");
+      if (uppFor(tp.key)) setCommitMsg(t('status.couldnt_trace_space'));
       return;
     }
     // Decide accept/dup/carve-reject INSIDE the functional updater, against
@@ -4693,19 +3620,18 @@ export default function TakeoffCanvas() {
         return { key: tp.key, regions: [...rs, region] };
       });
     });
-    if (outcome === "dup") setCommitMsg(negative ? "That cutout is already carved." : keyText("Already selected — ⌥-click carves an enclosed cutout; ⏎ creates."));
-    else if (outcome === "needsPos") setCommitMsg(keyText("⌥-click carves an enclosed area INSIDE the selection (a column or shaft) — click its room first."));
+    if (outcome === "dup") setCommitMsg(negative ? t('status.cutout_dup') : t('status.already_selected'));
+    else if (outcome === "needsPos") setCommitMsg(t('status.needs_positive'));
     // The measurement-policy receipts: when the engine sealed, wedged, or
     // ruled a passage out, the estimator hears it at stage time — the trace is
     // reviewable while the edge in question is still under the cursor.
-    else if (!f) { /* net-engine region: the caller already set the message; there is no flood receipt to narrate */ }
-    else if (f.wedges && f.ringWedges >= f.wedges) setCommitMsg(`Measured to include the floor inside ${f.ringWedges === 1 ? "a closed ring" : `${f.ringWedges} closed rings`} drawn on the plan (a round column or a callout bubble) — no door swing was involved. If that is a column you deduct rather than floor you cover, ${keyText("⌥-click carves it out. ⏎ creates.")}`);
-    else if (f.wedges && f.ringWedges) setCommitMsg(`Measured through the drawn door to the wall opening — the swing area is included. It also includes the floor inside ${f.ringWedges === 1 ? "a closed ring" : `${f.ringWedges} closed rings`} (a round column or callout bubble), which is not a door swing; ${keyText("⌥-click carves one out if it should be deducted. ⏎ creates.")}`);
-    else if (f.wedges) setCommitMsg("Measured through the drawn door to the wall opening — the swing area is included. ⏎ creates.");
+    else if (f.wedges && f.ringWedges >= f.wedges) setCommitMsg(t('status.measured_ring', { rings: f.ringWedges === 1 ? t('status.measured_ring_single') : t('status.measured_ring_multi', { count: f.ringWedges }) }));
+    else if (f.wedges && f.ringWedges) setCommitMsg(t('status.measured_door_ring', { rings: f.ringWedges === 1 ? t('status.measured_ring_single') : t('status.measured_ring_multi', { count: f.ringWedges }) }));
+    else if (f.wedges) setCommitMsg(t('status.measured_door'));
     else if (f.sealedPx) setCommitMsg(f.minPassPx
-      ? `That space isn't closed on the drawing — the gap is under ${MIN_PASS_FT} ft, so the minimum-passage rule bridged it rather than measuring through it. That call is at the limit of what this sheet's resolution can decide; review the edge, then ⏎ creates.`
-      : "That space wasn't fully enclosed — a small opening (a doorway or line gap) was sealed to bound it. Review the edge, then ⏎ creates.");
-    else if (f.minPassDelta) setCommitMsg(`A passage under ${MIN_PASS_FT} ft wide was treated as not connecting — measuring through it would have added ${Math.round(f.minPassDelta * 100)}% more area. Review that edge, then ⏎ creates.`);
+      ? t('status.gap_bridged', { ft: MIN_PASS_FT })
+      : t('status.space_not_closed'));
+    else if (f.minPassDelta) setCommitMsg(t('status.passage_excluded', { ft: MIN_PASS_FT, pct: Math.round(f.minPassDelta * 100) }));
     else setCommitMsg("");
   }
   // `direct` (voice deixis, RFC #59): { conditionId, label } — the human aimed
@@ -4716,19 +3642,19 @@ export default function TakeoffCanvas() {
   // VALUE because the utterance armed it in this same handler (the activeCond
   // closure is a render behind). Click callers ignore the return value; their
   // message surface stays setCommitMsg, unchanged.
-  async function oneClickAt(p, negative, direct, fieldClick) {
+  async function oneClickAt(p, negative, direct) {
     const say = (message) => { setCommitMsg(message); return { ok: false, message }; };
     const tp = panelAt(p[0]);
     const upp = uppFor(tp.key);
-    if (!upp) return say(`Set the scale for ${labelFor(tp)} first.`);
-    if (!(direct ? direct.conditionId : activeCond)) return say("Pick or add a condition first.");
+    if (!upp) return say(t('status.set_scale_first', { sheet: labelFor(tp) }));
+    if (!(direct ? direct.conditionId : activeCond)) return say(t('status.pick_condition_first'));
     // a click may EXTEND a same-sheet proposal; voice deixis commits whole and
     // must never swallow a selection the human is still reviewing — ANY pending
     // proposal rejects the utterance
     if (proposal && (direct || proposal.key !== tp.key)) {
       return say(direct
-        ? "Finish the pending one-click selection first — ⏎ creates it, Esc discards."
-        : `Finish the selection on ${labelFor(panelByKey(proposal.key))} first — ⏎ creates it, Esc discards.`);
+        ? t('status.finish_first')
+        : t('status.finish_first_sheet', { sheet: labelFor(panelByKey(proposal.key)) }));
     }
     const local = [p[0] - tp.xOffset, p[1]];
     // Trigger policy: vector is exact and always wins where it works — including
@@ -4740,64 +3666,9 @@ export default function TakeoffCanvas() {
     const stats = sheetStatsRef.current.get(tp.key);
     const rasterEligible = !!stats && stats.imageFrac >= RASTER_MIN_IMG_FRAC;
     const vectorViable = !!stats && stats.segCount >= RASTER_MIN_SEGS;
-    // NET ENGINE branch — vector sheets only; a scan has no linework to network.
-    if (netEngine && !direct && vectorViable) {
-      const segs = vectorSegsRef.current.get(tp.key);
-      const meta = segMetaRef.current.get(tp.key);
-      if (!segs || !meta) return say("Still reading this sheet's linework — One-Click arms as soon as that finishes (a dense sheet can take a few seconds). Try again in a moment.");
-      if (!netWorker) return say("One-Click needs Web Workers in this browser — trace it with Area (A).");
-      // FRAMES: the vector segments live at the BASELINE render scale; a hi-res
-      // sheet's click and its upp are in the hi-res frame (uppFor divides by
-      // factorFor). Convert into the segments' frame for the engine and back
-      // out for the ring — at 207% zoom every foot-based threshold was off
-      // by the zoom factor (the "regressions" that appeared only zoomed in).
-      const kF = RENDER_SCALE / (renderScalesRef.current.get(tp.key) || RENDER_SCALE);   // hi-res px → baseline px
-      const ftPx = kF / upp;                     // baseline px per foot
-      const buildOpts = {};
-      const ck = `${tp.key}:${ftPx.toFixed(4)}`;
-      let built = netCacheRef.current.get(ck);
-      if (!built) {
-        // one build per (sheet, scale); concurrent clicks share the promise
-        // LOUD, TICKING status: a dense sheet reads for tens of seconds and a
-        // silent wait reads as failure (his call, Liminal 2026-08-24)
-        const t0 = Date.now();
-        setCommitMsg("Reading the walls on this sheet… 0 s — the first click on a sheet builds its wall network; the page stays live.");
-        const tick = setInterval(() => setCommitMsg(`Reading the walls on this sheet… ${Math.round((Date.now() - t0) / 1000)} s — the first click on a sheet builds its wall network; the page stays live.`), 1000);
-        netTickRef.current = tick;
-        const subpathsIn = subpathsRef.current.get(tp.key) || null, textsIn = textMarksRef.current.get(tp.key) || [];
-        // diagnostic record of EXACTLY what the engine was handed (read from devtools as window.__netLast)
-        try { window.__netLast = { key: ck, sheet: tp.key, nSegs: segs.length >> 2, nMeta: meta.length, nSubpaths: subpathsIn ? subpathsIn.length : 0, nTexts: textsIn.length, ftPx, upp, kF, img: tp.img && { w: tp.img.w, h: tp.img.h }, metaHead: Array.from(meta.slice(0, 12)), segsHead: Array.from(segs.slice(0, 8)).map((v) => +v.toFixed(1)), textHead: textsIn.slice(0, 2) }; } catch { /* diagnostics only */ }
-        built = netCall({ type: "build", key: ck, segs, meta, subpaths: subpathsIn, ftPx, texts: textsIn, opts: buildOpts })
-          .then((m) => { if (m.error) { netCacheRef.current.delete(ck); throw new Error(m.error); } try { Object.assign(window.__netLast, { faces: m.faces, starved: m.starved, ms: m.ms }); } catch { /* diagnostics only */ } return m; });
-        netCacheRef.current.set(ck, built);
-      }
-      let info;
-      try { info = await built; }
-      catch (err) { console.error("net engine build failed", err); return say("One-Click couldn't read this sheet's linework — trace it with Area (A)."); }
-      finally { if (netTickRef.current) { clearInterval(netTickRef.current); netTickRef.current = null; } }
-      if (toolRef.current !== "oneclick" || (proposalRef.current && proposalRef.current.key !== tp.key)) { setCommitMsg(""); return { ok: false, message: "" }; }
-      const field = !!fieldClick;
-      const rm = await netCall({ type: "room", key: ck, x: local[0] * kF, y: local[1] * kF, ftPx, mode: field ? "field" : "room" });
-      const r = rm.room;
-      if (!r) return say(field
-        ? "No finish pattern under that ⇧-click — ⇧-click inside the tile or plank pattern to select the whole field."
-        : "That click isn't inside an enclosed space — click an open spot, ⇧-click an open finish field, or trace it with Area (A).");
-      const ring = r.ring.map(([x, y]) => [x / kF, y / kF]);      // back to the panel's frame
-      try { Object.assign(window.__netLast, { lastClick: [local[0], local[1]], lastRing: ring.map(([x, y]) => [+x.toFixed(1), +y.toFixed(1)]), lastFaces: r.faces }); } catch { /* diagnostics only */ }
-      const area_sf = +(r.areaPx / (ftPx * ftPx)).toFixed(2);
-      const perim_lf = +(closedMetrics(ring).perim * upp).toFixed(2);
-      const region = {
-        kind: negative ? "neg" : "pos", seed: local, poly: ring, poly0: ring.map(([x, y]) => [x, y]),
-        area_sf, perim_lf, hf: false, shs: 0, sl: 0, gap: 0, mp: 0, mpd: 0, wg: 0, rw: 0, rt: false,
-        cf: 1, cff: [], net: true, netFaces: r.faces, netStarved: !!r.starved, netMode: field ? "field" : "room",
-      };
-      setCommitMsg(`${field ? "Finish field" : "Room"}: ${area_sf.toFixed(0)} SF from ${r.faces} face${r.faces === 1 ? "" : "s"}${r.holes.length ? ` (${r.holes.length} interior void${r.holes.length === 1 ? "" : "s"} not subtracted from the outline)` : ""}${info && info.ms ? ` · net built in ${(info.ms / 1000).toFixed(1)} s` : ""} — ⏎ creates, Esc discards.`);
-      proposeRegion(null, tp, local, negative, false, region);
-      return { ok: true, message: "" };
-    }
     if (!rasterEligible || vectorViable) {
       const mo = ensureMask(tp.key);
-      if (!mo && !rasterEligible) return say("Still reading this sheet's linework — try again in a second.");
+      if (!mo && !rasterEligible) return say(t('status.oneclick_still_reading'));
       if (mo) {
         // seal radii + wedge cap scale with the sheet: bridge up to a door-width
         // opening (mask px per foot = mask-per-image-px / units-per-image-px)
@@ -4811,13 +3682,13 @@ export default function TakeoffCanvas() {
         }
       }
     }
-    setCommitMsg("Reading the scan…");
+    setCommitMsg(t('status.oneclick_reading_scan'));
     const seq = renderSeqRef.current;
     const rmo = await ensureRasterMask(tp.key);
     if (seq !== renderSeqRef.current) {   // sheet group changed mid-render — the new sheet must not be left showing a stale "Reading the scan…" ("…" messages never auto-expire, see commitMsg's 6s-timer effect
       setCommitMsg("");
       return direct
-        ? say("Couldn't place that — the sheet changed while reading the scan. Say it again.")
+        ? say(t('status.oneclick_view_changed'))
         : { ok: false, message: "" };
     }
     // The raster render can take real time on a large scan; the user may have
@@ -4833,10 +3704,10 @@ export default function TakeoffCanvas() {
     if (direct ? proposalRef.current : (toolRef.current !== "oneclick" || (proposalRef.current && proposalRef.current.key !== tp.key))) {
       setCommitMsg("");
       return direct
-        ? say("Couldn't place that — a one-click selection started while reading the scan. Finish it (⏎/Esc), then say it again.")
+        ? say(t('status.oneclick_tool_changed'))
         : { ok: false, message: "" };
     }
-    if (!rmo) return say("Couldn't read this scan — trace it with Area (A).");
+    if (!rmo) return say(t('status.oneclick_couldnt_scan'));
     // The raster mask is single-tier (softCount 0), so the flood's hatch
     // escalation — and with it the Fill sensitivity knob — is structurally
     // inert on scans; the default sensitivity rides along. Gap sealing still
@@ -4856,7 +3727,7 @@ export default function TakeoffCanvas() {
   function settleRegion(f, tp, local, negative, raster, direct) {
     if (!direct) { proposeRegion(f, tp, local, negative, raster); return { ok: true, message: "" }; }
     const region = buildOneClickRegion(f, tp, local, negative, raster);
-    if (!region) return { ok: false, message: "Couldn't trace that space — trace it with Area (A)." };
+    if (!region) return { ok: false, message: t('status.couldnt_trace_space') };
     return commitOneClickRegions({ key: tp.key, regions: [region] }, direct);
   }
   // The ONE commit gate for one-click regions — the ⏎/dblclick Create AND a
@@ -4882,7 +3753,7 @@ export default function TakeoffCanvas() {
       // region's verts ARE the proposal, so nothing extra rides. Post-Create
       // edits are stamped by stampEdit, which freezes the same field from the
       // pre-edit ring only when Create didn't already.
-      origin: { method: r.net ? "net_v1" : "one_click_v1", ...(r.net ? { net_faces: r.netFaces, net_starved: r.netStarved, net_mode: r.netMode } : {}), seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, confidence: r.cf ?? 1, ...(r.cff?.length ? { confidence_factors: r.cff } : {}), ...(r.hf ? { hatch_filtered: true } : {}), ...(r.sl ? { gap_sealed_px: r.sl } : {}), ...(r.gap ? { gap_bridged_px: r.gap } : {}), ...(r.mp ? { min_pass_px: r.mp, min_pass_delta: r.mpd } : {}), ...(r.wg ? { door_wedges: r.wg } : {}), ...(r.rw ? { ring_interiors: r.rw } : {}), ...(r.rt ? { raster_traced: true } : {}), ...(r.sens != null ? { fill_sensitivity: r.sens } : {}), ...(r.touched ? { edited_before_create: true, proposed_verts_norm: r.poly0.map(([x, y]) => [x / tp.img.w, y / tp.img.h]) } : {}) },
+      origin: { method: "one_click_v1", seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, confidence: r.cf ?? 1, ...(r.cff?.length ? { confidence_factors: r.cff } : {}), ...(r.hf ? { hatch_filtered: true } : {}), ...(r.sl ? { gap_sealed_px: r.sl } : {}), ...(r.gap ? { gap_bridged_px: r.gap } : {}), ...(r.mp ? { min_pass_px: r.mp, min_pass_delta: r.mpd } : {}), ...(r.wg ? { door_wedges: r.wg } : {}), ...(r.rw ? { ring_interiors: r.rw } : {}), ...(r.rt ? { raster_traced: true } : {}), ...(r.sens != null ? { fill_sensitivity: r.sens } : {}), ...(r.touched ? { edited_before_create: true, proposed_verts_norm: r.poly0.map(([x, y]) => [x / tp.img.w, y / tp.img.h]) } : {}) },
     }));
     const res = dispatchShape({ type: "add", shapes: made });   // the creation gate — id/created_at minted by the command
     // ...and the new takeoff is SELECTED. Without this, Create left nothing
@@ -4901,7 +3772,7 @@ export default function TakeoffCanvas() {
     // condById is a render closure — a condition minted THIS utterance is only
     // in the live mirror, so fall through to it for the tag
     const tag = (condById[condId] || agentStateRef.current.conditions.find((c) => c.id === condId))?.finish_tag || "";
-    const message = `Created ${made.length} takeoff${made.length === 1 ? "" : "s"} — ${fa(sf)} ${tag}. Click the next room.`;
+    const message = t('status.created', { count: made.length, area: fa(sf), tag });
     setCommitMsg(message);
     return { ok: true, message };
   }
@@ -5048,7 +3919,7 @@ export default function TakeoffCanvas() {
     // Can't thin a triangle further. Deselect so the NEXT ⌫ falls through to the
     // remove-last-region branch — otherwise the ocSel guard keeps re-firing this
     // message and the space can never be dropped without an Esc first.
-    if (r.poly.length <= 3) { setOcSel(null); setCommitMsg("A space needs at least 3 points — ⌫ again drops the whole space."); return; }
+    if (r.poly.length <= 3) { setOcSel(null); setCommitMsg(t('status.space_min_points')); return; }
     setProposal((pr) => {
       if (!pr) return pr;
       const regions = pr.regions.map((rr, ri) => {
@@ -5084,15 +3955,15 @@ export default function TakeoffCanvas() {
                                 ...(sel.height_override ? { height_override: true } : {}), ...(sel.label ? { label: sel.label } : {}), ...cloneOrigin(sel.origin) });
   function copySelected() {
     const sel = shapes.find((s) => s.id === selectedId);
-    if (!sel) { setCommitMsg("Select a takeoff to copy."); return; }
+    if (!sel) { setCommitMsg(t('status.copied_err')); return; }
     clipRef.current = [clipEntry(sel)];
-    setCommitMsg("Copied — ⌘V pastes onto the sheet under your cursor.");
+    setCommitMsg(t('status.copied'));
   }
   function pasteClipboard(offset = 0.03) {
     if (!clipRef.current.length) return;
     const tp = lastPtrRef.current ? panelAt(toImage(lastPtrRef.current[0], lastPtrRef.current[1])[0]) : focusPanel;
     const needsScale = clipRef.current.some((c) => c.measure_role !== "count");
-    if (needsScale && !uppFor(tp.key)) { setCommitMsg(`Set the scale for ${labelFor(tp)} first — paste recomputes SF/LF there.`); return; }
+    if (needsScale && !uppFor(tp.key)) { setCommitMsg(t('status.set_scale_paste', { sheet: labelFor(tp) })); return; }
     let cross = false;
     const made = clipRef.current.map((c) => {
       const same = c.from === tp.key;
@@ -5108,11 +3979,11 @@ export default function TakeoffCanvas() {
     const res = dispatchShape({ type: "add", shapes: made });
     selectShape(res.shapes[res.shapes.length - 1].id);
     setTool("select");
-    setCommitMsg(`Pasted ${made.length} takeoff${made.length === 1 ? "" : "s"}${cross ? ` onto ${labelFor(tp)}` : ""} — drag to position.`);
+    setCommitMsg(t('status.pasted', { count: made.length, cross: cross ? ` ${t('status.pasted_cross', { sheet: labelFor(tp) })}` : "" }));
   }
   function duplicateSelected() {
     const sel = shapes.find((s) => s.id === selectedId);
-    if (!sel) { setCommitMsg("Select a takeoff to duplicate."); return; }
+    if (!sel) { setCommitMsg(t('status.duplicated_err')); return; }
     clipRef.current = [clipEntry(sel)];
     pasteClipboard();
   }
@@ -5122,7 +3993,7 @@ export default function TakeoffCanvas() {
   function flipSelected(axis) {
     const sel = shapes.find((s) => s.id === selectedId);
     if (!sel || !Array.isArray(sel.verts_norm) || sel.verts_norm.length < 2) {
-      setCommitMsg("Select an area or linear takeoff to flip."); return;
+      setCommitMsg(t('status.flip_err')); return;
     }
     const vn = reflectVertsNorm(sel.verts_norm, axis);
     dispatchShape({
@@ -5142,7 +4013,7 @@ export default function TakeoffCanvas() {
     const sel = shapes.find((s) => s.id === selectedId);
     if (!sel) return;
     if (sel.measure_role === "count" || sel.measure_role === "linear" || sel.measure_role === "surface_area") {
-      setCommitMsg("Tidy works on area takeoffs — a linear run's vertices are its measurement."); return;
+      setCommitMsg(t('status.tidy_err')); return;
     }
     const sp = panelByKey(sel.sheet_id);
     if (!sp || !sp.img.w || (sel.verts_norm || []).length < 3) return;
@@ -5150,13 +4021,13 @@ export default function TakeoffCanvas() {
     const rt = !!sel.origin?.raster_traced;   // no true endpoints on a scan — pure simplify+square
     const ringPx = sel.verts_norm.map(([nx, ny]) => [nx * sp.img.w, ny * sp.img.h]);
     const r = tidyRing(ringPx, { nearest: (x, y, dd) => (!rt && grid ? nearestSnap(grid, x, y, dd) : null) });
-    if (!r.changed) { setCommitMsg("Nothing to tidy — this takeoff is already clean."); return; }
+    if (!r.changed) { setCommitMsg(t('status.tidy_clean')); return; }
     const vn = r.ring.map(([x, y]) => [x / sp.img.w, y / sp.img.h]);
     dispatchShape({
       type: "geom", id: sel.id, editKind: "tidy",
       verts_norm: vn, computed: recomputeShape({ ...sel, verts_norm: vn }), prev: geomSnapshot(sel),
     });
-    setCommitMsg(`Tidied — ${ringPx.length} → ${r.ring.length} vertices; corners held to plan lines, near-square walls squared. ⌘Z undoes.`);
+    setCommitMsg(t('status.tidy_done', { from: ringPx.length, to: r.ring.length }));
   }
   // ── markup (cloud / callout / text) — annotations, not measurements ─────────
   // markupDraft holds STAGE px (so the live preview spans panels); a markup
@@ -5185,7 +4056,7 @@ export default function TakeoffCanvas() {
   // PDF. Off → pass []; the RFI-only export still works (empty-guard unaffected).
   async function exportMarkedSet(includeMarkups = true) {
     try {
-      setCommitMsg("Building the marked set…");
+      setCommitMsg(t('status.building_marked_set'));
       const exportMarkups = includeMarkups ? markups : [];
       // approval seals are ink, not markups — the include-markups checkbox
       // never drops them, and a sheet carrying only a seal still exports
@@ -5208,8 +4079,6 @@ export default function TakeoffCanvas() {
         };
       }).filter(Boolean);
       const sheetMeta = [...plainMeta, ...stitchMeta];
-      // (source-caption label rides on each capture as m.src_label, frozen at
-      // capture time — markedset reads it directly, no per-export resolution.)
       // branding mode decides the cover identity + wordmark + parent credit;
       // resolved per-project (folderId "" ⇒ the single browser-only setting)
       const brand = resolveBranding({ ...(await loadBrandingSelection(projectIdFromUrl())), profiles: loadProfiles().profiles });
@@ -5220,9 +4089,9 @@ export default function TakeoffCanvas() {
         loadPdfData: (file) => store.loadPdfData(file),
       });
       downloadBytes(filename, bytes);
-      setCommitMsg(`Marked set downloaded — ${filename}`);
+      setCommitMsg(t('status.marked_set_ok', { filename }));
     } catch (e) {
-      setCommitMsg(`Marked set failed: ${e.message || e}`);
+      setCommitMsg(t('status.marked_set_err', { error: e.message || e }));
     }
   }
 
@@ -5279,13 +4148,12 @@ export default function TakeoffCanvas() {
     const p = toImage(e.clientX, e.clientY);
     const thr = 8 / tfRef.current.scale;
     const rev = [...visibleMarkups].reverse();
-    const m = rev.find((mm) => mm.type !== "highlight" && mm.type !== "image" && hitMarkup(mm, p, thr))
-      || rev.find((mm) => mm.type === "highlight" && hitMarkup(mm, p, thr))
-      || rev.find((mm) => mm.type === "image" && hitMarkup(mm, p, thr));
+    const m = rev.find((mm) => mm.type !== "highlight" && hitMarkup(mm, p, thr))
+      || rev.find((mm) => mm.type === "highlight" && hitMarkup(mm, p, thr));
     if (!m) return;
     // an svg symbol carries no text — select it, but don't open a dead-end editor;
     // a highlighter stroke is pure ink (no text either), same rule
-    if (m.type === "svg" || m.type === "image" || (m.type === "highlight" && Array.isArray(m.pts))) { selectMarkup(m.id); return; }
+    if (m.type === "svg" || (m.type === "highlight" && Array.isArray(m.pts))) { selectMarkup(m.id); return; }
     const anchor = markupAnchorStage(m);
     if (!anchor) return;
     selectMarkup(m.id);
@@ -5328,23 +4196,6 @@ export default function TakeoffCanvas() {
         // empty callout text is not committed (preserves the old reject)
         openTextEditor({ anchorStage: p, commit: (t) => { const tx = (t || "").trim(); if (tx) addMarkup({ type: "callout", target, at, text: tx }, dp.key); } });
       }
-    } else if (tool === "dimension") {
-      // a dimension LABELS a real length, so it is the one markup the scale
-      // gate applies to — same refusal the measure tools give (mirrors the
-      // MCP annotate verb's doctrine). Gate on the FIRST click so the user
-      // isn't refused after carefully picking both ends.
-      if (!markupDraft) {
-        if (!uppFor(tp.key)) { setCommitMsg(`Set the scale for ${labelFor(tp)} first.`); return; }
-        setMarkupDraft(p);
-      } else {
-        if (spansPanels([markupDraft, p])) { setCommitMsg(SPAN_MSG); return; }
-        const dp = panelAt(markupDraft[0]);
-        const upp = uppFor(dp.key);
-        const lenFt = Math.hypot(p[0] - markupDraft[0], p[1] - markupDraft[1]) * (upp || 0);
-        if (!(lenFt > 0)) return;   // a zero-length click-in-place is a misfire, not a dimension
-        addMarkup({ type: "dimension", from: norm(markupDraft, dp), to: norm(p, dp), len_ft: +lenFt.toFixed(2), text: "" }, dp.key);
-        setMarkupDraft(null);
-      }
     }
   }
   function updateMarkup(mid, patch) { setMarkups((ms) => ms.map((m) => (m.id === mid ? { ...m, ...patch } : m))); }
@@ -5356,7 +4207,7 @@ export default function TakeoffCanvas() {
   // save, sanitized at the store boundary.
   const persistStampLib = (next) => {
     stampLibRef.current = next; setStampLib(next);
-    store.saveStampLibrary(next).catch((e) => setCommitMsg(`Couldn't save the stamp library: ${e.message || e}`));
+    store.saveStampLibrary(next).catch((e) => setCommitMsg(t('status.save_stamp_err', { error: e.message || e })));
   };
   // Arm a stamp for placement: switch to the stamp tool and hold it in
   // armedStamp. Repeated clicks place multiple copies until you pick another
@@ -5370,7 +4221,7 @@ export default function TakeoffCanvas() {
     const tp = panelAt(p[0]);
     const cx = (p[0] - tp.xOffset) / tp.img.w, cy = p[1] / tp.img.h;
     const instances = instantiateStamp(armedStamp, [cx, cy]);
-    if (!instances.length) { setCommitMsg("This stamp has no placeable elements."); return; }
+    if (!instances.length) { setCommitMsg(t('status.select_stamp_err')); return; }
     let promptId = null;
     for (const inst of instances) {
       const { _prompt, ...m } = inst;
@@ -5378,7 +4229,7 @@ export default function TakeoffCanvas() {
       addMarkup({ ...m, id }, tp.key);
       if (_prompt && !promptId) promptId = id;
     }
-    setCommitMsg(`Placed “${armedStamp.name}”.`);
+    setCommitMsg(t('status.placed_stamp', { name: armedStamp.name }));
     if (promptId) openTextEditor({ anchorStage: p, commit: (t) => updateMarkup(promptId, { text: (t || "").trim() }) });
   }
   // ── approval seal (ink, human-only) — the estimator's stamp. One click: on
@@ -5396,27 +4247,27 @@ export default function TakeoffCanvas() {
     // normalized to sheet WIDTH, the bubble convention), topmost wins
     const seal = [...approvals].reverse().find((a) => a.sheet_id === tp.key
       && Math.hypot(nx - a.at[0], (ny - a.at[1]) * (tp.img.h / tp.img.w)) <= APPROVAL_R);
-    if (seal) { dispatchApproval({ type: "delete", ids: [seal.id] }); setCommitMsg("Approval seal lifted (⌘Z restores it)."); return; }
+    if (seal) { dispatchApproval({ type: "delete", ids: [seal.id] }); setCommitMsg(t('status.approval_lifted')); return; }
     // topmost committed shape under the click — the selectAt scan, this panel only
     const thr = 8 / tfRef.current.scale;
     const shape = [...stackedShapes].reverse().find((s) => s.sheet_id === tp.key
       && hitShapeC(s, p[0] - tp.xOffset, p[1], tp.img.w, tp.img.h, thr));
     dispatchApproval({ type: "add", approvals: [{ actor: "estimator", sheet_id: tp.key, at: [nx, ny], ...(shape ? { shape_id: shape.id } : {}) }] });
     setCommitMsg(shape
-      ? `Approved — seal on ${condById[shape.condition_id]?.finish_tag || "shape"} (⌘Z undoes).`
-      : "Sheet point approved — seal placed (⌘Z undoes).");
+      ? t('status.approved_shape', { tag: condById[shape.condition_id]?.finish_tag || t('commit.shape') })
+      : t('status.approved_point'));
   }
   // Save the selected markup as a single-element stamp (the palette's define
   // flow). markupToStampElement re-expresses its coords as anchor-relative
   // offsets so the stamp is position independent.
   function saveMarkupAsStamp(m) {
     const el = markupToStampElement(m);
-    if (!el) { setCommitMsg("This markup can't be saved as a stamp."); return; }
-    const name = (window.prompt("Name this stamp:", (m.text || el.type).trim() || "Stamp") || "").trim();
+    if (!el) { setCommitMsg(t('status.markup_not_stamp')); return; }
+    const name = (window.prompt(t('prompt.stamp_name'), (m.text || el.type).trim() || t('prompt.stamp_default')) || "").trim();
     if (!name) return;
     const stamp = { id: uid("stmp"), name, elements: [el] };
     persistStampLib({ ...stampLibRef.current, stamps: [...stampLibRef.current.stamps, stamp] });
-    setCommitMsg(`Saved stamp “${name}”.`);
+    setCommitMsg(t('status.saved_stamp', { name }));
     setLeftTab("stamp");
   }
   const deleteStamp = (id) => {
@@ -5452,10 +4303,10 @@ export default function TakeoffCanvas() {
         sets: [...cur.sets.filter((s) => !inSetIds.has(s.id)), ...inSets],
       };
       persistStampLib(merged);   // persistStampLib → store sanitizes, dropping any malformed items
-      setCommitMsg(`Imported ${inStamps.length} stamp${inStamps.length === 1 ? "" : "s"}.`);
+      setCommitMsg(t('status.imported_stamps', { count: inStamps.length }));
       setLeftTab("stamp");
     } catch (e) {
-      setCommitMsg(`Couldn't import stamps: ${e.message || e}`);
+      setCommitMsg(t('status.imported_stamp_err', { error: e.message || e }));
     }
   }
   // Import a real .svg FILE as a stamp: the browser's DOMParser extracts the
@@ -5468,12 +4319,12 @@ export default function TakeoffCanvas() {
       const base = (file.name || "Imported SVG").replace(/\.svg$/i, "");
       const extracted = extractSvgPrimitives(text, { name: base });
       const stamp = extracted && svgToStamp(extracted);
-      if (!stamp || !stamp.elements.length) { setCommitMsg("Couldn't read that SVG — no drawable vector shapes found."); return; }
+      if (!stamp || !stamp.elements.length) { setCommitMsg(t('status.imported_svg_no_draw')); return; }
       persistStampLib({ ...stampLibRef.current, stamps: [...stampLibRef.current.stamps, { id: uid("stmp"), name: stamp.name, elements: stamp.elements }] });
-      setCommitMsg(`Imported “${stamp.name}” as a stamp.`);
+      setCommitMsg(t('status.imported_svg_stamp', { name: stamp.name }));
       setLeftTab("stamp");
     } catch (e) {
-      setCommitMsg(`Couldn't import SVG: ${e.message || e}`);
+      setCommitMsg(t('status.imported_svg_err', { error: e.message || e }));
     }
   }
 
@@ -5494,7 +4345,7 @@ export default function TakeoffCanvas() {
     setRfis((rs) => [...rs, rec]);
     updateMarkup(markup.id, { rfi_id: id });
     setLeftTab("rfi");
-    setCommitMsg(`Raised ${number}.`);
+    setCommitMsg(t('status.raise_rfi', { number }));
   }
   const linkRfi = (markup, rfiId) => { if (markup && rfiId) updateMarkup(markup.id, { rfi_id: rfiId }); };
   const unlinkRfi = (markup) => { if (markup) updateMarkup(markup.id, { rfi_id: "" }); };
@@ -5549,114 +4400,11 @@ export default function TakeoffCanvas() {
   }
   function flyToMarkup(m) {
     if (!m) return;
-    // a fly-to and a source-trace both end in setTfNow off the same deps
-    // ([panelImgs, groupSig, status]) — starting one must cancel a competing
-    // in-flight other, or whichever completes second silently yanks the view
-    // the user already stopped looking at.
-    pendingSourceRef.current = null;
     setShowMarkups(true);   // flying to a markup reveals the layer, so you never land on an invisible selection
     if (!panelKeySet.has(m.sheet_id)) { pendingFlyRef.current = m; openSheets([m.sheet_id], false); return; }
     // open already, but its bitmap may still be mid-render (img.w === 0) — if the
     // inline center can't run yet, hand off to the phase-2 effect below.
     if (!centerOnMarkup(m)) pendingFlyRef.current = m;
-  }
-  // Reposition an image markup — the row's Place button. Two cases, branched on
-  // whether the image's CURRENT sheet is already open (panelKeySet.has):
-  //  - same-sheet: unchanged foundation behavior — fly the view to it (centers
-  //    on its stored anchor) and the first-contact grab (onPointerMove ~3699)
-  //    preserves the cursor→image offset (no teleport).
-  //  - cross-sheet: the image's home sheet isn't open here, so flying there
-  //    would defeat placing it on THIS sheet — arm placement in place instead,
-  //    and flag placeCrossSheetRef so the first-contact grab zeroes the offset
-  //    (the image's stored `at` is a position on the OTHER sheet; centering it
-  //    under the cursor is the only sane drop point). See placeCrossSheetRef's
-  //    declaration for why the decision has to ride a ref instead of being
-  //    re-derived from m.sheet_id at grab time.
-  function beginPlace(m) {
-    placeGrabRef.current = null;
-    placeCrossSheetRef.current = null;
-    pendingSourceRef.current = null;   // starting a placement cancels any in-flight source trace — same setTfNow race as flyToMarkup above
-    if (panelKeySet.has(m.sheet_id)) {
-      flyToMarkup(m);
-      setPlacingImageId(m.id);
-      setCommitMsg("Placing image — the view centered on it; move the pointer and click to drop (Esc cancels).");
-    } else {
-      pendingFlyRef.current = null;   // an outstanding fly-to (unrelated markup, sheet still opening) must not complete later and recenter the view mid cross-sheet placement — same race class as flyToMarkup clearing pendingSourceRef
-      setShowMarkups(true);           // the cross-sheet branch skips flyToMarkup (which sets this for the same-sheet case) — without it, a hidden markup layer means the drag preview is invisible until commit
-      placeCrossSheetRef.current = m.id;
-      setPlacingImageId(m.id);
-      setCommitMsg("Placing image on this sheet — move the pointer and click to drop (Esc cancels).");
-    }
-  }
-  // Center the view on a normalized [nx,ny] point within panel `sp` —
-  // replicates centerOnMarkup's transform math above verbatim, but keyed off a
-  // raw point instead of resolving a markup's anchor. A source trace has no
-  // markup on the source sheet to resolve (only a synthetic {sheet_id, rect}),
-  // so centerOnMarkup/flyToMarkup can't express this — this is why traceSource
-  // doesn't reuse them.
-  function centerOnPanelPoint(sp, nx, ny) {
-    if (!sp?.img?.w) return false;
-    const el = containerRef.current;
-    if (!el) return false;
-    const r = el.getBoundingClientRect();
-    const scale = tfRef.current.scale;
-    const sx = nx * sp.img.w + sp.xOffset, sy = ny * sp.img.h;
-    setTfNow({ x: r.width / 2 - sx * scale, y: r.height / 2 - sy * scale, scale });
-    return true;
-  }
-  // Sets the source-trace flash AND arms its one-shot auto-clear — the pulse
-  // (app.css `@keyframes pulse`) runs once and then holds its last frame
-  // forever unless something nulls the state back out, so without this the
-  // flash rect sits as a permanent opaque box. Keyed on `token`, not
-  // `sheet_id`: a repeat trace of the same region bumps sourceTraceSeqRef and
-  // gets a fresh token, so an older timer's closure (capturing the OLD token)
-  // is a no-op against the newer flash it would otherwise stomp — no need to
-  // track/cancel the previous timeout explicitly. Both call sites (the
-  // inline-ready path in traceSource and the pending-completion effect above)
-  // go through this one helper so the timer can't drift between them.
-  const SOURCE_FLASH_MS = 2600; // matches app.css pulse's ~2.55s animation length, plus a hair
-  function flashSource(sheet_id, rect, token) {
-    setSourceFlash({ sheet_id, rect, token });
-    setTimeout(() => {
-      setSourceFlash((f) => (f && f.token === token ? null : f));
-    }, SOURCE_FLASH_MS);
-  }
-  // Trace a capture back to its ORIGIN sheet+region (◎, button wired by slice
-  // 4 — this function, its ref, and its effect are this slice's job). Captures
-  // only: m.source === "capture" && src_sheet_id && src_rect (a stitch source
-  // sheet works fine here — no suppression, unlike the caption's — openSheets/
-  // goToSheet already treat a stitch key as first-class).
-  function traceSource(m) {
-    if (!m || m.source !== "capture" || !m.src_sheet_id || !m.src_rect) return;
-    const mid = rectMidpoint(m.src_rect);
-    // a malformed rect arms nothing rather than a pendingSourceRef that can
-    // never complete and would burn its whole attempt budget finding that out
-    if (!mid) return;
-    // Mid-Place guard (plan-mandated): dropping into a trace while an image is
-    // still armed for placement must end that gesture FIRST — otherwise the
-    // riding image (onPointerMove is still centre-following the cursor) drops
-    // onto the SOURCE sheet on the very click that navigates us there.
-    if (placingImageId) {
-      setPlacingImageId(null);
-      placeGrabRef.current = null;
-      placeCrossSheetRef.current = null;
-    }
-    pendingFlyRef.current = null;   // a source trace supersedes any in-flight fly-to (same setTfNow race noted in flyToMarkup)
-    const src = m.src_sheet_id, rect = m.src_rect;
-    const token = ++sourceTraceSeqRef.current;   // fresh every trace, even a repeat of the same region — see sourceFlash's declaration on why
-    if (panelKeySet.has(src)) {
-      const sp = panels.find((p) => p.key === src);
-      if (sp?.img?.w && centerOnPanelPoint(sp, mid[0], mid[1])) {
-        flashSource(src, rect, token);   // no selectMarkup — there's no markup to select on the source sheet
-        return;
-      }
-      // open, but its bitmap hasn't finished rendering yet — the phase-2
-      // effect above completes this once panelImgs reports a real width.
-      pendingSourceRef.current = { sheet_id: src, rect, token, attempts: 0 };
-      return;
-    }
-    pendingSourceRef.current = { sheet_id: src, rect, token, attempts: 0 };
-    openSheets([src], false);
   }
 
   function finishShape() {
@@ -5672,18 +4420,10 @@ export default function TakeoffCanvas() {
         setZoneCheck({ key: tp.key, pts: poly.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]) });
         setZoneExpand(null);
       }
-      clearPoly();
+      setPoly([]);
       return;
     }
-    // A curved area commits as ONE closed polygon (#284) — the spline is
-    // flattened here, at the boundary, so nothing downstream (area, perimeter,
-    // Cut Out, hit-testing, the marked PDF, every export) has to learn a second
-    // kind of geometry. flattenArcRing is the identity on an all-straight trace.
-    const drawn = curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly;
-    if (tool === "surface") commitSurface(drawn, curveIdx.length > 0);
-    else if (tool === "linear") commitLinear(drawn, false, curveIdx.length > 0);
-    else commitPoly(curveIdx.length ? flattenArcRing(poly, curveIdx, true) : poly, tool === "deduct", { curved: curveIdx.length > 0 });
-    clearPoly();
+    if (tool === "surface") commitSurface(poly); else if (tool === "linear") commitLinear(poly); else if (tool === "curve") commitLinear(poly, true); else commitPoly(poly, tool === "deduct"); setPoly([]);
   }
   // #137 — the parent state deleting a reconciled deduct should restore. The
   // deduct's own frozen origin.parent_prev is only correct when it is the
@@ -5753,7 +4493,7 @@ export default function TakeoffCanvas() {
         found = true;
       }
     }
-    if (!found) { setCommitMsg(`No takeoffs for ${condById[id]?.finish_tag || "this condition"} on the open sheet${groupKeys.length > 1 ? "s" : ""} yet.`); return; }
+    if (!found) { setCommitMsg(t('status.no_takeoffs', { tag: condById[id]?.finish_tag || t('status.this_condition') })); return; }
     const r = el.getBoundingClientRect();
     const w = Math.max(x1 - x0, 1), h = Math.max(y1 - y0, 1), pad = 90;
     const scale = clamp(Math.min((r.width - pad) / w, (r.height - pad) / h, 1.5));
@@ -5797,7 +4537,7 @@ export default function TakeoffCanvas() {
     return c;
   }
   function addCondition() {
-    const tag = (window.prompt("Finish tag for this condition (e.g. LVT-1):") || "").trim();
+    const tag = (window.prompt(t('prompt.finish_tag')) || "").trim();
     if (!tag) return;
     const c = mintCondition(tag);
     activateCondition(c.id, { reassign: false });   // no reassign affordance on +condition; still dismisses a live bulk selection
@@ -5823,7 +4563,7 @@ export default function TakeoffCanvas() {
   async function agentTextTokens(key, region) {
     const p = agentPanelFor(key);
     const pageObj = pageObjsRef.current.get(key);
-    if (!p || !pageObj) throw new Error(`Sheet ${key} isn't rendered yet.`);
+    if (!p || !pageObj) throw new Error(t('commit.sheet_not_rendered', { key }));
     const rs = renderScalesRef.current.get(key) || RENDER_SCALE;
     const vp = pageObj.getViewport({ scale: rs });
     const tc = await pageObj.getTextContent();
@@ -5850,7 +4590,7 @@ export default function TakeoffCanvas() {
   async function agentViewRegion(key, region) {
     const p = agentPanelFor(key);
     const pageObj = pageObjsRef.current.get(key);
-    if (!p || !pageObj) throw new Error(`Sheet ${key} isn't rendered yet.`);
+    if (!p || !pageObj) throw new Error(t('commit.sheet_not_rendered', { key }));
     const rs = renderScalesRef.current.get(key) || RENDER_SCALE;
     const x0 = region.x0 * p.img.w, y0 = region.y0 * p.img.h;
     const regW = Math.max(1, (region.x1 - region.x0) * p.img.w);
@@ -5875,48 +4615,30 @@ export default function TakeoffCanvas() {
   // this probes and returns the ring; committing anything stays behind the gate.
   async function agentOneClickProbe(key, xn, yn) {
     const p = agentPanelFor(key);
-    if (!p) return { error: `Sheet ${key} isn't rendered yet — try again in a moment.` };
+    if (!p) return { error: t('commit.sheet_not_rendered_retry', { key }) };
     const upp = agentUpp(key);
     if (upp == null) return { error: agentScaleGate(key, agentStateRef.current.detectedScales[key]?.label || "") };
     const local = [xn * p.img.w, yn * p.img.h];
     const stats = sheetStatsRef.current.get(key);
+    const rasterEligible = !!stats && stats.imageFrac >= RASTER_MIN_IMG_FRAC;
     const vectorViable = !!stats && stats.segCount >= RASTER_MIN_SEGS;
     let f = null, raster = false;
-    // Vector sheet: the SAME net engine a human click runs — an agent and an
-    // estimator must never trace differently (the who-aimed-it rule).
-    if (vectorViable) {
-      const segs = vectorSegsRef.current.get(key);
-      const meta = segMetaRef.current.get(key);
-      if (!segs || !meta) return { error: "Still reading this sheet's linework — try again in a moment." };
-      if (!netWorker) return { error: "One-Click needs Web Workers in this browser." };
-      const kF = RENDER_SCALE / (renderScalesRef.current.get(key) || RENDER_SCALE);
-      const ftPx = kF / upp;
-      const ck = `${key}:${ftPx.toFixed(4)}`;
-      let built = netCacheRef.current.get(ck);
-      if (!built) {
-        built = netCall({ type: "build", key: ck, segs, meta, subpaths: subpathsRef.current.get(key) || null, ftPx, texts: textMarksRef.current.get(key) || [], opts: {} })
-          .then((m) => { if (m.error) { netCacheRef.current.delete(ck); throw new Error(m.error); } return m; });
-        netCacheRef.current.set(ck, built);
+    if (!rasterEligible || vectorViable) {
+      const mo = ensureMask(key);
+      if (!mo && !rasterEligible) return { error: t('status.oneclick_still_reading') };
+      if (mo) {
+        const r = floodRegionSealed(mo, local[0], local[1], fillSens, sealRadiiFor(mo.ws / upp), doorWedgeCapPx(mo.ws / upp), minPassRadiusFor(mo.ws / upp));
+        if (r.status === "ok") f = r;
+        else if (!rasterEligible) {
+          return { error: r.status === "leak"
+            ? "That space isn't enclosed on the plan linework — the fill spilled. Seed a more enclosed spot."
+            : "Landed in dense linework (hatching/text). Seed an open spot inside the room." };
+        }
       }
-      try { await built; } catch { return { error: "One-Click couldn't read this sheet's linework — the estimator will have to trace it." }; }
-      const rm = await netCall({ type: "room", key: ck, x: local[0] * kF, y: local[1] * kF, ftPx, mode: "room" });
-      const r = rm.room;
-      if (!r) return { error: "That seed isn't inside an enclosed space on the plan linework. Seed an open spot inside the room." };
-      const ring = r.ring.map(([x, y]) => [x / kF, y / kF]);
-      if (ring.length < 3) return { error: "Couldn't trace that space into a polygon." };
-      const area_sf = +(r.areaPx / (ftPx * ftPx)).toFixed(2);
-      return {
-        verts_norm: ring.map(([x, y]) => [+(x / p.img.w).toFixed(5), +(y / p.img.h).toFixed(5)]),
-        area_sf,
-        perimeter_lf: +(closedMetrics(ring).perim * upp).toFixed(2),
-        seed_norm: [+xn.toFixed(5), +yn.toFixed(5)],
-        confidence: 1,
-        net_faces: r.faces,
-      };
     }
     if (!f) {
       const rmo = await ensureRasterMask(key);
-      if (!rmo) return { error: "Couldn't read this scan — the estimator will have to trace it by hand." };
+      if (!rmo) return { error: t('status.oneclick_scan_raster_err') };
       const r = floodRegionSealed(rmo, local[0], local[1], undefined, sealRadiiFor(rmo.ws / upp), doorWedgeCapPx(rmo.ws / upp), minPassRadiusFor(rmo.ws / upp));
       if (r.status !== "ok") {
         return { error: r.status === "leak"
@@ -5929,7 +4651,7 @@ export default function TakeoffCanvas() {
     const ring = raster
       ? oneClickRing(f, { raster: true, rasterEps: RASTER_RDP_EPS })
       : oneClickRing(f, { nearest: (x, y, d) => (grid ? nearestSnap(grid, x, y, d) : null) });
-    if (ring.length < 3) return { error: "Couldn't trace that space into a polygon." };
+    if (ring.length < 3) return { error: t('status.oneclick_couldnt_trace') };
     const area_sf = +(ringArea(ring) * upp * upp).toFixed(2);
     const conf = traceConfidence(floodSignals(f, { raster, mppf: f.ws / upp, areaSF: area_sf }));
     return {
@@ -6026,11 +4748,11 @@ export default function TakeoffCanvas() {
   // stale. Failures wrap into the commitMsg bar's "Couldn't" convention.
   async function voiceTraceAt(seed, conditionId, label) {
     const tp = panelByKey(seed.sheetId);
-    if (!tp || tp.key !== seed.sheetId || !tp.img.w) return { ok: false, message: "Couldn't place that — aim at a sheet." };
+    if (!tp || tp.key !== seed.sheetId || !tp.img.w) return { ok: false, message: t('commit.couldnt_place_aim_sheet') };
     const out = await oneClickAt([seed.x + tp.xOffset, seed.y], false, { conditionId, label });
     if (out.ok) return out;
-    const m = out.message || "Couldn't place that — the view changed mid-trace. Say it again.";
-    return { ok: false, message: /^couldn'?t/i.test(m) ? m : `Couldn't place that — ${m.charAt(0).toLowerCase()}${m.slice(1)}` };
+    const m = out.message || t('status.oneclick_view_changed');
+    return { ok: false, message: /^couldn'?t/i.test(m) ? m : t('commit.couldnt_place_generic', { detail: m.charAt(0).toLowerCase() + m.slice(1) }) };
   }
   // Voice-command capabilities (RFC #59 slice 2) — every entry binds an action
   // the UI already exposes; the dispatcher (voiceActions.ts) never touches
@@ -6053,9 +4775,6 @@ export default function TakeoffCanvas() {
       // and addMarkup auto-opens the Markups dock, so the note is immediately
       // visible and draggable — the anchor is a starting point, not a commitment
       addNote: (text) => addMarkup({ type: "text", at: [0.5, 0.06], text }, focusPanel.key),
-      // author declaration (#314) — provenance's one localStorage key; new
-      // commits pick it up at mint, nothing re-stamps retroactively
-      setAuthor: (v) => setAuthorName(v),
       getAimSeed,
       traceAt: (seed, conditionId, label) => voiceTraceAt(seed, conditionId, label),
     };
@@ -6135,8 +4854,8 @@ export default function TakeoffCanvas() {
         voiceModelRef.current = s;
         if (s.phase === "loading") setVoiceChip({ text: `voice model loading… ${s.pct}%`, tone: "busy" });
         else if (s.phase === "ready") setVoiceChip((c) => (c && c.tone === "busy" ? null : c));
-        else if (s.phase === "uninstalled") { setVoiceChip(null); setCommitMsg("Voice isn't installed on this deployment — see docs/VOICE.md to stage the model."); }
-        else if (s.phase === "error") { setVoiceChip(null); setCommitMsg(`Couldn't load the voice model — ${s.message} Hold M to retry.`); }
+        else if (s.phase === "uninstalled") { setVoiceChip(null); setCommitMsg(t('status.voice_not_installed')); }
+        else if (s.phase === "error") { setVoiceChip(null); setCommitMsg(t('status.voice_load_err', { error: s.message })); }
       });
     }
     return voiceClientRef.current;
@@ -6159,15 +4878,15 @@ export default function TakeoffCanvas() {
         session.cancel();
         voiceCaptureRef.current = null;
         setVoiceChip(null);
-        setCommitMsg("Couldn't finish dictation — the microphone was revoked.");
+        setCommitMsg(t('status.dictation_revoked'));
       });
       voiceCaptureRef.current = session;
       setVoiceChip({ text: "listening… release M to run · Esc to discard", tone: "live" });
     } catch (err) {
       setCommitMsg(
-        err?.reason === "mic_denied" ? "Couldn't start dictation — microphone permission denied. Allow the mic and try again."
-        : err?.reason === "no_mic_device" ? "Couldn't start dictation — no microphone found."
-        : "Couldn't start dictation — microphone unavailable.",
+        err?.reason === "mic_denied" ? t('status.mic_denied')
+        : err?.reason === "no_mic_device" ? t('status.mic_not_found')
+        : t('status.mic_unavailable'),
       );
     }
   }
@@ -6197,7 +4916,7 @@ export default function TakeoffCanvas() {
       clearTimeout(voiceFlashRef.current);
       voiceFlashRef.current = setTimeout(() => setVoiceChip((c) => (c && c.tone === "info" ? null : c)), 2400);
       return Promise.resolve(onVoiceCommandRef.current(t));
-    }).catch(() => { setVoiceChip(null); setCommitMsg("Couldn't decode that — try again."); });
+    }).catch(() => { setVoiceChip(null); setCommitMsg(t('status.dictation_failed')); });
   }
   // live refs — the mount-once keyboard effect must never see stale closures
   const onVoiceCommandRef = useRef(null);
@@ -6226,7 +4945,7 @@ export default function TakeoffCanvas() {
       if (document.visibilityState === "hidden" && voiceCaptureRef.current) {
         voiceHoldRef.current = false;
         voiceFnsRef.current.end(false);
-        setCommitMsg("Dictation discarded — the tab went to the background.");
+        setCommitMsg(t('status.dictation_discarded'));
       }
     };
     window.addEventListener("keydown", down);
@@ -6244,7 +4963,7 @@ export default function TakeoffCanvas() {
       clearTimeout(agentOfferTimerRef.current);
       pendingAgentOfferRef.current = null;
     };
-  }, []);
+  }, [t]);
 
   // ── the accept gate ─────────────────────────────────────────────────────────
   // Accept = the explicit human review one-click's Create models: the shape
@@ -6280,8 +4999,8 @@ export default function TakeoffCanvas() {
     }
     if (made.length) dispatchShape({ type: "add", shapes: made });   // ONE command — one undo entry for the batch
     setAgentProposals((ps) => ps.filter((p) => !accepted.has(p.id)));
-    if (made.length) setCommitMsg(`Accepted ${made.length} agent proposal${made.length === 1 ? "" : "s"}.${skippedClosed ? ` ${skippedClosed} skipped — open their sheet (with its scale set) to accept.` : ""}`);
-    else if (skippedClosed) setCommitMsg("Open that proposal's sheet (with its scale set) to accept it.");
+    if (made.length) setCommitMsg(t('status.accepted_proposals', { count: made.length, skipped: skippedClosed ? ` ${skippedClosed} ${t('commit.skipped_open_sheet')}` : "" }));
+    else if (skippedClosed) setCommitMsg(t('status.open_agent_sheet'));
   }
   const acceptAgentProposal = (id) => acceptAgentProposals([id]);
   const acceptAllVisibleAgentProposals = () => acceptAgentProposals(agentProposals.filter((p) => panelKeySet.has(p.sheet_id)).map((p) => p.id));
@@ -6317,7 +5036,7 @@ export default function TakeoffCanvas() {
     }
     const candidates = applyRuleToProject(rule, shapes, sheetData);
     setRuleOffer(null);
-    if (!candidates.length) { setCommitMsg("No other enclosed regions match this rule on the open sheets."); return; }
+    if (!candidates.length) { setCommitMsg(t('status.no_rule_match')); return; }
     setRuleStage({ rule, candidates, proposed_ts: nowIso() });
   }
   function applyStagedRule() {
@@ -6351,7 +5070,7 @@ export default function TakeoffCanvas() {
     const ids = res.shapes.slice(-made.length).map((s) => s.id);
     // the rule persists WITH its audit trail — inspectable in the project file
     setRules((rs) => [...rs.filter((r) => r.id !== rule.id), { ...rule, applied_to: ids }]);
-    setCommitMsg(`Rule applied — ${made.length} deduct${made.length === 1 ? "" : "s"} added (⌘Z undoes all). ${rule.label}.`);
+    setCommitMsg(t('status.rule_applied', { count: made.length, label: rule.label }));
   }
 
   // ── ⟂ Transitions (#202, canvas side) ──────────────────────────────────────
@@ -6419,11 +5138,11 @@ export default function TakeoffCanvas() {
     if (made.length) dispatchShape({ type: "add", shapes: made });   // ONE command — one undo entry for the whole sweep
     const total_lf = +made.reduce((n, s) => n + s.computed.perimeter_lf, 0).toFixed(2);
     if (made.length) {
-      setCommitMsg(`${made.length} transition${made.length === 1 ? "" : "s"} derived between ${a.tag} and ${b.tag} — ${total_lf} LF onto ${target.finish_tag}, dashed until you Accept (⌘Z undoes the sweep).`);
+      setCommitMsg(t('commit.transitions_derived', { count: made.length, tagA: a.tag, tagB: b.tag, lf: total_lf, target: target.finish_tag }));
     } else if (withheld.length) {
-      setCommitMsg(`Nothing to commit — every ${a.tag}/${b.tag} run is across a wall. See the Transitions panel.`);
+      setCommitMsg(t('commit.nothing_commit_wall', { tagA: a.tag, tagB: b.tag }));
     } else {
-      setCommitMsg(`${a.tag} and ${b.tag} never meet on the open sheets.`);
+      setCommitMsg(t('status.never_meet', { a: a.tag, b: b.tag }));
     }
     return { committed: made.length, total_lf, withheld, between: [a.tag, b.tag], onto: target.finish_tag };
   }
@@ -6438,7 +5157,7 @@ export default function TakeoffCanvas() {
   function acceptPendingShapes() {
     if (!pendingCommitted.length) return;
     dispatchShape({ type: "review", ids: pendingCommitted.map((s) => s.id) });
-    setCommitMsg(`Accepted ${pendingCommitted.length} proposed shape${pendingCommitted.length === 1 ? "" : "s"} — pencil is now ink.`);
+    setCommitMsg(t('status.accepted_agent', { count: pendingCommitted.length }));
   }
   const rejectAllAgentProposals = () => setAgentProposals([]);
 
@@ -6451,21 +5170,21 @@ export default function TakeoffCanvas() {
       : ev.type === "tool_end" ? (ev.result?.error
           ? { kind: "error", text: `✗ ${ev.name}: ${ev.result.error}` }
           : { kind: "status", text: `✓ ${ev.name} ${trimJson({ ...ev.result, image_data_url: undefined, items: Array.isArray(ev.result?.items) ? `${ev.result.items.length} items` : undefined }, 160)}` })
-      : ev.type === "error" ? { kind: "error", text: `Error: ${ev.message}` }
-      : ev.type === "aborted" ? { kind: "status", text: "Stopped." }
-      : ev.type === "max_iterations" ? { kind: "status", text: `Stopped at the ${ev.limit}-step cap — review what's staged.` }
-      : ev.type === "done" ? { kind: "status", text: "Done — review the dashed proposals." }
+      : ev.type === "error" ? { kind: "error", text: t('commit.agent_error', { message: ev.message }) }
+      : ev.type === "aborted" ? { kind: "status", text: t('agent.stopped') }
+      : ev.type === "max_iterations" ? { kind: "status", text: t('agent.stopped_cap', { limit: ev.limit }) }
+      : ev.type === "done" ? { kind: "status", text: t('agent.done') }
       : null;
     if (entry) setAgentLog((l) => [...l.slice(-199), entry]);
   }
   async function runAgent(goal) {
     if (agentRunning) return;
     if (!isAiConfigured()) { setShowAiSettings(true); return; }
-    if (agentStateRef.current.status !== "ready") { setCommitMsg("Sheet still loading — try again in a moment."); return; }
+    if (agentStateRef.current.status !== "ready") { setCommitMsg(t('status.still_loading')); return; }
     const ctl = new AbortController();
     agentAbortRef.current = ctl;
     setAgentRunning(true);
-    setAgentLog([{ kind: "status", text: `Goal: ${goal}` }]);
+    setAgentLog([{ kind: "status", text: t('agent.goal', { goal }) }]);
     const ctx = buildAgentCtx();
     try {
       await runAgentLoop({
@@ -6491,11 +5210,11 @@ export default function TakeoffCanvas() {
   //     login-gated (see importScheduleFromScan).
   // Corners a,b are stage px (raw cursor, snapping exempted at pointer-down).
   async function importScheduleFromRect(a, b) {
-    if (status !== "ready") { setCommitMsg("Sheet still loading — try again in a moment."); return; }
+    if (status !== "ready") { setCommitMsg(t('status.still_loading')); return; }
     const panel = panelAt(a[0]);
-    if (panelAt(b[0]).key !== panel.key) { setCommitMsg("Draw the box within a single sheet, around its schedule table."); return; }
+    if (panelAt(b[0]).key !== panel.key) { setCommitMsg(t('status.draw_box')); return; }
     const pageObj = pageObjsRef.current.get(panel.key);
-    if (!pageObj) { setCommitMsg("Open a sheet first."); return; }
+    if (!pageObj) { setCommitMsg(t('status.open_sheet_first')); return; }
     const rs = renderScalesRef.current.get(panel.key) || RENDER_SCALE;
     const rect = { x0: a[0] - panel.xOffset, y0: a[1], x1: b[0] - panel.xOffset, y1: b[1] };
     const seq = renderSeqRef.current;                 // a sheet switch mid-await must not pop a dialog for a page you left
@@ -6505,7 +5224,7 @@ export default function TakeoffCanvas() {
       const tc = await pageObj.getTextContent();
       if (seq !== renderSeqRef.current) return;
       tokens = extractRegionText(tc, vp, rect);
-    } catch { setCommitMsg("Couldn't read that region."); return; }
+    } catch { setCommitMsg(t('status.couldnt_read_region')); return; }
     // Vector-vs-scan decision. Tokens present ⇒ TRY the text layer first (a real
     // vector schedule parses straight from it, no OCR cost). But token presence
     // isn't proof of a vector page: scanned plans often carry a stray text layer
@@ -6521,7 +5240,7 @@ export default function TakeoffCanvas() {
       // advice is to re-drag around the table header. Don't fire a paid OCR call
       // and don't claim the page is scanned.
       if (!isGoogleConfigured() || !isSignedIn() || !isAllowedDomain()) {
-        setCommitMsg("No schedule found in that box — drag around the finish/material schedule (its CODE / MATERIAL / … header).");
+        setCommitMsg(t('status.no_schedule_vector'));
         return;
       }
       // else: the reader is available — let it read the pixels below.
@@ -6543,31 +5262,31 @@ export default function TakeoffCanvas() {
   async function importScheduleFromScan(pageObj, rs, rect, seq, tokenCount) {
     const hadTokens = tokenCount > 0;
     if (!isGoogleConfigured()) {
-      setCommitMsg("No schedule found — this looks like a scanned page (no text layer). Importing from scanned plans needs the AI backend.");
+      setCommitMsg(t('status.no_schedule_scan'));
       return;
     }
-    if (!isSignedIn()) { setCommitMsg("Sign in to import from scanned plans."); return; }
+    if (!isSignedIn()) { setCommitMsg(t('status.sign_in_schedule')); return; }
     // Org-only: a signed-in account outside the configured domain must not reach
     // the paid reader (the server 403s it too — this just avoids the round-trip).
-    if (!isAllowedDomain()) { setCommitMsg("Your sign-in doesn't have access to the scanned-schedule reader."); return; }
+    if (!isAllowedDomain()) { setCommitMsg(t('status.no_access_reader')); return; }
     // A paid read is already in flight — a rapid re-draw of the marquee must not
     // fire a second Gemini call. Surface it (the first call may not have printed
     // "Reading…" yet) so the redraw doesn't look ignored. Clears in finally below.
-    if (scanBusyRef.current) { setCommitMsg("Still reading the last schedule — one moment."); return; }
+    if (scanBusyRef.current) { setCommitMsg(t('status.still_reading')); return; }
     scanBusyRef.current = true;
     try {
       let png;
       try { png = await rasterizeRegion(pageObj, rs, rect); }
-      catch { setCommitMsg("Couldn't read that region."); return; }
+      catch { setCommitMsg(t('status.couldnt_read_region')); return; }
       if (seq !== renderSeqRef.current) return;
       // The token is what actually authorizes the paid read — the server verifies
       // it before spending. A missing/expired token here means re-consent, not a
       // silent public call.
       let token;
       try { token = await getAccessToken(); }
-      catch { setCommitMsg("Sign in again to import from scanned plans."); return; }
+      catch { setCommitMsg(t('status.sign_in_again')); return; }
       if (seq !== renderSeqRef.current) return;
-      setCommitMsg("Reading the scanned schedule…");
+      setCommitMsg(t('status.reading_schedule'));
       // #104: record WHY the paid reader was reached, right before the call fires
       // (rasterize + token succeeded), so the log correlates 1:1 with paid reads.
       // no-text-layer = truly raster (AI-only); text-present-unparsed = tokens were
@@ -6592,26 +5311,26 @@ export default function TakeoffCanvas() {
             // token + ALLOWED_HD gate ignores it.
             body: JSON.stringify({ image_b64: png.b64, width: png.width, height: png.height, client_hd: orgDomainHint() }),
           }),
-          { onRetry: () => setCommitMsg("The reader was warming up — retrying…") },
+          { onRetry: () => setCommitMsg(t('status.warming_up')) },
         );
         if (seq !== renderSeqRef.current) return;
-        if (res.status === 401 || res.status === 403) { setCommitMsg("Your sign-in doesn't have access to the scanned-schedule reader."); return; }
-        if (res.status === 501) { setCommitMsg("Importing from scanned plans isn't enabled on this deployment."); return; }
+        if (res.status === 401 || res.status === 403) { setCommitMsg(t('status.no_access_reader')); return; }
+        if (res.status === 501) { setCommitMsg(t('status.scan_not_enabled')); return; }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const rows = normalizeScanRows(await res.json());
         if (!rows.length) {
           setCommitMsg(hadTokens
-            ? "No schedule found in that box — drag around the finish/material schedule (its CODE / MATERIAL / … header)."
-            : "No schedule found in that scanned region — the reader returned nothing.");
+            ? t('status.no_schedule_vector')
+            : t('status.no_schedule_reader'));
           return;
         }
         // #104: say why the AI reader ran — honest about the token-bearing case (we
         // read the pixels; we do NOT claim the vector parser has a bug).
         setCommitMsg(hadTokens
-          ? `Read ${rows.length} finish${rows.length === 1 ? "" : "es"} from the image — the box had text but we couldn't read it as a table.`
-          : `Read ${rows.length} finish${rows.length === 1 ? "" : "es"} — scanned page (no text layer).`);
+          ? t('status.read_finishes_text', { count: rows.length })
+          : t('status.read_finishes_scan', { count: rows.length }));
         setImportRows(rows);
-      } catch { setCommitMsg("Couldn't reach the schedule reader — try again in a moment."); }
+      } catch { setCommitMsg(t('status.couldnt_reach_reader')); }
     } finally {
       scanBusyRef.current = false;
       bumpIdle();   // scan done → let the idle-drain observe the busy→idle edge (Slice 5b)
@@ -6643,202 +5362,6 @@ export default function TakeoffCanvas() {
     return { b64: dataUrl.split(",")[1] || "", width: bw, height: bh };
   }
 
-  // ── image markup (#…) — two entry points, one record type ────────────────
-  // Marquee screenshot: a,b are the two marquee corners in stage px. Render the
-  // boxed region of the plan offscreen (the rasterizeRegion idiom, but with its
-  // OWN 1600px downscale factor — NOT scanRasterScale's 4096 cap) and store it as
-  // a floating `image` markup anchored at the box center. Guards mirror
-  // importScheduleFromRect: sheet ready, both corners in one panel, a real source
-  // page (refuse a stitched composite), a non-degenerate box.
-  async function captureRegionMarkup(a, b) {
-    if (status !== "ready") { setCommitMsg("Sheet still loading — try again in a moment."); return; }
-    const panel = panelAt(a[0]);
-    if (panelAt(b[0]).key !== panel.key) { setCommitMsg("Draw the box within a single sheet."); return; }
-    const pageObj = pageObjsRef.current.get(panel.key);
-    if (!pageObj) { setCommitMsg("Capture a region on a single sheet (not a stitched view)."); return; }
-    const rs = renderScalesRef.current.get(panel.key) || RENDER_SCALE;
-    // rect in image (rs-viewport) px, clamped to the panel bounds so an over-drag
-    // past the sheet edge never parks the geometry off-sheet
-    const cl = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-    const x0 = cl(Math.min(a[0], b[0]) - panel.xOffset, 0, panel.img.w);
-    const x1 = cl(Math.max(a[0], b[0]) - panel.xOffset, 0, panel.img.w);
-    const y0 = cl(Math.min(a[1], b[1]), 0, panel.img.h);
-    const y1 = cl(Math.max(a[1], b[1]), 0, panel.img.h);
-    const regW = x1 - x0, regH = y1 - y0;
-    if (!(regW >= 4 && regH >= 4)) { setCommitMsg("Drag a larger box to capture."); return; }
-    // own downscale factor: 1600px longest side (never scanRasterScale's 4096)
-    const factor = Math.min(1, MARKUP_IMG_MAX / regW, MARKUP_IMG_MAX / regH);
-    const bw = Math.max(1, Math.round(regW * factor)), bh = Math.max(1, Math.round(regH * factor));
-    let src;
-    try {
-      const vp = pageObj.getViewport({ scale: rs * factor });
-      const canvas = document.createElement("canvas");
-      canvas.width = bw; canvas.height = bh;
-      await pageObj.render({
-        canvasContext: canvas.getContext("2d"),
-        viewport: vp,
-        transform: [1, 0, 0, 1, -x0 * factor, -y0 * factor],
-      }).promise;
-      src = canvas.toDataURL("image/png");
-    } catch { setCommitMsg("Couldn't capture that region."); return; }
-    const { at, w, aspect } = captureRectToImageGeom({ x0, y0, x1, y1 }, panel.img.w, panel.img.h);
-    if (!(w > 0)) return;
-    // FROZEN origin label. sheetBaseLabel resolves a detected sheet number only for
-    // the ACTIVE file (or an already gallery-scanned sheet); on the non-active panel
-    // of a multi-FILE side-by-side group it would fall back to the file base. Since
-    // that panel is rendered here anyway, scan its title block NOW (the same
-    // extractSheetNumber the active-file scan at ~:2056 uses) so the frozen number is
-    // real — but only when it isn't already known, and only as a best-effort upgrade:
-    // a null result (unusual title block) keeps the file-base fallback, never worse.
-    let srcLabel = sheetBaseLabel(panel.key);
-    const pk = parseSheetKey(panel.key);
-    const labelKnown = isStitchKey(panel.key) || !!galleryLabels[panel.key] || (pk.file === active && !!pageLabels[pk.page]);
-    if (!labelKnown) {
-      try {
-        const lbl = extractSheetNumber(await pageObj.getTextContent(), pageObj.getViewport({ scale: RENDER_SCALE }));
-        if (lbl) srcLabel = lbl;
-      } catch { /* title block unreadable — keep the file-base fallback */ }
-    }
-    // Capture-only provenance fields (uploads have no source, so addImageFromFile
-    // omits them): src_sheet_id is the ORIGIN sheet (sheet_id tracks where the
-    // image currently lives and moves on a cross-sheet place — see imageProvenance
-    // below). src_rect reuses the ALREADY-CLAMPED x0..y1 above, NOT the raw marquee
-    // corners a/b (they carry xOffset and are unclamped) and NOT bw/bh (the 1600px
-    // capture raster size) — normalizing by those would silently drift the traced
-    // region off the real source box. src_label is the FROZEN origin sheet name,
-    // resolved just above (sheetBaseLabel, upgraded via a title-block scan when the
-    // number isn't cached for a non-active side-by-side file): both the canvas caption
-    // and the marked-set PDF read this stored string, so they can never diverge on
-    // runtime label state (which sheetBaseLabel derives only for the active file).
-    addImageMarkup({
-      at, w, aspect, src, source: "capture", labelBase: srcLabel,
-      src_sheet_id: panel.key,
-      src_rect: [[x0 / panel.img.w, y0 / panel.img.h], [x1 / panel.img.w, y1 / panel.img.h]],
-      src_label: srcLabel,
-      source_label: false,
-    }, panel.key);
-  }
-
-  // The aggregate-budget gate shared by both entry points: refuse a new image when
-  // the project's total image-markup bytes would exceed the cap (N capped images
-  // otherwise defeat the per-image cap and push the annotations blob past quota).
-  // This is a SOFT guard read from the render-closure `markups`; two back-to-back
-  // async adds could momentarily race it, but the per-image 1600px cap already
-  // bounds each one, so the worst case is a single image slipping just over the
-  // budget — not a correctness or safety issue, and the quota surfacing in the
-  // autosave catch is the real backstop.
-  function addImageMarkup(m, key) {
-    const used = markups.reduce((n, x) => n + (x.type === "image" && typeof x.src === "string" ? x.src.length : 0), 0);
-    if (used + m.src.length > MAX_IMAGE_MARKUP_BYTES) { setCommitMsg("Too many/large images on this project — delete some before adding more."); return; }
-    // Auto-name (stored in `text`, which the panel renders and the ✎ edits): the
-    // sheet base + a per-sheet sequence ("AF101-01"). Uploads carry the file name.
-    // Collisions after a delete are tolerated (a simple count, not a high-water
-    // counter). Stamp the declared author (git-style; absent ⇒ omitted).
-    // labelBase lets a caller pin the base to a resolved label (a capture passes its
-    // frozen src_label) so the row NAME and the source CAPTION agree even in the
-    // non-active-panel case sheetBaseLabel can't resolve here; absent ⇒ sheetBaseLabel.
-    const { name: given, labelBase, ...rest } = m;
-    const seq = markups.filter((x) => x.type === "image" && x.sheet_id === key).length + 1;
-    const base = (typeof labelBase === "string" && labelBase.trim()) ? labelBase : sheetBaseLabel(key);
-    const text = (typeof given === "string" && given.trim()) || `${base}-${String(seq).padStart(2, "0")}`;
-    const by = authorName();
-    addMarkup({ type: "image", ...rest, text, ...(by ? { author: by } : {}) }, key);
-    setCommitMsg("Image placed.");
-  }
-
-  // Lazy, memory-only panel thumbnail: decode the src ONCE, downscale to a ~48px
-  // JPEG, cache by markup id. Returns null while building (the row shows a
-  // placeholder) or on a bad src; the build's setImgThumbs re-renders the row.
-  function ensureThumb(m) {
-    if (imgThumbs[m.id]) return imgThumbs[m.id];
-    if (!thumbBuildingRef.current.has(m.id) && m.src && pickEmbedFormat(m.src)) {
-      thumbBuildingRef.current.add(m.id);
-      const img = new Image();
-      img.onload = () => {
-        const s = 48 / Math.max(img.width, img.height, 1);
-        const w = Math.max(1, Math.round(img.width * s)), h = Math.max(1, Math.round(img.height * s));
-        const c = document.createElement("canvas"); c.width = w; c.height = h;
-        c.getContext("2d").drawImage(img, 0, 0, w, h);
-        setImgThumbs((t) => ({ ...t, [m.id]: c.toDataURL("image/jpeg", 0.7) }));
-      };
-      img.onerror = () => { thumbBuildingRef.current.delete(m.id); };
-      img.src = m.src;
-    }
-    return null;
-  }
-  // Provenance one-liner for the panel row's title tooltip (Kevin: not shown
-  // prominently). Degrades: drops the author when none is declared.
-  function imageProvenance(m) {
-    const verb = m.source === "upload" ? "Uploaded" : "Captured from";
-    // src_sheet_id is the ORIGIN sheet; sheet_id is wherever the image lives NOW
-    // and is rewritten on a cross-sheet place, so after a move reading sheet_id
-    // here would misreport where it was captured. Fall back to sheet_id for
-    // uploads (no src_sheet_id) and legacy records captured before this field.
-    const where = m.source === "upload" ? "" : ` ${sheetBaseLabel(m.src_sheet_id || m.sheet_id)}`;
-    const when = m.created_at ? ` · ${String(m.created_at).slice(0, 10)}` : "";
-    const who = m.author ? ` · ${m.author}` : "";
-    return `${verb}${where}${when}${who}`;
-  }
-
-  // Upload: decode a raster file (EXIF-oriented), downscale to 1600px longest side,
-  // ALWAYS re-encode through a canvas (pixels only — SSRF/script-safe; guarantees a
-  // PNG/JPEG data URL), and drop it centered in the current view of the focus sheet.
-  async function addImageFromFile(file) {
-    // don't trust accept="image/*": accept ONLY PNG/JPEG — matching the UI copy,
-    // the docs, and pickEmbedFormat (the marked-set gate), and keeping the decode
-    // surface small. By MIME OR by extension, because some platforms/drag-drop hand
-    // over an empty file.type for a good PNG/JPEG (the StampPanel import checks the
-    // extension for the same reason). Everything else — webp/gif/bmp, and SVG — is
-    // refused here (uploads are still re-encoded to PNG/JPEG regardless).
-    const name = file?.name || "";
-    const isPngJpeg = !!file && (/^image\/(png|jpeg)$/.test(file.type) || /\.(png|jpe?g)$/i.test(name));
-    if (!isPngJpeg) {
-      setCommitMsg("Pick a PNG or JPEG image."); return;
-    }
-    // cheap pre-decode gate: bail on a huge FILE before createImageBitmap allocates
-    // anything (a small-file / huge-dims pixel bomb is caught by the area guard below).
-    if (file.size > MARKUP_UPLOAD_MAX_BYTES) { setCommitMsg(`That image file is too large (max ${Math.round(MARKUP_UPLOAD_MAX_BYTES / (1024 * 1024))} MB).`); return; }
-    try {
-      // sniff intrinsic dimensions via an <img> FIRST — reading naturalWidth/Height
-      // only needs the header, so a pixel bomb (small file, enormous declared dims)
-      // is refused BEFORE createImageBitmap forces a full-size RGBA decode that could
-      // OOM the tab. createImageBitmap then only runs on an already-bounded image.
-      const url = URL.createObjectURL(file);
-      try {
-        const dims = await new Promise((res, rej) => {
-          const im = new Image();
-          im.onload = () => res({ w: im.naturalWidth, h: im.naturalHeight });
-          im.onerror = () => rej(new Error("decode"));
-          im.src = url;
-        });
-        if (dims.w * dims.h > MARKUP_DECODE_MAX_AREA) { setCommitMsg("That image is too large (too many pixels)."); return; }
-      } finally { URL.revokeObjectURL(url); }
-      const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
-      // defense-in-depth: the oriented bitmap's own area, in case the sniff and the
-      // decoder disagree (a markup-appropriate cap, NOT the 241M render-canvas cap).
-      if (bmp.width * bmp.height > MARKUP_DECODE_MAX_AREA) { bmp.close?.(); setCommitMsg("That image is too large (too many pixels)."); return; }
-      const f = Math.min(1, MARKUP_IMG_MAX / Math.max(bmp.width, bmp.height));
-      const bw = Math.max(1, Math.round(bmp.width * f)), bh = Math.max(1, Math.round(bmp.height * f));
-      const canvas = document.createElement("canvas");
-      canvas.width = bw; canvas.height = bh;
-      canvas.getContext("2d").drawImage(bmp, 0, 0, bw, bh);
-      bmp.close?.();
-      const isJpeg = file.type === "image/jpeg";
-      const src = canvas.toDataURL(isJpeg ? "image/jpeg" : "image/png", isJpeg ? 0.85 : undefined);
-      const aspect = aspectFromDims(bw, bh);
-      // center of the current view, normalized to the focus panel (falls back to
-      // the panel center if the view geometry isn't available)
-      const cl01 = (v) => Math.min(1, Math.max(0, v));
-      let at = [0.5, 0.5];
-      const r = containerRef.current?.getBoundingClientRect();
-      if (r) {
-        const c = toImage(r.left + r.width / 2, r.top + r.height / 2);
-        at = [cl01((c[0] - focusPanel.xOffset) / focusPanel.img.w), cl01(c[1] / focusPanel.img.h)];
-      }
-      addImageMarkup({ at, w: 0.2, aspect, src, source: "upload", name: (file?.name || "").replace(/\.[^.]+$/, "") }, focusPanel.key);
-    } catch { setCommitMsg("Couldn't read that image."); }
-  }
-
   // Approved rows → conditions. Category drives color/hatch/waste (rowToSeed);
   // product spec (mfr/style/color/size) rides a plain `spec` field — NOT custom
   // columns (would hijack a user column and pollute its grouping vocabulary) and
@@ -6861,10 +5384,10 @@ export default function TakeoffCanvas() {
       existing.add(tag);
     }
     setImportRows(null);
-    if (!made.length) { setCommitMsg("Those finishes already exist as conditions."); return; }
+    if (!made.length) { setCommitMsg(t('status.schedule_exists')); return; }
     setConditions((cs) => [...cs, ...made]);
     activateCondition(made[0].id, { reassign: false });
-    setCommitMsg(`Created ${made.length} condition${made.length === 1 ? "" : "s"} from the schedule.`);
+    setCommitMsg(t('status.schedule_created', { count: made.length }));
   }
   // every condition-editor save lands here — a bare updated_at is the whole
   // provenance story for conditions (no origin machinery; they're all manual)
@@ -6879,7 +5402,7 @@ export default function TakeoffCanvas() {
     const c = condById[id];
     if (!c) return;
     const owned = shapes.filter((s) => s.condition_id === id);
-    if (owned.length && !window.confirm(`Delete ${c.finish_tag} and its ${owned.length} takeoff${owned.length === 1 ? "" : "s"}? This can't be undone.`)) return;
+    if (owned.length && !window.confirm(t('confirm.delete_condition_with_takeoffs', { tag: c.finish_tag, count: owned.length }))) return;
     // Lineage first, removal second: deleting a family parent must not orphan its twins. The
     // eldest survivor is promoted to root (its rows are already materialized — propagate-on-write
     // guarantees that) and the rest re-point at it, origin_ids remapped.
@@ -6901,7 +5424,7 @@ export default function TakeoffCanvas() {
     // no bulk-selection pruning needed here: the panel derives liveness from
     // the conditions prop (liveChecked = conditions ∩ checked), so a deleted
     // id left in its checked set is inert by construction
-    setCommitMsg(`Deleted ${c.finish_tag}${owned.length ? ` and ${owned.length} takeoff${owned.length === 1 ? "" : "s"}` : ""}.`);
+    setCommitMsg(t('status.deleted_condition', { tag: c.finish_tag, takeoffs: owned.length ? ` and ${owned.length} takeoff(s)` : "" }));
   }
 
   // custom columns: project-scoped vocabulary editing + per-condition assignment.
@@ -6920,7 +5443,7 @@ export default function TakeoffCanvas() {
   const addColumnValue = (colId, v) => setConditionColumns((cols) => cols.map((cc) => (cc.id === colId && !cc.values.includes(v) ? { ...cc, values: [...cc.values, v] } : cc)));
   const removeColumnValue = (colId, v) => setConditionColumns((cols) => cols.map((cc) => (cc.id === colId ? { ...cc, values: cc.values.filter((x) => x !== v) } : cc)));   // assigned conditions keep the string — selects show "(removed)"
   const renameColumnVal = (colId, oldV) => {
-    const newV = (window.prompt("Rename value:", oldV) || "").trim();
+    const newV = (window.prompt(t('prompt.rename_value'), oldV) || "").trim();
     if (!newV || newV === oldV) return;
     // rename into an existing value = merge (values are unique — they key the chips and the select options)
     setConditionColumns((cols) => cols.map((cc) => (cc.id === colId ? { ...cc, values: cc.values.includes(newV) ? cc.values.filter((x) => x !== oldV) : cc.values.map((x) => (x === oldV ? newV : x)) } : cc)));
@@ -6928,7 +5451,7 @@ export default function TakeoffCanvas() {
   };
   const deleteColumn = (colId) => {
     const cc = conditionColumns.find((c) => c.id === colId);
-    if (!window.confirm(`Delete column "${columnLabel(cc)}" for the whole project? Conditions keep their values but they're no longer shown or exported.`)) return;
+    if (!window.confirm(t('confirm.delete_column', { column: columnLabel(cc) }))) return;
     setConditionColumns((cols) => cols.filter((c) => c.id !== colId));   // orphaned attrs[colId] stay behind — harmless, nothing iterates raw attrs
   };
 
@@ -6937,7 +5460,7 @@ export default function TakeoffCanvas() {
   const addLabel = (v) => setShapeLabels((ls) => (ls.includes(v) ? ls : [...ls, v]));
   const removeLabel = (v) => setShapeLabels((ls) => ls.filter((x) => x !== v));   // labeled shapes keep the string — it falls into an ad-hoc report group, nothing disappears from totals
   const renameLabel = (oldV) => {
-    const newV = (window.prompt("Rename label:", oldV) || "").trim();
+    const newV = (window.prompt(t('prompt.rename_label'), oldV) || "").trim();
     if (!newV || newV === oldV) return;
     // rename into an existing value = merge (labels are unique — they key the chips and the report's group headers)
     setShapeLabels((ls) => (ls.includes(newV) ? ls.filter((x) => x !== oldV) : ls.map((x) => (x === oldV ? newV : x))));
@@ -6998,7 +5521,7 @@ export default function TakeoffCanvas() {
     if (!src || !lab) return null;
     const tag = variantTag(src.finish_tag, lab);
     if (conditions.some((c) => normalizeTag(c.finish_tag) === normalizeTag(tag))) {
-      setCommitMsg(`A condition is already called ${tag} — pick another label.`);
+      setCommitMsg(t('status.condition_renamed', { tag }));
       return null;
     }
     const { twin, parentPatch } = mintTwin(src, {
@@ -7010,7 +5533,7 @@ export default function TakeoffCanvas() {
     agentStateRef.current = { ...agentStateRef.current, conditions: [...agentStateRef.current.conditions, twin] };
     setConditions((cs) => [...cs.map((c) => (c.id === src.id && parentPatch ? { ...c, ...parentPatch } : c)), twin]);
     activateCondition(twin.id, { reassign: false });
-    setCommitMsg(`Added ${twin.finish_tag} — its materials follow ${src.finish_tag} until you change them here.`);
+    setCommitMsg(t('status.condition_added', { tag: twin.finish_tag, src: src.finish_tag }));
     return twin;
   };
   // Cut a twin loose: every following row freezes where it stands. It KEEPS its family_id, so it
@@ -7020,11 +5543,11 @@ export default function TakeoffCanvas() {
     if (!c?.variant_of) return;
     const par = conditions.find((x) => x.id === c.variant_of);
     const n = (c.materials || []).filter((r) => r.inherited).length;
-    if (!window.confirm(`Split ${c.finish_tag} out of its family?\n\n${n} row${n === 1 ? "" : "s"} freeze at ${n === 1 ? "its" : "their"} current values, and edits to ${par?.finish_tag || "the original"} stop reaching it.\nIt keeps its name and still subtotals with the family.`)) return;
+    if (!window.confirm(t('confirm.split_family', { tag: c.finish_tag, count: n, possessive: n === 1 ? t('confirm.its') : t('confirm.their'), parent: par?.finish_tag || t('confirm.the_original') }))) return;
     setConditions((cs) => splitFromFamily(cs, id));
-    setCommitMsg(`${c.finish_tag} no longer follows ${par?.finish_tag || "its family"}.`);
+    setCommitMsg(t('status.condition_split', { tag: c.finish_tag, parent: par?.finish_tag || t('status.its_family') }));
   };
-  // Height/Thickness are LIVE parameters: changing them re-flows
+  // Height/Thickness are LIVE parameters (Kreo-style): changing them re-flows
   // every dependent shape on this condition — wall SF tracks the tile height.
   const setCondParam = (field, raw) => {
     const v = raw === "" ? null : Math.max(0, parseFloat(raw) || 0);
@@ -7076,21 +5599,7 @@ export default function TakeoffCanvas() {
     if (cond.hatch && cond.hatch !== "solid") return `url(#${patId(cond)})`;
     return solid ? solid + (darkMode ? "4d" : "33") : "none";
   };
-  // The in-progress ring/rect fill, per the theme's draft.fillMode: "condition"
-  // wears the active condition's own fill (drafting — today's look), "tint" a
-  // wash of the theme accent, "none" a hollow draft. Defined here (not with the
-  // early helpers) because it reads shapeFill(aCond) — both defined just above.
-  const draftFill = DS.draft.fillMode === "condition" ? shapeFill(aCond)
-    : DS.draft.fillMode === "tint" ? rgbaFromHex(DS.accent, DS.draft.tintAlpha ?? 0.08)
-    : "none";
-  // When the "outline area while drawing" preference is on, the ring tools draw
-  // as an OPEN outline (no fill, not auto-closed) while in progress — they still
-  // commit CLOSED on Enter/dbl-click (commitPoly is untouched). Off ⇒ today's
-  // closed+filled polygon, byte-identical. surface/linear are unaffected — they
-  // already render open and are excluded here.
-  const ringOutline = draftOutline && (tool === "area" || tool === "deduct" || tool === "zone");
-  // the drawn boundary — flattenArcRing is the identity on an all-straight trace
-  const mm = closedMetrics(curveIdx.length ? flattenArcRing(poly, curveIdx, !bowOpen) : poly);
+  const mm = closedMetrics(poly);
   // the live readout prices the IN-PROGRESS poly with its own panel's scale
   const liveUpp = poly.length ? uppFor(panelAt(poly[0][0]).key) : uppFor(focusPanel.key);
   const liveArea = liveUpp ? mm.area * liveUpp * liveUpp : null;
@@ -7155,7 +5664,7 @@ export default function TakeoffCanvas() {
         .map((s) => [s.id, computeShapeMetrics(s, dimsBy.get(s.sheet_id), uppFor(s.sheet_id) || 0, condById[s.condition_id])]));
       if (!healed.size) return;
       dispatchShape({ type: "replace", shapes: shapes.map((s) => (healed.has(s.id) ? { ...s, computed: healed.get(s.id) } : s)) }, { reset: true });
-      setCommitMsg(`Repriced ${healed.size} takeoff${healed.size === 1 ? "" : "s"} that loaded without quantities.`);
+      setCommitMsg(t('status.repriced', { count: healed.size }));
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reruns on load/shape/scale change; docFor/uppFor/condById read from the same render
   }, [status, shapes, scales, conditions]);
@@ -7173,12 +5682,9 @@ export default function TakeoffCanvas() {
   const countTotal = condRow?.ea || 0;
   const wallTotal = condRow?.wall_sf || 0;
   const borderTotal = condRow?.border_sf || 0;
-  // display-only derived metric: floor-area perimeters × the condition height
+  // display-only Kreo-style derived metric: floor-area perimeters × the condition height
   const condH = Number(aCond?.height_ft) || 0; // the live-readout JSX below still reads this
   const vertTotal = verticalWallSf(visibleShapes, activeCond, aCond?.height_ft, condMult);
-  // the tally under the total: every linear run and wall of the active
-  // condition on the visible sheets, in draw order (lib/measurementBreakdown)
-  const tally = useMemo(() => measurementBreakdown(visibleShapes, activeCond, aCond), [visibleShapes, activeCond, aCond]);
   const num = (v, d = 1) => v.toLocaleString(undefined, { maximumFractionDigits: d });
   // unit-system display edge: internal math is always feet (lib/units.ts)
   const fa = (sf, d = 1) => `${num(areaVal(sf, units), d)} ${areaUnit(units)}`;
@@ -7194,13 +5700,7 @@ export default function TakeoffCanvas() {
   const checkStatedFeet = parseLenInput(checkStated, units);
   const checkErrPct = checkFeet && checkStatedFeet > 0 ? ((checkFeet - checkStatedFeet) / checkStatedFeet) * 100 : null;
 
-  // Matches what the Markups tab actually renders post-Captures-split: the
-  // per-sheet non-image list (panel-filtered) plus the GLOBAL Captures list
-  // (every image markup, any sheet) — NOT the old panelKeySet-only count,
-  // which double-missed (never counted an other-sheet capture) and
-  // over-counted (still counted a THIS-sheet image, which no longer shows in
-  // the per-sheet body it was counted against).
-  const markupCount = markups.filter((m) => panelKeySet.has(m.sheet_id) && m.type !== "image").length + filterCaptures(markups, "").length;
+  const markupCount = markups.filter((m) => panelKeySet.has(m.sheet_id)).length;
   const selShape = selectedId ? visibleShapes.find((s) => s.id === selectedId) : null;
   // the input types in DISPLAY units (metres in metric); height_ft is stored feet
   const setShapeHeight = (raw) => {
@@ -7219,7 +5719,7 @@ export default function TakeoffCanvas() {
       return { ...next, computed: recomputeShape(next) };
     }));
   };
-  const finishOk = !bowOpen && (((tool === "area" || tool === "deduct") && poly.length >= 3) || (tool === "zone" && poly.length >= 3 && !zoneTraceCross) || ((tool === "linear" || tool === "surface") && poly.length >= 2));
+  const finishOk = ((tool === "area" || tool === "deduct") && poly.length >= 3) || (tool === "zone" && poly.length >= 3 && !zoneTraceCross) || ((tool === "linear" || tool === "surface" || tool === "curve") && poly.length >= 2);
 
   // ── Layers panel (#85 phase 2) wiring ──────────────────────────────────────
   // Open sheets that actually carry a PDF layer table. Empty for the common
@@ -7294,7 +5794,7 @@ export default function TakeoffCanvas() {
   // condition — the "don't open the sidebar unless double-clicked" contract.
   const pinToPalette = (id) => {
     if (palette.includes(id)) return;   // already pinned — silent no-op (dropping a chip back on the band)
-    if (palette.length >= PALETTE_MAX) { setCommitMsg(`Palette is full (${PALETTE_MAX}) — unpin one first.`); return; }
+    if (palette.length >= PALETTE_MAX) { setCommitMsg(t('status.palette_full', { count: PALETTE_MAX })); return; }
     setPalette((p) => (p.includes(id) || p.length >= PALETTE_MAX ? p : [...p, id]));
   };
   const unpinFromPalette = (id) => setPalette((p) => p.filter((x) => x !== id));
@@ -7326,7 +5826,7 @@ export default function TakeoffCanvas() {
   // so counts and names here can never claim rows the list already lost.
   const bulkWasteConditions = (ids, v) => {
     setConditions((cs) => cs.map((c) => (ids.has(c.id) ? { ...c, waste_pct: v } : c)));
-    setCommitMsg(`Waste set to ${v}% on ${ids.size} condition${ids.size === 1 ? "" : "s"}.`);
+    setCommitMsg(t('status.waste_set', { pct: v, count: ids.size }));
   };
   const bulkColorConditions = (ids, color) => setConditions((cs) => cs.map((c) => (ids.has(c.id) ? { ...c, color } : c)));
   // returns whether the delete went through — the panel clears its selection only then
@@ -7337,20 +5837,20 @@ export default function TakeoffCanvas() {
     const owned = dead.length;
     // name what dies while the list still reads at a glance (≤5); count beyond
     const what = live.length <= 5 ? live.map((c) => c.finish_tag).join(", ") : `${live.length} conditions`;
-    if (!window.confirm(`Delete ${what}${owned ? ` and their ${owned} takeoff${owned === 1 ? "" : "s"}` : ""}? This can't be undone.`)) return false;
+    if (!window.confirm(t('confirm.delete_with_takeoffs', { what, count: owned }))) return false;
     setConditions((cs) => promoteOnDelete(cs, ids).filter((c) => !ids.has(c.id)));   // lineage repaired first
     // same cascade rule as deleteCondition: counted centrally, off the stack
     if (owned) dispatchShape({ type: "delete", ids: dead.map((s) => s.id), reason: "condition-delete" }, { record: false });
     setPalette((p) => p.filter((id) => !ids.has(id)));   // deleted conditions can't stay pinned
     if (ids.has(activeCond)) setActiveCond(conditions.find((c) => !ids.has(c.id))?.id || "");
-    setCommitMsg(`Deleted ${live.length} condition${live.length === 1 ? "" : "s"}${owned ? ` and ${owned} takeoff${owned === 1 ? "" : "s"}` : ""}.`);
+    setCommitMsg(t('status.deleted_conditions', { count: live.length, takeoffs: owned ? ` and ${owned} takeoff(s)` : "" }));
     return true;
   };
 
   // ── condition template library ops (browser-global; store meta key) ───────
   const persistTemplates = (next) => {
     templatesRef.current = next; setTemplates(next);
-    store.saveTemplates(next).catch((e) => setCommitMsg(`Couldn't save the library: ${e.message || e}`));
+    store.saveTemplates(next).catch((e) => setCommitMsg(t('status.template_err', { error: e.message || e })));
   };
   const condToTemplate = (c) => ({
     finish_tag: c.finish_tag, color: c.color, fill: c.fill, hatch: c.hatch || "solid",
@@ -7366,9 +5866,9 @@ export default function TakeoffCanvas() {
     if (!aCond) return;
     const tpl = condToTemplate(aCond);
     const at = templates.findIndex((t) => t.finish_tag === tpl.finish_tag);
-    if (at >= 0 && !window.confirm(`A “${tpl.finish_tag}” template is already in the library — replace it?`)) return;
+    if (at >= 0 && !window.confirm(t('confirm.template_exists', { tag: tpl.finish_tag }))) return;
     persistTemplates(at >= 0 ? templates.map((t, i) => (i === at ? tpl : t)) : [...templates, tpl]);
-    setCommitMsg(`Saved ${tpl.finish_tag} to the library.`);
+    setCommitMsg(t('status.saved_template', { tag: tpl.finish_tag }));
   };
   const applyTemplate = (t) => {
     const c = instantiateTemplate(t);
@@ -7377,7 +5877,7 @@ export default function TakeoffCanvas() {
     // still dismisses a live bulk selection like every other activation surface
     activateCondition(c.id, { reassign: false });
     // the panel switches itself back to the Takeoffs tab (its Apply handler)
-    setCommitMsg(`Added ${c.finish_tag} from the library.`);
+    setCommitMsg(t('status.added_from_lib', { tag: c.finish_tag }));
   };
   // idx addresses the template BY POSITION (the panel's plain templates.map
   // index — it doesn't filter/sort). The focus-refresh above now skips the
@@ -7389,15 +5889,15 @@ export default function TakeoffCanvas() {
   // reports rather than throwing.
   const renameTemplate = (idx) => {
     const t = templates[idx];
-    if (!t) { setCommitMsg("The library changed in another tab — try again."); return; }
-    const tag = (window.prompt("Template tag:", t.finish_tag) || "").trim();
+    if (!t) { setCommitMsg(t('status.lib_changed')); return; }
+    const tag = (window.prompt(t('prompt.template_tag'), t.finish_tag) || "").trim();
     if (!tag || tag === t.finish_tag) return;
     persistTemplates(templates.map((x, i) => (i === idx ? { ...x, finish_tag: tag } : x)));
   };
   const deleteTemplate = (idx) => {
     const t = templates[idx];
-    if (!t) { setCommitMsg("The library changed in another tab — try again."); return; }
-    if (!window.confirm(`Remove the ${t.finish_tag} template from the library? Existing conditions are unaffected.`)) return;
+    if (!t) { setCommitMsg(t('status.lib_changed')); return; }
+    if (!window.confirm(t('confirm.remove_template', { tag: t.finish_tag }))) return;
     persistTemplates(templates.filter((_, i) => i !== idx));
   };
 
@@ -7410,7 +5910,7 @@ export default function TakeoffCanvas() {
   const matLibById = useMemo(() => Object.fromEntries(matLib.map((m) => [m.id, m])), [matLib]);
   const persistMatLib = (next) => {
     setMatLib(next);
-    store.saveMaterialLibrary(next).catch((e) => setCommitMsg(`Couldn't save the material library: ${e.message || e}`));
+    store.saveMaterialLibrary(next).catch((e) => setCommitMsg(t('status.material_lib_err', { error: e.message || e })));
   };
   // libFields / matFieldOverridden / the push+revert patch builders live in
   // lib/materials.js (pure, tested): they carry kind and the grout tile
@@ -7421,11 +5921,11 @@ export default function TakeoffCanvas() {
     updateCond({ materials: [...(aCond.materials || []), { id: uid("mat"), ...libFields(lm), lib_id: lm.id }] });
   };
   const promoteMaterial = (m) => {
-    if (!m.name) { setCommitMsg("Name the material before saving it to the library."); return; }
+    if (!m.name) { setCommitMsg(t('status.name_material_first')); return; }
     const entry = { id: uid("lib"), ...libFields(m) };
     persistMatLib([...matLib, entry]);
     updateMaterial(m.id, { lib_id: entry.id });
-    setCommitMsg(`Saved ${m.name} to the material library.`);
+    setCommitMsg(t('status.saved_material', { name: m.name }));
   };
   const revertMatField = (m, f) => {
     const lm = matLibById[m.lib_id];
@@ -7443,15 +5943,15 @@ export default function TakeoffCanvas() {
     const lm = matLibById[libId];
     if (!lm) return;
     const n = linkedCount(libId);
-    if (!n) { setCommitMsg("No condition lines link this material yet."); return; }
-    if (!window.confirm(`Update ${n} linked line${n === 1 ? "" : "s"} across conditions to the library values? Overrides on those lines are replaced.`)) return;
+    if (!n) { setCommitMsg(t('status.no_linked_lines')); return; }
+    if (!window.confirm(t('confirm.update_linked_lines', { count: n }))) return;
     setConditions((cs) => cs.map((c) => ({ ...c, materials: (c.materials || []).map((m) => (m.lib_id === libId ? libPushPatch(m, lm) : m)) })));
-    setCommitMsg(`Updated ${n} linked line${n === 1 ? "" : "s"} from the library.`);
+    setCommitMsg(t('status.updated_lines', { count: n }));
   };
   const deleteLibMaterial = (libId) => {
     const lm = matLibById[libId];
     const n = linkedCount(libId);
-    if (!window.confirm(`Remove ${lm?.name || "this material"} from the library?${n ? (n === 1 ? " 1 linked line keeps its values — only the link is removed." : ` ${n} linked lines keep their values — only the links are removed.`) : ""}`)) return;
+    if (!window.confirm(t('confirm.remove_material', { name: lm?.name || t('confirm.this_material'), linkedNote: n ? (n === 1 ? t('confirm.one_linked_line') : t('confirm.n_linked_lines', { count: n })) : "" }))) return;
     persistMatLib(matLib.filter((x) => x.id !== libId));
     if (n) setConditions((cs) => cs.map((c) => ({ ...c, materials: (c.materials || []).map((m) => { if (m.lib_id !== libId) return m; const { lib_id: _l, ...rest } = m; return rest; }) })));
     // condition templates carry lib_id too (so applying re-links to a live
@@ -7519,10 +6019,10 @@ export default function TakeoffCanvas() {
     const armed = opts.armed ?? (tool === id);
     return (
       <button key={id} type="button" onClick={onArm || (() => setTool(id))}
-        title={shortcut ? keyText(`${label} · ${shortcut}`) : label} aria-label={label} aria-pressed={armed}
+        title={shortcut ? `${label} · ${shortcut}` : label} aria-label={label} aria-pressed={armed}
         style={{ position: "relative", width: "var(--ctl-l)", height: "var(--ctl-l)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid transparent", borderRadius: "var(--r-1)", background: armed ? (opts.tint || "var(--cobalt)") : "transparent", color: armed ? "var(--accent-contrast)" : (opts.tint || "var(--ink)"), boxShadow: armed ? "var(--glow)" : "none", cursor: "pointer", lineHeight: 1 }}>
         <Icon name={iconName} size={17} />
-        {shortcut && <span aria-hidden="true" style={{ position: "absolute", bottom: 1, right: 3, fontFamily: "var(--f-mono)", fontSize: 8, color: armed ? "var(--accent-contrast)" : "var(--ink-muted)", opacity: armed ? 0.75 : 1 }}>{keyText(shortcut)}</span>}
+        {shortcut && <span aria-hidden="true" style={{ position: "absolute", bottom: 1, right: 3, fontFamily: "var(--f-mono)", fontSize: 8, color: armed ? "var(--accent-contrast)" : "var(--ink-muted)", opacity: armed ? 0.75 : 1 }}>{shortcut}</span>}
       </button>
     );
   };
@@ -7542,50 +6042,24 @@ export default function TakeoffCanvas() {
     : `${levelOfPage(page) ? `${levelOfPage(page)} · ` : ""}${pageLabels[page] || (pageCount > 1 ? `Sheet ${page}` : active)}${pageCount > 1 ? ` · ${page}/${pageCount}` : ""}`;
   const sheetMenuItems = [];
   if (!sheetGroup.length && pageCount > 1) {
-    sheetMenuItems.push({ section: "Sheets in this set" });
-    for (let n = 1; n <= pageCount; n++) sheetMenuItems.push({ id: `pg-${n}`, label: `${levelOfPage(n) ? `${levelOfPage(n)} · ` : ""}${pageLabels[n] || `Sheet ${n}`}`, shortcut: `${n}/${pageCount}`, active: n === page, onSelect: () => setPage(n) });
+    sheetMenuItems.push({ section: t('menu.sheets_in_set') });
+    for (let n = 1; n <= pageCount; n++) sheetMenuItems.push({ id: `pg-${n}`, label: `${levelOfPage(n) ? `${levelOfPage(n)} · ` : ""}${pageLabels[n] || t('menu.sheet_page', { page: n })}`, shortcut: `${n}/${pageCount}`, active: n === page, onSelect: () => setPage(n) });
   }
   if (!sheetGroup.length && sheets.length > 1) {
-    sheetMenuItems.push({ section: "Files" });
+    sheetMenuItems.push({ section: t('menu.files') });
     for (const s of sheets) sheetMenuItems.push({ id: `f-${s.name}`, label: s.name, active: s.name === active, onSelect: () => { setActive(s.name); setPage(1); } });
   }
   if (sheetMenuItems.length && (sheetGroup.length || lastGroup.length >= 2)) sheetMenuItems.push("divider");
   if (sheetGroup.length) sheetMenuItems.push(soloStitch
-    ? { id: "ungroup", label: "Leave stitch — back to one sheet", title: "Back to a single sheet (the stitch's first member) — the stitch keeps its takeoffs and reopens from the gallery or its tab", onSelect: ungroup }
-    : { id: "ungroup", label: "Ungroup — back to one sheet", title: "Back to one sheet — you land on the sheet you were last working; every sheet keeps its takeoffs and markups", onSelect: ungroup });
-  if (!sheetGroup.length && lastGroup.length >= 2) sheetMenuItems.push({ id: "regroup", label: `Regroup (${lastGroup.length})`, title: `Side-by-side again with the same ${lastGroup.length} sheets — each keeps its own scale, takeoffs and markups`, onSelect: regroup });
+    ? { id: "ungroup", label: t('menu.ungroup_stitch'), title: t('menu.ungroup_stitch_title'), onSelect: ungroup }
+    : { id: "ungroup", label: t('menu.ungroup'), title: t('menu.ungroup_title'), onSelect: ungroup });
+  if (!sheetGroup.length && lastGroup.length >= 2) sheetMenuItems.push({ id: "regroup", label: t('menu.regroup', { count: lastGroup.length }), title: t('menu.regroup_title', { count: lastGroup.length }), onSelect: regroup });
   if (sheetMenuItems.length) sheetMenuItems.push("divider");
-  sheetMenuItems.push({ id: "gallery", icon: "sheets", label: "Open gallery…", shortcut: "G", onSelect: () => setView("gallery") });
+  sheetMenuItems.push({ id: "gallery", icon: "sheets", label: t('menu.open_gallery'), shortcut: "G", onSelect: () => setView("gallery") });
   sheetMenuItems.push({
-    id: "export-takeoff", icon: "document", label: "Export takeoff…",
-    title: "Save this whole takeoff to a JSON file on your computer — every shape, condition, scale, markup and RFI, in the app's own format. Import takeoff reads it back as an editable takeoff (the plan PDF isn't in the file: open it first, then import).",
-    onSelect: exportTakeoffFile,
-  });
-  sheetMenuItems.push({
-    id: "import-takeoff", icon: "document", label: "Import takeoff…",
-    title: "Load a takeoff JSON — the app's own export or an agent session's export_takeoff. Machine shapes land dashed in their condition colors for your review; on merge, your calibration, conditions, and workspace win.",
+    id: "import-takeoff", icon: "document", label: t('menu.import_takeoff'),
+    title: t('menu.import_takeoff') + " — " + t('menu.open_file_title'),
     onSelect: () => importInputRef.current?.click(),
-  });
-  sheetMenuItems.push({
-    id: "export-project", icon: "document", label: "Export project archive…",
-    title: "Save the WHOLE job as one portable .otk file — every plan PDF plus the full takeoff. Open it on any machine (drop it like a plan, or Add plans), archive it, or hand it to another estimator; unlike Export takeoff, the plans travel inside.",
-    onSelect: exportProjectArchive,
-  });
-  sheetMenuItems.push({ section: "Profile — your templates, stamps & report setup" });
-  sheetMenuItems.push({
-    id: "export-profile", icon: "document", label: "Export profile…",
-    title: "Save your working environment — condition templates, material library, stamps, report templates/theme/columns — as one portable .otprofile. Import it on another machine or hand a company setup to another estimator; project takeoffs are never in it.",
-    onSelect: exportProfileFile,
-  });
-  sheetMenuItems.push({
-    id: "import-profile", icon: "document", label: "Import profile…",
-    title: "Replace your working environment with a .otprofile (you can also drop the file on the canvas). Your current setup downloads as a backup first — importing that backup restores it. Project takeoffs are untouched.",
-    onSelect: () => profileInputRef.current?.click(),
-  });
-  sheetMenuItems.push({
-    id: "reset-profile", icon: "undo", label: "Reset profile to defaults",
-    title: "Back to a stock OpenTakeoff setup — empty template/material libraries, the default stamps, no report customization. Your current setup downloads as a backup first; project takeoffs are untouched.",
-    onSelect: resetProfile,
   });
 
   // deck-2 scale chip — the four scale controls collapsed to one status face:
@@ -7596,23 +6070,23 @@ export default function TakeoffCanvas() {
   // scale gate: an agent-set scale no human has confirmed wears the warning
   // face until it's confirmed (menu row below) or replaced by a human act
   const scaleNeedsConfirm = !!unitsPerPx && scaleUnconfirmed[focusPanel.key] === false;
-  const scaleFace = !unitsPerPx ? "Set scale…" : scaleNeedsConfirm ? `⚠ ${stdValue || "custom"} — confirm` : `${scaleMismatch ? "≠" : "✓"} ${stdValue || "custom"}`;
+  const scaleFace = !unitsPerPx ? t('scale.set_scale') : scaleNeedsConfirm ? t('scale.confirm_agent', { scale: stdValue || "custom" }) : `${scaleMismatch ? "≠" : "✓"} ${stdValue || "custom"}`;
   const scaleFaceStyle = !unitsPerPx
     ? { border: "1px dashed var(--c-danger)", color: "var(--c-danger)" }
     : scaleMismatch || scaleNeedsConfirm
       ? { border: "1px solid var(--c-warning)", color: "var(--c-warning)" }
       : { border: "1px solid var(--c-positive)", color: "var(--c-positive)" };
   const scaleTitle = scaleNeedsConfirm
-    ? `An agent set this sheet's scale — no person has confirmed it. Check it against a printed dimension (K), then confirm from this menu; quantities stand on this number.`
+    ? t('scale.title_confirm')
     : scaleMismatch
-      ? `You set ${stdValue}, but the plan notes ${scaleDet.label} on ${labelFor(focusPanel)} — double-check before tracing.`
-      : `Set the scale for ${labelFor(focusPanel)} — remembered per sheet${groupKeys.length > 1 ? " (targets the sheet you last clicked)" : ""}`;
+      ? t('scale.title_mismatch', { std: stdValue, detected: scaleDet.label, sheet: labelFor(focusPanel) })
+      : t('scale.title_default', { sheet: labelFor(focusPanel) }) + (groupKeys.length > 1 ? t('scale.title_group') : "");
   const scaleItems = [];
   if (scaleNeedsConfirm) {
     scaleItems.push({
       id: "confirm-scale", icon: "check", tint: "var(--c-warning)",
-      label: "Confirm agent-set scale",
-      title: `This scale arrived from an agent takeoff and no person has verified it. Best practice: Check a dimension (K) against a printed dimension string first — a wrong scale poisons every quantity on the sheet.`,
+      label: t('scale.confirm_label'),
+      title: t('scale.confirm_title'),
       onSelect: () => confirmScale(focusPanel.key),
     });
     scaleItems.push("divider");
@@ -7624,18 +6098,18 @@ export default function TakeoffCanvas() {
       || (prevScale.source === "calibrated" ? "calibrated" : "custom");
     scaleItems.push({
       id: "revert-scale", icon: "undo",
-      label: `Revert scale (was ${wasLabel})`,
-      title: `Put ${labelFor(focusPanel)} back on the scale the last rescale replaced and re-price its takeoffs. One step, kept only until the sheet view changes — reverting is itself revertible.`,
+      label: t('scale.revert', { label: wasLabel }),
+      title: t('scale.revert_title', { sheet: labelFor(focusPanel) }),
       onSelect: revertScale,
     });
     scaleItems.push("divider");
   }
   if (scaleDet) {
-    scaleItems.push({ section: "From the plan" });
+    scaleItems.push({ section: t('scale.plan_header') });
     scaleItems.push({
       id: "use-detected", icon: "target", tint: "var(--c-positive)",
-      label: `Plan says ${scaleDet.label}${scaleDet.multi ? " ±" : ""} — use it`,
-      title: `The plan notes ${scaleDet.label} on ${labelFor(focusPanel)}${scaleDet.multi ? " — this sheet shows several scales (details are often larger); confirm against a known dimension" : ""}. Hover previews a calibrated guide bar on the sheet so you can sanity-check it.`,
+      label: t('scale.plan_use', { label: scaleDet.label, multi: scaleDet.multi ? " ±" : "" }),
+      title: t('scale.plan_title', { label: scaleDet.label, sheet: labelFor(focusPanel), multiDetail: scaleDet.multi ? " — this sheet shows several scales (details are often larger); confirm against a known dimension" : "" }),
       onSelect: () => { rescaleSheet(focusPanel.key, scaleDet.upp); setScaleSources((s) => ({ ...s, [focusPanel.key]: "detected" })); showScaleGuide(focusPanel.key, scaleDet.upp, scaleDet.label); },
       // hover previews the guide bar behind the open menu — only while the
       // sheet is still UNSCALED (upstream's gate: on a scaled sheet the bar
@@ -7646,77 +6120,54 @@ export default function TakeoffCanvas() {
       onHover: (on) => { if (on) { if (!scales[focusPanel.key]) showScaleGuide(focusPanel.key, scaleDet.upp, scaleDet.label, true); } else clearPreviewGuide(); },
     });
   }
-  scaleItems.push({ section: "Standard" });
+  scaleItems.push({ section: t('scale.standard_header') });
   for (const s of STANDARD_SCALES) scaleItems.push({ id: s.label, label: s.label, active: stdValue === s.label, onSelect: () => { rescaleSheet(focusPanel.key, s.upp); setScaleSources((sc) => ({ ...sc, [focusPanel.key]: "standard" })); showScaleGuide(focusPanel.key, s.upp, s.label); } });
   scaleItems.push("divider");
-  scaleItems.push({ id: "calibrate", icon: "calibrate", label: "Calibrate two points…", title: "Calibrate — click two points of a known dimension", active: tool === "calibrate", onSelect: () => setTool("calibrate") });
-  scaleItems.push({ id: "check", icon: "check", label: "Check a dimension…", shortcut: "K", title: "Check a dimension (K) — click both ends of a printed dimension string; compares the measured length against what the drawing says", active: tool === "check", onSelect: () => setTool("check") });
-  scaleItems.push({ note: "Remembered per sheet." });
+  scaleItems.push({ id: "calibrate", icon: "calibrate", label: t('scale.calibrate'), title: t('tool.calibrate'), active: tool === "calibrate", onSelect: () => setTool("calibrate") });
+  scaleItems.push({ id: "check", icon: "check", label: t('scale.check'), shortcut: "K", title: t('check.tool', { count: 2 }), active: tool === "check", onSelect: () => setTool("check") });
+  scaleItems.push({ note: t('scale.remembered') });
 
   // One-Click fill sensitivity — lives in the render menu now, so arming
   // One-Click never reshapes the toolbar. Detents at Strict / Balanced /
   // Aggressive; the slider still tunes 0–100% freely, snapping to a notch when
   // released near one. Detents come from oneclick's canonical presets so UI
   // and flood math can't drift if a preset is ever retuned.
-
-  // Drawing-style picker — a select-style dropdown (DrawStylePicker.jsx),
-  // grouped in the ⋯ overflow menu with the light/dark chrome toggle. The two
-  // appearance preferences (chrome theme, drawing style) live together, out of
-  // the per-trace tool row so a set-once preference never crowds the work; a
-  // dropdown keeps that block one line tall, matching the toolbar's other
-  // selects. setDrawStyle writes the module preference and its CustomEvent
-  // (Task 2's onDrawStyleChange) round-trips back into drawStyleId, repainting
-  // the canvas live — no other wiring here.
-  const drawStyleRow = (
-    <DrawStylePicker styles={DRAW_STYLES} ids={DRAW_STYLE_IDS} activeId={drawStyleId} onPick={setDrawStyle} />
-  );
-
-  // Outline-while-drawing toggle (⋯ overflow menu). ON ⇒ the Area/Deduct/Zone draft
-  // shows as an open outline (no fill, not auto-closed) while tracing; it still
-  // commits closed on Enter/dbl-click. A `custom` row never closes the menu, so
-  // the toggle can be flipped and watched against the live draft behind it.
-  // Home: the ⋯ overflow menu, directly under the drawing-style picker — the two
-  // draft-appearance preferences travel together.
-  const draftOutlineRow = (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 12px" }}>
-      <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)" }}>Outline area while drawing</span>
-      <button type="button" aria-pressed={draftOutline} onClick={() => setDraftOutline(!draftOutline)}
-        title="Draw Area / Deduct / Zone as an open outline (no fill) while tracing — it still commits closed on Enter or double-click."
-        style={{ padding: "4px 12px", cursor: "pointer", fontSize: 11.5, fontWeight: 600, border: `1px solid ${draftOutline ? "var(--cobalt)" : "var(--ink-faint)"}`, background: draftOutline ? "var(--cobalt)" : "transparent", color: draftOutline ? "var(--paper-bright)" : "var(--ink)" }}>
-        {draftOutline ? "On" : "Off"}
-      </button>
-    </div>
-  );
-
-  // ?hatchqa — density-tuning wall: every pattern at three scales in two palette
-  // colors, real components, dark-aware. Unreachable from the UI; kept for retunes.
-  // Added 2026-07-07 (d02032a) and lost, not removed, in the fork merge 1317d07
-  // (PR #26, 2026-07-13) — FEATURES.md has advertised it the whole time.
-  if (new URLSearchParams(window.location.search).has("hatchqa")) {
-    const qaColors = [PALETTE[0], PALETTE[2]];
+  const fillRow = (() => {
+    const NOTCHES = [SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE];
+    const label = fillSens === SENS_STRICT ? t('fill.strict') : fillSens === SENS_BALANCED ? t('fill.balanced') : fillSens === SENS_AGGRESSIVE ? t('fill.aggressive') : `${Math.round(fillSens * 100)}%`;
+    const snap = (v) => { for (const n of NOTCHES) if (Math.abs(v - n) <= 0.06) return n; return v; };
+    // A knob that cannot move must SAY so. Sensitivity tunes one thing — how
+    // eagerly a fill escalates past ink the classifier called hatch — so a
+    // fill whose boundary is entirely hard ink returns a bit-identical region
+    // at every notch, and the estimator watching it stop short reaches for
+    // this slider and gets nothing (measured on the VA finish plan: Strict,
+    // Balanced and Aggressive agree to the square foot on every room).
+    //
+    // The claim is made from the LAST FILL's own softHits, not the sheet's
+    // softCount. Sheet level cannot answer it: AF101 classifies thousands of
+    // poché strokes in its toilet rooms — nonzero softCount all day — while
+    // the patient rooms that stop short touch none of them. Undefined means
+    // no fill yet, and discloses nothing.
+    const inert = proposal?.regions?.length
+      ? proposal.regions.every((r) => r.shs === 0)
+      : false;
     return (
-      <div style={{ padding: 20, background: darkMode ? "#14120e" : "var(--paper-bright)", minHeight: "100vh", overflow: "auto" }}>
-        <button onClick={() => setDarkMode((v) => !v)} style={{ marginBottom: 14, padding: "4px 12px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", fontSize: 12 }}>☾ toggle dark</button>
-        {HATCHES.map((h) => (
-          <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 10 }}>
-            <span style={{ width: 120, fontFamily: "var(--f-mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: ".08em", color: darkMode ? "#c9c2b2" : "var(--ink-muted)" }}>{h.label}</span>
-            {qaColors.map((col) => (
-              <svg key={col} width={392} height={64} style={{ border: "1px solid var(--ink-faint)", background: darkMode ? "#1c1914" : "#fff" }}>
-                <defs>
-                  <HatchPattern id={`qa-${h.id}-${col.slice(1)}`} type={h.id} line={col} fill={col} dark={darkMode} />
-                </defs>
-                {[[0.5, 0], [1, 132], [3, 264]].map(([sc, x]) => (
-                  <g key={sc} transform={`translate(${x},0) scale(${sc})`}>
-                    <rect width={128 / sc} height={64 / sc} fill={`url(#qa-${h.id}-${col.slice(1)})`} />
-                  </g>
-                ))}
-              </svg>
-            ))}
-          </div>
-        ))}
+      <div title={t('fill.title') + (inert ? "\n\n" + t('fill.inert_title') : "")}
+        style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", flexWrap: "wrap" }}>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)" }}>{t('fill.label')}</span>
+        <input name="fill-sensitivity" type="range" min={SENS_STRICT} max={SENS_AGGRESSIVE} step={0.01} value={fillSens} list="fill-sens-notches"
+          onChange={(e) => setFillSens(snap(parseFloat(e.target.value)))}
+          style={{ flex: 1, accentColor: "var(--cobalt)", cursor: "pointer", opacity: inert ? 0.45 : 1 }} />
+        <datalist id="fill-sens-notches"><option value={SENS_STRICT} /><option value={SENS_BALANCED} /><option value={SENS_AGGRESSIVE} /></datalist>
+        <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, fontWeight: 600, color: inert ? "var(--ink-faint)" : "var(--cobalt)", minWidth: 58 }}>{label}</span>
+        {inert && (
+          <span style={{ flexBasis: "100%", fontSize: 10.5, lineHeight: 1.35, color: "var(--ink-soft)" }}>
+            {t('fill.inert')}
+          </span>
+        )}
       </div>
     );
-  }
+  })();
 
   return (
     // .app-shell: the print stylesheet collapses this 100vh flex column while the report is open
@@ -7727,107 +6178,99 @@ export default function TakeoffCanvas() {
       style={{ position: "relative", display: "flex", flexDirection: "column", height: "100vh" }}>
       {/* file inputs — always mounted (drag-drop and the ⋯ import path need
           the refs even while focus mode hides the bar) */}
-      <input name="sheet-file" ref={fileInputRef} type="file" accept=".pdf,application/pdf,image/*,.zip,application/zip,application/x-zip-compressed,.otk" multiple style={{ display: "none" }}
+      <input name="sheet-file" ref={fileInputRef} type="file" accept=".pdf,application/pdf,image/*,.zip,application/zip,application/x-zip-compressed" multiple style={{ display: "none" }}
         onChange={(e) => { handleFiles(e.target.files); e.target.value = ""; }} />
-      <input name="profile-import" ref={profileInputRef} type="file" accept=".otprofile,application/json" style={{ display: "none" }}
-        onChange={(e) => { importProfileFile(e.target.files?.[0]); e.target.value = ""; }} />
       <input name="takeoff-import" ref={importInputRef} type="file" accept=".json,application/json" style={{ display: "none" }}
         onChange={(e) => { importTakeoffFile(e.target.files?.[0]); e.target.value = ""; }} />
       {/* THE top bar — one row (the two decks of issue #61 merged once the
           tool rail absorbed the draw menus). Project verbs left, work verbs
-          center, Report + the ⋯ overflow (guide, appearance — chrome theme and
-          drawing style —, schedule import, cloud moves) right. Cluster captions stay — they're the drafting
+          center, Report + the ⋯ overflow (guide, theme, schedule import,
+          cloud moves) right. Cluster captions stay — they're the drafting
           language. The row never wraps; rarely-used controls live in ⋯ so
           nothing shifts position mid-work. Focus mode (F) hides the whole
-          bar — the rail and status bar carry the essentials.
-          Un-wrapped is not the same as unreachable, though: this row is
-          ~1550px of fixed-width controls, so on a 1440-class laptop Report and
-          the Action menu render past the right edge. The document can
-          technically scroll to them, but the canvas claims wheel and trackpad
-          gestures for zoom/pan, so that scroll never arrives and the app reads
-          as "Export is unclickable". The row therefore SCROLLS itself; its
-          menus open position:fixed off the trigger rect (ToolMenu) so this
-          overflow cannot clip them. */}
+          bar — the rail and status bar carry the essentials. */}
       {!focusMode && (
-      <div data-topbar style={{ display: "flex", gap: 7, alignItems: "center", padding: "0 14px 6px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", whiteSpace: "nowrap" }}>
-        {/* The working controls scroll as one region when the window is
-            narrower than the row (1440-class laptops); Report, ⋯, presence and
-            account sit OUTSIDE that region so they are on screen at every
-            width — the row's contract (#61: nothing wraps or shifts) holds,
-            and nothing important is ever past the right edge. paddingTop 16
-            keeps the cluster captions (top:-13) inside the scroll box. */}
-        <div data-topbar-scroll style={{ display: "flex", gap: 7, alignItems: "center", flex: "1 1 0", minWidth: 0, padding: "16px 0 0", overflowX: "auto", overflowY: "hidden", scrollbarWidth: "thin", overscrollBehaviorX: "contain" }}>
+      <div style={{ display: "flex", gap: 7, alignItems: "center", padding: "16px 14px 6px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", whiteSpace: "nowrap" }}>
         <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--ink)", letterSpacing: "-0.02em" }}>open<span style={{ fontStyle: "italic", color: "var(--cobalt)" }}>takeoff</span></strong>
-        <button type="button" onClick={() => fileInputRef.current?.click()} title="Open plans — PDF, image, or a .zip plan set (or just drag them onto the canvas)"
+        <button type="button" onClick={() => fileInputRef.current?.click()} title={t('menu.open_plans')}
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
-          <Icon name="plus" size={14} />Open</button>
+          <Icon name="plus" size={14} />{t('menu.open')}</button>
         <button type="button" onClick={() => setView("gallery")}
-          title={`Plan set — the visual gallery; open one or several sheets (G)${sheetGroup.length ? ` · ${sheetGroup.length} side-by-side now` : ""}`}
+          title={t('menu.plan_set', { count: sheetGroup.length || 0 })}
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${sheetGroup.length ? "var(--cobalt)" : "var(--ink-faint)"}`, background: sheetGroup.length ? "var(--cobalt)" : "transparent", color: sheetGroup.length ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
-          <Icon name="sheets" size={15} />Sheets
+          <Icon name="sheets" size={15} />{t('menu.sheets')}
         </button>
         {sheets.length > 0 && (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={!!sheetGroup.length || page <= 1} title="Previous sheet"
+            <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={!!sheetGroup.length || page <= 1} title={t('menu.previous_sheet')}
               style={{ padding: "5px 8px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", opacity: (!!sheetGroup.length || page <= 1) ? 0.4 : 1 }}><Icon name="chevronLeft" size={12} /></button>
             <ToolMenu
-              title="Sheet — the sheets in this set, files, grouping, and the gallery"
+              title={t('menu.sheet_tooltip')}
               onOpenChange={onMenuDepth}
               face={<span style={{ display: "inline-block", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sheetChipLabel}</span>}
               faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 12, fontWeight: 400, padding: "6px 8px" }}
               menuStyle={{ minWidth: 260, maxHeight: "min(480px, 60vh)", overflowY: "auto" }}
               items={sheetMenuItems}
             />
-            <button type="button" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={!!sheetGroup.length || page >= pageCount} title="Next sheet"
+            <button type="button" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={!!sheetGroup.length || page >= pageCount} title={t('menu.next_sheet')}
               style={{ padding: "5px 8px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", opacity: (!!sheetGroup.length || page >= pageCount) ? 0.4 : 1 }}><Icon name="chevronRight" size={12} /></button>
           </span>
         )}
         {vRule}
-        {cluster("Edit", <>
+        {cluster(t('menu.action'), <>
           <ToolMenu
-            title="Edit takeoffs"
+            title={t('menu.edit_takeoffs')}
             onOpenChange={onMenuDepth}
-            face={<span>Edit</span>}
+            face={<span>{t('menu.finish')}</span>}
             items={[
-              { id: "copy", icon: "copy", label: "Copy", shortcut: "⌘C", disabled: !selectedId, onSelect: copySelected },
-              { id: "paste", icon: "paste", label: "Paste", shortcut: "⌘V", disabled: !clipRef.current.length, onSelect: () => pasteClipboard() },
-              { id: "dup", icon: "duplicate", label: "Duplicate", shortcut: "⌘D", disabled: !selectedId, onSelect: duplicateSelected },
+              { id: "copy", icon: "copy", label: t('menu.copy'), shortcut: "⌘C", disabled: !selectedId, onSelect: copySelected },
+              { id: "paste", icon: "paste", label: t('menu.paste'), shortcut: "⌘V", disabled: !clipRef.current.length, onSelect: () => pasteClipboard() },
+              { id: "dup", icon: "duplicate", label: t('menu.duplicate'), shortcut: "⌘D", disabled: !selectedId, onSelect: duplicateSelected },
               "divider",
-              { id: "flipH", label: "Flip Horizontal", disabled: !selectedId, onSelect: () => flipSelected("h") },
-              { id: "flipV", label: "Flip Vertical", disabled: !selectedId, onSelect: () => flipSelected("v") },
-              { id: "tidy", label: "Tidy shape", disabled: !selectedId, onSelect: tidySelected },
+              { id: "flipH", label: t('menu.flip_h'), disabled: !selectedId, onSelect: () => flipSelected("h") },
+              { id: "flipV", label: t('menu.flip_v'), disabled: !selectedId, onSelect: () => flipSelected("v") },
+              { id: "tidy", label: t('menu.tidy'), disabled: !selectedId, onSelect: tidySelected },
               "divider",
-              { id: "finish", icon: "check", label: `Finish shape${poly.length ? ` (${poly.length} pts)` : ""}`, shortcut: "↵", disabled: !finishOk, onSelect: finishShape },
-              { id: "undopt", icon: "undo", label: "Undo last point", shortcut: "⌘Z", disabled: !poly.length, onSelect: dropLastPoint },
-              { id: "undoshape", icon: "undo", label: "Undo last shape", disabled: !visibleShapes.length, onSelect: undoLast },
-              { id: "redo", label: "Redo", shortcut: "⇧⌘Z", onSelect: redoShapeCommand },
+              { id: "finish", icon: "check", label: poly.length ? t('menu.finish_shape_pts', { count: poly.length }) : t('menu.finish_shape'), shortcut: "↵", disabled: !finishOk, onSelect: finishShape },
+              { id: "undopt", icon: "undo", label: t('menu.undo_point'), shortcut: "⌘Z", disabled: !poly.length, onSelect: () => setPoly((q) => q.slice(0, -1)) },
+              { id: "undoshape", icon: "undo", label: t('menu.undo_shape'), disabled: !visibleShapes.length, onSelect: undoLast },
+              { id: "redo", label: t('menu.redo'), shortcut: "⇧⌘Z", onSelect: redoShapeCommand },
               "divider",
-              { id: "del", icon: "close", label: "Delete selected", shortcut: "⌫", disabled: !selectedId, tint: "var(--c-danger)", onSelect: deleteSelected },
+              { id: "del", icon: "close", label: t('menu.delete'), shortcut: "⌫", disabled: !selectedId, tint: "var(--c-danger)", onSelect: deleteSelected },
             ]}
           />
         </>)}
         {vRule}
-        {cluster("Aids", <>
+        {cluster(t('menu.zone'), <>
           {panels.length === 1 && isStitchKey(panels[0].key) && (
             <button onClick={() => setTool((t) => (t === "stitch-align" ? "select" : "stitch-align"))}
-              title="Align the match line — click a point near the joint, then the SAME point where the other sheet draws it; that sheet slides so the two coincide. Do this before tracing (a stitch with takeoffs on it won't re-align)."
+              title={t('menu.align')}
               style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${tool === "stitch-align" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: tool === "stitch-align" ? "var(--cobalt)" : "transparent", color: tool === "stitch-align" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
-              <Icon name="calibrate" size={15} />Align
+              <Icon name="calibrate" size={15} />{t('menu.align_label')}
             </button>
           )}
           <button onClick={() => setTool((t) => (t === "zone" ? "select" : "zone"))}
-            title="Zone check — trace a region (an apartment, a wing) to read every condition's quantities inside it, materials included. Nothing is saved; the outline clears when you leave the tool."
+            title={t('tool.zone')}
             style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${tool === "zone" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: tool === "zone" ? "var(--cobalt)" : "transparent", color: tool === "zone" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
-            <Icon name="zone" size={15} />Zone
+            <Icon name="zone" size={15} />{t('menu.zone_check')}
           </button>
-          <button onClick={() => setSnapOn((v) => !v)} title="Snap to plan lines/corners (beta)"
+          <button onClick={() => setSnapOn((v) => !v)} title={t('tool.snap')}
             style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${snapOn ? "var(--c-positive)" : "var(--ink-faint)"}`, background: snapOn ? "var(--c-positive)" : "transparent", color: snapOn ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
-            <Icon name="snap" size={15} />Snap
+            <Icon name="snap" size={15} />{t('menu.snap_label')}
           </button>
-          <button onClick={() => setAngleOn((v) => !v)} title="45°/90° angle guides — the next segment locks to the 45° family as you draw (hold ⇧ to force the lock at any angle)"
+          <button onClick={() => setAngleOn((v) => !v)} title={t('tool.angle')}
             style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${angleOn ? "var(--cobalt)" : "var(--ink-faint)"}`, background: angleOn ? "var(--cobalt)" : "transparent", color: angleOn ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
-            <Icon name="angle" size={15} />45°
+            <Icon name="angle" size={15} />{t('menu.angle_label')}
           </button>
+          <ToolMenu
+            title={t('menu.render_fill')}
+            onOpenChange={onMenuDepth}
+            face={<Icon name="sliders" size={15} />}
+            menuStyle={{ minWidth: 252 }}
+            items={[
+              { id: "fill", custom: fillRow },
+            ]}
+          />
         </>)}
         {/* The caption always shows the ACTIVE label (+ the cobalt highlight keyed
             on it) so what a new trace will get is never hidden — even in Select
@@ -7835,13 +6278,13 @@ export default function TakeoffCanvas() {
             so changing it reliably re-labels that shape (a value-always-active
             select couldn't reassign to the already-active label — onChange wouldn't fire). */}
         {shapeLabels.length > 0 && cluster(
-          tool === "select" && selectedId ? `Label · ${activeLabel || "none"} → shape` : (activeLabel ? `Label · ${activeLabel}` : "Label"),
+          tool === "select" && selectedId ? t('label.label_shape', { label: activeLabel || t('label.no_label') }) : (activeLabel ? t('label.label_active', { label: activeLabel }) : t('label.label')),
           <select
             value={tool === "select" && selectedId ? shapeLabelValue(shapes.find((s) => s.id === selectedId)) : (activeLabel || "")}
             onChange={(e) => activateLabel(e.target.value || null)}
-            title="Phase/area label. The caption shows the ACTIVE label (what new takeoffs get). With a shape selected (Select tool), the dropdown shows and re-labels that shape. Manage the list in the Columns tab."
+            title={t('label.title')}
             style={{ fontFamily: "var(--f-mono)", fontSize: 11.5, padding: "5px 6px", border: `1px solid ${activeLabel ? "var(--cobalt)" : "var(--ink-faint)"}`, background: activeLabel ? "var(--cobalt)" : "transparent", color: activeLabel ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", maxWidth: 150 }}>
-            <option value="">No label</option>
+            <option value="">{t('label.no_label')}</option>
             {shapeLabels.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
         )}
@@ -7850,11 +6293,11 @@ export default function TakeoffCanvas() {
             path. Focus suppresses canvas shortcuts via the existing INPUT guards.
             Deixis: focus marks the utterance's start — "this room" then needs an
             aim placed AFTER it (park the pointer on the room, type, Enter). */}
-        {cluster("Command",
+        {cluster(t('command.placeholder').split('·')[0].trim(),
           <input
             type="text"
-            placeholder="cpt 1 · waste 7 · this room"
-            title={'Command line (RFC #59): a condition tag ("CPT-1", "carpet one", "tile 2 waste 5"), "waste 7", "label Phase 1", "clear label", "author <your name>" (new marks sign it — the report can group by author), or "note …" — Enter runs it through the same actions the buttons use. End with "this room" / "here" while the pointer rests on a room to trace and commit it there ("carpet one, this room"). Push-to-talk dictation will feed this box.'}
+            placeholder={t('command.placeholder')}
+            title={t('command.title')}
             onFocus={() => { voiceAimMarkRef.current = aimSeqRef.current; }}
             onKeyDown={(e) => {
               if (e.key !== "Enter") return;
@@ -7877,9 +6320,9 @@ export default function TakeoffCanvas() {
         {/* Push-to-talk (RFC #59 recognizer): hold the button (or M) to dictate
             into the same grammar the Command box runs. Hidden entirely where
             capture is unsupported — graceful feature-absence, never broken. */}
-        {captureSupported() && cluster("Voice",
+        {captureSupported() && cluster(t('voice.cluster'),
           <button
-            title={'Hold to talk (or hold M anywhere on the canvas): speak a command — "carpet one, waste seven", "label phase two", "note …", or end with "this room" to trace at the cursor. Release to run; Esc discards. Audio is processed on-device and never leaves the browser.'}
+            title={t('voice.hold_title')}
             onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); voiceHoldRef.current = true; voiceFnsRef.current.start(); }}
             onPointerUp={() => { if (voiceHoldRef.current) { voiceHoldRef.current = false; voiceFnsRef.current.end(true); } }}
             onPointerCancel={() => { if (voiceHoldRef.current) { voiceHoldRef.current = false; voiceFnsRef.current.end(false); } }}
@@ -7888,10 +6331,10 @@ export default function TakeoffCanvas() {
           </button>
         )}
         <div style={{ flex: 1 }} />
-        {cluster(`Scale — ${labelFor(focusPanel)}`,
+        {cluster(`${t('toolbar.scale')} — ${labelFor(focusPanel)}`,
           <>
             <button onClick={() => setUnits((u) => (u === "metric" ? "imperial" : "metric"))}
-              title={units === "metric" ? "Metric display (m² / m) — click for imperial. Calibrate in meters; 1:50-style scales in the list. Display only — stored takeoffs never change." : "Imperial display (SF / LF) — click for metric (m² / m, calibrate in meters, 1:50-style scales). Display only — stored takeoffs never change."}
+              title={units === "metric" ? t('scale.metric_hint') : t('scale.imperial_hint')}
               style={{ padding: "6px 10px", border: `1px solid ${units === "metric" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: units === "metric" ? "var(--cobalt)" : "transparent", color: units === "metric" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, lineHeight: 1 }}>
               {units === "metric" ? "m" : "ft"}
             </button>
@@ -7905,50 +6348,43 @@ export default function TakeoffCanvas() {
             />
           </>
         )}
-        {cluster("Action",
+        {cluster(t('toolbar.action'),
           <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "flex-end", gap: 6, minWidth: 150 }}>
-            {markupDraft && (tool === "cloud" || tool === "callout" || tool === "highlight" || tool === "dimension") && <span style={{ fontSize: 11, color: "var(--cobalt)" }}>click the {tool === "callout" ? "label spot" : tool === "dimension" ? "other end" : "opposite corner"}…</span>}
+            {markupDraft && (tool === "cloud" || tool === "callout" || tool === "highlight") && <span style={{ fontSize: 11, color: "var(--cobalt)" }}>{t('action.click_hint', { spot: tool === "callout" ? t('action.label_spot') : t('action.opposite_corner') })}…</span>}
             {finishOk && (
-              <button onClick={finishShape} title="Finish shape (↵ or double-click)" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", border: "none", background: "var(--c-positive)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}><Icon name="check" size={14} />Finish ({poly.length})</button>
+              <button onClick={finishShape} title={t('action.finish_title')} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", border: "none", background: "var(--c-positive)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}><Icon name="check" size={14} />{t('action.finish')} ({poly.length})</button>
             )}
             {proposal?.regions.length > 0 && (
-              <button onClick={createProposal} title="Create the selected takeoff(s) (↵). ⌫ removes the last click; Esc discards the selection." style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", border: "none", background: "var(--c-positive)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}><Icon name="check" size={14} />Create ({proposal.regions.length})</button>
+              <button onClick={createProposal} title={t('action.create_title')} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", border: "none", background: "var(--c-positive)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}><Icon name="check" size={14} />{t('action.create')} ({proposal.regions.length})</button>
             )}
           </span>
         )}
         <div style={{ flex: 1 }} />
-        </div>
-        <span data-topbar-pinned style={{ display: "inline-flex", alignItems: "center", gap: 7, flexShrink: 0, paddingTop: 16 }}>
-        <button onClick={() => setShowReport(true)} disabled={!conditions.length} title="Open the takeoff report — per-condition breakdown with waste, plus CSV / JSON export."
-          style={{ padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>Report</button>
+        <button onClick={() => setShowReport(true)} disabled={!conditions.length} title={t('menu.report_title')}
+          style={{ padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>{t('menu.report')}</button>
         {/* ⋯ overflow — rarely-used project controls, so the row never wraps
             and nothing shifts position mid-work (issue #61's contract). */}
         <ToolMenu
-          title="More — guide, appearance, schedule import, project moves"
+          title={t('menu.more')}
           onOpenChange={onMenuDepth}
           face={<span style={{ fontWeight: 700, letterSpacing: "0.08em" }}>⋯</span>}
           items={[
-            { id: "guide", label: "How OpenTakeoff works", shortcut: "?", onSelect: () => setGuideOpen(true) },
-            { id: "theme", label: theme === "dark" ? "Light chrome" : "Dark chrome", onSelect: toggleTheme },
-            { section: "Drawing style" },
-            { id: "drawstyle", custom: drawStyleRow },
-            { id: "draftoutline", custom: draftOutlineRow },
-            "divider",
-            { id: "schedule", icon: "rectTool", label: "Import from schedule", active: tool === "schedule", onSelect: () => { setScheduleAnchor(null); setTool((t) => (t === "schedule" ? "select" : "schedule")); } },
+            { id: "guide", label: t('menu.how_works'), shortcut: "?", onSelect: () => setGuideOpen(true) },
+            { id: "theme", label: theme === "dark" ? t('menu.light_chrome') : t('menu.dark_chrome'), onSelect: toggleTheme },
+            { id: "language", label: i18n.language?.startsWith("pt") ? "English" : "Português (BR)", onSelect: () => i18n.changeLanguage(i18n.language?.startsWith("pt") ? "en" : "pt-br") },
+            { id: "schedule", icon: "rectTool", label: t('menu.import_schedule'), active: tool === "schedule", onSelect: () => { setScheduleAnchor(null); setTool((t) => (t === "schedule" ? "select" : "schedule")); } },
             ...(cloudMode ? [
               "divider",
-              { id: "closeproj", label: "Close project", onSelect: closeProject },
-              ...(browseProjects ? [{ id: "projects", label: "Team projects", onSelect: browseProjects }] : []),
+              { id: "closeproj", label: t('menu.close_project'), onSelect: closeProject },
+              ...(browseProjects ? [{ id: "projects", label: t('menu.team_projects'), onSelect: browseProjects }] : []),
             ] : []),
             ...(!cloudMode && googleUser && isGoogleConfigured() && projectHomeFolderId() ? [
               "divider",
-              { id: "browse", label: "Browse team projects", onSelect: () => navigate("/projects") },
+              { id: "browse", label: t('menu.browse_projects'), onSelect: () => navigate("/projects") },
             ] : []),
           ]}
         />
-        <PresenceChip bridge={store.syncBridge} />
-        <AccountChip note={cloudMode ? "Synced to Google Drive" : "Local workspace"} onOpenChange={onMenuDepth} />
-        </span>
+        <AccountChip note={cloudMode ? t('status.synced_drive') : t('status.local')} onOpenChange={onMenuDepth} />
       </div>
       )}
 
@@ -7971,10 +6407,10 @@ export default function TakeoffCanvas() {
           onDrop={(e) => { if (!e.dataTransfer.types.includes(CONDITION_DND_MIME)) return; e.preventDefault(); e.stopPropagation(); const id = e.dataTransfer.getData(CONDITION_DND_MIME); if (id) pinToPalette(id); }}
           style={{ padding: "5px 14px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
           <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-            <span title="Quick-access conditions — drag a condition here (or use a row's pushpin) to pin it, up to 9. Press 1–9 to activate by this order; click a chip to activate; double-click to open the panel."
-              style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.14em", color: "var(--ink-muted)" }}>Conditions</span>
+            <span title={t('conditions.palette_title')}
+              style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.14em", color: "var(--ink-muted)" }}>{t('conditions.header')}</span>
             {paletteConds.length === 0 ? (
-              <span style={{ fontSize: 11.5, color: "var(--ink-muted)", fontStyle: "italic", padding: "3px 8px", border: "1px dashed var(--ink-faint)" }}>drag conditions here (or pin a row) for 1-9 one-click access</span>
+              <span style={{ fontSize: 11.5, color: "var(--ink-muted)", fontStyle: "italic", padding: "3px 8px", border: "1px dashed var(--ink-faint)" }}>{t('conditions.palette_hint')}</span>
             ) : paletteConds.map((c) => {
               const on = c.id === activeCond;
               const reassign = tool === "select" && selectedId;
@@ -7987,12 +6423,12 @@ export default function TakeoffCanvas() {
                     onDragStart={(e) => { e.dataTransfer.setData(CONDITION_DND_MIME, c.id); e.dataTransfer.effectAllowed = "copyMove"; }}
                     onClick={() => activateCondition(c.id)}
                     onDoubleClick={() => openConditionInPanel(c.id)}
-                    title={reassign ? `Reassign the selected takeoff to ${c.finish_tag} (double-click opens the panel)` : `${c.finish_tag} — press ${idx + 1} or click to activate, double-click to open in the panel, drag onto another chip to reorder`}
+                    title={reassign ? t('conditions.chip_reassign', { tag: c.finish_tag }) : t('conditions.chip_activate', { tag: c.finish_tag, num: idx + 1 })}
                     style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "3px 8px 3px 5px", border: on ? `2px solid ${c.color}` : (reassign ? "1px dashed var(--cobalt)" : "1px solid var(--ink-faint)"), background: on ? "var(--surface-pop)" : "transparent", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 12.5, lineHeight: 1 }}>
                     {idx < 9 && <span style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: "var(--cobalt)", border: "1px solid var(--cobalt)", borderRadius: 3, padding: "0 3px" }}>{idx + 1}</span>}
                     <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>{c.finish_tag}
                   </button>
-                  <button type="button" onClick={() => unpinFromPalette(c.id)} title={`Unpin ${c.finish_tag} from the palette`}
+                  <button onClick={() => unpinFromPalette(c.id)} title={t('conditions.chip_unpin', { tag: c.finish_tag })}
                     style={{ border: "none", background: "none", cursor: "pointer", color: "var(--cobalt)", padding: "0 3px", lineHeight: 0, display: "inline-flex" }}>
                     <Icon name="pin" size={12} />
                   </button>
@@ -8000,11 +6436,11 @@ export default function TakeoffCanvas() {
               );
             })}
             {paletteConds.length >= PALETTE_MAX && (
-              <span style={{ fontSize: 10.5, color: "var(--ink-muted)", fontStyle: "italic" }}>full ({PALETTE_MAX})</span>
+              <span style={{ fontSize: 10.5, color: "var(--ink-muted)", fontStyle: "italic" }}>{t('conditions.palette_full', { count: PALETTE_MAX })}</span>
             )}
             {/* add a condition without opening the (now-collapsed) sidebar */}
-            <button type="button" onClick={addCondition} title="Add a new condition"
-              style={{ padding: "3px 9px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12, color: "var(--ink-muted)" }}>+ condition</button>
+            <button type="button" onClick={addCondition} title={t('conditions.add_title')}
+              style={{ padding: "3px 9px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12, color: "var(--ink-muted)" }}>{t('conditions.add')}</button>
           </div>
           {/* the active condition's appearance editor, restored to the top bar —
               same component the docked panel row renders (one source of truth) */}
@@ -8019,33 +6455,25 @@ export default function TakeoffCanvas() {
       {/* open-sheet tabs — what you opened from the gallery; click to view,
           ⊞ to side-by-side, ✕ to close; the dropdown lists every open sheet */}
       {!focusMode && openTabs.length > 0 && (
-        <div style={{ display: "flex", gap: 5, alignItems: "center", padding: "5px 14px", flexWrap: openTabs.length > MANY_TABS ? "nowrap" : "wrap", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", minWidth: 0 }}>
-          <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.14em", color: "var(--ink-muted)", flexShrink: 0 }}>Sheets</span>
-          {openTabs.length > MANY_TABS && (
-            <button type="button" onClick={() => scrollTabStrip(-1)} title="Scroll sheets left" aria-label="Scroll sheets left" style={{ flexShrink: 0, padding: "4px 5px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", display: "inline-flex" }}><Icon name="chevronLeft" size={12} /></button>
-          )}
-          <div ref={tabStripRef} data-sheet-tab-strip style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: openTabs.length > MANY_TABS ? "nowrap" : "wrap", overflowX: openTabs.length > MANY_TABS ? "auto" : "visible", minWidth: 0, flex: openTabs.length > MANY_TABS ? 1 : "0 1 auto", scrollbarWidth: "none", overscrollBehaviorX: "contain" }}>
-          {openTabs.map((k) => {
+        <div style={{ display: "flex", gap: 5, alignItems: "center", padding: "5px 14px", flexWrap: "wrap", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
+          <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.14em", color: "var(--ink-muted)" }}>{t('takeoffs.strip')}</span>
+          {openTabs.slice(0, 8).map((k) => {
             const inGroup = sheetGroup.includes(k);
             const on = sheetGroup.length ? inGroup : k === sheetKey;
             const lbl = tabLabel(k);
             return (
-              <span key={k} data-sheet-tab={on ? "active" : "idle"} style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, border: "1px solid var(--ink-faint)", borderBottom: on ? "2px solid var(--cobalt)" : "1px solid var(--ink-faint)", background: on ? "var(--paper-cream)" : "transparent", padding: "3px 6px 2px 9px", maxWidth: 190 }}>
+              <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 5, border: "1px solid var(--ink-faint)", borderBottom: on ? "2px solid var(--cobalt)" : "1px solid var(--ink-faint)", background: on ? "var(--paper-cream)" : "transparent", padding: "3px 6px 2px 9px", maxWidth: 190 }}>
                 <button onClick={() => goToSheet(k)} title={k} style={{ border: "none", background: "none", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 11.5, color: "var(--ink)", fontFamily: "var(--f-mono)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 140, padding: 0 }}>{lbl}</button>
-                <button onClick={() => toggleInGroup(k)} title={inGroup ? "Remove from side-by-side" : "Side-by-side with the current sheet"} style={{ border: "none", background: "none", cursor: "pointer", color: inGroup ? "var(--cobalt)" : "var(--ink-faint)", padding: 0, display: "inline-flex" }}><Icon name="sideBySide" size={11} /></button>
-                <button onClick={() => closeTab(k)} title="Close tab" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)", padding: 0, display: "inline-flex" }}><Icon name="close" size={10} /></button>
+                <button onClick={() => toggleInGroup(k)} title={inGroup ? t('menu.side_by_side_remove') : t('menu.side_by_side_add')} style={{ border: "none", background: "none", cursor: "pointer", color: inGroup ? "var(--cobalt)" : "var(--ink-faint)", padding: 0, display: "inline-flex" }}><Icon name="sideBySide" size={11} /></button>
+                <button onClick={() => closeTab(k)} title={t('menu.close_tab')} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)", padding: 0, display: "inline-flex" }}><Icon name="close" size={10} /></button>
               </span>
             );
           })}
-          </div>
-          {openTabs.length > MANY_TABS && (
-            <button type="button" onClick={() => scrollTabStrip(1)} title="Scroll sheets right" aria-label="Scroll sheets right" style={{ flexShrink: 0, padding: "4px 5px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", display: "inline-flex" }}><Icon name="chevronRight" size={12} /></button>
-          )}
-          {openTabs.length > 1 && openTabs.length <= MANY_TABS && (
+          {openTabs.length > 1 && (
             <ToolMenu
-              title="Jump to an open sheet"
+              title={t('menu.jump_sheet')}
               onOpenChange={onMenuDepth}
-              face={<span style={{ fontFamily: "var(--f-mono)", fontSize: 11 }}>{openTabs.length} open</span>}
+              face={<span style={{ fontFamily: "var(--f-mono)", fontSize: 11 }}>{openTabs.length} {t('menu.open')}</span>}
               items={openTabs.map((k) => ({ id: k, icon: "document", label: tabLabel(k), active: sheetGroup.length ? sheetGroup.includes(k) : k === sheetKey, onSelect: () => goToSheet(k) }))}
             />
           )}
@@ -8059,33 +6487,31 @@ export default function TakeoffCanvas() {
           from the panel header, persisted with the panel prefs. */}
       {!focusMode && panelPrefs.strip && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "7px 14px", flexWrap: "wrap", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
-          <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--ink-muted)" }}>Conditions</span>
+          <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--ink-muted)" }}>{t('conditions.strip')}</span>
           {conditions.map((c, i) => {
             const on = c.id === activeCond;
-            // the 1–9 badge follows the same rule as the hotkeys: palette order
-            // when curated, condition order (fallback) when nothing is pinned
             const pinnedPal = palette.length > 0;
             const hIdx = pinnedPal ? palette.indexOf(c.id) : i;
             const hot = hIdx >= 0 && hIdx < 9;
             return (
-              <button key={c.id} draggable onDragStart={(e) => { e.dataTransfer.setData(CONDITION_DND_MIME, c.id); e.dataTransfer.effectAllowed = "copy"; }} onClick={() => activateCondition(c.id)} title={tool === "select" && selectedId ? "Reassign selected shape to this condition" : (hot ? `Press ${hIdx + 1} · drag to the palette to pin` : "Drag to the palette to pin")} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px 3px 4px", borderRadius: 0, border: on ? `2px solid ${c.color}` : (tool === "select" && selectedId ? "1px dashed var(--cobalt)" : "1px solid var(--ink-faint)"), background: on ? "var(--surface-pop)" : "transparent", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 12.5 }}>
+              <button key={c.id} draggable onDragStart={(e) => { e.dataTransfer.setData(CONDITION_DND_MIME, c.id); e.dataTransfer.effectAllowed = "copy"; }} onClick={() => activateCondition(c.id)} title={tool === "select" && selectedId ? t('conditions.strip_reassign') : (hot ? t('conditions.strip_pin', { num: hIdx + 1 }) : t('conditions.strip_pin2'))} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px 3px 4px", borderRadius: 0, border: on ? `2px solid ${c.color}` : (tool === "select" && selectedId ? "1px dashed var(--cobalt)" : "1px solid var(--ink-faint)"), background: on ? "var(--surface-pop)" : "transparent", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 12.5 }}>
                 {hot && <span style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: pinnedPal ? "var(--cobalt)" : "var(--ink-muted)", border: `1px solid ${pinnedPal ? "var(--cobalt)" : "var(--ink-faint)"}`, borderRadius: 3, padding: "0 3px" }}>{hIdx + 1}</span>}
                 <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>{c.finish_tag}
               </button>
             );
           })}
-          <button onClick={addCondition} style={{ padding: "4px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--ink-muted)" }}>+ condition</button>
+          <button onClick={addCondition} style={{ padding: "4px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--ink-muted)" }}>{t('conditions.add')}</button>
         </div>
       )}
 
       {/* calibration prompt */}
       {tool === "calibrate" && (
         <div style={{ padding: "8px 14px", background: "var(--paper-bright)", borderBottom: "1px solid var(--hairline-warm)", fontSize: 14 }}>
-          {calib.length < 2 ? <span>Custom scale: click two points along a known dimension ({calib.length}/2). Tip: use the longest dimension. (Or just pick a standard scale above.)</span> : (
-            <span>Real length:{" "}
-              <input name="calibration-length" type="number" value={pendingLen} onChange={(e) => setPendingLen(e.target.value)} onKeyDown={(e) => e.key === "Enter" && applyCalibration()} placeholder={units === "metric" ? "meters" : "feet"} autoFocus style={{ width: 90, padding: 5, borderRadius: 0, border: "1px solid var(--ink-faint)" }} /> {units === "metric" ? "m" : "ft"}
-              <button onClick={applyCalibration} style={{ marginLeft: 8, padding: "5px 12px", borderRadius: 0, border: "none", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer" }}>Apply</button>
-              <button onClick={() => setCalib([])} style={{ marginLeft: 6, padding: "5px 10px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer" }}>Reset</button>
+          {calib.length < 2 ? <span>{t('calibrate.custom_scale', { count: calib.length })}</span> : (
+            <span>{t('calibrate.real_length')}{" "}
+              <input name="calibration-length" type="number" value={pendingLen} onChange={(e) => setPendingLen(e.target.value)} onKeyDown={(e) => e.key === "Enter" && applyCalibration()} placeholder={units === "metric" ? t('calibrate.placeholder_m') : t('calibrate.placeholder_ft')} autoFocus style={{ width: 90, padding: 5, borderRadius: 0, border: "1px solid var(--ink-faint)" }} /> {units === "metric" ? "m" : "ft"}
+              <button onClick={applyCalibration} style={{ marginLeft: 8, padding: "5px 12px", borderRadius: 0, border: "none", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer" }}>{t('calibrate.apply')}</button>
+              <button onClick={() => setCalib([])} style={{ marginLeft: 6, padding: "5px 10px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer" }}>{t('calibrate.reset')}</button>
             </span>
           )}
         </div>
@@ -8096,17 +6522,17 @@ export default function TakeoffCanvas() {
       {tool === "check" && (
         <div style={{ padding: "8px 14px", background: "var(--paper-bright)", borderBottom: "1px solid var(--hairline-warm)", fontSize: 14 }}>
           {check.length < 2 ? (
-            <span>Check a dimension: click both ends of a printed dimension ({check.length}/2). The measured length shows here — compare it with what the drawing says.</span>
+            <span>{t('check.tool', { count: check.length })}</span>
           ) : checkCross ? (
-            <span style={{ color: "var(--c-danger)" }}>Check on one sheet — those two clicks landed on different sheets. <button onClick={() => { setCheck([]); setCheckStated(""); }} style={{ marginLeft: 6, padding: "5px 10px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer" }}>Reset</button></span>
+            <span style={{ color: "var(--c-danger)" }}>{t('check.cross_sheet')} <button onClick={() => { setCheck([]); setCheckStated(""); }} style={{ marginLeft: 6, padding: "5px 10px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer" }}>{t('calibrate.reset')}</button></span>
           ) : !checkUpp ? (
-            <span style={{ color: "var(--c-danger)" }}>No scale set for {labelFor(checkPanel)} — pick a standard scale or calibrate first, then check it here.</span>
+            <span style={{ color: "var(--c-danger)" }}>{t('check.no_scale', { sheet: labelFor(checkPanel) })}</span>
           ) : checkPx <= 0 ? (
-            <span style={{ color: "var(--c-danger)" }}>Those two clicks landed on the same point — click the two <b>ends</b> of a printed dimension.</span>
+            <span style={{ color: "var(--c-danger)" }}>{t('check.same_point')}</span>
           ) : (
             <span>
-              measures <b style={{ fontFamily: "var(--f-mono)" }}>{fmtCheckLen(checkFeet, units)}</b> at {stdValue || "custom scale"} · drawing says{" "}
-              <input name="check-stated-length" value={checkStated} onChange={(e) => setCheckStated(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} placeholder={units === "metric" ? "meters" : `feet (12'6, 6" ok)`} autoFocus style={{ width: 100, padding: 5, borderRadius: 0, border: "1px solid var(--ink-faint)" }} /> {units === "metric" ? "m" : "ft"}
+              {t('check.measures')} <b style={{ fontFamily: "var(--f-mono)" }}>{fmtCheckLen(checkFeet, units)}</b> at {stdValue || t('check.custom_scale')} · {t('check.drawing_says')}{" "}
+              <input name="check-stated-length" value={checkStated} onChange={(e) => setCheckStated(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} placeholder={units === "metric" ? t('check.placeholder_m') : t('check.placeholder_ft')} autoFocus style={{ width: 100, padding: 5, borderRadius: 0, border: "1px solid var(--ink-faint)" }} /> {units === "metric" ? "m" : "ft"}
               {checkErrPct != null && (() => {
                 // checkVerdict grades the ROUNDED value the chip displays (and
                 // normalizes -0), so color and number can never contradict —
@@ -8115,16 +6541,16 @@ export default function TakeoffCanvas() {
                 const pct = `${v.shown >= 0 ? "+" : ""}${v.shown.toFixed(1)}%`;
                 return (
                   <b style={{ marginLeft: 8, color: v.grade === "match" ? "var(--c-positive)" : v.grade === "close" ? "var(--c-warning)" : "var(--c-danger)" }}>
-                    {v.grade === "match" ? `matches — scale checks out (${pct})`
-                      : v.grade === "close" ? `off by ${pct} — re-check or recalibrate`
-                      : `off by ${pct} — wrong scale; recalibrate`}
+                    {v.grade === "match" ? t('check.match', { pct })
+                      : v.grade === "close" ? t('check.close', { pct })
+                      : t('check.wrong', { pct })}
                   </b>
                 );
               })()}
               {checkStatedFeet > 0 && (
-                <button onClick={recalibrateFromCheck} style={{ marginLeft: 8, padding: "5px 12px", borderRadius: 0, border: "none", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer" }}>Recalibrate to this</button>
+                <button onClick={recalibrateFromCheck} style={{ marginLeft: 8, padding: "5px 12px", borderRadius: 0, border: "none", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer" }}>{t('check.recalibrate')}</button>
               )}
-              <button onClick={() => { setCheck([]); setCheckStated(""); }} style={{ marginLeft: 6, padding: "5px 10px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer" }}>Reset</button>
+              <button onClick={() => { setCheck([]); setCheckStated(""); }} style={{ marginLeft: 6, padding: "5px 10px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer" }}>{t('calibrate.reset')}</button>
             </span>
           )}
         </div>
@@ -8138,31 +6564,31 @@ export default function TakeoffCanvas() {
            faces). Lives in the canvas row so docked panels + canvas reflow
            beside it; survives focus mode — it IS the tool access. */}
        {view === "canvas" && (
-       <nav role="toolbar" aria-label="Tools" style={{ width: "var(--rail-w)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-1)", paddingTop: "var(--sp-2)", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflowY: "auto", overflowX: "visible" }}>
+       <nav role="toolbar" aria-label={t('a11y.tools')} style={{ width: "var(--rail-w)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-1)", paddingTop: "var(--sp-2)", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflowY: "auto", overflowX: "visible" }}>
          {railLabel("SEL")}
-         {railTile("select", "select", "Select — pick a takeoff, drag points; drag open canvas to pan", "V")}
+         {railTile("select", "select", t('tool.select_desc'), "V")}
          {railLabel("MEAS")}
-         {MEASURE_TOOLS.map((t) => railTile(t.id, t.icon, t.label, t.shortcut))}
+          {getMeasureTools().map((t) => railTile(t.id, t.icon, t.label, t.shortcut))}
          {railLabel("CUT")}
-         {CUT_TOOLS.map((t) => railTile(t.id, t.icon, t.label, t.shortcut, null, { tint: "var(--c-danger)" }))}
+          {getCutTools().map((t) => railTile(t.id, t.icon, t.label, t.shortcut, null, { tint: "var(--c-danger)" }))}
          {railLabel("MARK")}
          <span ref={(el) => { if (el) markTileTopRef.current = el.getBoundingClientRect().top; }} style={{ position: "relative", display: "inline-flex" }}>
-           <ToolMenu
-             title="Markup — annotations, not measurements"
-             active={MARKUP_IDS.includes(tool)}
-             onOpenChange={onMenuDepth}
-             flyout="right"
-             face={<Icon name="markup" size={17} />}
-             items={[
-               { section: "Markup — notes on the plan, never measured" },
-               ...MARKUP_TOOLS.map((t) => ({ id: t.id, icon: t.icon, label: t.label, shortcut: t.shortcut, active: tool === t.id, onSelect: () => { setTool(t.id); setMarkupDraft(null); } })),
-             ]}
-           />
+            <ToolMenu
+              title={t('markup.cluster')}
+              active={MARKUP_IDS.includes(tool)}
+              onOpenChange={onMenuDepth}
+              flyout="right"
+              face={<Icon name="markup" size={17} />}
+              items={[
+                { section: t('markup.section') },
+                 ...getMarkupTools().map((t) => ({ id: t.id, icon: t.icon, label: t.label, shortcut: t.shortcut, active: tool === t.id, onSelect: () => { setTool(t.id); setMarkupDraft(null); } })),
+              ]}
+            />
            {/* highlighter style popover — fixed beside the rail while armed
                (fixed, not absolute: the rail's scroll box would clip it) */}
            {tool === "highlighter" && (
              <div style={{ position: "fixed", left: "calc(var(--rail-w) + 8px)", top: markTileTopRef.current || 200, zIndex: Z.popover, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "var(--shadow-pop)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
-               <div style={{ display: "flex", gap: 6 }} title="Ink">
+                <div style={{ display: "flex", gap: 6 }} title={t('markup.ink_color')}>
                  {HL_INKS.map((c) => (
                    <button key={c} onClick={() => setHlStyle((st) => ({ ...st, color: c }))}
                      style={{ width: 16, height: 16, padding: 0, background: c, border: hlStyle.color === c ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />
@@ -8170,12 +6596,12 @@ export default function TakeoffCanvas() {
                </div>
                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                  {HL_SIZES.map(([lbl, px]) => (
-                   <button key={lbl} onClick={() => setHlStyle((st) => ({ ...st, size: px }))} title={`${lbl === "F" ? "Fine" : lbl === "M" ? "Medium" : "Broad"} tip`}
+                    <button key={lbl} onClick={() => setHlStyle((st) => ({ ...st, size: px }))} title={t('markup.tip_size', { size: lbl === "F" ? t('markup.fine') : lbl === "M" ? t('markup.medium') : t('markup.broad') })}
                      style={{ width: 22, height: 20, padding: 0, fontFamily: "var(--f-mono)", fontSize: 10, cursor: "pointer", border: hlStyle.size === px ? "1px solid var(--ink)" : "1px solid var(--ink-faint)", background: hlStyle.size === px ? "var(--ink)" : "transparent", color: hlStyle.size === px ? "var(--paper-bright)" : "var(--ink)" }}>{lbl}</button>
                  ))}
                  <span style={{ width: 1, alignSelf: "stretch", background: "var(--ink-faint)" }} />
                  {[["chisel", "M4 16 L14 6 L18 10 L8 20 Z"], ["round", "M5 17 Q12 3 19 13"]].map(([tip, d]) => (
-                   <button key={tip} onClick={() => setHlStyle((st) => ({ ...st, tip }))} title={`${tip} tip`}
+                    <button key={tip} onClick={() => setHlStyle((st) => ({ ...st, tip }))} title={t('markup.tip_type', { type: tip })}
                      style={{ width: 24, height: 20, padding: 1, cursor: "pointer", border: hlStyle.tip === tip ? "1px solid var(--ink)" : "1px solid var(--ink-faint)", background: "transparent" }}>
                      <svg viewBox="0 0 24 24" width="18" height="14">{tip === "chisel"
                        ? <path d={d} fill="currentColor" stroke="none" />
@@ -8189,10 +6615,10 @@ export default function TakeoffCanvas() {
          {/* Approval stamp — ink over pencil. Human-only by design: this tile
              is the ONLY way an estimator seal is minted (no MCP tool, no agent
              path), so the mark means a person looked. */}
-         {railTile("approve", "approve", "Approval stamp — the estimator's ink. Click a committed takeoff to approve it, or empty plan to approve the sheet; click a seal to lift it. ⌘Z undoes. Human-only.", null,
-           () => setTool((t) => (t === "approve" ? "select" : "approve")), { tint: tool === "approve" ? "var(--c-positive)" : undefined, armed: tool === "approve" })}
-         {railLabel("CAL")}
-         {railTile("calibrate", "calibrate", "Calibrate — click two points of a known dimension", null)}
+          {railTile("approve", "approve", t('tool.approve'), null,
+            () => setTool((t) => (t === "approve" ? "select" : "approve")), { tint: tool === "approve" ? "var(--c-positive)" : undefined, armed: tool === "approve" })}
+          {railLabel("CAL")}
+          {railTile("calibrate", "calibrate", t('tool.calibrate'), null)}
        </nav>
        )}
        {/* docked LEFT panel — one of Markups/Stamps/RFIs at a time. Reflows the
@@ -8201,13 +6627,13 @@ export default function TakeoffCanvas() {
          <div style={{ width: 360, flexShrink: 0, display: "flex", flexDirection: "column", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflow: "hidden", minHeight: 0 }}>
            {/* tab strip */}
            <div style={{ display: "flex", alignItems: "stretch", background: "var(--cobalt)", color: "var(--accent-contrast)" }}>
-             {[{ id: "markup", label: "Markups", n: markupCount }, { id: "stamp", label: "Stamps", n: stampLib.stamps.length }, { id: "rfi", label: "RFIs", n: rfis.length }].map((t) => (
+              {[{ id: "markup", label: t('markup.tab_markups'), n: markupCount }, { id: "stamp", label: t('markup.tab_stamps'), n: stampLib.stamps.length }, { id: "rfi", label: t('markup.tab_rfi'), n: rfis.length }].map((t) => (
                <button key={t.id} onClick={() => setLeftTab(t.id)} title={t.label}
                  style={{ flex: 1, padding: "9px 6px", border: "none", borderBottom: leftTab === t.id ? "2px solid var(--accent-contrast)" : "2px solid transparent", background: leftTab === t.id ? "rgba(255,255,255,.18)" : "transparent", color: "var(--accent-contrast)", cursor: "pointer", fontWeight: leftTab === t.id ? 700 : 500, fontSize: 12 }}>
                  {t.label}{t.n ? ` · ${t.n}` : ""}
                </button>
              ))}
-             <button onClick={() => setLeftTab(null)} title="Close panel" style={{ padding: "0 12px", border: "none", background: "transparent", color: "var(--accent-contrast)", fontSize: 16, cursor: "pointer" }}>×</button>
+              <button onClick={() => setLeftTab(null)} title={t('markup.close_panel')} style={{ padding: "0 12px", border: "none", background: "transparent", color: "var(--accent-contrast)", fontSize: 16, cursor: "pointer" }}>×</button>
            </div>
            {/* body of the active tab */}
            <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
@@ -8216,68 +6642,61 @@ export default function TakeoffCanvas() {
                  {/* layer show/hide — hides the on-canvas markup layer AND its hit-testing
                      (can't select/delete/fly-to an invisible markup); orthogonal to the
                      marked-set export, which still includes markups. */}
-                 <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)" }}>
-                   <button
-                     onClick={() => { const nv = !showMarkups; setShowMarkups(nv); if (!nv) setSelectedMarkupId(null); }}
-                     title={showMarkups ? "Hide the markup layer on the canvas" : "Show the markup layer on the canvas"}
-                     style={{ background: "transparent", border: "1px solid var(--ink-faint)", color: "var(--ink)", fontSize: 11, cursor: "pointer", padding: "2px 7px" }}>
-                     {showMarkups ? "Hide layer" : "Show layer"}
+                 <div style={{ display: "flex", justifyContent: "flex-end", padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)" }}>
+                    <button
+                      onClick={() => { const nv = !showMarkups; setShowMarkups(nv); if (!nv) setSelectedMarkupId(null); }}
+                      title={showMarkups ? t('markup.hide_title') : t('markup.show_title')}
+                      style={{ background: "transparent", border: "1px solid var(--ink-faint)", color: "var(--ink)", fontSize: 11, cursor: "pointer", padding: "2px 7px" }}>
+                      {showMarkups ? t('markup.hide_layer') : t('markup.show_layer')}
                    </button>
                  </div>
-                 <div style={{ padding: "8px 10px", color: "var(--ink-muted)" }}>
-                   Pick <b>☁ Cloud</b>, <b>▨ Highlight</b>, <b>💬 Callout</b>, <b>T Text</b>, or <b>⟷ Dimension</b> above, then click the plan to annotate it. <b>🖼 Image</b> marquees a region (two clicks) — or use <b>Upload image…</b> in Captures below.
+                  <div style={{ padding: "8px 10px", color: "var(--ink-muted)" }}>
+                    {t('markup.pick_tool')}
                  </div>
-                 {markups.filter((m) => panelKeySet.has(m.sheet_id) && m.type !== "image").length === 0 && (
-                   <div style={{ padding: "4px 12px 14px", color: "var(--ink-muted)" }}>
-                     No markups {groupKeys.length > 1 ? "on these sheets" : "on this sheet"} yet.
-                     <div style={{ marginTop: 4, fontSize: 11 }}>Images now live in <b>Captures</b> below.</div>
-                   </div>
+                 {markups.filter((m) => panelKeySet.has(m.sheet_id)).length === 0 && (
+                    <div style={{ padding: "4px 12px 14px", color: "var(--ink-muted)" }}>{groupKeys.length > 1 ? t('markup.empty_multi') : t('markup.empty')}</div>
                  )}
-                 {markups.filter((m) => panelKeySet.has(m.sheet_id) && m.type !== "image").map((m) => (
-                   <div key={m.id} style={{ padding: "10px 12px", borderTop: "1px solid var(--ink-faint)", background: selectedMarkupId === m.id ? "var(--surface-pop)" : "transparent" }}>
-                     {/* the header line selects + flies to the markup (parity with the RFI
-                         register's onFlyTo) — the inner controls stopPropagation so only the
-                         label area triggers it, never edit/delete. */}
-                     <div onClick={() => flyToMarkup(m)} title="Select and center this markup" style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                 {markups.filter((m) => panelKeySet.has(m.sheet_id)).map((m) => (
+                   <div key={m.id} style={{ padding: "10px 12px", borderTop: "1px solid var(--ink-faint)" }}>
+                     <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                        <span style={{ fontSize: 10, fontWeight: 700, color: "var(--cobalt)", textTransform: "uppercase" }}>{m.type}</span>
                        {/* inline edit — the panel's fallback for the canvas overlay, since a
                            markup here may be off-screen or on another sheet (no click point).
                            Enter/blur commit, Esc cancels; INPUT is guarded from the global keys. */}
                        {panelEditId === m.id ? (
                          <input name="markup-text" autoComplete="off" autoFocus defaultValue={m.text || ""}
-                           onClick={(e) => e.stopPropagation()}
                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); } else if (e.key === "Escape") { e.preventDefault(); e.currentTarget.value = m.text || ""; setPanelEditId(null); } }}
                            onBlur={(e) => { updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); }}
                            style={{ flex: 1, minWidth: 0, fontSize: 12.5, padding: "1px 4px", border: "1px solid var(--cobalt)", borderRadius: 0, outline: "none" }} />
                        ) : (
-                         <span style={{ flex: 1, color: "var(--ink)" }}>{m.type === "svg" ? <em style={{ color: "var(--ink-muted)" }}>(vector symbol)</em> : ([m.type === "dimension" && Number(m.len_ft) > 0 ? dimLabel(m.len_ft) : "", m.text].filter(Boolean).join(" · ") || <em style={{ color: "var(--ink-muted)" }}>(no text)</em>)}</span>
+                          <span style={{ flex: 1, color: "var(--ink)" }}>{m.type === "svg" ? <em style={{ color: "var(--ink-muted)" }}>({t('markup.vector_symbol')})</em> : (m.text || <em style={{ color: "var(--ink-muted)" }}>({t('markup.no_text')})</em>)}</span>
                        )}
-                       {m.type !== "svg" && <button onClick={(e) => { e.stopPropagation(); setPanelEditId((id) => (id === m.id ? null : m.id)); }} title="Edit text" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>}
-                       <button onClick={(e) => { e.stopPropagation(); deleteMarkup(m.id); }} title="Delete markup" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
+                        {m.type !== "svg" && <button onClick={() => setPanelEditId((id) => (id === m.id ? null : m.id))} title={t('markup.edit_text')} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>}
+                        <button onClick={() => deleteMarkup(m.id)} title={t('markup.delete_markup')} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
                      </div>
                      {/* appearance — per-markup color (reuse PALETTE) + line style; both
                          additive: unset color falls back to the cobalt(linked)/amber default,
                          unset style to solid. The RFI ⬢/number badge stays cobalt regardless. */}
                      <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 7, flexWrap: "wrap" }}>
-                       <span style={{ fontSize: 10.5, color: "var(--ink-muted)", marginRight: 2 }}>Color</span>
-                       <button title="Auto (linkage color)" onClick={() => updateMarkup(m.id, { color: "" })} style={{ width: 26, height: 15, borderRadius: 4, background: "var(--paper-bright)", border: !m.color ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 8.5, lineHeight: "11px", color: "var(--ink-muted)" }}>auto</button>
+                        <span style={{ fontSize: 10.5, color: "var(--ink-muted)", marginRight: 2 }}>{t('markup.color')}</span>
+                        <button title={t('markup.auto_color')} onClick={() => updateMarkup(m.id, { color: "" })} style={{ width: 26, height: 15, borderRadius: 4, background: "var(--paper-bright)", border: !m.color ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 8.5, lineHeight: "11px", color: "var(--ink-muted)" }}>{t('markup.auto')}</button>
                        {PALETTE.map((c) => <button key={c} title={c} onClick={() => updateMarkup(m.id, { color: c })} style={{ width: 15, height: 15, borderRadius: 4, background: c, border: m.color === c ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
-                       <select name="markup-line-style" value={m.line_style || "solid"} onChange={(e) => updateMarkup(m.id, { line_style: e.target.value })} title="Line style" style={{ marginLeft: 4, fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }}>
+                        <select name="markup-line-style" value={m.line_style || "solid"} onChange={(e) => updateMarkup(m.id, { line_style: e.target.value })} title={t('markup.line_style')} style={{ marginLeft: 4, fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }}>
                          {LINE_STYLE_IDS.map((id) => <option key={id} value={id}>{LINE_STYLES[id].label}</option>)}
                        </select>
                        {/* line weight — a multiplier over the element's base stroke width (default
                            ×1, clamped 0.5–3); additive, absent = ×1 so legacy markups are unchanged */}
-                       <span style={{ fontSize: 10.5, color: "var(--ink-muted)", marginLeft: 4 }}>Weight</span>
-                       <select name="markup-weight" value={String(snapWeight(m.weight))} onChange={(e) => updateMarkup(m.id, { weight: Number(e.target.value) })} title="Line weight (× base)" style={{ fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }}>
+                        <span style={{ fontSize: 10.5, color: "var(--ink-muted)", marginLeft: 4 }}>{t('markup.weight')}</span>
+                        <select name="markup-weight" value={String(snapWeight(m.weight))} onChange={(e) => updateMarkup(m.id, { weight: Number(e.target.value) })} title={t('markup.weight_title')} style={{ fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }}>
                          {WEIGHT_STEPS.map((wv) => <option key={wv} value={wv}>{wv}×</option>)}
                        </select>
                        {/* revision-delta △n — clouds only; blank clears it (no delta drawn) */}
                        {m.type === "cloud" && (
                          <>
-                           <span style={{ fontSize: 10.5, color: "var(--ink-muted)", marginLeft: 4 }} title="Revision-delta number (△) drawn at a cloud corner">Rev △</span>
-                           <input name="markup-rev" type="number" min="0" step="1" value={Number.isFinite(m.rev) ? m.rev : ""} placeholder="—"
-                             onChange={(e) => { const raw = e.target.value; updateMarkup(m.id, { rev: raw === "" ? undefined : Math.max(0, Math.floor(Number(raw) || 0)) }); }}
-                             title="Revision number for the △ delta (blank = none)"
+                            <span style={{ fontSize: 10.5, color: "var(--ink-muted)", marginLeft: 4 }} title={t('markup.rev_title')}>{t('markup.rev')}</span>
+                            <input name="markup-rev" type="number" min="0" step="1" value={Number.isFinite(m.rev) ? m.rev : ""} placeholder={t('markup.rev_placeholder')}
+                              onChange={(e) => { const raw = e.target.value; updateMarkup(m.id, { rev: raw === "" ? undefined : Math.max(0, Math.floor(Number(raw) || 0)) }); }}
+                              title={t('markup.rev_input_title')}
                              style={{ width: 40, fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }} />
                          </>
                        )}
@@ -8291,18 +6710,18 @@ export default function TakeoffCanvas() {
                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
                            {lc ? (
                              <>
-                               <span title={`Annotation is about ${lc.finish_tag}`}
-                                 style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700 }}>
-                                 <span style={{ width: 9, height: 9, background: lc.color, border: "1px solid var(--ink-faint)" }} />
-                                 {lc.finish_tag}
-                               </span>
-                               <button onClick={() => { setActiveCond(lc.id); }} style={{ ...ctrl, color: "var(--cobalt)" }} title="Make this the active condition">Select</button>
-                               <button onClick={() => unlinkCondition(m)} style={{ ...ctrl, color: "var(--ink-muted)" }} title="Detach this annotation from its condition">Detach</button>
+                          <span title={t('markup.linked_to', { tag: lc.finish_tag })}
+                                  style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700 }}>
+                                  <span style={{ width: 9, height: 9, background: lc.color, border: "1px solid var(--ink-faint)" }} />
+                                  {lc.finish_tag}
+                                </span>
+                                <button onClick={() => { setActiveCond(lc.id); }} style={{ ...ctrl, color: "var(--cobalt)" }} title={t('markup.select_condition')}>{t('markup.select')}</button>
+                                <button onClick={() => unlinkCondition(m)} style={{ ...ctrl, color: "var(--ink-muted)" }} title={t('markup.detach_condition')}>{t('markup.detach')}</button>
                              </>
                            ) : conditions.length > 0 && (
-                             <select name="link-condition" value="" onChange={(e) => { if (e.target.value) linkCondition(m, e.target.value); }}
-                               title="Attach this annotation to a condition" style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 170 }}>
-                               <option value="">Attach to condition…</option>
+                              <select name="link-condition" value="" onChange={(e) => { if (e.target.value) linkCondition(m, e.target.value); }}
+                                title={t('markup.attach_condition')} style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 170 }}>
+                                <option value="">{t('markup.attach_option')}</option>
                                {conditions.map((c) => <option key={c.id} value={c.id}>{c.finish_tag}</option>)}
                              </select>
                            )}
@@ -8318,16 +6737,16 @@ export default function TakeoffCanvas() {
                            {linked ? (
                              <>
                                <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700, color: "var(--cobalt)" }}>⬢ {String(linked.number ?? "")}</span>
-                               <button onClick={() => { setLeftTab("rfi"); }} style={{ ...ctrl, color: "var(--cobalt)" }} title="Open the RFI register">Open</button>
-                               <button onClick={() => unlinkRfi(m)} style={{ ...ctrl, color: "var(--ink-muted)" }} title="Unlink this markup from its RFI">Unlink</button>
+                                <button onClick={() => { setLeftTab("rfi"); }} style={{ ...ctrl, color: "var(--cobalt)" }} title={t('markup.open_rfi')}>{t('markup.tab_rfi')}</button>
+                                <button onClick={() => unlinkRfi(m)} style={{ ...ctrl, color: "var(--ink-muted)" }} title={t('markup.unlink_rfi')}>{t('markup.unlink_rfi')}</button>
                              </>
                            ) : (
                              <>
-                               <button onClick={() => raiseRfi(m)} style={{ ...ctrl, color: "var(--cobalt)", fontWeight: 600 }} title="Create a new RFI from this markup">Raise RFI</button>
-                               {rfis.length > 0 && (
-                                 <select name="link-rfi" value="" onChange={(e) => { if (e.target.value) linkRfi(m, e.target.value); }}
-                                   title="Link this markup to an existing RFI" style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 150 }}>
-                                   <option value="">Link existing…</option>
+                                <button onClick={() => raiseRfi(m)} style={{ ...ctrl, color: "var(--cobalt)", fontWeight: 600 }} title={t('markup.raise_rfi')}>{t('markup.raise_rfi')}</button>
+                                {rfis.length > 0 && (
+                                  <select name="link-rfi" value="" onChange={(e) => { if (e.target.value) linkRfi(m, e.target.value); }}
+                                    title={t('markup.link_rfi')} style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 150 }}>
+                                    <option value="">{t('markup.link_existing')}</option>
                                    {rfis.map((r) => <option key={r.id} value={r.id}>{r.number}{r.subject ? ` · ${r.subject}` : ""}</option>)}
                                  </select>
                                )}
@@ -8338,163 +6757,6 @@ export default function TakeoffCanvas() {
                      })()}
                    </div>
                  ))}
-                 {/* Captures — a GLOBAL image-markup library, every sheet, NOT
-                     filtered to the panels open right now (unlike the per-sheet
-                     list above): that global-ness is the whole point of the
-                     feature — find, re-place, trace, or caption any capture
-                     regardless of which sheet is open. Uploads live here too
-                     (no source fields, so ◎ and the caption toggle are hidden
-                     — see isTraceable). */}
-                 <div style={{ borderTop: "2px solid var(--ink-faint)" }}>
-                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)", gap: 8 }}>
-                     <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Captures</span>
-                     {/* hidden input reused by the Upload button — re-encoded through addImageFromFile */}
-                     <input name="markup-image-file" ref={imageInputRef} type="file" accept="image/*" style={{ display: "none" }}
-                       onChange={(e) => { const f = e.target.files?.[0]; if (f) addImageFromFile(f); e.target.value = ""; }} />
-                     <button
-                       onClick={() => imageInputRef.current?.click()}
-                       title="Upload a raster image (PNG or JPEG) as a floating annotation on the current sheet"
-                       style={{ background: "transparent", border: "1px solid var(--ink-faint)", color: "var(--ink)", fontSize: 11, cursor: "pointer", padding: "2px 7px" }}>
-                       Upload image…
-                     </button>
-                   </div>
-                   {/* always-on name search — mirrors the condQuery idiom
-                       (TakeoffsPanel ~:718/763/1054-1056) */}
-                   <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)" }}>
-                     <input name="capture-filter" value={captureQuery} onChange={(e) => setCaptureQuery(e.target.value)} placeholder="filter captures…"
-                       style={{ flex: 1, minWidth: 0, padding: "4px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-                     {captureQuery && <button onClick={() => setCaptureQuery("")} title="Clear the filter" style={{ border: "none", background: "none", color: "var(--ink-muted)", cursor: "pointer", fontSize: 13, padding: 0 }}>×</button>}
-                   </div>
-                   {(() => {
-                     // one pass over `markups` for the image subset; the query
-                     // then narrows THAT (small) list instead of re-scanning
-                     // every markup a second time — filterCaptures's own
-                     // type==="image" filter is a no-op on an already-image-only input.
-                     const allCaptures = filterCaptures(markups, "");
-                     const captures = filterCaptures(allCaptures, captureQuery);
-                     if (allCaptures.length === 0) {
-                       return <div style={{ padding: "4px 12px 14px", color: "var(--ink-muted)" }}>No captures yet. Marquee a region with 🖼 or use Upload image… above.</div>;
-                     }
-                     if (captures.length === 0) {
-                       return <div style={{ padding: "4px 12px 14px", color: "var(--ink-muted)" }}>No captures match “{captureQuery}”.</div>;
-                     }
-                     return captures.map((m) => {
-                       // Captures-only gate for ◎ + the caption toggle — legacy
-                       // pre-slice-1 images and uploads both lack src_sheet_id.
-                       const traceable = isTraceable(m);
-                       return (
-                         <div key={m.id} style={{ padding: "10px 12px", borderTop: "1px solid var(--ink-faint)", background: selectedMarkupId === m.id ? "var(--surface-pop)" : "transparent" }}>
-                           {/* header line — thumb, name(✎), sheet badge, age,
-                               Place, ◎ trace, caption toggle, delete. Mirrors the
-                               per-sheet row's click-to-fly / stopPropagation
-                               pattern above. */}
-                           <div onClick={() => flyToMarkup(m)} title={imageProvenance(m)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", flexWrap: "wrap" }}>
-                             {(() => {
-                               const th = ensureThumb(m);
-                               return <span style={{ flex: "0 0 auto", width: 30, height: 30, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-                                 {th ? <img src={th} alt="" style={{ maxWidth: "100%", maxHeight: "100%", display: "block" }} /> : <span style={{ fontSize: 14 }}>🖼</span>}
-                               </span>;
-                             })()}
-                             {panelEditId === m.id ? (
-                               <input name="capture-text" autoComplete="off" autoFocus defaultValue={m.text || ""}
-                                 onClick={(e) => e.stopPropagation()}
-                                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); } else if (e.key === "Escape") { e.preventDefault(); e.currentTarget.value = m.text || ""; setPanelEditId(null); } }}
-                                 onBlur={(e) => { updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); }}
-                                 style={{ flex: 1, minWidth: 0, fontSize: 12.5, padding: "1px 4px", border: "1px solid var(--cobalt)", borderRadius: 0, outline: "none" }} />
-                             ) : (
-                               <span style={{ flex: "0 1 auto", minWidth: 0, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.text || <em style={{ color: "var(--ink-muted)" }}>(no name)</em>}</span>
-                             )}
-                             <button onClick={(e) => { e.stopPropagation(); setPanelEditId((id) => (id === m.id ? null : m.id)); }} title="Edit name" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>
-                             <span style={{ color: "var(--ink-faint)" }}>·</span>
-                             <span title={`Currently on ${sheetBaseLabel(m.sheet_id)}`} style={{ fontSize: 10.5, color: "var(--ink-muted)", padding: "1px 6px", border: "1px solid var(--ink-faint)", borderRadius: 4, background: "var(--paper-cream)", whiteSpace: "nowrap" }}>{sheetBaseLabel(m.sheet_id)}</span>
-                             {/* legacy/imported captures can predate created_at (see
-                                 imageProvenance's own guard on the same field) — a
-                                 blank relativeAge must not leave a dangling "·" */}
-                             {(() => {
-                               const age = relativeAge(m.created_at, Date.now());
-                               return age ? (
-                                 <>
-                                   <span style={{ color: "var(--ink-faint)" }}>·</span>
-                                   <span style={{ fontSize: 10.5, color: "var(--ink-muted)", whiteSpace: "nowrap" }} title={absoluteUtc(m.created_at)}>{age}</span>
-                                 </>
-                               ) : null;
-                             })()}
-                             <button onClick={(e) => { e.stopPropagation(); beginPlace(m); }} title={panelKeySet.has(m.sheet_id) ? "Reposition: centers the view on the image, then it follows the cursor — click the sheet to drop it" : "Place this image on the current sheet — it follows the cursor until you click to drop it"} style={{ border: "1px solid var(--ink-faint)", background: placingImageId === m.id ? "var(--cobalt)" : "transparent", color: placingImageId === m.id ? "#fff" : "var(--cobalt)", cursor: "pointer", fontSize: 11, padding: "1px 7px" }}>Place</button>
-                             {traceable && (
-                               <button onClick={(e) => { e.stopPropagation(); traceSource(m); }} title="Jump to the source sheet and flash the captured region" style={{ border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11, padding: "1px 7px", whiteSpace: "nowrap" }}>
-                                 {traceLabel(m.src_sheet_id, m.sheet_id, sheetBaseLabel(m.src_sheet_id))}
-                               </button>
-                             )}
-                             {traceable && (
-                               <button onClick={(e) => { e.stopPropagation(); updateMarkup(m.id, { source_label: !m.source_label }); }}
-                                 title="Show/Hide the source caption on the image"
-                                 style={{ padding: "2px 7px", border: `1px solid ${m.source_label ? "var(--cobalt)" : "var(--ink-faint)"}`, background: m.source_label ? "var(--cobalt)" : "transparent", color: m.source_label ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 10.5, fontFamily: "var(--f-mono)", lineHeight: 1.4 }}>
-                                 caption
-                               </button>
-                             )}
-                             <button onClick={(e) => { e.stopPropagation(); deleteMarkup(m.id); }} title="Delete capture" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
-                           </div>
-                           {/* Condition link — identical block to the per-sheet row's
-                               (8211–8235 pre-slice-4); keys off `m` and works for any
-                               markup type, captures included. */}
-                           {(() => {
-                             const lc = m.condition_id ? condById[m.condition_id] : null;
-                             const ctrl = { padding: "2px 7px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11 };
-                             return (
-                               <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
-                                 {lc ? (
-                                   <>
-                                     <span title={`Annotation is about ${lc.finish_tag}`}
-                                       style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700 }}>
-                                       <span style={{ width: 9, height: 9, background: lc.color, border: "1px solid var(--ink-faint)" }} />
-                                       {lc.finish_tag}
-                                     </span>
-                                     <button onClick={() => { setActiveCond(lc.id); }} style={{ ...ctrl, color: "var(--cobalt)" }} title="Make this the active condition">Select</button>
-                                     <button onClick={() => unlinkCondition(m)} style={{ ...ctrl, color: "var(--ink-muted)" }} title="Detach this annotation from its condition">Detach</button>
-                                   </>
-                                 ) : conditions.length > 0 && (
-                                   <select name="link-condition" value="" onChange={(e) => { if (e.target.value) linkCondition(m, e.target.value); }}
-                                     title="Attach this annotation to a condition" style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 170 }}>
-                                     <option value="">Attach to condition…</option>
-                                     {conditions.map((c) => <option key={c.id} value={c.id}>{c.finish_tag}</option>)}
-                                   </select>
-                                 )}
-                               </div>
-                             );
-                           })()}
-                           {/* RFI controls — identical block to the per-sheet row's
-                               (8237–8262 pre-slice-4). */}
-                           {(() => {
-                             const linked = m.rfi_id ? rfis.find((r) => r.id === m.rfi_id) : null;
-                             const ctrl = { padding: "2px 7px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11 };
-                             return (
-                               <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
-                                 {linked ? (
-                                   <>
-                                     <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700, color: "var(--cobalt)" }}>⬢ {String(linked.number ?? "")}</span>
-                                     <button onClick={() => { setLeftTab("rfi"); }} style={{ ...ctrl, color: "var(--cobalt)" }} title="Open the RFI register">Open</button>
-                                     <button onClick={() => unlinkRfi(m)} style={{ ...ctrl, color: "var(--ink-muted)" }} title="Unlink this markup from its RFI">Unlink</button>
-                                   </>
-                                 ) : (
-                                   <>
-                                     <button onClick={() => raiseRfi(m)} style={{ ...ctrl, color: "var(--cobalt)", fontWeight: 600 }} title="Create a new RFI from this markup">Raise RFI</button>
-                                     {rfis.length > 0 && (
-                                       <select name="link-rfi" value="" onChange={(e) => { if (e.target.value) linkRfi(m, e.target.value); }}
-                                         title="Link this markup to an existing RFI" style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 150 }}>
-                                         <option value="">Link existing…</option>
-                                         {rfis.map((r) => <option key={r.id} value={r.id}>{r.number}{r.subject ? ` · ${r.subject}` : ""}</option>)}
-                                       </select>
-                                     )}
-                                   </>
-                                 )}
-                               </div>
-                             );
-                           })()}
-                         </div>
-                       );
-                     });
-                   })()}
-                 </div>
                </div>
              )}
              {leftTab === "stamp" && (
@@ -8520,7 +6782,7 @@ export default function TakeoffCanvas() {
        <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
         <div ref={containerRef} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp} onPointerLeave={leaveCanvas} onContextMenu={(e) => e.preventDefault()}
-          onDoubleClick={(e) => { if (tool === "oneclick") { if (proposal?.regions.length) createProposal(); } else if (tool === "area" || tool === "deduct" || tool === "linear" || tool === "surface" || tool === "zone") finishShape(); else if (tool === "select") editMarkupAt(e); }}
+          onDoubleClick={(e) => { if (tool === "oneclick") { if (proposal?.regions.length) createProposal(); } else if (tool === "area" || tool === "deduct" || tool === "linear" || tool === "curve" || tool === "surface" || tool === "zone") finishShape(); else if (tool === "select") editMarkupAt(e); }}
           style={{ position: "absolute", inset: 0, background: darkMode ? "#0b0e14" : "var(--paper-cream)", cursor: tool === "select" ? "default" : "none", touchAction: "none" }}>
           {/* aim crosshair (draw modes): the OS cursor is hidden on the canvas — the
               crosshair IS the cursor. Two crisp full-page hairlines riding the
@@ -8529,20 +6791,16 @@ export default function TakeoffCanvas() {
               lock reads as a quiet state change (hairlines brighten, star swells
               cobalt, rubber band thickens) — no extra chrome on the sheet. All
               positioned imperatively in moveCrosshair. */}
-          {DS.crosshair !== "none" && (<>
-            <div ref={crossVRef} style={{ position: "absolute", top: 0, bottom: 0, width: 1.5, background: DS._hairline, boxShadow: DS._hairlineLock.boxShadowBase, pointerEvents: "none", display: "none", zIndex: 5 }} />
-            <div ref={crossHRef} style={{ position: "absolute", left: 0, right: 0, height: 1.5, background: DS._hairline, boxShadow: DS._hairlineLock.boxShadowBase, pointerEvents: "none", display: "none", zIndex: 5 }} />
-          </>)}
+          <div ref={crossVRef} style={{ position: "absolute", top: 0, bottom: 0, width: 1.5, background: "rgba(31,63,199,.55)", boxShadow: "0 0 0 0.5px rgba(255,255,255,.55), 0 0 4px rgba(31,63,199,.3)", pointerEvents: "none", display: "none", zIndex: 5 }} />
+          <div ref={crossHRef} style={{ position: "absolute", left: 0, right: 0, height: 1.5, background: "rgba(31,63,199,.55)", boxShadow: "0 0 0 0.5px rgba(255,255,255,.55), 0 0 4px rgba(31,63,199,.3)", pointerEvents: "none", display: "none", zIndex: 5 }} />
           <div ref={aimMarkRef} style={{ position: "absolute", left: 0, top: 0, width: 0, height: 0, pointerEvents: "none", display: "none", zIndex: 6, willChange: "transform" }}>
-            {/* the aim mark at the crossing — the theme's cursor glyph; it swells
-                and glows while the 45° lock holds (drafting: the house star) */}
+            {/* the SPLINE STAR at the crossing — the house vertex mark IS the cursor;
+                it swells and glows cobalt while the 45° lock holds */}
             <svg width={22} height={22} viewBox="0 0 22 22" style={{ position: "absolute", left: -11, top: -11, transition: "transform 120ms ease, filter 120ms ease", filter: "drop-shadow(0 1px 2px rgba(14,26,46,.3))" }}>
-              {DS.aimMark === "ring"
-                ? <circle cx={11} cy={11} r={6.5} fill="none" stroke={DS.aimMarkColor} strokeWidth={1.6} />
-                : <path d={markerPath(DS.aimMark, 11, 11, DS.aimMark === "star" ? 8.5 : 6)} fill={DS.aimMarkColor} stroke="#fff" strokeWidth={1.4} />}
+              <path d={starPath(11, 11, 8.5)} fill="#1f3fc7" stroke="#fff" strokeWidth={1.4} />
             </svg>
           </div>
-          <div ref={aimChipRef} style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none", display: "none", zIndex: 6, padding: "2px 8px", background: DS.chip.bg, border: `1px solid ${DS.chip.border}`, boxShadow: "var(--shadow-1)", fontFamily: DS.chip.font === "mono" ? "var(--f-mono)" : "var(--f-body)", fontSize: 10.5, fontWeight: 600, color: DS.chip.fg, whiteSpace: "nowrap", willChange: "transform" }} />
+          <div ref={aimChipRef} style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none", display: "none", zIndex: 6, padding: "2px 8px", background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-1)", fontFamily: "var(--f-mono)", fontSize: 10.5, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", willChange: "transform" }} />
           {/* hover readout — what takeoff is under the cursor (DOM-direct) */}
           <div ref={hoverRef} style={{ position: "absolute", display: "none", pointerEvents: "none", zIndex: 8, background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-1)", padding: "4px 8px", fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink)", whiteSpace: "nowrap" }} />
           {/* edge-insert ghost — the "+" that rides the selected shape's edge under
@@ -8556,14 +6814,10 @@ export default function TakeoffCanvas() {
             <input name="inline-editor" autoComplete="off" ref={editorInputRef} autoFocus defaultValue={editor.value}
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); finishEditor(true); } else if (e.key === "Escape") { e.preventDefault(); finishEditor(false); } }}
               onBlur={() => finishEditor(true)}
-              placeholder="Type, Enter to place · Esc cancels"
+              placeholder={t('markup.editor_placeholder')}
               style={{ position: "absolute", left: editor.left, top: editor.top, zIndex: 9, minWidth: 160, padding: "3px 6px", font: "13px var(--f-body, sans-serif)", color: "var(--ink)", background: "var(--paper-bright)", border: "1px solid var(--cobalt)", boxShadow: "0 2px 10px rgba(0,0,0,.18)", borderRadius: 0, cursor: "text", outline: "none" }} />
           )}
-          {/* No permanent will-change here: the stage is compositor-promoted only
-              for the duration of a gesture (promoteStage / syncTilePanels demote).
-              A permanent promotion froze the layer's raster scale and pixelated
-              every drawn boundary after a zoom-in. */}
-          <div ref={stageRef} style={{ position: "absolute", transformOrigin: "0 0", width: stage.w || undefined, height: stage.h || undefined }}>
+          <div ref={stageRef} style={{ position: "absolute", transformOrigin: "0 0", willChange: "transform", width: stage.w || undefined, height: stage.h || undefined }}>
             {/* base layer — a small, bounded coarse pyramid placeholder CSS-stretched
                 to the panel's full logical footprint (see tileCompositor.ts's
                 paintBase); the backing store is NOT sheet-sized, only its CSS box is,
@@ -8615,7 +6869,7 @@ export default function TakeoffCanvas() {
                       // overview zoom (invisible conditions). Divide by scale
                       // like every other screen-relative size here.
                       const z = tf.scale;
-                      const sw = (sel ? DS.selection.width : 2) / z;
+                      const sw = (sel ? 4 : 2) / z;
                       // Committed-but-unreviewed machine shapes (an imported MCP
                       // takeoff) render dashed pencil — same invariant as the
                       // ephemeral agent proposals, until Accept flips reviewed.
@@ -8623,15 +6877,15 @@ export default function TakeoffCanvas() {
                       const pDash = `${4 / z} ${3 / z}`;
                       if (s.measure_role === "count") {
                         const [cx, cy] = pts[0], r = 7 / z;
-                        return <rect key={s.id} x={cx - r} y={cy - r} width={r * 2} height={r * 2} rx={2 / z} fill={col + (pending ? "55" : "cc")} stroke={sel ? DS.selection.color : "#fff"} strokeWidth={(sel ? 3 : 1.5) / z} strokeDasharray={pending ? `${3 / z} ${2.5 / z}` : undefined} />;
+                        return <rect key={s.id} x={cx - r} y={cy - r} width={r * 2} height={r * 2} rx={2 / z} fill={col + (pending ? "55" : "cc")} stroke={sel ? "#1f3fc7" : "#fff"} strokeWidth={(sel ? 3 : 1.5) / z} strokeDasharray={pending ? `${3 / z} ${2.5 / z}` : undefined} />;
                       }
                       if (s.measure_role === "surface_area") {
-                        return <polyline key={s.id} points={pts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? DS.selection.color : col} strokeOpacity={pending ? 0.85 : undefined} strokeWidth={(sel ? 4.5 : 3.5) / z} strokeDasharray={pending ? pDash : `${10 / z} ${3 / z} ${2 / z} ${3 / z}`} strokeLinecap="round" strokeLinejoin="round" />;
+                        return <polyline key={s.id} points={pts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? "#1f3fc7" : col} strokeOpacity={pending ? 0.85 : undefined} strokeWidth={(sel ? 4.5 : 3.5) / z} strokeDasharray={pending ? pDash : `${10 / z} ${3 / z} ${2 / z} ${3 / z}`} strokeLinecap="round" strokeLinejoin="round" />;
                       }
                       if (s.measure_role === "linear") {
                         // line_style governs linear outlines (surface_area keeps its dash-dot identity above)
                         const lpts = s.curved ? flattenCurve(pts) : pts;
-                        return <polyline key={s.id} points={lpts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? DS.selection.color : col} strokeOpacity={pending ? 0.85 : undefined} strokeWidth={(sel ? 4 : 3) / z} strokeDasharray={pending ? pDash : dashArrayFor(cond?.line_style || "solid", z)} strokeLinecap="round" strokeLinejoin="round" />;
+                        return <polyline key={s.id} points={lpts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? "#1f3fc7" : col} strokeOpacity={pending ? 0.85 : undefined} strokeWidth={(sel ? 4 : 3) / z} strokeDasharray={pending ? pDash : dashArrayFor(cond?.line_style || "solid", z)} strokeLinecap="round" strokeLinejoin="round" />;
                       }
                       const ded = s.measure_role === "deduct";
                       // #137 — a RECONCILED deduct (cuts_shape_id) renders as a
@@ -8640,7 +6894,7 @@ export default function TakeoffCanvas() {
                       // solid overlay here would reintroduce the exact
                       // "decal on top" bug the real subtract fixes.
                       if (ded && s.cuts_shape_id) {
-                        return <polygon key={s.id} points={pts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? DS.selection.color : "#b03a26"} strokeWidth={(sel ? 3 : 1.5) / z} strokeDasharray={`${5 / z} ${3 / z}`} />;
+                        return <polygon key={s.id} points={pts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? "#1f3fc7" : "#b03a26"} strokeWidth={(sel ? 3 : 1.5) / z} strokeDasharray={`${5 / z} ${3 / z}`} />;
                       }
                       // #137 — a parent carrying real hole ring(s): ONE compound
                       // path, outer ring + every hole ring, fill-rule evenodd so
@@ -8649,12 +6903,12 @@ export default function TakeoffCanvas() {
                       if (!ded && s.verts_norm_holes?.length) {
                         const ringD = (ring) => `M${dn(ring).map((q) => q.join(",")).join("L")}Z`;
                         const d = ringD(s.verts_norm) + s.verts_norm_holes.map(ringD).join("");
-                        return <path key={s.id} d={d} fillRule="evenodd" fill={pending ? col + "14" : shapeFill(cond)} stroke={sel ? DS.selection.color : col} strokeOpacity={pending ? 0.9 : undefined} strokeWidth={sw} strokeDasharray={pending ? pDash : dashArrayFor(cond?.line_style || "solid", z)} />;
+                        return <path key={s.id} d={d} fillRule="evenodd" fill={pending ? col + "14" : shapeFill(cond)} stroke={sel ? "#1f3fc7" : col} strokeOpacity={pending ? 0.9 : undefined} strokeWidth={sw} strokeDasharray={pending ? pDash : dashArrayFor(cond?.line_style || "solid", z)} />;
                       }
                       // deduct keeps its danger-red dashing (a safety signal, wins over line_style); positive floor_area follows the condition's line_style
                       return <polygon key={s.id} points={pts.map((q) => q.join(",")).join(" ")}
                         fill={ded ? (pending ? "rgba(176,58,38,.10)" : "rgba(176,58,38,.28)") : pending ? col + "14" : shapeFill(cond)}
-                        stroke={ded ? "#b03a26" : (sel ? DS.selection.color : col)} strokeOpacity={pending ? 0.9 : undefined} strokeWidth={sw}
+                        stroke={ded ? "#b03a26" : (sel ? "#1f3fc7" : col)} strokeOpacity={pending ? 0.9 : undefined} strokeWidth={sw}
                         strokeDasharray={pending ? pDash : ded ? `${6 / z} ${4 / z}` : dashArrayFor(cond?.line_style || "solid", z)} />;
                     })}
                     {/* vertex handles for the selected shape (drag to reshape) */}
@@ -8675,19 +6929,16 @@ export default function TakeoffCanvas() {
                             const ang = Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI;
                             const ew = 14 / s, eh = 6 / s;
                             return <rect key={"m" + i} x={mx - ew / 2} y={my - eh / 2} width={ew} height={eh} rx={eh / 2}
-                              transform={`rotate(${ang} ${mx} ${my})`} fill={grip} stroke={DS.selection.color} strokeWidth={1.6 / s} />;
+                              transform={`rotate(${ang} ${mx} ${my})`} fill={grip} stroke="#1f3fc7" strokeWidth={1.6 / s} />;
                           })}
-                          {/* corner handles — click selects (Delete removes just that point), drag moves.
-                              The theme's handle glyph (drafting: paper-filled diamond); a "hollow" theme
-                              draws the mark unfilled, the selection color as its outline. */}
+                          {/* corner handles — click selects (Delete removes just that point), drag moves */}
                           {qs.map(([x, y], i) => {
                             const isSel = selVert === i;
                             const sz = (isSel ? 6.5 : 5.5) / s;
-                            const hollow = DS.selection.handleFill === "hollow";
                             return <g key={"h" + i}>
-                              {isSel && <circle cx={x} cy={y} r={9 / s} fill="none" stroke={DS.selection.color} strokeWidth={1.2 / s} opacity={0.5} />}
-                              <path d={markerPath(DS.selection.handleShape, x, y, sz)}
-                                fill={hollow ? "none" : (isSel ? grip : DS.selection.color)} stroke={hollow ? DS.selection.color : (isSel ? DS.selection.color : "#fff")} strokeWidth={(isSel ? 2 : 1.4) / s} />
+                              {isSel && <circle cx={x} cy={y} r={9 / s} fill="none" stroke="#1f3fc7" strokeWidth={1.2 / s} opacity={0.5} />}
+                              <path d={`M${x},${y - sz} L${x + sz},${y} L${x},${y + sz} L${x - sz},${y} Z`}
+                                fill={isSel ? grip : "#1f3fc7"} stroke={isSel ? "#1f3fc7" : "#fff"} strokeWidth={(isSel ? 2 : 1.4) / s} />
                             </g>;
                           })}
                         </g>
@@ -8700,13 +6951,7 @@ export default function TakeoffCanvas() {
                         FILL (dark-boosted on the dark canvas); RFI linkage is an unconditional
                         ⬢/number badge, independent of the note text. Layer hides via showMarkups. */}
                     {showMarkups && visibleMarkups.filter((m) => m.sheet_id === p.key)
-                      // three draw tiers that MATCH the three hit tiers (selectAt),
-                      // so on-screen z-order never contradicts selection priority:
-                      // image at the back (0), highlight (1), everything else on top
-                      // (2). Painting is document order, so tier 0 draws first/behind
-                      // and tier 2 last/on top; hit-test ranks them in reverse, so the
-                      // topmost-drawn markup is the one a click selects.
-                      .slice().sort((a, b) => (a.type === "image" ? 0 : a.type === "highlight" ? 1 : 2) - (b.type === "image" ? 0 : b.type === "highlight" ? 1 : 2))
+                      .slice().sort((a, b) => (a.type === "highlight" ? 0 : 1) - (b.type === "highlight" ? 0 : 1))
                       .map((m) => {
                       const z = tf.scale;
                       // Colour precedence: an explicit per-markup colour always
@@ -8869,61 +7114,6 @@ export default function TakeoffCanvas() {
                           </g>
                         );
                       }
-                      if (m.type === "image") {
-                        // a raster image markup (screenshot capture or upload). Width-anchored
-                        // like svg but off `m.w` alone (imagePlacedBox), rendered as-is (no
-                        // dark-mode invert — a screenshot is captured from the light PDF).
-                        // Self-contained: a guard-fail returns null, never falling through to
-                        // the text renderer below (which would paint a phantom note box).
-                        const { bw, bh } = imagePlacedBox(m.w, m.aspect, p.img.w);
-                        // only a PNG/JPEG DATA url renders (matches the marked-set
-                        // export invariant) — an imported record with an http(s)://
-                        // src must never make <image href> fetch remote content.
-                        if (!(m.src && pickEmbedFormat(m.src) && Array.isArray(m.at) && bw > 0 && bh > 0)) return null;
-                        const x0 = m.at[0] * p.img.w - bw / 2, y0 = m.at[1] * p.img.h - bh / 2;
-                        // Source caption (captures only) — the origin sheet NAME, read
-                        // from the frozen src_label (resolved at capture time; the
-                        // marked-set PDF reads the SAME stored string, so screen and PDF
-                        // can't diverge). Legacy captures without src_label fall back to
-                        // the live closure. A stitch origin has no page number, so drop the
-                        // "· p.N" for it. "" (upload or no src_sheet_id) ⇒ render nothing.
-                        const capText = m.source === "capture" && m.source_label && m.src_sheet_id
-                          ? sourceCaption(m.src_label ?? sheetBaseLabel(m.src_sheet_id), isStitchKey(m.src_sheet_id) ? 0 : parseSheetKey(m.src_sheet_id).page)
-                          : "";
-                        return (
-                          <g key={m.id}>
-                            {halo(x0, y0, x0 + bw, y0 + bh)}
-                            <image href={m.src} x={x0} y={y0} width={bw} height={bh} preserveAspectRatio="none" style={{ pointerEvents: "none" }} />
-                            {/* PERMANENT frame — a placed screenshot overlays its own source and is
-                                invisible without it; the halo is selection-only. White + slate double
-                                stroke reads on both canvas themes (the image itself is never inverted). */}
-                            <rect x={x0} y={y0} width={bw} height={bh} fill="none" stroke="#fff" strokeWidth={2.5 / z} style={{ pointerEvents: "none" }} />
-                            <rect x={x0} y={y0} width={bw} height={bh} fill="none" stroke="#2a3550" strokeWidth={1 / z} style={{ pointerEvents: "none" }} />
-                            {selM && <rect x={x0 + bw - 4 / z} y={y0 + bh - 4 / z} width={8 / z} height={8 / z} fill="#1f3fc7" stroke="#fff" strokeWidth={1.5 / z} style={{ pointerEvents: "none" }} />}
-                            {capText && (() => {
-                              // Frame-hugging chip on the TOP edge, centered on the box
-                              // width so it never collides with the top-LEFT link badge
-                              // (badge(x0, y0-9/z) is centered ON x0). Explicit light
-                              // fill + dark ink — NOT theme tokens (the image render
-                              // never dark-mode-inverts, so a chip that flipped with the
-                              // app theme would read backwards against it). Fixed screen
-                              // size (every dimension /z): on a very small capture it can
-                              // overrun the frame width, which is fine — it stays on the
-                              // top edge, clear of the bottom-right resize handle.
-                              const capCx = x0 + bw / 2, capCy = y0 - 9 / z;
-                              const capH = 15 / z, capW = (capText.length * 5.6 + 14) / z;
-                              return (
-                                <g style={{ pointerEvents: "none" }}>
-                                  <rect x={capCx - capW / 2} y={capCy - capH / 2} width={capW} height={capH} rx={3 / z}
-                                    fill="rgba(255,247,237,.95)" stroke="#0e1a2e" strokeWidth={1 / z} />
-                                  <text x={capCx} y={capCy} fill="#0e1a2e" fontSize={10 / z} fontWeight="600" textAnchor="middle" dominantBaseline="central">{capText}</text>
-                                </g>
-                              );
-                            })()}
-                            {badge(x0, y0 - 9 / z)}
-                          </g>
-                        );
-                      }
                       if (m.type === "svg" && m.path && Array.isArray(m.vb)) {
                         // a vector symbol (imported .svg or saved-as-stamp art). The
                         // path is baked local→image px through a uniform scale off the
@@ -8973,7 +7163,7 @@ export default function TakeoffCanvas() {
                           <g key={a.id} style={{ pointerEvents: "none" }}>
                             <path d={dia(1)} fill={backing} stroke={ink} strokeWidth={rad * 0.07} strokeLinejoin="round" />
                             <path d={dia(0.72)} fill="none" stroke={ink} strokeWidth={rad * 0.035} strokeLinejoin="round" />
-                            <text x={cx} y={cy} fill={ink} fontSize={rad * 0.3} fontWeight="700" letterSpacing={rad * 0.02} textAnchor="middle" dominantBaseline="central">AGENT</text>
+                            <text x={cx} y={cy} fill={ink} fontSize={rad * 0.3} fontWeight="700" letterSpacing={rad * 0.02} textAnchor="middle" dominantBaseline="central">{t('approval.agent')}</text>
                           </g>
                         );
                       }
@@ -8981,7 +7171,7 @@ export default function TakeoffCanvas() {
                         <g key={a.id} style={{ pointerEvents: "none" }}>
                           <circle cx={cx} cy={cy} r={rad} fill={backing} stroke={ink} strokeWidth={rad * 0.07} />
                           <circle cx={cx} cy={cy} r={rad * 0.78} fill="none" stroke={ink} strokeWidth={rad * 0.035} />
-                          <text x={cx} y={cy} fill={ink} fontSize={rad * 0.26} fontWeight="700" letterSpacing={rad * 0.03} textAnchor="middle" dominantBaseline="central">APPROVED</text>
+                          <text x={cx} y={cy} fill={ink} fontSize={rad * 0.26} fontWeight="700" letterSpacing={rad * 0.03} textAnchor="middle" dominantBaseline="central">{t('approval.approved')}</text>
                         </g>
                       );
                     })}
@@ -9069,7 +7259,7 @@ export default function TakeoffCanvas() {
                         <g key={ap.id} style={{ pointerEvents: clickable ? "auto" : "none", cursor: clickable ? "pointer" : undefined }}
                           onPointerDown={(e) => { if (clickable) e.stopPropagation(); }}
                           onClick={(e) => { if (clickable) { e.stopPropagation(); acceptAgentProposal(ap.id); } }}>
-                          <title>{`Agent proposal — ${condById[ap.condition_id]?.finish_tag || "?"}${ded ? " (deduct)" : ""}, ${fa(ap.area_sf)}. ${evBits ? `Evidence: ${evBits}. ` : ""}Click to accept (⏎ accepts all visible); reject from the Agent panel.`}</title>
+                          <title>{t('agent_proposal.title', { tag: condById[ap.condition_id]?.finish_tag || "?", deduct: ded ? t('agent_proposal.deduct') : "", area: fa(ap.area_sf), evidence: evBits ? evBits + ". " : "" })}</title>
                           <polygon points={pts.map((q) => q.join(",")).join(" ")}
                             fill={ded ? "rgba(176,58,38,.10)" : "rgba(31,63,199,.07)"}
                             stroke={col} strokeOpacity={0.9} strokeWidth={2 / s}
@@ -9091,7 +7281,7 @@ export default function TakeoffCanvas() {
                       const pts = c.verts_norm.map(([x, y]) => [x * p.img.w, y * p.img.h]);
                       return (
                         <g key={`rulecand-${i}`} style={{ pointerEvents: "none" }}>
-                          <title>{`Rule candidate — −${fa(c.area_sf)} deduct. ${ruleStage.rule.label}.`}</title>
+                          <title>{t('rule_candidate.title', { area: fa(c.area_sf), label: ruleStage.rule.label })}</title>
                           <polygon points={pts.map((q) => q.join(",")).join(" ")}
                             fill="rgba(176,58,38,.10)" stroke="#b03a26" strokeOpacity={0.9}
                             strokeWidth={2 / s} strokeDasharray={`${3.5 / s} ${3.5 / s}`} strokeLinejoin="round" />
@@ -9121,7 +7311,7 @@ export default function TakeoffCanvas() {
                           onPointerDown={(e) => beginRollCut(e, ct, "body")}
                           onPointerMove={moveRollCut} onPointerUp={endRollCut} onPointerCancel={endRollCut}
                           onDoubleClick={() => rollEdit && resetRollCut(ct)}>
-                          <title>{`Cut ${ct.num} — ${condById[ct.condId]?.finish_tag || "?"}: ${fmtCheckLen(ct.lenFt, units)} × ${fmtCheckLen(ct.widthFt, units)}${ct.multi ? ` · lane ${ct.laneIndex + 1}/${ct.laneCount}` : ""}${ct.overRoll ? " · LONGER THAN ONE ROLL — needs a cross-seam" : ""}${rollEdit ? " · drag to slide, pull the square handles to resize, double-click to reset" : ""}`}</title>
+                          <title>{t('roll_cut.title', { num: ct.num, tag: condById[ct.condId]?.finish_tag || "?", length: fmtCheckLen(ct.lenFt, units), width: fmtCheckLen(ct.widthFt, units), multi: ct.multi ? t('roll_cut.multi', { index: ct.laneIndex + 1, total: ct.laneCount }) : "", overRoll: ct.overRoll ? t('roll_cut.over_roll') : "", editMode: rollEdit ? t('roll_cut.edit_mode') : "" })}</title>
                           <rect x={ct.x} y={ct.y} width={ct.w} height={ct.h}
                             fill={col + "38"} stroke={strokeCol}
                             strokeWidth={(ct.overRoll ? 2.6 : 1.8) / s}
@@ -9147,213 +7337,48 @@ export default function TakeoffCanvas() {
                         </g>
                       );
                     })}
-                    {/* Source-trace flash (◎, wired by slice 3) — a transient highlight
-                        drawn in the SOURCE panel's own <g>, so it inherits xOffset like
-                        every other overlay here. `key={sourceFlash.token}` is load-bearing:
-                        a CSS keyframes animation only (re)starts on mount, so without a
-                        key tied to the token a repeat trace of the SAME region would find
-                        the <rect> already mounted and silently no-op the pulse — no JS
-                        tick, per the plan's no-live-tick rule. The guard on `rect` shape
-                        matches the try-wrap the export side uses: a malformed value from a
-                        future caller must not take the canvas down. */}
-                    {sourceFlash && sourceFlash.sheet_id === p.key
-                      && Array.isArray(sourceFlash.rect) && sourceFlash.rect.length === 2 && (() => {
-                      const [[fnx0, fny0], [fnx1, fny1]] = sourceFlash.rect;
-                      const fx0 = Math.min(fnx0, fnx1) * p.img.w, fy0 = Math.min(fny0, fny1) * p.img.h;
-                      const fx1 = Math.max(fnx0, fnx1) * p.img.w, fy1 = Math.max(fny0, fny1) * p.img.h;
-                      return (
-                        <rect key={sourceFlash.token}
-                          x={fx0} y={fy0} width={fx1 - fx0} height={fy1 - fy0}
-                          fill="rgba(31,63,199,.14)" stroke="#1f3fc7" strokeWidth={3 / tf.scale}
-                          style={{ pointerEvents: "none", animation: "sourceFlashPulse .85s ease-in-out 3 forwards" }} />
-                      );
-                    })()}
                   </g>
                 );
               })}
               {/* IN-PROGRESS work draws in the INSTRUMENT color — the house cobalt pencil
                   (deduct keeps its danger red). Committed shapes wear the condition's own
                   color; the draft never mimics anyone's takeoff look. Solid, no dashes. */}
-              {DS.casing && <line ref={rubberCasingRef} data-draft="casing" stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeOpacity={DS.rubber.opacity} strokeLinecap="round" style={{ display: "none" }} />}
-              <line ref={rubberRef} stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.rubber.width / tf.scale} strokeOpacity={DS.rubber.opacity} strokeDasharray={drawDashFor(DS.rubber.dash, tf.scale)} strokeLinecap="round" style={{ display: "none" }} />
-              <path ref={arcRef} fill="none" stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.draft.lineWidth / tf.scale} strokeLinecap="round" style={{ display: "none" }} />
-              {/* rect/marquee preview shares one ref across four tools, so its paint
-                  is a 3-way branch: deduct-rect (AND ring deduct) = danger red;
-                  schedule = a NEUTRAL selection gesture, left cobalt + condition
-                  fill; rect & symbol marquees are measure tools, themed via DS. */}
-              {(() => {
-                const rectDeduct = tool === "deduct" || tool === "deduct-rect";
-                const rectNeutral = tool === "schedule";   // selection gesture, not measurement — never themed
-                return <rect ref={rectRef}
-                  fill={rectDeduct ? "rgba(176,58,38,.22)" : rectNeutral ? shapeFill(aCond) : draftFill}
-                  stroke={rectDeduct ? "#b03a26" : rectNeutral ? "#1f3fc7" : DS.accent}
-                  strokeWidth={(rectNeutral ? 2 : DS.draft.width) / tf.scale} style={{ display: "none" }} />;
-              })()}
+              <line ref={rubberRef} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={1.5 / tf.scale} strokeOpacity={0.85} strokeLinecap="round" style={{ display: "none" }} />
+              <rect ref={rectRef} fill={tool === "deduct" ? "rgba(176,58,38,.22)" : shapeFill(aCond)} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={2 / tf.scale} style={{ display: "none" }} />
               <path ref={cloudRef} fill="rgba(37,99,235,.06)" stroke="#1f3fc7" strokeWidth={2 / tf.scale} strokeDasharray={`${5 / tf.scale} ${4 / tf.scale}`} style={{ display: "none" }} />
               <rect ref={highlightRef} fill="rgba(196,122,16,.18)" stroke="#c47a10" strokeWidth={2 / tf.scale} style={{ display: "none" }} />
-              <line ref={dimRef} stroke="#1f3fc7" strokeWidth={2 / tf.scale} strokeDasharray={`${5 / tf.scale} ${4 / tf.scale}`} style={{ display: "none" }} />
               <path ref={hlPathRef} style={{ display: "none" }} />
-              {/* Symbol sweep review overlay (#264) — the same glyph language the
-                  MCP renders ship: seed = violet double ring, question = orange
-                  ?-circle, accepted/committed-to-be = the condition color. */}
-              {sweep && (() => {
-                const pp = panels.find((x) => x.key === sweep.key);
-                if (!pp) return null;
-                const ox = pp.xOffset;
-                const k = 1 / tf.scale;
-                // translucent like the highlighter — the estimator's own rule:
-                // review glyphs must never obstruct the ink they sit on
-                const X = (at, color, w) => (
-                  <g stroke={color} strokeWidth={w * k} strokeOpacity={0.6}>
-                    <line x1={at[0] + ox - 8 * k} y1={at[1] - 8 * k} x2={at[0] + ox + 8 * k} y2={at[1] + 8 * k} />
-                    <line x1={at[0] + ox - 8 * k} y1={at[1] + 8 * k} x2={at[0] + ox + 8 * k} y2={at[1] - 8 * k} />
-                  </g>
-                );
-                return (
-                  <g pointerEvents="none">
-                    <circle cx={sweep.seed.center[0] + ox} cy={sweep.seed.center[1]} r={15 * k} fill="none" stroke={DS.symbol.seed} strokeWidth={2 * k} strokeOpacity={0.65} />
-                    <circle cx={sweep.seed.center[0] + ox} cy={sweep.seed.center[1]} r={9 * k} fill="none" stroke={DS.symbol.seed} strokeWidth={2 * k} strokeOpacity={0.65} />
-                    {sweep.matches.map((m, i) => {
-                      const offTag = sweep.excludedTags.includes((m.label && m.label.label) || "\u2205");
-                      return <g key={`m${i}`} opacity={offTag ? 0.22 : 1}>{X(m.at, activeColor, 2.4)}</g>;
-                    })}
-                    {sweep.questions.map((q, i) => {
-                      if (q.state === "dismissed") return null;
-                      if (q.state === "accepted") return <g key={`q${i}`}>{X(q.at, activeColor, 2.4)}</g>;
-                      return (
-                        <g key={`q${i}`}>
-                          <circle cx={q.at[0] + ox} cy={q.at[1]} r={13 * k} fill="none" stroke={DS.symbol.question} strokeWidth={(i === sweep.qIndex ? 3.4 : 2.2) * k} strokeOpacity={i === sweep.qIndex ? 0.85 : 0.6} />
-                          <text x={q.at[0] + ox} y={q.at[1] + 5 * k} textAnchor="middle" fill={DS.symbol.question} fillOpacity={0.85} fontSize={14 * k} fontWeight="700" fontFamily="JetBrains Mono, monospace">?</text>
-                        </g>
-                      );
-                    })}
-                  </g>
-                );
-              })()}
-              {/* casing under-stroke (Site Glass): a JSX twin BEHIND each draft
-                  stroke, tracing the SAME geometry (arc-flattened where a bow is
-                  set). Width ownership is DUAL like the rubber core — this twin
-                  declares width from the ~11 Hz tf mirror (heals wheel-zoom with a
-                  stationary pointer). Surface is un-themed, so no casing there.
-                  The polygon's strokeDasharray MUST mirror the accent polygon's
-                  four lines below — same expression, same dash, so a dashed
-                  zone accent never rides a solid casing ribbon. */}
-              {DS.casing && poly.length >= 2 && tool !== "surface" && (tool === "linear"
-                ? <polyline data-draft="casing" points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeLinecap="round" strokeLinejoin="round" />
-                : ringOutline
-                ? <polyline data-draft="casing" points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} strokeLinecap="round" strokeLinejoin="round" />
-                : <polygon data-draft="casing" points={(curveIdx.length ? flattenArcRing(poly, curveIdx, tool !== "zone" && !bowOpen) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} strokeLinejoin="round" />)}
-              {poly.length >= 2 && (tool === "linear" || tool === "surface"
-                ? <polyline points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={tool === "surface" ? activeColor : DS.accent} strokeWidth={(tool === "surface" ? 3.5 : DS.draft.lineWidth) / tf.scale} strokeDasharray={tool === "surface" ? `${10 / tf.scale} ${3 / tf.scale} ${2 / tf.scale} ${3 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} strokeLinecap="round" strokeLinejoin="round" />
-                : ringOutline
-                ? <polyline points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.draft.width / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} strokeLinecap="round" strokeLinejoin="round" />
-                : <polygon points={(curveIdx.length ? flattenArcRing(poly, curveIdx, tool !== "zone" && !bowOpen) : poly).map((p) => p.join(",")).join(" ")} fill={poly.length >= 3 ? (tool === "deduct" ? "rgba(176,58,38,.22)" : tool === "zone" ? rgbaFromHex(DS.accent, 0.06) : draftFill) : "none"} stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.draft.width / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} />)}
-              {/* outline mode: dotted ghost of the on-commit closing edge (last vertex → first), so the loop is visible without a fill. */}
-              {ringOutline && poly.length >= 3 && !bowOpen && (
-                <line x1={poly[poly.length - 1][0]} y1={poly[poly.length - 1][1]} x2={poly[0][0]} y2={poly[0][1]}
-                  stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.draft.width / tf.scale}
-                  strokeLinecap="round" strokeDasharray={`${1 / tf.scale} ${5 / tf.scale}`} />
-              )}
-              {/* Bold the most recent segment so you see where you just clicked.
-                  A closed arc bolds AS the arc — a straight chord drawn across
-                  the bow would read as the boundary and it isn't one. Nothing
-                  bolds while a bow is still open; the live preview is the
-                  segment then. */}
-              {poly.length >= 2 && !bowOpen && DS.lastSegWidth != null && (
-                polyCurve[poly.length - 2] && poly.length >= 3
-                  ? <>
-                      {DS.casing && tool !== "surface" && <path data-draft="casing" d={arcPathD(poly[poly.length - 3], poly[poly.length - 2], poly[poly.length - 1])} fill="none"
-                        stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeLinecap="round" />}
-                      <path d={arcPathD(poly[poly.length - 3], poly[poly.length - 2], poly[poly.length - 1])} fill="none"
-                        stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.lastSegWidth / tf.scale} strokeLinecap="round" />
-                    </>
-                  : <>
-                      {DS.casing && tool !== "surface" && <line data-draft="casing" x1={poly[poly.length - 2][0]} y1={poly[poly.length - 2][1]} x2={poly[poly.length - 1][0]} y2={poly[poly.length - 1][1]}
-                        stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeLinecap="round" />}
-                      <line x1={poly[poly.length - 2][0]} y1={poly[poly.length - 2][1]} x2={poly[poly.length - 1][0]} y2={poly[poly.length - 1][1]}
-                        stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.lastSegWidth / tf.scale} strokeLinecap="round" />
-                    </>
-              )}
-              {/* close preview — the ring tools' ghost cursor→first edge (theme-
-                  gated; positioned by moveCrosshair). Width AND dash dual-owned with
-                  the mover: both declared here from the tf mirror, both re-written
-                  there from tfRef — always the same scale read, both cadences. */}
-              {DS.closePreview && (tool === "area" || tool === "deduct" || tool === "zone") && poly.length >= 2 && (
-                <line ref={closeRef} data-draft="close-preview" stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.closePreview.width / tf.scale} strokeDasharray={drawDashFor(DS.closePreview.dash, tf.scale)} strokeLinecap="round" style={{ display: "none" }} />
+              {poly.length >= 2 && (tool === "linear" || tool === "curve" || tool === "surface"
+                ? <polyline points={(tool === "curve" ? flattenCurve(poly) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={tool === "surface" ? activeColor : "#1f3fc7"} strokeWidth={(tool === "surface" ? 3.5 : 2.5) / tf.scale} strokeDasharray={tool === "surface" ? `${10 / tf.scale} ${3 / tf.scale} ${2 / tf.scale} ${3 / tf.scale}` : undefined} strokeLinecap="round" strokeLinejoin="round" />
+                : <polygon points={poly.map((p) => p.join(",")).join(" ")} fill={poly.length >= 3 ? (tool === "deduct" ? "rgba(176,58,38,.22)" : tool === "zone" ? "rgba(31,63,199,.06)" : shapeFill(aCond)) : "none"} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={2 / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : undefined} />)}
+              {/* bold the most recent segment so you see where you just clicked */}
+              {poly.length >= 2 && (
+                <line x1={poly[poly.length - 2][0]} y1={poly[poly.length - 2][1]} x2={poly[poly.length - 1][0]} y2={poly[poly.length - 1][1]}
+                  stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={3.5 / tf.scale} strokeLinecap="round" />
               )}
               {poly.map((p, i) => {
                 const isLast = i === poly.length - 1;
-                // Preserve the affordance: a CURVE point reads as a round handle,
-                // a corner as the theme's vertex glyph (drafting: the house star).
-                // Only the CORNER shape is themed — curve points stay circles so
-                // the ⌥-curve gesture is always legible, whatever the theme.
-                // casing backing (Site Glass): the same glyph fattened in the
-                // casing color, so each vertex carries a sheet-contrast halo. When
-                // off (every other style), the bare element is returned EXACTLY as
-                // before — no wrapper — so Drafting Table is byte-identical.
-                const cased = DS.vertex.casing && DS.casing;
-                if (polyCurve[i]) {
-                  const dot = <circle key={i} cx={p[0]} cy={p[1]} r={(isLast ? 4.5 : 3.4) / tf.scale}
-                    fill={isLast ? "#fff" : DS.accent} stroke={DS.accent} strokeWidth={(isLast ? 2 : 1.4) / tf.scale} />;
-                  if (!cased) return dot;
-                  return (
-                    <g key={i}>
-                      <circle data-draft="casing" cx={p[0]} cy={p[1]} r={((isLast ? 4.5 : 3.4) + 1.5) / tf.scale} fill={DS.casing.color} stroke={DS.casing.color} strokeWidth={1 / tf.scale} />
-                      <circle cx={p[0]} cy={p[1]} r={(isLast ? 4.5 : 3.4) / tf.scale}
-                        fill={isLast ? "#fff" : DS.accent} stroke={DS.accent} strokeWidth={(isLast ? 2 : 1.4) / tf.scale} />
-                    </g>
-                  );
-                }
-                const d = markerPath(DS.vertex.shape, p[0], p[1], (isLast ? DS.vertex.lastR : DS.vertex.r) / tf.scale);
-                if (!d) return null;   // "none" — this theme places no corner marks
-                if (!cased) return <path key={i} d={d}
-                  fill={isLast ? "#fff" : DS.accent} stroke={DS.accent} strokeWidth={(isLast ? 2 : 1) / tf.scale} />;
-                return (
-                  <g key={i}>
-                    <path data-draft="casing" d={d} fill={DS.casing.color} stroke={DS.casing.color} strokeWidth={3 / tf.scale} />
-                    <path d={d} fill={isLast ? "#fff" : DS.accent} stroke={DS.accent} strokeWidth={(isLast ? 2 : 1) / tf.scale} />
-                  </g>
-                );
+                return <path key={i} d={starPath(p[0], p[1], (isLast ? 4.5 : 3) / tf.scale)}
+                  fill={isLast ? "#fff" : "#1f3fc7"} stroke="#1f3fc7" strokeWidth={(isLast ? 2 : 1) / tf.scale} />;
               })}
-              {/* edge labels (Precision "all" / Site Glass "last2"): placed-edge
-                  midpoints priced with the draft's own sheet scale, in the check
-                  tool's white-halo idiom. Surface keeps its own readout; a segment
-                  touching a curve control is skipped — its chord would float off
-                  the flattened arc and misstate the length. */}
-              {DS.edgeLabels && tool !== "surface" && poly.length >= 2 && liveUpp ? (() => {
-                const z = tf.scale;
-                const start = DS.edgeLabels === "last2" ? Math.max(0, poly.length - 3) : 0;
-                const kids = [];
-                for (let i = start; i < poly.length - 1; i++) {
-                  if (polyCurve[i] || polyCurve[i + 1]) continue;   // arc segment — chord label would misstate
-                  const a = poly[i], b = poly[i + 1];
-                  kids.push(
-                    <text key={i} data-draft="edge-label" x={(a[0] + b[0]) / 2} y={(a[1] + b[1]) / 2 - 6 / z} fontSize={10.5 / z} fontWeight={600}
-                      fill={DS.accent} textAnchor="middle" stroke="#fff" strokeWidth={3 / z} paintOrder="stroke">
-                      {fmtCheckLen(Math.hypot(b[0] - a[0], b[1] - a[1]) * liveUpp, units)}
-                    </text>
-                  );
-                }
-                return <g>{kids}</g>;
-              })() : null}
-              {calib.length === 2 && <line x1={calib[0][0]} y1={calib[0][1]} x2={calib[1][0]} y2={calib[1][1]} stroke={DS.accent} strokeWidth={2 / tf.scale} />}
-              {calib.map((p, i) => <path key={i} d={starPath(p[0], p[1], 3.5 / tf.scale)} fill={DS.accent} />)}
-              {alignPt && <path d={starPath(alignPt[0], alignPt[1], 4.5 / tf.scale)} fill={DS.accent} stroke="#fff" strokeWidth={1 / tf.scale} />}
+              {calib.length === 2 && <line x1={calib[0][0]} y1={calib[0][1]} x2={calib[1][0]} y2={calib[1][1]} stroke="#1f3fc7" strokeWidth={2 / tf.scale} />}
+              {calib.map((p, i) => <path key={i} d={starPath(p[0], p[1], 3.5 / tf.scale)} fill="#1f3fc7" />)}
+              {alignPt && <path d={starPath(alignPt[0], alignPt[1], 4.5 / tf.scale)} fill="#1f3fc7" stroke="#fff" strokeWidth={1 / tf.scale} />}
               {/* check tool — dashed so it never reads as calibrate's solid line */}
               {tool === "check" && check.length === 2 && !checkCross && (
                 <>
-                  <line x1={check[0][0]} y1={check[0][1]} x2={check[1][0]} y2={check[1][1]} stroke={DS.accent} strokeWidth={2 / tf.scale} strokeDasharray={`${6 / tf.scale} ${4 / tf.scale}`} />
+                  <line x1={check[0][0]} y1={check[0][1]} x2={check[1][0]} y2={check[1][1]} stroke="#1f3fc7" strokeWidth={2 / tf.scale} strokeDasharray={`${6 / tf.scale} ${4 / tf.scale}`} />
                   {checkFeet != null && (
                     <text x={(check[0][0] + check[1][0]) / 2} y={(check[0][1] + check[1][1]) / 2 - 8 / tf.scale}
-                      fontSize={12.5 / tf.scale} fontWeight={700} fill={DS.accent} textAnchor="middle"
+                      fontSize={12.5 / tf.scale} fontWeight={700} fill="#1f3fc7" textAnchor="middle"
                       stroke="#fff" strokeWidth={3 / tf.scale} paintOrder="stroke">{fmtCheckLen(checkFeet, units)}</text>
                   )}
                 </>
               )}
-              {tool === "check" && check.map((p, i) => <path key={"ck" + i} d={starPath(p[0], p[1], 3.5 / tf.scale)} fill={DS.accent} />)}
+              {tool === "check" && check.map((p, i) => <path key={"ck" + i} d={starPath(p[0], p[1], 3.5 / tf.scale)} fill="#1f3fc7" />)}
               {/* scale-acceptance guide — an ephemeral calibrated ruler so a 2×-off
                   scale is visually obvious against known elements (a door is ~3′) */}
-              {SHOW_SCALE_GUIDE && scaleGuide && panelKeySet.has(scaleGuide.key) && (() => {
+              {scaleGuide && panelKeySet.has(scaleGuide.key) && (() => {
                 const [gx, gy] = scaleGuide.at;
                 const z = tf.scale;
                 const unitPx = scaleGuide.px / (units === "metric" ? scaleGuide.feet * M_PER_FT : scaleGuide.feet); // one ft (or 1 m) in px
@@ -9363,7 +7388,7 @@ export default function TakeoffCanvas() {
                 // "at 1/8″ = 1′-0″" reads right for a scale string; a source word ("calibrated", "custom") reads better parenthesized
                 const scaleTxt = /[=:]/.test(scaleGuide.label) ? `at ${scaleGuide.label}` : `(${scaleGuide.label})`;
                 const lbl = units === "metric" ? `${nUnits} m ${scaleTxt}` : `${scaleGuide.feet}′ ${scaleTxt}`;
-                const cap = units === "metric" ? "a door is about 0.9 m — if this bar looks wildly off, the scale is wrong" : "a door opening is about 3′ — if this bar looks wildly off, the scale is wrong";
+                const cap = units === "metric" ? t('scale_guide.door_m') : t('scale_guide.door_ft');
                 return (
                   <g style={{ pointerEvents: "none" }}>
                     <line x1={gx} y1={gy} x2={gx + scaleGuide.px} y2={gy} stroke="#fff" strokeWidth={7 / z} strokeLinecap="round" />
@@ -9388,10 +7413,10 @@ export default function TakeoffCanvas() {
 
           {status !== "ready" && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--ink-muted)", fontSize: 15 }}>
-              {status === "loading" && "Loading sheets…"}
-              {status === "rendering" && "Rendering sheet…"}
-              {status === "empty" && "No PDFs yet — click “Open PDF” or drag a plan onto the canvas."}
-              {status === "error" && <span style={{ color: "var(--c-danger)" }}>Error: {err}</span>}
+              {status === "loading" && t('status.loading')}
+              {status === "rendering" && t('status.rendering')}
+              {status === "empty" && t('status.empty')}
+              {status === "error" && <span style={{ color: "var(--c-danger)" }}>{t('status.error', { error: err })}</span>}
             </div>
           )}
 
@@ -9405,11 +7430,11 @@ export default function TakeoffCanvas() {
               is stopped so rapid clicks can't finishShape() */}
           <div onPointerDown={(e) => { if (e.button === 0 && !spaceRef.current) e.stopPropagation(); }} onDoubleClick={(e) => e.stopPropagation()}
             style={{ position: "absolute", left: 14, bottom: 14, display: "flex", flexDirection: "column", gap: 6 }}>
-            <button onClick={() => stage.w && fitToView(stage.w, stage.h)} title="Fit sheet to view" style={{ width: 34, height: 34, borderRadius: 0, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", fontSize: 12 }}>fit</button>
-            <button onClick={() => setDarkMode((d) => !d)} title={darkMode ? "Sheet back to positive print" : "Invert sheet — negative print (affects marked-set export)"}
+            <button onClick={() => stage.w && fitToView(stage.w, stage.h)} title={t('menu.fit_title')} style={{ width: 34, height: 34, borderRadius: 0, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", fontSize: 12 }}>{t('menu.fit_view')}</button>
+            <button onClick={() => setDarkMode((d) => !d)} title={darkMode ? t('menu.invert_title') : t('menu.invert_title_dark')}
               style={{ width: 34, height: 34, borderRadius: 0, border: `1px solid ${darkMode ? "var(--cobalt)" : "var(--ink-faint)"}`, background: darkMode ? "var(--cobalt)" : "var(--paper-bright)", color: darkMode ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontSize: 13 }}>
               {darkMode ? "☀" : "☾"}</button>
-            <button onClick={() => toggleFocusMode()} title={focusMode ? "Focus off — show all chrome (F)" : "Focus — trade chrome for canvas height (F)"}
+            <button onClick={() => toggleFocusMode()} title={focusMode ? t('menu.focus_title_on') : t('menu.focus_title_off')}
               style={{ width: 34, height: 34, borderRadius: 0, border: `1px solid ${focusMode ? "var(--cobalt)" : "var(--ink-faint)"}`, background: focusMode ? "var(--cobalt)" : "var(--paper-bright)", color: focusMode ? "var(--accent-contrast)" : "var(--ink)", cursor: "pointer", fontSize: 13 }}>⛶</button>
           </div>
         </div>
@@ -9422,23 +7447,27 @@ export default function TakeoffCanvas() {
         <div style={{ position: "absolute", left: "50%", bottom: 14, transform: "translateX(-50%)", zIndex: Z.canvasUi, display: "flex", flexDirection: "column-reverse", alignItems: "center", gap: 8, maxWidth: "82%", pointerEvents: "none" }}>
         {(ruleOffer || ruleStage) && (
           <div style={{ pointerEvents: "auto", display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: "var(--paper-bright)", border: "1.5px dashed var(--c-danger)", boxShadow: "var(--shadow-1)", fontSize: 12.5, color: "var(--ink)", maxWidth: "100%" }}>
-            {ruleOffer ? (<>
-              <span>Make this a rule for all <b>{ruleOffer.tag}</b> rooms? Excludes enclosed regions under <b>{ruleOffer.seed.max_area_sf} SF</b>.</span>
-              <button onClick={previewRule}
-                style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1.5px solid var(--cobalt)", color: "var(--cobalt)", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
-                Preview</button>
-              <button onClick={() => setRuleOffer(null)}
-                style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", color: "var(--ink-muted)", fontSize: 12, cursor: "pointer" }}>
-                Dismiss</button>
-            </>) : (<>
-              <span><b>{ruleStage.candidates.length}</b> matching region{ruleStage.candidates.length === 1 ? "" : "s"} staged as dashed deducts — {ruleStage.rule.label}.</span>
-              <button onClick={applyStagedRule}
-                style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1.5px solid var(--cobalt)", color: "var(--cobalt)", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
-                Apply {ruleStage.candidates.length}</button>
-              <button onClick={() => setRuleStage(null)}
-                style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", color: "var(--ink-muted)", fontSize: 12, cursor: "pointer" }}>
-                Cancel</button>
-            </>)}
+            {ruleOffer ? (
+              <React.Fragment>
+                <span dangerouslySetInnerHTML={{ __html: t('rule.offer', { tag: ruleOffer.tag, max: ruleOffer.seed.max_area_sf }) }} />
+                <button onClick={previewRule}
+                  style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1.5px solid var(--cobalt)", color: "var(--cobalt)", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  {t('rule.preview')}</button>
+                <button onClick={() => setRuleOffer(null)}
+                  style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", color: "var(--ink-muted)", fontSize: 12, cursor: "pointer" }}>
+                  {t('rule.dismiss')}</button>
+              </React.Fragment>
+            ) : (
+              <React.Fragment>
+                <span dangerouslySetInnerHTML={{ __html: t('rule.staged', { count: ruleStage.candidates.length, label: ruleStage.rule.label }) }} />
+                <button onClick={applyStagedRule}
+                  style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1.5px solid var(--cobalt)", color: "var(--cobalt)", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  {t('rule.apply', { count: ruleStage.candidates.length })}</button>
+                <button onClick={() => setRuleStage(null)}
+                  style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", color: "var(--ink-muted)", fontSize: 12, cursor: "pointer" }}>
+                  {t('rule.cancel')}</button>
+              </React.Fragment>
+            )}
           </div>
         )}
         </div>
@@ -9452,9 +7481,9 @@ export default function TakeoffCanvas() {
             pencil until accepted. One click, one undo entry. */}
         {pendingCommitted.length > 0 && (
           <button onClick={acceptPendingShapes}
-            title={`${pendingCommitted.length} machine-proposed shape${pendingCommitted.length === 1 ? "" : "s"} render${pendingCommitted.length === 1 ? "s" : ""} dashed pending your review. Accept makes them ink (⌘Z undoes); to reject one, select it and press Delete.`}
+            title={t('accept.shapes')}
             style={{ pointerEvents: "auto", padding: "6px 14px", background: "var(--paper-bright)", border: "1.5px dashed var(--cobalt)", boxShadow: "var(--shadow-1)", fontSize: 12.5, fontWeight: 600, color: "var(--cobalt)", cursor: "pointer" }}>
-            Accept {pendingCommitted.length} proposed shape{pendingCommitted.length === 1 ? "" : "s"}
+            {t('accept.pill', { count: pendingCommitted.length })}
           </button>
         )}
         {/* live dictation chip (RFC #59 recognizer): top-center, fixed — NOT
@@ -9479,146 +7508,74 @@ export default function TakeoffCanvas() {
           ? { left: 10, right: 10, bottom: 64, maxHeight: "36%", padding: "8px 12px" }
           : { right: 56, top: 14, minWidth: 200, maxWidth: 260, maxHeight: "calc(100% - 28px)", padding: "12px 16px" }),
           background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, overflowY: "auto", boxShadow: "var(--shadow-pop)", fontVariantNumeric: "tabular-nums", zIndex: Z.canvasUi }}>
-          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.55, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tool === "zone" ? "Zone check" : (aCond?.finish_tag || "No condition")}</div>
-          {/* The straight/curve switch (#284) — a mode you flip mid
-              measurement, not a modifier you hold, so an arc is a run of
-              ordinary clicks. Lives in the readout because that is where the
-              eye already is while tracing; the canvas stays chrome-free. */}
-          {CURVABLE.has(tool) && (
-            <div style={{ display: "flex", gap: 0, marginBottom: 8, border: "1px solid var(--ink-faint)" }}
-              title="Straight places corners. Curve takes two clicks — one anywhere ON the bow, then its far end — and lays the unique circle through those and the vertex you were on, so it sits on a radius wall instead of near it. Switch as often as you like inside one measurement: Q flips it once a trace is going, and ⌥-click always places the OTHER kind for one point.">
-              {[["straight", "Straight", "╱"], ["curve", "Curve", "⌒"]].map(([k, label, glyph]) => {
-                const on = (k === "curve") === curveMode;
-                return (
-                  <button key={k} onClick={() => setCurveMode(k === "curve")}
-                    style={{ flex: 1, padding: "3px 6px", border: "none", cursor: "pointer", fontSize: 11.5, fontWeight: on ? 700 : 500,
-                      background: on ? "var(--cobalt)" : "transparent", color: on ? "var(--accent-contrast)" : "var(--ink-secondary)" }}>
-                    <span style={{ fontSize: 13 }}>{glyph}</span> {label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.55, marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tool === "zone" ? t('readout.zone_check') : (aCond?.finish_tag || t('readout.no_condition'))}</div>
           {tool === "oneclick" && proposal?.regions.length ? (() => {
             const pos = proposal.regions.filter((r) => r.kind === "pos");
             const neg = proposal.regions.filter((r) => r.kind === "neg");
             const sf = pos.reduce((n, r) => n + r.area_sf, 0) - neg.reduce((n, r) => n + r.area_sf, 0);
             return (
               <>
-                <div style={{ fontSize: 22, fontWeight: 700, color: "var(--cobalt)" }}>{num(areaVal(sf, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)} selected</span></div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "var(--cobalt)" }}>{num(areaVal(sf, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)} {t('readout.selected')}</span></div>
                 <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{pos.length} space{pos.length === 1 ? "" : "s"}{neg.length ? ` − ${neg.length} cutout${neg.length === 1 ? "" : "s"}` : ""}{units === "metric" ? "" : ` · ${num(sf / 9)} SY`}</div>
-                <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{ocSel ? "drag to move · Delete drops this point · Esc deselects" : "hover a fill to edit: drag a corner or edge · shift-click an edge adds a point"}</div>
-                <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>click adds a space · ⌥-click carves a cutout · ⏎ Create · ⌫ undo · Esc cancel</div>
+                <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{ocSel ? t('readout.occ_drag_hint') : t('readout.occ_hover_hint')}</div>
+                <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>{t('readout.occ_click_hint')}</div>
                 {proposal.regions.some((r) => r.rt) && (
-                  <div style={{ fontSize: 11.5, color: "var(--c-warning)", marginTop: 4 }}>Traced from scan pixels — verify edges before Create.</div>
+                  <div style={{ fontSize: 11.5, color: "var(--c-warning)", marginTop: 4 }}>{t('readout.occ_scan_warning')}</div>
                 )}
               </>
             );
           })() : tool === "surface" && poly.length >= 2 && liveUpp ? (
             (() => {
-              const liveLF = openLen(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly) * liveUpp;
+              const liveLF = openLen(poly) * liveUpp;
               return condH > 0 ? (
                 <>
-                  <div style={{ fontSize: 22, fontWeight: 700, color: "var(--ink)" }}>{num(areaVal(liveLF * condH, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)} wall</span></div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color: "var(--ink)" }}>{num(areaVal(liveLF * condH, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)} {t('readout.wall')}</span></div>
                   <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{fl(liveLF)} × {num(condH, 2)} ft</div>
                 </>
-              ) : <div style={{ fontSize: 12.5, color: "var(--c-danger)" }}>Set a height for {aCond?.finish_tag || "this condition"} — H in the condition editor</div>;
+              ) : <div style={{ fontSize: 12.5, color: "var(--c-danger)" }}>{t('status.set_height', { tag: aCond?.finish_tag || "this condition" })}</div>;
             })()
           ) : tool === "zone" && poly.length >= 1 ? (
             zoneTraceCross ? (
-              <span style={{ color: "var(--c-danger)", fontSize: 12.5 }}>Zone on one sheet — that point landed on a different sheet. Finish is disabled; Esc or Undo last point to fix it.</span>
+              <span style={{ color: "var(--c-danger)", fontSize: 12.5 }}>{t('readout.zone_cross_sheet')}</span>
             ) : (
               <>
-                {liveArea != null && poly.length >= 3 && <div style={{ fontSize: 22, fontWeight: 700, color: "var(--cobalt)" }}>{num(areaVal(liveArea, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)} in zone</span></div>}
-                <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>⏎, double-click, or the Finish button closes the zone and lists everything inside · Esc cancels</div>
+                {liveArea != null && poly.length >= 3 && <div style={{ fontSize: 22, fontWeight: 700, color: "var(--cobalt)" }}>{num(areaVal(liveArea, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)} {t('readout.in_zone')}</span></div>}
+                <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{t('readout.zone_finish_hint')}</div>
               </>
             )
           ) : liveArea != null && poly.length >= 3 ? (
             <>
               <div style={{ fontSize: 22, fontWeight: 700, color: tool === "deduct" ? "var(--c-danger)" : "var(--ink)" }}>{tool === "deduct" ? "−" : ""}{num(areaVal(liveArea, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)}</span></div>
-              <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{units === "metric" ? `${fl(livePerim)} perim` : `${num(liveArea / 9)} SY  ·  ${num(livePerim)} LF perim`}</div>
-              {condH > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>@H {num(heightVal(condH, units), 2)}{units === "metric" ? " m" : "′"}: {fa(livePerim * condH)} vert{units === "metric" ? "" : ` · ${num((liveArea * condH) / 27)} CY`}</div>}
-              {CURVABLE.has(tool) && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{bowOpen ? "Bow set — click the far END of the arc" : curveMode && poly.length ? "Click a point ON the bow, then its far end" : curveIdx.length ? `${curveIdx.length} arc${curveIdx.length === 1 ? "" : "s"} — each one a true circle through 3 points` : "Q or the switch above draws an arc · ⌥-click flips one point"}</div>}
+              <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{units === "metric" ? `${fl(livePerim)} ${t('readout.perim_short')}` : `${num(liveArea / 9)} SY  ·  ${num(livePerim)} LF ${t('readout.perim_short')}`}</div>
+              {condH > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>@H {num(heightVal(condH, units), 2)}{units === "metric" ? " m" : "′"}: {fa(livePerim * condH)} {t('readout.vert_short')}{units === "metric" ? "" : ` · ${num((liveArea * condH) / 27)} CY`}</div>}
             </>
-          ) : selShape ? (
-            // #283 — a FINISHED takeoff reads the same as it did mid-trace.
-            // The perimeter is already computed and stored on every closed
-            // shape (shapeMetrics); before this it simply had nowhere to be
-            // read, so an estimator who wanted the footprint's LF traced the
-            // ring a second time with the linear tool.
-            (() => {
-              const c = selShape.computed || {};
-              const a = c.area_sf || 0, lf = c.perimeter_lf || 0;
-              const shTag = condById[selShape.condition_id]?.finish_tag || "—";
-              const big = (txt, unit, col) => (
-                <div style={{ fontSize: 22, fontWeight: 700, color: col || "var(--ink)" }}>{txt} <span style={{ fontSize: 13, fontWeight: 600 }}>{unit}</span></div>
-              );
-              const sub = (txt) => <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{txt}</div>;
-              const foot = <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{shTag} · selected{selShape.origin === "agent" ? " · agent" : ""}</div>;
-              if (selShape.measure_role === "count") return <>{big(num(c.count || 1, 0), "EA")}{foot}</>;
-              if (selShape.measure_role === "linear") {
-                return <>{big(num(lenVal(lf, units)), lenUnit(units))}{a > 0 ? sub(`${fa(a)} border`) : null}{foot}</>;
-              }
-              if (selShape.measure_role === "surface_area") {
-                const h = selShape.height_override === true
-                  ? Number(selShape.height_ft) || 0
-                  : Number(selShape.height_ft) || Number(condById[selShape.condition_id]?.height_ft) || 0;
-                return <>{big(num(areaVal(a, units)), `${areaUnit(units)} wall`)}{sub(`${fl(lf)} × ${num(heightVal(h, units), 2)}${units === "metric" ? " m" : " ft"}`)}{foot}</>;
-              }
-              const ded = selShape.measure_role === "deduct";
-              return (
-                <>
-                  {big(`${ded ? "−" : ""}${num(areaVal(a, units))}`, areaUnit(units), ded ? "var(--c-danger)" : undefined)}
-                  {sub(units === "metric" ? `${fl(lf)} perim` : `${num(a / 9)} SY  ·  ${num(lf)} LF perim`)}
-                  {foot}
-                </>
-              );
-            })()
           ) : (
-            <div style={{ fontSize: 12.5, opacity: 0.6 }}>{!unitsPerPx ? "Set scale first" : tool === "zone" ? "Trace a region (an apartment, a wing) — ⏎ closes it and lists every condition inside" : !activeCond ? "Pick a condition" : tool === "oneclick" ? "Click inside a room — it selects itself" : tool === "surface" ? "Trace the wall run" : "Click to trace an area"}</div>
+            <div style={{ fontSize: 12.5, opacity: 0.6 }}>{!unitsPerPx ? t('readout.set_scale_first') : tool === "zone" ? t('readout.zone_hint') : !activeCond ? t('readout.pick_condition') : tool === "oneclick" ? t('readout.oneclick_hint') : tool === "surface" ? t('readout.surface_hint') : t('readout.trace_hint')}</div>
           )}
           {selShape?.measure_role === "surface_area" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }} title="Height for THIS wall only — full-height tile here, 4-ft wainscot there, same condition. ↺ returns to the condition height.">
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }} title={t('readout.occ_drag_hint')}>
               <Icon name="height" size={12} />
-              <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>this wall</span>
+              <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>{t('readout.this_wall')}</span>
               <input name="shape-height-ft" type="number" min="0" step={heightStep(units)} value={shapeHDraft ?? dimInputStr(selShape.height_ft, units, "height")}
                 onChange={(e) => { setShapeHDraft(e.target.value); setShapeHeight(e.target.value); }}
                 onBlur={() => { if (shapeHDraft != null) setShapeHeight(shapeHDraft); setShapeHDraft(null); }}
                 style={{ width: 56, padding: "2px 5px", border: "1px solid var(--ink-faint)", fontSize: 12 }} />
               <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>{heightUnit(units)} → {fa(selShape.computed?.area_sf || 0)}</span>
               {condH > 0 && Number(selShape.height_ft) !== condH && (
-                <button onClick={clearShapeHeight} title="Set this wall to the condition height" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)", padding: 0 }}>↺</button>
+                <button onClick={clearShapeHeight} title={t('readout.set_wall_height')} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)", padding: 0 }}>↺</button>
               )}
             </div>
           )}
           <div style={{ height: 1, background: "var(--divider-soft)", margin: "8px 0" }} />
-          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, opacity: 0.5 }}>{aCond?.finish_tag || "—"} total ({condRow?.shape_count || 0}{condMult > 1 ? ` ×${condMult}` : ""})</div>
+          <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, opacity: 0.5 }}>{aCond?.finish_tag || "—"} {t('readout.total_label')} ({condRow?.shape_count || 0}{condMult > 1 ? ` ×${condMult}` : ""})</div>
           {condTotal !== 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{num(areaVal(condTotal, units))} <span style={{ fontSize: 12, fontWeight: 600 }}>{areaUnit(units)}</span> {units === "imperial" && <span style={{ fontSize: 12, fontWeight: 500, color: "var(--ink-secondary)" }}>· {num(condTotal / 9)} SY</span>}</div>}
-          {wallTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{num(areaVal(wallTotal, units))} <span style={{ fontSize: 12, fontWeight: 600 }}>{areaUnit(units)} wall</span></div>}
-          {borderTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{num(areaVal(borderTotal, units))} <span style={{ fontSize: 12, fontWeight: 600 }}>{areaUnit(units)} border</span></div>}
+          {wallTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{num(areaVal(wallTotal, units))} <span style={{ fontSize: 12, fontWeight: 600 }}>{areaUnit(units)} {t('readout.wall')}</span></div>}
+          {borderTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{num(areaVal(borderTotal, units))} <span style={{ fontSize: 12, fontWeight: 600 }}>{areaUnit(units)} {t('readout.border')}</span></div>}
           {lfTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{num(lenVal(lfTotal, units))} <span style={{ fontSize: 12, fontWeight: 600 }}>{lenUnit(units)}</span></div>}
-          {countTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{num(countTotal, 0)} <span style={{ fontSize: 12, fontWeight: 600 }}>EA</span></div>}
-          {vertTotal > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }} title="Display only — floor-area perimeters × this condition's height (not committed)">{fa(vertTotal)} vert (perim × H)</div>}
+          {countTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{num(countTotal, 0)} <span style={{ fontSize: 12, fontWeight: 600 }}>{t('unit.ea')}</span></div>}
+          {vertTotal > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }} title={t('readout.vert_hint')}>{fa(vertTotal)} {t('readout.vert')}</div>}
           {condTotal === 0 && lfTotal === 0 && countTotal === 0 && wallTotal === 0 && borderTotal === 0 && <div style={{ fontSize: 12.5, color: "var(--ink-muted)", marginTop: 2 }}>—</div>}
-          {tally.length > 0 && (
-            <>
-              <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, opacity: 0.5, marginTop: 8 }}>Measurements</div>
-              <div style={{ fontFamily: "var(--f-mono)", fontSize: 11.5, lineHeight: 1.5, marginTop: 2 }}>
-                {tally.map((r) => (
-                  <div key={r.id} style={{ display: "flex", gap: 6, whiteSpace: "nowrap" }}>
-                    <span style={{ opacity: 0.45 }}>{String(r.n).padStart(2, "0")}</span>
-                    <span>
-                      {fl(r.lf)}
-                      {r.role === "wall"
-                        ? <> × {num(heightVal(r.h, units), 2)} {heightUnit(units)} = {fa(r.sf)}</>
-                        : <span style={{ color: "var(--ink-muted)" }}> linear</span>}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-          <div style={{ fontSize: 10.5, opacity: 0.45, marginTop: 6 }}>{visibleShapes.length} shapes on {groupKeys.length > 1 ? `${groupKeys.length} sheets` : "sheet"} · zoom {(tf.scale * 100).toFixed(0)}%</div>
+          <div style={{ fontSize: 10.5, opacity: 0.45, marginTop: 6 }}>{visibleShapes.length} {t('readout.shapes_on')} {groupKeys.length > 1 ? `${groupKeys.length} ${t('readout.sheets')}` : t('readout.sheet')} · {t('readout.zoom', { pct: (tf.scale * 100).toFixed(0) })}</div>
         </div>
 
         {/* zone check results — ephemeral, clears with the tool/outline. Docked at
@@ -9631,12 +7588,12 @@ export default function TakeoffCanvas() {
         {zoneRows && (
           <div style={{ position: "absolute", right: 56, bottom: 14, width: 300, maxHeight: "calc(100% - 28px)", overflowY: "auto", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "0 6px 22px rgba(0,0,0,.16)", zIndex: 7, fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderBottom: "1px solid var(--ink-faint)" }}>
-              <b style={{ fontSize: 12.5 }}>Zone check</b>
-              <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, color: "var(--ink-muted)" }}>nothing saved</span>
+              <b style={{ fontSize: 12.5 }}>{t('readout.zone_title')}</b>
+              <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, color: "var(--ink-muted)" }}>{t('readout.zone_nothing_saved')}</span>
               <button onClick={resetZone} style={{ marginLeft: "auto", border: "none", background: "none", cursor: "pointer", fontSize: 15, lineHeight: 1, color: "var(--ink)" }}>×</button>
             </div>
             {zoneRows.length === 0 && (
-              <div style={{ padding: "10px 12px", color: "var(--ink-muted)", fontSize: 11.5 }}>No takeoffs inside this zone on this sheet.</div>
+              <div style={{ padding: "10px 12px", color: "var(--ink-muted)", fontSize: 11.5 }}>{t('readout.zone_result')}</div>
             )}
             {zoneRows.map((zr) => {
               const parts = [];
@@ -9657,7 +7614,7 @@ export default function TakeoffCanvas() {
                   {zr.materials.length > 0 && (
                     <button onClick={() => setZoneExpand(open ? null : zr.id)}
                       style={{ marginTop: 4, padding: 0, border: "none", background: "none", cursor: "pointer", fontSize: 10.5, color: "var(--ink-muted)" }}>
-                      {open ? "▾" : "▸"} materials · {zr.materials.length}
+                      {open ? "▾" : "▸"} {t('readout.zone_materials')} · {zr.materials.length}
                     </button>
                   )}
                   {open && zr.materials.map((m, i) => (
@@ -9670,17 +7627,9 @@ export default function TakeoffCanvas() {
               );
             })}
             <div style={{ padding: "7px 12px", fontSize: 10, color: "var(--ink-muted)" }}>
-              Shapes counted by their center point · same sheet only · counted shapes glow cobalt.
-              {zoneRows.some((r) => (r.multiplier || 1) > 1) && <> Rows marked ×N already have the condition's multiplier applied — the same convention as the Report's Groups section, not its base-quantity by-sheet rows.</>}
-              {/* A deduct classifies by its OWN center, independent of its positive
-                  area's center (same rule the Report's by-sheet "negative slices"
-                  note already documents for a cross-sheet split) — a zone edge
-                  can split a deduct from the shape it cuts, producing a negative
-                  row here. Flag it rather than guess a pairing: the deduct/positive
-                  link is never stored, only inferred by overlap, and geometric
-                  containment pairing would guess wrong for nested/overlapping
-                  positives. */}
-              {zoneRows.some((r) => r.total_sf < 0 || r.floor_sf < 0) && <> A negative row means a deduct here counted but its positive area's center fell outside the zone (or vice-versa) — the zone edge split a deduct from its shape.</>}
+              {t('readout.zone_footnote')}
+              {zoneRows.some((r) => (r.multiplier || 1) > 1) && <>{t('readout.zone_multiplier_note')}</>}
+              {zoneRows.some((r) => r.total_sf < 0 || r.floor_sf < 0) && <>{t('readout.zone_negative')}</>}
             </div>
           </div>
         )}
@@ -9690,14 +7639,14 @@ export default function TakeoffCanvas() {
             takeoffs toggle mirrors the DOCKED panel's collapsed pref — the rail
             rides the canvas edge, so it stays visible either way. */}
         <div style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", display: "flex", flexDirection: "column", gap: 6, zIndex: 8 }}>
-          {panelBtn(() => setLeftTab((t) => (t === "markup" ? null : "markup")), "markup", "Markups on these sheets (clouds, callouts, notes)", leftTab === "markup", markupCount)}
-          {panelBtn(() => setLeftTab((t) => (t === "stamp" ? null : "stamp")), "stamp", "Stamps — reusable annotations dropped click-to-place", leftTab === "stamp", stampLib.stamps.length)}
-          {panelBtn(() => setLeftTab((t) => (t === "rfi" ? null : "rfi")), "rfi", "RFI register — raise, track, and export Requests For Information", leftTab === "rfi", rfis.length)}
-          {panelBtn(toggleTakeoffs, "takeoffs", "Takeoffs — conditions + running totals", takeoffsOpen, visibleShapes.length)}
-          {panelBtn(() => setAgentOpen((o) => !o), "target", "Agent — describe a takeoff; it stages dashed proposals you accept or reject (bring your own AI key)", agentOpen, agentProposals.length)}
-          {rollByCond.size > 0 && panelBtn(() => setRollPanelOpen((o) => !o), "roll", "Roll goods — the cut diagram, cutting order, and figured order footage", rollPanelOpen, rollByCond.size)}
-          {layerEntries.length > 0 && panelBtn(() => setLayersOpen((o) => !o), "layers", "PDF layers — what this drawing's own layer table states each ink is; set what One-Click treats as wall and what it ignores", layersOpen, layerEntries.reduce((n, e) => n + e.layers.length, 0))}
-          {panelBtn(() => setShowRevisions(true), "revisions", "Revisions — save the takeoff at each bid revision, compare what moved", showRevisions)}
+          {panelBtn(() => setLeftTab((t) => (t === "markup" ? null : "markup")), "markup", t('panel.markups_title'), leftTab === "markup", markupCount)}
+          {panelBtn(() => setLeftTab((t) => (t === "stamp" ? null : "stamp")), "stamp", t('panel.stamps_title'), leftTab === "stamp", stampLib.stamps.length)}
+          {panelBtn(() => setLeftTab((t) => (t === "rfi" ? null : "rfi")), "rfi", t('panel.rfi_title'), leftTab === "rfi", rfis.length)}
+          {panelBtn(toggleTakeoffs, "takeoffs", t('panel.takeoffs_label'), takeoffsOpen, visibleShapes.length)}
+          {panelBtn(() => setAgentOpen((o) => !o), "target", t('panel.agent_title'), agentOpen, agentProposals.length)}
+          {rollByCond.size > 0 && panelBtn(() => setRollPanelOpen((o) => !o), "roll", t('panel.roll_title'), rollPanelOpen, rollByCond.size)}
+          {layerEntries.length > 0 && panelBtn(() => setLayersOpen((o) => !o), "layers", t('panel.layers_title'), layersOpen, layerEntries.reduce((n, e) => n + e.layers.length, 0))}
+          {panelBtn(() => setShowRevisions(true), "revisions", t('panel.revisions_title'), showRevisions)}
         </div>
 
        </div>
@@ -9816,9 +7765,6 @@ export default function TakeoffCanvas() {
             return next;
           })}
           onClosePdf={closePdf}
-          onCloseMany={closePdfs}
-          onClearWorkspace={cloudMode ? undefined : clearWorkspace}
-          knownPages={knownPages} onPages={rememberPages}
           onRemoveFromProject={cloudMode ? removeFromProject : undefined}
           onCloseProject={cloudMode ? closeProject : undefined}
           onBrowseProjects={cloudMode ? browseProjects : undefined}
@@ -9841,10 +7787,10 @@ export default function TakeoffCanvas() {
       {loadError && (
         <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 60, display: "flex", alignItems: "center", gap: 12, maxWidth: 640, padding: "10px 14px", background: "var(--paper-bright)", border: "1px solid var(--c-danger)", boxShadow: "var(--shadow-2)", fontSize: 12.5, color: "var(--ink)" }}>
           <span>
-            <strong style={{ color: "var(--c-danger)" }}>Couldn't load this project's saved takeoff</strong> ({loadError}).
+            <strong style={{ color: "var(--c-danger)" }}>{t('status.couldnt_open_drive')}</strong> ({loadError}).
             Autosave is paused so nothing overwrites your saved work — reload the tab to retry.
           </span>
-          <button onClick={() => window.location.reload()} style={{ whiteSpace: "nowrap", padding: "6px 12px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", fontSize: 12 }}>Reload</button>
+          <button onClick={() => window.location.reload()} style={{ whiteSpace: "nowrap", padding: "6px 12px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", fontSize: 12 }}>{t('status.reload')}</button>
         </div>
       )}
 
@@ -9858,7 +7804,6 @@ export default function TakeoffCanvas() {
           rollByCond={rollByCond}
           provenanceCounters={provCounters}
           sheetLabel={(k) => tabLabel(k)}
-          sheetDims={(k) => panelByKey(k)?.img}
           onMarkedSet={exportMarkedSet} markedSetDark={darkMode}
           onClose={() => setShowReport(false)}
         />
@@ -9880,95 +7825,6 @@ export default function TakeoffCanvas() {
           commitMsg text lives here now (the old floating pill is gone — the
           rule banner still floats, it has buttons). Print: the report-only
           visibility rules already hide this. */}
-      {/* ── Symbol sweep review panel (#264) — floats while a sweep is live ── */}
-      {sweep && view === "canvas" && (() => {
-        const seedTag = sweep.seed.label?.label || null;
-        const mLine = sweepLabelLine(sweep.matches, seedTag);
-        const openQ = sweep.questions.filter((q) => q.state === "open").length;
-        const accQ = sweep.questions.filter((q) => q.state === "accepted").length;
-        // per-tag groups (#308 → commit-by-label): the drawing names the
-        // matches; a tag the estimator unticks is excluded from the commit —
-        // the sibling-fixture answer in one click, sweep_schedule_row's
-        // excluded-by-tag discipline brought to the canvas.
-        const tagKeyOf = (m) => (m.label && m.label.label) || "\u2205";
-        const tagGroups = [];
-        for (const m of sweep.matches) {
-          const k = tagKeyOf(m);
-          const g = tagGroups.find((x) => x.tag === k);
-          if (g) g.n += 1; else tagGroups.push({ tag: k, n: 1 });
-        }
-        tagGroups.sort((a, b) => b.n - a.n);
-        const offSet = new Set(sweep.excludedTags);
-        const matchN = sweep.matches.filter((m) => !offSet.has(tagKeyOf(m))).length;
-        const commitN = (sweep.includeSeed ? 1 : 0) + matchN + accQ;
-        const unlabeled = (seedTag || sweep.matches.some((m) => m.label)) ? sweep.matches.filter((m) => !m.label).length : 0;
-        return (
-          <div style={{ position: "fixed", right: 12, top: "calc(var(--topbar-h) + 12px)", width: 288, zIndex: Z.popover, background: "var(--paper-cream)", border: "1px solid var(--ink-faint)", boxShadow: "var(--shadow-pop)", display: "flex", flexDirection: "column", fontSize: "var(--fs-m)" }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "10px 12px", borderBottom: "1px solid var(--ink-faint)" }}>
-              <span className="field-label">SYMBOL SWEEP</span>
-              <span style={{ flex: 1 }} />
-              {sweep.complete
-                ? <span style={{ fontFamily: "var(--f-mono)", fontSize: "var(--fs-2xs)", letterSpacing: ".1em", color: "var(--c-positive)", border: "1px solid var(--c-positive)", padding: "2px 6px" }}>COMPLETE</span>
-                : <span style={{ fontFamily: "var(--f-mono)", fontSize: "var(--fs-2xs)", letterSpacing: ".1em", color: "#fff", background: "var(--c-warning)", padding: "3px 6px" }}>FLOOR — NOT A TOTAL</span>}
-            </div>
-            {sweep.seed.segments <= 3 && (
-              <div style={{ padding: "8px 12px", background: "var(--tint-select)", color: "var(--ink)", fontSize: "var(--fs-s)", lineHeight: 1.45 }}>
-                The seed is only {sweep.seed.segments} segment(s) — likely a FRAGMENT, and fragments match everywhere (every square corner reads as one). Marquee the whole symbol.
-              </div>
-            )}
-            {!sweep.complete && (
-              <div style={{ padding: "8px 12px", background: "var(--c-warning)", color: "#fff", fontSize: "var(--fs-s)", lineHeight: 1.45 }}>
-                {sweep.dropped} placement(s) were never scored — tighten the marquee around more distinctive linework before trusting this as a total.
-              </div>
-            )}
-            <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-              <div><b style={{ fontFamily: "var(--f-display)", fontSize: "var(--fs-xl)" }}>{matchN}</b> of {sweep.matches.length} matched will commit{mLine && tagGroups.length <= 1 ? <span style={{ color: "var(--ink-soft)" }}> — {mLine}</span> : null}</div>
-              {tagGroups.length > 1 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                  <div className="field-label">BY LABEL — UNTICK A TAG TO EXCLUDE IT</div>
-                  {tagGroups.map((g) => {
-                    const isSeedTag = seedTag && g.tag === seedTag;
-                    const isOff = offSet.has(g.tag);
-                    return (
-                      <label key={g.tag} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-s)", cursor: "pointer", color: isOff ? "var(--text-faint)" : !isSeedTag && g.tag !== "\u2205" ? "var(--c-warning)" : "var(--ink)" }}>
-                        <input type="checkbox" checked={!isOff}
-                          onChange={() => setSweep((sw2) => ({ ...sw2, excludedTags: isOff ? sw2.excludedTags.filter((t) => t !== g.tag) : [...sw2.excludedTags, g.tag] }))} />
-                        <span style={{ fontFamily: "var(--f-mono)", fontWeight: 600 }}>{g.tag === "\u2205" ? "no label" : g.tag}</span>
-                        <span>×{g.n}</span>
-                        {isSeedTag && <span style={{ fontSize: "var(--fs-2xs)", color: "var(--ink-muted)" }}>seed's tag</span>}
-                        {!isSeedTag && g.tag !== "\u2205" && !isOff && <span style={{ fontSize: "var(--fs-2xs)" }}>different device?</span>}
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-              {unlabeled > 0 && tagGroups.length <= 1 && <div style={{ fontSize: "var(--fs-s)", color: "var(--c-warning)" }}>{unlabeled} match(es) carry no label while this family is labeled — look at those first.</div>}
-              <div><b style={{ fontFamily: "var(--f-display)", fontSize: "var(--fs-xl)", color: openQ ? "var(--c-warning)" : "var(--ink)" }}>{sweep.questions.length}</b> question(s){openQ ? <span style={{ color: "var(--ink-soft)" }}> — ↵ accept · X dismiss · → next</span> : <span style={{ color: "var(--ink-soft)" }}> — all answered</span>}</div>
-              {sweep.questions.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 150, overflowY: "auto" }}>
-                  {sweep.questions.map((q, i) => (
-                    <button key={i} type="button" onClick={() => setSweep((s) => ({ ...s, qIndex: i }))}
-                      style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", fontFamily: "var(--f-body)", fontSize: "var(--fs-s)", textAlign: "left", background: i === sweep.qIndex ? "var(--tint-select)" : "transparent", border: `1px solid ${i === sweep.qIndex ? "var(--c-warning)" : "var(--ink-faint)"}`, color: q.state === "dismissed" ? "var(--text-faint)" : "var(--ink)", textDecoration: q.state === "dismissed" ? "line-through" : "none", cursor: "pointer" }}>
-                      <span style={{ fontFamily: "var(--f-mono)", fontWeight: 700, color: q.state === "accepted" ? "var(--c-positive)" : q.state === "dismissed" ? "var(--text-faint)" : DS.symbol.question }}>{q.state === "accepted" ? "✓" : q.state === "dismissed" ? "×" : "?"}</span>
-                      <span>{Math.round(q.score * 100)}%{q.label ? ` · ${q.label.label}` : ""}{q.readings > 1 ? ` · read ${q.readings} ways` : ""}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: "var(--fs-s)", cursor: "pointer" }}>
-                <input type="checkbox" checked={sweep.includeSeed} onChange={(e) => setSweep((s) => ({ ...s, includeSeed: e.target.checked }))} />
-                <span>Count the seed{seedTag ? <span> — drawing says <b style={{ fontFamily: "var(--f-mono)" }}>{seedTag}</b></span> : null}</span>
-              </label>
-            </div>
-            <div style={{ padding: "10px 12px", borderTop: "1px solid var(--ink-faint)", display: "flex", flexDirection: "column", gap: 6 }}>
-              <button type="button" className="btn-primary" onClick={commitSweep} style={{ justifyContent: "center" }}>
-                Commit {commitN} as {condById[activeCond]?.finish_tag || "…"}
-              </button>
-              <button type="button" className="btn-ghost" onClick={() => setSweep(null)} style={{ justifyContent: "center" }}>Discard (Esc)</button>
-            </div>
-          </div>
-        );
-      })()}
       <footer className="ink-panel ticks"
         style={{ height: "var(--status-h)", flex: "0 0 auto", display: "flex", alignItems: "center", gap: 12, padding: "0 14px", fontFamily: "var(--f-mono)", fontSize: "var(--fs-xs)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", overflow: "hidden", userSelect: "none" }}>
         <span style={{ color: "var(--status-acc)", textShadow: "var(--glow)" }}>{TOOL_VERB[tool] || tool}</span>

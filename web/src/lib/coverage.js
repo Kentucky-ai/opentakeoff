@@ -1,4 +1,6 @@
 // Vendor-neutral coverage helpers. Values are generic industry-typical spread
+import i18n from '../i18n/index.js';
+const _t = (key) => i18n.t(key, { ns: 'lib' });
 // rates for estimating — always verify against the product data sheet.
 export function materialKind(m) {
   if (m?.kind) return m.kind;
@@ -12,36 +14,24 @@ export function materialKind(m) {
   if (/\btrim\b|\bprofile\b|top cap|edge cap|nosing|\bschiene\b|reducer/i.test(n)) return "trim";
   return "";
 }
-export const MATERIAL_PRESETS = {
+export const getMaterialPresets = () => ({
   adhesive: [                              // SF per gallon
-    { label: '1/16″×1/32″×1/32″ U (PSA)', per: 200 },
-    { label: '1/4″ nap roller (PSA)',      per: 300 },
-    { label: '1/16″×1/16″×1/16″ sq',       per: 150 },
-    { label: '1/8″×1/8″×1/8″ sq',          per: 100 },
-    { label: '3/16″ V (wood)',             per: 60 },
-    { label: '1/4″×1/4″ V (wood)',         per: 50 },
-    { label: '1/2″×1/2″ V (wood, coarse)', per: 40 },
+    { label: _t("preset.adhesive_1_16_1_32"), per: 200 },
+    { label: _t("preset.adhesive_nap"), per: 300 },
+    { label: _t("preset.adhesive_1_16_sq"), per: 150 },
+    { label: _t("preset.adhesive_1_8_sq"), per: 100 },
+    { label: _t("preset.adhesive_3_16_v"), per: 60 },
+    { label: _t("preset.adhesive_1_4_v"), per: 50 },
+    { label: _t("preset.adhesive_1_2_v"), per: 40 },
   ],
   mortar: [                                // SF per 50-lb bag
-    { label: '1/4″×1/4″×1/4″ sq', per: 90 },
-    { label: '1/4″×3/8″×1/4″ sq', per: 65 },
-    { label: '1/2″×1/2″×1/2″ sq', per: 42 },
-    { label: '3/4″ U (large tile)', per: 30 },
+    { label: _t("preset.mortar_1_4_sq"), per: 90 },
+    { label: _t("preset.mortar_3_8_sq"), per: 65 },
+    { label: _t("preset.mortar_1_2_sq"), per: 42 },
+    { label: _t("preset.mortar_3_4_u"), per: 30 },
   ],
-  // LF per stick. Edge and cap profiles are stick goods, so the "coverage" that
-  // divides a linear measure is simply the stock length — an odd-looking rate to
-  // type from memory (8.2, not 8), and the reason tile base capped with an edge
-  // profile kept getting ordered a stick short. Metric stock lengths dominate:
-  // 2.5 m = 8.202 LF, 3 m = 9.843, 1.5 m = 4.921.
-  trim: [                                  // LF per stick
-    { label: "2.5 m stick (8′ 2-1/2″)", per: 8.202 },
-    { label: "3 m stick (9′ 10″)",      per: 9.843 },
-    { label: "1.5 m stick (4′ 11″)",    per: 4.921 },
-    { label: "8 ft stick",              per: 8 },
-    { label: "10 ft stick",             per: 10 },
-    { label: "12 ft stick",             per: 12 },
-  ],
-};
+});
+export const MATERIAL_PRESETS = getMaterialPresets();
 export const GROUT_DENSITY = 8.33;         // industry-standard grout density factor
 export const GROUT_DEFAULTS = { tileL: 12, tileW: 24, tileT: 0.375, joint: 0.125, bagLbs: 25 };
 export const GROUT_PARAM_KEYS = ["tileL", "tileW", "tileT", "joint", "bagLbs"];

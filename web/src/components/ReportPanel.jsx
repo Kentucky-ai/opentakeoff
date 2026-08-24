@@ -3,10 +3,11 @@
 // a grand total. Exports to CSV / JSON, prints, and hosts the opt-in
 // "Contribute to the open flooring model" flow.
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Icon } from "../brand/icons.jsx";
 import ToolMenu from "./ToolMenu.jsx";
-import { conditionTotals, grandTotals, sheetTotals, sheetGroupedRows, labelGroupedRows, authorGroupedRows, sheetLabelGroupedRows, round2, totalsToCsv, downloadText, materialsSummary, reportJson, hasMultipliers, BY_SHEET_BASE_NOTE } from "../lib/totals.js";
-import { TABLE_PROFILE, CSV_PROFILE, colGetter, customColProfile, specColProfile, laborColProfile, rollColProfile, partitionRowsBy, forceIncludeGroupCol, loadColPrefs, saveColPrefs, loadGroupBy, saveGroupBy, visibleCols, floorPerimeterLf, applyUnits } from "../lib/reportColumns.js";
+import { conditionTotals, grandTotals, sheetTotals, sheetGroupedRows, labelGroupedRows, sheetLabelGroupedRows, round2, totalsToCsv, downloadText, materialsSummary, reportJson, hasMultipliers, BY_SHEET_BASE_NOTE } from "../lib/totals.js";
+import { getTableProfile, getCsvProfile, colGetter, customColProfile, specColProfile, laborColProfile, rollColProfile, partitionRowsBy, forceIncludeGroupCol, loadColPrefs, saveColPrefs, loadGroupBy, saveGroupBy, visibleCols, floorPerimeterLf, applyUnits } from "../lib/reportColumns.js";
 import { rollReportRows, seamLfByShape } from "../lib/rollTakeoff.js";
 import { areaVal, areaUnit, lenVal, lenUnit } from "../lib/units";
 import { columnLabel } from "../lib/conditionColumns.js";
@@ -28,9 +29,6 @@ import { projectIdFromUrl } from "../lib/store.js";
 
 const num = (v, d = 1) => (Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: d });
 
-// the report's one caveat line — page-strip on every printed page + masthead
-const DISCLAIMER = "Quantities derived from drawings at stated scales; verify in field.";
-
 // one-line hints for the opt-in columns in the picker (waste hint sits under
 // the second waste checkbox so it reads once for the pair)
 const COL_HINTS = {
@@ -46,7 +44,8 @@ const sheetNum = (v, d = 1) => {
   return num(r, d);
 };
 
-export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, sheetDims, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], provenanceCounters = null, clientInfo = {}, onClientInfo, conditionColumns = [], shapeLabels = [], units = "imperial", rollByCond = null }) {
+export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], provenanceCounters = null, clientInfo = {}, onClientInfo, conditionColumns = [], shapeLabels = [], units = "imperial", rollByCond = null }) {
+  const { t } = useTranslation("report");
   // memoized on the source arrays: project-name/client-info keystrokes re-render
   // the panel without touching conditions/shapes, so the totaling passes skip
   // imported report theme → { vars, name, warnings }. vars are spread onto this
@@ -68,7 +67,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
         saveActiveThemeFile(raw);
         setTheme(activeTheme());
       } catch {
-        setTheme((t) => ({ ...t, warnings: ["That file isn't valid JSON — expected a design-token file."] }));
+        setTheme((prev) => ({ ...prev, warnings: [t('theme.import_error')] }));
       }
     };
     reader.readAsText(f);
@@ -127,6 +126,8 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   // custom columns append after each profile (frozen 13 → built-in opt-ins →
   // custom), so toggling one can never disturb the frozen CSV prefix
   const customCols = customColProfile(conditionColumns);
+  const tableProfile = getTableProfile();
+  const csvProfile = getCsvProfile();
   // read-only product-spec columns (mfr/style/color/size) from "Import from
   // schedule" — appended AFTER the custom columns, present only when at least
   // one condition carries that spec field, so a no-spec project is byte-for-
@@ -149,7 +150,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   // inside totalsToCsv/reportWorkbook so each output has ONE conversion site.
   const M = units === "metric";
   const AU = areaUnit(units), LU = lenUnit(units);
-  const tableCols = applyUnits(visibleCols([...TABLE_PROFILE, ...customCols, ...specCols, ...laborCols, ...rollCols], colPrefs), units);
+  const tableCols = applyUnits(visibleCols([...tableProfile, ...customCols, ...specCols, ...laborCols, ...rollCols], colPrefs), units);
   // group-by choice: "" (none) | "sheet" | a custom column id; normalized
   // ONCE per render and used everywhere (select value AND partitioning) — a
   // stale colId must fall back to None, never reach the select or the
@@ -163,7 +164,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   const groupBy = groupByRaw === "sheet" || (groupByRaw === "label" && shapeLabels.length > 0) || (groupByRaw === "author" && hasAuthors) || conditionColumns.some((cc) => cc.id === groupByRaw) ? groupByRaw : "";
   // grouping force-includes its column in the CSV/XLSX even when hidden in
   // the picker (D7) — a grouped report's export always carries its grouping
-  const csvCols = forceIncludeGroupCol(visibleCols([...CSV_PROFILE, ...customCols, ...specCols, ...laborCols, ...rollCols], colPrefs), customCols, groupBy);
+  const csvCols = forceIncludeGroupCol(visibleCols([...csvProfile, ...customCols, ...specCols, ...laborCols, ...rollCols], colPrefs), customCols, groupBy);
   const perimByCond = useMemo(() => floorPerimeterLf(shapes), [shapes]);
   // custom-column values reach the getters through ctx, never as row fields
   // (conditionTotals rows are spread into the contribution payload)
@@ -256,10 +257,10 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
     setTemplates(saveTemplate(nm, colPrefs, groupByRaw));
     setTplName("");
   };
-  const renameTpl = (t) => {
-    const nm = (window.prompt("Rename template:", t.name) || "").trim();
-    if (!nm || nm === t.name) return;
-    setTemplates(renameTemplate(t.id, nm));
+  const renameTpl = (tpl) => {
+    const nm = (window.prompt(t('rename_template'), tpl.name) || "").trim();
+    if (!nm || nm === tpl.name) return;
+    setTemplates(renameTemplate(tpl.id, nm));
   };
 
   // Push/Load — Drive sync (#115). drive.js is a DYNAMIC import so the Drive
@@ -267,18 +268,18 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   // getAccessToken is safe to import statically (auth.js already ships).
   const pushToDrive = async () => {
     if (!canSync || syncBusy) return;
-    setSyncBusy(true); setSyncMsg("Pushing…");
+    setSyncBusy(true); setSyncMsg(t('drive.pushing'));
     try {
       const { createDrive } = await import("../lib/google/drive.js");
       const { count } = await pushTemplatesToDrive(createDrive({ getToken: getAccessToken }), driveRoot, googleUser.email, templates);
-      setSyncMsg(`Pushed ${count} to Drive.`);
+      setSyncMsg(t('drive.pushed', { count }));
     } catch (e) {
-      setSyncMsg(`Push failed: ${String(e?.message || e)}`);
+      setSyncMsg(t('drive.push_failed', { error: String(e?.message || e) }));
     } finally { setSyncBusy(false); }
   };
   const loadFromDrive = async () => {
     if (!canSync || syncBusy) return;
-    setSyncBusy(true); setSyncMsg("Loading…");
+    setSyncBusy(true); setSyncMsg(t('drive.loading'));
     try {
       const { createDrive } = await import("../lib/google/drive.js");
       const remote = await loadTemplatesFromDrive(createDrive({ getToken: getAccessToken }), driveRoot, googleUser.email);
@@ -291,9 +292,9 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
       const added = merged.length - before;
       // Disambiguate a zero result: an empty Drive file reads differently to a
       // user than "you already have everything on Drive."
-      setSyncMsg(added > 0 ? `Loaded ${added} from Drive.` : remote.length === 0 ? "Nothing saved on Drive yet." : "Already up to date — no new templates.");
+      setSyncMsg(added > 0 ? t('drive.loaded', { count: added }) : remote.length === 0 ? t('drive.empty') : t('drive.up_to_date'));
     } catch (e) {
-      setSyncMsg(`Load failed: ${String(e?.message || e)}`);
+      setSyncMsg(t('drive.load_failed', { error: String(e?.message || e) }));
     } finally { setSyncBusy(false); }
   };
 
@@ -423,54 +424,53 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
     <div className="report-panel" style={{ ...theme.vars, position: "absolute", inset: 0, zIndex: 50, display: "flex", flexDirection: "column", background: "var(--paper-cream)" }}>
       <div className="report-toolbar" style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", borderBottom: "1px solid var(--ink)", background: "var(--paper-bright)" }}>
         <Icon name="takeoffs" size={18} />
-        <strong style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)" }}>Takeoff report</strong>
-        <input name="project-name" value={projectName} onChange={(e) => onProjectName(e.target.value)} placeholder="Project name (optional)"
+        <strong style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)" }}>{t('title')}</strong>
+        <input name="project-name" value={projectName} onChange={(e) => onProjectName(e.target.value)} placeholder={t('project_name_placeholder')}
           className="field-input" style={{ width: 260, padding: "5px 9px", fontSize: 13 }} />
         <div style={{ flex: 1 }} />
         <button className="btn-ghost" onClick={() => setShowInfo(true)}
-          title="Your company identity and the client/job details for the print header and marked-set cover">Project info</button>
+          title={t('toolbar.project_info')}>{t('toolbar.project_info')}</button>
         {/* always rendered, even with zero custom columns — Sheet grouping
             is useful on its own */}
         <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap" }}
-          title="Break the condition table into sections with subtotals">
-          Group:
+          title={t('toolbar.group_select_title')}>
+          {t('toolbar.group')}
           <select name="report-group-by" value={groupBy} onChange={(e) => { setGroupByRaw(e.target.value); saveGroupBy(e.target.value); }}
             style={{ padding: "5px 6px", border: "1px solid var(--ink-faint)", background: "transparent", fontSize: 12, maxWidth: 160 }}>
-            <option value="">None</option>
-            <option value="sheet">Sheet</option>
-            {shapeLabels.length > 0 && <option value="label">Label</option>}
-            {hasAuthors && <option value="author">Author</option>}
+            <option value="">{t('toolbar.group_none')}</option>
+            <option value="sheet">{t('toolbar.group_sheet')}</option>
+            {shapeLabels.length > 0 && <option value="label">{t('toolbar.group_label')}</option>}
             {conditionColumns.map((cc) => (
               <option key={cc.id} value={cc.id}>{columnLabel(cc)}</option>
             ))}
           </select>
         </label>
         <div ref={colsRef} style={{ position: "relative" }}>
-          <button className="btn-ghost" onClick={() => setShowCols((s) => !s)} title="Choose which columns the table and CSV show">Columns</button>
+          <button className="btn-ghost" onClick={() => setShowCols((s) => !s)} title={t('toolbar.columns_title')}>{t('toolbar.columns')}</button>
           {showCols && (
             <div className="report-modal" style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 70, width: 272, background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-2)", padding: "10px 12px", fontSize: 12.5, color: "var(--ink)" }}>
               <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
-                <strong style={{ fontFamily: "var(--f-display)", fontSize: 13 }}>Columns</strong>
+                <strong style={{ fontFamily: "var(--f-display)", fontSize: 13 }}>{t('columns.title')}</strong>
                 <div style={{ flex: 1 }} />
-                <button onClick={applyLaborPreset} title="No-waste actuals per condition — hides SF/SY w/Waste, shows Total SF"
-                  style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11.5, padding: "0 10px 0 0" }}>Labor view</button>
-                <button onClick={() => { setColPrefs({}); saveColPrefs({}); }} title="Back to the default column set"
-                  style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11.5, padding: "0 10px 0 0" }}>Reset</button>
-                <button onClick={() => setShowCols(false)} title="Close"
+                <button onClick={applyLaborPreset} title={t('columns.labor_view_title')}
+                  style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11.5, padding: "0 10px 0 0" }}>{t('columns.labor_view')}</button>
+                <button onClick={() => { setColPrefs({}); saveColPrefs({}); }} title={t('columns.reset_title')}
+                  style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11.5, padding: "0 10px 0 0" }}>{t('columns.reset')}</button>
+                <button onClick={() => setShowCols(false)} title={t('toolbar.close')}
                   style={{ border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 13, padding: 0, lineHeight: 1 }}>✕</button>
               </div>
-              {TABLE_PROFILE.filter((c) => !c.locked && c.defaultVisible).map(colCheckbox)}
-              <div style={{ borderTop: "1px solid var(--ink-faint)", margin: "8px 0 4px", paddingTop: 6, fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" }}>Optional</div>
-              {TABLE_PROFILE.filter((c) => !c.locked && !c.defaultVisible).map(colCheckbox)}
-              <div style={{ borderTop: "1px solid var(--ink-faint)", margin: "8px 0 4px", paddingTop: 6, fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" }}>Custom columns</div>
+              {tableProfile.filter((c) => !c.locked && c.defaultVisible).map(colCheckbox)}
+              <div style={{ borderTop: "1px solid var(--ink-faint)", margin: "8px 0 4px", paddingTop: 6, fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" }}>{t('columns.optional')}</div>
+              {tableProfile.filter((c) => !c.locked && !c.defaultVisible).map(colCheckbox)}
+              <div style={{ borderTop: "1px solid var(--ink-faint)", margin: "8px 0 4px", paddingTop: 6, fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" }}>{t('columns.custom')}</div>
               {customCols.length ? customCols.map(colCheckbox) : (
-                <div style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1.5 }}>No custom columns yet — define them from the condition bar in the canvas.</div>
+                <div style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1.5 }}>{t('columns.no_custom')}</div>
               )}
               {/* read-only product-spec columns — only shown when a schedule
                   import attached spec data to at least one condition */}
               {specCols.length > 0 && (
                 <>
-                  <div style={{ borderTop: "1px solid var(--ink-faint)", margin: "8px 0 4px", paddingTop: 6, fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" }}>Product spec (imported)</div>
+                  <div style={{ borderTop: "1px solid var(--ink-faint)", margin: "8px 0 4px", paddingTop: 6, fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" }}>{t('columns.product_spec')}</div>
                   {specCols.map(colCheckbox)}
                 </>
               )}
@@ -478,42 +478,42 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                   a value typed in from the Supporting Materials panel */}
               {laborCols.length > 0 && (
                 <>
-                  <div style={{ borderTop: "1px solid var(--ink-faint)", margin: "8px 0 4px", paddingTop: 6, fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" }}>Labor & subfloor</div>
+                  <div style={{ borderTop: "1px solid var(--ink-faint)", margin: "8px 0 4px", paddingTop: 6, fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" }}>{t('columns.labor_subfloor')}</div>
                   {laborCols.map(colCheckbox)}
                 </>
               )}
-              <p style={{ margin: "8px 0 0", fontSize: 11, color: "var(--ink-muted)" }}>Also applies to the CSV export. Grouping by a custom column always exports that column.</p>
+              {t('columns.csv_note')}
             </div>
           )}
         </div>
         <div ref={templatesRef} style={{ position: "relative" }}>
-          <button className="btn-ghost" onClick={() => setShowTemplates((s) => !s)} title="Save and recall report layouts (columns + grouping)">Templates{templates.length ? ` (${templates.length})` : ""}</button>
+          <button className="btn-ghost" onClick={() => setShowTemplates((s) => !s)} title={t('toolbar.templates_title')}>{t('toolbar.templates')}{templates.length ? ` (${templates.length})` : ""}</button>
           {showTemplates && (
             <div className="report-modal" style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 70, width: 260, background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-2)", padding: "10px 12px", fontSize: 12.5, color: "var(--ink)" }}>
               <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
-                <strong style={{ fontFamily: "var(--f-display)", fontSize: 13 }}>Templates</strong>
+                <strong style={{ fontFamily: "var(--f-display)", fontSize: 13 }}>{t('templates.title')}</strong>
                 <div style={{ flex: 1 }} />
-                <button onClick={() => setShowTemplates(false)} title="Close"
+                <button onClick={() => setShowTemplates(false)} title={t('toolbar.close')}
                   style={{ border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 13, padding: 0, lineHeight: 1 }}>✕</button>
               </div>
-              <div style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1.4, marginBottom: 6 }}>Saved column + grouping layouts (this device). Click one to apply.</div>
-              {templates.length === 0 && <div style={{ fontSize: 10.5, color: "var(--ink-muted)", marginBottom: 6 }}>No saved templates yet.</div>}
-              {templates.map((t) => (
-                <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 0" }}>
-                  <button onClick={() => applyTemplate(t)} title="Apply this layout"
-                    style={{ flex: 1, minWidth: 0, textAlign: "left", border: "none", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12, padding: "3px 4px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</button>
-                  <button onClick={() => renameTpl(t)} title="Rename"
+              <div style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1.4, marginBottom: 6 }}>{t('templates.description')}</div>
+              {templates.length === 0 && <div style={{ fontSize: 10.5, color: "var(--ink-muted)", marginBottom: 6 }}>{t('templates.empty')}</div>}
+              {templates.map((tpl) => (
+                <div key={tpl.id} style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 0" }}>
+                  <button onClick={() => applyTemplate(tpl)} title={t('templates.apply_title')}
+                    style={{ flex: 1, minWidth: 0, textAlign: "left", border: "none", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12, padding: "3px 4px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tpl.name}</button>
+                  <button onClick={() => renameTpl(tpl)} title={t('templates.rename_title')}
                     style={{ padding: "0 3px", border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>✎</button>
-                  <button onClick={() => setTemplates(deleteTemplate(t.id))} title="Delete this template"
+                  <button onClick={() => setTemplates(deleteTemplate(tpl.id))} title={t('templates.delete_title')}
                     style={{ padding: "0 3px", border: "none", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11 }}>✕</button>
                 </div>
               ))}
               <div style={{ display: "flex", alignItems: "center", gap: 6, borderTop: "1px solid var(--ink-faint)", marginTop: 6, paddingTop: 8 }}>
                 <input name="template-name" value={tplName} onChange={(e) => setTplName(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && saveAsTemplate()}
-                  placeholder="Name this layout" style={{ flex: 1, minWidth: 0, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-                <button onClick={saveAsTemplate} disabled={!tplName.trim()} title="Save the current columns + grouping under this name"
-                  style={{ padding: "3px 8px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>Save</button>
+                  placeholder={t('templates.save_placeholder')} style={{ flex: 1, minWidth: 0, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
+                <button onClick={saveAsTemplate} disabled={!tplName.trim()} title={t('templates.save_title')}
+                  style={{ padding: "3px 8px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>{t('templates.save')}</button>
               </div>
               {/* Optional Drive sync — only when signed in and a Projects root is
                   configured. Load MERGES (this device wins on a name clash); it
@@ -521,12 +521,12 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                   "Sync," to avoid over-promising two-way behavior. */}
               {canSync && (
                 <div style={{ borderTop: "1px solid var(--ink-faint)", marginTop: 8, paddingTop: 8 }}>
-                  <div style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1.4, marginBottom: 6 }}>Carry these across your own devices via Drive. Load only adds templates this device doesn't have — a same-name template is never overwritten (rename or delete it here first to pull a newer copy).</div>
+                  <div style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1.4, marginBottom: 6 }}>{t('templates.drive_description')}</div>
                   <div style={{ display: "flex", gap: 6 }}>
-                    <button onClick={pushToDrive} disabled={syncBusy} title="Write your saved templates to your private Drive file"
-                      style={{ flex: 1, padding: "4px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: syncBusy ? "default" : "pointer", fontSize: 12 }}>Push to Drive</button>
-                    <button onClick={loadFromDrive} disabled={syncBusy} title="Merge templates from your Drive file into this device"
-                      style={{ flex: 1, padding: "4px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: syncBusy ? "default" : "pointer", fontSize: 12 }}>Load from Drive</button>
+                    <button onClick={pushToDrive} disabled={syncBusy} title={t('templates.push_title')}
+                      style={{ flex: 1, padding: "4px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: syncBusy ? "default" : "pointer", fontSize: 12 }}>{t('templates.push')}</button>
+                    <button onClick={loadFromDrive} disabled={syncBusy} title={t('templates.load_title')}
+                      style={{ flex: 1, padding: "4px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: syncBusy ? "default" : "pointer", fontSize: 12 }}>{t('templates.load')}</button>
                   </div>
                   {syncMsg && <div style={{ fontSize: 10.5, color: "var(--ink-muted)", marginTop: 6 }}>{syncMsg}</div>}
                 </div>
@@ -535,17 +535,17 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
           )}
         </div>
         <div ref={themeRef} style={{ position: "relative" }}>
-          <button className="btn-ghost" onClick={() => setShowTheme((s) => !s)} title="Apply an imported design-token theme to the report (colors + fonts)">Theme{theme.name ? " ●" : ""}</button>
+          <button className="btn-ghost" onClick={() => setShowTheme((s) => !s)} title={t('toolbar.theme_title')}>{t('toolbar.theme')}{theme.name ? " ●" : ""}</button>
           {showTheme && (
             <div className="report-modal" style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 70, width: 292, background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-2)", padding: "10px 12px", fontSize: 12.5, color: "var(--ink)" }}>
               <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
-                <strong style={{ fontFamily: "var(--f-display)", fontSize: 13 }}>Report theme</strong>
+                <strong style={{ fontFamily: "var(--f-display)", fontSize: 13 }}>{t('theme.title')}</strong>
                 <div style={{ flex: 1 }} />
-                <button onClick={() => setShowTheme(false)} title="Close"
+                <button onClick={() => setShowTheme(false)} title={t('toolbar.close')}
                   style={{ border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 13, padding: 0, lineHeight: 1 }}>✕</button>
               </div>
               <div style={{ fontSize: 11, color: "var(--ink-muted)", lineHeight: 1.5, marginBottom: 8 }}>
-                Import a design-token file (e.g. a Claude Design <code>tokens.json</code>) to reskin this report — palette and fonts only. Your company identity stays where it is.
+                {t('theme.description')}
               </div>
               {theme.name ? (
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -553,14 +553,14 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                   <div style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }} title={theme.name}>{theme.name}</div>
                 </div>
               ) : (
-                <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginBottom: 8 }}>Using the default house style.</div>
+                <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginBottom: 8 }}>{t('theme.default')}</div>
               )}
               <div style={{ display: "flex", gap: 6 }}>
-                <button onClick={() => themeFileRef.current?.click()} title="Choose a design-token file to import"
-                  style={{ flex: 1, padding: "5px 8px", border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Import theme…</button>
+                <button onClick={() => themeFileRef.current?.click()} title={t('theme.import_title')}
+                  style={{ flex: 1, padding: "5px 8px", border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>{t('theme.import_btn')}</button>
                 {theme.name && (
-                  <button onClick={resetTheme} title="Remove the imported theme and return to the default"
-                    style={{ padding: "5px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 12 }}>Reset</button>
+                  <button onClick={resetTheme} title={t('theme.reset_title')}
+                    style={{ padding: "5px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 12 }}>{t('theme.reset')}</button>
                 )}
               </div>
               {theme.warnings.length > 0 && (
@@ -578,53 +578,48 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
             Every item keeps the exact disabled condition + tooltip its button
             carried. RFI exports stay their own controls, shown only when RFIs exist. */}
         <ToolMenu
-          title="Download the report and shape data"
+          title={t('toolbar.export_title')}
           disabled={!rows.length && !shapes.length && !markups.length && !rfis.length}
-          face={<><Icon name="document" size={13} />Export</>}
+          face={<><Icon name="document" size={13} />{t('toolbar.export')}</>}
           items={[
-            { section: "Report" },
-            { id: "csv", icon: "document", label: "CSV", disabled: !rows.length, onSelect: exportCsv },
-            { id: "xlsx", icon: "document", label: "Excel", disabled: !rows.length, title: "Excel workbook — Conditions / By sheet / Materials / Shapes", onSelect: exportXlsx },
-            { id: "json", icon: "document", label: "JSON", disabled: !rows.length && !markups.length && !rfis.length, title: "JSON — works markups-only / RFI-only too", onSelect: exportJson },
-            { section: "Shapes" },
-            { id: "shapes-csv", icon: "document", label: "Shapes CSV", disabled: !shapes.length, title: "Per-shape measured quantities — no multiplier, no waste", onSelect: exportShapesCsv },
-            { id: "shapes-json", icon: "document", label: "Shapes JSON", disabled: !shapes.length, title: "Per-shape measured quantities — no multiplier, no waste", onSelect: exportShapesJson },
-            { id: "dxf", icon: "document", label: dxfSheets.length > 1 ? `DXF (CAD) · ${dxfSheets.length} sheets` : "DXF (CAD)", disabled: !dxfSheets.length,
-              title: !shapes.length ? "Nothing measured yet"
-                : !dxfSheets.length ? "Set the scale on a sheet with shapes first — a CAD file in pixels is worse than none"
-                : `AutoCAD-ready geometry: closed polylines per finish on OT-<TAG> layers, ${units === "metric" ? "metres" : "feet"}, one drawing per sheet${dxfSkipped.length ? ` — ${dxfSkipped.length} unscaled sheet${dxfSkipped.length > 1 ? "s" : ""} left out` : ""}`,
-              onSelect: exportDxf },
+            { section: t('export.report_section') },
+            { id: "csv", icon: "document", label: t('export.csv'), disabled: !rows.length, onSelect: exportCsv },
+            { id: "xlsx", icon: "document", label: t('export.excel'), disabled: !rows.length, title: t('export.excel_title'), onSelect: exportXlsx },
+            { id: "json", icon: "document", label: t('export.json'), disabled: !rows.length && !markups.length && !rfis.length, title: t('export.json_title'), onSelect: exportJson },
+            { section: t('export.shapes_section') },
+            { id: "shapes-csv", icon: "document", label: t('export.shapes_csv'), disabled: !shapes.length, title: t('export.shapes_title'), onSelect: exportShapesCsv },
+            { id: "shapes-json", icon: "document", label: t('export.shapes_json'), disabled: !shapes.length, title: t('export.shapes_title'), onSelect: exportShapesJson },
           ]}
         />
         <ToolMenu
-          title="Print the report, or generate the marked-set PDF"
+          title={t('toolbar.print_title')}
           disabled={!rows.length && !markups.length && !rfis.length /* both items are disabled exactly here: with no rows/rfis, the marked-set condition also collapses to true */}
-          face={<span>Print</span>}
+          face={<span>{t('toolbar.print')}</span>}
           items={[
-            { id: "print", label: "Print report", disabled: !rows.length && !markups.length && !rfis.length, title: "Print the on-screen report (browser print / save as PDF)", onSelect: () => window.print() },
+            { id: "print", label: t('print.report'), disabled: !rows.length && !markups.length && !rfis.length, title: t('print.report_title'), onSelect: () => window.print() },
             ...(onMarkedSet ? [
               "divider",
-              { section: "Marked set" },
-              ...(markups.length > 0 ? [{ id: "inc-markups", label: "Include markups", checked: includeMarkups, stayOpen: true, title: "Include your markups (clouds, callouts, notes, highlights) in the Marked Set PDF. Independent of the canvas layer toggle.", onSelect: () => setIncludeMarkups((v) => !v) }] : []),
-              { id: "marked-set", icon: "document", label: `Download marked set${markedSetDark ? " ☾" : ""}`, disabled: !rows.length && (!includeMarkups || !markups.length) && !rfis.length, title: `Distribution PDF — marked sheets with the takeoff burned in, plus a legend cover${markedSetDark ? " (dark, following your view)" : ""}`, onSelect: () => onMarkedSet(includeMarkups) },
+              { section: t('print.marked_set_section') },
+              ...(markups.length > 0 ? [{ id: "inc-markups", label: t('print.include_markups'), checked: includeMarkups, stayOpen: true, title: t('print.include_markups_title'), onSelect: () => setIncludeMarkups((v) => !v) }] : []),
+              { id: "marked-set", icon: "document", label: t('print.marked_set', { suffix: markedSetDark ? " ☾" : "" }), disabled: !rows.length && (!includeMarkups || !markups.length) && !rfis.length, title: t('print.marked_set_title', { suffix: markedSetDark ? " (dark, following your view)" : "" }), onSelect: () => onMarkedSet(includeMarkups) },
             ] : []),
           ]}
         />
         {rfis.length > 0 && (
           <>
             <button className="btn-ghost" onClick={exportRfisCsv}
-              title="RFI log — one row per RFI with linked markups/sheets derived"><Icon name="rfi" size={13} />RFI CSV</button>
+              title={t('toolbar.rfi_csv_title')}><Icon name="rfi" size={13} />{t('toolbar.rfi_csv')}</button>
             <button className="btn-ghost" onClick={exportRfisJson}
-              title="RFI log as JSON"><Icon name="rfi" size={13} />RFI JSON</button>
+              title={t('toolbar.rfi_json_title')}><Icon name="rfi" size={13} />{t('toolbar.rfi_json')}</button>
           </>
         )}
         <button className="btn-primary" onClick={() => setShowContribute(true)} disabled={!rows.length}
-          title="Optionally contribute this takeoff's derived data to the open flooring model">
-          <Icon name="oneClick" size={13} />Contribute
+          title={t('toolbar.contribute_title')}>
+          <Icon name="oneClick" size={13} />{t('toolbar.contribute')}
         </button>
-        <button onClick={onClose} title="Back to the canvas (Esc)"
+        <button onClick={onClose} title={t('toolbar.close_title')}
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12.5 }}>
-          <Icon name="close" size={12} />Close
+          <Icon name="close" size={12} />{t('toolbar.close')}
         </button>
       </div>
 
@@ -633,7 +628,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
             the top of every printed page (screen hides it) — a fixed footer would
             overlap the last row of intermediate pages */}
         <table className="report-flow"><thead><tr><td>
-          {projectName || "Untitled project"} — {DISCLAIMER}
+          {projectName || t('untitled')} — {t('disclaimer')}
         </td></tr></thead><tbody><tr><td>
         {/* print-only masthead — hidden on screen via app.css. Title-block header
             (logo/firm row · project title · bordered fact grid), the drafting-
@@ -659,19 +654,19 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                 <div style={{ fontFamily: "var(--f-display)", fontWeight: 700, fontSize: 12.5, lineHeight: 1.15 }}>{brand.brandName}</div>
               )}
             </div>
-            <div style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--ink-muted)", whiteSpace: "nowrap" }}>Takeoff Report</div>
+            <div style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--ink-muted)", whiteSpace: "nowrap" }}>{t('masthead_report')}</div>
           </div>
 
           {/* project title */}
-          <div style={{ fontFamily: "var(--f-display)", fontSize: 25, fontWeight: 700, letterSpacing: "0.005em", textTransform: "uppercase", lineHeight: 0.98, margin: "11px 0 9px" }}>{projectName || "Untitled project"}</div>
+          <div style={{ fontFamily: "var(--f-display)", fontSize: 25, fontWeight: 700, letterSpacing: "0.005em", textTransform: "uppercase", lineHeight: 0.98, margin: "11px 0 9px" }}>{projectName || t('untitled')}</div>
 
           {/* title-block fact grid */}
           {(() => {
             const cells = [
-              ["Client", clientInfo.client_name],
-              ["Reference", clientInfo.reference],
-              ["Date", clientInfo.date || new Date().toLocaleDateString()],
-              ["Prepared by", brand.brandName],
+              [t('info.client'), clientInfo.client_name],
+              [t('info.reference'), clientInfo.reference],
+              [t('info.date'), clientInfo.date || new Date().toLocaleDateString()],
+              [t('info.prepared_by'), brand.brandName],
             ];
             return (
               <div style={{ display: "grid", gridTemplateColumns: `repeat(${cells.length}, 1fr)`, border: "1px solid var(--ink)", marginBottom: hasClient && clientInfo.client_address ? 8 : 12 }}>
@@ -693,10 +688,10 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
           {/* meta footer: scale provenance · attribution · disclaimer */}
           <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--ink-muted)", lineHeight: 1.6, borderTop: "1px solid var(--ink-faint)", paddingTop: 6, marginBottom: 12 }}>
             {scaleInfo.map((si) => (
-              <div key={si.sheet_id}>{sheetLabel ? sheetLabel(si.sheet_id) : si.sheet_id} — {!si.scale_source || si.scale_source === "unknown" ? "scale set — provenance unrecorded" : si.scale_source}{si.scale_confirmed === false ? <span style={{ color: "var(--c-warning)", fontWeight: 700 }}> · agent-set, UNCONFIRMED</span> : null}</div>
+              <div key={si.sheet_id}>{sheetLabel ? sheetLabel(si.sheet_id) : si.sheet_id} — {!si.scale_source || si.scale_source === "unknown" ? t('scale.unknown') : si.scale_source}{si.scale_confirmed === false ? <span style={{ color: "var(--c-warning)", fontWeight: 700 }}> {t('scale.unconfirmed')}</span> : null}</div>
             ))}
-            <div>Generated {new Date().toLocaleDateString()}</div>
-            <div>{DISCLAIMER}</div>
+            <div>{t('generated', { date: new Date().toLocaleDateString() })}</div>
+            <div>{t('disclaimer')}</div>
           </div>
         </div>
         {/* the empty-state hides once markups exist — "Revisions noted" below
@@ -705,7 +700,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
         {!rows.length ? (
           markups.length ? null : (
             <div style={{ padding: 48, textAlign: "center", color: "var(--ink-muted)" }}>
-              Nothing measured yet — trace some areas, then come back for the breakdown.
+              {t('empty')}
             </div>
           )
         ) : (
@@ -717,7 +712,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               the partition degenerates to one group. */}
           {grouped && (
             <p style={{ maxWidth: 980, margin: "0 auto 8px", fontSize: 11.5, color: "var(--ink-muted)" }}>
-              Grouped by <strong>{groupCol ? columnLabel(groupCol) : groupBy === "label" ? "label" : groupBy === "author" ? "author" : "sheet"}</strong>
+              {t('grouped_by')} <strong>{groupCol ? columnLabel(groupCol) : groupBy === "label" ? t('toolbar.group_label') : t('toolbar.group_sheet')}</strong>
             </p>
           )}
           <table style={{ width: "100%", maxWidth: 980, margin: "0 auto", borderCollapse: "collapse", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)" }}>
@@ -763,7 +758,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                   {/* single-row group: no subtotal — it would repeat the row verbatim */}
                   {sub && (
                     <tr>
-                      <td style={{ ...td, textAlign: "left", borderTop: "1px solid var(--ink-soft)", color: "var(--ink-muted)", fontWeight: 600 }}>Subtotal</td>
+                      <td style={{ ...td, textAlign: "left", borderTop: "1px solid var(--ink-soft)", color: "var(--ink-muted)", fontWeight: 600 }}>{t('subtotal')}</td>
                       {/* lighter than the grand-total tfoot: thin border,
                           muted color; same foot mechanism on the group's
                           own grandTotals */}
@@ -779,7 +774,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
             })}
             <tfoot>
               <tr>
-                <td style={{ ...td, textAlign: "left", borderTop: "2px solid var(--ink)", borderBottom: "2px solid var(--ink)", background: "var(--paper-cream)", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "var(--f-mono)" }}>Total</td>
+                <td style={{ ...td, textAlign: "left", borderTop: "2px solid var(--ink)", borderBottom: "2px solid var(--ink)", background: "var(--paper-cream)", fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", fontFamily: "var(--f-mono)" }}>{t('total')}</td>
                 {/* finish is always first & locked; every other visible column gets its
                     own td — footed columns render foot(g), ref columns never foot */}
                 {tableCols.slice(1).map((c) => (
@@ -796,33 +791,33 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
         )}
         {rows.length > 0 && (
           <p style={{ maxWidth: 980, margin: "14px auto 0", fontSize: 11.5, color: "var(--ink-muted)", lineHeight: 1.6 }}>
-            <strong>{AU} w/Waste</strong> = measured quantity × waste %. Waste is set per condition in the canvas. Wall {AU} comes from Surface-Area
-            traces (run × height); Border {AU} from Linear runs with a thickness.{M ? " Supporting-material coverage rates stay as entered (SF/LF-based)." : ""}
+            <strong>{t('footnote.waste', { AU })}</strong>
+            {M ? t('footnote.waste_metric') : ""}
             {tableCols.some((c) => c.key === "perimeter_ref") && (
-              <> Perim {LU} (ref) sums floor-trace perimeters — includes door openings and shared walls; reference only, never totaled or waste-adjusted.</>
+              <> {t('footnote.perimeter', { LU })}</>
             )}
             {/* bridge to the base-quantity By-sheet section below — the two
                 slice the same shapes with different semantics */}
             {groupBy === "sheet" && grouped && (
-              <> Groups show w/Waste quantities (waste and ×N applied per sheet); the By-sheet section below shows base measured quantities.</>
+              <>{t('footnote.sheet_groups')}</>
             )}
           </p>
         )}
         {rows.length > 0 && bySheet.length > 0 && (
           <div style={{ maxWidth: 980, margin: "26px auto 0" }}>
-            <h3 style={{ fontFamily: "var(--f-display)", fontSize: 12, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink)", margin: "0 0 10px", paddingBottom: 5, borderBottom: "1.25px solid var(--ink)" }}>By sheet</h3>
+            <h3 style={{ fontFamily: "var(--f-display)", fontSize: 12, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink)", margin: "0 0 10px", paddingBottom: 5, borderBottom: "1.25px solid var(--ink)" }}>{t('revisions.by_sheet', { defaultValue: "By sheet" })}</h3>
             {bySheet.map((gp) => (
               <div key={gp.sheet_id} style={{ margin: "0 0 14px" }}>
                 <h3 style={{ fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.06em", color: "var(--ink-muted)", margin: "0 0 6px" }}>{sheetLabel ? sheetLabel(gp.sheet_id) : gp.sheet_id}</h3>
                 <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)" }}>
                   <thead>
                     <tr>
-                      <th style={{ ...th, textAlign: "left" }}>Finish</th>
-                      <th style={th}>Floor {AU}</th>
-                      <th style={th}>Wall {AU}</th>
-                      <th style={th}>Border {AU}</th>
-                      <th style={th}>{LU}</th>
-                      <th style={th}>EA</th>
+                      <th style={{ ...th, textAlign: "left" }}>{t('col.finish')}</th>
+                      <th style={th}>{t('col.floor', { AU })}</th>
+                      <th style={th}>{t('col.wall', { AU })}</th>
+                      <th style={th}>{t('col.border', { AU })}</th>
+                      <th style={th}>{t('col.lf', { LU })}</th>
+                      <th style={th}>{t('col.ea')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -847,24 +842,24 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               </div>
             ))}
             <p style={{ margin: "10px auto 0", fontSize: 11.5, color: "var(--ink-muted)", lineHeight: 1.6 }}>
-              Base quantities as measured per sheet — waste not applied.
+              {t('footnote.base')}
               {hasMultipliers(bySheet) && (
                 // the shared note + a screen-only reconcile clause (CSV/PDF omit it)
-                <> {BY_SHEET_BASE_NOTE} — sheet subtotals × multiplier reconcile to the condition table.</>
+                <> {BY_SHEET_BASE_NOTE}{t('footnote.reconcile')}</>
               )}
             </p>
           </div>
         )}
         {markups.some((m) => m.type !== "svg" && m.type !== "image") && (
           <div style={{ maxWidth: 980, margin: "26px auto 0" }}>
-            {/* svg symbols and image markups aren't revision notes — excluded */}
-            <h3 style={{ fontFamily: "var(--f-display)", fontSize: 12, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink)", margin: "0 0 10px", paddingBottom: 5, borderBottom: "1.25px solid var(--ink)" }}>Revisions noted</h3>
+            {/* svg symbols are decorative vector stamps, not revision notes — excluded */}
+            <h3 style={{ fontFamily: "var(--f-display)", fontSize: 12, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink)", margin: "0 0 10px", paddingBottom: 5, borderBottom: "1.25px solid var(--ink)" }}>{t('revisions.title')}</h3>
             <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)" }}>
               <thead>
                 <tr>
-                  <th style={{ ...th, textAlign: "left" }}>Type</th>
-                  <th style={{ ...th, textAlign: "left" }}>Sheet</th>
-                  <th style={{ ...th, textAlign: "left" }}>Note</th>
+                  <th style={{ ...th, textAlign: "left" }}>{t('revisions.type')}</th>
+                  <th style={{ ...th, textAlign: "left" }}>{t('revisions.sheet')}</th>
+                  <th style={{ ...th, textAlign: "left" }}>{t('revisions.note')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -882,19 +877,19 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               </tbody>
             </table>
             <p style={{ margin: "10px auto 0", fontSize: 11.5, color: "var(--ink-muted)", lineHeight: 1.6 }}>
-              Markups are annotations, not measurements — quantities above are unaffected.
+              {t('revisions.footnote')}
             </p>
           </div>
         )}
         {matSummary.length > 0 && (
           <div style={{ maxWidth: 980, margin: "26px auto 0" }}>
-            <h3 style={{ fontFamily: "var(--f-display)", fontSize: 12, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink)", margin: "0 0 10px", paddingBottom: 5, borderBottom: "1.25px solid var(--ink)" }}>Supporting materials — buy list</h3>
+            <h3 style={{ fontFamily: "var(--f-display)", fontSize: 12, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink)", margin: "0 0 10px", paddingBottom: 5, borderBottom: "1.25px solid var(--ink)" }}>{t('materials.title')}</h3>
             <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)" }}>
               <thead>
                 <tr>
-                  <th style={{ ...th, textAlign: "left" }}>Material</th>
-                  <th style={th}>Quantity</th>
-                  <th style={{ ...th, textAlign: "left", paddingLeft: 16 }}>Unit</th>
+                  <th style={{ ...th, textAlign: "left" }}>{t('materials.material')}</th>
+                  <th style={th}>{t('materials.quantity')}</th>
+                  <th style={{ ...th, textAlign: "left", paddingLeft: 16 }}>{t('materials.unit')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -908,7 +903,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               </tbody>
             </table>
             <p style={{ maxWidth: 980, margin: "10px auto 0", fontSize: 11.5, color: "var(--ink-muted)", lineHeight: 1.7 }}>
-              <strong>By finish:</strong>{" "}
+              <strong>{t('materials.by_finish')}</strong>{" "}
               {rows.filter((r) => r.materials?.length).map((r) => (
                 // inline-block + a trailing space outside the span: each finish
                 // moves to the next line as a unit when it fits, and wraps
@@ -921,7 +916,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                   </span>{" "}
                 </React.Fragment>
               ))}
-              <br />Each quantity = measured {`{area / linear / count}`} ÷ your coverage rate, rounded up to whole units.
+              <br />{t('materials.formula')}
             </p>
           </div>
         )}
@@ -949,6 +944,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
 // Company edits save on every change, so an overlay-click close loses nothing;
 // onSaved bumps identityRev so the print masthead re-reads immediately.
 function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
+  const { t } = useTranslation("report");
   // trade-name profiles: the picker chooses which trade name is active for
   // EDITING; the active one still mirrors to the legacy company key (backward
   // compat). Which trade name BRANDS a project is the separate per-project
@@ -1036,60 +1032,60 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
       <div onClick={(e) => e.stopPropagation()} className="panel" style={{ width: 520, maxWidth: "100%", maxHeight: "90%", overflow: "auto", background: "var(--paper-bright)", boxShadow: "var(--shadow-2)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: "1px solid var(--ink)" }}>
           <Icon name="document" size={16} />
-          <strong style={{ fontFamily: "var(--f-display)", fontSize: 15 }}>Project info</strong>
+          <strong style={{ fontFamily: "var(--f-display)", fontSize: 15 }}>{t('info.title')}</strong>
         </div>
         <div style={{ padding: 16, fontSize: 13, lineHeight: 1.6, color: "var(--ink)" }}>
-          <div style={section}>Company — your trade names, saved on this device</div>
+          <div style={section}>{t('info.company')}</div>
           {/* trade-name picker: choose which identity prints on the report + marked-set */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0" }}>
-            <select name="trade-name" aria-label="Active trade name" value={profs.activeId || ""} onChange={(e) => switchProfile(e.target.value)}
+            <select name="trade-name" aria-label={t('info.active_trade_name')} value={profs.activeId || ""} onChange={(e) => switchProfile(e.target.value)}
               className="field-input" style={{ flex: 1, minWidth: 0 }} disabled={!profs.profiles.length}>
-              {profs.profiles.length === 0 && <option value="">No trade name yet — add one</option>}
+              {profs.profiles.length === 0 && <option value="">{t('info.no_trade_name')}</option>}
               {profs.profiles.map((p) => <option key={p.id} value={p.id}>{p.name || "Untitled trade name"}</option>)}
             </select>
-            <button onClick={addTradeName} className="btn-ghost" title="Add another trade name (e.g. a second brand)"
-              style={{ padding: "5px 10px", whiteSpace: "nowrap" }}>+ Add</button>
+            <button onClick={addTradeName} className="btn-ghost" title={t('info.add_trade_name_title')}
+              style={{ padding: "5px 10px", whiteSpace: "nowrap" }}>{t('info.add')}</button>
             {profs.profiles.length > 1 && (
-              <button onClick={deleteActive} title="Delete the selected trade name"
-                style={{ padding: "5px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}>Delete</button>
+              <button onClick={deleteActive} title={t('info.delete_trade_name_title')}
+                style={{ padding: "5px 10px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 12, whiteSpace: "nowrap" }}>{t('info.delete')}</button>
             )}
           </div>
           <label style={row}>
-            <span className="field-label">Name</span>
+            <span className="field-label">{t('info.name')}</span>
             <input name="company-name" autoComplete="organization" value={active.name || ""} onChange={(e) => editActive({ name: e.target.value })}
-              placeholder="Your trade name" className="field-input" style={{ marginTop: 4 }} />
+              placeholder={t('info.name_placeholder')} className="field-input" style={{ marginTop: 4 }} />
           </label>
           <label style={row}>
-            <span className="field-label">Address</span>
+            <span className="field-label">{t('info.address')}</span>
             <textarea name="company-address" autoComplete="street-address" value={active.address || ""} onChange={(e) => editActive({ address: e.target.value })}
-              rows={2} placeholder={"Street\nCity, ST"} className="field-input" style={{ marginTop: 4, resize: "vertical" }} />
+              rows={2} placeholder={t('info.address_placeholder')} className="field-input" style={{ marginTop: 4, resize: "vertical" }} />
           </label>
           <div style={row}>
-            <span className="field-label">Logo</span>
+            <span className="field-label">{t('info.logo')}</span>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
               <input name="company-logo" type="file" accept="image/*" onChange={onLogoFile} style={{ fontSize: 12, minWidth: 0 }} />
               {active.logo && (
                 <>
-                  <img src={active.logo} alt="Company logo" style={{ width: 120, height: "auto", flex: "none", border: "1px solid var(--ink-faint)", background: "var(--well)" }} />
+                  <img src={active.logo} alt={t('info.logo_alt')} style={{ width: 120, height: "auto", flex: "none", border: "1px solid var(--ink-faint)", background: "var(--well)" }} />
                   <button onClick={removeLogo}
-                    style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11.5, padding: 0, whiteSpace: "nowrap" }}>Remove logo</button>
+                    style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11.5, padding: 0, whiteSpace: "nowrap" }}>{t('info.remove_logo')}</button>
                 </>
               )}
             </div>
             {logoErr && <p style={err}>{logoErr}</p>}
           </div>
-          {saveFailed && <p style={err}>Couldn't save on this device</p>}
+          {saveFailed && <p style={err}>{t('info.save_failed')}</p>}
 
           {/* branding mode — per project. Off = OpenTakeoff (default); on brands
               the report + marked set as the selected trade name, keeping a subtle
               "Measured with OpenTakeoff" credit. Disabled until a trade name exists. */}
-          <div style={{ ...section, borderTop: "1px solid var(--ink-faint)", marginTop: 14, paddingTop: 12 }}>Branding — how this project's documents present</div>
+          <div style={{ ...section, borderTop: "1px solid var(--ink-faint)", marginTop: 14, paddingTop: 12 }}>{t('info.branding')}</div>
           <label style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0", cursor: profs.profiles.length ? "pointer" : "not-allowed", opacity: profs.profiles.length ? 1 : 0.6 }}>
             <input type="checkbox" name="trade-name-brand" checked={brandSel.mode === "clearlabel"} disabled={!profs.profiles.length}
               onChange={(e) => setBranding({ mode: e.target.checked ? "clearlabel" : "default" })} />
             <span style={{ fontSize: 12.5 }}>
-              Trade name — brand as your company
-              {!profs.profiles.length && <span style={{ color: "var(--ink-muted)" }}> (add a trade name first)</span>}
+              {t('info.trade_name_brand')}
+              {!profs.profiles.length && <span style={{ color: "var(--ink-muted)" }}> {t('info.add_trade_first')}</span>}
             </span>
           </label>
           {brandSel.mode === "clearlabel" && profs.profiles.length > 1 && (
@@ -1097,7 +1093,7 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
               {profs.profiles.map((p) => {
                 const on = brandProfileId === p.id;
                 return (
-                  <button key={p.id} onClick={() => setBranding({ profileId: p.id })} title="Brand this project as this trade name"
+                  <button key={p.id} onClick={() => setBranding({ profileId: p.id })} title={t('info.brand_project_title')}
                     style={{ padding: "4px 10px", fontSize: 12, cursor: "pointer",
                       border: `1px solid ${on ? "var(--cobalt)" : "var(--ink-faint)"}`,
                       background: on ? "var(--cobalt)" : "transparent", color: on ? "var(--paper-bright)" : "var(--ink)" }}>
@@ -1108,30 +1104,30 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
             </div>
           )}
 
-          <div style={{ ...section, borderTop: "1px solid var(--ink-faint)", marginTop: 14, paddingTop: 12 }}>Client / job — saved with this project</div>
+          <div style={{ ...section, borderTop: "1px solid var(--ink-faint)", marginTop: 14, paddingTop: 12 }}>{t('info.client_section')}</div>
           <label style={row}>
-            <span className="field-label">Client name</span>
+            <span className="field-label">{t('info.client_name')}</span>
             <input name="client-name" autoComplete="off" value={clientInfo.client_name || ""} onChange={client("client_name")} className="field-input" style={{ marginTop: 4 }} />
           </label>
           <label style={row}>
-            <span className="field-label">Client address</span>
+            <span className="field-label">{t('info.client_address')}</span>
             <textarea name="client-address" autoComplete="off" value={clientInfo.client_address || ""} onChange={client("client_address")} rows={2}
               className="field-input" style={{ marginTop: 4, resize: "vertical" }} />
           </label>
           <div style={{ display: "flex", gap: 12 }}>
             <label style={{ ...row, flex: 1 }}>
-              <span className="field-label">PO / reference</span>
+              <span className="field-label">{t('info.po_reference')}</span>
               <input name="client-reference" autoComplete="off" value={clientInfo.reference || ""} onChange={client("reference")} className="field-input" style={{ marginTop: 4 }} />
             </label>
             <label style={{ ...row, flex: 1 }}>
-              <span className="field-label">Date</span>
+              <span className="field-label">{t('info.date_label')}</span>
               <input name="client-date" autoComplete="off" value={clientInfo.date || ""} onChange={client("date")} placeholder={'e.g. "Bid 7/12"'}
                 className="field-input" style={{ marginTop: 4 }} />
             </label>
           </div>
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", padding: "12px 16px", borderTop: "1px solid var(--ink-faint)" }}>
-          <button className="btn-primary" onClick={onClose}>Done</button>
+          <button className="btn-primary" onClick={onClose}>{t('info.done')}</button>
         </div>
       </div>
     </div>
@@ -1139,6 +1135,7 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
 }
 
 function ContributeModal({ conditions, shapes, scaleInfo = [], provenanceCounters = null, onClose }) {
+  const { t } = useTranslation("report");
   const [attest, setAttest] = useState(false);
   const [contributor, setContributor] = useState("");
   const [state, setState] = useState("idle"); // idle | sending | done | error
@@ -1150,7 +1147,7 @@ function ContributeModal({ conditions, shapes, scaleInfo = [], provenanceCounter
     setState("sending"); setMsg("");
     try {
       await sendContribution(buildContribution({ conditions, shapes, scaleInfo, counters: provenanceCounters }), contributor.trim());
-      setState("done"); setMsg("Thank you — your takeoff is now helping train the open flooring model.");
+      setState("done"); setMsg(t('contribute.thanks'));
     } catch (e) {
       setState("error"); setMsg(e.message || String(e));
     }
@@ -1161,39 +1158,38 @@ function ContributeModal({ conditions, shapes, scaleInfo = [], provenanceCounter
       <div onClick={(e) => e.stopPropagation()} className="panel" style={{ width: 520, maxWidth: "100%", maxHeight: "90%", overflow: "auto", background: "var(--paper-bright)", boxShadow: "var(--shadow-2)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: "1px solid var(--ink)" }}>
           <Icon name="oneClick" size={16} />
-          <strong style={{ fontFamily: "var(--f-display)", fontSize: 15 }}>Contribute to the open flooring model</strong>
+          <strong style={{ fontFamily: "var(--f-display)", fontSize: 15 }}>{t('contribute.title')}</strong>
         </div>
         <div style={{ padding: "16px", fontSize: 13, lineHeight: 1.6, color: "var(--ink)" }}>
-          <p style={{ marginTop: 0 }}>Help grow a shared, flooring-tuned open model. We send only the <strong>derived takeoff</strong>:</p>
+          <p style={{ marginTop: 0 }}>{t('contribute.description')} <strong>{t('contribute.derived_takeoff')}</strong>:</p>
           <ul style={{ margin: "0 0 10px", paddingLeft: 18 }}>
-            <li>condition labels, shape types, and quantities (SF / LF / EA)</li>
-            <li>normalized room geometry (shape only — no scale, no location)</li>
-            <li>how each shape was made (hand-traced vs. machine-proposed) and whether you corrected it</li>
+            <li>{t('contribute.li1')}</li>
+            <li>{t('contribute.li2')}</li>
+            <li>{t('contribute.li3')}</li>
           </ul>
           <p style={{ margin: "0 0 10px", color: "var(--c-positive)", fontWeight: 600 }}>
-            Never sent: the PDF itself, file names, project or client names, your markups, or any absolute coordinates.
+            {t('contribute.never_sent')}
           </p>
           {!configured && (
             <p style={{ background: "var(--paper-shadow)", padding: "8px 10px", fontSize: 12.5, color: "var(--ink)" }}>
-              This build has no contribution endpoint configured, so nothing can be sent. (Set <code>VITE_CONTRIBUTE_ENDPOINT</code> at build time, or
-              <code> localStorage.opentakeoff_contribute_endpoint</code> in your browser.)
+              {t('contribute.no_endpoint')}
             </p>
           )}
           <label style={{ display: "block", margin: "6px 0" }}>
-            <span className="field-label">Credit (optional)</span>
-            <input name="contributor" autoComplete="name" value={contributor} onChange={(e) => setContributor(e.target.value)} placeholder="Name or company to credit"
+            <span className="field-label">{t('contribute.credit_label')}</span>
+            <input name="contributor" autoComplete="name" value={contributor} onChange={(e) => setContributor(e.target.value)} placeholder={t('contribute.credit_placeholder')}
               className="field-input" style={{ marginTop: 4 }} />
           </label>
           <label style={{ display: "flex", gap: 8, alignItems: "flex-start", margin: "12px 0", cursor: "pointer" }}>
             <input name="attest" type="checkbox" checked={attest} onChange={(e) => setAttest(e.target.checked)} style={{ marginTop: 3 }} />
-            <span>I have the right to share this takeoff data and am contributing it to the open flooring model.</span>
+            <span>{t('contribute.attest')}</span>
           </label>
           {msg && <p style={{ fontSize: 12.5, color: state === "error" ? "var(--c-danger)" : "var(--c-positive)" }}>{msg}</p>}
         </div>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", padding: "12px 16px", borderTop: "1px solid var(--ink-faint)" }}>
-          <button className="btn-ghost" onClick={onClose}>{state === "done" ? "Close" : "Cancel"}</button>
+          <button className="btn-ghost" onClick={onClose}>{state === "done" ? t('contribute.close') : t('contribute.cancel')}</button>
           <button className="btn-primary" onClick={send} disabled={!attest || !configured || state === "sending" || state === "done"}>
-            {state === "sending" ? "Sending…" : "Contribute"}
+            {state === "sending" ? t('contribute.sending') : t('contribute.submit')}
           </button>
         </div>
       </div>

@@ -44,6 +44,9 @@ import { RENDER_SCALE, parseSheetKey, sheetBaseLabelFromKey } from "./sheets";
 import { stitchPagePlan, memberEmbed } from "./stitches";
 import { pdfDashFor, boostForDark, clampWeight } from "./lineStyles.js";
 import { dimLabel } from "./units";
+import i18n from "../i18n/index.js";
+
+const _t = (key, options) => i18n.t(key, { ns: "lib", ...options });
 
 const COBALT = "#1f3fc7";
 const DEDUCT_RED = "#b03a26";
@@ -205,8 +208,8 @@ function shapeChip(shape, cond, M = false) {
   const AU = M ? "m2" : "SF", LU = M ? "m" : "LF";
   switch (shape.measure_role) {
     case "floor_area": return `${tag} · ${num(uA(cp.area_sf || 0))} ${AU}`;
-    case "deduct": return `-${num(uA(cp.area_sf || 0))} ${AU} deduct`;
-    case "surface_area": return `${tag} · ${num(uA(cp.area_sf || 0))} ${AU} wall`;
+    case "deduct": return `-${num(uA(cp.area_sf || 0))} ${AU} ${_t("marked_set.deduct_suffix")}`;
+    case "surface_area": return `${tag} · ${num(uA(cp.area_sf || 0))} ${AU} ${_t("marked_set.wall_suffix")}`;
     case "linear": return `${tag} · ${num(uL(cp.perimeter_lf || 0))} ${LU}`;
     default: return "";
   }
@@ -251,7 +254,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
   const marked = sheets.filter((sh) => (shapesBy.get(sh.key) || []).length || (marksBy.get(sh.key) || []).length || (apBy.get(sh.key) || []).length);
   // a live RFI can outlive its markups, so an RFI-only project still exports
   // (cover + RFI schedule, no per-sheet pages) — only a truly empty set aborts
-  if (!marked.length && !rfis?.length) throw new Error("Nothing to export — no sheet carries takeoffs or markups.");
+  if (!marked.length && !rfis?.length) throw new Error(_t("marked_set.nothing_to_export"));
   const markedShapes = marked.flatMap((sh) => shapesBy.get(sh.key) || []);
 
   const doc = await PDFDocument.create();
@@ -327,17 +330,17 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         idY -= 11;
       }
     }
-    draw(String(projectName || "Untitled project"), { x: 52, y: 700, size: 22, font: bold, color: ink });
+    draw(String(projectName || _t("marked_set.untitled_project")), { x: 52, y: 700, size: 22, font: bold, color: ink });
     // client block (optional) sits under the project name; the meta line and
     // everything below shift down with it — no clientInfo, no shift: every y
     // matches the unbranded cover exactly.
     let metaY = 680;
     {
       const clientLines = [];
-      if (clientInfo?.client_name) clientLines.push(`Prepared for ${clientInfo.client_name}`);
+      if (clientInfo?.client_name) clientLines.push(`${_t("marked_set.prepared_for")} ${clientInfo.client_name}`);
       for (const raw of String(clientInfo?.client_address || "").split("\n")) { const t = raw.trim(); if (t) clientLines.push(t); }
-      if (clientInfo?.reference) clientLines.push(`Ref ${clientInfo.reference}`);
-      if (clientInfo?.date) clientLines.push(`Date ${clientInfo.date}`);
+      if (clientInfo?.reference) clientLines.push(`${_t("marked_set.ref")} ${clientInfo.reference}`);
+      if (clientInfo?.date) clientLines.push(`${_t("marked_set.date")} ${clientInfo.date}`);
       if (clientLines.length) {
         let cy = 681;
         // capped: a pasted multi-line address must never push CONDITIONS off
@@ -346,7 +349,9 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         metaY = cy - 4;
       }
     }
-    draw(`${marked.length} marked sheet${marked.length === 1 ? "" : "s"} · ${markedShapes.length} takeoff item${markedShapes.length === 1 ? "" : "s"} · quantities net of deducts, waste-adjusted where noted`, { x: 52, y: metaY, size: 9.5, font, color: muted });
+    const sheetWord = marked.length === 1 ? _t("marked_set.marked_sheet") : _t("marked_set.marked_sheets");
+    const itemWord = markedShapes.length === 1 ? _t("marked_set.takeoff_item") : _t("marked_set.takeoff_items");
+    draw(`${marked.length} ${sheetWord} · ${markedShapes.length} ${itemWord} · ${_t("marked_set.quantities_note")}`, { x: 52, y: metaY, size: 9.5, font, color: muted });
     // assignment provenance (0.9.18): where the finish tags came from
     // (schedule-resolved / agent-asserted / withheld) — drawn only when the
     // caller states it, so canvas output stays byte-identical without it
@@ -358,7 +363,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     const apCount = approvalTally(marked.flatMap((sh) => apBy.get(sh.key) || []));
     if (apCount.estimator || apCount.agent) {
       metaY -= 12;
-      draw(`Approval stamps: ${apCount.estimator} estimator-approved · ${apCount.agent} agent-marked`, { x: 52, y: metaY, size: 9.5, font, color: muted });
+      draw(`${_t("marked_set.approval_stamps")}: ${apCount.estimator} ${_t("marked_set.approval_estimator")} · ${apCount.agent} ${_t("marked_set.approval_agent")}`, { x: 52, y: metaY, size: 9.5, font, color: muted });
     }
     // author attribution (#314) — the legend names who marked the set. Drawn
     // only when a shape carries an author (the provenance-line convention), so
@@ -370,7 +375,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     }
     let y = metaY - 34;
     const rows = conditionTotals(conditions, markedShapes).filter((r) => r.shape_count > 0);
-    draw("CONDITIONS", { x: 52, y, size: 9, font: bold, color: muted }); y -= 16;
+    draw(_t("markedset.conditions"), { x: 52, y, size: 9, font: bold, color: muted }); y -= 16;
     for (const r of rows) {
       const c = condById[r.id] || {};
       pg.drawRectangle({ x: 52, y: y - 2, width: 14, height: 10, color: rgb(...hex(c.color)), opacity: 0.8, borderColor: rgb(...hex(c.color)), borderWidth: 0.7 });
@@ -378,30 +383,30 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
       // zero-gate on the CONVERTED value — what the page prints (a 0.5 SF
       // sliver reads 0.0 m2 in metric; it must drop, not print "0 m2")
       const qty = [
-        shows(uA(r.floor_sf)) ? `${num(uA(r.floor_sf))} ${AU}` : "", shows(uA(r.wall_sf)) ? `${num(uA(r.wall_sf))} ${AU} wall` : "",
-        shows(uA(r.border_sf)) ? `${num(uA(r.border_sf))} ${AU} border` : "", shows(uL(r.lf)) ? `${num(uL(r.lf))} ${LU}` : "", shows(r.ea, 0) ? `${num(r.ea, 0)} EA` : "",
+        shows(uA(r.floor_sf)) ? `${num(uA(r.floor_sf))} ${AU}` : "",         shows(uA(r.wall_sf)) ? `${num(uA(r.wall_sf))} ${AU} ${_t("marked_set.wall_suffix")}` : "",
+        shows(uA(r.border_sf)) ? `${num(uA(r.border_sf))} ${AU} ${_t("marked_set.border_suffix")}` : "", shows(uL(r.lf)) ? `${num(uL(r.lf))} ${LU}` : "", shows(r.ea, 0) ? `${num(r.ea, 0)} EA` : "",
       ].filter(Boolean).join(" · ");
       draw(qty || "-", { x: 190, y, size: 10, font, color: ink });
-      draw(`${c.hatch && c.hatch !== "solid" ? c.hatch + " · " : ""}waste ${r.waste_pct}% -> ${num(uA(r.total_sf_net))} ${AU}`, { x: 420, y, size: 8.5, font, color: muted });
+      draw(`${c.hatch && c.hatch !== "solid" ? c.hatch + " · " : ""}${_t("marked_set.waste_label")} ${r.waste_pct}% -> ${num(uA(r.total_sf_net))} ${AU}`, { x: 420, y, size: 8.5, font, color: muted });
       y -= 15;
       if (y < 120) break;
     }
     y -= 10;
-    draw("BY SHEET", { x: 52, y, size: 9, font: bold, color: muted }); y -= 16;
+    draw(_t("markedset.by_sheet"), { x: 52, y, size: 9, font: bold, color: muted }); y -= 16;
     const bySheet = sheetTotals(conditions, markedShapes);
     const bySheetId = new Map(bySheet.map((gr) => [gr.sheet_id, gr]));
     for (const sh of marked) {
       if (y < 90) break;
       const items = shapesBy.get(sh.key) || [];
       // a stitch has no single source page — the cover names it for what it is
-      const where = sh.stitch ? `stitched · ${sh.stitch.members.length} sheets` : `page ${sh.page}`;
-      draw(`${sh.label} · ${where} · ${items.length + (marksBy.get(sh.key) || []).length + (apBy.get(sh.key) || []).length} item(s)`, { x: 52, y, size: 9.5, font: bold, color: ink }); y -= 13;
+      const where = sh.stitch ? `${_t("marked_set.stitched_composite")} · ${sh.stitch.members.length} ${_t("marked_set.sheets")}` : `${_t("marked_set.page")} ${sh.page}`;
+      draw(`${sh.label} · ${where} · ${items.length + (marksBy.get(sh.key) || []).length + (apBy.get(sh.key) || []).length} ${_t("marked_set.item")}`, { x: 52, y, size: 9.5, font: bold, color: ink }); y -= 13;
       for (const r of bySheetId.get(sh.key)?.rows || []) {
         if (y < 92) break;   // stop above the fixed footnote slot at y=60 — rows never collide with it
         const c = condById[r.id] || {};
         pg.drawRectangle({ x: 66, y: y - 1, width: 9, height: 7, color: rgb(...hex(c.color)), opacity: 0.8 });
         const { floor_sf: floor, wall_sf: wall, border_sf: border, lf, ea } = roundSheetRow(r);
-        const qty = [shows(uA(floor)) ? `${num(uA(floor))} ${AU}` : "", shows(uA(wall)) ? `${num(uA(wall))} ${AU} wall` : "", shows(uA(border)) ? `${num(uA(border))} ${AU} border` : "", shows(uL(lf)) ? `${num(uL(lf))} ${LU}` : "", shows(ea, 0) ? `${num(ea, 0)} EA` : ""].filter(Boolean).join(" · ");
+        const qty = [shows(uA(floor)) ? `${num(uA(floor))} ${AU}` : "", shows(uA(wall)) ? `${num(uA(wall))} ${AU} ${_t("marked_set.wall_suffix")}` : "", shows(uA(border)) ? `${num(uA(border))} ${AU} ${_t("marked_set.border_suffix")}` : "", shows(uL(lf)) ? `${num(uL(lf))} ${LU}` : "", shows(ea, 0) ? `${num(ea, 0)} EA` : ""].filter(Boolean).join(" · ");
         draw(`${r.finish_tag}${r.multiplier > 1 ? ` ×${r.multiplier}` : ""}  ${qty}`, { x: 82, y, size: 8.5, font, color: ink });
         y -= 11;
       }
@@ -411,9 +416,9 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     // itself at y=48) — a reading of the by-sheet figures depends on it, so it
     // must never be dropped just because the row loops ran the page out
     if (hasMultipliers(bySheet)) {
-      draw(BY_SHEET_BASE_NOTE, { x: 52, y: 60, size: 7.5, font, color: muted });
+      draw(_t("markedset.by_sheet_base_note"), { x: 52, y: 60, size: 7.5, font, color: muted });
     }
-    draw(`Generated ${new Date().toLocaleDateString()}`, { x: 52, y: 48, size: 8, font, color: muted });
+    draw(_t("marked_set.generated", { date: new Date().toLocaleDateString() }), { x: 52, y: 48, size: 8, font, color: muted });
   }
 
   // ── RFI schedule page — ONLY when RFIs exist, so an RFI-free export never
@@ -427,21 +432,21 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
       while (s && fnt.widthOfTextAtSize(s, size) > maxW) s = s.slice(0, -2).trimEnd() + "…";
       return s;
     };
-    const footText = `Generated ${new Date().toLocaleDateString()}`;
+    const footText = _t("marked_set.generated", { date: new Date().toLocaleDateString() });
     const BOT = 58;   // content never crosses below this; the footer sits at y=40
     let pg, draw, y;
     const newSchedPage = () => {
       pg = doc.addPage([612, 792]);
       draw = (t, opts) => pg.drawText(winAnsiSafe(t), opts);
       if (dark) pg.drawRectangle({ x: 0, y: 0, width: 612, height: 792, color: rgb(...DARK_BG) });
-      draw("RFI SCHEDULE", { x: 52, y: 744, size: 13, font: bold, color: cobalt });
-      draw(`${rfis.length} RFI${rfis.length === 1 ? "" : "s"} · linked markups derived from markup.rfi_id`, { x: 52, y: 728, size: 9, font, color: muted });
+      draw(_t("markedset.rfi_schedule"), { x: 52, y: 744, size: 13, font: bold, color: cobalt });
+      draw(`${rfis.length} RFI${rfis.length === 1 ? "" : "s"} · ${_t("marked_set.rfi_link_note")}`, { x: 52, y: 728, size: 9, font, color: muted });
       draw(footText, { x: 52, y: 40, size: 8, font, color: muted });   // footer on EVERY schedule page
       y = 704;
-      draw("NO.", { x: 52, y, size: 8, font: bold, color: muted });
-      draw("SUBJECT", { x: 108, y, size: 8, font: bold, color: muted });
-      draw("STATUS", { x: 360, y, size: 8, font: bold, color: muted });
-      draw("BALL IN COURT", { x: 442, y, size: 8, font: bold, color: muted });
+      draw(_t("rfi.csv_header.number"), { x: 52, y, size: 8, font: bold, color: muted });
+      draw(_t("rfi.csv_header.subject"), { x: 108, y, size: 8, font: bold, color: muted });
+      draw(_t("rfi.csv_header.status"), { x: 360, y, size: 8, font: bold, color: muted });
+      draw(_t("rfi.csv_header.ball_in_court"), { x: 442, y, size: 8, font: bold, color: muted });
       y -= 5;
       pg.drawLine({ start: { x: 52, y }, end: { x: 560, y }, thickness: 0.6, color: muted });
       y -= 15;
@@ -452,19 +457,19 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
       const stCol = dark ? ink : rgb(...hex(st.color));
       const links = (markups || []).filter((m) => m.rfi_id === r.id).length;
       const meta = [
-        r.priority ? `priority ${r.priority}` : "",
-        r.cost_impact ? "cost impact" : "",
-        r.schedule_impact ? "schedule impact" : "",
-        r.date ? `opened ${r.date}` : "",
-        r.response_date ? `answered ${r.response_date}` : "",
-        links ? `${links} linked markup${links === 1 ? "" : "s"}` : "",
+        r.priority ? `${_t("marked_set.priority")} ${r.priority}` : "",
+        r.cost_impact ? _t("marked_set.cost_impact") : "",
+        r.schedule_impact ? _t("marked_set.schedule_impact") : "",
+        r.date ? `${_t("marked_set.opened")} ${r.date}` : "",
+        r.response_date ? `${_t("marked_set.answered")} ${r.response_date}` : "",
+        links ? `${links} ${links === 1 ? _t("marked_set.linked_markup") : _t("marked_set.linked_markups")}` : "",
       ].filter(Boolean).join(" · ");
       // break BEFORE the record so its whole block (row + meta + Q + A) stays above
       // the footer — a record can never overprint it. A full record fits a fresh page.
       const h = 11 + (meta ? 10 : 0) + (r.question ? 10 : 0) + (r.response ? 10 : 0) + 8;
       if (y - h < BOT) newSchedPage();
       draw(String(r.number || ""), { x: 52, y, size: 9, font: bold, color: ink });
-      draw(clampTo(r.subject || "(no subject)", 9, font, 244), { x: 108, y, size: 9, font, color: ink });
+      draw(clampTo(r.subject || _t("marked_set.no_subject"), 9, font, 244), { x: 108, y, size: 9, font, color: ink });
       draw(st.label, { x: 360, y, size: 9, font, color: stCol });
       draw(clampTo(r.to || "-", 8.5, font, 112), { x: 442, y, size: 8.5, font, color: muted });
       y -= 11;
@@ -869,7 +874,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         pg.drawEllipse({ x: pcx, y: pcy, xScale: rPt * 0.78, yScale: rPt * 0.78, borderColor: acol, borderWidth: rPt * 0.035 });
       }
       // centered label, the bubble-text centering precedent (ASCII, WinAnsi-safe)
-      const label = isAgent ? "AGENT" : "APPROVED";
+      const label = isAgent ? _t("approval.agent") : _t("approval.approved");
       const size = rPt * (isAgent ? 0.3 : 0.26);
       const tw = bold.widthOfTextAtSize(label, size);
       pg.drawText(label, { x: pcx - tw / 2, y: pcy - size / 2.7, size, font: bold, color: acol, rotate: chipRot });
@@ -878,8 +883,8 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     // planset, so its stamp says so — the composite is disclosed, not passed
     // off as a drawing the architect issued.
     const stamp = sh.stitch
-      ? `${sh.label} · stitched composite (${sh.stitch.members.map((m) => m.label || m.key).join(" + ")}) · marked set`
-      : `${sh.label} · marked set`;
+      ? `${sh.label} · ${_t("marked_set.stitched_composite")} (${sh.stitch.members.map((m) => m.label || m.key).join(" + ")}) · ${_t("marked_set.marked_set")}`
+      : `${sh.label} · ${_t("marked_set.marked_set")}`;
     text(stamp, 14, 20, 8, muted);
   }
 

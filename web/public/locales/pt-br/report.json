@@ -1,0 +1,218 @@
+{
+  "title": "Relatório de takeoff",
+  "untitled": "Projeto sem título",
+  "disclaimer": "Quantidades derivadas de desenhos nas escalas indicadas; verificar no campo.",
+  "project_name_placeholder": "Nome do projeto (opcional)",
+  "masthead_report": "Relatório de Takeoff",
+  "generated": "Gerado em {{date}}",
+
+  "toolbar": {
+    "project_info": "Informações do projeto",
+    "group": "Agrupar:",
+    "group_none": "Nenhum",
+    "group_sheet": "Planta",
+    "group_label": "Etiqueta",
+    "columns": "Colunas",
+    "columns_title": "Escolher quais colunas a tabela e o CSV exibem",
+    "templates": "Modelos",
+    "templates_title": "Salvar e recuperar layouts de relatório (colunas + agrupamento)",
+    "theme": "Tema",
+    "theme_title": "Aplicar um tema de design-token importado ao relatório (cores + fontes)",
+    "export": "Exportar",
+    "export_title": "Baixar os dados do relatório e das formas",
+    "print": "Imprimir",
+    "print_title": "Imprimir o relatório ou gerar o PDF do conjunto marcado",
+    "rfi_csv": "RFI CSV",
+    "rfi_csv_title": "Log de RFI — uma linha por RFI com anotações/pranchas vinculadas derivadas",
+    "rfi_json": "RFI JSON",
+    "rfi_json_title": "Log de RFI como JSON",
+    "contribute": "Contribuir",
+    "contribute_title": "Opcionalmente contribua com os dados derivados deste takeoff para o modelo aberto de pavimentação",
+    "close": "Fechar",
+    "close_title": "Voltar ao canvas (Esc)",
+    "group_select_title": "Dividir a tabela de condições em seções com subtotais"
+  },
+
+  "columns": {
+    "title": "Colunas",
+    "labor_view": "Visualização de mão de obra",
+    "labor_view_title": "Valores reais sem perda por condição — oculta SF/SY c/Perda, mostra SF Total",
+    "reset": "Redefinir",
+    "reset_title": "Voltar ao conjunto padrão de colunas",
+    "optional": "Opcional",
+    "custom": "Colunas personalizadas",
+    "no_custom": "Nenhuma coluna personalizada ainda — defina-as na barra de condições no canvas.",
+    "product_spec": "Especificação do produto (importado)",
+    "labor_subfloor": "Mão de obra e contrapiso",
+    "csv_note": "Também se aplica à exportação CSV. Agrupar por uma coluna personalizada sempre exporta essa coluna."
+  },
+
+  "hints": {
+    "waste_lf": "Perda SF/LF = (c/Perda) − medido",
+    "perimeter_ref": "Perímetro é apenas referência — inclui aberturas; não totalizado"
+  },
+
+  "templates": {
+    "title": "Modelos",
+    "description": "Layouts de colunas + agrupamento salvos (neste dispositivo). Clique para aplicar.",
+    "empty": "Nenhum modelo salvo ainda.",
+    "save_placeholder": "Nomeie este layout",
+    "save": "Salvar",
+    "save_title": "Salvar as colunas + agrupamento atuais com este nome",
+    "apply_title": "Aplicar este layout",
+    "rename_title": "Renomear",
+    "delete_title": "Excluir este modelo",
+    "drive_description": "Sincronize entre seus dispositivos via Drive. Carregar só adiciona modelos que este dispositivo não tem — um modelo com o mesmo nome nunca é sobrescrito (renomeie ou exclua aqui primeiro para puxar uma cópia mais recente).",
+    "push": "Enviar ao Drive",
+    "push_title": "Gravar seus modelos salvos no seu arquivo privado do Drive",
+    "load": "Carregar do Drive",
+    "load_title": "Mesclar modelos do seu arquivo do Drive neste dispositivo"
+  },
+
+  "theme": {
+    "title": "Tema do relatório",
+    "description": "Importe um arquivo de design-token (ex.: <code>tokens.json</code> do Claude Design) para repintar este relatório — paleta e fontes apenas. A identidade da empresa permanece inalterada.",
+    "default": "Usando o estilo padrão.",
+    "import_btn": "Importar tema…",
+    "import_title": "Escolher um arquivo de design-token para importar",
+    "reset": "Redefinir",
+    "reset_title": "Remover o tema importado e voltar ao padrão",
+    "import_error": "Esse arquivo não é JSON válido — esperava-se um arquivo de design-token."
+  },
+
+  "export": {
+    "report_section": "Relatório",
+    "csv": "CSV",
+    "excel": "Excel",
+    "json": "JSON",
+    "excel_title": "Pasta de trabalho Excel — Condições / Por planta / Materiais / Formas",
+    "json_title": "JSON — funciona com apenas anotações / apenas RFI",
+    "shapes_section": "Formas",
+    "shapes_csv": "Formas CSV",
+    "shapes_json": "Formas JSON",
+    "shapes_title": "Quantidades medidas por forma — sem multiplicador, sem perda"
+  },
+
+  "print": {
+    "report": "Imprimir relatório",
+    "report_title": "Imprimir o relatório na tela (impressão do navegador / salvar como PDF)",
+    "marked_set_section": "Conjunto marcado",
+    "include_markups": "Incluir marcações",
+    "include_markups_title": "Incluir suas marcações (nuvens, chamadas, notas, destaques) no PDF do Conjunto Marcado. Independente da camada de alternância do canvas.",
+    "marked_set": "Baixar conjunto marcado{{suffix}}",
+    "marked_set_title": "PDF de distribuição — pranchas marcadas com o takeoff queimado, mais uma capa de legenda{{suffix}}"
+  },
+
+  "grouped_by": "Agrupado por",
+  "subtotal": "Subtotal",
+  "total": "Total",
+
+  "empty": "Nada medido ainda — trace algumas áreas e volte para o detalhamento.",
+
+  "col": {
+    "finish": "Acabamento",
+    "floor": "Piso {{AU}}",
+    "wall": "Parede {{AU}}",
+    "border": "Borda {{AU}}",
+    "lf": "{{LU}}",
+    "ea": "UN"
+  },
+
+  "info": {
+    "title": "Informações do projeto",
+    "company": "Empresa — seus nomes comerciais, salvos neste dispositivo",
+    "no_trade_name": "Nenhum nome comercial ainda — adicione um",
+    "active_trade_name": "Nome comercial ativo",
+    "untitled_trade": "Nome comercial sem título",
+    "add": "+ Adicionar",
+    "add_trade_name_title": "Adicionar outro nome comercial",
+    "delete": "Excluir",
+    "delete_trade_name_title": "Excluir o nome comercial selecionado",
+    "name": "Nome",
+    "name_placeholder": "Seu nome comercial",
+    "address": "Endereço",
+    "address_placeholder": "Rua\nCidade, UF",
+    "logo": "Logotipo",
+    "logo_alt": "Logotipo da empresa",
+    "remove_logo": "Remover logotipo",
+    "save_failed": "Não foi possível salvar neste dispositivo",
+    "branding": "Marca — como os documentos deste projeto se apresentam",
+    "trade_name_brand": "Nome comercial — marcar como sua empresa",
+    "add_trade_first": "(adicione um nome comercial primeiro)",
+    "brand_project_title": "Marcar este projeto com este nome comercial",
+    "client_section": "Cliente / obra — salvo com este projeto",
+    "client_name": "Nome do cliente",
+    "client_address": "Endereço do cliente",
+    "po_reference": "PO / referência",
+    "date_label": "Data",
+    "done": "Concluído",
+    "client": "Cliente",
+    "reference": "Referência",
+    "date": "Data",
+    "prepared_by": "Preparado por"
+  },
+
+  "scale": {
+    "unknown": "escala definida — procedência não registrada",
+    "unconfirmed": "· definido por agente, NÃO CONFIRMADO"
+  },
+
+  "revisions": {
+    "title": "Revisões registradas",
+    "type": "Tipo",
+    "sheet": "Planta",
+    "note": "Nota",
+    "footnote": "Marcações são anotações, não medições — as quantidades acima não são afetadas.",
+    "by_sheet": "Por prancha"
+  },
+
+  "materials": {
+    "title": "Materiais de apoio — lista de compra",
+    "material": "Material",
+    "quantity": "Quantidade",
+    "unit": "Unidade",
+    "by_finish": "Por acabamento:",
+    "formula": "Cada quantidade = medido {área / linear / contagem} ÷ sua taxa de cobertura, arredondado para cima em unidades inteiras."
+  },
+
+  "footnote": {
+    "waste": "{{AU}} c/Perda = quantidade medida × % de perda. A perda é definida por condição no canvas. {{AU}} de parede vem de traçados de Área de Parede (comprimento × altura); {{AU}} de Borda de traçados Lineares com espessura.",
+    "waste_metric": " As taxas de cobertura de materiais de apoio permanecem como digitadas (baseadas em SF/LF).",
+    "perimeter": "Perim {{LU}} (ref) soma os perímetros dos traçados de piso — inclui aberturas de portas e paredes compartilhadas; apenas referência, nunca totalizado ou ajustado por perda.",
+    "base": "Quantidades base medidas por planta — perda não aplicada.",
+    "reconcile": " — subtotais por planta × multiplicador conciliam com a tabela de condições.",
+    "sheet_groups": " Os grupos mostram quantidades c/Perda (perda e ×N aplicados por planta); a seção Por planta abaixo mostra quantidades base medidas."
+  },
+
+  "contribute": {
+    "title": "Contribua para o modelo aberto de pavimentação",
+    "description": "Ajude a crescer um modelo aberto, otimizado para pavimentação. Enviamos apenas o",
+    "derived_takeoff": "takeoff derivado",
+    "li1": "etiquetas de condição, tipos de forma e quantidades (SF / LF / UN)",
+    "li2": "geometria normalizada do ambiente (apenas forma — sem escala, sem localização)",
+    "li3": "como cada forma foi criada (traçado manual vs. proposta por máquina) e se você a corrigiu",
+    "never_sent": "Nunca enviado: o próprio PDF, nomes de arquivo, projeto ou cliente, suas marcações ou coordenadas absolutas.",
+    "no_endpoint": "Esta versão não tem endpoint de contribuição configurado, então nada pode ser enviado. (Configure <code>VITE_CONTRIBUTE_ENDPOINT</code> na compilação ou <code>localStorage.opentakeoff_contribute_endpoint</code> no navegador.)",
+    "credit_label": "Crédito (opcional)",
+    "credit_placeholder": "Nome ou empresa a creditar",
+    "attest": "Tenho o direito de compartilhar estes dados de takeoff e os estou contribuindo para o modelo aberto de pavimentação.",
+    "close": "Fechar",
+    "cancel": "Cancelar",
+    "sending": "Enviando…",
+    "submit": "Contribuir",
+    "thanks": "Obrigado — seu takeoff agora ajuda a treinar o modelo aberto de pavimentação."
+  },
+
+  "drive": {
+    "pushing": "Enviando…",
+    "pushed": "Enviados {{count}} para o Drive.",
+    "push_failed": "Falha no envio: {{error}}",
+    "loading": "Carregando…",
+    "loaded": "Carregados {{count}} do Drive.",
+    "empty": "Nada salvo no Drive ainda.",
+    "up_to_date": "Já está atualizado — nenhum modelo novo.",
+    "load_failed": "Falha no carregamento: {{error}}"
+  },
+
+  "rename_template": "Renomear modelo:"
+}

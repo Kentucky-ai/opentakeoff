@@ -1,4 +1,6 @@
 // Shared line-style primitive — the single source of truth for dash patterns so
+import i18n from '../i18n/index.js';
+const t = (key) => i18n.t(key, { ns: 'lib' });
 // the canvas (SVG strokeDasharray) and the marked-set PDF (pdf-lib dashArray)
 // never drift, plus a dark-mode lighten used for arbitrary user colors on the
 // dark canvas / dark marked sheets. Pure, no DOM — the CI-testable surface.
@@ -6,12 +8,13 @@
 // Raw dash patterns in base units: page points for the PDF, and divided by the
 // stage scale for the screen-relative SVG convention (`${n/z}` everywhere).
 // `solid` carries no pattern.
-export const LINE_STYLES = {
-  solid: { label: "Solid", dash: null },
-  dashed: { label: "Dashed", dash: [6, 4] },
-  dotted: { label: "Dotted", dash: [1, 3] },
-  dashdot: { label: "Dash-dot", dash: [8, 3, 1, 3] },
-};
+export const getLineStyles = () => ({
+  solid: { label: t("line_style.solid"), dash: null },
+  dashed: { label: t("line_style.dashed"), dash: [6, 4] },
+  dotted: { label: t("line_style.dotted"), dash: [1, 3] },
+  dashdot: { label: t("line_style.dashdot"), dash: [8, 3, 1, 3] },
+});
+export const LINE_STYLES = getLineStyles();
 
 export const LINE_STYLE_IDS = Object.keys(LINE_STYLES);
 
@@ -20,7 +23,7 @@ export const LINE_STYLE_IDS = Object.keys(LINE_STYLES);
 // for solid/unknown — NEVER "" or []: React drops an undefined attribute, so a
 // solid outline gets no strokeDasharray at all.
 export function dashArrayFor(style, scale = 1) {
-  const pat = LINE_STYLES[style]?.dash;
+  const pat = getLineStyles()[style]?.dash;
   if (!pat || !pat.length) return undefined;
   const s = scale || 1;
   return pat.map((n) => n / s).join(" ");
@@ -32,7 +35,7 @@ export function dashArrayFor(style, scale = 1) {
 // draw nothing / warn. A fixed pattern reads slightly denser on larger sheets
 // (page-point units), acceptable and consistent with the raw cloud dash.
 export function pdfDashFor(style) {
-  const pat = LINE_STYLES[style]?.dash;
+  const pat = getLineStyles()[style]?.dash;
   if (!pat || !pat.length) return undefined;
   return pat.slice();
 }

@@ -25,16 +25,16 @@
 // that transient state survives a collapse/expand round-trip.
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { keyText } from "../lib/keys.ts";
+import { useTranslation } from "react-i18next";
 import { Icon } from "../brand/icons.jsx";
 import { attrValue, columnLabel } from "../lib/conditionColumns.js";
 import { SPEC_FIELDS } from "../lib/reportColumns.js";
 import { num } from "../lib/num.js";
 import { areaVal, areaUnit, lenVal, lenUnit, heightUnit, heightInputToFeet, heightStep, thickUnit, thickInputToInches, thickStep, dimInputStr } from "../lib/units";
 import { HATCHES, PALETTE, NO_FILL, HatchSwatch } from "./hatches.jsx";
-import { LINE_STYLES, LINE_STYLE_IDS } from "../lib/lineStyles.js";
+import { getLineStyles, LINE_STYLE_IDS } from "../lib/lineStyles.js";
 import { baseTagOf, localCount } from "../lib/variants.ts";
-import { materialKind, MATERIAL_PRESETS, GROUT_DEFAULTS, groutDerivedFields, showsGroutCalc, showsGroutDeriveAffordance, isLinearGrout, baseGroutParams, baseCourses, groutRateStale, inFrac } from "../lib/coverage.js";
+import { materialKind, getMaterialPresets, GROUT_DEFAULTS, groutDerivedFields, showsGroutCalc, showsGroutDeriveAffordance } from "../lib/coverage.js";
 import { draftCommitValue, blurCommitValue, blurCommitNonNegative } from "../lib/draftInput.js";
 import { ROLL_FLOORING_TYPES } from "../lib/rollgoods.js";
 import { hasRollSetup, mintRollSetup } from "../lib/rollTakeoff.js";
@@ -169,14 +169,15 @@ function LibDraftInput({ name, value, number, placeholder, width, onCommitText }
 // Materials tab so a library "Adhesive" and an attached line offer the same
 // notch/roller list. Renders nothing when the kind has no preset table.
 function CoveragePresetSelect({ material: m, onPick }) {
-  const presets = (m.basis || "area") === "area" ? MATERIAL_PRESETS[materialKind(m)] : undefined;
+  const { t } = useTranslation("panels");
+  const presets = (m.basis || "area") === "area" ? getMaterialPresets()[materialKind(m)] : undefined;
   if (!presets) return null;
   return (
     <select name="coverage-preset" value={presets.some((t) => t.label === m.note) ? m.note : ""}
       onChange={(e) => { const t = presets.find((x) => x.label === e.target.value); if (t) onPick({ note: t.label, per: t.per }); }}
-      title="Coverage preset — trowel notch / spread rate. Generic industry-typical values; verify against the product data sheet."
+      title={t('takeoffs.coverage_preset_title')}
       style={{ ...ip, background: "var(--paper-bright)" }}>
-      <option value="">preset…</option>
+      <option value="">{t('takeoffs.coverage_preset_option')}</option>
       {presets.map((t) => <option key={t.label} value={t.label}>{t.label} · {t.per} SF/{m.unit || "unit"}</option>)}
     </select>
   );
@@ -184,14 +185,14 @@ function CoveragePresetSelect({ material: m, onPick }) {
 
 // Editable supporting-materials rows for a condition (coverage-derived order qty).
 function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libById, overridden, onRevert, onAttach, onPromote,
-    twin = false, parentTag = "", dropped = [], parentRows = [], onFollowFamilyRow, onRestoreDroppedRow,
-    heightFt = 0 }) {
+    twin = false, parentTag = "", dropped = [], parentRows = [], onFollowFamilyRow, onRestoreDroppedRow }) {
+  const { t } = useTranslation("panels");
   // library link affordances (#47, all optional so the editor works standalone):
   // linked lines show ⛓; a field differing from its library entry tints amber
   // and grows a per-field ↺ revert; unlinked lines can be promoted to the library
   const OV = "1px solid var(--c-warning)";
   const rv = (m, f) => (
-    <button onClick={() => onRevert(m, f)} title="Revert this field to the library value"
+    <button onClick={() => onRevert(m, f)} title={t('takeoffs.mat_revert_title')}
       style={{ padding: "0 3px", border: "none", background: "transparent", color: "var(--c-warning)", cursor: "pointer", fontSize: 11, lineHeight: 1 }}>↺</button>
   );
   return (
@@ -233,75 +234,48 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
                 style={{ padding: "1px 4px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 10, lineHeight: 1.4 }}>↺ follow</button>
             )}
             {lm && <span title={`Linked to “${lm.name}” in the material library — amber fields differ from the library values`} style={{ color: "var(--ink-muted)", fontSize: 11, cursor: "default" }}>⛓</span>}
-            <input name="material-name" value={m.name} onChange={(e) => onUpdate(m.id, { name: e.target.value })} placeholder="Material (e.g. Adhesive)" style={{ ...ip, width: 160, ...(ov("name") ? { border: OV } : {}) }} />
+            <input name="material-name" value={m.name} onChange={(e) => onUpdate(m.id, { name: e.target.value })} placeholder={t('takeoffs.mat_name_placeholder')} style={{ ...ip, width: 160, ...(ov("name") ? { border: OV } : {}) }} />
             {ov("name") && rv(m, "name")}
             <span style={{ color: "var(--ink-muted)" }}>1</span>
-            <input name="material-unit" value={m.unit} onChange={(e) => onUpdate(m.id, { unit: e.target.value })} placeholder="unit" style={{ ...ip, width: 60, ...(ov("unit") ? { border: OV } : {}) }} />
+            <input name="material-unit" value={m.unit} onChange={(e) => onUpdate(m.id, { unit: e.target.value })} placeholder={t('takeoffs.mat_unit_placeholder')} style={{ ...ip, width: 60, ...(ov("unit") ? { border: OV } : {}) }} />
             {ov("unit") && rv(m, "unit")}
             <span style={{ color: "var(--ink-muted)" }}>per</span>
             <input name="material-per" type="number" min="0" step="any" value={m.per || ""} onChange={(e) => onUpdate(m.id, { per: Math.max(0, parseFloat(e.target.value) || 0) })} placeholder="0" style={{ ...ip, width: 66, ...(ov("per") ? { border: OV } : {}) }} />
             {ov("per") && rv(m, "per")}
             <select name="material-basis" value={m.basis || "area"} onChange={(e) => onUpdate(m.id, { basis: e.target.value })} style={{ ...ip, background: "var(--paper-bright)", ...(ov("basis") ? { border: OV } : {}) }}>
-              <option value="area">floor SF</option>
-              <option value="linear">linear LF</option>
-              <option value="count">each</option>
-              <option value="seam_lf" title="Figured seam length from the roll layout — 0 until this condition carries a roll setup">seam LF</option>
+              <option value="area">{t('takeoffs.mat_basis_floor_sf')}</option>
+              <option value="linear">{t('takeoffs.mat_basis_linear_lf')}</option>
+              <option value="count">{t('takeoffs.mat_basis_each')}</option>
+              <option value="seam_lf" title={t('takeoffs.mat_basis_seam_lf_title')}>{t('takeoffs.mat_basis_seam_lf')}</option>
             </select>
             {ov("basis") && rv(m, "basis")}
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: ov("round") ? "var(--c-warning)" : "var(--ink-muted)" }} title="Round up to whole units (you buy whole buckets/bags)">
-              <input name="material-round" type="checkbox" checked={m.round !== false} onChange={(e) => onUpdate(m.id, { round: e.target.checked })} />round up
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: ov("round") ? "var(--c-warning)" : "var(--ink-muted)" }} title={t('takeoffs.mat_round_title')}>
+              <input name="material-round" type="checkbox" checked={m.round !== false} onChange={(e) => onUpdate(m.id, { round: e.target.checked })} />{t('takeoffs.mat_round')}
             </label>
             {ov("round") && rv(m, "round")}
             <CoveragePresetSelect material={m} onPick={(patch) => onUpdate(m.id, patch)} />
-            <input name="material-note" value={m.note || ""} onChange={(e) => onUpdate(m.id, { note: e.target.value })} placeholder="note (coats, trowel…)" style={{ ...ip, width: 150, ...(ov("note") ? { border: OV } : {}) }} />
+            <input name="material-note" value={m.note || ""} onChange={(e) => onUpdate(m.id, { note: e.target.value })} placeholder={t('takeoffs.mat_note_placeholder')} style={{ ...ip, width: 150, ...(ov("note") ? { border: OV } : {}) }} />
             {ov("note") && rv(m, "note")}
             {!lm && onPromote && (
-              <button onClick={() => onPromote(m)} title="Save this material to the library (this line becomes linked)"
-                style={{ padding: "2px 7px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>→ lib</button>
+              <button onClick={() => onPromote(m)} title={t('takeoffs.mat_promote_title')}
+                style={{ padding: "2px 7px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>{t('takeoffs.mat_promote')}</button>
             )}
-            <button onClick={() => onRemove(m.id)} title="Remove this material"
+            <button onClick={() => onRemove(m.id)} title={t('takeoffs.mat_remove_title')}
               style={{ padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 12 }}>✕</button>
             {/* the calculator renders ONLY when the line HAS geometry; a grout
                 line without it keeps its rate untouched behind an explicit
                 opt-in below — never a calculator backfilled with defaults */}
             {showsGroutCalc(m) && (
               <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", paddingLeft: 14, color: "var(--ink-muted)", fontSize: 12 }}>
-                {isLinearGrout(m) ? (
-                  <>
-                    <span>base</span>
-                    {/* read-only: the height belongs to the CONDITION, and an editable copy
-                        here would be a second owner of one number. No height = not figurable,
-                        which says so rather than deriving off a default. */}
-                    <span title="Base height — set on the condition, not here"
-                      style={{ fontFamily: "var(--f-mono, monospace)", padding: "2px 5px", border: "1px dashed var(--ink-faint)",
-                        color: Number(heightFt) > 0 ? "var(--ink)" : "var(--c-warning)" }}>
-                      {Number(heightFt) > 0 ? `${inFrac(Number(heightFt) * 12)}″ H` : "set height on condition"}
-                    </span>
-                    {/* piece height defaults to the base height (one course); a SHORTER one
-                        is multi-course base, where the interior horizontal joints are real */}
-                    <span>· pc</span>
-                    {gi("tileL", "Piece height (in) — defaults to the base height (one course). Enter a SHORTER piece for multi-course base (a 6″ band of 2×2 mosaic is three courses)", { width: 52 })}
-                    <span>×</span>
-                    {gi("tileW", "Piece width (in) — for field-cut base, the parent tile dimension you did NOT rip")}
-                    {baseCourses(g, heightFt) > 1 && (
-                      <span title="Courses of base — a fractional last course is a CUT (waste), not more grout">
-                        ({Math.round(baseCourses(g, heightFt) * 100) / 100} crs)
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <span>tile</span>
-                    {gi("tileL", "Tile length (in)")}
-                    <span>×</span>
-                    {gi("tileW", "Tile width (in)")}
-                  </>
-                )}
-                <span>× thick</span>
+                <span>{t('takeoffs.grout_tile')}</span>
+                {gi("tileL", "Tile length (in)")}
+                <span>×</span>
+                {gi("tileW", "Tile width (in)")}
+                <span>{t('takeoffs.grout_tile_thick')}</span>
                 {gi("tileT", "Tile thickness (in)")}
-                <span>″ · joint</span>
+                <span>{t('takeoffs.grout_joint')}</span>
                 {gi("joint", "Joint width (in) — 1/32″ to 1/2″", { min: 0.03125, max: 0.5, width: 62 })}
-                <span>″ · bag</span>
+                <span>{t('takeoffs.grout_bag')}</span>
                 {gi("bagLbs", "Bag size (lbs)")}
                 <span>lb</span>
                 {ov("grout") && rv(m, "grout")}
@@ -317,11 +291,9 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
             {showsGroutDeriveAffordance(m) && (
               <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 6, paddingLeft: 14 }}>
                 <button onClick={() => setGrout({})}
-                  title={isLinearGrout(m)
-                    ? "Start the base-grout calculator with standard geometry (3/8″ thick @ 1/8″ joint, 25 lb bag) — the piece height comes from the condition. REPLACES this line's coverage rate and note"
-                    : "Start the grout calculator with standard tile geometry (12×24×3/8″ @ 1/8″, 25 lb bag) — REPLACES this line's coverage rate and note with the derived values"}
+                  title={t('takeoffs.grout_derive_title')}
                   style={{ padding: "2px 7px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>
-                  {isLinearGrout(m) ? "derive from base geometry…" : "derive from tile geometry…"}
+                  {t('takeoffs.grout_derive')}
                 </button>
                 {ov("grout") && rv(m, "grout")}
               </div>
@@ -351,13 +323,13 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
         </div>
       )}
       <button onClick={onAdd}
-        style={{ marginTop: 2, padding: "4px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>+ add material</button>
+        style={{ marginTop: 2, padding: "4px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>{t('takeoffs.mat_add')}</button>
       {onAttach && (library || []).length > 0 && (
         <select name="attach-material" value="" onChange={(e) => { if (e.target.value) onAttach(e.target.value); }}
-          title="Attach a material from the library — the line copies the library values and stays linked"
+          title={t('takeoffs.mat_attach_title')}
           style={{ ...ip, marginLeft: 6, background: "var(--paper-bright)", color: "var(--ink-muted)" }}>
-          <option value="">+ from library…</option>
-          {library.map((lm) => <option key={lm.id} value={lm.id}>{lm.name || "(unnamed)"}{lm.per ? ` · ${lm.per}/${lm.unit || "?"}` : ""}</option>)}
+          <option value="">{t('takeoffs.mat_attach_option')}</option>
+          {library.map((lm) => <option key={lm.id} value={lm.id}>{lm.name || t('takeoffs.mat_unnamed')}{lm.per ? ` · ${lm.per}/${lm.unit || "?"}` : ""}</option>)}
         </select>
       )}
     </>
@@ -368,6 +340,7 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
 // Unassigned = attrs key absent; a value deleted from the vocabulary
 // keeps the condition's string, shown as "<value> (removed)".
 function ColumnSelects({ columns, cond, onAssign }) {
+  const { t } = useTranslation("panels");
   return (
     <>
       {columns.map((cc) => {
@@ -376,9 +349,9 @@ function ColumnSelects({ columns, cond, onAssign }) {
           <label key={cc.id} style={{ display: "inline-flex", alignItems: "center", gap: 5, marginRight: 12, marginBottom: 6 }}>
             <span style={{ color: "var(--ink-muted)" }}>{columnLabel(cc)}</span>
             <select name="assign-column-value" value={v} onChange={(e) => onAssign(cc.id, e.target.value)} style={{ ...ip, background: "var(--paper-bright)" }}>
-              <option value="">Unassigned</option>
+              <option value="">{t('takeoffs.unassigned')}</option>
               {cc.values.map((val) => <option key={val} value={val}>{val}</option>)}
-              {v && !cc.values.includes(v) && <option value={v}>{v} (removed)</option>}
+              {v && !cc.values.includes(v) && <option value={v}>{v}{t('takeoffs.columns_value_removed')}</option>}
             </select>
           </label>
         );
@@ -389,12 +362,13 @@ function ColumnSelects({ columns, cond, onAssign }) {
 
 // add-value input for the column manager — local draft state, commit on Enter/+
 function AddValueInput({ onAdd }) {
+  const { t } = useTranslation("panels");
   const [v, setV] = useState("");
-  const commit = () => { const t = v.trim(); if (t) onAdd(t); setV(""); };
+  const commit = () => { const tVal = v.trim(); if (tVal) onAdd(tVal); setV(""); };
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-      <input name="column-add-value" value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && commit()} placeholder="add value" style={{ ...ip, width: 90 }} />
-      <button onClick={commit} title="Add this value to the list"
+      <input name="column-add-value" value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => e.key === "Enter" && !e.nativeEvent.isComposing && commit()} placeholder={t('takeoffs.columns_add_value_placeholder')} style={{ ...ip, width: 90 }} />
+      <button onClick={commit} title={t('takeoffs.columns_add_value_title')}
         style={{ padding: "2px 7px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>+</button>
     </span>
   );
@@ -407,6 +381,8 @@ function AddValueInput({ onAdd }) {
 // source of truth, like the app's single activateCondition path). Owns only its
 // hatch-popover open state; everything else flows through the passed handlers.
 export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondParam, onAssignAttr, conditionColumns = [], layout = "stack", units = "imperial", rollInfo = null }) {
+  const { t } = useTranslation("panels");
+  const lineStyles = getLineStyles();
   const [hatchOpen, setHatchOpen] = useState(false);
   const activeColor = c.color || "#c96442";
   // Top-bar band ("row") only: the two palettes fold into two swatch buttons
@@ -433,16 +409,16 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
       : { padding: "4px 12px 10px", display: "flex", flexDirection: "column", gap: 7, fontSize: 11 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <input name="condition-finish-tag" value={c.finish_tag} onChange={(e) => onUpdateCond({ finish_tag: e.target.value })}
-          title="Rename this condition / finish tag"
+          title={t('takeoffs.cond_rename_title')}
           style={{ width: 88, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontFamily: "var(--f-mono)", fontWeight: 700, fontSize: 12, color: "var(--ink)" }} />
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Multiply this condition by N identical units (measure one, ×N)">
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={t('takeoffs.cond_multiplier_title')}>
           <span style={{ color: "var(--ink-muted)" }}>×</span>
           <input name="condition-multiplier" type="number" min="1" step="1" value={c.multiplier || 1}
             onChange={(e) => onUpdateCond({ multiplier: Math.max(1, parseInt(e.target.value, 10) || 1) })}
             style={{ width: 46, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Waste % — a flooring allowance added on top of the measured quantity in the Report. You choose it per condition (e.g. ~8% straight-lay LVP, ~15% diagonal, ~20% herringbone).">
-          <span style={{ color: "var(--ink-muted)" }}>Waste</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={t('takeoffs.cond_waste_title')}>
+          <span style={{ color: "var(--ink-muted)" }}>{t('takeoffs.waste_label')}</span>
           <input name="condition-waste-pct" type="number" min="0" step="1" value={c.waste_pct ?? 0}
             onChange={(e) => onUpdateCond({ waste_pct: Math.max(0, parseFloat(e.target.value) || 0) })}
             style={{ width: 50, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
@@ -450,79 +426,45 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
         </span>
       </div>
       {isRow && rule()}
-      {isRow ? (
-        <div ref={paletteRef} style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }}>
-          <button data-testid="line-swatch" title={`Line color — ${c.color || "default"}`} aria-expanded={paletteOpen === "line"}
-            onClick={() => setPaletteOpen((v) => (v === "line" ? null : "line"))}
-            style={{ display: "flex", alignItems: "center", gap: 5, padding: "2px 7px 2px 4px", borderRadius: 0, border: `1px solid ${paletteOpen === "line" ? "var(--ink)" : "var(--ink-faint)"}`, background: "var(--paper-bright)", cursor: "pointer", fontSize: 10.5, color: "var(--ink-muted)" }}>
-            <span aria-hidden style={{ width: 16, height: 16, display: "block", borderRadius: 4, border: "1px solid var(--ink-faint)", background: `linear-gradient(to top right, transparent calc(50% - 1.5px), ${activeColor} calc(50% - 1.5px), ${activeColor} calc(50% + 1.5px), transparent calc(50% + 1.5px))` }} />
-            Line
-          </button>
-          <button data-testid="fill-swatch" title={`Fill color — ${c.fill === NO_FILL || !c.fill ? "none" : c.fill}`} aria-expanded={paletteOpen === "fill"}
-            onClick={() => setPaletteOpen((v) => (v === "fill" ? null : "fill"))}
-            style={{ display: "flex", alignItems: "center", gap: 5, padding: "2px 7px 2px 4px", borderRadius: 0, border: `1px solid ${paletteOpen === "fill" ? "var(--ink)" : "var(--ink-faint)"}`, background: "var(--paper-bright)", cursor: "pointer", fontSize: 10.5, color: "var(--ink-muted)" }}>
-            {c.fill && c.fill !== NO_FILL
-              ? <span aria-hidden style={{ width: 16, height: 16, display: "block", borderRadius: 4, background: c.fill, opacity: 0.55, border: "1px solid var(--ink-faint)" }} />
-              : <span aria-hidden style={{ width: 16, height: 16, display: "block", borderRadius: 4, border: "1px solid var(--ink-faint)", fontSize: 9, lineHeight: "14px", textAlign: "center", color: "var(--c-danger)" }}>⦸</span>}
-            Fill
-          </button>
-          {paletteOpen && (
-            <div role="dialog" aria-label={paletteOpen === "line" ? "Line color" : "Fill color"}
-              style={{ position: "absolute", top: 26, left: paletteOpen === "line" ? 0 : 62, zIndex: 30, display: "grid", gridTemplateColumns: "repeat(6, 16px)", gap: 4, padding: 8, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "var(--shadow-pop)" }}>
-              {paletteOpen === "fill" && (
-                <button title="No fill" onClick={() => { onUpdateCond({ fill: NO_FILL }); setPaletteOpen(null); }} style={{ width: 16, height: 16, borderRadius: 4, padding: 0, background: "var(--paper-bright)", border: c.fill === NO_FILL ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 9, lineHeight: "12px", color: "var(--c-danger)" }}>⦸</button>
-              )}
-              {PALETTE.map((p) => {
-                const on = paletteOpen === "line" ? c.color === p : c.fill === p;
-                return <button key={p} title={p} onClick={() => { onUpdateCond(paletteOpen === "line" ? { color: p } : { fill: p }); setPaletteOpen(null); }}
-                  style={{ width: 16, height: 16, borderRadius: 4, padding: 0, background: p, opacity: paletteOpen === "fill" ? 0.55 : 1, border: on ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />;
-              })}
-            </div>
-          )}
-        </div>
-      ) : (
-        <>
-          <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-            <span style={{ color: "var(--ink-muted)", width: 26 }}>Line</span>
-            {PALETTE.map((p) => <button key={p} title={p} onClick={() => onUpdateCond({ color: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, border: c.color === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-            <span style={{ color: "var(--ink-muted)", width: 26 }}>Fill</span>
-            <button title="No fill" onClick={() => onUpdateCond({ fill: NO_FILL })} style={{ width: 16, height: 16, borderRadius: 4, background: "var(--paper-bright)", border: c.fill === NO_FILL ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 9, lineHeight: "12px", color: "var(--c-danger)" }}>⦸</button>
-            {PALETTE.map((p) => <button key={p} title={p} onClick={() => onUpdateCond({ fill: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, opacity: 0.55, border: c.fill === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
-          </div>
-        </>
-      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+        <span style={{ color: "var(--ink-muted)", width: 26 }}>{t('takeoffs.line_label')}</span>
+        {PALETTE.map((p) => <button key={p} title={p} onClick={() => onUpdateCond({ color: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, border: c.color === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+        <span style={{ color: "var(--ink-muted)", width: 26 }}>{t('takeoffs.fill_label')}</span>
+        <button title={t('takeoffs.no_fill_title')} onClick={() => onUpdateCond({ fill: NO_FILL })} style={{ width: 16, height: 16, borderRadius: 4, background: "var(--paper-bright)", border: c.fill === NO_FILL ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 9, lineHeight: "12px", color: "var(--c-danger)" }}>⦸</button>
+        {PALETTE.map((p) => <button key={p} title={p} onClick={() => onUpdateCond({ fill: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, opacity: 0.55, border: c.fill === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
+      </div>
       {isRow && rule()}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ display: "flex", alignItems: "center", gap: 4, position: "relative" }}>
-          <button onClick={() => setHatchOpen((v) => !v)} title="Choose a hatch pattern"
+          <button onClick={() => setHatchOpen((v) => !v)} title={t('takeoffs.hatch_title')}
             style={{ display: "flex", alignItems: "center", gap: 5, padding: "2px 7px 2px 2px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", lineHeight: 0 }}>
             <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>
-            <span style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1 }}>{(HATCHES.find((h) => h.id === (c.hatch || "solid")) || {}).label || "Solid"} ▾</span>
+            <span style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1 }}>{t(`hatch.${(HATCHES.find((h) => h.id === (c.hatch || "solid"))?.id || "solid")}`)} ▾</span>
           </button>
           {hatchOpen && (
             <div style={{ position: "absolute", top: 26, left: 0, zIndex: 30, display: "grid", gridTemplateColumns: "repeat(6, auto)", gap: 4, padding: 8, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "var(--shadow-pop)" }}>
               {HATCHES.map((h) => {
                 const hOn = (c.hatch || "solid") === h.id;
-                return <button key={h.id} title={h.label} onClick={() => { onUpdateCond({ hatch: h.id }); setHatchOpen(false); }} style={{ padding: 1, borderRadius: 0, border: hOn ? `2px solid ${activeColor}` : "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", lineHeight: 0 }}><HatchSwatch type={h.id} line={c.color} fill={c.fill} /></button>;
+                return <button key={h.id} title={t(`hatch.${h.id}`)} onClick={() => { onUpdateCond({ hatch: h.id }); setHatchOpen(false); }} style={{ padding: 1, borderRadius: 0, border: hOn ? `2px solid ${activeColor}` : "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", lineHeight: 0 }}><HatchSwatch type={h.id} line={c.color} fill={c.fill} /></button>;
               })}
             </div>
           )}
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Line style — the outline dash for this finish's floor-area and linear takeoffs (canvas + Marked Set PDF). Surface walls and deducts keep their own dashing.">
-          <span style={{ color: "var(--ink-muted)" }}>Style</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={t('takeoffs.style_title')}>
+          <span style={{ color: "var(--ink-muted)" }}>{t('takeoffs.style_label')}</span>
           <select name="condition-line-style" value={c.line_style || "solid"} onChange={(e) => onUpdateCond({ line_style: e.target.value })}
             style={{ fontSize: 11, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", padding: "1px 3px" }}>
-            {LINE_STYLE_IDS.map((id) => <option key={id} value={id}>{LINE_STYLES[id].label}</option>)}
+            {LINE_STYLE_IDS.map((id) => <option key={id} value={id}>{lineStyles[id].label}</option>)}
           </select>
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={`Height (${heightUnit(units)}) — the default for NEW wall traces (SF = LF × H) and the vertical-SF display on floor areas. Walls keep the height they were drawn at — select a wall to change just that one.`}>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={t('takeoffs.height_title', { unit: heightUnit(units) })}>
           <Icon name="height" size={13} /><span style={{ color: "var(--ink-muted)" }}>H</span>
           <DimParamInput name="condition-height-ft" internal={c.height_ft} units={units} kind="height" width={54}
             onCommit={(v) => onSetCondParam("height_ft", v)} />
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={`Thickness (${thickUnit(units)}) — a Linear run with thickness also computes border/feature-strip SF = LF × T/12. Changing it re-flows existing linear runs.`}>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={t('takeoffs.thickness_title', { unit: thickUnit(units) })}>
           <Icon name="thickness" size={13} /><span style={{ color: "var(--ink-muted)" }}>T</span>
           <DimParamInput name="condition-thickness-in" internal={c.thickness_in} units={units} kind="thickness" width={50}
             onCommit={(v) => onSetCondParam("thickness_in", v)} />
@@ -530,7 +472,7 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
       </div>
       {conditionColumns.length > 0 && isRow && rule()}
       {conditionColumns.length > 0 && (
-        <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", rowGap: 2 }} title="Classify this condition — the Report can group and export by these (manage columns in the Columns tab)">
+        <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", rowGap: 2 }} title={t('takeoffs.classify_title')}>
           <ColumnSelects columns={conditionColumns} cond={c} onAssign={onAssignAttr} />
         </div>
       )}
@@ -552,13 +494,13 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
       {!isRow && !hasRollSetup(c) && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 6, marginTop: 1, borderTop: "1px solid var(--ink-faint)" }}>
           <select name="condition-roll-optin" value=""
-            title="Make this condition a roll-goods material — its floor areas get figured into roll cuts (seams, order footage, a cut diagram)"
+            title={t('takeoffs.roll_optin_title')}
             onChange={(e) => { if (e.target.value) onUpdateCond({ roll_setup: mintRollSetup(e.target.value) }); }}
             style={{ padding: "3px 6px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", fontSize: 11.5, cursor: "pointer" }}>
-            <option value="">+ roll goods…</option>
-            <option value="carpet">Broadloom carpet</option>
-            <option value="sheet_vinyl">Sheet vinyl</option>
-            <option value="rubber">Sheet rubber</option>
+            <option value="">{t('takeoffs.roll_optin')}</option>
+            <option value="carpet">{t('takeoffs.roll_broadloom')}</option>
+            <option value="sheet_vinyl">{t('takeoffs.roll_sheet_vinyl')}</option>
+            <option value="rubber">{t('takeoffs.roll_rubber')}</option>
           </select>
         </div>
       )}
@@ -574,41 +516,41 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
           <div style={{ display: "flex", flexDirection: "column", gap: 5, paddingTop: 6, marginTop: 1, borderTop: "1px solid var(--ink-faint)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ color: "var(--ink-muted)", fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" }}
-                title="Roll-goods setup — the engine figures seams, cuts, and order footage from this condition's floor areas">Roll goods</span>
+                title={t('takeoffs.roll_setup_title')}>{t('takeoffs.roll_setup_label')}</span>
               <select name="condition-roll-material" value={rs.material || "carpet"} onChange={(e) => patch({ material: e.target.value })} style={sel}
-                title="Material class — sets the cut overlay's material-true color">
-                {ROLL_FLOORING_TYPES.map((ft) => <option key={ft} value={ft}>{ft === "carpet" ? "carpet" : ft === "sheet_vinyl" ? "sheet vinyl" : "rubber"}</option>)}
+                title={t('takeoffs.roll_material_title')}>
+                {ROLL_FLOORING_TYPES.map((ft) => <option key={ft} value={ft}>{ft === "carpet" ? t('takeoffs.roll_broadloom') : ft === "sheet_vinyl" ? t('takeoffs.roll_sheet_vinyl') : t('takeoffs.roll_rubber')}</option>)}
               </select>
-              <button onClick={() => onUpdateCond({ roll_setup: undefined })} title="Remove the roll-goods setup (cuts and order footage stop being figured; manual cut edits on shapes are kept but inert)"
+              <button onClick={() => onUpdateCond({ roll_setup: undefined })} title={t('takeoffs.roll_remove_title')}
                 style={{ marginLeft: "auto", padding: "1px 6px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11 }}>✕</button>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-              <span style={{ color: "var(--ink-muted)" }}>Roll</span>
+              <span style={{ color: "var(--ink-muted)" }}>{t('takeoffs.roll_width_label')}</span>
               {rs.material === "carpet" ? (
                 <select name="condition-roll-width" value={String(rs.roll_width_ft)} onChange={(e) => patch({ roll_width_ft: parseFloat(e.target.value) || 12 })} style={sel}
-                  title="Roll width — broadloom comes 12′ or 15′">
+                  title={t('takeoffs.roll_width_broadloom_title')}>
                   <option value="12">12′</option>
                   <option value="15">15′</option>
                 </select>
               ) : (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title="Roll width — resilient sheet widths vary by product (6′, 6′6″, 12′…)">
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title={t('takeoffs.roll_width_resilient_title')}>
                   <input name="condition-roll-width-ft" type="number" min="0" step="1" value={wFt} onChange={(e) => setW(e.target.value, wIn)} style={numIp} /><span style={{ color: "var(--ink-muted)" }}>′</span>
                   <input name="condition-roll-width-in" type="number" min="0" max="11" step="1" value={wIn} onChange={(e) => setW(wFt, e.target.value)} style={numIp} /><span style={{ color: "var(--ink-muted)" }}>″</span>
                 </span>
               )}
-              <span style={{ color: "var(--ink-muted)" }} title="Max usable length of one physical roll — 0 = continuous (cut off one roll). When set, cuts pack across rolls and the diagram marks the roll breaks.">max</span>
+              <span style={{ color: "var(--ink-muted)" }} title={t('takeoffs.roll_max_title')}>max</span>
               <input name="condition-roll-length" type="number" min="0" step="5" value={rs.roll_length_ft || 0}
                 onChange={(e) => patch({ roll_length_ft: Math.max(0, parseFloat(e.target.value) || 0) })} style={numIp} />
               <span style={{ color: "var(--ink-muted)" }}>′</span>
               <select name="condition-roll-direction" value={rs.direction || "auto"} onChange={(e) => patch({ direction: e.target.value })} style={sel}
-                title="Run direction — auto picks whichever needs less footage; force it when the pattern or the light dictates">
+                title={t('takeoffs.roll_direction_title')}>
                 <option value="auto">auto</option>
                 <option value="ns">N–S</option>
                 <option value="ew">E–W</option>
               </select>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-              <span style={{ color: "var(--ink-muted)" }} title="Seam allowance — extra width where two cuts meet, per seamed edge">Seam</span>
+              <span style={{ color: "var(--ink-muted)" }} title={t('takeoffs.roll_seam_title')}>{t('takeoffs.seam_label')}</span>
               <input name="condition-roll-seam" type="number" min="0" step="0.5" value={rs.seam_allowance_in ?? 2}
                 onChange={(e) => patch({ seam_allowance_in: Math.max(0, parseFloat(e.target.value) || 0) })} style={numIp} />
               <span style={{ color: "var(--ink-muted)" }}>″ · wall</span>
@@ -616,7 +558,7 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
                 onChange={(e) => patch({ wall_overage_in: Math.max(0, parseFloat(e.target.value) || 0) })} style={numIp} />
               <span style={{ color: "var(--ink-muted)" }}>″ · sells by</span>
               <select name="condition-roll-unit" value={rs.price_unit || "sf"} onChange={(e) => patch({ price_unit: e.target.value })} style={sel}
-                title="The unit this material sells in — a unit, never a dollar (the takeoff stays quantities-only)">
+                title={t('takeoffs.roll_unit_title')}>
                 <option value="sy">SY</option>
                 <option value="sf">SF</option>
                 <option value="lf">LF</option>
@@ -624,10 +566,10 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
             </div>
             {rollInfo && (
               <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 11, color: "var(--ink)" }}
-                title="The figured order — how far down the roll the cuts reach (side-by-side cuts share length), rounded up to the inch. The Roll panel has the cut diagram.">
-                Figured: order {ftIn(rollInfo.orderFt)} · {rollInfo.qty} {rollInfo.unit.toUpperCase()}
+                title={t('takeoffs.roll_figured_title')}>
+                {t('takeoffs.roll_figured')} {ftIn(rollInfo.orderFt)} · {rollInfo.qty} {rollInfo.unit.toUpperCase()}
                 {rollInfo.config.rollLengthFt > 0 ? ` · ${rollInfo.rollCount} roll${rollInfo.rollCount === 1 ? "" : "s"}` : ""}
-                {rollInfo.oversize && <span style={{ color: "var(--c-danger)" }}> · a cut exceeds one roll</span>}
+                {rollInfo.oversize && <span style={{ color: "var(--c-danger)" }}> {t('takeoffs.roll_oversize_inline')}</span>}
               </div>
             )}
           </div>
@@ -636,7 +578,7 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
       {!isRow && c.spec && typeof c.spec === "object" && !Array.isArray(c.spec) && (
         <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingTop: 6, marginTop: 1, borderTop: "1px solid var(--ink-faint)" }}>
           <span style={{ color: "var(--ink-muted)", fontSize: 10, letterSpacing: 0.4, textTransform: "uppercase" }}
-            title="Product spec imported from the finish schedule — editable; shown as read-only columns in the Report / CSV / XLSX">Spec</span>
+            title={t('takeoffs.spec_title')}>{t('takeoffs.spec_label')}</span>
           {SPEC_FIELDS.map(({ field, header }) => (
             <label key={field} style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ color: "var(--ink-muted)", width: 74, flexShrink: 0 }}>{header}</span>
@@ -665,6 +607,7 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
 // with their length and their gap, reported and never counted, for someone to
 // place with the drawing in front of them.
 function TransitionsAction({ cond: c, sources, draft, setDraft, result, setResult, onDerive, onLocate2 }) {
+  const { t } = useTranslation("panels");
   const open = draft.id === c.id;
   // the transition lands on its OWN tag, so this condition is never a source —
   // deriving onto C-1 would add the joint's LF to the carpet it separates
@@ -679,29 +622,29 @@ function TransitionsAction({ cond: c, sources, draft, setDraft, result, setResul
         <button onClick={() => { setDraft({ id: c.id, a: opts[0]?.id || "", b: opts[1]?.id || "" }); setResult(null); }}
           disabled={opts.length < 2}
           title={opts.length < 2
-            ? "Two finishes with measured rooms on the open sheets are needed before anything can meet."
-            : `Derive where two finishes meet onto ${c.finish_tag}. Runs where the rooms butt inside one open space commit dashed, pending Accept; runs across a wall are reported and never counted — that transition is a threshold in a doorway no trace can locate.`}
+            ? t("takeoffs.transitions_disabled_title")
+            : t("takeoffs.transitions_enabled_title", { tag: c.finish_tag })}
           style={{ padding: "3px 9px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent",
             color: opts.length < 2 ? "var(--ink-faint)" : "var(--ink)", cursor: opts.length < 2 ? "default" : "pointer", fontSize: 11.5 }}>
-          ⟂ Transitions…
+          {t("takeoffs.transitions_button")}
         </button>
       ) : (
         <div>
           <div style={{ color: "var(--ink-muted)", marginBottom: 5 }}>
-            Derive onto <b style={{ color: "var(--ink)" }}>{c.finish_tag}</b> — where these two meet.
+            {t("takeoffs.transitions_derive_onto")} <b style={{ color: "var(--ink)" }}>{c.finish_tag}</b> {t("takeoffs.transitions_derive_onto_suffix")}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
             <select name="transition-a" value={draft.a} onChange={(e) => setDraft({ ...draft, a: e.target.value })} style={selStyle}>
               {opts.map((s) => <option key={s.id} value={s.id}>{s.finish_tag} ({s.rooms})</option>)}
             </select>
-            <span style={{ color: "var(--ink-muted)" }}>meets</span>
+            <span style={{ color: "var(--ink-muted)" }}>{t("takeoffs.transitions_meets")}</span>
             <select name="transition-b" value={draft.b} onChange={(e) => setDraft({ ...draft, b: e.target.value })} style={selStyle}>
               {opts.map((s) => <option key={s.id} value={s.id}>{s.finish_tag} ({s.rooms})</option>)}
             </select>
             <button name="transition-derive" onClick={run} disabled={!ready}
               style={{ padding: "2px 9px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent",
-                color: ready ? "var(--ink)" : "var(--ink-faint)", cursor: ready ? "pointer" : "default", fontSize: 11 }}>Derive</button>
-            <button onClick={close} style={{ padding: "2px 6px", border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>Cancel</button>
+                color: ready ? "var(--ink)" : "var(--ink-faint)", cursor: ready ? "pointer" : "default", fontSize: 11 }}>{t("takeoffs.transitions_derive")}</button>
+            <button onClick={close} style={{ padding: "2px 6px", border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>{t("takeoffs.transitions_cancel")}</button>
           </div>
           {result?.error && (
             <div style={{ marginTop: 6, padding: "4px 6px", border: "1px solid var(--c-warning)", color: "var(--ink)", background: "var(--paper-bright)" }}>{result.error}</div>
@@ -710,28 +653,28 @@ function TransitionsAction({ cond: c, sources, draft, setDraft, result, setResul
             <div style={{ marginTop: 6 }}>
               <div style={{ color: result.committed ? "var(--c-positive)" : "var(--ink-muted)" }}>
                 {result.committed
-                  ? `${result.committed} run${result.committed === 1 ? "" : "s"} · ${result.total_lf} LF proposed on ${result.onto} — dashed until you Accept.`
-                  : "No butt joints between these two on the open sheets."}
+                  ? t("takeoffs.transitions_runs_committed", { count: result.committed, lf: result.total_lf, tag: result.onto })
+                  : t("takeoffs.transitions_no_joints")}
               </div>
               {result.withheld?.length > 0 && (
                 <div style={{ marginTop: 5, paddingTop: 5, borderTop: "1px solid var(--ink-faint)" }}>
                   <div style={{ color: "var(--ink-muted)", fontSize: 10.5, letterSpacing: 0.4, textTransform: "uppercase" }}
-                    title="These rooms are adjacent across a partition. The transition is a threshold in the doorway, and nothing in the trace record says where the doorway is — so it is reported, never counted. Measure it at the door.">
-                    Reported, never counted
+                    title={t("takeoffs.transitions_reported_title")}>
+                    {t("takeoffs.transitions_reported")}
                   </div>
                   <ul style={{ margin: "3px 0 0", paddingLeft: 14, color: "var(--ink)" }}>
                     {result.withheld.map((w, i) => (
                       <li key={`${w.between_shape_ids.join("-")}-${i}`} style={{ marginBottom: 1 }}>
-                        {w.length_lf} LF across {w.gap_in}″ of wall
+                        {w.length_lf} {t("takeoffs.transitions_across_wall", { gap: w.gap_in })}
                         <span style={{ color: "var(--ink-muted)" }}> — {w.between.join(" / ")}</span>
                         {onLocate2 && (
-                          <button onClick={() => onLocate2(w.sheet_id, w.at)} title="Center the sheet on this run — find the door and measure the threshold there"
-                            style={{ marginLeft: 5, padding: 0, border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11, textDecoration: "underline" }}>look</button>
+                          <button onClick={() => onLocate2(w.sheet_id, w.at)} title={t("takeoffs.transitions_look_title")}
+                            style={{ marginLeft: 5, padding: 0, border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11, textDecoration: "underline" }}>{t("takeoffs.transitions_look")}</button>
                         )}
                       </li>
                     ))}
                   </ul>
-                  <div style={{ marginTop: 3, color: "var(--ink-muted)" }}>Adjacent, not joined — measure the threshold at the door.</div>
+                  <div style={{ marginTop: 3, color: "var(--ink-muted)" }}>{t("takeoffs.transitions_footnote")}</div>
                 </div>
               )}
             </div>
@@ -761,6 +704,7 @@ function TakeoffsPanel({
   onAddLabel, onRenameLabel, onRemoveLabel,
   onToggleCollapse, onHoldGesture, onTogglePin,
 }) {
+  const { t } = useTranslation("panels");
   const [panelTab, setPanelTab] = useState("takeoffs");       // "takeoffs" | "library" | "materials" | "columns"
   const [condQuery, setCondQuery] = useState("");             // live filter over the condition list (transient, never persisted)
   const [matLibQuery, setMatLibQuery] = useState("");         // Materials tab search (transient; describes the browser-global library, so hydrate/epoch leaves it alone)
@@ -944,43 +888,43 @@ function TakeoffsPanel({
             onActivate(c.id);
           }}
           onDoubleClick={() => onLocate(c.id)}
-          title={reassigning ? "Reassign selected shape to this condition" : keyText("Make this the active condition (double-click zooms to its takeoffs · ⌘-click / ⇧-click selects for bulk edit · drag to the top-bar palette for one-click access)")}
+          title={reassigning ? t('takeoffs.cond_title_reassign') : t('takeoffs.cond_title_active')}
           style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", cursor: "pointer", outline: reassigning ? "1px dashed var(--cobalt)" : "none", outlineOffset: -3, userSelect: "none" }}>
-          {hot && <span title={pinned ? `Palette shortcut — press ${hIdx + 1} to activate` : `Press ${hIdx + 1} to activate (pin to lock this number)`} style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: pinned ? "var(--cobalt)" : "var(--ink-muted)", border: `1px solid ${pinned ? "var(--cobalt)" : "var(--ink-faint)"}`, borderRadius: 3, padding: "0 3px", flexShrink: 0 }}>{hIdx + 1}</span>}
+          {hot && <span title={pinned ? t('takeoffs.palette_shortcut_title', { num: hIdx + 1 }) : t('takeoffs.hotkey_title', { num: hIdx + 1 })} style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: pinned ? "var(--cobalt)" : "var(--ink-muted)", border: `1px solid ${pinned ? "var(--cobalt)" : "var(--ink-faint)"}`, borderRadius: 3, padding: "0 3px", flexShrink: 0 }}>{hIdx + 1}</span>}
           <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontWeight: on ? 700 : 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {/* a twin reads as one: whose it is, and how many of its rows have gone their own way */}
-              {c.variant_of ? <span aria-hidden title="A twin — its materials follow another condition" style={{ color: "var(--ink-faint)", fontWeight: 400 }}>↳ </span> : null}
+              {c.variant_of ? <span aria-hidden title={t('takeoffs.twin_title')} style={{ color: "var(--ink-faint)", fontWeight: 400 }}>↳ </span> : null}
               {c.finish_tag}{mult > 1 ? <span style={{ color: "var(--ink-muted)", fontWeight: 500 }}> ×{mult}</span> : null}
               {c.variant_of && localCount(c) > 0 ? (
-                <span title={`${localCount(c)} material row${localCount(c) === 1 ? "" : "s"} no longer follow${localCount(c) === 1 ? "s" : ""} the family`}
+                <span title={t('takeoffs.twin_count_title', { count: localCount(c) })}
                   style={{ marginLeft: 5, fontFamily: "var(--f-mono,monospace)", fontSize: 9, fontWeight: 500, color: "var(--cobalt)", border: "1px solid var(--cobalt)", borderRadius: 3, padding: "0 3px" }}>{localCount(c)}</span>
               ) : null}
             </div>
             <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 11, color: "var(--ink-muted)" }}>
               {qtys({ sf, wsf, lf, ea })}{!sf && !wsf && !lf && !ea && !projDiff ? "—" : ""}
               {projDiff ? (
-                <span title="Σ = whole project, every sheet. The leading numbers count the open sheets only." style={{ color: "var(--ink-faint)" }}>
+                <span title={t('takeoffs.project_sigma_title')} style={{ color: "var(--ink-faint)" }}>
                   {(sf || wsf || lf || ea) ? " · " : ""}Σ {qtys(prQ) || "0"}
                 </span>
               ) : null}
             </div>
           </div>
           <span style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)", flexShrink: 0 }}>{shapeCount}▦</span>
-          <button onClick={(e) => { e.stopPropagation(); onLocate(c.id); }} title="Zoom the canvas to this condition's takeoffs"
+          <button onClick={(e) => { e.stopPropagation(); onLocate(c.id); }} title={t('takeoffs.zoom_title')}
             style={{ flexShrink: 0, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12, lineHeight: 1 }}>⌖</button>
           <button onClick={(e) => { e.stopPropagation(); onSetActive(c.id); setPanelMatOpen((v) => (on ? !v : true)); }}
-            title="Supporting Materials — labor, subfloor & materials for this condition"
+            title={t('takeoffs.materials_title')}
             style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: matOn ? "var(--ink)" : "transparent", color: matOn ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>
             <Icon name="product" size={11} />{c.materials?.length ? c.materials.length : ""}
           </button>
           <button onClick={(e) => { e.stopPropagation(); onTogglePin(c.id); }}
-            title={pinned ? "Unpin from the top-bar palette" : (palette.length >= 9 ? "Palette is full (9)" : "Pin to the top-bar palette for one-click access")}
+            title={pinned ? t('takeoffs.pin_title_pinned') : (palette.length >= 9 ? t('takeoffs.pin_title_full') : t('takeoffs.pin_title_available'))}
             style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", padding: "2px 5px", borderRadius: 0, border: `1px solid ${pinned ? "var(--cobalt)" : "var(--ink-faint)"}`, background: "transparent", color: pinned ? "var(--cobalt)" : (!pinned && palette.length >= 9 ? "var(--ink-faint)" : "var(--ink-muted)"), cursor: "pointer", lineHeight: 0 }}>
             <Icon name="pin" size={12} />
           </button>
-          <button onClick={(e) => { e.stopPropagation(); onDeleteCondition(c.id); }} title="Delete this condition (and its takeoffs)"
+          <button onClick={(e) => { e.stopPropagation(); onDeleteCondition(c.id); }} title={t('takeoffs.delete_title')}
             style={{ flexShrink: 0, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 12 }}>✕</button>
         </div>
         {/* properties for the ACTIVE condition — the appearance editing that
@@ -992,17 +936,17 @@ function TakeoffsPanel({
           result={transResult} setResult={setTransResult} onDerive={onDeriveTransitions} onLocate2={onLocateTransition} />}
         {matOn && (
           <div style={{ padding: "8px 12px 10px", background: "var(--paper-cream)", borderTop: "1px solid var(--ink-faint)", fontSize: 11.5 }}>
-            <div style={{ marginBottom: 6, color: "var(--ink-muted)" }}>Supporting Materials — order qty = measured ÷ coverage, rounded up.</div>
+            <div style={{ marginBottom: 6, color: "var(--ink-muted)" }}>{t('takeoffs.supporting_heading')}</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
               <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ color: "var(--ink-muted)", width: 56, flexShrink: 0 }}>Labor</span>
-                <input name="condition-labor-type" value={c.laborType || ""} placeholder="e.g. Glue-down, Float, Nail-down"
+                <span style={{ color: "var(--ink-muted)", width: 56, flexShrink: 0 }}>{t('takeoffs.labor')}</span>
+                <input name="condition-labor-type" value={c.laborType || ""} placeholder={t('takeoffs.labor_placeholder')}
                   onChange={(e) => onUpdateCond({ laborType: e.target.value })}
                   style={{ ...ip, flex: 1, minWidth: 0 }} />
               </label>
               <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ color: "var(--ink-muted)", width: 56, flexShrink: 0 }}>Subfloor</span>
-                <input name="condition-subfloor-type" value={c.subfloorType || ""} placeholder="e.g. Ply, Concrete slab, OSB"
+                <span style={{ color: "var(--ink-muted)", width: 56, flexShrink: 0 }}>{t('takeoffs.subfloor')}</span>
+                <input name="condition-subfloor-type" value={c.subfloorType || ""} placeholder={t('takeoffs.subfloor_placeholder')}
                   onChange={(e) => onUpdateCond({ subfloorType: e.target.value })}
                   style={{ ...ip, flex: 1, minWidth: 0 }} />
               </label>
@@ -1014,14 +958,14 @@ function TakeoffsPanel({
               return (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, padding: "3px 6px", border: "1px solid var(--ink-faint)", background: "var(--paper-cream)", fontSize: 11 }}>
                   <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--ink-muted)" }}
-                    title={`These materials follow “${par?.finish_tag || "the original"}”. Edit a row and only that row stops following.`}>
-                    ↳ twin of <b style={{ color: "var(--ink)" }}>{par?.finish_tag || "—"}</b>
-                    {n ? <span style={{ color: "var(--cobalt)" }}> · {n} local</span> : null}
+                    title={t('takeoffs.twin_follow_title', { tag: par?.finish_tag || "the original" })}>
+                    {t('takeoffs.twin_of')} <b style={{ color: "var(--ink)" }}>{par?.finish_tag || "—"}</b>
+                    {n ? <span style={{ color: "var(--cobalt)" }}> {t('takeoffs.twin_local', { count: n })}</span> : null}
                   </span>
                   {onSplitCondition && (
                     <button onClick={() => onSplitCondition(c.id)}
-                      title={`Split out — freeze the following rows where they stand and stop following “${par?.finish_tag || "the original"}”. Keeps its name and still groups with the family.`}
-                      style={{ padding: "1px 6px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 10.5, color: "var(--ink)", flexShrink: 0 }}>⤴ Split out</button>
+                      title={t('takeoffs.twin_split_title', { tag: par?.finish_tag || "the original" })}
+                      style={{ padding: "1px 6px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 10.5, color: "var(--ink)", flexShrink: 0 }}>{t('takeoffs.twin_split')}</button>
                   )}
                 </div>
               );
@@ -1037,27 +981,27 @@ function TakeoffsPanel({
                 CDP/automation-driven session dead, and this panel is scripted in demos. */}
             {onDuplicateCondition && (twinDraft.id === c.id ? (
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-                <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>Duplicate for</span>
+                <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>{t('takeoffs.duplicate_for')}</span>
                 <input name="twin-label" autoFocus value={twinDraft.label}
                   onChange={(e) => setTwinDraft({ id: c.id, label: e.target.value })}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && twinDraft.label.trim()) { onDuplicateCondition(c.id, twinDraft.label.trim()); setTwinDraft({ id: "", label: "" }); }
                     if (e.key === "Escape") setTwinDraft({ id: "", label: "" });
                   }}
-                  placeholder="e.g. Level 2" style={{ ...ip, width: 120 }} />
+                  placeholder={t('takeoffs.duplicate_placeholder')} style={{ ...ip, width: 120 }} />
                 <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>
                   → <b style={{ color: "var(--ink)" }}>{twinDraft.label.trim() ? `${baseTagOf(c.finish_tag)} – ${twinDraft.label.trim()}` : "…"}</b>
                 </span>
                 <button onClick={() => { if (twinDraft.label.trim()) { onDuplicateCondition(c.id, twinDraft.label.trim()); setTwinDraft({ id: "", label: "" }); } }}
                   disabled={!twinDraft.label.trim()}
-                  style={{ padding: "2px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: twinDraft.label.trim() ? "var(--ink)" : "var(--ink-faint)", cursor: twinDraft.label.trim() ? "pointer" : "default", fontSize: 11 }}>Duplicate</button>
+                  style={{ padding: "2px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: twinDraft.label.trim() ? "var(--ink)" : "var(--ink-faint)", cursor: twinDraft.label.trim() ? "pointer" : "default", fontSize: 11 }}>{t('takeoffs.duplicate')}</button>
                 <button onClick={() => setTwinDraft({ id: "", label: "" })}
-                  style={{ padding: "2px 6px", border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>Cancel</button>
+                  style={{ padding: "2px 6px", border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>{t('takeoffs.duplicate_cancel')}</button>
               </div>
             ) : (
               <button onClick={() => setTwinDraft({ id: c.id, label: "" })}
-                title="Duplicate this condition — the same finish measured somewhere else, with its own materials. Name the area (e.g. Level 2); no takeoffs come along, you measure into it, and its materials keep following this condition until you change them there."
-                style={{ marginTop: 6, padding: "3px 9px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 11.5 }}>⎘ Duplicate for another area…</button>
+                title={t('takeoffs.duplicate_button_title')}
+                style={{ marginTop: 6, padding: "3px 9px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 11.5 }}>{t('takeoffs.duplicate_button')}</button>
             ))}
           </div>
         )}
@@ -1076,21 +1020,21 @@ function TakeoffsPanel({
       : { width, flexShrink: 0, display: "flex", background: "var(--paper-bright)", borderLeft: "1px solid var(--ink-faint)", fontSize: 12.5 }}>
       {!overlay && <div onPointerDown={onResizeDown} onPointerMove={onResizeMove} onPointerUp={onResizeEnd}
         onPointerCancel={onResizeEnd} onLostPointerCapture={onResizeEnd}
-        title="Drag to resize"
+        title={t('takeoffs.resize_title')}
         style={{ width: 5, flexShrink: 0, cursor: "col-resize", touchAction: "none", background: "transparent", borderRight: "1px solid var(--ink-faint)" }} />}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "7px 12px", background: "var(--ink)", color: "var(--paper-cream)", flexShrink: 0 }}>
           <span style={{ display: "inline-flex", gap: 2 }}>
-            {[["takeoffs", `Takeoffs · ${multiSheet ? "these sheets" : "this sheet"}`], ["library", `Library${templates.length ? ` (${templates.length})` : ""}`], ["materials", `Materials${matLib.length ? ` (${matLib.length})` : ""}`], ["columns", `Columns${conditionColumns.length ? ` (${conditionColumns.length})` : ""}`]].map(([id, label]) => (
+            {[["takeoffs", multiSheet ? t('takeoffs.tab_takeoffs_multi') : t('takeoffs.tab_takeoffs_single')], ["library", templates.length ? t('takeoffs.tab_library_count', { count: templates.length }) : t('takeoffs.tab_library')], ["materials", matLib.length ? t('takeoffs.tab_materials_count', { count: matLib.length }) : t('takeoffs.tab_materials')], ["columns", conditionColumns.length ? t('takeoffs.tab_columns_count', { count: conditionColumns.length }) : t('takeoffs.tab_columns')]].map(([id, label]) => (
               <button key={id} onClick={() => setPanelTab(id)}
                 style={{ padding: "3px 8px", border: "none", borderBottom: panelTab === id ? "2px solid var(--paper-cream)" : "2px solid transparent", background: "none", color: "var(--paper-cream)", opacity: panelTab === id ? 1 : 0.65, cursor: "pointer", fontWeight: 700, fontSize: 12.5 }}>{label}</button>
             ))}
           </span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
             <button onClick={() => onPanelPrefs((p) => ({ ...p, strip: !p.strip }))}
-              title="Compact strip — also show the conditions as a horizontal strip above the canvas (handy on small projects with the panel collapsed)"
-              style={{ background: panelPrefs.strip ? "var(--paper-cream)" : "none", border: "1px solid var(--paper-cream)", color: panelPrefs.strip ? "var(--ink)" : "var(--paper-cream)", fontSize: 9.5, fontFamily: "var(--f-mono)", letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer", padding: "2px 6px", lineHeight: 1.4 }}>strip</button>
-            <button onClick={onToggleCollapse} title="Collapse the panel (the ☰ button on the canvas edge brings it back)"
+              title={t('takeoffs.strip_title')}
+              style={{ background: panelPrefs.strip ? "var(--paper-cream)" : "none", border: "1px solid var(--paper-cream)", color: panelPrefs.strip ? "var(--ink)" : "var(--paper-cream)", fontSize: 9.5, fontFamily: "var(--f-mono)", letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer", padding: "2px 6px", lineHeight: 1.4 }}>{t('takeoffs.strip')}</button>
+            <button onClick={onToggleCollapse} title={t('takeoffs.collapse_title')}
               style={{ background: "none", border: "none", color: "var(--paper-cream)", fontSize: 15, cursor: "pointer", lineHeight: 1 }}>»</button>
           </span>
         </div>
@@ -1098,44 +1042,44 @@ function TakeoffsPanel({
         {/* view controls — search / natural sort / tag-family grouping.
             All VIEW-ONLY: the array order (hotkeys, payload) never changes. */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 10px", borderBottom: "1px solid var(--ink-faint)", flexShrink: 0 }}>
-          <input name="condition-filter" value={condQuery} onChange={(e) => setCondQuery(e.target.value)} placeholder="filter conditions…"
+          <input name="condition-filter" value={condQuery} onChange={(e) => setCondQuery(e.target.value)} placeholder={t('takeoffs.filter_placeholder')}
             style={{ flex: 1, minWidth: 0, padding: "4px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-          {condQuery && <button onClick={() => setCondQuery("")} title="Clear the filter" style={btnClearX}>×</button>}
+          {condQuery && <button onClick={() => setCondQuery("")} title={t('takeoffs.filter_clear_title')} style={btnClearX}>×</button>}
           <button onClick={() => onPanelPrefs((p) => ({ ...p, az: !p.az }))}
-            title="Natural sort by tag (CT-2 before CT-10) — a view; hotkeys 1–9 keep their original numbering"
+            title={t('takeoffs.sort_title')}
             style={{ padding: "3px 7px", borderRadius: 0, border: `1px solid ${panelPrefs.az ? "var(--cobalt)" : "var(--ink-faint)"}`, background: panelPrefs.az ? "var(--cobalt)" : "transparent", color: panelPrefs.az ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 10.5, fontFamily: "var(--f-mono)", lineHeight: 1.4 }}>A→Z</button>
           <button onClick={() => onPanelPrefs((p) => ({ ...p, group: !p.group }))}
-            title="Group by tag family (the text before the dash: CPT, LVT, CT…)"
+            title={t('takeoffs.group_title')}
             style={{ padding: "3px 7px", borderRadius: 0, border: `1px solid ${panelPrefs.group ? "var(--cobalt)" : "var(--ink-faint)"}`, background: panelPrefs.group ? "var(--cobalt)" : "transparent", color: panelPrefs.group ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 10.5, fontFamily: "var(--f-mono)", lineHeight: 1.4 }}>≡ grp</button>
         </div>
         {/* bulk actions — appear while a ⌘/⇧ multi-selection is live
             (liveChecked: the count never claims ids the list lost) */}
         {liveChecked.length > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)", background: "var(--tint-select)", flexShrink: 0, flexWrap: "wrap", fontSize: 11 }}>
-            <strong style={{ color: "var(--cobalt)" }}>{liveChecked.length} selected</strong>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title="Set the waste % on every selected condition">
-              <span style={{ color: "var(--ink-muted)" }}>Waste</span>
+            <strong style={{ color: "var(--cobalt)" }}>{t('takeoffs.selected', { count: liveChecked.length })}</strong>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title={t('takeoffs.waste_bulk_title')}>
+              <span style={{ color: "var(--ink-muted)" }}>{t('takeoffs.waste_label')}</span>
               <input name="bulk-waste" type="number" min="0" step="1" value={bulkWaste} onChange={(e) => setBulkWaste(e.target.value)} placeholder="%"
                 onKeyDown={(e) => e.key === "Enter" && applyBulkWaste()}
                 style={{ width: 44, padding: "2px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 11 }} />
-              <button onClick={applyBulkWaste} title="Apply waste % to the selection" style={{ padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11 }}>✓</button>
+              <button onClick={applyBulkWaste} title={t('takeoffs.waste_apply_title')} style={{ padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11 }}>✓</button>
             </span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title="Set the line color on every selected condition">
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title={t('takeoffs.color_bulk_title')}>
               {PALETTE.map((p) => <button key={p} title={p} onClick={() => onBulkColor(liveIds(), p)} style={{ width: 13, height: 13, borderRadius: 3, background: p, border: "1px solid var(--ink-faint)", cursor: "pointer", padding: 0 }} />)}
             </span>
-            <button onClick={bulkDelete} title="Delete every selected condition (and their takeoffs)"
-              style={{ padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Delete</button>
-            <button onClick={() => setCheckedConds(new Set())} title="Clear the selection"
+            <button onClick={bulkDelete} title={t('takeoffs.delete_bulk_title')}
+              style={{ padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>{t('takeoffs.delete')}</button>
+            <button onClick={() => setCheckedConds(new Set())} title={t('takeoffs.clear_selection_title')}
               style={{ marginLeft: "auto", padding: "2px 6px", border: "none", background: "none", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>✕</button>
           </div>
         )}
         <div style={{ flex: 1, overflow: "auto" }}>
-          {conditions.length === 0 && <div style={{ padding: "12px", color: "var(--ink-muted)" }}>No conditions yet — add one and start tracing.</div>}
+          {conditions.length === 0 && <div style={{ padding: "12px", color: "var(--ink-muted)" }}>{t('takeoffs.no_conditions')}</div>}
           {condGroups.map((g) => (
             <React.Fragment key={g.name ?? "_all"}>
               {g.name != null && (
                 <div onClick={() => setClosedGroups((s) => { const n = new Set(s); if (n.has(g.name)) n.delete(g.name); else n.add(g.name); return n; })}
-                  title="Collapse / expand this tag family"
+                  title={t('takeoffs.family_collapse_title')}
                   style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px", borderTop: "1px solid var(--ink-faint)", background: "var(--paper-cream)", cursor: "pointer", fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ink-muted)", userSelect: "none" }}>
                   <span style={{ width: 10 }}>{closedGroups.has(g.name) ? "▸" : "▾"}</span>
                   <span style={{ fontWeight: 700, color: "var(--ink)" }}>{g.name}</span>
@@ -1147,13 +1091,13 @@ function TakeoffsPanel({
               {groupVisibleItems(g).map(({ c }) => renderCondRow(c))}
             </React.Fragment>
           ))}
-          {searchMiss && <div style={{ padding: "12px", color: "var(--ink-muted)" }}>No conditions match “{condQuery}”.</div>}
+          {searchMiss && <div style={{ padding: "12px", color: "var(--ink-muted)" }}>{t('takeoffs.search_miss', { query: condQuery })}</div>}
           <div style={{ padding: "6px 12px", borderTop: "1px solid var(--ink-faint)" }}>
-            <button onClick={onAddCondition} style={{ width: "100%", padding: "6px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--ink-muted)" }}>+ condition</button>
+            <button onClick={onAddCondition} style={{ width: "100%", padding: "6px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12.5, color: "var(--ink-muted)" }}>{t('takeoffs.add_condition')}</button>
           </div>
           <div style={{ padding: "8px 12px", borderTop: "1px solid var(--ink-faint)", color: "var(--ink-muted)", fontSize: 10.5 }}>
-            {keyText("Select a shape on the plan, then ⧉ Copy / ⎘ Paste (⌘C / ⌘V) — it lands on the sheet under your cursor.")}
-            <br />⌫ undo point · Esc cancel · scroll = zoom · pan mid-measure: press-and-drag (a click without dragging places the point).
+            {t('takeoffs.help_copy')}
+            <br />{t('takeoffs.help_undo')}
           </div>
         </div>
         </>}
@@ -1161,30 +1105,30 @@ function TakeoffsPanel({
         {panelTab === "library" && (
           <div style={{ flex: 1, overflow: "auto" }}>
             <div style={{ padding: "8px 12px 4px", color: "var(--ink-muted)", fontSize: 11 }}>
-              Reusable condition templates, shared across every plan in this browser. A fresh workspace seeds from this library (built-in flooring defaults when it's empty).
+              {t('takeoffs.library_description')}
             </div>
             <div style={{ padding: "6px 12px 10px" }}>
               <button onClick={onSaveTemplate} disabled={!aCond}
-                title="Snapshot the active condition (appearance, waste, H/T, materials) into the library"
+                title={t('takeoffs.library_save_title')}
                 style={{ width: "100%", padding: "6px 10px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: aCond ? "pointer" : "default", fontSize: 12, color: aCond ? "var(--ink)" : "var(--ink-faint)" }}>
-                + save {aCond?.finish_tag || "the active condition"} to the library
+                {aCond?.finish_tag ? t('takeoffs.library_save', { tag: aCond.finish_tag }) : t('takeoffs.library_save_default')}
               </button>
             </div>
-            {templates.length === 0 && <div style={{ padding: "2px 12px 12px", color: "var(--ink-muted)" }}>No templates yet — make a condition the way you like it, then save it here.</div>}
-            {templates.map((t, idx) => (
-              <div key={`${t.finish_tag}-${idx}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderTop: "1px solid var(--ink-faint)" }}>
-                <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0 }}><HatchSwatch type={t.hatch || "solid"} line={t.color} fill={t.fill} /></span>
+            {templates.length === 0 && <div style={{ padding: "2px 12px 12px", color: "var(--ink-muted)" }}>{t('takeoffs.library_empty')}</div>}
+            {templates.map((tItem, idx) => (
+              <div key={`${tItem.finish_tag}-${idx}`} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderTop: "1px solid var(--ink-faint)" }}>
+                <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0 }}><HatchSwatch type={tItem.hatch || "solid"} line={tItem.color} fill={tItem.fill} /></span>
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.finish_tag}</div>
+                  <div style={{ fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tItem.finish_tag}</div>
                   <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)" }}>
-                    {t.waste_pct || 0}% waste{t.height_ft != null ? ` · H ${dimInputStr(t.height_ft, units, "height")}${units === "metric" ? " m" : "′"}` : ""}{t.thickness_in != null ? ` · T ${dimInputStr(t.thickness_in, units, "thickness")}${units === "metric" ? " mm" : "″"}` : ""}{t.materials?.length ? ` · ${t.materials.length} material${t.materials.length === 1 ? "" : "s"}` : ""}
+                    {tItem.waste_pct || 0}% waste{tItem.height_ft != null ? ` · H ${dimInputStr(tItem.height_ft, units, "height")}${units === "metric" ? " m" : "′"}` : ""}{tItem.thickness_in != null ? ` · T ${dimInputStr(tItem.thickness_in, units, "thickness")}${units === "metric" ? " mm" : "″"}` : ""}{tItem.materials?.length ? ` · ${tItem.materials.length} material${tItem.materials.length === 1 ? "" : "s"}` : ""}
                   </div>
                 </div>
-                <button onClick={() => { onApplyTemplate(t); setPanelTab("takeoffs"); }} title="Add a condition from this template to the takeoff"
-                  style={{ flexShrink: 0, padding: "3px 8px", borderRadius: 0, border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Apply</button>
-                <button onClick={() => onRenameTemplate(idx)} title="Rename this template"
+                <button onClick={() => { onApplyTemplate(tItem); setPanelTab("takeoffs"); }} title={t('takeoffs.library_apply_title')}
+                  style={{ flexShrink: 0, padding: "3px 8px", borderRadius: 0, border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>{t('takeoffs.library_apply')}</button>
+                <button onClick={() => onRenameTemplate(idx)} title={t('takeoffs.library_rename_title')}
                   style={{ flexShrink: 0, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>✎</button>
-                <button onClick={() => onDeleteTemplate(idx)} title="Remove this template from the library"
+                <button onClick={() => onDeleteTemplate(idx)} title={t('takeoffs.library_delete_title')}
                   style={{ flexShrink: 0, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11 }}>✕</button>
               </div>
             ))}
@@ -1197,14 +1141,14 @@ function TakeoffsPanel({
         {panelTab === "materials" && (
           <div style={{ flex: 1, overflow: "auto", fontSize: 11.5 }}>
             <div style={{ padding: "8px 12px 4px", color: "var(--ink-muted)", fontSize: 11 }}>
-              Reusable materials, browser-wide. Attaching one to a condition copies its values and keeps a link — edits here only reach linked lines when you push them.
+              {t('takeoffs.materials_description')}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 12px 8px" }}>
-              <input name="material-library-filter" value={matLibQuery} onChange={(e) => setMatLibQuery(e.target.value)} placeholder="filter materials…"
+              <input name="material-library-filter" value={matLibQuery} onChange={(e) => setMatLibQuery(e.target.value)} placeholder={t('takeoffs.materials_filter_placeholder')}
                 style={{ flex: 1, minWidth: 0, padding: "4px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-              {matLibQuery && <button onClick={() => setMatLibQuery("")} title="Clear the filter" style={btnClearX}>×</button>}
+              {matLibQuery && <button onClick={() => setMatLibQuery("")} title={t('takeoffs.filter_clear_title')} style={btnClearX}>×</button>}
             </div>
-            {matLib.length === 0 && <div style={{ padding: "2px 12px 12px", color: "var(--ink-muted)" }}>No library materials yet — add one below, or use “→ lib” on a condition's material line.</div>}
+            {matLib.length === 0 && <div style={{ padding: "2px 12px 12px", color: "var(--ink-muted)" }}>{t('takeoffs.materials_empty')}</div>}
             {matLib.filter((lm) => !matQ || (lm.name || "").toLowerCase().includes(matQ)).map((lm) => {
               const n = linkedCountById[lm.id] || 0;
               return (
@@ -1214,41 +1158,41 @@ function TakeoffsPanel({
                         commit routes every transient value through libEntryPatch's rename
                         re-classification, where a select-all-retype walks the entry's kind
                         through arbitrary intermediate classifications */}
-                    <LibDraftInput name="library-material-name" value={lm.name} placeholder="Material (e.g. Adhesive)" width={150}
+                    <LibDraftInput name="library-material-name" value={lm.name} placeholder={t('takeoffs.mat_name_placeholder')} width={150}
                       onCommitText={(t) => onUpdateLibMaterial(lm.id, { name: t })} />
                     <span style={{ color: "var(--ink-muted)" }}>1</span>
-                    <input name="library-material-unit" value={lm.unit} onChange={(e) => onUpdateLibMaterial(lm.id, { unit: e.target.value })} placeholder="unit" style={{ ...ip, width: 54 }} />
-                    <span style={{ color: "var(--ink-muted)" }}>per</span>
+                    <input name="library-material-unit" value={lm.unit} onChange={(e) => onUpdateLibMaterial(lm.id, { unit: e.target.value })} placeholder={t('takeoffs.mat_unit_placeholder')} style={{ ...ip, width: 54 }} />
+            <span style={{ color: "var(--ink-muted)" }}>{t('takeoffs.mat_per')}</span>
                     <LibDraftInput name="library-material-per" number value={lm.per || ""} placeholder="0" width={62}
                       onCommitText={(t) => onUpdateLibMaterial(lm.id, { per: Math.max(0, parseFloat(t) || 0) })} />
                     <select name="library-material-basis" value={lm.basis || "area"} onChange={(e) => onUpdateLibMaterial(lm.id, { basis: e.target.value })} style={{ ...ip, background: "var(--paper-bright)" }}>
-                      <option value="area">floor SF</option>
-                      <option value="linear">linear LF</option>
-                      <option value="count">each</option>
-                      <option value="seam_lf" title="Figured seam length from the roll layout — 0 until the condition carries a roll setup">seam LF</option>
+                      <option value="area">{t('takeoffs.mat_basis_floor_sf')}</option>
+                      <option value="linear">{t('takeoffs.mat_basis_linear_lf')}</option>
+                      <option value="count">{t('takeoffs.mat_basis_each')}</option>
+                      <option value="seam_lf" title={t('takeoffs.mat_basis_seam_lf_title')}>{t('takeoffs.mat_basis_seam_lf')}</option>
                     </select>
-                    <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--ink-muted)" }} title="Round up to whole units">
-                      <input name="library-material-round" type="checkbox" checked={lm.round !== false} onChange={(e) => onUpdateLibMaterial(lm.id, { round: e.target.checked })} />round up
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "var(--ink-muted)" }} title={t('takeoffs.mat_round_title')}>
+                      <input name="library-material-round" type="checkbox" checked={lm.round !== false} onChange={(e) => onUpdateLibMaterial(lm.id, { round: e.target.checked })} />{t('takeoffs.mat_round')}
                     </label>
                     <CoveragePresetSelect material={lm} onPick={(patch) => onUpdateLibMaterial(lm.id, patch)} />
-                    <LibDraftInput name="library-material-note" value={lm.note || ""} placeholder="note" width={120}
+                    <LibDraftInput name="library-material-note" value={lm.note || ""} placeholder={t('takeoffs.mat_note_placeholder')} width={120}
                       onCommitText={(t) => onUpdateLibMaterial(lm.id, { note: t })} />
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5 }}>
-                    <span style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)" }}>{n ? `⛓ ${n} linked line${n === 1 ? "" : "s"}` : "not linked yet"}</span>
+                    <span style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)" }}>{n ? t('takeoffs.materials_linked', { count: n }) : t('takeoffs.materials_not_linked')}</span>
                     <div style={{ flex: 1 }} />
                     {n > 0 && (
-                      <button onClick={() => onPushLibUpdate(lm.id)} title="Replace the values on every linked condition line with these library values (overrides included)"
-                        style={{ padding: "2px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 11 }}>update linked ({n})</button>
+                      <button onClick={() => onPushLibUpdate(lm.id)} title={t('takeoffs.materials_push_title')}
+                        style={{ padding: "2px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 11 }}>{t('takeoffs.materials_push', { count: n })}</button>
                     )}
-                    <button onClick={() => onDeleteLibMaterial(lm.id)} title="Remove from the library — linked lines keep their values, only the link is removed"
+                    <button onClick={() => onDeleteLibMaterial(lm.id)} title={t('takeoffs.materials_remove_title')}
                       style={{ padding: "2px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11 }}>✕</button>
                   </div>
                 </div>
               );
             })}
             <div style={{ padding: "6px 12px", borderTop: matLib.length ? "1px solid var(--ink-faint)" : "none" }}>
-              <button onClick={onAddLibMaterial} style={btnAddFull}>+ add library material</button>
+              <button onClick={onAddLibMaterial} style={btnAddFull}>{t('takeoffs.materials_add')}</button>
             </div>
           </div>
         )}
@@ -1262,18 +1206,18 @@ function TakeoffsPanel({
                 it's the degenerate single-column case. */}
             <details open style={{ borderBottom: "2px solid var(--ink-faint)" }}>
               <summary style={{ padding: "8px 12px 4px", cursor: "pointer", fontWeight: 600, fontSize: 11.5 }}>
-                Shape labels{shapeLabels.length ? ` (${shapeLabels.length})` : ""}
+                {t('takeoffs.columns_shape_labels')}{shapeLabels.length ? ` (${shapeLabels.length})` : ""}
               </summary>
               <div style={{ padding: "0 12px 4px", color: "var(--ink-muted)", fontSize: 11 }}>
-                Phase / area labels (e.g. Phase 1, East Wing) for grouping the Report by shape.
+                {t('takeoffs.columns_shape_labels_desc')}
               </div>
               <div style={{ padding: "2px 12px 10px", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                 {shapeLabels.map((v) => (
                   <span key={v} style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 3px 2px 8px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", fontSize: 11.5, color: "var(--ink)" }}>
                     {v}
-                    <button onClick={() => onRenameLabel(v)} title="Rename this label — labeled shapes follow"
+                    <button onClick={() => onRenameLabel(v)} title={t('takeoffs.columns_label_rename_title')}
                       style={{ padding: "0 3px", border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>✎</button>
-                    <button onClick={() => onRemoveLabel(v)} title="Remove from the list — labeled shapes keep the value (shown ungrouped in the Report)"
+                    <button onClick={() => onRemoveLabel(v)} title={t('takeoffs.columns_label_remove_title')}
                       style={{ padding: "0 3px", border: "none", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11 }}>✕</button>
                   </span>
                 ))}
@@ -1281,24 +1225,24 @@ function TakeoffsPanel({
               </div>
             </details>
             <div style={{ padding: "8px 12px 4px", color: "var(--ink-muted)", fontSize: 11 }}>
-              Custom columns (e.g. CSI Division) classify conditions for report grouping and exports. Columns and values apply to the whole project; assign values on a condition in the Takeoffs tab.
+              {t('takeoffs.columns_description')}
             </div>
-            {conditionColumns.length === 0 && <div style={{ padding: "2px 12px 8px", color: "var(--ink-muted)" }}>Add a column, e.g. CSI Division.</div>}
+            {conditionColumns.length === 0 && <div style={{ padding: "2px 12px 8px", color: "var(--ink-muted)" }}>{t('takeoffs.columns_empty')}</div>}
             {conditionColumns.map((cc) => (
               <div key={cc.id} style={{ padding: "8px 12px", borderTop: "1px solid var(--ink-faint)" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                  <input name="column-name" value={cc.name} onChange={(e) => onRenameColumn(cc.id, e.target.value)} placeholder="Column name (e.g. CSI Division)"
+                  <input name="column-name" value={cc.name} onChange={(e) => onRenameColumn(cc.id, e.target.value)} placeholder={t('takeoffs.columns_name_placeholder')}
                     style={{ padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12, flex: 1, minWidth: 0 }} />
-                  <button onClick={() => onDeleteColumn(cc.id)} title="Delete this column (whole project)"
-                    style={{ flexShrink: 0, padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 12 }}>✕ column</button>
+                  <button onClick={() => onDeleteColumn(cc.id)} title={t('takeoffs.columns_delete_title')}
+                    style={{ flexShrink: 0, padding: "2px 7px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 12 }}>{t('takeoffs.columns_delete')}</button>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                   {cc.values.map((v) => (
                     <span key={v} style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 3px 2px 8px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", fontSize: 11.5, color: "var(--ink)" }}>
                       {v}
-                      <button onClick={() => onRenameColumnValue(cc.id, v)} title="Rename this value — assigned conditions follow"
+                      <button onClick={() => onRenameColumnValue(cc.id, v)} title={t('takeoffs.columns_value_rename_title')}
                         style={{ padding: "0 3px", border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>✎</button>
-                      <button onClick={() => onRemoveColumnValue(cc.id, v)} title="Remove from the list — conditions keep the value, shown as (removed)"
+                      <button onClick={() => onRemoveColumnValue(cc.id, v)} title={t('takeoffs.columns_value_remove_title')}
                         style={{ padding: "0 3px", border: "none", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11 }}>✕</button>
                     </span>
                   ))}
@@ -1307,7 +1251,7 @@ function TakeoffsPanel({
               </div>
             ))}
             <div style={{ padding: "6px 12px", borderTop: conditionColumns.length ? "1px solid var(--ink-faint)" : "none" }}>
-              <button onClick={onAddColumn} style={btnAddFull}>+ add column</button>
+              <button onClick={onAddColumn} style={btnAddFull}>{t('takeoffs.columns_add')}</button>
             </div>
           </div>
         )}

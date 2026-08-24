@@ -6,6 +6,8 @@
 // defaults from lib/coverage.js, so the CT-1 seed and the editor can't drift.)
 
 import { GROUT_DEFAULTS } from "./coverage.js";
+import i18n from '../i18n/index.js';
+const _t = (key) => i18n.t(key, { ns: 'lib' });
 
 export const MIN_SCALE = 0.03;
 export const MAX_SCALE = 32;  // stage zoom is in raster px — with the 28MP base budget this keeps ≈ the old deep-zoom ceiling (detail view carries the crispness)
@@ -54,29 +56,31 @@ export const DETAIL_STALL_MS = 25000;
 export const SNAP_CELL = 24;   // snap-grid bucket, raster px (Spline runs 12 — its budgeted raster is denser)
 
 // toolbar menus — STACK-style: the menu face shows the armed tool
-export const MEASURE_TOOLS = [
-  { id: "oneclick", icon: "oneClick", label: "One-Click Area", shortcut: "O" },
-  { id: "area", icon: "area", label: "Area", shortcut: "A" },
-  { id: "rect", icon: "rectTool", label: "Rectangle", shortcut: "R" },
-  { id: "linear", icon: "linear", label: "Linear", shortcut: "L" },
-  { id: "surface", icon: "surface", label: "Surface Area", shortcut: "S" },
-  { id: "count", icon: "count", label: "Count", shortcut: "C" },
-  { id: "symbol", icon: "symbol", label: "Symbol — marquee ONE instance, count every placement (#264)", shortcut: "Y" },
+// Getter functions so labels resolve _t() at render time (language changes propagate).
+export const getMeasureTools = () => [
+  { id: "oneclick", icon: "oneClick", label: _t("tool.oneclick"), shortcut: "O" },
+  { id: "area", icon: "area", label: _t("tool.area"), shortcut: "A" },
+  { id: "rect", icon: "rectTool", label: _t("tool.rect"), shortcut: "R" },
+  { id: "linear", icon: "linear", label: _t("tool.linear"), shortcut: "L" },
+  { id: "curve", icon: "curve", label: _t("tool.curve"), shortcut: "Q" },
+  { id: "surface", icon: "surface", label: _t("tool.surface"), shortcut: "S" },
+  { id: "count", icon: "count", label: _t("tool.count"), shortcut: "C" },
 ];
-export const CUT_TOOLS = [
-  { id: "deduct", icon: "deduct", label: "Deduct shape", shortcut: "D" },
-  { id: "deduct-rect", icon: "deductRect", label: "Deduct rectangle", shortcut: "⇧D" },
+// Legacy static export for code that doesn't need language-reactive labels
+export const MEASURE_TOOLS = getMeasureTools();
+export const getCutTools = () => [
+  { id: "deduct", icon: "deduct", label: _t("cut_tool.deduct"), shortcut: "D" },
+  { id: "deduct-rect", icon: "deductRect", label: _t("cut_tool.deduct_rect"), shortcut: "⇧D" },
 ];
-export const MARKUP_TOOLS = [
-  { id: "highlighter", icon: "highlighter", label: "Highlighter", shortcut: "H" },
-  { id: "cloud", icon: "cloud", label: "Revision cloud" },
-  { id: "callout", icon: "callout", label: "Callout" },
-  { id: "text", icon: "textNote", label: "Text note" },
-  { id: "highlight", icon: "highlight", label: "Highlight box" },
-  // N, not M — M is the push-to-talk dictation hold, globally
-  { id: "dimension", icon: "dimension", label: "Dimension line", shortcut: "N" },
-  { id: "image", icon: "image", label: "Image — marquee a region, or upload a file" },
+export const CUT_TOOLS = getCutTools();
+export const getMarkupTools = () => [
+  { id: "highlighter", icon: "highlighter", label: _t("markup_tool.highlighter"), shortcut: "H" },
+  { id: "cloud", icon: "cloud", label: _t("markup_tool.cloud") },
+  { id: "callout", icon: "callout", label: _t("markup_tool.callout") },
+  { id: "text", icon: "textNote", label: _t("markup_tool.text") },
+  { id: "highlight", icon: "highlight", label: _t("markup_tool.highlight") },
 ];
+export const MARKUP_TOOLS = getMarkupTools();
 export const MARKUP_IDS = MARKUP_TOOLS.map((t) => t.id);
 // highlighter inks — literal hex (SVG attrs; CSS vars don't resolve there).
 // The freehand TOOL is "highlighter" (the two-corner "highlight" box above is

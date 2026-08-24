@@ -20,11 +20,13 @@
 
 import { round2 } from "./num.js";
 import { csvEsc as esc } from "./csv.js";
-import { GETTERS, CSV_PROFILE, colGetter, floorPerimeterLf, applyUnits, METRIC_CSV_LABELS } from "./reportColumns.js";
+import { GETTERS, getCsvProfile, colGetter, floorPerimeterLf, applyUnits, METRIC_CSV_LABELS } from "./reportColumns.js";
 import { M_PER_FT, M2_PER_SF } from "./units";
 import { attrValue } from "./conditionColumns.js";
 import { shapeLabelValue } from "./shapeLabels.js";
 import { compareSheetKeys } from "./sheetKey"; // NOT ./sheets — that module imports pdfjs-dist
+import i18n from '../i18n/index.js';
+const _t = (key, options) => i18n.t(key, { ns: 'lib', ...options });
 
 // Re-export so existing consumers (markedset, snapshotDiff, ReportPanel, tests)
 // keep importing round2 from here; num.js is the single definition.
@@ -224,7 +226,7 @@ export function labelGroupedRows(conditions, shapes, shapeLabels = [], ctx = nul
     const bucketShapes = byLabel.get(v);
     return {
       value: v || null,               // null = Unlabeled
-      label: v || "Unlabeled",
+      label: v || _t("csv_header.unlabeled"),
       rows: conditionTotals(conditions, bucketShapes, ctx).filter((r) => r.shape_count > 0),
       perimByCond: floorPerimeterLf(bucketShapes),
     };
@@ -395,7 +397,7 @@ export function grandTotals(rows) {
 export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel = null, cols = null, ctx = null, byLabel = null, brandName = "OpenTakeoff", units = "imperial") {
   // the caller passes RAW descriptors; conversion happens here (one site per
   // output) through the same applyUnits seam the report table uses
-  const columns = applyUnits(cols || CSV_PROFILE.filter((c) => c.defaultVisible), units, METRIC_CSV_LABELS);
+  const columns = applyUnits(cols || getCsvProfile().filter((c) => c.defaultVisible), units, METRIC_CSV_LABELS);
   const M = units === "metric";
   const AU = M ? "m2" : "SF", LU = M ? "m" : "LF";
   const A = (v) => (M ? round2((Number(v) || 0) * M2_PER_SF) : v);
@@ -410,7 +412,7 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
   // reference figures never total). A metric descriptor carries `conv` so the
   // by-key reads convert exactly like the body cells.
   const foot = (c) => {
-    if (c.key === "finish") return "TOTAL";
+    if (c.key === "finish") return _t("csv_header.total");
     // derived waste feet: same getter as the body cells (g carries all four inputs)
     const v = (c.key === "waste_sf" || c.key === "waste_lf") ? GETTERS[c.key](g) : (g[c.key] !== undefined ? g[c.key] : "");
     return c.conv && v !== "" ? c.conv(v) : v;
@@ -420,15 +422,15 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
   // supporting materials — per condition, then a combined buy list. Coverage
   // rates deliberately stay as entered (SF/LF-based) in metric mode — the
   // upstream metric contract; the report panel carries the footnote.
-  const basisLabel = (b) => (b === "linear" ? "LF" : b === "count" ? "EA" : b === "seam_lf" ? "seam LF" : "SF");
+  const basisLabel = (b) => (b === "linear" ? _t("basis.lf") : b === "count" ? _t("basis.ea") : b === "seam_lf" ? _t("basis.seam_lf") : _t("basis.sf"));
   const perCond = [];
-  for (const r of rows) for (const m of (r.materials || [])) perCond.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || "unit"} / ${m.per} ${basisLabel(m.basis)}`, m.note || ""]);
+  for (const r of rows) for (const m of (r.materials || [])) perCond.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || _t("basis.unit")} / ${m.per} ${basisLabel(m.basis)}`, m.note || ""]);
   if (perCond.length) {
     lines.push("");
-    lines.push(["Finish", "Material", "Qty", "Unit", "Coverage", "Note"].map(esc).join(","));
+    lines.push([_t("csv_header.finish"), _t("csv_header.material"), _t("csv_header.qty"), _t("csv_header.unit"), _t("csv_header.coverage"), _t("csv_header.note")].map(esc).join(","));
     for (const row of perCond) lines.push(row.map(esc).join(","));
     lines.push("");
-    lines.push(["Material (combined)", "Qty", "Unit"].map(esc).join(","));
+    lines.push([_t("csv_header.material_combined"), _t("csv_header.qty"), _t("csv_header.unit")].map(esc).join(","));
     for (const s of materialsSummary(rows)) lines.push([s.name, s.qty, s.unit].map(esc).join(","));
   }
 
@@ -437,7 +439,7 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
   // because display labels are session-volatile.
   if (bySheet && bySheet.length) {
     lines.push("");
-    lines.push(["Sheet", "Sheet ID", "Finish", `Floor ${AU}`, `Wall ${AU}`, `Border ${AU}`, LU, "EA"].map(esc).join(","));
+    lines.push([_t("csv_header.sheet"), _t("csv_header.sheet_id"), _t("csv_header.finish"), `${_t("column.floor_sf").replace("SF", AU)}`, `${_t("column.wall_sf").replace("SF", AU)}`, `${_t("column.border_sf").replace("SF", AU)}`, LU, _t("column.ea")].map(esc).join(","));
     for (const g of bySheet) {
       const label = sheetLabel ? sheetLabel(g.sheet_id) : g.sheet_id;
       for (const row of g.rows) {
@@ -447,7 +449,7 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
         lines.push([label, g.sheet_id, finish, A(r.floor_sf), A(r.wall_sf), A(r.border_sf), L(r.lf), r.ea].map(esc).join(","));
       }
     }
-    if (hasMultipliers(bySheet)) lines.push("# " + BY_SHEET_BASE_NOTE);
+    if (hasMultipliers(bySheet)) lines.push("# " + _t("markedset.by_sheet_base_note"));
   }
 
   // per-label subtotals (#112) — ORDERED quantities (waste/×N applied per
@@ -456,9 +458,9 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
   // CSV stays byte-identical.
   if (byLabel && byLabel.length) {
     lines.push("");
-    lines.push(["Label", "Finish", `Floor ${AU}`, `Wall ${AU}`, `Border ${AU}`, LU, "EA"].map(esc).join(","));
+    lines.push([_t("csv_header.label"), _t("csv_header.finish"), `${_t("column.floor_sf").replace("SF", AU)}`, `${_t("column.wall_sf").replace("SF", AU)}`, `${_t("column.border_sf").replace("SF", AU)}`, LU, _t("column.ea")].map(esc).join(","));
     for (const g of byLabel) {
-      const name = g.value || "Unlabeled";
+      const name = g.value || _t("csv_header.unlabeled");
       for (const row of g.rows) lines.push([name, row.finish_tag, A(row.floor_sf), A(row.wall_sf), A(row.border_sf), L(row.lf), row.ea].map(esc).join(","));
     }
   }
