@@ -28,7 +28,11 @@ export function setNetOptions(o) { OPTS = { ...DEFAULT_OPTS, ...(o || {}) }; }
 
 function unit(L){const d=Math.hypot(L[2]-L[0],L[3]-L[1])||1;return [(L[2]-L[0])/d,(L[3]-L[1])/d];}
 
+const PROF=[]; let _pt=0;
+const mark=(name)=>{ if(!OPTS.PROFILE) return; const t=(typeof performance!=="undefined"?performance.now():Date.now()); if(_pt) PROF.push([name, Math.round(t-_pt)]); _pt=t; };
+export function profile(){ return PROF.slice(); }
 export function build(g, ftPx, texts){
+  PROF.length=0; _pt=0; mark("start");
   O.markPolylineArcs(g.segs, g.meta);      // polyline-drawn swings get their SEG_CURVE stamp
   // ── ASK THE NETWORK: per-segment wall vouch (junction/crossing/lattice
   // discipline, ported+held-out-validated). A vouched segment is wall evidence
@@ -46,6 +50,7 @@ export function build(g, ftPx, texts){
   const fleck=g.subpaths?O.classifyFleckSegs(g.segs, g.meta, g.subpaths, 1, ftPx):null;
   const tagbox=(g.subpaths&&texts?.length)?O.classifyTagBoxSegs(g.segs, g.meta, g.subpaths, texts, 1, ftPx):null;
   for(let i=0;i<soft.length;i++){ if(annot&&annot[i])soft[i]=1; if(fleck&&fleck[i])soft[i]=1; if(tagbox&&tagbox[i])soft[i]=1; }
+  mark("classifiers");
   const W_MIN=0.15*ftPx, W_MAX=1.6*ftPx, SLIVER_LEN=1.5*ftPx, POCHE_LEN=1.0*ftPx;
   // ── the sheet's furniture pen: the MODAL pen over long strokes. Wall lines
   // are plotted heavier (Kreo's own wall signal); strokes at or below the
@@ -335,12 +340,14 @@ export function build(g, ftPx, texts){
   };
   // baseline pools first; only a STARVED sheet asks the network (measured:
   // on a seeded sheet the vouch admits casework and fragments rooms).
+  mark("(pools-start)");
   let {poche, rawLines, rawStrokes, rawLow, rawVouch, rawSoft} = extractPools(false);
   let starved=false;
   if(poche.length===0 && rawLines.length===0 && rawStrokes.length===0){
     starved=true;
     ({poche, rawLines, rawStrokes, rawLow, rawVouch, rawSoft} = extractPools(true));
   }
+  mark("extractPools");
   // ── dedup/merge collinear close lines (the sliver's two faces, double-draws) ──
   const DUP_D=0.12*ftPx;
   const lines=mergeLines(rawLines, DUP_D);
@@ -476,6 +483,7 @@ export function build(g, ftPx, texts){
       return false;
     };
   })();
+  mark("merge+admission");
   // ── STAIR NOSING admission: a stair flight is a FAMILY of parallel treads
   // at riser pitch (0.65-1.35 ft), uniform length (stringer to stringer),
   // ends aligned. The estimator's floor boundary is the EXTREMAL tread (the
@@ -607,6 +615,7 @@ export function build(g, ftPx, texts){
       }
     }
   }
+  mark("stair");
   // ── FIELD FILTER (starved sheets): an admitted stroke with 2+ admitted
   // parallel neighbours on EACH side inside a 3 ft window (real mutual
   // overlap) is interior to a striped FIELD — floor pattern, not wall. The
@@ -653,6 +662,7 @@ export function build(g, ftPx, texts){
       }
     }
   }
+  mark("field");
   // ── DOOR SWING ARCS: the drafter's own statement of every hinged opening ──
   // chain curve chords (the flagNonDoorArcs chaining rule), circle-fit, accept
   // door-radius quarter-ish sweeps; closure = hinge (center) -> strike endpoint.
@@ -710,6 +720,7 @@ export function build(g, ftPx, texts){
     return {cx:cx+mx, cy:cy+my, r};
   }
   // nearness to any wall face line (for strike-endpoint scoring)
+  mark("arcs");
   // ── ANNOTATION STROKES ARE NOT WALLS. Park plots dimension arrows, grain
   // marks and text outlines at the wall pen, so the pen gate admits them and
   // a ring notches around "GRAIN". Two facts the drawing states: (1) a wall
@@ -804,6 +815,7 @@ export function build(g, ftPx, texts){
     });
     strokes.length=0; strokes.push(...kept); strokeStage.length=0; strokeStage.push(...keptStage);
   }
+  mark("annotation");
   // ── pair face lines into wall RUNS ──
   // sliver+sliver or sliver+stroke; NEVER stroke+stroke (furniture would become walls)
   const T_MIN=0.15*ftPx, T_MAX=1.5*ftPx, OVL_MIN=0.8*ftPx;
@@ -884,6 +896,7 @@ export function build(g, ftPx, texts){
     return false;
   };
 
+  mark("runs+material");
   // ── run ENDS + poché caps = opening endpoints ──
   // an END: {x,y (center), dir (outward unit along axis), halfWidth, corners:[p1,p2]}
   const ends=[];
@@ -945,6 +958,7 @@ export function build(g, ftPx, texts){
   // ── LINE-END closures: two collinear wall-line ends facing each other across
   // a door-scale clear gap are one interrupted wall line — an OPENING. Bridge
   // each face line, so the doorway closes at the finish face (his ruler).
+  mark("ends+wallInk");
   // ── FINISH FAMILY at a point: direction signature of LONG hatch strokes
   // within reach. Tile grid = two orthogonal buckets; carpet stipple is
   // short and never votes (reads as 'none'). Two openings' sides with
@@ -984,11 +998,25 @@ export function build(g, ftPx, texts){
   // the drafter DRAWS the transition (TR-01): a stroke spanning the connector,
   // parallel, within 0.35 ft — a hatch difference alone fires across open
   // plans (measured: Park 11→8, CI 28→22, AU 15→10 without this).
-  const transitionUnder=(ax,ay,bx,by)=>{
-    const dx=bx-ax, dy=by-ay, L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L;
+  // grid of LONG non-clip segments (≥1.5 ft) for the transition-line test —
+  // a full scan per wide-gap candidate was 57 of 60 s on a 105k-seg sheet
+  const longGrid=new Map(); const LG=8*ftPx;
+  {
     const n=g.segs.length>>2;
     for(let i=0;i<n;i++){
       if(g.meta[i]&O.SEG_CLIP) continue;
+      const x1=g.segs[i*4],y1=g.segs[i*4+1],x2=g.segs[i*4+2],y2=g.segs[i*4+3];
+      if(Math.hypot(x2-x1,y2-y1)<1.5*ftPx) continue;
+      const gx0=Math.floor(Math.min(x1,x2)/LG),gx1=Math.floor(Math.max(x1,x2)/LG),gy0=Math.floor(Math.min(y1,y2)/LG),gy1=Math.floor(Math.max(y1,y2)/LG);
+      for(let gx=gx0;gx<=gx1;gx++) for(let gy=gy0;gy<=gy1;gy++){ const k=gx+','+gy; const b=longGrid.get(k); if(b)b.push(i); else longGrid.set(k,[i]); }
+    }
+  }
+  const transitionUnder=(ax,ay,bx,by)=>{
+    const dx=bx-ax, dy=by-ay, L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L;
+    const cand=new Set();
+    const gx0=Math.floor(Math.min(ax,bx)/LG),gx1=Math.floor(Math.max(ax,bx)/LG),gy0=Math.floor(Math.min(ay,by)/LG),gy1=Math.floor(Math.max(ay,by)/LG);
+    for(let gx=gx0;gx<=gx1;gx++) for(let gy=gy0;gy<=gy1;gy++){ const b=longGrid.get(gx+','+gy); if(b) for(const i of b) cand.add(i); }
+    for(const i of cand){
       const x1=g.segs[i*4],y1=g.segs[i*4+1],x2=g.segs[i*4+2],y2=g.segs[i*4+3];
       const sl=Math.hypot(x2-x1,y2-y1); if(sl<0.5*L) continue;
       const vx=(x2-x1)/sl, vy=(y2-y1)/sl;
@@ -1008,6 +1036,14 @@ export function build(g, ftPx, texts){
     return false;
   };
   const finishDiffers=(ax,ay,bx,by)=>{
+    // cheap first: the hatch signatures; the transition-line search last
+    {
+      const dx=bx-ax, dy=by-ay, L=Math.hypot(dx,dy)||1;
+      const nx=-dy/L, ny=dx/L, mx=(ax+bx)/2, my=(ay+by)/2, off=1.2*ftPx;
+      const s1=finishSig(mx+nx*off,my+ny*off,1.5*ftPx), s2=finishSig(mx-nx*off,my-ny*off,1.5*ftPx);
+      if(!s1&&!s2) return false;
+      if(s1&&s2){ let shared=false; for(const b of s1) if(s2.has(b)){shared=true;break;} if(shared) return false; }
+    }
     if(crossesXbox(ax,ay,bx,by)) return false;        // a tub rim is not a transition (measured: sealed two baths through the tub)
     if(!transitionUnder(ax,ay,bx,by)) return false;
     // sample both sides of a connector: perpendicular offsets 1.2 ft
@@ -1019,6 +1055,7 @@ export function build(g, ftPx, texts){
     for(const b of s1) if(s2.has(b)) return false;  // share a direction: same field
     return true;
   };
+  mark("finishGrid");
   const lineEnds=[];
   const pushEnds=(x1,y1,x2,y2)=>{
     const d=Math.hypot(x2-x1,y2-y1); if(d<2.0*ftPx) return;
@@ -1036,8 +1073,39 @@ export function build(g, ftPx, texts){
     const r=mergeRing(ring);
     for(let i=0;i<r.length;i++){const p=r[i],q=r[(i+1)%r.length];pushEnds(p[0],p[1],q[0],q[1]);}
   }
+  // ── PERFORMANCE: all-pairs over every wall end with a full ink scan per
+  // candidate was 56 of 60 s on a 105k-segment sheet. Bucket the ends
+  // (cells of GAPMAX) so only reachable pairs are tried, and test crossings
+  // by walking the ink grid along the connector.
+  const crossesInk=(ax2,ay2,bx2,by2)=>{
+    const dxc=bx2-ax2, dyc=by2-ay2;
+    const gx0=Math.floor(Math.min(ax2,bx2)/IG), gx1=Math.floor(Math.max(ax2,bx2)/IG);
+    const gy0=Math.floor(Math.min(ay2,by2)/IG), gy1=Math.floor(Math.max(ay2,by2)/IG);
+    const seen=new Set();
+    for(let gx=gx0;gx<=gx1;gx++) for(let gy=gy0;gy<=gy1;gy++){
+      const b=inkGrid.get(gx+','+gy); if(!b) continue;
+      for(const w of b){
+        if(seen.has(w)) continue; seen.add(w);
+        const x1=wallInk[w],y1=wallInk[w+1],x2=wallInk[w+2],y2=wallInk[w+3];
+        const ex=x2-x1, ey=y2-y1;
+        const den=dxc*ey-dyc*ex;
+        if(Math.abs(den)<1e-9) continue;
+        const t=((x1-ax2)*ey-(y1-ay2)*ex)/den;
+        const u=((x1-ax2)*dyc-(y1-ay2)*dxc)/den;
+        if(t>0.001&&t<0.999&&u>0.001&&u<0.999) return true;
+      }
+    }
+    return false;
+  };
+  const GAPMAX_LE=24*ftPx;
+  const endGrid=new Map();
+  lineEnds.forEach((e,i)=>{ const k=Math.floor(e.x/GAPMAX_LE)+','+Math.floor(e.y/GAPMAX_LE); const b=endGrid.get(k); if(b)b.push(i); else endGrid.set(k,[i]); });
   const lecand=[];
-  for(let i=0;i<lineEnds.length;i++) for(let j=i+1;j<lineEnds.length;j++){
+  for(let i=0;i<lineEnds.length;i++){
+    const ei=lineEnds[i]; const cx=Math.floor(ei.x/GAPMAX_LE), cy=Math.floor(ei.y/GAPMAX_LE);
+    for(let dgx=-1;dgx<=1;dgx++) for(let dgy=-1;dgy<=1;dgy++){
+      const bucket=endGrid.get((cx+dgx)+','+(cy+dgy)); if(!bucket) continue;
+      for(const j of bucket){ if(j<=i) continue;
     const a=lineEnds[i], b=lineEnds[j];
     if(a.ux*b.ux+a.uy*b.uy > -0.94) continue;                 // anti-parallel
     const vx=b.x-a.x, vy=b.y-a.y, d2=Math.hypot(vx,vy);
@@ -1053,21 +1121,11 @@ export function build(g, ftPx, texts){
     if(Math.abs(vx*(-a.uy)+vy*(a.ux)) > 0.3*ftPx) continue;   // collinear
     // blocked = wall ink CROSSING the connector (parallel door-panel lines in
     // the opening must not veto the closure)
-    const ax2=a.x+vx*0.06, ay2=a.y+vy*0.06, bx2=a.x+vx*0.94, by2=a.y+vy*0.94;
-    let blocked=false;
-    for(let w=0;w+3<wallInk.length && !blocked;w+=4){
-      const x1=wallInk[w],y1=wallInk[w+1],x2=wallInk[w+2],y2=wallInk[w+3];
-      const ex=x2-x1, ey=y2-y1;
-      const dxc=bx2-ax2, dyc=by2-ay2;
-      const den=dxc*ey-dyc*ex;
-      if(Math.abs(den)<1e-9) continue;
-      const t=((x1-ax2)*ey-(y1-ay2)*ex)/den;
-      const u=((x1-ax2)*dyc-(y1-ay2)*dxc)/den;
-      if(t>0.001&&t<0.999&&u>0.001&&u<0.999) blocked=true;
-    }
-    if(blocked) continue;
+    if(crossesInk(a.x+vx*0.06, a.y+vy*0.06, a.x+vx*0.94, a.y+vy*0.94)) continue;
     if(inXboxPt((a.x+b.x)/2,(a.y+b.y)/2)) continue;   // fixture interior: no closure
     lecand.push([d2,i,j]);
+      }
+    }
   }
   lecand.sort((p2,q2)=>p2[0]-q2[0]);
   const leUsed=new Set(); const lineClosures=[];
@@ -1079,6 +1137,7 @@ export function build(g, ftPx, texts){
     leUsed.add(i); leUsed.add(j);
     lineClosures.push({seg:[[lineEnds[i].x,lineEnds[i].y],[lineEnds[j].x,lineEnds[j].y]], door:false, finish:d9>7*ftPx});
   }
+  mark("lineClosures");
   // ── JAMB BRIDGES: a door at a corner ends against a PERPENDICULAR wall.
   // An unconsumed wall end raycasts along its own line; a perpendicular wall
   // hit at door range closes the opening — but only with door evidence in the
@@ -1103,19 +1162,7 @@ export function build(g, ftPx, texts){
       if(bestT===Infinity) continue;
       const hx=e.x+e.ux*bestT, hy=e.y+e.uy*bestT;
       // blocked? any wall ink crossing strictly inside
-      const ax2=e.x+e.ux*bestT*0.08, ay2=e.y+e.uy*bestT*0.08, bx2=e.x+e.ux*bestT*0.92, by2=e.y+e.uy*bestT*0.92;
-      let blocked=false;
-      for(let w=0;w+3<wallInk.length && !blocked;w+=4){
-        const x1=wallInk[w],y1=wallInk[w+1],x2=wallInk[w+2],y2=wallInk[w+3];
-        const ex=x2-x1, ey=y2-y1;
-        const dxc=bx2-ax2, dyc=by2-ay2;
-        const den=dxc*ey-dyc*ex;
-        if(Math.abs(den)<1e-9) continue;
-        const t=((x1-ax2)*ey-(y1-ay2)*ex)/den;
-        const u=((x1-ax2)*dyc-(y1-ay2)*dxc)/den;
-        if(t>0.001&&t<0.999&&u>0.001&&u<0.999) blocked=true;
-      }
-      if(blocked) continue;
+      if(crossesInk(e.x+e.ux*bestT*0.08, e.y+e.uy*bestT*0.08, e.x+e.ux*bestT*0.92, e.y+e.uy*bestT*0.92)) continue;
       // door evidence in the gap — KIND recorded: 'arc' and 'panel' are
       // trusted (drafter-stated door); 'leaf' seals but is not trusted (the
       // loose foot test also fires at casework mouths).
@@ -1182,6 +1229,7 @@ export function build(g, ftPx, texts){
     }
   }
 
+  mark("jambBridges");
   // ── pair ends across door-scale gaps: facing, COLLINEAR, similar width, clear between ──
   const GAP_MIN=1.2*ftPx, GAP_MAX=7*ftPx;
   const valid=[];
@@ -1226,6 +1274,7 @@ export function build(g, ftPx, texts){
   }
 
   // ── arrangement over wall ink + closures ──
+  mark("endPairs");
   const segs=[];
   // ── JAMB SEALS (starved sheets): a SHORT straight piece, unclaimed by any
   // classifier, with BOTH endpoints on admitted wall evidence, is band
@@ -1328,8 +1377,10 @@ export function build(g, ftPx, texts){
       if(t1<Infinity){ segs[i*4]=x1-ux2*(t1+0.3); segs[i*4+1]=y1-uy2*(t1+0.3); }
     }
   }
+  mark("segs+seals+heal");
   const arr=buildPolyArrangement(segs, 2);
 
+  mark("arrangement");
   // ── material VALIDATION: a wall separates two DIFFERENT faces; a filled
   // fixture or a furniture band has the same room face on both sides — drop it
   // from material (it stays in the linework; it just isn't solid).
@@ -1395,6 +1446,7 @@ export function build(g, ftPx, texts){
     material.length=0; material.push(...kept);
   }
 
+  mark("materialValidation");
   const inDoor=(x,y)=>{for(const q of doorQuads){ if(pointInRing(q,x,y)) return true;} return false;};
   const inStrip=(x,y)=>{for(const q of closureStrips){ if(pointInRing(q,x,y)) return true;} return false;};
   const fixtureFace=(fi)=>{
@@ -1527,6 +1579,7 @@ export function build(g, ftPx, texts){
     doorMemo.set(fi,v); return v;
   };
   const growSolid=solid;
+  mark("solid+fixture");
   const doorCellPolys=[...doorQuads, ...closureStrips];
   return {arr, solid, growSolid, narrowFace, doorAccess, doorCellPolys, fixtureFace, xboxes, starved, effSolid, poche, lines, strokes, runs, ends, doorQuads, material, arcs, arcClosures, extendedClosures, arrSegs:segs,
           strokeStage,

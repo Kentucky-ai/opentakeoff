@@ -596,6 +596,7 @@ export default function TakeoffCanvas() {
   });
   useEffect(() => { try { localStorage.setItem("opentakeoff_net_engine", netEngine ? "1" : "0"); } catch { /* private mode */ } }, [netEngine]);
   const netCacheRef = useRef(new Map());   // `${sheetKey}:${upp}` → built net
+  const netTickRef = useRef(null);          // ticking "reading the walls… N s" timer
   const [saveState, setSaveState] = useState("idle");
   const [focusMode, setFocusModeState] = useState(getFocusMode);   // chrome-collapse (F) — lib/focusMode.js is the store+broadcast
   useEffect(() => onFocusModeChange(setFocusModeState), []);
@@ -4234,7 +4235,7 @@ export default function TakeoffCanvas() {
     if (netEngine && !direct && vectorViable) {
       const segs = vectorSegsRef.current.get(tp.key);
       const meta = segMetaRef.current.get(tp.key);
-      if (!segs || !meta) return say("Still reading this sheet's linework — try again in a second.");
+      if (!segs || !meta) return say("Still reading this sheet's linework — One-Click arms as soon as that finishes (a dense sheet can take a few seconds). Try again in a moment.");
       if (!netWorker) return say("Net engine needs Web Workers — switch it off to use the fill.");
       // FRAMES: the vector segments live at the BASELINE render scale; a hi-res
       // sheet's click and its upp are in the hi-res frame (uppFor divides by
@@ -4247,7 +4248,12 @@ export default function TakeoffCanvas() {
       let built = netCacheRef.current.get(ck);
       if (!built) {
         // one build per (sheet, scale); concurrent clicks share the promise
-        setCommitMsg("Building the wall network for this sheet — the page stays live, keep working…");
+        // LOUD, TICKING status: a dense sheet reads for tens of seconds and a
+        // silent wait reads as failure (his call, Liminal 2026-08-24)
+        const t0 = Date.now();
+        setCommitMsg("Reading the walls on this sheet… 0 s — the first click on a sheet builds its wall network; the page stays live.");
+        const tick = setInterval(() => setCommitMsg(`Reading the walls on this sheet… ${Math.round((Date.now() - t0) / 1000)} s — the first click on a sheet builds its wall network; the page stays live.`), 1000);
+        netTickRef.current = tick;
         const subpathsIn = subpathsRef.current.get(tp.key) || null, textsIn = textMarksRef.current.get(tp.key) || [];
         // diagnostic record of EXACTLY what the engine was handed (read from devtools as window.__netLast)
         try { window.__netLast = { key: ck, sheet: tp.key, nSegs: segs.length >> 2, nMeta: meta.length, nSubpaths: subpathsIn ? subpathsIn.length : 0, nTexts: textsIn.length, ftPx, upp, kF, img: tp.img && { w: tp.img.w, h: tp.img.h }, metaHead: Array.from(meta.slice(0, 12)), segsHead: Array.from(segs.slice(0, 8)).map((v) => +v.toFixed(1)), textHead: textsIn.slice(0, 2) }; } catch { /* diagnostics only */ }
@@ -4258,6 +4264,7 @@ export default function TakeoffCanvas() {
       let info;
       try { info = await built; }
       catch (err) { console.error("net engine build failed", err); return say("Net engine couldn't read this sheet — switch it off to use the fill."); }
+      finally { if (netTickRef.current) { clearInterval(netTickRef.current); netTickRef.current = null; } }
       if (toolRef.current !== "oneclick" || (proposalRef.current && proposalRef.current.key !== tp.key)) { setCommitMsg(""); return { ok: false, message: "" }; }
       const rm = await netCall({ type: "room", key: ck, x: local[0] * kF, y: local[1] * kF, ftPx });
       const r = rm.room;
