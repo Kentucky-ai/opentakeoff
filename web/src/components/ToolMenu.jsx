@@ -48,13 +48,20 @@ export default function ToolMenu({ face, active = false, accent = "cobalt", titl
     if (disabled) return;
     if (!open && rootRef.current) {
       const r = rootRef.current.getBoundingClientRect();
-      setFlip(r.left + menuW > window.innerWidth - 16);
-      // flyout="right": open beside the trigger (position:fixed escapes the
-      // rail's scroll clipping); clamp the top so a low trigger's menu stays
-      // on-screen — ~44px/row is the honest estimate for these short menus.
+      const flipNow = r.left + menuW > window.innerWidth - 16;
+      setFlip(flipNow);
+      // Every menu opens as position:fixed off the TRIGGER'S RECT, not as a
+      // child box of the trigger. An absolutely-positioned menu is clipped by
+      // any scrolling ancestor, which is what stops the top bar from being
+      // allowed to scroll when its row is wider than the window — and a row
+      // that can neither wrap (issue #61's contract) nor scroll simply puts
+      // Report/Action past the right edge with no way to reach them.
+      const estH = Math.min(items.length, 8) * 40 + 12;
       if (flyout === "right") {
-        const estH = Math.min(items.length, 8) * 40 + 12;
         setFlyAt({ left: r.right + 6, top: Math.max(8, Math.min(r.top, window.innerHeight - estH - 8)) });
+      } else {
+        const left = flipNow ? Math.max(8, r.right - menuW) : Math.min(r.left, window.innerWidth - menuW - 8);
+        setFlyAt({ left, top: r.bottom + 4 });
       }
     }
     setOpen((v) => !v);
@@ -77,7 +84,7 @@ export default function ToolMenu({ face, active = false, accent = "cobalt", titl
       </button>
       {open && (
         <div style={{
-          ...(flyout === "right" && flyAt
+          ...(flyAt
             ? { position: "fixed", left: flyAt.left, top: flyAt.top }
             : { position: "absolute", top: "calc(100% + 4px)", [flip ? "right" : "left"]: 0 }),
           zIndex: 60,

@@ -6815,9 +6815,17 @@ export default function TakeoffCanvas() {
           cloud moves) right. Cluster captions stay — they're the drafting
           language. The row never wraps; rarely-used controls live in ⋯ so
           nothing shifts position mid-work. Focus mode (F) hides the whole
-          bar — the rail and status bar carry the essentials. */}
+          bar — the rail and status bar carry the essentials.
+          Un-wrapped is not the same as unreachable, though: this row is
+          ~1550px of fixed-width controls, so on a 1440-class laptop Report and
+          the Action menu render past the right edge. The document can
+          technically scroll to them, but the canvas claims wheel and trackpad
+          gestures for zoom/pan, so that scroll never arrives and the app reads
+          as "Export is unclickable". The row therefore SCROLLS itself; its
+          menus open position:fixed off the trigger rect (ToolMenu) so this
+          overflow cannot clip them. */}
       {!focusMode && (
-      <div style={{ display: "flex", gap: 7, alignItems: "center", padding: "16px 14px 6px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", whiteSpace: "nowrap" }}>
+      <div style={{ display: "flex", gap: 7, alignItems: "center", padding: "16px 14px 6px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", whiteSpace: "nowrap", overflowX: "auto", overflowY: "visible", scrollbarWidth: "thin", overscrollBehaviorX: "contain" }}>
         <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--ink)", letterSpacing: "-0.02em" }}>open<span style={{ fontStyle: "italic", color: "var(--cobalt)" }}>takeoff</span></strong>
         <button type="button" onClick={() => fileInputRef.current?.click()} title="Open plans — PDF, image, or a .zip plan set (or just drag them onto the canvas)"
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
