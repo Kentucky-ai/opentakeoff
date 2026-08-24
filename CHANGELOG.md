@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-24 — two estimators, one project, zero losers
+
+### Added
+- **Shape-level three-way merge at conflict time (#313).** The sync layer's conflict answer used to be uniform remote-wins: correct as a safety floor for one person on two machines, wrong as a ceiling for two people on one bid — the estimator who pushed second got to re-apply their afternoon from a backup. The reconciler now keeps the last-synced payload beside `synced_rev` as a rev-stamped **common ancestor**, and a divergence with a trustworthy ancestor resolves the way the RFC states it: shapes added on either side **union**; a shape deleted on one side and untouched on the other stays deleted; deleted-vs-edited keeps the edit; the same uid edited on both sides picks a deterministic winner (`updated_at`-latest, ties to the side holding the rev — deterministic even when clocks lie) with the losing record preserved verbatim on the winner under `merge_loser`, the way `origin.proposed_verts_norm` preserves a machine trace. The merged result re-pushes, so both machines converge to the union without coordinating. Fifty shapes each on different sheets now converge to all 100 with **zero loser-snapshots**; a conflicted merge still backs up the whole local side first. A re-imported sheet (re-minted uids on both sides) degrades to union-plus-review — flagged, never silently doubled. The merge is a pure function of (base, local, remote) — no CRDT, no op-log, no realtime channel; the payload stays one plain JSON file any dumb storage can hold — and any torn or pre-#313 state simply falls back to the old remote-wins path: it can degrade, never mis-merge.
+
 ## 2026-08-21 — the field pass: commit by label, one ring per question
 
 Three findings from the first real field session on the Symbol tool — a school mechanical set, supply diffusers — each shipped the day it was found.

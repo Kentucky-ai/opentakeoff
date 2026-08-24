@@ -1,8 +1,10 @@
 // Annotation reconciler (Slices 4b + 4c) — wraps a per-project local store with
 // an optional Drive sync layer so annotations survive across machines while local
 // stays canonical. 4b is the PUSH + SEED half; 4c adds the mutable-doc CONFLICT
-// half: divergence detection, uniform remote-wins resolution, loser-snapshot, and
-// the isBusy() defer-gate that keeps a remote adopt from clobbering in-flight work.
+// half: divergence detection, conflict resolution (a shape-level three-way merge
+// when a common ancestor is known — #313 — else uniform remote-wins),
+// loser-snapshot, and the isBusy() defer-gate that keeps a remote adopt from
+// clobbering in-flight work.
 //
 // Composition: base = createLocalStore(folderId) (Slice 3), provider = the
 // annotation-sync provider (Slice 4a). The RevisionsPanel/canvas call
@@ -29,6 +31,7 @@
 //     pushes clean (why #73 stays retired on the opted-in path).
 
 import { metaGet, metaPut, metaDelete } from "../store.js";
+import { mergeAnnotations, samePayload } from "./merge.js";
 
 /**
  * @param {object} opts
@@ -61,6 +64,7 @@ export function createSyncStore({ base, provider, folderId, onRemoteUpdate, save
     syncedRev: `sync:${folderId}:synced_rev`,
     marker: `sync:${folderId}:marker`,
     lastPushedAt: `sync:${folderId}:last_pushed_at`,
+    base: `sync:${folderId}:synced_base`,
   };
 
   const readSyncedRev = async () => {
@@ -68,6 +72,20 @@ export function createSyncStore({ base, provider, folderId, onRemoteUpdate, save
     return typeof v === "number" ? v : null;
   };
   const isTouched = async () => (await metaGet(K.touched)) === true;
+
+  // The COMMON ANCESTOR for the #313 three-way merge: the payload as of
+  // synced_rev, written beside every synced_rev advance as { rev, data }. It is
+  // trusted ONLY when its stamped rev matches the durable synced_rev — a crash
+  // torn between the two meta writes leaves a mismatch, and a mismatched base
+  // silently degrades the next conflict to the uniform remote-wins path (the
+  // pre-#313 behavior), never to a merge against the wrong ancestor. Absent on
+  // pre-#313 installs for the same safe reason.
+  const readMergeBase = async () => {
+    const [v, syncedRev] = await Promise.all([metaGet(K.base), readSyncedRev()]);
+    if (!v || v.data == null) return null;
+    return (v.rev ?? null) === syncedRev ? v.data : null;
+  };
+  const writeMergeBase = (rev, data) => metaPut(K.base, { rev: rev ?? null, data });
 
   // ── Slice 4c: conflict reconciliation. A push that finds the remote moved past
   // our base (someone else wrote), or recovery that finds the same at mount, means
@@ -78,15 +96,17 @@ export function createSyncStore({ base, provider, folderId, onRemoteUpdate, save
   // local=remote / synced_rev=stale (next edit re-conflicts and re-reconciles), never
   // the reverse (synced_rev ahead of an un-adopted local → the winner is silently lost).
   //
-  // "Remote wins" is UNIFORM: a rev-less/regressed remote (a flag-off teammate's
-  // write) and a rev-bearing divergent remote resolve identically — the plan's
-  // CRITICAL rev-less rule generalized to one branch. No updated_at, no clock-skew
-  // last-writer tiebreak, no "local wins → re-push over remote" path. (LWW-by-
-  // updated_at is a forward-compatible future refinement; its only edge — a genuinely
-  // newer local edit staying canonical without a manual restore — needs active
-  // co-editing, which the v1 rollout forbids.) The loser is an immutable snapshot the
-  // user can restore, which mints synced_rev+1 and re-pushes to win (why #73 stays
-  // retired). TODO: dedup identical loser backups by content hash (plan's named punt).
+  // Resolution has two tiers (#313). With a trustworthy common ancestor
+  // (synced_base matching synced_rev) the divergence resolves by SHAPE-LEVEL
+  // three-way merge — adds union, one-sided deletes hold, both-edited records
+  // pick a deterministic winner with the loser preserved inline — and the
+  // merged result re-pushes so both machines converge to the union. Without an
+  // ancestor (pre-#313 meta, torn base write, rev mismatch) resolution stays
+  // UNIFORM remote-wins: a rev-less/regressed remote (a flag-off teammate's
+  // write) and a rev-bearing divergent remote resolve identically, and the
+  // loser is an immutable snapshot the user can restore, which mints
+  // synced_rev+1 and re-pushes to win (why #73 stays retired). TODO: dedup
+  // identical loser backups by content hash (plan's named punt).
   //
   // The adopt is GATED by isBusy(): overwriting local + re-rendering the canvas while
   // the user has in-flight work (or a debounced save pending) would clobber it. When
@@ -99,28 +119,55 @@ export function createSyncStore({ base, provider, folderId, onRemoteUpdate, save
     // Loop so a remote discovered mid-adopt (its awaits yield) still drains. Snapshot
     // is taken HERE (at adopt), not per-conflict — so a burst of conflicts while
     // deferred yields ONE backup of the cumulative local, not O(conflicts) spam.
+    let repush = false;
     while (pendingRemote && !isBusy()) {
       const remote = pendingRemote;
-      const loser = await base.loadAnnotations();            // cumulative local divergence
-      await saveSnapshot("Conflict backup", loser, folderId); // durable + syncs (Slice 2)
+      const local = await base.loadAnnotations();            // cumulative local divergence
+      // ── #313: with a trustworthy common ancestor, resolve at the SHAPE level
+      // instead of uniform remote-wins. The merge is a pure function of
+      // (base, local, remote), so both machines converge to the same payload
+      // without coordinating. No ancestor (pre-#313 install, torn base write,
+      // rev mismatch) → the uniform remote-wins path below, unchanged.
+      const ancestor = await readMergeBase();
+      const m = ancestor ? mergeAnnotations(ancestor, local, remote.data) : null;
+      // Loser preservation: the merge carries every losing ring inline
+      // (merge_loser), so a CLEAN merge takes no snapshot — the RFC's disjoint
+      // 50/50 case converges with zero loser-snapshots. A merge with same-uid
+      // conflicts or a re-import flag still backs up the whole local side
+      // (belt and braces); the remote-wins path snapshots always, as before.
+      if (!m || !m.clean) await saveSnapshot(m ? "Merge backup" : "Conflict backup", local, folderId);
       // Re-check the gate AS LATE AS POSSIBLE — right before the destructive overwrite.
       // isBusy() was false at loop-top, but the user can start in-flight work during the
       // loadAnnotations/saveSnapshot awaits; adopting then would clobber it. If they did,
       // defer: pendingRemote is still set, so flushPending() retries once idle. (The loser
       // snapshot already taken is harmless — an immutable extra backup; content-hash dedup
-      // is the plan's named punt.) This narrows the LOCAL clobber window to just the two
+      // is the plan's named punt.) This narrows the LOCAL clobber window to just the few
       // fast IDB writes below; the canvas RE-RENDER race — onRemoteUpdate fires
       // synchronously here but the canvas applies it async — is closed on the canvas
       // side by Slice 5b's apply-time isBusy re-check + idle re-read-local (Case 2).
       if (isBusy()) break;
-      await base.saveAnnotations(remote.data);               // adopt remote as canonical
+      const adopted = m ? m.merged : remote.data;
+      await base.saveAnnotations(adopted);                   // adopt (merged or remote) as canonical
       await metaPut(K.syncedRev, remote.rev);                // advance LAST (crash spine)
+      // The next merge's ancestor is what the REMOTE holds at synced_rev — local
+      // may now be ahead of it by the merged-in local work. Written after
+      // synced_rev; a tear between the two leaves rev≠base.rev, which
+      // readMergeBase rejects (degrade, never mis-merge).
+      await writeMergeBase(remote.rev, remote.data);
+      // A merged adopt that kept any local work is now AHEAD of the remote —
+      // push it (after the drain) so the other machine converges to the union
+      // too. Plain remote-wins adopts are never ahead, as before.
+      if (m && !samePayload(adopted, remote.data)) repush = true;
       // Consume ONLY after a fully-successful adopt: a throw in the writes above leaves
       // pendingRemote set for a later retry (never a dropped update), and if a fresher
       // remote queued during the awaits we keep it — the loop drains to it next iteration.
       if (pendingRemote === remote) pendingRemote = null;
-      if (onRemoteUpdate) onRemoteUpdate(remote.data, remote.rev);
+      if (onRemoteUpdate) onRemoteUpdate(adopted, remote.rev);
     }
+    // Fire-and-forget: pushOnce awaits bootstrap, and bootstrap may itself be
+    // awaiting THIS drain (recover → reconcile → flushPending) — scheduling,
+    // not awaiting, keeps that from deadlocking.
+    if (repush) schedulePush();
   }
 
   // Single-flight drain, exposed (non-enumerable) for Slice 5's canvas to call when
@@ -219,6 +266,7 @@ export function createSyncStore({ base, provider, folderId, onRemoteUpdate, save
     // and blind-overwrites it (rev → 1). That's the mixed-fleet hazard the plan
     // hands to 4c (rev-less remote WINS, snapshot the local side); 4b only seeds.
     await metaPut(K.syncedRev, remote.rev);
+    await writeMergeBase(remote.rev, remote.data); // the seed IS the common ancestor (#313)
     if (onRemoteUpdate) onRemoteUpdate(remote.data, remote.rev);
   }
 
@@ -273,6 +321,9 @@ export function createSyncStore({ base, provider, folderId, onRemoteUpdate, save
       return;
     }
     await metaPut(K.syncedRev, res.rev);          // advance AFTER confirmed push
+    // What we just pushed is the new common ancestor (#313). Written after
+    // synced_rev — a tear leaves rev≠base.rev, which readMergeBase rejects.
+    await writeMergeBase(res.rev, payload);
     await metaPut(K.lastPushedAt, Date.now());    // for the Slice 6 status line
     await metaDelete(K.marker);                   // clear marker LAST
   }
