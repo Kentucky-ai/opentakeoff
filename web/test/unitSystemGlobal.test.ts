@@ -177,7 +177,11 @@ test("UnitSettings handles Escape key to close", () => {
 test("UnitSettings restores focus to triggerRef on unmount", () => {
   const settings = fs.readFileSync(path.join(here, "src/components/UnitSettings.jsx"), "utf8");
   assert.ok(/triggerRef/.test(settings), "UnitSettings must accept triggerRef prop");
-  assert.ok(/triggerRef.*current.*focus/.test(settings), "UnitSettings must restore focus to triggerRef on unmount");
+  // The source captures triggerRef?.current into a local then calls .focus()
+  // in the effect cleanup — verify both halves of the pattern independently
+  // so the assertion is not defeated by multi-line splitting or local aliasing.
+  assert.ok(/triggerRef\?\.current/.test(settings), "UnitSettings must snapshot triggerRef.current for cleanup");
+  assert.ok(/\.focus\(\)/.test(settings), "UnitSettings must call .focus() in cleanup to restore focus");
 });
 
 // ── MCP payload compatibility ────────────────────────────────────────────────
