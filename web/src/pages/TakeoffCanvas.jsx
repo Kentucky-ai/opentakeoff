@@ -57,7 +57,14 @@ import { tidyRing, axisLockPoint } from "../lib/ringTidy";
 import { sweepSymbols } from "../lib/symbolsweep";
 import { labelPlacements } from "../lib/symbollabels";
 import { traceConfidence, floodSignals } from "../lib/confidence";
-import { buildNet, netRoomAt } from "../lib/netroom";
+// net engine runs in a worker: a dense sheet's build is 30-90 s of pure
+// geometry and must never block the page (measured: "Page Unresponsive"
+// on Comfort Inn when it ran on the main thread)
+const netWorker = typeof Worker !== "undefined" ? new Worker(new URL("../lib/netroom.worker.js", import.meta.url), { type: "module" }) : null;
+const netPending = new Map();   // req → {resolve}
+let netReq = 0;
+if (netWorker) netWorker.onmessage = (ev) => { const m = ev.data; const p = netPending.get(m.req); if (p) { netPending.delete(m.req); p.resolve(m); } };
+function netCall(msg) { return new Promise((resolve) => { const req = ++netReq; netPending.set(req, { resolve }); netWorker.postMessage({ ...msg, req }); }); }
 import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS } from "../lib/rastermask";
 // PDF layer roles (#85): the pure name→role classifier and the override
 // plumbing shared with the MCP session — the canvas consumes buildMask's
@@ -4225,22 +4232,23 @@ export default function TakeoffCanvas() {
       const segs = vectorSegsRef.current.get(tp.key);
       const meta = segMetaRef.current.get(tp.key);
       if (!segs || !meta) return say("Still reading this sheet's linework — try again in a second.");
+      if (!netWorker) return say("Net engine needs Web Workers — switch it off to use the fill.");
       const ftPx = 1 / upp;
       const ck = `${tp.key}:${upp}`;
-      let net = netCacheRef.current.get(ck);
-      if (!net) {
-        setCommitMsg("Building the wall network for this sheet…");
-        await new Promise((r) => setTimeout(r, 30));   // let the message paint before the synchronous build
-        try {
-          net = buildNet({ segs, meta, subpaths: subpathsRef.current.get(tp.key) || null }, ftPx, textMarksRef.current.get(tp.key) || []);
-        } catch (err) {
-          console.error("net engine build failed", err);
-          return say("Net engine couldn't read this sheet — switch it off to use the fill.");
-        }
-        netCacheRef.current.set(ck, net);
-        if (toolRef.current !== "oneclick") { setCommitMsg(""); return { ok: false, message: "" }; }
+      let built = netCacheRef.current.get(ck);
+      if (!built) {
+        // one build per (sheet, scale); concurrent clicks share the promise
+        setCommitMsg("Building the wall network for this sheet — the page stays live, keep working…");
+        built = netCall({ type: "build", key: ck, segs, meta, subpaths: subpathsRef.current.get(tp.key) || null, ftPx, texts: textMarksRef.current.get(tp.key) || [] })
+          .then((m) => { if (m.error) { netCacheRef.current.delete(ck); throw new Error(m.error); } return m; });
+        netCacheRef.current.set(ck, built);
       }
-      const r = netRoomAt(net, local[0], local[1], ftPx);
+      let info;
+      try { info = await built; }
+      catch (err) { console.error("net engine build failed", err); return say("Net engine couldn't read this sheet — switch it off to use the fill."); }
+      if (toolRef.current !== "oneclick" || (proposalRef.current && proposalRef.current.key !== tp.key)) { setCommitMsg(""); return { ok: false, message: "" }; }
+      const rm = await netCall({ type: "room", key: ck, x: local[0], y: local[1], ftPx });
+      const r = rm.room;
       if (!r) return say("Net engine: that click isn't inside an enclosed space — click an open spot, or trace it with Area (A).");
       const ring = r.ring.map(([x, y]) => [x, y]);
       const area_sf = +(r.areaPx * upp * upp).toFixed(2);
@@ -4250,7 +4258,7 @@ export default function TakeoffCanvas() {
         area_sf, perim_lf, hf: false, shs: 0, sl: 0, gap: 0, mp: 0, mpd: 0, wg: 0, rw: 0, rt: false,
         cf: 1, cff: [], net: true, netFaces: r.faces, netStarved: !!r.starved,
       };
-      setCommitMsg(`Net engine: ${area_sf.toFixed(0)} SF from ${r.faces} face${r.faces === 1 ? "" : "s"}${r.holes.length ? ` (${r.holes.length} interior void${r.holes.length === 1 ? "" : "s"} not subtracted from the outline)` : ""} — ⏎ creates, Esc discards.`);
+      setCommitMsg(`Net engine: ${area_sf.toFixed(0)} SF from ${r.faces} face${r.faces === 1 ? "" : "s"}${r.holes.length ? ` (${r.holes.length} interior void${r.holes.length === 1 ? "" : "s"} not subtracted from the outline)` : ""}${info && info.ms ? ` · net built in ${(info.ms / 1000).toFixed(1)} s` : ""} — ⏎ creates, Esc discards.`);
       proposeRegion(null, tp, local, negative, false, region);
       return { ok: true, message: "" };
     }
