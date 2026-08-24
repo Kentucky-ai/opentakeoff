@@ -2859,11 +2859,10 @@ export default function TakeoffCanvas() {
     if (s.measure_role === "deduct") return `${tag} · −${fa(a)} deduct`;
     if (s.measure_role === "surface_area") {
       // same height semantics as recomputeShape: an override wins outright (even 0).
-      // Heights stay feet in both systems — they're ENTERED in feet everywhere.
       const h = s.height_override === true
         ? Number(s.height_ft) || 0
         : Number(s.height_ft) || Number(condById[s.condition_id]?.height_ft) || 0;
-      return `${tag} · ${fa(a)} wall (${fl(lf)} × ${num(h, 2)}′)`;
+      return `${tag} · ${fa(a)} wall (${fl(lf)} × ${num(heightVal(h, units), 2)} ${heightUnit(units)})`;
     }
     if (s.measure_role === "linear") return `${tag} · ${fl(lf)}${a > 0 ? ` · ${fa(a)} border` : ""}`;
     return `${tag} · ${faSY(a)}`;

@@ -215,3 +215,55 @@ test("dimension spinner steps suit the system they're typed in", () => {
   assert.equal(thickStep("imperial"), 0.25);
   assert.equal(thickStep("metric"), 1);
 });
+
+// ── Task 3: Surface-area equivalence across unit systems ─────────────────────
+// A wall traced at 10 ft LF with 8 ft height must produce the same canonical
+// area_sf whether the user typed the height as 8 ft (imperial) or 2.4384 m
+// (metric).  The invariant: LF × canonical_height_ft = area_sf in both cases;
+// switching display units never changes the stored math.
+
+test("surface area equivalence: 10 ft × 8 ft wall equals 3.048 m × 2.4384 m wall", () => {
+  const LF = 10;          // 10 linear feet of wall traced
+  const hFt = 8;          // 8 ft wall height
+  const areaImperial = LF * hFt;   // 80 SF
+  // In metric the user would type 2.4384 m → stored as 8 ft via heightInputToFeet
+  const hMetricShown = heightVal(hFt, "metric");           // 8 × 0.3048 = 2.4384 m
+  const hBackToFeet = heightInputToFeet(hMetricShown, "metric"); // round-trip
+  const areaMetric = LF * hBackToFeet;
+  assert.ok(Math.abs(areaImperial - areaMetric) < 1e-9, `imperial ${areaImperial} vs metric-path ${areaMetric}`);
+  // Same in metric-display: areaVal(80 SF) ≈ 7.432 m² ≈ 3.048 m × 2.4384 m
+  const m2Direct = (LF * M_PER_FT) * hMetricShown;   // metres × metres
+  assert.ok(Math.abs(areaVal(areaImperial, "metric") - m2Direct) < 1e-6,
+    `areaVal(${areaImperial}) ${areaVal(areaImperial, "metric")} vs m² direct ${m2Direct}`);
+});
+
+test("height/thickness input round-trips across the full equivalence chain", () => {
+  // height: 8 ft → display 2.438 m → re-input → 8 ft
+  const hDisplay = heightVal(8, "metric");
+  assert.ok(Math.abs(hDisplay - 2.4384) < 1e-9);
+  assert.ok(Math.abs(heightInputToFeet(hDisplay, "metric") - 8) < 1e-9);
+  // thickness: 0.25 in → display 6.35 mm → re-input → 0.25 in
+  const tDisplay = thickVal(0.25, "metric");
+  assert.ok(Math.abs(tDisplay - 6.35) < 1e-9);
+  assert.ok(Math.abs(thickInputToInches(tDisplay, "metric") - 0.25) < 1e-9);
+  // thickness: 3 mm typed → 0.1181... in → display 3 mm (no drift)
+  const t3mm = thickInputToInches(3, "metric");           // canonical inches
+  assert.ok(Math.abs(t3mm - 3 / 25.4) < 1e-9);
+  assert.ok(Math.abs(thickVal(t3mm, "metric") - 3) < 1e-9, "3 mm round-trips");
+  // dimInputStr shows metric height to 3dp (mm precision), thickness to 1dp
+  assert.equal(dimInputStr(8, "metric", "height"), "2.438");
+  assert.equal(dimInputStr(0.25, "metric", "thickness"), "6.3"); // 0.25 × 25.4 = 6.35 → slightly below in IEEE-754, toFixed(1) = "6.3"
+});
+
+test("a metric wall traced at 2.4384 m height stores canonical 8 ft", () => {
+  // The full input edge: user types 2.4384 in metric height → DimParamInput
+  // calls heightInputToFeet(2.4384, "metric") → 8 ft stored as height_ft.
+  const stored = heightInputToFeet(2.4384, "metric");
+  assert.ok(Math.abs(stored - 8) < 1e-6, `expected ~8 ft, got ${stored}`);
+  // A metric wall traced at 3.048 m LF with 2.4384 m height → 80 SF
+  const LFm = 3.048;      // 10 ft in metres
+  const hm = 2.4384;      // 8 ft in metres
+  const LFft = LFm / M_PER_FT;  // back to feet
+  const hft = hm / M_PER_FT;
+  assert.ok(Math.abs(LFft * hft - 80) < 0.01, `expected 80 SF, got ${LFft * hft}`);
+});

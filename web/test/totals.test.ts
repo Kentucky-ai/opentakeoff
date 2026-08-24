@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 // totals.js is plain JS (allowJs); the tsx loader resolves it from the .ts test.
-import { conditionTotals, materialsSummary, verticalWallSf, sheetTotals, reportJson } from "../src/lib/totals.js";
+import { conditionTotals, materialsSummary, verticalWallSf, sheetTotals, reportJson, grandTotals } from "../src/lib/totals.js";
 
 const area = (id: string, sf: number) => ({ condition_id: id, measure_role: "floor_area", computed: { area_sf: sf } });
 const lin = (id: string, lf: number) => ({ condition_id: id, measure_role: "linear", computed: { perimeter_lf: lf } });
@@ -316,4 +316,63 @@ test("conditionTotals: reconciled deduct never double-subtracts; legacy deduct s
     { id: "d2", condition_id: "c1", measure_role: "deduct", verts_norm: [], computed: { area_sf: 5 } },
   ] as any);
   assert.equal(rows[0].floor_sf, 85, "90 − 5 (legacy only); a double-deduct would read 75");
+});
+
+// ── Task 4: unit preference does NOT change canonical totals ─────────────────
+// conditionTotals/sheetTotals/grandTotals operate purely on shape.computed —
+// they never see or care about a display-unit preference.  These tests prove
+// that the canonical math is unit-agnostic: the same shapes produce the same
+// numbers regardless of which unit system the user selected.
+
+const wallShape = (id: string, cid: string, sf: number, lf: number, hFt: number) =>
+  ({ id, condition_id: cid, measure_role: "surface_area", height_ft: hFt, computed: { area_sf: sf, perimeter_lf: lf } } as any);
+
+const floorShape = (id: string, cid: string, sf: number, lf: number) =>
+  ({ id, condition_id: cid, measure_role: "floor_area", computed: { area_sf: sf, perimeter_lf: lf } } as any);
+
+const linearShape = (id: string, cid: string, lf: number, borderSF: number) =>
+  ({ id, condition_id: cid, measure_role: "linear", computed: { perimeter_lf: lf, area_sf: borderSF } } as any);
+
+test("conditionTotals: canonical floor SF is identical regardless of display unit preference", () => {
+  const conds = [{ id: "c1", finish_tag: "LVT-1", waste_pct: 10, multiplier: 1 }];
+  const shapes = [floorShape("s1", "c1", 500, 90), floorShape("s2", "c1", 300, 70)];
+  // The same shapes produce the same canonical totals — conditionTotals
+  // never takes a units argument and never converts.
+  const [row] = conditionTotals(conds, shapes);
+  assert.equal(row.floor_sf, 800);      // 500 + 300
+  assert.equal(row.floor_sf_net, 880);  // 800 × 1.10
+  assert.equal(row.total_sf, 800);
+  assert.equal(row.sy_net, 97.78);      // 880 / 9, round2
+});
+
+test("conditionTotals: wall SF (surface_area × height) is identical regardless of display units", () => {
+  const conds = [{ id: "c2", finish_tag: "WALL-1", multiplier: 1 }];
+  const shapes = [wallShape("w1", "c2", 120, 15, 8), wallShape("w2", "c2", 80, 10, 8)];
+  const [row] = conditionTotals(conds, shapes);
+  assert.equal(row.wall_sf, 200);  // 120 + 80 — these are ALREADY area_sf (LF × height)
+  // A metric display would show areaVal(200) ≈ 18.58 m² — but the canonical
+  // value stored in the row must remain 200 SF, unaffected by display preference.
+  assert.equal(row.wall_sf_net, 200);  // no waste on wall SF by default
+});
+
+test("conditionTotals: border SF and LF from linear shapes are canonical, unit-agnostic", () => {
+  const conds = [{ id: "c3", finish_tag: "BASE-1", multiplier: 2, waste_pct: 0 }];
+  const shapes = [linearShape("l1", "c3", 50, 4.17), linearShape("l2", "c3", 30, 2.5)];
+  const [row] = conditionTotals(conds, shapes);
+  assert.equal(row.lf, 160);     // (50 + 30) × 2
+  assert.equal(row.border_sf, 13.34); // (4.17 + 2.5) × 2
+});
+
+test("grandTotals: aggregation is pure arithmetic — no unit conversion path", () => {
+  const rows = [
+    { total_sf: 100, total_sf_net: 110, lf: 20, lf_net: 22, ea: 5, sy_net: 12.22 },
+    { total_sf: 200, total_sf_net: 220, lf: 30, lf_net: 33, ea: 0, sy_net: 24.44 },
+  ];
+  const g = grandTotals(rows);
+  assert.equal(g.total_sf, 300);
+  assert.equal(g.total_sf_net, 330);
+  assert.equal(g.lf, 50);
+  assert.equal(g.lf_net, 55);
+  assert.equal(g.ea, 5);
+  assert.equal(g.sy_net, 36.66); // 12.22 + 24.44
 });
