@@ -194,26 +194,77 @@ test("UnitSystemProvider uses readUnitSystem/writeUnitSystem from unitPreference
   );
 });
 
-test("UnitSystemProvider calls migrateLegacyUnit exactly once via module-level guard", () => {
+test("UnitSystemProvider runs migration in a layout effect with a per-instance ref guard", () => {
   const provider = fs.readFileSync(path.join(here, "src/components/UnitSystemProvider.jsx"), "utf8");
   // Must import migrateLegacyUnit
   assert.ok(
     /import.*migrateLegacyUnit.*from.*unitPreference/.test(provider),
     "UnitSystemProvider must import migrateLegacyUnit from unitPreference.js"
   );
-  // Must have a module-level guard variable (not inside the component function)
-  // Look for a let/const _migrated (or similar) before the export function
+  // Must NOT have a module-level guard (let _migrated = false) — migration
+  // must not be permanently skipped if storage is unavailable or a render is
+  // abandoned.  A per-instance ref guard inside the component is correct.
   const providerExportIdx = provider.indexOf("export function UnitSystemProvider");
   assert.ok(providerExportIdx > 0, "UnitSystemProvider must be an exported function");
   const preamble = provider.slice(0, providerExportIdx);
   assert.ok(
-    /let\s+_\w+\s*=\s*false/.test(preamble),
-    "UnitSystemProvider must declare a module-level guard variable (e.g. let _migrated = false) before the component"
+    !/let\s+_\w+\s*=\s*false/.test(preamble),
+    "UnitSystemProvider must NOT use a module-level guard — use a per-instance ref instead"
   );
-  // Must call migrateLegacyUnit inside the component, guarded by the flag
+  // Must use useLayoutEffect (or useEffect) for migration, not render-body code
+  const body = provider.slice(providerExportIdx);
   assert.ok(
-    /migrateLegacyUnit\(\)/.test(provider.slice(providerExportIdx)),
-    "UnitSystemProvider must call migrateLegacyUnit() inside the component body"
+    /useLayoutEffect|useEffect/.test(body),
+    "UnitSystemProvider must run migration in a layout effect / effect, not during render"
+  );
+  // Must call migrateLegacyUnit inside the effect
+  assert.ok(
+    /migrateLegacyUnit\(\)/.test(body),
+    "UnitSystemProvider must call migrateLegacyUnit() inside the effect"
+  );
+  // Must have a ref guard (useRef) to ensure one-time execution per mount
+  assert.ok(
+    /useRef/.test(body),
+    "UnitSystemProvider must use a ref guard to run migration at most once per mount"
+  );
+});
+
+test("UnitSystemProvider setter updates ref synchronously for two functional updates", () => {
+  const provider = fs.readFileSync(path.join(here, "src/components/UnitSystemProvider.jsx"), "utf8");
+  // The setter must write to unitSystemRef.current BEFORE or together with
+  // setUnitSystemState, so two sequential functional updates both observe
+  // the latest value.  Find the setUnitSystem callback body and verify the
+  // ref assignment precedes or is adjacent to the setState call.
+  const setterMatch = provider.match(
+    /const\s+setUnitSystem\s*=\s*useCallback\(\s*\(valueOrFn\)\s*=>\s*\{([\s\S]*?)\},\s*\[\]\s*\)/
+  );
+  assert.ok(setterMatch, "UnitSystemProvider must define setUnitSystem as useCallback([], [])");
+  const setterBody = setterMatch[1];
+  // Must read from unitSystemRef.current in the functional updater
+  assert.ok(
+    /unitSystemRef\.current/.test(setterBody),
+    "setUnitSystem must read unitSystemRef.current in the functional updater"
+  );
+  // Must assign to unitSystemRef.current (the sync update)
+  assert.ok(
+    /unitSystemRef\.current\s*=/.test(setterBody),
+    "setUnitSystem must synchronously update unitSystemRef.current"
+  );
+  // Must call writeUnitSystem (storage write outside updater)
+  assert.ok(
+    /writeUnitSystem/.test(setterBody),
+    "setUnitSystem must call writeUnitSystem outside the state updater"
+  );
+  // The ref assignment must appear before or adjacent to setUnitSystemState
+  const refAssignIdx = setterBody.indexOf("unitSystemRef.current =");
+  const setStateIdx = setterBody.indexOf("setUnitSystemState");
+  assert.ok(refAssignIdx >= 0 && setStateIdx >= 0, "setter body must contain both ref assignment and setState");
+  // They should be close together (within ~5 lines) — the ref update is
+  // part of the same synchronous flow as the setState call
+  const linesBetween = setterBody.slice(refAssignIdx, setStateIdx).split("\n").length;
+  assert.ok(
+    linesBetween <= 6,
+    `unitSystemRef.current assignment and setUnitSystemState should be adjacent (${linesBetween} lines apart)`
   );
 });
 
