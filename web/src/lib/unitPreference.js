@@ -49,7 +49,9 @@ export function writeUnitSystem(value, storage) {
     const s = resolveStorage(storage);
     s?.setItem(UNIT_SYSTEM_KEY, norm);
   } catch {
-    // storage full or blocked — best-effort; next read will return default
+    // storage full or blocked — best-effort; the normalised value is still
+    // returned so callers can keep in-memory state, but any previously
+    // persisted value may remain unchanged on disk.
   }
   return norm;
 }
