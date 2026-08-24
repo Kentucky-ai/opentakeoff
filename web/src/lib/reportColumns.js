@@ -177,6 +177,17 @@ export const SPEC_FIELDS = [
   { field: "description",  header: "Description" },
 ];
 
+// i18n key mapping for spec column headers — resolved at profile-generation
+// time so the active locale is respected. The static `.header` on SPEC_FIELDS
+// remains the English canonical reference (tests, golden CSV byte-stability).
+const SPEC_HEADER_I18N = {
+  manufacturer: "column.spec_manufacturer",
+  style:        "column.spec_style",
+  color:        "column.spec_color",
+  size:         "column.spec_size",
+  description:  "column.spec_description",
+};
+
 // The one visible-string rule for a spec value — a string with visible content
 // counts; a non-object spec, a missing field, an empty/whitespace-only or
 // non-string value is nothing. Returned untrimmed (imported strings unmutated).
@@ -194,11 +205,12 @@ export function specValue(spec, field) {
 // collide with built-in keys, grandTotals keys, or custom "custom:<id>" keys.
 // Default-visible (imported metadata is worth showing) but still toggleable in
 // the picker; `spec: true` marks them read-only text at the render sites.
+// Header resolves through i18n so localized exports follow the active locale.
 export function specColProfile(conditions) {
   const list = Array.isArray(conditions) ? conditions : [];
   return SPEC_FIELDS.filter((f) => list.some((c) => specValue(c?.spec, f.field))).map((f) => ({
     key: "spec:" + f.field,
-    header: f.header,
+    header: _t(SPEC_HEADER_I18N[f.field] || f.header),
     defaultVisible: true,
     spec: true,
     get: (r, ctx) => specValue(ctx?.specByCond?.get(r.id), f.field),
@@ -218,6 +230,12 @@ export const LABOR_FIELDS = [
   { field: "subfloorType", header: "Subfloor Type" },
 ];
 
+// i18n key mapping for labor/subfloor column headers (same pattern as spec).
+const LABOR_HEADER_I18N = {
+  laborType:   "column.labor_type",
+  subfloorType: "column.subfloor_type",
+};
+
 export function laborValue(labor, field) {
   if (!labor || typeof labor !== "object" || Array.isArray(labor)) return "";
   const v = labor[field];
@@ -228,7 +246,7 @@ export function laborColProfile(conditions) {
   const list = Array.isArray(conditions) ? conditions : [];
   return LABOR_FIELDS.filter((f) => list.some((c) => laborValue(c, f.field))).map((f) => ({
     key: "labor:" + f.field,
-    header: f.header,
+    header: _t(LABOR_HEADER_I18N[f.field] || f.header),
     defaultVisible: true,
     labor: true,
     get: (r, ctx) => laborValue(ctx?.laborByCond?.get(r.id), f.field),
@@ -255,11 +273,18 @@ export const ROLL_FIELDS = [
   { key: "roll:seam_lf", header: "Seam LF", get: (ri, mult) => round2((ri.seamLf || 0) * mult) },
 ];
 
+// i18n key mapping for roll-goods column headers (same pattern as spec/labor).
+const ROLL_HEADER_I18N = {
+  "roll:order_lf": "column.roll_order_lf",
+  "roll:rolls":    "column.rolls",
+  "roll:seam_lf":  "column.seam_lf",
+};
+
 export function rollColProfile(rollByCond) {
   if (!(rollByCond instanceof Map) || !rollByCond.size) return [];
   return ROLL_FIELDS.map((f) => ({
     key: f.key,
-    header: f.header,
+    header: _t(ROLL_HEADER_I18N[f.key] || f.header),
     defaultVisible: true,
     roll: true,
     get: (r, ctx) => {

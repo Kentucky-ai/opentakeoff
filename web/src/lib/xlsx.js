@@ -172,9 +172,9 @@ export async function buildXlsx(sheets) {
  *   [args.ctx] handed to the getters
  * @param {((sheetId: any) => string)|null} [args.sheetLabel]
  * @param {"imperial"|"metric"} [args.units] display units — "metric" converts
- *   the Conditions and By-sheet tabs to m2/m (SY retires) exactly like the CSV;
- *   the Shapes tab stays raw internal feet (the shapes CSV/JSON contract) and
- *   its note line says so. "imperial" (default) is byte-identical.
+ *   the Conditions, By-sheet, and Shapes tabs to m²/m (SY retires) exactly
+ *   like the CSV; raw JSON/API payloads and the shapesToJson contract remain
+ *   canonical (internal feet). "imperial" (default) is byte-identical.
  * @returns {Array<{name: string, rows: any[][]}>}
  */
 export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols = null, ctx = null, sheetLabel = null, units = "imperial", byFloorRoom = [] }) {
@@ -237,7 +237,7 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
   const SU = M ? "m²" : "SF", SUL = M ? "m" : "LF", SUH = M ? "m" : "ft";
   const shapesTab = [
     [M ? _t("xlsx.shapes_note_metric") : _t("xlsx.shapes_note")],
-    [_t("shape.shape"), _t("shape.sheet"), _t("shape.sheet_id"), _t("shape.finish"), _t("shape.role"), _t("shape.area_sf").replace("SF", SU), _t("shape.lf").replace("LF", SUL), _t("shape.ea"), _t("shape.height_ft").replace("ft", SUH), _t("shape.height_override"), _t("shape.origin")],
+    [_t("shape.shape"), _t("shape.sheet"), _t("shape.sheet_id"), _t("shape.finish"), _t("shape.role"), _t("shape.area_sf").replace("SF", SU), _t("shape.lf").replace("LF", SUL), _t("shape.ea"), _t("shape.height_unit", { unit: SUH }), _t("shape.height_override"), _t("shape.origin")],
   ];
   for (const r of shapeRows) {
     shapesTab.push([String(r.shape_id), String(r.sheet), String(r.sheet_id), r.finish, r.role,

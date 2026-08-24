@@ -38,3 +38,30 @@ test("upsertPlay replaces by name", () => {
   assert.equal(out.length, 2);
   assert.equal((out.find((p) => p.name === "X") as any).color, "#2");
 });
+
+test("playFromCondition preserves preset_id through MAT_KEEP", () => {
+  const play: any = playFromCondition("Adhesive std", {
+    id: "cnd-1", finish_tag: "ADH-1", color: "#123456", hatch: "solid",
+    materials: [{
+      id: "m-1", name: "Adhesive", per: 150, basis: "area", unit: "gal",
+      note: "1/16″×1/16″×1/16″ sq", preset_id: "adhesive_1_16_sq",
+      kind: "adhesive",
+    }],
+  }, mint("play"));
+  assert.equal(play.materials.length, 1);
+  assert.equal(play.materials[0].preset_id, "adhesive_1_16_sq");
+  assert.equal(play.materials[0].kind, "adhesive");
+});
+
+test("conditionFromPlay round-trips preset_id", () => {
+  const play = {
+    id: "p1", name: "Adh", finish_tag: "ADH-1", color: "#111", hatch: "solid",
+    materials: [{
+      name: "Adhesive", per: 150, basis: "area", unit: "gal",
+      preset_id: "adhesive_1_16_sq", kind: "adhesive",
+    }],
+  };
+  const c: any = conditionFromPlay(play as any, "ADH-2", mint("cnd"), mint("mat"));
+  assert.equal(c.materials[0].preset_id, "adhesive_1_16_sq");
+  assert.equal(c.materials[0].kind, "adhesive");
+});

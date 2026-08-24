@@ -1,11 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { unzipSync, strFromU8 } from "fflate";
 // xlsx.js is plain JS (allowJs); the tsx loader resolves it from the .ts test.
 import { escXml, colLetter, sanitizeSheetName, sheetXml, buildXlsx, reportWorkbook } from "../src/lib/xlsx.js";
 import { conditionTotals, sheetTotals, sheetLabelGroupedRows } from "../src/lib/totals.js";
 import { CSV_PROFILE, customColProfile, specColProfile, visibleCols } from "../src/lib/reportColumns.js";
 import { shapesDetail } from "../src/lib/shapesExport.js";
+import i18n from "../src/i18n/index.js";
+
+const root = path.resolve(import.meta.dirname, "..");
+function loadJson(locale: string, ns: string): Record<string, unknown> {
+  const p = path.join(root, "public", "locales", locale, `${ns}.json`);
+  return JSON.parse(fs.readFileSync(p, "utf8"));
+}
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -272,4 +281,46 @@ test("buildXlsx: hostile tab names are sanitized and deduped in workbook.xml", a
     assert.ok(!/[[\]:*?/\\]/.test(n), `forbidden char survived: ${n}`);
   }
   assert.equal(new Set(names.map((n) => n.toLowerCase())).size, 3, "names must be unique");
+});
+
+// ── locale × unit-system matrix for XLSX shapes tab (P2 metric-export fix) ──
+
+const LOCALES = ["en", "pt-br"] as const;
+const SYSTEMS = ["imperial", "metric"] as const;
+
+// Helper to get _t for localized tab name matching
+const _tXlsx = (key: string) => i18n.t(key, { ns: "lib" });
+
+for (const locale of LOCALES) {
+  for (const system of SYSTEMS) {
+    test(`${locale}/${system} reportWorkbook shapes tab uses localized height header`, async () => {
+      await i18n.changeLanguage(locale);
+      const tabs = reportWorkbook({ ...workbookArgs(), units: system });
+      const shapeTab = tabs.find((t: any) => t.name === _tXlsx("xlsx.tab_shapes"))
+        || tabs.find((t: any) => t.name === "Shapes");
+      assert.ok(shapeTab, "Shapes tab not found");
+      // Row index 1 is the header row (0 is the note)
+      const headerRow = shapeTab.rows[1];
+      const heightCol = headerRow.find((h: string) =>
+        h.includes("Height") || h.includes("Altura"));
+      assert.ok(heightCol, `height column not found in shapes header: ${headerRow}`);
+
+      if (system === "metric") {
+        assert.ok(!heightCol.includes("pés"),
+          `${locale}/${system} shapes height header must not contain "pés": ${heightCol}`);
+        assert.ok(!heightCol.includes("ft"),
+          `${locale}/${system} shapes height header must not contain "ft": ${heightCol}`);
+        assert.ok(heightCol.includes("m"),
+          `${locale}/${system} shapes height header must contain "m": ${heightCol}`);
+      } else {
+        assert.ok(heightCol.includes("ft"),
+          `${locale}/${system} shapes height header must contain "ft": ${heightCol}`);
+      }
+    });
+  }
+}
+
+// Restore default locale
+test("restore en locale after xlsx matrix", async () => {
+  await i18n.changeLanguage("en");
 });

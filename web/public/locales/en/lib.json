@@ -143,8 +143,10 @@
     "lf": "LF",
     "ea": "EA",
     "height_ft": "Height ft",
+    "height_unit": "Height {{unit}}",
     "height_override": "Height override",
-    "origin": "Origin"
+    "origin": "Origin",
+    "csv_preamble": "Per-shape measured quantities — no multiplier or waste; deducts negative; {{unit}} on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition {{unit}}"
   },
   "xlsx": {
     "sheet_fallback": "Sheet",

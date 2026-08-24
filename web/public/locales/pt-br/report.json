@@ -36,7 +36,7 @@
   "columns": {
     "title": "Colunas",
     "labor_view": "Visualização de mão de obra",
-    "labor_view_title": "Valores reais sem perda por condição — oculta SF/SY c/Perda, mostra SF Total",
+    "labor_view_title": "Valores reais sem perda por condição — oculta {{au}} c/Perda, mostra Total {{au}}",
     "reset": "Redefinir",
     "reset_title": "Voltar ao conjunto padrão de colunas",
     "optional": "Opcional",
@@ -48,7 +48,7 @@
   },
 
   "hints": {
-    "waste_lf": "Perda SF/LF = (c/Perda) − medido",
+    "waste_lf": "Perda {{au}}/{{lu}} = (c/Perda) − medido",
     "perimeter_ref": "Perímetro é apenas referência — inclui aberturas; não totalizado"
   },
 
@@ -177,7 +177,7 @@
 
   "footnote": {
     "waste": "{{AU}} c/Perda = quantidade medida × % de perda. A perda é definida por condição no canvas. {{AU}} de parede vem de traçados de Área de Parede (comprimento × altura); {{AU}} de Borda de traçados Lineares com espessura.",
-    "waste_metric": " As taxas de cobertura de materiais de apoio permanecem como digitadas (baseadas em SF/LF).",
+    "waste_metric": " As taxas de cobertura de materiais de apoio permanecem como digitadas (baseadas em {{au}}/{{lu}}).",
     "perimeter": "Perim {{LU}} (ref) soma os perímetros dos traçados de piso — inclui aberturas de portas e paredes compartilhadas; apenas referência, nunca totalizado ou ajustado por perda.",
     "base": "Quantidades base medidas por planta — perda não aplicada.",
     "reconcile": " — subtotais por planta × multiplicador conciliam com a tabela de condições.",

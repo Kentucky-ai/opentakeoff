@@ -34,7 +34,7 @@ import { areaVal, areaUnit, lenVal, lenUnit, heightUnit, heightInputToFeet, heig
 import { HATCHES, PALETTE, NO_FILL, HatchSwatch } from "./hatches.jsx";
 import { getLineStyles, LINE_STYLE_IDS } from "../lib/lineStyles.js";
 import { baseTagOf, localCount } from "../lib/variants.ts";
-import { materialKind, getMaterialPresets, GROUT_DEFAULTS, groutDerivedFields, groutDisplayNote, coverageRateForDisplay, coverageRateToCanonical, showsGroutCalc, showsGroutDeriveAffordance } from "../lib/coverage.js";
+import { materialKind, getMaterialPresets, findPresetById, findPresetByNote, GROUT_DEFAULTS, groutDerivedFields, groutDisplayNote, coverageRateForDisplay, coverageRateToCanonical, showsGroutCalc, showsGroutDeriveAffordance } from "../lib/coverage.js";
 import { blurCommitNonNegative } from "../lib/draftInput.js";
 import { ROLL_FLOORING_TYPES } from "../lib/rollgoods.js";
 import { hasRollSetup, mintRollSetup } from "../lib/rollTakeoff.js";
@@ -110,6 +110,7 @@ function GroutParamInput({ name, value, title, min = 0, max, width = 52, overrid
   };
   return (
     <input name={name} type="number" min={min || 0} max={max} step={M ? 1 : "any"} title={title}
+      aria-label={title}
       value={draft ?? (display !== "" ? String(Number(display.toFixed(M ? 1 : 6))) : "")}
       onChange={(e) => { const t = e.target.value; setDraft(t); const n = parseFloat(t); if (Number.isFinite(n) && n >= (min || 0)) onCommit(toInternal(clamp(n))); }}
       onBlur={() => {
@@ -138,6 +139,7 @@ function GroutParamInput({ name, value, title, min = 0, max, width = 52, overrid
 // live the way it always has. Clearing commits "" (the param's null), which is
 // distinct from an intentional 0.
 function DimParamInput({ name, internal, units, kind, width, onCommit }) {
+  const { t } = useTranslation("panels");
   const [draft, setDraft] = useState(null);   // raw text mid-edit; null = mirror the committed value
   const toInternal = (n) => (kind === "height" ? heightInputToFeet(n, units) : thickInputToInches(n, units));
   // A raw draft has meaning only in the unit system in which it was typed.
@@ -153,6 +155,7 @@ function DimParamInput({ name, internal, units, kind, width, onCommit }) {
   return (
     <input name={name} type="number" min="0" step={kind === "height" ? heightStep(units) : thickStep(units)}
       placeholder={kind === "height" ? heightUnit(units) : thickUnit(units)}
+      aria-label={kind === "height" ? t('takeoffs.wall_height_aria', { unit: heightUnit(units) }) : t('takeoffs.material_thickness_aria', { unit: thickUnit(units) })}
       value={draft ?? dimInputStr(internal, units, kind)}
       onChange={(e) => { setDraft(e.target.value); commit(e.target.value); }}
       onBlur={() => { if (draft != null) commit(draft); setDraft(null); }}
@@ -194,11 +197,16 @@ function LibDraftInput({ name, value, number, placeholder, width, onCommitText }
 // shows m²/m per unit in SI and converts back only at commit, preserving the
 // persisted material contract and preventing conversion churn while typing.
 function MaterialRateInput({ name, material: m, units, width = 66, override = false, onCommit }) {
+  const { t } = useTranslation("panels");
   const [draft, setDraft] = useState(null);
   useEffect(() => { setDraft(null); }, [units, m.basis, m.per]);
   const shown = coverageRateForDisplay(m.per, m.basis, units);
+  const basisUnit = units === "metric"
+    ? ({ area: "m²", linear: "m", seam_lf: "m", count: "EA" }[m.basis || "area"] || "unit")
+    : ({ area: "SF", linear: "LF", seam_lf: "LF", count: "EA" }[m.basis || "area"] || "unit");
   return (
-    <input name={name} type="number" min="0" step="any" value={draft ?? (m.per ? String(Number(shown.toFixed(units === "metric" ? 3 : 6))) : "")}
+    <input name={name} type="number" min="0" step="any" aria-label={t('takeoffs.coverage_rate_aria', { basis: basisUnit, unit: m.unit || "unit" })}
+      value={draft ?? (m.per ? String(Number(shown.toFixed(units === "metric" ? 3 : 6))) : "")}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => {
         if (draft != null) {
@@ -215,18 +223,28 @@ function MaterialRateInput({ name, material: m, units, width = 66, override = fa
 // Coverage preset picker — shared by the condition-line editor and the
 // Materials tab so a library "Adhesive" and an attached line offer the same
 // notch/roller list. Renders nothing when the kind has no preset table.
+// Presets carry a stable `preset_id` for locale-invariant matching; legacy
+// materials that only have `note` (no `preset_id`) are matched by label.
 function CoveragePresetSelect({ material: m, onPick, units = "imperial" }) {
   const { t } = useTranslation("panels");
   const presets = (m.basis || "area") === "area" ? getMaterialPresets()[materialKind(m)] : undefined;
   if (!presets) return null;
   const areaU = units === "metric" ? "m²" : "SF";
+  // Match by preset_id (stable across locales) first; fall back to label
+  // match across ALL supported locales for legacy materials that predate
+  // the preset_id field — the note was saved as the label in whichever
+  // locale was active at the time, so a single-locale check fails after a
+  // locale switch.
+  const selectedId = findPresetById(m.preset_id)?.preset_id
+    || findPresetByNote(m.note)?.preset_id
+    || "";
   return (
-    <select name="coverage-preset" value={presets.some((t) => t.label === m.note) ? m.note : ""}
-      onChange={(e) => { const t = presets.find((x) => x.label === e.target.value); if (t) onPick({ note: t.label, per: t.per }); }}
+    <select name="coverage-preset" value={selectedId}
+      onChange={(e) => { const p = presets.find((x) => x.preset_id === e.target.value); if (p) onPick({ preset_id: p.preset_id, note: p.label, per: p.per }); }}
       title={t('takeoffs.coverage_preset_title')}
       style={{ ...ip, background: "var(--paper-bright)" }}>
       <option value="">{t('takeoffs.coverage_preset_option')}</option>
-      {presets.map((t) => <option key={t.label} value={t.label}>{t.label} · {Number(coverageRateForDisplay(t.per, "area", units).toFixed(units === "metric" ? 2 : 0))} {areaU}/{m.unit || "unit"}</option>)}
+      {presets.map((p) => <option key={p.preset_id} value={p.preset_id}>{p.label} · {Number(coverageRateForDisplay(p.per, "area", units).toFixed(units === "metric" ? 2 : 0))} {areaU}/{m.unit || "unit"}</option>)}
     </select>
   );
 }
@@ -267,17 +285,19 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
             {/* family state: this row still follows the original, or it is this condition's own */}
             {twin && (
               <span title={m.inherited
-                ? `Following ${parentTag || "the family"} — edit any field here and this row stops following (the others keep following)`
-                : `This row is this condition's own${m.origin_id ? ` — it no longer follows ${parentTag || "the family"}` : ""}`}
+                ? t('takeoffs.mat_follow_title', { tag: parentTag || t('takeoffs.fallback_the_family') })
+                : m.origin_id
+                  ? t('takeoffs.mat_own_detached_title', { tag: parentTag || t('takeoffs.fallback_the_family') })
+                  : t('takeoffs.mat_own_title')}
                 style={{ fontSize: 10, lineHeight: 1, cursor: "default", padding: "2px 3px",
                   color: m.inherited ? "var(--ink-faint)" : "var(--cobalt)",
                   border: `1px solid ${m.inherited ? "var(--ink-faint)" : "var(--cobalt)"}` }}>{m.inherited ? "↳" : "✎"}</span>
             )}
             {twin && !m.inherited && m.origin_id && onFollowFamilyRow && (
-              <button onClick={() => onFollowFamilyRow(m.id)} title={`Follow the family again — take this row's values back from ${parentTag || "the original"}`}
-                style={{ padding: "1px 4px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 10, lineHeight: 1.4 }}>↺ follow</button>
+              <button onClick={() => onFollowFamilyRow(m.id)} title={t('takeoffs.mat_follow_button_title', { tag: parentTag || t('takeoffs.fallback_the_original') })}
+                style={{ padding: "1px 4px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 10, lineHeight: 1.4 }}>{t('takeoffs.mat_follow_button')}</button>
             )}
-            {lm && <span title={`Linked to “${lm.name}” in the material library — amber fields differ from the library values`} style={{ color: "var(--ink-muted)", fontSize: 11, cursor: "default" }}>⛓</span>}
+            {lm && <span title={t('takeoffs.mat_linked_title', { name: lm.name })} style={{ color: "var(--ink-muted)", fontSize: 11, cursor: "default" }}>⛓</span>}
             <input name="material-name" value={m.name} onChange={(e) => onUpdate(m.id, { name: e.target.value })} placeholder={t('takeoffs.mat_name_placeholder')} style={{ ...ip, width: 160, ...(ov("name") ? { border: OV } : {}) }} />
             {ov("name") && rv(m, "name")}
             <span style={{ color: "var(--ink-muted)" }}>1</span>
@@ -316,15 +336,15 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
             {showsGroutCalc(m) && (
               <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", paddingLeft: 14, color: "var(--ink-muted)", fontSize: 12 }}>
                 <span>{t('takeoffs.grout_tile')}</span>
-                {gi("tileL", units === "metric" ? "Tile length (mm)" : "Tile length (in)")}
+                {gi("tileL", t('takeoffs.grout_tile_l_title', { unit: units === "metric" ? "mm" : "in" }))}
                 <span>×</span>
-                {gi("tileW", units === "metric" ? "Tile width (mm)" : "Tile width (in)")}
+                {gi("tileW", t('takeoffs.grout_tile_w_title', { unit: units === "metric" ? "mm" : "in" }))}
                 <span>{t('takeoffs.grout_tile_thick')}</span>
-                {gi("tileT", units === "metric" ? "Tile thickness (mm)" : "Tile thickness (in)")}
+                {gi("tileT", t('takeoffs.grout_tile_t_title', { unit: units === "metric" ? "mm" : "in" }))}
                 <span>{t('takeoffs.grout_joint')}</span>
-                {gi("joint", units === "metric" ? "Joint width (mm)" : "Joint width (in) — 1/32″ to 1/2″", { min: units === "metric" ? 0.8 : 0.03125, max: units === "metric" ? 12.7 : 0.5, width: 62 })}
+                {gi("joint", t('takeoffs.grout_joint_title', { unit: units === "metric" ? "mm" : "in" }), { min: units === "metric" ? 0.8 : 0.03125, max: units === "metric" ? 12.7 : 0.5, width: 62 })}
                 <span>{t('takeoffs.grout_bag')}</span>
-                <GroutParamInput name="grout-bagLbs" value={g.bagLbs} title="Bag size (lbs)" override={ov("grout")}
+                <GroutParamInput name="grout-bagLbs" value={g.bagLbs} title={t('takeoffs.grout_bag_title')} override={ov("grout")}
                   onCommit={(v) => setGrout({ bagLbs: v })} units={units} kind="weight" width={52} />
                 <span>lb</span>
                 {ov("grout") && rv(m, "grout")}
@@ -333,7 +353,7 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
             {showsGroutDeriveAffordance(m) && (
               <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 6, paddingLeft: 14 }}>
                 <button onClick={() => setGrout({})}
-                  title={t('takeoffs.grout_derive_title')}
+                  title={t('takeoffs.grout_derive_title', { unit: units === "metric" ? "mm" : "in" })}
                   style={{ padding: "2px 7px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>
                   {t('takeoffs.grout_derive')}
                 </button>
@@ -353,11 +373,11 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
             return (
               <div key={k} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--ink-muted)" }}>
                 <span style={{ color: "var(--c-danger)" }}>✕</span>
-                <span style={{ textDecoration: "line-through" }}>{src?.name || "(removed material)"}</span>
-                <span style={{ fontSize: 10 }}>removed here</span>
+                <span style={{ textDecoration: "line-through" }}>{src?.name || t('takeoffs.mat_dropped_removed')}</span>
+                <span style={{ fontSize: 10 }}>{t('takeoffs.mat_dropped_label')}</span>
                 {src && onRestoreDroppedRow && (
-                  <button onClick={() => onRestoreDroppedRow(k)} title={`Put it back — takes the row from ${parentTag || "the family"} again`}
-                    style={{ padding: "1px 4px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 10, lineHeight: 1.4 }}>↺ restore</button>
+                  <button onClick={() => onRestoreDroppedRow(k)} title={t('takeoffs.mat_restore_title', { tag: parentTag || t('takeoffs.fallback_the_family') })}
+                    style={{ padding: "1px 4px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 10, lineHeight: 1.4 }}>{t('takeoffs.mat_restore')}</button>
                 )}
               </div>
             );
@@ -488,12 +508,12 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
             {LINE_STYLE_IDS.map((id) => <option key={id} value={id}>{lineStyles[id].label}</option>)}
           </select>
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={t('takeoffs.height_title', { unit: heightUnit(units) })}>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={t('takeoffs.height_title', { unit: heightUnit(units), au: areaUnit(units), lu: lenUnit(units) })}>
           <Icon name="height" size={13} /><span style={{ color: "var(--ink-muted)" }}>H</span>
           <DimParamInput name="condition-height-ft" internal={c.height_ft} units={units} kind="height" width={54}
             onCommit={(v) => onSetCondParam("height_ft", v)} />
         </span>
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={t('takeoffs.thickness_title', { unit: thickUnit(units) })}>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={t('takeoffs.thickness_title', { unit: thickUnit(units), au: areaUnit(units), lu: lenUnit(units), divisor: units === "metric" ? "1000" : "12" })}>
           <Icon name="thickness" size={13} /><span style={{ color: "var(--ink-muted)" }}>T</span>
           <DimParamInput name="condition-thickness-in" internal={c.thickness_in} units={units} kind="thickness" width={50}
             onCommit={(v) => onSetCondParam("thickness_in", v)} />
@@ -537,6 +557,8 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
         const rs = c.roll_setup;
         const patch = (p) => onUpdateCond({ roll_setup: { ...rs, ...p } });
         const M = units === "metric";
+        const broadloomWidths = M ? `${(12 * M_PER_FT).toFixed(2)} m / ${(15 * M_PER_FT).toFixed(2)} m` : "12′ / 15′";
+        const resilientWidths = M ? `${(6 * M_PER_FT).toFixed(2)} m, ${(6.5 * M_PER_FT).toFixed(2)} m, ${(12 * M_PER_FT).toFixed(2)} m` : "6′, 6′6″, 12′";
         const wFt = Math.floor(Number(rs.roll_width_ft) || 0);
         const wIn = Math.round(((Number(rs.roll_width_ft) || 0) - wFt) * 12);
         const setW = (ft, inch) => patch({ roll_width_ft: Math.max(0.5, (Number(ft) || 0) + (Number(inch) || 0) / 12) });
@@ -563,11 +585,11 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
               <span style={{ color: "var(--ink-muted)" }}>{t('takeoffs.roll_width_label')}</span>
               {rs.material === "carpet" ? (
                 <select name="condition-roll-width" value={String(rs.roll_width_ft)} onChange={(e) => patch({ roll_width_ft: parseFloat(e.target.value) || 12 })} style={sel}
-                  title={t('takeoffs.roll_width_broadloom_title')}>
+                  title={t('takeoffs.roll_width_broadloom_title', { widths: broadloomWidths })}>
                   {M ? (
                     <>
-                      <option value="12">12′ ({(12 * M_PER_FT).toFixed(2)} m)</option>
-                      <option value="15">15′ ({(15 * M_PER_FT).toFixed(2)} m)</option>
+                      <option value="12">{(12 * M_PER_FT).toFixed(2)} m</option>
+                      <option value="15">{(15 * M_PER_FT).toFixed(2)} m</option>
                     </>
                   ) : (
                     <>
@@ -577,14 +599,14 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
                   )}
                 </select>
               ) : M ? (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title={t('takeoffs.roll_width_resilient_title')}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title={t('takeoffs.roll_width_resilient_title', { widths: resilientWidths })}>
                   <input name="condition-roll-width-m" type="number" min="0" step="0.01"
                     value={(Number(rs.roll_width_ft) * M_PER_FT).toFixed(2)}
                     onChange={(e) => setWM(e.target.value)} style={numIp} />
                   <span style={{ color: "var(--ink-muted)" }}>m</span>
                 </span>
               ) : (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title={t('takeoffs.roll_width_resilient_title')}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }} title={t('takeoffs.roll_width_resilient_title', { widths: resilientWidths })}>
                   <input name="condition-roll-width-ft" type="number" min="0" step="1" value={wFt} onChange={(e) => setW(e.target.value, wIn)} style={numIp} /><span style={{ color: "var(--ink-muted)" }}>′</span>
                   <input name="condition-roll-width-in" type="number" min="0" max="11" step="1" value={wIn} onChange={(e) => setW(wFt, e.target.value)} style={numIp} /><span style={{ color: "var(--ink-muted)" }}>″</span>
                 </span>
@@ -643,8 +665,8 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
               )}
               <select name="condition-roll-unit" value={rs.price_unit || "sf"} onChange={(e) => patch({ price_unit: e.target.value })} style={sel}
                 title={t('takeoffs.roll_unit_title')}>
-                <option value="sy">{M ? "m² (SY)" : "SY"}</option>
-                <option value="sf">{M ? "m²" : "SF"}</option>
+                <option value="sy">{M ? "m² (SY basis)" : "SY"}</option>
+                <option value="sf">{M ? "m² (SF basis)" : "SF"}</option>
                 <option value="lf">{M ? "m" : "LF"}</option>
               </select>
             </div>
@@ -699,8 +721,10 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
 // a wrong bid with a machine's confidence behind it — so those are listed here
 // with their length and their gap, reported and never counted, for someone to
 // place with the drawing in front of them.
-function TransitionsAction({ cond: c, sources, draft, setDraft, result, setResult, onDerive, onLocate2 }) {
+function TransitionsAction({ cond: c, sources, draft, setDraft, result, setResult, onDerive, onLocate2, units = "imperial" }) {
   const { t } = useTranslation("panels");
+  const M = units === "metric";
+  const lu = lenUnit(units);
   const open = draft.id === c.id;
   // the transition lands on its OWN tag, so this condition is never a source —
   // deriving onto C-1 would add the joint's LF to the carpet it separates
@@ -746,7 +770,7 @@ function TransitionsAction({ cond: c, sources, draft, setDraft, result, setResul
             <div style={{ marginTop: 6 }}>
               <div style={{ color: result.committed ? "var(--c-positive)" : "var(--ink-muted)" }}>
                 {result.committed
-                  ? t("takeoffs.transitions_runs_committed", { count: result.committed, lf: result.total_lf, tag: result.onto })
+                  ? t("takeoffs.transitions_runs_committed", { count: result.committed, lf: num(lenVal(result.total_lf, units)), lu, tag: result.onto })
                   : t("takeoffs.transitions_no_joints")}
               </div>
               {result.withheld?.length > 0 && (
@@ -758,7 +782,7 @@ function TransitionsAction({ cond: c, sources, draft, setDraft, result, setResul
                   <ul style={{ margin: "3px 0 0", paddingLeft: 14, color: "var(--ink)" }}>
                     {result.withheld.map((w, i) => (
                       <li key={`${w.between_shape_ids.join("-")}-${i}`} style={{ marginBottom: 1 }}>
-                        {w.length_lf} {t("takeoffs.transitions_across_wall", { gap: w.gap_in })}
+                        {t("takeoffs.transitions_across_wall", { lf: num(lenVal(w.length_lf, units)), lu, gap: num(M ? thickVal(w.gap_in, units) : w.gap_in, 0), thick_u: thickUnit(units) })}
                         <span style={{ color: "var(--ink-muted)" }}> — {w.between.join(" / ")}</span>
                         {onLocate2 && (
                           <button onClick={() => onLocate2(w.sheet_id, w.at)} title={t("takeoffs.transitions_look_title")}
@@ -1026,7 +1050,7 @@ function TakeoffsPanel({
             render the same editor from one source of truth. */}
         {on && <ConditionAppearanceEditor cond={c} onUpdateCond={onUpdateCond} onSetCondParam={onSetCondParam} onAssignAttr={onAssignAttr} conditionColumns={conditionColumns} units={units} rollInfo={rollByCond?.get(c.id) || null} />}
         {on && onDeriveTransitions && <TransitionsAction cond={c} sources={transitionSources} draft={transDraft} setDraft={setTransDraft}
-          result={transResult} setResult={setTransResult} onDerive={onDeriveTransitions} onLocate2={onLocateTransition} />}
+          result={transResult} setResult={setTransResult} onDerive={onDeriveTransitions} onLocate2={onLocateTransition} units={units} />}
         {matOn && (
           <div style={{ padding: "8px 12px 10px", background: "var(--paper-cream)", borderTop: "1px solid var(--ink-faint)", fontSize: 11.5 }}>
             <div style={{ marginBottom: 6, color: "var(--ink-muted)" }}>{t('takeoffs.supporting_heading')}</div>
@@ -1051,13 +1075,13 @@ function TakeoffsPanel({
               return (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, padding: "3px 6px", border: "1px solid var(--ink-faint)", background: "var(--paper-cream)", fontSize: 11 }}>
                   <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--ink-muted)" }}
-                    title={t('takeoffs.twin_follow_title', { tag: par?.finish_tag || "the original" })}>
+                    title={t('takeoffs.twin_follow_title', { tag: par?.finish_tag || t('takeoffs.fallback_the_original') })}>
                     {t('takeoffs.twin_of')} <b style={{ color: "var(--ink)" }}>{par?.finish_tag || "—"}</b>
                     {n ? <span style={{ color: "var(--cobalt)" }}> {t('takeoffs.twin_local', { count: n })}</span> : null}
                   </span>
                   {onSplitCondition && (
                     <button onClick={() => onSplitCondition(c.id)}
-                      title={t('takeoffs.twin_split_title', { tag: par?.finish_tag || "the original" })}
+                      title={t('takeoffs.twin_split_title', { tag: par?.finish_tag || t('takeoffs.fallback_the_original') })}
                       style={{ padding: "1px 6px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 10.5, color: "var(--ink)", flexShrink: 0 }}>{t('takeoffs.twin_split')}</button>
                   )}
                 </div>
@@ -1107,7 +1131,7 @@ function TakeoffsPanel({
     // docking beside it — a docked 240px+ column plus the canvas doesn't fit a
     // phone (the panel was covering the whole screen). Desktop docked layout
     // is unchanged. The header's » collapse button is the close affordance.
-    <div ref={rootRef} style={overlay
+    <div ref={rootRef} role="region" aria-label={t('takeoffs.panel_aria', { unit: units === "metric" ? "SI" : "Imperial" })} style={overlay
       ? { position: "absolute", top: 0, right: 0, bottom: 0, width: "min(100%, 420px)", zIndex: Z.drawer, boxShadow: "var(--shadow-pop)", display: "flex", background: "var(--paper-bright)", borderLeft: "1px solid var(--ink-faint)", fontSize: 12.5 }
       : { width, flexShrink: 0, display: "flex", background: "var(--paper-bright)", borderLeft: "1px solid var(--ink-faint)", fontSize: 12.5 }}>
       {!overlay && <div onPointerDown={onResizeDown} onPointerMove={onResizeMove} onPointerUp={onResizeEnd}

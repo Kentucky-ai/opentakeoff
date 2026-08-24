@@ -3393,7 +3393,7 @@ export default function TakeoffCanvas() {
     if (!upp) { setCommitMsg(t('status.set_scale_first', { sheet: labelFor(tp) })); return; }
     if (!activeCond) { setCommitMsg(t('status.pick_condition_first')); return; }
     const h = Number(aCond?.height_ft) || 0;
-    if (!(h > 0)) { setCommitMsg(t('status.set_height', { tag: aCond?.finish_tag || t('status.this_condition') })); return; }
+    if (!(h > 0)) { setCommitMsg(t('status.set_height', { tag: aCond?.finish_tag || t('status.this_condition'), lu: lenUnit(units) })); return; }
     const LF = openLen(points) * upp;
     dispatchShape({ type: "add", shapes: [{
       sheet_id: tp.key, condition_id: activeCond, measure_role: "surface_area", height_ft: h,
@@ -3631,9 +3631,9 @@ export default function TakeoffCanvas() {
     else if (f.wedges && f.ringWedges) setCommitMsg(t('status.measured_door_ring', { rings: f.ringWedges === 1 ? t('status.measured_ring_single') : t('status.measured_ring_multi', { count: f.ringWedges }) }));
     else if (f.wedges) setCommitMsg(t('status.measured_door'));
     else if (f.sealedPx) setCommitMsg(f.minPassPx
-      ? t('status.gap_bridged', { ft: MIN_PASS_FT })
+      ? t('status.gap_bridged', { passage: units === "metric" ? +(MIN_PASS_FT * M_PER_FT).toFixed(2) : MIN_PASS_FT, lu: lenUnit(units) })
       : t('status.space_not_closed'));
-    else if (f.minPassDelta) setCommitMsg(t('status.passage_excluded', { ft: MIN_PASS_FT, pct: Math.round(f.minPassDelta * 100) }));
+    else if (f.minPassDelta) setCommitMsg(t('status.passage_excluded', { passage: units === "metric" ? +(MIN_PASS_FT * M_PER_FT).toFixed(2) : MIN_PASS_FT, pct: Math.round(f.minPassDelta * 100), lu: lenUnit(units) }));
     else setCommitMsg("");
   }
   // `direct` (voice deixis, RFC #59): { conditionId, label } — the human aimed
@@ -3965,7 +3965,7 @@ export default function TakeoffCanvas() {
     if (!clipRef.current.length) return;
     const tp = lastPtrRef.current ? panelAt(toImage(lastPtrRef.current[0], lastPtrRef.current[1])[0]) : focusPanel;
     const needsScale = clipRef.current.some((c) => c.measure_role !== "count");
-    if (needsScale && !uppFor(tp.key)) { setCommitMsg(t('status.set_scale_paste', { sheet: labelFor(tp) })); return; }
+    if (needsScale && !uppFor(tp.key)) { setCommitMsg(t('status.set_scale_paste', { sheet: labelFor(tp), au: areaUnit(units), lu: lenUnit(units) })); return; }
     let cross = false;
     const made = clipRef.current.map((c) => {
       const same = c.from === tp.key;
@@ -5140,7 +5140,7 @@ export default function TakeoffCanvas() {
     if (made.length) dispatchShape({ type: "add", shapes: made });   // ONE command — one undo entry for the whole sweep
     const total_lf = +made.reduce((n, s) => n + s.computed.perimeter_lf, 0).toFixed(2);
     if (made.length) {
-      setCommitMsg(t('commit.transitions_derived', { count: made.length, tagA: a.tag, tagB: b.tag, lf: total_lf, target: target.finish_tag }));
+      setCommitMsg(t('commit.transitions_derived', { count: made.length, tagA: a.tag, tagB: b.tag, lf: units === "metric" ? +lenVal(total_lf, "metric").toFixed(2) : total_lf, target: target.finish_tag, lu: lenUnit(units) }));
     } else if (withheld.length) {
       setCommitMsg(t('commit.nothing_commit_wall', { tagA: a.tag, tagB: b.tag }));
     } else {
@@ -7451,7 +7451,7 @@ export default function TakeoffCanvas() {
           <div style={{ pointerEvents: "auto", display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: "var(--paper-bright)", border: "1.5px dashed var(--c-danger)", boxShadow: "var(--shadow-1)", fontSize: 12.5, color: "var(--ink)", maxWidth: "100%" }}>
             {ruleOffer ? (
               <React.Fragment>
-                <span dangerouslySetInnerHTML={{ __html: t('rule.offer', { tag: ruleOffer.tag, max: ruleOffer.seed.max_area_sf }) }} />
+                <span dangerouslySetInnerHTML={{ __html: t('rule.offer', { tag: ruleOffer.tag, max: units === "metric" ? +areaVal(ruleOffer.seed.max_area_sf, "metric").toFixed(1) : ruleOffer.seed.max_area_sf, au: areaUnit(units) }) }} />
                 <button onClick={previewRule}
                   style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1.5px solid var(--cobalt)", color: "var(--cobalt)", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
                   {t('rule.preview')}</button>
@@ -7534,7 +7534,7 @@ export default function TakeoffCanvas() {
                   <div style={{ fontSize: 22, fontWeight: 700, color: "var(--ink)" }}>{num(areaVal(liveLF * condH, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)} {t('readout.wall')}</span></div>
                   <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{fl(liveLF)} × {num(heightVal(condH, units), 2)} {heightUnit(units)}</div>
                 </>
-              ) : <div style={{ fontSize: 12.5, color: "var(--c-danger)" }}>{t('status.set_height', { tag: aCond?.finish_tag || "this condition" })}</div>;
+              ) : <div style={{ fontSize: 12.5, color: "var(--c-danger)" }}>{t('status.set_height', { tag: aCond?.finish_tag || t('status.this_condition'), lu: lenUnit(units) })}</div>;
             })()
           ) : tool === "zone" && poly.length >= 1 ? (
             zoneTraceCross ? (
@@ -7841,8 +7841,8 @@ export default function TakeoffCanvas() {
           </span>
         )}
         <span style={{ marginLeft: "auto", display: "flex", gap: 12, opacity: 0.75 }} aria-live="polite">
-          <span>{shapes.filter((s) => panelKeySet.has(s.sheet_id)).length} shapes</span>
-          <span>{cloudMode ? "drive" : "local"}{saveState === "saving" ? " · saving…" : saveState === "saved" ? " · saved" : ""}</span>
+          <span>{shapes.filter((s) => panelKeySet.has(s.sheet_id)).length} {t('status.shapes')}</span>
+          <span>{cloudMode ? t('status.drive') : t('status.local2')}{saveState === "saving" ? ` · ${t('status.saving')}` : saveState === "saved" ? ` · ${t('status.saved')}` : ""}</span>
         </span>
       </footer>
       {/* BYO-key AI settings — the single config surface for the ai.js seam

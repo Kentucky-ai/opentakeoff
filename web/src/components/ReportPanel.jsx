@@ -29,10 +29,12 @@ import { projectIdFromUrl } from "../lib/store.js";
 const num = (v, d = 1) => (Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: d });
 
 // one-line hints for the opt-in columns in the picker (waste hint sits under
-// the second waste checkbox so it reads once for the pair)
+// the second waste checkbox so it reads once for the pair). Hint text is
+// resolved at render time through the report translation namespace so it
+// follows the active locale.
 const COL_HINTS = {
-  waste_lf: "Waste SF/LF = (w/Waste) − measured",
-  perimeter_ref: "Perimeter is reference only — includes openings; not totaled",
+  waste_lf: true,
+  perimeter_ref: true,
 };
 
 const sheetNum = (v, d = 1) => {
@@ -392,7 +394,9 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
         <span>{c.header}</span>
       </label>
       {COL_HINTS[c.key] && (
-        <div style={{ margin: "0 0 4px 24px", fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1.5 }}>{COL_HINTS[c.key]}</div>
+        <div style={{ margin: "0 0 4px 24px", fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1.5 }}>
+          {c.key === 'waste_lf' ? t('hints.waste_lf', { au: AU, lu: LU }) : t('hints.perimeter_ref')}
+        </div>
       )}
     </React.Fragment>
   );
@@ -429,7 +433,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
                 <strong style={{ fontFamily: "var(--f-display)", fontSize: 13 }}>{t('columns.title')}</strong>
                 <div style={{ flex: 1 }} />
-                <button onClick={applyLaborPreset} title={t('columns.labor_view_title')}
+                <button onClick={applyLaborPreset} title={t('columns.labor_view_title', { au: AU })}
                   style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11.5, padding: "0 10px 0 0" }}>{t('columns.labor_view')}</button>
                 <button onClick={() => { setColPrefs({}); saveColPrefs({}); }} title={t('columns.reset_title')}
                   style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11.5, padding: "0 10px 0 0" }}>{t('columns.reset')}</button>
@@ -769,7 +773,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
         {rows.length > 0 && (
           <p style={{ maxWidth: 980, margin: "14px auto 0", fontSize: 11.5, color: "var(--ink-muted)", lineHeight: 1.6 }}>
             <strong>{t('footnote.waste', { AU })}</strong>
-            {M ? t('footnote.waste_metric') : ""}
+            {M ? t('footnote.waste_metric', { au: AU, lu: LU }) : ""}
             {tableCols.some((c) => c.key === "perimeter_ref") && (
               <> {t('footnote.perimeter', { LU })}</>
             )}

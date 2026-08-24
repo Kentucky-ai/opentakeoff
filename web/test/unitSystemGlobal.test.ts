@@ -344,6 +344,32 @@ test("UnitSettings implements keyboard focus trap for Tab/Shift+Tab", () => {
   assert.ok(/preventDefault/.test(settings), "UnitSettings must call preventDefault to trap focus");
 });
 
+// ── TakeoffsPanel input accessibility ────────────────────────────────────────
+
+test("DimParamInput has aria-label including field meaning and current unit", () => {
+  const panel = fs.readFileSync(path.join(here, "src/components/TakeoffsPanel.jsx"), "utf8");
+  assert.ok(/aria-label=\{kind === "height" \?/.test(panel), "dimension inputs must expose aria-label");
+  assert.ok(/takeoffs\.wall_height_aria/.test(panel), "height input must use localized wall_height_aria");
+  assert.ok(/takeoffs\.material_thickness_aria/.test(panel), "thickness input must use localized material_thickness_aria");
+});
+
+test("GroutParamInput has aria-label from its title prop", () => {
+  const panel = fs.readFileSync(path.join(here, "src/components/TakeoffsPanel.jsx"), "utf8");
+  assert.ok(/aria-label=\{title\}/.test(panel), "GroutParamInput must pass title as aria-label");
+});
+
+test("MaterialRateInput labels coverage using the selected material basis", () => {
+  const panel = fs.readFileSync(path.join(here, "src/components/TakeoffsPanel.jsx"), "utf8");
+  assert.ok(/const basisUnit = units === "metric"/.test(panel), "coverage labels must derive their unit from the basis");
+  assert.ok(/takeoffs\.coverage_rate_aria/.test(panel), "coverage input must use localized coverage_rate_aria");
+});
+
+test("Metric roll basis options remain distinguishable", () => {
+  const panel = fs.readFileSync(path.join(here, "src/components/TakeoffsPanel.jsx"), "utf8");
+  assert.ok(/m² \(SY basis\)/.test(panel), "metric SY basis must remain distinguishable");
+  assert.ok(/m² \(SF basis\)/.test(panel), "metric SF basis must remain distinguishable");
+});
+
 // ── MCP payload compatibility ────────────────────────────────────────────────
 
 test("MCP exportPayload still includes units field for compatibility", () => {

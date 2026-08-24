@@ -10,7 +10,7 @@ import { csvEsc as esc } from "./csv.js";
 import { M_PER_FT, M2_PER_SF } from "./units.js";
 import { round2 } from "./num.js";
 import i18n from '../i18n/index.js';
-const _t = (key) => i18n.t(key, { ns: 'lib' });
+const _t = (key, opts) => i18n.t(key, { ns: 'lib', ...(opts || {}) });
 
 export function shapesDetail(conditions, shapes, sheetLabel) {
   const byId = new Map(conditions.map((c) => [c.id, c]));
@@ -51,11 +51,9 @@ export function shapesToCsv(rows, projectName = "", brandName = "OpenTakeoff", u
   // In metric mode, headers use m²/m/m for human readability; raw canonical
   // internal feet are converted to display units (like the Conditions tab).
   const AU = M ? "m²" : "SF", LU = M ? "m" : "LF", HU = M ? "m" : "ft";
-  const header = [_t("shape.shape"), _t("shape.sheet"), _t("shape.sheet_id"), _t("shape.finish"), _t("shape.role"), _t("shape.area_sf").replace("SF", AU), _t("shape.lf").replace("LF", LU), _t("shape.ea"), _t("shape.height_ft").replace("ft", HU), _t("shape.height_override"), _t("shape.origin")];
+  const header = [_t("shape.shape"), _t("shape.sheet"), _t("shape.sheet_id"), _t("shape.finish"), _t("shape.role"), _t("shape.area_sf").replace("SF", AU), _t("shape.lf").replace("LF", LU), _t("shape.ea"), _t("shape.height_unit", { unit: HU }), _t("shape.height_override"), _t("shape.origin")];
   const lines = [
-    M
-      ? "# Per-shape measured quantities — no multiplier or waste; deducts negative; m on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition m"
-      : "# Per-shape measured quantities — no multiplier or waste; deducts negative; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF",
+    `# ${_t("shape.csv_preamble", { unit: M ? "m" : "LF" })}`,
     header.map(esc).join(","),
   ];
   for (const r of rows) {

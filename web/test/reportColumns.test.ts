@@ -4,9 +4,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import { conditionTotals, grandTotals, sheetTotals, totalsToCsv, round2 } from "../src/lib/totals.js";
 import {
-  GETTERS, CSV_PROFILE, TABLE_PROFILE, customColProfile, specColProfile, specValue, SPEC_FIELDS,
+  GETTERS, CSV_PROFILE, TABLE_PROFILE, getTableProfile, customColProfile, specColProfile, specValue, SPEC_FIELDS,
+  laborColProfile, LABOR_FIELDS, laborValue, rollColProfile, ROLL_FIELDS,
   partitionRowsBy, forceIncludeGroupCol,
   loadColPrefs, saveColPrefs, loadGroupBy, saveGroupBy, visibleCols, floorPerimeterLf,
   applyUnits, METRIC_LABELS, METRIC_CSV_LABELS, colGetter,
@@ -785,4 +787,83 @@ test("applyUnits on TABLE_PROFILE for imperial picker: all columns present, head
     assert.equal(pickerCols[i].header, TABLE_PROFILE[i].header, `${TABLE_PROFILE[i].key} header unchanged in imperial`);
     assert.equal(pickerCols[i].key, TABLE_PROFILE[i].key, `${TABLE_PROFILE[i].key} key unchanged in imperial`);
   }
+});
+
+// ── i18n regression: spec/labor/roll headers must follow the active locale ─
+
+test("specColProfile headers resolve through i18n (English default)", () => {
+  const withSpec = [
+    { id: "ct1", spec: { manufacturer: "Shaw", style: "Grand", color: "Slate 5", size: '24"x24"', description: "Wood panel" } },
+  ];
+  const cols = specColProfile(withSpec as any);
+  assert.deepEqual(cols.map((c: any) => c.header), [
+    "Manufacturer", "Style", "Spec Color", "Size", "Description",
+  ]);
+});
+
+test("laborColProfile headers resolve through i18n (English default)", () => {
+  const withLabor = [
+    { id: "ct1", laborType: "Glue-down", subfloorType: "Concrete" },
+  ];
+  const cols = laborColProfile(withLabor as any);
+  assert.deepEqual(cols.map((c: any) => c.header), ["Labor Type", "Subfloor Type"]);
+});
+
+test("rollColProfile headers resolve through i18n (English default)", () => {
+  const rollByCond = new Map([["c1", { orderFt: 29, rollCount: 2, seamLf: 30 }]]);
+  const cols = rollColProfile(rollByCond);
+  assert.deepEqual(cols.map((c: any) => c.header), ["Roll Order LF", "Rolls", "Seam LF"]);
+});
+
+test("spec/labor/roll headers follow locale switch to pt-BR", async () => {
+  const i18n = (await import("../src/i18n/index.js")).default;
+  const prev = i18n.language;
+  await i18n.changeLanguage("pt-br");
+  try {
+    // spec
+    const withSpec = [{ id: "ct1", spec: { manufacturer: "Shaw", color: "Slate 5" } }];
+    const specCols = specColProfile(withSpec as any);
+    assert.deepEqual(specCols.map((c: any) => c.header), ["Fabricante", "Cor (espec.)"],
+      "spec headers must follow pt-BR locale");
+
+    // labor
+    const withLabor = [{ id: "ct1", laborType: "Glue-down", subfloorType: "Concrete" }];
+    const laborCols = laborColProfile(withLabor as any);
+    assert.deepEqual(laborCols.map((c: any) => c.header), ["Tipo de Mão de Obra", "Tipo de Contrapiso"],
+      "labor headers must follow pt-BR locale");
+
+    // roll
+    const rollByCond = new Map([["c1", { orderFt: 29, rollCount: 2, seamLf: 30 }]]);
+    const rollCols = rollColProfile(rollByCond);
+    assert.deepEqual(rollCols.map((c: any) => c.header), ["Pedido de Rolo LF", "Rolos", "Costura LF"],
+      "roll headers must follow pt-BR locale");
+
+    // built-in table columns (already i18n-aware — regression guard)
+    const tableCols = getTableProfile();
+    const finishCol = tableCols.find((c: any) => c.key === "finish");
+    assert.equal(finishCol?.header, "Acabamento", "table profile header must follow pt-BR locale");
+  } finally {
+    await i18n.changeLanguage(prev);
+  }
+});
+
+test("spec/labor/roll i18n: locale parity — every i18n key exists in en and pt-br lib.json", () => {
+  const root = path.resolve(import.meta.dirname, "..");
+  const en = JSON.parse(readFileSync(path.join(root, "public/locales/en/lib.json"), "utf8"));
+  const pt = JSON.parse(readFileSync(path.join(root, "public/locales/pt-br/lib.json"), "utf8"));
+
+  const requiredKeys = [
+    ...SPEC_FIELDS.map((f: any) => `column.spec_${f.field}`),
+    ...LABOR_FIELDS.map((f: any) => `column.${f.field.replace(/([A-Z])/g, "_$1").toLowerCase()}`),
+    "column.roll_order_lf", "column.rolls", "column.seam_lf",
+  ];
+  const missing: string[] = [];
+  for (const key of requiredKeys) {
+    const segments = key.split(".");
+    const enVal = segments.reduce((o: any, s: string) => o?.[s], en);
+    const ptVal = segments.reduce((o: any, s: string) => o?.[s], pt);
+    if (!enVal || typeof enVal !== "string") missing.push(`en: "${key}" missing`);
+    if (!ptVal || typeof ptVal !== "string") missing.push(`pt-br: "${key}" missing`);
+  }
+  assert.deepEqual(missing, [], `spec/labor/roll i18n locale parity:\n${missing.join("\n")}`);
 });

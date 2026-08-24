@@ -36,7 +36,7 @@
   "columns": {
     "title": "Columns",
     "labor_view": "Labor view",
-    "labor_view_title": "No-waste actuals per condition — hides SF/SY w/Waste, shows Total SF",
+    "labor_view_title": "No-waste actuals per condition — hides {{au}} w/Waste, shows Total {{au}}",
     "reset": "Reset",
     "reset_title": "Back to the default column set",
     "optional": "Optional",
@@ -48,7 +48,7 @@
   },
 
   "hints": {
-    "waste_lf": "Waste SF/LF = (w/Waste) − measured",
+    "waste_lf": "Waste {{au}}/{{lu}} = (w/Waste) − measured",
     "perimeter_ref": "Perimeter is reference only — includes openings; not totaled"
   },
 
@@ -177,7 +177,7 @@
 
   "footnote": {
     "waste": "{{AU}} w/Waste = measured quantity × waste %. Waste is set per condition in the canvas. Wall {{AU}} comes from Surface-Area traces (run × height); Border {{AU}} from Linear runs with a thickness.",
-    "waste_metric": " Supporting-material coverage rates stay as entered (SF/LF-based).",
+    "waste_metric": " Supporting-material coverage rates stay as entered ({{au}}/{{lu}}-based).",
     "perimeter": "Perim {{LU}} (ref) sums floor-trace perimeters — includes door openings and shared walls; reference only, never totaled or waste-adjusted.",
     "base": "Base quantities as measured per sheet — waste not applied.",
     "reconcile": " — sheet subtotals × multiplier reconcile to the condition table.",

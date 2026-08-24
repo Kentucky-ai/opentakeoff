@@ -165,7 +165,7 @@ test("libRevertPatch: per/note/grout revert together on a grout line; plain fiel
   const g6 = { tileL: 6, tileW: 6, tileT: 0.25, joint: 0.25, bagLbs: 25 };
   const drifted = { id: "mat_4", lib_id: "lib_1", name: "Grout", grout: g6, ...groutDerivedFields(g6) };
   for (const f of ["per", "note", "grout"]) {
-    const patch = libRevertPatch(drifted, entry, f);
+    const patch: any = libRevertPatch(drifted, entry, f);
     assert.deepEqual(patch.grout, MOSAIC);
     assert.notEqual(patch.grout, entry.grout);
     assert.deepEqual(groutDerivedFields(patch.grout!), { per: patch.per });
@@ -175,7 +175,7 @@ test("libRevertPatch: per/note/grout revert together on a grout line; plain fiel
   // non-grout line: per reverts alone
   assert.deepEqual(libRevertPatch({ id: "m", lib_id: "l", per: 9 }, { id: "l", name: "Adhesive", per: 250 }, "per"), { per: 250 });
   // library entry without geometry: reverting per also clears the line's grout (coherence with the reverted note)
-  const patch = libRevertPatch(drifted, { id: "lib_2", name: "Grout", per: 200, note: "hand rate" }, "per");
+  const patch: any = libRevertPatch(drifted, { id: "lib_2", name: "Grout", per: 200, note: "hand rate" }, "per");
   assert.equal(patch.per, 200);
   assert.ok("grout" in patch && patch.grout === undefined);
 });
@@ -469,7 +469,7 @@ test("derive-on-linked-line: the geometry row ambers (presence mismatch) and the
   // groutDisplayNote from m.grout + units), never persisted by groutDerivedFields
   assert.equal(matFieldOverridden(derived, entry, "note"), false);
   // trio revert cleanly removes the derived geometry and restores per + note
-  const patch = libRevertPatch(derived, entry, "grout");
+  const patch: any = libRevertPatch(derived, entry, "grout");
   assert.deepEqual({ per: patch.per, note: patch.note }, { per: 350, note: "hand rate" });
   assert.ok("grout" in patch && patch.grout === undefined, "the derived geometry is removed, not zeroed");
   const reverted = { ...derived, ...patch };
@@ -494,4 +494,72 @@ test("instantiateMaterial: deep-copies grout so the CT-1 seed's object is never 
   assert.equal(a.round, true);
   // materials without grout don't grow a grout key
   assert.ok(!("grout" in instantiateMaterial({ name: "Adhesive", per: 250 }, "mat_c")));
+});
+
+// ── preset_id preservation across the library seam ──────────────────────────
+// The CoveragePresetSelect stores preset_id alongside note and per.  When a
+// material carrying a preset_id is promoted / attached / pushed / reverted,
+// the preset_id must survive every copy path — and when the source does NOT
+// carry one, a stale preset_id on the line must be cleared.
+
+const presetLine = () => ({
+  id: "mat_1", name: "Adhesive", kind: "adhesive", unit: "gal", per: 150, basis: "area", round: true,
+  note: "1/16″×1/16″×1/16″ sq", preset_id: "adhesive_1_16_sq",
+});
+
+test("libFields: carries preset_id, absent when the source has none", () => {
+  const L = libFields(presetLine() as any);
+  assert.equal(L.preset_id, "adhesive_1_16_sq");
+  // plain material without preset_id — no key at all
+  assert.ok(!("preset_id" in libFields({ name: "Grout", per: 300 })));
+});
+
+test("promote → attach → push: preset_id survives every copy path", () => {
+  const line = presetLine();
+  // promote
+  const entry = { id: "lib_1", ...libFields(line as any) };
+  assert.equal(entry.preset_id, "adhesive_1_16_sq");
+  // attach
+  const attached = { id: "mat_2", ...libFields(entry as any), lib_id: entry.id } as any;
+  assert.equal(attached.preset_id, "adhesive_1_16_sq");
+  assert.deepEqual(attached.grout, undefined);  // no grout on adhesive
+  // push to a line that had no preset_id
+  const stale = { id: "mat_3", lib_id: "lib_1", name: "Adhesive", per: 250, basis: "area", unit: "gal", round: true, note: "" };
+  const pushed = libPushPatch(stale, entry);
+  assert.equal(pushed.preset_id, "adhesive_1_16_sq");
+  // push to a line that had a DIFFERENT preset_id
+  const wrongId = { ...stale, preset_id: "mortar_1_4_sq" };
+  const pushed2 = libPushPatch(wrongId, entry);
+  assert.equal(pushed2.preset_id, "adhesive_1_16_sq", "stale wrong id replaced by library's");
+});
+
+test("libPushPatch: clears stale preset_id when library entry has none (legacy)", () => {
+  const legacyEntry = { id: "lib_2", name: "Adhesive", per: 200, basis: "area", unit: "gal", round: true, note: "hand rate" };
+  const line = { id: "mat_1", lib_id: "lib_2", preset_id: "adhesive_1_16_sq", name: "Adhesive", per: 150, basis: "area", unit: "gal", round: true, note: "" };
+  const pushed = libPushPatch(line, legacyEntry);
+  assert.ok(!("preset_id" in pushed), "stale preset_id must be removed when library has none");
+});
+
+test("libRevertPatch: preset_id reverts with the note/per group on a grout line", () => {
+  const entry = { id: "lib_1", ...libFields(groutLine()), preset_id: "adhesive_1_16_sq" } as any;
+  const drifted = { ...entry, preset_id: "mortar_1_4_sq", note: "custom" };
+  for (const f of ["per", "note", "grout"]) {
+    const patch: any = libRevertPatch(drifted, entry, f);
+    assert.equal(patch.preset_id, "adhesive_1_16_sq", `revert(${f}) restores preset_id`);
+  }
+});
+
+test("libRevertPatch: preset_id reverts with the name on a geometry-less line", () => {
+  const entry = { id: "lib_1", name: "Adhesive", kind: "adhesive", unit: "gal", per: 250, basis: "area", round: true, note: "", preset_id: "adhesive_1_16_sq" };
+  const line = { id: "mat_1", ...libFields(entry as any), lib_id: "lib_1", preset_id: "mortar_1_4_sq" } as any;
+  const patch: any = libRevertPatch(line, entry, "name");
+  assert.equal(patch.preset_id, "adhesive_1_16_sq", "name revert restores preset_id");
+  assert.equal(patch.name, "Adhesive");
+});
+
+test("libRevertPatch: entry without preset_id clears a stale one", () => {
+  const entry = { id: "lib_1", name: "Grout", per: 350, basis: "area", round: true, note: "" };
+  const line = { id: "mat_1", ...libFields(entry), lib_id: "lib_1", preset_id: "adhesive_1_16_sq" } as any;
+  const patch: any = libRevertPatch(line, entry, "note");
+  assert.ok(!("preset_id" in patch), "entry without preset_id clears the stale one");
 });

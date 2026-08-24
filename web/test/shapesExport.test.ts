@@ -1,8 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 // shapesExport.js is plain JS (allowJs); the tsx loader resolves it from the .ts test.
 import { shapesDetail, shapesToCsv, shapesToJson } from "../src/lib/shapesExport.js";
 import { conditionTotals } from "../src/lib/totals.js";
+import i18n from "../src/i18n/index.js";
+
+const root = path.resolve(import.meta.dirname, "..");
+function loadJson(locale: string, ns: string): Record<string, unknown> {
+  const p = path.join(root, "public", "locales", locale, `${ns}.json`);
+  return JSON.parse(fs.readFileSync(p, "utf8"));
+}
 
 const conds = [{ id: "ct", finish_tag: "CT-1" }];
 const floor = (id: string, sf: number, lf = 0) =>
@@ -186,4 +195,97 @@ test("shapesToJson: always raw canonical regardless of units context", () => {
   assert.equal(j.shapes[0].lf, 40);
   // schema and structure unchanged
   assert.equal(j.schema, "opentakeoff.shapes.v1");
+});
+
+// ── locale × unit-system matrix (P2 metric-export fix) ──────────────────────
+// shape.height_unit uses {{unit}} interpolation so pt-BR metric never
+// produces "Altura pés"; the CSV preamble is also localized.
+
+const LOCALES = ["en", "pt-br"] as const;
+const SYSTEMS = ["imperial", "metric"] as const;
+
+/** Simulate i18next interpolation: replace {{var}} with values from a map. */
+function interpolate(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_m, k) => (k in vars ? vars[k] : `{{${k}}}`));
+}
+
+test("locale shape keys: height_unit carries {{unit}} interpolation", () => {
+  for (const locale of LOCALES) {
+    const lib = loadJson(locale, "lib") as Record<string, unknown>;
+    const shape = lib.shape as Record<string, string>;
+    assert.ok(shape.height_unit, `${locale} shape.height_unit missing`);
+    assert.ok(shape.height_unit.includes("{{unit}}"),
+      `${locale} shape.height_unit must interpolate {{unit}}: ${shape.height_unit}`);
+    assert.ok(!/\bft\b/.test(shape.height_unit.replace(/\{\{[^}]+\}\}/g, "")),
+      `${locale} shape.height_unit must not contain bare "ft": ${shape.height_unit}`);
+  }
+});
+
+test("locale shape keys: csv_preamble carries {{unit}} interpolation", () => {
+  for (const locale of LOCALES) {
+    const lib = loadJson(locale, "lib") as Record<string, unknown>;
+    const shape = lib.shape as Record<string, string>;
+    assert.ok(shape.csv_preamble, `${locale} shape.csv_preamble missing`);
+    assert.ok(shape.csv_preamble.includes("{{unit}}"),
+      `${locale} shape.csv_preamble must interpolate {{unit}}`);
+  }
+});
+
+for (const locale of LOCALES) {
+  for (const system of SYSTEMS) {
+    test(`${locale}/${system} shapesToCsv header uses correct height unit`, async () => {
+      await i18n.changeLanguage(locale);
+      const conds2 = [{ id: "ct", finish_tag: "CT-1" }];
+      const shapes2 = [floor("a", 100, 40)];
+      const csv = shapesToCsv(shapesDetail(conds2, shapes2), "", "OpenTakeoff", system);
+      const lines = csv.split("\n");
+      const header = lines[1];
+
+      if (system === "metric") {
+        // Height column must say "Height m" / "Altura m" — never "Height pés" / "Altura pés"
+        assert.ok(header.includes("Height m") || header.includes("Altura m"),
+          `${locale}/${system} header must use metric height: ${header}`);
+        assert.ok(!header.includes("Altura pés"),
+          `${locale}/${system} header must NOT contain "Altura pés": ${header}`);
+        assert.ok(!header.includes("Height ft"),
+          `${locale}/${system} header must NOT contain "Height ft": ${header}`);
+        // Area and LF must be metric too
+        assert.ok(header.includes("m²"), `${locale}/${system} header must use m²: ${header}`);
+      } else {
+        // Imperial: "Height ft" / "Altura ft"
+        assert.ok(header.includes("Height ft") || header.includes("Altura ft"),
+          `${locale}/${system} header must use ft: ${header}`);
+        assert.ok(header.includes("SF"), `${locale}/${system} header must use SF: ${header}`);
+        assert.ok(header.includes("LF"), `${locale}/${system} header must use LF: ${header}`);
+      }
+    });
+
+    test(`${locale}/${system} shapesToCsv preamble is localized`, async () => {
+      await i18n.changeLanguage(locale);
+      const csv = shapesToCsv(shapesDetail([{ id: "ct", finish_tag: "CT-1" }], []), "", "OpenTakeoff", system);
+      const preamble = csv.split("\n")[0];
+      const unit = system === "metric" ? "m" : "LF";
+
+      // Preamble must contain the expected unit
+      assert.ok(preamble.includes(unit),
+        `${locale}/${system} preamble must include unit "${unit}": ${preamble}`);
+
+      // English preamble must not appear in pt-BR
+      if (locale === "pt-br") {
+        assert.ok(!preamble.includes("Per-shape measured quantities"),
+          `${locale}/${system} preamble must not be English: ${preamble}`);
+      }
+
+      // Metric preamble must not contain "LF" (which is imperial)
+      if (system === "metric") {
+        assert.ok(!preamble.includes(" LF "),
+          `${locale}/${system} metric preamble must not contain " LF ": ${preamble}`);
+      }
+    });
+  }
+}
+
+// Restore default locale for any subsequent tests
+test("restore en locale after matrix", async () => {
+  await i18n.changeLanguage("en");
 });

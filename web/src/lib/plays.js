@@ -5,7 +5,7 @@
 // are separated from the storage wrappers so they stay node-testable.
 const KEY = "opentakeoff_plays";
 const COND_KEEP = ["finish_tag", "color", "fill", "hatch", "height_ft", "thickness_in", "waste_pct"];
-const MAT_KEEP = ["name", "kind", "per", "basis", "unit", "round", "note", "grout"];
+const MAT_KEEP = ["name", "kind", "per", "basis", "unit", "round", "note", "grout", "preset_id"];
 
 const pick = (obj, keys) => {
   const out = {};

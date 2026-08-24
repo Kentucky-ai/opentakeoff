@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 // coverage.js is plain JS (allowJs); the tsx loader resolves it from the .ts test.
-import { materialKind, MATERIAL_PRESETS, GROUT_DEFAULTS, GROUT_PARAM_KEYS, groutCoverageSfPerBag, groutDerivedFields, groutParamsEqual, groutNote, groutDisplayNote, coverageRateForDisplay, coverageRateToCanonical, inFrac, showsGroutCalc, showsGroutDeriveAffordance } from "../src/lib/coverage.js";
+import { materialKind, MATERIAL_PRESETS, findPresetById, findPresetByNote, GROUT_DEFAULTS, GROUT_PARAM_KEYS, groutCoverageSfPerBag, groutDerivedFields, groutParamsEqual, groutNote, groutDisplayNote, coverageRateForDisplay, coverageRateToCanonical, inFrac, showsGroutCalc, showsGroutDeriveAffordance } from "../src/lib/coverage.js";
 
 const within = (actual: number, expected: number, tolPct: number) =>
   Math.abs(actual - expected) <= expected * (tolPct / 100);
@@ -65,6 +65,73 @@ test("presets: every kind with a preset table has positive generic rates", () =>
       assert.ok(p.label && p.per > 0, `${kind}: ${p.label}`);
     }
   }
+});
+
+// ── preset_id stability ──────────────────────────────────────────────────────
+// Presets carry a stable `preset_id` so the UI matches locale-independently.
+// Legacy materials that only have `note` (no `preset_id`) still match by label.
+
+test("presets: every preset carries a stable, non-empty preset_id", () => {
+  for (const [kind, list] of Object.entries(MATERIAL_PRESETS)) {
+    for (const p of list as any[]) {
+      assert.ok(typeof p.preset_id === "string" && p.preset_id.length > 0, `${kind}: ${p.label} missing preset_id`);
+    }
+  }
+});
+
+test("presets: preset_ids are unique across all kinds (no collision between adhesive and mortar)", () => {
+  const ids = new Set<string>();
+  for (const list of Object.values(MATERIAL_PRESETS)) {
+    for (const p of list as any[]) {
+      assert.ok(!ids.has(p.preset_id), `duplicate preset_id: ${p.preset_id}`);
+      ids.add(p.preset_id);
+    }
+  }
+});
+
+test("findPresetById: returns the preset matching the id", () => {
+  const p = findPresetById("adhesive_1_16_sq");
+  assert.ok(p, "found");
+  assert.equal(p!.preset_id, "adhesive_1_16_sq");
+  assert.equal(p!.per, 150);
+});
+
+test("findPresetById: returns undefined for unknown ids and empty/null", () => {
+  assert.equal(findPresetById("nonexistent"), undefined);
+  assert.equal(findPresetById(""), undefined);
+  assert.equal(findPresetById(null as any), undefined);
+  assert.equal(findPresetById(undefined as any), undefined);
+});
+
+test("findPresetById: finds presets across both kinds", () => {
+  assert.equal(findPresetById("adhesive_1_2_v")?.per, 40);
+  assert.equal(findPresetById("mortar_3_4_u")?.per, 30);
+});
+
+// ── findPresetByNote: cross-locale legacy matching ─────────────────────────
+// Legacy materials (no preset_id) store the label that was active when the
+// user picked the preset.  After a locale switch, the current label differs,
+// so findPresetByNote checks every supported locale's translation.
+
+test("findPresetByNote: matches the current locale's label", () => {
+  // The English preset labels are the test-time locale
+  const p = findPresetByNote("1/16″×1/16″×1/16″ sq");
+  assert.ok(p, "found by English label");
+  assert.equal(p!.preset_id, "adhesive_1_16_sq");
+  assert.equal(p!.per, 150);
+});
+
+test("findPresetByNote: returns undefined for unknown notes and empty/null", () => {
+  assert.equal(findPresetByNote("nonexistent"), undefined);
+  assert.equal(findPresetByNote(""), undefined);
+  assert.equal(findPresetByNote(null as any), undefined);
+  assert.equal(findPresetByNote(undefined as any), undefined);
+});
+
+test("findPresetByNote: is case-insensitive and trims whitespace", () => {
+  const p = findPresetByNote("  1/16″×1/16″×1/16″ SQ  ");
+  assert.ok(p, "found despite case and whitespace");
+  assert.equal(p!.preset_id, "adhesive_1_16_sq");
 });
 
 // ── groutDerivedFields: the derive-only-when-valid rule ─────────────────────

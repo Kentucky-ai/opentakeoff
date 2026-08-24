@@ -143,8 +143,10 @@
     "lf": "LF",
     "ea": "UN",
     "height_ft": "Altura pés",
+    "height_unit": "Altura {{unit}}",
     "height_override": "Altura personalizada",
-    "origin": "Origem"
+    "origin": "Origem",
+    "csv_preamble": "Quantidades medidas por forma — sem multiplicador ou perda; deduções negativas; {{unit}} em linhas de piso/dedução/superfície é apenas referência de trace (incl. aberturas) — apenas linhas lineares somam ao {{unit}} da condição"
   },
   "xlsx": {
     "sheet_fallback": "Planilha",

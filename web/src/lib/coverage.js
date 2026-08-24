@@ -13,22 +13,74 @@ export function materialKind(m) {
 }
 export const getMaterialPresets = () => ({
   adhesive: [                              // SF per gallon
-    { label: _t("preset.adhesive_1_16_1_32"), per: 200 },
-    { label: _t("preset.adhesive_nap"), per: 300 },
-    { label: _t("preset.adhesive_1_16_sq"), per: 150 },
-    { label: _t("preset.adhesive_1_8_sq"), per: 100 },
-    { label: _t("preset.adhesive_3_16_v"), per: 60 },
-    { label: _t("preset.adhesive_1_4_v"), per: 50 },
-    { label: _t("preset.adhesive_1_2_v"), per: 40 },
+    { preset_id: "adhesive_1_16_1_32", label: _t("preset.adhesive_1_16_1_32"), per: 200 },
+    { preset_id: "adhesive_nap", label: _t("preset.adhesive_nap"), per: 300 },
+    { preset_id: "adhesive_1_16_sq", label: _t("preset.adhesive_1_16_sq"), per: 150 },
+    { preset_id: "adhesive_1_8_sq", label: _t("preset.adhesive_1_8_sq"), per: 100 },
+    { preset_id: "adhesive_3_16_v", label: _t("preset.adhesive_3_16_v"), per: 60 },
+    { preset_id: "adhesive_1_4_v", label: _t("preset.adhesive_1_4_v"), per: 50 },
+    { preset_id: "adhesive_1_2_v", label: _t("preset.adhesive_1_2_v"), per: 40 },
   ],
   mortar: [                                // SF per 50-lb bag
-    { label: _t("preset.mortar_1_4_sq"), per: 90 },
-    { label: _t("preset.mortar_3_8_sq"), per: 65 },
-    { label: _t("preset.mortar_1_2_sq"), per: 42 },
-    { label: _t("preset.mortar_3_4_u"), per: 30 },
+    { preset_id: "mortar_1_4_sq", label: _t("preset.mortar_1_4_sq"), per: 90 },
+    { preset_id: "mortar_3_8_sq", label: _t("preset.mortar_3_8_sq"), per: 65 },
+    { preset_id: "mortar_1_2_sq", label: _t("preset.mortar_1_2_sq"), per: 42 },
+    { preset_id: "mortar_3_4_u", label: _t("preset.mortar_3_4_u"), per: 30 },
   ],
 });
 export const MATERIAL_PRESETS = getMaterialPresets();
+
+// Look up a preset by its stable id across locales.  Returns the preset
+// object or undefined.  Calling code should fall back to a label-based
+// match for legacy materials that only carry `note` (no `preset_id`).
+export const findPresetById = (presetId) => {
+  if (!presetId) return undefined;
+  for (const list of Object.values(MATERIAL_PRESETS)) {
+    const hit = list.find((p) => p.preset_id === presetId);
+    if (hit) return hit;
+  }
+  return undefined;
+};
+
+// Find a preset whose label matches `note` in ANY supported locale.
+// Legacy materials that predate the `preset_id` field only carry a `note`
+// whose value is the label as it was when the user selected the preset.
+// If the user later switches locales, `p.label` (the current locale's
+// translation) no longer matches — so we check every locale's translation.
+// Uses a static labels map for reliability (i18n may not be initialized in
+// test environments); the runtime i18n.t fallback covers any future locale
+// additions without a code change.
+const PRESET_ALL_LABELS = {
+  adhesive_1_16_1_32: ["1/16″×1/32″×1/32″ U (PSA)", "1/16″×1/32″×1/32″ U (PSA)"],
+  adhesive_nap:       ["1/4″ nap roller (PSA)", "Rolo 1/4″ nap (PSA)"],
+  adhesive_1_16_sq:   ["1/16″×1/16″×1/16″ sq", "1/16″×1/16″×1/16″ quad"],
+  adhesive_1_8_sq:    ["1/8″×1/8″×1/8″ sq", "1/8″×1/8″×1/8″ quad"],
+  adhesive_3_16_v:    ["3/16″ V (wood)", "3/16″ V (madeira)"],
+  adhesive_1_4_v:     ["1/4″×1/4″ V (wood)", "1/4″×1/4″ V (madeira)"],
+  adhesive_1_2_v:     ["1/2″×1/2″ V (wood, coarse)", "1/2″×1/2″ V (madeira, grossa)"],
+  mortar_1_4_sq:      ["1/4″×1/4″×1/4″ sq", "1/4″×1/4″×1/4″ quad"],
+  mortar_3_8_sq:      ["1/4″×3/8″×1/4″ sq", "1/4″×3/8″×1/4″ quad"],
+  mortar_1_2_sq:      ["1/2″×1/2″×1/2″ sq", "1/2″×1/2″×1/2″ quad"],
+  mortar_3_4_u:       ["3/4″ U (large tile)", "3/4″ U (telha grande)"],
+};
+export const findPresetByNote = (note) => {
+  if (!note) return undefined;
+  const normalized = note.trim().toLowerCase();
+  for (const list of Object.values(MATERIAL_PRESETS)) {
+    for (const p of list) {
+      // Static map: check every locale's label
+      const labels = PRESET_ALL_LABELS[p.preset_id];
+      if (labels && labels.some((l) => l.toLowerCase() === normalized)) return p;
+      // Runtime fallback: i18n.t covers any locale added after this file was edited
+      const locales = i18n.options?.supportedLngs || [];
+      for (const lng of locales) {
+        const localeLabel = i18n.t(`preset.${p.preset_id}`, { lng, ns: "lib" });
+        if (localeLabel && localeLabel.toLowerCase() === normalized) return p;
+      }
+    }
+  }
+  return undefined;
+};
 
 // Material coverage rates are persisted in canonical SF/LF per unit. These
 // helpers are the display/input edge for the UI and human-readable exports;

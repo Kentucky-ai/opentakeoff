@@ -33,6 +33,7 @@ const isPlainObject = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 export const libFields = (lm) => ({
   name: lm.name || "", unit: lm.unit || "", per: lm.per || 0, basis: lm.basis || "area",
   round: lm.round !== false, note: lm.note || "",
+  ...(lm.preset_id ? { preset_id: lm.preset_id } : {}),
   ...(lm.kind ? { kind: lm.kind } : {}),
   ...(lm.grout ? { grout: { ...lm.grout } } : {}),
 });
@@ -68,6 +69,7 @@ export const libPushPatch = (m, lm) => {
   const next = { ...m, ...libFields(lm) };
   if (!lm.grout) delete next.grout;
   if (!lm.kind) delete next.kind;
+  if (!lm.preset_id && m.preset_id) delete next.preset_id;   // clear stale preset_id when library has none
   return next;
 };
 // Per-field ↺. `kind` is name-coupled metadata on a geometry-less line (it's
@@ -81,10 +83,14 @@ export const libPushPatch = (m, lm) => {
 export const libRevertPatch = (m, lm, f) => {
   const L = libFields(lm);
   if ((f === "per" || f === "note" || f === "grout") && (m.grout || lm.grout)) {
-    return { per: L.per, note: L.note, grout: L.grout };   // L.grout is already a fresh copy (or undefined → clears the line's)
+    const patch = { per: L.per, note: L.note, grout: L.grout };   // L.grout is already a fresh copy (or undefined → clears the line's)
+    if (L.preset_id || m.preset_id) patch.preset_id = L.preset_id;  // keep preset dropdown in sync with reverted note/per
+    return patch;
   }
   if (f === "name" && !m.grout && (L.kind || m.kind)) {
-    return { name: L.name, kind: L.kind };   // L.kind may be undefined → clears the line's stale kind with the reverted name
+    const patch = { name: L.name, kind: L.kind };   // L.kind may be undefined → clears the line's stale kind with the reverted name
+    if (L.preset_id || m.preset_id) patch.preset_id = L.preset_id;  // preset follows the reverted name
+    return patch;
   }
   return { [f]: L[f] };
 };
