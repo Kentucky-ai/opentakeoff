@@ -7,14 +7,26 @@
 // normalised value, writes to localStorage, and THEN calls setState — never
 // inside the updater callback.  This avoids duplicate storage writes under
 // StrictMode / concurrent replay.
+//
+// Legacy migration runs exactly once — guarded by a module-level flag so it
+// never re-executes on render or StrictMode re-mount.
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from "react";
 import { readUnitSystem, writeUnitSystem, migrateLegacyUnit } from "../lib/unitPreference.js";
 
 const UnitSystemContext = createContext(null);
 
+// Module-level guard: migrateLegacyUnit runs at most once across the entire
+// app lifetime, even under StrictMode double-invocation or concurrent features.
+let _migrated = false;
+
 export function UnitSystemProvider({ children }) {
-  // Migrate legacy key once before reading the initial value.
-  migrateLegacyUnit();
+  // One-time migration: runs before the first useState initializer so the
+  // initial read picks up the promoted legacy value.
+  if (!_migrated) {
+    _migrated = true;
+    migrateLegacyUnit();
+  }
+
   const [unitSystem, setUnitSystemState] = useState(readUnitSystem);
   // Always-current mirror for functional updaters (avoids stale closure).
   const unitSystemRef = useRef(unitSystem);

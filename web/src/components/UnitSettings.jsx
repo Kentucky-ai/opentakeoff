@@ -4,11 +4,24 @@
 // immediately on selection (no save step needed for a single toggle).
 //
 // Accessibility: role="dialog", aria-modal, labelled-by/description IDs,
-// Escape-to-close, and focus restoration to the triggering control.
+// Escape-to-close, focus trap for Tab/Shift+Tab, and focus restoration to
+// the triggering control.
 import { useEffect, useRef } from "react";
 import { Icon } from "../brand/icons.jsx";
 import { useTranslation } from "react-i18next";
 import { useUnitSystem } from "./UnitSystemProvider.jsx";
+
+/** Query all focusable elements within a container. */
+function focusables(container) {
+  if (!container) return [];
+  // Broad selector: inputs, buttons, select, textarea, and any element with
+  // tabindex that is not explicitly removed from the tab order.
+  return Array.from(
+    container.querySelectorAll(
+      'input:not([disabled]):not([tabindex="-1"]), button:not([disabled]):not([tabindex="-1"]), select:not([disabled]):not([tabindex="-1"]), textarea:not([disabled]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])'
+    )
+  );
+}
 
 export default function UnitSettings({ onClose, triggerRef }) {
   const { t } = useTranslation("panels");
@@ -17,16 +30,43 @@ export default function UnitSettings({ onClose, triggerRef }) {
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
 
-  // Escape-to-close and focus management
+  // Escape-to-close, focus trap, and focus management
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === "Escape") { e.stopPropagation(); closeRef.current(); }
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        closeRef.current();
+        return;
+      }
+      // Focus trap: Tab / Shift+Tab wraps within the dialog
+      if (e.key === "Tab") {
+        const els = focusables(dialogRef.current);
+        if (els.length === 0) return;
+        const first = els[0];
+        const last = els[els.length - 1];
+        if (e.shiftKey) {
+          // Shift+Tab: if at or before the first, wrap to the last
+          if (document.activeElement === first || !dialogRef.current.contains(document.activeElement)) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          // Tab: if at or after the last, wrap to the first
+          if (document.activeElement === last || !dialogRef.current.contains(document.activeElement)) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
     };
     document.addEventListener("keydown", onKey, true);
     // Focus the dialog on mount (or the first focusable element inside it)
     const el = dialogRef.current;
     if (el) {
-      const focusable = el.querySelector("input[type=radio]:checked") || el.querySelector("input[type=radio]") || el.querySelector("button");
+      const focusable =
+        el.querySelector("input[type=radio]:checked") ||
+        el.querySelector("input[type=radio]") ||
+        el.querySelector("button");
       if (focusable) focusable.focus();
     }
     const trigger = triggerRef?.current;

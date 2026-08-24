@@ -2,6 +2,10 @@
 // Verifies that the approved label strings appear in both locales, that
 // TakeoffCanvas does NOT persist or hydrate per-project units overrides,
 // and that the provider reads from the canonical localStorage key.
+//
+// buildPayload/hydrate tests extract the actual source and parse it to
+// verify structural absence of `units` — they fail if units is added
+// as a key, regardless of nearby comments.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -72,27 +76,89 @@ test("scale.imperial_hint exists in pt-BR canvas locale", () => {
 
 const canvas = fs.readFileSync(path.join(here, "src/pages/TakeoffCanvas.jsx"), "utf8");
 
+/**
+ * Extract the buildPayload return-object body from TakeoffCanvas source.
+ * Returns the text of the object literal returned by buildPayload().
+ */
+function extractBuildPayloadReturn(): string {
+  // Find the buildPayload function and its return statement.
+  // The return is a single-line `return { ... };` inside `const buildPayload = () => {`.
+  const marker = "const buildPayload = () => {";
+  const start = canvas.indexOf(marker);
+  assert.ok(start >= 0, "buildPayload function not found in TakeoffCanvas");
+
+  // Find the return statement after the marker
+  const bodyStart = start + marker.length;
+  const returnIdx = canvas.indexOf("return {", bodyStart);
+  assert.ok(returnIdx >= 0, "buildPayload must contain a return statement with an object");
+
+  // Find the matching closing `};` — walk braces counting nesting
+  let braceCount = 0;
+  let i = returnIdx + "return ".length;
+  // Skip the opening brace of the returned object
+  while (i < canvas.length && canvas[i] !== "{") i++;
+  const objStart = i;
+  for (; i < canvas.length; i++) {
+    if (canvas[i] === "{") braceCount++;
+    if (canvas[i] === "}") braceCount--;
+    if (braceCount === 0) break;
+  }
+  assert.ok(braceCount === 0, "Unbalanced braces in buildPayload return object");
+  return canvas.slice(objStart, i + 1);
+}
+
+/**
+ * Extract top-level property keys from a JavaScript object literal string.
+ * Handles shorthand, computed, and spread properties. Returns only the
+ * static property names (not spread expressions).
+ */
+function topLevelKeys(objLiteral: string): string[] {
+  // Strip the outer braces
+  const inner = objLiteral.slice(1, -1);
+  const keys: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const ch of inner) {
+    if (ch === "{" || ch === "[" || ch === "(") { depth++; current += ch; continue; }
+    if (ch === "}" || ch === "]" || ch === ")") { depth--; current += ch; continue; }
+    if (ch === "," && depth === 0) {
+      // End of a property — extract key
+      const m = current.trim().match(/^(\w+)\s*:/);
+      if (m) keys.push(m[1]);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  // Last property
+  const m = current.trim().match(/^(\w+)\s*:/);
+  if (m) keys.push(m[1]);
+  return keys;
+}
+
 test("buildPayload does NOT include per-project units in the return object", () => {
-  // The old pattern was: ...(units === "metric" ? { units } : {})
+  const returnObj = extractBuildPayloadReturn();
+  const keys = topLevelKeys(returnObj);
   assert.ok(
-    !/\{\s*units\s*\}/.test(canvas) || /NOTE.*per-project.*units.*removed/.test(canvas),
-    "buildPayload must not include per-project units in its return object"
+    !keys.includes("units"),
+    `buildPayload return object must not have 'units' as a top-level key; found keys: [${keys.join(", ")}]`
   );
 });
 
 test("hydrate does NOT apply per-project units from the payload", () => {
   // The old pattern was: if (a.units === "metric" || a.units === "imperial") setUnits(a.units);
+  // This pattern MUST NOT appear in the file — it would mean hydrate reads units from the payload.
   assert.ok(
     !/a\.units\s*===/.test(canvas),
-    "hydrate must not read a.units to override the global unit system"
+    "hydrate must not read a.units to override the global unit system (found 'a.units ===' in TakeoffCanvas)"
   );
 });
 
 test("canvas reads units from UnitSystemProvider, not local localStorage", () => {
-  // The old pattern was: localStorage.getItem("opentakeoff_units")
+  // Must NOT use the legacy localStorage key directly
   assert.ok(
-    !/opentakeoff_units/.test(canvas),
-    "TakeoffCanvas must not read/write the legacy opentakeoff_units localStorage key"
+    !/localStorage.*opentakeoff_units|opentakeoff_units.*localStorage/.test(canvas),
+    "TakeoffCanvas must not read/write the legacy opentakeoff_units via localStorage"
   );
   // Must use the provider hook
   assert.ok(
@@ -128,15 +194,26 @@ test("UnitSystemProvider uses readUnitSystem/writeUnitSystem from unitPreference
   );
 });
 
-test("UnitSystemProvider calls migrateLegacyUnit on mount", () => {
+test("UnitSystemProvider calls migrateLegacyUnit exactly once via module-level guard", () => {
   const provider = fs.readFileSync(path.join(here, "src/components/UnitSystemProvider.jsx"), "utf8");
+  // Must import migrateLegacyUnit
   assert.ok(
     /import.*migrateLegacyUnit.*from.*unitPreference/.test(provider),
     "UnitSystemProvider must import migrateLegacyUnit from unitPreference.js"
   );
+  // Must have a module-level guard variable (not inside the component function)
+  // Look for a let/const _migrated (or similar) before the export function
+  const providerExportIdx = provider.indexOf("export function UnitSystemProvider");
+  assert.ok(providerExportIdx > 0, "UnitSystemProvider must be an exported function");
+  const preamble = provider.slice(0, providerExportIdx);
   assert.ok(
-    /migrateLegacyUnit\(\)/.test(provider),
-    "UnitSystemProvider must call migrateLegacyUnit() on mount"
+    /let\s+_\w+\s*=\s*false/.test(preamble),
+    "UnitSystemProvider must declare a module-level guard variable (e.g. let _migrated = false) before the component"
+  );
+  // Must call migrateLegacyUnit inside the component, guarded by the flag
+  assert.ok(
+    /migrateLegacyUnit\(\)/.test(provider.slice(providerExportIdx)),
+    "UnitSystemProvider must call migrateLegacyUnit() inside the component body"
   );
 });
 
@@ -182,6 +259,18 @@ test("UnitSettings restores focus to triggerRef on unmount", () => {
   // so the assertion is not defeated by multi-line splitting or local aliasing.
   assert.ok(/triggerRef\?\.current/.test(settings), "UnitSettings must snapshot triggerRef.current for cleanup");
   assert.ok(/\.focus\(\)/.test(settings), "UnitSettings must call .focus() in cleanup to restore focus");
+});
+
+test("UnitSettings implements keyboard focus trap for Tab/Shift+Tab", () => {
+  const settings = fs.readFileSync(path.join(here, "src/components/UnitSettings.jsx"), "utf8");
+  // Must handle Tab key events
+  assert.ok(/key\s*===\s*"Tab"/.test(settings), "UnitSettings must intercept Tab key events");
+  // Must check shiftKey to handle Shift+Tab
+  assert.ok(/shiftKey/.test(settings), "UnitSettings must handle Shift+Tab direction");
+  // Must have a helper that queries focusable elements within the dialog
+  assert.ok(/querySelectorAll/.test(settings), "UnitSettings must query focusable elements for the trap");
+  // Must call preventDefault to prevent native tab behavior when wrapping
+  assert.ok(/preventDefault/.test(settings), "UnitSettings must call preventDefault to trap focus");
 });
 
 // ── MCP payload compatibility ────────────────────────────────────────────────
