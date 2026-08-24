@@ -20,6 +20,7 @@ const req = createRequire("/Users/sfgprecon/dev/opentakeoff/web/bench/callouts.m
 const pdfjs = await import(req.resolve("pdfjs-dist/legacy/build/pdf.mjs"));
 const O = await import("../../src/lib/oneclick.ts");
 const D = await import("../../src/lib/detectRooms.ts");
+const DS = await import("../../src/lib/doorseal.ts");
 const G = JSON.parse(readFileSync("/Users/sfgprecon/Desktop/OT-Corpus/all-goldens.json", "utf8"));
 
 const [file, sheetId, pageNo, ftPxArg, insetArg] = process.argv.slice(2);
@@ -79,13 +80,19 @@ for (let i = 0; i < n; i++) {
   }
 }
 
+const seal = (mo) => {
+  if (!process.env.SEAL) return mo;
+  return DS.sealDoorways(mo, DS.findDoorSeals(g.segs, g.meta, mo, ftPx)).mo;
+};
+
 const run = (rolesArg, label) => {
-  const mo = O.buildMask(
+  const mo0 = O.buildMask(
     g.segs, Math.ceil(vp.width), Math.ceil(vp.height), O.MASK_MAX_DIM, g.meta, ftPx, ftPx,
     { pageW: vp.width, pageH: vp.height, renderScale: 1, baseScale: 1 },
     rolesArg,
     { subpaths: g.subpaths || null, texts: marks },
   );
+  const mo = seal(mo0);
   const mppf = mo.mppf || ftPx * mo.ws;
   const seeds = D.roomLabelSeeds(items, { bounds: D.sheetBounds(vp.width, vp.height) });
   const regions = D.detectRegions(mo, seeds, undefined, mppf);
@@ -138,12 +145,12 @@ rooms.forEach((r, ri) => {
     const my = (g.segs[i * 4 + 1] + g.segs[i * 4 + 3]) / 2;
     if (inRing(ring, mx, my) && dRing(ring, mx, my) / ftPx > INSET) one[i] = 2;
   }
-  const mo = O.buildMask(
+  const mo = seal(O.buildMask(
     g.segs, Math.ceil(vp.width), Math.ceil(vp.height), O.MASK_MAX_DIM, g.meta, ftPx, ftPx,
     { pageW: vp.width, pageH: vp.height, renderScale: 1, baseScale: 1 },
     one,
     { subpaths: g.subpaths || null, texts: marks },
-  );
+  ));
   const mppf = mo.mppf || ftPx * mo.ws;
   const mine = seedsAll.filter((s) => inRing(ring, s.seed[0], s.seed[1]));
   if (!mine.length) { console.log(`  ${String(r.sf.toFixed(1)).padStart(8)} SF | no seed in room`); return; }

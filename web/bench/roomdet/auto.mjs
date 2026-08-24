@@ -17,6 +17,7 @@ const req = createRequire("/Users/sfgprecon/dev/opentakeoff/web/bench/callouts.m
 const pdfjs = await import(req.resolve("pdfjs-dist/legacy/build/pdf.mjs"));
 const O = await import("../../src/lib/oneclick.ts");
 const D = await import("../../src/lib/detectRooms.ts");
+const DS = await import("../../src/lib/doorseal.ts");
 const G = JSON.parse(readFileSync("/Users/sfgprecon/Desktop/OT-Corpus/all-goldens.json", "utf8"));
 
 const [file, sheetId, pageNo, ftPxArg] = process.argv.slice(2);
@@ -47,8 +48,17 @@ const mo = O.buildMask(
 );
 const mppf = mo.mppf || ftPx * mo.ws;
 
+// SEAL=1 closes every hinged opening the drafter drew before flooding.
+let mo2 = mo, sealed = 0;
+if (process.env.SEAL) {
+  const seals = DS.findDoorSeals(g.segs, g.meta, mo, ftPx,
+    process.env.MAXR ? { maxRadiusFt: +process.env.MAXR } : {});
+  ({ mo: mo2, sealed } = DS.sealDoorways(mo, seals));
+  console.log(`  door seals written: ${sealed}`);
+}
+
 const seeds = D.roomLabelSeeds(items, { bounds: D.sheetBounds(vp.width, vp.height) });
-const regions = D.detectRegions(mo, seeds, undefined, mppf);
+const regions = D.detectRegions(mo2, seeds, undefined, mppf);
 const nearest = O.snapNearest(g.points);
 
 // each proposal → the ring the product returns, in mask px → SF
@@ -58,7 +68,7 @@ for (const r of regions) {
   if (ring.length < 3) continue;
   const sf = O.ringArea(ring) / (mppf * mppf);
   // seed back to image px for golden containment
-  props.push({ str: r.str, sf, sx: r.seed[0] / mo.ws, sy: r.seed[1] / mo.ws });
+  props.push({ str: r.str, sf, sx: r.seed[0] / mo2.ws, sy: r.seed[1] / mo2.ws });
 }
 
 const rooms = G.shapes.filter((s) => s.sheet_id === sheetId && s.role === "floor_area");
