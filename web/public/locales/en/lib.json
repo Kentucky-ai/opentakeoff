@@ -155,7 +155,7 @@
     "tab_floor_room": "By floor × room",
     "room": "Room",
     "shapes_note": "Per-shape measured quantities — no multiplier or waste; deducts negative; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF",
-    "shapes_note_metric": ". Raw internal SF/LF (display units: metric)",
+    "shapes_note_metric": "Per-shape measured quantities — no multiplier or waste; deducts negative; m on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition m (display units: metric)",
     "floor_room_note": "Ordered quantities per floor × room — waste % and xN applied per slice; each floor's rooms reconcile to that floor's shapes. Coverage ceils are per-cell display, not a buy list"
   },
   "marked_set": {

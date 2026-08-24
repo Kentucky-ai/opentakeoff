@@ -30,11 +30,11 @@ import { Icon } from "../brand/icons.jsx";
 import { attrValue, columnLabel } from "../lib/conditionColumns.js";
 import { SPEC_FIELDS } from "../lib/reportColumns.js";
 import { num } from "../lib/num.js";
-import { areaVal, areaUnit, lenVal, lenUnit, heightUnit, heightInputToFeet, heightStep, thickUnit, thickInputToInches, thickStep, dimInputStr, MM_PER_IN, ftIn, M_PER_FT, thickVal } from "../lib/units";
+import { areaVal, areaUnit, lenVal, lenUnit, heightUnit, heightInputToFeet, heightStep, thickUnit, thickInputToInches, thickStep, dimInputStr, MM_PER_IN, ftIn, M_PER_FT, M2_PER_SF, thickVal } from "../lib/units";
 import { HATCHES, PALETTE, NO_FILL, HatchSwatch } from "./hatches.jsx";
 import { getLineStyles, LINE_STYLE_IDS } from "../lib/lineStyles.js";
 import { baseTagOf, localCount } from "../lib/variants.ts";
-import { materialKind, getMaterialPresets, GROUT_DEFAULTS, groutDerivedFields, coverageRateForDisplay, coverageRateToCanonical, showsGroutCalc, showsGroutDeriveAffordance } from "../lib/coverage.js";
+import { materialKind, getMaterialPresets, GROUT_DEFAULTS, groutDerivedFields, groutDisplayNote, coverageRateForDisplay, coverageRateToCanonical, showsGroutCalc, showsGroutDeriveAffordance } from "../lib/coverage.js";
 import { blurCommitNonNegative } from "../lib/draftInput.js";
 import { ROLL_FLOORING_TYPES } from "../lib/rollgoods.js";
 import { hasRollSetup, mintRollSetup } from "../lib/rollTakeoff.js";
@@ -90,20 +90,32 @@ const btnClearX = { border: "none", background: "none", color: "var(--ink-muted)
 // Grout geometry param — tile dimensions (tileL, tileW, tileT) and joint are
 // stored in inches internally; metric users enter/display in millimetres via
 // the existing thickInputToInches / thickVal conversion. bagLbs stays in lbs.
+// A raw draft has meaning only in the unit system in which it was typed;
+// cancelling it on unit change prevents a mm value from committing as inches.
 function GroutParamInput({ name, value, title, min = 0, max, width = 52, override, onCommit, units = "imperial", kind = "thick" }) {
   const [draft, setDraft] = useState(null);
+  // Cancel active draft when units change so a value typed in mm cannot
+  // later commit as inches (or vice versa). The canonical value is
+  // immediately redisplayed in the new unit system.
+  useEffect(() => { setDraft(null); }, [units]);
   // metric: display mm, commit inches; imperial: display inches, commit inches
   const M = units === "metric";
   const display = M && kind === "thick" ? thickVal(value || 0, "metric") : (value > 0 ? value : "");
   const toInternal = (n) => M && kind === "thick" ? thickInputToInches(n, "metric") : n;
+  const clamp = (n) => {
+    let v = n;
+    if (max != null && v > max) v = max;
+    if (min != null && v < min) v = min;
+    return v;
+  };
   return (
     <input name={name} type="number" min={min || 0} max={max} step={M ? 1 : "any"} title={title}
       value={draft ?? (display !== "" ? String(Number(display.toFixed(M ? 1 : 6))) : "")}
-      onChange={(e) => { const t = e.target.value; setDraft(t); const n = parseFloat(t); if (Number.isFinite(n) && n >= (min || 0)) onCommit(toInternal(n)); }}
+      onChange={(e) => { const t = e.target.value; setDraft(t); const n = parseFloat(t); if (Number.isFinite(n) && n >= (min || 0)) onCommit(toInternal(clamp(n))); }}
       onBlur={() => {
         if (draft != null) {
           const n = parseFloat(draft);
-          if (Number.isFinite(n) && n >= (min || 0)) onCommit(toInternal(n));
+          if (Number.isFinite(n) && n >= (min || 0)) onCommit(toInternal(clamp(n)));
         }
         setDraft(null);
       }}
@@ -238,13 +250,13 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
         const ov = (f) => (lm && overridden ? overridden(m, lm, f) : false);
         const g = { ...GROUT_DEFAULTS, ...(m.grout || {}) };
         // grout coverage derives from tile geometry — a param change re-derives
-        // per + writes the derivation into the note so the Report shows its
-        // work, but ONLY while the whole geometry is valid: an incomplete edit
-        // (cleared field, zero) keeps the last good per + note instead of
-        // silently committing a rate of 0 into the buy list and exports
+        // per but does NOT persist the note (grout notes are format-specific
+        // and derived at render time via groutDisplayNote). An incomplete edit
+        // (cleared field, zero) keeps the last good per instead of silently
+        // committing a rate of 0 into the buy list and exports
         const setGrout = (patch) => {
           const grout = { ...g, ...patch };
-          onUpdate(m.id, { grout, ...(groutDerivedFields(grout, units) || {}) });
+          onUpdate(m.id, { grout, ...(groutDerivedFields(grout) || {}) });
         };
         const gi = (key, title, extra) => (
           <GroutParamInput name={`grout-${key}`} value={g[key]} title={title} override={ov("grout")}
@@ -286,7 +298,11 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
             </label>
             {ov("round") && rv(m, "round")}
             <CoveragePresetSelect material={m} onPick={(patch) => onUpdate(m.id, patch)} units={units} />
-            <input name="material-note" value={m.note || ""} onChange={(e) => onUpdate(m.id, { note: e.target.value })} placeholder={t('takeoffs.mat_note_placeholder')} style={{ ...ip, width: 150, ...(ov("note") ? { border: OV } : {}) }} />
+            <input name="material-note" value={showsGroutCalc(m) ? groutDisplayNote(m, units) : (m.note || "")}
+              readOnly={showsGroutCalc(m)}
+              onChange={(e) => { if (!showsGroutCalc(m)) onUpdate(m.id, { note: e.target.value }); }}
+              placeholder={t('takeoffs.mat_note_placeholder')}
+              style={{ ...ip, width: 150, ...(showsGroutCalc(m) ? { background: "var(--paper-cream)", color: "var(--ink-muted)" } : ov("note") ? { border: OV } : {}) }} />
             {ov("note") && rv(m, "note")}
             {!lm && onPromote && (
               <button onClick={() => onPromote(m)} title={t('takeoffs.mat_promote_title')}
@@ -627,19 +643,28 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
               )}
               <select name="condition-roll-unit" value={rs.price_unit || "sf"} onChange={(e) => patch({ price_unit: e.target.value })} style={sel}
                 title={t('takeoffs.roll_unit_title')}>
-                <option value="sy">{M ? "SY" : "SY"}</option>
+                <option value="sy">{M ? "m² (SY)" : "SY"}</option>
                 <option value="sf">{M ? "m²" : "SF"}</option>
                 <option value="lf">{M ? "m" : "LF"}</option>
               </select>
             </div>
-            {rollInfo && (
-              <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 11, color: "var(--ink)" }}
-                title={t('takeoffs.roll_figured_title')}>
-                {t('takeoffs.roll_figured')} {M ? `${(rollInfo.orderFt * M_PER_FT).toFixed(2)} m` : ftIn(rollInfo.orderFt)} · {rollInfo.qty} {rollInfo.unit.toUpperCase()}
-                {rollInfo.config.rollLengthFt > 0 ? ` · ${rollInfo.rollCount} roll${rollInfo.rollCount === 1 ? "" : "s"}` : ""}
-                {rollInfo.oversize && <span style={{ color: "var(--c-danger)" }}> {t('takeoffs.roll_oversize_inline')}</span>}
-              </div>
-            )}
+            {rollInfo && (() => {
+              // Roll qty display: in metric, SF→m², SY→m² (SY×9=SF), LF→m
+              const ru = rollInfo.unit;
+              const rqVal = M
+                ? (ru === "lf" ? Math.round(rollInfo.orderFt * M_PER_FT * 100) / 100
+                   : Math.round((ru === "sy" ? rollInfo.qty * 9 : rollInfo.qty) * M2_PER_SF * 100) / 100)
+                : rollInfo.qty;
+              const rqLabel = M ? (ru === "lf" ? "m" : "m²") : ru.toUpperCase();
+              return (
+                <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 11, color: "var(--ink)" }}
+                  title={t('takeoffs.roll_figured_title')}>
+                  {t('takeoffs.roll_figured')} {M ? `${(rollInfo.orderFt * M_PER_FT).toFixed(2)} m` : ftIn(rollInfo.orderFt)} · {rqVal} {rqLabel}
+                  {rollInfo.config.rollLengthFt > 0 ? ` · ${rollInfo.rollCount} roll${rollInfo.rollCount === 1 ? "" : "s"}` : ""}
+                  {rollInfo.oversize && <span style={{ color: "var(--c-danger)" }}> {t('takeoffs.roll_oversize_inline')}</span>}
+                </div>
+              );
+            })()}
           </div>
         );
       })()}

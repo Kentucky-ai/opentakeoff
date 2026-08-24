@@ -12,11 +12,23 @@
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Icon } from "../brand/icons.jsx";
-import { ftIn, lenVal, lenUnit } from "../lib/units";
+import { ftIn, lenVal, lenUnit, M_PER_FT, M2_PER_SF } from "../lib/units";
 import { rollColorForType } from "../lib/rollgoods.js";
 import { HatchSwatch } from "./hatches.jsx";
 
 const PXFT = 9; // diagram scale, px per foot — a 12-ft roll draws 108px wide
+
+// Convert roll qty (in canonical unit: SF, SY, or LF) to the display value
+// and label for the current unit system. In metric: SF→m², SY→m² (SY×9=SF),
+// LF→m. Imperial returns the raw value with the uppercase unit.
+function rollQtyDisplay(qty, unit, units) {
+  if (units !== "metric") return { value: Math.round(qty * 100) / 100, label: unit.toUpperCase() };
+  if (unit === "lf") return { value: round2(qty * M_PER_FT), label: "m" };
+  // sf or sy: both display as m² — SY must multiply by 9 to get SF first
+  const sf = unit === "sy" ? qty * 9 : qty;
+  return { value: round2(sf * M2_PER_SF), label: "m²" };
+}
+const round2 = (n) => Math.round(n * 100) / 100;
 
 // One roll's diagram: the roll drawn VERTICALLY (width across, length down),
 // cuts at their packed (cutY across, cutX down) positions, numbered when they
@@ -142,7 +154,7 @@ export default function RollPanel({
                 <span style={{ marginLeft: "auto", color: "var(--ink-muted)", fontSize: 10.5, fontFamily: "var(--f-mono)" }}>{ri.direction === "ns" ? t('roll.run_ns') : t('roll.run_ew')}</span>
               </div>
               <div style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink)", marginBottom: 6 }}>
-                {t('roll.order')} {fmt(ri.orderFt)} · {Math.round(ri.qty * 100) / 100} {ri.unit.toUpperCase()} · {ri.cutCount} {ri.cutCount === 1 ? t('roll.cut_suffix') : t('roll.cuts_suffix')}
+                {t('roll.order')} {fmt(ri.orderFt)} · {(() => { const rq = rollQtyDisplay(ri.qty, ri.unit, units); return <>{rq.value} {rq.label}</>; })()} · {ri.cutCount} {ri.cutCount === 1 ? t('roll.cut_suffix') : t('roll.cuts_suffix')}
                 {ri.config.rollLengthFt > 0 ? ` · ${ri.rollCount} ${ri.rollCount === 1 ? t('roll.roll_suffix') : t('roll.rolls_suffix')} @ ${fmt(ri.config.rollLengthFt)}` : ""}
               </div>
               {ri.oversize && (

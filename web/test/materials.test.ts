@@ -120,9 +120,9 @@ test("library round-trip: promote → attach preserves the mosaic geometry, rate
   assert.deepEqual(attached.grout, MOSAIC);
   assert.notEqual(attached.grout, entry.grout);
   assert.equal(attached.kind, "grout");
-  // the attached line's per/note agree with its OWN geometry — the first
+  // the attached line's per agrees with its OWN geometry — the first
   // calculator keystroke re-derives from the mosaic, not from the defaults
-  assert.deepEqual(groutDerivedFields(attached.grout), { per: attached.per, note: attached.note });
+  assert.deepEqual(groutDerivedFields(attached.grout), { per: attached.per });
   // and nothing reads as overridden right after attach
   for (const f of ["name", "unit", "per", "basis", "round", "note", "grout"]) {
     assert.equal(matFieldOverridden(attached, entry, f), false, f);
@@ -135,7 +135,9 @@ test("matFieldOverridden: grout compares structurally, and geometry drift ambers
   const drifted = { ...line, grout: { ...line.grout!, joint: 0.125 }, ...groutDerivedFields({ ...line.grout!, joint: 0.125 }) };
   assert.equal(matFieldOverridden(drifted, entry, "grout"), true);
   assert.equal(matFieldOverridden(drifted, entry, "per"), true);
-  assert.equal(matFieldOverridden(drifted, entry, "note"), true);
+  // note is NOT overridden by geometry drift — it is display-only, derived at
+  // render time via groutDisplayNote, never persisted from groutDerivedFields
+  assert.equal(matFieldOverridden(drifted, entry, "note"), false);
   // a line with no grout object vs a defaults-geometry entry: since the
   // round-2 render gate, absent-vs-present RENDER differently (derive button
   // vs calculator), so this now flags (round-3 finding 4 updates the
@@ -150,7 +152,7 @@ test("libPushPatch: pushes the library's grout (deep copy) and clears stale line
   const pushed = libPushPatch(stale, entry);
   assert.deepEqual(pushed.grout, MOSAIC);
   assert.notEqual(pushed.grout, entry.grout);
-  assert.deepEqual(groutDerivedFields(pushed.grout), { per: pushed.per, note: pushed.note });
+  assert.deepEqual(groutDerivedFields(pushed.grout), { per: pushed.per });
   // library entry WITHOUT geometry → the line's stale grout is removed, not left contradicting per/note
   const plain = { id: "lib_2", name: "Grout", unit: "bag", per: 200, basis: "area", round: true, note: "hand rate" };
   const pushed2 = libPushPatch(stale, plain);
@@ -166,7 +168,7 @@ test("libRevertPatch: per/note/grout revert together on a grout line; plain fiel
     const patch = libRevertPatch(drifted, entry, f);
     assert.deepEqual(patch.grout, MOSAIC);
     assert.notEqual(patch.grout, entry.grout);
-    assert.deepEqual(groutDerivedFields(patch.grout!), { per: patch.per, note: patch.note });
+    assert.deepEqual(groutDerivedFields(patch.grout!), { per: patch.per });
   }
   // name reverts alone, untouched geometry
   assert.deepEqual(libRevertPatch({ ...drifted, name: "Ultracolor" }, entry, "name"), { name: "Grout" });
@@ -205,16 +207,20 @@ test("libEntryPatch: committing per/note UNCHANGED does not detach (select-all-r
 });
 
 // ── round-2 Defect B: the derived note dies with the geometry it describes ──
+// Dynamic grout notes are display-only (derived at render time via
+// groutDisplayNote). The note field on a library entry is user-authored, NOT
+// geometry-derived. Per-detach still removes geometry; hand notes survive.
 
-test("libEntryPatch note coherence: a per-detach clears the geometry-derived note; a hand note survives; patch.note wins", () => {
+test("libEntryPatch note coherence: per-detach removes geometry; hand notes survive; patch.note wins", () => {
+  // NEW: entries no longer carry a geometry-derived note — groutDerivedFields
+  // returns only { per }; groutDisplayNote formats at render time.
   const entry = { id: "lib_1", ...libFields(groutLine()) };
-  assert.equal(entry.note, groutNote(MOSAIC), "precondition: the entry carries the derivation note");
-  // per hand-edit: geometry AND its note both go — a note deriving the old
-  // rate under the new per is false provenance in the Report/exports
+  assert.equal(entry.note, "", "entries no longer carry a persisted grout derivation note");
+  // per hand-edit: geometry goes, note unchanged (it was already empty)
   const perEdit = libEntryPatch(entry, { per: 350 });
   assert.ok(!("grout" in perEdit));
-  assert.equal(perEdit.note, "", "stale derivation note cleared with its geometry");
-  // the user's own pre-existing note is NOT the derived one → untouched
+  assert.equal(perEdit.note, "");
+  // the user's own pre-existing note is NOT derived → untouched
   const handNoted = { ...entry, note: "vendor quote" };
   const perEdit2 = libEntryPatch(handNoted, { per: 350 });
   assert.ok(!("grout" in perEdit2));
@@ -225,6 +231,12 @@ test("libEntryPatch note coherence: a per-detach clears the geometry-derived not
   assert.equal(noteEdit.note, "hand rate per bid");
   const both = libEntryPatch(entry, { per: 350, note: "hand rate per bid" });
   assert.equal(both.note, "hand rate per bid");
+  // backward compat: a LEGACY entry whose note matches the imperial grout
+  // format gets it cleared on per-detach (the old Defect B path still fires)
+  const legacy = { ...entry, note: groutNote(MOSAIC) };
+  const legacyPerEdit = libEntryPatch(legacy, { per: 350 });
+  assert.ok(!("grout" in legacyPerEdit));
+  assert.equal(legacyPerEdit.note, "", "legacy derived note cleared with geometry");
 });
 
 // ── round-2 Defect A (data layer): the state libEntryPatch's detach creates ──
@@ -256,7 +268,7 @@ test("push/attach from a kind-carrying, geometry-less entry: the pushed rate sur
   const g = { ...GROUT_DEFAULTS, ...(attached.grout || {}) };
   const derived = { ...attached, grout: { ...g }, ...(groutDerivedFields(g) || {}) };
   assert.deepEqual(derived.grout, GROUT_DEFAULTS);
-  assert.deepEqual({ per: derived.per, note: derived.note }, { per: 512, note: groutNote(GROUT_DEFAULTS) });
+  assert.equal(derived.per, 512);
   assert.equal(showsGroutCalc(derived), true);
 });
 
@@ -453,7 +465,9 @@ test("derive-on-linked-line: the geometry row ambers (presence mismatch) and the
   const derived = { ...line, grout: { ...g }, ...(groutDerivedFields(g) || {}) };
   assert.equal(matFieldOverridden(derived, entry, "grout"), true, "line present vs entry absent NOW ambers");
   assert.equal(matFieldOverridden(derived, entry, "per"), true);
-  assert.equal(matFieldOverridden(derived, entry, "note"), true);
+  // note does NOT amber — grout notes are display-only (derived via
+  // groutDisplayNote from m.grout + units), never persisted by groutDerivedFields
+  assert.equal(matFieldOverridden(derived, entry, "note"), false);
   // trio revert cleanly removes the derived geometry and restores per + note
   const patch = libRevertPatch(derived, entry, "grout");
   assert.deepEqual({ per: patch.per, note: patch.note }, { per: 350, note: "hand rate" });

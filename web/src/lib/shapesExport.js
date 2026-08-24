@@ -53,7 +53,9 @@ export function shapesToCsv(rows, projectName = "", brandName = "OpenTakeoff", u
   const AU = M ? "m²" : "SF", LU = M ? "m" : "LF", HU = M ? "m" : "ft";
   const header = [_t("shape.shape"), _t("shape.sheet"), _t("shape.sheet_id"), _t("shape.finish"), _t("shape.role"), _t("shape.area_sf").replace("SF", AU), _t("shape.lf").replace("LF", LU), _t("shape.ea"), _t("shape.height_ft").replace("ft", HU), _t("shape.height_override"), _t("shape.origin")];
   const lines = [
-    "# Per-shape measured quantities — no multiplier or waste; deducts negative; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF",
+    M
+      ? "# Per-shape measured quantities — no multiplier or waste; deducts negative; m on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition m"
+      : "# Per-shape measured quantities — no multiplier or waste; deducts negative; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF",
     header.map(esc).join(","),
   ];
   for (const r of rows) {

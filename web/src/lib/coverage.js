@@ -106,16 +106,29 @@ export const groutNote = (g, units = "imperial") => {
   return `${g.tileL}×${g.tileW}×${inFrac(g.tileT)}″ @ ${inFrac(g.joint)}″ · ${g.bagLbs} lb`;
 };
 
-// The { per, note } patch a grout-geometry edit derives, or null when the
+// The { per } patch a grout-geometry edit derives, or null when the
 // geometry is incomplete/invalid (a cleared input mid-edit, a zero, NaN) —
-// callers must KEEP the last good per + note rather than commit a rate of 0
+// callers must KEEP the last good per rather than commit a rate of 0
 // that silently zeroes the line's quantity in the buy list and every export.
 // Small rates keep two decimals so mosaic-scale coverages (e.g. 2.49 SF/bag)
 // don't round away up to ~20% of the order — and never floor to 0.
-export function groutDerivedFields(grout, units = "imperial") {
+//
+// NOTE: grout notes are NOT persisted — they are format-specific and derived
+// at render time via groutDisplayNote(). This prevents stale unit-formatted
+// text when the user switches between Imperial and SI.
+export function groutDerivedFields(grout) {
   const rate = groutCoverageSfPerBag(grout);
   if (!Number.isFinite(rate) || rate <= 0) return null;
   const per = rate >= 10 ? Math.round(rate) : Math.round(rate * 100) / 100;
   if (!(per > 0)) return null;
-  return { per, note: groutNote(grout, units) };
+  return { per };
+}
+
+// Display-only grout note: format the canonical (inch-stored) grout geometry
+// into a human-readable string in the current unit system. The note is derived
+// from m.grout at render time, never persisted — so switching units instantly
+// updates every grout note in the UI and exports without a data migration.
+export function groutDisplayNote(m, units = "imperial") {
+  if (m?.grout) return groutNote(m.grout, units);
+  return m?.note || "";
 }

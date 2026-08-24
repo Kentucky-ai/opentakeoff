@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 // coverage.js is plain JS (allowJs); the tsx loader resolves it from the .ts test.
-import { materialKind, MATERIAL_PRESETS, GROUT_DEFAULTS, GROUT_PARAM_KEYS, groutCoverageSfPerBag, groutDerivedFields, groutParamsEqual, groutNote, coverageRateForDisplay, coverageRateToCanonical, inFrac, showsGroutCalc, showsGroutDeriveAffordance } from "../src/lib/coverage.js";
+import { materialKind, MATERIAL_PRESETS, GROUT_DEFAULTS, GROUT_PARAM_KEYS, groutCoverageSfPerBag, groutDerivedFields, groutParamsEqual, groutNote, groutDisplayNote, coverageRateForDisplay, coverageRateToCanonical, inFrac, showsGroutCalc, showsGroutDeriveAffordance } from "../src/lib/coverage.js";
 
 const within = (actual: number, expected: number, tolPct: number) =>
   Math.abs(actual - expected) <= expected * (tolPct / 100);
@@ -71,14 +71,33 @@ test("presets: every kind with a preset table has positive generic rates", () =>
 // (adversarial review findings 5/8: a cleared tile dimension used to commit
 // per=0 and a "0×24×…" note, silently zeroing grout in every export)
 
-test("groutDerivedFields: valid geometry → rounded per + derivation note", () => {
-  assert.deepEqual(groutDerivedFields({ ...GROUT_DEFAULTS }), { per: 512, note: "12×24×3/8″ @ 1/8″ · 25 lb" });
+test("groutDerivedFields: valid geometry → rounded per (note is derived at render, not stored)", () => {
+  const result = groutDerivedFields({ ...GROUT_DEFAULTS });
+  assert.deepEqual(result, { per: 512 });
+  // The note is display-only — groutDisplayNote derives it from the geometry
+  assert.equal(groutDisplayNote({ grout: { ...GROUT_DEFAULTS } }, "imperial"), "12×24×3/8″ @ 1/8″ · 25 lb");
 });
 
 test("grout metric display converts lengths at the UI edge and keeps canonical math", () => {
   const metric = { tileL: 12, tileW: 24, tileT: 0.375, joint: 0.125, bagLbs: 25 };
   assert.equal(groutNote(metric, "metric"), "305×610×10 mm @ 3.2 mm · 25 lb");
-  assert.equal(groutDerivedFields(metric, "metric")?.per, groutDerivedFields(metric)?.per);
+  // per is always canonical (SF/bag) regardless of display units
+  assert.equal(groutDerivedFields(metric)?.per, groutDerivedFields({ ...GROUT_DEFAULTS })?.per);
+});
+
+test("groutDisplayNote: switches between imperial and metric from the same canonical grout", () => {
+  const m = { grout: { tileL: 12, tileW: 24, tileT: 0.375, joint: 0.125, bagLbs: 25 } };
+  assert.equal(groutDisplayNote(m, "imperial"), "12×24×3/8″ @ 1/8″ · 25 lb");
+  assert.equal(groutDisplayNote(m, "metric"), "305×610×10 mm @ 3.2 mm · 25 lb");
+  // No grout → falls back to m.note
+  assert.equal(groutDisplayNote({ note: "custom note" }, "metric"), "custom note");
+  assert.equal(groutDisplayNote({}, "imperial"), "");
+});
+
+test("groutDerivedFields does NOT persist a note — only per is stored", () => {
+  const result = groutDerivedFields({ ...GROUT_DEFAULTS });
+  assert.ok(result && "per" in result, "has per");
+  assert.ok(!("note" in (result || {})), "must not contain note");
 });
 
 test("material coverage rates round-trip between canonical SF/LF and metric m²/m", () => {
@@ -94,6 +113,19 @@ test("groutDerivedFields: any invalid/incomplete param → null (keep the last g
       assert.equal(groutDerivedFields({ ...GROUT_DEFAULTS, [key]: bad }), null, `${key}=${bad}`);
     }
   }
+});
+
+test("groutDerivedFields: boundary values at max joint (0.5in / 12.7mm) produce valid per", () => {
+  // Imperial max: joint = 0.5 in
+  const maxImp = { ...GROUT_DEFAULTS, joint: 0.5 };
+  const rImp = groutDerivedFields(maxImp);
+  assert.ok(rImp && rImp.per > 0, `imperial max joint ${rImp?.per}`);
+  // Metric max: 12.7 mm ≈ 0.5 in
+  const maxMet = { ...GROUT_DEFAULTS, joint: 12.7 / 25.4 };
+  const rMet = groutDerivedFields(maxMet);
+  assert.ok(rMet && rMet.per > 0, `metric max joint ${rMet?.per}`);
+  // Both should produce the same canonical per (same geometry)
+  assert.equal(rImp!.per, rMet!.per);
 });
 
 test("groutDerivedFields: small rates keep two decimals and never floor to per=0", () => {
@@ -166,9 +198,9 @@ test("showsGroutDeriveAffordance: the explicit opt-in appears exactly when the c
   assert.equal(showsGroutDeriveAffordance({ ...bare, grout: { ...GROUT_DEFAULTS } }), false);
   assert.equal(showsGroutDeriveAffordance({ ...bare, basis: "count" }), false);
   assert.equal(showsGroutDeriveAffordance({ name: "Adhesive", basis: "area" }), false);
-  // the affordance's click seeds defaults AND derives per+note in ONE commit
+  // the affordance's click seeds defaults AND derives per in ONE commit
   const g = { ...GROUT_DEFAULTS, ...((bare as any).grout || {}) };
-  assert.deepEqual({ grout: g, ...(groutDerivedFields(g) || {}) }, { grout: { ...GROUT_DEFAULTS }, per: 512, note: "12×24×3/8″ @ 1/8″ · 25 lb" });
+  assert.deepEqual({ grout: g, ...(groutDerivedFields(g) || {}) }, { grout: { ...GROUT_DEFAULTS }, per: 512 });
 });
 
 test("inFrac/groutNote: drawing-style fractions, decimal fallback off the 1/32″ grid", () => {

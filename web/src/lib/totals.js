@@ -22,7 +22,7 @@ import { round2 } from "./num.js";
 import { csvEsc as esc } from "./csv.js";
 import { GETTERS, getCsvProfile, colGetter, floorPerimeterLf, applyUnits, METRIC_CSV_LABELS } from "./reportColumns.js";
 import { M_PER_FT, M2_PER_SF } from "./units";
-import { coverageRateForDisplay } from "./coverage.js";
+import { coverageRateForDisplay, groutDisplayNote } from "./coverage.js";
 import { attrValue } from "./conditionColumns.js";
 import { shapeLabelValue } from "./shapeLabels.js";
 import { compareSheetKeys } from "./sheetKey"; // NOT ./sheets — that module imports pdfjs-dist
@@ -395,7 +395,7 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
   const perCond = [];
   for (const r of rows) for (const m of (r.materials || [])) {
     const per = M ? round2(coverageRateForDisplay(m.per, m.basis, units)) : m.per;
-    perCond.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || _t("basis.unit")} / ${per} ${basisLabel(m.basis)}`, m.note || ""]);
+    perCond.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || _t("basis.unit")} / ${per} ${basisLabel(m.basis)}`, groutDisplayNote(m, units)]);
   }
   if (perCond.length) {
     lines.push("");

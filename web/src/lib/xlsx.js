@@ -17,7 +17,7 @@ import { GETTERS, colGetter, applyUnits, METRIC_CSV_LABELS } from "./reportColum
 import { grandTotals, materialsSummary, roundSheetRow, hasMultipliers, BY_SHEET_BASE_NOTE } from "./totals.js";
 import { round2 } from "./num.js";
 import { M_PER_FT, M2_PER_SF } from "./units";
-import { coverageRateForDisplay } from "./coverage.js";
+import { coverageRateForDisplay, groutDisplayNote } from "./coverage.js";
 import i18n from '../i18n/index.js';
 const _t = (key, options) => i18n.t(key, { ns: 'lib', ...options });
 
@@ -223,7 +223,7 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
   const materials = [[_t("csv_header.finish"), _t("csv_header.material"), _t("csv_header.qty"), _t("csv_header.unit"), _t("csv_header.coverage"), _t("csv_header.note")]];
   for (const r of rows) for (const m of (r.materials || [])) {
     const per = M ? round2(coverageRateForDisplay(m.per, m.basis, units)) : m.per;
-    materials.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || _t("basis.unit")} / ${per} ${basisLabel(m.basis)}`, m.note || ""]);
+    materials.push([r.finish_tag, m.name, m.qty, m.unit, `1 ${m.unit || _t("basis.unit")} / ${per} ${basisLabel(m.basis)}`, groutDisplayNote(m, units)]);
   }
   const combined = materialsSummary(rows);
   if (combined.length) {
@@ -236,7 +236,7 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
   // matching the shapes CSV convention; imperial stays raw internal feet.
   const SU = M ? "m²" : "SF", SUL = M ? "m" : "LF", SUH = M ? "m" : "ft";
   const shapesTab = [
-    [_t("xlsx.shapes_note")],
+    [M ? _t("xlsx.shapes_note_metric") : _t("xlsx.shapes_note")],
     [_t("shape.shape"), _t("shape.sheet"), _t("shape.sheet_id"), _t("shape.finish"), _t("shape.role"), _t("shape.area_sf").replace("SF", SU), _t("shape.lf").replace("LF", SUL), _t("shape.ea"), _t("shape.height_ft").replace("ft", SUH), _t("shape.height_override"), _t("shape.origin")],
   ];
   for (const r of shapeRows) {

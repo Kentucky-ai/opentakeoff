@@ -155,7 +155,7 @@
     "tab_floor_room": "Por pavimento × ambiente",
     "room": "Ambiente",
     "shapes_note": "Quantidades medidas por forma — sem multiplicador ou perda; deduções negativas; LF em linhas de piso/dedução/superfície é apenas referência de trace (incl. aberturas) — apenas linhas lineares somam ao LF da condição",
-    "shapes_note_metric": ". Valores internos SF/LF brutos (unidades de exibição: métrico)",
+    "shapes_note_metric": "Quantidades medidas por forma — sem multiplicador ou perda; deduções negativas; m em linhas de piso/dedução/superfície é apenas referência de trace (incl. aberturas) — apenas linhas lineares somam ao m da condição (unidades de exibição: métrico)",
     "floor_room_note": "Quantidades pedidas por pavimento × ambiente — % de perda e xN aplicados por fatia; os ambientes de cada pavimento reconciliam com as formas do pavimento. Teto de cobertura é exibição por célula, não lista de compra"
   },
   "marked_set": {
