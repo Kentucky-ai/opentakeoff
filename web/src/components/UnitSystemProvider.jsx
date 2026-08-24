@@ -11,36 +11,50 @@
 // Legacy migration runs once per mounted provider instance via a layout effect
 // with a ref guard.  The initial render always reads the canonical key (clean
 // read); if the legacy key still holds a value, the layout effect promotes it
-// and bumps state so consumers see the migrated value before paint.  The ref
-// is per-instance so unmount+remount (HMR, route transitions) naturally
-// re-runs migration if needed, and StrictMode double-invocations reuse the
-// same ref so migration only fires once per mount cycle.
+// and bumps state so consumers see the migrated value before paint.  If
+// migrateLegacyUnit returns false (storage failure), the effect retries on
+// the next render up to MAX_MIGRATION_RETRIES times — bounded so there is
+// no infinite loop.  The ref is per-instance so unmount+remount (HMR, route
+// transitions) naturally re-runs migration from scratch.
 import { createContext, useContext, useState, useCallback, useRef, useLayoutEffect } from "react";
 import { readUnitSystem, writeUnitSystem, migrateLegacyUnit } from "../lib/unitPreference.js";
 
 const UnitSystemContext = createContext(null);
 
+/** Maximum number of migration attempts per mount cycle.  The effect only
+ *  re-runs when state changes, so this bounds the retry loop without causing
+ *  churn when migration is already complete. */
+const MAX_MIGRATION_RETRIES = 3;
+
 export function UnitSystemProvider({ children }) {
   // Clean read — no migration side-effect during render.
   const [unitSystem, setUnitSystemState] = useState(readUnitSystem);
 
-  // Per-instance ref: layout effect runs migration at most once per mount.
+  // Per-instance ref: migration completed (true) or not yet (false).
+  // Reset to false on unmount+remount so a fresh mount can retry.
   const migratedRef = useRef(false);
 
-  // Migrate legacy key on first mount (StrictMode-safe: ref persists across
+  // Retry counter: increments on failed migration to trigger a re-render
+  // where the effect re-runs.  Bounded by MAX_MIGRATION_RETRIES.
+  const [retryCount, setRetryCount] = useState(0);
+
+  // Migrate legacy key on mount (StrictMode-safe: ref persists across
   // double-invocations within a single mount cycle).  useLayoutEffect runs
-  // synchronously after state commit, before the browser paints, so the
-  // migrated value is visible in the same frame as the initial render.
-  // If the canonical key is already valid (no legacy to promote), the effect
-  // is a fast no-op read.
+  // synchronously after state commit, before the browser paints.
   useLayoutEffect(() => {
-    if (!migratedRef.current) {
+    if (migratedRef.current) return; // already succeeded this mount
+    if (retryCount >= MAX_MIGRATION_RETRIES) return; // give up after retries exhausted
+    const ok = migrateLegacyUnit();
+    if (ok) {
       migratedRef.current = true;
-      migrateLegacyUnit();
       // Re-read after migration so state reflects the promoted value.
       setUnitSystemState(readUnitSystem());
+    } else {
+      // Storage failure — bump retryCount so the next render re-runs this
+      // effect (the ref is still false, so the guard passes).
+      setRetryCount((n) => n + 1);
     }
-  }, []);
+  }, [retryCount]);
 
   // Always-current mirror for functional updaters (avoids stale closure).
   // Updated synchronously inside the setter so two sequential functional

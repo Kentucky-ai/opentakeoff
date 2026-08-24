@@ -194,7 +194,7 @@ test("UnitSystemProvider uses readUnitSystem/writeUnitSystem from unitPreference
   );
 });
 
-test("UnitSystemProvider runs migration in a layout effect with a per-instance ref guard", () => {
+test("UnitSystemProvider runs migration in a layout effect with retryable ref guard", () => {
   const provider = fs.readFileSync(path.join(here, "src/components/UnitSystemProvider.jsx"), "utf8");
   // Must import migrateLegacyUnit
   assert.ok(
@@ -217,15 +217,26 @@ test("UnitSystemProvider runs migration in a layout effect with a per-instance r
     /useLayoutEffect|useEffect/.test(body),
     "UnitSystemProvider must run migration in a layout effect / effect, not during render"
   );
-  // Must call migrateLegacyUnit inside the effect
+  // Must call migrateLegacyUnit inside the effect and check the return value
+  // (true = done, false = storage failure → should retry)
   assert.ok(
     /migrateLegacyUnit\(\)/.test(body),
     "UnitSystemProvider must call migrateLegacyUnit() inside the effect"
+  );
+  // Must conditionally set the migrated ref based on the return value
+  assert.ok(
+    /migratedRef\.current\s*=\s*true/.test(body),
+    "UnitSystemProvider must set migratedRef.current = true only after successful migration"
   );
   // Must have a ref guard (useRef) to ensure one-time execution per mount
   assert.ok(
     /useRef/.test(body),
     "UnitSystemProvider must use a ref guard to run migration at most once per mount"
+  );
+  // Must have a retry mechanism — either a retryCount state or a bounded loop
+  assert.ok(
+    /retry|MAX_MIGRATION_RETRIES|setRetry/.test(body),
+    "UnitSystemProvider must implement a bounded retry mechanism for failed migrations"
   );
 });
 

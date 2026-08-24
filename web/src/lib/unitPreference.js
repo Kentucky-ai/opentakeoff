@@ -34,11 +34,14 @@ function resolveStorage(storage) {
  *    2. The legacy key holds a valid value ("metric" or "imperial").
  *
  *  After migration the legacy key is deleted so subsequent reads are clean.
- *  Storage errors are silently swallowed — migration is best-effort. */
+ *  Returns `true` when migration completed or no migration was needed (legacy
+ *  key absent, canonical already valid, or null storage bypass).  Returns
+ *  `false` when storage access failed — callers should retry later.  Storage
+ *  errors are silently swallowed so the caller sees a boolean, not a throw. */
 export function migrateLegacyUnit(storage) {
   try {
     const s = resolveStorage(storage);
-    if (!s) return;
+    if (!s) return true; // null storage — nothing to do, considered complete
     const canonical = s.getItem(UNIT_SYSTEM_KEY);
     // If canonical is NOT yet valid, try to promote from legacy
     if (canonical !== "imperial" && canonical !== "metric") {
@@ -51,8 +54,10 @@ export function migrateLegacyUnit(storage) {
     if (s.getItem(LEGACY_UNIT_KEY) != null) {
       s.removeItem(LEGACY_UNIT_KEY);
     }
+    return true; // succeeded or nothing to do
   } catch {
-    // storage full or blocked — best-effort; callers continue with defaults.
+    // storage full or blocked — caller should retry when storage recovers.
+    return false;
   }
 }
 

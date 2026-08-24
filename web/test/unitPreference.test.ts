@@ -275,7 +275,8 @@ test("writeUnitSystem returns normalised value when globalThis.localStorage.setI
 test("migrateLegacyUnit promotes legacy 'metric' to canonical key when canonical is absent", () => {
   const store = mockStorage();
   store.setItem(LEGACY_UNIT_KEY, "metric");
-  migrateLegacyUnit(store);
+  const ok = migrateLegacyUnit(store);
+  assert.equal(ok, true, "should return true on success");
   assert.equal(store.getItem(UNIT_SYSTEM_KEY), "metric");
   assert.equal(store.getItem(LEGACY_UNIT_KEY), null, "legacy key should be removed after migration");
 });
@@ -283,7 +284,8 @@ test("migrateLegacyUnit promotes legacy 'metric' to canonical key when canonical
 test("migrateLegacyUnit promotes legacy 'imperial' to canonical key when canonical is absent", () => {
   const store = mockStorage();
   store.setItem(LEGACY_UNIT_KEY, "imperial");
-  migrateLegacyUnit(store);
+  const ok = migrateLegacyUnit(store);
+  assert.equal(ok, true, "should return true on success");
   assert.equal(store.getItem(UNIT_SYSTEM_KEY), "imperial");
   assert.equal(store.getItem(LEGACY_UNIT_KEY), null, "legacy key should be removed after migration");
 });
@@ -292,7 +294,8 @@ test("migrateLegacyUnit does NOT overwrite a valid canonical value", () => {
   const store = mockStorage();
   store.setItem(UNIT_SYSTEM_KEY, "metric");
   store.setItem(LEGACY_UNIT_KEY, "imperial");
-  migrateLegacyUnit(store);
+  const ok = migrateLegacyUnit(store);
+  assert.equal(ok, true, "should return true (no migration needed, cleanup succeeded)");
   assert.equal(store.getItem(UNIT_SYSTEM_KEY), "metric", "canonical must not be overwritten");
   assert.equal(store.getItem(LEGACY_UNIT_KEY), null, "legacy key should still be cleaned up");
 });
@@ -300,21 +303,24 @@ test("migrateLegacyUnit does NOT overwrite a valid canonical value", () => {
 test("migrateLegacyUnit ignores an invalid legacy value", () => {
   const store = mockStorage();
   store.setItem(LEGACY_UNIT_KEY, "si");
-  migrateLegacyUnit(store);
+  const ok = migrateLegacyUnit(store);
+  assert.equal(ok, true, "should return true (cleanup succeeded even with invalid legacy)");
   assert.equal(store.getItem(UNIT_SYSTEM_KEY), null, "canonical must not be set from invalid legacy");
   assert.equal(store.getItem(LEGACY_UNIT_KEY), null, "legacy key should still be cleaned up");
 });
 
 test("migrateLegacyUnit is a no-op when neither key exists", () => {
   const store = mockStorage();
-  assert.doesNotThrow(() => migrateLegacyUnit(store));
+  const ok = migrateLegacyUnit(store);
+  assert.equal(ok, true, "should return true when nothing to do");
   assert.equal(store.getItem(UNIT_SYSTEM_KEY), null);
 });
 
 test("migrateLegacyUnit is a no-op with null storage (bypass)", () => {
   const store = installMockGlobal();
   store.setItem(LEGACY_UNIT_KEY, "metric");
-  migrateLegacyUnit(null);
+  const ok = migrateLegacyUnit(null);
+  assert.equal(ok, true, "null storage means nothing to do — considered complete");
   // null storage skips everything — global mock must be untouched
   assert.equal(store.getItem(UNIT_SYSTEM_KEY), null);
   assert.equal(store.getItem(LEGACY_UNIT_KEY), "metric");
@@ -324,6 +330,56 @@ test("migrateLegacyUnit does not throw when storage throws", () => {
   assert.doesNotThrow(() => migrateLegacyUnit(throwingStorage()));
 });
 
+test("migrateLegacyUnit returns false when storage throws", () => {
+  const ok = migrateLegacyUnit(throwingStorage());
+  assert.equal(ok, false, "should return false to signal storage failure");
+});
+
 test("LEGACY_UNIT_KEY is the expected legacy string", () => {
   assert.equal(LEGACY_UNIT_KEY, "opentakeoff_units");
+});
+
+// ── fail-then-recover: proves legacy metric is eventually promoted ──────────
+// Simulates a temporary storage failure followed by recovery.  The caller
+// (UnitSystemProvider) would invoke migrateLegacyUnit in a loop; this test
+// proves the retry contract: first call returns false (storage broken),
+// second call returns true (storage recovered), and the legacy key is promoted.
+
+test("migrateLegacyUnit fail-then-recover: legacy metric promoted after storage recovers", () => {
+  const map = new Map<string, string>();
+  let shouldFail = true;
+
+  const recoverableStore = {
+    getItem: (k: string): string | null => {
+      if (shouldFail) throw new Error("transient storage failure");
+      return map.has(k) ? map.get(k)! : null;
+    },
+    setItem: (k: string, v: string) => {
+      if (shouldFail) throw new Error("transient storage failure");
+      map.set(k, String(v));
+    },
+    removeItem: (k: string) => {
+      if (shouldFail) throw new Error("transient storage failure");
+      map.delete(k);
+    },
+  };
+
+  // Seed the legacy key while storage is healthy, then break it
+  shouldFail = false;
+  map.set(LEGACY_UNIT_KEY, "metric");
+  shouldFail = true;
+
+  // First attempt — storage is broken, returns false, legacy key untouched
+  const first = migrateLegacyUnit(recoverableStore);
+  assert.equal(first, false, "first attempt should return false (storage failure)");
+  assert.equal(map.get(LEGACY_UNIT_KEY), "metric", "legacy key must survive the failure");
+
+  // Storage recovers
+  shouldFail = false;
+
+  // Second attempt — storage works, returns true, legacy promoted to canonical
+  const second = migrateLegacyUnit(recoverableStore);
+  assert.equal(second, true, "second attempt should return true (storage recovered)");
+  assert.equal(map.get(UNIT_SYSTEM_KEY), "metric", "canonical key should be set after recovery");
+  assert.ok(!map.has(LEGACY_UNIT_KEY), "legacy key should be cleaned up after recovery");
 });
