@@ -57,6 +57,9 @@ import { tidyRing, axisLockPoint } from "../lib/ringTidy";
 import { sweepSymbols } from "../lib/symbolsweep";
 import { labelPlacements } from "../lib/symbollabels";
 import { traceConfidence, floodSignals } from "../lib/confidence";
+// The scale-acceptance ruler (a calibrated bar drawn on the sheet after a scale
+// is set) — the owner's call, 2026-08-24: it serves no purpose on the sheet.
+const SHOW_SCALE_GUIDE = false;
 // net engine runs in a worker: a dense sheet's build is 30-90 s of pure
 // geometry and must never block the page (measured: "Page Unresponsive"
 // on Comfort Inn when it ran on the main thread)
@@ -8139,7 +8142,7 @@ export default function TakeoffCanvas() {
               {tool === "check" && check.map((p, i) => <path key={"ck" + i} d={starPath(p[0], p[1], 3.5 / tf.scale)} fill="#1f3fc7" />)}
               {/* scale-acceptance guide — an ephemeral calibrated ruler so a 2×-off
                   scale is visually obvious against known elements (a door is ~3′) */}
-              {scaleGuide && panelKeySet.has(scaleGuide.key) && (() => {
+              {SHOW_SCALE_GUIDE && scaleGuide && panelKeySet.has(scaleGuide.key) && (() => {
                 const [gx, gy] = scaleGuide.at;
                 const z = tf.scale;
                 const unitPx = scaleGuide.px / (units === "metric" ? scaleGuide.feet * M_PER_FT : scaleGuide.feet); // one ft (or 1 m) in px
