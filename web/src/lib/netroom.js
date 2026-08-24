@@ -683,7 +683,9 @@ export function build(g, ftPx, texts){
         // witness line, a counter edge. A wall stub at a cased opening ends
         // free too, but it is PAIRED (its other face line, or poché) — that
         // is what protects it (a bare one-end rule cost CI 28→25, AU 15→12).
-        if(!OPTS.NOANNOT_LEAF && (!e1||!e2)){
+        // seeded sheets only: a starved sheet (AU) draws partitions as SINGLE
+        // lines, so "unpaired" is not evidence there (measured AU 15→13)
+        if(!OPTS.NOANNOT_LEAF && !starved && (!e1||!e2)){
           const u=unit(L), n=[-u[1],u[0]];
           let paired=false;
           for(let q=0;q<pool.length&&!paired;q++){
@@ -691,11 +693,15 @@ export function build(g, ftPx, texts){
             const T=pool[q], v=unit(T);
             if(Math.abs(u[0]*v[0]+u[1]*v[1])<0.985) continue;
             const d=Math.abs((T[0]-L[0])*n[0]+(T[1]-L[1])*n[1]);
-            if(d<0.15*ftPx||d>1.5*ftPx) continue;
+            // a wall's two faces run TOGETHER: partner within a wall
+            // thickness (≤0.8 ft, or coincident poché edge) over most of
+            // this stroke's length. A witness line grazing a real wall 0.94 ft
+            // away over 27% of itself is not paired (Park GRAIN, measured).
+            if(d>0.8*ftPx) continue;
             const t=(x,y)=>(x-L[0])*u[0]+(y-L[1])*u[1];
             const a0=Math.min(t(L[0],L[1]),t(L[2],L[3])), a1=Math.max(t(L[0],L[1]),t(L[2],L[3]));
             const b0=Math.min(t(T[0],T[1]),t(T[2],T[3])), b1=Math.max(t(T[0],T[1]),t(T[2],T[3]));
-            if(Math.min(a1,b1)-Math.max(a0,b0) >= 0.8*ftPx) paired=true;
+            if(Math.min(a1,b1)-Math.max(a0,b0) >= 0.6*len) paired=true;
           }
           if(!paired) return;
         }
@@ -1796,11 +1802,13 @@ export function netRoomAt(net, x, y, ftPx){
   // 60-handle ring for a 4-corner room. Simplify to what an estimator draws:
   // merge collinear runs (0.12 ft lateral) and drop notches shallower than
   // 0.4 ft (jamb pockets, band cavities) that his ruler runs straight past.
-  const ring = simplifyRing(out.ring, 0.12*ftPx, 0.4*ftPx, ftPx);
+  const doorPolys = net.doorCellPolys || [];
+  const doorAt = (x,y,r)=>{ for(const q of doorPolys){ for(const p of q){ if(Math.hypot(p[0]-x,p[1]-y)<=r) return true; } let cx=0,cy=0; for(const p of q){cx+=p[0];cy+=p[1];} if(Math.hypot(cx/q.length-x,cy/q.length-y)<=r) return true; } return false; };
+  const ring = simplifyRing(out.ring, 0.12*ftPx, 0.4*ftPx, ftPx, doorAt);
   return { ring, holes, areaPx: area, faces: set.length, seedFace: fi, starved };
 }
 
-function simplifyRing(ring, colTol, notchTol, ftPx_){
+function simplifyRing(ring, colTol, notchTol, ftPx_, doorAt){
   if (ring.length < 4) return ring;
   let pts = ring.slice();
   // 1. RDP-style collinear merge on the closed ring
@@ -1839,7 +1847,13 @@ function simplifyRing(ring, colTol, notchTol, ftPx_){
       // (≤0.65 ft) and door-wide (≤4.5 ft) — both flatten: the ruler runs
       // across the opening at the wall face
       const deep=Math.max(dA,dB);
-      if((dA<=notchTol && dB<=notchTol && jog<=2*notchTol) || (deep<=0.65*ftPx_ && jog<=4.5*ftPx_)){
+      // a DOOR pocket flattens at any wall depth (≤1.3 ft) when a detected
+      // door cell sits in the notch — a thick corner wall's jamb recess
+      // (Breakroom) is deeper than a blind 0.65 ft; an alcove with no door
+      // keeps its notch, the ruler follows it
+      let doorNotch=false;
+      if(doorAt && deep<=1.3*ftPx_ && jog<=5*ftPx_){ const mx=(A[0]+B[0])/2, my=(A[1]+B[1])/2; doorNotch=doorAt(mx,my,1.2*ftPx_); }
+      if((dA<=notchTol && dB<=notchTol && jog<=2*notchTol) || (deep<=0.65*ftPx_ && jog<=4.5*ftPx_) || doorNotch){
         pts.splice(i, 2); changed=true; break;
       }
     }
