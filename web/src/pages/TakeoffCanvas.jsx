@@ -36,7 +36,7 @@ import UserGuide from "../components/UserGuide.jsx";
 import TakeoffsPanel, { clampPanelW, CONDITION_DND_MIME, ConditionAppearanceEditor } from "../components/TakeoffsPanel.jsx";
 import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../components/hatches.jsx";
 import { Icon } from "../brand/icons.jsx";
-import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText } from "../lib/sheets";
+import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractDimTexts } from "../lib/sheets";
 import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
@@ -135,7 +135,7 @@ import { requiredDensity as tileRequiredDensity } from "../lib/tiles";
 // setShapes (the label-vocabulary renames, live drag PREVIEW frames, the
 // hydrate-time sanitizers, per-shape height/thickness re-pricing).
 // nowIso stays imported for the non-shape records (markups, RFIs, conditions).
-import { nowIso, mintUuid } from "../lib/provenance.js";
+import { nowIso, mintUuid, setAuthorName } from "../lib/provenance.js";
 import { applyShapeCommand, geomSnapshot, vertsEqual, recordCommand } from "../lib/shapeCommands.js";
 import { applyApprovalCommand, sanitizeApprovals, approvalInk, APPROVAL_R } from "../lib/approvals.js";
 import { findCutoutParent, subtractCutout, recomposeCutouts, cutRunsAcross } from "../lib/cutout.js";
@@ -621,6 +621,7 @@ export default function TakeoffCanvas() {
   const stageRef = useRef(null);
   const panelCanvasRefs = useRef(new Map()); // sheetKey → <canvas> (base layer — small backing store, coarse pyramid placeholder)
   const pageObjsRef = useRef(new Map());     // sheetKey → pdf.js page object (getOperatorList/getTextContent only — painting moved to the tile worker pool)
+  const dimTextsRef = useRef(new Map());     // sheetKey → positioned dim-pattern texts (#320) — RENDER_SCALE px, rescaled at buildMask time
   const renderScalesRef = useRef(new Map()); // sheetKey → RENDER_SCALE, always (see factorFor comment above) — kept so the ~20 factorFor/uppFor call sites are untouched
   // Tile-pyramid compositor (#86) — one instance owning the worker pool +
   // tile LRU cache (see lib/tileCompositor.ts). Lazily created on first
@@ -1834,11 +1835,15 @@ export default function TakeoffCanvas() {
           // instead (rasterEligible true, vectorViable false).
           sheetStatsRef.current.set(m.key, { segCount: 0, imageFrac: 1 });
         });
-        // read the drawn scale note off this panel's page text (best-effort)
+        // read the drawn scale note off this panel's page text (best-effort),
+        // and the positioned dimension-pattern texts the dim-string classifier
+        // anchors on (#320) — a mask built before they resolved was textless
         m.pageObj.getTextContent().then((tc) => {
           if (stale()) return;
           const det = detectScale(tc, m.viewport);
           if (det) setDetectedScales((d) => (d[m.key]?.label === det.label ? d : { ...d, [m.key]: det }));
+          const dts = extractDimTexts(tc, m.viewport);
+          if (dts.length) { dimTextsRef.current.set(m.key, dts); maskCacheRef.current.delete(m.key); }
         }).catch(() => {});
       }
       if (stale()) return;
@@ -3980,10 +3985,13 @@ export default function TakeoffCanvas() {
       // too. The mask is cached, so the extra getViewport is once per sheet per
       // calibration.
       const pgVp = pageObjsRef.current.get(key)?.getViewport({ scale: 1 });
+      // dim texts were positioned at RENDER_SCALE; segs live at this render —
+      // rescale so text and ink share a frame whatever the Hi-Res toggle says
+      const dtk = rsNow === RENDER_SCALE ? dimTextsRef.current.get(key) : (dimTextsRef.current.get(key) || []).map((t) => ({ ...t, x: t.x * rsNow / RENDER_SCALE, y: t.y * rsNow / RENDER_SCALE, wPx: t.wPx * rsNow / RENDER_SCALE }));
       mo = buildMask(segs, dims.w, dims.h, MASK_MAX_DIM, segMetaRef.current.get(key), pxPerFt,
                      pxPerFt ? pxPerFt * RENDER_SCALE / rsNow : 0,
                      pgVp ? { pageW: pgVp.width, pageH: pgVp.height, renderScale: rsNow, baseScale: RENDER_SCALE } : null,
-                     rolesForSheet(key));
+                     rolesForSheet(key), dtk && dtk.length ? dtk : null);
       maskCacheRef.current.set(key, mo);
     }
     return mo;
@@ -5327,6 +5335,9 @@ export default function TakeoffCanvas() {
       // and addMarkup auto-opens the Markups dock, so the note is immediately
       // visible and draggable — the anchor is a starting point, not a commitment
       addNote: (text) => addMarkup({ type: "text", at: [0.5, 0.06], text }, focusPanel.key),
+      // author declaration (#314) — provenance's one localStorage key; new
+      // commits pick it up at mint, nothing re-stamps retroactively
+      setAuthor: (v) => setAuthorName(v),
       getAimSeed,
       traceAt: (seed, conditionId, label) => voiceTraceAt(seed, conditionId, label),
     };
@@ -6909,7 +6920,7 @@ export default function TakeoffCanvas() {
           <input
             type="text"
             placeholder="cpt 1 · waste 7 · this room"
-            title={'Command line (RFC #59): a condition tag ("CPT-1", "carpet one", "tile 2 waste 5"), "waste 7", "label Phase 1", "clear label", or "note …" — Enter runs it through the same actions the buttons use. End with "this room" / "here" while the pointer rests on a room to trace and commit it there ("carpet one, this room"). Push-to-talk dictation will feed this box.'}
+            title={'Command line (RFC #59): a condition tag ("CPT-1", "carpet one", "tile 2 waste 5"), "waste 7", "label Phase 1", "clear label", "author <your name>" (new marks sign it — the report can group by author), or "note …" — Enter runs it through the same actions the buttons use. End with "this room" / "here" while the pointer rests on a room to trace and commit it there ("carpet one, this room"). Push-to-talk dictation will feed this box.'}
             onFocus={() => { voiceAimMarkRef.current = aimSeqRef.current; }}
             onKeyDown={(e) => {
               if (e.key !== "Enter") return;

@@ -231,6 +231,38 @@ export function labelGroupedRows(conditions, shapes, shapeLabels = [], ctx = nul
   }).filter((g) => g.rows.length);
 }
 
+// Author-grouped ORDERED quantities for the report's group-by-author view
+// (#314) — the same shape-level bucketing as labelGroupedRows, keyed on
+// shape.author (the self-declared name stamped at mint; absent → the
+// "Unattributed" bucket). Same per-slice math, same reconciliation: a
+// condition spanning authors appears in each bucket and the per-bucket sums
+// reconcile to the ungrouped row. Named authors sorted; Unattributed last
+// (value null so the header renders italic, the Unlabeled convention). Same
+// per-slice materials caveat as the other groupers: display, never a buy list.
+/**
+ * @param {{seamByShape?: Map<any, number>}|null} [ctx] passed straight to conditionTotals
+ */
+export function authorGroupedRows(conditions, shapes, ctx = null) {
+  const byAuthor = new Map();     // author → that bucket's shapes ("" = Unattributed)
+  for (const s of shapes) {
+    const v = typeof s.author === "string" && s.author.trim() ? s.author.trim() : "";
+    let arr = byAuthor.get(v);
+    if (!arr) { arr = []; byAuthor.set(v, arr); }
+    arr.push(s);
+  }
+  const named = [...byAuthor.keys()].filter(Boolean).sort();
+  const order = [...named, ...(byAuthor.has("") ? [""] : [])];
+  return order.map((v) => {
+    const bucketShapes = byAuthor.get(v);
+    return {
+      value: v || null,             // null = Unattributed
+      label: v || "Unattributed",
+      rows: conditionTotals(conditions, bucketShapes, ctx).filter((r) => r.shape_count > 0),
+      perimByCond: floorPerimeterLf(bucketShapes),
+    };
+  }).filter((g) => g.rows.length);
+}
+
 // Sheet × label grouping — the FLOOR × ROOM cross-section, and the shape an
 // estimator actually hands a superintendent: what goes down in room 112 on the
 // second floor, not what goes down in room 112 anywhere in the building.

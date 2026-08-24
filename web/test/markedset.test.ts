@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 // build loads under node (with a "use the legacy build" warning) —
 // buildMarkedSetPdf itself stays untested here (pdf-lib + DOM bound), only
 // the pure sanitizer.
-import { winAnsiSafe } from "../src/lib/markedset.js";
+import { winAnsiSafe, authorTallyLine } from "../src/lib/markedset.js";
 
 test("printable ASCII and Latin-1 pass through untouched", () => {
   const s = "CT-1, honed · 546.9 SF ×2 -> 1/4\" = 1'-0\"";
@@ -46,4 +46,16 @@ test("nullish input yields the empty string; control chars are replaced", () => 
   assert.equal(winAnsiSafe(null), "");
   assert.equal(winAnsiSafe(undefined), "");
   assert.equal(winAnsiSafe("a\tb\nc"), "a?b?c");          // drawn strings are single-line by construction
+});
+
+// ── authorTallyLine (#314) — the cover's "Marks by:" line ────────────────────
+
+test("authorTallyLine: null when no shape carries an author (export stays byte-identical)", () => {
+  assert.equal(authorTallyLine([]), null);
+  assert.equal(authorTallyLine([{ author: "  " }, {}]), null);
+});
+
+test("authorTallyLine: named authors sorted with counts, unattributed counted last", () => {
+  const line = authorTallyLine([{ author: "Michael" }, { author: "Aaron" }, { author: "Michael" }, {}]);
+  assert.equal(line, "Marks by: Aaron (1) · Michael (2) · unattributed (1)");
 });

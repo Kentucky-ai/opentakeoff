@@ -9,7 +9,7 @@
 //     updated_at and nothing else.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mintUuid, nowIso, stampEdit } from "../src/lib/provenance.js";
+import { mintUuid, nowIso, stampEdit, authorName, setAuthorName } from "../src/lib/provenance.js";
 
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
@@ -96,4 +96,38 @@ test("stampEdit: pure — the input shape (and its origin) are not mutated", () 
   const snapshot = structuredClone(s);
   stampEdit(s, "edge");
   assert.deepEqual(s, snapshot);
+});
+
+// ── author (#314) ────────────────────────────────────────────────────────────
+// Self-declared, git-user.name style. Node 24 has no localStorage, which is
+// itself the contract under test: the in-memory declaration alone must carry
+// (plain-HTTP LAN self-hosts and blocked storage behave the same), and with
+// nothing declared every stamp is byte-identical to before the field existed.
+
+test("author: undeclared by default; declaring trims; clearing empties", () => {
+  try {
+    assert.equal(authorName(), null);
+    assert.equal(setAuthorName("  Michael E  "), "Michael E");
+    assert.equal(authorName(), "Michael E");
+    assert.equal(setAuthorName("   "), null);
+    assert.equal(authorName(), null);
+  } finally { setAuthorName(""); }
+});
+
+test("stampEdit: declared author rides every stamp as updated_by — machine and manual alike", () => {
+  try {
+    setAuthorName("Aaron");
+    const machine = stampEdit(machineShape(), "vertex");
+    assert.equal(machine.updated_by, "Aaron");
+    assert.equal("author" in machine, false);          // mint-time field is not stampEdit's to write
+    const manual = stampEdit({ ...machineShape(), origin: { method: "manual" } }, "move");
+    assert.equal(manual.updated_by, "Aaron");
+    assert.deepEqual(manual.origin, { method: "manual" });   // the manual bare-stamp rule is untouched
+  } finally { setAuthorName(""); }
+});
+
+test("stampEdit: no declared author ⇒ no updated_by — payloads byte-identical to today", () => {
+  setAuthorName("");
+  const out = stampEdit(machineShape(), "vertex");
+  assert.equal("updated_by" in out, false);
 });
