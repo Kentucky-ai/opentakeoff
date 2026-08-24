@@ -4245,8 +4245,11 @@ export default function TakeoffCanvas() {
       if (!built) {
         // one build per (sheet, scale); concurrent clicks share the promise
         setCommitMsg("Building the wall network for this sheet — the page stays live, keep working…");
-        built = netCall({ type: "build", key: ck, segs, meta, subpaths: subpathsRef.current.get(tp.key) || null, ftPx, texts: textMarksRef.current.get(tp.key) || [] })
-          .then((m) => { if (m.error) { netCacheRef.current.delete(ck); throw new Error(m.error); } return m; });
+        const subpathsIn = subpathsRef.current.get(tp.key) || null, textsIn = textMarksRef.current.get(tp.key) || [];
+        // diagnostic record of EXACTLY what the engine was handed (read from devtools as window.__netLast)
+        try { window.__netLast = { key: ck, sheet: tp.key, nSegs: segs.length >> 2, nMeta: meta.length, nSubpaths: subpathsIn ? subpathsIn.length : 0, nTexts: textsIn.length, ftPx, upp, kF, img: tp.img && { w: tp.img.w, h: tp.img.h }, metaHead: Array.from(meta.slice(0, 12)), segsHead: Array.from(segs.slice(0, 8)).map((v) => +v.toFixed(1)), textHead: textsIn.slice(0, 2) }; } catch { /* diagnostics only */ }
+        built = netCall({ type: "build", key: ck, segs, meta, subpaths: subpathsIn, ftPx, texts: textsIn })
+          .then((m) => { if (m.error) { netCacheRef.current.delete(ck); throw new Error(m.error); } try { Object.assign(window.__netLast, { faces: m.faces, starved: m.starved, ms: m.ms }); } catch { /* diagnostics only */ } return m; });
         netCacheRef.current.set(ck, built);
       }
       let info;
@@ -4257,6 +4260,7 @@ export default function TakeoffCanvas() {
       const r = rm.room;
       if (!r) return say("Net engine: that click isn't inside an enclosed space — click an open spot, or trace it with Area (A).");
       const ring = r.ring.map(([x, y]) => [x / kF, y / kF]);      // back to the panel's frame
+      try { Object.assign(window.__netLast, { lastClick: [local[0], local[1]], lastRing: ring.map(([x, y]) => [+x.toFixed(1), +y.toFixed(1)]), lastFaces: r.faces }); } catch { /* diagnostics only */ }
       const area_sf = +(r.areaPx / (ftPx * ftPx)).toFixed(2);
       const perim_lf = +(closedMetrics(ring).perim * upp).toFixed(2);
       const region = {
