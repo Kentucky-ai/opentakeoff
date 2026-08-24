@@ -9,6 +9,7 @@ import {
   GETTERS, CSV_PROFILE, TABLE_PROFILE, customColProfile, specColProfile, specValue, SPEC_FIELDS,
   partitionRowsBy, forceIncludeGroupCol,
   loadColPrefs, saveColPrefs, loadGroupBy, saveGroupBy, visibleCols, floorPerimeterLf,
+  applyUnits, METRIC_LABELS, METRIC_CSV_LABELS, colGetter,
 } from "../src/lib/reportColumns.js";
 import { conditions, shapes, projectName, sheetLabel } from "./fixtures/report.fixture.ts";
 
@@ -388,4 +389,206 @@ test("rollColProfile: empty without figured layouts; ×N-applied getters through
   assert.equal(mOrder.get(row, ctx), round2(87 * 0.3048));
   assert.equal(mSeam.header, "Seam m");
   assert.equal(mSeam.get(row, ctx), round2(90 * 0.3048));
+});
+
+// ── metric unit-system conversion (Task 4) ──────────────────────────────────
+// applyUnits is the single seam: it wraps getters and foot functions at the
+// column descriptor so every output (table, CSV, XLSX) reads the same
+// converted value. Imperial is an identity pass-through (byte-compatible).
+
+test("applyUnits with imperial: returns cols unchanged (identity passthrough)", () => {
+  const cols = visibleCols(CSV_PROFILE, {});
+  const result = applyUnits(cols, "imperial");
+  assert.strictEqual(result, cols, "same array reference — no wrapping");
+  // every getter returns the raw value
+  const r = rows[0];
+  for (const c of result) {
+    const get = colGetter(c);
+    if (get) assert.equal(get(r), (GETTERS as any)[c.key]?.(r), `${c.key} getter unchanged`);
+  }
+});
+
+test("applyUnits with metric: sy_net filtered out", () => {
+  const cols = visibleCols(CSV_PROFILE, {});
+  const metric = applyUnits(cols, "metric");
+  assert.ok(!metric.some((c: any) => c.key === "sy_net"), "sy_net removed from metric columns");
+  // TABLE_PROFILE also filters sy_net
+  const tableMetric = applyUnits(visibleCols(TABLE_PROFILE, {}), "metric");
+  assert.ok(!tableMetric.some((c: any) => c.key === "sy_net"));
+});
+
+test("applyUnits with metric: area columns convert with M2_PER_SF and swap SF→m² in headers", () => {
+  const areaKeys = ["floor_sf", "wall_sf", "border_sf", "total_sf", "total_sf_net", "waste_sf"];
+  const cols = visibleCols(CSV_PROFILE, { waste_sf: true });
+  const metric = applyUnits(cols, "metric");
+  const M2 = 0.09290304;
+  // use a simple mock row with known values to test the getter conversion
+  const mockRow: any = { id: "x", floor_sf: 100, wall_sf: 200, border_sf: 50, total_sf: 350, total_sf_net: 385, waste_sf: 35 };
+  for (const key of areaKeys) {
+    const col = metric.find((c: any) => c.key === key);
+    assert.ok(col, `area column ${key} present in metric`);
+    assert.ok(col.header.includes("m²"), `${key} header contains m²: ${col.header}`);
+    assert.ok(!col.header.includes("SF"), `${key} header no longer contains SF`);
+    // getter converts the raw value
+    const rawVal = mockRow[key];
+    assert.equal(col.get(mockRow), round2(rawVal * M2), `${key} getter converts`);
+  }
+});
+
+test("applyUnits with metric: length columns convert with M_PER_FT and swap LF→m in headers", () => {
+  const lenKeys = ["lf", "lf_net", "waste_lf", "perimeter_ref"];
+  const cols = visibleCols(CSV_PROFILE, { waste_lf: true, perimeter_ref: true });
+  const metric = applyUnits(cols, "metric");
+  const M = 0.3048;
+  const mockRow: any = { id: "x", lf: 200, lf_net: 220, waste_lf: 20 };
+  // perimeter_ref getter reads from ctx.perimByCond, not from the row directly
+  const ctx = { perimByCond: new Map([["x", 150]]) };
+  for (const key of lenKeys) {
+    const col = metric.find((c: any) => c.key === key);
+    assert.ok(col, `length column ${key} present in metric`);
+    assert.ok(col.header.includes("m"), `${key} header contains m: ${col.header}`);
+    assert.ok(!col.header.includes("LF"), `${key} header no longer contains LF`);
+    // getter converts the raw value — perimeter_ref needs ctx
+    const rawVal = key === "perimeter_ref" ? 150 : mockRow[key];
+    assert.equal(col.get(mockRow, ctx), round2(rawVal * M), `${key} getter converts`);
+  }
+});
+
+test("applyUnits with metric: non-dimensional columns pass through unchanged", () => {
+  const nonDimKeys = ["finish", "shapes", "multiplier", "waste_pct", "ea"];
+  const cols = visibleCols(CSV_PROFILE, {});
+  const metric = applyUnits(cols, "metric");
+  for (const key of nonDimKeys) {
+    const col = metric.find((c: any) => c.key === key);
+    assert.ok(col, `non-dimensional column ${key} present`);
+    // header unchanged (no SF/LF replacement applies)
+    const orig = cols.find((c: any) => c.key === key);
+    assert.equal(col.header, orig.header, `${key} header unchanged`);
+    // getter unchanged
+    const r = rows[0];
+    const mGet = colGetter(col);
+    const oGet = colGetter(orig!);
+    if (mGet && oGet) assert.equal(mGet(r), oGet(r), `${key} getter unchanged`);
+  }
+});
+
+test("applyUnits with metric: foot (tfoot) functions wrap with converter", () => {
+  // TABLE_PROFILE has foot functions; CSV_PROFILE does not.
+  // total_sf is defaultVisible: false, so explicitly enable it in prefs.
+  const tableCols = visibleCols(TABLE_PROFILE, { waste_sf: true, total_sf: true });
+  const metric = applyUnits(tableCols, "metric");
+  const M2 = 0.09290304;
+  const g = grandTotals(rows); // raw imperial grand totals
+  // total_sf has a foot function on TABLE_PROFILE
+  const tsfCol = metric.find((c: any) => c.key === "total_sf");
+  assert.ok(tsfCol, "total_sf present");
+  assert.ok(tsfCol.foot, "total_sf has foot");
+  // foot(g) should return the metric-converted grand total
+  const footVal = tsfCol.foot(g);
+  assert.equal(footVal, round2(g.total_sf * M2), "total_sf foot converts with M2_PER_SF");
+  // total_sf_net foot
+  const tsnCol = metric.find((c: any) => c.key === "total_sf_net");
+  assert.ok(tsnCol?.foot, "total_sf_net has foot");
+  assert.equal(tsnCol.foot(g), round2(g.total_sf_net * M2), "total_sf_net foot converts");
+  // waste_sf foot
+  const wsCol = metric.find((c: any) => c.key === "waste_sf");
+  if (wsCol?.foot) {
+    assert.equal(wsCol.foot(g), round2(GETTERS.waste_sf(g) * M2), "waste_sf foot converts");
+  }
+});
+
+test("applyUnits with METRIC_CSV_LABELS: uses ASCII 'm2'/'m' instead of Unicode 'm²'", () => {
+  const cols = visibleCols(CSV_PROFILE, {});
+  const csvMetric = applyUnits(cols, "metric", METRIC_CSV_LABELS);
+  const tableMetric = applyUnits(cols, "metric", METRIC_LABELS);
+  const csvFloor = csvMetric.find((c: any) => c.key === "floor_sf");
+  const tableFloor = tableMetric.find((c: any) => c.key === "floor_sf");
+  assert.ok(csvFloor.header.includes("m2"), `CSV uses ASCII m2: ${csvFloor.header}`);
+  assert.ok(tableFloor.header.includes("m²"), `table uses Unicode m²: ${tableFloor.header}`);
+  // length columns
+  const csvLf = csvMetric.find((c: any) => c.key === "lf");
+  const tableLf = tableMetric.find((c: any) => c.key === "lf");
+  // both use "m" for length (no difference)
+  assert.ok(csvLf.header.includes("m"), `CSV length header has m: ${csvLf.header}`);
+  assert.ok(tableLf.header.includes("m"), `table length header has m: ${tableLf.header}`);
+});
+
+test("applyUnits with metric: no double conversion — applying the wrapped getter once matches the conversion constant", () => {
+  const cols = visibleCols(CSV_PROFILE, {});
+  const metric = applyUnits(cols, "metric");
+  const M2 = 0.09290304, M = 0.3048;
+  // pick a row from the fixture
+  const r = rows[0]; // ct1
+  for (const c of metric) {
+    if (c.key === "finish" || c.key === "shapes" || c.key === "multiplier" ||
+        c.key === "waste_pct" || c.key === "ea" || c.key === "sy_net") continue;
+    const get = colGetter(c);
+    if (!get) continue;
+    const val = get(r);
+    const raw = colGetter(cols.find((x: any) => x.key === c.key)!)?.(r);
+    if (raw == null || raw === "") continue;
+    const expected = c.key.includes("sf") || c.key === "border_sf" || c.key === "floor_sf" ||
+      c.key === "wall_sf" || c.key === "total_sf" || c.key === "total_sf_net" || c.key === "waste_sf"
+      ? round2(Number(raw) * M2) : round2(Number(raw) * M);
+    assert.equal(val, expected, `${c.key}: wrapped getter = one conversion (no double)`);
+  }
+});
+
+test("applyUnits with metric CSV: end-to-end — body rows and TOTAL row convert exactly once", () => {
+  const csvCols = visibleCols(CSV_PROFILE, { waste_sf: true, waste_lf: true });
+  const ctx = { perimByCond: floorPerimeterLf(shapes) };
+  const csv = totalsToCsv(rows, projectName, sheetTotals(conditions, shapes), sheetLabel, csvCols, ctx, null, "OpenTakeoff", "metric");
+  const lines = csv.split("\n");
+  const header = lines[1];
+  // header swaps SF→m2, LF→m (ASCII labels from METRIC_CSV_LABELS)
+  assert.ok(header.includes("m2"), `metric CSV header has m2: ${header}`);
+  assert.ok(!header.includes("SF"), `metric CSV header has no SF: ${header}`);
+  assert.ok(!header.includes("SY"), `metric CSV header has no SY column: ${header}`);
+  // CT-1 body row: floor_sf = 546.9 → 546.9 × 0.09290304 ≈ 50.81
+  // NOTE: the finish tag "CT-1, honed" contains a comma (CSV-quoted), so we
+  // can't use simple split. Instead, verify the TOTAL row (which has no comma).
+  const M2 = 0.09290304;
+  const totalLine = lines.find((l: string) => l.startsWith("TOTAL"))!;
+  assert.ok(totalLine, "TOTAL row exists");
+  const totalCells = totalLine.split(",");
+  // TOTAL row has: TOTAL,,,,,,<total_sf>,... — find total_sf via header position
+  // header: Finish,Shapes,Multiplier,...,Total SF,...,SY w/Waste (removed),LF w/Waste,Waste SF,Waste LF
+  // TOTAL has "TOTAL" at index 0, empty for shapes/multiplier, waste_pct blank
+  // total_sf is the 8th column (0-indexed: 7) in the default CSV profile
+  // But metric removes sy_net, shifting positions. Instead, parse header to find index.
+  const headerCells = header.split(",");
+  const totalSfIdx = headerCells.findIndex((h: string) => h.includes("Total"));
+  assert.ok(totalSfIdx > 0, "Total SF column found in header");
+  const totalSfVal = Number(totalCells[totalSfIdx]);
+  const g = grandTotals(rows);
+  assert.equal(totalSfVal, round2(g.total_sf * M2), "TOTAL row total_sf converted");
+  // ea column: count should be unchanged
+  const eaIdx = headerCells.findIndex((h: string) => h === "EA");
+  assert.ok(eaIdx > 0, "EA column found in header");
+  const totalEa = Number(totalCells[eaIdx]);
+  assert.equal(totalEa, g.ea, "TOTAL row ea unchanged (count)");
+  // lf column: should be converted
+  const lfIdx = headerCells.findIndex((h: string) => h === "m");
+  assert.ok(lfIdx > 0, "LF→m column found in header");
+  const totalLf = Number(totalCells[lfIdx]);
+  assert.equal(totalLf, round2(g.lf * 0.3048), "TOTAL row lf converted to m");
+});
+
+test("applyUnits with metric CSV: by-sheet and by-label sections use correct conversions", () => {
+  const csvCols = visibleCols(CSV_PROFILE, {});
+  const bySheet = sheetTotals(conditions, shapes);
+  const ctx = { perimByCond: floorPerimeterLf(shapes) };
+  // label rows use ct1 and lvt2
+  const labelRows = [rows[0], rows[1]]; // ct1 and lvt2
+  const byLabel = [{ value: "test-label", label: "Test", rows: labelRows }];
+  const csv = totalsToCsv(rows, projectName, bySheet, sheetLabel, csvCols, ctx, byLabel, "OpenTakeoff", "metric");
+  const lines = csv.split("\n");
+  // by-sheet section header should have m2 for area columns
+  const bySheetHeader = lines.find((l: string) => l.startsWith("Sheet,"));
+  assert.ok(bySheetHeader, "by-sheet header exists");
+  assert.ok(bySheetHeader.includes("m2"), `by-sheet header has m2: ${bySheetHeader}`);
+  // by-label section header
+  const byLabelHeader = lines.find((l: string) => l.startsWith("Label,"));
+  assert.ok(byLabelHeader, "by-label header exists");
+  assert.ok(byLabelHeader.includes("m2"), `by-label header has m2: ${byLabelHeader}`);
 });

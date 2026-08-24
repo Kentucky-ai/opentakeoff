@@ -142,3 +142,47 @@ test("shapesToJson: schema envelope wraps the rows", () => {
   assert.deepEqual(j.shapes, rows);
   assert.equal(shapesToJson(rows, "").project_name, null);
 });
+
+// ── metric unit-system (Task 4) ─────────────────────────────────────────────
+// shapes CSV/JSON are raw canonical exports — data stays in internal feet.
+// In metric mode, shapesToCsv appends a note to the comment line so the
+// reader isn't misled, matching the XLSX shapes tab convention.
+
+test("shapesToCsv with metric: appends raw-data note, data stays canonical (internal feet)", () => {
+  const conds2 = [{ id: "ct", finish_tag: "CT-1" }];
+  const shapes2 = [floor("a", 100, 40)];
+  const csv = shapesToCsv(shapesDetail(conds2, shapes2), "Job 42", "OpenTakeoff", "metric");
+  const lines = csv.split("\n");
+  // title line is first ("# Job 42 — OpenTakeoff shapes"), comment is second
+  assert.ok(lines[1].includes("Raw internal SF/LF (display units: metric)"),
+    "metric note appended to comment line");
+  // data values stay in canonical internal feet (100, not 100 × 0.09290304)
+  // find the data row (after header which is lines[2])
+  const dataRow = lines[3];
+  assert.ok(dataRow.includes(",100,") || dataRow.startsWith("a,sh1,sh1,CT-1,floor_area,100,"),
+    "area_sf stays in canonical feet");
+  // headers unchanged (raw labels describe the raw data)
+  assert.equal(lines[2], "Shape,Sheet,Sheet ID,Finish,Role,Area SF,LF,EA,Height ft,Height override,Origin",
+    "headers stay imperial (describe raw internal values)");
+});
+
+test("shapesToCsv with imperial (default): no metric note, byte-compatible", () => {
+  const conds2 = [{ id: "ct", finish_tag: "CT-1" }];
+  const shapes2 = [floor("a", 100)];
+  const csvDefault = shapesToCsv(shapesDetail(conds2, shapes2), "Job 42");
+  const csvExplicit = shapesToCsv(shapesDetail(conds2, shapes2), "Job 42", "OpenTakeoff", "imperial");
+  assert.equal(csvDefault, csvExplicit, "default (no units) matches explicit imperial");
+  assert.ok(!csvDefault.includes("Raw internal"), "no metric note in imperial");
+});
+
+test("shapesToJson: always raw canonical regardless of units context", () => {
+  const conds2 = [{ id: "ct", finish_tag: "CT-1" }];
+  const shapes2 = [floor("a", 100, 40)];
+  const rows = shapesDetail(conds2, shapes2);
+  const j = shapesToJson(rows, "Job 42");
+  // values stay in feet
+  assert.equal(j.shapes[0].area_sf, 100);
+  assert.equal(j.shapes[0].lf, 40);
+  // schema and structure unchanged
+  assert.equal(j.schema, "opentakeoff.shapes.v1");
+});

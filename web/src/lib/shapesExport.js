@@ -44,10 +44,11 @@ export function shapesDetail(conditions, shapes, sheetLabel) {
   });
 }
 
-export function shapesToCsv(rows, projectName = "", brandName = "OpenTakeoff") {
+export function shapesToCsv(rows, projectName = "", brandName = "OpenTakeoff", units = "imperial") {
+  const M = units === "metric";
   const header = [_t("shape.shape"), _t("shape.sheet"), _t("shape.sheet_id"), _t("shape.finish"), _t("shape.role"), _t("shape.area_sf"), _t("shape.lf"), _t("shape.ea"), _t("shape.height_ft"), _t("shape.height_override"), _t("shape.origin")];
   const lines = [
-    "# Per-shape measured quantities — no multiplier or waste; deducts negative; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF",
+    "# Per-shape measured quantities — no multiplier or waste; deducts negative; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF" + (M ? ". Raw internal SF/LF (display units: metric)" : ""),
     header.map(esc).join(","),
   ];
   for (const r of rows) {
