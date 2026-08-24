@@ -176,3 +176,21 @@ test("ensureDeviceId mints once and sticks", async () => {
   assert.equal(a, b);
   assert.match(a, /^dev-/);
 });
+
+test("an anonymous session on a FRESH transport reads an empty room and litters nothing", async () => {
+  const p = memProvider();
+  const clock = { t: 1_000_000 };
+  const anon = createPresence({
+    provider: p,
+    ensureSidecarId: sidecarOf(p),
+    findSidecarId: async () => (await p.findChild("", ".opentakeoff"))?.id ?? null, // non-creating read path
+    deviceId: "dev-a",
+    getAuthor: () => null,
+    now: () => clock.t,
+  });
+  await anon.beat();
+  assert.equal(anon.peers().length, 0);
+  assert.equal(p._files.size, 0); // no heartbeat written...
+  // ...and no sidecar/presence folders created by a read-only pass
+  assert.equal(await p.findChild("", ".opentakeoff"), null);
+});

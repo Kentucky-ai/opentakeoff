@@ -22,6 +22,7 @@
     "node": ">=24"
   },
   "dependencies": {
+    "@azure/msal-browser": "^5.19.0",
     "@huggingface/transformers": "^4.2.0",
     "@turf/boolean-contains": "^7.3.5",
     "@turf/boolean-overlap": "^7.3.5",
