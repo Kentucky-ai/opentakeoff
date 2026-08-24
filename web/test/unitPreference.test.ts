@@ -9,11 +9,11 @@ import { UNIT_SYSTEM_KEY, DEFAULT_UNIT_SYSTEM, normalizeUnitSystem, readUnitSyst
 
 /** Minimal localStorage-shaped object backed by a Map. */
 function mockStorage() {
-  const map = new Map();
+  const map = new Map<string, string>();
   return {
-    getItem: (k) => map.has(k) ? map.get(k) : null,
-    setItem: (k, v) => { map.set(k, String(v)); },
-    removeItem: (k) => { map.delete(k); },
+    getItem: (k: string): string | null => map.has(k) ? map.get(k)! : null,
+    setItem: (k: string, v: string) => { map.set(k, String(v)); },
+    removeItem: (k: string) => { map.delete(k); },
     get _map() { return map; },
   };
 }
@@ -21,16 +21,16 @@ function mockStorage() {
 /** Storage that throws on every operation (SecurityError / quota). */
 function throwingStorage() {
   return {
-    getItem: () => { throw new Error("SecurityError: storage access denied"); },
-    setItem: () => { throw new Error("QuotaExceededError: storage full"); },
-    removeItem: () => { throw new Error("nope"); },
+    getItem: (_k: string): string | null => { throw new Error("SecurityError: storage access denied"); },
+    setItem: (_k: string, _v: string) => { throw new Error("QuotaExceededError: storage full"); },
+    removeItem: (_k: string) => { throw new Error("nope"); },
   };
 }
 
 // ── globalThis.localStorage save/restore ────────────────────────────────────
 // We swap the real localStorage with a controlled mock for tests that exercise
-// the default-parameter path.  The original is restored afterward so sibling
-// test files are never affected.
+// the no-argument (global-storage) path.  The original is restored afterward
+// so sibling test files are never affected.
 
 let _origLS: PropertyDescriptor | undefined;
 
@@ -58,7 +58,7 @@ test("UNIT_SYSTEM_KEY and DEFAULT_UNIT_SYSTEM are the expected strings", () => {
 
 test("normalizeUnitSystem returns 'metric' only for the exact string 'metric'", () => {
   assert.equal(normalizeUnitSystem("metric"), "metric");
-  assert.equal(normalizeUnitSystem("imperial"), "imperial");  // explicit valid value still works
+  assert.equal(normalizeUnitSystem("imperial"), "imperial");
 });
 
 test("normalizeUnitSystem falls back to 'imperial' for every invalid input", () => {
@@ -69,7 +69,7 @@ test("normalizeUnitSystem falls back to 'imperial' for every invalid input", () 
 
 // ── readUnitSystem ──────────────────────────────────────────────────────────
 
-test("readUnitSystem returns 'imperial' when localStorage is empty", () => {
+test("readUnitSystem returns 'imperial' when storage has no persisted key", () => {
   const store = mockStorage();
   assert.equal(readUnitSystem(store), "imperial");
 });
@@ -86,19 +86,15 @@ test("readUnitSystem normalises an invalid persisted value to imperial", () => {
   assert.equal(readUnitSystem(store), "imperial");
 });
 
-test("readUnitSystem returns imperial when storage.getItem returns null (missing key)", () => {
-  const store = mockStorage();
-  // getItem returns null by default
-  assert.equal(readUnitSystem(store), "imperial");
-});
-
 test("readUnitSystem returns imperial when storage throws", () => {
   assert.equal(readUnitSystem(throwingStorage()), "imperial");
 });
 
-test("readUnitSystem returns imperial when storage is undefined/null (SSR guard)", () => {
-  // passing undefined/null as storage — the ?. optional chain should handle it
+test("readUnitSystem uses globalThis.localStorage when storage is undefined (omitted)", () => {
   assert.equal(readUnitSystem(undefined), "imperial");
+});
+
+test("readUnitSystem returns imperial when storage is explicitly null", () => {
   assert.equal(readUnitSystem(null), "imperial");
 });
 
@@ -121,13 +117,14 @@ test("writeUnitSystem normalises invalid values before persisting", () => {
 });
 
 test("writeUnitSystem does not throw when storage.setItem throws", () => {
-  // must not propagate
   assert.doesNotThrow(() => writeUnitSystem("metric", throwingStorage()));
 });
 
-test("writeUnitSystem is a no-op when storage is undefined/null", () => {
-  // must not throw
+test("writeUnitSystem does not throw when storage is undefined (omitted)", () => {
   assert.doesNotThrow(() => writeUnitSystem("metric", undefined));
+});
+
+test("writeUnitSystem does not throw when storage is explicitly null", () => {
   assert.doesNotThrow(() => writeUnitSystem("metric", null));
 });
 
@@ -163,22 +160,50 @@ test("writeUnitSystem returns 'imperial' for valid imperial input", () => {
   assert.equal(writeUnitSystem("imperial", store), "imperial");
 });
 
-test("writeUnitSystem returns 'imperial' when storage throws", () => {
+test("writeUnitSystem returns normalised value when storage throws", () => {
   assert.equal(writeUnitSystem("metric", throwingStorage()), "metric");
   assert.equal(writeUnitSystem("si", throwingStorage()), "imperial");
   assert.equal(writeUnitSystem("imperial", throwingStorage()), "imperial");
 });
 
-test("writeUnitSystem returns the normalised value when storage is undefined/null", () => {
+test("writeUnitSystem returns normalised value when storage is undefined", () => {
   assert.equal(writeUnitSystem("metric", undefined), "metric");
+});
+
+test("writeUnitSystem returns normalised value when storage is explicitly null", () => {
+  assert.equal(writeUnitSystem("metric", null), "metric");
   assert.equal(writeUnitSystem("si", null), "imperial");
 });
 
+// ── explicit null storage: skips global, never touches it ───────────────────
+
+test("readUnitSystem(null) returns imperial without touching globalThis.localStorage", () => {
+  const store = mockStorage();
+  store.setItem(UNIT_SYSTEM_KEY, "metric");
+  Object.defineProperty(globalThis, "localStorage", {
+    value: store,
+    configurable: true,
+  });
+  // null means "skip storage entirely" — should return imperial, not the
+  // value persisted in the global mock
+  assert.equal(readUnitSystem(null), "imperial");
+});
+
+test("writeUnitSystem(value, null) does not write to globalThis.localStorage", () => {
+  const store = mockStorage();
+  Object.defineProperty(globalThis, "localStorage", {
+    value: store,
+    configurable: true,
+  });
+  writeUnitSystem("metric", null);
+  // The global mock must remain empty — null storage skips it
+  assert.equal(store.getItem(UNIT_SYSTEM_KEY), null);
+});
+
 // ── throwing globalThis.localStorage getter ─────────────────────────────────
-// These tests exercise the default-parameter path where no explicit `storage`
-// argument is passed.  A throwing getter (sandboxed iframes, certain privacy
-// modes) must be caught by the try/catch inside each function, not escape
-// through the parameter default evaluation.
+// These tests exercise the no-argument path where storage is resolved from
+// globalThis.localStorage.  A throwing getter (sandboxed iframes, certain
+// privacy modes) must be caught by the try/catch inside each function.
 
 test("readUnitSystem falls back to imperial when globalThis.localStorage getter throws", () => {
   Object.defineProperty(globalThis, "localStorage", {
