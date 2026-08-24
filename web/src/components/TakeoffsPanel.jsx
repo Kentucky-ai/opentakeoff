@@ -120,6 +120,11 @@ function GroutParamInput({ name, value, title, min = 0, max, width = 52, overrid
 function DimParamInput({ name, internal, units, kind, width, onCommit }) {
   const [draft, setDraft] = useState(null);   // raw text mid-edit; null = mirror the committed value
   const toInternal = (n) => (kind === "height" ? heightInputToFeet(n, units) : thickInputToInches(n, units));
+  // A raw draft has meaning only in the unit system in which it was typed.
+  // Cancel it when the global unit preference changes so an old-unit number
+  // can never be committed using the new conversion factor. The canonical
+  // value remains authoritative and is immediately redisplayed in `units`.
+  useEffect(() => { setDraft(null); }, [units]);
   const commit = (text) => {
     if (text === "") return onCommit("");
     const n = parseFloat(text);

@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 // totals.js is plain JS (allowJs); the tsx loader resolves it from the .ts test.
 import { conditionTotals, materialsSummary, verticalWallSf, sheetTotals, reportJson, grandTotals } from "../src/lib/totals.js";
+import { heightInputToFeet } from "../src/lib/units.js";
+import { computeShapeMetrics } from "../src/lib/shapeMetrics.js";
 
 const area = (id: string, sf: number) => ({ condition_id: id, measure_role: "floor_area", computed: { area_sf: sf } });
 const lin = (id: string, lf: number) => ({ condition_id: id, measure_role: "linear", computed: { perimeter_lf: lf } });
@@ -375,4 +377,58 @@ test("grandTotals: aggregation is pure arithmetic — no unit conversion path", 
   assert.equal(g.lf_net, 55);
   assert.equal(g.ea, 5);
   assert.equal(g.sy_net, 36.66); // 12.22 + 24.44
+});
+
+// ── Task 3 spec gap: conditionTotals reads computed.area_sf, NOT height_ft ───
+// conditionTotals is a pure aggregator over shape.computed — it never computes
+// LF × height itself; that happens in shapeMetrics.js at commit time.  These
+// tests prove (a) the aggregator is blind to height_ft, and (b) shapes built
+// from equivalent Imperial and SI inputs converge to the same canonical totals.
+
+test("conditionTotals: aggregator reads computed.area_sf, ignores height_ft on the shape", () => {
+  const conds = [{ id: "w", finish_tag: "WALL-1", multiplier: 1 }];
+  // Two shapes: both 80 SF in computed, but different height_ft values —
+  // conditionTotals must produce identical wall_sf because it reads .computed.area_sf.
+  const s1 = { id: "s1", condition_id: "w", measure_role: "surface_area", height_ft: 8,  computed: { area_sf: 80, perimeter_lf: 10 } };
+  const s2 = { id: "s2", condition_id: "w", measure_role: "surface_area", height_ft: 10, computed: { area_sf: 80, perimeter_lf: 10 } };
+  const [row] = conditionTotals(conds, [s1, s2]);
+  assert.equal(row.wall_sf, 160, "conditionTotals sums computed.area_sf, not LF × height_ft");
+});
+
+test("conditionTotals: wall SF from SI input path equals Imperial input path", () => {
+  // Imperial path: user enters 8 ft → height_ft = 8, traced 10 LF → computed.area_sf = 80
+  const dims = { w: 1000, h: 800 };
+  const upp = 0.05;
+  const verts_norm = [[0.1, 0.25], [0.3, 0.25]];
+  const imperialHeightFt = 8;
+  const imperialComputed = computeShapeMetrics({ measure_role: "surface_area", verts_norm }, dims, upp, { height_ft: imperialHeightFt });
+  const imperialShape = { id: "imp", condition_id: "c", measure_role: "surface_area", height_ft: imperialHeightFt, computed: imperialComputed };
+  // SI path: user enters 2.4384 m → heightInputToFeet → height_ft ≈ 8,
+  // same pixel wall → shapeMetrics produces the same canonical computed values
+  const siHeightFt = heightInputToFeet(2.4384, "metric");
+  const siComputed = computeShapeMetrics({ measure_role: "surface_area", verts_norm }, dims, upp, { height_ft: siHeightFt });
+  const siShape = { id: "si", condition_id: "c", measure_role: "surface_area", height_ft: siHeightFt, computed: siComputed };
+  assert.deepEqual(siComputed, imperialComputed, "SI and Imperial geometry paths must produce identical canonical computed values");
+  const conds = [{ id: "c", finish_tag: "WALL-1", waste_pct: 10, multiplier: 1 }];
+  const [rowImp] = conditionTotals(conds, [imperialShape]);
+  const [rowSI] = conditionTotals(conds, [siShape]);
+  // conditionTotals aggregates computed values → identical
+  assert.equal(rowImp.wall_sf, rowSI.wall_sf, "wall_sf from Imperial vs SI height path");
+  assert.equal(rowImp.wall_sf_net, rowSI.wall_sf_net, "wall_sf_net from Imperial vs SI height path");
+  assert.equal(rowImp.total_sf, rowSI.total_sf, "total_sf from Imperial vs SI height path");
+  // grandTotals over mixed shapes also converges
+  const g = grandTotals([rowImp, rowSI]);
+  assert.equal(g.total_sf, 160);
+});
+
+test("conditionTotals: verticalWallSf uses height_ft from the condition, not the shape", () => {
+  // verticalWallSf reads the condition's height_ft; shapes carry computed area_sf
+  // from whatever height they were drawn at — the condition height is the
+  // "next-trace default", not the summer's input.
+  const floorShapes = [
+    { id: "f1", condition_id: "c", measure_role: "floor_area", computed: { area_sf: 100, perimeter_lf: 40 } },
+  ];
+  // verticalWallSf takes the condition height as a separate argument
+  assert.equal(verticalWallSf(floorShapes, "c", 9), 360);   // 40 × 9
+  assert.equal(verticalWallSf(floorShapes, "c", 9, 2), 720); // × 2 multiplier
 });

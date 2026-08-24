@@ -167,6 +167,15 @@ test("canvas reads units from UnitSystemProvider, not local localStorage", () =>
   );
 });
 
+test("dimension drafts cancel when the global unit system changes", () => {
+  const panel = fs.readFileSync(path.join(here, "src/components/TakeoffsPanel.jsx"), "utf8");
+  const canvas = fs.readFileSync(path.join(here, "src/pages/TakeoffCanvas.jsx"), "utf8");
+  assert.match(panel, /useEffect\(\(\) => \{ setDraft\(null\); \}, \[units\]\)/,
+    "condition dimension drafts must be cancelled on a unit switch");
+  assert.match(canvas, /useEffect\(\(\) => \{ setShapeHDraft\(null\); \}, \[selectedId, units\]\)/,
+    "selected-wall height drafts must be cancelled on a unit switch");
+});
+
 test("autosave effect does NOT include units in its dependency array", () => {
   // The autosave effect's dependency array should not contain 'units' —
   // changing display units must not trigger a project save/push.

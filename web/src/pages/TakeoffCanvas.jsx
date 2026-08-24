@@ -432,7 +432,10 @@ export default function TakeoffCanvas() {
   // round-trips through a rounded unit conversion, so without this a metric
   // typist watching "2.4" become "2.438" mid-word cannot finish the number.
   const [shapeHDraft, setShapeHDraft] = useState(null);
-  useEffect(() => { setShapeHDraft(null); }, [selectedId]);   // a draft belongs to ONE wall
+  // Like DimParamInput, this raw text belongs to the unit system in which it
+  // was typed. Cancel on a global unit switch; otherwise a stale imperial
+  // number could be committed as metres (or vice versa).
+  useEffect(() => { setShapeHDraft(null); }, [selectedId, units]);   // a draft belongs to ONE wall/unit system
   const [selVert, setSelVert] = useState(null);         // selected vertex index of the selected shape — Delete removes just that point
   const [selectedMarkupId, setSelectedMarkupId] = useState(null); // selected markup — mutually exclusive with selectedId
   const [rfis, setRfis] = useState([]);                 // RFI register (Request For Information); linked to markups via markup.rfi_id === rfi.id
@@ -7529,7 +7532,7 @@ export default function TakeoffCanvas() {
               return condH > 0 ? (
                 <>
                   <div style={{ fontSize: 22, fontWeight: 700, color: "var(--ink)" }}>{num(areaVal(liveLF * condH, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)} {t('readout.wall')}</span></div>
-                  <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{fl(liveLF)} × {num(condH, 2)} ft</div>
+                  <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{fl(liveLF)} × {num(heightVal(condH, units), 2)} {heightUnit(units)}</div>
                 </>
               ) : <div style={{ fontSize: 12.5, color: "var(--c-danger)" }}>{t('status.set_height', { tag: aCond?.finish_tag || "this condition" })}</div>;
             })()
