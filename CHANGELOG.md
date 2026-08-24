@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-24 — global Imperial / SI unit preference
+
+### Added
+- **Global Imperial / SI unit preference** (browser-wide, `opentakeoff.unitSystem` in localStorage). The `ft` / `m` button beside the Scale chip opens **Unit settings…** with two radio options: Imperial (default) and SI / Métrico. The preference controls the display and input layer everywhere — readouts, panels, the Report, CSV, Excel, the Marked Set legend, and the calibration input — without altering stored geometry, canonical scales, or raw quantities. Canonical units remain feet, SF, and inches; SI maps to m², m, m, and mm respectively. The setting applies to every project in the browser, existing and new, and persists across reloads. Metric inputs convert at the boundary (typed meters → internal feet, typed mm → internal inches); reports and exports convert once on output. Surface Area continues to compute traced LF × height in canonical feet; only the display unit changes. Supporting-material coverage rates remain as entered.
+
 ## 2026-08-16 — the sheet graph gets a ruler; opentakeoff-mcp 0.9.46
 
 A scored evaluation loop against **real bid sets**, and the parser changes it forced. Every fix below was found by measuring, not by reading code — and each ships with a fixture reproducing the real failure.

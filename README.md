@@ -98,6 +98,13 @@ second use is not a side effect; see [the data layer](#the-data-layer--why-this-
   whisper-tiny.en in WebAssembly on your machine, audio never leaves the browser
   ([docs/VOICE.md](docs/VOICE.md))
 
+- **Global Imperial / SI units** — a browser-wide unit preference (Imperial
+  by default, SI/Métrico optional) that maps display and input to m²/m for
+  area and length, m for wall height, and mm for thickness, without touching
+  the canonical stored quantities or the underlying geometry. The preference
+  is set once and persists across projects
+  ([#269](https://github.com/Kentucky-ai/opentakeoff/pull/269))
+
 Full history: [CHANGELOG.md](CHANGELOG.md) · every capability mapped to its code:
 [FEATURES.md](FEATURES.md)
 
@@ -264,8 +271,11 @@ they are get the numbers wrong. **Check a dimension** (`K`) is calibrate's read-
 a printed dimension string, type what the drawing says, and get a graded verdict (green within
 1%, amber within 5%, red past it) plus a one-tap **Recalibrate to this**. Every scale
 acceptance drops an ephemeral calibrated ruler bar on the sheet, so a 2×-off scale is obvious
-before anything gets traced. Imperial or metric (m²/m, 1:50-style ratios) is a display toggle —
-takeoffs are stored unit-agnostically, so flipping it never changes a measurement.
+before anything gets traced. A global **Imperial / SI unit preference** (the `ft` / `m` button
+beside the Scale chip, or **Unit settings…** in the Scale menu) switches the display layer
+everywhere — readouts, panels, Report, CSV, Marked Set legend, calibration input — to m² / m /
+mm without changing stored geometry or canonical quantities. Metric inputs convert at the
+boundary; reports and exports convert once on output; all internal math stays in feet.
 
 ### Conditions, materials, and the buy list
 A **condition** is one finish (LVP, carpet, tile, base…), carrying a line/fill color, a **CAD
@@ -408,8 +418,8 @@ plus a vision-capable model id.
 | Area | What you get |
 |---|---|
 | **Ingest** | PDF, image, or `.zip` plan set — unpacked in-browser, multi-page, multi-file, up to 4 sheets side-by-side |
-| **Scale** | Auto-detect the drawn note, calibrate from a known dimension, or verify one with a graded check — per sheet |
-| **Measure** | One-Click Area (vector flood + raster fallback), Area, Rectangle, Linear, Curved Line, Surface Area, Count, Cut Out deducts, ⟂ Transitions, Zone check — imperial or metric |
+| **Scale** | Auto-detect the drawn note, calibrate from a known dimension, or verify one with a graded check — per sheet; global Imperial / SI unit preference (m²/m/m/mm display) |
+| **Measure** | One-Click Area (vector flood + raster fallback), Area, Rectangle, Linear, Curved Line, Surface Area, Count, Cut Out deducts, ⟂ Transitions, Zone check — Imperial (SF/LF/ft/in) or SI (m²/m/m/mm) |
 | **Drawing aids** | 45°/90° angle lock with `⇧` hard-lock, live angle + segment-length readout at the cursor, endpoint Snap (beta) |
 | **Conditions** | Color + CAD hatch per finish, waste %, ×N multiplier, wall height, border thickness, schedule import, browser-wide library |
 | **Supporting Materials** | Labor + subfloor type, coverage rate × basis (incl. figured seam LF) → rounded order quantities, trowel/roller presets, grout calculator |

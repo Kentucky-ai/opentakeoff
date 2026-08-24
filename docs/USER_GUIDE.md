@@ -170,9 +170,52 @@ If the scale you set disagrees with the note printed on the sheet, the chip warn
 
 A scale that arrives from an agent takeoff (an MCP session's export, imported here) is **unconfirmed**: the Scale chip reads **⚠ 1/4″ = 1′-0″ — confirm** in amber, the gallery badge reads **scale ⚠ confirm**, and the Report's provenance footer marks the sheet *agent-set, UNCONFIRMED*. Quantities still compute — but they stand on a number no person has verified. Check a printed dimension (K) first, then pick **Confirm agent-set scale** from the Scale menu; any scale action of your own (a standard pick, plan-says, calibrate, or recalibrate) also counts as confirmation, because your act is the verification.
 
-### Metric
+### Imperial / SI unit preference
 
-The **`ft` / `m`** toggle beside the Scale chip switches the whole display layer: readouts, shape chips, panels, the Report, CSV, and the Marked Set legend read in m² / m (the SY column retires), and Calibrate takes meters. It's display only — takeoffs are stored unit-agnostically, so flipping it never changes a measurement. Supporting-material coverage rates stay as entered.
+OpenTakeoff stores all geometry, scale, and calculated quantities in Imperial units (feet,
+square feet, inches). A **global unit preference** controls only the display and input layer —
+it never migrates or alters stored data.
+
+**Switching.** Click the **`ft` / `m`** button beside the Scale chip in the toolbar. The
+button opens **Unit settings…**, a dialog with two radio options:
+
+- **Imperial (ft, SF, in)** — the default. Readouts show SF, LF, ft, in. The SY column
+  appears. Calibrate takes feet.
+- **SI / Métrico (m², m, mm)** — the metric display. Readouts show m², m, mm. The SY column
+  retires. Calibrate takes meters.
+
+The preference applies instantly to every open panel, the Report, CSV, Excel, and the Marked
+Set legend — one click, everything flips. The setting persists in your browser
+(`opentakeoff.unitSystem` in localStorage) and applies to every project in this browser,
+existing and new.
+
+**Exact unit mapping (what changes where):**
+
+| Quantity | Imperial (stored) | SI display | Conversion |
+|---|---|---|---|
+| Area | SF (ft²) | m² | × 0.0929 |
+| Length / Perimeter | LF (ft) | m | × 0.3048 |
+| Wall height (condition param) | ft | m | × 0.3048 |
+| Material thickness (condition param) | in | mm | × 25.4 |
+| Calibration input | ft | m | ÷ 0.3048 (typed meters → internal feet) |
+| SY (square yards) | shown in Imperial | retired in SI | — |
+
+**Surface Area.** The Surface Area tool traces a wall run in plan; vertical SF is always
+computed as *traced LF × the condition's height*, both in canonical feet (e.g. 12 LF × 8 ft
+= 96 SF). In SI mode the result is displayed as m² (≈ 8.92 m²) — the calculation does not
+change, only the unit the number is shown in.
+
+**What does NOT change.** Switching units does not migrate, convert, or alter stored geometry
+(`verts_norm`), the canonical scale, or the raw quantities stored on each shape. A room that
+measures 240 SF in Imperial reads 22.30 m² in SI, but the underlying 240 SF is what the
+Report's order quantities and the marked-set chips are built from. Supporting-material coverage
+rates stay as entered; only the Report's presentation of the derived quantities changes.
+
+**Metric inputs at the boundary.** When SI is active, typed dimensions are interpreted as metric
+and converted at the boundary: a calibration of `2.5 m` becomes ~8.20 ft internally, a wall
+height of `2.4 m` becomes ~7.87 ft, and a thickness of `6 mm` becomes ~0.24 in. The round-trip
+is lossless to the precision the field supports — re-committing an untouched metric value does
+not drift the underlying number.
 
 ---
 
@@ -189,8 +232,8 @@ A **condition** is one finish — `LVT-1`, `CPT-2`, `RB-1` — and it's what eve
 - **Waste %** — the allowance the Report adds on top of the measured quantity. Per condition, matched to the install: ~8% straight-lay LVP, ~15% diagonal, ~20% herringbone.
 - **Line** color, **Fill** color (or **No fill**), and the **hatch pattern** — a picker grid of CAD hatches (plank, herringbone, tile, terrazzo…) that names the pattern under your cursor, so the canvas reads like the real drawing.
 - **Line style** — the outline dash for this finish's floor and linear takeoffs, on canvas and in the Marked Set.
-- **H** (height, ft) — the default for **new** wall traces (Surface Area SF = LF × H) and the vertical-SF display. Existing walls keep the height they were drawn at — select a wall to change just that one (§5).
-- **T** (thickness, in) — a Linear run with thickness also computes border/feature-strip SF = LF × T⁄12. Changing it re-flows existing runs.
+- **H** (height, ft / m) — the default for **new** wall traces (Surface Area SF = LF × H) and the vertical-SF display. Displays as m in SI mode (typed meters convert at the boundary). Existing walls keep the height they were drawn at — select a wall to change just that one (§5).
+- **T** (thickness, in / mm) — a Linear run with thickness also computes border/feature-strip SF = LF × T⁄12. Displays as mm in SI mode (typed millimetres convert at the boundary). Changing it re-flows existing runs.
 
 **Delete** (the row's ✕) asks first when the condition owns shapes — *"Delete 〈TAG〉 and its N takeoff(s)? This can't be undone."* — and means it: the cascade is deliberately outside the undo stack (§8).
 
