@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-24 — the drawing overlay stays crisp through a zoom
+
+### Fixed
+- **The drawing overlay no longer pixelates after a zoom-in.** The stage layer carried a permanent `will-change: transform`, which froze its raster scale at promotion time — Chromium never re-rasters such a layer when only its transform scale changes — so zooming in while drawing left the committed boundaries, the in-progress polygon, and the vertex handles as a magnified bitmap while the plan under them stayed sharp. The stage now promotes to a compositor layer only for the duration of a pan or zoom gesture and demotes when the gesture settles, on the same wheel-quiet signal the detail repaint already uses, so the overlay re-rasters sharp at whatever zoom you land on. The rubber-band line's stroke width, written in raw stage pixels, now scales with the view like every other on-screen measure, so it no longer draws fat and smeared at deep zoom.
+
 ## 2026-08-24 — the 365 path exists, and self-hosters are the proof
 
 ### Added
