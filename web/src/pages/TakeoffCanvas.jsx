@@ -103,6 +103,7 @@ import { createVoiceRecognizerClient } from "../lib/voiceRecognizerClient";
 import { startCapture, captureSupported } from "../lib/voiceCapture";
 import { aiConfig, isAiConfigured } from "../lib/ai.js";
 import AccountChip from "../components/AccountChip.jsx";
+import PresenceChip from "../components/PresenceChip.jsx";
 import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
 import { projectHomeFolderId } from "../lib/projectHome.js";
 import { getTheme, toggleTheme, onThemeChange } from "../lib/theme.js";
@@ -2331,6 +2332,19 @@ export default function TakeoffCanvas() {
     // computeBusy + hydrate are stable for a given mount (they read only refs / call
     // setters), so capture once; listing them would re-register every render, opening
     // a null window where an arriving reconcile is dropped.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Presence (#317): tell the heartbeat which sheet is open. Ref-mirrored so
+  // the getter registers once (same discipline as the handlers above) yet
+  // always reads the current sheet.
+  const presenceSheetRef = useRef("");
+  presenceSheetRef.current = sheetKey || "";
+  useEffect(() => {
+    const bridge = store.syncBridge;
+    if (!bridge) return;
+    bridge.getSheet = () => presenceSheetRef.current || null;
+    return () => { bridge.getSheet = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -7006,6 +7020,7 @@ export default function TakeoffCanvas() {
             ] : []),
           ]}
         />
+        <PresenceChip bridge={store.syncBridge} />
         <AccountChip note={cloudMode ? "Synced to Google Drive" : "Local workspace"} onOpenChange={onMenuDepth} />
       </div>
       )}

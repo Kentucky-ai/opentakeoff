@@ -9,6 +9,7 @@ import ProjectHome from "./components/ProjectHome.jsx";
 import { GoogleAuthProvider, useGoogleAuth } from "./lib/google/AuthContext.jsx";
 import { projectIdFromUrl, setActiveStore } from "./lib/store.js";
 import { isGoogleConfigured, getAccessToken } from "./lib/google/auth.js";
+import { loadFolderLink, queryFolderPermission, requestFolderPermission, forgetFolder } from "./lib/fs/fsAccess.js";
 import { cloudSyncEnabled } from "./lib/prefs.js";
 import { projectHomeFolderId } from "./lib/projectHome.js";
 import { initTheme } from "./lib/theme.js";
@@ -175,6 +176,148 @@ function ProjectHomeGate() {
   return <ProjectHome />;
 }
 
+// Folder-synced workspace (#316): when a folder link is persisted, wrap the
+// anonymous local store with the folder-sync composite BEFORE mounting the
+// canvas — same install-then-mount discipline as ProjectGate. Every state is
+// readable, never a wedge:
+//   • no link            → the plain local canvas, byte-identical to today
+//   • permission granted → build + install the folder store, then mount
+//   • permission lapsed  → a one-click re-grant screen (requestPermission
+//     needs a user gesture, so boot can only ask via a button)
+//   • handle dead        → say so, offer "work locally" and "forget folder"
+function FolderGate() {
+  // status: checking | plain | building | ready | prompt | dead
+  const [status, setStatus] = useState("checking");
+  const [link, setLink] = useState(null);
+  const [err, setErr] = useState("");
+  const folderStoreRef = React.useRef(null);
+
+  // Lazy remote poll while synced: a folder read costs nothing and hits no
+  // quota, so a slow interval (plus a check when the tab regains focus) is
+  // how a teammate's push through the sync client shows up without waiting
+  // for a local edit to conflict. checkRemote never throws and self-skips
+  // while a push is in flight.
+  useEffect(() => {
+    if (status !== "ready") return;
+    const check = () => {
+      const bridge = folderStoreRef.current?.syncBridge;
+      bridge?.checkRemote?.();
+      bridge?.presence?.beat?.(); // regaining focus refreshes the coat-on-the-chair line too
+    };
+    const t = setInterval(() => folderStoreRef.current?.syncBridge?.checkRemote?.(), 30_000);
+    window.addEventListener("focus", check);
+    return () => { clearInterval(t); window.removeEventListener("focus", check); };
+  }, [status]);
+
+  // Build + install the folder composite for a link whose permission is granted.
+  async function install(l) {
+    setStatus("building");
+    try {
+      const { buildFolderStore } = await import("./lib/fs/composite.js");
+      // getDir re-checks permission on every provider call: a lapse mid-session
+      // throws, which the reconciler treats as offline (local stays canonical).
+      const getDir = async () => {
+        if ((await queryFolderPermission(l.handle)) !== "granted") {
+          throw new Error("folder permission lapsed");
+        }
+        return l.handle;
+      };
+      const next = buildFolderStore(l.scope, getDir);
+      setActiveStore(next);
+      folderStoreRef.current = next;
+      setStatus("ready");
+    } catch (e) {
+      setErr(String(e?.message || e));
+      setStatus("dead");
+    }
+  }
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      let l = null;
+      try {
+        l = await loadFolderLink();
+      } catch {
+        l = null; // unreadable meta → plain local, never a wall
+      }
+      if (!live) return;
+      if (!l) { setStatus("plain"); return; }
+      setLink(l);
+      const perm = await queryFolderPermission(l.handle);
+      if (!live) return;
+      if (perm === "granted") await install(l);
+      else setStatus("prompt"); // "denied" also lands here — the button re-asks
+    })();
+    // Uninstall on unmount so leaving the route restores the plain local store
+    // (mirrors ProjectGate's exit cleanup).
+    return () => { live = false; setActiveStore(); };
+  }, []);
+
+  if (status === "checking" || status === "building") return null; // ~ms IDB read — no flash
+  if (status === "plain") return <TakeoffCanvas />;
+  if (status === "ready") return <TakeoffCanvas key={`folder:${link.scope}`} />;
+
+  const forget = async () => { await forgetFolder(); setStatus("plain"); };
+  if (status === "prompt") {
+    return (
+      <div style={centered}>
+        {brand}
+        <div style={{ fontSize: 15, fontWeight: 600 }}>This workspace syncs to the folder “{link.name}”</div>
+        <div style={{ fontSize: 13, color: "var(--ink-muted)", maxWidth: 460 }}>
+          The browser needs you to re-allow access after a restart — one click, and your takeoff
+          keeps syncing through that folder. Nothing leaves your machine except what the folder's
+          own sync client replicates.
+        </div>
+        <button type="button"
+          onClick={async () => {
+            const perm = await requestFolderPermission(link.handle);
+            if (perm === "granted") await install(link);
+            else setErr("The browser did not grant access. You can keep working locally, or forget the folder.");
+          }}
+          style={{ padding: "9px 16px", border: "1px solid var(--ink)", background: "var(--ink)",
+            color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 13.5 }}>
+          Resume folder sync
+        </button>
+        {err ? <div style={{ fontSize: 12.5, color: "var(--c-danger)", maxWidth: 460 }}>{err}</div> : null}
+        <div style={{ display: "flex", gap: 16 }}>
+          <button type="button" onClick={() => setStatus("plain")}
+            style={{ border: "none", background: "transparent", color: "var(--ink-muted)", fontSize: 12.5, cursor: "pointer", textDecoration: "underline" }}>
+            not now — work locally
+          </button>
+          <button type="button" onClick={forget}
+            style={{ border: "none", background: "transparent", color: "var(--c-danger)", fontSize: 12.5, cursor: "pointer", textDecoration: "underline" }}>
+            forget this folder
+          </button>
+        </div>
+      </div>
+    );
+  }
+  // dead: the handle exists but the store can't build (folder deleted, drive
+  // unplugged). Local work is safe; say exactly that.
+  return (
+    <div style={centered}>
+      {brand}
+      <div style={{ fontSize: 15, fontWeight: 600 }}>The synced folder “{link?.name}” can't be opened</div>
+      <div style={{ fontSize: 13, color: "var(--ink-muted)", maxWidth: 460 }}>
+        {err || "The folder may have been moved or deleted."} Your takeoff is safe in this browser —
+        you can keep working locally, or forget the folder link.
+      </div>
+      <div style={{ display: "flex", gap: 16 }}>
+        <button type="button" onClick={() => setStatus("plain")}
+          style={{ padding: "9px 16px", border: "1px solid var(--ink)", background: "var(--ink)",
+            color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 13.5 }}>
+          Work locally
+        </button>
+        <button type="button" onClick={forget}
+          style={{ border: "none", background: "transparent", color: "var(--c-danger)", fontSize: 12.5, cursor: "pointer", textDecoration: "underline" }}>
+          forget this folder
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   // Subscribe to navigation: react-router bails out of re-rendering the same
   // element on navigate(), so App must watch the location itself. The store.js
@@ -187,8 +330,9 @@ function App() {
   // Otherwise the anonymous local canvas is the default landing screen —
   // open the bundled demo plan or drop your own, no sign-in required.
   // Google sign-in (to browse team projects at /projects) is a subtle,
-  // opt-in link on that screen, never a wall in front of it.
-  return <TakeoffCanvas />;
+  // opt-in link on that screen, never a wall in front of it. A persisted
+  // folder link (#316) wraps this same local workspace with folder sync.
+  return <FolderGate />;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(

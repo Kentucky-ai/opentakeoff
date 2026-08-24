@@ -129,7 +129,28 @@ export function createSyncStore({ base, provider, folderId, onRemoteUpdate, save
       // without coordinating. No ancestor (pre-#313 install, torn base write,
       // rev mismatch) → the uniform remote-wins path below, unchanged.
       const ancestor = await readMergeBase();
-      const m = ancestor ? mergeAnnotations(ancestor, local, remote.data) : null;
+      // Merge ONLY a remote that moved FORWARD past our ancestor (someone
+      // pushed beyond us). A REGRESSED remote — a sync client restoring an old
+      // file, rev below synced_rev — is older than the ancestor, and a
+      // three-way against a newer base would read our already-synced work as
+      // "deleted on remote" and silently drop it. Regression (and a rev-less
+      // remote, which can't be ordered) falls back to uniform remote-wins with
+      // the loser snapshotted — the pre-#313 contract, nothing silent.
+      const syncedRev = await readSyncedRev();
+      const movedForward = Number.isInteger(remote.rev) && (syncedRev == null || remote.rev > syncedRev);
+      // SIBLING FORK (#316): an eventually-consistent transport can hold a
+      // remote AT our synced rev with DIFFERENT content — two machines pushed
+      // the same rev number and the sync client picked a file-level winner.
+      // Neither side's stored ancestor is the true common ancestor (it predates
+      // both pushes and is gone), so a three-way here would fabricate
+      // deletions. Merge with an EMPTY base instead: pure union — adds from
+      // both sides survive, same-uid divergence resolves deterministically,
+      // and NOTHING is deleted. The cost (a shape deleted on one side
+      // resurfacing) is the safe direction; the gain is neither afternoon lost.
+      const siblingFork = ancestor && Number.isInteger(remote.rev) && remote.rev === syncedRev && !samePayload(remote.data, ancestor);
+      let m = null;
+      if (ancestor && movedForward) m = mergeAnnotations(ancestor, local, remote.data);
+      else if (siblingFork) m = mergeAnnotations({}, local, remote.data);
       // Loser preservation: the merge carries every losing ring inline
       // (merge_loser), so a CLEAN merge takes no snapshot — the RFC's disjoint
       // 50/50 case converges with zero loser-snapshots. A merge with same-uid
@@ -304,6 +325,26 @@ export function createSyncStore({ base, provider, folderId, onRemoteUpdate, save
   async function pushOnce() {
     await bootstrap; // recovery/seed settle before any push
     const expectedRev = await readSyncedRev(); // durable base, never payload.rev
+    // Sibling-fork guard (#316): before pushing over a remote that CLAIMS our
+    // expectedRev, verify it IS what we synced. An eventually-consistent
+    // transport (a synced folder) can serve a same-rev file from another
+    // machine — the rev precondition passes and a blind overwrite would bury
+    // that machine's afternoon in a file history nobody reads. Content is the
+    // tell: remote at expectedRev but ≠ our ancestor → reconcile as a fork
+    // (union merge), don't push. Offline/unreadable pulls fall through — the
+    // push's own precondition still governs, exactly as before. Skipped with
+    // no ancestor (pre-#313 meta): nothing to compare against.
+    if (expectedRev != null) {
+      const anc = await readMergeBase();
+      if (anc) {
+        let cur = null;
+        try { cur = await provider.pull(); } catch { cur = null; }
+        if (cur && cur.data != null && (cur.rev ?? null) === expectedRev && !samePayload(cur.data, anc)) {
+          await reconcile({ data: cur.data, rev: cur.rev });
+          return;
+        }
+      }
+    }
     const targetRev = (expectedRev ?? 0) + 1;
     // Record BOTH the target and the base we're pushing from, so recovery can tell
     // "our push never landed" (remote still == baseRev, incl. null first-push) from
@@ -349,7 +390,34 @@ export function createSyncStore({ base, provider, folderId, onRemoteUpdate, save
   // addSheets et al. when spread into the composite store, and Object.keys stays 2).
   // flushPending is wiring, not test-only: Slice 5 holds the raw annSync reference
   // (not the spread) and calls it from a canvas effect when in-flight work clears.
+  // Lazy remote check (#316): poll-capable transports (a synced folder — free
+  // local reads, no provider quota) call this on a slow cadence so a
+  // teammate's push is noticed without waiting for a local edit to conflict.
+  // A divergent remote routes through reconcile — merge with an ancestor
+  // (#313), uniform remote-wins without. Never throws: a failed pull is
+  // "offline" and local stays canonical. Skipped while a push is in flight —
+  // the push's own precondition surfaces the same divergence.
+  async function checkRemote() {
+    try {
+      await bootstrap;
+      if (pushing) return;
+      let remote;
+      try { remote = await provider.pull(); } catch { return; }
+      if (!remote || remote.data == null) return;
+      if ((remote.rev ?? null) === (await readSyncedRev())) {
+        // Same rev is not proof of same content on an eventually-consistent
+        // transport (sibling fork — see maybeFlush). With an ancestor to
+        // compare against, different content at our own rev is a fork to
+        // reconcile; without one, or with matching content, we're in sync.
+        const anc = await readMergeBase();
+        if (!anc || samePayload(remote.data, anc)) return;
+      }
+      await reconcile(remote);
+    } catch { /* best-effort; local canonical */ }
+  }
+
   Object.defineProperty(api, "whenSynced", { enumerable: false, value: () => bootstrap });
+  Object.defineProperty(api, "checkRemote", { enumerable: false, value: checkRemote });
   Object.defineProperty(api, "whenPushed", { enumerable: false, value: async () => { while (pushing) await pushing; } });
   Object.defineProperty(api, "flushPending", { enumerable: false, value: flushPending });
 

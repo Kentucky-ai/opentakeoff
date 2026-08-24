@@ -25,6 +25,8 @@ import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
 import { parseSheetKey, extractSheetNumber, detectScale, RENDER_SCALE, MAX_GROUP } from "../lib/sheets";
 import { isGoogleConfigured } from "../lib/google/auth.js";
 import { projectHomeFolderId } from "../lib/projectHome.js";
+import { isFolderSyncSupported, loadFolderLink, linkFolder, forgetFolder, queryFolderPermission } from "../lib/fs/fsAccess.js";
+import { listConflictCopies } from "../lib/fs/fsProvider.js";
 import { groupSheetsByLevel, sortGalleryGroups } from "../lib/sheetLevels.js";
 
 const THUMB_W = 380;
@@ -68,6 +70,38 @@ export default function PlanNavigator({
   const { user, signIn } = useGoogleAuth();
   const browseEnabled = cloudMode && typeof listFolder === "function";
   const [mode, setMode] = useState(browseEnabled && initialMode === "browse" ? "browse" : "plan");
+
+  // ── folder sync (#316): the local workspace's link state ────────────────
+  // Local mode + Chromium only; on other engines (or in cloud mode) none of
+  // this UI renders — degrade with no dead controls. Conflict copies are the
+  // sync client's fork files ("annotations (1).json") — surfaced by name so a
+  // fork is a visible thing to resolve, never an orphan.
+  const folderUiOn = !cloudMode && isFolderSyncSupported();
+  const [folderLink, setFolderLink] = useState(null);
+  const [folderCopies, setFolderCopies] = useState([]);
+  useEffect(() => {
+    if (!folderUiOn) return;
+    let live = true;
+    (async () => {
+      const l = await loadFolderLink().catch(() => null);
+      if (!live || !l) return;
+      setFolderLink(l);
+      if ((await queryFolderPermission(l.handle)) !== "granted") return;
+      const copies = await listConflictCopies(async () => l.handle).catch(() => []);
+      if (live) setFolderCopies(copies);
+    })();
+    return () => { live = false; };
+  }, [folderUiOn]);
+  // Link/unlink both reload: the store swap must happen before the canvas
+  // mounts (FolderGate's install-then-mount), and a reload IS that path.
+  const doLinkFolder = async () => {
+    const l = await linkFolder();
+    if (l) window.location.reload();
+  };
+  const doForgetFolder = async () => {
+    await forgetFolder();
+    window.location.reload();
+  };
 
   // ── shared: swallow canvas shortcuts while mounted (capture phase, every mode) ──
   // The canvas' own shortcuts listen on window in the bubble phase; this runs
@@ -595,6 +629,26 @@ export default function PlanNavigator({
                     )}
                   </div>
                 )}
+                {folderUiOn && (
+                  <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6 }}>
+                    {!folderLink ? (
+                      <button type="button" onClick={doLinkFolder}
+                        title="Pick a folder your team already syncs (a network share, a synced document library) — the takeoff syncs through it as one JSON file. No account, no credentials; the folder's own sync client does the transport."
+                        style={{ border: "none", background: "transparent", padding: 0, color: "var(--cobalt)", cursor: "pointer", fontSize: 12, textDecoration: "underline", fontFamily: "var(--f-body)" }}>
+                        or sync this workspace through a shared folder
+                      </button>
+                    ) : (
+                      <span style={{ color: "var(--ink-muted)" }}>
+                        syncing through folder <strong style={{ color: "var(--ink)" }}>“{folderLink.name}”</strong>
+                        {" · "}
+                        <button type="button" onClick={doForgetFolder}
+                          style={{ border: "none", background: "transparent", padding: 0, color: "var(--c-danger)", cursor: "pointer", fontSize: 12, textDecoration: "underline", fontFamily: "var(--f-body)" }}>
+                          stop
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                )}
                 <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "18px auto 16px", color: "var(--text-faint)", fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase" }}>
                   <span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />new here?<span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />
                 </div>
@@ -716,6 +770,21 @@ export default function PlanNavigator({
           {working ? "Working…" : mSel.length ? `${mSel.length} PDF${mSel.length === 1 ? "" : "s"} selected${mSelShapes ? ` · ${mSelShapes} takeoff${mSelShapes === 1 ? "" : "s"} on them` : ""}` : "check the PDFs to remove — removing never deletes takeoff data"}
         </span>
         <div style={{ flex: 1 }} />
+        {folderUiOn && (folderLink ? (
+          <span title={folderCopies.length ? `The folder's sync client forked the annotations file — someone should reconcile these by hand:\n${folderCopies.join("\n")}` : `Annotations sync through “${folderLink.name}” — the folder's own sync client replicates them`}
+            style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: folderCopies.length ? "var(--c-warning)" : "var(--ink-muted)" }}>
+            ⇄ “{folderLink.name}”{folderCopies.length ? ` · ${folderCopies.length} conflict cop${folderCopies.length === 1 ? "y" : "ies"}` : ""}
+            {" "}
+            <button onClick={doForgetFolder} title="Stop syncing through this folder — local work stays in this browser"
+              style={{ border: "none", background: "transparent", padding: 0, color: "var(--c-danger)", cursor: "pointer", fontSize: 11, textDecoration: "underline", fontFamily: "var(--f-mono)" }}>
+              stop
+            </button>
+          </span>
+        ) : (
+          <button onClick={doLinkFolder} disabled={working}
+            title="Pick a folder your team already syncs — the takeoff syncs through it as one JSON file, no credentials involved"
+            style={{ ...ctrlBtn, opacity: working ? 0.5 : 1 }}>Sync through a folder…</button>
+        ))}
         {onClearWorkspace && (
           <button onClick={() => setConfirmClear(true)} disabled={working}
             title="Remove every stored PDF and reset the takeoff — a snapshot of a non-empty takeoff is saved first (Revisions restores it)"
