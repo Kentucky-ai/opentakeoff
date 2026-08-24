@@ -92,6 +92,8 @@
   "scale.title_group": " (targets the sheet you last clicked)",
   "scale.metric_title": "Metric display (m² / m) — click for imperial. Calibrate in meters; 1:50-style scales in the list. Display only — stored takeoffs never change.",
   "scale.imperial_title": "Imperial display (SF / LF) — click for metric (m² / m, calibrate in meters, 1:50-style scales). Display only — stored takeoffs never change.",
+  "scale.metric_hint": "Open unit system settings (currently metric)",
+  "scale.imperial_hint": "Open unit system settings (currently imperial)",
   "scale.metric": "m",
   "scale.imperial": "ft",
   "scale.confirm_label": "Confirm agent-set scale",

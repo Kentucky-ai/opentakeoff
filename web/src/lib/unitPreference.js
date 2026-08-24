@@ -7,6 +7,11 @@
 
 export const UNIT_SYSTEM_KEY = "opentakeoff.unitSystem";
 
+/** Legacy key from the pre-provider era (per-project units toggle).
+ *  Migrated once: if the canonical key is absent/invalid and the legacy key
+ *  holds a valid value, it is promoted to the canonical key. */
+export const LEGACY_UNIT_KEY = "opentakeoff_units";
+
 export const DEFAULT_UNIT_SYSTEM = "imperial";
 
 /** Normalise an arbitrary value to a valid UnitSystem.  Anything other than
@@ -21,6 +26,34 @@ export function normalizeUnitSystem(value) {
  *  - an object → use it as-is (test-injected mock / real Storage) */
 function resolveStorage(storage) {
   return storage === null ? null : (storage ?? globalThis.localStorage);
+}
+
+/** Migrate the legacy `opentakeoff_units` key to the canonical
+ *  `opentakeoff.unitSystem` key when:
+ *    1. The canonical key is absent or invalid.
+ *    2. The legacy key holds a valid value ("metric" or "imperial").
+ *
+ *  After migration the legacy key is deleted so subsequent reads are clean.
+ *  Storage errors are silently swallowed — migration is best-effort. */
+export function migrateLegacyUnit(storage) {
+  try {
+    const s = resolveStorage(storage);
+    if (!s) return;
+    const canonical = s.getItem(UNIT_SYSTEM_KEY);
+    // If canonical is NOT yet valid, try to promote from legacy
+    if (canonical !== "imperial" && canonical !== "metric") {
+      const legacy = s.getItem(LEGACY_UNIT_KEY);
+      if (legacy === "imperial" || legacy === "metric") {
+        s.setItem(UNIT_SYSTEM_KEY, legacy);
+      }
+    }
+    // Always clean up the legacy key if present
+    if (s.getItem(LEGACY_UNIT_KEY) != null) {
+      s.removeItem(LEGACY_UNIT_KEY);
+    }
+  } catch {
+    // storage full or blocked — best-effort; callers continue with defaults.
+  }
 }
 
 /** Read the persisted unit preference.  Returns the default (Imperial) when

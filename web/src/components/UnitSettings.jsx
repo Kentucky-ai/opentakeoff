@@ -2,17 +2,53 @@
 // Modal overlay following AiSettings conventions: panel class, field-label
 // inputs, i18n via "panels" namespace, controlled radio buttons that apply
 // immediately on selection (no save step needed for a single toggle).
+//
+// Accessibility: role="dialog", aria-modal, labelled-by/description IDs,
+// Escape-to-close, and focus restoration to the triggering control.
+import { useEffect, useRef } from "react";
 import { Icon } from "../brand/icons.jsx";
 import { useTranslation } from "react-i18next";
 import { useUnitSystem } from "./UnitSystemProvider.jsx";
 
-export default function UnitSettings({ onClose }) {
+export default function UnitSettings({ onClose, triggerRef }) {
   const { t } = useTranslation("panels");
   const { unitSystem, setUnitSystem } = useUnitSystem();
+  const dialogRef = useRef(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
+  // Escape-to-close and focus management
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.stopPropagation(); closeRef.current(); }
+    };
+    document.addEventListener("keydown", onKey, true);
+    // Focus the dialog on mount (or the first focusable element inside it)
+    const el = dialogRef.current;
+    if (el) {
+      const focusable = el.querySelector("input[type=radio]:checked") || el.querySelector("input[type=radio]") || el.querySelector("button");
+      if (focusable) focusable.focus();
+    }
+    const trigger = triggerRef?.current;
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      // Restore focus to the trigger button if it still exists in the DOM
+      if (trigger && typeof trigger.focus === "function") {
+        trigger.focus();
+      }
+    };
+  }, [triggerRef]);
+
+  const titleId = "unit-settings-title";
+  const descId = "unit-settings-desc";
 
   return (
     <div
       onClick={() => onClose()}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={descId}
       style={{
         position: "absolute", inset: 0, zIndex: 60,
         background: "rgba(14,26,46,.45)",
@@ -20,6 +56,7 @@ export default function UnitSettings({ onClose }) {
       }}
     >
       <div
+        ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
         className="panel"
         style={{ width: 420, maxWidth: "100%", maxHeight: "90%", overflow: "auto",
@@ -28,14 +65,14 @@ export default function UnitSettings({ onClose }) {
         {/* header */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: "1px solid var(--ink)" }}>
           <Icon name="target" size={16} />
-          <strong style={{ fontFamily: "var(--f-display)", fontSize: 15 }}>
+          <strong id={titleId} style={{ fontFamily: "var(--f-display)", fontSize: 15 }}>
             {t("units.title")}
           </strong>
         </div>
 
         {/* body */}
         <div style={{ padding: 16, fontSize: 13, lineHeight: 1.6, color: "var(--ink)" }}>
-          <p style={{ marginTop: 0 }}>{t("units.description")}</p>
+          <p id={descId} style={{ marginTop: 0 }}>{t("units.description")}</p>
 
           <fieldset style={{ border: "none", margin: 0, padding: 0 }}>
             <legend className="field-label" style={{ marginBottom: 8 }}>

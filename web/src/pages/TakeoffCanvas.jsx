@@ -370,6 +370,7 @@ export default function TakeoffCanvas() {
   // scale, or a coverage rate.
   const { unitSystem: units } = useUnitSystem();
   const [showUnitSettings, setShowUnitSettings] = useState(false);
+  const unitSettingsTriggerRef = useRef(null);
   const [check, setCheck] = useState([]);             // Check tool: 0–2 stage-px points along a printed dimension
   const [checkStated, setCheckStated] = useState(""); // what the drawing says that dimension is
   const [scaleGuide, setScaleGuide] = useState(null); // ephemeral calibrated ruler {key, feet, px, label, at:[x,y]} — never persisted (buildPayload doesn't read it)
@@ -2000,7 +2001,7 @@ export default function TakeoffCanvas() {
     // state it serializes, so listing buildPayload (a new identity each render)
     // would fire a save on every render instead of only on a real change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, markups, approvals, rfis, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo, units]);
+  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, markups, approvals, rfis, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo]);
   useEffect(() => { saveStateRef.current = saveState; }, [saveState]);
 
   // Flush a pending debounced save on navigate-away (unmount), and warn before a
@@ -6332,7 +6333,7 @@ export default function TakeoffCanvas() {
         <div style={{ flex: 1 }} />
         {cluster(`${t('toolbar.scale')} — ${labelFor(focusPanel)}`,
           <>
-            <button onClick={() => setShowUnitSettings(true)}
+            <button ref={unitSettingsTriggerRef} onClick={() => setShowUnitSettings(true)}
               title={units === "metric" ? t('scale.metric_hint') : t('scale.imperial_hint')}
               style={{ padding: "6px 10px", border: `1px solid ${units === "metric" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: units === "metric" ? "var(--cobalt)" : "transparent", color: units === "metric" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, lineHeight: 1 }}>
               {units === "metric" ? "m" : "ft"}
@@ -7845,7 +7846,7 @@ export default function TakeoffCanvas() {
           (the Agent panel links here; closing re-renders, so `configured`
           re-reads immediately). */}
       {showAiSettings && <AiSettings onClose={() => setShowAiSettings(false)} />}
-      {showUnitSettings && <UnitSettings onClose={() => setShowUnitSettings(false)} />}
+      {showUnitSettings && <UnitSettings onClose={() => setShowUnitSettings(false)} triggerRef={unitSettingsTriggerRef} />}
       {/* the manual, last in the tree so it sits above every panel and dock */}
       {guideOpen && <UserGuide onClose={() => setGuideOpen(false)} />}
     </div>

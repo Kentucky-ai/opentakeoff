@@ -92,6 +92,8 @@
   "scale.title_group": " (visa a folha clicada por último)",
   "scale.metric_title": "Exibição métrica (m² / m) — clique para imperial. Calibre em metros; escalas 1:50 na lista. Apenas exibição — takeoffs armazenados nunca mudam.",
   "scale.imperial_title": "Exibição imperial (SF / LF) — clique para métrica (m² / m, calibre em metros, escalas 1:50). Apenas exibição — takeoffs armazenados nunca mudam.",
+  "scale.metric_hint": "Abrir configurações do sistema de unidades (atualmente métrico)",
+  "scale.imperial_hint": "Abrir configurações do sistema de unidades (atualmente imperial)",
   "scale.metric": "m",
   "scale.imperial": "pés",
   "scale.confirm_label": "Confirmar escala definida pelo agente",

@@ -3,7 +3,7 @@
 // touched (safe in node, safe in browser, deterministic either way).
 import { test, afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { UNIT_SYSTEM_KEY, DEFAULT_UNIT_SYSTEM, normalizeUnitSystem, readUnitSystem, writeUnitSystem } from "../src/lib/unitPreference.js";
+import { UNIT_SYSTEM_KEY, DEFAULT_UNIT_SYSTEM, normalizeUnitSystem, readUnitSystem, writeUnitSystem, migrateLegacyUnit, LEGACY_UNIT_KEY } from "../src/lib/unitPreference.js";
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -268,4 +268,62 @@ test("writeUnitSystem returns normalised value when globalThis.localStorage.setI
   });
   assert.equal(writeUnitSystem("metric"), "metric");
   assert.equal(writeUnitSystem("garbage"), "imperial");
+});
+
+// ── LEGACY MIGRATION ────────────────────────────────────────────────────────
+
+test("migrateLegacyUnit promotes legacy 'metric' to canonical key when canonical is absent", () => {
+  const store = mockStorage();
+  store.setItem(LEGACY_UNIT_KEY, "metric");
+  migrateLegacyUnit(store);
+  assert.equal(store.getItem(UNIT_SYSTEM_KEY), "metric");
+  assert.equal(store.getItem(LEGACY_UNIT_KEY), null, "legacy key should be removed after migration");
+});
+
+test("migrateLegacyUnit promotes legacy 'imperial' to canonical key when canonical is absent", () => {
+  const store = mockStorage();
+  store.setItem(LEGACY_UNIT_KEY, "imperial");
+  migrateLegacyUnit(store);
+  assert.equal(store.getItem(UNIT_SYSTEM_KEY), "imperial");
+  assert.equal(store.getItem(LEGACY_UNIT_KEY), null, "legacy key should be removed after migration");
+});
+
+test("migrateLegacyUnit does NOT overwrite a valid canonical value", () => {
+  const store = mockStorage();
+  store.setItem(UNIT_SYSTEM_KEY, "metric");
+  store.setItem(LEGACY_UNIT_KEY, "imperial");
+  migrateLegacyUnit(store);
+  assert.equal(store.getItem(UNIT_SYSTEM_KEY), "metric", "canonical must not be overwritten");
+  assert.equal(store.getItem(LEGACY_UNIT_KEY), null, "legacy key should still be cleaned up");
+});
+
+test("migrateLegacyUnit ignores an invalid legacy value", () => {
+  const store = mockStorage();
+  store.setItem(LEGACY_UNIT_KEY, "si");
+  migrateLegacyUnit(store);
+  assert.equal(store.getItem(UNIT_SYSTEM_KEY), null, "canonical must not be set from invalid legacy");
+  assert.equal(store.getItem(LEGACY_UNIT_KEY), null, "legacy key should still be cleaned up");
+});
+
+test("migrateLegacyUnit is a no-op when neither key exists", () => {
+  const store = mockStorage();
+  assert.doesNotThrow(() => migrateLegacyUnit(store));
+  assert.equal(store.getItem(UNIT_SYSTEM_KEY), null);
+});
+
+test("migrateLegacyUnit is a no-op with null storage (bypass)", () => {
+  const store = installMockGlobal();
+  store.setItem(LEGACY_UNIT_KEY, "metric");
+  migrateLegacyUnit(null);
+  // null storage skips everything — global mock must be untouched
+  assert.equal(store.getItem(UNIT_SYSTEM_KEY), null);
+  assert.equal(store.getItem(LEGACY_UNIT_KEY), "metric");
+});
+
+test("migrateLegacyUnit does not throw when storage throws", () => {
+  assert.doesNotThrow(() => migrateLegacyUnit(throwingStorage()));
+});
+
+test("LEGACY_UNIT_KEY is the expected legacy string", () => {
+  assert.equal(LEGACY_UNIT_KEY, "opentakeoff_units");
 });
