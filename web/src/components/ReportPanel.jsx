@@ -126,6 +126,10 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   // custom), so toggling one can never disturb the frozen CSV prefix
   const customCols = customColProfile(conditionColumns);
   const tableProfile = getTableProfile();
+  // Picker uses the same unit-conversion boundary as the report table so
+  // headers show m²/m in metric mode and sy_net (retired in metric) is hidden.
+  // Keys remain the original stable keys for colPrefs toggling.
+  const pickerCols = applyUnits(tableProfile, units);
   const csvProfile = getCsvProfile();
   // read-only product-spec columns (mfr/style/color/size) from "Import from
   // schedule" — appended AFTER the custom columns, present only when at least
@@ -430,9 +434,9 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                 <button onClick={() => setShowCols(false)} title={t('toolbar.close')}
                   style={{ border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 13, padding: 0, lineHeight: 1 }}>✕</button>
               </div>
-              {tableProfile.filter((c) => !c.locked && c.defaultVisible).map(colCheckbox)}
+              {pickerCols.filter((c) => !c.locked && c.defaultVisible).map(colCheckbox)}
               <div style={{ borderTop: "1px solid var(--ink-faint)", margin: "8px 0 4px", paddingTop: 6, fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" }}>{t('columns.optional')}</div>
-              {tableProfile.filter((c) => !c.locked && !c.defaultVisible).map(colCheckbox)}
+              {pickerCols.filter((c) => !c.locked && !c.defaultVisible).map(colCheckbox)}
               <div style={{ borderTop: "1px solid var(--ink-faint)", margin: "8px 0 4px", paddingTop: 6, fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)" }}>{t('columns.custom')}</div>
               {customCols.length ? customCols.map(colCheckbox) : (
                 <div style={{ fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1.5 }}>{t('columns.no_custom')}</div>

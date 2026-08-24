@@ -742,3 +742,47 @@ test("roll columns metric conversion in grouped context preserves blank for non-
   const blankVal = metric[0].get(otherRow, groupedCtx);
   assert.equal(blankVal, "", "non-roll stays blank in metric (not converted to 0)");
 });
+
+// ── metric picker: sy_net hidden, dimensional headers converted ──────────
+// The column picker derives descriptors from applyUnits(tableProfile, units).
+// In metric mode: sy_net is filtered out, SF→m² and LF→m in headers, and
+// non-dimensional columns (finish, shapes, ea, waste_pct) keep their original
+// headers. Keys remain the original stable keys for colPrefs toggling.
+
+test("applyUnits on TABLE_PROFILE for metric picker: sy_net removed, dimensional headers converted", () => {
+  const pickerCols = applyUnits(TABLE_PROFILE, "metric");
+  const keys = pickerCols.map((c: any) => c.key);
+  // sy_net must not appear — it retires in metric
+  assert.ok(!keys.includes("sy_net"), "sy_net filtered from metric picker");
+  // finish stays unchanged
+  const finish = pickerCols.find((c: any) => c.key === "finish");
+  assert.ok(finish, "finish present");
+  // dimensional columns get metric headers
+  const floorSf = pickerCols.find((c: any) => c.key === "floor_sf");
+  assert.ok(floorSf, "floor_sf present");
+  assert.ok(floorSf.header.includes("m²"), `floor_sf header has m²: ${floorSf.header}`);
+  const lfCol = pickerCols.find((c: any) => c.key === "lf");
+  assert.ok(lfCol, "lf present");
+  assert.ok(lfCol.header.includes("m"), `lf header has m: ${lfCol.header}`);
+  assert.ok(!lfCol.header.includes("LF"), `lf header no longer has LF: ${lfCol.header}`);
+  // non-dimensional columns keep original headers
+  const eaCol = pickerCols.find((c: any) => c.key === "ea");
+  const origEa = TABLE_PROFILE.find((c: any) => c.key === "ea");
+  assert.ok(eaCol, "ea present");
+  assert.ok(origEa, "orig ea present in TABLE_PROFILE");
+  assert.equal(eaCol.header, origEa.header, "ea header unchanged in metric picker");
+  // keys are preserved (the original stable keys, not mangled)
+  assert.ok(keys.includes("floor_sf"), "key floor_sf preserved");
+  assert.ok(keys.includes("lf"), "key lf preserved");
+  assert.ok(keys.includes("waste_sf"), "key waste_sf preserved");
+});
+
+test("applyUnits on TABLE_PROFILE for imperial picker: all columns present, headers unchanged", () => {
+  const pickerCols = applyUnits(TABLE_PROFILE, "imperial");
+  // imperial is identity — same columns, same headers
+  assert.equal(pickerCols.length, TABLE_PROFILE.length, "imperial has all columns");
+  for (let i = 0; i < TABLE_PROFILE.length; i++) {
+    assert.equal(pickerCols[i].header, TABLE_PROFILE[i].header, `${TABLE_PROFILE[i].key} header unchanged in imperial`);
+    assert.equal(pickerCols[i].key, TABLE_PROFILE[i].key, `${TABLE_PROFILE[i].key} key unchanged in imperial`);
+  }
+});
