@@ -2,6 +2,19 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-24 — One-Click reads the walls: the net engine (test build)
+
+### Added
+- **A second One-Click engine, behind a switch (#60 items A and C; #320).** The **NET** button in the fill-settings popover routes One-Click through a wall-network room detector instead of the raster flood. It builds a planar arrangement over the sheet's *classified* wall linework (JTS via `polyarr.ts`), closes the openings the drafter drew — door swings, panels, open leaves, and drawn finish transitions across wide openings — and returns the grown face set as the room, ring exact to the drawn wall faces, then simplified to the corners an estimator draws. Every mechanism was measured on four real sheets against the owner's own hand takeoffs before it stayed, and every mechanism that measured net-negative is in the code as an opt-in flag with its number in the commit message, not a default. Off by default; the switch persists per browser; regions mint `origin.method: net_v1`.
+  - **Click a room; ⇧-click an open floor** to select the whole finish field (tile, plank) — grow across the same pattern through door cells, stop where the pattern stops. Measured poison as a default click, right as a gesture on teller lines and lobbies.
+  - What the flood could never say no to, this refuses: a stroke free at both ends is a dimension, not a wall; an unpaired stroke with one free end is a door leaf; a stroke inside a text box is text; a door hangs between *wall* ends, never a dimension tick's; a label box, the sheet frame, and a fixture pocket are not rooms. Fixture symbols (X, chevron, closed curves) drop their rims from wall material and suppress doors manufactured inside a tub. A stair is the longest riser-pitch run inside an aligned tread family; its nosings are the floor boundary. Growth refuses the wall band instead of absorbing it to the centerline.
+  - Builds in a **Web Worker** with a ticking status — a 105k-segment sheet reads in ~4 s (profiled from 60 s on the main thread; identical faces), and the page stays live. One build per sheet per scale, cached; the first click on a sheet pays it.
+  - Where it stands (rooms within 5% of a hand takeoff, growth on, one config): bank branch 11/13 · hotel floor 29/46 · office renovation 15/25 · a thin-sliver hotel sheet 0/11. Per-finish package totals on the sheets it answers: −1 to −4%. Plainly named ceilings: furniture drawn indistinguishably from walls, and grey-fill walls under plank hatch — a rule-set per drafting habit, which is the line where a trained segmenter earns its place.
+- **Ink classification feeds the flood too.** `extractVectorGeometry` now emits every drawn figure (`SubPath`) with its fill luminance; the flood's soft plane gains a finish-texture classifier (stipple and speckle fields) and a label-box classifier (a box that exists to frame its text is a tag, not a room — measured: 55% of clicks in one storeroom traced the tag). Both union with the existing hatch, annotation-ring and dimension-string classifiers.
+
+### Changed
+- **The scale-acceptance ruler is gone** from the sheet after a scale is set — the owner's call: it served no purpose there.
+
 ## 2026-08-24 — the drawing overlay stays crisp through a zoom
 
 ### Fixed
