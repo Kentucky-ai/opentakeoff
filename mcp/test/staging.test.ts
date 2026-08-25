@@ -9,7 +9,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildServer } from "../server.ts";
 import { Session } from "../src/session.ts";
-import { TOOL_STAGES } from "../src/staging.ts";
+import { TOOL_STAGES, TOOL_NAMES } from "../src/staging.ts";
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
 const KEY = "sample-plan.pdf";
@@ -25,9 +25,9 @@ const connect = async (staged: boolean) => {
 const toolNames = async (client: Client) =>
   new Set((await client.listTools()).tools.map((t) => t.name));
 
-test("staging: default build is the flat forty-two — no opener, nothing disabled", async () => {
+test("staging: default build is the flat TOOL_NAMES — no opener, nothing disabled", async () => {
   const names = await toolNames(await connect(false));
-  assert.equal(names.size, 42);
+  assert.equal(names.size, TOOL_NAMES.length);
   assert.ok(!names.has("open_tool_stage"));
   for (const stage of Object.values(TOOL_STAGES)) for (const n of stage) assert.ok(names.has(n), n);
 });
@@ -68,11 +68,11 @@ test("staging: setup-only at start, open_tool_stage grows the surface, idempoten
   assert.ok(!again.isError);
   assert.deepEqual(JSON.parse(again.content[0].text).enabled, []);
 
-  // open the rest: the full forty-two, nothing ever closes
+  // open the rest: the full TOOL_NAMES, nothing ever closes
   await client.callTool({ name: "open_tool_stage", arguments: { stage: "revise" } });
   await client.callTool({ name: "open_tool_stage", arguments: { stage: "handoff" } });
   const all = await toolNames(client);
-  assert.equal(all.size, 43);
+  assert.equal(all.size, TOOL_NAMES.length + 1);
 
   // an unknown stage is a validation refusal, not a crash
   const bad: any = await client.callTool({ name: "open_tool_stage", arguments: { stage: "cleanup" } });

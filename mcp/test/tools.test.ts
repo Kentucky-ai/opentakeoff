@@ -1,5 +1,6 @@
 // Tool-layer tests over a real client/server pair on an in-memory transport —
 // schemas, error surfaces, and the scale gate as an MCP client sees them.
+import { TOOL_NAMES } from "../src/staging.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
@@ -67,15 +68,10 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // delete_verdict takes a record id — same reasoning.
 const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "export_dxf", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict", "duplicate_condition", "split_condition", "apply_rules"]);
 
-test("tools/list: all forty-two tools, each described with the coordinate contract", async () => {
+test("tools/list: exactly TOOL_NAMES, each described with the coordinate contract", async () => {
   const client = await pair();
   const { tools } = await client.listTools();
-  assert.deepEqual(tools.map((t) => t.name).sort(), [
-    "annotate", "apply_rules", "count_marks", "cut_out", "delete_shape", "delete_verdict", "derive_base", "derive_transitions", "detect_rooms", "duplicate_condition", "edit_condition", "edit_materials", "edit_shape", "export_dxf", "export_marked_pdf", "export_report",
-    "export_takeoff", "find_schedule", "find_text", "import_takeoff",
-    "link_annotation", "list_annotations", "list_shapes", "load_plan", "mark_verdict", "measure_line", "measure_polygon", "measure_surface", "one_click", "place_count",
-    "read_sheet_text", "resolve_tag", "set_scale", "sheet_context", "sheet_graph", "sheet_info", "split_condition", "sweep_schedule_row", "symbol_sweep", "takeoff_summary", "undo_last", "view_sheet",
-  ]);
+  assert.deepEqual(tools.map((t) => t.name).sort(), [...TOOL_NAMES]);
   for (const t of tools) {
     if (NO_COORDS.has(t.name)) continue;
     assert.match(t.description || "", /image px at render scale 2\.0/, `${t.name} carries the coordinate contract`);

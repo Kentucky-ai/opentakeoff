@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
+import { TOOL_NAMES } from "../src/staging.ts";
 
 const child = spawn(process.execPath, ["dist/server.js"], {
   cwd: fileURLToPath(new URL("..", import.meta.url)),
@@ -92,49 +93,9 @@ send({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
 
 const listed = await responseFor(2);
 const names = listed.tools.map((tool) => tool.name).sort();
-assert.deepEqual(names, [
-  "annotate",
-  "apply_rules",
-  "count_marks",
-  "cut_out",
-  "delete_shape",
-  "delete_verdict",
-  "derive_base",
-  "derive_transitions",
-  "detect_rooms",
-  "duplicate_condition",
-  "edit_condition",
-  "edit_materials",
-  "edit_shape", "export_dxf",
-  "export_marked_pdf",
-  "export_report",
-  "export_takeoff",
-  "find_schedule",
-  "find_text",
-  "import_takeoff",
-  "link_annotation",
-  "list_annotations",
-  "list_shapes",
-  "load_plan",
-  "mark_verdict",
-  "measure_line",
-  "measure_polygon",
-  "measure_surface",
-  "one_click",
-  "place_count",
-  "read_sheet_text",
-  "resolve_tag",
-  "set_scale",
-  "sheet_context",
-  "sheet_graph",
-  "sheet_info",
-  "split_condition",
-  "sweep_schedule_row",
-  "symbol_sweep",
-  "takeoff_summary",
-  "undo_last",
-  "view_sheet",
-]);
+// The expected surface is the ONE list every other check reads (src/staging.ts);
+// node 24 strips the types on import, so this needs no build of its own.
+assert.deepEqual(names, [...TOOL_NAMES]);
 
 child.stdin.end();
 await once(child, "close");
