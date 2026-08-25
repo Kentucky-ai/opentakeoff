@@ -42,6 +42,15 @@ export const MAX_DENSITY = 4;
  *  real level's — the base is rendered at its own exact-fit density (see
  *  fitDensity), not at a power-of-two level. */
 export const BASE_LEVEL = -1;
+/** The two stand-ins paintBase shows BEFORE the budget composite lands — the
+ *  instant coarse pass and the optional screen-fit pass. Same negative-id
+ *  namespace as BASE_LEVEL: all three are whole-sheet rasters cut with the
+ *  BASE tile size (see tileCompositor's BASE_TILE), so their keys must never
+ *  collide with the 512-px pyramid tiles of the same density. */
+export const BASE_COARSE_LEVEL = -2;
+export const BASE_MID_LEVEL = -3;
+/** Every base-family level (whole-sheet, base tile size) has a negative id. */
+export const isBaseLevel = (level: number) => level < 0;
 
 /** The exact density whose full-sheet composite hits `targetArea` device px.
  *  The pyramid is power-of-two, so snapping a budget DOWN to a level wastes
@@ -83,9 +92,9 @@ export function levelDims(imgW: number, imgH: number, density: number) {
   return { w: Math.max(1, Math.ceil(imgW * density)), h: Math.max(1, Math.ceil(imgH * density)) };
 }
 
-export function tileGrid(imgW: number, imgH: number, density: number) {
+export function tileGrid(imgW: number, imgH: number, density: number, tile = TILE_SIZE) {
   const { w, h } = levelDims(imgW, imgH, density);
-  return { cols: Math.ceil(w / TILE_SIZE), rows: Math.ceil(h / TILE_SIZE), w, h };
+  return { cols: Math.ceil(w / tile), rows: Math.ceil(h / tile), w, h };
 }
 
 export function tileKey(sheetKey: string, level: number, tx: number, ty: number) {
@@ -93,9 +102,9 @@ export function tileKey(sheetKey: string, level: number, tx: number, ty: number)
 }
 
 /** Tile rect in LEVEL px (edge tiles are smaller than TILE_SIZE). */
-export function tileRect(level: number, tx: number, ty: number, levelW: number, levelH: number) {
-  const x = tx * TILE_SIZE, y = ty * TILE_SIZE;
-  return { x, y, w: Math.min(TILE_SIZE, levelW - x), h: Math.min(TILE_SIZE, levelH - y) };
+export function tileRect(level: number, tx: number, ty: number, levelW: number, levelH: number, tile = TILE_SIZE) {
+  const x = tx * tile, y = ty * tile;
+  return { x, y, w: Math.min(tile, levelW - x), h: Math.min(tile, levelH - y) };
 }
 
 export interface VisibleTile { level: number; tx: number; ty: number; x: number; y: number; w: number; h: number; }
@@ -111,10 +120,13 @@ export function visibleTiles(
 
 /** visibleTiles for a density that is NOT a pyramid level — the base layer's
  *  exact-fit density. `level` is carried through untouched purely as the id
- *  the caller will key the cache on (BASE_LEVEL for the base). */
+ *  the caller will key the cache on (BASE_LEVEL for the base). `tile` is the
+ *  tile edge — TILE_SIZE for the pyramid, the larger BASE tile for the
+ *  base family (every tile is a full operator-list walk in pdf.js, so a
+ *  whole-sheet composite wants as FEW tiles as memory allows). */
 export function visibleTilesAtDensity(
   imgW: number, imgH: number, density: number, level: number,
-  x0: number, y0: number, x1: number, y1: number,
+  x0: number, y0: number, x1: number, y1: number, tile = TILE_SIZE,
 ): VisibleTile[] {
   const { w: levelW, h: levelH } = levelDims(imgW, imgH, density);
   const lx0 = Math.max(0, Math.floor(x0 * density));
@@ -122,12 +134,12 @@ export function visibleTilesAtDensity(
   const lx1 = Math.min(levelW, Math.ceil(x1 * density));
   const ly1 = Math.min(levelH, Math.ceil(y1 * density));
   if (lx1 <= lx0 || ly1 <= ly0) return [];
-  const txMin = Math.floor(lx0 / TILE_SIZE), txMax = Math.floor((lx1 - 1) / TILE_SIZE);
-  const tyMin = Math.floor(ly0 / TILE_SIZE), tyMax = Math.floor((ly1 - 1) / TILE_SIZE);
+  const txMin = Math.floor(lx0 / tile), txMax = Math.floor((lx1 - 1) / tile);
+  const tyMin = Math.floor(ly0 / tile), tyMax = Math.floor((ly1 - 1) / tile);
   const out: VisibleTile[] = [];
   for (let ty = tyMin; ty <= tyMax; ty++) {
     for (let tx = txMin; tx <= txMax; tx++) {
-      const r = tileRect(level, tx, ty, levelW, levelH);
+      const r = tileRect(level, tx, ty, levelW, levelH, tile);
       out.push({ level, tx, ty, ...r });
     }
   }

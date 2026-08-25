@@ -51,7 +51,7 @@
 import { RENDER_SCALE } from "./sheets";
 import { LOW_MEMORY_DEVICE } from "./deviceClass";
 import { createTilePool } from "./tilePool";
-import { TileLRU, buildLevels, pickLevel, levelDims, visibleTiles, visibleTilesAtDensity, fitDensity, BASE_LEVEL, tileKey as rawTileKey, TILE_SIZE } from "./tiles";
+import { TileLRU, buildLevels, pickLevel, levelDims, visibleTiles, visibleTilesAtDensity, fitDensity, tileGrid, BASE_LEVEL, BASE_COARSE_LEVEL, BASE_MID_LEVEL, isBaseLevel, tileKey as rawTileKey, TILE_SIZE } from "./tiles";
 
 // ~450MB shared across every open sheet/panel — the old per-group ceiling
 // ("4-up ≈ 450MB" per canvasConstants.js), now a BUDGET instead of a floor
@@ -66,6 +66,24 @@ const BYTE_BUDGET = (LOW_MEMORY_DEVICE ? 120 : 450) * 1024 * 1024;
 // shipped for years before #86; tiling just makes hitting that number
 // bounded-memory instead of one giant backing store.
 const BASE_TARGET_AREA = 28_000_000;
+// Tile edge for the base family (coarse / screen-fit / budget composites).
+// Measured live on a hatch-heavy finish plan: EVERY tile cost ~300 ms in the
+// worker whether it was a 512-px coarse tile or a 512-px full-density tile —
+// pdf.js walks the sheet's whole operator list per render, and the pixels
+// are the cheap part. So a 20MP base cut into 512s was ~77 walks (5+ s on a
+// 5-worker pool); cut into 2048s it is ~8 walks. The pyramid keeps 512
+// (detail crops are viewport-sized and cached per tile); only the whole-
+// sheet rasters use this. Phones keep 512: a 2048² OffscreenCanvas plus its
+// ImageBitmap is 32 MB of transient memory per tile.
+const BASE_TILE = LOW_MEMORY_DEVICE ? TILE_SIZE : 2048;
+const tileSizeOf = (level: number) => (isBaseLevel(level) ? BASE_TILE : TILE_SIZE);
+// Tile ceiling for the screen-fit stand-in painted between the coarse
+// placeholder and the budget composite (paintBase's phase 1.5), in BASE
+// tiles: one pool round. With 2048-px base tiles the budget composite is
+// itself only ~8 tiles, so this pass fires only for sheets big enough that
+// the budget pass is still several rounds (midLevel requires it to be under
+// half the budget's tile count).
+const BASE_MID_TILES = 4;
 // Sanity ceiling on ONE detail crop's backing store. In normal use the crop
 // is viewport*dpr — about 8MP — at every zoom, because zooming in shrinks the
 // image-space region by exactly the factor it raises the density. This only
@@ -118,6 +136,10 @@ export function createTileCompositor() {
   // exact-fit density the BASE composite was painted at, per sheet — the
   // placeholder search needs it to rank the base against the pyramid levels
   const baseDensityBySheet = new Map<string, number>();
+  // every base-family layer painted for a sheet (coarse / screen-fit /
+  // budget) with its density — all are placeholder candidates, ranked by
+  // density alongside the pyramid levels in bestPlaceholder
+  const baseLayersBySheet = new Map<string, { level: number; density: number }[]>();
   const opened = new Set<string>();
   // Every tile request awaits this before hitting the worker — dataPromise
   // (an IndexedDB read) resolves well after openSheet() returns, so without
@@ -164,6 +186,8 @@ export function createTileCompositor() {
     dimsBySheet.clear();
     readyBySheet.clear();
     visibleKeys.clear();
+    baseDensityBySheet.clear();
+    baseLayersBySheet.clear();
   }
 
   async function getOrFetchTile(sheetKey: string, level: number, tx: number, ty: number, density: number, dark: boolean): Promise<ImageBitmap | undefined> {
@@ -189,13 +213,19 @@ export function createTileCompositor() {
       try { await readyBySheet.get(sheetKey); } catch { return undefined; } // sheet failed to open
       if (myGen !== generation) return undefined; // superseded while we waited on open
       const { w: levelW, h: levelH } = levelDims(dims.w, dims.h, density);
-      const x = tx * TILE_SIZE, y = ty * TILE_SIZE;
-      const rect = { x, y, w: Math.min(TILE_SIZE, levelW - x), h: Math.min(TILE_SIZE, levelH - y) };
+      const tile = tileSizeOf(level);
+      const x = tx * tile, y = ty * tile;
+      const rect = { x, y, w: Math.min(tile, levelW - x), h: Math.min(tile, levelH - y) };
       if (rect.w <= 0 || rect.h <= 0) return undefined;
       const { promise, cancel } = pool.requestTile({ sheetKey, scale: RENDER_SCALE * density, rect, dark });
       cancelRef.cancel = cancel;
+      const tReq = performance.now();
       try {
         const { bitmap, w, h } = await promise;
+        {
+          const w = window as unknown as { __OT_DETAIL_DEBUG?: boolean; __otBaseLog?: string[] };
+          if (w.__OT_DETAIL_DEBUG) (w.__otBaseLog ||= []).push(`[tile] L${level} ${tx},${ty} ${rect.w}x${rect.h} d=${density.toFixed(3)} took ${Math.round(performance.now() - tReq)}ms`);
+        }
         if (myGen !== generation) { bitmap.close(); return undefined; } // superseded by resetAll
         cache.set(key, bitmap, w * h * 4);
         return bitmap;
@@ -223,7 +253,7 @@ export function createTileCompositor() {
    *  `level` is the cache-key id only; it need not index `levels`. */
   async function paintBaseAtLevel(canvas: HTMLCanvasElement, sheetKey: string, imgW: number, imgH: number, density: number, level: number, dark: boolean, myGen: number) {
     const { w: lw, h: lh } = levelDims(imgW, imgH, density);
-    const tiles = visibleTilesAtDensity(imgW, imgH, density, level, 0, 0, imgW, imgH);
+    const tiles = visibleTilesAtDensity(imgW, imgH, density, level, 0, 0, imgW, imgH, tileSizeOf(level));
     const back = document.createElement("canvas");
     back.width = lw; back.height = lh;
     const bctx = back.getContext("2d");
@@ -239,6 +269,26 @@ export function createTileCompositor() {
     visibleKeys.set(`${sheetKey}|base`, new Set(tiles.map((t) => modeKey(rawTileKey(sheetKey, level, t.tx, t.ty), dark))));
     canvas.width = lw; canvas.height = lh;
     canvas.getContext("2d")?.drawImage(back, 0, 0);
+    const fam = baseLayersBySheet.get(sheetKey) || [];
+    baseLayersBySheet.set(sheetKey, [...fam.filter((f) => f.level !== level), { level, density }]);
+  }
+
+  /** Index of the densest pyramid level that (a) is denser than the coarse
+   *  placeholder, (b) is under the budget density, (c) needs at most
+   *  BASE_MID_TILES tiles, and (d) is worth a separate pass — fewer than half
+   *  the budget composite's tiles. Undefined when no level qualifies. */
+  function midLevel(levels: number[], imgW: number, imgH: number, bd: number): number | undefined {
+    const count = (d: number) => { const g = tileGrid(imgW, imgH, d, BASE_TILE); return g.cols * g.rows; };
+    const budgetTiles = count(bd);
+    let best: number | undefined;
+    for (let i = 1; i < levels.length; i++) {
+      const d = levels[i];
+      if (d >= bd) break;
+      const n = count(d);
+      if (n > BASE_MID_TILES || n * 2 > budgetTiles) break;
+      best = i;
+    }
+    return best;
   }
 
   /** Two-phase whole-sheet base layer, painted once per sheet: an instant
@@ -248,21 +298,47 @@ export function createTileCompositor() {
   async function paintBase(canvas: HTMLCanvasElement, sheetKey: string, imgW: number, imgH: number, dark: boolean) {
     const levels = levelsFor(sheetKey, imgW, imgH);
     const myGen = generation;
-    await paintBaseAtLevel(canvas, sheetKey, imgW, imgH, levels[0], 0, dark, myGen);
+    const t0 = performance.now();
+    const dbg = (what: string, d: number) => {
+      const w = window as unknown as { __OT_DETAIL_DEBUG?: boolean; __otBaseLog?: string[] };
+      if (!w.__OT_DETAIL_DEBUG) return;
+      const line = `[base] ${sheetKey} ${what} density=${d.toFixed(3)} +${Math.round(performance.now() - t0)}ms`;
+      console.debug(line);
+      (w.__otBaseLog ||= []).push(line);
+    };
+    await paintBaseAtLevel(canvas, sheetKey, imgW, imgH, levels[0], BASE_COARSE_LEVEL, dark, myGen);
     if (myGen !== generation) return;
+    dbg("coarse", levels[0]);
     // Record the density the base is ACTUALLY showing, as each phase lands —
     // paintDetail's floor reads this, and promising phase 2's density while
     // phase 1's coarse pass is still on screen would suppress a crop that is
     // genuinely sharper than what the user is looking at, for the whole
     // duration of the phase-2 render.
     baseDensityBySheet.set(sheetKey, levels[0]);
+    const bd = fitDensity(imgW, imgH, BASE_TARGET_AREA);
+    // Phase 1.5 — a SCREEN-FIT stand-in. The coarse placeholder is ~768 px
+    // on its long edge; the budget composite is ~28MP, 100+ tiles, seconds
+    // on a 3-worker pool. Between them the user was looking at a smeared
+    // sheet at fit-to-view for the whole wait — the exact "is this even the
+    // right plan?" moment. This paints the densest pyramid level under
+    // BASE_MID_TILES BASE tiles (~3K px long edge: near-1:1 for a fit-to-view
+    // sheet on a 2× laptop) in a fraction of the time, and its tiles stay
+    // cached as placeholders for the pyramid. Skipped when the sheet is
+    // small enough that the budget composite IS quick.
+    const mid = midLevel(levels, imgW, imgH, bd);
+    if (mid !== undefined) {
+      await paintBaseAtLevel(canvas, sheetKey, imgW, imgH, levels[mid], BASE_MID_LEVEL, dark, myGen);
+      if (myGen !== generation) return;
+      baseDensityBySheet.set(sheetKey, levels[mid]);
+      dbg("screen-fit", levels[mid]);
+    }
     // Phase 2 at the EXACT budget density, not the nearest level under it —
     // see fitDensity for the 37%-of-budget shortfall that snapping caused.
-    const bd = fitDensity(imgW, imgH, BASE_TARGET_AREA);
-    if (bd > levels[0]) {
+    if (bd > (mid !== undefined ? levels[mid] : levels[0])) {
       await paintBaseAtLevel(canvas, sheetKey, imgW, imgH, bd, BASE_LEVEL, dark, myGen);
       if (myGen !== generation) return;
       baseDensityBySheet.set(sheetKey, bd);
+      dbg("budget", bd);
     }
   }
 
@@ -275,16 +351,15 @@ export function createTileCompositor() {
   function bestPlaceholder(sheetKey: string, levels: number[], target: number, x0: number, y0: number, x1: number, y1: number, dark: boolean): { level: number; density: number } {
     const dims = dimsBySheet.get(sheetKey)!;
     const cached = (level: number, density: number) => {
-      const tiles = visibleTilesAtDensity(dims.w, dims.h, density, level, x0, y0, x1, y1);
+      const tiles = visibleTilesAtDensity(dims.w, dims.h, density, level, x0, y0, x1, y1, tileSizeOf(level));
       return tiles.length > 0 && tiles.every((t) => cache.has(modeKey(rawTileKey(sheetKey, level, t.tx, t.ty), dark)));
     };
-    const baseDensity = baseDensityBySheet.get(sheetKey);
     const candidates: { level: number; density: number }[] = [];
     for (let l = target - 1; l >= 0; l--) candidates.push({ level: l, density: levels[l] });
-    if (baseDensity !== undefined && baseDensity < levels[target]) candidates.push({ level: BASE_LEVEL, density: baseDensity });
+    for (const f of baseLayersBySheet.get(sheetKey) || []) if (f.density < levels[target]) candidates.push(f);
     candidates.sort((a, b) => b.density - a.density); // densest stand-in first
     for (const c of candidates) if (cached(c.level, c.density)) return c;
-    return { level: 0, density: levels[0] }; // always fetched by paintBase — safe even if not yet cached (draws nothing, not a crash)
+    return { level: BASE_COARSE_LEVEL, density: levels[0] }; // always fetched by paintBase — safe even if not yet cached (draws nothing, not a crash)
   }
 
   /** Paints [x0,y0,x1,y1) (image px, margin already applied by the caller)
@@ -363,7 +438,7 @@ export function createTileCompositor() {
     if (!bctx) return { cancel() {} };
 
     const { level: placeholderLevel, density: phDensity } = bestPlaceholder(sheetKey, levels, pickLevel(levels, targetDensity), x0, y0, x1, y1, dark);
-    const phTiles = visibleTilesAtDensity(dims.w, dims.h, phDensity, placeholderLevel, x0, y0, x1, y1);
+    const phTiles = visibleTilesAtDensity(dims.w, dims.h, phDensity, placeholderLevel, x0, y0, x1, y1, tileSizeOf(placeholderLevel));
     for (const t of phTiles) {
       const bmp = cache.get(modeKey(rawTileKey(sheetKey, placeholderLevel, t.tx, t.ty), dark)) as ImageBitmap | undefined;
       if (!bmp) continue;
