@@ -6195,7 +6195,7 @@ export default function TakeoffCanvas() {
           nothing shifts position mid-work. Focus mode (F) hides the whole
           bar — the rail and status bar carry the essentials. */}
       {!focusMode && (
-      <div style={{ display: "flex", gap: 7, alignItems: "center", padding: "16px 14px 6px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", whiteSpace: "nowrap" }}>
+      <div className="takeoff-toolbar" style={{ display: "flex", gap: 7, alignItems: "center", marginTop: 10, padding: "16px 14px 6px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", whiteSpace: "nowrap" }}>
         <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--ink)", letterSpacing: "-0.02em" }}>open<span style={{ fontStyle: "italic", color: "var(--cobalt)" }}>takeoff</span></strong>
         <button type="button" onClick={() => fileInputRef.current?.click()} title={t('menu.open_plans')}
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
@@ -6221,7 +6221,6 @@ export default function TakeoffCanvas() {
               style={{ padding: "5px 8px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", opacity: (!!sheetGroup.length || page >= pageCount) ? 0.4 : 1 }}><Icon name="chevronRight" size={12} /></button>
           </span>
         )}
-        {vRule}
         {cluster(t('menu.action'), <>
           <ToolMenu
             title={t('menu.edit_takeoffs')}
@@ -6277,6 +6276,7 @@ export default function TakeoffCanvas() {
             ]}
           />
         </>)}
+        {vRule}
         {/* The caption always shows the ACTIVE label (+ the cobalt highlight keyed
             on it) so what a new trace will get is never hidden — even in Select
             mode, where the dropdown VALUE instead shows the selected shape's label
@@ -6284,7 +6284,7 @@ export default function TakeoffCanvas() {
             select couldn't reassign to the already-active label — onChange wouldn't fire). */}
         {shapeLabels.length > 0 && cluster(
           tool === "select" && selectedId ? t('label.label_shape', { label: activeLabel || t('label.no_label') }) : (activeLabel ? t('label.label_active', { label: activeLabel }) : t('label.label')),
-          <select
+           <select
             value={tool === "select" && selectedId ? shapeLabelValue(shapes.find((s) => s.id === selectedId)) : (activeLabel || "")}
             onChange={(e) => activateLabel(e.target.value || null)}
             title={t('label.title')}
@@ -6325,7 +6325,7 @@ export default function TakeoffCanvas() {
         {/* Push-to-talk (RFC #59 recognizer): hold the button (or M) to dictate
             into the same grammar the Command box runs. Hidden entirely where
             capture is unsupported — graceful feature-absence, never broken. */}
-        {captureSupported() && cluster(t('voice.cluster'),
+         {captureSupported() && cluster(t('voice.cluster'),
           <button
             title={t('voice.hold_title')}
             onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); voiceHoldRef.current = true; voiceFnsRef.current.start(); }}
@@ -6334,9 +6334,9 @@ export default function TakeoffCanvas() {
             style={{ padding: "5px 10px", border: `1px solid ${voiceChip?.tone === "live" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: voiceChip?.tone === "live" ? "var(--cobalt)" : "transparent", color: voiceChip?.tone === "live" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700, lineHeight: 1 }}>
             {voiceChip?.tone === "live" ? "● talking" : "talk · M"}
           </button>
-        )}
-        <div style={{ flex: 1 }} />
-        {cluster(`${t('toolbar.scale')} — ${labelFor(focusPanel)}`,
+         )}
+         {vRule}
+         {cluster(`${t('toolbar.scale')} — ${labelFor(focusPanel)}`,
           <ToolMenu
             title={scaleTitle}
             onOpenChange={onScaleMenuDepth}
@@ -6346,8 +6346,8 @@ export default function TakeoffCanvas() {
             items={scaleItems}
           />
         )}
-        {cluster(t('toolbar.action'),
-          <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "flex-end", gap: 6, minWidth: 150 }}>
+         {cluster(null,
+          <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "flex-start", gap: 6 }}>
             {markupDraft && (tool === "cloud" || tool === "callout" || tool === "highlight") && <span style={{ fontSize: 11, color: "var(--cobalt)" }}>{t('action.click_hint', { spot: tool === "callout" ? t('action.label_spot') : t('action.opposite_corner') })}…</span>}
             {finishOk && (
               <button onClick={finishShape} title={t('action.finish_title')} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", border: "none", background: "var(--c-positive)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}><Icon name="check" size={14} />{t('action.finish')} ({poly.length})</button>
@@ -6564,7 +6564,7 @@ export default function TakeoffCanvas() {
            faces). Lives in the canvas row so docked panels + canvas reflow
            beside it; survives focus mode — it IS the tool access. */}
        {view === "canvas" && (
-       <nav role="toolbar" aria-label={t('a11y.tools')} style={{ width: "var(--rail-w)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-1)", paddingTop: "var(--sp-2)", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflowY: "auto", overflowX: "visible" }}>
+        <nav className="tool-rail" role="toolbar" aria-label={t('a11y.tools')} style={{ width: "var(--rail-w)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-1)", paddingTop: "var(--sp-2)", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflowY: "auto", overflowX: "visible" }}>
          {railLabel(t('rail.sel'))}
          {railTile("select", "select", t('tool.select_desc'), "V")}
          {railLabel(t('rail.meas'))}

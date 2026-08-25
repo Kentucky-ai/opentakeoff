@@ -144,6 +144,245 @@ input, textarea { font-family: var(--f-body); }
   animation: shimmer 1.4s var(--ease) infinite;
 }
 
+/* ── responsive canvas layout (2026-08-24) ────────────────────────────────── */
+
+/* Prevent page-level horizontal overflow: the shell and its ancestors must
+   not let any flex child grow past the viewport width. */
+html,
+body,
+#root,
+.app-shell {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Every flex region in the layout must be allowed to shrink below its
+   intrinsic content width so no child forces the document wider. */
+.takeoff-toolbar,
+.condition-palette-band,
+.takeoff-workspace,
+.canvas-stage-column,
+.takeoff-panel {
+  min-width: 0;
+}
+
+/* The toolbar is a single row — rarely-used controls live in ⋯ so nothing
+   shifts position mid-work. Children must shrink below intrinsic width to
+   prevent document overflow; Report and ⋯ must never shrink. */
+.takeoff-toolbar {
+  --toolbar-control-h: 26px;
+  display: flex;
+  flex-wrap: nowrap;
+  align-content: center;
+  min-width: 0;
+  overflow: visible;
+}
+
+/* Dividers stay in the flex flow and cannot collapse into neighboring option
+   groups when their content changes size. The parent gap supplies the same
+   10px clearance on both sides. */
+.takeoff-toolbar .toolbar-divider {
+  flex: 0 0 1px;
+  width: 1px;
+  min-width: 1px;
+  height: var(--toolbar-control-h);
+  align-self: center;
+  background: var(--ink-faint);
+}
+
+/* Report and ⋯ overflow must never be squished or dropped to a second row. */
+.toolbar-report-action,
+.toolbar-primary-action {
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+}
+
+/* On narrower viewports, hide the text labels of the five toggle buttons
+   (Open, Sheets, Zone, Snap, 45°) — icons, titles/tooltips, and
+   accessibility are preserved. */
+.toolbar-compact-label {
+  display: inline;
+}
+.toolbar-cluster-caption {
+  display: inline;
+  top: -9px !important;
+}
+
+/* Keep the command field's caption clear of the push-to-talk cluster. */
+.toolbar-cluster:has(input[type="text"]) {
+  margin-right: 10px;
+}
+
+/* Align the editable/select controls in the first toolbar deck with the
+   neighboring button faces. */
+.takeoff-toolbar input[type="text"],
+.takeoff-toolbar select {
+  height: var(--toolbar-control-h);
+  box-sizing: border-box;
+}
+
+/* Every toolbar control uses the same face height. Inline padding on the
+   individual controls must not make arrows, menus, fields, or actions differ. */
+.takeoff-toolbar button,
+.takeoff-toolbar input,
+.takeoff-toolbar select {
+  height: var(--toolbar-control-h);
+  box-sizing: border-box;
+}
+
+/* All first-deck controls share the same 26px face as the sheet selector
+   (AF101 · 1/2). The sheet arrows
+   need border-box so their padding cannot make one appear larger than the
+   other; ToolMenu triggers and the voice button need the same explicit height
+   as the regular toolbar buttons. */
+.takeoff-toolbar > button,
+.takeoff-toolbar .toolbar-cluster > button,
+.takeoff-toolbar .toolbar-cluster > span > button {
+  height: var(--toolbar-control-h);
+  box-sizing: border-box;
+}
+.takeoff-toolbar .sheet-nav-button {
+  height: var(--toolbar-control-h);
+  width: 30px;
+  min-width: 30px;
+  flex: 0 0 30px;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+@media (max-width: 1250px) {
+  .toolbar-compact-label {
+    display: none;
+  }
+}
+
+/* The workspace flex row and the canvas column must not grow past the
+   remaining viewport after rail + panel are subtracted. */
+.takeoff-workspace {
+  min-height: 0;
+  min-width: 0;
+}
+
+.canvas-stage-column {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The right-panel toggle rail must not exceed the viewport. */
+.panel-rail {
+  max-width: 100%;
+}
+
+/* Toolbar clusters and condition-band children must be able to shrink. */
+.takeoff-toolbar > *,
+.toolbar-cluster,
+.condition-palette-band > *,
+.condition-palette-band button,
+.condition-palette-band input,
+.condition-palette-band select {
+  min-width: 0;
+}
+
+.toolbar-brand {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  margin-right: 2px;
+  margin-top: 4px;
+}
+
+.sheet-nav-button {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+}
+
+/* Condition band inner flex row gets safe row-gap for wrapping. */
+.condition-palette-band > div {
+  row-gap: 6px;
+}
+
+/* The in-band appearance editor must not exceed its container. */
+.condition-appearance-editor {
+  max-width: 100%;
+}
+
+/* Keep the row-editor dividers in normal flex flow. They match the field
+   height instead of stretching through the whole condition band, and the
+   editor's columnGap supplies equal clearance on both sides. */
+.condition-appearance-editor .condition-editor-divider {
+  flex: 0 0 1px;
+  width: 1px;
+  min-width: 1px;
+  height: 22px;
+  align-self: center;
+  background: var(--ink-faint);
+}
+
+/* Panel tab strip scrolls internally rather than pushing the panel wider. */
+.takeoff-panel-tabs {
+  overflow-x: auto;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+/* ── Tool rail scrollbar — ultra-thin, unobtrusive ─────────────────────── */
+
+.tool-rail {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ink-muted) transparent;
+}
+.tool-rail::-webkit-scrollbar {
+  width: 4px;
+}
+.tool-rail::-webkit-scrollbar-thumb {
+  background: var(--ink-muted);
+  border-radius: 2px;
+}
+.tool-rail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ── Desktop breakpoint (1560 px) ──────────────────────────────────────── */
+
+@media (max-width: 1560px) {
+  /* Give the toolbar a touch more top padding when the second row is likely
+     so the labels don't crowd the clusters above them. */
+  .takeoff-toolbar {
+    padding-top: 10px !important;
+  }
+
+  /* Push the trailing actions (Report, overflow, account) to the right edge
+     when the row wraps so they stay anchored where muscle memory expects. */
+  .takeoff-toolbar > :last-child {
+    margin-left: auto;
+  }
+}
+
+/* ── Narrow desktop / tablet (1100 px) ─────────────────────────────────── */
+
+@media (max-width: 1100px) {
+  .takeoff-toolbar {
+    gap: 5px;
+    padding-inline: 10px !important;
+  }
+
+  .condition-palette-band {
+    padding-inline: 10px !important;
+  }
+
+  .takeoff-panel {
+    max-width: min(380px, 42vw);
+  }
+}
+
 /* ── motion utilities ─────────────────────────────────────────────────────── */
 
 .fade-in       { animation: fadeUp var(--t) var(--ease); }

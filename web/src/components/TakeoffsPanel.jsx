@@ -303,7 +303,7 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
             <span style={{ color: "var(--ink-muted)" }}>1</span>
             <input name="material-unit" value={m.unit} onChange={(e) => onUpdate(m.id, { unit: e.target.value })} placeholder={t('takeoffs.mat_unit_placeholder')} style={{ ...ip, width: 60, ...(ov("unit") ? { border: OV } : {}) }} />
             {ov("unit") && rv(m, "unit")}
-            <span style={{ color: "var(--ink-muted)" }}>per</span>
+            <span style={{ color: "var(--ink-muted)" }}>{t('takeoffs.mat_per')}</span>
             <MaterialRateInput name="material-per" material={m} units={units} override={ov("per")} onCommit={(per) => onUpdate(m.id, { per })} />
             {ov("per") && rv(m, "per")}
             <select name="material-basis" value={m.basis || "area"} onChange={(e) => onUpdate(m.id, { basis: e.target.value })} style={{ ...ip, background: "var(--paper-bright)", ...(ov("basis") ? { border: OV } : {}) }}>
@@ -440,20 +440,31 @@ function AddValueInput({ onAdd }) {
 // line style, height, thickness, and custom-column assignment. This is the row
 // that "used to live in its own toolbar row above the canvas"; extracted here so
 // the docked panel AND the restored top-bar band render the SAME editor (one
-// source of truth, like the app's single activateCondition path). Owns only its
-// hatch-popover open state; everything else flows through the passed handlers.
+// source of truth, like the app's single activateCondition path). Owns its
+// hatch-popover and color-popover open state; everything else flows through the
+// passed handlers.
 export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondParam, onAssignAttr, conditionColumns = [], layout = "stack", units = "imperial", rollInfo = null }) {
   const { t } = useTranslation("panels");
   const lineStyles = getLineStyles();
   const [hatchOpen, setHatchOpen] = useState(false);
+  const [colorPopover, setColorPopover] = useState(null); // "line" | "fill" | null
+  const colorPopoverRef = useRef(null);
+  useEffect(() => {
+    if (!colorPopover) return;
+    const onPointerDown = (e) => {
+      if (!colorPopoverRef.current?.contains(e.target)) setColorPopover(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [colorPopover]);
   const activeColor = c.color || "#c96442";
   // Two layouts, one editor. "stack" (docked panel, narrow) stacks the groups
   // vertically; "row" (top-bar band, wide) flows them left-to-right so they use
   // the horizontal space instead of clumping in a corner, split by thin rules.
   const isRow = layout === "row";
-  const rule = () => <span aria-hidden style={{ width: 1, alignSelf: "stretch", background: "var(--ink-faint)", margin: "0 3px" }} />;
+  const rule = () => <span className="condition-editor-divider" aria-hidden="true" />;
   return (
-    <div style={isRow
+    <div className="condition-appearance-editor" style={isRow
       ? { padding: "6px 2px 2px", display: "flex", flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 10, rowGap: 8, fontSize: 11 }
       : { padding: "4px 12px 10px", display: "flex", flexDirection: "column", gap: 7, fontSize: 11 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -475,15 +486,81 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
         </span>
       </div>
       {isRow && rule()}
-      <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-        <span style={{ color: "var(--ink-muted)", width: 26 }}>{t('takeoffs.line_label')}</span>
-        {PALETTE.map((p) => <button key={p} title={p} onClick={() => onUpdateCond({ color: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, border: c.color === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-        <span style={{ color: "var(--ink-muted)", width: 26 }}>{t('takeoffs.fill_label')}</span>
-        <button title={t('takeoffs.no_fill_title')} onClick={() => onUpdateCond({ fill: NO_FILL })} style={{ width: 16, height: 16, borderRadius: 4, background: "var(--paper-bright)", border: c.fill === NO_FILL ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 9, lineHeight: "12px", color: "var(--c-danger)" }}>⦸</button>
-        {PALETTE.map((p) => <button key={p} title={p} onClick={() => onUpdateCond({ fill: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, opacity: 0.55, border: c.fill === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
-      </div>
+      {!isRow && (<>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+          <span style={{ color: "var(--ink-muted)", width: 26 }}>{t('takeoffs.line_label')}</span>
+          {PALETTE.map((p) => <button key={p} title={p} aria-pressed={c.color === p} onClick={() => onUpdateCond({ color: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, border: c.color === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+          <span style={{ color: "var(--ink-muted)", width: 26 }}>{t('takeoffs.fill_label')}</span>
+          <button title={t('takeoffs.no_fill_title')} aria-pressed={c.fill === NO_FILL} onClick={() => onUpdateCond({ fill: NO_FILL })} style={{ width: 16, height: 16, borderRadius: 4, background: "var(--paper-bright)", border: c.fill === NO_FILL ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 9, lineHeight: "12px", color: "var(--c-danger)" }}>⦸</button>
+          {PALETTE.map((p) => <button key={p} title={p} aria-pressed={c.fill === p} onClick={() => onUpdateCond({ fill: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, opacity: 0.55, border: c.fill === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
+        </div>
+      </>)}
+      {isRow && (
+        <span ref={colorPopoverRef} style={{ display: "inline-flex", alignItems: "center", gap: 4, position: "relative" }}>
+          <button type="button"
+            title={t('takeoffs.line_color_title')}
+            aria-label={t('takeoffs.line_color_title')}
+            aria-haspopup="true"
+            aria-expanded={colorPopover === "line"}
+            onClick={() => setColorPopover((open) => open === "line" ? null : "line")}
+            style={{
+              display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4,
+              height: 26, padding: "6px 10px",
+              border: "1px solid var(--ink-faint)",
+              background: "var(--paper-bright)", color: c.color || activeColor, cursor: "pointer",
+            }}
+          >
+            <Icon name="linear" size={15} />
+            <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 2, background: c.color || activeColor }} />
+          </button>
+          <button type="button"
+            title={t('takeoffs.fill_color_title')}
+            aria-label={t('takeoffs.fill_color_title')}
+            aria-haspopup="true"
+            aria-expanded={colorPopover === "fill"}
+            onClick={() => setColorPopover((open) => open === "fill" ? null : "fill")}
+            style={{
+              display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 4,
+              height: 26, padding: "6px 10px",
+              border: "1px solid var(--ink-faint)",
+              background: "var(--paper-bright)", color: c.fill === NO_FILL ? "var(--c-danger)" : (c.fill || activeColor), cursor: "pointer",
+            }}
+          >
+            <Icon name="area" size={15} />
+            <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 2, background: c.fill === NO_FILL ? "var(--paper-bright)" : (c.fill || activeColor), border: c.fill === NO_FILL ? "1px solid var(--ink-faint)" : "none" }} />
+          </button>
+          {colorPopover === "line" && (
+            <div style={{
+              position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 30,
+              display: "flex", gap: 4, flexWrap: "wrap", width: 150,
+              padding: 8, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)",
+              boxShadow: "var(--shadow-pop)",
+            }}>
+              {PALETTE.map((p) => (
+                <button key={p} type="button" title={p} aria-pressed={c.color === p} onClick={() => { onUpdateCond({ color: p }); setColorPopover(null); }}
+                  style={{ width: 16, height: 16, padding: 0, borderRadius: 4, background: p, border: c.color === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />
+              ))}
+            </div>
+          )}
+          {colorPopover === "fill" && (
+            <div style={{
+              position: "absolute", top: "calc(100% + 4px)", left: 32, zIndex: 30,
+              display: "flex", gap: 4, flexWrap: "wrap", width: 150,
+              padding: 8, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)",
+              boxShadow: "var(--shadow-pop)",
+            }}>
+              <button type="button" title={t('takeoffs.no_fill_title')} aria-pressed={c.fill === NO_FILL} onClick={() => { onUpdateCond({ fill: NO_FILL }); setColorPopover(null); }}
+                style={{ width: 16, height: 16, padding: 0, borderRadius: 4, background: "var(--paper-bright)", border: c.fill === NO_FILL ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 9, lineHeight: "12px", color: "var(--c-danger)" }}>⦸</button>
+              {PALETTE.map((p) => (
+                <button key={p} type="button" title={p} aria-pressed={c.fill === p} onClick={() => { onUpdateCond({ fill: p }); setColorPopover(null); }}
+                  style={{ width: 16, height: 16, padding: 0, borderRadius: 4, background: p, opacity: 0.55, border: c.fill === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />
+              ))}
+            </div>
+          )}
+        </span>
+      )}
       {isRow && rule()}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ display: "flex", alignItems: "center", gap: 4, position: "relative" }}>
@@ -611,7 +688,7 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
                   <input name="condition-roll-width-in" type="number" min="0" max="11" step="1" value={wIn} onChange={(e) => setW(wFt, e.target.value)} style={numIp} /><span style={{ color: "var(--ink-muted)" }}>″</span>
                 </span>
               )}
-              <span style={{ color: "var(--ink-muted)" }} title={t('takeoffs.roll_max_title')}>max</span>
+              <span                style={{ color: "var(--ink-muted)" }} title={t('takeoffs.roll_max_title')}>{t('takeoffs.roll_max_label')}</span>
               {M ? (
                 <>
                   <input name="condition-roll-length-m" type="number" min="0" step="0.1"
@@ -628,7 +705,7 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
               )}
               <select name="condition-roll-direction" value={rs.direction || "auto"} onChange={(e) => patch({ direction: e.target.value })} style={sel}
                 title={t('takeoffs.roll_direction_title')}>
-                <option value="auto">auto</option>
+                <option value="auto">{t('takeoffs.roll_auto_label')}</option>
                 <option value="ns">N–S</option>
                 <option value="ew">E–W</option>
               </select>
@@ -640,13 +717,13 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
                   <input name="condition-roll-seam-mm" type="number" min="0" step="1"
                     value={thickVal(rs.seam_allowance_in ?? 2, units).toFixed(0)}
                     onChange={(e) => setSeam(e.target.value)} style={numIp} />
-                  <span style={{ color: "var(--ink-muted)" }}>mm · wall</span>
+                  <span style={{ color: "var(--ink-muted)" }}>{t('takeoffs.seam_unit_mm')}</span>
                 </>
               ) : (
                 <>
                   <input name="condition-roll-seam" type="number" min="0" step="0.5" value={rs.seam_allowance_in ?? 2}
                     onChange={(e) => patch({ seam_allowance_in: Math.max(0, parseFloat(e.target.value) || 0) })} style={numIp} />
-                  <span style={{ color: "var(--ink-muted)" }}>″ · wall</span>
+                  <span style={{ color: "var(--ink-muted)" }}>{t('takeoffs.seam_unit_in')}</span>
                 </>
               )}
               {M ? (
@@ -654,19 +731,19 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
                   <input name="condition-roll-wall-mm" type="number" min="0" step="1"
                     value={thickVal(rs.wall_overage_in ?? 3, units).toFixed(0)}
                     onChange={(e) => setWall(e.target.value)} style={numIp} />
-                  <span style={{ color: "var(--ink-muted)" }}>mm · sells by</span>
+                   <span style={{ color: "var(--ink-muted)" }}>{t('takeoffs.sells_by_label')}</span>
                 </>
               ) : (
                 <>
                   <input name="condition-roll-wall" type="number" min="0" step="0.5" value={rs.wall_overage_in ?? 3}
                     onChange={(e) => patch({ wall_overage_in: Math.max(0, parseFloat(e.target.value) || 0) })} style={numIp} />
-                  <span style={{ color: "var(--ink-muted)" }}>″ · sells by</span>
+                   <span style={{ color: "var(--ink-muted)" }}>{t('takeoffs.sells_by_label')}</span>
                 </>
               )}
               <select name="condition-roll-unit" value={rs.price_unit || "sf"} onChange={(e) => patch({ price_unit: e.target.value })} style={sel}
                 title={t('takeoffs.roll_unit_title')}>
-                <option value="sy">{M ? "m² (SY basis)" : "SY"}</option>
-                <option value="sf">{M ? "m² (SF basis)" : "SF"}</option>
+                <option value="sy">{M ? t('takeoffs.roll_metric_sy_basis') : "SY"}</option>
+                <option value="sf">{M ? t('takeoffs.roll_metric_sf_basis') : "SF"}</option>
                 <option value="lf">{M ? "m" : "LF"}</option>
               </select>
             </div>
@@ -682,7 +759,7 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
                 <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 11, color: "var(--ink)" }}
                   title={t('takeoffs.roll_figured_title')}>
                   {t('takeoffs.roll_figured')} {M ? `${(rollInfo.orderFt * M_PER_FT).toFixed(2)} m` : ftIn(rollInfo.orderFt)} · {rqVal} {rqLabel}
-                  {rollInfo.config.rollLengthFt > 0 ? ` · ${rollInfo.rollCount} roll${rollInfo.rollCount === 1 ? "" : "s"}` : ""}
+                  {rollInfo.config.rollLengthFt > 0 ? ` · ${rollInfo.rollCount} ${rollInfo.rollCount === 1 ? t('takeoffs.roll_count_suffix_one') : t('takeoffs.roll_count_suffix_many')}` : ""}
                   {rollInfo.oversize && <span style={{ color: "var(--c-danger)" }}> {t('takeoffs.roll_oversize_inline')}</span>}
                 </div>
               );
@@ -1131,7 +1208,7 @@ function TakeoffsPanel({
     // docking beside it — a docked 240px+ column plus the canvas doesn't fit a
     // phone (the panel was covering the whole screen). Desktop docked layout
     // is unchanged. The header's » collapse button is the close affordance.
-    <div ref={rootRef} role="region" aria-label={t('takeoffs.panel_aria', { unit: units === "metric" ? "SI" : "Imperial" })} style={overlay
+    <div className="takeoff-panel" ref={rootRef} role="region" aria-label={t('takeoffs.panel_aria', { unit: units === "metric" ? "SI" : "Imperial" })} style={overlay
       ? { position: "absolute", top: 0, right: 0, bottom: 0, width: "min(100%, 420px)", zIndex: Z.drawer, boxShadow: "var(--shadow-pop)", display: "flex", background: "var(--paper-bright)", borderLeft: "1px solid var(--ink-faint)", fontSize: 12.5 }
       : { width, flexShrink: 0, display: "flex", background: "var(--paper-bright)", borderLeft: "1px solid var(--ink-faint)", fontSize: 12.5 }}>
       {!overlay && <div onPointerDown={onResizeDown} onPointerMove={onResizeMove} onPointerUp={onResizeEnd}
@@ -1140,7 +1217,7 @@ function TakeoffsPanel({
         style={{ width: 5, flexShrink: 0, cursor: "col-resize", touchAction: "none", background: "transparent", borderRight: "1px solid var(--ink-faint)" }} />}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "7px 12px", background: "var(--ink)", color: "var(--paper-cream)", flexShrink: 0 }}>
-          <span style={{ display: "inline-flex", gap: 2 }}>
+          <span className="takeoff-panel-tabs" style={{ display: "inline-flex", gap: 2 }}>
             {[["takeoffs", multiSheet ? t('takeoffs.tab_takeoffs_multi') : t('takeoffs.tab_takeoffs_single')], ["library", templates.length ? t('takeoffs.tab_library_count', { count: templates.length }) : t('takeoffs.tab_library')], ["materials", matLib.length ? t('takeoffs.tab_materials_count', { count: matLib.length }) : t('takeoffs.tab_materials')], ["columns", conditionColumns.length ? t('takeoffs.tab_columns_count', { count: conditionColumns.length }) : t('takeoffs.tab_columns')]].map(([id, label]) => (
               <button key={id} onClick={() => setPanelTab(id)}
                 style={{ padding: "3px 8px", border: "none", borderBottom: panelTab === id ? "2px solid var(--paper-cream)" : "2px solid transparent", background: "none", color: "var(--paper-cream)", opacity: panelTab === id ? 1 : 0.65, cursor: "pointer", fontWeight: 700, fontSize: 12.5 }}>{label}</button>
