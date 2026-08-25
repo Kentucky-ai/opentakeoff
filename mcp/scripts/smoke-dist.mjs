@@ -105,7 +105,7 @@ assert.deepEqual(names, [
   "duplicate_condition",
   "edit_condition",
   "edit_materials",
-  "edit_shape",
+  "edit_shape", "export_dxf",
   "export_marked_pdf",
   "export_report",
   "export_takeoff",

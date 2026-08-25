@@ -327,6 +327,19 @@ export const takeoffSummaryOutput = {
 };
 
 /** The app's exact save payload (opentakeoff.takeoff_canvas.v1). */
+export const exportDxfOutput = {
+  path: z.string().describe("The DXF written"),
+  sheet: z.string().describe("Sheet key the drawing was cut from"),
+  sheet_number: z.string().nullable(),
+  units: z.enum(["ft", "m"]),
+  layers: z.array(z.string()).describe("Layer names in table order — OT-<TAG>, plus -DEDUCT/-HOLE/-WALL/-LINEAR/-COUNT suffix layers and OT-LABELS"),
+  entities: z.number().int().describe("LWPOLYLINE + CIRCLE + TEXT entities in model space"),
+  shapes: z.number().int().describe("Committed shapes that produced geometry"),
+  skipped: z.array(z.object({ id: z.string(), reason: z.string() })).describe("Shapes on this sheet left out, each with why — never silent"),
+  extents: z.object({ min: z.tuple([z.number(), z.number()]), max: z.tuple([z.number(), z.number()]) }).nullable().describe("Model-space bounding box in output units; origin = sheet's bottom-left, Y up"),
+  bytes: z.number().int(),
+};
+
 export const exportTakeoffOutput = {
   schema: z.string(),
   project_name: z.string(),

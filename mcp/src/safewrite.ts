@@ -21,7 +21,7 @@ import { UserError } from "./format.ts";
  * provenance: a distributed deliverable should say what produced it. */
 export const PDF_PRODUCER = "OpenTakeoff";
 
-export type ExportKind = "json" | "pdf";
+export type ExportKind = "json" | "pdf" | "dxf";
 
 /** First `n` bytes, without reading a large export into memory to look at its head. */
 async function head(p: string, n: number): Promise<Buffer> {
@@ -43,6 +43,11 @@ async function isOwnExport(outPath: string, kind: ExportKind): Promise<boolean> 
       // Both payloads stamp their schema as the first key, so the head is enough:
       // {"schema":"opentakeoff.takeoff_canvas.v1",…} / {"schema":"opentakeoff.report.v1",…}
       return /"schema"\s*:\s*"opentakeoff\./.test((await head(outPath, 4096)).toString("utf8"));
+    }
+    if (kind === "dxf") {
+      // dxf.ts writes its authorship stamp as the very first comment group:
+      // 999\nOpenTakeoff DXF export — …
+      return /^999\r?\nOpenTakeoff DXF export/.test((await head(outPath, 64)).toString("utf8"));
     }
     if ((await head(outPath, 5)).toString("latin1") !== "%PDF-") return false;
     const { readFile } = await import("node:fs/promises");
