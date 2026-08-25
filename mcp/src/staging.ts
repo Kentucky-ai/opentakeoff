@@ -1,5 +1,5 @@
 // Staged tool exposure (#230) — opt-in via OPENTAKEOFF_MCP_STAGED_TOOLS=1.
-// The flat forty-two stay the default for every published client; behind the flag
+// The flat set (TOOL_NAMES) stays the default for every published client; behind the flag
 // only the setup stage starts enabled and `open_tool_stage` grows the surface
 // on demand, so an agent session pays for the tool descriptions it actually
 // uses. The stage map is the same phase structure the initialize instructions
@@ -32,6 +32,14 @@ export const TOOL_STAGES: Record<string, readonly string[]> = {
     "apply_rules", "export_marked_pdf", "export_dxf",
   ],
 };
+
+/** The full tool surface, sorted — THE single source of truth. Every other
+ * statement of "which tools exist" (tools.test, staging.test, the dist smoke
+ * harness, the README's tool count) derives from this, so registering a tool
+ * means adding it to TOOL_STAGES above and nowhere else. */
+export const TOOL_NAMES: readonly string[] = Object.freeze(
+  Object.values(TOOL_STAGES).flat().sort(),
+);
 
 const OPENABLE = ["measure", "revise", "handoff"] as const;
 

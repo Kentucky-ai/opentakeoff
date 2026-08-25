@@ -72,6 +72,8 @@ jobs:
         working-directory: mcp
       - run: npm test
         working-directory: mcp
+      - run: npm run check:tool-count
+        working-directory: mcp
       - run: npm run build
         working-directory: mcp
       - run: npm run smoke:dist
