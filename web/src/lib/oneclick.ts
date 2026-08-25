@@ -52,7 +52,42 @@ export type OpsTable = Record<string, number>;
  *  dropped it before anything downstream could see it. One byte per segment,
  *  the same shape as `meta`. Optional so hand-built geometry (rastermask,
  *  tests) needs no ceremony; extraction always emits it. */
-export interface VectorGeometry { points: Point[]; segs: number[]; meta: Uint8Array; imageArea: number; lum?: Uint8Array; layerOf?: Int32Array; layerIds?: string[]; }
+/*  subpaths (#320 follow-on, the ink-classification foundation): the drawn
+ *  FIGURE each segment belongs to. A `constructPath` op carries one or more
+ *  subpaths — each `moveTo` starts one, each `rectangle` is one — and every
+ *  segment a subpath contributes is appended to `segs` consecutively, so a
+ *  subpath is exactly a contiguous index RANGE. That is what makes this cheap
+ *  (two numbers per figure, no per-segment table) and what makes path-level
+ *  facts available at all: whether ink is a closed figure, how big the figure
+ *  is, how many segments it took. Rasterizing to a 1-bit mask destroys all of
+ *  it, and every classifier that came before had to infer it back from
+ *  neighbourhood geometry. Optional, like lum/layerOf: hand-built geometry
+ *  (rastermask, tests) needs no ceremony; extraction always emits it. */
+export interface SubPath {
+  /** segment index range [i0, i1) into segs/meta. */
+  i0: number; i1: number;
+  /** tight bbox over the subpath's segment endpoints, image px. */
+  x0: number; y0: number; x1: number; y1: number;
+  /** the figure returns to its own start (a fleck, a poché outline, a box). */
+  closed: boolean;
+  /** SEG_CLIP / SEG_FILLONLY / 0 (stroked), and the pen nibble — the paint
+   *  facts, read once per figure instead of per segment. */
+  flags: number;
+  /** Rec.709 luminance of the FILL colour in force when the figure was built,
+   *  0 (black) to 255 (white). Meaningful on a filled figure: dark is solid
+   *  material — poché — and pale is a finish wash. */
+  fillLum: number;
+}
+/** A positioned text item, image px: (x, y) is the baseline START, w/h the
+ *  rendered extent. The text layer is evidence about the DRAWING that the
+ *  linework alone cannot supply — what a box is for. */
+export interface TextMark { x: number; y: number; w: number; h: number }
+/** The sheet context ink classification reads. Every field optional: a caller
+ *  that supplies none gets exactly the pre-classification mask, which is what
+ *  keeps hand-built geometry (rastermask, tests) and stitched composites
+ *  working unchanged. */
+export interface InkContext { subpaths?: SubPath[] | null; texts?: TextMark[] | null; dimTexts?: DimTextMark[] | null }
+export interface VectorGeometry { points: Point[]; segs: number[]; meta: Uint8Array; imageArea: number; lum?: Uint8Array; layerOf?: Int32Array; layerIds?: string[]; subpaths?: SubPath[]; }
 export interface MaskObj { mask: Uint8Array; mw: number; mh: number; ws: number; softCount: number; mppf?: number; }  // mppf: mask px per foot (0/absent = scale unknown)
 export interface RegionResult { region: Uint8Array; mw: number; mh: number; ws: number; count?: number; }
 export type FloodResult =
@@ -306,6 +341,33 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
   const segs: number[] = [];
   const metaArr: number[] = [];
   const lumArr: number[] = [];
+  const subpaths: SubPath[] = [];
+  // the subpath under construction: opened by moveTo/rectangle, sealed when
+  // the next one opens or the op stream ends. A figure that contributed no
+  // segment (a lone moveTo, a degenerate rect) is dropped rather than
+  // recorded as an empty range.
+  let sp: SubPath | null = null;
+  const sealSub = () => {
+    if (sp && sp.i1 > sp.i0) subpaths.push(sp);
+    sp = null;
+  };
+  let pathFill = 0;                 // the fill colour of the path being built
+  const openSub = (flags: number, at: Point) => {
+    sealSub();
+    const k = metaArr.length;
+    sp = { i0: k, i1: k, x0: at[0], y0: at[1], x1: at[0], y1: at[1], closed: false, flags, fillLum: pathFill };
+  };
+  // every segment push goes through this, so a subpath's range and bbox can
+  // never drift from what actually landed in segs
+  const closeSub = () => { if (sp) sp.closed = true; };
+  const noteSeg = (a: Point, b: Point) => {
+    if (!sp) return;
+    sp.i1 = metaArr.length;
+    if (a[0] < sp.x0) sp.x0 = a[0]; if (a[0] > sp.x1) sp.x1 = a[0];
+    if (a[1] < sp.y0) sp.y0 = a[1]; if (a[1] > sp.y1) sp.y1 = a[1];
+    if (b[0] < sp.x0) sp.x0 = b[0]; if (b[0] > sp.x1) sp.x1 = b[0];
+    if (b[1] < sp.y0) sp.y0 = b[1]; if (b[1] > sp.y1) sp.y1 = b[1];
+  };
   let imageArea = 0;
   let m = transform.slice();
   let lw = 1;                          // graphics-state line width (user space)
@@ -315,7 +377,10 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
   // (0–255 components); a pattern stroke (setStrokeColorN) states no single
   // color, so it keeps whatever the state carried rather than inventing one.
   let lum = 0;
-  const stack: Array<[number[], number, number]> = [];
+  // PDF's initial fill colour is black, same as stroke, so 0 is the right
+  // default and an uncoloured file costs nothing.
+  let fillLum = 0;
+  const stack: Array<[number[], number, number, number]> = [];
   // Marked-content / Optional Content (#85): a purely SEQUENTIAL stack — not
   // graphics state, so save/restore never touches it, and a Form XObject with
   // /OC arrives as its own begin/end pair around the form's ops (the worker
@@ -349,14 +414,22 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
   };
   for (let i = 0; i < fns.length; i++) {
     const fn = fns[i], args = A[i];
-    if (fn === OPS.save) stack.push([m.slice(), lw, lum]);
-    else if (fn === OPS.restore) { const p = stack.pop(); if (p) { m = p[0]; lw = p[1]; lum = p[2]; } }
+    if (fn === OPS.save) stack.push([m.slice(), lw, lum, fillLum]);
+    else if (fn === OPS.restore) { const p = stack.pop(); if (p) { m = p[0]; lw = p[1]; lum = p[2]; fillLum = p[3]; } }
     else if (fn === OPS.transform) m = mul(m, args);
     else if (fn === OPS.setLineWidth) lw = args[0];
     else if (fn === OPS.setGState) { for (const pr of args[0] || []) if (pr && pr[0] === "LW") lw = pr[1]; }
     else if (fn === OPS.setStrokeRGBColor && args) { const L = strokeLuminance(args); if (L !== null) lum = L; }
-    else if (fn === OPS.paintFormXObjectBegin) { stack.push([m.slice(), lw, lum]); if (args && args[0]) m = mul(m, args[0]); }
-    else if (fn === OPS.paintFormXObjectEnd) { const p = stack.pop(); if (p) { m = p[0]; lw = p[1]; lum = p[2]; } }
+    // FILL luminance, the same device strokeLuminance already applies to
+    // strokes (#260) — and the fact that finally answers "is this ink WALL".
+    // A drafter poches a wall in dark grey or black because it is solid
+    // material; the pale washes over a finish plan's rooms are the finish
+    // legend, not structure. Both arrive as SEG_FILLONLY and were
+    // indistinguishable until now, which is why a wall test had to fall back
+    // to guessing at a figure's shape.
+    else if (fn === OPS.setFillRGBColor && args) { const L = strokeLuminance(args); if (L !== null) fillLum = L; }
+    else if (fn === OPS.paintFormXObjectBegin) { stack.push([m.slice(), lw, lum, fillLum]); if (args && args[0]) m = mul(m, args[0]); }
+    else if (fn === OPS.paintFormXObjectEnd) { const p = stack.pop(); if (p) { m = p[0]; lw = p[1]; lum = p[2]; fillLum = p[3]; } }
     else if (fn === OPS.beginMarkedContent) { mcStack.push(-1); }
     else if (fn === OPS.beginMarkedContentProps) {
       // worker emits ["OC", data] where data is {type:"OCG", id}, an OCMD
@@ -430,10 +503,11 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
       let c = 0, cur: Point | null = null, start: Point | null = null;
       const pathLayer = curLayer;   // one path = one marked-content scope (#85)
       const pathLum = lum;          // stroke color cannot change mid-path (#260)
+      pathFill = fillLum;           // …and neither can the fill colour
       const visit = (p: Point) => { points.push(p); };
-      const lineTo = (p: Point) => { if (cur) { segs.push(cur[0], cur[1], p[0], p[1]); metaArr.push(flags); lumArr.push(pathLum); layerOfArr.push(pathLayer); } cur = p; visit(p); };
+      const lineTo = (p: Point) => { if (cur) { segs.push(cur[0], cur[1], p[0], p[1]); metaArr.push(flags); lumArr.push(pathLum); layerOfArr.push(pathLayer); noteSeg(cur, p); } cur = p; visit(p); };
       for (const op of ops) {
-        if (op === OPS.moveTo) { cur = tx(co[c], co[c + 1]); start = cur; visit(cur); c += 2; }
+        if (op === OPS.moveTo) { cur = tx(co[c], co[c + 1]); start = cur; openSub(flags, cur); visit(cur); c += 2; }
         else if (op === OPS.lineTo) { lineTo(tx(co[c], co[c + 1])); c += 2; }
         else if (op === OPS.curveTo || op === OPS.curveTo2 || op === OPS.curveTo3) {
           // cubic bezier, sampled as chords; control points transform first
@@ -449,24 +523,27 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
               u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
               u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1],
             ];
-            if (cur) { segs.push(cur[0], cur[1], q[0], q[1]); metaArr.push(flags | SEG_CURVE); lumArr.push(pathLum); layerOfArr.push(pathLayer); }
+            if (cur) { segs.push(cur[0], cur[1], q[0], q[1]); metaArr.push(flags | SEG_CURVE); lumArr.push(pathLum); layerOfArr.push(pathLayer); noteSeg(cur, q); }
             cur = q;
           }
           visit(p3);
         }
-        else if (op === OPS.closePath) { if (cur && start) { segs.push(cur[0], cur[1], start[0], start[1]); metaArr.push(flags); lumArr.push(pathLum); layerOfArr.push(pathLayer); cur = start; } }
+        else if (op === OPS.closePath) { if (cur && start) { segs.push(cur[0], cur[1], start[0], start[1]); metaArr.push(flags); lumArr.push(pathLum); layerOfArr.push(pathLayer); noteSeg(cur, start); closeSub(); cur = start; } }
         else if (op === OPS.rectangle) {
           const x = co[c], y = co[c + 1], w = co[c + 2], h = co[c + 3]; c += 4;
           const q: Point[] = [tx(x, y), tx(x + w, y), tx(x + w, y + h), tx(x, y + h)];
-          for (let k = 0; k < 4; k++) { const a = q[k], b = q[(k + 1) % 4]; segs.push(a[0], a[1], b[0], b[1]); metaArr.push(flags); lumArr.push(pathLum); layerOfArr.push(pathLayer); visit(a); }
+          openSub(flags, q[0]);                       // a rect is its own figure
+          for (let k = 0; k < 4; k++) { const a = q[k], b = q[(k + 1) % 4]; segs.push(a[0], a[1], b[0], b[1]); metaArr.push(flags); lumArr.push(pathLum); layerOfArr.push(pathLayer); noteSeg(a, b); visit(a); }
+          closeSub();
           cur = q[0]; start = q[0];
         }
       }
     }
   }
+  sealSub();
   const meta = Uint8Array.from(metaArr);
   markPolylineArcs(segs, meta);
-  return { points, segs, meta, imageArea, lum: Uint8Array.from(lumArr), layerOf: Int32Array.from(layerOfArr), layerIds };
+  return { points, segs, meta, imageArea, lum: Uint8Array.from(lumArr), layerOf: Int32Array.from(layerOfArr), layerIds, subpaths };
 }
 
 // ── 1b. polyline arc detection ─────────────────────────────────────────────
@@ -1171,7 +1248,143 @@ export function classifyOffsetAnnotationSegs(
   return soft;
 }
 
-// ── 2d. dimension strings (issue #320) ──────────────────────────────────────
+// ── 2d. finish texture: figures smaller than a wall ────────────────────────
+// The first classifier that reads WHAT THE INK IS rather than inferring it
+// from neighbourhood geometry. Rasterizing to a 1-bit mask destroys the
+// distinction between a wall and a speckle fleck; `subpaths` preserves it, so
+// this asks the one question the mask cannot: is this figure even large
+// enough to BE a wall?
+//
+// The threshold is not a new guess — it is MIN_THICK_FT, the minimum wall
+// thickness the flood already recognizes (a passage narrower than this is not
+// a room boundary but a drafting artifact). A closed figure whose entire
+// bounding box fits inside the thinnest drawable wall cannot be one.
+//
+// FIELD, not fleck. A lone tiny mark is a fixture detail, a hardware tick, a
+// leader terminator — softening it buys nothing and costs ring stability
+// (measured on the VA sheet: softening every sub-wall figure left SF within
+// 1% but roughened 7 of 12 traced rings, because the fill then weaves one
+// cell further into scattered detail). What actually chops a room is a
+// POPULATION: concrete stipple, terrazzo speckle, carpet noise — hundreds of
+// flecks blanketing a floor. So a fleck softens only where it has company,
+// counted on a coarse grid. Measured on a stipple-filled commercial finish
+// plan: 4,906 flecks over ~8 rooms, every one with dozens of neighbours in
+// its own cell; the VA sheet's scattered detail marks mostly sit alone.
+//
+// Same contract as the other classifiers: one byte per segment, 1 = soft,
+// pure, total, never throws. Feeds the SAME soft plane, so the escalation
+// ladder still verifies by boundedness — a misjudged field either leaks or
+// balloons and the strict result stands.
+export const FLECK_FIELD_FT = 2;        // grid cell for the population count — a room's worth of texture, not a sheet's
+export const FLECK_FIELD_MIN = 6;       // flecks in a cell (with its neighbours) before any of them is texture
+export function classifyFleckSegs(
+  segs: number[], meta: Uint8Array, subpaths: SubPath[] | null | undefined, ws: number, ftPx: number,
+): Uint8Array {
+  const n = segs.length >> 2;
+  const soft = new Uint8Array(n);
+  if (!meta || !n || !subpaths || !subpaths.length || !(ftPx > 0)) return soft;
+  const lim = MIN_THICK_FT * ftPx;
+  interface Fleck { sp: SubPath; cx: number; cy: number }
+  const flecks: Fleck[] = [];
+  for (const s of subpaths) {
+    // clip ink is already soft; a filled figure bounds solid ink and must stay
+    // hard (the exemptions every classifier here makes, for the same reasons)
+    if (s.flags & (SEG_CLIP | SEG_FILLONLY)) continue;
+    if (s.i1 <= s.i0) continue;
+    if (Math.max(s.x1 - s.x0, s.y1 - s.y0) * ws >= lim) continue;
+    flecks.push({ sp: s, cx: ((s.x0 + s.x1) / 2) * ws, cy: ((s.y0 + s.y1) / 2) * ws });
+  }
+  if (flecks.length < FLECK_FIELD_MIN) return soft;
+  const cell = FLECK_FIELD_FT * ftPx;
+  const bins = new Map<string, number>();
+  const key = (gx: number, gy: number) => `${gx},${gy}`;
+  for (const f of flecks) {
+    const k = key(Math.floor(f.cx / cell), Math.floor(f.cy / cell));
+    bins.set(k, (bins.get(k) || 0) + 1);
+  }
+  for (const f of flecks) {
+    const gx = Math.floor(f.cx / cell), gy = Math.floor(f.cy / cell);
+    let pop = 0;
+    for (let dx = -1; dx <= 1 && pop < FLECK_FIELD_MIN; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        pop += bins.get(key(gx + dx, gy + dy)) || 0;
+        if (pop >= FLECK_FIELD_MIN) break;
+      }
+    }
+    if (pop < FLECK_FIELD_MIN) continue;      // alone: a detail mark, not texture
+    for (let i = f.sp.i0; i < f.sp.i1; i++) soft[i] = 1;
+  }
+  return soft;
+}
+
+// ── 2e. label boxes ────────────────────────────────────────────────────────
+// The most common way an estimator's click goes wrong, and the one the mask
+// can never see: a room tag (`111`), a finish tag (`PC-01`), a keynote
+// bubble — each a CLOSED box drawn inside the room it labels. Click inside
+// one and the flood is bounded by the box, so the answer is 0.5 SF instead of
+// the room. Measured on a commercial finish plan: in one 24 SF storeroom,
+// 55% of clicks landed in a tag box and traced it.
+//
+// What identifies a label box is not its size — it is that THE BOX EXISTS TO
+// FRAME THE TEXT. A tag hugs its label; a room dwarfs its label. Measured
+// across two sheets as the ratio of contained-text bbox area to figure area:
+// figures under a room's size average 1.70 and 1.57, room-scale figures
+// average 0.59 and 0.29, and the outliers on the high side at room scale are
+// sheet borders and title blocks that enclose ALL the text on the page — which
+// is why the ratio alone is not enough and the size cap below it is.
+//
+// The cap is set beneath the smallest space anyone takes off (a broom closet
+// is 15-20 SF; the largest genuine tag box measured is 1.5 SF), so no room
+// can be inside it whatever its text. And because this feeds the SAME soft
+// plane, a misjudged box does not delete a boundary: the strict pass still
+// stops at it, the escalation ladder sees a wholly-soft boundary and reflows
+// to the room behind it, and any escalation that leaks is discarded.
+export const TAGBOX_MAX_SF = 6;         // well under any real space; measured tag boxes top out at 1.5 SF
+export const TAGBOX_TEXT_FRAC = 0.25;   // the text must FILL the box — rooms sit far below this
+export function classifyTagBoxSegs(
+  segs: number[], meta: Uint8Array, subpaths: SubPath[] | null | undefined,
+  texts: TextMark[] | null | undefined, ws: number, ftPx: number,
+): Uint8Array {
+  const n = segs.length >> 2;
+  const soft = new Uint8Array(n);
+  if (!meta || !n || !subpaths?.length || !texts?.length || !(ftPx > 0)) return soft;
+  const maxArea = TAGBOX_MAX_SF * ftPx * ftPx;
+  // text lookup on a coarse grid — a sheet carries thousands of items and
+  // every small closed figure would otherwise scan all of them
+  const cell = Math.max(1, 4 * ftPx);
+  const grid = new Map<string, TextMark[]>();
+  for (const t of texts) {
+    const k = `${Math.floor(t.x * ws / cell)},${Math.floor(t.y * ws / cell)}`;
+    const a = grid.get(k); if (a) a.push(t); else grid.set(k, [t]);
+  }
+  for (const sp of subpaths) {
+    if (!sp.closed || sp.i1 <= sp.i0) continue;
+    if (sp.flags & SEG_CLIP) continue;          // invisible ink is soft already
+    const x0 = sp.x0 * ws, y0 = sp.y0 * ws, x1 = sp.x1 * ws, y1 = sp.y1 * ws;
+    const w = x1 - x0, h = y1 - y0;
+    if (!(w > 0) || !(h > 0) || w * h > maxArea) continue;
+    // contained text, and its own extent
+    let tx0 = Infinity, ty0 = Infinity, tx1 = -Infinity, ty1 = -Infinity, found = 0;
+    const gx = Math.floor(x0 / cell), gy = Math.floor(y0 / cell);
+    const gx1 = Math.floor(x1 / cell), gy1 = Math.floor(y1 / cell);
+    for (let a = gx; a <= gx1; a++) for (let b = gy; b <= gy1; b++) {
+      for (const t of grid.get(`${a},${b}`) || []) {
+        const px = t.x * ws, py = t.y * ws, pw = t.w * ws, ph = (t.h || 0) * ws;
+        if (px < x0 || px > x1 || py < y0 - ph || py > y1 + ph) continue;
+        found++;
+        if (px < tx0) tx0 = px; if (px + pw > tx1) tx1 = px + pw;
+        if (py - ph < ty0) ty0 = py - ph; if (py > ty1) ty1 = py;
+      }
+    }
+    if (!found) continue;                       // an empty small box is a fixture, not a label
+    const ta = Math.max(0, tx1 - tx0) * Math.max(0, ty1 - ty0);
+    if (ta < TAGBOX_TEXT_FRAC * w * h) continue;  // the text does not fill it: not a frame
+    for (let i = sp.i0; i < sp.i1; i++) soft[i] = 1;
+  }
+  return soft;
+}
+
+// ── 2f. dimension strings (issue #320) ──────────────────────────────────────
 // On a FLATTENED sheet the layer path is dead (`classifyLayerName` returns
 // role unknown at confidence 0 — correctly: nothing is stated) and neither
 // geometric classifier sees a dimension string: it has no heavier parallel
@@ -1620,9 +1833,9 @@ export const MASK_CURVE_BIT = 4;
 // grow-but-verify cap (see sealedEscalation). Rides only on soft (bit 2)
 // cells; a cell also crossed by hard ink keeps hard's verdict as always.
 export const MASK_DIMSTR_BIT = 16;
-export function buildMask(segs: number[], imgW: number, imgH: number, maxDim?: number, meta?: Uint8Array | null, pxPerFt?: number, basePxPerFt?: number, page?: MaskPage | null, roles?: Uint8Array | null, dimTexts?: DimTextMark[] | null): MaskObj;
+export function buildMask(segs: number[], imgW: number, imgH: number, maxDim?: number, meta?: Uint8Array | null, pxPerFt?: number, basePxPerFt?: number, page?: MaskPage | null, roles?: Uint8Array | null, ink?: InkContext | null): MaskObj;
 export function buildMask(segs: number[], imgW: number, imgH: number, maxDim?: number, meta?: Uint8Array | null, roles?: Uint8Array | null): MaskObj;
-export function buildMask(segs: number[], imgW: number, imgH: number, maxDim = MASK_MAX_DIM, meta: Uint8Array | null = null, pxPerFt: number | Uint8Array | null = 0, basePxPerFt = 0, page: MaskPage | null = null, roles: Uint8Array | null = null, dimTexts: DimTextMark[] | null = null): MaskObj {
+export function buildMask(segs: number[], imgW: number, imgH: number, maxDim = MASK_MAX_DIM, meta: Uint8Array | null = null, pxPerFt: number | Uint8Array | null = 0, basePxPerFt = 0, page: MaskPage | null = null, roles: Uint8Array | null = null, ink: InkContext | null = null): MaskObj {
   // the compat overload: a Uint8Array (or explicit null) in the pxPerFt slot
   // is a roles table, scale unknown
   if (pxPerFt instanceof Uint8Array || pxPerFt === null) { if (!roles) roles = pxPerFt; pxPerFt = 0; }
@@ -1695,10 +1908,21 @@ export function buildMask(segs: number[], imgW: number, imgH: number, maxDim = M
     ? classifyOffsetAnnotationSegs(segs, meta, ws, ANNOT_OFFSET_MAX_FT * mppf, ANNOT_OFFSET_MIN_FT * mppf, ANNOT_MIN_LEN_FT * mppf)
     : null;
   if (soft && annot) for (let i = 0; i < soft.length; i++) if (annot[i]) soft[i] = 1;
+  // Third contributor to the SAME soft plane: finish texture (section 2d).
+  // Feet-true and subpath-fed — it reads what the ink IS, where the two above
+  // infer it from neighbourhood geometry. Unioned, never subtracted.
+  const fleck = meta && mppf > 0 && ink?.subpaths ? classifyFleckSegs(segs, meta, ink.subpaths, ws, mppf) : null;
+  if (soft && fleck) for (let i = 0; i < soft.length; i++) if (fleck[i]) soft[i] = 1;
+  // Fourth contributor: label boxes (section 2e). Also subpath-fed, and the
+  // first classifier to read the TEXT layer — what a box is FOR is a fact the
+  // linework cannot state.
+  const tagbox = meta && mppf > 0 && ink?.subpaths && ink?.texts
+    ? classifyTagBoxSegs(segs, meta, ink.subpaths, ink.texts, ws, mppf) : null;
+  if (soft && tagbox) for (let i = 0; i < soft.length; i++) if (tagbox[i]) soft[i] = 1;
   // Third independent contributor to the SAME soft plane: dimension strings
   // (section 2d, issue #320). Feet-true only, for the same reason as the
   // annotation classifier above; unioned, never subtracted.
-  const dimstr = meta && mppf > 0 ? classifyDimensionStringSegs(segs, meta, ws, mppf, dimTexts) : null;
+  const dimstr = meta && mppf > 0 ? classifyDimensionStringSegs(segs, meta, ws, mppf, ink?.dimTexts || null) : null;
   if (soft && dimstr) for (let i = 0; i < soft.length; i++) if (dimstr[i]) soft[i] = 1;
   // curve chords that are demonstrably not door swings (closed circles, cloud
   // scallops) — a SEPARATE plane from SEG_CURVE, so refusing them never makes

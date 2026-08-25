@@ -201,6 +201,22 @@ export function detectScale(textContent: TextContentLike, viewport: Viewport): D
   return null;
 }
 
+// ── positioned text for ink classification (One-Click) ──────────────────────
+// Every visible text item as a placed rectangle in image px — the evidence
+// that tells a label box from a room (see oneclick.classifyTagBoxSegs). x/y
+// is the baseline start, matching extractRegionText's convention.
+export interface TextMarkItem { x: number; y: number; w: number; h: number }
+export function extractTextMarks(textContent: TextContentLike, viewport: Viewport): TextMarkItem[] {
+  const out: TextMarkItem[] = [];
+  const vs = Math.hypot(viewport.transform[0], viewport.transform[1]) || 1;
+  for (const it of textContent.items || []) {
+    if (!(it.str || "").trim()) continue;
+    const t = pdfjsLib.Util.transform(viewport.transform, it.transform);
+    out.push({ x: t[4], y: t[5], w: (it.width || 0) * vs, h: Math.hypot(t[2], t[3]) || (it.height || 0) * vs });
+  }
+  return out;
+}
+
 // ── dimension-pattern text (#320) ────────────────────────────────────────────
 // The positioned `12'-4"`-pattern text items the dim-string classifier anchors
 // interior strings on (oneclick.sweepDimensionStrings path B). The pattern is

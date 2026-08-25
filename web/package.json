@@ -29,6 +29,7 @@
     "@turf/difference": "^7.3.5",
     "@turf/helpers": "^7.3.5",
     "fflate": "^0.8.3",
+    "jsts": "^2.12.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",
     "react": "^18.3.1",

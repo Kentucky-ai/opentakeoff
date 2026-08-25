@@ -36,7 +36,7 @@ import UserGuide from "../components/UserGuide.jsx";
 import TakeoffsPanel, { clampPanelW, CONDITION_DND_MIME, ConditionAppearanceEditor } from "../components/TakeoffsPanel.jsx";
 import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../components/hatches.jsx";
 import { Icon } from "../brand/icons.jsx";
-import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractDimTexts } from "../lib/sheets";
+import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks, extractDimTexts } from "../lib/sheets";
 import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
@@ -57,6 +57,17 @@ import { tidyRing, axisLockPoint } from "../lib/ringTidy";
 import { sweepSymbols } from "../lib/symbolsweep";
 import { labelPlacements } from "../lib/symbollabels";
 import { traceConfidence, floodSignals } from "../lib/confidence";
+// The scale-acceptance ruler (a calibrated bar drawn on the sheet after a scale
+// is set) — the owner's call, 2026-08-24: it serves no purpose on the sheet.
+const SHOW_SCALE_GUIDE = false;
+// net engine runs in a worker: a dense sheet's build is 30-90 s of pure
+// geometry and must never block the page (measured: "Page Unresponsive"
+// on Comfort Inn when it ran on the main thread)
+const netWorker = typeof Worker !== "undefined" ? new Worker(new URL("../lib/netroom.worker.js", import.meta.url), { type: "module" }) : null;
+const netPending = new Map();   // req → {resolve}
+let netReq = 0;
+if (netWorker) netWorker.onmessage = (ev) => { const m = ev.data; const p = netPending.get(m.req); if (p) { netPending.delete(m.req); p.resolve(m); } };
+function netCall(msg) { return new Promise((resolve) => { const req = ++netReq; netPending.set(req, { resolve }); netWorker.postMessage({ ...msg, req }); }); }
 import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS } from "../lib/rastermask";
 // PDF layer roles (#85): the pure name→role classifier and the override
 // plumbing shared with the MCP session — the canvas consumes buildMask's
@@ -576,6 +587,21 @@ export default function TakeoffCanvas() {
     try { const v = parseFloat(localStorage.getItem("opentakeoff_fill_sens")); return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : SENS_BALANCED; } catch { return SENS_BALANCED; }
   });
   useEffect(() => { try { localStorage.setItem("opentakeoff_fill_sens", String(fillSens)); } catch { /* private mode */ } }, [fillSens]);
+  // NET ENGINE (test drive, 2026-08-24): route One-Click through the wall-
+  // network room detector (lib/netroom) instead of the raster flood. Off by
+  // default; persisted so a test session survives a reload. The net for a
+  // sheet is built once per (sheet, scale) and cached — seconds on a dense
+  // sheet, instant after.
+  const [netEngine, setNetEngine] = useState(() => {
+    try { return localStorage.getItem("opentakeoff_net_engine") === "1"; } catch { return false; }
+  });
+  useEffect(() => { try { localStorage.setItem("opentakeoff_net_engine", netEngine ? "1" : "0"); } catch { /* private mode */ } }, [netEngine]);
+  const netCacheRef = useRef(new Map());   // `${sheetKey}:${upp}` → built net
+  const netTickRef = useRef(null);          // ticking "reading the walls… N s" timer
+  // No mode dial (his call, 2026-08-24: "too technical for users"). A click
+  // is a room (walls + doors + drawn finish transitions); ⇧-click is the
+  // finish FIELD — grow across the same tile/plank pattern, stop where it
+  // stops (teller lines, lobbies, open plans). Same gesture STACK uses.
   const [saveState, setSaveState] = useState("idle");
   const [focusMode, setFocusModeState] = useState(getFocusMode);   // chrome-collapse (F) — lib/focusMode.js is the store+broadcast
   useEffect(() => onFocusModeChange(setFocusModeState), []);
@@ -665,6 +691,13 @@ export default function TakeoffCanvas() {
   const snapGridsRef = useRef(new Map()); // sheetKey → {cell, map} spatial hash of vector endpoints
   const vectorSegsRef = useRef(new Map()); // sheetKey → flat [x1,y1,x2,y2,…] linework segments (One-Click boundary source)
   const segMetaRef = useRef(new Map());    // sheetKey → per-segment meta bytes (hatch classification input)
+  // sheetKey → drawn-figure ranges (SubPath[]): the ink-classification input.
+  // Single-panel sheets only — a STITCHED composite merges several sheets'
+  // segment arrays, and a subpath's meaning is a contiguous range into ONE of
+  // them, so a composite simply carries none and classification degrades to
+  // exactly today's behaviour (the optional-field contract).
+  const subpathsRef = useRef(new Map());
+  const textMarksRef = useRef(new Map());  // sheetKey → positioned text (label-box classification)
   const segLumRef = useRef(new Map());     // sheetKey → per-segment stroke luminance (#260) — the Symbol tool's label leader-chase pen separator
   const textSpansRef = useRef(new Map());  // sheetKey → label text spans (built lazily on first sweep)
   const textTfRef = useRef(new Map());     // sheetKey → viewport transform, for positioning text spans in image px
@@ -1690,6 +1723,8 @@ export default function TakeoffCanvas() {
     snapGridsRef.current.clear();
     vectorSegsRef.current.clear();
     segMetaRef.current.clear();
+    subpathsRef.current.clear();
+    textMarksRef.current.clear();
     layerGeoRef.current.clear();
     layerInfosRef.current.clear();
     setSheetLayers({});
@@ -1811,10 +1846,11 @@ export default function TakeoffCanvas() {
         // snap-to-vector index per panel (best-effort; off until the user enables it)
         m.pageObj.getOperatorList().then(async (ol) => {
           if (stale()) return;
-          const { points, segs, meta, imageArea, lum, layerOf, layerIds } = extractVectorGeometry(ol, m.viewport.transform, pdfjsLib.OPS);
+          const { points, segs, meta, imageArea, lum, layerOf, layerIds, subpaths } = extractVectorGeometry(ol, m.viewport.transform, pdfjsLib.OPS);
           snapGridsRef.current.set(m.key, buildSnapGrid(points, SNAP_CELL));
           vectorSegsRef.current.set(m.key, segs);
           segMetaRef.current.set(m.key, meta);
+          if (subpaths) subpathsRef.current.set(m.key, subpaths);
           if (lum) segLumRef.current.set(m.key, lum);
           textTfRef.current.set(m.key, m.viewport.transform);
           // raster-fallback trigger signals: how much of the sheet is placed
@@ -1859,6 +1895,10 @@ export default function TakeoffCanvas() {
           if (stale()) return;
           const det = detectScale(tc, m.viewport);
           if (det) setDetectedScales((d) => (d[m.key]?.label === det.label ? d : { ...d, [m.key]: det }));
+          // positioned text for ink classification — a mask built before this
+          // resolved simply had no text evidence (the layer-table precedent)
+          const marks = extractTextMarks(tc, m.viewport);
+          if (marks.length) { textMarksRef.current.set(m.key, marks); maskCacheRef.current.delete(m.key); }
           const dts = extractDimTexts(tc, m.viewport);
           if (dts.length) { dimTextsRef.current.set(m.key, dts); maskCacheRef.current.delete(m.key); }
         }).catch(() => {});
@@ -2752,7 +2792,7 @@ export default function TakeoffCanvas() {
     if (scaleGuide) setScaleGuide(null);
     if (tool === "calibrate") setCalib((c) => (c.length >= 2 ? [p] : [...c, p]));
     else if (tool === "check") setCheck((c) => (c.length >= 2 ? [p] : [...c, p]));
-    else if (tool === "oneclick") oneClickAt(p, !!(ev && ev.altKey));
+    else if (tool === "oneclick") oneClickAt(p, !!(ev && ev.altKey), undefined, !!(ev && ev.shiftKey));
     // ⌥-click on an area/deduct trace drops a CURVE point (#284): the boundary
     // bends through it instead of turning a corner at it. Every other
     // point-placing tool takes the click as it always has.
@@ -4032,7 +4072,8 @@ export default function TakeoffCanvas() {
       mo = buildMask(segs, dims.w, dims.h, MASK_MAX_DIM, segMetaRef.current.get(key), pxPerFt,
                      pxPerFt ? pxPerFt * RENDER_SCALE / rsNow : 0,
                      pgVp ? { pageW: pgVp.width, pageH: pgVp.height, renderScale: rsNow, baseScale: RENDER_SCALE } : null,
-                     rolesForSheet(key), dtk && dtk.length ? dtk : null);
+                     rolesForSheet(key),
+                     { subpaths: subpathsRef.current.get(key) || null, texts: textMarksRef.current.get(key) || null, dimTexts: dtk && dtk.length ? dtk : null });
       maskCacheRef.current.set(key, mo);
     }
     return mo;
@@ -4142,8 +4183,8 @@ export default function TakeoffCanvas() {
   // The propose tail (physical clicks): stage the region for the Create (⏎)
   // gate. Duplicate/carve checks run inside a FUNCTIONAL setProposal so a
   // click racing the first raster render can't clobber state.
-  function proposeRegion(f, tp, local, negative, raster) {
-    const region = buildOneClickRegion(f, tp, local, negative, raster);
+  function proposeRegion(f, tp, local, negative, raster, prebuilt) {
+    const region = prebuilt || buildOneClickRegion(f, tp, local, negative, raster);
     if (!region) {
       if (uppFor(tp.key)) setCommitMsg("Couldn't trace that space — trace it with Area (A).");
       return;
@@ -4201,6 +4242,7 @@ export default function TakeoffCanvas() {
     // The measurement-policy receipts: when the engine sealed, wedged, or
     // ruled a passage out, the estimator hears it at stage time — the trace is
     // reviewable while the edge in question is still under the cursor.
+    else if (!f) { /* net-engine region: the caller already set the message; there is no flood receipt to narrate */ }
     else if (f.wedges && f.ringWedges >= f.wedges) setCommitMsg(`Measured to include the floor inside ${f.ringWedges === 1 ? "a closed ring" : `${f.ringWedges} closed rings`} drawn on the plan (a round column or a callout bubble) — no door swing was involved. If that is a column you deduct rather than floor you cover, ${keyText("⌥-click carves it out. ⏎ creates.")}`);
     else if (f.wedges && f.ringWedges) setCommitMsg(`Measured through the drawn door to the wall opening — the swing area is included. It also includes the floor inside ${f.ringWedges === 1 ? "a closed ring" : `${f.ringWedges} closed rings`} (a round column or callout bubble), which is not a door swing; ${keyText("⌥-click carves one out if it should be deducted. ⏎ creates.")}`);
     else if (f.wedges) setCommitMsg("Measured through the drawn door to the wall opening — the swing area is included. ⏎ creates.");
@@ -4218,7 +4260,7 @@ export default function TakeoffCanvas() {
   // VALUE because the utterance armed it in this same handler (the activeCond
   // closure is a render behind). Click callers ignore the return value; their
   // message surface stays setCommitMsg, unchanged.
-  async function oneClickAt(p, negative, direct) {
+  async function oneClickAt(p, negative, direct, fieldClick) {
     const say = (message) => { setCommitMsg(message); return { ok: false, message }; };
     const tp = panelAt(p[0]);
     const upp = uppFor(tp.key);
@@ -4242,6 +4284,61 @@ export default function TakeoffCanvas() {
     const stats = sheetStatsRef.current.get(tp.key);
     const rasterEligible = !!stats && stats.imageFrac >= RASTER_MIN_IMG_FRAC;
     const vectorViable = !!stats && stats.segCount >= RASTER_MIN_SEGS;
+    // NET ENGINE branch — vector sheets only; a scan has no linework to network.
+    if (netEngine && !direct && vectorViable) {
+      const segs = vectorSegsRef.current.get(tp.key);
+      const meta = segMetaRef.current.get(tp.key);
+      if (!segs || !meta) return say("Still reading this sheet's linework — One-Click arms as soon as that finishes (a dense sheet can take a few seconds). Try again in a moment.");
+      if (!netWorker) return say("Net engine needs Web Workers — switch it off to use the fill.");
+      // FRAMES: the vector segments live at the BASELINE render scale; a hi-res
+      // sheet's click and its upp are in the hi-res frame (uppFor divides by
+      // factorFor). Convert into the segments' frame for the engine and back
+      // out for the ring — at 207% zoom every foot-based threshold was off
+      // by the zoom factor (the "regressions" that appeared only zoomed in).
+      const kF = RENDER_SCALE / (renderScalesRef.current.get(tp.key) || RENDER_SCALE);   // hi-res px → baseline px
+      const ftPx = kF / upp;                     // baseline px per foot
+      const buildOpts = {};
+      const ck = `${tp.key}:${ftPx.toFixed(4)}`;
+      let built = netCacheRef.current.get(ck);
+      if (!built) {
+        // one build per (sheet, scale); concurrent clicks share the promise
+        // LOUD, TICKING status: a dense sheet reads for tens of seconds and a
+        // silent wait reads as failure (his call, Liminal 2026-08-24)
+        const t0 = Date.now();
+        setCommitMsg("Reading the walls on this sheet… 0 s — the first click on a sheet builds its wall network; the page stays live.");
+        const tick = setInterval(() => setCommitMsg(`Reading the walls on this sheet… ${Math.round((Date.now() - t0) / 1000)} s — the first click on a sheet builds its wall network; the page stays live.`), 1000);
+        netTickRef.current = tick;
+        const subpathsIn = subpathsRef.current.get(tp.key) || null, textsIn = textMarksRef.current.get(tp.key) || [];
+        // diagnostic record of EXACTLY what the engine was handed (read from devtools as window.__netLast)
+        try { window.__netLast = { key: ck, sheet: tp.key, nSegs: segs.length >> 2, nMeta: meta.length, nSubpaths: subpathsIn ? subpathsIn.length : 0, nTexts: textsIn.length, ftPx, upp, kF, img: tp.img && { w: tp.img.w, h: tp.img.h }, metaHead: Array.from(meta.slice(0, 12)), segsHead: Array.from(segs.slice(0, 8)).map((v) => +v.toFixed(1)), textHead: textsIn.slice(0, 2) }; } catch { /* diagnostics only */ }
+        built = netCall({ type: "build", key: ck, segs, meta, subpaths: subpathsIn, ftPx, texts: textsIn, opts: buildOpts })
+          .then((m) => { if (m.error) { netCacheRef.current.delete(ck); throw new Error(m.error); } try { Object.assign(window.__netLast, { faces: m.faces, starved: m.starved, ms: m.ms }); } catch { /* diagnostics only */ } return m; });
+        netCacheRef.current.set(ck, built);
+      }
+      let info;
+      try { info = await built; }
+      catch (err) { console.error("net engine build failed", err); return say("Net engine couldn't read this sheet — switch it off to use the fill."); }
+      finally { if (netTickRef.current) { clearInterval(netTickRef.current); netTickRef.current = null; } }
+      if (toolRef.current !== "oneclick" || (proposalRef.current && proposalRef.current.key !== tp.key)) { setCommitMsg(""); return { ok: false, message: "" }; }
+      const field = !!fieldClick;
+      const rm = await netCall({ type: "room", key: ck, x: local[0] * kF, y: local[1] * kF, ftPx, mode: field ? "field" : "room" });
+      const r = rm.room;
+      if (!r) return say(field
+        ? "No finish pattern under that ⇧-click — ⇧-click inside the tile or plank pattern to select the whole field."
+        : "Net engine: that click isn't inside an enclosed space — click an open spot, ⇧-click an open finish field, or trace it with Area (A).");
+      const ring = r.ring.map(([x, y]) => [x / kF, y / kF]);      // back to the panel's frame
+      try { Object.assign(window.__netLast, { lastClick: [local[0], local[1]], lastRing: ring.map(([x, y]) => [+x.toFixed(1), +y.toFixed(1)]), lastFaces: r.faces }); } catch { /* diagnostics only */ }
+      const area_sf = +(r.areaPx / (ftPx * ftPx)).toFixed(2);
+      const perim_lf = +(closedMetrics(ring).perim * upp).toFixed(2);
+      const region = {
+        kind: negative ? "neg" : "pos", seed: local, poly: ring, poly0: ring.map(([x, y]) => [x, y]),
+        area_sf, perim_lf, hf: false, shs: 0, sl: 0, gap: 0, mp: 0, mpd: 0, wg: 0, rw: 0, rt: false,
+        cf: 1, cff: [], net: true, netFaces: r.faces, netStarved: !!r.starved, netMode: field ? "field" : "room",
+      };
+      setCommitMsg(`${field ? "Finish field" : "Room"}: ${area_sf.toFixed(0)} SF from ${r.faces} face${r.faces === 1 ? "" : "s"}${r.holes.length ? ` (${r.holes.length} interior void${r.holes.length === 1 ? "" : "s"} not subtracted from the outline)` : ""}${info && info.ms ? ` · net built in ${(info.ms / 1000).toFixed(1)} s` : ""} — ⏎ creates, Esc discards.`);
+      proposeRegion(null, tp, local, negative, false, region);
+      return { ok: true, message: "" };
+    }
     if (!rasterEligible || vectorViable) {
       const mo = ensureMask(tp.key);
       if (!mo && !rasterEligible) return say("Still reading this sheet's linework — try again in a second.");
@@ -4329,7 +4426,7 @@ export default function TakeoffCanvas() {
       // region's verts ARE the proposal, so nothing extra rides. Post-Create
       // edits are stamped by stampEdit, which freezes the same field from the
       // pre-edit ring only when Create didn't already.
-      origin: { method: "one_click_v1", seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, confidence: r.cf ?? 1, ...(r.cff?.length ? { confidence_factors: r.cff } : {}), ...(r.hf ? { hatch_filtered: true } : {}), ...(r.sl ? { gap_sealed_px: r.sl } : {}), ...(r.gap ? { gap_bridged_px: r.gap } : {}), ...(r.mp ? { min_pass_px: r.mp, min_pass_delta: r.mpd } : {}), ...(r.wg ? { door_wedges: r.wg } : {}), ...(r.rw ? { ring_interiors: r.rw } : {}), ...(r.rt ? { raster_traced: true } : {}), ...(r.sens != null ? { fill_sensitivity: r.sens } : {}), ...(r.touched ? { edited_before_create: true, proposed_verts_norm: r.poly0.map(([x, y]) => [x / tp.img.w, y / tp.img.h]) } : {}) },
+      origin: { method: r.net ? "net_v1" : "one_click_v1", ...(r.net ? { net_faces: r.netFaces, net_starved: r.netStarved, net_mode: r.netMode } : {}), seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, confidence: r.cf ?? 1, ...(r.cff?.length ? { confidence_factors: r.cff } : {}), ...(r.hf ? { hatch_filtered: true } : {}), ...(r.sl ? { gap_sealed_px: r.sl } : {}), ...(r.gap ? { gap_bridged_px: r.gap } : {}), ...(r.mp ? { min_pass_px: r.mp, min_pass_delta: r.mpd } : {}), ...(r.wg ? { door_wedges: r.wg } : {}), ...(r.rw ? { ring_interiors: r.rw } : {}), ...(r.rt ? { raster_traced: true } : {}), ...(r.sens != null ? { fill_sensitivity: r.sens } : {}), ...(r.touched ? { edited_before_create: true, proposed_verts_norm: r.poly0.map(([x, y]) => [x / tp.img.w, y / tp.img.h]) } : {}) },
     }));
     const res = dispatchShape({ type: "add", shapes: made });   // the creation gate — id/created_at minted by the command
     // ...and the new takeoff is SELECTED. Without this, Create left nothing
@@ -6786,7 +6883,16 @@ export default function TakeoffCanvas() {
       <div title={"One-Click fill sensitivity — how far a fill reaches past a room's hatch pattern.\nStrict: stop at the linework (original behavior).\nBalanced: recover hatch-lined rooms to the walls (default).\nAggressive: cross more pattern and tolerate more growth.\nLower it if fills spill; raise it if hatched rooms come up short.\nScanned sheets trace from pixels — sensitivity doesn't apply there."
         + (inert ? "\n\nNothing on this fill's boundary classified as a hatch or tile pattern, so every setting returns the same region. It is stopping on ink the engine still reads as a wall." : "")}
         style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", flexWrap: "wrap" }}>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)" }}>Fill</span>
+        <button type="button" onClick={() => { setNetEngine((v) => !v); setProposal(null); }}
+          title={netEngine
+            ? "NET ENGINE ON — One-Click runs the wall-network room detector (test build). Click a room to select it; ⇧-click an open floor to select the whole finish field (tile, plank). Click to switch back to the fill."
+            : "One-Click runs the fill. Click to try the NET ENGINE (wall-network room detector, test build)."}
+          style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.3, padding: "3px 8px", borderRadius: 6, cursor: "pointer",
+                   border: `1px solid ${netEngine ? "var(--cobalt)" : "var(--line)"}`,
+                   background: netEngine ? "var(--cobalt)" : "transparent", color: netEngine ? "#fff" : "var(--ink-soft)" }}>
+          {netEngine ? "NET" : "FILL"}
+        </button>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)", opacity: netEngine ? 0.45 : 1 }}>Fill</span>
         <input name="fill-sensitivity" type="range" min={SENS_STRICT} max={SENS_AGGRESSIVE} step={0.01} value={fillSens} list="fill-sens-notches"
           onChange={(e) => setFillSens(snap(parseFloat(e.target.value)))}
           style={{ flex: 1, accentColor: "var(--cobalt)", cursor: "pointer", opacity: inert ? 0.45 : 1 }} />
@@ -6852,9 +6958,17 @@ export default function TakeoffCanvas() {
           cloud moves) right. Cluster captions stay — they're the drafting
           language. The row never wraps; rarely-used controls live in ⋯ so
           nothing shifts position mid-work. Focus mode (F) hides the whole
-          bar — the rail and status bar carry the essentials. */}
+          bar — the rail and status bar carry the essentials.
+          Un-wrapped is not the same as unreachable, though: this row is
+          ~1550px of fixed-width controls, so on a 1440-class laptop Report and
+          the Action menu render past the right edge. The document can
+          technically scroll to them, but the canvas claims wheel and trackpad
+          gestures for zoom/pan, so that scroll never arrives and the app reads
+          as "Export is unclickable". The row therefore SCROLLS itself; its
+          menus open position:fixed off the trigger rect (ToolMenu) so this
+          overflow cannot clip them. */}
       {!focusMode && (
-      <div style={{ display: "flex", gap: 7, alignItems: "center", padding: "16px 14px 6px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", whiteSpace: "nowrap" }}>
+      <div style={{ display: "flex", gap: 7, alignItems: "center", padding: "16px 14px 6px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", whiteSpace: "nowrap", overflowX: "auto", overflowY: "visible", scrollbarWidth: "thin", overscrollBehaviorX: "contain" }}>
         <strong style={{ fontFamily: "var(--f-display)", fontSize: 15, color: "var(--ink)", letterSpacing: "-0.02em" }}>open<span style={{ fontStyle: "italic", color: "var(--cobalt)" }}>takeoff</span></strong>
         <button type="button" onClick={() => fileInputRef.current?.click()} title="Open plans — PDF, image, or a .zip plan set (or just drag them onto the canvas)"
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: "1px solid var(--ink)", background: "var(--ink)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
@@ -8100,7 +8214,7 @@ export default function TakeoffCanvas() {
               {tool === "check" && check.map((p, i) => <path key={"ck" + i} d={starPath(p[0], p[1], 3.5 / tf.scale)} fill="#1f3fc7" />)}
               {/* scale-acceptance guide — an ephemeral calibrated ruler so a 2×-off
                   scale is visually obvious against known elements (a door is ~3′) */}
-              {scaleGuide && panelKeySet.has(scaleGuide.key) && (() => {
+              {SHOW_SCALE_GUIDE && scaleGuide && panelKeySet.has(scaleGuide.key) && (() => {
                 const [gx, gy] = scaleGuide.at;
                 const z = tf.scale;
                 const unitPx = scaleGuide.px / (units === "metric" ? scaleGuide.feet * M_PER_FT : scaleGuide.feet); // one ft (or 1 m) in px

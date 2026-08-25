@@ -4,7 +4,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildMask, floodRegion, traceRegion, snapVertices, ringArea, rdpClosed,
-  extractVectorGeometry, classifyHatchSegs, classifyOffsetAnnotationSegs, classifyDimensionStringSegs, markPolylineArcs, SEG_CURVE, SEG_CLIP, SEG_FILLONLY, SEG_POLYARC,
+  extractVectorGeometry, classifyHatchSegs, classifyOffsetAnnotationSegs, classifyDimensionStringSegs, classifyFleckSegs, markPolylineArcs, SEG_CURVE, SEG_CLIP, SEG_FILLONLY, SEG_POLYARC,
+  type SubPath,
   SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE, MASK_CURVE_BIT,
   floodRegionSealed, dilateHardMask, SEAL_RADII, sealRadiiFor, DOOR_SEAL_MAX_FT, SEAL_R_MAX, doorWedgeCapPx,
   splitMergedArcs, doorLeafCells, arcClusterFit,
@@ -615,6 +616,137 @@ test("reflectVertsNorm: applying the same flip twice returns the original ring",
   }
 });
 
+// ── subpaths: the drawn FIGURE each segment belongs to ──────────────────────
+// Built from a hand-rolled op list, because the invariant under test is that
+// the ranges track exactly what landed in segs — a fixture that reused the
+// extractor's own bookkeeping would be a tautology.
+function opsFor(items: Array<[number, unknown[]]>, _OPSX?: Record<string, number>) {
+  return { fnArray: items.map((i) => i[0]), argsArray: items.map((i) => i[1]) };
+}
+const OPSX = { moveTo: 1, lineTo: 2, curveTo: 3, curveTo2: 4, curveTo3: 5, closePath: 6, rectangle: 7,
+  constructPath: 10, save: 11, restore: 12, transform: 13, setLineWidth: 14, setGState: 15,
+  setStrokeRGBColor: 16, endPath: 17, fill: 18, eoFill: 19, clip: 20, eoClip: 21, stroke: 22,
+  paintFormXObjectBegin: 30, paintFormXObjectEnd: 31, beginMarkedContent: 32, beginMarkedContentProps: 33,
+  endMarkedContent: 34, paintImageXObject: 40, paintInlineImageXObject: 41, paintImageMaskXObject: 42,
+  paintImageXObjectRepeat: 43, paintImageMaskXObjectRepeat: 44, paintImageMaskXObjectGroup: 45,
+  paintInlineImageXObjectGroup: 46 };
+const IDENT = [1, 0, 0, 1, 0, 0];
+
+test("subpaths: one moveTo run is one figure; its range covers exactly its segments", () => {
+  const ops = opsFor([
+    [OPSX.constructPath, [[OPSX.moveTo, OPSX.lineTo, OPSX.lineTo], [0, 0, 10, 0, 10, 10]]],
+    [OPSX.stroke, []],
+  ], OPSX);
+  const g = extractVectorGeometry(ops, IDENT, OPSX);
+  assert.equal(g.subpaths!.length, 1);
+  const s = g.subpaths![0];
+  assert.deepEqual([s.i0, s.i1], [0, 2], "two segments from three points");
+  assert.deepEqual([s.x0, s.y0, s.x1, s.y1], [0, 0, 10, 10], "bbox is the figure's own extent");
+  assert.equal(s.closed, false);
+});
+
+test("subpaths: each moveTo starts a NEW figure — a stipple field is many, not one", () => {
+  const items: Array<[number, unknown[]]> = [];
+  const path: number[] = [];
+  const coords: number[] = [];
+  for (let k = 0; k < 5; k++) {
+    path.push(OPSX.moveTo, OPSX.lineTo);
+    coords.push(k * 100, 0, k * 100 + 1, 1);       // five isolated flecks, far apart
+  }
+  items.push([OPSX.constructPath, [path, coords]], [OPSX.stroke, []]);
+  const g = extractVectorGeometry(opsFor(items, OPSX), IDENT, OPSX);
+  assert.equal(g.subpaths!.length, 5, "five figures, not one compound path");
+  for (const s of g.subpaths!) assert.equal(s.i1 - s.i0, 1, "one segment each");
+});
+
+test("subpaths: closePath and rectangle mark a figure closed; a rect is its own figure", () => {
+  const ops = opsFor([
+    [OPSX.constructPath, [[OPSX.moveTo, OPSX.lineTo, OPSX.lineTo, OPSX.closePath, OPSX.rectangle],
+      [0, 0, 10, 0, 10, 10, 50, 50, 20, 20]]],
+    [OPSX.fill, []],
+  ], OPSX);
+  const g = extractVectorGeometry(ops, IDENT, OPSX);
+  assert.equal(g.subpaths!.length, 2);
+  assert.equal(g.subpaths![0].closed, true, "closePath closes the run");
+  assert.equal(g.subpaths![1].closed, true, "a rectangle is closed by construction");
+  assert.deepEqual([g.subpaths![1].x0, g.subpaths![1].y0], [50, 50], "and carries its own bbox");
+  for (const s of g.subpaths!) assert.ok(s.flags & SEG_FILLONLY, "the paint fact rides on the figure");
+});
+
+test("subpaths: every segment is covered exactly once", () => {
+  const ops = opsFor([
+    [OPSX.constructPath, [[OPSX.moveTo, OPSX.lineTo, OPSX.rectangle, OPSX.moveTo, OPSX.lineTo, OPSX.lineTo],
+      [0, 0, 5, 5, 20, 20, 10, 10, 40, 40, 45, 45, 50, 50]]],
+    [OPSX.stroke, []],
+  ], OPSX);
+  const g = extractVectorGeometry(ops, IDENT, OPSX);
+  const n = g.segs.length >> 2;
+  const seen = new Uint8Array(n);
+  for (const s of g.subpaths!) for (let i = s.i0; i < s.i1; i++) seen[i]++;
+  assert.ok(n > 0);
+  for (let i = 0; i < n; i++) assert.equal(seen[i], 1, `segment ${i} covered exactly once`);
+});
+
+// ── finish texture (oneclick.ts section 2d) ─────────────────────────────────
+// 18 px/ft throughout, matching the other fixtures here.
+
+/** `count` flecks on a `pitch`-px grid starting at (x0, y0), each a 2 px tick. */
+function fleckField(x0: number, y0: number, cols: number, rows: number, pitch: number) {
+  const segs: number[] = [];
+  const subpaths: SubPath[] = [];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const x = x0 + c * pitch, y = y0 + r * pitch;
+    const i = segs.length >> 2;
+    segs.push(x, y, x + 2, y + 2);
+    subpaths.push({ i0: i, i1: i + 1, x0: x, y0: y, x1: x + 2, y1: y + 2, closed: false, flags: 0, fillLum: 0 });
+  }
+  return { segs, subpaths };
+}
+
+test("finish texture: a dense field of sub-wall flecks classifies soft", () => {
+  const { segs, subpaths } = fleckField(100, 100, 8, 8, 6);
+  const soft = classifyFleckSegs(segs, new Uint8Array(segs.length >> 2), subpaths, 1, 18);
+  assert.equal([...soft].every((v) => v === 1), true, "the whole field is texture");
+});
+
+test("finish texture: a LONE tiny mark is a detail, not texture", () => {
+  const segs = [100, 100, 102, 102];
+  const subpaths: SubPath[] = [{ i0: 0, i1: 1, x0: 100, y0: 100, x1: 102, y1: 102, closed: false, flags: 0, fillLum: 0 }];
+  assert.equal(classifyFleckSegs(segs, new Uint8Array(1), subpaths, 1, 18)[0], 0);
+});
+
+test("finish texture: a figure that reaches wall thickness is never texture", () => {
+  // same dense population, but each figure spans a real wall's breadth
+  const { segs, subpaths } = fleckField(100, 100, 8, 8, 30);
+  for (const s of subpaths) { s.x1 = s.x0 + 20; s.y1 = s.y0 + 20; }   // 20 px > MIN_THICK_FT·18
+  const soft = classifyFleckSegs(segs, new Uint8Array(segs.length >> 2), subpaths, 1, 18);
+  assert.equal([...soft].some((v) => v === 1), false, "wall-scale figures stay hard whatever their company");
+});
+
+test("finish texture: filled and clip-only figures are exempt", () => {
+  for (const bit of [SEG_FILLONLY, SEG_CLIP]) {
+    const { segs, subpaths } = fleckField(100, 100, 8, 8, 6);
+    for (const s of subpaths) s.flags = bit;
+    const soft = classifyFleckSegs(segs, new Uint8Array(segs.length >> 2), subpaths, 1, 18);
+    assert.equal([...soft].some((v) => v === 1), false, `flag ${bit} exempt`);
+  }
+});
+
+test("finish texture: no subpaths and no scale are both no-ops (the optional-field contract)", () => {
+  const { segs, subpaths } = fleckField(100, 100, 8, 8, 6);
+  const meta = new Uint8Array(segs.length >> 2);
+  assert.equal([...classifyFleckSegs(segs, meta, null, 1, 18)].some((v) => v === 1), false, "no figures ⇒ nothing");
+  assert.equal([...classifyFleckSegs(segs, meta, subpaths, 1, 0)].some((v) => v === 1), false, "no scale ⇒ nothing");
+  // a regular test field is ALSO periodic, so the hatch classifier already
+  // softens some of it — the contract under test is that passing no figures
+  // changes nothing, and passing them can only ADD to the same plane
+  const noSub = buildMask(segs, 600, 400, 600, meta, 18);
+  const noSubAgain = buildMask(segs, 600, 400, 600, meta, 18, 0, null, null, null);
+  const withSub = buildMask(segs, 600, 400, 600, meta, 18, 0, null, null, { subpaths });
+  assert.equal(noSubAgain.softCount, noSub.softCount, "an explicit null is the same as omitting it");
+  assert.ok(withSub.softCount > noSub.softCount, "figures add to the soft plane, never subtract");
+});
+
 test("classifyHatchSegs: extremal rows hard, wide member hard, curve exempt, clip soft", () => {
   const segs: number[] = [];
   for (let x = 100; x <= 700; x += 4) segs.push(x, 100, x, 500);
@@ -810,7 +942,7 @@ test("a room chopped by a text-anchored dim line floods WHOLE, from either side"
   const meta = new Uint8Array(segs.length >> 2);
   const dimText = [{ x: 283, y: 235, ang: 90, wPx: 60 }];
   const moPlain = buildMask(segs, 1000, 600, 1000, meta, D_FT);
-  const moText = buildMask(segs, 1000, 600, 1000, meta, D_FT, 0, null, null, dimText);
+  const moText = buildMask(segs, 1000, 600, 1000, meta, D_FT, 0, null, null, { dimTexts: dimText });
   const flood = (mo: MaskObj, x: number, y: number) => {
     const r = floodRegionSealed(mo, x, y, 0.5, sealRadiiFor(mo.mppf || D_FT), 0, 0);
     assert.equal(r.status, "ok");
