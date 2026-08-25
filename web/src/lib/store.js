@@ -463,6 +463,22 @@ export async function metaPut(key, value) {
 export async function metaDelete(key) {
   await withDb((db) => tx(db, META_STORE, "readwrite", (os) => os.delete(key)));
 }
+/** Delete every meta key that starts with `prefix` (one transaction). Keys are
+ *  strings, so a bound range [prefix, prefix + U+FFFF) is the prefix scan.
+ *  @param {string} prefix @returns {Promise<number>} keys removed */
+export async function metaDeletePrefix(prefix) {
+  if (!prefix) return 0;
+  return withDb((db) => new Promise((resolve, reject) => {
+    const t = db.transaction(META_STORE, "readwrite");
+    const os = t.objectStore(META_STORE);
+    let n = 0;
+    const req = os.openKeyCursor(IDBKeyRange.bound(prefix, prefix + "\uffff", false, true));
+    req.onsuccess = () => { const c = req.result; if (c) { os.delete(c.primaryKey); n++; c.continue(); } };
+    t.oncomplete = () => resolve(n);
+    t.onerror = () => reject(t.error);
+    t.onabort = () => reject(t.error);
+  }));
+}
 
 // ── the mode-aware store seam ──────────────────────────────────────────────
 // The default build is byte-for-byte the old client-only app: `store` is

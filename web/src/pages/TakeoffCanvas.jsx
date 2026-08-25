@@ -19,6 +19,7 @@ import { Link, useNavigate } from "react-router";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { store, isStaleTabError, STALE_TAB_MESSAGE, projectIdFromUrl, ANN_SCHEMA, emptyAnnotations, metaGet, metaPut } from "../lib/store.js";
+import { forgetThumbs, releaseThumbs } from "../lib/thumbs.js";
 import { Z } from "../lib/ui.js";
 import { getFocusMode, toggleFocusMode, onFocusModeChange } from "../lib/focusMode.js";
 import { seedStampLibrary, instantiateStamp, markupToStampElement } from "../lib/stamps.js";
@@ -740,7 +741,7 @@ export default function TakeoffCanvas() {
   // its onOpenChange effect when the callback identity changes, so an inline
   // arrow here would re-count an open menu on every canvas render
   const onMenuDepth = useCallback((o) => { menuDepthRef.current = Math.max(0, menuDepthRef.current + (o ? 1 : -1)); }, []);
-  const thumbCacheRef = useRef(new Map()); // sheetKey → thumbnail dataURL — survives gallery close
+  const thumbCacheRef = useRef(new Map()); // sheetKey → thumbnail blob URL (lib/thumbs.js) — survives gallery close; persisted twin lives in the meta store
   const legacyPinnedRef = useRef(null);    // old `pinned` page numbers awaiting their one-shot tab migration
   const tabInitRef = useRef(false);        // snap to the first restored tab exactly once
   const statusRef = useRef("loading");     // mirror for the gallery's thumbnail worker
@@ -1228,6 +1229,8 @@ export default function TakeoffCanvas() {
     metaPut(pageCacheKey, next).catch(() => { /* cache only — rediscovered next open */ });
   }, [pageCacheKey]);
   const forgetPages = useCallback((names) => {
+    // a file whose bytes are leaving (or changing) takes its thumbnails with it
+    forgetThumbs(names, thumbCacheRef.current);
     const next = { ...knownPagesRef.current };
     let hit = false;
     for (const n of names) if (n in next) { delete next[n]; hit = true; }
@@ -2181,7 +2184,7 @@ export default function TakeoffCanvas() {
     }
     for (const n of names) { try { await store.removePdf(n); } catch { /* already gone */ } evictDoc(n); }
     forgetPages(names);
-    thumbCacheRef.current.clear();
+    releaseThumbs(thumbCacheRef.current);
     setGalleryLabels({});
     setDetectedScales({});
     reconcileAfterRemoval("", await refreshSheets());

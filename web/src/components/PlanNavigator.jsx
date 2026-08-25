@@ -30,8 +30,12 @@ import { listConflictCopies } from "../lib/fs/fsProvider.js";
 import { m365Config, M365_ENABLED_KEY } from "../lib/msgraph/config.js";
 import { metaGet, metaPut, metaDelete } from "../lib/store.js";
 import { groupSheetsByLevel, sortGalleryGroups } from "../lib/sheetLevels.js";
+import { renderThumb, loadThumb, saveThumb, thumbPixelWidth } from "../lib/thumbs.js";
 
-const THUMB_W = 380;
+// Thumbnails in flight at once. The canvas rasters in its worker pool now, so
+// the main thread's pdf.js is mostly idle while the gallery is up; two keeps
+// a 3-core laptop responsive while halving the wave on a big set.
+const THUMB_PAR = 2;
 const ROOT = { id: undefined, name: "Project" };   // id undefined → cloudStore's default (project folder)
 
 function fmtSize(s) {
@@ -229,7 +233,6 @@ export default function PlanNavigator({
   const [, bump] = useState(0);
   const seqRef = useRef(0);
   const queueRef = useRef([]);
-  const pumpingRef = useRef(false);
   const obsRef = useRef(null);
 
   const loadSample = async () => {
@@ -303,38 +306,66 @@ export default function PlanNavigator({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pages, knownPages, mode]);
 
-  const pump = async () => {
-    if (pumpingRef.current) return;
-    pumpingRef.current = true;
-    const seq = seqRef.current;
-    while (queueRef.current.length) {
-      if (seq !== seqRef.current) break;
-      if (busyRef.current === "rendering") { await new Promise((r) => setTimeout(r, 150)); continue; }
-      const key = queueRef.current.shift();
-      if (thumbCacheRef.current.has(key)) continue;
-      try {
-        const { file, page } = parseSheetKey(key);
-        const pdf = await getDoc(file);
-        const pg = await pdf.getPage(page);
-        if (seq !== seqRef.current) break;
-        const vp1 = pg.getViewport({ scale: 1 });
-        const vp = pg.getViewport({ scale: THUMB_W / vp1.width });
-        const c = document.createElement("canvas");
-        c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
-        await pg.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
-        thumbCacheRef.current.set(key, c.toDataURL("image/jpeg", 0.72));
-        bump((n) => n + 1);
-        if (!labels[key] || !detectedScales[key]) {
+  // One card's thumbnail: persisted record first (no pdf.js doc, no raster —
+  // the whole reason a known set's gallery opens instantly), else raster at
+  // this screen's density, persist, and read the sheet number + plan-noted
+  // scale off the same page while it's warm. Any failure just skips the card
+  // (destroyed doc on unmount / render-cancel).
+  const thumbOne = async (key, seq) => {
+    if (thumbCacheRef.current.has(key)) return;
+    const want = thumbPixelWidth();
+    let rec = await loadThumb(key, want);
+    if (seq !== seqRef.current) return;
+    if (!rec) {
+      const { file, page } = parseSheetKey(key);
+      const pdf = await getDoc(file);
+      const pg = await pdf.getPage(page);
+      if (seq !== seqRef.current) return;
+      rec = await renderThumb(pg, want);
+      if (seq !== seqRef.current) return;
+      if (!labels[key] || !detectedScales[key]) {
+        try {
           const tc = await pg.getTextContent();
           const vpL = pg.getViewport({ scale: RENDER_SCALE });
-          const lbl = extractSheetNumber(tc, vpL);
-          if (lbl) onLabel(key, lbl);
-          const det = detectScale(tc, vpL);
-          if (det) onDetect(key, det);
-        }
-      } catch { /* destroyed doc on unmount / render-cancel — skip */ }
+          rec.label = extractSheetNumber(tc, vpL) || null;
+          rec.det = detectScale(tc, vpL) || null;
+        } catch { /* text layer is optional */ }
+      }
+      saveThumb(key, rec);
     }
-    pumpingRef.current = false;
+    if (thumbCacheRef.current.has(key)) return;
+    thumbCacheRef.current.set(key, URL.createObjectURL(rec.blob));
+    if (rec.label && !labels[key]) onLabel(key, rec.label);
+    if (rec.det && !detectedScales[key]) onDetect(key, rec.det);
+    scheduleBump();
+  };
+
+  // coalesce card reveals to one React render per frame
+  const bumpRafRef = useRef(0);
+  const scheduleBump = () => {
+    if (bumpRafRef.current) return;
+    bumpRafRef.current = requestAnimationFrame(() => { bumpRafRef.current = 0; bump((n) => n + 1); });
+  };
+
+  const activeRef = useRef(0);
+  const pump = () => {
+    while (activeRef.current < THUMB_PAR && queueRef.current.length) {
+      const seq = seqRef.current;
+      const key = queueRef.current.shift();
+      if (thumbCacheRef.current.has(key)) continue;
+      activeRef.current++;
+      (async () => {
+        // the canvas's own open sequence (doc → page → geometry) owns the main
+        // thread for its moment; yield to it rather than compete
+        while (busyRef.current === "rendering" && seq === seqRef.current) await new Promise((r) => setTimeout(r, 150));
+        if (seq !== seqRef.current) return;
+        await thumbOne(key, seq);
+      })().catch((e) => {
+        // a destroyed doc (unmount / render-cancel) is routine; anything else
+        // used to vanish into a bare catch and read as "thumbnails never load"
+        if (!/destroyed|cancel/i.test(String(e?.message || e))) console.warn(`[thumbs] ${key}:`, e);
+      }).finally(() => { activeRef.current--; pump(); });
+    }
   };
 
   useEffect(() => {
@@ -350,10 +381,37 @@ export default function PlanNavigator({
     return () => obsRef.current?.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Cards commit their ref callbacks BEFORE the mount effect above creates
+  // the observer, so a gallery whose page counts are all known up front
+  // (#302's persisted cache — the common reopen) rendered every card in the
+  // first pass and none of them was ever observed: 19 skeletons, forever.
+  // Sweep the grid after every key-set change and hand the observer whatever
+  // it hasn't seen; observe() on an already-observed element is a no-op.
+  const gridRef = useRef(null);
+  const keySig = allKeys.join("\u0000");
+  useEffect(() => {
+    const obs = obsRef.current, grid = gridRef.current;
+    if (!obs || !grid) return;
+    for (const el of grid.querySelectorAll("[data-sheetkey]")) {
+      if (!thumbCacheRef.current.has(el.dataset.sheetkey)) obs.observe(el);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keySig, mode]);
 
   const toggleSel = (key) => setSel((g) => (g.includes(key) ? g.filter((k) => k !== key) : [...g, key]));
-  const shapeCount = (key) => shapes.reduce((n, s) => n + (s.sheet_id === key ? 1 : 0), 0);
-  const pdfShapeCount = (file) => shapes.reduce((n, s) => n + (parseSheetKey(s.sheet_id).file === file ? 1 : 0), 0);
+  // shape tallies once per shapes change, not once per card per render — a
+  // thumbnail reveal re-renders the grid, and N cards × M shapes added up
+  const shapeTally = useMemo(() => {
+    const bySheet = new Map(), byFile = new Map();
+    for (const s of shapes) {
+      bySheet.set(s.sheet_id, (bySheet.get(s.sheet_id) || 0) + 1);
+      const f = parseSheetKey(s.sheet_id).file;
+      byFile.set(f, (byFile.get(f) || 0) + 1);
+    }
+    return { bySheet, byFile };
+  }, [shapes]);
+  const shapeCount = (key) => shapeTally.bySheet.get(key) || 0;
+  const pdfShapeCount = (file) => shapeTally.byFile.get(file) || 0;
   const labelOf = (key) => {
     if (labels[key]) return labels[key];
     const t = parseSheetKey(key);
@@ -586,7 +644,7 @@ export default function PlanNavigator({
   // ── PLAN body + footer ──────────────────────────────────────────────────
   const planBody = (
     <>
-      <div style={{ flex: 1, overflow: "auto", padding: 18 }}>
+      <div ref={gridRef} style={{ flex: 1, overflow: "auto", padding: 18 }}>
         {groups.map((grp) => (
         <div key={grp.level ?? "__all"} style={{ marginBottom: grp.level !== null ? 22 : 0 }}>
         {grp.level !== null && (
@@ -618,7 +676,7 @@ export default function PlanNavigator({
                 </div>
                 <div style={{ height: 185, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--well)", borderBottom: "1px solid var(--ink-faint)", overflow: "hidden" }}>
                   {thumb
-                    ? <img src={thumb} alt={labelOf(key)} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                    ? <img src={thumb} alt={labelOf(key)} decoding="async" draggable={false} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
                     : <div className="skeleton" style={{ width: "86%", height: "78%" }} />}
                 </div>
                 <div style={{ padding: "8px 10px", display: "flex", alignItems: "baseline", gap: 8 }}>

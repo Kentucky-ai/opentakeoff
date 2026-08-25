@@ -166,3 +166,16 @@ test("TileLRU protect provider shields the visible set when no explicit protect 
   assert.equal(lru.has("visible"), true, "provider-protected key survived");
   assert.equal(lru.has("offscreen"), false, "unprotected key was evicted instead");
 });
+
+test("visibleTilesAtDensity / tileGrid honor a larger BASE tile edge (fewer operator-list walks per composite)", () => {
+  const d = fitDensity(E_W, E_H, BASE_TARGET_AREA);
+  const small = visibleTilesAtDensity(E_W, E_H, d, BASE_LEVEL, 0, 0, E_W, E_H);
+  const big = visibleTilesAtDensity(E_W, E_H, d, BASE_LEVEL, 0, 0, E_W, E_H, 2048);
+  const g = tileGrid(E_W, E_H, d, 2048);
+  assert.equal(big.length, g.cols * g.rows);
+  assert.ok(big.length * 8 <= small.length, `expected ≥8× fewer tiles, got ${small.length} → ${big.length}`);
+  // every big tile is clipped to the level bounds and the set tiles the level exactly
+  const area = big.reduce((a, t) => a + t.w * t.h, 0);
+  assert.equal(area, g.w * g.h);
+  for (const t of big) assert.ok(t.w <= 2048 && t.h <= 2048 && t.x + t.w <= g.w && t.y + t.h <= g.h);
+});

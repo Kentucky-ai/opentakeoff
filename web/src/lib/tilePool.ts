@@ -38,9 +38,16 @@ type OutMsg =
 // and on an iPhone that 3× footprint is what got the workers jetsam-killed
 // (reported live 2026-08-15: "worker failed", planset stuck half-rendered).
 // Desktop pool sizing is unchanged.
+// Desktop: 3 workers was sized for a 4-core laptop. Every tile is a full
+// operator-list walk in pdf.js, so a ~28MP base composite (100+ tiles) on a
+// vector-heavy sheet is pool-bound — measured 6.5 s at 3 workers on an
+// 8+-core Mac with the cores idle. Machines with 8+ logical cores get 5
+// (leaving headroom for the main thread and the browser's own compositor);
+// smaller machines keep the old cores-1-capped-at-3 sizing.
+const CORES = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
 const POOL_SIZE = LOW_MEMORY_DEVICE
   ? 1
-  : Math.max(1, Math.min(3, (typeof navigator !== "undefined" ? navigator.hardwareConcurrency : 4) - 1 || 2));
+  : CORES >= 8 ? 5 : Math.max(1, Math.min(3, CORES - 1));
 
 interface SheetOpenState {
   promise: Promise<void>;
