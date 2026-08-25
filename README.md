@@ -104,6 +104,11 @@ second use is not a side effect; see [the data layer](#the-data-layer--why-this-
   the canonical stored quantities or the underlying geometry. The preference
   is set once and persists across projects
   ([#269](https://github.com/Kentucky-ai/opentakeoff/pull/269))
+- **Brazilian Portuguese naturalization** — pt-BR locale defaults to metric
+  units (`m²`, `m`, `mm`) and uses Brazilian construction terminology
+  (*planta*, *ambiente*, *dedução*, *delimitar*). Imperial remains available
+  everywhere via the unit toggle; internal data does not change when switching
+  between systems
 
 Full history: [CHANGELOG.md](CHANGELOG.md) · every capability mapped to its code:
 [FEATURES.md](FEATURES.md)
@@ -275,7 +280,8 @@ before anything gets traced. A global **Imperial / SI unit preference** (the `ft
 beside the Scale chip, or **Unit settings…** in the Scale menu) switches the display layer
 everywhere — readouts, panels, Report, CSV, Marked Set legend, calibration input — to m² / m /
 mm without changing stored geometry or canonical quantities. Metric inputs convert at the
-boundary; reports and exports convert once on output; all internal math stays in feet.
+boundary; reports and exports convert once on output; all internal math stays in feet. When the
+locale is pt-BR, the preference starts as SI (metric); Imperial is always one toggle away.
 
 ### Conditions, materials, and the buy list
 A **condition** is one finish (LVP, carpet, tile, base…), carrying a line/fill color, a **CAD

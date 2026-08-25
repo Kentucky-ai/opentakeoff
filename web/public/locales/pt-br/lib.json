@@ -163,7 +163,7 @@
     "room": "Ambiente",
     "shapes_note": "Quantidades medidas por forma — sem multiplicador ou perda; deduções negativas; LF em linhas de piso/dedução/superfície é apenas referência de trace (incl. aberturas) — apenas linhas lineares somam ao LF da condição",
     "shapes_note_metric": "Quantidades medidas por forma — sem multiplicador ou perda; deduções negativas; m em linhas de piso/dedução/superfície é apenas referência de trace (incl. aberturas) — apenas linhas lineares somam ao m da condição (unidades de exibição: métrico)",
-    "floor_room_note": "Quantidades pedidas por pavimento × ambiente — % de perda e xN aplicados por fatia; os ambientes de cada pavimento reconciliam com as formas do pavimento. Teto de cobertura é exibição por célula, não lista de compra"
+    "floor_room_note": "Quantidades pedidas por pavimento × ambiente — % de perda e xN aplicados por fatia; os ambientes de cada pavimento reconciliam com as formas do pavimento. O arredondado para cima de cobertura é exibição por célula, não lista de compra."
   },
   "marked_set": {
     "conditions": "CONDIÇÕES",
@@ -186,7 +186,7 @@
     "quantities_note": "quantidades líquidas de deduções, ajustadas por perda quando indicado",
     "marked_set": "conjunto marcado",
     "stitched_composite": "composição costurada",
-    "item": "itens)",
+    "item": "itens",
     "agent": "AGENTE",
     "approved": "APROVADO",
     "priority": "prioridade",
@@ -214,6 +214,7 @@
     "d_wall": "d Parede {{unit}}",
     "d_border": "d Borda {{unit}}",
     "d_lf": "d {{unit}}",
+    "d_lf_waste": "d {{unit}} c/Perda",
     "d_ea": "d UN",
     "d_total": "d Total {{unit}}",
     "d_ordered": "d {{unit}} pedido",

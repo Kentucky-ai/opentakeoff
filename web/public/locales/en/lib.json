@@ -214,6 +214,7 @@
     "d_wall": "d Wall {{unit}}",
     "d_border": "d Border {{unit}}",
     "d_lf": "d {{unit}}",
+    "d_lf_waste": "d {{unit}} w/Waste",
     "d_ea": "d EA",
     "d_total": "d Total {{unit}}",
     "d_ordered": "d {{unit}} ordered",

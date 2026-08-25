@@ -51,7 +51,7 @@ function LayerRow({ layer: l, override, onOverride }) {
   const conf = Math.round((l.confidence || 0) * 100);
   return (
     <div style={{ padding: "7px 12px", borderBottom: "1px solid var(--divider-soft)" }}
-      title={t("layer.row_title", { name: l.name || l.id, segments: l.seg_count, role: roleLabel(l.role, t), confidence: conf ? ` (${conf}% sure)` : "", hidden: l.visible === false ? t("layer.hidden_suffix") : "" })}>
+      title={t("layer.row_title", { name: l.name || l.id, segments: l.seg_count, role: roleLabel(l.role, t), confidence: conf ? t("layer.confidence", { conf }) : "", hidden: l.visible === false ? t("layer.hidden_suffix") : "" })}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
         <b style={{ flex: 1, fontFamily: "var(--f-mono)", fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.name || l.id}</b>
         <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, color: "var(--ink-muted)", flexShrink: 0 }}>{l.seg_count}</span>

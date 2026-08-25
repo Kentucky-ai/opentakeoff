@@ -20,7 +20,7 @@
 
 import { round2 } from "./num.js";
 import { csvEsc as esc } from "./csv.js";
-import { GETTERS, getCsvProfile, colGetter, floorPerimeterLf, applyUnits, METRIC_CSV_LABELS } from "./reportColumns.js";
+import { GETTERS, getCsvProfile, colGetter, floorPerimeterLf, applyUnits, METRIC_LABELS } from "./reportColumns.js";
 import { M_PER_FT, M2_PER_SF } from "./units";
 import { coverageRateForDisplay, groutDisplayNote } from "./coverage.js";
 import { attrValue } from "./conditionColumns.js";
@@ -90,7 +90,9 @@ export function conditionTotals(conditions, shapes, ctx = null) {
       const basisVal = m.basis === "linear" ? lf : m.basis === "count" ? ea : m.basis === "seam_lf" ? seam : total;
       let qty = per > 0 ? basisVal / per : 0;
       qty = m.round === false ? round2(qty) : Math.ceil(qty - 1e-9);
-      return { name: m.name, unit: m.unit || "", per, basis: m.basis || "area", round: m.round !== false, note: m.note || "", basis_qty: round2(basisVal), qty };
+      // Pass through grout/kind for display-only note formatting (groutDisplayNote).
+      // These are NOT storage fields — grout notes are derived at render time.
+      return { name: m.name, unit: m.unit || "", per, basis: m.basis || "area", round: m.round !== false, note: m.note || "", basis_qty: round2(basisVal), qty, ...(m.grout ? { grout: m.grout } : {}), ...(m.kind ? { kind: m.kind } : {}) };
     });
     return {
       id: c.id, finish_tag: c.finish_tag, color: c.color, fill: c.fill, hatch: c.hatch,
@@ -104,6 +106,9 @@ export function conditionTotals(conditions, shapes, ctx = null) {
       total_sf_net: round2(total * w),
       sy_net: round2((total * w) / 9),
       materials,
+      // raw unrounded accumulators — internal, used by revisions.js diff to
+      // compare before display rounding; filtered out of JSON/CSV exports
+      _raw: { floor_sf: floor, wall_sf: wall, border_sf: border, lf, total_sf: total, lf_net: lf * w, total_sf_net: total * w },
     };
   });
 }
@@ -292,7 +297,7 @@ export function hasMultipliers(bySheet) {
 // only for hand-edited fractional counts (drawn count shapes always carry
 // computed.count === 1); that aligns the JSON/PDF with the CSV, which already
 // rounded ea.
-export function roundSheetRow(r) {
+export function roundSheetRow({ _raw, ...r }) {
   return {
     ...r,
     floor_sf: round2(r.floor_sf), wall_sf: round2(r.wall_sf),
@@ -366,9 +371,9 @@ export function grandTotals(rows) {
 export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel = null, cols = null, ctx = null, byLabel = null, brandName = "OpenTakeoff", units = "imperial") {
   // the caller passes RAW descriptors; conversion happens here (one site per
   // output) through the same applyUnits seam the report table uses
-  const columns = applyUnits(cols || getCsvProfile().filter((c) => c.defaultVisible), units, METRIC_CSV_LABELS);
+  const columns = applyUnits(cols || getCsvProfile().filter((c) => c.defaultVisible), units, METRIC_LABELS);
   const M = units === "metric";
-  const AU = M ? "m2" : "SF", LU = M ? "m" : "LF";
+  const AU = M ? "m²" : "SF", LU = M ? "m" : "LF";
   const A = (v) => (M ? round2((Number(v) || 0) * M2_PER_SF) : v);
   const L = (v) => (M ? round2((Number(v) || 0) * M_PER_FT) : v);
   const lines = [columns.map((c) => esc(c.header)).join(",")];
@@ -391,7 +396,7 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
   // supporting materials — per condition, then a combined buy list. Coverage
   // rates deliberately stay as entered (SF/LF-based) in metric mode — the
   // upstream metric contract; the report panel carries the footnote.
-  const basisLabel = (b) => (b === "linear" ? (M ? "m" : _t("basis.lf")) : b === "count" ? _t("basis.ea") : b === "seam_lf" ? (M ? "seam m" : _t("basis.seam_lf")) : (M ? "m²" : _t("basis.sf")));
+  const basisLabel = (b) => (b === "linear" ? (M ? "m" : _t("basis.lf")) : b === "count" ? _t("basis.ea") : b === "seam_lf" ? (M ? _t("basis.seam_lf").replace(/\bLF\b/g, "m") : _t("basis.seam_lf")) : (M ? "m²" : _t("basis.sf")));
   const perCond = [];
   for (const r of rows) for (const m of (r.materials || [])) {
     const per = M ? round2(coverageRateForDisplay(m.per, m.basis, units)) : m.per;
@@ -481,7 +486,7 @@ export function reportJson({ projectName = "", rows = [], bySheet = [], scaleInf
     // untouched). Iterating the DEFINED columns — never raw attrs — naturally
     // drops orphaned colIds; attrValue (the shared assigned-value rule) keeps
     // corrupted and empty values out of the export.
-    conditions: rows.map((r) => ({
+    conditions: rows.map(({ _raw, ...r }) => ({
       ...r,
       columns: colDefs.flatMap((cc) => {
         const v = attrValue(attrs.get(r.id), cc.id);   // the shared assigned-value rule
@@ -543,10 +548,11 @@ export function reportJson({ projectName = "", rows = [], bySheet = [], scaleInf
       label: gp.value ?? null,   // null = Unlabeled
       rows: (gp.rows || []).map((r) => ({ id: r.id, finish_tag: r.finish_tag, floor_sf: r.floor_sf, wall_sf: r.wall_sf, border_sf: r.border_sf, lf: r.lf, ea: r.ea, total_sf: r.total_sf, total_sf_net: r.total_sf_net })),
     })),
-    // units metadata APPENDS last (additive-only v1): every quantity above is
-    // RAW internal feet (SF/LF/SY keys, uninterpretable otherwise); this is
-    // the display system the exporting user was reading — the units port's
-    // "JSON stays raw, but says so" contract.
+    // units metadata APPENDS last (additive-only v1): every numeric quantity
+    // above is RAW internal feet/SF/LF (the canonical storage contract);
+    // `units` describes the storage convention, `display_units` records which
+    // unit system the exporting user was reading.  Internal field names
+    // (floor_sf, lf, etc.) are storage contracts and never change.
     units: "imperial (SF/LF — raw internal values)",
     display_units: displayUnits === "metric" ? "metric" : "imperial",
     // roll_goods APPENDS last (additive-only v1, #136): one row per roll-goods

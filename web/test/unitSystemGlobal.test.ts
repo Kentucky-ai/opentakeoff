@@ -10,7 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { readUnitSystem, writeUnitSystem, normalizeUnitSystem, UNIT_SYSTEM_KEY, migrateLegacyUnit, LEGACY_UNIT_KEY } from "../src/lib/unitPreference.js";
+import { readUnitSystem, writeUnitSystem, normalizeUnitSystem, UNIT_SYSTEM_KEY, migrateLegacyUnit, LEGACY_UNIT_KEY, resolveAfterLanguageChange } from "../src/lib/unitPreference.js";
 
 const here = path.resolve(import.meta.dirname, "..");
 
@@ -303,6 +303,179 @@ test("main.jsx mounts UnitSystemProvider above both route branches", () => {
   assert.ok(providerIdx < routesIdx, "UnitSystemProvider must wrap the Routes");
 });
 
+// ── language-aware default wiring ──────────────────────────────────────────
+
+test("UnitSystemProvider imports i18n and passes i18n.language to readUnitSystem", () => {
+  const provider = fs.readFileSync(path.join(here, "src/components/UnitSystemProvider.jsx"), "utf8");
+  // Must import i18n
+  assert.ok(
+    /import.*i18n/.test(provider),
+    "UnitSystemProvider must import i18n for language-aware unit default"
+  );
+  // Initial useState must call readUnitSystem with { lng: i18n.language }
+  assert.ok(
+    /readUnitSystem\(.*\{.*lng:.*i18n\.language\s*\}/.test(provider),
+    "UnitSystemProvider useState must pass { lng: i18n.language } to readUnitSystem"
+  );
+  // Migration re-read must also pass { lng: i18n.language }
+  assert.ok(
+    /readUnitSystem\([^)]*\{[^}]*lng:.*i18n\.language[^}]*\}\)/.test(provider),
+    "UnitSystemProvider migration re-read must pass { lng: i18n.language } to readUnitSystem"
+  );
+});
+
+test("unitPreference.js exports languageDefault helper", () => {
+  const src = fs.readFileSync(path.join(here, "src/lib/unitPreference.js"), "utf8");
+  assert.ok(
+    /export function languageDefault/.test(src),
+    "unitPreference.js must export languageDefault(lng)"
+  );
+});
+
+test("readUnitSystem uses languageDefault for fallback when no valid preference is stored", () => {
+  const src = fs.readFileSync(path.join(here, "src/lib/unitPreference.js"), "utf8");
+  // readUnitSystem must call languageDefault as fallback, not return DEFAULT_UNIT_SYSTEM directly
+  assert.ok(
+    /languageDefault/.test(src) && /const fallback = languageDefault\(lng\)/.test(src),
+    "readUnitSystem must derive its fallback from languageDefault(lng)"
+  );
+});
+
+test("unitPreference.js exports hasExplicitPreference", () => {
+  const src = fs.readFileSync(path.join(here, "src/lib/unitPreference.js"), "utf8");
+  assert.ok(
+    /export function hasExplicitPreference/.test(src),
+    "unitPreference.js must export hasExplicitPreference(storage)"
+  );
+});
+
+// ── languageChanged subscription wiring ─────────────────────────────────────
+
+test("UnitSystemProvider imports useEffect and hasExplicitPreference", () => {
+  const provider = fs.readFileSync(path.join(here, "src/components/UnitSystemProvider.jsx"), "utf8");
+  assert.ok(
+    /useEffect/.test(provider),
+    "UnitSystemProvider must import useEffect for the languageChanged subscription"
+  );
+  assert.ok(
+    /import.*hasExplicitPreference.*from.*unitPreference/.test(provider),
+    "UnitSystemProvider must import hasExplicitPreference from unitPreference.js"
+  );
+});
+
+test("UnitSystemProvider subscribes to i18n.on('languageChanged') with cleanup", () => {
+  const provider = fs.readFileSync(path.join(here, "src/components/UnitSystemProvider.jsx"), "utf8");
+  // Must register the handler
+  assert.ok(
+    /i18n\.on\(\s*"languageChanged"\s*,\s*\w+\s*\)/.test(provider),
+    "UnitSystemProvider must subscribe to i18n.on('languageChanged', handler)"
+  );
+  // Must clean up on unmount
+  assert.ok(
+    /i18n\.off\(\s*"languageChanged"\s*,\s*\w+\s*\)/.test(provider),
+    "UnitSystemProvider must call i18n.off('languageChanged', handler) in the cleanup"
+  );
+});
+
+test("languageChanged handler calls hasExplicitPreference and re-resolves with readUnitSystem", () => {
+  const provider = fs.readFileSync(path.join(here, "src/components/UnitSystemProvider.jsx"), "utf8");
+  // Must call resolveAfterLanguageChange for the decision
+  assert.ok(
+    /resolveAfterLanguageChange\(/.test(provider),
+    "languageChanged handler must call resolveAfterLanguageChange for the decision"
+  );
+  // Must check hasExplicitPreference for the storage half
+  assert.ok(
+    /hasExplicitPreference\(\)/.test(provider),
+    "languageChanged handler must pass hasExplicitPreference() to resolveAfterLanguageChange"
+  );
+  // Must pass explicitPreferenceRef as the in-memory flag
+  assert.ok(
+    /explicitPreferenceRef\.current/.test(provider),
+    "languageChanged handler must pass explicitPreferenceRef.current to resolveAfterLanguageChange"
+  );
+  // Must only update state when the resolved value differs from current
+  assert.ok(
+    /resolved\s*!==\s*unitSystemRef\.current/.test(provider),
+    "languageChanged handler must only update state when resolved differs from current"
+  );
+  // Must sync both ref and state on change
+  assert.ok(
+    /unitSystemRef\.current\s*=\s*resolved/.test(provider),
+    "languageChanged handler must assign resolved to unitSystemRef.current"
+  );
+  assert.ok(
+    /setUnitSystemState\(resolved\)/.test(provider),
+    "languageChanged handler must call setUnitSystemState(resolved)"
+  );
+});
+
+test("UnitSystemProvider declares explicitPreferenceRef initialized from hasExplicitPreference", () => {
+  const provider = fs.readFileSync(path.join(here, "src/components/UnitSystemProvider.jsx"), "utf8");
+  // Must declare a useRef with hasExplicitPreference()
+  assert.ok(
+    /explicitPreferenceRef\s*=\s*useRef\(hasExplicitPreference\(\)\)/.test(provider),
+    "UnitSystemProvider must declare explicitPreferenceRef = useRef(hasExplicitPreference())"
+  );
+});
+
+test("UnitSystemProvider setUnitSystem sets explicitPreferenceRef.current = true", () => {
+  const provider = fs.readFileSync(path.join(here, "src/components/UnitSystemProvider.jsx"), "utf8");
+  // Find the setUnitSystem callback body
+  const setterMatch = provider.match(
+    /const\s+setUnitSystem\s*=\s*useCallback\(\s*\(valueOrFn\)\s*=>\s*\{([\s\S]*?)\},\s*\[\]\s*\)/
+  );
+  assert.ok(setterMatch, "UnitSystemProvider must define setUnitSystem as useCallback([], [])");
+  const setterBody = setterMatch[1];
+  // Must set explicitPreferenceRef.current = true
+  assert.ok(
+    /explicitPreferenceRef\.current\s*=\s*true/.test(setterBody),
+    "setUnitSystem must set explicitPreferenceRef.current = true on explicit user action"
+  );
+});
+
+test("UnitSystemProvider imports resolveAfterLanguageChange from unitPreference.js", () => {
+  const provider = fs.readFileSync(path.join(here, "src/components/UnitSystemProvider.jsx"), "utf8");
+  assert.ok(
+    /import.*resolveAfterLanguageChange.*from.*unitPreference/.test(provider),
+    "UnitSystemProvider must import resolveAfterLanguageChange from unitPreference.js"
+  );
+});
+
+test("unitPreference.js exports resolveAfterLanguageChange", () => {
+  const src = fs.readFileSync(path.join(here, "src/lib/unitPreference.js"), "utf8");
+  assert.ok(
+    /export function resolveAfterLanguageChange/.test(src),
+    "unitPreference.js must export resolveAfterLanguageChange"
+  );
+});
+
+test("UnitSystemProvider migration re-read syncs unitSystemRef.current", () => {
+  const provider = fs.readFileSync(path.join(here, "src/components/UnitSystemProvider.jsx"), "utf8");
+  // Anchor in the migration useLayoutEffect body: find the migrateLegacyUnit()
+  // call and verify that unitSystemRef.current is assigned within the same
+  // conditional branch (the ok === true path), not elsewhere.
+  const migrateIdx = provider.indexOf("migrateLegacyUnit()");
+  assert.ok(migrateIdx > 0, "migrateLegacyUnit() call not found");
+  // The migration effect body runs from migrateLegacyUnit() to the next },[]
+  // dependency array.  Extract up to the closing of this useLayoutEffect.
+  const effectStart = provider.lastIndexOf("useLayoutEffect", migrateIdx);
+  assert.ok(effectStart > 0, "useLayoutEffect not found before migrateLegacyUnit()");
+  const depArrayIdx = provider.indexOf("}, [retryCount])", migrateIdx);
+  assert.ok(depArrayIdx > 0, "retryCount dependency array not found after migrateLegacyUnit()");
+  const migrationBody = provider.slice(effectStart, depArrayIdx + 4);
+  assert.ok(
+    /unitSystemRef\.current\s*=\s*\w+/.test(migrationBody),
+    "Migration useLayoutEffect body must sync unitSystemRef.current after re-reading state"
+  );
+  // The ref assignment must be inside the `if (ok)` branch, not outside
+  const okIdx = migrationBody.indexOf("if (ok)");
+  const refIdx = migrationBody.indexOf("unitSystemRef.current =");
+  assert.ok(okIdx >= 0 && refIdx > okIdx,
+    "unitSystemRef.current assignment must be inside the if (ok) branch of migration"
+  );
+});
+
 // ── UnitSettings accessibility attributes ────────────────────────────────────
 
 test("UnitSettings has role='dialog' and aria-modal='true'", () => {
@@ -366,8 +539,8 @@ test("MaterialRateInput labels coverage using the selected material basis", () =
 
 test("Metric roll basis options remain distinguishable", () => {
   const panel = fs.readFileSync(path.join(here, "src/components/TakeoffsPanel.jsx"), "utf8");
-  assert.ok(/m² \(SY basis\)/.test(panel), "metric SY basis must remain distinguishable");
-  assert.ok(/m² \(SF basis\)/.test(panel), "metric SF basis must remain distinguishable");
+  assert.ok(/takeoffs\.roll_metric_sy_basis/.test(panel), "metric SY basis must use i18n key, not hardcoded");
+  assert.ok(/takeoffs\.roll_metric_sf_basis/.test(panel), "metric SF basis must use i18n key, not hardcoded");
 });
 
 // ── MCP payload compatibility ────────────────────────────────────────────────

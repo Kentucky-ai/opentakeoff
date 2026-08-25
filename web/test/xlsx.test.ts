@@ -5,7 +5,7 @@ import path from "node:path";
 import { unzipSync, strFromU8 } from "fflate";
 // xlsx.js is plain JS (allowJs); the tsx loader resolves it from the .ts test.
 import { escXml, colLetter, sanitizeSheetName, sheetXml, buildXlsx, reportWorkbook } from "../src/lib/xlsx.js";
-import { conditionTotals, sheetTotals, sheetLabelGroupedRows } from "../src/lib/totals.js";
+import { conditionTotals, sheetTotals, sheetLabelGroupedRows, round2, grandTotals } from "../src/lib/totals.js";
 import { CSV_PROFILE, customColProfile, specColProfile, visibleCols } from "../src/lib/reportColumns.js";
 import { shapesDetail } from "../src/lib/shapesExport.js";
 import i18n from "../src/i18n/index.js";
@@ -156,6 +156,27 @@ test("reportWorkbook: metric material coverage converts canonical rates and labe
   assert.equal(adhesive![4], "1 bucket / 9.29 m²");
 });
 
+test("reportWorkbook: pt-BR metric seam basis uses localized label (costura m, not seam m)", async () => {
+  await i18n.changeLanguage("pt-br");
+  const seamConds = [{ id: "c1", finish_tag: "CPT-1", materials: [{ name: "Weld rod", unit: "roll", per: 10, basis: "seam_lf" }] }];
+  const seamShapes = [{ id: "s1", sheet_id: "plan.pdf#1", condition_id: "c1", measure_role: "floor_area", computed: { area_sf: 100, perimeter_lf: 40 } }];
+  const tabs = reportWorkbook({
+    rows: conditionTotals(seamConds as any, seamShapes as any).filter((r: any) => r.shape_count > 0),
+    bySheet: sheetTotals(seamConds as any, seamShapes as any),
+    shapeRows: shapesDetail(seamConds as any, seamShapes as any),
+    cols: visibleCols(CSV_PROFILE, {}),
+    units: "metric",
+  });
+  const materials = tabs[2].rows;
+  const weldRod = materials.find((r: any[]) => r[1] === "Weld rod");
+  assert.ok(weldRod, "Weld rod row found");
+  // Coverage should say "costura m" in pt-BR metric, not "seam m"
+  const coverage = String(weldRod[4]);
+  assert.ok(coverage.includes("costura m"), `pt-BR metric must use "costura m": ${coverage}`);
+  assert.ok(!coverage.includes("seam"), `pt-BR metric must not contain "seam": ${coverage}`);
+  await i18n.changeLanguage("en");
+});
+
 test("reportWorkbook: custom column in cols — header, per-row value, blank TOTAL cell", () => {
   const custom = customColProfile([{ id: "div", name: "CSI Division", values: ["09 30 00"] }]);
   const tabs = reportWorkbook({
@@ -283,7 +304,9 @@ test("buildXlsx: hostile tab names are sanitized and deduped in workbook.xml", a
   assert.equal(new Set(names.map((n) => n.toLowerCase())).size, 3, "names must be unique");
 });
 
-// ── locale × unit-system matrix for XLSX shapes tab (P2 metric-export fix) ──
+// ── locale × unit-system matrix for ALL XLSX tabs (P2 metric-export fix) ───
+// Regression: metric mode must never leak SF/LF/ft into headers; imperial must
+// keep them.  Tests cover Conditions, By-sheet, Shapes, and By floor×room tabs.
 
 const LOCALES = ["en", "pt-br"] as const;
 const SYSTEMS = ["imperial", "metric"] as const;
@@ -291,15 +314,19 @@ const SYSTEMS = ["imperial", "metric"] as const;
 // Helper to get _t for localized tab name matching
 const _tXlsx = (key: string) => i18n.t(key, { ns: "lib" });
 
+// True when a string carries " SF ", " LF ", or " ft" (with optional trailing
+// punctuation) outside interpolation variables.
+const hasBareImperial = (s: string) => /\bSF\b|\bLF\b|\bft\b/.test(s);
+
 for (const locale of LOCALES) {
   for (const system of SYSTEMS) {
+    // ── Shapes tab height header ──────────────────────────────────────────
     test(`${locale}/${system} reportWorkbook shapes tab uses localized height header`, async () => {
       await i18n.changeLanguage(locale);
       const tabs = reportWorkbook({ ...workbookArgs(), units: system });
       const shapeTab = tabs.find((t: any) => t.name === _tXlsx("xlsx.tab_shapes"))
         || tabs.find((t: any) => t.name === "Shapes");
       assert.ok(shapeTab, "Shapes tab not found");
-      // Row index 1 is the header row (0 is the note)
       const headerRow = shapeTab.rows[1];
       const heightCol = headerRow.find((h: string) =>
         h.includes("Height") || h.includes("Altura"));
@@ -317,10 +344,221 @@ for (const locale of LOCALES) {
           `${locale}/${system} shapes height header must contain "ft": ${heightCol}`);
       }
     });
+
+    // ── Conditions tab: metric headers must not leak SF/LF/ft ─────────────
+    test(`${locale}/${system} reportWorkbook Conditions tab headers respect unit system`, async () => {
+      await i18n.changeLanguage(locale);
+      const tabs = reportWorkbook({ ...workbookArgs(), units: system });
+      const cTab = tabs[0];  // Conditions is the first tab
+      assert.ok(cTab, "Conditions tab not found");
+      const headerRow = cTab.rows[0] as string[];
+      const allHeaders = headerRow.join(" ");
+
+      if (system === "metric") {
+        assert.ok(!allHeaders.includes("SF"), `Conditions metric headers must not contain "SF": ${headerRow}`);
+        assert.ok(!allHeaders.includes(" LF "), `Conditions metric headers must not contain " LF ": ${headerRow}`);
+        assert.ok(allHeaders.includes("m"), `Conditions metric headers must contain "m": ${headerRow}`);
+      } else {
+        const sfHeaders = headerRow.filter((h: string) =>
+          h.includes("Total SF") || h.includes("Floor SF") || h.includes("Wall SF") || h.includes("Border SF"));
+        const lfHeaders = headerRow.filter((h: string) => /\bLF\b/.test(h));
+        assert.ok(sfHeaders.length > 0, `Conditions imperial headers must contain SF: ${headerRow}`);
+        assert.ok(lfHeaders.length > 0, `Conditions imperial headers must contain LF: ${headerRow}`);
+      }
+    });
+
+    // ── By-sheet tab: metric headers must not leak SF/LF ──────────────────
+    test(`${locale}/${system} reportWorkbook By-sheet tab headers respect unit system`, async () => {
+      await i18n.changeLanguage(locale);
+      const tabs = reportWorkbook({ ...workbookArgs(), units: system });
+      const sheetTab = tabs.find((t: any) =>
+        t.name === _tXlsx("xlsx.tab_by_sheet")) || tabs.find((t: any) => t.name === "By sheet");
+      assert.ok(sheetTab, "By-sheet tab not found");
+      const headerRow = sheetTab.rows[0] as string[];
+      const allHeaders = headerRow.join(" ");
+
+      if (system === "metric") {
+        assert.ok(!allHeaders.includes("SF"), `By-sheet metric headers must not contain "SF": ${headerRow}`);
+        assert.ok(!allHeaders.includes("LF"), `By-sheet metric headers must not contain "LF": ${headerRow}`);
+        assert.ok(allHeaders.includes("m"), `By-sheet metric headers must contain "m": ${headerRow}`);
+      } else {
+        assert.ok(allHeaders.includes("SF"), `By-sheet imperial headers must contain "SF": ${headerRow}`);
+        assert.ok(allHeaders.includes("LF"), `By-sheet imperial headers must contain "LF": ${headerRow}`);
+      }
+    });
+
+    // ── Shapes tab: area/LF headers must not leak SF/LF in metric ─────────
+    test(`${locale}/${system} reportWorkbook Shapes tab area/LF headers respect unit system`, async () => {
+      await i18n.changeLanguage(locale);
+      const tabs = reportWorkbook({ ...workbookArgs(), units: system });
+      const shapeTab = tabs.find((t: any) => t.name === _tXlsx("xlsx.tab_shapes"))
+        || tabs.find((t: any) => t.name === "Shapes");
+      assert.ok(shapeTab, "Shapes tab not found");
+      const headerRow = shapeTab.rows[1] as string[];
+      const allHeaders = headerRow.join(" ");
+
+      if (system === "metric") {
+        assert.ok(!allHeaders.includes(" SF "), `Shapes metric headers must not contain " SF ": ${headerRow}`);
+        assert.ok(!allHeaders.includes(" LF "), `Shapes metric headers must not contain " LF ": ${headerRow}`);
+        assert.ok(!allHeaders.includes(" ft"), `Shapes metric headers must not contain " ft": ${headerRow}`);
+        assert.ok(allHeaders.includes("m²") || allHeaders.includes("m2"),
+          `Shapes metric headers must contain m²: ${headerRow}`);
+      } else {
+        assert.ok(allHeaders.includes("SF"), `Shapes imperial headers must contain "SF": ${headerRow}`);
+        assert.ok(allHeaders.includes("LF") || allHeaders.includes("ft"),
+          `Shapes imperial headers must contain "LF" or "ft": ${headerRow}`);
+      }
+    });
+
+    // ── By floor×room tab: metric headers must not leak SF/LF ─────────────
+    test(`${locale}/${system} reportWorkbook floor×room tab headers respect unit system`, async () => {
+      await i18n.changeLanguage(locale);
+      const labeled = [
+        { id: "s1", sheet_id: "plan.pdf#1", condition_id: "c1", label: "101", measure_role: "floor_area", computed: { area_sf: 60, perimeter_lf: 32 } },
+        { id: "s2", sheet_id: "plan.pdf#2", condition_id: "c2", measure_role: "linear", computed: { perimeter_lf: 25, area_sf: 0 } },
+      ];
+      const tabs = reportWorkbook({
+        ...workbookArgs(),
+        units: system,
+        byFloorRoom: sheetLabelGroupedRows(conds as any, labeled as any, ["101"]),
+      });
+      const tab = tabs.find((t: any) =>
+        t.name === _tXlsx("xlsx.tab_floor_room")) || tabs.find((t: any) => t.name === "By floor × room");
+      assert.ok(tab, "Floor×room tab not found");
+      const headerRow = tab.rows[1] as string[];
+      const allHeaders = headerRow.join(" ");
+
+      if (system === "metric") {
+        assert.ok(!allHeaders.includes("SF"), `floor×room metric headers must not contain "SF": ${headerRow}`);
+        assert.ok(!allHeaders.includes("LF"), `floor×room metric headers must not contain "LF": ${headerRow}`);
+        assert.ok(allHeaders.includes("m"), `floor×room metric headers must contain "m": ${headerRow}`);
+      } else {
+        assert.ok(allHeaders.includes("SF"), `floor×room imperial headers must contain "SF": ${headerRow}`);
+        assert.ok(allHeaders.includes("LF"), `floor×room imperial headers must contain "LF": ${headerRow}`);
+      }
+    });
+
+    // ── Shapes tab data values: metric converts area/LF/height ────────────
+    test(`${locale}/${system} reportWorkbook Shapes tab data values convert correctly`, async () => {
+      await i18n.changeLanguage(locale);
+      const tabs = reportWorkbook({ ...workbookArgs(), units: system });
+      const shapeTab = tabs.find((t: any) => t.name === _tXlsx("xlsx.tab_shapes"))
+        || tabs.find((t: any) => t.name === "Shapes");
+      assert.ok(shapeTab, "Shapes tab not found");
+      // Data rows start at index 2 (0 = note, 1 = header)
+      const dataRows = shapeTab.rows.slice(2);
+      assert.ok(dataRows.length > 0, "Shapes tab has data rows");
+
+      const M2 = 0.09290304;
+      const M = 0.3048;
+      if (system === "metric") {
+        // s1: floor_area 100 SF, perimeter_lf 40
+        const s1 = dataRows.find((r: any[]) => r[0] === "s1");
+        assert.ok(s1, "s1 row found");
+        assert.equal(s1[5], 9.29, "metric area_sf converted (100 SF → 9.29 m²)");
+        assert.equal(s1[6], round2(40 * M), "metric lf converted (40 LF → 12.19 m)");
+      } else {
+        // imperial: raw internal feet
+        const s1 = dataRows.find((r: any[]) => r[0] === "s1");
+        assert.ok(s1, "s1 row found");
+        assert.equal(s1[5], 100, "imperial area_sf unchanged");
+        assert.equal(s1[6], 40, "imperial lf unchanged");
+      }
+    });
+
+    // ── Materials tab: metric coverage uses m² not SF ─────────────────────
+    test(`${locale}/${system} reportWorkbook Materials tab uses correct unit labels`, async () => {
+      await i18n.changeLanguage(locale);
+      const tabs = reportWorkbook({ ...workbookArgs(), units: system });
+      const matTab = tabs[2];  // Materials is the third tab
+      assert.ok(matTab, "Materials tab not found");
+      const adhesive = matTab.rows.find((r: any[]) => r[1] === "Adhesive");
+      assert.ok(adhesive, "Adhesive row found");
+      // Coverage column (index 4) contains the rate
+      const coverage = String(adhesive[4]);
+      if (system === "metric") {
+        assert.ok(coverage.includes("m²"), `metric materials coverage must use m²: ${coverage}`);
+        assert.ok(!/\bSF\b/.test(coverage), `metric materials coverage must not contain "SF": ${coverage}`);
+      } else {
+        assert.ok(coverage.includes("SF"), `imperial materials coverage must contain "SF": ${coverage}`);
+      }
+    });
   }
 }
 
+// ── en/metric value assertions: use column keys, not header text ──────────
+// These verify actual converted values against M2_PER_SF/M_PER_FT constants
+// for Conditions, By-sheet, and floor×room tabs, avoiding locale-fragile
+// header string matching.
+
+test("en/metric Conditions tab values convert against M2_PER_SF/M_PER_FT", async () => {
+  await i18n.changeLanguage("en");
+  const M2 = 0.09290304, M = 0.3048;
+  const tabs = reportWorkbook({ ...workbookArgs(), units: "metric" });
+  const cTab = tabs[0];
+  const headerRow = cTab.rows[0] as string[];
+  // Find column indices by stable English header text
+  const totalSfIdx = headerRow.findIndex((h: string) => h === "Total m²");
+  const totalNetIdx = headerRow.findIndex((h: string) => h === "Total m² w/Waste");
+  const lfIdx = headerRow.findIndex((h: string) => h === "m");
+  assert.ok(totalSfIdx >= 0, "Total m2 column found");
+  assert.ok(totalNetIdx >= 0, "Total m2 w/Waste column found");
+  assert.ok(lfIdx >= 0, "m column found for LF");
+  // c1 row (100 SF, 10% waste)
+  const r1 = cTab.rows[1] as any[];
+  assert.equal(r1[totalSfIdx], round2(100 * M2), "c1 total_sf: 100 SF → m2");
+  assert.equal(r1[totalNetIdx], round2(110 * M2), "c1 total_sf_net: 110 SF → m2");
+  // c2 row (25 LF × 2 multiplier = 50 LF)
+  const r2 = cTab.rows[2] as any[];
+  assert.equal(r2[lfIdx], round2(50 * M), "c2 lf: 50 LF → m");
+  // TOTAL row
+  const totalRow = cTab.rows[cTab.rows.length - 1] as any[];
+  const testRows = conditionTotals(conds as any, shapes as any).filter((r: any) => r.shape_count > 0);
+  const g = grandTotals(testRows);
+  assert.equal(totalRow[totalSfIdx], round2(g.total_sf * M2), "TOTAL total_sf converted");
+  assert.equal(totalRow[lfIdx], round2(g.lf * M), "TOTAL lf converted");
+});
+
+test("en/metric By-sheet tab values convert against M2_PER_SF/M_PER_FT", async () => {
+  await i18n.changeLanguage("en");
+  const M2 = 0.09290304, M = 0.3048;
+  const tabs = reportWorkbook({ ...workbookArgs(), units: "metric" });
+  const sheetTab = tabs.find((t: any) => t.name === "By sheet");
+  assert.ok(sheetTab, "By-sheet tab not found");
+  const headerRow = sheetTab.rows[0] as string[];
+  const floorIdx = headerRow.findIndex((h: string) => h === "Floor m²");
+  const lfIdx = headerRow.findIndex((h: string) => h === "m");
+  assert.ok(floorIdx >= 0, "Floor m2 column found");
+  assert.ok(lfIdx >= 0, "m column found");
+  // Data row for plan.pdf#1: c1 floor_area 100 SF
+  const dataRows = sheetTab.rows.slice(1) as any[];
+  const s1Row = dataRows.find((r: any[]) => r[1] === "plan.pdf#1");
+  assert.ok(s1Row, "plan.pdf#1 row found");
+  assert.equal(s1Row[floorIdx], round2(100 * M2), "s1 floor_sf: 100 SF → m2");
+});
+
+test("en/metric floor×room tab values convert against M2_PER_SF/M_PER_FT", async () => {
+  await i18n.changeLanguage("en");
+  const M2 = 0.09290304;
+  const labeled = [
+    { id: "s1", sheet_id: "plan.pdf#1", condition_id: "c1", label: "101", measure_role: "floor_area", computed: { area_sf: 60, perimeter_lf: 32 } },
+  ];
+  const tabs = reportWorkbook({
+    ...workbookArgs(),
+    units: "metric",
+    byFloorRoom: sheetLabelGroupedRows(conds as any, labeled as any, ["101"]),
+  });
+  const tab = tabs.find((t: any) => t.name === "By floor × room");
+  assert.ok(tab, "Floor×room tab not found");
+  const headerRow = tab.rows[1] as string[];
+  const floorIdx = headerRow.findIndex((h: string) => h === "Floor m²");
+  assert.ok(floorIdx >= 0, "Floor m2 column found in floor×room");
+  // Data row: c1 on plan.pdf#1, label 101, 60 SF
+  const dataRow = tab.rows[2] as any[];
+  assert.equal(dataRow[floorIdx], round2(60 * M2), "floor×room floor_sf: 60 SF → m2");
+});
+
 // Restore default locale
-test("restore en locale after xlsx matrix", async () => {
+test("restore en locale after xlsx value assertions", async () => {
   await i18n.changeLanguage("en");
 });

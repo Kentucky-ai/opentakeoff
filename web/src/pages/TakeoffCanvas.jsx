@@ -6297,7 +6297,7 @@ export default function TakeoffCanvas() {
             path. Focus suppresses canvas shortcuts via the existing INPUT guards.
             Deixis: focus marks the utterance's start — "this room" then needs an
             aim placed AFTER it (park the pointer on the room, type, Enter). */}
-        {cluster(t('command.placeholder').split('·')[0].trim(),
+         {cluster(t('command.label'),
           <input
             type="text"
             placeholder={t('command.placeholder')}
@@ -6357,8 +6357,8 @@ export default function TakeoffCanvas() {
           </span>
         )}
         <div style={{ flex: 1 }} />
-        <button onClick={() => setShowReport(true)} disabled={!conditions.length} title={t('menu.report_title')}
-          style={{ padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>{t('menu.report')}</button>
+         <button onClick={() => setShowReport(true)} disabled={!conditions.length} title={t('menu.report_title')}
+           style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", lineHeight: 1, textTransform: "uppercase" }}>{t('menu.report')}</button>
         {/* ⋯ overflow — rarely-used project controls, so the row never wraps
             and nothing shifts position mid-work (issue #61's contract). */}
         <ToolMenu
@@ -6630,9 +6630,15 @@ export default function TakeoffCanvas() {
          {railTile("select", "select", t('tool.select_desc'), "V")}
          {railLabel(t('rail.meas'))}
           {getMeasureTools().map((t) => railTile(t.id, t.icon, t.label, t.shortcut))}
-         {railLabel(t('rail.cut'))}
-          {getCutTools().map((t) => railTile(t.id, t.icon, t.label, t.shortcut, null, { tint: "var(--c-danger)" }))}
-        </nav>
+          {railLabel(t('rail.cut'))}
+           {getCutTools().map((t) => railTile(t.id, t.icon, t.label, t.shortcut, null, { tint: "var(--c-danger)" }))}
+          {focusMode && (
+            <>
+              {railLabel(t('markup.tab_markups'))}
+              {getMarkupTools().map((mt) => railTile(mt.id, mt.icon, mt.label, mt.shortcut))}
+            </>
+          )}
+         </nav>
        )}
        {/* docked LEFT panel — one of Markups/Stamps/RFIs at a time. Reflows the
            canvas (a flex sibling), mirroring the docked Takeoffs panel on the right. */}

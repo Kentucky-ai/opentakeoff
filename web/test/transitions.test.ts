@@ -103,8 +103,8 @@ test("the transition must land on its OWN condition", () => {
   const gate = { a, b, sheets: sheets() };
   assert.equal(transitionRefusal({ ...gate, activeTag: "TR-1" }), null, "a third tag is fine");
   const onto = transitionRefusal({ ...gate, activeTag: "C-1" });
-  assert.match(String(onto), /own condition/, "committing onto C-1 would lengthen the carpet it separates");
-  assert.match(String(transitionRefusal({ ...gate, activeTag: "TR-1", b: a })), /DIFFERENT/);
-  assert.match(String(transitionRefusal({ ...gate, activeTag: "TR-1", b: side("T-1", []) })), /no rooms/);
-  assert.match(String(transitionRefusal({ ...gate, activeTag: "TR-1", unscaled: ["A-102"] })), /no scale/);
+  assert.equal(onto?.code, "transition_own_condition", "committing onto C-1 would lengthen the carpet it separates");
+  assert.equal(transitionRefusal({ ...gate, activeTag: "TR-1", b: a })?.code, "transition_same_finish");
+  assert.equal(transitionRefusal({ ...gate, activeTag: "TR-1", b: side("T-1", []) })?.code, "transition_no_rooms");
+  assert.equal(transitionRefusal({ ...gate, activeTag: "TR-1", unscaled: ["A-102"] })?.code, "transition_no_scale");
 });

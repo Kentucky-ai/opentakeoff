@@ -14,6 +14,31 @@ export const LEGACY_UNIT_KEY = "opentakeoff_units";
 
 export const DEFAULT_UNIT_SYSTEM = "imperial";
 
+/** Language-aware default: pt-BR users get metric; everything else gets the
+ *  canonical DEFAULT_UNIT_SYSTEM (imperial).  Called when no valid preference
+ *  is stored.  Handles both i18next-normalized "pt-br" and raw browser
+ *  variants like "pt-BR" or "pt_BR". */
+export function languageDefault(lng) {
+  if (!lng) return DEFAULT_UNIT_SYSTEM;
+  const lc = lng.toLowerCase().replace("_", "-");
+  // Match "pt-br" and sub-tags like "pt-br-u-nu-metric"
+  return lc === "pt-br" || lc.startsWith("pt-br-") ? "metric" : DEFAULT_UNIT_SYSTEM;
+}
+
+/** Returns true when the storage holds a valid (metric|imperial) preference
+ *  that was explicitly persisted by the user.  Returns false when the key is
+ *  absent, blank, or contains an unrecognised value — meaning the language-
+ *  aware default should be used. */
+export function hasExplicitPreference(storage) {
+  try {
+    const s = resolveStorage(storage);
+    const raw = s?.getItem(UNIT_SYSTEM_KEY);
+    return raw === "metric" || raw === "imperial";
+  } catch {
+    return false;
+  }
+}
+
 /** Normalise an arbitrary value to a valid UnitSystem.  Anything other than
  *  the literal string "metric" collapses to "imperial". */
 export function normalizeUnitSystem(value) {
@@ -61,19 +86,52 @@ export function migrateLegacyUnit(storage) {
   }
 }
 
-/** Read the persisted unit preference.  Returns the default (Imperial) when
+/** Read the persisted unit preference.  Returns a language-aware default when
  *  the key is missing, blank, or contains an unrecognised value.  Storage
  *  access is wrapped in try/catch so a quota-exceeded or SecurityError never
  *  propagates to the caller.  An explicitly `null` storage argument bypasses
  *  the global entirely; an omitted argument resolves from
- *  `globalThis.localStorage`, whose getter may itself throw. */
-export function readUnitSystem(storage) {
+ *  `globalThis.localStorage`, whose getter may itself throw.
+ *
+ *  @param {object|null|undefined} [storage] - localStorage-like object, null
+ *    to skip storage entirely, or omitted/undefined to use
+ *    globalThis.localStorage.
+ *  @param {object} [options] - optional config.
+ *  @param {string} [options.lng] - active i18next language code.  When the
+ *    language is pt-BR and no valid preference is stored, the resolved system
+ *    is "metric" instead of the imperial default. */
+export function readUnitSystem(storage, options) {
+  const lng = options?.lng;
+  const fallback = languageDefault(lng);
   try {
     const s = resolveStorage(storage);
-    return normalizeUnitSystem(s?.getItem(UNIT_SYSTEM_KEY));
+    const raw = s?.getItem(UNIT_SYSTEM_KEY);
+    if (raw === "metric" || raw === "imperial") return raw;
+    return fallback;
   } catch {
-    return DEFAULT_UNIT_SYSTEM;
+    return fallback;
   }
+}
+
+/** Pure decision function: given the current in-memory unit, whether storage
+ *  holds a valid preference, whether the user explicitly chose in-session,
+ *  and the new language code, return the unit system to adopt.
+ *
+ *  - If storage holds a valid value OR the user explicitly chose a unit via
+ *    the UI (explicitMemory flag), the current unit is preserved — language
+ *    changes never override an explicit preference.
+ *  - Otherwise the language-aware default is returned so pt-BR → metric and
+ *    en → imperial on every switch.
+ *
+ *  @param {object} params
+ *  @param {string} params.currentUnit - unit system currently in memory
+ *  @param {boolean} params.hasExplicitStorage - storage holds metric|imperial
+ *  @param {boolean} params.explicitMemory - user chose via setUnitSystem
+ *  @param {string} params.newLng - i18next language code after switch
+ *  @returns {string} the unit system to adopt */
+export function resolveAfterLanguageChange({ currentUnit, hasExplicitStorage, explicitMemory, newLng }) {
+  if (hasExplicitStorage || explicitMemory) return currentUnit;
+  return languageDefault(newLng);
 }
 
 /** Persist the unit preference.  No-op (silently swallows) on storage errors

@@ -145,6 +145,7 @@
     "client_address": "Client address",
     "po_reference": "PO / reference",
     "date_label": "Date",
+    "date_placeholder": "e.g. \"Bid 7/12\"",
     "done": "Done",
     "client": "Client",
     "reference": "Reference",
@@ -164,6 +165,11 @@
     "note": "Note",
     "footnote": "Markups are annotations, not measurements — quantities above are unaffected.",
     "by_sheet": "By sheet"
+  },
+  "markup_type": {
+    "cloud": "CLOUD",
+    "callout": "CALLOUT",
+    "note": "NOTE"
   },
 
   "materials": {

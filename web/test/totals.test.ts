@@ -136,6 +136,7 @@ test("reportJson: v1 key set pinned — top level, sheets[], markups[], by_sheet
   assert.deepEqual(Object.keys(j),
     ["schema", "project_name", "generated_with", "sheets", "conditions", "by_sheet", "totals", "materials", "markups", "rfis", "condition_columns", "shape_labels", "by_label", "units", "display_units", "roll_goods"]);
   assert.equal(j.display_units, "imperial");
+  assert.equal(j.units, "imperial (SF/LF — raw internal values)");
   assert.deepEqual(j.roll_goods, []);   // #136 — always emitted; empty when nothing carries a roll_setup
   // rfis[] appends after markups (additive v1); linked_markups/linked_sheets derived
   assert.deepEqual(Object.keys(j.rfis[0]),
@@ -304,6 +305,17 @@ test("reportJson: a condition-linked markup resolves to its finish_tag; a dangli
   // rather than inventing a tag — the export must not claim a scope that is gone
   assert.equal(j.markups[2].condition_id, "gone");
   assert.equal(j.markups[2].condition, "");
+});
+
+test("reportJson: metric display_units emits coherent units label and raw quantities stay imperial", () => {
+  const conds = [{ id: "ct", finish_tag: "CT-1", waste_pct: 0 }];
+  const shapes = [{ condition_id: "ct", sheet_id: "sh1", measure_role: "floor_area", computed: { area_sf: 100 } }];
+  const j = reportJson({ rows: conditionTotals(conds, shapes), displayUnits: "metric" });
+  assert.equal(j.display_units, "metric");
+  assert.equal(j.units, "imperial (SF/LF — raw internal values)");
+  // raw quantities must remain in internal feet — never converted
+  assert.equal(j.conditions[0].floor_sf, 100);
+  assert.equal(j.conditions[0].total_sf, 100);
 });
 
 // #137 — a RECONCILED deduct (cuts_shape_id set) was boolean-subtracted into

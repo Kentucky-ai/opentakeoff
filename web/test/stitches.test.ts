@@ -54,9 +54,9 @@ test("sanitize: drops malformed entries without wedging the rest", () => {
   assert.equal(out[0].id, "stitch:ok");
 });
 
-test("sanitize: blank name falls back", () => {
+test("sanitize: blank name falls back to empty (caller provides translated default)", () => {
   const out = sanitizeStitches([{ id: "stitch:x", name: "  ", members: [{ key: "a", dx: 0, dy: 0 }, { key: "b", dx: 1, dy: 0 }] }], MAX);
-  assert.equal(out[0].name, "Stitched sheets");
+  assert.equal(out[0].name, "");
 });
 
 test("normalizeMembers: no-op when already at origin (same content)", () => {

@@ -152,7 +152,7 @@ export function buildContribution({ conditions, shapes, scaleInfo = [], counters
 
   // strip color/id from the totals — keep just the numbers + labels
   const totals = conditionTotals(conditions || [], shapes).map(
-    ({ id, color, fill, hatch, ...rest }) => rest
+    ({ id, color, fill, hatch, _raw, ...rest }) => rest
   );
 
   return {

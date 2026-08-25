@@ -46,7 +46,7 @@ test("metric CSV converts measured columns and drops SY", () => {
     total_sf_net: 1000, lf_net: 100, sy_net: 111.1, materials: [],
   }];
   const metric = totalsToCsv(rows, "P", null, null, null, null, null, "OpenTakeoff", "metric");
-  assert.match(metric, /Floor m2/);
+  assert.match(metric, /Floor m²/);
   assert.match(metric, /92\.9/);      // 1000 SF → 92.9 m²
   assert.match(metric, /30\.48/);     // 100 LF → 30.48 m
   assert.doesNotMatch(metric, /SY/);

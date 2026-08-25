@@ -38,6 +38,17 @@ test("shapesDetail: signs and roles — deduct negative, count carries EA only, 
   assert.equal(l.area_sf, 20);
 });
 
+// ── P1.1: reconciled deducts must show 0 area (parent already netted) ────
+test("shapesDetail: reconciled deduct (cuts_shape_id) shows 0 area, not negative", () => {
+  const parent = { id: "p1", sheet_id: "sh1", condition_id: "ct", measure_role: "floor_area", computed: { area_sf: 90 } };
+  const reconciled = { id: "d1", sheet_id: "sh1", condition_id: "ct", measure_role: "deduct", cuts_shape_id: "p1", computed: { area_sf: 10 } };
+  const legacy = { id: "d2", sheet_id: "sh1", condition_id: "ct", measure_role: "deduct", computed: { area_sf: 5 } };
+  const [p, r, l] = shapesDetail(conds, [parent, reconciled, legacy]);
+  assert.equal(p.area_sf, 90, "parent: net area (hole already subtracted)");
+  assert.equal(r.area_sf, 0, "reconciled deduct: 0 (parent already netted)");
+  assert.equal(l.area_sf, -5, "legacy deduct: negative (not yet reconciled)");
+});
+
 test("shapesDetail: shape rows reconcile with conditionTotals (multiplier 1, no waste)", () => {
   const shapes = [
     floor("a", 120.5, 44),
@@ -288,4 +299,79 @@ for (const locale of LOCALES) {
 // Restore default locale for any subsequent tests
 test("restore en locale after matrix", async () => {
   await i18n.changeLanguage("en");
+});
+
+// ── Task 2: metric shapes export regression ─────────────────────────────
+// Ensure shapes CSV never leaks SF/LF/ft/in in metric mode and values convert.
+
+test("shapesToCsv metric: no bare SF/LF/ft in header or data rows", () => {
+  const conds2 = [{ id: "ct", finish_tag: "CT-1" }];
+  const shapes2 = [
+    { id: "a", sheet_id: "sh1", condition_id: "ct", measure_role: "floor_area", computed: { area_sf: 100, perimeter_lf: 40 } },
+    { id: "b", sheet_id: "sh1", condition_id: "ct", measure_role: "linear", computed: { perimeter_lf: 25, area_sf: 10 } },
+  ];
+  // no project name → lines[0] = preamble, lines[1] = header
+  const csv = shapesToCsv(shapesDetail(conds2, shapes2), "", "OpenTakeoff", "metric");
+  const lines = csv.split("\n");
+  const header = lines[1];
+  // Header must use metric labels
+  assert.ok(header.includes("m²"), `metric header must contain m²: ${header}`);
+  assert.ok(!header.includes("SF"), `metric header must not contain SF: ${header}`);
+  assert.ok(!header.includes("LF"), `metric header must not contain LF: ${header}`);
+  assert.ok(!header.includes("ft"), `metric header must not contain ft: ${header}`);
+  // Data lines (index 2+) must not contain bare imperial
+  for (let i = 2; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    assert.ok(!/ SF /.test(lines[i]), `metric data line ${i} must not contain " SF": ${lines[i]}`);
+    assert.ok(!/ LF /.test(lines[i]), `metric data line ${i} must not contain " LF": ${lines[i]}`);
+  }
+});
+
+test("shapesToCsv metric: height column converts feet → metres", () => {
+  const conds2 = [{ id: "ct", finish_tag: "CT-1", height_ft: 9 }];
+  const shapes2 = [
+    { id: "w", sheet_id: "sh1", condition_id: "ct", measure_role: "surface_area", computed: { area_sf: 270, perimeter_lf: 30 }, height_ft: 9 },
+  ];
+  const csv = shapesToCsv(shapesDetail(conds2, shapes2), "", "OpenTakeoff", "metric");
+  const lines = csv.split("\n");
+  const header = lines[1];
+  // Height header must say "m" not "ft"
+  assert.ok(header.includes("Height m") || header.includes("Altura m"),
+    `metric height header must use "m": ${header}`);
+  assert.ok(!header.includes("Height ft"), `metric height header must not contain "ft": ${header}`);
+  // Data row: height 9 ft → 2.7432 m, round2 → 2.74
+  const dataRow = lines[2];
+  const cells = dataRow.split(",");
+  const heightVal = Number(cells[8]);
+  assert.ok(Math.abs(heightVal - 2.74) < 0.01, `metric height must be ~2.74 m: ${heightVal}`);
+});
+
+test("shapesToCsv imperial: no conversion, byte-compatible", () => {
+  const conds2 = [{ id: "ct", finish_tag: "CT-1" }];
+  const shapes2 = [floor("a", 100, 40)];
+  // no project name → lines[0] = preamble, lines[1] = header
+  const csv = shapesToCsv(shapesDetail(conds2, shapes2));
+  const lines = csv.split("\n");
+  const header = lines[1];
+  assert.ok(header.includes("SF"), `imperial header must contain SF: ${header}`);
+  assert.ok(header.includes("LF"), `imperial header must contain LF: ${header}`);
+  assert.ok(header.includes("ft"), `imperial header must contain ft: ${header}`);
+  // Data value unchanged
+  const cells = lines[2].split(",");
+  assert.equal(Number(cells[5]), 100, "imperial area_sf unchanged");
+  assert.equal(Number(cells[6]), 40, "imperial lf unchanged");
+});
+
+test("shapesToCsv metric: value conversions match areaVal/lenVal from units.ts (rounded)", async () => {
+  const { areaVal, lenVal } = await import("../src/lib/units.js");
+  const { round2 } = await import("../src/lib/num.js");
+  const conds2 = [{ id: "ct", finish_tag: "CT-1" }];
+  const shapes2 = [floor("a", 200, 80)];
+  const csv = shapesToCsv(shapesDetail(conds2, shapes2), "", "OpenTakeoff", "metric");
+  const lines = csv.split("\n");
+  const dataCells = lines[2].split(",");  // data row (line 0 = preamble, 1 = header)
+  // area: 200 SF → areaVal(200, "metric") = 18.580608, round2 → 18.58
+  assert.equal(Number(dataCells[5]), round2(areaVal(200, "metric")), "metric area matches rounded areaVal");
+  // lf: 80 LF → lenVal(80, "metric") = 24.384, round2 → 24.38
+  assert.equal(Number(dataCells[6]), round2(lenVal(80, "metric")), "metric lf matches rounded lenVal");
 });

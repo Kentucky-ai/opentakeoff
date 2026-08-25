@@ -59,7 +59,7 @@ export function sanitizeStitches(raw: unknown, maxMembers: number): Stitch[] {
     seen.add(s.id);
     out.push({
       id: s.id,
-      name: typeof s.name === "string" && s.name.trim() ? s.name : "Stitched sheets",
+      name: typeof s.name === "string" && s.name.trim() ? s.name : "",
       members: normalizeMembers(members),
       ...(typeof s.created_at === "string" ? { created_at: s.created_at } : {}),
     });
@@ -139,8 +139,8 @@ export function alignMembers(
   const boxes = memberBoxes(members, dims);
   const ai = memberAtPoint(boxes, anchor[0], anchor[1]);
   const bi = memberAtPoint(boxes, moving[0], moving[1]);
-  if (ai < 0 || bi < 0) return { error: "No sheets to align." };
-  if (ai === bi) return { error: "Both clicks landed on the same sheet — click the matching point on the other sheet." };
+  if (ai < 0 || bi < 0) return { error: "stitch_no_sheets" };
+  if (ai === bi) return { error: "stitch_same_sheet" };
   const dx = anchor[0] - moving[0], dy = anchor[1] - moving[1];
   const next = members.map((m, i) => (i === bi ? { ...m, dx: m.dx + dx, dy: m.dy + dy } : m));
   return { members: normalizeMembers(next), movedKey: members[bi].key };

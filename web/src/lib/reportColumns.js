@@ -56,6 +56,7 @@ export const getTableProfile = () => [
   { key: "border_sf",     header: _t("column.border_sf"),  defaultVisible: true },
   { key: "total_sf",      header: _t("column.total_sf"),   defaultVisible: false, foot: (g) => g.total_sf },
   { key: "lf",            header: _t("column.lf"),         defaultVisible: true },
+  { key: "lf_net",        header: _t("column.lf_net"),     defaultVisible: false, foot: (g) => g.lf_net },
   { key: "ea",            header: _t("column.ea"),         defaultVisible: true },
   { key: "waste_pct",     header: _t("column.waste_pct"),  defaultVisible: true },
   { key: "total_sf_net",  header: _t("column.total_sf_net"), defaultVisible: true,  accent: true, foot: (g) => g.total_sf_net },

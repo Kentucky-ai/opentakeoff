@@ -16,8 +16,9 @@
 // the next render up to MAX_MIGRATION_RETRIES times — bounded so there is
 // no infinite loop.  The ref is per-instance so unmount+remount (HMR, route
 // transitions) naturally re-runs migration from scratch.
-import { createContext, useContext, useState, useCallback, useRef, useLayoutEffect } from "react";
-import { readUnitSystem, writeUnitSystem, migrateLegacyUnit } from "../lib/unitPreference.js";
+import { createContext, useContext, useState, useCallback, useRef, useLayoutEffect, useEffect } from "react";
+import { readUnitSystem, writeUnitSystem, migrateLegacyUnit, hasExplicitPreference, resolveAfterLanguageChange } from "../lib/unitPreference.js";
+import i18n from "../i18n/index.js";
 
 const UnitSystemContext = createContext(null);
 
@@ -27,8 +28,11 @@ const UnitSystemContext = createContext(null);
 const MAX_MIGRATION_RETRIES = 3;
 
 export function UnitSystemProvider({ children }) {
-  // Clean read — no migration side-effect during render.
-  const [unitSystem, setUnitSystemState] = useState(readUnitSystem);
+  // Clean read — no migration side-effect during render.  Pass the active
+  // language so the default is metric for pt-BR and imperial for English.
+  const [unitSystem, setUnitSystemState] = useState(
+    () => readUnitSystem(undefined, { lng: i18n.language }),
+  );
 
   // Per-instance ref: migration completed (true) or not yet (false).
   // Reset to false on unmount+remount so a fresh mount can retry.
@@ -48,7 +52,10 @@ export function UnitSystemProvider({ children }) {
     if (ok) {
       migratedRef.current = true;
       // Re-read after migration so state reflects the promoted value.
-      setUnitSystemState(readUnitSystem());
+      // Pass language so the fallback is correct for pt-BR.
+      const migrated = readUnitSystem(undefined, { lng: i18n.language });
+      setUnitSystemState(migrated);
+      unitSystemRef.current = migrated;
     } else {
       // Storage failure — bump retryCount so the next render re-runs this
       // effect (the ref is still false, so the guard passes).
@@ -61,11 +68,41 @@ export function UnitSystemProvider({ children }) {
   // updates both observe the latest value.
   const unitSystemRef = useRef(unitSystem);
 
+  // In-memory flag: true when the user has explicitly chosen a unit via the
+  // UI (setUnitSystem).  Survives storage failures — the languageChanged
+  // handler checks this *and* the persisted key so an explicit choice is
+  // never silently overridden by a language switch.
+  const explicitPreferenceRef = useRef(hasExplicitPreference());
+
+  // React to language changes: when the user switches locale without an
+  // explicit unit preference stored, re-resolve the default so pt-BR → metric
+  // and en → imperial.  An explicit stored preference or an in-memory explicit
+  // choice always wins.
+  useEffect(() => {
+    const onLanguageChanged = (lng) => {
+      const resolved = resolveAfterLanguageChange({
+        currentUnit: unitSystemRef.current,
+        hasExplicitStorage: hasExplicitPreference(),
+        explicitMemory: explicitPreferenceRef.current,
+        newLng: lng,
+      });
+      if (resolved !== unitSystemRef.current) {
+        unitSystemRef.current = resolved;
+        setUnitSystemState(resolved);
+      }
+    };
+    i18n.on("languageChanged", onLanguageChanged);
+    return () => { i18n.off("languageChanged", onLanguageChanged); };
+  }, []);
+
   const setUnitSystem = useCallback((valueOrFn) => {
     const next = typeof valueOrFn === "function"
       ? valueOrFn(unitSystemRef.current)
       : valueOrFn;
     const norm = writeUnitSystem(next);
+    // Mark that the user has explicitly chosen — even if storage fails, the
+    // in-memory flag prevents the languageChanged handler from overriding it.
+    explicitPreferenceRef.current = true;
     // Sync ref BEFORE (or with) setState so a second functional update
     // in the same microtask/batch sees this value.
     unitSystemRef.current = norm;

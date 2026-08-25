@@ -311,3 +311,143 @@ test("en and pt-br locale files have the same key set (namespace parity)", () =>
 
   assert.deepEqual(diffs, [], `en/pt-br locale key mismatch:\n${diffs.join("\n")}`);
 });
+
+// ── 7. en/pt-br placeholder parity: same {{…}} tokens per key ──────────────
+
+const PLACEHOLDER_RE = /\{\{(\w+)\}\}/g;
+
+function extractPlaceholders(val: unknown): Set<string> {
+  if (typeof val !== "string") return new Set();
+  const m = new Set<string>();
+  let match;
+  while ((match = PLACEHOLDER_RE.exec(val)) !== null) m.add(match[1]);
+  return m;
+}
+
+test("en and pt-br locale values use the same placeholders per key", () => {
+  const diffs: string[] = [];
+
+  for (const ns of LOCALE_NAMESPACES) {
+    const en = loadJson("en", ns) as Record<string, unknown>;
+    const pt = loadJson("pt-br", ns) as Record<string, unknown>;
+    const enKeys = collectKeys(en);
+
+    for (const key of enKeys) {
+      const enVal = getVal(en, key);
+      const ptVal = getVal(pt, key);
+      const enPH = extractPlaceholders(enVal);
+      const ptPH = extractPlaceholders(ptVal);
+      const enArr = [...enPH].sort();
+      const ptArr = [...ptPH].sort();
+      if (enArr.join(",") !== ptArr.join(",")) {
+        diffs.push(`${ns}.${key}: en=[${enArr}] pt-br=[${ptArr}]`);
+      }
+    }
+  }
+
+  assert.deepEqual(diffs, [], `en/pt-br placeholder mismatch:\n${diffs.join("\n")}`);
+});
+
+// ── 8. New revision i18n keys exist and are non-empty in both locales ────────
+
+test("revisions w/Waste, ordered, and moved i18n keys exist in en and pt-br", () => {
+  const contracts: Array<[string, string, string]> = [
+    ["panels", "revisions.table_lf_waste", "revision LF w/Waste column header"],
+    ["panels", "revisions.headline_ordered", "revision ordered headline"],
+    ["panels", "revisions.headline_moved", "revision conditions-moved headline"],
+    ["lib", "revision.d_lf_waste", "CSV revision LF w/Waste header"],
+  ];
+
+  const missing: string[] = [];
+  for (const [ns, key, desc] of contracts) {
+    const en = loadJson("en", ns) as Record<string, unknown>;
+    const pt = loadJson("pt-br", ns) as Record<string, unknown>;
+    const enVal = getVal(en, key);
+    const ptVal = getVal(pt, key);
+    if (!enVal || typeof enVal !== "string" || !enVal.trim()) {
+      missing.push(`en ${ns}.json: ${desc} — key "${key}" missing or empty`);
+    }
+    if (!ptVal || typeof ptVal !== "string" || !ptVal.trim()) {
+      missing.push(`pt-br ${ns}.json: ${desc} — key "${key}" missing or empty`);
+    }
+  }
+
+  assert.deepEqual(missing, [], `revision i18n keys:\n${missing.join("\n")}`);
+});
+
+// ── 9. No duplicate keys in any locale JSON file ─────────────────────────────
+
+// Robust duplicate-key detection: walk the raw JSON and track keys within each
+// brace-delimited object.  This catches true same-parent duplicates (the only
+// kind that JSON.parse silently drops) while ignoring the same key name in
+// different nested objects (which is legitimate).
+function findDuplicateKeysInJson(text: string): string[] {
+  const dupes: string[] = [];
+  // Stack of objects; each entry is a Map<key, first occurrence offset>
+  const stack: Map<string, number>[] = [];
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let expectKey = false;
+  let currentKey = "";
+  let keyStart = -1;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+
+    if (escape) { escape = false; continue; }
+    if (ch === "\\") { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+
+    if (ch === "{") {
+      stack.push(new Map());
+      depth++;
+      expectKey = true;
+    } else if (ch === "}") {
+      stack.pop();
+      depth--;
+    } else if (ch === ":" && expectKey) {
+      // The token before ':' is the key
+      const key = currentKey;
+      if (key && stack.length > 0) {
+        const current = stack[stack.length - 1];
+        if (current.has(key)) {
+          dupes.push(key);
+        } else {
+          current.set(key, keyStart);
+        }
+      }
+      currentKey = "";
+      keyStart = -1;
+      expectKey = false;
+    } else if (ch === ",") {
+      expectKey = true;
+    }
+
+    // Capture key characters (after a '"' opens a key string, before ':' closes it)
+    if (expectKey && ch === '"' && !inString) {
+      // Start of a new key — the next quoted string before ':' is the key
+      let j = i + 1;
+      while (j < text.length && text[j] !== '"') { if (text[j] === "\\") j++; j++; }
+      currentKey = text.slice(i + 1, j);
+      keyStart = i;
+    }
+  }
+  return [...new Set(dupes)]; // deduplicate within the same file
+}
+
+const ALL_LOCALES = ["en", "pt-br"];
+
+test("locale JSON files contain no duplicate keys at the same nesting level", () => {
+  const dupes: string[] = [];
+  for (const lng of ALL_LOCALES) {
+    for (const ns of LOCALE_NAMESPACES) {
+      const filePath = path.join(root, "public", "locales", lng, `${ns}.json`);
+      const text = fs.readFileSync(filePath, "utf8");
+      const found = findDuplicateKeysInJson(text);
+      for (const d of found) dupes.push(`${lng}/${ns}.json: duplicate key "${d}"`);
+    }
+  }
+  assert.deepEqual(dupes, [], `duplicate keys found:\n${dupes.join("\n")}`);
+});

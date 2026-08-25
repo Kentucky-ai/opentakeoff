@@ -14,7 +14,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Icon } from "../brand/icons.jsx";
 import { store, isStaleTabError, friendlyStoreError } from "../lib/store.js";
-import { diffTakeoffs, diffToCsv, revSheetLabel } from "../lib/revisions.js";
+import { diffTakeoffs, diffToCsv, revSheetLabel, convertDelta } from "../lib/revisions.js";
 import { downloadText } from "../lib/totals.js";
 import { areaVal, areaUnit, lenVal, lenUnit } from "../lib/units";
 
@@ -63,9 +63,9 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
 
   const sideA = baseId && baseId !== "current" ? payloads[baseId] : baseId === "current" ? current : null;
   const sideB = compareId === "current" ? current : payloads[compareId];
-  const diff = useMemo(() => (sideA && sideB ? diffTakeoffs(sideA, sideB) : null), [sideA, sideB]);
+  const diff = useMemo(() => (sideA && sideB ? diffTakeoffs(sideA, sideB, units) : null), [sideA, sideB, units]);
 
-  const nameOf = (id) => (id === "current" ? t('revisions.current_takeoff') : revs?.find((r) => r.id === id)?.name || "Revision");
+  const nameOf = (id) => (id === "current" ? t('revisions.current_takeoff') : revs?.find((r) => r.id === id)?.name || t('revisions.untitled'));
   const defaultName = () => `Rev ${(revs?.length || 0) + 1} — ${new Date().toLocaleDateString()}`;
 
   const save = async (name) => {
@@ -88,7 +88,7 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
     setBusy(true); setErr("");
     try {
       // bank the live takeoff first — restore must never be a one-way door
-      await store.saveSnapshot(`Auto-backup before restore — ${new Date().toLocaleString()}`, current);
+      await store.saveSnapshot(`${t('revisions.auto_backup')} — ${new Date().toLocaleString()}`, current);
       const rec = await store.getSnapshot(id);
       if (!rec) { setErr(t('revisions.not_found')); setBusy(false); setConfirmId(""); return; }
       onRestore(rec.payload || {});
@@ -107,22 +107,24 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
   const av = (sf) => areaVal(sf, units), lv = (lf) => lenVal(lf, units);
   const th = { textAlign: "right", padding: "7px 10px", fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--ink-muted)", borderBottom: "1px solid var(--ink)", whiteSpace: "nowrap" };
   const td = { textAlign: "right", padding: "8px 10px", fontVariantNumeric: "tabular-nums", borderBottom: "1px solid var(--ink-faint)", whiteSpace: "nowrap" };
-  // deltas render signed and zero-gate at display precision — the same 0.05/0.5
-  // thresholds the diff's own "changed" judgment uses, so a "changed" row always
-  // shows at least one visible number
-  const delta = (v, isEa = false, convert = (x) => x) => {
-    if (Math.abs(v) < (isEa ? 0.5 : 0.05)) return <span style={{ color: "var(--ink-muted)" }}>—</span>;
-    const shown = convert(v);
-    return <span style={{ fontWeight: 700, color: v > 0 ? "var(--cobalt)" : "var(--c-danger)" }}>{v > 0 ? "+" : "−"}{num(Math.abs(shown), isEa ? 0 : 1)}</span>;
+  // deltas render signed and zero-gate at display precision.  The diff engine
+  // already decided "changed" using raw deltas; the UI just shows "—" for zero
+  // rounded deltas and the converted number otherwise.  Uses convertDelta for
+  // the same formatting as diffToCsv so UI and CSV never diverge.
+  const delta = (v, _isEa = false, _convert = (x) => x, field = "total_sf") => {
+    if (!v) return <span style={{ color: "var(--ink-muted)" }}>—</span>;
+    const shown = convertDelta(v, units, field);
+    const dp = field === "ea" ? 0 : units === "metric" ? 2 : 1;
+    return <span style={{ fontWeight: 700, color: v > 0 ? "var(--cobalt)" : "var(--c-danger)" }}>{v > 0 ? "+" : "−"}{num(Math.abs(shown), dp)}</span>;
   };
   const chip = (status) => (
-    <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: STATUS_COLOR[status] || "var(--ink)", fontWeight: 700 }}>{status}</span>
+    <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: STATUS_COLOR[status] || "var(--ink)", fontWeight: 700 }}>{t(`revisions.status_${status}`) || status}</span>
   );
 
   const condRows = diff ? diff.conditions.filter((c) => showUnchanged || c.status !== "unchanged") : [];
   const sheetRows = diff ? diff.sheets.filter((s) => showUnchanged || s.status !== "unchanged") : [];
   const matRows = diff ? diff.materials.filter((m) => showUnchanged || m.status !== "unchanged") : [];
-  const identical = diff && diff.changed === 0 && diff.sheets.every((s) => s.status === "unchanged");
+  const identical = diff && diff.changed === 0 && !diff.materialsChanged && diff.sheets.every((s) => s.status === "unchanged");
 
   const sel = { padding: "5px 8px", fontSize: 12.5, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", color: "var(--ink)", maxWidth: 240 };
 
@@ -224,8 +226,8 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
                 {/* headline: the ordered-quantity move */}
                 <p style={{ margin: "14px 0 10px", fontSize: 13, color: "var(--ink)" }}>
                   <strong>{nameOf(baseId)}</strong> → <strong>{nameOf(compareId)}</strong>:{" "}
-                  ordered {AU} {num(av(diff.totals.a.total_sf_net))} → <strong>{num(av(diff.totals.b.total_sf_net))}</strong>{" "}
-                  ({delta(diff.totals.deltas.total_sf_net, false, av)}) · {diff.changed} condition{diff.changed === 1 ? "" : "s"} moved
+                  {t('revisions.headline_ordered', { unit: AU, from: num(av(diff.totals.a.total_sf_net)), to: num(av(diff.totals.b.total_sf_net)), delta: num(av(diff.totals.deltas.total_sf_net)) })}{" "}
+                  ({delta(diff.totals.deltas.total_sf_net, false, av, "total_sf_net")}) · {t('revisions.headline_moved', { count: diff.changed })}
                 </p>
                 <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)" }}>
                   <thead><tr>
@@ -235,6 +237,7 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
                     <th style={th}>{t('revisions.table_wall', { unit: AU })}</th>
                     <th style={th}>{t('revisions.table_border', { unit: AU })}</th>
                     <th style={th}>{t('revisions.table_lf', { unit: LU })}</th>
+                    <th style={th}>{t('revisions.table_lf_waste', { unit: LU })}</th>
                     <th style={th}>{t('revisions.table_ea')}</th>
                     <th style={{ ...th, color: "var(--cobalt)" }}>{t('revisions.table_ordered', { unit: AU })}</th>
                   </tr></thead>
@@ -248,17 +251,18 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
                           </span>
                         </td>
                         <td style={{ ...td, textAlign: "left" }}>{chip(c.status)}</td>
-                        <td style={td}>{delta(c.deltas.floor_sf, false, av)}</td>
-                        <td style={td}>{delta(c.deltas.wall_sf, false, av)}</td>
-                        <td style={td}>{delta(c.deltas.border_sf, false, av)}</td>
-                        <td style={td}>{delta(c.deltas.lf, false, lv)}</td>
-                        <td style={td}>{delta(c.deltas.ea, true)}</td>
+                        <td style={td}>{delta(c._rawDeltas?.floor_sf ?? c.deltas.floor_sf, false, av, "floor_sf")}</td>
+                        <td style={td}>{delta(c._rawDeltas?.wall_sf ?? c.deltas.wall_sf, false, av, "wall_sf")}</td>
+                        <td style={td}>{delta(c._rawDeltas?.border_sf ?? c.deltas.border_sf, false, av, "border_sf")}</td>
+                        <td style={td}>{delta(c._rawDeltas?.lf ?? c.deltas.lf, false, lv, "lf")}</td>
+                        <td style={td}>{delta(c._rawDeltas?.lf_net ?? c.deltas.lf_net, false, lv, "lf")}</td>
+                        <td style={td}>{delta(c._rawDeltas?.ea ?? c.deltas.ea, true, undefined, "ea")}</td>
                         <td style={{ ...td, color: "var(--cobalt)" }}>
                           {c.a ? num(av(c.a.total_sf_net)) : "·"} → <strong>{c.b ? num(av(c.b.total_sf_net)) : "·"}</strong>
                         </td>
                       </tr>
                     ))}
-                    {!condRows.length && <tr><td colSpan={8} style={{ ...td, textAlign: "center", color: "var(--ink-muted)" }}>{t('revisions.only_unchanged')}</td></tr>}
+                    {!condRows.length && <tr><td colSpan={9} style={{ ...td, textAlign: "center", color: "var(--ink-muted)" }}>{t('revisions.only_unchanged')}</td></tr>}
                   </tbody>
                 </table>
 
@@ -280,11 +284,11 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
                           <tr key={s.sheet_id}>
                             <td style={{ ...td, textAlign: "left", fontFamily: "var(--f-mono)" }}>{revSheetLabel(s.sheet_id)}</td>
                             <td style={{ ...td, textAlign: "left" }}>{chip(s.status)}</td>
-                            <td style={td}>{delta(s.deltas.floor_sf, false, av)}</td>
-                            <td style={td}>{delta(s.deltas.wall_sf, false, av)}</td>
-                            <td style={td}>{delta(s.deltas.border_sf, false, av)}</td>
-                            <td style={td}>{delta(s.deltas.lf, false, lv)}</td>
-                            <td style={td}>{delta(s.deltas.ea, true)}</td>
+                            <td style={td}>{delta(s._rawDeltas?.floor_sf ?? s.deltas.floor_sf, false, av, "floor_sf")}</td>
+                            <td style={td}>{delta(s._rawDeltas?.wall_sf ?? s.deltas.wall_sf, false, av, "wall_sf")}</td>
+                            <td style={td}>{delta(s._rawDeltas?.border_sf ?? s.deltas.border_sf, false, av, "border_sf")}</td>
+                            <td style={td}>{delta(s._rawDeltas?.lf ?? s.deltas.lf, false, lv, "lf")}</td>
+                            <td style={td}>{delta(s._rawDeltas?.ea ?? s.deltas.ea, true, undefined, "ea")}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -312,7 +316,7 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
                             <td style={{ ...td, textAlign: "left" }}>{chip(m.status)}</td>
                             <td style={td}>{num(m.a_qty, 2)}</td>
                             <td style={{ ...td, fontWeight: 700 }}>{num(m.b_qty, 2)}</td>
-                            <td style={td}>{delta(m.delta)}</td>
+                            <td style={td}>{num(m.delta, m.delta % 1 ? 2 : 0)}</td>
                             <td style={{ ...td, textAlign: "left", paddingLeft: 16, color: "var(--ink-muted)" }}>{m.unit || "—"}</td>
                           </tr>
                         ))}

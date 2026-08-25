@@ -13,7 +13,7 @@
 // materialsSummary, shapesDetail — so the four tabs carry the same numbers as
 // the on-screen table: waste applied only to order quantities, never measured.
 
-import { GETTERS, colGetter, applyUnits, METRIC_CSV_LABELS } from "./reportColumns.js";
+import { GETTERS, colGetter, applyUnits, METRIC_LABELS } from "./reportColumns.js";
 import { grandTotals, materialsSummary, roundSheetRow, hasMultipliers, BY_SHEET_BASE_NOTE } from "./totals.js";
 import { round2 } from "./num.js";
 import { M_PER_FT, M2_PER_SF } from "./units";
@@ -178,10 +178,10 @@ export async function buildXlsx(sheets) {
  * @returns {Array<{name: string, rows: any[][]}>}
  */
 export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols = null, ctx = null, sheetLabel = null, units = "imperial", byFloorRoom = [] }) {
-  const columns = applyUnits(cols || [], units, METRIC_CSV_LABELS);
+  const columns = applyUnits(cols || [], units, METRIC_LABELS);
   const label = (id) => (sheetLabel ? sheetLabel(id) : id);
   const M = units === "metric";
-  const AU = M ? "m2" : "SF", LU = M ? "m" : "LF";
+  const AU = M ? "m²" : "SF", LU = M ? "m" : "LF";
   const A = (v) => (M ? round2((Number(v) || 0) * M2_PER_SF) : v);
   const L = (v) => (M ? round2((Number(v) || 0) * M_PER_FT) : v);
 
@@ -219,7 +219,7 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
   if (hasMultipliers(bySheet)) bySheetRows.push([], [_t("markedset.by_sheet_base_note")]);
 
   // Materials — per condition, then the combined buy list (mirrors the CSV)
-  const basisLabel = (b) => (b === "linear" ? (M ? "m" : "LF") : b === "count" ? "EA" : b === "seam_lf" ? (M ? "seam m" : "seam LF") : (M ? "m²" : "SF"));
+  const basisLabel = (b) => (b === "linear" ? (M ? "m" : _t("basis.lf")) : b === "count" ? _t("basis.ea") : b === "seam_lf" ? (M ? _t("basis.seam_lf").replace(/\bLF\b/g, "m") : _t("basis.seam_lf")) : (M ? "m²" : _t("basis.sf")));
   const materials = [[_t("csv_header.finish"), _t("csv_header.material"), _t("csv_header.qty"), _t("csv_header.unit"), _t("csv_header.coverage"), _t("csv_header.note")]];
   for (const r of rows) for (const m of (r.materials || [])) {
     const per = M ? round2(coverageRateForDisplay(m.per, m.basis, units)) : m.per;

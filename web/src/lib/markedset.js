@@ -26,7 +26,7 @@ import { rfiStatus } from "./rfi.js";
 import { RENDER_SCALE } from "./sheets";
 import { stitchPagePlan, memberEmbed } from "./stitches";
 import { pdfDashFor, boostForDark, clampWeight } from "./lineStyles.js";
-import { dimLabel } from "./units";
+import { dimLabel, areaVal, lenVal, areaUnit, lenUnit } from "./units";
 import i18n from "../i18n/index.js";
 
 const _t = (key, options) => i18n.t(key, { ns: "lib", ...options });
@@ -186,14 +186,13 @@ function hatchLines(poly, style) {
 function shapeChip(shape, cond, M = false) {
   const cp = shape.computed || {};
   const tag = cond?.finish_tag || "";
-  const uA = (sf) => (M ? sf * 0.09290304 : sf);
-  const uL = (lf) => (M ? lf * 0.3048 : lf);
-  const AU = M ? "m²" : "SF", LU = M ? "m" : "LF";
+  const u = M ? "metric" : "imperial";
+  const AU = areaUnit(u), LU = lenUnit(u);
   switch (shape.measure_role) {
-    case "floor_area": return `${tag} · ${num(uA(cp.area_sf || 0))} ${AU}`;
-    case "deduct": return `-${num(uA(cp.area_sf || 0))} ${AU} ${_t("marked_set.deduct_suffix")}`;
-    case "surface_area": return `${tag} · ${num(uA(cp.area_sf || 0))} ${AU} ${_t("marked_set.wall_suffix")}`;
-    case "linear": return `${tag} · ${num(uL(cp.perimeter_lf || 0))} ${LU}`;
+    case "floor_area": return `${tag} · ${num(areaVal(cp.area_sf || 0, u))} ${AU}`;
+    case "deduct": return `-${num(areaVal(cp.area_sf || 0, u))} ${AU} ${_t("marked_set.deduct_suffix")}`;
+    case "surface_area": return `${tag} · ${num(areaVal(cp.area_sf || 0, u))} ${AU} ${_t("marked_set.wall_suffix")}`;
+    case "linear": return `${tag} · ${num(lenVal(cp.perimeter_lf || 0, u))} ${LU}`;
     default: return "";
   }
 }
@@ -219,9 +218,10 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
   // metric converts at the drawn string only — legend rows, by-sheet rows, and
   // the per-shape chips. Unicode "m²" (U+00B2, valid WinAnsi cp1252).
   const M = units === "metric";
-  const uA = (sf) => (M ? sf * 0.09290304 : sf);
-  const uL = (lf) => (M ? lf * 0.3048 : lf);
-  const AU = M ? "m²" : "SF", LU = M ? "m" : "LF";
+  const u = M ? "metric" : "imperial";
+  const AU = areaUnit(u), LU = lenUnit(u);
+  const uA = (sf) => areaVal(sf, u);
+  const uL = (lf) => lenVal(lf, u);
   const { PDFDocument, StandardFonts, rgb, degrees, LineCapStyle } = await import("pdf-lib");
   const condById = Object.fromEntries(conditions.map((c) => [c.id, c]));
   // resolve a linked markup's RFI number for the on-sheet marker (ASCII, WinAnsi-safe)
@@ -357,9 +357,16 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
       draw(`${r.finish_tag}${r.multiplier > 1 ? ` ×${r.multiplier}` : ""}`, { x: 72, y, size: 10.5, font: bold, color: ink });
       // zero-gate on the CONVERTED value — what the page prints (a 0.5 SF
       // sliver reads 0.0 m2 in metric; it must drop, not print "0 m2")
+      // Always use lf_net (waste-adjusted) for the linear component, matching
+      // the report table's waste-adjusted order quantity — even for mixed
+      // conditions that carry both area and linear shapes.
+      const qtyLf = r.lf > 0 ? r.lf_net : r.lf;
       const qty = [
-        shows(uA(r.floor_sf)) ? `${num(uA(r.floor_sf))} ${AU}` : "",         shows(uA(r.wall_sf)) ? `${num(uA(r.wall_sf))} ${AU} ${_t("marked_set.wall_suffix")}` : "",
-        shows(uA(r.border_sf)) ? `${num(uA(r.border_sf))} ${AU} ${_t("marked_set.border_suffix")}` : "", shows(uL(r.lf)) ? `${num(uL(r.lf))} ${LU}` : "", shows(r.ea, 0) ? `${num(r.ea, 0)} EA` : "",
+        shows(uA(r.floor_sf)) ? `${num(uA(r.floor_sf))} ${AU}` : "",
+        shows(uA(r.wall_sf)) ? `${num(uA(r.wall_sf))} ${AU} ${_t("marked_set.wall_suffix")}` : "",
+        shows(uA(r.border_sf)) ? `${num(uA(r.border_sf))} ${AU} ${_t("marked_set.border_suffix")}` : "",
+        shows(uL(qtyLf)) ? `${num(uL(qtyLf))} ${LU}` : "",
+        shows(r.ea, 0) ? `${num(r.ea, 0)} EA` : "",
       ].filter(Boolean).join(" · ");
       draw(qty || "-", { x: 190, y, size: 10, font, color: ink });
       draw(`${c.hatch && c.hatch !== "solid" ? c.hatch + " · " : ""}${_t("marked_set.waste_label")} ${r.waste_pct}% -> ${num(uA(r.total_sf_net))} ${AU}`, { x: 420, y, size: 8.5, font, color: muted });
@@ -599,6 +606,11 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
       const pts = (s.verts_norm || []).map(([nx, ny]) => [nx * W, ny * H]);
       if (!pts.length) continue;
       const isDeduct = s.measure_role === "deduct";
+      // #137 — reconciled deducts (cuts_shape_id set) are already netted into
+      // the parent's polygon via verts_norm_holes; drawing them separately
+      // would double-subtract the hole visually.  Legacy independent deducts
+      // (no cuts_shape_id) keep their red outline as before.
+      if (isDeduct && s.cuts_shape_id) continue;
       const col = rgb(...hex(isDeduct ? DEDUCT_RED : cond?.color));
       // line_style governs positive floor_area + linear outlines only: deduct keeps
       // its red (no dash override) and surface_area keeps its solid wall run.

@@ -39,6 +39,40 @@ test("visibleCols: overrides flip defaults both ways; unknown keys ignored", () 
     TABLE_PROFILE.filter((c: any) => c.defaultVisible).map((c: any) => c.key));
 });
 
+// ── lf_net in table/CSV profiles ─────────────────────────────────────────
+test("TABLE_PROFILE includes lf_net as opt-in (defaultVisible: false)", () => {
+  const lfNetCol = TABLE_PROFILE.find((c: any) => c.key === "lf_net");
+  assert.ok(lfNetCol, "lf_net present in TABLE_PROFILE");
+  assert.equal(lfNetCol.defaultVisible, false, "lf_net is opt-in");
+  assert.equal(lfNetCol.header, "LF w/Waste");
+  // lf_net should appear after lf in profile order
+  const lfIdx = TABLE_PROFILE.findIndex((c: any) => c.key === "lf");
+  const lfNetIdx = TABLE_PROFILE.findIndex((c: any) => c.key === "lf_net");
+  assert.ok(lfNetIdx > lfIdx, "lf_net appears after lf");
+});
+
+test("TABLE_PROFILE lf_net getter returns waste-adjusted LF", () => {
+  const r = { lf: 50, lf_net: 55 };
+  assert.equal(GETTERS.lf_net(r), 55);
+});
+
+test("CSV_PROFILE includes lf_net", () => {
+  const lfNetCol = CSV_PROFILE.find((c: any) => c.key === "lf_net");
+  assert.ok(lfNetCol, "lf_net present in CSV_PROFILE");
+  assert.equal(lfNetCol.header, "LF w/Waste");
+});
+
+test("lf_net metric conversion uses M_PER_FT", () => {
+  const lfNetCol = TABLE_PROFILE.find((c: any) => c.key === "lf_net")!;
+  const metricCols = applyUnits([lfNetCol], "metric");
+  assert.equal(metricCols.length, 1, "lf_net not filtered out in metric");
+  const mCol = metricCols[0];
+  assert.ok(mCol.header.includes("m"), `metric lf_net header has m: ${mCol.header}`);
+  assert.ok(!mCol.header.includes("LF"), `metric lf_net header has no LF: ${mCol.header}`);
+  // 50 LF → 50 × 0.3048 = 15.24 m
+  assert.equal(mCol.get({ lf_net: 50 }), round2(50 * 0.3048), "lf_net metric conversion");
+});
+
 test("waste_sf / waste_lf getters: order minus base, rounded", () => {
   const r = { total_sf: 100.004, total_sf_net: 110.01, lf: 10, lf_net: 10.5 };
   assert.equal(GETTERS.waste_sf(r), 10.01);      // 110.01 − 100.004 = 10.006 → 10.01
@@ -561,7 +595,7 @@ test("applyUnits with metric: foot (tfoot) functions wrap with converter", () =>
   }
 });
 
-test("applyUnits with METRIC_CSV_LABELS: uses ASCII 'm2'/'m' instead of Unicode 'm²'", () => {
+test("applyUnits with METRIC_CSV_LABELS: uses 'm2'/'m' for CSV/XLSX (ASCII)", () => {
   const cols = visibleCols(CSV_PROFILE, {});
   const csvMetric = applyUnits(cols, "metric", METRIC_CSV_LABELS);
   const tableMetric = applyUnits(cols, "metric", METRIC_LABELS);
@@ -604,8 +638,8 @@ test("applyUnits with metric CSV: end-to-end — body rows and TOTAL row convert
   const csv = totalsToCsv(rows, projectName, sheetTotals(conditions, shapes), sheetLabel, csvCols, ctx, null, "OpenTakeoff", "metric");
   const lines = csv.split("\n");
   const header = lines[1];
-  // header swaps SF→m2, LF→m (ASCII labels from METRIC_CSV_LABELS)
-  assert.ok(header.includes("m2"), `metric CSV header has m2: ${header}`);
+  // header swaps SF→m², LF→m (Unicode labels from METRIC_LABELS)
+  assert.ok(header.includes("m²"), `metric CSV header has m²: ${header}`);
   assert.ok(!header.includes("SF"), `metric CSV header has no SF: ${header}`);
   assert.ok(!header.includes("SY"), `metric CSV header has no SY column: ${header}`);
   // CT-1 body row: floor_sf = 546.9 → 546.9 × 0.09290304 ≈ 50.81
@@ -650,11 +684,11 @@ test("applyUnits with metric CSV: by-sheet and by-label sections use correct con
   // by-sheet section header should have m2 for area columns
   const bySheetHeader = lines.find((l: string) => l.startsWith("Sheet,"));
   assert.ok(bySheetHeader, "by-sheet header exists");
-  assert.ok(bySheetHeader.includes("m2"), `by-sheet header has m2: ${bySheetHeader}`);
+    assert.ok(bySheetHeader.includes("m²"), `by-sheet header has m²: ${bySheetHeader}`);
   // by-label section header
   const byLabelHeader = lines.find((l: string) => l.startsWith("Label,"));
   assert.ok(byLabelHeader, "by-label header exists");
-  assert.ok(byLabelHeader.includes("m2"), `by-label header has m2: ${byLabelHeader}`);
+    assert.ok(byLabelHeader.includes("m²"), `by-label header has m²: ${byLabelHeader}`);
 });
 
 // ── blank/missing value preservation in metric conversion ─────────────────
@@ -866,4 +900,146 @@ test("spec/labor/roll i18n: locale parity — every i18n key exists in en and pt
     if (!ptVal || typeof ptVal !== "string") missing.push(`pt-br: "${key}" missing`);
   }
   assert.deepEqual(missing, [], `spec/labor/roll i18n locale parity:\n${missing.join("\n")}`);
+});
+
+// ── Task 2: metric header/value regression ───────────────────────────────
+// Ensure metric CSV/report never leaks SF/LF/ft/in and imperial stays intact.
+
+test("metric CSV: no SF/LF/ft/in leakage in header row", () => {
+  const csvCols = visibleCols(CSV_PROFILE, { waste_sf: true, waste_lf: true });
+  const csv = totalsToCsv(rows, projectName, null, null, csvCols, null, null, "OpenTakeoff", "metric");
+  const header = csv.split("\n")[1];  // line 0 is title, line 1 is header
+  assert.ok(!header.includes(" SF "), `metric CSV header must not contain " SF ": ${header}`);
+  assert.ok(!header.includes(" LF "), `metric CSV header must not contain " LF ": ${header}`);
+  assert.ok(!header.includes(" SY "), `metric CSV header must not contain " SY ": ${header}`);
+  assert.ok(header.includes("m²"), `metric CSV header must contain "m²": ${header}`);
+  assert.ok(header.includes("m"), `metric CSV header must contain "m": ${header}`);
+});
+
+test("metric CSV: TOTAL row values are converted against M2_PER_SF/M_PER_FT", () => {
+  const M2 = 0.09290304, M = 0.3048;
+  const csvCols = visibleCols(CSV_PROFILE, {});
+  const csv = totalsToCsv(rows, projectName, null, null, csvCols, null, null, "OpenTakeoff", "metric");
+  const headerLine = csv.split("\n")[1];
+  const totalLine = csv.split("\n").find((l: string) => l.startsWith("TOTAL"));
+  assert.ok(totalLine, "TOTAL row exists");
+  const totalCells = totalLine.split(",");
+  const headerCells = headerLine.split(",");
+  const g = grandTotals(rows);
+  // Total SF column: converted with M2_PER_SF
+  const totalSfIdx = headerCells.findIndex((h: string) => h.includes("Total"));
+  assert.ok(totalSfIdx > 0, "Total m2 column found");
+  assert.equal(Number(totalCells[totalSfIdx]), round2(g.total_sf * M2), "TOTAL total_sf converted with M2_PER_SF");
+  // LF column: converted with M_PER_FT
+  const lfIdx = headerCells.findIndex((h: string) => h === "m");
+  assert.ok(lfIdx > 0, "m column found for LF");
+  assert.equal(Number(totalCells[lfIdx]), round2(g.lf * M), "TOTAL lf converted with M_PER_FT");
+  // EA column: unchanged (count)
+  const eaIdx = headerCells.findIndex((h: string) => h === "EA");
+  assert.ok(eaIdx > 0, "EA column found");
+  assert.equal(Number(totalCells[eaIdx]), g.ea, "TOTAL ea unchanged (count)");
+  // TOTAL row must not contain bare unit strings
+  for (const cell of totalCells) {
+    assert.ok(!/^\s*SF\s*$/.test(cell), `TOTAL cell must not be bare "SF": "${cell}"`);
+    assert.ok(!/^\s*LF\s*$/.test(cell), `TOTAL cell must not be bare "LF": "${cell}"`);
+  }
+});
+
+test("imperial CSV: SF/LF headers preserved, byte-compatible with golden", () => {
+  const csv = totalsToCsv(rows, projectName, sheetTotals(conditions, shapes), sheetLabel);
+  const header = csv.split("\n")[1];
+  assert.ok(header.includes("SF"), `imperial CSV header must contain "SF": ${header}`);
+  assert.ok(header.includes("LF"), `imperial CSV header must contain "LF": ${header}`);
+  assert.equal(csv, golden, "imperial CSV byte-identical to golden");
+});
+
+test("roll column metric headers swap LF→m", async () => {
+  const { rollColProfile, applyUnits } = await import("../src/lib/reportColumns.js");
+  const rollByCond = new Map([["c1", { orderFt: 29, rollCount: 2, seamLf: 30 }]]);
+  const cols = rollColProfile(rollByCond);
+  const imperialHeaders = cols.map((c: any) => c.header);
+  assert.deepEqual(imperialHeaders, ["Roll Order LF", "Rolls", "Seam LF"]);
+  // metric: LF → m
+  const metricCols = applyUnits(cols, "metric");
+  const metricHeaders = metricCols.map((c: any) => c.header);
+  assert.ok(metricHeaders[0].includes("m"), `metric roll:order_lf header must contain "m": ${metricHeaders[0]}`);
+  assert.ok(!metricHeaders[0].includes("LF"), `metric roll:order_lf header must not contain "LF": ${metricHeaders[0]}`);
+  assert.equal(metricHeaders[1], "Rolls", "Rolls is non-dimensional, unchanged");
+  assert.ok(metricHeaders[2].includes("m"), `metric roll:seam_lf header must contain "m": ${metricHeaders[2]}`);
+  assert.ok(!metricHeaders[2].includes("LF"), `metric roll:seam_lf header must not contain "LF": ${metricHeaders[2]}`);
+});
+
+test("metric applyUnits: all dimensional headers use m² or m, never SF/LF", () => {
+  const csvCols = visibleCols(CSV_PROFILE, { waste_sf: true, waste_lf: true, perimeter_ref: true });
+  const metric = applyUnits(csvCols, "metric");
+  for (const c of metric) {
+    if (c.key === "finish" || c.key === "shapes" || c.key === "multiplier" ||
+        c.key === "waste_pct" || c.key === "ea") continue;
+    const h = c.header;
+    assert.ok(!h.includes("SF"), `metric header for ${c.key} must not contain "SF": ${h}`);
+    assert.ok(!h.includes("LF"), `metric header for ${c.key} must not contain "LF": ${h}`);
+  }
+});
+
+test("metric CSV: body values don't contain imperial abbreviations", () => {
+  const csvCols = visibleCols(CSV_PROFILE, {});
+  const csv = totalsToCsv(rows, projectName, null, null, csvCols, null, null, "OpenTakeoff", "metric");
+  const lines = csv.split("\n");
+  const bodyLines = lines.slice(2).filter((l: string) => l && !l.startsWith("TOTAL"));
+  for (const line of bodyLines) {
+    assert.ok(!/ SF /.test(line), `metric body line must not contain " SF ": ${line}`);
+    assert.ok(!/ LF /.test(line), `metric body line must not contain " LF ": ${line}`);
+  }
+});
+
+// ── grout display note: grout geometry reaches exports ───────────────────
+test("conditionTotals material rows carry grout/kind for display", () => {
+  const groutGeo = { tileL: 12, tileW: 12, tileT: 0.375, joint: 0.125, bagLbs: 50 };
+  const conds = [{
+    id: "c1", finish_tag: "CT-1", materials: [
+      { name: "Thinset", unit: "bag", per: 95, basis: "area" },
+      { name: "Grout", unit: "bag", per: 100, basis: "area", grout: groutGeo, kind: "grout" },
+    ],
+  }];
+  const shapes = [{ id: "s1", condition_id: "c1", measure_role: "floor_area", computed: { area_sf: 100 } }];
+  const [row] = conditionTotals(conds, shapes);
+  const thinset = row.materials.find((m: any) => m.name === "Thinset");
+  const grout = row.materials.find((m: any) => m.name === "Grout");
+  assert.ok(thinset, "Thinset found");
+  assert.ok(grout, "Grout found");
+  // grout geometry passed through
+  assert.deepEqual(grout.grout, groutGeo, "grout geometry passed through");
+  assert.equal(grout.kind, "grout", "kind passed through");
+  // thinset has no grout/kind (not set)
+  assert.equal(thinset.grout, undefined, "thinset has no grout");
+  assert.equal(thinset.kind, undefined, "thinset has no kind");
+});
+
+test("groutDisplayNote formats grout geometry in metric", async () => {
+  const { groutDisplayNote } = await import("../src/lib/coverage.js");
+  const m = { grout: { tileL: 12, tileW: 12, tileT: 0.375, joint: 0.125, bagLbs: 50 } };
+  const note = groutDisplayNote(m, "metric");
+  // metric: tiles converted to mm, joint in mm
+  assert.ok(note.includes("305×305×10 mm"), `metric note has tile dimensions: ${note}`);
+  assert.ok(note.includes("3.2 mm"), `metric note has joint in mm: ${note}`);
+  assert.ok(note.includes("50 lb"), `metric note has bag weight: ${note}`);
+  assert.ok(!note.includes("″"), `metric note must not contain inch marks: ${note}`);
+});
+
+test("groutDisplayNote formats grout geometry in imperial", async () => {
+  const { groutDisplayNote } = await import("../src/lib/coverage.js");
+  const m = { grout: { tileL: 12, tileW: 12, tileT: 0.375, joint: 0.125, bagLbs: 50 } };
+  const note = groutDisplayNote(m, "imperial");
+  // imperial: tiles in inches, joint as fraction
+  assert.ok(note.includes("12×12"), `imperial note has tile dimensions: ${note}`);
+  assert.ok(note.includes("″"), `imperial note has inch marks: ${note}`);
+  assert.ok(note.includes("50 lb"), `imperial note has bag weight: ${note}`);
+});
+
+test("groutDisplayNote falls back to m.note when no grout geometry", async () => {
+  const { groutDisplayNote } = await import("../src/lib/coverage.js");
+  const m = { note: "Custom note" };
+  assert.equal(groutDisplayNote(m, "metric"), "Custom note");
+  assert.equal(groutDisplayNote(m, "imperial"), "Custom note");
+  assert.equal(groutDisplayNote({}, "metric"), "");
 });

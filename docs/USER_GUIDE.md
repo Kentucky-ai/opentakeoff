@@ -179,15 +179,26 @@ it never migrates or alters stored data.
 **Switching.** Click the **`ft` / `m`** button beside the Scale chip in the toolbar. The
 button opens **Unit settings…**, a dialog with two radio options:
 
-- **Imperial (ft, SF, in)** — the default. Readouts show SF, LF, ft, in. The SY column
+- **Imperial (ft, SF, in)** — the default for English locales. Readouts show SF, LF, ft, in. The SY column
   appears. Calibrate takes feet.
 - **SI / Métrico (m², m, mm)** — the metric display. Readouts show m², m, mm. The SY column
-  retires. Calibrate takes meters.
+  retires. Calibrate takes meters. **This is the default for the pt-BR locale.**
 
 The preference applies instantly to every open panel, the Report, CSV, Excel, and the Marked
 Set legend — one click, everything flips. The setting persists in your browser
 (`opentakeoff.unitSystem` in localStorage) and applies to every project in this browser,
 existing and new.
+
+**pt-BR and metric.** When the app language is set to Brazilian Portuguese, the unit preference
+starts as SI (metric). This means that on first load — or whenever no stored preference exists —
+area displays in m², length in m, thickness in mm, and calibration accepts meters. Switching to
+Imperial at any time restores ft, SF, LF, and in across all readouts, exports, and the marked
+set. The toggle is fully reversible; internal data does not change when you switch.
+
+**pt-BR glossary.** The Brazilian Portuguese locale uses construction terminology familiar to
+local estimators: *planta* (sheet / drawing), *ambiente* (room), *dedução* (deduct / cut-out),
+*delimitar* (to trace an area or room). These terms appear in menus, tooltips, error messages,
+and the Report when pt-BR is the active language.
 
 **Exact unit mapping (what changes where):**
 

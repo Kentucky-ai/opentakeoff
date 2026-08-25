@@ -143,6 +143,39 @@ export function parseLenInput(raw: string, units: UnitSystem): number {
  *  `shown` also normalizes IEEE -0 (the `|| 0` falsy coercion, num.js's
  *  convention) so an exact recalibrate's 1-ulp FP residue reads "+0.0%",
  *  never "(-0.0%)". */
+// ── revision / diff visibility thresholds ────────────────────────────────────
+// Each dimension type has its own display precision in metric: area shows m²
+// at 2 dp, length shows m at 2 dp, EA is a whole count.  The threshold is the
+// smallest raw delta that, after conversion + toFixed(2) rounding, displays as
+// a non-zero value.  That is half the display quantum back-converted to the
+// raw unit (so 0.005 m² ≈ 0.0538 SF for area, 0.005 m ≈ 0.0164 LF for length).
+// Imperial thresholds remain at the original 0.05 SF/LF / 0.5 EA.
+const IMP_AREA_THRESH = 0.05;   // SF
+const IMP_LEN_THRESH = 0.05;    // LF
+const EA_THRESH = 0.5;
+
+/** Is the absolute delta |d| large enough to display as non-zero? */
+export function isVisibleDelta(field: string, d: number, units?: UnitSystem): boolean {
+  const a = Math.abs(d);
+  if (field === "ea") return a >= EA_THRESH;
+  const isArea = /sf|border/i.test(field);
+  if (units === "metric") {
+    // half the display quantum, back-converted to raw unit
+    const minDisplay = 0.005;  // 0.01 display precision / 2
+    return isArea ? a >= minDisplay / M2_PER_SF : a >= minDisplay / M_PER_FT;
+  }
+  return isArea ? a >= IMP_AREA_THRESH : a >= IMP_LEN_THRESH;
+}
+
+/** Check-tool verdict, graded from the ROUNDED error the chip displays so the
+ *  color can never contradict the number beside it: raw 1.04% used to grade
+ *  amber while displaying "+1.0%", which the docs promise is green. Tie-break:
+ *  the displayed one-decimal value is authoritative — |shown| ≤ 1.0 is green
+ *  ("match"), ≤ 5.0 amber ("close"), past that red ("wrong"); these are
+ *  upstream's inclusive ≤1/≤5 thresholds applied after display rounding.
+ *  `shown` also normalizes IEEE -0 (the `|| 0` falsy coercion, num.js's
+ *  convention) so an exact recalibrate's 1-ulp FP residue reads "+0.0%",
+ *  never "(-0.0%)". */
 export function checkVerdict(errPct: number): { shown: number; grade: "match" | "close" | "wrong" } {
   // an exported helper whose failure mode is "confidently green" needs the
   // guard even though current callers null-check first: NaN.toFixed(1) → "NaN"

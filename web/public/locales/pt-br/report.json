@@ -23,7 +23,7 @@
     "print": "Imprimir",
     "print_title": "Imprimir o relatório ou gerar o PDF do conjunto marcado",
     "rfi_csv": "RFI CSV",
-    "rfi_csv_title": "Log de RFI — uma linha por RFI com anotações/pranchas vinculadas derivadas",
+    "rfi_csv_title": "Log de RFI — uma linha por RFI com anotações/plantas vinculadas derivadas",
     "rfi_json": "RFI JSON",
     "rfi_json_title": "Log de RFI como JSON",
     "contribute": "Contribuir",
@@ -100,14 +100,14 @@
     "include_markups": "Incluir marcações",
     "include_markups_title": "Incluir suas marcações (nuvens, chamadas, notas, destaques) no PDF do Conjunto Marcado. Independente da camada de alternância do canvas.",
     "marked_set": "Baixar conjunto marcado{{suffix}}",
-    "marked_set_title": "PDF de distribuição — pranchas marcadas com o takeoff queimado, mais uma capa de legenda{{suffix}}"
+    "marked_set_title": "PDF de distribuição — plantas marcadas com o takeoff queimado, mais uma capa de legenda{{suffix}}"
   },
 
   "grouped_by": "Agrupado por",
   "subtotal": "Subtotal",
   "total": "Total",
 
-  "empty": "Nada medido ainda — trace algumas áreas e volte para o detalhamento.",
+  "empty": "Nada medido ainda — delimite algumas áreas e volte para o detalhamento.",
 
   "col": {
     "finish": "Acabamento",
@@ -145,6 +145,7 @@
     "client_address": "Endereço do cliente",
     "po_reference": "PO / referência",
     "date_label": "Data",
+    "date_placeholder": "ex. \"Lote 7/12\"",
     "done": "Concluído",
     "client": "Cliente",
     "reference": "Referência",
@@ -163,7 +164,12 @@
     "sheet": "Planta",
     "note": "Nota",
     "footnote": "Marcações são anotações, não medições — as quantidades acima não são afetadas.",
-    "by_sheet": "Por prancha"
+    "by_sheet": "Por planta"
+  },
+  "markup_type": {
+    "cloud": "NUVEM",
+    "callout": "INDICAÇÃO",
+    "note": "NOTA"
   },
 
   "materials": {
@@ -188,7 +194,7 @@
     "title": "Contribua para o modelo aberto de pavimentação",
     "description": "Ajude a crescer um modelo aberto, otimizado para pavimentação. Enviamos apenas o",
     "derived_takeoff": "takeoff derivado",
-    "li1": "etiquetas de condição, tipos de forma e quantidades (SF / LF / UN)",
+    "li1": "etiquetas de condição, tipos de forma e quantidades",
     "li2": "geometria normalizada do ambiente (apenas forma — sem escala, sem localização)",
     "li3": "como cada forma foi criada (traçado manual vs. proposta por máquina) e se você a corrigiu",
     "never_sent": "Nunca enviado: o próprio PDF, nomes de arquivo, projeto ou cliente, suas marcações ou coordenadas absolutas.",

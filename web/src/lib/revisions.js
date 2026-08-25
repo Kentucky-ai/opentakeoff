@@ -18,34 +18,70 @@
 
 import { conditionTotals, grandTotals, materialsSummary } from "./totals.js";
 import { parseSheetKey } from "./sheets";
+import { M2_PER_SF, M_PER_FT, isVisibleDelta } from "./units.js";
 import i18n from "../i18n/index.js";
 
 const _t = (key, options) => i18n.t(key, { ns: "lib", ...options });
 
 const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-// The condition-level fields compared. total_sf_net is the ordered quantity,
-// so a waste_pct-only edit shows there and only there — the takeoff didn't
-// change, the order did, and the diff says exactly that.
-export const COND_FIELDS = ["floor_sf", "wall_sf", "border_sf", "lf", "ea", "total_sf", "total_sf_net"];
+// The condition-level fields compared. lf_net tracks the waste-adjusted linear
+// quantity so a waste_pct-only edit on a linear condition shows there.  total_sf_net
+// is the ordered quantity, so a waste_pct-only edit shows there and only there.
+export const COND_FIELDS = ["floor_sf", "wall_sf", "border_sf", "lf", "lf_net", "ea", "total_sf", "total_sf_net"];
 // Sheet-level rows carry base measured quantities (no multiplier, no waste —
 // those are condition-level ordering concerns, not sheet locations).
 export const SHEET_FIELDS = ["floor_sf", "wall_sf", "border_sf", "lf", "ea"];
 
-const visible = (f, d) => Math.abs(d) >= (f === "ea" ? 0.5 : 0.05);
+// Display precision: 2 dp for metric m²/m, 0 dp for EA.  Imperial passes
+// through unrounded (the same raw precision the report table's num() uses
+// with maximumFractionDigits).
+const DISP_DP = (units, field) => {
+  if (field === "ea") return 0;
+  return units === "metric" ? 2 : 0;
+};
+// Convert a raw internal-feet delta to a display-ready number at the correct
+// precision.  Used by both the UI and CSV so they never diverge.
+export const convertDelta = (rawVal, units, field) => {
+  if (field === "ea") return rawVal;
+  const isArea = /sf|border|total/i.test(field);
+  if (units === "metric") {
+    return +(rawVal * (isArea ? M2_PER_SF : M_PER_FT)).toFixed(DISP_DP(units, field));
+  }
+  // Imperial: preserve raw precision (no rounding) — the table's num() handles
+  // display formatting via maximumFractionDigits.
+  return rawVal;
+};
 
+// Check visibility against the RAW delta (before rounding).  Rounding to 2 dp
+// can promote a sub-threshold delta past the gate (e.g. 0.049 → 0.05) or
+// suppress a just-above-threshold delta to zero display.  The diff stores
+// rounded deltas for display but judges "changed" on the raw figure.
+function rawVisible(fields, rawDeltas, units) {
+  return fields.some((f) => isVisibleDelta(f, rawDeltas[f], units));
+}
+function rawSubstance(fields, r, units) {
+  return r.shape_count > 0 || fields.some((f) => isVisibleDelta(f, r[f] || 0, units));
+}
+
+// Compute both raw and rounded deltas.  Raw deltas drive visibility judgment;
+// rounded deltas are stored for display and export.  When a condition row
+// carries _raw (from conditionTotals), use those for the visibility comparison
+// so sub-rounding drift never creates a false "changed" or hides a real one.
 function deltasOf(fields, a, b) {
   /** @type {Record<string, number>} */
-  const out = {};
-  for (const f of fields) out[f] = round2((b ? b[f] || 0 : 0) - (a ? a[f] || 0 : 0));
-  return out;
+  const raw = {};
+  /** @type {Record<string, number>} */
+  const rounded = {};
+  for (const f of fields) {
+    const aRaw = a?._raw?.[f] ?? (a ? a[f] || 0 : 0);
+    const bRaw = b?._raw?.[f] ?? (b ? b[f] || 0 : 0);
+    const r = bRaw - aRaw;
+    raw[f] = r;
+    rounded[f] = round2(r);
+  }
+  return { raw, rounded };
 }
-const anyVisible = (fields, deltas) => fields.some((f) => visible(f, deltas[f]));
-
-// A lone-side row only counts as added/removed if there is anything on it —
-// a shapeless seeded condition that exists in one revision and not the other
-// diffs as unchanged, never as a fabricated add/remove.
-const hasSubstance = (fields, r) => r.shape_count > 0 || fields.some((f) => visible(f, r[f] || 0));
 
 // Pair rows across revisions: id match first, finish_tag fallback for the
 // leftovers (first-come within a tag, empty tags never pair). Entries come
@@ -83,6 +119,8 @@ function pairRows(rowsA, rowsB) {
 
 // Base quantities per sheet, all conditions pooled — "which sheet moved".
 // Orphan shapes (deleted condition) are skipped, matching the report's math.
+// Returns _raw (unrounded) alongside rounded values so diffs can use raw
+// precision for visibility/conversion.
 function perSheet(conditions, shapes) {
   const live = new Set((conditions || []).map((c) => c.id));
   const acc = new Map();
@@ -93,7 +131,9 @@ function perSheet(conditions, shapes) {
     row.shape_count++;
     const cp = s.computed || {};
     switch (s.measure_role) {
-      case "deduct": row.floor_sf -= cp.area_sf || 0; break;
+      // #137 — reconciled deducts (cuts_shape_id set) are already netted into
+      // the parent's computed.area_sf; counting them again would double-subtract.
+      case "deduct": if (!s.cuts_shape_id) row.floor_sf -= cp.area_sf || 0; break;
       case "floor_area": row.floor_sf += cp.area_sf || 0; break;
       case "surface_area": row.wall_sf += cp.area_sf || 0; break;
       case "linear": row.lf += cp.perimeter_lf || 0; row.border_sf += cp.area_sf || 0; break;
@@ -101,7 +141,11 @@ function perSheet(conditions, shapes) {
       default: break;
     }
   }
-  for (const row of acc.values()) for (const f of SHEET_FIELDS) row[f] = round2(row[f]);
+  for (const row of acc.values()) {
+    // Store raw values before rounding for diff precision
+    row._raw = { floor_sf: row.floor_sf, wall_sf: row.wall_sf, border_sf: row.border_sf, lf: row.lf, ea: row.ea };
+    for (const f of SHEET_FIELDS) row[f] = round2(row[f]);
+  }
   return acc;
 }
 
@@ -122,29 +166,29 @@ export function revSheetLabel(sheetId) {
 //   totals:     { a, b, deltas },   // grandTotals both sides
 //   changed:    n,                  // condition rows that aren't unchanged
 // }
-export function diffTakeoffs(a, b) {
+export function diffTakeoffs(a, b, units) {
   const rowsA = conditionTotals(a?.conditions || [], a?.shapes || []);
   const rowsB = conditionTotals(b?.conditions || [], b?.shapes || []);
 
   const conditions = pairRows(rowsA, rowsB).map(({ key, a: ra, b: rb }) => {
-    const deltas = deltasOf(COND_FIELDS, ra, rb);
+    const { raw, rounded } = deltasOf(COND_FIELDS, ra, rb);
     let status;
-    if (ra && rb) status = anyVisible(COND_FIELDS, deltas) ? "changed" : "unchanged";
-    else if (rb) status = hasSubstance(COND_FIELDS, rb) ? "added" : "unchanged";
-    else status = hasSubstance(COND_FIELDS, ra) ? "removed" : "unchanged";
-    return { key, finish_tag: (rb || ra).finish_tag, color: (rb || ra).color, status, a: ra, b: rb, deltas };
+    if (ra && rb) status = rawVisible(COND_FIELDS, raw, units) ? "changed" : "unchanged";
+    else if (rb) status = rawSubstance(COND_FIELDS, rb, units) ? "added" : "unchanged";
+    else status = rawSubstance(COND_FIELDS, ra, units) ? "removed" : "unchanged";
+    return { key, finish_tag: (rb || ra).finish_tag, color: (rb || ra).color, status, a: ra, b: rb, deltas: rounded, _rawDeltas: raw };
   });
 
   const shA = perSheet(a?.conditions, a?.shapes), shB = perSheet(b?.conditions, b?.shapes);
   const sheetIds = [...new Set([...shB.keys(), ...shA.keys()])].sort((x, y) => x.localeCompare(y));
   const sheets = sheetIds.map((id) => {
     const ra = shA.get(id) || null, rb = shB.get(id) || null;
-    const deltas = deltasOf(SHEET_FIELDS, ra, rb);
+    const { raw, rounded } = deltasOf(SHEET_FIELDS, ra, rb);
     let status;
-    if (ra && rb) status = anyVisible(SHEET_FIELDS, deltas) ? "changed" : "unchanged";
+    if (ra && rb) status = rawVisible(SHEET_FIELDS, raw, units) ? "changed" : "unchanged";
     else if (rb) status = "added";
     else status = "removed";
-    return { sheet_id: id, status, a: ra, b: rb, deltas };
+    return { sheet_id: id, status, a: ra, b: rb, deltas: rounded, _rawDeltas: raw };
   });
 
   // buy-list deltas: same-named materials compared across the whole takeoff —
@@ -163,18 +207,33 @@ export function diffTakeoffs(a, b) {
     };
   }).filter((m) => m.a_qty || m.b_qty);
 
-  const totals = { a: grandTotals(rowsA), b: grandTotals(rowsB), deltas: deltasOf(["total_sf", "total_sf_net", "lf", "lf_net", "ea", "sy_net"], grandTotals(rowsA), grandTotals(rowsB)) };
+  // Totals: sum raw deltas from conditions (not grandTotals which rounds),
+  // so the totals line shows the same visible delta as the condition line.
+  const TOTAL_FIELDS = ["total_sf", "total_sf_net", "lf", "lf_net", "ea", "sy_net"];
+  /** @type {Record<string, number>} */
+  const totalsRaw = {};
+  /** @type {Record<string, number>} */
+  const totalsRounded = {};
+  for (const f of TOTAL_FIELDS) {
+    let rawSum = 0;
+    for (const c of conditions) rawSum += (c._rawDeltas?.[f] ?? c.deltas[f] ?? 0);
+    totalsRaw[f] = rawSum;
+    totalsRounded[f] = round2(rawSum);
+  }
+  const totalsA = grandTotals(rowsA), totalsB = grandTotals(rowsB);
+  const totals = { a: totalsA, b: totalsB, deltas: totalsRounded, _rawDeltas: totalsRaw };
+  const materialsChanged = materials.some((m) => m.status === "changed" || m.status === "added" || m.status === "removed");
   const changed = conditions.filter((c) => c.status !== "unchanged").length;
-  return { conditions, sheets, materials, totals, changed };
+  return { conditions, sheets, materials, totals, changed, materialsChanged };
 }
 
 // The compare as a CSV record — every row with its status, deltas signed,
 // grand-total delta line, then per-sheet and buy-list sections.
 export function diffToCsv(diff, { aName = "baseline", bName = "current", units = "imperial", projectName = "" } = {}) {
   const M = units === "metric";
-  const A = (sf) => (M ? +(sf * 0.09290304).toFixed(2) : sf);
-  const L = (lf) => (M ? +(lf * 0.3048).toFixed(2) : lf);
-  const AU = M ? "m2" : "SF", LU = M ? "m" : "LF";
+  const A = (sf) => convertDelta(sf, units, "floor_sf");
+  const L = (lf) => convertDelta(lf, units, "lf");
+  const AU = M ? "m²" : "SF", LU = M ? "m" : "LF";
   const esc = (v) => {
     const s = String(v ?? "");
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -183,20 +242,23 @@ export function diffToCsv(diff, { aName = "baseline", bName = "current", units =
   const lines = [];
   if (projectName) lines.push(`# ${projectName} — ${_t("revision.title")}`);
   lines.push(`# ${aName} -> ${bName}`);
-  lines.push(row([_t("csv_header.finish"), _t("rfi.csv_header.status"), _t("revision.d_floor", { unit: AU }), _t("revision.d_wall", { unit: AU }), _t("revision.d_border", { unit: AU }), _t("revision.d_lf", { unit: LU }), _t("revision.d_ea"), _t("revision.d_total", { unit: AU }),
+  lines.push(row([_t("csv_header.finish"), _t("rfi.csv_header.status"), _t("revision.d_floor", { unit: AU }), _t("revision.d_wall", { unit: AU }), _t("revision.d_border", { unit: AU }), _t("revision.d_lf", { unit: LU }), _t("revision.d_lf_waste", { unit: LU }), _t("revision.d_ea"), _t("revision.d_total", { unit: AU }),
     _t("revision.ordered_name", { unit: AU, name: aName }), _t("revision.ordered_name", { unit: AU, name: bName }), _t("revision.d_ordered", { unit: AU })]));
   for (const c of diff.conditions) {
-    lines.push(row([c.finish_tag, c.status, A(c.deltas.floor_sf), A(c.deltas.wall_sf), A(c.deltas.border_sf),
-      L(c.deltas.lf), c.deltas.ea, A(c.deltas.total_sf),
-      c.a ? A(c.a.total_sf_net) : "", c.b ? A(c.b.total_sf_net) : "", A(c.deltas.total_sf_net)]));
+    const rd = c._rawDeltas || c.deltas;
+    lines.push(row([c.finish_tag, c.status, A(rd.floor_sf), A(rd.wall_sf), A(rd.border_sf),
+      L(rd.lf), L(rd.lf_net), c.deltas.ea, A(rd.total_sf),
+      c.a ? A(c.a.total_sf_net) : "", c.b ? A(c.b.total_sf_net) : "", A(rd.total_sf_net)]));
   }
   const t = diff.totals;
-  lines.push(row([_t("csv_header.total"), "", "", "", "", L(t.deltas.lf), t.deltas.ea, A(t.deltas.total_sf), A(t.a.total_sf_net), A(t.b.total_sf_net), A(t.deltas.total_sf_net)]));
+  const trd = t._rawDeltas || t.deltas;
+  lines.push(row([_t("csv_header.total"), "", "", "", "", L(trd.lf), L(trd.lf_net), t.deltas.ea, A(trd.total_sf), A(t.a.total_sf_net), A(t.b.total_sf_net), A(trd.total_sf_net)]));
   if (diff.sheets.length) {
     lines.push("");
     lines.push(row([_t("csv_header.sheet"), _t("rfi.csv_header.status"), _t("revision.d_floor", { unit: AU }), _t("revision.d_wall", { unit: AU }), _t("revision.d_border", { unit: AU }), _t("revision.d_lf", { unit: LU }), _t("revision.d_ea")]));
     for (const s of diff.sheets) {
-      lines.push(row([revSheetLabel(s.sheet_id), s.status, A(s.deltas.floor_sf), A(s.deltas.wall_sf), A(s.deltas.border_sf), L(s.deltas.lf), s.deltas.ea]));
+      const srd = s._rawDeltas || s.deltas;
+      lines.push(row([revSheetLabel(s.sheet_id), s.status, A(srd.floor_sf), A(srd.wall_sf), A(srd.border_sf), L(srd.lf), s.deltas.ea]));
     }
   }
   if (diff.materials.length) {

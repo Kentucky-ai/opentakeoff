@@ -2,7 +2,20 @@
   "mcpServers": {
     "opentakeoff": {
       "command": "npx",
-      "args": ["-y", "opentakeoff-mcp"]
+      "args": [
+        "-y",
+        "opentakeoff-mcp"
+      ]
+    },
+    "repowise": {
+      "command": "repowise",
+      "args": [
+        "mcp",
+        "D:/GitHub/fork-opentakeoff",
+        "--transport",
+        "stdio"
+      ],
+      "description": "repowise: codebase intelligence \u2014 docs, graph, git signals, dead code, decisions"
     }
   }
 }

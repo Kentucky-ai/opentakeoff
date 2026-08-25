@@ -3,7 +3,7 @@
 // touched (safe in node, safe in browser, deterministic either way).
 import { test, afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { UNIT_SYSTEM_KEY, DEFAULT_UNIT_SYSTEM, normalizeUnitSystem, readUnitSystem, writeUnitSystem, migrateLegacyUnit, LEGACY_UNIT_KEY } from "../src/lib/unitPreference.js";
+import { UNIT_SYSTEM_KEY, DEFAULT_UNIT_SYSTEM, normalizeUnitSystem, readUnitSystem, writeUnitSystem, migrateLegacyUnit, LEGACY_UNIT_KEY, languageDefault, hasExplicitPreference, resolveAfterLanguageChange } from "../src/lib/unitPreference.js";
 
 // ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -382,4 +382,276 @@ test("migrateLegacyUnit fail-then-recover: legacy metric promoted after storage 
   assert.equal(second, true, "second attempt should return true (storage recovered)");
   assert.equal(map.get(UNIT_SYSTEM_KEY), "metric", "canonical key should be set after recovery");
   assert.ok(!map.has(LEGACY_UNIT_KEY), "legacy key should be cleaned up after recovery");
+});
+
+// ── language-aware default (pt-BR → metric) ─────────────────────────────────
+// When no valid preference is stored and the active language is pt-BR, the
+// resolved system must be "metric".  An explicit stored value always wins.
+// English and unknown languages keep the imperial default.
+
+test("readUnitSystem returns 'metric' when no stored value and language is pt-br", () => {
+  assert.equal(readUnitSystem(mockStorage(), { lng: "pt-br" }), "metric");
+});
+
+test("readUnitSystem returns 'imperial' when no stored value and language is en", () => {
+  assert.equal(readUnitSystem(mockStorage(), { lng: "en" }), "imperial");
+});
+
+test("readUnitSystem returns 'imperial' when no stored value and no language (backward compat)", () => {
+  assert.equal(readUnitSystem(mockStorage()), "imperial");
+  assert.equal(readUnitSystem(mockStorage(), undefined), "imperial");
+  assert.equal(readUnitSystem(mockStorage(), {}), "imperial");
+  assert.equal(readUnitSystem(mockStorage(), { lng: undefined }), "imperial");
+  assert.equal(readUnitSystem(mockStorage(), { lng: "" }), "imperial");
+});
+
+test("readUnitSystem stored imperial wins over pt-br language default", () => {
+  const store = mockStorage();
+  store.setItem(UNIT_SYSTEM_KEY, "imperial");
+  assert.equal(readUnitSystem(store, { lng: "pt-br" }), "imperial");
+});
+
+test("readUnitSystem stored metric wins over pt-br language default (identity)", () => {
+  const store = mockStorage();
+  store.setItem(UNIT_SYSTEM_KEY, "metric");
+  assert.equal(readUnitSystem(store, { lng: "pt-br" }), "metric");
+});
+
+test("readUnitSystem stored metric wins over en language default (identity)", () => {
+  const store = mockStorage();
+  store.setItem(UNIT_SYSTEM_KEY, "metric");
+  assert.equal(readUnitSystem(store, { lng: "en" }), "metric");
+});
+
+test("readUnitSystem invalid stored value falls through to pt-br language default", () => {
+  const store = mockStorage();
+  store.setItem(UNIT_SYSTEM_KEY, "si");
+  assert.equal(readUnitSystem(store, { lng: "pt-br" }), "metric");
+});
+
+test("readUnitSystem invalid stored value falls through to en language default", () => {
+  const store = mockStorage();
+  store.setItem(UNIT_SYSTEM_KEY, "si");
+  assert.equal(readUnitSystem(store, { lng: "en" }), "imperial");
+});
+
+test("readUnitSystem(null) bypasses storage; pt-br returns metric", () => {
+  assert.equal(readUnitSystem(null, { lng: "pt-br" }), "metric");
+});
+
+test("readUnitSystem(null) bypasses storage; no language returns imperial", () => {
+  assert.equal(readUnitSystem(null), "imperial");
+});
+
+test("readUnitSystem returns metric on storage error when language is pt-br", () => {
+  assert.equal(readUnitSystem(throwingStorage(), { lng: "pt-br" }), "metric");
+});
+
+test("readUnitSystem returns imperial on storage error when language is en", () => {
+  assert.equal(readUnitSystem(throwingStorage(), { lng: "en" }), "imperial");
+});
+
+test("readUnitSystem returns imperial on storage error when no language (backward compat)", () => {
+  assert.equal(readUnitSystem(throwingStorage()), "imperial");
+});
+
+test("readUnitSystem with pt-br variant pt_BR (underscore) also defaults to metric", () => {
+  assert.equal(readUnitSystem(mockStorage(), { lng: "pt_BR" }), "metric");
+});
+
+test("readUnitSystem with pt-br variant pt-br-u-nu-metric also defaults to metric", () => {
+  assert.equal(readUnitSystem(mockStorage(), { lng: "pt-br-u-nu-metric" }), "metric");
+});
+
+// ── languageDefault helper ───────────────────────────────────────────────────
+
+test("languageDefault returns imperial for falsy inputs", () => {
+  assert.equal(languageDefault(undefined), "imperial");
+  assert.equal(languageDefault(null as unknown as string), "imperial");
+  assert.equal(languageDefault(""), "imperial");
+});
+
+test("languageDefault returns metric for pt-br (lowercase)", () => {
+  assert.equal(languageDefault("pt-br"), "metric");
+});
+
+test("languageDefault returns metric for pt-BR (mixed case)", () => {
+  assert.equal(languageDefault("pt-BR"), "metric");
+});
+
+test("languageDefault returns metric for pt_BR (underscore variant)", () => {
+  assert.equal(languageDefault("pt_BR"), "metric");
+});
+
+test("languageDefault returns metric for pt-br sub-tag", () => {
+  assert.equal(languageDefault("pt-br-u-nu-metric"), "metric");
+});
+
+test("languageDefault returns imperial for all other languages", () => {
+  assert.equal(languageDefault("en"), "imperial");
+  assert.equal(languageDefault("en-US"), "imperial");
+  assert.equal(languageDefault("es"), "imperial");
+  assert.equal(languageDefault("fr"), "imperial");
+  assert.equal(languageDefault("de"), "imperial");
+  assert.equal(languageDefault("zh"), "imperial");
+});
+
+// ── hasExplicitPreference ────────────────────────────────────────────────────
+
+test("hasExplicitPreference returns true when metric is stored", () => {
+  const store = mockStorage();
+  store.setItem(UNIT_SYSTEM_KEY, "metric");
+  assert.equal(hasExplicitPreference(store), true);
+});
+
+test("hasExplicitPreference returns true when imperial is stored", () => {
+  const store = mockStorage();
+  store.setItem(UNIT_SYSTEM_KEY, "imperial");
+  assert.equal(hasExplicitPreference(store), true);
+});
+
+test("hasExplicitPreference returns false when key is absent", () => {
+  assert.equal(hasExplicitPreference(mockStorage()), false);
+});
+
+test("hasExplicitPreference returns false when value is invalid", () => {
+  const store = mockStorage();
+  store.setItem(UNIT_SYSTEM_KEY, "si");
+  assert.equal(hasExplicitPreference(store), false);
+  store.setItem(UNIT_SYSTEM_KEY, "");
+  assert.equal(hasExplicitPreference(store), false);
+});
+
+test("hasExplicitPreference returns false when storage throws", () => {
+  assert.equal(hasExplicitPreference(throwingStorage()), false);
+});
+
+test("hasExplicitPreference returns false with null storage (bypass)", () => {
+  assert.equal(hasExplicitPreference(null), false);
+});
+
+test("hasExplicitPreference reads from globalThis.localStorage when storage is omitted", () => {
+  const store = installMockGlobal();
+  assert.equal(hasExplicitPreference(), false);
+  store.setItem(UNIT_SYSTEM_KEY, "metric");
+  assert.equal(hasExplicitPreference(), true);
+});
+
+// ── resolveAfterLanguageChange: pure decision logic ─────────────────────────
+// These tests exercise the exported decision function without React or i18n,
+// proving the contract the UnitSystemProvider relies on.
+
+test("resolveAfterLanguageChange: no preference, en→pt-br yields metric", () => {
+  const result = resolveAfterLanguageChange({
+    currentUnit: "imperial",
+    hasExplicitStorage: false,
+    explicitMemory: false,
+    newLng: "pt-br",
+  });
+  assert.equal(result, "metric");
+});
+
+test("resolveAfterLanguageChange: no preference, pt-br→en yields imperial", () => {
+  const result = resolveAfterLanguageChange({
+    currentUnit: "metric",
+    hasExplicitStorage: false,
+    explicitMemory: false,
+    newLng: "en",
+  });
+  assert.equal(result, "imperial");
+});
+
+test("resolveAfterLanguageChange: no preference, en→en yields imperial (no change)", () => {
+  const result = resolveAfterLanguageChange({
+    currentUnit: "imperial",
+    hasExplicitStorage: false,
+    explicitMemory: false,
+    newLng: "en",
+  });
+  assert.equal(result, "imperial");
+});
+
+test("resolveAfterLanguageChange: no preference, pt-br→pt-br yields metric (no change)", () => {
+  const result = resolveAfterLanguageChange({
+    currentUnit: "metric",
+    hasExplicitStorage: false,
+    explicitMemory: false,
+    newLng: "pt-br",
+  });
+  assert.equal(result, "metric");
+});
+
+test("resolveAfterLanguageChange: explicit storage metric preserved on en→pt-br", () => {
+  const result = resolveAfterLanguageChange({
+    currentUnit: "metric",
+    hasExplicitStorage: true,
+    explicitMemory: false,
+    newLng: "pt-br",
+  });
+  assert.equal(result, "metric", "explicit storage choice must not be overridden");
+});
+
+test("resolveAfterLanguageChange: explicit storage imperial preserved on pt-br→en", () => {
+  const result = resolveAfterLanguageChange({
+    currentUnit: "imperial",
+    hasExplicitStorage: true,
+    explicitMemory: false,
+    newLng: "en",
+  });
+  assert.equal(result, "imperial", "explicit storage choice must not be overridden");
+});
+
+test("resolveAfterLanguageChange: explicit memory metric preserved on pt-br→en", () => {
+  const result = resolveAfterLanguageChange({
+    currentUnit: "metric",
+    hasExplicitStorage: false,
+    explicitMemory: true,
+    newLng: "en",
+  });
+  assert.equal(result, "metric", "in-session explicit choice must survive language switch");
+});
+
+test("resolveAfterLanguageChange: explicit memory imperial preserved on en→pt-br", () => {
+  const result = resolveAfterLanguageChange({
+    currentUnit: "imperial",
+    hasExplicitStorage: false,
+    explicitMemory: true,
+    newLng: "pt-br",
+  });
+  assert.equal(result, "imperial", "in-session explicit choice must survive language switch");
+});
+
+test("resolveAfterLanguageChange: both storage and memory explicit → preserved", () => {
+  const result = resolveAfterLanguageChange({
+    currentUnit: "metric",
+    hasExplicitStorage: true,
+    explicitMemory: true,
+    newLng: "en",
+  });
+  assert.equal(result, "metric");
+});
+
+test("resolveAfterLanguageChange: storage fails + no memory → recalculates from language", () => {
+  // Simulates: storage is broken (hasExplicitStorage false) and user never
+  // clicked a toggle (explicitMemory false).  Language default applies.
+  assert.equal(
+    resolveAfterLanguageChange({ currentUnit: "imperial", hasExplicitStorage: false, explicitMemory: false, newLng: "pt-br" }),
+    "metric",
+  );
+  assert.equal(
+    resolveAfterLanguageChange({ currentUnit: "metric", hasExplicitStorage: false, explicitMemory: false, newLng: "en" }),
+    "imperial",
+  );
+});
+
+test("resolveAfterLanguageChange: storage fails + explicit memory → still preserved", () => {
+  // The core scenario this function was designed for: user chose metric via
+  // the UI, storage silently failed, then language changed to English.
+  const result = resolveAfterLanguageChange({
+    currentUnit: "metric",
+    hasExplicitStorage: false,
+    explicitMemory: true,
+    newLng: "en",
+  });
+  assert.equal(result, "metric", "explicitMemory must protect against storage failure + language switch");
 });

@@ -12,6 +12,11 @@ __pycache__/
 .venv/
 venv/
 server/.venv/
+graft/
+.repowise/
+.rtk/
+.opencode/
+.codex/
 
 # Local env / secrets — never commit
 .env

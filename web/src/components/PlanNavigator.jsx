@@ -29,7 +29,8 @@ import { projectHomeFolderId } from "../lib/projectHome.js";
 import { groupSheetsByLevel, sortGalleryGroups } from "../lib/sheetLevels.js";
 
 const THUMB_W = 380;
-const ROOT = { id: undefined, name: "Project" };   // id undefined → cloudStore's default (project folder)
+const ROOT_ID = undefined; // cloudStore's default (project folder)
+const ROOT_NAME_KEY = "plan.project_root";
 
 function fmtSize(s) {
   const n = Number(s);
@@ -96,7 +97,7 @@ export default function PlanNavigator({
   }, []);
 
   // ══ BROWSE (Drive) state ══════════════════════════════════════════════════
-  const [path, setPath] = useState([ROOT]);        // breadcrumb stack
+  const [path, setPath] = useState([{ id: ROOT_ID, name: t(ROOT_NAME_KEY) }]);        // breadcrumb stack
   const [data, setData] = useState(null);          // { folders, pdfs } | null
   const [bLoading, setBLoading] = useState(true);
   const [bErr, setBErr] = useState("");
@@ -489,7 +490,7 @@ export default function PlanNavigator({
         <div key={grp.level ?? "__all"} style={{ marginBottom: grp.level !== null ? 22 : 0 }}>
         {grp.level !== null && (
           <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink-muted)", margin: "0 0 8px 2px" }}>
-            {grp.level || "Unassigned"} · {grp.keys.length}
+            {grp.level || t('plan.unassigned')} · {grp.keys.length}
           </div>
         )}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))", gap: 14 }}>

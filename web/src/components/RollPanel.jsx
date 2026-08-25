@@ -98,7 +98,7 @@ function RollDiagram({ ri, editable, onReorder, units = "imperial" }) {
         return (
           <g key={s.id} onPointerDown={(e) => startDrag(e, s)}
             style={editable ? { cursor: "grab" } : undefined}>
-            <title>{`Cut ${n}${s.label ? ` — ${s.label}` : ""}: ${fmt(ln)} × ${fmt(lw)}${s.overRoll ? t('roll.oversize') : ""}`}</title>
+            <title>{`${t('roll.cut_label')} ${n}${s.label ? ` — ${s.label}` : ""}: ${fmt(ln)} × ${fmt(lw)}${s.overRoll ? t('roll.oversize') : ""}`}</title>
             <rect x={x} y={y} width={w} height={h}
               fill={rollFill + (isDrag ? "88" : "66")}
               stroke={s.overRoll ? "var(--c-danger)" : "var(--ink)"} strokeWidth={s.overRoll ? 1.6 : 0.8} />

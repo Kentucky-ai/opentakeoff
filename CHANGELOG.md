@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-25 — Brazilian Portuguese naturalization, metric-first default
+
+### Changed
+- **pt-BR naturalization and metric-first default.** The Brazilian Portuguese locale now defaults to the SI / Métrico unit system on first load (`m²` for area, `m` for length, `mm` for thickness), giving metric users an immediate out-of-the-box experience without a manual toggle. The user-facing glossary adopts Brazilian construction terminology — *planta* (sheet/drawing), *ambiente* (room), *dedução* (deduct), *delimitar* (trace an area) — replacing direct translations that read as foreign to a Brazilian estimator. The Imperial option remains fully available: switching to Imperial restores `SF`, `LF`, `ft`, and `in` across all readouts, panels, the Report, CSV, Excel, and the Marked Set legend. No internal geometry storage, canonical scales, or raw quantities change on any locale switch — the unit system controls only the display and input layer.
+
 ## 2026-08-24 — global Imperial / SI unit preference
 
 ### Added

@@ -821,3 +821,32 @@ assertCrossLocaleParity("panels", [
   "takeoffs.roll_width_broadloom_title",
   "takeoffs.roll_width_resilient_title",
 ]);
+
+// ── 16. Task 2: wiring tests for metric export routing ───────────────────────
+// These verify that the component → function wiring propagates `units` through
+// to every export path.  Source-level import checks were removed: they only
+// proved textual presence, and the behavioral tests in reportColumns/xlsx/
+// shapesExport already verify the metric output is correct.
+
+test("ReportPanel passes units to CSV/XLSX/shapes export functions", () => {
+  const src = loadSrc("src/components/ReportPanel.jsx");
+  // CSV export must pass units
+  const csvLine = src.split("\n").find((l: string) => l.includes("totalsToCsv("));
+  assert.ok(csvLine, "No totalsToCsv call found in ReportPanel.jsx");
+  assert.ok(csvLine.includes("units"), `totalsToCsv must receive units, got: ${csvLine.trim()}`);
+  // XLSX export must pass units
+  const xlsxLine = src.split("\n").find((l: string) => l.includes("reportWorkbook("));
+  assert.ok(xlsxLine, "No reportWorkbook call found in ReportPanel.jsx");
+  assert.ok(xlsxLine.includes("units"), `reportWorkbook must receive units, got: ${xlsxLine.trim()}`);
+  // Shapes CSV export must pass units
+  const shapesCsvLine = src.split("\n").find((l: string) => l.includes("shapesToCsv("));
+  assert.ok(shapesCsvLine, "No shapesToCsv call found in ReportPanel.jsx");
+  assert.ok(shapesCsvLine.includes("units"), `shapesToCsv must receive units, got: ${shapesCsvLine.trim()}`);
+});
+
+test("RevisionsPanel passes units to diffToCsv", () => {
+  const src = loadSrc("src/components/RevisionsPanel.jsx");
+  const diffLine = src.split("\n").find((l: string) => l.includes("diffToCsv("));
+  assert.ok(diffLine, "No diffToCsv call found in RevisionsPanel.jsx");
+  assert.ok(diffLine.includes("units"), `diffToCsv must receive units, got: ${diffLine.trim()}`);
+});

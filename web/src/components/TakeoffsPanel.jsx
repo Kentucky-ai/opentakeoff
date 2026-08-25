@@ -1,7 +1,7 @@
 // TakeoffsPanel — the docked conditions panel on the canvas's right edge
 // (reflows the canvas, not an overlay): every condition with its running
-// totals and inline properties, plus the template Library, material-library
-// Materials (#47/#48), and custom Columns tabs. Extracted from TakeoffCanvas
+// totals and inline properties, plus the template Library (with sub-tabs for
+// Materials #47/#48 and custom Columns). Extracted from TakeoffCanvas
 // and memoized so canvas-only renders (the
 // ~11Hz transform mirror during pan/zoom, crosshair churn) skip this whole
 // subtree — every callback prop the canvas passes is identity-stable.
@@ -488,11 +488,11 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
       {isRow && rule()}
       {!isRow && (<>
         <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-          <span style={{ color: "var(--ink-muted)", width: 26 }}>{t('takeoffs.line_label')}</span>
+          <span title={t('takeoffs.line_color_title')} aria-label={t('takeoffs.line_color_title')} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--ink-muted)", width: 26 }}><Icon name="linear" size={15} /></span>
           {PALETTE.map((p) => <button key={p} title={p} aria-pressed={c.color === p} onClick={() => onUpdateCond({ color: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, border: c.color === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-          <span style={{ color: "var(--ink-muted)", width: 26 }}>{t('takeoffs.fill_label')}</span>
+          <span title={t('takeoffs.fill_color_title')} aria-label={t('takeoffs.fill_color_title')} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", color: "var(--ink-muted)", width: 26 }}><Icon name="area" size={15} /></span>
           <button title={t('takeoffs.no_fill_title')} aria-pressed={c.fill === NO_FILL} onClick={() => onUpdateCond({ fill: NO_FILL })} style={{ width: 16, height: 16, borderRadius: 4, background: "var(--paper-bright)", border: c.fill === NO_FILL ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 9, lineHeight: "12px", color: "var(--c-danger)" }}>⦸</button>
           {PALETTE.map((p) => <button key={p} title={p} aria-pressed={c.fill === p} onClick={() => onUpdateCond({ fill: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, opacity: 0.55, border: c.fill === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
         </div>
@@ -899,7 +899,8 @@ function TakeoffsPanel({
   onToggleCollapse, onHoldGesture, onTogglePin,
 }) {
   const { t } = useTranslation("panels");
-  const [panelTab, setPanelTab] = useState("takeoffs");       // "takeoffs" | "library" | "materials" | "columns"
+  const [panelTab, setPanelTab] = useState("takeoffs");       // "takeoffs" | "library"
+  const [libraryTab, setLibraryTab] = useState("library");    // sub-tab inside "library": "library" | "materials" | "columns"
   const [condQuery, setCondQuery] = useState("");             // live filter over the condition list (transient, never persisted)
   const [matLibQuery, setMatLibQuery] = useState("");         // Materials tab search (transient; describes the browser-global library, so hydrate/epoch leaves it alone)
   const [closedGroups, setClosedGroups] = useState(() => new Set()); // collapsed tag-family groups in the grouped view
@@ -1218,19 +1219,29 @@ function TakeoffsPanel({
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "7px 12px", background: "var(--ink)", color: "var(--paper-cream)", flexShrink: 0 }}>
           <span className="takeoff-panel-tabs" style={{ display: "inline-flex", gap: 2 }}>
-            {[["takeoffs", multiSheet ? t('takeoffs.tab_takeoffs_multi') : t('takeoffs.tab_takeoffs_single')], ["library", templates.length ? t('takeoffs.tab_library_count', { count: templates.length }) : t('takeoffs.tab_library')], ["materials", matLib.length ? t('takeoffs.tab_materials_count', { count: matLib.length }) : t('takeoffs.tab_materials')], ["columns", conditionColumns.length ? t('takeoffs.tab_columns_count', { count: conditionColumns.length }) : t('takeoffs.tab_columns')]].map(([id, label]) => (
-              <button key={id} onClick={() => setPanelTab(id)}
+            {[["takeoffs", multiSheet ? t('takeoffs.tab_takeoffs_multi') : t('takeoffs.tab_takeoffs_single')], ["library", templates.length ? t('takeoffs.tab_library_count', { count: templates.length }) : t('takeoffs.tab_library')]].map(([id, label]) => (
+              <button key={id} onClick={() => { setPanelTab(id); if (id === "library") setLibraryTab("library"); }}
                 style={{ padding: "3px 8px", border: "none", borderBottom: panelTab === id ? "2px solid var(--paper-cream)" : "2px solid transparent", background: "none", color: "var(--paper-cream)", opacity: panelTab === id ? 1 : 0.65, cursor: "pointer", fontWeight: 700, fontSize: 12.5 }}>{label}</button>
             ))}
           </span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+           <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
             <button onClick={() => onPanelPrefs((p) => ({ ...p, strip: !p.strip }))}
               title={t('takeoffs.strip_title')}
-              style={{ background: panelPrefs.strip ? "var(--paper-cream)" : "none", border: "1px solid var(--paper-cream)", color: panelPrefs.strip ? "var(--ink)" : "var(--paper-cream)", fontSize: 9.5, fontFamily: "var(--f-mono)", letterSpacing: "0.08em", textTransform: "uppercase", cursor: "pointer", padding: "2px 6px", lineHeight: 1.4 }}>{t('takeoffs.strip')}</button>
+              aria-label={t('takeoffs.strip')}
+              aria-pressed={panelPrefs.strip}
+              style={{ width: 24, height: 24, display: "inline-flex", alignItems: "center", justifyContent: "center", background: panelPrefs.strip ? "var(--paper-cream)" : "none", border: "1px solid var(--paper-cream)", color: panelPrefs.strip ? "var(--ink)" : "var(--paper-cream)", cursor: "pointer", padding: 0 }}><Icon name="layers" size={13} /></button>
             <button onClick={onToggleCollapse} title={t('takeoffs.collapse_title')}
               style={{ background: "none", border: "none", color: "var(--paper-cream)", fontSize: 15, cursor: "pointer", lineHeight: 1 }}>»</button>
           </span>
         </div>
+        {panelTab === "library" && (
+          <span className="takeoff-panel-subtabs" style={{ display: "inline-flex", gap: 2, padding: "4px 12px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-cream)", flexShrink: 0 }}>
+            {[["library", templates.length ? t('takeoffs.tab_library_count', { count: templates.length }) : t('takeoffs.tab_library')], ["materials", matLib.length ? t('takeoffs.tab_materials_count', { count: matLib.length }) : t('takeoffs.tab_materials')], ["columns", conditionColumns.length ? t('takeoffs.tab_columns_count', { count: conditionColumns.length }) : t('takeoffs.tab_columns')]].map(([id, label]) => (
+              <button key={id} onClick={() => setLibraryTab(id)}
+                style={{ padding: "2px 7px", border: "none", borderBottom: libraryTab === id ? "2px solid var(--cobalt)" : "2px solid transparent", background: "none", color: libraryTab === id ? "var(--ink)" : "var(--ink-muted)", cursor: "pointer", fontWeight: libraryTab === id ? 700 : 400, fontSize: 11.5 }}>{label}</button>
+            ))}
+          </span>
+        )}
         {panelTab === "takeoffs" && <>
         {/* view controls — search / natural sort / tag-family grouping.
             All VIEW-ONLY: the array order (hotkeys, payload) never changes. */}
@@ -1295,7 +1306,7 @@ function TakeoffsPanel({
         </div>
         </>}
         {/* Library tab — reusable condition templates, browser-wide */}
-        {panelTab === "library" && (
+        {panelTab === "library" && libraryTab === "library" && (
           <div style={{ flex: 1, overflow: "auto" }}>
             <div style={{ padding: "8px 12px 4px", color: "var(--ink-muted)", fontSize: 11 }}>
               {t('takeoffs.library_description')}
@@ -1331,7 +1342,7 @@ function TakeoffsPanel({
             consumables shared across every plan in this browser. Conditions
             COPY on attach (lib_id link); edits here never propagate unless
             explicitly pushed to linked lines. */}
-        {panelTab === "materials" && (
+        {panelTab === "library" && libraryTab === "materials" && (
           <div style={{ flex: 1, overflow: "auto", fontSize: 11.5 }}>
             <div style={{ padding: "8px 12px 4px", color: "var(--ink-muted)", fontSize: 11 }}>
               {t('takeoffs.materials_description')}
@@ -1392,7 +1403,7 @@ function TakeoffsPanel({
         {/* Columns tab — the custom-columns manager (#31/#33): project-level
             vocabulary; per-condition assignment lives in the active row's
             properties on the Takeoffs tab */}
-        {panelTab === "columns" && (
+        {panelTab === "library" && libraryTab === "columns" && (
           <div style={{ flex: 1, overflow: "auto", fontSize: 11.5 }}>
             {/* Shape labels (#110) — a flat project-level vocabulary; each shape
                 carries at most one label. Lives here rather than a 5th panel tab:

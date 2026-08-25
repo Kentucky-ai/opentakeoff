@@ -26,7 +26,7 @@ import { normalizeLogoToPng, loadProfiles, saveProfiles, activeProfile, updateAc
 import { resolveBranding, loadBrandingSelection, saveBrandingSelection } from "../lib/branding.js";
 import { projectIdFromUrl } from "../lib/store.js";
 
-const num = (v, d = 1) => (Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: d });
+const num = (v, d = 1) => (Number(v) || 0).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
 
 // one-line hints for the opt-in columns in the picker (waste hint sits under
 // the second waste checkbox so it reads once for the pair). Hint text is
@@ -848,7 +848,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                   <tr key={m.id}>
                     <td style={{ ...td, textAlign: "left" }}>
                       <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, fontWeight: 700, letterSpacing: "0.08em", border: "1px solid var(--ink-faint)", padding: "1px 6px", color: "var(--ink-soft)" }}>
-                        {m.type === "cloud" ? "CLOUD" : m.type === "callout" ? "CALLOUT" : "NOTE"}
+                        {t(`markup_type.${m.type}`) || m.type}
                       </span>
                     </td>
                     <td style={{ ...td, textAlign: "left", fontFamily: "var(--f-mono)", fontSize: 11.5 }}>{sheetLabel ? sheetLabel(m.sheet_id) : m.sheet_id}</td>
@@ -1022,7 +1022,7 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
             <select name="trade-name" aria-label={t('info.active_trade_name')} value={profs.activeId || ""} onChange={(e) => switchProfile(e.target.value)}
               className="field-input" style={{ flex: 1, minWidth: 0 }} disabled={!profs.profiles.length}>
               {profs.profiles.length === 0 && <option value="">{t('info.no_trade_name')}</option>}
-              {profs.profiles.map((p) => <option key={p.id} value={p.id}>{p.name || "Untitled trade name"}</option>)}
+              {profs.profiles.map((p) => <option key={p.id} value={p.id}>{p.name || t('info.untitled_trade')}</option>)}
             </select>
             <button onClick={addTradeName} className="btn-ghost" title={t('info.add_trade_name_title')}
               style={{ padding: "5px 10px", whiteSpace: "nowrap" }}>{t('info.add')}</button>
@@ -1078,7 +1078,7 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
                     style={{ padding: "4px 10px", fontSize: 12, cursor: "pointer",
                       border: `1px solid ${on ? "var(--cobalt)" : "var(--ink-faint)"}`,
                       background: on ? "var(--cobalt)" : "transparent", color: on ? "var(--paper-bright)" : "var(--ink)" }}>
-                    {p.name || "Untitled trade name"}
+                    {p.name || t('info.untitled_trade')}
                   </button>
                 );
               })}
@@ -1102,7 +1102,7 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
             </label>
             <label style={{ ...row, flex: 1 }}>
               <span className="field-label">{t('info.date_label')}</span>
-              <input name="client-date" autoComplete="off" value={clientInfo.date || ""} onChange={client("date")} placeholder={'e.g. "Bid 7/12"'}
+               <input name="client-date" autoComplete="off" value={clientInfo.date || ""} onChange={client("date")} placeholder={t('info.date_placeholder')}
                 className="field-input" style={{ marginTop: 4 }} />
             </label>
           </div>

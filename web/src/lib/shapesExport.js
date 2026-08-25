@@ -20,7 +20,10 @@ export function shapesDetail(conditions, shapes, sheetLabel) {
     const role = s.measure_role;
     let area_sf = 0, lf = 0, ea = 0;
     switch (role) {
-      case "deduct": area_sf = -(cp.area_sf || 0); lf = cp.perimeter_lf || 0; break;
+      // #137 — reconciled deducts (cuts_shape_id set) are already netted into
+      // the parent's computed.area_sf; showing the negative would double-subtract
+      // in any column sum.  Legacy independent deducts keep their face value.
+      case "deduct": area_sf = s.cuts_shape_id ? 0 : -(cp.area_sf || 0); lf = cp.perimeter_lf || 0; break;
       case "floor_area":
       case "surface_area":
       case "linear": area_sf = cp.area_sf || 0; lf = cp.perimeter_lf || 0; break;

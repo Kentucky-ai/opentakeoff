@@ -379,26 +379,31 @@ export function deriveTransitionRuns(
  * separates, and that error is invisible in the totals — it just makes carpet
  * read long.
  */
+export interface TransitionRefusal {
+  code: string;
+  params: Record<string, string>;
+}
+
 export function transitionRefusal(gate: {
   activeTag: string;
   a: { tag: string; shapes: TransitionSourceShape[] };
   b: { tag: string; shapes: TransitionSourceShape[] };
   sheets: Map<string, SheetFrame>;
   unscaled?: string[];
-}): string | null {
+}): TransitionRefusal | null {
   const { activeTag, a, b, sheets, unscaled = [] } = gate;
-  if (!a.tag || !b.tag) return "Pick the two finishes that meet.";
-  if (a.tag === b.tag) return "Pick two DIFFERENT finishes — a tag does not transition to itself.";
+  if (!a.tag || !b.tag) return { code: "transition_pick_two", params: {} };
+  if (a.tag === b.tag) return { code: "transition_same_finish", params: { tag: a.tag } };
   if (activeTag === a.tag || activeTag === b.tag) {
-    return `The transition has to land on its own condition (e.g. T-1) — committing onto ${activeTag} would add its LF to one of the finishes it separates.`;
+    return { code: "transition_own_condition", params: { activeTag, tagA: a.tag, tagB: b.tag } };
   }
   for (const side of [a, b]) {
-    if (!side.shapes.length) return `${side.tag} has no rooms on the open sheets — measure them first (One-Click or Area).`;
+    if (!side.shapes.length) return { code: "transition_no_rooms", params: { tag: side.tag } };
   }
   if (unscaled.length) {
-    return `${unscaled.join(", ")} ${unscaled.length === 1 ? "has" : "have"} no scale — a transition is a real length, so calibrate before deriving.`;
+    return { code: "transition_no_scale", params: { sheets: unscaled.join(", ") } };
   }
   const shared = [...sheets.keys()].filter((k) => a.shapes.some((s) => s.sheet_id === k) && b.shapes.some((s) => s.sheet_id === k));
-  if (!shared.length) return `${a.tag} and ${b.tag} have no rooms on the same open sheet — nothing can meet.`;
+  if (!shared.length) return { code: "transition_no_shared", params: { tagA: a.tag, tagB: b.tag } };
   return null;
 }
