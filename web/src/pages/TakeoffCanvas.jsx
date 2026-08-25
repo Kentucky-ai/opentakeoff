@@ -15,14 +15,14 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router";
-import { useTranslation } from "react-i18next";
-import i18n from "../i18n/index.js";
+import { useTranslation, Trans } from "react-i18next";
+import { SUPPORTED_LANGUAGES } from "../i18n/index.js";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { store, isStaleTabError, projectIdFromUrl } from "../lib/store.js";
 import { Z } from "../lib/ui.js";
 import { getFocusMode, toggleFocusMode, onFocusModeChange } from "../lib/focusMode.js";
-import { seedStampLibrary, instantiateStamp, markupToStampElement } from "../lib/stamps.js";
+import { seedStampLibrary, instantiateStamp, markupToStampElement, stampDisplayName } from "../lib/stamps.js";
 import { extractSvgPrimitives, svgToStamp } from "../lib/svgImport.js";
 import { transformPath, svgPlacedBox } from "../lib/svgpath.js";
 import { ingestFiles } from "../lib/ingest.js";
@@ -35,7 +35,7 @@ import UserGuide from "../components/UserGuide.jsx";
 import TakeoffsPanel, { clampPanelW, CONDITION_DND_MIME, ConditionAppearanceEditor } from "../components/TakeoffsPanel.jsx";
 import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../components/hatches.jsx";
 import { Icon } from "../brand/icons.jsx";
-import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText } from "../lib/sheets";
+import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, standardScalesForUnits, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText } from "../lib/sheets";
 import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
@@ -90,6 +90,7 @@ import { computeRollTakeoff, seamLfByShape } from "../lib/rollTakeoff.js";
 import AgentPanel from "../components/AgentPanel.jsx";
 import AiSettings from "../components/AiSettings.jsx";
 import UnitSettings from "../components/UnitSettings.jsx";
+import LanguageSettings from "../components/LanguageSettings.jsx";
 import { useUnitSystem } from "../components/UnitSystemProvider.jsx";
 import { AGENT_TOOL_DEFS, executeAgentTool, agentScaleGate } from "../lib/agentTools.js";
 import { runAgentLoop } from "../lib/agentLoop.js";
@@ -210,14 +211,15 @@ const PALETTE_MAX = 9;
 // status-bar verb column — the armed tool spoken as its MCP verb, so agent and
 // human activity read in the same instrument language.
 const TOOL_VERB = {
-  select: "select", area: "measure_polygon", rect: "measure_polygon",
-  deduct: "cut_out", "deduct-rect": "cut_out",
-  linear: "measure_line", curve: "measure_line", surface: "measure_surface",
-  count: "place_count", oneclick: "one_click", calibrate: "set_scale",
-  check: "check_dimension", zone: "zone_check", "stitch-align": "stitch_align",
-  schedule: "find_schedule", highlighter: "annotate", cloud: "annotate",
-  callout: "annotate", text: "annotate", highlight: "annotate",
-  arrow: "annotate", dimension: "annotate", stamp: "annotate", bubble: "annotate",
+  select: "status.verb.select", area: "status.verb.measure_polygon", rect: "status.verb.measure_polygon",
+  deduct: "status.verb.cut_out", "deduct-rect": "status.verb.cut_out",
+  linear: "status.verb.measure_line", curve: "status.verb.measure_line", surface: "status.verb.measure_surface",
+  count: "status.verb.place_count", oneclick: "status.verb.one_click", calibrate: "status.verb.set_scale",
+  check: "status.verb.check_dimension", zone: "status.verb.zone_check", "stitch-align": "status.verb.stitch_align",
+  schedule: "status.verb.find_schedule", highlighter: "status.verb.annotate", cloud: "status.verb.annotate",
+  callout: "status.verb.annotate", text: "status.verb.annotate", highlight: "status.verb.annotate",
+  arrow: "status.verb.annotate", dimension: "status.verb.annotate", stamp: "status.verb.annotate", bubble: "status.verb.annotate",
+  approve: "status.verb.approve",
 };
 
 // Pure geometry helpers (star/cloud paths, snap grid, angle lock, metrics,
@@ -227,7 +229,7 @@ const TOOL_VERB = {
 // live in components/TakeoffsPanel.jsx — the panel is their only surface now.
 
 export default function TakeoffCanvas() {
-  const { t } = useTranslation("canvas");
+  const { t, i18n } = useTranslation("canvas");
   const LINE_STYLES = getLineStyles();
   // Client-only: a single local workspace in this browser (no project id, no backend).
   const [sheets, setSheets] = useState([]);
@@ -370,7 +372,8 @@ export default function TakeoffCanvas() {
   // scale, or a coverage rate.
   const { unitSystem: units } = useUnitSystem();
   const [showUnitSettings, setShowUnitSettings] = useState(false);
-  const unitSettingsTriggerRef = useRef(null);
+  const [showLanguageSettings, setShowLanguageSettings] = useState(false);
+  const languageSettingsTriggerRef = useRef(null);
   const [check, setCheck] = useState([]);             // Check tool: 0–2 stage-px points along a printed dimension
   const [checkStated, setCheckStated] = useState(""); // what the drawing says that dimension is
   const [scaleGuide, setScaleGuide] = useState(null); // ephemeral calibrated ruler {key, feet, px, label, at:[x,y]} — never persisted (buildPayload doesn't read it)
@@ -4231,7 +4234,7 @@ export default function TakeoffCanvas() {
       addMarkup({ ...m, id }, tp.key);
       if (_prompt && !promptId) promptId = id;
     }
-    setCommitMsg(t('status.placed_stamp', { name: armedStamp.name }));
+    setCommitMsg(t('status.placed_stamp', { name: stampDisplayName(armedStamp, i18n.getFixedT(null, "panels")) }));
     if (promptId) openTextEditor({ anchorStage: p, commit: (t) => updateMarkup(promptId, { text: (t || "").trim() }) });
   }
   // ── approval seal (ink, human-only) — the estimator's stamp. One click: on
@@ -6123,7 +6126,7 @@ export default function TakeoffCanvas() {
     });
   }
   scaleItems.push({ section: t('scale.standard_header') });
-  for (const s of STANDARD_SCALES) scaleItems.push({ id: s.label, label: s.label, active: stdValue === s.label, onSelect: () => { rescaleSheet(focusPanel.key, s.upp); setScaleSources((sc) => ({ ...sc, [focusPanel.key]: "standard" })); showScaleGuide(focusPanel.key, s.upp, s.label); } });
+  for (const s of standardScalesForUnits(units)) scaleItems.push({ id: s.label, label: s.label, active: stdValue === s.label, onSelect: () => { rescaleSheet(focusPanel.key, s.upp); setScaleSources((sc) => ({ ...sc, [focusPanel.key]: "standard" })); showScaleGuide(focusPanel.key, s.upp, s.label); } });
   scaleItems.push("divider");
   scaleItems.push({ id: "calibrate", icon: "calibrate", label: t('scale.calibrate'), title: t('tool.calibrate'), active: tool === "calibrate", onSelect: () => setTool("calibrate") });
   scaleItems.push({ id: "check", icon: "check", label: t('scale.check'), shortcut: "K", title: t('check.tool', { count: 2 }), active: tool === "check", onSelect: () => setTool("check") });
@@ -6334,21 +6337,14 @@ export default function TakeoffCanvas() {
         )}
         <div style={{ flex: 1 }} />
         {cluster(`${t('toolbar.scale')} — ${labelFor(focusPanel)}`,
-          <>
-            <button ref={unitSettingsTriggerRef} onClick={() => setShowUnitSettings(true)}
-              title={units === "metric" ? t('scale.metric_hint') : t('scale.imperial_hint')}
-              style={{ padding: "6px 10px", border: `1px solid ${units === "metric" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: units === "metric" ? "var(--cobalt)" : "transparent", color: units === "metric" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, lineHeight: 1 }}>
-              {units === "metric" ? "m" : "ft"}
-            </button>
-            <ToolMenu
-              title={scaleTitle}
-              onOpenChange={onScaleMenuDepth}
-              face={<span>{scaleFace}</span>}
-              faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 11.5, ...scaleFaceStyle }}
-              menuStyle={{ minWidth: 250 }}
-              items={scaleItems}
-            />
-          </>
+          <ToolMenu
+            title={scaleTitle}
+            onOpenChange={onScaleMenuDepth}
+            face={<span>{scaleFace}</span>}
+            faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 11.5, ...scaleFaceStyle }}
+            menuStyle={{ minWidth: 250 }}
+            items={scaleItems}
+          />
         )}
         {cluster(t('toolbar.action'),
           <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "flex-end", gap: 6, minWidth: 150 }}>
@@ -6369,11 +6365,13 @@ export default function TakeoffCanvas() {
         <ToolMenu
           title={t('menu.more')}
           onOpenChange={onMenuDepth}
+          triggerRef={languageSettingsTriggerRef}
           face={<span style={{ fontWeight: 700, letterSpacing: "0.08em" }}>⋯</span>}
           items={[
             { id: "guide", label: t('menu.how_works'), shortcut: "?", onSelect: () => setGuideOpen(true) },
             { id: "theme", label: theme === "dark" ? t('menu.light_chrome') : t('menu.dark_chrome'), onSelect: toggleTheme },
-            { id: "language", label: i18n.language?.startsWith("pt") ? "English" : "Português (BR)", onSelect: () => i18n.changeLanguage(i18n.language?.startsWith("pt") ? "en" : "pt-br") },
+            { id: "units", label: t('menu.units'), title: units === "metric" ? t('scale.metric_hint') : t('scale.imperial_hint'), onSelect: () => setShowUnitSettings(true) },
+            { id: "language", label: t('menu.language'), title: t('menu.language_label', { name: SUPPORTED_LANGUAGES.find(l => (i18n.language || 'en').startsWith(l.code))?.nativeLabel || i18n.language }), onSelect: () => setShowLanguageSettings(true) },
             { id: "schedule", icon: "rectTool", label: t('menu.import_schedule'), active: tool === "schedule", onSelect: () => { setScheduleAnchor(null); setTool((t) => (t === "schedule" ? "select" : "schedule")); } },
             ...(cloudMode ? [
               "divider",
@@ -6458,7 +6456,7 @@ export default function TakeoffCanvas() {
           ⊞ to side-by-side, ✕ to close; the dropdown lists every open sheet */}
       {!focusMode && openTabs.length > 0 && (
         <div style={{ display: "flex", gap: 5, alignItems: "center", padding: "5px 14px", flexWrap: "wrap", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
-          <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.14em", color: "var(--ink-muted)" }}>{t('takeoffs.strip')}</span>
+          <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.14em", color: "var(--ink-muted)" }}>{t('conditions.strip')}</span>
           {openTabs.slice(0, 8).map((k) => {
             const inGroup = sheetGroup.includes(k);
             const on = sheetGroup.length ? inGroup : k === sheetKey;
@@ -6530,7 +6528,7 @@ export default function TakeoffCanvas() {
           ) : !checkUpp ? (
             <span style={{ color: "var(--c-danger)" }}>{t('check.no_scale', { sheet: labelFor(checkPanel) })}</span>
           ) : checkPx <= 0 ? (
-            <span style={{ color: "var(--c-danger)" }}>{t('check.same_point')}</span>
+            <span style={{ color: "var(--c-danger)" }} dangerouslySetInnerHTML={{ __html: t('check.same_point') }} />
           ) : (
             <span>
               {t('check.measures')} <b style={{ fontFamily: "var(--f-mono)" }}>{fmtCheckLen(checkFeet, units)}</b> at {stdValue || t('check.custom_scale')} · {t('check.drawing_says')}{" "}
@@ -6567,13 +6565,13 @@ export default function TakeoffCanvas() {
            beside it; survives focus mode — it IS the tool access. */}
        {view === "canvas" && (
        <nav role="toolbar" aria-label={t('a11y.tools')} style={{ width: "var(--rail-w)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-1)", paddingTop: "var(--sp-2)", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflowY: "auto", overflowX: "visible" }}>
-         {railLabel("SEL")}
+         {railLabel(t('rail.sel'))}
          {railTile("select", "select", t('tool.select_desc'), "V")}
-         {railLabel("MEAS")}
+         {railLabel(t('rail.meas'))}
           {getMeasureTools().map((t) => railTile(t.id, t.icon, t.label, t.shortcut))}
-         {railLabel("CUT")}
+         {railLabel(t('rail.cut'))}
           {getCutTools().map((t) => railTile(t.id, t.icon, t.label, t.shortcut, null, { tint: "var(--c-danger)" }))}
-         {railLabel("MARK")}
+         {railLabel(t('rail.mark'))}
          <span ref={(el) => { if (el) markTileTopRef.current = el.getBoundingClientRect().top; }} style={{ position: "relative", display: "inline-flex" }}>
             <ToolMenu
               title={t('markup.cluster')}
@@ -6583,7 +6581,7 @@ export default function TakeoffCanvas() {
               face={<Icon name="markup" size={17} />}
               items={[
                 { section: t('markup.section') },
-                 ...getMarkupTools().map((t) => ({ id: t.id, icon: t.icon, label: t.label, shortcut: t.shortcut, active: tool === t.id, onSelect: () => { setTool(t.id); setMarkupDraft(null); } })),
+                 ...getMarkupTools().map((t) => ({ id: t.id, icon: t.icon, label: t.label, shortcut: t.shortcut, title: t.title, active: tool === t.id, onSelect: () => { setTool(t.id); setMarkupDraft(null); } })),
               ]}
             />
            {/* highlighter style popover — fixed beside the rail while armed
@@ -6603,7 +6601,7 @@ export default function TakeoffCanvas() {
                  ))}
                  <span style={{ width: 1, alignSelf: "stretch", background: "var(--ink-faint)" }} />
                  {[["chisel", "M4 16 L14 6 L18 10 L8 20 Z"], ["round", "M5 17 Q12 3 19 13"]].map(([tip, d]) => (
-                    <button key={tip} onClick={() => setHlStyle((st) => ({ ...st, tip }))} title={t('markup.tip_type', { type: tip })}
+                     <button key={tip} onClick={() => setHlStyle((st) => ({ ...st, tip }))} title={t('markup.tip_type', { type: t(`markup.tip_${tip}`) })}
                      style={{ width: 24, height: 20, padding: 1, cursor: "pointer", border: hlStyle.tip === tip ? "1px solid var(--ink)" : "1px solid var(--ink-faint)", background: "transparent" }}>
                      <svg viewBox="0 0 24 24" width="18" height="14">{tip === "chisel"
                        ? <path d={d} fill="currentColor" stroke="none" />
@@ -6619,7 +6617,7 @@ export default function TakeoffCanvas() {
              path), so the mark means a person looked. */}
           {railTile("approve", "approve", t('tool.approve'), null,
             () => setTool((t) => (t === "approve" ? "select" : "approve")), { tint: tool === "approve" ? "var(--c-positive)" : undefined, armed: tool === "approve" })}
-          {railLabel("CAL")}
+          {railLabel(t('rail.cal'))}
           {railTile("calibrate", "calibrate", t('tool.calibrate'), null)}
        </nav>
        )}
@@ -6652,9 +6650,7 @@ export default function TakeoffCanvas() {
                       {showMarkups ? t('markup.hide_layer') : t('markup.show_layer')}
                    </button>
                  </div>
-                  <div style={{ padding: "8px 10px", color: "var(--ink-muted)" }}>
-                    {t('markup.pick_tool')}
-                 </div>
+                   <div style={{ padding: "8px 10px", color: "var(--ink-muted)" }} dangerouslySetInnerHTML={{ __html: t('markup.pick_tool') }} />
                  {markups.filter((m) => panelKeySet.has(m.sheet_id)).length === 0 && (
                     <div style={{ padding: "4px 12px 14px", color: "var(--ink-muted)" }}>{groupKeys.length > 1 ? t('markup.empty_multi') : t('markup.empty')}</div>
                  )}
@@ -7451,7 +7447,7 @@ export default function TakeoffCanvas() {
           <div style={{ pointerEvents: "auto", display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", background: "var(--paper-bright)", border: "1.5px dashed var(--c-danger)", boxShadow: "var(--shadow-1)", fontSize: 12.5, color: "var(--ink)", maxWidth: "100%" }}>
             {ruleOffer ? (
               <React.Fragment>
-                <span dangerouslySetInnerHTML={{ __html: t('rule.offer', { tag: ruleOffer.tag, max: units === "metric" ? +areaVal(ruleOffer.seed.max_area_sf, "metric").toFixed(1) : ruleOffer.seed.max_area_sf, au: areaUnit(units) }) }} />
+                <span><Trans i18nKey="rule.offer" values={{ tag: ruleOffer.tag, max: units === "metric" ? +areaVal(ruleOffer.seed.max_area_sf, "metric").toFixed(1) : ruleOffer.seed.max_area_sf, au: areaUnit(units) }} /></span>
                 <button onClick={previewRule}
                   style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1.5px solid var(--cobalt)", color: "var(--cobalt)", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
                   {t('rule.preview')}</button>
@@ -7461,7 +7457,7 @@ export default function TakeoffCanvas() {
               </React.Fragment>
             ) : (
               <React.Fragment>
-                <span dangerouslySetInnerHTML={{ __html: t('rule.staged', { count: ruleStage.candidates.length, label: ruleStage.rule.label }) }} />
+                <span><Trans i18nKey="rule.staged" values={{ count: ruleStage.candidates.length, label: ruleStage.rule.label }} /></span>
                 <button onClick={applyStagedRule}
                   style={{ padding: "4px 12px", background: "var(--paper-bright)", border: "1.5px solid var(--cobalt)", color: "var(--cobalt)", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
                   {t('rule.apply', { count: ruleStage.candidates.length })}</button>
@@ -7830,7 +7826,7 @@ export default function TakeoffCanvas() {
           visibility rules already hide this. */}
       <footer className="ink-panel ticks"
         style={{ height: "var(--status-h)", flex: "0 0 auto", display: "flex", alignItems: "center", gap: 12, padding: "0 14px", fontFamily: "var(--f-mono)", fontSize: "var(--fs-xs)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", overflow: "hidden", userSelect: "none" }}>
-        <span style={{ color: "var(--status-acc)", textShadow: "var(--glow)" }}>{TOOL_VERB[tool] || tool}</span>
+        <span style={{ color: "var(--status-acc)", textShadow: "var(--glow)" }}>{TOOL_VERB[tool] ? t(TOOL_VERB[tool]) : tool}</span>
         <span style={{ opacity: 0.25 }} aria-hidden="true">|</span>
         <span ref={statusCoordRef} aria-hidden="true" style={{ minWidth: 150 }} />
         <span style={{ opacity: 0.25 }} aria-hidden="true">|</span>
@@ -7849,7 +7845,8 @@ export default function TakeoffCanvas() {
           (the Agent panel links here; closing re-renders, so `configured`
           re-reads immediately). */}
       {showAiSettings && <AiSettings onClose={() => setShowAiSettings(false)} />}
-      {showUnitSettings && <UnitSettings onClose={() => setShowUnitSettings(false)} triggerRef={unitSettingsTriggerRef} />}
+      {showUnitSettings && <UnitSettings onClose={() => setShowUnitSettings(false)} triggerRef={languageSettingsTriggerRef} />}
+      {showLanguageSettings && <LanguageSettings onClose={() => setShowLanguageSettings(false)} triggerRef={languageSettingsTriggerRef} />}
       {/* the manual, last in the tree so it sits above every panel and dock */}
       {guideOpen && <UserGuide onClose={() => setGuideOpen(false)} />}
     </div>

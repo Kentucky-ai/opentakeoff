@@ -81,6 +81,26 @@ export const STANDARD_SCALES: Scale[] = [
   { label: "1:500", upp: metric(500) },
 ];
 
+/** Regex matching the metric-ratio label pattern "1:NNN" (digits only). */
+const _METRIC_RATIO_RE = /^1:\d+$/;
+
+/**
+ * Return the subset of {@link STANDARD_SCALES} relevant to the given unit
+ * system, **without mutating** the canonical array.
+ *
+ * - `"imperial"` → architectural + engineering labels (contain `"` or `'`);
+ *   metric `1:NNN` ratios are excluded.
+ * - `"metric"`   → metric ratio labels (`1:NNN`); architectural and
+ *   engineering labels (containing `"` or `'`) are excluded.
+ */
+export function standardScalesForUnits(units: string): Scale[] {
+  return STANDARD_SCALES.filter((s) =>
+    units === "metric"
+      ? _METRIC_RATIO_RE.test(s.label)
+      : !_METRIC_RATIO_RE.test(s.label)
+  );
+}
+
 // Pull the drawing's sheet number (e.g. A003, A-101, S1.1) from the title block —
 // the largest sheet-number-shaped token in the lower-right region of the page.
 const SHEET_NO_RE = /^[A-Z]{1,3}[-. ]?\d{1,3}(\.\d{1,2})?[A-Z]?$/;

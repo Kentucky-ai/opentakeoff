@@ -6,13 +6,22 @@ import LanguageDetector from "i18next-browser-languagedetector";
 const NAMESPACE = ["canvas", "report", "panels", "guide", "lib"];
 const baseUrl = import.meta.env?.BASE_URL || "/";
 
+/** Canonical list of supported UI languages.
+ *  Each entry drives the language-settings modal, the i18next `supportedLngs`
+ *  array, and the detection fallback order. Keep this array in sync with the
+ *  locale directories under `public/locales/`. */
+export const SUPPORTED_LANGUAGES = [
+  { code: "en",    label: "English",     nativeLabel: "English" },
+  { code: "pt-br", label: "Portuguese",  nativeLabel: "Português (BR)" },
+];
+
 i18n
   .use(HttpBackend)
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
     fallbackLng: "en",
-    supportedLngs: ["en", "pt-br"],
+    supportedLngs: SUPPORTED_LANGUAGES.map((l) => l.code),
     lowerCaseLng: true,
     ns: NAMESPACE,
     defaultNS: "canvas",

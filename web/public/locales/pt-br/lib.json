@@ -14,10 +14,15 @@
   },
   "markup_tool": {
     "highlighter": "Marcador",
+    "highlighter_title": "Destaque livre — clique e arraste para desenhar",
     "cloud": "Nuvem de revisão",
-    "callout": "Callout",
+    "cloud_title": "Nuvem de revisão — clique para desenhar uma anotação em nuvem",
+    "callout": "Indicação",
+    "callout_title": "Indicação — clique em um ponto, depois clique onde o texto vai",
     "text": "Nota de texto",
-    "highlight": "Caixa de destaque"
+    "text_title": "Nota de texto — clique para posicionar uma anotação de texto",
+    "highlight": "Caixa de destaque",
+    "highlight_title": "Caixa de destaque — clique dois cantos para desenhar um retângulo de destaque"
   },
   "column": {
     "finish": "Acabamento",

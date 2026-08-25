@@ -458,6 +458,13 @@ test("TakeoffCanvas passes areaUnit(lenUnit) to unit-aware tooltip t() calls", (
   const lines = src.split("\n");
 
   const assertParamOnLine = (key: string, param: string, msg: string) => {
+    // rule.offer is now rendered via <Trans i18nKey="rule.offer">, not t('rule.offer')
+    if (key === "rule.offer") {
+      const line = lines.find((l) => l.includes(`i18nKey="rule.offer"`) || l.includes("i18nKey='rule.offer'"));
+      assert.ok(line, `No i18nKey="rule.offer" Trans found in TakeoffCanvas.jsx`);
+      assert.match(line, new RegExp(`${param}:`), msg);
+      return;
+    }
     const line = lines.find((l) => l.includes(`t('${key}'`) || l.includes(`t("${key}"`));
     assert.ok(line, `No t('${key}') call found in TakeoffCanvas.jsx`);
     assert.match(line, new RegExp(`${param}:`), msg);
@@ -476,6 +483,12 @@ test("TakeoffCanvas uses areaUnit()/lenUnit() expressions (not hardcoded strings
   const src = loadSrc("src/pages/TakeoffCanvas.jsx");
 
   const findTCallLine = (key: string): string => {
+    // rule.offer is now rendered via <Trans i18nKey="rule.offer">, not t('rule.offer')
+    if (key === "rule.offer") {
+      const line = src.split("\n").find((l) => l.includes(`i18nKey="rule.offer"`) || l.includes("i18nKey='rule.offer'"));
+      assert.ok(line, `No i18nKey="rule.offer" Trans found in TakeoffCanvas.jsx`);
+      return line;
+    }
     const line = src.split("\n").find((l) => l.includes(`t('${key}'`) || l.includes(`t("${key}"`));
     assert.ok(line, `No t('${key}') call found in TakeoffCanvas.jsx`);
     return line;

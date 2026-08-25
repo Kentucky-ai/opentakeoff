@@ -18,6 +18,7 @@ import assert from "node:assert/strict";
 import {
   sanitizeStampLibrary, instantiateStamp, markupToStampElement, seedStampLibrary,
   DEFAULT_STAMPS, DEFAULT_STAMP_SETS,
+  BUILT_IN_STAMP_IDS, stampDisplayName,
 } from "../src/lib/stamps.js";
 import { store } from "../src/lib/store.js";
 
@@ -266,4 +267,46 @@ test("store.loadStampLibrary sanitizes a corrupt record to the empty library", a
   await store.saveStampLibrary({ stamps: "boom", sets: null } as any);
   const out = await store.loadStampLibrary();
   assert.deepEqual(out, { stamps: [], sets: [] });
+});
+
+// ── stampDisplayName (shared i18n helper) ────────────────────────────────────
+
+// Stub `t` that returns the key itself — makes the test locale-agnostic while
+// still verifying the dispatch logic (built-in id → key, custom → raw name).
+const fakeT = (key: string) => key;
+
+test("stampDisplayName returns the i18n key for every built-in stamp id", () => {
+  for (const s of DEFAULT_STAMPS) {
+    const expected = BUILT_IN_STAMP_IDS.get(s.id);
+    assert.ok(expected, `BUILT_IN_STAMP_IDS has entry for ${s.id}`);
+    assert.equal(stampDisplayName(s, fakeT), expected, s.id);
+  }
+});
+
+test("stampDisplayName returns the raw .name for custom / imported stamps", () => {
+  const custom = { id: "user-arrow", name: "My Custom Arrow", elements: [] };
+  assert.equal(stampDisplayName(custom, fakeT), "My Custom Arrow");
+});
+
+test("stampDisplayName returns empty string for null / undefined stamp", () => {
+  assert.equal(stampDisplayName(null as any, fakeT), "");
+  assert.equal(stampDisplayName(undefined as any, fakeT), "");
+});
+
+test("REGRESSION: built-in stamp status message uses localized name, not English fallback", () => {
+  // Simulates the TakeoffCanvas status-bar path: placeStamp calls
+  //   t('status.placed_stamp', { name: stampDisplayName(armedStamp, t) })
+  // Verify the name reaching the interpolation is the i18n key (which `t`
+  // resolves to the locale string at runtime), NOT the raw English `.name`.
+  const armed = DEFAULT_STAMPS.find((s) => s.id === "stmp-direction")!;
+  const name = stampDisplayName(armed, fakeT);
+  // English fallback would be "Plank / tile direction"; localized should be the key
+  assert.notEqual(name, armed.name, "must not be the raw English name");
+  assert.equal(name, "stamp.stmp_direction", "must be the i18n key for pt-BR/en resolution");
+});
+
+test("BUILT_IN_STAMP_IDS covers all DEFAULT_STAMPS and no extra entries", () => {
+  const defaultIds = DEFAULT_STAMPS.map((s) => s.id).sort();
+  const mapIds = [...BUILT_IN_STAMP_IDS.keys()].sort();
+  assert.deepEqual(mapIds, defaultIds, "every default stamp has a localization entry and vice versa");
 });

@@ -104,11 +104,14 @@ const REQUIRED_CANVAS_KEYS = [
   "conditions.strip",        // compact strip-mode toggle label
   "toolbar.scale",           // scale cluster label on toolbar
   "markup.delete_markup",    // markup panel delete action title
+  "markup.editor_placeholder", // inline text-editor placeholder
+  "markup.select",           // markup condition-link "Select" button
+  "markup.detach",           // markup condition-link "Detach" button
   "readout.set_wall_height", // wall-height clear-button title
   "confirm.its",             // possessive pronoun in split-family confirm dialog
 ];
 
-test("six required canvas keys exist and are non-empty in en and pt-br", () => {
+test("nine required canvas keys exist and are non-empty in en and pt-br", () => {
   const en = loadJson("en", "canvas") as Record<string, unknown>;
   const pt = loadJson("pt-br", "canvas") as Record<string, unknown>;
   const missing: string[] = [];
@@ -186,6 +189,105 @@ test("canvas locale has compact tool labels and status strings in both locales",
   }
 
   assert.deepEqual(missing, [], `canvas locale contracts:\n${missing.join("\n")}`);
+});
+
+// ── 5b. Panels locale: built-in stamp names and set name ───────────────────
+
+test("panels locale has built-in stamp and set names in both locales", () => {
+  const en = loadJson("en", "panels") as Record<string, unknown>;
+  const pt = loadJson("pt-br", "panels") as Record<string, unknown>;
+
+  const contracts: Array<[string, string]> = [
+    ["stamp.stmp_direction", "built-in stamp: plank/tile direction"],
+    ["stamp.stmp_seam",      "built-in stamp: seam direction"],
+    ["stamp.stmp_origin",    "built-in stamp: pattern origin"],
+    ["stamp.set_flooring",   "built-in stamp set: flooring shop drawings"],
+  ];
+
+  const missing: string[] = [];
+  for (const [key, desc] of contracts) {
+    const enVal = getVal(en, key);
+    const ptVal = getVal(pt, key);
+    if (!enVal || typeof enVal !== "string" || !enVal.trim()) {
+      missing.push(`en: ${desc} — key "${key}" missing or empty`);
+    }
+    if (!ptVal || typeof ptVal !== "string" || !ptVal.trim()) {
+      missing.push(`pt-br: ${desc} — key "${key}" missing or empty`);
+    }
+  }
+
+  assert.deepEqual(missing, [], `panels stamp locale contracts:\n${missing.join("\n")}`);
+});
+
+// ── 5c. Markup pick_tool and check.same_point use dangerouslySetInnerHTML ──
+
+test("markup.pick_tool and check.same_point use dangerouslySetInnerHTML for <b> tags", () => {
+  const canvas = fs.readFileSync(
+    path.join(root, "src/pages/TakeoffCanvas.jsx"),
+    "utf8",
+  );
+
+  // markup.pick_tool contains <b> tags — must use dangerouslySetInnerHTML
+  assert.match(
+    canvas,
+    /dangerouslySetInnerHTML\s*=\s*\{\s*\{\s*__html:\s*t\(\s*['"]markup\.pick_tool['"]/,
+    "markup.pick_tool must render via dangerouslySetInnerHTML (locale value contains <b> tags)",
+  );
+
+  // check.same_point contains <b> tags — must use dangerouslySetInnerHTML
+  assert.match(
+    canvas,
+    /dangerouslySetInnerHTML\s*=\s*\{\s*\{\s*__html:\s*t\(\s*['"]check\.same_point['"]/,
+    "check.same_point must render via dangerouslySetInnerHTML (locale value contains <b> tags)",
+  );
+});
+
+// ── 5d. StampPanel localizes built-in stamp names via shared helper ─────────
+
+test("stamps.js exports shared BUILT_IN_STAMP_IDS and stampDisplayName helper", () => {
+  const stamps = fs.readFileSync(
+    path.join(root, "src/lib/stamps.js"),
+    "utf8",
+  );
+
+  // BUILT_IN_STAMP_IDS must map each built-in ID to its i18n key
+  assert.match(
+    stamps,
+    /BUILT_IN_STAMP_IDS/,
+    "stamps.js must export BUILT_IN_STAMP_IDS map",
+  );
+  // stampDisplayName must be an exported function
+  assert.match(
+    stamps,
+    /export\s+function\s+stampDisplayName/,
+    "stamps.js must export stampDisplayName function",
+  );
+});
+
+test("StampPanel imports and uses stampDisplayName for localized stamp labels", () => {
+  const panelSrc = fs.readFileSync(
+    path.join(root, "src/components/StampPanel.jsx"),
+    "utf8",
+  );
+
+  // Must import stampDisplayName from stamps.js
+  assert.match(
+    panelSrc,
+    /import\s*\{[^}]*stampDisplayName[^}]*\}\s*from\s*["'][^"']*stamps\.js["']/,
+    "StampPanel must import stampDisplayName from stamps.js",
+  );
+  // Must use stampDisplayName(s, t) for display — not raw s.name
+  assert.match(
+    panelSrc,
+    /stampDisplayName\(\s*s\s*,\s*t\s*\)/,
+    "StampPanel must call stampDisplayName(s, t) for stamp display names",
+  );
+  // Must use displayName, not s.name, for the visible stamp label
+  assert.match(
+    panelSrc,
+    /displayName/,
+    "StampPanel must use a localized displayName for stamp labels",
+  );
 });
 
 // ── 6. en/pt-br parity: same key set across every namespace ─────────────────

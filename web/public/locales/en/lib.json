@@ -14,10 +14,15 @@
   },
   "markup_tool": {
     "highlighter": "Highlighter",
+    "highlighter_title": "Freehand highlight — click and drag to draw",
     "cloud": "Revision cloud",
+    "cloud_title": "Revision cloud — click to draw a cloud annotation",
     "callout": "Callout",
+    "callout_title": "Callout — click a point, then click where the text goes",
     "text": "Text note",
-    "highlight": "Highlight box"
+    "text_title": "Text note — click to place a text annotation",
+    "highlight": "Highlight box",
+    "highlight_title": "Highlight box — click two corners to draw a highlight rectangle"
   },
   "column": {
     "finish": "Finish",

@@ -70,11 +70,11 @@ export const getCutTools = () => [
 ];
 export const CUT_TOOLS = getCutTools();
 export const getMarkupTools = () => [
-  { id: "highlighter", icon: "highlighter", label: _t("markup_tool.highlighter"), shortcut: "H" },
-  { id: "cloud", icon: "cloud", label: _t("markup_tool.cloud") },
-  { id: "callout", icon: "callout", label: _t("markup_tool.callout") },
-  { id: "text", icon: "textNote", label: _t("markup_tool.text") },
-  { id: "highlight", icon: "highlight", label: _t("markup_tool.highlight") },
+  { id: "highlighter", icon: "highlighter", label: _t("markup_tool.highlighter"), shortcut: "H", title: _t("markup_tool.highlighter_title") },
+  { id: "cloud", icon: "cloud", label: _t("markup_tool.cloud"), title: _t("markup_tool.cloud_title") },
+  { id: "callout", icon: "callout", label: _t("markup_tool.callout"), title: _t("markup_tool.callout_title") },
+  { id: "text", icon: "textNote", label: _t("markup_tool.text"), title: _t("markup_tool.text_title") },
+  { id: "highlight", icon: "highlight", label: _t("markup_tool.highlight"), title: _t("markup_tool.highlight_title") },
 ];
 export const MARKUP_TOOLS = getMarkupTools();
 export const MARKUP_IDS = MARKUP_TOOLS.map((t) => t.id);

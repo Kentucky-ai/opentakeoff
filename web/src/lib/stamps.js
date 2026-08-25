@@ -143,6 +143,24 @@ export function markupToStampElement(m) {
   return null;
 }
 
+// Built-in stamp id → i18n key mapping. Keep in sync with DEFAULT_STAMPS ids
+// and the "stamp.stmp_*" keys in locales/*/panels.json. The `name` field on
+// DEFAULT_STAMPS is the English fallback; callers use `stampDisplayName` to
+// get the locale-correct label at render time.
+export const BUILT_IN_STAMP_IDS = new Map([
+  ["stmp-direction", "stamp.stmp_direction"],
+  ["stmp-seam",     "stamp.stmp_seam"],
+  ["stmp-origin",   "stamp.stmp_origin"],
+]);
+
+/** Return the user-visible name for a stamp: localized for built-in stamps
+ *  (via the `t` function from react-i18next), raw `.name` for custom/imported. */
+export function stampDisplayName(stamp, t) {
+  if (!stamp) return "";
+  const key = BUILT_IN_STAMP_IDS.get(stamp.id);
+  return key ? t(key) : stamp.name;
+}
+
 // Starter flooring shop-drawing stamps, seeded on an empty library (the
 // FLOORING_DEFAULTS precedent for conditions). Offsets are fractions of sheet
 // width/height; ids are stable so re-seeding is idempotent. Kept deliberately

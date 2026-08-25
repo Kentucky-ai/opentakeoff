@@ -14,6 +14,7 @@ import React, { useMemo, useRef, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import { arrowheadPath } from "../lib/geometry.js";
 import { transformPath } from "../lib/svgpath.js";
+import { stampDisplayName } from "../lib/stamps.js";
 import { useTranslation } from "react-i18next";
 
 // Live preview of a stamp's elements in a small box. Element coords are OFFSETS
@@ -64,6 +65,9 @@ export default function StampPanel({ docked = false, library = { stamps: [], set
   const fileRef = useRef(null);
 
   const stampById = useMemo(() => new Map(library.stamps.map((s) => [s.id, s])), [library.stamps]);
+
+  // Localize built-in stamp names at render time; user-created/imported stamps
+  // keep their stored names. Delegates to the shared helper in stamps.js.
   const shown = useMemo(() => {
     if (setFilter === "all") return library.stamps;
     const set = library.sets.find((s) => s.id === setFilter);
@@ -113,15 +117,15 @@ export default function StampPanel({ docked = false, library = { stamps: [], set
 
       <div style={{ padding: "8px 10px", color: "var(--ink-muted)" }}>
         {armedStamp
-          ? <span><b style={{ color: "var(--cobalt)" }} dangerouslySetInnerHTML={{ __html: t("stamp.armed_message", { name: armedStamp.name }) }} /></span>
-          : <span dangerouslySetInnerHTML={{ __html: t("stamp.place_message") }} />}
+          ? <span><b style={{ color: "var(--cobalt)" }}>{t("stamp.armed_message", { name: stampDisplayName(armedStamp, t) })}</b></span>
+          : <span>{t("stamp.place_message_text")}</span>}
       </div>
 
       {/* set filter — the model carries StampSets; the palette groups by them */}
       {library.sets.length > 0 && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", padding: "0 10px 8px" }}>
           {chip("all", t("stamp.all"))}
-          {library.sets.map((s) => chip(s.id, s.name || t("stamp.set_default")))}
+          {library.sets.map((s) => chip(s.id, (s.id === "set-flooring" ? t("stamp.set_flooring") : s.name) || t("stamp.set_default")))}
         </div>
       )}
 
@@ -137,26 +141,27 @@ export default function StampPanel({ docked = false, library = { stamps: [], set
       {shown.length === 0 && <div style={{ padding: "12px", color: "var(--ink-muted)" }}>{t("stamp.empty")}</div>}
       {shown.map((s) => {
         const armed = armedStamp?.id === s.id;
+        const displayName = stampDisplayName(s, t);
         return (
           <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderTop: "1px solid var(--ink-faint)", background: armed ? "color-mix(in srgb, var(--cobalt) 7%, transparent)" : "transparent" }}>
             <StampPreview elements={s.elements} />
             <div style={{ flex: 1, minWidth: 0 }}>
               {editId === s.id ? (
-                <input name="stamp-rename" autoComplete="off" autoFocus defaultValue={s.name}
+                <input name="stamp-rename" autoComplete="off" autoFocus defaultValue={displayName}
                   onKeyDown={(e) => { if (e.key === "Enter") { onRename(s.id, e.currentTarget.value); setEditId(null); } else if (e.key === "Escape") setEditId(null); }}
                   onBlur={(e) => { onRename(s.id, e.currentTarget.value); setEditId(null); }}
                   style={{ width: "100%", fontSize: 12.5, padding: "1px 4px", border: "1px solid var(--cobalt)", outline: "none" }} />
               ) : (
-                <div style={{ fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.name}>{s.name}</div>
+                <div style={{ fontWeight: 600, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={displayName}>{displayName}</div>
               )}
               <div style={{ fontSize: 10.5, color: "var(--ink-muted)" }}>{t("stamp.element_count", { count: s.elements.length })}</div>
             </div>
-            <button onClick={() => onArm(s)} title={t("stamp.save_selected_title")}
+            <button onClick={() => onArm(s)} title={t("stamp.place_title")}
               style={{ ...ctrl, color: armed ? "var(--accent-contrast)" : "var(--cobalt)", background: armed ? "var(--cobalt)" : "transparent", border: `1px solid var(--cobalt)`, fontWeight: 600 }}>
               {armed ? t("stamp.armed_button") : t("stamp.place_button")}
             </button>
             <button onClick={() => setEditId((id) => (id === s.id ? null : s.id))} title={t("stamp.rename_title")} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>
-            <button onClick={() => { if (window.confirm(t("stamp.delete_confirm", { name: s.name }))) onDelete(s.id); }} title={t("stamp.delete_title")} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
+            <button onClick={() => { if (window.confirm(t("stamp.delete_confirm", { name: displayName }))) onDelete(s.id); }} title={t("stamp.delete_title")} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
           </div>
         );
       })}

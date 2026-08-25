@@ -15,7 +15,7 @@ import { Icon } from "../brand/icons.jsx";
 
 const MENU_W = 232;
 
-export default function ToolMenu({ face, active = false, accent = "cobalt", title = "", items, onOpenChange, faceStyle, menuStyle, disabled = false, flyout = null }) {
+export default function ToolMenu({ face, active = false, accent = "cobalt", title = "", items, onOpenChange, faceStyle, menuStyle, disabled = false, flyout = null, triggerRef = null }) {
   const [open, setOpen] = useState(false);
   const [flip, setFlip] = useState(false);
   const [flyAt, setFlyAt] = useState(null);   // {left, top} for flyout="right" — fixed, so ancestor overflow can't clip it (the rail)
@@ -61,7 +61,7 @@ export default function ToolMenu({ face, active = false, accent = "cobalt", titl
 
   return (
     <span ref={rootRef} style={{ position: "relative", display: "inline-flex" }}>
-      <button type="button" onClick={toggle} title={title} disabled={disabled}
+      <button ref={triggerRef} type="button" onClick={toggle} title={title} disabled={disabled}
         style={{
           display: "inline-flex", alignItems: "center", gap: 7, padding: "6px 10px", cursor: disabled ? "default" : "pointer",
           border: `1px solid ${active ? accentColor : "var(--ink-faint)"}`,
