@@ -15,6 +15,7 @@ import { UserError, round1, round2 } from "./format.ts";
 import { mintTwin, splitFromFamily, variantTag, propagateRowAdd, propagateRowPatch, propagateRowRemove,
          markRowLocal, dropRowLocal, type VariantCond, type VariantRow } from "../../web/src/lib/variants.ts";
 import { STANDARD_SCALES, RENDER_SCALE, detectScale, extractSheetNumber, type DetectedScale } from "../../web/src/lib/sheets.ts";
+import { buildSheetDxf, type DxfBuild } from "../../web/src/lib/dxf.ts";
 import {
   extractVectorGeometry, buildMask, traceRegion, snapVertices, ringArea,
   hatchFamilies, MASK_MAX_DIM, SENS_BALANCED, type FloodResult, type MaskObj, type VectorGeometry, type Point, type HatchFamily,
@@ -3741,6 +3742,38 @@ export class Session {
 
   /** The exact browser save payload (TakeoffCanvas.jsx autosave + the schema key
    * store.saveAnnotations stamps) — importable by the app. */
+  /** The takeoff on ONE sheet as a DXF drawing (R2000, LWPOLYLINE per shape,
+   * OT-<TAG> layer per finish, feet by default) — the CAD-native handoff.
+   * `sheet` omitted resolves only when exactly one calibrated sheet carries
+   * shapes; otherwise the refusal names the candidates, because two floors in
+   * one model space at the same origin would be a lie. A sheet without a
+   * scale refuses too (a CAD file in pixels is worse than none). */
+  exportDxf(sheetName?: string, units: "ft" | "m" = "ft"): { sheet: SheetState; build: DxfBuild } {
+    if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
+    let s: SheetState;
+    if (sheetName != null && sheetName !== "") {
+      s = this.sheet(sheetName);
+    } else {
+      const withShapes = new Set(this.shapes.map((x) => x.sheet_id));
+      const cands = [...this.sheets.values()].filter((x) => withShapes.has(x.key));
+      if (cands.length === 0) throw new UserError("No sheet carries committed shapes yet — measure something before exporting to CAD.");
+      if (cands.length > 1) {
+        throw new UserError(`Several sheets carry shapes — pass sheet to pick one drawing (a DXF is one sheet, like a DWG is): ${cands.map((x) => `"${x.key}"${x.sheetNumber ? ` (${x.sheetNumber})` : ""}`).join(", ")}.`);
+      }
+      s = cands[0];
+    }
+    if (s.upp == null) throw new UserError(`Sheet "${s.key}" has no scale — call set_scale first; a CAD file in pixels is worse than none.`);
+    const build = buildSheetDxf({
+      sheet_id: s.key,
+      label: s.sheetNumber || s.key,
+      dims: { w: s.widthPx, h: s.heightPx },
+      upp: s.upp,
+      shapes: this.shapes,
+      conditions: this.conditions,
+    }, { units });
+    return { sheet: s, build };
+  }
+
   exportPayload() {
     if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
     return {

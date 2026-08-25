@@ -172,7 +172,7 @@ becomes ink only when the operator clicks Accept.* The full run, live and uncut,
 | **Read the drawing set** | `sheet_graph` · `resolve_tag` · `find_schedule` |
 | **Edit and audit** | `list_shapes` · `edit_shape` · `edit_condition` · `edit_materials` · `duplicate_condition` · `split_condition` · `delete_shape` · `undo_last` |
 | **Mark and sign** | `annotate` · `list_annotations` · `link_annotation` · `mark_verdict` · `delete_verdict` |
-| **Hand off** | `takeoff_summary` · `export_takeoff` · `export_report` · `export_marked_pdf` · `import_takeoff` |
+| **Hand off** | `takeoff_summary` · `export_takeoff` · `export_report` · `export_marked_pdf` · `export_dxf` · `import_takeoff` |
 
 Plus browsable sheet resources (`takeoff://sheets`) so an agent can *see* the working set, not
 only act on it. Multi-document sessions are first-class: a bid set is plans **plus** schedule
