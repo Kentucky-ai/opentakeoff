@@ -6,6 +6,11 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
 ### Added
 - **DXF export — the takeoff as a drawing, not a picture.** Every committed shape leaves as native CAD geometry: floor rings as closed `LWPOLYLINE`s, walls and linear runs open, count marks as circles, room labels as `TEXT`, each on a layer named for its finish (`OT-<TAG>`, with `-DEDUCT` / `-HOLE` / `-WALL` / `-LINEAR` / `-COUNT` suffix layers so a CAD user isolates any bucket with one layer filter). Coordinates are real units in the sheet's own frame — origin at the sheet's bottom-left, Y up, feet by default or metres in a metric report — so a ring's area in AutoCAD equals its area in the Report to rounding: the drawing is the audit. One sheet per file, like a DWG; the Report's **Export ▸ DXF (CAD)** writes the `.dxf` for a single sheet or a zip of per-sheet drawings, and the MCP server's new `export_dxf` writes one sheet to `path` (refusing without a scale, and naming the candidates when several sheets carry shapes). The file is DXF R2000 with handles, a root dictionary and a plot-style placeholder, so it passes a strict audit (`ezdxf`: 0 errors, 0 fixes) rather than merely surviving AutoCAD's lenient loader. Nothing is dropped silently — every shape left out is named with its reason, and a deduct already reconciled into its parent ships once, as that ring's `-HOLE`. Overwrite guard recognizes our own DXF by its first-line stamp, exactly as it does JSON and PDF exports. MCP `0.9.64`.
+## 2026-08-25 — the net engine is One-Click
+
+### Changed
+- **The net engine is One-Click on vector sheets — no switch, no slider.** The owner's call after a day of driving both: the flood has no purpose where there is linework to read. The **NET/FILL** toggle and the **Fill sensitivity** slider are gone; a click is a room from the wall network, ⇧-click is a finish field, and the agent's `one_click` probe runs the same engine as the estimator's click (the who-aimed-it rule). The flood survives only as the **scan** path — a scan has no linework to network — and is never reached on a vector sheet. Shapes no longer carry `fill_sensitivity`; they carry `net_v1` provenance.
+
 ## 2026-08-24 — One-Click reads the walls: the net engine (test build)
 
 ### Added
