@@ -284,7 +284,10 @@ export default function TakeoffCanvas() {
   // view whenever the sheet changes.
   const MANY_TABS = 8;
   const tabStripRef = useRef(null);
-  const scrollTabStrip = (dir) => { const el = tabStripRef.current; if (el) el.scrollBy({ left: dir * Math.max(160, el.clientWidth * 0.6), behavior: "smooth" }); };
+  // Instant, not smooth: smooth scrollBy/scroll-behavior on this strip is cancelled
+  // every frame (the canvas render loop keeps the layout hot), so the arrows
+  // silently did nothing on prod. A direct scrollLeft write always lands.
+  const scrollTabStrip = (dir) => { const el = tabStripRef.current; if (el) el.scrollLeft = Math.max(0, el.scrollLeft + dir * Math.max(160, el.clientWidth * 0.6)); };
   const [galleryLabels, setGalleryLabels] = useState({}); // sheetKey → title-block number, all files
   const [pageLabels, setPageLabels] = useState({}); // { pageNum: "A003" } from the title block
   const [sheetGroup, setSheetGroup] = useState([]);   // sheetKeys shown side-by-side; [] = single-sheet mode
