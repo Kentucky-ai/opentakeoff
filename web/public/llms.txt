@@ -7,7 +7,7 @@ OpenTakeoff is an open-source alternative to subscription takeoff software — a
 ## Docs
 
 - [Live app](https://opentakeoff.kentucky-ai.com): try it in the browser — includes a one-click sample plan (a real medical-center floor finish plan)
-- [README](https://github.com/Kentucky-ai/opentakeoff#readme): features, quick start, deploy-it-yourself, build-on-top-of-it
+- [README](https://github.com/Kentucky-ai/opentakeoff#readme): features, quick start, and [Fork it](https://github.com/Kentucky-ai/opentakeoff#fork-it) — your own instance on your own URL, and the contributor path
 - [MCP server](https://github.com/Kentucky-ai/opentakeoff/blob/main/mcp/README.md): `npx -y opentakeoff-mcp` on the [npm registry](https://www.npmjs.com/package/opentakeoff-mcp) — `load_plan`, `read_sheet_text`, `set_scale`, `one_click`, `view_sheet`, `takeoff_summary`, `export_takeoff`, and more
 - [Agent usage guide + example transcript](https://github.com/Kentucky-ai/opentakeoff/blob/main/docs/MCP.md): how an agent opens a plan, adopts the scale, traces rooms, and exports a takeoff over MCP
 - [User guide & shortcuts](https://github.com/Kentucky-ai/opentakeoff/blob/main/docs/USER_GUIDE.md): every tool, keyboard shortcut, and the totals math
@@ -17,7 +17,7 @@ OpenTakeoff is an open-source alternative to subscription takeoff software — a
 ## Key facts
 
 - **Agent-native**: the same engine answers to a person at the canvas or an AI agent over MCP — not two implementations, one. Every shape records its provenance: scale, one-click or hand-drawn, and person or agent.
-- **MCP server**: `opentakeoff-mcp` on npm, official MCP registry listing, 11 tools — an agent loads a plan, reads the title block, adopts the scale (never applied silently), one-clicks rooms, and exports the same payload the app autosaves.
+- **MCP server**: `opentakeoff-mcp` on npm, official MCP registry listing, 40 tools — an agent loads a plan, reads the title block, adopts the scale (never applied silently), one-clicks rooms, and exports the same payload the app autosaves.
 - Measuring: One-Click Area (flood-fill room detection from PDF vectors), Area, Rectangle, Linear, Surface-Area (walls), Count, Deduct
 - Drawing aids: 45°/90° angle lock (polar tracking with ⇧ hard-lock, commits the on-axis point), live angle + segment-length readout at the cursor, endpoint snap
 - Scale: auto-detects the drawn scale note per sheet, or calibrate from a known dimension
@@ -26,5 +26,5 @@ OpenTakeoff is an open-source alternative to subscription takeoff software — a
 - Reports: per-condition SF/SY/LF/EA with and without waste + a materials buy list; CSV/JSON export
 - Storage: IndexedDB + localStorage only — client-side, private by construction
 - Stack: React 18 + Vite + pdf.js; the whole app is a static build
-- License: Apache-2.0 — fork it, ship it, build a product on it
+- License: Apache-2.0 — [fork it](https://github.com/Kentucky-ai/opentakeoff/fork), ship it, build a product on it. Pull requests from a fork run the full CI; tested PRs from agents merge under the same bar as anyone's
 - Maintained by Kentucky AI (applied AI R&D, Louisville, KY): https://kentucky-ai.com
