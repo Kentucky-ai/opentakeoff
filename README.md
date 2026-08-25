@@ -18,7 +18,7 @@ what makes it training data.
 [![OpenArena](https://openarena.to/api/badge/cmsgykvsq0000mkuv7byhlgnl)](https://openarena.to/en/projects/cmsgykvsq0000mkuv7byhlgnl)
 [![Sponsor](https://img.shields.io/github/sponsors/Kentucky-ai?logo=githubsponsors&label=sponsor&color=EA4AAA)](https://github.com/sponsors/Kentucky-ai)
 
-[**For agents**](#for-agents--start-here) · [**Try the canvas**](https://opentakeoff.kentucky-ai.com) · [The engine's contract](#the-contract-that-makes-it-drivable) · [For the person at the canvas](#for-the-person-at-the-canvas) · [The data layer](#the-data-layer--why-this-engine-exists) · [Research](#the-research-program) · [Build on it](#build-on-top-of-it) · [Contribute](#contributing)
+[**For agents**](#for-agents--start-here) · [**Try the canvas**](https://opentakeoff.kentucky-ai.com) · [The engine's contract](#the-contract-that-makes-it-drivable) · [For the person at the canvas](#for-the-person-at-the-canvas) · [The data layer](#the-data-layer--why-this-engine-exists) · [Research](#the-research-program) · [Fork it](#fork-it) · [Contribute](#contributing)
 
 **The two manuals:** [agent manual](docs/AGENT_GUIDE.md) · [user manual](docs/USER_GUIDE.md)
 
@@ -40,7 +40,8 @@ what makes it training data.
 |---|---|
 | **An estimator with a bid due** | [Open the canvas](https://opentakeoff.kentucky-ai.com)—drag in a plan, no account, nothing uploads. The [**user manual**](docs/USER_GUIDE.md) gets you from a blank tab to an exported takeoff in five minutes, and its [working order](docs/USER_GUIDE.md#the-working-order-on-a-real-bid) is the sequence to run on a real bid set. |
 | **An AI agent**—or the person wiring one up | `npx -y opentakeoff-mcp`, then the [**agent manual**](docs/AGENT_GUIDE.md): the operating model, the standard finish every takeoff ends with, what the engine refuses to guess, and why. Tool-by-tool reference is [`mcp/README.md`](mcp/README.md). |
-| **A developer building on the engine** | [`AGENTS.md`](AGENTS.md) is the repo map and the ship discipline; [`FEATURES.md`](FEATURES.md) maps every capability to the code that does it. Apache-2.0—fork it. |
+| **A developer building on the engine** | [`AGENTS.md`](AGENTS.md) is the repo map and the ship discipline; [`FEATURES.md`](FEATURES.md) maps every capability to the code that does it. |
+| **A crew that wants its own copy** | [**Fork it**](#fork-it)—your own instance on your own URL in a few minutes, Apache-2.0, nothing phones home. Same path if you're going to send a pull request. |
 
 ### Windows, macOS, Linux — all of it
 
@@ -146,6 +147,11 @@ Point any stdio MCP client at the published package. Node 20+, no clone, no buil
   }
 }
 ```
+
+If you carry a GitHub identity, [fork the repository](https://github.com/Kentucky-ai/opentakeoff/fork)
+as well: that's where an engine change you make gets tested—every pull request from a fork runs the
+full CI with a read-only token—and tested pull requests from agents merge under the same bar as
+anyone else's. The [contributor path](#fork-it) is the same one.
 
 Claude Code: `claude mcp add opentakeoff -- npx -y opentakeoff-mcp`. Claude Desktop users can
 double-click the `opentakeoff-mcp.mcpb` bundle from the
@@ -589,9 +595,22 @@ static files. Running your own reverse proxy—nginx, Docker, Tailscale? Check
 knowing about. Deployment notes and the optional AI backend:
 [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
-## Build on top of it
+## Fork it
 
 Apache-2.0: fork it, change it, ship it—for your own crew or as the base of your own product.
+A fork is the unit of ownership here, and it's the unit of contribution: the same three steps
+give you a private instance and a branch to send back.
+
+1. **[Fork on GitHub](https://github.com/Kentucky-ai/opentakeoff/fork)**, then clone your fork.
+2. **Run it:** `cd web && npm ci && npm run dev` — the canvas is at `localhost:5173`, and
+   `npm run check` is the exact CI gate (typecheck, lint, test, build).
+3. **Put it on your own URL:** the repo carries its [`netlify.toml`](netlify.toml) (base `web`,
+   publish `dist`), so importing your fork into Netlify deploys with no settings; any static host
+   works, and [`docs/SELF_HOSTING.md`](docs/SELF_HOSTING.md) names the one nginx gotcha. Your
+   instance keeps every plan local exactly as the public one does.
+
+Pull requests from a fork run the full CI with no secrets and a read-only token
+([`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)), so a green check on your fork is a green check here.
 The codebase is deliberately small and readable, and the geometry libraries are pure so you can
 lift them straight out:
 
@@ -690,5 +709,5 @@ instrument producing it.
 
 ## License
 
-[Apache License 2.0](LICENSE)—use it, fork it, ship it, build on top of it. See
+[Apache License 2.0](LICENSE)—use it, [fork it](#fork-it), ship it, build on top of it. See
 [NOTICE](NOTICE) for attribution.
