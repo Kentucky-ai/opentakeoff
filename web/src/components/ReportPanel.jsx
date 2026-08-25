@@ -17,6 +17,7 @@ import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
 import { projectHomeFolderId } from "../lib/projectHome.js";
 import { getAccessToken } from "../lib/google/auth.js";
 import { shapesDetail, shapesToCsv, shapesToJson } from "../lib/shapesExport.js";
+import { buildSheetDxf, dxfFileName, DXF_MIME } from "../lib/dxf.js";
 import { rfisToCsv, rfisToJson } from "../lib/rfi.js";
 import { reportWorkbook, buildXlsx } from "../lib/xlsx.js";
 import { buildContribution, sendContribution, isContributeConfigured } from "../lib/contribute.js";
@@ -45,7 +46,7 @@ const sheetNum = (v, d = 1) => {
   return num(r, d);
 };
 
-export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], provenanceCounters = null, clientInfo = {}, onClientInfo, conditionColumns = [], shapeLabels = [], units = "imperial", rollByCond = null }) {
+export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, sheetDims, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], provenanceCounters = null, clientInfo = {}, onClientInfo, conditionColumns = [], shapeLabels = [], units = "imperial", rollByCond = null }) {
   // memoized on the source arrays: project-name/client-info keystrokes re-render
   // the panel without touching conditions/shapes, so the totaling passes skip
   // imported report theme → { vars, name, warnings }. vars are spread onto this
@@ -332,6 +333,31 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   const exportShapesJson = () => downloadText(`${baseName}_shapes.json`,
     JSON.stringify(shapesToJson(shapesDetail(conditions, shapes, sheetLabel), projectName), null, 2),
     "application/json");
+  // DXF (CAD): one drawing per sheet — a sheet IS a drawing — so a multi-sheet
+  // takeoff downloads as a zip of per-sheet DXFs and a single sheet as the
+  // .dxf itself. Only calibrated sheets that carry shapes qualify; the skip
+  // list is spoken, never swallowed (a CAD file missing a ring is a lie).
+  const dxfSheets = useMemo(() => {
+    const upp = Object.fromEntries(scaleInfo.map((s) => [s.sheet_id, s.units_per_px]));
+    const ids = [...new Set(shapes.map((s) => s.sheet_id))];
+    return ids.filter((id) => upp[id] > 0 && (sheetDims?.(id)?.w > 0)).map((id) => ({ id, upp: upp[id] }));
+  }, [shapes, scaleInfo, sheetDims]);
+  const dxfSkipped = useMemo(() => {
+    const ok = new Set(dxfSheets.map((s) => s.id));
+    return [...new Set(shapes.map((s) => s.sheet_id))].filter((id) => !ok.has(id));
+  }, [shapes, dxfSheets]);
+  const exportDxf = async () => {
+    const built = dxfSheets.map(({ id, upp }) => {
+      const label = sheetLabel ? sheetLabel(id) : id;
+      const b = buildSheetDxf({ sheet_id: id, label, dims: sheetDims(id), upp, shapes, conditions }, { units: units === "metric" ? "m" : "ft" });
+      return { name: dxfFileName(projectName || "takeoff", label), dxf: b.dxf };
+    });
+    if (built.length === 1) { downloadText(built[0].name, built[0].dxf, DXF_MIME); return; }
+    const { zipSync, strToU8 } = await import("fflate"); // lazy — same pattern as xlsx.js
+    const files = {};
+    for (const f of built) files[files[f.name] ? f.name.replace(/\.dxf$/, `_${Object.keys(files).length}.dxf`) : f.name] = strToU8(f.dxf);
+    downloadText(`${baseName}_dxf.zip`, zipSync(files, { level: 6 }), "application/zip");
+  };
 
   const th = { textAlign: "right", padding: "7px 6px", fontFamily: "var(--f-mono)", fontSize: 12.5, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--ink-muted)", borderBottom: "1.25px solid var(--ink)", whiteSpace: "nowrap" };
   const td = { textAlign: "right", padding: "8px 6px", fontVariantNumeric: "tabular-nums", borderBottom: "1px solid var(--ink-faint)", whiteSpace: "nowrap" };
@@ -563,6 +589,11 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
             { section: "Shapes" },
             { id: "shapes-csv", icon: "document", label: "Shapes CSV", disabled: !shapes.length, title: "Per-shape measured quantities — no multiplier, no waste", onSelect: exportShapesCsv },
             { id: "shapes-json", icon: "document", label: "Shapes JSON", disabled: !shapes.length, title: "Per-shape measured quantities — no multiplier, no waste", onSelect: exportShapesJson },
+            { id: "dxf", icon: "document", label: dxfSheets.length > 1 ? `DXF (CAD) · ${dxfSheets.length} sheets` : "DXF (CAD)", disabled: !dxfSheets.length,
+              title: !shapes.length ? "Nothing measured yet"
+                : !dxfSheets.length ? "Set the scale on a sheet with shapes first — a CAD file in pixels is worse than none"
+                : `AutoCAD-ready geometry: closed polylines per finish on OT-<TAG> layers, ${units === "metric" ? "metres" : "feet"}, one drawing per sheet${dxfSkipped.length ? ` — ${dxfSkipped.length} unscaled sheet${dxfSkipped.length > 1 ? "s" : ""} left out` : ""}`,
+              onSelect: exportDxf },
           ]}
         />
         <ToolMenu

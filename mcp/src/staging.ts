@@ -1,5 +1,5 @@
 // Staged tool exposure (#230) — opt-in via OPENTAKEOFF_MCP_STAGED_TOOLS=1.
-// The flat forty-one stay the default for every published client; behind the flag
+// The flat forty-two stay the default for every published client; behind the flag
 // only the setup stage starts enabled and `open_tool_stage` grows the surface
 // on demand, so an agent session pays for the tool descriptions it actually
 // uses. The stage map is the same phase structure the initialize instructions
@@ -29,7 +29,7 @@ export const TOOL_STAGES: Record<string, readonly string[]> = {
   ],
   handoff: [
     "takeoff_summary", "export_takeoff", "export_report", "import_takeoff",
-    "apply_rules", "export_marked_pdf",
+    "apply_rules", "export_marked_pdf", "export_dxf",
   ],
 };
 

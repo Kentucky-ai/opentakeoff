@@ -8587,6 +8587,7 @@ export default function TakeoffCanvas() {
           rollByCond={rollByCond}
           provenanceCounters={provCounters}
           sheetLabel={(k) => tabLabel(k)}
+          sheetDims={(k) => panelByKey(k)?.img}
           onMarkedSet={exportMarkedSet} markedSetDark={darkMode}
           onClose={() => setShowReport(false)}
         />

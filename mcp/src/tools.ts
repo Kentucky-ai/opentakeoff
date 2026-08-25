@@ -18,6 +18,7 @@ import {
   annotateOutput, listAnnotationsOutput, linkAnnotationOutput,
   markVerdictOutput, deleteVerdictOutput,
   sheetGraphOutput, resolveTagOutput, findScheduleOutput, sweepScheduleRowOutput, countMarksOutput,
+  exportDxfOutput,
 } from "./outputs.ts";
 import { exportMarkedPdf } from "./marked.ts";
 import { assertWritable, OVERWRITE_DESC } from "./safewrite.ts";
@@ -293,6 +294,34 @@ export function registerTools(realServer: McpServer, session: Session): Map<stri
       await writeFile(outPath, JSON.stringify(payload));
     }
     return payload;
+  }));
+
+  server.registerTool("export_dxf", {
+    description: `The takeoff as a CAD drawing — a DXF (R2000) AutoCAD, BricsCAD, LibreCAD and Revit import as native geometry, not a picture. ONE sheet per file, like a DWG: every committed shape on that sheet becomes an LWPOLYLINE (floor rings CLOSED, walls and linear runs open, count marks a 1-ft circle), on a layer named for its finish — OT-<TAG>, with -DEDUCT / -HOLE / -WALL / -LINEAR / -COUNT suffix layers so a CAD user isolates any bucket with one layer filter, and room labels as TEXT on OT-LABELS. Coordinates are real units in the sheet's own frame: origin at the sheet's BOTTOM-left, Y up (CAD convention), feet by default ($INSUNITS 2) or metres with units:"m"; a ring's area in CAD equals its area in export_report to rounding, so the drawing IS the audit. Requires the sheet's scale (refuses otherwise — pixels in a DXF are worse than nothing); with several sheets carrying shapes, pass sheet to choose the drawing (the refusal lists them). The reply names every shape left out and why — a reconciled deduct ships as its parent's -HOLE ring, never twice. Writes to path (required — a DXF lives on disk, next to the DWG it aligns to); pair with export_marked_pdf for the reviewed planset.`,
+    inputSchema: {
+      path: z.string().describe("File path to write the .dxf to"),
+      sheet: z.string().optional().describe('Sheet key ("plan.pdf", "plan.pdf#2") or title-block number ("A-101"). Optional only when exactly one calibrated sheet carries shapes'),
+      units: z.enum(["ft", "m"]).optional().describe('Output units — "ft" (default) or "m"'),
+      overwrite: z.boolean().optional().describe(OVERWRITE_DESC),
+    },
+    outputSchema: exportDxfOutput,
+  }, run("export_dxf", async ({ path: outPath, sheet, units, overwrite }) => {
+    const { sheet: s, build } = session.exportDxf(sheet, units ?? "ft");
+    await assertWritable(outPath, "dxf", overwrite);
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(outPath, build.dxf, "utf8");
+    return {
+      path: outPath,
+      sheet: s.key,
+      sheet_number: s.sheetNumber ?? null,
+      units: units ?? "ft",
+      layers: build.layers,
+      entities: build.entities,
+      shapes: build.shapes,
+      skipped: build.skipped,
+      extents: build.extents,
+      bytes: Buffer.byteLength(build.dxf, "utf8"),
+    };
   }));
 
   server.registerTool("export_report", {
