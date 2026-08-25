@@ -112,7 +112,7 @@ import { getTheme, toggleTheme, onThemeChange } from "../lib/theme.js";
 // pass once the tile path has proven itself in production.
 import {
   PANEL_GAP, DETAIL_ENGAGE, DETAIL_MARGIN, MAX_CANVAS_DIM, MAX_CANVAS_AREA, SYNC_MS, GESTURE_MS, SNAP_CELL,
-  MEASURE_TOOLS, CUT_TOOLS, MARKUP_TOOLS, MARKUP_IDS, HL_INKS, HL_SIZES,
+  MEASURE_TOOLS, HL_INKS, HL_SIZES,
   getMeasureTools, getCutTools, getMarkupTools,
 } from "../lib/canvasConstants.js";
 import { uid, clamp, isDangerMsg, instantiateTemplate, seedConditions } from "../lib/canvasUtil.js";
@@ -670,7 +670,6 @@ export default function TakeoffCanvas() {
   const lastMeasureRef = useRef("area"); // last armed measure tool — shown on the Measure menu face
   const prevToolRef = useRef("select");   // previous armed tool — detects a LEAVE-zone transition so the shared `poly` array only clears when zone itself was left, not on every tool change
   const statusCoordRef = useRef(null);   // status-bar coords span — direct DOM writes from onPointerMove, never React state per mousemove
-  const markTileTopRef = useRef(0);      // MARK tile's viewport top — anchors the fixed highlighter popover beside the rail
   const menuDepthRef = useRef(0);      // >0 while a toolbar menu is open (letter shortcuts pause)
   // ONE stable open/close listener for every toolbar menu — ToolMenu re-fires
   // its onOpenChange effect when the callback identity changes, so an inline
@@ -6442,13 +6441,75 @@ export default function TakeoffCanvas() {
             <button type="button" onClick={addCondition} title={t('conditions.add_title')}
               style={{ padding: "3px 9px", borderRadius: 0, border: "1px dashed var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 12, color: "var(--ink-muted)" }}>{t('conditions.add')}</button>
           </div>
-          {/* the active condition's appearance editor, restored to the top bar —
-              same component the docked panel row renders (one source of truth) */}
+        </div>
+      )}
+
+      {/* annotation + approval toolbar row — always available when not in focus
+          mode, independent of whether conditions or an active condition exist.
+          When aCond is active, the appearance editor and a divider precede these
+          controls so they share one compact line; otherwise the controls stand
+          alone. */}
+      {!focusMode && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 14px", flexWrap: "wrap", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
           {aCond && (
-            <div style={{ marginTop: 5, paddingTop: 5, borderTop: "1px solid var(--ink-faint)" }}>
+            <>
               <ConditionAppearanceEditor cond={aCond} onUpdateCond={updateCond} onSetCondParam={setCondParam} onAssignAttr={assignAttr} conditionColumns={conditionColumns} layout="row" units={units} />
-            </div>
+              <span style={{ width: 1, alignSelf: "stretch", background: "var(--ink-faint)", margin: "0 2px" }} />
+            </>
           )}
+          {getMarkupTools().map((mt) => {
+            const armed = tool === mt.id;
+            const btn = (
+              <button key={mt.id} type="button"
+                onClick={() => { setTool(mt.id); setMarkupDraft(null); }}
+                title={mt.title || mt.label} aria-label={mt.label} aria-pressed={armed}
+                style={{ position: "relative", width: "var(--ctl-l)", height: "var(--ctl-l)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid transparent", borderRadius: "var(--r-1)", background: armed ? "var(--cobalt)" : "transparent", color: armed ? "var(--accent-contrast)" : "var(--ink)", boxShadow: armed ? "var(--glow)" : "none", cursor: "pointer", lineHeight: 1 }}>
+                <Icon name={mt.icon} size={17} />
+                {mt.shortcut && <span aria-hidden="true" style={{ position: "absolute", bottom: 1, right: 3, fontFamily: "var(--f-mono)", fontSize: 8, color: armed ? "var(--accent-contrast)" : "var(--ink-muted)", opacity: armed ? 0.75 : 1 }}>{mt.shortcut}</span>}
+              </button>
+            );
+            if (mt.id !== "highlighter") return btn;
+            return (
+              <span key={mt.id} style={{ position: "relative", display: "inline-flex" }}>
+                {btn}
+                {/* highlighter style popover — anchored below the highlighter icon */}
+                {armed && (
+                  <div style={{ position: "absolute", left: 0, top: "100%", marginTop: 4, zIndex: Z.popover, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "var(--shadow-pop)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
+                    <div style={{ display: "flex", gap: 6 }} title={t('markup.ink_color')}>
+                      {HL_INKS.map((c) => (
+                        <button key={c} type="button" title={c} aria-label={c} aria-pressed={hlStyle.color === c} onClick={() => setHlStyle((st) => ({ ...st, color: c }))}
+                          style={{ width: 16, height: 16, padding: 0, background: c, border: hlStyle.color === c ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      {HL_SIZES.map(([lbl, px]) => (
+                        <button key={lbl} type="button" aria-pressed={hlStyle.size === px} onClick={() => setHlStyle((st) => ({ ...st, size: px }))} title={t('markup.tip_size', { size: lbl === "F" ? t('markup.fine') : lbl === "M" ? t('markup.medium') : t('markup.broad') })}
+                          style={{ width: 22, height: 20, padding: 0, fontFamily: "var(--f-mono)", fontSize: 10, cursor: "pointer", border: hlStyle.size === px ? "1px solid var(--ink)" : "1px solid var(--ink-faint)", background: hlStyle.size === px ? "var(--ink)" : "transparent", color: hlStyle.size === px ? "var(--paper-bright)" : "var(--ink)" }}>{lbl}</button>
+                      ))}
+                      <span style={{ width: 1, alignSelf: "stretch", background: "var(--ink-faint)" }} />
+                      {[["chisel", "M4 16 L14 6 L18 10 L8 20 Z"], ["round", "M5 17 Q12 3 19 13"]].map(([tip, d]) => (
+                        <button key={tip} type="button" aria-pressed={hlStyle.tip === tip} onClick={() => setHlStyle((st) => ({ ...st, tip }))} title={t('markup.tip_type', { type: t(`markup.tip_${tip}`) })}
+                          style={{ width: 24, height: 20, padding: 1, cursor: "pointer", border: hlStyle.tip === tip ? "1px solid var(--ink)" : "1px solid var(--ink-faint)", background: "transparent" }}>
+                          <svg viewBox="0 0 24 24" width="18" height="14">{tip === "chisel"
+                            ? <path d={d} fill="currentColor" stroke="none" />
+                            : <path d={d} fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />}</svg>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </span>
+            );
+          })}
+          {/* Approval stamp — ink over pencil. Human-only by design: this tile
+              is the ONLY way an estimator seal is minted (no MCP tool, no agent
+              path), so the mark means a person looked. */}
+          <button type="button"
+            onClick={() => setTool((prev) => (prev === "approve" ? "select" : "approve"))}
+            title={t('tool.approve')} aria-label={t('tool.approve')} aria-pressed={tool === "approve"}
+            style={{ position: "relative", width: "var(--ctl-l)", height: "var(--ctl-l)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid transparent", borderRadius: "var(--r-1)", background: tool === "approve" ? "var(--c-positive)" : "transparent", color: tool === "approve" ? "var(--accent-contrast)" : "var(--ink)", boxShadow: tool === "approve" ? "var(--glow)" : "none", cursor: "pointer", lineHeight: 1 }}>
+            <Icon name="approve" size={17} />
+          </button>
         </div>
       )}
 
@@ -6564,62 +6625,14 @@ export default function TakeoffCanvas() {
            faces). Lives in the canvas row so docked panels + canvas reflow
            beside it; survives focus mode — it IS the tool access. */}
        {view === "canvas" && (
-        <nav className="tool-rail" role="toolbar" aria-label={t('a11y.tools')} style={{ width: "var(--rail-w)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-1)", paddingTop: "var(--sp-2)", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflowY: "auto", overflowX: "visible" }}>
+        <nav className="tool-rail" role="toolbar" aria-label={t('a11y.tools')} style={{ width: "var(--rail-w)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-1)", paddingTop: 0, borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflowY: "auto", overflowX: "visible" }}>
          {railLabel(t('rail.sel'))}
          {railTile("select", "select", t('tool.select_desc'), "V")}
          {railLabel(t('rail.meas'))}
           {getMeasureTools().map((t) => railTile(t.id, t.icon, t.label, t.shortcut))}
          {railLabel(t('rail.cut'))}
           {getCutTools().map((t) => railTile(t.id, t.icon, t.label, t.shortcut, null, { tint: "var(--c-danger)" }))}
-         {railLabel(t('rail.mark'))}
-         <span ref={(el) => { if (el) markTileTopRef.current = el.getBoundingClientRect().top; }} style={{ position: "relative", display: "inline-flex" }}>
-            <ToolMenu
-              title={t('markup.cluster')}
-              active={MARKUP_IDS.includes(tool)}
-              onOpenChange={onMenuDepth}
-              flyout="right"
-              face={<Icon name="markup" size={17} />}
-              items={[
-                { section: t('markup.section') },
-                 ...getMarkupTools().map((t) => ({ id: t.id, icon: t.icon, label: t.label, shortcut: t.shortcut, title: t.title, active: tool === t.id, onSelect: () => { setTool(t.id); setMarkupDraft(null); } })),
-              ]}
-            />
-           {/* highlighter style popover — fixed beside the rail while armed
-               (fixed, not absolute: the rail's scroll box would clip it) */}
-           {tool === "highlighter" && (
-             <div style={{ position: "fixed", left: "calc(var(--rail-w) + 8px)", top: markTileTopRef.current || 200, zIndex: Z.popover, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "var(--shadow-pop)", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 7 }}>
-                <div style={{ display: "flex", gap: 6 }} title={t('markup.ink_color')}>
-                 {HL_INKS.map((c) => (
-                   <button key={c} onClick={() => setHlStyle((st) => ({ ...st, color: c }))}
-                     style={{ width: 16, height: 16, padding: 0, background: c, border: hlStyle.color === c ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />
-                 ))}
-               </div>
-               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                 {HL_SIZES.map(([lbl, px]) => (
-                    <button key={lbl} onClick={() => setHlStyle((st) => ({ ...st, size: px }))} title={t('markup.tip_size', { size: lbl === "F" ? t('markup.fine') : lbl === "M" ? t('markup.medium') : t('markup.broad') })}
-                     style={{ width: 22, height: 20, padding: 0, fontFamily: "var(--f-mono)", fontSize: 10, cursor: "pointer", border: hlStyle.size === px ? "1px solid var(--ink)" : "1px solid var(--ink-faint)", background: hlStyle.size === px ? "var(--ink)" : "transparent", color: hlStyle.size === px ? "var(--paper-bright)" : "var(--ink)" }}>{lbl}</button>
-                 ))}
-                 <span style={{ width: 1, alignSelf: "stretch", background: "var(--ink-faint)" }} />
-                 {[["chisel", "M4 16 L14 6 L18 10 L8 20 Z"], ["round", "M5 17 Q12 3 19 13"]].map(([tip, d]) => (
-                     <button key={tip} onClick={() => setHlStyle((st) => ({ ...st, tip }))} title={t('markup.tip_type', { type: t(`markup.tip_${tip}`) })}
-                     style={{ width: 24, height: 20, padding: 1, cursor: "pointer", border: hlStyle.tip === tip ? "1px solid var(--ink)" : "1px solid var(--ink-faint)", background: "transparent" }}>
-                     <svg viewBox="0 0 24 24" width="18" height="14">{tip === "chisel"
-                       ? <path d={d} fill="currentColor" stroke="none" />
-                       : <path d={d} fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />}</svg>
-                   </button>
-                 ))}
-               </div>
-             </div>
-           )}
-         </span>
-         {/* Approval stamp — ink over pencil. Human-only by design: this tile
-             is the ONLY way an estimator seal is minted (no MCP tool, no agent
-             path), so the mark means a person looked. */}
-          {railTile("approve", "approve", t('tool.approve'), null,
-            () => setTool((t) => (t === "approve" ? "select" : "approve")), { tint: tool === "approve" ? "var(--c-positive)" : undefined, armed: tool === "approve" })}
-          {railLabel(t('rail.cal'))}
-          {railTile("calibrate", "calibrate", t('tool.calibrate'), null)}
-       </nav>
+        </nav>
        )}
        {/* docked LEFT panel — one of Markups/Stamps/RFIs at a time. Reflows the
            canvas (a flex sibling), mirroring the docked Takeoffs panel on the right. */}
@@ -7428,7 +7441,7 @@ export default function TakeoffCanvas() {
               is stopped so rapid clicks can't finishShape() */}
           <div onPointerDown={(e) => { if (e.button === 0 && !spaceRef.current) e.stopPropagation(); }} onDoubleClick={(e) => e.stopPropagation()}
             style={{ position: "absolute", left: 14, bottom: 14, display: "flex", flexDirection: "column", gap: 6 }}>
-            <button onClick={() => stage.w && fitToView(stage.w, stage.h)} title={t('menu.fit_title')} style={{ width: 34, height: 34, borderRadius: 0, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", fontSize: 12 }}>{t('menu.fit_view')}</button>
+             <button onClick={() => stage.w && fitToView(stage.w, stage.h)} title={t('menu.fit_title')} aria-label={t('menu.fit_view')} style={{ width: 34, height: 34, borderRadius: 0, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center" }}><Icon name="fit" size={16} /></button>
             <button onClick={() => setDarkMode((d) => !d)} title={darkMode ? t('menu.invert_title') : t('menu.invert_title_dark')}
               style={{ width: 34, height: 34, borderRadius: 0, border: `1px solid ${darkMode ? "var(--cobalt)" : "var(--ink-faint)"}`, background: darkMode ? "var(--cobalt)" : "var(--paper-bright)", color: darkMode ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontSize: 13 }}>
               {darkMode ? "☀" : "☾"}</button>

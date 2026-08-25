@@ -112,7 +112,7 @@ test("TakeoffCanvas rail labels use t() calls, not hardcoded strings", () => {
   assert.match(canvas, /railLabel\(\s*t\(['"]rail\.sel['"]\)\s*\)/, "rail SEL must use t('rail.sel')");
   assert.match(canvas, /railLabel\(\s*t\(['"]rail\.meas['"]\)\s*\)/, "rail MEAS must use t('rail.meas')");
   assert.match(canvas, /railLabel\(\s*t\(['"]rail\.cut['"]\)\s*\)/, "rail CUT must use t('rail.cut')");
-  assert.match(canvas, /railLabel\(\s*t\(['"]rail\.mark['"]\)\s*\)/, "rail MARK must use t('rail.mark')");
+  // rail.mark removed — annotation/markup tools moved to the toolbar row
   assert.match(canvas, /railLabel\(\s*t\(['"]rail\.cal['"]\)\s*\)/, "rail CAL must use t('rail.cal')");
 
   // Must NOT have the old hardcoded strings
@@ -297,17 +297,15 @@ test("en and pt-br canvas.json have stamp.place_title", () => {
   }
 });
 
-// ── 10. Markup tool titles forwarded to ToolMenu items ────────────────────
+// ── 10. Markup tool titles forwarded to button props ──────────────────────
 
-test("TakeoffCanvas passes markup tool title through to ToolMenu item objects", () => {
+test("TakeoffCanvas passes markup tool title through to markup tool buttons", () => {
   const canvas = loadSrc("src/pages/TakeoffCanvas.jsx");
-  // The getMarkupTools().map() call must include `title` in each ToolMenu item
-  const mapLine = canvas.split("\n").find((l) => l.includes("getMarkupTools().map"));
-  assert.ok(mapLine, "getMarkupTools().map call must exist in TakeoffCanvas.jsx");
+  // The getMarkupTools().map() block must use each item's title on the rendered button
   assert.match(
-    mapLine,
-    /title:\s*t\.title/,
-    "TakeoffCanvas markup ToolMenu items must include `title: t.title`",
+    canvas,
+    /getMarkupTools\(\)\.map[\s\S]*?title=\{mt\.title/,
+    "TakeoffCanvas markup tool buttons must use `mt.title` for their title prop",
   );
 });
 

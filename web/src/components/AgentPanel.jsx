@@ -42,7 +42,7 @@ export default function AgentPanel({
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "var(--cobalt)", color: "var(--accent-contrast)" }}>
         <Icon name="target" size={15} />
         <strong style={{ flex: 1, fontSize: 12.5 }}>{t("agent.title")}{proposals.length ? ` \u00b7 ${t("agent.pending", { count: proposals.length })}` : ""}</strong>
-        <button onClick={onClose} title={t("agent.close_title")} style={{ border: "none", background: "transparent", color: "var(--accent-contrast)", fontSize: 16, cursor: "pointer", padding: "0 2px" }}>\u00d7</button>
+        <button onClick={onClose} title={t("agent.close_title")} style={{ border: "none", background: "transparent", color: "var(--accent-contrast)", fontSize: 16, cursor: "pointer", padding: "0 2px" }}>{"×"}</button>
       </div>
 
       {!configured ? (

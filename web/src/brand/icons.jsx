@@ -61,6 +61,7 @@ export const icons = {
   height: (s) => <I size={s}><line x1="6" y1="4" x2="18" y2="4" /><line x1="6" y1="20" x2="18" y2="20" /><path d="M12 6.5 V 17.5 M12 6.5 L 9.8 8.7 M12 6.5 L 14.2 8.7 M12 17.5 L 9.8 15.3 M12 17.5 L 14.2 15.3" /></I>,
   thickness: (s) => <I size={s}><line x1="5" y1="5" x2="5" y2="19" /><line x1="19" y1="5" x2="19" y2="19" /><path d="M7.5 12 H 16.5 M7.5 12 L 9.7 9.8 M7.5 12 L 9.7 14.2 M16.5 12 L 14.3 9.8 M16.5 12 L 14.3 14.2" /></I>,
   oneClick: (s) => <I size={s}><path d="M9 3 H 3 V 9" /><path d="M15 3 H 21 V 9" /><path d="M3 15 V 21 H 9" /><path d="M21 15 V 21 H 15" /><path d="M12 7.4 L 13.2 10.8 L 16.6 12 L 13.2 13.2 L 12 16.6 L 10.8 13.2 L 7.4 12 L 10.8 10.8 Z" /></I>,
+  fit: (s) => <I size={s}><path d="M9 3 H 3 V 9" /><path d="M15 3 H 21 V 9" /><path d="M3 15 V 21 H 9" /><path d="M21 15 V 21 H 15" /><path d="M8 8 L 10 10 M16 8 L 14 10 M8 16 L 10 14 M16 16 L 14 14" /></I>,
   hiRes: (s) => <I size={s}><rect x="3" y="5" width="18" height="14" /><path d="M7 15 V 9 M7 12 H 10.5 M10.5 9 V 15" /><path d="M14 9 V 15 M14 9 H 15.6 A 3 3 0 0 1 15.6 15 H 14" /></I>,
   // pushpin / thumbtack — the quick-access palette "pin this condition" action.
   // Cap bar at top, tapered body to a collar, needle to the point.
