@@ -17,6 +17,7 @@ import {
   applyShapeCommand, geomSnapshot, vertsEqual, recordCommand,
   PROVENANCE_POLICY, UNDO_CAP,
 } from "../src/lib/shapeCommands.js";
+import { setAuthorName } from "../src/lib/provenance.js";
 
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
@@ -534,4 +535,33 @@ test("rollcut: multi-row (a reorder) is ONE command with one exact inverse", () 
   const r = applyShapeCommand(shapes, cmd);
   assert.deepEqual(r.shapes[0].roll_layout.lanes[0], { runMin: 1, runMax: 9, seq: 0 });
   assert.deepEqual(applyShapeCommand(r.shapes, r.inverse).shapes, shapes);
+});
+
+// ── author at mint (#314) ────────────────────────────────────────────────────
+
+test("add: declared author is stamped at mint; a shape already attributed keeps its own", () => {
+  try {
+    setAuthorName("Michael E");
+    const { shapes } = applyShapeCommand([], { type: "add", shapes: [
+      { sheet_id: "a#1", verts_norm: [[0, 0], [1, 0], [1, 1]] },
+      { sheet_id: "a#1", verts_norm: [[0, 0], [1, 0], [0, 1]], author: "Aaron" },   // an import/merge keeps its attribution
+    ] });
+    assert.equal(shapes[0].author, "Michael E");
+    assert.equal(shapes[1].author, "Aaron");
+  } finally { setAuthorName(""); }
+});
+
+test("add: undeclared session mints no author field — payloads byte-identical", () => {
+  setAuthorName("");
+  const { shapes } = applyShapeCommand([], { type: "add", shapes: [{ sheet_id: "a#1", verts_norm: [[0, 0], [1, 0], [1, 1]] }] });
+  assert.equal("author" in shapes[0], false);
+});
+
+test("add restore (undo of a delete) never re-attributes — resurrection is not creation", () => {
+  try {
+    const dead = { id: "shp-x", created_at: "2026-01-01T00:00:00.000Z", sheet_id: "a#1", verts_norm: [[0, 0], [1, 0], [1, 1]] };
+    setAuthorName("Michael E");
+    const { shapes } = applyShapeCommand([], { type: "add", restore: true, shapes: [dead], at: [0] });
+    assert.equal("author" in shapes[0], false);
+  } finally { setAuthorName(""); }
 });

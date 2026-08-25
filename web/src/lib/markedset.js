@@ -20,6 +20,22 @@
 
 import { conditionTotals, sheetTotals, roundSheetRow, hasMultipliers, BY_SHEET_BASE_NOTE } from "./totals.js";
 import { approvalInk, approvalTally, APPROVAL_R } from "./approvals.js";
+
+// The cover's author line (#314), pure for the node runner: named authors
+// sorted, unattributed counted last, null when NO shape carries an author so
+// an unattributed export stays byte-identical.
+export function authorTallyLine(shapes) {
+  const byAuthor = new Map();
+  for (const s of shapes || []) {
+    const a = typeof s.author === "string" && s.author.trim() ? s.author.trim() : "";
+    byAuthor.set(a, (byAuthor.get(a) || 0) + 1);
+  }
+  if (![...byAuthor.keys()].some(Boolean)) return null;
+  const parts = [...byAuthor.entries()]
+    .sort((a, b) => (a[0] === "" ? 1 : b[0] === "" ? -1 : a[0].localeCompare(b[0])))
+    .map(([a, n]) => `${a || "unattributed"} (${n})`);
+  return `Marks by: ${parts.join(" · ")}`;
+}
 import { pointInPoly, starPath, arrowheadPath, cloudBezier, chiselRibbon } from "./geometry.js";
 import { transformPath, svgPlacedBox } from "./svgpath.js";
 import { rfiStatus } from "./rfi.js";
@@ -342,6 +358,14 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     if (apCount.estimator || apCount.agent) {
       metaY -= 12;
       draw(`Approval stamps: ${apCount.estimator} estimator-approved · ${apCount.agent} agent-marked`, { x: 52, y: metaY, size: 9.5, font, color: muted });
+    }
+    // author attribution (#314) — the legend names who marked the set. Drawn
+    // only when a shape carries an author (the provenance-line convention), so
+    // an unattributed export stays byte-identical.
+    const authorsLine = authorTallyLine(markedShapes);
+    if (authorsLine) {
+      metaY -= 12;
+      draw(authorsLine, { x: 52, y: metaY, size: 9.5, font, color: muted });
     }
     let y = metaY - 34;
     const rows = conditionTotals(conditions, markedShapes).filter((r) => r.shape_count > 0);

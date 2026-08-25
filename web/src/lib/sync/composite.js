@@ -17,6 +17,8 @@
 import { createLocalStore, localStore } from "../store.js";
 import { createSyncStore } from "./syncStore.js";
 import { createDriveProvider } from "./provider.js";
+import { createPresence, ensureDeviceId } from "./presence.js";
+import { authorName } from "../provenance.js";
 import { createSnapshotSync } from "../google/snapshotSync.js";
 import { driveSnapshotProvider } from "../google/snapshotSyncAdapter.js";
 
@@ -55,9 +57,33 @@ export function buildLocalFirstStore(projectId, drive, cloud) {
   });
   bridge.flushPending = annSync.flushPending;  // canvas idle-drain hook (used in Slice 5b)
 
+  // Presence (#317) — the same heartbeat files, through the Drive provider
+  // surface snapshots already ride. A 10-minute beat keeps an 8-hour session
+  // to ~50 writes plus one read per live peer per beat: background noise on
+  // Drive quota. Writes only once an author name is declared (#314).
+  (async () => {
+    const deviceId = await ensureDeviceId();
+    const presence = createPresence({
+      provider: driveSnapshotProvider(drive),
+      ensureSidecarId: cloud.ensureSidecarId,   // shared resolver (F4 — one `.opentakeoff`)
+      findSidecarId: cloud.findSidecarFolder,   // non-creating read path — an anonymous
+                                                // presence pass never litters a fresh project
+      deviceId,
+      getAuthor: authorName,
+      getSheet: () => bridge.getSheet?.() ?? null,
+      intervalMs: 10 * 60_000,
+    });
+    bridge.presence = presence;
+    presence.start();
+  })().catch(() => { /* presence is advisory — never blocks the store */ });
+
   const composite = { ...cloud, ...annSync, ...snapSync };
   // Non-enumerable so it rides the live `store` binding to the canvas without
   // polluting the store shape or the composite spread. Canvas reads store.syncBridge.
   Object.defineProperty(composite, "syncBridge", { value: bridge, enumerable: false });
+  // setActiveStore calls this when the composite is swapped out (project
+  // switch, exit to local) — the heartbeat must not keep writing into a
+  // project the user left.
+  Object.defineProperty(composite, "dispose", { enumerable: false, value: () => bridge.presence?.stop() });
   return composite;
 }

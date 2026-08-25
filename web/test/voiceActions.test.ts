@@ -42,6 +42,7 @@ function makeCtx(overrides: Partial<VoiceCapabilities> = {}) {
     addLabel: (label) => { log.push(["addLabel", label]); },
     activateLabel: (label) => { log.push(["activateLabel", label]); },
     addNote: (text) => { log.push(["addNote", text]); },
+    setAuthor: (name) => { log.push(["setAuthor", name]); },
     getAimSeed: () => ({ x: 320, y: 240, sheetId: "plan.pdf" }),
     traceAt: (seed, conditionId, label) => {
       log.push(["traceAt", seed, conditionId, label]);
@@ -141,6 +142,21 @@ test("clear_label → activateLabel(null)", () => {
   const out = applyVoiceIntent(caps, { kind: "clear_label" });
   assert.deepEqual(out, { ok: true, message: "Label cleared." });
   assert.deepEqual(log, [["activateLabel", null]]);
+});
+
+test("set_author → one setAuthor call, confirmation names the name", () => {
+  const { caps, log } = makeCtx();
+  const out = applyVoiceIntent(caps, { kind: "set_author", name: "Michael E" });
+  assert.equal(out.ok, true);
+  assert.match(out.message, /Michael E/);
+  assert.deepEqual(log, [["setAuthor", "Michael E"]]);
+});
+
+test("clear_author → setAuthor(null)", () => {
+  const { caps, log } = makeCtx();
+  const out = applyVoiceIntent(caps, { kind: "clear_author" });
+  assert.equal(out.ok, true);
+  assert.deepEqual(log, [["setAuthor", null]]);
 });
 
 test("add_note → one addNote call with verbatim text", () => {
@@ -371,6 +387,7 @@ function makeApp() {
     addLabel,
     activateLabel,
     addNote: (text) => addMarkup({ type: "text", at: [0.5, 0.06], text }, "plan.pdf"),
+    setAuthor: () => {},
     getAimSeed: () => box.aim,
     traceAt: (seed, conditionId, label) => { oneClickCommitAt(seed, conditionId, label); return { ok: true, message: "Created 1 takeoff." }; },
   };

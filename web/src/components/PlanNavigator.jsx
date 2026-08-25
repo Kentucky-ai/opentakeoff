@@ -25,6 +25,10 @@ import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
 import { parseSheetKey, extractSheetNumber, detectScale, RENDER_SCALE, MAX_GROUP } from "../lib/sheets";
 import { isGoogleConfigured } from "../lib/google/auth.js";
 import { projectHomeFolderId } from "../lib/projectHome.js";
+import { isFolderSyncSupported, loadFolderLink, linkFolder, forgetFolder, queryFolderPermission } from "../lib/fs/fsAccess.js";
+import { listConflictCopies } from "../lib/fs/fsProvider.js";
+import { m365Config, M365_ENABLED_KEY } from "../lib/msgraph/config.js";
+import { metaGet, metaPut, metaDelete } from "../lib/store.js";
 import { groupSheetsByLevel, sortGalleryGroups } from "../lib/sheetLevels.js";
 
 const THUMB_W = 380;
@@ -68,6 +72,74 @@ export default function PlanNavigator({
   const { user, signIn } = useGoogleAuth();
   const browseEnabled = cloudMode && typeof listFolder === "function";
   const [mode, setMode] = useState(browseEnabled && initialMode === "browse" ? "browse" : "plan");
+
+  // ── 365 sync (#315, experimental): opt-in state + preloaded auth ────────
+  // Rendered only when the BUILD is configured for a document library; the
+  // MSAL module preloads on mount so the click handler keeps its user gesture
+  // for the popup. Activating 365 hides the folder entry (one shadow at a
+  // time — the workspace gate picks 365 first).
+  const m365Cfg = !cloudMode ? m365Config() : null;
+  const [m365Active, setM365Active] = useState(false);
+  const [m365Err, setM365Err] = useState("");
+  const m365AuthRef = useRef(null);
+  useEffect(() => {
+    if (!m365Cfg) return;
+    let live = true;
+    metaGet(M365_ENABLED_KEY).then((v) => { if (live) setM365Active(v === true); }).catch(() => {});
+    import("../lib/msgraph/auth.js")
+      .then(({ createMsalAuth }) => { if (live) m365AuthRef.current = createMsalAuth(m365Cfg); })
+      .catch(() => { /* module load failure surfaces on click as a readable error */ });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const doLinkM365 = async () => {
+    setM365Err("");
+    try {
+      const auth = m365AuthRef.current;
+      if (!auth) throw new Error("sign-in module didn't load — check the console and report on issue #315");
+      await auth.signIn(); // popup — needs this click's gesture
+      await metaPut(M365_ENABLED_KEY, true);
+      window.location.reload(); // the workspace gate installs the 365 store
+    } catch (e) {
+      setM365Err(String(e?.message || e));
+    }
+  };
+  const doStopM365 = async () => {
+    await metaDelete(M365_ENABLED_KEY);
+    window.location.reload();
+  };
+
+  // ── folder sync (#316): the local workspace's link state ────────────────
+  // Local mode + Chromium only; on other engines (or in cloud mode) none of
+  // this UI renders — degrade with no dead controls. Conflict copies are the
+  // sync client's fork files ("annotations (1).json") — surfaced by name so a
+  // fork is a visible thing to resolve, never an orphan.
+  const folderUiOn = !cloudMode && isFolderSyncSupported() && !m365Active;
+  const [folderLink, setFolderLink] = useState(null);
+  const [folderCopies, setFolderCopies] = useState([]);
+  useEffect(() => {
+    if (!folderUiOn) return;
+    let live = true;
+    (async () => {
+      const l = await loadFolderLink().catch(() => null);
+      if (!live || !l) return;
+      setFolderLink(l);
+      if ((await queryFolderPermission(l.handle)) !== "granted") return;
+      const copies = await listConflictCopies(async () => l.handle).catch(() => []);
+      if (live) setFolderCopies(copies);
+    })();
+    return () => { live = false; };
+  }, [folderUiOn]);
+  // Link/unlink both reload: the store swap must happen before the canvas
+  // mounts (FolderGate's install-then-mount), and a reload IS that path.
+  const doLinkFolder = async () => {
+    const l = await linkFolder();
+    if (l) window.location.reload();
+  };
+  const doForgetFolder = async () => {
+    await forgetFolder();
+    window.location.reload();
+  };
 
   // ── shared: swallow canvas shortcuts while mounted (capture phase, every mode) ──
   // The canvas' own shortcuts listen on window in the bubble phase; this runs
@@ -595,6 +667,49 @@ export default function PlanNavigator({
                     )}
                   </div>
                 )}
+                {m365Cfg && (
+                  <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6 }}>
+                    {!m365Active ? (
+                      <>
+                        <button type="button" onClick={doLinkM365}
+                          title="Sign in with your work account and sync this workspace through the configured document library. Experimental (issue #315) — tokens stay in this browser."
+                          style={{ border: "none", background: "transparent", padding: 0, color: "var(--cobalt)", cursor: "pointer", fontSize: 12, textDecoration: "underline", fontFamily: "var(--f-body)" }}>
+                          or sync through your Microsoft 365 library (experimental)
+                        </button>
+                        {m365Err ? <div style={{ color: "var(--c-danger)", fontSize: 11.5, marginTop: 5 }}>365 sign-in failed: {m365Err}</div> : null}
+                      </>
+                    ) : (
+                      <span style={{ color: "var(--ink-muted)" }}>
+                        syncing through your <strong style={{ color: "var(--ink)" }}>Microsoft 365 library</strong>
+                        {" · "}
+                        <button type="button" onClick={doStopM365}
+                          style={{ border: "none", background: "transparent", padding: 0, color: "var(--c-danger)", cursor: "pointer", fontSize: 12, textDecoration: "underline", fontFamily: "var(--f-body)" }}>
+                          stop
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                )}
+                {folderUiOn && (
+                  <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.6 }}>
+                    {!folderLink ? (
+                      <button type="button" onClick={doLinkFolder}
+                        title="Pick a folder your team already syncs (a network share, a synced document library) — the takeoff syncs through it as one JSON file. No account, no credentials; the folder's own sync client does the transport."
+                        style={{ border: "none", background: "transparent", padding: 0, color: "var(--cobalt)", cursor: "pointer", fontSize: 12, textDecoration: "underline", fontFamily: "var(--f-body)" }}>
+                        or sync this workspace through a shared folder
+                      </button>
+                    ) : (
+                      <span style={{ color: "var(--ink-muted)" }}>
+                        syncing through folder <strong style={{ color: "var(--ink)" }}>“{folderLink.name}”</strong>
+                        {" · "}
+                        <button type="button" onClick={doForgetFolder}
+                          style={{ border: "none", background: "transparent", padding: 0, color: "var(--c-danger)", cursor: "pointer", fontSize: 12, textDecoration: "underline", fontFamily: "var(--f-body)" }}>
+                          stop
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                )}
                 <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "18px auto 16px", color: "var(--text-faint)", fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase" }}>
                   <span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />new here?<span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />
                 </div>
@@ -716,6 +831,31 @@ export default function PlanNavigator({
           {working ? "Working…" : mSel.length ? `${mSel.length} PDF${mSel.length === 1 ? "" : "s"} selected${mSelShapes ? ` · ${mSelShapes} takeoff${mSelShapes === 1 ? "" : "s"} on them` : ""}` : "check the PDFs to remove — removing never deletes takeoff data"}
         </span>
         <div style={{ flex: 1 }} />
+        {m365Cfg && m365Active && (
+          <span title="Annotations sync through the configured Microsoft 365 document library (experimental — issue #315)"
+            style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)" }}>
+            ⇄ 365 library{" "}
+            <button onClick={doStopM365} title="Stop syncing through the 365 library — local work stays in this browser"
+              style={{ border: "none", background: "transparent", padding: 0, color: "var(--c-danger)", cursor: "pointer", fontSize: 11, textDecoration: "underline", fontFamily: "var(--f-mono)" }}>
+              stop
+            </button>
+          </span>
+        )}
+        {folderUiOn && (folderLink ? (
+          <span title={folderCopies.length ? `The folder's sync client forked the annotations file — someone should reconcile these by hand:\n${folderCopies.join("\n")}` : `Annotations sync through “${folderLink.name}” — the folder's own sync client replicates them`}
+            style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: folderCopies.length ? "var(--c-warning)" : "var(--ink-muted)" }}>
+            ⇄ “{folderLink.name}”{folderCopies.length ? ` · ${folderCopies.length} conflict cop${folderCopies.length === 1 ? "y" : "ies"}` : ""}
+            {" "}
+            <button onClick={doForgetFolder} title="Stop syncing through this folder — local work stays in this browser"
+              style={{ border: "none", background: "transparent", padding: 0, color: "var(--c-danger)", cursor: "pointer", fontSize: 11, textDecoration: "underline", fontFamily: "var(--f-mono)" }}>
+              stop
+            </button>
+          </span>
+        ) : (
+          <button onClick={doLinkFolder} disabled={working}
+            title="Pick a folder your team already syncs — the takeoff syncs through it as one JSON file, no credentials involved"
+            style={{ ...ctrlBtn, opacity: working ? 0.5 : 1 }}>Sync through a folder…</button>
+        ))}
         {onClearWorkspace && (
           <button onClick={() => setConfirmClear(true)} disabled={working}
             title="Remove every stored PDF and reset the takeoff — a snapshot of a non-empty takeoff is saved first (Revisions restores it)"

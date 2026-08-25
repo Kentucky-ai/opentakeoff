@@ -36,7 +36,7 @@ import UserGuide from "../components/UserGuide.jsx";
 import TakeoffsPanel, { clampPanelW, CONDITION_DND_MIME, ConditionAppearanceEditor } from "../components/TakeoffsPanel.jsx";
 import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../components/hatches.jsx";
 import { Icon } from "../brand/icons.jsx";
-import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks } from "../lib/sheets";
+import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks, extractDimTexts } from "../lib/sheets";
 import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
@@ -114,6 +114,7 @@ import { createVoiceRecognizerClient } from "../lib/voiceRecognizerClient";
 import { startCapture, captureSupported } from "../lib/voiceCapture";
 import { aiConfig, isAiConfigured } from "../lib/ai.js";
 import AccountChip from "../components/AccountChip.jsx";
+import PresenceChip from "../components/PresenceChip.jsx";
 import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
 import { projectHomeFolderId } from "../lib/projectHome.js";
 import { getTheme, toggleTheme, onThemeChange } from "../lib/theme.js";
@@ -146,7 +147,7 @@ import { requiredDensity as tileRequiredDensity } from "../lib/tiles";
 // setShapes (the label-vocabulary renames, live drag PREVIEW frames, the
 // hydrate-time sanitizers, per-shape height/thickness re-pricing).
 // nowIso stays imported for the non-shape records (markups, RFIs, conditions).
-import { nowIso, mintUuid } from "../lib/provenance.js";
+import { nowIso, mintUuid, setAuthorName } from "../lib/provenance.js";
 import { applyShapeCommand, geomSnapshot, vertsEqual, recordCommand } from "../lib/shapeCommands.js";
 import { applyApprovalCommand, sanitizeApprovals, approvalInk, APPROVAL_R } from "../lib/approvals.js";
 import { findCutoutParent, subtractCutout, recomposeCutouts, cutRunsAcross } from "../lib/cutout.js";
@@ -647,6 +648,7 @@ export default function TakeoffCanvas() {
   const stageRef = useRef(null);
   const panelCanvasRefs = useRef(new Map()); // sheetKey → <canvas> (base layer — small backing store, coarse pyramid placeholder)
   const pageObjsRef = useRef(new Map());     // sheetKey → pdf.js page object (getOperatorList/getTextContent only — painting moved to the tile worker pool)
+  const dimTextsRef = useRef(new Map());     // sheetKey → positioned dim-pattern texts (#320) — RENDER_SCALE px, rescaled at buildMask time
   const renderScalesRef = useRef(new Map()); // sheetKey → RENDER_SCALE, always (see factorFor comment above) — kept so the ~20 factorFor/uppFor call sites are untouched
   // Tile-pyramid compositor (#86) — one instance owning the worker pool +
   // tile LRU cache (see lib/tileCompositor.ts). Lazily created on first
@@ -1136,6 +1138,22 @@ export default function TakeoffCanvas() {
   const applyTf = useCallback(() => {
     const { x, y, scale } = tfRef.current;
     if (stageRef.current) stageRef.current.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+  }, []);
+  // Compositor-promote the stage layer for the DURATION OF A GESTURE only.
+  // A permanently-promoted layer (will-change: transform in the JSX) freezes
+  // its raster scale at promotion time — Chromium deliberately never re-rasters
+  // such a layer when only its transform scale changes — so after a zoom-in the
+  // SVG overlay (committed boundaries, the in-progress polygon, vertex handles)
+  // stays a GPU-magnified bitmap: pixelated, blurry edges while drawing. The
+  // detail canvases never showed it because they repaint their own pixels at
+  // settle. So promote when a pan/zoom gesture opens (per-frame moves stay
+  // compositor-only and cheap) and demote when it settles (in syncTilePanels,
+  // keyed off the same gestureUntilRef wheel-quiet signal the detail repaint
+  // uses) — a demoted stage transforms at paint time, re-rastering the overlay
+  // crisp at whatever zoom the user landed on.
+  const promoteStage = useCallback(() => {
+    const el = stageRef.current;
+    if (el && el.style.willChange !== "transform") el.style.willChange = "transform";
   }, []);
   // Re-apply after every React render so an unrelated re-render mid-drag can't
   // snap the transform back to a stale value.
@@ -1870,7 +1888,9 @@ export default function TakeoffCanvas() {
           // instead (rasterEligible true, vectorViable false).
           sheetStatsRef.current.set(m.key, { segCount: 0, imageFrac: 1 });
         });
-        // read the drawn scale note off this panel's page text (best-effort)
+        // read the drawn scale note off this panel's page text (best-effort),
+        // and the positioned dimension-pattern texts the dim-string classifier
+        // anchors on (#320) — a mask built before they resolved was textless
         m.pageObj.getTextContent().then((tc) => {
           if (stale()) return;
           const det = detectScale(tc, m.viewport);
@@ -1879,6 +1899,8 @@ export default function TakeoffCanvas() {
           // resolved simply had no text evidence (the layer-table precedent)
           const marks = extractTextMarks(tc, m.viewport);
           if (marks.length) { textMarksRef.current.set(m.key, marks); maskCacheRef.current.delete(m.key); }
+          const dts = extractDimTexts(tc, m.viewport);
+          if (dts.length) { dimTextsRef.current.set(m.key, dts); maskCacheRef.current.delete(m.key); }
         }).catch(() => {});
       }
       if (stale()) return;
@@ -1958,6 +1980,10 @@ export default function TakeoffCanvas() {
       // free; self-poll so the settle repaint is guaranteed even if no further
       // input event arrives before the gesture window expires.
       if (panRef.current || performance.now() < gestureUntilRef.current) { scheduleSync(); return; }
+      // Gesture settled: demote the stage layer (see promoteStage) so the SVG
+      // overlay re-rasters at the zoom the user landed on — this is what
+      // un-pixelates a drafted boundary after a scroll-zoom.
+      if (stageRef.current && stageRef.current.style.willChange !== "auto") stageRef.current.style.willChange = "auto";
       const r = cont.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       const density = tileRequiredDensity(t.scale, dpr);
@@ -2369,6 +2395,19 @@ export default function TakeoffCanvas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Presence (#317): tell the heartbeat which sheet is open. Ref-mirrored so
+  // the getter registers once (same discipline as the handlers above) yet
+  // always reads the current sheet.
+  const presenceSheetRef = useRef("");
+  presenceSheetRef.current = sheetKey || "";
+  useEffect(() => {
+    const bridge = store.syncBridge;
+    if (!bridge) return;
+    bridge.getSheet = () => presenceSheetRef.current || null;
+    return () => { bridge.getSheet = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Idle-drain. When the canvas goes idle, drain BOTH defer paths:
   //   CASE 1 — the store deferred at its own gate (isBusy true → never adopted,
   //     pendingRemote held, local untouched): flushPending() adopts now and fires
@@ -2479,6 +2518,7 @@ export default function TakeoffCanvas() {
     const onWheel = (e) => {
       if (editingRef.current) return;   // freeze pan/zoom while the inline editor is pinned to its anchor
       e.preventDefault();
+      promoteStage();                   // gesture opening: composite the stage for cheap per-frame moves
       gestureUntilRef.current = performance.now() + GESTURE_MS;  // detail view waits for wheel quiet
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1;
       if (e.shiftKey) {
@@ -2506,7 +2546,7 @@ export default function TakeoffCanvas() {
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => { el.removeEventListener("wheel", onWheel); if (raf) cancelAnimationFrame(raf); };
-  }, [applyTf, scheduleSync, zoomAround]);
+  }, [applyTf, scheduleSync, zoomAround, promoteStage]);
 
   // Space = temporary pan (any tool)
   useEffect(() => {
@@ -2702,6 +2742,7 @@ export default function TakeoffCanvas() {
     // (There is no Pan tool — Select's open-canvas drag and the deferred-click
     // hold-drag below cover the rest of the modeless-pan doctrine.)
     if (e.button === 1 || e.button === 2 || spaceRef.current) {
+      promoteStage();
       panRef.current = { sx: e.clientX, sy: e.clientY, ox: tfRef.current.x, oy: tfRef.current.y };
       e.currentTarget.setPointerCapture(e.pointerId);
       if (containerRef.current) containerRef.current.style.cursor = "grabbing";
@@ -2998,6 +3039,7 @@ export default function TakeoffCanvas() {
     // desktop takeoff tools; no need to reach for the Pan tool). The plain
     // click (no drag) already cleared the selection above, so a stationary
     // press costs nothing.
+    promoteStage();
     panRef.current = { sx: e.clientX, sy: e.clientY, ox: tfRef.current.x, oy: tfRef.current.y };
     e.currentTarget.setPointerCapture(e.pointerId);
     if (containerRef.current) containerRef.current.style.cursor = "grabbing";
@@ -3163,7 +3205,10 @@ export default function TakeoffCanvas() {
         const last = poly[bowOpen ? poly.length - 2 : poly.length - 1];
         rubberRef.current.setAttribute("x1", last[0]); rubberRef.current.setAttribute("y1", last[1]);
         rubberRef.current.setAttribute("x2", cur[0]); rubberRef.current.setAttribute("y2", cur[1]);
-        rubberRef.current.setAttribute("stroke-width", lock ? 3 : 1.5);  // the lock reads in the band itself
+        // screen-constant width, like the JSX default and the dash below (÷ scale):
+        // the raw stage-px value this used to write drew a fat, smeared band at
+        // deep zoom. The lock still reads thicker within the band itself.
+        rubberRef.current.setAttribute("stroke-width", (lock ? 3 : 1.5) / tfRef.current.scale);
         const dash = bowOpen ? `${5 / tfRef.current.scale} ${4 / tfRef.current.scale}` : "";
         if (rubberRef.current.__dash !== dash) { rubberRef.current.setAttribute("stroke-dasharray", dash); rubberRef.current.__dash = dash; }
         rubberRef.current.style.display = "block";
@@ -3342,6 +3387,7 @@ export default function TakeoffCanvas() {
     if (pendingClickRef.current && !panRef.current) {
       const pc = pendingClickRef.current;
       if (Math.hypot(e.clientX - pc.cx, e.clientY - pc.cy) > 5) {
+        promoteStage();
         panRef.current = { sx: pc.cx, sy: pc.cy, ox: tfRef.current.x, oy: tfRef.current.y };
         pendingClickRef.current = null;
         if (containerRef.current) containerRef.current.style.cursor = "grabbing";
@@ -4020,11 +4066,14 @@ export default function TakeoffCanvas() {
       // too. The mask is cached, so the extra getViewport is once per sheet per
       // calibration.
       const pgVp = pageObjsRef.current.get(key)?.getViewport({ scale: 1 });
+      // dim texts were positioned at RENDER_SCALE; segs live at this render —
+      // rescale so text and ink share a frame whatever the Hi-Res toggle says
+      const dtk = rsNow === RENDER_SCALE ? dimTextsRef.current.get(key) : (dimTextsRef.current.get(key) || []).map((t) => ({ ...t, x: t.x * rsNow / RENDER_SCALE, y: t.y * rsNow / RENDER_SCALE, wPx: t.wPx * rsNow / RENDER_SCALE }));
       mo = buildMask(segs, dims.w, dims.h, MASK_MAX_DIM, segMetaRef.current.get(key), pxPerFt,
                      pxPerFt ? pxPerFt * RENDER_SCALE / rsNow : 0,
                      pgVp ? { pageW: pgVp.width, pageH: pgVp.height, renderScale: rsNow, baseScale: RENDER_SCALE } : null,
                      rolesForSheet(key),
-                     { subpaths: subpathsRef.current.get(key) || null, texts: textMarksRef.current.get(key) || null });
+                     { subpaths: subpathsRef.current.get(key) || null, texts: textMarksRef.current.get(key) || null, dimTexts: dtk && dtk.length ? dtk : null });
       maskCacheRef.current.set(key, mo);
     }
     return mo;
@@ -5424,6 +5473,9 @@ export default function TakeoffCanvas() {
       // and addMarkup auto-opens the Markups dock, so the note is immediately
       // visible and draggable — the anchor is a starting point, not a commitment
       addNote: (text) => addMarkup({ type: "text", at: [0.5, 0.06], text }, focusPanel.key),
+      // author declaration (#314) — provenance's one localStorage key; new
+      // commits pick it up at mint, nothing re-stamps retroactively
+      setAuthor: (v) => setAuthorName(v),
       getAimSeed,
       traceAt: (seed, conditionId, label) => voiceTraceAt(seed, conditionId, label),
     };
@@ -7023,7 +7075,7 @@ export default function TakeoffCanvas() {
           <input
             type="text"
             placeholder="cpt 1 · waste 7 · this room"
-            title={'Command line (RFC #59): a condition tag ("CPT-1", "carpet one", "tile 2 waste 5"), "waste 7", "label Phase 1", "clear label", or "note …" — Enter runs it through the same actions the buttons use. End with "this room" / "here" while the pointer rests on a room to trace and commit it there ("carpet one, this room"). Push-to-talk dictation will feed this box.'}
+            title={'Command line (RFC #59): a condition tag ("CPT-1", "carpet one", "tile 2 waste 5"), "waste 7", "label Phase 1", "clear label", "author <your name>" (new marks sign it — the report can group by author), or "note …" — Enter runs it through the same actions the buttons use. End with "this room" / "here" while the pointer rests on a room to trace and commit it there ("carpet one, this room"). Push-to-talk dictation will feed this box.'}
             onFocus={() => { voiceAimMarkRef.current = aimSeqRef.current; }}
             onKeyDown={(e) => {
               if (e.key !== "Enter") return;
@@ -7109,6 +7161,7 @@ export default function TakeoffCanvas() {
             ] : []),
           ]}
         />
+        <PresenceChip bridge={store.syncBridge} />
         <AccountChip note={cloudMode ? "Synced to Google Drive" : "Local workspace"} onOpenChange={onMenuDepth} />
       </div>
       )}
@@ -7544,7 +7597,11 @@ export default function TakeoffCanvas() {
               placeholder="Type, Enter to place · Esc cancels"
               style={{ position: "absolute", left: editor.left, top: editor.top, zIndex: 9, minWidth: 160, padding: "3px 6px", font: "13px var(--f-body, sans-serif)", color: "var(--ink)", background: "var(--paper-bright)", border: "1px solid var(--cobalt)", boxShadow: "0 2px 10px rgba(0,0,0,.18)", borderRadius: 0, cursor: "text", outline: "none" }} />
           )}
-          <div ref={stageRef} style={{ position: "absolute", transformOrigin: "0 0", willChange: "transform", width: stage.w || undefined, height: stage.h || undefined }}>
+          {/* No permanent will-change here: the stage is compositor-promoted only
+              for the duration of a gesture (promoteStage / syncTilePanels demote).
+              A permanent promotion froze the layer's raster scale and pixelated
+              every drawn boundary after a zoom-in. */}
+          <div ref={stageRef} style={{ position: "absolute", transformOrigin: "0 0", width: stage.w || undefined, height: stage.h || undefined }}>
             {/* base layer — a small, bounded coarse pyramid placeholder CSS-stretched
                 to the panel's full logical footprint (see tileCompositor.ts's
                 paintBase); the backing store is NOT sheet-sized, only its CSS box is,

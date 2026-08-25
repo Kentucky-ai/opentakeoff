@@ -5,7 +5,7 @@
 // and the per-bucket sums reconcile to the ungrouped total.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { labelGroupedRows, sheetLabelGroupedRows, conditionTotals, reportJson } from "../src/lib/totals.js";
+import { labelGroupedRows, sheetLabelGroupedRows, authorGroupedRows, conditionTotals, reportJson } from "../src/lib/totals.js";
 
 const conditions = () => [{ id: "c1", finish_tag: "CPT-1" }];
 const shape = (id: string, label: string | null, area: number) => ({
@@ -117,4 +117,27 @@ test("sheetLabelGroupedRows: no shapes, and orphan-only floors, drop rather than
   assert.deepEqual(sheetLabelGroupedRows(conditions(), [], []), []);
   const orphan = [{ id: "x", condition_id: "gone", sheet_id: "p.pdf#1", measure_role: "floor_area", computed: { area_sf: 9 } }];
   assert.deepEqual(sheetLabelGroupedRows(conditions(), orphan as any, []), []);
+});
+
+// ── authorGroupedRows (#314) — labelGroupedRows' twin, keyed on shape.author ─
+
+const authored = (id: string, author: string | null, area: number) => ({
+  id, condition_id: "c1", sheet_id: "p.pdf", measure_role: "floor_area",
+  computed: { area_sf: area, perimeter_lf: 0 }, ...(author ? { author } : {}),
+});
+
+test("author buckets reconcile to the ungrouped total; named sorted, Unattributed last with value null", () => {
+  const shapes = [authored("s1", "Michael", 100), authored("s2", "Aaron", 50), authored("s3", null, 25)];
+  const g = authorGroupedRows(conditions(), shapes);
+  assert.deepEqual(g.map((x) => x.label), ["Aaron", "Michael", "Unattributed"]);
+  assert.equal(g[2].value, null);
+  assert.deepEqual(g.map((x) => x.rows[0].floor_sf), [50, 100, 25]);
+  const ungrouped = conditionTotals(conditions(), shapes)[0].floor_sf;
+  assert.equal(g.reduce((n, x) => n + x.rows[0].floor_sf, 0), ungrouped);
+});
+
+test("a whitespace-only author is Unattributed, and an all-unattributed project still groups", () => {
+  const g = authorGroupedRows(conditions(), [authored("s1", "   ", 10), authored("s2", null, 5)]);
+  assert.deepEqual(g.map((x) => x.label), ["Unattributed"]);
+  assert.equal(g[0].rows[0].floor_sf, 15);
 });

@@ -86,7 +86,7 @@ export interface TextMark { x: number; y: number; w: number; h: number }
  *  that supplies none gets exactly the pre-classification mask, which is what
  *  keeps hand-built geometry (rastermask, tests) and stitched composites
  *  working unchanged. */
-export interface InkContext { subpaths?: SubPath[] | null; texts?: TextMark[] | null }
+export interface InkContext { subpaths?: SubPath[] | null; texts?: TextMark[] | null; dimTexts?: DimTextMark[] | null }
 export interface VectorGeometry { points: Point[]; segs: number[]; meta: Uint8Array; imageArea: number; lum?: Uint8Array; layerOf?: Int32Array; layerIds?: string[]; subpaths?: SubPath[]; }
 export interface MaskObj { mask: Uint8Array; mw: number; mh: number; ws: number; softCount: number; mppf?: number; }  // mppf: mask px per foot (0/absent = scale unknown)
 export interface RegionResult { region: Uint8Array; mw: number; mh: number; ws: number; count?: number; }
@@ -1384,6 +1384,374 @@ export function classifyTagBoxSegs(
   return soft;
 }
 
+// ── 2f. dimension strings (issue #320) ──────────────────────────────────────
+// On a FLATTENED sheet the layer path is dead (`classifyLayerName` returns
+// role unknown at confidence 0 — correctly: nothing is stated) and neither
+// geometric classifier sees a dimension string: it has no heavier parallel
+// neighbour within 2 ft (the run is drawn 2–6 ft off the building face, often
+// stacked), its witness lines run PERPENDICULAR to everything nearby, and its
+// pen weight matches thin partition linework. So One-Click reads the string as
+// boundary: the flood leaks into the dimension band beside the building, or a
+// witness line crossing a room chops it. Field report, flattened multifamily.
+//
+// What identifies a dimension string is its ANATOMY, not its pen. Measured on
+// two real flattened sets (a Revit multifamily permit sheet at 1/4" = 1'-0",
+// 18 px/ft; an AutoCAD-exported commercial finish plan at 3/32" = 1'-0",
+// 6.75 px/ft, its linework exploded to ~1 px dashes):
+//   • one long straight RUN (measured 4.7–31 ft), text between witnesses —
+//     text is showText ops, never vectors, so a real run sits in an EMPTY band;
+//   • short WITNESS lines meeting it at 90°, one per dimensioned feature —
+//     0.5–1.2 ft on the Revit sheet — spaced at ROOM-scale intervals (never
+//     the sub-foot rhythm of hatch, coursing, or stipple);
+//   • an oblique TICK or arrow ON the run at each junction: 45° slashes
+//     0.94 ft long (heavier pen) on the Revit sheet, ~30° arrow strokes
+//     0.34 ft long (same pen) on the AutoCAD sheet;
+//   • at every junction, ink CONTINUES PAST the joint — the run overshoots
+//     the end witnesses (0.39 ft measured) or the witness extends past the
+//     run. A rectangle's corner has neither, which is what separates a
+//     two-witness dim from every legend swatch and tag box on the sheet;
+//   • nothing runs alongside: a wall face has its partner face 0.33–1 ft
+//     away for its whole length, a stacked dim string's neighbour run is
+//     ≥ 1.5 ft off (3/8" paper at 1/4" scale) and is another dim, not a wall.
+//
+// The classifier reassembles collinear CHAINS first (the AutoCAD sheet's
+// exploded dashes — same device markPolylineArcs uses for arc chords), then
+// accepts a chain as a dim RUN only on the full conjunction: isolated, ≥ 2
+// sparse witness junctions each continuing past the joint, ticks at ≥ 2 of
+// them (and at least half), and an otherwise-empty band. Every threshold is
+// feet-true — this runs only when the sheet scale is known — with small
+// absolute px floors where the phenomenon is ink/quantization, not geometry
+// (the CLUSTER_FIT_TOL_PX precedent).
+//
+// Softening is deliberately narrower than evidence: a witness is often drawn
+// COLLINEAR with the wall edge it dimensions, and on the Revit sheet the
+// 0.25 ft witness-to-wall drafting gap sits BELOW the 0.5 ft dash gaps of the
+// sheet's own centreline patterns — no gap threshold separates them — so a
+// witness chain that merged into longer linework, or one with a wall-length
+// parallel partner of its own, is counted as evidence but never softened.
+// Union into the same soft plane as hatch and annotation rings; never
+// subtracted; the escalation ladder decides what soft is worth.
+export const DIMSTR_ANGLE_TOL = 2;        // deg — CAD angle jitter ≪ 1° (HATCH_ANGLE_TOL's evidence)
+export const DIMSTR_CHAIN_GAP_FT = 0.6;   // collinear pieces closer than this are one drawn line
+export const DIMSTR_CHAIN_GAP_PX = 3;     // floor — dash/quantization gaps are ink-scale, not feet
+export const DIMSTR_CHAIN_OFF_FT = 0.06;  // perpendicular jitter within one drawn line
+export const DIMSTR_CHAIN_OFF_PX = 1.25;  // floor — sub-px offsets are float noise at coarse scales
+export const DIMSTR_RUN_MIN_FT = 4;       // shortest measured real run is 4.7 ft; ANNOT_MIN_LEN_FT's reasoning
+export const DIMSTR_ISO_OFF_FT = 1.0;     // a parallel partner within a wall's breadth …
+export const DIMSTR_ISO_OVERLAP = 0.4;    // … spanning this fraction of the RUN makes it a wall face
+export const DIMSTR_WITNESS_MIN_FT = 0.3; // below the shortest measured witness (0.5 ft) with margin
+export const DIMSTR_WITNESS_SOFT_MAX_FT = 8;  // soften cap — longer chains are glued linework: evidence only
+export const DIMSTR_ATTACH_FT = 0.35;     // junction slop: witness end / tick centre to the run line
+export const DIMSTR_ATTACH_PX = 2;        // floor — a junction is an ink joint, ≥ pen scale
+export const DIMSTR_JUNCTION_MIN_FT = 1.5;// witnesses are room-spaced; coursing/stipple rhythms are sub-foot
+export const DIMSTR_WIT_PER_JUNCTION_MAX = 2; // a dim junction is ONE witness (two at a shared boundary)
+export const DIMSTR_TICK_MIN_FT = 0.2;    // measured ticks 0.34–0.94 ft; stipple dots sit below this
+export const DIMSTR_TICK_MAX_FT = 1.5;    // a longer oblique is drawing, not a tick
+export const DIMSTR_TICK_ANG_LO = 20;     // deg off the run — covers ~30° arrows …
+export const DIMSTR_TICK_ANG_HI = 70;     // … and 45° slashes with jitter margin
+export const DIMSTR_TICK_AT_JUNCTION_FT = 0.5;  // a tick marks ITS junction, not the run at large
+export const DIMSTR_MIN_JUNCTIONS = 2;    // a dimension has two ends
+export const DIMSTR_MIN_TICKED = 2;       // … and marks both
+export const DIMSTR_TICKED_FRAC = 0.5;    // most junctions carry their mark (jamb clutter does not)
+export const DIMSTR_OVERSHOOT_FT = 0.1;   // ink past a joint (0.39 ft measured); a corner has none
+export const DIMSTR_OVERSHOOT_PX = 2;     // floor — overshoot is ink, not geometry
+export const DIMSTR_TOUCH_CLUTTER_MAX = 1;// non-witness/tick chains allowed to TOUCH the run
+// path B (tick-anchored interior strings) — measured on the calibration
+// sheet's interior strings: slash pairs 3.4 px apart, junction spacing ≥ 3 ft
+export const DIMTEXT_NEAR_FT = 1.0;             // dim text sits ON its line (2 px measured); a generous foot covers styles that float it
+export const DIMTEXT_REACH_FT = 40;             // how far along the line from its text a string plausibly extends
+export const DIMTEXT_MIN_LINE_X = 1.5;          // the drawn line must dwarf the text (an underline matches it)
+export const DIMTEXT_STUB_MAX_FT = 2.5;         // ticks and witness stubs; measured 0.27–1.2 ft
+export const DIMSTR_LINE_MARGIN_FT = 0.5;       // pieces just past the span still belong
+export const DIMSTR_PIECE_MAX_DIMFRAC = 0.66;   // a merge piece more dim-bounded than this is exterior band, not floor
+export const DIMSTR_PIECE_MAX_CURVEFRAC = 0.25; // …and one this curve-bounded is a door-swing pocket, not floor
+export const DIMSTR_BAND_FT = 0.7;        // the empty band a real run sits in …
+export const DIMSTR_BAND_CLUTTER_MAX = 4; // … and the stray chains tolerated inside it (hex keynote
+                                          // tags ride the band on the Revit sheet; a stipple field
+                                          // or a table's cell text boxes blow far past this)
+
+interface DimChain {
+  axis: number;               // deg, [0, 180) — the bin axis the chain merged on
+  d: number;                  // mean perpendicular offset of members, mask px
+  t0: number; t1: number;     // extent along the axis, mask px
+  len: number;
+  members: number[];          // segment indices
+  p0: [number, number]; p1: [number, number];  // endpoints in mask px
+}
+
+/** Collinear-chain reassembly + dimension-string comb detection. Pure and
+ *  deterministic; all inputs in mask px, `ftPx` = mask px per foot (> 0 —
+ *  the caller gates on scale). Exported for calibration and tests; the
+ *  boundary-mask contract is `classifyDimensionStringSegs` below. */
+export interface DimReject { axis: number; d: number; t0: number; t1: number; lenFt: number; why: string }
+/** A positioned dimension-pattern text item (image px; ang = baseline rotation
+ *  in degrees; wPx = rendered text width) — see sheets.extractDimTexts. */
+export interface DimTextMark { x: number; y: number; ang: number; wPx: number }
+export function sweepDimensionStrings(segs: number[], meta: Uint8Array, ws: number, ftPx: number, rejects?: DimReject[], dimTexts?: DimTextMark[] | null): { soft: Uint8Array; runs: DimChain[] } {
+  const n = segs.length >> 2;
+  const soft = new Uint8Array(n);
+  const hits: DimChain[] = [];
+  if (!meta || !n || !(ftPx > 0)) return { soft, runs: hits };
+  interface Cand { i: number; ang: number; x1: number; y1: number; x2: number; y2: number; L: number }
+  const cand: Cand[] = [];
+  for (let i = 0; i < n; i++) {
+    if (meta[i] & (SEG_CURVE | SEG_CLIP | SEG_FILLONLY)) continue;
+    const x1 = segs[i * 4] * ws, y1 = segs[i * 4 + 1] * ws, x2 = segs[i * 4 + 2] * ws, y2 = segs[i * 4 + 3] * ws;
+    const L = Math.hypot(x2 - x1, y2 - y1);
+    if (!(L > 0)) continue;
+    let ang = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+    if (ang < 0) ang += 180; if (ang >= 180) ang -= 180;
+    cand.push({ i, ang, x1, y1, x2, y2, L });
+  }
+  if (!cand.length) return { soft, runs: hits };      // (path A self-guards on counts; the text path can anchor a single drawn line)
+  // 1. collinear chains, on the hatch classifier's interleaved angle grids so
+  // a family straddling one grid's bin boundary is intact in the other. A
+  // multi-member chain claims its segs in pass 1; singletons re-bin in pass 2.
+  const BIN = DIMSTR_ANGLE_TOL, NB = Math.round(180 / BIN);
+  const gap = Math.max(DIMSTR_CHAIN_GAP_PX, DIMSTR_CHAIN_GAP_FT * ftPx);
+  const offTol = Math.max(DIMSTR_CHAIN_OFF_PX, DIMSTR_CHAIN_OFF_FT * ftPx);
+  const chains: DimChain[] = [];
+  const claimed = new Uint8Array(n);
+  interface Row { c: Cand; d: number; t0: number; t1: number }
+  for (const shift of [0, BIN / 2]) {
+    const bins = new Map<number, Row[]>();
+    for (const c of cand) {
+      if (claimed[c.i]) continue;
+      let b = Math.floor((c.ang + shift) / BIN);
+      if (b >= NB) b -= NB;                             // the 0°/180° seam is one family
+      const axis = ((b * BIN - shift + BIN / 2) % 180 + 180) % 180;
+      const th = axis * Math.PI / 180, dx = Math.cos(th), dy = Math.sin(th), nx = -dy, ny = dx;
+      const r: Row = { c,
+        d: ((c.x1 + c.x2) / 2) * nx + ((c.y1 + c.y2) / 2) * ny,
+        t0: Math.min(c.x1 * dx + c.y1 * dy, c.x2 * dx + c.y2 * dy),
+        t1: Math.max(c.x1 * dx + c.y1 * dy, c.x2 * dx + c.y2 * dy) };
+      const arr = bins.get(b);
+      if (arr) arr.push(r); else bins.set(b, [r]);
+    }
+    for (const [b, rows] of bins) {
+      const axis = ((b * BIN - shift + BIN / 2) % 180 + 180) % 180;
+      rows.sort((a, z) => a.d - z.d || a.t0 - z.t0);
+      let g0 = 0;
+      for (let k = 1; k <= rows.length; k++) {
+        if (k < rows.length && rows[k].d - rows[k - 1].d <= offTol) continue;
+        const grp = rows.slice(g0, k).sort((a, z) => a.t0 - z.t0 || a.t1 - z.t1);
+        let cur: (DimChain & { dSum: number }) | null = null;
+        const flush = () => {
+          if (!cur) return;
+          if (shift === 0 || cur.members.length > 1 || !claimed[cur.members[0]]) {
+            if (shift === 0 && cur.members.length < 2) { cur = null; return; }  // singleton: retry on the shifted grid
+            cur.d = cur.dSum / cur.members.length;
+            cur.len = cur.t1 - cur.t0;
+            const th = axis * Math.PI / 180, dx = Math.cos(th), dy = Math.sin(th), nx = -dy, ny = dx;
+            cur.p0 = [cur.t0 * dx + cur.d * nx, cur.t0 * dy + cur.d * ny];
+            cur.p1 = [cur.t1 * dx + cur.d * nx, cur.t1 * dy + cur.d * ny];
+            chains.push(cur);
+            for (const m of cur.members) claimed[m] = 1;
+          }
+          cur = null;
+        };
+        for (const r of grp) {
+          if (cur && r.t0 - cur.t1 <= gap) { cur.t1 = Math.max(cur.t1, r.t1); cur.members.push(r.c.i); cur.dSum += r.d; }
+          else { flush(); cur = { axis, d: 0, dSum: r.d, t0: r.t0, t1: r.t1, len: 0, members: [r.c.i], p0: [0, 0], p1: [0, 0] }; }
+        }
+        flush();
+        g0 = k;
+      }
+    }
+  }
+  // 2. comb detection over the chains
+  const runMin = DIMSTR_RUN_MIN_FT * ftPx, isoOff = DIMSTR_ISO_OFF_FT * ftPx;
+  const wMin = DIMSTR_WITNESS_MIN_FT * ftPx, wSoftMax = DIMSTR_WITNESS_SOFT_MAX_FT * ftPx;
+  const attach = Math.max(DIMSTR_ATTACH_PX, DIMSTR_ATTACH_FT * ftPx);
+  const jMin = DIMSTR_JUNCTION_MIN_FT * ftPx;
+  const tickMin = DIMSTR_TICK_MIN_FT * ftPx, tickMax = DIMSTR_TICK_MAX_FT * ftPx;
+  const tickAt = DIMSTR_TICK_AT_JUNCTION_FT * ftPx;
+  const over = Math.max(DIMSTR_OVERSHOOT_PX, DIMSTR_OVERSHOOT_FT * ftPx);
+  const band = DIMSTR_BAND_FT * ftPx;
+  // has this chain a same-axis partner alongside for most of its length?
+  const hasParallelPartner = (C: DimChain, skip: DimChain | null): boolean => {
+    const th = C.axis * Math.PI / 180, dx = Math.cos(th), dy = Math.sin(th), nx = -dy, ny = dx;
+    for (const O of chains) {
+      if (O === C || O === skip) continue;
+      let rel = Math.abs(O.axis - C.axis); if (rel > 90) rel = 180 - rel;
+      if (rel > 3 * DIMSTR_ANGLE_TOL) continue;
+      const d0 = O.p0[0] * nx + O.p0[1] * ny - C.d, d1 = O.p1[0] * nx + O.p1[1] * ny - C.d;
+      // below attach/2 the "partner" is this same drawn line's own pieces
+      // (jitter ≤ ~2 px) — a wall's partner face sits a wall-thickness off
+      // (0.28 ft = 5 px measured), safely above. Same reasoning as
+      // ANNOT_OFFSET_MIN_FT: too close is one line, not a pair.
+      const gapAbs = Math.min(Math.abs(d0), Math.abs(d1));
+      if (gapAbs > isoOff || gapAbs < attach / 2) continue;
+      const t0 = Math.min(O.p0[0] * dx + O.p0[1] * dy, O.p1[0] * dx + O.p1[1] * dy);
+      const t1 = Math.max(O.p0[0] * dx + O.p0[1] * dy, O.p1[0] * dx + O.p1[1] * dy);
+      if (Math.min(t1, C.t1) - Math.max(t0, C.t0) >= DIMSTR_ISO_OVERLAP * C.len) return true;
+    }
+    return false;
+  };
+  const reject = (R: DimChain, why: string) => { rejects?.push({ axis: R.axis, d: R.d, t0: R.t0, t1: R.t1, lenFt: R.len / ftPx, why }); };
+  for (const R of chains) {
+    if (R.len < runMin) continue;
+    if (hasParallelPartner(R, null)) { reject(R, "iso"); continue; }   // a wall face, never a dim run
+    const th = R.axis * Math.PI / 180, dx = Math.cos(th), dy = Math.sin(th), nx = -dy, ny = dx;
+    interface Joint { t: number; C: DimChain; past: boolean }
+    const wit: Joint[] = [], ticks: Joint[] = [];
+    let touchClutter = 0;
+    for (const C of chains) {
+      if (C === R) continue;
+      const d0 = C.p0[0] * nx + C.p0[1] * ny - R.d, d1 = C.p1[0] * nx + C.p1[1] * ny - R.d;
+      const near0 = Math.abs(d0) <= attach, near1 = Math.abs(d1) <= attach;
+      const crosses = (d0 < -attach && d1 > attach) || (d1 < -attach && d0 > attach);
+      if (!near0 && !near1 && !crosses) continue;
+      const t0 = C.p0[0] * dx + C.p0[1] * dy, t1 = C.p1[0] * dx + C.p1[1] * dy;
+      const tm = (t0 + t1) / 2;
+      const tRef = near0 && !near1 ? t0 : near1 && !near0 ? t1 : tm;
+      if (tRef < R.t0 - attach || tRef > R.t1 + attach) continue;
+      let rel = Math.abs(C.axis - R.axis); if (rel > 90) rel = 180 - rel;
+      if (rel >= 90 - 2 * DIMSTR_ANGLE_TOL && C.len >= wMin) {
+        // continues past the joint: crosses outright, or reaches the line at
+        // both extremes of its own extent (an overshooting witness does; a
+        // stroke that merely ENDS on the line does not)
+        wit.push({ t: tRef, C, past: crosses || (near0 && near1) });
+      } else if (rel >= DIMSTR_TICK_ANG_LO && rel <= DIMSTR_TICK_ANG_HI
+          && C.len >= tickMin && C.len <= tickMax && Math.abs((d0 + d1) / 2) <= attach) {
+        ticks.push({ t: tm, C, past: false });
+      } else if (++touchClutter > DIMSTR_TOUCH_CLUTTER_MAX) break;
+    }
+    if (touchClutter > DIMSTR_TOUCH_CLUTTER_MAX) { reject(R, "touch-clutter"); continue; }
+    // box-corner rejection: keep a junction only where ink continues past it
+    const live = wit.filter((w) => w.past || (w.t >= R.t0 + over && w.t <= R.t1 - over));
+    if (live.length < DIMSTR_MIN_JUNCTIONS) { reject(R, `witnesses (raw=${wit.length} live=${live.length} ticks=${ticks.length})`); continue; }
+    live.sort((a, z) => a.t - z.t);
+    interface Junction { t: number; n: number }
+    const junc: Junction[] = [];
+    let dense = false;
+    for (const w of live) {
+      const j = junc[junc.length - 1];
+      if (j && w.t - j.t < jMin) { if (++j.n > DIMSTR_WIT_PER_JUNCTION_MAX) { dense = true; break; } }
+      else junc.push({ t: w.t, n: 1 });
+    }
+    if (dense || junc.length < DIMSTR_MIN_JUNCTIONS) { reject(R, dense ? "dense" : "junctions"); continue; }
+    let ticked = 0;
+    const usedTicks: Joint[] = [];
+    for (const j of junc) {
+      const t = ticks.find((tk) => Math.abs(tk.t - j.t) <= tickAt);
+      if (t) { ticked++; usedTicks.push(t); }
+    }
+    if (ticked < DIMSTR_MIN_TICKED || ticked < DIMSTR_TICKED_FRAC * junc.length) { reject(R, `ticked (junc=${junc.length} ticked=${ticked} ticks=${ticks.length})`); continue; }
+    // empty-band check: beyond its own comb, nothing shares a real run's band
+    const witSet = new Set(live.map((w) => w.C)), tickSet = new Set(usedTicks.map((t) => t.C));
+    let bandClutter = 0;
+    for (const C of chains) {
+      if (C === R || witSet.has(C) || tickSet.has(C)) continue;
+      const mx = (C.p0[0] + C.p1[0]) / 2, my = (C.p0[1] + C.p1[1]) / 2;
+      if (Math.abs(mx * nx + my * ny - R.d) > band) continue;
+      const tt = mx * dx + my * dy;
+      if (tt < R.t0 || tt > R.t1) continue;
+      if (++bandClutter > DIMSTR_BAND_CLUTTER_MAX) break;
+    }
+    if (bandClutter > DIMSTR_BAND_CLUTTER_MAX) { reject(R, "band-clutter"); continue; }
+    hits.push(R);
+    for (const m of R.members) soft[m] = 1;
+    for (const t of usedTicks) for (const m of t.C.members) soft[m] = 1;
+    for (const w of live) {
+      // soften a witness only when it is demonstrably NOT wall linework: short
+      // enough to be a witness alone (not glued across a drafting gap) and
+      // without a wall-length parallel partner of its own
+      if (w.C.len > wSoftMax) continue;
+      if (hasParallelPartner(w.C, R)) continue;
+      for (const m of w.C.members) soft[m] = 1;
+    }
+  }
+
+  // ── path B: dimension-TEXT-anchored strings (#320) ─────────────────────────
+  // The comb path above is calibrated on EXTERIOR dimension bands, which sit
+  // in empty sheet space. An INTERIOR string — drawn across a room, chopping
+  // the flood (the reported failure) — lives in clutter by nature, and no
+  // purely geometric acceptance survived four real sheets: every conjunction
+  // loose enough to catch interior strings also caught door-leaf chevrons,
+  // X-braces, or a diagonal hatch field somewhere. The unambiguous anchor the
+  // sheet actually offers is the DIMENSION TEXT itself: `18'-10"` is a
+  // pattern nothing else on a plan carries, and on the calibration sheet it
+  // sits within 2 px of its line. So when the caller supplies positioned
+  // dim-pattern text (the app extracts page text anyway for scale detection;
+  // headless callers that pass none simply get path A alone), a string is:
+  // collinear drawn ink near the text, aligned with the text's own baseline
+  // rotation, spanning well past the text — plus its ticks and witness stubs.
+  // The wall guards stay: a chain with a wall-length parallel partner is
+  // never softened, which also self-protects schedule tables (their row rules
+  // ride 0.3–0.5 ft apart and read as partnered linework).
+  if (dimTexts && dimTexts.length) {
+    const near = DIMTEXT_NEAR_FT * ftPx;
+    const reach = DIMTEXT_REACH_FT * ftPx;
+    const margin = DIMSTR_LINE_MARGIN_FT * ftPx;
+    for (const T of dimTexts) {
+      const ang = ((T.ang % 180) + 180) % 180;
+      const th = ang * Math.PI / 180, dx = Math.cos(th), dy = Math.sin(th), nx = -dy, ny = dx;
+      const tx = T.x * ws, ty = T.y * ws;
+      const dT = tx * nx + ty * ny, tT = tx * dx + ty * dy;
+      const pieces: DimChain[] = [];
+      let dSum = 0, wSum = 0;
+      for (const C of chains) {
+        let rel = Math.abs(C.axis - ang); if (rel > 90) rel = 180 - rel;
+        if (rel > 2 * DIMSTR_ANGLE_TOL) continue;
+        const cd = ((C.p0[0] + C.p1[0]) / 2) * nx + ((C.p0[1] + C.p1[1]) / 2) * ny;
+        if (Math.abs(cd - dT) > near) continue;
+        const ct0 = Math.min(C.p0[0] * dx + C.p0[1] * dy, C.p1[0] * dx + C.p1[1] * dy);
+        const ct1 = Math.max(C.p0[0] * dx + C.p0[1] * dy, C.p1[0] * dx + C.p1[1] * dy);
+        if (ct1 < tT - reach || ct0 > tT + reach) continue;
+        pieces.push(C);
+        dSum += cd * C.len; wSum += C.len;
+      }
+      if (!wSum) continue;
+      let t0 = Infinity, t1 = -Infinity, drawn = 0;
+      for (const C of pieces) {
+        t0 = Math.min(t0, Math.min(C.p0[0] * dx + C.p0[1] * dy, C.p1[0] * dx + C.p1[1] * dy));
+        t1 = Math.max(t1, Math.max(C.p0[0] * dx + C.p0[1] * dy, C.p1[0] * dx + C.p1[1] * dy));
+        drawn += C.len;
+      }
+      // the line must be REAL: drawn ink at least room-scale AND well past the
+      // text itself (a room label's underline matches its text width; a dim
+      // line dwarfs its text)
+      if (drawn < Math.max(runMin, DIMTEXT_MIN_LINE_X * T.wPx * ws)) continue;
+      const dLine = dSum / wSum;
+      const proxy: DimChain = { axis: ang, d: dLine, t0, t1, len: t1 - t0, members: [],
+        p0: [t0 * dx + dLine * nx, t0 * dy + dLine * ny], p1: [t1 * dx + dLine * nx, t1 * dy + dLine * ny] };
+      if (hasParallelPartner(proxy, null)) continue;
+      hits.push(proxy);
+      for (const C of pieces) {
+        // per-piece wall protection, same rule as witness softening above
+        if (C.len > (t1 - t0) + 2 * margin) continue;
+        if (hasParallelPartner(C, null)) continue;
+        for (const m of C.members) soft[m] = 1;
+      }
+      // ticks and witness stubs at the line, inside the span: short strokes
+      // meeting it obliquely or perpendicularly
+      for (const C of chains) {
+        if (C.len < tickMin || C.len > DIMTEXT_STUB_MAX_FT * ftPx) continue;
+        let rel = Math.abs(C.axis - ang); if (rel > 90) rel = 180 - rel;
+        if (rel < DIMSTR_TICK_ANG_LO) continue;
+        const d0 = C.p0[0] * nx + C.p0[1] * ny - dLine, d1 = C.p1[0] * nx + C.p1[1] * ny - dLine;
+        const near0 = Math.abs(d0) <= attach, near1 = Math.abs(d1) <= attach;
+        const crosses = (d0 < -attach && d1 > attach) || (d1 < -attach && d0 > attach);
+        if (!near0 && !near1 && !crosses) continue;
+        const tm = ((C.p0[0] + C.p1[0]) / 2) * dx + ((C.p0[1] + C.p1[1]) / 2) * dy;
+        if (tm < t0 - margin || tm > t1 + margin) continue;
+        if (hasParallelPartner(C, null)) continue;
+        for (const m of C.members) soft[m] = 1;
+      }
+    }
+  }
+  return { soft, runs: hits };
+}
+
+/** Strokes belonging to a dimension string — run, witnesses, ticks — are
+ *  annotation, not boundary. Same contract as classifyHatchSegs /
+ *  classifyOffsetAnnotationSegs: one byte per segment, 1 = soft, pure, total,
+ *  never throws. `ftPx` is mask px per foot; the caller gates on scale. */
+export function classifyDimensionStringSegs(segs: number[], meta: Uint8Array, ws: number, ftPx: number, dimTexts?: DimTextMark[] | null): Uint8Array {
+  return sweepDimensionStrings(segs, meta, ws, ftPx, undefined, dimTexts).soft;
+}
+
 // Signature quantization for the stable family id (issue #29): coarse enough
 // to absorb CAD jitter (≪ the classifier's own tolerances), fine enough that
 // distinct pattern specs never collide. The RAW signature values ride along
@@ -1457,6 +1825,14 @@ export function hatchFamilies(segs: number[], meta: Uint8Array): HatchFamily[] {
 // (roles sixth, no scale pinning) so layered callers without a scale need no
 // placeholder zeros; the canonical order keeps roles last.
 export const MASK_CURVE_BIT = 4;
+// Soft cells plotted from DIMENSION-STRING ink additionally carry bit 16
+// (#320): the dim classifier is a conjunction of measured gates (ticked sparse
+// junctions, isolation, corner rejection), far higher precision than the hatch
+// rhythm heuristic — and a dimension line is never a scope boundary, so an
+// escalation crossing predominantly-dim soft ink may be trusted past the
+// grow-but-verify cap (see sealedEscalation). Rides only on soft (bit 2)
+// cells; a cell also crossed by hard ink keeps hard's verdict as always.
+export const MASK_DIMSTR_BIT = 16;
 export function buildMask(segs: number[], imgW: number, imgH: number, maxDim?: number, meta?: Uint8Array | null, pxPerFt?: number, basePxPerFt?: number, page?: MaskPage | null, roles?: Uint8Array | null, ink?: InkContext | null): MaskObj;
 export function buildMask(segs: number[], imgW: number, imgH: number, maxDim?: number, meta?: Uint8Array | null, roles?: Uint8Array | null): MaskObj;
 export function buildMask(segs: number[], imgW: number, imgH: number, maxDim = MASK_MAX_DIM, meta: Uint8Array | null = null, pxPerFt: number | Uint8Array | null = 0, basePxPerFt = 0, page: MaskPage | null = null, roles: Uint8Array | null = null, ink: InkContext | null = null): MaskObj {
@@ -1543,6 +1919,11 @@ export function buildMask(segs: number[], imgW: number, imgH: number, maxDim = M
   const tagbox = meta && mppf > 0 && ink?.subpaths && ink?.texts
     ? classifyTagBoxSegs(segs, meta, ink.subpaths, ink.texts, ws, mppf) : null;
   if (soft && tagbox) for (let i = 0; i < soft.length; i++) if (tagbox[i]) soft[i] = 1;
+  // Third independent contributor to the SAME soft plane: dimension strings
+  // (section 2d, issue #320). Feet-true only, for the same reason as the
+  // annotation classifier above; unioned, never subtracted.
+  const dimstr = meta && mppf > 0 ? classifyDimensionStringSegs(segs, meta, ws, mppf, ink?.dimTexts || null) : null;
+  if (soft && dimstr) for (let i = 0; i < soft.length; i++) if (dimstr[i]) soft[i] = 1;
   // curve chords that are demonstrably not door swings (closed circles, cloud
   // scallops) — a SEPARATE plane from SEG_CURVE, so refusing them never makes
   // them hatch-eligible (classifyHatchSegs still skips every SEG_CURVE chord)
@@ -1555,9 +1936,10 @@ export function buildMask(segs: number[], imgW: number, imgH: number, maxDim = M
     // a vote — it records geometry (door-swing recognition), so it still rides
     // on stated-hard curve chords exactly as on heuristic-hard ones.
     let v = role === 1 || role === 4 ? 1 : soft && soft[si] ? 2 : 1;
+    if (v === 2 && dimstr && dimstr[si]) v |= MASK_DIMSTR_BIT;
     if (v === 1 && meta && (meta[si] & SEG_CURVE)) v = 1 | MASK_CURVE_BIT;
     if ((v & MASK_CURVE_BIT) && noDoor && noDoor[si]) v |= MASK_NODOOR_BIT;
-    if (v === 2) softCount++;
+    if ((v & 2) && !(v & 1)) softCount++;   // dim-soft cells carry bit 16 beside bit 2
     // Quantization needs no separate baseline step: ws is now baseline-derived
     // (ws = k·wsB) and mw/mh come from the baseline dims, so seg*ws already lands
     // on the baseline grid. Measured: Math.round(seg*ws) and Math.round(seg*k*wsB)
@@ -2717,6 +3099,114 @@ function sealAttempt(mo: MaskObj, ix: number, iy: number, sensitivity: number, r
   const cy = Math.max(0, Math.min(mo.mh - 1, Math.round(iy * mo.ws)));
   const cSoft = (mo.mask[cy * mo.mw + cx] & 2) !== 0;
   const cdt = (s: SealScratch): number => (cSoft ? 0 : s.dt[cy * mo.mw + cx]);
+  // Region-level dim merge (#320). A room chopped by an interior dimension
+  // string floods as several pieces, each a perfectly good STRICT region whose
+  // shared boundary is dim-classified soft ink (mask bit 16). Flood-level
+  // escalation cannot heal this reliably: soft-transparent passes exit through
+  // the door openings the softened witness lines used to plug (measured), and
+  // dilated rungs swallow more area than the merge gains on tiny rooms. So
+  // merge at the REGION level instead: for every dim cell on the region's rim,
+  // strict-flood the far side; a far side that comes back bounded is the same
+  // floor (a dimension line never bounds scope) and unions in — one that
+  // leaks simply doesn't merge, so this can never turn a bounded click into a
+  // leak. The union is re-connected by BFS over region + dim ink, which keeps
+  // it one 4-connected component whose traced ring rides real walls. Pieces
+  // are strict floods, so the result is symmetric: clicking any side of the
+  // chop yields the same union. The room-size cap still stands.
+  const mergeAcrossDimStrings = (ref: FloodResult & { status: "ok" }): FloodResult | null => {
+    if (!mo.softCount) return null;
+    const { mw, mh, mask, ws } = mo;
+    const isDim = (i: number): boolean => (mask[i] & MASK_DIMSTR_BIT) !== 0 && (mask[i] & 1) === 0;
+    const capCells = mw * mh * SEAL_MAX_SHEET_FRAC;
+    const box = boxOf(ref.region, mw, mh);
+    // rim scan: dim cells adjacent to the region, and their open far sides
+    const region = ref.region.slice();
+    let count = ref.count, mergedPieces = 0;
+    const tried = new Set<number>();
+    let frontier = true;
+    for (let pass = 0; pass < 8 && frontier; pass++) {
+      frontier = false;
+      const b = { x0: Math.max(1, box.x0 - 2), y0: Math.max(1, box.y0 - 2), x1: Math.min(mw - 2, box.x1 + 2), y1: Math.min(mh - 2, box.y1 + 2) };
+      for (let y = b.y0; y <= b.y1; y++) for (let x = b.x0; x <= b.x1; x++) {
+        const i = y * mw + x;
+        if (!isDim(i)) continue;
+        if (!(region[i - 1] || region[i + 1] || region[i - mw] || region[i + mw])) continue;
+        for (const o of [-1, 1, -mw, mw]) {
+          // walk across the (possibly 2-cell-thick) dim stroke to open floor
+          let j = i + o, steps = 0;
+          while (steps++ < 3 && isDim(j)) j += o;
+          if (region[j] || (mask[j] & 3) || tried.has(j)) continue;
+          tried.add(j);
+          const jx = j % mw, jy = (j / mw) | 0;
+          const fr = floodPass(mo, (jx + 0.5) / ws, (jy + 0.5) / ws, 3);
+          if (fr.status !== "ok") continue;
+          if (count + fr.count > capCells) continue;
+          // a piece bounded MOSTLY by dim ink is a sliver of the exterior
+          // dimension band (stacked strings wall it on both long sides), not
+          // room floor — an interior chop piece is mostly wall-bounded
+          // (measured: ~50% dim boundary vs ~87% for a band sliver)
+          {
+            const fb = boxOf(fr.region, mw, mh);
+            let bAll = 0, bDim = 0, bCurve = 0;
+            for (let yy = Math.max(1, fb.y0); yy <= Math.min(mh - 2, fb.y1); yy++) for (let xx = Math.max(1, fb.x0); xx <= Math.min(mw - 2, fb.x1); xx++) {
+              const k = yy * mw + xx;
+              if (!fr.region[k]) continue;
+              for (const oo of [-1, 1, -mw, mw]) {
+                const mk = mask[k + oo];
+                if ((mk & 3) && !fr.region[k + oo]) { bAll++; if (isDim(k + oo)) bDim++; if (mk & MASK_CURVE_BIT) bCurve++; }
+              }
+            }
+            if (bAll && bDim / bAll > DIMSTR_PIECE_MAX_DIMFRAC) continue;
+            // a piece bounded appreciably by CURVE ink is a door-swing pocket
+            // reached through the witness line plugging its doorway — door
+            // zones are the wedge pass's jurisdiction, never the dim merge's
+            if (bAll && bCurve / bAll > DIMSTR_PIECE_MAX_CURVEFRAC) continue;
+          }
+          for (let k = 0; k < region.length; k++) if (fr.region[k] && !region[k]) { region[k] = 1; count++; }
+          const fb = boxOf(fr.region, mw, mh);
+          box.x0 = Math.min(box.x0, fb.x0); box.y0 = Math.min(box.y0, fb.y0);
+          box.x1 = Math.max(box.x1, fb.x1); box.y1 = Math.max(box.y1, fb.y1);
+          mergedPieces++; frontier = true;
+        }
+      }
+    }
+    if (!mergedPieces) return null;
+    // re-connect: BFS from the click over region cells + the dim ink between
+    // them — one 4-connected component, dropping anything not actually joined
+    const final = new Uint8Array(mw * mh);
+    const cx0 = Math.max(0, Math.min(mw - 1, Math.round(ix * ws)));
+    const cy0 = Math.max(0, Math.min(mh - 1, Math.round(iy * ws)));
+    let s0 = cy0 * mw + cx0;
+    if (!region[s0]) {           // click sat on ink; start from any ref cell
+      s0 = -1;
+      for (let k = 0; k < region.length && s0 < 0; k++) if (ref.region[k]) s0 = k;
+      if (s0 < 0) return null;
+    }
+    const stack = [s0];
+    final[s0] = 1;
+    let fCount = 0;
+    const nb = { x0: mw, y0: mh, x1: 0, y1: 0 };
+    while (stack.length) {
+      const i = stack.pop() as number;
+      fCount++;
+      const x = i % mw, y = (i / mw) | 0;
+      if (x < nb.x0) nb.x0 = x; if (x > nb.x1) nb.x1 = x;
+      if (y < nb.y0) nb.y0 = y; if (y > nb.y1) nb.y1 = y;
+      for (const o of [-1, 1, -mw, mw]) {
+        const j = i + o;
+        if (j < 0 || j >= final.length || final[j]) continue;
+        const xj = j % mw;
+        if (Math.abs(xj - x) > 1) continue;              // row wrap
+        if (region[j] || isDim(j)) { final[j] = 1; stack.push(j); }
+      }
+    }
+    regionBox.set(final, nb);
+    return {
+      status: "ok", region: final, count: fCount, mw, mh, ws,
+      mppf: mo.mppf, hardHits: ref.hardHits, softHits: ref.softHits,
+      hatchFiltered: true, hatchTier: "bounded",
+    };
+  };
   if (minPassPx > 0) {
     const s = scratch();
     const dm = dilatedView(mo, minPassPx, s.dt);
@@ -2731,7 +3221,7 @@ function sealAttempt(mo: MaskObj, ix: number, iy: number, sensitivity: number, r
       if (r0.status === "ok" && r0.count > 0) {
         const d = +(1 - f.count / r0.count).toFixed(4);
         if (d > 0) { f.minPassPx = minPassPx; f.minPassDelta = d; }
-        return f;                       // a subset of a region that already passed both gates
+        return mergeAcrossDimStrings(f) ?? f;   // a subset of a region that already passed both gates
       }
       // creating: the ladder's own two gates, on the ladder's own terms
       const vf = f.count > f.mw * f.mh * SEAL_MAX_SHEET_FRAC ? 1 : virtualBoundaryFrac(f, s.dt);
@@ -2748,7 +3238,7 @@ function sealAttempt(mo: MaskObj, ix: number, iy: number, sensitivity: number, r
     }
   }
   const base = rawFlood();
-  if (base.status === "ok") return base;
+  if (base.status === "ok") return mergeAcrossDimStrings(base) ?? base;
   const sc = scratch();
   for (const r of radii) {
     // Skipped because a SMALLER dilation bridges strictly less: reaching here

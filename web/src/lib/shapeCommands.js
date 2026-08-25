@@ -64,8 +64,17 @@
 //             (undo of a draw, or an explicit delete of the reconciled
 //             deduct) unmints the deduct and puts the parent back verbatim.
 // ─────────────────────────────────────────────────────────────────────────────
-import { mintUuid, nowIso, stampEdit } from "./provenance.js";
+import { mintUuid, nowIso, stampEdit, authorName } from "./provenance.js";
 import { assignShapeLabel } from "./shapeLabels.js";
+
+// The mint-time author field (#314): `author` = who committed the shape,
+// self-declared via provenance.authorName(). Spread AFTER the caller's fields
+// so an import/merge that already carries attribution is never clobbered, and
+// an undeclared session adds nothing at all.
+const mintAuthor = (given) => {
+  const a = given.author === undefined ? authorName() : null;
+  return a ? { author: a } : {};
+};
 
 export const PROVENANCE_POLICY = {
   add: "created_at (+ id mint) per shape; restore:true stamps nothing",
@@ -179,7 +188,10 @@ export function applyShapeCommand(shapes, cmd) {
         const { id, created_at, ...rest } = s;
         // key order matches the old creation sites byte-for-byte: id and
         // created_at lead, the caller's fields follow in their given order.
-        return { id: id || `shp-${mintUuid()}`, created_at: created_at || nowIso(), ...rest };
+        // author (#314) trails, and only when declared and not already carried
+        // (an import/merge keeps its own attribution) — undeclared payloads
+        // stay byte-identical.
+        return { id: id || `shp-${mintUuid()}`, created_at: created_at || nowIso(), ...rest, ...mintAuthor(rest) };
       });
       let next;
       if (cmd.restore && Array.isArray(cmd.at) && cmd.at.length === minted.length) {
@@ -333,7 +345,7 @@ export function applyShapeCommand(shapes, cmd) {
         } };
       }
       // forward: mint the deduct shape (add semantics), patch the parent in place.
-      const minted = !cmd.shape ? null : (cmd.shape.id ? cmd.shape : { id: `shp-${mintUuid()}`, created_at: nowIso(), ...cmd.shape });
+      const minted = !cmd.shape ? null : (cmd.shape.id ? cmd.shape : { id: `shp-${mintUuid()}`, created_at: nowIso(), ...cmd.shape, ...mintAuthor(cmd.shape) });
       const runNext = new Map((runsIn?.targets || []).map((t) => [t.id, t]));
       const runDel = new Set(runsIn?.deleteIds || []);
       const runPrevs = [], runRemoved = [], runAt = [];
@@ -350,7 +362,7 @@ export function applyShapeCommand(shapes, cmd) {
         return withCutout(s, t.next);
       });
       if (parentPrev === null) return { shapes, inverse: null };   // parent vanished mid-gesture — refuse rather than mint an orphaned deduct
-      const runMinted = (runsIn?.mint || []).map((m) => (m.id ? m : { id: `shp-${mintUuid()}`, created_at: nowIso(), ...m }));
+      const runMinted = (runsIn?.mint || []).map((m) => (m.id ? m : { id: `shp-${mintUuid()}`, created_at: nowIso(), ...m, ...mintAuthor(m) }));
       if (minted) next.push(minted);
       if (runMinted.length) next.push(...runMinted);
       if (!minted && !runPrevs.length && !runMinted.length && !runRemoved.length) return { shapes, inverse: null };   // nothing landed — never a phantom undo entry

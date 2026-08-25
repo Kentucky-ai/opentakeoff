@@ -172,6 +172,14 @@ const CASES: Case[] = [
   { name: "deixis on note rejects: note check this one", input: "note check this one", expect: no("deixis_target") },
   { name: "deixis on note rejects: note verify base here", input: "note verify base here", expect: no("deixis_target") },
   { name: "deixis on clear label rejects: clear label here", input: "clear label here", expect: no("deixis_target") },
+
+  // 7b. author (#314)
+  { name: "author with a name", input: "author Michael E", expect: ok({ kind: "set_author", name: "Michael E" }) },
+  { name: "author keeps original casing and punctuation", input: "author j. ortiz", expect: ok({ kind: "set_author", name: "j. ortiz" }) },
+  { name: "author with nothing after it rejects", input: "author", expect: no("unrecognized") },
+  { name: "clear author", input: "clear author", expect: ok({ kind: "clear_author" }) },
+  { name: "clear author with trailing words rejects", input: "clear author now", expect: no("trailing_words") },
+  { name: "deixis on author rejects: author Bob this room", input: "author Bob this room", expect: no("deixis_target") },
   { name: "deixis on clear label rejects: clear label this room", input: "clear label this room", expect: no("deixis_target") },
   { name: "deixis with numberless tag rejects: carpet this room", input: "carpet this room", expect: no("unknown_tag") },
   { name: "deixis with prose head rejects: hello this room", input: "hello this room", expect: no("unrecognized") },

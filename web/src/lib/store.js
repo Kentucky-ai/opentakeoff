@@ -482,7 +482,14 @@ export let store = localStore;
 // fall back to the local, browser-only store. Called from the app shell once a
 // deep-linked project is signed in and its Drive-backed store is built.
 export function setActiveStore(next) {
+  const prev = store;
   store = next || localStore;
+  // An outgoing composite may hold live timers (the presence heartbeat, #317).
+  // dispose is a non-enumerable, optional hook — best-effort, never throws
+  // into the swap, and skipped when the store isn't actually changing.
+  if (prev !== store && typeof prev?.dispose === "function") {
+    try { prev.dispose(); } catch { /* teardown is best-effort */ }
+  }
 }
 
 // The deep-link contract with Glide: `…/?project=<driveFolderId>` selects which

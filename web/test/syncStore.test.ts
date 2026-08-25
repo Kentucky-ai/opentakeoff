@@ -585,3 +585,106 @@ test("#73 regression: after a FAILED-pull mount, loadAnnotations still returns l
   assert.deepEqual(provider._remote.data.conditions, [{ id: "restored" }]);
   assert.equal(await metaGet("sync:A:synced_rev"), 3);
 });
+
+// ── #313: shape-level three-way merge at conflict time ──────────────────────
+// With a trustworthy common ancestor (sync:<id>:synced_base matching
+// synced_rev) a divergence resolves by merge instead of uniform remote-wins:
+// disjoint work unions with ZERO loser-snapshots and the union re-pushes so
+// the other machine converges too.
+
+const mkShape = (id: string, over: any = {}) => ({
+  id, sheet_id: "plan.pdf#1", condition_id: "c1",
+  verts_norm: [[0, 0], [0.1, 0], [0.1, 0.1]],
+  created_at: "2026-08-24T00:00:00.000Z", ...over,
+});
+
+test("#313 finish line: 50+50 disjoint shapes converge to all 100 with 0 loser-snapshots, union re-pushed", async () => {
+  const basePayload = { conditions: [{ id: "c1" }], shapes: [] as any[] };
+  await metaPut("sync:A:synced_rev", 3);
+  await metaPut("sync:A:synced_base", { rev: 3, data: basePayload });
+  await metaPut("sync:A:touched", true);
+  const base = createLocalStore("A");
+  const mine = Array.from({ length: 50 }, (_, i) => mkShape(`L${i}`, { sheet_id: "plan.pdf#1" }));
+  const theirs = Array.from({ length: 50 }, (_, i) => mkShape(`R${i}`, { sheet_id: "plan.pdf#2" }));
+  // the other machine already pushed its 50 (rev moved 3 → 7)
+  const provider = fakeProvider({ data: { ...basePayload, shapes: theirs, rev: 7 }, rev: 7 });
+  const { snaps, saveSnapshot } = recorder();
+  const updates: any[] = [];
+  const sync = createSyncStore({ base, provider, folderId: "A", saveSnapshot, onRemoteUpdate: (d: any, r: any) => updates.push({ d, r }) }) as any;
+  await sync.whenSynced();
+
+  await sync.saveAnnotations({ ...basePayload, shapes: mine }); // our 50, diverged from base
+  await sync.whenPushed();
+
+  const local = await base.loadAnnotations();
+  assert.equal(local.shapes.length, 100); // both afternoons survive
+  assert.equal(snaps.length, 0); // the RFC's zero-loser-snapshot bar
+  assert.equal(provider._remote.rev, 8); // the union re-pushed over rev 7...
+  assert.equal(provider._remote.data.shapes.length, 100); // ...so machine B converges by plain adopt
+  assert.equal(await metaGet("sync:A:synced_rev"), 8);
+  assert.equal(updates.length, 1); // canvas re-hydrated with the merged doc
+  assert.equal(updates[0].d.shapes.length, 100);
+});
+
+test("#313 same-uid concurrent edit: deterministic winner, loser ring on the shape, Merge backup taken", async () => {
+  const s0 = mkShape("s1");
+  const basePayload = { conditions: [{ id: "c1" }], shapes: [s0] };
+  await metaPut("sync:A:synced_rev", 3);
+  await metaPut("sync:A:synced_base", { rev: 3, data: basePayload });
+  await metaPut("sync:A:touched", true);
+  const base = createLocalStore("A");
+  const remoteEdit = mkShape("s1", { verts_norm: [[0, 0], [0.3, 0], [0.3, 0.3]], updated_at: "2026-08-24T01:00:00.000Z" });
+  const localEdit = mkShape("s1", { verts_norm: [[0, 0], [0.2, 0], [0.2, 0.2]], updated_at: "2026-08-24T02:00:00.000Z" });
+  const provider = fakeProvider({ data: { ...basePayload, shapes: [remoteEdit], rev: 7 }, rev: 7 });
+  const { snaps, saveSnapshot } = recorder();
+  const sync = createSyncStore({ base, provider, folderId: "A", saveSnapshot }) as any;
+  await sync.whenSynced();
+
+  await sync.saveAnnotations({ ...basePayload, shapes: [localEdit] });
+  await sync.whenPushed();
+
+  const local = await base.loadAnnotations();
+  assert.equal(local.shapes.length, 1);
+  assert.deepEqual(local.shapes[0].verts_norm, [[0, 0], [0.2, 0], [0.2, 0.2]]); // later stamp wins
+  assert.deepEqual(local.shapes[0].merge_loser.verts_norm, [[0, 0], [0.3, 0], [0.3, 0.3]]); // loser recoverable
+  assert.equal(snaps.length, 1); // a conflicted merge still backs up the local side
+  assert.equal(snaps[0].label, "Merge backup");
+  assert.equal(provider._remote.rev, 8); // winner (with its preserved loser) re-pushed
+  assert.deepEqual(provider._remote.data.shapes[0].verts_norm, [[0, 0], [0.2, 0], [0.2, 0.2]]);
+});
+
+test("#313 degrade: a synced_base whose rev mismatches synced_rev is REJECTED — uniform remote-wins, as before", async () => {
+  await metaPut("sync:A:synced_rev", 3);
+  await metaPut("sync:A:synced_base", { rev: 2, data: { conditions: [], shapes: [] } }); // torn/stale ancestor
+  await metaPut("sync:A:touched", true);
+  const base = createLocalStore("A");
+  const provider = fakeProvider({ data: { conditions: [{ id: "theirs" }], shapes: [], rev: 7 }, rev: 7 });
+  const { snaps, saveSnapshot } = recorder();
+  const sync = createSyncStore({ base, provider, folderId: "A", saveSnapshot }) as any;
+  await sync.whenSynced();
+
+  await sync.saveAnnotations({ conditions: [{ id: "mine" }], shapes: [] });
+  await sync.whenPushed();
+
+  assert.deepEqual(conds(await base.loadAnnotations()), [{ id: "theirs" }]); // remote-wins, never a wrong-ancestor merge
+  assert.equal(snaps.length, 1); // loser snapshotted, exactly the pre-#313 contract
+  assert.equal(snaps[0].label, "Conflict backup");
+  assert.equal(provider._remote.rev, 7); // no re-push
+});
+
+test("#313 bookkeeping: seed and every confirmed push stamp synced_base at the new synced_rev", async () => {
+  const base = createLocalStore("A");
+  const provider = fakeProvider({ data: { conditions: [{ id: "seeded" }], shapes: [], rev: 4 }, rev: 4 });
+  const sync = createSyncStore({ base, provider, folderId: "A" }) as any;
+  await sync.whenSynced(); // untouched → seeds from remote
+
+  const afterSeed = (await metaGet("sync:A:synced_base")) as any;
+  assert.equal(afterSeed.rev, 4);
+  assert.deepEqual(afterSeed.data.conditions, [{ id: "seeded" }]);
+
+  await sync.saveAnnotations({ conditions: [{ id: "next" }], shapes: [] });
+  await sync.whenPushed();
+  const afterPush = (await metaGet("sync:A:synced_base")) as any;
+  assert.equal(afterPush.rev, 5);
+  assert.deepEqual(afterPush.data.conditions, [{ id: "next" }]); // the pushed payload is the new ancestor
+});

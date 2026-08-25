@@ -49,6 +49,8 @@ export type VoiceCapabilities = {
   updateCondition(id: string, patch: { waste_pct: number }): void;
   addLabel(label: string): void;
   activateLabel(label: string | null): void;
+  /** Declare / clear the local author name (#314) — provenance.setAuthorName. */
+  setAuthor(name: string | null): void;
   /** Canvas anchors the note (text markup on the focused sheet). */
   addNote(text: string): void;
 };
@@ -123,6 +125,12 @@ export function applyVoiceIntent(caps: VoiceCapabilities, intent: Intent): Voice
     case "clear_label":
       caps.activateLabel(null);
       return done("Label cleared.");
+    case "set_author":
+      caps.setAuthor(intent.name);
+      return done(`Marks will sign ${intent.name}.`);
+    case "clear_author":
+      caps.setAuthor(null);
+      return done("Author cleared — new marks unsigned.");
     case "add_note":
       caps.addNote(intent.text);
       return done("Note added — see Markups.");
