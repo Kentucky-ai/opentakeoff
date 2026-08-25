@@ -498,32 +498,19 @@ When One-Click refuses, it says why, and the answer is always actionable:
 - *"That space isn't enclosed on the plan linework — the fill spilled."*—there's a genuine gap (an open doorway, a break in the wall). Click a more enclosed spot, or trace it with Area (`A`). A hatched room with a real door gap **refuses rather than guessing**—that's deliberate.
 - *"Landed in dense linework (hatching/text)."*—the click landed on a text block, or on hatching too dense to read as a room. Zoom in and click an open spot, or use Area.
 
-### Fill sensitivity
+### What bounds a room
 
-The **Fill** slider lives in the **Render & fill settings** menu (sliders icon), with three notches:
+On a vector sheet One-Click reads the linework as a **wall network**: walls the drafter drew (poché, double lines, single partitions), the doors that hang in them (swings, panels, open leaves), and the finish transitions marked across wide openings. The room is the enclosed space around your click, its ring on the wall faces — not a pixel fill. There is nothing to tune: if a ring is wrong, drag its handles; the machine's ring is kept beside yours.
 
-- **Strict**—stop at the linework, no hatch crossing (the original behavior).
-- **Balanced** (default)—recover hatch-lined rooms to the walls.
-- **Aggressive**—cross more pattern and tolerate more growth.
-
-Lower it if fills spill; raise it if hatched rooms come up short. The setting is per browser, and a non-default sensitivity is recorded on the shapes it produced.
-
-**When the slider can't help, it says so.** Sensitivity tunes exactly one thing—how eagerly a
-fill escalates past ink the classifier called hatch—so a fill whose boundary is *entirely* hard
-ink comes back identical at every notch. Rather than let you crank Strict → Aggressive and
-conclude the control is broken, the menu adds the reason for the last fill: *"Nothing on this
-fill's boundary classified as a hatch or tile pattern, so every setting returns the same region.
-It is stopping on ink the engine still reads as a wall."* That's a different problem—trace it
-with Area (`A`), or check the sheet's **Layers** panel ([§2](#2-opening-plans-and-moving-around)) if
-it's a CAD export whose ink is mislabeled.
+**⇧-click an open floor** to select a whole finish **field** — the tile or plank pattern itself, grown across matching floor through doorways and stopped where the pattern stops. Teller lines, lobbies, open plans.
 
 ### Scanned plans
 
-A scanned sheet has no vector linework, so the engine reads the rendered pixels instead: adaptive thresholding (shaded rooms and uneven scans read correctly), polarity detection (blueprint negatives invert), and a gap-bridging pass for faded ink—then the same flood-and-trace machinery runs on the scan ink. Raster results skip corner snapping (a scan has no true endpoints) and the readout badges them plainly: ***Traced from scan pixels — verify edges before Create.*** Nudge the grips where the scan is soft, then create. The sensitivity slider doesn't apply on scans, and the refusal messages name the scan honestly (*"the fill escaped through a gap — faded line or open doorway"*).
+A scanned sheet has no vector linework, so the engine reads the rendered pixels instead: adaptive thresholding (shaded rooms and uneven scans read correctly), polarity detection (blueprint negatives invert), and a gap-bridging pass for faded ink—then the same flood-and-trace machinery runs on the scan ink. Raster results skip corner snapping (a scan has no true endpoints) and the readout badges them plainly: ***Traced from scan pixels — verify edges before Create.*** Nudge the grips where the scan is soft, then create. The refusal messages name the scan honestly (*"the fill escaped through a gap — faded line or open doorway"*).
 
 ### The provenance receipt
 
-Every shape One-Click creates records how it was made: the method, the seed point you clicked, whether hatch filtering engaged, whether it was traced from scan pixels, any non-default fill sensitivity, and—if you adjusted the proposal—the machine's original ring frozen next to your final one. You'll never need to think about this while measuring; it's what makes the takeoff auditable later, and it's the backbone of the optional Contribute flow (§12).
+Every shape One-Click creates records how it was made: the method, the seed point you clicked, whether hatch filtering engaged, whether it was traced from scan pixels, and—if you adjusted the proposal—the machine's original ring frozen next to your final one. You'll never need to think about this while measuring; it's what makes the takeoff auditable later, and it's the backbone of the optional Contribute flow (§12).
 
 ---
 
@@ -1025,7 +1012,7 @@ those are the ones worth pinning down before you rely on a number.
 | **Unconfirmed scale** | A scale an agent set, which no person has verified. Quantities compute, but the chip, the gallery badge, and the report all say so until you confirm it ([§3](#3-scale--set-it-first)). |
 | **Calibrate versus Check** | Calibrate sets the scale from a dimension you type. Check (`K`) is its read-only twin—it grades the scale you already have ([§3](#3-scale--set-it-first)). |
 | **Hatch / poché** | The pattern fill inside a room or wall on the drawing. One-Click classifies it as pattern rather than boundary, so a hatched room still traces to the real walls ([§6](#6-one-click-area)). |
-| **Fill sensitivity** | How eagerly a fill escalates past ink the engine called hatch—Strict, Balanced, Aggressive. It cannot help when the boundary is all hard ink, and it says so ([§6](#6-one-click-area)). |
+| **Finish field** | ⇧-click on a vector sheet: the whole tile or plank pattern under the click, grown through doorways and stopped where the pattern stops ([§6](#6-one-click-area)). |
 | **Zone check** | A reading, not a takeoff: trace a wing and see what's inside it, with materials scaled to the zone. Nothing is saved ([§5](#5-the-measuring-tools)). |
 | **Marked set** | The distribution-ready PDF—your work burned into the drawings behind a legend cover, with a tally of how much of it a person has approved. The deliverable a GC can check ([§10](#10-the-report-and-exports)). |
 | **Revision** | A named snapshot of the whole takeoff. Compare two and you get quantity deltas per condition, per sheet, and on the buy list ([§11](#11-revisions)). |

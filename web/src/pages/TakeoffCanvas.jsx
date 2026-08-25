@@ -583,19 +583,18 @@ export default function TakeoffCanvas() {
   const [angleOn, setAngleOn] = useState(true);  // 45°/90° angle guides (polar tracking) — on by default; ⇧ = hard lock
   // One-Click fill sensitivity (0..1) — how eagerly a fill crosses a room's hatch;
   // per-user pref, defaults to the calibrated Balanced preset.
-  const [fillSens, setFillSens] = useState(() => {
-    try { const v = parseFloat(localStorage.getItem("opentakeoff_fill_sens")); return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : SENS_BALANCED; } catch { return SENS_BALANCED; }
-  });
-  useEffect(() => { try { localStorage.setItem("opentakeoff_fill_sens", String(fillSens)); } catch { /* private mode */ } }, [fillSens]);
+  // scan-path flood sensitivity — fixed; the knob is gone with the fill UI
+  const fillSens = SENS_BALANCED;
   // NET ENGINE (test drive, 2026-08-24): route One-Click through the wall-
   // network room detector (lib/netroom) instead of the raster flood. Off by
   // default; persisted so a test session survives a reload. The net for a
   // sheet is built once per (sheet, scale) and cached — seconds on a dense
   // sheet, instant after.
-  const [netEngine, setNetEngine] = useState(() => {
-    try { return localStorage.getItem("opentakeoff_net_engine") === "1"; } catch { return false; }
-  });
-  useEffect(() => { try { localStorage.setItem("opentakeoff_net_engine", netEngine ? "1" : "0"); } catch { /* private mode */ } }, [netEngine]);
+  // The net engine IS One-Click on vector sheets (owner's call, 2026-08-25:
+  // the flood has no purpose there). The flood survives only as the SCAN
+  // path — a scan has no linework to network — and is never user-visible on
+  // a vector sheet.
+  const netEngine = true;
   const netCacheRef = useRef(new Map());   // `${sheetKey}:${upp}` → built net
   const netTickRef = useRef(null);          // ticking "reading the walls… N s" timer
   // No mode dial (his call, 2026-08-24: "too technical for users"). A click
@@ -4289,7 +4288,7 @@ export default function TakeoffCanvas() {
       const segs = vectorSegsRef.current.get(tp.key);
       const meta = segMetaRef.current.get(tp.key);
       if (!segs || !meta) return say("Still reading this sheet's linework — One-Click arms as soon as that finishes (a dense sheet can take a few seconds). Try again in a moment.");
-      if (!netWorker) return say("Net engine needs Web Workers — switch it off to use the fill.");
+      if (!netWorker) return say("One-Click needs Web Workers in this browser — trace it with Area (A).");
       // FRAMES: the vector segments live at the BASELINE render scale; a hi-res
       // sheet's click and its upp are in the hi-res frame (uppFor divides by
       // factorFor). Convert into the segments' frame for the engine and back
@@ -4317,7 +4316,7 @@ export default function TakeoffCanvas() {
       }
       let info;
       try { info = await built; }
-      catch (err) { console.error("net engine build failed", err); return say("Net engine couldn't read this sheet — switch it off to use the fill."); }
+      catch (err) { console.error("net engine build failed", err); return say("One-Click couldn't read this sheet's linework — trace it with Area (A)."); }
       finally { if (netTickRef.current) { clearInterval(netTickRef.current); netTickRef.current = null; } }
       if (toolRef.current !== "oneclick" || (proposalRef.current && proposalRef.current.key !== tp.key)) { setCommitMsg(""); return { ok: false, message: "" }; }
       const field = !!fieldClick;
@@ -4325,7 +4324,7 @@ export default function TakeoffCanvas() {
       const r = rm.room;
       if (!r) return say(field
         ? "No finish pattern under that ⇧-click — ⇧-click inside the tile or plank pattern to select the whole field."
-        : "Net engine: that click isn't inside an enclosed space — click an open spot, ⇧-click an open finish field, or trace it with Area (A).");
+        : "That click isn't inside an enclosed space — click an open spot, ⇧-click an open finish field, or trace it with Area (A).");
       const ring = r.ring.map(([x, y]) => [x / kF, y / kF]);      // back to the panel's frame
       try { Object.assign(window.__netLast, { lastClick: [local[0], local[1]], lastRing: ring.map(([x, y]) => [+x.toFixed(1), +y.toFixed(1)]), lastFaces: r.faces }); } catch { /* diagnostics only */ }
       const area_sf = +(r.areaPx / (ftPx * ftPx)).toFixed(2);
@@ -5318,21 +5317,39 @@ export default function TakeoffCanvas() {
     if (upp == null) return { error: agentScaleGate(key, agentStateRef.current.detectedScales[key]?.label || "") };
     const local = [xn * p.img.w, yn * p.img.h];
     const stats = sheetStatsRef.current.get(key);
-    const rasterEligible = !!stats && stats.imageFrac >= RASTER_MIN_IMG_FRAC;
     const vectorViable = !!stats && stats.segCount >= RASTER_MIN_SEGS;
     let f = null, raster = false;
-    if (!rasterEligible || vectorViable) {
-      const mo = ensureMask(key);
-      if (!mo && !rasterEligible) return { error: "Still reading this sheet's linework — try again in a second." };
-      if (mo) {
-        const r = floodRegionSealed(mo, local[0], local[1], fillSens, sealRadiiFor(mo.ws / upp), doorWedgeCapPx(mo.ws / upp), minPassRadiusFor(mo.ws / upp));
-        if (r.status === "ok") f = r;
-        else if (!rasterEligible) {
-          return { error: r.status === "leak"
-            ? "That space isn't enclosed on the plan linework — the fill spilled. Seed a more enclosed spot."
-            : "Landed in dense linework (hatching/text). Seed an open spot inside the room." };
-        }
+    // Vector sheet: the SAME net engine a human click runs — an agent and an
+    // estimator must never trace differently (the who-aimed-it rule).
+    if (vectorViable) {
+      const segs = vectorSegsRef.current.get(key);
+      const meta = segMetaRef.current.get(key);
+      if (!segs || !meta) return { error: "Still reading this sheet's linework — try again in a moment." };
+      if (!netWorker) return { error: "One-Click needs Web Workers in this browser." };
+      const kF = RENDER_SCALE / (renderScalesRef.current.get(key) || RENDER_SCALE);
+      const ftPx = kF / upp;
+      const ck = `${key}:${ftPx.toFixed(4)}`;
+      let built = netCacheRef.current.get(ck);
+      if (!built) {
+        built = netCall({ type: "build", key: ck, segs, meta, subpaths: subpathsRef.current.get(key) || null, ftPx, texts: textMarksRef.current.get(key) || [], opts: {} })
+          .then((m) => { if (m.error) { netCacheRef.current.delete(ck); throw new Error(m.error); } return m; });
+        netCacheRef.current.set(ck, built);
       }
+      try { await built; } catch { return { error: "One-Click couldn't read this sheet's linework — the estimator will have to trace it." }; }
+      const rm = await netCall({ type: "room", key: ck, x: local[0] * kF, y: local[1] * kF, ftPx, mode: "room" });
+      const r = rm.room;
+      if (!r) return { error: "That seed isn't inside an enclosed space on the plan linework. Seed an open spot inside the room." };
+      const ring = r.ring.map(([x, y]) => [x / kF, y / kF]);
+      if (ring.length < 3) return { error: "Couldn't trace that space into a polygon." };
+      const area_sf = +(r.areaPx / (ftPx * ftPx)).toFixed(2);
+      return {
+        verts_norm: ring.map(([x, y]) => [+(x / p.img.w).toFixed(5), +(y / p.img.h).toFixed(5)]),
+        area_sf,
+        perimeter_lf: +(closedMetrics(ring).perim * upp).toFixed(2),
+        seed_norm: [+xn.toFixed(5), +yn.toFixed(5)],
+        confidence: 1,
+        net_faces: r.faces,
+      };
     }
     if (!f) {
       const rmo = await ensureRasterMask(key);
@@ -6860,52 +6877,6 @@ export default function TakeoffCanvas() {
   // Aggressive; the slider still tunes 0–100% freely, snapping to a notch when
   // released near one. Detents come from oneclick's canonical presets so UI
   // and flood math can't drift if a preset is ever retuned.
-  const fillRow = (() => {
-    const NOTCHES = [SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE];
-    const label = fillSens === SENS_STRICT ? "Strict" : fillSens === SENS_BALANCED ? "Balanced" : fillSens === SENS_AGGRESSIVE ? "Aggressive" : `${Math.round(fillSens * 100)}%`;
-    const snap = (v) => { for (const n of NOTCHES) if (Math.abs(v - n) <= 0.06) return n; return v; };
-    // A knob that cannot move must SAY so. Sensitivity tunes one thing — how
-    // eagerly a fill escalates past ink the classifier called hatch — so a
-    // fill whose boundary is entirely hard ink returns a bit-identical region
-    // at every notch, and the estimator watching it stop short reaches for
-    // this slider and gets nothing (measured on the VA finish plan: Strict,
-    // Balanced and Aggressive agree to the square foot on every room).
-    //
-    // The claim is made from the LAST FILL's own softHits, not the sheet's
-    // softCount. Sheet level cannot answer it: AF101 classifies thousands of
-    // poché strokes in its toilet rooms — nonzero softCount all day — while
-    // the patient rooms that stop short touch none of them. Undefined means
-    // no fill yet, and discloses nothing.
-    const inert = proposal?.regions?.length
-      ? proposal.regions.every((r) => r.shs === 0)
-      : false;
-    return (
-      <div title={"One-Click fill sensitivity — how far a fill reaches past a room's hatch pattern.\nStrict: stop at the linework (original behavior).\nBalanced: recover hatch-lined rooms to the walls (default).\nAggressive: cross more pattern and tolerate more growth.\nLower it if fills spill; raise it if hatched rooms come up short.\nScanned sheets trace from pixels — sensitivity doesn't apply there."
-        + (inert ? "\n\nNothing on this fill's boundary classified as a hatch or tile pattern, so every setting returns the same region. It is stopping on ink the engine still reads as a wall." : "")}
-        style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", flexWrap: "wrap" }}>
-        <button type="button" onClick={() => { setNetEngine((v) => !v); setProposal(null); }}
-          title={netEngine
-            ? "NET ENGINE ON — One-Click runs the wall-network room detector (test build). Click a room to select it; ⇧-click an open floor to select the whole finish field (tile, plank). Click to switch back to the fill."
-            : "One-Click runs the fill. Click to try the NET ENGINE (wall-network room detector, test build)."}
-          style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.3, padding: "3px 8px", borderRadius: 6, cursor: "pointer",
-                   border: `1px solid ${netEngine ? "var(--cobalt)" : "var(--line)"}`,
-                   background: netEngine ? "var(--cobalt)" : "transparent", color: netEngine ? "#fff" : "var(--ink-soft)" }}>
-          {netEngine ? "NET" : "FILL"}
-        </button>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)", opacity: netEngine ? 0.45 : 1 }}>Fill</span>
-        <input name="fill-sensitivity" type="range" min={SENS_STRICT} max={SENS_AGGRESSIVE} step={0.01} value={fillSens} list="fill-sens-notches"
-          onChange={(e) => setFillSens(snap(parseFloat(e.target.value)))}
-          style={{ flex: 1, accentColor: "var(--cobalt)", cursor: "pointer", opacity: inert ? 0.45 : 1 }} />
-        <datalist id="fill-sens-notches"><option value={SENS_STRICT} /><option value={SENS_BALANCED} /><option value={SENS_AGGRESSIVE} /></datalist>
-        <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, fontWeight: 600, color: inert ? "var(--ink-faint)" : "var(--cobalt)", minWidth: 58 }}>{label}</span>
-        {inert && (
-          <span style={{ flexBasis: "100%", fontSize: 10.5, lineHeight: 1.35, color: "var(--ink-soft)" }}>
-            This fill is bounded entirely by hard ink — every setting returns the same region.
-          </span>
-        )}
-      </div>
-    );
-  })();
 
   // ?hatchqa — density-tuning wall: every pattern at three scales in two palette
   // colors, real components, dark-aware. Unreachable from the UI; kept for retunes.
@@ -7040,15 +7011,6 @@ export default function TakeoffCanvas() {
             style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${angleOn ? "var(--cobalt)" : "var(--ink-faint)"}`, background: angleOn ? "var(--cobalt)" : "transparent", color: angleOn ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
             <Icon name="angle" size={15} />45°
           </button>
-          <ToolMenu
-            title="Render & fill settings — One-Click fill sensitivity"
-            onOpenChange={onMenuDepth}
-            face={<Icon name="sliders" size={15} />}
-            menuStyle={{ minWidth: 252 }}
-            items={[
-              { id: "fill", custom: fillRow },
-            ]}
-          />
         </>)}
         {/* The caption always shows the ACTIVE label (+ the cobalt highlight keyed
             on it) so what a new trace will get is never hidden — even in Select

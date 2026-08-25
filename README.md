@@ -200,11 +200,11 @@ are the rules that make this one safe to hand a model, and why each one exists:
    refuses. Pixels × a wrong scale² is every number wrong at once, so the engine would rather
    stop than guess. Disagreeing scale notes inside a measured region raise a warning rather
    than a silent pick.
-3. **The engine traces; the model doesn't invent.** `one_click` returns the ring the flood fill
-   produced from a seed point you name. A model cannot hand back a polygon it imagined and have
+3. **The engine traces; the model doesn't invent.** `one_click` returns the ring the wall
+   network produced from a seed point you name. A model cannot hand back a polygon it imagined and have
    it counted.
 4. **Every record carries how it was made.** Method, seed point, whether hatch filtering
-   engaged, whether it came off scan pixels, non-default fill sensitivity, confidence factors,
+   engaged, whether it came off scan pixels, confidence factors,
    and the machine's original ring if a human later moves it.
 5. **Agent work is pencil until a person inks it.** Exports land in the canvas as dashed
    proposals. `mark_verdict` lets an agent sign its own work as a graphite `AGENT` diamond; the
