@@ -265,6 +265,7 @@
   "revisions.delete_confirm": "Really delete?",
   "revisions.delete": "Delete",
   "revisions.not_found": "Revision not found — it may have been deleted in another tab.",
+  "revisions.auto_backup_label": "Auto-backup before restore — {{date}}",
   "revisions.compare_heading": "Compare",
   "revisions.baseline_placeholder": "baseline…",
   "revisions.current_takeoff": "Current takeoff",
@@ -456,6 +457,8 @@
   "roll.covers": "covers",
   "roll.lane": "lane",
   "roll.roll": "roll",
+  "roll.roll_number": "roll {{num}}",
+  "roll.cut_title": "Cut {{n}}{{label}}: {{length}} × {{width}}{{oversize}}",
 
   "takeoffs.cond_rename_title": "Rename this condition / finish tag",
   "takeoffs.cond_multiplier_title": "Multiply this condition by N identical units (measure one, ×N)",

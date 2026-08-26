@@ -499,3 +499,53 @@ test("readout.wall, readout.border, unit.ea resolve to non-key text in en and pt
     assert.ok(ea.length > 0, `unit.ea must be non-empty for "${lng}"`);
   }
 });
+
+// ── gap-fix: RollPanel + RevisionsPanel + ReportPanel new i18n keys ──────────
+
+test("roll.roll_number interpolates {{num}} in en and pt-br", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng, "panels");
+    const msg = t("roll.roll_number", { num: 3 });
+    assert.ok(msg.includes("3"), `roll.roll_number must contain the number for "${lng}", got "${msg}"`);
+    assert.notEqual(msg, "roll.roll_number", `roll.roll_number must not return the key itself for "${lng}"`);
+  }
+});
+
+test("roll.cut_title interpolates {{n}}, {{label}}, {{length}}, {{width}}, {{oversize}} in en and pt-br", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng, "panels");
+    const msg = t("roll.cut_title", { n: 1, label: " — Room A", length: "12′ 6″", width: "12′", oversize: "" });
+    assert.ok(msg.includes("1"), `roll.cut_title must contain n for "${lng}", got "${msg}"`);
+    assert.ok(msg.includes("Room A"), `roll.cut_title must contain label for "${lng}", got "${msg}"`);
+    assert.ok(msg.includes("12′ 6″"), `roll.cut_title must contain length for "${lng}", got "${msg}"`);
+    assert.notEqual(msg, "roll.cut_title", `roll.cut_title must not return the key itself for "${lng}"`);
+  }
+});
+
+test("revisions.auto_backup_label interpolates {{date}} in en and pt-br", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng, "panels");
+    const msg = t("revisions.auto_backup_label", { date: "8/25/2026, 3:00:00 PM" });
+    assert.ok(msg.includes("8/25/2026"), `revisions.auto_backup_label must contain date for "${lng}", got "${msg}"`);
+    assert.notEqual(msg, "revisions.auto_backup_label", `revisions.auto_backup_label must not return the key itself for "${lng}"`);
+  }
+});
+
+test("contribute.send_error resolves to a user-facing message in en and pt-br", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng, "report");
+    const msg = t("contribute.send_error");
+    assert.ok(msg.length > 0, `contribute.send_error must be non-empty for "${lng}"`);
+    assert.notEqual(msg, "contribute.send_error", `contribute.send_error must not return the key itself for "${lng}"`);
+    // must not leak raw technical detail
+    assert.ok(!msg.includes("e.message"), `contribute.send_error must not contain raw e.message for "${lng}"`);
+  }
+});

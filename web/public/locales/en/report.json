@@ -200,7 +200,8 @@
     "cancel": "Cancel",
     "sending": "Sending…",
     "submit": "Contribute",
-    "thanks": "Thank you — your takeoff is now helping train the open flooring model."
+    "thanks": "Thank you — your takeoff is now helping train the open flooring model.",
+    "send_error": "Contribution failed — check your connection and try again."
   },
 
   "drive": {
