@@ -5554,6 +5554,8 @@ export default function TakeoffCanvas() {
       setPlacingImageId(m.id);
       setCommitMsg("Placing image — the view centered on it; move the pointer and click to drop (Esc cancels).");
     } else {
+      pendingFlyRef.current = null;   // an outstanding fly-to (unrelated markup, sheet still opening) must not complete later and recenter the view mid cross-sheet placement — same race class as flyToMarkup clearing pendingSourceRef
+      setShowMarkups(true);           // the cross-sheet branch skips flyToMarkup (which sets this for the same-sheet case) — without it, a hidden markup layer means the drag preview is invisible until commit
       placeCrossSheetRef.current = m.id;
       setPlacingImageId(m.id);
       setCommitMsg("Placing image on this sheet — move the pointer and click to drop (Esc cancels).");
