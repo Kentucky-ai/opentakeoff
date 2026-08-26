@@ -142,6 +142,17 @@ export function imageDrawParams(
   return { x: bl[0], y: bl[1], width, height, rotateDeg };
 }
 
+// Frame-hugging caption text for a source-traced capture: "Source: <label> ·
+// p.<page>". `label` empty/non-string → "" (no caption at all — the caller
+// skips rendering rather than showing a bare "Source:"). A `page` that isn't
+// a positive finite integer omits the "· p.<page>" clause instead of printing
+// a garbage page number. No Date, no deps — stays in markupImage.ts.
+export function sourceCaption(label: string, page: number): string {
+  if (typeof label !== "string" || !label) return "";
+  const hasPage = Number.isFinite(page) && page > 0 && Number.isInteger(page);
+  return hasPage ? `Source: ${label} · p.${page}` : `Source: ${label}`;
+}
+
 function clamp01(n: number): number {
   if (!Number.isFinite(n)) return 0;
   return Math.min(1, Math.max(0, n));

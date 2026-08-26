@@ -10,6 +10,7 @@ import {
   aspectFromDims,
   pickEmbedFormat,
   imageDrawParams,
+  sourceCaption,
 } from "../src/lib/markupImage.ts";
 
 // ── imagePlacedBox ──────────────────────────────────────────────────────────
@@ -188,6 +189,27 @@ test("aspectFromDims: h/w with guard", () => {
   assert.equal(aspectFromDims(-5, 100), 1);
   assert.equal(aspectFromDims(Infinity, 100), 1);
   assert.equal(aspectFromDims(NaN, 100), 1);
+});
+
+// ── sourceCaption ────────────────────────────────────────────────────────────
+test("sourceCaption: label + page → 'Source: <label> · p.<page>'", () => {
+  assert.equal(sourceCaption("AF101", 3), "Source: AF101 · p.3");
+});
+
+test("sourceCaption: page not a positive finite integer → page part omitted", () => {
+  assert.equal(sourceCaption("AF101", 0), "Source: AF101");
+  assert.equal(sourceCaption("AF101", -1), "Source: AF101");
+  assert.equal(sourceCaption("AF101", 1.5), "Source: AF101");
+  assert.equal(sourceCaption("AF101", NaN), "Source: AF101");
+  assert.equal(sourceCaption("AF101", Infinity), "Source: AF101");
+  assert.equal(sourceCaption("AF101", undefined as any), "Source: AF101");
+});
+
+test("sourceCaption: empty/non-string label → ''", () => {
+  assert.equal(sourceCaption("", 3), "");
+  assert.equal(sourceCaption(null as any, 3), "");
+  assert.equal(sourceCaption(undefined as any, 3), "");
+  assert.equal(sourceCaption(42 as any, 3), "");
 });
 
 // ── pickEmbedFormat ─────────────────────────────────────────────────────────
