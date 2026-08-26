@@ -482,3 +482,16 @@ test("revision trails are per-name: revising A leaves B untouched", async () => 
   await store.removePdf("a.pdf");
   assert.deepEqual((await store.listPdfRevisions("b.pdf")).map((r: any) => r.rev), [1]);
 });
+
+test("loadPdfData and loadPdfRevisionData errors are danger-tagged", async () => {
+  const { isDanger } = await import("../src/lib/danger.js");
+  await assert.rejects(store.loadPdfData("nonexistent.pdf"), (e: any) => {
+    assert.ok(isDanger(e.message), `pdf_not_found should be danger-tagged: "${e.message}"`);
+    return true;
+  });
+  await store.addPdf(fileOf("x.pdf", [1]));
+  await assert.rejects(store.loadPdfRevisionData("x.pdf", 99), (e: any) => {
+    assert.ok(isDanger(e.message), `revision_not_found should be danger-tagged: "${e.message}"`);
+    return true;
+  });
+});

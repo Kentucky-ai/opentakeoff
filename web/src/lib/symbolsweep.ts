@@ -68,6 +68,7 @@
 // sweepSymbols composes the two on one sheet, unchanged.
 
 import i18n from "../i18n/index.js";
+import { markDanger } from "./danger.js";
 
 const _t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: "lib", ...opts });
 
@@ -279,11 +280,11 @@ export interface MatchOptions extends SweepOptions {
  * caller can say so. */
 export function scaleFingerprint(fp: SymbolFingerprint, k: number): SymbolFingerprint {
   if (!Number.isFinite(k) || !(k > 0)) {
-    throw new Error(_t("sweep.ratio_not_finite", { k }));
+    throw new Error(markDanger(_t("sweep.ratio_not_finite", { k })));
   }
   if (k === 1) return fp;
   if (k < SWEEP_MIN_SCALE || k > SWEEP_MAX_SCALE) {
-    throw new Error(_t("sweep.ratio_out_of_band", { k: k.toFixed(4), min: SWEEP_MIN_SCALE, max: SWEEP_MAX_SCALE }));
+    throw new Error(markDanger(_t("sweep.ratio_out_of_band", { k: k.toFixed(4), min: SWEEP_MIN_SCALE, max: SWEEP_MAX_SCALE })));
   }
   const rel: number[][] = [];
   let totalLen = 0;
@@ -295,7 +296,7 @@ export function scaleFingerprint(fp: SymbolFingerprint, k: number): SymbolFinger
     totalLen += len;
   }
   if (!rel.length) {
-    throw new Error(_t("sweep.ratio_all_subpixel", { k: k.toFixed(4), min: MIN_SEG_LEN }));
+    throw new Error(markDanger(_t("sweep.ratio_all_subpixel", { k: k.toFixed(4), min: MIN_SEG_LEN })));
   }
   return {
     rel,
@@ -323,10 +324,10 @@ export function fingerprintSymbol(segs: number[], seedRect: [Point, Point]): Sym
     }
   }
   if (!seedIdx.length) {
-    throw new Error(_t("sweep.no_segments_in_rect"));
+    throw new Error(markDanger(_t("sweep.no_segments_in_rect")));
   }
   if (seedIdx.length > MAX_SEED_SEGS) {
-    throw new Error(_t("sweep.too_many_segments", { count: seedIdx.length }));
+    throw new Error(markDanger(_t("sweep.too_many_segments", { count: seedIdx.length })));
   }
 
   let totalLen = 0, cxw = 0, cyw = 0;
@@ -377,7 +378,7 @@ export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOp
   const xforms = transformsFor(opts.rotations ?? true, opts.mirror ?? true);
   const n = segs.length >> 2;
   if (scale !== 1 && opts.excludeCenter) {
-    throw new Error(_t("sweep.exclude_center_scale"));
+    throw new Error(markDanger(_t("sweep.exclude_center_scale")));
   }
   const fpS = scale === 1 ? fp : scaleFingerprint(fp, scale);
   // Only the scaling trip is guarded. A caller who widens tolPx on a same-scale
@@ -385,7 +386,7 @@ export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOp
   // is not owed a refusal; a symbol that shrank into the tolerance did not
   // choose anything, and its "matches" would be noise.
   if (scale !== 1 && fpS.footprint < MIN_FOOTPRINT_TOLS * tol) {
-    throw new Error(_t("sweep.symbol_too_small", { scale: scale.toFixed(4), footprint: fpS.footprint.toFixed(1), tol: tol.toFixed(1) }));
+    throw new Error(markDanger(_t("sweep.symbol_too_small", { scale: scale.toFixed(4), footprint: fpS.footprint.toFixed(1), tol: tol.toFixed(1) })));
   }
   const { rel, totalLen } = fpS;
 
