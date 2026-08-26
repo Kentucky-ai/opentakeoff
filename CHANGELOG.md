@@ -6,6 +6,10 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
 ### Added
 - **MEASUREMENTS under the condition total.** The live readout now lists every linear run and wall of the active condition, numbered in draw order: a run as its length (`01 47.2 LF linear`), a wall as the tape math (`03 39.1 LF × 8 ft = 313.1 SF`), per-wall height winning over the condition height. The lines sum to the totals above them, so a wall-tile figure is checked line by line without opening the panel; metric converts each line. Pure tally in `lib/measurementBreakdown.js` (tested), reading stored shape metrics — nothing is re-measured. Prompted by a downstream fork's spec (replicant026/fork-opentakeoff, PR #341); implemented here independently.
+## 2026-08-26 — the band folds its palettes
+
+### Changed
+- **Line / Fill in the top-bar band are two swatch buttons with a popover each.** Twenty inline swatches became two controls that show the current line color and fill (⦸ for none) and open their palette on click — one open at a time, Esc or a click outside closes. Choosing a color closes the popover. The docked Takeoffs panel keeps its inline palettes (it has the room). Same `ConditionAppearanceEditor`, same `color` / `fill` fields; nothing stored changes. Render-tested for both layouts. Prompted by a downstream fork's spec (replicant026/fork-opentakeoff, #341); implemented here independently.
 
 ## 2026-08-24 — the takeoff goes back into CAD
 

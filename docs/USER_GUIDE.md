@@ -224,7 +224,7 @@ A **condition** is one finish—`LVT-1`, `CPT-2`, `RB-1`—and it's what every m
 - **Finish tag**—rename in place.
 - **× multiplier**—measure one identical unit, count it N times. Shows as ×N everywhere.
 - **Waste %**—the allowance the Report adds on top of the measured quantity. Per condition, matched to the install: ~8% straight-lay LVP, ~15% diagonal, ~20% herringbone.
-- **Line** color, **Fill** color (or **No fill**), and the **hatch pattern**—a picker grid of CAD hatches (plank, herringbone, tile, terrazzo…) that names the pattern under your cursor, so the canvas reads like the real drawing.
+- **Line** color, **Fill** color (or **No fill**), and the **hatch pattern**. In the top-bar band, **Line** and **Fill** are two swatch buttons that each open their own palette (one at a time; Esc or a click outside closes)—the swatch shows the current color, so the band reads at a glance. The docked panel keeps both palettes inline.—a picker grid of CAD hatches (plank, herringbone, tile, terrazzo…) that names the pattern under your cursor, so the canvas reads like the real drawing.
 - **Line style**—the outline dash for this finish's floor and linear takeoffs, on canvas and in the Marked Set.
 - **H** (height, ft)—the default for **new** wall traces (Surface Area SF = LF × H) and the vertical-SF display. Existing walls keep the height they were drawn at—select a wall to change only that one (§5).
 - **T** (thickness, in)—a Linear run with thickness also computes border/feature-strip SF = LF × T⁄12. Changing it re-flows existing runs.
