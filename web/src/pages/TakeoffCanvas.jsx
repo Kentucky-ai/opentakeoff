@@ -2855,6 +2855,12 @@ export default function TakeoffCanvas() {
       const id = placingImageId;
       setPlacingImageId(null);
       placeGrabRef.current = null;
+      // Commit boundary for the place gesture (onPointerMove's centre-follow at
+      // :3676 is the live PREVIEW and must stay unstamped): stamp updated_at here
+      // so a cross-sheet place isn't silently reverted by a 3-way sync tie
+      // (merge tiebreak is updated_at || created_at; equal created_at + no
+      // updated_at ⇒ ties → remote wins ⇒ the move vanishes).
+      updateMarkup(id, { updated_at: nowIso() });
       selectMarkup(id);
       setCommitMsg("Image placed.");
       return;
@@ -3134,7 +3140,7 @@ export default function TakeoffCanvas() {
           const brx = selMk.at[0] * sp.img.w + sp.xOffset + bw / 2, bry = selMk.at[1] * sp.img.h + bh / 2;
           if (Math.hypot(p[0] - brx, p[1] - bry) < thr * 1.5) {
             const tlx = selMk.at[0] * sp.img.w - bw / 2, tly = selMk.at[1] * sp.img.h - bh / 2;
-            dragRef.current = { kind: "markupResize", markupId: selMk.id, tl: { x: tlx, y: tly }, aspect: selMk.aspect, ox: sp.xOffset, imgW: sp.img.w, imgH: sp.img.h };
+            dragRef.current = { kind: "markupResize", markupId: selMk.id, tl: { x: tlx, y: tly }, aspect: selMk.aspect, ox: sp.xOffset, imgW: sp.img.w, imgH: sp.img.h, moved: false };
             e.currentTarget.setPointerCapture(e.pointerId); return;
           }
         }
@@ -3813,6 +3819,7 @@ export default function TakeoffCanvas() {
         const mp = toImage(e.clientX, e.clientY);
         const pointerLocalX = mp[0] - d.ox;
         const { w, at } = resizeImageFromCorner({ x: d.tl.x, y: d.tl.y }, { x: pointerLocalX, y: mp[1] }, d.aspect, d.imgW, d.imgH);
+        d.moved = true;   // a real resize tick occurred — onPointerUp's commit checks this
         setMarkups((ms) => ms.map((m) => (m.id === d.markupId ? { ...m, w, at } : m)));
       }
       return;
@@ -3874,6 +3881,17 @@ export default function TakeoffCanvas() {
           ...(d.lastComputed !== undefined ? { computed: d.lastComputed } : {}),
           prev: d.prev,
         });
+      } else if ((d.kind === "markupMove" || d.kind === "markupResize") && d.moved) {
+        // Same commit-boundary doctrine as the shape geom command above: the
+        // per-frame setMarkups calls in onPointerMove (:3799 body/handle drag,
+        // :3815 resize) are the live PREVIEW and stay unstamped; this is where
+        // the drag actually ends. `d.moved` gates out a plain select-click that
+        // arms the drag but never crosses the move threshold / never resizes —
+        // that's not an edit, so it gets no stamp (mirrors the shape branch's
+        // lastVerts-changed guard above). Without this, a cross-sheet move/resize
+        // that leaves created_at untouched is silently reverted on a 3-way sync
+        // tie (merge tiebreak: updated_at || created_at, ties → remote wins).
+        updateMarkup(d.markupId, { updated_at: nowIso() });
       }
       try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* gone */ }
       return;
@@ -6451,7 +6469,19 @@ export default function TakeoffCanvas() {
     } catch { setCommitMsg("Couldn't capture that region."); return; }
     const { at, w, aspect } = captureRectToImageGeom({ x0, y0, x1, y1 }, panel.img.w, panel.img.h);
     if (!(w > 0)) return;
-    addImageMarkup({ at, w, aspect, src, source: "capture" }, panel.key);
+    // Capture-only provenance fields (uploads have no source, so addImageFromFile
+    // omits all three): src_sheet_id is the ORIGIN sheet (sheet_id tracks where
+    // the image currently lives and moves on a cross-sheet place — see
+    // imageProvenance below). src_rect reuses the ALREADY-CLAMPED x0..y1 above,
+    // NOT the raw marquee corners a/b (they carry xOffset and are unclamped) and
+    // NOT bw/bh (the 1600px capture raster size) — normalizing by those would
+    // silently drift the traced region off the real source box.
+    addImageMarkup({
+      at, w, aspect, src, source: "capture",
+      src_sheet_id: panel.key,
+      src_rect: [[x0 / panel.img.w, y0 / panel.img.h], [x1 / panel.img.w, y1 / panel.img.h]],
+      source_label: false,
+    }, panel.key);
   }
 
   // The aggregate-budget gate shared by both entry points: refuse a new image when
@@ -6501,7 +6531,11 @@ export default function TakeoffCanvas() {
   // prominently). Degrades: drops the author when none is declared.
   function imageProvenance(m) {
     const verb = m.source === "upload" ? "Uploaded" : "Captured from";
-    const where = m.source === "upload" ? "" : ` ${sheetBaseLabel(m.sheet_id)}`;
+    // src_sheet_id is the ORIGIN sheet; sheet_id is wherever the image lives NOW
+    // and is rewritten on a cross-sheet place, so after a move reading sheet_id
+    // here would misreport where it was captured. Fall back to sheet_id for
+    // uploads (no src_sheet_id) and legacy records captured before this field.
+    const where = m.source === "upload" ? "" : ` ${sheetBaseLabel(m.src_sheet_id || m.sheet_id)}`;
     const when = m.created_at ? ` · ${String(m.created_at).slice(0, 10)}` : "";
     const who = m.author ? ` · ${m.author}` : "";
     return `${verb}${where}${when}${who}`;
