@@ -38,9 +38,9 @@ export function authorTallyLine(shapes) {
 }
 import { pointInPoly, starPath, arrowheadPath, cloudBezier, chiselRibbon } from "./geometry.js";
 import { transformPath, svgPlacedBox } from "./svgpath.js";
-import { imagePlacedBox, pickEmbedFormat, imageDrawParams } from "./markupImage";
+import { imagePlacedBox, pickEmbedFormat, imageDrawParams, sourceCaption } from "./markupImage";
 import { rfiStatus } from "./rfi.js";
-import { RENDER_SCALE } from "./sheets";
+import { RENDER_SCALE, parseSheetKey, sheetBaseLabelFromKey } from "./sheets";
 import { stitchPagePlan, memberEmbed } from "./stitches";
 import { pdfDashFor, boostForDark, clampWeight } from "./lineStyles.js";
 import { dimLabel } from "./units";
@@ -803,8 +803,45 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
               const x0 = m.at[0] * W - bw / 2, y0 = m.at[1] * H - bh / 2;
               const dp = imageDrawParams(toPage, x0, y0, bw, bh);
               pg.drawImage(img, { x: dp.x, y: dp.y, width: dp.width, height: dp.height, rotate: degrees(dp.rotateDeg) });
+              // Source caption (captures only; dormant until slice 4 flips source_label
+              // true) — derived EXACTLY like the canvas (sheetBaseLabelFromKey +
+              // sourceCaption), so screen and PDF read byte-identical text, and empty
+              // (stitch source, or a corrupt non-string src_sheet_id caught below) draws
+              // nothing — same suppression as the canvas.
+              const capText = m.source === "capture" && m.source_label && m.src_sheet_id
+                ? sourceCaption(sheetBaseLabelFromKey(m.src_sheet_id), parseSheetKey(m.src_sheet_id).page)
+                : "";
+              if (capText) {
+                // MIRRORS the rotated chip() path (rotate: chipRot), NOT the
+                // axis-aligned pg.drawText — this IS the rotated-page path
+                // (imageDrawParams derives anchor+rotation from toPage). But
+                // chip()'s own rectangle math sets its anchor via PAGE-POINT
+                // arithmetic on the already-mapped centroid (px - w/2, py -
+                // 5.5) and only THEN rotates the far corners around it — on a
+                // rotated source page that anchor point does not track the
+                // image at all (a pre-existing chip() issue, left alone here;
+                // see the task report). So this box is built the same way the
+                // image itself is: as an IMAGE-PX rectangle passed through
+                // imageDrawParams, which is already proven correct on rotated
+                // pages. Sizes come in as PAGE POINTS and are converted to
+                // image-px via ptScale BEFORE mapping (the same "divide by
+                // ptScale" trick already used for the offsets at :695/:707),
+                // so the gap and box stay an exact point size in the
+                // correctly rotated direction at any page rotation.
+                const textPt = 7.5, capHpt = 12, gapPt = 6;
+                const tw = font.widthOfTextAtSize(winAnsiSafe(capText), textPt) + 8;
+                const capWimg = tw / ptScale, capHimg = capHpt / ptScale, gapImg = gapPt / ptScale;
+                const capX0 = x0 + bw / 2 - capWimg / 2, capY0 = y0 - gapImg - capHimg;
+                const cdp = imageDrawParams(toPage, capX0, capY0, capWimg, capHimg);
+                pg.drawRectangle({
+                  x: cdp.x, y: cdp.y, width: cdp.width, height: cdp.height, rotate: chipRot,
+                  color: dark ? rgb(0.08, 0.1, 0.12) : rgb(1, 1, 1), opacity: 0.85,
+                  borderColor: ink, borderWidth: 0.7,
+                });
+                text(capText, capX0 + 4 / ptScale, capY0 + capHimg - 3 / ptScale, textPt, ink);
+              }
             }
-          } catch { /* corrupt image data — skip this one, never fail the whole marked set */ }
+          } catch { /* corrupt image data or a bad provenance record — skip this one, never fail the whole marked set */ }
         }
       }
     }

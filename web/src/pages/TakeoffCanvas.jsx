@@ -25,7 +25,7 @@ import { getFocusMode, toggleFocusMode, onFocusModeChange } from "../lib/focusMo
 import { seedStampLibrary, instantiateStamp, markupToStampElement } from "../lib/stamps.js";
 import { extractSvgPrimitives, svgToStamp } from "../lib/svgImport.js";
 import { transformPath, svgPlacedBox } from "../lib/svgpath.js";
-import { imagePlacedBox, captureRectToImageGeom, resizeImageFromCorner, aspectFromDims, pickEmbedFormat } from "../lib/markupImage";
+import { imagePlacedBox, captureRectToImageGeom, resizeImageFromCorner, aspectFromDims, pickEmbedFormat, sourceCaption } from "../lib/markupImage";
 import { ingestFiles } from "../lib/ingest.js";
 import { parseTakeoffImport, mergeTakeoffImport } from "../lib/importTakeoff.js";
 import { buildProjectArchive, parseProjectArchive, isProjectArchive, downloadArchive } from "../lib/projectArchive.js";
@@ -38,7 +38,7 @@ import UserGuide from "../components/UserGuide.jsx";
 import TakeoffsPanel, { clampPanelW, CONDITION_DND_MIME, ConditionAppearanceEditor } from "../components/TakeoffsPanel.jsx";
 import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../components/hatches.jsx";
 import { Icon } from "../brand/icons.jsx";
-import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks, extractDimTexts } from "../lib/sheets";
+import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks, extractDimTexts, sheetBaseLabelFromKey } from "../lib/sheets";
 import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
@@ -318,6 +318,16 @@ export default function TakeoffCanvas() {
   const [markups, setMarkups] = useState([]);                // cloud/callout/text annotations (separate from measurement shapes)
   const [approvals, setApprovals] = useState([]);            // approval seals — estimator APPROVED ink + agent AGENT marks (lib/approvals.js; its own family, not markups)
   const [markupDraft, setMarkupDraft] = useState(null);      // in-progress markup first point (cloud/callout/highlight)
+  // Source-trace flash (◎, wired by slice 3) — a transient highlight on a
+  // capture's ORIGIN region, rendered inside the SOURCE panel's own <g> (so it
+  // inherits that panel's xOffset like everything else there). Its OWN state —
+  // NEVER written onto a markup: { sheet_id, rect: [[nx0,ny0],[nx1,ny1]] (the
+  // src_rect shape, normalized 0..1), token } | null. `token` must change on
+  // every trace, even a repeat of the SAME region, so the render can key a
+  // fresh remount off it — see the render site for why. Slice 2 only defines
+  // and renders this; slice 3 SETS it and owns its staleness/clear lifecycle
+  // (no setTimeout here — that would collide with or be removed by slice 3).
+  const [sourceFlash, setSourceFlash] = useState(null);
   // Docked LEFT panel — one at a time, never overlapping: null | "markup" | "stamp" | "rfi".
   // The right-rail buttons switch tabs; the dock reflows the canvas (mirrors the
   // docked Takeoffs panel on the right).
@@ -8482,6 +8492,15 @@ export default function TakeoffCanvas() {
                         // src must never make <image href> fetch remote content.
                         if (!(m.src && pickEmbedFormat(m.src) && Array.isArray(m.at) && bw > 0 && bh > 0)) return null;
                         const x0 = m.at[0] * p.img.w - bw / 2, y0 = m.at[1] * p.img.h - bh / 2;
+                        // Source caption (captures only; dormant until slice 4 flips
+                        // source_label true) — derived the SAME way as the marked-set
+                        // export (sheetBaseLabelFromKey + sourceCaption) so screen and
+                        // PDF read byte-identical text. "" (upload, no src_sheet_id, or
+                        // a stitch source — sheetBaseLabelFromKey suppresses those)
+                        // means render nothing, not an empty chip.
+                        const capText = m.source === "capture" && m.source_label && m.src_sheet_id
+                          ? sourceCaption(sheetBaseLabelFromKey(m.src_sheet_id), parseSheetKey(m.src_sheet_id).page)
+                          : "";
                         return (
                           <g key={m.id}>
                             {halo(x0, y0, x0 + bw, y0 + bh)}
@@ -8492,6 +8511,26 @@ export default function TakeoffCanvas() {
                             <rect x={x0} y={y0} width={bw} height={bh} fill="none" stroke="#fff" strokeWidth={2.5 / z} style={{ pointerEvents: "none" }} />
                             <rect x={x0} y={y0} width={bw} height={bh} fill="none" stroke="#2a3550" strokeWidth={1 / z} style={{ pointerEvents: "none" }} />
                             {selM && <rect x={x0 + bw - 4 / z} y={y0 + bh - 4 / z} width={8 / z} height={8 / z} fill="#1f3fc7" stroke="#fff" strokeWidth={1.5 / z} style={{ pointerEvents: "none" }} />}
+                            {capText && (() => {
+                              // Frame-hugging chip on the TOP edge, centered on the box
+                              // width so it never collides with the top-LEFT link badge
+                              // (badge(x0, y0-9/z) is centered ON x0). Explicit light
+                              // fill + dark ink — NOT theme tokens (the image render
+                              // never dark-mode-inverts, so a chip that flipped with the
+                              // app theme would read backwards against it). Fixed screen
+                              // size (every dimension /z): on a very small capture it can
+                              // overrun the frame width, which is fine — it stays on the
+                              // top edge, clear of the bottom-right resize handle.
+                              const capCx = x0 + bw / 2, capCy = y0 - 9 / z;
+                              const capH = 15 / z, capW = (capText.length * 5.6 + 14) / z;
+                              return (
+                                <g style={{ pointerEvents: "none" }}>
+                                  <rect x={capCx - capW / 2} y={capCy - capH / 2} width={capW} height={capH} rx={3 / z}
+                                    fill="rgba(255,247,237,.95)" stroke="#0e1a2e" strokeWidth={1 / z} />
+                                  <text x={capCx} y={capCy} fill="#0e1a2e" fontSize={10 / z} fontWeight="600" textAnchor="middle" dominantBaseline="central">{capText}</text>
+                                </g>
+                              );
+                            })()}
                             {badge(x0, y0 - 9 / z)}
                           </g>
                         );
@@ -8719,6 +8758,27 @@ export default function TakeoffCanvas() {
                         </g>
                       );
                     })}
+                    {/* Source-trace flash (◎, wired by slice 3) — a transient highlight
+                        drawn in the SOURCE panel's own <g>, so it inherits xOffset like
+                        every other overlay here. `key={sourceFlash.token}` is load-bearing:
+                        a CSS keyframes animation only (re)starts on mount, so without a
+                        key tied to the token a repeat trace of the SAME region would find
+                        the <rect> already mounted and silently no-op the pulse — no JS
+                        tick, per the plan's no-live-tick rule. The guard on `rect` shape
+                        matches the try-wrap the export side uses: a malformed value from a
+                        future caller must not take the canvas down. */}
+                    {sourceFlash && sourceFlash.sheet_id === p.key
+                      && Array.isArray(sourceFlash.rect) && sourceFlash.rect.length === 2 && (() => {
+                      const [[fnx0, fny0], [fnx1, fny1]] = sourceFlash.rect;
+                      const fx0 = Math.min(fnx0, fnx1) * p.img.w, fy0 = Math.min(fny0, fny1) * p.img.h;
+                      const fx1 = Math.max(fnx0, fnx1) * p.img.w, fy1 = Math.max(fny0, fny1) * p.img.h;
+                      return (
+                        <rect key={sourceFlash.token}
+                          x={fx0} y={fy0} width={fx1 - fx0} height={fy1 - fy0}
+                          fill="rgba(31,63,199,.14)" stroke="#1f3fc7" strokeWidth={3 / tf.scale}
+                          style={{ pointerEvents: "none", animation: "pulse .85s ease-in-out 3" }} />
+                      );
+                    })()}
                   </g>
                 );
               })}

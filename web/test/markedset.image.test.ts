@@ -103,3 +103,62 @@ test("marked set: an image on ONLY sheet 2 does not bleed onto sheet 1's page", 
   assert.equal(perPage[0], 0, "cover has no image");
   assert.equal(perPage[1], 1, "the single image lands on sheet 2's page only");
 });
+
+// ── source caption (task 2) ───────────────────────────────────────────────────
+// The caption chip's on-screen POSITION has no node-test surface (SVG/React) —
+// that's the named slice-5 live-verify check (a rotated-page marked-set export
+// must show the caption glued to the image). What IS node-testable here, on
+// this same real-buildMarkedSetPdf harness, is that the new caption code path
+// (parseSheetKey/sheetBaseLabelFromKey/sourceCaption + the imageDrawParams-built
+// rotated chip) runs to completion without throwing and without disturbing the
+// image export — on the hardest case (a rotated source page) and on the
+// suppression case (a stitch-key source).
+test("marked set: a capture image with a caption on a ROTATED source page still exports its image", async () => {
+  const srcBytes = await makeSourcePdf();
+  const sheets = [
+    { key: "S1", file: "plan.pdf", page: 1, label: "Sheet 1" },
+    { key: "S2", file: "plan.pdf", page: 2, label: "Sheet 2 (rot 90)" },
+  ];
+  const markups = [
+    // captured FROM sheet 1, PLACED on sheet 2 (the rotated page) — exercises
+    // the rotated imageDrawParams path for both the image and its caption box.
+    {
+      id: "mk1", type: "image", sheet_id: "S2", at: [0.5, 0.5], w: 0.3, aspect: 1, src: PNG,
+      source: "capture", source_label: true, src_sheet_id: "plan.pdf#1",
+      src_rect: [[0.1, 0.1], [0.4, 0.4]],
+    },
+  ];
+  const pages: Record<number, ReturnType<typeof mockPage>> = {
+    1: mockPage(612, 792, 0),
+    2: mockPage(612, 792, 90),
+  };
+  const { bytes } = await buildMarkedSetPdf({
+    projectName: "Test", dark: false, units: "imperial",
+    sheets, shapes: [], markups, approvals: [], rfis: [], conditions: [], company: undefined, clientInfo: undefined,
+    getPage: async (_file: string, pageNum: number) => pages[pageNum],
+    loadPdfData: async () => srcBytes,
+  });
+  const perPage = await imageXObjectsPerPage(bytes);
+  assert.equal(perPage.length, 2, "cover + the one marked sheet (S2)");
+  assert.equal(perPage[1], 1, "the image still embeds even though the caption chip also draws on this rotated page");
+});
+
+test("marked set: a capture image whose src_sheet_id is a STITCH key exports with the caption suppressed, no crash", async () => {
+  const srcBytes = await makeSourcePdf();
+  const sheets = [{ key: "S1", file: "plan.pdf", page: 1, label: "Sheet 1" }];
+  const markups = [{
+    id: "mk1", type: "image", sheet_id: "S1", at: [0.5, 0.5], w: 0.3, aspect: 1, src: PNG,
+    source: "capture", source_label: true, src_sheet_id: "stitch:abc",
+    src_rect: [[0.1, 0.1], [0.4, 0.4]],
+  }];
+  const pages: Record<number, ReturnType<typeof mockPage>> = { 1: mockPage(612, 792, 0) };
+  const { bytes } = await buildMarkedSetPdf({
+    projectName: "Test", dark: false, units: "imperial",
+    sheets, shapes: [], markups, approvals: [], rfis: [], conditions: [], company: undefined, clientInfo: undefined,
+    getPage: async (_file: string, pageNum: number) => pages[pageNum],
+    loadPdfData: async () => srcBytes,
+  });
+  const perPage = await imageXObjectsPerPage(bytes);
+  assert.equal(perPage.length, 2, "cover + the one marked sheet");
+  assert.equal(perPage[1], 1, "the image still exports even though sheetBaseLabelFromKey suppresses a stitch-key caption");
+});
