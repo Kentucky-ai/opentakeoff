@@ -19,7 +19,7 @@ import { useTranslation } from "react-i18next";
 import i18n from "../i18n/index.js";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { store, isStaleTabError, projectIdFromUrl } from "../lib/store.js";
+import { store, isStaleTabError, projectIdFromUrl, staleTabMessage } from "../lib/store.js";
 import { Z } from "../lib/ui.js";
 import { getFocusMode, toggleFocusMode, onFocusModeChange } from "../lib/focusMode.js";
 import { seedStampLibrary, instantiateStamp, markupToStampElement } from "../lib/stamps.js";
@@ -1366,7 +1366,7 @@ export default function TakeoffCanvas() {
       // blocked tab recovered here with hydrated=true, its still-empty defaults
       // would autosave straight over the other tab's real data. The reload
       // message is the whole story for this tab.
-      if (isStaleTabError(e)) { setCommitMsg(t('status.stale_tab')); return; }
+      if (isStaleTabError(e)) { setCommitMsg(staleTabMessage()); return; }
       // Cloud project whose saved takeoff couldn't be read (Drive error / unreadable
       // annotations): same rule as a stale tab — leave autosave DISARMED so empty
       // defaults can't overwrite the real project in Drive. (cloudStore tags these.)
@@ -1992,7 +1992,7 @@ export default function TakeoffCanvas() {
       // can drain and re-hydrate. Closes the last pre-scheduled-save loss window.
       if (remotePendingRender.current) { setSaveState("idle"); return; }
       store.saveAnnotations(payload).then(() => setSaveState("saved")).catch((e) => {
-        if (isStaleTabError(e)) setCommitMsg(t('status.stale_tab'));
+        if (isStaleTabError(e)) setCommitMsg(staleTabMessage());
         setSaveState("idle");
       });
     }, 700);
