@@ -6711,7 +6711,7 @@ export default function TakeoffCanvas() {
     // and the marked-set PDF read this stored string, so they can never diverge on
     // runtime label state (which sheetBaseLabel derives only for the active file).
     addImageMarkup({
-      at, w, aspect, src, source: "capture",
+      at, w, aspect, src, source: "capture", labelBase: srcLabel,
       src_sheet_id: panel.key,
       src_rect: [[x0 / panel.img.w, y0 / panel.img.h], [x1 / panel.img.w, y1 / panel.img.h]],
       src_label: srcLabel,
@@ -6734,9 +6734,13 @@ export default function TakeoffCanvas() {
     // sheet base + a per-sheet sequence ("AF101-01"). Uploads carry the file name.
     // Collisions after a delete are tolerated (a simple count, not a high-water
     // counter). Stamp the declared author (git-style; absent ⇒ omitted).
-    const { name: given, ...rest } = m;
+    // labelBase lets a caller pin the base to a resolved label (a capture passes its
+    // frozen src_label) so the row NAME and the source CAPTION agree even in the
+    // non-active-panel case sheetBaseLabel can't resolve here; absent ⇒ sheetBaseLabel.
+    const { name: given, labelBase, ...rest } = m;
     const seq = markups.filter((x) => x.type === "image" && x.sheet_id === key).length + 1;
-    const text = (typeof given === "string" && given.trim()) || `${sheetBaseLabel(key)}-${String(seq).padStart(2, "0")}`;
+    const base = (typeof labelBase === "string" && labelBase.trim()) ? labelBase : sheetBaseLabel(key);
+    const text = (typeof given === "string" && given.trim()) || `${base}-${String(seq).padStart(2, "0")}`;
     const by = authorName();
     addMarkup({ type: "image", ...rest, text, ...(by ? { author: by } : {}) }, key);
     setCommitMsg("Image placed.");
