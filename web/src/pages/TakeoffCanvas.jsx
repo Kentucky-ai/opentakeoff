@@ -5208,21 +5208,14 @@ export default function TakeoffCanvas() {
         };
       }).filter(Boolean);
       const sheetMeta = [...plainMeta, ...stitchMeta];
-      // Source-caption labels: resolve each capture's ORIGIN sheet to the same
-      // display name the tab/canvas shows (sheetBaseLabel — sheet number, rename,
-      // stitch name, or file-base fallback), keyed by src_sheet_id. markedset reads
-      // THIS map so the PDF caption matches the on-screen caption exactly, even when
-      // the origin sheet carries no markups of its own (so it isn't in sheetMeta).
-      const srcLabels = {};
-      for (const m of exportMarkups) {
-        if (m.type === "image" && m.source === "capture" && m.src_sheet_id != null) srcLabels[m.src_sheet_id] = sheetBaseLabel(m.src_sheet_id);
-      }
+      // (source-caption label rides on each capture as m.src_label, frozen at
+      // capture time — markedset reads it directly, no per-export resolution.)
       // branding mode decides the cover identity + wordmark + parent credit;
       // resolved per-project (folderId "" ⇒ the single browser-only setting)
       const brand = resolveBranding({ ...(await loadBrandingSelection(projectIdFromUrl())), profiles: loadProfiles().profiles });
       const { bytes, filename } = await buildMarkedSetPdf({
         projectName, clientInfo, company: brand.company, credit: brand.credit, coverTitle: brand.coverTitle,
-        dark: darkMode, units, sheets: sheetMeta, srcLabels, shapes, markups: exportMarkups, approvals, rfis, conditions,
+        dark: darkMode, units, sheets: sheetMeta, shapes, markups: exportMarkups, approvals, rfis, conditions,
         getPage: async (file, pageNum) => (await docFor(file)).getPage(pageNum),
         loadPdfData: (file) => store.loadPdfData(file),
       });
@@ -6691,16 +6684,21 @@ export default function TakeoffCanvas() {
     const { at, w, aspect } = captureRectToImageGeom({ x0, y0, x1, y1 }, panel.img.w, panel.img.h);
     if (!(w > 0)) return;
     // Capture-only provenance fields (uploads have no source, so addImageFromFile
-    // omits all three): src_sheet_id is the ORIGIN sheet (sheet_id tracks where
-    // the image currently lives and moves on a cross-sheet place — see
-    // imageProvenance below). src_rect reuses the ALREADY-CLAMPED x0..y1 above,
-    // NOT the raw marquee corners a/b (they carry xOffset and are unclamped) and
-    // NOT bw/bh (the 1600px capture raster size) — normalizing by those would
-    // silently drift the traced region off the real source box.
+    // omits them): src_sheet_id is the ORIGIN sheet (sheet_id tracks where the
+    // image currently lives and moves on a cross-sheet place — see imageProvenance
+    // below). src_rect reuses the ALREADY-CLAMPED x0..y1 above, NOT the raw marquee
+    // corners a/b (they carry xOffset and are unclamped) and NOT bw/bh (the 1600px
+    // capture raster size) — normalizing by those would silently drift the traced
+    // region off the real source box. src_label FREEZES the origin sheet's display
+    // name at capture time (panel.key is the active sheet here, so sheetBaseLabel
+    // resolves the real "AF101"): both the canvas caption and the marked-set PDF
+    // read this stored string, so they can never diverge on runtime label state
+    // (which sheetBaseLabel derives only for the currently-active file).
     addImageMarkup({
       at, w, aspect, src, source: "capture",
       src_sheet_id: panel.key,
       src_rect: [[x0 / panel.img.w, y0 / panel.img.h], [x1 / panel.img.w, y1 / panel.img.h]],
+      src_label: sheetBaseLabel(panel.key),
       source_label: false,
     }, panel.key);
   }
@@ -8853,15 +8851,14 @@ export default function TakeoffCanvas() {
                         // src must never make <image href> fetch remote content.
                         if (!(m.src && pickEmbedFormat(m.src) && Array.isArray(m.at) && bw > 0 && bh > 0)) return null;
                         const x0 = m.at[0] * p.img.w - bw / 2, y0 = m.at[1] * p.img.h - bh / 2;
-                        // Source caption (captures only) — the SHEET NAME of the origin,
-                        // via the live sheetBaseLabel closure (the same label the tab shows:
-                        // a detected sheet number "AF101", a user rename, a stitch name, or
-                        // a file-base fallback). The marked-set export reads the SAME label
-                        // through the srcLabels map built in exportMarkedSet from this very
-                        // closure, so screen and PDF stay byte-identical. "" (upload or no
-                        // src_sheet_id) means render nothing, not an empty chip.
+                        // Source caption (captures only) — the origin sheet NAME, read
+                        // from the frozen src_label (resolved at capture time; the
+                        // marked-set PDF reads the SAME stored string, so screen and PDF
+                        // can't diverge). Legacy captures without src_label fall back to
+                        // the live closure. A stitch origin has no page number, so drop the
+                        // "· p.N" for it. "" (upload or no src_sheet_id) ⇒ render nothing.
                         const capText = m.source === "capture" && m.source_label && m.src_sheet_id
-                          ? sourceCaption(sheetBaseLabel(m.src_sheet_id), parseSheetKey(m.src_sheet_id).page)
+                          ? sourceCaption(m.src_label ?? sheetBaseLabel(m.src_sheet_id), isStitchKey(m.src_sheet_id) ? 0 : parseSheetKey(m.src_sheet_id).page)
                           : "";
                         return (
                           <g key={m.id}>

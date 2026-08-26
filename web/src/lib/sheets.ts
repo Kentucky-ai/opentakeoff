@@ -11,14 +11,13 @@ export const RENDER_SCALE = 2.0;
 
 // Pure fallback branch of the canvas `sheetBaseLabel` closure (TakeoffCanvas.jsx
 // `sheetBaseLabel`, ~:1001) — just the file/page math, none of the runtime-state
-// overrides (`galleryLabels`, `pageLabels`) that closure also honors. Exists so
-// the source-caption text can be computed identically on the canvas AND inside
-// markedset.js (a pure module with no access to that runtime state), keeping
-// the on-screen caption and the exported PDF caption byte-identical.
-// A stitch key resolves through `stitchById[k].name` on the canvas — state this
-// module can't see — so it deliberately returns "" for one; `sourceCaption("",
-// …)` already renders nothing, so both surfaces suppress the caption together
-// for a stitch source (screen and PDF agree: neither draws one).
+// overrides (`galleryLabels`, `pageLabels`) that closure also honors.
+// The source caption's PRIMARY label is now the frozen `src_label` stamped on each
+// capture at creation time (screen and PDF read that same stored string). This
+// helper is the DEFENSIVE fallback markedset uses only for a legacy capture that
+// predates `src_label`. It returns "" for a stitch key (whose real name lives in
+// canvas-only `stitchById` state); `sourceCaption("", …)` then renders nothing, so
+// a legacy stitch source degrades to no caption rather than to garbage.
 export function sheetBaseLabelFromKey(key: string): string {
   if (typeof key !== "string" || !key || isStitchKey(key)) return "";
   const t = parseSheetKey(key);

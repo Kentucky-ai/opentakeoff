@@ -188,32 +188,60 @@ test("marked set: a capture image with a caption on a ROTATED source page still 
   assert.ok(text.includes("Source: "), "the source caption text is present on the rotated sheet's page");
 });
 
-// The caption shows the ORIGIN sheet's on-screen NAME, supplied by the caller as
-// srcLabels[src_sheet_id] (exportMarkedSet resolves it via the sheetBaseLabel
-// closure so the PDF matches the canvas). Prove the passed label — not the
-// file-base fallback — is what lands in the caption text.
-test("marked set: the source caption uses srcLabels (the sheet name), not the file-base fallback", async () => {
+// The caption shows the ORIGIN sheet's on-screen NAME, FROZEN on the markup as
+// m.src_label at capture time (the canvas stamps sheetBaseLabel there, and the PDF
+// reads the same stored string, so screen and PDF can't diverge). Prove the frozen
+// label — not the file-base fallback — is what lands in the caption text.
+test("marked set: the source caption uses the frozen m.src_label (sheet name), not the file-base fallback", async () => {
   const srcBytes = await makeSourcePdf();
   const sheets = [{ key: "S1", file: "plan.pdf", page: 1, label: "Sheet 1" }];
   const markups = [{
     id: "mk1", type: "image", sheet_id: "S1", at: [0.5, 0.5], w: 0.3, aspect: 1, src: PNG,
-    source: "capture", source_label: true, src_sheet_id: "plan.pdf#1",
+    source: "capture", source_label: true, src_sheet_id: "plan.pdf#1", src_label: "AF101",
     src_rect: [[0.1, 0.1], [0.4, 0.4]],
   }];
   const pages: Record<number, ReturnType<typeof mockPage>> = { 1: mockPage(612, 792, 0) };
   const { bytes } = await buildMarkedSetPdf({
     projectName: "Test", dark: false, units: "imperial",
-    sheets, srcLabels: { "plan.pdf#1": "AF101" }, shapes: [], markups, approvals: [], rfis: [], conditions: [], company: undefined, clientInfo: undefined,
+    sheets, shapes: [], markups, approvals: [], rfis: [], conditions: [], company: undefined, clientInfo: undefined,
     getPage: async (_file: string, pageNum: number) => pages[pageNum],
     loadPdfData: async () => srcBytes,
   });
   const text = await pageText(bytes, 1);
   assert.ok(text.includes("Sheet 1"), "pageText decoded real text off this page (sheet footer label)");
-  assert.ok(text.includes("Source: AF101"), "the caption shows the srcLabels sheet name (AF101), not the file base 'plan'");
-  assert.ok(!text.includes("Source: plan"), "the file-base fallback is NOT used when a srcLabels entry exists");
+  assert.ok(text.includes("Source: AF101"), "the caption shows the frozen src_label sheet name (AF101), not the file base 'plan'");
+  assert.ok(!text.includes("Source: plan"), "the file-base fallback is NOT used when src_label is present");
 });
 
-test("marked set: a capture image whose src_sheet_id is a STITCH key exports with the caption suppressed, no crash", async () => {
+// A stitch-origin capture carries the stitch NAME in src_label and has no page
+// number — the caption reads "Source: <name>" with NO "· p.N".
+test("marked set: a STITCH-origin capture shows its name with no page, no crash", async () => {
+  const srcBytes = await makeSourcePdf();
+  const sheets = [{ key: "S1", file: "plan.pdf", page: 1, label: "Sheet 1" }];
+  const markups = [{
+    id: "mk1", type: "image", sheet_id: "S1", at: [0.5, 0.5], w: 0.3, aspect: 1, src: PNG,
+    source: "capture", source_label: true, src_sheet_id: "stitch:abc", src_label: "West Wing (stitched)",
+    src_rect: [[0.1, 0.1], [0.4, 0.4]],
+  }];
+  const pages: Record<number, ReturnType<typeof mockPage>> = { 1: mockPage(612, 792, 0) };
+  const { bytes } = await buildMarkedSetPdf({
+    projectName: "Test", dark: false, units: "imperial",
+    sheets, shapes: [], markups, approvals: [], rfis: [], conditions: [], company: undefined, clientInfo: undefined,
+    getPage: async (_file: string, pageNum: number) => pages[pageNum],
+    loadPdfData: async () => srcBytes,
+  });
+  const perPage = await imageXObjectsPerPage(bytes);
+  assert.equal(perPage.length, 2, "cover + the one marked sheet");
+  assert.equal(perPage[1], 1, "the image still exports alongside the stitch-origin caption");
+  const text = await pageText(bytes, 1);
+  assert.ok(text.includes("Sheet 1"), "pageText decoded real text off this page (sheet footer label)");
+  assert.ok(text.includes("Source: West Wing (stitched)"), "the stitch name is shown");
+  assert.ok(!/West Wing \(stitched\)\s*·\s*p\./.test(text), "no fabricated '· p.N' is appended for a stitch origin");
+});
+
+// A legacy capture with NO src_label (made before the freeze) degrades to the pure
+// file/page fallback — and a stitch key with no src_label still suppresses cleanly.
+test("marked set: a legacy capture without src_label falls back (stitch key ⇒ suppressed, no crash)", async () => {
   const srcBytes = await makeSourcePdf();
   const sheets = [{ key: "S1", file: "plan.pdf", page: 1, label: "Sheet 1" }];
   const markups = [{
@@ -229,12 +257,8 @@ test("marked set: a capture image whose src_sheet_id is a STITCH key exports wit
     loadPdfData: async () => srcBytes,
   });
   const perPage = await imageXObjectsPerPage(bytes);
-  assert.equal(perPage.length, 2, "cover + the one marked sheet");
-  assert.equal(perPage[1], 1, "the image still exports even though sheetBaseLabelFromKey suppresses a stitch-key caption");
+  assert.equal(perPage[1], 1, "the image still exports even though the fallback suppresses a stitch-key caption");
   const text = await pageText(bytes, 1);
-  // Positive anchor FIRST (see the ROTATED test above for why): without it, a
-  // pageText that silently returned "" would make the negative assertion
-  // below pass for the wrong reason.
   assert.ok(text.includes("Sheet 1"), "pageText decoded real text off this page (sheet footer label)");
-  assert.ok(!text.includes("Source: "), "no caption text is drawn for a stitch-key source");
+  assert.ok(!text.includes("Source: "), "no caption for a legacy stitch-key source (fallback returns '')");
 });

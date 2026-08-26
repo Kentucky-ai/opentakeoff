@@ -228,7 +228,7 @@ function invertPixels(cv) {
   ctx.restore();
 }
 
-export async function buildMarkedSetPdf({ projectName, dark, sheets, srcLabels = {}, shapes, markups, approvals = [], rfis = [], conditions, getPage, loadPdfData, company, clientInfo, credit = null, provenance = null, coverTitle = "Marked Set", units = "imperial" }) {
+export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, markups, approvals = [], rfis = [], conditions, getPage, loadPdfData, company, clientInfo, credit = null, provenance = null, coverTitle = "Marked Set", units = "imperial" }) {
   // display-unit edge (lib/units contract): quantities arrive as internal feet;
   // metric converts at the drawn string only — legend rows, by-sheet rows, and
   // the per-shape chips. ASCII "m2" (Helvetica WinAnsi has no superscript 2).
@@ -803,18 +803,16 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, srcLabels =
               const x0 = m.at[0] * W - bw / 2, y0 = m.at[1] * H - bh / 2;
               const dp = imageDrawParams(toPage, x0, y0, bw, bh);
               pg.drawImage(img, { x: dp.x, y: dp.y, width: dp.width, height: dp.height, rotate: degrees(dp.rotateDeg) });
-              // Source caption (captures only) — the ORIGIN sheet NAME. The caller
-              // (exportMarkedSet) resolves each src_sheet_id to the on-screen sheet
-              // label via srcLabels, so the PDF caption matches the canvas caption
-              // exactly. Fall back to the pure file/page derivation if a label is
-              // missing (a defensive path — also what the unit tests exercise, where
-              // no srcLabels is passed, so a stitch key still degrades to ""). Empty
-              // label ⇒ draw nothing, not an empty chip.
-              const capLabel = m.src_sheet_id != null && srcLabels[m.src_sheet_id] != null
-                ? srcLabels[m.src_sheet_id]
-                : sheetBaseLabelFromKey(m.src_sheet_id);
+              // Source caption (captures only) — the ORIGIN sheet NAME, read from the
+              // frozen m.src_label the canvas stamped at capture time, so the PDF text
+              // is the SAME string the canvas shows (no runtime label resolution here,
+              // which markedset can't do anyway). Legacy captures without src_label
+              // fall back to the pure file/page derivation. A stitch origin has no
+              // page number → drop "· p.N". Empty label ⇒ draw nothing.
+              const capLabel = m.src_label != null ? m.src_label : sheetBaseLabelFromKey(m.src_sheet_id);
+              const capPage = typeof m.src_sheet_id === "string" && m.src_sheet_id.startsWith("stitch:") ? 0 : parseSheetKey(m.src_sheet_id).page;
               const capText = m.source === "capture" && m.source_label && m.src_sheet_id
-                ? sourceCaption(capLabel, parseSheetKey(m.src_sheet_id).page)
+                ? sourceCaption(capLabel, capPage)
                 : "";
               if (capText) {
                 // MIRRORS the rotated chip() path (rotate: chipRot), NOT the
