@@ -467,7 +467,7 @@
   "commit.couldnt_place_aim_sheet": "Não foi possível colocar — mire em uma folha",
   "commit.couldnt_place_generic": "Não foi possível colocar — {{detail}}",
   "status.oneclick_leak_seed": "Esse espaço não está delimitado pelas linhas do plano — o preenchimento vazou. Selecione um ponto mais delimitado.",
-  "status.oneclick_dense_seed": "Caiu em linework denso (hachura/texto). Selecione um ponto aberto dentro do cômodo.",
+  "status.oneclick_dense_seed": "Caiu em traçado denso (hachura/texto). Selecione um ponto aberto dentro do cômodo.",
   "status.oneclick_scan_leak_seed": "Esse espaço não está delimitado no escaneamento — o preenchimento escapou por uma abertura (linha desbotada ou portão aberto). Selecione um ponto mais delimitado.",
   "status.oneclick_scan_dense_seed": "Caiu em tinta de escaneamento densa (texto ou hachura). Selecione um ponto aberto dentro do cômodo.",
   "transitions.pick_target": "Escolha a condição para onde as transições serão atribuídas primeiro.",

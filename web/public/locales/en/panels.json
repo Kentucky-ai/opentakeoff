@@ -536,5 +536,14 @@
   "hatch.concrete": "Concrete / stipple",
 
   "takeoffs.family_fallback": "the family",
-  "takeoffs.original_fallback": "the original"
+  "takeoffs.original_fallback": "the original",
+
+  "takeoffs.roll_max_label": "max",
+  "takeoffs.roll_dir_auto": "auto",
+  "takeoffs.waste_short": "{{pct}}% waste",
+  "takeoffs.material_count_one": "{{count}} material",
+  "takeoffs.material_count_other": "{{count}} materials",
+  "takeoffs.roll_count_one": "{{count}} roll",
+  "takeoffs.roll_count_other": "{{count}} rolls",
+  "takeoffs.mat_unit_unknown": "?"
 }

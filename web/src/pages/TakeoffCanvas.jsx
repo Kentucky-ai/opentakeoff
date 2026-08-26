@@ -841,10 +841,10 @@ export default function TakeoffCanvas() {
     if (isStitchKey(k)) return stitchById[k]?.name || t('status.stitched_sheets');
     const lvl = sheetLevels[k] ? `${sheetLevels[k]} · ` : "";   // assigned floor/level rides every tab label
     if (galleryLabels[k]) return lvl + galleryLabels[k];
-    const t = parseSheetKey(k);
-    if (t.file === active && pageLabels[t.page]) return lvl + pageLabels[t.page];
-    const base = t.file.replace(/\.pdf$/i, "");
-    return lvl + (t.page > 1 ? `${base} · ${t.page}` : base);
+    const parsed = parseSheetKey(k);
+    if (parsed.file === active && pageLabels[parsed.page]) return lvl + pageLabels[parsed.page];
+    const base = parsed.file.replace(/\.pdf$/i, "");
+    return lvl + (parsed.page > 1 ? `${base} · ${parsed.page}` : base);
   };
 
   // ── panels: the ONE rendering model — single-sheet mode is a group of one ──
