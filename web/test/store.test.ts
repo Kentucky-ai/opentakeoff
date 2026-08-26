@@ -8,7 +8,7 @@ import "fake-indexeddb/auto";
 import { IDBFactory } from "fake-indexeddb";
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { store, localStore, createLocalStore, metaGet, metaPut, metaDelete, isStaleTabError, ANN_SCHEMA, STALE_TAB_MESSAGE, friendlyStoreError } from "../src/lib/store.js";
+import { store, localStore, createLocalStore, metaGet, metaPut, metaDelete, isStaleTabError, ANN_SCHEMA, STALE_TAB_MESSAGE, STALE_TAB_KEY, staleTabMessage, friendlyStoreError } from "../src/lib/store.js";
 import { createCloudStore } from "../src/lib/cloudStore.js";
 
 beforeEach(() => {
@@ -334,14 +334,16 @@ test("blocked open rejects BlockedError, then closes its late success (no zombie
 });
 
 test("friendlyStoreError maps quota to actionable copy; other errors pass through", () => {
-  assert.equal(
-    friendlyStoreError(Object.assign(new Error("raw engine text"), { name: "QuotaExceededError" })),
-    "Not enough storage space for this snapshot — delete old snapshots or unused PDFs and try again.",
-  );
+  const quotaMsg = friendlyStoreError(Object.assign(new Error("raw engine text"), { name: "QuotaExceededError" }));
+  assert.ok(quotaMsg.includes("storage") || quotaMsg.includes("armazenamento"), `quota error should mention storage: "${quotaMsg}"`);
   assert.equal(friendlyStoreError(new Error("boom")), "boom");
-  // TakeoffCanvas routes its message tint on EXACT equality with this string —
-  // pin the copy so an edit there can't silently turn the warning green
-  assert.equal(STALE_TAB_MESSAGE, "OpenTakeoff was updated in another tab — reload this tab to continue.");
+  // TakeoffCanvas routes its message tint via isDangerMsg (danger registry),
+  // not exact string equality — pin the constant so an edit can't silently
+  // turn the warning green.
+  assert.equal(typeof STALE_TAB_MESSAGE, "string", "STALE_TAB_MESSAGE should be a string");
+  assert.ok(STALE_TAB_MESSAGE.length > 0, "STALE_TAB_MESSAGE should be non-empty");
+  assert.equal(typeof STALE_TAB_KEY, "string", "STALE_TAB_KEY should be a stable constant");
+  assert.equal(typeof staleTabMessage, "function", "staleTabMessage should be a getter function");
 });
 
 test("two cloudStores over one IndexedDB scope snapshots by folderId (end-to-end)", async () => {

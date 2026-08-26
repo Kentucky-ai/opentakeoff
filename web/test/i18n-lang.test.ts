@@ -177,3 +177,63 @@ test("danger-tagged translated store message is classified as danger", async () 
   assert.ok(isDanger(staleTab), "translated STALE_TAB_MESSAGE should be danger-tagged");
   assert.ok(staleTab.includes("OpenTakeoff"), "should contain app name");
 });
+
+// ── language-switch: getters reflect the current language ─────────────────────
+
+test("branding.otCredit() getter reflects language switch", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+  const { otCredit } = await import("../src/lib/branding.js");
+
+  const enCredit = String(otCredit());
+  assert.ok(enCredit.includes("OpenTakeoff"), `en credit: "${enCredit}"`);
+
+  try {
+    await i18n.changeLanguage("pt-br");
+    const ptCredit = String(otCredit());
+    assert.ok(ptCredit.includes("OpenTakeoff"), `pt-br credit should mention OpenTakeoff: "${ptCredit}"`);
+    assert.notEqual(ptCredit, enCredit, "pt-br credit must differ from English");
+  } finally {
+    await i18n.changeLanguage("en");
+  }
+});
+
+test("detectRooms.noTagCaveat() getter reflects language switch", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+  const { noTagCaveat } = await import("../src/lib/detectRooms.ts");
+
+  const enCaveat = noTagCaveat();
+  assert.ok(enCaveat.includes("One-Click"), `en caveat: "${enCaveat}"`);
+
+  try {
+    await i18n.changeLanguage("pt-br");
+    const ptCaveat = noTagCaveat();
+    assert.ok(ptCaveat.length > 0, "pt-br caveat should be non-empty");
+    assert.notEqual(ptCaveat, enCaveat, "pt-br caveat must differ from English");
+  } finally {
+    await i18n.changeLanguage("en");
+  }
+});
+
+test("detectRooms detectionReport uses translated verbs (was/were → foi/foram)", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+  const { detectionReport } = await import("../src/lib/detectRooms.ts");
+
+  try {
+    await i18n.changeLanguage("pt-br");
+    // seeds=3, tried=1 → untried=2 → triggers stopped_early_untried with plural verb
+    const report = detectionReport({ seeds: 3, patternHits: 3, tried: 1, proposals: 0, tiny: 0, cancelled: true, textItems: 5, regions: 0 } as any, 4);
+    assert.ok(report.message.includes("foram"), `pt-br cancelled report should use "foram": "${report.message}"`);
+    assert.ok(!report.message.includes("were"), `pt-br report must not contain English "were": "${report.message}"`);
+  } finally {
+    await i18n.changeLanguage("en");
+  }
+});
+
+test("danger-tagged messages survive language switch (Set membership is language-independent)", async () => {
+  const { markDanger, isDanger } = await import("../src/lib/danger.js");
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  const ptMsg = markDanger(i18n.t("store.stale_tab", { ns: "lib" }));
+  assert.ok(isDanger(ptMsg), "initial language tag should be danger");
+  assert.ok(isDanger("OpenTakeoff was updated in another tab — reload this tab to continue."), "English constant should also be danger (registered at module load)");
+});

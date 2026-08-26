@@ -18,7 +18,11 @@ import i18n from "../i18n/index.js";
 const _t = (key, opts) => i18n.t(key, { ns: "lib", ...opts });
 
 export const OT_NAME = "OpenTakeoff";
+/** Legacy constant — frozen at import time. Prefer otCredit() for current translation. */
 export const OT_CREDIT = _t("brand.ot_credit");
+
+/** Resolve OT credit at call time (reflects mid-session language switch). */
+export function otCredit() { return _t("brand.ot_credit"); }
 
 /**
  * @param {{mode?: string, profileId?: string|null,
@@ -47,7 +51,7 @@ export function resolveBranding(sel) {
     brandName: (clear && profile.name) ? profile.name : OT_NAME,
     // subtle parent credit — shown only when clear-labelling (default mode is
     // already OpenTakeoff-branded throughout, so a separate credit is redundant)
-    credit: clear ? OT_CREDIT : null,
+    credit: clear ? otCredit() : null,
     // marked-set cover wordmark — carries the OpenTakeoff prefix in default mode
     coverTitle: clear ? _t("brand.marked_set") : _t("brand.ot_marked_set"),
   };
