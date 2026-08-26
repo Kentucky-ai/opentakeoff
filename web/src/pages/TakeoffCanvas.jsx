@@ -26,6 +26,7 @@ import { seedStampLibrary, instantiateStamp, markupToStampElement } from "../lib
 import { extractSvgPrimitives, svgToStamp } from "../lib/svgImport.js";
 import { transformPath, svgPlacedBox } from "../lib/svgpath.js";
 import { imagePlacedBox, captureRectToImageGeom, resizeImageFromCorner, aspectFromDims, pickEmbedFormat, sourceCaption } from "../lib/markupImage";
+import { rectMidpoint, pendingSourceOutcome } from "../lib/sourceTrace";
 import { ingestFiles } from "../lib/ingest.js";
 import { parseTakeoffImport, mergeTakeoffImport } from "../lib/importTakeoff.js";
 import { buildProjectArchive, parseProjectArchive, isProjectArchive, downloadArchive } from "../lib/projectArchive.js";
@@ -655,6 +656,14 @@ export default function TakeoffCanvas() {
   const selectShape = (id) => { setSelectedId(id); setSelectedMarkupId(null); };
   const selectMarkup = (id) => { setSelectedMarkupId(id); setSelectedId(null); };
   const pendingFlyRef = useRef(null);   // fly-to target whose sheet is opening this tick (two-phase center once its bitmap loads)
+  // Source-trace (◎) equivalent of pendingFlyRef: { sheet_id, rect, token, attempts }
+  // for a trace whose SOURCE sheet is opening this tick. Unlike pendingFlyRef it
+  // carries no markup id to re-validate against — there's no markup on the source
+  // sheet, only a synthetic rect — so it is self-limiting via `attempts` (see the
+  // phase-2 effect below and lib/sourceTrace's pendingSourceOutcome, the "never
+  // leave a stale trace armed" guard the plan calls the riskiest part of this slice).
+  const pendingSourceRef = useRef(null);
+  const sourceTraceSeqRef = useRef(0);  // monotonic token minter for sourceFlash — see traceSource
 
   const [snapOn, setSnapOn] = useState(false);   // snap-to-vector (beta) — off until calibrated on real plans
   const [angleOn, setAngleOn] = useState(true);  // 45°/90° angle guides (polar tracking) — on by default; ⇧ = hard lock
@@ -714,6 +723,14 @@ export default function TakeoffCanvas() {
   const [imageAnchor, setImageAnchor] = useState(null);       // first marquee corner for the "image" screenshot tool, isolated like scheduleAnchor/symbolAnchor
   const [placingImageId, setPlacingImageId] = useState(null); // an image markup being (re)placed: it follows the cursor until the next click drops it (re-enterable from the panel, not just at capture)
   const placeGrabRef = useRef(null);                          // {key, dx, dy}: cursor→image-centre offset captured on the pointer's FIRST canvas contact during a place, so the image is grabbed where it sits (no teleport) and moves relative after
+  // Cross-sheet place flag: holds the markup id when beginPlace (below) armed
+  // placement for an image whose CURRENT sheet ISN'T the one now open. Carries
+  // that decision to onPointerMove's first-contact grab (~3686), which runs
+  // frames later — by then `sheet_id` may already have been rewritten to the
+  // panel it first touched, so re-reading it there is unreliable. Keyed on the
+  // markup id (not a bare boolean) so a second Place on a DIFFERENT markup can't
+  // inherit a stale flag. Cleared everywhere placeGrabRef is cleared.
+  const placeCrossSheetRef = useRef(null);
   const [imgThumbs, setImgThumbs] = useState({});             // markupId → tiny JPEG dataURL for the panel row — memory-only, built once per image, NEVER persisted (a 40px <img> of a full 1600px src would decode the whole bitmap and eat the byte budget)
   const thumbBuildingRef = useRef(new Set());                 // ids with a thumb build in flight (dedupe the async decode)
   const [sweep, setSweep] = useState(null);                   // the live review: matches / questions / seed, one sheet, dies on commit or discard
@@ -2191,6 +2208,52 @@ export default function TakeoffCanvas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panelImgs, groupSig, status]);
 
+  // source-trace (◎) phase 2 — mirrors the fly-to phase-2 effect above, but
+  // pendingSourceRef has no markup id to re-validate against (there's no markup
+  // on the source sheet, only a synthetic {sheet_id, rect}), so it leans on
+  // pendingSourceOutcome's three guards instead: status==="error", the source
+  // sheet key no longer resolving to a real sheet (deleted file / bad key —
+  // same liveness test the sheetGroup-pruning effect uses), or a bounded
+  // attempt-budget cap. Every branch below either re-arms `attempts` or nulls
+  // the ref — it is NEVER left set past a terminal outcome (give-up or
+  // complete), which is the plan's central risk for this slice.
+  useEffect(() => {
+    const p = pendingSourceRef.current;
+    if (!p) return;
+    const sheetIsLive = isStitchKey(p.sheet_id)
+      ? !!stitchById[p.sheet_id] && stitchAlive(stitchById[p.sheet_id], new Set(sheets.map((s) => s.name)))
+      : sheets.some((s) => s.name === parseSheetKey(p.sheet_id).file);
+    const sp = panelKeySet.has(p.sheet_id) ? panels.find((pp) => pp.key === p.sheet_id) : null;
+    const outcome = pendingSourceOutcome(p, { status, sheetIsLive, panelReady: !!sp?.img?.w });
+    if (outcome.action === "give-up") { pendingSourceRef.current = null; return; }
+    if (outcome.action === "wait") { pendingSourceRef.current = { ...p, attempts: outcome.attempts }; return; }
+    // action === "complete": the rect was already validated (non-null midpoint)
+    // when traceSource armed this ref, but re-check rather than trust a ref that
+    // sat around — cheap, and keeps this path total on its own.
+    const mid = rectMidpoint(p.rect);
+    if (mid && centerOnPanelPoint(sp, mid[0], mid[1])) setSourceFlash({ sheet_id: p.sheet_id, rect: p.rect, token: p.token });
+    pendingSourceRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panelImgs, groupSig, status]);
+
+  // A flash belongs to whichever sheet it's currently drawn on (the render site
+  // keys it to `sourceFlash.sheet_id === p.key`, per-panel). Once that sheet
+  // leaves the open set — tab closed, group changed, navigated away — clear it
+  // rather than let it sit armed: the panel's <g> unmounts and remounts on
+  // return, and a CSS keyframes animation restarts on mount, so a stale
+  // sourceFlash would silently re-pulse on a LATER, unrelated visit to that
+  // sheet. MUST be a functional updater, not a closure read of `sourceFlash`:
+  // the pendingSourceRef effect above can, in the SAME batch that just changed
+  // groupSig, call setSourceFlash(newFlash) for the sheet that just finished
+  // opening — a closure-captured `sourceFlash` here would still be the OLD
+  // (now off-panel) value and null out the flash that was just set, in the
+  // same flush, before it ever painted. Reading `f` at apply time instead of
+  // closure time avoids that race.
+  useEffect(() => {
+    setSourceFlash((f) => (f && !panelKeySet.has(f.sheet_id) ? null : f));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupSig]);
+
   // ── autosave (debounced) ──────────────────────────────────────────────────
   // buildPayload is the single serializer — autosave and snapshots must write
   // identical records for the same state (byte-stability matters downstream).
@@ -2794,7 +2857,7 @@ export default function TakeoffCanvas() {
         // tool's points, on-screen or hidden
         else if (tool === "calibrate") { setCalib((c) => c.slice(0, -1)); }
         else if (tool === "check") { setCheck((c) => c.slice(0, -1)); }
-      } else if (e.key === "Escape") { if (agentOfferFnsRef.current?.pending()) { agentOfferFnsRef.current.dismiss(); } else if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { clearPoly(); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); setSymbolAnchor(null); setImageAnchor(null); setPlacingImageId(null); placeGrabRef.current = null; setAlignPt(null); resetZone(); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; } }
+      } else if (e.key === "Escape") { if (agentOfferFnsRef.current?.pending()) { agentOfferFnsRef.current.dismiss(); } else if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { clearPoly(); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); setSymbolAnchor(null); setImageAnchor(null); setPlacingImageId(null); placeGrabRef.current = null; placeCrossSheetRef.current = null; setAlignPt(null); resetZone(); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; } }
       // ⌘Z: the drawing context wins — mid-trace it still pops the last placed
       // point (with or without ⇧, matching the old behavior byte-for-byte);
       // only with no trace in progress does the command stack engage
@@ -2865,6 +2928,7 @@ export default function TakeoffCanvas() {
       const id = placingImageId;
       setPlacingImageId(null);
       placeGrabRef.current = null;
+      placeCrossSheetRef.current = null;
       // Commit boundary for the place gesture (onPointerMove's centre-follow at
       // :3676 is the live PREVIEW and must stay unstamped): stamp updated_at here
       // so a cross-sheet place isn't silently reverted by a 3-way sync tie
@@ -3685,9 +3749,19 @@ export default function TakeoffCanvas() {
       if (tp?.img?.w) {
         const cx = (q[0] - tp.xOffset) / tp.img.w, cy = q[1] / tp.img.h;
         if (!placeGrabRef.current || placeGrabRef.current.key !== tp.key) {
-          const m0 = markups.find((m) => m.id === placingImageId);
-          const ax = m0 && Array.isArray(m0.at) ? m0.at[0] : cx, ay = m0 && Array.isArray(m0.at) ? m0.at[1] : cy;
-          placeGrabRef.current = { key: tp.key, dx: ax - cx, dy: ay - cy };
+          // cross-sheet place (flagged at Place-button time in placeCrossSheetRef,
+          // not by re-reading the markup's sheet_id here — it may already have
+          // been rewritten to tp.key by an earlier contact this same gesture):
+          // the image's stored `at` is a position on the OTHER sheet and means
+          // nothing here, so zero the offset and let it center under the cursor
+          // instead of riding a bogus delta.
+          if (placeCrossSheetRef.current === placingImageId) {
+            placeGrabRef.current = { key: tp.key, dx: 0, dy: 0 };
+          } else {
+            const m0 = markups.find((m) => m.id === placingImageId);
+            const ax = m0 && Array.isArray(m0.at) ? m0.at[0] : cx, ay = m0 && Array.isArray(m0.at) ? m0.at[1] : cy;
+            placeGrabRef.current = { key: tp.key, dx: ax - cx, dy: ay - cy };
+          }
         }
         const g = placeGrabRef.current;
         setMarkups((ms) => ms.map((m) => (m.id === placingImageId ? { ...m, at: [cx + g.dx, cy + g.dy], sheet_id: tp.key } : m)));
@@ -5448,11 +5522,95 @@ export default function TakeoffCanvas() {
   }
   function flyToMarkup(m) {
     if (!m) return;
+    // a fly-to and a source-trace both end in setTfNow off the same deps
+    // ([panelImgs, groupSig, status]) — starting one must cancel a competing
+    // in-flight other, or whichever completes second silently yanks the view
+    // the user already stopped looking at.
+    pendingSourceRef.current = null;
     setShowMarkups(true);   // flying to a markup reveals the layer, so you never land on an invisible selection
     if (!panelKeySet.has(m.sheet_id)) { pendingFlyRef.current = m; openSheets([m.sheet_id], false); return; }
     // open already, but its bitmap may still be mid-render (img.w === 0) — if the
     // inline center can't run yet, hand off to the phase-2 effect below.
     if (!centerOnMarkup(m)) pendingFlyRef.current = m;
+  }
+  // Reposition an image markup — the row's Place button. Two cases, branched on
+  // whether the image's CURRENT sheet is already open (panelKeySet.has):
+  //  - same-sheet: unchanged foundation behavior — fly the view to it (centers
+  //    on its stored anchor) and the first-contact grab (onPointerMove ~3699)
+  //    preserves the cursor→image offset (no teleport).
+  //  - cross-sheet: the image's home sheet isn't open here, so flying there
+  //    would defeat placing it on THIS sheet — arm placement in place instead,
+  //    and flag placeCrossSheetRef so the first-contact grab zeroes the offset
+  //    (the image's stored `at` is a position on the OTHER sheet; centering it
+  //    under the cursor is the only sane drop point). See placeCrossSheetRef's
+  //    declaration for why the decision has to ride a ref instead of being
+  //    re-derived from m.sheet_id at grab time.
+  function beginPlace(m) {
+    placeGrabRef.current = null;
+    placeCrossSheetRef.current = null;
+    pendingSourceRef.current = null;   // starting a placement cancels any in-flight source trace — same setTfNow race as flyToMarkup above
+    if (panelKeySet.has(m.sheet_id)) {
+      flyToMarkup(m);
+      setPlacingImageId(m.id);
+      setCommitMsg("Placing image — the view centered on it; move the pointer and click to drop (Esc cancels).");
+    } else {
+      placeCrossSheetRef.current = m.id;
+      setPlacingImageId(m.id);
+      setCommitMsg("Placing image on this sheet — move the pointer and click to drop (Esc cancels).");
+    }
+  }
+  // Center the view on a normalized [nx,ny] point within panel `sp` —
+  // replicates centerOnMarkup's transform math above verbatim, but keyed off a
+  // raw point instead of resolving a markup's anchor. A source trace has no
+  // markup on the source sheet to resolve (only a synthetic {sheet_id, rect}),
+  // so centerOnMarkup/flyToMarkup can't express this — this is why traceSource
+  // doesn't reuse them.
+  function centerOnPanelPoint(sp, nx, ny) {
+    if (!sp?.img?.w) return false;
+    const el = containerRef.current;
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    const scale = tfRef.current.scale;
+    const sx = nx * sp.img.w + sp.xOffset, sy = ny * sp.img.h;
+    setTfNow({ x: r.width / 2 - sx * scale, y: r.height / 2 - sy * scale, scale });
+    return true;
+  }
+  // Trace a capture back to its ORIGIN sheet+region (◎, button wired by slice
+  // 4 — this function, its ref, and its effect are this slice's job). Captures
+  // only: m.source === "capture" && src_sheet_id && src_rect (a stitch source
+  // sheet works fine here — no suppression, unlike the caption's — openSheets/
+  // goToSheet already treat a stitch key as first-class).
+  function traceSource(m) {
+    if (!m || m.source !== "capture" || !m.src_sheet_id || !m.src_rect) return;
+    const mid = rectMidpoint(m.src_rect);
+    // a malformed rect arms nothing rather than a pendingSourceRef that can
+    // never complete and would burn its whole attempt budget finding that out
+    if (!mid) return;
+    // Mid-Place guard (plan-mandated): dropping into a trace while an image is
+    // still armed for placement must end that gesture FIRST — otherwise the
+    // riding image (onPointerMove is still centre-following the cursor) drops
+    // onto the SOURCE sheet on the very click that navigates us there.
+    if (placingImageId) {
+      setPlacingImageId(null);
+      placeGrabRef.current = null;
+      placeCrossSheetRef.current = null;
+    }
+    pendingFlyRef.current = null;   // a source trace supersedes any in-flight fly-to (same setTfNow race noted in flyToMarkup)
+    const src = m.src_sheet_id, rect = m.src_rect;
+    const token = ++sourceTraceSeqRef.current;   // fresh every trace, even a repeat of the same region — see sourceFlash's declaration on why
+    if (panelKeySet.has(src)) {
+      const sp = panels.find((p) => p.key === src);
+      if (sp?.img?.w && centerOnPanelPoint(sp, mid[0], mid[1])) {
+        setSourceFlash({ sheet_id: src, rect, token });   // no selectMarkup — there's no markup to select on the source sheet
+        return;
+      }
+      // open, but its bitmap hasn't finished rendering yet — the phase-2
+      // effect above completes this once panelImgs reports a real width.
+      pendingSourceRef.current = { sheet_id: src, rect, token, attempts: 0 };
+      return;
+    }
+    pendingSourceRef.current = { sheet_id: src, rect, token, attempts: 0 };
+    openSheets([src], false);
   }
 
   function finishShape() {
@@ -8019,7 +8177,7 @@ export default function TakeoffCanvas() {
                        ) : (
                          <span style={{ flex: 1, color: "var(--ink)" }}>{m.type === "svg" ? <em style={{ color: "var(--ink-muted)" }}>(vector symbol)</em> : ([m.type === "dimension" && Number(m.len_ft) > 0 ? dimLabel(m.len_ft) : "", m.text].filter(Boolean).join(" · ") || <em style={{ color: "var(--ink-muted)" }}>(no text)</em>)}</span>
                        )}
-                       {m.type === "image" && <button onClick={(e) => { e.stopPropagation(); placeGrabRef.current = null; flyToMarkup(m); setPlacingImageId(m.id); setCommitMsg("Placing image — the view centered on it; move the pointer and click to drop (Esc cancels)."); }} title="Reposition: centers the view on the image, then it follows the cursor — click the sheet to drop it" style={{ border: "1px solid var(--ink-faint)", background: placingImageId === m.id ? "var(--cobalt)" : "transparent", color: placingImageId === m.id ? "#fff" : "var(--cobalt)", cursor: "pointer", fontSize: 11, padding: "1px 7px" }}>Place</button>}
+                       {m.type === "image" && <button onClick={(e) => { e.stopPropagation(); beginPlace(m); }} title={panelKeySet.has(m.sheet_id) ? "Reposition: centers the view on the image, then it follows the cursor — click the sheet to drop it" : "Place this image on the current sheet — it follows the cursor until you click to drop it"} style={{ border: "1px solid var(--ink-faint)", background: placingImageId === m.id ? "var(--cobalt)" : "transparent", color: placingImageId === m.id ? "#fff" : "var(--cobalt)", cursor: "pointer", fontSize: 11, padding: "1px 7px" }}>Place</button>}
                        {m.type !== "svg" && <button onClick={(e) => { e.stopPropagation(); setPanelEditId((id) => (id === m.id ? null : m.id)); }} title="Edit text" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>}
                        <button onClick={(e) => { e.stopPropagation(); deleteMarkup(m.id); }} title="Delete markup" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
                      </div>
