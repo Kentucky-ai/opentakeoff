@@ -536,5 +536,14 @@
   "hatch.concrete": "Concreto / granulado",
 
   "takeoffs.family_fallback": "a família",
-  "takeoffs.original_fallback": "o original"
+  "takeoffs.original_fallback": "o original",
+
+  "takeoffs.roll_max_label": "máx",
+  "takeoffs.roll_dir_auto": "auto",
+  "takeoffs.waste_short": "{{pct}}% perda",
+  "takeoffs.material_count_one": "{{count}} material",
+  "takeoffs.material_count_other": "{{count}} materiais",
+  "takeoffs.roll_count_one": "{{count}} rolo",
+  "takeoffs.roll_count_other": "{{count}} rolos",
+  "takeoffs.mat_unit_unknown": "?"
 }

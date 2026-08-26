@@ -320,7 +320,7 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
           title={t('takeoffs.mat_attach_title')}
           style={{ ...ip, marginLeft: 6, background: "var(--paper-bright)", color: "var(--ink-muted)" }}>
           <option value="">{t('takeoffs.mat_attach_option')}</option>
-          {library.map((lm) => <option key={lm.id} value={lm.id}>{lm.name || t('takeoffs.mat_unnamed')}{lm.per ? ` · ${lm.per}/${lm.unit || "?"}` : ""}</option>)}
+          {library.map((lm) => <option key={lm.id} value={lm.id}>{lm.name || t('takeoffs.mat_unnamed')}{lm.per ? ` · ${lm.per}/${lm.unit || t('takeoffs.mat_unit_unknown')}` : ""}</option>)}
         </select>
       )}
     </>
@@ -516,13 +516,13 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
                   <input name="condition-roll-width-in" type="number" min="0" max="11" step="1" value={wIn} onChange={(e) => setW(wFt, e.target.value)} style={numIp} /><span style={{ color: "var(--ink-muted)" }}>″</span>
                 </span>
               )}
-              <span style={{ color: "var(--ink-muted)" }} title={t('takeoffs.roll_max_title')}>max</span>
+              <span style={{ color: "var(--ink-muted)" }} title={t('takeoffs.roll_max_title')}>{t('takeoffs.roll_max_label')}</span>
               <input name="condition-roll-length" type="number" min="0" step="5" value={rs.roll_length_ft || 0}
                 onChange={(e) => patch({ roll_length_ft: Math.max(0, parseFloat(e.target.value) || 0) })} style={numIp} />
               <span style={{ color: "var(--ink-muted)" }}>′</span>
               <select name="condition-roll-direction" value={rs.direction || "auto"} onChange={(e) => patch({ direction: e.target.value })} style={sel}
                 title={t('takeoffs.roll_direction_title')}>
-                <option value="auto">auto</option>
+                <option value="auto">{t('takeoffs.roll_dir_auto')}</option>
                 <option value="ns">N–S</option>
                 <option value="ew">E–W</option>
               </select>
@@ -531,10 +531,10 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
               <span style={{ color: "var(--ink-muted)" }} title={t('takeoffs.roll_seam_title')}>{t('takeoffs.seam_label')}</span>
               <input name="condition-roll-seam" type="number" min="0" step="0.5" value={rs.seam_allowance_in ?? 2}
                 onChange={(e) => patch({ seam_allowance_in: Math.max(0, parseFloat(e.target.value) || 0) })} style={numIp} />
-              <span style={{ color: "var(--ink-muted)" }}>″ · wall</span>
+              <span style={{ color: "var(--ink-muted)" }}>″ · {t('takeoffs.wall_label')}</span>
               <input name="condition-roll-wall" type="number" min="0" step="0.5" value={rs.wall_overage_in ?? 3}
                 onChange={(e) => patch({ wall_overage_in: Math.max(0, parseFloat(e.target.value) || 0) })} style={numIp} />
-              <span style={{ color: "var(--ink-muted)" }}>″ · sells by</span>
+              <span style={{ color: "var(--ink-muted)" }}>″ · {t('takeoffs.sells_by_label')}</span>
               <select name="condition-roll-unit" value={rs.price_unit || "sf"} onChange={(e) => patch({ price_unit: e.target.value })} style={sel}
                 title={t('takeoffs.roll_unit_title')}>
                 <option value="sy">SY</option>
@@ -546,7 +546,7 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
               <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 11, color: "var(--ink)" }}
                 title={t('takeoffs.roll_figured_title')}>
                 {t('takeoffs.roll_figured')} {ftIn(rollInfo.orderFt)} · {rollInfo.qty} {rollInfo.unit.toUpperCase()}
-                {rollInfo.config.rollLengthFt > 0 ? ` · ${rollInfo.rollCount} roll${rollInfo.rollCount === 1 ? "" : "s"}` : ""}
+                {rollInfo.config.rollLengthFt > 0 ? ` · ${t('takeoffs.roll_count', { count: rollInfo.rollCount })}` : ""}
                 {rollInfo.oversize && <span style={{ color: "var(--c-danger)" }}> {t('takeoffs.roll_oversize_inline')}</span>}
               </div>
             )}
@@ -1098,7 +1098,7 @@ function TakeoffsPanel({
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tItem.finish_tag}</div>
                   <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)" }}>
-                    {tItem.waste_pct || 0}% waste{tItem.height_ft != null ? ` · H ${dimInputStr(tItem.height_ft, units, "height")}${units === "metric" ? " m" : "′"}` : ""}{tItem.thickness_in != null ? ` · T ${dimInputStr(tItem.thickness_in, units, "thickness")}${units === "metric" ? " mm" : "″"}` : ""}{tItem.materials?.length ? ` · ${tItem.materials.length} material${tItem.materials.length === 1 ? "" : "s"}` : ""}
+                    {t('takeoffs.waste_short', { pct: tItem.waste_pct || 0 })}{tItem.height_ft != null ? ` · H ${dimInputStr(tItem.height_ft, units, "height")}${units === "metric" ? " m" : "′"}` : ""}{tItem.thickness_in != null ? ` · T ${dimInputStr(tItem.thickness_in, units, "thickness")}${units === "metric" ? " mm" : "″"}` : ""}{tItem.materials?.length ? ` · ${t('takeoffs.material_count', { count: tItem.materials.length })}` : ""}
                   </div>
                 </div>
                 <button onClick={() => { onApplyTemplate(tItem); setPanelTab("takeoffs"); }} title={t('takeoffs.library_apply_title')}

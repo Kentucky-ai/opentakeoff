@@ -76,6 +76,14 @@ test("new i18n keys for canvas seed/transition and panels fallback exist in both
   const panelsKeys = [
     "takeoffs.family_fallback",
     "takeoffs.original_fallback",
+    "takeoffs.roll_max_label",
+    "takeoffs.roll_dir_auto",
+    "takeoffs.waste_short",
+    "takeoffs.material_count_one",
+    "takeoffs.material_count_other",
+    "takeoffs.roll_count_one",
+    "takeoffs.roll_count_other",
+    "takeoffs.mat_unit_unknown",
   ];
 
   for (const lng of ["en", "pt-br"]) {
