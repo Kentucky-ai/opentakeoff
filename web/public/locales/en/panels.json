@@ -492,6 +492,7 @@
   "takeoffs.wall_label": "wall",
   "takeoffs.seam_label": "Seam",
   "takeoffs.sells_by_label": "sells by",
+  "takeoffs.original_fallback": "the original",
 
   "cloud.project_stored_title": "This project is stored in your team's Google Drive",
   "cloud.project_stored_body": "Sign in with your team Google account to open it. Only accounts on the team domain can sign in.",

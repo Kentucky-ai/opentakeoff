@@ -492,6 +492,7 @@
   "takeoffs.wall_label": "parede",
   "takeoffs.seam_label": "Costura",
   "takeoffs.sells_by_label": "vende por",
+  "takeoffs.original_fallback": "o original",
 
   "cloud.project_stored_title": "Este projeto está armazenado no Google Drive da sua equipe",
   "cloud.project_stored_body": "Entre com sua conta Google da equipe para abrir. Apenas contas no domínio da equipe podem entrar.",
