@@ -34,6 +34,9 @@ import {
   floodRegionSealed, sealRadiiFor, doorWedgeCapPx, minPassRadiusFor, SENS_BALANCED,
 } from "./oneclick.ts";
 import type { MaskObj, FloodResult } from "./oneclick.ts";
+import i18n from "../i18n/index.js";
+
+const _t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: "lib", ...opts });
 
 /** A room-number label pattern: 2–3 digits with an optional trailing letter
  *  (134, 139A, 170) — the same shape estimators read off a finish plan. */
@@ -401,7 +404,7 @@ export interface DetectionReport {
  *  tag produced a room) that the readout is most likely to be misread as
  *  "sheet complete". */
 export const NO_TAG_CAVEAT =
-  "Only rooms carrying a room-number tag are found — corridors, elevators and vestibules usually carry none and are NOT detected. One-Click those.";
+  _t("detected.no_tag_caveat");
 
 const plural = (n: number) => (n === 1 ? "" : "s");
 
@@ -415,31 +418,48 @@ export function detectionReport(t: DetectionTally, tinySf = 4): DetectionReport 
   // facts, and the second is the one that makes an estimator distrust a room
   // (Copilot review, PR #190).
   const tried = t.tried ?? t.seeds;
+  const sfx = (count: number) => plural(count);
   const headline =
     t.seeds === 0
       ? t.patternHits === 0
-        ? "No room-number tags on this sheet — detection has nothing to seed from."
-        : `No room-number tags on this sheet — all ${t.patternHits} matching numeral${plural(t.patternHits)} were rejected as something else.`
+        ? _t("detected.no_tags_on_sheet")
+        : _t("detected.all_rejected", { count: t.patternHits, suffix: sfx(t.patternHits) })
       : n === 0
-        ? `No rooms detected: ${t.seeds} room tag${plural(t.seeds)} found, ${tried === 0 ? "none was tried" : "none produced a usable region"}.`
-        : `${n} of ${tried} room tag${plural(tried)} produced a room${t.cancelled ? ` (${t.seeds} on the sheet)` : ""}.`;
+        ? _t("detected.none_detected_found", {
+            count: t.seeds,
+            suffix: sfx(t.seeds),
+            detail: tried === 0 ? _t("detected.none_tried") : _t("detected.none_produced"),
+          })
+        : _t("detected.some_of_tried", {
+            n, tried,
+            suffix: sfx(tried),
+            extra: t.cancelled ? _t("detected.extra_on_sheet", { count: t.seeds }) : "",
+          });
   const limits: string[] = [];
   if (t.cancelled) {
     const untried = Math.max(0, t.seeds - tried);
     limits.push(untried > 0
-      ? `Stopped early — ${untried} room tag${plural(untried)} ${untried === 1 ? "was" : "were"} never tried.`
-      : "Stopped early.");
+      ? _t("detected.stopped_early_untried", {
+          count: untried,
+          suffix: sfx(untried),
+          verb: untried === 1 ? "was" : "were",
+        })
+      : _t("detected.stopped_early"));
   }
   if (t.seeds > 0 && t.patternHits > t.seeds) {
     const k = t.patternHits - t.seeds;
-    limits.push(`${k} other numeral${plural(k)} rejected as not a room tag (printed areas, dimensions, drawing numbers, title-block text).`);
+    limits.push(_t("detected.other_numerals", { count: k, suffix: sfx(k) }));
   }
   if (tried > n) {
     const k = tried - n;
-    limits.push(`${k} tag${plural(k)} produced nothing — the fill leaked past the room, or landed in dense linework.`);
+    limits.push(_t("detected.tag_nothing", { count: k, suffix: sfx(k) }));
   }
   if (t.tiny > 0) {
-    limits.push(`${t.tiny} proposal${plural(t.tiny)} under ${tinySf} SF — usually the box drawn around a room tag, not a room. Reject ${t.tiny === 1 ? "it" : "them"}.`);
+    limits.push(_t(t.tiny === 1 ? "detected.tiny_proposal_it" : "detected.tiny_proposal_them", {
+      count: t.tiny,
+      suffix: sfx(t.tiny),
+      sf: tinySf,
+    }));
   }
   limits.push(NO_TAG_CAVEAT);
   return { headline, limits, message: [headline, ...limits].join(" "), empty: n === 0 };

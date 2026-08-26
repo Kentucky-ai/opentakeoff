@@ -13,9 +13,12 @@
 // degrades to a single global setting in the browser-only build (folderId "").
 import { metaGet, metaPut } from "./store.js";
 import { activeProfile } from "./identity.js";
+import i18n from "../i18n/index.js";
+
+const _t = (key, opts) => i18n.t(key, { ns: "lib", ...opts });
 
 export const OT_NAME = "OpenTakeoff";
-export const OT_CREDIT = "Measured with OpenTakeoff";
+export const OT_CREDIT = _t("brand.ot_credit");
 
 /**
  * @param {{mode?: string, profileId?: string|null,
@@ -46,7 +49,7 @@ export function resolveBranding(sel) {
     // already OpenTakeoff-branded throughout, so a separate credit is redundant)
     credit: clear ? OT_CREDIT : null,
     // marked-set cover wordmark — carries the OpenTakeoff prefix in default mode
-    coverTitle: clear ? "Marked Set" : "OpenTakeoff · Marked Set",
+    coverTitle: clear ? _t("brand.marked_set") : _t("brand.ot_marked_set"),
   };
 }
 

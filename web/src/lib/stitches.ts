@@ -12,6 +12,9 @@
 // Everything here is pdfjs-free and node-tested (sheetKey.ts precedent).
 
 import { parseSheetKey } from "./sheetKey";
+import i18n from "../i18n/index.js";
+
+const _t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: "lib", ...opts });
 
 export const STITCH_PREFIX = "stitch:";
 export function isStitchKey(k: unknown): k is string {
@@ -139,8 +142,8 @@ export function alignMembers(
   const boxes = memberBoxes(members, dims);
   const ai = memberAtPoint(boxes, anchor[0], anchor[1]);
   const bi = memberAtPoint(boxes, moving[0], moving[1]);
-  if (ai < 0 || bi < 0) return { error: "No sheets to align." };
-  if (ai === bi) return { error: "Both clicks landed on the same sheet — click the matching point on the other sheet." };
+  if (ai < 0 || bi < 0) return { error: _t("stitch.no_sheets") };
+  if (ai === bi) return { error: _t("stitch.same_sheet") };
   const dx = anchor[0] - moving[0], dy = anchor[1] - moving[1];
   const next = members.map((m, i) => (i === bi ? { ...m, dx: m.dx + dx, dy: m.dy + dy } : m));
   return { members: normalizeMembers(next), movedKey: members[bi].key };

@@ -48,7 +48,8 @@
     "subfloor_type": "Subfloor Type",
     "roll_order_lf": "Roll Order LF",
     "rolls": "Rolls",
-    "seam_lf": "Seam LF"
+    "seam_lf": "Seam LF",
+    "unassigned": "Unassigned"
   },
   "csv_header": {
     "finish": "Finish",
@@ -212,5 +213,105 @@
     "d_ordered": "d {{unit}} ordered",
     "ordered_name": "{{unit}} ordered ({{name}})",
     "d_qty": "d Qty"
+  },
+  "store": {
+    "stale_tab": "OpenTakeoff was updated in another tab — reload this tab to continue.",
+    "blocked_error": "OpenTakeoff is open in another tab with older data — close it or reload.",
+    "version_error": "This tab is running an older OpenTakeoff — reload to update.",
+    "quota_error": "Not enough storage space for this snapshot — delete old snapshots or unused PDFs and try again.",
+    "pdf_not_found": "PDF not found in local store: {{name}}",
+    "revision_not_found": "Revision {{rev}} of {{name}} not found in local store"
+  },
+  "transition": {
+    "pick_finishes": "Pick the two finishes that meet.",
+    "pick_different": "Pick two DIFFERENT finishes — a tag does not transition to itself.",
+    "own_condition": "The transition has to land on its own condition (e.g. T-1) — committing onto {{tag}} would add its LF to one of the finishes it separates.",
+    "no_rooms": "{{tag}} has no rooms on the open sheets — measure them first (One-Click or Area).",
+    "no_scale": "{{list}} {{verb}} no scale — a transition is a real length, so calibrate before deriving.",
+    "no_shared_sheet": "{{a}} and {{b}} have no rooms on the same open sheet — nothing can meet."
+  },
+  "detected": {
+    "no_tags_on_sheet": "No room-number tags on this sheet — detection has nothing to seed from.",
+    "all_rejected": "No room-number tags on this sheet — all {{count}} matching numeral{{suffix}} were rejected as something else.",
+    "none_detected_found": "No rooms detected: {{count}} room tag{{suffix}} found, {{detail}}.",
+    "none_produced": "none produced a usable region",
+    "none_tried": "none was tried",
+    "some_of_tried": "{{n}} of {{tried}} room tag{{suffix}} produced a room{{extra}}.",
+    "extra_on_sheet": " ({{count}} on the sheet)",
+    "stopped_early_untried": "Stopped early — {{count}} room tag{{suffix}} {{verb}} never tried.",
+    "stopped_early": "Stopped early.",
+    "other_numerals": "{{count}} other numeral{{suffix}} rejected as not a room tag (printed areas, dimensions, drawing numbers, title-block text).",
+    "tag_nothing": "{{count}} tag{{suffix}} produced nothing — the fill leaked past the room, or landed in dense linework.",
+    "tiny_proposal_it": "{{count}} proposal{{suffix}} under {{sf}} SF — usually the box drawn around a room tag, not a room. Reject it.",
+    "tiny_proposal_them": "{{count}} proposal{{suffix}} under {{sf}} SF — usually the box drawn around a room tag, not a room. Reject them.",
+    "no_tag_caveat": "Only rooms carrying a room-number tag are found — corridors, elevators and vestibules usually carry none and are NOT detected. One-Click those."
+  },
+  "voice": {
+    "condition_active": "{{tag}} active.",
+    "condition_created_active": "Created {{tag}} — active.",
+    "condition_active_waste": "{{tag}} active — waste {{pct}}%.",
+    "condition_created_active_waste": "Created {{tag}} — active, waste {{pct}}%.",
+    "waste_on": "Waste {{pct}}% on {{tag}}.",
+    "label_active": "Label {{label}} active.",
+    "label_added": "Added label {{label}} — active.",
+    "label_cleared": "Label cleared.",
+    "note_added": "Note added — see Markups."
+  },
+  "stitch": {
+    "no_sheets": "No sheets to align.",
+    "same_sheet": "Both clicks landed on the same sheet — click the matching point on the other sheet."
+  },
+  "rule": {
+    "exclude_label": "Exclude enclosed regions under {{max}} SF in {{tag}} rooms"
+  },
+  "brand": {
+    "ot_credit": "Measured with OpenTakeoff",
+    "marked_set": "Marked Set",
+    "ot_marked_set": "OpenTakeoff · Marked Set"
+  },
+  "ai": {
+    "not_configured": "AI isn't configured — open AI settings first.",
+    "timeout_30s": "The endpoint took more than 30 seconds — check the model is loaded.",
+    "cors_error": "Couldn't reach the endpoint — check the URL, and that it allows browser requests (CORS).",
+    "http_error": "AI request failed (HTTP {{status}}).",
+    "no_text": "The endpoint replied, but not with text.",
+    "timeout_2min": "The endpoint took more than 2 minutes — check the model is loaded.",
+    "no_json": "The endpoint replied, but not with JSON."
+  },
+  "id": {
+    "logo_too_large": "Logo too large — use a simpler image",
+    "read_image_error": "Couldn't read that image — PNG, JPEG, WebP or SVG please"
+  },
+  "import": {
+    "invalid_json": "Couldn't import takeoff: that file is not valid JSON.",
+    "wrong_schema": "Couldn't import takeoff: not a takeoff export (expected schema \"{{schema}}\" — the file export_takeoff or the app writes)."
+  },
+  "contribute": {
+    "no_endpoint": "No contribution endpoint is configured for this build.",
+    "http_error": "Contribution failed (HTTP {{status}})."
+  },
+  "google": {
+    "not_configured": "Google sign-in is not configured for this build.",
+    "gsi_unavailable": "Google Identity Services loaded but oauth2 API is unavailable.",
+    "gsi_load_failed": "Failed to load Google Identity Services.",
+    "sign_in_cancelled": "Google sign-in was cancelled.",
+    "silent_timeout": "Silent Google sign-in timed out",
+    "profile_error": "Failed to load Google profile (HTTP {{status}})."
+  },
+  "drive": {
+    "http_error": "Drive {{what}} failed (HTTP {{status}}){{detail}}.",
+    "pdf_not_in_project": "PDF not in project sheet set: {{name}}"
+  },
+  "cloud": {
+    "load_error": "Couldn't read this project's saved takeoff from Drive — reload to retry. ({{detail}})"
+  },
+  "sweep": {
+    "ratio_not_finite": "Size ratio must be a positive, finite number (seed-sheet px per target-sheet px) — got {{k}}.",
+    "ratio_out_of_band": "Size ratio {{k}} is outside the sane band ({{min}} – {{max}}) — that is a larger disagreement than any real sheet pair, so the likelier cause is a wrong scale on one of the two sheets. Check set_scale on both before sweeping across them.",
+    "ratio_all_subpixel": "At a {{k}} size ratio every segment of this symbol falls below {{min}} px on the target sheet — there is no linework left to match. Marquee an instance drawn on the target sheet itself.",
+    "no_segments_in_rect": "No vector segments sit fully inside the seed rect — marquee tightly around one whole symbol instance (segments crossing the rect edge don't count as the symbol).",
+    "too_many_segments": "The seed rect holds {{count}} segments — that is a region, not one symbol instance. Marquee a single symbol.",
+    "exclude_center_scale": "excludeCenter is a point on the SEED sheet and means nothing on a target sheet at a different scale — omit it when sweeping across sheets (there is no seed there to shadow).",
+    "symbol_too_small": "At a {{scale}} size ratio this symbol is {{footprint}} px across on the target sheet — inside the {{tol}} px matching tolerance, where every placement scores alike and a \"match\" means nothing. The seed is drawn too large relative to the target for its linework to survive the trip: marquee an instance on the target sheet itself, or count the tag text with sweep_schedule_row."
   }
 }

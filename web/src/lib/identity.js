@@ -5,6 +5,11 @@
 // live in IndexedDB), but the logo is still capped.
 const KEY = "opentakeoff_company";
 
+import i18n from "../i18n/index.js";
+import { markDanger } from "./danger.js";
+
+const _t = (key, opts) => i18n.t(key, { ns: "lib", ...opts });
+
 // dataURL length cap (~145KB binary once base64 overhead comes off)
 export const LOGO_LIMIT = 200_000;
 
@@ -163,7 +168,7 @@ export async function normalizeLogoToPng(file) {
   } finally {
     close();
   }
-  throw new Error("Logo too large — use a simpler image");
+  throw new Error(markDanger(_t("id.logo_too_large")));
 }
 
 // createImageBitmap first (fast path), <img> + objectURL fallback — some
@@ -188,6 +193,6 @@ async function decodeImage(file) {
              close: () => URL.revokeObjectURL(url) };
   } catch {
     URL.revokeObjectURL(url);
-    throw new Error("Couldn't read that image — PNG, JPEG, WebP or SVG please");
+    throw new Error(markDanger(_t("id.read_image_error")));
   }
 }

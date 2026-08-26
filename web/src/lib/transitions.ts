@@ -36,6 +36,9 @@
 // (geometry.js's distToSeg returns distance only; a run needs the closest POINT
 // too — see the perpendicularity rule below — so the projection is done here.)
 
+import i18n from "../i18n/index.js";
+const _t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: "lib", ...opts });
+
 export type Pt = [number, number];
 
 export type RunKind = "butt" | "wall";
@@ -386,18 +389,18 @@ export function transitionRefusal(gate: {
   unscaled?: string[];
 }): string | null {
   const { activeTag, a, b, sheets, unscaled = [] } = gate;
-  if (!a.tag || !b.tag) return "Pick the two finishes that meet.";
-  if (a.tag === b.tag) return "Pick two DIFFERENT finishes — a tag does not transition to itself.";
+  if (!a.tag || !b.tag) return _t("transition.pick_finishes");
+  if (a.tag === b.tag) return _t("transition.pick_different");
   if (activeTag === a.tag || activeTag === b.tag) {
-    return `The transition has to land on its own condition (e.g. T-1) — committing onto ${activeTag} would add its LF to one of the finishes it separates.`;
+    return _t("transition.own_condition", { tag: activeTag });
   }
   for (const side of [a, b]) {
-    if (!side.shapes.length) return `${side.tag} has no rooms on the open sheets — measure them first (One-Click or Area).`;
+    if (!side.shapes.length) return _t("transition.no_rooms", { tag: side.tag });
   }
   if (unscaled.length) {
-    return `${unscaled.join(", ")} ${unscaled.length === 1 ? "has" : "have"} no scale — a transition is a real length, so calibrate before deriving.`;
+    return _t("transition.no_scale", { list: unscaled.join(", "), verb: unscaled.length === 1 ? "has" : "have" });
   }
   const shared = [...sheets.keys()].filter((k) => a.shapes.some((s) => s.sheet_id === k) && b.shapes.some((s) => s.sheet_id === k));
-  if (!shared.length) return `${a.tag} and ${b.tag} have no rooms on the same open sheet — nothing can meet.`;
+  if (!shared.length) return _t("transition.no_shared_sheet", { a: a.tag, b: b.tag });
   return null;
 }

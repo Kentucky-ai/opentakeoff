@@ -292,7 +292,7 @@ export function partitionRowsBy(rows, columnDef, attrsByCond) {
   for (const v of [...byValue.keys()].sort()) {
     groups.push({ value: v, label: v, rows: byValue.get(v) });
   }
-  if (nullRows.length) groups.push({ value: null, label: "Unassigned", rows: nullRows });
+  if (nullRows.length) groups.push({ value: null, label: _t("column.unassigned"), rows: nullRows });
   return groups;
 }
 

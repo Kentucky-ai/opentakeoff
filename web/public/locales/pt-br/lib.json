@@ -48,7 +48,8 @@
     "subfloor_type": "Tipo de Contrapiso",
     "roll_order_lf": "Pedido de Rolo LF",
     "rolls": "Rolos",
-    "seam_lf": "Costura LF"
+    "seam_lf": "Costura LF",
+    "unassigned": "Não atribuído"
   },
   "csv_header": {
     "finish": "Acabamento",
@@ -212,5 +213,105 @@
     "d_ordered": "d {{unit}} pedido",
     "ordered_name": "{{unit}} pedido ({{name}})",
     "d_qty": "d Qtd"
+  },
+  "store": {
+    "stale_tab": "OpenTakeoff foi atualizado em outra aba — recarregue esta aba para continuar.",
+    "blocked_error": "OpenTakeoff está aberto em outra aba com dados mais antigos — feche ou recarregue.",
+    "version_error": "Esta aba está usando uma versão mais antiga do OpenTakeoff — recarregue para atualizar.",
+    "quota_error": "Espaço de armazenamento insuficiente para este snapshot — exclua snapshots antigos ou PDFs não utilizados e tente novamente.",
+    "pdf_not_found": "PDF não encontrado no armazenamento local: {{name}}",
+    "revision_not_found": "Revisão {{rev}} de {{name}} não encontrada no armazenamento local"
+  },
+  "transition": {
+    "pick_finishes": "Selecione os dois acabamentos que se encontram.",
+    "pick_different": "Selecione dois acabamentos DIFERENTES — uma etiqueta não transiciona para si mesma.",
+    "own_condition": "A transição deve cair em sua própria condição (ex. T-1) — comprometer em {{tag}} adicionaria seu LF a um dos acabamentos que ela separa.",
+    "no_rooms": "{{tag}} não tem salas nas plantas abertas — meça-as primeiro (One-Click ou Área).",
+    "no_scale": "{{list}} {{verb}} sem escala — uma transição é um comprimento real, então calibre antes de derivar.",
+    "no_shared_sheet": "{{a}} e {{b}} não têm salas na mesma planta aberta — nada pode se encontrar."
+  },
+  "detected": {
+    "no_tags_on_sheet": "Nenhuma etiqueta de número de sala nesta planta — a detecção não tem nada para semear.",
+    "all_rejected": "Nenhuma etiqueta de número de sala nesta planta — todas as {{count}} numerais correspondentes{{suffix}} foram rejeitadas como outra coisa.",
+    "none_detected_found": "Nenhuma sala detectada: {{count}} etiqueta{{suffix}} de sala encontrada, {{detail}}.",
+    "none_produced": "nenhuma produziu uma região utilizável",
+    "none_tried": "nenhuma foi tentada",
+    "some_of_tried": "{{n}} de {{tried}} etiqueta{{suffix}} de sala produziu uma sala{{extra}}.",
+    "extra_on_sheet": " ({{count}} na planta)",
+    "stopped_early_untried": "Parou mais cedo — {{count}} etiqueta{{suffix}} de sala {{verb}} nunca tentada.",
+    "stopped_early": "Parou mais cedo.",
+    "other_numerals": "{{count}} outro{{suffix}} numeral{{suffix}} rejeitado como não sendo etiqueta de sala (áreas impressas, dimensões, números de desenho, texto do bloco de título).",
+    "tag_nothing": "{{count}} etiqueta{{suffix}} não produziu nada — o preenchimento vazou pela sala ou caiu em traçado denso.",
+    "tiny_proposal_it": "{{count}} proposta{{suffix}} abaixo de {{sf}} SF — geralmente a caixa desenhada ao redor de uma etiqueta de sala, não uma sala. Rejeite-a.",
+    "tiny_proposal_them": "{{count}} proposta{{suffix}} abaixo de {{sf}} SF — geralmente a caixa desenhada ao redor de uma etiqueta de sala, não uma sala. Rejeite-as.",
+    "no_tag_caveat": "Apenas salas com etiqueta de número de sala são encontradas — corredores, elevados e vestíbulos geralmente não carregam e NÃO são detectados. Use One-Click neles."
+  },
+  "voice": {
+    "condition_active": "{{tag}} ativo.",
+    "condition_created_active": "Criado {{tag}} — ativo.",
+    "condition_active_waste": "{{tag}} ativo — perda {{pct}}%.",
+    "condition_created_active_waste": "Criado {{tag}} — ativo, perda {{pct}}%.",
+    "waste_on": "Perda {{pct}}% em {{tag}}.",
+    "label_active": "Etiqueta {{label}} ativa.",
+    "label_added": "Etiqueta {{label}} adicionada — ativa.",
+    "label_cleared": "Etiqueta limpa.",
+    "note_added": "Nota adicionada — veja Marcações."
+  },
+  "stitch": {
+    "no_sheets": "Nenhuma planta para alinhar.",
+    "same_sheet": "Ambos os cliques caíram na mesma planta — clique no ponto correspondente na outra planta."
+  },
+  "rule": {
+    "exclude_label": "Excluir regiões fechadas abaixo de {{max}} SF em salas {{tag}}"
+  },
+  "brand": {
+    "ot_credit": "Medido com OpenTakeoff",
+    "marked_set": "Conjunto Marcado",
+    "ot_marked_set": "OpenTakeoff · Conjunto Marcado"
+  },
+  "ai": {
+    "not_configured": "IA não configurada — abra as configurações de IA primeiro.",
+    "timeout_30s": "O endpoint levou mais de 30 segundos — verifique se o modelo está carregado.",
+    "cors_error": "Não foi possível acessar o endpoint — verifique a URL e se ela permite requisições do navegador (CORS).",
+    "http_error": "Falha na requisição de IA (HTTP {{status}}).",
+    "no_text": "O endpoint respondeu, mas não com texto.",
+    "timeout_2min": "O endpoint levou mais de 2 minutos — verifique se o modelo está carregado.",
+    "no_json": "O endpoint respondeu, mas não com JSON."
+  },
+  "id": {
+    "logo_too_large": "Logo muito grande — use uma imagem mais simples",
+    "read_image_error": "Não foi possível ler essa imagem — PNG, JPEG, WebP ou SVG por favor"
+  },
+  "import": {
+    "invalid_json": "Não foi possível importar o takeoff: esse arquivo não é JSON válido.",
+    "wrong_schema": "Não foi possível importar o takeoff: não é uma exportação de takeoff (esperado esquema \"{{schema}}\" — o arquivo export_takeoff ou o app escreve)."
+  },
+  "contribute": {
+    "no_endpoint": "Nenhum endpoint de contribuição está configurado para esta versão.",
+    "http_error": "Falha na contribuição (HTTP {{status}})."
+  },
+  "google": {
+    "not_configured": "Login com Google não está configurado para esta versão.",
+    "gsi_unavailable": "Google Identity Services carregado, mas a API oauth2 está indisponível.",
+    "gsi_load_failed": "Falha ao carregar Google Identity Services.",
+    "sign_in_cancelled": "Login com Google foi cancelado.",
+    "silent_timeout": "Login silencioso com Google expirou",
+    "profile_error": "Falha ao carregar perfil do Google (HTTP {{status}})."
+  },
+  "drive": {
+    "http_error": "Drive {{what}} falhou (HTTP {{status}}){{detail}}.",
+    "pdf_not_in_project": "PDF não está no conjunto de plantas do projeto: {{name}}"
+  },
+  "cloud": {
+    "load_error": "Não foi possível ler o takeoff salvo deste projeto no Drive — recarregue para tentar novamente. ({{detail}})"
+  },
+  "sweep": {
+    "ratio_not_finite": "A proporção de tamanho deve ser um número positivo e finito (px da planta semente por px da planta alvo) — obtido {{k}}.",
+    "ratio_out_of_band": "A proporção de tamanho {{k}} está fora da faixa aceitável ({{min}} – {{max}}) — isso é uma divergência maior do que qualquer par real de plantas, então a causa mais provável é uma escala errada em uma das duas plantas. Verifique set_scale em ambas antes de varrer entre elas.",
+    "ratio_all_subpixel": "Em uma proporção de tamanho {{k}}, todos os segmentos deste símbolo ficam abaixo de {{min}} px na planta alvo — não há traçado restante para corresponder. Selecionone uma instância desenhada na própria planta alvo.",
+    "no_segments_in_rect": "Nenhum segmento vetorial está totalmente dentro do retângulo semente — selecione apertadamente ao redor de uma única instância do símbolo (segmentos cruzando a borda do retângulo não contam como o símbolo).",
+    "too_many_segments": "O retângulo semente contém {{count}} segmentos — isso é uma região, não uma instância de símbolo. Selecione um único símbolo.",
+    "exclude_center_scale": "excludeCenter é um ponto na planta SEMENTE e não significa nada em uma planta alvo em escala diferente — omita ao varrer entre plantas (não há semente lá para suprimir).",
+    "symbol_too_small": "Em uma proporção de tamanho {{scale}}, este símbolo tem {{footprint}} px de largura na planta alvo — dentro da tolerância de correspondência de {{tol}} px, onde todas as posições pontuam igual e uma \"correspondência\" não significa nada. O símbolo é desenhado grande demais em relação à planta alvo para que seu traçado sobreviva: selecione uma instância na própria planta alvo, ou conte o texto da etiqueta com sweep_schedule_row."
   }
 }

@@ -13,6 +13,11 @@ const FILES_URL = "https://www.googleapis.com/drive/v3/files";
 const UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
 
+import i18n from "../../i18n/index.js";
+import { markDanger } from "../danger.js";
+
+const _t = (key, opts) => i18n.t(key, { ns: "lib", ...opts });
+
 /**
  * @param {object} opts
  * @param {() => Promise<string>} opts.getToken  async access-token source
@@ -39,7 +44,7 @@ export function createDrive({ getToken, fetch = globalThis.fetch }) {
     if (res.ok) return res;
     let detail = "";
     try { detail = (await res.text()) || ""; } catch { /* body may be unreadable */ }
-    throw new Error(`Drive ${what} failed (HTTP ${res.status})${detail ? `: ${detail}` : ""}.`);
+    throw new Error(markDanger(_t("drive.http_error", { what, status: res.status, detail: detail ? `: ${detail}` : "" })));
   }
 
   async function listChildren(folderId, { mimeType } = {}) {
