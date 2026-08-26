@@ -533,5 +533,8 @@
   "hatch.penny": "Moeda",
   "hatch.octagondot": "Octágono & ponto",
   "hatch.fleur": "Flor-de-lis",
-  "hatch.concrete": "Concreto / granulado"
+  "hatch.concrete": "Concreto / granulado",
+
+  "takeoffs.family_fallback": "a família",
+  "takeoffs.original_fallback": "o original"
 }

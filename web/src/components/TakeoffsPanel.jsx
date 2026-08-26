@@ -173,12 +173,12 @@ function CoveragePresetSelect({ material: m, onPick }) {
   const presets = (m.basis || "area") === "area" ? getMaterialPresets()[materialKind(m)] : undefined;
   if (!presets) return null;
   return (
-    <select name="coverage-preset" value={presets.some((t) => t.label === m.note) ? m.note : ""}
-      onChange={(e) => { const t = presets.find((x) => x.label === e.target.value); if (t) onPick({ note: t.label, per: t.per }); }}
+    <select name="coverage-preset" value={presets.some((pr) => pr.label === m.note) ? m.note : ""}
+      onChange={(e) => { const pr = presets.find((x) => x.label === e.target.value); if (pr) onPick({ note: pr.label, per: pr.per }); }}
       title={t('takeoffs.coverage_preset_title')}
       style={{ ...ip, background: "var(--paper-bright)" }}>
       <option value="">{t('takeoffs.coverage_preset_option')}</option>
-      {presets.map((t) => <option key={t.label} value={t.label}>{t.label} · {t.per} SF/{m.unit || "unit"}</option>)}
+      {presets.map((pr) => <option key={pr.label} value={pr.label}>{pr.label} · {pr.per} SF/{m.unit || t('takeoffs.mat_unit_placeholder')}</option>)}
     </select>
   );
 }
@@ -219,23 +219,25 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
             {/* family state: this row still follows the original, or it is this condition's own */}
             {twin && (
               <span title={m.inherited
-                ? `Following ${parentTag || "the family"} — edit any field here and this row stops following (the others keep following)`
-                : `This row is this condition's own${m.origin_id ? ` — it no longer follows ${parentTag || "the family"}` : ""}`}
+                ? t('takeoffs.mat_follow_title', { tag: parentTag || t('takeoffs.family_fallback') })
+                : m.origin_id
+                  ? t('takeoffs.mat_own_detached_title', { tag: parentTag || t('takeoffs.family_fallback') })
+                  : t('takeoffs.mat_own_title')}
                 style={{ fontSize: 10, lineHeight: 1, cursor: "default", padding: "2px 3px",
                   color: m.inherited ? "var(--ink-faint)" : "var(--cobalt)",
                   border: `1px solid ${m.inherited ? "var(--ink-faint)" : "var(--cobalt)"}` }}>{m.inherited ? "↳" : "✎"}</span>
             )}
             {twin && !m.inherited && m.origin_id && onFollowFamilyRow && (
-              <button onClick={() => onFollowFamilyRow(m.id)} title={`Follow the family again — take this row's values back from ${parentTag || "the original"}`}
-                style={{ padding: "1px 4px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 10, lineHeight: 1.4 }}>↺ follow</button>
+              <button onClick={() => onFollowFamilyRow(m.id)} title={t('takeoffs.mat_follow_button_title', { tag: parentTag || t('takeoffs.original_fallback') })}
+                style={{ padding: "1px 4px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 10, lineHeight: 1.4 }}>{t('takeoffs.mat_follow_button')}</button>
             )}
-            {lm && <span title={`Linked to “${lm.name}” in the material library — amber fields differ from the library values`} style={{ color: "var(--ink-muted)", fontSize: 11, cursor: "default" }}>⛓</span>}
+            {lm && <span title={t('takeoffs.mat_linked_title', { name: lm.name })} style={{ color: "var(--ink-muted)", fontSize: 11, cursor: "default" }}>⛓</span>}
             <input name="material-name" value={m.name} onChange={(e) => onUpdate(m.id, { name: e.target.value })} placeholder={t('takeoffs.mat_name_placeholder')} style={{ ...ip, width: 160, ...(ov("name") ? { border: OV } : {}) }} />
             {ov("name") && rv(m, "name")}
             <span style={{ color: "var(--ink-muted)" }}>1</span>
             <input name="material-unit" value={m.unit} onChange={(e) => onUpdate(m.id, { unit: e.target.value })} placeholder={t('takeoffs.mat_unit_placeholder')} style={{ ...ip, width: 60, ...(ov("unit") ? { border: OV } : {}) }} />
             {ov("unit") && rv(m, "unit")}
-            <span style={{ color: "var(--ink-muted)" }}>per</span>
+            <span style={{ color: "var(--ink-muted)" }}>{t('takeoffs.mat_per')}</span>
             <input name="material-per" type="number" min="0" step="any" value={m.per || ""} onChange={(e) => onUpdate(m.id, { per: Math.max(0, parseFloat(e.target.value) || 0) })} placeholder="0" style={{ ...ip, width: 66, ...(ov("per") ? { border: OV } : {}) }} />
             {ov("per") && rv(m, "per")}
             <select name="material-basis" value={m.basis || "area"} onChange={(e) => onUpdate(m.id, { basis: e.target.value })} style={{ ...ip, background: "var(--paper-bright)", ...(ov("basis") ? { border: OV } : {}) }}>
@@ -264,15 +266,15 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
             {showsGroutCalc(m) && (
               <div style={{ flexBasis: "100%", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", paddingLeft: 14, color: "var(--ink-muted)", fontSize: 12 }}>
                 <span>{t('takeoffs.grout_tile')}</span>
-                {gi("tileL", "Tile length (in)")}
+                {gi("tileL", t('takeoffs.grout_tile_l_title'))}
                 <span>×</span>
-                {gi("tileW", "Tile width (in)")}
+                {gi("tileW", t('takeoffs.grout_tile_w_title'))}
                 <span>{t('takeoffs.grout_tile_thick')}</span>
-                {gi("tileT", "Tile thickness (in)")}
+                {gi("tileT", t('takeoffs.grout_tile_t_title'))}
                 <span>{t('takeoffs.grout_joint')}</span>
-                {gi("joint", "Joint width (in) — 1/32″ to 1/2″", { min: 0.03125, max: 0.5, width: 62 })}
+                {gi("joint", t('takeoffs.grout_joint_title'), { min: 0.03125, max: 0.5, width: 62 })}
                 <span>{t('takeoffs.grout_bag')}</span>
-                {gi("bagLbs", "Bag size (lbs)")}
+                {gi("bagLbs", t('takeoffs.grout_bag_title'))}
                 <span>lb</span>
                 {ov("grout") && rv(m, "grout")}
               </div>
@@ -300,11 +302,11 @@ function MaterialsEditor({ materials, onAdd, onUpdate, onRemove, library, libByI
             return (
               <div key={k} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--ink-muted)" }}>
                 <span style={{ color: "var(--c-danger)" }}>✕</span>
-                <span style={{ textDecoration: "line-through" }}>{src?.name || "(removed material)"}</span>
-                <span style={{ fontSize: 10 }}>removed here</span>
+                <span style={{ textDecoration: "line-through" }}>{src?.name || t('takeoffs.mat_dropped_removed')}</span>
+                <span style={{ fontSize: 10 }}>{t('takeoffs.mat_dropped_label')}</span>
                 {src && onRestoreDroppedRow && (
-                  <button onClick={() => onRestoreDroppedRow(k)} title={`Put it back — takes the row from ${parentTag || "the family"} again`}
-                    style={{ padding: "1px 4px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 10, lineHeight: 1.4 }}>↺ restore</button>
+                  <button onClick={() => onRestoreDroppedRow(k)} title={t('takeoffs.mat_restore_title', { tag: parentTag || t('takeoffs.family_fallback') })}
+                    style={{ padding: "1px 4px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 10, lineHeight: 1.4 }}>{t('takeoffs.mat_restore')}</button>
                 )}
               </div>
             );

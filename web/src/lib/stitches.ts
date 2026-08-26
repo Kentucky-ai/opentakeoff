@@ -59,7 +59,7 @@ export function sanitizeStitches(raw: unknown, maxMembers: number): Stitch[] {
     seen.add(s.id);
     out.push({
       id: s.id,
-      name: typeof s.name === "string" && s.name.trim() ? s.name : "Stitched sheets",
+      name: typeof s.name === "string" && s.name.trim() ? s.name : "",
       members: normalizeMembers(members),
       ...(typeof s.created_at === "string" ? { created_at: s.created_at } : {}),
     });

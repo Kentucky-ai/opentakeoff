@@ -60,3 +60,33 @@ test("all five namespaces load resources for en and pt-br", async () => {
     }
   }
 });
+
+test("new i18n keys for canvas seed/transition and panels fallback exist in both locales", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  const canvasKeys = [
+    "status.oneclick_leak_seed",
+    "status.oneclick_dense_seed",
+    "status.oneclick_scan_leak_seed",
+    "status.oneclick_scan_dense_seed",
+    "transitions.pick_target",
+    "transitions.pick_finishes",
+  ];
+
+  const panelsKeys = [
+    "takeoffs.family_fallback",
+    "takeoffs.original_fallback",
+  ];
+
+  for (const lng of ["en", "pt-br"]) {
+    const cb = i18n.getResourceBundle(lng, "canvas");
+    for (const key of canvasKeys) {
+      assert.ok(cb && cb[key], `canvas key "${key}" must exist for "${lng}"`);
+    }
+
+    const pb = i18n.getResourceBundle(lng, "panels");
+    for (const key of panelsKeys) {
+      assert.ok(pb && pb[key], `panels key "${key}" must exist for "${lng}"`);
+    }
+  }
+});

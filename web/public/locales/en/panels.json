@@ -533,5 +533,8 @@
   "hatch.penny": "Penny round",
   "hatch.octagondot": "Octagon & dot",
   "hatch.fleur": "Fleur-de-lis",
-  "hatch.concrete": "Concrete / stipple"
+  "hatch.concrete": "Concrete / stipple",
+
+  "takeoffs.family_fallback": "the family",
+  "takeoffs.original_fallback": "the original"
 }

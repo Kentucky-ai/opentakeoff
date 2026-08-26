@@ -838,7 +838,7 @@ export default function TakeoffCanvas() {
     if (!sheetGroup.length && key === sheetKey) { const nb = next[Math.min(Math.max(i, 0), next.length - 1)]; if (nb) goToSheet(nb); }
   }
   const tabLabel = (k) => {
-    if (isStitchKey(k)) return stitchById[k]?.name || "Stitched sheets";
+    if (isStitchKey(k)) return stitchById[k]?.name || t('status.stitched_sheets');
     const lvl = sheetLevels[k] ? `${sheetLevels[k]} · ` : "";   // assigned floor/level rides every tab label
     if (galleryLabels[k]) return lvl + galleryLabels[k];
     const t = parseSheetKey(k);
@@ -3677,8 +3677,8 @@ export default function TakeoffCanvas() {
         if (f.status === "ok") return settleRegion(f, tp, local, negative, false, direct);
         if (!rasterEligible) {
           return say(f.status === "leak"
-            ? "That space isn't enclosed on the plan linework — the fill spilled. Click a more enclosed spot, or trace it with Area (A)."
-            : "Landed in dense linework (hatching/text). Zoom in and click an open spot, or trace it with Area (A).");
+            ? t('status.oneclick_leak')
+            : t('status.oneclick_dense'));
         }
       }
     }
@@ -3715,8 +3715,8 @@ export default function TakeoffCanvas() {
     const f = floodRegionSealed(rmo, local[0], local[1], undefined, sealRadiiFor(rmo.ws / upp), doorWedgeCapPx(rmo.ws / upp), minPassRadiusFor(rmo.ws / upp));
     if (f.status !== "ok") {
       return say(f.status === "leak"
-        ? "That space isn't enclosed on the scan — the fill escaped through a gap (faded line or open doorway). Click a more enclosed spot, or trace it with Area (A)."
-        : "Landed on dense scan ink (text or hatching). Zoom in and click an open spot, or trace it with Area (A).");
+        ? t('status.oneclick_scan_leak')
+        : t('status.oneclick_scan_dense'));
     }
     return settleRegion(f, tp, local, negative, true, direct);
   }
@@ -4074,7 +4074,7 @@ export default function TakeoffCanvas() {
         const st = stitchById[key];
         if (!st) return null;
         return {
-          key, label: st.name || "Stitched sheets",
+          key, label: st.name || t('status.stitched_sheets'),
           stitch: { members: st.members.map((m) => ({ key: m.key, ...parseSheetKey(m.key), label: tabLabel(m.key), dx: m.dx, dy: m.dy })) },
         };
       }).filter(Boolean);
@@ -4631,8 +4631,8 @@ export default function TakeoffCanvas() {
         if (r.status === "ok") f = r;
         else if (!rasterEligible) {
           return { error: r.status === "leak"
-            ? "That space isn't enclosed on the plan linework — the fill spilled. Seed a more enclosed spot."
-            : "Landed in dense linework (hatching/text). Seed an open spot inside the room." };
+            ? t('status.oneclick_leak_seed')
+            : t('status.oneclick_dense_seed') };
         }
       }
     }
@@ -4642,8 +4642,8 @@ export default function TakeoffCanvas() {
       const r = floodRegionSealed(rmo, local[0], local[1], undefined, sealRadiiFor(rmo.ws / upp), doorWedgeCapPx(rmo.ws / upp), minPassRadiusFor(rmo.ws / upp));
       if (r.status !== "ok") {
         return { error: r.status === "leak"
-          ? "That space isn't enclosed on the scan — the fill escaped through a gap (faded line or open doorway). Seed a more enclosed spot."
-          : "Landed on dense scan ink (text or hatching). Seed an open spot inside the room." };
+          ? t('status.oneclick_scan_leak_seed')
+          : t('status.oneclick_scan_dense_seed') };
       }
       f = r; raster = true;
     }
@@ -5100,9 +5100,9 @@ export default function TakeoffCanvas() {
 
   function deriveTransitionsOnto(idA, idB) {
     const target = condById[activeCond];
-    if (!target) return { error: "Pick the condition the transitions land on first." };
+    if (!target) return { error: t('transitions.pick_target') };
     const ca = condById[idA], cb = condById[idB];
-    if (!ca || !cb) return { error: "Pick the two finishes that meet." };
+    if (!ca || !cb) return { error: t('transitions.pick_finishes') };
     const roomsOf = (id) => visibleShapes
       .filter((s) => s.condition_id === id && s.measure_role === "floor_area" && (s.verts_norm || []).length >= 3)
       .map((s) => ({ id: s.id, sheet_id: s.sheet_id, verts_norm: s.verts_norm }));
