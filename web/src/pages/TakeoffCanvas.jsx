@@ -6683,22 +6683,38 @@ export default function TakeoffCanvas() {
     } catch { setCommitMsg("Couldn't capture that region."); return; }
     const { at, w, aspect } = captureRectToImageGeom({ x0, y0, x1, y1 }, panel.img.w, panel.img.h);
     if (!(w > 0)) return;
+    // FROZEN origin label. sheetBaseLabel resolves a detected sheet number only for
+    // the ACTIVE file (or an already gallery-scanned sheet); on the non-active panel
+    // of a multi-FILE side-by-side group it would fall back to the file base. Since
+    // that panel is rendered here anyway, scan its title block NOW (the same
+    // extractSheetNumber the active-file scan at ~:2056 uses) so the frozen number is
+    // real — but only when it isn't already known, and only as a best-effort upgrade:
+    // a null result (unusual title block) keeps the file-base fallback, never worse.
+    let srcLabel = sheetBaseLabel(panel.key);
+    const pk = parseSheetKey(panel.key);
+    const labelKnown = isStitchKey(panel.key) || !!galleryLabels[panel.key] || (pk.file === active && !!pageLabels[pk.page]);
+    if (!labelKnown) {
+      try {
+        const lbl = extractSheetNumber(await pageObj.getTextContent(), pageObj.getViewport({ scale: RENDER_SCALE }));
+        if (lbl) srcLabel = lbl;
+      } catch { /* title block unreadable — keep the file-base fallback */ }
+    }
     // Capture-only provenance fields (uploads have no source, so addImageFromFile
     // omits them): src_sheet_id is the ORIGIN sheet (sheet_id tracks where the
     // image currently lives and moves on a cross-sheet place — see imageProvenance
     // below). src_rect reuses the ALREADY-CLAMPED x0..y1 above, NOT the raw marquee
     // corners a/b (they carry xOffset and are unclamped) and NOT bw/bh (the 1600px
     // capture raster size) — normalizing by those would silently drift the traced
-    // region off the real source box. src_label FREEZES the origin sheet's display
-    // name at capture time (panel.key is the active sheet here, so sheetBaseLabel
-    // resolves the real "AF101"): both the canvas caption and the marked-set PDF
-    // read this stored string, so they can never diverge on runtime label state
-    // (which sheetBaseLabel derives only for the currently-active file).
+    // region off the real source box. src_label is the FROZEN origin sheet name,
+    // resolved just above (sheetBaseLabel, upgraded via a title-block scan when the
+    // number isn't cached for a non-active side-by-side file): both the canvas caption
+    // and the marked-set PDF read this stored string, so they can never diverge on
+    // runtime label state (which sheetBaseLabel derives only for the active file).
     addImageMarkup({
       at, w, aspect, src, source: "capture",
       src_sheet_id: panel.key,
       src_rect: [[x0 / panel.img.w, y0 / panel.img.h], [x1 / panel.img.w, y1 / panel.img.h]],
-      src_label: sheetBaseLabel(panel.key),
+      src_label: srcLabel,
       source_label: false,
     }, panel.key);
   }
