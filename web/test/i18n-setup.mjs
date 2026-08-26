@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import i18n from "../src/i18n/index.js";
 
-const root = resolve(process.cwd(), "public", "locales");
+const root = resolve(import.meta.dirname, "..", "public", "locales");
 for (const lng of ["en", "pt-br"]) {
   for (const ns of ["canvas", "report", "panels", "guide", "lib"]) {
     const raw = await readFile(resolve(root, lng, `${ns}.json`), "utf8");
