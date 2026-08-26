@@ -195,7 +195,6 @@
   "status.condition_added": "{{tag}} adicionado — seus materiais seguem {{src}} até você alterá-los aqui.",
   "status.condition_split": "{{tag}} não mais segue {{parent}}.",
   "status.its_family": "sua família",
-  "status.its_family": "sua família",
   "status.accepted_proposals": "{{count}} forma(s) proposta(s) aceita(s) — lápis agora é tinta.",
   "status.accepted_agent": "{{count}} proposta(s) de agente aceita(s).",
   "status.accepted_agent_skip": "{{count}} ignorada(s) — abra a folha delas (com escala definida) para aceitar.",

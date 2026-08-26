@@ -219,6 +219,7 @@
   "plan.read_error_desc": "Nenhum dos arquivos abertos pôde ser renderizado — tente abrir novamente.",
   "plan.reading_plan_set": "Lendo o conjunto de planilhas…",
   "plan.stitched_surfaces": "Superfícies costuradas",
+  "plan.stitch_default_name": "Folhas costuradas",
   "plan.stitch_open_title": "Abrir {{name}} — {{count}} pranchas como uma superfície",
   "plan.stitch_delete_title": "Excluir esta costura",
   "plan.plan_selected": "{{count}} selecionado(s)",

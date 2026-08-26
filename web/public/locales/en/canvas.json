@@ -195,7 +195,6 @@
   "status.condition_added": "Added {{tag}} — its materials follow {{src}} until you change them here.",
   "status.condition_split": "{{tag}} no longer follows {{parent}}.",
   "status.its_family": "its family",
-  "status.its_family": "its family",
   "status.accepted_proposals": "Accepted {{count}} proposed shape(s) — pencil is now ink.",
   "status.accepted_agent": "Accepted {{count}} agent proposal(s).",
   "status.accepted_agent_skip": "{{count}} skipped — open their sheet (with its scale set) to accept.",
