@@ -265,6 +265,7 @@
   "revisions.delete_confirm": "Realmente excluir?",
   "revisions.delete": "Excluir",
   "revisions.not_found": "Revisão não encontrada — pode ter sido excluída em outra aba.",
+  "revisions.auto_backup_label": "Backup automático antes de restaurar — {{date}}",
   "revisions.compare_heading": "Comparar",
   "revisions.baseline_placeholder": "linha de base…",
   "revisions.current_takeoff": "Medição atual",
@@ -456,6 +457,8 @@
   "roll.covers": "cobertura",
   "roll.lane": "faixa",
   "roll.roll": "rolo",
+  "roll.roll_number": "rolo {{num}}",
+  "roll.cut_title": "Corte {{n}}{{label}}: {{length}} × {{width}}{{oversize}}",
 
   "takeoffs.cond_rename_title": "Renomear esta condição / tag de acabamento",
   "takeoffs.cond_multiplier_title": "Multiplicar esta condição por N unidades idênticas (meça uma, ×N)",

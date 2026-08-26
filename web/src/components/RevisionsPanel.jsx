@@ -88,7 +88,7 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
     setBusy(true); setErr("");
     try {
       // bank the live takeoff first — restore must never be a one-way door
-      await store.saveSnapshot(`Auto-backup before restore — ${new Date().toLocaleString()}`, current);
+      await store.saveSnapshot(t('revisions.auto_backup_label', { date: new Date().toLocaleString() }), current);
       const rec = await store.getSnapshot(id);
       if (!rec) { setErr(t('revisions.not_found')); setBusy(false); setConfirmId(""); return; }
       onRestore(rec.payload || {});

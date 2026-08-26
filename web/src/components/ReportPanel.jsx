@@ -1144,8 +1144,8 @@ function ContributeModal({ conditions, shapes, scaleInfo = [], provenanceCounter
     try {
       await sendContribution(buildContribution({ conditions, shapes, scaleInfo, counters: provenanceCounters }), contributor.trim());
       setState("done"); setMsg(t('contribute.thanks'));
-    } catch (e) {
-      setState("error"); setMsg(e.message || String(e));
+    } catch {
+      setState("error"); setMsg(t('contribute.send_error'));
     }
   };
 

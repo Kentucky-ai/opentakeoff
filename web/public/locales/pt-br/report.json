@@ -200,7 +200,8 @@
     "cancel": "Cancelar",
     "sending": "Enviando…",
     "submit": "Contribuir",
-    "thanks": "Obrigado — seu takeoff agora ajuda a treinar o modelo aberto de pavimentação."
+    "thanks": "Obrigado — seu takeoff agora ajuda a treinar o modelo aberto de pavimentação.",
+    "send_error": "Falha na contribuição — verifique sua conexão e tente novamente."
   },
 
   "drive": {

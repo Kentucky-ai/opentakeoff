@@ -70,7 +70,7 @@ function RollDiagram({ ri, editable, onReorder }) {
         const y = pad + (k + 1) * ri.config.rollLengthFt * PXFT;
         return <g key={k}>
           <line x1={pad} y1={y} x2={pad + W} y2={y} stroke="var(--ink-muted)" strokeDasharray="5 4" />
-          <text x={pad + W + 4} y={y - 3} fontSize={9} fill="var(--ink-muted)" fontFamily="var(--f-mono)">roll {k + 2}</text>
+          <text x={pad + W + 4} y={y - 3} fontSize={9} fill="var(--ink-muted)" fontFamily="var(--f-mono)">{t('roll.roll_number', { num: k + 2 })}</text>
         </g>;
       })}
       {/* cuts — cutY across the width (screen x), cutX down the length (screen y) */}
@@ -84,7 +84,7 @@ function RollDiagram({ ri, editable, onReorder }) {
         return (
           <g key={s.id} onPointerDown={(e) => startDrag(e, s)}
             style={editable ? { cursor: "grab" } : undefined}>
-            <title>{`Cut ${n}${s.label ? ` — ${s.label}` : ""}: ${ftIn(ln)} × ${ftIn(lw)}${s.overRoll ? t('roll.oversize') : ""}`}</title>
+            <title>{t('roll.cut_title', { n, label: s.label ? ` — ${s.label}` : '', length: ftIn(ln), width: ftIn(lw), oversize: s.overRoll ? t('roll.oversize') : '' })}</title>
             <rect x={x} y={y} width={w} height={h}
               fill={rollFill + (isDrag ? "88" : "66")}
               stroke={s.overRoll ? "var(--c-danger)" : "var(--ink)"} strokeWidth={s.overRoll ? 1.6 : 0.8} />
