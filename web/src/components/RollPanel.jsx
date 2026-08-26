@@ -100,7 +100,7 @@ function RollDiagram({ ri, editable, onReorder }) {
         );
       })}
       {/* width dimension under the roll */}
-      <text x={pad + W / 2} y={pad + H + 11} fontSize={9} fill="var(--ink-muted)" textAnchor="middle" fontFamily="var(--f-mono)">{ftIn(ri.config.rollWidthFt)} roll</text>
+      <text x={pad + W / 2} y={pad + H + 11} fontSize={9} fill="var(--ink-muted)" textAnchor="middle" fontFamily="var(--f-mono)">{ftIn(ri.config.rollWidthFt)} {t('roll.roll')}</text>
     </svg>
   );
 }

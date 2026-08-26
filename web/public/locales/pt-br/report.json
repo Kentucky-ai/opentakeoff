@@ -145,6 +145,7 @@
     "client_address": "Endereço do cliente",
     "po_reference": "PO / referência",
     "date_label": "Data",
+    "date_placeholder": "ex. \"Lance 7/12\"",
     "done": "Concluído",
     "client": "Cliente",
     "reference": "Referência",
@@ -163,7 +164,10 @@
     "sheet": "Planta",
     "note": "Nota",
     "footnote": "Marcações são anotações, não medições — as quantidades acima não são afetadas.",
-    "by_sheet": "Por prancha"
+    "by_sheet": "Por prancha",
+    "markup_type_cloud": "NUVEM",
+    "markup_type_callout": "CHAMADA",
+    "markup_type_note": "NOTA"
   },
 
   "materials": {
@@ -181,7 +185,8 @@
     "perimeter": "Perim {{LU}} (ref) soma os perímetros dos traçados de piso — inclui aberturas de portas e paredes compartilhadas; apenas referência, nunca totalizado ou ajustado por perda.",
     "base": "Quantidades base medidas por planta — perda não aplicada.",
     "reconcile": " — subtotais por planta × multiplicador conciliam com a tabela de condições.",
-    "sheet_groups": " Os grupos mostram quantidades c/Perda (perda e ×N aplicados por planta); a seção Por planta abaixo mostra quantidades base medidas."
+    "sheet_groups": " Os grupos mostram quantidades c/Perda (perda e ×N aplicados por planta); a seção Por planta abaixo mostra quantidades base medidas.",
+    "by_sheet_base": "Linhas por planta mostram quantidades medidas (base); multiplicadores xN se aplicam no nível da condição"
   },
 
   "contribute": {

@@ -812,7 +812,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               {t('footnote.base')}
               {hasMultipliers(bySheet) && (
                 // the shared note + a screen-only reconcile clause (CSV/PDF omit it)
-                <> {BY_SHEET_BASE_NOTE}{t('footnote.reconcile')}</>
+                <> {t('footnote.by_sheet_base')}{t('footnote.reconcile')}</>
               )}
             </p>
           </div>
@@ -834,7 +834,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                   <tr key={m.id}>
                     <td style={{ ...td, textAlign: "left" }}>
                       <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, fontWeight: 700, letterSpacing: "0.08em", border: "1px solid var(--ink-faint)", padding: "1px 6px", color: "var(--ink-soft)" }}>
-                        {m.type === "cloud" ? "CLOUD" : m.type === "callout" ? "CALLOUT" : "NOTE"}
+                        {m.type === "cloud" ? t('revisions.markup_type_cloud') : m.type === "callout" ? t('revisions.markup_type_callout') : t('revisions.markup_type_note')}
                       </span>
                     </td>
                     <td style={{ ...td, textAlign: "left", fontFamily: "var(--f-mono)", fontSize: 11.5 }}>{sheetLabel ? sheetLabel(m.sheet_id) : m.sheet_id}</td>
@@ -1088,7 +1088,7 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
             </label>
             <label style={{ ...row, flex: 1 }}>
               <span className="field-label">{t('info.date_label')}</span>
-              <input name="client-date" autoComplete="off" value={clientInfo.date || ""} onChange={client("date")} placeholder={'e.g. "Bid 7/12"'}
+              <input name="client-date" autoComplete="off" value={clientInfo.date || ""} onChange={client("date")} placeholder={t('info.date_placeholder')}
                 className="field-input" style={{ marginTop: 4 }} />
             </label>
           </div>

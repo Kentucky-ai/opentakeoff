@@ -145,6 +145,7 @@
     "client_address": "Client address",
     "po_reference": "PO / reference",
     "date_label": "Date",
+    "date_placeholder": "e.g. \"Bid 7/12\"",
     "done": "Done",
     "client": "Client",
     "reference": "Reference",
@@ -163,7 +164,10 @@
     "sheet": "Sheet",
     "note": "Note",
     "footnote": "Markups are annotations, not measurements — quantities above are unaffected.",
-    "by_sheet": "By sheet"
+    "by_sheet": "By sheet",
+    "markup_type_cloud": "CLOUD",
+    "markup_type_callout": "CALLOUT",
+    "markup_type_note": "NOTE"
   },
 
   "materials": {
@@ -181,7 +185,8 @@
     "perimeter": "Perim {{LU}} (ref) sums floor-trace perimeters — includes door openings and shared walls; reference only, never totaled or waste-adjusted.",
     "base": "Base quantities as measured per sheet — waste not applied.",
     "reconcile": " — sheet subtotals × multiplier reconcile to the condition table.",
-    "sheet_groups": " Groups show w/Waste quantities (waste and ×N applied per sheet); the By-sheet section below shows base measured quantities."
+    "sheet_groups": " Groups show w/Waste quantities (waste and ×N applied per sheet); the By-sheet section below shows base measured quantities.",
+    "by_sheet_base": "By-sheet rows show measured (base) quantities; xN multipliers apply at condition level"
   },
 
   "contribute": {

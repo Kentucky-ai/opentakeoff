@@ -68,13 +68,13 @@ export type VoiceOutcome = { ok: boolean; message: string; reason?: RejectReason
 /** Every value MUST be registered via markDanger() so isDangerMsg classifies
  *  them as red + sticky regardless of language content. */
 export const REJECTION_MESSAGES: Record<RejectReason, string> = {
-  empty: markDanger("Couldn't hear a command."),
-  unrecognized: markDanger('Couldn\'t parse that — try "CPT-1", "waste 7", "label Phase 1", or "note …".'),
-  unknown_tag: markDanger("Couldn't match that tag — say a live condition tag, or a Div-9 code like CPT-2 to create one."),
-  bad_number: markDanger('Couldn\'t read the waste number — say 0–100, e.g. "waste 7" or "waste 7.5".'),
-  trailing_words: markDanger("Couldn't parse — extra words after the command. One command at a time."),
-  deixis_no_condition: markDanger('Couldn\'t trace — no active condition. Name one, like "CPT-1, this room".'),
-  deixis_target: markDanger('Couldn\'t aim that — "here"/"this room" places a takeoff, not a note or label clear.'),
+  empty: markDanger(_t("voice.reject_empty")),
+  unrecognized: markDanger(_t("voice.reject_unrecognized")),
+  unknown_tag: markDanger(_t("voice.reject_unknown_tag")),
+  bad_number: markDanger(_t("voice.reject_bad_number")),
+  trailing_words: markDanger(_t("voice.reject_trailing_words")),
+  deixis_no_condition: markDanger(_t("voice.reject_deixis_no_condition")),
+  deixis_target: markDanger(_t("voice.reject_deixis_target")),
 };
 
 const fail = (message: string): VoiceOutcome => ({ ok: false, message: markDanger(message) });
@@ -94,7 +94,7 @@ export function applyVoiceIntent(caps: VoiceCapabilities, intent: Intent): Voice
       if (intent.known) {
         // the parser returned the ctx literal, so exact finish_tag lookup holds
         cond = caps.getConditions().find((c) => c.finish_tag === intent.tag);
-        if (!cond) return fail(`Couldn't find condition ${intent.tag}.`);
+        if (!cond) return fail(_t("voice.fail_find_condition", { tag: intent.tag }));
       } else {
         // defensive dedup (agentTools create_condition precedent) before minting
         cond =
@@ -114,7 +114,7 @@ export function applyVoiceIntent(caps: VoiceCapabilities, intent: Intent): Voice
     }
     case "set_waste": {
       const id = caps.getActiveConditionId();
-      if (!id) return fail("Couldn't set waste — no active condition.");
+      if (!id) return fail(_t("voice.fail_set_waste_no_active"));
       caps.updateCondition(id, { waste_pct: intent.waste });
       const tag = caps.getConditions().find((c) => c.id === id)?.finish_tag ?? "active condition";
       return done(_t("voice.waste_on", { pct: intent.waste, tag }));
@@ -134,8 +134,8 @@ export function applyVoiceIntent(caps: VoiceCapabilities, intent: Intent): Voice
       // seed BEFORE arming: an off-sheet or stale aim rejects with ZERO calls —
       // a bad aim must not half-arm a condition (the mutation-safety bar)
       const seed = caps.getAimSeed();
-      if (!seed) return fail("Couldn't place that — aim went stale. Put the cursor on the room and say it again.");
-      if (!seed.sheetId) return fail("Couldn't place that — aim at a sheet.");
+      if (!seed) return fail(_t("voice.fail_aim_stale"));
+      if (!seed.sheetId) return fail(_t("voice.fail_aim_sheet"));
       // arm the condition — the aimed click's sequence: chip click (or mint),
       // then the waste/label riders, then the trace
       let condId: string;
@@ -144,7 +144,7 @@ export function applyVoiceIntent(caps: VoiceCapabilities, intent: Intent): Voice
         let cond: { id: string; finish_tag: string } | undefined;
         if (intent.known) {
           cond = caps.getConditions().find((c) => c.finish_tag === spoken);
-          if (!cond) return fail(`Couldn't find condition ${spoken}.`);
+          if (!cond) return fail(_t("voice.fail_find_condition", { tag: spoken }));
         } else {
           cond =
             caps.getConditions().find((c) => c.finish_tag.toUpperCase() === spoken.toUpperCase()) ??
