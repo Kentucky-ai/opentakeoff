@@ -14,6 +14,10 @@
 // entangling per-project cloud state with browser-wide libraries.
 
 import { localStore, ANN_SCHEMA, emptyAnnotations } from "./store.js";
+import i18n from "../i18n/index.js";
+import { markDanger } from "./danger.js";
+
+const _t = (key, opts) => i18n.t(key, { ns: "lib", ...opts });
 
 const PDF_MIME = "application/pdf";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
@@ -231,7 +235,7 @@ export function createCloudStore(folderId, drive, { local = localStore } = {}) {
       // a findChild-by-name in the project folder wouldn't find them.
       await ensureManifest();
       const entry = manifestFiles.find((f) => f.name === name);
-      if (!entry) throw new Error(`PDF not in project sheet set: ${name}`);
+      if (!entry) throw new Error(markDanger(_t("drive.pdf_not_in_project", { name })));
       const bytes = await drive.getFileBytes(entry.id);
       // hand pdf.js a fresh view each call — getDocument({data}) may detach it
       return new Uint8Array(bytes);
@@ -338,7 +342,7 @@ export function createCloudStore(folderId, drive, { local = localStore } = {}) {
         // Tagged so the canvas load can leave autosave DISARMED (like a stale tab)
         // instead of overwriting Drive. See TakeoffCanvas mount-load catch.
         throw Object.assign(
-          new Error(`Couldn't read this project's saved takeoff from Drive — reload to retry. (${e?.message || e})`),
+          new Error(markDanger(_t("cloud.load_error", { detail: e?.message || e }))),
           { name: "CloudLoadError" },
         );
       }

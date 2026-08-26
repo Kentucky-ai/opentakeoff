@@ -16,6 +16,10 @@
 // Contribute button explains it isn't configured rather than sending anything.
 
 import { conditionTotals } from "./totals.js";
+import i18n from "../i18n/index.js";
+import { markDanger } from "./danger.js";
+
+const _t = (key, opts) => i18n.t(key, { ns: "lib", ...opts });
 
 export function contributeEndpoint() {
   try {
@@ -169,12 +173,12 @@ export function buildContribution({ conditions, shapes, scaleInfo = [], counters
 
 export async function sendContribution(payload, contributor = "") {
   const endpoint = contributeEndpoint();
-  if (!endpoint) throw new Error("No contribution endpoint is configured for this build.");
+  if (!endpoint) throw new Error(markDanger(_t("contribute.no_endpoint")));
   const res = await fetch(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...payload, contributor: contributor || undefined }),
   });
-  if (!res.ok) throw new Error(`Contribution failed (HTTP ${res.status}).`);
+  if (!res.ok) throw new Error(markDanger(_t("contribute.http_error", { status: res.status })));
   return { ok: true };
 }

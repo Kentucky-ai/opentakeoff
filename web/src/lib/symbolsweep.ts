@@ -67,6 +67,10 @@
 //
 // sweepSymbols composes the two on one sheet, unchanged.
 
+import i18n from "../i18n/index.js";
+
+const _t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: "lib", ...opts });
+
 export type Point = [number, number];
 
 export interface SweepOptions {
@@ -275,11 +279,11 @@ export interface MatchOptions extends SweepOptions {
  * caller can say so. */
 export function scaleFingerprint(fp: SymbolFingerprint, k: number): SymbolFingerprint {
   if (!Number.isFinite(k) || !(k > 0)) {
-    throw new Error(`Size ratio must be a positive, finite number (seed-sheet px per target-sheet px) — got ${k}.`);
+    throw new Error(_t("sweep.ratio_not_finite", { k }));
   }
   if (k === 1) return fp;
   if (k < SWEEP_MIN_SCALE || k > SWEEP_MAX_SCALE) {
-    throw new Error(`Size ratio ${k.toFixed(4)} is outside the sane band (${SWEEP_MIN_SCALE} – ${SWEEP_MAX_SCALE}) — that is a larger disagreement than any real sheet pair, so the likelier cause is a wrong scale on one of the two sheets. Check set_scale on both before sweeping across them.`);
+    throw new Error(_t("sweep.ratio_out_of_band", { k: k.toFixed(4), min: SWEEP_MIN_SCALE, max: SWEEP_MAX_SCALE }));
   }
   const rel: number[][] = [];
   let totalLen = 0;
@@ -291,7 +295,7 @@ export function scaleFingerprint(fp: SymbolFingerprint, k: number): SymbolFinger
     totalLen += len;
   }
   if (!rel.length) {
-    throw new Error(`At a ${k.toFixed(4)} size ratio every segment of this symbol falls below ${MIN_SEG_LEN} px on the target sheet — there is no linework left to match. Marquee an instance drawn on the target sheet itself.`);
+    throw new Error(_t("sweep.ratio_all_subpixel", { k: k.toFixed(4), min: MIN_SEG_LEN }));
   }
   return {
     rel,
@@ -319,10 +323,10 @@ export function fingerprintSymbol(segs: number[], seedRect: [Point, Point]): Sym
     }
   }
   if (!seedIdx.length) {
-    throw new Error("No vector segments sit fully inside the seed rect — marquee tightly around one whole symbol instance (segments crossing the rect edge don't count as the symbol).");
+    throw new Error(_t("sweep.no_segments_in_rect"));
   }
   if (seedIdx.length > MAX_SEED_SEGS) {
-    throw new Error(`The seed rect holds ${seedIdx.length} segments — that is a region, not one symbol instance. Marquee a single symbol.`);
+    throw new Error(_t("sweep.too_many_segments", { count: seedIdx.length }));
   }
 
   let totalLen = 0, cxw = 0, cyw = 0;
@@ -373,7 +377,7 @@ export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOp
   const xforms = transformsFor(opts.rotations ?? true, opts.mirror ?? true);
   const n = segs.length >> 2;
   if (scale !== 1 && opts.excludeCenter) {
-    throw new Error("excludeCenter is a point on the SEED sheet and means nothing on a target sheet at a different scale — omit it when sweeping across sheets (there is no seed there to shadow).");
+    throw new Error(_t("sweep.exclude_center_scale"));
   }
   const fpS = scale === 1 ? fp : scaleFingerprint(fp, scale);
   // Only the scaling trip is guarded. A caller who widens tolPx on a same-scale
@@ -381,7 +385,7 @@ export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOp
   // is not owed a refusal; a symbol that shrank into the tolerance did not
   // choose anything, and its "matches" would be noise.
   if (scale !== 1 && fpS.footprint < MIN_FOOTPRINT_TOLS * tol) {
-    throw new Error(`At a ${scale.toFixed(4)} size ratio this symbol is ${fpS.footprint.toFixed(1)} px across on the target sheet — inside the ${tol.toFixed(1)} px matching tolerance, where every placement scores alike and a "match" means nothing. The seed is drawn too large relative to the target for its linework to survive the trip: marquee an instance on the target sheet itself, or count the tag text with sweep_schedule_row.`);
+    throw new Error(_t("sweep.symbol_too_small", { scale: scale.toFixed(4), footprint: fpS.footprint.toFixed(1), tol: tol.toFixed(1) }));
   }
   const { rel, totalLen } = fpS;
 

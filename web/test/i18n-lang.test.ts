@@ -98,3 +98,82 @@ test("new i18n keys for canvas seed/transition and panels fallback exist in both
     }
   }
 });
+
+// ── Task 3: lib namespace i18n keys ─────────────────────────────────────────
+
+test("lib.store.stale_tab resolves in both locales", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  const en = i18n.getFixedT("en")("store.stale_tab", { ns: "lib" });
+  assert.ok(en.includes("OpenTakeoff"), `en stale_tab should mention OpenTakeoff, got "${en}"`);
+
+  try {
+    await i18n.changeLanguage("pt-br");
+    const pt = i18n.getFixedT("pt-br")("store.stale_tab", { ns: "lib" });
+    assert.ok(pt.includes("OpenTakeoff"), `pt-br stale_tab should mention OpenTakeoff, got "${pt}"`);
+    assert.notEqual(pt, en, "pt-br stale_tab must differ from English");
+  } finally {
+    await i18n.changeLanguage("en");
+  }
+});
+
+test("lib.transition.pick_finishes resolves in both locales", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  const en = i18n.getFixedT("en")("transition.pick_finishes", { ns: "lib" });
+  assert.ok(en.length > 0, "en transition.pick_finishes should be non-empty");
+
+  try {
+    await i18n.changeLanguage("pt-br");
+    const pt = i18n.getFixedT("pt-br")("transition.pick_finishes", { ns: "lib" });
+    assert.ok(pt.length > 0, "pt-br transition.pick_finishes should be non-empty");
+    assert.notEqual(pt, en, "pt-br pick_finishes must differ from English");
+  } finally {
+    await i18n.changeLanguage("en");
+  }
+});
+
+test("lib.detected.no_tag_caveat resolves in both locales", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  const en = i18n.getFixedT("en")("detected.no_tag_caveat", { ns: "lib" });
+  assert.ok(en.includes("One-Click"), `en no_tag_caveat should mention One-Click, got "${en}"`);
+
+  try {
+    await i18n.changeLanguage("pt-br");
+    const pt = i18n.getFixedT("pt-br")("detected.no_tag_caveat", { ns: "lib" });
+    assert.ok(pt.length > 0, "pt-br no_tag_caveat should be non-empty");
+    assert.notEqual(pt, en, "pt-br no_tag_caveat must differ from English");
+  } finally {
+    await i18n.changeLanguage("en");
+  }
+});
+
+test("lib.voice.waste_on interpolates params", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+  const t = i18n.getFixedT("en");
+  const msg = t("voice.waste_on", { ns: "lib", pct: 7, tag: "CPT-1" });
+  assert.ok(msg.includes("7"), "should contain the waste percentage");
+  assert.ok(msg.includes("CPT-1"), "should contain the condition tag");
+});
+
+test("danger.js markDanger + isDanger classify translated messages", async () => {
+  const { markDanger, isDanger } = await import("../src/lib/danger.js");
+
+  const msg = markDanger("translated danger message");
+  assert.equal(isDanger(msg), true, "marked message should be danger");
+  assert.equal(isDanger("plain message"), false, "unmarked message should not be danger");
+  assert.equal(isDanger(null), false, "null should not be danger");
+  assert.equal(isDanger(undefined), false, "undefined should not be danger");
+  assert.equal(isDanger(42), false, "non-string should not be danger");
+});
+
+test("danger-tagged translated store message is classified as danger", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+  const { markDanger, isDanger } = await import("../src/lib/danger.js");
+
+  // Simulate what store.js does at module load
+  const staleTab = markDanger(i18n.t("store.stale_tab", { ns: "lib" }));
+  assert.ok(isDanger(staleTab), "translated STALE_TAB_MESSAGE should be danger-tagged");
+  assert.ok(staleTab.includes("OpenTakeoff"), "should contain app name");
+});

@@ -32,6 +32,9 @@
 
 import { pointInPoly } from "./geometry.js";
 import { ringArea, traceRegion, type MaskObj, type Point } from "./oneclick.ts";
+import i18n from "../i18n/index.js";
+
+const _t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: "lib", ...opts });
 
 export interface RulePredicate {
   kind: "enclosed_subpolygon_deduct";
@@ -120,7 +123,7 @@ export function buildRuleFromSeed(
     seed_shape_id: deduct.id,
     seed_condition_id: deduct.condition_id,
     predicate: { kind: "enclosed_subpolygon_deduct", max_area_sf: seed.max_area_sf },
-    label: `Exclude enclosed regions under ${seed.max_area_sf} SF in ${conditionTag} rooms`,
+    label: _t("rule.exclude_label", { max: seed.max_area_sf, tag: conditionTag }),
     applied_to: [],
     active: true,
   };

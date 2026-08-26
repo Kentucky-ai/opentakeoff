@@ -20,6 +20,11 @@ const KEYS = {
   provider: "opentakeoff_ai_provider",
 };
 
+import i18n from "../i18n/index.js";
+import { markDanger } from "./danger.js";
+
+const _t = (key, opts) => i18n.t(key, { ns: "lib", ...opts });
+
 const env = (name) => (import.meta.env && import.meta.env[name]) || "";
 
 function readKey(k, envName) {
@@ -164,7 +169,7 @@ export function buildChatRequest(cfg, { system, messages, tools, maxTokens = 409
  *  plain-language message on any failure. */
 export async function visionQuery({ imageDataUrl, prompt, maxTokens = 100 }) {
   const cfg = aiConfig();
-  if (!isAiConfigured()) throw new Error("AI isn't configured — open AI settings first.");
+  if (!isAiConfigured()) throw new Error(markDanger(_t("ai.not_configured")));
   const { url, headers, body } = buildVisionRequest(cfg, { imageDataUrl, prompt, maxTokens });
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 30000);
@@ -172,15 +177,15 @@ export async function visionQuery({ imageDataUrl, prompt, maxTokens = 100 }) {
   try {
     res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body), signal: ctl.signal });
   } catch (e) {
-    throw new Error(e?.name === "AbortError"
-      ? "The endpoint took more than 30 seconds — check the model is loaded."
-      : "Couldn't reach the endpoint — check the URL, and that it allows browser requests (CORS).");
+    throw new Error(markDanger(e?.name === "AbortError"
+      ? _t("ai.timeout_30s")
+      : _t("ai.cors_error")));
   } finally {
     clearTimeout(timer);
   }
-  if (!res.ok) throw new Error(`AI request failed (HTTP ${res.status}).`);
+  if (!res.ok) throw new Error(markDanger(_t("ai.http_error", { status: res.status })));
   const text = parseVisionResponse(cfg.provider, await res.json().catch(() => null));
-  if (text == null) throw new Error("The endpoint replied, but not with text.");
+  if (text == null) throw new Error(markDanger(_t("ai.no_text")));
   return text;
 }
 
@@ -192,7 +197,7 @@ export async function visionQuery({ imageDataUrl, prompt, maxTokens = 100 }) {
  *  `cfg`/`fetchFn` are injectable for tests (default: live config + fetch). */
 export async function chatWithTools({ cfg, system, messages, tools, maxTokens = 4096, signal, fetchFn }) {
   const c = cfg || aiConfig();
-  if (!(c.endpoint && c.model)) throw new Error("AI isn't configured — open AI settings first.");
+  if (!(c.endpoint && c.model)) throw new Error(markDanger(_t("ai.not_configured")));
   const { url, headers, body } = buildChatRequest(c, { system, messages, tools, maxTokens });
   // 120s per turn — agent turns run longer than the 30s vision reads. The
   // caller's abort signal still wins whenever the runtime supports combining.
@@ -207,11 +212,11 @@ export async function chatWithTools({ cfg, system, messages, tools, maxTokens = 
     res = await (fetchFn || fetch)(url, { method: "POST", headers, body: JSON.stringify(body), signal: sig });
   } catch (e) {
     if (signal?.aborted || e?.name === "AbortError") throw e;
-    if (e?.name === "TimeoutError") throw new Error("The endpoint took more than 2 minutes — check the model is loaded.");
-    throw new Error("Couldn't reach the endpoint — check the URL, and that it allows browser requests (CORS).");
+    if (e?.name === "TimeoutError") throw new Error(markDanger(_t("ai.timeout_2min")));
+    throw new Error(markDanger(_t("ai.cors_error")));
   }
-  if (!res.ok) throw new Error(`AI request failed (HTTP ${res.status}).`);
+  if (!res.ok) throw new Error(markDanger(_t("ai.http_error", { status: res.status })));
   const json = await res.json().catch(() => null);
-  if (!json || typeof json !== "object") throw new Error("The endpoint replied, but not with JSON.");
+  if (!json || typeof json !== "object") throw new Error(markDanger(_t("ai.no_json")));
   return json;
 }

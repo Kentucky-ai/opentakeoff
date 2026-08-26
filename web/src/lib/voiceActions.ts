@@ -18,6 +18,9 @@
 // human supplied the aim, so it commits direct as human work). The aim seed
 // is validated FIRST, so a stale/off-sheet aim rejects with zero calls.
 import { parseVoiceIntent, type Intent, type RejectReason } from "./voiceIntent.ts";
+import i18n from "../i18n/index.js";
+
+const _t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: "lib", ...opts });
 
 /** Cursor aim for deixis: sheet-local px on sheetId. See getAimSeed. */
 export type AimSeed = { x: number; y: number; sheetId: string };
@@ -102,30 +105,30 @@ export function applyVoiceIntent(caps: VoiceCapabilities, intent: Intent): Voice
         caps.updateCondition(cond.id, { waste_pct: intent.waste });
         return done(
           intent.known
-            ? `${cond.finish_tag} active — waste ${intent.waste}%.`
-            : `Created ${cond.finish_tag} — active, waste ${intent.waste}%.`,
+            ? _t("voice.condition_active_waste", { tag: cond.finish_tag, pct: intent.waste })
+            : _t("voice.condition_created_active_waste", { tag: cond.finish_tag, pct: intent.waste }),
         );
       }
-      return done(intent.known ? `${cond.finish_tag} active.` : `Created ${cond.finish_tag} — active.`);
+      return done(intent.known ? _t("voice.condition_active", { tag: cond.finish_tag }) : _t("voice.condition_created_active", { tag: cond.finish_tag }));
     }
     case "set_waste": {
       const id = caps.getActiveConditionId();
       if (!id) return fail("Couldn't set waste — no active condition.");
       caps.updateCondition(id, { waste_pct: intent.waste });
       const tag = caps.getConditions().find((c) => c.id === id)?.finish_tag ?? "active condition";
-      return done(`Waste ${intent.waste}% on ${tag}.`);
+      return done(_t("voice.waste_on", { pct: intent.waste, tag }));
     }
     case "set_label": {
       if (!intent.known) caps.addLabel(intent.label);
       caps.activateLabel(intent.label);
-      return done(intent.known ? `Label ${intent.label} active.` : `Added label ${intent.label} — active.`);
+      return done(intent.known ? _t("voice.label_active", { label: intent.label }) : _t("voice.label_added", { label: intent.label }));
     }
     case "clear_label":
       caps.activateLabel(null);
-      return done("Label cleared.");
+      return done(_t("voice.label_cleared"));
     case "add_note":
       caps.addNote(intent.text);
-      return done("Note added — see Markups.");
+      return done(_t("voice.note_added"));
     case "trace_at_cursor": {
       // seed BEFORE arming: an off-sheet or stale aim rejects with ZERO calls —
       // a bad aim must not half-arm a condition (the mutation-safety bar)

@@ -19,6 +19,11 @@
 const GSI_SRC = "https://accounts.google.com/gsi/client";
 const USERINFO_URL = "https://www.googleapis.com/oauth2/v3/userinfo";
 
+import i18n from "../../i18n/index.js";
+import { markDanger } from "../danger.js";
+
+const _t = (key, opts) => i18n.t(key, { ns: "lib", ...opts });
+
 // openid/email/profile identify the user; drive is the project storage; the
 // spreadsheets scope is read-only (report/template sheets are pulled, never
 // written by this build).
@@ -136,16 +141,16 @@ function loadGsi() {
     // Null the cached promise on any failure so a later preload/sign-in retries
     // the load — otherwise one offline/errored attempt would wedge sign-in until
     // a full page refresh.
-    const fail = (msg) => { scriptPromise = null; reject(new Error(msg)); };
+    const fail = (msg) => { scriptPromise = null; reject(new Error(markDanger(msg))); };
     const done = () => {
       if (window.google?.accounts?.oauth2) resolve();
-      else fail("Google Identity Services loaded but oauth2 API is unavailable.");
+      else fail(_t("google.gsi_unavailable"));
     };
     const existing = document.querySelector(`script[src="${GSI_SRC}"]`);
     if (existing) {
       if (window.google?.accounts?.oauth2) return resolve();
       existing.addEventListener("load", done, { once: true });
-      existing.addEventListener("error", () => fail("Failed to load Google Identity Services."), { once: true });
+      existing.addEventListener("error", () => fail(_t("google.gsi_load_failed")), { once: true });
       return;
     }
     const s = document.createElement("script");
@@ -153,7 +158,7 @@ function loadGsi() {
     s.async = true;
     s.defer = true;
     s.onload = done;
-    s.onerror = () => fail("Failed to load Google Identity Services.");
+    s.onerror = () => fail(_t("google.gsi_load_failed"));
     document.head.appendChild(s);
   });
   return scriptPromise;
@@ -168,7 +173,7 @@ export function preloadGoogle() {
 
 async function ensureTokenClient() {
   if (!isGoogleConfigured()) {
-    throw new Error("Google sign-in is not configured for this build.");
+    throw new Error(markDanger(_t("google.not_configured")));
   }
   await loadGsi();
   if (tokenClient) return tokenClient;
@@ -218,7 +223,7 @@ async function ensureTokenClient() {
       if (!p) return;
       if (err?.state !== undefined && String(p.id) !== err.state) return;
       pending = null;
-      p.reject(new Error(err?.message || err?.type || "Google sign-in was cancelled."));
+      p.reject(new Error(markDanger(err?.message || err?.type || _t("google.sign_in_cancelled"))));
     },
   });
   return tokenClient;
@@ -267,7 +272,7 @@ function requestTokenSilentWithTimeout() {
     const timer = setTimeout(() => {
       pending = null;
       pendingPromise = null;
-      reject(new Error("Silent Google sign-in timed out"));
+      reject(new Error(markDanger(_t("google.silent_timeout"))));
     }, SILENT_TIMEOUT_MS);
     attempt.then(
       (v) => { clearTimeout(timer); resolve(v); },
@@ -280,7 +285,7 @@ async function fetchProfile(accessToken) {
   const res = await fetch(USERINFO_URL, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (!res.ok) throw new Error(`Failed to load Google profile (HTTP ${res.status}).`);
+  if (!res.ok) throw new Error(markDanger(_t("google.profile_error", { status: res.status })));
   const p = await res.json();
   return { email: p.email, name: p.name, picture: p.picture, sub: p.sub, hd: p.hd };
 }
@@ -299,7 +304,7 @@ async function fetchProfile(accessToken) {
 // the caller can surface it) if the user closes/cancels the dialog.
 export async function signIn() {
   if (!isGoogleConfigured()) {
-    throw new Error("Google sign-in is not configured for this build.");
+    throw new Error(markDanger(_t("google.not_configured")));
   }
   const accessToken = await requestToken("");
   user = await fetchProfile(accessToken);

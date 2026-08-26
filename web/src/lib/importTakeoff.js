@@ -18,6 +18,10 @@
 
 import { ANN_SCHEMA } from "./store.js";
 import { sanitizeApprovals } from "./approvals.js";
+import i18n from "../i18n/index.js";
+import { markDanger } from "./danger.js";
+
+const _t = (key, opts) => i18n.t(key, { ns: "lib", ...opts });
 
 /** Parse + gate an import file's text. Throws with copy the message bar shows
  * verbatim — "Couldn't…" is the canvas's danger convention (isDangerMsg), so
@@ -27,10 +31,10 @@ export function parseTakeoffImport(text) {
   try {
     doc = JSON.parse(text);
   } catch {
-    throw new Error("Couldn't import takeoff: that file is not valid JSON.");
+    throw new Error(markDanger(_t("import.invalid_json")));
   }
   if (!doc || typeof doc !== "object" || Array.isArray(doc) || doc.schema !== ANN_SCHEMA) {
-    throw new Error(`Couldn't import takeoff: not a takeoff export (expected schema "${ANN_SCHEMA}" — the file export_takeoff or the app writes).`);
+    throw new Error(markDanger(_t("import.wrong_schema", { schema: ANN_SCHEMA })));
   }
   return doc;
 }

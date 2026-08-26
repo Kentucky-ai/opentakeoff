@@ -6,7 +6,6 @@
 // this module outside the web app (mcp/ keeps its own mirrored copies).
 
 import { RENDER_SCALE } from "./sheets";
-import { STALE_TAB_MESSAGE } from "./store.js";
 import { mintUuid, nowIso } from "./provenance.js";
 import { instantiateMaterial } from "./materials.js";
 import { PALETTE } from "../components/hatches.jsx";
@@ -15,6 +14,7 @@ import {
   QUALITY_CEILING, MAX_CANVAS_DIM, MAX_PANEL_AREA,
   FLOORING_DEFAULTS,
 } from "./canvasConstants.js";
+import { isDanger } from "./danger.js";
 
 // Largest pdf.js render scale a wPt×hPt-point page can use within the base budget;
 // prefers the baseline RENDER_SCALE, never above the ceiling — and never above the
@@ -50,8 +50,11 @@ export function invertCanvasPixels(cv) {
 export const uid = (p) => `${p}-${mintUuid()}`;
 export const clamp = (s) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
 // shared by the status-bar tone AND the auto-dismiss skip (in the canvas) — one
-// definition of "this message is bad news" for both readers
-export const isDangerMsg = (s) => s === STALE_TAB_MESSAGE || s.startsWith("Commit failed") || s.startsWith("Couldn't");
+// definition of "this message is bad news" for both readers.
+// Language-independent: uses the danger registry (danger.js) instead of English
+// text prefixes. "Commit failed" is kept as a legacy check for canvas-internal
+// messages not yet routed through markDanger().
+export const isDangerMsg = (s) => isDanger(s) || (typeof s === "string" && s.startsWith("Commit failed"));
 
 // A template is a condition minus ids (finish_tag, colors, hatch, waste,
 // H/T params, materials) — instantiation mints fresh condition/material ids.

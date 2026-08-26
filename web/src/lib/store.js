@@ -27,6 +27,10 @@
 import { sanitizeTemplates } from "./templates.js";
 import { sanitizeMaterialLibrary } from "./materials.js";
 import { sanitizeStampLibrary } from "./stamps.js";
+import i18n from "../i18n/index.js";
+import { markDanger } from "./danger.js";
+
+const _t = (key, opts) => i18n.t(key, { ns: "lib", ...opts });
 
 const DB_NAME = "opentakeoff";
 const DB_VERSION = 3;
@@ -90,7 +94,7 @@ function openDB() {
     req.onblocked = () => {
       settled = true;
       reject(Object.assign(
-        new Error("OpenTakeoff is open in another tab with older data — close it or reload."),
+        new Error(markDanger(_t("store.blocked_error"))),
         { name: "BlockedError" },
       ));
     };
@@ -111,7 +115,7 @@ function openDB() {
       if (req.error?.name === "VersionError") {
         // This build is OLDER than the database — a stale tab after a future bump.
         reject(Object.assign(
-          new Error("This tab is running an older OpenTakeoff — reload to update."),
+          new Error(markDanger(_t("store.version_error"))),
           { name: "VersionError" },
         ));
       } else {
@@ -131,13 +135,13 @@ export function isStaleTabError(e) {
 // The one UI copy for stale-tab failures. TakeoffCanvas routes its message
 // tint on exact equality with this string, so every surface must use the
 // constant — a local paraphrase would silently render in the success color.
-export const STALE_TAB_MESSAGE = "OpenTakeoff was updated in another tab — reload this tab to continue.";
+export const STALE_TAB_MESSAGE = markDanger(_t("store.stale_tab"));
 
 // Map raw store errors to copy the user can act on; falls back to the
 // error's own message for everything unrecognized.
 export function friendlyStoreError(e) {
   if (e?.name === "QuotaExceededError") {
-    return "Not enough storage space for this snapshot — delete old snapshots or unused PDFs and try again.";
+    return markDanger(_t("store.quota_error"));
   }
   return e?.message || String(e);
 }
