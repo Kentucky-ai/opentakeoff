@@ -65,8 +65,8 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
   const sideB = compareId === "current" ? current : payloads[compareId];
   const diff = useMemo(() => (sideA && sideB ? diffTakeoffs(sideA, sideB) : null), [sideA, sideB]);
 
-  const nameOf = (id) => (id === "current" ? t('revisions.current_takeoff') : revs?.find((r) => r.id === id)?.name || "Revision");
-  const defaultName = () => `Rev ${(revs?.length || 0) + 1} — ${new Date().toLocaleDateString()}`;
+  const nameOf = (id) => (id === "current" ? t('revisions.current_takeoff') : revs?.find((r) => r.id === id)?.name || t('revisions.untitled'));
+  const defaultName = () => t('revisions.rev_default', { num: (revs?.length || 0) + 1, date: new Date().toLocaleDateString() });
 
   const save = async (name) => {
     setBusy(true); setErr("");
@@ -115,8 +115,9 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
     const shown = convert(v);
     return <span style={{ fontWeight: 700, color: v > 0 ? "var(--cobalt)" : "var(--c-danger)" }}>{v > 0 ? "+" : "−"}{num(Math.abs(shown), isEa ? 0 : 1)}</span>;
   };
+  const STATUS_LABELS = { added: t('revisions.status_added'), removed: t('revisions.status_removed'), changed: t('revisions.status_changed'), unchanged: t('revisions.status_unchanged') };
   const chip = (status) => (
-    <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: STATUS_COLOR[status] || "var(--ink)", fontWeight: 700 }}>{status}</span>
+    <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, letterSpacing: "0.08em", textTransform: "uppercase", color: STATUS_COLOR[status] || "var(--ink)", fontWeight: 700 }}>{STATUS_LABELS[status] || status}</span>
   );
 
   const condRows = diff ? diff.conditions.filter((c) => showUnchanged || c.status !== "unchanged") : [];
@@ -224,8 +225,8 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
                 {/* headline: the ordered-quantity move */}
                 <p style={{ margin: "14px 0 10px", fontSize: 13, color: "var(--ink)" }}>
                   <strong>{nameOf(baseId)}</strong> → <strong>{nameOf(compareId)}</strong>:{" "}
-                  ordered {AU} {num(av(diff.totals.a.total_sf_net))} → <strong>{num(av(diff.totals.b.total_sf_net))}</strong>{" "}
-                  ({delta(diff.totals.deltas.total_sf_net, false, av)}) · {diff.changed} condition{diff.changed === 1 ? "" : "s"} moved
+                  {t('revisions.ordered_label')} {AU} {num(av(diff.totals.a.total_sf_net))} → <strong>{num(av(diff.totals.b.total_sf_net))}</strong>{" "}
+                  ({delta(diff.totals.deltas.total_sf_net, false, av)}) · {t('revisions.headline_moved', { count: diff.changed })}
                 </p>
                 <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)" }}>
                   <thead><tr>

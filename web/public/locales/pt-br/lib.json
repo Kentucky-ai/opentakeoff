@@ -257,7 +257,18 @@
     "label_active": "Etiqueta {{label}} ativa.",
     "label_added": "Etiqueta {{label}} adicionada — ativa.",
     "label_cleared": "Etiqueta limpa.",
-    "note_added": "Nota adicionada — veja Marcações."
+    "note_added": "Nota adicionada — veja Marcações.",
+    "reject_empty": "Não foi possível ouvir um comando.",
+    "reject_unrecognized": "Não foi possível interpretar — tente \"CPT-1\", \"perda 7\", \"etiqueta Fase 1\", ou \"nota …\".",
+    "reject_unknown_tag": "Não foi possível corresponder a essa tag — digite uma tag de condição ativa, ou um código Div-9 como CPT-2 para criar uma.",
+    "reject_bad_number": "Não foi possível ler o número de perda — digite 0–100, ex. \"perda 7\" ou \"perda 7,5\".",
+    "reject_trailing_words": "Não foi possível interpretar — palavras extras após o comando. Um comando por vez.",
+    "reject_deixis_no_condition": "Não foi possível rastrear — nenhuma condição ativa. Nomeie uma, como \"CPT-1, esta sala\".",
+    "reject_deixis_target": "Não foi possível mirar — \"aqui\"/\"esta sala\" coloca uma medição, não uma nota ou etiqueta limpa.",
+    "fail_find_condition": "Não foi possível encontrar a condição {{tag}}.",
+    "fail_set_waste_no_active": "Não foi possível definir perda — nenhuma condição ativa.",
+    "fail_aim_stale": "Não foi possível posicionar — a mira ficou obsoleta. Coloque o cursor na sala e tente novamente.",
+    "fail_aim_sheet": "Não foi possível posicionar — a mira não está em uma planta."
   },
   "stitch": {
     "no_sheets": "Nenhuma planta para alinhar.",

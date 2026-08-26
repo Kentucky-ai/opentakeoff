@@ -549,3 +549,146 @@ test("contribute.send_error resolves to a user-facing message in en and pt-br", 
     assert.ok(!msg.includes("e.message"), `contribute.send_error must not contain raw e.message for "${lng}"`);
   }
 });
+
+// ── gap-fix: revision/report/voice label translations ──────────────────────
+
+test("panels roll.roll resolves to 'roll' in en and 'rolo' in pt-br", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  const en = i18n.getFixedT("en", "panels")("roll.roll");
+  assert.equal(en, "roll");
+
+  const pt = i18n.getFixedT("pt-br", "panels")("roll.roll");
+  assert.equal(pt, "rolo");
+});
+
+test("panels revisions.untitled resolves in both locales", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng, "panels");
+    const val = t("revisions.untitled");
+    assert.ok(val.length > 0, `revisions.untitled must be non-empty for "${lng}"`);
+    assert.notEqual(val, "revisions.untitled", `revisions.untitled must not return key for "${lng}"`);
+  }
+});
+
+test("panels revisions.rev_default interpolates {{num}} and {{date}}", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng, "panels");
+    const msg = t("revisions.rev_default", { num: 3, date: "8/25/2026" });
+    assert.ok(msg.includes("3"), `rev_default must contain num for "${lng}", got "${msg}"`);
+    assert.ok(msg.includes("8/25/2026"), `rev_default must contain date for "${lng}", got "${msg}"`);
+  }
+});
+
+test("panels revisions.status_* chips resolve in both locales", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  const keys = ["revisions.status_added", "revisions.status_removed", "revisions.status_changed", "revisions.status_unchanged"];
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng, "panels");
+    for (const key of keys) {
+      const val = t(key);
+      assert.ok(val.length > 0, `${key} must be non-empty for "${lng}"`);
+      assert.notEqual(val, key, `${key} must not return key for "${lng}"`);
+    }
+  }
+});
+
+test("panels revisions.headline_moved pluralises via count in both locales", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng, "panels");
+    const one = t("revisions.headline_moved", { count: 1 });
+    const many = t("revisions.headline_moved", { count: 5 });
+    assert.ok(one.includes("1"), `headline_moved count=1 must contain the number for "${lng}", got "${one}"`);
+    assert.ok(many.includes("5"), `headline_moved count=5 must contain the number for "${lng}", got "${many}"`);
+    assert.notEqual(one, many, `headline_moved singular and plural must differ for "${lng}"`);
+  }
+});
+
+test("report markup_type_cloud/callout/note resolve in both locales", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng, "report");
+    for (const key of ["revisions.markup_type_cloud", "revisions.markup_type_callout", "revisions.markup_type_note"]) {
+      const val = t(key);
+      assert.ok(val.length > 0, `${key} must be non-empty for "${lng}"`);
+      assert.notEqual(val, key, `${key} must not return key for "${lng}"`);
+    }
+  }
+});
+
+test("report info.date_placeholder resolves in both locales", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng, "report");
+    const val = t("info.date_placeholder");
+    assert.ok(val.length > 0, `info.date_placeholder must be non-empty for "${lng}"`);
+    assert.notEqual(val, "info.date_placeholder", `info.date_placeholder must not return key for "${lng}"`);
+  }
+});
+
+test("report footnote.by_sheet_base resolves in both locales", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng, "report");
+    const val = t("footnote.by_sheet_base");
+    assert.ok(val.length > 0, `footnote.by_sheet_base must be non-empty for "${lng}"`);
+    assert.notEqual(val, "footnote.by_sheet_base", `footnote.by_sheet_base must not return key for "${lng}"`);
+  }
+});
+
+test("lib voice.reject_* keys resolve to danger messages in en and pt-br", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  const rejectKeys = [
+    "voice.reject_empty",
+    "voice.reject_unrecognized",
+    "voice.reject_unknown_tag",
+    "voice.reject_bad_number",
+    "voice.reject_trailing_words",
+    "voice.reject_deixis_no_condition",
+    "voice.reject_deixis_target",
+  ];
+
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng, "lib");
+    for (const key of rejectKeys) {
+      const val = t(key);
+      assert.ok(val.length > 0, `${key} must be non-empty for "${lng}"`);
+      assert.notEqual(val, key, `${key} must not return key for "${lng}"`);
+    }
+  }
+
+  // English values must start with "Couldn't" (isDangerMsg contract)
+  const en = i18n.getFixedT("en", "lib");
+  for (const key of rejectKeys) {
+    assert.ok(en(key).startsWith("Couldn't"), `en ${key} must start with "Couldn't", got "${en(key)}"`);
+  }
+});
+
+test("lib voice.fail_* keys interpolate {{tag}} and resolve in both locales", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng, "lib");
+    const msg = t("voice.fail_find_condition", { tag: "GHOST-9" });
+    assert.ok(msg.includes("GHOST-9"), `fail_find_condition must interpolate tag for "${lng}", got "${msg}"`);
+    assert.notEqual(msg, "voice.fail_find_condition", `fail_find_condition must not return key for "${lng}"`);
+  }
+
+  // English fail messages must start with "Couldn't" (isDangerMsg contract)
+  const en = i18n.getFixedT("en", "lib");
+  assert.ok(en("voice.fail_find_condition", { tag: "X" }).startsWith("Couldn't"), "en fail_find_condition must start with Couldn't");
+  assert.ok(en("voice.fail_set_waste_no_active").startsWith("Couldn't"), "en fail_set_waste_no_active must start with Couldn't");
+  assert.ok(en("voice.fail_aim_stale").startsWith("Couldn't"), "en fail_aim_stale must start with Couldn't");
+  assert.ok(en("voice.fail_aim_sheet").startsWith("Couldn't"), "en fail_aim_sheet must start with Couldn't");
+});
