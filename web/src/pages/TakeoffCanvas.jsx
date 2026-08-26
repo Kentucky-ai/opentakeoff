@@ -25,8 +25,9 @@ import { getFocusMode, toggleFocusMode, onFocusModeChange } from "../lib/focusMo
 import { seedStampLibrary, instantiateStamp, markupToStampElement } from "../lib/stamps.js";
 import { extractSvgPrimitives, svgToStamp } from "../lib/svgImport.js";
 import { transformPath, svgPlacedBox } from "../lib/svgpath.js";
-import { imagePlacedBox, captureRectToImageGeom, resizeImageFromCorner, aspectFromDims, pickEmbedFormat, sourceCaption } from "../lib/markupImage";
-import { rectMidpoint, pendingSourceOutcome } from "../lib/sourceTrace";
+import { imagePlacedBox, captureRectToImageGeom, resizeImageFromCorner, aspectFromDims, pickEmbedFormat, sourceCaption, filterCaptures } from "../lib/markupImage";
+import { rectMidpoint, pendingSourceOutcome, isTraceable, traceLabel } from "../lib/sourceTrace";
+import { relativeAge, absoluteUtc } from "../lib/reltime";
 import { ingestFiles } from "../lib/ingest.js";
 import { parseTakeoffImport, mergeTakeoffImport } from "../lib/importTakeoff.js";
 import { buildProjectArchive, parseProjectArchive, isProjectArchive, downloadArchive } from "../lib/projectArchive.js";
@@ -336,6 +337,7 @@ export default function TakeoffCanvas() {
   const [showMarkups, setShowMarkups] = useState(true);       // markup SVG layer visibility (orthogonal to the export checkbox)
   const [editor, setEditor] = useState(null);                 // inline on-canvas text editor { left, top, value, multiline, commit } (retires window.prompt; screen-space overlay, NOT an SVG child)
   const [panelEditId, setPanelEditId] = useState(null);       // markup id whose text is being edited inline in the markup panel (off-screen fallback for the ✎ button)
+  const [captureQuery, setCaptureQuery] = useState("");       // always-on name filter over the GLOBAL Captures list (transient, mirrors condQuery)
   // Stamp library (browser-global, meta store) — reusable annotation stamps
   // dropped click-to-place (#40). armedStamp holds the stamp picked from the
   // palette; while tool==="stamp" each canvas click instantiates it as normal,
@@ -8131,16 +8133,7 @@ export default function TakeoffCanvas() {
                  {/* layer show/hide — hides the on-canvas markup layer AND its hit-testing
                      (can't select/delete/fly-to an invisible markup); orthogonal to the
                      marked-set export, which still includes markups. */}
-                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)" }}>
-                   {/* hidden input reused by the Upload button — re-encoded through addImageFromFile */}
-                   <input name="markup-image-file" ref={imageInputRef} type="file" accept="image/*" style={{ display: "none" }}
-                     onChange={(e) => { const f = e.target.files?.[0]; if (f) addImageFromFile(f); e.target.value = ""; }} />
-                   <button
-                     onClick={() => imageInputRef.current?.click()}
-                     title="Upload a raster image (PNG or JPEG) as a floating annotation on the current sheet"
-                     style={{ background: "transparent", border: "1px solid var(--ink-faint)", color: "var(--ink)", fontSize: 11, cursor: "pointer", padding: "2px 7px" }}>
-                     Upload image…
-                   </button>
+                 <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)" }}>
                    <button
                      onClick={() => { const nv = !showMarkups; setShowMarkups(nv); if (!nv) setSelectedMarkupId(null); }}
                      title={showMarkups ? "Hide the markup layer on the canvas" : "Show the markup layer on the canvas"}
@@ -8149,12 +8142,15 @@ export default function TakeoffCanvas() {
                    </button>
                  </div>
                  <div style={{ padding: "8px 10px", color: "var(--ink-muted)" }}>
-                   Pick <b>☁ Cloud</b>, <b>▨ Highlight</b>, <b>💬 Callout</b>, <b>T Text</b>, or <b>⟷ Dimension</b> above, then click the plan to annotate it. <b>🖼 Image</b> marquees a region (two clicks) — or use <b>Upload image…</b> above.
+                   Pick <b>☁ Cloud</b>, <b>▨ Highlight</b>, <b>💬 Callout</b>, <b>T Text</b>, or <b>⟷ Dimension</b> above, then click the plan to annotate it. <b>🖼 Image</b> marquees a region (two clicks) — or use <b>Upload image…</b> in Captures below.
                  </div>
-                 {markups.filter((m) => panelKeySet.has(m.sheet_id)).length === 0 && (
-                   <div style={{ padding: "4px 12px 14px", color: "var(--ink-muted)" }}>No markups {groupKeys.length > 1 ? "on these sheets" : "on this sheet"} yet.</div>
+                 {markups.filter((m) => panelKeySet.has(m.sheet_id) && m.type !== "image").length === 0 && (
+                   <div style={{ padding: "4px 12px 14px", color: "var(--ink-muted)" }}>
+                     No markups {groupKeys.length > 1 ? "on these sheets" : "on this sheet"} yet.
+                     <div style={{ marginTop: 4, fontSize: 11 }}>Images now live in <b>Captures</b> below.</div>
+                   </div>
                  )}
-                 {markups.filter((m) => panelKeySet.has(m.sheet_id)).map((m) => (
+                 {markups.filter((m) => panelKeySet.has(m.sheet_id) && m.type !== "image").map((m) => (
                    <div key={m.id} style={{ padding: "10px 12px", borderTop: "1px solid var(--ink-faint)", background: selectedMarkupId === m.id ? "var(--surface-pop)" : "transparent" }}>
                      {/* the header line selects + flies to the markup (parity with the RFI
                          register's onFlyTo) — the inner controls stopPropagation so only the
@@ -8266,6 +8262,159 @@ export default function TakeoffCanvas() {
                      })()}
                    </div>
                  ))}
+                 {/* Captures — a GLOBAL image-markup library, every sheet, NOT
+                     filtered to the panels open right now (unlike the per-sheet
+                     list above): that global-ness is the whole point of the
+                     feature — find, re-place, trace, or caption any capture
+                     regardless of which sheet is open. Uploads live here too
+                     (no source fields, so ◎ and the caption toggle are hidden
+                     — see isTraceable). */}
+                 <div style={{ borderTop: "2px solid var(--ink-faint)" }}>
+                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)", gap: 8 }}>
+                     <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--ink-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Captures</span>
+                     {/* hidden input reused by the Upload button — re-encoded through addImageFromFile */}
+                     <input name="markup-image-file" ref={imageInputRef} type="file" accept="image/*" style={{ display: "none" }}
+                       onChange={(e) => { const f = e.target.files?.[0]; if (f) addImageFromFile(f); e.target.value = ""; }} />
+                     <button
+                       onClick={() => imageInputRef.current?.click()}
+                       title="Upload a raster image (PNG or JPEG) as a floating annotation on the current sheet"
+                       style={{ background: "transparent", border: "1px solid var(--ink-faint)", color: "var(--ink)", fontSize: 11, cursor: "pointer", padding: "2px 7px" }}>
+                       Upload image…
+                     </button>
+                   </div>
+                   {/* always-on name search — mirrors the condQuery idiom
+                       (TakeoffsPanel ~:718/763/1054-1056) */}
+                   <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)" }}>
+                     <input name="capture-filter" value={captureQuery} onChange={(e) => setCaptureQuery(e.target.value)} placeholder="filter captures…"
+                       style={{ flex: 1, minWidth: 0, padding: "4px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
+                     {captureQuery && <button onClick={() => setCaptureQuery("")} title="Clear the filter" style={{ border: "none", background: "none", color: "var(--ink-muted)", cursor: "pointer", fontSize: 13, padding: 0 }}>×</button>}
+                   </div>
+                   {(() => {
+                     const allCaptures = filterCaptures(markups, "");
+                     const captures = filterCaptures(markups, captureQuery);
+                     if (allCaptures.length === 0) {
+                       return <div style={{ padding: "4px 12px 14px", color: "var(--ink-muted)" }}>No captures yet. Marquee a region with 🖼 or use Upload image… above.</div>;
+                     }
+                     if (captures.length === 0) {
+                       return <div style={{ padding: "4px 12px 14px", color: "var(--ink-muted)" }}>No captures match “{captureQuery}”.</div>;
+                     }
+                     return captures.map((m) => {
+                       // Captures-only gate for ◎ + the caption toggle — legacy
+                       // pre-slice-1 images and uploads both lack src_sheet_id.
+                       const traceable = isTraceable(m);
+                       return (
+                         <div key={m.id} style={{ padding: "10px 12px", borderTop: "1px solid var(--ink-faint)", background: selectedMarkupId === m.id ? "var(--surface-pop)" : "transparent" }}>
+                           {/* header line — thumb, name(✎), sheet badge, age,
+                               Place, ◎ trace, caption toggle, delete. Mirrors the
+                               per-sheet row's click-to-fly / stopPropagation
+                               pattern above. */}
+                           <div onClick={() => flyToMarkup(m)} title={imageProvenance(m)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", flexWrap: "wrap" }}>
+                             {(() => {
+                               const th = ensureThumb(m);
+                               return <span style={{ flex: "0 0 auto", width: 30, height: 30, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                                 {th ? <img src={th} alt="" style={{ maxWidth: "100%", maxHeight: "100%", display: "block" }} /> : <span style={{ fontSize: 14 }}>🖼</span>}
+                               </span>;
+                             })()}
+                             {panelEditId === m.id ? (
+                               <input name="capture-text" autoComplete="off" autoFocus defaultValue={m.text || ""}
+                                 onClick={(e) => e.stopPropagation()}
+                                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); } else if (e.key === "Escape") { e.preventDefault(); e.currentTarget.value = m.text || ""; setPanelEditId(null); } }}
+                                 onBlur={(e) => { updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); }}
+                                 style={{ flex: 1, minWidth: 0, fontSize: 12.5, padding: "1px 4px", border: "1px solid var(--cobalt)", borderRadius: 0, outline: "none" }} />
+                             ) : (
+                               <span style={{ flex: "0 1 auto", minWidth: 0, color: "var(--ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.text || <em style={{ color: "var(--ink-muted)" }}>(no name)</em>}</span>
+                             )}
+                             <button onClick={(e) => { e.stopPropagation(); setPanelEditId((id) => (id === m.id ? null : m.id)); }} title="Edit name" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>
+                             <span style={{ color: "var(--ink-faint)" }}>·</span>
+                             <span title={`Currently on ${sheetBaseLabel(m.sheet_id)}`} style={{ fontSize: 10.5, color: "var(--ink-muted)", padding: "1px 6px", border: "1px solid var(--ink-faint)", borderRadius: 4, background: "var(--paper-cream)", whiteSpace: "nowrap" }}>{sheetBaseLabel(m.sheet_id)}</span>
+                             {/* legacy/imported captures can predate created_at (see
+                                 imageProvenance's own guard on the same field) — a
+                                 blank relativeAge must not leave a dangling "·" */}
+                             {(() => {
+                               const age = relativeAge(m.created_at, Date.now());
+                               return age ? (
+                                 <>
+                                   <span style={{ color: "var(--ink-faint)" }}>·</span>
+                                   <span style={{ fontSize: 10.5, color: "var(--ink-muted)", whiteSpace: "nowrap" }} title={absoluteUtc(m.created_at)}>{age}</span>
+                                 </>
+                               ) : null;
+                             })()}
+                             <button onClick={(e) => { e.stopPropagation(); beginPlace(m); }} title={panelKeySet.has(m.sheet_id) ? "Reposition: centers the view on the image, then it follows the cursor — click the sheet to drop it" : "Place this image on the current sheet — it follows the cursor until you click to drop it"} style={{ border: "1px solid var(--ink-faint)", background: placingImageId === m.id ? "var(--cobalt)" : "transparent", color: placingImageId === m.id ? "#fff" : "var(--cobalt)", cursor: "pointer", fontSize: 11, padding: "1px 7px" }}>Place</button>
+                             {traceable && (
+                               <button onClick={(e) => { e.stopPropagation(); traceSource(m); }} title="Jump to the source sheet and flash the captured region" style={{ border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11, padding: "1px 7px", whiteSpace: "nowrap" }}>
+                                 {traceLabel(m.src_sheet_id, m.sheet_id, sheetBaseLabel(m.src_sheet_id))}
+                               </button>
+                             )}
+                             {traceable && (
+                               <button onClick={(e) => { e.stopPropagation(); updateMarkup(m.id, { source_label: !m.source_label }); }}
+                                 title="Show/Hide the source caption on the image"
+                                 style={{ padding: "2px 7px", border: `1px solid ${m.source_label ? "var(--cobalt)" : "var(--ink-faint)"}`, background: m.source_label ? "var(--cobalt)" : "transparent", color: m.source_label ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 10.5, fontFamily: "var(--f-mono)", lineHeight: 1.4 }}>
+                                 caption
+                               </button>
+                             )}
+                             <button onClick={(e) => { e.stopPropagation(); deleteMarkup(m.id); }} title="Delete capture" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
+                           </div>
+                           {/* Condition link — identical block to the per-sheet row's
+                               (8211–8235 pre-slice-4); keys off `m` and works for any
+                               markup type, captures included. */}
+                           {(() => {
+                             const lc = m.condition_id ? condById[m.condition_id] : null;
+                             const ctrl = { padding: "2px 7px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11 };
+                             return (
+                               <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
+                                 {lc ? (
+                                   <>
+                                     <span title={`Annotation is about ${lc.finish_tag}`}
+                                       style={{ display: "inline-flex", alignItems: "center", gap: 5, fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700 }}>
+                                       <span style={{ width: 9, height: 9, background: lc.color, border: "1px solid var(--ink-faint)" }} />
+                                       {lc.finish_tag}
+                                     </span>
+                                     <button onClick={() => { setActiveCond(lc.id); }} style={{ ...ctrl, color: "var(--cobalt)" }} title="Make this the active condition">Select</button>
+                                     <button onClick={() => unlinkCondition(m)} style={{ ...ctrl, color: "var(--ink-muted)" }} title="Detach this annotation from its condition">Detach</button>
+                                   </>
+                                 ) : conditions.length > 0 && (
+                                   <select name="link-condition" value="" onChange={(e) => { if (e.target.value) linkCondition(m, e.target.value); }}
+                                     title="Attach this annotation to a condition" style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 170 }}>
+                                     <option value="">Attach to condition…</option>
+                                     {conditions.map((c) => <option key={c.id} value={c.id}>{c.finish_tag}</option>)}
+                                   </select>
+                                 )}
+                               </div>
+                             );
+                           })()}
+                           {/* RFI controls — identical block to the per-sheet row's
+                               (8237–8262 pre-slice-4). */}
+                           {(() => {
+                             const linked = m.rfi_id ? rfis.find((r) => r.id === m.rfi_id) : null;
+                             const ctrl = { padding: "2px 7px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11 };
+                             return (
+                               <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 7, flexWrap: "wrap" }}>
+                                 {linked ? (
+                                   <>
+                                     <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700, color: "var(--cobalt)" }}>⬢ {String(linked.number ?? "")}</span>
+                                     <button onClick={() => { setLeftTab("rfi"); }} style={{ ...ctrl, color: "var(--cobalt)" }} title="Open the RFI register">Open</button>
+                                     <button onClick={() => unlinkRfi(m)} style={{ ...ctrl, color: "var(--ink-muted)" }} title="Unlink this markup from its RFI">Unlink</button>
+                                   </>
+                                 ) : (
+                                   <>
+                                     <button onClick={() => raiseRfi(m)} style={{ ...ctrl, color: "var(--cobalt)", fontWeight: 600 }} title="Create a new RFI from this markup">Raise RFI</button>
+                                     {rfis.length > 0 && (
+                                       <select name="link-rfi" value="" onChange={(e) => { if (e.target.value) linkRfi(m, e.target.value); }}
+                                         title="Link this markup to an existing RFI" style={{ ...ctrl, background: "var(--paper-bright)", maxWidth: 150 }}>
+                                         <option value="">Link existing…</option>
+                                         {rfis.map((r) => <option key={r.id} value={r.id}>{r.number}{r.subject ? ` · ${r.subject}` : ""}</option>)}
+                                       </select>
+                                     )}
+                                   </>
+                                 )}
+                               </div>
+                             );
+                           })()}
+                         </div>
+                       );
+                     });
+                   })()}
+                 </div>
                </div>
              )}
              {leftTab === "stamp" && (
