@@ -210,7 +210,7 @@ export const localStore = {
 
   async loadPdfData(name) {
     const rec = await withDb((db) => tx(db, PDF_STORE, "readonly", (os) => os.get(name)));
-    if (!rec) throw new Error(_t("store.pdf_not_found", { name }));
+    if (!rec) throw new Error(markDanger(_t("store.pdf_not_found", { name })));
     // hand pdf.js a fresh view each call — getDocument({data}) may detach it
     return new Uint8Array(rec.bytes);
   },
@@ -287,7 +287,7 @@ export const localStore = {
     const cur = await withDb((db) => tx(db, PDF_STORE, "readonly", (os) => os.get(name)));
     if (cur && (cur.rev || 1) === rev) return new Uint8Array(cur.bytes);
     const rec = await withDb((db) => tx(db, REV_STORE, "readonly", (os) => os.get(revKey(name, rev))));
-    if (!rec) throw new Error(_t("store.revision_not_found", { rev, name }));
+    if (!rec) throw new Error(markDanger(_t("store.revision_not_found", { rev, name })));
     return new Uint8Array(rec.bytes);
   },
 

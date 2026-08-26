@@ -4,6 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { sweepSymbols, fingerprintSymbol, matchSymbol, scaleFingerprint, type Point } from "../src/lib/symbolsweep.ts";
+import { isDanger } from "../src/lib/danger.js";
 
 // The test symbol — deliberately ASYMMETRIC under every rotation and mirror:
 // a 20×20 square, ONE diagonal, and a stub off the right side. Local coords,
@@ -289,6 +290,24 @@ test("#186 refusals: a symbol that shrinks inside tolerance, a ratio no sheet pa
   assert.throws(() => matchSymbol(fp, plan, { scale: Number.NaN }), /positive, finite/);
   assert.throws(() => matchSymbol(fp, plan, { scale: 2, excludeCenter: fp.center }), /means nothing on a target sheet/,
     "the seed's own location is a SOURCE-sheet point");
+});
+
+test("sweep error messages are danger-tagged (isDangerMsg red/sticky contract)", () => {
+  const fp = fingerprintSymbol(place([{ at: [0, 0] }]), RECT);
+  const plan = place([{ at: [50, 50] }]);
+  const cases: Array<{ args: Parameters<typeof matchSymbol>; pattern: RegExp; label: string }> = [
+    { args: [fp, plan, { scale: 0 }], pattern: /positive, finite/, label: "ratio_not_finite" },
+    { args: [fp, plan, { scale: 200 }], pattern: /outside the sane band/, label: "ratio_out_of_band" },
+    { args: [fp, plan, { scale: 1 / 8 }], pattern: /inside the .* matching tolerance/, label: "symbol_too_small" },
+    { args: [fp, plan, { scale: 2, excludeCenter: fp.center }], pattern: /means nothing on a target sheet/, label: "exclude_center_scale" },
+  ];
+  for (const { args, pattern, label } of cases) {
+    try { matchSymbol(...args); assert.fail(`${label} should throw`); }
+    catch (e: any) {
+      assert.match(e.message, pattern, `${label} message matches`);
+      assert.ok(isDanger(e.message), `${label} error should be danger-tagged: "${e.message}"`);
+    }
+  }
 });
 
 test("seed diagnostics: centroid and total length are the fingerprint's own", () => {
