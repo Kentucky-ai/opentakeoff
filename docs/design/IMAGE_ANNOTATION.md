@@ -1,4 +1,4 @@
-# Plan — Image annotation markup (upload + marquee screenshot)
+# Image annotation markup (upload + marquee screenshot)
 
 > Revised after four parallel adversarial plan reviews (correctness, regression,
 > test-design, security/edge). Every finding is folded into the body below; the
@@ -81,7 +81,12 @@ so a too-big blob silently fails to persist *the entire takeoff*. Fix: on a
 non-stale error, `setCommitMsg(friendlyStoreError(e))` (the quota copy already
 exists, `store.js:139-141`) and set an explicit error save-state, not `"idle"`.
 
-Migration to a dedicated blob store stays **out of scope**.
+Migration to a dedicated blob store stays **out of scope** — and note it is a
+trade, not a free win. It would buy back the per-edit re-serialization above
+(image bytes keyed by markup id out-of-band, so the debounced `annotations` save
+carries only the small record, not the base64 payload) at the cost of the
+separate sync channel the "Cloud sync is free" reason weighs against: that
+channel must carry the bytes itself or images vanish across devices.
 
 ### Coordinate frame (verified)
 
@@ -243,7 +248,7 @@ the `text` fallthrough), inside the async `for (const m of marksHere)` (sequenti
 **New**
 - `web/src/lib/markupImage.ts` — the pure helpers above.
 - `web/test/markupImage.test.ts` — node:test over every helper.
-- `docs/plans/image-annotation-plan.md` — this file.
+- `docs/design/IMAGE_ANNOTATION.md` — this file.
 
 **Edited**
 - `web/src/lib/canvasConstants.js` — add the `image` tool to `MARKUP_TOOLS`; add
