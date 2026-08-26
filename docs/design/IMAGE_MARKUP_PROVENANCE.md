@@ -1,4 +1,4 @@
-# Plan — image-markup provenance, naming, thumbnails, placement & audit
+# Image-markup provenance, naming, thumbnails, placement & audit
 
 Enhancements to the image-markup feature on `feat/206-image-annotation` (PR #206).
 Verified against the branch rebased on `main` (2026-08-25); file:line refs are

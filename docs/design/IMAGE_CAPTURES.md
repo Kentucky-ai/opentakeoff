@@ -1,4 +1,4 @@
-# Plan — "Captures": a cross-sheet image library in the sidebar
+# "Captures": a cross-sheet image library in the sidebar
 
 Reshapes image markups on `feat/206-image-annotation` from per-sheet annotations
 into a portable **Captures** library. Verified against the branch (file:line refs
