@@ -40,7 +40,7 @@ import UserGuide from "../components/UserGuide.jsx";
 import TakeoffsPanel, { clampPanelW, CONDITION_DND_MIME, ConditionAppearanceEditor } from "../components/TakeoffsPanel.jsx";
 import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../components/hatches.jsx";
 import { Icon } from "../brand/icons.jsx";
-import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks, extractDimTexts, sheetBaseLabelFromKey } from "../lib/sheets";
+import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks, extractDimTexts } from "../lib/sheets";
 import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
@@ -5208,12 +5208,21 @@ export default function TakeoffCanvas() {
         };
       }).filter(Boolean);
       const sheetMeta = [...plainMeta, ...stitchMeta];
+      // Source-caption labels: resolve each capture's ORIGIN sheet to the same
+      // display name the tab/canvas shows (sheetBaseLabel — sheet number, rename,
+      // stitch name, or file-base fallback), keyed by src_sheet_id. markedset reads
+      // THIS map so the PDF caption matches the on-screen caption exactly, even when
+      // the origin sheet carries no markups of its own (so it isn't in sheetMeta).
+      const srcLabels = {};
+      for (const m of exportMarkups) {
+        if (m.type === "image" && m.source === "capture" && m.src_sheet_id != null) srcLabels[m.src_sheet_id] = sheetBaseLabel(m.src_sheet_id);
+      }
       // branding mode decides the cover identity + wordmark + parent credit;
       // resolved per-project (folderId "" ⇒ the single browser-only setting)
       const brand = resolveBranding({ ...(await loadBrandingSelection(projectIdFromUrl())), profiles: loadProfiles().profiles });
       const { bytes, filename } = await buildMarkedSetPdf({
         projectName, clientInfo, company: brand.company, credit: brand.credit, coverTitle: brand.coverTitle,
-        dark: darkMode, units, sheets: sheetMeta, shapes, markups: exportMarkups, approvals, rfis, conditions,
+        dark: darkMode, units, sheets: sheetMeta, srcLabels, shapes, markups: exportMarkups, approvals, rfis, conditions,
         getPage: async (file, pageNum) => (await docFor(file)).getPage(pageNum),
         loadPdfData: (file) => store.loadPdfData(file),
       });
@@ -8844,14 +8853,15 @@ export default function TakeoffCanvas() {
                         // src must never make <image href> fetch remote content.
                         if (!(m.src && pickEmbedFormat(m.src) && Array.isArray(m.at) && bw > 0 && bh > 0)) return null;
                         const x0 = m.at[0] * p.img.w - bw / 2, y0 = m.at[1] * p.img.h - bh / 2;
-                        // Source caption (captures only; dormant until slice 4 flips
-                        // source_label true) — derived the SAME way as the marked-set
-                        // export (sheetBaseLabelFromKey + sourceCaption) so screen and
-                        // PDF read byte-identical text. "" (upload, no src_sheet_id, or
-                        // a stitch source — sheetBaseLabelFromKey suppresses those)
-                        // means render nothing, not an empty chip.
+                        // Source caption (captures only) — the SHEET NAME of the origin,
+                        // via the live sheetBaseLabel closure (the same label the tab shows:
+                        // a detected sheet number "AF101", a user rename, a stitch name, or
+                        // a file-base fallback). The marked-set export reads the SAME label
+                        // through the srcLabels map built in exportMarkedSet from this very
+                        // closure, so screen and PDF stay byte-identical. "" (upload or no
+                        // src_sheet_id) means render nothing, not an empty chip.
                         const capText = m.source === "capture" && m.source_label && m.src_sheet_id
-                          ? sourceCaption(sheetBaseLabelFromKey(m.src_sheet_id), parseSheetKey(m.src_sheet_id).page)
+                          ? sourceCaption(sheetBaseLabel(m.src_sheet_id), parseSheetKey(m.src_sheet_id).page)
                           : "";
                         return (
                           <g key={m.id}>

@@ -188,6 +188,31 @@ test("marked set: a capture image with a caption on a ROTATED source page still 
   assert.ok(text.includes("Source: "), "the source caption text is present on the rotated sheet's page");
 });
 
+// The caption shows the ORIGIN sheet's on-screen NAME, supplied by the caller as
+// srcLabels[src_sheet_id] (exportMarkedSet resolves it via the sheetBaseLabel
+// closure so the PDF matches the canvas). Prove the passed label — not the
+// file-base fallback — is what lands in the caption text.
+test("marked set: the source caption uses srcLabels (the sheet name), not the file-base fallback", async () => {
+  const srcBytes = await makeSourcePdf();
+  const sheets = [{ key: "S1", file: "plan.pdf", page: 1, label: "Sheet 1" }];
+  const markups = [{
+    id: "mk1", type: "image", sheet_id: "S1", at: [0.5, 0.5], w: 0.3, aspect: 1, src: PNG,
+    source: "capture", source_label: true, src_sheet_id: "plan.pdf#1",
+    src_rect: [[0.1, 0.1], [0.4, 0.4]],
+  }];
+  const pages: Record<number, ReturnType<typeof mockPage>> = { 1: mockPage(612, 792, 0) };
+  const { bytes } = await buildMarkedSetPdf({
+    projectName: "Test", dark: false, units: "imperial",
+    sheets, srcLabels: { "plan.pdf#1": "AF101" }, shapes: [], markups, approvals: [], rfis: [], conditions: [], company: undefined, clientInfo: undefined,
+    getPage: async (_file: string, pageNum: number) => pages[pageNum],
+    loadPdfData: async () => srcBytes,
+  });
+  const text = await pageText(bytes, 1);
+  assert.ok(text.includes("Sheet 1"), "pageText decoded real text off this page (sheet footer label)");
+  assert.ok(text.includes("Source: AF101"), "the caption shows the srcLabels sheet name (AF101), not the file base 'plan'");
+  assert.ok(!text.includes("Source: plan"), "the file-base fallback is NOT used when a srcLabels entry exists");
+});
+
 test("marked set: a capture image whose src_sheet_id is a STITCH key exports with the caption suppressed, no crash", async () => {
   const srcBytes = await makeSourcePdf();
   const sheets = [{ key: "S1", file: "plan.pdf", page: 1, label: "Sheet 1" }];
