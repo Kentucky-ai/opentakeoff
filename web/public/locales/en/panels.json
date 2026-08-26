@@ -219,6 +219,7 @@
   "plan.read_error_desc": "None of the opened files would render — try opening them again.",
   "plan.reading_plan_set": "Reading the plan set…",
   "plan.stitched_surfaces": "Stitched surfaces",
+  "plan.stitch_default_name": "Stitched sheets",
   "plan.stitch_open_title": "Open {{name}} — {{count}} sheets as one working surface",
   "plan.stitch_delete_title": "Delete this stitch (refused while takeoffs live on it)",
   "plan.plan_selected": "{{count}} selected",

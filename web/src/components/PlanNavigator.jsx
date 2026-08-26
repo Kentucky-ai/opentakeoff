@@ -794,14 +794,16 @@ export default function PlanNavigator({
       {stitches.length > 0 && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "9px 18px", borderTop: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
           <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--ink-muted)" }}>{t('plan.stitched_surfaces')}</span>
-          {stitches.map((st) => (
+          {stitches.map((st) => {
+            const stitchName = st.name || t('plan.stitch_default_name');
+            return (
             <span key={st.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, border: "1px solid var(--ink-faint)", padding: "4px 8px", fontSize: 12 }}>
-              <button onClick={() => onOpenStitch && onOpenStitch(st.id)} title={t('plan.stitch_open_title', { name: st.name, count: st.members.length })}
-                style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontWeight: 600, fontSize: 12, padding: 0 }}>{st.name}</button>
+              <button onClick={() => onOpenStitch && onOpenStitch(st.id)} title={t('plan.stitch_open_title', { name: stitchName, count: st.members.length })}
+                style={{ border: "none", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontWeight: 600, fontSize: 12, padding: 0 }}>{stitchName}</button>
               <button onClick={() => onDeleteStitch && onDeleteStitch(st.id)} title={t('plan.stitch_delete_title')}
                 style={{ border: "none", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12, padding: 0 }}>×</button>
             </span>
-          ))}
+          )})}
         </div>
       )}
       {sheets.length > 0 && (
