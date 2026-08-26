@@ -409,6 +409,19 @@ function AddValueInput({ onAdd }) {
 export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondParam, onAssignAttr, conditionColumns = [], layout = "stack", units = "imperial", rollInfo = null }) {
   const [hatchOpen, setHatchOpen] = useState(false);
   const activeColor = c.color || "#c96442";
+  // Top-bar band ("row") only: the two palettes fold into two swatch buttons
+  // with a popover each — one open at a time, Esc or a click outside closes.
+  // The docked panel ("stack") keeps its inline palettes: it has the room.
+  const [paletteOpen, setPaletteOpen] = useState(null); // null | "line" | "fill"
+  const paletteRef = useRef(null);
+  useEffect(() => {
+    if (!paletteOpen) return;
+    const onDown = (e) => { if (paletteRef.current && !paletteRef.current.contains(e.target)) setPaletteOpen(null); };
+    const onKey = (e) => { if (e.key === "Escape") setPaletteOpen(null); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [paletteOpen]);
   // Two layouts, one editor. "stack" (docked panel, narrow) stacks the groups
   // vertically; "row" (top-bar band, wide) flows them left-to-right so they use
   // the horizontal space instead of clumping in a corner, split by thin rules.
@@ -437,15 +450,49 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
         </span>
       </div>
       {isRow && rule()}
-      <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-        <span style={{ color: "var(--ink-muted)", width: 26 }}>Line</span>
-        {PALETTE.map((p) => <button key={p} title={p} onClick={() => onUpdateCond({ color: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, border: c.color === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-        <span style={{ color: "var(--ink-muted)", width: 26 }}>Fill</span>
-        <button title="No fill" onClick={() => onUpdateCond({ fill: NO_FILL })} style={{ width: 16, height: 16, borderRadius: 4, background: "var(--paper-bright)", border: c.fill === NO_FILL ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 9, lineHeight: "12px", color: "var(--c-danger)" }}>⦸</button>
-        {PALETTE.map((p) => <button key={p} title={p} onClick={() => onUpdateCond({ fill: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, opacity: 0.55, border: c.fill === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
-      </div>
+      {isRow ? (
+        <div ref={paletteRef} style={{ display: "flex", alignItems: "center", gap: 6, position: "relative" }}>
+          <button data-testid="line-swatch" title={`Line color — ${c.color || "default"}`} aria-expanded={paletteOpen === "line"}
+            onClick={() => setPaletteOpen((v) => (v === "line" ? null : "line"))}
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "2px 7px 2px 4px", borderRadius: 0, border: `1px solid ${paletteOpen === "line" ? "var(--ink)" : "var(--ink-faint)"}`, background: "var(--paper-bright)", cursor: "pointer", fontSize: 10.5, color: "var(--ink-muted)" }}>
+            <span aria-hidden style={{ width: 16, height: 16, display: "block", borderRadius: 4, border: "1px solid var(--ink-faint)", background: `linear-gradient(to top right, transparent calc(50% - 1.5px), ${activeColor} calc(50% - 1.5px), ${activeColor} calc(50% + 1.5px), transparent calc(50% + 1.5px))` }} />
+            Line
+          </button>
+          <button data-testid="fill-swatch" title={`Fill color — ${c.fill === NO_FILL || !c.fill ? "none" : c.fill}`} aria-expanded={paletteOpen === "fill"}
+            onClick={() => setPaletteOpen((v) => (v === "fill" ? null : "fill"))}
+            style={{ display: "flex", alignItems: "center", gap: 5, padding: "2px 7px 2px 4px", borderRadius: 0, border: `1px solid ${paletteOpen === "fill" ? "var(--ink)" : "var(--ink-faint)"}`, background: "var(--paper-bright)", cursor: "pointer", fontSize: 10.5, color: "var(--ink-muted)" }}>
+            {c.fill && c.fill !== NO_FILL
+              ? <span aria-hidden style={{ width: 16, height: 16, display: "block", borderRadius: 4, background: c.fill, opacity: 0.55, border: "1px solid var(--ink-faint)" }} />
+              : <span aria-hidden style={{ width: 16, height: 16, display: "block", borderRadius: 4, border: "1px solid var(--ink-faint)", fontSize: 9, lineHeight: "14px", textAlign: "center", color: "var(--c-danger)" }}>⦸</span>}
+            Fill
+          </button>
+          {paletteOpen && (
+            <div role="dialog" aria-label={paletteOpen === "line" ? "Line color" : "Fill color"}
+              style={{ position: "absolute", top: 26, left: paletteOpen === "line" ? 0 : 62, zIndex: 30, display: "grid", gridTemplateColumns: "repeat(6, 16px)", gap: 4, padding: 8, background: "var(--paper-bright)", border: "1px solid var(--ink-faint)", borderRadius: 0, boxShadow: "var(--shadow-pop)" }}>
+              {paletteOpen === "fill" && (
+                <button title="No fill" onClick={() => { onUpdateCond({ fill: NO_FILL }); setPaletteOpen(null); }} style={{ width: 16, height: 16, borderRadius: 4, padding: 0, background: "var(--paper-bright)", border: c.fill === NO_FILL ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 9, lineHeight: "12px", color: "var(--c-danger)" }}>⦸</button>
+              )}
+              {PALETTE.map((p) => {
+                const on = paletteOpen === "line" ? c.color === p : c.fill === p;
+                return <button key={p} title={p} onClick={() => { onUpdateCond(paletteOpen === "line" ? { color: p } : { fill: p }); setPaletteOpen(null); }}
+                  style={{ width: 16, height: 16, borderRadius: 4, padding: 0, background: p, opacity: paletteOpen === "fill" ? 0.55 : 1, border: on ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />;
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+            <span style={{ color: "var(--ink-muted)", width: 26 }}>Line</span>
+            {PALETTE.map((p) => <button key={p} title={p} onClick={() => onUpdateCond({ color: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, border: c.color === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+            <span style={{ color: "var(--ink-muted)", width: 26 }}>Fill</span>
+            <button title="No fill" onClick={() => onUpdateCond({ fill: NO_FILL })} style={{ width: 16, height: 16, borderRadius: 4, background: "var(--paper-bright)", border: c.fill === NO_FILL ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer", fontSize: 9, lineHeight: "12px", color: "var(--c-danger)" }}>⦸</button>
+            {PALETTE.map((p) => <button key={p} title={p} onClick={() => onUpdateCond({ fill: p })} style={{ width: 16, height: 16, borderRadius: 4, background: p, opacity: 0.55, border: c.fill === p ? "2px solid var(--ink)" : "1px solid var(--ink-faint)", cursor: "pointer" }} />)}
+          </div>
+        </>
+      )}
       {isRow && rule()}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ display: "flex", alignItems: "center", gap: 4, position: "relative" }}>
