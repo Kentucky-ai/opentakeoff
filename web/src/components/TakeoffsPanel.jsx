@@ -842,7 +842,7 @@ function TakeoffsPanel({
     // than the open sheets, so the common everything-on-this-sheet case stays
     // one number. A condition entirely on closed sheets reads "Σ 412 SF"
     // instead of a dead "—".
-    const qtys = (o) => [o.sf ? fa(o.sf) : "", o.wsf ? `${fa(o.wsf)} wall` : "", o.lf ? fl(o.lf) : "", o.ea ? `${num(o.ea, 0)} EA` : ""].filter(Boolean).join(" · ");
+    const qtys = (o) => [o.sf ? fa(o.sf) : "", o.wsf ? `${fa(o.wsf)} ${t('takeoffs.wall_label')}` : "", o.lf ? fl(o.lf) : "", o.ea ? `${num(o.ea, 0)} EA` : ""].filter(Boolean).join(" · ");
     const pr = projRowById.get(c.id);
     const prQ = pr ? { sf: pr.floor_sf || 0, wsf: pr.wall_sf || 0, lf: pr.lf || 0, ea: pr.ea || 0 } : null;
     const projDiff = prQ && (Math.abs(prQ.sf - sf) > 0.005 || Math.abs(prQ.wsf - wsf) > 0.005 || Math.abs(prQ.lf - lf) > 0.005 || Math.abs(prQ.ea - ea) > 0.005);
@@ -936,13 +936,13 @@ function TakeoffsPanel({
               return (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, padding: "3px 6px", border: "1px solid var(--ink-faint)", background: "var(--paper-cream)", fontSize: 11 }}>
                   <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--ink-muted)" }}
-                    title={t('takeoffs.twin_follow_title', { tag: par?.finish_tag || "the original" })}>
+                    title={t('takeoffs.twin_follow_title', { tag: par?.finish_tag || t('takeoffs.original_fallback') })}>
                     {t('takeoffs.twin_of')} <b style={{ color: "var(--ink)" }}>{par?.finish_tag || "—"}</b>
                     {n ? <span style={{ color: "var(--cobalt)" }}> {t('takeoffs.twin_local', { count: n })}</span> : null}
                   </span>
                   {onSplitCondition && (
                     <button onClick={() => onSplitCondition(c.id)}
-                      title={t('takeoffs.twin_split_title', { tag: par?.finish_tag || "the original" })}
+                      title={t('takeoffs.twin_split_title', { tag: par?.finish_tag || t('takeoffs.original_fallback') })}
                       style={{ padding: "1px 6px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 10.5, color: "var(--ink)", flexShrink: 0 }}>{t('takeoffs.twin_split')}</button>
                   )}
                 </div>
