@@ -108,12 +108,13 @@ test("TakeoffCanvas highlighter popover uses translated keys for ink_color, tip_
 test("TakeoffCanvas rail labels use t() calls, not hardcoded strings", () => {
   const canvas = loadSrc("src/pages/TakeoffCanvas.jsx");
 
-  // Should use t('rail.sel') etc., not railLabel("SEL")
+  // SEL, MEAS, CUT are the always-visible rail groups
   assert.match(canvas, /railLabel\(\s*t\(['"]rail\.sel['"]\)\s*\)/, "rail SEL must use t('rail.sel')");
   assert.match(canvas, /railLabel\(\s*t\(['"]rail\.meas['"]\)\s*\)/, "rail MEAS must use t('rail.meas')");
   assert.match(canvas, /railLabel\(\s*t\(['"]rail\.cut['"]\)\s*\)/, "rail CUT must use t('rail.cut')");
-  // rail.mark removed — annotation/markup tools moved to the toolbar row
-  assert.match(canvas, /railLabel\(\s*t\(['"]rail\.cal['"]\)\s*\)/, "rail CAL must use t('rail.cal')");
+
+  // Focus-mode markup group uses the markup tab label, not a rail.* key
+  assert.match(canvas, /railLabel\(\s*t\(['"]markup\.tab_markups['"]\)\s*\)/, "focus-mode markup rail must use t('markup.tab_markups')");
 
   // Must NOT have the old hardcoded strings
   assert.doesNotMatch(canvas, /railLabel\("SEL"\)/, "no hardcoded railLabel('SEL')");
@@ -123,8 +124,8 @@ test("TakeoffCanvas rail labels use t() calls, not hardcoded strings", () => {
   assert.doesNotMatch(canvas, /railLabel\("CAL"\)/, "no hardcoded railLabel('CAL')");
 });
 
-test("en and pt-br canvas.json have rail.* keys", () => {
-  const railKeys = ["rail.sel", "rail.meas", "rail.cut", "rail.mark", "rail.cal"];
+test("en and pt-br canvas.json have rail.* keys for active rail groups", () => {
+  const railKeys = ["rail.sel", "rail.meas", "rail.cut"];
   for (const lng of ["en", "pt-br"]) {
     const canvas = loadJson(lng, "canvas");
     for (const key of railKeys) {

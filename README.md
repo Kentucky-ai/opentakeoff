@@ -426,6 +426,7 @@ plus a vision-capable model id.
 | **Ingest** | PDF, image, or `.zip` plan set — unpacked in-browser, multi-page, multi-file, up to 4 sheets side-by-side |
 | **Scale** | Auto-detect the drawn note, calibrate from a known dimension, or verify one with a graded check — per sheet; global Imperial / SI unit preference (m²/m/m/mm display) |
 | **Measure** | One-Click Area (vector flood + raster fallback), Area, Rectangle, Linear, Curved Line, Surface Area, Count, Cut Out deducts, ⟂ Transitions, Zone check — Imperial (SF/LF/ft/in) or SI (m²/m/m/mm) |
+| **Readout** | Per-condition totals plus individual measurement breakdown: each linear run's length and each wall's *LF × H = SF*, using shape-specific wall height where set, condition height otherwise, in current units |
 | **Drawing aids** | 45°/90° angle lock with `⇧` hard-lock, live angle + segment-length readout at the cursor, endpoint Snap (beta) |
 | **Conditions** | Color + CAD hatch per finish, waste %, ×N multiplier, wall height, border thickness, schedule import, browser-wide library |
 | **Supporting Materials** | Labor + subfloor type, coverage rate × basis (incl. figured seam LF) → rounded order quantities, trowel/roller presets, grout calculator |

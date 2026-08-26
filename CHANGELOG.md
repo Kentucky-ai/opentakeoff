@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — per-measurement breakdown in the canvas readout
+
+### Added
+- **Individual measurement breakdown in the live readout.** The top-right readout card now lists every linear run and every wall measurement for the active condition below the condition totals. Linear entries show their length; wall (Surface Area) entries show *LF × H = SF*. Each wall uses the shape's own height override when one was set at trace time, otherwise the condition's default height — the same resolution order the Report and totals use. All numbers follow the current Imperial / SI unit preference. The list appears only when measurements exist and does not alter persistence, totals, or exports.
+
 ## 2026-08-25 — Brazilian Portuguese naturalization, metric-first default
 
 ### Changed

@@ -139,6 +139,7 @@ import { findCutoutParent, subtractCutout, recomposeCutouts } from "../lib/cutou
 import { computeShapeMetrics, needsMetrics } from "../lib/shapeMetrics.js";
 import { fmtCheckLen, parseLenInput, checkVerdict, M_PER_FT, areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, heightVal, heightUnit, heightInputToFeet, heightStep, dimInputStr, dimLabel } from "../lib/units";
 import * as panelGeom from "../lib/panelGeometry.js";
+import { buildReadoutMeasurements } from "../lib/measurementBreakdown.js";
 
 // Carpet roll width — a run reaching this needs a seam. The live cursor readout
 // turns amber at/past it so the estimator sees where seams fall while tracing.
@@ -5689,6 +5690,10 @@ export default function TakeoffCanvas() {
   // display-only Kreo-style derived metric: floor-area perimeters × the condition height
   const condH = Number(aCond?.height_ft) || 0; // the live-readout JSX below still reads this
   const vertTotal = verticalWallSf(visibleShapes, activeCond, aCond?.height_ft, condMult);
+  // Readout-only list of individual linear + surface_area shapes for the
+  // active condition on visible sheets. Consumed by the readout card renderer
+  // below the totals; this memo is the single source of truth for that list.
+  const readoutMeasurements = useMemo(() => buildReadoutMeasurements(visibleShapes, activeCond, aCond?.height_ft), [visibleShapes, activeCond, aCond?.height_ft]);
   const num = (v, d = 1) => v.toLocaleString(undefined, { maximumFractionDigits: d });
   // unit-system display edge: internal math is always feet (lib/units.ts)
   const fa = (sf, d = 1) => `${num(areaVal(sf, units), d)} ${areaUnit(units)}`;
@@ -7592,6 +7597,31 @@ export default function TakeoffCanvas() {
           {countTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{num(countTotal, 0)} <span style={{ fontSize: 12, fontWeight: 600 }}>{t('unit.ea')}</span></div>}
           {vertTotal > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }} title={t('readout.vert_hint')}>{fa(vertTotal)} {t('readout.vert')}</div>}
           {condTotal === 0 && lfTotal === 0 && countTotal === 0 && wallTotal === 0 && borderTotal === 0 && <div style={{ fontSize: 12.5, color: "var(--ink-muted)", marginTop: 2 }}>—</div>}
+          {readoutMeasurements.length > 0 && (
+            <>
+              <div style={{ height: 1, background: "var(--divider-soft)", margin: "6px 0" }} />
+              <div style={{ fontSize: 10.5, textTransform: "uppercase", letterSpacing: 0.4, opacity: 0.5, marginBottom: 3 }}>{t('readout.measurements')}</div>
+              {readoutMeasurements.map(({ shape: s, index, lengthLf, heightFt, areaSf }) => {
+                const seq = String(index + 1).padStart(2, "0");
+                if (s.measure_role === "linear") {
+                  return (
+                    <div key={s.id} style={{ fontSize: 11.5, color: "var(--ink-secondary)", marginTop: 1, fontVariantNumeric: "tabular-nums", fontFamily: "var(--f-mono, monospace)" }}>
+                      <span style={{ opacity: 0.5 }}>{seq}</span>{" "}
+                      {fl(lengthLf)}
+                      <span style={{ marginLeft: 4, opacity: 0.45 }}>{t('readout.measurement_length')}</span>
+                    </div>
+                  );
+                }
+                // surface_area
+                return (
+                    <div key={s.id} style={{ fontSize: 11.5, color: "var(--ink-secondary)", marginTop: 1, fontVariantNumeric: "tabular-nums", fontFamily: "var(--f-mono, monospace)" }} title={t('readout.measurement_area')}>
+                      <span style={{ opacity: 0.5 }}>{seq}</span>{" "}
+                      {fl(lengthLf)} × {num(heightVal(heightFt, units), 2)} {heightUnit(units)} = {fa(areaSf)}
+                    </div>
+                );
+              })}
+            </>
+          )}
           <div style={{ fontSize: 10.5, opacity: 0.45, marginTop: 6 }}>{visibleShapes.length} {t('readout.shapes_on')} {groupKeys.length > 1 ? `${groupKeys.length} ${t('readout.sheets')}` : t('readout.sheet')} · {t('readout.zoom', { pct: (tf.scale * 100).toFixed(0) })}</div>
         </div>
 

@@ -466,6 +466,8 @@ The **Snap** toggle pulls your cursor onto true PDF endpoints — real corners e
 
 The top-right readout tracks the armed tool: totals for the tracing tools, `W × H · SF · SY` for Rectangle, wall SF at the condition height for Surface Area, and running One-Click selection totals. Any run or side that reaches **12′ turns the chip amber** — the roll-width warning rides every tool that measures a length.
 
+Below the condition totals, the readout lists every individual linear and wall measurement for the active condition on the open sheets. Each linear entry shows its length; each wall entry shows *LF × H = SF*. The wall height used is the shape's own override if one was set when it was traced, otherwise the condition's default height — the same resolution the Report uses. All numbers follow the current unit preference (Imperial or SI). The list appears only when measurements exist and does not affect persistence, totals, or exports.
+
 ---
 
 ## 6. One-Click Area
