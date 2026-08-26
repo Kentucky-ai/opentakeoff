@@ -29,13 +29,6 @@ import { projectIdFromUrl } from "../lib/store.js";
 
 const num = (v, d = 1) => (Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: d });
 
-// one-line hints for the opt-in columns in the picker (waste hint sits under
-// the second waste checkbox so it reads once for the pair)
-const COL_HINTS = {
-  waste_lf: "Waste SF/LF = (w/Waste) − measured",
-  perimeter_ref: "Perimeter is reference only — includes openings; not totaled",
-};
-
 const sheetNum = (v, d = 1) => {
   const r = round2(v);
   // zero-gate at the DISPLAY precision, so a ±0.02 sliver shows "—", not "(0)"
@@ -414,8 +407,11 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
         <input name="report-column-toggle" type="checkbox" checked={colPrefs[c.key] ?? c.defaultVisible} onChange={() => toggleCol(c)} />
         <span>{c.header}</span>
       </label>
-      {COL_HINTS[c.key] && (
-        <div style={{ margin: "0 0 4px 24px", fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1.5 }}>{COL_HINTS[c.key]}</div>
+      {c.key === 'waste_lf' && (
+        <div style={{ margin: "0 0 4px 24px", fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1.5 }}>{t('hints.waste_lf')}</div>
+      )}
+      {c.key === 'perimeter_ref' && (
+        <div style={{ margin: "0 0 4px 24px", fontSize: 10.5, color: "var(--ink-muted)", lineHeight: 1.5 }}>{t('hints.perimeter_ref')}</div>
       )}
     </React.Fragment>
   );
@@ -805,7 +801,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
         )}
         {rows.length > 0 && bySheet.length > 0 && (
           <div style={{ maxWidth: 980, margin: "26px auto 0" }}>
-            <h3 style={{ fontFamily: "var(--f-display)", fontSize: 12, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink)", margin: "0 0 10px", paddingBottom: 5, borderBottom: "1.25px solid var(--ink)" }}>{t('revisions.by_sheet', { defaultValue: "By sheet" })}</h3>
+            <h3 style={{ fontFamily: "var(--f-display)", fontSize: 12, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink)", margin: "0 0 10px", paddingBottom: 5, borderBottom: "1.25px solid var(--ink)" }}>{t('revisions.by_sheet')}</h3>
             {bySheet.map((gp) => (
               <div key={gp.sheet_id} style={{ margin: "0 0 14px" }}>
                 <h3 style={{ fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.06em", color: "var(--ink-muted)", margin: "0 0 6px" }}>{sheetLabel ? sheetLabel(gp.sheet_id) : gp.sheet_id}</h3>
@@ -1041,7 +1037,7 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
             <select name="trade-name" aria-label={t('info.active_trade_name')} value={profs.activeId || ""} onChange={(e) => switchProfile(e.target.value)}
               className="field-input" style={{ flex: 1, minWidth: 0 }} disabled={!profs.profiles.length}>
               {profs.profiles.length === 0 && <option value="">{t('info.no_trade_name')}</option>}
-              {profs.profiles.map((p) => <option key={p.id} value={p.id}>{p.name || "Untitled trade name"}</option>)}
+              {profs.profiles.map((p) => <option key={p.id} value={p.id}>{p.name || t('info.untitled_trade')}</option>)}
             </select>
             <button onClick={addTradeName} className="btn-ghost" title={t('info.add_trade_name_title')}
               style={{ padding: "5px 10px", whiteSpace: "nowrap" }}>{t('info.add')}</button>
@@ -1097,7 +1093,7 @@ function ProjectInfoModal({ clientInfo = {}, onClientInfo, onSaved, onClose }) {
                     style={{ padding: "4px 10px", fontSize: 12, cursor: "pointer",
                       border: `1px solid ${on ? "var(--cobalt)" : "var(--ink-faint)"}`,
                       background: on ? "var(--cobalt)" : "transparent", color: on ? "var(--paper-bright)" : "var(--ink)" }}>
-                    {p.name || "Untitled trade name"}
+                    {p.name || t('info.untitled_trade')}
                   </button>
                 );
               })}

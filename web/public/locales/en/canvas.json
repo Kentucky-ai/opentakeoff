@@ -465,5 +465,11 @@
   "commit.sheet_not_rendered": "Sheet not rendered: {{key}}",
   "commit.sheet_not_rendered_retry": "Sheet not rendered, try again: {{key}}",
   "commit.couldnt_place_aim_sheet": "Couldn't place — aim at a sheet",
-  "commit.couldnt_place_generic": "Couldn't place — {{detail}}"
+  "commit.couldnt_place_generic": "Couldn't place — {{detail}}",
+  "status.oneclick_leak_seed": "That space isn't enclosed on the plan linework — the fill spilled. Seed a more enclosed spot.",
+  "status.oneclick_dense_seed": "Landed in dense linework (hatching/text). Seed an open spot inside the room.",
+  "status.oneclick_scan_leak_seed": "That space isn't enclosed on the scan — the fill escaped through a gap (faded line or open doorway). Seed a more enclosed spot.",
+  "status.oneclick_scan_dense_seed": "Landed on dense scan ink (text or hatching). Seed an open spot inside the room.",
+  "transitions.pick_target": "Pick the condition the transitions land on first.",
+  "transitions.pick_finishes": "Pick the two finishes that meet."
 }
