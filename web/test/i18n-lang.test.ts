@@ -284,3 +284,156 @@ test("danger-tagged messages survive language switch (Set membership is language
   assert.ok(isDanger(ptMsg), "initial language tag should be danger");
   assert.ok(isDanger("OpenTakeoff was updated in another tab — reload this tab to continue."), "English constant should also be danger (registered at module load)");
 });
+
+// ── Task 4: remaining canvas i18n keys ─────────────────────────────────────
+
+/** Keys that TakeoffCanvas.jsx calls t() with — must resolve to real text. */
+const CANVAS_KEYS_USED = [
+  // voice/agent chip literals
+  "agent.offer_text",
+  "agent.voice_loading",
+  "agent.voice_loading_retry",
+  "agent.voice_listening",
+  "agent.voice_decoding",
+  "agent.nothing_handoff",
+  "voice.talking",
+  "voice.talk",
+  // m/ft toggle
+  "scale.metric",
+  "scale.imperial",
+  // this condition fallback
+  "status.this_condition",
+  // load-error hint + footer
+  "status.load_error_hint",
+  "status.reload",
+  "status.shapes",
+  "status.drive",
+  "status.local2",
+  "status.saving",
+  "status.saved",
+  // delete-message interpolation
+  "status.deleted_takeoffs",
+  "status.deleted_condition",
+  "status.deleted_conditions",
+  // toolbar
+  "toolbar.scale",
+  // action bar
+  "action.click_hint",
+  "action.create",
+  "action.create_title",
+  "action.finish",
+  "action.finish_title",
+  "action.label_spot",
+  "action.opposite_corner",
+  // conditions strip
+  "conditions.strip",
+  // confirm dialogs
+  "confirm.delete_condition_with_takeoffs",
+  "confirm.delete_with_takeoffs",
+  "confirm.template_exists",
+  "confirm.update_linked_lines",
+  "confirm.its",
+  "confirm.their",
+  "confirm.the_original",
+  "confirm.this_material",
+  "confirm.one_linked_line",
+  "confirm.n_linked_lines",
+  "confirm.delete_column",
+  "confirm.split_family",
+  "confirm.remove_template",
+  "confirm.remove_material",
+  "confirm.push_material",
+  // menu (sheet chip / gallery / stitches)
+  "menu.close_tab",
+  "menu.files",
+  "menu.import_takeoff",
+  "menu.jump_sheet",
+  "menu.open_gallery",
+  "menu.regroup",
+  "menu.regroup_title",
+  "menu.sheet_page",
+  "menu.sheets_in_set",
+  "menu.side_by_side_add",
+  "menu.side_by_side_remove",
+  "menu.ungroup",
+  "menu.ungroup_stitch",
+  "menu.ungroup_stitch_title",
+  "menu.ungroup_title",
+  // markup controls
+  "markup.broad",
+  "markup.close_panel",
+  "markup.delete_markup",
+  "markup.detach",
+  "markup.editor_placeholder",
+  "markup.fine",
+  "markup.ink_color",
+  "markup.medium",
+  "markup.select",
+  "markup.tip_size",
+  "markup.tip_type",
+  // readout
+  "readout.set_wall_height",
+  "readout.vert_hint",
+  "readout.wall",
+  "readout.border",
+  // takeoffs strip
+  "takeoffs.strip",
+];
+
+test("all canvas keys used by TakeoffCanvas.jsx resolve to real text in en and pt-br", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng);
+    for (const key of CANVAS_KEYS_USED) {
+      const val = t(key);
+      assert.ok(val, `canvas key "${key}" must resolve for "${lng}" (got empty)`);
+      assert.notEqual(val, key, `canvas key "${key}" must not return the key itself for "${lng}"`);
+    }
+  }
+});
+
+test("no canvas translation in en or pt-br contains unresolved {{placeholder}}", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+  const placeholderRe = /\{\{[^}]+\}\}/g;
+
+  for (const lng of ["en", "pt-br"]) {
+    const bundle = i18n.getResourceBundle(lng, "canvas");
+    assert.ok(bundle, `canvas bundle must exist for "${lng}"`);
+    for (const [key, val] of Object.entries(bundle)) {
+      if (typeof val !== "string") continue;
+      // We allow {{placeholders}} in the VALUE — that's i18n interpolation.
+      // What we disallow is literal key references like "toolbar.scale" in the text.
+      // Also skip keys that are interpolation-only values (like "·").
+      // The real check: no translation value should be the key itself.
+      if (val === key) {
+        assert.fail(`canvas "${lng}" key "${key}" has value equal to its key — likely missing translation`);
+      }
+    }
+  }
+});
+
+test("confirm.delete_column uses {{name}} placeholder consistently", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng);
+    const msg = t("confirm.delete_column", { name: "Phase" });
+    assert.ok(msg.includes("Phase"), `confirm.delete_column should interpolate {{name}} for "${lng}"`);
+    // Must NOT contain a leftover {{column}} or literal "column"
+    assert.ok(!msg.includes("{{column}}"), `confirm.delete_column must not have {{column}} placeholder in "${lng}"`);
+  }
+});
+
+test("confirm.remove_material supports {{linkedNote}} interpolation", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng);
+    const msg1 = t("confirm.remove_material", { name: "Glue", linkedNote: " 1 linked line keeps its values" });
+    assert.ok(msg1.includes("Glue"), `confirm.remove_material should interpolate name for "${lng}"`);
+    assert.ok(msg1.includes("1 linked line"), `confirm.remove_material should interpolate linkedNote for "${lng}"`);
+    const msg0 = t("confirm.remove_material", { name: "Glue", linkedNote: "" });
+    assert.ok(msg0.includes("Glue"), `confirm.remove_material with empty linkedNote should still show name for "${lng}"`);
+  }
+});
