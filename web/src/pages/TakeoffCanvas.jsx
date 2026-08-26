@@ -7127,7 +7127,13 @@ export default function TakeoffCanvas() {
   const checkStatedFeet = parseLenInput(checkStated, units);
   const checkErrPct = checkFeet && checkStatedFeet > 0 ? ((checkFeet - checkStatedFeet) / checkStatedFeet) * 100 : null;
 
-  const markupCount = markups.filter((m) => panelKeySet.has(m.sheet_id)).length;
+  // Matches what the Markups tab actually renders post-Captures-split: the
+  // per-sheet non-image list (panel-filtered) plus the GLOBAL Captures list
+  // (every image markup, any sheet) — NOT the old panelKeySet-only count,
+  // which double-missed (never counted an other-sheet capture) and
+  // over-counted (still counted a THIS-sheet image, which no longer shows in
+  // the per-sheet body it was counted against).
+  const markupCount = markups.filter((m) => panelKeySet.has(m.sheet_id) && m.type !== "image").length + filterCaptures(markups, "").length;
   const selShape = selectedId ? visibleShapes.find((s) => s.id === selectedId) : null;
   // the input types in DISPLAY units (metres in metric); height_ft is stored feet
   const setShapeHeight = (raw) => {
@@ -8155,13 +8161,7 @@ export default function TakeoffCanvas() {
                      {/* the header line selects + flies to the markup (parity with the RFI
                          register's onFlyTo) — the inner controls stopPropagation so only the
                          label area triggers it, never edit/delete. */}
-                     <div onClick={() => flyToMarkup(m)} title={m.type === "image" ? imageProvenance(m) : "Select and center this markup"} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                       {m.type === "image" && (() => {
-                         const th = ensureThumb(m);
-                         return <span style={{ flex: "0 0 auto", width: 30, height: 30, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
-                           {th ? <img src={th} alt="" style={{ maxWidth: "100%", maxHeight: "100%", display: "block" }} /> : <span style={{ fontSize: 14 }}>🖼</span>}
-                         </span>;
-                       })()}
+                     <div onClick={() => flyToMarkup(m)} title="Select and center this markup" style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
                        <span style={{ fontSize: 10, fontWeight: 700, color: "var(--cobalt)", textTransform: "uppercase" }}>{m.type}</span>
                        {/* inline edit — the panel's fallback for the canvas overlay, since a
                            markup here may be off-screen or on another sheet (no click point).
@@ -8175,7 +8175,6 @@ export default function TakeoffCanvas() {
                        ) : (
                          <span style={{ flex: 1, color: "var(--ink)" }}>{m.type === "svg" ? <em style={{ color: "var(--ink-muted)" }}>(vector symbol)</em> : ([m.type === "dimension" && Number(m.len_ft) > 0 ? dimLabel(m.len_ft) : "", m.text].filter(Boolean).join(" · ") || <em style={{ color: "var(--ink-muted)" }}>(no text)</em>)}</span>
                        )}
-                       {m.type === "image" && <button onClick={(e) => { e.stopPropagation(); beginPlace(m); }} title={panelKeySet.has(m.sheet_id) ? "Reposition: centers the view on the image, then it follows the cursor — click the sheet to drop it" : "Place this image on the current sheet — it follows the cursor until you click to drop it"} style={{ border: "1px solid var(--ink-faint)", background: placingImageId === m.id ? "var(--cobalt)" : "transparent", color: placingImageId === m.id ? "#fff" : "var(--cobalt)", cursor: "pointer", fontSize: 11, padding: "1px 7px" }}>Place</button>}
                        {m.type !== "svg" && <button onClick={(e) => { e.stopPropagation(); setPanelEditId((id) => (id === m.id ? null : m.id)); }} title="Edit text" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>}
                        <button onClick={(e) => { e.stopPropagation(); deleteMarkup(m.id); }} title="Delete markup" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
                      </div>
@@ -8290,8 +8289,12 @@ export default function TakeoffCanvas() {
                      {captureQuery && <button onClick={() => setCaptureQuery("")} title="Clear the filter" style={{ border: "none", background: "none", color: "var(--ink-muted)", cursor: "pointer", fontSize: 13, padding: 0 }}>×</button>}
                    </div>
                    {(() => {
+                     // one pass over `markups` for the image subset; the query
+                     // then narrows THAT (small) list instead of re-scanning
+                     // every markup a second time — filterCaptures's own
+                     // type==="image" filter is a no-op on an already-image-only input.
                      const allCaptures = filterCaptures(markups, "");
-                     const captures = filterCaptures(markups, captureQuery);
+                     const captures = filterCaptures(allCaptures, captureQuery);
                      if (allCaptures.length === 0) {
                        return <div style={{ padding: "4px 12px 14px", color: "var(--ink-muted)" }}>No captures yet. Marquee a region with 🖼 or use Upload image… above.</div>;
                      }
