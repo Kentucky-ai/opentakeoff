@@ -327,8 +327,11 @@ export default function TakeoffCanvas() {
   // src_rect shape, normalized 0..1), token } | null. `token` must change on
   // every trace, even a repeat of the SAME region, so the render can key a
   // fresh remount off it — see the render site for why. Slice 2 only defines
-  // and renders this; slice 3 SETS it and owns its staleness/clear lifecycle
-  // (no setTimeout here — that would collide with or be removed by slice 3).
+  // and renders this; slice 3 SETS it (via the `flashSource` helper, see
+  // traceSource below) and owns its staleness/clear lifecycle — both the
+  // panel-left clear effect below AND the one-shot auto-clear timer that
+  // `flashSource` arms so the CSS pulse (which holds its last frame forever
+  // once its single run finishes) doesn't end up as a permanent opaque box.
   const [sourceFlash, setSourceFlash] = useState(null);
   // Docked LEFT panel — one at a time, never overlapping: null | "markup" | "stamp" | "rfi".
   // The right-rail buttons switch tabs; the dock reflows the canvas (mirrors the
@@ -2233,7 +2236,7 @@ export default function TakeoffCanvas() {
     // when traceSource armed this ref, but re-check rather than trust a ref that
     // sat around — cheap, and keeps this path total on its own.
     const mid = rectMidpoint(p.rect);
-    if (mid && centerOnPanelPoint(sp, mid[0], mid[1])) setSourceFlash({ sheet_id: p.sheet_id, rect: p.rect, token: p.token });
+    if (mid && centerOnPanelPoint(sp, mid[0], mid[1])) flashSource(p.sheet_id, p.rect, p.token);
     pendingSourceRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panelImgs, groupSig, status]);
@@ -2928,6 +2931,26 @@ export default function TakeoffCanvas() {
     // (onPointerMove has been centre-following the cursor). One click ends the mode.
     if (placingImageId) {
       const id = placingImageId;
+      // Zero-movement cross-sheet place guard: onPointerMove's first-contact
+      // grab (:3755) is the ONLY place that rewrites `sheet_id`/`at` onto the
+      // target panel, and it only runs on a pointermove. Click Place, then
+      // click the canvas again with NO intervening pointermove (cursor never
+      // left this spot) and that grab never fires — placeGrabRef.current is
+      // still null, so the image is still sitting on its ORIGIN sheet even
+      // though the message below is about to say "Image placed." Mirror the
+      // exact first-contact math here, keyed off THIS click's own position
+      // (which — since nothing moved — is the same position onPointerMove
+      // would have used), so a click-without-move still lands the image on
+      // the sheet under the cursor. Same-sheet reposition never sets
+      // placeCrossSheetRef, so this block is a no-op for that path.
+      if (placeCrossSheetRef.current === id) {
+        const q = toImage(e.clientX, e.clientY);
+        const tp = panelAt(q[0]);
+        if (tp?.img?.w && (!placeGrabRef.current || placeGrabRef.current.key !== tp.key)) {
+          const cx = (q[0] - tp.xOffset) / tp.img.w, cy = q[1] / tp.img.h;
+          setMarkups((ms) => ms.map((m) => (m.id === id ? { ...m, at: [cx, cy], sheet_id: tp.key } : m)));
+        }
+      }
       setPlacingImageId(null);
       placeGrabRef.current = null;
       placeCrossSheetRef.current = null;
@@ -5579,6 +5602,23 @@ export default function TakeoffCanvas() {
     setTfNow({ x: r.width / 2 - sx * scale, y: r.height / 2 - sy * scale, scale });
     return true;
   }
+  // Sets the source-trace flash AND arms its one-shot auto-clear — the pulse
+  // (app.css `@keyframes pulse`) runs once and then holds its last frame
+  // forever unless something nulls the state back out, so without this the
+  // flash rect sits as a permanent opaque box. Keyed on `token`, not
+  // `sheet_id`: a repeat trace of the same region bumps sourceTraceSeqRef and
+  // gets a fresh token, so an older timer's closure (capturing the OLD token)
+  // is a no-op against the newer flash it would otherwise stomp — no need to
+  // track/cancel the previous timeout explicitly. Both call sites (the
+  // inline-ready path in traceSource and the pending-completion effect above)
+  // go through this one helper so the timer can't drift between them.
+  const SOURCE_FLASH_MS = 2600; // matches app.css pulse's ~2.55s animation length, plus a hair
+  function flashSource(sheet_id, rect, token) {
+    setSourceFlash({ sheet_id, rect, token });
+    setTimeout(() => {
+      setSourceFlash((f) => (f && f.token === token ? null : f));
+    }, SOURCE_FLASH_MS);
+  }
   // Trace a capture back to its ORIGIN sheet+region (◎, button wired by slice
   // 4 — this function, its ref, and its effect are this slice's job). Captures
   // only: m.source === "capture" && src_sheet_id && src_rect (a stitch source
@@ -5605,7 +5645,7 @@ export default function TakeoffCanvas() {
     if (panelKeySet.has(src)) {
       const sp = panels.find((p) => p.key === src);
       if (sp?.img?.w && centerOnPanelPoint(sp, mid[0], mid[1])) {
-        setSourceFlash({ sheet_id: src, rect, token });   // no selectMarkup — there's no markup to select on the source sheet
+        flashSource(src, rect, token);   // no selectMarkup — there's no markup to select on the source sheet
         return;
       }
       // open, but its bitmap hasn't finished rendering yet — the phase-2
@@ -9088,7 +9128,7 @@ export default function TakeoffCanvas() {
                         <rect key={sourceFlash.token}
                           x={fx0} y={fy0} width={fx1 - fx0} height={fy1 - fy0}
                           fill="rgba(31,63,199,.14)" stroke="#1f3fc7" strokeWidth={3 / tf.scale}
-                          style={{ pointerEvents: "none", animation: "pulse .85s ease-in-out 3" }} />
+                          style={{ pointerEvents: "none", animation: "sourceFlashPulse .85s ease-in-out 3 forwards" }} />
                       );
                     })()}
                   </g>

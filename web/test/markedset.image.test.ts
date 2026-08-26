@@ -33,6 +33,36 @@ async function makeSourcePdf() {
   return src.save();
 }
 
+// Decodes a page's content stream(s) back to a plain-text search string, so a
+// test can assert a caption STRING actually landed on the page rather than
+// only checking the image XObject count (which a throwing caption draw would
+// never affect — the caption code runs strictly after pg.drawImage, inside
+// the same try/catch as the image embed). pdf-lib's StandardFontEmbedder
+// encodes every drawn string as a PDFHexString (WinAnsi code points, which
+// are byte-identical to Latin-1/ASCII for the caption's character set), so
+// decoding each `<...>Tj` operand and concatenating in stream order recovers
+// the drawn text well enough for a substring check.
+async function pageText(bytes: Uint8Array, pageIndex: number): Promise<string> {
+  const { PDFDocument, PDFName } = await import("pdf-lib");
+  const zlib = await import("node:zlib");
+  const out = await PDFDocument.load(bytes);
+  const page: any = out.getPages()[pageIndex];
+  const contentsRef: any = page.node.Contents();
+  const refs = contentsRef && typeof contentsRef.asArray === "function" ? contentsRef.asArray() : [contentsRef];
+  let text = "";
+  for (const ref of refs) {
+    const stream: any = out.context.lookup(ref);
+    if (!stream) continue;
+    const filter = stream.dict && stream.dict.lookup(PDFName.of("Filter"));
+    let data: Uint8Array = stream.contents;
+    if (filter && String(filter) === "/FlateDecode") data = zlib.inflateSync(Buffer.from(data));
+    const raw = Buffer.from(data).toString("latin1");
+    const hexTokens = raw.match(/<[0-9A-Fa-f]+>/g) || [];
+    text += hexTokens.map((h) => Buffer.from(h.slice(1, -1), "hex").toString("latin1")).join("");
+  }
+  return text;
+}
+
 async function imageXObjectsPerPage(bytes: Uint8Array): Promise<number[]> {
   // pdf-lib's low-level dict classes have protected constructors, so this walks
   // the resources with `any` casts rather than fighting the type-guards.
@@ -141,6 +171,21 @@ test("marked set: a capture image with a caption on a ROTATED source page still 
   const perPage = await imageXObjectsPerPage(bytes);
   assert.equal(perPage.length, 2, "cover + the one marked sheet (S2)");
   assert.equal(perPage[1], 1, "the image still embeds even though the caption chip also draws on this rotated page");
+  // The caption draws AFTER pg.drawImage and the whole block shares one
+  // try/catch — a throwing caption would still leave the image embedded and
+  // the error swallowed, so the XObject count alone can't catch a broken
+  // caption. Assert the caption text actually landed in the page's content
+  // stream (sheetBaseLabelFromKey("plan.pdf#1") → "plan", page 1 → hasPage
+  // is true, so the full text is "Source: plan · p.1"; checking the
+  // "Source: " prefix is enough to prove the caption drew at all).
+  const text = await pageText(bytes, 1);
+  // Positive anchor FIRST: prove pageText actually decoded this page's
+  // content stream at all (every sheet page carries its own footer text,
+  // "<label> · marked set", independent of any caption) — otherwise a
+  // silently-empty extraction would make the caption assertion below
+  // meaningless rather than a real check.
+  assert.ok(text.includes("Sheet 2"), "pageText decoded real text off this page (sheet footer label)");
+  assert.ok(text.includes("Source: "), "the source caption text is present on the rotated sheet's page");
 });
 
 test("marked set: a capture image whose src_sheet_id is a STITCH key exports with the caption suppressed, no crash", async () => {
@@ -161,4 +206,10 @@ test("marked set: a capture image whose src_sheet_id is a STITCH key exports wit
   const perPage = await imageXObjectsPerPage(bytes);
   assert.equal(perPage.length, 2, "cover + the one marked sheet");
   assert.equal(perPage[1], 1, "the image still exports even though sheetBaseLabelFromKey suppresses a stitch-key caption");
+  const text = await pageText(bytes, 1);
+  // Positive anchor FIRST (see the ROTATED test above for why): without it, a
+  // pageText that silently returned "" would make the negative assertion
+  // below pass for the wrong reason.
+  assert.ok(text.includes("Sheet 1"), "pageText decoded real text off this page (sheet footer label)");
+  assert.ok(!text.includes("Source: "), "no caption text is drawn for a stitch-key source");
 });
