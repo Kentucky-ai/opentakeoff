@@ -5,7 +5,7 @@
 // re-validate against). Run: npm test
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { rectMidpoint, pendingSourceOutcome, MAX_SOURCE_TRACE_ATTEMPTS } from "../src/lib/sourceTrace.ts";
+import { rectMidpoint, pendingSourceOutcome, MAX_SOURCE_TRACE_ATTEMPTS, isTraceable, traceLabel } from "../src/lib/sourceTrace.ts";
 
 // ── rectMidpoint ─────────────────────────────────────────────────────────────
 test("rectMidpoint: normal rect → average of the two corners", () => {
@@ -98,4 +98,35 @@ test("pendingSourceOutcome: never left pending on a terminal status — every no
       }
     }
   }
+});
+
+// ── isTraceable — the ◎ button + caption toggle's shared gate (slice 4) ────
+test("isTraceable: a capture with a known origin → true", () => {
+  assert.equal(isTraceable({ source: "capture", src_sheet_id: "AF101.pdf::1" }), true);
+});
+
+test("isTraceable: an upload → false (source !== 'capture', regardless of src_sheet_id)", () => {
+  assert.equal(isTraceable({ source: "upload" }), false);
+  assert.equal(isTraceable({ source: "upload", src_sheet_id: "AF101.pdf::1" }), false);
+});
+
+test("isTraceable: a legacy pre-slice-1 capture with no src_sheet_id → false", () => {
+  assert.equal(isTraceable({ source: "capture" }), false);
+  assert.equal(isTraceable({ source: "capture", src_sheet_id: "" }), false);
+  assert.equal(isTraceable({ source: "capture", src_sheet_id: null }), false);
+});
+
+test("isTraceable: missing/undefined markup → false, never throw", () => {
+  assert.equal(isTraceable(undefined), false);
+  assert.equal(isTraceable(null), false);
+  assert.equal(isTraceable({}), false);
+});
+
+// ── traceLabel — the ◎ button's text ────────────────────────────────────────
+test("traceLabel: capture has moved off its origin sheet → 'from <origin>'", () => {
+  assert.equal(traceLabel("AF101.pdf::1", "AF102.pdf::1", "AF101"), "◎ from AF101");
+});
+
+test("traceLabel: capture still sits on its origin sheet → terse 'Source'", () => {
+  assert.equal(traceLabel("AF101.pdf::1", "AF101.pdf::1", "AF101"), "◎ Source");
 });

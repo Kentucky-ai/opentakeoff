@@ -153,6 +153,18 @@ export function sourceCaption(label: string, page: number): string {
   return hasPage ? `Source: ${label} · p.${page}` : `Source: ${label}`;
 }
 
+// The Captures panel's list (slice 4): GLOBAL — every image markup in the
+// project, not filtered to the sheets currently open — narrowed by the
+// always-on name search over `text` (case-insensitive substring; an empty/
+// whitespace query returns every capture unfiltered, never an empty list).
+// Pure so the two states the panel renders (no captures at all vs. a query
+// that matches none) are node-testable without mounting React.
+export function filterCaptures<T extends { type?: string; text?: string }>(markups: readonly T[], query: string): T[] {
+  const images = markups.filter((m) => m.type === "image");
+  const q = (query || "").trim().toLowerCase();
+  return q ? images.filter((m) => (m.text || "").toLowerCase().includes(q)) : images;
+}
+
 function clamp01(n: number): number {
   if (!Number.isFinite(n)) return 0;
   return Math.min(1, Math.max(0, n));

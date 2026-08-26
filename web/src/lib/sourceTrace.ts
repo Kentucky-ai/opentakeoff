@@ -82,3 +82,23 @@ export function pendingSourceOutcome(
   if (attempts >= MAX_SOURCE_TRACE_ATTEMPTS) return { action: "give-up" };
   return { action: "wait", attempts };
 }
+
+// ── Captures panel row (slice 4) — the ◎ button's gate + label ─────────────
+// The panel row wires the ◎ button (and the caption toggle, same gate) to
+// this pair. Captures only, and only once the origin is known: legacy
+// pre-slice-1 image markups and uploads both have no src_sheet_id (uploads
+// are source==="upload"), so BOTH halves of the check matter — a lone
+// `src_sheet_id !== sheet_id` would be true for an upload's undefined vs its
+// real sheet_id and light up a button that has nothing to trace.
+export function isTraceable(m: { source?: string; src_sheet_id?: string | null } | null | undefined): boolean {
+  return !!m && m.source === "capture" && !!m.src_sheet_id;
+}
+
+// The ◎ button's label. When the capture has moved off the sheet it was
+// captured on, name the origin so "captured on A, now on B" reads without a
+// hover ("◎ from A"); otherwise the terse "◎ Source". Callers must only call
+// this once isTraceable(m) is true — it doesn't re-check the gate itself,
+// since the caller already has both ids in hand at that point.
+export function traceLabel(srcSheetId: string, currentSheetId: string, srcBaseLabel: string): string {
+  return srcSheetId !== currentSheetId ? `◎ from ${srcBaseLabel}` : "◎ Source";
+}

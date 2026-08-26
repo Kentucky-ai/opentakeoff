@@ -11,6 +11,7 @@ import {
   pickEmbedFormat,
   imageDrawParams,
   sourceCaption,
+  filterCaptures,
 } from "../src/lib/markupImage.ts";
 
 // ── imagePlacedBox ──────────────────────────────────────────────────────────
@@ -224,4 +225,39 @@ test("pickEmbedFormat: jpeg→jpg, png→png, else null", () => {
   assert.equal(pickEmbedFormat("data:image/jpeg2000;base64,x"), null);
   assert.equal(pickEmbedFormat("data:image/png-evil;base64,x"), null);
   assert.equal(pickEmbedFormat("data:image/png,rawdata"), "png");   // `,` payload form
+});
+
+// ── filterCaptures — the Captures panel's GLOBAL list + name search ────────
+const M = (type: string, text: string) => ({ type, text });
+
+test("filterCaptures: keeps only image markups, project-wide (not sheet-filtered)", () => {
+  const markups = [M("image", "AF101-01"), M("cloud", "not an image"), M("image", "AF102-01")];
+  assert.deepEqual(filterCaptures(markups, ""), [markups[0], markups[2]]);
+});
+
+test("filterCaptures: empty/whitespace query returns every capture, unfiltered", () => {
+  const markups = [M("image", "AF101-01"), M("image", "AF102-01")];
+  assert.deepEqual(filterCaptures(markups, ""), markups);
+  assert.deepEqual(filterCaptures(markups, "   "), markups);
+});
+
+test("filterCaptures: name search is case-insensitive substring over text", () => {
+  const markups = [M("image", "AF101-01"), M("image", "Roof Detail")];
+  assert.deepEqual(filterCaptures(markups, "roof"), [markups[1]]);
+  assert.deepEqual(filterCaptures(markups, "AF101"), [markups[0]]);
+});
+
+test("filterCaptures: a query matching nothing → []", () => {
+  const markups = [M("image", "AF101-01")];
+  assert.deepEqual(filterCaptures(markups, "zzz"), []);
+});
+
+test("filterCaptures: no image markups at all → [] regardless of query", () => {
+  assert.deepEqual(filterCaptures([M("cloud", "x")], ""), []);
+});
+
+test("filterCaptures: a capture with no text never matches a non-empty query, but always survives the unfiltered pass", () => {
+  const markups = [{ type: "image" }];
+  assert.deepEqual(filterCaptures(markups, ""), markups);
+  assert.deepEqual(filterCaptures(markups, "anything"), []);
 });
