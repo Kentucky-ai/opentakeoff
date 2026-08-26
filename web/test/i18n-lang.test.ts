@@ -229,6 +229,53 @@ test("detectRooms detectionReport uses translated verbs (was/were → foi/foram)
   }
 });
 
+// ── smoke-test: keys that rendered as literal strings in the UI ──────────────
+
+test("menu.zone resolves to a real label in en and pt-br", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  const en = i18n.getFixedT("en")("menu.zone");
+  assert.notEqual(en, "menu.zone", "en menu.zone must not return the key itself");
+
+  try {
+    await i18n.changeLanguage("pt-br");
+    const pt = i18n.getFixedT("pt-br")("menu.zone");
+    assert.notEqual(pt, "menu.zone", "pt-br menu.zone must not return the key itself");
+  } finally {
+    await i18n.changeLanguage("en");
+  }
+});
+
+test("scale.imperial_hint resolves to a real label in en and pt-br", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  const en = i18n.getFixedT("en")("scale.imperial_hint");
+  assert.notEqual(en, "scale.imperial_hint", "en scale.imperial_hint must not return the key itself");
+
+  try {
+    await i18n.changeLanguage("pt-br");
+    const pt = i18n.getFixedT("pt-br")("scale.imperial_hint");
+    assert.notEqual(pt, "scale.imperial_hint", "pt-br scale.imperial_hint must not return the key itself");
+  } finally {
+    await i18n.changeLanguage("en");
+  }
+});
+
+test("toolbar.action resolves to a real label in en and pt-br", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  const en = i18n.getFixedT("en")("toolbar.action");
+  assert.notEqual(en, "toolbar.action", "en toolbar.action must not return the key itself");
+
+  try {
+    await i18n.changeLanguage("pt-br");
+    const pt = i18n.getFixedT("pt-br")("toolbar.action");
+    assert.notEqual(pt, "toolbar.action", "pt-br toolbar.action must not return the key itself");
+  } finally {
+    await i18n.changeLanguage("en");
+  }
+});
+
 test("danger-tagged messages survive language switch (Set membership is language-independent)", async () => {
   const { markDanger, isDanger } = await import("../src/lib/danger.js");
   const { default: i18n } = await import("../src/i18n/index.js");
