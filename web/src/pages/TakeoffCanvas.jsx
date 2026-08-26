@@ -157,7 +157,7 @@ import { requiredDensity as tileRequiredDensity } from "../lib/tiles";
 // setShapes (the label-vocabulary renames, live drag PREVIEW frames, the
 // hydrate-time sanitizers, per-shape height/thickness re-pricing).
 // nowIso stays imported for the non-shape records (markups, RFIs, conditions).
-import { nowIso, mintUuid, setAuthorName } from "../lib/provenance.js";
+import { nowIso, mintUuid, setAuthorName, authorName } from "../lib/provenance.js";
 import { applyShapeCommand, geomSnapshot, vertsEqual, recordCommand } from "../lib/shapeCommands.js";
 import { applyApprovalCommand, sanitizeApprovals, approvalInk, APPROVAL_R } from "../lib/approvals.js";
 import { findCutoutParent, subtractCutout, recomposeCutouts, cutRunsAcross } from "../lib/cutout.js";
@@ -702,6 +702,10 @@ export default function TakeoffCanvas() {
   // ── the Symbol tool (#264) — same two-click marquee idiom as schedule ─────
   const [symbolAnchor, setSymbolAnchor] = useState(null);     // first marquee corner, isolated like scheduleAnchor
   const [imageAnchor, setImageAnchor] = useState(null);       // first marquee corner for the "image" screenshot tool, isolated like scheduleAnchor/symbolAnchor
+  const [placingImageId, setPlacingImageId] = useState(null); // an image markup being (re)placed: it follows the cursor until the next click drops it (re-enterable from the panel, not just at capture)
+  const placeGrabRef = useRef(null);                          // {key, dx, dy}: cursor→image-centre offset captured on the pointer's FIRST canvas contact during a place, so the image is grabbed where it sits (no teleport) and moves relative after
+  const [imgThumbs, setImgThumbs] = useState({});             // markupId → tiny JPEG dataURL for the panel row — memory-only, built once per image, NEVER persisted (a 40px <img> of a full 1600px src would decode the whole bitmap and eat the byte budget)
+  const thumbBuildingRef = useRef(new Set());                 // ids with a thumb build in flight (dedupe the async decode)
   const [sweep, setSweep] = useState(null);                   // the live review: matches / questions / seed, one sheet, dies on commit or discard
   const sweepRef = useRef(null);
   useEffect(() => { sweepRef.current = sweep; }, [sweep]);
@@ -990,6 +994,18 @@ export default function TakeoffCanvas() {
     if (t.file === active && pageLabels[t.page]) return lvl + pageLabels[t.page];
     const base = t.file.replace(/\.pdf$/i, "");
     return lvl + (t.page > 1 ? `${base} · ${t.page}` : base);
+  };
+  // A sheet's bare identifier for auto-naming an image markup (e.g. "AF101") —
+  // tabLabel WITHOUT the mutable "Level 1 · " prefix and with a hyphen so a page-2
+  // sheet reads "PLAN-2", not the compound "Level 1 · PLAN · 2" that would nest
+  // badly inside an image name like "…-01".
+  const sheetBaseLabel = (k) => {
+    if (isStitchKey(k)) return stitchById[k]?.name || "Stitched";
+    if (galleryLabels[k]) return galleryLabels[k];
+    const t = parseSheetKey(k);
+    if (t.file === active && pageLabels[t.page]) return pageLabels[t.page];
+    const base = t.file.replace(/\.pdf$/i, "");
+    return t.page > 1 ? `${base}-${t.page}` : base;
   };
 
   // ── panels: the ONE rendering model — single-sheet mode is a group of one ──
@@ -2768,7 +2784,7 @@ export default function TakeoffCanvas() {
         // tool's points, on-screen or hidden
         else if (tool === "calibrate") { setCalib((c) => c.slice(0, -1)); }
         else if (tool === "check") { setCheck((c) => c.slice(0, -1)); }
-      } else if (e.key === "Escape") { if (agentOfferFnsRef.current?.pending()) { agentOfferFnsRef.current.dismiss(); } else if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { clearPoly(); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); setSymbolAnchor(null); setImageAnchor(null); setAlignPt(null); resetZone(); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; } }
+      } else if (e.key === "Escape") { if (agentOfferFnsRef.current?.pending()) { agentOfferFnsRef.current.dismiss(); } else if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { clearPoly(); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); setSymbolAnchor(null); setImageAnchor(null); setPlacingImageId(null); placeGrabRef.current = null; setAlignPt(null); resetZone(); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; } }
       // ⌘Z: the drawing context wins — mid-trace it still pops the last placed
       // point (with or without ⇧, matching the old behavior byte-for-byte);
       // only with no trace in progress does the command stack engage
@@ -2833,6 +2849,16 @@ export default function TakeoffCanvas() {
       return;
     }
     if (e.button !== 0) return;   // only left-click places points
+    // an image (re)placement is armed → this left-click drops it where it now sits
+    // (onPointerMove has been centre-following the cursor). One click ends the mode.
+    if (placingImageId) {
+      const id = placingImageId;
+      setPlacingImageId(null);
+      placeGrabRef.current = null;
+      selectMarkup(id);
+      setCommitMsg("Image placed.");
+      return;
+    }
     // snapRef/angleRef are drawing-tool aids maintained by moveCrosshair, which
     // bails for the Select tool (:1577) — so in Select they'd be STALE. Select
     // does its own endpoint snap (ocSnap) on drop, so it always uses the raw
@@ -3632,6 +3658,26 @@ export default function TakeoffCanvas() {
   function onPointerMove(e) {
     lastPtrRef.current = [e.clientX, e.clientY];   // paste targets the sheet under the cursor
     aimSeqRef.current++;                           // deixis freshness tick — see getAimSeed
+    // (re)placing an image markup: it rides the cursor until the next click drops
+    // it. On the pointer's FIRST canvas contact (or when it crosses to a new sheet)
+    // we grab the image WHERE IT SITS — recording the cursor→centre offset so it
+    // doesn't teleport under the cursor — then move it by the cursor delta after.
+    // Live setMarkups mirrors the move-drag; committed on pointerdown below.
+    if (placingImageId) {
+      const q = toImage(e.clientX, e.clientY);
+      const tp = panelAt(q[0]);
+      if (tp?.img?.w) {
+        const cx = (q[0] - tp.xOffset) / tp.img.w, cy = q[1] / tp.img.h;
+        if (!placeGrabRef.current || placeGrabRef.current.key !== tp.key) {
+          const m0 = markups.find((m) => m.id === placingImageId);
+          const ax = m0 && Array.isArray(m0.at) ? m0.at[0] : cx, ay = m0 && Array.isArray(m0.at) ? m0.at[1] : cy;
+          placeGrabRef.current = { key: tp.key, dx: ax - cx, dy: ay - cy };
+        }
+        const g = placeGrabRef.current;
+        setMarkups((ms) => ms.map((m) => (m.id === placingImageId ? { ...m, at: [cx + g.dx, cy + g.dy], sheet_id: tp.key } : m)));
+      }
+      return;
+    }
     // status-bar coords — direct DOM (instrument readout; no React render per move).
     // Sheet feet when the hovered panel has a scale, raw image px otherwise.
     if (statusCoordRef.current) {
@@ -6419,8 +6465,46 @@ export default function TakeoffCanvas() {
   function addImageMarkup(m, key) {
     const used = markups.reduce((n, x) => n + (x.type === "image" && typeof x.src === "string" ? x.src.length : 0), 0);
     if (used + m.src.length > MAX_IMAGE_MARKUP_BYTES) { setCommitMsg("Too many/large images on this project — delete some before adding more."); return; }
-    addMarkup({ type: "image", ...m }, key);
+    // Auto-name (stored in `text`, which the panel renders and the ✎ edits): the
+    // sheet base + a per-sheet sequence ("AF101-01"). Uploads carry the file name.
+    // Collisions after a delete are tolerated (a simple count, not a high-water
+    // counter). Stamp the declared author (git-style; absent ⇒ omitted).
+    const { name: given, ...rest } = m;
+    const seq = markups.filter((x) => x.type === "image" && x.sheet_id === key).length + 1;
+    const text = (typeof given === "string" && given.trim()) || `${sheetBaseLabel(key)}-${String(seq).padStart(2, "0")}`;
+    const by = authorName();
+    addMarkup({ type: "image", ...rest, text, ...(by ? { author: by } : {}) }, key);
     setCommitMsg("Image placed.");
+  }
+
+  // Lazy, memory-only panel thumbnail: decode the src ONCE, downscale to a ~48px
+  // JPEG, cache by markup id. Returns null while building (the row shows a
+  // placeholder) or on a bad src; the build's setImgThumbs re-renders the row.
+  function ensureThumb(m) {
+    if (imgThumbs[m.id]) return imgThumbs[m.id];
+    if (!thumbBuildingRef.current.has(m.id) && m.src && pickEmbedFormat(m.src)) {
+      thumbBuildingRef.current.add(m.id);
+      const img = new Image();
+      img.onload = () => {
+        const s = 48 / Math.max(img.width, img.height, 1);
+        const w = Math.max(1, Math.round(img.width * s)), h = Math.max(1, Math.round(img.height * s));
+        const c = document.createElement("canvas"); c.width = w; c.height = h;
+        c.getContext("2d").drawImage(img, 0, 0, w, h);
+        setImgThumbs((t) => ({ ...t, [m.id]: c.toDataURL("image/jpeg", 0.7) }));
+      };
+      img.onerror = () => { thumbBuildingRef.current.delete(m.id); };
+      img.src = m.src;
+    }
+    return null;
+  }
+  // Provenance one-liner for the panel row's title tooltip (Kevin: not shown
+  // prominently). Degrades: drops the author when none is declared.
+  function imageProvenance(m) {
+    const verb = m.source === "upload" ? "Uploaded" : "Captured from";
+    const where = m.source === "upload" ? "" : ` ${sheetBaseLabel(m.sheet_id)}`;
+    const when = m.created_at ? ` · ${String(m.created_at).slice(0, 10)}` : "";
+    const who = m.author ? ` · ${m.author}` : "";
+    return `${verb}${where}${when}${who}`;
   }
 
   // Upload: decode a raster file (EXIF-oriented), downscale to 1600px longest side,
@@ -6478,7 +6562,7 @@ export default function TakeoffCanvas() {
         const c = toImage(r.left + r.width / 2, r.top + r.height / 2);
         at = [cl01((c[0] - focusPanel.xOffset) / focusPanel.img.w), cl01(c[1] / focusPanel.img.h)];
       }
-      addImageMarkup({ at, w: 0.2, aspect, src, source: "upload" }, focusPanel.key);
+      addImageMarkup({ at, w: 0.2, aspect, src, source: "upload", name: (file?.name || "").replace(/\.[^.]+$/, "") }, focusPanel.key);
     } catch { setCommitMsg("Couldn't read that image."); }
   }
 
@@ -7867,22 +7951,33 @@ export default function TakeoffCanvas() {
                    <div style={{ padding: "4px 12px 14px", color: "var(--ink-muted)" }}>No markups {groupKeys.length > 1 ? "on these sheets" : "on this sheet"} yet.</div>
                  )}
                  {markups.filter((m) => panelKeySet.has(m.sheet_id)).map((m) => (
-                   <div key={m.id} style={{ padding: "10px 12px", borderTop: "1px solid var(--ink-faint)" }}>
-                     <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                   <div key={m.id} style={{ padding: "10px 12px", borderTop: "1px solid var(--ink-faint)", background: selectedMarkupId === m.id ? "var(--surface-pop)" : "transparent" }}>
+                     {/* the header line selects + flies to the markup (parity with the RFI
+                         register's onFlyTo) — the inner controls stopPropagation so only the
+                         label area triggers it, never edit/delete. */}
+                     <div onClick={() => flyToMarkup(m)} title={m.type === "image" ? imageProvenance(m) : "Select and center this markup"} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                       {m.type === "image" && (() => {
+                         const th = ensureThumb(m);
+                         return <span style={{ flex: "0 0 auto", width: 30, height: 30, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                           {th ? <img src={th} alt="" style={{ maxWidth: "100%", maxHeight: "100%", display: "block" }} /> : <span style={{ fontSize: 14 }}>🖼</span>}
+                         </span>;
+                       })()}
                        <span style={{ fontSize: 10, fontWeight: 700, color: "var(--cobalt)", textTransform: "uppercase" }}>{m.type}</span>
                        {/* inline edit — the panel's fallback for the canvas overlay, since a
                            markup here may be off-screen or on another sheet (no click point).
                            Enter/blur commit, Esc cancels; INPUT is guarded from the global keys. */}
                        {panelEditId === m.id ? (
                          <input name="markup-text" autoComplete="off" autoFocus defaultValue={m.text || ""}
+                           onClick={(e) => e.stopPropagation()}
                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); } else if (e.key === "Escape") { e.preventDefault(); e.currentTarget.value = m.text || ""; setPanelEditId(null); } }}
                            onBlur={(e) => { updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); }}
                            style={{ flex: 1, minWidth: 0, fontSize: 12.5, padding: "1px 4px", border: "1px solid var(--cobalt)", borderRadius: 0, outline: "none" }} />
                        ) : (
                          <span style={{ flex: 1, color: "var(--ink)" }}>{m.type === "svg" ? <em style={{ color: "var(--ink-muted)" }}>(vector symbol)</em> : ([m.type === "dimension" && Number(m.len_ft) > 0 ? dimLabel(m.len_ft) : "", m.text].filter(Boolean).join(" · ") || <em style={{ color: "var(--ink-muted)" }}>(no text)</em>)}</span>
                        )}
-                       {m.type !== "svg" && <button onClick={() => setPanelEditId((id) => (id === m.id ? null : m.id))} title="Edit text" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>}
-                       <button onClick={() => deleteMarkup(m.id)} title="Delete markup" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
+                       {m.type === "image" && <button onClick={(e) => { e.stopPropagation(); placeGrabRef.current = null; flyToMarkup(m); setPlacingImageId(m.id); setCommitMsg("Placing image — the view centered on it; move the pointer and click to drop (Esc cancels)."); }} title="Reposition: centers the view on the image, then it follows the cursor — click the sheet to drop it" style={{ border: "1px solid var(--ink-faint)", background: placingImageId === m.id ? "var(--cobalt)" : "transparent", color: placingImageId === m.id ? "#fff" : "var(--cobalt)", cursor: "pointer", fontSize: 11, padding: "1px 7px" }}>Place</button>}
+                       {m.type !== "svg" && <button onClick={(e) => { e.stopPropagation(); setPanelEditId((id) => (id === m.id ? null : m.id)); }} title="Edit text" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>}
+                       <button onClick={(e) => { e.stopPropagation(); deleteMarkup(m.id); }} title="Delete markup" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
                      </div>
                      {/* appearance — per-markup color (reuse PALETTE) + line style; both
                          additive: unset color falls back to the cobalt(linked)/amber default,
@@ -8357,6 +8452,11 @@ export default function TakeoffCanvas() {
                           <g key={m.id}>
                             {halo(x0, y0, x0 + bw, y0 + bh)}
                             <image href={m.src} x={x0} y={y0} width={bw} height={bh} preserveAspectRatio="none" style={{ pointerEvents: "none" }} />
+                            {/* PERMANENT frame — a placed screenshot overlays its own source and is
+                                invisible without it; the halo is selection-only. White + slate double
+                                stroke reads on both canvas themes (the image itself is never inverted). */}
+                            <rect x={x0} y={y0} width={bw} height={bh} fill="none" stroke="#fff" strokeWidth={2.5 / z} style={{ pointerEvents: "none" }} />
+                            <rect x={x0} y={y0} width={bw} height={bh} fill="none" stroke="#2a3550" strokeWidth={1 / z} style={{ pointerEvents: "none" }} />
                             {selM && <rect x={x0 + bw - 4 / z} y={y0 + bh - 4 / z} width={8 / z} height={8 / z} fill="#1f3fc7" stroke="#fff" strokeWidth={1.5 / z} style={{ pointerEvents: "none" }} />}
                             {badge(x0, y0 - 9 / z)}
                           </g>
