@@ -37,6 +37,7 @@ export const icons = {
   textNote: (s) => <I size={s}><path d="M5 5 H 19 M5 5 V 7.5 M19 5 V 7.5 M12 5 V 19 M9.5 19 H 14.5" /></I>,
   highlight: (s) => <I size={s}><rect x="4" y="7" width="16" height="10" /><line x1="7" y1="12" x2="17" y2="12" /></I>,
   dimension: (s) => <I size={s}><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="8" x2="3" y2="16" /><line x1="21" y1="8" x2="21" y2="16" /><path d="M1.8 13.4 L 4.2 10.6 M19.8 13.4 L 22.2 10.6" /></I>,
+  image: (s) => <I size={s}><rect x="3" y="5" width="18" height="14" /><circle cx="8.5" cy="10.5" r="1.7" /><path d="M3 16 L 9 11 L 13 14.5 L 16.5 11.5 L 21 16" /></I>,
   highlighter: (s) => <I size={s}><path d="M5 21 L8.5 17.5 M8.5 17.5 L6.8 14 L14 6.8 L17.2 10 L10 17.2 Z M14 6.8 L15.8 5 L19 8.2 L17.2 10" /></I>,
   copy: (s) => <I size={s}><rect x="8" y="8" width="12" height="12" /><path d="M16 8 V 4 H 4 V 16 H 8" /></I>,
   paste: (s) => <I size={s}><rect x="5" y="5" width="14" height="16" /><rect x="9" y="3" width="6" height="4" /><line x1="9" y1="12" x2="15" y2="12" /><line x1="9" y1="16" x2="15" y2="16" /></I>,

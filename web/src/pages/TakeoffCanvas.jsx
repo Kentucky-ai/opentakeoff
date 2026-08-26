@@ -18,13 +18,14 @@ import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { store, isStaleTabError, STALE_TAB_MESSAGE, projectIdFromUrl, ANN_SCHEMA, emptyAnnotations, metaGet, metaPut } from "../lib/store.js";
+import { store, isStaleTabError, STALE_TAB_MESSAGE, friendlyStoreError, projectIdFromUrl, ANN_SCHEMA, emptyAnnotations, metaGet, metaPut } from "../lib/store.js";
 import { forgetThumbs, releaseThumbs } from "../lib/thumbs.js";
 import { Z } from "../lib/ui.js";
 import { getFocusMode, toggleFocusMode, onFocusModeChange } from "../lib/focusMode.js";
 import { seedStampLibrary, instantiateStamp, markupToStampElement } from "../lib/stamps.js";
 import { extractSvgPrimitives, svgToStamp } from "../lib/svgImport.js";
 import { transformPath, svgPlacedBox } from "../lib/svgpath.js";
+import { imagePlacedBox, captureRectToImageGeom, resizeImageFromCorner, aspectFromDims, pickEmbedFormat } from "../lib/markupImage";
 import { ingestFiles } from "../lib/ingest.js";
 import { parseTakeoffImport, mergeTakeoffImport } from "../lib/importTakeoff.js";
 import { buildProjectArchive, parseProjectArchive, isProjectArchive, downloadArchive } from "../lib/projectArchive.js";
@@ -137,6 +138,7 @@ import { getTheme, toggleTheme, onThemeChange } from "../lib/theme.js";
 import {
   PANEL_GAP, DETAIL_ENGAGE, DETAIL_MARGIN, MAX_CANVAS_DIM, MAX_CANVAS_AREA, SYNC_MS, GESTURE_MS, SNAP_CELL,
   MEASURE_TOOLS, CUT_TOOLS, MARKUP_TOOLS, MARKUP_IDS, HL_INKS, HL_SIZES,
+  MARKUP_IMG_MAX, MAX_IMAGE_MARKUP_BYTES, MARKUP_UPLOAD_MAX_BYTES, MARKUP_DECODE_MAX_AREA,
 } from "../lib/canvasConstants.js";
 import { uid, clamp, isDangerMsg, instantiateTemplate, seedConditions } from "../lib/canvasUtil.js";
 // Tile-pyramid rendering (#86) — pure math in lib/tiles.ts (tested), worker
@@ -699,6 +701,7 @@ export default function TakeoffCanvas() {
   const [scheduleAnchor, setScheduleAnchor] = useState(null); // first marquee corner for the "schedule" tool — ISOLATED from poly so it can never leak into a measure shape
   // ── the Symbol tool (#264) — same two-click marquee idiom as schedule ─────
   const [symbolAnchor, setSymbolAnchor] = useState(null);     // first marquee corner, isolated like scheduleAnchor
+  const [imageAnchor, setImageAnchor] = useState(null);       // first marquee corner for the "image" screenshot tool, isolated like scheduleAnchor/symbolAnchor
   const [sweep, setSweep] = useState(null);                   // the live review: matches / questions / seed, one sheet, dies on commit or discard
   const sweepRef = useRef(null);
   useEffect(() => { sweepRef.current = sweep; }, [sweep]);
@@ -707,6 +710,7 @@ export default function TakeoffCanvas() {
   const fileInputRef = useRef(null);                    // hidden <input type=file> for "Open PDF"
   const importInputRef = useRef(null);                  // hidden <input type=file> for "Import takeoff…" (the agent-JSON handoff)
   const profileInputRef = useRef(null);                 // hidden <input type=file> for "Import profile…" (#299)
+  const imageInputRef = useRef(null);                   // hidden <input type=file> for the Markups-dock "Upload image…" button
 
   const containerRef = useRef(null);
   const stageRef = useRef(null);
@@ -1673,6 +1677,7 @@ export default function TakeoffCanvas() {
   // leaving the stamp tool disarms the pending stamp — a stray click under a
   // measure/select tool must never drop a stamp
   useEffect(() => { if (tool !== "stamp") setArmedStamp(null); }, [tool]);
+  useEffect(() => { if (tool !== "image") setImageAnchor(null); }, [tool]);   // leaving the image marquee drops a half-set anchor (mirrors scheduleAnchor/symbolAnchor reset)
   // A One-Click proposal is only actionable while One-Click is armed (Enter
   // already requires it) — discard it on tool switch, like the stamp above.
   // Also keeps Create out of the ACTION slot while Finish occupies it, so the
@@ -2390,7 +2395,12 @@ export default function TakeoffCanvas() {
       // can drain and re-hydrate. Closes the last pre-scheduled-save loss window.
       if (remotePendingRender.current) { setSaveState("idle"); return; }
       store.saveAnnotations(payload).then(() => setSaveState("saved")).catch((e) => {
-        if (isStaleTabError(e)) setCommitMsg(STALE_TAB_MESSAGE);
+        // surface the failure rather than dropping to a silent "idle" — with inline
+        // image markups a QuotaExceededError is a realistic failure mode, and a
+        // silent one loses the WHOLE payload (shapes, quantities, everything) with
+        // no signal. Stale-tab keeps its sticky lockout copy; anything else (quota,
+        // disk) shows the actionable friendlyStoreError text.
+        setCommitMsg(isStaleTabError(e) ? STALE_TAB_MESSAGE : friendlyStoreError(e));
         setSaveState("idle");
       });
     }, 700);
@@ -2758,7 +2768,7 @@ export default function TakeoffCanvas() {
         // tool's points, on-screen or hidden
         else if (tool === "calibrate") { setCalib((c) => c.slice(0, -1)); }
         else if (tool === "check") { setCheck((c) => c.slice(0, -1)); }
-      } else if (e.key === "Escape") { if (agentOfferFnsRef.current?.pending()) { agentOfferFnsRef.current.dismiss(); } else if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { clearPoly(); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); setSymbolAnchor(null); setAlignPt(null); resetZone(); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; } }
+      } else if (e.key === "Escape") { if (agentOfferFnsRef.current?.pending()) { agentOfferFnsRef.current.dismiss(); } else if (ocSel) { setOcSel(null); } else if (selVert != null) { setSelVert(null); } else { clearPoly(); setCalib([]); setCheck([]); setCheckStated(""); setScaleGuide(null); selectShape(null); setMarkupDraft(null); setProposal(null); setArmedStamp(null); setScheduleAnchor(null); setSymbolAnchor(null); setImageAnchor(null); setAlignPt(null); resetZone(); hlRef.current = null; if (hlPathRef.current) hlPathRef.current.style.display = "none"; } }
       // ⌘Z: the drawing context wins — mid-trace it still pops the last placed
       // point (with or without ⇧, matching the old behavior byte-for-byte);
       // only with no trace in progress does the command stack engage
@@ -2891,6 +2901,12 @@ export default function TakeoffCanvas() {
       if (!symbolAnchor) setSymbolAnchor(p);
       else { runSymbolSweep(symbolAnchor, p); setSymbolAnchor(null); }
     }
+    else if (tool === "image") {
+      // two-click marquee, isolated state like schedule/symbol — routes ONLY here,
+      // never through placeMarkup (which has no image case and would no-op)
+      if (!imageAnchor) setImageAnchor(p);
+      else { captureRegionMarkup(imageAnchor, p); setImageAnchor(null); setTool("select"); }
+    }
     else if (tool === "cloud" || tool === "callout" || tool === "text" || tool === "highlight" || tool === "dimension") placeMarkup(p);
     else if (tool === "stamp") placeStamp(p);
     else if (tool === "approve") placeApproval(p);
@@ -2992,6 +3008,14 @@ export default function TakeoffCanvas() {
       const cx = m.at[0] * W + ox, cy = m.at[1] * H;
       return X >= cx - bw / 2 - thr && X <= cx + bw / 2 + thr && Y >= cy - bh / 2 - thr && Y <= cy + bh / 2 + thr;
     }
+    if (m.type === "image" && Array.isArray(m.at) && Number(m.w) > 0 && pickEmbedFormat(m.src)) {
+      // a raster image — hit its placed box (width-anchored, same box the renderer
+      // draws). Gate on a PNG/JPEG DATA url (pickEmbedFormat) so an imported record
+      // with a non-data src (e.g. http(s)://) is neither rendered nor selectable.
+      const { bw, bh } = imagePlacedBox(m.w, m.aspect, W);
+      const cx = m.at[0] * W + ox, cy = m.at[1] * H;
+      return X >= cx - bw / 2 - thr && X <= cx + bw / 2 + thr && Y >= cy - bh / 2 - thr && Y <= cy + bh / 2 + thr;
+    }
     return false;
   }
   // Select tool: pick a shape (or a vertex of the selected one) and start dragging
@@ -3068,6 +3092,28 @@ export default function TakeoffCanvas() {
         e.currentTarget.setPointerCapture(e.pointerId); return;
       }
     }
+    // 1b. a selected image's bottom-right RESIZE handle wins next (screen-constant,
+    //     /z). Gated on the resolved markup being type "image" so this never fires
+    //     on another selected markup. Fixed top-left; onPointerMove drives the live
+    //     resize via resizeImageFromCorner.
+    if (showMarkups && selectedMarkupId) {
+      const selMk = markups.find((mm) => mm.id === selectedMarkupId);
+      // require the image to be on a VISIBLE panel — panelByKey falls back to
+      // panels[0] for an off-group sheet, which would arm the resize against the
+      // wrong panel's dims and corrupt an off-view image's w/at.
+      if (selMk && selMk.type === "image" && selMk.at && panelKeySet.has(selMk.sheet_id)) {
+        const sp = panelByKey(selMk.sheet_id);
+        if (sp && sp.img.w) {
+          const { bw, bh } = imagePlacedBox(selMk.w, selMk.aspect, sp.img.w);
+          const brx = selMk.at[0] * sp.img.w + sp.xOffset + bw / 2, bry = selMk.at[1] * sp.img.h + bh / 2;
+          if (Math.hypot(p[0] - brx, p[1] - bry) < thr * 1.5) {
+            const tlx = selMk.at[0] * sp.img.w - bw / 2, tly = selMk.at[1] * sp.img.h - bh / 2;
+            dragRef.current = { kind: "markupResize", markupId: selMk.id, tl: { x: tlx, y: tly }, aspect: selMk.aspect, ox: sp.xOffset, imgW: sp.img.w, imgH: sp.img.h };
+            e.currentTarget.setPointerCapture(e.pointerId); return;
+          }
+        }
+      }
+    }
     // 2. markups render ON TOP of shapes (:2137 > :2093), so a markup hit wins over a
     //    plain shape click — but NOT over the selected shape's handles above.
     //    When the markup layer is hidden (showMarkups false), skip the search
@@ -3077,8 +3123,12 @@ export default function TakeoffCanvas() {
       // a NON-highlight markup hit beats a highlight at the same point (test
       // highlights last), so a linked cloud/callout under a highlight stays
       // clickable; a highlight still wins over a plain shape (it shields it).
-      const mHit = rev.find((m) => m.type !== "highlight" && hitMarkup(m, p, thr))
-                || rev.find((m) => m.type === "highlight" && hitMarkup(m, p, thr));
+      // three tiers: plain markups first, then highlight, then image LAST — so a
+      // large image never shadows another markup from selection (an image shields
+      // shapes beneath it like a highlight box does; move it to reach what's under).
+      const mHit = rev.find((m) => m.type !== "highlight" && m.type !== "image" && hitMarkup(m, p, thr))
+                || rev.find((m) => m.type === "highlight" && hitMarkup(m, p, thr))
+                || rev.find((m) => m.type === "image" && hitMarkup(m, p, thr));
       if (mHit) {
         selectMarkup(mHit.id);
         // arm a move drag — snapshot the markup's current normalized coords (all four
@@ -3449,8 +3499,9 @@ export default function TakeoffCanvas() {
     if (rectRef.current) {
       const schedDraw = tool === "schedule" && scheduleAnchor;
       const symDraw = tool === "symbol" && symbolAnchor;
-      if (!panRef.current && ((tool === "rect" || tool === "deduct-rect") && poly.length === 1 || schedDraw || symDraw)) {
-        const a = symDraw ? symbolAnchor : schedDraw ? scheduleAnchor : poly[0];
+      const imgDraw = tool === "image" && imageAnchor;
+      if (!panRef.current && ((tool === "rect" || tool === "deduct-rect") && poly.length === 1 || schedDraw || symDraw || imgDraw)) {
+        const a = imgDraw ? imageAnchor : symDraw ? symbolAnchor : schedDraw ? scheduleAnchor : poly[0];
         rectRef.current.setAttribute("x", Math.min(a[0], cur[0])); rectRef.current.setAttribute("y", Math.min(a[1], cur[1]));
         rectRef.current.setAttribute("width", Math.abs(cur[0] - a[0])); rectRef.current.setAttribute("height", Math.abs(cur[1] - a[1]));
         rectRef.current.style.display = "block";
@@ -3708,6 +3759,15 @@ export default function TakeoffCanvas() {
           if (o.from) return { ...m, from: [o.from[0] + dx, o.from[1] + dy], to: [o.to[0] + dx, o.to[1] + dy] };
           return { ...m, at: [o.at[0] + dx, o.at[1] + dy] };   // text + bubble
         }));
+      } else if (d.kind === "markupResize") {
+        // drag the BR corner while the top-left stays fixed — resizeImageFromCorner
+        // clamps width first, then derives the new center so the top-left is
+        // invariant even at the clamp rails. Live setMarkups (not commit-on-release);
+        // onPointerUp sees a non-shape kind and just releases capture.
+        const mp = toImage(e.clientX, e.clientY);
+        const pointerLocalX = mp[0] - d.ox;
+        const { w, at } = resizeImageFromCorner({ x: d.tl.x, y: d.tl.y }, { x: pointerLocalX, y: mp[1] }, d.aspect, d.imgW, d.imgH);
+        setMarkups((ms) => ms.map((m) => (m.id === d.markupId ? { ...m, w, at } : m)));
       }
       return;
     }
@@ -5044,12 +5104,13 @@ export default function TakeoffCanvas() {
     const p = toImage(e.clientX, e.clientY);
     const thr = 8 / tfRef.current.scale;
     const rev = [...visibleMarkups].reverse();
-    const m = rev.find((mm) => mm.type !== "highlight" && hitMarkup(mm, p, thr))
-      || rev.find((mm) => mm.type === "highlight" && hitMarkup(mm, p, thr));
+    const m = rev.find((mm) => mm.type !== "highlight" && mm.type !== "image" && hitMarkup(mm, p, thr))
+      || rev.find((mm) => mm.type === "highlight" && hitMarkup(mm, p, thr))
+      || rev.find((mm) => mm.type === "image" && hitMarkup(mm, p, thr));
     if (!m) return;
     // an svg symbol carries no text — select it, but don't open a dead-end editor;
     // a highlighter stroke is pure ink (no text either), same rule
-    if (m.type === "svg" || (m.type === "highlight" && Array.isArray(m.pts))) { selectMarkup(m.id); return; }
+    if (m.type === "svg" || m.type === "image" || (m.type === "highlight" && Array.isArray(m.pts))) { selectMarkup(m.id); return; }
     const anchor = markupAnchorStage(m);
     if (!anchor) return;
     selectMarkup(m.id);
@@ -6302,6 +6363,123 @@ export default function TakeoffCanvas() {
     }).promise;
     const dataUrl = canvas.toDataURL("image/png");
     return { b64: dataUrl.split(",")[1] || "", width: bw, height: bh };
+  }
+
+  // ── image markup (#…) — two entry points, one record type ────────────────
+  // Marquee screenshot: a,b are the two marquee corners in stage px. Render the
+  // boxed region of the plan offscreen (the rasterizeRegion idiom, but with its
+  // OWN 1600px downscale factor — NOT scanRasterScale's 4096 cap) and store it as
+  // a floating `image` markup anchored at the box center. Guards mirror
+  // importScheduleFromRect: sheet ready, both corners in one panel, a real source
+  // page (refuse a stitched composite), a non-degenerate box.
+  async function captureRegionMarkup(a, b) {
+    if (status !== "ready") { setCommitMsg("Sheet still loading — try again in a moment."); return; }
+    const panel = panelAt(a[0]);
+    if (panelAt(b[0]).key !== panel.key) { setCommitMsg("Draw the box within a single sheet."); return; }
+    const pageObj = pageObjsRef.current.get(panel.key);
+    if (!pageObj) { setCommitMsg("Capture a region on a single sheet (not a stitched view)."); return; }
+    const rs = renderScalesRef.current.get(panel.key) || RENDER_SCALE;
+    // rect in image (rs-viewport) px, clamped to the panel bounds so an over-drag
+    // past the sheet edge never parks the geometry off-sheet
+    const cl = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+    const x0 = cl(Math.min(a[0], b[0]) - panel.xOffset, 0, panel.img.w);
+    const x1 = cl(Math.max(a[0], b[0]) - panel.xOffset, 0, panel.img.w);
+    const y0 = cl(Math.min(a[1], b[1]), 0, panel.img.h);
+    const y1 = cl(Math.max(a[1], b[1]), 0, panel.img.h);
+    const regW = x1 - x0, regH = y1 - y0;
+    if (!(regW >= 4 && regH >= 4)) { setCommitMsg("Drag a larger box to capture."); return; }
+    // own downscale factor: 1600px longest side (never scanRasterScale's 4096)
+    const factor = Math.min(1, MARKUP_IMG_MAX / regW, MARKUP_IMG_MAX / regH);
+    const bw = Math.max(1, Math.round(regW * factor)), bh = Math.max(1, Math.round(regH * factor));
+    let src;
+    try {
+      const vp = pageObj.getViewport({ scale: rs * factor });
+      const canvas = document.createElement("canvas");
+      canvas.width = bw; canvas.height = bh;
+      await pageObj.render({
+        canvasContext: canvas.getContext("2d"),
+        viewport: vp,
+        transform: [1, 0, 0, 1, -x0 * factor, -y0 * factor],
+      }).promise;
+      src = canvas.toDataURL("image/png");
+    } catch { setCommitMsg("Couldn't capture that region."); return; }
+    const { at, w, aspect } = captureRectToImageGeom({ x0, y0, x1, y1 }, panel.img.w, panel.img.h);
+    if (!(w > 0)) return;
+    addImageMarkup({ at, w, aspect, src, source: "capture" }, panel.key);
+  }
+
+  // The aggregate-budget gate shared by both entry points: refuse a new image when
+  // the project's total image-markup bytes would exceed the cap (N capped images
+  // otherwise defeat the per-image cap and push the annotations blob past quota).
+  // This is a SOFT guard read from the render-closure `markups`; two back-to-back
+  // async adds could momentarily race it, but the per-image 1600px cap already
+  // bounds each one, so the worst case is a single image slipping just over the
+  // budget — not a correctness or safety issue, and the quota surfacing in the
+  // autosave catch is the real backstop.
+  function addImageMarkup(m, key) {
+    const used = markups.reduce((n, x) => n + (x.type === "image" && typeof x.src === "string" ? x.src.length : 0), 0);
+    if (used + m.src.length > MAX_IMAGE_MARKUP_BYTES) { setCommitMsg("Too many/large images on this project — delete some before adding more."); return; }
+    addMarkup({ type: "image", ...m }, key);
+    setCommitMsg("Image placed.");
+  }
+
+  // Upload: decode a raster file (EXIF-oriented), downscale to 1600px longest side,
+  // ALWAYS re-encode through a canvas (pixels only — SSRF/script-safe; guarantees a
+  // PNG/JPEG data URL), and drop it centered in the current view of the focus sheet.
+  async function addImageFromFile(file) {
+    // don't trust accept="image/*": accept ONLY PNG/JPEG — matching the UI copy,
+    // the docs, and pickEmbedFormat (the marked-set gate), and keeping the decode
+    // surface small. By MIME OR by extension, because some platforms/drag-drop hand
+    // over an empty file.type for a good PNG/JPEG (the StampPanel import checks the
+    // extension for the same reason). Everything else — webp/gif/bmp, and SVG — is
+    // refused here (uploads are still re-encoded to PNG/JPEG regardless).
+    const name = file?.name || "";
+    const isPngJpeg = !!file && (/^image\/(png|jpeg)$/.test(file.type) || /\.(png|jpe?g)$/i.test(name));
+    if (!isPngJpeg) {
+      setCommitMsg("Pick a PNG or JPEG image."); return;
+    }
+    // cheap pre-decode gate: bail on a huge FILE before createImageBitmap allocates
+    // anything (a small-file / huge-dims pixel bomb is caught by the area guard below).
+    if (file.size > MARKUP_UPLOAD_MAX_BYTES) { setCommitMsg(`That image file is too large (max ${Math.round(MARKUP_UPLOAD_MAX_BYTES / (1024 * 1024))} MB).`); return; }
+    try {
+      // sniff intrinsic dimensions via an <img> FIRST — reading naturalWidth/Height
+      // only needs the header, so a pixel bomb (small file, enormous declared dims)
+      // is refused BEFORE createImageBitmap forces a full-size RGBA decode that could
+      // OOM the tab. createImageBitmap then only runs on an already-bounded image.
+      const url = URL.createObjectURL(file);
+      try {
+        const dims = await new Promise((res, rej) => {
+          const im = new Image();
+          im.onload = () => res({ w: im.naturalWidth, h: im.naturalHeight });
+          im.onerror = () => rej(new Error("decode"));
+          im.src = url;
+        });
+        if (dims.w * dims.h > MARKUP_DECODE_MAX_AREA) { setCommitMsg("That image is too large (too many pixels)."); return; }
+      } finally { URL.revokeObjectURL(url); }
+      const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+      // defense-in-depth: the oriented bitmap's own area, in case the sniff and the
+      // decoder disagree (a markup-appropriate cap, NOT the 241M render-canvas cap).
+      if (bmp.width * bmp.height > MARKUP_DECODE_MAX_AREA) { bmp.close?.(); setCommitMsg("That image is too large (too many pixels)."); return; }
+      const f = Math.min(1, MARKUP_IMG_MAX / Math.max(bmp.width, bmp.height));
+      const bw = Math.max(1, Math.round(bmp.width * f)), bh = Math.max(1, Math.round(bmp.height * f));
+      const canvas = document.createElement("canvas");
+      canvas.width = bw; canvas.height = bh;
+      canvas.getContext("2d").drawImage(bmp, 0, 0, bw, bh);
+      bmp.close?.();
+      const isJpeg = file.type === "image/jpeg";
+      const src = canvas.toDataURL(isJpeg ? "image/jpeg" : "image/png", isJpeg ? 0.85 : undefined);
+      const aspect = aspectFromDims(bw, bh);
+      // center of the current view, normalized to the focus panel (falls back to
+      // the panel center if the view geometry isn't available)
+      const cl01 = (v) => Math.min(1, Math.max(0, v));
+      let at = [0.5, 0.5];
+      const r = containerRef.current?.getBoundingClientRect();
+      if (r) {
+        const c = toImage(r.left + r.width / 2, r.top + r.height / 2);
+        at = [cl01((c[0] - focusPanel.xOffset) / focusPanel.img.w), cl01(c[1] / focusPanel.img.h)];
+      }
+      addImageMarkup({ at, w: 0.2, aspect, src, source: "upload" }, focusPanel.key);
+    } catch { setCommitMsg("Couldn't read that image."); }
   }
 
   // Approved rows → conditions. Category drives color/hatch/waste (rowToSeed);
@@ -7665,7 +7843,16 @@ export default function TakeoffCanvas() {
                  {/* layer show/hide — hides the on-canvas markup layer AND its hit-testing
                      (can't select/delete/fly-to an invisible markup); orthogonal to the
                      marked-set export, which still includes markups. */}
-                 <div style={{ display: "flex", justifyContent: "flex-end", padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)" }}>
+                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)" }}>
+                   {/* hidden input reused by the Upload button — re-encoded through addImageFromFile */}
+                   <input name="markup-image-file" ref={imageInputRef} type="file" accept="image/*" style={{ display: "none" }}
+                     onChange={(e) => { const f = e.target.files?.[0]; if (f) addImageFromFile(f); e.target.value = ""; }} />
+                   <button
+                     onClick={() => imageInputRef.current?.click()}
+                     title="Upload a raster image (PNG or JPEG) as a floating annotation on the current sheet"
+                     style={{ background: "transparent", border: "1px solid var(--ink-faint)", color: "var(--ink)", fontSize: 11, cursor: "pointer", padding: "2px 7px" }}>
+                     Upload image…
+                   </button>
                    <button
                      onClick={() => { const nv = !showMarkups; setShowMarkups(nv); if (!nv) setSelectedMarkupId(null); }}
                      title={showMarkups ? "Hide the markup layer on the canvas" : "Show the markup layer on the canvas"}
@@ -7674,7 +7861,7 @@ export default function TakeoffCanvas() {
                    </button>
                  </div>
                  <div style={{ padding: "8px 10px", color: "var(--ink-muted)" }}>
-                   Pick <b>☁ Cloud</b>, <b>▨ Highlight</b>, <b>💬 Callout</b>, <b>T Text</b>, or <b>⟷ Dimension</b> above, then click the plan to annotate it.
+                   Pick <b>☁ Cloud</b>, <b>▨ Highlight</b>, <b>💬 Callout</b>, <b>T Text</b>, or <b>⟷ Dimension</b> above, then click the plan to annotate it. <b>🖼 Image</b> marquees a region (two clicks) — or use <b>Upload image…</b> above.
                  </div>
                  {markups.filter((m) => panelKeySet.has(m.sheet_id)).length === 0 && (
                    <div style={{ padding: "4px 12px 14px", color: "var(--ink-muted)" }}>No markups {groupKeys.length > 1 ? "on these sheets" : "on this sheet"} yet.</div>
@@ -7985,7 +8172,13 @@ export default function TakeoffCanvas() {
                         FILL (dark-boosted on the dark canvas); RFI linkage is an unconditional
                         ⬢/number badge, independent of the note text. Layer hides via showMarkups. */}
                     {showMarkups && visibleMarkups.filter((m) => m.sheet_id === p.key)
-                      .slice().sort((a, b) => (a.type === "highlight" ? 0 : 1) - (b.type === "highlight" ? 0 : 1))
+                      // three draw tiers that MATCH the three hit tiers (selectAt),
+                      // so on-screen z-order never contradicts selection priority:
+                      // image at the back (0), highlight (1), everything else on top
+                      // (2). Painting is document order, so tier 0 draws first/behind
+                      // and tier 2 last/on top; hit-test ranks them in reverse, so the
+                      // topmost-drawn markup is the one a click selects.
+                      .slice().sort((a, b) => (a.type === "image" ? 0 : a.type === "highlight" ? 1 : 2) - (b.type === "image" ? 0 : b.type === "highlight" ? 1 : 2))
                       .map((m) => {
                       const z = tf.scale;
                       // Colour precedence: an explicit per-markup colour always
@@ -8145,6 +8338,27 @@ export default function TakeoffCanvas() {
                             <circle cx={cx} cy={cy} r={rad} fill={darkMode ? "rgba(12,15,20,.85)" : "rgba(255,255,255,.85)"} stroke={mk} strokeWidth={(2 * w) / z} strokeDasharray={dash} />
                             {m.text && <text x={cx} y={cy} fill={mk} fontSize={Math.min(13, rad * z * 0.9) / z} fontWeight="700" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{m.text}</text>}
                             {badge(cx + rad, cy - rad - 4 / z)}
+                          </g>
+                        );
+                      }
+                      if (m.type === "image") {
+                        // a raster image markup (screenshot capture or upload). Width-anchored
+                        // like svg but off `m.w` alone (imagePlacedBox), rendered as-is (no
+                        // dark-mode invert — a screenshot is captured from the light PDF).
+                        // Self-contained: a guard-fail returns null, never falling through to
+                        // the text renderer below (which would paint a phantom note box).
+                        const { bw, bh } = imagePlacedBox(m.w, m.aspect, p.img.w);
+                        // only a PNG/JPEG DATA url renders (matches the marked-set
+                        // export invariant) — an imported record with an http(s)://
+                        // src must never make <image href> fetch remote content.
+                        if (!(m.src && pickEmbedFormat(m.src) && Array.isArray(m.at) && bw > 0 && bh > 0)) return null;
+                        const x0 = m.at[0] * p.img.w - bw / 2, y0 = m.at[1] * p.img.h - bh / 2;
+                        return (
+                          <g key={m.id}>
+                            {halo(x0, y0, x0 + bw, y0 + bh)}
+                            <image href={m.src} x={x0} y={y0} width={bw} height={bh} preserveAspectRatio="none" style={{ pointerEvents: "none" }} />
+                            {selM && <rect x={x0 + bw - 4 / z} y={y0 + bh - 4 / z} width={8 / z} height={8 / z} fill="#1f3fc7" stroke="#fff" strokeWidth={1.5 / z} style={{ pointerEvents: "none" }} />}
+                            {badge(x0, y0 - 9 / z)}
                           </g>
                         );
                       }
