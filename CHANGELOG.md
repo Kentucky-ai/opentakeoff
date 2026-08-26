@@ -10,6 +10,10 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
 ### Changed
 - **Line / Fill in the top-bar band are two swatch buttons with a popover each.** Twenty inline swatches became two controls that show the current line color and fill (⦸ for none) and open their palette on click — one open at a time, Esc or a click outside closes. Choosing a color closes the popover. The docked Takeoffs panel keeps its inline palettes (it has the room). Same `ConditionAppearanceEditor`, same `color` / `fill` fields; nothing stored changes. Render-tested for both layouts. Prompted by a downstream fork's spec (replicant026/fork-opentakeoff, #341); implemented here independently.
+## 2026-08-26 — Report is on screen at every width
+
+### Fixed
+- **Report and ⋯ were off the right edge on 1440-class laptops.** The toolbar is ~1,375px of fixed-width controls (its contract since #61: nothing wraps or shifts mid-work), and at 1366 or 1280 wide the row scrolled itself — a thin scrollbar nobody finds, with the canvas eating wheel gestures — so Report read as unclickable. The bar is now two parts: the working controls scroll as one region, and **Report, ⋯, presence and account are pinned outside it**, on screen at any width. Nothing wraps; at full width the bar is pixel-identical. Verified in 1366×768, 1280×720 and 1024×700 frames.
 
 ## 2026-08-24 — the takeoff goes back into CAD
 
