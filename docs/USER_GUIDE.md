@@ -457,6 +457,8 @@ The **Snap** toggle pulls your cursor onto true PDF endpoints—real corners ext
 
 The top-right readout tracks the armed tool: totals for the tracing tools, `W × H · SF · SY` for Rectangle, wall SF at the condition height for Surface Area, and running One-Click selection totals. Any run or side that reaches **12′ turns the chip amber**—the roll-width warning rides every tool that measures a length.
 
+Under the condition total sits **MEASUREMENTS**—a numbered tally, in draw order, of every linear run and wall on the active condition across the open sheets. A linear run reads its length (`01 47.2 LF linear`); a wall reads the tape math (`03 39.1 LF × 8 ft = 313.1 SF`), using that wall's own height where one is set and the condition height otherwise. The lines add up to the totals above them, so a wall-tile number can be checked line by line without opening the panel. Metric reports convert each line (`11.9 m × 2.44 m = 29.1 m²`). Floor areas and counts are not listed—their check is the shape itself.
+
 ---
 
 ## 6. One-Click Area

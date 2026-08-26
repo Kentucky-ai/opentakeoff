@@ -77,6 +77,7 @@ import { buildLayerInfos, effectiveLayerRoles, layerRoleCodes, segRoles, sanitiz
 import { detectCandidateRule, buildRuleFromSeed, applyRuleToProject } from "../lib/rules";
 import { deriveTransitionRuns, transitionRefusal } from "../lib/transitions";
 import { conditionTotals, verticalWallSf, downloadText } from "../lib/totals.js";
+import { measurementBreakdown } from "../lib/measurementBreakdown.js";
 import { shapesInZone } from "../lib/zone.js";
 import { sanitizeSheetLevels } from "../lib/sheetLevels.js";
 import { sanitizeConditionColumns, sanitizeConditionAttrs, renameColumnValue, columnLabel } from "../lib/conditionColumns.js";
@@ -6640,6 +6641,9 @@ export default function TakeoffCanvas() {
   // display-only derived metric: floor-area perimeters × the condition height
   const condH = Number(aCond?.height_ft) || 0; // the live-readout JSX below still reads this
   const vertTotal = verticalWallSf(visibleShapes, activeCond, aCond?.height_ft, condMult);
+  // the tally under the total: every linear run and wall of the active
+  // condition on the visible sheets, in draw order (lib/measurementBreakdown)
+  const tally = useMemo(() => measurementBreakdown(visibleShapes, activeCond, aCond), [visibleShapes, activeCond, aCond]);
   const num = (v, d = 1) => v.toLocaleString(undefined, { maximumFractionDigits: d });
   // unit-system display edge: internal math is always feet (lib/units.ts)
   const fa = (sf, d = 1) => `${num(areaVal(sf, units), d)} ${areaUnit(units)}`;
@@ -8799,6 +8803,24 @@ export default function TakeoffCanvas() {
           {countTotal > 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{num(countTotal, 0)} <span style={{ fontSize: 12, fontWeight: 600 }}>EA</span></div>}
           {vertTotal > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }} title="Display only — floor-area perimeters × this condition's height (not committed)">{fa(vertTotal)} vert (perim × H)</div>}
           {condTotal === 0 && lfTotal === 0 && countTotal === 0 && wallTotal === 0 && borderTotal === 0 && <div style={{ fontSize: 12.5, color: "var(--ink-muted)", marginTop: 2 }}>—</div>}
+          {tally.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, opacity: 0.5, marginTop: 8 }}>Measurements</div>
+              <div style={{ fontFamily: "var(--f-mono)", fontSize: 11.5, lineHeight: 1.5, marginTop: 2 }}>
+                {tally.map((r) => (
+                  <div key={r.id} style={{ display: "flex", gap: 6, whiteSpace: "nowrap" }}>
+                    <span style={{ opacity: 0.45 }}>{String(r.n).padStart(2, "0")}</span>
+                    <span>
+                      {fl(r.lf)}
+                      {r.role === "wall"
+                        ? <> × {num(heightVal(r.h, units), 2)} {heightUnit(units)} = {fa(r.sf)}</>
+                        : <span style={{ color: "var(--ink-muted)" }}> linear</span>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
           <div style={{ fontSize: 10.5, opacity: 0.45, marginTop: 6 }}>{visibleShapes.length} shapes on {groupKeys.length > 1 ? `${groupKeys.length} sheets` : "sheet"} · zoom {(tf.scale * 100).toFixed(0)}%</div>
         </div>
 
