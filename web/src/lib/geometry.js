@@ -261,6 +261,55 @@ export function chiselRibbon(pts, w, nibDeg = 45) {
   return [...pts.map(([x, y]) => [x + vx, y + vy]), ...[...pts].reverse().map(([x, y]) => [x - vx, y - vy])];
 }
 
+// Do two segments (p1p2, p3p4) intersect? Full predicate: the general straddle
+// test, plus collinear-overlap and T-touch handling, with shared endpoints
+// deliberately excluded (a ring's adjacent edges always share one).
+export function segsIntersect(p1, p2, p3, p4) {
+  const cross = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const d1 = cross(p3, p4, p1), d2 = cross(p3, p4, p2);
+  const d3 = cross(p1, p2, p3), d4 = cross(p1, p2, p4);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
+  if (d1 === 0 && d2 === 0 && d3 === 0 && d4 === 0) {
+    // collinear: compare 1-D intervals on the line's own axis (y only when the
+    // shared line is vertical — then x can't tell points apart)
+    const k = p1[0] === p2[0] && p1[0] === p3[0] && p1[0] === p4[0] ? 1 : 0;
+    const aLo = Math.min(p1[k], p2[k]), aHi = Math.max(p1[k], p2[k]);
+    const bLo = Math.min(p3[k], p4[k]), bHi = Math.max(p3[k], p4[k]);
+    const lo = Math.max(aLo, bLo), hi = Math.min(aHi, bHi);
+    if (lo > hi) return false;                                 // disjoint
+    if (lo < hi) return true;                                  // a real overlap run
+    // single-point contact: intersects only if it is NOT an endpoint of both
+    return !((aLo === lo || aHi === lo) && (bLo === lo || bHi === lo));
+  }
+  // T-touch: an endpoint riding the OTHER segment (cross 0 puts it on the line,
+  // so bbox containment puts it on the segment); shared endpoints excluded.
+  const eq = (a, b) => a[0] === b[0] && a[1] === b[1];
+  const onSeg = (a, b, c) =>
+    Math.min(a[0], b[0]) <= c[0] && c[0] <= Math.max(a[0], b[0]) &&
+    Math.min(a[1], b[1]) <= c[1] && c[1] <= Math.max(a[1], b[1]);
+  if (d1 === 0 && onSeg(p3, p4, p1) && !eq(p1, p3) && !eq(p1, p4)) return true;
+  if (d2 === 0 && onSeg(p3, p4, p2) && !eq(p2, p3) && !eq(p2, p4)) return true;
+  if (d3 === 0 && onSeg(p1, p2, p3) && !eq(p3, p1) && !eq(p3, p2)) return true;
+  if (d4 === 0 && onSeg(p1, p2, p4) && !eq(p4, p1) && !eq(p4, p2)) return true;
+  return false;
+}
+
+// Does a closed ring cross itself? Every non-adjacent edge pair, closing edge
+// included. Feeds the drawing-styles invalid-flip (a theme with invalidColor
+// recolors a self-crossing area/deduct/zone draft). Ring tools only — an open
+// polyline has no closing edge and must never flip.
+export function ringSelfIntersects(pts) {
+  const n = Array.isArray(pts) ? pts.length : 0;
+  if (n < 4) return false;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue;                    // adjacent through the closing edge
+      if (segsIntersect(pts[i], pts[(i + 1) % n], pts[j], pts[(j + 1) % n])) return true;
+    }
+  }
+  return false;
+}
+
 // ── snap-to-vector spatial hash. The op-list walk that feeds it (endpoints +
 // line segments for One-Click Area) lives in lib/oneclick: extractVectorGeometry.
 // `cell` is the caller's tuning (raster px per bucket) — see SNAP_CELL in the canvas.

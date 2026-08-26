@@ -14,8 +14,12 @@ import { m365Config, M365_ENABLED_KEY } from "./lib/msgraph/config.js";
 import { cloudSyncEnabled } from "./lib/prefs.js";
 import { projectHomeFolderId } from "./lib/projectHome.js";
 import { initTheme } from "./lib/theme.js";
+import { initDrawStyle } from "./lib/drawStyles.js";
+import { initDraftOutline } from "./lib/draftOutline.js";
 
 initTheme();   // index.html set data-theme pre-paint; this keeps it live
+initDrawStyle();   // syncs a draw-style choice made in another tab
+initDraftOutline();   // syncs the "outline area while drawing" choice made in another tab
 
 // Client-only SPA. By default there is no backend: the canvas runs entirely in
 // the browser and persists to IndexedDB / localStorage (anonymous local mode).

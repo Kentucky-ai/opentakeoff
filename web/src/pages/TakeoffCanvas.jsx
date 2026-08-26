@@ -84,7 +84,12 @@ import { sanitizeShapeLabels, sanitizeShapeLabelsOnShapes, renameShapeLabel, sha
 import { buildMarkedSetPdf, downloadBytes } from "../lib/markedset.js";
 import { loadProfiles } from "../lib/identity.js";
 import { resolveBranding, loadBrandingSelection } from "../lib/branding.js";
-import { starPath, cloudPath, thinStroke, strokePathD, chiselRibbon, buildSnapGrid, nearestSnap, ANGLE_TOL, angleSnap, closedMetrics, openLen, pointInPoly, hitShape, arrowheadPath, distToSeg, reflectVertsNorm } from "../lib/geometry.js";
+import { starPath, cloudPath, thinStroke, strokePathD, chiselRibbon, buildSnapGrid, nearestSnap, ANGLE_TOL, angleSnap, closedMetrics, openLen, pointInPoly, hitShape, arrowheadPath, distToSeg, reflectVertsNorm, ringSelfIntersects } from "../lib/geometry.js";
+// Drawing style (draft chrome look) — one resolved token object (DS in JSX,
+// dsRef.current in the imperative movers) replaces the hardcoded cobalt/star
+// literals across the in-progress trace, cursor, and selection chrome.
+import { DRAW_STYLES, DRAW_STYLE_IDS, resolveDrawStyle, markerPath, drawDashFor, rgbaFromHex, getDrawStyle, setDrawStyle, onDrawStyleChange } from "../lib/drawStyles.js";
+import { getDraftOutline, setDraftOutline, onDraftOutlineChange } from "../lib/draftOutline.js";
 import { flattenCurve } from "../lib/curve.js";
 import { flattenArcRing, arcPathD, arcLength } from "../lib/arc.js";
 import { dashArrayFor, boostForDark, clampWeight, snapWeight, LINE_STYLES, LINE_STYLE_IDS, WEIGHT_STEPS } from "../lib/lineStyles.js";
@@ -116,6 +121,7 @@ import { startCapture, captureSupported } from "../lib/voiceCapture";
 import { aiConfig, isAiConfigured } from "../lib/ai.js";
 import AccountChip from "../components/AccountChip.jsx";
 import PresenceChip from "../components/PresenceChip.jsx";
+import DrawStylePicker from "../components/DrawStylePicker.jsx";
 import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
 import { projectHomeFolderId } from "../lib/projectHome.js";
 import { getTheme, toggleTheme, onThemeChange } from "../lib/theme.js";
@@ -363,6 +369,20 @@ export default function TakeoffCanvas() {
   // above. lib/theme.js owns the DOM; this state just keeps the glyph current.
   const [theme, setTheme] = useState(getTheme);
   useEffect(() => onThemeChange(setTheme), []);
+  // Drawing style (draft chrome look) — same 3-line subscription pattern as the
+  // app theme above (picker / other tabs round-trip through the module event).
+  // resolveDrawStyle is memoized: the component re-renders ~11 Hz during
+  // gestures via the tf mirror, so no fresh deep-merge per render. dsRef is the
+  // imperative movers' handle, assigned in the RENDER BODY (never an effect — a
+  // pointermove can arrive before effects flush). Canvas ☾ (darkMode) picks the
+  // theme's dark deltas, mirroring the invert everything else on the sheet honors.
+  const [drawStyleId, setDrawStyleId] = useState(getDrawStyle);
+  useEffect(() => onDrawStyleChange(setDrawStyleId), []);
+  const [draftOutline, setDraftOutlineState] = useState(getDraftOutline);
+  useEffect(() => onDraftOutlineChange(setDraftOutlineState), []);
+  const DS = useMemo(() => resolveDrawStyle(drawStyleId, darkMode), [drawStyleId, darkMode]);
+  const dsRef = useRef(DS);
+  dsRef.current = DS;
   // diff-only prefs (cf. reportColumns): only keys that differ from the
   // defaults persist, so a future default change reaches existing users
   useEffect(() => {
@@ -438,6 +458,39 @@ export default function TakeoffCanvas() {
   // Mid-gesture: the last click was a bow point, so the NEXT click closes that
   // arc rather than opening another. The live preview reads the same flag.
   const bowOpen = polyCurve.length > 0 && polyCurve[polyCurve.length - 1] && poly.length >= 2;
+  // Ring-tool draft invalidity (drawing styles): a self-crossing area/deduct/
+  // zone draft recolors on a theme that sets invalidColor. `!!DS.invalidColor`
+  // is the FIRST guard, so drafting (invalidColor null) short-circuits before
+  // any geometry runs — parity is structural, not incidental. Computed on
+  // PLACED vertices only (per-point via the memo, never per mousemove); ring
+  // tools only — an open polyline has no closing edge and must never flip.
+  const isRingTool = tool === "area" || tool === "deduct" || tool === "zone";
+  const draftInvalid = useMemo(
+    () => !!DS.invalidColor && isRingTool && poly.length >= 4 && ringSelfIntersects(poly),
+    [DS.invalidColor, isRingTool, poly]
+  );
+  // ONE restore expression for the draft/rubber/trace stroke, shared by the JSX
+  // and the movers so React and imperative writes can never disagree: deduct
+  // red (a safety signal in every theme) → invalid flip → theme accent.
+  const draftStroke = (t, invalid, ds) => (t === "deduct" ? "#b03a26" : invalid && ds.invalidColor ? ds.invalidColor : ds.accent);
+  // Draft totals for the panel chip chromes (Contemporary panelDark / Precision
+  // panelCream): placed-edge length sum + partial shoelace cross-sum, assigned
+  // IN THE RENDER BODY (the dsRef pattern — a useEffect([poly]) recompute has a
+  // stale window: React does not guarantee passive-effect flush before
+  // continuous pointer events, so a pointermove could read old sums against a
+  // new poly). moveCrosshair adds only the cursor terms — O(1) per move. Gated
+  // on the panel chromes so Drafting Table (paper) does literally zero extra work.
+  const draftStatsRef = useRef({ len: 0, cross: 0 });
+  if (DS.chip.chrome === "panelDark" || DS.chip.chrome === "panelCream") {
+    let dLen = 0, dCross = 0;
+    for (let i = 1; i < poly.length; i++) {
+      const a = poly[i - 1], b = poly[i];
+      dLen += Math.hypot(b[0] - a[0], b[1] - a[1]);
+      dCross += a[0] * b[1] - b[0] * a[1];
+    }
+    draftStatsRef.current.len = dLen;
+    draftStatsRef.current.cross = dCross;
+  }
   const [guideOpen, setGuideOpen] = useState(false);   // the in-app manual overlay (? / the toolbar button)
   const [proposal, setProposal] = useState(null);  // One-Click selection under review: { key, regions: [{kind:'pos'|'neg', seed, poly, area_sf, perim_lf}] } — panel-LOCAL px
   // ── in-canvas takeoff agent state ──────────────────────────────────────────
@@ -729,6 +782,8 @@ export default function TakeoffCanvas() {
   const angleRef = useRef(null);       // current angle-locked image point (or null) — the click commits it
   const aimMarkRef = useRef(null);     // four floating liquid-glass pickets thickening the crosshair crossing
   const aimChipRef = useRef(null);     // readout chip by the cursor (locked angle · live segment length)
+  const rubberCasingRef = useRef(null); // casing under-stroke twin of the rubber band (mounted only when DS.casing — Site Glass)
+  const closeRef = useRef(null);       // ring tools' close-preview ghost edge (mounted only when DS.closePreview — Contemporary)
   const dragRef = useRef(null);        // {kind:'move'|'vertex'|'edge'|'markupMove', shapeId?/markupId?, vIndex?, start:[x,y], orig:verts_norm/markup coords, moved?, prev: grab-time geomSnapshot (shape drags), shape: grab-time shape, lastVerts/lastComputed: latest preview frame — the release commit's geom command payload}
   const ocDragRef = useRef(null);      // One-Click proposal edit drag: {kind:'oc-vertex'|'oc-edge', ri, vi?/i?/j?, oa?, ob?, sx?, sy?} — poly is panel-LOCAL px
   const ocHoverRef = useRef(-1);       // mirror of ocHover (region index under cursor) — compared per-move to avoid stale-closure churn
@@ -3096,9 +3151,58 @@ export default function TakeoffCanvas() {
   function recomputeShape(s, uppOverride) {
     return computeShapeMetrics(s, panelByKey(s.sheet_id).img, uppOverride ?? (uppFor(s.sheet_id) || 0), condById[s.condition_id]);
   }
+  // The panel chip chromes' children — built imperatively by moveCrosshair on a
+  // __mode change (the chip element stays CHILDLESS in JSX for every chrome;
+  // React never renders content into it). textContent-only writes throughout:
+  // condition names are user data, so no innerHTML anywhere on this path.
+  function buildChipPanel(chip, chrome) {
+    chip.textContent = "";
+    const vals = {};
+    const row = (label, key, unit) => {
+      const r = document.createElement("div");
+      r.style.display = "flex"; r.style.justifyContent = "space-between"; r.style.gap = "12px";
+      const l = document.createElement("span");
+      l.textContent = label;
+      l.style.opacity = "0.62"; l.style.fontWeight = "500";
+      const v = document.createElement("span");
+      v.style.fontWeight = "700";
+      const val = document.createElement("span");
+      v.appendChild(val);
+      if (unit) {
+        // muted-gray unit span — reads as annotation beside the value, not value
+        const u = document.createElement("span");
+        u.textContent = " " + unit;
+        u.style.color = "#8a8577"; u.style.fontWeight = "500";
+        v.appendChild(u);
+      }
+      r.appendChild(l); r.appendChild(v);
+      chip.appendChild(r);
+      vals[key] = val;
+    };
+    if (chrome === "panelDark") {
+      row("This segment", "seg");
+      row("Total linear", "lin");
+      row("Total area", "area");
+    } else {
+      const head = document.createElement("div");
+      head.style.fontWeight = "700"; head.style.marginBottom = "1px";
+      chip.appendChild(head);
+      vals.head = head;
+      const sub = document.createElement("div");
+      sub.textContent = "This section only:";
+      sub.style.opacity = "0.62"; sub.style.fontSize = "9.5px"; sub.style.marginBottom = "1px";
+      chip.appendChild(sub);
+      row("Area", "area", areaUnit(units));
+      row("Linear", "lin", lenUnit(units));
+      row("Segments", "segs");
+      row("Points", "pts");
+    }
+    chip.__vals = vals;
+  }
   function moveCrosshair(e) {
     if (editingRef.current) return;   // inline editor open — no aim crosshair (ref check, never per-mousemove state)
     if (tool === "select" || status !== "ready" || !containerRef.current) return;
+    const ds = dsRef.current;   // resolved drawing style — refs only in this hot path (render-body assigned, never stale)
     // snap-to-vector: nearest PDF endpoint within threshold becomes the active
     // point — looked up in the hovered panel's grid, in that panel's local frame
     let cur = toImage(e.clientX, e.clientY);
@@ -3150,10 +3254,8 @@ export default function TakeoffCanvas() {
       el.style[prop] = `${val}px`; el.style.display = "block";
       if (el.__lock !== lockState) {
         el.__lock = lockState;
-        el.style.background = lock ? "rgba(31,63,199,.85)" : "rgba(31,63,199,.55)";
-        el.style.boxShadow = lock
-          ? "0 0 0 0.5px rgba(255,255,255,.6), 0 0 6px rgba(31,63,199,.5)"
-          : "0 0 0 0.5px rgba(255,255,255,.55), 0 0 4px rgba(31,63,199,.3)";
+        el.style.background = lock ? ds._hairlineLock.background : ds._hairline;
+        el.style.boxShadow = lock ? ds._hairlineLock.boxShadow : ds._hairlineLock.boxShadowBase;
       }
     }
     if (aimMarkRef.current) {
@@ -3164,13 +3266,20 @@ export default function TakeoffCanvas() {
         const star = el.firstChild;
         if (star) {
           star.style.transform = lock ? "scale(1.3)" : "scale(1)";
-          star.style.filter = lock ? "drop-shadow(0 0 5px rgba(31,63,199,.6)) drop-shadow(0 1px 2px rgba(14,26,46,.3))" : "drop-shadow(0 1px 2px rgba(14,26,46,.3))";
+          star.style.filter = lock ? `drop-shadow(0 0 5px ${ds._aimGlow}) drop-shadow(0 1px 2px rgba(14,26,46,.3))` : "drop-shadow(0 1px 2px rgba(14,26,46,.3))";
         }
       }
       el.style.display = "block";
     }
     if (aimChipRef.current) {
       const chip = aimChipRef.current;
+      const chipT = ds.chip;
+      // panel chromes (panelDark/panelCream) replace the single-row live-segment
+      // text with a small multi-row readout — ONLY during a poly draft with ≥1
+      // placed point on a scaled sheet; every other text (check length, rect
+      // W×H, bare angle, "snap") degrades to a single row in the same palette.
+      const panelChrome = chipT.chrome === "panelDark" || chipT.chrome === "panelCream";
+      const panelActive = panelChrome && drawing && anchor && liveUpp;
       let txt = "", over = false;
       if (tool === "check" && check.length === 1) {
         // live length to the cursor while picking the second end of the dimension.
@@ -3190,7 +3299,7 @@ export default function TakeoffCanvas() {
         const sf = w * h;
         txt = `${fmtCheckLen(w, units)} × ${fmtCheckLen(h, units)} · ${num(areaVal(sf, units))} ${areaUnit(units)}${units === "metric" ? "" : ` · ${num(sf / 9)} SY`}`;
         over = w >= CARPET_ROLL_FT - 0.02 || h >= CARPET_ROLL_FT - 0.02;
-      } else if (drawing && anchor && liveUpp) {
+      } else if (drawing && anchor && liveUpp && !panelActive) {
         // line/polyline: live segment length, ALWAYS (not just under the 45° lock).
         // With a bow open the segment IS the arc, so measure along it — reading
         // the chord here would price a curved wall short the whole time you aim.
@@ -3199,24 +3308,78 @@ export default function TakeoffCanvas() {
           : Math.hypot(cur[0] - anchor[0], cur[1] - anchor[1]) * liveUpp;
         txt = lock ? `${lock.deg}° · ${fmtCheckLen(len, units)}` : fmtCheckLen(len, units);
         over = len >= CARPET_ROLL_FT - 0.02;
-      } else if (lock) {
+      } else if (!panelActive && lock) {
         txt = `${lock.deg}°`;
-      } else if (snapRef.current) txt = "snap";
-      if (txt) {
+      } else if (!panelActive && snapRef.current) txt = "snap";
+      if (panelActive) {
+        // The rebuild dirty-mark encodes MODE, not just chrome: the same chrome
+        // alternates panel (mid-draft) and single-row (check length, rect W×H,
+        // bare angle, "snap"), and a chrome-only key would leave the mover
+        // updating value nodes a textContent write already wiped, or chip.__t
+        // skipping a rewrite over stale panel children. (units joins the key so
+        // a ft/m flip rebuilds the panel's baked unit spans.)
+        const mode = chipT.chrome + ":panel:" + units;
+        if (chip.__mode !== mode) {
+          chip.__mode = mode;
+          delete chip.__t;   // every panel build clears __t — the next row-mode write must never skip
+          buildChipPanel(chip, chipT.chrome);
+        }
+        // totals = render-body placed sums (draftStatsRef) + O(1) cursor terms.
+        // With a bow open the live leg is the arc, so measure segLen along it.
+        const st = draftStatsRef.current;
+        const segPx = Math.hypot(cur[0] - anchor[0], cur[1] - anchor[1]);
+        const segLen = (bowOpen ? arcLength(poly[poly.length - 2], anchor, cur) : segPx) * liveUpp;
+        const totLen = (st.len + segPx) * liveUpp;
+        const p0 = poly[0], pn = poly[poly.length - 1];
+        const crossSum = st.cross + (pn[0] * cur[1] - cur[0] * pn[1]) + (cur[0] * p0[1] - p0[0] * cur[1]);
+        const areaSf = (Math.abs(crossSum) / 2) * liveUpp * liveUpp;
+        const v = chip.__vals;
+        // a shoelace area is meaningless for an OPEN run — the panel shows it
+        // only on ring tools (linear/surface drafts read "—" there)
+        const ringDraft = tool === "area" || tool === "deduct" || tool === "zone";
+        if (chipT.chrome === "panelDark") {
+          v.seg.textContent = lock ? `${lock.deg}° · ${fmtCheckLen(segLen, units)}` : fmtCheckLen(segLen, units);
+          v.lin.textContent = fmtCheckLen(totLen, units);
+          v.area.textContent = ringDraft ? `${num(areaVal(areaSf, units))} ${areaUnit(units)}` : "—";
+        } else {
+          v.head.textContent = aCond?.finish_tag || "No condition";
+          v.area.textContent = ringDraft ? num(areaVal(areaSf, units)) : "—";
+          v.lin.textContent = num(lenVal(totLen, units));
+          // chain counts INCLUDING the live leg: placed edges + the rubber =
+          // poly.length segments, placed vertices + the cursor = poly.length+1
+          v.segs.textContent = String(poly.length);
+          v.pts.textContent = String(poly.length + 1);
+        }
+        over = segLen >= CARPET_ROLL_FT - 0.02;
+      } else if (txt) {
+        const mode = chipT.chrome + ":row";
+        // a row-mode write goes through textContent, which wipes any panel
+        // children left by the previous mode
+        if (chip.__mode !== mode) { chip.__mode = mode; delete chip.__t; chip.__vals = null; }
         if (chip.__t !== txt) { chip.textContent = txt; chip.__t = txt; }
-        // 12 ft roll-width cue — the chip goes amber when a run reaches roll width (a seam falls here)
+      }
+      if (panelActive || txt) {
+        // 12 ft roll-width cue — the chip goes amber when a run reaches roll width
+        // (a seam falls here); the restore re-applies the ds-resolved base strings
+        // (for Drafting Table those are today's exact var(--…) strings)
         const os = over ? "1" : "";
         if (chip.__over !== os) {
           chip.__over = os;
-          chip.style.background = over ? "var(--c-warning)" : "var(--paper-bright)";
-          chip.style.color = over ? "var(--paper-bright)" : "var(--ink)";
-          chip.style.borderColor = over ? "var(--c-warning)" : "var(--ink)";
+          chip.style.background = over ? chipT.warnBg : chipT.bg;
+          chip.style.color = over ? chipT.warnFg : chipT.fg;
+          chip.style.borderColor = over ? chipT.warnBorder : chipT.border;
         }
-        chip.style.transform = `translate3d(${ex + 14}px, ${ey + 18}px, 0)`;
+        // anchor "lastVertex" pins the chip to the last placed vertex during a
+        // poly draft (Site Glass); every other text and chrome rides the cursor
+        const anchorLast = chipT.anchor === "lastVertex" && drawing && poly.length > 0;
+        const ax = anchorLast ? poly[poly.length - 1][0] * t.scale + t.x : ex;
+        const ay = anchorLast ? poly[poly.length - 1][1] * t.scale + t.y : ey;
+        chip.style.transform = `translate3d(${ax + 14}px, ${ay + 18}px, 0)`;
         chip.style.display = "block";
       } else chip.style.display = "none";
     }
     if (rubberRef.current) {
+      const cas = rubberCasingRef.current;
       if (!panRef.current && drawing && poly.length > 0) {
         // With a bow open the band runs from the arc's START and goes dashed —
         // it is the chord under the bow, a reference line, not the boundary.
@@ -3225,19 +3388,60 @@ export default function TakeoffCanvas() {
         rubberRef.current.setAttribute("x2", cur[0]); rubberRef.current.setAttribute("y2", cur[1]);
         // screen-constant width, like the JSX default and the dash below (÷ scale):
         // the raw stage-px value this used to write drew a fat, smeared band at
-        // deep zoom. The lock still reads thicker within the band itself.
-        rubberRef.current.setAttribute("stroke-width", (lock ? 3 : 1.5) / tfRef.current.scale);
-        const dash = bowOpen ? `${5 / tfRef.current.scale} ${4 / tfRef.current.scale}` : "";
+        // deep zoom. The lock reads thicker within the band (or, where a theme
+        // sets rubber.lockColor, recolored instead of thickened).
+        rubberRef.current.setAttribute("stroke-width", (lock ? ds.rubber.lockWidth : ds.rubber.width) / tfRef.current.scale);
+        if (ds.rubber.lockColor) {
+          // recolor on lock-CHANGE only (__lockColor dirty mark); the restore is
+          // the SAME deduct→invalid→accent expression the JSX declares.
+          if (rubberRef.current.__lockColor !== lockState) {
+            rubberRef.current.__lockColor = lockState;
+            rubberRef.current.setAttribute("stroke", lock ? ds.rubber.lockColor : draftStroke(tool, draftInvalid, ds));
+          }
+        }
+        // With a bow open the band is the dashed chord under the arc; otherwise
+        // the theme's own rubber dash (solid for drafting → "").
+        const dash = bowOpen ? `${5 / tfRef.current.scale} ${4 / tfRef.current.scale}` : (drawDashFor(ds.rubber.dash, tfRef.current.scale) || "");
         if (rubberRef.current.__dash !== dash) { rubberRef.current.setAttribute("stroke-dasharray", dash); rubberRef.current.__dash = dash; }
         rubberRef.current.style.display = "block";
-      } else rubberRef.current.style.display = "none";
+        // casing under-stroke mirrors the STRAIGHT rubber band (Site Glass) — its
+        // JSX twin heals wheel-zoom with a stationary pointer, this mover write
+        // heals move cadence. Skipped while a bow is open: the band is then a
+        // dashed reference chord, and a white casing under it reads wrong.
+        if (cas && ds.casing && !bowOpen) {
+          cas.setAttribute("x1", last[0]); cas.setAttribute("y1", last[1]);
+          cas.setAttribute("x2", cur[0]); cas.setAttribute("y2", cur[1]);
+          cas.setAttribute("stroke-width", ds.casing.width / tfRef.current.scale);
+          cas.style.display = "block";
+        } else if (cas) cas.style.display = "none";
+      } else {
+        rubberRef.current.style.display = "none";
+        if (cas) cas.style.display = "none";   // the hide branch mirrors the casing too
+      }
+    }
+    // close preview — the ring tools' ghost cursor→first edge (theme-gated; the
+    // element only mounts when DS.closePreview is set). Width AND dash are
+    // dual-owned exactly like the rubber core: the JSX twin declares both from
+    // the ~11 Hz tf mirror, this mover re-writes both from tfRef per move — so
+    // width and dash always come from the SAME scale read, in both cadences.
+    if (closeRef.current) {
+      if (!panRef.current && ds.closePreview && (tool === "area" || tool === "deduct" || tool === "zone") && poly.length >= 2) {
+        const csc = tfRef.current.scale;
+        closeRef.current.setAttribute("x1", cur[0]); closeRef.current.setAttribute("y1", cur[1]);
+        closeRef.current.setAttribute("x2", poly[0][0]); closeRef.current.setAttribute("y2", poly[0][1]);
+        closeRef.current.setAttribute("stroke-width", ds.closePreview.width / csc);
+        const cd = drawDashFor(ds.closePreview.dash, csc);
+        if (cd) closeRef.current.setAttribute("stroke-dasharray", cd);
+        else closeRef.current.removeAttribute("stroke-dasharray");
+        closeRef.current.style.display = "block";
+      } else closeRef.current.style.display = "none";
     }
     // The arc itself — a real SVG conic through (start, bow, cursor), so what
     // you aim with is what commits rather than a preview that flattens later.
     if (arcRef.current) {
       if (!panRef.current && drawing && bowOpen) {
         arcRef.current.setAttribute("d", arcPathD(poly[poly.length - 2], poly[poly.length - 1], cur));
-        arcRef.current.setAttribute("stroke-width", 2.5 / tfRef.current.scale);
+        arcRef.current.setAttribute("stroke-width", ds.draft.lineWidth / tfRef.current.scale);
         arcRef.current.style.display = "block";
       } else arcRef.current.style.display = "none";
     }
@@ -3279,7 +3483,7 @@ export default function TakeoffCanvas() {
     }
   }
   function hideCrosshair() {
-    for (const ref of [crossVRef, crossHRef, rubberRef, arcRef, rectRef, cloudRef, highlightRef, dimRef, snapMarkRef, aimMarkRef, aimChipRef]) if (ref.current) ref.current.style.display = "none";
+    for (const ref of [crossVRef, crossHRef, rubberRef, rubberCasingRef, closeRef, arcRef, rectRef, cloudRef, highlightRef, dimRef, snapMarkRef, aimMarkRef, aimChipRef]) if (ref.current) ref.current.style.display = "none";
     if (hlRef.current == null && hlPathRef.current) hlPathRef.current.style.display = "none";
     if (hoverRef.current) hoverRef.current.style.display = "none";
     hoverIdRef.current = "";
@@ -6336,6 +6540,19 @@ export default function TakeoffCanvas() {
     if (cond.hatch && cond.hatch !== "solid") return `url(#${patId(cond)})`;
     return solid ? solid + (darkMode ? "4d" : "33") : "none";
   };
+  // The in-progress ring/rect fill, per the theme's draft.fillMode: "condition"
+  // wears the active condition's own fill (drafting — today's look), "tint" a
+  // wash of the theme accent, "none" a hollow draft. Defined here (not with the
+  // early helpers) because it reads shapeFill(aCond) — both defined just above.
+  const draftFill = DS.draft.fillMode === "condition" ? shapeFill(aCond)
+    : DS.draft.fillMode === "tint" ? rgbaFromHex(DS.accent, DS.draft.tintAlpha ?? 0.08)
+    : "none";
+  // When the "outline area while drawing" preference is on, the ring tools draw
+  // as an OPEN outline (no fill, not auto-closed) while in progress — they still
+  // commit CLOSED on Enter/dbl-click (commitPoly is untouched). Off ⇒ today's
+  // closed+filled polygon, byte-identical. surface/linear are unaffected — they
+  // already render open and are excluded here.
+  const ringOutline = draftOutline && (tool === "area" || tool === "deduct" || tool === "zone");
   // the drawn boundary — flattenArcRing is the identity on an all-straight trace
   const mm = closedMetrics(curveIdx.length ? flattenArcRing(poly, curveIdx, !bowOpen) : poly);
   // the live readout prices the IN-PROGRESS poly with its own panel's scale
@@ -6897,6 +7114,35 @@ export default function TakeoffCanvas() {
   // released near one. Detents come from oneclick's canonical presets so UI
   // and flood math can't drift if a preset is ever retuned.
 
+  // Drawing-style picker — a select-style dropdown (DrawStylePicker.jsx),
+  // grouped in the ⋯ overflow menu with the light/dark chrome toggle. The two
+  // appearance preferences (chrome theme, drawing style) live together, out of
+  // the per-trace tool row so a set-once preference never crowds the work; a
+  // dropdown keeps that block one line tall, matching the toolbar's other
+  // selects. setDrawStyle writes the module preference and its CustomEvent
+  // (Task 2's onDrawStyleChange) round-trips back into drawStyleId, repainting
+  // the canvas live — no other wiring here.
+  const drawStyleRow = (
+    <DrawStylePicker styles={DRAW_STYLES} ids={DRAW_STYLE_IDS} activeId={drawStyleId} onPick={setDrawStyle} />
+  );
+
+  // Outline-while-drawing toggle (⋯ overflow menu). ON ⇒ the Area/Deduct/Zone draft
+  // shows as an open outline (no fill, not auto-closed) while tracing; it still
+  // commits closed on Enter/dbl-click. A `custom` row never closes the menu, so
+  // the toggle can be flipped and watched against the live draft behind it.
+  // Home: the ⋯ overflow menu, directly under the drawing-style picker — the two
+  // draft-appearance preferences travel together.
+  const draftOutlineRow = (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 12px" }}>
+      <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)" }}>Outline area while drawing</span>
+      <button type="button" aria-pressed={draftOutline} onClick={() => setDraftOutline(!draftOutline)}
+        title="Draw Area / Deduct / Zone as an open outline (no fill) while tracing — it still commits closed on Enter or double-click."
+        style={{ padding: "4px 12px", cursor: "pointer", fontSize: 11.5, fontWeight: 600, border: `1px solid ${draftOutline ? "var(--cobalt)" : "var(--ink-faint)"}`, background: draftOutline ? "var(--cobalt)" : "transparent", color: draftOutline ? "var(--paper-bright)" : "var(--ink)" }}>
+        {draftOutline ? "On" : "Off"}
+      </button>
+    </div>
+  );
+
   // ?hatchqa — density-tuning wall: every pattern at three scales in two palette
   // colors, real components, dark-aware. Unreachable from the UI; kept for retunes.
   // Added 2026-07-07 (d02032a) and lost, not removed, in the fork merge 1317d07
@@ -6944,8 +7190,8 @@ export default function TakeoffCanvas() {
         onChange={(e) => { importTakeoffFile(e.target.files?.[0]); e.target.value = ""; }} />
       {/* THE top bar — one row (the two decks of issue #61 merged once the
           tool rail absorbed the draw menus). Project verbs left, work verbs
-          center, Report + the ⋯ overflow (guide, theme, schedule import,
-          cloud moves) right. Cluster captions stay — they're the drafting
+          center, Report + the ⋯ overflow (guide, appearance — chrome theme and
+          drawing style —, schedule import, cloud moves) right. Cluster captions stay — they're the drafting
           language. The row never wraps; rarely-used controls live in ⋯ so
           nothing shifts position mid-work. Focus mode (F) hides the whole
           bar — the rail and status bar carry the essentials.
@@ -7124,12 +7370,16 @@ export default function TakeoffCanvas() {
         {/* ⋯ overflow — rarely-used project controls, so the row never wraps
             and nothing shifts position mid-work (issue #61's contract). */}
         <ToolMenu
-          title="More — guide, theme, schedule import, project moves"
+          title="More — guide, appearance, schedule import, project moves"
           onOpenChange={onMenuDepth}
           face={<span style={{ fontWeight: 700, letterSpacing: "0.08em" }}>⋯</span>}
           items={[
             { id: "guide", label: "How OpenTakeoff works", shortcut: "?", onSelect: () => setGuideOpen(true) },
             { id: "theme", label: theme === "dark" ? "Light chrome" : "Dark chrome", onSelect: toggleTheme },
+            { section: "Drawing style" },
+            { id: "drawstyle", custom: drawStyleRow },
+            { id: "draftoutline", custom: draftOutlineRow },
+            "divider",
             { id: "schedule", icon: "rectTool", label: "Import from schedule", active: tool === "schedule", onSelect: () => { setScheduleAnchor(null); setTool((t) => (t === "schedule" ? "select" : "schedule")); } },
             ...(cloudMode ? [
               "divider",
@@ -7560,16 +7810,20 @@ export default function TakeoffCanvas() {
               lock reads as a quiet state change (hairlines brighten, star swells
               cobalt, rubber band thickens) — no extra chrome on the sheet. All
               positioned imperatively in moveCrosshair. */}
-          <div ref={crossVRef} style={{ position: "absolute", top: 0, bottom: 0, width: 1.5, background: "rgba(31,63,199,.55)", boxShadow: "0 0 0 0.5px rgba(255,255,255,.55), 0 0 4px rgba(31,63,199,.3)", pointerEvents: "none", display: "none", zIndex: 5 }} />
-          <div ref={crossHRef} style={{ position: "absolute", left: 0, right: 0, height: 1.5, background: "rgba(31,63,199,.55)", boxShadow: "0 0 0 0.5px rgba(255,255,255,.55), 0 0 4px rgba(31,63,199,.3)", pointerEvents: "none", display: "none", zIndex: 5 }} />
+          {DS.crosshair !== "none" && (<>
+            <div ref={crossVRef} style={{ position: "absolute", top: 0, bottom: 0, width: 1.5, background: DS._hairline, boxShadow: DS._hairlineLock.boxShadowBase, pointerEvents: "none", display: "none", zIndex: 5 }} />
+            <div ref={crossHRef} style={{ position: "absolute", left: 0, right: 0, height: 1.5, background: DS._hairline, boxShadow: DS._hairlineLock.boxShadowBase, pointerEvents: "none", display: "none", zIndex: 5 }} />
+          </>)}
           <div ref={aimMarkRef} style={{ position: "absolute", left: 0, top: 0, width: 0, height: 0, pointerEvents: "none", display: "none", zIndex: 6, willChange: "transform" }}>
-            {/* the SPLINE STAR at the crossing — the house vertex mark IS the cursor;
-                it swells and glows cobalt while the 45° lock holds */}
+            {/* the aim mark at the crossing — the theme's cursor glyph; it swells
+                and glows while the 45° lock holds (drafting: the house star) */}
             <svg width={22} height={22} viewBox="0 0 22 22" style={{ position: "absolute", left: -11, top: -11, transition: "transform 120ms ease, filter 120ms ease", filter: "drop-shadow(0 1px 2px rgba(14,26,46,.3))" }}>
-              <path d={starPath(11, 11, 8.5)} fill="#1f3fc7" stroke="#fff" strokeWidth={1.4} />
+              {DS.aimMark === "ring"
+                ? <circle cx={11} cy={11} r={6.5} fill="none" stroke={DS.aimMarkColor} strokeWidth={1.6} />
+                : <path d={markerPath(DS.aimMark, 11, 11, DS.aimMark === "star" ? 8.5 : 6)} fill={DS.aimMarkColor} stroke="#fff" strokeWidth={1.4} />}
             </svg>
           </div>
-          <div ref={aimChipRef} style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none", display: "none", zIndex: 6, padding: "2px 8px", background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-1)", fontFamily: "var(--f-mono)", fontSize: 10.5, fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", willChange: "transform" }} />
+          <div ref={aimChipRef} style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none", display: "none", zIndex: 6, padding: "2px 8px", background: DS.chip.bg, border: `1px solid ${DS.chip.border}`, boxShadow: "var(--shadow-1)", fontFamily: DS.chip.font === "mono" ? "var(--f-mono)" : "var(--f-body)", fontSize: 10.5, fontWeight: 600, color: DS.chip.fg, whiteSpace: "nowrap", willChange: "transform" }} />
           {/* hover readout — what takeoff is under the cursor (DOM-direct) */}
           <div ref={hoverRef} style={{ position: "absolute", display: "none", pointerEvents: "none", zIndex: 8, background: "var(--paper-bright)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-1)", padding: "4px 8px", fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink)", whiteSpace: "nowrap" }} />
           {/* edge-insert ghost — the "+" that rides the selected shape's edge under
@@ -7642,7 +7896,7 @@ export default function TakeoffCanvas() {
                       // overview zoom (invisible conditions). Divide by scale
                       // like every other screen-relative size here.
                       const z = tf.scale;
-                      const sw = (sel ? 4 : 2) / z;
+                      const sw = (sel ? DS.selection.width : 2) / z;
                       // Committed-but-unreviewed machine shapes (an imported MCP
                       // takeoff) render dashed pencil — same invariant as the
                       // ephemeral agent proposals, until Accept flips reviewed.
@@ -7650,15 +7904,15 @@ export default function TakeoffCanvas() {
                       const pDash = `${4 / z} ${3 / z}`;
                       if (s.measure_role === "count") {
                         const [cx, cy] = pts[0], r = 7 / z;
-                        return <rect key={s.id} x={cx - r} y={cy - r} width={r * 2} height={r * 2} rx={2 / z} fill={col + (pending ? "55" : "cc")} stroke={sel ? "#1f3fc7" : "#fff"} strokeWidth={(sel ? 3 : 1.5) / z} strokeDasharray={pending ? `${3 / z} ${2.5 / z}` : undefined} />;
+                        return <rect key={s.id} x={cx - r} y={cy - r} width={r * 2} height={r * 2} rx={2 / z} fill={col + (pending ? "55" : "cc")} stroke={sel ? DS.selection.color : "#fff"} strokeWidth={(sel ? 3 : 1.5) / z} strokeDasharray={pending ? `${3 / z} ${2.5 / z}` : undefined} />;
                       }
                       if (s.measure_role === "surface_area") {
-                        return <polyline key={s.id} points={pts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? "#1f3fc7" : col} strokeOpacity={pending ? 0.85 : undefined} strokeWidth={(sel ? 4.5 : 3.5) / z} strokeDasharray={pending ? pDash : `${10 / z} ${3 / z} ${2 / z} ${3 / z}`} strokeLinecap="round" strokeLinejoin="round" />;
+                        return <polyline key={s.id} points={pts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? DS.selection.color : col} strokeOpacity={pending ? 0.85 : undefined} strokeWidth={(sel ? 4.5 : 3.5) / z} strokeDasharray={pending ? pDash : `${10 / z} ${3 / z} ${2 / z} ${3 / z}`} strokeLinecap="round" strokeLinejoin="round" />;
                       }
                       if (s.measure_role === "linear") {
                         // line_style governs linear outlines (surface_area keeps its dash-dot identity above)
                         const lpts = s.curved ? flattenCurve(pts) : pts;
-                        return <polyline key={s.id} points={lpts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? "#1f3fc7" : col} strokeOpacity={pending ? 0.85 : undefined} strokeWidth={(sel ? 4 : 3) / z} strokeDasharray={pending ? pDash : dashArrayFor(cond?.line_style || "solid", z)} strokeLinecap="round" strokeLinejoin="round" />;
+                        return <polyline key={s.id} points={lpts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? DS.selection.color : col} strokeOpacity={pending ? 0.85 : undefined} strokeWidth={(sel ? 4 : 3) / z} strokeDasharray={pending ? pDash : dashArrayFor(cond?.line_style || "solid", z)} strokeLinecap="round" strokeLinejoin="round" />;
                       }
                       const ded = s.measure_role === "deduct";
                       // #137 — a RECONCILED deduct (cuts_shape_id) renders as a
@@ -7667,7 +7921,7 @@ export default function TakeoffCanvas() {
                       // solid overlay here would reintroduce the exact
                       // "decal on top" bug the real subtract fixes.
                       if (ded && s.cuts_shape_id) {
-                        return <polygon key={s.id} points={pts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? "#1f3fc7" : "#b03a26"} strokeWidth={(sel ? 3 : 1.5) / z} strokeDasharray={`${5 / z} ${3 / z}`} />;
+                        return <polygon key={s.id} points={pts.map((q) => q.join(",")).join(" ")} fill="none" stroke={sel ? DS.selection.color : "#b03a26"} strokeWidth={(sel ? 3 : 1.5) / z} strokeDasharray={`${5 / z} ${3 / z}`} />;
                       }
                       // #137 — a parent carrying real hole ring(s): ONE compound
                       // path, outer ring + every hole ring, fill-rule evenodd so
@@ -7676,12 +7930,12 @@ export default function TakeoffCanvas() {
                       if (!ded && s.verts_norm_holes?.length) {
                         const ringD = (ring) => `M${dn(ring).map((q) => q.join(",")).join("L")}Z`;
                         const d = ringD(s.verts_norm) + s.verts_norm_holes.map(ringD).join("");
-                        return <path key={s.id} d={d} fillRule="evenodd" fill={pending ? col + "14" : shapeFill(cond)} stroke={sel ? "#1f3fc7" : col} strokeOpacity={pending ? 0.9 : undefined} strokeWidth={sw} strokeDasharray={pending ? pDash : dashArrayFor(cond?.line_style || "solid", z)} />;
+                        return <path key={s.id} d={d} fillRule="evenodd" fill={pending ? col + "14" : shapeFill(cond)} stroke={sel ? DS.selection.color : col} strokeOpacity={pending ? 0.9 : undefined} strokeWidth={sw} strokeDasharray={pending ? pDash : dashArrayFor(cond?.line_style || "solid", z)} />;
                       }
                       // deduct keeps its danger-red dashing (a safety signal, wins over line_style); positive floor_area follows the condition's line_style
                       return <polygon key={s.id} points={pts.map((q) => q.join(",")).join(" ")}
                         fill={ded ? (pending ? "rgba(176,58,38,.10)" : "rgba(176,58,38,.28)") : pending ? col + "14" : shapeFill(cond)}
-                        stroke={ded ? "#b03a26" : (sel ? "#1f3fc7" : col)} strokeOpacity={pending ? 0.9 : undefined} strokeWidth={sw}
+                        stroke={ded ? "#b03a26" : (sel ? DS.selection.color : col)} strokeOpacity={pending ? 0.9 : undefined} strokeWidth={sw}
                         strokeDasharray={pending ? pDash : ded ? `${6 / z} ${4 / z}` : dashArrayFor(cond?.line_style || "solid", z)} />;
                     })}
                     {/* vertex handles for the selected shape (drag to reshape) */}
@@ -7702,16 +7956,19 @@ export default function TakeoffCanvas() {
                             const ang = Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI;
                             const ew = 14 / s, eh = 6 / s;
                             return <rect key={"m" + i} x={mx - ew / 2} y={my - eh / 2} width={ew} height={eh} rx={eh / 2}
-                              transform={`rotate(${ang} ${mx} ${my})`} fill={grip} stroke="#1f3fc7" strokeWidth={1.6 / s} />;
+                              transform={`rotate(${ang} ${mx} ${my})`} fill={grip} stroke={DS.selection.color} strokeWidth={1.6 / s} />;
                           })}
-                          {/* corner handles — click selects (Delete removes just that point), drag moves */}
+                          {/* corner handles — click selects (Delete removes just that point), drag moves.
+                              The theme's handle glyph (drafting: paper-filled diamond); a "hollow" theme
+                              draws the mark unfilled, the selection color as its outline. */}
                           {qs.map(([x, y], i) => {
                             const isSel = selVert === i;
                             const sz = (isSel ? 6.5 : 5.5) / s;
+                            const hollow = DS.selection.handleFill === "hollow";
                             return <g key={"h" + i}>
-                              {isSel && <circle cx={x} cy={y} r={9 / s} fill="none" stroke="#1f3fc7" strokeWidth={1.2 / s} opacity={0.5} />}
-                              <path d={`M${x},${y - sz} L${x + sz},${y} L${x},${y + sz} L${x - sz},${y} Z`}
-                                fill={isSel ? grip : "#1f3fc7"} stroke={isSel ? "#1f3fc7" : "#fff"} strokeWidth={(isSel ? 2 : 1.4) / s} />
+                              {isSel && <circle cx={x} cy={y} r={9 / s} fill="none" stroke={DS.selection.color} strokeWidth={1.2 / s} opacity={0.5} />}
+                              <path d={markerPath(DS.selection.handleShape, x, y, sz)}
+                                fill={hollow ? "none" : (isSel ? grip : DS.selection.color)} stroke={hollow ? DS.selection.color : (isSel ? DS.selection.color : "#fff")} strokeWidth={(isSel ? 2 : 1.4) / s} />
                             </g>;
                           })}
                         </g>
@@ -8116,9 +8373,21 @@ export default function TakeoffCanvas() {
               {/* IN-PROGRESS work draws in the INSTRUMENT color — the house cobalt pencil
                   (deduct keeps its danger red). Committed shapes wear the condition's own
                   color; the draft never mimics anyone's takeoff look. Solid, no dashes. */}
-              <line ref={rubberRef} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={1.5 / tf.scale} strokeOpacity={0.85} strokeLinecap="round" style={{ display: "none" }} />
-              <path ref={arcRef} fill="none" stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={2.5 / tf.scale} strokeLinecap="round" style={{ display: "none" }} />
-              <rect ref={rectRef} fill={tool === "deduct" ? "rgba(176,58,38,.22)" : shapeFill(aCond)} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={2 / tf.scale} style={{ display: "none" }} />
+              {DS.casing && <line ref={rubberCasingRef} data-draft="casing" stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeOpacity={DS.rubber.opacity} strokeLinecap="round" style={{ display: "none" }} />}
+              <line ref={rubberRef} stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.rubber.width / tf.scale} strokeOpacity={DS.rubber.opacity} strokeDasharray={drawDashFor(DS.rubber.dash, tf.scale)} strokeLinecap="round" style={{ display: "none" }} />
+              <path ref={arcRef} fill="none" stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.draft.lineWidth / tf.scale} strokeLinecap="round" style={{ display: "none" }} />
+              {/* rect/marquee preview shares one ref across four tools, so its paint
+                  is a 3-way branch: deduct-rect (AND ring deduct) = danger red;
+                  schedule = a NEUTRAL selection gesture, left cobalt + condition
+                  fill; rect & symbol marquees are measure tools, themed via DS. */}
+              {(() => {
+                const rectDeduct = tool === "deduct" || tool === "deduct-rect";
+                const rectNeutral = tool === "schedule";   // selection gesture, not measurement — never themed
+                return <rect ref={rectRef}
+                  fill={rectDeduct ? "rgba(176,58,38,.22)" : rectNeutral ? shapeFill(aCond) : draftFill}
+                  stroke={rectDeduct ? "#b03a26" : rectNeutral ? "#1f3fc7" : DS.accent}
+                  strokeWidth={(rectNeutral ? 2 : DS.draft.width) / tf.scale} style={{ display: "none" }} />;
+              })()}
               <path ref={cloudRef} fill="rgba(37,99,235,.06)" stroke="#1f3fc7" strokeWidth={2 / tf.scale} strokeDasharray={`${5 / tf.scale} ${4 / tf.scale}`} style={{ display: "none" }} />
               <rect ref={highlightRef} fill="rgba(196,122,16,.18)" stroke="#c47a10" strokeWidth={2 / tf.scale} style={{ display: "none" }} />
               <line ref={dimRef} stroke="#1f3fc7" strokeWidth={2 / tf.scale} strokeDasharray={`${5 / tf.scale} ${4 / tf.scale}`} style={{ display: "none" }} />
@@ -8141,8 +8410,8 @@ export default function TakeoffCanvas() {
                 );
                 return (
                   <g pointerEvents="none">
-                    <circle cx={sweep.seed.center[0] + ox} cy={sweep.seed.center[1]} r={15 * k} fill="none" stroke="#7a00e6" strokeWidth={2 * k} strokeOpacity={0.65} />
-                    <circle cx={sweep.seed.center[0] + ox} cy={sweep.seed.center[1]} r={9 * k} fill="none" stroke="#7a00e6" strokeWidth={2 * k} strokeOpacity={0.65} />
+                    <circle cx={sweep.seed.center[0] + ox} cy={sweep.seed.center[1]} r={15 * k} fill="none" stroke={DS.symbol.seed} strokeWidth={2 * k} strokeOpacity={0.65} />
+                    <circle cx={sweep.seed.center[0] + ox} cy={sweep.seed.center[1]} r={9 * k} fill="none" stroke={DS.symbol.seed} strokeWidth={2 * k} strokeOpacity={0.65} />
                     {sweep.matches.map((m, i) => {
                       const offTag = sweep.excludedTags.includes((m.label && m.label.label) || "\u2205");
                       return <g key={`m${i}`} opacity={offTag ? 0.22 : 1}>{X(m.at, activeColor, 2.4)}</g>;
@@ -8152,55 +8421,135 @@ export default function TakeoffCanvas() {
                       if (q.state === "accepted") return <g key={`q${i}`}>{X(q.at, activeColor, 2.4)}</g>;
                       return (
                         <g key={`q${i}`}>
-                          <circle cx={q.at[0] + ox} cy={q.at[1]} r={13 * k} fill="none" stroke="#ff8c00" strokeWidth={(i === sweep.qIndex ? 3.4 : 2.2) * k} strokeOpacity={i === sweep.qIndex ? 0.85 : 0.6} />
-                          <text x={q.at[0] + ox} y={q.at[1] + 5 * k} textAnchor="middle" fill="#ff8c00" fillOpacity={0.85} fontSize={14 * k} fontWeight="700" fontFamily="JetBrains Mono, monospace">?</text>
+                          <circle cx={q.at[0] + ox} cy={q.at[1]} r={13 * k} fill="none" stroke={DS.symbol.question} strokeWidth={(i === sweep.qIndex ? 3.4 : 2.2) * k} strokeOpacity={i === sweep.qIndex ? 0.85 : 0.6} />
+                          <text x={q.at[0] + ox} y={q.at[1] + 5 * k} textAnchor="middle" fill={DS.symbol.question} fillOpacity={0.85} fontSize={14 * k} fontWeight="700" fontFamily="JetBrains Mono, monospace">?</text>
                         </g>
                       );
                     })}
                   </g>
                 );
               })()}
+              {/* casing under-stroke (Site Glass): a JSX twin BEHIND each draft
+                  stroke, tracing the SAME geometry (arc-flattened where a bow is
+                  set). Width ownership is DUAL like the rubber core — this twin
+                  declares width from the ~11 Hz tf mirror (heals wheel-zoom with a
+                  stationary pointer). Surface is un-themed, so no casing there.
+                  The polygon's strokeDasharray MUST mirror the accent polygon's
+                  four lines below — same expression, same dash, so a dashed
+                  zone accent never rides a solid casing ribbon. */}
+              {DS.casing && poly.length >= 2 && tool !== "surface" && (tool === "linear"
+                ? <polyline data-draft="casing" points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeLinecap="round" strokeLinejoin="round" />
+                : ringOutline
+                ? <polyline data-draft="casing" points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} strokeLinecap="round" strokeLinejoin="round" />
+                : <polygon data-draft="casing" points={(curveIdx.length ? flattenArcRing(poly, curveIdx, tool !== "zone" && !bowOpen) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} strokeLinejoin="round" />)}
               {poly.length >= 2 && (tool === "linear" || tool === "surface"
-                ? <polyline points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={tool === "surface" ? activeColor : "#1f3fc7"} strokeWidth={(tool === "surface" ? 3.5 : 2.5) / tf.scale} strokeDasharray={tool === "surface" ? `${10 / tf.scale} ${3 / tf.scale} ${2 / tf.scale} ${3 / tf.scale}` : undefined} strokeLinecap="round" strokeLinejoin="round" />
-                : <polygon points={(curveIdx.length ? flattenArcRing(poly, curveIdx, tool !== "zone" && !bowOpen) : poly).map((p) => p.join(",")).join(" ")} fill={poly.length >= 3 ? (tool === "deduct" ? "rgba(176,58,38,.22)" : tool === "zone" ? "rgba(31,63,199,.06)" : shapeFill(aCond)) : "none"} stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={2 / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : undefined} />)}
+                ? <polyline points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={tool === "surface" ? activeColor : DS.accent} strokeWidth={(tool === "surface" ? 3.5 : DS.draft.lineWidth) / tf.scale} strokeDasharray={tool === "surface" ? `${10 / tf.scale} ${3 / tf.scale} ${2 / tf.scale} ${3 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} strokeLinecap="round" strokeLinejoin="round" />
+                : ringOutline
+                ? <polyline points={(curveIdx.length ? flattenArcRing(poly, curveIdx, false) : poly).map((p) => p.join(",")).join(" ")} fill="none" stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.draft.width / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} strokeLinecap="round" strokeLinejoin="round" />
+                : <polygon points={(curveIdx.length ? flattenArcRing(poly, curveIdx, tool !== "zone" && !bowOpen) : poly).map((p) => p.join(",")).join(" ")} fill={poly.length >= 3 ? (tool === "deduct" ? "rgba(176,58,38,.22)" : tool === "zone" ? rgbaFromHex(DS.accent, 0.06) : draftFill) : "none"} stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.draft.width / tf.scale} strokeDasharray={tool === "zone" ? `${7 / tf.scale} ${5 / tf.scale}` : drawDashFor(DS.draft.dash, tf.scale)} />)}
+              {/* outline mode: dotted ghost of the on-commit closing edge (last vertex → first), so the loop is visible without a fill. */}
+              {ringOutline && poly.length >= 3 && !bowOpen && (
+                <line x1={poly[poly.length - 1][0]} y1={poly[poly.length - 1][1]} x2={poly[0][0]} y2={poly[0][1]}
+                  stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.draft.width / tf.scale}
+                  strokeLinecap="round" strokeDasharray={`${1 / tf.scale} ${5 / tf.scale}`} />
+              )}
               {/* Bold the most recent segment so you see where you just clicked.
                   A closed arc bolds AS the arc — a straight chord drawn across
                   the bow would read as the boundary and it isn't one. Nothing
                   bolds while a bow is still open; the live preview is the
                   segment then. */}
-              {poly.length >= 2 && !bowOpen && (
+              {poly.length >= 2 && !bowOpen && DS.lastSegWidth != null && (
                 polyCurve[poly.length - 2] && poly.length >= 3
-                  ? <path d={arcPathD(poly[poly.length - 3], poly[poly.length - 2], poly[poly.length - 1])} fill="none"
-                      stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={3.5 / tf.scale} strokeLinecap="round" />
-                  : <line x1={poly[poly.length - 2][0]} y1={poly[poly.length - 2][1]} x2={poly[poly.length - 1][0]} y2={poly[poly.length - 1][1]}
-                      stroke={tool === "deduct" ? "#b03a26" : "#1f3fc7"} strokeWidth={3.5 / tf.scale} strokeLinecap="round" />
+                  ? <>
+                      {DS.casing && tool !== "surface" && <path data-draft="casing" d={arcPathD(poly[poly.length - 3], poly[poly.length - 2], poly[poly.length - 1])} fill="none"
+                        stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeLinecap="round" />}
+                      <path d={arcPathD(poly[poly.length - 3], poly[poly.length - 2], poly[poly.length - 1])} fill="none"
+                        stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.lastSegWidth / tf.scale} strokeLinecap="round" />
+                    </>
+                  : <>
+                      {DS.casing && tool !== "surface" && <line data-draft="casing" x1={poly[poly.length - 2][0]} y1={poly[poly.length - 2][1]} x2={poly[poly.length - 1][0]} y2={poly[poly.length - 1][1]}
+                        stroke={DS.casing.color} strokeWidth={DS.casing.width / tf.scale} strokeLinecap="round" />}
+                      <line x1={poly[poly.length - 2][0]} y1={poly[poly.length - 2][1]} x2={poly[poly.length - 1][0]} y2={poly[poly.length - 1][1]}
+                        stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.lastSegWidth / tf.scale} strokeLinecap="round" />
+                    </>
+              )}
+              {/* close preview — the ring tools' ghost cursor→first edge (theme-
+                  gated; positioned by moveCrosshair). Width AND dash dual-owned with
+                  the mover: both declared here from the tf mirror, both re-written
+                  there from tfRef — always the same scale read, both cadences. */}
+              {DS.closePreview && (tool === "area" || tool === "deduct" || tool === "zone") && poly.length >= 2 && (
+                <line ref={closeRef} data-draft="close-preview" stroke={draftStroke(tool, draftInvalid, DS)} strokeWidth={DS.closePreview.width / tf.scale} strokeDasharray={drawDashFor(DS.closePreview.dash, tf.scale)} strokeLinecap="round" style={{ display: "none" }} />
               )}
               {poly.map((p, i) => {
                 const isLast = i === poly.length - 1;
-                // a CURVE point reads as a round handle, a corner as the usual
-                // star — the gesture is visible on the sheet, not just in a hint
+                // Preserve the affordance: a CURVE point reads as a round handle,
+                // a corner as the theme's vertex glyph (drafting: the house star).
+                // Only the CORNER shape is themed — curve points stay circles so
+                // the ⌥-curve gesture is always legible, whatever the theme.
+                // casing backing (Site Glass): the same glyph fattened in the
+                // casing color, so each vertex carries a sheet-contrast halo. When
+                // off (every other style), the bare element is returned EXACTLY as
+                // before — no wrapper — so Drafting Table is byte-identical.
+                const cased = DS.vertex.casing && DS.casing;
                 if (polyCurve[i]) {
-                  return <circle key={i} cx={p[0]} cy={p[1]} r={(isLast ? 4.5 : 3.4) / tf.scale}
-                    fill={isLast ? "#fff" : "#1f3fc7"} stroke="#1f3fc7" strokeWidth={(isLast ? 2 : 1.4) / tf.scale} />;
+                  const dot = <circle key={i} cx={p[0]} cy={p[1]} r={(isLast ? 4.5 : 3.4) / tf.scale}
+                    fill={isLast ? "#fff" : DS.accent} stroke={DS.accent} strokeWidth={(isLast ? 2 : 1.4) / tf.scale} />;
+                  if (!cased) return dot;
+                  return (
+                    <g key={i}>
+                      <circle data-draft="casing" cx={p[0]} cy={p[1]} r={((isLast ? 4.5 : 3.4) + 1.5) / tf.scale} fill={DS.casing.color} stroke={DS.casing.color} strokeWidth={1 / tf.scale} />
+                      <circle cx={p[0]} cy={p[1]} r={(isLast ? 4.5 : 3.4) / tf.scale}
+                        fill={isLast ? "#fff" : DS.accent} stroke={DS.accent} strokeWidth={(isLast ? 2 : 1.4) / tf.scale} />
+                    </g>
+                  );
                 }
-                return <path key={i} d={starPath(p[0], p[1], (isLast ? 4.5 : 3) / tf.scale)}
-                  fill={isLast ? "#fff" : "#1f3fc7"} stroke="#1f3fc7" strokeWidth={(isLast ? 2 : 1) / tf.scale} />;
+                const d = markerPath(DS.vertex.shape, p[0], p[1], (isLast ? DS.vertex.lastR : DS.vertex.r) / tf.scale);
+                if (!d) return null;   // "none" — this theme places no corner marks
+                if (!cased) return <path key={i} d={d}
+                  fill={isLast ? "#fff" : DS.accent} stroke={DS.accent} strokeWidth={(isLast ? 2 : 1) / tf.scale} />;
+                return (
+                  <g key={i}>
+                    <path data-draft="casing" d={d} fill={DS.casing.color} stroke={DS.casing.color} strokeWidth={3 / tf.scale} />
+                    <path d={d} fill={isLast ? "#fff" : DS.accent} stroke={DS.accent} strokeWidth={(isLast ? 2 : 1) / tf.scale} />
+                  </g>
+                );
               })}
-              {calib.length === 2 && <line x1={calib[0][0]} y1={calib[0][1]} x2={calib[1][0]} y2={calib[1][1]} stroke="#1f3fc7" strokeWidth={2 / tf.scale} />}
-              {calib.map((p, i) => <path key={i} d={starPath(p[0], p[1], 3.5 / tf.scale)} fill="#1f3fc7" />)}
-              {alignPt && <path d={starPath(alignPt[0], alignPt[1], 4.5 / tf.scale)} fill="#1f3fc7" stroke="#fff" strokeWidth={1 / tf.scale} />}
+              {/* edge labels (Precision "all" / Site Glass "last2"): placed-edge
+                  midpoints priced with the draft's own sheet scale, in the check
+                  tool's white-halo idiom. Surface keeps its own readout; a segment
+                  touching a curve control is skipped — its chord would float off
+                  the flattened arc and misstate the length. */}
+              {DS.edgeLabels && tool !== "surface" && poly.length >= 2 && liveUpp ? (() => {
+                const z = tf.scale;
+                const start = DS.edgeLabels === "last2" ? Math.max(0, poly.length - 3) : 0;
+                const kids = [];
+                for (let i = start; i < poly.length - 1; i++) {
+                  if (polyCurve[i] || polyCurve[i + 1]) continue;   // arc segment — chord label would misstate
+                  const a = poly[i], b = poly[i + 1];
+                  kids.push(
+                    <text key={i} data-draft="edge-label" x={(a[0] + b[0]) / 2} y={(a[1] + b[1]) / 2 - 6 / z} fontSize={10.5 / z} fontWeight={600}
+                      fill={DS.accent} textAnchor="middle" stroke="#fff" strokeWidth={3 / z} paintOrder="stroke">
+                      {fmtCheckLen(Math.hypot(b[0] - a[0], b[1] - a[1]) * liveUpp, units)}
+                    </text>
+                  );
+                }
+                return <g>{kids}</g>;
+              })() : null}
+              {calib.length === 2 && <line x1={calib[0][0]} y1={calib[0][1]} x2={calib[1][0]} y2={calib[1][1]} stroke={DS.accent} strokeWidth={2 / tf.scale} />}
+              {calib.map((p, i) => <path key={i} d={starPath(p[0], p[1], 3.5 / tf.scale)} fill={DS.accent} />)}
+              {alignPt && <path d={starPath(alignPt[0], alignPt[1], 4.5 / tf.scale)} fill={DS.accent} stroke="#fff" strokeWidth={1 / tf.scale} />}
               {/* check tool — dashed so it never reads as calibrate's solid line */}
               {tool === "check" && check.length === 2 && !checkCross && (
                 <>
-                  <line x1={check[0][0]} y1={check[0][1]} x2={check[1][0]} y2={check[1][1]} stroke="#1f3fc7" strokeWidth={2 / tf.scale} strokeDasharray={`${6 / tf.scale} ${4 / tf.scale}`} />
+                  <line x1={check[0][0]} y1={check[0][1]} x2={check[1][0]} y2={check[1][1]} stroke={DS.accent} strokeWidth={2 / tf.scale} strokeDasharray={`${6 / tf.scale} ${4 / tf.scale}`} />
                   {checkFeet != null && (
                     <text x={(check[0][0] + check[1][0]) / 2} y={(check[0][1] + check[1][1]) / 2 - 8 / tf.scale}
-                      fontSize={12.5 / tf.scale} fontWeight={700} fill="#1f3fc7" textAnchor="middle"
+                      fontSize={12.5 / tf.scale} fontWeight={700} fill={DS.accent} textAnchor="middle"
                       stroke="#fff" strokeWidth={3 / tf.scale} paintOrder="stroke">{fmtCheckLen(checkFeet, units)}</text>
                   )}
                 </>
               )}
-              {tool === "check" && check.map((p, i) => <path key={"ck" + i} d={starPath(p[0], p[1], 3.5 / tf.scale)} fill="#1f3fc7" />)}
+              {tool === "check" && check.map((p, i) => <path key={"ck" + i} d={starPath(p[0], p[1], 3.5 / tf.scale)} fill={DS.accent} />)}
               {/* scale-acceptance guide — an ephemeral calibrated ruler so a 2×-off
                   scale is visually obvious against known elements (a door is ~3′) */}
               {SHOW_SCALE_GUIDE && scaleGuide && panelKeySet.has(scaleGuide.key) && (() => {
@@ -8781,7 +9130,7 @@ export default function TakeoffCanvas() {
                   {sweep.questions.map((q, i) => (
                     <button key={i} type="button" onClick={() => setSweep((s) => ({ ...s, qIndex: i }))}
                       style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", fontFamily: "var(--f-body)", fontSize: "var(--fs-s)", textAlign: "left", background: i === sweep.qIndex ? "var(--tint-select)" : "transparent", border: `1px solid ${i === sweep.qIndex ? "var(--c-warning)" : "var(--ink-faint)"}`, color: q.state === "dismissed" ? "var(--text-faint)" : "var(--ink)", textDecoration: q.state === "dismissed" ? "line-through" : "none", cursor: "pointer" }}>
-                      <span style={{ fontFamily: "var(--f-mono)", fontWeight: 700, color: q.state === "accepted" ? "var(--c-positive)" : q.state === "dismissed" ? "var(--text-faint)" : "#ff8c00" }}>{q.state === "accepted" ? "✓" : q.state === "dismissed" ? "×" : "?"}</span>
+                      <span style={{ fontFamily: "var(--f-mono)", fontWeight: 700, color: q.state === "accepted" ? "var(--c-positive)" : q.state === "dismissed" ? "var(--text-faint)" : DS.symbol.question }}>{q.state === "accepted" ? "✓" : q.state === "dismissed" ? "×" : "?"}</span>
                       <span>{Math.round(q.score * 100)}%{q.label ? ` · ${q.label.label}` : ""}{q.readings > 1 ? ` · read ${q.readings} ways` : ""}</span>
                     </button>
                   ))}

@@ -1,6 +1,6 @@
 // Geometry core tests — the One-Click pipeline is pure (no DOM, no pdf.js), so
 // it runs straight under node. Run with: npm test
-import { test } from "node:test";
+import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildMask, floodRegion, traceRegion, snapVertices, ringArea, rdpClosed,
@@ -11,7 +11,7 @@ import {
   splitMergedArcs, doorLeafCells, arcClusterFit,
   type Point, type MaskObj,
 } from "../src/lib/oneclick.ts";
-import { cloudBezier, cloudPath, arrowheadPath, reflectVertsNorm, closedMetrics } from "../src/lib/geometry.js";
+import { cloudBezier, cloudPath, arrowheadPath, reflectVertsNorm, closedMetrics, segsIntersect, ringSelfIntersects } from "../src/lib/geometry.js";
 
 // a closed square room, as flat boundary segments in image px
 function squareSegs(x0: number, y0: number, x1: number, y1: number): number[] {
@@ -1405,4 +1405,90 @@ test("classifyHatchSegs stays sub-quadratic on a dense same-angle tick swarm", (
   const ms = performance.now() - t0;
   assert.equal(soft.length, segs.length / 4);
   assert.ok(ms < 1500, `classifyHatchSegs took ${Math.round(ms)} ms on 40k same-angle segments in ${ROWS} rows — the row query has gone quadratic again`);
+});
+
+// ── segsIntersect / ringSelfIntersects ──────────────────────────────────────
+// These two pure predicates drive the drawing-styles self-intersection recolor
+// (a theme with invalidColor, e.g. Contemporary #e03131, flips a self-crossing
+// area/deduct/zone draft). Drafting never runs them (invalidColor null short-
+// circuits upstream), so they carry NO parity risk — but they ARE load-bearing
+// the moment that style is picked. These tests pin the boundary behavior AS
+// CODED (endpoint-exclusion and single-point-contact rules included), not an
+// idealized contract: shared endpoints and end-to-end touches return false by
+// design (a ring's adjacent edges always share a legitimate vertex).
+describe("segsIntersect", () => {
+  test("proper straddle (X-cross) is true, and symmetric in argument order", () => {
+    const a: [number, number] = [0, 0], b: [number, number] = [4, 4];
+    const c: [number, number] = [0, 4], d: [number, number] = [4, 0];
+    assert.equal(segsIntersect(a, b, c, d), true);
+    assert.equal(segsIntersect(c, d, a, b), true, "symmetric");
+  });
+
+  test("disjoint segments are false (parallel apart, and non-parallel not reaching)", () => {
+    assert.equal(segsIntersect([0, 0], [1, 0], [0, 5], [1, 5]), false, "parallel, far apart");
+    assert.equal(segsIntersect([0, 0], [2, 0], [3, -1], [3, 1]), false, "vertical bar past the segment's end");
+  });
+
+  test("collinear overlapping is true — horizontal (x-axis) and vertical (dx=0 axis) runs", () => {
+    // horizontal: axis picks x; the two runs overlap on [2,4]
+    assert.equal(segsIntersect([0, 0], [4, 0], [2, 0], [6, 0]), true);
+    // vertical: x can't tell points apart, so the code compares y — the overlap
+    // on [2,4] must still be found (this is the dx=0 axis branch)
+    assert.equal(segsIntersect([3, 0], [3, 4], [3, 2], [3, 6]), true);
+    // diagonal collinear (axis still x, monotonic along the line): overlap [2,4]
+    assert.equal(segsIntersect([0, 0], [4, 4], [2, 2], [6, 6]), true);
+  });
+
+  test("collinear but disjoint is false", () => {
+    assert.equal(segsIntersect([0, 0], [2, 0], [4, 0], [6, 0]), false, "horizontal gap");
+    assert.equal(segsIntersect([3, 0], [3, 2], [3, 4], [3, 6]), false, "vertical gap");
+  });
+
+  test("collinear end-to-end contact at a shared point is false (single-point rule)", () => {
+    // intervals meet at exactly x=2 → the touch point is an endpoint of BOTH,
+    // which the code excludes (a shared vertex is not a crossing)
+    assert.equal(segsIntersect([0, 0], [2, 0], [2, 0], [4, 0]), false);
+  });
+
+  test("T-touch: an endpoint riding the OTHER segment's interior is true", () => {
+    // (2,0) sits strictly inside the segment (0,0)-(4,0)
+    assert.equal(segsIntersect([0, 0], [4, 0], [2, 0], [2, 3]), true);
+    assert.equal(segsIntersect([2, 0], [2, 3], [0, 0], [4, 0]), true, "symmetric");
+  });
+
+  test("shared endpoint, different directions (the ring-edge case) is false", () => {
+    // adjacent ring edges share (0,0); a non-collinear V must NOT read as a cross
+    assert.equal(segsIntersect([0, 0], [4, 0], [0, 0], [0, 4]), false);
+    // an endpoint landing exactly ON the other's endpoint (not interior) is excluded too
+    assert.equal(segsIntersect([0, 0], [4, 0], [4, 0], [4, 4]), false);
+  });
+});
+
+describe("ringSelfIntersects", () => {
+  test("fewer than 4 vertices can never self-cross (no closing edge to test)", () => {
+    assert.equal(ringSelfIntersects([]), false);
+    assert.equal(ringSelfIntersects([[0, 0], [1, 0]]), false);
+    assert.equal(ringSelfIntersects([[0, 0], [1, 0], [0, 1]]), false, "triangle");
+    assert.equal(ringSelfIntersects("nope" as unknown as number[][]), false, "non-array guard");
+  });
+
+  test("a simple convex ring (square) does NOT self-intersect", () => {
+    assert.equal(ringSelfIntersects([[0, 0], [4, 0], [4, 4], [0, 4]]), false);
+  });
+
+  test("a concave-but-simple ring (L-shape) does NOT self-intersect — adjacent shared vertices are legitimate", () => {
+    assert.equal(ringSelfIntersects([[0, 0], [4, 0], [4, 2], [2, 2], [2, 4], [0, 4]]), false);
+  });
+
+  test("a bowtie / figure-8 ring self-intersects", () => {
+    // edges (0,0)-(4,4) and (4,0)-(0,4) cross at (2,2); this pair is i=0,j=2,
+    // tested normally (only the i=0,j=n-1 closing-adjacency pair is skipped)
+    assert.equal(ringSelfIntersects([[0, 0], [4, 4], [4, 0], [0, 4]]), true);
+  });
+
+  test("a degenerate spike where a vertex lands on a non-adjacent edge reads as a self-touch", () => {
+    // vertex (2,0) rides the interior of edge0 (0,0)-(4,0); edge0 vs edge2 is a
+    // non-adjacent pair, so the collinear/T path in segsIntersect flags it
+    assert.equal(ringSelfIntersects([[0, 0], [4, 0], [2, 0], [2, 4]]), true);
+  });
 });
