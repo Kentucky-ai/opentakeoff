@@ -160,6 +160,26 @@ input, textarea { font-family: var(--f-body); }
   0%, 100% { opacity: 1; }
   50%      { opacity: .35; }
 }
+/* Source-trace flash (◎, TakeoffCanvas's `flashSource`) — a BOUNDED pulse (3
+   iterations of .85s, ~2.55s total, matched by flashSource's own one-shot
+   auto-clear timer) that settles dim on its last cycle instead of holding a
+   solid highlight. Deliberately its own keyframes rather than a reuse of
+   `pulse` above: pulse also drives the INFINITE `.status-dot.is-live` loop,
+   and giving pulse asymmetric endpoints would put a visible snap back to
+   full opacity in that dot's loop every cycle. Paired with
+   `animation-fill-mode: forwards` at the call site so the brief window
+   between the animation finishing and flashSource's timer clearing the state
+   holds this dim frame, not an opaque one. The end value is a middling .5,
+   not near-zero: under `prefers-reduced-motion` (below), the animation
+   duration collapses to ~0 and `forwards` snaps straight to the 100% frame
+   for the full ~2.6s until the timer clears it — a near-invisible end value
+   would leave reduced-motion users with no visible highlight at all, which
+   defeats the feature. .5 stays legible for both motion preferences. */
+@keyframes sourceFlashPulse {
+  0%   { opacity: 1; }
+  50%  { opacity: .35; }
+  100% { opacity: .5; }
+}
 
 /* honor the user's motion preference */
 @media (prefers-reduced-motion: reduce) {

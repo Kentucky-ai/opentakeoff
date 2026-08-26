@@ -386,8 +386,9 @@ live takeoff first, so it's never a one-way door.
 
 ### Markups, seals, and RFIs
 A separate layer the totals never count: revision clouds, callouts, text notes, highlighter
-ink, and reusable **stamps** (plank direction, seam direction, pattern origin—build your own,
-or import an `.svg`). **Approval seals** are the estimator's ink: click a committed takeoff to
+ink, **images** (upload a PNG/JPEG, or marquee a region of the plan to drop it back as a
+floating screenshot—move, resize, and it burns into the marked set), and reusable **stamps**
+(plank direction, seam direction, pattern origin—build your own, or import an `.svg`). **Approval seals** are the estimator's ink: click a committed takeoff to
 approve it, and the Marked Set's cover gains a tally line—*N estimator-approved · N
 agent-marked* — so a PM knows exactly how much of the set a person has looked at. The **RFI
 register** turns any markup into a tracked question with status, priority, ball-in-court, and
@@ -474,7 +475,7 @@ plus a vision-capable model id.
 | **Report** | Per-condition Floor/Wall/Border SF, LF, EA, SY with and without waste, plus the combined buy list; columns, grouping, saved templates |
 | **Export** | CSV, JSON, **Excel (.xlsx)**, print, **Marked Set PDF**, RFI CSV/JSON |
 | **Revisions** | Save at each bid revision, compare quantity deltas per condition/sheet/buy list, guarded restore |
-| **Markups** | Clouds, callouts, notes, highlighter, stamps, **approval seals**, RFI register—separate layer, never counted |
+| **Markups** | Clouds, callouts, notes, highlighter, **images** (upload or marquee screenshot), stamps, **approval seals**, RFI register—separate layer, never counted |
 | **Voice** | Push-to-talk takeoff commands, recognized on-device in WebAssembly; audio never leaves the browser |
 | **View** | Light or **dark (negative print)**—sheet pixels inverted at draw time, exports follow |
 | **Storage** | IndexedDB + localStorage—client-only, nothing uploaded |

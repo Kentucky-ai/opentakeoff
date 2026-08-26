@@ -855,9 +855,9 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
             </p>
           </div>
         )}
-        {markups.some((m) => m.type !== "svg") && (
+        {markups.some((m) => m.type !== "svg" && m.type !== "image") && (
           <div style={{ maxWidth: 980, margin: "26px auto 0" }}>
-            {/* svg symbols are decorative vector stamps, not revision notes — excluded */}
+            {/* svg symbols and image markups aren't revision notes — excluded */}
             <h3 style={{ fontFamily: "var(--f-display)", fontSize: 12, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink)", margin: "0 0 10px", paddingBottom: 5, borderBottom: "1.25px solid var(--ink)" }}>Revisions noted</h3>
             <table style={{ width: "100%", borderCollapse: "collapse", background: "var(--paper-bright)", border: "1px solid var(--ink-faint)" }}>
               <thead>
@@ -868,7 +868,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
                 </tr>
               </thead>
               <tbody>
-                {markups.filter((m) => m.type !== "svg").map((m) => (
+                {markups.filter((m) => m.type !== "svg" && m.type !== "image").map((m) => (
                   <tr key={m.id}>
                     <td style={{ ...td, textAlign: "left" }}>
                       <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, fontWeight: 700, letterSpacing: "0.08em", border: "1px solid var(--ink-faint)", padding: "1px 6px", color: "var(--ink-soft)" }}>

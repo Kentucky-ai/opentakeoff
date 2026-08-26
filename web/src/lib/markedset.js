@@ -38,8 +38,9 @@ export function authorTallyLine(shapes) {
 }
 import { pointInPoly, starPath, arrowheadPath, cloudBezier, chiselRibbon } from "./geometry.js";
 import { transformPath, svgPlacedBox } from "./svgpath.js";
+import { imagePlacedBox, pickEmbedFormat, imageDrawParams, sourceCaption } from "./markupImage";
 import { rfiStatus } from "./rfi.js";
-import { RENDER_SCALE } from "./sheets";
+import { RENDER_SCALE, parseSheetKey, sheetBaseLabelFromKey } from "./sheets";
 import { stitchPagePlan, memberEmbed } from "./stitches";
 import { pdfDashFor, boostForDark, clampWeight } from "./lineStyles.js";
 import { dimLabel } from "./units";
@@ -785,8 +786,66 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
           const t = lbl(m.text);
           if (t) text(t, m.at[0] * W - bw / 2, y0 - 6 / ptScale, 8, mcol, bold);
         }
-      } else if (m.type === "text" && m.at) {
-        text(lbl(m.text), m.at[0] * W, m.at[1] * H, 8.5, mcol, bold);
+      } else if (m.type === "image" && m.at && m.src) {
+        // a raster image markup (an uploaded file, or a marquee screenshot of the
+        // sheet). drawImage takes an anchor + rotation, and imageDrawParams derives
+        // both from toPage — so the image lands correctly on ROTATED source pages
+        // too (and on the dark-raster / stitch paths, where toPage carries no
+        // rotation, it comes out axis-aligned as before). Only PNG/JPEG embed, and
+        // the store only ever mints those (pickEmbedFormat → null is a clean skip).
+        // A corrupt dataURL must not kill the export — the logo precedent, in a try.
+        const fmt = pickEmbedFormat(m.src);
+        if (fmt) {
+          try {
+            const { bw, bh } = imagePlacedBox(m.w, m.aspect, W);
+            if (bw > 0 && bh > 0) {
+              const img = fmt === "jpg" ? await doc.embedJpg(m.src) : await doc.embedPng(m.src);
+              const x0 = m.at[0] * W - bw / 2, y0 = m.at[1] * H - bh / 2;
+              const dp = imageDrawParams(toPage, x0, y0, bw, bh);
+              pg.drawImage(img, { x: dp.x, y: dp.y, width: dp.width, height: dp.height, rotate: degrees(dp.rotateDeg) });
+              // Source caption (captures only) — the ORIGIN sheet NAME, read from the
+              // frozen m.src_label the canvas stamped at capture time, so the PDF text
+              // is the SAME string the canvas shows (no runtime label resolution here,
+              // which markedset can't do anyway). Legacy captures without src_label
+              // fall back to the pure file/page derivation. A stitch origin has no
+              // page number → drop "· p.N". Empty label ⇒ draw nothing.
+              const capLabel = m.src_label != null ? m.src_label : sheetBaseLabelFromKey(m.src_sheet_id);
+              const capPage = typeof m.src_sheet_id === "string" && m.src_sheet_id.startsWith("stitch:") ? 0 : parseSheetKey(m.src_sheet_id).page;
+              const capText = m.source === "capture" && m.source_label && m.src_sheet_id
+                ? sourceCaption(capLabel, capPage)
+                : "";
+              if (capText) {
+                // MIRRORS the rotated chip() path (rotate: chipRot), NOT the
+                // axis-aligned pg.drawText — this IS the rotated-page path
+                // (imageDrawParams derives anchor+rotation from toPage). But
+                // chip()'s own rectangle math sets its anchor via PAGE-POINT
+                // arithmetic on the already-mapped centroid (px - w/2, py -
+                // 5.5) and only THEN rotates the far corners around it — on a
+                // rotated source page that anchor point does not track the
+                // image at all (a pre-existing chip() issue, left alone here;
+                // see the task report). So this box is built the same way the
+                // image itself is: as an IMAGE-PX rectangle passed through
+                // imageDrawParams, which is already proven correct on rotated
+                // pages. Sizes come in as PAGE POINTS and are converted to
+                // image-px via ptScale BEFORE mapping (the same "divide by
+                // ptScale" trick already used for the offsets at :695/:707),
+                // so the gap and box stay an exact point size in the
+                // correctly rotated direction at any page rotation.
+                const textPt = 7.5, capHpt = 12, gapPt = 6;
+                const tw = font.widthOfTextAtSize(winAnsiSafe(capText), textPt) + 8;
+                const capWimg = tw / ptScale, capHimg = capHpt / ptScale, gapImg = gapPt / ptScale;
+                const capX0 = x0 + bw / 2 - capWimg / 2, capY0 = y0 - gapImg - capHimg;
+                const cdp = imageDrawParams(toPage, capX0, capY0, capWimg, capHimg);
+                pg.drawRectangle({
+                  x: cdp.x, y: cdp.y, width: cdp.width, height: cdp.height, rotate: chipRot,
+                  color: dark ? rgb(0.08, 0.1, 0.12) : rgb(1, 1, 1), opacity: 0.85,
+                  borderColor: ink, borderWidth: 0.7,
+                });
+                text(capText, capX0 + 4 / ptScale, capY0 + capHimg - 3 / ptScale, textPt, ink);
+              }
+            }
+          } catch { /* corrupt image data or a bad provenance record — skip this one, never fail the whole marked set */ }
+        }
       }
     }
     // approval seals burn in ABOVE the markups, exactly as the canvas layers
