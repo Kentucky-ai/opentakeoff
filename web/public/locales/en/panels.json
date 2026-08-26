@@ -537,7 +537,6 @@
   "hatch.concrete": "Concrete / stipple",
 
   "takeoffs.family_fallback": "the family",
-  "takeoffs.original_fallback": "the original",
 
   "takeoffs.roll_max_label": "max",
   "takeoffs.roll_dir_auto": "auto",
