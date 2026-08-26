@@ -38,6 +38,7 @@ export function authorTallyLine(shapes) {
 }
 import { pointInPoly, starPath, arrowheadPath, cloudBezier, chiselRibbon } from "./geometry.js";
 import { transformPath, svgPlacedBox } from "./svgpath.js";
+import { imagePlacedBox, pickEmbedFormat, imageDrawParams } from "./markupImage";
 import { rfiStatus } from "./rfi.js";
 import { RENDER_SCALE } from "./sheets";
 import { stitchPagePlan, memberEmbed } from "./stitches";
@@ -785,8 +786,26 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
           const t = lbl(m.text);
           if (t) text(t, m.at[0] * W - bw / 2, y0 - 6 / ptScale, 8, mcol, bold);
         }
-      } else if (m.type === "text" && m.at) {
-        text(lbl(m.text), m.at[0] * W, m.at[1] * H, 8.5, mcol, bold);
+      } else if (m.type === "image" && m.at && m.src) {
+        // a raster image markup (an uploaded file, or a marquee screenshot of the
+        // sheet). drawImage takes an anchor + rotation, and imageDrawParams derives
+        // both from toPage — so the image lands correctly on ROTATED source pages
+        // too (and on the dark-raster / stitch paths, where toPage carries no
+        // rotation, it comes out axis-aligned as before). Only PNG/JPEG embed, and
+        // the store only ever mints those (pickEmbedFormat → null is a clean skip).
+        // A corrupt dataURL must not kill the export — the logo precedent, in a try.
+        const fmt = pickEmbedFormat(m.src);
+        if (fmt) {
+          try {
+            const { bw, bh } = imagePlacedBox(m.w, m.aspect, W);
+            if (bw > 0 && bh > 0) {
+              const img = fmt === "jpg" ? await doc.embedJpg(m.src) : await doc.embedPng(m.src);
+              const x0 = m.at[0] * W - bw / 2, y0 = m.at[1] * H - bh / 2;
+              const dp = imageDrawParams(toPage, x0, y0, bw, bh);
+              pg.drawImage(img, { x: dp.x, y: dp.y, width: dp.width, height: dp.height, rotate: degrees(dp.rotateDeg) });
+            }
+          } catch { /* corrupt image data — skip this one, never fail the whole marked set */ }
+        }
       }
     }
     // approval seals burn in ABOVE the markups, exactly as the canvas layers

@@ -22,6 +22,10 @@ export const QUALITY_CEILING = 8.0;                  // hard cap on render scale
 export const MAX_CANVAS_DIM  = 16384;                // safe max side for a single canvas (Chrome/Firefox/Safari desktop)
 export const MAX_CANVAS_AREA = 16384 * 16384 * 0.9;  // per-canvas pixel cap — the DETAIL view's density factor uses this
 export const MAX_PANEL_AREA  = 28e6;                 // base-raster pixel budget per panel (~112MB RGBA; 4-up ≈ 450MB)
+export const MARKUP_IMG_MAX = 1600;                  // px longest side of a stored image markup (capture AND upload downscale to this, then re-encode)
+export const MAX_IMAGE_MARKUP_BYTES = 16 * 1024 * 1024;  // aggregate cap across a project's image markups — refuse a new one that would push the annotations blob past this
+export const MARKUP_UPLOAD_MAX_BYTES = 25 * 1024 * 1024; // reject an upload FILE larger than this BEFORE decode (cheap OOM guard for a huge file)
+export const MARKUP_DECODE_MAX_AREA = 40e6;          // reject a decoded upload above ~40M px — a 1600px annotation never needs more, and this bounds the transient RGBA allocation (NOT the 241M render-canvas cap)
 // Detail view: once zoomed past the base raster's 1:1 IN DEVICE PIXELS, we overlay a
 // crop of JUST the visible region, re-rendered from the PDF vectors at the current zoom —
 // the way desktop CAD viewers do. Crispness becomes unbounded (up to the per-region canvas cap)
@@ -71,6 +75,7 @@ export const MARKUP_TOOLS = [
   { id: "highlight", icon: "highlight", label: "Highlight box" },
   // N, not M — M is the push-to-talk dictation hold, globally
   { id: "dimension", icon: "dimension", label: "Dimension line", shortcut: "N" },
+  { id: "image", icon: "image", label: "Image — marquee a region, or upload a file" },
 ];
 export const MARKUP_IDS = MARKUP_TOOLS.map((t) => t.id);
 // highlighter inks — literal hex (SVG attrs; CSS vars don't resolve there).
