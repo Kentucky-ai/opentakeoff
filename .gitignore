@@ -30,6 +30,7 @@ server/.venv/
 
 # Agent/browser session artifacts (Playwright MCP traces, verification screenshots)
 .playwright-mcp/
+AGENTS.md
 /*.png
 .claude/
 .codex/
