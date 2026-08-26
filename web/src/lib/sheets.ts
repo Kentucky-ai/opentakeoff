@@ -2,10 +2,29 @@
 // sheet-key codec, standard scales, title-block sheet numbers, drawn-scale notes.
 import * as pdfjsLib from "pdfjs-dist";
 import type { Token } from "./scheduleParse";
+import { parseSheetKey } from "./sheetKey";
+import { isStitchKey } from "./stitches";
 export { parseSheetKey, compareSheetKeys } from "./sheetKey"; // moved to a pdfjs-free module; re-exported for existing importers
 export type { ParsedSheetKey } from "./sheetKey";
 
 export const RENDER_SCALE = 2.0;
+
+// Pure fallback branch of the canvas `sheetBaseLabel` closure (TakeoffCanvas.jsx
+// `sheetBaseLabel`, ~:1001) — just the file/page math, none of the runtime-state
+// overrides (`galleryLabels`, `pageLabels`) that closure also honors. Exists so
+// the source-caption text can be computed identically on the canvas AND inside
+// markedset.js (a pure module with no access to that runtime state), keeping
+// the on-screen caption and the exported PDF caption byte-identical.
+// A stitch key resolves through `stitchById[k].name` on the canvas — state this
+// module can't see — so it deliberately returns "" for one; `sourceCaption("",
+// …)` already renders nothing, so both surfaces suppress the caption together
+// for a stitch source (screen and PDF agree: neither draws one).
+export function sheetBaseLabelFromKey(key: string): string {
+  if (typeof key !== "string" || !key || isStitchKey(key)) return "";
+  const t = parseSheetKey(key);
+  const base = t.file.replace(/\.pdf$/i, "");
+  return t.page > 1 ? `${base}-${t.page}` : base;
+}
 
 /** Side-by-side panel cap — shared by the canvas group logic and the gallery's
  * open-side-by-side gate so the two can never disagree. Hi-res sheets render at
