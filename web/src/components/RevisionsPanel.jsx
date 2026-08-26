@@ -13,14 +13,14 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Icon } from "../brand/icons.jsx";
-import { store, isStaleTabError, friendlyStoreError } from "../lib/store.js";
+import { store, isStaleTabError, friendlyStoreError, staleTabMessage } from "../lib/store.js";
 import { diffTakeoffs, diffToCsv, revSheetLabel } from "../lib/revisions.js";
 import { downloadText } from "../lib/totals.js";
 import { areaVal, areaUnit, lenVal, lenUnit } from "../lib/units";
 
 const num = (v, d = 1) => (Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: d });
 const STATUS_COLOR = { added: "var(--c-positive)", removed: "var(--c-danger)", changed: "var(--c-warning)", unchanged: "var(--ink-muted)" };
-const errText = (e, t) => (isStaleTabError(e) ? t("status.stale_tab") : friendlyStoreError(e));
+const errText = (e) => (isStaleTabError(e) ? staleTabMessage() : friendlyStoreError(e));
 export default function RevisionsPanel({ current, units = "imperial", onRestore, onClose }) {
   const { t } = useTranslation("panels");
   const [revs, setRevs] = useState(null);          // null = loading
@@ -37,7 +37,7 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
   // listSnapshots already sorts newest-first and scopes to this project
   const refresh = () => store.listSnapshots()
     .then((list) => setRevs(list.map((s) => ({ id: s.id, name: s.label || t("revisions.untitled"), created_at: s.ts, conditions: s.conditions ?? 0, shapes: s.shapes ?? 0 }))))
-    .catch((e) => setErr(errText(e, t)));
+    .catch((e) => setErr(errText(e)));
   useEffect(() => { refresh(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // default the baseline to the newest revision once the list is in
   useEffect(() => { if (revs?.length && !baseId) setBaseId(revs[0].id); }, [revs]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -57,7 +57,7 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
           if (!rec) { setErr(t('revisions.not_found')); return; }
           setPayloads((p) => ({ ...p, [id]: rec.payload || {} }));
         })
-        .catch((e) => setErr(errText(e, t)));
+        .catch((e) => setErr(errText(e)));
     }
   }, [baseId, compareId]);   // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -71,7 +71,7 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
   const save = async (name) => {
     setBusy(true); setErr("");
     try { await store.saveSnapshot((name || "").trim() || defaultName(), current); setSaveName(""); await refresh(); }
-    catch (e) { setErr(errText(e, t)); }
+    catch (e) { setErr(errText(e)); }
     setBusy(false);
   };
   const del = async (id) => {
@@ -81,7 +81,7 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
       if (baseId === id) setBaseId("");
       if (compareId === id) setCompareId("current");
       await refresh();
-    } catch (e) { setErr(errText(e, t)); }
+    } catch (e) { setErr(errText(e)); }
     setBusy(false); setConfirmId("");
   };
   const restore = async (id) => {
@@ -93,7 +93,7 @@ export default function RevisionsPanel({ current, units = "imperial", onRestore,
       if (!rec) { setErr(t('revisions.not_found')); setBusy(false); setConfirmId(""); return; }
       onRestore(rec.payload || {});
       await refresh();
-    } catch (e) { setErr(errText(e, t)); }
+    } catch (e) { setErr(errText(e)); }
     setBusy(false); setConfirmId("");
   };
 

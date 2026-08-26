@@ -346,6 +346,21 @@ test("friendlyStoreError maps quota to actionable copy; other errors pass throug
   assert.equal(typeof staleTabMessage, "function", "staleTabMessage should be a getter function");
 });
 
+test("staleTabMessage() is danger-tagged in both en and pt-br (language switch)", async () => {
+  const { isDanger } = await import("../src/lib/danger.js");
+  const { default: i18n } = await import("../src/i18n/index.js");
+  const enMsg = staleTabMessage();
+  assert.ok(isDanger(enMsg), `en staleTabMessage should be danger: "${enMsg}"`);
+  try {
+    await i18n.changeLanguage("pt-br");
+    const ptMsg = staleTabMessage();
+    assert.ok(isDanger(ptMsg), `pt-br staleTabMessage should be danger: "${ptMsg}"`);
+    assert.ok(ptMsg.includes("OpenTakeoff"), `pt-br message should mention app: "${ptMsg}"`);
+  } finally {
+    await i18n.changeLanguage("en");
+  }
+});
+
 test("two cloudStores over one IndexedDB scope snapshots by folderId (end-to-end)", async () => {
   // Real localStore on fake-indexeddb — not the recording fake. The snapshot
   // methods never touch Drive, so a stub drive is enough to build the stores.
