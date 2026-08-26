@@ -376,6 +376,11 @@ const CANVAS_KEYS_USED = [
   "readout.vert_hint",
   "readout.wall",
   "readout.border",
+  // language selector
+  "menu.lang_en",
+  "menu.lang_pt_br",
+  // unit
+  "unit.ea",
   // takeoffs strip
   "takeoffs.strip",
 ];
@@ -435,5 +440,62 @@ test("confirm.remove_material supports {{linkedNote}} interpolation", async () =
     assert.ok(msg1.includes("1 linked line"), `confirm.remove_material should interpolate linkedNote for "${lng}"`);
     const msg0 = t("confirm.remove_material", { name: "Glue", linkedNote: "" });
     assert.ok(msg0.includes("Glue"), `confirm.remove_material with empty linkedNote should still show name for "${lng}"`);
+  }
+});
+
+// ── Task: canvas readout pluralization + language selector + unit ─────────────
+
+test("readout.occ_spaces pluralises via count in en and pt-br", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng);
+    const one = t("readout.occ_spaces", { count: 1 });
+    const many = t("readout.occ_spaces", { count: 3 });
+    assert.ok(one, `occ_spaces count=1 must resolve for "${lng}"`);
+    assert.ok(many, `occ_spaces count=3 must resolve for "${lng}"`);
+    assert.notEqual(one, many, `occ_spaces singular and plural must differ for "${lng}"`);
+    assert.notEqual(one, "readout.occ_spaces", `occ_spaces must not return the key itself for "${lng}"`);
+  }
+});
+
+test("readout.occ_cutouts pluralises via count in en and pt-br", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng);
+    const one = t("readout.occ_cutouts", { count: 1 });
+    const many = t("readout.occ_cutouts", { count: 2 });
+    assert.ok(one, `occ_cutouts count=1 must resolve for "${lng}"`);
+    assert.ok(many, `occ_cutouts count=2 must resolve for "${lng}"`);
+    assert.notEqual(one, many, `occ_cutouts singular and plural must differ for "${lng}"`);
+  }
+});
+
+test("language selector keys resolve to native names in both locales", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng);
+    // Both locales must show the native name, not a translation
+    assert.equal(t("menu.lang_en"), "English", `menu.lang_en must be "English" for "${lng}"`);
+    assert.equal(t("menu.lang_pt_br"), "Português (BR)", `menu.lang_pt_br must be "Português (BR)" for "${lng}"`);
+  }
+});
+
+test("readout.wall, readout.border, unit.ea resolve to non-key text in en and pt-br", async () => {
+  const { default: i18n } = await import("../src/i18n/index.js");
+
+  for (const lng of ["en", "pt-br"]) {
+    const t = i18n.getFixedT(lng);
+    const wall = t("readout.wall");
+    const border = t("readout.border");
+    const ea = t("unit.ea");
+    assert.notEqual(wall, "readout.wall", `readout.wall must not return key for "${lng}"`);
+    assert.notEqual(border, "readout.border", `readout.border must not return key for "${lng}"`);
+    assert.notEqual(ea, "unit.ea", `unit.ea must not return key for "${lng}"`);
+    assert.ok(wall.length > 0, `readout.wall must be non-empty for "${lng}"`);
+    assert.ok(border.length > 0, `readout.border must be non-empty for "${lng}"`);
+    assert.ok(ea.length > 0, `unit.ea must be non-empty for "${lng}"`);
   }
 });

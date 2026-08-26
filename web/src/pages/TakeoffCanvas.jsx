@@ -6371,7 +6371,7 @@ export default function TakeoffCanvas() {
           items={[
             { id: "guide", label: t('menu.how_works'), shortcut: "?", onSelect: () => setGuideOpen(true) },
             { id: "theme", label: theme === "dark" ? t('menu.light_chrome') : t('menu.dark_chrome'), onSelect: toggleTheme },
-            { id: "language", label: i18n.language?.startsWith("pt") ? "English" : "Português (BR)", onSelect: () => i18n.changeLanguage(i18n.language?.startsWith("pt") ? "en" : "pt-br") },
+            { id: "language", label: i18n.language?.startsWith("pt") ? t('menu.lang_en') : t('menu.lang_pt_br'), onSelect: () => i18n.changeLanguage(i18n.language?.startsWith("pt") ? "en" : "pt-br") },
             { id: "schedule", icon: "rectTool", label: t('menu.import_schedule'), active: tool === "schedule", onSelect: () => { setScheduleAnchor(null); setTool((t) => (t === "schedule" ? "select" : "schedule")); } },
             ...(cloudMode ? [
               "divider",
@@ -7516,7 +7516,7 @@ export default function TakeoffCanvas() {
             return (
               <>
                 <div style={{ fontSize: 22, fontWeight: 700, color: "var(--cobalt)" }}>{num(areaVal(sf, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)} {t('readout.selected')}</span></div>
-                <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{pos.length} space{pos.length === 1 ? "" : "s"}{neg.length ? ` − ${neg.length} cutout${neg.length === 1 ? "" : "s"}` : ""}{units === "metric" ? "" : ` · ${num(sf / 9)} SY`}</div>
+                <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{pos.length} {t('readout.occ_spaces', { count: pos.length })}{neg.length ? ` − ${neg.length} ${t('readout.occ_cutouts', { count: neg.length })}` : ""}{units === "metric" ? "" : ` · ${num(sf / 9)} SY`}</div>
                 <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{ocSel ? t('readout.occ_drag_hint') : t('readout.occ_hover_hint')}</div>
                 <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>{t('readout.occ_click_hint')}</div>
                 {proposal.regions.some((r) => r.rt) && (
@@ -7598,10 +7598,10 @@ export default function TakeoffCanvas() {
             {zoneRows.map((zr) => {
               const parts = [];
               if (zr.floor_sf) parts.push(fa(zr.floor_sf));
-              if (zr.wall_sf) parts.push(`${fa(zr.wall_sf)} wall`);
-              if (zr.border_sf) parts.push(`${fa(zr.border_sf)} border`);
+              if (zr.wall_sf) parts.push(`${fa(zr.wall_sf)} ${t('readout.wall')}`);
+              if (zr.border_sf) parts.push(`${fa(zr.border_sf)} ${t('readout.border')}`);
               if (zr.lf) parts.push(fl(zr.lf));
-              if (zr.ea) parts.push(`${num(zr.ea, 0)} EA`);
+              if (zr.ea) parts.push(`${num(zr.ea, 0)} ${t('unit.ea')}`);
               const open = zoneExpand === zr.id;
               return (
                 <div key={zr.id} style={{ padding: "8px 12px", borderBottom: "1px solid var(--ink-faint)" }}>
