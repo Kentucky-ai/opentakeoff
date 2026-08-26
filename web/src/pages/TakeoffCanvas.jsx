@@ -6221,7 +6221,7 @@ export default function TakeoffCanvas() {
           <ToolMenu
             title={t('menu.edit_takeoffs')}
             onOpenChange={onMenuDepth}
-            face={<span>{t('menu.finish')}</span>}
+             face={<span>{t('menu.edit_takeoffs')}</span>}
             items={[
               { id: "copy", icon: "copy", label: t('menu.copy'), shortcut: "⌘C", disabled: !selectedId, onSelect: copySelected },
               { id: "paste", icon: "paste", label: t('menu.paste'), shortcut: "⌘V", disabled: !clipRef.current.length, onSelect: () => pasteClipboard() },
@@ -6293,7 +6293,7 @@ export default function TakeoffCanvas() {
             path. Focus suppresses canvas shortcuts via the existing INPUT guards.
             Deixis: focus marks the utterance's start — "this room" then needs an
             aim placed AFTER it (park the pointer on the room, type, Enter). */}
-        {cluster(t('command.placeholder').split('·')[0].trim(),
+        {cluster(t('command.label'),
           <input
             type="text"
             placeholder={t('command.placeholder')}
