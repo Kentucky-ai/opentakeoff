@@ -572,11 +572,11 @@ One more distinction: **Undo last shape** (Edit menu) and `⌫`-with-nothing-in-
 
 ## 9. Markups, stamps, and RFIs
 
-The markup layer is communication, never quantity: clouds, callouts, notes, highlighter ink, and stamps live on a separate layer the totals never count. The left dock (rail buttons on the canvas's right edge) carries three tabs—**Markups**, **Stamps**, **RFIs**.
+The markup layer is communication, never quantity: clouds, callouts, notes, highlighter ink, images, and stamps live on a separate layer the totals never count. The left dock (rail buttons on the canvas's right edge) carries three tabs—**Markups**, **Stamps**, **RFIs**.
 
 ### The markup tools
 
-The **Markup** menu holds six tools:
+The **Markup** menu holds seven tools:
 
 - **Highlighter** (`H`)—freehand marker ink. Press and **drag to paint**, stroke after stroke, no dialog between them. While it's armed, a style popover hangs under the menu: five inks (yellow default), **F / M / B** tip sizes, and a **chisel or round** nib—remembered per browser. Because press-drag paints, press-drag panning is off while the highlighter is armed; pan with `Space`-drag, middle-drag, or right-drag. Strokes stick to their sheet, scale like real ink, and are real objects: with Select, click one (it glows), drag to move it, `⌫` deletes it.
 - **Revision cloud**—two corner clicks; the cloud lands immediately, then an optional note editor opens (`Esc` keeps the cloud, skips the note). Clouds can carry a **Rev △** revision number from the panel.
@@ -584,8 +584,9 @@ The **Markup** menu holds six tools:
 - **Text note**—one click, type in place. Empty text doesn't commit.
 - **Highlight box**—two corners, done.
 - **Dimension line** (`N`)—a standalone dimension string for the width or height the plan never printed: click one end, a live length chip follows the cursor, click the other end. It lands as a line with end ticks labeled with the measured length at the sheet's scale (`12'-6"`), tied to nothing—no condition, no quantity, only the sheet's scale. It needs that scale set (the first click refuses otherwise, same as the measure tools) and won't span sheets. Double-click it to add a note after the length; it prints on the Marked Set like any markup.
+- **Image**—a picture on the sheet, two ways. Arm the tool and **marquee a region** of the plan (two corner clicks) to capture it as a floating screenshot; or click **Upload image…** in the Markups panel to place a **PNG or JPEG** from your machine (a spec-sheet clip, a site photo). Either way it lands centered, and with Select you **drag to move it** and **drag the bottom-right handle to resize** (the proportions stay locked). Images downscale to a sensible size on the way in, so a huge file won't bloat your project; an SVG isn't accepted (only pixels). Images burn into the Marked Set PDF like any markup, rotated sheets included.
 
-Every markup is editable after the fact: with Select, click to select it, drag to move it, **double-click to edit its text in place**. The Markups panel lists them all with an edit pencil, a **color** row (auto or any palette color), **line style** and **weight** controls, and a **Hide layer / Show layer** toggle for the whole layer. (Markup moves are plain edits, not undo steps—the `⌘Z` stack is for measured shapes.)
+Every markup is editable after the fact: with Select, click to select it, drag to move it, **double-click to edit its text in place** (an image carries no text—it's select-only). The Markups panel lists them all with an edit pencil, a **color** row (auto or any palette color), **line style** and **weight** controls, and a **Hide layer / Show layer** toggle for the whole layer. (Markup moves are plain edits, not undo steps—the `⌘Z` stack is for measured shapes.) A large image sits over what it covers—much like a highlight box—so if you can't click a shape beneath one, move the image aside. Images travel **with** the takeoff: they save to your browser, ride the JSON export/import, and sync to your team folder along with the rest of the annotations.
 
 ### Stamps
 
