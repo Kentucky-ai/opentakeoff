@@ -919,7 +919,7 @@ export default function TakeoffCanvas() {
   // the FOCUSED panel (the one last clicked); single mode focuses the lone panel.
   const focusPanel = (focusKey && groupKeys.includes(focusKey) && panelByKey(focusKey)) || panels[0];
   const unitsPerPx = scales[focusPanel.key] ?? null;
-  const labelFor = (p) => stitchById[p.key]?.name || (p.file === active && pageLabels[p.page]) || (p.page > 1 ? `Sheet ${p.page}` : p.file);
+  const labelFor = (p) => stitchById[p.key]?.name || (p.file === active && pageLabels[p.page]) || (p.page > 1 ? t('sheet_chip.sheet', { page: p.page }) : p.file);
   // Scale semantics (why geometry divides by factorFor and calibration
   // multiplies back to baseline) are documented on the pure functions in
   // lib/panelGeometry.js; these wrappers bind the live scales/renderScalesRef.
@@ -4828,7 +4828,7 @@ export default function TakeoffCanvas() {
   function offerAgentHandoff(transcript) {
     clearTimeout(agentOfferTimerRef.current);
     pendingAgentOfferRef.current = { transcript };
-    setVoiceChip({ text: 'not a command — ⏎ or say "ask the agent" to run it on YOUR agent (your endpoint, your key) · proposals land for review · Esc dismisses', tone: "offer" });
+    setVoiceChip({ text: t('agent.offer_text'), tone: "offer" });
     agentOfferTimerRef.current = setTimeout(() => clearAgentOffer(), AGENT_OFFER_TTL_MS);
   }
   function clearAgentOffer() {
@@ -4852,7 +4852,7 @@ export default function TakeoffCanvas() {
     if (!voiceClientRef.current) {
       voiceClientRef.current = createVoiceRecognizerClient((s) => {
         voiceModelRef.current = s;
-        if (s.phase === "loading") setVoiceChip({ text: `voice model loading… ${s.pct}%`, tone: "busy" });
+        if (s.phase === "loading") setVoiceChip({ text: t('agent.voice_loading', { pct: s.pct }), tone: "busy" });
         else if (s.phase === "ready") setVoiceChip((c) => (c && c.tone === "busy" ? null : c));
         else if (s.phase === "uninstalled") { setVoiceChip(null); setCommitMsg(t('status.voice_not_installed')); }
         else if (s.phase === "error") { setVoiceChip(null); setCommitMsg(t('status.voice_load_err', { error: s.message })); }
@@ -4868,7 +4868,7 @@ export default function TakeoffCanvas() {
       // (and kicks off/retries the load, so the affordance is also the fix)
       void client.ensureReady();
       if (voiceModelRef.current.phase === "loading")
-        setVoiceChip({ text: `voice model loading… ${voiceModelRef.current.pct ?? 0}% — try again shortly`, tone: "busy" });
+        setVoiceChip({ text: t('agent.voice_loading_retry', { pct: voiceModelRef.current.pct ?? 0 }), tone: "busy" });
       return;
     }
     try {
@@ -4881,7 +4881,7 @@ export default function TakeoffCanvas() {
         setCommitMsg(t('status.dictation_revoked'));
       });
       voiceCaptureRef.current = session;
-      setVoiceChip({ text: "listening… release M to run · Esc to discard", tone: "live" });
+      setVoiceChip({ text: t('agent.voice_listening'), tone: "live" });
     } catch (err) {
       setCommitMsg(
         err?.reason === "mic_denied" ? t('status.mic_denied')
@@ -4897,7 +4897,7 @@ export default function TakeoffCanvas() {
     if (!commit) { session.cancel(); setVoiceChip(null); return; }
     const pcm = session.stop();
     if (pcm.length < 1600) { setVoiceChip(null); return; }   // <0.1 s — a key tap, not an utterance
-    setVoiceChip({ text: "decoding…", tone: "busy" });
+    setVoiceChip({ text: t('agent.voice_decoding'), tone: "busy" });
     voiceClientRef.current.transcribe(pcm).then((text) => {
       const t = text.trim();
       // the spoken router confirm is a FIXED LITERAL (never grammar): said
@@ -4905,7 +4905,7 @@ export default function TakeoffCanvas() {
       // and the trigger itself never becomes an offer
       if (isAgentHandoffTrigger(t)) {
         if (pendingAgentOfferRef.current) { setVoiceChip(null); agentOfferFnsRef.current.confirm(); return true; }
-        setVoiceChip({ text: "nothing to hand off — say the command first", tone: "info" });
+        setVoiceChip({ text: t('agent.nothing_handoff'), tone: "info" });
         clearTimeout(voiceFlashRef.current);
         voiceFlashRef.current = setTimeout(() => setVoiceChip((c) => (c && c.tone === "info" ? null : c)), 2400);
         return false;
@@ -5019,7 +5019,7 @@ export default function TakeoffCanvas() {
     const seed = detectCandidateRule(allShapes, deductShape);
     if (!seed) return;
     setRuleStage(null);
-    setRuleOffer({ deduct: deductShape, seed, tag: condById[deductShape.condition_id]?.finish_tag || "this condition" });
+    setRuleOffer({ deduct: deductShape, seed, tag: condById[deductShape.condition_id]?.finish_tag || t('status.this_condition') });
   }
   function previewRule() {
     if (!ruleOffer) return;
@@ -5424,7 +5424,7 @@ export default function TakeoffCanvas() {
     // no bulk-selection pruning needed here: the panel derives liveness from
     // the conditions prop (liveChecked = conditions ∩ checked), so a deleted
     // id left in its checked set is inert by construction
-    setCommitMsg(t('status.deleted_condition', { tag: c.finish_tag, takeoffs: owned.length ? ` and ${owned.length} takeoff(s)` : "" }));
+    setCommitMsg(t('status.deleted_condition', { tag: c.finish_tag, takeoffs: owned.length ? t('status.deleted_takeoffs', { count: owned.length }) : "" }));
   }
 
   // custom columns: project-scoped vocabulary editing + per-condition assignment.
@@ -5451,7 +5451,7 @@ export default function TakeoffCanvas() {
   };
   const deleteColumn = (colId) => {
     const cc = conditionColumns.find((c) => c.id === colId);
-    if (!window.confirm(t('confirm.delete_column', { column: columnLabel(cc) }))) return;
+    if (!window.confirm(t('confirm.delete_column', { name: columnLabel(cc) }))) return;
     setConditionColumns((cols) => cols.filter((c) => c.id !== colId));   // orphaned attrs[colId] stay behind — harmless, nothing iterates raw attrs
   };
 
@@ -5836,14 +5836,14 @@ export default function TakeoffCanvas() {
     const dead = shapes.filter((s) => ids.has(s.condition_id));
     const owned = dead.length;
     // name what dies while the list still reads at a glance (≤5); count beyond
-    const what = live.length <= 5 ? live.map((c) => c.finish_tag).join(", ") : `${live.length} conditions`;
+    const what = live.length <= 5 ? live.map((c) => c.finish_tag).join(", ") : t('confirm.delete_conditions_5', { count: live.length });
     if (!window.confirm(t('confirm.delete_with_takeoffs', { what, count: owned }))) return false;
     setConditions((cs) => promoteOnDelete(cs, ids).filter((c) => !ids.has(c.id)));   // lineage repaired first
     // same cascade rule as deleteCondition: counted centrally, off the stack
     if (owned) dispatchShape({ type: "delete", ids: dead.map((s) => s.id), reason: "condition-delete" }, { record: false });
     setPalette((p) => p.filter((id) => !ids.has(id)));   // deleted conditions can't stay pinned
     if (ids.has(activeCond)) setActiveCond(conditions.find((c) => !ids.has(c.id))?.id || "");
-    setCommitMsg(t('status.deleted_conditions', { count: live.length, takeoffs: owned ? ` and ${owned} takeoff(s)` : "" }));
+    setCommitMsg(t('status.deleted_conditions', { count: live.length, takeoffs: owned ? t('status.deleted_takeoffs', { count: owned }) : "" }));
     return true;
   };
 
@@ -6038,8 +6038,8 @@ export default function TakeoffCanvas() {
   const levelOfPage = (n) => sheetLevels[n > 1 ? `${active}#${n}` : active] || "";
   const soloStitch = sheetGroup.length === 1 && isStitchKey(sheetGroup[0]) ? stitchById[sheetGroup[0]] : null;
   const sheetChipLabel = sheetGroup.length
-    ? (soloStitch ? `Stitched — ${soloStitch.name}` : `${sheetGroup.length} sheets side-by-side`)
-    : `${levelOfPage(page) ? `${levelOfPage(page)} · ` : ""}${pageLabels[page] || (pageCount > 1 ? `Sheet ${page}` : active)}${pageCount > 1 ? ` · ${page}/${pageCount}` : ""}`;
+    ? (soloStitch ? t('sheet_chip.stitched', { name: soloStitch.name }) : t('sheet_chip.side_by_side', { count: sheetGroup.length }))
+    : `${levelOfPage(page) ? `${levelOfPage(page)} · ` : ""}${pageLabels[page] || (pageCount > 1 ? t('sheet_chip.sheet', { page }) : active)}${pageCount > 1 ? ` · ${page}/${pageCount}` : ""}`;
   const sheetMenuItems = [];
   if (!sheetGroup.length && pageCount > 1) {
     sheetMenuItems.push({ section: t('menu.sheets_in_set') });
@@ -6327,7 +6327,7 @@ export default function TakeoffCanvas() {
             onPointerUp={() => { if (voiceHoldRef.current) { voiceHoldRef.current = false; voiceFnsRef.current.end(true); } }}
             onPointerCancel={() => { if (voiceHoldRef.current) { voiceHoldRef.current = false; voiceFnsRef.current.end(false); } }}
             style={{ padding: "5px 10px", border: `1px solid ${voiceChip?.tone === "live" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: voiceChip?.tone === "live" ? "var(--cobalt)" : "transparent", color: voiceChip?.tone === "live" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontFamily: "var(--f-mono)", fontSize: 11, fontWeight: 700, lineHeight: 1 }}>
-            {voiceChip?.tone === "live" ? "● talking" : "talk · M"}
+            {voiceChip?.tone === "live" ? t('voice.talking') : t('voice.talk')}
           </button>
         )}
         <div style={{ flex: 1 }} />
@@ -6336,7 +6336,7 @@ export default function TakeoffCanvas() {
             <button onClick={() => setUnits((u) => (u === "metric" ? "imperial" : "metric"))}
               title={units === "metric" ? t('scale.metric_hint') : t('scale.imperial_hint')}
               style={{ padding: "6px 10px", border: `1px solid ${units === "metric" ? "var(--cobalt)" : "var(--ink-faint)"}`, background: units === "metric" ? "var(--cobalt)" : "transparent", color: units === "metric" ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, lineHeight: 1 }}>
-              {units === "metric" ? "m" : "ft"}
+              {units === "metric" ? t('scale.metric') : t('scale.imperial')}
             </button>
             <ToolMenu
               title={scaleTitle}
@@ -7532,7 +7532,7 @@ export default function TakeoffCanvas() {
                   <div style={{ fontSize: 22, fontWeight: 700, color: "var(--ink)" }}>{num(areaVal(liveLF * condH, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)} {t('readout.wall')}</span></div>
                   <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{fl(liveLF)} × {num(condH, 2)} ft</div>
                 </>
-              ) : <div style={{ fontSize: 12.5, color: "var(--c-danger)" }}>{t('status.set_height', { tag: aCond?.finish_tag || "this condition" })}</div>;
+              ) : <div style={{ fontSize: 12.5, color: "var(--c-danger)" }}>{t('status.set_height', { tag: aCond?.finish_tag || t('status.this_condition') })}</div>;
             })()
           ) : tool === "zone" && poly.length >= 1 ? (
             zoneTraceCross ? (
@@ -7788,7 +7788,7 @@ export default function TakeoffCanvas() {
         <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 60, display: "flex", alignItems: "center", gap: 12, maxWidth: 640, padding: "10px 14px", background: "var(--paper-bright)", border: "1px solid var(--c-danger)", boxShadow: "var(--shadow-2)", fontSize: 12.5, color: "var(--ink)" }}>
           <span>
             <strong style={{ color: "var(--c-danger)" }}>{t('status.couldnt_open_drive')}</strong> ({loadError}).
-            Autosave is paused so nothing overwrites your saved work — reload the tab to retry.
+            {t('status.load_error_hint')}
           </span>
           <button onClick={() => window.location.reload()} style={{ whiteSpace: "nowrap", padding: "6px 12px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", cursor: "pointer", fontSize: 12 }}>{t('status.reload')}</button>
         </div>
@@ -7838,8 +7838,8 @@ export default function TakeoffCanvas() {
           </span>
         )}
         <span style={{ marginLeft: "auto", display: "flex", gap: 12, opacity: 0.75 }} aria-live="polite">
-          <span>{shapes.filter((s) => panelKeySet.has(s.sheet_id)).length} shapes</span>
-          <span>{cloudMode ? "drive" : "local"}{saveState === "saving" ? " · saving…" : saveState === "saved" ? " · saved" : ""}</span>
+          <span>{shapes.filter((s) => panelKeySet.has(s.sheet_id)).length} {t('status.shapes')}</span>
+          <span>{cloudMode ? t('status.drive') : t('status.local2')}{saveState === "saving" ? ` · ${t('status.saving')}` : saveState === "saved" ? ` · ${t('status.saved')}` : ""}</span>
         </span>
       </footer>
       {/* BYO-key AI settings — the single config surface for the ai.js seam
