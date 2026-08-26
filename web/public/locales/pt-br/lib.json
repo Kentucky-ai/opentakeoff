@@ -238,13 +238,15 @@
     "none_tried": "nenhuma foi tentada",
     "some_of_tried": "{{n}} de {{tried}} etiqueta{{suffix}} de sala produziu uma sala{{extra}}.",
     "extra_on_sheet": " ({{count}} na planta)",
-    "stopped_early_untried": "Parou mais cedo — {{count}} etiqueta{{suffix}} de sala {{verb}} nunca tentada.",
+    "stopped_early_untried": "Parou mais cedo — {{count}} etiqueta{{suffix}} de sala não {{verb}} tentada.",
     "stopped_early": "Parou mais cedo.",
     "other_numerals": "{{count}} outro{{suffix}} numeral{{suffix}} rejeitado como não sendo etiqueta de sala (áreas impressas, dimensões, números de desenho, texto do bloco de título).",
     "tag_nothing": "{{count}} etiqueta{{suffix}} não produziu nada — o preenchimento vazou pela sala ou caiu em traçado denso.",
     "tiny_proposal_it": "{{count}} proposta{{suffix}} abaixo de {{sf}} SF — geralmente a caixa desenhada ao redor de uma etiqueta de sala, não uma sala. Rejeite-a.",
     "tiny_proposal_them": "{{count}} proposta{{suffix}} abaixo de {{sf}} SF — geralmente a caixa desenhada ao redor de uma etiqueta de sala, não uma sala. Rejeite-as.",
-    "no_tag_caveat": "Apenas salas com etiqueta de número de sala são encontradas — corredores, elevados e vestíbulos geralmente não carregam e NÃO são detectados. Use One-Click neles."
+    "no_tag_caveat": "Apenas salas com etiqueta de número de sala são encontradas — corredores, elevados e vestíbulos geralmente não carregam e NÃO são detectados. Use One-Click neles.",
+    "verb_was": "foi",
+    "verb_were": "foram"
   },
   "voice": {
     "condition_active": "{{tag}} ativo.",
@@ -308,7 +310,7 @@
   "sweep": {
     "ratio_not_finite": "A proporção de tamanho deve ser um número positivo e finito (px da planta semente por px da planta alvo) — obtido {{k}}.",
     "ratio_out_of_band": "A proporção de tamanho {{k}} está fora da faixa aceitável ({{min}} – {{max}}) — isso é uma divergência maior do que qualquer par real de plantas, então a causa mais provável é uma escala errada em uma das duas plantas. Verifique set_scale em ambas antes de varrer entre elas.",
-    "ratio_all_subpixel": "Em uma proporção de tamanho {{k}}, todos os segmentos deste símbolo ficam abaixo de {{min}} px na planta alvo — não há traçado restante para corresponder. Selecionone uma instância desenhada na própria planta alvo.",
+    "ratio_all_subpixel": "Em uma proporção de tamanho {{k}}, todos os segmentos deste símbolo ficam abaixo de {{min}} px na planta alvo — não há traçado restante para corresponder. Selecione uma instância desenhada na própria planta alvo.",
     "no_segments_in_rect": "Nenhum segmento vetorial está totalmente dentro do retângulo semente — selecione apertadamente ao redor de uma única instância do símbolo (segmentos cruzando a borda do retângulo não contam como o símbolo).",
     "too_many_segments": "O retângulo semente contém {{count}} segmentos — isso é uma região, não uma instância de símbolo. Selecione um único símbolo.",
     "exclude_center_scale": "excludeCenter é um ponto na planta SEMENTE e não significa nada em uma planta alvo em escala diferente — omita ao varrer entre plantas (não há semente lá para suprimir).",

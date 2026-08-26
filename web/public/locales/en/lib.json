@@ -244,7 +244,9 @@
     "tag_nothing": "{{count}} tag{{suffix}} produced nothing — the fill leaked past the room, or landed in dense linework.",
     "tiny_proposal_it": "{{count}} proposal{{suffix}} under {{sf}} SF — usually the box drawn around a room tag, not a room. Reject it.",
     "tiny_proposal_them": "{{count}} proposal{{suffix}} under {{sf}} SF — usually the box drawn around a room tag, not a room. Reject them.",
-    "no_tag_caveat": "Only rooms carrying a room-number tag are found — corridors, elevators and vestibules usually carry none and are NOT detected. One-Click those."
+    "no_tag_caveat": "Only rooms carrying a room-number tag are found — corridors, elevators and vestibules usually carry none and are NOT detected. One-Click those.",
+    "verb_was": "was",
+    "verb_were": "were"
   },
   "voice": {
     "condition_active": "{{tag}} active.",

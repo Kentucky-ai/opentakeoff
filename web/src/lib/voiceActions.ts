@@ -19,6 +19,7 @@
 // is validated FIRST, so a stale/off-sheet aim rejects with zero calls.
 import { parseVoiceIntent, type Intent, type RejectReason } from "./voiceIntent.ts";
 import i18n from "../i18n/index.js";
+import { markDanger } from "./danger.js";
 
 const _t = (key: string, opts?: Record<string, unknown>) => i18n.t(key, { ns: "lib", ...opts });
 
@@ -66,19 +67,19 @@ export type VoiceCapabilities = {
  *  reason and are never offerable. */
 export type VoiceOutcome = { ok: boolean; message: string; reason?: RejectReason };
 
-/** Every value MUST start with "Couldn't" — that prefix is what the commitMsg
- *  bar's isDangerMsg keys on to render red + sticky. */
+/** Every value MUST be registered via markDanger() so isDangerMsg classifies
+ *  them as red + sticky regardless of language content. */
 export const REJECTION_MESSAGES: Record<RejectReason, string> = {
-  empty: "Couldn't hear a command.",
-  unrecognized: 'Couldn\'t parse that — try "CPT-1", "waste 7", "label Phase 1", or "note …".',
-  unknown_tag: "Couldn't match that tag — say a live condition tag, or a Div-9 code like CPT-2 to create one.",
-  bad_number: 'Couldn\'t read the waste number — say 0–100, e.g. "waste 7" or "waste 7.5".',
-  trailing_words: "Couldn't parse — extra words after the command. One command at a time.",
-  deixis_no_condition: 'Couldn\'t trace — no active condition. Name one, like "CPT-1, this room".',
-  deixis_target: 'Couldn\'t aim that — "here"/"this room" places a takeoff, not a note or label clear.',
+  empty: markDanger("Couldn't hear a command."),
+  unrecognized: markDanger('Couldn\'t parse that — try "CPT-1", "waste 7", "label Phase 1", or "note …".'),
+  unknown_tag: markDanger("Couldn't match that tag — say a live condition tag, or a Div-9 code like CPT-2 to create one."),
+  bad_number: markDanger('Couldn\'t read the waste number — say 0–100, e.g. "waste 7" or "waste 7.5".'),
+  trailing_words: markDanger("Couldn't parse — extra words after the command. One command at a time."),
+  deixis_no_condition: markDanger('Couldn\'t trace — no active condition. Name one, like "CPT-1, this room".'),
+  deixis_target: markDanger('Couldn\'t aim that — "here"/"this room" places a takeoff, not a note or label clear.'),
 };
 
-const fail = (message: string): VoiceOutcome => ({ ok: false, message });
+const fail = (message: string): VoiceOutcome => ({ ok: false, message: markDanger(message) });
 const done = (message: string): VoiceOutcome => ({ ok: true, message });
 
 /** Apply one parsed intent through the capabilities. Never throws; a failed

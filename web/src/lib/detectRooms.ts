@@ -403,8 +403,11 @@ export interface DetectionReport {
  *  unconditional on purpose: it is exactly when the pass looks perfect (every
  *  tag produced a room) that the readout is most likely to be misread as
  *  "sheet complete". */
-export const NO_TAG_CAVEAT =
-  _t("detected.no_tag_caveat");
+/** Legacy constant — frozen at import time. Prefer noTagCaveat() for current translation. */
+export const NO_TAG_CAVEAT = _t("detected.no_tag_caveat");
+
+/** Resolve at call time (reflects mid-session language switch). */
+export function noTagCaveat() { return _t("detected.no_tag_caveat"); }
 
 const plural = (n: number) => (n === 1 ? "" : "s");
 
@@ -442,7 +445,7 @@ export function detectionReport(t: DetectionTally, tinySf = 4): DetectionReport 
       ? _t("detected.stopped_early_untried", {
           count: untried,
           suffix: sfx(untried),
-          verb: untried === 1 ? "was" : "were",
+          verb: _t(untried === 1 ? "detected.verb_was" : "detected.verb_were"),
         })
       : _t("detected.stopped_early"));
   }
@@ -461,6 +464,6 @@ export function detectionReport(t: DetectionTally, tinySf = 4): DetectionReport 
       sf: tinySf,
     }));
   }
-  limits.push(NO_TAG_CAVEAT);
+  limits.push(noTagCaveat());
   return { headline, limits, message: [headline, ...limits].join(" "), empty: n === 0 };
 }

@@ -135,7 +135,14 @@ export function isStaleTabError(e) {
 // The one UI copy for stale-tab failures. TakeoffCanvas routes its message
 // tint on exact equality with this string, so every surface must use the
 // constant — a local paraphrase would silently render in the success color.
+// STALE_TAB_KEY is the stable, language-independent token for comparisons;
+// STALE_TAB_MESSAGE is the translated display string (frozen at import time).
+export const STALE_TAB_KEY = "__stale_tab__";
 export const STALE_TAB_MESSAGE = markDanger(_t("store.stale_tab"));
+
+/** Resolve the stale-tab message at call time (reflects a mid-session
+ *  language switch). Use where the display string must be current. */
+export function staleTabMessage() { return markDanger(_t("store.stale_tab")); }
 
 // Map raw store errors to copy the user can act on; falls back to the
 // error's own message for everything unrecognized.
@@ -203,7 +210,7 @@ export const localStore = {
 
   async loadPdfData(name) {
     const rec = await withDb((db) => tx(db, PDF_STORE, "readonly", (os) => os.get(name)));
-    if (!rec) throw new Error(`PDF not found in local store: ${name}`);
+    if (!rec) throw new Error(_t("store.pdf_not_found", { name }));
     // hand pdf.js a fresh view each call — getDocument({data}) may detach it
     return new Uint8Array(rec.bytes);
   },
@@ -280,7 +287,7 @@ export const localStore = {
     const cur = await withDb((db) => tx(db, PDF_STORE, "readonly", (os) => os.get(name)));
     if (cur && (cur.rev || 1) === rev) return new Uint8Array(cur.bytes);
     const rec = await withDb((db) => tx(db, REV_STORE, "readonly", (os) => os.get(revKey(name, rev))));
-    if (!rec) throw new Error(`Revision ${rev} of ${name} not found in local store`);
+    if (!rec) throw new Error(_t("store.revision_not_found", { rev, name }));
     return new Uint8Array(rec.bytes);
   },
 

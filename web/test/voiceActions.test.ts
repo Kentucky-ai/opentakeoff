@@ -311,6 +311,19 @@ test("every failure message starts with \"Couldn't\" (the isDangerMsg red/sticky
   for (const f of fails) assert.ok(!f.ok && f.message.startsWith("Couldn't"), f.message);
 });
 
+test("every failure message is danger-tagged via markDanger (isDangerMsg registry)", async () => {
+  const { isDanger } = await import("../src/lib/danger.js");
+  for (const msg of Object.values(REJECTION_MESSAGES))
+    assert.ok(isDanger(msg), `REJECTION_MESSAGES value should be danger-tagged: "${msg}"`);
+  const { caps } = makeCtx({ getActiveConditionId: () => "" });
+  const fails: VoiceOutcome[] = [
+    applyVoiceIntent(caps, { kind: "set_waste", waste: 7 }),
+    applyVoiceIntent(caps, { kind: "activate_condition", tag: "GHOST-9", known: true }),
+    await applyVoiceIntent(caps, { kind: "trace_at_cursor" }) as VoiceOutcome,
+  ];
+  for (const f of fails) assert.ok(isDanger(f.message), `inline fail() message should be danger-tagged: "${f.message}"`);
+});
+
 // ── Part B: state-model deep-equal (RFC bullet 7 verbatim) ─────────────────
 // makeApp() mirrors the canvas verbs' exact semantics with deterministic ids
 // and no timestamps; caps are bound over the SAME verbs, exactly as
