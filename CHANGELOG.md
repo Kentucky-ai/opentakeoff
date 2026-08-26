@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-26 — the readout keeps a tape log
+
+### Added
+- **MEASUREMENTS under the condition total.** The live readout now lists every linear run and wall of the active condition, numbered in draw order: a run as its length (`01 47.2 LF linear`), a wall as the tape math (`03 39.1 LF × 8 ft = 313.1 SF`), per-wall height winning over the condition height. The lines sum to the totals above them, so a wall-tile figure is checked line by line without opening the panel; metric converts each line. Pure tally in `lib/measurementBreakdown.js` (tested), reading stored shape metrics — nothing is re-measured. Prompted by a downstream fork's spec (replicant026/fork-opentakeoff, PR #341); implemented here independently.
+
 ## 2026-08-24 — the takeoff goes back into CAD
 
 ### Added
