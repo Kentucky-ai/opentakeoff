@@ -79,6 +79,7 @@
   "label.label_active": "Label · {{label}}",
   "label.label_shape": "Label · {{label}} → shape",
   "label.title": "Phase/area label. The caption shows the ACTIVE label (what new takeoffs get). With a shape selected (Select tool), the dropdown shows and re-labels that shape. Manage the list in the Columns tab.",
+  "command.label": "Command",
   "command.placeholder": "cpt 1 · waste 7 · this room",
   "command.title": "Command line (RFC #59): a condition tag (\"CPT-1\", \"carpet one\", \"tile 2 waste 5\"), \"waste 7\", \"label Phase 1\", \"clear label\", or \"note …\" — Enter runs it through the same actions the buttons use. End with \"this room\" / \"here\" while the pointer rests on a room to trace and commit it there (\"carpet one, this room\"). Push-to-talk dictation will feed this box.",
   "voice.cluster": "Voice",
