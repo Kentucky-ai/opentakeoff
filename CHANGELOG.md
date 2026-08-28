@@ -2,6 +2,12 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## 2026-08-28 — richer variants are named, and variant_guard makes them questions
+
+### Added
+- **`extra` disclosure on symbol_sweep placements.** A placement that reproduces the whole seed but carries more than 30% unmatched extra linework fully inside its footprint (a register against a grille seed — the same outline plus louvers) now carries its measured `extra` fraction on the row, in both scopes. By default it still counts — the #259 contained-seed workflow depends on supersets matching — but the classic mislabel is named instead of hiding in the count. Background lines crossing the symbol and coincident duplicate ink never trip it.
+- **`variant_guard: true` on symbol_sweep** — whole-symbol mode: extra-ink placements demote to `withheld` as questions instead of counting. Stands down automatically when `exclude` counter-examples are in play (negatives are manual variant discrimination). `sweep_schedule_row` keeps disclosure only — tag corroboration already discriminates variants there. (mcp 0.9.66)
+
 ## 2026-08-26 — the readout keeps a tape log
 
 ### Added
