@@ -120,3 +120,16 @@ test("degenerate rings are ignored rather than throwing", () => {
   assert.deepEqual(sharedRuns([[0, 0], [1, 1]] as Pt[], rect(0, 0, 10, 10), OPTS), []);
   assert.deepEqual(sharedRuns(rect(0, 0, 10, 10), [] as Pt[], OPTS), []);
 });
+
+test("sampleRing refuses a non-positive step instead of spinning forever", () => {
+  // step=0 made n = Infinity and the per-segment loop never terminated.
+  const r = rect(0, 0, 100, 100);
+  assert.deepEqual(sampleRing(r, 0), []);
+  assert.deepEqual(sampleRing(r, -5), []);
+  assert.deepEqual(sampleRing(r, NaN), []);
+  // and sharedRuns degrades to "no runs" rather than hanging the caller
+  assert.deepEqual(
+    sharedRuns(r, rect(100, 0, 200, 100), { step_px: 0, touch_px: 1, max_gap_px: 12, min_len_px: 10 }),
+    []
+  );
+});

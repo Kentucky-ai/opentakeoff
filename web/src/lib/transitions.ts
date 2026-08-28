@@ -100,6 +100,10 @@ export function distToRing(p: Pt, ring: Pt[]): number {
 
 /** Walk a closed ring at a fixed step, returning the sample points in order. */
 export function sampleRing(ring: Pt[], step: number): Pt[] {
+  // A non-positive (or NaN) step is not a finer walk, it is n = Infinity — the
+  // per-segment loop below never terminates and the tab hangs. Both in-tree
+  // callers clamp their step, but this is exported API: refuse, don't spin.
+  if (!(step > 0)) return [];
   const out: Pt[] = [];
   for (const [a, b] of segments(ring)) {
     const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
