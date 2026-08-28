@@ -173,6 +173,7 @@ const sweepPlacement = {
   score: z.number().describe("Length-weighted fraction of the seed's segments matched within tolerance, 0..1"),
   rotation: z.number().describe("Detected rotation in degrees (0 | 90 | 180 | 270)"),
   mirrored: z.boolean(),
+  extra: z.number().optional().describe("Richer-variant disclosure: the fraction of the seed's total length found as UNMATCHED extra linework fully inside this placement's footprint, present when past the 0.30 bar — the classic grille-counted-as-register shape; LOOK at these first. Under variant_guard such placements demote to withheld instead of matching"),
   label: z.string().optional().describe("The drawing's own tag for this placement (#308) — a fixture token written beside it or connected by a drawn leader (e.g. \"P-7\", \"FD1\"). Disclosure, never a recount: a match with NO label in a labeled family was counted on shape alone (look before trusting), and a withheld row carrying the seed's own tag is the drawing vouching for it"),
   label_via: z.enum(["adjacent", "leader"]).optional().describe("How the tag reached this placement: written beside it, or followed along a drawn leader line (leader-following arms only on multi-pen sheets, where the annotation pen separates from the work)"),
 };

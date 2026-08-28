@@ -300,3 +300,78 @@ test("seed diagnostics: centroid and total length are the fingerprint's own", ()
   // the match center is the SAME construction, translated
   assert.ok(Math.abs(r.matches[0].at[0] - 111.95) < 0.1);
 });
+
+// ── SWEEP_EXTRA_MAX — richer-variant disclosure + the variant guard ──────────
+// (field report: grilles / vents / registers confused; guard semantics ported
+// from Spline, disclosure default preserving #259's contained-seed contract)
+
+test("EXTRA disclosure (default): a richer variant still matches, but its extra fraction is named on the row", () => {
+  // seed = plain 20×20 square; candidates: two plain squares, one square
+  // carrying a diagonal (extra ≈ 28.28/80 ≈ 0.354 > the 0.30 bar)
+  const sq: [number, number, number, number][] = [[0, 0, 20, 0], [20, 0, 20, 20], [20, 20, 0, 20], [0, 20, 0, 0]];
+  const segs = place([
+    { at: [0, 0], segs: sq },
+    { at: [100, 0], segs: sq },
+    { at: [200, 0], segs: sq },
+    { at: [300, 0], segs: [...sq, [0, 0, 20, 20]] },   // the "register"
+  ]);
+  const r = sweepSymbols(segs, [[-2, -2], [22, 22]]);
+  assert.equal(r.matches.length, 3, "supersets still match by default — the #259 contract");
+  const suspect = r.matches.filter((m) => m.extra !== undefined);
+  assert.equal(suspect.length, 1, "exactly one match is a named variant suspect");
+  assert.ok(suspect[0].at[0] > 290 && suspect[0].at[0] < 330, "and it is the square-plus-diagonal");
+  assert.ok((suspect[0].extra ?? 0) > 0.30 && (suspect[0].extra ?? 0) < 0.42,
+    `reported extra ${suspect[0].extra} is the diagonal's share`);
+  assert.ok(r.matches.filter((m) => m.at[0] < 290).every((m) => m.extra === undefined),
+    "plain squares carry no extra field");
+});
+
+test("VARIANT GUARD: under variantGuard the richer variant demotes to withheld with the variant reason", () => {
+  const sq: [number, number, number, number][] = [[0, 0, 20, 0], [20, 0, 20, 20], [20, 20, 0, 20], [0, 20, 0, 0]];
+  const segs = place([
+    { at: [0, 0], segs: sq },
+    { at: [100, 0], segs: sq },
+    { at: [300, 0], segs: [...sq, [0, 0, 20, 20]] },
+  ]);
+  const r = sweepSymbols(segs, [[-2, -2], [22, 22]], { variantGuard: true });
+  assert.equal(r.matches.length, 1, "only the plain square matches under the guard");
+  const demoted = r.withheld.filter((w) => /extra linework the seed lacks/.test(w.reason));
+  assert.equal(demoted.length, 1, "the variant is a disclosed question, never dropped");
+  assert.ok((demoted[0].extra ?? 0) > 0.30, `demoted row carries its extra (${demoted[0].extra})`);
+});
+
+test("EXTRA: coincident duplicate ink and background runs CROSSING the footprint trip neither mode", () => {
+  const sq: [number, number, number, number][] = [[0, 0, 20, 0], [20, 0, 20, 20], [20, 20, 0, 20], [0, 20, 0, 0]];
+  const segs = place([
+    { at: [0, 0], segs: sq },
+    { at: [100, 0], segs: [...sq, ...sq] },                       // fill+stroke drawn twice
+    { at: [200, 0], segs: [...sq, [-20, 10, 60, 10]] },           // a wall run crossing through
+  ]);
+  const guarded = sweepSymbols(segs, [[-2, -2], [22, 22]], { variantGuard: true });
+  assert.equal(guarded.matches.length, 2, "duplicate-ink and crossed placements both match under the guard");
+  assert.ok(guarded.matches.every((m) => m.extra === undefined), "and neither is a suspect");
+});
+
+test("VARIANT GUARD stands down in manual mode: counter-examples keep the contained-seed workflow whole (#259)", () => {
+  // seed = bare square; the "drains" (square + diagonal) are wanted matches.
+  // A louver-variant is excluded via counter-example (its extra ink is
+  // DISJOINT from the drains', so the negative discriminates cleanly). Even
+  // with variantGuard requested, negatives take over and the drains count.
+  const sq: [number, number, number, number][] = [[0, 0, 20, 0], [20, 0, 20, 20], [20, 20, 0, 20], [0, 20, 0, 0]];
+  const drain: [number, number, number, number][] = [...sq, [0, 0, 20, 20]];
+  const louver: [number, number, number, number][] = [...sq, [0, 7, 20, 7], [0, 14, 20, 14]];
+  const segs = place([
+    { at: [0, 0], segs: sq },          // the seed (a bare square)
+    { at: [100, 0], segs: drain },
+    { at: [200, 0], segs: drain },
+    { at: [300, 0], segs: louver },    // the counter-example's target
+  ]);
+  const fp = fingerprintSymbol(segs, [[-2, -2], [22, 22]]);
+  const withNeg = matchSymbol(fp, segs, { excludeCenter: fp.center, variantGuard: true, exclude: [[[297, -3], [323, 23]]] });
+  assert.equal(withNeg.matches.length, 2, "both drains count — the guard stood down for manual mode");
+  assert.equal(withNeg.rejected.length, 1, "and the louver variant is the negative's rejection");
+  const bare = matchSymbol(fp, segs, { excludeCenter: fp.center, variantGuard: true });
+  assert.equal(bare.matches.length, 0, "without negatives the guard holds: nothing over the bar commits");
+  assert.equal(bare.withheld.filter((w) => /extra linework/.test(w.reason)).length, 3,
+    "drains and louver variant all come back as disclosed questions, never dropped");
+});

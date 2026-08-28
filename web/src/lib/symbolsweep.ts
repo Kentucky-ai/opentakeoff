@@ -80,6 +80,11 @@ export interface SweepOptions {
   scoreHigh?: number;
   /** Withhold floor: [scoreLow, scoreHigh) is a reported near-match (default 0.75). */
   scoreLow?: number;
+  /** Whole-symbol mode: demote richer-variant placements (extra linework past
+   * SWEEP_EXTRA_MAX) to withheld instead of matching them with disclosure.
+   * Default false — the contained-seed workflow (#259) depends on supersets
+   * matching. Stands down when counter-examples are in play. */
+  variantGuard?: boolean;
   /** Cap on scored placements (default SWEEP_CANDIDATE_CEILING — every
    * proposal is scored unless the sheet is pathological). Overflow is
    * counted in candidates.dropped and flips `complete` false, never silent. */
@@ -116,6 +121,11 @@ export interface SweepMatch {
   /** Detected rotation, degrees CW in image space (y down): 0 | 90 | 180 | 270. */
   rotation: number;
   mirrored: boolean;
+  /** SWEEP_EXTRA_MAX disclosure: present when the placement carries more than
+   * the bar in UNMATCHED extra linework (fraction of the seed's total length)
+   * — a richer-variant suspect. On a match row it says LOOK AT THIS ONE FIRST;
+   * under variantGuard such placements demote to withheld instead. */
+  extra?: number;
 }
 
 export interface SweepWithheld extends SweepMatch {
@@ -173,6 +183,26 @@ export interface SweepResult {
 export const SWEEP_TOL_PX = 2;
 export const SWEEP_SCORE_HIGH = 0.92;
 export const SWEEP_SCORE_LOW = 0.75;
+/** The richer-variant bar (field report: grilles / vents / registers
+ * confused). Recall alone cannot tell a symbol from a RICHER variant: a
+ * supply register is a grille plus louver lines, so against a grille seed it
+ * reproduces 100% of the seed's linework and reads as a match. Extra ink is
+ * measured as the fraction of the seed's total length found UNMATCHED inside
+ * the placement's footprint (fully inside, so a background run crossing the
+ * symbol never counts against it — and coincident duplicate ink matches the
+ * seed, so fill-and-stroke pairs and abutting tiles never count either).
+ *
+ * Two modes, because the same geometry carries opposite intents:
+ * — DISCLOSURE (default): matches stand — #259's contained-seed workflow
+ *   (seed a bare sub-shape, count the richer symbols that contain it, then
+ *   exclude what you don't mean) depends on supersets matching — but every
+ *   match past this bar carries its measured `extra` fraction, so a mislabel
+ *   is named on the row instead of hiding in the count.
+ * — GUARD (variantGuard: true): a whole-symbol workflow — such placements
+ *   demote to withheld with the variant reason, Spline's behavior (where
+ *   this term shipped first). The guard stands down when counter-examples
+ *   are in play: supplying negatives IS manual variant discrimination. */
+export const SWEEP_EXTRA_MAX = 0.30;
 /** Hard ceiling on scored placements. Proposals are fully enumerated before
  * this ever applies, so it bounds SCORING time only — measured ~1.6 s at 87.5k
  * on a 50k-segment sheet (#261), so the ceiling costs single-digit seconds at
@@ -244,6 +274,19 @@ class EndpointGrid {
     }
   }
   private key(cx: number, cy: number): number { return cx * 73856093 ^ cy * 19349663; }
+  /** Segment indices with an endpoint anywhere in the rect (deduped) — the
+   * SWEEP_EXTRA_MAX footprint query; any segment FULLY inside the rect
+   * necessarily has both endpoints in covered cells. */
+  nearRect(x0: number, y0: number, x1: number, y1: number): Set<number> {
+    const out = new Set<number>();
+    const c0x = Math.floor(x0 / this.cell), c1x = Math.floor(x1 / this.cell);
+    const c0y = Math.floor(y0 / this.cell), c1y = Math.floor(y1 / this.cell);
+    for (let cy = c0y; cy <= c1y; cy++) for (let cx = c0x; cx <= c1x; cx++) {
+      const a = this.cells.get(this.key(cx, cy));
+      if (a) for (const i of a) out.add(i);
+    }
+    return out;
+  }
   private add(x: number, y: number, i: number): void {
     const k = this.key(Math.floor(x / this.cell), Math.floor(y / this.cell));
     const a = this.cells.get(k);
@@ -333,6 +376,10 @@ export interface MatchOptions extends SweepOptions {
    * detail and swept across a 1/8" plan passes ~1/12. NEVER searched: the
    * caller states it from two committed scales or doesn't sweep across them. */
   scale?: number;
+  /** Richer-variant bar (default SWEEP_EXTRA_MAX): a high-recall placement
+   * whose footprint carries more than this fraction of unmatched extra
+   * linework demotes to withheld with the variant reason. */
+  extraMax?: number;
 }
 
 /** A fingerprint resized by a stated ratio, for matching against a sheet drawn
@@ -979,6 +1026,64 @@ export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOp
     survivors.push(sc);
   }
 
+  // ── 4c. precision (SWEEP_EXTRA_MAX): extra ink the seed lacks ──────────────
+  // Only high-recall survivors need the check (it decides match vs withheld,
+  // never resurrects a low scorer, and negatives have already had their say).
+  // A sheet segment counts as EXTRA only if it sits FULLY inside the
+  // placement's transformed seed bbox (pad tol) AND matches no transformed
+  // seed segment: fully-inside excludes background runs crossing the symbol,
+  // no-seed-match excludes coincident duplicate ink and abutting tiles.
+  // Two modes (see SWEEP_EXTRA_MAX): DISCLOSURE by default — supersets match,
+  // because #259's contained-seed workflow (seed a bare square every drain
+  // CONTAINS, then exclude the decoys) depends on exactly that — with the
+  // extra fraction named on any match past the bar. GUARD under variantGuard —
+  // the whole-symbol workflow, where a superset is a mislabel suspect and
+  // demotes to withheld. The guard stands down when counter-examples are in
+  // play: bringing negatives IS taking manual control of variant
+  // discrimination, and it is how a contained-seed caller who ALSO wants the
+  // guard's semantics expresses which supersets they mean.
+  const manual = (opts.exclude?.length ?? 0) + (opts.negatives?.length ?? 0) > 0;
+  const extraBar = opts.extraMax ?? SWEEP_EXTRA_MAX;
+  const guardOn = opts.variantGuard === true && !manual;
+  const relBBoxByXf = new Map<number, [number, number, number, number]>();
+  const relBBoxFor = (xi: number): [number, number, number, number] => {
+    let bb = relBBoxByXf.get(xi);
+    if (bb) return bb;
+    const { m } = xforms[xi];
+    bb = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const r of rel) {
+      const a = apply(m, r[0], r[1]), b = apply(m, r[2], r[3]);
+      bb[0] = Math.min(bb[0], a[0], b[0]); bb[1] = Math.min(bb[1], a[1], b[1]);
+      bb[2] = Math.max(bb[2], a[0], b[0]); bb[3] = Math.max(bb[3], a[1], b[1]);
+    }
+    relBBoxByXf.set(xi, bb);
+    return bb;
+  };
+  const extraFor = (s: Scored): number => {
+    const bb = relBBoxFor(s.xf);
+    const bx0 = bb[0] + s.at[0] - tol, by0 = bb[1] + s.at[1] - tol;
+    const bx1 = bb[2] + s.at[0] + tol, by1 = bb[3] + s.at[1] + tol;
+    const { m } = xforms[s.xf];
+    const placed = rel.map((r) => {
+      const a = apply(m, r[0], r[1]), b = apply(m, r[2], r[3]);
+      return [a[0] + s.at[0], a[1] + s.at[1], b[0] + s.at[0], b[1] + s.at[1]] as const;
+    });
+    let extraLen = 0;
+    for (const j of grid.nearRect(bx0, by0, bx1, by1)) {
+      const px = segs[j * 4], py = segs[j * 4 + 1], qx = segs[j * 4 + 2], qy = segs[j * 4 + 3];
+      if (px < bx0 || px > bx1 || py < by0 || py > by1 || qx < bx0 || qx > bx1 || qy < by0 || qy > by1) continue;
+      let covered = false;
+      for (const t of placed) {
+        if ((near(px, py, t[0], t[1]) && near(qx, qy, t[2], t[3]))
+          || (near(qx, qy, t[0], t[1]) && near(px, py, t[2], t[3]))) { covered = true; break; }
+      }
+      if (!covered) extraLen += segLen(segs, j);
+    }
+    return extraLen / totalLen;
+  };
+  const extraOf = new Map<Scored, number>();
+  for (const s of survivors) if (s.score >= scoreHigh) extraOf.set(s, extraFor(s));
+
   const matches: SweepMatch[] = [];
   const withheld: SweepWithheld[] = [];
   const pct = (v: number): number => Math.round(v * 1000) / 1000;
@@ -988,10 +1093,26 @@ export function matchSymbol(fp: SymbolFingerprint, segs: number[], opts: MatchOp
     rotation: s.rotation,
     mirrored: s.mirrored,
   });
-  for (const s of survivors) if (s.score >= scoreHigh) matches.push(row(s));
+  const isMatch = (s: Scored): boolean =>
+    s.score >= scoreHigh && (!guardOn || (extraOf.get(s) ?? 0) <= extraBar);
   for (const s of survivors) {
-    if (s.score >= scoreHigh) continue;
+    if (!isMatch(s)) continue;
+    const ev = extraOf.get(s) ?? 0;
+    // disclosure: a match carrying substantial extra ink is a variant SUSPECT
+    // — named on the row so it is looked at first, never hidden in the count
+    matches.push(ev > extraBar ? { ...row(s), extra: pct(ev) } : row(s));
+  }
+  for (const s of survivors) {
+    if (isMatch(s)) continue;
     if (matches.some((m) => Math.hypot(m.at[0] - s.at[0], m.at[1] - s.at[1]) <= suppressR)) continue;
+    if (s.score >= scoreHigh) {
+      const ev = extraOf.get(s) ?? 0;
+      withheld.push({
+        ...row(s), extra: pct(ev),
+        reason: `reproduces ${Math.round(s.score * 100)}% of the seed but carries ~${Math.round(ev * 100)}% extra linework the seed lacks (bar ${Math.round(extraBar * 100)}%) — under variant_guard a richer variant (a different grille/register/fixture type) is a question, not a count; look before counting it. If you meant to seed a contained sub-shape and count the richer symbols, drop variant_guard or pass a counter-example around the variant you DON'T mean`,
+      });
+      continue;
+    }
     withheld.push({ ...row(s), reason: `matched ${Math.round(s.score * 100)}% of the seed's linework (commit bar ${Math.round(scoreHigh * 100)}%) — likely a variant or an overlapped instance; look before counting it` });
   }
   const order = (a: SweepMatch, b: SweepMatch): number =>
