@@ -157,6 +157,11 @@ test("sampleRing refuses a non-positive step instead of spinning forever", () =>
   assert.deepEqual(sampleRing(r, 0), []);
   assert.deepEqual(sampleRing(r, -5), []);
   assert.deepEqual(sampleRing(r, NaN), []);
+  // a subnormal step passes `> 0` but len / step still overflows to Infinity
+  assert.deepEqual(sampleRing(r, Number.MIN_VALUE), []);
+  // a segment whose length overflows Math.hypot is skipped, not walked
+  const huge = rect(0, 0, 1e308, 1e308);
+  assert.deepEqual(sampleRing(huge, 25), []);
   // and sharedRuns degrades to "no runs" rather than hanging the caller
   assert.deepEqual(
     sharedRuns(r, rect(100, 0, 200, 100), { step_px: 0, touch_px: 1, max_gap_px: 12, min_len_px: 10 }),

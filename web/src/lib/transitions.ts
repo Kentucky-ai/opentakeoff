@@ -98,6 +98,9 @@ export function distToRing(p: Pt, ring: Pt[]): number {
   return nearestOnRing(p, ring).d;
 }
 
+/** More samples than any real ring walk could want — the refuse-don't-spin cap. */
+const SAMPLE_BUDGET = 1_000_000;
+
 /** Walk a closed ring at a fixed step, returning the sample points in order. */
 export function sampleRing(ring: Pt[], step: number): Pt[] {
   // A non-positive (or NaN) step is not a finer walk, it is n = Infinity — the
@@ -110,6 +113,12 @@ export function sampleRing(ring: Pt[], step: number): Pt[] {
     if (!(len > 0)) continue;
     // every segment contributes its own start, so a corner is always sampled
     const n = Math.max(1, Math.ceil(len / step));
+    // Two more roads past the step guard reach the same hang: a subnormal step
+    // (Number.MIN_VALUE passes `> 0`, then len / step overflows to Infinity)
+    // and a segment long enough — even finitely — to want more samples than
+    // any real plan walk (a quarter-foot walk of a full sheet is ~1e3). Either
+    // way this is garbage input, not a finer walk: refuse the whole ring.
+    if (!Number.isFinite(n) || out.length + n > SAMPLE_BUDGET) return [];
     for (let k = 0; k < n; k++) {
       const t = k / n;
       out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
