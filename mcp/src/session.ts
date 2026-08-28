@@ -2251,6 +2251,7 @@ export class Session {
     rotations?: boolean;
     mirror?: boolean;
     tolerancePx?: number;
+    variantGuard?: boolean;
     exclude?: [Point, Point][];
     luminanceTolerance?: number;
     commitSeed?: boolean;
@@ -2287,6 +2288,11 @@ export class Session {
       rotations: opts.rotations ?? true,
       mirror: opts.mirror ?? true,
       tolPx: opts.tolerancePx ?? SWEEP_TOL_PX,
+      // whole-symbol mode: richer-variant placements demote to withheld;
+      // stands down inside the engine when negatives are in play. NOT wired
+      // for sweep_schedule_row — tag-text corroboration already discriminates
+      // variants there, and its matches still carry the `extra` disclosure.
+      ...(opts.variantGuard ? { variantGuard: true } : {}),
       // #260 — the stated stroke-luminance gate. The tolerance travels in the
       // shared opts; the CHANNEL is per target sheet, passed at each match.
       ...(typeof opts.luminanceTolerance === "number" ? { lumTol: opts.luminanceTolerance } : {}),
@@ -2361,8 +2367,8 @@ export class Session {
       return {
         scope,
         found: res.matches.length,
-        matches: res.matches.map((m, i) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored, ...Session.labelFields(lbl.matches[i]) })),
-        withheld: res.withheld.map((w, i) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, ...Session.labelFields(lbl.withheld[i]), reason: w.reason })),
+        matches: res.matches.map((m, i) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored, ...(m.extra !== undefined ? { extra: m.extra } : {}), ...Session.labelFields(lbl.matches[i]) })),
+        withheld: res.withheld.map((w, i) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, ...(w.extra !== undefined ? { extra: w.extra } : {}), ...Session.labelFields(lbl.withheld[i]), reason: w.reason })),
         seed: { ...seedOut, ...Session.labelFields(lbl.seed) },
         ...(res.rejected.length ? { rejected: res.rejected.map((r) => ({ at: [round1(r.at[0]), round1(r.at[1])], score: r.score, rotation: r.rotation, mirrored: r.mirrored, by: r.by + 1, mode: r.mode, evidence: r.evidence, reason: r.reason })) } : {}),
         ...(res.negatives ? { negatives: res.negatives.filter((n) => !!n).map((n) => ({ mode: n!.mode, segments: n!.segments, center: [round1(n!.center[0]), round1(n!.center[1])] as [number, number] })) } : {}),
@@ -2522,8 +2528,8 @@ export class Session {
       sheets: perSheet.map((p) => ({
         sheet: p.state.key,
         found: p.matches.length,
-        matches: p.matches.map((m, i) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored, ...Session.labelFields(p.labels.matches[i]) })),
-        withheld: p.withheld.map((w, i) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, ...Session.labelFields(p.labels.withheld[i]), reason: w.reason })),
+        matches: p.matches.map((m, i) => ({ at: [round1(m.at[0]), round1(m.at[1])], score: m.score, rotation: m.rotation, mirrored: m.mirrored, ...(m.extra !== undefined ? { extra: m.extra } : {}), ...Session.labelFields(p.labels.matches[i]) })),
+        withheld: p.withheld.map((w, i) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, ...(w.extra !== undefined ? { extra: w.extra } : {}), ...Session.labelFields(p.labels.withheld[i]), reason: w.reason })),
         ...(p.rejected.length ? { rejected: p.rejected.map((r) => ({ at: [round1(r.at[0]), round1(r.at[1])], score: r.score, rotation: r.rotation, mirrored: r.mirrored, by: r.by + 1, mode: r.mode, evidence: r.evidence, reason: r.reason })) } : {}),
         ...(p.lum_gate ? { lum_gate: p.lum_gate } : {}),
         candidates: p.candidates,

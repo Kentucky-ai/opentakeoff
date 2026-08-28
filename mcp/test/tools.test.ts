@@ -2369,3 +2369,23 @@ test("count_marks: tags drawn ON their marker with no value are sweep_schedule_r
   assert.ok(t1.withheld.length >= 3, "every plan-sheet T1 occurrence is disclosed as a question");
   assert.ok(t1.withheld.every((w: any) => /amid linework|bare tag/.test(w.reason)));
 });
+
+test("symbol_sweep variant_guard: whole-symbol mode demotes the richer drains a contained seed would count", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: SYMPLAN });
+  // same fixture as #259: a bare-square seed matches every drain by default
+  // (contained-seed contract, `extra` disclosed on those rows) — under
+  // variant_guard those supersets are questions, not counts
+  const dflt = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SQUARE_RECT });
+  assert.equal(dflt.data.found, 7, "default: the #259 contract holds");
+  assert.ok(dflt.data.matches.some((m: any) => typeof m.extra === "number" && m.extra > 0.3),
+    "and the richer placements carry their extra disclosure");
+  const guarded = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SQUARE_RECT, variant_guard: true });
+  assert.equal(guarded.isError, false);
+  assert.ok(guarded.data.found < 7, "under the guard the supersets no longer count");
+  const demoted = guarded.data.withheld.filter((w: any) => /extra linework the seed lacks/.test(w.reason));
+  assert.ok(demoted.length >= 6, `the drains come back as disclosed questions (got ${demoted.length})`);
+  // manual mode still wins: guard + counter-example behaves like #259
+  const both = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SQUARE_RECT, variant_guard: true, exclude: [SEED_RECT] });
+  assert.equal(both.data.found, 1, "negatives take over — identical to the #259 sweep");
+});
