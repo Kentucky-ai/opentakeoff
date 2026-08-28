@@ -120,3 +120,33 @@ test("degenerate rings are ignored rather than throwing", () => {
   assert.deepEqual(sharedRuns([[0, 0], [1, 1]] as Pt[], rect(0, 0, 10, 10), OPTS), []);
   assert.deepEqual(sharedRuns(rect(0, 0, 10, 10), [] as Pt[], OPTS), []);
 });
+
+test("ENDPOINT REFINEMENT: a partial joint whose ends fall between samples measures full length", () => {
+  // A 100 px joint from y=107 to y=207 on A's right edge, sampled every 25 px:
+  // only y=125..200 pass the alongside test, so the samples alone measure
+  // 75 px — and a 100 px min_len gate silently drops a real transition.
+  // Refinement bisects each open end toward its rejected neighbour and finds
+  // the true endpoints at y=107 and y=207.
+  const a = rect(0, 0, 100, 400);
+  const b = rect(100, 107, 200, 207);
+  const runs = sharedRuns(a, b, { step_px: 25, touch_px: 1, max_gap_px: 12, min_len_px: 99 });
+  assert.equal(runs.length, 1, "the partial joint survives");
+  assert.equal(runs[0].kind, "butt");
+  assert.ok(Math.abs(runs[0].length_px - 100) < 0.01,
+    `run length ${runs[0].length_px} ≈ 100 (samples alone measured 75)`);
+  // the refined endpoints bound the true interval
+  const ys = runs[0].path.map((p) => p[1]);
+  assert.ok(Math.abs(Math.min(...ys) - 107) < 0.01, `head refined to y=107, got ${Math.min(...ys)}`);
+  assert.ok(Math.abs(Math.max(...ys) - 207) < 0.01, `tail refined to y=207, got ${Math.max(...ys)}`);
+});
+
+test("ENDPOINT REFINEMENT: an aligned joint is unchanged — refinement adds no phantom length", () => {
+  // B's edge endpoints land exactly on A's samples; the bisection converges to
+  // the samples themselves and the path gains nothing.
+  const a = rect(0, 0, 100, 400);
+  const b = rect(100, 100, 200, 200);
+  const runs = sharedRuns(a, b, { step_px: 25, touch_px: 1, max_gap_px: 12, min_len_px: 50 });
+  assert.equal(runs.length, 1);
+  assert.ok(Math.abs(runs[0].length_px - 100) < 0.01,
+    `aligned run stays ${runs[0].length_px} ≈ 100`);
+});
