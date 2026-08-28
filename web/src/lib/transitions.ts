@@ -197,11 +197,60 @@ export function sharedRuns(ringA: Pt[], ringB: Pt[], opts: SharedRunOpts): Share
     }
   }
 
+  // ── endpoint refinement ────────────────────────────────────────────────────
+  // A run's first and last samples are merely the outermost samples that PASSED
+  // the alongside test — the true boundary endpoint lies somewhere between each
+  // of them and its rejected neighbour, up to a full step away. Summing only
+  // the samples therefore undercuts every partial joint by as much as
+  // 2 x step_px, and a real joint sitting just over min_len_px measures under
+  // it and vanishes. (A 100 px joint from y=107 to y=207 sampled every 25 px
+  // keeps y=125..200: 75 px, gone at a 100 px gate.)
+  //
+  // sampleRing samples every segment's own start, so consecutive samples always
+  // lie on ONE ring segment — the chord between a boundary sample and its
+  // rejected neighbour IS the perimeter, and the flip point can be bisected on
+  // it exactly. The predicate mirrors the sampling one, with the tangent taken
+  // from the chord itself (on a straight edge that IS the central-difference
+  // tangent; at a corner the run ends at the corner sample anyway).
+  const alongsideAt = (p: Pt, tangent: Pt): boolean => {
+    const hit = nearestOnRing(p, ringB);
+    if (hit.d > max_gap_px) return false;
+    const dx = hit.at[0] - p[0], dy = hit.at[1] - p[1];
+    const dl = Math.hypot(dx, dy);
+    if (dl < COINCIDENT_PX) return true;
+    const tl = Math.hypot(tangent[0], tangent[1]);
+    if (tl === 0) return false;
+    return Math.abs((tangent[0] * dx + tangent[1] * dy) / (tl * dl)) <= 0.5;
+  };
+  // Bisect the chord from the passing sample toward the rejected neighbour and
+  // return the outermost point that still passes (the conservative side of the
+  // flip). Identical endpoints (an aligned joint) refine to the sample itself.
+  const refineEnd = (inside: Pt, outside: Pt): Pt => {
+    const tangent: Pt = [outside[0] - inside[0], outside[1] - inside[1]];
+    let lo = 0, hi = 1;   // t along inside->outside; lo passes, hi fails
+    for (let iter = 0; iter < 24; iter++) {
+      const mid = (lo + hi) / 2;
+      const p: Pt = [inside[0] + tangent[0] * mid, inside[1] + tangent[1] * mid];
+      if (alongsideAt(p, tangent)) lo = mid; else hi = mid;
+    }
+    return [inside[0] + tangent[0] * lo, inside[1] + tangent[1] * lo];
+  };
+
   const runs: SharedRun[] = [];
   for (const r of raw) {
     const idx: number[] = [];
     for (let i = r.from; i <= r.to; i++) idx.push(i % samples.length);
     const path = idx.map((i) => samples[i]);
+    // Open ends only: a run covering every sample wraps the whole ring and has
+    // no rejected neighbour to refine toward.
+    if (idx.length < samples.length) {
+      const before = samples[(((r.from - 1) % samples.length) + samples.length) % samples.length];
+      const after = samples[(r.to + 1) % samples.length];
+      const head = refineEnd(path[0], before);
+      const tail = refineEnd(path[path.length - 1], after);
+      if (Math.hypot(head[0] - path[0][0], head[1] - path[0][1]) > 1e-6) path.unshift(head);
+      if (Math.hypot(tail[0] - path[path.length - 1][0], tail[1] - path[path.length - 1][1]) > 1e-6) path.push(tail);
+    }
     let length_px = 0;
     for (let i = 1; i < path.length; i++) {
       length_px += Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]);
