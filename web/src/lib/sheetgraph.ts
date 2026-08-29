@@ -322,12 +322,23 @@ const headerLabels = (s: string, vocab: string[]): string[] => {
 };
 
 /** The vocabulary labels a row carries, in x order (duplicates kept — two
- * columns can both be headed FINISH, one under FLOOR and one under CEILING). */
+ * columns can both be headed FINISH, one under FLOOR and one under CEILING).
+ * A cell naming more than one vocabulary word ("ROOM NO.", "ROOM NAME")
+ * claims the first one this row hasn't already claimed, not blindly its own
+ * first word — otherwise every column qualified with the same leading word
+ * (ROOM NO, ROOM NAME, ROOM FINISH …) collapses onto ONE distinct hit and a
+ * real, well-formed schedule starves below minHits. Only when a cell's every
+ * word is already spoken for does it fall back to its own first word — still
+ * a real hit, just an ambiguous one the anchor pass resolves later. */
 function headerHits(row: GraphSpan[], vocab: string[]): Array<{ label: string; span: GraphSpan }> {
   const out: Array<{ label: string; span: GraphSpan }> = [];
+  const used = new Set<string>();
   for (const t of row) {
-    const w = headerLabel(t.str, vocab);
-    if (w) out.push({ label: w, span: t });
+    const words = headerLabels(t.str, vocab);
+    if (!words.length) continue;
+    const w = words.find((word) => !used.has(word)) ?? words[0];
+    used.add(w);
+    out.push({ label: w, span: t });
   }
   return out.sort((a, b) => a.span.x - b.span.x);
 }
