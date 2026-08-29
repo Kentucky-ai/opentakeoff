@@ -1102,3 +1102,37 @@ test("a header cell naming two vocabulary words gives up the second: ROOM # | RO
   assert.equal(tab.rows.find((r) => r.key === "100")!.cells.FLOOR.text, "SC-1");
   assert.equal(tab.rows.find((r) => r.key === "102")!.cells.BASE.text, "HTB-1");
 });
+
+test("#355: ROOM NO. | ROOM NAME self-cannibalizing the distinct-hit count no longer starves a real schedule below minHits", () => {
+  // Only 4 header cells — ROOM NO., ROOM NAME, FLOOR, BASE. Under first-
+  // match-per-cell, ROOM NO. and ROOM NAME both contribute only "ROOM" to
+  // the distinct-hit set: {ROOM, FLOOR, BASE} = 3, one short of minHits=4,
+  // so the header row never qualifies and the whole table goes invisible —
+  // even though every one of these four columns is real vocabulary and the
+  // room-name anchor already resolves correctly once a header IS found (see
+  // the ROOM # | ROOM NAME test above). This is the minimal repro: no FLOOR
+  // WALL/CEILING/REMARKS padding to carry the count past the gate.
+  const sched: SheetSpans = {
+    key: "min.pdf#1", sheet_number: "A-611",
+    spans: [
+      sp("ROOM FINISH SCHEDULE", 100, 20),
+      sp("ROOM NO.", 100, 60), sp("ROOM NAME", 220, 60), sp("FLOOR", 400, 60), sp("BASE", 520, 60),
+      sp("201", 100, 85), sp("LOBBY", 220, 85), sp("CT-1", 400, 85), sp("RB-2", 520, 85),
+      sp("202", 100, 105), sp("OFFICE", 220, 105), sp("CT-1", 400, 105), sp("RB-2", 520, 105),
+      sp("203", 100, 125), sp("BREAK RM", 220, 125), sp("SC-2", 400, 125), sp("RB-2", 520, 125),
+    ],
+  };
+  const tab = extractTable(sched, "room-finish");
+  assert.ok(tab, "a real 4-column room-finish schedule must be detected, not starved below minHits");
+  assert.equal(tab!.rows.length, 3);
+  assert.ok(tab!.headers.includes("NAME"), `NAME keeps its own anchor: ${tab!.headers.join(" | ")}`);
+  assert.equal(tab!.rows.find((r) => r.key === "201")!.cells.FLOOR.text, "CT-1");
+  assert.equal(tab!.rows.find((r) => r.key === "203")!.cells.BASE.text, "RB-2");
+  // and the existing fixtures still find exactly what they found before —
+  // this fix must not change extraction on any table that already qualified
+  const rf = extractTable(schedSheet, "room-finish")!;
+  assert.equal(rf.rows.length, 3);
+  assert.equal(rf.title?.text, "ROOM FINISH SCHEDULE");
+  const fin = extractTable(schedSheet, "finish")!;
+  assert.equal(fin.rows.length, 3);
+});
