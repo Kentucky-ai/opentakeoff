@@ -299,7 +299,10 @@ export interface ScheduleTable {
 /** Columns that ARE a surface in their own right — never renamed by a parent. */
 const SURFACE_WORDS = new Set(["FLOOR", "BASE", "WALL", "WALLS", "CEILING", "NORTH", "SOUTH", "EAST", "WEST", "WAINSCOT"]);
 const ROOM_HEADERS = ["ROOM", "NO", "NUMBER", "NAME", "MARK", "LOCATION", "FLOOR", "BASE", "WALL", "WALLS", "NORTH", "SOUTH", "EAST", "WEST", "CEILING", "WAINSCOT", "REMARKS", "CLG", "HT", "HEIGHT", "FINISH", "CASEWORK", "CABINET", "COUNTER", "COUNTERTOP", "BLDG", "BUILDING"];
-const FINISH_HEADERS = ["CODE", "MARK", "SYMBOL", "MATERIAL", "MANUFACTURER", "PRODUCT", "STYLE", "COLOR", "SIZE", "REMARKS", "DESCRIPTION", "PATTERN", "COMMENTS"];
+// TAG joined the vocabulary AND the key set for #356: a materials schedule keyed
+// TAG | MANUFACTURER | STYLE | COLOR scores six clean header hits and was still refused,
+// because TAG was in neither list. Common convention when a set has no room-finish schedule.
+const FINISH_HEADERS = ["CODE", "MARK", "SYMBOL", "TAG", "MATERIAL", "MANUFACTURER", "PRODUCT", "STYLE", "COLOR", "SIZE", "REMARKS", "DESCRIPTION", "PATTERN", "COMMENTS"];
 // A header CELL is often a multi-word span ("FLOOR FINISH", "CEILING FINISH")
 // — the vocabulary word inside it names the column.
 /** A column anchor. `x` is the header's center. A two-tier SUB-column also
@@ -852,7 +855,7 @@ export function extractTable(sheet: SheetSpans, kind: "room-finish" | "finish", 
   const vert = sheet.spans.filter(isVertical);
   const rows = clusterRows(horiz);
   const vocab = kind === "room-finish" ? ROOM_HEADERS : FINISH_HEADERS;
-  const required = kind === "room-finish" ? ["FLOOR", "BASE"] : ["CODE", "MARK", "SYMBOL"];
+  const required = kind === "room-finish" ? ["FLOOR", "BASE"] : ["CODE", "MARK", "SYMBOL", "TAG"];
   const minHits = kind === "room-finish" ? 4 : 3;
 
   let anchors: Anchor[];
