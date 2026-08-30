@@ -1136,3 +1136,38 @@ test("#355: ROOM NO. | ROOM NAME self-cannibalizing the distinct-hit count no lo
   const fin = extractTable(schedSheet, "finish")!;
   assert.equal(fin.rows.length, 3);
 });
+
+// #356: a materials schedule keyed TAG | MANUFACTURER | STYLE | COLOR (the common convention
+// when a set carries no room-finish schedule at all) scored six clean header hits and was
+// still refused, because TAG was in neither FINISH_HEADERS nor the finish required set.
+test("#356: TAG-keyed materials schedule extracts as kind finish; keynote lists still refuse", () => {
+  const tagSheet: SheetSpans = {
+    key: "set.pdf#9",
+    sheet_number: "A-602",
+    spans: [
+      sp("MATERIAL SCHEDULE", 100, 40),
+      sp("TAG", 100, 60), sp("MANUFACTURER", 200, 60), sp("STYLE", 360, 60),
+      sp("COLOR", 480, 60), sp("SIZE", 600, 60), sp("REMARKS", 700, 60),
+      sp("T-01A", 100, 80), sp("VENDOR-D", 200, 80), sp("QUARRY", 360, 80), sp("ASH", 480, 80), sp("12X24", 600, 80),
+      sp("C-01", 100, 100), sp("VENDOR-E", 200, 100), sp("LOOP", 360, 100), sp("STORM", 480, 100), sp("24X24", 600, 100),
+    ],
+  };
+  const fin = extractTable(tagSheet, "finish")!;
+  assert.ok(fin, "TAG-keyed six-hit materials schedule must extract");
+  assert.equal(fin.rows.length, 2);
+  assert.equal(fin.rows[0].cells.TAG?.text, "T-01A");
+  assert.equal(fin.rows[1].cells.MANUFACTURER?.text, "VENDOR-E");
+
+  // structurally-too-small keynote legend (MARK | DESCRIPTION, two columns) still refuses —
+  // minHits is a deliberate guard, not a bug (per the issue's own adjacent finding)
+  const keynoteSheet: SheetSpans = {
+    key: "set.pdf#10",
+    sheet_number: "A-000",
+    spans: [
+      sp("KEYNOTES", 100, 40),
+      sp("MARK", 100, 60), sp("DESCRIPTION", 200, 60),
+      sp("1", 100, 80), sp("EXISTING FLOORING TO REMAIN", 200, 80),
+    ],
+  };
+  assert.equal(extractTable(keynoteSheet, "finish"), null);
+});
