@@ -86,6 +86,9 @@ import { sanitizeSheetLevels } from "../lib/sheetLevels.js";
 import { sanitizeConditionColumns, sanitizeConditionAttrs, renameColumnValue, columnLabel } from "../lib/conditionColumns.js";
 import { sanitizeShapeLabels, sanitizeShapeLabelsOnShapes, renameShapeLabel, shapeLabelValue } from "../lib/shapeLabels.js";
 import { buildMarkedSetPdf, downloadBytes } from "../lib/markedset.js";
+import { createDragCache, sheetContentSignature, dragFilename, downloadUrlEntry } from "../lib/dragOut.js";
+import { counterRows } from "../lib/liveCounter.js";
+import LiveCounter from "../components/LiveCounter.jsx";
 import { loadProfiles } from "../lib/identity.js";
 import { resolveBranding, loadBrandingSelection } from "../lib/branding.js";
 import { starPath, cloudPath, thinStroke, strokePathD, chiselRibbon, buildSnapGrid, nearestSnap, ANGLE_TOL, angleSnap, closedMetrics, openLen, pointInPoly, hitShape, arrowheadPath, distToSeg, reflectVertsNorm, ringSelfIntersects } from "../lib/geometry.js";
@@ -5226,6 +5229,57 @@ export default function TakeoffCanvas() {
     }
   }
 
+  // ── sheet drag-out (mock) — drag a marked sheet straight out of the app ──
+  // Hovering a sheet tab ARMS the drag: the single-sheet marked PDF renders in
+  // the background and caches as a blob URL (dragstart is synchronous, so the
+  // file must exist before the drag begins — lib/dragOut.js). Dragging the tab
+  // then hands Chromium a DownloadURL and the sheet lands in Finder, an email
+  // draft, or a chat drop zone as a real PDF. Stitch tabs sit this mock out:
+  // which member shapes ride a composite drag is an open decision, and a
+  // silent guess would skew the deliverable.
+  const sheetDragCacheRef = useRef(null);
+  if (!sheetDragCacheRef.current) sheetDragCacheRef.current = createDragCache();
+  useEffect(() => () => sheetDragCacheRef.current?.dispose(), []);
+  const sheetHasInk = (k) => shapes.some((s) => s.sheet_id === k) || markups.some((m) => m.sheet_id === k) || approvals.some((a) => a.sheet_id === k);
+  function armSheetDrag(k) {
+    if (isStitchKey(k) || !sheetHasInk(k)) return;
+    const sig = sheetContentSignature(k, shapes, markups, approvals);
+    sheetDragCacheRef.current.arm(k, sig, async () => {
+      const sheetMarkups = markups.filter((m) => m.sheet_id === k);
+      // only the RFIs this sheet's markups actually reference — markers keep
+      // their numbers without dragging the whole project register along
+      const linked = new Set(sheetMarkups.map((m) => m.rfi_id).filter(Boolean));
+      const brand = resolveBranding({ ...(await loadBrandingSelection(projectIdFromUrl())), profiles: loadProfiles().profiles });
+      const { bytes } = await buildMarkedSetPdf({
+        projectName, clientInfo, company: brand.company, credit: brand.credit, coverTitle: brand.coverTitle,
+        dark: darkMode, units, sheets: [{ key: k, ...parseSheetKey(k), label: tabLabel(k) }],
+        shapes: shapes.filter((s) => s.sheet_id === k), markups: sheetMarkups,
+        approvals: approvals.filter((a) => a.sheet_id === k), rfis: rfis.filter((r) => linked.has(r.id)), conditions,
+        getPage: async (file, pageNum) => (await docFor(file)).getPage(pageNum),
+        loadPdfData: (file) => store.loadPdfData(file),
+      });
+      return { bytes, filename: dragFilename(projectName, tabLabel(k)) };
+    });
+  }
+  function onSheetTabDragStart(k, e) {
+    const hit = sheetDragCacheRef.current.get(k, sheetContentSignature(k, shapes, markups, approvals));
+    if (!hit) {
+      // not armed yet (or content changed since) — refuse THIS drag honestly
+      // rather than shipping a stale sheet, and start the build for the next
+      e.preventDefault();
+      if (sheetHasInk(k)) { armSheetDrag(k); setCommitMsg("Preparing the marked sheet — drag again in a moment."); }
+      return;
+    }
+    e.dataTransfer.setData("DownloadURL", downloadUrlEntry(hit.filename, hit.url));
+    e.dataTransfer.setData("text/plain", hit.filename);
+    e.dataTransfer.effectAllowed = "copy";
+  }
+
+  // ── live counter (mock) — floating running totals, parked anywhere ──
+  // Measured quantities per condition (the number that moves as you trace),
+  // shaped from the ONE quantity computer (lib/totals.js conditionTotals).
+  const liveCounterRows = useMemo(() => counterRows(conditionTotals(conditions, shapes), activeCond), [conditions, shapes, activeCond]);
+
   // ── inline text editor — a screen-space <input> overlay (retires window.prompt).
   // An HTML input can't live in the zoom/pan-transformed SVG group, so it is
   // absolutely positioned in CONTAINER px, converting the anchor (stage px) through
@@ -8030,7 +8084,12 @@ export default function TakeoffCanvas() {
             const on = sheetGroup.length ? inGroup : k === sheetKey;
             const lbl = tabLabel(k);
             return (
-              <span key={k} data-sheet-tab={on ? "active" : "idle"} style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, border: "1px solid var(--ink-faint)", borderBottom: on ? "2px solid var(--cobalt)" : "1px solid var(--ink-faint)", background: on ? "var(--paper-cream)" : "transparent", padding: "3px 6px 2px 9px", maxWidth: 190 }}>
+              <span key={k} data-sheet-tab={on ? "active" : "idle"}
+                draggable={!isStitchKey(k) && sheetHasInk(k)}
+                onMouseEnter={() => armSheetDrag(k)}
+                onDragStart={(e) => onSheetTabDragStart(k, e)}
+                title={!isStitchKey(k) && sheetHasInk(k) ? "Drag this tab out of the app to export the marked sheet" : undefined}
+                style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, border: "1px solid var(--ink-faint)", borderBottom: on ? "2px solid var(--cobalt)" : "1px solid var(--ink-faint)", background: on ? "var(--paper-cream)" : "transparent", padding: "3px 6px 2px 9px", maxWidth: 190 }}>
                 <button onClick={() => goToSheet(k)} title={k} style={{ border: "none", background: "none", cursor: "pointer", fontWeight: on ? 700 : 500, fontSize: 11.5, color: "var(--ink)", fontFamily: "var(--f-mono)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 140, padding: 0 }}>{lbl}</button>
                 <button onClick={() => toggleInGroup(k)} title={inGroup ? "Remove from side-by-side" : "Side-by-side with the current sheet"} style={{ border: "none", background: "none", cursor: "pointer", color: inGroup ? "var(--cobalt)" : "var(--ink-faint)", padding: 0, display: "inline-flex" }}><Icon name="sideBySide" size={11} /></button>
                 <button onClick={() => closeTab(k)} title="Close tab" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)", padding: 0, display: "inline-flex" }}><Icon name="close" size={10} /></button>
@@ -9990,6 +10049,8 @@ export default function TakeoffCanvas() {
           (the Agent panel links here; closing re-renders, so `configured`
           re-reads immediately). */}
       {showAiSettings && <AiSettings onClose={() => setShowAiSettings(false)} />}
+      {/* live counter (mock) — floating running totals, drag to park anywhere */}
+      {!focusMode && <LiveCounter rows={liveCounterRows} onActivate={(id) => activateCondition(id, { reassign: false })} />}
       {/* the manual, last in the tree so it sits above every panel and dock */}
       {guideOpen && <UserGuide onClose={() => setGuideOpen(false)} />}
     </div>
