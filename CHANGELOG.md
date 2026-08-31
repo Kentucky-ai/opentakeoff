@@ -2,6 +2,12 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — the sheet leaves by hand, and the count follows you
+
+### Added
+- **Sheet drag-out.** A sheet tab carrying ink is draggable OUT of the browser: hovering the tab arms it (the single-sheet marked PDF — legend cover + that sheet, linked RFI numbers intact — builds in the background through the same `buildMarkedSetPdf` path the full export uses), and dropping the tab in Finder, an email draft, or a chat deposits the PDF. A drag before the build finishes is refused honestly with a footer note rather than shipping a stale file. Chromium's DownloadURL; other browsers get a normal no-file drag. Stitch tabs deliberately sit out (composite-drag semantics are an open decision). Pure helpers node-tested in `lib/dragOut.js`; design + live proof in `docs/design/SHEET_DRAG_OUT.md`.
+- **Live counter.** A floating running-totals readout parked anywhere on the canvas: the active condition leads with its measured quantity moving as you trace, every condition with shapes rows under it, a row click activates that condition. Drag it where you want it (persists per browser), ⌖ re-docks, — collapses to a chip. Quantities come from the one quantity computer (`conditionTotals`) — measured figures, waste stays on the Report. Pure half node-tested in `lib/liveCounter.js`; design + live proof in `docs/design/LIVE_COUNTER.md`.
+
 ## 2026-08-28 — richer variants are named, and variant_guard makes them questions
 
 ### Added
