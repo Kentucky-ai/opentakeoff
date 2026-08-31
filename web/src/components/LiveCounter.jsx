@@ -37,25 +37,31 @@ export default function LiveCounter({ rows, onActivate }) {
   const active = rows.find((r) => r.active) || rows[0];
   const others = rows.filter((r) => r !== active);
 
+  // Window-level move/up listeners for the duration of the gesture — sturdier
+  // than pointer capture here: a fast drag can outrun the widget's re-render,
+  // and capture on a child retargets events away from these handlers. Window
+  // listeners see the gesture wherever the cursor is.
   const startDrag = (e) => {
-    if (e.button !== 0) return;
-    const el = boxRef.current;
-    const r = el.getBoundingClientRect();
-    dragRef.current = { dx: e.clientX - r.left, dy: e.clientY - r.top };
-    el.setPointerCapture(e.pointerId);
+    if (e.button !== 0 || dragRef.current) return;
+    const r = boxRef.current.getBoundingClientRect();
+    const d = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    const move = (ev) => {
+      const el = boxRef.current;
+      if (!el) return;
+      setPos(clampPos({ x: ev.clientX - d.dx, y: ev.clientY - d.dy }, { w: el.offsetWidth, h: el.offsetHeight }, window.innerWidth, window.innerHeight));
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      dragRef.current = null;
+      setPos((p) => { if (p) saveStored(COUNTER_POS_KEY, p); return p; });
+    };
+    dragRef.current = d;
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
     e.preventDefault();
-  };
-  const moveDrag = (e) => {
-    const d = dragRef.current;
-    if (!d) return;
-    const el = boxRef.current;
-    setPos(clampPos({ x: e.clientX - d.dx, y: e.clientY - d.dy }, { w: el.offsetWidth, h: el.offsetHeight }, window.innerWidth, window.innerHeight));
-  };
-  const endDrag = (e) => {
-    if (!dragRef.current) return;
-    dragRef.current = null;
-    boxRef.current?.releasePointerCapture(e.pointerId);
-    setPos((p) => { if (p) saveStored(COUNTER_POS_KEY, p); return p; });
   };
   const redock = () => { setPos(null); saveStored(COUNTER_POS_KEY, null); };
   const toggleMin = () => setMin((m) => { saveStored(COUNTER_MIN_KEY, !m); return !m; });
@@ -73,7 +79,7 @@ export default function LiveCounter({ rows, onActivate }) {
 
   return (
     <div ref={boxRef} data-live-counter style={{ position: "fixed", zIndex: 60, ...place, minWidth: min ? 0 : 208, maxWidth: 300, border: "1px solid var(--ink-faint)", borderTop: `2px solid ${active.color || "var(--cobalt)"}`, background: "var(--paper-bright)", boxShadow: "0 4px 18px rgba(0,0,0,0.18)", userSelect: "none" }}>
-      <div onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}
+      <div onPointerDown={startDrag}
         style={{ display: "flex", alignItems: "center", gap: 8, padding: min ? "4px 8px" : "5px 10px", cursor: "grab", touchAction: "none", borderBottom: min ? "none" : "1px solid var(--ink-faint)" }}>
         <span style={{ width: 8, height: 8, background: active.color || "var(--cobalt)", flexShrink: 0 }} />
         <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.14em", color: "var(--ink-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>

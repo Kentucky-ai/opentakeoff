@@ -42,7 +42,11 @@ callsite shared with the panels, not in this widget.
 - `web/src/lib/liveCounter.js` — pure, node-tested: `counterRows` (only
   conditions with shapes; SF → LF → EA segments per row), `fmtQty`
   (thousands separators, ≤2 decimals), `clampPos`, guarded storage helpers.
-- `web/src/components/LiveCounter.jsx` — presentation + pointer-capture drag.
+- `web/src/components/LiveCounter.jsx` — presentation + the header drag.
+  The gesture uses window-level move/up listeners for its duration rather
+  than pointer capture: capture on a child retargets events away from the
+  handlers, and a fast drag can outrun the widget's re-render — either way
+  the gesture (and its position save) silently dies mid-drag.
 - `TakeoffCanvas.jsx` — one `useMemo` and one render line; row clicks call the
   existing `activateCondition(id, { reassign: false })`.
 
