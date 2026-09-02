@@ -298,7 +298,10 @@ export interface ScheduleTable {
 
 /** Columns that ARE a surface in their own right — never renamed by a parent. */
 const SURFACE_WORDS = new Set(["FLOOR", "BASE", "WALL", "WALLS", "CEILING", "NORTH", "SOUTH", "EAST", "WEST", "WAINSCOT"]);
-const ROOM_HEADERS = ["ROOM", "NO", "NUMBER", "NAME", "MARK", "LOCATION", "FLOOR", "BASE", "WALL", "WALLS", "NORTH", "SOUTH", "EAST", "WEST", "CEILING", "WAINSCOT", "REMARKS", "CLG", "HT", "HEIGHT", "FINISH", "CASEWORK", "CABINET", "COUNTER", "COUNTERTOP", "BLDG", "BUILDING"];
+const ROOM_HEADERS = ["ROOM", "NO", "NUMBER", "NAME", "MARK", "LOCATION", "FLOOR", "BASE", "WALL", "WALLS", "NORTH", "SOUTH", "EAST", "WEST", "CEILING", "WAINSCOT", "REMARKS", "CLG", "HT", "HEIGHT", "FINISH", "MAT", "MATERIAL", "COMMENTS", "CASEWORK", "CABINET", "COUNTER", "COUNTERTOP", "BLDG", "BUILDING"];
+// MAT / MATERIAL joined the vocabulary for #374: a Revit room-finish schedule
+// splits BASE and WAINSCOT into MAT | HT sub-columns, and an un-anchored MAT
+// column banded its codes into whichever neighbour was nearest.
 // TAG joined the vocabulary AND the key set for #356: a materials schedule keyed
 // TAG | MANUFACTURER | STYLE | COLOR scores six clean header hits and was still refused,
 // because TAG was in neither list. Common convention when a set has no room-finish schedule.
@@ -339,6 +342,14 @@ function headerHits(row: GraphSpan[], vocab: string[]): Array<{ label: string; s
   for (const t of row) {
     const words = headerLabels(t.str, vocab);
     if (!words.length) continue;
+    // "EAST NORTH SOUTH" set as ONE text run over three columns (#374): every
+    // word is a surface, so each is a column, laid out across the run's width
+    const all = norm(t.str).split(/[^A-Z]+/).filter(Boolean);
+    if (all.length >= 2 && all.every((w) => SURFACE_WORDS.has(w))) {
+      const n = all.length, w = (t.w || 0) / n;
+      all.forEach((word, k) => { used.add(word); out.push({ label: word, span: { ...t, x: t.x + w * k, w } }); });
+      continue;
+    }
     const w = words.find((word) => !used.has(word)) ?? words[0];
     used.add(w);
     out.push({ label: w, span: t });
@@ -347,7 +358,10 @@ function headerHits(row: GraphSpan[], vocab: string[]): Array<{ label: string; s
 }
 const qualifies = (hits: Array<{ label: string }>, required: string[], minHits: number) => {
   const seen = new Set(hits.map((h) => h.label));
-  return seen.size >= minHits && required.some((r) => seen.has(r));
+  // an empty `required` is "no surface demanded of THIS row" (the descent
+  // below, where the row above already proved the surfaces are here) — it is
+  // not "no row can qualify", which is what `[].some()` used to say (#374)
+  return seen.size >= minHits && (!required.length || required.some((r) => seen.has(r)));
 };
 
 function findHeaderRow(rows: GraphSpan[][], vocab: string[], required: string[], minHits: number): { anchors: Anchor[]; rowIndex: number } | null {
@@ -372,7 +386,13 @@ function findHeaderRow(rows: GraphSpan[][], vocab: string[], required: string[],
         // few by accident — a material schedule's "VINYL WALL BASE" hits WALL
         // and BASE — and descending into one shifts every column by a row.
         const ratio = h.length / Math.max(1, rows[j].length);
-        if (qualifies(h, required, minHits) && h.length > hits.length && ratio >= 0.6) { next = j; break; }
+        // The row ABOVE already proved the required surfaces are here. A
+        // two-tier Revit schedule (#374) puts FLOOR / BASE / WAINSCOT on the
+        // parent tier and ROOM # | ROOM NAME | FINISH | MAT | HT on the tier
+        // that actually defines the columns — which carries none of the
+        // required words itself. Demanding them again refused the descent,
+        // the key column never anchored, and 21 rows read as 2.
+        if (qualifies(h, [], minHits) && h.length > hits.length && ratio >= 0.6) { next = j; break; }
       }
       if (next < 0) break;
       idx = next;
@@ -388,15 +408,32 @@ function findHeaderRow(rows: GraphSpan[][], vocab: string[], required: string[],
     for (const h of hits) (once.has(h.label) ? dup : once).add(h.label);
     const anchors: Anchor[] = [];
     const used = new Set<string>();
+    const parents: (string | null)[] = [];   // the parent each hit resolved, by index (#374)
     for (let j = 0; j < hits.length; j++) {
       const h = hits[j];
+      parents[j] = null;
       let label = h.label;
       // An ambiguous label takes its parent's name first (two FINISH columns
       // become FLOOR FINISH and CEILING FINISH) …
       if (dup.has(h.label) && !SURFACE_WORDS.has(h.label)) {
         const hi = j + 1 < hits.length ? hits[j + 1].span.x : Infinity;
-        const parent = parentLabelOver(rows, idx, i, h.span.x, hi, vocab);
-        if (parent && parent !== h.label) label = `${parent} ${h.label}`;
+        // the parent is centred over its sub-columns TOGETHER, so the sub-column
+        // on the right (HT under BASE | HT) has the parent's centre to its LEFT
+        // — outside [this.x, next.x). Fall back to the column's own extent,
+        // midpoint-to-midpoint between its neighbours (#374).
+        const lo2 = j > 0 ? (hits[j - 1].span.x + (hits[j - 1].span.w || 0) + h.span.x) / 2 : h.span.x;
+        const hi2 = j + 1 < hits.length ? (h.span.x + (h.span.w || 0) + hits[j + 1].span.x) / 2 : hi;
+        let parent = parentLabelOver(rows, idx, i, h.span.x, hi, vocab) ?? parentLabelOver(rows, idx, i, lo2, hi2, vocab);
+        // A merged parent is centred over its sub-columns TOGETHER (BASE over
+        // MAT | HT), which can leave the right-hand sub-column with no parent
+        // text over its own extent at all. The sub-column immediately to its
+        // left already resolved that parent; an adjacent, unresolved sub-label
+        // is its sibling and inherits it (#374).
+        if (!parent && j > 0 && parents[j - 1] && h.span.x - (hits[j - 1].span.x + (hits[j - 1].span.w || 0)) < bandLimits(hits.map((x) => ({ label: x.label, x: x.span.x }))).medGap * 1.5) parent = parents[j - 1];
+        // a generic sub-word under a surface parent IS that surface's column
+        // (FLOOR over FINISH → FLOOR), so resolve_tag and assign_from_schedule
+        // find it under the surface name; a splitting sub-word keeps both
+        if (parent && parent !== h.label) { label = `${parent} ${h.label}`; parents[j] = parent; }
       }
       // … and failing that, a cell naming more than one vocabulary word falls
       // through to its next one: "ROOM #" and "ROOM NAME" both lead with ROOM,
@@ -416,10 +453,17 @@ function findHeaderRow(rows: GraphSpan[][], vocab: string[], required: string[],
     // columns that are already anchored below it.
     if (idx > i) {
       const lo = Math.min(...anchors.map((a) => a.x)), hi = Math.max(...anchors.map((a) => a.x));
+      // …but a parent-tier word FAR outside the band is some other block that
+      // shares the header's y — the finish-abbreviation list beside a Revit
+      // schedule reads "RUBBER BASE" and "CERAMIC FLOOR TILE" on the parent
+      // row (#374). Two column pitches beyond the band is as far as a real
+      // spanning column (REMARKS) sits.
+      const reach = bandLimits(anchors).medGap * 2;
       for (let j = i; j < idx; j++) {
         for (const h of headerHits(rows[j], vocab)) {
           const cx = h.span.x + (h.span.w || 0) / 2;
           if (cx >= lo && cx <= hi) continue;
+          if (cx < lo - reach || cx > hi + reach) continue;
           if (used.has(h.label)) continue;
           used.add(h.label);
           anchors.push({ label: h.label, x: cx });
@@ -574,7 +618,7 @@ const nearestAnchor = (x: number, anchors: Anchor[]) => {
 // remark stays in; a code column (CEILING, WALL, COLOR) hugs its anchor —
 // field-found on a real gym set: a finish legend sitting 300px right of a
 // room schedule bled into every CEILING cell under the generous edge.
-const WIDE_LAST = new Set(["REMARKS", "DESCRIPTION", "NOTES"]);
+const WIDE_LAST = new Set(["REMARKS", "DESCRIPTION", "NOTES", "COMMENTS"]);
 function bandLimits(anchors: Anchor[]): { x0: number; x1: number; medGap: number } {
   const gaps = anchors.slice(1).map((a, i) => a.x - anchors[i].x).sort((a, b) => a - b);
   const medGap = gaps.length ? gaps[gaps.length >> 1] : 150;
@@ -592,6 +636,7 @@ function bandLimits(anchors: Anchor[]): { x0: number; x1: number; medGap: number
 const CODE_RE = /^[A-Z]{1,4}(-?[A-Z0-9]{1,4})?$/;
 const ROW_KEY_RE = /^\d{1,3}[A-Z]{0,2}$/;
 const QUALIFIED_KEY_RE = /^([A-Z]{1,2})-(\d{1,3}[A-Z]{0,2})$/;
+const CORRIDOR_KEY_RE = /^[A-Z]{1,3}(?:\d{1,3}-\d{1,3}|\d{3})[A-Z]?$/;   // CR11-9, C101 — never a two-character tag like "T1"
 
 export interface ExtractOpts { buildings?: Set<string>; deltas?: DeltaIndex }
 
@@ -618,6 +663,11 @@ function rowKeyOf(raw: string, kind: "room-finish" | "finish", buildings?: Set<s
     return CODE_RE.test(key) ? { key } : null;
   }
   if (ROW_KEY_RE.test(key)) return { key };
+  // "CR11-9", "C101": letters-then-digits keys a Revit schedule gives
+  // corridors and lettered wings (#374). Letters-dash-digits ("PT-2") is a
+  // finish code and stays out; letters-dash-digits with a named building is
+  // the qualified form below.
+  if (CORRIDOR_KEY_RE.test(key)) return { key };
   const q = key.match(QUALIFIED_KEY_RE);
   if (q && buildings?.has(q[1])) return { key, building: q[1] };
   return null;
@@ -644,6 +694,7 @@ const centerX = (t: GraphSpan) => t.x + (t.w || 0) / 2;
  * own order; otherwise banding falls back to nearest-anchor, so a table this
  * does not fit is never mangled by a half-built column map. */
 type ColumnMap = { coord: "left" | "center"; cols: Array<{ start: number; label: string }>; score: number };
+const PLACEHOLDER_RE = /^[-–—]{1,3}$/;
 
 function columnMapFor(
   rows: GraphSpan[][],
@@ -656,10 +707,18 @@ function columnMapFor(
   const at = (t: GraphSpan) => (coord === "left" ? t.x : t.x + (t.w || 0) / 2);
   const xs: number[] = [];
   const hs: number[] = [];
+  const dashes: number[] = [];
   for (let i = Math.max(cfg.fromIdx, 0); i < rows.length; i++) {
     if (rowY(rows[i]) <= cfg.belowY) continue;
     for (const t of rows[i]) {
       if (t.x < x0 || t.x > x1 || revisionOf(t.str) != null) continue;
+      // A placeholder dash is CENTRED in its column while the codes beside it
+      // are left-aligned, and on a column that is mostly dashes ("--" in 16
+      // of 20 WAINSCOT rows) the dash edge became the column start and the
+      // four real codes, starting a few px left of it, banded into the
+      // column before (Dublin A-601: "BASE HT" read "4\" CWT-1", #374). A
+      // dash says nothing about where cells start, so it does not vote.
+      if (PLACEHOLDER_RE.test(t.str.trim())) { dashes.push(at(t)); continue; }
       xs.push(at(t));
       hs.push(t.h || 8);
     }
@@ -683,6 +742,21 @@ function columnMapFor(
     if (!own) continue;
     const cur = byLabel.get(own.label);
     if (cur == null || c.start < cur) byLabel.set(own.label, c.start);
+  }
+  // A column that is dashes in most rows and a real code in a few (the
+  // WAINSCOT column: "--" in 16 rows, CWT-1 in 4) can lose its real cluster
+  // to the keep floor above. It is still a column: the dashes place it, and
+  // the real cells — when there are any — say where it starts.
+  if (byLabel.size < anchors.length && dashes.length) {
+    dashes.sort((a, b) => a - b);
+    const dc: Array<{ start: number; n: number }> = [];
+    for (const x of dashes) { const last = dc[dc.length - 1]; if (last && x - last.start <= tol) { last.n++; continue; } dc.push({ start: x, n: 1 }); }
+    for (const c of dc.filter((d) => d.n >= 2)) {
+      const own = anchors.find((a) => a.x >= c.start);
+      if (!own || byLabel.has(own.label)) continue;
+      const real = clusters.filter((k) => k.n >= 1 && anchors.find((a) => a.x >= k.start)?.label === own.label).sort((a, b) => a.start - b.start)[0];
+      byLabel.set(own.label, real ? real.start : c.start);
+    }
   }
   if (byLabel.size !== anchors.length) return null;
   const cols = [...byLabel.entries()].map(([label, start]) => ({ label, start })).sort((a, b) => a.start - b.start);
@@ -750,6 +824,22 @@ function bandDataRows(
     const at = cols.coord === "left" ? t.x : centerX(t);
     let label = cols.cols[0].label;
     for (const c of cols.cols) { if (at + 1 >= c.start) label = c.label; else break; }
+    // Left-aligned map, but a Revit schedule CENTRES its codes while it
+    // left-aligns its names, so a wide code ("LVT-1 / LVT-2" in a column of
+    // "CPT-1"s) starts left of the column's start and its left edge alone
+    // reads as the column before. The cell's whole extent decides: the column
+    // whose interval it overlaps most owns it (#374). A short cell sitting on
+    // its start is unchanged — its extent lies inside one interval.
+    if (cols.coord === "left" && (t.w || 0) > 0) {
+      const x1 = t.x + (t.w || 0);
+      let best = label, bestOv = -1;
+      for (let ci = 0; ci < cols.cols.length; ci++) {
+        const lo = cols.cols[ci].start, hi = ci + 1 < cols.cols.length ? cols.cols[ci + 1].start : Infinity;
+        const ov = Math.min(hi, x1) - Math.max(lo, t.x);
+        if (ov > bestOv) { bestOv = ov; best = cols.cols[ci].label; }
+      }
+      if (bestOv > 0) label = best;
+    }
     return label;
   };
   const add = (row: TableRow, toks: GraphSpan[]) => {
