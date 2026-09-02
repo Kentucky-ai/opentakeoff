@@ -5,7 +5,7 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 ## Unreleased - conservative hatch-policy reference experiment (#371)
 
 ### Added
-- **A disconnected hatch-policy reference and reproducible negative real-sheet run.** The experiment separates lattice proposals, conservative classification, and strict-versus-transparent retry gating without changing production One-Click. Its captured run against the two PDF-backed bench cases shows why it remains a reference: the real finish plan's raw extractor output contains degenerate segments the proposal rejects, the filtered 71,819-segment sheet exceeds a five-second proposal budget, and all 37 existing hatch families remain uncertain without evidence identifiers the extractor does not emit.
+- **A disconnected hatch-policy reference and reproducible negative real-sheet run.** The experiment separates lattice proposals, conservative classification, and strict-versus-transparent retry gating without changing production One-Click. Its captured run covers the two existing PDF-backed bench cases plus Dublin A-601 and matching Roseburg floor/RCP pages from the public open-sheet corpus. Every real page contains degenerate extractor segments, every filtered full-sheet proposal exceeds a five-second budget, and all 123 existing family instances remain uncertain without evidence identifiers the extractor does not emit.
 
 ## Unreleased — `get_sheet_vectors`: the strokes the engine floods against, readable by any agent (#367)
 

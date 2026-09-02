@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-02T12:49:51.174Z",
+  "generated_at": "2026-09-02T15:14:04.854Z",
   "proposal_timeout_ms": 5000,
   "results": [
     {
@@ -7,15 +7,17 @@
       "source": {
         "corpus": "bench/corpus/sample-plan.json",
         "pdf": "demo/sample-plan.pdf",
+        "page": 1,
         "segments": 6,
         "degenerate_segments": 0,
         "meta_bytes": 6,
         "luminance_values": 6
       },
       "existing_classifier": {
-        "elapsed_ms": 1,
+        "elapsed_ms": 0,
         "soft_segments": 0,
-        "families": 0
+        "families": 0,
+        "family_instances": []
       },
       "reference_classifier_on_existing_families": {
         "input_note": "Optimistic perfect-lattice metrics, but only evidence emitted by the extractor.",
@@ -27,7 +29,7 @@
       },
       "reference_proposal_raw": {
         "status": "completed",
-        "elapsed_ms": 1,
+        "elapsed_ms": 0,
         "proposals": 0,
         "labels": {
           "hatch": 0,
@@ -37,7 +39,7 @@
       },
       "reference_proposal_without_degenerate_segments": {
         "status": "completed",
-        "elapsed_ms": 1,
+        "elapsed_ms": 0,
         "proposals": 0,
         "labels": {
           "hatch": 0,
@@ -51,15 +53,499 @@
       "source": {
         "corpus": "bench/corpus/va-finish-plan.json",
         "pdf": "demo/sample-finish-plan.pdf",
+        "page": 1,
         "segments": 71819,
         "degenerate_segments": 2895,
         "meta_bytes": 71819,
         "luminance_values": 71819
       },
       "existing_classifier": {
-        "elapsed_ms": 120,
+        "elapsed_ms": 54,
         "soft_segments": 25157,
-        "families": 37
+        "families": 37,
+        "family_instances": [
+          {
+            "id": "h-a46.5p2.1w1",
+            "angle_deg": 46.68,
+            "pitch_px": 2.12,
+            "rows": 15,
+            "segments": 64,
+            "bbox": [
+              4098.2,
+              319,
+              4344.5,
+              646.3
+            ]
+          },
+          {
+            "id": "h-a38.5p2.2w1",
+            "angle_deg": 38.38,
+            "pitch_px": 2.18,
+            "rows": 15,
+            "segments": 68,
+            "bbox": [
+              4094.6,
+              321.8,
+              4344.5,
+              686.6
+            ]
+          },
+          {
+            "id": "h-a44.0p1.8w1",
+            "angle_deg": 44.18,
+            "pitch_px": 1.84,
+            "rows": 14,
+            "segments": 55,
+            "bbox": [
+              3834.5,
+              293.1,
+              5860.6,
+              2375.8
+            ]
+          },
+          {
+            "id": "h-a45.5p2.0w1",
+            "angle_deg": 45.69,
+            "pitch_px": 1.98,
+            "rows": 14,
+            "segments": 63,
+            "bbox": [
+              3955.9,
+              312.5,
+              4344.5,
+              952.3
+            ]
+          },
+          {
+            "id": "h-a63.0p1.6w1",
+            "angle_deg": 62.97,
+            "pitch_px": 1.62,
+            "rows": 43,
+            "segments": 407,
+            "bbox": [
+              3664.1,
+              102.7,
+              4344.5,
+              1196.6
+            ]
+          },
+          {
+            "id": "h-a58.5p1.7w1",
+            "angle_deg": 58.42,
+            "pitch_px": 1.66,
+            "rows": 36,
+            "segments": 391,
+            "bbox": [
+              3792.7,
+              293,
+              4469,
+              1436.7
+            ]
+          },
+          {
+            "id": "h-a59.0p1.6w1",
+            "angle_deg": 59.13,
+            "pitch_px": 1.61,
+            "rows": 14,
+            "segments": 159,
+            "bbox": [
+              3813.6,
+              483.4,
+              4469,
+              1417
+            ]
+          },
+          {
+            "id": "h-a57.0p1.6w1",
+            "angle_deg": 57.07,
+            "pitch_px": 1.6,
+            "rows": 236,
+            "segments": 3095,
+            "bbox": [
+              3095.3,
+              102.7,
+              6048,
+              4319.8
+            ]
+          },
+          {
+            "id": "h-a52.0p1.6w1",
+            "angle_deg": 52.05,
+            "pitch_px": 1.61,
+            "rows": 68,
+            "segments": 751,
+            "bbox": [
+              251.8,
+              153.6,
+              5939.7,
+              3801.6
+            ]
+          },
+          {
+            "id": "h-a49.5p1.7w1",
+            "angle_deg": 49.75,
+            "pitch_px": 1.72,
+            "rows": 54,
+            "segments": 475,
+            "bbox": [
+              3306.5,
+              797.5,
+              4535,
+              2788.1
+            ]
+          },
+          {
+            "id": "h-a59.5p1.6w1",
+            "angle_deg": 59.6,
+            "pitch_px": 1.57,
+            "rows": 215,
+            "segments": 4131,
+            "bbox": [
+              2526.7,
+              102.7,
+              5927.8,
+              4219.9
+            ]
+          },
+          {
+            "id": "h-a42.0p1.6w1",
+            "angle_deg": 42.15,
+            "pitch_px": 1.56,
+            "rows": 21,
+            "segments": 274,
+            "bbox": [
+              2769.1,
+              697,
+              4917.3,
+              3932.2
+            ]
+          },
+          {
+            "id": "h-a56.5p1.6w1",
+            "angle_deg": 56.26,
+            "pitch_px": 1.57,
+            "rows": 268,
+            "segments": 4646,
+            "bbox": [
+              1946.6,
+              102.7,
+              5129,
+              4219.9
+            ]
+          },
+          {
+            "id": "h-a52.0p1.6w1",
+            "angle_deg": 52,
+            "pitch_px": 1.58,
+            "rows": 27,
+            "segments": 405,
+            "bbox": [
+              1984.3,
+              323.8,
+              4519.9,
+              4157
+            ]
+          },
+          {
+            "id": "h-a70.0p1.5w1",
+            "angle_deg": 70.05,
+            "pitch_px": 1.52,
+            "rows": 12,
+            "segments": 237,
+            "bbox": [
+              1984.3,
+              395.8,
+              3896.4,
+              3215.5
+            ]
+          },
+          {
+            "id": "h-a58.0p1.6w1",
+            "angle_deg": 57.79,
+            "pitch_px": 1.61,
+            "rows": 73,
+            "segments": 755,
+            "bbox": [
+              1946.6,
+              217,
+              3827.8,
+              3235
+            ]
+          },
+          {
+            "id": "h-a54.0p1.7w1",
+            "angle_deg": 54.2,
+            "pitch_px": 1.69,
+            "rows": 40,
+            "segments": 273,
+            "bbox": [
+              1966.3,
+              692.2,
+              2939.3,
+              2084.6
+            ]
+          },
+          {
+            "id": "h-a56.5p1.7w1",
+            "angle_deg": 56.25,
+            "pitch_px": 1.65,
+            "rows": 16,
+            "segments": 72,
+            "bbox": [
+              1984.3,
+              827.8,
+              4232.6,
+              4219.9
+            ]
+          },
+          {
+            "id": "h-a42.0p1.9w1",
+            "angle_deg": 42.03,
+            "pitch_px": 1.9,
+            "rows": 16,
+            "segments": 75,
+            "bbox": [
+              1831.2,
+              705.4,
+              2795,
+              2137
+            ]
+          },
+          {
+            "id": "h-a49.5p1.7w1",
+            "angle_deg": 49.74,
+            "pitch_px": 1.69,
+            "rows": 16,
+            "segments": 76,
+            "bbox": [
+              1389.4,
+              102.7,
+              2775.4,
+              2137
+            ]
+          },
+          {
+            "id": "h-a57.0p1.7w1",
+            "angle_deg": 56.96,
+            "pitch_px": 1.67,
+            "rows": 18,
+            "segments": 116,
+            "bbox": [
+              1768.8,
+              797.5,
+              2675.5,
+              2137
+            ]
+          },
+          {
+            "id": "h-a52.0p1.7w1",
+            "angle_deg": 52.17,
+            "pitch_px": 1.7,
+            "rows": 24,
+            "segments": 134,
+            "bbox": [
+              1723.2,
+              797.5,
+              2675.5,
+              2137
+            ]
+          },
+          {
+            "id": "h-a52.0p1.8w1",
+            "angle_deg": 52.18,
+            "pitch_px": 1.81,
+            "rows": 24,
+            "segments": 124,
+            "bbox": [
+              1666.8,
+              797.5,
+              2586,
+              2126.2
+            ]
+          },
+          {
+            "id": "h-a54.0p2.0w1",
+            "angle_deg": 54.19,
+            "pitch_px": 2.01,
+            "rows": 18,
+            "segments": 92,
+            "bbox": [
+              1414.8,
+              797.5,
+              2550,
+              2431
+            ]
+          },
+          {
+            "id": "h-a52.5p1.7w1",
+            "angle_deg": 52.58,
+            "pitch_px": 1.66,
+            "rows": 19,
+            "segments": 105,
+            "bbox": [
+              1091,
+              289,
+              2552.2,
+              2462.6
+            ]
+          },
+          {
+            "id": "h-a55.5p1.8w1",
+            "angle_deg": 55.39,
+            "pitch_px": 1.8,
+            "rows": 42,
+            "segments": 213,
+            "bbox": [
+              966.5,
+              307.7,
+              3681.6,
+              4219.9
+            ]
+          },
+          {
+            "id": "h-a49.5p1.9w1",
+            "angle_deg": 49.49,
+            "pitch_px": 1.88,
+            "rows": 16,
+            "segments": 71,
+            "bbox": [
+              820.6,
+              102.7,
+              2382.5,
+              2461.7
+            ]
+          },
+          {
+            "id": "h-a56.0p1.9w1",
+            "angle_deg": 56.06,
+            "pitch_px": 1.95,
+            "rows": 12,
+            "segments": 61,
+            "bbox": [
+              0,
+              812.4,
+              6048,
+              4319.8
+            ]
+          },
+          {
+            "id": "h-a57.5p1.7w1",
+            "angle_deg": 57.29,
+            "pitch_px": 1.71,
+            "rows": 11,
+            "segments": 63,
+            "bbox": [
+              582.5,
+              1121.3,
+              1132.3,
+              2083
+            ]
+          },
+          {
+            "id": "h-a63.5p1.8w1",
+            "angle_deg": 63.6,
+            "pitch_px": 1.85,
+            "rows": 11,
+            "segments": 51,
+            "bbox": [
+              164.9,
+              638.9,
+              1058.4,
+              2069.5
+            ]
+          },
+          {
+            "id": "h-a73.0p1.9w1",
+            "angle_deg": 73.03,
+            "pitch_px": 1.89,
+            "rows": 10,
+            "segments": 47,
+            "bbox": [
+              582.5,
+              1417,
+              985.9,
+              1969.4
+            ]
+          },
+          {
+            "id": "h-a67.5p2.0w1",
+            "angle_deg": 67.6,
+            "pitch_px": 1.96,
+            "rows": 29,
+            "segments": 162,
+            "bbox": [
+              110.9,
+              854.9,
+              1139,
+              2819.5
+            ]
+          },
+          {
+            "id": "h-a67.0p1.7w1",
+            "angle_deg": 66.92,
+            "pitch_px": 1.67,
+            "rows": 18,
+            "segments": 79,
+            "bbox": [
+              110.9,
+              1016.9,
+              781,
+              2053.4
+            ]
+          },
+          {
+            "id": "h-a65.5p1.7w1",
+            "angle_deg": 65.66,
+            "pitch_px": 1.73,
+            "rows": 16,
+            "segments": 125,
+            "bbox": [
+              456.5,
+              1705.7,
+              754.3,
+              2020.8
+            ]
+          },
+          {
+            "id": "h-a68.0p2.3w1",
+            "angle_deg": 67.83,
+            "pitch_px": 2.27,
+            "rows": 11,
+            "segments": 56,
+            "bbox": [
+              146.9,
+              1313.8,
+              2039,
+              4219.9
+            ]
+          },
+          {
+            "id": "h-a42.5p2.2w1",
+            "angle_deg": 42.35,
+            "pitch_px": 2.24,
+            "rows": 11,
+            "segments": 34,
+            "bbox": [
+              110.9,
+              2024.9,
+              552.5,
+              2704.1
+            ]
+          },
+          {
+            "id": "h-a42.5p2.5w1",
+            "angle_deg": 42.63,
+            "pitch_px": 2.48,
+            "rows": 10,
+            "segments": 19,
+            "bbox": [
+              146.9,
+              2204.9,
+              582.5,
+              2767
+            ]
+          }
+        ]
       },
       "reference_classifier_on_existing_families": {
         "input_note": "Optimistic perfect-lattice metrics, but only evidence emitted by the extractor.",
@@ -71,8 +557,1231 @@
       },
       "reference_proposal_raw": {
         "status": "error",
-        "elapsed_ms": 12,
+        "elapsed_ms": 7,
         "error": "segment-31153 must not be degenerate"
+      },
+      "reference_proposal_without_degenerate_segments": {
+        "status": "timeout",
+        "elapsed_ms": 5000
+      }
+    },
+    {
+      "case": "dublin-finish-plan",
+      "source": {
+        "pdf": "bench/open-sheets/va-dublin-bldg9a-finish-plan-A601.pdf",
+        "page": 1,
+        "segments": 35538,
+        "degenerate_segments": 2026,
+        "meta_bytes": 35538,
+        "luminance_values": 35538
+      },
+      "existing_classifier": {
+        "elapsed_ms": 41,
+        "soft_segments": 12950,
+        "families": 28,
+        "family_instances": [
+          {
+            "id": "h-a180.0p1.6w1",
+            "angle_deg": 179.99,
+            "pitch_px": 1.56,
+            "rows": 123,
+            "segments": 2566,
+            "bbox": [
+              176.9,
+              2508,
+              5990.6,
+              2704.3
+            ]
+          },
+          {
+            "id": "h-a54.5p1.8w1",
+            "angle_deg": 54.59,
+            "pitch_px": 1.76,
+            "rows": 17,
+            "segments": 80,
+            "bbox": [
+              4744.8,
+              2097.1,
+              5181.6,
+              2690.9
+            ]
+          },
+          {
+            "id": "h-a56.0p1.6w1",
+            "angle_deg": 55.85,
+            "pitch_px": 1.62,
+            "rows": 12,
+            "segments": 97,
+            "bbox": [
+              4710.5,
+              2153.5,
+              5105.3,
+              2690.9
+            ]
+          },
+          {
+            "id": "h-a56.0p1.7w1",
+            "angle_deg": 56.1,
+            "pitch_px": 1.66,
+            "rows": 85,
+            "segments": 608,
+            "bbox": [
+              4499.8,
+              2156.9,
+              5533.9,
+              3557.3
+            ]
+          },
+          {
+            "id": "h-a56.0p1.7w1",
+            "angle_deg": 56.24,
+            "pitch_px": 1.66,
+            "rows": 11,
+            "segments": 34,
+            "bbox": [
+              2548.3,
+              1665.6,
+              2933.8,
+              2254.1
+            ]
+          },
+          {
+            "id": "h-a55.5p1.7w1",
+            "angle_deg": 55.38,
+            "pitch_px": 1.71,
+            "rows": 11,
+            "segments": 47,
+            "bbox": [
+              2285.8,
+              1598.9,
+              2742,
+              2246.9
+            ]
+          },
+          {
+            "id": "h-a55.5p1.6w1",
+            "angle_deg": 55.4,
+            "pitch_px": 1.62,
+            "rows": 12,
+            "segments": 51,
+            "bbox": [
+              2261.8,
+              1598.9,
+              2718,
+              2246.9
+            ]
+          },
+          {
+            "id": "h-a55.5p1.7w1",
+            "angle_deg": 55.69,
+            "pitch_px": 1.66,
+            "rows": 17,
+            "segments": 83,
+            "bbox": [
+              2231.5,
+              1598.9,
+              2694,
+              2246.9
+            ]
+          },
+          {
+            "id": "h-a56.0p1.7w1",
+            "angle_deg": 56.05,
+            "pitch_px": 1.67,
+            "rows": 12,
+            "segments": 60,
+            "bbox": [
+              2206.1,
+              1598.9,
+              2646,
+              2246.9
+            ]
+          },
+          {
+            "id": "h-a57.0p1.7w1",
+            "angle_deg": 56.83,
+            "pitch_px": 1.65,
+            "rows": 12,
+            "segments": 65,
+            "bbox": [
+              2129.5,
+              1598.9,
+              2574,
+              2246.9
+            ]
+          },
+          {
+            "id": "h-a57.0p1.7w1",
+            "angle_deg": 57,
+            "pitch_px": 1.66,
+            "rows": 19,
+            "segments": 144,
+            "bbox": [
+              2068.1,
+              1598.9,
+              2515.7,
+              2246.9
+            ]
+          },
+          {
+            "id": "h-a57.0p1.7w1",
+            "angle_deg": 57.25,
+            "pitch_px": 1.66,
+            "rows": 10,
+            "segments": 108,
+            "bbox": [
+              2068.1,
+              1817.5,
+              2461.2,
+              2397.4
+            ]
+          },
+          {
+            "id": "h-a56.0p1.7w1",
+            "angle_deg": 56.08,
+            "pitch_px": 1.66,
+            "rows": 107,
+            "segments": 876,
+            "bbox": [
+              1942.8,
+              2145.6,
+              3463.7,
+              4123
+            ]
+          },
+          {
+            "id": "h-a56.5p1.8w1",
+            "angle_deg": 56.4,
+            "pitch_px": 1.78,
+            "rows": 80,
+            "segments": 373,
+            "bbox": [
+              905.5,
+              2156.9,
+              1276.1,
+              2690.9
+            ]
+          },
+          {
+            "id": "h-a90.0p1.7w1",
+            "angle_deg": 90,
+            "pitch_px": 1.68,
+            "rows": 24,
+            "segments": 145,
+            "bbox": [
+              5239.2,
+              2512.3,
+              5291,
+              3209
+            ]
+          },
+          {
+            "id": "h-a90.0p1.7w1",
+            "angle_deg": 90,
+            "pitch_px": 1.68,
+            "rows": 10,
+            "segments": 53,
+            "bbox": [
+              5147,
+              2512.3,
+              5163.4,
+              2856
+            ]
+          },
+          {
+            "id": "h-a90.0p2.9w1",
+            "angle_deg": 90,
+            "pitch_px": 2.88,
+            "rows": 11,
+            "segments": 57,
+            "bbox": [
+              2078.6,
+              1598.9,
+              2110.8,
+              2712
+            ]
+          },
+          {
+            "id": "h-a90.0p1.7w1",
+            "angle_deg": 90,
+            "pitch_px": 1.68,
+            "rows": 10,
+            "segments": 94,
+            "bbox": [
+              1241,
+              358.3,
+              1259.8,
+              2524.3
+            ]
+          },
+          {
+            "id": "h-a90.0p1.7w1",
+            "angle_deg": 90,
+            "pitch_px": 1.68,
+            "rows": 26,
+            "segments": 159,
+            "bbox": [
+              1177.2,
+              1923.1,
+              1240.8,
+              4157
+            ]
+          },
+          {
+            "id": "h-a90.0p1.7w1",
+            "angle_deg": 90,
+            "pitch_px": 1.68,
+            "rows": 14,
+            "segments": 110,
+            "bbox": [
+              1125.4,
+              306.7,
+              1153.9,
+              2604.7
+            ]
+          },
+          {
+            "id": "h-a90.0p1.7w1",
+            "angle_deg": 90,
+            "pitch_px": 1.68,
+            "rows": 20,
+            "segments": 122,
+            "bbox": [
+              1084.1,
+              2136,
+              1124.9,
+              2604.7
+            ]
+          },
+          {
+            "id": "h-a90.0p1.7w1",
+            "angle_deg": 90,
+            "pitch_px": 1.68,
+            "rows": 10,
+            "segments": 64,
+            "bbox": [
+              1035.6,
+              2156.9,
+              1055,
+              2690.9
+            ]
+          },
+          {
+            "id": "h-a107.0p1.7w1",
+            "angle_deg": 107.04,
+            "pitch_px": 1.71,
+            "rows": 20,
+            "segments": 92,
+            "bbox": [
+              2371.2,
+              1667.5,
+              2555.3,
+              2678.6
+            ]
+          },
+          {
+            "id": "h-a95.5p1.6w1",
+            "angle_deg": 95.74,
+            "pitch_px": 1.57,
+            "rows": 11,
+            "segments": 19,
+            "bbox": [
+              2347.2,
+              2170.1,
+              2443.7,
+              2678.6
+            ]
+          },
+          {
+            "id": "h-a98.0p1.6w1",
+            "angle_deg": 97.86,
+            "pitch_px": 1.57,
+            "rows": 13,
+            "segments": 33,
+            "bbox": [
+              2323.2,
+              1772.9,
+              2467.7,
+              2699
+            ]
+          },
+          {
+            "id": "h-a98.0p1.6w1",
+            "angle_deg": 97.75,
+            "pitch_px": 1.61,
+            "rows": 13,
+            "segments": 34,
+            "bbox": [
+              2299.2,
+              1695.8,
+              2467.7,
+              2678.6
+            ]
+          },
+          {
+            "id": "h-a99.0p1.6w1",
+            "angle_deg": 98.87,
+            "pitch_px": 1.62,
+            "rows": 13,
+            "segments": 32,
+            "bbox": [
+              2224.1,
+              1684.6,
+              2444.6,
+              3085
+            ]
+          },
+          {
+            "id": "h-a95.5p1.6w1",
+            "angle_deg": 95.71,
+            "pitch_px": 1.57,
+            "rows": 11,
+            "segments": 18,
+            "bbox": [
+              2251.2,
+              2170.1,
+              2347.7,
+              2678.6
+            ]
+          }
+        ]
+      },
+      "reference_classifier_on_existing_families": {
+        "input_note": "Optimistic perfect-lattice metrics, but only evidence emitted by the extractor.",
+        "labels": {
+          "hatch": 0,
+          "repeated-building-element": 0,
+          "uncertain": 28
+        }
+      },
+      "reference_proposal_raw": {
+        "status": "error",
+        "elapsed_ms": 2,
+        "error": "segment-10256 must not be degenerate"
+      },
+      "reference_proposal_without_degenerate_segments": {
+        "status": "timeout",
+        "elapsed_ms": 5000
+      }
+    },
+    {
+      "case": "roseburg-floor-plan-a03a",
+      "source": {
+        "pdf": "bench/open-sheets/va-roseburg-b1ac-dwing-replace-finishes.pdf",
+        "page": 8,
+        "segments": 72303,
+        "degenerate_segments": 727,
+        "meta_bytes": 72303,
+        "luminance_values": 72303
+      },
+      "existing_classifier": {
+        "elapsed_ms": 83,
+        "soft_segments": 2137,
+        "families": 35,
+        "family_instances": [
+          {
+            "id": "h-a0.0p2.2w2",
+            "angle_deg": 0.03,
+            "pitch_px": 2.25,
+            "rows": 12,
+            "segments": 167,
+            "bbox": [
+              1054.7,
+              2287.2,
+              5604.1,
+              2317.4
+            ]
+          },
+          {
+            "id": "h-a0.0p1.7w1",
+            "angle_deg": 0,
+            "pitch_px": 1.69,
+            "rows": 17,
+            "segments": 259,
+            "bbox": [
+              155.9,
+              3752.5,
+              5681.2,
+              3784.3
+            ]
+          },
+          {
+            "id": "h-a0.0p1.8w1",
+            "angle_deg": 0,
+            "pitch_px": 1.78,
+            "rows": 10,
+            "segments": 148,
+            "bbox": [
+              155.9,
+              3840.8,
+              5846.5,
+              3859.2
+            ]
+          },
+          {
+            "id": "h-a0.0p2.1w1",
+            "angle_deg": 0,
+            "pitch_px": 2.05,
+            "rows": 17,
+            "segments": 184,
+            "bbox": [
+              109,
+              3880.7,
+              5893.7,
+              3918
+            ]
+          },
+          {
+            "id": "h-a0.0p2.1w1",
+            "angle_deg": 0,
+            "pitch_px": 2.09,
+            "rows": 14,
+            "segments": 116,
+            "bbox": [
+              110.9,
+              3918.8,
+              5893.7,
+              3950.8
+            ]
+          },
+          {
+            "id": "h-a0.0p2.1w1",
+            "angle_deg": 0,
+            "pitch_px": 2.08,
+            "rows": 14,
+            "segments": 397,
+            "bbox": [
+              110.9,
+              4027.6,
+              5893.7,
+              4054.7
+            ]
+          },
+          {
+            "id": "h-a0.0p1.6w1",
+            "angle_deg": 0,
+            "pitch_px": 1.63,
+            "rows": 19,
+            "segments": 216,
+            "bbox": [
+              111.6,
+              4093.2,
+              5650,
+              4128.5
+            ]
+          },
+          {
+            "id": "h-a104.0p2.6w1",
+            "angle_deg": 103.88,
+            "pitch_px": 2.59,
+            "rows": 22,
+            "segments": 65,
+            "bbox": [
+              5811.7,
+              3724.8,
+              5925.2,
+              4160.6
+            ]
+          },
+          {
+            "id": "h-a110.0p1.6w1",
+            "angle_deg": 109.95,
+            "pitch_px": 1.62,
+            "rows": 16,
+            "segments": 127,
+            "bbox": [
+              5773.7,
+              524,
+              5925.2,
+              4160.6
+            ]
+          },
+          {
+            "id": "h-a90.0p1.6w1",
+            "angle_deg": 89.83,
+            "pitch_px": 1.58,
+            "rows": 13,
+            "segments": 94,
+            "bbox": [
+              5773.7,
+              328.9,
+              5887.7,
+              4043
+            ]
+          },
+          {
+            "id": "h-a89.0p1.6w1",
+            "angle_deg": 88.96,
+            "pitch_px": 1.55,
+            "rows": 694,
+            "segments": 16024,
+            "bbox": [
+              4673.9,
+              103,
+              5818.3,
+              4256.5
+            ]
+          },
+          {
+            "id": "h-a94.5p1.6w1",
+            "angle_deg": 94.47,
+            "pitch_px": 1.58,
+            "rows": 22,
+            "segments": 329,
+            "bbox": [
+              4609.8,
+              153.7,
+              4675.4,
+              4160.6
+            ]
+          },
+          {
+            "id": "h-a90.5p1.8w1",
+            "angle_deg": 90.56,
+            "pitch_px": 1.83,
+            "rows": 11,
+            "segments": 38,
+            "bbox": [
+              4434.2,
+              983.6,
+              4607.9,
+              4256.5
+            ]
+          },
+          {
+            "id": "h-a95.5p2.0w1",
+            "angle_deg": 95.31,
+            "pitch_px": 2.02,
+            "rows": 10,
+            "segments": 44,
+            "bbox": [
+              3701.4,
+              113.4,
+              4126.1,
+              4256.5
+            ]
+          },
+          {
+            "id": "h-a93.0p1.6w1",
+            "angle_deg": 93.18,
+            "pitch_px": 1.59,
+            "rows": 13,
+            "segments": 71,
+            "bbox": [
+              3666.4,
+              1841.8,
+              3876.4,
+              4128.2
+            ]
+          },
+          {
+            "id": "h-a91.5p1.9w1",
+            "angle_deg": 91.61,
+            "pitch_px": 1.9,
+            "rows": 12,
+            "segments": 41,
+            "bbox": [
+              3610.6,
+              1841.8,
+              3876.4,
+              4128.2
+            ]
+          },
+          {
+            "id": "h-a84.5p2.8w1",
+            "angle_deg": 84.25,
+            "pitch_px": 2.83,
+            "rows": 12,
+            "segments": 57,
+            "bbox": [
+              2814.2,
+              1844,
+              2853.8,
+              4126.7
+            ]
+          },
+          {
+            "id": "h-a82.5p1.8w1",
+            "angle_deg": 82.72,
+            "pitch_px": 1.81,
+            "rows": 10,
+            "segments": 48,
+            "bbox": [
+              2148.1,
+              2478.5,
+              2184.6,
+              3958.1
+            ]
+          },
+          {
+            "id": "h-a83.0p2.4w1",
+            "angle_deg": 83.06,
+            "pitch_px": 2.39,
+            "rows": 11,
+            "segments": 43,
+            "bbox": [
+              2126,
+              2472,
+              2163.1,
+              3958.1
+            ]
+          },
+          {
+            "id": "h-a86.0p1.8w1",
+            "angle_deg": 85.76,
+            "pitch_px": 1.76,
+            "rows": 12,
+            "segments": 94,
+            "bbox": [
+              2096,
+              630.5,
+              2134.1,
+              4007.9
+            ]
+          },
+          {
+            "id": "h-a88.5p2.5w1",
+            "angle_deg": 88.53,
+            "pitch_px": 2.46,
+            "rows": 11,
+            "segments": 61,
+            "bbox": [
+              2069.9,
+              2029.4,
+              2112.4,
+              4007.9
+            ]
+          },
+          {
+            "id": "h-a90.5p1.8w1",
+            "angle_deg": 90.39,
+            "pitch_px": 1.83,
+            "rows": 31,
+            "segments": 211,
+            "bbox": [
+              2006.2,
+              838.9,
+              2074.3,
+              4059.6
+            ]
+          },
+          {
+            "id": "h-a96.5p1.9w1",
+            "angle_deg": 96.52,
+            "pitch_px": 1.91,
+            "rows": 15,
+            "segments": 70,
+            "bbox": [
+              1957.4,
+              1837.4,
+              2008,
+              4059.6
+            ]
+          },
+          {
+            "id": "h-a90.5p1.8w1",
+            "angle_deg": 90.26,
+            "pitch_px": 1.82,
+            "rows": 13,
+            "segments": 85,
+            "bbox": [
+              1911.1,
+              983.6,
+              1954.8,
+              4237.8
+            ]
+          },
+          {
+            "id": "h-a90.5p2.1w1",
+            "angle_deg": 90.64,
+            "pitch_px": 2.08,
+            "rows": 12,
+            "segments": 58,
+            "bbox": [
+              1873.9,
+              983.6,
+              1917,
+              4059.6
+            ]
+          },
+          {
+            "id": "h-a90.5p1.8w1",
+            "angle_deg": 90.73,
+            "pitch_px": 1.77,
+            "rows": 30,
+            "segments": 136,
+            "bbox": [
+              1799.8,
+              840.6,
+              1877,
+              4068.1
+            ]
+          },
+          {
+            "id": "h-a88.5p1.6w1",
+            "angle_deg": 88.57,
+            "pitch_px": 1.58,
+            "rows": 15,
+            "segments": 134,
+            "bbox": [
+              1777.8,
+              2020.9,
+              1822.1,
+              4059.6
+            ]
+          },
+          {
+            "id": "h-a86.5p1.8w1",
+            "angle_deg": 86.7,
+            "pitch_px": 1.83,
+            "rows": 26,
+            "segments": 139,
+            "bbox": [
+              1716.4,
+              587.2,
+              1780.2,
+              4068.1
+            ]
+          },
+          {
+            "id": "h-a90.5p1.9w1",
+            "angle_deg": 90.59,
+            "pitch_px": 1.94,
+            "rows": 13,
+            "segments": 81,
+            "bbox": [
+              1350.4,
+              2627.2,
+              1385.8,
+              4249
+            ]
+          },
+          {
+            "id": "h-a89.5p1.7w1",
+            "angle_deg": 89.38,
+            "pitch_px": 1.71,
+            "rows": 11,
+            "segments": 63,
+            "bbox": [
+              1239.8,
+              587.2,
+              1285.6,
+              4121
+            ]
+          },
+          {
+            "id": "h-a93.5p1.8w1",
+            "angle_deg": 93.69,
+            "pitch_px": 1.8,
+            "rows": 13,
+            "segments": 62,
+            "bbox": [
+              1221,
+              587.2,
+              1258.1,
+              4121
+            ]
+          },
+          {
+            "id": "h-a85.5p1.8w1",
+            "angle_deg": 85.61,
+            "pitch_px": 1.83,
+            "rows": 17,
+            "segments": 122,
+            "bbox": [
+              1167.8,
+              587.2,
+              1210.3,
+              4121
+            ]
+          },
+          {
+            "id": "h-a93.0p3.3w1",
+            "angle_deg": 92.97,
+            "pitch_px": 3.25,
+            "rows": 12,
+            "segments": 36,
+            "bbox": [
+              393.1,
+              1162.2,
+              445.9,
+              4193.5
+            ]
+          },
+          {
+            "id": "h-a90.0p1.9w1",
+            "angle_deg": 90,
+            "pitch_px": 1.85,
+            "rows": 10,
+            "segments": 42,
+            "bbox": [
+              173.9,
+              323.5,
+              209.9,
+              4157.5
+            ]
+          },
+          {
+            "id": "h-a87.5p1.6w1",
+            "angle_deg": 87.39,
+            "pitch_px": 1.58,
+            "rows": 45,
+            "segments": 605,
+            "bbox": [
+              106.4,
+              495,
+              173.9,
+              4166.5
+            ]
+          }
+        ]
+      },
+      "reference_classifier_on_existing_families": {
+        "input_note": "Optimistic perfect-lattice metrics, but only evidence emitted by the extractor.",
+        "labels": {
+          "hatch": 0,
+          "repeated-building-element": 0,
+          "uncertain": 35
+        }
+      },
+      "reference_proposal_raw": {
+        "status": "error",
+        "elapsed_ms": 0,
+        "error": "segment-123 must not be degenerate"
+      },
+      "reference_proposal_without_degenerate_segments": {
+        "status": "timeout",
+        "elapsed_ms": 5000
+      }
+    },
+    {
+      "case": "roseburg-rcp-a04a",
+      "source": {
+        "pdf": "bench/open-sheets/va-roseburg-b1ac-dwing-replace-finishes.pdf",
+        "page": 11,
+        "segments": 62867,
+        "degenerate_segments": 604,
+        "meta_bytes": 62867,
+        "luminance_values": 62867
+      },
+      "existing_classifier": {
+        "elapsed_ms": 77,
+        "soft_segments": 1887,
+        "families": 23,
+        "family_instances": [
+          {
+            "id": "h-a0.0p2.5w1",
+            "angle_deg": 0,
+            "pitch_px": 2.52,
+            "rows": 10,
+            "segments": 231,
+            "bbox": [
+              4679.9,
+              311.9,
+              5778.8,
+              346.9
+            ]
+          },
+          {
+            "id": "h-a0.0p2.9w2",
+            "angle_deg": 0,
+            "pitch_px": 2.86,
+            "rows": 11,
+            "segments": 183,
+            "bbox": [
+              110.9,
+              2497.9,
+              5835.8,
+              2535.8
+            ]
+          },
+          {
+            "id": "h-a0.0p2.0w1",
+            "angle_deg": 0,
+            "pitch_px": 1.98,
+            "rows": 16,
+            "segments": 259,
+            "bbox": [
+              155.9,
+              3752.5,
+              5681.2,
+              3784.3
+            ]
+          },
+          {
+            "id": "h-a0.0p1.9w1",
+            "angle_deg": 0,
+            "pitch_px": 1.88,
+            "rows": 10,
+            "segments": 149,
+            "bbox": [
+              155.9,
+              3840.8,
+              5846.5,
+              3859.2
+            ]
+          },
+          {
+            "id": "h-a0.0p1.9w1",
+            "angle_deg": 0,
+            "pitch_px": 1.94,
+            "rows": 13,
+            "segments": 127,
+            "bbox": [
+              109,
+              3886.3,
+              5893.7,
+              3911.6
+            ]
+          },
+          {
+            "id": "h-a0.0p1.8w1",
+            "angle_deg": 0,
+            "pitch_px": 1.78,
+            "rows": 14,
+            "segments": 396,
+            "bbox": [
+              110.9,
+              4027.6,
+              5893.7,
+              4054.2
+            ]
+          },
+          {
+            "id": "h-a0.0p1.6w1",
+            "angle_deg": 0,
+            "pitch_px": 1.57,
+            "rows": 13,
+            "segments": 152,
+            "bbox": [
+              155.9,
+              4110.8,
+              5650,
+              4137
+            ]
+          },
+          {
+            "id": "h-a98.5p1.8w1",
+            "angle_deg": 98.61,
+            "pitch_px": 1.81,
+            "rows": 12,
+            "segments": 57,
+            "bbox": [
+              5808.1,
+              524,
+              5925.2,
+              4160.6
+            ]
+          },
+          {
+            "id": "h-a89.5p1.6w1",
+            "angle_deg": 89.49,
+            "pitch_px": 1.56,
+            "rows": 365,
+            "segments": 6481,
+            "bbox": [
+              5216.6,
+              103,
+              5925.2,
+              4256.5
+            ]
+          },
+          {
+            "id": "h-a88.5p1.6w1",
+            "angle_deg": 88.56,
+            "pitch_px": 1.55,
+            "rows": 350,
+            "segments": 7448,
+            "bbox": [
+              4663,
+              103,
+              5258.8,
+              4256.5
+            ]
+          },
+          {
+            "id": "h-a91.5p1.6w1",
+            "angle_deg": 91.65,
+            "pitch_px": 1.63,
+            "rows": 12,
+            "segments": 142,
+            "bbox": [
+              4626,
+              239.2,
+              4716.1,
+              4054.1
+            ]
+          },
+          {
+            "id": "h-a95.5p1.6w1",
+            "angle_deg": 95.5,
+            "pitch_px": 1.58,
+            "rows": 10,
+            "segments": 121,
+            "bbox": [
+              4626,
+              671.2,
+              4647.2,
+              1611.6
+            ]
+          },
+          {
+            "id": "h-a91.0p1.6w1",
+            "angle_deg": 90.94,
+            "pitch_px": 1.6,
+            "rows": 12,
+            "segments": 62,
+            "bbox": [
+              3899,
+              113.4,
+              3990.6,
+              4114.2
+            ]
+          },
+          {
+            "id": "h-a90.5p1.8w1",
+            "angle_deg": 90.41,
+            "pitch_px": 1.78,
+            "rows": 14,
+            "segments": 66,
+            "bbox": [
+              3775.9,
+              3753.5,
+              3807.2,
+              4128.2
+            ]
+          },
+          {
+            "id": "h-a88.5p1.7w1",
+            "angle_deg": 88.66,
+            "pitch_px": 1.7,
+            "rows": 14,
+            "segments": 56,
+            "bbox": [
+              3489.7,
+              1841.6,
+              3565.8,
+              4133
+            ]
+          },
+          {
+            "id": "h-a90.0p1.6w1",
+            "angle_deg": 90.14,
+            "pitch_px": 1.64,
+            "rows": 11,
+            "segments": 75,
+            "bbox": [
+              3340.3,
+              1695.1,
+              3392.9,
+              4128.2
+            ]
+          },
+          {
+            "id": "h-a89.0p1.8w1",
+            "angle_deg": 89.04,
+            "pitch_px": 1.79,
+            "rows": 12,
+            "segments": 65,
+            "bbox": [
+              2933,
+              2792.2,
+              2975.3,
+              4054
+            ]
+          },
+          {
+            "id": "h-a86.0p1.6w1",
+            "angle_deg": 85.84,
+            "pitch_px": 1.64,
+            "rows": 12,
+            "segments": 60,
+            "bbox": [
+              1778.8,
+              2500.8,
+              1822.1,
+              4059.6
+            ]
+          },
+          {
+            "id": "h-a91.0p2.0w1",
+            "angle_deg": 90.96,
+            "pitch_px": 1.97,
+            "rows": 10,
+            "segments": 46,
+            "bbox": [
+              1594.2,
+              122.9,
+              1682.5,
+              3956.8
+            ]
+          },
+          {
+            "id": "h-a89.0p1.7w1",
+            "angle_deg": 88.83,
+            "pitch_px": 1.72,
+            "rows": 10,
+            "segments": 47,
+            "bbox": [
+              1550.2,
+              3450.1,
+              1578.7,
+              3908.2
+            ]
+          },
+          {
+            "id": "h-a90.5p2.5w1",
+            "angle_deg": 90.73,
+            "pitch_px": 2.54,
+            "rows": 13,
+            "segments": 43,
+            "bbox": [
+              510.4,
+              900.7,
+              586,
+              4193.5
+            ]
+          },
+          {
+            "id": "h-a90.5p2.2w1",
+            "angle_deg": 90.4,
+            "pitch_px": 2.19,
+            "rows": 13,
+            "segments": 43,
+            "bbox": [
+              467.6,
+              279.2,
+              561.6,
+              4193.5
+            ]
+          },
+          {
+            "id": "h-a87.5p1.7w1",
+            "angle_deg": 87.69,
+            "pitch_px": 1.65,
+            "rows": 74,
+            "segments": 656,
+            "bbox": [
+              106.4,
+              323.5,
+              260.8,
+              4193.5
+            ]
+          }
+        ]
+      },
+      "reference_classifier_on_existing_families": {
+        "input_note": "Optimistic perfect-lattice metrics, but only evidence emitted by the extractor.",
+        "labels": {
+          "hatch": 0,
+          "repeated-building-element": 0,
+          "uncertain": 23
+        }
+      },
+      "reference_proposal_raw": {
+        "status": "error",
+        "elapsed_ms": 0,
+        "error": "segment-4 must not be degenerate"
       },
       "reference_proposal_without_degenerate_segments": {
         "status": "timeout",

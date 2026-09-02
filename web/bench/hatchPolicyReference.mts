@@ -20,13 +20,36 @@ const require = createRequire(import.meta.url);
 const pdfjs = await import(require.resolve("pdfjs-dist/legacy/build/pdf.mjs"));
 const PROPOSAL_TIMEOUT_MS = 5_000;
 
-const cases = ["sample-plan", "va-finish-plan"];
+const cases = {
+  "sample-plan": { corpus: "sample-plan" },
+  "va-finish-plan": { corpus: "va-finish-plan" },
+  "dublin-finish-plan": {
+    pdf: "../../bench/open-sheets/va-dublin-bldg9a-finish-plan-A601.pdf",
+    page: 1,
+    scale: 2,
+  },
+  "roseburg-floor-plan-a03a": {
+    pdf: "../../bench/open-sheets/va-roseburg-b1ac-dwing-replace-finishes.pdf",
+    page: 8,
+    scale: 2,
+  },
+  "roseburg-rcp-a04a": {
+    pdf: "../../bench/open-sheets/va-roseburg-b1ac-dwing-replace-finishes.pdf",
+    page: 11,
+    scale: 2,
+  },
+} as const;
+
+type CaseName = keyof typeof cases;
 
 async function loadCase(caseName: string) {
-  if (!cases.includes(caseName)) throw new Error(`unknown case: ${caseName}`);
-  const corpusPath = join(here, "corpus", `${caseName}.json`);
-  const corpus = JSON.parse(readFileSync(corpusPath, "utf8"));
-  const pdfPath = resolve(dirname(corpusPath), corpus.pdf);
+  if (!(caseName in cases)) throw new Error(`unknown case: ${caseName}`);
+  const definition = cases[caseName as CaseName];
+  const corpusPath = "corpus" in definition
+    ? join(here, "corpus", `${definition.corpus}.json`)
+    : null;
+  const corpus = corpusPath ? JSON.parse(readFileSync(corpusPath, "utf8")) : definition;
+  const pdfPath = resolve(corpusPath ? dirname(corpusPath) : here, corpus.pdf);
   const document = await pdfjs.getDocument({ url: pdfPath, useSystemFonts: true }).promise;
   const page = await document.getPage(corpus.page || 1);
   const viewport = page.getViewport({ scale: corpus.scale });
@@ -36,7 +59,7 @@ async function loadCase(caseName: string) {
     pdfjs.OPS,
   );
   await document.destroy();
-  return { corpusPath, pdfPath, geometry };
+  return { corpusPath, pdfPath, page: corpus.page || 1, geometry };
 }
 
 function referenceSegments(geometry: Awaited<ReturnType<typeof loadCase>>["geometry"]) {
@@ -135,8 +158,8 @@ function runProposal(caseName: string, filtered: boolean): Promise<Record<string
 
 async function main() {
   const results = [];
-  for (const caseName of cases) {
-    const { corpusPath, pdfPath, geometry } = await loadCase(caseName);
+  for (const caseName of Object.keys(cases)) {
+    const { corpusPath, pdfPath, page, geometry } = await loadCase(caseName);
     const raw = referenceSegments(geometry);
     const degenerate = raw.filter(isDegenerate).length;
     const existingStarted = performance.now();
@@ -153,8 +176,9 @@ async function main() {
     results.push({
       case: caseName,
       source: {
-        corpus: corpusPath.slice(resolve(here, "..").length + 1),
+        ...(corpusPath ? { corpus: corpusPath.slice(resolve(here, "..").length + 1) } : {}),
         pdf: pdfPath.slice(resolve(here, "../..").length + 1),
+        page,
         segments: raw.length,
         degenerate_segments: degenerate,
         meta_bytes: geometry.meta.length,
@@ -164,6 +188,14 @@ async function main() {
         elapsed_ms: existingElapsed,
         soft_segments: existingSoft.reduce((sum, value) => sum + value, 0),
         families: existingFamilies.length,
+        family_instances: existingFamilies.map((family) => ({
+          id: family.id,
+          angle_deg: family.angle_deg,
+          pitch_px: family.pitch_px,
+          rows: family.rows,
+          segments: family.segments,
+          bbox: family.bbox,
+        })),
       },
       reference_classifier_on_existing_families: {
         input_note: "Optimistic perfect-lattice metrics, but only evidence emitted by the extractor.",
