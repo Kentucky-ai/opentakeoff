@@ -34,7 +34,7 @@ Register the server with your MCP client (any stdio client):
 Never point a client config at `npm start`—npm's banner goes to stdout,
 which is the MCP wire. `node --import tsx` is the whole invocation.
 
-By default the server hands every client all forty tool schemas at once. Set
+By default the server hands every client all forty-three tool schemas at once. Set
 `OPENTAKEOFF_MCP_STAGED_TOOLS=1` in the server's environment to stage the
 surface instead: only the setup tools start enabled, and the agent opens the
 `measure` / `revise` / `handoff` groups on demand with `open_tool_stage` as
@@ -44,11 +44,15 @@ client that honors `tools/list_changed`; leave it unset otherwise.
 
 ## What the agent gets
 
-Forty tools, in the order an agent tends to reach for them:
+Forty-three tools, in the order an agent tends to reach for them:
 
 - **Open and orient**—`load_plan`, `sheet_info` (including the sheet's PDF
   layer table—Optional Content Groups with a classified role, confidence,
-  and default visibility per layer), `set_scale`, `sheet_context`
+  and default visibility per layer), `set_scale`, `sheet_context`,
+  `get_sheet_vectors` (the sheet's vector layer exactly as the engine is fed
+  it—flat points, meta byte, luminance, subpath and layer index per segment,
+  paged with an exact `dropped` count—so a reader can run its own geometry
+  against what the app sees; refuses on a scan, #367)
 - **Load the set**—`load_plan` (default replaces; `merge: true` adds—plans +
   schedule + addenda as one working set, #152)
 - **Navigate the set**—`sheet_graph` (the plan-set index: sheet roles with

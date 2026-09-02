@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — `get_sheet_vectors`: the strokes the engine floods against, readable by any agent (#367)
+
+### Added
+- **`get_sheet_vectors` — the sheet's vector layer exactly as the engine is fed it (mcp 0.9.67).** An agent could look at a sheet (`view_sheet`) and read it (`read_sheet_text`); it could not get the strokes. This returns the raw extractor output every shape verb works from — flat `[x1, y1, x2, y2, …]` points in image px, one meta byte per segment (curve / clip / fill-only / polyline-arc flags in the low nibble, device pen width in the high), per-segment stroke luminance, the drawn figure each segment belongs to (subpath ordinal), the sheet's placed-image area, and its PDF layer table with a per-segment layer index. Nothing is classified, decimated, or merged: where `sheet_context` classifies a region and decimates longest-first, this pages the whole array in extraction order, so a reader can run its own room finder, symbol matcher, or wall classifier against what the app sees and commit the result through the existing verbs with provenance intact — and every engine claim becomes externally checkable. On the bundled sample plan the verb returns the engine's segment count and meta bytes byte-for-byte (pinned over the wire against `extractVectorGeometry` run on the same page). Paged with a declared budget (default 20,000 segments — about 1 MB of JSON — ceiling 100,000) and an honest ledger: `offset + returned + dropped === total` on every reply, `next_cursor` recovers exactly what `dropped` counts. `region` keeps segments that intersect the rect with the same keep test `sheet_context` uses, so the two verbs agree on `total`. Read-only and stateless. A scan has no strokes: the verb refuses and names `view_sheet` as the path. The forty-third tool, in the `setup` stage.
+
 ## Unreleased — the sheet leaves by hand, and the count follows you
 
 ### Added

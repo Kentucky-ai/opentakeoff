@@ -15,7 +15,7 @@ export const TOOL_STAGES: Record<string, readonly string[]> = {
   // Always enabled: an agent needs these to orient before anything else is useful.
   setup: [
     "load_plan", "sheet_info", "set_scale", "sheet_graph", "resolve_tag",
-    "find_schedule", "read_sheet_text", "find_text", "sheet_context", "view_sheet",
+    "find_schedule", "read_sheet_text", "find_text", "sheet_context", "get_sheet_vectors", "view_sheet",
   ],
   measure: [
     "one_click", "detect_rooms", "measure_polygon", "cut_out", "measure_line",

@@ -26,6 +26,7 @@ import {
   exportReportOutput, sheetGraphOutput, resolveTagOutput, findScheduleOutput,
   symbolSweepOutput, sweepScheduleRowOutput, annotateOutput, listAnnotationsOutput,
   markVerdictOutput, deleteVerdictOutput, duplicateConditionOutput, splitConditionOutput,
+  getSheetVectorsOutput,
 } from "../src/outputs.ts";
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
@@ -45,6 +46,7 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   export_takeoff: z.object(exportTakeoffOutput),
   delete_shape: z.object(deleteShapeOutput),
   read_sheet_text: z.object(readSheetTextOutput),
+  get_sheet_vectors: z.object(getSheetVectorsOutput),
   find_text: z.object(findTextOutput),
   edit_materials: z.object(editMaterialsOutput),
   edit_condition: z.object(editConditionOutput),
@@ -197,6 +199,12 @@ test("every tool: canonical valid call → schema-valid structuredContent mirror
   assert.equal(region.text, "OFFICE 101");
   const empty = await callOk(client, "read_sheet_text", { sheet: KEY, region: { x0: 0, y0: 0, x1: 10, y1: 10 } });
   assert.deepEqual({ items: empty.items, text: empty.text }, { items: [], text: "" });
+
+  // get_sheet_vectors (#367): the raw layer, whole — the demo plan's six segments in one page
+  const vec = await callOk(client, "get_sheet_vectors", { sheet: KEY });
+  assert.equal(vec.total, infoBefore.seg_count);
+  assert.deepEqual({ returned: vec.returned, offset: vec.offset, dropped: vec.dropped }, { returned: vec.total, offset: 0, dropped: 0 });
+  assert.equal(vec.points.length, vec.total * 4);
 
   // "101" substring-matches both the room label and the sheet number ("A-101")
   const found = await callOk(client, "find_text", { sheet: KEY, q: "101" });
@@ -381,6 +389,9 @@ test("schema-invalid arguments: -32602 validation error naming the tool; the ses
   await callViolation(client, "delete_shape", {});                                         // missing shape_id
   await callViolation(client, "read_sheet_text", { sheet: KEY, region: { x0: 0, y0: 0, x1: 10 } }); // partial region
   await callViolation(client, "export_takeoff", { path: 42 });                             // path not a string
+  await callViolation(client, "get_sheet_vectors", { sheet: KEY, limit: 0 });               // limit below min 1
+  await callViolation(client, "get_sheet_vectors", { sheet: KEY, cursor: -1 });             // cursor below 0
+  await callViolation(client, "get_sheet_vectors", { sheet: KEY, region: { x0: 0, y0: 0, x1: 10 } }); // partial region
   await callViolation(client, "view_sheet", { sheet: KEY, px: 50 });                       // px below the 200 floor
   await callViolation(client, "view_sheet", { sheet: KEY, region: { x0: 0, y0: 0, x1: 10 } }); // partial region
   await callViolation(client, "find_text", { sheet: KEY });                                // missing q
