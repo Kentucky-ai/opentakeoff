@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test test/*.test.ts",
     "bench": "node --import tsx bench/run.mts",
+    "bench:hatch-policy-reference": "node --import tsx bench/hatchPolicyReference.mts",
     "bench:callouts": "node --import tsx bench/callouts.mts",
     "bench:batch": "node --import tsx bench/batch.mts",
     "check": "npm run typecheck && npm run lint && npm test && npm run bench && npm run build",
