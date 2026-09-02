@@ -530,7 +530,10 @@ export const undoLastOutput = {
   undone: z.number().int().describe("Steps actually reversed"),
   steps: z.array(z.object({
     seq: z.number().int(),
-    op: z.enum(["commit", "edit", "delete", "materials", "condition", "approval", "duplicate_condition", "split_condition", "cutout", "cutout_restore", "runcut"]),
+    // EVERY JournalPayload op (session.ts) belongs here — the wire validates
+    // undo_last's reply against this enum, so a journal op missing from it
+    // fails the undo call itself. Add the op here in the same change.
+    op: z.enum(["commit", "edit", "delete", "materials", "condition", "approval", "duplicate_condition", "split_condition", "cutout", "cutout_restore", "runcut", "rfi_create", "rfi_resolve", "rfi_delete"]),
     tool: z.string().describe("The tool call this step came from"),
     shapes: z.number().int().describe("Shapes affected by reversing this step — 0 for a materials step (it restores a condition's supporting-materials rows, not shapes), for a condition step (it restores the waste/multiplier pair), and for an approval step (it re-seats or removes a verdict mark)"),
   })).describe("Newest first"),
@@ -621,11 +624,12 @@ export const exportReportOutput = {
  * and what; the document itself is the deliverable, never inlined. */
 export const exportMarkedPdfOutput = {
   path: z.string().describe("Absolute path of the written marked-set PDF — hand this to the user"),
-  pages: z.number().int().describe("Legend cover + one page per marked sheet"),
+  pages: z.number().int().describe("Legend cover + the RFI schedule page(s) when any RFI is live + one page per marked sheet"),
   sheets_marked: z.number().int().describe("Sheets carrying shapes, annotations, or approval marks — unmarked sheets are omitted"),
   shapes_drawn: z.number().int(),
   annotations_drawn: z.number().int(),
   approvals_drawn: z.number().int().describe("Approval-family glyphs burned in (#176) — estimator APPROVED rings + agent AGENT diamonds; the cover tallies the split when any exist"),
+  rfis_printed: z.number().int().describe("Live RFIs printed on the RFI schedule page (#364) — agent-raised and panel-raised alike; withdrawn ones leave a numbering gap"),
   note: z.string(),
 };
 
@@ -943,6 +947,54 @@ export const linkAnnotationOutput = {
   id: z.string(),
   condition: z.string(),
   condition_id: z.string().optional(),
+  note: z.string(),
+};
+
+// ── RFIs (#364) — raise, list, answer, withdraw a question on the sheet ──────
+/** One RFI as the register reports it: the panel's record with its links
+ * resolved. actor says who asked; pending is the agent-raised-and-not-yet-
+ * accepted state (origin.reviewed false) — the record the estimator has to
+ * accept in the register before it goes anywhere. */
+const rfiRow = z.object({
+  id: z.string().describe('The record id ("rfi-…")'),
+  number: z.string().describe('The register number, "RFI-001" — next in the panel\'s own sequence, never reissued'),
+  subject: z.string(),
+  question: z.string(),
+  status: z.enum(["open", "answered", "closed", "void"]).describe("The panel's lifecycle: open → answered → closed; void = withdrawn"),
+  sheet: z.string().describe("The sheet the question is about"),
+  actor: z.enum(["agent", "estimator"]).describe('Who raised it — "agent" for every RFI minted over MCP, "estimator" for a panel-raised one'),
+  pending: z.boolean().describe("true = agent-raised and not yet accepted by an estimator in the register (origin.reviewed false) — pencil, not sent"),
+  date: z.string().describe("YYYY-MM-DD opened"),
+  response: z.string(),
+  response_date: z.string().describe("YYYY-MM-DD answered, '' while open"),
+  linked_markups: z.array(z.string()).describe("Annotation ids carrying this RFI's number on the sheet (markup.rfi_id) — derived, never stored twice"),
+  conditions: z.array(z.string()).describe("Finish tags the linked markups are attached to — the scopes this question touches"),
+});
+
+export const createRfiOutput = {
+  ...rfiRow.shape,
+  note: z.string(),
+};
+
+export const listRfisOutput = {
+  rfis: z.array(rfiRow).describe("Every live RFI, register order"),
+  count: z.number().int(),
+  open: z.number().int().describe("Still awaiting an answer"),
+  pending: z.number().int().describe("Agent-raised and not yet accepted by an estimator"),
+  withdrawn: z.array(z.string()).describe("Numbers of withdrawn RFIs (delete_rfi tombstones) — the gaps in the sequence, explained"),
+};
+
+export const resolveRfiOutput = {
+  ...rfiRow.shape,
+  resolved_at: z.string().describe("ISO-8601 time of this resolve"),
+  note: z.string(),
+};
+
+export const deleteRfiOutput = {
+  deleted: z.string().describe("The withdrawn record's id"),
+  number: z.string().describe("Its number — stays reserved; the register and the marked set keep the gap"),
+  unlinked_markups: z.number().int().describe("Markups that kept their note and lost the link"),
+  rfis_remaining: z.number().int().describe("Live RFIs after the withdrawal"),
   note: z.string(),
 };
 

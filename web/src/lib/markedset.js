@@ -39,7 +39,7 @@ export function authorTallyLine(shapes) {
 import { pointInPoly, starPath, arrowheadPath, cloudBezier, chiselRibbon } from "./geometry.js";
 import { transformPath, svgPlacedBox } from "./svgpath.js";
 import { imagePlacedBox, pickEmbedFormat, imageDrawParams, sourceCaption } from "./markupImage";
-import { rfiStatus } from "./rfi.js";
+import { rfiStatus, liveRfis } from "./rfi.js";
 import { RENDER_SCALE, parseSheetKey, sheetBaseLabelFromKey } from "./sheets";
 import { stitchPagePlan, memberEmbed } from "./stitches";
 import { pdfDashFor, boostForDark, clampWeight } from "./lineStyles.js";
@@ -228,7 +228,12 @@ function invertPixels(cv) {
   ctx.restore();
 }
 
-export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, markups, approvals = [], rfis = [], conditions, getPage, loadPdfData, company, clientInfo, credit = null, provenance = null, coverTitle = "Marked Set", units = "imperial" }) {
+export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, markups, approvals = [], rfis: rfisIn = [], conditions, getPage, loadPdfData, company, clientInfo, credit = null, provenance = null, coverTitle = "Marked Set", units = "imperial" }) {
+  // a withdrawn RFI is a tombstone (rfi.js liveRfis): its number stays
+  // reserved but it prints nowhere — the schedule keeps the gap. An agent-
+  // raised RFI prints exactly like a panel-raised one; who asked is on the
+  // record (origin.actor), not on the page.
+  const rfis = liveRfis(rfisIn);
   // display-unit edge (lib/units contract): quantities arrive as internal feet;
   // metric converts at the drawn string only — legend rows, by-sheet rows, and
   // the per-shape chips. ASCII "m2" (Helvetica WinAnsi has no superscript 2).
@@ -893,10 +898,11 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     lastPg.drawText(winAnsiSafe(credit), { x: (612 - cw) / 2, y: 22, size: 7, font, color: muted });
   }
 
+  const pages = doc.getPageCount();
   const bytes = await doc.save();
   const base = (projectName || "").trim();
   const filename = `${base ? base + " - " : ""}marked set${dark ? " (dark)" : ""}.pdf`;
-  return { bytes, filename };
+  return { bytes, filename, pages };
 }
 
 export function downloadBytes(filename, bytes, type = "application/pdf") {

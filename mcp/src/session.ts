@@ -55,6 +55,9 @@ import { applyRuleToProject, type Rule, type RuleShape, type SheetRuleData } fro
 // mints and a seal the canvas mints share ONE implementation of minting,
 // load-gating, and exact-restore inverses.
 import { sanitizeApprovals as sanitizeApprovalsJs, applyApprovalCommand as applyApprovalCommandJs } from "../../web/src/lib/approvals.js";
+// the RFI register's pure half (web/src/lib/rfi.js): the panel's numbering and
+// its tombstone rule, one implementation for both surfaces
+import { nextRfiNumber, liveRfis } from "../../web/src/lib/rfi.js";
 import { conditionTotals, grandTotals, sheetTotals, reportJson } from "../../web/src/lib/totals.js";
 import { hasRollSetup, mintRollSetup, computeRollTakeoff, rollReportRows, seamLfByShape } from "../../web/src/lib/rollTakeoff.js";
 import { gridPxPerFoot, drawGrid, drawShapes, drawMarks, type Ctx2D, type ToCanvas, type ViewMarks } from "./view.ts";
@@ -337,6 +340,47 @@ export interface Approval {
   text?: string;
 }
 
+/** An RFI — a Request For Information, the register's record (RfiPanel.jsx /
+ *  lib/rfi.js). Field-identical to what the canvas's Raise RFI mints, so an
+ *  agent-raised one loads in the app's register unchanged. A markup links to
+ *  it via markup.rfi_id === rfi.id (one RFI ↔ many markups) and the linked
+ *  set is DERIVED from that, never stored twice.
+ *
+ *  Two additive fields carry what the panel's own records never need:
+ *  `origin` — who asked. Every RFI this server mints is
+ *    `{actor: "agent", reviewed: false}`: PENDING until an estimator accepts
+ *    it in the panel, the same reviewed flag every agent shape carries. An
+ *    RFI goes to the architect, so nothing sends without a human; a record
+ *    with no origin is the estimator's own.
+ *  `deleted` — the tombstone. delete_rfi never removes the record: its number
+ *    stays reserved (the register and the marked set keep the gap) and it
+ *    prints nowhere. See liveRfis in lib/rfi.js. */
+export interface Rfi {
+  id: string;
+  /** "RFI-001" — nextRfiNumber over EVERY record, tombstones included. */
+  number: string;
+  created_at?: string;
+  subject: string;
+  question: string;
+  status: "open" | "answered" | "closed" | "void";
+  to: string;
+  priority: string;
+  cost_impact: boolean;
+  schedule_impact: boolean;
+  /** YYYY-MM-DD opened. */
+  date: string;
+  response: string;
+  /** YYYY-MM-DD, stamped on the transition into answered (the canvas rule). */
+  response_date: string;
+  sheet_id: string;
+  origin?: { actor: "agent" | "estimator"; reviewed?: boolean };
+  /** ISO-8601, resolve_rfi's own stamp beside the canvas's date-only field. */
+  resolved_at?: string;
+  resolved_by?: "agent";
+  deleted?: true;
+  deleted_at?: string;
+}
+
 /** The pure apply's command vocabulary (approvals.js) — what the journal
  * stores as the exact-restore inverse of a verdict mutation. */
 export type ApprovalCommand =
@@ -507,7 +551,17 @@ export type JournalPayload =
   // cut_out on an open RUN: the run keeps its id and takes what survives; the
   // far side of a middle cut lands as its own shape. Undo puts the run back
   // whole and unmints the far side, one gesture like every cut
-  | { op: "runcut"; tool: string; target_id: string; target_prev: CutoutParentPrev; minted_ids: string[] };
+  | { op: "runcut"; tool: string; target_id: string; target_prev: CutoutParentPrev; minted_ids: string[] }
+  // RFIs (#364): each verb is one entry carrying its exact inverse. A create
+  // unmints the record and puts every linked markup's previous rfi_id back; a
+  // resolve restores the pre-answer record verbatim; a delete swaps the
+  // tombstone back for the record it replaced and re-links its markups.
+  // Every op here MUST also appear in outputs.ts undoLastOutput's op enum —
+  // the wire validates the reply against it, and a missing member fails the
+  // undo call itself (the over-the-wire test is what catches it).
+  | { op: "rfi_create"; tool: string; id: string; links: { markup_id: string; prev_rfi_id: string }[] }
+  | { op: "rfi_resolve"; tool: string; before: Rfi }
+  | { op: "rfi_delete"; tool: string; before: Rfi; unlinked: string[] };
 
 export type JournalEntry = JournalPayload & { seq: number };
 
@@ -538,6 +592,10 @@ export class Session {
   /** Approval-family records (#176) — estimator seals arrive only by import;
    * agent verdicts mint through markVerdict and nothing else. */
   approvals: Approval[] = [];
+  /** The RFI register (#364) — the panel's own records, tombstones included
+   * (a withdrawn RFI keeps its number reserved). Read through liveRfis() for
+   * anything that prints or exports. */
+  rfis: Rfi[] = [];
   /** The last assign-from-schedule run's unresolved rooms (0.9.18) — what the
    * marked-set cover discloses as withheld. Replaced per assign run, cleared
    * with the rest of the session on a non-merge load_plan. Seeds ride
@@ -589,6 +647,7 @@ export class Session {
       this.shapes = [];
       this.markups = [];
       this.approvals = [];
+      this.rfis = [];
       this.file = null;
       this.filePath = null;
       this.nextOrd = 1;
@@ -3569,6 +3628,30 @@ export class Session {
         const p = this.shapes.find((x) => x.id === e.parent_id);
         if (p) Session.restoreCutoutSnapshot(p, e.parent_after);
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 1 });
+      } else if (e.op === "rfi_create") {
+        // unmint the record and hand every linked markup its previous link back
+        this.rfis = this.rfis.filter((r) => r.id !== e.id);
+        for (const l of e.links) {
+          const m = this.markups.find((x) => x.id === l.markup_id);
+          if (m) m.rfi_id = l.prev_rfi_id;
+        }
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "rfi_resolve") {
+        // the pre-answer record goes back verbatim: status, response, dates
+        const i = this.rfis.findIndex((r) => r.id === e.before.id);
+        if (i >= 0) this.rfis[i] = structuredClone(e.before);
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "rfi_delete") {
+        // the tombstone yields to the record it replaced, in place, and the
+        // markups the delete unlinked point at it again
+        const i = this.rfis.findIndex((r) => r.id === e.before.id);
+        if (i >= 0) this.rfis[i] = structuredClone(e.before);
+        else this.rfis.push(structuredClone(e.before));
+        for (const id of e.unlinked) {
+          const m = this.markups.find((x) => x.id === id);
+          if (m) m.rfi_id = e.before.id;
+        }
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
       } else if (e.op === "approval") {
         // the stored inverse came from the canvas's own pure apply — exact
         // restore, array order included (a lifted verdict returns to its
@@ -3725,6 +3808,159 @@ export class Session {
     const c = this.conditionFor(condition);
     m.condition_id = c.id;
     return { id: m.id, condition: c.finish_tag, condition_id: c.id, note: `Attached to ${c.finish_tag}.` };
+  }
+
+  // ── RFIs (#364) — raise, list, answer, withdraw a question on the sheet ───
+  // The register is the canvas's (RfiPanel.jsx): same record, same numbering
+  // (nextRfiNumber), same link rule (markup.rfi_id). What differs is who
+  // asked: everything minted here is origin {actor: "agent", reviewed: false}
+  // — pending until an estimator accepts it in the panel, because an RFI
+  // goes to the architect and nothing sends without a human.
+
+  /** The register without its tombstones — what lists, prints, and exports. */
+  liveRfis(): Rfi[] {
+    return liveRfis(this.rfis) as Rfi[];
+  }
+
+  private rfiById(id: string): Rfi {
+    const r = this.rfis.find((x) => x.id === id);
+    if (!r || r.deleted === true) throw new UserError(`No RFI ${JSON.stringify(id)}${r ? ` — ${r.number} was withdrawn (its number stays reserved)` : ""} — list_rfis has the real ids.`);
+    return r;
+  }
+
+  private rfiRow(r: Rfi): Record<string, unknown> {
+    const tagById = new Map(this.conditions.map((c) => [c.id, c.finish_tag]));
+    const linked = this.markups.filter((m) => m.rfi_id === r.id);
+    return {
+      id: r.id,
+      number: r.number,
+      subject: r.subject,
+      question: r.question,
+      status: r.status,
+      sheet: r.sheet_id,
+      actor: r.origin?.actor ?? "estimator",
+      pending: r.origin?.actor === "agent" && r.origin.reviewed !== true,
+      date: r.date,
+      response: r.response,
+      response_date: r.response_date,
+      linked_markups: linked.map((m) => m.id),
+      // the scopes the question touches, through its markups' condition links
+      conditions: [...new Set(linked.map((m) => tagById.get(m.condition_id) ?? "").filter(Boolean))],
+    };
+  }
+
+  /** Raise an RFI. Next number in the panel's own sequence (gaps and
+   * tombstones included, so a number is never reissued), status open, dated
+   * today, sheet resolved like every other tool. markup_ids link existing
+   * annotations the way the panel's Link control does — a markup already on
+   * another RFI moves (the panel's own overwrite), and the previous link is
+   * journaled so undo puts it back. Every id must exist: a question pinned
+   * to a markup that isn't there is a question about nothing. */
+  createRfi(a: { title: string; question: string; sheet: string; markup_ids?: string[] }): Record<string, unknown> {
+    const s = this.sheet(a.sheet);
+    const title = (a.title ?? "").trim();
+    const question = (a.question ?? "").trim();
+    if (!title) throw new UserError("An RFI needs a title — the one line the register and the schedule print for it.");
+    if (!question) throw new UserError("An RFI needs a question — what you are asking the architect to answer.");
+    const ids = [...new Set(a.markup_ids ?? [])];
+    const marks = ids.map((id) => {
+      const m = this.markups.find((x) => x.id === id);
+      if (!m) throw new UserError(`No annotation ${JSON.stringify(id)} — list_annotations has the real ids; annotate first to give the question something to point at.`);
+      return m;
+    });
+    const now = new Date();
+    const r: Rfi = {
+      id: uid("rfi"),
+      number: nextRfiNumber(this.rfis),
+      created_at: now.toISOString(),
+      subject: title,
+      question,
+      status: "open",
+      to: "",
+      priority: "normal",
+      cost_impact: false,
+      schedule_impact: false,
+      date: now.toISOString().slice(0, 10),
+      response: "",
+      response_date: "",
+      sheet_id: s.key,
+      // actor is the literal on the one line that writes it — no input reaches
+      // it, so no MCP path mints an estimator's own question
+      origin: { actor: "agent", reviewed: false },
+    };
+    const links = marks.map((m) => ({ markup_id: m.id, prev_rfi_id: m.rfi_id }));
+    for (const m of marks) m.rfi_id = r.id;
+    this.rfis.push(r);
+    this.record({ op: "rfi_create", tool: "create_rfi", id: r.id, links });
+    return {
+      ...this.rfiRow(r),
+      note: `Raised ${r.number} as the agent — PENDING in the estimator's register until accepted there (origin.reviewed false). It prints in the marked set's RFI schedule like any other RFI${marks.length ? `; ${marks.length} linked markup${marks.length === 1 ? "" : "s"} carry its number on the sheet` : "; link a cloud or callout (annotate, then markup_ids) so it points at something on the sheet"}.`,
+    };
+  }
+
+  /** Every live RFI with its links resolved: linked markup ids and the finish
+   * tags those markups are attached to. Withdrawn numbers are listed so the
+   * gap in the sequence is explained, never silent. */
+  listRfis(): Record<string, unknown> {
+    const live = this.liveRfis();
+    return {
+      rfis: live.map((r) => this.rfiRow(r)),
+      count: live.length,
+      open: live.filter((r) => r.status === "open").length,
+      pending: live.filter((r) => r.origin?.actor === "agent" && r.origin.reviewed !== true).length,
+      withdrawn: this.rfis.filter((r) => r.deleted === true).map((r) => r.number),
+    };
+  }
+
+  /** Answer an OPEN RFI: the answer lands as the response, status becomes
+   * answered (the panel's own state for "response in" — its lifecycle is
+   * open → answered → closed, with void for withdrawn), and the response
+   * date stamps exactly as the panel's status→date auto-stamp does, plus an
+   * ISO timestamp of the resolve. Anything not open is refused: an answered
+   * or closed question is not re-answered here, and a voided one is not
+   * quietly revived. */
+  resolveRfi(id: string, answer: string): Record<string, unknown> {
+    const r = this.rfiById(id);
+    const text = (answer ?? "").trim();
+    if (!text) throw new UserError(`${r.number} needs an answer — resolve_rfi records the response; to withdraw the question use delete_rfi.`);
+    if (r.status !== "open") {
+      throw new UserError(`${r.number} is ${r.status}, not open — resolve_rfi answers an OPEN question only. list_rfis shows each status; a resolved RFI stays resolved (undo_last reverses your own resolve).`);
+    }
+    const before = structuredClone(r);
+    const now = new Date();
+    r.status = "answered";
+    r.response = text;
+    if (!r.response_date) r.response_date = now.toISOString().slice(0, 10);
+    r.resolved_at = now.toISOString();
+    r.resolved_by = "agent";
+    this.record({ op: "rfi_resolve", tool: "resolve_rfi", before });
+    return {
+      ...this.rfiRow(r),
+      resolved_at: r.resolved_at,
+      note: `${r.number} answered — status answered, response recorded${r.origin?.actor === "agent" && r.origin.reviewed !== true ? "; it is still pending the estimator's acceptance in the register" : ""}.`,
+    };
+  }
+
+  /** Withdraw an RFI: a TOMBSTONE, never a removal. The record stays with
+   * deleted: true so its number is never reissued — the register and the
+   * marked set keep printing a gap where it was — and every linked markup
+   * loses its link (the canvas's own delete rule: clear the pointer, keep
+   * the note). Undo swaps the record back and re-links. */
+  deleteRfi(id: string): Record<string, unknown> {
+    const r = this.rfiById(id);
+    const before = structuredClone(r);
+    const unlinked = this.markups.filter((m) => m.rfi_id === r.id).map((m) => m.id);
+    for (const m of this.markups) if (m.rfi_id === r.id) m.rfi_id = "";
+    const i = this.rfis.indexOf(r);
+    this.rfis[i] = { ...before, status: "void", deleted: true, deleted_at: new Date().toISOString() };
+    this.record({ op: "rfi_delete", tool: "delete_rfi", before, unlinked });
+    return {
+      deleted: r.id,
+      number: r.number,
+      unlinked_markups: unlinked.length,
+      rfis_remaining: this.liveRfis().length,
+      note: `${r.number} withdrawn — a tombstone, not a renumber: the register and the marked set keep the gap, and the next RFI takes ${nextRfiNumber(this.rfis)}. ${unlinked.length ? `${unlinked.length} markup${unlinked.length === 1 ? "" : "s"} kept their note and lost the link.` : "No markups were linked."} undo_last puts it back.`,
+    };
   }
 
   // ── verdict marks (#176) — the agent half of the approval family ───────────
@@ -3905,6 +4141,11 @@ export class Session {
       // exist, exactly the canvas buildPayload's convention, so a verdict-free
       // export stays byte-identical to a pre-#176 one
       ...(this.approvals.length ? { approvals: this.approvals } : {}),
+      // RFIs (#364): the panel's own records, tombstones stripped — the app
+      // has no tombstone notion (its delete is a removal), and a withdrawn
+      // question must not resurface there as a stray Void row. Same
+      // present-only-when-any convention as approvals.
+      ...(this.liveRfis().length ? { rfis: this.liveRfis() } : {}),
       sheet_group: [],
       last_group: [],
       sheet_tabs: [],
@@ -3934,7 +4175,7 @@ export class Session {
       bySheet: sheetTotals(this.conditions, this.shapes),
       scaleInfo: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => ({ sheet_id: s.key, scale_source: s.scaleSource ?? "unknown", scale_confirmed: s.scaleConfirmed !== false })),
       markups: this.markups,
-      rfis: [],
+      rfis: this.liveRfis(),
       rollGoods: rollReportRows(byCond, rows),
     });
   }

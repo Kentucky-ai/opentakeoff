@@ -26,6 +26,7 @@ export const TOOL_STAGES: Record<string, readonly string[]> = {
     "list_shapes", "delete_shape", "edit_shape", "edit_materials", "edit_condition",
     "duplicate_condition", "split_condition", "undo_last", "annotate",
     "list_annotations", "link_annotation", "mark_verdict", "delete_verdict",
+    "create_rfi", "list_rfis", "resolve_rfi", "delete_rfi",
   ],
   handoff: [
     "takeoff_summary", "export_takeoff", "export_report", "import_takeoff",

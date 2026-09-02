@@ -34,7 +34,7 @@ Register the server with your MCP client (any stdio client):
 Never point a client config at `npm start`—npm's banner goes to stdout,
 which is the MCP wire. `node --import tsx` is the whole invocation.
 
-By default the server hands every client all forty-three tool schemas at once. Set
+By default the server hands every client every tool schema at once. Set
 `OPENTAKEOFF_MCP_STAGED_TOOLS=1` in the server's environment to stage the
 surface instead: only the setup tools start enabled, and the agent opens the
 `measure` / `revise` / `handoff` groups on demand with `open_tool_stage` as
@@ -185,6 +185,15 @@ Forty-three tools, in the order an agent tends to reach for them:
   in `list_annotations`' `verdicts[]`. The estimator's APPROVED ring is the
   other half and stays human-only: these tools take no actor input, so no
   agent path can mint or lift the human's ink. A verdict touches no quantity)
+- **Ask**—`create_rfi`, `list_rfis`, `resolve_rfi`, `delete_rfi` (the canvas's
+  RFI register, reachable by an agent: when the drawings are the problem—a
+  schedule row the plan never draws, a room the schedule has no row for—raise
+  it as a numbered question instead of a sentence in a reply. Same store, same
+  numbering, same markup link as the panel; everything the agent raises is
+  `origin {actor: "agent", reviewed: false}`—pending until the estimator
+  accepts it in the register, because an RFI goes to the architect and nothing
+  sends without a human. A delete is a tombstone: the number is never reissued
+  and the marked set keeps the gap. All four are journaled for `undo_last`)
 - **Report**—`takeoff_summary` (quantities only—materials stripped),
   `export_takeoff` (the raw `opentakeoff.takeoff_canvas.v1` canvas payload—materials
   as config rows, importable by the app), `export_report` (the

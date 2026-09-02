@@ -12,7 +12,7 @@ import {
   mergeTakeoffImport as mergeJs,
 } from "../../web/src/lib/importTakeoff.js";
 import { UserError } from "./format.ts";
-import { sanitizeApprovals, type Session, type Shape, type Condition, type Markup } from "./session.ts";
+import { sanitizeApprovals, type Session, type Shape, type Condition, type Markup, type Rfi } from "./session.ts";
 import type { Rule } from "../../web/src/lib/rules.ts";
 
 // untyped canvas JS — typed facades state the contract at the boundary
@@ -53,6 +53,14 @@ export async function importTakeoff(session: Session, filePath: string) {
   // hydrate runs (sanitizeApprovals) applies before anything lands, so one
   // corrupt record in a hand-edited file can't wedge the session.
   session.approvals = sanitizeApprovals(payload.approvals);
+  // RFIs (#364): transport, not minting — a panel-raised RFI arriving by file
+  // stays the estimator's (no origin), an agent-raised one stays pending
+  // (origin.reviewed false). The merge appended new ids and skipped known
+  // ones; this session's tombstones (never in the export) survive alongside,
+  // so a withdrawn number stays reserved across an import.
+  const tombstones = session.rfis.filter((r) => r.deleted === true);
+  const arrived = (Array.isArray(payload.rfis) ? payload.rfis as Rfi[] : []).filter((r) => r && typeof r === "object" && typeof r.id === "string");
+  session.rfis = [...tombstones, ...arrived];
   // scales: mergeTakeoffImport already applied "the session's calibration wins
   // per sheet" — adopt the merged rows onto sheets this document actually has
   for (const row of (payload.sheets as { sheet_id: string; units_per_px: number; scale_source?: string; scale_confirmed?: boolean }[]) ?? []) {
