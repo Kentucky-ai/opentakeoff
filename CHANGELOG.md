@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — a tag box is not a room (#373)
+
+### Fixed
+- **`detect_rooms` no longer commits room-number boxes as rooms (mcp 0.9.69).** Revit draws the number inside a box wide enough for "CR11-10"; on the Dublin A-601 finish plan that box is 108×36 px around 42×25 px of digits — a width ratio of 2.58 that cleared the 2.5× bubble guard by a hair — and the batch verb returned twelve 12 SF "rooms" at confidence 1.0, plus the schedule table's own cells. The bubble guard now also treats a ring no taller than 2.5 text heights and no wider than 6 text widths as the label's furniture (`BUBBLE_WIDE_RATIO`), and the ladder's recovery rung has to pass the canvas's ownership test (`floodSurroundsLabelPx`) before its flood is this label's room — the rung under restroom 110 had flooded a 10 SF door-swing pocket, which would have committed as "110". Rooms whose every clean flood belongs to some other space are counted in a new `withheld.unowned` with the seed for a `one_click` inside the room.
+
 ## Unreleased — `get_sheet_vectors`: the strokes the engine floods against, readable by any agent (#367)
 
 ### Added

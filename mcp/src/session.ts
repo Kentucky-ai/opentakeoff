@@ -37,7 +37,7 @@ import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS }
 // passes at a One-Click. This server used to call the raw floodRegion on
 // scale-unpinned masks here, so an MCP trace and a canvas click at the same
 // seed measured DIFFERENT square footage under the same origin.method.
-import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, floodAtSeed, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
+import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, floodSurroundsLabelPx, floodAtSeed, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
 import { fingerprintSymbol, matchSymbol, buildNegative, SWEEP_TOL_PX, type SweepOptions, type SymbolFingerprint, type SymbolMatchResult, type SweepMatch, type SweepWithheld, type SweepRejected, type SymbolNegative } from "../../web/src/lib/symbolsweep.ts";
 import { labelPlacements, type PlacementLabel } from "../../web/src/lib/symbollabels.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
@@ -1510,7 +1510,7 @@ export class Session {
     // Trace every label first (ladder + bubble guard per label). Nothing
     // commits in this pass — withholding has to be decided across the whole
     // batch (dedupe needs to see every ring).
-    const withheld = { degenerate: 0, duplicate: 0, bubble: 0, implausible: 0, unresolved: 0 };
+    const withheld = { degenerate: 0, duplicate: 0, bubble: 0, unowned: 0, implausible: 0, unresolved: 0 };
     const unresolved: { label: string; reason: string; area_sf: number; perimeter_lf: number; seed: [number, number] }[] = [];
     type Cand = { label: string; ring: Point[]; areaPx2: number; perimPx: number; seed: readonly [number, number] | number[]; ev: FloodEvidence; merged: string[] };
     const byRing = new Map<string, Cand>();
@@ -1521,7 +1521,7 @@ export class Session {
     const sweepMppf = raster ? (s.upp ? mask.ws / s.upp : 0) : (mask.mppf || 0);
     for (const lb of labels) {
       let ring: Point[] | null = null, ev: FloodEvidence | null = null, seed: [number, number] | null = null;
-      let sawBubble = false, sawDegenerate = false;
+      let sawBubble = false, sawDegenerate = false, sawUnowned = false;
       for (const probe of seedLadderPx(lb.bbox)) {
         // the sealed engine at each ladder rung — floodAtSeed, the ONE entry
         // point every non-canvas surface floods through (web detectRooms.ts),
@@ -1535,12 +1535,20 @@ export class Session {
           : snapVertices(traceRegion(f), (px, py, d) => (s.snap ? nearestSnap(s.snap, px, py, d) : null), SNAP_TOL);
         if (r.length < 3) { sawDegenerate = true; continue; }
         if (isLabelBubblePx(r as [number, number][], lb.bbox)) { sawBubble = true; continue; }
+        // ownership (#373): a rung that steps past the room's wall floods the
+        // NEIGHBOURING space or a door pocket — on Dublin A-601 the below-box
+        // rung under restroom 110 flooded a 10 SF swing pocket and it would
+        // have committed as "110". The flood must surround the label's box
+        // (the canvas's own test, floodSurroundsLabelPx) or it is not this
+        // label's room; withheld as unowned, never committed under the tag.
+        if (!floodSurroundsLabelPx(f, lb.bbox)) { sawUnowned = true; continue; }
         // harvest the scalar evidence now; the region bitmap goes with `f`
         ring = r; ev = Session.floodEvidence(f, raster, sweepMppf); seed = probe;
         break;
       }
       if (!ring || !ev || !seed) {
-        if (sawBubble) withheld.bubble++;            // only its own bubble ever flooded clean
+        if (sawBubble && !sawUnowned) withheld.bubble++;   // only its own bubble ever flooded clean
+        else if (sawUnowned) withheld.unowned++;             // every clean flood was some other space's
         else if (sawDegenerate) withheld.degenerate++;
         // a label with no clean flood at any probe simply isn't counted as a
         // seed that traced — same as the historical single-seed gate
@@ -1632,7 +1640,7 @@ export class Session {
         seed_norm: [u.seed[0] / s.widthPx, u.seed[1] / s.heightPx] as [number, number],
       }));
     }
-    const withheldTotal = withheld.degenerate + withheld.duplicate + withheld.bubble + withheld.implausible + withheld.unresolved;
+    const withheldTotal = withheld.degenerate + withheld.duplicate + withheld.bubble + withheld.unowned + withheld.implausible + withheld.unresolved;
     return {
       detected: rooms.length,
       rooms,
@@ -1646,7 +1654,7 @@ export class Session {
       ...(assign ? { unresolved } : {}),
       ...(s.detected?.multi ? { multiple_scales: true as const } : {}),
       ...(withheldTotal
-        ? { note: `${withheldTotal} seed(s) withheld — ${withheld.duplicate} duplicate region(s), ${withheld.bubble} label-bubble(s), ${withheld.implausible} under ${minAreaSf} SF, ${withheld.degenerate} untraceable${assign ? `, ${withheld.unresolved} unresolved against the schedule (see unresolved[])` : ""}.` }
+        ? { note: `${withheldTotal} seed(s) withheld — ${withheld.duplicate} duplicate region(s), ${withheld.bubble} label-bubble(s), ${withheld.unowned} unowned (every clean flood was a neighbouring space or door pocket — one_click inside the room), ${withheld.implausible} under ${minAreaSf} SF, ${withheld.degenerate} untraceable${assign ? `, ${withheld.unresolved} unresolved against the schedule (see unresolved[])` : ""}.` }
         : {}),
       ...(s.upp == null ? { warning: `No scale set for ${s.key} — quantities unavailable. Call set_scale${s.detected ? ` (detected: ${s.detected.label})` : ""}.` } : {}),
     };
