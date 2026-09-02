@@ -1,0 +1,6 @@
+{
+  "name": "four-asks-eval",
+  "private": true,
+  "description": "Pins the published opentakeoff-mcp the runs in this directory were made with",
+  "dependencies": { "opentakeoff-mcp": "0.9.68" }
+}
