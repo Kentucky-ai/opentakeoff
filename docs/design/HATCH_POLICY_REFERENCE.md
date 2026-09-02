@@ -32,6 +32,8 @@ The retry fails closed when metrics are missing or when it leaks, creates invali
 
 The defaults are test values, not recommended production thresholds. Tune them on projects that stay separate from final held-out sheets. Report every protected-class failure and every retry that is worse than the strict result, even when aggregate hatch recall improves.
 
+The first run against the repository's own extracted vectors did not clear the real-sheet bar. See [HATCH_POLICY_REFERENCE_VERIFICATION.md](HATCH_POLICY_REFERENCE_VERIFICATION.md). The current extractor does not emit the trusted group or evidence identifiers this classifier requires, the raw real sheet contains degenerate segments the proposal stage rejects, and the filtered full-sheet proposal exceeded its declared time budget. Keep this as a negative-control reference unless those failures are addressed and re-measured.
+
 ## Run the checks
 
 From `web/`:

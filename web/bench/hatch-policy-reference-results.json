@@ -1,0 +1,83 @@
+{
+  "generated_at": "2026-09-02T12:49:51.174Z",
+  "proposal_timeout_ms": 5000,
+  "results": [
+    {
+      "case": "sample-plan",
+      "source": {
+        "corpus": "bench/corpus/sample-plan.json",
+        "pdf": "demo/sample-plan.pdf",
+        "segments": 6,
+        "degenerate_segments": 0,
+        "meta_bytes": 6,
+        "luminance_values": 6
+      },
+      "existing_classifier": {
+        "elapsed_ms": 1,
+        "soft_segments": 0,
+        "families": 0
+      },
+      "reference_classifier_on_existing_families": {
+        "input_note": "Optimistic perfect-lattice metrics, but only evidence emitted by the extractor.",
+        "labels": {
+          "hatch": 0,
+          "repeated-building-element": 0,
+          "uncertain": 0
+        }
+      },
+      "reference_proposal_raw": {
+        "status": "completed",
+        "elapsed_ms": 1,
+        "proposals": 0,
+        "labels": {
+          "hatch": 0,
+          "repeated-building-element": 0,
+          "uncertain": 0
+        }
+      },
+      "reference_proposal_without_degenerate_segments": {
+        "status": "completed",
+        "elapsed_ms": 1,
+        "proposals": 0,
+        "labels": {
+          "hatch": 0,
+          "repeated-building-element": 0,
+          "uncertain": 0
+        }
+      }
+    },
+    {
+      "case": "va-finish-plan",
+      "source": {
+        "corpus": "bench/corpus/va-finish-plan.json",
+        "pdf": "demo/sample-finish-plan.pdf",
+        "segments": 71819,
+        "degenerate_segments": 2895,
+        "meta_bytes": 71819,
+        "luminance_values": 71819
+      },
+      "existing_classifier": {
+        "elapsed_ms": 120,
+        "soft_segments": 25157,
+        "families": 37
+      },
+      "reference_classifier_on_existing_families": {
+        "input_note": "Optimistic perfect-lattice metrics, but only evidence emitted by the extractor.",
+        "labels": {
+          "hatch": 0,
+          "repeated-building-element": 0,
+          "uncertain": 37
+        }
+      },
+      "reference_proposal_raw": {
+        "status": "error",
+        "elapsed_ms": 12,
+        "error": "segment-31153 must not be degenerate"
+      },
+      "reference_proposal_without_degenerate_segments": {
+        "status": "timeout",
+        "elapsed_ms": 5000
+      }
+    }
+  ]
+}
