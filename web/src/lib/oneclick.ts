@@ -1317,6 +1317,88 @@ export function classifyFleckSegs(
   return soft;
 }
 
+// ── 2d′. stroke texture ─────────────────────────────────────────────────────
+// The fleck classifier above reads a population of SUB-WALL-THICKNESS
+// figures. Revit's stock finish patterns are not flecks: an LVT / carpet /
+// rubber "stipple" prints as thousands of straight single-segment strokes one
+// to eight inches long at every angle. Measured on a Revit finish plan at
+// 1/8" (a VA corridor, 1,261 strokes over 286 SF): median 0.27 ft, p90
+// 0.64 ft, 61% ABOVE MIN_THICK_FT — so the fleck cap leaves most of the field
+// hard, and One-Click fences a 52 ft corridor into the 1–2 SF cells between
+// strokes while every walled room beside it closes.
+//
+// What separates that field from real short linework is not size but two
+// population facts, read on the same 2-ft grid the fleck classifier uses:
+//   DENSITY — 53–121 eligible strokes per cell-with-neighbours (36 SF) inside
+//     the stipple, against ≤ 3 in a plain room on the same sheet;
+//   ORIENTATION SPREAD — 73–83% of stipple strokes sit off both drawing axes,
+//     while every dense axis-aligned field on the same sheets (wall poché
+//     printed as hairline arrays, ceiling grids, tile coursing, a stipple-free
+//     finish plan's densest cell at 97) measures 0–25% off-axis.
+// Both must hold: density alone would soften poché, spread alone a lone
+// fixture. Curve chords, closed figures, multi-chord paths, clip and fill ink
+// are never eligible — those are drawing, and the door-swing / poché
+// exemptions every classifier here makes hold unchanged.
+//
+// Same contract as the others: one byte per segment, 1 = soft, pure, total,
+// never throws. Feeds the SAME soft plane, so the escalation ladder still
+// verifies by boundedness — a misjudged field leaks or balloons and the
+// strict result stands.
+export const STROKE_TEX_MAX_FT = 1.0;        // longer is drawing, not texture (stipple p90 0.64 ft)
+export const STROKE_TEX_FIELD_MIN = 40;      // eligible strokes in a cell with its neighbours; stipple measures ≥ 53
+export const STROKE_TEX_OFFAXIS_MIN = 0.5;   // fraction off both axes; stipple ≥ 0.73, poché / grids ≤ 0.25
+export const STROKE_TEX_AXIS_TOL_DEG = 5;    // within this of horizontal or vertical is ON axis
+export function classifyStrokeTextureSegs(
+  segs: number[], meta: Uint8Array, subpaths: SubPath[] | null | undefined, ws: number, ftPx: number,
+): Uint8Array {
+  const n = segs.length >> 2;
+  const soft = new Uint8Array(n);
+  if (!meta || !n || !subpaths || !subpaths.length || !(ftPx > 0)) return soft;
+  const lo = MIN_THICK_FT * ftPx, hi = STROKE_TEX_MAX_FT * ftPx;
+  const axisTol = Math.tan(STROKE_TEX_AXIS_TOL_DEG * Math.PI / 180);
+  interface Stroke { sp: SubPath; gx: number; gy: number; off: number }
+  const cell = FLECK_FIELD_FT * ftPx;
+  const strokes: Stroke[] = [];
+  for (const s of subpaths) {
+    if (s.flags & (SEG_CLIP | SEG_FILLONLY)) continue;
+    if (s.closed || s.i1 <= s.i0 || s.i1 - s.i0 > 2) continue;
+    const ext = Math.max(s.x1 - s.x0, s.y1 - s.y0) * ws;
+    if (ext < lo || ext >= hi) continue;
+    let curve = false;
+    for (let i = s.i0; i < s.i1; i++) if (meta[i] & SEG_CURVE) { curve = true; break; }
+    if (curve) continue;
+    const i = s.i0 * 4;
+    const dx = Math.abs(segs[i + 2] - segs[i]), dy = Math.abs(segs[i + 3] - segs[i + 1]);
+    const off = Math.min(dx, dy) > Math.max(dx, dy) * axisTol ? 1 : 0;
+    strokes.push({ sp: s, gx: Math.floor(((s.x0 + s.x1) / 2) * ws / cell), gy: Math.floor(((s.y0 + s.y1) / 2) * ws / cell), off });
+  }
+  if (strokes.length < STROKE_TEX_FIELD_MIN) return soft;
+  const bins = new Map<string, [number, number]>();
+  const key = (gx: number, gy: number) => `${gx},${gy}`;
+  for (const st of strokes) {
+    const k = key(st.gx, st.gy);
+    const b = bins.get(k);
+    if (b) { b[0]++; b[1] += st.off; } else bins.set(k, [1, st.off]);
+  }
+  const verdict = new Map<string, boolean>();
+  for (const st of strokes) {
+    const k = key(st.gx, st.gy);
+    let v = verdict.get(k);
+    if (v === undefined) {
+      let pop = 0, off = 0;
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+        const b = bins.get(key(st.gx + dx, st.gy + dy));
+        if (b) { pop += b[0]; off += b[1]; }
+      }
+      v = pop >= STROKE_TEX_FIELD_MIN && off >= STROKE_TEX_OFFAXIS_MIN * pop;
+      verdict.set(k, v);
+    }
+    if (!v) continue;
+    for (let i = st.sp.i0; i < st.sp.i1; i++) soft[i] = 1;
+  }
+  return soft;
+}
+
 // ── 2e. label boxes ────────────────────────────────────────────────────────
 // The most common way an estimator's click goes wrong, and the one the mask
 // can never see: a room tag (`111`), a finish tag (`PC-01`), a keynote
@@ -1341,6 +1423,12 @@ export function classifyFleckSegs(
 // to the room behind it, and any escalation that leaks is discarded.
 export const TAGBOX_MAX_SF = 6;         // well under any real space; measured tag boxes top out at 1.5 SF
 export const TAGBOX_TEXT_FRAC = 0.25;   // the text must FILL the box — rooms sit far below this
+export const TAGBOX_HALO = 1.0;         // frame strokes lie within this many text heights of the text line
+export const TAGBOX_LINE_TOL = 0.3;     // baseline jitter (in text heights) that still reads as one line
+export const TAGBOX_LINE_GAP = 1.0;     // horizontal gap (in text heights) between items of one label
+export const TAGBOX_FRAME_AXIS_TOL_DEG = 5;
+export const TAGBOX_SIDE_MIN_FRAC = 0.6;  // a side is at least this fraction of the text extent it parallels
+export const TAGBOX_PAIR_OVERLAP = 0.8;   // the two sides of a pair overlap along their length by this much
 export function classifyTagBoxSegs(
   segs: number[], meta: Uint8Array, subpaths: SubPath[] | null | undefined,
   texts: TextMark[] | null | undefined, ws: number, ftPx: number,
@@ -1380,6 +1468,77 @@ export function classifyTagBoxSegs(
     const ta = Math.max(0, tx1 - tx0) * Math.max(0, ty1 - ty0);
     if (ta < TAGBOX_TEXT_FRAC * w * h) continue;  // the text does not fill it: not a frame
     for (let i = sp.i0; i < sp.i1; i++) soft[i] = 1;
+  }
+  // A frame that is not a figure. Revit draws a finish / room tag as FOUR open
+  // strokes, not one closed path, so the figure test above never sees it —
+  // and at 1/8" a stock tag frame is ~5 × 3 ft of plan (14 SF), past any
+  // SF cap, because a label is sized on PAPER, not on the floor. Measured on
+  // a VA finish plan: the "LVT-1" frame across a 3.4 ft corridor left a
+  // 3-mask-px slit against each wall, under the minimum passage, and cut the
+  // corridor in two. The rule here is text-relative, so it holds at any
+  // scale: merge text items on one baseline into a line, pad the line by its
+  // own height into a halo, and soften every OPEN, straight, axis-aligned
+  // stroke that lies ENTIRELY inside the halo. A wall runs feet past any
+  // label's halo and never qualifies; a jamb stub under a door tag can, and
+  // the escalation ladder then verifies the result by boundedness as always.
+  const lines: Array<{ x0: number; y0: number; x1: number; y1: number; h: number }> = [];
+  const sorted = texts.slice().sort((a, b) => (a.y - b.y) || (a.x - b.x));
+  for (const t of sorted) {
+    const th = t.h || 0;
+    if (!(th > 0) || !(t.w > 0)) continue;
+    const last = lines[lines.length - 1];
+    if (last && Math.abs(t.y - last.y1) <= last.h * TAGBOX_LINE_TOL && t.x - last.x1 <= last.h * TAGBOX_LINE_GAP && t.x >= last.x0) {
+      last.x1 = Math.max(last.x1, t.x + t.w); last.y0 = Math.min(last.y0, t.y - th); last.h = Math.max(last.h, th);
+    } else lines.push({ x0: t.x, y0: t.y - th, x1: t.x + t.w, y1: t.y, h: th });
+  }
+  // Candidate frame sides: open, straight, axis-aligned strokes. Indexed on
+  // the same coarse grid; a wall piece is feet long and never fits a halo.
+  const axisTol = Math.tan(TAGBOX_FRAME_AXIS_TOL_DEG * Math.PI / 180);
+  interface Side { sp: SubPath; x0: number; y0: number; x1: number; y1: number; horiz: boolean; len: number }
+  const sideGrid = new Map<string, Side[]>();
+  for (const sp of subpaths) {
+    if (sp.closed || sp.i1 <= sp.i0 || sp.i1 - sp.i0 > 2) continue;
+    if (sp.flags & (SEG_CLIP | SEG_FILLONLY)) continue;
+    if (meta[sp.i0] & SEG_CURVE) continue;
+    const i = sp.i0 * 4;
+    const dx = Math.abs(segs[i + 2] - segs[i]), dy = Math.abs(segs[i + 3] - segs[i + 1]);
+    if (Math.min(dx, dy) > Math.max(dx, dy) * axisTol) continue;      // a leader is oblique; a frame side is not
+    const sd: Side = { sp, x0: sp.x0 * ws, y0: sp.y0 * ws, x1: sp.x1 * ws, y1: sp.y1 * ws, horiz: dx >= dy, len: Math.max(dx, dy) * ws };
+    const k = `${Math.floor(sd.x0 / cell)},${Math.floor(sd.y0 / cell)}`;
+    const arr = sideGrid.get(k); if (arr) arr.push(sd); else sideGrid.set(k, [sd]);
+  }
+  if (!sideGrid.size) return soft;
+  const overlap = (a0: number, a1: number, b0: number, b1: number) => Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
+  for (const ln of lines) {
+    const pad = ln.h * TAGBOX_HALO;
+    const hx0 = (ln.x0 - pad) * ws, hy0 = (ln.y0 - pad) * ws, hx1 = (ln.x1 + pad) * ws, hy1 = (ln.y1 + pad) * ws;
+    const tx0 = ln.x0 * ws, ty0 = ln.y0 * ws, tx1 = ln.x1 * ws, ty1 = ln.y1 * ws, th = ln.h * ws;
+    const above: Side[] = [], below: Side[] = [], left: Side[] = [], right: Side[] = [];
+    for (let a = Math.floor(hx0 / cell); a <= Math.floor(hx1 / cell); a++) for (let b = Math.floor(hy0 / cell); b <= Math.floor(hy1 / cell); b++) {
+      for (const sd of sideGrid.get(`${a},${b}`) || []) {
+        if (sd.x0 < hx0 || sd.x1 > hx1 || sd.y0 < hy0 || sd.y1 > hy1) continue;   // must lie ENTIRELY in the halo
+        if (sd.horiz) {
+          if (sd.len < TAGBOX_SIDE_MIN_FRAC * (tx1 - tx0)) continue;             // a side spans the text it frames
+          if (sd.y1 <= ty0) above.push(sd); else if (sd.y0 >= ty1) below.push(sd);
+        } else {
+          if (sd.len < TAGBOX_SIDE_MIN_FRAC * th) continue;
+          if (sd.x1 <= tx0) left.push(sd); else if (sd.x0 >= tx1) right.push(sd);
+        }
+      }
+    }
+    // A frame is two parallel sides BRACKETING the text — a lone stroke under
+    // a label (a jamb, a wall face, an underline) has no partner and stays hard.
+    const pair = (as: Side[], bs: Side[], horiz: boolean) => {
+      for (const a of as) for (const b of bs) {
+        const ov = horiz ? overlap(a.x0, a.x1, b.x0, b.x1) : overlap(a.y0, a.y1, b.y0, b.y1);
+        if (ov >= TAGBOX_PAIR_OVERLAP * Math.min(a.len, b.len)) {
+          for (let j = a.sp.i0; j < a.sp.i1; j++) soft[j] = 1;
+          for (let j = b.sp.i0; j < b.sp.i1; j++) soft[j] = 1;
+        }
+      }
+    };
+    pair(above, below, true);
+    pair(left, right, false);
   }
   return soft;
 }
@@ -1913,6 +2072,11 @@ export function buildMask(segs: number[], imgW: number, imgH: number, maxDim = M
   // infer it from neighbourhood geometry. Unioned, never subtracted.
   const fleck = meta && mppf > 0 && ink?.subpaths ? classifyFleckSegs(segs, meta, ink.subpaths, ws, mppf) : null;
   if (soft && fleck) for (let i = 0; i < soft.length; i++) if (fleck[i]) soft[i] = 1;
+  // Fifth contributor, beside the flecks: stroke texture (section 2d′) — the
+  // stipple whose strokes are too long to be flecks and too many, at too many
+  // angles, to be drawing. Unioned, never subtracted.
+  const strokeTex = meta && mppf > 0 && ink?.subpaths ? classifyStrokeTextureSegs(segs, meta, ink.subpaths, ws, mppf) : null;
+  if (soft && strokeTex) for (let i = 0; i < soft.length; i++) if (strokeTex[i]) soft[i] = 1;
   // Fourth contributor: label boxes (section 2e). Also subpath-fed, and the
   // first classifier to read the TEXT layer — what a box is FOR is a fact the
   // linework cannot state.

@@ -4,7 +4,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   buildMask, floodRegion, traceRegion, snapVertices, ringArea, rdpClosed,
-  extractVectorGeometry, classifyHatchSegs, classifyOffsetAnnotationSegs, classifyDimensionStringSegs, classifyFleckSegs, markPolylineArcs, SEG_CURVE, SEG_CLIP, SEG_FILLONLY, SEG_POLYARC,
+  extractVectorGeometry, classifyHatchSegs, classifyOffsetAnnotationSegs, classifyDimensionStringSegs, classifyFleckSegs, classifyStrokeTextureSegs, classifyTagBoxSegs, STROKE_TEX_FIELD_MIN, markPolylineArcs, SEG_CURVE, SEG_CLIP, SEG_FILLONLY, SEG_POLYARC,
   type SubPath,
   SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE, MASK_CURVE_BIT,
   floodRegionSealed, dilateHardMask, SEAL_RADII, sealRadiiFor, DOOR_SEAL_MAX_FT, SEAL_R_MAX, doorWedgeCapPx,
@@ -1491,4 +1491,146 @@ describe("ringSelfIntersects", () => {
     // non-adjacent pair, so the collinear/T path in segsIntersect flags it
     assert.equal(ringSelfIntersects([[0, 0], [4, 0], [2, 0], [2, 4]]), true);
   });
+});
+
+// ── stroke texture (oneclick.ts section 2d′) ─────────────────────────────────
+// 18 px/ft throughout. A Revit LVT / carpet stipple: straight single-segment
+// strokes 1–8 in long at every angle, hundreds per room.
+
+/** `cols × rows` strokes on a `pitch`-px grid, each `len` px long at an angle
+ *  drawn from `angles` (deterministic, cycling), as open one-segment subpaths. */
+function strokeField(x0: number, y0: number, cols: number, rows: number, pitch: number, len: number, angles: number[]) {
+  const segs: number[] = [];
+  const subpaths: SubPath[] = [];
+  let k = 0;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const a = angles[k++ % angles.length] * Math.PI / 180;
+    const x = x0 + c * pitch, y = y0 + r * pitch;
+    const x1 = x + Math.cos(a) * len, y1 = y + Math.sin(a) * len;
+    const i = segs.length >> 2;
+    segs.push(x, y, x1, y1);
+    subpaths.push({ i0: i, i1: i + 1, x0: Math.min(x, x1), y0: Math.min(y, y1), x1: Math.max(x, x1), y1: Math.max(y, y1), closed: false, flags: 0, fillLum: 0 });
+  }
+  return { segs, subpaths };
+}
+const SPREAD = [17, 63, 41, 88, 29, 71, 5, 52, 76, 34];   // every angle: a stipple
+
+test("stroke texture: a dense field of wall-scale strokes at every angle classifies soft", () => {
+  // 8 px = 0.44 ft: past the fleck cap (MIN_THICK_FT·18 = 4 px), under 1 ft
+  const { segs, subpaths } = strokeField(100, 100, 10, 10, 6, 8, SPREAD);
+  const soft = classifyStrokeTextureSegs(segs, new Uint8Array(segs.length >> 2), subpaths, 1, 18);
+  assert.equal([...soft].every((v) => v === 1), true, "the whole field is texture");
+});
+
+test("stroke texture: the same field drawn on the drawing axes is poché / grid, not texture", () => {
+  const { segs, subpaths } = strokeField(100, 100, 10, 10, 6, 8, [0, 90]);
+  const soft = classifyStrokeTextureSegs(segs, new Uint8Array(segs.length >> 2), subpaths, 1, 18);
+  assert.equal([...soft].some((v) => v === 1), false, "axis-aligned strokes stay hard whatever their density");
+});
+
+test("stroke texture: a sparse scatter is drawing detail, not a field", () => {
+  const { segs, subpaths } = strokeField(100, 100, 5, 5, 40, 8, SPREAD);   // 25 strokes over 200 px = 11 ft: no 3×3 cell reaches the floor
+  assert.ok(subpaths.length < STROKE_TEX_FIELD_MIN * 2);
+  const soft = classifyStrokeTextureSegs(segs, new Uint8Array(segs.length >> 2), subpaths, 1, 18);
+  assert.equal([...soft].some((v) => v === 1), false);
+});
+
+test("stroke texture: strokes a foot or longer are linework, and the fleck cap still owns the tiny ones", () => {
+  const long = strokeField(100, 100, 10, 10, 6, 27, SPREAD);   // 27 px: bbox extent ≥ 19 px ≥ 1 ft at every angle in SPREAD
+  assert.equal([...classifyStrokeTextureSegs(long.segs, new Uint8Array(100), long.subpaths, 1, 18)].some((v) => v === 1), false, "≥ 1 ft stays hard");
+  const tiny = strokeField(100, 100, 10, 10, 6, 3, SPREAD);    // 3 px < MIN_THICK_FT·18: the fleck classifier's domain
+  assert.equal([...classifyStrokeTextureSegs(tiny.segs, new Uint8Array(100), tiny.subpaths, 1, 18)].some((v) => v === 1), false, "sub-fleck strokes are not this classifier's");
+});
+
+test("stroke texture: curve chords, closed figures, multi-chord paths, clip and fill ink are never eligible", () => {
+  const base = strokeField(100, 100, 10, 10, 6, 8, SPREAD);
+  const meta = new Uint8Array(100);
+  const run = (mut: (s: SubPath, i: number) => void, m = meta) => {
+    const sp = base.subpaths.map((s) => ({ ...s }));
+    sp.forEach(mut);
+    return [...classifyStrokeTextureSegs(base.segs, m, sp, 1, 18)].some((v) => v === 1);
+  };
+  assert.equal(run((s) => { s.closed = true; }), false, "closed figures");
+  assert.equal(run((s) => { s.flags = SEG_CLIP; }), false, "clip ink");
+  assert.equal(run((s) => { s.flags = SEG_FILLONLY; }), false, "fill ink");
+  const curved = new Uint8Array(100).fill(SEG_CURVE);
+  assert.equal(run(() => {}, curved), false, "curve chords (door swings)");
+  assert.equal(run(() => {}), true, "…and the untouched field is still soft");
+});
+
+test("stroke texture: no subpaths and no scale are both no-ops", () => {
+  const { segs, subpaths } = strokeField(100, 100, 10, 10, 6, 8, SPREAD);
+  const meta = new Uint8Array(100);
+  assert.equal([...classifyStrokeTextureSegs(segs, meta, null, 1, 18)].some((v) => v === 1), false);
+  assert.equal([...classifyStrokeTextureSegs(segs, meta, subpaths, 1, 0)].some((v) => v === 1), false);
+});
+
+// ── tag frames drawn as open strokes (oneclick.ts section 2e) ────────────────
+// A Revit tag: text ~25 px tall framed by four SEPARATE strokes, not a closed
+// path — at 1/8" the frame is ~5 × 3 ft of plan, past any SF cap.
+
+/** four open strokes framing the text line at (tx, ty, tw, th), `pad` px out */
+function openFrame(tx: number, ty: number, tw: number, th: number, pad: number, sides: Array<"top" | "bottom" | "left" | "right"> = ["top", "bottom", "left", "right"]) {
+  const x0 = tx - pad, y0 = ty - th - pad, x1 = tx + tw + pad, y1 = ty + pad;
+  const segs: number[] = [];
+  const subpaths: SubPath[] = [];
+  const add = (ax: number, ay: number, bx: number, by: number) => {
+    const i = segs.length >> 2;
+    segs.push(ax, ay, bx, by);
+    subpaths.push({ i0: i, i1: i + 1, x0: Math.min(ax, bx), y0: Math.min(ay, by), x1: Math.max(ax, bx), y1: Math.max(ay, by), closed: false, flags: 0, fillLum: 0 });
+  };
+  if (sides.includes("top")) add(x0, y0, x1, y0);
+  if (sides.includes("bottom")) add(x0, y1, x1, y1);
+  if (sides.includes("left")) add(x0, y0, x0, y1);
+  if (sides.includes("right")) add(x1, y0, x1, y1);
+  return { segs, subpaths };
+}
+const LABEL = { x: 3598, y: 2197, w: 69, h: 25 };   // "LVT-1" as measured on the Dublin sheet, merged to one line
+
+test("tag frame: four open strokes bracketing a text line classify soft (the Revit tag)", () => {
+  const { segs, subpaths } = openFrame(LABEL.x, LABEL.y, LABEL.w, LABEL.h, 12);
+  const soft = classifyTagBoxSegs(segs, new Uint8Array(4), subpaths, [LABEL], 1, 18);
+  assert.deepEqual([...soft], [1, 1, 1, 1]);
+});
+
+test("tag frame: the text may arrive as separate items on one baseline", () => {
+  const { segs, subpaths } = openFrame(LABEL.x, LABEL.y, LABEL.w, LABEL.h, 12);
+  const items = [{ x: 3598, y: 2197, w: 46, h: 25 }, { x: 3644, y: 2197, w: 8, h: 25 }, { x: 3653, y: 2197, w: 14, h: 25 }];
+  const soft = classifyTagBoxSegs(segs, new Uint8Array(4), subpaths, items, 1, 18);
+  assert.deepEqual([...soft], [1, 1, 1, 1]);
+});
+
+test("tag frame: a lone stroke under a label has no partner and stays hard (a jamb, a wall face, an underline)", () => {
+  for (const side of ["top", "bottom", "left", "right"] as const) {
+    const { segs, subpaths } = openFrame(LABEL.x, LABEL.y, LABEL.w, LABEL.h, 12, [side]);
+    assert.equal(classifyTagBoxSegs(segs, new Uint8Array(1), subpaths, [LABEL], 1, 18)[0], 0, side);
+  }
+  // two sides on the SAME side of the text do not bracket it either
+  const { segs, subpaths } = openFrame(LABEL.x, LABEL.y, LABEL.w, LABEL.h, 12, ["top"]);
+  const more = openFrame(LABEL.x, LABEL.y, LABEL.w, LABEL.h, 6, ["top"]);
+  const all = { segs: [...segs, ...more.segs], subpaths: [...subpaths, ...more.subpaths.map((s) => ({ ...s, i0: 1, i1: 2 }))] };
+  assert.deepEqual([...classifyTagBoxSegs(all.segs, new Uint8Array(2), all.subpaths, [LABEL], 1, 18)], [0, 0]);
+});
+
+test("tag frame: a wall running past the label's halo is never a frame side", () => {
+  const { segs, subpaths } = openFrame(LABEL.x, LABEL.y, LABEL.w, LABEL.h, 12, ["bottom"]);
+  // a 6 ft wall face just above the text, and the bottom side below it
+  const i = segs.length >> 2;
+  segs.push(LABEL.x - 50, LABEL.y - LABEL.h - 12, LABEL.x + 60, LABEL.y - LABEL.h - 12);
+  subpaths.push({ i0: i, i1: i + 1, x0: LABEL.x - 50, y0: LABEL.y - LABEL.h - 12, x1: LABEL.x + 60, y1: LABEL.y - LABEL.h - 12, closed: false, flags: 0, fillLum: 0 });
+  const soft = classifyTagBoxSegs(segs, new Uint8Array(2), subpaths, [LABEL], 1, 18);
+  assert.deepEqual([...soft], [0, 0], "the wall leaves the halo, so neither it nor the lone bottom side is a frame");
+});
+
+test("tag frame: an oblique leader is not a side, and the closed-figure rule is unchanged", () => {
+  const { segs, subpaths } = openFrame(LABEL.x, LABEL.y, LABEL.w, LABEL.h, 12, ["top", "bottom"]);
+  const i = segs.length >> 2;
+  segs.push(LABEL.x - 10, LABEL.y + 10, LABEL.x + 30, LABEL.y - 40);   // a 45° leader through the halo
+  subpaths.push({ i0: i, i1: i + 1, x0: LABEL.x - 10, y0: LABEL.y - 40, x1: LABEL.x + 30, y1: LABEL.y + 10, closed: false, flags: 0, fillLum: 0 });
+  const soft = classifyTagBoxSegs(segs, new Uint8Array(3), subpaths, [LABEL], 1, 18);
+  assert.deepEqual([...soft], [1, 1, 0]);
+  // a closed 1.5 SF box hugging its text: the pre-existing rule, byte for byte
+  const box = squareSegs(100, 100, 124, 118);
+  const closed: SubPath[] = [{ i0: 0, i1: 4, x0: 100, y0: 100, x1: 124, y1: 118, closed: true, flags: 0, fillLum: 0 }];
+  assert.deepEqual([...classifyTagBoxSegs(box, new Uint8Array(4), closed, [{ x: 102, y: 116, w: 20, h: 14 }], 1, 18)], [1, 1, 1, 1]);
 });

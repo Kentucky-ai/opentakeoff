@@ -2,6 +2,14 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — One-Click floods a stippled corridor as one polygon
+
+### Added
+- **Stroke-texture classifier.** Revit's stock LVT / carpet / rubber stipple prints as thousands of straight strokes one to eight inches long at every angle — too long for the fleck cap, so most of the field stayed hard and One-Click fenced a 124 ft corridor into 1–2 SF cells while every walled room beside it closed. A new contributor to the soft plane reads the population on the fleck classifier's 2 ft grid: at least 40 eligible strokes per cell-with-neighbours AND at least half of them off the drawing axes. Wall poché printed as hairline arrays, ceiling grids and tile coursing are dense but axis-aligned and stay hard. Measured on a VA finish plan: the corridor goes from 1 SF to 420 SF as one polygon, identical from two seeds 45 ft apart; every room is unchanged to the square foot.
+- **Tag frames drawn as open strokes.** Revit draws a finish tag as four separate strokes, not a closed path, and at 1/8" the frame is ~5 × 3 ft of plan, so the closed-figure tag-box rule never saw it and the "LVT-1" frame cut the corridor at the label. A second pass merges text items into a line, pads it by its own height, and softens only PAIRED axis-aligned sides that bracket the text. Lone strokes, walls past the halo and oblique leaders stay hard. Bench probes through the ink path: eight of nine unchanged, the elevator 0.8 SF closer to its golden.
+
+Design: `docs/design/STROKE_TEXTURE.md`; captures: `docs/design/stroke-texture-verification.md`.
+
 ## Unreleased — `get_sheet_vectors`: the strokes the engine floods against, readable by any agent (#367)
 
 ### Added
