@@ -175,9 +175,9 @@ server can stage the surface along the workflow it already teaches:
 OPENTAKEOFF_MCP_STAGED_TOOLS=1 npx -y opentakeoff-mcp
 ```
 
-Staged, only the **setup** stage starts enabled—10 tools that orient you: `load_plan`,
+Staged, only the **setup** stage starts enabled—11 tools that orient you: `load_plan`,
 `sheet_info`, `set_scale`, `sheet_graph`, `resolve_tag`, `find_schedule`, `read_sheet_text`,
-`find_text`, `sheet_context`, `view_sheet`—plus one opener, `open_tool_stage`. Call it with
+`find_text`, `sheet_context`, `get_sheet_vectors`, `view_sheet`—plus one opener, `open_tool_stage`. Call it with
 `"measure"`, `"revise"`, or `"handoff"` and that group's tools enable and fire
 `tools/list_changed`. Opening is instant, idempotent, and never closes anything: the surface only
 grows, and the reply names exactly which tools just appeared.

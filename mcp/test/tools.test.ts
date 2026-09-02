@@ -11,13 +11,13 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildServer } from "../server.ts";
 import { Session, sanitizeApprovals } from "../src/session.ts";
-import { openPdf, positionedText } from "../src/pdf.ts";
+import { openPdf, positionedText, OPS } from "../src/pdf.ts";
 // the canvas's own tally — the same function the marked-set cover prints from
 import { approvalTally } from "../../web/src/lib/approvals.js";
 // the rules engine's own mask builder — the #207 test plants a synthetic
 // linework mask in the session cache so candidate production is deterministic
 // (the demo plan's rooms are clean rectangles with no islands to find)
-import { buildMask } from "../../web/src/lib/oneclick.ts";
+import { buildMask, extractVectorGeometry } from "../../web/src/lib/oneclick.ts";
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
 const KEY = "sample-plan.pdf";
@@ -2388,4 +2388,152 @@ test("symbol_sweep variant_guard: whole-symbol mode demotes the richer drains a 
   // manual mode still wins: guard + counter-example behaves like #259
   const both = await call(client, "symbol_sweep", { sheet: SYMKEY, seed_rect: SQUARE_RECT, variant_guard: true, exclude: [SEED_RECT] });
   assert.equal(both.data.found, 1, "negatives take over — identical to the #259 sweep");
+});
+
+// ── get_sheet_vectors (#367) — the strokes the engine floods against, over the wire ──
+// The finish line in the issue: on the bundled sample plan the verb returns the
+// same segment count and the same meta bytes the canvas engine reports for the
+// sheet. The engine's number here is extractVectorGeometry run directly on the
+// page's operator list — the identical call session.ensureGeometry makes — so
+// the comparison is against the array the engine is fed, not a re-derivation.
+const FINISH_PLAN = fileURLToPath(new URL("../../web/public/demo/sample-finish-plan.pdf", import.meta.url));
+const FINISH_KEY = "sample-finish-plan.pdf";
+
+async function engineGeometry(planPath: string, pageNum = 1) {
+  const doc = await openPdf(planPath);
+  const ph = await doc.page(pageNum);
+  const geo = extractVectorGeometry(await ph.operatorList(), ph.viewport.transform, OPS);
+  await doc.destroy();
+  return geo;
+}
+
+test("get_sheet_vectors: bundled sample plan — segment count and meta bytes equal the engine's, paged to the end", async (t) => {
+  const client = await pair();
+  await call(client, "load_plan", { path: FINISH_PLAN });
+  const engine = await engineGeometry(FINISH_PLAN);
+  const engineCount = engine.segs.length >> 2;
+  assert.ok(engineCount > 20000, `the sample plan is dense enough to page (${engineCount} segments)`);
+
+  // walk the cursor at the default page size; every page's ledger reconciles
+  const meta: number[] = [], lum: number[] = [], subpath: number[] = [], layerOf: number[] = [], points: number[] = [];
+  let cursor: number | undefined, pages = 0, first: any;
+  do {
+    const r = await call(client, "get_sheet_vectors", cursor === undefined ? { sheet: FINISH_KEY } : { sheet: FINISH_KEY, cursor });
+    assert.equal(r.isError, false, r.data.error);
+    const d = r.data;
+    if (!first) first = d;
+    assert.equal(d.total, engineCount, "total is the engine's segment count on every page");
+    assert.equal(d.offset + d.returned + d.dropped, d.total, "offset + returned + dropped === total");
+    assert.equal(d.offset, meta.length, "offset is exactly what earlier pages carried");
+    assert.equal(d.limit, 20000);
+    assert.ok(d.returned <= 20000 && d.returned > 0);
+    assert.equal(d.points.length, d.returned * 4, "four numbers per segment");
+    for (const arr of [d.meta, d.lum, d.subpath, d.layer_of]) assert.equal(arr.length, d.returned, "aligned channels never drift");
+    assert.equal(d.next_cursor !== undefined, d.dropped > 0, "next_cursor iff something was dropped");
+    meta.push(...d.meta); lum.push(...d.lum); subpath.push(...d.subpath); layerOf.push(...d.layer_of); points.push(...d.points);
+    cursor = d.next_cursor;
+    pages++;
+  } while (cursor !== undefined);
+
+  assert.equal(meta.length, engineCount, "walking the cursor to the end yields every segment exactly once");
+  assert.deepEqual(meta, Array.from(engine.meta), "meta bytes are the engine's, byte for byte, in extraction order");
+  assert.deepEqual(lum, Array.from(engine.lum!), "luminance channel is the engine's");
+  assert.deepEqual(layerOf, Array.from(engine.layerOf!), "layer index channel is the engine's");
+  assert.deepEqual(first.layer_ids, engine.layerIds, "layer id table is the engine's");
+  assert.equal(first.image_area, Math.round(engine.imageArea));
+  assert.equal(first.page, 1);
+  // endpoints to 0.01 px — the engine's doubles, stated to the hundredth
+  for (let i = 0; i < engineCount * 4; i++) assert.ok(Math.abs(points[i] - engine.segs[i]) <= 0.005 + 1e-9, `point ${i} within 0.01 px of the engine`);
+  // the subpath ordinal inverts the engine's contiguous ranges exactly
+  const want = new Int32Array(engineCount).fill(-1);
+  engine.subpaths!.forEach((sp, k) => { for (let i = sp.i0; i < sp.i1; i++) want[i] = k; });
+  assert.deepEqual(subpath, Array.from(want), "subpath ordinal per segment matches the engine's ranges");
+  // pen width rides the high nibble, and the plan actually uses more than one pen
+  assert.ok(new Set(meta.map((m) => m >> 4)).size > 1, "meta carries pen widths");
+
+  t.diagnostic(`get_sheet_vectors parity: engine ${engineCount} segments / ${engine.meta.length} meta bytes; verb total=${first.total}, ${pages} pages at limit 20000, ${meta.length} meta bytes equal`);
+});
+
+test("get_sheet_vectors: region keeps intersecting segments only, agrees with sheet_context's count, pages with exact dropped", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: FINISH_PLAN });
+  const region = { x0: 300, y0: 300, x1: 1300, y1: 1300 };
+
+  // one call at the ceiling: the whole region set, echoed post-clamp
+  const whole = await call(client, "get_sheet_vectors", { sheet: FINISH_KEY, region, limit: 100000 });
+  assert.equal(whole.isError, false, whole.data.error);
+  const w = whole.data;
+  assert.deepEqual(w.region, [300, 300, 1300, 1300]);
+  assert.ok(w.total > 500 && w.total < 20000, `a 1000 px window on the sample plan holds a few hundred segments (${w.total})`);
+  assert.equal(w.returned, w.total);
+  assert.equal(w.dropped, 0);
+  assert.equal(w.next_cursor, undefined);
+  // every returned segment's bbox touches the rect (necessary for intersection)
+  for (let k = 0; k < w.returned; k++) {
+    const x1 = w.points[k * 4], y1 = w.points[k * 4 + 1], x2 = w.points[k * 4 + 2], y2 = w.points[k * 4 + 3];
+    assert.ok(Math.max(x1, x2) >= 300 - 0.01 && Math.min(x1, x2) <= 1300 + 0.01 && Math.max(y1, y2) >= 300 - 0.01 && Math.min(y1, y2) <= 1300 + 0.01, `segment ${k} touches the region`);
+  }
+  // the same keep test as sheet_context: its pre-decimation count is this total
+  const ctx = await call(client, "sheet_context", { sheet: FINISH_KEY, region });
+  assert.equal(ctx.isError, false);
+  assert.equal(w.total, ctx.data.vectors.total_in_region, "region total equals sheet_context.total_in_region for the same rect");
+
+  // page the same region at 100: the ledger is exact on every page, and the
+  // pages concatenate to the single-call set in the same order
+  const meta: number[] = [], points: number[] = [];
+  let cursor: number | undefined, pages = 0;
+  do {
+    const r = await call(client, "get_sheet_vectors", { sheet: FINISH_KEY, region, limit: 100, ...(cursor === undefined ? {} : { cursor }) });
+    assert.equal(r.isError, false, r.data.error);
+    const d = r.data;
+    assert.equal(d.total, w.total);
+    assert.equal(d.offset, meta.length);
+    assert.equal(d.returned, Math.min(100, w.total - meta.length));
+    assert.equal(d.dropped, w.total - meta.length - d.returned, "dropped is exactly the remainder after this page");
+    assert.equal(d.next_cursor !== undefined, d.dropped > 0);
+    meta.push(...d.meta); points.push(...d.points);
+    cursor = d.next_cursor;
+    pages++;
+  } while (cursor !== undefined);
+  assert.equal(pages, Math.ceil(w.total / 100));
+  assert.deepEqual(meta, w.meta, "pages concatenate to the single-call meta");
+  assert.deepEqual(points, w.points, "pages concatenate to the single-call points");
+
+  // an empty window is empty, honestly: zero total, no cursor. The window is
+  // FOUND, not guessed — the first 50 px cell no segment bbox touches.
+  const engine = await engineGeometry(FINISH_PLAN);
+  const CELL = 50, cols = Math.ceil(w.sheet_px[0] / CELL), rows = Math.ceil(w.sheet_px[1] / CELL);
+  const busy = new Uint8Array(cols * rows);
+  for (let i = 0; i < engine.segs.length; i += 4) {
+    const cx0 = Math.floor(Math.min(engine.segs[i], engine.segs[i + 2]) / CELL), cx1 = Math.floor(Math.max(engine.segs[i], engine.segs[i + 2]) / CELL);
+    const cy0 = Math.floor(Math.min(engine.segs[i + 1], engine.segs[i + 3]) / CELL), cy1 = Math.floor(Math.max(engine.segs[i + 1], engine.segs[i + 3]) / CELL);
+    for (let cy = Math.max(0, cy0); cy <= Math.min(rows - 1, cy1); cy++) for (let cx = Math.max(0, cx0); cx <= Math.min(cols - 1, cx1); cx++) busy[cy * cols + cx] = 1;
+  }
+  const free = busy.indexOf(0);
+  assert.ok(free >= 0, "the sample plan has at least one empty 50 px cell");
+  const fx = (free % cols) * CELL, fy = Math.floor(free / cols) * CELL;
+  const blank = await call(client, "get_sheet_vectors", { sheet: FINISH_KEY, region: { x0: fx + 1, y0: fy + 1, x1: fx + CELL - 1, y1: fy + CELL - 1 } });
+  assert.equal(blank.isError, false);
+  assert.deepEqual({ total: blank.data.total, returned: blank.data.returned, dropped: blank.data.dropped, next: blank.data.next_cursor }, { total: 0, returned: 0, dropped: 0, next: undefined });
+
+  // a cursor past the end is refused, not silently empty
+  const past = await call(client, "get_sheet_vectors", { sheet: FINISH_KEY, cursor: 10_000_000 });
+  assert.equal(past.isError, true);
+  assert.match(past.data.error, /past the end/);
+});
+
+test("get_sheet_vectors: a scan has no strokes — refused, and view_sheet is named as the path", async () => {
+  const SCAN = fileURLToPath(new URL("./fixtures/scanned-plan.pdf", import.meta.url));
+  const client = await pair();
+  await call(client, "load_plan", { path: SCAN });
+  const info = await call(client, "sheet_info", { sheet: "scanned-plan.pdf" });
+  assert.equal(info.data.has_vector_linework, false, "the fixture is a scan");
+  const r = await call(client, "get_sheet_vectors", { sheet: "scanned-plan.pdf" });
+  assert.equal(r.isError, true, "no vector layer → refusal");
+  assert.match(r.data.error, /no vector linework/);
+  assert.match(r.data.error, /view_sheet/);
+  assert.match(r.data.error, /raster fallback/);
+  // a read-only verb: the refusal left nothing behind
+  const shapes = await call(client, "list_shapes", {});
+  assert.equal(shapes.data.shapes.length, 0);
 });

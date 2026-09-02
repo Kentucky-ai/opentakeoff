@@ -410,6 +410,13 @@ export const CONTEXT_MIN_LEN_PX = 2.0;   // one PDF point at render scale 2.0 �
 export const CONTEXT_MAX_SEGMENTS = 4000; // cap, applied longest-first (walls survive, hatch strokes go)
 export const CONTEXT_MAX_SEGMENTS_CEIL = 20000;
 
+/** get_sheet_vectors paging defaults (#367) — the raw extractor output is the
+ * densest payload the server emits (a dense E-size sheet runs to hundreds of
+ * thousands of segments), so the page size is declared, the ceiling is hard,
+ * and every reply carries offset + returned + dropped === total. */
+export const VECTORS_DEFAULT_LIMIT = 20000;
+export const VECTORS_LIMIT_CEIL = 100000;
+
 /** Does the segment intersect the axis-aligned rect? Liang–Barsky boolean —
  * endpoints untouched, this is a KEEP test, never a clip-and-rewrite. */
 function segIntersectsRect(x1: number, y1: number, x2: number, y2: number, r: { x0: number; y0: number; x1: number; y1: number }): boolean {
@@ -423,6 +430,20 @@ function segIntersectsRect(x1: number, y1: number, x2: number, y2: number, r: { 
     else { if (t < t0) return false; if (t < t1) t1 = t; }
   }
   return true;
+}
+
+/** Per-segment subpath ordinal (#367): the extractor states subpaths as
+ * contiguous index RANGES (one entry per figure); a wire reader wants the
+ * inverse — which figure each segment belongs to. −1 = outside every range.
+ * Built once per geometry and cached by identity, like the sheet's mask. */
+const subpathIndexCache = new WeakMap<VectorGeometry, Int32Array>();
+function subpathIndex(geo: VectorGeometry): Int32Array {
+  let idx = subpathIndexCache.get(geo);
+  if (idx) return idx;
+  idx = new Int32Array(geo.segs.length >> 2).fill(-1);
+  (geo.subpaths || []).forEach((sp, k) => { for (let i = sp.i0; i < sp.i1; i++) idx[i] = k; });
+  subpathIndexCache.set(geo, idx);
+  return idx;
 }
 
 const rectsOverlap = (a: [number, number, number, number], r: { x0: number; y0: number; x1: number; y1: number }): boolean =>
@@ -829,6 +850,89 @@ export class Session {
       },
       text: { spans, count: spans.length },
       hatch: { families, count: families.length },
+    };
+  }
+
+  /** get_sheet_vectors (#367): the extractor's own output for a sheet — the
+   * array the canvas engine is fed, unclassified and undecimated, so a reader
+   * can run its own geometry against exactly what the app sees. Where
+   * sheet_context CLASSIFIES (hatch families, longest-first decimation), this
+   * verb only PAGES: segments arrive in extraction order, whole, with every
+   * per-segment channel the extractor emits (meta byte, luminance, subpath
+   * ordinal, layer index). The region test is the same keep test
+   * sheet_context uses (a segment intersects the rect, endpoints untouched),
+   * so `total` here equals sheet_context's total_in_region for the same rect.
+   *
+   * Paging is exact by construction: `cursor` is a segment index into the
+   * sheet's array, the reply walks forward from it collecting matches until
+   * `limit`, and `next_cursor` is the index after the last one kept. The
+   * ledger `offset + returned + dropped === total` holds on every page, so a
+   * dense sheet never clips silently — a reader either walks the cursor to
+   * the end or knows exactly how many segments it never saw. */
+  async sheetVectors(name: string, opts: { region?: { x0: number; y0: number; x1: number; y1: number }; limit?: number; cursor?: number }) {
+    const s = this.sheet(name);
+    const geo = await this.ensureGeometry(s);
+    const nSeg = geo.segs.length >> 2;
+    if (!nSeg) {
+      throw new UserError(`${s.key} has no vector linework — it is a scan (or a flattened raster export), and get_sheet_vectors reads the drawn segments, of which a scan has none. There is nothing to return here: view_sheet renders the region as pixels and is the path on a scan; one_click and detect_rooms still flood it through the raster fallback.`);
+    }
+    const clampX = (v: number) => Math.max(0, Math.min(v, s.widthPx));
+    const clampY = (v: number) => Math.max(0, Math.min(v, s.heightPx));
+    const r = opts.region
+      ? { x0: clampX(opts.region.x0), y0: clampY(opts.region.y0), x1: clampX(opts.region.x1), y1: clampY(opts.region.y1) }
+      : { x0: 0, y0: 0, x1: s.widthPx, y1: s.heightPx };
+    if (!(r.x1 - r.x0 >= 1 && r.y1 - r.y0 >= 1)) {
+      throw new UserError(`Empty region — need x1 > x0 and y1 > y0 in image px inside the sheet (${s.widthPx} × ${s.heightPx}).`);
+    }
+    const limit = opts.limit ?? VECTORS_DEFAULT_LIMIT;
+    const cursor = opts.cursor ?? 0;
+    if (cursor > nSeg) throw new UserError(`cursor ${cursor} is past the end of ${s.key}'s ${nSeg} segments — cursors come from a previous reply's next_cursor.`);
+
+    // the whole-sheet case needs no test; a region walks every segment once
+    const full = !opts.region || (r.x0 === 0 && r.y0 === 0 && r.x1 === s.widthPx && r.y1 === s.heightPx);
+    const keep = (i: number): boolean => full || segIntersectsRect(geo.segs[i * 4], geo.segs[i * 4 + 1], geo.segs[i * 4 + 2], geo.segs[i * 4 + 3], r);
+
+    let offset = 0, total = 0;
+    const kept: number[] = [];
+    let next: number | undefined;
+    for (let i = 0; i < nSeg; i++) {
+      if (!keep(i)) continue;
+      total++;
+      if (i < cursor) { offset++; continue; }
+      if (kept.length < limit) kept.push(i);
+      else if (next === undefined) next = i;
+    }
+
+    const subOf = subpathIndex(geo);
+    const points: number[] = new Array(kept.length * 4);
+    const meta: number[] = new Array(kept.length);
+    const lum: number[] = geo.lum ? new Array(kept.length) : [];
+    const subpath: number[] = new Array(kept.length);
+    const layerOf: number[] = geo.layerOf ? new Array(kept.length) : [];
+    kept.forEach((i, k) => {
+      points[k * 4] = round2(geo.segs[i * 4]); points[k * 4 + 1] = round2(geo.segs[i * 4 + 1]);
+      points[k * 4 + 2] = round2(geo.segs[i * 4 + 2]); points[k * 4 + 3] = round2(geo.segs[i * 4 + 3]);
+      meta[k] = geo.meta[i];
+      if (geo.lum) lum[k] = geo.lum[i];
+      subpath[k] = subOf[i];
+      if (geo.layerOf) layerOf[k] = geo.layerOf[i];
+    });
+
+    const dropped = total - offset - kept.length;
+    const { rasterEligible, vectorViable } = this.rasterPolicy(s, geo);
+    return {
+      sheet: s.key,
+      page: s.pageNum,
+      sheet_px: [s.widthPx, s.heightPx],
+      region: [round1(r.x0), round1(r.y0), round1(r.x1), round1(r.y1)],
+      points, meta, lum, subpath,
+      image_area: Math.round(geo.imageArea),
+      layer_ids: geo.layerIds || [],
+      layer_of: layerOf,
+      total, offset, returned: kept.length, dropped,
+      limit,
+      ...(next !== undefined ? { next_cursor: next } : {}),
+      ...(rasterEligible && !vectorViable ? { note: `${s.key} is a scan wrapper: a placed image covers the sheet and these ${nSeg} segments are its frame, not the drawing. The drawing is pixels — view_sheet is the path.` } : {}),
     };
   }
 

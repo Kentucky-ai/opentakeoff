@@ -109,8 +109,8 @@ includes document text, shape vertices, or result payload content.
 
 ### Staged tool exposure (opt-in)
 
-By default every client gets all 40 tool schemas on `tools/list`—the flat
-contract every published client already expects. Forty descriptions is real
+By default every client gets all 43 tool schemas on `tools/list`—the flat
+contract every published client already expects. Forty-three descriptions is real
 token weight for an agent session that may never touch half of them, so the
 server can instead stage the surface along the workflow it already teaches:
 
@@ -118,7 +118,7 @@ server can instead stage the surface along the workflow it already teaches:
 OPENTAKEOFF_MCP_STAGED_TOOLS=1 npx -y opentakeoff-mcp
 ```
 
-Staged, only the **setup** stage (load, scale, read the set—10 tools) starts
+Staged, only the **setup** stage (load, scale, read the set—11 tools) starts
 enabled, plus one opener: `open_tool_stage`. Calling it with `"measure"`,
 `"revise"`, or `"handoff"` enables that stage's tools and fires
 `tools/list_changed`, so any client that supports dynamic tool lists (Claude
@@ -173,6 +173,7 @@ reads the tool list once. ([#230](https://github.com/Kentucky-ai/opentakeoff/iss
 | `resolve_tag` | ONE room tag → its room-finish schedule row → each code's finish/material definition, every edge cited (sheet + literal text + bbox). Refusal over guessing: `unresolved` comes back with a reason, never as silence. A delta/REV marker on the answering row rides the result as `revisions`—the codes are the post-revision answer, and you're told the ink changed. |
 | `find_schedule` | Locate a schedule table by kind ("room finish", "material")—sheet, title, headers, row count, a `view_sheet`-ready region, and `revised_rows` when delta/REV-marked rows exist. |
 | `sheet_context` | The region's STRUCTURE in one frame: classified vector segments (endpoints as drawn, meta byte per segment), text spans with bboxes, and hatch-family instances with content-derived ids—same pattern spec ⇒ same id anywhere on the sheet, so plan↔legend matching is `id === id`. Decimation is declared and counted on every reply: `kept + dropped === total_in_region`, cap applies longest-first so walls survive. |
+| `get_sheet_vectors` | The STROKES (#367): the sheet's vector layer exactly as the engine is fed it—flat `[x1, y1, x2, y2, …]` points in image px, one meta byte per segment (curve / clip / fill-only / polyline-arc flags, pen width in the high nibble), per-segment stroke luminance, the drawn figure each segment belongs to, the placed-image area, and the PDF layer table with a per-segment layer index. Nothing classified, decimated, or merged—so a reader can run its own room finder, symbol matcher, or wall classifier against the same array and commit through the existing verbs. Paged (default 20,000 segments, ceiling 100,000) with `offset + returned + dropped === total` on every page; `next_cursor` recovers exactly what `dropped` counts. Read-only and stateless. Refuses on a scan and names `view_sheet` as the path. |
 | `view_sheet` | The agent's eyes: render the sheet (or an image-px crop) to PNG. `overlay` burns committed shapes in (solid = human-affirmed, dashed = unreviewed) to verify geometry landed; `grid` burns in a calibrated 1-ft/5-ft measuring grid with foot labels (`"auto"` from the set scale, or the drawing scale like `"1/4"`) so dimensions are counted off cells, not guessed; `marks` (#297) burns disclosure layers in — `question` (withheld placements, orange ?-circle), `struck` (rejections, magenta struck ×), `ring` (the sweep's seed, violet double ring) — in colors off the common CAD pens, so what a reply names, the picture shows. |
 
 ### The agent revises its own work

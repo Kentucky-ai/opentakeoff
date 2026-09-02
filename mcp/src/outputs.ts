@@ -849,6 +849,28 @@ export const sheetContextOutput = {
   hatch: z.object({ families: z.array(hatchFamilyRow), count: z.number().int() }),
 };
 
+// ── the raw vector layer (#367) — what the engine is fed, paged ─────────────
+export const getSheetVectorsOutput = {
+  sheet: z.string(),
+  page: z.number().int(),
+  sheet_px: z.array(z.number()).length(2),
+  region: z.array(z.number()).length(4).describe("The region actually resolved, post-clamp [x0, y0, x1, y1] image px — the same rect sheet_context and view_sheet take, so all three verbs answer in one frame"),
+  points: z.array(z.number()).describe("Flat [x1, y1, x2, y2, …] — four numbers per segment, image px to 0.01, endpoints exactly as extracted (never clipped to the region, never merged); segments arrive in extraction order, the order the engine sees"),
+  meta: z.array(z.number().int()).describe("One byte per segment, aligned with points: low nibble flags — 1 curve chord (bezier tessellation or detected polyline arc), 2 clip-only path (invisible ink), 4 filled-not-stroked, 8 polyline-arc provenance; high nibble (meta >> 4) = device pen width in px"),
+  lum: z.array(z.number().int()).describe("Aligned with points: stroke luminance 0 (black) – 255 (white), Rec. 709 over the stroke colour in force when the path was built. Empty only when the geometry carries no luminance channel"),
+  subpath: z.array(z.number().int()).describe("Aligned with points: ordinal of the drawn FIGURE each segment belongs to (each moveTo starts one, each rectangle is one) — segments sharing a value are one path; −1 = outside every figure"),
+  image_area: z.number().describe("Total placed-image area on the sheet, image px² — a value near the sheet area means a scan or photo underlay sits under whatever linework there is"),
+  layer_ids: z.array(z.string()).describe("The sheet's PDF Optional Content Group ids in first-seen order — the same ids sheet_info.layers reports (with names and roles); [] on an unlayered sheet"),
+  layer_of: z.array(z.number().int()).describe("Aligned with points: index into layer_ids, or −1 for a segment outside every layer. Empty only when the geometry carries no layer channel"),
+  total: z.number().int().describe("Segments on the sheet intersecting the region — the whole set, before paging"),
+  offset: z.number().int().describe("Matching segments BEFORE this page (skipped by cursor)"),
+  returned: z.number().int().describe("Segments in this reply"),
+  dropped: z.number().int().describe("Matching segments AFTER this page that limit cut — exactly what next_cursor recovers. offset + returned + dropped === total on every reply; 0 means this page ends the set"),
+  limit: z.number().int().describe("The page size that applied"),
+  next_cursor: z.number().int().optional().describe("Pass as cursor to fetch the next page; absent when dropped is 0"),
+  note: z.string().optional().describe("Present when the sheet is a scan wrapper — the few segments here are a frame, not the drawing"),
+};
+
 // ── annotations (#114) — notes ABOUT the work, never measurements of it ──────
 const annotationRow = z.object({
   id: z.string(),

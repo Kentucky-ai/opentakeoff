@@ -5,7 +5,7 @@
 import { z } from "zod";
 import type { McpServer, RegisteredTool } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ok, okImage, fail, UserError, type ToolReply } from "./format.ts";
-import { UNDO_CAP, CONTEXT_MIN_LEN_PX, CONTEXT_MAX_SEGMENTS, CONTEXT_MAX_SEGMENTS_CEIL, type Session } from "./session.ts";
+import { UNDO_CAP, CONTEXT_MIN_LEN_PX, CONTEXT_MAX_SEGMENTS, CONTEXT_MAX_SEGMENTS_CEIL, VECTORS_DEFAULT_LIMIT, VECTORS_LIMIT_CEIL, type Session } from "./session.ts";
 import { traceToolCall } from "./trace.ts";
 import {
   loadPlanOutput, sheetInfoOutput, setScaleOutput, oneClickOutput, detectRoomsOutput,
@@ -18,7 +18,7 @@ import {
   annotateOutput, listAnnotationsOutput, linkAnnotationOutput,
   markVerdictOutput, deleteVerdictOutput,
   sheetGraphOutput, resolveTagOutput, findScheduleOutput, sweepScheduleRowOutput, countMarksOutput,
-  exportDxfOutput,
+  exportDxfOutput, getSheetVectorsOutput,
 } from "./outputs.ts";
 import { exportMarkedPdf } from "./marked.ts";
 import { assertWritable, OVERWRITE_DESC } from "./safewrite.ts";
@@ -398,6 +398,20 @@ export function registerTools(realServer: McpServer, session: Session): Map<stri
     },
     outputSchema: sheetContextOutput,
   }, run("sheet_context", (a) => session.sheetContext(a.sheet, { region: a.region, min_len_px: a.min_len_px, max_segments: a.max_segments })));
+
+  server.registerTool("get_sheet_vectors", {
+    description: `The STROKES — the sheet's vector layer exactly as the engine is fed it, so you can run your own geometry against what the app sees (#367). view_sheet lets you look, read_sheet_text lets you read, sheet_context classifies a region; this returns the raw extractor output that all of them and every shape verb (one_click's flood, the wall network's pen weights, symbol_sweep's matching) work from: flat points [x1, y1, x2, y2, …] in image px, one meta byte per segment (low nibble flags: 1 curve chord, 2 clip-only, 4 fill-only, 8 polyline arc; pen width = meta >> 4), per-segment stroke luminance, the drawn figure each segment belongs to (subpath ordinal), the sheet's placed-image area, and its PDF layer table with a per-segment layer index (sheet_info.layers names and classifies the same ids). Nothing is classified, decimated, or merged here — segments arrive whole, in extraction order, undecimated, which is the point: a reader can build its own room finder, symbol matcher, or wall classifier on the same array and commit through the existing verbs with provenance intact. Paged, never clipped silently: a dense sheet runs to hundreds of thousands of segments, so the reply carries limit (default ${VECTORS_DEFAULT_LIMIT} segments, ceiling ${VECTORS_LIMIT_CEIL}) and the ledger offset + returned + dropped === total on every page; dropped is exactly what passing next_cursor as cursor recovers. region keeps every segment that intersects the rect (endpoints untouched — the same keep test sheet_context uses, so total here equals sheet_context's total_in_region) and echoes it post-clamp. Read-only and stateless — no shape, condition, or scale is touched. A scan has no strokes: the verb refuses and names view_sheet as the path. ${COORDS}`,
+    inputSchema: {
+      sheet: z.string().describe('Sheet key ("plan.pdf", "plan.pdf#2") or title-block number ("A-101")'),
+      region: z.object({ x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() }).optional()
+        .describe("Rect in image px (origin top-left, y down); omit for the full sheet. A segment is kept when it intersects the rect"),
+      limit: z.number().int().min(1).max(VECTORS_LIMIT_CEIL).default(VECTORS_DEFAULT_LIMIT)
+        .describe(`Page size in segments (default ${VECTORS_DEFAULT_LIMIT}, max ${VECTORS_LIMIT_CEIL}) — about 1 MB of JSON per ${VECTORS_DEFAULT_LIMIT}`),
+      cursor: z.number().int().min(0).optional()
+        .describe("A previous reply's next_cursor — resume paging there. Omit for the first page"),
+    },
+    outputSchema: getSheetVectorsOutput,
+  }, run("get_sheet_vectors", (a) => session.sheetVectors(a.sheet, { region: a.region, limit: a.limit, cursor: a.cursor })));
 
   server.registerTool("edit_shape", {
     description: `REVISE a shape you already committed, instead of deleting it and starting over: pass new verts to move the geometry, condition to reassign it to a different finish tag, role to switch between floor_area / deduct / linear, label to name the room it belongs to, or any combination. Quantities are recomputed from the result — a role flip alone re-measures (closed area vs open length). The loop this is for: one_click or measure_polygon to commit, view_sheet with overlay:true to LOOK at what landed, then edit_shape to fix the two vertices that overshot into the corridor. label is the per-room reporting seam: detect_rooms already stamps the room number it traced from, so this is how a shape traced by hand — or one whose room number the sweep read wrong — joins the same per-room breakdown the Report and the workbook's floor × room tab group by. Shapes a human affirmed (origin.reviewed) are ink and are refused — an agent revises its own pencil and nothing else. Agent self-revision is tallied on origin.agent_edits, kept deliberately separate from the human-correction fields. ${COORDS}`,
