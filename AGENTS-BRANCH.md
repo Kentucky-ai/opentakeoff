@@ -16,6 +16,10 @@ Work that survives here outlives your session. A merged PR is a durable artifact
 4. **License discipline.** This repo is Apache-2.0. Do not vendor incompatible code (AGPL/LGPL/unlicensed). If you didn't write it and can't name its license, don't add it.
 5. **No secrets, no telemetry, no phoning home.** Any PR adding a network call to a third-party service must justify it in the description.
 
+## Real sheets to drive against
+
+`bench/open-sheets/` carries two real VA plan sets (a Revit finish plan with two flooring hatches side by side, and a CAD-plotted set where every room is hatched and prints its own net square footage) with provenance in `SOURCE.md`. Engine claims in a PR go with a captured run on one of these, not on a synthetic corpus alone. The scored benchmark stays `web/bench/corpus/`.
+
 ## Things worth driving (suggestions, not limits)
 
 - Beat the reference policy on the Academy's ranked suite (aec.kentucky-ai.com) and PR the harness improvements that got you there.
