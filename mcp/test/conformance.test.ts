@@ -27,6 +27,7 @@ import {
   symbolSweepOutput, sweepScheduleRowOutput, annotateOutput, listAnnotationsOutput,
   markVerdictOutput, deleteVerdictOutput, duplicateConditionOutput, splitConditionOutput,
   getSheetVectorsOutput,
+  createRfiOutput, listRfisOutput, resolveRfiOutput, deleteRfiOutput,
 } from "../src/outputs.ts";
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
@@ -63,6 +64,10 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   delete_verdict: z.object(deleteVerdictOutput),
   duplicate_condition: z.object(duplicateConditionOutput),
   split_condition: z.object(splitConditionOutput),
+  create_rfi: z.object(createRfiOutput),
+  list_rfis: z.object(listRfisOutput),
+  resolve_rfi: z.object(resolveRfiOutput),
+  delete_rfi: z.object(deleteRfiOutput),
 };
 
 async function pair() {
@@ -820,4 +825,46 @@ test("detect_rooms assign mode: reply validates AND round-trips the schema unstr
   assert.deepEqual(z.object(detectRoomsOutput).parse(r), r, "schema states every returned field — nothing stripped");
   assert.ok(Array.isArray(r.unresolved), "assign mode always states the answer, empty array included");
   assert.equal(r.withheld.unresolved, r.unresolved.length, "the counter and the array agree");
+});
+
+// #364 — the RFI verbs' output contract, both directions. deepEqual is the
+// load-bearing half: zod strips unknown keys, so equality proves each schema
+// states EVERY field the tool returns.
+test("create_rfi / list_rfis / resolve_rfi / delete_rfi: replies validate and round-trip the schema unstripped; misuse is clean", async () => {
+  const client = await pair();
+  await callOk(client, "load_plan", { path: PLAN });
+  const cloud = await callOk(client, "annotate", { sheet: KEY, type: "cloud", text: "conflict", rect: [[400, 900], [800, 1200]], condition: "CPT-1" });
+
+  const made = await callOk(client, "create_rfi", { title: "Room 102 finish conflict", question: "CPT-1 or VCT-1?", sheet: KEY, markup_ids: [cloud.id] });
+  assert.deepEqual(z.object(createRfiOutput).parse(made), made, "schema states every returned field");
+  assert.equal(made.number, "RFI-001");
+  const listed = await callOk(client, "list_rfis", {});
+  assert.deepEqual(z.object(listRfisOutput).parse(listed), listed);
+  assert.equal(listed.count, 1);
+  const done = await callOk(client, "resolve_rfi", { rfi_id: made.id, answer: "VCT-1 governs" });
+  assert.deepEqual(z.object(resolveRfiOutput).parse(done), done);
+  assert.equal(done.status, "answered");
+  const gone = await callOk(client, "delete_rfi", { rfi_id: made.id });
+  assert.deepEqual(z.object(deleteRfiOutput).parse(gone), gone);
+  const undo = await callOk(client, "undo_last", { n: 3 });
+  assert.deepEqual(undo.steps.map((s: any) => s.op), ["rfi_delete", "rfi_resolve", "rfi_create"], "every RFI op names itself through undoLastOutput's enum");
+
+  // semantic misuse is a clean isError surface
+  await callErr(client, "create_rfi", { title: "x", question: "q", sheet: KEY, markup_ids: ["mk-nope"] });   // unknown markup
+  await callErr(client, "create_rfi", { title: "x", question: "q", sheet: "Z-999" });                       // unknown sheet
+  await callErr(client, "create_rfi", { title: "  ", question: "q", sheet: KEY });                          // blank title
+  const live = await callOk(client, "create_rfi", { title: "y", question: "q", sheet: KEY });
+  await callOk(client, "resolve_rfi", { rfi_id: live.id, answer: "a" });
+  await callErr(client, "resolve_rfi", { rfi_id: live.id, answer: "b" });                                   // not open
+  await callErr(client, "resolve_rfi", { rfi_id: "rfi-nope", answer: "b" });                                // unknown id
+  await callOk(client, "delete_rfi", { rfi_id: live.id });
+  await callErr(client, "delete_rfi", { rfi_id: live.id });                                                 // already withdrawn
+
+  // schema violations are -32602, session unharmed
+  await callViolation(client, "create_rfi", { question: "q", sheet: KEY });                                 // missing title
+  await callViolation(client, "create_rfi", { title: "x", question: "q", sheet: KEY, markup_ids: "mk-1" }); // wrong type
+  await callViolation(client, "resolve_rfi", { rfi_id: live.id });                                          // missing answer
+  await callViolation(client, "delete_rfi", {});                                                            // missing id
+  const alive = await callOk(client, "list_rfis", {});
+  assert.deepEqual({ count: alive.count, withdrawn: alive.withdrawn }, { count: 0, withdrawn: ["RFI-001"] }, "the violations changed nothing");
 });

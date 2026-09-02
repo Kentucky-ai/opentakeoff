@@ -66,7 +66,9 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // derive_base takes shape ids and lineal feet — same reasoning.
 // import_takeoff takes a file path — same reasoning.
 // delete_verdict takes a record id — same reasoning.
-const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "export_dxf", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict", "duplicate_condition", "split_condition", "apply_rules"]);
+// the RFI verbs (#364) take a title, a question, a sheet name, and record ids —
+// no geometry crosses them — same reasoning.
+const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "export_dxf", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict", "duplicate_condition", "split_condition", "apply_rules", "create_rfi", "list_rfis", "resolve_rfi", "delete_rfi"]);
 
 test("tools/list: exactly TOOL_NAMES, each described with the coordinate contract", async () => {
   const client = await pair();
@@ -2536,4 +2538,241 @@ test("get_sheet_vectors: a scan has no strokes — refused, and view_sheet is na
   // a read-only verb: the refusal left nothing behind
   const shapes = await call(client, "list_shapes", {});
   assert.equal(shapes.data.shapes.length, 0);
+});
+
+// ── RFIs over MCP (#364) ─────────────────────────────────────────────────────
+// Four verbs over the canvas's own register: same record, same numbering, same
+// link rule. Everything below runs through the SDK on the wire, because the
+// undo_last output enum is validated THERE — a journal op the enum doesn't
+// name fails the undo call itself, and no unit test sees it.
+
+test("RFIs: create → list → resolve → delete round-trip on the wire, and undo_last ×3 takes each back exactly", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  const cloud = await call(client, "annotate", { sheet: KEY, type: "cloud", text: "schedule says CPT-1, plan tags VCT-1", rect: [[400, 900], [800, 1200]], condition: "CPT-1" });
+  const note = await call(client, "annotate", { sheet: KEY, type: "text", text: "unrelated", at: [100, 100] });
+
+  // create: next number in the panel's sequence, open, agent-raised and pending
+  const made = await call(client, "create_rfi", {
+    title: "Room 102 finish conflict", question: "Finish schedule row 102 reads CPT-1; the plan tags the room VCT-1. Which governs?",
+    sheet: "A-101", markup_ids: [cloud.data.id],
+  });
+  assert.equal(made.isError, false, made.data.error);
+  assert.equal(made.data.number, "RFI-001");
+  assert.equal(made.data.status, "open");
+  assert.equal(made.data.actor, "agent");
+  assert.equal(made.data.pending, true, "agent-raised is pencil until the estimator accepts it in the register");
+  assert.equal(made.data.sheet, KEY, "title-block addressing resolved to the sheet key");
+  assert.deepEqual(made.data.linked_markups, [cloud.data.id]);
+  assert.deepEqual(made.data.conditions, ["CPT-1"], "the scope the question touches, through the linked markup");
+
+  // the link is the canvas rule — markup.rfi_id — and the payload the app loads carries both halves
+  const payload1 = await call(client, "export_takeoff", {});
+  assert.equal(payload1.data.markups.find((m: any) => m.id === cloud.data.id).rfi_id, made.data.id);
+  assert.equal(payload1.data.markups.find((m: any) => m.id === note.data.id).rfi_id, "", "an unlinked markup stays unlinked");
+  assert.equal(payload1.data.rfis.length, 1);
+  assert.deepEqual(payload1.data.rfis[0].origin, { actor: "agent", reviewed: false }, "the stored record says who asked and that no human has accepted it");
+  assert.equal(payload1.data.rfis[0].subject, "Room 102 finish conflict");
+
+  // list: every RFI with status, sheet, links, and the conditions the links touch
+  const listed = await call(client, "list_rfis", {});
+  assert.equal(listed.isError, false);
+  assert.equal(listed.data.count, 1);
+  assert.equal(listed.data.open, 1);
+  assert.equal(listed.data.pending, 1);
+  assert.deepEqual(listed.data.withdrawn, []);
+  assert.deepEqual(listed.data.rfis[0].linked_markups, [cloud.data.id]);
+  assert.deepEqual(listed.data.rfis[0].conditions, ["CPT-1"]);
+
+  // resolve: answered + response + dates; a second resolve is refused in so many words
+  const done = await call(client, "resolve_rfi", { rfi_id: made.data.id, answer: "Architect: VCT-1 governs; schedule row 102 revised in ASI-02." });
+  assert.equal(done.isError, false, done.data.error);
+  assert.equal(done.data.status, "answered");
+  assert.match(done.data.response, /VCT-1 governs/);
+  assert.match(done.data.response_date, /^\d{4}-\d{2}-\d{2}$/, "the panel's date-only auto-stamp");
+  assert.match(done.data.resolved_at, /^\d{4}-\d{2}-\d{2}T/, "plus the resolve's own ISO timestamp");
+  const again = await call(client, "resolve_rfi", { rfi_id: made.data.id, answer: "second answer" });
+  assert.equal(again.isError, true);
+  assert.match(again.data.error, /RFI-001 is answered, not open/);
+  assert.match(again.data.error, /open/i);
+  assert.equal((await call(client, "list_rfis", {})).data.rfis[0].response, "Architect: VCT-1 governs; schedule row 102 revised in ASI-02.", "the refusal changed nothing");
+
+  // delete: tombstone — gone from the list, number reserved, the markup keeps its note and loses the link
+  const gone = await call(client, "delete_rfi", { rfi_id: made.data.id });
+  assert.equal(gone.isError, false, gone.data.error);
+  assert.deepEqual({ deleted: gone.data.deleted, number: gone.data.number, unlinked_markups: gone.data.unlinked_markups, rfis_remaining: gone.data.rfis_remaining },
+    { deleted: made.data.id, number: "RFI-001", unlinked_markups: 1, rfis_remaining: 0 });
+  const afterDel = await call(client, "list_rfis", {});
+  assert.equal(afterDel.data.count, 0);
+  assert.deepEqual(afterDel.data.withdrawn, ["RFI-001"], "the gap is explained, not silent");
+  const payload2 = await call(client, "export_takeoff", {});
+  assert.equal(payload2.data.rfis, undefined, "a tombstone never reaches the app — its register has no such notion");
+  assert.equal(payload2.data.markups.find((m: any) => m.id === cloud.data.id).rfi_id, "", "link cleared, note kept");
+  assert.equal(payload2.data.markups.length, 2);
+  // a withdrawn id is refused by name, and so is a made-up one
+  const dead = await call(client, "resolve_rfi", { rfi_id: made.data.id, answer: "x" });
+  assert.equal(dead.isError, true);
+  assert.match(dead.data.error, /RFI-001 was withdrawn/);
+  const nope = await call(client, "delete_rfi", { rfi_id: "rfi-nope" });
+  assert.equal(nope.isError, true);
+  assert.match(nope.data.error, /list_rfis/);
+
+  // ── undo ×3, newest first: delete → resolve → create. Each op name crosses
+  // the wire through undoLastOutput's enum — the assertion that catches a
+  // journal op the enum forgot.
+  const u1 = await call(client, "undo_last", { n: 1 });
+  assert.equal(u1.isError, false, `undo of delete_rfi failed on the wire: ${u1.data.error}`);
+  assert.deepEqual(u1.data.steps.map((x: any) => [x.op, x.tool, x.shapes]), [["rfi_delete", "delete_rfi", 0]]);
+  const back1 = await call(client, "list_rfis", {});
+  assert.equal(back1.data.count, 1);
+  assert.deepEqual(back1.data.withdrawn, []);
+  assert.equal(back1.data.rfis[0].status, "answered", "the record came back as it was before the delete — answered");
+  assert.deepEqual(back1.data.rfis[0].linked_markups, [cloud.data.id], "and the delete's unlink was reversed");
+
+  const u2 = await call(client, "undo_last", { n: 1 });
+  assert.equal(u2.isError, false, `undo of resolve_rfi failed on the wire: ${u2.data.error}`);
+  assert.deepEqual(u2.data.steps.map((x: any) => [x.op, x.tool]), [["rfi_resolve", "resolve_rfi"]]);
+  const back2 = await call(client, "list_rfis", {});
+  assert.equal(back2.data.rfis[0].status, "open");
+  assert.equal(back2.data.rfis[0].response, "");
+  assert.equal(back2.data.rfis[0].response_date, "");
+
+  const u3 = await call(client, "undo_last", { n: 1 });
+  assert.equal(u3.isError, false, `undo of create_rfi failed on the wire: ${u3.data.error}`);
+  assert.deepEqual(u3.data.steps.map((x: any) => [x.op, x.tool]), [["rfi_create", "create_rfi"]]);
+  const back3 = await call(client, "list_rfis", {});
+  assert.equal(back3.data.count, 0);
+  assert.deepEqual(back3.data.withdrawn, [], "an undone create leaves no tombstone — it never existed");
+  const payload3 = await call(client, "export_takeoff", {});
+  assert.equal(payload3.data.markups.find((m: any) => m.id === cloud.data.id).rfi_id, "", "the markup's previous link (none) is back");
+  assert.equal(payload3.data.markups.length, 2, "annotations are never RFI cargo — both notes survive every step");
+  assert.equal(u3.data.remaining, 0, "annotate is not journaled; the three RFI verbs were the whole history");
+
+  // and forward again: after a full unwind the register starts at RFI-001 (no tombstone was left)
+  const fresh = await call(client, "create_rfi", { title: "again", question: "q", sheet: KEY });
+  assert.equal(fresh.data.number, "RFI-001");
+});
+
+test("RFIs: delete is a tombstone — the number is never reissued and the marked set keeps the gap", async () => {
+  const client = await pair();
+  const dir = await mkdtemp(path.join(tmpdir(), "ot-rfi-gap-"));
+  const tmpPlan = path.join(dir, "sample-plan.pdf");
+  await copyFile(PLAN, tmpPlan);
+  await call(client, "load_plan", { path: tmpPlan });
+
+  const a = await call(client, "create_rfi", { title: "first", question: "q1", sheet: KEY });
+  const b = await call(client, "create_rfi", { title: "second", question: "q2", sheet: KEY });
+  const c = await call(client, "create_rfi", { title: "third", question: "q3", sheet: KEY });
+  assert.deepEqual([a.data.number, b.data.number, c.data.number], ["RFI-001", "RFI-002", "RFI-003"]);
+
+  // withdraw the NEWEST — the case a hard delete would silently renumber (max+1 would hand out RFI-003 again)
+  const gone = await call(client, "delete_rfi", { rfi_id: c.data.id });
+  assert.equal(gone.isError, false);
+  assert.match(gone.data.note, /next RFI takes RFI-004/);
+  const d = await call(client, "create_rfi", { title: "fourth", question: "q4", sheet: KEY });
+  assert.equal(d.data.number, "RFI-004", "the withdrawn number stays reserved");
+  const listed = await call(client, "list_rfis", {});
+  assert.deepEqual(listed.data.rfis.map((r: any) => r.number), ["RFI-001", "RFI-002", "RFI-004"]);
+  assert.deepEqual(listed.data.withdrawn, ["RFI-003"]);
+
+  // the deliverable keeps the gap: an RFI-only session still exports (cover +
+  // schedule), and the schedule prints 001, 002, 004 — never 003
+  const pdf = await call(client, "export_marked_pdf", {});
+  assert.equal(pdf.isError, false, pdf.data.error);
+  assert.equal(pdf.data.rfis_printed, 3);
+  assert.equal(pdf.data.sheets_marked, 0);
+  assert.equal(pdf.data.pages, 2, "cover + the RFI schedule page — no sheet carries work");
+  const doc = await openPdf(pdf.data.path);
+  const schedule = positionedText(await doc.page(2)).map((t) => t.str).join(" ");
+  await doc.destroy();
+  assert.match(schedule, /RFI SCHEDULE/);
+  assert.match(schedule, /3 RFIs/);
+  for (const n of ["RFI-001", "RFI-002", "RFI-004"]) assert.match(schedule, new RegExp(n));
+  assert.doesNotMatch(schedule, /RFI-003/);
+
+  // the tombstone survives an import (the export never carries it, the session does)
+  const out = path.join(dir, "takeoff.json");
+  await call(client, "export_takeoff", { path: out });
+  const imp = await call(client, "import_takeoff", { path: out });
+  assert.equal(imp.isError, false, imp.data.error);
+  const after = await call(client, "list_rfis", {});
+  assert.deepEqual(after.data.rfis.map((r: any) => r.number), ["RFI-001", "RFI-002", "RFI-004"], "re-import is idempotent for RFIs too");
+  assert.deepEqual(after.data.withdrawn, ["RFI-003"]);
+  assert.equal((await call(client, "create_rfi", { title: "fifth", question: "q5", sheet: KEY })).data.number, "RFI-005");
+});
+
+test("RFIs in the marked set: an agent-raised RFI prints exactly like a panel-raised one; only the record and the credit line say who asked", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "ot-rfi-parity-"));
+  const tmpPlan = path.join(dir, "sample-plan.pdf");
+  await copyFile(PLAN, tmpPlan);
+  const today = new Date().toISOString().slice(0, 10);
+  const subject = "Room 102 finish conflict";
+  const question = "Finish schedule row 102 reads CPT-1; the plan tags the room VCT-1. Which governs?";
+  const rect: [[number, number], [number, number]] = [[400, 900], [800, 1200]];
+
+  // AGENT: annotate + create_rfi over the wire
+  const agent = await pair();
+  await call(agent, "load_plan", { path: tmpPlan });
+  const cloud = await call(agent, "annotate", { sheet: KEY, type: "cloud", text: "finish conflict", rect });
+  const made = await call(agent, "create_rfi", { title: subject, question, sheet: KEY, markup_ids: [cloud.data.id] });
+  assert.equal(made.isError, false, made.data.error);
+  const agentPdf = await call(agent, "export_marked_pdf", { path: path.join(dir, "agent.pdf") });
+  assert.equal(agentPdf.isError, false, agentPdf.data.error);
+  assert.equal(agentPdf.data.rfis_printed, 1);
+  assert.equal(agentPdf.data.pages, 3, "cover + RFI schedule + the one marked sheet");
+
+  // PANEL: the record the canvas's Raise RFI mints (TakeoffCanvas raiseRfi —
+  // no origin, the estimator's own) and its linked cloud, arriving by file
+  // through import_takeoff, exactly as an app save would
+  const agentCloud = (await call(agent, "export_takeoff", {})).data.markups[0];
+  const panelFile = path.join(dir, "panel.json");
+  await writeFile(panelFile, JSON.stringify({
+    schema: "opentakeoff.takeoff_canvas.v1", project_name: "", units: "imperial", sheets: [], conditions: [], shapes: [],
+    markups: [{ ...agentCloud, id: "mk-panel-1", rfi_id: "rfi-panel-1" }],
+    rfis: [{
+      id: "rfi-panel-1", number: "RFI-001", created_at: new Date().toISOString(), subject, question, status: "open",
+      to: "", priority: "normal", cost_impact: false, schedule_impact: false, date: today, response: "", response_date: "", sheet_id: KEY,
+    }],
+    sheet_group: [], last_group: [], sheet_tabs: [], sheet_levels: {},
+  }));
+  const panel = await pair();
+  await call(panel, "load_plan", { path: tmpPlan });
+  const imp = await call(panel, "import_takeoff", { path: panelFile });
+  assert.equal(imp.isError, false, imp.data.error);
+  const panelList = await call(panel, "list_rfis", {});
+  assert.deepEqual({ actor: panelList.data.rfis[0].actor, pending: panelList.data.rfis[0].pending, linked: panelList.data.rfis[0].linked_markups },
+    { actor: "estimator", pending: false, linked: ["mk-panel-1"] }, "a panel-raised RFI is the estimator's own and never pending");
+  const panelPdf = await call(panel, "export_marked_pdf", { path: path.join(dir, "panel.pdf") });
+  assert.equal(panelPdf.isError, false, panelPdf.data.error);
+  assert.equal(panelPdf.data.rfis_printed, 1);
+  assert.equal(panelPdf.data.pages, 3);
+
+  // the RFI schedule page — every row, meta, Q line — byte-for-byte the same text
+  const pageText = async (file: string, n: number) => {
+    const doc = await openPdf(file);
+    const text = positionedText(await doc.page(n)).map((t) => t.str);
+    await doc.destroy();
+    return text;
+  };
+  const agentRows = await pageText(agentPdf.data.path, 2);
+  const panelRows = await pageText(panelPdf.data.path, 2);
+  assert.ok(agentRows.some((t) => /RFI SCHEDULE/.test(t)), "page 2 is the schedule");
+  assert.ok(agentRows.some((t) => t === "RFI-001"), "the number prints as its own run");
+  assert.ok(agentRows.some((t) => t.includes(subject)));
+  assert.ok(agentRows.some((t) => t.includes("1 linked markup")), "the link count derives from markup.rfi_id, both ways");
+  assert.deepEqual(agentRows, panelRows, "an agent-raised RFI's schedule rows are identical to a panel-raised one's");
+
+  // who asked lives on the record and on the credit line (the builder prints
+  // it on the LAST page), never on the row
+  const agentLast = (await pageText(agentPdf.data.path, 3)).join(" ");
+  const panelLast = (await pageText(panelPdf.data.path, 3)).join(" ");
+  assert.match(agentLast, /Agent-raised via OpenTakeoff MCP — 1 agent-raised RFI pending acceptance/);
+  assert.doesNotMatch(panelLast, /pending acceptance/);
+  const agentRec = (await call(agent, "export_takeoff", {})).data.rfis[0];
+  const panelRec = (await call(panel, "export_takeoff", {})).data.rfis[0];
+  assert.deepEqual(agentRec.origin, { actor: "agent", reviewed: false });
+  assert.equal(panelRec.origin, undefined);
+  // and, origin aside, the two records are the same shape — the panel loads either
+  const strip = (r: any) => { const { id, created_at, origin, ...rest } = r; return rest; };
+  assert.deepEqual(strip(agentRec), strip(panelRec));
 });

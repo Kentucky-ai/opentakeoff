@@ -1,4 +1,4 @@
-// The forty tools — thin zod-validated handlers over the Session. Replies are
+// The tools (TOOL_NAMES in staging.ts) — thin zod-validated handlers over the Session. Replies are
 // compact JSON (format.ts); view_sheet alone replies with an image content
 // item plus a JSON meta text item. Failures are isError results, never thrown
 // protocol errors.
@@ -17,6 +17,7 @@ import {
   exportMarkedPdfOutput, listShapesOutput, deriveBaseOutput, deriveTransitionsOutput, importTakeoffOutput, applyRulesOutput, cutOutOutput,
   annotateOutput, listAnnotationsOutput, linkAnnotationOutput,
   markVerdictOutput, deleteVerdictOutput,
+  createRfiOutput, listRfisOutput, resolveRfiOutput, deleteRfiOutput,
   sheetGraphOutput, resolveTagOutput, findScheduleOutput, sweepScheduleRowOutput, countMarksOutput,
   exportDxfOutput, getSheetVectorsOutput,
 } from "./outputs.ts";
@@ -488,7 +489,7 @@ export function registerTools(realServer: McpServer, session: Session): Map<stri
   }, run("split_condition", (a) => session.splitCondition(a.condition)));
 
   server.registerTool("undo_last", {
-    description: `Step back over your OWN last n mutations, newest first — a committed one_click, a whole detect_rooms sweep, an edit_shape, a delete_shape, an edit_materials call, or an edit_condition call. Each step is reversed exactly (a commit is removed, an edit is restored verbatim, a delete is re-inserted where it was, a materials edit's whole array is restored, a condition edit's waste/multiplier pair is restored), so this restores state rather than approximating it. Reads are never journaled, so n counts gestures that changed something, not tool calls you made. Use it when a sweep committed against the wrong condition or a batch went in on the wrong sheet — one call instead of N deletes. Scope: this session's own history only. It is not the browser canvas's undo stack, and load_plan clears it along with the shapes it refers to.`,
+    description: `Step back over your OWN last n mutations, newest first — a committed one_click, a whole detect_rooms sweep, an edit_shape, a delete_shape, an edit_materials call, an edit_condition call, or an RFI verb (create_rfi / resolve_rfi / delete_rfi). Each step is reversed exactly (a commit is removed, an edit is restored verbatim, a delete is re-inserted where it was, a materials edit's whole array is restored, a condition edit's waste/multiplier pair is restored), so this restores state rather than approximating it. Reads are never journaled, so n counts gestures that changed something, not tool calls you made. Use it when a sweep committed against the wrong condition or a batch went in on the wrong sheet — one call instead of N deletes. Scope: this session's own history only. It is not the browser canvas's undo stack, and load_plan clears it along with the shapes it refers to.`,
     inputSchema: {
       n: z.number().int().min(1).max(UNDO_CAP).default(1).describe(`How many steps to reverse (1–${UNDO_CAP})`),
     },
@@ -634,6 +635,45 @@ export function registerTools(realServer: McpServer, session: Session): Map<stri
     },
     outputSchema: deleteVerdictOutput,
   }, run("delete_verdict", ({ verdict_id }) => session.deleteVerdict(verdict_id)));
+
+  // ── RFIs (#364) — raise, list, answer, withdraw a question on the sheet ────
+  // The canvas's RFI register (RfiPanel), reachable by an agent: same store,
+  // same numbering, same link rule. What the agent raises is PENDING until an
+  // estimator accepts it in the register — an RFI goes to the architect, and
+  // nothing sends without a human. Every verb journals; undo_last takes it back.
+  server.registerTool("create_rfi", {
+    description: `Raise an RFI — a Request For Information — when the drawing set contradicts itself or cannot answer a question you need answered to take the work off: a room-finish schedule row that names a tag the plan never draws, a room label the schedule has no row for, a finish called out two ways, a scale that disagrees with a stated dimension. It lands in the estimator's RFI register (the canvas's RFI panel) with the next number in that register's own sequence (RFI-001, RFI-002, …), status open, dated today, on the sheet you name. You raise it as the agent: the record carries origin {actor: "agent", reviewed: false} and is PENDING — pencil — until the estimator accepts it in the register, because an RFI goes to the architect and nothing sends without a human. It still prints in the marked set's RFI schedule like any other RFI, so the question is on the deliverable. Pass markup_ids to pin it to annotations already on the sheet (annotate a cloud or callout at the conflict first, then link it here) — a linked markup carries the RFI number on the canvas and in the marked set, and list_rfis reports which finish tags the question touches through those links. Prefer this to describing the conflict in prose: a question in the register is tracked, numbered, and answered; a sentence in a reply is lost. Journaled; undo_last takes it back.`,
+    inputSchema: {
+      title: z.string().describe("The one-line subject the register and the RFI schedule print — what the question is about"),
+      question: z.string().describe("What you are asking the architect to answer, stated so a reply can settle it"),
+      sheet: z.string().describe("Sheet name or number the question is about, as sheet_info reports it"),
+      markup_ids: z.array(z.string()).optional().describe("Annotation ids (annotate / list_annotations) to link — they carry this RFI's number on the sheet"),
+    },
+    outputSchema: createRfiOutput,
+  }, run("create_rfi", (a) => session.createRfi(a)));
+
+  server.registerTool("list_rfis", {
+    description: `Every RFI in the register with its status, sheet, who raised it (actor) and whether an agent-raised one is still pending the estimator's acceptance, its linked markup ids, and the finish tags those markups are attached to — the scopes the question touches. withdrawn[] lists the numbers delete_rfi tombstoned, so a gap in the sequence is explained rather than silent. Read this before raising a question the register already holds.`,
+    inputSchema: {},
+    outputSchema: listRfisOutput,
+  }, run("list_rfis", () => session.listRfis()));
+
+  server.registerTool("resolve_rfi", {
+    description: `Answer an OPEN RFI: the answer lands as its response, status becomes answered (the register's own state for "response in"), and the response date stamps exactly as the panel's would, plus an ISO timestamp of the resolve. Only an open RFI resolves — an answered, closed, or void one is refused rather than re-answered or quietly revived (undo_last reverses your own resolve if the answer was wrong). Record the answer the drawings or the architect actually gave; an RFI is not resolved by guessing.`,
+    inputSchema: {
+      rfi_id: z.string().describe("Record id from create_rfi or list_rfis"),
+      answer: z.string().describe("The response — what settles the question"),
+    },
+    outputSchema: resolveRfiOutput,
+  }, run("resolve_rfi", ({ rfi_id, answer }) => session.resolveRfi(rfi_id, answer)));
+
+  server.registerTool("delete_rfi", {
+    description: `Withdraw an RFI. A TOMBSTONE, never a renumber: the record stays with its number reserved, so the register and the marked set keep printing a gap where it was and the next RFI takes the next number — an RFI number that went out and then meant something else would be a lie. Every markup linked to it keeps its note and loses the link (the canvas's own delete rule). Withdraw a question you raised in error; a question the architect answered is closed in the register, not deleted. Journaled; undo_last puts the record and its links back.`,
+    inputSchema: {
+      rfi_id: z.string().describe("Record id from create_rfi or list_rfis"),
+    },
+    outputSchema: deleteRfiOutput,
+  }, run("delete_rfi", ({ rfi_id }) => session.deleteRfi(rfi_id)));
 
   return registered;
 }

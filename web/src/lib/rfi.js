@@ -44,6 +44,26 @@ export function nextRfiNumber(rfis = []) {
   return `RFI-${String(max + 1).padStart(3, "0")}`;
 }
 
+// The RFIs that still exist. A withdrawn RFI is a TOMBSTONE, not a removal:
+// the record stays with `deleted: true` so its number is never reissued (an
+// RFI number that went to the architect and then means something else is a
+// lie) — but it prints nowhere. The register, the marked set's RFI schedule,
+// the CSV/JSON log, and the app payload all read through this, so a withdrawn
+// RFI leaves a numbering gap everywhere and nextRfiNumber (which reads ALL
+// records, tombstones included) never fills it.
+export function liveRfis(rfis = []) {
+  return (rfis || []).filter((r) => r && r.deleted !== true);
+}
+
+// An agent-raised RFI is PENDING until an estimator accepts it — the same
+// origin.reviewed flag every agent shape carries (pencil until a human turns
+// it to ink). An RFI goes to the architect, so nothing sends without a human.
+// A record with no origin (panel-raised) is the estimator's own and never
+// pending; an origin the panel accepted (reviewed: true) is not pending.
+export function rfiPending(r) {
+  return !!r?.origin && r.origin.actor === "agent" && r.origin.reviewed !== true;
+}
+
 // Markups linked to an RFI: markup.rfi_id === rfi.id is the single source of
 // truth. Returns [] for a null/blank id so a fresh RFI reports 0 links.
 export function linkedMarkups(rfi, markups = []) {
@@ -71,7 +91,7 @@ export function rfisToCsv(rfis = [], markups = [], projectName = "", sheetLabel 
     "# RFI log — one row per RFI; linked markups/sheets derived from markup.rfi_id",
     header.map(esc).join(","),
   ];
-  for (const r of rfis || []) {
+  for (const r of liveRfis(rfis)) {
     const linked = linkedMarkups(r, markups);
     const sheets = [...new Set(linked.map((m) => label(m.sheet_id)))].join("; ");
     lines.push([
@@ -100,6 +120,6 @@ export function rfisToJson(rfis = [], projectName = "") {
     schema: "opentakeoff.rfis.v1",
     project_name: projectName || null,
     generated_with: "OpenTakeoff",
-    rfis: rfis || [],
+    rfis: liveRfis(rfis),
   };
 }

@@ -10,12 +10,14 @@
 //             sheetLabel={tabLabel} onClose />
 import React, { useMemo, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
-import { RFI_STATUSES, rfiStatus, linkedMarkups } from "../lib/rfi.js";
+import { RFI_STATUSES, rfiStatus, linkedMarkups, liveRfis, rfiPending } from "../lib/rfi.js";
 
 const PRIORITIES = ["low", "normal", "high"];
 
-export default function RfiPanel({ docked = false, rfis = [], markups = [], onUpdateRfi, onDeleteRfi, onFlyTo, sheetLabel, onClose }) {
+export default function RfiPanel({ docked = false, rfis: rfisIn = [], markups = [], onUpdateRfi, onDeleteRfi, onFlyTo, sheetLabel, onClose }) {
   const [filter, setFilter] = useState("all"); // "all" | status id
+  // a withdrawn RFI is a tombstone (its number stays reserved) and never lists
+  const rfis = useMemo(() => liveRfis(rfisIn), [rfisIn]);
   const shown = useMemo(
     () => (filter === "all" ? rfis : rfis.filter((r) => rfiStatus(r.status).id === filter)),
     [rfis, filter],
@@ -65,11 +67,28 @@ export default function RfiPanel({ docked = false, rfis = [], markups = [], onUp
       {shown.map((r) => {
         const st = rfiStatus(r.status);
         const linked = linkedMarkups(r, markups);
+        // agent-raised (MCP create_rfi): who asked is on the record, and the
+        // question is PENDING — pencil — until the estimator accepts it here.
+        // The same origin.reviewed flag every agent shape carries; Accept is
+        // the only path that sets it, so nothing agent-raised sends unseen.
+        const agent = r.origin?.actor === "agent";
+        const pending = rfiPending(r);
         return (
           <div key={r.id} style={{ padding: "10px 12px", borderTop: "1px solid var(--ink-faint)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
               <span style={{ fontFamily: "var(--f-mono)", fontWeight: 700, color: "var(--cobalt)" }}>{String(r.number ?? "")}</span>
               <span style={{ padding: "1px 7px", background: st.color, color: "#fff", fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>{st.label}</span>
+              {agent && (
+                <span title={pending ? "Raised by an agent over MCP — pending until you accept it" : "Raised by an agent over MCP — accepted"}
+                  style={{ padding: "1px 6px", border: "1px dashed var(--ink-muted)", color: "var(--ink-muted)", fontSize: 9.5, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                  agent{pending ? " · pending" : ""}
+                </span>
+              )}
+              {pending && (
+                <button onClick={() => up(r, { origin: { ...r.origin, reviewed: true } })}
+                  title="Accept this agent-raised RFI as your own question (turns it from pencil to ink)"
+                  style={{ padding: "1px 8px", border: "1px solid var(--cobalt)", background: "var(--cobalt)", color: "var(--accent-contrast)", cursor: "pointer", fontSize: 10, fontWeight: 700 }}>Accept</button>
+              )}
               <span style={{ flex: 1 }} />
               <span style={{ fontSize: 10.5, color: "var(--ink-muted)" }}>{linked.length} linked</span>
               <button onClick={() => { if (window.confirm(`Delete ${r.number}? Linked markups keep their annotation but lose the RFI link.`)) onDeleteRfi && onDeleteRfi(r.id); }}
