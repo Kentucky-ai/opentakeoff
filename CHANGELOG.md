@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — a small seed does not commit a crowd (#376)
+
+### Changed
+- **`symbol_sweep` refuses to commit on shape alone when the seed is small and common (mcp 0.9.70).** On a VA site utility plan an 8 px sewer-cleanout glyph (31 segments) swept with `commit: true` and no `variant_guard` returned 104 placements — tree canopies, text, line ticks, most scoring 0.93–1.0 with rotation and mirror on — and committed all of them; the sheet has two new cleanouts. Now a seed under 40 segments whose sweep clears more than 50 placements does not commit: the placements are still returned in `matches` (per sheet in set scope), `committed` is 0, and a new `commit_refused` string says what stands the guard down — `variant_guard: true` (the seed IS the whole symbol), `exclude` counter-examples, or a seed rect that captures more of the symbol's own linework. Both `variant_guard` and `exclude` stand it down because each is the caller discriminating by hand. Pure rule in `sweepGuard.ts`, node-tested.
+
 ## Unreleased — a tag box is not a room (#373)
 
 ### Fixed

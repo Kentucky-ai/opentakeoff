@@ -37,6 +37,7 @@ import { buildRasterMask, RASTER_MIN_IMG_FRAC, RASTER_MIN_SEGS, RASTER_RDP_EPS }
 // passes at a One-Click. This server used to call the raw floodRegion on
 // scale-unpinned masks here, so an MCP trace and a canvas click at the same
 // seed measured DIFFERENT square footage under the same origin.method.
+import { sweepCommitRefusal } from "./sweepGuard.ts";
 import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, floodSurroundsLabelPx, floodAtSeed, type LabelBBox } from "../../web/src/lib/detectRooms.ts";
 import { fingerprintSymbol, matchSymbol, buildNegative, SWEEP_TOL_PX, type SweepOptions, type SymbolFingerprint, type SymbolMatchResult, type SweepMatch, type SweepWithheld, type SweepRejected, type SymbolNegative } from "../../web/src/lib/symbolsweep.ts";
 import { labelPlacements, type PlacementLabel } from "../../web/src/lib/symbollabels.ts";
@@ -2513,7 +2514,10 @@ export class Session {
       if (!s.spans) s.spans = textSpans(s.page);
       const lbl = this.sweepLabels(s.spans, geo, fp.center, res.matches, res.withheld);
       let committed: { committed: number; shape_ids: string[]; condition: string; ea_total: number } | undefined;
-      if (opts.commit && (res.matches.length || opts.commitSeed)) {
+      // #376 — a small seed that clears a crowd of placements does not commit
+      // on shape alone; the placements are still returned, the refusal says why.
+      const refusal = opts.commit ? sweepCommitRefusal({ seedSegments: fp.segments, found: res.matches.length, variantGuard: !!opts.variantGuard, negatives: negatives.length }) : null;
+      if (opts.commit && !refusal && (res.matches.length || opts.commitSeed)) {
         // #296 — commit_seed puts the seed instance first in the SAME batch:
         // one undo step covers the whole gesture, seed included.
         const points = [...(opts.commitSeed ? [fp.center] : []), ...res.matches.map((m) => m.at)];
@@ -2553,9 +2557,10 @@ export class Session {
           ea_total: committed.ea_total,
           ...(opts.commitSeed ? { seed_committed: true } : {}),
         } : {}),
+        ...(refusal ? { committed: 0, commit_refused: refusal } : {}),
         ...((): { note?: string } => {
           const parts: string[] = [];
-          if (opts.commit && !res.matches.length && !opts.commitSeed) parts.push("commit requested but nothing cleared the bar — no shapes were committed.");
+          if (opts.commit && !refusal && !res.matches.length && !opts.commitSeed) parts.push("commit requested but nothing cleared the bar — no shapes were committed.");
           // #296 — a count that excludes something the estimator can see must
           // say so: the seed is almost always installed work in sheet scope.
           if (committed && !opts.commitSeed) parts.push(`The seed instance at (${round1(fp.center[0])}, ${round1(fp.center[1])}) is NOT in this count — if it is installed work, re-run with commit_seed: true or place_count it.`);
@@ -2629,7 +2634,8 @@ export class Session {
 
     const found = perSheet.reduce((n, p) => n + p.matches.length, 0);
     let committed: { committed: number; shape_ids: string[]; condition: string; ea_total: number } | undefined;
-    if (opts.commit && found) {
+    const refusal = opts.commit ? sweepCommitRefusal({ seedSegments: fp.segments, found, variantGuard: !!opts.variantGuard, negatives: negatives.length }) : null;   // #376
+    if (opts.commit && !refusal && found) {
       const ids: string[] = [];
       for (const ps of perSheet) {
         for (const m of ps.matches) {
@@ -2652,7 +2658,7 @@ export class Session {
     const capped = perSheet.filter((p) => p.candidates.dropped > 0);
     const notes: string[] = [];
     if (!perSheet.length) notes.push("No plan-role sheet in the set was sweepable — nothing was counted; skipped[] says why, sheet by sheet.");
-    if (opts.commit && !found) notes.push("commit requested but nothing cleared the bar on any plan sheet — no shapes were committed.");
+    if (opts.commit && !refusal && !found) notes.push("commit requested but nothing cleared the bar on any plan sheet — no shapes were committed.");
     // #186 disclosure. A ratio that was APPLIED is reported because the count
     // depends on it; a ratio that was ASSUMED is reported harder when the
     // sweep came back empty, because that pairing — unknown scale, zero found
@@ -2712,6 +2718,7 @@ export class Session {
       complete: perSheet.every((p) => p.complete),
       skipped,
       ...(committed ?? {}),
+      ...(refusal ? { committed: 0, commit_refused: refusal } : {}),
       ...(notes.length ? { note: notes.join(" ") } : {}),
       ...(capped.length ? { warning: `Work ceiling: candidate placements were dropped un-scored on ${capped.map((p) => p.state.key).join(", ")} — counts there are FLOORS, not totals. The seed's linework is too common there for an exhaustive sweep; tighten the seed rect around more distinctive geometry, or sweep those sheets singly and reconcile the counts.` } : {}),
     };
