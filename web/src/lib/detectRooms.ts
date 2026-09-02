@@ -215,6 +215,15 @@ export interface DetectedRegion {
 
 /** Ring bbox ≤ this × label bbox (both axes) ⇒ the label's own bubble. */
 export const BUBBLE_RATIO = 2.5;
+/** The wide-box rule (#373): a ring no taller than BUBBLE_RATIO × the label's
+ *  text height and no wider than this × its text width is a tag box or a
+ *  schedule cell, never a room. Revit draws the room-number box wide enough
+ *  for "CR11-10" — on the Dublin A-601 finish plan it is 108×36 px around
+ *  42×25 px of digits, a width ratio of 2.58 that cleared the square guard by
+ *  a hair and committed twelve 12 SF "rooms" at confidence 1.0; the schedule
+ *  cells on the same sheet are 174×34 px. A long thin corridor a label sits in
+ *  stays a room: its length runs past this cap. */
+export const BUBBLE_WIDE_RATIO = 6;
 
 export interface LabelBBox { x0: number; y0: number; x1: number; y1: number }
 
@@ -311,7 +320,9 @@ export function isLabelBubblePx(ring: [number, number][], b: LabelBBox): boolean
     if (x > x1) x1 = x; if (y > y1) y1 = y;
   }
   const lw = Math.max(b.x1 - b.x0, 1e-6), lh = Math.max(b.y1 - b.y0, 1e-6);
-  return (x1 - x0) <= BUBBLE_RATIO * lw && (y1 - y0) <= BUBBLE_RATIO * lh;
+  const rw = x1 - x0, rh = y1 - y0;
+  if (rw <= BUBBLE_RATIO * lw && rh <= BUBBLE_RATIO * lh) return true;   // the square bubble
+  return rh <= BUBBLE_RATIO * lh && rw <= BUBBLE_WIDE_RATIO * lw;        // the wide tag box / table cell (#373)
 }
 
 /** Seed the SAME flood the click path uses at each label and apply the

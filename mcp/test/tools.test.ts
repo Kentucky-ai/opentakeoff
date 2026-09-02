@@ -888,29 +888,38 @@ test("detect_rooms assign_from_schedule: each room commits under its own row; un
   assert.equal(r.isError, false);
   // pinned from the first observed run — deterministic flood + fixture; re-pinned
   // for the RFC #60 engine (sealed ladder + lattice classifier shift which label
-  // seeds flood clean: 7/19 -> 6/17, same contract, better boundaries), and
-  // AGAIN for the sealed-engine session wiring (floodAtSeed on scale-pinned
-  // masks — the canvas's own feet-true arguments — replacing the raw
-  // floodRegion): 6 -> 5. The dropped room is 133, and the drop is the sealed
-  // engine being HONEST: the raw flood only reached 133's floor by LEAKING
-  // through its drawn tag box's pinhole (46.74 SF); sealing closes the box, the
-  // snapped 4.62 SF box ring is no room, and the 5 SF plausibility floor
-  // withholds it (withheld.implausible) instead of committing a tag box as a
-  // room. 142 also corrects 285.96 -> 161.00 SF — the min-passage rule severs
-  // a hairline conjunction the raw flood measured as one space — and 134A
-  // gains its annexed door swing (78.93 -> 90.13 SF). Canvas parity is proven
-  // against the bench corpus goldens in parity.test.ts.
-  assert.equal(r.data.detected, 5);
+  // seeds flood clean: 7/19 -> 6/17, same contract, better boundaries), AGAIN
+  // for the sealed-engine session wiring (floodAtSeed on scale-pinned masks:
+  // 6 -> 5), and AGAIN for #373 (5 -> 4). The #373 re-pin is the wide-box
+  // bubble rule plus the ownership gate being HONEST about what the old 5 were:
+  // the tag boxes on this sheet are wider than 2.5 text widths, so the center
+  // rung's box flood cleared the bubble guard, stopped the ladder, and was
+  // withheld under the 5 SF floor — 25 real rooms never got their second rung.
+  // Now the box is a bubble, the ladder reaches the room, and the sweep hands
+  // over 21 more rooms (unresolved against the schedule, below). Of the old 5
+  // commits, NONE was the room its row named: 170, 150 and 167 were pockets
+  // under the tag (8.44 / 5.61 / 7.14 SF), 142's 161 SF was the space south of
+  // its door (142's own floor is tile-hatched and never floods), and 134A's
+  // 93.07 SF was room 136. The ownership gate now withholds all five as
+  // unowned, while 136 commits under ITS row at the same 93.07 SF. Fewer
+  // commits, every one of them the room its row names.
+  assert.equal(r.data.detected, 4);
   assert.ok(r.data.rooms.every((x: any) => typeof x.shape_id === "string" && typeof x.condition === "string"),
     "every reported room committed, each carrying the tag it committed under");
   const tags = new Set(r.data.rooms.map((x: any) => x.condition));
-  assert.equal(tags.size, 5, `distinct finishes from distinct rows — the whole point (5 rooms, 5 rows after the sealed-wiring re-pin). Got: ${[...tags].join(",")}`);
+  assert.equal(tags.size, 3, `distinct finishes from distinct rows — the whole point (4 rooms over 3 rows' finishes after the #373 re-pin: two share CPT-1). Got: ${[...tags].join(",")}`);
+  assert.deepEqual(
+    r.data.rooms.map((x: any) => [x.label, x.condition]).sort(),
+    [["133", "EXIST"], ["136", "CPT-1"], ["149", "CPT-1"], ["153", "WSF-1"]],
+    "each committed room carries its OWN row's floor finish",
+  );
+  assert.equal(r.data.withheld.unowned, 12, "wrong-space floods are withheld as unowned, never committed under a tag (#373)");
   assert.ok([...tags].every((t: any) => !/[/,]/.test(t)), "no minted tag is a compound literal");
 
   // the never-guesses contract: withheld rooms are reported with their real
   // geometry and a reason, never committed and never dropped
-  assert.equal(r.data.withheld.unresolved, 17);
-  assert.equal(r.data.unresolved.length, 17);
+  assert.equal(r.data.withheld.unresolved, 31);
+  assert.equal(r.data.unresolved.length, 31);
   for (const u of r.data.unresolved) {
     assert.ok(u.reason.length > 0, "every withheld room says why");
     assert.ok(u.area_sf > 0 && u.perimeter_lf > 0, "withheld from committing, not from reporting");
@@ -922,7 +931,7 @@ test("detect_rooms assign_from_schedule: each room commits under its own row; un
   // and the sealed engine's account (confidence + factors) stamps centrally
   // in commit(), so every flood-committed shape ships scored
   const payload = await call(client, "export_takeoff", {});
-  assert.equal(payload.data.shapes.length, 5);
+  assert.equal(payload.data.shapes.length, 4);
   for (const shp of payload.data.shapes) {
     assert.equal(shp.origin.assignment.source, "schedule");
     assert.ok(shp.origin.assignment.room_tag, "the room tag that resolved");
@@ -934,15 +943,15 @@ test("detect_rooms assign_from_schedule: each room commits under its own row; un
   const inv = await call(client, "list_shapes", {});
   assert.ok(inv.data.shapes.every((x: any) => x.assignment === "schedule"), "list_shapes carries the flat verdict");
   const summary = await call(client, "takeoff_summary");
-  assert.equal(summary.data.conditions.length, 5);
-  assert.equal(summary.data.conditions.reduce((n: number, c: any) => n + c.shape_count, 0), 5);
+  assert.equal(summary.data.conditions.length, 3);
+  assert.equal(summary.data.conditions.reduce((n: number, c: any) => n + c.shape_count, 0), 4);
 
   // mutual exclusion: both finish-tag sources at once is a contradiction,
   // refused before any flooding — nothing minted, nothing committed
   const both = await call(client, "detect_rooms", { sheet: FKEY, condition: "CPT-1", assign_from_schedule: true });
   assert.equal(both.isError, true);
   assert.match(both.data.error, /at most one of/);
-  assert.equal((await call(client, "takeoff_summary")).data.conditions.length, 5, "the refusal changed nothing");
+  assert.equal((await call(client, "takeoff_summary")).data.conditions.length, 3, "the refusal changed nothing");
 
   // a reassign onto a different tag is the agent choosing the finish — the
   // schedule verdict (and its citation) must not survive that edit; undo

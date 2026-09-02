@@ -134,19 +134,36 @@ test("no two regions the engine hands over on one sheet share floor", async (t) 
   const ADJUDICATED: { a: string; b: string; maxSf: number; why: string }[] = [
     { a: "detect:557", b: "click:corridor-CE-5", maxSf: 641, why: "same corridor, named off its printed area" },
     { a: "click:room-140", b: "click:enclosed-sliver-in-140", maxSf: 12, why: "#188 annotation-ring recovery" },
+    { a: "detect:140", b: "click:enclosed-sliver-in-140", maxSf: 12, why: "#188 annotation-ring recovery — the same sliver, now that the sweep reaches 140 (#373)" },
+    { a: "detect:153", b: "detect:557", maxSf: 1, why: "a threshold sliver at 153's door against corridor CE-5 — under a third of a square foot, visible only since the sweep reaches 153 (#373)" },
+    { a: "detect:153", b: "click:corridor-CE-5", maxSf: 1, why: "the same threshold sliver, corridor arm" },
   ];
   const known = (h: { a: Ring; b: Ring }) =>
     ADJUDICATED.find((k) =>
       (k.a === h.a.name && k.b === h.b.name) || (k.a === h.b.name && k.b === h.a.name));
 
-  const fresh = hits.filter((h) => !known(h));
+  // ── cross-arm parity, not double-count (#373) ─────────────────────────────
+  // The hand clicks below were stand-ins for rooms the sweep could not reach
+  // while the wide tag boxes stopped its ladder. Now that detect_rooms reaches
+  // 140 and 158, "detect:140 x click:room-140" is the SAME room measured by two
+  // arms, and the honest assertion is that the two arms agree, not that they
+  // never touch.
+  const sameRoom = (h: { a: Ring; b: Ring }) => {
+    const m = (n: string) => n.replace(/^detect:/, "").replace(/^click:room-/, "");
+    return h.a.name !== h.b.name && m(h.a.name) === m(h.b.name);
+  };
+  for (const h of hits.filter(sameRoom)) {
+    assert.ok(Math.abs(h.a.sf - h.b.sf) < 0.5, `${h.a.name} and ${h.b.name} are one room traced by two arms and must agree: ${h.a.sf} vs ${h.b.sf} SF`);
+  }
+
+  const fresh = hits.filter((h) => !known(h) && !sameRoom(h));
   assert.deepEqual(
     fresh.map((h) => `${h.a.name} x ${h.b.name} = ${h.sf.toFixed(2)} SF`), [],
     "unadjudicated double-count: two regions the engine handed over share floor. "
     + "Either fix it, or add it to ADJUDICATED with the reason it is tolerable.",
   );
 
-  for (const h of hits) {
+  for (const h of hits.filter((x) => !sameRoom(x))) {
     const k = known(h)!;
     assert.ok(h.sf <= k.maxSf, `${h.a.name} x ${h.b.name} grew to ${h.sf.toFixed(2)} SF, past its ${k.maxSf} SF ceiling (${k.why})`);
   }

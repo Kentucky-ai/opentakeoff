@@ -125,6 +125,7 @@ export const detectRoomsOutput = {
     degenerate: z.number().int().describe("Traced to fewer than 3 vertices"),
     duplicate: z.number().int().describe("Flooded to a region another label already claimed — counted once, never twice"),
     bubble: z.number().int().describe("Labels whose every clean flood was their own label BUBBLE (ring bbox ≈ label bbox — plans box their room numbers). Scale-free, so it guards unscaled previews too"),
+    unowned: z.number().int().describe("Labels whose every clean, non-bubble flood did not SURROUND the label's box — a ladder rung stepped past the wall into a neighbouring space or a door-swing pocket. Withheld rather than committed under the tag (#373); one_click inside the room answers it"),
     implausible: z.number().int().describe("Enclosed, clean, non-bubble, but smaller than min_area_sf — a door swing or wall cavity rather than a room"),
     unresolved: z.number().int().describe("Assign mode: rooms the schedule could not answer for (no row, no FLOOR cell, or a compound cell) — withheld into unresolved[], never committed under a guess. Always present; 0 outside assign mode"),
     min_area_sf: z.number().optional().describe("The plausibility floor applied (scaled mode only)"),
