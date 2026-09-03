@@ -4299,7 +4299,10 @@ export class Session {
   private floorTagFor(g: SheetGraph, tag: string): { tag: string; sheet: string } | { reason: string } {
     const res = resolveTag(g, tag);
     if (res.status !== "resolved") return { reason: res.reason };
-    const floor = res.finishes.find((f) => f.surface === "FLOOR");
+    // the column is "FLOOR" on a one-tier schedule and "FLOOR FINISH" under a
+    // two-tier header (the sub-header takes its parent's name, #374); either
+    // way the surface's first word is the surface
+    const floor = res.finishes.find((f) => f.surface === "FLOOR" || f.surface.startsWith("FLOOR "));
     const code = floor?.code.trim();
     if (!floor || !code) return { reason: `schedule row ${res.tag} states no FLOOR finish` };
     if (/[/,]|\bOR\b/i.test(code)) return { reason: `ambiguous: floor cell "${code}" names more than one finish with no stated split` };

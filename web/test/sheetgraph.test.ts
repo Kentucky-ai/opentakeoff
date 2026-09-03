@@ -1171,3 +1171,65 @@ test("#356: TAG-keyed materials schedule extracts as kind finish; keynote lists 
   };
   assert.equal(extractTable(keynoteSheet, "finish"), null);
 });
+
+// ── two-tier Revit header (#374) ────────────────────────────────────────────
+// The Dublin A-601 finish plan carries its schedule on the plan sheet with the
+// surfaces on a PARENT tier and the defining columns on the tier below:
+//   CEILING | FLOOR  |    BASE    |  WAINSCOT  |      WALL FINISH
+//   ROOM # | ROOM NAME | FINISH | FINISH | MAT | HT | MAT | HT | EAST NORTH SOUTH | WEST
+// The defining tier carries no FLOOR/BASE word of its own, so the descent
+// refused it, the key column never anchored, and the walker read the sheet's
+// grid bubbles far below as rows: 21 rows read as 2, and resolve_tag answered
+// "no schedule row" for rooms that had one.
+const dublinTiers: SheetSpans = {
+  key: "dublin.pdf#1",
+  sheet_number: "A-601",
+  spans: [
+    sp("PHASE I - ROOM FINISH SCHEDULE", 300, 30),
+    sp("CEILING", 300, 60), sp("FLOOR", 400, 60), sp("BASE", 520, 60), sp("WAINSCOT", 680, 60), sp("WALL FINISH", 860, 60),
+    sp("ROOM #", 100, 72), sp("ROOM NAME", 160, 72), sp("FINISH", 300, 72), sp("FINISH", 400, 72), sp("MAT", 500, 72), sp("HT", 560, 72), sp("MAT", 660, 72), sp("HT", 720, 72), sp("EAST NORTH SOUTH", 800, 72), sp("WEST", 940, 72),
+    sp("103", 100, 90), sp("IV TESTING", 160, 90), sp("ACT-1", 300, 90), sp("CPT-1", 400, 90), sp("RB-1", 500, 90), sp("4\"", 560, 90), sp("--", 660, 90), sp("--", 720, 90), sp("PT-2", 800, 90), sp("PT-2", 940, 90),
+    sp("103A", 100, 106), sp("STG", 160, 106),
+    sp("110", 100, 122), sp("RESTROOM", 160, 122), sp("ACT-1", 300, 122), sp("CFT-1", 400, 122), sp("CTB-1", 500, 122), sp("4\"", 560, 122), sp("CWT-1", 660, 122), sp("4' - 0\"", 720, 122), sp("WC-1", 800, 122), sp("WC-1", 940, 122),
+    sp("111", 100, 138), sp("RESTROOM", 160, 138), sp("ACT-1", 300, 138), sp("CFT-1", 400, 138), sp("CTB-1", 500, 138), sp("4\"", 560, 138), sp("CWT-1", 660, 138), sp("4' - 0\"", 720, 138), sp("WC-1", 800, 138), sp("WC-1", 940, 138),
+    sp("CR11-9", 100, 154), sp("CORRIDOR", 160, 154), sp("ACT-1", 300, 154), sp("LVT-1 / LVT-2", 400, 154), sp("PRB-1", 500, 154), sp("4\"", 560, 154), sp("--", 660, 154), sp("--", 720, 154), sp("PT-1", 800, 154), sp("PT-1", 940, 154),
+    // the plan below the schedule: grid bubbles and a room tag, keyed-looking, far down
+    sp("18", 300, 700), sp("19", 400, 700), sp("RESTROOM", 900, 800), sp("110", 904, 812),
+    sp("FLOOR PLAN - PHASE I - FINISH PLAN", 300, 900), sp("1/8\" = 1'-0\"", 300, 912),
+  ],
+};
+
+test("#374: a two-tier header anchors the key column from the lower tier; surfaces keep their names", () => {
+  const rf = extractTable(dublinTiers, "room-finish")!;
+  assert.ok(rf, "the table is found");
+  assert.deepEqual(rf.rows.map((r) => r.key), ["103", "103A", "110", "111", "CR11-9"], "every schedule row, and NOT the plan's grid bubbles below it");
+  assert.equal(rf.title?.text, "PHASE I - ROOM FINISH SCHEDULE");
+  const r110 = rf.rows.find((r) => r.key === "110")!;
+  assert.equal(r110.cells["FLOOR FINISH"].text, "CFT-1", "FINISH under FLOOR takes its parent's name");
+  assert.equal(r110.cells["CEILING FINISH"].text, "ACT-1");
+  assert.equal(r110.cells["BASE MAT"].text, "CTB-1", "MAT under BASE takes its parent's name");
+  assert.equal(r110.cells["BASE HT"].text, "4\"", "BASE over HT keeps both halves");
+  assert.equal(r110.cells["WAINSCOT MAT"].text, "CWT-1");
+  assert.equal(r110.cells["WAINSCOT HT"].text, "4' - 0\"");
+  assert.equal(r110.cells.NAME.text, "RESTROOM");
+  assert.ok(["EAST", "NORTH", "SOUTH", "WEST"].every((w) => rf.headers.includes(w)), `one run "EAST NORTH SOUTH" is three columns: ${rf.headers.join(" | ")}`);
+  const r103a = rf.rows.find((r) => r.key === "103A")!;
+  assert.equal(r103a.cells.NAME.text, "STG");
+  assert.equal(r103a.cells["FLOOR FINISH"], undefined, "a row with no floor cell says so by absence, never a neighbour's value");
+});
+
+test("#374: resolve_tag answers FLOOR / BASE / WAINSCOT for a room on a two-tier schedule", () => {
+  const g = buildSheetGraph([dublinTiers]);
+  const r = resolveTag(g, "110");
+  assert.equal(r.status, "resolved");
+  const by = Object.fromEntries((r as any).finishes.map((f: any) => [f.surface, f.code]));
+  assert.equal(by["FLOOR FINISH"], "CFT-1");
+  assert.equal(by["BASE MAT"], "CTB-1");
+  assert.equal(by["BASE HT"], "4\"");
+  assert.equal(by["WAINSCOT MAT"], "CWT-1");
+  assert.equal(by["CEILING FINISH"], "ACT-1");
+  assert.equal((r as any).finishes[0].surface, "FLOOR FINISH", "FLOOR still leads the answer");
+  const u = resolveTag(g, "103A");
+  assert.equal(u.status, "unresolved");
+  assert.match((u as any).reason, /no finish cells/, "103A has a row but no finishes — the reason says so, not 'no row'");
+});

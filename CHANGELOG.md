@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — a two-tier Revit schedule reads every row (#374)
+
+### Fixed
+- **Room-finish schedule reader: 2 of 21 rows → 20 of 20 on a two-tier Revit header (mcp 0.9.71).** The Dublin A-601 finish plan puts CEILING | FLOOR | BASE | WAINSCOT | WALL FINISH on a parent tier and ROOM # | ROOM NAME | FINISH | FINISH | MAT | HT | MAT | HT | EAST NORTH SOUTH | WEST on the tier that defines the columns. The descent from parent tier to defining tier demanded the required surface words of the lower tier too — which by construction carries none — so the key column never anchored, the walker read the sheet's grid bubbles as rows, and `resolve_tag 110` answered "no schedule row" for a room that has one. Six things, each measured on that sheet: the descent trusts the tier above for the required words; MAT / MATERIAL / COMMENTS join the header vocabulary; a header run of several surface words ("EAST NORTH SOUTH") is one column per word; a sub-column whose merged parent is centred over its sibling inherits the sibling's parent (BASE over MAT | HT gives "BASE HT"); a parent-tier word two column pitches outside the band (the finish-abbreviation list beside the schedule) never mints a column; and cells band by the interval they overlap, with placeholder dashes voting for a column's existence but never for where it starts (Revit centres its codes and left-aligns its names). Corridor keys "CR11-9" / "CR11-10" are row keys. `detect_rooms assign_from_schedule` now finds the FLOOR cell under its two-tier name ("FLOOR FINISH"). The bundled sample plan still reads exactly its 29 rows, every prior fixture holds.
+
 ## Unreleased — a small seed does not commit a crowd (#376)
 
 ### Changed
