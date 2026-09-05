@@ -915,6 +915,7 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `⌘C` | Copy the shape |
 | `⌘V` | Paste under the cursor—lands on the sheet the pointer is over |
 | `⌘D` | Duplicate |
+| `T` | Trace another one like it—arms the shape's condition (the selected shape keeps its own quantities), sets the ╱ Straight / ⌒ Curve switch to match, and arms the tool that drew it: a four-corner axis-aligned ring re-arms Rectangle (or Deduct rectangle), anything else its own Area, Cut Out, Linear, Surface Area or Count. The selection drops. With nothing selected, or a markup selected, the message bar says so and nothing arms |
 | `⌫` | Delete (a picked vertex first, else the shape or markup) |
 | Double-click a markup | Edit its text in place |
 

@@ -87,6 +87,7 @@ import { sanitizeSheetLevels } from "../lib/sheetLevels.js";
 import { sanitizeConditionColumns, sanitizeConditionAttrs, renameColumnValue, columnLabel } from "../lib/conditionColumns.js";
 import { sanitizeShapeLabels, sanitizeShapeLabelsOnShapes, renameShapeLabel, shapeLabelValue } from "../lib/shapeLabels.js";
 import { buildMarkedSetPdf, downloadBytes } from "../lib/markedset.js";
+import { repeatPlan } from "../lib/repeatTool.js";
 import { createDragCache, sheetContentSignature, dragFilename, downloadUrlEntry } from "../lib/dragOut.js";
 import { counterRows } from "../lib/liveCounter.js";
 import LiveCounter from "../components/LiveCounter.jsx";
@@ -2815,6 +2816,30 @@ export default function TakeoffCanvas() {
         }
         if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); setSweep(null); return; }
       }
+      // T — trace another one like the selected shape: its condition comes
+      // active (reassign:false — the selected shape keeps its own quantities),
+      // the straight/curve switch follows the record, and the tool that draws
+      // that kind of shape arms (a four-corner axis-aligned ring re-arms
+      // Rectangle, everything else its own tool — lib/repeatTool). The
+      // selection drops the way a fresh trace expects. No selection, or a
+      // markup selected: the key says what it wants instead of arming a
+      // guess. Only reachable from Select — every other tool's T falls
+      // through to nothing (the map below has no "t").
+      if (lower === "t") {
+        if (tool !== "select") return;
+        if (poly.length) return;   // a trace in flight is never abandoned by a shortcut
+        const sel = selectedId ? shapes.find((s) => s.id === selectedId) : null;
+        const plan = sel ? repeatPlan(sel) : null;
+        if (!plan) { setCommitMsg("Select a shape first — T arms its condition and the tool that drew it."); return; }
+        if (plan.conditionId && conditions.some((c) => c.id === plan.conditionId)) activateCondition(plan.conditionId, { reassign: false });
+        setCurveMode(plan.curve);
+        selectShape(null);
+        setTool(plan.tool);
+        const label = [...MEASURE_TOOLS, ...CUT_TOOLS].find((x) => x.id === plan.tool)?.label || plan.tool;
+        const tag = condById[plan.conditionId]?.finish_tag;
+        setCommitMsg(`${label} armed${tag ? ` under ${tag}` : ""}${plan.curve ? " · Curve" : ""} — trace the next one.`);
+        return;
+      }
       const map = { v: "select", a: "area", r: "rect", l: "linear", s: "surface", c: "count", d: "deduct", o: "oneclick", k: "check", h: "highlighter", n: "dimension", y: "symbol" };
       const t = map[lower];
       if (t === "oneclick" && !oneClickEnabled()) { setCommitMsg(ONE_CLICK_GATE_MESSAGE); return; }   // the gate (lib/gate.js)
@@ -2823,7 +2848,9 @@ export default function TakeoffCanvas() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool, poly, proposal, agentProposals, activeCond, sheetGroup, sheetKey, shapes, scales]);
+  }, [tool, poly, proposal, agentProposals, activeCond, sheetGroup, sheetKey, shapes, scales, selectedId, conditions]);
+  // ^ selectedId/conditions joined for T (repeat the selected shape): the
+  //   handler reads the selected record and validates its condition id.
   // ^ shapes/scales joined the deps with the agent accept path (the delete-handler
   //   precedent): ⏎ accept dispatches an `add` against the CURRENT array, so a
   //   shapes change with no other dep change must re-subscribe this handler.
