@@ -39,6 +39,13 @@ export interface Evidence { sheet: string; text: string; bbox: Bbox }
 
 const bboxOf = (s: GraphSpan): Bbox => [s.x, s.y, s.x + (s.w || 0), s.y + (s.h || 0)];
 const merge = (a: Bbox, b: Bbox): Bbox => [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[2], b[2]), Math.max(a[3], b[3])];
+/** Fraction of `a`'s area that `b` covers — 0 when they do not touch. */
+const overlapFrac = (a: Bbox, b: Bbox): number => {
+  const w = Math.min(a[2], b[2]) - Math.max(a[0], b[0]), h = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+  if (w <= 0 || h <= 0) return 0;
+  const area = Math.max(1, (a[2] - a[0]) * (a[3] - a[1]));
+  return (w * h) / area;
+};
 const norm = (s: string) => (s || "").trim().toUpperCase();
 const isVertical = (s: GraphSpan): boolean =>
   s.rot != null
@@ -269,7 +276,9 @@ const rowY = (r: GraphSpan[]) => r.reduce((s, t) => s + t.y, 0) / r.length;
 // cell keeps its evidence bbox. Two vocabularies ship: the room-finish
 // schedule (rooms → finishes — THE resolution target) and the finish/material
 // schedule (codes → products, scheduleParse's own gate re-stated).
-export type TableKind = "room-finish" | "finish" | "unknown";
+export type TableKind = "room-finish" | "finish" | "equipment" | "unknown";
+/** The kinds extractTable hunts for (everything but the "unknown" marker). */
+export type ExtractKind = Exclude<TableKind, "unknown">;
 export interface TableCell { text: string; bbox: Bbox }
 /** A schedule row. `sheet` is the sheet that CARRIES the row — under a
  * continuation it differs from the table's base sheet, and the row's evidence
@@ -306,6 +315,53 @@ const ROOM_HEADERS = ["ROOM", "NO", "NUMBER", "NAME", "MARK", "LOCATION", "FLOOR
 // TAG | MANUFACTURER | STYLE | COLOR scores six clean header hits and was still refused,
 // because TAG was in neither list. Common convention when a set has no room-finish schedule.
 const FINISH_HEADERS = ["CODE", "MARK", "SYMBOL", "TAG", "MATERIAL", "MANUFACTURER", "PRODUCT", "STYLE", "COLOR", "SIZE", "REMARKS", "DESCRIPTION", "PATTERN", "COMMENTS"];
+// Equipment — DEVICE schedules of ANY trade: a row is a scheduled device keyed
+// by its mark, drawn on the plans as its tag with a leader. Mechanical (fans,
+// pumps, heaters, AHUs, VAVs, valves, diffusers), electrical (light fixtures,
+// panels, motors, receptacle types), plumbing (fixtures, water heaters),
+// fire protection (extinguishers, sprinklers) — the engine does not care
+// which. The vocabulary shares MARK / MANUFACTURER / DESCRIPTION with the
+// finish family on purpose: what separates the two is not those words but a
+// DEVICE column — CFM, GPM, WATTS, VOLTS, HP, LAMPS, LUMENS, CW/HW, WASTE,
+// VENT, NECK, THROW … — that no finish or material schedule ever carries.
+// A header must show at least one (EQUIPMENT_ONLY) to read as equipment; a
+// material schedule that happens to say MARK and MANUFACTURER stays a finish
+// table. Measured first on a real 8-sheet mechanical bid set whose heater /
+// fan / diffuser schedules were invisible to the finish hunt (ID-keyed, none
+// of CODE/MARK/SYMBOL/TAG) — every downstream verb then refused "no schedules
+// at all".
+const EQUIPMENT_HEADERS = [
+  // identity + the shared columns
+  "ID", "MARK", "TAG", "SYMBOL", "UNIT", "DESIGNATION", "TYPE", "FIXTURE", "DESCRIPTION", "MANUFACTURER", "MFR", "MODEL",
+  "CATALOG", "SERVICE", "SERVES", "LOCATION", "AREA", "SIZE", "LENGTH", "WEIGHT", "QTY", "QUANTITY", "REMARKS", "NOTES", "COMMENTS",
+  // mechanical
+  "CFM", "GPM", "WATTS", "KW", "VOLTS", "VOLTAGE", "PHASE", "PH", "HZ", "HP", "MBH", "BTUH", "BTU", "TONS", "RPM",
+  "ESP", "SP", "FLA", "MCA", "MOCP", "AMPS", "EAT", "LAT", "EWT", "LWT", "PSI", "FPM",
+  "NECK", "THROW", "MOUNTING", "DAMPER", "FRAME", "AIRFLOW",
+  // electrical
+  "LAMP", "LAMPS", "LUMENS", "BALLAST", "DRIVER", "CIRCUIT", "BREAKER", "POLES", "KVA", "AIC", "WIRE", "CONDUIT", "FEEDER", "LOAD", "KVAR",
+  // plumbing / fire
+  "CW", "HW", "WASTE", "VENT", "TRAP", "DFU", "WSFU", "CONNECTION", "SUPPLY", "DRAIN", "SPRINKLER", "ORIFICE", "TEMPERATURE",
+];
+/** A key column an equipment row can be keyed by. TYPE / FIXTURE: a light-
+ * fixture or plumbing-fixture schedule keys rows by a letter type. */
+const EQUIPMENT_KEY_HEADERS = ["ID", "MARK", "TAG", "SYMBOL", "UNIT", "DESIGNATION", "TYPE", "FIXTURE"];
+/** Columns only a device schedule carries — the gate, any trade. */
+const EQUIPMENT_ONLY = new Set([
+  "CFM", "GPM", "WATTS", "KW", "VOLTS", "VOLTAGE", "PHASE", "PH", "HZ", "HP", "MBH", "BTUH", "BTU", "TONS", "RPM", "ESP", "SP", "FLA", "MCA", "MOCP", "AMPS", "EAT", "LAT", "EWT", "LWT", "PSI", "FPM",
+  "NECK", "THROW", "MOUNTING", "DAMPER", "AIRFLOW",
+  "LAMP", "LAMPS", "LUMENS", "BALLAST", "DRIVER", "CIRCUIT", "BREAKER", "POLES", "KVA", "AIC", "WIRE", "CONDUIT", "FEEDER", "KVAR",
+  "CW", "HW", "WASTE", "VENT", "TRAP", "DFU", "WSFU", "DRAIN", "SPRINKLER", "ORIFICE",
+]);
+/** An equipment mark as drawn: letters, optional dash, number, optional suffix —
+ * EBB-1, HP-1, EF1, AHU-2A, VAV-12, CUH-3, P-1, WC-1, FEC-2. Without a dash the
+ * number is short (EF1, VAV12): a letter followed by three digits with no dash
+ * is a SHEET number (M601, A101), which a title block or a "SEE M601" note
+ * drops into the key column of whatever table sits nearest. */
+const EQUIP_KEY_RE = /^[A-Z]{1,4}(?:-\d{1,3}|\d{1,2})[A-Z]?$/;
+/** A letter-typed row — "A", "B2", "F1a" — the light-fixture and plumbing-
+ * fixture schedule convention, accepted only under a TYPE / FIXTURE key column. */
+const TYPE_KEY_RE = /^[A-Z]{1,2}\d{0,2}[A-Z]?$/;
 // A header CELL is often a multi-word span ("FLOOR FINISH", "CEILING FINISH")
 // — the vocabulary word inside it names the column.
 /** A column anchor. `x` is the header's center. A two-tier SUB-column also
@@ -638,7 +694,7 @@ const ROW_KEY_RE = /^\d{1,3}[A-Z]{0,2}$/;
 const QUALIFIED_KEY_RE = /^([A-Z]{1,2})-(\d{1,3}[A-Z]{0,2})$/;
 const CORRIDOR_KEY_RE = /^[A-Z]{1,3}(?:\d{1,3}-\d{1,3}|\d{3})[A-Z]?$/;   // CR11-9, C101 — never a two-character tag like "T1"
 
-export interface ExtractOpts { buildings?: Set<string>; deltas?: DeltaIndex }
+export interface ExtractOpts { buildings?: Set<string>; deltas?: DeltaIndex; /** Sheet numbers in the set — never a row key (a title block sits in every band). */ sheetNumbers?: Set<string> }
 
 // Schedule families that are NOT finish/material schedules but share the
 // MARK/DESCRIPTION column shape. A title naming one of these is refused as a
@@ -650,9 +706,16 @@ export const isNonFinishSchedule = (title: string): boolean => {
   return OTHER_FAMILY_RE.test(u) && !/\b(FINISH|MATERIAL)S?\b/.test(u);
 };
 
-function rowKeyOf(raw: string, kind: "room-finish" | "finish", buildings?: Set<string>): { key: string; building?: string } | null {
+function rowKeyOf(raw: string, kind: ExtractKind, buildings?: Set<string>, typeKeyed = false): { key: string; building?: string } | null {
   const kept = norm(raw).replace(/[^A-Z0-9/-]/g, "");
   const key = kept.replace(/\//g, "");
+  if (kind === "equipment") {
+    // "EF-1 / EF-2" keys one row for two marks the same way a finish row does
+    const parts = kept.split("/").filter(Boolean);
+    const ok = (p: string) => EQUIP_KEY_RE.test(p) || (typeKeyed && TYPE_KEY_RE.test(p));
+    if (parts.length > 1 && parts.every(ok)) return { key: parts.join("/") };
+    return ok(key) ? { key } : null;
+  }
   if (kind === "finish") {
     // a compound cell keys one row for several marks — "R1 / E1" is the same
     // device scheduled for two services; keep the slash so the row can answer
@@ -795,12 +858,15 @@ function columnStarts(
 function bandDataRows(
   rows: GraphSpan[][],
   anchors: Anchor[],
-  kind: "room-finish" | "finish",
+  kind: ExtractKind,
   sheetKey: string,
   buildings: Set<string> | undefined,
-  cfg: { fromIdx: number; belowY: number; keyAlign?: { x: number; tol: number }; deltas?: DeltaIndex },
+  cfg: { fromIdx: number; belowY: number; keyAlign?: { x: number; tol: number }; deltas?: DeltaIndex; sheetNumbers?: Set<string> },
 ): { out: TableRow[]; region: Bbox | null } {
   const { x0, x1, medGap } = bandLimits(anchors);
+  // a device schedule keyed by TYPE / FIXTURE uses letter types ("A", "B2") as
+  // its marks — decided from the table's own header, never guessed per row
+  const typeKeyed = kind === "equipment" && (anchors[0]?.label === "TYPE" || anchors[0]?.label === "FIXTURE");
   // Columns are defined by where the DATA starts, not by where the header
   // sits. Headers are centered over their column; cells are left-aligned in
   // it — so a short cell and a long cell in the same column share a left edge
@@ -868,8 +934,25 @@ function bandDataRows(
       if (t.x >= x0 && t.x <= x1) banded.push(t);
     }
     if (!banded.length) continue;
-    const keyed = rowKeyOf(banded[0].str, kind, buildings);
+    // An equipment schedule ends where the NEXT schedule begins: a mechanical
+    // sheet stacks four or five tables in one column, and the band would
+    // otherwise read the fan schedule's rows as more heaters. A row that is a
+    // "… SCHEDULE" title, or that reads as a header (vocabulary hits with a key
+    // column among them), closes this table; the multi-table hunt picks the
+    // next one up from there.
+    if (kind === "equipment" && out.length) {
+      if (rows[i].some((t) => /SCHEDULE/.test(norm(t.str)) && !EQUIP_KEY_RE.test(norm(t.str).replace(/[^A-Z0-9-]/g, "")))) break;
+      const hh = headerHits(rows[i], EQUIPMENT_HEADERS);
+      if (hh.length >= 3 && hh.some((h) => EQUIPMENT_KEY_HEADERS.includes(h.label))) break;
+    }
+    const keyed = rowKeyOf(banded[0].str, kind, buildings, typeKeyed);
     if (!keyed) { orphans.push({ toks: banded, y: rowY(rows[i]) }); continue; }
+    // a sheet number in the title block ("M-601") keys nothing — it is the
+    // sheet's own name. Only a SHEET-NUMBER-shaped key (letters + three
+    // digits) is tested: sheet-number detection reads a bare tag as a number
+    // on a fixture whose plan carries "T1", and a two-character mark must
+    // never lose its row to that
+    if (/\d{3}/.test(keyed.key) && cfg.sheetNumbers?.has(keyed.key.replace(/[^A-Z0-9]/g, ""))) { orphans.push({ toks: banded, y: rowY(rows[i]) }); continue; }
     // Every row of THIS table starts its key at the key column. Rows are
     // clustered across the whole sheet, so a keyed-looking row belonging to
     // something else — a legend, a room tag drawn beside the schedule —
@@ -940,12 +1023,46 @@ function bandDataRows(
  * header structure isn't there — never invented rows. Horizontal header rows
  * are tried first; a sheet without one is re-tried against a rotated
  * (quarter-turn) header band. */
-export function extractTable(sheet: SheetSpans, kind: "room-finish" | "finish", opts: ExtractOpts = {}): ScheduleTable | null {
+export function extractTable(sheet: SheetSpans, kind: ExtractKind, opts: ExtractOpts = {}): ScheduleTable | null {
+  const r = extractTableCore(sheet, kind, opts);
+  return r && "table" in r ? r.table : null;
+}
+
+/** EVERY table of one kind on a sheet, top to bottom. extractTable reads the
+ * FIRST qualifying header on the sheet and stops — one table per kind per
+ * sheet, which is how finish schedules ship. A mechanical schedule sheet
+ * stacks four or five equipment schedules (heaters, fans, pumps, diffusers),
+ * so this masks each table's own spans once read and hunts again until the
+ * sheet has no more. A header that qualified but failed the kind's gate (a
+ * material schedule read by the equipment hunt) is masked too, so a real
+ * equipment table lower on the sheet is still reached. */
+export function extractTables(sheet: SheetSpans, kind: ExtractKind, opts: ExtractOpts = {}): ScheduleTable[] {
+  const out: ScheduleTable[] = [];
+  let spans = sheet.spans;
+  for (let guard = 0; guard < 12 && spans.length; guard++) {
+    const r = extractTableCore({ ...sheet, spans }, kind, opts);
+    if (!r) break;
+    const mask: Bbox = "table" in r ? r.table.region : r.skip;
+    if ("table" in r) {
+      out.push(r.table);
+      if (r.table.title) mask[1] = Math.min(mask[1], r.table.title.bbox[1]);
+    }
+    const before = spans.length;
+    spans = spans.filter((t) => {
+      const cx = t.x + (t.w || 0) / 2, cy = t.y + (t.h || 0) / 2;
+      return !(cx >= mask[0] - 1 && cx <= mask[2] + 1 && cy >= mask[1] - 1 && cy <= mask[3] + 1);
+    });
+    if (spans.length === before) break;   // nothing masked → the same header would be found forever
+  }
+  return out;
+}
+
+function extractTableCore(sheet: SheetSpans, kind: ExtractKind, opts: ExtractOpts = {}): { table: ScheduleTable } | { skip: Bbox } | null {
   const horiz = sheet.spans.filter((s) => !isVertical(s));
   const vert = sheet.spans.filter(isVertical);
   const rows = clusterRows(horiz);
-  const vocab = kind === "room-finish" ? ROOM_HEADERS : FINISH_HEADERS;
-  const required = kind === "room-finish" ? ["FLOOR", "BASE"] : ["CODE", "MARK", "SYMBOL", "TAG"];
+  const vocab = kind === "room-finish" ? ROOM_HEADERS : kind === "equipment" ? EQUIPMENT_HEADERS : FINISH_HEADERS;
+  const required = kind === "room-finish" ? ["FLOOR", "BASE"] : kind === "equipment" ? EQUIPMENT_KEY_HEADERS : ["CODE", "MARK", "SYMBOL", "TAG"];
   const minHits = kind === "room-finish" ? 4 : 3;
 
   let anchors: Anchor[];
@@ -973,6 +1090,16 @@ export function extractTable(sheet: SheetSpans, kind: "room-finish" | "finish", 
     if (titleFrom < -1) titleFrom = rows.length - 1;
   }
 
+  // The equipment gate: a header that never names a powered column is a
+  // finish/material schedule wearing MARK and MANUFACTURER, not a device
+  // schedule. Refuse it here — and hand back its header row's extent so the
+  // multi-table hunt can mask it and keep looking lower on the sheet.
+  if (kind === "equipment" && !anchors.some((a) => EQUIPMENT_ONLY.has(a.label))) {
+    let hb: Bbox | null = null;
+    for (const t of headerSpans) hb = hb ? merge(hb, bboxOf(t)) : bboxOf(t);
+    return hb ? { skip: hb } : null;
+  }
+
   // The region is what an agent is told to LOOK at, so it must bound THIS
   // table and no other. A clustered header row on a dense sheet sweeps in the
   // neighbouring table's tokens, and merging all of them advertised a region
@@ -984,10 +1111,15 @@ export function extractTable(sheet: SheetSpans, kind: "room-finish" | "finish", 
     if (centerX(t) < hdrBand.x0 || centerX(t) > hdrBand.x1) continue;
     region = region ? merge(region, bboxOf(t)) : bboxOf(t);
   }
-  const banded = bandDataRows(rows, anchors, kind, sheet.key, opts.buildings, { fromIdx: dataFrom, belowY: dataBelowY, deltas: opts.deltas });
+  const banded = bandDataRows(rows, anchors, kind, sheet.key, opts.buildings, { fromIdx: dataFrom, belowY: dataBelowY, deltas: opts.deltas, sheetNumbers: opts.sheetNumbers });
   const out = banded.out;
   if (banded.region) region = region ? merge(region, banded.region) : banded.region;
-  if (!out.length) return null;
+  if (!out.length) {
+    // a header with no keyed rows under it: for the multi-table hunt that is
+    // "mask this header and move on", not "the sheet is done"
+    if (kind === "equipment" && region) return { skip: region };
+    return null;
+  }
   const { x0, x1 } = bandLimits(anchors);
   // the table's title: the nearest "… SCHEDULE" span above the header WITHIN
   // the table's own x-band — on a dense sheet the neighbouring table's title
@@ -999,7 +1131,7 @@ export function extractTable(sheet: SheetSpans, kind: "room-finish" | "finish", 
   }
   const table: ScheduleTable = { kind, sheet: sheet.key, title, headers: anchors.map((a) => a.label), rows: out, region: region!, anchors };
   if (rotated) table.rotated_headers = true;
-  return table;
+  return { table };
 }
 
 // ── continuation sheets (#87 phase 2) ───────────────────────────────────────
@@ -1218,15 +1350,27 @@ export function buildSheetGraph(sheets: SheetSpans[]): SheetGraph {
     if (ctx) ctxBySheet.set(s.key, ctx.building);
   }
 
+  // sheet numbers, known before extraction: a title block's own number sits
+  // inside every band on the sheet and must never key a row
+  const sheetNumberSet = new Set<string>();
+  for (const s of sheets) { const n = norm(s.sheet_number || "").replace(/[^A-Z0-9]/g, ""); if (n) sheetNumberSet.add(n); }
+
   // pass 1 — roles + per-sheet table fragments
   const roles = new Map<string, ReturnType<typeof classifySheetRole>>();
   const fragments: ScheduleTable[] = [];
   const fragmentKinds = new Map<string, Set<TableKind>>(); // sheet key → kinds extracted there
   for (const s of withText) {
     roles.set(s.key, classifySheetRole(s));
+    const sheetFrags: ScheduleTable[] = [];
+    const found: ScheduleTable[] = [];
     for (const kind of ["room-finish", "finish"] as const) {
-      const t = extractTable(s, kind, { buildings, deltas: deltasBySheet.get(s.key) });
-      if (!t) continue;
+      const t = extractTable(s, kind, { buildings, deltas: deltasBySheet.get(s.key), sheetNumbers: sheetNumberSet });
+      if (t) found.push(t);
+    }
+    // equipment schedules stack several to a sheet — every one, top to bottom
+    found.push(...extractTables(s, "equipment", { buildings, deltas: deltasBySheet.get(s.key), sheetNumbers: sheetNumberSet }));
+    for (const t of found) {
+      const kind = t.kind as ExtractKind;
       // A DOOR / WINDOW / PARTITION schedule carries a MARK column, so the
       // finish-table hunt happily reads one as a finish/material schedule —
       // and then a finish code that collides with a door mark chains to a
@@ -1243,9 +1387,24 @@ export function buildSheetGraph(sheets: SheetSpans[]): SheetGraph {
       const b = titleB.length === 1 ? titleB[0] : ctxBySheet.get(s.key);
       if (b) t.building = b;
       for (const r of t.rows) if (r.building) buildings.add(r.building);
+      sheetFrags.push(t);
+    }
+    // A FAN SCHEDULE headed MARK | CFM | … qualifies for the finish hunt too
+    // (MARK, DESCRIPTION, REMARKS are finish vocabulary) — the same ink would
+    // then be indexed twice, once as a phantom finish table. Where an
+    // equipment table and a finish fragment overlap on the sheet, the
+    // equipment reading wins (the powered columns are the proof) and the
+    // drop is named.
+    const equip = sheetFrags.filter((t) => t.kind === "equipment");
+    for (const t of sheetFrags) {
+      const shadow = t.kind === "finish" ? equip.find((e) => overlapFrac(t.region, e.region) >= 0.5) : undefined;
+      if (shadow) {
+        notes.push(`${s.key}: "${t.title?.text || "untitled finish table"}" overlaps the equipment schedule "${shadow.title?.text || "untitled"}" — indexed once, as equipment, not as a finish definition`);
+        continue;
+      }
       fragments.push(t);
       if (!fragmentKinds.has(s.key)) fragmentKinds.set(s.key, new Set());
-      fragmentKinds.get(s.key)!.add(kind);
+      fragmentKinds.get(s.key)!.add(t.kind);
     }
   }
 

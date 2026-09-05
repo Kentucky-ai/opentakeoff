@@ -590,7 +590,7 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
 
   server.registerTool("find_schedule", {
     description: `Locate a schedule table in the set (#87): pass a kind ("room finish", "material"/"finish") and get every matching table's sheet, title, headers, TOTAL row count, and REGION — sized for a view_sheet look or a read_sheet_text pull of exactly the table. A schedule continued across sheets is ONE match whose "parts" list every fragment (base first) with its own viewable region; tables read through rotated headers say so; a table answering for one building carries "building"; a table with delta/REV-marked rows says how many in "revised_rows". Errors with what WAS found when the asked-for kind isn't in the set. ${COORDS}`,
-    inputSchema: { kind: z.string().describe('"room finish" (rooms → surface finishes) or "finish"/"material" (codes → products)') },
+    inputSchema: { kind: z.string().describe('"room finish" (rooms → surface finishes), "finish"/"material" (codes → products), or "equipment" (MEP device schedules — fans, pumps, heaters, AHUs, VAVs, diffusers/grilles/registers — keyed by mark, proven by a powered or air-device column)') },
     outputSchema: findScheduleOutput,
   }, run("find_schedule", ({ kind }) => session.findSchedule(kind)));
 
