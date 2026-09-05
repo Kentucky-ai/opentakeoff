@@ -3284,8 +3284,26 @@ export class Session {
         .sort((a, b) => a.cy - b.cy || a.cx - b.cx);
     };
     const occBySheet = planSheets.map((sh) => ({ sh, occ: occOf(sh, t) }));
-    const totalOcc = occBySheet.reduce((n, e) => n + e.occ.length, 0);
+    // a tag occurrence inside a schedule table's own region is that table's
+    // row label, never an instance (the census's rule, applied here too)
+    const tableRegionsOf = (key: string): Bbox[] => graph.tables.filter((x) => x.sheet === key).map((x) => x.region);
+    const amidLinework = (segs: ArrayLike<number>, o: Occ): boolean => Session.lineworkNear(segs, o.bbox, 2.5 * o.h) >= 3;
+    const inTable = (key: string, o: Occ): boolean => tableRegionsOf(key).some((r) => o.cx >= r[0] && o.cx <= r[2] && o.cy >= r[1] && o.cy <= r[3]);
+    // Only a tag DRAWN amid linework can anchor a fingerprint or corroborate
+    // one: a general note that mentions the mark ("SEE EBB-1 FOR …") is an
+    // occurrence of the text and nothing else — asking the fingerprint to
+    // recur there guaranteed a false "does not recur" and pushed a perfectly
+    // drawn device down to a label count.
+    const drawnBySheet: { sh: SheetState; occ: Occ[] }[] = [];
+    for (const { sh, occ } of occBySheet) {
+      const geo = await this.ensureGeometry(sh);
+      const drawn = geo.segs.length ? occ.filter((o) => !inTable(sh.key, o) && amidLinework(geo.segs, o)) : [];
+      drawnBySheet.push({ sh, occ: drawn });
+    }
+    const totalOcc = drawnBySheet.reduce((n, e) => n + e.occ.length, 0);
+    const mentions = occBySheet.reduce((n, e) => n + e.occ.length, 0) - totalOcc;
     if (!totalOcc) {
+      if (mentions) throw new UserError(`Schedule row "${t}" (${table} on ${tb.sheet}) is mentioned ${mentions}× on plan sheets but never drawn — every occurrence is bare text with no linework near it (a note), so there is no instance to count. If the device is drawn without its tag, marquee one instance with symbol_sweep {scope: "set"}.`);
       throw new UserError(`Schedule row "${t}" (${table} on ${tb.sheet}) cannot be geometrically anchored — its tag is not drawn on any plan sheet, and a fingerprint is never guessed from text alone. If the marker is drawn untagged, marquee one instance with symbol_sweep {scope: "set"}.`);
     }
 
@@ -3293,7 +3311,7 @@ export class Session {
     // with the MOST occurrences (ord breaks ties) so corroboration can run on
     // the anchor's own sheet whenever the set allows it; anchor occurrence =
     // first in reading order. Deterministic throughout.
-    const withOcc = occBySheet.filter((e) => e.occ.length > 0)
+    const withOcc = drawnBySheet.filter((e) => e.occ.length > 0)
       .sort((a, b) => b.occ.length - a.occ.length || a.sh.ord - b.sh.ord);
     const anchorSheet = withOcc[0].sh;
     const anchor = withOcc[0].occ[0];
@@ -3393,11 +3411,6 @@ export class Session {
       scale: { scale: number; known: boolean };
       scaled?: NonNullable<SymbolMatchResult["scaled"]>;
     }[] = [];
-    // a tag occurrence inside a schedule table's own region is that table's
-    // row label, never an instance (the census's rule, applied here too)
-    const tableRegionsOf = (key: string): Bbox[] => graph.tables.filter((x) => x.sheet === key).map((x) => x.region);
-    const amidLinework = (segs: ArrayLike<number>, o: Occ): boolean => Session.lineworkNear(segs, o.bbox, 2.5 * o.h) >= 3;
-    const inTable = (key: string, o: Occ): boolean => tableRegionsOf(key).some((r) => o.cx >= r[0] && o.cx <= r[2] && o.cy >= r[1] && o.cy <= r[3]);
     for (const { sh, occ } of occBySheet) {
       const g2 = await this.ensureGeometry(sh);
       if (!g2.segs.length) {
