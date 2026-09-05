@@ -24,7 +24,7 @@ const LOG_STYLE = { status: "var(--ink-muted)", tool: "var(--cobalt)", text: "va
 export default function AgentPanel({
   configured, running, log, proposals, condById, sheetLabel, units,
   fmtArea, onRun, onStop, onAccept, onReject, onAcceptAll, onRejectAll,
-  onOpenSettings, onClose,
+  onOpenSettings, onClose, embedded = false,
 }) {
   const [goal, setGoal] = useState("");
   const logRef = useRef(null);
@@ -36,26 +36,24 @@ export default function AgentPanel({
   const ctl = { padding: "3px 9px", border: "1px solid var(--ink-faint)", background: "transparent", cursor: "pointer", fontSize: 11.5 };
 
   return (
-    <div style={{ width: 340, flexShrink: 0, display: "flex", flexDirection: "column", borderLeft: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflow: "hidden", minHeight: 0 }}>
+    <div style={{ width: embedded ? "100%" : 340, flex: embedded ? 1 : undefined, flexShrink: 0, display: "flex", flexDirection: "column", borderLeft: embedded ? undefined : "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflow: "hidden", minHeight: 0 }}>
       {/* header strip — matches the docked-panel chrome */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "var(--cobalt)", color: "var(--accent-contrast)" }}>
+      {!embedded && <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", background: "var(--cobalt)", color: "var(--accent-contrast)" }}>
         <Icon name="target" size={15} />
         <strong style={{ flex: 1, fontSize: 12.5 }}>Agent{proposals.length ? ` · ${proposals.length} pending` : ""}</strong>
         <button onClick={onClose} title="Close panel" style={{ border: "none", background: "transparent", color: "var(--accent-contrast)", fontSize: 16, cursor: "pointer", padding: "0 2px" }}>×</button>
-      </div>
+      </div>}
 
       {!configured ? (
         // honest empty state — the Contribute-modal pattern: nothing configured,
         // nothing runs, no pretense. Zero network calls until the user brings a key.
         <div style={{ padding: 14, fontSize: 13, lineHeight: 1.6, color: "var(--ink)" }}>
           <p style={{ marginTop: 0 }}>
-            The agent runs on a model <strong>you</strong> provide — your endpoint, your key, straight from this
-            browser (the same bring-your-own-AI seam as the scale reader). Nothing is configured, so it can't run.
+            Connect your model to run an agent in this workspace.
           </p>
           <p style={{ color: "var(--ink-muted)" }}>
-            Once configured, you describe a takeoff ("take off the carpet per the finish schedule on this sheet")
-            and the agent aims the app's own tools — the text layer, the schedule parser, the one-click engine —
-            then stages dashed proposals you accept or reject. It never invents geometry and never commits anything itself.
+            Describe the work, inspect the resulting proposals, and accept or reject them on the plan.
+            Imported agent takeoffs are available in Measurements without a model connection.
           </p>
           <button className="btn-primary" onClick={onOpenSettings} style={{ marginTop: 4 }}>AI settings…</button>
         </div>

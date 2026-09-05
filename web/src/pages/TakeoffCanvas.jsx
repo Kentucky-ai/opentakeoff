@@ -119,6 +119,7 @@ import { computeRollTakeoff, seamLfByShape } from "../lib/rollTakeoff.js";
 // CAPABILITIES those tools close over and the review gate their proposals
 // pass through. AiSettings is the config surface for the ai.js seam.
 import AgentPanel from "../components/AgentPanel.jsx";
+import WorkspacePanel from "../components/WorkspacePanel.jsx";
 import AiSettings from "../components/AiSettings.jsx";
 import { agentToolDefs, executeAgentTool, agentScaleGate } from "../lib/agentTools.js";
 import { runAgentLoop } from "../lib/agentLoop.js";
@@ -535,6 +536,8 @@ export default function TakeoffCanvas() {
   const [ruleOffer, setRuleOffer] = useState(null);   // { deduct, seed, tag }
   const [ruleStage, setRuleStage] = useState(null);   // { rule, candidates, proposed_ts }
   const [agentOpen, setAgentOpen] = useState(false);      // docked right-rail Agent panel
+  const [conditionDetails, setConditionDetails] = useState(true);
+  const [workLocateId, setWorkLocateId] = useState(null);
   // ── roll goods (#136) — view state; the figured layouts are a memo below ──
   const [rollShow, setRollShow] = useState(true);         // draw the figured cuts over the plan (on: opting a condition in shows its cuts immediately)
   const [rollEdit, setRollEdit] = useState(false);        // cut-edit mode — cuts take pointer events (slide / resize / double-click reset)
@@ -5822,6 +5825,31 @@ export default function TakeoffCanvas() {
     setTfNow({ x: (r.width - w * scale) / 2 - x0 * scale, y: (r.height - h * scale) / 2 - y0 * scale, scale });
   }
 
+  function locateWork(shape) {
+    setWorkLocateId(shape.id);
+    if (!panelKeySet.has(shape.sheet_id)) openSheets([shape.sheet_id], false);
+    setTool("select");
+  }
+  // Wait for the target sheet's render; the render effect clears selection.
+  // Navigation changes only the viewport and selection, never measurement data.
+  useEffect(() => {
+    if (!workLocateId || status !== "ready") return;
+    const shape = shapes.find((s) => s.id === workLocateId);
+    const sp = shape && panels.find((p) => p.key === shape.sheet_id);
+    const el = containerRef.current;
+    if (!shape) { setWorkLocateId(null); return; }
+    if (!sp?.img?.w || !el) return;
+    const pts = (shape.verts_norm || []).filter((v) => v.length === 2 && v.every(Number.isFinite));
+    if (pts.length) {
+      const xs = pts.map(([x]) => x * sp.img.w + sp.xOffset), ys = pts.map(([, y]) => y * sp.img.h);
+      const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(1, Math.max(...xs) - x0), h = Math.max(1, Math.max(...ys) - y0);
+      const r = el.getBoundingClientRect();
+      const scale = clamp(Math.min((r.width - 90) / w, (r.height - 90) / h, 1.5));
+      setTfNow({ x: (r.width - w * scale) / 2 - x0 * scale, y: (r.height - h * scale) / 2 - y0 * scale, scale });
+    }
+    setSelectedId(shape.id); setSelectedMarkupId(null); setWorkLocateId(null);
+  }, [workLocateId, status, shapes, panels, setTfNow]);
+
   // A withheld transition is a QUESTION, and the answer is at a PLACE on the
   // sheet — so its row in the panel jumps there rather than printing raw image
   // pixels at someone. Centers the point at a working zoom; the estimator looks
@@ -7987,6 +8015,11 @@ export default function TakeoffCanvas() {
         <div style={{ flex: 1 }} />
         </div>
         <span data-topbar-pinned style={{ display: "inline-flex", alignItems: "center", gap: 7, flexShrink: 0, paddingTop: 16 }}>
+        <button type="button" aria-expanded={agentOpen} onClick={() => setAgentOpen((v) => !v)}
+          title="Work and review — measurements, provenance, and agent proposals"
+          style={{ minHeight: "var(--ctl-m)", padding: "var(--sp-1) var(--sp-3)", border: "1px solid var(--cobalt)", background: agentOpen ? "var(--cobalt)" : "transparent", color: agentOpen ? "var(--accent-contrast)" : "var(--cobalt)", cursor: "pointer", fontSize: "var(--fs-s)", fontWeight: 600 }}>
+          Work{agentRunning ? " · Working" : shapes.some((s) => s.origin?.reviewed === false) ? ` · ${shapes.filter((s) => s.origin?.reviewed === false).length}` : ""}
+        </button>
         <button onClick={() => setShowReport(true)} disabled={!conditions.length} title="Open the takeoff report — per-condition breakdown with waste, plus CSV / JSON export."
           style={{ padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>Report</button>
         {/* ⋯ overflow — rarely-used project controls, so the row never wraps
@@ -8077,8 +8110,9 @@ export default function TakeoffCanvas() {
           {/* the active condition's appearance editor, restored to the top bar —
               same component the docked panel row renders (one source of truth) */}
           {aCond && (
-            <div style={{ marginTop: 5, paddingTop: 5, borderTop: "1px solid var(--ink-faint)" }}>
-              <ConditionAppearanceEditor cond={aCond} onUpdateCond={updateCond} onSetCondParam={setCondParam} onAssignAttr={assignAttr} conditionColumns={conditionColumns} layout="row" units={units} />
+            <div style={{ marginTop: 5, paddingTop: 5, borderTop: "1px solid var(--ink-faint)", display: "flex", alignItems: "center", flexWrap: "wrap", gap: "var(--sp-2)" }}>
+              <button type="button" aria-expanded={conditionDetails} onClick={() => setConditionDetails((v) => !v)} style={{ border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-secondary)", padding: "var(--sp-1) var(--sp-2)", fontSize: "var(--fs-s)", cursor: "pointer" }}>{conditionDetails ? "▾" : "▸"} {aCond.finish_tag} properties</button>
+              {conditionDetails && <ConditionAppearanceEditor cond={aCond} onUpdateCond={updateCond} onSetCondParam={setCondParam} onAssignAttr={assignAttr} conditionColumns={conditionColumns} layout="row" units={units} />}
             </div>
           )}
         </div>
@@ -9767,7 +9801,7 @@ export default function TakeoffCanvas() {
           {panelBtn(() => setLeftTab((t) => (t === "stamp" ? null : "stamp")), "stamp", "Stamps — reusable annotations dropped click-to-place", leftTab === "stamp", stampLib.stamps.length)}
           {panelBtn(() => setLeftTab((t) => (t === "rfi" ? null : "rfi")), "rfi", "RFI register — raise, track, and export Requests For Information", leftTab === "rfi", rfis.length)}
           {panelBtn(toggleTakeoffs, "takeoffs", "Takeoffs — conditions + running totals", takeoffsOpen, visibleShapes.length)}
-          {panelBtn(() => setAgentOpen((o) => !o), "target", "Agent — describe a takeoff; it stages dashed proposals you accept or reject (bring your own AI key)", agentOpen, agentProposals.length)}
+          {panelBtn(() => setAgentOpen((o) => !o), "target", "Work and review — measurements and agent proposals", agentOpen, agentProposals.length)}
           {rollByCond.size > 0 && panelBtn(() => setRollPanelOpen((o) => !o), "roll", "Roll goods — the cut diagram, cutting order, and figured order footage", rollPanelOpen, rollByCond.size)}
           {layerEntries.length > 0 && panelBtn(() => setLayersOpen((o) => !o), "layers", "PDF layers — what this drawing's own layer table states each ink is; set what One-Click treats as wall and what it ignores", layersOpen, layerEntries.reduce((n, e) => n + e.layers.length, 0))}
           {panelBtn(() => setShowRevisions(true), "revisions", "Revisions — save the takeoff at each bid revision, compare what moved", showRevisions)}
@@ -9780,7 +9814,14 @@ export default function TakeoffCanvas() {
             configured; otherwise the goal box, the streaming run log, and the
             per-proposal accept/reject desk. */}
         {agentOpen && (
+          <WorkspacePanel shapes={shapes} conditions={condById} selectedId={selectedId}
+            sheetLabel={tabLabel} fmtArea={(sf) => fa(sf)} fmtLength={(lf) => fl(lf)}
+            scales={scales} scaleUnconfirmed={scaleUnconfirmed} running={agentRunning}
+            proposalCount={agentProposals.length} onLocate={locateWork}
+            onReview={(id) => dispatchShape({ type: "review", ids: [id] })}
+            onClose={() => setAgentOpen(false)} onReport={() => setShowReport(true)}>
           <AgentPanel
+            embedded
             configured={isAiConfigured()}
             running={agentRunning}
             log={agentLog}
@@ -9798,6 +9839,7 @@ export default function TakeoffCanvas() {
             onOpenSettings={() => setShowAiSettings(true)}
             onClose={() => setAgentOpen(false)}
           />
+          </WorkspacePanel>
         )}
 
         {/* Roll panel (#136) — DOCKED right-rail sibling like the Agent panel:
