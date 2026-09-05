@@ -11,6 +11,7 @@
 //   filter; fixture symbol boxes; door trust tiers; arrangement via JTS
 //   (polyarr); growth refuses the wall band and fixture pockets are box-
 //   bounded.
+import { polyWithHolesMetrics } from "./geometry.js";
 import * as O from "./oneclick";
 import * as WN from "./wallnetwork";
 import { buildPolyArrangement, faceAt, pointInRing } from "./polyarr";
@@ -1939,12 +1940,12 @@ export function netFieldAt(net, x, y, ftPx){
       if(!open2(o)) continue; set.add(o); st.push(o); } }
   const out=roomOutline(arr,[...set]); if(out.ring.length<3) return null;
   const shoe=(r)=>{let a=0;for(let i=0;i<r.length;i++){const p=r[i],q=r[(i+1)%r.length];a+=p[0]*q[1]-q[0]*p[1];}return Math.abs(a)/2;};
-  let area=shoe(out.ring); const holes=[]; for(const hh of out.holes){ const hA=shoe(hh); if(hA>=OPTS.HOLESF*ftPx*ftPx){ area-=hA; holes.push(hh); } }
+  const holes=[]; for(const hh of out.holes){ const hA=shoe(hh); if(hA>=OPTS.HOLESF*ftPx*ftPx){ holes.push(hh); } }
   // a finish edge is a straight line the drafter drew — the arrangement ring
   // notches at every tile grout crossing; merge collinear and drop sub-1 ft
   // jogs (the ruler runs along the tile edge, not each grout joint)
   const ring=simplifyRing(out.ring, 0.15*ftPx, 1.0*ftPx, ftPx, null);
-  return { ring, holes, areaPx: area, faces: set.size, seedFace: seedF, starved: !!net.starved, field: true };
+  return { ring, holes, areaPx: polyWithHolesMetrics(ring, holes).area, faces: set.size, seedFace: seedF, starved: !!net.starved, field: true };
 }
 
 // ── the click API ───────────────────────────────────────────────────────────
@@ -1986,9 +1987,8 @@ export function netRoomAt(net, x, y, ftPx){
   const out = roomOutline(arr, set);
   if (out.ring.length < 3) return null;
   const shoe=(r)=>{let a=0;for(let i=0;i<r.length;i++){const p=r[i],q=r[(i+1)%r.length];a+=p[0]*q[1]-q[0]*p[1];}return Math.abs(a)/2;};
-  let area = shoe(out.ring);
   const holes = [];
-  for (const h of out.holes) { const hA = shoe(h); if (hA >= OPTS.HOLESF*ftPx*ftPx) { area -= hA; holes.push(h); } }
+  for (const h of out.holes) { const hA = shoe(h); if (hA >= OPTS.HOLESF*ftPx*ftPx) { holes.push(h); } }
   // The arrangement rings carry a vertex at EVERY noded intersection along a
   // straight wall and every hairline jog where the band was refused — a
   // 60-handle ring for a 4-corner room. Simplify to what an estimator draws:
@@ -1997,7 +1997,7 @@ export function netRoomAt(net, x, y, ftPx){
   const doorPolys = net.doorCellPolys || [];
   const doorAt = (x,y,r)=>{ for(const q of doorPolys){ for(const p of q){ if(Math.hypot(p[0]-x,p[1]-y)<=r) return true; } let cx=0,cy=0; for(const p of q){cx+=p[0];cy+=p[1];} if(Math.hypot(cx/q.length-x,cy/q.length-y)<=r) return true; } return false; };
   const ring = simplifyRing(out.ring, 0.12*ftPx, 0.4*ftPx, ftPx, doorAt);
-  return { ring, holes, areaPx: area, faces: set.length, seedFace: fi, starved };
+  return { ring, holes, areaPx: polyWithHolesMetrics(ring, holes).area, faces: set.length, seedFace: fi, starved };
 }
 
 function simplifyRing(ring, colTol, notchTol, ftPx_, doorAt){

@@ -198,7 +198,7 @@ test("measure: polygon SF and line LF at scale; deletion removes the shape", asy
   for (const shp of s.shapes) {
     assert.equal(shp.origin?.method, "manual");
     assert.equal(shp.origin?.actor, "agent");
-    assert.equal(shp.origin?.reviewed, undefined, "measure commits claim no review state");
+    assert.equal(shp.origin?.reviewed, false, "agent hand traces enter the review queue");
   }
   s.deleteShape(poly.shape_id!);
   assert.equal(s.shapes.length, 1);
@@ -320,4 +320,47 @@ test("assignmentDisclosure: null for all-human, mixed counts, and the pointInPol
     "Finish assignment: 2 schedule-resolved · 1 agent-asserted · 3 pending human review",
   );
   assert.match(assignmentDisclosure(mixed, [otherSheet])!, / · 1 room withheld/);
+});
+
+test("recalibration updates geometry, totals and report; undo restores scale before older edits", async () => {
+  const s = new Session(); await s.loadPlan(PLAN);
+  s.setScale(KEY, { upp: 1 / 36 });
+  s.measurePolygon(KEY, [[0,0],[360,0],[360,360],[0,360]], { condition: "TILE-1", role: "floor_area" });
+  s.measureLine(KEY, [[0,0],[360,0]], { condition: "BASE-1" });
+  const before = structuredClone(s.exportPayload());
+  s.setScale(KEY, { upp: 1 / 18 });
+  assert.equal(s.shapes[0].computed.area_sf, 400);
+  assert.equal(s.shapes[0].computed.perimeter_lf, 80);
+  assert.equal(s.shapes[1].computed.perimeter_lf, 20);
+  assert.equal(s.summary().totals.total_sf, 400);
+  assert.equal((s.exportReport() as any).totals.total_sf, 400);
+  assert.equal(s.exportPayload().shapes[0].computed.area_sf, 400);
+  assert.equal(s.undoLast(1).steps[0].op, "scale");
+  assert.deepEqual(s.exportPayload(), before);
+  s.undoLast(1); assert.equal(s.shapes.length, 1);
+});
+
+test("recalibration preserves voids and cutout restore quantities", async () => {
+  const s = new Session(); await s.loadPlan(PLAN); s.setScale(KEY, { upp: 1 / 36 });
+  const parent = s.measurePolygon(KEY, [[0,0],[720,0],[720,720],[0,720]], { condition: "TILE-1", role: "floor_area" });
+  s.cutOut({ parent_shape_id: parent.shape_id!, verts: [[180,180],[540,180],[540,540],[180,540]] });
+  const cut = s.shapes.find((sh) => sh.cuts_shape_id)!;
+  assert.equal(s.shapes[0].computed.area_sf, 300);
+  s.setScale(KEY, { upp: 1 / 18 });
+  assert.equal(s.shapes[0].computed.area_sf, 1200);
+  assert.equal(s.shapes[0].computed.perimeter_lf, 240);
+  s.deleteShape(cut.id); assert.equal(s.shapes[0].computed.area_sf, 1600);
+  s.undoLast(1); assert.equal(s.shapes[0].computed.area_sf, 1200);
+  s.undoLast(1); assert.equal(s.shapes[0].computed.area_sf, 300);
+  s.undoLast(1); assert.equal(s.shapes[0].computed.area_sf, 400);
+});
+
+test("recalibration refuses nonfinite scales and reviewed measurements atomically", async () => {
+  const s = new Session(); await s.loadPlan(PLAN); s.setScale(KEY, { upp: 1 / 36 });
+  s.measurePolygon(KEY, [[0,0],[360,0],[360,360],[0,360]], { condition: "TILE-1", role: "floor_area" });
+  s.shapes[0].origin!.reviewed = true;
+  const before = structuredClone(s.exportPayload());
+  assert.throws(() => s.setScale(KEY, { upp: Infinity }), /finite/);
+  assert.throws(() => s.setScale(KEY, { upp: 1 / 18 }), /human-reviewed/);
+  assert.deepEqual(s.exportPayload(), before);
 });

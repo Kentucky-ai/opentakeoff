@@ -6,7 +6,7 @@
 // guessed.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeShapeMetrics, needsMetrics } from "../src/lib/shapeMetrics.js";
+import { computeShapeMetrics, needsMetrics, recalibrateShapes } from "../src/lib/shapeMetrics.js";
 
 const approx = (a: number, b: number, tol = 1e-6) => Math.abs(a - b) <= tol;
 const DIMS = { w: 1000, h: 800 };
@@ -66,4 +66,19 @@ test("needsMetrics: missing-only detection, role-aware, never on 0", () => {
   assert.ok(needsMetrics({ measure_role: "count", verts_norm: [[0.5, 0.5]] }));
   assert.ok(!needsMetrics({ measure_role: "count", verts_norm: [[0.5, 0.5]], computed: { count: 1 } }));
   assert.ok(!needsMetrics({ measure_role: "zone", verts_norm: tri }), "unknown role never heals");
+});
+
+
+test("sheet recalibration preserves counts and physical height/thickness, without mutating inputs", () => {
+  const shapes = [
+    { id: "wall", condition_id: "c", measure_role: "surface_area", height_ft: 8, verts_norm: [[0,0],[1,0]], computed: { area_sf: 80, perimeter_lf: 10 } },
+    { id: "border", condition_id: "c", measure_role: "linear", verts_norm: [[0,0],[1,0]], computed: { area_sf: 5, perimeter_lf: 10 } },
+    { id: "count", condition_id: "c", measure_role: "count", verts_norm: [[0,0]], computed: { count: 3.5 } },
+  ];
+  const before = structuredClone(shapes);
+  const next = recalibrateShapes(shapes, { w: 100, h: 100 }, 0.2, [{ id: "c", height_ft: 12, thickness_in: 6 }]);
+  assert.deepEqual(next.map((s: any) => s.computed), [
+    { area_sf: 160, perimeter_lf: 20 }, { area_sf: 10, perimeter_lf: 20 }, { count: 3.5 },
+  ]);
+  assert.deepEqual(shapes, before);
 });

@@ -155,3 +155,14 @@ test("pickAgentEvidence: null-safe, array-safe, whitelist-only", () => {
   assert.equal(pickAgentEvidence({ junk: 1 }), null);
   assert.deepEqual(pickAgentEvidence({ matched_text: "RM 204", junk: 1 }), { matched_text: "RM 204" });
 });
+
+test("proposals transport interior voids and refuse malformed hole rings", async () => {
+  const { ctx, calls } = makeCtx();
+  const hole = [[0.15,0.15],[0.2,0.15],[0.2,0.2],[0.15,0.2]];
+  const shape = { sheet: "plan.pdf", condition_id: "cnd-1", measure_role: "floor_area", verts_norm: [[0.1,0.1],[0.3,0.1],[0.3,0.3],[0.1,0.3]], verts_norm_holes: [hole], evidence: { seed_norm: [0.25,0.25] } };
+  assert.equal((await executeAgentTool(ctx, "propose_shapes", { shapes: [shape] })).staged, 1);
+  assert.deepEqual((calls.proposeShapes[0] as any[])[0].verts_norm_holes, [hole]);
+  for (const holes of [[[[NaN,0],[0,0],[1,1]]], [[[0,0],[1,1]]], "invalid"]) {
+    assert.equal((await executeAgentTool(ctx, "propose_shapes", { shapes: [{ ...shape, verts_norm_holes: holes }] })).staged, 0);
+  }
+});

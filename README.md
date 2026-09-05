@@ -5,10 +5,11 @@
 **The measurement engine for building plans—built so an AI agent can drive it, and so an estimator wants to.**
 
 A takeoff is the act of measuring quantities off a construction drawing. OpenTakeoff does it
-two ways over one engine: **40 MCP tools** for an agent, and a browser canvas for a person.
-Same flood fill, same scale gate, same math, same record. Every measurement stores its
-**scale**, its **method**, and **who made it**—which is what makes the output auditable, and
-what makes it training data.
+two ways over one engine: **47 MCP tools** for an agent, and a browser canvas for a person.
+Agents and people share the takeoff document and quantity calculations. Each sheet carries
+its calibration; measurements carry geometry, method and authorship. Recalibration updates
+quantities together, incompatible imports report scale conflicts, and agent measurements
+carry an explicit review status. See the [Phase 1 test guide](docs/PHASE_1_TESTING.md).
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Live demo](https://img.shields.io/badge/demo-opentakeoff.kentucky--ai.com-2ea44f.svg)](https://opentakeoff.kentucky-ai.com)

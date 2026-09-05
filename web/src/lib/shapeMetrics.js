@@ -59,3 +59,20 @@ export function needsMetrics(s) {
     default: return false;
   }
 }
+
+// Reprice one sheet as a unit, including the durable pre-cut snapshots used
+// when a deduct is deleted later. Both canvas and MCP use this operation.
+export function recalibrateShapes(shapes, dims, upp, conditions) {
+  const byId = new Map(shapes.map((s) => [s.id, s]));
+  const conds = new Map(conditions.map((c) => [c.id, c]));
+  return shapes.map((s) => {
+    if (s.measure_role === "count") return s; // imported counts may be fractional
+    const next = { ...s, computed: computeShapeMetrics(s, dims, upp, conds.get(s.condition_id)) };
+    const prev = s.origin?.parent_prev;
+    const parent = prev && byId.get(s.cuts_shape_id);
+    if (prev && parent) next.origin = { ...s.origin, parent_prev: { ...prev,
+      computed: computeShapeMetrics({ ...parent, ...prev, verts_norm_holes: prev.verts_norm_holes }, dims, upp, conds.get(parent.condition_id)),
+    } };
+    return next;
+  });
+}

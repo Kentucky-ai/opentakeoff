@@ -4,10 +4,10 @@ The counterpart to the [user manual](USER_GUIDE.md). That one is written for the
 the canvas; this one is written for the agent driving the same engine over
 [MCP](https://modelcontextprotocol.io), and for the person wiring one up.
 
-Everything an estimator does with a mouse, an agent does with a tool call, against identical
-geometry: the server imports `web/src/lib/{oneclick,sheets,geometry,totals}` directly, so a room
-you flood over stdio measures the same square footage as the same click on the canvas. There is
-no second implementation to drift.
+Agents work directly through tools, with geometry and quantities in the same document format
+as the canvas. The server and browser share geometry, calibration and quantity modules.
+Their current room-detection paths differ; audit the returned boundary on each surface
+rather than assuming the same seed always produces the same room.
 
 **Contents**
 
@@ -274,3 +274,13 @@ next."*
 - [**OpenTakeoff Academy**](https://aec.kentucky-ai.com)—an open benchmark for agents that do
   takeoff. Bring any model and your own harness; you're scored on operating a real tool against
   geometry you don't control.
+
+## Calibration and review correctness (0.9.72)
+
+`set_scale` recomputes existing dimensional quantities from geometry, including holes and cutout restore snapshots. Changing an existing calibration records one `undo_last` step that restores the scale, its confirmation/source, and the prior quantities together. Initial calibration of an unmeasured sheet adds no undo step. Counts retain their stored values. A sheet containing human-reviewed dimensional measurements refuses recalibration over MCP, consistent with the existing reviewed-shape edit rules; recalibrate it in the canvas and import the updated takeoff into a fresh session.
+
+`import_takeoff` refuses new dimensional shapes when their source calibration differs from the session's calibration, or is missing while the session has one. The error names the sheet and scales; no session state changes. Align calibrations and re-export, or load a fresh session to adopt the export's calibration. Counts and duplicate IDs are exempt. An existing calibration is preserved even in an untraced session.
+
+New agent measurements, including `measure_polygon` and `measure_line`, explicitly carry `origin.reviewed: false`. Legacy agent records without the flag are normalized on import and browser reload. Explicit prior human approval is preserved. No new review gate is introduced.
+
+On the browser agent surface, `one_click` returns retained interior voids as `verts_norm_holes`. Pass those rings unchanged alongside `verts_norm` to `propose_shapes`; preview and acceptance use the full geometry for area and perimeter.

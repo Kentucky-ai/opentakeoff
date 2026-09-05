@@ -34,6 +34,7 @@ jobs:
           key: voice-model-${{ hashFiles('web/scripts/fetch-voice-model.mjs') }}
       - run: node scripts/fetch-voice-model.mjs
       - run: npm run typecheck
+      - run: npm run lint
       - run: npm test
       # The bench is a ruler, and a ruler that silently stops matching the
       # engine is worse than no ruler (#198): results.json is committed, the
