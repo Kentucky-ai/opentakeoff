@@ -31,6 +31,7 @@ import { relativeAge, absoluteUtc } from "../lib/reltime";
 import { ingestFiles } from "../lib/ingest.js";
 import { parseTakeoffImport, mergeTakeoffImport } from "../lib/importTakeoff.js";
 import { pendingByProposal, acceptConditionEditProposal } from "../lib/proposals.js";
+import { scopeCollisions, collisionsByCondition } from "../lib/scopeCollision.js";
 import { buildProjectArchive, parseProjectArchive, isProjectArchive, downloadArchive } from "../lib/projectArchive.js";
 import { buildProfile, parseProfile, applyProfile, resetProfileDefaults, isProfileFile } from "../lib/profile.js";
 import ToolMenu from "../components/ToolMenu.jsx";
@@ -5811,12 +5812,16 @@ export default function TakeoffCanvas() {
   // pan/zoom the canvas to fit a condition's takeoffs on the open sheets —
   // the panel's ⌖ / double-click navigation. Fit zoom is capped so a lone
   // count marker doesn't slam the view to maximum magnification.
-  function locateCondition(id) {
+  // Frame a set of shapes: the viewport fits their union bbox at a working
+  // zoom. locateCondition (⌖ on a row) and the scope-collision Look link
+  // (#366, which frames the PAIR) share it. Returns false when none of the
+  // shapes is on an open sheet.
+  function frameShapes(pick) {
     const el = containerRef.current;
-    if (!el) return;
+    if (!el) return false;
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, found = false;
     for (const s of visibleShapes) {
-      if (s.condition_id !== id) continue;
+      if (!pick(s)) continue;
       const sp = panelByKey(s.sheet_id);
       for (const [nx, ny] of s.verts_norm) {
         const x = nx * sp.img.w + sp.xOffset, y = ny * sp.img.h;
@@ -5824,11 +5829,22 @@ export default function TakeoffCanvas() {
         found = true;
       }
     }
-    if (!found) { setCommitMsg(`No takeoffs for ${condById[id]?.finish_tag || "this condition"} on the open sheet${groupKeys.length > 1 ? "s" : ""} yet.`); return; }
+    if (!found) return false;
     const r = el.getBoundingClientRect();
     const w = Math.max(x1 - x0, 1), h = Math.max(y1 - y0, 1), pad = 90;
     const scale = clamp(Math.min((r.width - pad) / w, (r.height - pad) / h, 1.5));
     setTfNow({ x: (r.width - w * scale) / 2 - x0 * scale, y: (r.height - h * scale) / 2 - y0 * scale, scale });
+    return true;
+  }
+  function locateCondition(id) {
+    if (!frameShapes((s) => s.condition_id === id)) setCommitMsg(`No takeoffs for ${condById[id]?.finish_tag || "this condition"} on the open sheet${groupKeys.length > 1 ? "s" : ""} yet.`);
+  }
+  // scope collision (#366): Look frames the PAIR so the estimator sees both
+  // rings at once, and selects nothing — deciding which one wins is theirs.
+  function lookAtCollision(pair) {
+    const ids = new Set([pair.a.shape_id, pair.b.shape_id]);
+    if (!panelKeySet.has(pair.sheet_id)) openSheets([pair.sheet_id], false);
+    if (!frameShapes((s) => ids.has(s.id))) setCommitMsg(`Open ${tabLabel(pair.sheet_id)} to look at this pair.`);
   }
 
   // A withheld transition is a QUESTION, and the answer is at a PLACE on the
@@ -6517,6 +6533,15 @@ export default function TakeoffCanvas() {
   // pill. Accept is the SAME review command as the single pill (one undo
   // entry); Reject deletes the batch's pending shapes (⌘Z restores them).
   const pendingGroups = useMemo(() => pendingByProposal(pendingCommitted, proposals), [pendingCommitted, proposals]);
+  // scope collision (#366): every pair of floor shapes claiming the same
+  // floor, measured by the same module the MCP verbs read — so the badge on a
+  // condition row and scope_duplicates over the wire never disagree. Sheets
+  // not on canvas (no bitmap dims) are unmeasured here, not zero.
+  const scopeResult = useMemo(() => scopeCollisions(shapes, conditions, (key) => {
+    const p = panels.find((x) => x.key === key && x.img?.w);
+    return p ? { w: p.img.w, h: p.img.h, upp: uppFor(key) || 0 } : null;
+  }), [shapes, conditions, panels, scales]);   // eslint-disable-line react-hooks/exhaustive-deps -- uppFor reads scales + the render-scale ref
+  const scopeByCond = useMemo(() => collisionsByCondition(scopeResult), [scopeResult]);
   function acceptProposalGroup(g) {
     if (!g?.ids.length) return;
     dispatchShape({ type: "review", ids: g.ids });
@@ -9904,6 +9929,7 @@ export default function TakeoffCanvas() {
           units={units}
           conditions={conditions}
           conditionEditProposals={conditionEditProposals} onAcceptConditionEdit={acceptConditionEdit} onRejectConditionEdit={rejectConditionEdit}
+          collisionsByCond={scopeByCond} onLookAtCollision={lookAtCollision}
           activeCond={activeCond}
           visRowById={visRowById} projRowById={projRowById}
           conditionColumns={conditionColumns}

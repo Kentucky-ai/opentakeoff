@@ -752,6 +752,7 @@ function TakeoffsPanel({
   onActivate, onSetActive, onLocate,
   onAddCondition, onDeleteCondition, onUpdateCond, onSetCondParam, onAssignAttr,
   conditionEditProposals = [], onAcceptConditionEdit, onRejectConditionEdit,
+  collisionsByCond = null, onLookAtCollision,
   onAddMaterial, onUpdateMaterial, onRemoveMaterial,
   onDuplicateCondition, onSplitCondition, onFollowFamilyRow, onRestoreDroppedRow,
   onDeriveTransitions, onLocateTransition,
@@ -972,6 +973,13 @@ function TakeoffsPanel({
             </div>
           </div>
           <span style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)", flexShrink: 0 }}>{shapeCount}▦</span>
+          {/* scope collision (#366): this condition shares floor with another
+              (or with itself — a double trace). The badge is the count; the
+              list under the ACTIVE row names each pair with a Look link. */}
+          {collisionsByCond?.get(c.id)?.length ? (
+            <span data-collision-badge={c.id} title={`${collisionsByCond.get(c.id).length} shared-floor pair${collisionsByCond.get(c.id).length === 1 ? "" : "s"} — another condition claims the same floor, or a room is traced twice. Activate the row to see each pair.`}
+              style={{ flexShrink: 0, fontFamily: "var(--f-mono,monospace)", fontSize: 10, fontWeight: 700, color: "var(--c-danger)", border: "1px solid var(--c-danger)", borderRadius: 3, padding: "0 4px" }}>⚠ {collisionsByCond.get(c.id).length}</span>
+          ) : null}
           <button onClick={(e) => { e.stopPropagation(); onLocate(c.id); }} title="Zoom the canvas to this condition's takeoffs"
             style={{ flexShrink: 0, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12, lineHeight: 1 }}>⌖</button>
           <button onClick={(e) => { e.stopPropagation(); onSetActive(c.id); setPanelMatOpen((v) => (on ? !v : true)); }}
@@ -991,6 +999,26 @@ function TakeoffsPanel({
             used to live in its own toolbar row above the canvas. Extracted to
             ConditionAppearanceEditor so the docked panel AND the top-bar band
             render the same editor from one source of truth. */}
+        {on && collisionsByCond?.get(c.id)?.length ? (
+          <div data-collision-list={c.id} onClick={(e) => e.stopPropagation()} style={{ margin: "0 12px 8px", padding: "6px 8px", border: "1px solid var(--c-danger)", background: "var(--paper-bright)", fontSize: 11 }}>
+            <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--c-danger)", fontWeight: 700, marginBottom: 4 }}>Shared floor · counted twice in the totals</div>
+            {collisionsByCond.get(c.id).map((p) => {
+              const other = p.a.condition_id === c.id ? p.b : p.a;
+              const mine = p.a.condition_id === c.id ? p.a : p.b;
+              return (
+                <div key={`${p.a.shape_id}-${p.b.shape_id}`} style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: "var(--f-mono,monospace)", fontSize: 11, color: "var(--ink)", padding: "1px 0" }}>
+                  <span style={{ color: "var(--ink-muted)" }}>{p.same_condition ? "⧉" : "↔"}</span>
+                  <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {p.same_condition ? `double trace${mine.label ? ` · ${mine.label}` : ""}` : `${other.condition}${other.label ? ` · ${other.label}` : ""}`}
+                    <span style={{ color: "var(--ink-muted)" }}> · {p.shared_sf} SF shared · {Math.round(p.fraction_of_smaller * 100)}%{p.a.reviewed && p.b.reviewed ? " · both accepted" : ""}</span>
+                  </span>
+                  <button onClick={() => onLookAtCollision?.(p)} title="Frame both shapes on the plan"
+                    style={{ flexShrink: 0, padding: "1px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 10.5, fontWeight: 600 }}>Look</button>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
         {/* proposals (#365): a pending condition-edit diff sits UNDER the row
             it targets — current → proposed per knob, the agent's rationale,
             and the decision. Nothing on the condition changes until Accept;

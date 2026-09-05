@@ -176,7 +176,7 @@ rooms share 34 LF of wall would be a wrong number with a machine's confidence be
 By default every client gets all 40 tool schemas on `tools/list`—the flat contract every
 published client already expects.
 
-Fifty descriptions is real token weight for a session that may never touch half of them, so the
+Fifty-two descriptions is real token weight for a session that may never touch half of them, so the
 server can stage the surface along the workflow it already teaches:
 
 ```bash
@@ -196,7 +196,7 @@ The stages are the same phase structure the instructions already describe in pro
 |---|---|---|
 | `setup` (always on) | load, scale, read the set, look at it | — |
 | `measure` | `propose_takeoff`, `one_click`, `detect_rooms`, `measure_*`, `cut_out`, `place_count`, the sweeps, the derives | you're about to commit a shape |
-| `revise` | `list_shapes`, `edit_*`, `revise_proposal`, `withdraw_proposal`, `propose_condition_edit`, `withdraw_condition_edit`, `duplicate_condition`, `split_condition`, `delete_shape`, `undo_last`, the annotation and verdict family | you're auditing or correcting |
+| `revise` | `list_shapes`, `edit_*`, `revise_proposal`, `withdraw_proposal`, `propose_condition_edit`, `withdraw_condition_edit`, `scope_duplicates`, `scope_merge`, `duplicate_condition`, `split_condition`, `delete_shape`, `undo_last`, the annotation and verdict family | you're auditing or correcting |
 | `handoff` | `takeoff_summary`, `export_*`, `import_takeoff`, `apply_rules` | you're finishing |
 
 **When to turn it on:** your client honors `tools/list_changed` (Claude Code, Claude Desktop,

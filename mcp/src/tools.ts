@@ -23,6 +23,7 @@ import {
   exportDxfOutput, getSheetVectorsOutput,
   proposeTakeoffOutput, reviseProposalOutput, withdrawProposalOutput,
   proposeConditionEditOutput, withdrawConditionEditOutput,
+  scopeDuplicatesOutput, scopeMergeOutput,
 } from "./outputs.ts";
 import { exportMarkedPdf } from "./marked.ts";
 import { assertWritable, OVERWRITE_DESC } from "./safewrite.ts";
@@ -403,6 +404,25 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
     inputSchema: { shape_id: z.string() },
     outputSchema: deleteShapeOutput,
   }, run("delete_shape", ({ shape_id }) => session.deleteShape(shape_id)));
+
+  server.registerTool("scope_duplicates", {
+    description: `Two conditions claiming the same floor, as a list (#366). Every pair of committed floor_area shapes on one sheet whose EXACT polygon intersection exceeds min_fraction of the smaller shape — with the shared SF, which condition each belongs to, whether the estimator already affirmed either, and a look region to pass to view_sheet {overlay: true}. Pairs on DIFFERENT conditions are collisions: every total downstream counts that floor twice. Pairs on the SAME condition are a double trace (a different bug) and come back in duplicates. shared_floor_sf is the whole compared set's Σ areas − union, counted once per cell no matter how many shapes pile on it — the number takeoff_summary carries and the one that has to read 0 before any total means anything. Deducts and runs are not claims. Read-only; a shape on an unscaled sheet or with a degenerate ring is listed in unmeasured, never counted as zero. Same rule as the room eval's shared-floor gate (iou ≥ 0.5 = the same space claimed twice). ${COORDS}`,
+    inputSchema: {
+      sheet: z.string().optional().describe("Restrict to one sheet; default every sheet with floor shapes"),
+      min_fraction: z.number().min(0).max(1).optional().describe("List a pair only when shared ÷ smaller ≥ this (default 0.05 — rings that merely kiss along a wall are not claims; 0 lists everything that shares floor)"),
+    },
+    outputSchema: scopeDuplicatesOutput,
+  }, run("scope_duplicates", (a) => session.scopeDuplicates({ sheet: a.sheet, min_fraction: a.min_fraction })));
+
+  server.registerTool("scope_merge", {
+    description: `Resolve ONE collision (#366): given a pair of floor shapes and the winner, the loser gives up the shared floor — TRIMMED to its remainder by an exact boolean difference (the cut_out module's own arithmetic; its quantities re-measured from the result), or DELETED outright when the overlap is near-total (≥ 98% of the loser: the same space claimed twice, not a room with a sliver left). One journal step either way; undo_last restores the loser verbatim. Who wins: state winner; with it omitted the reviewed shape wins over a pending one, and the verb refuses when neither is reviewed (it does not guess which condition the floor belongs to) or when BOTH are (that is the estimator's call — the collision shows on both condition rows in the canvas). The ink rule is absolute: a loser the estimator affirmed is refused whoever you name. A trim that would split the loser into disjoint pieces refuses — that is a re-trace decision, not a merge — and a loser carrying reconciled cutouts refuses (delete the cuts first).`,
+    inputSchema: {
+      shape_a: z.string().describe("One shape of the pair (from scope_duplicates)"),
+      shape_b: z.string().describe("The other"),
+      winner: z.string().optional().describe("Which of the two keeps the shared floor; omit to let the reviewed one win"),
+    },
+    outputSchema: scopeMergeOutput,
+  }, run("scope_merge", (a) => session.scopeMerge({ shape_a: a.shape_a, shape_b: a.shape_b, winner: a.winner })));
 
   server.registerTool("revise_proposal", {
     description: `Replace EVERY still-pending shape in a proposal with a new set, as ONE journal step (#365) — the move for "I re-measured and got a better batch". The old pending shapes go, the replacements commit under the same proposal, and undo_last puts the previous batch back exactly. All-or-nothing: the whole replacement is validated (sheet, scale, vertex count, a height for surface_area) before the first pending shape is removed, so a malformed last shape leaves the batch untouched and the error says which entry and why. Shapes the estimator already accepted are ink — they stay, and they are not part of what this replaces. verts are image px like every other tool; roles and minimums match the measure tools (floor_area/deduct ≥3, linear/surface_area ≥2, count 1). An empty shapes list is refused — withdraw_proposal is the verb for that. ${COORDS}`,
