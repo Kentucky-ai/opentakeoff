@@ -25,6 +25,7 @@
     "@turf/boolean-overlap": "^7.4.0",
     "@turf/difference": "^7.4.0",
     "@turf/helpers": "^7.4.0",
+    "jsts": "^2.12.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",
     "zod": "^3.24.1"
