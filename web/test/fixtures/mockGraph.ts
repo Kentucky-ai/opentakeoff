@@ -5,7 +5,9 @@ export const BASE = "https://graph.test/v1.0";
 export const FOLDER_MIME = "application/vnd.google-apps.folder";
 
 // ── a tiny Graph tenant: driveItems in memory, real URL shapes ─────────────
-export function mockGraph({ pageSize = 200 }: { pageSize?: number } = {}) {
+export const DOWNLOAD_HOST = "https://download.test";
+
+export function mockGraph({ pageSize = 200, downloadUrls = true, expireToken = 0 }: { pageSize?: number; downloadUrls?: boolean; expireToken?: number } = {}) {
   type Item = { id: string; name: string; parentId: string | null; folder: boolean; content: Uint8Array | null };
   const items = new Map<string, Item>();
   items.set("root", { id: "root", name: "root", parentId: null, folder: true, content: null });
@@ -17,6 +19,9 @@ export function mockGraph({ pageSize = 200 }: { pageSize?: number } = {}) {
   const asItem = (i: Item) => ({
     id: i.id, name: i.name, lastModifiedDateTime: "2026-08-24T00:00:00Z", size: i.content?.length ?? 0,
     ...(i.folder ? { folder: { childCount: childrenOf(i.id).length } } : { file: { mimeType: "application/json" } }),
+    // the pre-authenticated download URL a real tenant hands out on a file
+    // item — a different host, short-lived, no auth expected
+    ...(!i.folder && downloadUrls ? { "@microsoft.graph.downloadUrl": `${DOWNLOAD_HOST}/dl/${i.id}?tempauth=t` } : {}),
   });
 
   const resp = (status: number, body: any = null, headers: Record<string, string> = {}) => ({
@@ -29,10 +34,25 @@ export function mockGraph({ pageSize = 200 }: { pageSize?: number } = {}) {
   });
 
   const calls: string[] = [];
+  const tokensSeen: string[] = [];
+  let expireLeft = expireToken;
   async function fetchImpl(url: string, init: any = {}) {
     const method = (init.method || "GET").toUpperCase();
     calls.push(`${method} ${url}`);
+    // the download host: a pre-authenticated URL, and a bearer on it is the
+    // corner tenants disagree on — the mock REFUSES it, so a client that
+    // leaks the token onto the redirect host fails here instead of in the field
+    if (url.startsWith(DOWNLOAD_HOST)) {
+      if (init.headers?.Authorization) return resp(401, { error: "bearer on a pre-authenticated URL" });
+      const it = items.get(url.match(/\/dl\/([^?]+)/)?.[1] || "");
+      if (!it || it.folder) return resp(404, { error: "expired" });
+      return resp(200, it.content ?? new Uint8Array());
+    }
     if (!init.headers?.Authorization?.startsWith("Bearer ")) return resp(401, { error: "no token" });
+    tokensSeen.push(init.headers.Authorization.slice(7));
+    // an expired / revoked token: the first `expireToken` authenticated calls
+    // answer 401 (the tenant re-evaluated the session), then accept
+    if (expireLeft > 0) { expireLeft--; return resp(401, { error: { code: "InvalidAuthenticationToken", message: "Access token has expired" } }); }
     const u = new URL(url);
     const path = decodeURIComponent(u.pathname);
     const m = path.match(/\/drives\/([^/]+)\/items\/(.+)$/);
@@ -114,6 +134,6 @@ export function mockGraph({ pageSize = 200 }: { pageSize?: number } = {}) {
     return resp(400, { error: `unhandled ${method} ${rest}` });
   }
 
-  return { fetchImpl, items, calls };
+  return { fetchImpl, items, calls, tokensSeen };
 }
 
