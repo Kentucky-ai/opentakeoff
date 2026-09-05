@@ -10,6 +10,7 @@ The sheet graph (#87) reads a plan set's schedules and answers *what finish is s
 |---|---|---|
 | **cell accuracy** | for every (room, surface) the key states, did `resolve_tag` return the same code? | the finish it reports is the finish the schedule states |
 | **tag classification** | of the numbers it calls rooms, how many *are* rooms? | cell accuracy can sit at 1.000 while the graph invents thirty rooms that do not exist |
+| **row → symbol** (`keys/<id>.rowsym.csv`, 2026-09-05) | for every scheduled mark the key names, does `sweep_schedule_row` resolve it to drawn instances — and refuse the marks the set never draws? | a schedule row that reads perfectly and then counts a phantom device is a wrong bid; the count is reported beside the verdict with its method (`L` by label, `M` mixed) but the yes/no is what is graded |
 
 The second metric is not optional. A finish plan is covered in 2–3 digit numbers that are not rooms—keynote hexagons, detail markers, dimension fragments, legend rows. Counting them as rooms made every one come back `no schedule row`, which is **the same sentence a genuinely omitted room produces**. The case the feature exists to catch was being buried under look-alikes.
 
@@ -58,6 +59,8 @@ Three corpus sets are deliberately unscored, and they are the honest next lanes:
 1. **A plan with no room numbers in its text layer at all**—zero 3-digit spans, zero room-name spans. Its schedule extracts cleanly; there is nothing on the plan side to join it to. No parser fixes this one.
 2. **A schedule shape that yields no room-finish table.**
 3. **A wall sub-tier headed `1 2 3 4`** with no parent to name it, on a set that also drops the boxed material code inside its floor cell—and that code is the half that chains to the material schedule.
+
+4. **An equipment schedule with a three-tier header whose key column sits on the upper tier** (a heat-pump schedule on a real mechanical set). `findHeaderRow` descends to the lowest tier and finds no key there, so the table is skipped — honestly, with no phantom rows — but its marks then refuse.
 
 Plus **revision clouds**, which remain arc-chain linework these detectors do not read. Delta triangles and `REV` tags are read; a cloud with no text marker is not, and absence of markers is not absence of revisions.
 

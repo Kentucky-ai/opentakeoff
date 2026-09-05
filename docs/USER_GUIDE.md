@@ -830,7 +830,11 @@ A few worth knowing about from the canvas side, because they're the same feature
   included unless you untick it.
 - `symbol_sweep` finds every instance of a repeated symbol from one marqueed example, and
   `sweep_schedule_row` mints a condition from a schedule row and counts its drawn markers across
-  the plan sheets. Where drafting reuses one generic shape for different devices, `exclude` takes
+  the plan sheets — from a room-finish, material, or equipment schedule, so a fan, a heater, or a
+  light fixture counts the same way a floor code does. A device drawn to its own size and tagged
+  by a leader has no shape to fingerprint, so each drawn tag counts as one instance *by label*,
+  and the result says which instances were counted that way; a bare mention in a note is never
+  a count. Where drafting reuses one generic shape for different devices, `exclude` takes
   counter-example rects around instances you do *not* mean — count the triangles, not the keynote
   ones — and every rejection comes back disclosed and reinstatable, never silently dropped. On a
   flattened export where layers and pen weights are gone but stroke color survives, a stated
