@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { filterWork, workActor, workQuantity, workReviewState } from "../lib/workReview.js";
+import { filterWork, workActor, workMethod, workQuantity, workReviewState } from "../lib/workReview.js";
 import { Z } from "../lib/ui.js";
 import "./workspacePanel.css";
 
-export default function WorkspacePanel({ shapes, conditions, selectedId, sheetLabel, fmtArea, fmtLength,
+export default function WorkspacePanel({ open, shapes, conditions, selectedId, sheetLabel, fmtArea, fmtLength,
   scales, scaleUnconfirmed, running, proposalCount, onLocate, onReview, onClose, onReport, children }) {
   const [tab, setTab] = useState("work");
   const [filter, setFilter] = useState("all");
@@ -22,7 +22,7 @@ export default function WorkspacePanel({ shapes, conditions, selectedId, sheetLa
   };
   const evidence = selected?.origin?.evidence || {};
   return (
-    <aside className="workspace-panel" aria-label="Work and review" style={{ zIndex: Z.drawer }}>
+    <aside className="workspace-panel" hidden={!open} aria-label="Work and review" style={{ zIndex: Z.drawer }} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); } }}>
       <header className="workspace-heading">
         <div><span className="workspace-eyebrow">Shared workspace</span><h2>Work and review</h2></div>
         <button type="button" onClick={onClose} aria-label="Close work panel">×</button>
@@ -32,9 +32,14 @@ export default function WorkspacePanel({ shapes, conditions, selectedId, sheetLa
         <div><strong>{pending}</strong><span>need review</span></div>
         <div><strong>{new Set(shapes.map((s) => s.sheet_id)).size}</strong><span>sheets with work</span></div>
       </div>
-      <div className="workspace-tabs" role="tablist" aria-label="Workspace views">
-        <button type="button" role="tab" id="workspace-work-tab" aria-controls="workspace-work-view" aria-selected={tab === "work"} onClick={() => setTab("work")}>Measurements</button>
-        <button type="button" role="tab" id="workspace-agent-tab" aria-controls="workspace-agent-view" aria-selected={tab === "agent"} onClick={() => setTab("agent")}>Agent {running ? "· Working" : proposalCount ? `· ${proposalCount} proposals` : ""}</button>
+      <div className="workspace-tabs" role="tablist" aria-label="Workspace views" onKeyDown={(e) => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+        e.preventDefault();
+        const next = e.key === "Home" ? "work" : e.key === "End" ? "agent" : tab === "work" ? "agent" : "work";
+        setTab(next); document.getElementById(`workspace-${next}-tab`)?.focus();
+      }}>
+        <button type="button" role="tab" tabIndex={tab === "work" ? 0 : -1} id="workspace-work-tab" aria-controls="workspace-work-view" aria-selected={tab === "work"} onClick={() => setTab("work")}>Measurements</button>
+        <button type="button" role="tab" tabIndex={tab === "agent" ? 0 : -1} id="workspace-agent-tab" aria-controls="workspace-agent-view" aria-selected={tab === "agent"} onClick={() => setTab("agent")}>Agent {running ? "· Working" : proposalCount ? `· ${proposalCount} proposals` : ""}</button>
       </div>
       <div id="workspace-agent-view" role="tabpanel" aria-labelledby="workspace-agent-tab" hidden={tab !== "agent"} className="workspace-agent-view">{children}</div>
       <div id="workspace-work-view" role="tabpanel" aria-labelledby="workspace-work-tab" hidden={tab !== "work"} className="workspace-work-view">
@@ -58,7 +63,7 @@ export default function WorkspacePanel({ shapes, conditions, selectedId, sheetLa
           <div className="workspace-inspector-title"><h3>Measurement receipt</h3><strong className="workspace-quantity">{quantity(selected)}</strong></div>
           <dl>
             <div><dt>Source</dt><dd>{workActor(selected)}{selected.author ? ` · ${selected.author}` : ""}</dd></div>
-            <div><dt>Method</dt><dd>{selected.origin?.method || "Not recorded"}</dd></div>
+            <div><dt>Method</dt><dd>{workMethod(selected)}</dd></div>
             <div><dt>Review</dt><dd>{workReviewState(selected)}</dd></div>
             <div><dt>Scale</dt><dd>{scales[selected.sheet_id] ? scaleUnconfirmed[selected.sheet_id] === false ? "Set · needs confirmation" : "Set" : "Not set"}</dd></div>
             <div><dt>Geometry</dt><dd>{selected.verts_norm?.length || 0} vertices · {selected.verts_norm_holes?.length || 0} holes</dd></div>

@@ -4,6 +4,7 @@ The buildable map: what OpenTakeoff does and exactly where each piece lives, so 
 
 | Capability | What it does | Where the logic lives |
 |---|---|---|
+| **Work and review** | Project-wide measurement list for canvas and imported agent work; search, review filters, cross-sheet boundary navigation, stored provenance and quantities, and undoable per-shape review. Responsive drawer and an Agent tab; no model connection required to inspect imported work | `web/src/components/WorkspacePanel.jsx`, `web/src/lib/workReview.js`, existing `review` command in `shapeCommands.js`; design in `docs/design/WORKSPACE_REVIEW.md` |
 | **Ingest** | PDF, image, or `.zip` plan set—unpacked and normalized in-browser, multi-page, up to 4 sheets side-by-side | `web/src/lib/ingest.js`, sheet layout in `TakeoffCanvas.jsx` (`panels`, `panelAt`) |
 | **Rendering** | pdf.js raster per sheet + **crisp detail-view**: past ~1.15× zoom the visible region re-renders from vectors at current zoom | render chain + detail-view effect in `TakeoffCanvas.jsx`; pdf.js (`pdfjs-dist`) |
 | **Scale** | Auto-detect the drawn scale note per sheet; calibrate from a known dimension; per-sheet memory | `detectScale` in `web/src/lib/sheets.ts`; calibrate flow + `uppFor` in `TakeoffCanvas.jsx` |
