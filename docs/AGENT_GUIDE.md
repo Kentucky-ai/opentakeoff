@@ -113,7 +113,7 @@ numbers report.**
 4. **Look at what landed.** `view_sheet { overlay: true }` and fix misses with `edit_shape` before
    trusting a total. Crop the work region tight—a full-sheet render downsamples too far to
    audit a ring. Solid outlines are human-affirmed, dashed are unreviewed.
-5. **Write the planset.** `export_marked_pdf`, and give the user the file path. (`export_dxf` when the takeoff is going back into CAD — one sheet per drawing.) `export_report`
+5. **Write the planset.** `export_marked_pdf`, and give the user the file path. (It refuses an encrypted source PDF, naming the sheet: the app exports that one as a disclosed raster; over MCP there is no canvas, so tell the user which sheet and why.) (`export_dxf` when the takeoff is going back into CAD — one sheet per drawing.) `export_report`
    alongside it for the numbers. Never end a takeoff with numbers alone: a takeoff nobody can
    check is not a takeoff.
 
