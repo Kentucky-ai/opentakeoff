@@ -159,6 +159,8 @@ scans or flattened plots.
 
 The **☾** button in the zoom cluster inverts the sheet pixels themselves—a true negative print, white linework on black, not a CSS filter—with hatches retuned to stay legible. The setting persists per browser, and exports follow it: a dark canvas produces a dark Marked Set PDF.
 
+A light Marked Set copies each source page as vector, so the linework stays crisp at any zoom. One kind of source can't be copied that way: a PDF the architect **encrypted** (an owner password with no password to open it—the usual "no copying" export). The canvas renders it normally, but its page streams can't be embedded, and a vector copy would print as a blank sheet. Those sheets go into the Marked Set as a rendered image instead, and the sheet stamp says so: *raster copy — the source PDF is encrypted*. Takeoffs, markups, seals and RFI markers draw on top exactly as they do on a vector page.
+
 ---
 
 ## 3. Scale — set it first

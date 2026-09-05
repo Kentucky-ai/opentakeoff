@@ -44,6 +44,7 @@ import { RENDER_SCALE, parseSheetKey, sheetBaseLabelFromKey } from "./sheets";
 import { stitchPagePlan, memberEmbed } from "./stitches";
 import { pdfDashFor, boostForDark, clampWeight } from "./lineStyles.js";
 import { dimLabel } from "./units";
+import { sourcePageMode, sourceStampNote, noCanvasForRasterMessage } from "./markedsetSource.js";
 
 const COBALT = "#1f3fc7";
 const DEDUCT_RED = "#b03a26";
@@ -488,7 +489,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     return src;
   };
   for (const sh of marked) {
-    let pg, toPage, chipRot = degrees(0), W, H;
+    let pg, toPage, chipRot = degrees(0), W, H, mode = "vector";
 
     if (sh.stitch) {
       // ── composite stitch page (#200): the stitched surface as ONE page at
@@ -512,7 +513,13 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
       const plan = stitchPagePlan(members, dims);
       W = plan.extent.w; H = plan.extent.h;
       const pageW = W / RENDER_SCALE, pageH = H / RENDER_SCALE;
-      if (dark) {
+      // an encrypted member cannot be embedded as vector (lib/markedsetSource:
+      // pdf-lib copies ciphertext; embedPage throws at save) — the whole
+      // composite goes the raster way, un-inverted unless the set is dark
+      const encrypted = !dark && (await Promise.all(members.map((m) => srcDocFor(m.file)))).some((d) => d.isEncrypted);
+      mode = sourcePageMode({ dark, encrypted });
+      if (mode === "raster" && typeof document === "undefined") throw new Error(noCanvasForRasterMessage(sh.label));
+      if (mode !== "vector") {
         // one composite raster: members painted seam-clipped onto a white
         // ground (so the gap outside every member inverts to the dark stage),
         // then the whole canvas inverted ONCE — the involution stays exact.
@@ -537,7 +544,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
           ctx.drawImage(mc, pm.dx * k, pm.dy * k);
           ctx.restore();
         }
-        invertPixels(cv);
+        if (dark) invertPixels(cv);
         const png = await doc.embedPng(cv.toDataURL("image/png"));
         pg = doc.addPage([pageW, pageH]);
         pg.drawImage(png, { x: 0, y: 0, width: pageW, height: pageH });
@@ -565,15 +572,22 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     const vpR = page.getViewport({ scale: RENDER_SCALE });   // the space verts are normalized to
     W = vpR.width; H = vpR.height;
 
-    if (dark) {
-      // raster → invert → image page (unrotated by construction)
+    // the vector copy needs a source pdf-lib can read; an encrypted source
+    // (owner password, empty user password — pdf.js renders it, so the canvas
+    // never said a word) copies as ciphertext and prints as a blank sheet in
+    // every viewer. Decide before touching the page (lib/markedsetSource).
+    const src = dark ? null : await srcDocFor(sh.file);
+    mode = sourcePageMode({ dark, encrypted: !!src?.isEncrypted });
+    if (mode === "raster" && typeof document === "undefined") throw new Error(noCanvasForRasterMessage(sh.label));
+    if (mode !== "vector") {
+      // raster → (invert when dark) → image page (unrotated by construction)
       const vp1 = page.getViewport({ scale: 1 });
       const s = Math.min(RASTER_MAX / Math.max(vp1.width, vp1.height), 4);
       const vp = page.getViewport({ scale: s });
       const cv = document.createElement("canvas");
       cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
       await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
-      invertPixels(cv);
+      if (dark) invertPixels(cv);
       const png = await doc.embedPng(cv.toDataURL("image/png"));
       pg = doc.addPage([vp1.width, vp1.height]);
       pg.drawImage(png, { x: 0, y: 0, width: vp1.width, height: vp1.height });
@@ -582,8 +596,6 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     } else {
       // vector copy of the source page; image px → PDF user space through the
       // inverse viewport transform (rotation + viewBox offsets included)
-      let src = srcDocs.get(sh.file);
-      if (!src) { src = await PDFDocument.load(await loadPdfData(sh.file), { ignoreEncryption: true }); srcDocs.set(sh.file, src); }
       const [copied] = await doc.copyPages(src, [sh.page - 1]);
       pg = doc.addPage(copied);
       const [a, b, c, d, e, f] = vpR.transform;
@@ -882,9 +894,9 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
     // sheet stamp, top-left in visual space. A stitch page exists in no source
     // planset, so its stamp says so — the composite is disclosed, not passed
     // off as a drawing the architect issued.
-    const stamp = sh.stitch
+    const stamp = (sh.stitch
       ? `${sh.label} · stitched composite (${sh.stitch.members.map((m) => m.label || m.key).join(" + ")}) · marked set`
-      : `${sh.label} · marked set`;
+      : `${sh.label} · marked set`) + sourceStampNote(mode);
     text(stamp, 14, 20, 8, muted);
   }
 
