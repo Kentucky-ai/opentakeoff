@@ -51,7 +51,7 @@ client that honors `tools/list_changed`; leave it unset otherwise.
 
 ## What the agent gets
 
-Fifty tools, in the order an agent tends to reach for them:
+Fifty-two tools, in the order an agent tends to reach for them:
 
 - **Open and orient**—`load_plan`, `sheet_info` (including the sheet's PDF
   layer table—Optional Content Groups with a classified role, confidence,
@@ -177,6 +177,15 @@ Fifty tools, in the order an agent tends to reach for them:
   estimator's acceptance in the canvas—nothing changes until then, and the
   summary and report carry the diff beside the current values;
   `withdraw_condition_edit` drops it. Design: `design/PROPOSALS.md`
+- **Scope collision** (#366)—`takeoff_summary.shared_floor_sf` is the floor
+  claimed by more than one shape across the takeoff (Σ areas − union, once per
+  cell), the number that has to read zero before a total means anything;
+  `scope_duplicates` names every pair on different conditions with the shared
+  SF, both sides' review state and a `view_sheet` look region (same-condition
+  double traces as their own list); `scope_merge` resolves one pair with the
+  winner stated—the loser trimmed to its remainder by an exact boolean
+  difference or deleted when near-total, one undo step, never a shape the
+  estimator affirmed. Design: `design/SCOPE_COLLISION.md`
 - **Condition twins**—`duplicate_condition` (the same finish measured
   somewhere else with its own preparation underneath: the twin arrives carrying
   the original's materials and keeps *following* them, so a coverage-rate fix on

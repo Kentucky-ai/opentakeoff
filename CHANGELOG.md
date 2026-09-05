@@ -2,6 +2,14 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — Scope collision: two conditions claiming the same floor, as a number that has to read zero (mcp 0.9.75, #366)
+
+### Added
+- **`shared_floor_sf` in `takeoff_summary`** — floor claimed by more than one committed floor shape across the whole takeoff, counted once per cell (Σ areas − union) through each sheet's scale. Always a number; the bundled sample plan's takeoff reads **0** (pinned on the wire). Shapes the check cannot measure (unscaled sheet, degenerate ring) are listed as unmeasured, never counted as zero.
+- **`scope_duplicates`** — every pair of floor shapes on different conditions whose exact polygon intersection exceeds a stated fraction of the smaller one, with the shared SF, each side's condition and review state, and a `look` region for `view_sheet`; same-condition pairs (a double trace) come back as their own list. Read-only. Same rule as the room eval's shared-floor gate (`web/bench/batch.ts`) — pinned equal by test.
+- **`scope_merge`** — given a pair and a winner, the loser gives up the shared floor: trimmed to its remainder by an exact boolean difference (its quantities re-measured), or deleted when the overlap is near-total (≥ 98%). One journal step, `undo_last` restores the loser verbatim. The reviewed shape wins by default; the verb refuses when neither is reviewed and no winner is stated, when both are reviewed (the estimator's call), and always when the loser is ink — no agent verb touches accepted work.
+- **Canvas**: a `⚠ N` badge on a condition row that shares floor, the pair list under the active row (other condition, shared SF, share of the smaller, both-accepted flag) with a **Look** that frames the pair. Same module (`web/src/lib/scopeCollision.js`, JTS overlay) as the verbs, so the badge and the wire never disagree. Design: `docs/design/SCOPE_COLLISION.md`; proof: `docs/design/scope-collision-verification.md`.
+
 ## Unreleased — Proposals: a batch an agent can revise or withdraw, a condition edit the estimator accepts (mcp 0.9.74, #365)
 
 ### Added

@@ -316,6 +316,41 @@ const summaryRow = z.object({
   sy_net: z.number(),
 }).passthrough();
 
+// ── Scope collision (#366) ──────────────────────────────────────────────────
+const scopeSide = z.object({
+  shape_id: z.string(), condition_id: z.string(), condition: z.string(),
+  label: z.string().optional(), area_sf: z.number(),
+  reviewed: z.boolean().describe("true = the estimator affirmed this shape — ink; scope_merge never trims or deletes it"),
+});
+export const scopePairRow = z.object({
+  sheet_id: z.string(), a: scopeSide, b: scopeSide,
+  shared_sf: z.number().describe("Exact polygon intersection through the sheet's scale"),
+  fraction_of_smaller: z.number().describe("shared ÷ the smaller shape's area (1 = the smaller sits entirely inside the other)"),
+  iou: z.number().describe("Symmetric intersection-over-union — ≥ 0.5 is the room eval's own 'same space claimed twice' bar"),
+  same_condition: z.boolean().describe("true = a double trace on ONE condition (its own list), false = two conditions claiming one floor"),
+  look: z.object({ x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number() }).describe("Image-px region framing both shapes — pass to view_sheet {overlay: true}"),
+});
+export const scopeUnmeasuredRow = z.object({ shape_id: z.string(), sheet_id: z.string(), reason: z.string() });
+export const scopeDuplicatesOutput = {
+  collisions: z.array(scopePairRow).describe("Pairs on DIFFERENT conditions, biggest shared floor first"),
+  duplicates: z.array(scopePairRow).describe("Pairs on the SAME condition — a double trace, a different bug"),
+  shared_floor_sf: z.number().describe("Σ areas − union over the compared floor shapes, counted once per cell"),
+  by_sheet: z.array(z.object({ sheet_id: z.string(), shared_floor_sf: z.number() })),
+  unmeasured: z.array(scopeUnmeasuredRow).describe("Shapes left out of every number, with the reason — never silently counted as zero"),
+  floor_shapes: z.number().int(),
+  min_fraction: z.number(),
+  note: z.string(),
+};
+export const scopeMergeOutput = {
+  action: z.enum(["trimmed", "deleted"]),
+  winner: z.string(), loser: z.string(),
+  shared_sf: z.number(),
+  loser_before_sf: z.number(), loser_after_sf: z.number(),
+  loser_holes: z.number().int().optional().describe("trimmed: holes the remainder carries (a winner inside the loser leaves one)"),
+  shape_count: z.number().int(),
+  note: z.string(),
+};
+
 // ── Proposals (#365) ────────────────────────────────────────────────────────
 const conditionKnobs = z.object({
   finish_tag: z.string().optional(), waste_pct: z.number().optional(), multiplier: z.number().optional(),
@@ -372,6 +407,8 @@ export const takeoffSummaryOutput = {
     sy_net: z.number(),
   }).passthrough(),
   scale_unconfirmed: z.array(z.string()).optional().describe("Sheets whose scale is agent-set and no human has confirmed — these totals stand on an unverified scale; verify against a stated dimension or confirm in the canvas"),
+  shared_floor_sf: z.number().describe("Scope collision (#366): floor claimed by more than one shape across the whole takeoff, counted once per cell (Σ areas − union), in SF through each sheet's scale. Has to read 0 before a total means anything — scope_duplicates names the pairs"),
+  shared_floor_unmeasured: z.array(scopeUnmeasuredRow).optional().describe("Floor shapes the collision check could not measure (unscaled sheet, degenerate ring) — left OUT of shared_floor_sf rather than counted as zero; present only when any"),
   proposals: z.array(proposalRow).optional().describe("The proposal ledger (#365): per batch, how many shapes are still pending, how many the estimator accepted, whether it was withdrawn, and which batch new commits attach to (current). Present only when a proposal exists"),
   proposed_condition_edits: z.array(proposedConditionEditRow).optional().describe("Pending condition-edit diffs (#365) beside the current knobs. The rows above are the CURRENT values — nothing changes until the estimator accepts. Present only when any are pending"),
 };
