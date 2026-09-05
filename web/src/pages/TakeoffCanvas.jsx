@@ -91,7 +91,7 @@ import { counterRows } from "../lib/liveCounter.js";
 import LiveCounter from "../components/LiveCounter.jsx";
 import { loadProfiles } from "../lib/identity.js";
 import { resolveBranding, loadBrandingSelection } from "../lib/branding.js";
-import { starPath, cloudPath, thinStroke, strokePathD, chiselRibbon, buildSnapGrid, nearestSnap, ANGLE_TOL, angleSnap, closedMetrics, openLen, pointInPoly, hitShape, arrowheadPath, distToSeg, reflectVertsNorm, ringSelfIntersects } from "../lib/geometry.js";
+import { starPath, cloudPath, thinStroke, strokePathD, chiselRibbon, buildSnapGrid, nearestSnap, ANGLE_TOL, angleSnap, closedMetrics, polyWithHolesMetrics, openLen, pointInPoly, hitShape, arrowheadPath, distToSeg, reflectVertsNorm, ringSelfIntersects } from "../lib/geometry.js";
 // Drawing style (draft chrome look) — one resolved token object (DS in JSX,
 // dsRef.current in the imperative movers) replaces the hardcoded cobalt/star
 // literals across the in-progress trace, cursor, and selection chrome.
@@ -166,7 +166,8 @@ import { nowIso, mintUuid, setAuthorName, authorName } from "../lib/provenance.j
 import { applyShapeCommand, geomSnapshot, vertsEqual, recordCommand } from "../lib/shapeCommands.js";
 import { applyApprovalCommand, sanitizeApprovals, approvalInk, APPROVAL_R } from "../lib/approvals.js";
 import { findCutoutParent, subtractCutout, recomposeCutouts, cutRunsAcross } from "../lib/cutout.js";
-import { computeShapeMetrics, needsMetrics } from "../lib/shapeMetrics.js";
+import { normalizeAgentReview } from "../lib/reviewState.js";
+import { computeShapeMetrics, needsMetrics, recalibrateShapes } from "../lib/shapeMetrics.js";
 import { fmtCheckLen, parseLenInput, checkVerdict, M_PER_FT, areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, heightVal, heightUnit, heightInputToFeet, heightStep, dimInputStr, dimLabel } from "../lib/units";
 import * as panelGeom from "../lib/panelGeometry.js";
 
@@ -1553,7 +1554,7 @@ export default function TakeoffCanvas() {
     // `replace` command + reset: hydrate is a whole-array non-edit (no stamps,
     // no counters) and a loaded/restored timeline starts with EMPTY undo/redo
     // stacks — recorded inverses from the replaced project must never fire here.
-    dispatchShape({ type: "replace", shapes: sanitizeShapeLabelsOnShapes(a.shapes || []) }, { reset: true });   // strip a corrupt shape.label at hydrate (identity-preserving); other shape fields untouched
+    dispatchShape({ type: "replace", shapes: sanitizeShapeLabelsOnShapes((a.shapes || []).map(normalizeAgentReview)) }, { reset: true });   // normalize legacy review flags and corrupt labels at the load boundary
     // normalize hydrated markups: legacy workspaces may hold markups with no id
     // (pre-dating the id field) — seed a stable id + default rfi_id so the new
     // select / edit / delete / move / RFI-link flows (all keyed on m.id) work on them.
@@ -2506,7 +2507,7 @@ export default function TakeoffCanvas() {
     // state it serializes, so listing buildPayload (a new identity each render)
     // would fire a save on every render instead of only on a real change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, markups, approvals, rfis, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo, units]);
+  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, scaleUnconfirmed, markups, approvals, rfis, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo, units]);
   useEffect(() => { saveStateRef.current = saveState; }, [saveState]);
 
   // Flush a pending debounced save on navigate-away (unmount), and warn before a
@@ -2586,7 +2587,6 @@ export default function TakeoffCanvas() {
     if (!bridge) return;
     bridge.getSheet = () => presenceSheetRef.current || null;
     return () => { bridge.getSheet = null; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Idle-drain. When the canvas goes idle, drain BOTH defer paths:
@@ -4067,7 +4067,12 @@ export default function TakeoffCanvas() {
     // committed quantities (sheet had a scale, the scale moved, shapes exist on
     // it) — that's the case worth a one-step revert (the Scale menu surfaces it)
     const prior = scales[key];
-    if (prior === upp) return; // re-picking the active scale — no reprice churn, no stash (mirrors the MCP guard)
+    if (prior === upp) { confirmScale(key); return; } // re-picking the active scale — no reprice churn, no stash (mirrors the MCP guard)
+    const sp = panels.find((p) => p.key === key);
+    if (!sp?.img?.w && shapes.some((sh) => sh.sheet_id === key && sh.measure_role !== "count")) {
+      setCommitMsg("Open this sheet before recalibrating its measurements.");
+      return;
+    }
     if (prior != null && shapes.some((sh) => sh.sheet_id === key)) {
       setPrevScale({ key, upp: prior, source: scaleSources[key] || "standard" });
     }
@@ -4079,14 +4084,7 @@ export default function TakeoffCanvas() {
     // failure class the scale pinning exists to remove.
     maskCacheRef.current.delete(key);
     rasterMaskCacheRef.current.delete(key);
-    // STRICT panel lookup — the panelByKey wrapper falls back to panels[0], so
-    // it can't detect an off-canvas sheet: a future off-canvas caller would
-    // silently re-price that sheet's shapes against the wrong panel's bitmap
-    // dims (and factorFor of a never-rastered key). Off-canvas the scale is
-    // still stored above; the shapes keep their (now old-scale) computed until
-    // a caller reprices them on canvas — wrong-but-visible beats silently-wrong.
-    const sp = panels.find((p) => p.key === key);
-    if (!sp?.img?.w) return; // sheet not on canvas — can't re-price without its bitmap dims
+    if (!sp?.img?.w) return; // no dimensional shapes to reprice
     const uEff = upp / factorFor(key);
     // count shapes keep their computed: EA has no upp dependency at all, and
     // recomputeShape's count branch would clobber a hand-edited / hydrated
@@ -4095,10 +4093,8 @@ export default function TakeoffCanvas() {
     // counters) and it RESETS both undo stacks: every recorded command froze
     // `computed` at the old scale, and undoing one afterwards would resurrect
     // stale quantities.
-    dispatchShape({
-      type: "replace",
-      shapes: shapes.map((sh) => (sh.sheet_id === key && sh.measure_role !== "count" ? { ...sh, computed: recomputeShape(sh, uEff) } : sh)),
-    }, { reset: true });
+    const repriced = new Map(recalibrateShapes(shapes.filter((sh) => sh.sheet_id === key), sp.img, uEff, conditions).map((sh) => [sh.id, sh]));
+    dispatchShape({ type: "replace", shapes: shapes.map((sh) => repriced.get(sh.id) || sh) }, { reset: true });
   }
 
   // Revert the last quantity-changing rescale (the one-slot stash above): runs
@@ -4787,14 +4783,16 @@ export default function TakeoffCanvas() {
         : "That click isn't inside an enclosed space — click an open spot, ⇧-click an open finish field, or trace it with Area (A).");
       const ring = r.ring.map(([x, y]) => [x / kF, y / kF]);      // back to the panel's frame
       try { Object.assign(window.__netLast, { lastClick: [local[0], local[1]], lastRing: ring.map(([x, y]) => [+x.toFixed(1), +y.toFixed(1)]), lastFaces: r.faces }); } catch { /* diagnostics only */ }
-      const area_sf = +(r.areaPx / (ftPx * ftPx)).toFixed(2);
-      const perim_lf = +(closedMetrics(ring).perim * upp).toFixed(2);
+      const holes = (r.holes || []).map((h) => h.map(([x, y]) => [x / kF, y / kF]));
+      const met = polyWithHolesMetrics(ring, holes);
+      const area_sf = +(met.area * upp * upp).toFixed(2);
+      const perim_lf = +(met.perim * upp).toFixed(2);
       const region = {
-        kind: negative ? "neg" : "pos", seed: local, poly: ring, poly0: ring.map(([x, y]) => [x, y]),
+        kind: negative ? "neg" : "pos", seed: local, poly: ring, holes, poly0: ring.map(([x, y]) => [x, y]),
         area_sf, perim_lf, hf: false, shs: 0, sl: 0, gap: 0, mp: 0, mpd: 0, wg: 0, rw: 0, rt: false,
         cf: 1, cff: [], net: true, netFaces: r.faces, netStarved: !!r.starved, netMode: field ? "field" : "room",
       };
-      setCommitMsg(`${field ? "Finish field" : "Room"}: ${area_sf.toFixed(0)} SF from ${r.faces} face${r.faces === 1 ? "" : "s"}${r.holes.length ? ` (${r.holes.length} interior void${r.holes.length === 1 ? "" : "s"} not subtracted from the outline)` : ""}${info && info.ms ? ` · net built in ${(info.ms / 1000).toFixed(1)} s` : ""} — ⏎ creates, Esc discards.`);
+      setCommitMsg(`${field ? "Finish field" : "Room"}: ${area_sf.toFixed(0)} SF from ${r.faces} face${r.faces === 1 ? "" : "s"}${r.holes.length ? ` (${r.holes.length} interior void${r.holes.length === 1 ? "" : "s"} subtracted)` : ""}${info && info.ms ? ` · net built in ${(info.ms / 1000).toFixed(1)} s` : ""} — ⏎ creates, Esc discards.`);
       proposeRegion(null, tp, local, negative, false, region);
       return { ok: true, message: "" };
     }
@@ -4869,14 +4867,20 @@ export default function TakeoffCanvas() {
   // setState hasn't rendered, so the activeCond/activeLabel closures are one
   // render behind (the updateCondition-by-id precedent in voiceActions).
   function commitOneClickRegions(prop, direct) {
-    const tp = panelByKey(prop.key);
+    const tp = panels.find((p) => p.key === prop.key && p.img.w);
+    const upp = uppFor(prop.key);
+    if (!tp || !upp) {
+      const message = "Open the proposal's sheet with its scale set before creating measurements.";
+      setCommitMsg(message);
+      return { ok: false, message };
+    }
     const condId = direct ? direct.conditionId : activeCond;
     const label = direct && direct.label !== undefined ? direct.label : (activeLabel || undefined);
     const made = prop.regions.map((r) => ({
       sheet_id: tp.key, condition_id: condId,
       measure_role: r.kind === "neg" ? "deduct" : "floor_area",
       verts_norm: r.poly.map(([x, y]) => [x / tp.img.w, y / tp.img.h]),
-      computed: { area_sf: r.area_sf, perimeter_lf: r.perim_lf },
+      ...(r.holes?.length ? { verts_norm_holes: r.holes.map((h) => h.map(([x, y]) => [x / tp.img.w, y / tp.img.h])) } : {}),
       ...(label ? { label } : {}),
       // the provenance receipt: machine-proposed, human-reviewed at the Create
       // gate (voice deixis: the spoken imperative is the review). A handle-
@@ -4886,7 +4890,7 @@ export default function TakeoffCanvas() {
       // edits are stamped by stampEdit, which freezes the same field from the
       // pre-edit ring only when Create didn't already.
       origin: { method: r.net ? "net_v1" : "one_click_v1", ...(r.net ? { net_faces: r.netFaces, net_starved: r.netStarved, net_mode: r.netMode } : {}), seed_norm: [r.seed[0] / tp.img.w, r.seed[1] / tp.img.h], reviewed: true, confidence: r.cf ?? 1, ...(r.cff?.length ? { confidence_factors: r.cff } : {}), ...(r.hf ? { hatch_filtered: true } : {}), ...(r.sl ? { gap_sealed_px: r.sl } : {}), ...(r.gap ? { gap_bridged_px: r.gap } : {}), ...(r.mp ? { min_pass_px: r.mp, min_pass_delta: r.mpd } : {}), ...(r.wg ? { door_wedges: r.wg } : {}), ...(r.rw ? { ring_interiors: r.rw } : {}), ...(r.rt ? { raster_traced: true } : {}), ...(r.sens != null ? { fill_sensitivity: r.sens } : {}), ...(r.touched ? { edited_before_create: true, proposed_verts_norm: r.poly0.map(([x, y]) => [x / tp.img.w, y / tp.img.h]) } : {}) },
-    }));
+    })).map((shape) => ({ ...shape, computed: computeShapeMetrics(shape, tp.img, upp) }));
     const res = dispatchShape({ type: "add", shapes: made });   // the creation gate — id/created_at minted by the command
     // ...and the new takeoff is SELECTED. Without this, Create left nothing
     // selected, so the ⌫ that had been deleting the proposal a moment earlier
@@ -4900,7 +4904,7 @@ export default function TakeoffCanvas() {
     // proposal branch sits ahead of `selectedId` in the ⌫ chain, so the next
     // fill's ⌫ still discards that proposal first.
     if (res?.shapes?.length) selectShape(res.shapes[res.shapes.length - 1].id);
-    const sf = prop.regions.reduce((n, r) => n + (r.kind === "neg" ? -r.area_sf : r.area_sf), 0);
+    const sf = made.reduce((n, sh) => n + (sh.measure_role === "deduct" ? -sh.computed.area_sf : sh.computed.area_sf), 0);
     // condById is a render closure — a condition minted THIS utterance is only
     // in the live mirror, so fall through to it for the tag
     const tag = (condById[condId] || agentStateRef.current.conditions.find((c) => c.id === condId))?.finish_tag || "";
@@ -4920,9 +4924,10 @@ export default function TakeoffCanvas() {
   // recompute idiom (ringArea × upp², closedMetrics) and the endpoint snap grid,
   // so a corrected corner lands on the plan's true linework just like a hand
   // trace. Nothing here commits a takeoff — that's still the Create (⏎) gate.
-  const ocMetrics = (poly, key) => {
+  const ocMetrics = (poly, key, holes = []) => {
     const upp = uppFor(key) || 0;
-    return { area_sf: +(ringArea(poly) * upp * upp).toFixed(2), perim_lf: +(closedMetrics(poly).perim * upp).toFixed(2) };
+    const met = polyWithHolesMetrics(poly, holes);
+    return { area_sf: +(met.area * upp * upp).toFixed(2), perim_lf: +(met.perim * upp).toFixed(2) };
   };
   // `bypass` (true for a raster region/shape) skips nearestSnap entirely — on a
   // scan wrapper the snap grid holds only the placed-image/clip-rect corners
@@ -4975,7 +4980,7 @@ export default function TakeoffCanvas() {
               const rgs = pr.regions.map((r, idx) => {
                 if (idx !== ri) return r;
                 const np = [...r.poly.slice(0, i + 1), [mx, my], ...r.poly.slice(i + 1)];
-                return { ...r, poly: np, ...ocMetrics(np, pr.key) };
+                return { ...r, poly: np, ...ocMetrics(np, pr.key, r.holes) };
               });
               return { ...pr, regions: rgs };
             });
@@ -5015,7 +5020,7 @@ export default function TakeoffCanvas() {
         }
         // touched = a handle actually moved this region: Create records the
         // frozen poly0 as origin.proposed_verts_norm only for touched regions
-        return { ...r, poly, ...ocMetrics(poly, pr.key), touched: true };
+        return { ...r, poly, ...ocMetrics(poly, pr.key, r.holes), touched: true };
       });
       return { ...pr, regions };
     });
@@ -5058,7 +5063,7 @@ export default function TakeoffCanvas() {
         if (ri !== ocSel.ri) return rr;
         const np = rr.poly.filter((_, i) => i !== ocSel.vi);
         // dropping a corner is a pre-Create correction too — same touched flag
-        return { ...rr, poly: np, ...ocMetrics(np, pr.key), touched: true };
+        return { ...rr, poly: np, ...ocMetrics(np, pr.key, rr.holes), touched: true };
       });
       return { ...pr, regions };
     });
@@ -5958,11 +5963,15 @@ export default function TakeoffCanvas() {
       if (!r) return { error: "That seed isn't inside an enclosed space on the plan linework. Seed an open spot inside the room." };
       const ring = r.ring.map(([x, y]) => [x / kF, y / kF]);
       if (ring.length < 3) return { error: "Couldn't trace that space into a polygon." };
-      const area_sf = +(r.areaPx / (ftPx * ftPx)).toFixed(2);
+      const geometry = {
+        measure_role: "floor_area",
+        verts_norm: ring.map(([x, y]) => [x / p.img.w, y / p.img.h]),
+        verts_norm_holes: (r.holes || []).map((h) => h.map(([x, y]) => [x / kF / p.img.w, y / kF / p.img.h])),
+      };
       return {
-        verts_norm: ring.map(([x, y]) => [+(x / p.img.w).toFixed(5), +(y / p.img.h).toFixed(5)]),
-        area_sf,
-        perimeter_lf: +(closedMetrics(ring).perim * upp).toFixed(2),
+        verts_norm: geometry.verts_norm,
+        ...(geometry.verts_norm_holes.length ? { verts_norm_holes: geometry.verts_norm_holes } : {}),
+        ...computeShapeMetrics(geometry, p.img, upp),
         seed_norm: [+xn.toFixed(5), +yn.toFixed(5)],
         confidence: 1,
         net_faces: r.faces,
@@ -6009,18 +6018,19 @@ export default function TakeoffCanvas() {
     const staged = shapes.map((s) => {
       const p = agentPanelFor(s.sheet);
       const upp = agentUpp(s.sheet) || 0;
-      const ringPx = s.verts_norm.map(([x, y]) => [x * p.img.w, y * p.img.h]);
+      const computed = computeShapeMetrics(s, p.img, upp);
       return {
         id: `agp-${mintUuid()}`,
         sheet_id: s.sheet,
         condition_id: s.condition_id,
         measure_role: s.measure_role,
         verts_norm: s.verts_norm,
+        ...(s.verts_norm_holes?.length ? { verts_norm_holes: s.verts_norm_holes } : {}),
         evidence: s.evidence,
         ...(Array.isArray(s.evidence.seed_norm) ? { seed_norm: s.evidence.seed_norm } : {}),
         proposed_ts: nowIso(),
-        area_sf: +(ringArea(ringPx) * upp * upp).toFixed(2),
-        perim_lf: +(closedMetrics(ringPx).perim * upp).toFixed(2),
+        area_sf: computed.area_sf,
+        perim_lf: computed.perimeter_lf,
       };
     });
     setAgentProposals((ps) => [...ps, ...staged]);
@@ -6317,11 +6327,11 @@ export default function TakeoffCanvas() {
       const tp = panels.find((x) => x.key === pr.sheet_id && x.img.w);
       const upp = uppFor(pr.sheet_id);
       if (!tp || !upp || !condById[pr.condition_id]) { skippedClosed++; continue; }
-      const ringPx = pr.verts_norm.map(([x, y]) => [x * tp.img.w, y * tp.img.h]);
       made.push({
         sheet_id: pr.sheet_id, condition_id: pr.condition_id, measure_role: pr.measure_role,
         verts_norm: pr.verts_norm.map((v) => [...v]),
-        computed: { area_sf: +(ringArea(ringPx) * upp * upp).toFixed(2), perimeter_lf: +(closedMetrics(ringPx).perim * upp).toFixed(2) },
+        ...(pr.verts_norm_holes?.length ? { verts_norm_holes: structuredClone(pr.verts_norm_holes) } : {}),
+        computed: computeShapeMetrics(pr, tp.img, upp, condById[pr.condition_id]),
         origin: {
           method: "agent_v1", actor: "agent", reviewed: true,
           proposed_ts: pr.proposed_ts, accepted_ts: nowIso(),
@@ -9081,7 +9091,7 @@ export default function TakeoffCanvas() {
                       const show = i === ocHover || (ocSel && ocSel.ri === i);
                       return (
                       <g key={"oc" + i}>
-                        <polygon points={r.poly.map((q) => q.join(",")).join(" ")}
+                        <path d={[r.poly, ...(r.holes || [])].map((ring) => `M${ring.map((q) => q.join(",")).join("L")}Z`).join(" ")} fillRule="evenodd"
                           fill={r.kind === "neg" ? "rgba(176,58,38,.18)" : "rgba(31,63,199,.10)"}
                           stroke={col} strokeWidth={2.5 / s} strokeDasharray={`${7 / s} ${4 / s}`} />
                         <path d={starPath(r.seed[0], r.seed[1], 5 / s)} fill={col} stroke="#fff" strokeWidth={1 / s} />
@@ -9129,7 +9139,7 @@ export default function TakeoffCanvas() {
                           onPointerDown={(e) => { if (clickable) e.stopPropagation(); }}
                           onClick={(e) => { if (clickable) { e.stopPropagation(); acceptAgentProposal(ap.id); } }}>
                           <title>{`Agent proposal — ${condById[ap.condition_id]?.finish_tag || "?"}${ded ? " (deduct)" : ""}, ${fa(ap.area_sf)}. ${evBits ? `Evidence: ${evBits}. ` : ""}Click to accept (⏎ accepts all visible); reject from the Agent panel.`}</title>
-                          <polygon points={pts.map((q) => q.join(",")).join(" ")}
+                          <path d={[pts, ...(ap.verts_norm_holes || []).map((h) => h.map(([x, y]) => [x * p.img.w, y * p.img.h]))].map((ring) => `M${ring.map((q) => q.join(",")).join("L")}Z`).join(" ")} fillRule="evenodd"
                             fill={ded ? "rgba(176,58,38,.10)" : "rgba(31,63,199,.07)"}
                             stroke={col} strokeOpacity={0.9} strokeWidth={2 / s}
                             strokeDasharray={`${3.5 / s} ${3.5 / s}`} strokeLinejoin="round" />

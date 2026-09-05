@@ -1,7 +1,7 @@
 // Column-selection library: profiles, prefs, getters, and the column-driven
 // CSV. The default-CSV assertion here deliberately overlaps the golden test —
 // it locks CSV_PROFILE itself (defaults + order + headers) to the same bytes.
-import { test } from "node:test";
+import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { conditionTotals, grandTotals, sheetTotals, totalsToCsv, round2 } from "../src/lib/totals.js";
@@ -389,3 +389,8 @@ test("rollColProfile: empty without figured layouts; ×N-applied getters through
   assert.equal(mSeam.header, "Seam m");
   assert.equal(mSeam.get(row, ctx), round2(90 * 0.3048));
 });
+
+// Node 24 also exposes Web Storage; explicitly isolate these browser-storage fixtures.
+const storageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+before(() => { delete (globalThis as any).localStorage; });
+after(() => { if (storageDescriptor) Object.defineProperty(globalThis, "localStorage", storageDescriptor); });

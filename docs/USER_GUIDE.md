@@ -163,6 +163,15 @@ The **☾** button in the zoom cluster inverts the sheet pixels themselves—a t
 
 ## 3. Scale — set it first
 
+Changing a scale recomputes the sheet's measurements, including interior voids. Open the sheet before recalibrating measured work. Confirming an agent-set scale saves the confirmation even if you make no other edit; choosing the already-active scale also confirms it.
+
+When importing a takeoff, new dimensional measurements must use the same calibration as an already-scaled sheet. A conflict message names the sheet and both scales, and nothing is imported. Align the source calibration and re-export before trying again. Counts and already-imported shape IDs do not require matching scales. Agent traces with missing legacy review flags enter the pending review queue.
+
+One-Click preserves retained interior voids as part of the shape through preview, Create, save and export. Their area is subtracted and their boundaries contribute to perimeter. The existing network engine still omits voids below its retention threshold; inspect the preview before accepting.
+
+During sync, calibrations on different sheets merge independently. If concurrent changes combine geometry and differing calibrations on the same sheet, that sheet's remote measurements and calibration stay together. Your local work is preserved in **Merge backup** in Revisions for recovery.
+
+
 Scale is the foundation. Every square foot on your report is pixels × scale², so a wrong scale is every number wrong at once. OpenTakeoff treats scale accordingly: it's **per sheet**, it's verified visually on every acceptance, and nothing prices without it.
 
 ### What refuses to work without a scale

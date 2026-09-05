@@ -42,7 +42,10 @@ export async function importTakeoff(session: Session, filePath: string) {
   }
 
   const prevShapeIds = new Set(session.shapes.map((s) => s.id));
-  const { payload, note } = mergeTakeoffImport(session.exportPayload(), imported, session.files);
+  const { payload, note } = (() => {
+    try { return mergeTakeoffImport(session.exportPayload(), imported, session.files); }
+    catch (e) { throw new UserError(e instanceof Error ? e.message : String(e)); }
+  })();
 
   session.conditions = (payload.conditions as Condition[]) ?? [];
   session.shapes = (payload.shapes as Shape[]) ?? [];

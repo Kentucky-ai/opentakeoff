@@ -42,6 +42,7 @@ import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, floodSurroundsLabelPx, fl
 import { fingerprintSymbol, matchSymbol, buildNegative, SWEEP_TOL_PX, type SweepOptions, type SymbolFingerprint, type SymbolMatchResult, type SweepMatch, type SweepWithheld, type SweepRejected, type SymbolNegative } from "../../web/src/lib/symbolsweep.ts";
 import { labelPlacements, type PlacementLabel } from "../../web/src/lib/symbollabels.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
+import { recalibrateShapes } from "../../web/src/lib/shapeMetrics.js";
 import { deriveTransitionRuns, type SheetFrame, type TransitionSourceShape } from "../../web/src/lib/transitions.ts";
 // Real polygon boolean subtraction (#137/#206) — the canvas's own module, so a
 // headless cut and the app's Eraser can never disagree about what a hole holds.
@@ -535,6 +536,7 @@ export const UNDO_CAP = 100;
  * actually made. */
 export type JournalPayload =
   | { op: "commit"; tool: string; ids: string[] }
+  | { op: "scale"; tool: string; sheet_id: string; upp: number | null; source?: string; confirmed?: boolean; shapes: Shape[] }
   | { op: "edit"; tool: string; before: Shape }
   | { op: "delete"; tool: string; removed: { shape: Shape; index: number }[] }
   | { op: "materials"; tool: string; condition_id: string; before: MaterialRow[]; dropped_before?: string[];
@@ -1192,6 +1194,21 @@ export class Session {
     } else {
       throw new UserError("Provide exactly one of: label, upp, calibrate, use_detected.");
     }
+    if (!Number.isFinite(upp) || upp <= 0) throw new UserError("Scale must be a finite positive number.");
+    if (s.upp !== upp) {
+      const before = this.shapes.filter((sh) => sh.sheet_id === s.key);
+      if (before.some((sh) => sh.measure_role !== "count" && sh.origin?.reviewed === true)) {
+        throw new UserError("This sheet contains human-reviewed measurements. Recalibrate it in the canvas, then import the updated takeoff into a fresh session.");
+      }
+      const dims = { w: s.widthPx, h: s.heightPx };
+      const repriced: Shape[] = recalibrateShapes(before, dims, upp, this.conditions);
+      // Initial calibration without geometry has nothing to undo. A changed
+      // calibration and its quantities restore together before older edits.
+      if (s.upp !== null || before.length) this.record({ op: "scale", tool: "set_scale", sheet_id: s.key,
+        upp: s.upp, source: s.scaleSource, confirmed: s.scaleConfirmed, shapes: structuredClone(before) });
+      const byId = new Map(repriced.map((sh) => [sh.id, sh]));
+      this.shapes = this.shapes.map((sh) => byId.get(sh.id) ?? sh);
+    }
     // Mask-cache eviction on recalibration — canvas parity (rescaleSheet):
     // the vector mask bakes the scale in (its hatch-pitch cap, seal radii,
     // wedge caps and minimum-passage rule are feet-true via mppf), so a mask
@@ -1306,6 +1323,7 @@ export class Session {
     // openings, door wedges, min-passage — minted onto origin centrally, so
     // no flood commit path can ship an unscored shape.
     if (origin && flood) origin = { ...origin, ...Session.floodStamp(flood, computed.area_sf) };
+    if (origin?.actor === "agent") origin = { ...origin, reviewed: false };
     // assignment provenance (0.9.18) defaults HERE, not at the seven call
     // sites: an agent commit that stated no source asserted the tag itself,
     // and stamping centrally means no future commit path can ship unstamped.
@@ -3564,7 +3582,17 @@ export class Session {
     for (let k = 0; k < n; k++) {
       const e = this.journal.pop();
       if (!e) break;
-      if (e.op === "commit") {
+      if (e.op === "scale") {
+        const s = this.sheet(e.sheet_id);
+        s.upp = e.upp;
+        s.scaleSource = e.source;
+        s.scaleConfirmed = e.confirmed;
+        s.mask = undefined;
+        s.rmask = undefined;
+        const before = new Map(e.shapes.map((sh) => [sh.id, sh]));
+        this.shapes = this.shapes.map((sh) => before.get(sh.id) ?? sh);
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: e.shapes.length });
+      } else if (e.op === "commit") {
         const dead = new Set(e.ids);
         this.shapes = this.shapes.filter((x) => !dead.has(x.id));
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: e.ids.length });

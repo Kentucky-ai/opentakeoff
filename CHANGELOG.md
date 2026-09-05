@@ -2,6 +2,17 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — Phase 1 measurement correctness (mcp 0.9.72)
+
+### Fixed
+- Recalibrating an MCP sheet recomputes dimensional quantities from its stored geometry, including interior voids and cutout restore snapshots. A subsequent `undo_last` restores the previous scale and quantities together. Counts retain their stored values. Human-reviewed measurements must be recalibrated in the canvas.
+- Takeoff imports refuse new dimensional measurements when their source scale conflicts with the current sheet, or the source scale is missing. The refusal leaves the project untouched; align calibration and re-export to proceed. Existing calibration also survives imports into an untraced project. Counts and duplicate shape IDs remain scale-independent.
+- Every new MCP agent measurement explicitly carries `origin.reviewed: false`. Legacy agent records missing the flag enter the browser review queue on import or reload; explicit approvals remain unchanged.
+- Sync merges sheet records by `sheet_id`. Independent sheet edits survive. Concurrent geometry/calibration edits using different scales on one sheet retain the remote sheet's dimensional measurements and scale together, with local work saved in the existing Merge backup before adoption.
+- Browser network room and finish-field quantities use the final simplified boundary. Retained interior voids survive human and agent previews, proposal acceptance, persistence and export; perimeter includes their boundaries. The existing engine threshold for retaining voids is unchanged.
+- Confirming an agent-set scale now triggers autosave, including selecting the already-active scale. Recalibration cannot leave off-canvas dimensional measurements priced at an old scale.
+- CI runs web lint. Storage tests explicitly isolate their environment from Node 24's built-in Web Storage.
+
 ## Unreleased — a two-tier Revit schedule reads every row (#374)
 
 ### Fixed

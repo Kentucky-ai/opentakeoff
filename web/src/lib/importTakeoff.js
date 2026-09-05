@@ -18,6 +18,7 @@
 
 import { ANN_SCHEMA } from "./store.js";
 import { sanitizeApprovals } from "./approvals.js";
+import { normalizeAgentReview } from "./reviewState.js";
 
 /** Parse + gate an import file's text. Throws with copy the message bar shows
  * verbatim — "Couldn't…" is the canvas's danger convention (isDangerMsg), so
@@ -61,8 +62,20 @@ const freeId = (id, taken) => {
  */
 export function mergeTakeoffImport(current, imported, knownFiles = null) {
   const cur = current && typeof current === "object" ? current : {};
-  const impShapes = arr(imported.shapes).filter((s) => s && typeof s === "object" && typeof s.sheet_id === "string" && typeof s.id === "string");
+  const impShapes = arr(imported.shapes).filter((s) => s && typeof s === "object" && typeof s.sheet_id === "string" && typeof s.id === "string").map(normalizeAgentReview);
   const impConds = arr(imported.conditions).filter((c) => c && typeof c === "object" && typeof c.id === "string");
+  const localScales = new Map(arr(cur.sheets).filter((s) => typeof s?.sheet_id === "string").map((s) => [s.sheet_id, s.units_per_px]));
+  const incomingScales = new Map(arr(imported.sheets).filter((s) => typeof s?.sheet_id === "string").map((s) => [s.sheet_id, s.units_per_px]));
+  const existingIds = new Set(arr(cur.shapes).map((s) => s.id));
+  // Refuse before adoption: retaining local calibration while appending the
+  // source's computed quantities would silently mix two measurement systems.
+  for (const s of impShapes) {
+    if (existingIds.has(s.id) || s.measure_role === "count") continue;
+    const local = localScales.get(s.sheet_id), incoming = incomingScales.get(s.sheet_id);
+    if (local > 0 && (!(incoming > 0) || !Number.isFinite(incoming) || Math.abs(local - incoming) > Math.max(local, incoming) * 1e-9)) {
+      throw new Error(`Couldn't import takeoff: scale conflict on ${s.sheet_id} (current ${local} ft/px; imported ${incoming ?? "missing"}). Align the sheet calibration and re-export before importing measurements. Nothing was imported.`);
+    }
+  }
 
   const unknownFiles = (added) => {
     if (!Array.isArray(knownFiles)) return [];
@@ -73,11 +86,10 @@ export function mergeTakeoffImport(current, imported, knownFiles = null) {
 
   // Nothing measured or marked up yet → the import IS the project. Seeded
   // default conditions and an untouched tab list are not user work, so they
-  // don't block the clean-replace path (a pre-traced calibration would be rare
-  // enough here that predictability wins over preserving it). Approval seals
+  // don't block the clean-replace path. An existing calibration and approval seals
   // DO block it (#176): a seal is ink someone placed — operator state wins,
   // so a sealed-but-untraced project merges instead of being replaced.
-  if (!arr(cur.shapes).length && !arr(cur.markups).length && !arr(cur.approvals).length) {
+  if (!arr(cur.shapes).length && !arr(cur.markups).length && !arr(cur.approvals).length && !arr(cur.sheets).some((s) => s?.units_per_px > 0)) {
     // …except the VIEW. An MCP export typically carries empty tab/group
     // state (the session has no such concept), and adopting an empty list
     // would close the operator's open sheet and bounce them to the gallery
@@ -85,6 +97,7 @@ export function mergeTakeoffImport(current, imported, knownFiles = null) {
     // Empty carries no intent; a NON-empty imported view is real state and wins.
     const payload = {
       ...imported,
+      shapes: impShapes,
       ...(arr(imported.sheet_tabs).length ? {} : { sheet_tabs: arr(cur.sheet_tabs) }),
       ...(arr(imported.sheet_group).length ? {} : { sheet_group: arr(cur.sheet_group) }),
       ...(arr(imported.last_group).length ? {} : { last_group: arr(cur.last_group) }),
