@@ -45,3 +45,18 @@ The existing report displays the four first-sheet polygons as **406.5 SF** (stor
 5. Close and reopen Work. Open the report and confirm its controls are unobstructed. Repeat at desktop, tablet, and phone widths.
 
 This pass did not test live multi-actor synchronization or a configured model run. Neither capability was added by this change.
+
+## Toolbar regression repair
+
+The scale trigger was inside the horizontal scrolling region and was clipped
+where the pinned Work control began. Scale and units now share the pinned
+controls with Work and Report. At widths of 800 px and below, that group moves
+to its own wrapping row. Calibration handlers and measurement logic are unchanged.
+
+Browser checks at widths 1440, 1280, 1024, 800, 640, and 390 px confirmed the full
+unconfirmed scale trigger stayed inside the viewport and did not intersect Work.
+This verifies toolbar layout, not phone canvas rendering or touch navigation.
+
+![Scale and Work with separate bounds](../img/workspace-review/toolbar.png)
+
+After rebasing onto `b79410d` (the existing One-Click gate), Node 24 passed the complete web check again. The gate remains in place; this repair changes no engine files.

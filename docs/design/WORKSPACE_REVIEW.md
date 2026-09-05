@@ -22,6 +22,7 @@ The **Agent** tab contains the existing browser agent. Imported MCP work is avai
 | Desktop panel width | `--props-w + 3 × --sp-8` (360 px) | Room for quantity and provenance without a second permanent rail |
 | Drawer breakpoint | 1100 px | Preserve the canvas width on smaller laptops and tablets |
 | Phone breakpoint | 640 px | Work occupies the viewport above the status strip; selecting work returns to the plan |
+| Toolbar wrapping breakpoint | 800 px | Keep scale, Work, and Report outside the scrolling tool strip; wrap pinned controls on narrow windows |
 | Initial list size | 50 measurements | Bound rendered rows on large takeoffs; **Show more** adds 50 |
 | Locate padding and zoom cap | 90 px; 1.5× | Match the existing condition-navigation behavior |
 | Readout precision | Up to 2 decimal places | Use the existing unit formatter and stored quantities |
