@@ -584,7 +584,7 @@ export type JournalPayload =
   | { op: "rfi_delete"; tool: string; before: Rfi; unlinked: string[] }
   | { op: "proposal_revise"; tool: string; proposal_id: string; before: Shape[]; after: string[] }
   | { op: "proposal_withdraw"; tool: string; proposal_id: string; removed: { shape: Shape; index: number }[] }
-  | { op: "condition_proposal"; tool: string; proposal_id: string }
+  | { op: "condition_proposal"; tool: string; proposal_id: string; before?: ConditionEditProposal }
   | { op: "condition_proposal_withdraw"; tool: string; proposal: ConditionEditProposal };
 
 export type JournalEntry = JournalPayload & { seq: number };
@@ -1389,6 +1389,14 @@ export class Session {
 
   reviseProposal(id: string, replacements: { sheet: string; condition: string; role: MeasureRole; verts_norm: [number, number][]; label?: string }[]) {
     this.proposalOrError(id);
+    // Validate the complete replacement before removing the old batch. A
+    // malformed later shape must not partially revise the proposal.
+    for (const r of replacements) {
+      const sheet = this.sheet(r.sheet);
+      if (r.verts_norm.length < (r.role === "count" ? 1 : r.role === "linear" || r.role === "surface_area" ? 2 : 3)) throw new UserError("Replacement geometry has too few points.");
+      if (r.role !== "count" && sheet.upp == null) throw new UserError(this.scaleGate(sheet));
+      if (!this.conditions.some((c) => c.finish_tag === r.condition)) throw new UserError(`No condition ${JSON.stringify(r.condition)}.`);
+    }
     const old = this.shapes.filter((s) => s.origin?.proposal_id === id && s.origin.reviewed !== true);
     const oldIds = new Set(old.map((s) => s.id));
     const before = this.shapes.filter((s) => oldIds.has(s.id)).map((s) => structuredClone(s));
@@ -1435,7 +1443,7 @@ export class Session {
     const proposal: ConditionEditProposal = { id: existing?.id ?? uid("condition-edit"), condition_id: c.id, condition: c.finish_tag, proposed: structuredClone(proposed), proposed_at: nowIso() };
     this.conditionEditProposals = this.conditionEditProposals.filter((p) => p.condition_id !== c.id);
     this.conditionEditProposals.push(proposal);
-    this.record({ op: "condition_proposal", tool: "propose_condition_edit", proposal_id: proposal.id });
+    this.record({ op: "condition_proposal", tool: "propose_condition_edit", proposal_id: proposal.id, ...(existing ? { before: existing } : {}) });
     return { proposal_id: proposal.id, condition: c.finish_tag, condition_id: c.id, current: { waste_pct: c.waste_pct, multiplier: c.multiplier, height_ft: c.height_ft, roll_setup: c.roll_setup }, proposed: proposal.proposed };
   }
 
@@ -1445,6 +1453,19 @@ export class Session {
     const [proposal] = this.conditionEditProposals.splice(i, 1);
     this.record({ op: "condition_proposal_withdraw", tool: "withdraw_condition_edit", proposal });
     return { proposal_id: id, withdrawn: true };
+  }
+
+  /** Estimator-side acceptance hook. This is intentionally not registered as
+   * an agent tool: only the reviewing surface may turn a pending diff into ink. */
+  acceptConditionEdit(id: string) {
+    const i = this.conditionEditProposals.findIndex((p) => p.id === id);
+    if (i < 0) throw new UserError(`No condition edit proposal with id ${JSON.stringify(id)}.`);
+    const proposal = this.conditionEditProposals[i];
+    const c = this.conditions.find((x) => x.id === proposal.condition_id);
+    if (!c) throw new UserError(`Condition ${JSON.stringify(proposal.condition)} no longer exists.`);
+    this.editCondition(c.finish_tag, structuredClone(proposal.proposed));
+    this.conditionEditProposals.splice(i, 1);
+    return { proposal_id: id, condition: c.finish_tag, condition_id: c.id };
   }
 
   async oneClick(name: string, x: number, y: number, opts: { condition?: string; role: "floor_area" | "deduct"; returnVerts: boolean; sensitivity?: number; layers?: { include?: string[]; exclude?: string[] } }) {
@@ -3710,6 +3731,7 @@ export class Session {
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: e.removed.length });
       } else if (e.op === "condition_proposal") {
         this.conditionEditProposals = this.conditionEditProposals.filter((p) => p.id !== e.proposal_id);
+        if (e.before) this.conditionEditProposals.push(e.before);
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
       } else if (e.op === "condition_proposal_withdraw") {
         this.conditionEditProposals.push(e.proposal);

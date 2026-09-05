@@ -28,6 +28,8 @@ import {
   markVerdictOutput, deleteVerdictOutput, duplicateConditionOutput, splitConditionOutput,
   getSheetVectorsOutput,
   createRfiOutput, listRfisOutput, resolveRfiOutput, deleteRfiOutput,
+  proposeTakeoffOutput, reviseProposalOutput, withdrawProposalOutput,
+  proposeConditionEditOutput, withdrawConditionEditOutput,
 } from "../src/outputs.ts";
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
@@ -68,6 +70,11 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   list_rfis: z.object(listRfisOutput),
   resolve_rfi: z.object(resolveRfiOutput),
   delete_rfi: z.object(deleteRfiOutput),
+  propose_takeoff: z.object(proposeTakeoffOutput),
+  revise_proposal: z.object(reviseProposalOutput),
+  withdraw_proposal: z.object(withdrawProposalOutput),
+  propose_condition_edit: z.object(proposeConditionEditOutput),
+  withdraw_condition_edit: z.object(withdrawConditionEditOutput),
 };
 
 async function pair() {

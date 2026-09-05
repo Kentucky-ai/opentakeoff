@@ -9,6 +9,40 @@ const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url
 const KEY = "sample-plan.pdf";
 const approx = (a: number, b: number, tolFrac: number) => Math.abs(a - b) <= Math.abs(b) * tolFrac;
 
+test("proposal batches revise and withdraw only pending shapes, with one undo step", async () => {
+  const s = new Session();
+  await s.loadPlan(PLAN);
+  s.setScale(KEY, { upp: 1 / 36 });
+  const p = s.proposeTakeoff("Rooms", "initial room pass");
+  const first = await s.measurePolygon(KEY, [[100, 100], [300, 100], [300, 300]], { condition: "CPT-1", role: "floor_area" });
+  assert.equal(s.shapes[0].origin?.proposal_id, p.proposal_id);
+  const accepted = s.shapes[0];
+  accepted.origin = { ...(accepted.origin as any), reviewed: true };
+  const second = await s.measurePolygon(KEY, [[400, 400], [500, 400], [500, 500]], { condition: "CPT-1", role: "floor_area" });
+  assert.equal(s.shapes.length, 2);
+  const revised = s.reviseProposal(p.proposal_id, [{ sheet: KEY, condition: "CPT-1", role: "floor_area", verts_norm: [[0.2, 0.2], [0.3, 0.2], [0.3, 0.3]] }]);
+  assert.equal(revised.replaced, 1);
+  assert.equal(s.shapes.some((x) => x.id === accepted.id), true);
+  assert.equal(s.shapes.some((x) => x.id === second.shape_id), false);
+  s.withdrawProposal(p.proposal_id);
+  assert.equal(s.shapes.length, 1);
+  s.undoLast(1);
+  assert.equal(s.shapes.length, 2);
+});
+
+test("condition edit proposals do not affect report until accepted", async () => {
+  const s = new Session();
+  await s.loadPlan(PLAN);
+  s.setScale(KEY, { upp: 1 / 36 });
+  await s.measurePolygon(KEY, [[100, 100], [300, 100], [300, 300]], { condition: "CPT-1", role: "floor_area" });
+  const before = JSON.stringify(s.exportReport());
+  const p = s.proposeConditionEdit("CPT-1", { waste_pct: 10 });
+  assert.equal(JSON.stringify(s.exportReport()), before);
+  s.acceptConditionEdit(p.proposal_id);
+  assert.notEqual(JSON.stringify(s.exportReport()), before);
+  assert.equal(s.conditions.find((c) => c.finish_tag === "CPT-1")?.waste_pct, 10);
+});
+
 test("loadPlan: pages, dims (pt and px), detected scale, sheet number", async () => {
   const s = new Session();
   const r = await s.loadPlan(PLAN);

@@ -25,6 +25,7 @@ export const TOOL_STAGES: Record<string, readonly string[]> = {
   ],
   revise: [
     "list_shapes", "delete_shape", "edit_shape", "edit_materials", "edit_condition",
+    "propose_takeoff", "revise_proposal", "withdraw_proposal", "propose_condition_edit", "withdraw_condition_edit",
     "duplicate_condition", "split_condition", "undo_last", "annotate",
     "list_annotations", "link_annotation", "mark_verdict", "delete_verdict",
     "create_rfi", "list_rfis", "resolve_rfi", "delete_rfi",
