@@ -723,11 +723,19 @@ The modal asks for an optional credit line and an attestation that you have the 
 
 ## 13. The Agent panel
 
+Choose **Work** in the toolbar to open **Work and review**. **Measurements** lists stored work across the project, including imported agent takeoffs and measurements made on the canvas. Search by condition, sheet, label, or author; use **Needs review** or **Agent** to narrow the list.
+
+Select a measurement to open its sheet and center its boundary. Its **Measurement receipt** shows the stored quantity, source, method, review state, scale state, vertices, and holes. **Mark reviewed** records your review for that measurement; undo restores its previous state. **Reviewed** describes the stored review decision, not a guarantee of accuracy. Missing attribution and quantities remain explicit.
+
+On smaller screens the panel opens as a drawer; on phones it fills the work area. Selecting a measurement returns you to the plan. **Open report →** opens the existing report. Floating totals clear both views. The condition’s **properties** disclosure above the drawing hides or shows its appearance controls.
+
+Select the **Agent** tab inside **Work** to run the browser agent. You do not need an AI connection to inspect an imported MCP takeoff. Closing the panel preserves its search and in-session task draft; page reload still discards uncommitted browser-agent proposals and the run log.
+
 The Agent panel is the newest way to run the engine: describe a takeoff in a sentence, and an AI model—**yours**, on your key, from your browser—works the sheet with the app's own tools and stages **dashed proposals you accept or reject**. It is a proposer, never a committer.
 
 ### What it is, structurally
 
-Open it from the rail (the target icon: *Agent — describe a takeoff; it stages dashed proposals you accept or reject*). Type a goal—*"Take off the carpet per the finish schedule on this sheet"*—and click **Run** (`⌘⏎`). The model runs a tool-use loop against a registry of the app's own deterministic tools:
+Open **Work**, then select **Agent**. Type a goal—*"Take off the carpet per the finish schedule on this sheet"*—and click **Run** (`⌘⏎`). The model runs a tool-use loop against a registry of the app's own deterministic tools:
 
 - **`list_sheets`**—what's open, with sizes and scale status;
 - **`read_sheet_text`**—the sheet's positioned text layer;
@@ -737,7 +745,7 @@ Open it from the rail (the target icon: *Agent — describe a takeoff; it stages
 - **`get_conditions` / `create_condition`**—your condition list (creation dedupes against existing tags);
 - **`propose_shapes`**—stage proposals for your review.
 
-**The model never invents geometry.** It can only propose rings the engine traced or coordinates grounded in what it read, and `propose_shapes` rejects anything uncited: *every proposal must cite evidence*. The run streams into the panel log—every tool call, every result, every refusal—capped at 24 steps, with a **■ Stop** button that halts it instantly.
+Proposals include evidence fields. Inspect the boundary and its claimed evidence before accepting it; those fields do not independently verify the geometry. The run streams into the panel log—every tool call, every result, every refusal—capped at 24 steps, with a **■ Stop** button that stops the run.
 
 ### The scale gate holds
 

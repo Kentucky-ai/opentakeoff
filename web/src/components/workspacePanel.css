@@ -1,4 +1,5 @@
 .workspace-panel { width: calc(var(--props-w) + var(--sp-8) * 3); flex-shrink: 0; display: flex; flex-direction: column; min-height: 0; color: var(--ink); background: var(--paper-bright); border-left: var(--rule-soft); font-size: var(--fs-m); }
+.workspace-panel[hidden] { display: none; }
 .workspace-panel button, .workspace-panel input { font: inherit; color: inherit; }
 .workspace-panel button { cursor: pointer; border: var(--rule-soft); background: transparent; min-height: var(--ctl-m); padding: var(--sp-1) var(--sp-2); }
 .workspace-panel button:focus-visible, .workspace-panel input:focus-visible { outline: 2px solid var(--cobalt); outline-offset: 2px; }
@@ -45,3 +46,4 @@
 .workspace-footer span { color: var(--ink-secondary); }
 .workspace-panel .workspace-more { width: 100%; }
 @media (max-width: 1100px) { .workspace-panel { position: absolute; inset: 0 0 0 auto; width: min(100%, calc(var(--props-w) + var(--sp-8) * 3)); box-shadow: var(--shadow-2); } }
+@media (max-width: 640px) { .workspace-panel { position: fixed; inset: 0 0 var(--status-h); width: auto; border-left: 0; } }

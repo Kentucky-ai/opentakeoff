@@ -14,6 +14,11 @@ export function workReviewState(shape) {
   return "Recorded";
 }
 
+export function workMethod(shape) {
+  const names = { manual: "Explicit geometry", agent_v1: "Agent proposal", rule_v1: "Correction rule", one_click_v1: "Room detection", net_v1: "Room detection", derived: "Derived measurement" };
+  return names[shape.origin?.method] || shape.origin?.method || "Not recorded";
+}
+
 export function workQuantity(shape) {
   const c = shape.computed || {};
   const kind = shape.measure_role === "count" ? "count" : shape.measure_role === "linear" ? "length" : "area";

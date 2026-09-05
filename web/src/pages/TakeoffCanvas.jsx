@@ -538,6 +538,7 @@ export default function TakeoffCanvas() {
   const [agentOpen, setAgentOpen] = useState(false);      // docked right-rail Agent panel
   const [conditionDetails, setConditionDetails] = useState(true);
   const [workLocateId, setWorkLocateId] = useState(null);
+  const workButtonRef = useRef(null);
   // ── roll goods (#136) — view state; the figured layouts are a memo below ──
   const [rollShow, setRollShow] = useState(true);         // draw the figured cuts over the plan (on: opting a condition in shows its cuts immediately)
   const [rollEdit, setRollEdit] = useState(false);        // cut-edit mode — cuts take pointer events (slide / resize / double-click reset)
@@ -5829,6 +5830,7 @@ export default function TakeoffCanvas() {
     setWorkLocateId(shape.id);
     if (!panelKeySet.has(shape.sheet_id)) openSheets([shape.sheet_id], false);
     setTool("select");
+    if (window.matchMedia("(max-width: 1100px)").matches) setAgentOpen(false);
   }
   // Wait for the target sheet's render; the render effect clears selection.
   // Navigation changes only the viewport and selection, never measurement data.
@@ -8015,7 +8017,7 @@ export default function TakeoffCanvas() {
         <div style={{ flex: 1 }} />
         </div>
         <span data-topbar-pinned style={{ display: "inline-flex", alignItems: "center", gap: 7, flexShrink: 0, paddingTop: 16 }}>
-        <button type="button" aria-expanded={agentOpen} onClick={() => setAgentOpen((v) => !v)}
+        <button type="button" ref={workButtonRef} aria-expanded={agentOpen} onClick={() => setAgentOpen((v) => !v)}
           title="Work and review — measurements, provenance, and agent proposals"
           style={{ minHeight: "var(--ctl-m)", padding: "var(--sp-1) var(--sp-3)", border: "1px solid var(--cobalt)", background: agentOpen ? "var(--cobalt)" : "transparent", color: agentOpen ? "var(--accent-contrast)" : "var(--cobalt)", cursor: "pointer", fontSize: "var(--fs-s)", fontWeight: 600 }}>
           Work{agentRunning ? " · Working" : shapes.some((s) => s.origin?.reviewed === false) ? ` · ${shapes.filter((s) => s.origin?.reviewed === false).length}` : ""}
@@ -9580,7 +9582,7 @@ export default function TakeoffCanvas() {
         {/* live readout — top-right, at right:56 so it clears the panel rail's
             column entirely (right:14, 34px wide — same clearance the zone panel
             uses) instead of the old magic maxHeight tuned to the rail's height. */}
-        <div style={{ position: "absolute", ...(isNarrow
+        <div style={{ display: agentOpen && tool === "select" ? "none" : undefined, position: "absolute", ...(isNarrow
           // phones: a bottom strip — the top-right box plus the panel rail was
           // covering the entire screen. bottom:64 clears the bottom-center toast.
           ? { left: 10, right: 10, bottom: 64, maxHeight: "36%", padding: "8px 12px" }
@@ -9813,13 +9815,12 @@ export default function TakeoffCanvas() {
             Takeoffs panel). Honest empty state until the BYO-AI seam is
             configured; otherwise the goal box, the streaming run log, and the
             per-proposal accept/reject desk. */}
-        {agentOpen && (
-          <WorkspacePanel shapes={shapes} conditions={condById} selectedId={selectedId}
-            sheetLabel={tabLabel} fmtArea={(sf) => fa(sf)} fmtLength={(lf) => fl(lf)}
+          <WorkspacePanel open={agentOpen} shapes={shapes} conditions={condById} selectedId={selectedId}
+            sheetLabel={tabLabel} fmtArea={(sf) => fa(sf, 2)} fmtLength={(lf) => fl(lf, 2)}
             scales={scales} scaleUnconfirmed={scaleUnconfirmed} running={agentRunning}
             proposalCount={agentProposals.length} onLocate={locateWork}
             onReview={(id) => dispatchShape({ type: "review", ids: [id] })}
-            onClose={() => setAgentOpen(false)} onReport={() => setShowReport(true)}>
+            onClose={() => { setAgentOpen(false); workButtonRef.current?.focus(); }} onReport={() => setShowReport(true)}>
           <AgentPanel
             embedded
             configured={isAiConfigured()}
@@ -9840,7 +9841,6 @@ export default function TakeoffCanvas() {
             onClose={() => setAgentOpen(false)}
           />
           </WorkspacePanel>
-        )}
 
         {/* Roll panel (#136) — DOCKED right-rail sibling like the Agent panel:
             per-condition cut diagrams (to scale, numbered), drag-to-reorder with
@@ -10106,7 +10106,7 @@ export default function TakeoffCanvas() {
           re-reads immediately). */}
       {showAiSettings && <AiSettings onClose={() => setShowAiSettings(false)} />}
       {/* live counter (mock) — floating running totals, drag to park anywhere */}
-      {!focusMode && <LiveCounter rows={liveCounterRows} onActivate={(id) => activateCondition(id, { reassign: false })} />}
+      {!focusMode && !agentOpen && !showReport && <LiveCounter rows={liveCounterRows} onActivate={(id) => activateCondition(id, { reassign: false })} />}
       {/* the manual, last in the tree so it sits above every panel and dock */}
       {guideOpen && <UserGuide onClose={() => setGuideOpen(false)} />}
     </div>
