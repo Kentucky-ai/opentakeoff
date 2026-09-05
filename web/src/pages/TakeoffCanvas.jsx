@@ -30,6 +30,7 @@ import { rectMidpoint, pendingSourceOutcome, isTraceable, traceLabel } from "../
 import { relativeAge, absoluteUtc } from "../lib/reltime";
 import { ingestFiles } from "../lib/ingest.js";
 import { parseTakeoffImport, mergeTakeoffImport } from "../lib/importTakeoff.js";
+import { pendingByProposal, acceptConditionEditProposal } from "../lib/proposals.js";
 import { buildProjectArchive, parseProjectArchive, isProjectArchive, downloadArchive } from "../lib/projectArchive.js";
 import { buildProfile, parseProfile, applyProfile, resetProfileDefaults, isProfileFile } from "../lib/profile.js";
 import ToolMenu from "../components/ToolMenu.jsx";
@@ -561,6 +562,12 @@ export default function TakeoffCanvas() {
   const [selVert, setSelVert] = useState(null);         // selected vertex index of the selected shape — Delete removes just that point
   const [selectedMarkupId, setSelectedMarkupId] = useState(null); // selected markup — mutually exclusive with selectedId
   const [rfis, setRfis] = useState([]);                 // RFI register (Request For Information); linked to markups via markup.rfi_id === rfi.id
+  // proposals (#365): the agent's batches (shapes reference them by
+  // origin.proposal_id → one Accept pill per batch) and the condition-edit
+  // diffs held pending until accepted from the Takeoffs panel. Transport from
+  // the MCP export / the app's own save; this canvas only reads and applies.
+  const [proposals, setProposals] = useState([]);
+  const [conditionEditProposals, setConditionEditProposals] = useState([]);
   // Deletion provenance: shapes leave no record once filtered out of `shapes`,
   // so every delete COMMAND yields a per-origin-method tally (`counted`, keyed
   // by origin.method, "manual" when absent) that dispatchShape merges here.
@@ -1562,6 +1569,8 @@ export default function TakeoffCanvas() {
     setMarkups(Array.isArray(a.markups) ? a.markups.map((m) => ({ ...m, id: m.id || uid("mk"), rfi_id: m.rfi_id || "", condition_id: m.condition_id || "" })) : []);
     setApprovals(sanitizeApprovals(a.approvals));   // additive — old saves load as []; load-gated so one corrupt seal can't wedge the render loop
     setRfis(Array.isArray(a.rfis) ? a.rfis : []);   // additive — old saves without rfis load as []
+    setProposals(Array.isArray(a.proposals) ? a.proposals.filter((p) => p && typeof p.id === "string") : []);   // additive (#365)
+    setConditionEditProposals(Array.isArray(a.condition_edit_proposals) ? a.condition_edit_proposals.filter((p) => p && typeof p.id === "string" && p.proposed && typeof p.proposed === "object") : []);
     // additive provenance_counters — unconditional set (the else-clear rule: a
     // snapshot load must not inherit the replaced project's deletion tallies).
     // Object gate mirrors client_info; number filter keeps the counts trustable.
@@ -2275,7 +2284,7 @@ export default function TakeoffCanvas() {
     // units is additive and diff-only (the sheet_levels convention): imperial —
     // the default — omits the key, so an old imperial project's payload is
     // byte-identical on round-trip; only a metric project carries the field.
-    return { project_name: projectName, ...(units === "metric" ? { units } : {}), ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}), ...(scaleUnconfirmed[sheet_id] === false ? { scale_confirmed: false } : {}) })), conditions, ...(conditionColumns.length ? { condition_columns: conditionColumns } : {}), ...(shapeLabels.length ? { shape_labels: shapeLabels } : {}), ...(pinned.length ? { palette: pinned } : {}), shapes, markups, rfis, ...(approvals.length ? { approvals } : {}), ...(rules.length ? { rules } : {}), sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, ...(stitches.length ? { stitches } : {}), ...(Object.keys(sheetLevels).length ? { sheet_levels: sheetLevels } : {}), ...(Object.keys(layerOverrides).length ? { layer_overrides: layerOverrides } : {}), ...(Object.keys(provCounters.shapes_deleted).length ? { provenance_counters: provCounters } : {}) };
+    return { project_name: projectName, ...(units === "metric" ? { units } : {}), ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}), ...(scaleUnconfirmed[sheet_id] === false ? { scale_confirmed: false } : {}) })), conditions, ...(conditionColumns.length ? { condition_columns: conditionColumns } : {}), ...(shapeLabels.length ? { shape_labels: shapeLabels } : {}), ...(pinned.length ? { palette: pinned } : {}), shapes, markups, rfis, ...(approvals.length ? { approvals } : {}), ...(proposals.length ? { proposals } : {}), ...(conditionEditProposals.length ? { condition_edit_proposals: conditionEditProposals } : {}), ...(rules.length ? { rules } : {}), sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, ...(stitches.length ? { stitches } : {}), ...(Object.keys(sheetLevels).length ? { sheet_levels: sheetLevels } : {}), ...(Object.keys(layerOverrides).length ? { layer_overrides: layerOverrides } : {}), ...(Object.keys(provCounters.shapes_deleted).length ? { provenance_counters: provCounters } : {}) };
   };
   // Runtime restore of a saved payload — the Revisions panel's Restore lands
   // here. A runtime load (unlike mount) can interrupt work in
@@ -2508,7 +2517,7 @@ export default function TakeoffCanvas() {
     // state it serializes, so listing buildPayload (a new identity each render)
     // would fire a save on every render instead of only on a real change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, scaleUnconfirmed, markups, approvals, rfis, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo, units]);
+  }, [shapes, conditions, conditionColumns, shapeLabels, palette, scales, scaleSources, scaleUnconfirmed, markups, approvals, rfis, proposals, conditionEditProposals, rules, provCounters, sheetGroup, sheetLevels, layerOverrides, lastGroup, openTabs, stitches, projectName, clientInfo, units]);
   useEffect(() => { saveStateRef.current = saveState; }, [saveState]);
 
   // Flush a pending debounced save on navigate-away (unmount), and warn before a
@@ -6503,10 +6512,42 @@ export default function TakeoffCanvas() {
   // + stamps accepted_ts and nothing else: affirmation, not an edit. Rejecting
   // one is just deleting it — select and Delete, like any shape.
   const pendingCommitted = useMemo(() => visibleShapes.filter((s) => s.origin?.reviewed === false), [visibleShapes]);
-  function acceptPendingShapes() {
-    if (!pendingCommitted.length) return;
-    dispatchShape({ type: "review", ids: pendingCommitted.map((s) => s.id) });
-    setCommitMsg(`Accepted ${pendingCommitted.length} proposed shape${pendingCommitted.length === 1 ? "" : "s"} — pencil is now ink.`);
+  // proposals (#365): the visible pending shapes grouped by batch — one pill
+  // per proposal on the Accept surface, the un-batched remainder as its own
+  // pill. Accept is the SAME review command as the single pill (one undo
+  // entry); Reject deletes the batch's pending shapes (⌘Z restores them).
+  const pendingGroups = useMemo(() => pendingByProposal(pendingCommitted, proposals), [pendingCommitted, proposals]);
+  function acceptProposalGroup(g) {
+    if (!g?.ids.length) return;
+    dispatchShape({ type: "review", ids: g.ids });
+    setCommitMsg(`Accepted ${g.proposal ? `“${g.proposal.label}” — ` : ""}${g.ids.length} shape${g.ids.length === 1 ? "" : "s"} — pencil is now ink (⌘Z undoes).`);
+  }
+  function rejectProposalGroup(g) {
+    if (!g?.ids.length) return;
+    dispatchShape({ type: "delete", ids: g.ids, reason: "proposal-reject" });
+    setCommitMsg(`Rejected ${g.proposal ? `“${g.proposal.label}” — ` : ""}${g.ids.length} proposed shape${g.ids.length === 1 ? "" : "s"} removed (⌘Z restores).`);
+  }
+  // condition-edit proposals (#365): accept applies the diff through the same
+  // patch path the panel editor writes (updateCondById), so the condition
+  // afterwards is exactly what typing the values would have produced; reject
+  // drops the diff and touches nothing. Neither lands on the shape undo
+  // stack — condition edits never have (the editor's own knobs don't either).
+  function acceptConditionEdit(id) {
+    const p = conditionEditProposals.find((x) => x.id === id);
+    if (!p) return;
+    const r = acceptConditionEditProposal(conditions, p, nowIso);
+    if (r.error) { setCommitMsg(`Couldn't accept the proposed change: ${r.error}`); return; }
+    setConditions(r.conditions);
+    agentStateRef.current = { ...agentStateRef.current, conditions: r.conditions };
+    setConditionEditProposals((ps) => ps.filter((x) => x.id !== id));
+    const tag = r.conditions.find((c) => c.id === p.condition_id)?.finish_tag || "";
+    setCommitMsg(`Accepted the proposed change on ${tag}.`);
+  }
+  function rejectConditionEdit(id) {
+    const p = conditionEditProposals.find((x) => x.id === id);
+    if (!p) return;
+    setConditionEditProposals((ps) => ps.filter((x) => x.id !== id));
+    setCommitMsg(`Rejected the proposed change on ${condById[p.condition_id]?.finish_tag || "that condition"} — nothing changed.`);
   }
   const rejectAllAgentProposals = () => setAgentProposals([]);
 
@@ -9523,13 +9564,29 @@ export default function TakeoffCanvas() {
         {/* accept pill — visible while committed-but-unreviewed shapes (an
             imported MCP takeoff) are on the visible sheets; they render dashed
             pencil until accepted. One click, one undo entry. */}
-        {pendingCommitted.length > 0 && (
-          <button onClick={acceptPendingShapes}
-            title={`${pendingCommitted.length} machine-proposed shape${pendingCommitted.length === 1 ? "" : "s"} render${pendingCommitted.length === 1 ? "s" : ""} dashed pending your review. Accept makes them ink (⌘Z undoes); to reject one, select it and press Delete.`}
-            style={{ pointerEvents: "auto", padding: "6px 14px", background: "var(--paper-bright)", border: "1.5px dashed var(--cobalt)", boxShadow: "var(--shadow-1)", fontSize: 12.5, fontWeight: 600, color: "var(--cobalt)", cursor: "pointer" }}>
-            Accept {pendingCommitted.length} proposed shape{pendingCommitted.length === 1 ? "" : "s"}
-          </button>
-        )}
+        {/* proposals (#365): one pill per BATCH. A forty-room detect run the
+            agent proposed under one label is one Accept and one Reject, not
+            forty; un-batched pending shapes keep the original pill. */}
+        {pendingGroups.map((g) => {
+          const n = g.ids.length;
+          const label = g.proposal ? g.proposal.label : `${n} proposed shape${n === 1 ? "" : "s"}`;
+          const key = g.proposal ? g.proposal.id : "_loose";
+          return (
+            <div key={key} data-proposal-pill={key} style={{ pointerEvents: "auto", display: "flex", alignItems: "stretch", background: "var(--paper-bright)", border: "1.5px dashed var(--cobalt)", boxShadow: "var(--shadow-1)", fontSize: 12.5, fontWeight: 600, color: "var(--cobalt)" }}>
+              <button onClick={() => acceptProposalGroup(g)}
+                title={g.proposal
+                  ? `Proposal “${g.proposal.label}”${g.proposal.rationale ? ` — ${g.proposal.rationale}` : ""}. ${n} shape${n === 1 ? "" : "s"} render${n === 1 ? "s" : ""} dashed pending your review. Accept makes the whole batch ink in one step (⌘Z undoes).`
+                  : `${n} machine-proposed shape${n === 1 ? "" : "s"} render${n === 1 ? "s" : ""} dashed pending your review. Accept makes them ink (⌘Z undoes); to reject one, select it and press Delete.`}
+                style={{ padding: "6px 12px", border: "none", background: "transparent", color: "inherit", font: "inherit", cursor: "pointer" }}>
+                Accept {g.proposal ? <>“{label}” <span style={{ fontWeight: 500, color: "var(--ink-muted)" }}>· {n}</span></> : label}
+              </button>
+              <button onClick={() => rejectProposalGroup(g)}
+                title={`Reject ${g.proposal ? `“${g.proposal.label}”` : "these shapes"} — removes ${n === 1 ? "the pending shape" : `all ${n} pending shapes`} (⌘Z restores).`}
+                aria-label="Reject proposal"
+                style={{ padding: "6px 9px", border: "none", borderLeft: "1px dashed var(--cobalt)", background: "transparent", color: "var(--c-danger)", font: "inherit", cursor: "pointer" }}>✕</button>
+            </div>
+          );
+        })}
         {/* live dictation chip (RFC #59 recognizer): top-center, fixed — NOT
             cursor-following, the cursor is busy aiming for deixis. Shows the
             hold state, decode state, and a brief flash of the heard transcript
@@ -9846,6 +9903,7 @@ export default function TakeoffCanvas() {
           multiSheet={groupKeys.length > 1}
           units={units}
           conditions={conditions}
+          conditionEditProposals={conditionEditProposals} onAcceptConditionEdit={acceptConditionEdit} onRejectConditionEdit={rejectConditionEdit}
           activeCond={activeCond}
           visRowById={visRowById} projRowById={projRowById}
           conditionColumns={conditionColumns}
@@ -9926,6 +9984,7 @@ export default function TakeoffCanvas() {
           projectName={projectName} onProjectName={setProjectName}
           clientInfo={clientInfo} onClientInfo={setClientInfo} units={units}
           conditions={conditions} shapes={shapes} markups={markups} rfis={rfis}
+          conditionEditProposals={conditionEditProposals}
           conditionColumns={conditionColumns} shapeLabels={shapeLabels}
           scaleInfo={Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, scale_source: scaleSources[sheet_id] || "unknown", scale_confirmed: scaleUnconfirmed[sheet_id] !== false }))}
           rollByCond={rollByCond}

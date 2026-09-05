@@ -28,6 +28,8 @@ import {
   markVerdictOutput, deleteVerdictOutput, duplicateConditionOutput, splitConditionOutput,
   getSheetVectorsOutput,
   createRfiOutput, listRfisOutput, resolveRfiOutput, deleteRfiOutput,
+  proposeTakeoffOutput, reviseProposalOutput, withdrawProposalOutput,
+  proposeConditionEditOutput, withdrawConditionEditOutput, listShapesOutput,
 } from "../src/outputs.ts";
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
@@ -68,6 +70,12 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   list_rfis: z.object(listRfisOutput),
   resolve_rfi: z.object(resolveRfiOutput),
   delete_rfi: z.object(deleteRfiOutput),
+  list_shapes: z.object(listShapesOutput),
+  propose_takeoff: z.object(proposeTakeoffOutput),
+  revise_proposal: z.object(reviseProposalOutput),
+  withdraw_proposal: z.object(withdrawProposalOutput),
+  propose_condition_edit: z.object(proposeConditionEditOutput),
+  withdraw_condition_edit: z.object(withdrawConditionEditOutput),
 };
 
 async function pair() {
@@ -286,6 +294,33 @@ test("every tool: canonical valid call → schema-valid structuredContent mirror
 
   const del = await callOk(client, "delete_shape", { shape_id: clicked.shape_id });
   assert.deepEqual(del, { deleted: clicked.shape_id, shape_count: 2 });
+
+  // proposals (#365) over the wire: every verb's reply validates against its
+  // schema, the summary and the report carry the ledger beside the current
+  // values, and every new journal op survives undo_last's output enum
+  const prop = await callOk(client, "propose_takeoff", { label: "Level 1 rooms", rationale: "finish schedule row CPT-1" });
+  const batched = await callOk(client, "measure_polygon", { sheet: KEY, verts: [[800, 800], [1160, 800], [1160, 1160], [800, 1160]], condition: "CPT-1" });
+  const revised = await callOk(client, "revise_proposal", { proposal_id: prop.proposal_id, shapes: [
+    { sheet: KEY, condition: "CPT-1", role: "floor_area", verts: [[800, 800], [1520, 800], [1520, 1160], [800, 1160]], label: "OFFICE 101" },
+    { sheet: KEY, condition: "TH-1", role: "count", verts: [[810, 810]] },
+  ] });
+  assert.deepEqual([revised.replaced, revised.committed], [1, 2]);
+  assert.equal((await callOk(client, "list_shapes", {})).shapes.some((x: any) => x.id === batched.shape_id), false);
+  const withLedger = await callOk(client, "takeoff_summary");
+  assert.deepEqual(withLedger.proposals.map((r: any) => [r.label, r.pending, r.accepted, r.current]), [["Level 1 rooms", 2, 0, true]]);
+  const cedit = await callOk(client, "propose_condition_edit", { condition: "CPT-1", waste_pct: 10, rationale: "spec 09 68 13" });
+  assert.deepEqual(cedit.proposed, { waste_pct: 10 });
+  const reportPending = await callOk(client, "export_report");
+  assert.equal(reportPending.conditions.find((r: any) => r.finish_tag === "CPT-1").waste_pct, 0, "the report prints the current knob");
+  assert.deepEqual(reportPending.proposed_condition_edits.map((r: any) => [r.condition, r.proposed.waste_pct]), [["CPT-1", 10]], "with the diff beside it");
+  await callOk(client, "withdraw_condition_edit", { proposal_id: cedit.proposal_id });
+  const withdrawn = await callOk(client, "withdraw_proposal", { proposal_id: prop.proposal_id });
+  assert.deepEqual([withdrawn.withdrawn, withdrawn.accepted_kept], [2, 0]);
+  await callErr(client, "revise_proposal", { proposal_id: prop.proposal_id, shapes: [{ sheet: KEY, condition: "CPT-1", role: "floor_area", verts: [[0, 0], [10, 0], [10, 10]] }] });
+  const propUndo = await callOk(client, "undo_last", { n: 6 });
+  assert.deepEqual(propUndo.steps.map((x: any) => x.op), ["proposal_withdraw", "condition_proposal_withdraw", "condition_proposal", "proposal_revise", "commit", "proposal_open"], "every proposal op validates on the wire");
+  assert.equal((await callOk(client, "sheet_info", { sheet: KEY })).shape_count, 2, "the session is exactly as it was before the proposal");
+  assert.equal((await callOk(client, "takeoff_summary")).proposals, undefined);
 
   const infoAfter = await callOk(client, "sheet_info", { sheet: KEY });
   assert.equal(infoAfter.scale_set, true);

@@ -40,6 +40,7 @@ import { ROLL_FLOORING_TYPES } from "../lib/rollgoods.js";
 import { hasRollSetup, mintRollSetup } from "../lib/rollTakeoff.js";
 import { Z } from "../lib/ui.js";
 import { ftIn } from "../lib/units";
+import { describeConditionEdit } from "../lib/proposals.js";
 
 export const PANEL_MIN_W = 240;
 export const PANEL_MAX_W = 560;
@@ -750,6 +751,7 @@ function TakeoffsPanel({
   panelPrefs, onPanelPrefs, reassigning, epoch, clearSelectionRef,
   onActivate, onSetActive, onLocate,
   onAddCondition, onDeleteCondition, onUpdateCond, onSetCondParam, onAssignAttr,
+  conditionEditProposals = [], onAcceptConditionEdit, onRejectConditionEdit,
   onAddMaterial, onUpdateMaterial, onRemoveMaterial,
   onDuplicateCondition, onSplitCondition, onFollowFamilyRow, onRestoreDroppedRow,
   onDeriveTransitions, onLocateTransition,
@@ -906,6 +908,8 @@ function TakeoffsPanel({
   };
 
   const aCond = conditions.find((c) => c.id === activeCond);
+  // proposals (#365): one pending condition-edit diff per condition, by id
+  const editProposalByCond = useMemo(() => new Map((Array.isArray(conditionEditProposals) ? conditionEditProposals : []).filter((p) => p && p.condition_id).map((p) => [p.condition_id, p])), [conditionEditProposals]);
 
   // unit-system display edge (mirrors the canvas HUD): internal math stays feet
   const fa = (sf) => `${num(areaVal(sf, units))} ${areaUnit(units)}`;
@@ -987,6 +991,37 @@ function TakeoffsPanel({
             used to live in its own toolbar row above the canvas. Extracted to
             ConditionAppearanceEditor so the docked panel AND the top-bar band
             render the same editor from one source of truth. */}
+        {/* proposals (#365): a pending condition-edit diff sits UNDER the row
+            it targets — current → proposed per knob, the agent's rationale,
+            and the decision. Nothing on the condition changes until Accept;
+            Reject drops the diff. The row above always shows the current
+            values, exactly like the report. */}
+        {editProposalByCond.get(c.id) && (() => {
+          const p = editProposalByCond.get(c.id);
+          const rows = describeConditionEdit(c, p);
+          return (
+            <div data-condition-proposal={p.id} onClick={(e) => e.stopPropagation()}
+              style={{ margin: "0 12px 8px", padding: "6px 8px", border: "1px dashed var(--cobalt)", background: "var(--paper-bright)", fontSize: 11.5 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                <span style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 9.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--cobalt)", fontWeight: 700 }}>Proposed change</span>
+                <span style={{ flex: 1 }} />
+                <button onClick={() => onAcceptConditionEdit?.(p.id)} title="Apply the proposed values to this condition — the same edit typing them here would make"
+                  style={{ padding: "2px 8px", borderRadius: 0, border: "1px solid var(--c-positive)", background: "var(--c-positive)", color: "var(--paper-bright)", cursor: "pointer", fontSize: 11, fontWeight: 600 }}>Accept</button>
+                <button onClick={() => onRejectConditionEdit?.(p.id)} title="Drop the proposal — the condition stays as it is"
+                  style={{ padding: "2px 8px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 11 }}>Reject</button>
+              </div>
+              {rows.map((r) => (
+                <div key={r.field} style={{ display: "flex", gap: 6, fontFamily: "var(--f-mono,monospace)", fontSize: 11, color: "var(--ink)" }}>
+                  <span style={{ color: "var(--ink-muted)", minWidth: 68 }}>{r.field}</span>
+                  <span style={{ color: "var(--ink-muted)", textDecoration: "line-through" }}>{r.from}</span>
+                  <span>→</span>
+                  <strong>{r.to}</strong>
+                </div>
+              ))}
+              {p.rationale ? <div style={{ marginTop: 4, color: "var(--ink-muted)", fontStyle: "italic" }}>{p.rationale}</div> : null}
+            </div>
+          );
+        })()}
         {on && <ConditionAppearanceEditor cond={c} onUpdateCond={onUpdateCond} onSetCondParam={onSetCondParam} onAssignAttr={onAssignAttr} conditionColumns={conditionColumns} units={units} rollInfo={rollByCond?.get(c.id) || null} />}
         {on && onDeriveTransitions && <TransitionsAction cond={c} sources={transitionSources} draft={transDraft} setDraft={setTransDraft}
           result={transResult} setResult={setTransResult} onDerive={onDeriveTransitions} onLocate2={onLocateTransition} />}

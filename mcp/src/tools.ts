@@ -21,6 +21,8 @@ import {
   createRfiOutput, listRfisOutput, resolveRfiOutput, deleteRfiOutput,
   sheetGraphOutput, resolveTagOutput, findScheduleOutput, sweepScheduleRowOutput, countMarksOutput,
   exportDxfOutput, getSheetVectorsOutput,
+  proposeTakeoffOutput, reviseProposalOutput, withdrawProposalOutput,
+  proposeConditionEditOutput, withdrawConditionEditOutput,
 } from "./outputs.ts";
 import { exportMarkedPdf } from "./marked.ts";
 import { assertWritable, OVERWRITE_DESC } from "./safewrite.ts";
@@ -145,6 +147,15 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
     return session.detectRooms(a.sheet, { condition: a.condition, role: a.role, returnVerts: a.return_verts, minAreaSf: a.min_area_sf, sensitivity: a.sensitivity, layers: a.layers, assignFromSchedule: a.assign_from_schedule });
   }));
   }
+
+  server.registerTool("propose_takeoff", {
+    description: `Open a PROPOSAL — a named batch of the shapes you are about to commit, with one identity (#365). Every shape you commit from here on (${oneClick ? "one_click, detect_rooms, " : ""}measure_polygon, measure_line, measure_surface, place_count, the sweeps, the derives, cut_out) attaches to it until you open another proposal or withdraw this one; the estimator then sees ONE Accept pill for the whole batch instead of one per shape — a forty-room pass becomes one decision, not forty. Use it BEFORE the work, the way an estimator titles a takeoff before tracing: "Level 2 rooms per finish schedule A-601", "Base derived from CPT-1 rooms". label is what the estimator reads on the pill; rationale is what decided the batch (the schedule row, the sheet, the rule) — both required, neither is a comment. Nothing here commits geometry or changes a total: an empty proposal is just a heading. The batch is what revise_proposal replaces and withdraw_proposal removes; shapes the estimator has already accepted leave the batch and no agent verb reaches them. takeoff_summary carries the ledger (pending / accepted / withdrawn per batch).`,
+    inputSchema: {
+      label: z.string().min(1).describe("The batch's title, as the estimator will read it on the Accept pill"),
+      rationale: z.string().min(1).describe("What decided the batch — cite the schedule row, sheet, or rule"),
+    },
+    outputSchema: proposeTakeoffOutput,
+  }, run("propose_takeoff", (a) => session.proposeTakeoff(a.label, a.rationale)));
 
   server.registerTool("measure_polygon", {
     description: `Measure a closed polygon you supply (min 3 vertices, image px): area_sf and perimeter_lf at the sheet's scale. Requires the scale to be set. Pass condition to commit it; role "deduct" subtracts. ${COORDS}`,
@@ -393,6 +404,28 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
     outputSchema: deleteShapeOutput,
   }, run("delete_shape", ({ shape_id }) => session.deleteShape(shape_id)));
 
+  server.registerTool("revise_proposal", {
+    description: `Replace EVERY still-pending shape in a proposal with a new set, as ONE journal step (#365) — the move for "I re-measured and got a better batch". The old pending shapes go, the replacements commit under the same proposal, and undo_last puts the previous batch back exactly. All-or-nothing: the whole replacement is validated (sheet, scale, vertex count, a height for surface_area) before the first pending shape is removed, so a malformed last shape leaves the batch untouched and the error says which entry and why. Shapes the estimator already accepted are ink — they stay, and they are not part of what this replaces. verts are image px like every other tool; roles and minimums match the measure tools (floor_area/deduct ≥3, linear/surface_area ≥2, count 1). An empty shapes list is refused — withdraw_proposal is the verb for that. ${COORDS}`,
+    inputSchema: {
+      proposal_id: z.string().describe("The batch, from propose_takeoff"),
+      shapes: z.array(z.object({
+        sheet: z.string().describe('Sheet key ("plan.pdf", "plan.pdf#2") or title-block number'),
+        condition: z.string().describe("Finish tag — minted on first touch, like measure_polygon"),
+        role: z.enum(["floor_area", "deduct", "linear", "surface_area", "count"]),
+        verts: z.array(pointSchema).min(1).describe("Geometry in image px: a ring for areas, a run for linear/surface, one point for a count"),
+        label: z.string().optional().describe("The room this shape belongs to (per-room reporting)"),
+        height_ft: z.number().positive().optional().describe("surface_area only — the height to quantify at when the condition has none"),
+      })).min(1),
+    },
+    outputSchema: reviseProposalOutput,
+  }, run("revise_proposal", (a) => session.reviseProposal(a.proposal_id, a.shapes)));
+
+  server.registerTool("withdraw_proposal", {
+    description: `Take a proposal back (#365): every still-pending shape in the batch is removed in ONE journal step, the record stays marked withdrawn (its label is history the estimator may still read), and new commits stop attaching to it. Shapes the estimator already accepted are ink and stay — the reply counts them. This is the honest exit for "that batch was wrong" — one call instead of N delete_shape calls, and undo_last restores the whole batch.`,
+    inputSchema: { proposal_id: z.string().describe("The batch, from propose_takeoff") },
+    outputSchema: withdrawProposalOutput,
+  }, run("withdraw_proposal", ({ proposal_id }) => session.withdrawProposal(proposal_id)));
+
   server.registerTool("sheet_context", {
     description: `The sheet's STRUCTURE in one call and one frame: the classified vector segments, the positioned text spans, and the hatch-family instances of a region — everything the engine itself floods against, exposed as data instead of pixels. Use it when you need to REASON about a region rather than look at it: which lines bound this space and at what pen weight, what the region says, and which periodic fill pattern covers it. The join is the point — all three arrive in image px with no reconciliation left to do, and the reply echoes the post-clamp region so passing that same rect to view_sheet gives you the matching render by construction. Hatch families carry a content-derived id (same pattern spec ⇒ same id, anywhere on the sheet), so matching a plan region to a legend swatch is comparing two ids, not guessing from a render — read the legend region, read the room region, match ids, and cite both bboxes as evidence. Decimation is declared, ordered, and counted on every reply: segments shorter than min_len_px drop first (invisible ink), then a max_segments cap applies LONGEST-FIRST so walls survive and hatch strokes go; kept + dropped always reconciles to total_in_region, and whole segments drop with their meta intact — nothing is ever simplified or merged, because these are classified segments and a merge would rewrite the classification. A scan returns has_vector_linework: false with empty vectors — absence of linework, never a claim the region is blank. ${COORDS}`,
     inputSchema: {
@@ -477,6 +510,26 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
     },
     outputSchema: editConditionOutput,
   }, run("edit_condition", (a) => session.editCondition(a.condition, { waste_pct: a.waste_pct, multiplier: a.multiplier, height_ft: a.height_ft, roll_setup: a.roll_setup })));
+
+  server.registerTool("propose_condition_edit", {
+    description: `PROPOSE a change to a condition instead of making it (#365): a diff — a new finish tag (rename), waste %, ×N multiplier, height_ft, roll_setup — held PENDING until the estimator accepts it from the panel. edit_condition is the wrong power for "I think this condition is wrong": a tag rename or a knob change should be a decision the estimator makes, not one they discover. Until acceptance NOTHING changes — takeoff_summary and export_report keep computing from the current values and carry the diff beside them (proposed_condition_edits), and once accepted the report is byte-for-byte what a direct edit_condition would have produced (the same write path). Only fields that differ from the current value are recorded; a proposal that changes nothing is refused, and a rename onto a tag another condition already carries is refused (two conditions on one tag would make one unreachable). One pending diff per condition — proposing again replaces the earlier one (undo_last restores it). rationale is required: the estimator accepts a reason.`,
+    inputSchema: {
+      condition: z.string().describe("Finish tag of an EXISTING condition, e.g. 'CPT-1'"),
+      finish_tag: z.string().min(1).optional().describe("Proposed new tag (a rename)"),
+      waste_pct: z.number().min(0).optional(),
+      multiplier: z.number().positive().optional(),
+      height_ft: z.number().positive().optional(),
+      roll_setup: z.union([z.null(), z.object({}).passthrough()]).optional().describe("Proposed roll-goods setup, or null to propose opting out"),
+      rationale: z.string().min(1).describe("Why — the schedule row, the spec section, the sheet note that decided it"),
+    },
+    outputSchema: proposeConditionEditOutput,
+  }, run("propose_condition_edit", (a) => session.proposeConditionEdit(a.condition, { finish_tag: a.finish_tag, waste_pct: a.waste_pct, multiplier: a.multiplier, height_ft: a.height_ft, roll_setup: a.roll_setup }, a.rationale)));
+
+  server.registerTool("withdraw_condition_edit", {
+    description: `Drop a pending condition-edit proposal (#365) without touching the condition. undo_last re-seats it.`,
+    inputSchema: { proposal_id: z.string().describe("From propose_condition_edit, or takeoff_summary's proposed_condition_edits") },
+    outputSchema: withdrawConditionEditOutput,
+  }, run("withdraw_condition_edit", ({ proposal_id }) => session.withdrawConditionEdit(proposal_id)));
 
   server.registerTool("duplicate_condition", {
     description: `Twin a condition — the same finish measured somewhere else, with its own supporting materials. One finish in two areas is not two conditions and it is not one either: the same sheet goods over a slab and over a raised deck take the same field material and different preparation underneath (one wants a moisture barrier, the other a primer and a different adhesive). The twin arrives carrying the original's whole materials list and keeps FOLLOWING it — change a coverage rate on the original and every twin that has not touched that row gets it; edit a row on the twin and only THAT row stops following. \`label\` is REQUIRED and becomes the tag suffix ('CPT-1' + 'Level 2' → 'CPT-1 – Level 2'), because every tool in this server resolves a condition by finish tag and takes the FIRST match: two conditions sharing a tag would make one permanently unreachable, and a takeoff re-import collapses them last-wins. A label already in use is refused rather than de-collided. No takeoffs come along — measure the new area against the returned condition_id. Reversible with undo_last; use split_condition to end the inheritance permanently.`,

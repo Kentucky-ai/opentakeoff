@@ -19,12 +19,14 @@ export const TOOL_STAGES: Record<string, readonly string[]> = {
     "find_schedule", "read_sheet_text", "find_text", "sheet_context", "get_sheet_vectors", "view_sheet",
   ],
   measure: [
+    "propose_takeoff",
     "one_click", "detect_rooms", "measure_polygon", "cut_out", "measure_line",
     "measure_surface", "place_count", "count_marks", "symbol_sweep", "sweep_schedule_row",
     "derive_base", "derive_transitions",
   ],
   revise: [
     "list_shapes", "delete_shape", "edit_shape", "edit_materials", "edit_condition",
+    "revise_proposal", "withdraw_proposal", "propose_condition_edit", "withdraw_condition_edit",
     "duplicate_condition", "split_condition", "undo_last", "annotate",
     "list_annotations", "link_annotation", "mark_verdict", "delete_verdict",
     "create_rfi", "list_rfis", "resolve_rfi", "delete_rfi",

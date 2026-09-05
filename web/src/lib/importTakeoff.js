@@ -157,6 +157,21 @@ export function mergeTakeoffImport(current, imported, knownFiles = null) {
   const addedMarkups = arr(imported.markups).filter((m) => m && typeof m === "object" && (!m.id || !markupIds.has(m.id)));
   const rfiIds = new Set(arr(cur.rfis).map((r) => r?.id).filter(Boolean));
   const addedRfis = arr(imported.rfis).filter((r) => r && typeof r === "object" && r.id && !rfiIds.has(r.id));
+  // ── proposals (#365): transport, not minting ──────────────────────────────
+  // A batch arrives with its shapes (they reference it by origin.proposal_id)
+  // so the canvas can offer one Accept per batch; a pending condition diff
+  // follows its condition through the tag-identity rule above, and a diff that
+  // names a tag already taken here is dropped rather than staged as a collision.
+  const proposalIds = new Set(arr(cur.proposals).map((p) => p?.id).filter(Boolean));
+  const addedProposals = arr(imported.proposals).filter((p) => p && typeof p === "object" && typeof p.id === "string" && !proposalIds.has(p.id));
+  const editIds = new Set(arr(cur.condition_edit_proposals).map((p) => p?.id).filter(Boolean));
+  const takenTags = new Set(conditions.map((c) => tagKey(c.finish_tag)));
+  const addedEdits = arr(imported.condition_edit_proposals)
+    .filter((p) => p && typeof p === "object" && typeof p.id === "string" && !editIds.has(p.id) && p.proposed && typeof p.proposed === "object")
+    .map((p) => (condMap.has(p.condition_id) ? { ...p, condition_id: condMap.get(p.condition_id) } : p))
+    .filter((p) => condIds.has(p.condition_id))
+    .filter((p) => p.proposed.finish_tag === undefined || !takenTags.has(tagKey(p.proposed.finish_tag)) || tagKey(p.proposed.finish_tag) === tagKey(conditions.find((c) => c.id === p.condition_id)?.finish_tag))
+    .filter((p) => !arr(cur.condition_edit_proposals).some((q) => q?.condition_id === p.condition_id));   // one pending diff per condition — the operator's own stays
   // ── approvals (#176): transport, not minting ──────────────────────────────
   // The markup rule (append new ids, skip ones already here) behind the same
   // load gate the canvas hydrate runs — an estimator seal arriving by file
@@ -182,6 +197,8 @@ export function mergeTakeoffImport(current, imported, knownFiles = null) {
     shapes: [...arr(cur.shapes), ...addedShapes],
     markups: [...arr(cur.markups), ...addedMarkups],
     ...(addedRfis.length ? { rfis: [...arr(cur.rfis), ...addedRfis] } : {}),
+    ...(addedProposals.length ? { proposals: [...arr(cur.proposals), ...addedProposals] } : {}),
+    ...(addedEdits.length ? { condition_edit_proposals: [...arr(cur.condition_edit_proposals), ...addedEdits] } : {}),
     ...(addedApprovals.length ? { approvals: [...arr(cur.approvals), ...addedApprovals] } : {}),
     sheets,
   };

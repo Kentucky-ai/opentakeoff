@@ -44,9 +44,9 @@ what's missing where rendering isn't available.
 engine is re-validated against a wider plan corpus: `tools/list` never names them, the
 initialize `instructions` say so and point at `measure_polygon`, and no other tool's
 description sends an agent to a verb that is not there. A default build registers
-**45 tools**. Everything else — sweeps, counts, `derive_base`, `derive_transitions`, the
+**50 tools**. Everything else — sweeps, counts, `derive_base`, `derive_transitions`, the
 exports — is unchanged. Set `OPENTAKEOFF_ONE_CLICK=1` in the server's environment to
-register both verbs (47 tools); the parity, conformance and e2e tests run that way, and
+register both verbs (52 tools); the parity, conformance and e2e tests run that way, and
 `test/gate.test.ts` pins both surfaces. The rows and examples below that use `one_click`
 describe the lifted build. Design note: [`docs/design/ONE_CLICK_GATE.md`](../docs/design/ONE_CLICK_GATE.md).
 
@@ -121,8 +121,8 @@ includes document text, shape vertices, or result payload content.
 
 ### Staged tool exposure (opt-in)
 
-By default every client gets all 47 tool schemas on `tools/list`—the flat
-contract every published client already expects. Forty-three descriptions is real
+By default every client gets all 50 tool schemas on `tools/list`—the flat
+contract every published client already expects. Fifty descriptions is real
 token weight for an agent session that may never touch half of them, so the
 server can instead stage the surface along the workflow it already teaches:
 
@@ -162,6 +162,11 @@ reads the tool list once. ([#230](https://github.com/Kentucky-ai/opentakeoff/iss
 | `takeoff_summary` | Per-condition totals + grand totals, computed by the Report's rules. |
 | `export_takeoff` | The full `opentakeoff.takeoff_canvas.v1` payload—exactly what the app autosaves. Inline, and to disk with `path` (see **Writing to disk** below). |
 | `delete_shape` | Remove a committed shape by id. |
+| `propose_takeoff` | **Open a named batch** (#365). Every shape you commit from here on attaches to it (`origin.proposal_id`, stamped centrally at the commit—hand traces, sweeps, derives, `cut_out` alike), so the estimator sees ONE Accept pill for the batch instead of one per shape. `label` is what they read on the pill, `rationale` is what decided the batch; both required. Commits nothing itself. |
+| `revise_proposal` | Replace **every still-pending shape** in a batch with a new set, as one journal step. All-or-nothing: validated (sheet, scale, vertex minimum, a height for `surface_area`) before the first pending shape is removed, the error naming the entry. Accepted shapes are ink and stay. One `undo_last` puts the previous batch back. |
+| `withdraw_proposal` | Remove a batch's pending shapes in one step; the record stays marked withdrawn, accepted shapes stay (the reply counts them). `undo_last` restores the whole batch. |
+| `propose_condition_edit` | **Propose** a condition change instead of making it: a diff—new `finish_tag` (rename), `waste_pct`, `multiplier`, `height_ft`, `roll_setup`—held pending until the estimator accepts from the panel. Nothing changes until then: `takeoff_summary` and `export_report` compute from the current values and carry the diff beside them. Only differing fields are recorded; a no-op or a rename onto a taken tag is refused; one pending diff per condition (proposing again replaces it). `rationale` required. |
+| `withdraw_condition_edit` | Drop a pending condition-edit diff without touching the condition. |
 | `edit_shape` | **Revise** a committed shape instead of redoing it: new `verts`, a different `condition`, a different `role`, a `label` (the room it belongs to—what per-room reporting groups by; `""` clears it), or any combination—quantities recomputed from the result. Refuses shapes a human affirmed. |
 | `edit_materials` | Add/remove/patch supporting-materials rows on a condition—the coverage-rate lines (adhesive at N sf/gal, grout at N lf/bag, …) that turn a measured quantity into an order quantity, matching the canvas's Supporting Materials panel. `basis` is `area` \| `linear` \| `count` \| **`seam_lf`**—the last is the *figured* roll-layout seam length a weld rod or seam tape is bought by (set `roll_setup` on the condition first; without one it reads 0, because nothing has decided how that floor gets cut). `condition` mints on first touch, like `one_click`/`measure_polygon`. No review gate (materials rows are quantity config, not traced geometry)—edits directly, reversible with `undo_last`. |
 | `edit_condition` | Set a condition's **waste %**, **×N multiplier**, **height_ft** (the H knob `measure_surface` quantifies against), and **roll_setup** (the roll-goods opt-in: seams figured, cuts packed, the reply echoes the order—cuts, `order_lf`, rolls, `order_qty`—and `export_report`'s `roll_goods` block carries the same rows; `null` opts out)—the knobs that turn measured quantities into order quantities. Resolves an **existing** finish tag or errors—a typo must not mint an empty condition. No review gate; one `undo_last` step restores the knobs verbatim. |
