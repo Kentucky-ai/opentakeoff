@@ -2,6 +2,15 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — Microsoft 365 sync: the real-tenant corners, hardened ahead of the live proof (#315)
+
+### Changed
+- **The Graph client survives a revoked token.** A 401 mid-session now asks MSAL for one forced refresh and retries with the new token; a second 401 surfaces as a readable *sign in again* state (`GraphAuthError`, stage `sign-in`) instead of reading as "offline" forever. 403 names the permission stage.
+- **File content is read through the item's pre-authenticated download URL with no bearer** — the documented browser path — instead of following the `/content` redirect with an Authorization header, which is the corner where business SharePoint and consumer OneDrive diverge. The `/content` stream stays as the fallback for an item with no download URL.
+- **Throttling covers 504 and honors `Retry-After` as an HTTP-date** as well as seconds.
+- **Every MSAL sign-in failure names its stage** — consent, tenant, app registration, popup, network, sign-in — with the AADSTS code, so a tester's report says which stage broke (`web/src/lib/msgraph/errors.js`). Web only, no MCP change.
+- `SELF_HOSTING.md` gains a **no-tenant test path** (a personal Microsoft account's OneDrive against a free Entra registration with `VITE_MSAL_TENANT=consumers`) — the finish line on #315 is still a live two-machine round trip, and this is the way to run one without a business tenant.
+
 ## Unreleased — Scope collision: two conditions claiming the same floor, as a number that has to read zero (mcp 0.9.75, #366)
 
 ### Added
