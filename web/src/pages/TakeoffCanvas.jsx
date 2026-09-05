@@ -120,7 +120,7 @@ import { computeRollTakeoff, seamLfByShape } from "../lib/rollTakeoff.js";
 // pass through. AiSettings is the config surface for the ai.js seam.
 import AgentPanel from "../components/AgentPanel.jsx";
 import AiSettings from "../components/AiSettings.jsx";
-import { AGENT_TOOL_DEFS, executeAgentTool, agentScaleGate } from "../lib/agentTools.js";
+import { agentToolDefs, executeAgentTool, agentScaleGate } from "../lib/agentTools.js";
 import { runAgentLoop } from "../lib/agentLoop.js";
 import { runVoiceCommand, isAgentHandoffTrigger, shouldOfferAgentHandoff } from "../lib/voiceActions";
 import { createVoiceRecognizerClient } from "../lib/voiceRecognizerClient";
@@ -167,6 +167,7 @@ import { applyShapeCommand, geomSnapshot, vertsEqual, recordCommand } from "../l
 import { applyApprovalCommand, sanitizeApprovals, approvalInk, APPROVAL_R } from "../lib/approvals.js";
 import { findCutoutParent, subtractCutout, recomposeCutouts, cutRunsAcross } from "../lib/cutout.js";
 import { normalizeAgentReview } from "../lib/reviewState.js";
+import { oneClickEnabled, ONE_CLICK_GATE_MESSAGE } from "../lib/gate.js";
 import { computeShapeMetrics, needsMetrics, recalibrateShapes } from "../lib/shapeMetrics.js";
 import { fmtCheckLen, parseLenInput, checkVerdict, M_PER_FT, areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, heightVal, heightUnit, heightInputToFeet, heightStep, dimInputStr, dimLabel } from "../lib/units";
 import * as panelGeom from "../lib/panelGeometry.js";
@@ -2807,6 +2808,7 @@ export default function TakeoffCanvas() {
       }
       const map = { v: "select", a: "area", r: "rect", l: "linear", s: "surface", c: "count", d: "deduct", o: "oneclick", k: "check", h: "highlighter", n: "dimension", y: "symbol" };
       const t = map[lower];
+      if (t === "oneclick" && !oneClickEnabled()) { setCommitMsg(ONE_CLICK_GATE_MESSAGE); return; }   // the gate (lib/gate.js)
       if (t) setTool(t);
     };
     window.addEventListener("keydown", onKey);
@@ -4717,6 +4719,7 @@ export default function TakeoffCanvas() {
   // message surface stays setCommitMsg, unchanged.
   async function oneClickAt(p, negative, direct, fieldClick) {
     const say = (message) => { setCommitMsg(message); return { ok: false, message }; };
+    if (!oneClickEnabled()) return say(ONE_CLICK_GATE_MESSAGE);   // the TEMPORARY gate (lib/gate.js) — every caller funnels here
     const tp = panelAt(p[0]);
     const upp = uppFor(tp.key);
     if (!upp) return say(`Set the scale for ${labelFor(tp)} first.`);
@@ -6533,7 +6536,7 @@ export default function TakeoffCanvas() {
     const ctx = buildAgentCtx();
     try {
       await runAgentLoop({
-        cfg: aiConfig(), goal, tools: AGENT_TOOL_DEFS,
+        cfg: aiConfig(), goal, tools: agentToolDefs(),
         execute: (name, args) => executeAgentTool(ctx, name, args),
         onEvent: appendAgentLog,
         signal: ctl.signal,
@@ -8211,7 +8214,7 @@ export default function TakeoffCanvas() {
          {railLabel("SEL")}
          {railTile("select", "select", "Select — pick a takeoff, drag points; drag open canvas to pan", "V")}
          {railLabel("MEAS")}
-         {MEASURE_TOOLS.map((t) => railTile(t.id, t.icon, t.label, t.shortcut))}
+         {MEASURE_TOOLS.filter((t) => t.id !== "oneclick" || oneClickEnabled()).map((t) => railTile(t.id, t.icon, t.label, t.shortcut))}
          {railLabel("CUT")}
          {CUT_TOOLS.map((t) => railTile(t.id, t.icon, t.label, t.shortcut, null, { tint: "var(--c-danger)" }))}
          {railLabel("MARK")}

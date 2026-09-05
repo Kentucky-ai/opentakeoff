@@ -74,7 +74,7 @@ function overlapSf(a: number[][], b: number[][], sfPerPx: number) {
 
 test("no two regions the engine hands over on one sheet share floor", async (t) => {
   const [ct, st] = InMemoryTransport.createLinkedPair();
-  await buildServer(new Session()).connect(st);
+  await buildServer(new Session(), { oneClick: true }).connect(st);
   const client = new Client({ name: "overlap", version: "0.0.0" });
   await client.connect(ct);
   const call = async (name: string, args: unknown) => {

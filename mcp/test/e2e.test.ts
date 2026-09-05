@@ -26,7 +26,7 @@ const ROOMS: [string, number, number][] = [
 
 test("e2e: load → set_scale(detected) → one_click × 4 rooms → summary → export round-trip", async () => {
   const [ct, st] = InMemoryTransport.createLinkedPair();
-  await buildServer(new Session()).connect(st);
+  await buildServer(new Session(), { oneClick: true }).connect(st);
   const client = new Client({ name: "e2e", version: "0.0.0" });
   await client.connect(ct);
   const call = async (name: string, args: Record<string, unknown> = {}) => {

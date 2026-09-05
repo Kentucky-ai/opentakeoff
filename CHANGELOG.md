@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — One-Click temporarily gated (mcp 0.9.73)
+
+### Changed
+- **One-Click Area and batch room detection are temporarily gated while the flood engine is re-validated against a wider plan corpus.** The engine code stays in the repo and the bench still rules it; what is withdrawn is every way to reach it. On the MCP server `one_click` and `detect_rooms` are **not registered** on a default build — `tools/list` never names them, the initialize instructions say so and point at `measure_polygon`, and no surviving tool description sends an agent to a verb that is not there (the published tool count is 45). In the canvas the One-Click tile leaves the rail, `O` reports the gate instead of arming, the voice trace and the in-app agent's tool list drop it, and the in-app guide says what to do instead (Area, `A`). Lift the gate for a build with `OPENTAKEOFF_ONE_CLICK=1` (server) / `VITE_ONE_CLICK=1` (canvas); the parity and conformance tests run with it lifted, `gate.test.ts` pins both surfaces. Design: `docs/design/ONE_CLICK_GATE.md`.
+
 ## Unreleased — Phase 1 measurement correctness (mcp 0.9.72)
 
 ### Fixed

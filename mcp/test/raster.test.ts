@@ -44,7 +44,7 @@ const SEEDS: [string, number, number][] = [
 
 async function pair(): Promise<Client> {
   const [ct, st] = InMemoryTransport.createLinkedPair();
-  await buildServer(new Session()).connect(st);
+  await buildServer(new Session(), { oneClick: true }).connect(st);
   const client = new Client({ name: "raster-e2e", version: "0.0.0" });
   await client.connect(ct);
   return client;

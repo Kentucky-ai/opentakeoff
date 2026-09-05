@@ -7,6 +7,7 @@
 import { z } from "zod";
 import type { McpServer, RegisteredTool } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ok, fail, UserError } from "./format.ts";
+import { GATED_TOOLS } from "./gate.ts";
 
 /** Every tool the server registers, by workflow stage. The four lists must
  * partition the full tool set exactly — enforced by a test, so a new tool
@@ -34,13 +35,34 @@ export const TOOL_STAGES: Record<string, readonly string[]> = {
   ],
 };
 
-/** The full tool surface, sorted — THE single source of truth. Every other
- * statement of "which tools exist" (tools.test, staging.test, the dist smoke
- * harness, the README's tool count) derives from this, so registering a tool
- * means adding it to TOOL_STAGES above and nowhere else. */
-export const TOOL_NAMES: readonly string[] = Object.freeze(
+/** Every tool the code can register, sorted — the table above, flattened.
+ * Registering a tool means adding it to TOOL_STAGES and nowhere else. */
+export const ALL_TOOL_NAMES: readonly string[] = Object.freeze(
   Object.values(TOOL_STAGES).flat().sort(),
 );
+
+/** The surface a DEFAULT build registers — THE single source of truth for
+ * every statement of "which tools exist" (tools.test, staging.test, the dist
+ * smoke harness, the README's tool count). While the One-Click gate is up
+ * (src/gate.ts) this is ALL_TOOL_NAMES minus the gated verbs; it does not
+ * read the environment, so the published count is one number everywhere. */
+export const TOOL_NAMES: readonly string[] = Object.freeze(
+  ALL_TOOL_NAMES.filter((n) => !GATED_TOOLS.includes(n)),
+);
+
+/** The names a build with the gate lifted (or not) registers. */
+export function toolNamesFor(oneClick: boolean): readonly string[] {
+  return oneClick ? ALL_TOOL_NAMES : TOOL_NAMES;
+}
+
+/** The stage table as a given build sees it: the gated verbs drop out of
+ * `measure` while the gate is up, so opening a stage never names a ghost. */
+export function stagesFor(oneClick: boolean): Record<string, readonly string[]> {
+  if (oneClick) return TOOL_STAGES;
+  return Object.fromEntries(
+    Object.entries(TOOL_STAGES).map(([stage, names]) => [stage, names.filter((n) => !GATED_TOOLS.includes(n))]),
+  );
+}
 
 const OPENABLE = ["measure", "revise", "handoff"] as const;
 
@@ -62,21 +84,23 @@ export const STAGED_INSTRUCTIONS =
  * (the SDK no-ops it before a transport connects), so a client that supports
  * dynamic tool lists sees the group appear the moment the agent asks for it.
  */
-export function applyStagedTools(server: McpServer, registered: Map<string, RegisteredTool>): void {
+export function applyStagedTools(server: McpServer, registered: Map<string, RegisteredTool>, oneClick = false): void {
   const openStages = new Set<string>(["setup"]);
+  const stages = stagesFor(oneClick);
   for (const stage of OPENABLE) {
-    for (const name of TOOL_STAGES[stage]) registered.get(name)?.disable();
+    for (const name of stages[stage]) registered.get(name)?.disable();
   }
 
+  const measureVerbs = oneClick ? "one_click, detect_rooms, measure_*, sweeps and derives" : "measure_*, sweeps and derives";
   server.registerTool("open_tool_stage", {
-    description: `Enable a stage of this server's tools. Tool exposure is staged to match the takeoff workflow: "setup" (orient: load, scale, read the set) is always enabled; "measure" (commit shapes: one_click, detect_rooms, measure_*, sweeps and derives), "revise" (edit, annotate, verdict-mark, undo), and "handoff" (summaries, exports, the marked set) start closed and open here on demand. Opening a stage is idempotent and never closes another — the surface only grows. Call it the moment the work reaches a closed stage; the reply lists exactly which tools just became available.`,
+    description: `Enable a stage of this server's tools. Tool exposure is staged to match the takeoff workflow: "setup" (orient: load, scale, read the set) is always enabled; "measure" (commit shapes: ${measureVerbs}), "revise" (edit, annotate, verdict-mark, undo), and "handoff" (summaries, exports, the marked set) start closed and open here on demand. Opening a stage is idempotent and never closes another — the surface only grows. Call it the moment the work reaches a closed stage; the reply lists exactly which tools just became available.`,
     inputSchema: {
       stage: z.enum(OPENABLE).describe('Which stage to enable: "measure", "revise", or "handoff"'),
     },
     outputSchema: openToolStageOutput,
   }, async ({ stage }: { stage: (typeof OPENABLE)[number] }) => {
     try {
-      const names = TOOL_STAGES[stage];
+      const names = stages[stage];
       const enabled: string[] = [];
       for (const name of names) {
         const tool = registered.get(name);

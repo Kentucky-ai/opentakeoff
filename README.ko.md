@@ -2,6 +2,8 @@
 
 # OpenTakeoff
 
+> **One-Click Area is temporarily gated.** The flood engine is being re-validated against a wider plan corpus. Until that finishes the One-Click tool is off the canvas rail (`O` reports the gate) and the `one_click` / `detect_rooms` MCP verbs are **not registered** (a default build ships 45 tools). Trace rooms with **Area** (`A`) in the canvas and `measure_polygon` over MCP; every other tool, sweep and derivation is unchanged. A build lifts the gate with `VITE_ONE_CLICK=1` (canvas) / `OPENTAKEOFF_ONE_CLICK=1` (server). Sections and videos below that show One-Click describe the engine as it returns — see [`docs/design/ONE_CLICK_GATE.md`](docs/design/ONE_CLICK_GATE.md).
+
 **사람과 AI 에이전트 모두를 위해 만들어진 최초의 물량 산출 캔버스.**
 
 건축 도면을 열어 측정하세요 — 직접 실을 트레이스하거나, **동일한 엔진**에 AI 에이전트를 붙이거나.

@@ -27,6 +27,8 @@ carry an explicit review status. See the [Phase 1 test guide](docs/PHASE_1_TESTI
 
 **Watch it:** [an autonomous agent runs a takeoff, live, no cuts (2:47)](https://youtu.be/e--kXxSGv7Y) · [hospital finish plan → report in about a minute (1:14)](https://youtu.be/cNDpPkTLY1k) · [canvas walkthrough (1:10)](https://youtu.be/aHiW8H2TSBs) · [One-Click Area (0:51)](https://youtu.be/YIjWZ-BAhLE)
 
+> **One-Click Area is temporarily gated.** The flood engine is being re-validated against a wider plan corpus. Until that finishes the One-Click tool is off the canvas rail (`O` reports the gate) and the `one_click` / `detect_rooms` MCP verbs are **not registered** (a default build ships <!--tool-count-->45<!--/tool-count--> tools). Trace rooms with **Area** (`A`) in the canvas and `measure_polygon` over MCP; every other tool, sweep and derivation is unchanged. A build lifts the gate with `VITE_ONE_CLICK=1` (canvas) / `OPENTAKEOFF_ONE_CLICK=1` (server). Sections and videos below that show One-Click describe the engine as it returns — see [`docs/design/ONE_CLICK_GATE.md`](docs/design/ONE_CLICK_GATE.md).
+
 <br/>
 
 <img src="docs/img/social-card.png" alt="OpenTakeoff — a real takeoff on a floor finish plan, driven the same way by a person or by an AI agent over MCP, with the scale and origin of every measurement" width="820"/>
@@ -72,7 +74,7 @@ otherwise, and nothing an autonomous agent could call.
 
 OpenTakeoff is that engine, with two front ends over identical geometry:
 
-- **A stdio MCP server**—`npx -y opentakeoff-mcp`, <!--tool-count-->47<!--/tool-count--> tools, on the
+- **A stdio MCP server**—`npx -y opentakeoff-mcp`, <!--tool-count-->45<!--/tool-count--> tools, on the
   [official MCP registry](https://registry.modelcontextprotocol.io). An agent opens a plan,
   reads the title block, sets the scale, floods the rooms, checks its own work on a rendered
   overlay, and hands back a marked-up planset PDF.
@@ -253,8 +255,8 @@ npm run dev        # http://localhost:5173
 ```
 
 Or open the [**live demo**](https://opentakeoff.kentucky-ai.com). Drag in
-`demo/sample-plan.pdf`, accept the detected scale, choose a condition, click **One-Click Area**,
-then click inside a room. Open **Report** for the breakdown and the exports. That whole loop on
+`demo/sample-plan.pdf`, accept the detected scale, choose a condition, press **`A`** (Area)
+and click the room's corners. (One-Click Area is temporarily gated — see the note at the top.) Open **Report** for the breakdown and the exports. That whole loop on
 video: [walkthrough (1:10)](https://youtu.be/aHiW8H2TSBs) ·
 [One-Click Area (0:51)](https://youtu.be/YIjWZ-BAhLE). The complete
 zero-to-exported walkthrough is the [**user manual**](docs/USER_GUIDE.md).
@@ -267,7 +269,7 @@ zero-to-exported walkthrough is the [**user manual**](docs/USER_GUIDE.md).
 3. Pull your conditions off the architect's finish schedule instead of typing them, and set waste
    and materials *before* you trace.
 4. Stitch anything split at a match line, align it, and only then start measuring.
-5. **One-Click** the floors room by room. Derive base and transitions off the rooms you just
+5. **Trace** the floors room by room — Area (`A`) while One-Click is gated. Derive base and transitions off the rooms you just
    traced rather than measuring them a second time—and read what the derivation *reports and
    never counts*, because those are doorway thresholds you still owe.
 6. Walk the set and look at what landed, fix with the grips, save a **revision**.
@@ -284,7 +286,7 @@ multi-file, up to **4 sheets side-by-side**, with hostile-archive guards so a ma
 fails cleanly instead of ballooning the tab. No upload step, no conversion service, no account.
 
 ### A real measuring engine
-**One-Click Area** is the headline: click inside a room, the linework bounds a flood fill, the
+**One-Click Area** is the headline — **temporarily gated** while the flood engine is re-validated (see the note at the top); this is what it does when it is on: click inside a room, the linework bounds a flood fill, the
 polygon traces itself, the vertices snap to true corners. **Hatching and poché don't fool it**—tile
 grids, plank lines, and section fills classify as pattern rather than wall, and the
 escalation is conservative enough that a misread can never come out worse than the strict fill.
@@ -468,7 +470,7 @@ plus a vision-capable model id.
 |---|---|
 | **Ingest** | PDF, image, or `.zip` plan set—unpacked in-browser, multi-page, multi-file, up to 4 sheets side-by-side |
 | **Scale** | Auto-detect the drawn note, calibrate from a known dimension, or verify one with a graded check—per sheet |
-| **Measure** | One-Click Area (vector flood + raster fallback), Area, Rectangle, Linear, Curved Line, Surface Area, Count, Cut Out deducts, ⟂ Transitions, Zone check—imperial or metric |
+| **Measure** | One-Click Area (vector flood + raster fallback — temporarily gated), Area, Rectangle, Linear, Curved Line, Surface Area, Count, Cut Out deducts, ⟂ Transitions, Zone check—imperial or metric |
 | **Drawing aids** | 45°/90° angle lock with `⇧` hard-lock, live angle + segment-length readout at the cursor, endpoint Snap (beta) |
 | **Conditions** | Color + CAD hatch per finish, waste %, ×N multiplier, wall height, border thickness, schedule import, browser-wide library |
 | **Supporting Materials** | Labor + subfloor type, coverage rate × basis (incl. figured seam LF) → rounded order quantities, trowel/roller presets, grout calculator |
@@ -481,7 +483,7 @@ plus a vision-capable model id.
 | **Voice** | Push-to-talk takeoff commands, recognized on-device in WebAssembly; audio never leaves the browser |
 | **View** | Light or **dark (negative print)**—sheet pixels inverted at draw time, exports follow |
 | **Storage** | IndexedDB + localStorage—client-only, nothing uploaded |
-| **MCP server** | <!--tool-count-->47<!--/tool-count--> tools + browsable sheet resources on stdio, multi-document sessions ([`mcp/`](mcp/README.md)) |
+| **MCP server** | <!--tool-count-->45<!--/tool-count--> tools + browsable sheet resources on stdio, multi-document sessions ([`mcp/`](mcp/README.md)) |
 | **Provenance** | Every shape records its scale, its method, its confidence, and whether a person or an agent made it |
 | **Capture (opt-in)** | Bundled [capture server](capture/README.md) banks each contributed takeoff as (geometry → label) training rows |
 | **Deploy** | One static build—Netlify, Vercel, GitHub Pages, Cloudflare Pages, S3, any static host |

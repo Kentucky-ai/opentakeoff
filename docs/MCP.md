@@ -12,6 +12,12 @@ shorter reads sit either side of it: [`AGENT_GUIDE.md`](AGENT_GUIDE.md) is the
 operating manual—how a takeoff is run, what withholds, what refuses—and
 [`mcp/README.md`](../mcp/README.md) is the tool-by-tool reference.
 
+> **One-Click is temporarily gated.** `one_click` and `detect_rooms` are not registered on a
+> default build while the flood engine is re-validated against a wider plan corpus; the server
+> says so in its initialize instructions and points at `measure_polygon`. Set
+> `OPENTAKEOFF_ONE_CLICK=1` to register them. The passages below that use the two verbs describe
+> that lifted build. See [`design/ONE_CLICK_GATE.md`](design/ONE_CLICK_GATE.md).
+
 ## Setup
 
 ```bash

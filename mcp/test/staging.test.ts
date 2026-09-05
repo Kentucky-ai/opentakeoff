@@ -9,7 +9,12 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildServer } from "../server.ts";
 import { Session } from "../src/session.ts";
-import { TOOL_STAGES, TOOL_NAMES } from "../src/staging.ts";
+import { TOOL_STAGES, TOOL_NAMES, stagesFor } from "../src/staging.ts";
+
+// The One-Click gate (src/gate.ts) is UP on every build here, so the table a
+// default build registers is stagesFor(false); TOOL_STAGES itself keeps the
+// gated verbs for the lifted build, which gate.test.ts covers.
+const STAGES = stagesFor(false);
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
 const KEY = "sample-plan.pdf";
@@ -29,11 +34,11 @@ test("staging: default build is the flat TOOL_NAMES — no opener, nothing disab
   const names = await toolNames(await connect(false));
   assert.equal(names.size, TOOL_NAMES.length);
   assert.ok(!names.has("open_tool_stage"));
-  for (const stage of Object.values(TOOL_STAGES)) for (const n of stage) assert.ok(names.has(n), n);
+  for (const stage of Object.values(STAGES)) for (const n of stage) assert.ok(names.has(n), n);
 });
 
 test("staging: the stage table partitions the registered set exactly", async () => {
-  const flat = Object.values(TOOL_STAGES).flat();
+  const flat = Object.values(STAGES).flat();
   assert.equal(flat.length, new Set(flat).size, "no tool sits in two stages");
   const names = await toolNames(await connect(false));
   assert.deepEqual(new Set(flat), names, "every registered tool has a stage, and no stage names a ghost");
@@ -43,25 +48,25 @@ test("staging: setup-only at start, open_tool_stage grows the surface, idempoten
   const client = await connect(true);
 
   const initial = await toolNames(client);
-  assert.deepEqual(initial, new Set([...TOOL_STAGES.setup, "open_tool_stage"]));
+  assert.deepEqual(initial, new Set([...STAGES.setup, "open_tool_stage"]));
 
   // setup tools work before any stage is opened
   const loaded: any = await client.callTool({ name: "load_plan", arguments: { path: PLAN } });
   assert.ok(!loaded.isError, "setup stage is live at start");
 
   // a closed stage's tool is refused
-  const closed: any = await client.callTool({ name: "one_click", arguments: { sheet: KEY, x: 600, y: 1084 } });
+  const closed: any = await client.callTool({ name: "measure_polygon", arguments: { sheet: KEY, verts: [[0, 0], [10, 0], [10, 10]] } });
   assert.ok(closed.isError, "measure is closed until opened");
 
   // open measure: the reply names what appeared, and the tool now lists + runs
   const open: any = await client.callTool({ name: "open_tool_stage", arguments: { stage: "measure" } });
   assert.ok(!open.isError);
   const opened = JSON.parse(open.content[0].text);
-  assert.deepEqual(new Set(opened.enabled), new Set(TOOL_STAGES.measure));
+  assert.deepEqual(new Set(opened.enabled), new Set(STAGES.measure));
   assert.deepEqual(opened.open_stages, ["setup", "measure"]);
   assert.deepEqual(opened.closed_stages, ["revise", "handoff"]);
   const afterMeasure = await toolNames(client);
-  assert.deepEqual(afterMeasure, new Set([...TOOL_STAGES.setup, ...TOOL_STAGES.measure, "open_tool_stage"]));
+  assert.deepEqual(afterMeasure, new Set([...STAGES.setup, ...STAGES.measure, "open_tool_stage"]));
 
   // re-open is a no-op, not an error
   const again: any = await client.callTool({ name: "open_tool_stage", arguments: { stage: "measure" } });
@@ -94,7 +99,7 @@ test("staging: staged instructions ride initialize only when the flag is on", as
 test("staging: a closed tool's refusal names its stage and the call that opens it", async () => {
   const client = await connect(true);
 
-  for (const [tool, stage] of [["one_click", "measure"], ["edit_shape", "revise"], ["export_marked_pdf", "handoff"]] as const) {
+  for (const [tool, stage] of [["measure_polygon", "measure"], ["edit_shape", "revise"], ["export_marked_pdf", "handoff"]] as const) {
     const r = await client.callTool({ name: tool, arguments: {} }) as { isError?: boolean; content: { text: string }[] };
     assert.ok(r.isError, `${tool} must refuse while ${stage} is closed`);
     const text = r.content[0].text;
