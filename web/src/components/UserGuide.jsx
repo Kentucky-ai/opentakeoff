@@ -91,6 +91,7 @@ export const DRAW = [
   ...(oneClickEnabled() ? [[["⌥", "click"], "In One-Click: carve a cutout inside a selected space"]] : []),
   [["⇧", "click"], "Insert a vertex at an edge midpoint, and drag it"],
   [["⌘", "C"], "Copy"], [["⌘", "V"], "Paste under the cursor"], [["⌘", "D"], "Duplicate"],
+  [["T"], "Trace another one like the selected shape — its condition and its tool arm, the selection drops"],
 ];
 
 export const VIEW = [

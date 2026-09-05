@@ -26,6 +26,11 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 - **`propose_condition_edit`** holds a diff against a condition pending — finish tag, waste %, multiplier, height, roll setup — with a required rationale; **`withdraw_condition_edit`** drops it. Nothing on the condition changes until the estimator accepts in the canvas; `takeoff_summary` and `export_report` keep computing from the current values and carry the diff beside them (`proposed_condition_edits`, present only when any are pending). Acceptance writes through the same path as `edit_condition`, so the report afterwards is byte-for-byte a direct edit.
 - **Canvas**: one Accept pill per proposal (with a Reject) instead of one per shape; a pending condition diff sits under its row in the Takeoffs panel with Accept / Reject; the Report prints the proposed values beside the current ones and its JSON export carries them. Proposals ride the takeoff payload and the app's Import as transport. Design: `docs/design/PROPOSALS.md`; proof: `docs/design/proposals-verification.md`.
 
+## Unreleased — T traces another one like the selected shape
+
+### Added
+- **`T` in Select repeats a selected shape's setup.** Click a committed shape, press `T`: its condition becomes active without reassigning anything, the ╱ Straight / ⌒ Curve switch follows the record, and the tool that drew that kind of shape arms — a four-corner axis-aligned ring re-arms Rectangle (or Deduct rectangle), everything else its own Area, Cut Out, Linear, Surface Area or Count. The selection drops the way a fresh trace expects, and the message bar names what armed. With nothing selected, or a markup selected, the key says so and arms nothing; mid-trace it does nothing. The read of a shape into its tool is pure (`lib/repeatTool.js`, `repeatTool.test.ts`). Web only, no MCP change. Idea credited to the `brodeurguillaume-spec` fork; implemented independently.
+
 ## Unreleased — Command box and voice off the toolbar
 
 ### Changed
