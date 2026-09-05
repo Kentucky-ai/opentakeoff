@@ -723,6 +723,12 @@ The modal asks for an optional credit line and an attestation that you have the 
 
 ## 13. The Agent panel
 
+**Optional workspace layout.** Choose **⋯ → Workspace preview** for compact drawing controls. **Classic layout** returns immediately. Measuring tools keep their sidebar order and shortcuts; **All controls** reveals the existing toolbar for advanced settings. **Properties** opens the active condition editor. **Sheets** opens a searchable list, while the existing sheet tabs and visual gallery remain available. **Find an action** (Cmd/Ctrl+K outside text fields) searches tools, sheets, scale choices and file actions; use arrows and Enter, or click a result.
+
+**Make it yours.** Open **Layout**, uncheck **Lock panel positions and sizes**, then drag the grip on Sheets, Work, Takeoffs or the measuring rail to either highlighted edge. Release in the middle to cancel. The same dialog has left/right selectors, and a focused grip accepts Left/Right arrow keys. Adjust Work/Sheets width in the dialog; Takeoffs retains its edge resize handle while unlocked. Lock again when comfortable. Lock protects panel positions and sizes, not measurements.
+
+Name and save an arrangement to restore its positions, widths, lock state and optional condition palette/quantity counter. Saving the same name replaces it; up to eight arrangements are retained. Panel open/closed state is not part of a saved arrangement. **Reset arrangement** restores the default without deleting named arrangements. Preferences belong to this browser and do not travel in project files or change another collaborator's layout. If browser storage is unavailable, Layout says the preference lasts only for this session.
+
 Choose **Work** in the toolbar to open **Work and review**. **Measurements** lists stored work across the project, including imported agent takeoffs and measurements made on the canvas. Search by condition, sheet, label, or author; use **Needs review** or **Agent** to narrow the list.
 
 The scale control stays beside Work and Report. On narrow windows, these controls wrap below the scrolling tool strip.

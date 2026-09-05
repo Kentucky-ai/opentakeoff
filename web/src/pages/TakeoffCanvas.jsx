@@ -120,6 +120,8 @@ import { computeRollTakeoff, seamLfByShape } from "../lib/rollTakeoff.js";
 // pass through. AiSettings is the config surface for the ai.js seam.
 import AgentPanel from "../components/AgentPanel.jsx";
 import WorkspacePanel from "../components/WorkspacePanel.jsx";
+import { WorkspaceChrome, WorkspaceNavigator, WorkspaceCommandMenu } from "../components/WorkspaceChrome.jsx";
+import { useWorkspaceLayout, WorkspaceLayoutDialog, DockHandle, DockTargets } from "../components/WorkspaceLayout.jsx";
 import AiSettings from "../components/AiSettings.jsx";
 import { agentToolDefs, executeAgentTool, agentScaleGate } from "../lib/agentTools.js";
 import { runAgentLoop } from "../lib/agentLoop.js";
@@ -537,6 +539,16 @@ export default function TakeoffCanvas() {
   const [ruleStage, setRuleStage] = useState(null);   // { rule, candidates, proposed_ts }
   const [agentOpen, setAgentOpen] = useState(false);      // docked right-rail Agent panel
   const [conditionDetails, setConditionDetails] = useState(true);
+  const workspacePrefs = useWorkspaceLayout();
+  const workspaceLayout = workspacePrefs.enabled;
+  const workspaceArrangement = workspacePrefs.layout;
+  const [workspaceNavigationOpen, setWorkspaceNavigationOpen] = useState(false);
+  const [workspaceControlsOpen, setWorkspaceControlsOpen] = useState(false);
+  const [workspaceDetailsOpen, setWorkspaceDetailsOpen] = useState(false);
+  const [workspaceSearchOpen, setWorkspaceSearchOpen] = useState(false);
+  const [workspaceLayoutOpen, setWorkspaceLayoutOpen] = useState(false);
+  const [workspaceDragging, setWorkspaceDragging] = useState(null);
+
   const [workLocateId, setWorkLocateId] = useState(null);
   const workButtonRef = useRef(null);
   // ── roll goods (#136) — view state; the figured layouts are a memo below ──
@@ -856,6 +868,18 @@ export default function TakeoffCanvas() {
   // its onOpenChange effect when the callback identity changes, so an inline
   // arrow here would re-count an open menu on every canvas render
   const onMenuDepth = useCallback((o) => { menuDepthRef.current = Math.max(0, menuDepthRef.current + (o ? 1 : -1)); }, []);
+  useEffect(() => {
+    if (!workspaceLayout) return;
+    const onSearchKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k" && !e.altKey && !e.shiftKey && menuDepthRef.current === 0) {
+        if (e.target.closest?.("input, textarea, select, [contenteditable=true]")) return;
+        e.preventDefault(); setWorkspaceSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onSearchKey);
+    return () => window.removeEventListener("keydown", onSearchKey);
+  }, [workspaceLayout]);
+
   const thumbCacheRef = useRef(new Map()); // sheetKey → thumbnail blob URL (lib/thumbs.js) — survives gallery close; persisted twin lives in the meta store
   const legacyPinnedRef = useRef(null);    // old `pinned` page numbers awaiting their one-shot tab migration
   const tabInitRef = useRef(false);        // snap to the first restored tab exactly once
@@ -2168,6 +2192,10 @@ export default function TakeoffCanvas() {
   // container rect without a transform change. repaintTick: bumped by the
   // visibilitychange recovery below.
   useEffect(() => { syncTilePanelsRef.current(); }, [tf, groupSig, status, panelW, takeoffsOpen, darkMode, repaintTick]);
+  // Chrome reflows need the same existing viewport refresh as a dock resize.
+  // This does not change coordinates, scale, tile rendering, or stored geometry.
+  useEffect(() => { scheduleSync(); }, [workspaceLayout, workspaceArrangement, workspaceNavigationOpen, workspaceControlsOpen, workspaceDetailsOpen, agentOpen, scheduleSync]);
+
 
   // Primary recovery for a stalled tile fetch: a hidden tab can suspend
   // in-flight work indefinitely with no error (Chrome throttles rAF-gated
@@ -7786,6 +7814,33 @@ export default function TakeoffCanvas() {
     </div>
   );
 
+  const workspaceShapeCounts = new Map();
+  if (workspaceLayout) for (const shape of shapes) workspaceShapeCounts.set(shape.sheet_id, (workspaceShapeCounts.get(shape.sheet_id) || 0) + 1);
+  const workspaceSheets = (workspaceLayout ? sheets : []).flatMap((sheet) => Array.from({ length: knownPages[sheet.name] || (sheet.name === active ? pageCount : 1) }, (_, i) => {
+    const key = i ? `${sheet.name}#${i + 1}` : sheet.name;
+    return { key, label: tabLabel(key), file: sheet.name, count: workspaceShapeCounts.get(key) || 0 };
+  }));
+  const workspaceDockHandle = (dock, label) => workspaceLayout && <DockHandle dock={dock} label={label} locked={workspaceArrangement.locked} onDrag={setWorkspaceDragging} onMove={workspacePrefs.move} />;
+  const workspaceActions = [
+    ...MEASURE_TOOLS.filter((t) => t.id !== "oneclick" || oneClickEnabled()).concat(CUT_TOOLS).map((t) => ({ id: `tool-${t.id}`, label: t.label, shortcut: t.shortcut, group: "Measuring tools", run: () => { setView("canvas"); setTool(t.id); } })),
+    { id: "select", label: "Select and edit a measurement", group: "Tools", shortcut: "V", run: () => setTool("select") },
+    { id: "undo", label: "Undo", group: "Edit", shortcut: "⌘Z", run: () => poly.length ? dropLastPoint() : undoShapeCommand() },
+    { id: "redo", label: "Redo", group: "Edit", shortcut: "⇧⌘Z", run: redoShapeCommand },
+    { id: "finish", label: "Finish shape", group: "Edit", shortcut: "↵", disabled: !finishOk, run: finishShape },
+    { id: "copy", label: "Copy selected", group: "Edit", shortcut: "⌘C", disabled: !selectedId, run: copySelected },
+    { id: "paste", label: "Paste", group: "Edit", shortcut: "⌘V", disabled: !clipRef.current.length, run: () => pasteClipboard() },
+    { id: "report", label: "Open report", group: "Workspace", run: () => setShowReport(true) },
+    { id: "work", label: "Open work and review", group: "Workspace", run: () => setAgentOpen(true) },
+    { id: "layout", label: "Arrange and save your layout", group: "Workspace", run: () => setWorkspaceLayoutOpen(true) },
+    { id: "fit", label: "Fit sheet to view", group: "View", disabled: !stage.w, run: () => fitToView(stage.w, stage.h) },
+    { id: "focus", label: "Focus mode", group: "View", shortcut: "F", run: toggleFocusMode },
+    { id: "theme", label: theme === "dark" ? "Light chrome" : "Dark chrome", group: "Appearance", run: toggleTheme },
+    { id: "addcondition", label: "Add condition", group: "Conditions", run: addCondition },
+    ...scaleItems.filter((item) => item.onSelect).map((item) => ({ ...item, id: `scale-${item.id}`, group: "Scale", run: item.onSelect })),
+    ...sheetMenuItems.filter((item) => item.onSelect).map((item) => ({ ...item, id: `file-${item.id}`, group: "Plans and files", run: item.onSelect })),
+    ...workspaceSheets.map((sheet) => ({ id: `sheet-${sheet.key}`, label: sheet.label, group: sheet.file, run: () => { goToSheet(sheet.key); setView("canvas"); } })),
+  ];
+
   // ?hatchqa — density-tuning wall: every pattern at three scales in two palette
   // colors, real components, dark-aware. Unreachable from the UI; kept for retunes.
   // Added 2026-07-07 (d02032a) and lost, not removed, in the fork merge 1317d07
@@ -7819,7 +7874,7 @@ export default function TakeoffCanvas() {
   return (
     // .app-shell: the print stylesheet collapses this 100vh flex column while the report is open
     <div
-      className="app-shell"
+      className={`app-shell${workspaceLayout ? " workspace-calm" : ""}`}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer?.files); }}
       style={{ position: "relative", display: "flex", flexDirection: "column", height: "100vh" }}>
@@ -7846,7 +7901,27 @@ export default function TakeoffCanvas() {
           as "Export is unclickable". The row therefore SCROLLS itself; its
           menus open position:fixed off the trigger rect (ToolMenu) so this
           overflow cannot clip them. */}
-      {!focusMode && (
+      {!focusMode && workspaceLayout && <WorkspaceChrome
+        title={projectName || active} onOpen={() => fileInputRef.current?.click()}
+        onNavigate={() => setWorkspaceNavigationOpen((v) => !v)} navigationOpen={workspaceNavigationOpen}
+        onTakeoffs={toggleTakeoffs} takeoffsOpen={takeoffsOpen} onWork={() => setAgentOpen((v) => !v)} workOpen={agentOpen} workButtonRef={workButtonRef}
+        pending={shapes.filter((shape) => shape.origin?.reviewed === false).length} running={agentRunning}
+        onReport={() => setShowReport(true)} onFocus={toggleFocusMode} onClassic={() => workspacePrefs.setEnabled(false)}
+        onControls={() => setWorkspaceControlsOpen((v) => !v)} controlsOpen={workspaceControlsOpen} onSearch={() => setWorkspaceSearchOpen(true)}
+        layoutMenu={<button type="button" onClick={() => setWorkspaceLayoutOpen(true)} title="Arrange panels, lock positions, and save layouts"><Icon name="sliders" size={16} />Layout</button>}
+        fileMenu={<><ToolMenu title="Files and workspace" face={<span>File</span>} onOpenChange={onMenuDepth} items={sheetMenuItems} /><PresenceChip bridge={store.syncBridge} /><AccountChip note={cloudMode ? "Synced to Google Drive" : "Local workspace"} onOpenChange={onMenuDepth} /></>}
+        conditionControl={<><label className="calm-condition-label" htmlFor="workspace-condition">Condition</label><select id="workspace-condition" value={activeCond || ""} onChange={(e) => activateCondition(e.target.value)} title={tool === "select" && selectedId ? "Reassign selected measurement" : "Condition for the next measurement"}>
+          {!conditions.length && <option value="">No conditions</option>}{conditions.map((c) => <option key={c.id} value={c.id}>{c.finish_tag}</option>)}</select>
+          <button type="button" onClick={addCondition} title="Add condition" aria-label="Add condition"><Icon name="plus" size={14} /></button>
+          <button type="button" onClick={() => setWorkspaceDetailsOpen((v) => !v)} aria-expanded={workspaceDetailsOpen} disabled={!aCond}>Properties</button></>}
+        history={<><button type="button" onClick={() => poly.length ? dropLastPoint() : undoShapeCommand()} title="Undo (⌘Z)" aria-label="Undo"><Icon name="undo" size={16} /></button><button type="button" onClick={redoShapeCommand} title="Redo (⇧⌘Z)" aria-label="Redo"><span style={{ display: "flex", transform: "scaleX(-1)" }}><Icon name="undo" size={16} /></span></button></>}
+        aids={<><button type="button" aria-pressed={snapOn} onClick={() => setSnapOn((v) => !v)} title="Snap to plan lines/corners (beta)"><Icon name="snap" size={15} />Snap</button><button type="button" aria-pressed={angleOn} onClick={() => setAngleOn((v) => !v)} title="45°/90° angle guides"><Icon name="angle" size={15} />45°</button></>}
+        action={finishOk && <button type="button" onClick={finishShape}>Finish ({poly.length})</button>}
+        scaleMenu={<><button type="button" onClick={() => setUnits((u) => u === "metric" ? "imperial" : "metric")} title="Switch display units">{units === "metric" ? "m" : "ft"}</button><ToolMenu title={scaleTitle} onOpenChange={onScaleMenuDepth} face={<span>{scaleFace}</span>} faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 11.5, ...scaleFaceStyle }} menuStyle={{ minWidth: 250 }} items={scaleItems} /></>}
+      />}
+      {!focusMode && workspaceLayout && workspaceDetailsOpen && aCond && <div className="calm-property-editor"><strong>{aCond.finish_tag}</strong><ConditionAppearanceEditor cond={aCond} onUpdateCond={updateCond} onSetCondParam={setCondParam} onAssignAttr={assignAttr} conditionColumns={conditionColumns} layout="row" units={units} /><button type="button" onClick={() => setWorkspaceDetailsOpen(false)}>Close properties</button></div>}
+      {workspaceLayout && <><WorkspaceCommandMenu open={workspaceSearchOpen} onClose={() => setWorkspaceSearchOpen(false)} actions={workspaceActions} onOpenChange={onMenuDepth} /><WorkspaceLayoutDialog open={workspaceLayoutOpen} onClose={() => setWorkspaceLayoutOpen(false)} prefs={workspacePrefs} onOpenChange={onMenuDepth} /></>}
+      {!focusMode && (!workspaceLayout || workspaceControlsOpen) && (
       <div data-topbar style={{ display: "flex", gap: 7, alignItems: "center", padding: "0 14px 6px", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", whiteSpace: "nowrap" }}>
         {/* The working controls scroll as one region when the window is
             narrower than the row (1440-class laptops); Report, ⋯, presence and
@@ -8017,7 +8092,7 @@ export default function TakeoffCanvas() {
             />
           </>
         )}
-        <button type="button" ref={workButtonRef} aria-expanded={agentOpen} onClick={() => setAgentOpen((v) => !v)}
+        <button type="button" ref={workspaceLayout ? undefined : workButtonRef} aria-expanded={agentOpen} onClick={() => setAgentOpen((v) => !v)}
           title="Work and review — measurements, provenance, and agent proposals"
           style={{ minHeight: "var(--ctl-m)", padding: "var(--sp-1) var(--sp-3)", border: "1px solid var(--cobalt)", background: agentOpen ? "var(--cobalt)" : "transparent", color: agentOpen ? "var(--accent-contrast)" : "var(--cobalt)", cursor: "pointer", fontSize: "var(--fs-s)", fontWeight: 600 }}>
           Work{agentRunning ? " · Working" : shapes.some((s) => s.origin?.reviewed === false) ? ` · ${shapes.filter((s) => s.origin?.reviewed === false).length}` : ""}
@@ -8031,6 +8106,7 @@ export default function TakeoffCanvas() {
           onOpenChange={onMenuDepth}
           face={<span style={{ fontWeight: 700, letterSpacing: "0.08em" }}>⋯</span>}
           items={[
+            { id: "workspace-preview", label: workspaceLayout ? "Classic layout" : "Workspace preview — arrange your workspace", onSelect: () => workspacePrefs.setEnabled(!workspaceLayout) },
             { id: "guide", label: "How OpenTakeoff works", shortcut: "?", onSelect: () => setGuideOpen(true) },
             { id: "theme", label: theme === "dark" ? "Light chrome" : "Dark chrome", onSelect: toggleTheme },
             { section: "Drawing style" },
@@ -8068,7 +8144,7 @@ export default function TakeoffCanvas() {
           — the same one the docked panel row renders — so line/fill/hatch/height
           are editable without opening the sidebar. Shown once there's a
           condition to pin, so the drop zone is discoverable. */}
-      {!focusMode && conditions.length > 0 && (
+      {!focusMode && (!workspaceLayout || workspaceArrangement.palette) && conditions.length > 0 && (
         <div
           onDragOver={(e) => { if (e.dataTransfer.types.includes(CONDITION_DND_MIME)) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "copy"; } }}
           onDrop={(e) => { if (!e.dataTransfer.types.includes(CONDITION_DND_MIME)) return; e.preventDefault(); e.stopPropagation(); const id = e.dataTransfer.getData(CONDITION_DND_MIME); if (id) pinToPalette(id); }}
@@ -8123,7 +8199,7 @@ export default function TakeoffCanvas() {
       {/* open-sheet tabs — what you opened from the gallery; click to view,
           ⊞ to side-by-side, ✕ to close; the dropdown lists every open sheet */}
       {!focusMode && openTabs.length > 0 && (
-        <div style={{ display: "flex", gap: 5, alignItems: "center", padding: "5px 14px", flexWrap: openTabs.length > MANY_TABS ? "nowrap" : "wrap", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", minWidth: 0 }}>
+        <div data-sheet-tabs style={{ display: "flex", gap: 5, alignItems: "center", padding: "5px 14px", flexWrap: openTabs.length > MANY_TABS ? "nowrap" : "wrap", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)", minWidth: 0 }}>
           <span style={{ fontFamily: "var(--f-mono)", fontSize: 9.5, textTransform: "uppercase", letterSpacing: "0.14em", color: "var(--ink-muted)", flexShrink: 0 }}>Sheets</span>
           {openTabs.length > MANY_TABS && (
             <button type="button" onClick={() => scrollTabStrip(-1)} title="Scroll sheets left" aria-label="Scroll sheets left" style={{ flexShrink: 0, padding: "4px 5px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", display: "inline-flex" }}><Icon name="chevronLeft" size={12} /></button>
@@ -8166,7 +8242,7 @@ export default function TakeoffCanvas() {
           the same state (activate/reassign, hotkey badges, + condition) for
           users who want max panel-collapse and one-click switching. Toggled
           from the panel header, persisted with the panel prefs. */}
-      {!focusMode && panelPrefs.strip && (
+      {!focusMode && !workspaceLayout && panelPrefs.strip && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "7px 14px", flexWrap: "wrap", borderBottom: "1px solid var(--ink-faint)", background: "var(--paper-bright)" }}>
           <span style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--ink-muted)" }}>Conditions</span>
           {conditions.map((c, i) => {
@@ -8240,14 +8316,16 @@ export default function TakeoffCanvas() {
       )}
 
       {/* canvas + issue desk */}
-      <div style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0, position: "relative" /* anchors the narrow-screen panel overlay */ }}>
+      <div data-canvas-workspace style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0, position: "relative" /* anchors the narrow-screen panel overlay */ }}>
+       {workspaceLayout && <><WorkspaceNavigator open={!focusMode && workspaceNavigationOpen} items={workspaceSheets} current={sheetKey} onSelect={(key) => { goToSheet(key); setView("canvas"); }} onClose={() => setWorkspaceNavigationOpen(false)} onGallery={() => { setView("gallery"); setWorkspaceNavigationOpen(false); }} dockSide={workspaceArrangement.sheets} width={workspaceArrangement.sheetWidth} dockHandle={workspaceDockHandle("sheets", "Sheets")} /><DockTargets dragging={workspaceDragging} /></>}
        {/* tool rail — machined faces grouped by MCP module (the concept shell).
            Individual tiles replace deck 2's Measure/Cut Out menus; Markup keeps
            its variety flyout on one tile (five markup kinds don't earn five
            faces). Lives in the canvas row so docked panels + canvas reflow
            beside it; survives focus mode — it IS the tool access. */}
        {view === "canvas" && (
-       <nav role="toolbar" aria-label="Tools" style={{ width: "var(--rail-w)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-1)", paddingTop: "var(--sp-2)", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflowY: "auto", overflowX: "visible" }}>
+       <nav data-tool-rail data-dock-side={workspaceLayout ? workspaceArrangement.tools : undefined} role="toolbar" aria-label="Tools" style={{ order: workspaceLayout ? workspaceArrangement.tools === "right" ? 30 : -30 : undefined, width: "var(--rail-w)", flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "var(--sp-1)", paddingTop: "var(--sp-2)", borderRight: "1px solid var(--ink-faint)", background: "var(--paper-bright)", overflowY: "auto", overflowX: "visible" }}>
+         {workspaceDockHandle("tools", "Tools")}
          {railLabel("SEL")}
          {railTile("select", "select", "Select — pick a takeoff, drag points; drag open canvas to pan", "V")}
          {railLabel("MEAS")}
@@ -9582,7 +9660,7 @@ export default function TakeoffCanvas() {
         {/* live readout — top-right, at right:56 so it clears the panel rail's
             column entirely (right:14, 34px wide — same clearance the zone panel
             uses) instead of the old magic maxHeight tuned to the rail's height. */}
-        <div style={{ display: agentOpen && tool === "select" ? "none" : undefined, position: "absolute", ...(isNarrow
+        <div style={{ display: tool === "select" && (agentOpen || (workspaceLayout && !workspaceArrangement.counter && !selectedId)) ? "none" : undefined, position: "absolute", ...(isNarrow
           // phones: a bottom strip — the top-right box plus the panel rail was
           // covering the entire screen. bottom:64 clears the bottom-center toast.
           ? { left: 10, right: 10, bottom: 64, maxHeight: "36%", padding: "8px 12px" }
@@ -9815,7 +9893,7 @@ export default function TakeoffCanvas() {
             Takeoffs panel). Honest empty state until the BYO-AI seam is
             configured; otherwise the goal box, the streaming run log, and the
             per-proposal accept/reject desk. */}
-          <WorkspacePanel open={agentOpen} shapes={shapes} conditions={condById} selectedId={selectedId}
+          <WorkspacePanel dockSide={workspaceLayout ? workspaceArrangement.work : undefined} width={workspaceLayout ? workspaceArrangement.workWidth : undefined} dockHandle={workspaceDockHandle("work", "Work")} open={agentOpen} shapes={shapes} conditions={condById} selectedId={selectedId}
             sheetLabel={tabLabel} fmtArea={(sf) => fa(sf, 2)} fmtLength={(lf) => fl(lf, 2)}
             scales={scales} scaleUnconfirmed={scaleUnconfirmed} running={agentRunning}
             proposalCount={agentProposals.length} onLocate={locateWork}
@@ -9882,6 +9960,7 @@ export default function TakeoffCanvas() {
             transform — the stage is anchored top-left, so a re-fit would be a
             jarring jump. */}
         <TakeoffsPanel
+          dockSide={workspaceLayout ? workspaceArrangement.takeoffs : undefined} layoutLocked={workspaceLayout && workspaceArrangement.locked} dockHandle={workspaceDockHandle("takeoffs", "Takeoffs")}
           open={takeoffsOpen}
           width={panelW}
           overlay={isNarrow}
@@ -10106,7 +10185,7 @@ export default function TakeoffCanvas() {
           re-reads immediately). */}
       {showAiSettings && <AiSettings onClose={() => setShowAiSettings(false)} />}
       {/* live counter (mock) — floating running totals, drag to park anywhere */}
-      {!focusMode && !agentOpen && !showReport && <LiveCounter rows={liveCounterRows} onActivate={(id) => activateCondition(id, { reassign: false })} />}
+      {!focusMode && (!workspaceLayout || workspaceArrangement.counter) && !agentOpen && !showReport && <LiveCounter rows={liveCounterRows} onActivate={(id) => activateCondition(id, { reassign: false })} />}
       {/* the manual, last in the tree so it sits above every panel and dock */}
       {guideOpen && <UserGuide onClose={() => setGuideOpen(false)} />}
     </div>

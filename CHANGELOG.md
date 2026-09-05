@@ -12,6 +12,11 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 ### Changed
 - **One-Click Area and batch room detection are temporarily gated while the flood engine is re-validated against a wider plan corpus.** The engine code stays in the repo and the bench still rules it; what is withdrawn is every way to reach it. On the MCP server `one_click` and `detect_rooms` are **not registered** on a default build — `tools/list` never names them, the initialize instructions say so and point at `measure_polygon`, and no surviving tool description sends an agent to a verb that is not there (the published tool count is 45). In the canvas the One-Click tile leaves the rail, `O` reports the gate instead of arming, the voice trace and the in-app agent's tool list drop it, and the in-app guide says what to do instead (Area, `A`). Lift the gate for a build with `OPENTAKEOFF_ONE_CLICK=1` (server) / `VITE_ONE_CLICK=1` (canvas); the parity and conformance tests run with it lifted, `gate.test.ts` pins both surfaces. Design: `docs/design/ONE_CLICK_GATE.md`.
 
+## Unreleased — personal workspace preview
+
+### Added
+- Opt-in workspace chrome with visible undo/redo, condition and scale controls, searchable actions and sheets. Measuring tools keep their sidebar order. Sheets, Work, Takeoffs and the tool rail can dock to either side, with position locking and up to eight named arrangements saved in this browser. Classic layout remains available without reloading. Measurement and rendering engines are unchanged.
+
 ## Unreleased — shared work and review
 
 ### Added

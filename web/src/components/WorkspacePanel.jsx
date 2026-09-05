@@ -4,7 +4,7 @@ import { Z } from "../lib/ui.js";
 import "./workspacePanel.css";
 
 export default function WorkspacePanel({ open, shapes, conditions, selectedId, sheetLabel, fmtArea, fmtLength,
-  scales, scaleUnconfirmed, running, proposalCount, onLocate, onReview, onClose, onReport, children }) {
+  scales, scaleUnconfirmed, running, proposalCount, onLocate, onReview, onClose, onReport, children, dockSide, width, dockHandle }) {
   const [tab, setTab] = useState("work");
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
@@ -22,8 +22,9 @@ export default function WorkspacePanel({ open, shapes, conditions, selectedId, s
   };
   const evidence = selected?.origin?.evidence || {};
   return (
-    <aside className="workspace-panel" hidden={!open} aria-label="Work and review" style={{ zIndex: Z.drawer }} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); } }}>
+    <aside className="workspace-panel" hidden={!open} aria-label="Work and review" data-dock-side={dockSide} style={{ zIndex: Z.drawer, ...(dockSide ? { order: dockSide === "left" ? -10 : 10, width } : {}) }} onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); } }}>
       <header className="workspace-heading">
+        {dockHandle}
         <div><span className="workspace-eyebrow">Shared workspace</span><h2>Work and review</h2></div>
         <button type="button" onClick={onClose} aria-label="Close work panel">×</button>
       </header>

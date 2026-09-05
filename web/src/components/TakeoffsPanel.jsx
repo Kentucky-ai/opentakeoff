@@ -743,7 +743,7 @@ function TransitionsAction({ cond: c, sources, draft, setDraft, result, setResul
 }
 
 function TakeoffsPanel({
-  open, width, overlay = false, multiSheet, units = "imperial",
+  open, width, overlay = false, multiSheet, dockSide, layoutLocked = false, dockHandle, units = "imperial",
   conditions, activeCond, visRowById, projRowById = new Map(), conditionColumns, shapeLabels = [], templates, palette = [], rollByCond = null,
   transitionSources = [],
   matLib, matLibById, linkedCountById,
@@ -893,7 +893,7 @@ function TakeoffsPanel({
     const d = dragRef.current; if (!d) return;
     if (e.buttons === 0) { onResizeEnd(e); return; }   // release happened off-window — a missed pointerup must not leave a phantom drag
     onHoldGesture();
-    d.w = clampPanelW(d.sw + (d.sx - e.clientX));
+    d.w = clampPanelW(d.sw + (d.sx - e.clientX) * (dockSide === "left" ? -1 : 1));
     if (rootRef.current) rootRef.current.style.width = `${d.w}px`;
   };
   // shared by pointerup / pointercancel / lostpointercapture — any way the
@@ -1071,16 +1071,16 @@ function TakeoffsPanel({
     // docking beside it — a docked 240px+ column plus the canvas doesn't fit a
     // phone (the panel was covering the whole screen). Desktop docked layout
     // is unchanged. The header's » collapse button is the close affordance.
-    <div ref={rootRef} style={overlay
-      ? { position: "absolute", top: 0, right: 0, bottom: 0, width: "min(100%, 420px)", zIndex: Z.drawer, boxShadow: "var(--shadow-pop)", display: "flex", background: "var(--paper-bright)", borderLeft: "1px solid var(--ink-faint)", fontSize: 12.5 }
-      : { width, flexShrink: 0, display: "flex", background: "var(--paper-bright)", borderLeft: "1px solid var(--ink-faint)", fontSize: 12.5 }}>
-      {!overlay && <div onPointerDown={onResizeDown} onPointerMove={onResizeMove} onPointerUp={onResizeEnd}
+    <div ref={rootRef} data-workspace-takeoffs data-dock-side={dockSide} style={overlay
+      ? { position: "absolute", top: 0, [dockSide === "left" ? "left" : "right"]: 0, bottom: 0, width: "min(100%, 420px)", zIndex: Z.drawer, boxShadow: "var(--shadow-pop)", display: "flex", background: "var(--paper-bright)", borderLeft: "1px solid var(--ink-faint)", fontSize: 12.5 }
+      : { width, order: dockSide ? dockSide === "left" ? -11 : 11 : undefined, flexShrink: 0, display: "flex", background: "var(--paper-bright)", borderLeft: "1px solid var(--ink-faint)", fontSize: 12.5 }}>
+      {!overlay && !layoutLocked && <div onPointerDown={onResizeDown} onPointerMove={onResizeMove} onPointerUp={onResizeEnd}
         onPointerCancel={onResizeEnd} onLostPointerCapture={onResizeEnd}
         title="Drag to resize"
-        style={{ width: 5, flexShrink: 0, cursor: "col-resize", touchAction: "none", background: "transparent", borderRight: "1px solid var(--ink-faint)" }} />}
+        style={{ order: dockSide === "left" ? 1 : undefined, width: 5, flexShrink: 0, cursor: "col-resize", touchAction: "none", background: "transparent", borderRight: "1px solid var(--ink-faint)" }} />}
       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "7px 12px", background: "var(--ink)", color: "var(--paper-cream)", flexShrink: 0 }}>
-          <span style={{ display: "inline-flex", gap: 2 }}>
+        <div data-takeoffs-header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "7px 12px", background: "var(--ink)", color: "var(--paper-cream)", flexShrink: 0 }}>
+          {dockHandle}<span style={{ display: "inline-flex", gap: 2 }}>
             {[["takeoffs", `Takeoffs · ${multiSheet ? "these sheets" : "this sheet"}`], ["library", `Library${templates.length ? ` (${templates.length})` : ""}`], ["materials", `Materials${matLib.length ? ` (${matLib.length})` : ""}`], ["columns", `Columns${conditionColumns.length ? ` (${conditionColumns.length})` : ""}`]].map(([id, label]) => (
               <button key={id} onClick={() => setPanelTab(id)}
                 style={{ padding: "3px 8px", border: "none", borderBottom: panelTab === id ? "2px solid var(--paper-cream)" : "2px solid transparent", background: "none", color: "var(--paper-cream)", opacity: panelTab === id ? 1 : 0.65, cursor: "pointer", fontWeight: 700, fontSize: 12.5 }}>{label}</button>
