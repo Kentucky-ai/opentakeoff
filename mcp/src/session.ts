@@ -107,6 +107,46 @@ export interface MaterialRow {
   note?: string;
 }
 
+/** A takeoff proposal (#365): a named batch of pending agent shapes with one
+ * identity. Opened by propose_takeoff; every agent commit that follows
+ * attaches to the newest open proposal (origin.proposal_id). revise_proposal
+ * replaces the batch's still-pending shapes as one journal step,
+ * withdraw_proposal removes them; shapes the estimator already accepted are
+ * never touched by either. Rides the takeoff payload (transport, like RFIs)
+ * so the canvas can show one Accept per proposal instead of one per shape. */
+export interface TakeoffProposal {
+  id: string;
+  label: string;
+  rationale: string;
+  created_at: string;
+  /** Set by withdraw_proposal — the record stays (the label is history) but
+   * no commit attaches to a withdrawn proposal. */
+  withdrawn_at?: string;
+}
+
+/** The fields a condition-edit proposal may carry — the same knobs
+ * edit_condition writes, plus the finish tag itself (a rename). */
+export interface ConditionEditFields {
+  finish_tag?: string;
+  waste_pct?: number;
+  multiplier?: number;
+  height_ft?: number;
+  roll_setup?: Record<string, unknown> | null;
+}
+
+/** A condition-edit proposal (#365): a diff against a condition held as
+ * pending. Nothing about the condition changes until the estimator accepts
+ * it from the panel; until then the report carries the current values with
+ * the proposed ones beside them. One pending proposal per condition — a
+ * second proposal on the same condition replaces the first (journaled). */
+export interface ConditionEditProposal {
+  id: string;
+  condition_id: string;
+  proposed: ConditionEditFields;
+  rationale: string;
+  proposed_at: string;
+}
+
 export interface Condition {
   id: string;
   finish_tag: string;
@@ -220,6 +260,13 @@ export interface ShapeOrigin {
    * — a machine correcting itself is a different event, and merging the two
    * would corrupt the correction signal the capture layer grades on. */
   agent_edits?: number;
+  /** Proposals (#365): the batch this agent shape was committed under —
+   * propose_takeoff's id. Stamped centrally at commit() while a proposal is
+   * open, so every commit path attaches and none can forget. The estimator
+   * accepts, rejects, or the agent revises/withdraws the batch as ONE unit;
+   * a shape that has been accepted (reviewed: true) keeps the id as history
+   * but is no longer part of the batch's pending set. */
+  proposal_id?: string;
   /** symbol_sweep: how this count marker matched the seed exemplar — the
    * evidence that made it a commit (score against the commit bar, and the
    * symmetry-group element it matched under). Phase 2 adds `seed`, WHERE the
@@ -564,7 +611,16 @@ export type JournalPayload =
   // undo call itself (the over-the-wire test is what catches it).
   | { op: "rfi_create"; tool: string; id: string; links: { markup_id: string; prev_rfi_id: string }[] }
   | { op: "rfi_resolve"; tool: string; before: Rfi }
-  | { op: "rfi_delete"; tool: string; before: Rfi; unlinked: string[] };
+  | { op: "rfi_delete"; tool: string; before: Rfi; unlinked: string[] }
+  // Proposals (#365). Every op here is ONE step over the whole batch — the
+  // finish line is "40 pending shapes revise, withdraw, or accept in one
+  // journal step and one undo_last".
+  | { op: "proposal_open"; tool: string; proposal: TakeoffProposal; prev_current: string | null }
+  | { op: "proposal_revise"; tool: string; proposal_id: string; removed: { shape: Shape; index: number }[]; ids: string[] }
+  | { op: "proposal_withdraw"; tool: string; proposal_id: string; removed: { shape: Shape; index: number }[]; was_current: boolean }
+  | { op: "condition_proposal"; tool: string; proposal: ConditionEditProposal; replaced?: ConditionEditProposal }
+  | { op: "condition_proposal_withdraw"; tool: string; proposal: ConditionEditProposal; index: number }
+  | { op: "condition_proposal_accept"; tool: string; proposal: ConditionEditProposal; index: number; before: Condition };
 
 export type JournalEntry = JournalPayload & { seq: number };
 
@@ -599,6 +655,15 @@ export class Session {
    * (a withdrawn RFI keeps its number reserved). Read through liveRfis() for
    * anything that prints or exports. */
   rfis: Rfi[] = [];
+  /** Proposals (#365): the batches propose_takeoff opened, and the
+   * condition-edit diffs held pending. Both ride export_takeoff /
+   * import_takeoff as transport. */
+  proposals: TakeoffProposal[] = [];
+  conditionEditProposals: ConditionEditProposal[] = [];
+  /** The proposal new agent commits attach to — the newest open one, or
+   * null when none is open (commits then land un-batched, exactly as before
+   * #365). */
+  private currentProposalId: string | null = null;
   /** The last assign-from-schedule run's unresolved rooms (0.9.18) — what the
    * marked-set cover discloses as withheld. Replaced per assign run, cleared
    * with the rest of the session on a non-merge load_plan. Seeds ride
@@ -651,6 +716,9 @@ export class Session {
       this.markups = [];
       this.approvals = [];
       this.rfis = [];
+      this.proposals = [];
+      this.conditionEditProposals = [];
+      this.currentProposalId = null;
       this.file = null;
       this.filePath = null;
       this.nextOrd = 1;
@@ -1316,6 +1384,15 @@ export class Session {
     };
   }
 
+  /** Proposals (#365): an agent origin minted while a proposal is open joins
+   * that batch. The ONE stamp for every path that pushes a shape — commit()
+   * and the two verbs that mint a shape directly (cut_out's deduct receipt,
+   * a run cut's surviving pieces) — so no future path can ship un-batched. */
+  private stampProposal<T extends ShapeOrigin>(origin: T): T {
+    if (origin.actor === "agent" && this.currentProposalId && !origin.proposal_id) return { ...origin, proposal_id: this.currentProposalId };
+    return origin;
+  }
+
   private commit(s: SheetState, tag: string, role: MeasureRole, vertsPx: Point[], computed: Shape["computed"], origin?: Shape["origin"], flood?: FloodEvidence): Shape {
     // Flood provenance + confidence (RFC #60) stamp HERE, exactly where the
     // assignment provenance already stamps: a commit path that hands over its
@@ -1324,6 +1401,10 @@ export class Session {
     // no flood commit path can ship an unscored shape.
     if (origin && flood) origin = { ...origin, ...Session.floodStamp(flood, computed.area_sf) };
     if (origin?.actor === "agent") origin = { ...origin, reviewed: false };
+    // proposals (#365) stamp HERE too: while a proposal is open every agent
+    // commit — hand trace, sweep, derive, cut — attaches to it, so the batch
+    // the estimator sees is exactly what the agent did after propose_takeoff.
+    if (origin) origin = this.stampProposal(origin);
     // assignment provenance (0.9.18) defaults HERE, not at the seven call
     // sites: an agent commit that stated no source asserted the tag itself,
     // and stamping centrally means no future commit path can ship unstamped.
@@ -1682,9 +1763,7 @@ export class Session {
   measurePolygon(name: string, verts: Point[], opts: { condition?: string; role: "floor_area" | "deduct" }) {
     const s = this.sheet(name);
     if (s.upp == null) throw new UserError(this.scaleGate(s));
-    const met = closedMetrics(verts);
-    const area_sf = round2(met.area * s.upp * s.upp);
-    const perimeter_lf = round2(met.perim * s.upp);
+    const { area_sf = 0, perimeter_lf = 0 } = this.quantify(s, opts.role, verts);
     let shape_id: string | undefined;
     // agent-supplied coordinates are a hand trace by a machine hand: manual
     // method, agent actor — and never reviewed (no human affirmed anything).
@@ -1697,7 +1776,7 @@ export class Session {
   measureLine(name: string, pts: Point[], opts: { condition?: string }) {
     const s = this.sheet(name);
     if (s.upp == null) throw new UserError(this.scaleGate(s));
-    const length_lf = round2(openLen(pts) * s.upp);
+    const { perimeter_lf: length_lf = 0 } = this.quantify(s, "linear", pts);
     let shape_id: string | undefined;
     // area_sf stays 0 — the canvas only mints border SF when the condition has a thickness
     if (opts.condition) shape_id = this.commit(s, opts.condition, "linear", pts, { area_sf: 0, perimeter_lf: length_lf }, { method: "manual", actor: "agent" }).id;
@@ -1729,6 +1808,245 @@ export class Session {
     shape.height_ft = h;
     this.flushCommits("measure_surface");
     return { condition: c.finish_tag, height_ft: h, length_lf: round2(LF), area_sf: round2(LF * h), npts: pts.length, shape_id: shape.id };
+  }
+
+  // ── Proposals (#365) ──────────────────────────────────────────────────────
+  // A shape an agent commits lands reviewed:false and the estimator accepts
+  // or deletes it — that covers SHAPES, one at a time. A proposal is the unit
+  // above that: a named batch with one identity the agent can revise or
+  // withdraw as a whole, and the estimator accepts as ONE decision. A
+  // condition-edit proposal is the same idea for the knobs: a diff held
+  // pending instead of a silent edit_condition.
+
+  /** The shapes still pending under a proposal: attached to it AND not yet
+   * affirmed by a human. Accepted shapes keep the id as history and drop out
+   * of the batch — no agent verb reaches them (the ink rule, unchanged). */
+  private proposalPending(id: string): { shape: Shape; index: number }[] {
+    return this.shapes
+      .map((shape, index) => ({ shape, index }))
+      .filter(({ shape }) => shape.origin?.proposal_id === id && shape.origin?.reviewed !== true);
+  }
+
+  private proposalOrError(id: string): TakeoffProposal {
+    const p = this.proposals.find((x) => x.id === id);
+    if (!p) {
+      const open = this.proposals.filter((x) => !x.withdrawn_at).map((x) => `${x.id} (${x.label})`);
+      throw new UserError(`No proposal with id ${JSON.stringify(id)}.${open.length ? ` Open proposals: ${open.join(", ")}.` : " Nothing has opened a proposal yet — propose_takeoff first."}`);
+    }
+    return p;
+  }
+
+  /** The quantities a shape of `role` carries for `verts` on sheet `s` — the
+   * same arithmetic measure_polygon / measure_line / measure_surface /
+   * place_count run, in one place so a revised batch measures exactly as a
+   * fresh commit would. */
+  private quantify(s: SheetState, role: MeasureRole, verts: Point[], heightFt?: number): Shape["computed"] {
+    if (role === "count") return { count: 1 };
+    const upp = s.upp ?? 0;
+    if (role === "linear") return { area_sf: 0, perimeter_lf: round2(openLen(verts) * upp) };
+    if (role === "surface_area") { const LF = openLen(verts) * upp; return { area_sf: round2(LF * (heightFt ?? 0)), perimeter_lf: round2(LF) }; }
+    const met = closedMetrics(verts);
+    return { area_sf: round2(met.area * upp * upp), perimeter_lf: round2(met.perim * upp) };
+  }
+
+  /** propose_takeoff: open a named batch. Every agent commit from here on
+   * attaches to it (stamped centrally in commit()) until another proposal is
+   * opened or this one is withdrawn. Opening is its own journal step so
+   * undo_last walks back exactly. */
+  proposeTakeoff(label: string, rationale: string) {
+    const cleanLabel = String(label ?? "").trim();
+    const cleanRationale = String(rationale ?? "").trim();
+    if (!cleanLabel) throw new UserError("label is required — name the batch the way the estimator will read it on the Accept pill ('Level 2 rooms per finish schedule').");
+    if (!cleanRationale) throw new UserError("rationale is required — say what decided the batch (the schedule row, the sheet, the rule) so the estimator can judge it as one unit.");
+    const proposal: TakeoffProposal = { id: uid("prop"), label: cleanLabel, rationale: cleanRationale, created_at: nowIso() };
+    this.record({ op: "proposal_open", tool: "propose_takeoff", proposal, prev_current: this.currentProposalId });
+    this.proposals.push(proposal);
+    this.currentProposalId = proposal.id;
+    return {
+      proposal_id: proposal.id, label: proposal.label, rationale: proposal.rationale,
+      note: "Open. Every shape you commit from now on (measure_*, sweeps, derives, cut_out) attaches to this proposal until you open another or withdraw it; the estimator sees the batch as one Accept. revise_proposal replaces its pending shapes as one step, withdraw_proposal removes them.",
+    };
+  }
+
+  /** revise_proposal: replace EVERY still-pending shape in the batch with a
+   * new set, as one journal step. All-or-nothing — the whole replacement is
+   * validated before the first pending shape is removed, so a malformed last
+   * shape leaves the batch exactly as it was. Accepted shapes are untouched
+   * and the replacement shapes attach to the same proposal. */
+  reviseProposal(id: string, shapes: { sheet: string; condition: string; role: MeasureRole; verts: Point[]; label?: string; height_ft?: number }[]) {
+    const p = this.proposalOrError(id);
+    if (p.withdrawn_at) throw new UserError(`Proposal ${id} (${p.label}) was withdrawn — open a new one with propose_takeoff.`);
+    if (!Array.isArray(shapes) || !shapes.length) throw new UserError("shapes is empty — to remove the batch, call withdraw_proposal instead.");
+    // validate everything first; refuse whole, never half-revise
+    const plan = shapes.map((r, i) => {
+      const s = this.sheet(r.sheet);
+      const min = r.role === "count" ? 1 : (r.role === "linear" || r.role === "surface_area") ? 2 : 3;
+      if (!Array.isArray(r.verts) || r.verts.length < min) throw new UserError(`shapes[${i}]: a ${r.role} shape needs at least ${min} vert${min === 1 ? "ex" : "ices"} — got ${Array.isArray(r.verts) ? r.verts.length : 0}. Nothing was revised.`);
+      if (r.role !== "count" && s.upp == null) throw new UserError(`shapes[${i}]: ${this.scaleGate(s)} Nothing was revised.`);
+      const tag = String(r.condition ?? "").trim();
+      if (!tag) throw new UserError(`shapes[${i}]: condition is required. Nothing was revised.`);
+      let height: number | undefined;
+      if (r.role === "surface_area") {
+        const existing = this.conditions.find((x) => x.finish_tag === tag);
+        height = r.height_ft ?? (Number(existing?.height_ft) || 0);
+        if (!(height > 0)) throw new UserError(`shapes[${i}]: a surface_area shape needs a height — pass height_ft, or set it on ${tag} with edit_condition. Nothing was revised.`);
+      }
+      return { s, tag, role: r.role, verts: r.verts, label: r.label?.trim() || undefined, height };
+    });
+    const removed = this.proposalPending(id);
+    const dead = new Set(removed.map((r) => r.shape.id));
+    this.shapes = this.shapes.filter((x) => !dead.has(x.id));
+    const prevCurrent = this.currentProposalId;
+    this.currentProposalId = id;   // the replacements attach to THIS batch, whatever is current
+    try {
+      for (const r of plan) {
+        const shape = this.commit(r.s, r.tag, r.role, r.verts, this.quantify(r.s, r.role, r.verts, r.height), { method: "manual", actor: "agent" });
+        if (r.label) shape.label = r.label;
+        if (r.role === "surface_area") shape.height_ft = r.height;
+      }
+    } finally {
+      this.currentProposalId = prevCurrent;
+    }
+    const ids = this.pendingCommits;
+    this.pendingCommits = [];
+    this.record({ op: "proposal_revise", tool: "revise_proposal", proposal_id: id, removed, ids });
+    return { proposal_id: id, label: p.label, replaced: removed.length, committed: ids.length, shape_ids: ids, note: "One journal step — undo_last puts the previous pending batch back exactly. Accepted shapes were not touched." };
+  }
+
+  /** withdraw_proposal: remove every still-pending shape in the batch, as one
+   * journal step. The proposal record stays, marked withdrawn (the label is
+   * history the estimator may still read); accepted shapes stay ink. */
+  withdrawProposal(id: string) {
+    const p = this.proposalOrError(id);
+    if (p.withdrawn_at) throw new UserError(`Proposal ${id} (${p.label}) is already withdrawn.`);
+    const removed = this.proposalPending(id);
+    const dead = new Set(removed.map((r) => r.shape.id));
+    this.shapes = this.shapes.filter((x) => !dead.has(x.id));
+    const wasCurrent = this.currentProposalId === id;
+    if (wasCurrent) this.currentProposalId = null;
+    p.withdrawn_at = nowIso();
+    this.record({ op: "proposal_withdraw", tool: "withdraw_proposal", proposal_id: id, removed, was_current: wasCurrent });
+    const kept = this.shapes.filter((x) => x.origin?.proposal_id === id).length;
+    return { proposal_id: id, label: p.label, withdrawn: removed.length, accepted_kept: kept, note: kept ? `${kept} shape(s) the estimator had already accepted stay — reviewed work is ink.` : "Every shape in the batch was still pending; all removed. undo_last restores the batch." };
+  }
+
+  /** The proposal ledger takeoff_summary carries: per batch, what is still
+   * pending, what the estimator accepted, and whether it was withdrawn. */
+  proposalRows() {
+    return this.proposals.map((p) => {
+      const mine = this.shapes.filter((x) => x.origin?.proposal_id === p.id);
+      return {
+        proposal_id: p.id, label: p.label, rationale: p.rationale,
+        pending: mine.filter((x) => x.origin?.reviewed !== true).length,
+        accepted: mine.filter((x) => x.origin?.reviewed === true).length,
+        ...(p.withdrawn_at ? { withdrawn: true } : {}),
+        ...(this.currentProposalId === p.id ? { current: true } : {}),
+      };
+    });
+  }
+
+  /** The canonical tag key — case- and space-insensitive, the canvas's own
+   * identity rule for a finish tag (importTakeoff.js tagKey). */
+  private static tagKey(t: unknown): string { return String(t ?? "").trim().toUpperCase(); }
+
+  /** propose_condition_edit: hold a diff against a condition as pending. The
+   * condition itself does not change, so takeoff_summary and export_report
+   * keep reporting the current values (with the proposal beside them) until
+   * the estimator accepts from the panel. One pending proposal per condition;
+   * proposing again replaces it (journaled, so undo restores the earlier one). */
+  proposeConditionEdit(tag: string, proposed: ConditionEditFields, rationale: string) {
+    const c = this.conditions.find((x) => x.finish_tag === tag);
+    if (!c) {
+      const known = this.conditions.map((x) => x.finish_tag);
+      throw new UserError(`No condition ${JSON.stringify(tag)}.${known.length ? ` Known tags: ${known.join(", ")}.` : " Nothing has minted a condition yet."}`);
+    }
+    const cleanRationale = String(rationale ?? "").trim();
+    if (!cleanRationale) throw new UserError("rationale is required — the estimator accepts a reason, not a number.");
+    const diff: ConditionEditFields = {};
+    if (proposed.finish_tag !== undefined) {
+      const next = String(proposed.finish_tag).trim();
+      if (!next) throw new UserError("finish_tag cannot be empty.");
+      if (Session.tagKey(next) !== Session.tagKey(c.finish_tag)) {
+        const clash = this.conditions.find((x) => x.id !== c.id && Session.tagKey(x.finish_tag) === Session.tagKey(next));
+        if (clash) throw new UserError(`A condition already carries the tag ${JSON.stringify(clash.finish_tag)} — two conditions sharing a tag would make one permanently unreachable. Propose a different tag, or measure under ${clash.finish_tag} directly.`);
+      }
+      if (next !== c.finish_tag) diff.finish_tag = next;
+    }
+    if (proposed.waste_pct !== undefined && proposed.waste_pct !== c.waste_pct) diff.waste_pct = proposed.waste_pct;
+    if (proposed.multiplier !== undefined && proposed.multiplier !== c.multiplier) diff.multiplier = proposed.multiplier;
+    if (proposed.height_ft !== undefined && proposed.height_ft !== c.height_ft) diff.height_ft = proposed.height_ft;
+    if (proposed.roll_setup !== undefined) {
+      if (proposed.roll_setup === null) { if (c.roll_setup) diff.roll_setup = null; }
+      else diff.roll_setup = structuredClone(proposed.roll_setup);
+    }
+    if (!Object.keys(diff).length) throw new UserError(`Nothing to propose — every value given already matches ${c.finish_tag} (waste ${c.waste_pct}%, ×${c.multiplier}${c.height_ft !== undefined ? `, height ${c.height_ft} ft` : ""}).`);
+    const i = this.conditionEditProposals.findIndex((x) => x.condition_id === c.id);
+    const replaced = i >= 0 ? this.conditionEditProposals[i] : undefined;
+    const proposal: ConditionEditProposal = { id: uid("cprop"), condition_id: c.id, proposed: diff, rationale: cleanRationale, proposed_at: nowIso() };
+    if (i >= 0) this.conditionEditProposals[i] = proposal; else this.conditionEditProposals.push(proposal);
+    this.record({ op: "condition_proposal", tool: "propose_condition_edit", proposal, ...(replaced ? { replaced } : {}) });
+    return {
+      proposal_id: proposal.id, condition: c.finish_tag, condition_id: c.id,
+      current: Session.conditionKnobs(c), proposed: diff, rationale: cleanRationale,
+      ...(replaced ? { replaced_proposal_id: replaced.id } : {}),
+      note: "Pending. The condition is unchanged until the estimator accepts in the canvas; takeoff_summary and export_report show the current values with this diff beside them.",
+    };
+  }
+
+  /** withdraw_condition_edit: drop a pending diff without touching the
+   * condition. undo_last re-seats it. */
+  withdrawConditionEdit(id: string) {
+    const i = this.conditionEditProposals.findIndex((x) => x.id === id);
+    if (i < 0) {
+      const open = this.conditionEditProposals.map((x) => `${x.id} (${this.conditions.find((c) => c.id === x.condition_id)?.finish_tag ?? x.condition_id})`);
+      throw new UserError(`No condition-edit proposal with id ${JSON.stringify(id)}.${open.length ? ` Pending: ${open.join(", ")}.` : " Nothing is pending."}`);
+    }
+    const [proposal] = this.conditionEditProposals.splice(i, 1);
+    this.record({ op: "condition_proposal_withdraw", tool: "withdraw_condition_edit", proposal, index: i });
+    const c = this.conditions.find((x) => x.id === proposal.condition_id);
+    return { proposal_id: id, condition: c?.finish_tag ?? proposal.condition_id, withdrawn: true };
+  }
+
+  /** The estimator's acceptance — a HOST verb, deliberately not registered as
+   * an agent tool (only the reviewing surface turns a pending diff into
+   * ink). Applies the diff through the same applyConditionKnobs path
+   * edit_condition uses, so the resulting report is byte-identical to a direct
+   * edit; a rename lands on the condition's finish_tag. One journal step. */
+  acceptConditionEdit(id: string) {
+    const i = this.conditionEditProposals.findIndex((x) => x.id === id);
+    if (i < 0) throw new UserError(`No condition-edit proposal with id ${JSON.stringify(id)}.`);
+    const proposal = this.conditionEditProposals[i];
+    const c = this.conditions.find((x) => x.id === proposal.condition_id);
+    if (!c) throw new UserError(`The condition this proposal targets (${proposal.condition_id}) no longer exists.`);
+    if (proposal.proposed.finish_tag !== undefined) {
+      const clash = this.conditions.find((x) => x.id !== c.id && Session.tagKey(x.finish_tag) === Session.tagKey(proposal.proposed.finish_tag));
+      if (clash) throw new UserError(`Cannot accept: ${JSON.stringify(clash.finish_tag)} now exists on another condition. Withdraw or re-propose.`);
+    }
+    const before = structuredClone(c);
+    const { finish_tag, ...knobs } = proposal.proposed;
+    this.applyConditionKnobs(c, knobs);
+    if (finish_tag !== undefined) c.finish_tag = finish_tag;
+    this.conditionEditProposals.splice(i, 1);
+    this.record({ op: "condition_proposal_accept", tool: "accept_condition_edit", proposal, index: i, before });
+    return { proposal_id: id, condition: c.finish_tag, condition_id: c.id, applied: proposal.proposed };
+  }
+
+  private static conditionKnobs(c: Condition) {
+    return {
+      finish_tag: c.finish_tag, waste_pct: c.waste_pct, multiplier: c.multiplier,
+      ...(c.height_ft !== undefined ? { height_ft: c.height_ft } : {}),
+      ...(c.roll_setup ? { roll_setup: c.roll_setup } : {}),
+    };
+  }
+
+  /** The pending condition diffs as the report and the summary print them:
+   * current values beside proposed, per condition. */
+  proposedConditionEdits() {
+    return this.conditionEditProposals.flatMap((p) => {
+      const c = this.conditions.find((x) => x.id === p.condition_id);
+      if (!c) return [];
+      return [{ proposal_id: p.id, condition: c.finish_tag, condition_id: c.id, current: Session.conditionKnobs(c), proposed: p.proposed, rationale: p.rationale, proposed_at: p.proposed_at }];
+    });
   }
 
   /** derive_base (#148): the estimator's most mechanical derivation — wall
@@ -1919,7 +2237,7 @@ export class Session {
       // face value for the hover label — totals skip it, the parent nets it
       computed: { area_sf: round2(met.area * upp * upp), perimeter_lf: round2(met.perim * upp) },
       cuts_shape_id: parent.id,
-      origin: { method: "cutout_v1", actor: "agent", reviewed: false, cuts_shape_id: parent.id, parent_prev: parentPrev },
+      origin: this.stampProposal({ method: "cutout_v1", actor: "agent", reviewed: false, cuts_shape_id: parent.id, parent_prev: parentPrev }),
     };
     const prevNet = parentPrev.computed?.area_sf ?? 0;
     parent.verts_norm = toNorm(r.outer);
@@ -3088,6 +3406,7 @@ export class Session {
         reviewed: x.origin?.reviewed === true,
         ...(x.origin?.assignment ? { assignment: x.origin.assignment.source } : {}),
         ...(x.origin?.agent_edits ? { agent_edits: x.origin.agent_edits } : {}),
+        ...(x.origin?.proposal_id ? { proposal_id: x.origin.proposal_id } : {}),
       })),
       count: rows.length,
     };
@@ -3100,7 +3419,17 @@ export class Session {
     // Scale gate: name every sheet whose scale is agent-set and unconfirmed —
     // a totals reply must say what its numbers stand on
     const unconfirmed = [...this.sheets.values()].filter((s) => s.upp != null && s.scaleConfirmed === false).map((s) => s.key);
-    return { conditions: lean, totals: grandTotals(rows), ...(unconfirmed.length ? { scale_unconfirmed: unconfirmed } : {}) };
+    // proposals (#365): the batch ledger and the pending condition diffs ride
+    // the summary only when any exist — the totals above are the CURRENT
+    // values; a pending diff changes nothing until the estimator accepts it.
+    const proposals = this.proposalRows();
+    const proposedEdits = this.proposedConditionEdits();
+    return {
+      conditions: lean, totals: grandTotals(rows),
+      ...(unconfirmed.length ? { scale_unconfirmed: unconfirmed } : {}),
+      ...(proposals.length ? { proposals } : {}),
+      ...(proposedEdits.length ? { proposed_condition_edits: proposedEdits } : {}),
+    };
   }
 
   deleteShape(id: string) {
@@ -3429,19 +3758,11 @@ export class Session {
     return { seamByShape: seamLfByShape(byCond) as Map<string, number> };
   }
 
-  editCondition(tag: string, opts: { waste_pct?: number; multiplier?: number; height_ft?: number; roll_setup?: Record<string, unknown> | null }) {
-    if (opts.waste_pct === undefined && opts.multiplier === undefined && opts.height_ft === undefined && opts.roll_setup === undefined) {
-      throw new UserError("Nothing to change — pass at least one of waste_pct, multiplier, height_ft, roll_setup.");
-    }
-    const c = this.conditions.find((x) => x.finish_tag === tag);
-    if (!c) {
-      const known = this.conditions.map((x) => x.finish_tag);
-      throw new UserError(`No condition ${JSON.stringify(tag)}.${known.length ? ` Known tags: ${known.join(", ")}.` : " Nothing has minted a condition yet — commit a measurement or add materials first."}`);
-    }
-    const before = {
-      waste_pct: c.waste_pct, multiplier: c.multiplier, height_ft: c.height_ft,
-      roll_setup: c.roll_setup ? structuredClone(c.roll_setup) : undefined,
-    };
+  /** The ONE place a condition's quantity knobs are written — edit_condition
+   * and a condition-edit proposal's acceptance (#365) both land here, which
+   * is what makes "after acceptance the report matches a direct
+   * edit_condition byte for byte" true by construction, not by testing. */
+  private applyConditionKnobs(c: Condition, opts: { waste_pct?: number; multiplier?: number; height_ft?: number; roll_setup?: Record<string, unknown> | null }): void {
     if (opts.waste_pct !== undefined) c.waste_pct = opts.waste_pct;
     if (opts.multiplier !== undefined) c.multiplier = opts.multiplier;
     if (opts.height_ft !== undefined) c.height_ft = opts.height_ft;
@@ -3459,6 +3780,22 @@ export class Session {
         c.roll_setup = { ...base, ...given, material };
       }
     }
+  }
+
+  editCondition(tag: string, opts: { waste_pct?: number; multiplier?: number; height_ft?: number; roll_setup?: Record<string, unknown> | null }) {
+    if (opts.waste_pct === undefined && opts.multiplier === undefined && opts.height_ft === undefined && opts.roll_setup === undefined) {
+      throw new UserError("Nothing to change — pass at least one of waste_pct, multiplier, height_ft, roll_setup.");
+    }
+    const c = this.conditions.find((x) => x.finish_tag === tag);
+    if (!c) {
+      const known = this.conditions.map((x) => x.finish_tag);
+      throw new UserError(`No condition ${JSON.stringify(tag)}.${known.length ? ` Known tags: ${known.join(", ")}.` : " Nothing has minted a condition yet — commit a measurement or add materials first."}`);
+    }
+    const before = {
+      waste_pct: c.waste_pct, multiplier: c.multiplier, height_ft: c.height_ft,
+      roll_setup: c.roll_setup ? structuredClone(c.roll_setup) : undefined,
+    };
+    this.applyConditionKnobs(c, opts);
     this.record({ op: "condition", tool: "edit_condition", condition_id: c.id, before });
 
     // when the condition is roll goods AND floor shapes exist on scaled sheets,
@@ -3694,6 +4031,40 @@ export class Session {
           const m = this.markups.find((x) => x.id === id);
           if (m) m.rfi_id = e.before.id;
         }
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "proposal_open") {
+        this.proposals = this.proposals.filter((p) => p.id !== e.proposal.id);
+        this.currentProposalId = e.prev_current;
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "proposal_revise") {
+        // the replacements go, the previous pending batch returns to its
+        // recorded positions — one step, exactly as one step made it
+        const dead = new Set(e.ids);
+        this.shapes = this.shapes.filter((x) => !dead.has(x.id));
+        for (const { shape, index } of [...e.removed].sort((a, b) => a.index - b.index)) {
+          this.shapes.splice(Math.min(index, this.shapes.length), 0, shape);
+        }
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: e.ids.length + e.removed.length });
+      } else if (e.op === "proposal_withdraw") {
+        for (const { shape, index } of [...e.removed].sort((a, b) => a.index - b.index)) {
+          this.shapes.splice(Math.min(index, this.shapes.length), 0, shape);
+        }
+        const p = this.proposals.find((x) => x.id === e.proposal_id);
+        if (p) delete p.withdrawn_at;
+        if (e.was_current) this.currentProposalId = e.proposal_id;
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: e.removed.length });
+      } else if (e.op === "condition_proposal") {
+        const i = this.conditionEditProposals.findIndex((x) => x.id === e.proposal.id);
+        if (e.replaced) { if (i >= 0) this.conditionEditProposals[i] = e.replaced; else this.conditionEditProposals.push(e.replaced); }
+        else if (i >= 0) this.conditionEditProposals.splice(i, 1);
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "condition_proposal_withdraw") {
+        this.conditionEditProposals.splice(Math.min(e.index, this.conditionEditProposals.length), 0, e.proposal);
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "condition_proposal_accept") {
+        const ci = this.conditions.findIndex((x) => x.id === e.before.id);
+        if (ci >= 0) this.conditions[ci] = structuredClone(e.before);
+        this.conditionEditProposals.splice(Math.min(e.index, this.conditionEditProposals.length), 0, e.proposal);
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
       } else if (e.op === "approval") {
         // the stored inverse came from the canvas's own pure apply — exact
@@ -4189,6 +4560,11 @@ export class Session {
       // question must not resurface there as a stray Void row. Same
       // present-only-when-any convention as approvals.
       ...(this.liveRfis().length ? { rfis: this.liveRfis() } : {}),
+      // proposals (#365): the batches and the pending condition diffs ride
+      // the payload as transport — present only when any exist, so a
+      // proposal-free export stays byte-identical to a pre-#365 one.
+      ...(this.proposals.length ? { proposals: this.proposals } : {}),
+      ...(this.conditionEditProposals.length ? { condition_edit_proposals: this.conditionEditProposals } : {}),
       sheet_group: [],
       last_group: [],
       sheet_tabs: [],
@@ -4220,6 +4596,10 @@ export class Session {
       markups: this.markups,
       rfis: this.liveRfis(),
       rollGoods: rollReportRows(byCond, rows),
+      // proposals (#365): the report prints the CURRENT knobs in its rows and
+      // carries every pending diff beside them — additive, present only when
+      // any exist, so the document is byte-identical otherwise
+      proposedConditionEdits: this.proposedConditionEdits(),
     });
   }
 

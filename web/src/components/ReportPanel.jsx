@@ -25,6 +25,7 @@ import { activeTheme, saveActiveThemeFile, clearActiveTheme } from "../lib/repor
 import { normalizeLogoToPng, loadProfiles, saveProfiles, activeProfile, updateActiveProfile, addProfile, setActiveProfile, removeProfile } from "../lib/identity.js";
 import { resolveBranding, loadBrandingSelection, saveBrandingSelection } from "../lib/branding.js";
 import { projectIdFromUrl } from "../lib/store.js";
+import { describeConditionEdit, proposedConditionEditRows } from "../lib/proposals.js";
 
 const num = (v, d = 1) => (Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: d });
 
@@ -46,7 +47,12 @@ const sheetNum = (v, d = 1) => {
   return num(r, d);
 };
 
-export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, sheetDims, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], provenanceCounters = null, clientInfo = {}, onClientInfo, conditionColumns = [], shapeLabels = [], units = "imperial", rollByCond = null }) {
+export default function ReportPanel({ projectName, onProjectName, conditions, shapes, sheetLabel, sheetDims, onMarkedSet, markedSetDark, onClose, markups = [], rfis = [], scaleInfo = [], provenanceCounters = null, clientInfo = {}, onClientInfo, conditionColumns = [], shapeLabels = [], units = "imperial", rollByCond = null, conditionEditProposals = [] }) {
+  // proposals (#365): a pending condition-edit diff prints BESIDE the current
+  // values — the row's numbers are always the current knobs; the chip says
+  // what the agent proposed, and the JSON export carries the same rows.
+  const editProposalByCond = useMemo(() => new Map((Array.isArray(conditionEditProposals) ? conditionEditProposals : []).filter((p) => p && p.condition_id).map((p) => [p.condition_id, p])), [conditionEditProposals]);
+  const proposedEditRows = useMemo(() => proposedConditionEditRows(conditions, conditionEditProposals), [conditions, conditionEditProposals]);
   // memoized on the source arrays: project-name/client-info keystrokes re-render
   // the panel without touching conditions/shapes, so the totaling passes skip
   // imported report theme → { vars, name, warnings }. vars are spread onto this
@@ -317,7 +323,7 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
   const baseName = (projectName || "takeoff").replace(/[^\w.-]+/g, "_");
   const exportCsv = () => downloadText(`${baseName}.csv`, totalsToCsv(rows, projectName, bySheet, sheetLabel, csvCols, ctx, byLabelExport.length ? byLabelExport : null, brand.brandName, units), "text/csv");
   const exportJson = () => downloadText(`${baseName}.json`,
-    JSON.stringify(reportJson({ projectName, rows, bySheet, scaleInfo, markups, rfis, sheetLabel, conditionColumns, attrsByCond, shapeLabels, byLabel: byLabelExport, displayUnits: units, rollGoods: rollReportRows(rollByCond, rows) }), null, 2),
+    JSON.stringify(reportJson({ projectName, rows, bySheet, scaleInfo, markups, rfis, sheetLabel, conditionColumns, attrsByCond, shapeLabels, byLabel: byLabelExport, displayUnits: units, rollGoods: rollReportRows(rollByCond, rows), proposedConditionEdits: proposedEditRows }), null, 2),
     "application/json");
   const exportRfisCsv = () => downloadText(`${baseName}_rfis.csv`, rfisToCsv(rfis, markups, projectName, sheetLabel, brand.brandName), "text/csv");
   const exportRfisJson = () => downloadText(`${baseName}_rfis.json`,
@@ -387,6 +393,14 @@ export default function ReportPanel({ projectName, onProjectName, conditions, sh
               <strong style={{ fontFamily: "var(--f-mono)", fontWeight: 600 }}>{r.finish_tag}</strong>
               {r.multiplier > 1 && <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>×{r.multiplier}</span>}
             </span>
+            {/* proposals (#365): the pending diff beside the current values —
+                the numbers in this row are what the takeoff stands on today */}
+            {editProposalByCond.get(r.id) && (
+              <span data-proposed-edit={editProposalByCond.get(r.id).id} title={`Proposed by the agent, pending your acceptance in the Takeoffs panel${editProposalByCond.get(r.id).rationale ? ` — ${editProposalByCond.get(r.id).rationale}` : ""}. This row shows the current values.`}
+                style={{ display: "block", marginTop: 3, fontFamily: "var(--f-mono)", fontSize: 10.5, color: "var(--cobalt)", whiteSpace: "nowrap" }}>
+                proposed: {describeConditionEdit(conditions.find((c) => c.id === r.id), editProposalByCond.get(r.id)).map((d) => `${d.field} ${d.from} → ${d.to}`).join(" · ")}
+              </span>
+            )}
           </td>
         );
       case "shapes":

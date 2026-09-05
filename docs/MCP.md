@@ -51,7 +51,7 @@ client that honors `tools/list_changed`; leave it unset otherwise.
 
 ## What the agent gets
 
-Forty-three tools, in the order an agent tends to reach for them:
+Fifty tools, in the order an agent tends to reach for them:
 
 - **Open and orient**—`load_plan`, `sheet_info` (including the sheet's PDF
   layer table—Optional Content Groups with a classified role, confidence,
@@ -168,6 +168,15 @@ Forty-three tools, in the order an agent tends to reach for them:
   `roll_setup` opt-in—the reply echoes the figured order), `delete_shape`,
   `undo_last`, with `list_shapes` as the mid-session inventory the mutating
   verbs assume you have
+- **Proposals** (#365)—`propose_takeoff` opens a named batch that every
+  commit after it attaches to (the estimator sees ONE Accept per batch, not
+  one per shape); `revise_proposal` replaces the batch's still-pending shapes
+  as one journal step and `withdraw_proposal` removes them, accepted shapes
+  untouched either way. `propose_condition_edit` holds a diff against a
+  condition (tag, waste, multiplier, height, roll setup) pending the
+  estimator's acceptance in the canvas—nothing changes until then, and the
+  summary and report carry the diff beside the current values;
+  `withdraw_condition_edit` drops it. Design: `design/PROPOSALS.md`
 - **Condition twins**—`duplicate_condition` (the same finish measured
   somewhere else with its own preparation underneath: the twin arrives carrying
   the original's materials and keeps *following* them, so a coverage-rate fix on

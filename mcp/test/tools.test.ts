@@ -70,7 +70,10 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // delete_verdict takes a record id — same reasoning.
 // the RFI verbs (#364) take a title, a question, a sheet name, and record ids —
 // no geometry crosses them — same reasoning.
-const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "export_dxf", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict", "duplicate_condition", "split_condition", "apply_rules", "create_rfi", "list_rfis", "resolve_rfi", "delete_rfi"]);
+// the proposal verbs (#365) other than revise_proposal take a label, a
+// rationale, a condition diff, or a record id — no geometry crosses them.
+const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "export_dxf", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict", "duplicate_condition", "split_condition", "apply_rules", "create_rfi", "list_rfis", "resolve_rfi", "delete_rfi",
+  "propose_takeoff", "withdraw_proposal", "propose_condition_edit", "withdraw_condition_edit"]);
 
 test("tools/list: exactly TOOL_NAMES, each described with the coordinate contract", async () => {
   const client = await pair({});   // a DEFAULT build: the gate is up, TOOL_NAMES is what ships

@@ -316,6 +316,51 @@ const summaryRow = z.object({
   sy_net: z.number(),
 }).passthrough();
 
+// ── Proposals (#365) ────────────────────────────────────────────────────────
+const conditionKnobs = z.object({
+  finish_tag: z.string().optional(), waste_pct: z.number().optional(), multiplier: z.number().optional(),
+  height_ft: z.number().optional(), roll_setup: z.object({}).passthrough().nullable().optional(),
+}).passthrough();
+export const proposalRow = z.object({
+  proposal_id: z.string(), label: z.string(), rationale: z.string(),
+  pending: z.number().int().describe("Shapes attached to the batch and not yet affirmed by a human"),
+  accepted: z.number().int().describe("Shapes from the batch the estimator already accepted — ink, outside every agent verb"),
+  withdrawn: z.literal(true).optional(),
+  current: z.literal(true).optional().describe("New agent commits attach to this batch"),
+});
+export const proposedConditionEditRow = z.object({
+  proposal_id: z.string(), condition: z.string(), condition_id: z.string(),
+  current: conditionKnobs.describe("The condition's knobs as they stand — what every total above is computed from"),
+  proposed: conditionKnobs.describe("Only the fields that would change"),
+  rationale: z.string(), proposed_at: z.string(),
+});
+export const proposeTakeoffOutput = {
+  proposal_id: z.string(), label: z.string(), rationale: z.string(),
+  note: z.string(),
+};
+export const reviseProposalOutput = {
+  proposal_id: z.string(), label: z.string(),
+  replaced: z.number().int().describe("Pending shapes removed from the batch"),
+  committed: z.number().int().describe("Replacement shapes committed, all attached to the same batch"),
+  shape_ids: z.array(z.string()),
+  note: z.string(),
+};
+export const withdrawProposalOutput = {
+  proposal_id: z.string(), label: z.string(),
+  withdrawn: z.number().int().describe("Pending shapes removed"),
+  accepted_kept: z.number().int().describe("Shapes from the batch the estimator had accepted — untouched"),
+  note: z.string(),
+};
+export const proposeConditionEditOutput = {
+  proposal_id: z.string(), condition: z.string(), condition_id: z.string(),
+  current: conditionKnobs, proposed: conditionKnobs, rationale: z.string(),
+  replaced_proposal_id: z.string().optional().describe("Present when this proposal replaced an earlier pending one on the same condition"),
+  note: z.string(),
+};
+export const withdrawConditionEditOutput = {
+  proposal_id: z.string(), condition: z.string(), withdrawn: z.literal(true),
+};
+
 export const takeoffSummaryOutput = {
   conditions: z.array(summaryRow),
   totals: z.object({
@@ -327,7 +372,10 @@ export const takeoffSummaryOutput = {
     sy_net: z.number(),
   }).passthrough(),
   scale_unconfirmed: z.array(z.string()).optional().describe("Sheets whose scale is agent-set and no human has confirmed — these totals stand on an unverified scale; verify against a stated dimension or confirm in the canvas"),
+  proposals: z.array(proposalRow).optional().describe("The proposal ledger (#365): per batch, how many shapes are still pending, how many the estimator accepted, whether it was withdrawn, and which batch new commits attach to (current). Present only when a proposal exists"),
+  proposed_condition_edits: z.array(proposedConditionEditRow).optional().describe("Pending condition-edit diffs (#365) beside the current knobs. The rows above are the CURRENT values — nothing changes until the estimator accepts. Present only when any are pending"),
 };
+
 
 /** The app's exact save payload (opentakeoff.takeoff_canvas.v1). */
 export const exportDxfOutput = {
@@ -374,6 +422,10 @@ export const exportTakeoffOutput = {
   last_group: z.array(z.unknown()),
   sheet_tabs: z.array(z.unknown()),
   sheet_levels: z.object({}).passthrough(),
+  proposals: z.array(z.object({ id: z.string(), label: z.string(), rationale: z.string(), created_at: z.string(), withdrawn_at: z.string().optional() }).passthrough()).optional()
+    .describe("Proposal batches (#365) — present only when any exist. Shapes reference them by origin.proposal_id; the canvas shows one Accept per batch"),
+  condition_edit_proposals: z.array(z.object({ id: z.string(), condition_id: z.string(), proposed: z.object({}).passthrough(), rationale: z.string(), proposed_at: z.string() }).passthrough()).optional()
+    .describe("Pending condition-edit diffs (#365) — present only when any exist. Nothing on the condition changes until the estimator accepts in the canvas"),
 };
 
 /** import_takeoff (#151) — the merge receipt, field-identical to the app's. */
@@ -501,6 +553,7 @@ export const listShapesOutput = {
     reviewed: z.boolean().describe("true = human-affirmed ink, refused by every agent mutation"),
     assignment: z.enum(["schedule", "asserted"]).optional().describe('Where the finish tag came from: "schedule" = resolved from the room\'s own schedule row, "asserted" = the agent chose it. origin.assignment in export_takeoff carries the citation. Absent on human canvas shapes'),
     agent_edits: z.number().int().optional().describe("Present when the agent has revised this shape"),
+    proposal_id: z.string().optional().describe("The propose_takeoff batch this shape was committed under (#365) — present on shapes committed while a proposal was open; an accepted shape keeps it as history"),
   })),
   count: z.number().int(),
 };
@@ -535,7 +588,8 @@ export const undoLastOutput = {
     // EVERY JournalPayload op (session.ts) belongs here — the wire validates
     // undo_last's reply against this enum, so a journal op missing from it
     // fails the undo call itself. Add the op here in the same change.
-    op: z.enum(["commit", "scale", "edit", "delete", "materials", "condition", "approval", "duplicate_condition", "split_condition", "cutout", "cutout_restore", "runcut", "rfi_create", "rfi_resolve", "rfi_delete"]),
+    op: z.enum(["commit", "scale", "edit", "delete", "materials", "condition", "approval", "duplicate_condition", "split_condition", "cutout", "cutout_restore", "runcut", "rfi_create", "rfi_resolve", "rfi_delete",
+      "proposal_open", "proposal_revise", "proposal_withdraw", "condition_proposal", "condition_proposal_withdraw", "condition_proposal_accept"]),
     tool: z.string().describe("The tool call this step came from"),
     shapes: z.number().int().describe("Shapes affected by reversing this step — 0 for a materials step (it restores a condition's supporting-materials rows, not shapes), for a condition step (it restores the waste/multiplier pair), and for an approval step (it re-seats or removes a verdict mark)"),
   })).describe("Newest first"),
@@ -620,6 +674,7 @@ export const exportReportOutput = {
   units: z.string(),
   display_units: z.string(),
   roll_goods: z.array(z.record(z.unknown())).describe("Roll-goods order rows (#136) — order_lf / rolls / order_qty per roll-goods condition, ×N applied; empty when no condition carries a roll_setup (always the case for a headless session today)"),
+  proposed_condition_edits: z.array(proposedConditionEditRow).optional().describe("Pending condition-edit proposals (#365) — the rows above print the CURRENT knobs; each entry here carries the proposed values beside them. Present only when any are pending, so a proposal-free report is byte-identical"),
 };
 
 /** export_marked_pdf — the tool writes the PDF to disk and replies with where

@@ -2,6 +2,13 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — Proposals: a batch an agent can revise or withdraw, a condition edit the estimator accepts (mcp 0.9.74, #365)
+
+### Added
+- **`propose_takeoff`** opens a named batch; every agent commit that follows (hand traces, sweeps, derives, `cut_out`) attaches to it through `origin.proposal_id`, stamped centrally so no commit path can forget. **`revise_proposal`** replaces the batch's still-pending shapes with a new set in one journal step — all-or-nothing, validated before anything moves, quantified through the same arithmetic the measure verbs use. **`withdraw_proposal`** removes them in one step. Shapes the estimator already accepted are ink and are never touched; `undo_last` reverses each verb as one step (forty shapes, one call).
+- **`propose_condition_edit`** holds a diff against a condition pending — finish tag, waste %, multiplier, height, roll setup — with a required rationale; **`withdraw_condition_edit`** drops it. Nothing on the condition changes until the estimator accepts in the canvas; `takeoff_summary` and `export_report` keep computing from the current values and carry the diff beside them (`proposed_condition_edits`, present only when any are pending). Acceptance writes through the same path as `edit_condition`, so the report afterwards is byte-for-byte a direct edit.
+- **Canvas**: one Accept pill per proposal (with a Reject) instead of one per shape; a pending condition diff sits under its row in the Takeoffs panel with Accept / Reject; the Report prints the proposed values beside the current ones and its JSON export carries them. Proposals ride the takeoff payload and the app's Import as transport. Design: `docs/design/PROPOSALS.md`; proof: `docs/design/proposals-verification.md`.
+
 ## Unreleased — Command box and voice off the toolbar
 
 ### Changed
