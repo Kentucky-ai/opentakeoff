@@ -712,6 +712,10 @@ instrument producing it.
 
 — Michael · [Kentucky AI](https://kentucky-ai.com)
 
+**Contact:** research collaborations, data questions, press, or anything that is not a bug —
+[research@kentucky-ai.com](mailto:research@kentucky-ai.com). Bugs and feature requests go in
+[issues](https://github.com/Kentucky-ai/opentakeoff/issues); security reports follow [SECURITY.md](SECURITY.md).
+
 ## License
 
 [Apache License 2.0](LICENSE)—use it, [fork it](#fork-it), ship it, build on top of it. See
