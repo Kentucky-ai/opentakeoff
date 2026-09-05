@@ -725,6 +725,8 @@ The modal asks for an optional credit line and an attestation that you have the 
 
 Choose **Work** in the toolbar to open **Work and review**. **Measurements** lists stored work across the project, including imported agent takeoffs and measurements made on the canvas. Search by condition, sheet, label, or author; use **Needs review** or **Agent** to narrow the list.
 
+The scale control stays beside Work and Report. On narrow windows, these controls wrap below the scrolling tool strip.
+
 Select a measurement to open its sheet and center its boundary. Its **Measurement receipt** shows the stored quantity, source, method, review state, scale state, vertices, and holes. **Mark reviewed** records your review for that measurement; undo restores its previous state. **Reviewed** describes the stored review decision, not a guarantee of accuracy. Missing attribution and quantities remain explicit.
 
 On smaller screens the panel opens as a drawer; on phones it fills the work area. Selecting a measurement returns you to the plan. **Open report →** opens the existing report. Floating totals clear both views. The condition’s **properties** disclosure above the drawing hides or shows its appearance controls.

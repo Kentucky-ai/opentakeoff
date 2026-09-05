@@ -47,3 +47,11 @@
 .workspace-panel .workspace-more { width: 100%; }
 @media (max-width: 1100px) { .workspace-panel { position: absolute; inset: 0 0 0 auto; width: min(100%, calc(var(--props-w) + var(--sp-8) * 3)); box-shadow: var(--shadow-2); } }
 @media (max-width: 640px) { .workspace-panel { position: fixed; inset: 0 0 var(--status-h); width: auto; border-left: 0; } }
+
+/* Scale shares the pinned controls so the scrolling tool strip cannot clip it.
+   On narrow windows those controls get their own wrapping row. */
+@media (max-width: 800px) {
+  [data-topbar] { flex-wrap: wrap; }
+  [data-topbar] [data-topbar-scroll] { flex-basis: 100% !important; }
+  [data-topbar-pinned] { flex-wrap: wrap; width: 100%; row-gap: var(--sp-4) !important; }
+}

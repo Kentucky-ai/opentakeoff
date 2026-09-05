@@ -18,6 +18,7 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 - **Work** opens project measurements from agents and the canvas in one searchable review panel. Select a measurement to open its sheet and inspect its quantity, provenance, calibration state, and boundary. **Mark reviewed** uses the existing undoable review command. The **Agent** tab retains the browser agent and its proposal controls.
 
 ### Changed
+- Scale stays beside Work and Report instead of being clipped at the scrolling toolbar edge. Narrow windows put the pinned controls on a wrapping row.
 - Condition properties can collapse to reclaim drawing space. Work uses a drawer on smaller screens and a full-height view on phones. Floating totals clear the work panel and report so they cannot cover review or delivery controls.
 
 ## Unreleased — Phase 1 measurement correctness (mcp 0.9.72)
