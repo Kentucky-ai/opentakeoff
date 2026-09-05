@@ -49,6 +49,8 @@ export async function importTakeoff(session: Session, filePath: string) {
 
   session.conditions = (payload.conditions as Condition[]) ?? [];
   session.shapes = (payload.shapes as Shape[]) ?? [];
+  session.proposals = (payload.proposals as typeof session.proposals) ?? [];
+  session.conditionEditProposals = (payload.condition_edit_proposals as typeof session.conditionEditProposals) ?? [];
   session.markups = (payload.markups as Markup[]) ?? [];
   // approvals (#176): transport, not minting — an estimator seal arriving by
   // file stays an estimator seal (the actor field is the authority; only

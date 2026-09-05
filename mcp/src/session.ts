@@ -220,6 +220,8 @@ export interface ShapeOrigin {
    * — a machine correcting itself is a different event, and merging the two
    * would corrupt the correction signal the capture layer grades on. */
   agent_edits?: number;
+  /** Proposal batch that owns this agent shape. */
+  proposal_id?: string;
   /** symbol_sweep: how this count marker matched the seed exemplar — the
    * evidence that made it a commit (score against the commit bar, and the
    * symmetry-group element it matched under). Phase 2 adds `seed`, WHERE the
@@ -239,6 +241,21 @@ export interface ShapeOrigin {
       row?: { sheet: string; key: string; table: string };
     };
   };
+}
+
+export interface TakeoffProposal {
+  id: string;
+  label: string;
+  rationale: string;
+  created_at: string;
+}
+
+export interface ConditionEditProposal {
+  id: string;
+  condition_id: string;
+  condition: string;
+  proposed: { waste_pct?: number; multiplier?: number; height_ft?: number; roll_setup?: Record<string, unknown> | null };
+  proposed_at: string;
 }
 
 export interface Shape {
@@ -564,7 +581,11 @@ export type JournalPayload =
   // undo call itself (the over-the-wire test is what catches it).
   | { op: "rfi_create"; tool: string; id: string; links: { markup_id: string; prev_rfi_id: string }[] }
   | { op: "rfi_resolve"; tool: string; before: Rfi }
-  | { op: "rfi_delete"; tool: string; before: Rfi; unlinked: string[] };
+  | { op: "rfi_delete"; tool: string; before: Rfi; unlinked: string[] }
+  | { op: "proposal_revise"; tool: string; proposal_id: string; before: Shape[]; after: string[] }
+  | { op: "proposal_withdraw"; tool: string; proposal_id: string; removed: { shape: Shape; index: number }[] }
+  | { op: "condition_proposal"; tool: string; proposal_id: string }
+  | { op: "condition_proposal_withdraw"; tool: string; proposal: ConditionEditProposal };
 
 export type JournalEntry = JournalPayload & { seq: number };
 
@@ -599,6 +620,9 @@ export class Session {
    * (a withdrawn RFI keeps its number reserved). Read through liveRfis() for
    * anything that prints or exports. */
   rfis: Rfi[] = [];
+  proposals: TakeoffProposal[] = [];
+  conditionEditProposals: ConditionEditProposal[] = [];
+  private activeProposalId: string | null = null;
   /** The last assign-from-schedule run's unresolved rooms (0.9.18) — what the
    * marked-set cover discloses as withheld. Replaced per assign run, cleared
    * with the rest of the session on a non-merge load_plan. Seeds ride
@@ -651,6 +675,9 @@ export class Session {
       this.markups = [];
       this.approvals = [];
       this.rfis = [];
+      this.proposals = [];
+      this.conditionEditProposals = [];
+      this.activeProposalId = null;
       this.file = null;
       this.filePath = null;
       this.nextOrd = 1;
@@ -1323,7 +1350,7 @@ export class Session {
     // openings, door wedges, min-passage — minted onto origin centrally, so
     // no flood commit path can ship an unscored shape.
     if (origin && flood) origin = { ...origin, ...Session.floodStamp(flood, computed.area_sf) };
-    if (origin?.actor === "agent") origin = { ...origin, reviewed: false };
+    if (origin?.actor === "agent") origin = { ...origin, reviewed: false, ...(this.activeProposalId ? { proposal_id: this.activeProposalId } : {}) };
     // assignment provenance (0.9.18) defaults HERE, not at the seven call
     // sites: an agent commit that stated no source asserted the tag itself,
     // and stamping centrally means no future commit path can ship unstamped.
@@ -1341,6 +1368,83 @@ export class Session {
     this.shapes.push(shape);
     this.pendingCommits.push(shape.id);
     return shape;
+  }
+
+  proposeTakeoff(label: string, rationale: string) {
+    const cleanLabel = String(label || "").trim();
+    const cleanRationale = String(rationale || "").trim();
+    if (!cleanLabel) throw new UserError("label is required.");
+    if (!cleanRationale) throw new UserError("rationale is required.");
+    const proposal = { id: uid("proposal"), label: cleanLabel, rationale: cleanRationale, created_at: nowIso() };
+    this.proposals.push(proposal);
+    this.activeProposalId = proposal.id;
+    return { proposal_id: proposal.id, label: proposal.label, rationale: proposal.rationale, note: "Subsequent agent commits attach to this proposal until another proposal is started." };
+  }
+
+  private proposalOrError(id: string) {
+    const proposal = this.proposals.find((p) => p.id === id);
+    if (!proposal) throw new UserError(`No proposal with id ${JSON.stringify(id)}.`);
+    return proposal;
+  }
+
+  reviseProposal(id: string, replacements: { sheet: string; condition: string; role: MeasureRole; verts_norm: [number, number][]; label?: string }[]) {
+    this.proposalOrError(id);
+    const old = this.shapes.filter((s) => s.origin?.proposal_id === id && s.origin.reviewed !== true);
+    const oldIds = new Set(old.map((s) => s.id));
+    const before = this.shapes.filter((s) => oldIds.has(s.id)).map((s) => structuredClone(s));
+    this.shapes = this.shapes.filter((s) => !oldIds.has(s.id));
+    const after: string[] = [];
+    for (const r of replacements) {
+      const sheet = this.sheet(r.sheet);
+      if (r.verts_norm.length < (r.role === "linear" || r.role === "surface_area" ? 2 : 3)) throw new UserError("Replacement geometry has too few points.");
+      if (r.role !== "count" && sheet.upp == null) throw new UserError(this.scaleGate(sheet));
+      const px = r.verts_norm.map(([x, y]) => [x * sheet.widthPx, y * sheet.heightPx] as Point);
+      const upp = sheet.upp ?? 0;
+      const computed = r.role === "count" ? { count: 1 }
+        : r.role === "linear" ? { area_sf: 0, perimeter_lf: round2(openLen(px) * upp) }
+        : r.role === "surface_area" ? { area_sf: 0, perimeter_lf: round2(openLen(px) * upp) }
+        : (() => { const m = closedMetrics(px); return { area_sf: round2(m.area * upp * upp), perimeter_lf: round2(m.perim * upp) }; })();
+      const c = this.conditionFor(r.condition);
+      const shape: Shape = {
+        id: uid("shp"), sheet_id: sheet.key, condition_id: c.id, measure_role: r.role,
+        verts_norm: r.verts_norm.map((v) => [...v] as [number, number]), computed,
+        ...(r.label?.trim() ? { label: r.label.trim() } : {}),
+        origin: { method: "manual", actor: "agent", reviewed: false, proposal_id: id, agent_edits: 0 },
+      };
+      this.shapes.push(shape); after.push(shape.id);
+    }
+    this.record({ op: "proposal_revise", tool: "revise_proposal", proposal_id: id, before, after });
+    return { proposal_id: id, replaced: before.length, committed: after.length, shape_ids: after };
+  }
+
+  withdrawProposal(id: string) {
+    this.proposalOrError(id);
+    const removed = this.shapes.map((shape, index) => ({ shape, index }))
+      .filter(({ shape }) => shape.origin?.proposal_id === id && shape.origin.reviewed !== true);
+    this.shapes = this.shapes.filter((shape) => !removed.some((x) => x.shape.id === shape.id));
+    this.record({ op: "proposal_withdraw", tool: "withdraw_proposal", proposal_id: id, removed });
+    if (this.activeProposalId === id) this.activeProposalId = null;
+    return { proposal_id: id, withdrawn: removed.length };
+  }
+
+  proposeConditionEdit(tag: string, proposed: ConditionEditProposal["proposed"]) {
+    const c = this.conditions.find((x) => x.finish_tag === tag);
+    if (!c) throw new UserError(`No condition ${JSON.stringify(tag)}.`);
+    if (!Object.keys(proposed).length) throw new UserError("Nothing to propose.");
+    const existing = this.conditionEditProposals.find((p) => p.condition_id === c.id);
+    const proposal: ConditionEditProposal = { id: existing?.id ?? uid("condition-edit"), condition_id: c.id, condition: c.finish_tag, proposed: structuredClone(proposed), proposed_at: nowIso() };
+    this.conditionEditProposals = this.conditionEditProposals.filter((p) => p.condition_id !== c.id);
+    this.conditionEditProposals.push(proposal);
+    this.record({ op: "condition_proposal", tool: "propose_condition_edit", proposal_id: proposal.id });
+    return { proposal_id: proposal.id, condition: c.finish_tag, condition_id: c.id, current: { waste_pct: c.waste_pct, multiplier: c.multiplier, height_ft: c.height_ft, roll_setup: c.roll_setup }, proposed: proposal.proposed };
+  }
+
+  withdrawConditionEdit(id: string) {
+    const i = this.conditionEditProposals.findIndex((p) => p.id === id);
+    if (i < 0) throw new UserError(`No condition edit proposal with id ${JSON.stringify(id)}.`);
+    const [proposal] = this.conditionEditProposals.splice(i, 1);
+    this.record({ op: "condition_proposal_withdraw", tool: "withdraw_condition_edit", proposal });
+    return { proposal_id: id, withdrawn: true };
   }
 
   async oneClick(name: string, x: number, y: number, opts: { condition?: string; role: "floor_area" | "deduct"; returnVerts: boolean; sensitivity?: number; layers?: { include?: string[]; exclude?: string[] } }) {
@@ -3596,6 +3700,20 @@ export class Session {
         const dead = new Set(e.ids);
         this.shapes = this.shapes.filter((x) => !dead.has(x.id));
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: e.ids.length });
+      } else if (e.op === "proposal_revise") {
+        const after = new Set(e.after);
+        this.shapes = this.shapes.filter((s) => !after.has(s.id));
+        this.shapes.push(...e.before);
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: e.before.length + e.after.length });
+      } else if (e.op === "proposal_withdraw") {
+        for (const r of e.removed.sort((a, b) => a.index - b.index)) this.shapes.splice(Math.min(r.index, this.shapes.length), 0, r.shape);
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: e.removed.length });
+      } else if (e.op === "condition_proposal") {
+        this.conditionEditProposals = this.conditionEditProposals.filter((p) => p.id !== e.proposal_id);
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
+      } else if (e.op === "condition_proposal_withdraw") {
+        this.conditionEditProposals.push(e.proposal);
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
       } else if (e.op === "edit") {
         const i = this.shapes.findIndex((x) => x.id === e.before.id);
         // the shape may have been deleted after the edit; undoing the edit of a
@@ -4179,6 +4297,8 @@ export class Session {
       })),
       conditions: this.conditions,
       shapes: this.shapes,
+      ...(this.proposals.length ? { proposals: this.proposals } : {}),
+      ...(this.conditionEditProposals.length ? { condition_edit_proposals: this.conditionEditProposals } : {}),
       markups: this.markups,
       // approvals ride the payload additively (#176) — present only when any
       // exist, exactly the canvas buildPayload's convention, so a verdict-free

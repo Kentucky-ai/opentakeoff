@@ -368,6 +368,8 @@ export const exportTakeoffOutput = {
       .describe("count shapes carry {count} alone; every other role carries area_sf + perimeter_lf"),
     origin: z.object({}).passthrough().optional().describe("Provenance: method (manual|one_click_v1), actor (omitted=human, 'agent'=MCP/automation), reviewed (human affirmed at an explicit gate), assignment (where the finish tag came from — {source: 'schedule', room_tag, surface, schedule_sheet} when the room's own schedule row decided it, {source: 'asserted'} when the agent chose; stamped on every agent commit), and correction fields (edited, edited_before_create, copied, proposed_verts_norm, edits)"),
   }).passthrough()),
+  proposals: z.array(z.object({ id: z.string(), label: z.string(), rationale: z.string(), created_at: z.string() })).optional(),
+  condition_edit_proposals: z.array(z.unknown()).optional(),
   markups: z.array(z.unknown()),
   approvals: z.array(z.unknown()).optional().describe("Approval-family records (#176) — the estimator's APPROVED seals and the agent's verdict marks {id, actor, ts, sheet_id, at:[nx,ny], shape_id?, text?}. Present only when any exist (the canvas payload's own convention), so a verdict-free export stays byte-identical"),
   sheet_group: z.array(z.unknown()),
@@ -511,6 +513,24 @@ export const deleteShapeOutput = {
   note: z.string().optional().describe("Cutout interplay (#206), when it applies: the parent's cut was reverted, could not be rebuilt, or reconciled deducts were orphaned by a parent delete"),
 };
 
+export const proposeTakeoffOutput = {
+  proposal_id: z.string(), label: z.string(), rationale: z.string(), note: z.string(),
+};
+export const reviseProposalOutput = {
+  proposal_id: z.string(), replaced: z.number().int(), committed: z.number().int(), shape_ids: z.array(z.string()),
+};
+export const withdrawProposalOutput = {
+  proposal_id: z.string(), withdrawn: z.number().int(),
+};
+export const proposeConditionEditOutput = {
+  proposal_id: z.string(), condition: z.string(), condition_id: z.string(),
+  current: z.object({ waste_pct: z.number(), multiplier: z.number(), height_ft: z.number().optional(), roll_setup: z.unknown().optional() }),
+  proposed: z.object({ waste_pct: z.number().optional(), multiplier: z.number().optional(), height_ft: z.number().optional(), roll_setup: z.unknown().nullable().optional() }),
+};
+export const withdrawConditionEditOutput = {
+  proposal_id: z.string(), withdrawn: z.boolean(),
+};
+
 /** edit_shape: the revised shape's re-measured quantities. Quantities are
  * always recomputed from the resulting geometry and role, so a role flip alone
  * re-measures (closed area vs open length). */
@@ -535,7 +555,7 @@ export const undoLastOutput = {
     // EVERY JournalPayload op (session.ts) belongs here — the wire validates
     // undo_last's reply against this enum, so a journal op missing from it
     // fails the undo call itself. Add the op here in the same change.
-    op: z.enum(["commit", "scale", "edit", "delete", "materials", "condition", "approval", "duplicate_condition", "split_condition", "cutout", "cutout_restore", "runcut", "rfi_create", "rfi_resolve", "rfi_delete"]),
+    op: z.enum(["commit", "scale", "edit", "delete", "materials", "condition", "approval", "duplicate_condition", "split_condition", "cutout", "cutout_restore", "runcut", "rfi_create", "rfi_resolve", "rfi_delete", "proposal_revise", "proposal_withdraw", "condition_proposal", "condition_proposal_withdraw"]),
     tool: z.string().describe("The tool call this step came from"),
     shapes: z.number().int().describe("Shapes affected by reversing this step — 0 for a materials step (it restores a condition's supporting-materials rows, not shapes), for a condition step (it restores the waste/multiplier pair), and for an approval step (it re-seats or removes a verdict mark)"),
   })).describe("Newest first"),

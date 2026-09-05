@@ -21,6 +21,8 @@ import {
   createRfiOutput, listRfisOutput, resolveRfiOutput, deleteRfiOutput,
   sheetGraphOutput, resolveTagOutput, findScheduleOutput, sweepScheduleRowOutput, countMarksOutput,
   exportDxfOutput, getSheetVectorsOutput,
+  proposeTakeoffOutput, reviseProposalOutput, withdrawProposalOutput,
+  proposeConditionEditOutput, withdrawConditionEditOutput,
 } from "./outputs.ts";
 import { exportMarkedPdf } from "./marked.ts";
 import { assertWritable, OVERWRITE_DESC } from "./safewrite.ts";
@@ -393,6 +395,30 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
     outputSchema: deleteShapeOutput,
   }, run("delete_shape", ({ shape_id }) => session.deleteShape(shape_id)));
 
+  server.registerTool("propose_takeoff", {
+    description: `Start a named proposal batch. Subsequent agent shape commits attach to it; the estimator can accept the batch as one decision. Use revise_proposal to replace its still-pending shapes or withdraw_proposal to remove them all. Accepted shapes are never touched.`,
+    inputSchema: { label: z.string(), rationale: z.string() },
+    outputSchema: proposeTakeoffOutput,
+  }, run("propose_takeoff", (a) => session.proposeTakeoff(a.label, a.rationale)));
+
+  server.registerTool("revise_proposal", {
+    description: `Replace every still-pending shape in a proposal with a new set in one journal step. Human-reviewed shapes are left untouched. Undo restores the prior pending batch.`,
+    inputSchema: {
+      proposal_id: z.string(),
+      shapes: z.array(z.object({
+        sheet: z.string(), condition: z.string(), role: z.enum(["floor_area", "deduct", "linear", "surface_area", "count"]),
+        verts_norm: z.array(pointSchema).min(1), label: z.string().optional(),
+      })),
+    },
+    outputSchema: reviseProposalOutput,
+  }, run("revise_proposal", (a) => session.reviseProposal(a.proposal_id, a.shapes)));
+
+  server.registerTool("withdraw_proposal", {
+    description: `Withdraw a proposal batch. Removes every still-pending shape attached to it in one journal step; shapes the estimator already accepted remain.`,
+    inputSchema: { proposal_id: z.string() },
+    outputSchema: withdrawProposalOutput,
+  }, run("withdraw_proposal", ({ proposal_id }) => session.withdrawProposal(proposal_id)));
+
   server.registerTool("sheet_context", {
     description: `The sheet's STRUCTURE in one call and one frame: the classified vector segments, the positioned text spans, and the hatch-family instances of a region — everything the engine itself floods against, exposed as data instead of pixels. Use it when you need to REASON about a region rather than look at it: which lines bound this space and at what pen weight, what the region says, and which periodic fill pattern covers it. The join is the point — all three arrive in image px with no reconciliation left to do, and the reply echoes the post-clamp region so passing that same rect to view_sheet gives you the matching render by construction. Hatch families carry a content-derived id (same pattern spec ⇒ same id, anywhere on the sheet), so matching a plan region to a legend swatch is comparing two ids, not guessing from a render — read the legend region, read the room region, match ids, and cite both bboxes as evidence. Decimation is declared, ordered, and counted on every reply: segments shorter than min_len_px drop first (invisible ink), then a max_segments cap applies LONGEST-FIRST so walls survive and hatch strokes go; kept + dropped always reconciles to total_in_region, and whole segments drop with their meta intact — nothing is ever simplified or merged, because these are classified segments and a merge would rewrite the classification. A scan returns has_vector_linework: false with empty vectors — absence of linework, never a claim the region is blank. ${COORDS}`,
     inputSchema: {
@@ -477,6 +503,24 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
     },
     outputSchema: editConditionOutput,
   }, run("edit_condition", (a) => session.editCondition(a.condition, { waste_pct: a.waste_pct, multiplier: a.multiplier, height_ft: a.height_ft, roll_setup: a.roll_setup })));
+
+  server.registerTool("propose_condition_edit", {
+    description: `Propose a condition change for estimator acceptance. The current condition remains unchanged, so export_report is unchanged until the estimator accepts the proposal in the canvas.`,
+    inputSchema: {
+      condition: z.string(),
+      waste_pct: z.number().min(0).optional(),
+      multiplier: z.number().positive().optional(),
+      height_ft: z.number().positive().optional(),
+      roll_setup: z.unknown().optional(),
+    },
+    outputSchema: proposeConditionEditOutput,
+  }, run("propose_condition_edit", (a) => session.proposeConditionEdit(a.condition, { waste_pct: a.waste_pct, multiplier: a.multiplier, height_ft: a.height_ft, roll_setup: a.roll_setup })));
+
+  server.registerTool("withdraw_condition_edit", {
+    description: `Withdraw a pending condition edit proposal without changing the condition.`,
+    inputSchema: { proposal_id: z.string() },
+    outputSchema: withdrawConditionEditOutput,
+  }, run("withdraw_condition_edit", ({ proposal_id }) => session.withdrawConditionEdit(proposal_id)));
 
   server.registerTool("duplicate_condition", {
     description: `Twin a condition — the same finish measured somewhere else, with its own supporting materials. One finish in two areas is not two conditions and it is not one either: the same sheet goods over a slab and over a raised deck take the same field material and different preparation underneath (one wants a moisture barrier, the other a primer and a different adhesive). The twin arrives carrying the original's whole materials list and keeps FOLLOWING it — change a coverage rate on the original and every twin that has not touched that row gets it; edit a row on the twin and only THAT row stops following. \`label\` is REQUIRED and becomes the tag suffix ('CPT-1' + 'Level 2' → 'CPT-1 – Level 2'), because every tool in this server resolves a condition by finish tag and takes the FIRST match: two conditions sharing a tag would make one permanently unreachable, and a takeoff re-import collapses them last-wins. A label already in use is refused rather than de-collided. No takeoffs come along — measure the new area against the returned condition_id. Reversible with undo_last; use split_condition to end the inheritance permanently.`,
