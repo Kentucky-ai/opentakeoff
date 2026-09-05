@@ -2,6 +2,11 @@
 
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
+## Unreleased — Command box and voice off the toolbar
+
+### Changed
+- **The Command box and the Voice (push-to-talk) button are gated off the toolbar by default, and `M` arms nothing.** Nobody used them there. The command grammar, the on-device recognizer, the voice actions and every test stay in the repo unchanged; `VITE_COMMAND_BOX=1` at build time (or `globalThis.__OT_COMMAND_BOX = true` at runtime) puts both back. Web only, no MCP change. Design: `docs/design/COMMAND_VOICE_GATE.md`.
+
 ## Unreleased — One-Click temporarily gated (mcp 0.9.73)
 
 ### Changed

@@ -167,7 +167,7 @@ import { applyShapeCommand, geomSnapshot, vertsEqual, recordCommand } from "../l
 import { applyApprovalCommand, sanitizeApprovals, approvalInk, APPROVAL_R } from "../lib/approvals.js";
 import { findCutoutParent, subtractCutout, recomposeCutouts, cutRunsAcross } from "../lib/cutout.js";
 import { normalizeAgentReview } from "../lib/reviewState.js";
-import { oneClickEnabled, ONE_CLICK_GATE_MESSAGE } from "../lib/gate.js";
+import { oneClickEnabled, ONE_CLICK_GATE_MESSAGE, commandBoxEnabled } from "../lib/gate.js";
 import { computeShapeMetrics, needsMetrics, recalibrateShapes } from "../lib/shapeMetrics.js";
 import { fmtCheckLen, parseLenInput, checkVerdict, M_PER_FT, areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, heightVal, heightUnit, heightInputToFeet, heightStep, dimInputStr, dimLabel } from "../lib/units";
 import * as panelGeom from "../lib/panelGeometry.js";
@@ -6279,6 +6279,7 @@ export default function TakeoffCanvas() {
       if (menuDepthRef.current > 0) return;
       if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
       if ((e.key || "").toLowerCase() !== "m") return;
+      if (!commandBoxEnabled()) return;   // gated off the topbar (lib/gate.js): M arms nothing
       voiceHoldRef.current = true;
       voiceFnsRef.current.start();
     };
@@ -7917,7 +7918,7 @@ export default function TakeoffCanvas() {
             path. Focus suppresses canvas shortcuts via the existing INPUT guards.
             Deixis: focus marks the utterance's start — "this room" then needs an
             aim placed AFTER it (park the pointer on the room, type, Enter). */}
-        {cluster("Command",
+        {commandBoxEnabled() && cluster("Command",
           <input
             type="text"
             placeholder="cpt 1 · waste 7 · this room"
@@ -7944,7 +7945,7 @@ export default function TakeoffCanvas() {
         {/* Push-to-talk (RFC #59 recognizer): hold the button (or M) to dictate
             into the same grammar the Command box runs. Hidden entirely where
             capture is unsupported — graceful feature-absence, never broken. */}
-        {captureSupported() && cluster("Voice",
+        {commandBoxEnabled() && captureSupported() && cluster("Voice",
           <button
             title={'Hold to talk (or hold M anywhere on the canvas): speak a command — "carpet one, waste seven", "label phase two", "note …", or end with "this room" to trace at the cursor. Release to run; Esc discards. Audio is processed on-device and never leaves the browser.'}
             onPointerDown={(e) => { e.preventDefault(); e.currentTarget.setPointerCapture(e.pointerId); voiceHoldRef.current = true; voiceFnsRef.current.start(); }}

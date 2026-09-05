@@ -5,7 +5,7 @@
 // globalThis.__OT_ONE_CLICK: the full registry comes back.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { oneClickEnabled, ONE_CLICK_GATE_MESSAGE } from "../src/lib/gate.js";
+import { oneClickEnabled, ONE_CLICK_GATE_MESSAGE, commandBoxEnabled } from "../src/lib/gate.js";
 import { AGENT_TOOL_DEFS, agentToolDefs, executeAgentTool } from "../src/lib/agentTools.js";
 import { agentSystemPrompt } from "../src/lib/agentLoop.js";
 
@@ -45,4 +45,14 @@ test("gate lifted: the full registry and the engine prompt come back", async () 
     assert.deepEqual(agentToolDefs(), AGENT_TOOL_DEFS);
     assert.match(agentSystemPrompt(), /measure rooms with one_click/);
   });
+});
+
+test("command box / voice gate: off by default, runtime global lifts it", () => {
+  const prev = (globalThis as any).__OT_COMMAND_BOX;
+  try {
+    (globalThis as any).__OT_COMMAND_BOX = undefined;
+    assert.equal(commandBoxEnabled(), false);
+    (globalThis as any).__OT_COMMAND_BOX = true;
+    assert.equal(commandBoxEnabled(), true);
+  } finally { (globalThis as any).__OT_COMMAND_BOX = prev; }
 });

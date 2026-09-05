@@ -875,10 +875,9 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `K` | Check a dimension |
 | `V` | Select |
 | `G` | Sheet gallery |
-| Hold `M` | Push-to-talk dictation—release runs the command, `Esc` discards (see [§17](#17-voice-and-the-command-box)) |
 | `?` | The in-app quick reference—the five-minute path and every shortcut (`Esc` closes) |
 
-`O` (One-Click Area) is temporarily gated ([§6](#6-one-click-area)): the key reports the gate in the message bar and arms nothing until a build lifts it.
+`O` (One-Click Area) is temporarily gated ([§6](#6-one-click-area)): the key reports the gate in the message bar and arms nothing until a build lifts it. Hold-`M` dictation is gated off with the Command box ([§17](#17-voice-and-the-command-box)) and arms nothing.
 
 ### Conditions
 
@@ -962,6 +961,8 @@ the engine reads as a wall, at every notch. Trace it with Area (`A`), or on a CA
 ---
 
 ## 17. Voice and the Command box
+
+> **Gated off by default.** The Command box and the Voice button no longer sit on the toolbar, and holding `M` arms nothing — nobody was using them there. The grammar and the on-device recognizer stay in the code; a build brings both back with `VITE_COMMAND_BOX=1`. The section below describes them as they work then.
 
 Your hands are busy—one on the mouse tracing, one on the tool keys.
 The Command box and push-to-talk dictation set takeoff metadata without
