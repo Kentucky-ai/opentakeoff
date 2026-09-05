@@ -30,6 +30,24 @@
 //                                               states none; parser must not
 //                                               invent one)
 //   keys/<id>.tags.csv   tag,is_room            is_room ∈ 1 | 0
+//   keys/<id>.rowsym.csv tag,expect_status,note  expect_status ∈ resolved | refused
+//                                               — for a schedule-row mark (T1,
+//                                               EBB-2, EF-1 …), does the sweep
+//                                               find it DRAWN on a plan sheet?
+//                                               `resolved` = ≥ 1 instance (by
+//                                               geometry or by label);
+//                                               `refused` = the set never
+//                                               draws it (a note mention is
+//                                               not a drawing). The key is
+//                                               read off the RENDERED sheet,
+//                                               never off the tool's output.
+//
+//   3. ROW → SYMBOL — the third metric (2026-09-05): of the schedule rows the
+//      key names, how many does sweep_schedule_row resolve to drawn instances,
+//      and does it refuse the ones the set never draws? Precision / recall on
+//      "resolved". The count itself is not scored here (expected_count is
+//      optional in the key and reported, not graded) — this ruler asks the
+//      yes/no question first, because a wrong yes is a phantom device in a bid.
 //
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -101,7 +119,10 @@ const f1 = (p, r) => (p + r ? (2 * p * r) / (p + r) : 0);
 // ── run one set ─────────────────────────────────────────────────────────────
 async function evalSet(set) {
   const s = new Session();
-  const files = set.files.map((f) => join(set.root ?? spec.root, f));
+  // a relative root is relative to the corpus directory (a fixture corpus
+  // inside the repo says root ".."); an absolute one is used as-is
+  const root = resolve(corpus, set.root ?? spec.root ?? ".");
+  const files = set.files.map((f) => join(root, f));
   for (let i = 0; i < files.length; i++) await s.loadPlan(files[i], { merge: i > 0 });
   const g = await s.sheetGraph();
 
@@ -169,7 +190,28 @@ async function evalSet(set) {
     out.cell = { tp, fp, fn, precision: p, recall: r, f1: f1(p, r) };
   }
 
-  if (!cellKey && !tagKey) out.unlabelled = true;
+  // ── metric 3: row → symbol ──
+  const rowsymKey = readCsv(join(corpus, "keys", `${set.id}.rowsym.csv`));
+  if (rowsymKey) {
+    let tp = 0, fp = 0, fn = 0, right = 0;
+    const counts = [];
+    for (const row of rowsymKey) {
+      const tag = canonTag(row.tag);
+      const want = String(row.expect_status || "").trim().toLowerCase();
+      if (want !== "resolved" && want !== "refused") throw new Error(`${set.id}.rowsym.csv: expect_status must be resolved|refused, got "${row.expect_status}" for ${tag}`);
+      let got = "refused", found = 0, by = "";
+      try { const r = await s.sweepScheduleRow(tag); found = r.found; by = r.counted_by; got = r.found > 0 ? "resolved" : "refused"; }
+      catch { got = "refused"; }
+      if (want === "resolved" && got === "resolved") { tp++; right++; }
+      else if (want === "resolved" && got === "refused") { fn++; out.misses.push({ kind: "rowsym-missed", tag }); }
+      else if (want === "refused" && got === "resolved") { fp++; out.misses.push({ kind: "rowsym-phantom", tag, got: String(found) }); }
+      else right++;
+      if (row.expected_count != null && row.expected_count !== "" && got === "resolved") counts.push({ tag, want: Number(row.expected_count), got: found, by });
+    }
+    out.rowsym = { tp, fp, fn, n: rowsymKey.length, precision: tp / Math.max(1, tp + fp), recall: tp / Math.max(1, tp + fn), right, counts };
+  }
+
+  if (!cellKey && !tagKey && !rowsymKey) out.unlabelled = true;
   return out;
 }
 
@@ -209,6 +251,20 @@ say("");
 say(`cells  ${agg.ctp} right · ${agg.cfp} wrong · ${agg.cfn} missed`);
 say(`tags   ${agg.ttp} real · ${agg.tfp} not-rooms reported · ${agg.tfn} real rooms missed`);
 say("");
+const withRowsym = results.filter((r) => r.rowsym);
+if (withRowsym.length) {
+  say("── row → symbol (sweep_schedule_row): does a scheduled mark resolve to drawn instances? ──");
+  say("set                        rows    P        R     phantom  missed   counts (want→got)");
+  let rtp = 0, rfp = 0, rfn = 0;
+  for (const r of withRowsym) {
+    const x = r.rowsym; rtp += x.tp; rfp += x.fp; rfn += x.fn;
+    const cts = x.counts.map((c) => `${c.tag}:${c.want}→${c.got}${c.by === "label" ? "L" : c.by === "mixed" ? "M" : ""}`).join(" ");
+    say(`${r.id.padEnd(26)}${String(x.n).padStart(4)}   ${pct(x.precision)}   ${pct(x.recall)}   ${String(x.fp).padStart(5)}   ${String(x.fn).padStart(5)}   ${cts}`);
+  }
+  const P = rtp / Math.max(1, rtp + rfp), R = rtp / Math.max(1, rtp + rfn);
+  say(`${"CORPUS".padEnd(26)}       ${pct(P)}   ${pct(R)}`);
+  say("");
+}
 
 // worst bins first — this is what the next fix should attack
 const bins = new Map();

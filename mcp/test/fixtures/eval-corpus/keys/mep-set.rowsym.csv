@@ -1,0 +1,7 @@
+tag,expect_status,expected_count,note
+EBB-1,resolved,1,drawn once on M-101 — a 60pt bar with a leader; the general note's mention is not a drawing
+EBB-2,resolved,1,drawn once — a 90pt bar (no repeatable geometry: counted by label)
+EBB-3,resolved,1,drawn once — a horizontal bar
+EF-1,resolved,1,drawn once — a square with a diagonal
+SR-1,resolved,1,drawn once as tag over 150 CFM
+CPT-1,refused,,a material-schedule code — never drawn on a plan sheet in this set

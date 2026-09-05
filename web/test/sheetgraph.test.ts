@@ -9,7 +9,7 @@
 //   - schedule sheets never mint phantom room tags.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildSheetGraph, resolveTag, classifySheetRole, rowKeyAnswersFor, extractTable, roomTags, detailCallouts, revisionOf, type GraphSpan, type SheetSpans, type SheetGraph } from "../src/lib/sheetgraph.ts";
+import { buildSheetGraph, resolveTag, classifySheetRole, rowKeyAnswersFor, extractTable, extractTables, roomTags, detailCallouts, revisionOf, type GraphSpan, type SheetSpans, type SheetGraph } from "../src/lib/sheetgraph.ts";
 
 // span builder: 8pt-tall text, width ~5px/char — the shape the MCP server serves
 const sp = (str: string, x: number, y: number): GraphSpan => ({ str, x, y, w: str.length * 5, h: 8 });
@@ -1232,4 +1232,100 @@ test("#374: resolve_tag answers FLOOR / BASE / WAINSCOT for a room on a two-tier
   const u = resolveTag(g, "103A");
   assert.equal(u.status, "unresolved");
   assert.match((u as any).reason, /no finish cells/, "103A has a row but no finishes — the reason says so, not 'no row'");
+});
+
+// ── equipment schedules (the MEP family) ─────────────────────────────────────
+// A mechanical schedule sheet stacks several ID-keyed device schedules; none
+// of them says CODE / MARK / SYMBOL / TAG the way a finish table does, and a
+// material schedule that DOES say MARK and MANUFACTURER must never read as
+// equipment. The proof of an equipment table is a powered or air-device
+// column — CFM, WATTS, VOLTS, HP, NECK, THROW — no finish schedule carries.
+const mechSheet: SheetSpans = {
+  key: "mech.pdf#2",
+  sheet_number: "M-601",
+  spans: [
+    sp("ELECTRIC BASEBOARD HEATER SCHEDULE", 60, 40),
+    sp("ID", 60, 60), sp("MANUFACTURER", 120, 60), sp("MODEL", 230, 60), sp("WATTS", 300, 60), sp("VOLTS", 360, 60), sp("LENGTH", 420, 60), sp("REMARKS", 480, 60),
+    sp("EBB-1", 60, 80), sp("EXAMPLECO", 120, 80), sp("BB-750", 230, 80), sp("750", 300, 80), sp("120", 360, 80), sp("3'-0\"", 420, 80),
+    sp("EBB-2", 60, 100), sp("EXAMPLECO", 120, 100), sp("BB-1000", 230, 100), sp("1000", 300, 100), sp("240", 360, 100), sp("4'-0\"", 420, 100),
+    sp("FAN SCHEDULE", 60, 160),
+    sp("MARK", 60, 180), sp("DESCRIPTION", 120, 180), sp("CFM", 260, 180), sp("ESP", 320, 180), sp("HP", 380, 180), sp("VOLTS", 440, 180),
+    sp("EF-1", 60, 200), sp("BATHROOM EXHAUST FAN", 120, 200), sp("80", 260, 200), sp("0.25", 320, 200), sp("1/20", 380, 200), sp("120", 440, 200),
+    sp("DIFFUSER, GRILLE, REGISTER SCHEDULE", 60, 260),
+    sp("ID", 60, 280), sp("DESCRIPTION", 120, 280), sp("MANUFACTURER", 260, 280), sp("NECK SIZE", 360, 280), sp("THROW", 440, 280), sp("MOUNTING", 500, 280),
+    sp("SR-1", 60, 300), sp("SUPPLY REGISTER", 120, 300), sp("EXAMPLECO", 260, 300), sp("10 x 6", 360, 300), sp("3-WAY", 440, 300), sp("SURFACE", 500, 300),
+    sp("MATERIAL SCHEDULE", 60, 360),
+    sp("MARK", 60, 380), sp("MATERIAL", 120, 380), sp("MANUFACTURER", 260, 380), sp("DESCRIPTION", 400, 380),
+    sp("CPT-1", 60, 400), sp("CARPET TILE", 120, 400), sp("EXAMPLECO", 260, 400), sp("24 x 24 MODULAR", 400, 400),
+    sp("M-601", 480, 700),   // the title block's own sheet number, inside every band
+  ],
+};
+
+test("equipment: every stacked schedule on the sheet extracts, in order, keyed by ID or MARK", () => {
+  const tables = extractTables(mechSheet, "equipment", { sheetNumbers: new Set(["M601"]) });
+  assert.deepEqual(tables.map((t) => `${t.title?.text}:${t.rows.map((r) => r.key).join(",")}`), [
+    "ELECTRIC BASEBOARD HEATER SCHEDULE:EBB-1,EBB-2",
+    "FAN SCHEDULE:EF-1",
+    "DIFFUSER, GRILLE, REGISTER SCHEDULE:SR-1",
+  ]);
+  assert.deepEqual(tables[0].headers, ["ID", "MANUFACTURER", "MODEL", "WATTS", "VOLTS", "LENGTH", "REMARKS"]);
+  assert.equal(tables[0].rows[1].cells.WATTS.text, "1000");
+  assert.equal(tables[0].kind, "equipment");
+  // the single-table reader still returns only the first
+  assert.equal(extractTable(mechSheet, "equipment")?.title?.text, "ELECTRIC BASEBOARD HEATER SCHEDULE");
+});
+
+test("equipment: a material schedule that says MARK and MANUFACTURER is refused by the gate — no powered column", () => {
+  const onlyMaterial: SheetSpans = { key: "m", spans: mechSheet.spans.filter((t) => t.y >= 360) };
+  assert.equal(extractTable(onlyMaterial, "equipment"), null);
+  assert.equal(extractTable(onlyMaterial, "finish")?.rows[0].key, "CPT-1");
+});
+
+test("equipment: the whole graph indexes each schedule once — the fan schedule never doubles as a finish table", () => {
+  const g = buildSheetGraph([mechSheet]);
+  const kinds = g.tables.map((t) => `${t.kind}:${t.title?.text}`).sort();
+  assert.deepEqual(kinds, [
+    "equipment:DIFFUSER, GRILLE, REGISTER SCHEDULE",
+    "equipment:ELECTRIC BASEBOARD HEATER SCHEDULE",
+    "equipment:FAN SCHEDULE",
+    "finish:MATERIAL SCHEDULE",
+  ]);
+  // the sheet number keyed nothing anywhere
+  assert.ok(!g.tables.some((t) => t.rows.some((r) => /^M-?601$/.test(r.key))));
+  // the row's cells cite the sheet
+  const fan = g.tables.find((t) => t.kind === "equipment" && /FAN/.test(t.title?.text || ""))!;
+  assert.equal(fan.rows[0].cells.CFM.text, "80");
+  assert.equal(fan.rows[0].sheet, "mech.pdf#2");
+});
+
+test("equipment: row keys are marks — EBB-1, EF1, AHU-2A, VAV-12 — and a bare sheet number is not one", () => {
+  const one = (key: string) => extractTable({ key: "k", spans: [
+    sp("PUMP SCHEDULE", 60, 40),
+    sp("MARK", 60, 60), sp("GPM", 120, 60), sp("HP", 180, 60), sp("VOLTS", 240, 60),
+    sp(key, 60, 80), sp("50", 120, 80), sp("1", 180, 80), sp("208", 240, 80),
+  ] }, "equipment")?.rows[0]?.key ?? null;
+  assert.equal(one("P-1"), "P-1");
+  assert.equal(one("EF1"), "EF1");
+  assert.equal(one("AHU-2A"), "AHU-2A");
+  assert.equal(one("VAV-12"), "VAV-12");
+  assert.equal(one("M601"), null, "letter + three digits with no dash is a sheet number");
+  assert.equal(one("134"), null, "a bare room number is not a mark");
+});
+
+test("equipment: a LIGHT FIXTURE SCHEDULE keyed by letter TYPE reads — any trade, not one module", () => {
+  const t = extractTable({ key: "e", spans: [
+    sp("LIGHT FIXTURE SCHEDULE", 60, 40),
+    sp("TYPE", 60, 60), sp("DESCRIPTION", 120, 60), sp("LAMPS", 300, 60), sp("VOLTS", 360, 60), sp("MOUNTING", 420, 60),
+    sp("A", 60, 80), sp("2X4 LED TROFFER", 120, 80), sp("LED 40W", 300, 80), sp("277", 360, 80), sp("RECESSED", 420, 80),
+    sp("B2", 60, 100), sp("DOWNLIGHT", 120, 100), sp("LED 12W", 300, 100), sp("277", 360, 100), sp("RECESSED", 420, 100),
+  ] }, "equipment");
+  assert.deepEqual(t?.rows.map((r) => r.key), ["A", "B2"]);
+  assert.equal(t?.rows[0].cells.LAMPS.text, "LED 40W");
+  // the same letter rows under an ID header are NOT accepted — letters alone key nothing there
+  const idKeyed = extractTable({ key: "e2", spans: [
+    sp("PUMP SCHEDULE", 60, 40),
+    sp("ID", 60, 60), sp("GPM", 120, 60), sp("HP", 180, 60),
+    sp("A", 60, 80), sp("50", 120, 80), sp("1", 180, 80),
+  ] }, "equipment");
+  assert.equal(idKeyed, null);
 });

@@ -877,8 +877,11 @@ export const sweepScheduleRowOutput = {
     length_px: z.number(),
     corroborated: z.boolean().describe("true = the fingerprint recurred at a second tag occurrence before being trusted; false = the tag is drawn too sparsely to cross-check (see note)"),
     occurrences: z.number().int().describe("Drawn occurrences of the tag across all plan sheets"),
-  }),
-  found: z.number().int().describe("Matches carrying the row's own tag — the honest count, across every plan sheet"),
+  }).nullable().describe("null when the sweep counted BY LABEL: no repeatable marker geometry sits around the drawn tag (the equipment convention — a device drawn to its own size, tagged by a leader), so nothing was fingerprinted"),
+  found: z.number().int().describe("Instances counted across every plan sheet: geometry matches carrying the row's own tag PLUS drawn tags counted by label — see counted_by"),
+  found_by_geometry: z.number().int().describe("…of which marker-fingerprint matches corroborated by the tag"),
+  found_by_label: z.number().int().describe("…of which drawn tags amid linework the fingerprint did not (or could not) reach — an installed instance by the equipment convention, disclosed as label-counted"),
+  counted_by: z.enum(["geometry", "label", "mixed"]).describe("How the count was made — \"label\" means no marker geometry was matched at all; look at each label_only placement before pricing"),
   sheets: z.array(z.object({
     sheet: z.string(),
     found: z.number().int(),
@@ -888,7 +891,9 @@ export const sweepScheduleRowOutput = {
     excluded: z.array(z.object({ at: z.tuple([z.number(), z.number()]), tag: z.string() }))
       .describe("Markers matching the geometry but labeled with a SIBLING row's tag — the bubble shape is shared across marks, so these belong to that row, not this one"),
     text_only: z.array(z.object({ at: z.tuple([z.number(), z.number()]) }))
-      .describe("The tag drawn with NO matching marker geometry nearby — a note reference or a variant marker; a question, never a count"),
+      .describe("The tag drawn with no marker match AND no linework near it — a note mentioning the mark; a question, never a count"),
+    label_only: z.array(z.object({ at: z.tuple([z.number(), z.number()]), tag_at: wireBox }))
+      .describe("Instances counted BY LABEL: the row's tag drawn amid linework that the marker fingerprint did not match (or none was anchored) — the equipment convention; each is counted and each deserves a look"),
     candidates: z.object({ considered: z.number().int(), dropped: z.number().int() }),
     complete: z.boolean().describe("True when every proposed placement on this sheet was scored — false means this sheet's count is a FLOOR, not a total (#261)"),
     elapsed_ms: z.number().describe("Wall-clock for this sheet's sweep"),
@@ -1096,8 +1101,9 @@ export const deleteRfiOutput = {
  * plan sheets, counted per schedule mark, residue withheld with reasons. */
 const censusOccurrence = {
   at: z.tuple([z.number(), z.number()]).describe("The tag's center (image px)"),
-  value: z.string().describe("The paired value drawn under the tag (CFM, GPM, a count — the annotation that makes it an instance)"),
+  value: z.string().optional().describe("The paired value drawn under the tag (CFM, GPM, a count — the annotation that makes it an instance); absent when counted by label"),
   sheet: z.string(),
+  by: z.enum(["value", "label"]).describe("\"value\" = tag-over-value (air devices, fixtures); \"label\" = an EQUIPMENT-schedule mark drawn amid linework with no value — the leader-tag convention, counted as one instance and said so"),
 };
 const censusWithheld = {
   at: z.tuple([z.number(), z.number()]).describe("The tag's center (image px) — view_sheet here"),
@@ -1107,7 +1113,8 @@ const censusWithheld = {
 export const countMarksOutput = {
   marks: z.array(z.object({
     mark: z.string(),
-    count: z.number().int().describe("Value-paired instances counted on plan-role sheets"),
+    count: z.number().int().describe("Instances counted on plan-role sheets — value-paired tags, plus (for an equipment-schedule mark) tags drawn amid linework, see counted_by_label"),
+    counted_by_label: z.number().int().optional().describe("…of which counted by label (an equipment mark with a leader, no value under it)"),
     row: z.object({ sheet: z.string(), key: z.string(), table: z.string() }).optional()
       .describe("The schedule row that answers for this mark (a compound key answers for each part)"),
     unscheduled: z.boolean().optional().describe("true when the mark was stated by the caller but no schedule row answers for it"),

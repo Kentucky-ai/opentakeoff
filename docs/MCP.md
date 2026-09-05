@@ -69,7 +69,11 @@ Fifty-two tools, in the order an agent tends to reach for them:
   schedule row → each code's finish/material definition, every edge carrying
   a citation; unresolved comes back *with a reason*, never as silence),
   `find_schedule` (kind → sheet + title + headers + a `view_sheet`-ready
-  region). Real-set shapes are handled natively (#87 phases 2–3): a
+  region; kinds are `room finish`, `finish`/`material`, and `equipment` —
+  the device schedules of any trade, fans and pumps and heaters and light
+  fixtures and plumbing fixtures and diffusers alike, keyed by mark and
+  proven by a device column such as CFM, WATTS, GPM, LAMPS or NECK; every
+  stacked schedule on a sheet is read, top to bottom). Real-set shapes are handled natively (#87 phases 2–3): a
   schedule **continued across sheets** ("… SCHEDULE — CONT'D") reads as ONE
   table—rows resolve regardless of which sheet carries them, each citing
   the sheet the ink is on, and `find_schedule` returns one match whose

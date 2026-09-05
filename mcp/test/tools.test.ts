@@ -2243,7 +2243,10 @@ test("sweep_schedule_row: row citation, corroborated anchor, text-corroborated c
   assert.equal(r.data.anchor.sheet, "symbol-set.pdf");
   assert.equal(r.data.anchor.corroborated, true);
   assert.equal(r.data.anchor.segments, 4, "the marker bubble's linework, not the text");
-  assert.equal(r.data.anchor.occurrences, 6, "drawn occurrences across plan sheets only — the detail sheet's does not count");
+  // 5, not 6: the bare "T1" text (no linework near it) is a mention, not a
+  // drawn occurrence — it can neither anchor nor corroborate, and it surfaces
+  // below as text_only. The detail sheet's marker does not count either.
+  assert.equal(r.data.anchor.occurrences, 5, "DRAWN occurrences across plan sheets only — the bare text and the detail sheet's do not count");
 
   // the honest count: geometry AND tag agree
   assert.equal(r.data.found, 5);

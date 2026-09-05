@@ -2599,13 +2599,13 @@ export class Session {
 
     // mark vocabulary: stated, or read off the schedule tables' row keys —
     // a compound key ("R1 / E1") contributes each of its marks
-    type RowCite = { sheet: string; key: string; table: string };
+    type RowCite = { sheet: string; key: string; table: string; kind: string };
     const rowCite = new Map<string, RowCite>();
     for (const tb of graph.tables) {
       const table = tb.title?.text || `${tb.kind} schedule`;
       for (const row of tb.rows) {
         for (const part of canon(row.key).split("/").filter(Boolean)) {
-          if (!rowCite.has(part)) rowCite.set(part, { sheet: tb.sheet, key: row.key, table });
+          if (!rowCite.has(part)) rowCite.set(part, { sheet: tb.sheet, key: row.key, table, kind: tb.kind });
         }
       }
     }
@@ -2648,7 +2648,7 @@ export class Session {
     }
 
     const VAL_RE = /^[0-9][0-9,]{0,6}$/;
-    type Hit = { at: Point; value: string; sheet: string };
+    type Hit = { at: Point; value?: string; sheet: string; by: "value" | "label" };
     type WithheldOcc = { at: Point; sheet: string; reason: string };
     const perMark = new Map<string, { counted: Hit[]; withheld: WithheldOcc[] }>();
     for (const m of marks) perMark.set(m, { counted: [], withheld: [] });
@@ -2672,7 +2672,7 @@ export class Session {
             Math.abs((v.x0 + v.x1) / 2 - cx) <= Math.max(sp.x1 - sp.x0, 1.5 * h) &&
             v.y0 >= sp.y1 - 0.4 * h && v.y0 <= sp.y1 + 2.4 * h);
           if (paired) {
-            rec.counted.push({ at: [round1(cx), round1(cy)], value: paired.str.trim(), sheet: sh.key });
+            rec.counted.push({ at: [round1(cx), round1(cy)], value: paired.str.trim(), sheet: sh.key, by: "value" });
             counts[m] = (counts[m] || 0) + 1;
           } else {
             if (segs === null) segs = (await this.ensureGeometry(sh)).segs;
@@ -2682,6 +2682,20 @@ export class Session {
             for (let i = 0; i + 3 < segs.length && n < 3; i += 4) {
               if (segs[i] >= bx0 && segs[i] <= bx1 && segs[i + 1] >= by0 && segs[i + 1] <= by1 &&
                   segs[i + 2] >= bx0 && segs[i + 2] <= bx1 && segs[i + 3] >= by0 && segs[i + 3] <= by1) n++;
+            }
+            // An EQUIPMENT mark is annotated by a leader to its drawn device,
+            // never by a value under it — the tag-over-value rule is the air
+            // device / fixture convention. A scheduled equipment mark drawn
+            // amid linework IS an instance, counted BY LABEL and said so;
+            // the bare-text case (a note mentioning it) still withholds.
+            const equipmentRow = rowCite.get(m)?.kind === "equipment";
+            // a device drawn to its own size (a heater bar, a fan) is long
+            // linework that only CROSSES the pad box — count segments that
+            // touch it, not only those that fit inside it
+            if (equipmentRow && Session.lineworkNear(segs, [sp.x0, sp.y0, sp.x1, sp.y1], pad) >= 3) {
+              rec.counted.push({ at: [round1(cx), round1(cy)], sheet: sh.key, by: "label" });
+              counts[m] = (counts[m] || 0) + 1;
+              continue;
             }
             rec.withheld.push({
               at: [round1(cx), round1(cy)], sheet: sh.key,
@@ -2729,10 +2743,12 @@ export class Session {
         const cite = rowCite.get(m);
         const c = cap(rec.counted, 150);
         const w = cap(rec.withheld, 60);
+        const byLabel = rec.counted.filter((h) => h.by === "label").length;
         return {
           mark: m,
           count: rec.counted.length,
-          ...(cite ? { row: cite } : { unscheduled: true }),
+          ...(byLabel ? { counted_by_label: byLabel } : {}),
+          ...(cite ? { row: { sheet: cite.sheet, key: cite.key, table: cite.table } } : { unscheduled: true }),
           occurrences: c.list,
           ...(c.elided ? { occurrences_elided: c.elided } : {}),
           withheld: w.list,
@@ -2761,6 +2777,19 @@ export class Session {
       matches: named.slice(off, off + matches.length),
       withheld: named.slice(off + matches.length),
     };
+  }
+
+  /** Segments whose extent touches the box padded by `pad` — a leader, a device
+   * outline crossing it, a tick — capped at 3 (the callers only ask "≥ 3?"). */
+  private static lineworkNear(segs: ArrayLike<number>, bbox: [number, number, number, number], pad: number): number {
+    const bx0 = bbox[0] - pad, by0 = bbox[1] - pad, bx1 = bbox[2] + pad, by1 = bbox[3] + pad;
+    let n = 0;
+    for (let i = 0; i + 3 < segs.length && n < 3; i += 4) {
+      const sx0 = Math.min(segs[i], segs[i + 2]), sx1 = Math.max(segs[i], segs[i + 2]);
+      const sy0 = Math.min(segs[i + 1], segs[i + 3]), sy1 = Math.max(segs[i + 1], segs[i + 3]);
+      if (sx1 >= bx0 && sx0 <= bx1 && sy1 >= by0 && sy0 <= by1) n++;
+    }
+    return n;
   }
 
   private static labelFields(l: PlacementLabel | null | undefined): { label?: string; label_via?: "adjacent" | "leader" } {
@@ -3255,8 +3284,26 @@ export class Session {
         .sort((a, b) => a.cy - b.cy || a.cx - b.cx);
     };
     const occBySheet = planSheets.map((sh) => ({ sh, occ: occOf(sh, t) }));
-    const totalOcc = occBySheet.reduce((n, e) => n + e.occ.length, 0);
+    // a tag occurrence inside a schedule table's own region is that table's
+    // row label, never an instance (the census's rule, applied here too)
+    const tableRegionsOf = (key: string): Bbox[] => graph.tables.filter((x) => x.sheet === key).map((x) => x.region);
+    const amidLinework = (segs: ArrayLike<number>, o: Occ): boolean => Session.lineworkNear(segs, o.bbox, 2.5 * o.h) >= 3;
+    const inTable = (key: string, o: Occ): boolean => tableRegionsOf(key).some((r) => o.cx >= r[0] && o.cx <= r[2] && o.cy >= r[1] && o.cy <= r[3]);
+    // Only a tag DRAWN amid linework can anchor a fingerprint or corroborate
+    // one: a general note that mentions the mark ("SEE EBB-1 FOR …") is an
+    // occurrence of the text and nothing else — asking the fingerprint to
+    // recur there guaranteed a false "does not recur" and pushed a perfectly
+    // drawn device down to a label count.
+    const drawnBySheet: { sh: SheetState; occ: Occ[] }[] = [];
+    for (const { sh, occ } of occBySheet) {
+      const geo = await this.ensureGeometry(sh);
+      const drawn = geo.segs.length ? occ.filter((o) => !inTable(sh.key, o) && amidLinework(geo.segs, o)) : [];
+      drawnBySheet.push({ sh, occ: drawn });
+    }
+    const totalOcc = drawnBySheet.reduce((n, e) => n + e.occ.length, 0);
+    const mentions = occBySheet.reduce((n, e) => n + e.occ.length, 0) - totalOcc;
     if (!totalOcc) {
+      if (mentions) throw new UserError(`Schedule row "${t}" (${table} on ${tb.sheet}) is mentioned ${mentions}× on plan sheets but never drawn — every occurrence is bare text with no linework near it (a note), so there is no instance to count. If the device is drawn without its tag, marquee one instance with symbol_sweep {scope: "set"}.`);
       throw new UserError(`Schedule row "${t}" (${table} on ${tb.sheet}) cannot be geometrically anchored — its tag is not drawn on any plan sheet, and a fingerprint is never guessed from text alone. If the marker is drawn untagged, marquee one instance with symbol_sweep {scope: "set"}.`);
     }
 
@@ -3264,7 +3311,7 @@ export class Session {
     // with the MOST occurrences (ord breaks ties) so corroboration can run on
     // the anchor's own sheet whenever the set allows it; anchor occurrence =
     // first in reading order. Deterministic throughout.
-    const withOcc = occBySheet.filter((e) => e.occ.length > 0)
+    const withOcc = drawnBySheet.filter((e) => e.occ.length > 0)
       .sort((a, b) => b.occ.length - a.occ.length || a.sh.ord - b.sh.ord);
     const anchorSheet = withOcc[0].sh;
     const anchor = withOcc[0].occ[0];
@@ -3328,11 +3375,19 @@ export class Session {
         break;
       }
     }
-    if (!fp || !anchorRect) {
-      throw new UserError(corro
-        ? `Schedule row "${t}" cannot be anchored: the linework around its drawn tag on ${anchorSheet.key} does not recur at the tag's other occurrences — no repeatable marker geometry to fingerprint. Marquee one instance with symbol_sweep instead.`
-        : `Schedule row "${t}" cannot be anchored: no fingerprintable marker linework sits around its drawn tag on ${anchorSheet.key}. Marquee one instance with symbol_sweep instead.`);
-    }
+    // Label-first (equipment convention): a scheduled mark drawn by its tag
+    // with a leader to its device — a baseboard heater bar whose LENGTH is the
+    // unit's size, a fan, a pump — has no repeatable marker geometry, so the
+    // fingerprint can never anchor. That is not "nothing drawn": every drawn
+    // tag outside a schedule table, sitting amid linework, IS one installed
+    // instance, and it is counted BY LABEL and said so. A bare tag with no
+    // linework near it (a note mentioning the mark) stays a question.
+    const labelOnly = !fp || !anchorRect;
+    const labelReason = labelOnly
+      ? (corro
+        ? `the linework around its drawn tag on ${anchorSheet.key} does not recur at the tag's other occurrences — no repeatable marker geometry`
+        : `no fingerprintable marker linework sits around its drawn tag on ${anchorSheet.key}`)
+      : null;
 
     // 4. the full plan-only sweep + tag corroboration per match.
     // The tag-proximity radius is the marker's footprint AS DRAWN ON THE SHEET
@@ -3349,6 +3404,7 @@ export class Session {
       withheld: SweepWithheld[];
       excluded: { at: Point; tag: string }[];
       text_only: { at: Point }[];
+      label_only: { at: Point; tag_at: [number, number, number, number] }[];
       candidates: { considered: number; dropped: number };
       complete: boolean;
       elapsed_ms: number;
@@ -3361,11 +3417,22 @@ export class Session {
         skipped.push({ sheet: sh.key, role: "plan", reason: "no vector linework (likely a scan) — symbol matching reads the drawn segments" });
         continue;
       }
+      if (labelOnly) {
+        const label_only: { at: Point; tag_at: [number, number, number, number] }[] = [];
+        const text_only: { at: Point }[] = [];
+        for (const o of occ) {
+          if (inTable(sh.key, o)) continue;
+          if (amidLinework(g2.segs, o)) label_only.push({ at: [round1(o.cx), round1(o.cy)], tag_at: o.bbox });
+          else text_only.push({ at: [round1(o.cx), round1(o.cy)] });
+        }
+        perSheet.push({ state: sh, matches: [], withheld: [], excluded: [], text_only, label_only, candidates: { considered: 0, dropped: 0 }, complete: true, elapsed_ms: 0, scale: this.sweepRatio(anchorSheet, sh) });
+        continue;
+      }
       const ratio = this.sweepRatio(anchorSheet, sh);
       const t0 = process.hrtime.bigint();
       let res: SymbolMatchResult;
       try {
-        res = matchSymbol(fp, g2.segs, { ...sweepOpts, ...(ratio.scale === 1 ? {} : { scale: ratio.scale }) });
+        res = matchSymbol(fp!, g2.segs, { ...sweepOpts, ...(ratio.scale === 1 ? {} : { scale: ratio.scale }) });
       } catch (e) {
         skipped.push({ sheet: sh.key, role: "plan", reason: e instanceof Error ? e.message : String(e) });
         continue;
@@ -3378,11 +3445,17 @@ export class Session {
       const excluded: { at: Point; tag: string }[] = [];
       const withheld: SweepWithheld[] = [];
       const matchedOcc = new Set<number>();
+      let duplicates = 0;
       for (const m of res.matches) {
         let oi = -1;
         for (let k = 0; k < occ.length; k++) {
           if (Math.hypot(m.at[0] - occ[k].cx, m.at[1] - occ[k].cy) <= R) { oi = k; break; }
         }
+        // one drawn tag is ONE instance: a fingerprint that fires twice around
+        // the same tag (a device drawn as nested rectangles, the pad ladder
+        // matching both) must not count the device twice — measured live on a
+        // heater set where EWH-1 and EBB-8 each read 2 for one drawn unit
+        if (oi >= 0 && matchedOcc.has(oi)) { duplicates++; continue; }
         if (oi >= 0) { matchedOcc.add(oi); matches.push({ ...m, tag_at: occ[oi].bbox }); continue; }
         const sib = sibSpans.find((sp) => Math.hypot(m.at[0] - sp.cx, m.at[1] - sp.cy) <= R);
         if (sib) { excluded.push({ at: m.at, tag: sib.key }); continue; }
@@ -3393,19 +3466,31 @@ export class Session {
         withheld.push(near ? { ...w, reason: `${w.reason} — and the "${t}" tag is drawn beside it` } : w);
       }
       matches.sort(byPos); excluded.sort(byPos); withheld.sort(byPos);
-      const text_only = occ
-        .filter((o, k) => !matchedOcc.has(k) && !res.withheld.some((w) => Math.hypot(w.at[0] - o.cx, w.at[1] - o.cy) <= R))
-        .map((o) => ({ at: [round1(o.cx), round1(o.cy)] as Point }));
-      perSheet.push({ state: sh, matches, withheld, excluded, text_only, candidates: res.candidates, complete: res.complete, elapsed_ms, scale: ratio, ...(res.scaled ? { scaled: res.scaled } : {}) });
+      const unmatched = occ.filter((o, k) => !matchedOcc.has(k) && !res.withheld.some((w) => Math.hypot(w.at[0] - o.cx, w.at[1] - o.cy) <= R) && !inTable(sh.key, o));
+      // a tag the geometry did not reach but which sits amid linework is the
+      // label-first case inside a geometry sweep: a variant marker (a longer
+      // heater bar) still tagged with the row's own mark — counted by label
+      const label_only = unmatched.filter((o) => amidLinework(g2.segs, o)).map((o) => ({ at: [round1(o.cx), round1(o.cy)] as Point, tag_at: o.bbox }));
+      const text_only = unmatched.filter((o) => !amidLinework(g2.segs, o)).map((o) => ({ at: [round1(o.cx), round1(o.cy)] as Point }));
+      if (duplicates) skipped.push({ sheet: sh.key, role: "plan", reason: `${duplicates} extra fingerprint hit(s) around an already-counted tag were folded into their instance — one drawn tag is one unit` });
+      perSheet.push({ state: sh, matches, withheld, excluded, text_only, label_only, candidates: res.candidates, complete: res.complete, elapsed_ms, scale: ratio, ...(res.scaled ? { scaled: res.scaled } : {}) });
     }
 
     // 5. commit — condition minted FROM the row (its key IS the tag), the
     // schedule verdict and the seed citation on every marker, one undo step
-    const found = perSheet.reduce((n, p) => n + p.matches.length, 0);
+    const foundByGeometry = perSheet.reduce((n, p) => n + p.matches.length, 0);
+    const foundByLabel = perSheet.reduce((n, p) => n + p.label_only.length, 0);
+    const found = foundByGeometry + foundByLabel;
     let committed: { committed: number; shape_ids: string[]; condition: string; ea_total: number } | undefined;
     if (opts.commit && found) {
       const ids: string[] = [];
       for (const ps of perSheet) {
+        for (const l of ps.label_only) {
+          ids.push(this.commit(ps.state, t, "count", [l.at], { count: 1 }, {
+            method: "manual", actor: "agent", reviewed: false,
+            assignment: { source: "schedule", schedule_sheet: tb.sheet },
+          }).id);
+        }
         for (const m of ps.matches) {
           ids.push(this.commit(ps.state, t, "count", [m.at], { count: 1 }, {
             method: "symbol_sweep",
@@ -3432,7 +3517,9 @@ export class Session {
     const firstCell = r.cells[Object.keys(r.cells)[0]];
     const capped = perSheet.filter((p) => p.candidates.dropped > 0);
     const notes: string[] = [];
-    if (!corroborated) notes.push(`The tag "${t}" is drawn ${totalOcc === 1 ? "exactly once" : "too sparsely to cross-check"} — the fingerprint could not corroborate at a second occurrence; audit the matches with view_sheet before trusting the count.`);
+    if (labelOnly) notes.push(`Counted BY LABEL: ${labelReason} — so every drawn "${t}" tag amid linework on a plan sheet counts as one instance (${foundByLabel}), and a bare mention counts for nothing. Look at each before pricing.`);
+    else if (foundByLabel) notes.push(`${foundByLabel} of ${found} counted BY LABEL: the tag is drawn there amid linework the marker fingerprint did not reach (a variant of the device — a different length or size — or a rotated placement outside the sweep's reach).`);
+    if (!corroborated && !labelOnly) notes.push(`The tag "${t}" is drawn ${totalOcc === 1 ? "exactly once" : "too sparsely to cross-check"} — the fingerprint could not corroborate at a second occurrence; audit the matches with view_sheet before trusting the count.`);
     if (opts.commit && !found) notes.push("commit requested but nothing cleared the bar — no shapes were committed.");
     // #186, same disclosure discipline as symbol_sweep: a ratio the count
     // depends on is stated, and an assumed ratio over an empty sheet is named
@@ -3454,16 +3541,19 @@ export class Session {
         cells,
         citation: { sheet: tb.sheet, text: `${table} row ${t}`, bbox: Session.wireBox(firstCell?.bbox || tb.region) },
       },
-      anchor: {
+      anchor: labelOnly ? null : {
         sheet: anchorSheet.key,
         at: [round1(anchor.cx), round1(anchor.cy)],
-        rect: [round1(anchorRect[0][0]), round1(anchorRect[0][1]), round1(anchorRect[1][0]), round1(anchorRect[1][1])],
-        segments: fp.segments,
-        length_px: round1(fp.totalLen),
+        rect: [round1(anchorRect![0][0]), round1(anchorRect![0][1]), round1(anchorRect![1][0]), round1(anchorRect![1][1])],
+        segments: fp!.segments,
+        length_px: round1(fp!.totalLen),
         corroborated,
         occurrences: totalOcc,
       },
       found,
+      found_by_geometry: foundByGeometry,
+      found_by_label: foundByLabel,
+      counted_by: foundByLabel === 0 ? "geometry" : foundByGeometry === 0 ? "label" : "mixed",
       sheets: perSheet.map((p) => ({
         sheet: p.state.key,
         found: p.matches.length,
@@ -3471,6 +3561,7 @@ export class Session {
         withheld: p.withheld.map((w) => ({ at: [round1(w.at[0]), round1(w.at[1])], score: w.score, rotation: w.rotation, mirrored: w.mirrored, reason: w.reason })),
         excluded: p.excluded.map((e) => ({ at: [round1(e.at[0]), round1(e.at[1])], tag: e.tag })),
         text_only: p.text_only,
+        label_only: p.label_only.map((l) => ({ at: l.at, tag_at: Session.wireBox(l.tag_at) })),
         candidates: p.candidates,
         complete: p.complete,
         elapsed_ms: p.elapsed_ms,
@@ -4860,7 +4951,9 @@ export class Session {
     const g = await this.ensureGraph();
     if (!g.available) throw new UserError("This set has no text layer (a scan) — the sheet graph is unavailable.");
     const k = (kind || "").toLowerCase();
-    const want = /room/.test(k) ? "room-finish" : /finish|material|product|code|mark/.test(k) ? "finish" : k;
+    const want = /room/.test(k) ? "room-finish"
+      : /equip|mechanical|mep|hvac|plumb|electr|fan|pump|heater|unit|valve|diffuser|grille|fixture|device/.test(k) ? "equipment"
+      : /finish|material|product|code|mark/.test(k) ? "finish" : k;
     const hits = g.tables.filter((t) => t.kind === want);
     if (!hits.length) {
       const found = g.tables.map((t) => `${t.kind} on ${t.sheet}`).join(" | ");
