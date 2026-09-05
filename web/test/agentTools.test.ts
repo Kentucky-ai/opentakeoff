@@ -7,6 +7,10 @@
 //   - the scale gate refuses real-world-unit work on an uncalibrated sheet.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+
+// The One-Click gate (lib/gate.js) is UP by default; these probe tests exercise
+// the engine, so lift it at runtime. gate.test.ts pins the gated surface.
+(globalThis as any).__OT_ONE_CLICK = true;
 import {
   AGENT_TOOL_DEFS, executeAgentTool, validateToolArgs, pickAgentEvidence,
   agentScaleGate, EVIDENCE_MAX_CHARS,

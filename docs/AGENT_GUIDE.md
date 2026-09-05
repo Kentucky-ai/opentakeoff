@@ -9,6 +9,14 @@ as the canvas. The server and browser share geometry, calibration and quantity m
 Their current room-detection paths differ; audit the returned boundary on each surface
 rather than assuming the same seed always produces the same room.
 
+> **One-Click is temporarily gated.** On a default build `one_click` and `detect_rooms` do not
+> exist — they are not registered, `tools/list` never names them, and calling them is an
+> unknown-tool error. The initialize instructions say so and name the move: a room's polygon is
+> its wall faces, so read them with `get_sheet_vectors`, confirm on `view_sheet`, and commit with
+> `measure_polygon` under the finish tag its schedule row states (`resolve_tag`). Everything
+> else in this manual is unchanged. `OPENTAKEOFF_ONE_CLICK=1` lifts the gate; the passages that
+> use the two verbs describe that build. See [`design/ONE_CLICK_GATE.md`](design/ONE_CLICK_GATE.md).
+
 **Contents**
 
 1. [Connect in 60 seconds](#1-connect-in-60-seconds)
@@ -94,7 +102,7 @@ numbers report.**
    `load_plan { merge: true }` to add the schedule sheet and the addenda—a bid set is plans
    *plus* schedule *plus* addenda, and merging leaves existing scales, conditions, and shapes
    alone.
-2. **Commit shapes under finish-tag conditions.** `one_click` / `detect_rooms` /
+2. **Commit shapes under finish-tag conditions.** (`measure_polygon` on the wall faces while One-Click is gated.) `one_click` / `detect_rooms` /
    `measure_polygon` / `measure_line` with `condition`. When the set carries a room-finish
    schedule, prefer `detect_rooms { assign_from_schedule: true }` so each room commits under its
    *own* row instead of one tag you picked for all of them.

@@ -36,7 +36,7 @@ The fastest way to learn the canvas is to run one takeoff end to end on the bund
 1. **Load the sample.** On the opening screen, click **Load sample plan**—a real medical-center floor finish plan. (Your own plans: drag a PDF anywhere onto the page.)
 2. **Accept the scale.** Open the **Set scale…** chip in the toolbar. The plan's drawn scale note has already been read off the sheet—click **Plan says 1/4″ = 1′-0″ — use it**. A calibrated ruler bar flashes on the sheet for a few seconds so you can eyeball that it's right (a door opening is about 3′).
 3. **Choose a condition.** A fresh workspace ships with a starter set of flooring conditions—CPT-1, LVT-1, CT-1, and friends. Press `1` to arm the first (the number keys answer in list order until you pin your own palette), or open the **☰ Takeoffs** rail button and click one.
-4. **One-Click the rooms.** Press `O`, then click inside a room. The room traces itself, wall to wall, as a dashed proposal. Click the next room, and the next. Press `⏎` to create them all.
+4. **Trace the rooms.** Press `A`, click the room's corners, `⏎` closes it. (One-Click Area — press `O`, click inside a room, it traces itself — is **temporarily gated** while the flood engine is re-validated; [§6](#6-one-click-area) says what that means.)
 5. **Read the report.** Open **Report** for the per-condition breakdown—SF, SY, waste-adjusted order quantities, and the materials buy list. Export **CSV**, **Excel**, or a **Marked set** PDF.
 
 That's the whole loop: open → scale → condition → measure → report. Everything autosaves to your browser as you go—reload the tab and your takeoff is still there.
@@ -472,6 +472,8 @@ Under the condition total sits **MEASUREMENTS**—a numbered tally, in draw orde
 
 ## 6. One-Click Area
 
+> **Temporarily gated.** The flood engine behind One-Click is being re-validated against a wider plan corpus. Until that finishes the tool is off the rail, `O` reports the gate in the message bar instead of arming, the voice trace refuses, and the in-app agent does not see it. Trace rooms with **Area** (`A`) meanwhile — everything downstream (base, transitions, the Report, the marked set) works the same on a hand trace. A build lifts the gate with `VITE_ONE_CLICK=1`; the section below describes the tool as it works then.
+
 <img src="img/one-click-area.gif" alt="One-Click Area tracing patient rooms wall to wall on the sample plan" width="820"/>
 
 One-Click Area (`O`) is the fastest way to measure a room: click inside it, and the linework bounds a flood fill, the boundary traces itself, and the vertices snap to true corners. What comes back is a **proposal**—dashed, editable, uncommitted—and nothing enters your takeoff until you create it. Review is the point: the engine does the tracing, you keep the judgment.
@@ -784,7 +786,7 @@ What's sent, and only when you run an AI feature: the sheet region in question a
 
 The same engine speaks [MCP](https://modelcontextprotocol.io), one command away:
 `npx -y opentakeoff-mcp` (or the one-click `opentakeoff-mcp.mcpb` bundle for Claude Desktop). An
-MCP client gets **<!--tool-count-->47<!--/tool-count--> tools** plus browsable sheet resources, over the very same measuring engine,
+MCP client gets **<!--tool-count-->45<!--/tool-count--> tools** plus browsable sheet resources, over the very same measuring engine,
 with the same scale gate and the same provenance receipts:
 
 | Group | Tools |
@@ -861,7 +863,6 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 
 | Key | Tool |
 |---|---|
-| `O` | One-Click Area |
 | `A` | Area |
 | `R` | Rectangle |
 | `L` | Linear |
@@ -876,6 +877,8 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `G` | Sheet gallery |
 | Hold `M` | Push-to-talk dictation—release runs the command, `Esc` discards (see [§17](#17-voice-and-the-command-box)) |
 | `?` | The in-app quick reference—the five-minute path and every shortcut (`Esc` closes) |
+
+`O` (One-Click Area) is temporarily gated ([§6](#6-one-click-area)): the key reports the gate in the message bar and arms nothing until a build lifts it.
 
 ### Conditions
 

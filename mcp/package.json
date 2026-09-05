@@ -1,9 +1,9 @@
 {
   "name": "opentakeoff-mcp",
-  "version": "0.9.72",
+  "version": "0.9.73",
   "mcpName": "io.github.Kentucky-ai/opentakeoff",
   "type": "module",
-  "description": "OpenTakeoff MCP server \u2014 drive the takeoff engine from your MCP client over stdio.",
+  "description": "OpenTakeoff MCP server — drive the takeoff engine from your MCP client over stdio.",
   "license": "Apache-2.0",
   "engines": {
     "node": ">=20"
@@ -17,7 +17,7 @@
     "prepublishOnly": "npm run typecheck && npm test && npm run build",
     "typecheck": "tsc --noEmit",
     "check:tool-count": "node scripts/check-tool-count.mjs",
-    "test": "node --import tsx --test test/conformance.test.ts test/context.test.ts test/dxf.test.ts test/e2e.test.ts test/labels.test.ts test/overlap.test.ts test/parity.test.ts test/raster.test.ts test/resources.test.ts test/safewrite.test.ts test/scalewarn.test.ts test/session.test.ts test/staging.test.ts test/tools.test.ts test/transitions.test.ts test/twins.test.ts test/view.test.ts"
+    "test": "node --import tsx --test test/conformance.test.ts test/context.test.ts test/dxf.test.ts test/e2e.test.ts test/gate.test.ts test/labels.test.ts test/overlap.test.ts test/parity.test.ts test/raster.test.ts test/resources.test.ts test/safewrite.test.ts test/scalewarn.test.ts test/session.test.ts test/staging.test.ts test/tools.test.ts test/transitions.test.ts test/twins.test.ts test/view.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",

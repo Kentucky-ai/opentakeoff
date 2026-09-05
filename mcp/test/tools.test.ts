@@ -22,9 +22,11 @@ import { buildMask, extractVectorGeometry } from "../../web/src/lib/oneclick.ts"
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
 const KEY = "sample-plan.pdf";
 
-async function pair() {
+// oneClick: true — these tests exercise the flood verbs; the default (gated)
+// surface is pinned by the tools/list test below and by gate.test.ts.
+async function pair(opts: { oneClick?: boolean } = { oneClick: true }) {
   const [ct, st] = InMemoryTransport.createLinkedPair();
-  const server = buildServer(new Session());
+  const server = buildServer(new Session(), opts);
   await server.connect(st);
   const client = new Client({ name: "test-client", version: "0.0.0" });
   await client.connect(ct);
@@ -71,7 +73,7 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "export_dxf", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict", "duplicate_condition", "split_condition", "apply_rules", "create_rfi", "list_rfis", "resolve_rfi", "delete_rfi"]);
 
 test("tools/list: exactly TOOL_NAMES, each described with the coordinate contract", async () => {
-  const client = await pair();
+  const client = await pair({});   // a DEFAULT build: the gate is up, TOOL_NAMES is what ships
   const { tools } = await client.listTools();
   assert.deepEqual(tools.map((t) => t.name).sort(), [...TOOL_NAMES]);
   for (const t of tools) {
@@ -461,7 +463,7 @@ test("import_takeoff: empty session adopts wholesale; worked session merges by t
 test("apply_rules: refuses without rules, re-runs an imported rule as one batch, idempotent, one undo step", async () => {
   const session = new Session();
   const [ct, st] = InMemoryTransport.createLinkedPair();
-  await buildServer(session).connect(st);
+  await buildServer(session, { oneClick: true }).connect(st);
   const client = new Client({ name: "test-client", version: "0.0.0" });
   await client.connect(ct);
 
@@ -560,7 +562,7 @@ test("apply_rules: refuses without rules, re-runs an imported rule as one batch,
 test("cut_out: real holes compose on the parent, refusals hold, delete reverts, parent delete orphans", async () => {
   const session = new Session();
   const [ct, st] = InMemoryTransport.createLinkedPair();
-  await buildServer(session).connect(st);
+  await buildServer(session, { oneClick: true }).connect(st);
   const client = new Client({ name: "test-client", version: "0.0.0" });
   await client.connect(ct);
 
@@ -676,7 +678,7 @@ test("cut_out: real holes compose on the parent, refusals hold, delete reverts, 
 test("cut_out on an open run: clips the stretch, splits at a middle cut, refuses the misses — one undo step", async () => {
   const session = new Session();
   const [ct, st] = InMemoryTransport.createLinkedPair();
-  await buildServer(session).connect(st);
+  await buildServer(session, { oneClick: true }).connect(st);
   const client = new Client({ name: "test-client", version: "0.0.0" });
   await client.connect(ct);
   await call(client, "load_plan", { path: PLAN });
