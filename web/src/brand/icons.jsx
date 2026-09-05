@@ -19,6 +19,8 @@ export const icons = {
 
   // ── takeoff canvas set — drafting monoline, vertex-dot motif on measure tools ──
   pan: (s) => <I size={s}><path d="M12 2 V 22 M2 12 H 22" /><path d="M12 2 L 9.6 4.4 M12 2 L 14.4 4.4 M12 22 L 9.6 19.6 M12 22 L 14.4 19.6 M2 12 L 4.4 9.6 M2 12 L 4.4 14.4 M22 12 L 19.6 9.6 M22 12 L 19.6 14.4" /></I>,
+  search: (s) => <I size={s}><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15 15 L21 21" /></I>,
+  focus: (s) => <I size={s}><path d="M9 4 H4 V9 M15 4 H20 V9 M4 15 V20 H9 M20 15 V20 H15" /></I>,
   select: (s) => <I size={s}><path d="M7 3 L 7 17 L 11 13.5 L 13.5 19.2 L 16 18 L 13.5 12.5 L 18.5 12 Z" /></I>,
   calibrate: (s) => <I size={s}><circle cx="12" cy="4.6" r="1.4" /><path d="M11.2 5.9 L 7 19 M12.8 5.9 L 17 19" /><path d="M5.8 17.4 L 8.2 18.4 M18.2 17.4 L 15.8 18.4" /></I>,
   area: (s) => <I size={s}><path d="M12 4 L 20 10 L 17 19 L 7 19 L 4 10 Z" /><circle cx="12" cy="4" r="1.1" fill="currentColor" /><circle cx="20" cy="10" r="1.1" fill="currentColor" /><circle cx="17" cy="19" r="1.1" fill="currentColor" /><circle cx="7" cy="19" r="1.1" fill="currentColor" /><circle cx="4" cy="10" r="1.1" fill="currentColor" /></I>,

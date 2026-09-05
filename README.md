@@ -37,6 +37,8 @@ carry an explicit review status. See the [Phase 1 test guide](docs/PHASE_1_TESTI
 
 ---
 
+An optional **Workspace preview** (in the canvas **⋯** menu) offers compact controls, searchable actions and sheets, and personal panel arrangements with a layout lock. [See the workspace design and research](docs/design/PERSONAL_WORKSPACE.md).
+
 ## Start here
 
 | You are | Go here |
@@ -399,10 +401,14 @@ register** turns any markup into a tracked question with status, priority, ball-
 cost/schedule impact flags, exporting as CSV/JSON and as an RFI schedule page in the marked set.
 
 ### The Agent panel, in the browser
+Choose **Work** to inspect canvas and imported agent measurements together: search across
+sheets, locate boundaries, inspect provenance, and record an undoable review. Its **Agent**
+tab runs the browser agent. Imported takeoffs need no model connection to review.
 The same proposer/reviewer split as MCP without leaving the canvas: describe a takeoff in a
 sentence and a model—**yours**, on your key, from your browser—works the sheet with the
 app's own deterministic tools and stages dashed proposals you accept, correct, or reject. It
-cannot invent geometry (`propose_shapes` rejects anything uncited) and it cannot set a scale.
+includes evidence fields for review and cannot set a scale. Inspect proposed boundaries and
+their evidence before accepting them.
 To watch the loop with no AI account at all, run the keyless deterministic mock server in
 `scripts/`.
 
