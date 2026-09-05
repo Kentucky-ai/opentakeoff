@@ -757,6 +757,10 @@ A proposal whose sheet you've since closed (or unscaled) is skipped at accept wi
 
 Work that arrives from an MCP session (**Import takeoff…**, or a synced workspace) lands as dashed pencil too, and an agent can group it: `propose_takeoff` names a batch and every shape it commits afterwards belongs to it. On the canvas that batch is **one pill** — *Accept "Level 1 offices per finish schedule" · 3* — with a ✕ to reject it. Accept inks the whole batch in one step (one `⌘Z`); Reject removes its pending shapes (`⌘Z` restores them). Shapes you already accepted are never part of a batch again, so an agent that revises or withdraws its proposal cannot touch your ink. Anything un-batched keeps the plain **Accept N proposed shapes** pill.
 
+### Shared floor — when two conditions claim the same room
+
+Two conditions can claim the same floor and nothing used to say so: a room detected under `CPT-1`, then traced again under `LVT-2` on another day, and every total downstream counts that floor twice. Now a condition row that shares floor with another wears a **⚠ N** badge (the number of pairs). Activate the row and the pairs list under it — the other condition, the shared square feet, how much of the smaller shape that is, and whether both were already accepted — each with a **Look** that frames the pair on the plan. Deciding which one wins is yours: delete one, or fix the ring. A room traced twice under the *same* condition shows as a **double trace** in the same list. The same measurement (an exact polygon intersection, not a guess) is what an MCP agent reads with `scope_duplicates`, and `takeoff_summary` carries the whole takeoff's shared floor as one number that has to read zero.
+
 An agent can also **propose a change to a condition** instead of making it — a new tag, a waste %, a multiplier, a height, a roll-goods setup. The proposal sits under the condition's row in the Takeoffs panel as *current → proposed* with the agent's reason and **Accept** / **Reject**. Until you accept, nothing changes: every total and the Report use the current values, and the Report shows the proposed ones beside them (`proposed: waste 0% → 10%`). Accept applies exactly the edit typing those values would; Reject drops it.
 
 ### Setup — bring your own key
@@ -792,7 +796,7 @@ What's sent, and only when you run an AI feature: the sheet region in question a
 
 The same engine speaks [MCP](https://modelcontextprotocol.io), one command away:
 `npx -y opentakeoff-mcp` (or the one-click `opentakeoff-mcp.mcpb` bundle for Claude Desktop). An
-MCP client gets **<!--tool-count-->50<!--/tool-count--> tools** plus browsable sheet resources, over the very same measuring engine,
+MCP client gets **<!--tool-count-->52<!--/tool-count--> tools** plus browsable sheet resources, over the very same measuring engine,
 with the same scale gate and the same provenance receipts:
 
 | Group | Tools |

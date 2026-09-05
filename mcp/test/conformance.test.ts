@@ -30,6 +30,7 @@ import {
   createRfiOutput, listRfisOutput, resolveRfiOutput, deleteRfiOutput,
   proposeTakeoffOutput, reviseProposalOutput, withdrawProposalOutput,
   proposeConditionEditOutput, withdrawConditionEditOutput, listShapesOutput,
+  scopeDuplicatesOutput, scopeMergeOutput,
 } from "../src/outputs.ts";
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
@@ -76,6 +77,8 @@ const SCHEMAS: Record<string, z.ZodTypeAny> = {
   withdraw_proposal: z.object(withdrawProposalOutput),
   propose_condition_edit: z.object(proposeConditionEditOutput),
   withdraw_condition_edit: z.object(withdrawConditionEditOutput),
+  scope_duplicates: z.object(scopeDuplicatesOutput),
+  scope_merge: z.object(scopeMergeOutput),
 };
 
 async function pair() {
@@ -321,6 +324,26 @@ test("every tool: canonical valid call → schema-valid structuredContent mirror
   assert.deepEqual(propUndo.steps.map((x: any) => x.op), ["proposal_withdraw", "condition_proposal_withdraw", "condition_proposal", "proposal_revise", "commit", "proposal_open"], "every proposal op validates on the wire");
   assert.equal((await callOk(client, "sheet_info", { sheet: KEY })).shape_count, 2, "the session is exactly as it was before the proposal");
   assert.equal((await callOk(client, "takeoff_summary")).proposals, undefined);
+
+  // scope collision (#366) over the wire: the shipped takeoff on the bundled
+  // plan reads 0 shared floor; a deliberate collision is caught, merged with
+  // the winner stated, and the merge is one undo step
+  const clean = await callOk(client, "scope_duplicates", {});
+  assert.deepEqual([clean.collisions, clean.duplicates, clean.shared_floor_sf, clean.unmeasured], [[], [], 0, []], "the bundled sample plan's takeoff shares no floor");
+  assert.equal((await callOk(client, "takeoff_summary")).shared_floor_sf, 0);
+  const collide = await callOk(client, "measure_polygon", { sheet: KEY, verts: [[100, 100], [460, 100], [460, 460], [100, 460]], condition: "LVT-9" });
+  const dup = await callOk(client, "scope_duplicates", { sheet: KEY });
+  assert.equal(dup.collisions.length, 1);
+  assert.deepEqual([dup.collisions[0].a.condition, dup.collisions[0].b.condition, dup.collisions[0].fraction_of_smaller], ["VCT-1", "LVT-9", 1]);
+  assert.equal(dup.shared_floor_sf, dup.collisions[0].shared_sf);
+  assert.equal((await callOk(client, "takeoff_summary")).shared_floor_sf, dup.shared_floor_sf);
+  await callErr(client, "scope_merge", { shape_a: poly.shape_id, shape_b: collide.shape_id });   // neither reviewed, no winner stated
+  const merged = await callOk(client, "scope_merge", { shape_a: poly.shape_id, shape_b: collide.shape_id, winner: poly.shape_id });
+  assert.deepEqual([merged.action, merged.loser, merged.shape_count], ["deleted", collide.shape_id, 2]);
+  assert.equal((await callOk(client, "takeoff_summary")).shared_floor_sf, 0);
+  const mergeUndo = await callOk(client, "undo_last", { n: 2 });
+  assert.deepEqual(mergeUndo.steps.map((x: any) => x.op), ["delete", "commit"]);
+  assert.equal((await callOk(client, "sheet_info", { sheet: KEY })).shape_count, 2);
 
   const infoAfter = await callOk(client, "sheet_info", { sheet: KEY });
   assert.equal(infoAfter.scale_set, true);

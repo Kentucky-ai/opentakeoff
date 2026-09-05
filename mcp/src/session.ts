@@ -47,6 +47,9 @@ import { deriveTransitionRuns, type SheetFrame, type TransitionSourceShape } fro
 // Real polygon boolean subtraction (#137/#206) — the canvas's own module, so a
 // headless cut and the app's Eraser can never disagree about what a hole holds.
 import { subtractCutout, recomposeCutouts, ringFullyInside, cutRun } from "../../web/src/lib/cutout.js";
+// Scope collision (#366) — the canvas's own module, so the badge on the
+// condition row and scope_duplicates over the wire measure the same shared floor.
+import { scopeCollisions, subtractWinner, SCOPE_NEAR_TOTAL } from "../../web/src/lib/scopeCollision.js";
 // Correction rules (#88 / #207) — the canvas's own pure module, imported as-is
 // (the approvals/totals precedent): apply_rules re-runs an imported rule with
 // the exact predicate engine the canvas's Preview→Apply runs, so a headless
@@ -2049,6 +2052,111 @@ export class Session {
     });
   }
 
+  // ── Scope collision (#366) ────────────────────────────────────────────────
+  // Two conditions can claim the same floor and nothing said so: detect_rooms
+  // under CPT-1, then a polygon in the same room under LVT-2, and every total
+  // downstream counts that floor twice. The measurement already existed in the
+  // room eval's harness; these verbs put it where the estimator can see it.
+
+  /** The sheet frame the collision module measures in: px dims + feet per
+   * px. An unscaled sheet reports its shapes UNMEASURED rather than as zero. */
+  private scopeFrame = (sheetId: string) => {
+    const s = this.sheetOrNull(sheetId);
+    if (!s) return null;
+    return { w: s.widthPx, h: s.heightPx, upp: s.upp ?? 0 };
+  };
+
+  private scopeCollisions(shapes: Shape[] = this.shapes, minFraction?: number) {
+    return scopeCollisions(shapes, this.conditions, this.scopeFrame, { minFraction });
+  }
+
+  /** scope_duplicates: every pair of floor shapes on different conditions
+   * whose intersection exceeds a stated fraction of the smaller, with the
+   * shared area and which condition each belongs to; same-condition overlaps
+   * (a double trace) as their own list. Read-only. */
+  scopeDuplicates(opts: { sheet?: string; min_fraction?: number } = {}) {
+    if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
+    let shapes = this.shapes;
+    if (opts.sheet) { const s = this.sheet(opts.sheet); shapes = shapes.filter((x) => x.sheet_id === s.key); }
+    const r = this.scopeCollisions(shapes, opts.min_fraction);
+    const floors = shapes.filter((x) => x.measure_role === "floor_area").length;
+    return {
+      ...r,
+      floor_shapes: floors,
+      min_fraction: opts.min_fraction ?? 0.05,
+      note: !floors ? "No floor_area shapes to compare."
+        : r.collisions.length ? `${r.collisions.length} pair(s) on different conditions share floor — every total downstream counts that floor twice. scope_merge a pair with the winner stated, or view_sheet its look region and re-trace.`
+        : r.duplicates.length ? "No cross-condition collision; the same-condition pairs listed are double traces — delete_shape one of each."
+        : "No shared floor on the compared sheets.",
+    };
+  }
+
+  /** scope_merge: given a pair and a winner, the loser gives up the shared
+   * floor — trimmed to its remainder (an exact boolean difference, the
+   * cut_out module's arithmetic) or deleted outright when the overlap is
+   * near-total. ONE journal step either way; undo_last restores the loser
+   * verbatim. The ink rule holds absolutely: a loser the estimator accepted is
+   * refused, so with both shapes accepted this is the estimator's call in the
+   * canvas (the collision badge is theirs), not the agent's. */
+  scopeMerge(opts: { shape_a: string; shape_b: string; winner?: string }) {
+    if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
+    const A = this.shapes.find((x) => x.id === opts.shape_a);
+    const B = this.shapes.find((x) => x.id === opts.shape_b);
+    if (!A) throw new UserError(`No shape with id ${JSON.stringify(opts.shape_a)} — scope_duplicates or list_shapes for real ids.`);
+    if (!B) throw new UserError(`No shape with id ${JSON.stringify(opts.shape_b)} — scope_duplicates or list_shapes for real ids.`);
+    if (A.id === B.id) throw new UserError("shape_a and shape_b are the same shape.");
+    for (const x of [A, B]) if (x.measure_role !== "floor_area") throw new UserError(`Shape ${x.id} is ${x.measure_role} — only floor_area shapes claim floor. A deduct subtracts, a run has no area to share.`);
+    if (A.sheet_id !== B.sheet_id) throw new UserError(`Shapes on different sheets (${A.sheet_id} / ${B.sheet_id}) cannot share floor.`);
+    const s = this.sheet(A.sheet_id);
+    if (s.upp == null) throw new UserError(this.scaleGate(s));
+    const pair = this.scopeCollisions([A, B], 0).collisions[0] ?? this.scopeCollisions([A, B], 0).duplicates[0];
+    if (!pair) throw new UserError(`${A.id} and ${B.id} share no floor — nothing to merge.`);
+    let winner: Shape, loser: Shape;
+    if (opts.winner !== undefined) {
+      if (opts.winner !== A.id && opts.winner !== B.id) throw new UserError(`winner must be ${A.id} or ${B.id}.`);
+      winner = opts.winner === A.id ? A : B; loser = winner === A ? B : A;
+    } else {
+      const ra = A.origin?.reviewed === true, rb = B.origin?.reviewed === true;
+      if (ra && rb) throw new UserError(`Both shapes were affirmed by the estimator — which one keeps the ${pair.shared_sf} SF is their call: the collision shows on both condition rows in the canvas. An agent verb does not pick between two pieces of ink.`);
+      if (!ra && !rb) throw new UserError(`Neither shape is reviewed — state the winner (winner: "${A.id}" or "${B.id}"). The verb does not guess which condition the floor belongs to.`);
+      winner = ra ? A : B; loser = ra ? B : A;
+    }
+    if (loser.origin?.reviewed === true) {
+      throw new UserError(`Shape ${loser.id} (${pair.a.shape_id === loser.id ? pair.a.condition : pair.b.condition}) was affirmed by a human — reviewed work is ink, and trimming or deleting it would mutate what the estimator signed. Name the other shape as the loser, or leave the collision for the canvas.`);
+    }
+    if (this.shapes.some((x) => x.cuts_shape_id === loser.id)) {
+      throw new UserError(`Shape ${loser.id} carries reconciled cutouts — trimming it would strand their restore snapshots. delete_shape the cuts first, or re-trace the room.`);
+    }
+    const i = this.shapes.findIndex((x) => x.id === loser.id);
+    const upp = s.upp;
+    const loserArea = pair.a.shape_id === loser.id ? pair.a.area_sf : pair.b.area_sf;
+    const fractionOfLoser = loserArea > 0 ? pair.shared_sf / loserArea : 1;
+    if (fractionOfLoser >= SCOPE_NEAR_TOTAL) {
+      this.shapes.splice(i, 1);
+      this.record({ op: "delete", tool: "scope_merge", removed: [{ shape: loser, index: i }] });
+      return {
+        action: "deleted" as const, winner: winner.id, loser: loser.id, shared_sf: pair.shared_sf,
+        loser_before_sf: loserArea, loser_after_sf: 0, shape_count: this.shapes.length,
+        note: `${Math.round(fractionOfLoser * 100)}% of the loser was shared floor — the same space claimed twice, so it is gone rather than kept as a sliver. One undo step restores it.`,
+      };
+    }
+    const r = subtractWinner(loser, winner, { w: s.widthPx, h: s.heightPx });
+    if (!r) throw new UserError(`Taking the ${pair.shared_sf} SF out of ${loser.id} would split it into disjoint pieces (or leave nothing) — that is a re-trace decision, not a merge: measure_polygon the remainder as its own room.`);
+    const before = structuredClone(loser);
+    const toNorm = (ring: number[][]): [number, number][] => ring.map(([x, y]) => [x / s.widthPx, y / s.heightPx]);
+    loser.verts_norm = toNorm(r.outer);
+    if (r.holes.length) loser.verts_norm_holes = r.holes.map(toNorm); else delete loser.verts_norm_holes;
+    loser.computed = { area_sf: round2(r.area * upp * upp), perimeter_lf: round2(r.perim * upp) };
+    if (loser.origin) loser.origin = { ...loser.origin, agent_edits: (loser.origin.agent_edits ?? 0) + 1 };
+    this.record({ op: "edit", tool: "scope_merge", before });
+    return {
+      action: "trimmed" as const, winner: winner.id, loser: loser.id, shared_sf: pair.shared_sf,
+      loser_before_sf: loserArea, loser_after_sf: loser.computed.area_sf ?? 0,
+      loser_holes: r.holes.length, shape_count: this.shapes.length,
+      note: `The loser keeps its remainder (exact boolean difference, the cut_out arithmetic); its quantities are re-measured from the result. One undo step restores it verbatim.`,
+    };
+  }
+
   /** derive_base (#148): the estimator's most mechanical derivation — wall
    * base LF = room perimeter − stated door openings — minted as committed
    * linear shapes from the floor shapes an agent (or detect_rooms) already
@@ -3424,8 +3532,13 @@ export class Session {
     // values; a pending diff changes nothing until the estimator accepts it.
     const proposals = this.proposalRows();
     const proposedEdits = this.proposedConditionEdits();
+    // scope collision (#366): shared floor across the whole takeoff, ALWAYS a
+    // number — the one that has to read zero before a total means anything
+    const scope = this.scopeCollisions();
     return {
       conditions: lean, totals: grandTotals(rows),
+      shared_floor_sf: scope.shared_floor_sf,
+      ...(scope.unmeasured.length ? { shared_floor_unmeasured: scope.unmeasured } : {}),
       ...(unconfirmed.length ? { scale_unconfirmed: unconfirmed } : {}),
       ...(proposals.length ? { proposals } : {}),
       ...(proposedEdits.length ? { proposed_condition_edits: proposedEdits } : {}),

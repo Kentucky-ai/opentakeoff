@@ -8,11 +8,11 @@ import "fake-indexeddb/auto";
 import { IDBFactory } from "fake-indexeddb";
 import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { createGraphDrive } from "../src/lib/msgraph/graphDrive.js";
+import { createGraphDrive, GraphAuthError, retryAfterMs } from "../src/lib/msgraph/graphDrive.js";
 import { createDriveProvider } from "../src/lib/sync/provider.js";
 import { createSyncStore } from "../src/lib/sync/syncStore.js";
 import { createLocalStore } from "../src/lib/store.js";
-import { BASE, FOLDER_MIME, mockGraph } from "./fixtures/mockGraph.ts";
+import { BASE, FOLDER_MIME, DOWNLOAD_HOST, mockGraph } from "./fixtures/mockGraph.ts";
 
 beforeEach(() => {
   (globalThis as any).indexedDB = new IDBFactory();
@@ -155,4 +155,69 @@ test("#315 finish line: two-machine push/pull/conflict round-trip through one Gr
   const finalPull: any = await createDriveProvider("root", clientOver(g), { ensureSidecarId: sidecarResolver(clientOver(g)) }).pull();
   assert.equal(finalPull.rev, 3);
   assert.deepEqual(shapeIds(finalPull.data), ["LA", "LB", "S1"]);
+});
+
+// ── #315 hardening: the real-tenant corners, over the mock tenant ──────────
+
+test("file content is read through the item's pre-authenticated download URL with NO bearer; the /content stream is the fallback only when the item has none", async () => {
+  const g = mockGraph();
+  const c = clientOver(g);
+  const f: any = await c.createFolder("root", ".opentakeoff");
+  const put: any = await c.putJson({ folderId: f.id, name: "annotations.json", data: { rev: 7 } });
+  g.calls.length = 0;
+  assert.deepEqual(await c.getJson(put.id), { rev: 7 });
+  assert.ok(g.calls.some((u) => u.includes(`/items/${put.id}?$select=id,content.downloadUrl`)), "reads the URL off the item");
+  assert.ok(g.calls.some((u) => u.startsWith(`GET ${DOWNLOAD_HOST}/dl/${put.id}`)), "then fetches it on the download host (which refuses a bearer)");
+  assert.ok(!g.calls.some((u) => u.endsWith("/content")), "never the /content redirect");
+
+  const plain = mockGraph({ downloadUrls: false });   // a tenant that hands out no downloadUrl on the item
+  const c2 = clientOver(plain);
+  const f2: any = await c2.createFolder("root", ".opentakeoff");
+  const put2: any = await c2.putJson({ folderId: f2.id, name: "annotations.json", data: { rev: 1 } });
+  assert.deepEqual(await c2.getJson(put2.id), { rev: 1 });
+  assert.ok(plain.calls.some((u) => u === `GET ${BASE}/drives/d1/items/${put2.id}/content`), "the /content stream with the bearer, as before");
+});
+
+test("a 401 mid-session asks the token source for ONE forced refresh and retries with the new token; a second 401 is a readable sign-in error, not 'offline'", async () => {
+  const g = mockGraph({ expireToken: 1 });
+  const asks: any[] = [];
+  let n = 0;
+  const c = createGraphDrive({ getToken: async (opts?: any) => { asks.push(opts); return `tok${++n}`; }, driveId: "d1", fetch: g.fetchImpl as any, base: BASE });
+  const f: any = await c.createFolder("root", ".opentakeoff");
+  assert.equal(f.name, ".opentakeoff", "the call succeeded after the refresh");
+  assert.deepEqual(asks, [undefined, { forceRefresh: true }], "exactly one forced refresh");
+  assert.deepEqual(g.tokensSeen, ["tok1", "tok2"], "the retry carried the NEW token");
+
+  const dead = mockGraph({ expireToken: 99 });
+  const c2 = createGraphDrive({ getToken: async () => "tok", driveId: "d1", fetch: dead.fetchImpl as any, base: BASE });
+  await assert.rejects(c2.findChild("root", "x"), (e: any) => e instanceof GraphAuthError && e.stage === "sign-in" && /sign in again/.test(e.message));
+  assert.equal(dead.tokensSeen.length, 2, "one retry, then stop — never a refresh loop");
+
+  const refuse = mockGraph({ expireToken: 1 });
+  const c3 = createGraphDrive({ getToken: async (opts?: any) => { if (opts?.forceRefresh) throw new Error("interaction_required"); return "tok"; }, driveId: "d1", fetch: refuse.fetchImpl as any, base: BASE });
+  await assert.rejects(c3.findChild("root", "x"), (e: any) => e instanceof GraphAuthError && /could not be refreshed silently/.test(e.message) && /interaction_required/.test(e.message));
+});
+
+test("403 names the permission stage; 504 is throttled like 429; Retry-After as an HTTP-date is honored", async () => {
+  const g = mockGraph();
+  const forbidding = async (url: string, init: any) => (url.includes("/children") ? { ok: false, status: 403, headers: { get: () => null }, json: async () => ({}), text: async () => "Access denied", arrayBuffer: async () => new ArrayBuffer(0) } : g.fetchImpl(url, init));
+  const c = createGraphDrive({ getToken: async () => "tok", driveId: "d1", fetch: forbidding as any, base: BASE });
+  await assert.rejects(c.listChildren("root"), (e: any) => e instanceof GraphAuthError && /Files\.ReadWrite\.All/.test(e.message) && e.status === 403);
+
+  let gateways = 1;
+  const sleeps: number[] = [];
+  const now = Date.now();
+  const flaky = async (url: string, init: any) => {
+    if (gateways > 0) { gateways--; return { ok: false, status: 504, headers: { get: (k: string) => (k === "Retry-After" ? new Date(now + 3000).toUTCString() : null) }, json: async () => ({}), text: async () => "gateway", arrayBuffer: async () => new ArrayBuffer(0) }; }
+    return g.fetchImpl(url, init);
+  };
+  const c2 = createGraphDrive({ getToken: async () => "tok", driveId: "d1", fetch: flaky as any, base: BASE, sleep: async (ms: number) => { sleeps.push(ms); } });
+  const f: any = await c2.createFolder("root", "z");
+  assert.equal(f.name, "z");
+  assert.equal(sleeps.length, 1);
+  assert.ok(sleeps[0] > 1500 && sleeps[0] <= 3000, `HTTP-date Retry-After → ~3 s wait, got ${sleeps[0]}`);
+  assert.equal(retryAfterMs("2"), 2000);
+  assert.equal(retryAfterMs("garbage"), 1000);
+  assert.equal(retryAfterMs(null, 0, 500), 500);
+  assert.equal(retryAfterMs(new Date(10_000).toUTCString(), 4_000), 6000);
 });
