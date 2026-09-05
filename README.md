@@ -127,7 +127,7 @@ second use is not a side effect; see [the data layer](#the-data-layer--why-this-
   [@knmurphy](https://github.com/knmurphy)), hairline runs shadowing a heavier wall classified
   as annotation rather than boundary, and an in-swing door's sector taken behind the leaf
   instead of the arc
-- **Voice takeoff**—hold `M` and say `carpet one, waste seven`; recognition is
+- **Voice takeoff** (gated off the toolbar by default; `VITE_COMMAND_BOX=1` builds it back)—hold `M` and say `carpet one, waste seven`; recognition is
   whisper-tiny.en in WebAssembly on your machine, audio never leaves the browser
   ([docs/VOICE.md](docs/VOICE.md))
 
@@ -480,7 +480,7 @@ plus a vision-capable model id.
 | **Export** | CSV, JSON, **Excel (.xlsx)**, print, **Marked Set PDF**, RFI CSV/JSON |
 | **Revisions** | Save at each bid revision, compare quantity deltas per condition/sheet/buy list, guarded restore |
 | **Markups** | Clouds, callouts, notes, highlighter, **images** (upload or marquee screenshot), stamps, **approval seals**, RFI register—separate layer, never counted |
-| **Voice** | Push-to-talk takeoff commands, recognized on-device in WebAssembly; audio never leaves the browser |
+| **Voice** | Push-to-talk takeoff commands, recognized on-device in WebAssembly; audio never leaves the browser — gated off the toolbar by default (`VITE_COMMAND_BOX=1`) |
 | **View** | Light or **dark (negative print)**—sheet pixels inverted at draw time, exports follow |
 | **Storage** | IndexedDB + localStorage—client-only, nothing uploaded |
 | **MCP server** | <!--tool-count-->45<!--/tool-count--> tools + browsable sheet resources on stdio, multi-document sessions ([`mcp/`](mcp/README.md)) |

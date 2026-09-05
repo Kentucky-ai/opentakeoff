@@ -13,7 +13,7 @@
 // step, not sixteen sections. The bindings below are transcribed from
 // USER_GUIDE.md §15, which is itself maintained against the code — if a
 // shortcut changes, §15 and this table move together.
-import { oneClickEnabled } from "../lib/gate.js";
+import { oneClickEnabled, commandBoxEnabled } from "../lib/gate.js";
 import { useEffect } from "react";
 import { Z } from "../lib/ui.js";
 import { keyLabel, keyText, isApplePlatform } from "../lib/keys.ts";
@@ -78,7 +78,7 @@ export const TOOLS = [
   [["N"], "Dimension line — a standalone length label at the sheet's scale (markup, never counted)"],
   [["V"], "Select"], [["G"], "Sheet gallery"],
   [["1", "–", "9"], "Arm condition N"],
-  [["hold", "M"], "Push-to-talk dictation — release runs it, Esc discards"],
+  ...(commandBoxEnabled() ? [[["hold", "M"], "Push-to-talk dictation — release runs it, Esc discards"]] : []),
 ];
 
 export const DRAW = [
