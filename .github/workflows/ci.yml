@@ -111,7 +111,16 @@ jobs:
           # a user installs. Demanding a version bump for it would publish a
           # release whose tarball is byte-identical to the one before it, and a
           # version number that means nothing is worse than one nobody bumped.
-          PUBLISHED=(mcp/ ':(exclude)mcp/Dockerfile')
+          # mcp/package-lock.json is excluded for the same reason: it is not in
+          # the tarball either, and the build bundles with --packages=external,
+          # so every installer resolves dependencies by package.json range and
+          # never sees the lockfile. It pins only this repo's own dev, test and
+          # CI installs. A lockfile-only bump (Dependabot's security PRs, #400)
+          # therefore changes nothing anyone installs, and demanding a release
+          # for it would publish the same byte-identical tarball. A dependency
+          # change that DOES reach installers edits package.json, which still
+          # trips the guard.
+          PUBLISHED=(mcp/ ':(exclude)mcp/Dockerfile' ':(exclude)mcp/package-lock.json')
           if git diff --quiet "$BASE" HEAD -- "${PUBLISHED[@]}"; then
             echo "no change to published mcp/ files — nothing to check."
             exit 0
