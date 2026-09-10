@@ -8,9 +8,11 @@
     "test": "node --import tsx --test test/*.test.mjs",
     "check": "npm test && node scripts/check-docs.mjs"
   },
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "devDependencies": {
-    "ajv": "8.17.1",
+    "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "tsx": "^4.19.2"
   }
