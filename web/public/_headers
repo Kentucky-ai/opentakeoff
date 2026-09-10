@@ -29,6 +29,11 @@
 #                                               ONLY, not JS eval(), so it does not
 #                                               reopen the XSS hole 'unsafe-eval' would.
 #                https://accounts.google.com     the Google Identity Services SDK
+#                https://static.cloudflareinsights.com
+#                                               the Cloudflare Web Analytics beacon
+#                                               (index.html) — cookie-less page views;
+#                                               its POST to cloudflareinsights.com
+#                                               is covered by the open connect-src
 #   connect-src  *  data:  blob:                 open by design — see above
 #   frame-src    https://accounts.google.com      the GIS auth iframe
 #   img-src      'self' data: blob:               PDF thumbnails + logo/preview images
@@ -38,7 +43,7 @@
 # 'unsafe-inline' is intentionally absent from script-src — don't add it; it
 # would undo the containment the other directives still provide.
 /*
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src * data: blob:; worker-src 'self' blob:; frame-src https://accounts.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src * data: blob:; worker-src 'self' blob:; frame-src https://accounts.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

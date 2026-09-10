@@ -53,6 +53,10 @@
          CSP with script-src 'self' — see public/theme-init.js and public/_headers.
          Must stay render-blocking (no async/defer) to run before first paint. -->
     <script src="/theme-init.js"></script>
+    <!-- Cloudflare Web Analytics: privacy-first page-view beacon (no cookies, no
+         fingerprinting, no PII). The token is public by design. Its origin is
+         allowed in public/_headers script-src; connect-src is already open. -->
+    <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "3f37c88a39dc47e79a5304c38ccf68f3"}'></script>
   </head>
   <body>
     <div id="root"></div>
