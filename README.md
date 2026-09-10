@@ -23,6 +23,8 @@ carry an explicit review status. See the [Phase 1 test guide](docs/PHASE_1_TESTI
 
 **The two manuals:** [agent manual](docs/AGENT_GUIDE.md) · [user manual](docs/USER_GUIDE.md)
 
+**Protocol work:** [Takeoff Protocol draft and compatibility status](docs/TAKEOFF_PROTOCOL.md)—formalizing existing records; current takeoff behavior is unchanged.
+
 **Read this in:** [日本語](README.ja.md) · [한국어](README.ko.md) · [简体中文](README.zh-Hans.md)
 
 **Watch it:** [an autonomous agent runs a takeoff, live, no cuts (2:47)](https://youtu.be/e--kXxSGv7Y) · [hospital finish plan → report in about a minute (1:14)](https://youtu.be/cNDpPkTLY1k) · [canvas walkthrough (1:10)](https://youtu.be/aHiW8H2TSBs) · [One-Click Area (0:51)](https://youtu.be/YIjWZ-BAhLE)

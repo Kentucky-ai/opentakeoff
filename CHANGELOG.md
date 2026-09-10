@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — Draft Takeoff Protocol (#405)
+
+### Added
+- Development-only JSON schemas for Measurement, Calibration, Provenance, Evidence, Review, and a proposed TakeoffDocument v1, with a separate profile for existing `takeoff_canvas.v1` records. The canvas and MCP keep writing the existing format.
+- A source-linked field inventory, Academy compatibility report, draft event vocabulary, and explicit compatibility limits. The report records the agent/manual original-geometry gap and the MCP stitched-document limitation without changing either behavior.
+- Offline schema validation, representative browser/MCP record checks, and generated schema documentation enforced by CI. No runtime dependency, tool, migration, or approval behavior changes.
+
 All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
 ## Unreleased — Equipment schedules of any trade, and counting by label (mcp 0.9.77)

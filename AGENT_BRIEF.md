@@ -4,6 +4,10 @@ The one-pager. If you're an agent about to work *on* this repo, read
 [`AGENTS.md`](AGENTS.md) next. If you're an agent about to *drive the takeoff engine*, read
 [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) instead—that's your manual, this is orientation.
 
+For the draft persisted-record contract and known compatibility gaps, read
+[`docs/TAKEOFF_PROTOCOL.md`](docs/TAKEOFF_PROTOCOL.md). The draft changes no current
+tool behavior or saved-file format.
+
 **Repo:** <https://github.com/Kentucky-ai/opentakeoff> · **Live:**
 <https://opentakeoff.kentucky-ai.com> · **License:** Apache-2.0
 

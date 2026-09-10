@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opentakeoff.kentucky-ai.com/protocol/v1/stitch.schema.json",
+  "title": "Composite surface (draft)",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^stitch:"
+    },
+    "name": {
+      "type": "string"
+    },
+    "members": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "dx": {
+            "type": "number"
+          },
+          "dy": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "key",
+          "dx",
+          "dy"
+        ],
+        "additionalProperties": true
+      },
+      "minItems": 2,
+      "maxItems": 4
+    },
+    "created_at": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "members"
+  ],
+  "additionalProperties": true,
+  "description": "Persisted browser stitch. dx/dy are logical image-pixel offsets. Member uniqueness, source availability, scale compatibility, and alignment require semantic checks; schema validity does not enable MCP stitching."
+}

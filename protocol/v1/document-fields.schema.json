@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opentakeoff.kentucky-ai.com/protocol/v1/document-fields.schema.json",
+  "title": "Existing document collections (draft)",
+  "type": "object",
+  "properties": {
+    "project_name": {
+      "type": "string"
+    },
+    "units": {
+      "enum": [
+        "imperial",
+        "metric"
+      ]
+    },
+    "client_info": {
+      "type": "object"
+    },
+    "sheets": {
+      "type": "array",
+      "items": {
+        "$ref": "calibration.schema.json"
+      }
+    },
+    "conditions": {
+      "type": "array",
+      "items": {
+        "$ref": "condition.schema.json"
+      }
+    },
+    "shapes": {
+      "type": "array",
+      "items": {
+        "$ref": "measurement.schema.json"
+      }
+    },
+    "markups": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "approvals": {
+      "type": "array",
+      "items": {
+        "$ref": "review.schema.json#/$defs/verdict"
+      }
+    },
+    "stitches": {
+      "type": "array",
+      "items": {
+        "$ref": "stitch.schema.json"
+      }
+    },
+    "proposals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "label": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "created_at": {
+            "$ref": "common.schema.json#/$defs/timestamp"
+          },
+          "withdrawn_at": {
+            "$ref": "common.schema.json#/$defs/timestamp"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "condition_edit_proposals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "condition_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "proposed": {
+            "type": "object"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "proposed_at": {
+            "$ref": "common.schema.json#/$defs/timestamp"
+          }
+        },
+        "required": [
+          "id",
+          "condition_id",
+          "proposed"
+        ],
+        "additionalProperties": true
+      }
+    },
+    "rfis": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "sheet_group": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "last_group": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "sheet_tabs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "sheet_levels": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "layer_overrides": {
+      "type": "object"
+    },
+    "condition_columns": {
+      "type": "array"
+    },
+    "shape_labels": {
+      "type": "array"
+    },
+    "palette": {
+      "type": "array"
+    },
+    "provenance_counters": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "description": "Known collections shared by the draft and legacy structural profile. Some secondary families are opaque objects pending the full compatibility corpus. Unknown extensions are permitted and must be preserved by future adapters."
+}
