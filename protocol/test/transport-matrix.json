@@ -1,0 +1,12 @@
+[
+{"id":"manual-roundtrip","status":"conforms","scope":"MCP → browser import → MCP file import","assertion":"Five manual roles retain records, 100 SF floor, 4 SF independent deduct, 10 LF run, 30 SF wall and 2 EA; repeated import adds nothing."},
+{"id":"cutout-roundtrip","status":"conforms","scope":"Reconciled hole through archive and MCP","assertion":"100 SF parent becomes 96 SF; the 4 SF receipt is not deducted twice. Hole rings, parent snapshot and proposal survive; deleting the imported receipt restores 100 SF."},
+{"id":"derived-base-roundtrip","status":"conforms","scope":"Derived base through MCP import","assertion":"40 LF boundary minus 3 LF stated openings remains 37 LF, with source ID and allowance intact; no recomputation as the gross trace."},
+{"id":"curves-roundtrip","status":"conforms","scope":"Legacy control points and baked browser arc","assertion":"Curve flags, vertices, evidence and quantities survive archive and MCP import exactly; no conversion between curve meanings."},
+{"id":"review-transport","status":"conforms","scope":"Browser approval and MCP mutation boundary","assertion":"Correction preserves original outer vertices and evidence; existing approval survives import; MCP verdict stays agent and reviewed geometry refuses editing."},
+{"id":"scale-conflict","status":"unsupported","scope":"Merge into conflicting local calibration","assertion":"Import refuses atomically with source and destination unchanged; no unit conversion inferred."},
+{"id":"draft-import","status":"needs-adapter","scope":"Draft document → current import","assertion":"Draft structure validates but browser and MCP imports reject its identifier; no adapter exists yet."},
+{"id":"stitch-mcp","status":"unsupported","scope":"Browser composite → MCP export","assertion":"Archive retains composite records; MCP omits stitches and composite calibration while retaining shapes referencing the unavailable frame."},
+{"id":"extensions-mcp","status":"unsupported","scope":"Whole browser workspace → MCP export","assertion":"Top-level extensions, project metadata and rules survive archive but not MCP export; shape extensions survive. Imported rules remain in session only."},
+{"id":"missing-source","status":"unsupported","scope":"Unloaded source sheet → MCP","assertion":"Import retains the shape but cannot export its unloaded sheet calibration. Schema validity does not prove source availability."}
+]
