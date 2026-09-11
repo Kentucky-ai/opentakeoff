@@ -15,6 +15,7 @@ emits it yet. Both profiles describe the current collection names, including
 - [Minimal event vocabulary](EVENTS.md)
 - [Compatibility status and follow-on work](COMPATIBILITY.md)
 - [Read-only adapter preflight](PREFLIGHT.md)
+- [Opt-in document adapters and CLI](ADAPTERS.md)
 - [Tracking issue #405](https://github.com/Kentucky-ai/opentakeoff/issues/405)
 
 ## Validate this draft
@@ -34,9 +35,10 @@ suite compiles every schema offline, rejects malformed values, and validates
 representative records from the existing browser command layer and MCP session.
 The [executable transport matrix](COMPATIBILITY.md#executable-transport-matrix)
 classifies tested preservation, reader incompatibility and demonstrated loss.
-The [read-only preflight](PREFLIGHT.md) adds bounded eligibility checks for a
-future document adapter. Broader compatibility coverage and migration adapters
-remain subsequent steps.
+The [read-only preflight](PREFLIGHT.md) gates [opt-in document adapters](ADAPTERS.md)
+for a bounded profile. Both directions preserve every JSON value except the
+document identifier. Broader compatibility and default-format adoption remain
+subsequent steps.
 
 ## Contract boundaries
 
@@ -54,8 +56,8 @@ are retained as unclassified values, never interpreted as human authority.
 **Validation changes nothing.** Validators must not coerce values, insert
 defaults, strip properties, clamp coordinates, recompute quantities, or normalize
 timestamps. Unknown extensions are permitted for compatibility, but their
-semantics are not validated. Future adapters must preserve them or explicitly
-report incompatibility before producing a lossy output.
+semantics are not validated. The opt-in adapter copies them intact and checks
+preservation; unsupported profile cases return no converted document.
 
 **Geometry has a frame.** Stored `verts_norm` and hole rings are normalized to
 their source sheet or composite surface. Values can extend outside 0–1; the
@@ -106,7 +108,8 @@ identity. Secondary collections such as markups, RFIs, rules, and layout setup
 remain preserved objects pending deeper profiles. Acceptance by the existing
 permissive importer is not the same as conformance to this structural profile.
 
-The test-only substitution of the new schema identifier checks the proposed
-structure. It is not a migration implementation or permission to rename a saved
-file's schema in production. No event log, automatic migration, signature system,
-credential issuance, or chain infrastructure is introduced here.
+The structural tests' identifier substitution remains a schema check. The
+separate [opt-in adapter](ADAPTERS.md) adds preflight, target validation and
+preservation checks; it does not authorize changing default application saves.
+No event log, automatic migration, signature system, credential issuance or
+chain infrastructure is introduced here.

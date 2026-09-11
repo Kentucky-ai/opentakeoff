@@ -1,7 +1,8 @@
 # Read-only adapter preflight
 
 `takeoff-document-core.v1` is a **draft eligibility profile for a future
-document-envelope adapter**, available as private repository tooling. It accepts
+document-envelope adapter**, available as private repository tooling. The
+[opt-in adapter](ADAPTERS.md) now uses this gate. Preflight itself accepts
 the current canvas and draft document identifiers for inspection. It does not
 convert either format, change current browser/MCP writers, or enable MCP to
 import the draft format. It is not an MCP tool or a published package.
@@ -32,7 +33,7 @@ non-coercing [schema validator](src/validation.mjs) as the compatibility tests.
 Warnings do not prevent eligibility. All reports explicitly list what remains
 unverified. `invalid` means failure of this profile, not a claim that the existing
 permissive importer rejects the same record. Unknown extensions remain opaque:
-eligibility requires a future adapter to copy them intact, not understand them.
+eligibility requires the adapter to copy them intact, not understand them.
 Issue paths identify fields and can contain caller-provided extension keys;
 review reports before publishing them.
 
@@ -76,7 +77,7 @@ require later profiles. The checks report these boundaries without changing or
 discarding records. Missing calibration or surface height also needs resolution.
 
 Workspace metadata and unknown JSON extensions may pass as opaque fields that
-a future document adapter must preserve. **This does not promise MCP transport:**
+the document adapter must preserve. **This does not promise MCP transport:**
 current MCP export drops some document families and workspace fields. Use the
 [transport matrix](COMPATIBILITY.md#executable-transport-matrix) for those limits.
 An envelope adapter also cannot recover snapshots, earlier PDF bytes, or missing
@@ -98,7 +99,7 @@ plans, project prices or external services are used.
 | Deliberate non-guarantees | Collinear area points and an incorrect positive cached area can pass; topology and recomputation explicitly remain unverified |
 | CLI | Parseable reports, correct status/exit codes, unchanged source bytes, no source values in messages, and usage/read/parse failures |
 
-The next increment is an **opt-in pure adapter** for this profile, with exact
+The [opt-in pure adapter](ADAPTERS.md) implements this profile, with exact
 input preservation and refusal tests. Default saved-format adoption, broader
 geometry profiles, authenticated identity and Academy interoperability remain
 separate work. The [Academy compatibility report](ACADEMY_COMPATIBILITY.md)

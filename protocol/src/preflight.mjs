@@ -39,7 +39,7 @@ function inspectJson(value, path, issue, ancestors = new Set()) {
   ancestors.delete(value);
 }
 
-/** Read-only eligibility for a future document-envelope adapter, NOT an MCP
+/** Read-only eligibility for the opt-in document-envelope adapter, NOT an MCP
  * transport check, geometry verifier, authenticator or format conversion. */
 export function preflightTakeoff(record) {
   const issues = [];

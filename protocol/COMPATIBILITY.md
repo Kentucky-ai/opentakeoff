@@ -5,9 +5,10 @@ release or migration claim. Run `npm run check --prefix protocol` for the exact 
 
 The [read-only preflight](PREFLIGHT.md) now checks a bounded first adapter
 profile: role completeness, active references and calibration, with explicit
-unsupported cases and unchanged inputs. It adds no conversion or application
-runtime validation. Its eligibility result is distinct from the transport
-matrix's boundary-specific outcomes below.
+unsupported cases and unchanged inputs. The separate [opt-in adapter](ADAPTERS.md)
+uses that gate, validates the target and checks JSON preservation. Neither is
+application runtime validation; the preflight eligibility result is distinct
+from the transport matrix's boundary-specific outcomes below.
 
 | Case | Evidence in this increment | Remaining work |
 |---|---|---|
@@ -34,11 +35,12 @@ unchanged; no Academy interoperability is claimed.
 
 - **conforms** means the stated fixture and boundary preserve the asserted fields
   and quantities. It does not certify every document or authenticate its author.
-- **needs-adapter** means the proposed format needs an explicit mapping before
-  the existing reader can accept it. No adapter is implemented here.
+- **needs-adapter** means the unadapted proposed format is rejected by the
+  existing reader. The opt-in adapter now covers the bounded preflight profile;
+  application readers still do not perform automatic conversion.
 - **unsupported** means the current transport refuses the case or loses required
   information. Tests pass by demonstrating that limit; these rows are never
-  counted as successful migrations. A future adapter must refuse these paths
+  counted as successful migrations. The adapter must refuse these paths
   until preservation is implemented and tested.
 
 <!--transport-matrix-->
@@ -50,7 +52,8 @@ unchanged; no Academy interoperability is claimed.
 | `curves-roundtrip` | conforms | Legacy control points and baked browser arc | Curve flags, vertices, evidence and quantities survive archive and MCP import exactly; no conversion between curve meanings. |
 | `review-transport` | conforms | Browser approval and MCP mutation boundary | Correction preserves original outer vertices and evidence; existing approval survives import; MCP verdict stays agent and reviewed geometry refuses editing. |
 | `scale-conflict` | unsupported | Merge into conflicting local calibration | Import refuses atomically with source and destination unchanged; no unit conversion inferred. |
-| `draft-import` | needs-adapter | Draft document → current import | Draft structure validates but browser and MCP imports reject its identifier; no adapter exists yet. |
+| `draft-import` | needs-adapter | Unadapted draft document → current import | Draft structure validates but browser and MCP imports still reject its identifier; conversion must be explicit. |
+| `adapter-roundtrip` | conforms | Opt-in canvas ↔ draft, then archive/browser/MCP | Both conversions preserve all JSON values except schema. Five manual roles and 37 LF base, corrected originals, evidence and existing review survive supported transport; MCP still cannot mint human approval. |
 | `stitch-mcp` | unsupported | Browser composite → MCP export | Archive retains composite records; MCP omits stitches and composite calibration while retaining shapes referencing the unavailable frame. |
 | `extensions-mcp` | unsupported | Whole browser workspace → MCP export | Top-level extensions, project metadata and rules survive archive but not MCP export; shape extensions survive. Imported rules remain in session only. |
 | `missing-source` | unsupported | Unloaded source sheet → MCP | Import retains the shape but cannot export its unloaded sheet calibration. Schema validity does not prove source availability. |
@@ -120,8 +123,9 @@ preserves outer vertices, not a complete historical snapshot of holes or curves.
 1. Review this inventory and the [Academy report](ACADEMY_COMPATIBILITY.md).
 2. Use the [preflight profile](PREFLIGHT.md) as the first bounded adapter gate;
    extend the matrix for later profiles before claiming broader compatibility.
-3. Introduce opt-in pure adapters; preserve inputs, IDs, numeric values, originals,
-   extensions and authority. Refuse unsupported loss by default.
+3. Keep [opt-in adapters](ADAPTERS.md) bounded by exact preservation and refusal
+   tests. Connect protocol contracts to MCP workflows before default adoption;
+   do not infer broader transport support from successful document conversion.
 4. Maintain the [shared wiki](../docs/wiki/README.md), AGENTS.md router and
    packaged MCP resources. Tool/stage/schema references are generated and
    checked against source. Measure tool-selection improvement before claiming
