@@ -49,14 +49,14 @@ export function setAuthorName(name) {
 // "reassign") and return the stamped copy — never mutates its input (origin
 // and its edits map may be aliased across clipboard copies).
 //   - every shape gets updated_at;
-//   - a machine-origin shape (origin.method present and not "manual")
+//   - a machine-origin shape (explicit agent actor OR a non-manual method)
 //     additionally gets origin.edited = true and a per-kind bump in
 //     origin.edits — the running tally of how the estimator corrected it;
 //   - the FIRST edit of a machine shape freezes origin.proposed_verts_norm
 //     from the PRE-edit verts_norm (deep copy): the machine's original trace
 //     survives verbatim once a human starts correcting it. Callers must stamp
 //     BEFORE applying the geometry change so the frozen ring is truly pre-edit.
-// Manual/no-origin shapes get updated_at and nothing else.
+// Human manual/no-origin shapes get updated_at and nothing else.
 //
 // Author (#314): when a name is declared, every stamp additionally carries
 // updated_by — the last human to land a real edit — beside updated_at. The
@@ -68,7 +68,9 @@ export function stampEdit(shape, kind) {
   const by = authorName();
   const stamp = by ? { updated_at, updated_by: by } : { updated_at };
   const o = shape.origin;
-  if (!o?.method || o.method === "manual") return { ...shape, ...stamp };
+  // Method describes the gesture, not who made it: MCP manual traces are agent work.
+  const machineOrigin = o?.actor === "agent" || (o?.method && o.method !== "manual");
+  if (!machineOrigin) return { ...shape, ...stamp };
   const origin = {
     ...o,
     edited: true,

@@ -28,7 +28,7 @@
 //             `restampFrom` (the undo path) skips stampEdit and restores the
 //             prior updated_at/origin verbatim — undo must not leave a phantom
 //             `edited` flag or a bumped edits tally behind.
-//   reassign  stampEdit("reassign") per shape (stampEdit itself gives manual
+//   reassign  stampEdit("reassign") per shape (stampEdit itself gives human manual
 //             shapes updated_at only, machine shapes the full origin stamp);
 //             `restore` puts back the prior condition_id + provenance exactly.
 //   label     NO stamp — label-vocabulary assignment is a documented non-edit
@@ -250,7 +250,7 @@ export function applyShapeCommand(shapes, cmd) {
       const next = shapes.map((s) => {
         if (!idSet.has(s.id)) return s;
         restore.push(assignSnapshot(s));
-        // stampEdit's own split does the policy work: manual shapes get a bare
+        // stampEdit's own split does the policy work: human manual shapes get a bare
         // updated_at, machine shapes the full edited/edits/freeze stamp.
         return { ...stampEdit(s, "reassign"), condition_id: cmd.condition_id };
       });
