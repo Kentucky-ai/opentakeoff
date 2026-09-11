@@ -36,7 +36,7 @@ try {
     'Sources: [tool registrations](../mcp/src/tools.ts), [stage table](../mcp/src/staging.ts), [output schemas](../mcp/src/outputs.ts).', '',
   ].join('\n');
   let current = '';
-  try { current = readFileSync(target, 'utf8'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+  try { current = readFileSync(target, 'utf8').replace(/\r\n/g, '\n'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
   if (current !== md) {
     if (write) writeFileSync(target, md);
     else { console.error('MCP_TOOL_INDEX.md is stale — run npm run check:tool-count -- --write'); process.exitCode = 1; }
