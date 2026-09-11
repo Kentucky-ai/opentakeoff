@@ -416,3 +416,12 @@ The bundle is generated from the repository wiki and tool index; CI checks
 content, source hashes, version and links. Wiki-to-wiki links stay within MCP
 resources. Code/reference links browse repository `main`, which may be newer
 than an installed package. This distinction is stated in each resource reply.
+
+The draft Takeoff Protocol is also available as static resources. Read
+`takeoff://protocol` for the compact index, then the allowlisted schemas under
+`takeoff://protocol/{path}`. This route is available before plan load and in
+staged mode. It is contract/discovery material and introduces no validator tool
+or writer migration. Resource URIs are transport addresses separate from the
+unchanged schema `$id` identifiers; those IDs support offline `$ref` resolution
+and do not promise hosted files. Read `takeoff://wiki/protocol` for scope,
+projection omissions, and validation limits.

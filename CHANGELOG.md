@@ -1,9 +1,12 @@
 # Changelog
 
-## Unreleased — release availability wait
+## Unreleased — MCP 0.9.82 protocol resources and release availability wait
 
 ### Fixed
 - The MCP publish workflow now waits for both npm's package metadata and exact-version endpoints before continuing with Registry, GitHub release and MCPB work. `scripts/wait-for-npm-availability.mjs` retries at 15-second intervals with a 15-minute deadline, 60-attempt cap and 10-second request timeout; a rerun still skips an already published version. Its deterministic retry/timeout/validation tests run in CI. This is follow-up work from the 0.9.81 release and is not itself a published MCP version.
+
+### Added
+- MCP packages the draft Takeoff Protocol index and explicit schema allowlist as read-only, offline-resolvable resources under `takeoff://protocol`. Resource URIs remain separate from unchanged schema `$id` identifiers, and the index documents structural limits and `exportPayload()` projection omissions. No tool, writer, engine, or approval behavior changes.
 
 ## 2026-09-11 — MCP 0.9.81 and opt-in protocol adapters
 

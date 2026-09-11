@@ -251,6 +251,18 @@ there is no filesystem path or remote URL input. `npm run check:wiki` compares
 the embedded copy to source; `-- --write` regenerates it. Build and CI fail when
 it is stale. The distribution smoke check reads all nine pages over stdio.
 
+MCP 0.9.82 also embeds the explicit allowlist of draft Takeoff Protocol schemas
+as read-only resources. Read `takeoff://protocol` for the machine-readable
+index, then a schema such as
+`takeoff://protocol/v1/measurement.schema.json`. This route is available before
+plan load and while stages are closed; it adds no tool and does not change
+`exportPayload()` or any writer. The URI is a transport address separate from
+the unchanged schema `$id`; the `$id` is an offline-resolution identifier, not
+a hosted-file promise. See `takeoff://wiki/protocol` for scope and limitations.
+
+The generated registry is checked with `npm run check:protocol-resources`; it
+must remain current before building or publishing the package.
+
 Tools let an agent act; resources let it **see**. When a plan loads, the sheet
 set becomes browsable natively (`resources/list` re-announces itself through
 `list_changed`):

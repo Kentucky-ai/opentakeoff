@@ -15,6 +15,7 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Session } from "./session.ts";
 import { WIKI_PAGES, WIKI_VERSION } from "./wiki.generated.ts";
+import { PROTOCOL_INDEX_JSON, PROTOCOL_SCHEMAS } from "./protocol.generated.ts";
 
 function toBase64(bytes: Uint8Array): string {
   return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("base64");
@@ -37,6 +38,24 @@ export function registerResources(server: McpServer, session: Session): void {
     }, async (uri) => ({ contents: [{ uri: uri.href, mimeType: "text/markdown",
       text: `Packaged with MCP ${WIKI_VERSION}. Source: ${page.source} (SHA-256 of LF-normalized text: ${page.source_sha256}). Repository source links browse main and may be newer.\n\n${page.text}`,
     }] }));
+  }
+
+  // Draft Takeoff Protocol resources are embedded at build time. Keep these
+  // registrations explicit and static: no URI is interpreted as a path or a
+  // network address, and they are available before a plan is loaded.
+  server.registerResource("protocol-index", "takeoff://protocol", {
+    title: "Takeoff Protocol resource index",
+    description: "Draft TakeoffDocument and legacy schema registry, scope, coordinates, and limits.",
+    mimeType: "application/json",
+  }, async (uri) => ({ contents: [{ uri: uri.href, mimeType: "application/json", text: PROTOCOL_INDEX_JSON }] }));
+
+  for (const schema of PROTOCOL_SCHEMAS) {
+    const resourceName = `protocol-${schema.source.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}`;
+    server.registerResource(resourceName, schema.uri, {
+      title: schema.title,
+      description: `Draft JSON Schema for ${schema.title}; see takeoff://protocol for scope and identity.`,
+      mimeType: "application/schema+json",
+    }, async (uri) => ({ contents: [{ uri: uri.href, mimeType: "application/schema+json", text: schema.schema_json }] }));
   }
 
   const sheetEntries = (suffix: string, mimeType: string, what: string) => () => ({

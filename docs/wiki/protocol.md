@@ -6,6 +6,32 @@ not a new autosave format. Never rename the schema identifier and call that a
 completed migration: transport support, semantic checks and loss handling still
 need evidence.
 
+## Machine-readable MCP resources
+
+MCP 0.9.82 packages the allowlisted draft schemas as read-only resources. Start
+at `takeoff://protocol` for the compact index, then read an individual schema at
+`takeoff://protocol/{path}` (for example,
+`takeoff://protocol/v1/measurement.schema.json`). These resources are available
+before a plan is loaded and in staged mode. They are discovery and contract
+material; they do not add a validator tool, change a writer, or make a session a
+complete `TakeoffDocument`.
+
+The resource URI is a transport address. Each schema keeps its existing `$id`
+and relative `$ref` behavior, so the embedded registry can resolve references
+offline. An `$id` URL is a stable schema identifier for resolution, not a
+promise that the schema is hosted at that URL. The packaged index links back to
+this wiki page for conceptual protocol guidance.
+
+The schemas describe record shape and declared relationships. They do not prove
+polygon topology, geometry or quantity accuracy, source/PDF availability,
+complete history, active-reference integrity, transport preservation, or review
+or approval authenticity. Evidence, provenance, and review fields remain
+records and claims, not authentication. Unknown extension fields remain opaque.
+Secondary families such as markups, RFIs, rules, and layout/workspace data are
+not fully semantically validated. `exportPayload()` is a projection: it omits
+rules and browser stitches, strips RFI tombstones, and does not represent the
+complete browser workspace or project document.
+
 | Contract concern | Canonical source |
 |---|---|
 | Measurement, Calibration, Provenance, Evidence and Review | [Generated schema reference](../../protocol/README.md#generated-schema-reference) |
