@@ -1,0 +1,48 @@
+{
+  "candidate": "first-pass.takeoff.json",
+  "reference_id": "sample-plan-analytic-wall-faces-v1",
+  "metadata_error": null,
+  "rooms": [
+    {
+      "label": "OFFICE 101",
+      "pass": false,
+      "reason": "missing candidate label"
+    },
+    {
+      "label": "OFFICE 102",
+      "pass": false,
+      "reason": "missing candidate label"
+    },
+    {
+      "label": "BREAK 103",
+      "pass": false,
+      "reason": "missing candidate label"
+    },
+    {
+      "label": "CORRIDOR 104",
+      "pass": false,
+      "reason": "missing candidate label"
+    },
+    {
+      "label": null,
+      "pass": false,
+      "reason": "extra or non-floor-area shape"
+    },
+    {
+      "label": null,
+      "pass": false,
+      "reason": "extra or non-floor-area shape"
+    },
+    {
+      "label": null,
+      "pass": false,
+      "reason": "extra or non-floor-area shape"
+    },
+    {
+      "label": null,
+      "pass": false,
+      "reason": "extra or non-floor-area shape"
+    }
+  ],
+  "pass": false
+}

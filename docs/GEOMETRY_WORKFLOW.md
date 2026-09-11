@@ -40,3 +40,10 @@ Export with `export_marked_pdf` and inspect the actual PDF, including cover unit
 Retain source hashes, source revision, scale choices, tool inputs/replies, final geometry, overlay images, and the exported report. A comparison against prior work should report spatial overlap as well as quantities and disclose whether the reference helped correct the result. It is a reference-assisted test when that happened, not an independent accuracy benchmark.
 
 Use private plans locally unless publication is authorized. Put generic regression fixtures and lessons in the public repository. Do not require public agents to know a private application's tools or coordinate conventions.
+
+The [public MCP workflow benchmark](../evals/mcp-workflow-bench/README.md)
+exercises the built server in flat and staged modes on a synthetic plan, checks
+boundaries separately from quantities, and reopens the export in a fresh process.
+Its analytic answer key tests conformance; it is not evidence of accuracy across
+real plans. The [recorded agent pilot](../evals/mcp-workflow-bench/evidence/README.md)
+preserves a first-pass failure and an explicitly assisted correction.

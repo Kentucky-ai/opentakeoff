@@ -1,0 +1,47 @@
+{
+  "kind": "recorded_public_synthetic_pilot",
+  "model": "gpt-5.6-luna",
+  "reasoning_effort": "medium",
+  "mcp_version": "0.9.83",
+  "source_commit": "8802540458adad346b3b2af1f51cfab3173cbf9c",
+  "source_pdf_sha256": "8bddc98ecd11f4dde7b6e3c606fbc45eda18bb7319b5413a9102b2f984f35c14",
+  "first_pass": {
+    "requests": 37,
+    "methods": {
+      "resources/list": 1,
+      "resources/read": 4,
+      "tools/list": 11,
+      "tools/call": 21
+    },
+    "tool_calls": 21,
+    "error_responses": 1,
+    "export_sha256": "721eee9579bd013bd2417fb12b6e8fd3ede976b1adedc3874ad8b28ef4dbe5ec",
+    "reported_total_sf": 1704,
+    "room_labels_present": 0,
+    "human_approvals": 0,
+    "all_pending": true,
+    "strict_score_pass": false,
+    "score_artifact": "first-pass.score.json"
+  },
+  "assisted_correction": {
+    "requests": 13,
+    "methods": {
+      "tools/list": 1,
+      "tools/call": 12
+    },
+    "tool_calls": 12,
+    "error_responses": 0,
+    "export_sha256": "6e23d956b7c243da7758d0e656e97e7ee2ebfc226259c73b237abfa3f677568a",
+    "reported_total_sf": 1725.56,
+    "room_labels_present": 4,
+    "human_approvals": 0,
+    "all_pending": true,
+    "strict_score_pass": true,
+    "score_artifact": "assisted.score.json",
+    "min_room_iou": 1,
+    "max_boundary_vertex_edge_px": 0
+  },
+  "analytic_area_sf_per_room": 431.3858024691358,
+  "analytic_total_sf": 1725.5432098765432,
+  "score_status": "verified"
+}

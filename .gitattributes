@@ -1,0 +1,2 @@
+# PDFs may contain only ASCII bytes; preserve offsets and fixture hashes on checkout.
+*.pdf binary
