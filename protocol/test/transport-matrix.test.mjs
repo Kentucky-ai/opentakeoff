@@ -20,7 +20,8 @@ import { sanitizeStitches } from "../../web/src/lib/stitches.ts";
 import { buildMask } from "../../web/src/lib/oneclick.ts";
 import { diffTakeoffs } from "../../web/src/lib/revisions.js";
 import { openLen } from "../../web/src/lib/geometry.js";
-import { validator, assertValid, draftId } from "./helpers.mjs";
+import { validator, assertValid, draftId, legacyId } from "./helpers.mjs";
+import { adaptTakeoff } from "../src/adapters.mjs";
 
 const matrix = JSON.parse(await readFile(new URL("transport-matrix.json", import.meta.url), "utf8"));
 const ajv = validator();
@@ -346,6 +347,38 @@ const cases = {
     const before = clone(s.exportPayload()), path = join(t.dir, "draft.json");
     await writeFile(path, JSON.stringify(record)); await assert.rejects(importTakeoff(s, path), /expected schema/);
     assert.deepEqual(s.exportPayload(), before);
+  },
+  async "adapter-roundtrip"(t) {
+    const s = await session(); s.proposeTakeoff("Adapter sample", "Public synthetic transport case");
+    const room = s.measurePolygon(sheet, square, { condition: "F-1", role: "floor_area" });
+    s.measurePolygon(sheet, hole, { condition: "F-1", role: "deduct" });
+    s.measureLine(sheet, [[100, 300], [200, 300]], { condition: "L-1" });
+    s.measureSurface(sheet, [[100, 400], [200, 400]], { condition: "W-1", height_ft: 3 });
+    s.placeCount(sheet, [[300, 300], [400, 300]], { condition: "C-1" });
+    s.deriveBase({ source_condition: "F-1", condition: "B-1", openings: [{ shape_id: room.shape_id, lf: 3 }] });
+    const original = clone(s.shapes[0].verts_norm);
+    s.shapes[0].origin.evidence = { schedule_row_tag: "F-1", matched_text: "101" };
+    for (const dx of [0.01, 0.02]) s.shapes = applyShapeCommand(s.shapes, { type: "geom", id: room.shape_id,
+      editKind: "vertex", verts_norm: original.map(([x, y]) => [x + dx, y]), computed: s.shapes[0].computed }).shapes;
+    s.shapes = applyShapeCommand(s.shapes, { type: "review", ids: [room.shape_id] }).shapes;
+    s.approvals = applyApprovalCommand([], { type: "add", approvals: [{ actor: "estimator", sheet_id: sheet,
+      at: [0.1, 0.1], shape_id: room.shape_id }] }).approvals;
+    const source = clone(s.exportPayload()), before = JSON.stringify(source);
+    const draft = adaptTakeoff(source, draftId);
+    assert.equal(draft.status, "converted");
+    assert.throws(() => parseTakeoffImport(JSON.stringify(draft.document)), /expected schema/);
+    const restored = adaptTakeoff(draft.document, legacyId);
+    assert.equal(restored.status, "converted"); assert.equal(JSON.stringify(restored.document), before);
+    const { next, exported } = await roundtrip(await archive(restored.document), t);
+    sameMeasurements(source, exported);
+    assert.deepEqual(source.shapes.map(shape => shape.computed[shape.measure_role === "count" ? "count"
+      : shape.measure_role === "linear" ? "perimeter_lf" : "area_sf"]), [100, 4, 10, 30, 1, 1, 37]);
+    assert.deepEqual(exported.shapes[0].origin.proposed_verts_norm, original);
+    assert.deepEqual(exported.shapes[0].origin.evidence, source.shapes[0].origin.evidence);
+    assert.throws(() => next.editShape(room.shape_id, { label: "agent change" }), /affirmed by a human/);
+    next.markVerdict({ sheet, at: [300, 300], actor: "estimator" });
+    assert.deepEqual(next.approvals.map(a => a.actor), ["estimator", "agent"]);
+    assert.equal(JSON.stringify(source), before);
   },
   async "stitch-mcp"(t) {
     const s = await session(); s.measurePolygon(sheet, square, { condition: "F-1", role: "floor_area" });

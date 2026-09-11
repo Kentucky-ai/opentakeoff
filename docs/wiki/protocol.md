@@ -11,6 +11,7 @@ need evidence.
 | Measurement, Calibration, Provenance, Evidence and Review | [Generated schema reference](../../protocol/README.md#generated-schema-reference) |
 | Existing fields, writers, readers and projections | [Field inventory](../../protocol/INVENTORY.md) |
 | Conforms versus unsupported, including stitches | [Compatibility status](../../protocol/COMPATIBILITY.md) |
+| Inspect or explicitly convert a document | [Preflight](../../protocol/PREFLIGHT.md) and [opt-in adapter CLI](../../protocol/ADAPTERS.md) |
 | Differences from Academy's records and trust model | [Academy compatibility report](../../protocol/ACADEMY_COMPATIBILITY.md) |
 | Minimal event vocabulary without a new event store | [Draft events](../../protocol/EVENTS.md) |
 
@@ -22,6 +23,13 @@ complete historical snapshot of holes or curves.
 Human review, a human approval seal, an agent verdict, confidence and Academy
 certification are different claims. Validation checks record structure; it does
 not prove who authored or approved it. MCP cannot create a human approval.
+
+Private repository tooling now converts the bounded core profile between canvas
+and draft JSON after preflight, target validation and exact preservation checks.
+It changes only the schema identifier and writes a separate file; unsupported
+records refuse. Browser/MCP readers still require canvas JSON. Conversion does
+not establish geometry accuracy or repair downstream transport loss. The CLI is
+not a packaged MCP tool; use the canonical adapter guide for commands and limits.
 
 Follow the implementation order: schema, compatibility tests, then explicit
 opt-in adapters. Preserve inputs, IDs, quantities, originals, extensions and

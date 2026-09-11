@@ -221,7 +221,11 @@ jobs:
         run: node scripts/check-doc-links.mjs --issues
 
   protocol:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

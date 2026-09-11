@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -38,6 +38,10 @@ test("the CI command exits nonzero for stale documentation, repairs only with --
     assert.match(stale.stderr, /stale/);
     assert.equal(run("--write").status, 0);
     assert.equal(run().status, 0);
+    const crlf = readFileSync(join(dir, "README.md"), "utf8").replace(/\r?\n/g, "\r\n");
+    writeFileSync(join(dir, "README.md"), crlf);
+    assert.equal(run().status, 0, "Windows checkout line endings are not documentation drift");
+    assert.equal(readFileSync(join(dir, "README.md"), "utf8"), crlf, "read-only check preserves checkout bytes");
     writeFileSync(join(dir, "README.md"), "# Missing generated block\n");
     const missing = run();
     assert.equal(missing.status, 1);

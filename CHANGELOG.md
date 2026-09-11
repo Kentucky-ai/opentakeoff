@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased — Read-only protocol adapter preflight
+## Unreleased — Opt-in protocol adapters and current wiki (mcp 0.9.81)
+
+### Added
+- Private repository adapters and a CLI convert the preflight profile between canvas and draft JSON. They validate both ends, check preservation of all JSON data except the schema identifier, return detached output, and refuse incompatible records without a partial document. The CLI writes only to a new destination. Existing browser/MCP writers, engine quantities and approval authority are unchanged.
+- Executable conversion/transport evidence includes all five manual roles, derived base allowances, human-corrected originals and existing review, plus refusal, idempotency, extension preservation and file-collision checks.
+
+### Documentation
+- Wiki protocol/status pages now describe the bounded adapters and their actual command location. The packaged resource update stages MCP 0.9.81 for publication after merge; the adapter remains private repository tooling and is not an MCP tool.
+- Protocol checks now run on Linux and Windows. The schema-reference checker accepts CRLF checkout line endings without rewriting files, while still rejecting actual stale documentation.
+
+## 2026-09-11 — Read-only protocol adapter preflight (#414)
 
 ### Added
 - Private development preflight reports eligibility, invalid data and unsupported semantics for a bounded document-adapter profile. Checks include active references, per-role quantities and calibration without changing inputs, originals, review, writer formats or MCP runtime behavior. CLI reports explicit non-guarantees and structured issue paths; real Session/browser records and refusal cases are tested. See [the profile and evidence](protocol/PREFLIGHT.md).
