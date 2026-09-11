@@ -31,7 +31,9 @@ The protocol package is private development tooling. It is not imported by the
 browser or MCP application and does not publish a new npm package. The test
 suite compiles every schema offline, rejects malformed values, and validates
 representative records from the existing browser command layer and MCP session.
-The broader compatibility corpus and migration adapters remain subsequent steps.
+The [executable transport matrix](COMPATIBILITY.md#executable-transport-matrix)
+classifies tested preservation, reader incompatibility and demonstrated loss.
+Broader compatibility coverage and migration adapters remain subsequent steps.
 
 ## Contract boundaries
 

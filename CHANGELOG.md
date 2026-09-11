@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Protocol transport compatibility
+
+### Added
+- Protocol compatibility: add an executable browser/MCP transport matrix with exact geometry, quantity, lineage and review checks; explicitly reproduce unsupported composite/workspace exports and the draft import boundary. CI rejects stale matrix documentation. Development-only checks; current writers and engine behavior are unchanged.
+
 ## Unreleased — Shared wiki and MCP knowledge resources (mcp 0.9.80)
 
 ### Added

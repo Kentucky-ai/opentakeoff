@@ -6,7 +6,7 @@
   "description": "Development-only validation of the draft Takeoff Protocol; not a runtime package.",
   "scripts": {
     "test": "node --import tsx --test test/*.test.mjs",
-    "check": "npm test && node scripts/check-docs.mjs"
+    "check": "npm test && node scripts/check-docs.mjs && node scripts/check-matrix.mjs"
   },
   "engines": {
     "node": ">=24"
