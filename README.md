@@ -5,7 +5,7 @@
 **The measurement engine for building plans—built so an AI agent can drive it, and so an estimator wants to.**
 
 A takeoff is the act of measuring quantities off a construction drawing. OpenTakeoff does it
-two ways over one engine: **47 MCP tools** for an agent, and a browser canvas for a person.
+two ways over one engine: **<!--tool-count-->53<!--/tool-count--> MCP tools** for an agent, and a browser canvas for a person.
 Agents and people share the takeoff document and quantity calculations. Each sheet carries
 its calibration; measurements carry geometry, method and authorship. Recalibration updates
 quantities together, incompatible imports report scale conflicts, and agent measurements
@@ -727,3 +727,12 @@ instrument producing it.
 [NOTICE](NOTICE) for attribution.
 
 For an agent measurement workflow focused on accurate geometry, see [Geometry from source to review](docs/GEOMETRY_WORKFLOW.md).
+
+## Shared knowledge for people and agents
+
+The [wiki](docs/wiki/README.md) routes architecture, protocol, human/agent
+workflows, MCP tool selection and domain knowledge. MCP clients read the same
+packaged pages at `takeoff://wiki` and `takeoff://wiki/{page}` before loading a
+plan. [AGENTS.md](AGENTS.md) is the contributor router; detailed guidance lives
+in the wiki. CI checks packaged wiki content, tool counts/inventory, schema
+references and links against source.

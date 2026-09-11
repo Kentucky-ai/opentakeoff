@@ -2,7 +2,7 @@
 
 # OpenTakeoff
 
-> **One-Click Area is temporarily gated.** The flood engine is being re-validated against a wider plan corpus. Until that finishes the One-Click tool is off the canvas rail (`O` reports the gate) and the `one_click` / `detect_rooms` MCP verbs are **not registered** (a default build ships 45 tools). Trace rooms with **Area** (`A`) in the canvas and `measure_polygon` over MCP; every other tool, sweep and derivation is unchanged. A build lifts the gate with `VITE_ONE_CLICK=1` (canvas) / `OPENTAKEOFF_ONE_CLICK=1` (server). Sections and videos below that show One-Click describe the engine as it returns — see [`docs/design/ONE_CLICK_GATE.md`](docs/design/ONE_CLICK_GATE.md).
+> **One-Click Area is temporarily gated.** The flood engine is being re-validated against a wider plan corpus. Until that finishes the One-Click tool is off the canvas rail (`O` reports the gate) and the `one_click` / `detect_rooms` MCP verbs are **not registered** (a default build ships <!--tool-count-->53<!--/tool-count--> tools). Trace rooms with **Area** (`A`) in the canvas and `measure_polygon` over MCP; every other tool, sweep and derivation is unchanged. A build lifts the gate with `VITE_ONE_CLICK=1` (canvas) / `OPENTAKEOFF_ONE_CLICK=1` (server). Sections and videos below that show One-Click describe the engine as it returns — see [`docs/design/ONE_CLICK_GATE.md`](docs/design/ONE_CLICK_GATE.md).
 
 **建筑图纸的测量引擎 —— 造得让 AI 智能体能驱动，也让估算员愿意用。**
 
@@ -70,7 +70,7 @@ OpenTakeoff 是**纯客户端的浏览器应用**，所以这块画布在 Window
 
 OpenTakeoff 就是这个引擎,在同一套几何算法上跑着两个前端:
 
-- **一个 stdio MCP 服务器** —— `npx -y opentakeoff-mcp`,<!--tool-count-->47<!--/tool-count--> 个工具,
+- **一个 stdio MCP 服务器** —— `npx -y opentakeoff-mcp`,<!--tool-count-->53<!--/tool-count--> 个工具,
   在 [MCP 官方注册表](https://registry.modelcontextprotocol.io)上。一个智能体打开图纸、读图签栏、
   设定比例、漫水填充房间、在渲染叠加图上核对自己的工作,然后交回一份标记好的图纸 PDF。
 - **一块浏览器画布** —— 没有后端,没有账号,不上传。估算员把一套图纸拖进去描图,用的是
@@ -424,7 +424,7 @@ OpenTakeoff 可以请求一个**你自己**提供的视觉模型来读图纸上�
 | **语音** | 按住说话式的算量口令,设备端 WebAssembly 识别;音频从不离开浏览器 |
 | **视图** | 浅色或**深色(负片)**——绘制时反转图纸像素,导出结果遵循 |
 | **存储** | IndexedDB + localStorage —— 纯客户端,不上传任何东西 |
-| **MCP 服务器** | <!--tool-count-->47<!--/tool-count--> 个工具 + 可通过 stdio 浏览的图纸资源,多文档会话([`mcp/`](mcp/README.md)) |
+| **MCP 服务器** | <!--tool-count-->53<!--/tool-count--> 个工具 + 可通过 stdio 浏览的图纸资源,多文档会话([`mcp/`](mcp/README.md)) |
 | **来源记录** | 每个图形都记录它的比例、方法、置信度,以及是人还是智能体做的 |
 | **捕获(可选开启)** | 内置的[捕获服务器](capture/README.md)把每次贡献的算量存为(几何 → 标签)训练数据行 |
 | **部署** | 一个静态构建产物 —— Netlify、Vercel、GitHub Pages、Cloudflare Pages、S3,任意静态主机 |

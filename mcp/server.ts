@@ -27,6 +27,7 @@ export function buildServer(
     // takeoffs land as reviewable work instead of a bare numbers report.
     instructions: [
       "OpenTakeoff: quantity takeoff on construction plan PDFs.",
+      "Knowledge: read takeoff://wiki for the task router, then only the relevant takeoff://wiki/{page}. Pages cover capability limits, architecture, protocol, workflows, MCP routing and domain knowledge; takeoff://wiki/tool-index lists tool stages and required inputs. These resources work before loading a plan and do not change the session.",
       "A takeoff's deliverable is the marked-up planset, not a numbers report. Standard finish for ANY takeoff:",
       "1. load_plan, then set_scale on each sheet you measure (quantities are px-only until the scale is set).",
       oneClick

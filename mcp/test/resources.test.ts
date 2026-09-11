@@ -9,6 +9,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { ResourceListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
 import { buildServer } from "../server.ts";
 import { Session } from "../src/session.ts";
+import { WIKI_PAGES } from "../src/wiki.generated.ts";
 
 const PLAN = fileURLToPath(new URL("../../demo/sample-plan.pdf", import.meta.url));
 const KEY = "sample-plan.pdf";
@@ -21,11 +22,11 @@ async function connect() {
   return client;
 }
 
-test("empty session: index lists alone and reads sensibly", async () => {
+test("empty session: knowledge and the sheet index list; sheet index reads sensibly", async () => {
   const client = await connect();
 
   const { resources } = await client.listResources();
-  assert.deepEqual(resources.map((r) => r.uri), ["takeoff://sheets"], "no plan → only the index is listed");
+  assert.deepEqual(resources.map((r) => r.uri).sort(), [...WIKI_PAGES.map(p => p.uri), "takeoff://sheets"].sort(), "knowledge is readable before loading a plan");
 
   const read: any = await client.readResource({ uri: "takeoff://sheets" });
   const index = JSON.parse(read.contents[0].text);
@@ -49,7 +50,7 @@ test("loaded session: list_changed fires, sheets browse as index → metadata �
   const { resources } = await client.listResources();
   assert.deepEqual(
     resources.map((r) => r.uri).sort(),
-    ["takeoff://sheet/1", "takeoff://sheet/1/image", "takeoff://sheet/1/text", "takeoff://sheets"],
+    [...WIKI_PAGES.map(p => p.uri), "takeoff://sheet/1", "takeoff://sheet/1/image", "takeoff://sheet/1/text", "takeoff://sheets"].sort(),
     "index + metadata/text/image per sheet",
   );
   const meta = resources.find((r) => r.uri === "takeoff://sheet/1")!;

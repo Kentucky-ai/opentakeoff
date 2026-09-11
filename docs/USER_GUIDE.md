@@ -116,7 +116,7 @@ Large floors often arrive cut across sheets at a **match line**—half the build
 
 Notes: align the match line **before** tracing—once takeoffs live on a stitch it won't re-align (their coordinates ride the composite). Deleting a stitch is refused while takeoffs or markups live on it; reopen one anytime from its tab or the gallery's **Stitched surfaces** strip. The Marked Set PDF burns a stitch in as one composite page—members placed at their aligned offsets, each showing its own half up to the seam, shapes drawn once in the frame you measured them in—stamped as a stitched composite so nobody mistakes it for a sheet the architect issued.
 
-Stitching and aligning are yours alone—an AI agent driving OpenTakeoff [over MCP](MCP.md) has no stitch verb, on purpose: judging that two wall junctions are the same drawn point is human work, and a sloppy join quietly skews everything measured across the seam. If an agent will be doing the takeoff on a split floor, do the stitch and align yourself first, or have the agent measure the member sheets individually.
+Stitching and aligning are yours alone—an AI agent driving OpenTakeoff [over MCP](MCP.md) has no stitch verb, on purpose: judging that two wall junctions are the same drawn point is human work, and a sloppy join quietly skews everything measured across the seam. The current MCP import/export path also omits stitch records, so a browser stitch is not a lossless MCP handoff. Keep composite work in the browser project archive, or have the MCP agent measure the member sheets individually with explicit scope boundaries.
 
 ### Levels (multi-floor sets)
 
@@ -1071,3 +1071,11 @@ The scope collision list ignores machine-precision residue along shared edges.
 Real positive overlaps that round to zero display **<0.01 SF shared**, so a small
 warning does not appear to claim exactly zero area. Review the marked boundary
 before changing either trace.
+
+### Shared knowledge wiki
+
+The [wiki](wiki/README.md) gives people and agents the same starting points for
+current support, architecture, saved records, workflows and quantity meanings.
+An MCP agent reads the packaged pages at `takeoff://wiki`; a person follows the
+same pages here. The [stitching workflow](wiki/workflows.md#human-open-stitch-and-measure)
+explains the browser controls and the current MCP transport limit explicitly.
