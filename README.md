@@ -92,6 +92,8 @@ same waste math, same refusal messages.
 **Provenance is the load-bearing part.** Every shape records the scale it was measured at, the
 method that produced it (vector flood, raster trace, hand-drawn, agent-proposed), whether a
 human corrected it, and the machine's original boundary frozen beside the correction.
+This includes agent shapes drawn with manual measurement tools; the actor and drawing method
+are separate fields.
 Downstream, that's an audit trail a PM can read. Upstream, it's a labeled
 *(geometry → finish)* pair—the training signal takeoff models have never had at scale. That
 second use is not a side effect; see [the data layer](#the-data-layer--why-this-engine-exists).

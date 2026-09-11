@@ -64,7 +64,7 @@ missing source dimensions or claim that a referenced PDF is available.
 when present. It is the recorded machine proposal before human correction, not
 necessarily the agent's first-ever draft. It is an exterior trace, not a complete
 archive of every intermediate geometry, hole, or curve state. The existing
-agent/manual correction gap is documented in [compatibility status](COMPATIBILITY.md).
+agent/manual correction fix and remaining limits are documented in [compatibility status](COMPATIBILITY.md).
 
 **Versions have different jobs.** The draft schema version, persisted document
 revision, IndexedDB version, browser Git commit, MCP npm version, and Academy

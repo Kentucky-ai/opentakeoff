@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { Session } from "../../mcp/src/session.ts";
 import { emptyAnnotations } from "../../web/src/lib/store.js";
-import { applyShapeCommand } from "../../web/src/lib/shapeCommands.js";
+import { applyShapeCommand, geomSnapshot } from "../../web/src/lib/shapeCommands.js";
 import { applyApprovalCommand } from "../../web/src/lib/approvals.js";
-import { stampEdit } from "../../web/src/lib/provenance.js";
 import { normalizeAgentReview } from "../../web/src/lib/reviewState.js";
 import { mergeTakeoffImport } from "../../web/src/lib/importTakeoff.js";
 import { conditionTotals } from "../../web/src/lib/totals.js";
@@ -66,6 +66,27 @@ test("MCP commits every manual measurement role with agent provenance and unconf
     assert.equal(s.origin.actor, "agent");
     assert.equal(s.origin.reviewed, false);
     assert.ok(s.origin.proposal_id);
+    const before = structuredClone([s]);
+    for (const editKind of ["vertex", "edge", "move", "vertexDelete", "reassign"]) {
+      const moved = s.verts_norm.map(([x, y]) => [x + 0.01, y]);
+      const cmd = editKind === "reassign"
+        ? { type: "reassign", ids: [s.id], condition_id: "replacement-condition" }
+        : { type: "geom", id: s.id, editKind, verts_norm: moved, prev: geomSnapshot(s) };
+      // The browser may already display moved geometry during a drag preview.
+      const preview = editKind === "reassign" ? [s] : [{ ...s, verts_norm: moved }];
+      const corrected = applyShapeCommand(preview, cmd);
+      const origin = corrected.shapes[0].origin;
+      assert.deepEqual(origin.proposed_verts_norm, s.verts_norm, `${s.measure_role}: ${editKind}`);
+      assert.deepEqual(origin, { ...s.origin, edited: true,
+        edits: { [editKind === "vertexDelete" ? "vertex" : editKind]: 1 },
+        proposed_verts_norm: s.verts_norm });
+      const undone = applyShapeCommand(corrected.shapes, corrected.inverse);
+      assert.deepEqual(undone.shapes, before);
+      const redone = applyShapeCommand(undone.shapes, undone.inverse);
+      assert.deepEqual(redone.shapes, corrected.shapes);
+      checkBoth({ ...record, shapes: redone.shapes });
+    }
+    assert.deepEqual([s], before);
   }
 });
 
@@ -84,14 +105,40 @@ test("human correction, subsequent correction, review and undo retain existing m
   assert.deepEqual(applyShapeCommand(first.shapes, first.inverse).shapes, before);
 });
 
-test("known gap: agent/manual corrections lack a frozen original; validation must not fabricate it", () => {
+test("agent self-revision then human correction preserves the proposal seen by the human through import and archive", async () => {
+  const session = new Session();
+  await session.loadPlan(plan);
+  session.setScale(sheet, { use_detected: true });
+  session.measurePolygon(sheet, [[300, 300], [500, 300], [500, 500]], { condition: "F-1", role: "floor_area" });
+  session.editShape(session.shapes[0].id, { verts: [[310, 300], [500, 300], [500, 500]] });
+  const record = session.exportPayload();
+  const proposed = structuredClone(record.shapes[0].verts_norm);
+  assert.equal(record.shapes[0].origin.agent_edits, 1);
+  assert.equal(record.shapes[0].origin.proposed_verts_norm, undefined);
+  const merged = mergeTakeoffImport(emptyAnnotations(), record).payload;
+  const first = applyShapeCommand(merged.shapes, { type: "geom", id: merged.shapes[0].id,
+    editKind: "vertex", verts_norm: [[0.15, 0.2], ...proposed.slice(1)] });
+  const second = applyShapeCommand(first.shapes, { type: "geom", id: merged.shapes[0].id,
+    editKind: "vertex", verts_norm: [[0.16, 0.2], ...proposed.slice(1)] });
+  const corrected = { ...record, ...merged, shapes: second.shapes };
+  assert.deepEqual(corrected.shapes[0].origin.proposed_verts_norm, proposed);
+  assert.deepEqual(corrected.shapes[0].origin.edits, { vertex: 2 });
+  assert.equal(corrected.shapes[0].origin.agent_edits, 1);
+  assert.equal(corrected.shapes[0].origin.reviewed, false);
+  checkBoth(corrected);
+  const bytes = await buildProjectArchive({ takeoff: corrected, sheets: [{ name: sheet }],
+    loadPdfData: async () => new Uint8Array(await readFile(plan)) });
+  const reopened = await parseProjectArchive(bytes);
+  assert.deepEqual(reopened.takeoff, corrected);
+  checkBoth(reopened.takeoff);
+});
+
+test("legacy missing originals stay absent under validation; agent review stays pending", () => {
   const d = browserDocument();
   d.shapes[0].origin = { method: "manual", actor: "agent", reviewed: false };
-  const out = stampEdit(d.shapes[0], "vertex");
-  assert.equal(out.origin.proposed_verts_norm, undefined, "characterizes the known gap, not desired preservation behavior");
-  checkBoth({ ...d, shapes: [out] });
-  assert.equal(out.origin.proposed_verts_norm, undefined);
-  const normalized = normalizeAgentReview({ ...out, origin: { method: "manual", actor: "agent" } });
+  checkBoth(d);
+  assert.equal(d.shapes[0].origin.proposed_verts_norm, undefined);
+  const normalized = normalizeAgentReview({ ...d.shapes[0], origin: { method: "manual", actor: "agent" } });
   assert.equal(normalized.origin.reviewed, false);
 });
 
