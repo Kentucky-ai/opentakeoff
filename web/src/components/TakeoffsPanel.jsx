@@ -1010,7 +1010,7 @@ function TakeoffsPanel({
                   <span style={{ color: "var(--ink-muted)" }}>{p.same_condition ? "⧉" : "↔"}</span>
                   <span style={{ flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {p.same_condition ? `double trace${mine.label ? ` · ${mine.label}` : ""}` : `${other.condition}${other.label ? ` · ${other.label}` : ""}`}
-                    <span style={{ color: "var(--ink-muted)" }}> · {p.shared_sf} SF shared · {Math.round(p.fraction_of_smaller * 100)}%{p.a.reviewed && p.b.reviewed ? " · both accepted" : ""}</span>
+                    <span style={{ color: "var(--ink-muted)" }}> · {p.shared_sf === 0 ? "<0.01" : p.shared_sf} SF shared · {Math.round(p.fraction_of_smaller * 100)}%{p.a.reviewed && p.b.reviewed ? " · both accepted" : ""}</span>
                   </span>
                   <button onClick={() => onLookAtCollision?.(p)} title="Frame both shapes on the plan"
                     style={{ flexShrink: 0, padding: "1px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 10.5, fontWeight: 600 }}>Look</button>

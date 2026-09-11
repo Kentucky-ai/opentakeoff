@@ -144,3 +144,27 @@ test("a hole and a reconciled cut: the number respects geometry, not arithmetic"
   // = 56.25 SF) of the box falls in the hole and is not CPT-1's floor
   assert.equal(withParent.shared_sf, 43.75, "100 SF box minus the 56.25 SF that falls in the hole");
 });
+
+// #409: unlike a rounded SF total, the pair list tells an agent whether
+// to edit geometry. Exercise the same shared module through Session.
+test("scope_duplicates with min_fraction zero ignores numerical edge residue and explains real sub-cent SF", async () => {
+  const s = await scaled();
+  s.measurePolygon(KEY, SQ(0, 0), { condition: "F-1", role: "floor_area" });
+  const b = s.measurePolygon(KEY, SQ(360 - 1e-12, 0), { condition: "F-2", role: "floor_area" }).shape_id!;
+  assert.equal(s.scopeDuplicates({ min_fraction: 0 }).collisions.length, 0);
+  s.editShape(b, { verts: SQ(360 - 0.01, 0) });
+  const small = s.scopeDuplicates({ min_fraction: 0 });
+  assert.equal(small.collisions.length, 1);
+  assert.match(small.collisions[0].note!, /below 0.01 SF/);
+});
+
+// A numeric allowance carries no opening location. Clipping its still-gross
+// perimeter would replace its net LF and lose the already-stated deduction.
+test("cut_out refuses a derived base with unlocated numeric openings", async () => {
+  const s = await scaled();
+  const floor = s.measurePolygon(KEY, SQ(0, 0), { condition: "F-1", role: "floor_area" }).shape_id!;
+  const base = s.deriveBase({ source_condition: "F-1", condition: "B-1", openings: [{ shape_id: floor, lf: 3 }] });
+  const before = structuredClone(s.exportPayload());
+  assert.throws(() => s.cutOut({ parent_shape_id: base.rooms[0].base_shape_id, verts: SQ(100, -10, 108, 20) }), /numeric openings.*measure_line/);
+  assert.deepEqual(s.exportPayload(), before);
+});

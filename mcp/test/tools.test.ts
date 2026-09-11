@@ -72,7 +72,7 @@ async function captureStderr(fn: () => Promise<void>): Promise<string> {
 // no geometry crosses them — same reasoning.
 // the proposal verbs (#365) other than revise_proposal take a label, a
 // rationale, a condition diff, or a record id — no geometry crosses them.
-const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "export_dxf", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict", "duplicate_condition", "split_condition", "apply_rules", "create_rfi", "list_rfis", "resolve_rfi", "delete_rfi",
+const NO_COORDS = new Set(["undo_last", "edit_materials", "edit_condition", "export_report", "export_marked_pdf", "export_dxf", "edit_annotation", "link_annotation", "list_shapes", "derive_base", "import_takeoff", "delete_verdict", "duplicate_condition", "split_condition", "apply_rules", "create_rfi", "list_rfis", "resolve_rfi", "delete_rfi",
   "propose_takeoff", "withdraw_proposal", "propose_condition_edit", "withdraw_condition_edit",
   // scope_merge (#366) takes two shape ids and a winner — no geometry crosses it
   "scope_merge"]);
@@ -2816,4 +2816,50 @@ test("export_takeoff after tools/list preserves calibration and RFIs under clien
     assert.equal(data.rfis[0].subject, "Synthetic scope question");
     assert.deepEqual(JSON.parse((result.content as any[])[0].text), data);
   } finally { await client.close(); }
+});
+
+// #409: shorten a note through the discovered wire surface; geometry,
+// quantities, links, human verdicts and extension fields must remain exact.
+test("edit_annotation changes only text, round-trips and undoes; no approval or RFI backdoor", async () => {
+  const session = new Session();
+  const server = buildServer(session);
+  const [ct, st] = InMemoryTransport.createLinkedPair();
+  await server.connect(st);
+  const client = new Client({ name: "annotation-edit", version: "1" });
+  await client.connect(ct);
+  try {
+    await client.listTools();
+    await call(client, "load_plan", { path: PLAN });
+    assert.equal((await call(client, "set_scale", { sheet: KEY, upp: 1 / 36 })).isError, false);
+    assert.equal((await call(client, "measure_polygon", { sheet: KEY, verts: [[100, 100], [460, 100], [460, 460]], condition: "FT-1" })).isError, false);
+    const created = await call(client, "annotate", { sheet: KEY, type: "dimension", from: [100, 100], to: [460, 100], text: "A note too long for this drawing", condition: "FT-1" });
+    assert.equal(created.isError, false);
+    const id = created.data.id;
+    Object.assign(session.markups[0], { extension: { keep: [1, 2] } });
+    const before = structuredClone(session.exportPayload());
+    const edited = await call(client, "edit_annotation", { annotation_id: id, text: "Verify in field" });
+    assert.equal(edited.isError, false);
+    assert.equal(edited.data.text, "Verify in field");
+    const after = session.exportPayload();
+    assert.deepEqual(after, { ...before, markups: before.markups.map(m => ({ ...m, text: "Verify in field" })) });
+    const listed = await call(client, "list_annotations");
+    assert.equal(listed.data.annotations[0].text, "Verify in field");
+    assert.equal(listed.data.annotations[0].length_lf ?? session.markups[0].len_ft, 10);
+    const undone = await call(client, "undo_last", { n: 1 });
+    assert.equal(undone.isError, false);
+    assert.equal(undone.data.steps[0].op, "annotation_text");
+    assert.deepEqual(session.exportPayload(), before);
+    assert.equal((await call(client, "edit_annotation", { annotation_id: id, text: "" })).isError, false, "empty text clears the note; dimension length remains");
+    assert.equal(session.markups[0].len_ft, 10);
+    await call(client, "undo_last", { n: 1 });
+    assert.equal((await call(client, "edit_annotation", { annotation_id: "missing", text: "x" })).isError, true);
+    assert.equal((await call(client, "edit_annotation", { annotation_id: id, text: session.markups[0].text })).isError, true, "a no-op must not consume an undo step");
+    session.markups[0].rfi_id = "rfi-existing";
+    const linked = structuredClone(session.exportPayload());
+    const refused = await call(client, "edit_annotation", { annotation_id: id, text: "Architect approved" });
+    assert.equal(refused.isError, true);
+    assert.match(refused.data.error, /RFI/);
+    assert.deepEqual(session.exportPayload(), linked);
+    assert.equal(session.approvals.length, 0);
+  } finally { await client.close(); await server.close(); }
 });

@@ -1,15 +1,27 @@
-## What & why
+## What changed and why
 
-<!-- What does this change do, and what job does it serve? Link the issue if there is one. -->
+<!-- Describe the concrete problem and resulting behavior. Link the issue. -->
 
-## How it was verified
+## Review evidence
 
-<!-- The build is the gate, plus a hands-on pass: `cd web && npm run build`, then load the sample plan and exercise the changed flow. Quantity-affecting changes: show a measured-vs-expected check. -->
+<!-- Every PR includes at least one screenshot, short video, or measured stats.
+     Visible changes: show the changed UI/flow. Engine/tool changes: show the
+     trigger, expected result, observed result, and a reproducible command.
+     Link the actual CI run or evidence file. Label synthetic/reference-assisted
+     work honestly. Keep private plans, prices and credentials out of public evidence. -->
 
-- [ ] `npm run build` is green
-- [ ] Exercised the changed flow against the bundled sample plan
-- [ ] Docs updated where behavior changed (`README.md`, `docs/USER_GUIDE.md`, `CHANGELOG.md`)
+| Check or scenario | Expected | Observed | Evidence |
+|---|---|---|---|
+| <!-- Describe the changed behavior --> | | | |
 
-## Notes for the reviewer
+## Validation
 
-<!-- Anything non-obvious: coordinate spaces touched, conventions from AGENTS.md that apply, tradeoffs taken. -->
+- [ ] `npm run check --prefix web` passes (typecheck, lint, tests, benchmark, build)
+- [ ] Relevant MCP/protocol checks pass
+- [ ] Changed behavior is exercised; screenshots/video or measured stats are included above
+- [ ] Documentation and generated references are current
+
+## Limits and dependencies
+
+<!-- State material unverified behavior and required merge order. Do not describe
+     a passing test as a human approval or an independent benchmark. -->

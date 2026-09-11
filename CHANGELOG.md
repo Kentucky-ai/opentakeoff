@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — Geometry review cleanup (mcp 0.9.79)
+
+### Fixed
+- Scope collision review ignores machine-precision edge residue. Real positive overlaps below 0.01 SF remain listed with an explanation and a nonzero display label. Measured geometry and quantities are unchanged.
+- `cut_out` refuses a derived base carrying unlocated numeric opening allowances, preventing a geometric cut from replacing the existing allowance. Explicit physical runs remain clippable.
+
+### Added
+- `edit_annotation` changes only text with exact undo; RFI-linked notes and verdict ids refuse. Positions, dimensions, quantities and review records stay unchanged.
+- Protocol compatibility coverage checks actual opening endpoints and stepped wall bands. Tool stages and required inputs now have a generated reference checked in CI, alongside counts on every human/agent entry point.
+
 ## Unreleased — Validated MCP exports and marked-set linear allowances (mcp 0.9.78)
 
 ### Fixed

@@ -798,7 +798,7 @@ What's sent, and only when you run an AI feature: the sheet region in question a
 
 The same engine speaks [MCP](https://modelcontextprotocol.io), one command away:
 `npx -y opentakeoff-mcp` (or the one-click `opentakeoff-mcp.mcpb` bundle for Claude Desktop). An
-MCP client gets **<!--tool-count-->52<!--/tool-count--> tools** plus browsable sheet resources, over the very same measuring engine,
+MCP client gets **<!--tool-count-->53<!--/tool-count--> tools** plus browsable sheet resources, over the very same measuring engine,
 with the same scale gate and the same provenance receipts:
 
 | Group | Tools |
@@ -1059,3 +1059,15 @@ those are the ones worth pinning down before you rely on a number.
 ### Marked-set quantity units
 
 The marked-set cover shows linear allowances in LF (or m in metric), alongside area allowances in SF (or m²). Measured quantities stay unchanged; waste applies to the allowance column. Supporting-material coverage comes from Report material rows and does not require another floor polygon.
+
+### Annotation cleanup and small overlap warnings
+
+An agent can shorten or clear annotation text with `edit_annotation`, then undo
+that text edit. This leaves positions, dimension lengths, quantities, links and
+review records unchanged. An RFI-linked note requires review in the browser RFI
+register. Human approval remains a separate action.
+
+The scope collision list ignores machine-precision residue along shared edges.
+Real positive overlaps that round to zero display **<0.01 SF shared**, so a small
+warning does not appear to claim exactly zero area. Review the marked boundary
+before changing either trace.

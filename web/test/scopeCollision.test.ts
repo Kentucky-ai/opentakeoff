@@ -135,3 +135,19 @@ test("the room eval's shared-floor gate and this module agree on the same set of
   // the harness rasterizes at 1 px cells; the exact number agrees to that tolerance
   assert.ok(Math.abs(bench.overlapSF - mine.shared_floor_sf) < 3, `bench ${bench.overlapSF} vs exact ${mine.shared_floor_sf}`);
 });
+
+// #409: min_fraction:0 must not turn floating-point edge noise into a
+// duplicate-floor instruction. A real sub-cent SF overlap still matters.
+test("scope review ignores machine-precision edge remnants but retains small real intersections", () => {
+  const a = shape("a", "cpt", sq(0, 0, 100));
+  const noise = shape("noise", "lvt", sq(100 - 1e-12, 0, 100));
+  const before = structuredClone([a, noise]);
+  const r = scopeCollisions([a, noise], conds, frame, { minFraction: 0 });
+  assert.equal(r.collisions.length, 0);
+  assert.equal(r.shared_floor_sf, 0);
+  assert.deepEqual([a, noise], before, "review never edits the traces");
+  const real = scopeCollisions([a, shape("small", "lvt", sq(99.996, 0, 100))], conds, frame, { minFraction: 0 });
+  assert.equal(real.collisions.length, 1, "0.004 SF is real, even when rounded to zero");
+  assert.equal(real.collisions[0].shared_sf, 0);
+  assert.match(real.collisions[0].note, /below 0.01 SF/);
+});

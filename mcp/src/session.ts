@@ -588,6 +588,7 @@ export type JournalPayload =
   | { op: "commit"; tool: string; ids: string[] }
   | { op: "scale"; tool: string; sheet_id: string; upp: number | null; source?: string; confirmed?: boolean; shapes: Shape[] }
   | { op: "edit"; tool: string; before: Shape }
+  | { op: "annotation_text"; tool: string; id: string; before: string }
   | { op: "delete"; tool: string; removed: { shape: Shape; index: number }[] }
   | { op: "materials"; tool: string; condition_id: string; before: MaterialRow[]; dropped_before?: string[];
       family?: { condition_id: string; before: MaterialRow[]; dropped_before?: string[] }[] }
@@ -2375,6 +2376,10 @@ export class Session {
    * curved run (whose verts are control points, not the line) refuses and says
    * what to do instead. */
   private cutRunOut(parent: Shape, verts: Point[]) {
+    const derived = parent.origin?.derived;
+    if (derived && "openings_lf" in derived && derived.openings_lf > 0) {
+      throw new UserError("This derived base already has numeric openings with no stored locations. Use measure_line for the installed runs; clipping this gross perimeter would lose the existing allowance.");
+    }
     if (parent.origin?.reviewed === true) {
       throw new UserError(`Shape ${parent.id} was affirmed by a human — reviewed work is ink, and clipping it would mutate what the estimator signed.`);
     }
@@ -4143,6 +4148,10 @@ export class Session {
         // shape that is gone is a no-op on geometry, not an error
         if (i >= 0) this.shapes[i] = e.before;
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: i >= 0 ? 1 : 0 });
+      } else if (e.op === "annotation_text") {
+        const m = this.markups.find((x) => x.id === e.id);
+        if (m) m.text = e.before;
+        undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
       } else if (e.op === "materials") {
         // the write may have PROPAGATED (variants.ts — the same
         // propagate-on-write the canvas runs), so the entry carries snapshots
@@ -4412,6 +4421,18 @@ export class Session {
       }),
       verdict_count: seals.length,
     };
+  }
+
+  /** Change only the note text. Verdicts are a separate family and RFI
+   * context must stay attached to the question the estimator is reviewing. */
+  editAnnotation(id: string, text: string): Record<string, unknown> {
+    const m = this.markups.find((x) => x.id === id);
+    if (!m) throw new UserError(`No annotation ${JSON.stringify(id)} — call list_annotations for annotation ids; verdicts cannot be edited here.`);
+    if (m.rfi_id) throw new UserError("This annotation is linked to an RFI. Review its context in the browser RFI register; edit_annotation cannot rewrite it.");
+    if (m.text === text) throw new UserError("The annotation already has that text — nothing changed.");
+    this.record({ op: "annotation_text", tool: "edit_annotation", id, before: m.text });
+    m.text = text;
+    return { id, text, note: "Text updated; geometry, dimensions, links and review records are unchanged. undo_last restores the previous text." };
   }
 
   /** Attach an existing annotation to a condition, or detach it with "". The

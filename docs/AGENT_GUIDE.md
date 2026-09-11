@@ -296,3 +296,19 @@ On the browser agent surface, `one_click` returns retained interior voids as `ve
 ## Geometry accuracy in practice
 
 Follow [Geometry from source to review](GEOMETRY_WORKFLOW.md) when tracing a real plan. It explains which geometry to commit, how to verify the overlay, and how to make deductions visible to the estimator.
+
+## Geometry review cleanup
+
+Use the [generated tool index](MCP_TOOL_INDEX.md) for the
+<!--tool-count-->53<!--/tool-count--> default tools, their stages and required arguments.
+The [geometry workflow](GEOMETRY_WORKFLOW.md) is the source-to-handoff route.
+
+- Shorten a note with `list_annotations` then `edit_annotation`; empty text clears
+  it and `undo_last` restores it. An RFI-linked note requires review in the browser
+  register. Text edits never create approval or change measured geometry.
+- A positive overlap below 0.01 SF remains flagged with a note; machine-precision
+  residue alone does not request a geometry correction. Inspect meaningful
+  overlaps, and use material coverage rows for supporting materials.
+- Locate base and wall openings with explicit runs and `cut_out`. Numeric
+  `derive_base` allowances have no opening locations; clipping such a derived
+  perimeter refuses. Trace the installed runs with `measure_line` instead.
