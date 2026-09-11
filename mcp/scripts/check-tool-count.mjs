@@ -13,6 +13,9 @@ const counts = { "tool-count": TOOL_NAMES.length, "tool-count-all": ALL_TOOL_NAM
   "tool-count-setup": stagesFor(false).setup.length };
 const write = process.argv.includes("--write");
 let stale = 0, seen = 0;
+// Release metadata must agree before --write can mutate generated counts. The
+// version checker is read-only and deliberately refuses --write repair.
+await import("../../scripts/check-version-consistency.mjs");
 for (const file of DOCS) {
   const text = readFileSync(file, "utf8");
   const hits = [...text.matchAll(RE)];

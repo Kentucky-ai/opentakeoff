@@ -74,7 +74,7 @@ much wall, how many fixtures, at what scale, on which sheet. It happens thousand
 day. Until OpenTakeoff there was **no open-source takeoff engine at all**, web-based or
 otherwise, and nothing an autonomous agent could call.
 
-OpenTakeoff is that engine, with two front ends over identical geometry:
+OpenTakeoff is that engine, with two front ends sharing geometry and quantity modules:
 
 - **Review cleanup**—agents can edit annotation text with undo while preserving geometry and review; RFI-linked notes require browser review. Scope warnings distinguish numeric edge residue from real small overlaps.
 - **A stdio MCP server**—`npx -y opentakeoff-mcp`, <!--tool-count-->53<!--/tool-count--> tools, on the
@@ -85,10 +85,10 @@ OpenTakeoff is that engine, with two front ends over identical geometry:
   and traces it, using One-Click room detection, CAD hatches, roll-goods seam layout, a
   materials buy list, and exports.
 
-Neither is a wrapper around the other. The MCP server imports
-`web/src/lib/{oneclick,sheets,geometry,totals}` directly, so a shape committed by an agent is
-field-identical to one committed by a hand at the canvas—same flood mask, same corner snap,
-same waste math, same refusal messages.
+Neither is a wrapper around the other. The MCP server imports shared web modules, so quantity math
+and takeoff records are compatible. Browser and MCP room-detection paths currently differ; shared
+code does not guarantee identical boundaries on every plan. One-Click remains gated while that
+boundary is re-validated.
 
 **Provenance is the load-bearing part.** Every shape records the scale it was measured at, the
 method that produced it (vector flood, raster trace, hand-drawn, agent-proposed), whether a

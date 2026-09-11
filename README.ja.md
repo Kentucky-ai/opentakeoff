@@ -2,6 +2,8 @@
 
 # OpenTakeoff
 
+> この翻訳の一部の機能説明は英語版より古い可能性があります。現在の利用可否は[英語 README](README.md)と[共通 Wiki](docs/wiki/README.md)を確認してください。
+
 > **One-Click Area is temporarily gated.** The flood engine is being re-validated against a wider plan corpus. Until that finishes the One-Click tool is off the canvas rail (`O` reports the gate) and the `one_click` / `detect_rooms` MCP verbs are **not registered** (a default build ships <!--tool-count-->53<!--/tool-count--> tools). Trace rooms with **Area** (`A`) in the canvas and `measure_polygon` over MCP; every other tool, sweep and derivation is unchanged. A build lifts the gate with `VITE_ONE_CLICK=1` (canvas) / `OPENTAKEOFF_ONE_CLICK=1` (server). Sections and videos below that show One-Click describe the engine as it returns — see [`docs/design/ONE_CLICK_GATE.md`](docs/design/ONE_CLICK_GATE.md).
 
 **人と AI エージェントの両方のために作られた、最初の拾い出しキャンバス。**

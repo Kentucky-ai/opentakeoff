@@ -2,11 +2,18 @@
 
 ## Human: open, stitch and measure
 
-Open the plans and check their revision. In the sheet gallery, select the
+Open the plans and check their revision. Press **G** (or choose **Sheets → Open
+gallery…**) to open the sheet gallery, then select the
 2–4 split sheets in left-to-right order and click **Stitch N into one surface**.
 On the composite, choose **Align**, click a recognizable point near the joint,
-then click the same drawn point on the other sheet. Check the joint and scale
-before tracing. Once shapes exist on a stitch, alignment is locked.
+then click the same drawn point on the other sheet. Check a second recognizable
+point and the scale before tracing. Align translates a member; it does not
+rotate or resize it. Once shapes exist on a stitch, alignment is locked.
+
+If the controls seem missing, **Stitch N into one surface** is in the gallery
+footer and requires 2–4 selected sheets; **Align** appears only on an open
+stitched surface. Create a fresh stitch if Align refuses because takeoffs
+already exist; deleting a stitch also refuses while takeoffs or markups exist.
 
 Use the composite as one measuring surface. Its marked-set page is labeled as
 a composite, not an architect-issued sheet. Save the editable project archive

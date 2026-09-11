@@ -28,11 +28,11 @@ engine for doing that, with a browser canvas and an MCP server sharing geometry 
 - **A browser canvas**—client-only React. An estimator drags in a plan set and traces it. No
   backend, no database, no account, no upload.
 
-Neither wraps the other. `mcp/` imports `web/src/lib/{oneclick,sheets,geometry,totals}` directly,
-so both surfaces use shared quantity math. Actor, review and transport support differ;
-see the [compatibility matrix](protocol/COMPATIBILITY.md) before claiming a lossless
-round trip. The default MCP tools accept source-backed measurements; One-Click
-remains gated.
+Neither wraps the other. `mcp/` imports shared web modules, so both surfaces use shared quantity
+math and exchange takeoff records. Shared modules do not guarantee identical detector boundaries:
+the browser and MCP room-detection paths currently differ, and One-Click remains gated while that
+boundary is re-validated. Actor, review and transport support differ; see the [compatibility
+matrix](protocol/COMPATIBILITY.md) before claiming a lossless round trip.
 
 ## Why it exists
 
