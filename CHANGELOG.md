@@ -1,13 +1,18 @@
 # Changelog
 
-## Unreleased — Opt-in protocol adapters and current wiki (mcp 0.9.81)
+## Unreleased — release availability wait
+
+### Fixed
+- The MCP publish workflow now waits for both npm's package metadata and exact-version endpoints before continuing with Registry, GitHub release and MCPB work. `scripts/wait-for-npm-availability.mjs` retries at 15-second intervals with a 15-minute deadline, 60-attempt cap and 10-second request timeout; a rerun still skips an already published version. Its deterministic retry/timeout/validation tests run in CI. This is follow-up work from the 0.9.81 release and is not itself a published MCP version.
+
+## 2026-09-11 — MCP 0.9.81 and opt-in protocol adapters
 
 ### Added
 - Private repository adapters and a CLI convert the preflight profile between canvas and draft JSON. They validate both ends, check preservation of all JSON data except the schema identifier, return detached output, and refuse incompatible records without a partial document. The CLI writes only to a new destination. Existing browser/MCP writers, engine quantities and approval authority are unchanged.
 - Executable conversion/transport evidence includes all five manual roles, derived base allowances, human-corrected originals and existing review, plus refusal, idempotency, extension preservation and file-collision checks.
 
 ### Documentation
-- Wiki protocol/status pages now describe the bounded adapters and their actual command location. The packaged resource update stages MCP 0.9.81 for publication after merge; the adapter remains private repository tooling and is not an MCP tool.
+- Wiki protocol/status pages now describe the bounded adapters and their actual command location. MCP 0.9.81 is published in the [GitHub release](https://github.com/Kentucky-ai/opentakeoff/releases/tag/mcp-v0.9.81); the adapter remains private repository tooling and is not an MCP tool.
 - Protocol checks now run on Linux and Windows. The schema-reference checker accepts CRLF checkout line endings without rewriting files, while still rejecting actual stale documentation.
 
 ## 2026-09-11 — Read-only protocol adapter preflight (#414)
