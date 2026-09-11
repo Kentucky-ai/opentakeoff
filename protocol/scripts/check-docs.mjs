@@ -42,7 +42,9 @@ export function checkDocs(write = false) {
       .map((name) => ({ path: `${dir}/${name}`, schema: JSON.parse(readFileSync(new URL(`${dir}/${name}`, root), "utf8")) })),
   );
   const path = new URL("README.md", root);
-  const current = readFileSync(path, "utf8");
+  // Git may check out Markdown with CRLF on Windows. Compare canonical text
+  // without rewriting the checkout during this read-only freshness check.
+  const current = readFileSync(path, "utf8").replace(/\r\n/g, "\n");
   const expected = refreshReference(current, schemas);
   if (current !== expected) {
     if (!write) throw new Error("Protocol schema reference is stale. Run node protocol/scripts/check-docs.mjs --write and review the diff.");

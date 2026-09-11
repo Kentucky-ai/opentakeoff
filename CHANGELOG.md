@@ -8,6 +8,7 @@
 
 ### Documentation
 - Wiki protocol/status pages now describe the bounded adapters and their actual command location. The packaged resource update stages MCP 0.9.81 for publication after merge; the adapter remains private repository tooling and is not an MCP tool.
+- Protocol checks now run on Linux and Windows. The schema-reference checker accepts CRLF checkout line endings without rewriting files, while still rejecting actual stale documentation.
 
 ## 2026-09-11 — Read-only protocol adapter preflight (#414)
 
