@@ -691,6 +691,8 @@ Everything—drawings, scales, conditions, markups, RFIs, levels, tabs—autosav
 
 So take the takeoff out of the browser: **Sheet → Export takeoff…** writes `〈project〉.takeoff.json`—the exact document autosave writes, every shape, condition, scale, markup, RFI and seal—to a normal file you can back up, archive for years, carry to another machine, or hand to another estimator. **Sheet → Import takeoff…** reads it back as an editable takeoff, not a report. The plan PDF is not inside it: open the same PDF first, then import.
 
+**Sheet → Export project archive…** writes a `.otk` containing the current takeoff and current plan PDFs. It preserves stitched surfaces too. Saved revision snapshots and earlier versions of those PDFs are separate browser records and are not included. Opening the archive in a fresh workspace brings over the current work; it does not restore the revision history.
+
 If a saved project fails to load, autosave **pauses itself** and a banner says so—a load failure never overwrites your saved work with an empty canvas. And if OpenTakeoff updates in another tab, the stale tab asks for a reload instead of writing over the newer one.
 
 ### Optional: projects on Drive
