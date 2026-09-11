@@ -386,3 +386,20 @@ New agent measurements, including `measure_polygon` and `measure_line`, explicit
 ## Geometry workflow
 
 [Geometry from source to review](GEOMETRY_WORKFLOW.md) gives the measurement order and verification checks for a real finish takeoff. Discover tools before invoking them so the client validates the declared output contracts.
+
+## Review cleanup and current tool inventory
+
+The [generated tool index](MCP_TOOL_INDEX.md) gives each tool's stage and required
+arguments directly from the running server's schemas. The default surface has
+<!--tool-count-->53<!--/tool-count--> tools; gated tools and the staged opener are listed separately.
+
+Use `list_annotations` → `edit_annotation {annotation_id, text}` to shorten or clear
+a note. One `undo_last` restores the text. Geometry, dimension length, links and
+human review are unchanged. RFI-linked notes refuse; inspect their question in
+the browser register. Verdicts are separate records, not editable annotations.
+
+`scope_duplicates` ignores machine-precision edge residue, but preserves real
+small overlaps with an explanation when SF rounds to zero. A material coverage
+row is not another finish polygon. For a physical opening, clip an explicit
+`measure_line` or `measure_surface` run with `cut_out`; a derived base with numeric
+opening allowances refuses clipping because those openings have no locations.

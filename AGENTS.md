@@ -118,7 +118,10 @@ you got them all:
 6. `mcp/README.md` (the tool table) and `docs/MCP.md` (the reach-for-it ordering,
    the example session, and the tool count in its opening line). A new tool also
    needs a row in `mcp/src/staging.ts`'s `TOOL_STAGES`—the four lists must
-   partition the tool set exactly, and a test fails CI if one doesn't. If the
+   partition the tool set exactly, and a test fails CI if one doesn't.
+   `npm run check:tool-count --prefix mcp` checks counts on all five entry points,
+   reference-table coverage, and [`docs/MCP_TOOL_INDEX.md`](docs/MCP_TOOL_INDEX.md)
+   against runtime schemas. Add `-- --write` to regenerate counts and the index. If the
    change alters *doctrine* rather than adding a verb—what withholds, what
    refuses, what has no agent verb—it belongs in `docs/AGENT_GUIDE.md` too,
    and the tool count appears there and in `docs/USER_GUIDE.md` §14.

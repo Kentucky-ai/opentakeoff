@@ -64,3 +64,26 @@ fields modeled by this draft, including nested definitions.
 The inventory names existing paths; its tests provide targeted evidence, not a
 claim that every permutation has been validated. Unknown project extensions and
 secondary families need the broader corpus before the protocol is declared stable.
+
+## Wall faces, openings and annotation edits
+
+Existing `surface_area` shapes store a plan run in `verts_norm`, a per-shape
+`height_ft`, and computed SF/LF. A stepped wall uses multiple height bands;
+there is no persisted vertical offset or elevation plane. An annotation can
+cite which band a run represents, but it is not a new geometry field.
+`cut_out` clips the entire height of the selected run. Partial-height openings
+therefore require separate bands. Generic `deduct` shapes subtract floor SF;
+this draft does not reinterpret them as wall deductions.
+
+Existing `linear` runs can retain physical gaps as separate polylines.
+`derive_base` instead stores a closed perimeter and an unlocated numeric
+`origin.derived.openings_lf` allowance. These are different evidence claims.
+Clipping a numerically netted perimeter refuses; use explicit installed runs.
+The [current-record tests](test/current-records.test.mjs) verify a 54 SF stepped
+face, a 3 ft physical opening, actual surviving endpoints, pending review,
+structural conformance and undo without adding a role or changing schemas.
+
+`edit_annotation` changes only existing `markups[].text`. Its session-only
+inverse stores the previous string; persisted markup geometry, extensions,
+links and review records remain untouched. RFI-linked notes refuse this edit.
+See the [wire tests](../mcp/test/tools.test.ts). No new durable event is claimed.

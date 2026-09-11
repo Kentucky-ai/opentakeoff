@@ -324,7 +324,8 @@ const scopeSide = z.object({
 });
 export const scopePairRow = z.object({
   sheet_id: z.string(), a: scopeSide, b: scopeSide,
-  shared_sf: z.number().describe("Exact polygon intersection through the sheet's scale"),
+  shared_sf: z.number().describe("Polygon intersection through the sheet's scale, rounded to two decimals"),
+  note: z.string().optional().describe("Explains a positive overlap whose SF rounds to zero"),
   fraction_of_smaller: z.number().describe("shared ÷ the smaller shape's area (1 = the smaller sits entirely inside the other)"),
   iou: z.number().describe("Symmetric intersection-over-union — ≥ 0.5 is the room eval's own 'same space claimed twice' bar"),
   same_condition: z.boolean().describe("true = a double trace on ONE condition (its own list), false = two conditions claiming one floor"),
@@ -630,7 +631,7 @@ export const undoLastOutput = {
     // EVERY JournalPayload op (session.ts) belongs here — the wire validates
     // undo_last's reply against this enum, so a journal op missing from it
     // fails the undo call itself. Add the op here in the same change.
-    op: z.enum(["commit", "scale", "edit", "delete", "materials", "condition", "approval", "duplicate_condition", "split_condition", "cutout", "cutout_restore", "runcut", "rfi_create", "rfi_resolve", "rfi_delete",
+    op: z.enum(["commit", "scale", "edit", "annotation_text", "delete", "materials", "condition", "approval", "duplicate_condition", "split_condition", "cutout", "cutout_restore", "runcut", "rfi_create", "rfi_resolve", "rfi_delete",
       "proposal_open", "proposal_revise", "proposal_withdraw", "condition_proposal", "condition_proposal_withdraw", "condition_proposal_accept"]),
     tool: z.string().describe("The tool call this step came from"),
     shapes: z.number().int().describe("Shapes affected by reversing this step — 0 for a materials step (it restores a condition's supporting-materials rows, not shapes), for a condition step (it restores the waste/multiplier pair), and for an approval step (it re-seats or removes a verdict mark)"),
@@ -995,6 +996,8 @@ const annotationRow = z.object({
   r: z.number().optional().describe("Bubble radius (image px)"),
   length_lf: z.number().optional().describe("Dimension only: the measured length in real feet, snapshotted at annotate time from the sheet scale"),
 });
+
+export const editAnnotationOutput = { id: z.string(), text: z.string(), note: z.string() };
 
 export const annotateOutput = {
   id: z.string(),

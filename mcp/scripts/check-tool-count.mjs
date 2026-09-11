@@ -7,7 +7,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { TOOL_NAMES } from "../src/staging.ts";
 
-const DOCS = ["../../README.md", "../../docs/USER_GUIDE.md"].map((p) => fileURLToPath(new URL(p, import.meta.url)));
+const DOCS = ["../../README.md", "../../docs/USER_GUIDE.md", "../README.md", "../../docs/MCP.md", "../../docs/AGENT_GUIDE.md"].map((p) => fileURLToPath(new URL(p, import.meta.url)));
 const RE = /<!--tool-count-->(\d+)<!--\/tool-count-->/g;
 const want = String(TOOL_NAMES.length);
 const write = process.argv.includes("--write");
@@ -25,3 +25,6 @@ for (const file of DOCS) {
 }
 if (stale && !write) process.exitCode = 1;
 console.log(`${seen} marker(s), ${stale} ${write ? "rewritten" : "stale"}, TOOL_NAMES.length = ${want}`);
+
+// Run in this process so --write also reaches the schema-backed inventory.
+await import("./check-tool-inventory.mjs");

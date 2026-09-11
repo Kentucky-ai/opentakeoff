@@ -188,3 +188,30 @@ test("browser approvals transport as records while MCP verdict creation remains 
   session.shapes = reviewed.shapes;
   assert.throws(() => session.editShape(session.shapes[0].id, { label: "changed" }), /affirmed by a human/);
 });
+
+// #409: physical openings and stepped faces already have a representation.
+// Pin it before considering new wall-deduct roles or a persistence migration.
+test("wall bands and physically clipped base runs conform without floor deductions", async () => {
+  const session = new Session();
+  await session.loadPlan(plan);
+  session.setScale(sheet, { upp: 0.1 });
+  // A 10 ft face: lower 3 ft band spans all 10 ft; upper 4 ft band spans 6 ft.
+  session.measureSurface(sheet, [[100, 300], [200, 300]], { condition: "W-1", height_ft: 3 });
+  session.measureSurface(sheet, [[100, 300], [160, 300]], { condition: "W-1", height_ft: 4 });
+  const base = session.measureLine(sheet, [[100, 400], [200, 400]], { condition: "B-1" });
+  const before = structuredClone(session.exportPayload());
+  session.cutOut({ parent_shape_id: base.shape_id, verts: [[130, 390], [160, 390], [160, 410], [130, 410]] });
+  const record = session.exportPayload();
+  checkBoth(record);
+  const walls = record.shapes.filter(s => s.measure_role === "surface_area");
+  assert.deepEqual(walls.map(s => [s.height_ft, s.computed.area_sf]), [[3, 30], [4, 24]]);
+  const runs = record.shapes.filter(s => s.measure_role === "linear");
+  assert.deepEqual(runs.map(s => s.computed.perimeter_lf), [3, 4]);
+  // Inspect actual endpoints, not just the correct sum: the opening is 130..160.
+  const frame = session.sheetList()[0];
+  assert.deepEqual(runs.map(s => s.verts_norm.map(([x, y]) => [Math.round(x * frame.widthPx), Math.round(y * frame.heightPx)])), [[[100, 400], [130, 400]], [[160, 400], [200, 400]]]);
+  assert.equal(record.shapes.some(s => s.measure_role === "deduct"), false);
+  for (const s of record.shapes) assert.equal(s.origin.reviewed, false);
+  session.undoLast(1);
+  assert.deepEqual(session.exportPayload(), before);
+});

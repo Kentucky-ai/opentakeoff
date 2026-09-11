@@ -116,7 +116,11 @@ export function scopeCollisions(shapes, conditions, frameFor, opts = {}) {
         let inter;
         try { inter = OverlayOp.overlayOp(A.poly, B.poly, OverlayOp.INTERSECTION); } catch { continue; }
         const shared = inter ? inter.getArea() : 0;
-        if (!(shared > 0)) continue;
+        // Overlay arithmetic on normalized vertices can leave a few ulps
+        // along an otherwise shared edge. Scale the tolerance to these two
+        // polygons, not the whole sheet; do not hide actual small overlaps.
+        const noiseArea = 64 * Number.EPSILON * Math.max(A.area, B.area);
+        if (!(shared > noiseArea)) continue;
         const smaller = Math.min(A.area, B.area);
         const fraction = shared / smaller;
         if (fraction < minFraction) continue;
@@ -130,6 +134,7 @@ export function scopeCollisions(shapes, conditions, frameFor, opts = {}) {
         const pair = {
           sheet_id: sheetId, a: side(A), b: side(B),
           shared_sf: round2(shared * sfPer),
+          ...(round2(shared * sfPer) === 0 ? { note: "Positive overlap below 0.01 SF; the displayed area rounds to zero. Inspect the boundary before changing geometry." } : {}),
           fraction_of_smaller: round2(fraction * 100) / 100,
           iou: round2(iou * 100) / 100,
           same_condition: same,

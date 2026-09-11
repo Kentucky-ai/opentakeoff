@@ -1329,3 +1329,24 @@ test("equipment: a LIGHT FIXTURE SCHEDULE keyed by letter TYPE reads — any tra
   ] }, "equipment");
   assert.equal(idKeyed, null);
 });
+
+// #409: a material table and a drawn label are distinct evidence. Finding
+// one must not supply a missing or ambiguous room-to-finish assignment.
+test("finish discovery cannot turn a missing or ambiguous room row into an assignment", () => {
+  const materialOnly: SheetSpans = { ...schedSheet, spans: schedSheet.spans.filter(s => s.y >= 300) };
+  const sources = [structuredClone(planSheet), materialOnly];
+  const before = structuredClone(sources);
+  const graph = buildSheetGraph(sources);
+  assert.ok(graph.tables.some(t => t.kind === "finish" && t.rows.some(r => r.key === "CPT-1")));
+  const missing = resolveTag(graph, "101");
+  assert.equal(missing.status, "unresolved");
+  if (missing.status === "unresolved") assert.match(missing.reason, /no room-finish schedule/);
+  assert.deepEqual(sources, before);
+  const conflict: SheetSpans = { ...schedSheet, key: "conflicting-schedule.pdf", spans: schedSheet.spans.map(s => ({ ...s, str: s.str === "CPT-1" ? "TILE-9" : s.str })) };
+  const ambiguous = resolveTag(buildSheetGraph([planSheet, schedSheet, conflict]), "101");
+  assert.equal(ambiguous.status, "unresolved");
+  if (ambiguous.status === "unresolved") {
+    assert.match(ambiguous.reason, /ambiguous: 2 schedule rows/);
+    assert.equal(ambiguous.candidates?.length, 2);
+  }
+});
