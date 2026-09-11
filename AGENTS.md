@@ -1,162 +1,34 @@
-# AGENTS.md — a map of this repo for coding agents (and fast-moving humans)
+# AGENTS.md — start here
 
-OpenTakeoff is a **client-only React app**: a PDF construction-takeoff canvas for flooring (useful for any trade). No backend, no database, no auth—everything runs and persists in the browser. Apache-2.0. (For the one-page project pitch and vision, see [`AGENT_BRIEF.md`](AGENT_BRIEF.md); for capability → code mapping, see [`FEATURES.md`](FEATURES.md).)
+OpenTakeoff has two audiences: people working on the repository and agents
+performing takeoffs. Start with the [wiki index](docs/wiki/README.md); read only
+the page needed for the current task.
 
-## Run / build / check
-
-```bash
-cd web
-nvm use          # Node pinned by web/.nvmrc (CI reads the same file)
-npm install
-npm run dev      # http://localhost:5173 — hot reload
-npm test         # node:test over the pure geometry + totals math (test/*.test.ts)
-npm run build    # → web/dist/ (static output; this is what Netlify deploys)
-npm run check    # typecheck + lint + test + build — exactly what CI runs; green here ⇒ green CI
-```
-
-## Shipping — the required steps, every change
-
-`main` is protected on GitHub by a ruleset (PR-only, one approving review,
-green `web` check, branch up to date—the repo owner has a standing bypass
-as the solo maintainer). **Merging to `main` deploys to production**
-(<https://opentakeoff.kentucky-ai.com>)—Netlify's own git integration builds
-the merge commit and publishes it. `netlify.toml` holds the whole recipe
-(`base = "web"`, `command = npm run build`, `publish = "dist"`), so the deploy
-runs a fresh build from the merged source; nothing is uploaded from CI.
-
-`.github/workflows/deploy.yml` used to do this by publishing `web/dist` with
-`--no-build`, and it was **deleted on 2026-07-13 in `e701f1a`** ("deploys here
-are manual CLI; it fails on every push without the fork's secrets"). Only
-`ci.yml` (the `web` check the ruleset gates on) and `publish-mcp.yml` (fires on
-an `mcp-v*` tag) remain. The old line here said "Netlify never builds anything
-itself", which is now exactly backwards—Netlify is the only thing that
-builds production. **Merge = deploy either way: that part has never changed.**
-
-> **This is the canonical `Kentucky-ai/opentakeoff` repo—production is
-> <https://opentakeoff.kentucky-ai.com>, nothing else.** A downstream fork
-> (`knmurphy/opentakeoff`) tracks this repo as its own upstream and deploys
-> separately to `takeoff.345flooring.com`—that URL belongs to *that* fork,
-> not this repo. If you see `takeoff.345flooring.com` referenced elsewhere in
-> this repo's docs, it's either an example value in the optional cloud-mode
-> guides or leftover content from that fork's docs that rode along in a
-> wholesale history merge (2026-07-13)—treat it as describing the
-> *downstream* fork's deployment, not this one's.
-
-So:
-
-1. **Branch first**—never commit on `main`: `git checkout -b <topic>`.
-2. **`npm run check` before pushing** (in `web/`). It is exactly what CI runs,
-   on the same Node (`web/.nvmrc`)—green here means green CI.
-3. **Include review evidence in every PR**: screenshots or a short video for
-   visible changes; measured expected-versus-observed stats and reproducible
-   commands for engine/tool changes. Link the actual checks or evidence. This
-   repository is also the maintainer's public portfolio: keep claims verifiable
-   and private project data out of public artifacts.
-4. **Open a PR** and wait for the `web` check to pass. Don't merge red or
-   pending.
-5. **Squash-merge with branch delete**
-   (`gh pr merge <n> --squash --delete-branch`), then
-   `git checkout main && git pull --ff-only` and delete the local branch
-   (`git branch -D <topic>`—squash merges need `-D`).
-6. **Remember a merge is a deploy.** Don't merge work you haven't verified in
-   the running app.
-
-The tests cover the pure math (`web/test/geometry.test.ts`, `web/test/totals.test.ts`); the canvas itself is verified by hand—**Vite does not flag undefined identifiers in JSX**, so grep for your new identifiers after editing and load the app once before you call it done. The bundled sample plan (`web/public/demo/`, wired to the "Load sample plan" button) is the fastest end-to-end check: load it, press `A`, trace a room, open Report.
-
-## Where things live
-
-| Concern | Path |
+| Task | Read next |
 |---|---|
-| **The canvas—90% of the app** | `web/src/pages/TakeoffCanvas.jsx` (one large, deliberately monolithic component) |
-| Geometry: vector extraction, One-Click flood fill, vertex snap | `web/src/lib/oneclick.ts` |
-| Sheet/page helpers, scale detection | `web/src/lib/sheets.ts` |
-| Totals and materials math (waste, SY, coverage → order qty) | `web/src/lib/totals.js` |
-| Persistence (IndexedDB + localStorage) | `web/src/lib/store.js` |
-| PDF/image/zip ingest | `web/src/lib/ingest.js` |
-| Icon set | `web/src/brand/icons.jsx` |
-| Design tokens (colors, spacing—the source of truth) | `web/src/styles/tokens.css` |
-| Sheet gallery / report UI | `web/src/components/` |
-| Pure-math tests (node:test) | `web/test/` |
-| **Optional AI backend** (pluggable adapter: scale/room/finish suggestions) | `server/`—`app.py` + `adapters/base.py` (interface) + `adapters/heuristic.py` (default, no model) |
+| Change code, test, ship or open a PR | [Repository guide](docs/wiki/repo-guide.md) — required before editing |
+| Understand browser/MCP/package boundaries | [Architecture](docs/wiki/architecture.md) |
+| Change persisted fields or design an adapter | [Protocol](docs/wiki/protocol.md), then its inventory and Academy compatibility report |
+| Perform a takeoff or help a human stitch sheets | [Workflows](docs/wiki/workflows.md) |
+| Select MCP tools, stages or coordinate frames | [MCP](docs/wiki/mcp.md), then the generated tool index |
+| Interpret quantities, deductions or review authority | [Domain knowledge](docs/wiki/domain.md) |
+| Check current support and known limits | [Capability status](docs/wiki/status.md) |
 
-## How the canvas works (the mental model)
+The repository guide preserves the full build, performance, style and release
+conventions. Key requirements:
 
-- Each open sheet renders into a `<canvas>` bitmap; **all takeoff geometry is an SVG overlay** on top; pan/zoom is a single CSS transform on the stage div, written imperatively (`tfRef` → `style.transform`) to avoid React re-renders per frame.
-- Coordinates: pointer events (client px) → `toImage()` → **stage px**; committed shapes store **normalized [0..1] vertices per sheet** (`verts_norm`), so quantities survive re-renders and zoom.
-- Cursor-following UI (crosshair hairlines, readout chip, rubber band) updates through **direct DOM writes in `moveCrosshair`**—never React state per mousemove. Keep it that way.
-- Angle snapping: `angleSnap()` locks in-progress segments to the 45° family; endpoint snap (`nearestSnap` over a spatial hash of PDF vector endpoints) takes priority. The committed click reuses the same locked point (`angleRef`).
-- Past ~1.15× zoom, a **detail-view canvas** re-renders the visible region from PDF vectors at the current zoom (crispness); the base bitmap stays as first paint.
-- pdf.js rendering schedules work on `requestAnimationFrame`—a fully hidden/occluded window will pause mid-render by design; it resumes when visible.
+- Branch first. Run `npm run check --prefix web` before pushing, plus the relevant
+  MCP/protocol checks. A merge to `main` deploys production; verify the changed
+  app behavior and wait for required checks before merging.
+- Every PR includes screenshots/video or measured expected-versus-observed
+  stats, reproducible commands and linked evidence. Protect private project data.
+- Geometry edits must preserve existing machine originals. MCP cannot create
+  human approval. A schema-valid record does not authenticate its author.
+- Read the field inventory before changing persistence. No engine rewrite or
+  default format migration is implied by the draft protocol.
+- Update source-backed docs in the same change. Run
+  `npm run check:tool-count --prefix mcp`, `npm run check:wiki --prefix mcp`,
+  `npm run check --prefix protocol`, and `node scripts/check-doc-links.mjs`.
+  Their `--write` modes regenerate references; CI rejects stale output.
 
-## Conventions
-
-- **SVG presentation attributes take literal colors** (CSS vars don't resolve there): cobalt `#1f3fc7`, danger `#b03a26`, positive `#1f6b4a`—centralized in `web/src/lib/ui.js` (`SVG`, with HUD-dark counterparts through `svgAccent(isDark)`). DOM/HTML chrome may use `var(--…)` from `tokens.css`.
-- Condition palettes (`PALETTE` in `web/src/components/hatches.jsx`, the seeded condition colors in `FLOORING_DEFAULTS` in `web/src/lib/canvasConstants.js`, and the mirrored copies in `mcp/src/session.ts`) are **user data**—don't re-theme them.
-- Waste applies only in the report (order quantities), never to live measured numbers.
-- Keyboard shortcuts are single letters registered on `window` (see `docs/USER_GUIDE.md` §15); toolbar menus pause them through `menuDepthRef`.
-- Brand voice: **precision instrument** (2026-08 overhaul). Light theme = "ice": bright white surfaces on a cool field, cool-slate neutrals, cobalt the one saturated thing. Dark theme = "HUD": true-black cockpit, electric blue `#3f8cff`, phosphor `--glow` on exactly five elements (active tool face, status verb, hero quantity, primary CTA, calibration dot). Square corners; the single sanctioned radius is `--r-1` on floating chrome. Mono tabular numerals on every readout. Drafting-table language stays. No vendor mimicry.
-- Layout/spacing/type come from the token scales in `tokens.css` (`--sp-*`, `--fs-*`, `--ctl-*`); zIndex comes from the `Z` ladder in `web/src/lib/ui.js`. No new magic numbers.
-
-## Docs to keep in sync when you change behavior
-
-The draft Takeoff Protocol lives in [`protocol/`](protocol/README.md). When
-changing persisted fields, consult its [inventory](protocol/INVENTORY.md) and
-[compatibility report](protocol/ACADEMY_COMPATIBILITY.md). Run
-`npm run check --prefix protocol` after installing web, MCP, and protocol
-dependencies. Refresh schema references with
-`node protocol/scripts/check-docs.mjs --write`. The draft does not authorize
-changing writer formats or adopting a migration.
-
-1. `README.md` (Features + "What's in the box")
-2. `docs/USER_GUIDE.md` (shortcuts + the relevant section)
-3. `CHANGELOG.md`
-
-Touching the **MCP server** adds four more, and they drift independently—the
-tool count alone lives in five places, so grep the old number before you assume
-you got them all:
-
-4. `mcp/src/tools.ts`—the tool's own `description` **is** its integration.
-   An MCP client reads it at runtime; nothing else you write reaches the model.
-5. `mcp/server.ts`—the `instructions` block sent at `initialize`. This is the
-   decision tree every client receives before its first call. A new *verb* does
-   not belong here; a new *step in the standard finish* does.
-6. `mcp/README.md` (the tool table) and `docs/MCP.md` (the reach-for-it ordering,
-   the example session, and the tool count in its opening line). A new tool also
-   needs a row in `mcp/src/staging.ts`'s `TOOL_STAGES`—the four lists must
-   partition the tool set exactly, and a test fails CI if one doesn't.
-   `npm run check:tool-count --prefix mcp` checks counts on all five entry points,
-   reference-table coverage, and [`docs/MCP_TOOL_INDEX.md`](docs/MCP_TOOL_INDEX.md)
-   against runtime schemas. Add `-- --write` to regenerate counts and the index. If the
-   change alters *doctrine* rather than adding a verb—what withholds, what
-   refuses, what has no agent verb—it belongs in `docs/AGENT_GUIDE.md` too,
-   and the tool count appears there and in `docs/USER_GUIDE.md` §14.
-7. **Version, on three surfaces that must agree**: `mcp/package.json`,
-   `mcp/server.json`, `web/public/.well-known/mcp.json`. They have drifted
-   before (#171, and again at 0.9.28). Check `git show HEAD:mcp/package.json`
-   before bumping—a concurrent branch may already have claimed the number.
-
-Architecture rather than behavior—what MCP is versus what the `/ai` sandbox
-is, and why the server imports the web engine in-process—lives at the end of
-[`docs/MCP.md`](docs/MCP.md) ("Where this sits") and in
-[`server/README.md`](server/README.md).
-
-## The doc set, and who each one is for
-
-Four documents carry the product, and they're deliberately split by audience—don't
-answer an estimator's question in the agent manual or vice versa:
-
-| Document | Audience | What belongs in it |
-|---|---|---|
-| [`README.md`](README.md) | everyone, ~60 seconds | what this is, the three doors, what's in the box |
-| [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | the estimator at the canvas | every shipped UI behavior, the working order on a real bid, the glossary |
-| [`docs/AGENT_GUIDE.md`](docs/AGENT_GUIDE.md) | an agent driving the engine | the operating model, the standard finish, withheld doctrine, staging, refusal→next-move |
-| [`mcp/README.md`](mcp/README.md) | an agent's integrator | tool-by-tool reference, resources, coordinate contract, limits |
-
-All of them follow one house style—the Apple Style Guide, with the rules that
-actually come up written out in [`CONTRIBUTING.md`](CONTRIBUTING.md#docs-house-style).
-Interface text quoted in a doc is copied from the code verbatim, so changing a
-message means changing it in both places.
-
-[`AGENT_BRIEF.md`](AGENT_BRIEF.md) is the one-page orientation that routes to
-all four. A behavior change usually touches two of them; a new MCP tool touches
-three plus this file's sync list above.
+Production: <https://opentakeoff.kentucky-ai.com>.

@@ -403,3 +403,16 @@ small overlaps with an explanation when SF rounds to zero. A material coverage
 row is not another finish polygon. For a physical opening, clip an explicit
 `measure_line` or `measure_surface` run with `cut_out`; a derived base with numeric
 opening allowances refuses clipping because those openings have no locations.
+
+## Wiki resources
+
+Read `takeoff://wiki` for the [knowledge index](wiki/README.md), then the one
+`takeoff://wiki/{page}` resource the current task needs. The index and eight
+pages are readable before any plan is loaded, in flat or staged mode. They
+contain public documentation packaged with the MCP version, not project data.
+No additional measurement tool or approval authority is introduced.
+
+The bundle is generated from the repository wiki and tool index; CI checks
+content, source hashes, version and links. Wiki-to-wiki links stay within MCP
+resources. Code/reference links browse repository `main`, which may be newer
+than an installed package. This distinction is stated in each resource reply.

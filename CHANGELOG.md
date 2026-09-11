@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — Shared wiki and MCP knowledge resources (mcp 0.9.80)
+
+### Added
+- Source-backed wiki covering capability status, architecture, protocol, human/agent workflows, MCP routing, domain knowledge and repository conventions. AGENTS.md becomes a task router; existing contributor/release rules remain in the repository guide.
+- Nine packaged Markdown resources, starting at `takeoff://wiki`, available before loading plans and in staged mode. CI and builds reject stale content/version; the distribution smoke check reads every page over stdio. Wiki navigation stays within resources; repository source links explicitly browse main.
+
+### Fixed
+- The Agent Brief no longer claims supplied polygons are automatically verified. Stale 40/45/47-tool claims in the human/agent entry points, feature map and translated README notices are replaced by generated default/gated/setup counts. CI rejects additional unmarked prose counts.
+- Human stitching guidance now states that MCP import/export omits stitches; use the browser archive for composite work or measure source sheets individually.
+- Documentation-link checks include the wiki and contributor entry points.
+
 ## Unreleased — Geometry review cleanup (mcp 0.9.79)
 
 ### Fixed

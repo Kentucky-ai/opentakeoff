@@ -27,6 +27,10 @@ const files = [
   ...readdirSync(join(root, "docs"))
     .filter((f) => f.endsWith(".md"))
     .map((f) => join("docs", f)),
+  ...readdirSync(join(root, "docs", "wiki"), { withFileTypes: true })
+    .filter((f) => f.isFile() && f.name.endsWith(".md"))
+    .map((f) => join("docs", "wiki", f.name)),
+  "AGENTS.md", "AGENT_BRIEF.md", "CONTRIBUTING.md", ".github/PULL_REQUEST_TEMPLATE.md",
   "mcp/README.md",
   "capture/README.md",
   // Protocol docs are versioned alongside their schemas, including nested

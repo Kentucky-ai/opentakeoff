@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { TOOL_NAMES } from "../src/staging.ts";
+import { WIKI_PAGES, WIKI_VERSION } from "../src/wiki.generated.ts";
 
 const child = spawn(process.execPath, ["dist/server.js"], {
   cwd: fileURLToPath(new URL("..", import.meta.url)),
@@ -96,6 +97,20 @@ const names = listed.tools.map((tool) => tool.name).sort();
 // The expected surface is the ONE list every other check reads (src/staging.ts);
 // node 24 strips the types on import, so this needs no build of its own.
 assert.deepEqual(names, [...TOOL_NAMES]);
+
+// The published dist artifact must serve the knowledge without source docs.
+send({ jsonrpc: "2.0", id: 3, method: "resources/list", params: {} });
+const resources = await responseFor(3);
+assert.deepEqual(resources.resources.filter(r => r.uri.startsWith("takeoff://wiki")).map(r => r.uri).sort(), WIKI_PAGES.map(p => p.uri).sort());
+let wikiRequest = 4;
+for (const page of WIKI_PAGES) {
+  send({ jsonrpc: "2.0", id: wikiRequest, method: "resources/read", params: { uri: page.uri } });
+  const read = await responseFor(wikiRequest++);
+  assert.equal(read.contents[0].mimeType, "text/markdown");
+  assert.ok(read.contents[0].text.includes(page.text));
+  assert.ok(read.contents[0].text.includes(WIKI_VERSION));
+}
+console.log(`Distribution smoke: ${names.length} tools and ${WIKI_PAGES.length} packaged wiki pages verified over stdio.`);
 
 child.stdin.end();
 await once(child, "close");

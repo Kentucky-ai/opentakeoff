@@ -46,7 +46,7 @@ initialize `instructions` say so and point at `measure_polygon`, and no other to
 description sends an agent to a verb that is not there. A default build registers
 **<!--tool-count-->53<!--/tool-count--> tools**. Everything else — sweeps, counts, `derive_base`, `derive_transitions`, the
 exports — is unchanged. Set `OPENTAKEOFF_ONE_CLICK=1` in the server's environment to
-register both verbs (54 tools); the parity, conformance and e2e tests run that way, and
+register both verbs (<!--tool-count-all-->55<!--/tool-count-all--> tools); the parity, conformance and e2e tests run that way, and
 `test/gate.test.ts` pins both surfaces. The rows and examples below that use `one_click`
 describe the lifted build. Design note: [`docs/design/ONE_CLICK_GATE.md`](../docs/design/ONE_CLICK_GATE.md).
 
@@ -130,7 +130,7 @@ server can instead stage the surface along the workflow it already teaches:
 OPENTAKEOFF_MCP_STAGED_TOOLS=1 npx -y opentakeoff-mcp
 ```
 
-Staged, only the **setup** stage (load, scale, read the set—11 tools) starts
+Staged, only the **setup** stage (load, scale, read the set—<!--tool-count-setup-->11<!--/tool-count-setup--> tools) starts
 enabled, plus one opener: `open_tool_stage`. Calling it with `"measure"`,
 `"revise"`, or `"handoff"` enables that stage's tools and fires
 `tools/list_changed`, so any client that supports dynamic tool lists (Claude
@@ -236,6 +236,20 @@ output, so it declares no schema by design). Failures come back as
 `isError: true` with `{"error": "..."}`—never a dropped connection.
 
 ## Resources — browse before you measure
+
+The [wiki index](../docs/wiki/README.md) is always available as `takeoff://wiki`,
+including before `load_plan` and while measurement stages are closed. Its eight
+linked pages use `takeoff://wiki/{page}`: status, architecture, protocol,
+workflows, mcp, domain, repo-guide and tool-index. Read only the page relevant
+to the current task. These are static public Markdown resources, not tools;
+reading them cannot change geometry, scale or review.
+
+Pages are embedded in the published MCP bundle with its version and an
+LF-normalized source hash. Wiki links navigate to packaged resources; links to
+repository code browse `main` and may be newer. Unknown resource paths refuse;
+there is no filesystem path or remote URL input. `npm run check:wiki` compares
+the embedded copy to source; `-- --write` regenerates it. Build and CI fail when
+it is stale. The distribution smoke check reads all nine pages over stdio.
 
 Tools let an agent act; resources let it **see**. When a plan loads, the sheet
 set becomes browsable natively (`resources/list` re-announces itself through

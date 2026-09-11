@@ -40,9 +40,10 @@ preserves outer vertices, not a complete historical snapshot of holes or curves.
    conforms/needs-adapter/unsupported outcomes.
 3. Introduce opt-in pure adapters; preserve inputs, IDs, numeric values, originals,
    extensions and authority. Refuse unsupported loss by default.
-4. Build `docs/wiki/`, then shorten AGENTS.md into its router and expose the same
-   packaged pages as MCP resources. Generate tool/stage/schema references from
-   source and measure whether agent tool selection improves.
+4. Maintain the [shared wiki](../docs/wiki/README.md), AGENTS.md router and
+   packaged MCP resources. Tool/stage/schema references are generated and
+   checked against source. Measure tool-selection improvement before claiming
+   that reduced discovery cost has been demonstrated.
 
 Default saved-format adoption, package extraction, identity/signatures, Academy
 credentials and optional anchoring remain later decisions. No current gate is

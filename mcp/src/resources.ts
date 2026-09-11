@@ -14,6 +14,7 @@
 // title-block number ("A-101") ride along as resource name/title instead.
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Session } from "./session.ts";
+import { WIKI_PAGES, WIKI_VERSION } from "./wiki.generated.ts";
 
 function toBase64(bytes: Uint8Array): string {
   return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("base64");
@@ -26,6 +27,18 @@ function parsePage(session: Session, raw: string | string[]) {
 }
 
 export function registerResources(server: McpServer, session: Session): void {
+  // Static, public knowledge is available before a plan is loaded and in every
+  // staged-tool mode. No URI is interpreted as a path or a fetch target.
+  for (const page of WIKI_PAGES) {
+    server.registerResource(`wiki-${page.key}`, page.uri, {
+      title: page.title,
+      description: `OpenTakeoff ${WIKI_VERSION} knowledge: ${page.title}. Read only when relevant; no session mutation.`,
+      mimeType: "text/markdown",
+    }, async (uri) => ({ contents: [{ uri: uri.href, mimeType: "text/markdown",
+      text: `Packaged with MCP ${WIKI_VERSION}. Source: ${page.source} (SHA-256 of LF-normalized text: ${page.source_sha256}). Repository source links browse main and may be newer.\n\n${page.text}`,
+    }] }));
+  }
+
   const sheetEntries = (suffix: string, mimeType: string, what: string) => () => ({
     resources: session.sheetList().map((s) => ({
       uri: `takeoff://sheet/${s.ord}${suffix}`,
