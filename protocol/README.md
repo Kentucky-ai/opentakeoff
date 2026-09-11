@@ -75,8 +75,9 @@ agent/manual correction fix and remaining limits are documented in [compatibilit
 
 **Versions have different jobs.** The draft schema version, persisted document
 revision, IndexedDB version, browser Git commit, MCP npm version, and Academy
-bundle/certificate versions are distinct. This schema-only increment needs no
-MCP package bump. Schema `$id` URIs are stable identifiers for offline resolution,
+bundle/certificate versions are distinct. Private protocol tooling does not set
+the MCP version; packaged wiki updates use the MCP release process. Schema `$id`
+URIs are stable identifiers for offline resolution,
 not a claim that these files are already deployed at those URLs.
 
 ## Generated schema reference
