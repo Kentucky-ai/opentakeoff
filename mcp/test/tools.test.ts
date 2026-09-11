@@ -2795,3 +2795,25 @@ test("RFIs in the marked set: an agent-raised RFI prints exactly like a panel-ra
   const strip = (r: any) => { const { id, created_at, origin, ...rest } = r; return rest; };
   assert.deepEqual(strip(agentRec), strip(panelRec));
 });
+
+test("export_takeoff after tools/list preserves calibration and RFIs under client output validation", async () => {
+  const client = await pair({});
+  try {
+    // Discovery primes the SDK's JSON Schema output validator. Calling tools
+    // without tools/list can miss fields forbidden by their advertised schema.
+    await client.listTools();
+    await client.callTool({ name: "load_plan", arguments: { path: PLAN } });
+    await client.callTool({ name: "set_scale", arguments: { sheet: KEY, use_detected: true } });
+    await client.callTool({ name: "create_rfi", arguments: {
+      sheet: KEY, title: "Synthetic scope question", question: "Confirm the finish at the indicated location.",
+    } });
+    const result = await client.callTool({ name: "export_takeoff", arguments: {} });
+    assert.equal(result.isError, undefined);
+    const data: any = result.structuredContent;
+    assert.equal(data.sheets[0].scale_source, "detected");
+    assert.equal(data.sheets[0].scale_confirmed, false);
+    assert.equal(data.rfis.length, 1);
+    assert.equal(data.rfis[0].subject, "Synthetic scope question");
+    assert.deepEqual(JSON.parse((result.content as any[])[0].text), data);
+  } finally { await client.close(); }
+});

@@ -262,3 +262,20 @@ test("marked set: a legacy capture without src_label falls back (stitch key ⇒ 
   assert.ok(text.includes("Sheet 1"), "pageText decoded real text off this page (sheet footer label)");
   assert.ok(!text.includes("Source: "), "no caption for a legacy stitch-key source (fallback returns '')");
 });
+
+test("marked set cover prints linear waste in LF (and m), not zero area", async () => {
+  const srcBytes = await makeSourcePdf();
+  for (const units of ["imperial", "metric"]) {
+    const { bytes } = await buildMarkedSetPdf({
+      projectName: "Linear allowance", dark: false, units,
+      sheets: [{ key: "S1", file: "plan.pdf", page: 1, label: "Sheet 1" }],
+      shapes: [{ id: "base", sheet_id: "S1", condition_id: "c1", measure_role: "linear", verts_norm: [[0.1, 0.1], [0.5, 0.1]], computed: { perimeter_lf: 100, area_sf: 0 } }],
+      conditions: [{ id: "c1", finish_tag: "BASE", color: "#123456", waste_pct: 10 }],
+      markups: [], approvals: [], rfis: [], company: undefined, clientInfo: undefined,
+      getPage: async () => mockPage(612, 792, 0), loadPdfData: async () => srcBytes,
+    });
+    const text = await pageText(bytes, 0);
+    assert.ok(text.includes(units === "imperial" ? "waste 10% -> 110 LF" : "waste 10% -> 33.5 m"), text);
+    assert.ok(!text.includes("waste 10% -> 0 SF"), text);
+  }
+});
