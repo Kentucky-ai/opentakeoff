@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased — Derived measurements and revision compatibility
+
+### Added
+- Protocol cases verify transition geometry/lineage, rule-generated deductions, exact snapshot records and PDF revision bytes/hashes through existing boundaries. The generated compatibility matrix now explicitly excludes full snapshot/PDF history from current project archive transfer. No engine, writer or schema changes.
+
 ## Unreleased — Protocol transport compatibility
 
 ### Added

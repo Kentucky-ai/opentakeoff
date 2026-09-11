@@ -162,6 +162,10 @@ rooms share 34 LF of wall would be a wrong number with a machine's confidence be
   seam-crossing room needs their stitch in the app. Never approximate one by combining sheets
   yourself. (A stitched takeoff round-tripped through `import_takeoff` → `export_takeoff` comes
   back without its stitches; when a stitch is in play, the app's own save is the one to keep.)
+- **Revision history.** MCP takeoff export is a current document, not the browser's snapshot
+  store or PDF revision history. A browser `.otk` archive carries current takeoff/plan data,
+  but also omits those histories. Never claim an archive or current takeoff reconstructs past
+  revisions; see the [tested transport boundaries](../protocol/COMPATIBILITY.md#executable-transport-matrix).
 - **The estimator's `APPROVED` seal.** `mark_verdict` takes no actor argument, so there is no
   input to misuse; `delete_verdict` refuses a human seal outright.
 - **Confirming a scale.** Only a human act in the canvas clears `confirmed: false`.

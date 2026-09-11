@@ -1,3 +1,5 @@
+import { createRequire } from "node:module";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
@@ -6,7 +8,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Session } from "../../mcp/src/session.ts";
 import { importTakeoff } from "../../mcp/src/importing.ts";
-import { emptyAnnotations } from "../../web/src/lib/store.js";
+import { emptyAnnotations, localStore } from "../../web/src/lib/store.js";
 import { mergeTakeoffImport, parseTakeoffImport } from "../../web/src/lib/importTakeoff.js";
 import { applyShapeCommand } from "../../web/src/lib/shapeCommands.js";
 import { applyApprovalCommand } from "../../web/src/lib/approvals.js";
@@ -15,6 +17,8 @@ import { conditionTotals } from "../../web/src/lib/totals.js";
 import { flattenArc } from "../../web/src/lib/arc.js";
 import { flattenCurve } from "../../web/src/lib/curve.js";
 import { sanitizeStitches } from "../../web/src/lib/stitches.ts";
+import { buildMask } from "../../web/src/lib/oneclick.ts";
+import { diffTakeoffs } from "../../web/src/lib/revisions.js";
 import { openLen } from "../../web/src/lib/geometry.js";
 import { validator, assertValid, draftId } from "./helpers.mjs";
 
@@ -77,7 +81,179 @@ function sameMeasurements(a, b) {
     assert.deepEqual(b[key], a[key], `${key} preserved`);
   assert.deepEqual(totals(b), totals(a)); activeRelations(b);
 }
+// Reuse web's pinned test dependency; production and protocol dependencies
+// remain unchanged. Each storage case gets isolated in-memory IndexedDB.
+const { IDBFactory, IDBKeyRange } = createRequire(new URL("../../web/package.json", import.meta.url))("fake-indexeddb");
+async function withLocalDatabase(run) {
+  const previous = Object.fromEntries(["indexedDB", "IDBKeyRange"].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  globalThis.indexedDB = new IDBFactory();
+  globalThis.IDBKeyRange = IDBKeyRange;
+  try { await run(); }
+  finally {
+    for (const [key, descriptor] of Object.entries(previous)) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else delete globalThis[key];
+    }
+  }
+}
 const cases = {
+  async "transitions-roundtrip"(t) {
+    const s = await session();
+    s.proposeTakeoff("Adjacent finishes", "Synthetic compatibility fixture");
+    const a = s.measurePolygon(sheet, square, { condition: "F-1", role: "floor_area" });
+    const b = s.measurePolygon(sheet, [[200, 100], [300, 100], [300, 200], [200, 200]],
+      { condition: "F-2", role: "floor_area" });
+    const result = s.deriveTransitions({ condition_a: "F-1", condition_b: "F-2", condition: "T-1" });
+    assert.equal(result.committed, 1);
+    assert.equal(result.total_lf, 10);
+    const source = clone(s.exportPayload());
+    const run = source.shapes.find(x => x.measure_role === "linear");
+    assert.deepEqual(new Set(run.origin.derived.between_shape_ids), new Set([a.shape_id, b.shape_id]));
+    assert.deepEqual(run.origin.derived.between, ["F-1", "F-2"]);
+    assert.equal(run.origin.derived.case, "butt");
+    assert.equal(run.origin.actor, "agent");
+    assert.equal(run.origin.reviewed, false);
+    const frame = s.sheetList()[0];
+    const points = run.verts_norm.map(([x, y]) => [x * frame.widthPx, y * frame.heightPx]);
+    assert.ok(points.every(([x]) => Math.abs(x - 200) < 0.01));
+    assert.ok(Math.abs(Math.min(...points.map(p => p[1])) - 100) < 0.01);
+    assert.ok(Math.abs(Math.max(...points.map(p => p[1])) - 200) < 0.01);
+    sameMeasurements(source, (await roundtrip(await archive(source), t)).exported);
+
+    // A six-inch partition is adjacency, never ten feet of invented threshold.
+    const w = await session();
+    w.measurePolygon(sheet, square, { condition: "F-1", role: "floor_area" });
+    w.measurePolygon(sheet, [[205, 100], [305, 100], [305, 200], [205, 200]],
+      { condition: "F-2", role: "floor_area" });
+    const before = clone(w.exportPayload());
+    const withheld = w.deriveTransitions({ condition_a: "F-1", condition_b: "F-2", condition: "T-1" });
+    assert.equal(withheld.committed, 0);
+    assert.equal(withheld.withheld.length, 1);
+    assert.equal(withheld.withheld[0].reason, "wall_separated");
+    assert.deepEqual(w.exportPayload(), before);
+  },
+  async "rule-results-roundtrip"(t) {
+    const s = await session();
+    s.proposeTakeoff("Rule result batch", "Synthetic compatibility fixture");
+    const room = s.measurePolygon(sheet, [[100, 100], [500, 100], [500, 700], [100, 700]],
+      { condition: "F-1", role: "floor_area" });
+    const rect = (x0, y0, x1, y1) => [x0, y0, x1, y0, x1, y0, x1, y1, x1, y1, x0, y1, x0, y1, x0, y0];
+    const frame = s.sheet(sheet);
+    // Synthetic vector-mask injection isolates the deterministic rule engine
+    // from PDF discovery. Closed 40×40 px island = 16 SF at 0.1 ft/px.
+    frame.mask = buildMask([...rect(100, 100, 500, 700), ...rect(200, 300, 240, 340),
+      300, 500, 340, 500, 300, 500, 300, 540, 340, 500, 340, 540], frame.widthPx, frame.heightPx);
+    const sourceCondition = { ...clone(s.conditions.find(c => c.finish_tag === "F-1")), id: "incoming-condition" };
+    const rule = { id: "rule:column", created_at: "2026-09-01T00:00:00Z", seed_shape_id: "historical-correction",
+      seed_condition_id: sourceCondition.id, predicate: { kind: "enclosed_subpolygon_deduct", max_area_sf: 25 },
+      label: "Exclude enclosed columns", applied_to: [], active: true };
+    const incoming = { ...emptyAnnotations(), conditions: [sourceCondition], rules: [rule] };
+    const path = join(t.dir, "rule.json");
+    await writeFile(path, JSON.stringify(incoming));
+    await importTakeoff(s, path);
+    assert.equal(s.rules[0].seed_condition_id, s.shapes[0].condition_id);
+    const before = clone(s.exportPayload());
+    const result = await s.applyRules({ sheet });
+    assert.equal(result.committed, 1, "closed island only; open box is not a deduct");
+    const minted = s.shapes.find(x => x.measure_role === "deduct");
+    assert.equal(minted.origin.actor, "rule");
+    assert.equal(minted.origin.reviewed, false);
+    assert.equal(minted.origin.rule_id, rule.id);
+    assert.equal(minted.origin.seed_shape_id, rule.seed_shape_id);
+    assert.equal(minted.origin.container_shape_id, room.shape_id);
+    assert.deepEqual(s.rules[0].applied_to, [minted.id]);
+    // This is a raster-mask candidate, not an exact analytic polygon. Pin the
+    // existing <2 SF error budget explicitly; transport itself must be exact.
+    assert.ok(Math.abs(minted.computed.area_sf - 16) < 2);
+    t.evidence = `Rule fixture: analytic 16 SF; mask candidate ${minted.computed.area_sf} SF; transport requires exact record equality.`;
+    const source = clone(s.exportPayload());
+    assert.equal(quantity(source, "F-1", "floor_sf"), Math.round((2400 - minted.computed.area_sf) * 100) / 100);
+    const { exported } = await roundtrip(await archive(source), t);
+    sameMeasurements(source, exported);
+    assert.equal(exported.rules, undefined, "definition loss remains an unsupported transport, not repaired here");
+    assert.equal((await s.applyRules({ sheet })).committed, 0);
+    assert.deepEqual(s.exportPayload(), source);
+    s.undoLast(1);
+    assert.deepEqual(s.exportPayload(), before, "one undo restores measurements; it is not a full rule-history rollback");
+    assert.deepEqual(s.rules[0].applied_to, [minted.id], "the rule audit trail may reference an undone shape");
+  },
+  async "snapshot-storage"() {
+    await withLocalDatabase(async () => {
+      const s = await session();
+      s.measurePolygon(sheet, square, { condition: "F-1", role: "floor_area" });
+      const baseline = clone(s.exportPayload());
+      const first = await localStore.saveSnapshot("Before correction", baseline, "fixture-project");
+      const frame = s.sheetList()[0];
+      const enlarged = [[100, 100], [250, 100], [250, 200], [100, 200]];
+      s.shapes = applyShapeCommand(s.shapes, { type: "geom", id: s.shapes[0].id, editKind: "vertex",
+        verts_norm: enlarged.map(([x, y]) => [x / frame.widthPx, y / frame.heightPx]),
+        computed: { area_sf: 150, perimeter_lf: 50 } }).shapes;
+      const corrected = clone(s.exportPayload());
+      corrected.custom_extension = { retained: true };
+      const second = await localStore.saveSnapshot("After correction", corrected, "fixture-project");
+      const a = await localStore.getSnapshot(first.id, "fixture-project");
+      const b = await localStore.getSnapshot(second.id, "fixture-project");
+      assert.deepEqual(a.payload, baseline);
+      assert.deepEqual(b.payload, corrected);
+      assert.equal(a.ts, first.ts); assert.equal(b.ts, second.ts);
+      structural(a.payload); structural(b.payload);
+      assert.deepEqual(b.payload.shapes[0].origin.proposed_verts_norm, baseline.shapes[0].verts_norm);
+      assert.equal(b.payload.shapes[0].origin.reviewed, false);
+      assert.equal(diffTakeoffs(a.payload, b.payload).totals.deltas.total_sf, 50);
+      assert.equal(await localStore.getSnapshot(second.id, "different-project"), null);
+      await localStore.putSnapshot(b);
+      assert.equal((await localStore.listSnapshots("fixture-project")).length, 2, "same ID upsert adds no duplicate");
+      assert.deepEqual(await localStore.getSnapshot(second.id, "fixture-project"), b);
+      b.payload.shapes[0].verts_norm[0][0] = 999;
+      assert.deepEqual((await localStore.getSnapshot(second.id, "fixture-project")).payload, corrected,
+        "loaded snapshot edits cannot mutate stored originals");
+    });
+  },
+  async "pdf-revision-storage"() {
+    await withLocalDatabase(async () => {
+      const first = new Uint8Array(await readFile(plan));
+      const second = new Uint8Array(Buffer.concat([first, Buffer.from("\n% synthetic revision fixture\n")]));
+      assert.equal((await localStore.addPdf(new File([first], sheet))).rev, 1);
+      assert.equal((await localStore.addPdf(new File([second], sheet))).rev, 2);
+      assert.equal((await localStore.addPdf(new File([second], sheet))).unchanged, true);
+      const history = await localStore.listPdfRevisions(sheet);
+      assert.deepEqual(history.map(r => [r.rev, r.current]), [[2, true], [1, false]]);
+      assert.deepEqual(history.map(r => r.hash), [second, first].map(bytes => createHash("sha256").update(bytes).digest("hex")));
+      assert.deepEqual(await localStore.loadPdfRevisionData(sheet, 1), first);
+      assert.deepEqual(await localStore.loadPdfRevisionData(sheet, 2), second);
+    });
+  },
+  async "archive-history"() {
+    await withLocalDatabase(async () => {
+      const s = await session();
+      s.measurePolygon(sheet, square, { condition: "F-1", role: "floor_area" });
+      const takeoff = clone(s.exportPayload());
+      const original = new Uint8Array(await readFile(plan));
+      const current = new Uint8Array(Buffer.concat([original, Buffer.from("\n% next revision\n")]));
+      await localStore.addPdf(new File([original], sheet));
+      await localStore.saveSnapshot("Earlier bid", takeoff);
+      await localStore.addPdf(new File([current], sheet));
+      await localStore.saveSnapshot("Current bid", takeoff);
+      assert.equal((await localStore.listSnapshots()).length, 2);
+      assert.equal((await localStore.listPdfRevisions(sheet)).length, 2);
+      const bytes = await buildProjectArchive({ takeoff, sheets: await localStore.listSheets(),
+        loadPdfData: name => localStore.loadPdfData(name) });
+      const reopened = await parseProjectArchive(bytes);
+      assert.deepEqual(reopened.takeoff, takeoff);
+      assert.equal(reopened.pdfs.length, 1);
+      assert.deepEqual(new Uint8Array(await reopened.pdfs[0].arrayBuffer()), current);
+      // Mimic opening the archive on a fresh machine using the existing store
+      // entry points. No new history fields are injected into its payload.
+      globalThis.indexedDB = new IDBFactory();
+      for (const pdf of reopened.pdfs) await localStore.addPdf(pdf);
+      await localStore.saveAnnotations(reopened.takeoff);
+      assert.deepEqual(await localStore.listSnapshots(), []);
+      assert.deepEqual((await localStore.listPdfRevisions(sheet)).map(r => r.rev), [1]);
+      assert.deepEqual(await localStore.loadPdfData(sheet), current);
+      await assert.rejects(localStore.loadPdfRevisionData(sheet, 2), /not found/);
+    });
+  },
+
   async "manual-roundtrip"(t) {
     const s = await session(); s.proposeTakeoff("Synthetic manual roles", "Protocol fixture");
     s.measurePolygon(sheet, square, { condition: "F-1", role: "floor_area" });
@@ -216,7 +392,10 @@ test("compatibility catalog is unique, classified and has one executable case pe
 });
 for (const row of matrix) test(`${row.id} [${row.status}]: ${row.scope}`, async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "ot-protocol-transport-"));
-  t.after(() => rm(dir, { recursive: true, force: true })); await cases[row.id]({ dir });
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const context = { dir };
+  await cases[row.id](context);
+  if (context.evidence) t.diagnostic(context.evidence);
 });
 test("schema conformance does not establish active references or verified quantities", async () => {
   const s = await session(); s.proposeTakeoff("Synthetic reference checks", "Protocol fixture");

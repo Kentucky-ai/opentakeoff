@@ -6,7 +6,7 @@ release or migration claim. Run `npm run check --prefix protocol` for the exact 
 | Case | Evidence in this increment | Remaining work |
 |---|---|---|
 | Empty browser save and browser add command | Real command records conform to the legacy profile and the proposed structural shape; quantity totals and inputs are unchanged by validation. | Broader persisted corpus and every browser commit path; the matrix below adds actual file/archive transport cases. |
-| MCP manual area, deduct, line, wall surface and count | Records produced by Session on the bundled sample plan conform, retain proposal IDs, and remain agent-authored/unreviewed with unconfirmed calibration. | Sweeps, remaining derived tools, revisions and wire-level client profiles; manual file round trips and numeric fixtures are covered below. |
+| MCP manual area, deduct, line, wall surface and count | Records produced by Session on the bundled sample plan conform, retain proposal IDs, and remain agent-authored/unreviewed with unconfirmed calibration. | Sweeps, remaining derived tools and wire-level client profiles; manual file round trips and numeric fixtures are covered below. |
 | Human correction of `agent_v1` | First and subsequent corrections preserve the frozen proposed ring; review and undo retain existing semantics. | Holes, curve evidence and every correction path. |
 | Agent `method: manual` correction | Real MCP records for all five manual measurement roles preserve their pre-gesture vertices through browser geometry/reassignment commands, including live preview, undo and redo. Actor, review state and proposal metadata survive unchanged. A self-revised MCP area also retains its pre-human-correction ring through browser import and project archive reopening. | Holes, curve evidence and broader historical records; this establishes outer-vertex preservation at the existing command boundary. |
 | Review and approval | Existing browser human seals remain transportable; MCP `markVerdict` hardcodes agent, and editShape refuses human-reviewed work. | Complete mutation/transport authority matrix, including hostile inputs on the wire. Schema validity itself is never authentication. |
@@ -20,7 +20,7 @@ release or migration claim. Run `npm run check --prefix protocol` for the exact 
 
 This table is generated from [the case catalog](test/transport-matrix.json).
 [The executable cases](test/transport-matrix.test.mjs) require one implementation
-per catalog row and run through the current browser command/import/archive code
+per catalog row and run through the current browser command/import/archive/storage code
 and MCP Session/file-import boundary using synthetic geometry on the public sample
 PDF. These are transport tests, not a blind geometry benchmark or new runtime
 validation. The reviewed [Academy boundaries](ACADEMY_COMPATIBILITY.md) remain
@@ -48,6 +48,11 @@ unchanged; no Academy interoperability is claimed.
 | `stitch-mcp` | unsupported | Browser composite → MCP export | Archive retains composite records; MCP omits stitches and composite calibration while retaining shapes referencing the unavailable frame. |
 | `extensions-mcp` | unsupported | Whole browser workspace → MCP export | Top-level extensions, project metadata and rules survive archive but not MCP export; shape extensions survive. Imported rules remain in session only. |
 | `missing-source` | unsupported | Unloaded source sheet → MCP | Import retains the shape but cannot export its unloaded sheet calibration. Schema validity does not prove source availability. |
+| `transitions-roundtrip` | conforms | Derived transition through archive/MCP | A 10 LF shared edge retains exact geometry, paired source IDs and pending proposal; a six-inch wall gap creates no threshold. |
+| `rule-results-roundtrip` | conforms | Rule-generated measurement through archive/MCP | One closed-island deduct retains rule actor, seed/container/proposal IDs and exact quantity; reapplication adds nothing. Rule definitions remain excluded from MCP export. |
+| `snapshot-storage` | conforms | Browser snapshot store (in-memory IndexedDB) | 100 SF and corrected 150 SF snapshots retain IDs, timestamps, project scope, extensions and original ring; quantity comparison reports +50 SF. |
+| `pdf-revision-storage` | conforms | Browser PDF revision store (in-memory IndexedDB) | Two distinct byte versions retain exact bytes and independently checked SHA-256 hashes; importing identical bytes adds no revision. |
+| `archive-history` | unsupported | Full browser history → current project archive | Current takeoff/PDF survives archive transfer; two snapshots and prior PDF bytes do not transfer to a fresh store. Current PDF restarts at revision 1. |
 <!--/transport-matrix-->
 
 The quantity fixtures independently specify rectangle/hole areas, straight-run
@@ -64,8 +69,26 @@ Run `npm run check --prefix protocol`. After intentionally changing a case,
 regenerate the table with `node protocol/scripts/check-matrix.mjs --write`;
 CI rejects a stale table or a catalog row without a matching executable case.
 
-Remaining coverage includes sweeps, rule application, transitions, full revision
-storage, polygon topology, per-role completeness, hostile wire inputs across all
+The transition case verifies a 10 LF shared edge and its actual endpoints, paired
+source IDs and proposal metadata. Six-inch wall separation is withheld without
+changing the document. The rule case injects synthetic vector linework into the
+sample sheet's mask; it exercises the real rule engine and file-import boundary,
+not PDF discovery. A 40×40 px island at 0.1 ft/px is analytically 16 SF; the existing
+raster-mask candidate must remain within 2 SF, while its transported geometry and
+stored quantity must match exactly. Open linework produces no deduct. The rule's
+last-run audit IDs can still name an undone shape; they are historical references,
+not a promise that every referenced shape is currently present.
+
+Snapshot and PDF revision cases exercise the real browser storage functions using
+isolated in-memory IndexedDB, not a live browser's disk or cloud sync. Snapshot
+payloads conform to the takeoff schemas; their outer ID/time/project envelopes
+remain separate store records. The project archive preserves the current document
+and PDF bytes, but does not carry snapshot history or previous PDF revisions.
+Transferring it to a fresh store starts the current PDF at revision 1. An adapter
+must not claim to reconstruct those histories from a current document or archive.
+
+Remaining coverage includes sweeps, broader rule/transition cases, cloud revision
+sync, polygon topology, per-role completeness, hostile wire inputs across all
 mutations and wider legacy records. The curve case preserves both representations
 without reinterpreting them; it does not establish complete hole/curve edit history.
 
