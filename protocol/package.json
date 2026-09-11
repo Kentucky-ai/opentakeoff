@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Development-only validation of the draft Takeoff Protocol; not a runtime package.",
   "scripts": {
+    "preflight": "node scripts/preflight.mjs",
     "test": "node --import tsx --test test/*.test.mjs",
     "check": "npm test && node scripts/check-docs.mjs && node scripts/check-matrix.mjs"
   },
