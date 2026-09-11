@@ -214,6 +214,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
+      - name: Test npm availability wait
+        run: node scripts/wait-for-npm-availability.test.mjs
       - run: node scripts/check-doc-links.mjs
       - name: Nudge on links to closed issues (never gating)
         if: github.event_name == 'push'

@@ -76,6 +76,17 @@ jobs:
           # prepublishOnly runs the full gate (typecheck + tests + build) before anything ships
           npm publish --provenance --access public
 
+      - name: Wait for npm availability
+        if: github.ref_type == 'tag'
+        env:
+          NPM_AVAILABILITY_DEADLINE_MS: 900000
+          NPM_AVAILABILITY_INTERVAL_MS: 15000
+          NPM_AVAILABILITY_MAX_ATTEMPTS: 60
+          NPM_AVAILABILITY_REQUEST_TIMEOUT_MS: 10000
+        run: |
+          VERSION=$(jq -r .version package.json)
+          node ../scripts/wait-for-npm-availability.mjs opentakeoff-mcp "$VERSION"
+
       - name: Install mcp-publisher
         run: |
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
