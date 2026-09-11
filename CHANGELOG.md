@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased — public MCP workflow evaluation
+## Unreleased
+
+- Resume MCP Registry publication only when the exact published manifest matches; poll delayed reads with bounded retries and refuse conflicting records. Preserve unrelated publishing failures. This fixes the release automation failure observed with MCP 0.9.83.
 
 - Add a scripted benchmark of the built MCP server in flat and staged modes, with source inspection, scale refusal/recovery, room measurements, labeled exports and fresh-process preservation checks.
 - Score analytic synthetic wall-face geometry separately from quantities; reject misplaced polygons, missing labels and invalid calibration. CI retains the public workflow artifacts for review.
