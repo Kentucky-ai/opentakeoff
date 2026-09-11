@@ -14,6 +14,7 @@ emits it yet. Both profiles describe the current collection names, including
 - [Academy compatibility report](ACADEMY_COMPATIBILITY.md)
 - [Minimal event vocabulary](EVENTS.md)
 - [Compatibility status and follow-on work](COMPATIBILITY.md)
+- [Read-only adapter preflight](PREFLIGHT.md)
 - [Tracking issue #405](https://github.com/Kentucky-ai/opentakeoff/issues/405)
 
 ## Validate this draft
@@ -33,7 +34,9 @@ suite compiles every schema offline, rejects malformed values, and validates
 representative records from the existing browser command layer and MCP session.
 The [executable transport matrix](COMPATIBILITY.md#executable-transport-matrix)
 classifies tested preservation, reader incompatibility and demonstrated loss.
-Broader compatibility coverage and migration adapters remain subsequent steps.
+The [read-only preflight](PREFLIGHT.md) adds bounded eligibility checks for a
+future document adapter. Broader compatibility coverage and migration adapters
+remain subsequent steps.
 
 ## Contract boundaries
 

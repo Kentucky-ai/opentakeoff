@@ -1,53 +1,66 @@
 # Changelog
 
-## Unreleased — Derived measurements and revision compatibility
+## Unreleased — Read-only protocol adapter preflight
 
 ### Added
+- Private development preflight reports eligibility, invalid data and unsupported semantics for a bounded document-adapter profile. Checks include active references, per-role quantities and calibration without changing inputs, originals, review, writer formats or MCP runtime behavior. CLI reports explicit non-guarantees and structured issue paths; real Session/browser records and refusal cases are tested. See [the profile and evidence](protocol/PREFLIGHT.md).
+
+## 2026-09-11 — MCP 0.9.80 and merged protocol compatibility work
+
+MCP 0.9.80 is published to npm and the official MCP Registry, with its desktop
+bundle and measured validation evidence in the [release](https://github.com/Kentucky-ai/opentakeoff/releases/tag/mcp-v0.9.80).
+It includes the merged 0.9.78/0.9.79 fixes below and the 0.9.80 wiki resources.
+Protocol schemas and compatibility checks remain development-only; application
+writers still use the current canvas format.
+
+### Derived measurements and revision compatibility
+
+#### Added
 - Protocol cases verify transition geometry/lineage, rule-generated deductions, exact snapshot records and PDF revision bytes/hashes through existing boundaries. The generated compatibility matrix now explicitly excludes full snapshot/PDF history from current project archive transfer. No engine, writer or schema changes.
 
-## Unreleased — Protocol transport compatibility
+### Protocol transport compatibility
 
-### Added
+#### Added
 - Protocol compatibility: add an executable browser/MCP transport matrix with exact geometry, quantity, lineage and review checks; explicitly reproduce unsupported composite/workspace exports and the draft import boundary. CI rejects stale matrix documentation. Development-only checks; current writers and engine behavior are unchanged.
 
-## Unreleased — Shared wiki and MCP knowledge resources (mcp 0.9.80)
+### Shared wiki and MCP knowledge resources (mcp 0.9.80)
 
-### Added
+#### Added
 - Source-backed wiki covering capability status, architecture, protocol, human/agent workflows, MCP routing, domain knowledge and repository conventions. AGENTS.md becomes a task router; existing contributor/release rules remain in the repository guide.
 - Nine packaged Markdown resources, starting at `takeoff://wiki`, available before loading plans and in staged mode. CI and builds reject stale content/version; the distribution smoke check reads every page over stdio. Wiki navigation stays within resources; repository source links explicitly browse main.
 
-### Fixed
+#### Fixed
 - The Agent Brief no longer claims supplied polygons are automatically verified. Stale 40/45/47-tool claims in the human/agent entry points, feature map and translated README notices are replaced by generated default/gated/setup counts. CI rejects additional unmarked prose counts.
 - Human stitching guidance now states that MCP import/export omits stitches; use the browser archive for composite work or measure source sheets individually.
 - Documentation-link checks include the wiki and contributor entry points.
 
-## Unreleased — Geometry review cleanup (mcp 0.9.79)
+### Geometry review cleanup (mcp 0.9.79)
 
-### Fixed
+#### Fixed
 - Scope collision review ignores machine-precision edge residue. Real positive overlaps below 0.01 SF remain listed with an explanation and a nonzero display label. Measured geometry and quantities are unchanged.
 - `cut_out` refuses a derived base carrying unlocated numeric opening allowances, preventing a geometric cut from replacing the existing allowance. Explicit physical runs remain clippable.
 
-### Added
+#### Added
 - `edit_annotation` changes only text with exact undo; RFI-linked notes and verdict ids refuse. Positions, dimensions, quantities and review records stay unchanged.
 - Protocol compatibility coverage checks actual opening endpoints and stepped wall bands. Tool stages and required inputs now have a generated reference checked in CI, alongside counts on every human/agent entry point.
 
-## Unreleased — Validated MCP exports and marked-set linear allowances (mcp 0.9.78)
+### Validated MCP exports and marked-set linear allowances (mcp 0.9.78)
 
-### Fixed
+#### Fixed
 - `export_takeoff` now declares the calibration provenance and RFI fields its writer already emits. Clients that discover tools before calling them no longer reject a valid export during output-schema validation. Conformance clients now discover tools before exercising replies. No persisted format or approval behavior changes.
 - The marked-set cover prints waste-adjusted linear quantities in LF (or m), instead of showing `0 SF` for base and transition conditions. Measurement totals are unchanged.
 
-### Documentation
+#### Documentation
 - Added a source-to-overlay geometry workflow covering vector candidates, detail scales, physical base runs, supporting materials, verification, and human handoff.
 
-## Unreleased — Preserve agent originals during human correction
+### Preserve agent originals during human correction
 
-### Fixed
+#### Fixed
 - Human corrections now freeze the original outer vertices of agent-authored shapes even when the drawing method is `manual` or absent. Later corrections keep the same original; undo/redo restores geometry and provenance together. Human manual traces, review/approval gates, and agent self-edit tallies retain their existing behavior. Previously lost originals cannot be recovered by this fix.
 
-## Unreleased — Draft Takeoff Protocol (#405)
+### Draft Takeoff Protocol (#405)
 
-### Added
+#### Added
 - Development-only JSON schemas for Measurement, Calibration, Provenance, Evidence, Review, and a proposed TakeoffDocument v1, with a separate profile for existing `takeoff_canvas.v1` records. The canvas and MCP keep writing the existing format.
 - A source-linked field inventory, Academy compatibility report, draft event vocabulary, and explicit compatibility limits. The report records the agent/manual original-geometry gap and the MCP stitched-document limitation without changing either behavior.
 - Offline schema validation, representative browser/MCP record checks, and generated schema documentation enforced by CI. No runtime dependency, tool, migration, or approval behavior changes.
