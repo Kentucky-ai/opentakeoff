@@ -12,7 +12,9 @@ function inspectJson(value, path, issue, ancestors = new Set()) {
   if (typeof value !== "object" || ancestors.has(value)) {
     issue("error", "non_json_value", path, "Use finite, acyclic JSON data without negative zero."); return;
   }
-  if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null && !Array.isArray(value)) {
+  const prototype = Object.getPrototypeOf(value);
+  if (Array.isArray(value) ? prototype !== Array.prototype
+    : prototype !== Object.prototype && prototype !== null) {
     issue("error", "non_json_object", path, "Use a plain JSON object."); return;
   }
   if (ancestors.size >= 100) {
@@ -29,7 +31,7 @@ function inspectJson(value, path, issue, ancestors = new Set()) {
     if (Array.isArray(value) && key === "length") continue;
     const d = descriptors[key], at = `${path}/${escapePointer(key)}`;
     if (typeof key === "symbol" || !d.enumerable || !Object.hasOwn(d, "value") ||
-      (Array.isArray(value) && !/^(0|[1-9]\d*)$/.test(key))) {
+      (Array.isArray(value) && (!/^(0|[1-9]\d*)$/.test(key) || Number(key) >= value.length))) {
       issue("error", "non_json_property", at, "Use enumerable JSON data properties."); continue;
     }
     inspectJson(d.value, at, issue, ancestors);

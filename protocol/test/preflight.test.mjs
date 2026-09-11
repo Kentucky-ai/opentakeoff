@@ -161,7 +161,9 @@ test("eligibility explicitly does not verify topology, cached quantity correctne
 });
 
 test("unsafe JSON values and getters refuse before schema validation, without invoking getters", () => {
-  for (const value of [NaN, Infinity, -0, undefined, 1n, () => {}, new Date(), new Map(), [1, , 2]]) {
+  const extraArrayProperty = []; extraArrayProperty["4294967295"] = "JSON would discard this";
+  class CustomArray extends Array { toJSON() { throw Error("must not run"); } }
+  for (const value of [NaN, Infinity, -0, undefined, 1n, () => {}, new Date(), new Map(), [1, , 2], extraArrayProperty, new CustomArray()]) {
     const record = fixture(); record.extension = value;
     assert.equal(preflightTakeoff(record).status, "invalid");
     assert.equal(record.extension, value);
