@@ -51,12 +51,14 @@ register both verbs (<!--tool-count-all-->55<!--/tool-count-all--> tools); the p
 describe the lifted build. Design note: [`docs/design/ONE_CLICK_GATE.md`](../docs/design/ONE_CLICK_GATE.md).
 
 
-The takeoff engine—One-Click Area, the scale model, conditions, totals—on
-**stdio for your MCP client**. An agent can open a plan, read the title block,
-set the scale, click rooms, and hand back the same takeoff payload the browser
-app autosaves. Same engine, same math: the server imports
-`web/src/lib/{oneclick,sheets,geometry,totals}` directly, so a shape committed
-here is field-identical to one committed on the canvas.
+The takeoff engine—scale model, conditions and totals—on **stdio for your MCP
+client**. An agent can open a plan, read the title block, set the scale, inspect
+source geometry and commit defensible measurements. The server imports shared
+web modules, so quantity math and takeoff records are compatible with the
+canvas. Browser and MCP room-detection paths currently differ; a shared module
+does not establish identical boundaries on every plan. See the [capability
+status](../docs/wiki/status.md) and [compatibility matrix](../protocol/COMPATIBILITY.md)
+before claiming detector parity or a lossless handoff.
 
 ## Run with Docker
 

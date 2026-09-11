@@ -20,6 +20,10 @@ For a full takeoff session, use the [agent guide](../AGENT_GUIDE.md).
 The wiki routes to their detailed procedures rather than copying every control
 and schema into every page.
 
+Proposed priorities are tracked separately in the [roadmap](../ROADMAP.md). They
+are acceptance targets, not shipped capability; use [capability status](status.md)
+for what is available today.
+
 The MCP build embeds these pages. CI checks the embedded copy, tool inventory,
 schema references and documentation links against their sources. Reading a
 resource does not mutate a session, set scale, review work or grant approval.

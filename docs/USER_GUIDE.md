@@ -60,8 +60,8 @@ number defensible. This is the sequence, with the section that covers each step:
    ([§4](#4-conditions--your-finishes)).
 5. **Stitch anything split at a match line, and align it, before a single shape lands on it.**
    Once takeoffs live on a stitch it won't re-align ([§2](#2-opening-plans-and-moving-around)).
-6. **Measure the floors first**—`O`, room by room, condition by condition. Floors are the bulk
-   of the number and everything else derives from them ([§6](#6-one-click-area)).
+6. **Measure the floors first**—`A`, room by room, condition by condition. Floors are the bulk
+   of the number and everything else derives from them ([§5](#5-the-measuring-tools)).
 7. **Derive what follows instead of measuring it twice**: base off the rooms you just traced,
    **⟂ Transitions** for the line where two finishes meet—and read what it *reports and never
    counts*, because those are doorway thresholds you still owe
@@ -110,13 +110,15 @@ One caveat that side-by-side makes possible: a trace can't span two grouped shee
 
 Large floors often arrive cut across sheets at a **match line**—half the building on each. Side-by-side viewing doesn't help you *measure* across the cut; stitching does.
 
-1. In the gallery, select the split sheets (2–4, left-to-right selection order) and click **Stitch N into one surface**. They butt edge-to-edge—no gap—and open as **one** sheet with its own tab and scale (inherited when the members' scales agree).
+1. Press **G** (or choose **Sheets → Open gallery…**) to open the gallery. Select the split sheets (2–4, left-to-right selection order) and click **Stitch N into one surface** in the gallery footer. They butt edge-to-edge—no gap—and open as **one** sheet with its own tab and scale (inherited when the members' scales agree).
 2. **Join the match line**: click **Align** in the toolbar (it appears while a stitch is open), click a recognizable point near the joint, then click the **same drawn point** on the other sheet. That sheet slides so the two coincide—zoom in first for a tight joint, exactly like calibrating. Where the sheets overlap, each shows its own half up to the seam, so borders near the match line don't cover the plan.
-3. Work it like any sheet. A room that crosses the match line traces as **one shape**—manual tools and **One-Click** both work straight across the seam (the members' linework merges into one snap grid and one flood mask). Quantities, the Report, undo, and revisions treat the stitch as a normal sheet.
+3. Check another recognizable point along the joint and verify the stitched sheet's scale before measuring. **Align** translates a member sheet; it does not rotate or resize it. If the members use different scales or orientations, prepare matching source sheets first. Press **A** for Area and trace across the match line as **one shape**. One-Click is gated in the default build, so seam-crossing examples of it describe an explicitly enabled build.
 
 Notes: align the match line **before** tracing—once takeoffs live on a stitch it won't re-align (their coordinates ride the composite). Deleting a stitch is refused while takeoffs or markups live on it; reopen one anytime from its tab or the gallery's **Stitched surfaces** strip. The Marked Set PDF burns a stitch in as one composite page—members placed at their aligned offsets, each showing its own half up to the seam, shapes drawn once in the frame you measured them in—stamped as a stitched composite so nobody mistakes it for a sheet the architect issued.
 
-Stitching and aligning are yours alone—an AI agent driving OpenTakeoff [over MCP](MCP.md) has no stitch verb, on purpose: judging that two wall junctions are the same drawn point is human work, and a sloppy join quietly skews everything measured across the seam. The current MCP import/export path also omits stitch records, so a browser stitch is not a lossless MCP handoff. Keep composite work in the browser project archive, or have the MCP agent measure the member sheets individually with explicit scope boundaries.
+Stitching and aligning are yours alone—an AI agent driving OpenTakeoff [over MCP](MCP.md) has no stitch verb, on purpose: judging that two wall junctions are the same drawn point is human work, and a sloppy join quietly skews everything measured across the seam. MCP cannot create, align, or measure on a stitched surface. The current MCP import/export path omits stitch records, so a browser stitch is not a lossless MCP handoff. Keep the browser's own takeoff export or project archive as the editable master, or have the MCP agent measure the member sheets individually with explicit scope boundaries.
+
+**If a control seems missing:** **Stitch N into one surface** is in the gallery footer and requires 2–4 selected sheets. **Align** appears only while a stitched surface is open. Reopen one from its tab or the gallery's **Stitched surfaces** strip. If Align refuses because takeoffs already exist, create a fresh stitch and align it before tracing. Deleting a stitch also refuses while takeoffs or markups exist.
 
 ### Levels (multi-floor sets)
 

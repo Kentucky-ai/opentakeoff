@@ -1,9 +1,20 @@
 # Changelog
 
-## Unreleased — MCP 0.9.82 protocol resources and release availability wait
+## Unreleased — MCP 0.9.83 documentation cleanup
+
+- Clarify the current browser/MCP boundary, stitching controls and handoff limits.
+- Keep the roadmap and translated README lag notices linked to the canonical English/wiki pages.
+- Check seven MCP version fields and the independent web package/lockfile versions before generating tool documentation. Mutation tests cover mismatched, missing and non-string fields, write refusal and successful regeneration.
+- Include `FEATURES.md` in the existing documentation link check and refresh packaged wiki content.
+- No runtime tools or gate behavior change in this entry.
+
+## 0.9.82 — MCP release (2026-09-11)
+
+- Published `opentakeoff-mcp` 0.9.82: [GitHub release](https://github.com/Kentucky-ai/opentakeoff/releases/tag/mcp-v0.9.82).
 
 ### Fixed
-- The MCP publish workflow now waits for both npm's package metadata and exact-version endpoints before continuing with Registry, GitHub release and MCPB work. `scripts/wait-for-npm-availability.mjs` retries at 15-second intervals with a 15-minute deadline, 60-attempt cap and 10-second request timeout; a rerun still skips an already published version. Its deterministic retry/timeout/validation tests run in CI. This is follow-up work from the 0.9.81 release and is not itself a published MCP version.
+- A rerun of the publish workflow skips an already published version.
+- The publish workflow waits for npm's package metadata and exact-version endpoints before continuing with Registry, GitHub release and MCPB work. `scripts/wait-for-npm-availability.mjs` retries at 15-second intervals with a 15-minute deadline, 60-attempt cap and 10-second request timeout; its deterministic retry/timeout/validation tests run in CI.
 
 ### Added
 - MCP packages the draft Takeoff Protocol index and explicit schema allowlist as read-only, offline-resolvable resources under `takeoff://protocol`. Resource URIs remain separate from unchanged schema `$id` identifiers, and the index documents structural limits and `exportPayload()` projection omissions. No tool, writer, engine, or approval behavior changes.

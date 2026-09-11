@@ -6,18 +6,18 @@ OpenTakeoff is a **client-only React app**: a PDF construction-takeoff canvas fo
 
 ```bash
 cd web
-nvm use          # Node pinned by web/.nvmrc (CI reads the same file)
+nvm use          # web/.nvmrc matches the root .nvmrc used by CI
 npm install
 npm run dev      # http://localhost:5173 — hot reload
 npm test         # node:test over the pure geometry + totals math (test/*.test.ts)
 npm run build    # → web/dist/ (static output; this is what Netlify deploys)
-npm run check    # typecheck + lint + test + build — exactly what CI runs; green here ⇒ green CI
+npm run check    # web typecheck + lint + test + benchmark + build
 ```
 
 ## Shipping — the required steps, every change
 
 `main` is protected on GitHub by a ruleset (PR-only, one approving review,
-green `web` check, branch up to date—the repo owner has a standing bypass
+green `web` check—the repo owner has a standing bypass
 as the solo maintainer). **Merging to `main` deploys to production**
 (<https://opentakeoff.kentucky-ai.com>)—Netlify's own git integration builds
 the merge commit and publishes it. `netlify.toml` holds the whole recipe
@@ -45,8 +45,9 @@ builds production. **Merge = deploy either way: that part has never changed.**
 So:
 
 1. **Branch first**—never commit on `main`: `git checkout -b <topic>`.
-2. **`npm run check` before pushing** (in `web/`). It is exactly what CI runs,
-   on the same Node (`web/.nvmrc`)—green here means green CI.
+2. **`npm run check` before pushing** (in `web/`). It covers the independent web
+   job on Node 24; a green web check does not replace the MCP, protocol, docs,
+   capture or optional-server jobs.
 3. **Include review evidence in every PR**: screenshots or a short video for
    visible changes; measured expected-versus-observed stats and reproducible
    commands for engine/tool changes. Link the actual checks or evidence. This
@@ -111,15 +112,18 @@ changing writer formats or adopting a migration.
 2. `docs/USER_GUIDE.md` (shortcuts + the relevant section)
 3. `CHANGELOG.md`
 
-Touching the **MCP server** adds four more, and they drift independently—the
-tool count alone lives in five places, so grep the old number before you assume
-you got them all:
+Touching the **MCP server** also requires checking its runtime guidance and
+generated references:
 
-4. `mcp/src/tools.ts`—the tool's own `description` **is** its integration.
-   An MCP client reads it at runtime; nothing else you write reaches the model.
+4. `mcp/src/tools.ts`—the tool's own `description` is part of its integration.
+   An MCP client reads it at runtime. Initialize instructions and packaged wiki
+   resources are also agent-facing surfaces, so keep them consistent with the
+   runtime behavior.
 5. `mcp/server.ts`—the `instructions` block sent at `initialize`. This is the
    decision tree every client receives before its first call. A new *verb* does
-   not belong here; a new *step in the standard finish* does.
+   not belong here; a new *step in the standard finish* does. Packaged wiki
+   resources are another deliberate agent-facing surface; update their source
+   pages and run the wiki/resource checks when their guidance changes.
 6. `mcp/README.md` (the tool table) and `docs/MCP.md` (the reach-for-it ordering,
    the example session, and the tool count in its opening line). A new tool also
    needs a row in `mcp/src/staging.ts`'s `TOOL_STAGES`—the four lists must
@@ -130,10 +134,21 @@ you got them all:
    change alters *doctrine* rather than adding a verb—what withholds, what
    refuses, what has no agent verb—it belongs in `docs/AGENT_GUIDE.md` too,
    and the tool count appears there and in `docs/USER_GUIDE.md` §14.
-7. **Version, on three surfaces that must agree**: `mcp/package.json`,
-   `mcp/server.json`, `web/public/.well-known/mcp.json`. They have drifted
-   before (#171, and again at 0.9.28). Check `git show HEAD:mcp/package.json`
-   before bumping—a concurrent branch may already have claimed the number.
+7. **Version fields must agree.** The MCP source version is
+   in `mcp/package.json`; its lockfile has two matching fields, while
+   `mcp/server.json` and `web/public/.well-known/mcp.json` each have two. The
+   version checker checks all seven MCP fields. Separately, it checks the web
+   package version against the two root-version fields in its lockfile.
+   Check current `origin/main` and existing tags before
+   reserving a number. The web package has its own version; it is not the MCP
+   release number.
+8. `npm run check:tool-count --prefix mcp` runs version agreement before checking
+   counts and the schema-backed inventory. With `-- --write`, it refuses version
+   mismatches before changing generated documents; update release metadata
+   explicitly, then regenerate. Run `npm run check:versions --prefix mcp` for the
+   version check alone. Wiki content has its own generator:
+   `npm run check:wiki --prefix mcp -- --write`. Review generated diffs and run
+   both checks without `--write` afterward.
 
 Architecture rather than behavior—what MCP is versus what the `/ai` sandbox
 is, and why the server imports the web engine in-process—lives at the end of
