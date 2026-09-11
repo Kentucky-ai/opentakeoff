@@ -83,6 +83,17 @@ jobs:
         working-directory: mcp
       - run: npm run smoke:dist
         working-directory: mcp
+      - name: Test workflow scorer rejection cases
+        run: node --test evals/mcp-workflow-bench/score.test.mjs
+      - name: Exercise default MCP workflow over stdio
+        run: node evals/mcp-workflow-bench/run.mjs --out "${{ runner.temp }}/mcp-workflow-bench"
+      - name: Upload public workflow review evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcp-workflow-${{ matrix.os }}
+          path: ${{ runner.temp }}/mcp-workflow-bench
+          if-no-files-found: warn
 
   # Publishing the MCP server is fully unattended ONCE an mcp-v* tag exists —
   # but nothing ever checked that a change to mcp/ came with a version bump, so

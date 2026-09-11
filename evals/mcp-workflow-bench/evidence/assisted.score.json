@@ -1,0 +1,56 @@
+{
+  "candidate": "assisted.takeoff.json",
+  "reference_id": "sample-plan-analytic-wall-faces-v1",
+  "metadata_error": null,
+  "rooms": [
+    {
+      "label": "OFFICE 101",
+      "area_sf": {
+        "expected": 431.3858024691358,
+        "actual": 431.39,
+        "percent_error": 0.0009730340776548439
+      },
+      "overlap_iou": 1,
+      "boundary_vertex_edge_px": 0,
+      "geometry_area_sf": 431.3858024691358,
+      "pass": true
+    },
+    {
+      "label": "OFFICE 102",
+      "area_sf": {
+        "expected": 431.3858024691358,
+        "actual": 431.39,
+        "percent_error": 0.0009730340776548439
+      },
+      "overlap_iou": 1,
+      "boundary_vertex_edge_px": 0,
+      "geometry_area_sf": 431.3858024691358,
+      "pass": true
+    },
+    {
+      "label": "BREAK 103",
+      "area_sf": {
+        "expected": 431.3858024691358,
+        "actual": 431.39,
+        "percent_error": 0.0009730340776548439
+      },
+      "overlap_iou": 1,
+      "boundary_vertex_edge_px": 0,
+      "geometry_area_sf": 431.3858024691358,
+      "pass": true
+    },
+    {
+      "label": "CORRIDOR 104",
+      "area_sf": {
+        "expected": 431.3858024691358,
+        "actual": 431.39,
+        "percent_error": 0.0009730340776548439
+      },
+      "overlap_iou": 1,
+      "boundary_vertex_edge_px": 0,
+      "geometry_area_sf": 431.3858024691358,
+      "pass": true
+    }
+  ],
+  "pass": true
+}

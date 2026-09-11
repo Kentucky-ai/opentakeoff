@@ -1,0 +1,1927 @@
+[
+  {
+    "sequence": 1,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:41:53.650Z",
+    "elapsed_ms": 1.7550419999970472,
+    "method": "resources/list",
+    "params": {},
+    "is_error": false
+  },
+  {
+    "sequence": 2,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:41:58.269Z",
+    "elapsed_ms": 1.1839160000017728,
+    "method": "resources/read",
+    "params": {
+      "uri": "takeoff://wiki/workflows"
+    },
+    "is_error": false
+  },
+  {
+    "sequence": 3,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:41:58.273Z",
+    "elapsed_ms": 0.41016700000182027,
+    "method": "resources/read",
+    "params": {
+      "uri": "takeoff://wiki/mcp"
+    },
+    "is_error": false
+  },
+  {
+    "sequence": 4,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:41:58.274Z",
+    "elapsed_ms": 0.268791999995301,
+    "method": "resources/read",
+    "params": {
+      "uri": "takeoff://wiki/tool-index"
+    },
+    "is_error": false
+  },
+  {
+    "sequence": 5,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:41:58.282Z",
+    "elapsed_ms": 0.36050000000250293,
+    "method": "resources/read",
+    "params": {
+      "uri": "takeoff://wiki/domain"
+    },
+    "is_error": false
+  },
+  {
+    "sequence": 6,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:00.673Z",
+    "elapsed_ms": 69.78512499999488,
+    "method": "tools/list",
+    "params": {},
+    "is_error": false
+  },
+  {
+    "sequence": 7,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:07.286Z",
+    "elapsed_ms": 47.59654199999932,
+    "method": "tools/list",
+    "params": {},
+    "is_error": false
+  },
+  {
+    "sequence": 8,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:07.408Z",
+    "elapsed_ms": 41.54591600000276,
+    "method": "tools/list",
+    "params": {},
+    "is_error": false
+  },
+  {
+    "sequence": 9,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:07.524Z",
+    "elapsed_ms": 45.19058299999597,
+    "method": "tools/list",
+    "params": {},
+    "is_error": false
+  },
+  {
+    "sequence": 10,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:07.643Z",
+    "elapsed_ms": 39.03154099999665,
+    "method": "tools/list",
+    "params": {},
+    "is_error": false
+  },
+  {
+    "sequence": 11,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:07.755Z",
+    "elapsed_ms": 38.379124999999476,
+    "method": "tools/list",
+    "params": {},
+    "is_error": false
+  },
+  {
+    "sequence": 12,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:07.867Z",
+    "elapsed_ms": 38.06741599999805,
+    "method": "tools/list",
+    "params": {},
+    "is_error": false
+  },
+  {
+    "sequence": 13,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:07.978Z",
+    "elapsed_ms": 38.5914580000026,
+    "method": "tools/list",
+    "params": {},
+    "is_error": false
+  },
+  {
+    "sequence": 14,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:08.091Z",
+    "elapsed_ms": 37.59037499999977,
+    "method": "tools/list",
+    "params": {},
+    "is_error": false
+  },
+  {
+    "sequence": 15,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:08.203Z",
+    "elapsed_ms": 38.46883399999933,
+    "method": "tools/list",
+    "params": {},
+    "is_error": false
+  },
+  {
+    "sequence": 16,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:11.436Z",
+    "elapsed_ms": 31.278374999994412,
+    "method": "tools/call",
+    "params": {
+      "name": "load_plan",
+      "arguments": {
+        "path": "<SOURCE>/demo/sample-plan.pdf"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "file": "sample-plan.pdf",
+      "files": [
+        "sample-plan.pdf"
+      ],
+      "page_count": 1,
+      "sheets": [
+        {
+          "sheet": "sample-plan.pdf",
+          "page": 1,
+          "width_pt": 1224,
+          "height_pt": 792,
+          "width_px": 2448,
+          "height_px": 1584,
+          "sheet_number": "A-101",
+          "detected_scale": "1/4\" = 1'-0\""
+        }
+      ],
+      "note": "Replaced the previous session \u2014 all prior scales, conditions, and shapes were cleared."
+    }
+  },
+  {
+    "sequence": 17,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:17.388Z",
+    "elapsed_ms": 4.248708999999508,
+    "method": "tools/call",
+    "params": {
+      "name": "sheet_info",
+      "arguments": {
+        "sheet": "sample-plan.pdf"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "sheet": "sample-plan.pdf",
+      "page": 1,
+      "width_pt": 1224,
+      "height_pt": 792,
+      "width_px": 2448,
+      "height_px": 1584,
+      "sheet_number": "A-101",
+      "detected_scale": "1/4\" = 1'-0\"",
+      "seg_count": 6,
+      "has_vector_linework": true,
+      "scale_set": false,
+      "shape_count": 0,
+      "layers": []
+    }
+  },
+  {
+    "sequence": 18,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:17.397Z",
+    "elapsed_ms": 0.705999999998312,
+    "method": "tools/call",
+    "params": {
+      "name": "read_sheet_text",
+      "arguments": {
+        "sheet": "sample-plan.pdf"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "sheet": "sample-plan.pdf",
+      "items": [
+        {
+          "str": "OFFICE 101",
+          "x": 600,
+          "y": 1084
+        },
+        {
+          "str": "OFFICE 102",
+          "x": 1640,
+          "y": 1084
+        },
+        {
+          "str": "BREAK 103",
+          "x": 600,
+          "y": 464
+        },
+        {
+          "str": "CORRIDOR 104",
+          "x": 1600,
+          "y": 464
+        },
+        {
+          "str": "A-101",
+          "x": 1970,
+          "y": 1284
+        },
+        {
+          "str": "SCALE: 1/4\" = 1\u2019-0\"",
+          "x": 1730,
+          "y": 1348
+        }
+      ],
+      "text": "OFFICE 101 OFFICE 102 BREAK 103 CORRIDOR 104 A-101 SCALE: 1/4\" = 1\u2019-0\""
+    }
+  },
+  {
+    "sequence": 19,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:17.406Z",
+    "elapsed_ms": 0.9145420000058948,
+    "method": "tools/call",
+    "params": {
+      "name": "get_sheet_vectors",
+      "arguments": {
+        "sheet": "sample-plan.pdf"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "sheet": "sample-plan.pdf",
+      "page": 1,
+      "sheet_px": [
+        2448,
+        1584
+      ],
+      "region": [
+        0,
+        0,
+        2448,
+        1584
+      ],
+      "points": [
+        240,
+        1364,
+        2200,
+        1364,
+        2200,
+        1364,
+        2200,
+        204,
+        2200,
+        204,
+        240,
+        204,
+        240,
+        204,
+        240,
+        1364,
+        1220,
+        1364,
+        1220,
+        204,
+        240,
+        784,
+        2200,
+        784
+      ],
+      "meta": [
+        96,
+        96,
+        96,
+        96,
+        96,
+        96
+      ],
+      "lum": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "subpath": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        2
+      ],
+      "image_area": 0,
+      "layer_ids": [],
+      "layer_of": [
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1
+      ],
+      "total": 6,
+      "offset": 0,
+      "returned": 6,
+      "dropped": 0,
+      "limit": 20000
+    }
+  },
+  {
+    "sequence": 20,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:17.413Z",
+    "elapsed_ms": 2.2918340000032913,
+    "method": "tools/call",
+    "params": {
+      "name": "find_schedule",
+      "arguments": {
+        "kind": "room finish"
+      }
+    },
+    "is_error": true,
+    "result": [
+      {
+        "type": "text",
+        "text": "{\"error\":\"No \\\"room finish\\\" schedule found in the set. Found: no schedules at all.\"}"
+      }
+    ]
+  },
+  {
+    "sequence": 21,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:17.424Z",
+    "elapsed_ms": 186.38641700000153,
+    "method": "tools/call",
+    "params": {
+      "name": "view_sheet",
+      "arguments": {
+        "sheet": "sample-plan.pdf"
+      }
+    },
+    "is_error": false,
+    "result": [
+      {
+        "type": "text",
+        "text": "{\"sheet\":\"sample-plan.pdf\",\"page\":1,\"sheet_px\":[2448,1584],\"region\":[0,0,2448,1584],\"img_px\":[1400,906],\"zoom\":0.5719,\"overlay\":false,\"grid_px_per_foot\":0}"
+      }
+    ]
+  },
+  {
+    "sequence": 22,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:24.115Z",
+    "elapsed_ms": 0.6749589999963064,
+    "method": "tools/call",
+    "params": {
+      "name": "set_scale",
+      "arguments": {
+        "sheet": "sample-plan.pdf",
+        "use_detected": true
+      }
+    },
+    "is_error": false,
+    "result": {
+      "sheet": "sample-plan.pdf",
+      "upp": 0.027777777777777776,
+      "label": "1/4\" = 1'-0\"",
+      "source": "detected",
+      "confirmed": false
+    }
+  },
+  {
+    "sequence": 23,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:26.644Z",
+    "elapsed_ms": 1.2486250000001746,
+    "method": "tools/call",
+    "params": {
+      "name": "resolve_tag",
+      "arguments": {
+        "tag": "F-1"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "status": "unresolved",
+      "tag": "F-1",
+      "room": null,
+      "reason": "no room-finish schedule found in the set"
+    }
+  },
+  {
+    "sequence": 24,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:35.332Z",
+    "elapsed_ms": 19.078917000006186,
+    "method": "tools/call",
+    "params": {
+      "name": "view_sheet",
+      "arguments": {
+        "sheet": "sample-plan.pdf",
+        "region": {
+          "x0": 180,
+          "y0": 140,
+          "x1": 1280,
+          "y1": 840
+        }
+      }
+    },
+    "is_error": false,
+    "result": [
+      {
+        "type": "text",
+        "text": "{\"sheet\":\"sample-plan.pdf\",\"page\":1,\"sheet_px\":[2448,1584],\"region\":[180,140,1280,840],\"img_px\":[1400,891],\"zoom\":1.2727,\"overlay\":false,\"grid_px_per_foot\":0}"
+      }
+    ]
+  },
+  {
+    "sequence": 25,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:42:49.935Z",
+    "elapsed_ms": 38.41012500000943,
+    "method": "tools/list",
+    "params": {},
+    "is_error": false
+  },
+  {
+    "sequence": 26,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:43:06.858Z",
+    "elapsed_ms": 3.7884999999951106,
+    "method": "tools/call",
+    "params": {
+      "name": "propose_takeoff",
+      "arguments": {
+        "label": "Four named rooms \u2014 F-1 floor areas",
+        "rationale": "User-specified finish F-1 for BREAK 103, CORRIDOR 104, OFFICE 101, and OFFICE 102; wall-face geometry read from A-101 vectors and source view"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "proposal_id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a",
+      "label": "Four named rooms \u2014 F-1 floor areas",
+      "rationale": "User-specified finish F-1 for BREAK 103, CORRIDOR 104, OFFICE 101, and OFFICE 102; wall-face geometry read from A-101 vectors and source view",
+      "note": "Open. Every shape you commit from now on (measure_*, sweeps, derives, cut_out) attaches to this proposal until you open another or withdraw it; the estimator sees the batch as one Accept. revise_proposal replaces its pending shapes as one step, withdraw_proposal removes them."
+    }
+  },
+  {
+    "sequence": 27,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:43:12.610Z",
+    "elapsed_ms": 0.9361670000071172,
+    "method": "tools/call",
+    "params": {
+      "name": "measure_polygon",
+      "arguments": {
+        "sheet": "sample-plan.pdf",
+        "verts": [
+          [
+            244,
+            208
+          ],
+          [
+            1216,
+            208
+          ],
+          [
+            1216,
+            776
+          ],
+          [
+            244,
+            776
+          ]
+        ],
+        "condition": "F-1"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "area_sf": 426,
+      "perimeter_lf": 85.56,
+      "nverts": 4,
+      "shape_id": "shp-c0dbb6c8-be0e-4842-921b-2f8dbdb4fbc6"
+    }
+  },
+  {
+    "sequence": 28,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:43:12.726Z",
+    "elapsed_ms": 0.5245830000058049,
+    "method": "tools/call",
+    "params": {
+      "name": "measure_polygon",
+      "arguments": {
+        "sheet": "sample-plan.pdf",
+        "verts": [
+          [
+            1224,
+            208
+          ],
+          [
+            2196,
+            208
+          ],
+          [
+            2196,
+            776
+          ],
+          [
+            1224,
+            776
+          ]
+        ],
+        "condition": "F-1"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "area_sf": 426,
+      "perimeter_lf": 85.56,
+      "nverts": 4,
+      "shape_id": "shp-c4bab33d-5b9b-4092-a676-9cb8f19fb2ce"
+    }
+  },
+  {
+    "sequence": 29,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:43:12.843Z",
+    "elapsed_ms": 0.5397499999962747,
+    "method": "tools/call",
+    "params": {
+      "name": "measure_polygon",
+      "arguments": {
+        "sheet": "sample-plan.pdf",
+        "verts": [
+          [
+            244,
+            792
+          ],
+          [
+            1216,
+            792
+          ],
+          [
+            1216,
+            1360
+          ],
+          [
+            244,
+            1360
+          ]
+        ],
+        "condition": "F-1"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "area_sf": 426,
+      "perimeter_lf": 85.56,
+      "nverts": 4,
+      "shape_id": "shp-aefb78a6-7b55-493d-84db-15f51ab721b5"
+    }
+  },
+  {
+    "sequence": 30,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:43:12.960Z",
+    "elapsed_ms": 0.5013749999925494,
+    "method": "tools/call",
+    "params": {
+      "name": "measure_polygon",
+      "arguments": {
+        "sheet": "sample-plan.pdf",
+        "verts": [
+          [
+            1224,
+            792
+          ],
+          [
+            2196,
+            792
+          ],
+          [
+            2196,
+            1360
+          ],
+          [
+            1224,
+            1360
+          ]
+        ],
+        "condition": "F-1"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "area_sf": 426,
+      "perimeter_lf": 85.56,
+      "nverts": 4,
+      "shape_id": "shp-33b29b52-9f9e-41eb-b14e-bc3ecad73568"
+    }
+  },
+  {
+    "sequence": 31,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:43:15.391Z",
+    "elapsed_ms": 0.7601670000003651,
+    "method": "tools/call",
+    "params": {
+      "name": "list_shapes",
+      "arguments": {}
+    },
+    "is_error": false,
+    "result": {
+      "shapes": [
+        {
+          "id": "shp-c0dbb6c8-be0e-4842-921b-2f8dbdb4fbc6",
+          "sheet": "sample-plan.pdf",
+          "condition": "F-1",
+          "measure_role": "floor_area",
+          "area_sf": 426,
+          "perimeter_lf": 85.56,
+          "nverts": 4,
+          "reviewed": false,
+          "assignment": "asserted",
+          "proposal_id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a"
+        },
+        {
+          "id": "shp-c4bab33d-5b9b-4092-a676-9cb8f19fb2ce",
+          "sheet": "sample-plan.pdf",
+          "condition": "F-1",
+          "measure_role": "floor_area",
+          "area_sf": 426,
+          "perimeter_lf": 85.56,
+          "nverts": 4,
+          "reviewed": false,
+          "assignment": "asserted",
+          "proposal_id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a"
+        },
+        {
+          "id": "shp-aefb78a6-7b55-493d-84db-15f51ab721b5",
+          "sheet": "sample-plan.pdf",
+          "condition": "F-1",
+          "measure_role": "floor_area",
+          "area_sf": 426,
+          "perimeter_lf": 85.56,
+          "nverts": 4,
+          "reviewed": false,
+          "assignment": "asserted",
+          "proposal_id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a"
+        },
+        {
+          "id": "shp-33b29b52-9f9e-41eb-b14e-bc3ecad73568",
+          "sheet": "sample-plan.pdf",
+          "condition": "F-1",
+          "measure_role": "floor_area",
+          "area_sf": 426,
+          "perimeter_lf": 85.56,
+          "nverts": 4,
+          "reviewed": false,
+          "assignment": "asserted",
+          "proposal_id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a"
+        }
+      ],
+      "count": 4
+    }
+  },
+  {
+    "sequence": 32,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:43:20.058Z",
+    "elapsed_ms": 23.16820899999584,
+    "method": "tools/call",
+    "params": {
+      "name": "view_sheet",
+      "arguments": {
+        "sheet": "sample-plan.pdf",
+        "region": {
+          "x0": 180,
+          "y0": 140,
+          "x1": 2260,
+          "y1": 1400
+        },
+        "overlay": true
+      }
+    },
+    "is_error": false,
+    "result": [
+      {
+        "type": "text",
+        "text": "{\"sheet\":\"sample-plan.pdf\",\"page\":1,\"sheet_px\":[2448,1584],\"region\":[180,140,2260,1400],\"img_px\":[1400,848],\"zoom\":0.6731,\"overlay\":true,\"shapes_drawn\":4,\"grid_px_per_foot\":0}"
+      }
+    ]
+  },
+  {
+    "sequence": 33,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:43:26.083Z",
+    "elapsed_ms": 19.390041000006022,
+    "method": "tools/call",
+    "params": {
+      "name": "view_sheet",
+      "arguments": {
+        "sheet": "sample-plan.pdf",
+        "region": {
+          "x0": 220,
+          "y0": 180,
+          "x1": 1240,
+          "y1": 800
+        },
+        "overlay": true
+      }
+    },
+    "is_error": false,
+    "result": [
+      {
+        "type": "text",
+        "text": "{\"sheet\":\"sample-plan.pdf\",\"page\":1,\"sheet_px\":[2448,1584],\"region\":[220,180,1240,800],\"img_px\":[1400,851],\"zoom\":1.3725,\"overlay\":true,\"shapes_drawn\":4,\"grid_px_per_foot\":0}"
+      }
+    ]
+  },
+  {
+    "sequence": 34,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:44:14.592Z",
+    "elapsed_ms": 6.348166999989189,
+    "method": "tools/call",
+    "params": {
+      "name": "takeoff_summary",
+      "arguments": {}
+    },
+    "is_error": false,
+    "result": {
+      "conditions": [
+        {
+          "id": "cnd-1c86ef35-01c1-47ba-838b-bd04e8d1c2d6",
+          "finish_tag": "F-1",
+          "multiplier": 1,
+          "waste_pct": 0,
+          "shape_count": 4,
+          "floor_sf": 1704,
+          "wall_sf": 0,
+          "border_sf": 0,
+          "lf": 0,
+          "ea": 0,
+          "total_sf": 1704,
+          "floor_sf_net": 1704,
+          "wall_sf_net": 0,
+          "border_sf_net": 0,
+          "lf_net": 0,
+          "total_sf_net": 1704,
+          "sy_net": 189.33
+        }
+      ],
+      "totals": {
+        "total_sf": 1704,
+        "total_sf_net": 1704,
+        "lf": 0,
+        "lf_net": 0,
+        "ea": 0,
+        "sy_net": 189.33
+      },
+      "shared_floor_sf": 0,
+      "scale_unconfirmed": [
+        "sample-plan.pdf"
+      ],
+      "proposals": [
+        {
+          "proposal_id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a",
+          "label": "Four named rooms \u2014 F-1 floor areas",
+          "rationale": "User-specified finish F-1 for BREAK 103, CORRIDOR 104, OFFICE 101, and OFFICE 102; wall-face geometry read from A-101 vectors and source view",
+          "pending": 4,
+          "accepted": 0,
+          "current": true
+        }
+      ]
+    }
+  },
+  {
+    "sequence": 35,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:44:20.207Z",
+    "elapsed_ms": 2.0026660000148695,
+    "method": "tools/call",
+    "params": {
+      "name": "export_takeoff",
+      "arguments": {
+        "path": "<OUTPUT>/sample-plan-takeoff.json"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "schema": "opentakeoff.takeoff_canvas.v1",
+      "project_name": "",
+      "units": "imperial",
+      "sheets": [
+        {
+          "sheet_id": "sample-plan.pdf",
+          "units_per_px": 0.027777777777777776,
+          "scale_source": "detected",
+          "scale_confirmed": false
+        }
+      ],
+      "conditions": [
+        {
+          "id": "cnd-1c86ef35-01c1-47ba-838b-bd04e8d1c2d6",
+          "finish_tag": "F-1",
+          "color": "#c96442",
+          "fill": "#c96442",
+          "hatch": "diag",
+          "multiplier": 1,
+          "waste_pct": 0,
+          "materials": []
+        }
+      ],
+      "shapes": [
+        {
+          "id": "shp-c0dbb6c8-be0e-4842-921b-2f8dbdb4fbc6",
+          "sheet_id": "sample-plan.pdf",
+          "condition_id": "cnd-1c86ef35-01c1-47ba-838b-bd04e8d1c2d6",
+          "measure_role": "floor_area",
+          "verts_norm": [
+            [
+              0.09967320261437909,
+              0.13131313131313133
+            ],
+            [
+              0.49673202614379086,
+              0.13131313131313133
+            ],
+            [
+              0.49673202614379086,
+              0.4898989898989899
+            ],
+            [
+              0.09967320261437909,
+              0.4898989898989899
+            ]
+          ],
+          "computed": {
+            "area_sf": 426,
+            "perimeter_lf": 85.56
+          },
+          "origin": {
+            "method": "manual",
+            "actor": "agent",
+            "reviewed": false,
+            "proposal_id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a",
+            "assignment": {
+              "source": "asserted"
+            }
+          }
+        },
+        {
+          "id": "shp-c4bab33d-5b9b-4092-a676-9cb8f19fb2ce",
+          "sheet_id": "sample-plan.pdf",
+          "condition_id": "cnd-1c86ef35-01c1-47ba-838b-bd04e8d1c2d6",
+          "measure_role": "floor_area",
+          "verts_norm": [
+            [
+              0.5,
+              0.13131313131313133
+            ],
+            [
+              0.8970588235294118,
+              0.13131313131313133
+            ],
+            [
+              0.8970588235294118,
+              0.4898989898989899
+            ],
+            [
+              0.5,
+              0.4898989898989899
+            ]
+          ],
+          "computed": {
+            "area_sf": 426,
+            "perimeter_lf": 85.56
+          },
+          "origin": {
+            "method": "manual",
+            "actor": "agent",
+            "reviewed": false,
+            "proposal_id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a",
+            "assignment": {
+              "source": "asserted"
+            }
+          }
+        },
+        {
+          "id": "shp-aefb78a6-7b55-493d-84db-15f51ab721b5",
+          "sheet_id": "sample-plan.pdf",
+          "condition_id": "cnd-1c86ef35-01c1-47ba-838b-bd04e8d1c2d6",
+          "measure_role": "floor_area",
+          "verts_norm": [
+            [
+              0.09967320261437909,
+              0.5
+            ],
+            [
+              0.49673202614379086,
+              0.5
+            ],
+            [
+              0.49673202614379086,
+              0.8585858585858586
+            ],
+            [
+              0.09967320261437909,
+              0.8585858585858586
+            ]
+          ],
+          "computed": {
+            "area_sf": 426,
+            "perimeter_lf": 85.56
+          },
+          "origin": {
+            "method": "manual",
+            "actor": "agent",
+            "reviewed": false,
+            "proposal_id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a",
+            "assignment": {
+              "source": "asserted"
+            }
+          }
+        },
+        {
+          "id": "shp-33b29b52-9f9e-41eb-b14e-bc3ecad73568",
+          "sheet_id": "sample-plan.pdf",
+          "condition_id": "cnd-1c86ef35-01c1-47ba-838b-bd04e8d1c2d6",
+          "measure_role": "floor_area",
+          "verts_norm": [
+            [
+              0.5,
+              0.5
+            ],
+            [
+              0.8970588235294118,
+              0.5
+            ],
+            [
+              0.8970588235294118,
+              0.8585858585858586
+            ],
+            [
+              0.5,
+              0.8585858585858586
+            ]
+          ],
+          "computed": {
+            "area_sf": 426,
+            "perimeter_lf": 85.56
+          },
+          "origin": {
+            "method": "manual",
+            "actor": "agent",
+            "reviewed": false,
+            "proposal_id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a",
+            "assignment": {
+              "source": "asserted"
+            }
+          }
+        }
+      ],
+      "markups": [],
+      "proposals": [
+        {
+          "id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a",
+          "label": "Four named rooms \u2014 F-1 floor areas",
+          "rationale": "User-specified finish F-1 for BREAK 103, CORRIDOR 104, OFFICE 101, and OFFICE 102; wall-face geometry read from A-101 vectors and source view",
+          "created_at": "2026-09-11T18:43:06.861Z"
+        }
+      ],
+      "sheet_group": [],
+      "last_group": [],
+      "sheet_tabs": [],
+      "sheet_levels": {}
+    }
+  },
+  {
+    "sequence": 36,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:44:20.331Z",
+    "elapsed_ms": 2.0788749999774154,
+    "method": "tools/call",
+    "params": {
+      "name": "export_report",
+      "arguments": {
+        "path": "<OUTPUT>/sample-plan-report.json",
+        "project_name": "sample-plan A-101"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "schema": "opentakeoff.report.v1",
+      "project_name": "sample-plan A-101",
+      "generated_with": "OpenTakeoff",
+      "sheets": [
+        {
+          "sheet_id": "sample-plan.pdf",
+          "sheet": "sample-plan.pdf",
+          "scale_source": "detected",
+          "scale_confirmed": false
+        }
+      ],
+      "conditions": [
+        {
+          "id": "cnd-1c86ef35-01c1-47ba-838b-bd04e8d1c2d6",
+          "finish_tag": "F-1",
+          "color": "#c96442",
+          "fill": "#c96442",
+          "hatch": "diag",
+          "multiplier": 1,
+          "waste_pct": 0,
+          "shape_count": 4,
+          "floor_sf": 1704,
+          "wall_sf": 0,
+          "border_sf": 0,
+          "lf": 0,
+          "ea": 0,
+          "total_sf": 1704,
+          "floor_sf_net": 1704,
+          "wall_sf_net": 0,
+          "border_sf_net": 0,
+          "lf_net": 0,
+          "total_sf_net": 1704,
+          "sy_net": 189.33,
+          "materials": [],
+          "columns": []
+        }
+      ],
+      "by_sheet": [
+        {
+          "sheet_id": "sample-plan.pdf",
+          "sheet": "sample-plan.pdf",
+          "rows": [
+            {
+              "id": "cnd-1c86ef35-01c1-47ba-838b-bd04e8d1c2d6",
+              "finish_tag": "F-1",
+              "color": "#c96442",
+              "multiplier": 1,
+              "shape_count": 4,
+              "floor_sf": 1704,
+              "wall_sf": 0,
+              "border_sf": 0,
+              "lf": 0,
+              "ea": 0
+            }
+          ]
+        }
+      ],
+      "totals": {
+        "total_sf": 1704,
+        "total_sf_net": 1704,
+        "lf": 0,
+        "lf_net": 0,
+        "ea": 0,
+        "sy_net": 189.33
+      },
+      "materials": [],
+      "markups": [],
+      "rfis": [],
+      "condition_columns": [],
+      "shape_labels": [],
+      "by_label": [],
+      "units": "imperial (SF/LF \u2014 raw internal values)",
+      "display_units": "imperial",
+      "roll_goods": []
+    }
+  },
+  {
+    "sequence": 37,
+    "phase": "first_pass",
+    "started": "2026-09-11T18:44:20.455Z",
+    "elapsed_ms": 106.43450000000303,
+    "method": "tools/call",
+    "params": {
+      "name": "export_marked_pdf",
+      "arguments": {
+        "path": "<OUTPUT>/sample-plan-marked-set.pdf",
+        "project_name": "sample-plan A-101"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "path": "<OUTPUT>/sample-plan-marked-set.pdf",
+      "pages": 2,
+      "sheets_marked": 1,
+      "shapes_drawn": 4,
+      "annotations_drawn": 0,
+      "approvals_drawn": 0,
+      "rfis_printed": 0,
+      "note": "The takeoff burned into the plan sheets, with a legend cover \u2014 hand this to the user to review. To revise in the app, import the export_takeoff payload; agent shapes arrive as pencil proposals there until accepted."
+    }
+  },
+  {
+    "sequence": 38,
+    "phase": "assisted_correction",
+    "started": "2026-09-11T18:47:52.961Z",
+    "elapsed_ms": 60.31070800003363,
+    "method": "tools/list",
+    "params": {},
+    "is_error": false
+  },
+  {
+    "sequence": 39,
+    "phase": "assisted_correction",
+    "started": "2026-09-11T18:47:57.021Z",
+    "elapsed_ms": 0.788708999985829,
+    "method": "tools/call",
+    "params": {
+      "name": "list_shapes",
+      "arguments": {}
+    },
+    "is_error": false,
+    "result": {
+      "shapes": [
+        {
+          "id": "shp-c0dbb6c8-be0e-4842-921b-2f8dbdb4fbc6",
+          "sheet": "sample-plan.pdf",
+          "condition": "F-1",
+          "measure_role": "floor_area",
+          "area_sf": 426,
+          "perimeter_lf": 85.56,
+          "nverts": 4,
+          "reviewed": false,
+          "assignment": "asserted",
+          "proposal_id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a"
+        },
+        {
+          "id": "shp-c4bab33d-5b9b-4092-a676-9cb8f19fb2ce",
+          "sheet": "sample-plan.pdf",
+          "condition": "F-1",
+          "measure_role": "floor_area",
+          "area_sf": 426,
+          "perimeter_lf": 85.56,
+          "nverts": 4,
+          "reviewed": false,
+          "assignment": "asserted",
+          "proposal_id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a"
+        },
+        {
+          "id": "shp-aefb78a6-7b55-493d-84db-15f51ab721b5",
+          "sheet": "sample-plan.pdf",
+          "condition": "F-1",
+          "measure_role": "floor_area",
+          "area_sf": 426,
+          "perimeter_lf": 85.56,
+          "nverts": 4,
+          "reviewed": false,
+          "assignment": "asserted",
+          "proposal_id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a"
+        },
+        {
+          "id": "shp-33b29b52-9f9e-41eb-b14e-bc3ecad73568",
+          "sheet": "sample-plan.pdf",
+          "condition": "F-1",
+          "measure_role": "floor_area",
+          "area_sf": 426,
+          "perimeter_lf": 85.56,
+          "nverts": 4,
+          "reviewed": false,
+          "assignment": "asserted",
+          "proposal_id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a"
+        }
+      ],
+      "count": 4
+    }
+  },
+  {
+    "sequence": 40,
+    "phase": "assisted_correction",
+    "started": "2026-09-11T18:47:57.021Z",
+    "elapsed_ms": 1.0030409999890253,
+    "method": "tools/call",
+    "params": {
+      "name": "get_sheet_vectors",
+      "arguments": {
+        "sheet": "sample-plan.pdf"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "sheet": "sample-plan.pdf",
+      "page": 1,
+      "sheet_px": [
+        2448,
+        1584
+      ],
+      "region": [
+        0,
+        0,
+        2448,
+        1584
+      ],
+      "points": [
+        240,
+        1364,
+        2200,
+        1364,
+        2200,
+        1364,
+        2200,
+        204,
+        2200,
+        204,
+        240,
+        204,
+        240,
+        204,
+        240,
+        1364,
+        1220,
+        1364,
+        1220,
+        204,
+        240,
+        784,
+        2200,
+        784
+      ],
+      "meta": [
+        96,
+        96,
+        96,
+        96,
+        96,
+        96
+      ],
+      "lum": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "subpath": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        2
+      ],
+      "image_area": 0,
+      "layer_ids": [],
+      "layer_of": [
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1
+      ],
+      "total": 6,
+      "offset": 0,
+      "returned": 6,
+      "dropped": 0,
+      "limit": 20000
+    }
+  },
+  {
+    "sequence": 41,
+    "phase": "assisted_correction",
+    "started": "2026-09-11T18:48:07.864Z",
+    "elapsed_ms": 0.7776670000166632,
+    "method": "tools/call",
+    "params": {
+      "name": "edit_shape",
+      "arguments": {
+        "shape_id": "shp-c0dbb6c8-be0e-4842-921b-2f8dbdb4fbc6",
+        "verts": [
+          [
+            243,
+            207
+          ],
+          [
+            1217,
+            207
+          ],
+          [
+            1217,
+            781
+          ],
+          [
+            243,
+            781
+          ]
+        ],
+        "label": "BREAK 103"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "shape_id": "shp-c0dbb6c8-be0e-4842-921b-2f8dbdb4fbc6",
+      "changed": [
+        "verts",
+        "label"
+      ],
+      "measure_role": "floor_area",
+      "nverts": 4,
+      "area_sf": 431.39,
+      "perimeter_lf": 86,
+      "label": "BREAK 103",
+      "agent_edits": 1
+    }
+  },
+  {
+    "sequence": 42,
+    "phase": "assisted_correction",
+    "started": "2026-09-11T18:48:07.982Z",
+    "elapsed_ms": 0.5005419999943115,
+    "method": "tools/call",
+    "params": {
+      "name": "edit_shape",
+      "arguments": {
+        "shape_id": "shp-c4bab33d-5b9b-4092-a676-9cb8f19fb2ce",
+        "verts": [
+          [
+            1223,
+            207
+          ],
+          [
+            2197,
+            207
+          ],
+          [
+            2197,
+            781
+          ],
+          [
+            1223,
+            781
+          ]
+        ],
+        "label": "CORRIDOR 104"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "shape_id": "shp-c4bab33d-5b9b-4092-a676-9cb8f19fb2ce",
+      "changed": [
+        "verts",
+        "label"
+      ],
+      "measure_role": "floor_area",
+      "nverts": 4,
+      "area_sf": 431.39,
+      "perimeter_lf": 86,
+      "label": "CORRIDOR 104",
+      "agent_edits": 1
+    }
+  },
+  {
+    "sequence": 43,
+    "phase": "assisted_correction",
+    "started": "2026-09-11T18:48:08.098Z",
+    "elapsed_ms": 0.5041659999988042,
+    "method": "tools/call",
+    "params": {
+      "name": "edit_shape",
+      "arguments": {
+        "shape_id": "shp-aefb78a6-7b55-493d-84db-15f51ab721b5",
+        "verts": [
+          [
+            243,
+            787
+          ],
+          [
+            1217,
+            787
+          ],
+          [
+            1217,
+            1361
+          ],
+          [
+            243,
+            1361
+          ]
+        ],
+        "label": "OFFICE 101"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "shape_id": "shp-aefb78a6-7b55-493d-84db-15f51ab721b5",
+      "changed": [
+        "verts",
+        "label"
+      ],
+      "measure_role": "floor_area",
+      "nverts": 4,
+      "area_sf": 431.39,
+      "perimeter_lf": 86,
+      "label": "OFFICE 101",
+      "agent_edits": 1
+    }
+  },
+  {
+    "sequence": 44,
+    "phase": "assisted_correction",
+    "started": "2026-09-11T18:48:08.214Z",
+    "elapsed_ms": 0.4800840000389144,
+    "method": "tools/call",
+    "params": {
+      "name": "edit_shape",
+      "arguments": {
+        "shape_id": "shp-33b29b52-9f9e-41eb-b14e-bc3ecad73568",
+        "verts": [
+          [
+            1223,
+            787
+          ],
+          [
+            2197,
+            787
+          ],
+          [
+            2197,
+            1361
+          ],
+          [
+            1223,
+            1361
+          ]
+        ],
+        "label": "OFFICE 102"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "shape_id": "shp-33b29b52-9f9e-41eb-b14e-bc3ecad73568",
+      "changed": [
+        "verts",
+        "label"
+      ],
+      "measure_role": "floor_area",
+      "nverts": 4,
+      "area_sf": 431.39,
+      "perimeter_lf": 86,
+      "label": "OFFICE 102",
+      "agent_edits": 1
+    }
+  },
+  {
+    "sequence": 45,
+    "phase": "assisted_correction",
+    "started": "2026-09-11T18:48:12.341Z",
+    "elapsed_ms": 19.70687499997439,
+    "method": "tools/call",
+    "params": {
+      "name": "view_sheet",
+      "arguments": {
+        "sheet": "sample-plan.pdf",
+        "region": {
+          "x0": 220,
+          "y0": 180,
+          "x1": 1240,
+          "y1": 800
+        },
+        "overlay": true
+      }
+    },
+    "is_error": false,
+    "result": [
+      {
+        "type": "text",
+        "text": "{\"sheet\":\"sample-plan.pdf\",\"page\":1,\"sheet_px\":[2448,1584],\"region\":[220,180,1240,800],\"img_px\":[1400,851],\"zoom\":1.3725,\"overlay\":true,\"shapes_drawn\":4,\"grid_px_per_foot\":0}"
+      }
+    ]
+  },
+  {
+    "sequence": 46,
+    "phase": "assisted_correction",
+    "started": "2026-09-11T18:48:18.217Z",
+    "elapsed_ms": 2.2866659999708645,
+    "method": "tools/call",
+    "params": {
+      "name": "takeoff_summary",
+      "arguments": {}
+    },
+    "is_error": false,
+    "result": {
+      "conditions": [
+        {
+          "id": "cnd-1c86ef35-01c1-47ba-838b-bd04e8d1c2d6",
+          "finish_tag": "F-1",
+          "multiplier": 1,
+          "waste_pct": 0,
+          "shape_count": 4,
+          "floor_sf": 1725.56,
+          "wall_sf": 0,
+          "border_sf": 0,
+          "lf": 0,
+          "ea": 0,
+          "total_sf": 1725.56,
+          "floor_sf_net": 1725.56,
+          "wall_sf_net": 0,
+          "border_sf_net": 0,
+          "lf_net": 0,
+          "total_sf_net": 1725.56,
+          "sy_net": 191.73
+        }
+      ],
+      "totals": {
+        "total_sf": 1725.56,
+        "total_sf_net": 1725.56,
+        "lf": 0,
+        "lf_net": 0,
+        "ea": 0,
+        "sy_net": 191.73
+      },
+      "shared_floor_sf": 0,
+      "scale_unconfirmed": [
+        "sample-plan.pdf"
+      ],
+      "proposals": [
+        {
+          "proposal_id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a",
+          "label": "Four named rooms \u2014 F-1 floor areas",
+          "rationale": "User-specified finish F-1 for BREAK 103, CORRIDOR 104, OFFICE 101, and OFFICE 102; wall-face geometry read from A-101 vectors and source view",
+          "pending": 4,
+          "accepted": 0,
+          "current": true
+        }
+      ]
+    }
+  },
+  {
+    "sequence": 47,
+    "phase": "assisted_correction",
+    "started": "2026-09-11T18:48:24.143Z",
+    "elapsed_ms": 1.5738329999730922,
+    "method": "tools/call",
+    "params": {
+      "name": "export_takeoff",
+      "arguments": {
+        "path": "<OUTPUT>/corrected-takeoff.json"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "schema": "opentakeoff.takeoff_canvas.v1",
+      "project_name": "",
+      "units": "imperial",
+      "sheets": [
+        {
+          "sheet_id": "sample-plan.pdf",
+          "units_per_px": 0.027777777777777776,
+          "scale_source": "detected",
+          "scale_confirmed": false
+        }
+      ],
+      "conditions": [
+        {
+          "id": "cnd-1c86ef35-01c1-47ba-838b-bd04e8d1c2d6",
+          "finish_tag": "F-1",
+          "color": "#c96442",
+          "fill": "#c96442",
+          "hatch": "diag",
+          "multiplier": 1,
+          "waste_pct": 0,
+          "materials": []
+        }
+      ],
+      "shapes": [
+        {
+          "id": "shp-c0dbb6c8-be0e-4842-921b-2f8dbdb4fbc6",
+          "sheet_id": "sample-plan.pdf",
+          "condition_id": "cnd-1c86ef35-01c1-47ba-838b-bd04e8d1c2d6",
+          "measure_role": "floor_area",
+          "verts_norm": [
+            [
+              0.09926470588235294,
+              0.13068181818181818
+            ],
+            [
+              0.497140522875817,
+              0.13068181818181818
+            ],
+            [
+              0.497140522875817,
+              0.4930555555555556
+            ],
+            [
+              0.09926470588235294,
+              0.4930555555555556
+            ]
+          ],
+          "computed": {
+            "area_sf": 431.39,
+            "perimeter_lf": 86
+          },
+          "origin": {
+            "method": "manual",
+            "actor": "agent",
+            "reviewed": false,
+            "proposal_id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a",
+            "assignment": {
+              "source": "asserted"
+            },
+            "agent_edits": 1
+          },
+          "label": "BREAK 103"
+        },
+        {
+          "id": "shp-c4bab33d-5b9b-4092-a676-9cb8f19fb2ce",
+          "sheet_id": "sample-plan.pdf",
+          "condition_id": "cnd-1c86ef35-01c1-47ba-838b-bd04e8d1c2d6",
+          "measure_role": "floor_area",
+          "verts_norm": [
+            [
+              0.49959150326797386,
+              0.13068181818181818
+            ],
+            [
+              0.8974673202614379,
+              0.13068181818181818
+            ],
+            [
+              0.8974673202614379,
+              0.4930555555555556
+            ],
+            [
+              0.49959150326797386,
+              0.4930555555555556
+            ]
+          ],
+          "computed": {
+            "area_sf": 431.39,
+            "perimeter_lf": 86
+          },
+          "origin": {
+            "method": "manual",
+            "actor": "agent",
+            "reviewed": false,
+            "proposal_id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a",
+            "assignment": {
+              "source": "asserted"
+            },
+            "agent_edits": 1
+          },
+          "label": "CORRIDOR 104"
+        },
+        {
+          "id": "shp-aefb78a6-7b55-493d-84db-15f51ab721b5",
+          "sheet_id": "sample-plan.pdf",
+          "condition_id": "cnd-1c86ef35-01c1-47ba-838b-bd04e8d1c2d6",
+          "measure_role": "floor_area",
+          "verts_norm": [
+            [
+              0.09926470588235294,
+              0.49684343434343436
+            ],
+            [
+              0.497140522875817,
+              0.49684343434343436
+            ],
+            [
+              0.497140522875817,
+              0.8592171717171717
+            ],
+            [
+              0.09926470588235294,
+              0.8592171717171717
+            ]
+          ],
+          "computed": {
+            "area_sf": 431.39,
+            "perimeter_lf": 86
+          },
+          "origin": {
+            "method": "manual",
+            "actor": "agent",
+            "reviewed": false,
+            "proposal_id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a",
+            "assignment": {
+              "source": "asserted"
+            },
+            "agent_edits": 1
+          },
+          "label": "OFFICE 101"
+        },
+        {
+          "id": "shp-33b29b52-9f9e-41eb-b14e-bc3ecad73568",
+          "sheet_id": "sample-plan.pdf",
+          "condition_id": "cnd-1c86ef35-01c1-47ba-838b-bd04e8d1c2d6",
+          "measure_role": "floor_area",
+          "verts_norm": [
+            [
+              0.49959150326797386,
+              0.49684343434343436
+            ],
+            [
+              0.8974673202614379,
+              0.49684343434343436
+            ],
+            [
+              0.8974673202614379,
+              0.8592171717171717
+            ],
+            [
+              0.49959150326797386,
+              0.8592171717171717
+            ]
+          ],
+          "computed": {
+            "area_sf": 431.39,
+            "perimeter_lf": 86
+          },
+          "origin": {
+            "method": "manual",
+            "actor": "agent",
+            "reviewed": false,
+            "proposal_id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a",
+            "assignment": {
+              "source": "asserted"
+            },
+            "agent_edits": 1
+          },
+          "label": "OFFICE 102"
+        }
+      ],
+      "markups": [],
+      "proposals": [
+        {
+          "id": "prop-a8a4cb7e-e4f0-46b4-9942-250486607d9a",
+          "label": "Four named rooms \u2014 F-1 floor areas",
+          "rationale": "User-specified finish F-1 for BREAK 103, CORRIDOR 104, OFFICE 101, and OFFICE 102; wall-face geometry read from A-101 vectors and source view",
+          "created_at": "2026-09-11T18:43:06.861Z"
+        }
+      ],
+      "sheet_group": [],
+      "last_group": [],
+      "sheet_tabs": [],
+      "sheet_levels": {}
+    }
+  },
+  {
+    "sequence": 48,
+    "phase": "assisted_correction",
+    "started": "2026-09-11T18:48:24.261Z",
+    "elapsed_ms": 1.6242089999723248,
+    "method": "tools/call",
+    "params": {
+      "name": "export_report",
+      "arguments": {
+        "path": "<OUTPUT>/corrected-report.json",
+        "project_name": "sample-plan A-101 corrected"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "schema": "opentakeoff.report.v1",
+      "project_name": "sample-plan A-101 corrected",
+      "generated_with": "OpenTakeoff",
+      "sheets": [
+        {
+          "sheet_id": "sample-plan.pdf",
+          "sheet": "sample-plan.pdf",
+          "scale_source": "detected",
+          "scale_confirmed": false
+        }
+      ],
+      "conditions": [
+        {
+          "id": "cnd-1c86ef35-01c1-47ba-838b-bd04e8d1c2d6",
+          "finish_tag": "F-1",
+          "color": "#c96442",
+          "fill": "#c96442",
+          "hatch": "diag",
+          "multiplier": 1,
+          "waste_pct": 0,
+          "shape_count": 4,
+          "floor_sf": 1725.56,
+          "wall_sf": 0,
+          "border_sf": 0,
+          "lf": 0,
+          "ea": 0,
+          "total_sf": 1725.56,
+          "floor_sf_net": 1725.56,
+          "wall_sf_net": 0,
+          "border_sf_net": 0,
+          "lf_net": 0,
+          "total_sf_net": 1725.56,
+          "sy_net": 191.73,
+          "materials": [],
+          "columns": []
+        }
+      ],
+      "by_sheet": [
+        {
+          "sheet_id": "sample-plan.pdf",
+          "sheet": "sample-plan.pdf",
+          "rows": [
+            {
+              "id": "cnd-1c86ef35-01c1-47ba-838b-bd04e8d1c2d6",
+              "finish_tag": "F-1",
+              "color": "#c96442",
+              "multiplier": 1,
+              "shape_count": 4,
+              "floor_sf": 1725.56,
+              "wall_sf": 0,
+              "border_sf": 0,
+              "lf": 0,
+              "ea": 0
+            }
+          ]
+        }
+      ],
+      "totals": {
+        "total_sf": 1725.56,
+        "total_sf_net": 1725.56,
+        "lf": 0,
+        "lf_net": 0,
+        "ea": 0,
+        "sy_net": 191.73
+      },
+      "materials": [],
+      "markups": [],
+      "rfis": [],
+      "condition_columns": [],
+      "shape_labels": [],
+      "by_label": [],
+      "units": "imperial (SF/LF \u2014 raw internal values)",
+      "display_units": "imperial",
+      "roll_goods": []
+    }
+  },
+  {
+    "sequence": 49,
+    "phase": "assisted_correction",
+    "started": "2026-09-11T18:48:24.380Z",
+    "elapsed_ms": 13.106499999994412,
+    "method": "tools/call",
+    "params": {
+      "name": "export_marked_pdf",
+      "arguments": {
+        "path": "<OUTPUT>/corrected-marked-set.pdf",
+        "project_name": "sample-plan A-101 corrected"
+      }
+    },
+    "is_error": false,
+    "result": {
+      "path": "<OUTPUT>/corrected-marked-set.pdf",
+      "pages": 2,
+      "sheets_marked": 1,
+      "shapes_drawn": 4,
+      "annotations_drawn": 0,
+      "approvals_drawn": 0,
+      "rfis_printed": 0,
+      "note": "The takeoff burned into the plan sheets, with a legend cover \u2014 hand this to the user to review. To revise in the app, import the export_takeoff payload; agent shapes arrive as pencil proposals there until accepted."
+    }
+  },
+  {
+    "sequence": 50,
+    "phase": "assisted_correction",
+    "started": "2026-09-11T18:48:29.997Z",
+    "elapsed_ms": 19.99900000001071,
+    "method": "tools/call",
+    "params": {
+      "name": "view_sheet",
+      "arguments": {
+        "sheet": "sample-plan.pdf",
+        "region": {
+          "x0": 180,
+          "y0": 140,
+          "x1": 2260,
+          "y1": 1400
+        },
+        "overlay": true
+      }
+    },
+    "is_error": false,
+    "result": [
+      {
+        "type": "text",
+        "text": "{\"sheet\":\"sample-plan.pdf\",\"page\":1,\"sheet_px\":[2448,1584],\"region\":[180,140,2260,1400],\"img_px\":[1400,848],\"zoom\":0.6731,\"overlay\":true,\"shapes_drawn\":4,\"grid_px_per_foot\":0}"
+      }
+    ]
+  }
+]

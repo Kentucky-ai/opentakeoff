@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased — MCP 0.9.83 documentation cleanup
+## Unreleased — public MCP workflow evaluation
+
+- Add a scripted benchmark of the built MCP server in flat and staged modes, with source inspection, scale refusal/recovery, room measurements, labeled exports and fresh-process preservation checks.
+- Score analytic synthetic wall-face geometry separately from quantities; reject misplaced polygons, missing labels and invalid calibration. CI retains the public workflow artifacts for review.
+- Preserve a recorded agent's first-pass failure and assisted correction with takeoff JSON, tool-call evidence and overlays. This does not establish accuracy on real project plans or change takeoff behavior.
+
+## 0.9.83 — MCP documentation cleanup (2026-09-11)
+
+Published to npm and the official MCP Registry, with the desktop bundle and artifact verification in the [release](https://github.com/Kentucky-ai/opentakeoff/releases/tag/mcp-v0.9.83). The release notes disclose the Registry verification failure and manual completion of the remaining assets.
 
 - Clarify the current browser/MCP boundary, stitching controls and handoff limits.
 - Keep the roadmap and translated README lag notices linked to the canonical English/wiki pages.
