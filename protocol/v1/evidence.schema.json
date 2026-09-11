@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opentakeoff.kentucky-ai.com/protocol/v1/evidence.schema.json",
+  "title": "Evidence (draft)",
+  "type": "object",
+  "properties": {
+    "schedule_row_tag": {
+      "type": "string"
+    },
+    "matched_text": {
+      "type": "string"
+    },
+    "seed_norm": {
+      "$ref": "common.schema.json#/$defs/point"
+    }
+  },
+  "additionalProperties": true,
+  "description": "The existing origin.evidence citation object. Unknown source fields are retained, not authenticated. Contribution exports apply a separate privacy whitelist.",
+  "$defs": {
+    "assignment": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "enum": [
+            "schedule",
+            "asserted"
+          ]
+        },
+        "room_tag": {
+          "type": "string"
+        },
+        "surface": {
+          "type": "string"
+        },
+        "schedule_sheet": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "additionalProperties": true
+    },
+    "symbol": {
+      "type": "object",
+      "properties": {
+        "score": {
+          "type": "number"
+        },
+        "rotation": {
+          "type": "number"
+        },
+        "mirrored": {
+          "type": "boolean"
+        },
+        "seed": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string"
+            },
+            "sheet": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            },
+            "seed_instance": {
+              "type": "boolean"
+            },
+            "row": {
+              "type": "object",
+              "properties": {
+                "sheet": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "table": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

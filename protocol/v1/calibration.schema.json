@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opentakeoff.kentucky-ai.com/protocol/v1/calibration.schema.json",
+  "title": "Calibration (draft)",
+  "type": "object",
+  "properties": {
+    "sheet_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "units_per_px": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "scale_source": {
+      "type": "string"
+    },
+    "scale_confirmed": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "sheet_id",
+    "units_per_px"
+  ],
+  "additionalProperties": true,
+  "description": "A persisted calibrated-sheet row. units_per_px is feet per logical image pixel at PDF render scale 2, independent of metric display. Unscaled sheets can be absent. Missing confirmation follows legacy behavior; it is not a fresh human confirmation."
+}

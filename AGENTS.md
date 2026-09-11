@@ -94,6 +94,14 @@ The tests cover the pure math (`web/test/geometry.test.ts`, `web/test/totals.tes
 
 ## Docs to keep in sync when you change behavior
 
+The draft Takeoff Protocol lives in [`protocol/`](protocol/README.md). When
+changing persisted fields, consult its [inventory](protocol/INVENTORY.md) and
+[compatibility report](protocol/ACADEMY_COMPATIBILITY.md). Run
+`npm run check --prefix protocol` after installing web, MCP, and protocol
+dependencies. Refresh schema references with
+`node protocol/scripts/check-docs.mjs --write`. The draft does not authorize
+changing writer formats or adopting a migration.
+
 1. `README.md` (Features + "What's in the box")
 2. `docs/USER_GUIDE.md` (shortcuts + the relevant section)
 3. `CHANGELOG.md`

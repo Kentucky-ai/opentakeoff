@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opentakeoff.kentucky-ai.com/protocol/v1/common.schema.json",
+  "title": "Shared value types (draft)",
+  "$defs": {
+    "point": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2,
+      "description": "Two finite coordinates. Stored geometry is normalized to its sheet or stitch; values outside 0..1 are retained, not clamped. Tool input image pixels are a different frame."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "computed": {
+      "type": "object",
+      "properties": {
+        "area_sf": {
+          "type": "number"
+        },
+        "perimeter_lf": {
+          "type": "number"
+        },
+        "count": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": true,
+      "description": "Stored quantity cache: square feet, linear feet, and each. Metric is display conversion. Validation never recomputes values."
+    },
+    "parentSnapshot": {
+      "type": "object",
+      "properties": {
+        "verts_norm": {
+          "type": "array",
+          "items": {
+            "$ref": "common.schema.json#/$defs/point"
+          }
+        },
+        "verts_norm_holes": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "common.schema.json#/$defs/point"
+            }
+          }
+        },
+        "computed": {
+          "$ref": "#/$defs/computed"
+        }
+      },
+      "required": [
+        "verts_norm"
+      ],
+      "additionalProperties": true
+    }
+  }
+}
