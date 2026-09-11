@@ -41,6 +41,47 @@ branch → local checks → PR → CI checks → squash-merge
   production deployment follows the protected-branch review and required CI
   checks.
 
+## MCP releases and recovery
+
+MCP publication is separate from the browser deploy. Pushing an `mcp-v*` tag
+runs [publish-mcp.yml](../.github/workflows/publish-mcp.yml): npm publication,
+its availability wait, MCP Registry publication/verification, GitHub release,
+and desktop bundle. `workflow_dispatch` only exercises Registry authentication.
+
+The [Registry release helper](../scripts/publish-mcp-registry.mjs) uses the
+[official exact-version endpoint](https://github.com/modelcontextprotocol/registry/blob/main/docs/reference/api/openapi.yaml),
+so an older release can be verified even after a newer release becomes latest.
+An existing record skips publication only when its complete `server` manifest
+matches the tagged `server.json`; Registry response metadata is excluded from
+that comparison. A different package, transport, argument, or other manifest
+field fails the release instead of accepting a matching version string alone.
+
+If the version is absent, the helper publishes once and waits for visibility.
+A recognized duplicate-version race also requires a matching record before
+continuing. Transient reads retry within a 15-minute total deadline, at most
+60 attempts and a 10-second per-request timeout, with 15 seconds between
+attempts. Other publishing failures and conflicting metadata stop immediately.
+
+Read-only verification from the repository root (Node 24):
+
+```sh
+node scripts/publish-mcp-registry.mjs mcp/server.json --verify-only
+node --test scripts/publish-mcp-registry.test.mjs
+```
+
+`--verify-only` never runs the publisher. The tests simulate publication and
+network failures; they do not create real releases. Environment overrides use
+`REGISTRY_AVAILABILITY_DEADLINE_MS`, `REGISTRY_AVAILABILITY_INTERVAL_MS`,
+`REGISTRY_AVAILABILITY_MAX_ATTEMPTS`, and
+`REGISTRY_AVAILABILITY_REQUEST_TIMEOUT_MS`; each must be a positive integer.
+
+MCP 0.9.83 exposed this recovery gap: publication succeeded, the immediate
+Registry read returned stale data, and rerunning failed on duplicate publication.
+Its [release notes](https://github.com/Kentucky-ai/opentakeoff/releases/tag/mcp-v0.9.83)
+record the manual completion. Keep existing release tags fixed. Changes to this
+helper apply to subsequent tags; rerunning an old tag uses that tag's old
+workflow and does not acquire the fix.
+
 ## Local/CI parity
 
 Use the repository's pinned runtime and lockfiles to reduce environment drift:

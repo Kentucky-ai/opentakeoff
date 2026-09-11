@@ -94,26 +94,14 @@ jobs:
       - name: Authenticate to MCP Registry (GitHub OIDC)
         run: ./mcp-publisher login github-oidc
 
-      - name: Publish to MCP Registry
+      - name: Publish or resume the exact MCP Registry version
         if: github.ref_type == 'tag'
-        run: ./mcp-publisher publish
-
-      - name: Verify the registry lists this version
-        if: github.ref_type == 'tag'
-        run: |
-          VERSION=$(jq -r .version package.json)
-          # version=latest, not the bare list: the list endpoint pages at 30 entries,
-          # so a fresh release lands past the cursor and a bare search misses it
-          # (bit us on mcp-v0.9.41 — publish succeeded, verify cried wolf).
-          curl -fsS "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.Kentucky-ai/opentakeoff&version=latest" -o /tmp/registry.json
-          if ! jq -e --arg v "$VERSION" \
-            '[.servers[]? | (.server // .) | select(.name == "io.github.Kentucky-ai/opentakeoff" and .version == $v)] | length > 0' \
-            /tmp/registry.json > /dev/null; then
-            echo "::error::registry does not list io.github.Kentucky-ai/opentakeoff@${VERSION}"
-            cat /tmp/registry.json
-            exit 1
-          fi
-          echo "Registry lists io.github.Kentucky-ai/opentakeoff@${VERSION}"
+        env:
+          REGISTRY_AVAILABILITY_DEADLINE_MS: 900000
+          REGISTRY_AVAILABILITY_INTERVAL_MS: 15000
+          REGISTRY_AVAILABILITY_MAX_ATTEMPTS: 60
+          REGISTRY_AVAILABILITY_REQUEST_TIMEOUT_MS: 10000
+        run: node ../scripts/publish-mcp-registry.mjs server.json
 
       - name: Create the GitHub release
         if: github.ref_type == 'tag'

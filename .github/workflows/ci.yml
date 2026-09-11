@@ -227,6 +227,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
+      - name: Test MCP Registry publication recovery
+        run: node --test scripts/publish-mcp-registry.test.mjs
       - name: Test npm availability wait
         run: node scripts/wait-for-npm-availability.test.mjs
       - run: node scripts/check-doc-links.mjs
