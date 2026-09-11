@@ -64,3 +64,6 @@ The standalone scorer assumes the candidate belongs to the pinned source PDF;
 legacy editable exports do not contain its byte hash. Only the runner verifies
 the source bytes. The reference profile requires convex answer polygons and
 simple, unholed candidate rings; it is not a general construction-plan scorer.
+
+Root Git attributes mark PDFs as binary so Windows checkout preserves their
+bytes, including ASCII-only PDFs whose line endings affect offsets and hashes.
