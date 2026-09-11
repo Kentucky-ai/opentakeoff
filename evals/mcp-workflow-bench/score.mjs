@@ -111,6 +111,9 @@ export function polygonIntersectionArea(a, b) {
   if (!isConvex(a)) {
     return triangulate(a).reduce((sum, triangle) => sum + polygonIntersectionArea(triangle, b), 0);
   }
+  if (!isConvex(b)) {
+    return triangulate(b).reduce((sum, triangle) => sum + polygonIntersectionArea(a, triangle), 0);
+  }
   let result = a.slice();
   const orientation = signedArea(b) >= 0 ? 1 : -1;
   for (let i = 0; i < b.length && result.length; i += 1) {
@@ -164,8 +167,7 @@ function validRing(ring) {
     && !isSelfIntersecting(ring);
 }
 
-function metadataFailure(candidate, reference) {
-  const expectedSheet = reference.source.path.split("/").pop();
+function metadataFailure(candidate, reference, expectedSheet = reference.source.path.split("/").pop()) {
   const sheets = candidate?.sheets;
   if (!Array.isArray(sheets) || sheets.length !== 1) return "candidate must contain exactly one calibration sheet";
   const sheet = sheets[0];
@@ -178,7 +180,101 @@ function metadataFailure(candidate, reference) {
   return null;
 }
 
+// estimator-trace: the MCP server names page N (N > 1) of a multi-page PDF
+// "<basename>#<page>"; page 1 (or an absent page) keeps the bare basename.
+function expectedSheetId(reference) {
+  const basename = reference.source.path.split("/").pop();
+  const page = reference.source.page;
+  if (page === undefined || page === null || page === 1) return basename;
+  return `${basename}#${page}`;
+}
+
+// estimator-trace: a shape's finish is the finish_tag of the condition it
+// references by id in the candidate's top-level conditions[] array.
+function conditionFinish(shape, candidate) {
+  const conditions = Array.isArray(candidate?.conditions) ? candidate.conditions : [];
+  const condition = conditions.find((entry) => entry?.id === shape?.condition_id);
+  return condition && condition.finish_tag !== undefined ? condition.finish_tag : null;
+}
+
+function roomKey(label, finish) {
+  return JSON.stringify([label, finish ?? null]);
+}
+
+// estimator-trace profile: identical gates to the legacy profile (area
+// percent, geometry-vs-reported, IoU, boundary, ring validity, scale
+// exactness), but the reference sheet id accounts for source.page and the
+// matching key is (label, finish) instead of label alone, so two reference
+// rooms may share a label with different finishes.
+function scoreEstimatorTrace(candidate, reference) {
+  const expectedSheet = expectedSheetId(reference);
+  const metadataError = metadataFailure(candidate, reference, expectedSheet);
+  const width = reference.source.pdf_points.width * reference.source.render_scale;
+  const height = reference.source.pdf_points.height * reference.source.render_scale;
+  const scale = reference.scale.feet_per_image_px;
+  const shapes = Array.isArray(candidate?.shapes) ? candidate.shapes : [];
+  const expectedKeys = new Set(reference.rooms.map((room) => roomKey(room.label, room.finish)));
+  const usable = shapes.filter((shape) => shape.measure_role === "floor_area");
+  const byKey = new Map();
+  for (const shape of usable) {
+    const key = roomKey(shape.label, conditionFinish(shape, candidate));
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key).push(shape);
+  }
+  const rows = reference.rooms.map((room) => {
+    const key = roomKey(room.label, room.finish);
+    const matches = byKey.get(key) ?? [];
+    if (matches.length === 0) return { label: room.label, finish: room.finish, pass: false, reason: "missing candidate label" };
+    if (matches.length !== 1) return { label: room.label, finish: room.finish, pass: false, reason: `duplicate candidate labels (${matches.length})` };
+    const shape = matches[0];
+    if (shape.verts_norm_holes) return { label: room.label, finish: room.finish, pass: false, reason: "verts_norm_holes are unsupported" };
+    if (!Number.isFinite(shape.computed?.area_sf)) return { label: room.label, finish: room.finish, pass: false, reason: "missing or invalid computed.area_sf" };
+    if (shape.sheet_id !== expectedSheet) return { label: room.label, finish: room.finish, pass: false, reason: "wrong target sheet" };
+    const actual = normalizeVertices(shape, width, height);
+    if (!validRing(actual)) return { label: room.label, finish: room.finish, pass: false, reason: "invalid, repeated, or self-intersecting ring" };
+    const expected = room.verts_px;
+    const expectedAreaSf = ringArea(expected) * scale ** 2;
+    const geometryAreaSf = ringArea(actual) * scale ** 2;
+    const reportedAreaSf = shape.computed.area_sf;
+    const overlap = polygonIntersectionArea(actual, expected);
+    const union = ringArea(expected) + ringArea(actual) - overlap;
+    const iou = union > EPS ? overlap / union : 0;
+    const areaPct = Math.abs(reportedAreaSf - expectedAreaSf) / expectedAreaSf * 100;
+    const geometryAreaPct = Math.abs(geometryAreaSf - reportedAreaSf) / Math.max(reportedAreaSf, EPS) * 100;
+    // The server reports area_sf rounded to 0.01 SF. On a closet of a few SF that rounding alone
+    // exceeds 0.01 %, so the geometry-vs-reported gate also accepts half a rounding quantum.
+    const geometryAgrees = geometryAreaPct <= 0.01 || Math.abs(geometryAreaSf - reportedAreaSf) <= 0.005 + EPS;
+    const boundaryPx = boundaryVertexEdgeDistance(actual, expected);
+    const pass = areaPct <= reference.tolerances.area_percent
+      && geometryAgrees
+      && iou >= reference.tolerances.overlap_iou
+      && boundaryPx <= reference.tolerances.boundary_max_px;
+    return {
+      label: room.label,
+      finish: room.finish,
+      area_sf: { expected: expectedAreaSf, actual: reportedAreaSf, percent_error: areaPct },
+      overlap_iou: iou,
+      boundary_vertex_edge_px: boundaryPx,
+      geometry_area_sf: geometryAreaSf,
+      pass,
+    };
+  });
+  const extras = shapes.filter((shape) => shape.measure_role !== "floor_area"
+    || !expectedKeys.has(roomKey(shape.label, conditionFinish(shape, candidate))));
+  for (const shape of extras) {
+    rows.push({ label: shape.label ?? null, finish: conditionFinish(shape, candidate), pass: false, reason: "extra or non-floor-area shape" });
+  }
+  return {
+    reference_id: reference.reference_id,
+    profile: "estimator-trace",
+    metadata_error: metadataError,
+    rooms: rows,
+    pass: !metadataError && rows.length === reference.rooms.length && rows.every((row) => row.pass),
+  };
+}
+
 export function scoreCandidate(candidate, reference) {
+  if (reference.profile === "estimator-trace") return scoreEstimatorTrace(candidate, reference);
   const metadataError = metadataFailure(candidate, reference);
   const width = reference.source.pdf_points.width * reference.source.render_scale;
   const height = reference.source.pdf_points.height * reference.source.render_scale;

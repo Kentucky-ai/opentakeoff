@@ -1,0 +1,390 @@
+{
+ "reference_id": "porterville-a1101-estimator-trace-v1",
+ "profile": "estimator-trace",
+ "source": {
+  "path": "evals/mcp-workflow-bench/plan-set/porterville/porterville-adu-a1-101.pdf",
+  "sha256": "4f35c62a9adcf8d2eb42e632a4d1ae9b1d314bb426297e4ac13ae0a32897f6b7",
+  "page": 1,
+  "page_1based_in_source_pdf": 14,
+  "sheet": "A1-101 FLOOR PLANS & FINISH PLANS",
+  "pdf_points": {
+   "width": 2592,
+   "height": 1728
+  },
+  "page_rotation": 0,
+  "render_scale": 2,
+  "kind": "City of Porterville pre-approved ADU prototype sheet (public domain per sheet note); reference traced from PDF vector linework by an agent; not yet human-reviewed",
+  "sha256_note": "sha256 is of the extracted single-page file at source.path"
+ },
+ "scale": {
+  "feet_per_image_px": 0.027777777777777776,
+  "description": "1/4 inch = 1 foot; 36 rendered image px per foot (tool frame = PDF points x 2, i.e. render_scale 2)",
+  "verification": "See notes.md 'Scale verification' -- 6 printed dimension-string segments (3 in the bottom horizontal chain, 3 in the right vertical chain) checked against tick-to-tick pixel distances; all matched to within 0.3 px of the 36 px/ft prediction, several exact to 0.1 px."
+ },
+ "wall_semantics": "interior-face",
+ "region_tool_px": [
+  800,
+  1880,
+  1960,
+  2760
+ ],
+ "revision_note": "REV 2 (this file): applied 3 coordinator corrections -- (1) OPT. BEDROOM partition door now notched to centerline on BOTH the LIVING and OPT. BEDROOM rings; (2) CL.'s bifold-door notch mirrored onto OPT. BEDROOM's north edge (removes the ~0.9 SF unclaimed sliver from REV 1); (3) the small wall end-cap poche at PANTRY's NW corner (previously simplified away) is now traced explicitly on the LIVING ring so no floor-adjacent strip is left unclaimed. W/D left unchanged (open alcove, no door -- see its 'notes' field).",
+ "rooms": [
+  {
+   "label": "LIVING",
+   "finish": "LVP",
+   "verts_px": [
+    [
+     884.9,
+     1959.8
+    ],
+    [
+     1397.0,
+     1959.8
+    ],
+    [
+     1397.0,
+     2089.0
+    ],
+    [
+     1402.3,
+     2089.0
+    ],
+    [
+     1402.3,
+     2184.7
+    ],
+    [
+     1397.0,
+     2184.7
+    ],
+    [
+     1397.0,
+     2208.7
+    ],
+    [
+     1395.1,
+     2198.4
+    ],
+    [
+     1318.8,
+     2198.4
+    ],
+    [
+     1318.8,
+     2208.7
+    ],
+    [
+     1329.1,
+     2208.7
+    ],
+    [
+     1329.1,
+     2289.8
+    ],
+    [
+     1329.1,
+     2300.2
+    ],
+    [
+     1358.2,
+     2300.2
+    ],
+    [
+     1363.35,
+     2300.2
+    ],
+    [
+     1363.35,
+     2411.5
+    ],
+    [
+     1358.2,
+     2411.5
+    ],
+    [
+     1358.2,
+     2646.5
+    ],
+    [
+     884.9,
+     2646.5
+    ]
+   ],
+   "printed_sf": null,
+   "finish_source": "A1-101 FINISH SCHEDULE: KITCHEN row = LVP, LIVING row = LVP -- identical, so per the task's merge rule this single ring covers both KITCHEN and LIVING (KITCHEN included, not split out)",
+   "vertex_sources": [
+    "(884.9,1959.8): west ext wall inner face (V x=884.9 long run) x north ext wall inner face (H y=1959.8, x0=1064.2..x1=1395.1 extended to corner)",
+    "(1397.0,1959.8): north wall inner face (H y=1959.8) x kitchen-side face of kitchen/bath dividing wall (V x=1397.0,y0=1961.8,y1=2089.0,w=1.44)",
+    "(1397.0,2089.0): south endpoint of the kitchen/bath wall segment -- wall ends, opening begins",
+    "(1402.3,2089.0): rule-3 notch into the opening, depth = half wall thickness (wall faces x=1397.0/1407.6, centerline (1397.0+1407.6)/2=1402.3)",
+    "(1402.3,2184.7): centerline run down to the W/D header line (H y=2184.7) level, mirrored on BATH's ring",
+    "(1397.0,2184.7): notch back out to kitchen-side face",
+    "(1397.0,2208.7): down to the Pantry/W-D shared-wall top corner (V x=1397.0,y0=2208.7,y1=2289.8)",
+    "(1395.1,2198.4): Pantry's north wall OUTER (kitchen-side) face, east endpoint (H y=2198.4,x0=1318.8,x1=1395.1,w=1.44)",
+    "(1318.8,2198.4): west endpoint of that same outer-face line -- the TRUE outer corner of the wall's end-cap (previously simplified away in REV 1; now traced explicitly per correction)",
+    "(1318.8,2208.7): down the end-cap's exposed face (10.3 px, matching wall thickness) to the inner-face level -- cites the wall corner geometry read at zoom-10 (endcap verified against points ~(1318.8,2198.4)/(1329.1,2208.7)/(1320.5,2212.6) in the source linework; the simple square corner used here is within the 2.5 px boundary tolerance of the actual (slightly chamfered) drawn corner)",
+    "(1329.1,2208.7): east to the west end of Pantry's inner north-wall face (H y=2208.7,x0=1329.1,x1=1395.1,w=1.44) -- this point is also PANTRY ring's own NW-ish corner",
+    "(1329.1,2289.8): down Pantry's door-opening plane (V x=1329.1,y0=2208.7,y1=2289.8, single hairline -- see 'open questions' #3) -- flush, shared with PANTRY ring's own west edge; no second face, so both rings meet on this one line per rule 9 guidance",
+    "(1329.1,2300.2): south to the utility-row outer/living-side reference line (H y=2300.2, continuous hairline x0=1316.9..x1=1407.6 etc.)",
+    "(1358.2,2300.2): east along that line to the OPT. BEDROOM partition wall's living-side face (V x=1358.2,y0=2300.2..2411.5(hairline)/2411.5..2644.6(solid,w=1.44, gray/optional stroke))",
+    "(1363.35,2300.2): RULE-3 NOTCH #1 (correction 1) -- top jamb of the partition door opening, notch in from face x=1358.2 to centerline x=1363.35 (partition faces x=1358.2 living-side / x=1368.5 bedroom-side, thickness 10.3 px, centerline=(1358.2+1368.5)/2=1363.35). Top jamb y=2300.2 = utility-row bottom (where the partition's solid wall has not yet started -- matches the hairline's start)",
+    "(1363.35,2411.5): down the centerline to the bottom jamb, y=2411.5 = top of the partition's solid (w=1.44) drawn wall -- mirrored exactly on OPT. BEDROOM's ring at the same (x,y)",
+    "(1358.2,2411.5): notch back out to the living-side face, closing notch #1",
+    "(1358.2,2646.5): down the partition's living-side face to the south wall",
+    "(884.9,2646.5): west along south ext wall inner face (H y=2646.5, full-span hairline x0=884.9..x1=1711.4) to the west wall, closing back to start"
+   ],
+   "notes": "Combined KITCHEN+LIVING ring per the task's merge rule (identical LVP finish). Wraps around three carve-outs (BATH, the PANTRY/W-D/CL. utility row, and OPT. BEDROOM) via two rule-3 notches (kitchen/bath doorway, OPT. BEDROOM partition door) plus a flush single-line meeting with PANTRY's own opening. REV 2: the partition-door notch (correction 1) and the Pantry end-cap (correction 3) are now both traced explicitly; no unclaimed floor strip remains along this boundary. The W-D/CL. area's own south-wall notch (CL.'s bifold door) is on the OPT. BEDROOM side of the partition, not on this ring -- LIVING does not border CL. directly."
+  },
+  {
+   "label": "BATH",
+   "finish": "CT",
+   "verts_px": [
+    [
+     1407.6,
+     1959.8
+    ],
+    [
+     1713.4,
+     1959.8
+    ],
+    [
+     1713.4,
+     2198.4
+    ],
+    [
+     1509.8,
+     2198.4
+    ],
+    [
+     1497.6,
+     2198.4
+    ],
+    [
+     1497.6,
+     2184.7
+    ],
+    [
+     1407.6,
+     2184.7
+    ],
+    [
+     1402.3,
+     2184.7
+    ],
+    [
+     1402.3,
+     2089.0
+    ],
+    [
+     1407.6,
+     2089.0
+    ]
+   ],
+   "printed_sf": null,
+   "finish_source": "A1-101 FINISH SCHEDULE: BATH row = CT (\"AT CERAMIC TILE IN TUB/SHOWER AREAS, PROVIDE BACKER BOARD PER CRC TABLE R702.4.2\")",
+   "vertex_sources": [
+    "(1407.6,1959.8): north wall inner face x bath-side face of kitchen/bath wall (V x=1407.6,y0=1961.8,y1=2089.0,w=1.44)",
+    "(1713.4,1959.8): north wall inner face (H y=1959.8/1961.8, spans through a window per rule 4) x east ext wall inner face (V x=1713.4)",
+    "(1713.4,2198.4): down east wall to CL.'s north-wall level (H y=2198.4,x0=1509.8,x1=1713.4,w=1.44)",
+    "(1509.8,2198.4): west end of CL. north-wall segment, at the CL./W-D dividing-wall corner",
+    "(1497.6,2198.4): east face of the W-D/CL dividing wall (V x=1497.6,y0=2198.4,y1=2283.8,w=1.44) top corner",
+    "(1497.6,2184.7): step up to the W/D header level (H y=2184.7,x0=1409.5,x1=1505.3,w=1.44)",
+    "(1407.6,2184.7): west along the header line to the bath-side face of the kitchen/bath wall",
+    "(1402.3,2184.7): rule-3 notch into the doorway, to centerline (mirrors LIVING ring's matching vertex, unchanged by this revision)",
+    "(1402.3,2089.0): centerline run up to the jamb (mirrors LIVING ring's matching vertex)",
+    "(1407.6,2089.0): notch back out to bath-side face, closing to start"
+   ],
+   "notes": "Unchanged by this revision. West boundary is a cased opening (no door leaf drawn); Bath is entered directly off the open Kitchen/hallway floor. The small step at (1497.6,2184.7)->(1497.6,2198.4) follows a ~14 px asymmetry in the W/D header vs. its own right-hand jamb, traced literally."
+  },
+  {
+   "label": "PANTRY",
+   "finish": "LVP",
+   "printed_sf": null,
+   "finish_source": "Not listed in the A1-101 FINISH SCHEDULE (no PANTRY row). Assumed LVP to match the adjoining open KITCHEN/LIVING floor it opens onto -- see 'Open questions'.",
+   "verts_px": [
+    [
+     1397.0,
+     2208.7
+    ],
+    [
+     1329.1,
+     2208.7
+    ],
+    [
+     1329.1,
+     2289.8
+    ],
+    [
+     1397.0,
+     2289.8
+    ]
+   ],
+   "vertex_sources": [
+    "(1397.0,2208.7): Pantry-side (east) face of the Pantry/W-D wall (V x=1397.0,y0=2208.7,y1=2289.8,w=1.44) x Pantry's own inner north-wall face (H y=2208.7,x0=1329.1,x1=1395.1,w=1.44, snapped to corner)",
+    "(1329.1,2208.7): west end of that north-face line -- the door-opening plane (single drawn hairline, no second face -- see 'open questions' #3). Also LIVING ring's corresponding vertex; both rings share this exact point/line, no gap",
+    "(1329.1,2289.8): south along the opening plane (V x=1329.1,y0=2208.7,y1=2289.8) to Pantry's south wall -- again shared flush with LIVING",
+    "(1397.0,2289.8): east along Pantry's inner south-wall face (H y=2289.8,x0=1329.1,x1=1395.1,w=1.44, snapped to corner) back to start"
+   ],
+   "notes": "Unchanged by this revision (already flush with LIVING at x=1329.1 -- confirmed there is a SINGLE drawn line at the opening, not two faces, so no centerline offset applies here per rule 9's guidance; verified at zoom-10, see 'open questions' #3). Door swings fully open (leaf + arc visible, hinged near the SW corner) and does not narrow the opening. The wall end-cap poche at the NW corner (x 1318.8-1329.1), which sits outside this ring's own footprint, is now traced on the LIVING ring instead of being omitted (correction 3)."
+  },
+  {
+   "label": "W/D",
+   "finish": "LVP",
+   "printed_sf": null,
+   "finish_source": "Not listed in the A1-101 FINISH SCHEDULE (no W/D row). Assumed LVP, same reasoning as PANTRY -- see 'Open questions'.",
+   "verts_px": [
+    [
+     1407.6,
+     2184.7
+    ],
+    [
+     1497.6,
+     2184.7
+    ],
+    [
+     1497.6,
+     2283.8
+    ],
+    [
+     1407.6,
+     2283.8
+    ]
+   ],
+   "vertex_sources": [
+    "(1407.6,2184.7): W/D-side (east) face of the Pantry/W-D wall (V x=1407.6,y0=2184.7,y1=2283.8,w=1.44) x the header line above the opening (H y=2184.7,x0=1409.5,x1=1505.3,w=1.44)",
+    "(1497.6,2184.7): east end of the header line, at the W-D/CL dividing-wall face (V x=1497.6,y0=2198.4,y1=2283.8,w=1.44, snapped)",
+    "(1497.6,2283.8): south along that dividing-wall face to the real (16.4 px, full 3.5in-stud-assembly) south wall (H y=2283.8,x0=1409.5,x1=1495.7,w=1.44)",
+    "(1407.6,2283.8): west along that south wall back to start"
+   ],
+   "notes": "LEFT AS TRACED (no change requested/needed): this is a recessed appliance niche for the stacked washer/dryer (keynote A06), OPEN on its NORTH side into the Kitchen -- confirmed by close zoomed inspection: no wall, no door leaf, no swing arc drawn on that side, only a thin (4 px) double-stroked header line at y=2180.6/2184.7 spanning the niche's full width, used here as the closure line (not a rule-3 door notch, since there is no door and no wall to cross). OPEN QUESTION, restated explicitly per the coordinator: W/D has NO DOOR -- it is an open alcove off the Kitchen. An estimator could reasonably decide its floor is simply part of the continuous open KITCHEN/LIVING LVP field with no separate ring at all (same logic as the KITCHEN/LIVING merge, since finishes would match); it is kept as its own ring here only because the task's room list names it explicitly. Impact of the alternative: 6.88 SF would move from a separate `W/D` ring into `LIVING`; total conditioned SF is unchanged."
+  },
+  {
+   "label": "CL.",
+   "finish": "CPT",
+   "verts_px": [
+    [
+     1509.8,
+     2208.7
+    ],
+    [
+     1713.4,
+     2208.7
+    ],
+    [
+     1713.4,
+     2287.9
+    ],
+    [
+     1681.4,
+     2287.9
+    ],
+    [
+     1681.4,
+     2292.0
+    ],
+    [
+     1537.7,
+     2292.0
+    ],
+    [
+     1537.7,
+     2287.9
+    ],
+    [
+     1509.8,
+     2287.9
+    ]
+   ],
+   "printed_sf": null,
+   "finish_source": "A1-101 FINISH SCHEDULE: CL. row = CPT (note: \"LVP WHEN BEDROOM NOT PROVIDED\" -- base case here is bedroom provided, so CPT stands; see 'Open questions')",
+   "vertex_sources": [
+    "(1509.8,2208.7): CL-side (east) face of the W-D/CL dividing wall x CL's inner north-wall face (H y=2208.7,x0=1509.8,x1=1711.4,w=1.44)",
+    "(1713.4,2208.7): east end of that north-wall face, at the east ext wall",
+    "(1713.4,2287.9): down the east ext wall inner face to CL's south-wall inner face",
+    "(1681.4,2287.9): west to the right jamb of the 4'-0\" double-sliding closet door (door #3, type B, schedule width 4'-0\"=144 px; measured leaf span 1537.7-1681.4=143.7 px, matches)",
+    "(1681.4,2292.0): rule-3 notch down to a real drawn line at the door's track/leaf level (H y=2292.0,x0=1606.6,x1=1681.4 and x0=1537.7,x1=1612.6, w=1.44 -- the two bifold leaf lines, combined span = full door width). Treated as the wall centerline for this notch per rule 9 (a real cited line, not an estimated half-thickness)",
+    "(1537.7,2292.0): across at that line to the left jamb",
+    "(1537.7,2287.9): notch back up to the inner face",
+    "(1509.8,2287.9): west back to the W-D/CL wall corner, closing to start"
+   ],
+   "notes": "Unchanged by this revision (kept as REV 1). Correction 2 applies to the OPT. BEDROOM ring instead: its north edge now mirrors this exact notch (same jamb x-coordinates 1537.7/1681.4, same centerline y=2292.0), so the two rings meet with NO gap and NO overlap over the door's width -- the ~0.9 SF sliver that was previously unclaimed (between CL.'s 2292.0 and OPT. BEDROOM's old flat 2300.2) is now fully assigned: CL. keeps 2287.9-2292.0, OPT. BEDROOM starts at 2292.0."
+  },
+  {
+   "label": "OPT. BEDROOM",
+   "finish": "CPT",
+   "verts_px": [
+    [
+     1368.5,
+     2411.5
+    ],
+    [
+     1363.35,
+     2411.5
+    ],
+    [
+     1363.35,
+     2300.2
+    ],
+    [
+     1368.5,
+     2300.2
+    ],
+    [
+     1537.7,
+     2300.2
+    ],
+    [
+     1537.7,
+     2292.0
+    ],
+    [
+     1681.4,
+     2292.0
+    ],
+    [
+     1681.4,
+     2300.2
+    ],
+    [
+     1713.4,
+     2300.2
+    ],
+    [
+     1713.4,
+     2646.5
+    ],
+    [
+     1368.5,
+     2646.5
+    ]
+   ],
+   "printed_sf": null,
+   "finish_source": "A1-101 FINISH SCHEDULE: OPT. BEDROOM row = CPT (note: \"LVP WHEN BEDROOM NOT PROVIDED\" -- base case (wall/door built) traced here; see 'Open questions')",
+   "vertex_sources": [
+    "(1368.5,2411.5): bedroom-side (east) face of the optional partition wall (V x=1368.5,y0=2411.5,y1=2644.6,w=1.44, gray/optional stroke) -- bottom jamb of the door notch",
+    "(1363.35,2411.5): RULE-3 NOTCH #1 (correction 1) -- notch in to centerline x=1363.35 (partition faces 1358.2/1368.5, thickness 10.3 px). Mirrors LIVING ring's vertex at the exact same (x,y) -- the two rings meet here with no gap/overlap",
+    "(1363.35,2300.2): up the centerline to the top jamb, y=2300.2 = utility-row bottom (matches the hairline's start, same as LIVING's mirrored vertex)",
+    "(1368.5,2300.2): notch back out to the bedroom-side face, closing notch #1 -- this is the NW corner",
+    "(1537.7,2300.2): east along the utility-row outer/bedroom-side reference line to the left jamb of CL.'s bifold door",
+    "(1537.7,2292.0): RULE-3 NOTCH #2 (correction 2, mirrors CL.'s own notch) -- up into the wall to the same real drawn centerline line CL. uses (H y=2292.0, the bifold leaf/track lines)",
+    "(1681.4,2292.0): across at that centerline to the right jamb",
+    "(1681.4,2300.2): notch back down to the outer/bedroom-side face",
+    "(1713.4,2300.2): continue east to the east ext wall",
+    "(1713.4,2646.5): down the east wall to the south ext wall inner face",
+    "(1368.5,2646.5): west along the south wall back to the partition wall, closing to start"
+   ],
+   "notes": "REV 2: two rule-3 notches added. (1) West edge: the partition door (leaf ~96 px = 2'-8\", drawn OPEN lying horizontal at y=2315.5-2319.6 spanning x=1370.4-1466.4, hinged at its north/top end near (1370,2317) and swinging down to close against the solid wall's top at y=2411.5) is now notched to the partition's centerline (x=1363.35) across the full jamb-to-jamb span (y=2300.2 to 2411.5), matching LIVING's mirrored notch exactly -- see notes.md for why the full utility-row-to-solid-wall gap (not just the ~96 px leaf) was used as the notch span. (2) North edge: CL.'s bifold-door notch is mirrored here exactly (same x jambs, same y=2292.0 centerline), closing the ~0.9 SF sliver that was unclaimed in REV 1. The south wall's sliding-glass door opening (~144 px, x 1505.0-1648.8) remains untouched -- exterior opening, rule 4 applies, ring runs straight through."
+  }
+ ],
+ "tolerances": {
+  "area_percent": 0.75,
+  "overlap_iou": 0.985,
+  "boundary_max_px": 2.5
+ },
+ "review": {
+  "prepared_by": "agent (Claude Sonnet) from PDF vectors via PyMuPDF",
+  "human_reviewed": false,
+  "reviewer": null
+ }
+}

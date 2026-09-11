@@ -47,3 +47,12 @@ boundaries separately from quantities, and reopens the export in a fresh process
 Its analytic answer key tests conformance; it is not evidence of accuracy across
 real plans. The [recorded agent pilot](../evals/mcp-workflow-bench/evidence/README.md)
 preserves a first-pass failure and an explicitly assisted correction.
+
+The same harness also carries an estimator-trace [plan set](../evals/mcp-workflow-bench/plan-set/README.md):
+three public real floor plans (a VA healthcare finish plan, a VA clinic office
+floor plan and a city public-domain accessory-dwelling plan) with reference rings
+traced to the interior wall face, door jambs notched to the wall centerline, one
+ring per room and floor finish. The rings were prepared from the PDF vector
+linework by an agent and are a proposed reference until a human has reviewed the
+overlays; the scripted known-answer runs prove the tools carry those rings, not
+that any agent can draw them.
