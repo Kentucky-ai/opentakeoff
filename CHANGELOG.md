@@ -9,6 +9,11 @@
 ### Documentation
 - Added a source-to-overlay geometry workflow covering vector candidates, detail scales, physical base runs, supporting materials, verification, and human handoff.
 
+## Unreleased — Preserve agent originals during human correction
+
+### Fixed
+- Human corrections now freeze the original outer vertices of agent-authored shapes even when the drawing method is `manual` or absent. Later corrections keep the same original; undo/redo restores geometry and provenance together. Human manual traces, review/approval gates, and agent self-edit tallies retain their existing behavior. Previously lost originals cannot be recovered by this fix.
+
 ## Unreleased — Draft Takeoff Protocol (#405)
 
 ### Added
