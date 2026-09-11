@@ -1,6 +1,6 @@
 # Read-only adapter preflight
 
-`takeoff-document-core.v1` is a **draft eligibility profile for a future
+`takeoff-document-core.v1` is a **draft eligibility profile for the opt-in
 document-envelope adapter**, available as private repository tooling. The
 [opt-in adapter](ADAPTERS.md) now uses this gate. Preflight itself accepts
 the current canvas and draft document identifiers for inspection. It does not

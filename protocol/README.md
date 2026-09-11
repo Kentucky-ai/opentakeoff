@@ -6,8 +6,8 @@ schemas. It does not change the canvas, MCP tools, measurements, saved files,
 feature gates, or Academy.
 
 The existing writer identifier remains `opentakeoff.takeoff_canvas.v1`. The
-proposed identifier is `opentakeoff.takeoff-document.v1`; no application writer
-emits it yet. Both profiles describe the current collection names, including
+proposed identifier is `opentakeoff.takeoff-document.v1`; neither browser nor MCP
+writers emit it. Both profiles describe the current collection names, including
 `shapes`, `sheets`, `conditions`, and `approvals`.
 
 - [Field inventory and transport boundaries](INVENTORY.md)
