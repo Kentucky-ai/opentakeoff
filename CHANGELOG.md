@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Validated MCP exports and marked-set linear allowances (mcp 0.9.78)
+
+### Fixed
+- `export_takeoff` now declares the calibration provenance and RFI fields its writer already emits. Clients that discover tools before calling them no longer reject a valid export during output-schema validation. Conformance clients now discover tools before exercising replies. No persisted format or approval behavior changes.
+- The marked-set cover prints waste-adjusted linear quantities in LF (or m), instead of showing `0 SF` for base and transition conditions. Measurement totals are unchanged.
+
+### Documentation
+- Added a source-to-overlay geometry workflow covering vector candidates, detail scales, physical base runs, supporting materials, verification, and human handoff.
+
 ## Unreleased — Preserve agent originals during human correction
 
 ### Fixed

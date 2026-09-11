@@ -432,7 +432,11 @@ export const exportTakeoffOutput = {
   schema: z.string(),
   project_name: z.string(),
   units: z.string(),
-  sheets: z.array(z.object({ sheet_id: z.string(), units_per_px: z.number() })),
+  sheets: z.array(z.object({
+    sheet_id: z.string(), units_per_px: z.number(),
+    scale_source: z.string().optional().describe("How the exported calibration was established"),
+    scale_confirmed: z.boolean().optional().describe("False for agent-set calibration until a human confirms it"),
+  })),
   conditions: z.array(z.object({
     id: z.string(),
     finish_tag: z.string(),
@@ -455,6 +459,7 @@ export const exportTakeoffOutput = {
   }).passthrough()),
   markups: z.array(z.unknown()),
   approvals: z.array(z.unknown()).optional().describe("Approval-family records (#176) — the estimator's APPROVED seals and the agent's verdict marks {id, actor, ts, sheet_id, at:[nx,ny], shape_id?, text?}. Present only when any exist (the canvas payload's own convention), so a verdict-free export stays byte-identical"),
+  rfis: z.array(z.unknown()).optional().describe("Live RFI records; withdrawn tombstones are omitted"),
   sheet_group: z.array(z.unknown()),
   last_group: z.array(z.unknown()),
   sheet_tabs: z.array(z.unknown()),

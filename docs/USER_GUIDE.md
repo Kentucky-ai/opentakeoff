@@ -1055,3 +1055,7 @@ those are the ones worth pinning down before you rely on a number.
 ---
 
 *OpenTakeoff is Apache-2.0 and the codebase is deliberately readable—when you outgrow the manual, [`FEATURES.md`](../FEATURES.md) maps every capability to its code. Driving it from an agent instead? [`AGENT_GUIDE.md`](AGENT_GUIDE.md) is this document's counterpart.*
+
+### Marked-set quantity units
+
+The marked-set cover shows linear allowances in LF (or m in metric), alongside area allowances in SF (or m²). Measured quantities stay unchanged; waste applies to the allowance column. Supporting-material coverage comes from Report material rows and does not require another floor polygon.

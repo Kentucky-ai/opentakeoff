@@ -86,6 +86,7 @@ async function pair() {
   await buildServer(new Session(), { oneClick: true }).connect(st);
   const client = new Client({ name: "conformance", version: "0.0.0" });
   await client.connect(ct);
+  await client.listTools(); // prime the SDK JSON Schema output validators, as real clients do
   return client;
 }
 

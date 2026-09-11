@@ -292,3 +292,7 @@ next."*
 New agent measurements, including `measure_polygon` and `measure_line`, explicitly carry `origin.reviewed: false`. Legacy agent records without the flag are normalized on import and browser reload. Explicit prior human approval is preserved. No new review gate is introduced.
 
 On the browser agent surface, `one_click` returns retained interior voids as `verts_norm_holes`. Pass those rings unchanged alongside `verts_norm` to `propose_shapes`; preview and acceptance use the full geometry for area and perimeter.
+
+## Geometry accuracy in practice
+
+Follow [Geometry from source to review](GEOMETRY_WORKFLOW.md) when tracing a real plan. It explains which geometry to commit, how to verify the overlay, and how to make deductions visible to the estimator.

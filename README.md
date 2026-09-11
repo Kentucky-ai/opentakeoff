@@ -724,3 +724,5 @@ instrument producing it.
 
 [Apache License 2.0](LICENSE)—use it, [fork it](#fork-it), ship it, build on top of it. See
 [NOTICE](NOTICE) for attribution.
+
+For an agent measurement workflow focused on accurate geometry, see [Geometry from source to review](docs/GEOMETRY_WORKFLOW.md).
