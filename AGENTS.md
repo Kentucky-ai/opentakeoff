@@ -47,13 +47,18 @@ So:
 1. **Branch first**—never commit on `main`: `git checkout -b <topic>`.
 2. **`npm run check` before pushing** (in `web/`). It is exactly what CI runs,
    on the same Node (`web/.nvmrc`)—green here means green CI.
-3. **Open a PR** and wait for the `web` check to pass. Don't merge red or
+3. **Include review evidence in every PR**: screenshots or a short video for
+   visible changes; measured expected-versus-observed stats and reproducible
+   commands for engine/tool changes. Link the actual checks or evidence. This
+   repository is also the maintainer's public portfolio: keep claims verifiable
+   and private project data out of public artifacts.
+4. **Open a PR** and wait for the `web` check to pass. Don't merge red or
    pending.
-4. **Squash-merge with branch delete**
+5. **Squash-merge with branch delete**
    (`gh pr merge <n> --squash --delete-branch`), then
    `git checkout main && git pull --ff-only` and delete the local branch
    (`git branch -D <topic>`—squash merges need `-D`).
-5. **Remember a merge is a deploy.** Don't merge work you haven't verified in
+6. **Remember a merge is a deploy.** Don't merge work you haven't verified in
    the running app.
 
 The tests cover the pure math (`web/test/geometry.test.ts`, `web/test/totals.test.ts`); the canvas itself is verified by hand—**Vite does not flag undefined identifiers in JSX**, so grep for your new identifiers after editing and load the app once before you call it done. The bundled sample plan (`web/public/demo/`, wired to the "Load sample plan" button) is the fastest end-to-end check: load it, press `A`, trace a room, open Report.
