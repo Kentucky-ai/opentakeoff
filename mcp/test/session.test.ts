@@ -213,16 +213,21 @@ test("exportPayload: exact envelope keys, schema, only scaled sheets listed", as
   s.setScale(KEY, { use_detected: true });
   await s.oneClick(KEY, 600, 1084, { condition: "CPT-1", role: "floor_area", returnVerts: false });
   p = s.exportPayload();
-  assert.deepEqual(Object.keys(p).sort(), [
-    "conditions", "last_group", "markups", "project_name", "schema",
-    "shapes", "sheet_group", "sheet_levels", "sheet_tabs", "sheets", "units",
+  // 0.9.86: the envelope is the app's own writer (web/src/lib/takeoffDocument.js),
+  // so the server follows the app's conventions — `units` is diff-only (absent =
+  // imperial), empty additive keys such as `sheet_levels` are omitted, `rfis`
+  // is always present — and the keys come out in the app's order, not sorted.
+  assert.deepEqual(Object.keys(p), [
+    "schema", "project_name", "sheets", "conditions", "shapes", "markups", "rfis",
+    "sheet_group", "last_group", "sheet_tabs",
   ]);
   assert.equal(p.schema, ANN_SCHEMA);
   assert.equal(p.schema, "opentakeoff.takeoff_canvas.v1");
-  assert.equal(p.units, "imperial");
+  assert.equal("units" in p, false, "imperial omits the key, exactly as the app does");
   assert.equal(p.project_name, "");
   assert.deepEqual(p.markups, []);
-  assert.deepEqual(p.sheet_levels, {});
+  assert.deepEqual(p.rfis, []);
+  assert.equal("sheet_levels" in p, false, "empty additive keys are omitted, exactly as the app does");
   assert.equal(p.sheets.length, 1);
   assert.equal(p.sheets[0].sheet_id, KEY);
   assert.ok(Math.abs(p.sheets[0].units_per_px! - 1 / 36) < 1e-12);

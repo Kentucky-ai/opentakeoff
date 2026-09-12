@@ -1,0 +1,28 @@
+{
+ "keys_equal": true,
+ "keys": [
+  "schema",
+  "project_name",
+  "sheets",
+  "conditions",
+  "shapes",
+  "markups",
+  "rfis",
+  "sheet_group",
+  "last_group",
+  "sheet_tabs"
+ ],
+ "shapes_equal": true,
+ "conditions_equal": true,
+ "sheets_equal": true,
+ "approvals_a": 0,
+ "approvals_b": 0,
+ "sf_by_condition": {
+  "CPT-1": 659.89,
+  "VCT-1": 57.43,
+  "PT-1/PT-2": 60.87
+ },
+ "units_key_present": false,
+ "created_at_all_conditions": true,
+ "frozen_originals": 0
+}

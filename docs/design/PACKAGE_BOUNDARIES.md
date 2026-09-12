@@ -181,9 +181,12 @@ edit changes the packaged wiki and rides the same MCP version bump).
 
 ## After that
 
-1. Document read/write: lift `buildPayload`'s inputs out of canvas state and make the export
-   envelope one function both writers call; the export-payload parity test that cannot be
-   written today becomes possible.
+1. Document read/write — **shipped in 0.9.86.** `web/src/lib/takeoffDocument.js` is the one
+   writer; the canvas passes its state bag and the server its field bag, and the envelope rules
+   live once. The server adopted the app's conventions (three visible differences, listed in the
+   changelog) rather than the builder growing a mode flag. `created_at` decision: the server now
+   stamps minted conditions as the canvas does. Round-trip tests on both sides: the app's reader
+   lands the server's document losslessly and a fresh session reproduces it byte-for-byte.
 2. Dependency declarations: one place for the engine's runtime package ranges, so `@turf/*`
    cannot drift between `web` and `mcp` again.
 3. DOM seams in shared `.js` modules: move `downloadText` and `downloadBytes` beside their

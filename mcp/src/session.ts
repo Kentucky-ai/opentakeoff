@@ -71,6 +71,7 @@ import { gridPxPerFoot, drawGrid, drawShapes, drawMarks, type Ctx2D, type ToCanv
 // because both read the same module: web/src/lib/takeoffConstants.ts (the
 // hand-mirrored copies that used to live here drifted once, in 2026-07).
 import { SNAP_CELL, SNAP_TOL, TAKEOFF_SCHEMA, nextHatchId, nextPaletteColor } from "../../web/src/lib/takeoffConstants.ts";
+import { buildTakeoffDocument, sheetEntry } from "../../web/src/lib/takeoffDocument.js";
 // uid mirrors web/src/lib/provenance.js mintUuid: crypto.randomUUID is a
 // global in Node 20+, with the same non-secure-context fallback the browser
 // build carries so the two sides mint identically-shaped ids.
@@ -83,6 +84,26 @@ const uid = (p: string): string => `${p}-${mintUuid()}`;
 const nowIso = (): string => new Date().toISOString();
 
 export const ANN_SCHEMA = TAKEOFF_SCHEMA;
+
+/** The takeoff document as buildTakeoffDocument writes it. Optional keys are
+ * the app's additive, omit-when-empty fields; `units` is absent for imperial. */
+export interface TakeoffDocument extends Record<string, unknown> {
+  schema: string;
+  project_name: string;
+  units?: "metric";
+  sheets: { sheet_id: string; units_per_px: number; scale_source?: string; scale_confirmed?: false }[];
+  conditions: Condition[];
+  shapes: Shape[];
+  markups: Markup[];
+  rfis: Rfi[];
+  approvals?: Approval[];
+  proposals?: TakeoffProposal[];
+  condition_edit_proposals?: ConditionEditProposal[];
+  sheet_group: unknown[];
+  last_group: unknown[];
+  sheet_tabs: unknown[];
+  sheet_levels?: Record<string, string>;
+}
 
 export type MeasureRole = "floor_area" | "deduct" | "linear" | "surface_area" | "count";
 
@@ -153,6 +174,10 @@ export interface Condition {
   hatch: string;
   multiplier: number;
   waste_pct: number;
+  /** ISO-8601 mint time. The canvas stamps every condition it mints; the
+   * server does the same since 0.9.86 (twins already did). Files from
+   * before either may lack it, so readers treat it as optional. */
+  created_at?: string;
   /** Wall height in feet — the canvas's H knob; surface_area = traced LF × this. */
   height_ft?: number;
   /** Roll-goods opt-in (#136): presence of a usable setup is what makes the
@@ -1333,6 +1358,7 @@ export class Session {
       const lc = nextPaletteColor(this.conditions.length);
       c = {
         id: uid("cnd"),
+        created_at: nowIso(),
         finish_tag: tag,
         color: lc,
         fill: lc,
@@ -4754,42 +4780,25 @@ export class Session {
     return { sheet: s, build };
   }
 
-  exportPayload() {
+  exportPayload(): TakeoffDocument {
     if (!this.docs.size) throw new UserError("No plan loaded — call load_plan first.");
-    return {
-      schema: ANN_SCHEMA,
+    // The envelope is the canvas's own writer (web/src/lib/takeoffDocument.js):
+    // key order, omit-when-empty and the units rule are decided there once.
+    // What the server contributes is its field bag; provenance rides the sheet
+    // entries (scale_source for the report, scale_confirmed:false for the gate).
+    // RFIs go through liveRfis(): withdrawn tombstones never reach the app.
+    return buildTakeoffDocument({
       project_name: "",
       units: "imperial",
-      sheets: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => ({
-        sheet_id: s.key, units_per_px: s.upp,
-        // provenance rides the payload (it used to be dropped here): the canvas
-        // hydrates scale_source for its report and scale_confirmed for the
-        // scale gate's confirm affordance — absent = confirmed (pre-flag docs)
-        ...(s.scaleSource ? { scale_source: s.scaleSource } : {}),
-        ...(s.scaleConfirmed === false ? { scale_confirmed: false } : {}),
-      })),
+      sheets: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => sheetEntry({ sheet_id: s.key, units_per_px: s.upp, scale_source: s.scaleSource, scale_confirmed: s.scaleConfirmed })),
       conditions: this.conditions,
       shapes: this.shapes,
       markups: this.markups,
-      // approvals ride the payload additively (#176) — present only when any
-      // exist, exactly the canvas buildPayload's convention, so a verdict-free
-      // export stays byte-identical to a pre-#176 one
-      ...(this.approvals.length ? { approvals: this.approvals } : {}),
-      // RFIs (#364): the panel's own records, tombstones stripped — the app
-      // has no tombstone notion (its delete is a removal), and a withdrawn
-      // question must not resurface there as a stray Void row. Same
-      // present-only-when-any convention as approvals.
-      ...(this.liveRfis().length ? { rfis: this.liveRfis() } : {}),
-      // proposals (#365): the batches and the pending condition diffs ride
-      // the payload as transport — present only when any exist, so a
-      // proposal-free export stays byte-identical to a pre-#365 one.
-      ...(this.proposals.length ? { proposals: this.proposals } : {}),
-      ...(this.conditionEditProposals.length ? { condition_edit_proposals: this.conditionEditProposals } : {}),
-      sheet_group: [],
-      last_group: [],
-      sheet_tabs: [],
-      sheet_levels: {},
-    };
+      rfis: this.liveRfis(),
+      approvals: this.approvals,
+      proposals: this.proposals,
+      condition_edit_proposals: this.conditionEditProposals,
+    }) as TakeoffDocument;
   }
 
   /** The computed Report document — "opentakeoff.report.v1", the SAME schema

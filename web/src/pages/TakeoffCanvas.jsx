@@ -15,11 +15,12 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { keyText } from "../lib/keys.ts";
 import { nextHatchId } from "../lib/takeoffConstants.ts";
+import { buildTakeoffDocument, sheetEntry } from "../lib/takeoffDocument.js";
 import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { store, isStaleTabError, STALE_TAB_MESSAGE, friendlyStoreError, projectIdFromUrl, ANN_SCHEMA, emptyAnnotations, metaGet, metaPut } from "../lib/store.js";
+import { store, isStaleTabError, STALE_TAB_MESSAGE, friendlyStoreError, projectIdFromUrl, emptyAnnotations, metaGet, metaPut } from "../lib/store.js";
 import { forgetThumbs, releaseThumbs } from "../lib/thumbs.js";
 import { Z } from "../lib/ui.js";
 import { getFocusMode, toggleFocusMode, onFocusModeChange } from "../lib/focusMode.js";
@@ -2279,16 +2280,16 @@ export default function TakeoffCanvas() {
   // ── autosave (debounced) ──────────────────────────────────────────────────
   // buildPayload is the single serializer — autosave and snapshots must write
   // identical records for the same state (byte-stability matters downstream).
-  const buildPayload = () => {
-    // palette holds condition ids; drop any that no longer resolve (defensive —
-    // delete already prunes) and omit the key entirely when nothing survives,
-    // mirroring the condition_columns omit-when-empty convention.
-    const pinned = palette.filter((id) => conditions.some((c) => c.id === id));
-    // units is additive and diff-only (the sheet_levels convention): imperial —
-    // the default — omits the key, so an old imperial project's payload is
-    // byte-identical on round-trip; only a metric project carries the field.
-    return { project_name: projectName, ...(units === "metric" ? { units } : {}), ...(Object.values(clientInfo).some((v) => v && String(v).trim()) ? { client_info: clientInfo } : {}), sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => ({ sheet_id, units_per_px, ...(scaleSources[sheet_id] ? { scale_source: scaleSources[sheet_id] } : {}), ...(scaleUnconfirmed[sheet_id] === false ? { scale_confirmed: false } : {}) })), conditions, ...(conditionColumns.length ? { condition_columns: conditionColumns } : {}), ...(shapeLabels.length ? { shape_labels: shapeLabels } : {}), ...(pinned.length ? { palette: pinned } : {}), shapes, markups, rfis, ...(approvals.length ? { approvals } : {}), ...(proposals.length ? { proposals } : {}), ...(conditionEditProposals.length ? { condition_edit_proposals: conditionEditProposals } : {}), ...(rules.length ? { rules } : {}), sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, ...(stitches.length ? { stitches } : {}), ...(Object.keys(sheetLevels).length ? { sheet_levels: sheetLevels } : {}), ...(Object.keys(layerOverrides).length ? { layer_overrides: layerOverrides } : {}), ...(Object.keys(provCounters.shapes_deleted).length ? { provenance_counters: provCounters } : {}) };
-  };
+  const buildPayload = () => buildTakeoffDocument({
+    // the envelope — key order, omit-when-empty, the units/palette rules — is
+    // decided in lib/takeoffDocument.js, the same writer the MCP server uses
+    project_name: projectName, units, client_info: clientInfo,
+    sheets: Object.entries(scales).map(([sheet_id, units_per_px]) => sheetEntry({ sheet_id, units_per_px, scale_source: scaleSources[sheet_id], scale_confirmed: scaleUnconfirmed[sheet_id] })),
+    conditions, condition_columns: conditionColumns, shape_labels: shapeLabels, palette,
+    shapes, markups, rfis, approvals, proposals, condition_edit_proposals: conditionEditProposals, rules,
+    sheet_group: sheetGroup, last_group: lastGroup, sheet_tabs: openTabs, stitches,
+    sheet_levels: sheetLevels, layer_overrides: layerOverrides, provenance_counters: provCounters,
+  });
   // Runtime restore of a saved payload — the Revisions panel's Restore lands
   // here. A runtime load (unlike mount) can interrupt work in
   // flight: an unfinished trace/calibration/proposal must not commit into the
@@ -2349,7 +2350,7 @@ export default function TakeoffCanvas() {
   // Restoring means opening the same PDF first — the message says so, since a
   // backup that silently restores to nothing is worse than no backup.
   const exportTakeoffFile = () => {
-    const payload = { schema: ANN_SCHEMA, ...buildPayload() };
+    const payload = buildPayload();
     const base = (projectName || "takeoff").trim().replace(/[^\w.\- ]+/g, "").replace(/\s+/g, "-").replace(/^[-.]+|[-.]+$/g, "") || "takeoff";
     downloadText(`${base}.takeoff.json`, JSON.stringify(payload, null, 2), "application/json");
     const n = shapes.length;
@@ -2391,7 +2392,7 @@ export default function TakeoffCanvas() {
     const base = (projectName || "project").trim().replace(/[^\w.\- ]+/g, "").replace(/\s+/g, "-").replace(/^[-.]+|[-.]+$/g, "") || "project";
     try {
       const data = await buildProjectArchive({
-        takeoff: { schema: ANN_SCHEMA, ...buildPayload() },
+        takeoff: buildPayload(),
         sheets,
         loadPdfData: (n) => store.loadPdfData(n),
         projectName,
