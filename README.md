@@ -79,8 +79,8 @@ OpenTakeoff is that engine, with two front ends sharing geometry and quantity mo
 - **Review cleanup**—agents can edit annotation text with undo while preserving geometry and review; RFI-linked notes require browser review. Scope warnings distinguish numeric edge residue from real small overlaps.
 - **A stdio MCP server**—`npx -y opentakeoff-mcp`, <!--tool-count-->53<!--/tool-count--> tools, on the
   [official MCP registry](https://registry.modelcontextprotocol.io). An agent opens a plan,
-  reads the title block, sets the scale, floods the rooms, checks its own work on a rendered
-  overlay, and hands back a marked-up planset PDF.
+  reads the title block, sets the scale, traces the rooms to their wall faces (the flood engine
+  stays gated), checks its own work on a rendered overlay, and hands back a marked-up planset PDF.
 - **A browser canvas**—no backend, no account, no upload. An estimator drags in a plan set
   and traces it, using One-Click room detection, CAD hatches, roll-goods seam layout, a
   materials buy list, and exports.
@@ -101,6 +101,33 @@ second use is not a side effect; see [the data layer](#the-data-layer--why-this-
 
 ## Recently shipped
 
+- **Tracing rules an agent actually reads**—the room-boundary conventions an estimator uses
+  (innermost wall face, door openings crossed on the wall centerline, columns and chases wrapped,
+  never a hatch edge or a door leaf, a tight overlay check per ring) now ship inside the server:
+  `takeoff://wiki/workflows`, the initialize instructions and the `measure_polygon` description.
+  On a task with no conventions in it, one unprompted run went from 0 of 6 rooms with door
+  notches to 6 of 6 ([#423](https://github.com/Kentucky-ai/opentakeoff/pull/423), MCP 0.9.84)
+- **A plan set with reference rings, and blind runs against it**—three public floor plans (a VA
+  healthcare finish plan, a VA clinic floor plan, a city public-domain ADU) with estimator-trace
+  references, a scorer profile for concave rooms and finish splits, and published blind agent
+  runs with frozen exports, scores and overlays. The runs found defects in the references first;
+  the references are v2 and still unreviewed by a person, and the open estimator questions are
+  listed ([#421](https://github.com/Kentucky-ai/opentakeoff/pull/421),
+  [#422](https://github.com/Kentucky-ai/opentakeoff/pull/422),
+  [`evals/mcp-workflow-bench/plan-set/`](evals/mcp-workflow-bench/plan-set/README.md))
+- **The human review loop, start to finish**—import an agent's takeoff, correct a ring, accept
+  the batch, export, and reopen the archive on a clean machine with geometry and review state
+  intact, with screenshots of the real app in the
+  [user manual](docs/USER_GUIDE.md#reviewing-an-agents-takeoff-start-to-finish)
+  ([#424](https://github.com/Kentucky-ai/opentakeoff/pull/424))
+- **The Takeoff Protocol draft, one shared wiki, and a scripted workflow benchmark**—the
+  existing record fields inventoried and formalized as draft schemas with an executable
+  compatibility matrix (10 conform, 1 needs an adapter, 5 unsupported and named); one wiki for
+  people and agents, packaged as MCP resources and checked against source in CI; and a workflow
+  benchmark that drives the built server flat and staged, scores geometry separately from
+  totals, and reopens the export in a fresh process
+  ([#406](https://github.com/Kentucky-ai/opentakeoff/pull/406)–[#419](https://github.com/Kentucky-ai/opentakeoff/pull/419),
+  [roadmap](docs/ROADMAP.md))
 - **Stitched sheets**—a floor split across a match line becomes one working surface; a room
   that crosses the seam traces as one shape, One-Click included
   ([#161](https://github.com/Kentucky-ai/opentakeoff/issues/161))
@@ -217,7 +244,11 @@ are the rules that make this one safe to hand a model, and why each one exists:
    than a silent pick.
 3. **The engine traces; the model doesn't invent.** `one_click` returns the ring the wall
    network produced from a seed point you name. A model cannot hand back a polygon it imagined and have
-   it counted.
+   it counted. While One-Click is gated, a model draws the ring itself with `measure_polygon`, and the
+   packaged rules say where it must sit: on the innermost wall-face strokes it read with
+   `get_sheet_vectors`, doors crossed on the wall centerline, checked on a tight overlay before the
+   next room. How well unprompted agents follow that is measured, not assumed: see the
+   [plan set](evals/mcp-workflow-bench/plan-set/README.md).
 4. **Every record carries how it was made.** Method, seed point, whether hatch filtering
    engaged, whether it came off scan pixels, confidence factors,
    and the machine's original ring if a human later moves it.
@@ -699,7 +730,8 @@ and a local stdio MCP server, and what that does and doesn't make a vulnerabilit
 A working tool used on real commercial bids, not a preview. The measuring engine is the
 production engine carved out of a commercial estimating system, and the same engine answers to
 a person at the canvas or an agent over MCP with the same math, the same scale gate, and the
-same provenance record. Named limits, so you don't find them the hard way: **Snap** is beta,
+same provenance record. What is measured about agents driving it, and what is still open, is in
+one table: the [Phase 3 completion gate](docs/ROADMAP.md#phase-3-completion-gate-2026-09-12). Named limits, so you don't find them the hard way: **Snap** is beta,
 revision compare is quantity-level rather than geometric, and the translated
 READMEs lag the English one. Issues and pull requests are welcome.
 
