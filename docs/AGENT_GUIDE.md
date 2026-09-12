@@ -299,7 +299,7 @@ On the browser agent surface, `one_click` returns retained interior voids as `ve
 
 ## Geometry accuracy in practice
 
-Follow [Geometry from source to review](GEOMETRY_WORKFLOW.md) when tracing a real plan. It explains which geometry to commit, how to verify the overlay, and how to make deductions visible to the estimator.
+Follow [Geometry from source to review](GEOMETRY_WORKFLOW.md) when tracing a real plan. It explains which geometry to commit, how to verify the overlay, and how to make deductions visible to the estimator. The ring is what fails, not the total: put every vertex on the innermost wall-face stroke from `get_sheet_vectors`, cross doors on the wall centerline, wrap columns and stubs, never follow hatch or a door leaf, and look at a tight `view_sheet` overlay crop of each ring before the next one. The rule set is packaged at `takeoff://wiki/workflows`.
 
 ## Geometry review cleanup
 

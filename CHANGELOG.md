@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.9.84 — Estimator tracing rules in the packaged guidance (2026-09-12)
+
+- Package the room-tracing rules the plan-set references are drawn to, so every public agent gets them without a bespoke prompt: innermost wall face from `get_sheet_vectors`, door openings crossed on the wall centerline and shared by both rooms, windows run straight, columns, chases and stubs wrapped, hatch, casework and door leaves never a boundary, finish splits on the drawn line, and a tight `view_sheet` overlay check of each ring before the next. They live in `takeoff://wiki/workflows`, the initialize instructions, the `measure_polygon` description, the agent guide and the geometry workflow. Motivated by the 2026-09-12 blind runs, where the ring, not the total, was what failed.
+- No tool, schema, gate or behavior change; documentation and packaged resources only.
+
+Also first published with this version (repository-side changes since 0.9.83):
+
 - Revise the estimator-trace plan-set references to v2 after blind agent runs exposed defects in v1 (a door leaf traced as a wall face, missed door notches, wall stubs and chases counted as floor); v1 kept beside each. Publish the three public blind runs (frozen exports, scores against v1 and v2, overlay and zoom crops) and five new estimator questions. Evaluation data only; no runtime, tool or version change.
 - Resume MCP Registry publication only when the exact published manifest matches; poll delayed reads with bounded retries and refuse conflicting records. Preserve unrelated publishing failures. This fixes the release automation failure observed with MCP 0.9.83.
 

@@ -38,6 +38,38 @@ Source: [Human stitching instructions](../USER_GUIDE.md#stitching-a-floor-split-
 4. Inspect overlays and actual boundaries, openings, jambs and deductions.
    `edit_shape` corrects pending shapes. Physical base gaps use explicit runs;
    stepped wall faces use separate height bands. See the [geometry workflow](../GEOMETRY_WORKFLOW.md).
+
+### Trace a room the way an estimator does
+
+Blind agent runs against reviewed references showed that the ring, not the
+total, is what fails. These rules are what the references are drawn to:
+
+1. The boundary is the **innermost interior wall face**. Never the wall
+   centerline, never the far face, never under a wall. Casework, counters,
+   fixtures, equipment, hatch patterns, dimension strings, text and leaders
+   never define the boundary; the finish runs under casework and fixtures.
+2. Corners sit where two adjacent wall-face strokes meet. Read the strokes with
+   `get_sheet_vectors` over a tight region and put each vertex on a stroke; do
+   not trace a hatch edge or a raster guess.
+3. At every **door or cased opening** the ring follows the face to the jamb,
+   turns into the opening, runs across it on the **wall centerline** (midway
+   between that wall's two faces, the full wall on a composite wall), and
+   returns along the far jamb. Both rooms sharing the door share that segment.
+   A door leaf and its swing arc are never part of the boundary; a leaf drawn
+   standing open looks like a wall line and is not one.
+4. **Windows** and other non-passable openings do not break the ring.
+5. Columns, chases, pilasters and wall stubs that project into the room are
+   traced around; an enclosed cell drawn with wall-weight lines is not floor.
+6. A **finish split** inside one room is two rings sharing the drawn
+   transition line exactly, no overlap and no gap. Where two rooms meet with no
+   wall, split on the drawn transition line or the partition's centerline.
+7. Take the finish from the schedule row; a plan tag alone is a cross-check.
+8. After each ring, `view_sheet` a tight crop with `overlay: true` at a high
+   `px` and look at every corner and notch before the next room; `edit_shape`
+   fixes what the crop shows. A full-sheet render cannot audit a ring.
+
+When something is genuinely ambiguous, follow the rule most literally, carry it,
+and say so in the shape's label or an annotation. Do not stop.
 5. `takeoff_summary` and `export_report` check quantities and material coverage.
    Shorten notes through `list_annotations` → `edit_annotation` where permitted.
 6. Export editable takeoff JSON and a marked-set PDF, reopen the JSON against
