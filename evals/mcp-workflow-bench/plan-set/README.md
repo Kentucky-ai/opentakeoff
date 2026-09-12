@@ -19,6 +19,12 @@ carried for each are in [`QUESTIONS.md`](QUESTIONS.md); the review state of each
 reference is in [`REVIEW.md`](REVIEW.md); hashes of the frozen inputs are in
 [`FREEZE.json`](FREEZE.json).
 
+## Revision
+
+The references are at **v2** (2026-09-12): blind agent runs exposed defects in v1, which were
+corrected from the linework; see [`BLIND-RUNS-2026-09-12.md`](BLIND-RUNS-2026-09-12.md).
+v1 is kept beside each as `reference-v1.json`.
+
 ## What the references are, and are not
 
 - Each ring was prepared from the PDF **vector linework** with an independent PDF

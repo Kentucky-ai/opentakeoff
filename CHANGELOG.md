@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Revise the estimator-trace plan-set references to v2 after blind agent runs exposed defects in v1 (a door leaf traced as a wall face, missed door notches, wall stubs and chases counted as floor); v1 kept beside each. Publish the three public blind runs (frozen exports, scores against v1 and v2, overlay and zoom crops) and five new estimator questions. Evaluation data only; no runtime, tool or version change.
 - Resume MCP Registry publication only when the exact published manifest matches; poll delayed reads with bounded retries and refuse conflicting records. Preserve unrelated publishing failures. This fixes the release automation failure observed with MCP 0.9.83.
 
 - Add a scripted benchmark of the built MCP server in flat and staged modes, with source inspection, scale refusal/recovery, room measurements, labeled exports and fresh-process preservation checks.

@@ -2,7 +2,7 @@
  "benchmark": "scripted MCP workflow conformance",
  "node_version": "v24.18.0",
  "reference_path": "evals/mcp-workflow-bench/plan-set/stcloud/reference.json",
- "reference_id": "stcloud-af101-estimator-trace-v1",
+ "reference_id": "stcloud-af101-estimator-trace-v2",
  "source_sha256": "53aa2a44efc8f9a2e625ed223fcfbf9ee19d15eb8469ba57183874b6a8e2a56f",
  "analytic_reference": false,
  "independently_human_reviewed": false,
@@ -13,7 +13,7 @@
    "protocol_requests": 32,
    "tool_calls": 28,
    "scorer": {
-    "reference_id": "stcloud-af101-estimator-trace-v1",
+    "reference_id": "stcloud-af101-estimator-trace-v2",
     "profile": "estimator-trace",
     "metadata_error": null,
     "rooms": [
@@ -21,26 +21,26 @@
       "label": "CONFERENCE/BREAK ROOM 134",
       "finish": "CPT-1",
       "area_sf": {
-       "expected": 275.8494753086405,
-       "actual": 275.85,
-       "percent_error": 0.00019020930127098716
+       "expected": 278.5390123456765,
+       "actual": 278.54,
+       "percent_error": 0.0003545838391564137
       },
-      "overlap_iou": 1.0000000000000104,
+      "overlap_iou": 1.0000000000000207,
       "boundary_vertex_edge_px": 0,
-      "geometry_area_sf": 275.8494753086405,
+      "geometry_area_sf": 278.5390123456765,
       "pass": true
      },
      {
       "label": "CONFERENCE/BREAK ROOM 134",
       "finish": "VCT-1",
       "area_sf": {
-       "expected": 64.47564814814774,
-       "actual": 64.48,
-       "percent_error": 0.006749605435937268
+       "expected": 57.42583333333253,
+       "actual": 57.43,
+       "percent_error": 0.00725573566044252
       },
-      "overlap_iou": 1.0000000000000222,
+      "overlap_iou": 1,
       "boundary_vertex_edge_px": 0,
-      "geometry_area_sf": 64.47564814814774,
+      "geometry_area_sf": 57.42583333333253,
       "pass": true
      },
      {
@@ -60,39 +60,39 @@
       "label": "OFFICE 136",
       "finish": "CPT-1",
       "area_sf": {
-       "expected": 130.41975308641975,
-       "actual": 130.42,
-       "percent_error": 0.00018932222642517498
+       "expected": 129.62148148148108,
+       "actual": 129.62,
+       "percent_error": 0.0011429289837971263
       },
-      "overlap_iou": 1,
+      "overlap_iou": 1.0000000000000222,
       "boundary_vertex_edge_px": 0,
-      "geometry_area_sf": 130.41975308641975,
+      "geometry_area_sf": 129.62148148148108,
       "pass": true
      },
      {
       "label": "PATIENT ROOM 137",
       "finish": "CPT-1",
       "area_sf": {
-       "expected": 254.68875000000008,
-       "actual": 254.69,
-       "percent_error": 0.0004907951371678559
+       "expected": 251.93813271604887,
+       "actual": 251.94,
+       "percent_error": 0.0007411676553278193
       },
-      "overlap_iou": 1.0000000000000226,
+      "overlap_iou": 1.0000000000000229,
       "boundary_vertex_edge_px": 0,
-      "geometry_area_sf": 254.68875000000008,
+      "geometry_area_sf": 251.93813271604887,
       "pass": true
      },
      {
       "label": "TOILET 137A",
       "finish": "PT-1/PT-2",
       "area_sf": {
-       "expected": 62.20999999999867,
-       "actual": 62.21,
-       "percent_error": 2.1358542290169034e-12
+       "expected": 60.865277777776626,
+       "actual": 60.87,
+       "percent_error": 0.0077584829902732685
       },
       "overlap_iou": 1,
       "boundary_vertex_edge_px": 0,
-      "geometry_area_sf": 62.20999999999867,
+      "geometry_area_sf": 60.865277777776626,
       "pass": true
      }
     ],
@@ -103,7 +103,7 @@
    "protocol_requests": 38,
    "tool_calls": 31,
    "scorer": {
-    "reference_id": "stcloud-af101-estimator-trace-v1",
+    "reference_id": "stcloud-af101-estimator-trace-v2",
     "profile": "estimator-trace",
     "metadata_error": null,
     "rooms": [
@@ -111,26 +111,26 @@
       "label": "CONFERENCE/BREAK ROOM 134",
       "finish": "CPT-1",
       "area_sf": {
-       "expected": 275.8494753086405,
-       "actual": 275.85,
-       "percent_error": 0.00019020930127098716
+       "expected": 278.5390123456765,
+       "actual": 278.54,
+       "percent_error": 0.0003545838391564137
       },
-      "overlap_iou": 1.0000000000000104,
+      "overlap_iou": 1.0000000000000207,
       "boundary_vertex_edge_px": 0,
-      "geometry_area_sf": 275.8494753086405,
+      "geometry_area_sf": 278.5390123456765,
       "pass": true
      },
      {
       "label": "CONFERENCE/BREAK ROOM 134",
       "finish": "VCT-1",
       "area_sf": {
-       "expected": 64.47564814814774,
-       "actual": 64.48,
-       "percent_error": 0.006749605435937268
+       "expected": 57.42583333333253,
+       "actual": 57.43,
+       "percent_error": 0.00725573566044252
       },
-      "overlap_iou": 1.0000000000000222,
+      "overlap_iou": 1,
       "boundary_vertex_edge_px": 0,
-      "geometry_area_sf": 64.47564814814774,
+      "geometry_area_sf": 57.42583333333253,
       "pass": true
      },
      {
@@ -150,39 +150,39 @@
       "label": "OFFICE 136",
       "finish": "CPT-1",
       "area_sf": {
-       "expected": 130.41975308641975,
-       "actual": 130.42,
-       "percent_error": 0.00018932222642517498
+       "expected": 129.62148148148108,
+       "actual": 129.62,
+       "percent_error": 0.0011429289837971263
       },
-      "overlap_iou": 1,
+      "overlap_iou": 1.0000000000000222,
       "boundary_vertex_edge_px": 0,
-      "geometry_area_sf": 130.41975308641975,
+      "geometry_area_sf": 129.62148148148108,
       "pass": true
      },
      {
       "label": "PATIENT ROOM 137",
       "finish": "CPT-1",
       "area_sf": {
-       "expected": 254.68875000000008,
-       "actual": 254.69,
-       "percent_error": 0.0004907951371678559
+       "expected": 251.93813271604887,
+       "actual": 251.94,
+       "percent_error": 0.0007411676553278193
       },
-      "overlap_iou": 1.0000000000000226,
+      "overlap_iou": 1.0000000000000229,
       "boundary_vertex_edge_px": 0,
-      "geometry_area_sf": 254.68875000000008,
+      "geometry_area_sf": 251.93813271604887,
       "pass": true
      },
      {
       "label": "TOILET 137A",
       "finish": "PT-1/PT-2",
       "area_sf": {
-       "expected": 62.20999999999867,
-       "actual": 62.21,
-       "percent_error": 2.1358542290169034e-12
+       "expected": 60.865277777776626,
+       "actual": 60.87,
+       "percent_error": 0.0077584829902732685
       },
       "overlap_iou": 1,
       "boundary_vertex_edge_px": 0,
-      "geometry_area_sf": 62.20999999999867,
+      "geometry_area_sf": 60.865277777776626,
       "pass": true
      }
     ],
