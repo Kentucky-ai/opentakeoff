@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Document the human review loop on an agent takeoff, start to finish, with screenshots of the real app: import, inspect and correct a pending ring, accept the batch, export the takeoff and project archive, report and marked set, and reopen the archive on a clean machine with geometry and review state intact. Exercised by a recorded headless walkthrough (`evals/mcp-workflow-bench/plan-set/human-review-2026-09-12/`); no approval is created by the script, and no runtime, tool or version change.
 ## 0.9.84 — Estimator tracing rules in the packaged guidance (2026-09-12)
 
 - Package the room-tracing rules the plan-set references are drawn to, so every public agent gets them without a bespoke prompt: innermost wall face from `get_sheet_vectors`, door openings crossed on the wall centerline and shared by both rooms, windows run straight, columns, chases and stubs wrapped, hatch, casework and door leaves never a boundary, finish splits on the drawn line, and a tight `view_sheet` overlay check of each ring before the next. They live in `takeoff://wiki/workflows`, the initialize instructions, the `measure_polygon` description, the agent guide and the geometry workflow. Motivated by the 2026-09-12 blind runs, where the ring, not the total, was what failed.
