@@ -1,0 +1,89 @@
+{
+  "sheet_id": "porterville-adu-a1-101.pdf",
+  "shapes_on_sheet": 6,
+  "deduct_shapes": [],
+  "reference_id": "porterville-a1101-estimator-trace-v1",
+  "profile": "estimator-trace",
+  "metadata_error": null,
+  "rooms": [
+    {
+      "label": "LIVING",
+      "finish": "LVP",
+      "area_sf": {
+        "expected": 256.4000848765432,
+        "actual": 254.56,
+        "percent_error": 0.7176615707554035
+      },
+      "overlap_iou": 0.9867066490282141,
+      "boundary_vertex_edge_px": 12.36376965168777,
+      "geometry_area_sf": 254.55906666666635,
+      "pass": false
+    },
+    {
+      "label": "BATH",
+      "finish": "CT",
+      "area_sf": {
+        "expected": 55.73926697530889,
+        "actual": 51.3,
+        "percent_error": 7.9643440185092045
+      },
+      "overlap_iou": 0.8931811036110232,
+      "boundary_vertex_edge_px": 57.43345366596008,
+      "geometry_area_sf": 51.30146666666648,
+      "pass": false
+    },
+    {
+      "label": "PANTRY",
+      "finish": "LVP",
+      "area_sf": {
+        "expected": 4.248989197530461,
+        "actual": 4.21,
+        "percent_error": 0.9176111239144129
+      },
+      "overlap_iou": 0.866425332283068,
+      "boundary_vertex_edge_px": 5.139999999999873,
+      "geometry_area_sf": 4.214399999999987,
+      "pass": false
+    },
+    {
+      "label": "W/D",
+      "finish": "LVP",
+      "area_sf": {
+        "expected": 6.881944444444444,
+        "actual": 5.68,
+        "percent_error": 17.465186680121086
+      },
+      "overlap_iou": 0.8253739656912241,
+      "boundary_vertex_edge_px": 11.93544301649524,
+      "geometry_area_sf": 5.680177777777799,
+      "pass": false
+    },
+    {
+      "label": "CL.",
+      "finish": "CPT",
+      "area_sf": {
+        "expected": 12.896828703703731,
+        "actual": 12.81,
+        "percent_error": 0.6732562376268123
+      },
+      "overlap_iou": 0.9427195218971954,
+      "boundary_vertex_edge_px": 3.0002666548158645,
+      "geometry_area_sf": 12.806688888889182,
+      "pass": false
+    },
+    {
+      "label": "OPT. BEDROOM",
+      "finish": "CPT",
+      "area_sf": {
+        "expected": 93.51111496913563,
+        "actual": 91.43,
+        "percent_error": 2.2255268476079246
+      },
+      "overlap_iou": 0.9777206653481202,
+      "boundary_vertex_edge_px": 7.296362107242635,
+      "geometry_area_sf": 91.43277777777787,
+      "pass": false
+    }
+  ],
+  "pass": false
+}

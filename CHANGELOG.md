@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Publish a second agent's blind runs on the three public plans (OpenAI Codex CLI, same prompt, build and rules as the first agent) beside the first, with a room-by-room comparison in the blind-runs summary. Evaluation data only.
 - Refresh the README: recently shipped entries for the packaged tracing rules, the plan set and blind runs, the human review walkthrough and the protocol/wiki/benchmark work; the agent description no longer says the flood engine runs while it is gated; the drivability contract states how a traced ring is placed and measured; Status links the Phase 3 gate.
 - Record the Phase 3 completion gate in the roadmap: measured workflows, tool-call costs, drawing accuracy by room, preserved data, unsupported handoffs, open defects and release versions, each with its evidence. #385 and #409 remain open.
 - Document the human review loop on an agent takeoff, start to finish, with screenshots of the real app: import, inspect and correct a pending ring, accept the batch, export the takeoff and project archive, report and marked set, and reopen the archive on a clean machine with geometry and review state intact. Exercised by a recorded headless walkthrough (`evals/mcp-workflow-bench/plan-set/human-review-2026-09-12/`); no approval is created by the script, and no runtime, tool or version change.
