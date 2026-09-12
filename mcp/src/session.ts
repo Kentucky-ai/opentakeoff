@@ -4790,7 +4790,7 @@ export class Session {
     return buildTakeoffDocument({
       project_name: "",
       units: "imperial",
-      sheets: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => sheetEntry({ sheet_id: s.key, units_per_px: s.upp, scale_source: s.scaleSource, scale_confirmed: s.scaleConfirmed })),
+      sheets: [...this.sheets.values()].filter((s) => s.upp != null).map((s) => sheetEntry({ sheet_id: s.key, units_per_px: s.upp as number, scale_source: s.scaleSource, scale_confirmed: s.scaleConfirmed })),
       conditions: this.conditions,
       shapes: this.shapes,
       markups: this.markups,
