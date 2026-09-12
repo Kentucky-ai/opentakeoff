@@ -51,7 +51,8 @@ const MATLIB_KEY = "material_library";
 // pattern as templates/materials, its own key in the keyPath-less meta store
 // (no DB version bump). Persists across projects; export/import as JSON.
 const STAMPLIB_KEY = "stamp_library";
-const ANN_SCHEMA = "opentakeoff.takeoff_canvas.v1";
+import { TAKEOFF_SCHEMA } from "./takeoffConstants.ts";
+const ANN_SCHEMA = TAKEOFF_SCHEMA;
 
 // The empty-project annotations shape. One definition so the local store and the
 // Drive-backed cloud store (cloudStore.js) hydrate a fresh project identically —

@@ -29,6 +29,7 @@
 // The snap spatial hash (dependency-free, no DOM) — imported so `oneClickRing`
 // below can be THE one composition of trace-then-snap. See section 6b.
 import { buildSnapGrid, nearestSnap } from "./geometry.js";
+import { SNAP_CELL, SNAP_TOL } from "./takeoffConstants.ts";
 
 export type Point = [number, number];
 export interface OpList { fnArray: number[]; argsArray: any[]; }  // per-op args array, or null for arg-less ops
@@ -3736,11 +3737,11 @@ export function snapVertices(poly: Point[], nearest: NearestFn, tolPx = 6, minGa
 // web/test/benchProductionRing.test.ts scans the two production files to keep it
 // that way. Same reasoning as confidence.ts's `floodSignals`: a hand-listed call
 // site is a call site that goes stale.
-/** Snap-grid bucket size, image px. Mirrors canvasConstants.SNAP_CELL. */
-export const SNAP_CELL_PX = 24;
+/** Snap-grid bucket size, image px. The one value in takeoffConstants. */
+export const SNAP_CELL_PX: number = SNAP_CELL;
 /** Vertex-snap tolerance, image px — how far a traced corner may be pulled onto
  *  a true PDF vertex. Mirrors the canvas's literal 7 and mcp's SNAP_TOL. */
-export const SNAP_TOL_PX = 7;
+export const SNAP_TOL_PX: number = SNAP_TOL;
 
 /** Build the production snap lookup from `extractVectorGeometry(...).points`.
  *  Callers that already hold a grid (the canvas caches one per sheet) can keep

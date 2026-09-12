@@ -14,6 +14,7 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { keyText } from "../lib/keys.ts";
+import { nextHatchId } from "../lib/takeoffConstants.ts";
 import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router";
 import * as pdfjsLib from "pdfjs-dist";
@@ -5901,7 +5902,7 @@ export default function TakeoffCanvas() {
       id: uid("cnd"), created_at: nowIso(), finish_tag: tag,
       color: lc,            // line color
       fill: lc,             // fill color (NO_FILL for outline-only)
-      hatch: HATCHES[1 + (cs.length % (HATCHES.length - 1))].id,
+      hatch: nextHatchId(cs.length),
       multiplier: 1,        // ×N for identical repeated units (measure one, multiply)
       waste_pct: 0,         // flooring waste allowance (manual) — applied in the Report
       materials: [],        // supporting materials (adhesive, grout, …) with coverage rates

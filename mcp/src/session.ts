@@ -67,15 +67,10 @@ import { conditionTotals, grandTotals, sheetTotals, reportJson } from "../../web
 import { hasRollSetup, mintRollSetup, computeRollTakeoff, rollReportRows, seamLfByShape } from "../../web/src/lib/rollTakeoff.js";
 import { gridPxPerFoot, drawGrid, drawShapes, drawMarks, type Ctx2D, type ToCanvas, type ViewMarks } from "./view.ts";
 
-// Copied from the canvas (web/src/pages/TakeoffCanvas.jsx) so conditions and
-// snap behavior minted here are identical to the browser's. PALETTE/HATCH_IDS
-// are user data — never re-theme them.
-const SNAP_CELL = 24; // snap-grid bucket, raster px
-const SNAP_TOL = 7;   // one-click vertex-snap tolerance, image px
-const PALETTE = ["#c96442", "#2f7d54", "#2563eb", "#9333ea", "#b8860b", "#0d9488", "#be185d", "#1f2937", "#dc2626", "#0891b2"];
-// (2026-07: dropped a drifted "fleur" entry that never existed in this app's
-// HATCHES, restoring "dots", and appended the signal-set ids.)
-const HATCH_IDS = ["solid", "diag", "diag2", "cross", "diagdense", "horiz", "vert", "grid", "brick", "plank", "herring", "basket", "checker", "wave", "dots", "speckle", "iso", "honeycomb", "scan", "plus", "circuit", "topo", "woodgrain", "chevron", "pinwheel", "harlequin", "hexagon", "penny", "octagondot", "fleur", "concrete"];
+// Conditions and snap behavior minted here are identical to the browser's
+// because both read the same module: web/src/lib/takeoffConstants.ts (the
+// hand-mirrored copies that used to live here drifted once, in 2026-07).
+import { SNAP_CELL, SNAP_TOL, TAKEOFF_SCHEMA, nextHatchId, nextPaletteColor } from "../../web/src/lib/takeoffConstants.ts";
 // uid mirrors web/src/lib/provenance.js mintUuid: crypto.randomUUID is a
 // global in Node 20+, with the same non-secure-context fallback the browser
 // build carries so the two sides mint identically-shaped ids.
@@ -87,7 +82,7 @@ const uid = (p: string): string => `${p}-${mintUuid()}`;
 // mirrors web/src/lib/provenance.js nowIso — a twin is born now, not when its parent was
 const nowIso = (): string => new Date().toISOString();
 
-export const ANN_SCHEMA = "opentakeoff.takeoff_canvas.v1"; // web/src/lib/store.js
+export const ANN_SCHEMA = TAKEOFF_SCHEMA;
 
 export type MeasureRole = "floor_area" | "deduct" | "linear" | "surface_area" | "count";
 
@@ -1334,14 +1329,14 @@ export class Session {
   private conditionFor(tag: string): Condition {
     let c = this.conditions.find((x) => x.finish_tag === tag);
     if (!c) {
-      // field-identical to the canvas's addCondition, palette rotation included
-      const lc = PALETTE[this.conditions.length % PALETTE.length];
+      // field-identical to the canvas's mintCondition, palette rotation included
+      const lc = nextPaletteColor(this.conditions.length);
       c = {
         id: uid("cnd"),
         finish_tag: tag,
         color: lc,
         fill: lc,
-        hatch: HATCH_IDS[1 + (this.conditions.length % (HATCH_IDS.length - 1))],
+        hatch: nextHatchId(this.conditions.length),
         multiplier: 1,
         waste_pct: 0,
         materials: [],
@@ -4075,7 +4070,7 @@ export class Session {
     }
     const { twin, parentPatch } = mintTwin(src as unknown as VariantCond, {
       label: lab, tag: newTag, mintId: (p: string) => uid(p), nowIso,
-      nextHatch: HATCH_IDS[1 + ((this.conditions.length + 1) % (HATCH_IDS.length - 1))],
+      nextHatch: nextHatchId(this.conditions.length + 1),
     });
     if (parentPatch) Object.assign(src, parentPatch);
     this.conditions.push(twin as unknown as Condition);

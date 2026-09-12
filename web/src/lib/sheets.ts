@@ -7,7 +7,8 @@ import { isStitchKey } from "./stitches";
 export { parseSheetKey, compareSheetKeys } from "./sheetKey"; // moved to a pdfjs-free module; re-exported for existing importers
 export type { ParsedSheetKey } from "./sheetKey";
 
-export const RENDER_SCALE = 2.0;
+import { RENDER_SCALE } from "./takeoffConstants.ts";
+export { RENDER_SCALE }; // owned by takeoffConstants; re-exported for existing importers
 
 // Pure fallback branch of the canvas `sheetBaseLabel` closure (TakeoffCanvas.jsx
 // `sheetBaseLabel`, ~:1001) — just the file/page math, none of the runtime-state

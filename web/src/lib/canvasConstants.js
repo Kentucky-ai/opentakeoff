@@ -51,7 +51,8 @@ export const GESTURE_MS = 140;      // wheel/pinch quiet window before the detai
 // region under real CPU contention took 50+ seconds and still resolved on its own.
 export const DETAIL_STALL_MS = 25000;
 
-export const SNAP_CELL = 24;   // snap-grid bucket, raster px (Spline runs 12 — its budgeted raster is denser)
+import { SNAP_CELL } from "./takeoffConstants.ts";
+export { SNAP_CELL };   // snap-grid bucket, raster px (Spline runs 12 — its budgeted raster is denser)
 
 // toolbar menus — STACK-style: the menu face shows the armed tool
 export const MEASURE_TOOLS = [

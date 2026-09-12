@@ -76,7 +76,7 @@ Copied by hand, with no test that the copies agree:
 | Value | Copy 1 | Copy 2 | Copy 3 | Drift on record |
 |---|---|---|---|---|
 | condition palette (10 colors) | `web/src/components/hatches.jsx:48` `PALETTE` | `mcp/src/session.ts:75` | partial, reordered: `web/src/lib/scheduleParse.ts:147` | none yet; `session.ts:70` says "copied from the canvas" |
-| hatch id vocabulary (31 ids) | `hatches.jsx:12` `HATCHES` | `session.ts:78` `HATCH_IDS` | | **yes**: `session.ts:76` records a `fleur` entry that never existed in the canvas and was removed in 2026-07 |
+| hatch id vocabulary (31 ids) | `hatches.jsx:12` `HATCHES` | `session.ts:78` `HATCH_IDS` | | **historical**: `session.ts:76` records a `fleur` entry that drifted in and was dropped in 2026-07; the canvas later added a real `fleur` hatch (#243), and the two lists were checked equal (31 = 31, same order) before this extraction |
 | hatch rotation formula | `web/src/pages/TakeoffCanvas.jsx:5904` | `session.ts:1344` and `:4078` | | |
 | condition record minted | `web/src/pages/TakeoffCanvas.jsx:5893` `mintCondition` (has `created_at`) | `session.ts:1334` `conditionFor`, commented "field-identical" | | **yes**: MCP omits `created_at` |
 | snap grid and tolerance | `canvasConstants.js:54` `SNAP_CELL = 24` | `oneclick.ts:3739` `SNAP_CELL_PX = 24`, `SNAP_TOL_PX = 7` | `session.ts:73` `SNAP_CELL`, `SNAP_TOL` | |
@@ -119,7 +119,14 @@ but `buildPayload` is welded to canvas component state (`palette`, `conditionCol
 `layerOverrides`, `provCounters`); it becomes cheaper after the constants move, so it is the
 second increment, not the first.
 
-## The extraction candidate: `web/src/lib/takeoffConstants.ts`
+## The extraction: `web/src/lib/takeoffConstants.ts`
+
+**Status: shipped in 0.9.85** (the PR after this map). The section below is the contract as
+proposed; what landed matches it, with two deliberate differences: the protocol package keeps its
+runtime import-free and pins the schema id in a test instead of importing the module, and
+`scheduleParse.ts`'s `FALLBACK_PALETTE` was left alone because it is a different, shorter list
+(it contains `#475569`, which the condition palette does not), not a copy.
+
 
 One DOM-free engine module that owns the mirrored values, imported by both surfaces and by the
 protocol tests. Not a new npm package: there is no consumer outside this repository, the MCP
@@ -167,7 +174,7 @@ rotation equals `nextHatchId`; `protocol/test` asserts the legacy schema's `cons
 `TAKEOFF_SCHEMA`. Bundle size compared before and after with `--analyze` (expected: `store.js`
 leaves the graph).
 
-**Exit for the increment:** both surfaces import the module, the three parity tests pass on
+**Exit for the increment (met in 0.9.85; `store.js` out of the graph and `stamps.js` with it, 38 engine files → 37, 846.8 kB → 846.7 kB):** both surfaces import the module, the three parity tests pass on
 both CI platforms, `dist/server-core.js` no longer contains `store.js`, no quantity, palette,
 hatch or schema value differs from today, and the stale repo-guide sentence is corrected (that
 edit changes the packaged wiki and rides the same MCP version bump).
