@@ -233,7 +233,7 @@ function canonicalExport(payload) {
     schema: payload.schema,
     units: payload.units,
     sheets: (payload.sheets ?? []).map((sheet) => strip(sheet, new Set())).sort((a, b) => a.sheet_id.localeCompare(b.sheet_id)),
-    conditions: (payload.conditions ?? []).map((condition) => strip(condition, new Set(["id"]))).sort((a, b) => a.finish_tag.localeCompare(b.finish_tag)),
+    conditions: (payload.conditions ?? []).map((condition) => strip(condition, new Set(["id", "created_at"]))).sort((a, b) => a.finish_tag.localeCompare(b.finish_tag)),
     shapes: (payload.shapes ?? []).map((shape) => ({ ...strip(shape, new Set(["id", "condition_id"])), origin: strip(shape.origin, new Set(["proposal_id", "created_at", "updated_at"])) })).sort((a, b) => a.label.localeCompare(b.label)),
     markups: payload.markups ?? [],
     proposals: (payload.proposals ?? []).map((proposal) => strip(proposal, new Set(["id", "created_at"]))).sort((a, b) => a.label.localeCompare(b.label)),
