@@ -1,5 +1,5 @@
 {
- "reference_id": "roseburg-a03a-estimator-trace-v2",
+ "reference_id": "roseburg-a03a-estimator-trace-v1",
  "profile": "estimator-trace",
  "source": {
   "path": "evals/mcp-workflow-bench/plan-set/roseburg/va-roseburg-a03a.pdf",
@@ -128,11 +128,7 @@
      2359.3
     ],
     [
-     4303.8,
-     2359.3
-    ],
-    [
-     4303.8,
+     4290.4,
      2118.6
     ],
     [
@@ -161,7 +157,7 @@
     "west along jog: H y=2118.6 (x4126.1-4303.8, D105A takes the x4126.1-4290.4 portion) to x=4126.1",
     "up divider face: V x=4126.1 (y1841.8-2118.6, D105A/113.6-OFFICE partition, D105A side) back to y=1841.8, closing at NW"
    ],
-   "notes": "East boundary steps around a dogleg pier shared with the small 113.6 NSF office to the east (not a target room; not traced) -- rule 5 stepped/offset faces. Confirmed by direct zoom crop (roseburg/pier-zoom2.png, roseburg/pier-check.png) that the pier's inner (D105A-facing) corner is a single continuous line at x=4126.1 -> y=2118.6 -> x=4290.4, both endpoints literally shared with the horizontal jog segment. Two doors: west to D105B, south to D105 (each notched per rule 3). North and NE walls are exterior; no further openings found there besides the D105/113.6-office door pair (which belongs to D105 and the 113.6 office, not to D105A). Printed NSF on the sheet is a space-inventory figure, not the drawn area; do not reconcile the ring to it. v2: east stub face 4290.4 -> 4303.8 (jamb corner at 4290.4,2359.3 kept; face runs 4290.4->4303.8 at y 2359.3 then north). The 4280.6/4290.4 pair is the drawn door leaf standing open (rule 1: a leaf never defines the boundary); the hatch runs to 4303.8, the wall face. Found by zoom after the first blind candidate run; changed on the rule, not to match the candidate.",
+   "notes": "East boundary steps around a dogleg pier shared with the small 113.6 NSF office to the east (not a target room; not traced) -- rule 5 stepped/offset faces. Confirmed by direct zoom crop (roseburg/pier-zoom2.png, roseburg/pier-check.png) that the pier's inner (D105A-facing) corner is a single continuous line at x=4126.1 -> y=2118.6 -> x=4290.4, both endpoints literally shared with the horizontal jog segment. Two doors: west to D105B, south to D105 (each notched per rule 3). North and NE walls are exterior; no further openings found there besides the D105/113.6-office door pair (which belongs to D105 and the 113.6 office, not to D105A). Printed NSF on the sheet is a space-inventory figure, not the drawn area; do not reconcile the ring to it.",
    "printed_nsf_on_sheet": 165.2
   },
   {
@@ -311,7 +307,6 @@
  "review": {
   "prepared_by": "agent (Claude Sonnet) from PDF vectors via PyMuPDF",
   "human_reviewed": false,
-  "reviewer": null,
-  "revision_note": "v2 (2026-09-12): corrected from the PDF linework after zoom inspection of a blind candidate run exposed defects in v1 (see plan-set/BLIND-RUNS-2026-09-12.md); v1 kept as reference-v1.json. Still agent-prepared, not human-reviewed."
+  "reviewer": null
  }
 }

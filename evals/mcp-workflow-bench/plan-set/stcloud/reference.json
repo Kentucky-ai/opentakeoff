@@ -1,5 +1,5 @@
 {
- "reference_id": "stcloud-af101-estimator-trace-v1",
+ "reference_id": "stcloud-af101-estimator-trace-v2",
  "profile": "estimator-trace",
  "source": {
   "path": "demo/sample-finish-plan.pdf",
@@ -55,15 +55,47 @@
      931.2
     ],
     [
-     2341.7,
-     933.4
+     2440.3,
+     931.2
     ],
     [
-     2132.9,
+     2440.3,
+     934.8
+    ],
+    [
+     2380.3,
+     934.8
+    ],
+    [
+     2380.3,
+     931.2
+    ],
+    [
+     2361.4,
+     931.2
+    ],
+    [
+     2341.7,
+     931.2
+    ],
+    [
+     2341.7,
      933.8
     ],
     [
-     2132.9,
+     2136.0,
+     933.8
+    ],
+    [
+     2136.0,
+     922.8
+    ],
+    [
+     2123.15,
+     922.8
+    ],
+    [
+     2123.15,
      844.8
     ],
     [
@@ -72,63 +104,71 @@
     ]
    ],
    "printed_sf": null,
-   "finish_source": "Sheet AF600 Room Finish Schedule row 134 CONFERENCE/BREAK ROOM, FLOOR FINISH = CPT-1/VCT-1 (page 2); plan tags 'CPT-1' with down-arrow at (2249,878) confirm on AF101.",
+   "finish_source": "Sheet AF600 Room Finish Schedule row 134 CONFERENCE/BREAK ROOM, FLOOR FINISH = CPT-1/VCT-1 (page 2); plan tag 'CPT-1' with down-arrow at (2249,878) confirms on AF101.",
    "vertex_sources": [
-    "v0 NW: H y=704.9 (x2136.0-2526.0, north ext. wall, windows in this run at x~2212-2270 and x~2423-2482 do not break the boundary, rule 4) \u2229 V x=2136.0 (y0=704.9 y1=844.8, west wall inner face)",
-    "v1 NE: H y=704.9 \u2229 V x=2526.0 (y0=698.6 y1=952.8, east wall inner face, shared with PATIENT ROOM 137 wall pair 2526.0/2535.4)",
-    "v2: V x=2526.0 down to y=931.2 (north face of the storage-door header wall pair y0=931.2 y1=938.4)",
-    "v3: door jamb, H y=931.2 west from x=2526.0 to x=2517.1 (east jamb of STORAGE 134A door, hinge post V 2514.5/2517.1 y=877.2-931.2)",
-    "v4: door notch to wall centerline y=(931.2+938.4)/2=934.8 at x=2517.1",
-    "v5: notch crosses centerline to x=2451.4 (west jamb of same door)",
-    "v6: notch back to face, x=2451.4 y=931.2",
-    "v7: H y=931.2 continues west to x=2444.2 (stub H 2444.2-2451.4 y=931.2, corner of STORAGE 134A east wall)",
-    "v8: bridged to x=2341.7 y=933.4 (NE corner of the post/jamb block at STORAGE's west return, snapping small sub-wall stubs H 2361.4-2380.3 y=931.2/938.4 and the gray jamb-post block 2341.7-2361.4 x 933.4-948.0) -- OPEN QUESTION: no wall drawn between x=2444.2 and x=2361.4 at this y; see notes.md Q1",
-    "v9: continues to west wall door centerline x=2132.9 y=933.8 (this is the CPT-1/VCT-1 finish split line, rule 6; also within the west-wall door opening so the CPT-1 ring meets the centerline here, not the face)",
-    "v10: up centerline to y=844.8 (near jamb of west-wall door, V 2129.8/2136.0 door gap 844.8-950.6)",
-    "v11: notch back to face x=2136.0 y=844.8, then up the west wall face to v0"
+    "v0 NW: H y=704.9 (north ext. wall, window gaps in this run do not break the boundary, rule 4) x V x=2136.0 (y0=704.9 y1=844.8, west wall inner face)",
+    "v1 NE: H y=704.9 x V x=2526.0 (y0=698.6 y1=952.8, east wall inner face, shared with PATIENT ROOM 137 wall pair 2526.0/2535.4)",
+    "v2: down east wall to y=931.2 (north face of the STORAGE 134A door header pair y0=931.2 y1=938.4)",
+    "v3: STORAGE 134A door, east jamb: H y=931.2 west from x=2526.0 to x=2517.1 (hinge post V 2514.5/2517.1 y=877.2-931.2)",
+    "v4: notch to wall centerline y=(931.2+938.4)/2=934.8",
+    "v5: across centerline to x=2451.4 (west jamb of same door)",
+    "v6: notch back to face y=931.2",
+    "v7: H y=931.2 east-to-west stub to x=2444.2 (H 2444.2-2451.4, corner of STORAGE 134A's own west wall)",
+    "v8: H y=931.2 continues to x=2440.3 (stub H(2444.2,931.2)-(2440.3,931.2), w=1.68, len 3.8) -- east jamb of the 134/136 DOOR (coordinator item a)",
+    "v9: notch into the 134/136 door opening to centerline y=934.8",
+    "v10: across centerline to x=2380.3 (west jamb; confirmed by matching 1.68px face strokes H(2380.3,931.2)-(2361.4,931.2) len 19.0 and H(2361.4,938.4)-(2380.3,938.4) len 19.0 -- the door's jambs are exactly x=2380.3 and x=2440.3)",
+    "v11: notch back to face y=931.2",
+    "v12: H y=931.2 west to x=2361.4 (stub H(2380.3,931.2)-(2361.4,931.2), w=1.68, len 19.0 -- solid wall, not part of either door)",
+    "v13: H y=931.2 continues to x=2341.7 (stub H(2361.4,931.2)-(2341.7,931.2), w=1.68, len 19.7, confirmed direct query)",
+    "v14: down the confirmed V(2341.7,931.2)-(2341.7,933.4) w=1.68 len 2.2 stroke to y=933.8 (snapped to the CPT-1/VCT-1 split height, 0.4px from the stroke's own end at 933.4, within tolerance) -- this is the shared split point with the VCT-1 ring (rule 6)",
+    "v15: H y=933.8 west to x=2136.0 (the counter-edge/split line H w=0.72 y=933.8 x=2135.8-2341.7, matching CONVENTIONS rule 6)",
+    "v16: up west wall face x=2136.0 to y=922.8 -- CORRECTED (coordinator item h): the 134 west door is a composite (masonry + furring) wall; its south jamb is y=922.8 (confirmed by the 0.96px furring jamb detail H(2109.8,922.8)-(2130.0,922.8) and H(2130.0,919.7)-(2109.8,919.7), and V(2129.8,922.8)-(2129.8,931.0)), well ABOVE the y=933.8 finish split -- so this door no longer touches VCT-1 at all (previously mis-modeled with south jamb 950.6 and centerline 2132.9, straddling the split)",
+    "v17: notch into the door opening to the composite centerline x=(2110.3+2136.0)/2=2123.15 (faces: x=2110.3, the corridor-side furring wall V(2110.3,922.8)-(2110.3,1188.0) w=0.96; and x=2136.0, the room-side masonry face V(2136.0,704.9)-(2136.0,844.8) w=1.68)",
+    "v18: up centerline to y=844.8 (north jamb, matches V(2129.8,704.9)-(2129.8,844.8)/V(2136.0,704.9)-(2136.0,844.8) w=1.68 both ending at 844.8)",
+    "v19: notch back to face x=2136.0 y=844.8, then up the west wall face to v0"
    ],
-   "notes": "Main rectangle plus door notches at the STORAGE 134A door (east) and the VENDING-side door (west, shared centerline with VCT-1 ring below the split). See notes.md for the CPT-1/VCT-1 split rationale and the open bridge at v8."
+   "notes": "v2 corrections applied: (item a) real 60px door notch added at x=2380.3-2440.3 on the 134/136 wall (previously this whole stretch was bridged as an open question with no wall); (item h) the west door's south jamb corrected from 950.6 to 922.8 and its centerline corrected from x=2132.9 to the true composite centerline x=2123.15 (faces 2110.3 corridor-side / 2136.0 room-side) -- as a consequence this door no longer straddles the CPT-1/VCT-1 split and VCT-1's ring no longer touches it."
   },
   {
    "label": "CONFERENCE/BREAK ROOM 134",
    "finish": "VCT-1",
    "verts_px": [
     [
-     2132.9,
+     2136.0,
      933.8
     ],
     [
      2341.7,
-     933.4
+     933.8
     ],
     [
      2341.7,
+     990.2
+    ],
+    [
+     2292.7,
+     990.2
+    ],
+    [
+     2292.7,
      1034.9
     ],
     [
      2136.0,
      1034.9
-    ],
-    [
-     2136.0,
-     950.6
-    ],
-    [
-     2132.9,
-     950.6
     ]
    ],
    "printed_sf": null,
-   "finish_source": "Sheet AF600 schedule row 134, FLOOR FINISH = CPT-1/VCT-1; plan tag 'VCT-1' with up-arrow at (2249,983) points at the counter-edge line described below.",
+   "finish_source": "Sheet AF600 schedule row 134, FLOOR FINISH = CPT-1/VCT-1; plan tag 'VCT-1' with up-arrow at (2249,983) points at the counter-edge line used for the split.",
    "vertex_sources": [
-    "v0: shared split edge with CPT-1 ring, x=2132.9 (west-wall door centerline) y=933.8",
-    "v1: split line east to x=2341.7 y=933.4 (rule 6 split placed on the counter-edge line H w=0.72 y=933.8 x=2135.8-2341.7, the only drawn transition evidence at this location -- treated as the finish-transition line since the dashed vertical marks at x=2249.3 are the CPT-1/VCT-1 callout leaders, not the transition itself; see notes.md Q2) \u2229 V x=2341.7 (east wall of the nook, shared with OFFICE 136/STORAGE 134A wall system, y0=933.4 y1=1034.9)",
-    "v2: down east wall to y=1034.9 (south wall of the nook, shared with VENDING 135 below)",
-    "v3: H y=1034.9 west to x=2136.0 (west wall inner face) \u2229 V x=2136.0",
-    "v4: up west wall face to y=950.6 (far/south jamb of the west door)",
-    "v5: notch into the door opening to centerline x=2132.9, closing to v0 (near jamb at y=933.8 is inside the opening, since the door spans y=844.8-950.6 and the finish split at y=933.8 falls inside that span)"
+    "v0: shared split edge with CPT-1 ring at x=2136.0 (west wall face -- CORRECTED, item h: no longer the door centerline x=2132.9, since the west door's true south jamb is y=922.8, above this split) y=933.8 (counter-edge/split line H w=0.72 x=2135.8-2341.7)",
+    "v1: split line east to x=2341.7 (V x=2341.7, east wall of the nook, shared with OFFICE 136/STORAGE 134A wall system)",
+    "v2: NEW (coordinator item d) down east wall only to y=990.2, the north (outer) face of an enclosed cell/closet -- confirmed H(2341.7,990.2)-(2292.7,990.2) w=1.68 len 49.0",
+    "v3: west along the cell's north face to x=2292.7 (west/outer face of the cell's own wall pair V2292.7/V2299.2, confirmed V(2292.7,990.2)-(2292.7,996.7) w=1.68 len 6.5 continuing the same face down)",
+    "v4: down the cell's west face V(2292.7,996.7)-(2292.7,1034.9) w=1.68 len 38.2 to the south wall",
+    "v5: H y=1034.9 west to x=2136.0 (south wall, shared with VENDING 135 below), up west wall face to v0"
    ],
-   "notes": "The west-wall door (jambs 844.8/950.6) straddles the CPT-1/VCT-1 split at y=933.8; the notch is divided between the two rings at the split, each ring meeting the shared centerline x=2132.9 rather than the wall face over the part of the opening on its own side."
+   "notes": "v2 correction (item d): the ring now steps around a small enclosed cell at the east end of the VCT-1 strip (walls V2292.7/V2299.2 y=996.7-1034.9, H990.2/H996.7 x=2292.7-2341.7, all 1.68px) instead of running straight down x=2341.7 to the south wall. Area reduced from 64.48 SF (v1) to 57.43 SF. Also no longer shares any door notch with CPT-1 (see item h correction on the CPT-1 ring)."
   },
   {
    "label": "STORAGE 134A",
@@ -174,7 +214,7 @@
    "printed_sf": 16,
    "finish_source": "Sheet AF600 schedule row 134A STORAGE, FLOOR FINISH = CPT-1.",
    "vertex_sources": [
-    "v0 SW: V x=2451.4 (west wall, inner/east face of pair 2444.2/2451.4, y0=931.2 y1=992.9) \u2229 H y=992.9 (south wall, x0=2451.4 x1=2554.8, inner/north face of pair 992.9/1000.1)",
+    "v0 SW: V x=2451.4 (west wall, inner/east face of pair 2444.2/2451.4, y0=931.2 y1=992.9) x H y=992.9 (south wall, x0=2451.4 x1=2554.8, inner/north face of pair 992.9/1000.1)",
     "v1: up west wall to y=938.4 (door jamb, south face of header pair y0=931.2 y1=938.4)",
     "v2: notch into door opening to centerline y=934.8",
     "v3: across centerline to x=2517.1 (hinge post V 2514.5/2517.1 y=877.2-931.2, door swings open into CONFERENCE/BREAK ROOM 134 above)",
@@ -184,7 +224,7 @@
     "v7: H y=958.3 east to x=2554.8 (NE corner, V 2554.8/2563.9 wall begins here at y=958.3)",
     "v8: down x=2554.8 to y=992.9 closing to v0"
    ],
-   "notes": "Computed area 16.35 SF vs printed 16 SF (+2.2%), a strong confirmation of this boundary. An alternative reading (the 'west pocket' x=2349.1-2444.2 x y=938.4-992.9) gives an even closer 16.00 SF but has NO drawn south wall connecting those two x-faces (checked directly in the PDF vectors) -- see notes.md Q1/Q3 for the full discussion; the east-box reading used here is preferred because all four of its sides have confirmed >=1.5px wall strokes."
+   "notes": "Unchanged from reference v1 (not among the 8 corrected items). Computed area 16.35 SF vs printed 16 SF (+2.2%)."
   },
   {
    "label": "OFFICE 136",
@@ -192,6 +232,30 @@
    "verts_px": [
     [
      2349.1,
+     948.0
+    ],
+    [
+     2361.4,
+     948.0
+    ],
+    [
+     2361.4,
+     938.4
+    ],
+    [
+     2380.3,
+     938.4
+    ],
+    [
+     2380.3,
+     934.8
+    ],
+    [
+     2440.3,
+     934.8
+    ],
+    [
+     2440.3,
      938.4
     ],
     [
@@ -200,6 +264,14 @@
     ],
     [
      2444.2,
+     1040.6
+    ],
+    [
+     2451.4,
+     1040.6
+    ],
+    [
+     2451.4,
      1000.1
     ],
     [
@@ -208,6 +280,38 @@
     ],
     [
      2554.8,
+     1177.0
+    ],
+    [
+     2540.6,
+     1177.0
+    ],
+    [
+     2540.6,
+     1174.8
+    ],
+    [
+     2432.4,
+     1174.8
+    ],
+    [
+     2432.4,
+     1180.2
+    ],
+    [
+     2372.4,
+     1180.2
+    ],
+    [
+     2372.4,
+     1174.8
+    ],
+    [
+     2363.8,
+     1174.8
+    ],
+    [
+     2363.8,
      1177.0
     ],
     [
@@ -218,14 +322,34 @@
    "printed_sf": null,
    "finish_source": "Sheet AF600 schedule row 136 OFFICE, FLOOR FINISH = CPT-1.",
    "vertex_sources": [
-    "v0 NW: V x=2349.1 (west wall inner/east face of pair 2341.7/2349.1) at y=938.4 -- OPEN QUESTION: no wall stroke actually spans x=2349.1-2444.2 at any y between 933 and 1000 (checked directly); y=938.4 is assumed as the north boundary of this column, matching STORAGE 134A's header level. See notes.md Q1.",
-    "v1: H y=938.4 (assumed) east to x=2444.2 \u2229 V x=2444.2 (STORAGE 134A west wall, inner/office-side face of pair 2444.2/2451.4)",
-    "v2: down to y=1000.1 (STORAGE 134A south wall, inner/office-side face of pair 992.9/1000.1)",
-    "v3: H y=1000.1 east to x=2554.8 (OFFICE east wall, inner/west face of pair 2554.8/2563.9, shared with TOILET 137A)",
-    "v4: down x=2554.8 to y=1177.0 (building south wall inner face, by extension from the confirmed segment at x=2561.8-2769.4; the exact west continuation of this wall was not captured in the walls JSON for x<2561.8, see notes.md Q4)",
-    "v5: H y=1177.0 west to x=2349.1, up west wall (confirmed V 2349.1 y=948.0-1174.8, with a ~10px unconfirmed bridge to 938.4) back to v0"
+    "v0 NW: V x=2349.1 (west wall inner/east face of pair 2341.7/2349.1, confirmed to start exactly at y=948.0)",
+    "v1: H y=948.0 east to x=2361.4 (post/corner-block south face, H(2361.4,948.0)-(2349.1,948.0) w=1.68 len 12.2)",
+    "v2: up the post's east face V(2361.4,938.4)-(2361.4,948.0) w=1.68 len 9.6 to y=938.4",
+    "v3: H y=938.4 east to x=2380.3 (H(2361.4,938.4)-(2380.3,938.4) w=1.68 len 19.0) -- west jamb of the 134/136 door (item a)",
+    "v4: notch into the door opening to centerline y=934.8",
+    "v5: across centerline to x=2440.3 (east jamb, matches CPT-1 ring's v8-v10 exactly, rule 6/item-a shared centerline)",
+    "v6: notch back to face y=938.4",
+    "v7: H y=938.4 east to x=2444.2 (STORAGE 134A's own west wall)",
+    "v8: NEW (coordinator item c): down x=2444.2 past the old y=1000.1 stopping point, continuing to y=1040.6 -- confirmed V(2444.2,1000.1)-(2444.2,1040.6) w=1.68 len 40.6, the 134A/136 partition continuing as a wall stub",
+    "v9: across the stub's bottom face H(2444.2,1040.6)-(2451.4,1040.6) w=1.68 len 7.2 to x=2451.4",
+    "v10: back up V(2451.4,1040.6)-(2451.4,1000.1) w=1.68 len 40.6 to y=1000.1",
+    "v11: H y=1000.1 east to x=2554.8 (STORAGE 134A's south wall, office-side face; OFFICE's own east wall pair 2554.8/2563.9 begins here)",
+    "v12: down east wall V(2554.8,958.3)-(2554.8,1177.7) to y=1177.0 (near the wall's true end at 1177.7, snapped to the main south-wall level used elsewhere on this sheet)",
+    "v13: H y=1177.0 west to x=2540.6 (H(2540.6,1177.0)-(2554.8,1177.0) w=1.68 len 14.2)",
+    "v14: up tiny step V(2540.6,1174.8)-(2540.6,1177.0) w=1.68 len 2.2 to y=1174.8",
+    "v15: H y=1174.8 west to x=2530.8 (H(2530.8,1174.8)-(2540.6,1174.8) w=1.68 len 9.8)",
+    "v16: down step V(2530.8,1174.8)-(2530.8,1185.6) w=1.68 len 10.8 to y=1185.6 -- CORRECTED (coordinator item b): this and the next few vertices are the real, thicker composite south wall (faces y=1174.8/1185.6), not the y=1177.0/1183.7 level used elsewhere on this sheet",
+    "v17: H y=1185.6 west to x=2458.8 (H(2432.4,1185.6)-(2458.8,1185.6) w=1.68 len 26.4)",
+    "v18: up step V(2458.8,1185.6)-(2458.8,1174.8) w=1.68 len 10.8 to y=1174.8",
+    "v19: H y=1174.8 west to x=2432.4 (H(2458.8,1174.8)-(2432.4,1174.8) w=1.68 len 26.4) -- east jamb of the 136/corridor door (item b)",
+    "v20: notch into the door opening to centerline y=(1174.8+1185.6)/2=1180.2",
+    "v21: across centerline to x=2372.4 (west jamb; both wall faces confirmed at 1174.8 and 1185.6 with matching stroke ends at x=2372.4)",
+    "v22: notch back to face y=1174.8",
+    "v23: H y=1174.8 west to x=2363.8 (H(2372.4,1174.8)-(2363.8,1174.8) w=1.68 len 8.6)",
+    "v24: down tiny step V(2363.8,1177.0)-(2363.8,1174.8) w=1.68 len 2.2 to y=1177.0",
+    "v25: H y=1177.0 west to x=2349.1 (H(2349.1,1177.0)-(2363.8,1177.0) w=1.68 len 14.6), up west wall to v0"
    ],
-   "notes": "A small closet/nook (wall pair H 1081.9/1104.5, x=2438.4-2506.1) sits inside this footprint and was NOT carved out as its own room since it is not in the room list for this task; its floor is counted as OFFICE 136 CPT-1. A small gray jamb-post block (~x2341.7-2361.4, y933.4-948.0, ~0.5 SF) at the NW corner is also included in the simple rectangle rather than notched out, per rule 5 tolerance judgment -- see notes.md Q1."
+   "notes": "v2 corrections applied: (item a) 134/136 door notched (was previously an open, un-notched straight bridge -- see reference v1 Q1); (item c) ring now dips down to y=1040.6 and back around the 134A/136 partition stub instead of going straight east at y=1000.1; (item b) the true south wall (faces 1174.8/1185.6) is now walked in full detail including its two small corner jogs at x=2458.8-2530.8 and the corridor door notched at x=2372.4-2432.4, centerline y=1180.2. Area increased from 130.42 SF (v1) to 132.02 SF. v2.1: the box x 2458.8-2530.8 / y 1171.2-1189.2 in the south wall spans both wall faces with no swing and is a window (borrowed light), so the ring runs straight along the face y=1174.8 across it (rule 4); the v2 dip to the far face at 1185.6 was a defect found while rescoring."
   },
   {
    "label": "PATIENT ROOM 137",
@@ -244,12 +368,16 @@
      1088.9
     ],
     [
-     2772.25,
+     2782.05,
      1088.9
     ],
     [
-     2772.25,
-     1177.0
+     2782.05,
+     1157.8
+    ],
+    [
+     2769.1,
+     1157.8
     ],
     [
      2769.1,
@@ -260,8 +388,12 @@
      1177.0
     ],
     [
+     2689.9,
+     1156.1
+    ],
+    [
      2686.3,
-     1177.0
+     1156.1
     ],
     [
      2686.3,
@@ -285,31 +417,41 @@
     ],
     [
      2563.9,
-     952.8
+     902.6
+    ],
+    [
+     2557.7,
+     902.6
     ],
     [
      2535.4,
-     952.8
+     902.6
     ]
    ],
    "printed_sf": null,
-   "finish_source": "Sheet AF600 schedule 'ROOM FINISH SCHEDULE - PATIENT ROOMS (TYPICAL)' row, FLOOR FINISH = CPT-1 (no dedicated numbered row '137' exists in the schedule; the typical-patient-room row is used, wall/ceiling finishes 'SEE FINISH PLAN' per that row). See notes.md Q5.",
+   "finish_source": "Sheet AF600 schedule 'ROOM FINISH SCHEDULE - PATIENT ROOMS (TYPICAL)' row, FLOOR FINISH = CPT-1 (no dedicated numbered row '137' exists in the schedule).",
    "vertex_sources": [
-    "v0 NW: H y=704.9 (north ext. wall, windows at x~2561.8-2626.3 etc do not break the boundary, rule 4) x V x=2535.4 (west wall inner face of pair 2526.0/2535.4, shared with CONFERENCE/BREAK ROOM 134)",
+    "v0 NW: H y=704.9 x V x=2535.4 (west wall inner face of pair 2526.0/2535.4, shared with CONFERENCE/BREAK ROOM 134)",
     "v1 NE: H y=704.9 x V x=2769.1 (east wall inner face of pair 2769.1/2775.4)",
-    "v2: straight down east wall to y=1088.9, the north jamb of the corridor door (V 2769.1/2775.4 confirmed solid 950.6-1088.9, then no wall stroke of any width until y=1157.8, where the parallel wall x=2795.0/2801.3 -- belonging to the corridor/PATIENT ROOM 138 side, not traced here -- resumes). REVISED per coordinator: a small ~1.9px-deep wall reveal previously stood at y=931.0-950.6 (local face V 2767.2 vs main face 2769.1, corner strokes w=0.72/0.96/1.68 boxing a niche x=2767.2-2769.4) and had been mis-read as a 19.6px door and notched. A zoom-8 crop shows no leaf and no swing arc there (19.6px is far short of any door on this sheet, which run ~50-90px) -- it is a wall-face reveal/thickening under the 2.5px boundary tolerance and is now walked straight through, per rule 9. See notes.md Q6 (rewritten).",
-    "v3: CORRIDOR door, north jamb at (2769.1,1088.9), notch into the opening to centerline x=(2769.1+2775.4)/2=2772.25",
-    "v4: down centerline to y=1177.0 (opening runs to the building south wall; no far jamb stroke found -- the door's south end coincides with the room's own SE corner, the same pattern used for the TOILET 137A door below)",
-    "v5: notch back to face x=2769.1 y=1177.0 (= SE corner, meets building south wall H 2689.9-2769.4 y=1177.0/1183.7). This is PATIENT ROOM 137's entry door from the corridor, confirmed by a hinge/swing-arc symbol reading from about (2769,1089) sweeping into the vestibule -- the jamb span used (1088.9 to 1177.0) is the actual break in the cited >=1.5px wall stroke, a few px from the coordinator's visually-estimated hinge at (2760,1150).",
-    "v6: H y=1177.0 west to x=2689.9 (east jamb of TOILET 137A door)",
-    "v7-v9: TOILET 137A door notch, centerline x=2686.3, jambs y=1177.0/1099.0 -- IDENTICAL to TOILET 137A's own v3-v5 (mirrored from the opposite face): both rings meet the exact same centerline segment (2686.3,1099.0)-(2686.3,1177.0), confirmed shared.",
-    "v10: up x=2689.9 to y=1016.9 (top of TOILET 137A east wall pair 2682.7/2689.9)",
-    "v11: NW corner snap to (2683.7,1002.2) meeting TOILET 137A's north wall",
-    "v12: H y=1002.2 west to x=2563.9 (TOILET 137A/OFFICE 136 shared wall, patient-room/north-side face of pair 2554.8/2563.9). A small wall-mounted fixture symbol (thin 0.48/0.72px strokes at x=2555-2565, y=1093.7-1156.6, on the same wall) was checked directly at zoom-7 and is NOT a door (no leaf, no arc) -- no notch placed there.",
-    "v13: up x=2563.9 to y=952.8 (jog point, H 2563.9-2535.4 y=952.8)",
-    "v14: H y=952.8 west to x=2535.4, up west wall to v0"
+    "v2: straight down east wall to y=1088.9 (V 2769.1/2775.4 confirmed solid 950.6-1088.9; a small ~1.9px wall-face reveal at y=931.0-950.6, previously mis-read as a door, is walked straight per the prior correction round -- sub-tolerance, see notes.md Q6)",
+    "v3: CORRIDOR door, north jamb -- CORRECTED (coordinator item h): notch to the true composite centerline x=(2769.1+2795.0)/2=2782.05 (faces: x=2769.1 room-side masonry, confirmed V(2769.1,950.6)-(2769.1,1088.9); x=2795.0 corridor-side furring/masonry face, confirmed V(2795.0,1074.5)-(2795.0,1088.9) w=1.68 -- this is the SAME composite wall assembly, not a separate room 138 wall as assumed in the prior correction round)",
+    "v4: down centerline to y=1157.8 -- CORRECTED (coordinator item h/g pattern): south jamb is y=1157.8, not 1177.0 -- confirmed both wall layers resume there (V(2795.0,1157.8)-(2795.0,1290.7) w=1.68 outer face, and V(2769.1,1157.8)-(2769.1,1177.0) w=1.68 len 19.2 inner face)",
+    "v5: notch back to face x=2769.1 y=1157.8",
+    "v6: down the resumed wall stub V(2769.1,1157.8)-(2769.1,1177.0) to y=1177.0 (SE corner, meets building south wall H 2689.9-2769.4 y=1177.0)",
+    "v7: H y=1177.0 west to x=2689.9 (east jamb of TOILET 137A door)",
+    "v8: up to y=1156.1 -- CORRECTED (coordinator item g): the TOILET 137A door leaf lies open along the south wall (H 1153.4/1156.1, x=2689.9-2743.9, hinged at 2689.9,~1156), and the east-wall stub (both faces 2682.7/2689.9) resumes below the hinge down to the south wall at 1177 -- so the jamb here is y=1156.1, not 1177.0",
+    "v9: notch into the door opening to centerline x=2686.3",
+    "v10: up centerline to y=1099.0 (north jamb) -- IDENTICAL to TOILET 137A's own ring v7-v9 (mirrored from the opposite face): both rings meet the exact same centerline segment (2686.3,1099.0)-(2686.3,1156.1)",
+    "v11: notch back to face x=2689.9 y=1099.0",
+    "v12: up x=2689.9 to y=1016.9 (top of TOILET 137A east wall pair 2682.7/2689.9)",
+    "v13: NW corner snap to (2683.7,1002.2) meeting TOILET 137A's north wall",
+    "v14: H y=1002.2 west to x=2563.9 (TOILET 137A/OFFICE 136 shared wall, patient-room/north-side face of pair 2554.8/2563.9)",
+    "v15: NEW (coordinator item e): up x=2563.9 continuously (V 2563.9 confirmed unbroken 902.6-1177.7) to y=902.6 -- REPLACES the prior model's jog back to x=2535.4 at y=952.8. The wall runs straight from the OFFICE/TOILET corridor line up to the west chase/column enclosure with no jog at 952.8.",
+    "v16: H y=902.6 west to x=2557.7 (chase's north-outer face, H(2563.9,902.6)-(2557.7,902.6) w=1.68 len 6.2, continuing H(2557.7,902.6)-(2535.4,902.6) w=1.68 len 22.3) -- wrapping OUTSIDE the west chase+column enclosure (walls H902.6/908.9 x2535.4-2557.7, V2557.7, H933.4, V2561.8, H952.8 x2535.4-2563.9, filled column inside) per coordinator item e",
+    "v17: H y=902.6 continues west to x=2535.4 (patient room's own west wall, jamb where the chase attaches)",
+    "close: up west wall face x=2535.4 to v0"
    ],
-   "notes": "CORRECTED per coordinator review: (1) the corridor entry door is now notched at x=2769.1/2775.4, y=1088.9-1177.0 -- previously this whole stretch was drawn as a plain straight wall down to the south wall and missed a real door. (2) the small 19.6px gap at y=931.0-950.6 in the same wall, previously notched as a second door, was re-examined at zoom-8 and reclassified as a sub-tolerance wall-face reveal/niche (no leaf, no swing arc, and far narrower than any door on this sheet) -- it is now walked straight, per rule 9. Net area change +0.67 SF (254.02 -> 254.69 SF). The x=2795.0/2801.3 step further east was still not incorporated -- it reads as PATIENT ROOM 138's own wall (its own door-sized gap at y=1074.5-1157.8 is a separate, out-of-scope opening). See notes.md Q6 (rewritten)."
+   "notes": "v2 corrections applied: (item e) west chase/column enclosure now wrapped on its outside face instead of the ring jogging back to x=2535.4 at y=952.8; (item g) TOILET 137A shared door notch shortened to y=1099.0-1156.1 (was 1099.0-1177.0); (item h) corridor door corrected to use the TRUE composite far face x=2795.0 (centerline 2782.05) with jambs 1088.9/1157.8, instead of the prior model's x=2772.25 centerline running all the way to the room's own SE corner at 1177.0. Area changed from 254.69 SF (prior correction) to 251.94 SF."
   },
   {
    "label": "TOILET 137A",
@@ -320,10 +462,26 @@
      1009.7
     ],
     [
-     2682.7,
+     2617.9,
      1009.7
     ],
     [
+     2617.9,
+     1065.4
+    ],
+    [
+     2625.4,
+     1065.4
+    ],
+    [
+     2625.4,
+     1008.7
+    ],
+    [
+     2682.7,
+     1008.7
+    ],
+    [
      2682.7,
      1099.0
     ],
@@ -333,7 +491,11 @@
     ],
     [
      2686.3,
-     1177.0
+     1156.1
+    ],
+    [
+     2682.7,
+     1156.1
     ],
     [
      2682.7,
@@ -345,17 +507,22 @@
     ]
    ],
    "printed_sf": null,
-   "finish_source": "Sheet AF600 'PATIENT TOILET ROOMS' schedule row, FLOOR FINISH = PT-1/PT-2; plan tag 'PT-1/PT-2' printed inside the room confirms it (no numbered '137A' row exists separately in the schedule -- the typical patient-toilet row is used). See notes.md Q5.",
+   "finish_source": "Sheet AF600 'PATIENT TOILET ROOMS' schedule row, FLOOR FINISH = PT-1/PT-2; plan tag 'PT-1/PT-2' printed inside the room confirms it.",
    "vertex_sources": [
-    "v0 NW: V x=2563.9 (west wall inner/east face of pair 2554.8/2563.9, shared with OFFICE 136) \u2229 H y=1009.7 (north wall inner/south face of pair 1002.2/1009.7 -- the pair's east portion is 1008.7/1002.2, ~1px different, unified here as within tolerance)",
-    "v1 NE: H y=1009.7 east to x=2682.7 (east wall inner/west face of pair 2682.7/2689.9)",
-    "v2: down east wall to y=1099.0 (door jamb, solid wall confirmed 1023.4/1016.9-1099.0)",
-    "v3: notch into door opening, centerline x=(2682.7+2689.9)/2=2686.3 -- CONFIRMED (coordinator review) this centerline segment (2686.3,1099.0)-(2686.3,1177.0) is shared identically with PATIENT ROOM 137's own ring v7-v9 (mirrored from the opposite face); the two rings meet exactly, no gap or overlap.",
-    "v4: down centerline to y=1177.0 (opening runs to the building south wall, no far jamb block found -- door corner coincides with the room's own SE corner)",
-    "v5: notch back to face x=2682.7 y=1177.0 (= SE corner)",
-    "v6: H y=1177.0 west to x=2563.9 (building south wall inner face), up west wall to v0"
+    "v0 NW: V x=2563.9 (west wall inner/east face of pair 2554.8/2563.9, shared with OFFICE 136) x H y=1009.7 (north wall inner/south face, west portion)",
+    "v1: H y=1009.7 east to x=2617.9 (H(2563.9,1009.7)-(2617.9,1009.7) w=1.68 len 54.0) -- west face of the privacy-partition stub (item f)",
+    "v2: NEW (coordinator item f): down V(2617.9,1009.7)-(2617.9,1065.4) w=1.68 len 48.5 -- the north edge dips around the stub hanging from the north wall",
+    "v3: across the stub's bottom H(2617.9,1065.4)-(2625.4,1065.4) w=1.68 len 7.4 to x=2625.4",
+    "v4: back up V(2625.4,1065.4)-(2625.4,1023.4) w=1.68 len 42.0 (continuing to the confirmed connector at 1016.9-1009.7) to y=1008.7",
+    "v5: H y=1008.7 east to x=2682.7 (H(2624.4,1008.7)-(2683.7,1008.7) w=1.68 len 59.3, the north wall's east-of-stub face, ~1px south of the west portion's 1009.7 face -- within tolerance)",
+    "v6: down east wall V(2682.7,1023.4)-(2682.7,1099.0) w=1.68 len 75.6 to y=1099.0 (door jamb)",
+    "v7: notch into door opening to centerline x=(2682.7+2689.9)/2=2686.3",
+    "v8: down centerline to y=1156.1 -- CORRECTED (coordinator item g): south jamb is y=1156.1 (where the door leaf, lying open along the south wall, is hinged -- H(2689.9,1156.1)-(2743.9,1156.1) w=0.96 len 54.0), not y=1177.0. Below 1156.1 both wall faces resume (V(2682.7,1159.0)-(2682.7,1177.0) and V(2689.9,1177.0)-(2689.9,1159.0), both w=1.68, an 18px stub down to the south wall)",
+    "v9: notch back to face x=2682.7 y=1156.1",
+    "v10: down the resumed wall stub to y=1177.0 (south wall)",
+    "v11: H y=1177.0 west to x=2563.9 (building south wall inner face), up west wall to v0"
    ],
-   "notes": "Sink alcove partition (V 2617.9/2625.4, y=1016.9-1065.4) inside the room is casework, not a wall face (rule 1/8) and does not notch the boundary. The ADA-style diagonal lines crossing the room are 0.48px hatch/fixture graphics, not walls (rule 8), confirmed by direct vector width check. A separate thin-stroke (0.48/0.72px) mark on the OFFICE-side face of the west wall, x=2555-2565 y=1093.7-1156.6, was checked directly at zoom-7 and is a wall-mounted fixture symbol, not a door -- no leaf, no swing arc; not notched."
+   "notes": "v2 corrections applied: (item f) north edge now dips around the privacy-partition stub (V2617.9/V2625.4, y=1009.7-1065.4) instead of running straight across; (item g) the shared TOILET/PATIENT ROOM 137 door notch shortened to y=1099.0-1156.1 (was 1099.0-1177.0), matching the door leaf's true hinge position and the wall stub that resumes below it. Area changed from 62.21 SF (v1) to 60.87 SF."
   }
  ],
  "tolerances": {
@@ -364,8 +531,9 @@
   "boundary_max_px": 2.5
  },
  "review": {
-  "prepared_by": "agent (Claude Sonnet) from PDF vectors via PyMuPDF",
+  "prepared_by": "agent (Claude Sonnet) from PDF vectors via PyMuPDF -- v2 produced directly from linework per 8 coordinator-identified defects, independent of any candidate export",
   "human_reviewed": false,
-  "reviewer": null
+  "reviewer": null,
+  "revision_note": "v2 (2026-09-12): corrected from the PDF linework after zoom inspection of a blind candidate run exposed defects in v1 (see plan-set/BLIND-RUNS-2026-09-12.md); v1 kept as reference-v1.json. Still agent-prepared, not human-reviewed."
  }
 }

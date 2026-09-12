@@ -41,3 +41,15 @@ ruling changes the reference and bumps its `reference_id`.
 **Q11. W/D is an open alcove** (no wall or door on its open side). (a) *Carried.* Its own ring, closed on the wall-face line across the opening. (b) Fold its floor into the room it opens to. Effect: 6.9 SF moves between rings.
 
 **Q12. OPT. BEDROOM and CL.** are shown with an optional wall and door ("OPT WALL & DOOR TO CREATE BEDROOM"); the schedule notes LVP when the bedroom is not provided. (a) *Carried.* Trace the plan as drawn: bedroom and closet as CPT rings bounded by the optional wall. (b) Bedroom not built: OPT. BEDROOM and CL. fold into LIVING as LVP (LIVING ≈ 361 SF instead of ≈ 256 SF).
+
+## Raised by the blind runs of 2026-09-12 (`BLIND-RUNS-2026-09-12.md`)
+
+**Q13. Roseburg D104 sink alcove** (x 3120–3228, y 2380–2591): bounded on the room side by one heavy 1.68 px stroke with no wall thickness, on a sheet whose every wall is a double line; the scope hatch is continuous across it. (a) *Carried (v2).* Exclude: the heavy stroke is a wall. (b) Include: the stroke is a screen line, the finish runs under the sink (+5.2 SF).
+
+**Q14. Which line is the wall face on a framed wall drawn with a gypsum-board line?** Porterville draws each wall as stud lines with a 5/8 in board line outside them. (a) *Carried (v2).* The stud line. (b) The board line, 1.9 px (0.6 in) further out, which is the finished surface the floor actually meets. Effect under 2.5 px everywhere; a ruling settles the convention for every framed plan.
+
+**Q15. Door notch depth through a composite exterior wall** (masonry plus furring, St. Cloud corridor doors of 134 and 137). (a) *Carried (v2).* Half the whole wall, face to face (2110.3 → 2136.0 gives 2123.15). (b) Half the furring only (3 px). Effect about 0.6 SF per door.
+
+**Q16. Where does an open split between two rooms sit when a partition ends in open space?** (a) *Carried.* On the partition's centerline extended across the opening, and likewise at an open alcove mouth. (b) On the partition's face line extended. Effect about 10 px per split on a 1/4 in plan (under 1 SF).
+
+**Q17. A finish change at a service counter: front line or back line?** When two floor finishes meet under a counter drawn between them, the reference carries (a) the counter's back line (the customer-side finish stops at the counter face) or (b) the counter's front line (the service-side finish runs under it). Effect: the counter footprint moves between the two finishes (about 5 SF on a 20 ft counter).
