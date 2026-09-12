@@ -1,0 +1,95 @@
+[
+  {
+    "shot": "01-empty.png",
+    "note": "OpenTakeoff before anything is loaded.",
+    "status": ""
+  },
+  {
+    "shot": "02-plan-open.png",
+    "note": "The finish plan is open; the scale bar asks for a scale.",
+    "status": "Opened 1 sheet."
+  },
+  {
+    "shot": "03-scale-adopted.png",
+    "note": "The human adopts the plan's own 1/8 in = 1 ft note (the same calibration the agent used).",
+    "status": "Opened 1 sheet."
+  },
+  {
+    "shot": "04-imported-pending.png",
+    "note": "Import takeoff: the agent's six rings land dashed (pencil) with ONE Accept pill for the batch. Nothing is approved.",
+    "status": "Imported 6 shapes · 6 dashed pending your review — Accept turns pencil to ink · 1 new condition · 2 matched your finish tags."
+  },
+  {
+    "pill_text": "Accept “AF101 floor takeoff: rooms 134, 134A, 136, 137, 137A per finish schedule AF600” · 6\n✕"
+  },
+  {
+    "dashed_shapes_on_screen": 7
+  },
+  {
+    "shot": "05-shape-selected.png",
+    "note": "Select (V) and click a pending ring: its corner handles show. This is the review surface.",
+    "status": "Imported 6 shapes · 6 dashed pending your review — Accept turns pencil to ink · 1 new condition · 2 matched your finish tags."
+  },
+  {
+    "vertex0_screen": {
+      "x": 670.54443359375,
+      "y": 310.9892272949219,
+      "count": 20,
+      "w": 71
+    }
+  },
+  {
+    "after_drag_status": "660.5 SF · 73.4 SY"
+  },
+  {
+    "shot": "06-vertex-corrected.png",
+    "note": "The human nudges one corner about a foot: the shape re-prices live and is graded as corrected in provenance; the agent's original ring is frozen beside it.",
+    "status": "Imported 6 shapes · 6 dashed pending your review — Accept turns pencil to ink · 1 new condition · 2 matched your finish tags."
+  },
+  {
+    "shot": "07-batch-accepted.png",
+    "note": "The Accept pill: one click inks the whole batch (one undo). NOTE: in this walkthrough the click was issued by a script in a throwaway browser, so it demonstrates the control, not a human's approval.",
+    "status": "Accepted “AF101 floor takeoff: rooms 134, 134A, 136, 137, 137A per finish schedule AF600” — 6 shapes — pencil is now ink (⌘Z undoes)."
+  },
+  {
+    "export_takeoff": "takeoff.takeoff.json"
+  },
+  {
+    "export_check": {
+      "shapes": 6,
+      "reviewed_true": 6,
+      "corrected": 1,
+      "approvals": 0,
+      "stamps": 0,
+      "origin_actors": [
+        "agent"
+      ]
+    }
+  },
+  {
+    "shot": "08-takeoff-exported.png",
+    "note": "Sheet menu → Export takeoff… writes the editable JSON with the review state.",
+    "status": "Exported takeoff.takeoff.json — 6 takeoffs, 10 conditions. The plan PDF isn't in it: to restore, open the same PDF, then Import takeoff."
+  },
+  {
+    "export_archive": "project.otk"
+  },
+  {
+    "shot": "09-archive-exported.png",
+    "note": "Sheet menu → Export project archive… writes the .otk (plan PDF + takeoff) for a clean machine.",
+    "status": "Exported project.otk — 1 PDF + the full takeoff (6 shapes). Self-contained: open it on any machine, or hand it to another estimator."
+  },
+  {
+    "shot": "10-report.png",
+    "note": "The Report: per-condition SF from the accepted rings.",
+    "status": "Exported project.otk — 1 PDF + the full takeoff (6 shapes). Self-contained: open it on any machine, or hand it to another estimator."
+  },
+  {
+    "marked_set": "marked set.pdf"
+  },
+  {
+    "shot": "11-marked-set.png",
+    "note": "Marked set PDF downloaded: the deliverable, with the accepted rings burned into the sheet.",
+    "status": "Marked set downloaded — marked set.pdf"
+  }
+]

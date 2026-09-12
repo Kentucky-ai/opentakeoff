@@ -1,0 +1,6 @@
+{
+ "phaseA_export": "takeoff.takeoff.json",
+ "phaseB_export": "takeoff.takeoff.json",
+ "identical": true,
+ "approvals_B": 0
+}

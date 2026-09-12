@@ -1,0 +1,816 @@
+{
+  "schema": "opentakeoff.takeoff_canvas.v1",
+  "project_name": "",
+  "sheets": [
+    {
+      "sheet_id": "sample-finish-plan.pdf",
+      "units_per_px": 0.05555555555555555,
+      "scale_source": "detected"
+    }
+  ],
+  "conditions": [
+    {
+      "id": "cnd-2361b2a8-437f-4cf6-8ed5-811f92700d15",
+      "created_at": "2026-09-12T02:34:26.360Z",
+      "finish_tag": "CPT-1",
+      "color": "#2f7d54",
+      "fill": "#2f7d54",
+      "hatch": "speckle",
+      "multiplier": 1,
+      "waste_pct": 5,
+      "materials": [
+        {
+          "round": true,
+          "name": "Adhesive",
+          "kind": "adhesive",
+          "per": 250,
+          "basis": "area",
+          "unit": "gal",
+          "id": "mat-ee5fa924-d874-4d68-9379-486aa4d030b9"
+        }
+      ]
+    },
+    {
+      "id": "cnd-900059e4-c15f-40ad-8070-7b82a0056e52",
+      "created_at": "2026-09-12T02:34:26.361Z",
+      "finish_tag": "BRD-1",
+      "color": "#be185d",
+      "fill": "#be185d",
+      "hatch": "dots",
+      "multiplier": 1,
+      "waste_pct": 10,
+      "materials": [
+        {
+          "round": true,
+          "name": "Adhesive",
+          "kind": "adhesive",
+          "per": 120,
+          "basis": "area",
+          "unit": "gal",
+          "id": "mat-6f6eb3ed-f61b-4640-a753-9103ac8f3058"
+        }
+      ]
+    },
+    {
+      "id": "cnd-058cb766-0492-46aa-95fc-02ce6fe986a7",
+      "created_at": "2026-09-12T02:34:26.361Z",
+      "finish_tag": "LVT-1",
+      "color": "#b8860b",
+      "fill": "#b8860b",
+      "hatch": "plank",
+      "multiplier": 1,
+      "waste_pct": 8,
+      "materials": [
+        {
+          "round": true,
+          "name": "Adhesive",
+          "kind": "adhesive",
+          "per": 250,
+          "basis": "area",
+          "unit": "gal",
+          "id": "mat-dbb8d357-6b3b-4b16-b940-63b14b58e6b7"
+        }
+      ]
+    },
+    {
+      "id": "cnd-8a790791-edc0-4d3e-8143-416ef7b24c5e",
+      "created_at": "2026-09-12T02:34:26.361Z",
+      "finish_tag": "WD-1",
+      "color": "#9a3412",
+      "fill": "#9a3412",
+      "hatch": "plank",
+      "multiplier": 1,
+      "waste_pct": 10,
+      "materials": [
+        {
+          "round": true,
+          "name": "Adhesive (wood, SMP)",
+          "kind": "adhesive",
+          "per": 50,
+          "basis": "area",
+          "unit": "gal",
+          "note": "1/4″×1/4″ V (wood)",
+          "id": "mat-54de50d0-f17e-4ed6-95a7-008227e9f60a"
+        },
+        {
+          "round": true,
+          "name": "Sealer (primer coat)",
+          "per": 400,
+          "basis": "area",
+          "unit": "gal",
+          "note": "1 prime coat (~10 m²/L)",
+          "id": "mat-b3757de8-3f58-43aa-bef8-4d7a23fb1662"
+        },
+        {
+          "round": true,
+          "name": "Polyurethane (2K finish)",
+          "per": 136,
+          "basis": "area",
+          "unit": "gal",
+          "note": "≈3 coats @ ~408 SF/gal/coat (2K 10:1)",
+          "id": "mat-71b4349b-0c90-4add-b718-2e7a43d17526"
+        }
+      ]
+    },
+    {
+      "id": "cnd-316a459d-366d-43d6-a52c-a26d4f6a4010",
+      "created_at": "2026-09-12T02:34:26.361Z",
+      "finish_tag": "VCT-1",
+      "color": "#2563eb",
+      "fill": "#2563eb",
+      "hatch": "checker",
+      "multiplier": 1,
+      "waste_pct": 5,
+      "materials": [
+        {
+          "round": true,
+          "name": "Adhesive",
+          "kind": "adhesive",
+          "per": 350,
+          "basis": "area",
+          "unit": "gal",
+          "id": "mat-8a6356df-ce5b-4eec-9d90-9a93b256a6d2"
+        }
+      ]
+    },
+    {
+      "id": "cnd-c78ae050-173a-46b6-aa92-10bcf0ec27d7",
+      "created_at": "2026-09-12T02:34:26.361Z",
+      "finish_tag": "SV-1",
+      "color": "#0d9488",
+      "fill": "#0d9488",
+      "hatch": "solid",
+      "multiplier": 1,
+      "waste_pct": 10,
+      "materials": [
+        {
+          "round": true,
+          "name": "Adhesive",
+          "kind": "adhesive",
+          "per": 150,
+          "basis": "area",
+          "unit": "gal",
+          "id": "mat-54c9ab8e-741a-40f8-88cf-eed03b638381"
+        },
+        {
+          "round": true,
+          "name": "Heat-weld rod",
+          "per": 1,
+          "basis": "seam_lf",
+          "unit": "lf",
+          "note": "runs the figured seams — set the roll width on this condition",
+          "id": "mat-0640cba4-1601-427e-913b-4b04b5e92d3f"
+        }
+      ]
+    },
+    {
+      "id": "cnd-d258159f-1a0e-4053-8a69-2dc7fc8fa9d3",
+      "created_at": "2026-09-12T02:34:26.361Z",
+      "finish_tag": "CT-1",
+      "color": "#9333ea",
+      "fill": "#9333ea",
+      "hatch": "grid",
+      "multiplier": 1,
+      "waste_pct": 10,
+      "materials": [
+        {
+          "round": true,
+          "name": "Thinset mortar",
+          "kind": "mortar",
+          "per": 65,
+          "basis": "area",
+          "unit": "bag",
+          "note": "1/4″×3/8″×1/4″ sq",
+          "id": "mat-43e86c34-8ea7-42f8-935b-2c5228e1482b"
+        },
+        {
+          "round": true,
+          "name": "Grout",
+          "kind": "grout",
+          "per": 512,
+          "basis": "area",
+          "unit": "bag",
+          "grout": {
+            "tileL": 12,
+            "tileW": 24,
+            "tileT": 0.375,
+            "joint": 0.125,
+            "bagLbs": 25
+          },
+          "note": "12×24×3/8″ @ 1/8″ · 25 lb",
+          "id": "mat-6c8ffbb3-2c70-4041-9119-3a31e7b50dcc"
+        }
+      ]
+    },
+    {
+      "id": "cnd-68a3f171-6b4e-4582-828a-6ce3da727e38",
+      "created_at": "2026-09-12T02:34:26.361Z",
+      "finish_tag": "RB-1",
+      "color": "#475569",
+      "fill": "#475569",
+      "hatch": "horiz",
+      "multiplier": 1,
+      "waste_pct": 5,
+      "materials": [
+        {
+          "round": true,
+          "name": "Cove base adhesive",
+          "kind": "adhesive",
+          "per": 40,
+          "basis": "linear",
+          "unit": "tube",
+          "id": "mat-88e06bd8-c823-478a-8390-52d88a5b1e2f"
+        }
+      ]
+    },
+    {
+      "id": "cnd-125e7040-c549-4ace-b610-bb2ec448e3aa",
+      "created_at": "2026-09-12T02:34:26.361Z",
+      "finish_tag": "TR-1",
+      "color": "#c96442",
+      "fill": "#c96442",
+      "hatch": "vert",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": []
+    },
+    {
+      "id": "cnd-c09a4f7e-deee-40d4-b632-3f4433f87014",
+      "finish_tag": "PT-1/PT-2",
+      "color": "#2563eb",
+      "fill": "#2563eb",
+      "hatch": "cross",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": []
+    }
+  ],
+  "shapes": [
+    {
+      "id": "shp-a910d407-2c4d-42fb-8ffa-00b9da9503c2",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-2361b2a8-437f-4cf6-8ed5-811f92700d15",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.3559126984126984,
+          0.16816666666666666
+        ],
+        [
+          0.4176587301587302,
+          0.1631712962962963
+        ],
+        [
+          0.4176587301587302,
+          0.21555555555555556
+        ],
+        [
+          0.4157572751322751,
+          0.21555555555555556
+        ],
+        [
+          0.4157572751322751,
+          0.21638888888888888
+        ],
+        [
+          0.4067791005291005,
+          0.21638888888888888
+        ],
+        [
+          0.4067791005291005,
+          0.21555555555555556
+        ],
+        [
+          0.4025462962962963,
+          0.21555555555555556
+        ],
+        [
+          0.4025462962962963,
+          0.21638888888888888
+        ],
+        [
+          0.3935681216931217,
+          0.21638888888888888
+        ],
+        [
+          0.3935681216931217,
+          0.21555555555555556
+        ],
+        [
+          0.38718584656084654,
+          0.21555555555555556
+        ],
+        [
+          0.38718584656084654,
+          0.2161574074074074
+        ],
+        [
+          0.3531746031746032,
+          0.2161574074074074
+        ],
+        [
+          0.3531746031746032,
+          0.21550925925925926
+        ],
+        [
+          0.3521494708994709,
+          0.21550925925925926
+        ],
+        [
+          0.3521494708994709,
+          0.21289351851851854
+        ],
+        [
+          0.351058201058201,
+          0.21289351851851854
+        ],
+        [
+          0.351058201058201,
+          0.19555555555555554
+        ],
+        [
+          0.3531746031746032,
+          0.19555555555555554
+        ]
+      ],
+      "computed": {
+        "area_sf": 261.87,
+        "perimeter_lf": 68.97
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "proposal_id": "prop-6b632ef0-883c-4018-9291-4f4e7502b356",
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1,
+        "edited": true,
+        "edits": {
+          "vertex": 1
+        },
+        "proposed_verts_norm": [
+          [
+            0.3531746031746032,
+            0.1631712962962963
+          ],
+          [
+            0.4176587301587302,
+            0.1631712962962963
+          ],
+          [
+            0.4176587301587302,
+            0.21555555555555556
+          ],
+          [
+            0.4157572751322751,
+            0.21555555555555556
+          ],
+          [
+            0.4157572751322751,
+            0.21638888888888888
+          ],
+          [
+            0.4067791005291005,
+            0.21638888888888888
+          ],
+          [
+            0.4067791005291005,
+            0.21555555555555556
+          ],
+          [
+            0.4025462962962963,
+            0.21555555555555556
+          ],
+          [
+            0.4025462962962963,
+            0.21638888888888888
+          ],
+          [
+            0.3935681216931217,
+            0.21638888888888888
+          ],
+          [
+            0.3935681216931217,
+            0.21555555555555556
+          ],
+          [
+            0.38718584656084654,
+            0.21555555555555556
+          ],
+          [
+            0.38718584656084654,
+            0.2161574074074074
+          ],
+          [
+            0.3531746031746032,
+            0.2161574074074074
+          ],
+          [
+            0.3531746031746032,
+            0.21550925925925926
+          ],
+          [
+            0.3521494708994709,
+            0.21550925925925926
+          ],
+          [
+            0.3521494708994709,
+            0.21289351851851854
+          ],
+          [
+            0.351058201058201,
+            0.21289351851851854
+          ],
+          [
+            0.351058201058201,
+            0.19555555555555554
+          ],
+          [
+            0.3531746031746032,
+            0.19555555555555554
+          ]
+        ],
+        "accepted_ts": "2026-09-12T02:34:35.975Z"
+      },
+      "label": "CONFERENCE/BREAK ROOM 134",
+      "updated_at": "2026-09-12T02:34:34.518Z"
+    },
+    {
+      "id": "shp-31f797e2-7d58-4489-964e-040cfe5e4b68",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-316a459d-366d-43d6-a52c-a26d4f6a4010",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.3531746031746032,
+          0.2161574074074074
+        ],
+        [
+          0.38718584656084654,
+          0.2161574074074074
+        ],
+        [
+          0.38718584656084654,
+          0.22921296296296298
+        ],
+        [
+          0.3790839947089947,
+          0.22921296296296298
+        ],
+        [
+          0.3790839947089947,
+          0.2395601851851852
+        ],
+        [
+          0.3531746031746032,
+          0.2395601851851852
+        ]
+      ],
+      "computed": {
+        "area_sf": 57.43,
+        "perimeter_lf": 34.09
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "proposal_id": "prop-6b632ef0-883c-4018-9291-4f4e7502b356",
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1,
+        "accepted_ts": "2026-09-12T02:34:35.975Z"
+      },
+      "label": "CONFERENCE/BREAK ROOM 134"
+    },
+    {
+      "id": "shp-0666736b-e094-425e-8aca-cd0def2a9500",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-2361b2a8-437f-4cf6-8ed5-811f92700d15",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.4053240740740741,
+          0.2172222222222222
+        ],
+        [
+          0.4067791005291005,
+          0.2172222222222222
+        ],
+        [
+          0.4067791005291005,
+          0.21638888888888888
+        ],
+        [
+          0.4157572751322751,
+          0.21638888888888888
+        ],
+        [
+          0.4157572751322751,
+          0.2172222222222222
+        ],
+        [
+          0.4176587301587302,
+          0.2172222222222222
+        ],
+        [
+          0.4176587301587302,
+          0.22055555555555553
+        ],
+        [
+          0.422420634920635,
+          0.22055555555555553
+        ],
+        [
+          0.422420634920635,
+          0.22983796296296297
+        ],
+        [
+          0.4053240740740741,
+          0.22983796296296297
+        ]
+      ],
+      "computed": {
+        "area_sf": 16.72,
+        "perimeter_lf": 17.94
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "proposal_id": "prop-6b632ef0-883c-4018-9291-4f4e7502b356",
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1,
+        "accepted_ts": "2026-09-12T02:34:35.975Z"
+      },
+      "label": "STORAGE 134A"
+    },
+    {
+      "id": "shp-3c4f2017-f9d1-4ae0-865c-c3b1d94b313b",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-2361b2a8-437f-4cf6-8ed5-811f92700d15",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.3884093915343915,
+          0.2199537037037037
+        ],
+        [
+          0.3907903439153439,
+          0.2199537037037037
+        ],
+        [
+          0.3907903439153439,
+          0.2172222222222222
+        ],
+        [
+          0.3935681216931217,
+          0.2172222222222222
+        ],
+        [
+          0.3935681216931217,
+          0.21638888888888888
+        ],
+        [
+          0.4025462962962963,
+          0.21638888888888888
+        ],
+        [
+          0.4025462962962963,
+          0.2172222222222222
+        ],
+        [
+          0.4041335978835979,
+          0.2172222222222222
+        ],
+        [
+          0.4041335978835979,
+          0.23150462962962964
+        ],
+        [
+          0.422420634920635,
+          0.23150462962962964
+        ],
+        [
+          0.422420634920635,
+          0.27194444444444443
+        ],
+        [
+          0.4021825396825397,
+          0.27194444444444443
+        ],
+        [
+          0.4021825396825397,
+          0.2732175925925926
+        ],
+        [
+          0.39226190476190476,
+          0.2732175925925926
+        ],
+        [
+          0.39226190476190476,
+          0.27194444444444443
+        ],
+        [
+          0.3884093915343915,
+          0.27194444444444443
+        ]
+      ],
+      "computed": {
+        "area_sf": 130.12,
+        "perimeter_lf": 50.13
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "proposal_id": "prop-6b632ef0-883c-4018-9291-4f4e7502b356",
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1,
+        "accepted_ts": "2026-09-12T02:34:35.975Z"
+      },
+      "label": "OFFICE 136"
+    },
+    {
+      "id": "shp-48ee4e8a-2798-4318-a93e-2c24258baecd",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-2361b2a8-437f-4cf6-8ed5-811f92700d15",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.41921296296296295,
+          0.1631712962962963
+        ],
+        [
+          0.45785383597883594,
+          0.1631712962962963
+        ],
+        [
+          0.45785383597883594,
+          0.2520601851851852
+        ],
+        [
+          0.4599867724867725,
+          0.2520601851851852
+        ],
+        [
+          0.4599867724867725,
+          0.2680092592592592
+        ],
+        [
+          0.45785383597883594,
+          0.2680092592592592
+        ],
+        [
+          0.45785383597883594,
+          0.2724537037037037
+        ],
+        [
+          0.4447585978835979,
+          0.2724537037037037
+        ],
+        [
+          0.4447585978835979,
+          0.26828703703703705
+        ],
+        [
+          0.4441633597883598,
+          0.26828703703703705
+        ],
+        [
+          0.4441633597883598,
+          0.25439814814814815
+        ],
+        [
+          0.4447585978835979,
+          0.25439814814814815
+        ],
+        [
+          0.4447585978835979,
+          0.23199074074074075
+        ],
+        [
+          0.4239252645502646,
+          0.23199074074074075
+        ],
+        [
+          0.4239252645502646,
+          0.2089351851851852
+        ],
+        [
+          0.41921296296296295,
+          0.2089351851851852
+        ]
+      ],
+      "computed": {
+        "area_sf": 251.82,
+        "perimeter_lf": 80.26
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "proposal_id": "prop-6b632ef0-883c-4018-9291-4f4e7502b356",
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1,
+        "accepted_ts": "2026-09-12T02:34:35.975Z"
+      },
+      "label": "PATIENT ROOM 137"
+    },
+    {
+      "id": "shp-b9727b64-fdab-448e-a404-16cd89b4fcc3",
+      "sheet_id": "sample-finish-plan.pdf",
+      "condition_id": "cnd-c09a4f7e-deee-40d4-b632-3f4433f87014",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.4239252645502646,
+          0.23372685185185185
+        ],
+        [
+          0.432853835978836,
+          0.23372685185185185
+        ],
+        [
+          0.432853835978836,
+          0.24662037037037038
+        ],
+        [
+          0.43409391534391534,
+          0.24662037037037038
+        ],
+        [
+          0.43409391534391534,
+          0.23349537037037038
+        ],
+        [
+          0.44356812169312165,
+          0.23349537037037038
+        ],
+        [
+          0.44356812169312165,
+          0.25439814814814815
+        ],
+        [
+          0.4441633597883598,
+          0.25439814814814815
+        ],
+        [
+          0.4441633597883598,
+          0.26828703703703705
+        ],
+        [
+          0.44356812169312165,
+          0.26828703703703705
+        ],
+        [
+          0.44356812169312165,
+          0.2724537037037037
+        ],
+        [
+          0.4239252645502646,
+          0.2724537037037037
+        ]
+      ],
+      "computed": {
+        "area_sf": 60.9,
+        "perimeter_lf": 38.49
+      },
+      "origin": {
+        "method": "manual",
+        "actor": "agent",
+        "reviewed": true,
+        "proposal_id": "prop-6b632ef0-883c-4018-9291-4f4e7502b356",
+        "assignment": {
+          "source": "asserted"
+        },
+        "agent_edits": 1,
+        "accepted_ts": "2026-09-12T02:34:35.975Z"
+      },
+      "label": "TOILET 137A"
+    }
+  ],
+  "markups": [],
+  "rfis": [],
+  "proposals": [
+    {
+      "id": "prop-6b632ef0-883c-4018-9291-4f4e7502b356",
+      "label": "AF101 floor takeoff: rooms 134, 134A, 136, 137, 137A per finish schedule AF600",
+      "rationale": "Room finish schedule AF600 rows 134 (CPT-1/VCT-1), 134A (CPT-1), 136 (CPT-1); 137 and 137A have no schedule row - plan tags CPT-1 and PT-1/PT-2 carried per task room list. Rings traced on innermost wall faces from get_sheet_vectors, doors crossed on wall centerline, finish split in 134 on the drawn transition line the CPT-1/VCT-1 arrows point at.",
+      "created_at": "2026-09-12T01:32:33.576Z"
+    }
+  ],
+  "sheet_group": [],
+  "last_group": [],
+  "sheet_tabs": [
+    "sample-finish-plan.pdf"
+  ]
+}

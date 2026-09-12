@@ -763,6 +763,40 @@ A proposal whose sheet you've since closed (or unscaled) is skipped at accept wi
 
 Work that arrives from an MCP session (**Import takeoff…**, or a synced workspace) lands as dashed pencil too, and an agent can group it: `propose_takeoff` names a batch and every shape it commits afterwards belongs to it. On the canvas that batch is **one pill** — *Accept "Level 1 offices per finish schedule" · 3* — with a ✕ to reject it. Accept inks the whole batch in one step (one `⌘Z`); Reject removes its pending shapes (`⌘Z` restores them). Shapes you already accepted are never part of a batch again, so an agent that revises or withdraws its proposal cannot touch your ink. Anything un-batched keeps the plain **Accept N proposed shapes** pill.
 
+### Reviewing an agent's takeoff, start to finish
+
+The whole loop on a real sheet, with the screens you will see. The takeoff below was drawn by an MCP agent on the bundled sample plan and handed over as its JSON export; nothing in it is approved until you act.
+
+1. **Open the plan, then set its scale.** Open the same PDF the agent worked on and adopt the plan's own note (**Set scale… → Plan says**). Import refuses a takeoff whose calibration differs from the sheet's, so the agent's scale and yours must agree; here both are 1/8" = 1'-0".
+
+   ![The plan open with its scale adopted](img/agent-review/03-scale-adopted.jpg)
+
+2. **Sheet → Import takeoff…** The agent's rings land as dashed pencil, one **Accept** pill for the whole batch, and the status bar tells you how many shapes are pending and which finish tags matched yours. Every shape is `origin: agent`, unreviewed.
+
+   ![Six pending rings and one Accept pill](img/agent-review/04-imported-pending.jpg)
+
+3. **Inspect and correct.** Arm **Select** (`V`) and click a ring: its corner handles appear and the readout shows its SF. Drag a corner, insert a vertex on an edge, or delete one (§7). Correcting a pending shape grades it as *corrected* in provenance and freezes the agent's original ring beside your fix; it does not accept it.
+
+   ![A pending ring selected with its handles](img/agent-review/05-shape-selected.jpg)
+
+   ![After nudging one corner the shape re-prices live](img/agent-review/06-vertex-corrected.jpg)
+
+4. **Accept.** Click the pill (or `⏎` with nothing mid-draw): the batch inks in one step and one `⌘Z` undoes it. Reject with the pill's ✕, or select one shape and press `⌫`. This click is the human decision the agent could not make; no export, verdict or schema check substitutes for it.
+
+   ![The batch accepted: pencil is now ink](img/agent-review/07-batch-accepted.jpg)
+
+5. **Save it two ways.** **Sheet → Export takeoff…** writes the editable JSON with your review state and corrections; **Sheet → Export project archive…** writes the `.otk` that carries the plan PDF with it.
+
+6. **Check the deliverables.** **Report** shows per-finish SF from the accepted rings; **Print → Download marked set** burns them into the sheet.
+
+   ![The report after acceptance](img/agent-review/10-report.jpg)
+
+7. **Reopen on a clean machine.** Drop the `.otk` on an empty OpenTakeoff: the plan, its scale, your conditions and every accepted shape come back as ink, corrections and frozen originals included. The sheet gallery opens first because the archive holds two sheets; close it to work.
+
+   ![The archive reopened in a fresh browser profile](img/agent-review/12-archive-reopened.jpg)
+
+The screens above were captured in a throwaway browser driven by a script against the real app, so they prove the controls and the persistence, not a person's approval; a takeoff is approved when an estimator clicks Accept in their own browser.
+
 ### Shared floor — when two conditions claim the same room
 
 Two conditions can claim the same floor and nothing used to say so: a room detected under `CPT-1`, then traced again under `LVT-2` on another day, and every total downstream counts that floor twice. Now a condition row that shares floor with another wears a **⚠ N** badge (the number of pairs). Activate the row and the pairs list under it — the other condition, the shared square feet, how much of the smaller shape that is, and whether both were already accepted — each with a **Look** that frames the pair on the plan. Deciding which one wins is yours: delete one, or fix the ring. A room traced twice under the *same* condition shows as a **double trace** in the same list. The same measurement (an exact polygon intersection, not a guess) is what an MCP agent reads with `scope_duplicates`, and `takeoff_summary` carries the whole takeoff's shared floor as one number that has to read zero.
