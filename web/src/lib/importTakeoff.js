@@ -16,7 +16,7 @@
 // already landed (same-id entries are skipped, so re-importing a file is
 // idempotent — an accepted shape does not come back as a second pencil copy).
 
-import { ANN_SCHEMA } from "./store.js";
+import { TAKEOFF_SCHEMA as ANN_SCHEMA } from "./takeoffConstants.ts";
 import { sanitizeApprovals } from "./approvals.js";
 import { normalizeAgentReview } from "./reviewState.js";
 

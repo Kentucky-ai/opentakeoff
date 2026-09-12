@@ -19,6 +19,7 @@
 // remain stable.
 
 import { round2 } from "./num.js";
+import { REPORT_SCHEMA } from "./takeoffConstants.ts";
 import { csvEsc as esc } from "./csv.js";
 import { GETTERS, CSV_PROFILE, colGetter, floorPerimeterLf, applyUnits, METRIC_CSV_LABELS } from "./reportColumns.js";
 import { M_PER_FT, M2_PER_SF } from "./units";
@@ -495,7 +496,7 @@ export function reportJson({ projectName = "", rows = [], bySheet = [], scaleInf
   const colDefs = (Array.isArray(conditionColumns) ? conditionColumns : []).filter((cc) => cc && typeof cc === "object" && typeof cc.id === "string");
   const attrs = attrsByCond instanceof Map ? attrsByCond : new Map();
   return {
-    schema: "opentakeoff.report.v1",
+    schema: REPORT_SCHEMA,
     project_name: projectName || null,
     generated_with: "OpenTakeoff",
     // scale_confirmed (scale gate): false = an agent set this sheet's scale and

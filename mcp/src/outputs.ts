@@ -8,6 +8,7 @@
 // output (summary rows, export payload) use .passthrough() so a field added
 // upstream widens the reply instead of failing validation.
 import { z } from "zod";
+import { REPORT_SCHEMA } from "../../web/src/lib/takeoffConstants.ts";
 
 const point = z.tuple([z.number(), z.number()]);
 
@@ -697,7 +698,7 @@ const reportMaterialLine = z.object({
  * is the web export — this mirror pins what a pricing consumer relies on and
  * passes the additive tail through. */
 export const exportReportOutput = {
-  schema: z.literal("opentakeoff.report.v1"),
+  schema: z.literal(REPORT_SCHEMA),
   project_name: z.string().nullable(),
   generated_with: z.string(),
   sheets: z.array(z.object({ sheet_id: z.string(), sheet: z.string(), scale_source: z.string() }).passthrough()).describe("Scale provenance per sheet — how each scale was set"),
