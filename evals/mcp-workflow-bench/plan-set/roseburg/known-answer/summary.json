@@ -1,0 +1,158 @@
+{
+ "benchmark": "scripted MCP workflow conformance",
+ "node_version": "v24.18.0",
+ "reference_path": "evals/mcp-workflow-bench/plan-set/roseburg/reference.json",
+ "reference_id": "roseburg-a03a-estimator-trace-v1",
+ "source_sha256": "ff80f35af4702e874d823d5da04f1de141af710559173083b6a9b10e4e73135f",
+ "analytic_reference": false,
+ "independently_human_reviewed": false,
+ "boundary": "real-plan estimator-trace reference traced from PDF vectors by an agent, human review pending; a scripted known-answer run proves tool/workflow conformance only, not agent accuracy",
+ "cross_mode_canonical_equal": true,
+ "runs": {
+  "flat": {
+   "protocol_requests": 28,
+   "tool_calls": 24,
+   "scorer": {
+    "reference_id": "roseburg-a03a-estimator-trace-v1",
+    "profile": "estimator-trace",
+    "metadata_error": null,
+    "rooms": [
+     {
+      "label": "D105B STORAGE",
+      "finish": "VSF",
+      "area_sf": {
+       "expected": 39.82913223140479,
+       "actual": 39.83,
+       "percent_error": 0.0021787283493018626
+      },
+      "overlap_iou": 1.0000000000000107,
+      "boundary_vertex_edge_px": 4.547473508864641e-13,
+      "geometry_area_sf": 39.82913223140479,
+      "pass": true
+     },
+     {
+      "label": "D105A OFFICE",
+      "finish": "VSF",
+      "area_sf": {
+       "expected": 110.95529384756685,
+       "actual": 110.96,
+       "percent_error": 0.004241485259468028
+      },
+      "overlap_iou": 1.0000000000000202,
+      "boundary_vertex_edge_px": 4.547473508864641e-13,
+      "geometry_area_sf": 110.95529384756675,
+      "pass": true
+     },
+     {
+      "label": "D104 OFFICE",
+      "finish": "VSF",
+      "area_sf": {
+       "expected": 81.99230486685043,
+       "actual": 81.99,
+       "percent_error": 0.0028110770323876485
+      },
+      "overlap_iou": 1,
+      "boundary_vertex_edge_px": 4.547473508864641e-13,
+      "geometry_area_sf": 81.99230486685043,
+      "pass": true
+     },
+     {
+      "label": "D105 OFFICE",
+      "finish": "VSF",
+      "area_sf": {
+       "expected": 90.62568870523374,
+       "actual": 90.63,
+       "percent_error": 0.004757254623770489
+      },
+      "overlap_iou": 1.0000000000000802,
+      "boundary_vertex_edge_px": 6.431098710768743e-13,
+      "geometry_area_sf": 90.62568870523374,
+      "pass": true
+     }
+    ],
+    "pass": true
+   }
+  },
+  "staged": {
+   "protocol_requests": 34,
+   "tool_calls": 27,
+   "scorer": {
+    "reference_id": "roseburg-a03a-estimator-trace-v1",
+    "profile": "estimator-trace",
+    "metadata_error": null,
+    "rooms": [
+     {
+      "label": "D105B STORAGE",
+      "finish": "VSF",
+      "area_sf": {
+       "expected": 39.82913223140479,
+       "actual": 39.83,
+       "percent_error": 0.0021787283493018626
+      },
+      "overlap_iou": 1.0000000000000107,
+      "boundary_vertex_edge_px": 4.547473508864641e-13,
+      "geometry_area_sf": 39.82913223140479,
+      "pass": true
+     },
+     {
+      "label": "D105A OFFICE",
+      "finish": "VSF",
+      "area_sf": {
+       "expected": 110.95529384756685,
+       "actual": 110.96,
+       "percent_error": 0.004241485259468028
+      },
+      "overlap_iou": 1.0000000000000202,
+      "boundary_vertex_edge_px": 4.547473508864641e-13,
+      "geometry_area_sf": 110.95529384756675,
+      "pass": true
+     },
+     {
+      "label": "D104 OFFICE",
+      "finish": "VSF",
+      "area_sf": {
+       "expected": 81.99230486685043,
+       "actual": 81.99,
+       "percent_error": 0.0028110770323876485
+      },
+      "overlap_iou": 1,
+      "boundary_vertex_edge_px": 4.547473508864641e-13,
+      "geometry_area_sf": 81.99230486685043,
+      "pass": true
+     },
+     {
+      "label": "D105 OFFICE",
+      "finish": "VSF",
+      "area_sf": {
+       "expected": 90.62568870523374,
+       "actual": 90.63,
+       "percent_error": 0.004757254623770489
+      },
+      "overlap_iou": 1.0000000000000802,
+      "boundary_vertex_edge_px": 6.431098710768743e-13,
+      "geometry_area_sf": 90.62568870523374,
+      "pass": true
+     }
+    ],
+    "pass": true
+   }
+  }
+ },
+ "fresh_process": {
+  "protocol_requests": 5,
+  "non_tool_requests": 1,
+  "tool_calls": 4,
+  "preservation": {
+   "canonical_equal": true,
+   "exact_payload_equal": true,
+   "geometry": true,
+   "computed": true,
+   "provenance": true,
+   "review": true,
+   "scale": true,
+   "conditions": true,
+   "proposals": true,
+   "approvals": true
+  }
+ }
+}

@@ -1,0 +1,210 @@
+{
+ "benchmark": "scripted MCP workflow conformance",
+ "node_version": "v24.18.0",
+ "reference_path": "evals/mcp-workflow-bench/plan-set/porterville/reference.json",
+ "reference_id": "porterville-a1101-estimator-trace-v1",
+ "source_sha256": "4f35c62a9adcf8d2eb42e632a4d1ae9b1d314bb426297e4ac13ae0a32897f6b7",
+ "analytic_reference": false,
+ "independently_human_reviewed": false,
+ "boundary": "real-plan estimator-trace reference traced from PDF vectors by an agent, human review pending; a scripted known-answer run proves tool/workflow conformance only, not agent accuracy",
+ "cross_mode_canonical_equal": true,
+ "runs": {
+  "flat": {
+   "protocol_requests": 32,
+   "tool_calls": 28,
+   "scorer": {
+    "reference_id": "porterville-a1101-estimator-trace-v1",
+    "profile": "estimator-trace",
+    "metadata_error": null,
+    "rooms": [
+     {
+      "label": "LIVING",
+      "finish": "LVP",
+      "area_sf": {
+       "expected": 256.4000848765432,
+       "actual": 256.4,
+       "percent_error": 3.3103165021688315e-05
+      },
+      "overlap_iou": 1.000000000000042,
+      "boundary_vertex_edge_px": 2.2737367544323206e-13,
+      "geometry_area_sf": 256.4000848765432,
+      "pass": true
+     },
+     {
+      "label": "BATH",
+      "finish": "CT",
+      "area_sf": {
+       "expected": 55.73926697530889,
+       "actual": 55.74,
+       "percent_error": 0.0013150956783123087
+      },
+      "overlap_iou": 1.0000000000000129,
+      "boundary_vertex_edge_px": 0,
+      "geometry_area_sf": 55.73926697530889,
+      "pass": true
+     },
+     {
+      "label": "PANTRY",
+      "finish": "LVP",
+      "area_sf": {
+       "expected": 4.248989197530461,
+       "actual": 4.25,
+       "percent_error": 0.023789245454572082
+      },
+      "overlap_iou": 1,
+      "boundary_vertex_edge_px": 0,
+      "geometry_area_sf": 4.248989197530461,
+      "pass": true
+     },
+     {
+      "label": "W/D",
+      "finish": "LVP",
+      "area_sf": {
+       "expected": 6.881944444444444,
+       "actual": 6.88,
+       "percent_error": 0.0282542885973679
+      },
+      "overlap_iou": 1,
+      "boundary_vertex_edge_px": 0,
+      "geometry_area_sf": 6.881944444444444,
+      "pass": true
+     },
+     {
+      "label": "CL.",
+      "finish": "CPT",
+      "area_sf": {
+       "expected": 12.896828703703731,
+       "actual": 12.9,
+       "percent_error": 0.024589737284473622
+      },
+      "overlap_iou": 1,
+      "boundary_vertex_edge_px": 2.2737367544323206e-13,
+      "geometry_area_sf": 12.896828703703731,
+      "pass": true
+     },
+     {
+      "label": "OPT. BEDROOM",
+      "finish": "CPT",
+      "area_sf": {
+       "expected": 93.51111496913563,
+       "actual": 93.51,
+       "percent_error": 0.0011923386177098176
+      },
+      "overlap_iou": 1.0000000000000653,
+      "boundary_vertex_edge_px": 2.2737367544323206e-13,
+      "geometry_area_sf": 93.51111496913563,
+      "pass": true
+     }
+    ],
+    "pass": true
+   }
+  },
+  "staged": {
+   "protocol_requests": 38,
+   "tool_calls": 31,
+   "scorer": {
+    "reference_id": "porterville-a1101-estimator-trace-v1",
+    "profile": "estimator-trace",
+    "metadata_error": null,
+    "rooms": [
+     {
+      "label": "LIVING",
+      "finish": "LVP",
+      "area_sf": {
+       "expected": 256.4000848765432,
+       "actual": 256.4,
+       "percent_error": 3.3103165021688315e-05
+      },
+      "overlap_iou": 1.000000000000042,
+      "boundary_vertex_edge_px": 2.2737367544323206e-13,
+      "geometry_area_sf": 256.4000848765432,
+      "pass": true
+     },
+     {
+      "label": "BATH",
+      "finish": "CT",
+      "area_sf": {
+       "expected": 55.73926697530889,
+       "actual": 55.74,
+       "percent_error": 0.0013150956783123087
+      },
+      "overlap_iou": 1.0000000000000129,
+      "boundary_vertex_edge_px": 0,
+      "geometry_area_sf": 55.73926697530889,
+      "pass": true
+     },
+     {
+      "label": "PANTRY",
+      "finish": "LVP",
+      "area_sf": {
+       "expected": 4.248989197530461,
+       "actual": 4.25,
+       "percent_error": 0.023789245454572082
+      },
+      "overlap_iou": 1,
+      "boundary_vertex_edge_px": 0,
+      "geometry_area_sf": 4.248989197530461,
+      "pass": true
+     },
+     {
+      "label": "W/D",
+      "finish": "LVP",
+      "area_sf": {
+       "expected": 6.881944444444444,
+       "actual": 6.88,
+       "percent_error": 0.0282542885973679
+      },
+      "overlap_iou": 1,
+      "boundary_vertex_edge_px": 0,
+      "geometry_area_sf": 6.881944444444444,
+      "pass": true
+     },
+     {
+      "label": "CL.",
+      "finish": "CPT",
+      "area_sf": {
+       "expected": 12.896828703703731,
+       "actual": 12.9,
+       "percent_error": 0.024589737284473622
+      },
+      "overlap_iou": 1,
+      "boundary_vertex_edge_px": 2.2737367544323206e-13,
+      "geometry_area_sf": 12.896828703703731,
+      "pass": true
+     },
+     {
+      "label": "OPT. BEDROOM",
+      "finish": "CPT",
+      "area_sf": {
+       "expected": 93.51111496913563,
+       "actual": 93.51,
+       "percent_error": 0.0011923386177098176
+      },
+      "overlap_iou": 1.0000000000000653,
+      "boundary_vertex_edge_px": 2.2737367544323206e-13,
+      "geometry_area_sf": 93.51111496913563,
+      "pass": true
+     }
+    ],
+    "pass": true
+   }
+  }
+ },
+ "fresh_process": {
+  "protocol_requests": 5,
+  "non_tool_requests": 1,
+  "tool_calls": 4,
+  "preservation": {
+   "canonical_equal": true,
+   "exact_payload_equal": true,
+   "geometry": true,
+   "computed": true,
+   "provenance": true,
+   "review": true,
+   "scale": true,
+   "conditions": true,
+   "proposals": true,
+   "approvals": true
+  }
+ }
+}

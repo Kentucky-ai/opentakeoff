@@ -7,6 +7,7 @@
 - Add a scripted benchmark of the built MCP server in flat and staged modes, with source inspection, scale refusal/recovery, room measurements, labeled exports and fresh-process preservation checks.
 - Score analytic synthetic wall-face geometry separately from quantities; reject misplaced polygons, missing labels and invalid calibration. CI retains the public workflow artifacts for review.
 - Preserve a recorded agent's first-pass failure and assisted correction with takeoff JSON, tool-call evidence and overlays. This does not establish accuracy on real project plans or change takeoff behavior.
+- Add an estimator-trace plan set to the workflow benchmark: three public real floor plans (VA St. Cloud finish plan, VA Roseburg clinic floor plan, City of Porterville public-domain ADU plan) with proposed reference rings traced to the interior wall face and door jambs notched to the wall centerline, one ring per room and floor finish, plus provenance, frozen task text and open estimator questions. The scorer gains an `estimator-trace` profile (concave reference rings, label-plus-finish matching, page-aware sheet ids); the runner gains `--reference`. The synthetic fixture and its scores are unchanged. The rings are agent-prepared and await human review; the known-answer CI runs prove tool conformance, not agent accuracy.
 
 ## 0.9.83 — MCP documentation cleanup (2026-09-11)
 

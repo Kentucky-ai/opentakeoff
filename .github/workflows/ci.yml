@@ -87,6 +87,11 @@ jobs:
         run: node --test evals/mcp-workflow-bench/score.test.mjs
       - name: Exercise default MCP workflow over stdio
         run: node evals/mcp-workflow-bench/run.mjs --out "${{ runner.temp }}/mcp-workflow-bench"
+      - name: Known-answer runs of the estimator-trace plan set (tool conformance, not agent accuracy)
+        run: |
+          node evals/mcp-workflow-bench/run.mjs --reference evals/mcp-workflow-bench/plan-set/stcloud/reference.json --out "${{ runner.temp }}/mcp-workflow-bench/plan-set/stcloud"
+          node evals/mcp-workflow-bench/run.mjs --reference evals/mcp-workflow-bench/plan-set/roseburg/reference.json --out "${{ runner.temp }}/mcp-workflow-bench/plan-set/roseburg"
+          node evals/mcp-workflow-bench/run.mjs --reference evals/mcp-workflow-bench/plan-set/porterville/reference.json --out "${{ runner.temp }}/mcp-workflow-bench/plan-set/porterville"
       - name: Upload public workflow review evidence
         if: always()
         uses: actions/upload-artifact@v4
