@@ -433,7 +433,7 @@ export const exportDxfOutput = {
 export const exportTakeoffOutput = {
   schema: z.string(),
   project_name: z.string(),
-  units: z.string(),
+  units: z.string().optional().describe("Present only for a metric project; absent means imperial — the app's own diff-only convention"),
   sheets: z.array(z.object({
     sheet_id: z.string(), units_per_px: z.number(),
     scale_source: z.string().optional().describe("How the exported calibration was established"),
@@ -465,7 +465,7 @@ export const exportTakeoffOutput = {
   sheet_group: z.array(z.unknown()),
   last_group: z.array(z.unknown()),
   sheet_tabs: z.array(z.unknown()),
-  sheet_levels: z.object({}).passthrough(),
+  sheet_levels: z.object({}).passthrough().optional().describe("Present only when a sheet carries a level label (the app omits it when empty)"),
   proposals: z.array(z.object({ id: z.string(), label: z.string(), rationale: z.string(), created_at: z.string(), withdrawn_at: z.string().optional() }).passthrough()).optional()
     .describe("Proposal batches (#365) — present only when any exist. Shapes reference them by origin.proposal_id; the canvas shows one Accept per batch"),
   condition_edit_proposals: z.array(z.object({ id: z.string(), condition_id: z.string(), proposed: z.object({}).passthrough(), rationale: z.string(), proposed_at: z.string() }).passthrough()).optional()

@@ -2625,7 +2625,7 @@ test("RFIs: create → list → resolve → delete round-trip on the wire, and u
   assert.equal(afterDel.data.count, 0);
   assert.deepEqual(afterDel.data.withdrawn, ["RFI-001"], "the gap is explained, not silent");
   const payload2 = await call(client, "export_takeoff", {});
-  assert.equal(payload2.data.rfis, undefined, "a tombstone never reaches the app — its register has no such notion");
+  assert.deepEqual(payload2.data.rfis, [], "a tombstone never reaches the app — its register has no such notion; the app always writes the (empty) list");
   assert.equal(payload2.data.markups.find((m: any) => m.id === cloud.data.id).rfi_id, "", "link cleared, note kept");
   assert.equal(payload2.data.markups.length, 2);
   // a withdrawn id is refused by name, and so is a made-up one

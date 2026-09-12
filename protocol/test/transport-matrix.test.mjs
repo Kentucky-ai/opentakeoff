@@ -405,7 +405,7 @@ const cases = {
     const { next, exported } = await roundtrip(await archive(record), t);
     assert.deepEqual(next.rules, record.rules); assert.deepEqual(exported.shapes, record.shapes);
     assert.deepEqual(totals(exported), totals(record));
-    assert.equal(exported.project_name, ""); assert.equal(exported.units, "imperial");
+    assert.equal(exported.project_name, ""); assert.equal(exported.units, undefined, "MCP export is imperial; the app's writer omits the key for imperial");
     assert.equal(exported.custom_extension, undefined); assert.equal(exported.rules, undefined);
   },
   async "missing-source"(t) {
