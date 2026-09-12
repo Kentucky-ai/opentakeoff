@@ -25,6 +25,11 @@ The references are at **v2** (2026-09-12): blind agent runs exposed defects in v
 corrected from the linework; see [`BLIND-RUNS-2026-09-12.md`](BLIND-RUNS-2026-09-12.md).
 v1 is kept beside each as `reference-v1.json`.
 
+## Guidance trial
+
+A before/after trial of the packaged tracing guidance on a task with no conventions in it:
+[`guidance-trial-2026-09-12/`](guidance-trial-2026-09-12/README.md).
+
 ## What the references are, and are not
 
 - Each ring was prepared from the PDF **vector linework** with an independent PDF

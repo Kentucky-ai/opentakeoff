@@ -159,7 +159,7 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
   }, run("propose_takeoff", (a) => session.proposeTakeoff(a.label, a.rationale)));
 
   server.registerTool("measure_polygon", {
-    description: `Measure a closed polygon you supply (min 3 vertices, image px): area_sf and perimeter_lf at the sheet's scale. Requires the scale to be set. Pass condition to commit it; role "deduct" subtracts. ${COORDS}`,
+    description: `Measure a closed polygon you supply (min 3 vertices, image px): area_sf and perimeter_lf at the sheet's scale. Requires the scale to be set. Pass condition to commit it; role "deduct" subtracts. A room ring belongs on the innermost wall-face strokes from get_sheet_vectors, crossing each door opening on the wall centerline and wrapping columns and stubs; never on a hatch edge, casework or a door leaf. Check it with view_sheet overlay:true on a tight crop and fix it with edit_shape. ${COORDS}`,
     inputSchema: {
       sheet: z.string(),
       verts: z.array(pointSchema).min(3),

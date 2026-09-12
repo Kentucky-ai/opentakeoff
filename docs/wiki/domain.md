@@ -3,6 +3,7 @@
 | Quantity or record | Meaning | Common mistake |
 |---|---|---|
 | Floor SF | Area assigned to a floor finish, net of supported deductions | Adding wall SF to call the result building floor area |
+| Room boundary | The innermost interior wall face, with door openings crossed on the wall centerline | Tracing a hatch edge, a door leaf drawn open, or stopping at casework; see [workflows](workflows.md#trace-a-room-the-way-an-estimator-does) |
 | Wall SF | Measured run LF × that shape's height | Applying one elevation width to every wall or treating floor deducts as wall openings |
 | Base/transition LF | Installed run length or a disclosed derived allowance | Treating a numeric opening allowance as a located gap |
 | Count | Located instances with count semantics | Counting a note's bare mention as a drawn device |
