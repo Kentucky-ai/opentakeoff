@@ -384,7 +384,7 @@ On the canvas the crosshair **is** the cursor: the OS pointer hides in draw mode
 
 Click vertex by vertex around the space; `⏎`, double-click, or the **Finish** button closes it at three or more points. The live readout shows the running segment length while you trace, and the committed shape reads SF, SY, and perimeter LF—select it any time later and the readout gives you both numbers again, so a footprint's LF never needs a second trace with the Linear tool.
 
-**Curved boundaries.** Buildings are not all right angles: a bowed wall, a radius corner, a curved curb or pool edge. You don't leave the tool for them—the readout carries a **╱ Straight / ⌒ Curve** switch, and you flip it *mid measurement*, as often as you like inside one shape.
+**Curved boundaries.** Buildings are not all right angles: a bowed wall, a radius corner, a curved curb or pool edge. You don't leave the tool for them—the toolbar's **Draft** cluster (between **45°** and the scale) carries a **╱ Straight / ⌒ Curve** switch, and you flip it *mid measurement*, as often as you like inside one shape.
 
 - **Curve** mode: **an arc is three clicks, and it is a real circle.** The clicks alternate—the first lands anywhere **on the bow**, the second on its **far end**—and together with the vertex you were already on, those three points define exactly one circle. That is the whole difference: a radius wall *is* a circle, so the arc **sits on it** instead of near it. The bow point draws as a round handle, and the arc redraws live as you aim the far end.
 - **`Q`** flips the switch once a trace is going.

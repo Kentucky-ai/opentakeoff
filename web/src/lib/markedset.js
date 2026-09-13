@@ -43,6 +43,9 @@ import { rfiStatus, liveRfis } from "./rfi.js";
 import { RENDER_SCALE, parseSheetKey, sheetBaseLabelFromKey } from "./sheets";
 import { stitchPagePlan, memberEmbed } from "./stitches";
 import { pdfDashFor, boostForDark, clampWeight } from "./lineStyles.js";
+// Notes burn as the block the canvas drew them as: NOTE_PT, wrapped at three
+// inches, anchored baseline-left (lib/markupText is the one owner of that layout).
+import { NOTE_PT, layoutNote, noteBox, lineBaseline } from "./markupText.js";
 import { dimLabel } from "./units";
 import { sourcePageMode, sourceStampNote, noCanvasForRasterMessage } from "./markedsetSource.js";
 
@@ -624,6 +627,24 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
       const [px, py] = toPage(x, y);
       pg.drawText(winAnsiSafe(t), { x: px, y: py, size, font: fnt, color: colorRgb, rotate: chipRot });
     };
+    // A note (callout / text note) as a wrapped BLOCK — the canvas's layout at
+    // pure ink size (no screen floor here: the print is exact). Widths are
+    // measured with the PDF face so no line overruns its box; the box itself is
+    // an image-px rectangle through imageDrawParams (proven on rotated pages),
+    // the lines go through text() so they carry the same rotation.
+    const noteBlock = (raw, ax, ay, colorRgb, backing) => {
+      const t = winAnsiSafe(raw);
+      const fs = NOTE_PT / ptScale;   // image px for NOTE_PT on THIS page
+      const L = layoutNote({ text: t, fontPx: fs, measure: (str) => bold.widthOfTextAtSize(str, NOTE_PT) / ptScale });
+      if (!L.lines.length) return;
+      const b = noteBox(ax, ay, L);
+      const dp = imageDrawParams(toPage, b.x0, b.y0, L.w, L.h);
+      pg.drawRectangle({
+        x: dp.x, y: dp.y, width: dp.width, height: dp.height, rotate: degrees(dp.rotateDeg),
+        color: backing, opacity: 0.92, borderColor: colorRgb, borderWidth: 0.7,
+      });
+      L.lines.forEach((ln, i) => { if (ln) text(ln, ax, lineBaseline(ay, L, i), NOTE_PT, colorRgb, bold); });
+    };
     const chip = (raw, x, y, borderRgb) => {
       const t = winAnsiSafe(raw);
       const size = 7.5;
@@ -794,7 +815,12 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
           const [ptx, pty] = toPage(m.target[0] * W, m.target[1] * H);
           pg.drawSvgPath(arrowheadPath(pax, -pay, ptx, -pty, 5), { x: 0, y: 0, color: mcol, opacity: 0.9 });
         }
-        text(lbl(m.text), m.at[0] * W, m.at[1] * H, 8.5, mcol, bold);
+        noteBlock(lbl(m.text), m.at[0] * W, m.at[1] * H, mcol, dark ? rgb(0.08, 0.1, 0.12) : rgb(1, 1, 1));
+      } else if (m.type === "text" && m.at) {
+        // a plain text note — never burned before this branch existed: a note
+        // written on the canvas simply vanished from the print. Same block as a
+        // callout, on the canvas's cream backing.
+        noteBlock(lbl(m.text), m.at[0] * W, m.at[1] * H, mcol, dark ? rgb(0.08, 0.1, 0.12) : rgb(1, 0.97, 0.93));
       } else if (m.type === "svg" && m.at && Array.isArray(m.vb) && typeof m.path === "string") {
         // a vector symbol — bake local→page px, NEGATING y like every sibling path
         // (drawSvgPath internally applies scale(1,-1), so toPage output must be

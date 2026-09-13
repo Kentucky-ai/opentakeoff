@@ -24,9 +24,33 @@ function StylePreview({ t, w = 30, h = 18 }) {
   );
 }
 
-export default function DrawStylePicker({ styles, ids, activeId, onPick }) {
+// `compact` renders the toolbar face (2026-09-12): no row padding, no "Style"
+// caption (the cluster caption carries it), a face sized like the Snap / 45°
+// toggles beside it, and the list dropping from the face's left edge.
+export default function DrawStylePicker({ styles, ids, activeId, onPick, compact = false, onOpenChange }) {
   const [open, setOpen] = useState(false);
+  const [flyAt, setFlyAt] = useState(null);   // compact: {left, top} — fixed off the face's rect, like every toolbar menu
   const rootRef = useRef(null);
+
+  // Same contract as ToolMenu: the canvas counts open toolbar menus to pause
+  // its letter shortcuts; fire true on open, false on close/unmount, never a
+  // stray false on a closed mount.
+  useEffect(() => {
+    if (!open) return;
+    onOpenChange?.(true);
+    return () => onOpenChange?.(false);
+  }, [open, onOpenChange]);
+
+  // The top bar is a scrolling row (overflow-x auto), and any scrolling ancestor
+  // clips an absolutely-positioned child — so on the toolbar the list opens
+  // position:fixed off the face's rect, exactly as ToolMenu does.
+  const toggle = () => {
+    if (!open && compact && rootRef.current) {
+      const r = rootRef.current.getBoundingClientRect();
+      setFlyAt({ left: r.left, top: r.bottom + 4 });
+    }
+    setOpen((v) => !v);
+  };
 
   // Close on click-outside / Escape — same idiom as ToolMenu. The listeners
   // live only while open, and rootRef scopes them to THIS control so clicking
@@ -43,20 +67,22 @@ export default function DrawStylePicker({ styles, ids, activeId, onPick }) {
   const active = styles[activeId] || styles[ids[0]];
 
   return (
-    <div ref={rootRef} style={{ padding: "8px 12px", position: "relative" }}>
+    <div ref={rootRef} style={compact ? { position: "relative", display: "inline-flex" } : { padding: "8px 12px", position: "relative" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)", whiteSpace: "nowrap" }}>Style</span>
-        <button type="button" aria-haspopup="true" aria-expanded={open} onClick={() => setOpen((v) => !v)}
+        {!compact && <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--ink-soft)", whiteSpace: "nowrap" }}>Style</span>}
+        <button type="button" aria-haspopup="true" aria-expanded={open} onClick={toggle}
           title="Drawing style — the look of the measuring draft (stroke, vertices, readout chip). Applies to the canvas live."
-          style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", cursor: "pointer", border: `1px solid ${open ? "var(--cobalt)" : "var(--ink-faint)"}`, background: "var(--paper-cream)", color: "var(--ink)", fontSize: 12.5 }}>
-          <StylePreview t={active} />
+          style={compact
+            ? { display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 8px 4px 6px", cursor: "pointer", border: `1px solid ${open ? "var(--cobalt)" : "var(--ink-faint)"}`, background: "transparent", color: "var(--ink)", fontWeight: 600, fontSize: 12.5, lineHeight: 1, whiteSpace: "nowrap" }
+            : { flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "5px 8px", cursor: "pointer", border: `1px solid ${open ? "var(--cobalt)" : "var(--ink-faint)"}`, background: "var(--paper-cream)", color: "var(--ink)", fontSize: 12.5 }}>
+          <StylePreview t={active} w={compact ? 24 : 30} h={compact ? 15 : 18} />
           <span style={{ flex: 1, textAlign: "left" }}>{active.label}</span>
           <span style={{ color: "var(--ink-muted)", fontSize: 11, transform: open ? "rotate(180deg)" : "none" }}>▾</span>
         </button>
       </div>
       {open && (
         <div aria-label="Drawing style"
-          style={{ position: "absolute", left: 12, right: 12, top: "100%", marginTop: 2, zIndex: 70, background: "var(--paper-cream)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-2)", padding: "4px 0" }}>
+          style={{ ...(compact && flyAt ? { position: "fixed", left: flyAt.left, top: flyAt.top, minWidth: 200 } : { position: "absolute", left: 12, right: 12, top: "100%", marginTop: 2 }), zIndex: 70, background: "var(--paper-cream)", border: "1px solid var(--ink)", boxShadow: "var(--shadow-2)", padding: "4px 0" }}>
           {ids.map((id) => {
             const t = styles[id];
             const on = id === activeId;
