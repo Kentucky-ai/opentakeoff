@@ -42,6 +42,9 @@ import { ROOM_LABEL_RE, seedLadderPx, isLabelBubblePx, floodSurroundsLabelPx, fl
 import { fingerprintSymbol, matchSymbol, buildNegative, SWEEP_TOL_PX, type SweepOptions, type SymbolFingerprint, type SymbolMatchResult, type SweepMatch, type SweepWithheld, type SweepRejected, type SymbolNegative } from "../../web/src/lib/symbolsweep.ts";
 import { labelPlacements, type PlacementLabel } from "../../web/src/lib/symbollabels.ts";
 import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/src/lib/geometry.js";
+// The canvas's three-point arc (Curve mode): a curved wall is a circle, so an
+// agent states the bow point and the server lays the unique arc through it.
+import { flattenArcRing } from "../../web/src/lib/arc.js";
 import { recalibrateShapes } from "../../web/src/lib/shapeMetrics.js";
 import { deriveTransitionRuns, type SheetFrame, type TransitionSourceShape } from "../../web/src/lib/transitions.ts";
 // Real polygon boolean subtraction (#137/#206) — the canvas's own module, so a
@@ -201,6 +204,11 @@ export interface ShapeOrigin {
   actor?: "agent" | "rule";
   /** A human affirmed this shape at an explicit review gate. */
   reviewed?: boolean;
+  /** The trace was drawn with arcs (the canvas's Curve mode, or arc_through
+   * over MCP) and baked to ordinary vertices at commit — the same stamp the
+   * canvas writes. Legacy `curved: true` ON THE SHAPE means spline control
+   * points and is a different thing; never conflate them. */
+  curved?: true;
   /** one_click: the flood-fill seed, normalized to sheet dims. */
   seed_norm?: [number, number];
   hatch_filtered?: true;
@@ -1785,28 +1793,58 @@ export class Session {
     };
   }
 
-  measurePolygon(name: string, verts: Point[], opts: { condition?: string; role: "floor_area" | "deduct" }) {
+  /** Bend a trace the way the canvas's Curve mode does (#284): `arcThrough`
+   * lists the indices of points that are the MIDDLE of a three-point arc —
+   * the boundary runs pts[i-1] → pts[i] → pts[i+1] as the unique circle
+   * through those three instead of two chords. The arc is baked to ordinary
+   * vertices here (the canvas's flattenArcRing, same steps, same budget), so
+   * SF/LF, the marked set, edit_shape and every export keep seeing a plain
+   * polygon — and the shape's origin carries `curved: true`, the canvas's own
+   * stamp. Refusal over guessing: an index off the trace, a bow point at the
+   * end of an open run (no far corner to bend to), or two bows in a row (no
+   * clean triple) refuse whole rather than silently demoting to a corner. */
+  private bend(pts: Point[], arcThrough: number[] | undefined, closed: boolean, tool: string): { pts: Point[]; arcs: number } {
+    if (!arcThrough?.length) return { pts, arcs: 0 };
+    const n = pts.length;
+    const marks = [...new Set(arcThrough)].sort((a, b) => a - b);
+    for (const i of marks) {
+      if (!Number.isInteger(i) || i < 0 || i >= n) throw new UserError(`${tool}: arc_through index ${i} is off the trace (${n} points, indices 0–${n - 1}).`);
+      if (!closed && (i === 0 || i === n - 1)) throw new UserError(`${tool}: arc_through ${i} is an END of the open run — a bow needs a corner on both sides. State the arc's start, its bow, and its far end as three consecutive points and mark the middle one.`);
+    }
+    for (let k = 1; k < marks.length; k++) {
+      if (marks[k] - marks[k - 1] === 1 || (closed && marks[0] === 0 && marks[marks.length - 1] === n - 1)) {
+        throw new UserError(`${tool}: arc_through marks ${marks[k - 1]} and ${marks[k]} are adjacent — every arc needs a corner between it and the next. Put a plain vertex where one arc ends and the next begins.`);
+      }
+    }
+    if (n < 3) throw new UserError(`${tool}: an arc needs three points (start, bow, far end); got ${n}.`);
+    const flat = flattenArcRing(pts, marks, closed) as Point[];
+    return { pts: flat, arcs: marks.length };
+  }
+
+  measurePolygon(name: string, verts: Point[], opts: { condition?: string; role: "floor_area" | "deduct"; arc_through?: number[] }) {
     const s = this.sheet(name);
     if (s.upp == null) throw new UserError(this.scaleGate(s));
-    const { area_sf = 0, perimeter_lf = 0 } = this.quantify(s, opts.role, verts);
+    const { pts: ring, arcs } = this.bend(verts, opts.arc_through, true, "measure_polygon");
+    const { area_sf = 0, perimeter_lf = 0 } = this.quantify(s, opts.role, ring);
     let shape_id: string | undefined;
     // agent-supplied coordinates are a hand trace by a machine hand: manual
     // method, agent actor — and never reviewed (no human affirmed anything).
-    if (opts.condition) shape_id = this.commit(s, opts.condition, opts.role, verts, { area_sf, perimeter_lf }, { method: "manual", actor: "agent" }).id;
+    if (opts.condition) shape_id = this.commit(s, opts.condition, opts.role, ring, { area_sf, perimeter_lf }, { method: "manual", actor: "agent", ...(arcs ? { curved: true as const } : {}) }).id;
     this.flushCommits("measure_polygon");
-    const mixed = this.scaleWarningFor(s, verts);
-    return { area_sf, perimeter_lf, nverts: verts.length, ...(shape_id ? { shape_id } : {}), ...(mixed ? { warning: mixed } : {}) };
+    const mixed = this.scaleWarningFor(s, ring);
+    return { area_sf, perimeter_lf, nverts: ring.length, ...(arcs ? { arcs } : {}), ...(shape_id ? { shape_id } : {}), ...(mixed ? { warning: mixed } : {}) };
   }
 
-  measureLine(name: string, pts: Point[], opts: { condition?: string }) {
+  measureLine(name: string, pts: Point[], opts: { condition?: string; arc_through?: number[] }) {
     const s = this.sheet(name);
     if (s.upp == null) throw new UserError(this.scaleGate(s));
-    const { perimeter_lf: length_lf = 0 } = this.quantify(s, "linear", pts);
+    const { pts: run, arcs } = this.bend(pts, opts.arc_through, false, "measure_line");
+    const { perimeter_lf: length_lf = 0 } = this.quantify(s, "linear", run);
     let shape_id: string | undefined;
     // area_sf stays 0 — the canvas only mints border SF when the condition has a thickness
-    if (opts.condition) shape_id = this.commit(s, opts.condition, "linear", pts, { area_sf: 0, perimeter_lf: length_lf }, { method: "manual", actor: "agent" }).id;
+    if (opts.condition) shape_id = this.commit(s, opts.condition, "linear", run, { area_sf: 0, perimeter_lf: length_lf }, { method: "manual", actor: "agent", ...(arcs ? { curved: true as const } : {}) }).id;
     this.flushCommits("measure_line");
-    return { length_lf, npts: pts.length, ...(shape_id ? { shape_id } : {}) };
+    return { length_lf, npts: run.length, ...(arcs ? { arcs } : {}), ...(shape_id ? { shape_id } : {}) };
   }
 
   /** Surface Area — the canvas's Surface tool (commitSurface): an OPEN run
@@ -1815,9 +1853,12 @@ export class Session {
    * here writes that knob first, exactly like typing H before tracing — and
    * that write journals as its own condition step, so undo stays exact.
    * The refusal path mints nothing: no height, no condition side effects. */
-  measureSurface(name: string, pts: Point[], opts: { condition: string; height_ft?: number }) {
+  measureSurface(name: string, pts: Point[], opts: { condition: string; height_ft?: number; arc_through?: number[] }) {
     const s = this.sheet(name);
     if (s.upp == null) throw new UserError(this.scaleGate(s));
+    // bend BEFORE the height gate so a bad arc refuses with nothing minted
+    const bent = this.bend(pts, opts.arc_through, false, "measure_surface");
+    pts = bent.pts;
     const existing = this.conditions.find((x) => x.finish_tag === opts.condition);
     const h = opts.height_ft ?? (Number(existing?.height_ft) || 0);
     if (!(h > 0)) {
@@ -1831,8 +1872,9 @@ export class Session {
     const LF = openLen(pts) * s.upp;
     const shape = this.commit(s, opts.condition, "surface_area", pts, { area_sf: round2(LF * h), perimeter_lf: round2(LF) }, { method: "manual", actor: "agent" });
     shape.height_ft = h;
+    if (bent.arcs && shape.origin) shape.origin = { ...shape.origin, curved: true };
     this.flushCommits("measure_surface");
-    return { condition: c.finish_tag, height_ft: h, length_lf: round2(LF), area_sf: round2(LF * h), npts: pts.length, shape_id: shape.id };
+    return { condition: c.finish_tag, height_ft: h, length_lf: round2(LF), area_sf: round2(LF * h), npts: pts.length, ...(bent.arcs ? { arcs: bent.arcs } : {}), shape_id: shape.id };
   }
 
   // ── Proposals (#365) ──────────────────────────────────────────────────────

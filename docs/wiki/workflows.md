@@ -67,6 +67,14 @@ total, is what fails. These rules are what the references are drawn to:
 8. After each ring, `view_sheet` a tight crop with `overlay: true` at a high
    `px` and look at every corner and notch before the next room; `edit_shape`
    fixes what the crop shows. A full-sheet render cannot audit a ring.
+9. A **curved wall is a circle**: the architect drew it with a center and a
+   radius. Never chord it and never hand-place a run of points along it. Give
+   the bow one point anywhere on the wall face between the arc's two ends and
+   list that point's index in `arc_through` on `measure_polygon`,
+   `measure_line` or `measure_surface`; the server lays the unique circle
+   through the three and bakes it to vertices, exactly as the canvas's Curve
+   mode does. `get_sheet_vectors` flags curve chords in its `meta` byte (bit 1)
+   — a window full of them is a radius wall, so read the bow from a render.
 
 When something is genuinely ambiguous, follow the rule most literally, carry it,
 and say so in the shape's label or an annotation. Do not stop.
