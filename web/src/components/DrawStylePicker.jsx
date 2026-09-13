@@ -9,7 +9,7 @@ import { markerPath } from "../lib/drawStyles.js";
 
 // The swatch preview, value-for-value with the old tile grid: a two-bend
 // polyline in the style's accent / dash, its vertex marks (last one hollow).
-function StylePreview({ t, w = 30, h = 18 }) {
+export function StylePreview({ t, w = 30, h = 18 }) {
   const vp = [[5, 20], [20, 7], [35, 17]];
   return (
     <svg width={w} height={h} viewBox="0 0 40 26" style={{ display: "block", flex: "0 0 auto" }} aria-hidden="true">
