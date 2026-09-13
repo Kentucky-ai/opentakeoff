@@ -147,6 +147,7 @@ export const measurePolygonOutput = {
   area_sf: z.number(),
   perimeter_lf: z.number(),
   nverts: z.number().int(),
+  arcs: z.number().int().optional().describe("How many arc_through bows were laid — present only when the trace was bent; the vertices reported are the baked arc, not the three points you gave"),
   shape_id: z.string().optional().describe("Present when condition was passed and the shape committed"),
   warning: z.string().optional().describe("Mixed-scale warning (#153): a scale note disagreeing with the sheet's sits in the measured region — verify before trusting these numbers"),
 };
@@ -158,6 +159,7 @@ export const measureSurfaceOutput = {
   length_lf: z.number().describe("The traced run's open length"),
   area_sf: z.number().describe("length_lf × height_ft — the wall SF committed"),
   npts: z.number().int(),
+  arcs: z.number().int().optional().describe("How many arc_through bows were laid — present only when the trace was bent; the vertices reported are the baked arc, not the three points you gave"),
   shape_id: z.string(),
 };
 
@@ -292,6 +294,7 @@ export const symbolSweepOutput = {
 export const measureLineOutput = {
   length_lf: z.number(),
   npts: z.number().int(),
+  arcs: z.number().int().optional().describe("How many arc_through bows were laid — present only when the trace was bent; the vertices reported are the baked arc, not the three points you gave"),
   shape_id: z.string().optional().describe("Present when condition was passed and the shape committed"),
 };
 

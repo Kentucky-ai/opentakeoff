@@ -159,15 +159,16 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
   }, run("propose_takeoff", (a) => session.proposeTakeoff(a.label, a.rationale)));
 
   server.registerTool("measure_polygon", {
-    description: `Measure a closed polygon you supply (min 3 vertices, image px): area_sf and perimeter_lf at the sheet's scale. Requires the scale to be set. Pass condition to commit it; role "deduct" subtracts. A room ring belongs on the innermost wall-face strokes from get_sheet_vectors, crossing each door opening on the wall centerline and wrapping columns and stubs; never on a hatch edge, casework or a door leaf. Check it with view_sheet overlay:true on a tight crop and fix it with edit_shape. ${COORDS}`,
+    description: `Measure a closed polygon you supply (min 3 vertices, image px): area_sf and perimeter_lf at the sheet's scale. Requires the scale to be set. Pass condition to commit it; role "deduct" subtracts. A room ring belongs on the innermost wall-face strokes from get_sheet_vectors, crossing each door opening on the wall centerline and wrapping columns and stubs; never on a hatch edge, casework or a door leaf. Check it with view_sheet overlay:true on a tight crop and fix it with edit_shape. A CURVED wall is a circle: do not chord it and do not hand-tessellate it — give the bow one point on the wall and list its index in arc_through. ${COORDS}`,
     inputSchema: {
       sheet: z.string(),
       verts: z.array(pointSchema).min(3),
       condition: z.string().optional(),
       role: roleSchema,
+      arc_through: z.array(z.number().int().nonnegative()).optional().describe("Indices of points that are the MIDDLE of an arc: the trace runs the point before → this point → the point after as the unique circle through the three (the canvas's Curve mode). For a curved wall put one point anywhere ON the bow between its two ends and mark it. The arc is baked to ordinary vertices on commit and origin.curved is stamped; a mark on an end of an open run, or two marks in a row, refuses."),
     },
     outputSchema: measurePolygonOutput,
-  }, run("measure_polygon", (a) => session.measurePolygon(a.sheet, a.verts, { condition: a.condition, role: a.role })));
+  }, run("measure_polygon", (a) => session.measurePolygon(a.sheet, a.verts, { condition: a.condition, role: a.role, arc_through: a.arc_through })));
 
   server.registerTool("cut_out", {
     description: `Cut a REAL hole in a committed floor_area shape (#206) — the way the canvas cuts one (#137): the same lib/cutout.js boolean subtract, so the two surfaces can never disagree about what a hole holds. The parent keeps its outer ring plus the reconciled hole(s) (verts_norm_holes), its computed nets for real — N cuts compose, overlap between cuts never double-deducts (set subtraction), a hole ADDS perimeter — and the deduct commits carrying cuts_shape_id so the report and legend read the reconciled number, never a second arithmetic pass. This is the verb for a column, a floor drain, an island of casework INSIDE a room; an independent measure_polygon role:"deduct" stays the tool for a deduction that isn't a hole in one parent. Refusal over guessing: the ring must sit FULLY inside the parent's outer ring (an edge-crossing cut is a boundary correction — edit_shape the parent instead), and a cut that would erase the parent or split it in two refuses whole (trace the pieces as rooms). One journal entry — undo_last restores parent and hole together; delete_shape on the deduct later reverts the cut too (a multi-cut parent rebuilds from the chain's pristine snapshot minus the survivors). AN OPEN RUN IS CLIPPED, NOT SUBTRACTED: wall tile (surface_area) and base/transitions (linear) are polylines traced in plan, so the ring removes the stretch it covers, the run keeps its id and takes what survives, and a cut through the MIDDLE leaves the far side as its own shape (same condition, same height) — quantities ride the surviving length, which is exact, since wall SF is LF × height and a border's SF is LF × thickness. No deduct is minted for a run: there is no area for one to sit on, and a deduct's SF counts against the FLOOR total a run never fills. A ring that misses the run, one that swallows it whole (delete_shape it), and a curved run (its verts are control points) all refuse. A derived base with numeric openings also refuses: those deductions have no stored location; use measure_line for installed runs so a geometric cut cannot erase the numeric allowance. ${COORDS}`,
@@ -179,14 +180,15 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
   }, run("cut_out", (a) => session.cutOut(a)));
 
   server.registerTool("measure_line", {
-    description: `Measure an open polyline (min 2 points, image px): length_lf at the sheet's scale. Requires the scale to be set. Pass condition to commit it as a linear shape (base, transitions, feature strips). ${COORDS}`,
+    description: `Measure an open polyline (min 2 points, image px): length_lf at the sheet's scale. Requires the scale to be set. Pass condition to commit it as a linear shape (base, transitions, feature strips). A curved run (base along a radius wall, a curved feature strip) takes arc_through: one point on the bow, marked. ${COORDS}`,
     inputSchema: {
       sheet: z.string(),
       pts: z.array(pointSchema).min(2),
       condition: z.string().optional(),
+      arc_through: z.array(z.number().int().nonnegative()).optional().describe("Indices of points that are the MIDDLE of an arc: the trace runs the point before → this point → the point after as the unique circle through the three (the canvas's Curve mode). For a curved wall put one point anywhere ON the bow between its two ends and mark it. The arc is baked to ordinary vertices on commit and origin.curved is stamped; a mark on an end of an open run, or two marks in a row, refuses."),
     },
     outputSchema: measureLineOutput,
-  }, run("measure_line", (a) => session.measureLine(a.sheet, a.pts, { condition: a.condition })));
+  }, run("measure_line", (a) => session.measureLine(a.sheet, a.pts, { condition: a.condition, arc_through: a.arc_through })));
 
   server.registerTool("measure_surface", {
     description: `Surface Area — wall SF (#146): trace an OPEN run along the wall in plan view (min 2 points, image px) and the quantity is traced LF × height. This is how wall tile, wainscot, and wall systems are taken off — the quantity family ${oneClick ? "one_click and " : ""}measure_polygon cannot produce. Height lives on the CONDITION (the canvas's H knob): pass height_ft to set it on this call (journals as its own undo step, like typing H before tracing), or set it once with edit_condition; with neither, this refuses and mints nothing. The shape snapshots the height it was quantified at. Requires the sheet's scale. ${COORDS}`,
@@ -195,9 +197,10 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
       pts: z.array(pointSchema).min(2).describe("The wall run, an open polyline (image px)"),
       condition: z.string().describe("Finish tag to commit under (minted on first use), e.g. 'CT-W1'"),
       height_ft: z.number().positive().optional().describe("Wall height in feet — written to the condition's H knob first, then used"),
+      arc_through: z.array(z.number().int().nonnegative()).optional().describe("Indices of points that are the MIDDLE of an arc: the trace runs the point before → this point → the point after as the unique circle through the three (the canvas's Curve mode). For a curved wall put one point anywhere ON the bow between its two ends and mark it. The arc is baked to ordinary vertices on commit and origin.curved is stamped; a mark on an end of an open run, or two marks in a row, refuses."),
     },
     outputSchema: measureSurfaceOutput,
-  }, run("measure_surface", (a) => session.measureSurface(a.sheet, a.pts, { condition: a.condition, height_ft: a.height_ft })));
+  }, run("measure_surface", (a) => session.measureSurface(a.sheet, a.pts, { condition: a.condition, height_ft: a.height_ft, arc_through: a.arc_through })));
 
   server.registerTool("place_count", {
     description: `Count markers — EA (#146): one point, one each. Thresholds, stair nosings, floor boxes, entrance mats — the scale-free quantity family. Commits one count shape per point (computed {count: 1}, exactly the canvas's Count tool), NO scale required, and the whole call is ONE undo step${oneClick ? " like a detect_rooms sweep" : ""}. takeoff_summary reports them as ea; the marked set draws each marker. ${COORDS}`,
