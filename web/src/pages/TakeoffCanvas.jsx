@@ -137,7 +137,7 @@ import { startCapture, captureSupported } from "../lib/voiceCapture";
 import { aiConfig, isAiConfigured } from "../lib/ai.js";
 import AccountChip from "../components/AccountChip.jsx";
 import PresenceChip from "../components/PresenceChip.jsx";
-import DrawStylePicker from "../components/DrawStylePicker.jsx";
+import { StylePreview } from "../components/DrawStylePicker.jsx";
 import { useGoogleAuth } from "../lib/google/AuthContext.jsx";
 import { projectHomeFolderId } from "../lib/projectHome.js";
 import { getTheme, toggleTheme, onThemeChange } from "../lib/theme.js";
@@ -7824,53 +7824,50 @@ export default function TakeoffCanvas() {
   // released near one. Detents come from oneclick's canonical presets so UI
   // and flood math can't drift if a preset is ever retuned.
 
-  // Drawing-style picker — a select-style dropdown (DrawStylePicker.jsx), on the
-  // toolbar's Draft cluster since 2026-09-12 (it lived in the ⋯ menu before):
-  // grouped in the ⋯ overflow menu with the light/dark chrome toggle. The two
-  // appearance preferences (chrome theme, drawing style) live together, out of
-  // the per-trace tool row so a set-once preference never crowds the work; a
-  // dropdown keeps that block one line tall, matching the toolbar's other
-  // selects. setDrawStyle writes the module preference and its CustomEvent
-  // (Task 2's onDrawStyleChange) round-trips back into drawStyleId, repainting
-  // the canvas live — no other wiring here.
-  const drawStyleRow = (
-    <DrawStylePicker compact styles={DRAW_STYLES} ids={DRAW_STYLE_IDS} activeId={drawStyleId} onPick={setDrawStyle} onOpenChange={onMenuDepth} />
-  );
-
-  // Outline-while-drawing toggle — a toolbar face beside the style picker (the
-  // two draft-appearance preferences travel together). ON ⇒ the Area/Deduct/Zone
-  // draft shows as an open outline (no fill, not auto-closed) while tracing; it
-  // still commits closed on Enter/dbl-click.
-  const draftOutlineRow = (
-    <button type="button" aria-pressed={draftOutline} onClick={() => setDraftOutline(!draftOutline)}
-      title="Outline area while drawing — draw Area / Deduct / Zone as an open outline (no fill) while tracing; it still commits closed on Enter or double-click."
-      style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${draftOutline ? "var(--cobalt)" : "var(--ink-faint)"}`, background: draftOutline ? "var(--cobalt)" : "transparent", color: draftOutline ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
-      <Icon name="area" size={15} />Outline
-    </button>
-  );
-  // The ╱ Straight / ⌒ Curve switch (#284) — a MODE you flip mid measurement,
-  // not a modifier you hold, so an arc is a run of ordinary clicks. It sits on
-  // the toolbar with the other drafting conventions (it lived in the readout
-  // before 2026-09-12); it is live only while a curvable tool is armed, and dim
-  // otherwise so the eye still learns that curves exist.
+  // Draft menu — ONE dropdown on the toolbar (between 45° and the scale) for the
+  // drafting conventions: the drawing style, "Outline area while drawing", and
+  // the ╱ Straight / ⌒ Curve bend (#284). They lived in the ⋯ menu and the
+  // readout before 2026-09-12; one face keeps the row compact while every
+  // convention is one click from the sheet. The face is the active style's
+  // swatch; the bend rows are live only while a curvable tool is armed and
+  // stay open on click so a mode can be flipped and watched against the draft.
+  // (DrawStylePicker, the ⋯-menu row form, is no longer mounted; its StylePreview is.)
   const curvable = CURVABLE.has(tool);
-  const curveSwitch = (
-    <span role="group" aria-label="Straight or curve"
-      title={curvable
-        ? "Straight places corners. Curve takes two clicks — one anywhere ON the bow, then its far end — and lays the unique circle through those and the vertex you were on, so it sits on a radius wall instead of near it. Switch as often as you like inside one measurement: Q flips it once a trace is going, and ⌥-click always places the OTHER kind for one point."
-        : "Straight / Curve — arm Area, Line, Cut Out or Surface Area to draw arcs: a curve is three clicks, a true circle through them."}
-      style={{ display: "inline-flex", border: "1px solid var(--ink-faint)", opacity: curvable ? 1 : 0.45 }}>
-      {[["straight", "Straight", "╱", null], ["curve", "Curve", "⌒", "curve"]].map(([k, label, glyph, icon]) => {
-        const on = (k === "curve") === curveMode;
-        return (
-          <button key={k} type="button" disabled={!curvable} aria-pressed={on} onClick={() => setCurveMode(k === "curve")}
-            style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 9px", border: "none", cursor: curvable ? "pointer" : "default", fontWeight: on ? 700 : 600, fontSize: 12.5, lineHeight: 1,
-              background: on && curvable ? "var(--cobalt)" : "transparent", color: on && curvable ? "var(--paper-bright)" : "var(--ink)" }}>
-            {icon ? <Icon name={icon} size={15} /> : <span style={{ fontSize: 13, width: 15, textAlign: "center" }}>{glyph}</span>}{label}
-          </button>
-        );
-      })}
-    </span>
+  const activeDrawStyle = DRAW_STYLES[drawStyleId] || DRAW_STYLES[DRAW_STYLE_IDS[0]];
+  const draftMenu = (
+    <ToolMenu
+      title={`Draft — drawing style (${activeDrawStyle.label}), outline while drawing, straight or curve`}
+      onOpenChange={onMenuDepth}
+      faceStyle={{ padding: "4px 6px" }}
+      face={<StylePreview t={activeDrawStyle} w={26} h={16} />}
+      items={[
+        { section: "Drawing style" },
+        ...DRAW_STYLE_IDS.map((id) => {
+          const t = DRAW_STYLES[id];
+          const on = id === drawStyleId;
+          return { id: `ds-${id}`, custom: (
+            <button type="button" aria-pressed={on} data-ds={id} onClick={() => setDrawStyle(id)}
+              style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "7px 12px", border: "none", textAlign: "left", cursor: "pointer", background: on ? "var(--tint-select)" : "transparent", color: "var(--ink)", fontFamily: "var(--f-body)", fontSize: 13, fontWeight: on ? 600 : 400 }}
+              onMouseEnter={(e) => { if (!on) e.currentTarget.style.background = "var(--paper-shadow)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = on ? "var(--tint-select)" : "transparent"; }}>
+              <StylePreview t={t} />
+              <span style={{ flex: 1 }}>{t.label}</span>
+              <span style={{ display: "inline-flex", width: 14, justifyContent: "center", color: "var(--cobalt)", visibility: on ? "visible" : "hidden" }} aria-hidden="true">✓</span>
+            </button>
+          ) };
+        }),
+        "divider",
+        { id: "draftoutline", checked: draftOutline, stayOpen: true, icon: "area", label: "Outline area while drawing", onSelect: () => setDraftOutline(!draftOutline),
+          title: "Draw Area / Deduct / Zone as an open outline (no fill) while tracing — it still commits closed on Enter or double-click." },
+        "divider",
+        { section: "Bend" },
+        { id: "straight", checked: !curveMode, stayOpen: true, disabled: !curvable, label: "Straight", onSelect: () => setCurveMode(false),
+          title: "Straight places corners." },
+        { id: "curve", checked: curveMode, stayOpen: true, disabled: !curvable, icon: "curve", label: "Curve", shortcut: "Q", onSelect: () => setCurveMode(true),
+          title: "Curve takes two clicks — one anywhere ON the bow, then its far end — and lays the unique circle through those and the vertex you were on, so it sits on a radius wall instead of near it. Q flips it once a trace is going; ⌥-click places the OTHER kind for one point." },
+        { note: curvable ? "Switch as often as you like inside one measurement." : "Arm Area, Line, Cut Out or Surface Area to bend a trace." },
+      ]}
+    />
   );
 
   // ?hatchqa — density-tuning wall: every pattern at three scales in two palette
@@ -8015,15 +8012,11 @@ export default function TakeoffCanvas() {
           </button>
         </>)}
         {vRule}
-        {/* Drafting conventions — how a trace looks and where it bends. Style and
-            Outline came up from the ⋯ menu, Straight/Curve over from the readout
-            (2026-09-12): a convention you set before tracing belongs beside the
-            aids, one click from the sheet, not two deep in a menu. */}
-        {cluster("Draft", <>
-          {drawStyleRow}
-          {draftOutlineRow}
-          {curveSwitch}
-        </>)}
+        {/* Drafting conventions — how a trace looks and where it bends, one
+            dropdown. Style and Outline came up from the ⋯ menu, Straight/Curve
+            over from the readout (2026-09-12): a convention you set before
+            tracing belongs beside the aids, one click from the sheet. */}
+        {cluster("Draft", draftMenu)}
         {/* The caption always shows the ACTIVE label (+ the cobalt highlight keyed
             on it) so what a new trace will get is never hidden — even in Select
             mode, where the dropdown VALUE instead shows the selected shape's label
@@ -9750,7 +9743,7 @@ export default function TakeoffCanvas() {
               <div style={{ fontSize: 22, fontWeight: 700, color: tool === "deduct" ? "var(--c-danger)" : "var(--ink)" }}>{tool === "deduct" ? "−" : ""}{num(areaVal(liveArea, units))} <span style={{ fontSize: 13, fontWeight: 600 }}>{areaUnit(units)}</span></div>
               <div style={{ fontSize: 12.5, color: "var(--ink-secondary)", marginTop: 2 }}>{units === "metric" ? `${fl(livePerim)} perim` : `${num(liveArea / 9)} SY  ·  ${num(livePerim)} LF perim`}</div>
               {condH > 0 && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 2 }}>@H {num(heightVal(condH, units), 2)}{units === "metric" ? " m" : "′"}: {fa(livePerim * condH)} vert{units === "metric" ? "" : ` · ${num((liveArea * condH) / 27)} CY`}</div>}
-              {CURVABLE.has(tool) && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{bowOpen ? "Bow set — click the far END of the arc" : curveMode && poly.length ? "Click a point ON the bow, then its far end" : curveIdx.length ? `${curveIdx.length} arc${curveIdx.length === 1 ? "" : "s"} — each one a true circle through 3 points` : "Q or ⌒ Curve in the toolbar draws an arc · ⌥-click flips one point"}</div>}
+              {CURVABLE.has(tool) && <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{bowOpen ? "Bow set — click the far END of the arc" : curveMode && poly.length ? "Click a point ON the bow, then its far end" : curveIdx.length ? `${curveIdx.length} arc${curveIdx.length === 1 ? "" : "s"} — each one a true circle through 3 points` : "Q or Draft ▾ Curve draws an arc · ⌥-click flips one point"}</div>}
             </>
           ) : selShape ? (
             // #283 — a FINISHED takeoff reads the same as it did mid-trace.
