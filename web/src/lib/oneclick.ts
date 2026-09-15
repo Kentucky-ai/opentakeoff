@@ -314,15 +314,24 @@ export function escalationParams(sensitivity: number): { escalateFrac: number; g
 // XObjects push/pop their matrix so hatch living inside a form lands where it
 // draws. `transform` is viewport.transform; OPS is pdfjs's op-code table.
 /** Rec. 709 luminance of a pdf.js stroke-color arg list, 0–255 (#260). Accepts
- *  the components either as three args or as one array — pdf.js has emitted
- *  both shapes across versions — and anything else leaves the state alone by
+ *  the components as three args, one array, one typed array, or a "#rrggbb"
+ *  hex string (pdf.js ≥ 5.x) — and anything else leaves the state alone by
  *  returning null. Rec. 709 rather than a plain mean because the case this
  *  exists for is black-vs-grey linework, where every weighting agrees, and
  *  because a green annotation layer should not read as light as a yellow one. */
 export function strokeLuminance(args: unknown[]): number | null {
-  // pdf.js has emitted the components as three args, one plain array, and one
-  // typed array across versions — read all three shapes, refuse the rest.
+  // pdf.js has emitted the components as three args, one plain array, one
+  // typed array, and (≥ 5.x) one "#rrggbb" hex string — read all four shapes,
+  // refuse the rest.
   const first = args?.[0];
+  if (typeof first === "string") {
+    const hex = /^#([0-9a-f]{6})$/i.exec(first);
+    if (!hex) return null;
+    const v = parseInt(hex[1], 16);
+    const L =
+      0.2126 * ((v >> 16) & 255) + 0.7152 * ((v >> 8) & 255) + 0.0722 * (v & 255);
+    return Math.max(0, Math.min(255, Math.round(L)));
+  }
   const a = Array.isArray(first) || (ArrayBuffer.isView(first) && !(first instanceof DataView))
     ? (first as ArrayLike<unknown>)
     : args;
@@ -335,6 +344,60 @@ export function strokeLuminance(args: unknown[]): number | null {
   const k = r <= 1 && g <= 1 && b <= 1 ? 255 : 1;
   const L = (0.2126 * r + 0.7152 * g + 0.0722 * b) * k;
   return Math.max(0, Math.min(255, Math.round(L)));
+}
+
+// pdf.js ≥ 4.6 builds paths in the WORKER (mozilla/pdf.js "move path building
+// to the worker"): a constructPath op now arrives as [paintOp, [flatPath],
+// minMax] — the paint op FOLDED IN as a number, and the path as one flat
+// Float32Array interleaving DrawOPS codes with their coordinates. These are
+// pdf.js's shared/util.js DrawOPS values, stable across the versions that
+// emit this shape. rectangle / curveTo2 / curveTo3 no longer appear: the
+// worker decomposes rects into moveTo+lineTo+closePath and normalizes every
+// bezier to a full cubic.
+const DRAW_MOVETO = 0, DRAW_LINETO = 1, DRAW_CURVETO = 2, DRAW_CLOSEPATH = 3;
+
+/** One constructPath op's args, normalized across pdf.js generations into the
+ *  legacy (sub-op codes, coords) pair the extractor walks. `paintFn` is the
+ *  folded-in paint op on the ≥ 4.6 shape, null on the legacy shape (where the
+ *  paint op is its own FOLLOWING entry in the stream — see paintFlags).
+ *  Returns null when nothing is extractable: an empty path, or a path whose
+ *  coordinate buffer a canvas render already consumed (pdf.js mutates the
+ *  shared args in place, leaving a Path2D). */
+export function decodeConstructPath(
+  args: any[],
+  OPS: OpsTable
+): { ops: ArrayLike<number>; co: ArrayLike<number>; paintFn: number | null } | null {
+  if (!args) return null;
+  const first = args[0];
+  if (Array.isArray(first) || ArrayBuffer.isView(first)) {
+    // legacy shape (pdf.js ≤ 4.5): [subOps[], coords[]]
+    return { ops: first as ArrayLike<number>, co: args[1] as ArrayLike<number>, paintFn: null };
+  }
+  if (typeof first !== "number") return null;
+  const flat = Array.isArray(args[1]) ? (args[1][0] as unknown) : null;
+  if (!flat || !(Array.isArray(flat) || ArrayBuffer.isView(flat))) return null;
+  const f = flat as ArrayLike<number>;
+  const ops: number[] = [], co: number[] = [];
+  for (let k = 0; k < f.length; ) {
+    const c = f[k++];
+    if (c === DRAW_MOVETO) { ops.push(OPS.moveTo); co.push(f[k++], f[k++]); }
+    else if (c === DRAW_LINETO) { ops.push(OPS.lineTo); co.push(f[k++], f[k++]); }
+    else if (c === DRAW_CURVETO) { ops.push(OPS.curveTo); co.push(f[k++], f[k++], f[k++], f[k++], f[k++], f[k++]); }
+    else if (c === DRAW_CLOSEPATH) { ops.push(OPS.closePath); }
+    else break; // unknown draw code — keep what parsed cleanly, refuse to guess a stride
+  }
+  return { ops, co, paintFn: first };
+}
+
+/** Paint flags for the ≥ 4.6 shape, from the constructPath op's OWN folded-in
+ *  paint op — the stream no longer carries a following fill/endPath entry for
+ *  paintFlags to look ahead at. Same verdicts as paintFlags: endPath = the
+ *  clip-only (invisible) path, fill/eoFill = filled-not-stroked; every stroke
+ *  variant (closeStroke, fillStroke…) is ordinary drawn linework. */
+function embeddedPaintFlags(paintFn: number, OPS: OpsTable): number {
+  if (paintFn === OPS.endPath) return SEG_CLIP;
+  if (paintFn === OPS.fill || paintFn === OPS.eoFill) return SEG_FILLONLY;
+  return 0;
 }
 
 export function extractVectorGeometry(opList: OpList, transform: number[], OPS: OpsTable): VectorGeometry {
@@ -498,16 +561,21 @@ export function extractVectorGeometry(opList: OpList, transform: number[], OPS: 
       }
     }
     else if (fn === OPS.constructPath) {
+      const decoded = decodeConstructPath(args, OPS);
+      if (!decoded) continue;                 // empty path / Path2D — nothing extractable
       const devW = Math.min(15, Math.max(0, Math.ceil((lw || 0) * Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2])))));
-      const flags = paintFlags(i) | (devW << 4);
-      const ops = args[0], co = args[1];
+      const flags =
+        (decoded.paintFn === null ? paintFlags(i) : embeddedPaintFlags(decoded.paintFn, OPS)) |
+        (devW << 4);
+      const ops = decoded.ops, co = decoded.co;
       let c = 0, cur: Point | null = null, start: Point | null = null;
       const pathLayer = curLayer;   // one path = one marked-content scope (#85)
       const pathLum = lum;          // stroke color cannot change mid-path (#260)
       pathFill = fillLum;           // …and neither can the fill colour
       const visit = (p: Point) => { points.push(p); };
       const lineTo = (p: Point) => { if (cur) { segs.push(cur[0], cur[1], p[0], p[1]); metaArr.push(flags); lumArr.push(pathLum); layerOfArr.push(pathLayer); noteSeg(cur, p); } cur = p; visit(p); };
-      for (const op of ops) {
+      for (let oi = 0; oi < ops.length; oi++) {
+        const op = ops[oi];
         if (op === OPS.moveTo) { cur = tx(co[c], co[c + 1]); start = cur; openSub(flags, cur); visit(cur); c += 2; }
         else if (op === OPS.lineTo) { lineTo(tx(co[c], co[c + 1])); c += 2; }
         else if (op === OPS.curveTo || op === OPS.curveTo2 || op === OPS.curveTo3) {

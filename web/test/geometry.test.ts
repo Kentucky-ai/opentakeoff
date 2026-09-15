@@ -1377,6 +1377,100 @@ test("extractVectorGeometry: a folded *Repeat op's area still scales with the am
   assert.ok(Math.abs(g.imageArea - 96) < 1e-9, `imageArea ${g.imageArea}`);
 });
 
+// pdf.js ≥ 4.6 constructPath shape: [paintOp, [flatPath], minMax]
+// pdf.js moved path building into the worker: the paint op is folded into
+// constructPath's own args as a NUMBER, and the path arrives as one flat
+// Float32Array interleaving DrawOPS codes (moveTo=0, lineTo=1, curveTo=2,
+// closePath=3) with coordinates. The regression these guard: the extractor
+// iterated args[0] — now a number — and every Magic Fill / snap-grid build
+// under pdfjs-dist 5.x died with "… is not iterable".
+describe("extractVectorGeometry: pdf.js ≥ 4.6 folded constructPath", () => {
+  const OPS: Record<string, number> = {
+    save: 1, restore: 2, transform: 3, constructPath: 4, setLineWidth: 5, setGState: 6,
+    moveTo: 10, lineTo: 11, curveTo: 12, curveTo2: 13, curveTo3: 14, closePath: 15, rectangle: 16,
+    stroke: 20, closeStroke: 21, fill: 22, eoFill: 23, endPath: 28, clip: 29, eoClip: 30,
+    setStrokeRGBColor: 50, setFillRGBColor: 51,
+    paintFormXObjectBegin: 40, paintFormXObjectEnd: 41,
+  };
+  const IDENT = [1, 0, 0, 1, 0, 0];
+  const flat = (...v: number[]) => new Float32Array(v);
+
+  test("a folded stroke path extracts segments (the 5.x crash regression)", () => {
+    const opList = {
+      fnArray: [OPS.constructPath],
+      argsArray: [[OPS.stroke, [flat(0, 0, 0, 1, 10, 0, 1, 10, 10, 3)], [0, 0, 10, 10]]],
+    };
+    const g = extractVectorGeometry(opList as any, IDENT, OPS);
+    assert.equal(g.segs.length >> 2, 3, "two drawn segments + the closePath return");
+    assert.deepEqual(Array.from(g.segs.slice(0, 4)), [0, 0, 10, 0]);
+    assert.equal(g.subpaths!.length, 1);
+    assert.equal(g.subpaths![0].closed, true, "DrawOPS closePath closes the figure");
+  });
+
+  test("the folded paint op supplies the paint flags — fill and endPath verdicts", () => {
+    const opList = {
+      fnArray: [OPS.constructPath, OPS.constructPath, OPS.constructPath],
+      argsArray: [
+        [OPS.fill, [flat(0, 0, 0, 1, 5, 0)], [0, 0, 5, 0]],
+        [OPS.endPath, [flat(0, 0, 10, 1, 5, 10)], [0, 10, 5, 10]],
+        [OPS.closeStroke, [flat(0, 0, 20, 1, 5, 20, 1, 5, 25, 3)], [0, 20, 5, 25]],
+      ],
+    };
+    const { meta } = extractVectorGeometry(opList as any, IDENT, OPS);
+    assert.equal(meta[0] & SEG_FILLONLY, SEG_FILLONLY, "folded fill → filled-not-stroked");
+    assert.equal(meta[1] & SEG_CLIP, SEG_CLIP, "folded endPath → clip-only (invisible ink)");
+    assert.equal(meta[2] & (SEG_FILLONLY | SEG_CLIP), 0, "closeStroke is drawn linework");
+  });
+
+  test("a folded cubic tessellates into SEG_CURVE chords", () => {
+    const opList = {
+      fnArray: [OPS.constructPath],
+      argsArray: [[OPS.stroke, [flat(0, 0, 10, 2, 2, 14, 4, 14, 6, 10)], [0, 10, 6, 14]]],
+    };
+    const { segs, meta } = extractVectorGeometry(opList as any, IDENT, OPS);
+    assert.ok(segs.length >> 2 >= 4, "the bezier sampled as chords");
+    for (let i = 0; i < meta.length; i++) assert.equal(meta[i] & SEG_CURVE, SEG_CURVE);
+  });
+
+  test("an empty ([null]) or render-consumed (Path2D) path is skipped, not a throw", () => {
+    const opList = {
+      fnArray: [OPS.constructPath, OPS.constructPath, OPS.constructPath],
+      argsArray: [
+        [OPS.endPath, [null], null],
+        [OPS.stroke, [{ fake: "Path2D" }], [0, 0, 5, 5]],
+        [OPS.stroke, [flat(0, 0, 0, 1, 5, 0)], [0, 0, 5, 0]],
+      ],
+    };
+    const g = extractVectorGeometry(opList as any, IDENT, OPS);
+    assert.equal(g.segs.length >> 2, 1, "only the intact path contributes");
+  });
+
+  test("5.x hex-string stroke colors feed the luminance channel", () => {
+    const opList = {
+      fnArray: [OPS.setStrokeRGBColor, OPS.constructPath],
+      argsArray: [
+        ["#808080"],
+        [OPS.stroke, [flat(0, 0, 0, 1, 5, 0)], [0, 0, 5, 0]],
+      ],
+    };
+    const g = extractVectorGeometry(opList as any, IDENT, OPS);
+    assert.equal(g.lum![0], 128, "mid-grey pen recorded per segment");
+  });
+
+  test("the legacy [subOps, coords] shape is byte-identical to before", () => {
+    const opList = {
+      fnArray: [OPS.constructPath, OPS.stroke],
+      argsArray: [
+        [[OPS.moveTo, OPS.lineTo], [0, 0, 10, 0]],
+        null,
+      ],
+    };
+    const g = extractVectorGeometry(opList as any, IDENT, OPS);
+    assert.equal(g.segs.length >> 2, 1);
+    assert.deepEqual(Array.from(g.segs), [0, 0, 10, 0]);
+  });
+});
+
 // The O(N²) lattice-query fix (adversarial review, round 8) shipped with NO
 // regression test — reverting the bisect + prefix-max in rowHas to the naive
 // full-row scan left the whole suite AND the bench green (audit finding D7).

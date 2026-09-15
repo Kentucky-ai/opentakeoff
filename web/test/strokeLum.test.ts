@@ -74,7 +74,12 @@ test("strokeLuminance reads what pdf.js emits, and refuses what it doesn't", () 
   assert.equal(strokeLuminance([Uint8ClampedArray.from([219, 219, 219])]), 219, "components as one typed array");
   assert.equal(strokeLuminance([1, 1, 1]), 255, "a 0–1 file scales rather than reading as black");
   assert.ok(strokeLuminance([255, 0, 0])! < strokeLuminance([0, 255, 0])!, "Rec. 709, not a mean");
-  assert.equal(strokeLuminance(["#ff0000"]), null, "a shape we don't understand leaves the state alone");
+  assert.equal(strokeLuminance(["#ff0000"]), Math.round(0.2126 * 255), "pdf.js ≥ 5.x emits #rrggbb");
+  assert.equal(strokeLuminance(["#808080"]), 128);
+  assert.equal(strokeLuminance(["#000000"]), 0);
+  assert.equal(strokeLuminance(["#ffffff"]), 255);
+  assert.equal(strokeLuminance(["red"]), null, "a shape we don't understand leaves the state alone");
+  assert.equal(strokeLuminance(["#fff"]), null, "pdf.js always emits 6 digits — refuse the rest");
   assert.equal(strokeLuminance([]), null);
 });
 
