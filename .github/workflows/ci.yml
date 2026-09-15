@@ -5,9 +5,11 @@ on:
     branches: [main]
   pull_request:
 
-# least-privilege token: every job only checks out and reads
+# least-privilege token: every job only checks out and reads. id-token lets
+# the Codecov upload authenticate over GitHub OIDC instead of a stored secret.
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   web:
@@ -35,7 +37,14 @@ jobs:
       - run: node scripts/fetch-voice-model.mjs
       - run: npm run typecheck
       - run: npm run lint
-      - run: npm test
+      - run: npm run test:coverage
+      - name: Upload coverage to Codecov (informational; never gates the PR)
+        uses: codecov/codecov-action@v5
+        with:
+          files: web/coverage/lcov.info
+          flags: web
+          use_oidc: true
+          fail_ci_if_error: false
       # The bench is a ruler, and a ruler that silently stops matching the
       # engine is worse than no ruler (#198): results.json is committed, the
       # runner rewrites it on every run, and nothing used to compare the two —
@@ -71,8 +80,16 @@ jobs:
         working-directory: mcp
       - run: npm run typecheck
         working-directory: mcp
-      - run: npm test
+      - run: npm run test:coverage
         working-directory: mcp
+      - name: Upload coverage to Codecov (informational; never gates the PR)
+        if: runner.os == 'Linux'
+        uses: codecov/codecov-action@v5
+        with:
+          files: mcp/coverage/lcov.info
+          flags: mcp
+          use_oidc: true
+          fail_ci_if_error: false
       - run: npm run check:tool-count
         working-directory: mcp
       - run: npm run check:protocol-resources
