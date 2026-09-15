@@ -21,8 +21,8 @@
 // a view.
 import { metaGet, metaPut, metaDelete, metaDeletePrefix } from "./store.js";
 
-export const THUMB_W = 380;           // CSS px — the card well is 270..~400 wide
-const THUMB_VERSION = 2;              // bump to invalidate every persisted thumb
+export const THUMB_W = 640;           // CSS px — large gallery cards are capped at this width
+const THUMB_VERSION = 3;              // bump to invalidate every persisted thumb
 const PREFIX = `thumb:v${THUMB_VERSION}:`;
 
 /** Device px the raster should be wide for a crisp card on this screen. */
@@ -41,8 +41,8 @@ export async function renderThumb(pg, w = thumbPixelWidth()) {
   c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
   const ctx = c.getContext("2d", { alpha: false });
   await pg.render({ canvasContext: ctx, viewport: vp, background: "#ffffff" }).promise;
-  let blob = await new Promise((res) => c.toBlob(res, "image/webp", 0.9));
-  if (!blob) blob = await new Promise((res) => c.toBlob(res, "image/jpeg", 0.9));
+  let blob = await new Promise((res) => c.toBlob(res, "image/webp", 0.98));
+  if (!blob) blob = await new Promise((res) => c.toBlob(res, "image/png"));
   if (!blob) throw new Error("thumbnail encode failed");
   return { blob, w: c.width, h: c.height };
 }

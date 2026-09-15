@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add an opt-in premium workspace preview: graphite/light/HUD surfaces, adjustable icon backlight, optional floating quantity readout, and panel tools beside Quantities that move to the right edge in Focus mode. Distinguish Create annotation from Markup list. Preserve wall-height editing when the readout is hidden.
+- Enlarge and refresh sheet thumbnails, add medium/large gallery cards and an independent detailed preview with actual-pixel inspection, and open sidebar-selected sheets in their own tabs.
+
 - **pdf.js ≥ 4.6 folded constructPath, and 5.x hex stroke colors.** `extractVectorGeometry` iterated `constructPath` args as `[subOps[], coords[]]`. From pdf.js 4.6 the worker folds the paint op in as a number and the path as one flat DrawOPS buffer — iterating that number threw "… is not iterable" and Magic Fill / the snap grid built an empty mask. `decodeConstructPath` normalizes both shapes; empty or render-consumed Path2D args skip instead of throwing. `strokeLuminance` now reads the `"#rrggbb"` string pdf.js 5.x emits (it used to refuse it and leave every pen black). Legacy `[subOps, coords]` results are unchanged. Found on a downstream port of this module.
 
 - **Notes are ink on the sheet.** Callouts, text notes and the labels on clouds, highlights, arrows and dimensions are sized in page points and scale with the zoom, like a comment in a PDF viewer — not a fixed screen size that spanned the whole floor plan at fit and shrank to a chip at 300 %. A note wraps at three inches into a paragraph block measured from real text metrics (hit-testing uses the same block), floored at 9 screen px so it stays legible zoomed out. New `web/src/lib/markupText.js` owns the layout for the canvas AND the Marked Set, which burns the same block — and now burns plain text notes at all (they were silently skipped before).

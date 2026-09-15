@@ -7,7 +7,7 @@ export function useWorkspaceLayout() {
     let raw = null;
     try { raw = localStorage.getItem(WORKSPACE_LAYOUT_KEY); } catch { /* session-only layout */ }
     const pref = readWorkspacePreferences(raw);
-    if (new URLSearchParams(window.location.search).get("workspace") === "calm") pref.enabled = true;
+    if (["calm", "premium"].includes(new URLSearchParams(window.location.search).get("workspace"))) pref.enabled = true;
     return pref;
   });
   const [storageFailed, setStorageFailed] = useState(false);
@@ -67,6 +67,7 @@ export function WorkspaceLayoutDialog({ open, onClose, prefs, onOpenChange }) {
   const { layout, update } = prefs;
   return <dialog ref={ref} className="calm-layout-dialog" onKeyDown={(e) => e.stopPropagation()} aria-labelledby="workspace-layout-title" onCancel={(e) => { e.preventDefault(); onClose(); }}>
     <header><div><h2 id="workspace-layout-title">Your workspace</h2><p>Saved on this browser. Your team keeps its own arrangement.</p></div><button type="button" onClick={onClose} aria-label="Close layout settings">×</button></header>
+    <section className="workspace-appearance"><h3>Appearance</h3><label>Surface<select aria-label="Workspace surface" value={layout.look} onChange={(e) => update({ look: e.target.value })}><option value="graphite">Backlit graphite</option><option value="light">Studio light</option><option value="hud">Instrument HUD</option></select></label><label>Active icon backlight<input aria-label="Active icon backlight" type="range" min="0" max="100" value={layout.backlight} onChange={(e) => update({ backlight: Number(e.target.value) })} /><output>{layout.backlight}%</output></label></section>
     <label className="calm-lock"><input type="checkbox" checked={layout.locked} onChange={(e) => update({ locked: e.target.checked })} />Lock panel positions and sizes</label>
     <p className="calm-layout-help">Unlock to drag a panel’s grip to either edge, or choose its position below. Opening and closing panels always stays available.</p>
     <fieldset disabled={layout.locked}><legend>Panel arrangement</legend>
@@ -74,7 +75,7 @@ export function WorkspaceLayoutDialog({ open, onClose, prefs, onOpenChange }) {
       <label>Work panel width <input aria-label="Work panel width" type="range" min="300" max="480" step="20" value={layout.workWidth} onChange={(e) => update({ workWidth: Number(e.target.value) })} /><output>{layout.workWidth}px</output></label>
       <label>Sheets panel width <input aria-label="Sheets panel width" type="range" min="220" max="340" step="20" value={layout.sheetWidth} onChange={(e) => update({ sheetWidth: Number(e.target.value) })} /><output>{layout.sheetWidth}px</output></label>
     </fieldset>
-    <div className="calm-layout-options"><label><input type="checkbox" checked={layout.palette} onChange={(e) => update({ palette: e.target.checked })} />Show pinned condition palette</label><label><input type="checkbox" checked={layout.counter} onChange={(e) => update({ counter: e.target.checked })} />Show floating quantity counter</label></div>
+    <div className="calm-layout-options"><label><input type="checkbox" checked={layout.readout} onChange={(e) => update({ readout: e.target.checked })} />Show floating quantity box</label><label><input type="checkbox" checked={layout.palette} onChange={(e) => update({ palette: e.target.checked })} />Show pinned condition palette</label><label><input type="checkbox" checked={layout.counter} onChange={(e) => update({ counter: e.target.checked })} />Show project quantity counter</label></div>
     <section><h3>Saved arrangements</h3><form onSubmit={(e) => { e.preventDefault(); prefs.save(name); setMessage(`Saved “${name.trim()}”.`); setName(""); }}><input aria-label="Arrangement name" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} placeholder="e.g. My estimating desk" /><button disabled={!name.trim()}>Save current</button></form>
       <p className="calm-layout-help">Up to 8 arrangements. Saving the same name replaces it. Loading an arrangement also restores its lock setting.</p>
       {prefs.saved.map((s) => <div key={s.name} className="calm-saved-layout"><button type="button" onClick={() => { update(s.layout); setMessage(`Loaded “${s.name}”.`); }}>{s.name}</button><button type="button" aria-label={`Delete arrangement ${s.name}`} onClick={() => { prefs.remove(s.name); setMessage(`Removed “${s.name}” from saved arrangements.`); }}>×</button></div>)}

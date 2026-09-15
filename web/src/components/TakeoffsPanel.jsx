@@ -985,7 +985,7 @@ function TakeoffsPanel({
           <button onClick={(e) => { e.stopPropagation(); onSetActive(c.id); setPanelMatOpen((v) => (on ? !v : true)); }}
             title="Supporting Materials — labor, subfloor & materials for this condition"
             style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 3, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: matOn ? "var(--ink)" : "transparent", color: matOn ? "var(--paper-bright)" : "var(--ink-muted)", cursor: "pointer", fontSize: 11 }}>
-            <Icon name="product" size={11} />{c.materials?.length ? c.materials.length : ""}
+            <Icon name="product" size={11} />Materials{c.materials?.length ? ` (${c.materials.length})` : ""}
           </button>
           <button onClick={(e) => { e.stopPropagation(); onTogglePin(c.id); }}
             title={pinned ? "Unpin from the top-bar palette" : (palette.length >= 9 ? "Palette is full (9)" : "Pin to the top-bar palette for one-click access")}
@@ -1145,7 +1145,7 @@ function TakeoffsPanel({
         <div data-takeoffs-header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "7px 12px", background: "var(--ink)", color: "var(--paper-cream)", flexShrink: 0 }}>
           {dockHandle}<span style={{ display: "inline-flex", gap: 2 }}>
             {[["takeoffs", `Takeoffs · ${multiSheet ? "these sheets" : "this sheet"}`], ["library", `Library${templates.length ? ` (${templates.length})` : ""}`], ["materials", `Materials${matLib.length ? ` (${matLib.length})` : ""}`], ["columns", `Columns${conditionColumns.length ? ` (${conditionColumns.length})` : ""}`]].map(([id, label]) => (
-              <button key={id} onClick={() => setPanelTab(id)}
+              <button key={id} aria-pressed={panelTab === id} onClick={() => setPanelTab(id)}
                 style={{ padding: "3px 8px", border: "none", borderBottom: panelTab === id ? "2px solid var(--paper-cream)" : "2px solid transparent", background: "none", color: "var(--paper-cream)", opacity: panelTab === id ? 1 : 0.65, cursor: "pointer", fontWeight: 700, fontSize: 12.5 }}>{label}</button>
             ))}
           </span>
