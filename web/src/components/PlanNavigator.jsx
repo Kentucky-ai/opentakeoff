@@ -57,7 +57,7 @@ const ctrlBtn = { display: "inline-flex", alignItems: "center", gap: 6, padding:
 
 export default function PlanNavigator({
   // presentation + exit
-  canClose, onExit, initialMode = "plan", cloudMode,
+  canClose, onExit, onPremium, initialMode = "plan", cloudMode,
   // plan-set (gallery) data
   sheets, getDoc, scales, detectedScales, scaleUnconfirmed = {}, shapes, labels, onLabel, onDetect,
   thumbCacheRef, busyRef, openTabs, onOpen,
@@ -163,7 +163,7 @@ export default function PlanNavigator({
   const escRef = useRef(() => {});
   useEffect(() => {
     const onKey = (e) => {
-      if (previewOpenRef.current) return; // The preview owns Escape and focus.
+      if (previewOpenRef.current || e.target?.closest?.("dialog[open]")) return; // The preview owns Escape and focus.
       if (e.key === "Escape") { e.stopPropagation(); escRef.current(); return; }
       const tag = e.target?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
@@ -515,6 +515,7 @@ export default function PlanNavigator({
       <div style={{ flex: 1 }} />
 
       {/* RIGHT: source toggle · browse filters · add plans · account */}
+      {onPremium && <button type="button" data-premium-trigger onClick={onPremium} style={{...ctrlBtn, color:"var(--cobalt)", borderColor:"var(--cobalt)"}}>Request Premium</button>}
       {browseEnabled && (
         <div style={{ display: "inline-flex", border: "1px solid var(--ink-faint)", borderRadius: 2, overflow: "hidden" }}>
           <button onClick={() => setMode("plan")} style={{ ...ctrlBtn, border: "none", background: mode === "plan" ? "var(--ink)" : "transparent", color: mode === "plan" ? "var(--paper-bright)" : "var(--ink-muted)" }}>Plan set</button>

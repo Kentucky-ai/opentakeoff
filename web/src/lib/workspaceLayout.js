@@ -23,6 +23,6 @@ export function readWorkspacePreferences(raw) {
   try {
     const value = JSON.parse(raw);
     if (!value || value.version !== 1) throw new Error("Unsupported layout");
-    return { version: 1, enabled: value.enabled === true, layout: normalizeLayout(value.layout), saved: (Array.isArray(value.saved) ? value.saved : []).filter((s) => s && typeof s.name === "string" && s.name.trim()).slice(0, 8).map((s) => ({ name: s.name.trim().slice(0, 40), layout: normalizeLayout(s.layout) })) };
-  } catch { return { version: 1, enabled: false, layout: { ...DEFAULT_LAYOUT }, saved: [] }; }
+    return { version: 1, enabled: value.enabled !== false, layout: normalizeLayout(value.layout), saved: (Array.isArray(value.saved) ? value.saved : []).filter((s) => s && typeof s.name === "string" && s.name.trim()).slice(0, 8).map((s) => ({ name: s.name.trim().slice(0, 40), layout: normalizeLayout(s.layout) })) };
+  } catch { return { version: 1, enabled: true, layout: { ...DEFAULT_LAYOUT }, saved: [] }; }
 }

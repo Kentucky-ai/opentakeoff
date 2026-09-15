@@ -39,7 +39,7 @@ carry an explicit review status. See the [Phase 1 test guide](docs/PHASE_1_TESTI
 
 ---
 
-An optional **Workspace preview** (in the canvas **⋯** menu) offers compact controls, searchable actions and sheets, and personal panel arrangements with a layout lock. [See the workspace design and research](docs/design/PERSONAL_WORKSPACE.md). The branch’s `?workspace=premium` preview adds adjustable surfaces, consolidated panel controls and larger sheet previews.
+The **Premium workspace** offers compact controls, searchable actions and sheets, personal panel arrangements, adjustable surfaces and larger sheet previews. It is the default when this browser has no saved layout choice; **Classic layout** remains available. [See the workspace design and research](docs/design/PERSONAL_WORKSPACE.md).
 
 ## Start here
 

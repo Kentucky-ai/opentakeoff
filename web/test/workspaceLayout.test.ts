@@ -13,7 +13,7 @@ test('a locked layout rejects a pending drag, unlocking allows a valid dock only
 test('corrupt, obsolete and out-of-bounds personal layouts recover to usable defaults', () => {
   for (const raw of ['oops', 'null', '{}', '{"version":2,"enabled":true}']) {
     const result = readWorkspacePreferences(raw);
-    assert.equal(result.enabled, false);
+    assert.equal(result.enabled, true);
     assert.deepEqual(result.layout, DEFAULT_LAYOUT);
   }
   assert.deepEqual(normalizeLayout({ tools: 'floating', workWidth: Infinity, sheetWidth: -500, locked: 'false', injected: 9 }), { ...DEFAULT_LAYOUT, sheetWidth: 220 });
@@ -32,4 +32,13 @@ test('saved arrangement names and count are bounded and malformed entries ignore
   const pref = readWorkspacePreferences(JSON.stringify({ version: 1, saved: [null, {}, { name: ' ' }, ...Array.from({ length: 20 }, () => ({ name: 'x'.repeat(80), layout: {} }))] }));
   assert.equal(pref.saved.length, 8);
   assert.equal(pref.saved[0].name.length, 40);
+});
+
+test('premium is the default while a saved Classic choice survives reload', () => {
+  assert.equal(readWorkspacePreferences(null).enabled, true);
+  assert.equal(readWorkspacePreferences(JSON.stringify({version:1})).enabled, true);
+  const classic = readWorkspacePreferences(JSON.stringify({version:1,enabled:false,layout:{look:'light'}}));
+  assert.equal(classic.enabled, false);
+  assert.equal(readWorkspacePreferences(JSON.stringify(classic)).enabled, false);
+  assert.equal(classic.layout.look, 'light');
 });

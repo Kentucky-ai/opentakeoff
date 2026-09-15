@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- Add an opt-in premium workspace preview: graphite/light/HUD surfaces, adjustable icon backlight, optional floating quantity readout, and panel tools beside Quantities that move to the right edge in Focus mode. Distinguish Create annotation from Markup list. Preserve wall-height editing when the readout is hidden.
+- Add Request Premium early-access intake for mobile/tablet, advanced computer vision, estimates/pricing proposals, RFIs and submittals, with voluntary product-news consent, same-origin Netlify Forms storage, and an explicit disabled preview when form processing is unavailable.
+
+- Make Premium workspace the default for browsers without a saved layout choice; preserve saved Classic choices: graphite/light/HUD surfaces, adjustable icon backlight, optional floating quantity readout, and panel tools beside Quantities that move to the right edge in Focus mode. Distinguish Create annotation from Markup list. Preserve wall-height editing when the readout is hidden.
 - Enlarge and refresh sheet thumbnails, add medium/large gallery cards and an independent detailed preview with actual-pixel inspection, and open sidebar-selected sheets in their own tabs.
 
 - **pdf.js ≥ 4.6 folded constructPath, and 5.x hex stroke colors.** `extractVectorGeometry` iterated `constructPath` args as `[subOps[], coords[]]`. From pdf.js 4.6 the worker folds the paint op in as a number and the path as one flat DrawOPS buffer — iterating that number threw "… is not iterable" and Magic Fill / the snap grid built an empty mask. `decodeConstructPath` normalizes both shapes; empty or render-consumed Path2D args skip instead of throwing. `strokeLuminance` now reads the `"#rrggbb"` string pdf.js 5.x emits (it used to refuse it and leave every pen black). Legacy `[subOps, coords]` results are unchanged. Found on a downstream port of this module.
