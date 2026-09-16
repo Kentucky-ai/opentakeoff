@@ -17,3 +17,7 @@ Commands: `npm run check --prefix web`; `npm run check --prefix protocol`; `npm 
 ![OpenTakeoff toolbar on the bundled public sample](toolbar.png)
 
 OpenTakeoff: the saved arrow reloaded; a blue open-head 3 pt arrow was created with a drag using the new toolbar.
+
+Fragmented CAD-label regression: `CPT`, `-`, `1` join into `CPT-1`; a unit test excludes `VCT-1` and isolated `1` runs. In the OpenTakeoff bundled plan, text Sweep returned 26 complete `CPT-1` labels. Excluding one and applying added 25 clouds (markup count 2 → 27); one undo returned to 2.
+
+![Text Sweep with one excluded label](text-sweep.png)

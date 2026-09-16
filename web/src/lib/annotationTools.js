@@ -124,7 +124,43 @@ export function nativeTextRuns(content, viewport) {
   });
 }
 export const normalizeText = s => String(s || '').normalize('NFKC').replace(/\s+/g,' ').trim().toLocaleLowerCase();
+// CAD PDFs often split one label into separate runs ("CPT", "-", "1").
+// Join only adjacent, aligned runs before matching; punctuation and digits must
+// never independently seed a whole-sheet sweep when they belong to a label.
+export function joinedTextRuns(runs) {
+  const directions=new Map();
+  for(const r of runs){
+    if(!r.quad){directions.set(Symbol(),[r]);continue;}
+    const a=r.quad[0],b=r.quad[1],length=Math.hypot(b[0]-a[0],b[1]-a[1]);
+    if(!length)continue;
+    const u=[(b[0]-a[0])/length,(b[1]-a[1])/length],v=[-u[1],u[0]],key=Math.round(Math.atan2(u[1],u[0])*180/Math.PI);
+    const dot=(p,d)=>p[0]*d[0]+p[1]*d[1],h=Math.abs(dot(r.quad[3],v)-dot(a,v));
+    const row={...r,u,v,h,along:dot(a,u),baseline:dot(r.quad[3],v)};
+    if(!directions.has(key))directions.set(key,[]);directions.get(key).push(row);
+  }
+  const out=[];
+  for(const rows of directions.values()){
+    if(!rows[0].quad){out.push(...rows);continue;}
+    rows.sort((a,b)=>a.baseline-b.baseline||a.along-b.along);
+    const lines=[];
+    for(const row of rows){let line=lines.at(-1);if(!line||Math.abs(row.baseline-line[0].baseline)>.22*Math.max(row.h,line[0].h)){line=[];lines.push(line);}line.push(row);}
+    for(const line of lines){
+      line.sort((a,b)=>a.along-b.along);let group=null;
+      const flush=()=>{if(!group)return;const {u,v,items}=group,points=items.flatMap(r=>r.quad),xs=points.map(p=>p[0]*u[0]+p[1]*u[1]),ys=points.map(p=>p[0]*v[0]+p[1]*v[1]);
+        const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys),P=(x,y)=>[u[0]*x+v[0]*y,u[1]*x+v[1]*y];
+        const quad=[P(x0,y0),P(x1,y0),P(x1,y1),P(x0,y1)];out.push({text:group.text,quad,rect:bounds(quad)});};
+      for(const row of line){
+        const previous=group?.items.at(-1),end=previous?Math.max(...previous.quad.map(p=>p[0]*row.u[0]+p[1]*row.u[1])):0,gap=row.along-end;
+        if(!group||gap<-.15*row.h||gap>.65*row.h||row.h/previous.h<.7||row.h/previous.h>1.4){flush();group={u:row.u,v:row.v,items:[row],text:row.text.trim()};}
+        else{group.items.push(row);group.text+=(gap>.2*row.h?' ':'')+row.text.trim();}
+      }
+      flush();
+    }
+  }
+  return out;
+}
 export function textMatches(runs, region) {
+  runs=joinedTextRuns(runs);
   const chosen = runs.filter(r => intersects(r.rect, region));
   const names = new Set(chosen.map(r => normalizeText(r.text)).filter(Boolean));
   return runs.filter(r => names.has(normalizeText(r.text)));

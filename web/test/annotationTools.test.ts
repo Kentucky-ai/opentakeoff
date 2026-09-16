@@ -45,3 +45,10 @@ test('text highlighter is a translucent multiply-filled quad without a box borde
   const scene=annotationScene({type:'highlight',quads:[[[.1,.2],[.4,.2],[.4,.3],[.1,.3]]],annotation_style:{...ANNOTATION_DEFAULTS,color:'#ffd60a',opacity:.4}},1000,800);
   assert.equal(scene.paths.length,1);assert.equal(scene.paths[0].blend,'multiply');assert.equal(scene.paths[0].opacity,.4);assert.equal(scene.paths[0].stroke,undefined);
 });
+
+test('Sweep joins fragmented CAD labels and does not match isolated suffixes',()=>{
+  const run=(text:string,x:number,y:number,w:number)=>({text,quad:[[x,y],[x+w,y],[x+w,y+10],[x,y+10]],rect:[[x,y],[x+w,y+10]]});
+  const runs=[run('CPT',10,10,20),run('-',31,10,3),run('1',35,10,5),run('CPT',100,50,20),run('-',121,50,3),run('1',125,50,5),run('VCT',10,100,20),run('-',31,100,3),run('1',35,100,5),run('1',200,200,5)];
+  const matches=textMatches(runs,[[9,9],[41,21]]);
+  assert.equal(matches.length,2);assert.deepEqual(matches.map((r:{text:string})=>r.text),['CPT-1','CPT-1']);
+});
