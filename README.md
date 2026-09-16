@@ -1,10 +1,5 @@
 <div align="center">
 
-### Pin a reference
-
-Click **Pin** beside **Sheets** in the top toolbar, then click two corners around any part of a drawing. The reference stays visible as you change sheets. Drag its header to move it, resize its corner, zoom independently, or use **Source** to return to the original region. Close the window without deleting the capture; the count beside **Pin** reopens it. Saved pins live in the project’s Captures list and stay out of marked-set PDF exports. The existing Image tool still places images on sheets.
-
-
 # OpenTakeoff
 
 **The measurement engine for building plans—built so an AI agent can drive it, and so an estimator wants to.**
@@ -432,6 +427,9 @@ live takeoff first, so it's never a one-way door.
 </div>
 
 ### Markups, seals, and RFIs
+
+The annotation toolbar offers editable arrows, three highlighter modes, callouts, cloud notes, saved tool favorites, and a numbered Sweep confirmation checklist before batch annotations are applied. **Pin** keeps a cropped drawing reference visible while you change sheets. See the [user guide](docs/USER_GUIDE.md) and [review evidence](docs/reviews/premium-annotations/README.md).
+
 A separate layer the totals never count: revision clouds, callouts, text notes, highlighter
 ink, **images** (upload a PNG/JPEG, or marquee a region of the plan to drop it back as a
 floating screenshot—move, resize, and it burns into the marked set), and reusable **stamps**
@@ -763,6 +761,10 @@ instrument producing it.
 **Contact:** research collaborations, data questions, press, or anything that is not a bug —
 [research@kentucky-ai.com](mailto:research@kentucky-ai.com). Bugs and feature requests go in
 [issues](https://github.com/Kentucky-ai/opentakeoff/issues); security reports follow [SECURITY.md](SECURITY.md).
+
+### Contributor credit
+
+Thanks to **[@knmurphy](https://github.com/knmurphy)** (Kevin Murphy) for [image captures](https://github.com/Kentucky-ai/opentakeoff/pull/346), [drawing styles](https://github.com/Kentucky-ai/opentakeoff/pull/337), and [sharper overlays](https://github.com/Kentucky-ai/opentakeoff/pull/329). The **Pin** reference tool builds on his image-capture work.
 
 ## License
 

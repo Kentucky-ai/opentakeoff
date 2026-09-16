@@ -1,3 +1,4 @@
+import { annotationScene, pathString } from './annotationTools.js';
 // Marked-Set PDF export — distribute the takeoff off-app, fully client-side.
 //
 // One click builds a distribution-ready PDF: every sheet that carries takeoff
@@ -246,7 +247,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
   const uA = (sf) => (M ? sf * 0.09290304 : sf);
   const uL = (lf) => (M ? lf * 0.3048 : lf);
   const AU = M ? "m2" : "SF", LU = M ? "m" : "LF";
-  const { PDFDocument, StandardFonts, rgb, degrees, LineCapStyle } = await import("pdf-lib");
+  const { PDFDocument, StandardFonts, rgb, degrees, LineCapStyle, BlendMode } = await import("pdf-lib");
   const condById = Object.fromEntries(conditions.map((c) => [c.id, c]));
   // resolve a linked markup's RFI number for the on-sheet marker (ASCII, WinAnsi-safe)
   const rfiNum = new Map((rfis || []).map((r) => [r.id, r.number]));
@@ -718,7 +719,20 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
       const mcol = rgb(...hex(dark ? boostForDark(mbase) : mbase));
       const mdash = pdfDashFor(m.line_style || "solid");
       const mw = clampWeight(m.weight);   // stroke-width multiplier (markups only), default ×1
-      if (m.type === "highlight" && (m.pts || []).length >= 2) {
+      if (m.annotation_style && ["arrow", "highlight", "callout", "cloud", "text"].includes(m.type)) {
+        const scene = annotationScene(m, W, H, RENDER_SCALE);
+        const P = ([x, y]) => { const [px, py] = toPage(x, y); return [px, -py]; };
+        for (const ink of scene.paths) pg.drawSvgPath(pathString(ink.commands, P), {
+          x: 0, y: 0,
+          ...(ink.fill ? { color: rgb(...hex(ink.fill)), opacity: ink.opacity } : {}),
+          ...(ink.stroke ? { borderColor: rgb(...hex(ink.stroke)), borderWidth: ink.width * ptScale, borderOpacity: ink.opacity } : {}),
+          ...(ink.dash ? { borderDashArray: ink.dash.map(n => n * ptScale) } : {}),
+          ...(ink.blend ? { blendMode: BlendMode.Multiply } : {}),
+          borderLineCap: LineCapStyle.Round,
+        });
+        for (const ink of scene.texts) text(ink.text, ink.x, ink.y, ink.size * ptScale, rgb(...hex(ink.color)));
+        if (rlabel) { const at = m.at || m.from || m.rect?.[0] || m.pts?.[0]; if (at) text(rlabel, at[0] * W, at[1] * H - 10 / ptScale, 8, mcol, bold); }
+      } else if (m.type === "highlight" && (m.pts || []).length >= 2) {
         // freehand highlighter stroke — ink stays its own color in both export
         // modes (a highlight IS its hue); width is stored as a fraction of sheet
         // width → image px → page points. Weight (×) multiplies like the canvas.

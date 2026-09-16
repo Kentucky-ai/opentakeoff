@@ -1,5 +1,14 @@
 # OpenTakeoff — The User Manual
 
+### Annotation toolbar and reviewed Sweep
+
+The top **Annotate** row provides **Arrow**, **Highlighter**, **Callout**, **Cloud + note**, **Sweep**, **Select markups**, and **Favorites**. Arrowheads, both ends, page-point line weights, colors, line styles, and note sizes are editable. Select a markup and drag its handles; a callout's text box moves independently of its target. Highlighter offers Freehand, Straight, and Text modes. Text mode highlights whole native PDF text runs, including rotated runs; scanned text needs a stroke instead. Favorites save named tool styles in this browser.
+
+**Sweep** boxes one native vector symbol or PDF text example and searches that sheet. A confirmation panel lists numbered results with individual checkboxes, synchronized with numbered boxes on the sheet. Exclude any result, clear the selection, or use **Select matches** to restore confident matches. Near matches start unchecked. Nothing is added until **Apply to selected**; choose clouds with an optional shared note or notes with leaders. Cancel leaves the PDF unchanged. One undo removes the applied batch, and redo restores it. This creates editable app markups around PDF content; it does not modify source PDF text or create takeoff quantities. Symbol matching requires vector content; PDF text matching joins adjacent aligned fragments into labels, then compares normalized labels; it does not use OCR or match arbitrary paragraphs. Search limits are disclosed in the confirmation panel.
+
+**Select markups** boxes existing editable annotations for shared style edits. Shift-click adds individual marks. Changes made through this toolbar support undo/redo. Existing geometry, quantity tools, stamps, and the symbol-count workflow remain available. Marked-set exports retain vector arrows, clouds, notes, and translucent highlights.
+
+
 ### Pin a reference
 
 Click **Pin** beside **Sheets** in the top toolbar, then click two corners around any part of a drawing. The reference stays visible as you change sheets. Drag its header to move it, resize its corner, zoom independently, or use **Source** to return to the original region. Close the window without deleting the capture; the count beside **Pin** reopens it. Saved pins live in the project’s Captures list and stay out of marked-set PDF exports. The existing Image tool still places images on sheets.
@@ -584,7 +593,7 @@ Labels drive the Report's *Group: Label* mode and its by-label export sections (
 
 - **Deleting a condition.** The confirm says *"This can't be undone"* and means it: the cascade delete of its shapes doesn't record. A condition delete is a decision about the takeoff's structure, not a gesture (Revisions are your parachute—§11).
 - **Rescaling a sheet** and **restoring a revision** both **reset the stack**. Every recorded step froze quantities at the old scale (or the old timeline); undoing across that boundary would resurrect stale numbers, so the boundary clears it. A restore always banks the live takeoff first, so nothing is lost—it isn't on the `⌘Z` stack.
-- **Markups and condition edits.** The undo stack is for measured shapes (and approval seals). Moving a cloud or changing a waste % is a plain edit—change it back by hand.
+- **Markups and condition edits.** Annotation-toolbar edits and reviewed Sweep batches support undo alongside measured shapes and approval seals. Legacy markup-panel edits and condition waste edits remain plain edits.
 
 One more distinction: **Undo last shape** (Edit menu) and `⌫`-with-nothing-in-progress are not `⌘Z`—they *delete the newest shape* on the sheets you're viewing. That delete records normally, so `⌘Z` can bring the shape back.
 
