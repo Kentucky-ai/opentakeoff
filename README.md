@@ -762,6 +762,10 @@ instrument producing it.
 [research@kentucky-ai.com](mailto:research@kentucky-ai.com). Bugs and feature requests go in
 [issues](https://github.com/Kentucky-ai/opentakeoff/issues); security reports follow [SECURITY.md](SECURITY.md).
 
+### Contributor credit
+
+Thanks to **[@knmurphy](https://github.com/knmurphy)** (Kevin Murphy) for [image captures](https://github.com/Kentucky-ai/opentakeoff/pull/346), [drawing styles](https://github.com/Kentucky-ai/opentakeoff/pull/337), and [sharper overlays](https://github.com/Kentucky-ai/opentakeoff/pull/329). The **Pin** reference tool builds on his image-capture work.
+
 ## License
 
 [Apache License 2.0](LICENSE)—use it, [fork it](#fork-it), ship it, build on top of it. See
