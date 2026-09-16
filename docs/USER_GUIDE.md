@@ -1,5 +1,10 @@
 # OpenTakeoff — The User Manual
 
+### Pin a reference
+
+Click **Pin** beside **Sheets** in the top toolbar, then click two corners around any part of a drawing. The reference stays visible as you change sheets. Drag its header to move it, resize its corner, zoom independently, or use **Source** to return to the original region. Close the window without deleting the capture; the count beside **Pin** reopens it. Saved pins live in the project’s Captures list and stay out of marked-set PDF exports. The existing Image tool still places images on sheets.
+
+
 OpenTakeoff is a takeoff canvas that runs in your browser. Open a plan, set the scale, trace the finishes—or let an AI agent stage the tracing while you keep the accept button—and walk away with a priced-out quantity report, a materials buy list, and a marked set you can send to a GC. Everything happens on your machine: no account, no upload, no install.
 
 This manual takes you from a blank browser tab to a finished, exported takeoff, and covers every shipped feature along the way. Shortcuts appear inline as you meet each tool; the complete table is in [§15](#15-keyboard-reference).

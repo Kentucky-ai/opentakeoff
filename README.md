@@ -1,5 +1,10 @@
 <div align="center">
 
+### Pin a reference
+
+Click **Pin** beside **Sheets** in the top toolbar, then click two corners around any part of a drawing. The reference stays visible as you change sheets. Drag its header to move it, resize its corner, zoom independently, or use **Source** to return to the original region. Close the window without deleting the capture; the count beside **Pin** reopens it. Saved pins live in the project’s Captures list and stay out of marked-set PDF exports. The existing Image tool still places images on sheets.
+
+
 # OpenTakeoff
 
 **The measurement engine for building plans—built so an AI agent can drive it, and so an estimator wants to.**

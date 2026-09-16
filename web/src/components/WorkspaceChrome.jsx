@@ -7,7 +7,7 @@ import "./workspaceChrome.css";
 // this component owns only navigation, search and disclosure state.
 export function WorkspaceChrome({ title, onOpen, onNavigate, navigationOpen, onTakeoffs, takeoffsOpen,
   onPremium, onWork, workOpen, workButtonRef, pending, running, onReport, onFocus, onClassic,
-  onControls, controlsOpen, onSearch, panelTools, layoutMenu, fileMenu, scaleMenu, conditionControl, aids, history, action }) {
+  onControls, controlsOpen, onSearch, pinControl, panelTools, layoutMenu, fileMenu, scaleMenu, conditionControl, aids, history, action }) {
   return <>
     <header className="calm-header">
       <strong className="calm-brand">open<span>takeoff</span></strong>
@@ -16,6 +16,7 @@ export function WorkspaceChrome({ title, onOpen, onNavigate, navigationOpen, onT
         <button type="button" onClick={onOpen} title="Open plans"><Icon name="plus" size={16} /><span>Open</span></button>
         {fileMenu}
         <button type="button" aria-pressed={navigationOpen} onClick={onNavigate}><Icon name="sheets" size={16} />Sheets</button>
+        {pinControl}
         <button type="button" onClick={onSearch} className="calm-search-trigger" title="Find a tool or action"><Icon name="search" size={16} /><span>Find an action</span><kbd>{keyText("⌘K")}</kbd></button>
         <button type="button" aria-pressed={takeoffsOpen} onClick={onTakeoffs} title="Measured quantities, conditions, and supporting materials"><Icon name="product" size={16} />Quantities</button>
         <button type="button" ref={workButtonRef} aria-expanded={workOpen} onClick={onWork} className="calm-work">Work{running ? <span className="calm-badge">Running</span> : pending > 0 ? <span className="calm-badge">{pending}</span> : null}</button>

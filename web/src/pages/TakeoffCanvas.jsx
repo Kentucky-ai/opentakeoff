@@ -1,3 +1,4 @@
+import ReferencePins, { PinButton } from "../components/ReferencePins.jsx";
 // Takeoff Canvas — Phase 1 (+ pan/zoom + standard scales).
 // Persistent, condition-driven 2D takeoff. Pick a color-coded condition (finish
 // tag), click to trace areas; each shape computes SF + perimeter from geometry ×
@@ -336,6 +337,8 @@ export default function TakeoffCanvas() {
   // region/shapes they described. See the tool-change effect below for the
   // matching `poly` (pending zone trace) reset, which has its own rule.
   const resetZone = () => { setZoneCheck(null); setZoneExpand(null); };
+  const [pinSelectedId, setPinSelectedId] = useState(null);
+  const [pinsOpen, setPinsOpen] = useState(true);
   const [markups, setMarkups] = useState([]);                // cloud/callout/text annotations (separate from measurement shapes)
   const [approvals, setApprovals] = useState([]);            // approval seals — estimator APPROVED ink + agent AGENT marks (lib/approvals.js; its own family, not markups)
   const [markupDraft, setMarkupDraft] = useState(null);      // in-progress markup first point (cloud/callout/highlight)
@@ -1156,7 +1159,7 @@ export default function TakeoffCanvas() {
   const stackedShapes = useMemo(() => [...visibleShapes].sort((a, b) => tierOf(a) - tierOf(b)), [visibleShapes]);
   const visibleMarkups = useMemo(() => {
     const keys = new Set(sheetGroup.length ? sheetGroup : [sheetKey]);
-    return markups.filter((m) => keys.has(m.sheet_id));
+    return markups.filter((m) => !m.reference_only && keys.has(m.sheet_id));
   }, [markups, sheetGroup, sheetKey]);
   // scale is PER PAGE (plan sets are never one uniform scale) — set it once per
   // sheet and it's remembered. In group mode the scale dropdown and hints target
@@ -1778,7 +1781,7 @@ export default function TakeoffCanvas() {
   // leaving the stamp tool disarms the pending stamp — a stray click under a
   // measure/select tool must never drop a stamp
   useEffect(() => { if (tool !== "stamp") setArmedStamp(null); }, [tool]);
-  useEffect(() => { if (tool !== "image") setImageAnchor(null); }, [tool]);   // leaving the image marquee drops a half-set anchor (mirrors scheduleAnchor/symbolAnchor reset)
+  useEffect(() => { if (tool !== "image" && tool !== "pin") setImageAnchor(null); }, [tool]);   // leaving the image marquee drops a half-set anchor (mirrors scheduleAnchor/symbolAnchor reset)
   // A One-Click proposal is only actionable while One-Click is armed (Enter
   // already requires it) — discard it on tool switch, like the stamp above.
   // Also keeps Create out of the ACTION slot while Finish occupies it, so the
@@ -3053,7 +3056,7 @@ export default function TakeoffCanvas() {
     // cursor here; otherwise a stale ref freezes the drag or jumps it on grab.
     // schedule (marquee) wants the raw cursor like select — snapping a corner to
     // a vector vertex would shift the box off the schedule and misread the region
-    const rawCursor = tool === "select" || tool === "schedule";
+    const rawCursor = tool === "select" || tool === "schedule" || tool === "image" || tool === "pin";
     const p = (!rawCursor && snapOn && snapRef.current) ? snapRef.current
       : (!rawCursor && angleOn && angleRef.current) ? angleRef.current
         : toImage(e.clientX, e.clientY);
@@ -3115,11 +3118,11 @@ export default function TakeoffCanvas() {
       if (!symbolAnchor) setSymbolAnchor(p);
       else { runSymbolSweep(symbolAnchor, p); setSymbolAnchor(null); }
     }
-    else if (tool === "image") {
+    else if ((tool === "image" || tool === "pin")) {
       // two-click marquee, isolated state like schedule/symbol — routes ONLY here,
       // never through placeMarkup (which has no image case and would no-op)
       if (!imageAnchor) setImageAnchor(p);
-      else { captureRegionMarkup(imageAnchor, p); setImageAnchor(null); setTool("select"); }
+      else { captureRegionMarkup(imageAnchor, p, tool === "pin"); setImageAnchor(null); setTool("select"); }
     }
     else if (tool === "cloud" || tool === "callout" || tool === "text" || tool === "highlight" || tool === "dimension") placeMarkup(p);
     else if (tool === "stamp") placeStamp(p);
@@ -3313,7 +3316,7 @@ export default function TakeoffCanvas() {
       // require the image to be on a VISIBLE panel — panelByKey falls back to
       // panels[0] for an off-group sheet, which would arm the resize against the
       // wrong panel's dims and corrupt an off-view image's w/at.
-      if (selMk && selMk.type === "image" && selMk.at && panelKeySet.has(selMk.sheet_id)) {
+      if (selMk && !selMk.reference_only && selMk.type === "image" && selMk.at && panelKeySet.has(selMk.sheet_id)) {
         const sp = panelByKey(selMk.sheet_id);
         if (sp && sp.img.w) {
           const { bw, bh } = imagePlacedBox(selMk.w, selMk.aspect, sp.img.w);
@@ -3711,7 +3714,7 @@ export default function TakeoffCanvas() {
     if (rectRef.current) {
       const schedDraw = tool === "schedule" && scheduleAnchor;
       const symDraw = tool === "symbol" && symbolAnchor;
-      const imgDraw = tool === "image" && imageAnchor;
+      const imgDraw = (tool === "image" || tool === "pin") && imageAnchor;
       if (!panRef.current && ((tool === "rect" || tool === "deduct-rect") && poly.length === 1 || schedDraw || symDraw || imgDraw)) {
         const a = imgDraw ? imageAnchor : symDraw ? symbolAnchor : schedDraw ? scheduleAnchor : poly[0];
         rectRef.current.setAttribute("x", Math.min(a[0], cur[0])); rectRef.current.setAttribute("y", Math.min(a[1], cur[1]));
@@ -6876,7 +6879,7 @@ export default function TakeoffCanvas() {
   // a floating `image` markup anchored at the box center. Guards mirror
   // importScheduleFromRect: sheet ready, both corners in one panel, a real source
   // page (refuse a stitched composite), a non-degenerate box.
-  async function captureRegionMarkup(a, b) {
+  async function captureRegionMarkup(a, b, referenceOnly = false) {
     if (status !== "ready") { setCommitMsg("Sheet still loading — try again in a moment."); return; }
     const panel = panelAt(a[0]);
     if (panelAt(b[0]).key !== panel.key) { setCommitMsg("Draw the box within a single sheet."); return; }
@@ -6938,6 +6941,7 @@ export default function TakeoffCanvas() {
     // runtime label state (which sheetBaseLabel derives only for the active file).
     addImageMarkup({
       at, w, aspect, src, source: "capture", labelBase: srcLabel,
+      ...(referenceOnly ? { reference_only: true } : {}),
       src_sheet_id: panel.key,
       src_rect: [[x0 / panel.img.w, y0 / panel.img.h], [x1 / panel.img.w, y1 / panel.img.h]],
       src_label: srcLabel,
@@ -6968,6 +6972,13 @@ export default function TakeoffCanvas() {
     const base = (typeof labelBase === "string" && labelBase.trim()) ? labelBase : sheetBaseLabel(key);
     const text = (typeof given === "string" && given.trim()) || `${base}-${String(seq).padStart(2, "0")}`;
     const by = authorName();
+    if (rest.reference_only) {
+      const pinId = uid("mk");
+      setMarkups(ms => [...ms, { id: pinId, type: "image", sheet_id: key, rfi_id: "", condition_id: "", ...rest, text, created_at: new Date().toISOString() }]);
+      setPinSelectedId(pinId); setPinsOpen(true);
+      setCommitMsg("Pinned — switch sheets and keep this reference beside your takeoff.");
+      return;
+    }
     addMarkup({ type: "image", ...rest, text, ...(by ? { author: by } : {}) }, key);
     setCommitMsg("Image placed.");
   }
@@ -7729,6 +7740,14 @@ export default function TakeoffCanvas() {
     return stable;
   });
 
+  const referencePins = markups.filter(m => m.type === "image" && (m.reference_only || m.id === pinSelectedId));
+  const pinButton = <PinButton armed={tool === "pin"} disabled={status !== "ready"}
+    onCapture={() => { setTool(tool === "pin" ? "select" : "pin"); setImageAnchor(null); setCommitMsg(tool === "pin" ? "Pin cancelled." : "Pin — click two corners around any part of the sheet."); }}
+    count={referencePins.length} onShow={() => setPinsOpen(v => !v)} />;
+  const pinWindow = pinsOpen && <ReferencePins pins={referencePins} selectedId={pinSelectedId}
+    onSelect={setPinSelectedId} onClose={() => setPinsOpen(false)} onSource={traceSource}
+    onRename={(mid, text) => updateMarkup(mid, { text })} />;
+
   // ── two-deck toolbar (issue #61) ───────────────────────────────────────────
   // drafting-style group caption floated above a deck-2 cluster
   const cluster = (cap, children, style) => (
@@ -7996,6 +8015,7 @@ export default function TakeoffCanvas() {
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer?.files); }}
       style={{ position: "relative", display: "flex", flexDirection: "column", height: "100vh", "--workspace-glow-strength": workspaceArrangement.backlight / 100 }}>
+      {pinWindow}
       {premiumOpen && <PremiumInterest onClose={() => setPremiumOpen(false)} onOpenChange={onMenuDepth} />}
       {/* file inputs — always mounted (drag-drop and the ⋯ import path need
           the refs even while focus mode hides the bar) */}
@@ -8027,6 +8047,7 @@ export default function TakeoffCanvas() {
         pending={shapes.filter((shape) => shape.origin?.reviewed === false).length} running={agentRunning}
         onPremium={() => setPremiumOpen(true)} onReport={() => setShowReport(true)} onFocus={toggleFocusMode} onClassic={() => workspacePrefs.setEnabled(false)}
         onControls={() => setWorkspaceControlsOpen((v) => !v)} controlsOpen={workspaceControlsOpen} onSearch={() => setWorkspaceSearchOpen(true)}
+        pinControl={pinButton}
         panelTools={<div className="calm-panel-tools" role="group" aria-label="Quantity and review tools">
           {panelBtn(() => setLeftTab((t) => (t === "markup" ? null : "markup")), "document", "Markup list — existing clouds, callouts, and notes", leftTab === "markup", markupCount)}
           {panelBtn(() => setLeftTab((t) => (t === "stamp" ? null : "stamp")), "stamp", "Stamps — reusable annotations dropped click-to-place", leftTab === "stamp", stampLib.stamps.length)}
@@ -8067,6 +8088,7 @@ export default function TakeoffCanvas() {
           style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 10px", border: `1px solid ${sheetGroup.length ? "var(--cobalt)" : "var(--ink-faint)"}`, background: sheetGroup.length ? "var(--cobalt)" : "transparent", color: sheetGroup.length ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", fontWeight: 600, fontSize: 12.5, lineHeight: 1 }}>
           <Icon name="sheets" size={15} />Sheets
         </button>
+        {pinButton}
         {sheets.length > 0 && (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
             <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={!!sheetGroup.length || page <= 1} title="Previous sheet"
@@ -8707,7 +8729,7 @@ export default function TakeoffCanvas() {
                                Place, ◎ trace, caption toggle, delete. Mirrors the
                                per-sheet row's click-to-fly / stopPropagation
                                pattern above. */}
-                           <div onClick={() => flyToMarkup(m)} title={imageProvenance(m)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", flexWrap: "wrap" }}>
+                           <div onClick={() => { if (m.reference_only) { setPinSelectedId(m.id); setPinsOpen(true); } else flyToMarkup(m); }} title={imageProvenance(m)} style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", flexWrap: "wrap" }}>
                              {(() => {
                                const th = ensureThumb(m);
                                return <span style={{ flex: "0 0 auto", width: 30, height: 30, border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
@@ -8738,7 +8760,9 @@ export default function TakeoffCanvas() {
                                  </>
                                ) : null;
                              })()}
-                             <button onClick={(e) => { e.stopPropagation(); beginPlace(m); }} title={panelKeySet.has(m.sheet_id) ? "Reposition: centers the view on the image, then it follows the cursor — click the sheet to drop it" : "Place this image on the current sheet — it follows the cursor until you click to drop it"} style={{ border: "1px solid var(--ink-faint)", background: placingImageId === m.id ? "var(--cobalt)" : "transparent", color: placingImageId === m.id ? "#fff" : "var(--cobalt)", cursor: "pointer", fontSize: 11, padding: "1px 7px" }}>Place</button>
+                             <button onClick={(e) => { e.stopPropagation(); setPinSelectedId(m.id); setPinsOpen(true); }} title="Keep this capture beside your takeoff while changing sheets">Pin</button>
+                             {!m.reference_only && (<button onClick={(e) => { e.stopPropagation(); beginPlace(m); }} title={panelKeySet.has(m.sheet_id) ? "Reposition: centers the view on the image, then it follows the cursor — click the sheet to drop it" : "Place this image on the current sheet — it follows the cursor until you click to drop it"} style={{ border: "1px solid var(--ink-faint)", background: placingImageId === m.id ? "var(--cobalt)" : "transparent", color: placingImageId === m.id ? "#fff" : "var(--cobalt)", cursor: "pointer", fontSize: 11, padding: "1px 7px" }}>Place</button>)}
+
                              {traceable && (
                                <button onClick={(e) => { e.stopPropagation(); traceSource(m); }} title="Jump to the source sheet and flash the captured region" style={{ border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--cobalt)", cursor: "pointer", fontSize: 11, padding: "1px 7px", whiteSpace: "nowrap" }}>
                                  {traceLabel(m.src_sheet_id, m.sheet_id, sheetBaseLabel(m.src_sheet_id))}

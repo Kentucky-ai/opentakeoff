@@ -237,6 +237,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
   // reserved but it prints nowhere — the schedule keeps the gap. An agent-
   // raised RFI prints exactly like a panel-raised one; who asked is on the
   // record (origin.actor), not on the page.
+  markups = (markups || []).filter(m => !m.reference_only);
   const rfis = liveRfis(rfisIn);
   // display-unit edge (lib/units contract): quantities arrive as internal feet;
   // metric converts at the drawn string only — legend rows, by-sheet rows, and
