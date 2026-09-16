@@ -1,3 +1,5 @@
+import { useAnnotationWorkbench } from '../components/AnnotationWorkbench.jsx';
+import { nativeTextRuns, markupPatch, applyMarkupPatch } from '../lib/annotationTools.js';
 import ReferencePins, { PinButton } from "../components/ReferencePins.jsx";
 // Takeoff Canvas — Phase 1 (+ pan/zoom + standard scales).
 // Persistent, condition-driven 2D takeoff. Pick a color-coded condition (finish
@@ -656,6 +658,11 @@ export default function TakeoffCanvas() {
     undoStackRef.current = undoStackRef.current.slice(0, -1);
     // approval entries share the ONE gesture history (family tag, recorded by
     // dispatchApproval below) — same stacks, different pure apply + array.
+    if (entry.family === "markup") {
+      setMarkups(ms => applyMarkupPatch(ms, entry.patch, "before"));
+      redoStackRef.current = [...redoStackRef.current, entry];
+      setSelectedMarkupId(null); return;
+    }
     if (entry.family === "approval") {
       const res = applyApprovalCommand(approvals, entry.inverse);
       setApprovals(res.approvals);
@@ -671,6 +678,11 @@ export default function TakeoffCanvas() {
     const entry = redoStackRef.current[redoStackRef.current.length - 1];
     if (!entry) return;
     redoStackRef.current = redoStackRef.current.slice(0, -1);
+    if (entry.family === "markup") {
+      setMarkups(ms => applyMarkupPatch(ms, entry.patch, "after"));
+      undoStackRef.current = [...undoStackRef.current, entry];
+      setSelectedMarkupId(null); return;
+    }
     if (entry.family === "approval") {
       const res = applyApprovalCommand(approvals, entry.cmd);
       setApprovals(res.approvals);
@@ -5488,7 +5500,7 @@ export default function TakeoffCanvas() {
       }
     }
   }
-  function updateMarkup(mid, patch) { setMarkups((ms) => ms.map((m) => (m.id === mid ? { ...m, ...patch } : m))); }
+  function updateMarkup(mid, patch) { setMarkups((ms) => ms.map((m) => (m.id === mid ? { ...m, ...patch, ...(m.annotation_style ? { annotation_style: { ...m.annotation_style, ...(patch.line_style ? {line_style:patch.line_style}:{}), ...(patch.weight != null ? {stroke_pt:Math.max(.5,Math.min(6,1.5*patch.weight))}:{}), ...(patch.color ? {color:patch.color}:{}), } } : {}) } : m))); }
   function deleteMarkup(mid) { setMarkups((ms) => ms.filter((m) => m.id !== mid)); }
 
   // ── stamps — reusable annotations dropped click-to-place (#40). The library
@@ -7740,6 +7752,33 @@ export default function TakeoffCanvas() {
     return stable;
   });
 
+  function commitAnnotationBatch(next) {
+    const patch = markupPatch(markups, next);
+    if (!patch.ids.length) return;
+    const st = recordCommand(undoStackRef.current, { family: "markup", patch });
+    undoStackRef.current = st.undo; redoStackRef.current = st.redo;
+    setMarkups(next);
+  }
+  const annotations = useAnnotationWorkbench({
+    tool, setTool, panels, tf: tfRef, zoom: tf.scale, toImage, spaceRef,
+    markups, selectedId: selectedMarkupId, setSelectedId: setSelectedMarkupId,
+    commit: commitAnnotationBatch, message: setCommitMsg, ready: status === "ready",
+    storageKey: "opentakeoff_annotation_favorites_v1", visible: showMarkups,
+    legacyTools: { highlighter: "highlighter", cloud: "cloud", callout: "callout" },
+    resetDraft: () => { leaveCanvas(); setMarkupDraft(null); },
+    readText: async key => {
+      const page = pageObjsRef.current.get(key);
+      if (!page) throw new Error("This sheet has no native PDF text available. Use Freehand for a scan or composite.");
+      const content = await page.getTextContent();
+      return nativeTextRuns(content, page.getViewport({ scale: RENDER_SCALE }).transform);
+    },
+    findSymbols: (key, rect) => {
+      const segments = vectorSegsRef.current.get(key);
+      if (!segments?.length) throw new Error("No vector symbols are available on this sheet. Scans need a manual cloud or note.");
+      return sweepSymbols(segments, rect);
+    },
+  });
+
   const referencePins = markups.filter(m => m.type === "image" && (m.reference_only || m.id === pinSelectedId));
   const pinButton = <PinButton armed={tool === "pin"} disabled={status !== "ready"}
     onCapture={() => { setTool(tool === "pin" ? "select" : "pin"); setImageAnchor(null); setCommitMsg(tool === "pin" ? "Pin cancelled." : "Pin — click two corners around any part of the sheet."); }}
@@ -8350,6 +8389,8 @@ export default function TakeoffCanvas() {
         </div>
       )}
 
+      {!focusMode && view === "canvas" && annotations.toolbar}
+
       {/* open-sheet tabs — what you opened from the gallery; click to view,
           ⊞ to side-by-side, ✕ to close; the dropdown lists every open sheet */}
       {!focusMode && openTabs.length > 0 && (
@@ -8861,10 +8902,10 @@ export default function TakeoffCanvas() {
          </div>
        )}
        <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
-        <div ref={containerRef} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+        <div ref={containerRef} onPointerDownCapture={annotations.onPointerDownCapture} onPointerMoveCapture={annotations.onPointerMoveCapture} onPointerUpCapture={annotations.onPointerUpCapture} onPointerCancelCapture={annotations.onPointerCancelCapture} onDoubleClickCapture={annotations.onDoubleClickCapture} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp} onPointerLeave={leaveCanvas} onContextMenu={(e) => e.preventDefault()}
           onDoubleClick={(e) => { if (tool === "oneclick") { if (proposal?.regions.length) createProposal(); } else if (tool === "area" || tool === "deduct" || tool === "linear" || tool === "surface" || tool === "zone") finishShape(); else if (tool === "select") editMarkupAt(e); }}
-          style={{ position: "absolute", inset: 0, background: darkMode ? "#0b0e14" : "var(--paper-cream)", cursor: tool === "select" ? "default" : "none", touchAction: "none" }}>
+          style={{ position: "absolute", inset: 0, background: darkMode ? "#0b0e14" : "var(--paper-cream)", cursor: tool === "annotation" ? "crosshair" : tool === "select" ? "default" : "none", touchAction: "none" }}>
           {/* aim crosshair (draw modes): the OS cursor is hidden on the canvas — the
               crosshair IS the cursor. Two crisp full-page hairlines riding the
               EFFECTIVE point (angle-locked / endpoint-snapped), the SPLINE STAR at
@@ -9051,6 +9092,12 @@ export default function TakeoffCanvas() {
                       // topmost-drawn markup is the one a click selects.
                       .slice().sort((a, b) => (a.type === "image" ? 0 : a.type === "highlight" ? 1 : 2) - (b.type === "image" ? 0 : b.type === "highlight" ? 1 : 2))
                       .map((m) => {
+                      const premiumInk = annotations.render(m, p);
+                      if (premiumInk) {
+                        const at=m.at||m.from||m.rect?.[0]||m.pts?.[0]||m.quads?.[0]?.[0];
+                        const linked=rfis.find(r=>r.id===m.rfi_id);
+                        return <g key={m.id}>{premiumInk}{m.rfi_id&&at&&<text x={at[0]*p.img.w} y={at[1]*p.img.h-14/tf.scale} fill="#1f3fc7" fontSize={12/tf.scale} fontWeight="700">RFI {linked?.number||''}</text>}</g>;
+                      }
                       const z = tf.scale;
                       // Colour precedence: an explicit per-markup colour always
                       // wins (the user picked it), then the LINKED CONDITION's
@@ -9744,6 +9791,7 @@ export default function TakeoffCanvas() {
               <path ref={snapMarkRef} fill="#1f6b4a" stroke="#fff" strokeWidth={1 / tf.scale} style={{ display: "none" }} />
               {/* markup draft marker (first click of cloud/callout) */}
               {markupDraft && <path d={starPath(markupDraft[0], markupDraft[1], 5 / tf.scale)} fill="#1f3fc7" />}
+            {annotations.layer}
             </svg>
           </div>
 
