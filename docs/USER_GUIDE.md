@@ -236,7 +236,7 @@ A scale that arrives from an agent takeoff (an MCP session's export, imported he
 
 ### Metric
 
-The **`ft` / `m`** toggle beside the Scale chip switches the whole display layer: readouts, shape chips, panels, the Report, CSV, and the Marked Set legend read in m² / m (the SY column retires), and Calibrate takes meters. It's display only—takeoffs are stored unit-agnostically, so flipping it never changes a measurement. Supporting-material coverage rates stay as entered.
+The **`ft` / `m`** toggle beside the Scale chip switches the whole display layer: readouts, shape chips, panels, the Report, CSV, and the Marked Set legend read in m² / m (the SY column retires), footprint dimensions read in metres and volumes in m³, and Calibrate takes meters. It's display only—takeoffs are stored unit-agnostically, so flipping it never changes a measurement. Supporting-material coverage rates stay as entered.
 
 ---
 
@@ -396,7 +396,7 @@ On the canvas the crosshair **is** the cursor: the OS pointer hides in draw mode
 
 ### Area (`A`)
 
-Click vertex by vertex around the space; `⏎`, double-click, or the **Finish** button closes it at three or more points. The live readout shows the running segment length while you trace, and the committed shape reads SF, SY, and perimeter LF—select it any time later and the readout gives you both numbers again, so a footprint's LF never needs a second trace with the Linear tool.
+Click vertex by vertex around the space; `⏎`, double-click, or the **Finish** button closes it at three or more points. The live readout shows the running segment length while you trace, and the committed shape reads SF, SY, and perimeter LF—select it any time later and the readout gives you both numbers again, so a footprint's LF never needs a second trace with the Linear tool. Under those sits the footprint's **L × W**—the smallest rectangle around the ring, read as a drawing dimension (`12′ 6″ × 10′ 0″`, or `3.81 m × 3.05 m` in metric); exact for a rectangular room, the enclosing box for an L-shape. When the condition has an **H**, the line reads **L × W × H** and the `@H` line beneath it carries the vertical SF (perimeter × H) and the **volume** (area × H) in CY, or m³ in metric—so a fill, a slab or an excavation reads as three dimensions and a cube, not just an area.
 
 **Curved boundaries.** Buildings are not all right angles: a bowed wall, a radius corner, a curved curb or pool edge. You don't leave the tool for them—the toolbar's **Draft** menu (the style swatch between **45°** and the scale) carries a **╱ Straight / ⌒ Curve** switch, and you flip it *mid measurement*, as often as you like inside one shape.
 

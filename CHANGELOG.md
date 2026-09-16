@@ -11,6 +11,7 @@ Click **Pin** beside **Sheets** in the top toolbar, then click two corners aroun
 
 ## Unreleased
 
+- **Length × width on an area, in both unit systems.** Trace or select an area and the readout shows the footprint's **L × W** beneath the area (the smallest rectangle around the ring, as a drawing dimension: `12′ 6″ × 10′ 0″`, or metres in metric). A condition with an **H** extends it to **L × W × H**, and the `@H` line now carries the volume in m³ for metric users as well as CY for imperial (it used to drop the volume entirely in metric). The Surface Area live readout also stops printing the condition height in feet while the display is metric. Asked for by a user who wanted the sides and depth of a selection, not just its area.
 - Add Request Premium early-access intake for mobile/tablet, advanced computer vision, estimates/pricing proposals, RFIs and submittals, with voluntary product-news consent, same-origin Netlify Forms storage, and an explicit disabled preview when form processing is unavailable.
 
 - Make Premium workspace the default for browsers without a saved layout choice; preserve saved Classic choices: graphite/light/HUD surfaces, adjustable icon backlight, optional floating quantity readout, and panel tools beside Quantities that move to the right edge in Focus mode. Distinguish Create annotation from Markup list. Preserve wall-height editing when the readout is hidden.
