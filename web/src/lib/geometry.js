@@ -344,8 +344,11 @@ export function minAreaRect(pts) {
       if (v < minV) minV = v; if (v > maxV) maxV = v;
     }
     const w = maxU - minU, h = maxV - minV;
-    if (!best || w * h < best.w * best.h - 1e-9) best = { w, h };
+    // ties (a right triangle boxes equally on a leg or on its hypotenuse)
+    // go to the orientation nearest the sheet's axes — how a plan reads
+    const tilt = Math.min(Math.abs(ux), Math.abs(uy));
+    if (!best || w * h < best.area - 1e-9 * best.area || (Math.abs(w * h - best.area) <= 1e-9 * best.area && tilt < best.tilt)) best = { w, h, area: w * h, tilt };
   }
   if (!best) return null;
-  return best.w >= best.h ? best : { w: best.h, h: best.w };
+  return best.w >= best.h ? { w: best.w, h: best.h } : { w: best.h, h: best.w };
 }

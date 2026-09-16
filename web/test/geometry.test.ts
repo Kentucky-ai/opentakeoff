@@ -1606,6 +1606,11 @@ describe("minAreaRect", () => {
     assert.ok(r);
     assert.ok(Math.abs(r!.w - 8) < 1e-9 && Math.abs(r!.h - 6) < 1e-9);
   });
+  test("a right triangle ties on a leg or the hypotenuse — the axis-aligned box wins", () => {
+    const r = minAreaRect([[0, 0], [8, 0], [8, 6]]);
+    assert.ok(r);
+    assert.ok(Math.abs(r!.w - 8) < 1e-9 && Math.abs(r!.h - 6) < 1e-9);
+  });
   test("a bare segment is a zero-width rectangle; fewer than 2 points is null", () => {
     const r = minAreaRect([[0, 0], [3, 4]]);
     assert.ok(r && Math.abs(r.w - 5) < 1e-9 && r.h < 1e-9);
