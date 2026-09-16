@@ -11,7 +11,7 @@ import {
   splitMergedArcs, doorLeafCells, arcClusterFit,
   type Point, type MaskObj,
 } from "../src/lib/oneclick.ts";
-import { cloudBezier, cloudPath, arrowheadPath, reflectVertsNorm, closedMetrics, segsIntersect, ringSelfIntersects } from "../src/lib/geometry.js";
+import { cloudBezier, cloudPath, arrowheadPath, reflectVertsNorm, closedMetrics, segsIntersect, ringSelfIntersects, minAreaRect } from "../src/lib/geometry.js";
 
 // a closed square room, as flat boundary segments in image px
 function squareSegs(x0: number, y0: number, x1: number, y1: number): number[] {
@@ -1584,5 +1584,33 @@ describe("ringSelfIntersects", () => {
     // vertex (2,0) rides the interior of edge0 (0,0)-(4,0); edge0 vs edge2 is a
     // non-adjacent pair, so the collinear/T path in segsIntersect flags it
     assert.equal(ringSelfIntersects([[0, 0], [4, 0], [2, 0], [2, 4]]), true);
+  });
+});
+
+// ── minAreaRect: the L × W an area readout shows ─────────────────────────────
+describe("minAreaRect", () => {
+  test("axis-aligned rectangle reads its own sides, long side first", () => {
+    const r = minAreaRect([[0, 0], [10, 0], [10, 4], [0, 4]]);
+    assert.ok(r);
+    assert.ok(Math.abs(r!.w - 10) < 1e-9 && Math.abs(r!.h - 4) < 1e-9);
+  });
+  test("a rotated rectangle reads its true sides, not the axis bbox", () => {
+    const a = Math.PI / 6, c = Math.cos(a), s = Math.sin(a);
+    const rot = ([x, y]: number[]) => [x * c - y * s, x * s + y * c];
+    const r = minAreaRect([[0, 0], [12, 0], [12, 5], [0, 5]].map(rot));
+    assert.ok(r);
+    assert.ok(Math.abs(r!.w - 12) < 1e-6 && Math.abs(r!.h - 5) < 1e-6);
+  });
+  test("an L-shape reads its enclosing box", () => {
+    const r = minAreaRect([[0, 0], [8, 0], [8, 3], [3, 3], [3, 6], [0, 6]]);
+    assert.ok(r);
+    assert.ok(Math.abs(r!.w - 8) < 1e-9 && Math.abs(r!.h - 6) < 1e-9);
+  });
+  test("a bare segment is a zero-width rectangle; fewer than 2 points is null", () => {
+    const r = minAreaRect([[0, 0], [3, 4]]);
+    assert.ok(r && Math.abs(r.w - 5) < 1e-9 && r.h < 1e-9);
+    assert.equal(minAreaRect([[1, 1]]), null);
+    assert.equal(minAreaRect([[1, 1], [1, 1]]), null);
+    assert.equal(minAreaRect([]), null);
   });
 });
