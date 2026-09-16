@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-15 — Pin references beside the takeoff
+
+Click **Pin** beside **Sheets** in the top toolbar, then click two corners around any part of a drawing. The reference stays visible as you change sheets. Drag its header to move it, resize its corner, zoom independently, or use **Source** to return to the original region. Close the window without deleting the capture; the count beside **Pin** reopens it. Saved pins live in the project’s Captures list and stay out of marked-set PDF exports. The existing Image tool still places images on sheets.
+
+
 ## Unreleased
 
 - Add Request Premium early-access intake for mobile/tablet, advanced computer vision, estimates/pricing proposals, RFIs and submittals, with voluntary product-news consent, same-origin Netlify Forms storage, and an explicit disabled preview when form processing is unavailable.

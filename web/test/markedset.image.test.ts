@@ -11,6 +11,15 @@ const RS = 2.0; // RENDER_SCALE (web/src/lib/sheets.ts)
 // a 1×1 PNG — enough for embedPng to produce a real image XObject
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
+test("workspace pins never create a marked sheet or embed their reference image", async () => {
+  await assert.rejects(buildMarkedSetPdf({
+    projectName: "Pin only", dark: false, sheets: [{ key: "sample.pdf" }], shapes: [],
+    markups: [{ id: "pin", type: "image", reference_only: true, sheet_id: "sample.pdf", src: PNG, at: [.5, .5], w: .2, aspect: 1 }],
+    conditions: [], company: null, clientInfo: null, loadPdfData: null,
+    getPage: () => { throw new Error("A reference must not load a page for export"); },
+  }), /Nothing to export/);
+});
+
 // pdf.js-style viewport transform: rotate 0 → [s,0,0,-s,0,H·s]; a 90°-rotated page
 // gets a swap-form transform so toPage carries rotation (exact pdf.js values don't
 // matter here — only that the map is a valid, non-axis-aligned similarity).
