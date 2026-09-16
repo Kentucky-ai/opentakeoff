@@ -729,11 +729,35 @@ The modal asks for an optional credit line and an attestation that you have the 
 
 ## 13. The Agent panel
 
+**Workspace layout.** Premium workspace is the default for browsers without a saved layout choice. From Classic, choose **⋯ → Premium workspace — arrange your workspace** for compact drawing controls. **Classic layout** returns immediately. Measuring tools keep their sidebar order and shortcuts; **All controls** reveals the existing toolbar for advanced settings. **Properties** opens the active condition editor. **Sheets** opens a searchable list, while the existing sheet tabs and visual gallery remain available. **Find an action** (Cmd/Ctrl+K outside text fields) searches tools, sheets, scale choices and file actions; use arrows and Enter, or click a result.
+
+**Premium workspace.** Choose graphite, light or HUD surfaces. Existing saved Classic choices are preserved; `?workspace=premium` opens Premium directly. **Layout** adjusts the surface and backlight strength. **Show floating quantity box** controls the canvas readout independently of **Show project quantity counter**; it starts off. Selected wall height remains editable in the drawing settings when the readout is hidden. **Draft**, beside **Snap** and **45°**, contains drawing conventions and Straight/Curve.
+
+**Request Premium.** Use **Request Premium** in the top toolbar (or the Classic **⋯** menu) to request early access to mobile/tablet workflows, advanced computer vision, estimates/pricing proposals, RFI workflows or submittal packages. These capabilities are in development. Submit your email, role, trade and main interest; name/company are optional, and product-news updates are unchecked by default. Only the form details are sent through Netlify to Kentucky AI; project plans and quantities are excluded. A local or self-hosted build without form processing shows a disabled preview.
+
+**One place for panel tools.** Quantities, Work, Markup list, Stamps, RFI register and Revisions live in the top toolbar. In Focus mode, the panel controls move to the right edge. **Create annotation** in the drawing toolbar creates clouds, callouts, text and highlights; **Markup list** opens existing annotations. Supporting materials remain under **Quantities → Materials** or a condition’s **Materials** button.
+
+**Inspect sheets before opening.** The visual gallery offers medium or large cards and a separate **Preview** action with **Actual pixels**. Previewing does not change the selected sheets. Escape closes the detailed preview first; a second Escape returns from the gallery.
+
+**Make it yours.** Open **Layout**, uncheck **Lock panel positions and sizes**, then drag the grip on Sheets, Work, Takeoffs or the measuring rail to either highlighted edge. Release in the middle to cancel. The same dialog has left/right selectors, and a focused grip accepts Left/Right arrow keys. Adjust Work/Sheets width in the dialog; Takeoffs retains its edge resize handle while unlocked. Lock again when comfortable. Lock protects panel positions and sizes, not measurements.
+
+Name and save an arrangement to restore its positions, widths, lock state and optional condition palette/quantity counter. Saving the same name replaces it; up to eight arrangements are retained. Panel open/closed state is not part of a saved arrangement. **Reset arrangement** restores the default without deleting named arrangements. Preferences belong to this browser and do not travel in project files or change another collaborator's layout. If browser storage is unavailable, Layout says the preference lasts only for this session.
+
+Choose **Work** in the toolbar to open **Work and review**. **Measurements** lists stored work across the project, including imported agent takeoffs and measurements made on the canvas. Search by condition, sheet, label, or author; use **Needs review** or **Agent** to narrow the list.
+
+The scale control stays beside Work and Report. On narrow windows, these controls wrap below the scrolling tool strip.
+
+Select a measurement to open its sheet and center its boundary. Its **Measurement receipt** shows the stored quantity, source, method, review state, scale state, vertices, and holes. **Mark reviewed** records your review for that measurement; undo restores its previous state. **Reviewed** describes the stored review decision, not a guarantee of accuracy. Missing attribution and quantities remain explicit.
+
+On smaller screens the panel opens as a drawer; on phones it fills the work area. Selecting a measurement returns you to the plan. **Open report →** opens the existing report. Floating totals clear both views. The condition’s **properties** disclosure above the drawing hides or shows its appearance controls.
+
+Select the **Agent** tab inside **Work** to run the browser agent. You do not need an AI connection to inspect an imported MCP takeoff. Closing the panel preserves its search and in-session task draft; page reload still discards uncommitted browser-agent proposals and the run log.
+
 The Agent panel is the newest way to run the engine: describe a takeoff in a sentence, and an AI model—**yours**, on your key, from your browser—works the sheet with the app's own tools and stages **dashed proposals you accept or reject**. It is a proposer, never a committer.
 
 ### What it is, structurally
 
-Open it from the rail (the target icon: *Agent — describe a takeoff; it stages dashed proposals you accept or reject*). Type a goal—*"Take off the carpet per the finish schedule on this sheet"*—and click **Run** (`⌘⏎`). The model runs a tool-use loop against a registry of the app's own deterministic tools:
+Open **Work**, then select **Agent**. Type a goal—*"Take off the carpet per the finish schedule on this sheet"*—and click **Run** (`⌘⏎`). The model runs a tool-use loop against a registry of the app's own deterministic tools:
 
 - **`list_sheets`**—what's open, with sizes and scale status;
 - **`read_sheet_text`**—the sheet's positioned text layer;
@@ -743,7 +767,7 @@ Open it from the rail (the target icon: *Agent — describe a takeoff; it stages
 - **`get_conditions` / `create_condition`**—your condition list (creation dedupes against existing tags);
 - **`propose_shapes`**—stage proposals for your review.
 
-**The model never invents geometry.** It can only propose rings the engine traced or coordinates grounded in what it read, and `propose_shapes` rejects anything uncited: *every proposal must cite evidence*. The run streams into the panel log—every tool call, every result, every refusal—capped at 24 steps, with a **■ Stop** button that halts it instantly.
+Proposals include evidence fields. Inspect the boundary and its claimed evidence before accepting it; those fields do not independently verify the geometry. The run streams into the panel log—every tool call, every result, every refusal—capped at 24 steps, with a **■ Stop** button that stops the run.
 
 ### The scale gate holds
 

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add Request Premium early-access intake for mobile/tablet, advanced computer vision, estimates/pricing proposals, RFIs and submittals, with voluntary product-news consent, same-origin Netlify Forms storage, and an explicit disabled preview when form processing is unavailable.
+
+- Make Premium workspace the default for browsers without a saved layout choice; preserve saved Classic choices: graphite/light/HUD surfaces, adjustable icon backlight, optional floating quantity readout, and panel tools beside Quantities that move to the right edge in Focus mode. Distinguish Create annotation from Markup list. Preserve wall-height editing when the readout is hidden.
+- Enlarge and refresh sheet thumbnails, add medium/large gallery cards and an independent detailed preview with actual-pixel inspection, and open sidebar-selected sheets in their own tabs.
+
 - **pdf.js ≥ 4.6 folded constructPath, and 5.x hex stroke colors.** `extractVectorGeometry` iterated `constructPath` args as `[subOps[], coords[]]`. From pdf.js 4.6 the worker folds the paint op in as a number and the path as one flat DrawOPS buffer — iterating that number threw "… is not iterable" and Magic Fill / the snap grid built an empty mask. `decodeConstructPath` normalizes both shapes; empty or render-consumed Path2D args skip instead of throwing. `strokeLuminance` now reads the `"#rrggbb"` string pdf.js 5.x emits (it used to refuse it and leave every pen black). Legacy `[subOps, coords]` results are unchanged. Found on a downstream port of this module.
 
 - **Notes are ink on the sheet.** Callouts, text notes and the labels on clouds, highlights, arrows and dimensions are sized in page points and scale with the zoom, like a comment in a PDF viewer — not a fixed screen size that spanned the whole floor plan at fit and shrank to a chip at 300 %. A note wraps at three inches into a paragraph block measured from real text metrics (hit-testing uses the same block), floored at 9 screen px so it stays legible zoomed out. New `web/src/lib/markupText.js` owns the layout for the canvas AND the Marked Set, which burns the same block — and now burns plain text notes at all (they were silently skipped before).
@@ -194,6 +199,20 @@ All notable changes to OpenTakeoff. Dates are release/merge dates on `main`.
 
 ### Changed
 - **One-Click Area and batch room detection are temporarily gated while the flood engine is re-validated against a wider plan corpus.** The engine code stays in the repo and the bench still rules it; what is withdrawn is every way to reach it. On the MCP server `one_click` and `detect_rooms` are **not registered** on a default build — `tools/list` never names them, the initialize instructions say so and point at `measure_polygon`, and no surviving tool description sends an agent to a verb that is not there (the published tool count is 45). In the canvas the One-Click tile leaves the rail, `O` reports the gate instead of arming, the voice trace and the in-app agent's tool list drop it, and the in-app guide says what to do instead (Area, `A`). Lift the gate for a build with `OPENTAKEOFF_ONE_CLICK=1` (server) / `VITE_ONE_CLICK=1` (canvas); the parity and conformance tests run with it lifted, `gate.test.ts` pins both surfaces. Design: `docs/design/ONE_CLICK_GATE.md`.
+
+## Unreleased — personal workspace preview
+
+### Added
+- Opt-in workspace chrome with visible undo/redo, condition and scale controls, searchable actions and sheets. Measuring tools keep their sidebar order. Sheets, Work, Takeoffs and the tool rail can dock to either side, with position locking and up to eight named arrangements saved in this browser. Classic layout remains available without reloading. Measurement and rendering engines are unchanged.
+
+## Unreleased — shared work and review
+
+### Added
+- **Work** opens project measurements from agents and the canvas in one searchable review panel. Select a measurement to open its sheet and inspect its quantity, provenance, calibration state, and boundary. **Mark reviewed** uses the existing undoable review command. The **Agent** tab retains the browser agent and its proposal controls.
+
+### Changed
+- Scale stays beside Work and Report instead of being clipped at the scrolling toolbar edge. Narrow windows put the pinned controls on a wrapping row.
+- Condition properties can collapse to reclaim drawing space. Work uses a drawer on smaller screens and a full-height view on phones. Floating totals clear the work panel and report so they cannot cover review or delivery controls.
 
 ## Unreleased — Phase 1 measurement correctness (mcp 0.9.72)
 

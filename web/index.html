@@ -59,6 +59,21 @@
     <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "3f37c88a39dc47e79a5304c38ccf68f3"}'></script>
   </head>
   <body>
+    <!-- Netlify deploy-time form definition; React owns the visible dialog. -->
+    <form name="premium-interest" method="POST" data-netlify="true" netlify-honeypot="bot-field" hidden>
+      <input name="email" />
+      <input name="name" />
+      <input name="company" />
+      <input name="role" />
+      <input name="trade" />
+      <input name="interest" />
+      <input name="updates" />
+      <input name="bot-field" />
+      <input name="request-id" />
+      <input name="form-revision" />
+      <input name="consent-revision" />
+      <input name="source" />
+    </form>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
