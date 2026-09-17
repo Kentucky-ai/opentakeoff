@@ -528,6 +528,16 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
           <DimParamInput name="condition-thickness-in" internal={c.thickness_in} units={units} kind="thickness" width={50}
             onCommit={(v) => onSetCondParam("thickness_in", v)} />
         </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={`Rise (${heightUnit(units)}) — the vertical leg UP every Linear run of this condition adds to its plan length (a home run rising to a box, a riser to the ceiling). LF = plan + rise + drop. Changing it re-flows existing runs; select a run to give it its own rise.`}>
+          <span style={{ color: "var(--ink-muted)" }}>↑ Rise</span>
+          <DimParamInput name="condition-rise-ft" internal={c.rise_ft} units={units} kind="height" width={48}
+            onCommit={(v) => onSetCondParam("rise_ft", v)} />
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title={`Drop (${heightUnit(units)}) — the vertical leg DOWN every Linear run of this condition adds to its plan length (a drop from the ceiling to a panel or device). LF = plan + rise + drop. Changing it re-flows existing runs; select a run to give it its own drop.`}>
+          <span style={{ color: "var(--ink-muted)" }}>↓ Drop</span>
+          <DimParamInput name="condition-drop-ft" internal={c.drop_ft} units={units} kind="height" width={48}
+            onCommit={(v) => onSetCondParam("drop_ft", v)} />
+        </span>
       </div>
       {conditionColumns.length > 0 && isRow && rule()}
       {conditionColumns.length > 0 && (
@@ -1240,7 +1250,7 @@ function TakeoffsPanel({
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ fontWeight: 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.finish_tag}</div>
                   <div style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)" }}>
-                    {t.waste_pct || 0}% waste{t.height_ft != null ? ` · H ${dimInputStr(t.height_ft, units, "height")}${units === "metric" ? " m" : "′"}` : ""}{t.thickness_in != null ? ` · T ${dimInputStr(t.thickness_in, units, "thickness")}${units === "metric" ? " mm" : "″"}` : ""}{t.materials?.length ? ` · ${t.materials.length} material${t.materials.length === 1 ? "" : "s"}` : ""}
+                    {t.waste_pct || 0}% waste{t.height_ft != null ? ` · H ${dimInputStr(t.height_ft, units, "height")}${units === "metric" ? " m" : "′"}` : ""}{t.thickness_in != null ? ` · T ${dimInputStr(t.thickness_in, units, "thickness")}${units === "metric" ? " mm" : "″"}` : ""}{t.rise_ft > 0 ? ` · ↑${dimInputStr(t.rise_ft, units, "height")}${units === "metric" ? " m" : "′"}` : ""}{t.drop_ft > 0 ? ` · ↓${dimInputStr(t.drop_ft, units, "height")}${units === "metric" ? " m" : "′"}` : ""}{t.materials?.length ? ` · ${t.materials.length} material${t.materials.length === 1 ? "" : "s"}` : ""}
                   </div>
                 </div>
                 <button onClick={() => { onApplyTemplate(t); setPanelTab("takeoffs"); }} title="Add a condition from this template to the takeoff"

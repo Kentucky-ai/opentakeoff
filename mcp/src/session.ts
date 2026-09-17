@@ -45,7 +45,7 @@ import { buildSnapGrid, nearestSnap, closedMetrics, openLen } from "../../web/sr
 // The canvas's three-point arc (Curve mode): a curved wall is a circle, so an
 // agent states the bow point and the server lays the unique arc through it.
 import { flattenArcRing } from "../../web/src/lib/arc.js";
-import { recalibrateShapes } from "../../web/src/lib/shapeMetrics.js";
+import { recalibrateShapes, linearVerticalFt } from "../../web/src/lib/shapeMetrics.js";
 import { deriveTransitionRuns, type SheetFrame, type TransitionSourceShape } from "../../web/src/lib/transitions.ts";
 // Real polygon boolean subtraction (#137/#206) — the canvas's own module, so a
 // headless cut and the app's Eraser can never disagree about what a hole holds.
@@ -153,8 +153,13 @@ export interface ConditionEditFields {
   waste_pct?: number;
   multiplier?: number;
   height_ft?: number;
+  rise_ft?: number;
+  drop_ft?: number;
   roll_setup?: Record<string, unknown> | null;
 }
+
+/** The knobs edit_condition writes — one type, three call sites. */
+export type ConditionKnobPatch = { waste_pct?: number; multiplier?: number; height_ft?: number; rise_ft?: number; drop_ft?: number; roll_setup?: Record<string, unknown> | null };
 
 /** A condition-edit proposal (#365): a diff against a condition held as
  * pending. Nothing about the condition changes until the estimator accepts
@@ -183,6 +188,12 @@ export interface Condition {
   created_at?: string;
   /** Wall height in feet — the canvas's H knob; surface_area = traced LF × this. */
   height_ft?: number;
+  /** Drop and Rise (#441): the vertical legs, in feet, every linear run of
+   * this condition adds to its plan length — LF = plan + rise + drop. These
+   * are the DEFAULTS; a run may carry its own (Shape.rise_ft / drop_ft).
+   * Derived runs (base, transitions) never take a leg. */
+  rise_ft?: number;
+  drop_ft?: number;
   /** Roll-goods opt-in (#136): presence of a usable setup is what makes the
    * condition roll goods — material class + the packing engine's spec fields,
    * exactly the object the canvas persists (web/src/lib/rollTakeoff.js). */
@@ -327,10 +338,17 @@ export interface Shape {
   verts_norm: [number, number][];
   /** count shapes carry {count} alone (canvas commitCount) — recompute skips
    * them, so they never grow area fields; every other role carries both. */
-  computed: { area_sf?: number; perimeter_lf?: number; count?: number };
+  computed: { area_sf?: number; perimeter_lf?: number; count?: number; plan_lf?: number; vertical_lf?: number };
   /** surface_area only: the height this shape was quantified at (canvas
    * commitSurface snapshots the condition's H onto the shape). */
   height_ft?: number;
+  /** linear only (#441): this run's OWN vertical legs, overriding the
+   * condition's defaults field by field — 0 included ("no drop on this run"
+   * is a fact). Absent = the condition's default applies, live. perimeter_lf
+   * is the TOTAL (plan + rise + drop); plan_lf / vertical_lf ride in computed
+   * only when a vertical exists. */
+  rise_ft?: number;
+  drop_ft?: number;
   /** The room (or phase, or area) this shape belongs to — the canvas's
    * per-shape label (#112, web/src/lib/shapeLabels.js), which is what the
    * Report groups by and what the workbook's floor × room tab reads. Optional
@@ -620,7 +638,7 @@ export type JournalPayload =
   | { op: "delete"; tool: string; removed: { shape: Shape; index: number }[] }
   | { op: "materials"; tool: string; condition_id: string; before: MaterialRow[]; dropped_before?: string[];
       family?: { condition_id: string; before: MaterialRow[]; dropped_before?: string[] }[] }
-  | { op: "condition"; tool: string; condition_id: string; before: { waste_pct: number; multiplier: number; height_ft?: number; roll_setup?: Record<string, unknown> } }
+  | { op: "condition"; tool: string; condition_id: string; before: { waste_pct: number; multiplier: number; height_ft?: number; rise_ft?: number; drop_ft?: number; roll_setup?: Record<string, unknown> } }
   | { op: "duplicate_condition"; tool: string; condition_id: string; parent_id: string; parent_had_family: boolean }
   | { op: "split_condition"; tool: string; condition_id: string; before: { variant_of?: string; materials?: unknown; materials_dropped?: string[] } }
   | { op: "approval"; tool: string; inverse: ApprovalCommand }
@@ -1835,16 +1853,30 @@ export class Session {
     return { area_sf, perimeter_lf, nverts: ring.length, ...(arcs ? { arcs } : {}), ...(shape_id ? { shape_id } : {}), ...(mixed ? { warning: mixed } : {}) };
   }
 
-  measureLine(name: string, pts: Point[], opts: { condition?: string; arc_through?: number[] }) {
+  measureLine(name: string, pts: Point[], opts: { condition?: string; arc_through?: number[]; rise_ft?: number; drop_ft?: number }) {
     const s = this.sheet(name);
     if (s.upp == null) throw new UserError(this.scaleGate(s));
     const { pts: run, arcs } = this.bend(pts, opts.arc_through, false, "measure_line");
-    const { perimeter_lf: length_lf = 0 } = this.quantify(s, "linear", run);
+    // #441 — the run's legs: its own rise/drop where passed, else the
+    // condition's defaults. Without a condition there is nothing to default
+    // from, so a bare measurement carries only what the call states.
+    const own = { ...(opts.rise_ft !== undefined ? { rise_ft: opts.rise_ft } : {}), ...(opts.drop_ft !== undefined ? { drop_ft: opts.drop_ft } : {}) };
+    const vertical = this.verticalFor(opts.condition, own);
+    const computed = this.quantify(s, "linear", run, undefined, vertical);
+    const length_lf = computed.perimeter_lf ?? 0;
     let shape_id: string | undefined;
     // area_sf stays 0 — the canvas only mints border SF when the condition has a thickness
-    if (opts.condition) shape_id = this.commit(s, opts.condition, "linear", run, { area_sf: 0, perimeter_lf: length_lf }, { method: "manual", actor: "agent", ...(arcs ? { curved: true as const } : {}) }).id;
+    if (opts.condition) {
+      const shape = this.commit(s, opts.condition, "linear", run, computed, { method: "manual", actor: "agent", ...(arcs ? { curved: true as const } : {}) });
+      Object.assign(shape, own);   // the run's OWN legs persist so a later condition edit cannot silently re-flow them
+      shape_id = shape.id;
+    }
     this.flushCommits("measure_line");
-    return { length_lf, npts: run.length, ...(arcs ? { arcs } : {}), ...(shape_id ? { shape_id } : {}) };
+    return {
+      length_lf, npts: run.length,
+      ...(computed.vertical_lf ? { plan_lf: computed.plan_lf, vertical_lf: computed.vertical_lf, rise_ft: vertical.rise, drop_ft: vertical.drop } : {}),
+      ...(arcs ? { arcs } : {}), ...(shape_id ? { shape_id } : {}),
+    };
   }
 
   /** Surface Area — the canvas's Surface tool (commitSurface): an OPEN run
@@ -1903,14 +1935,33 @@ export class Session {
     return p;
   }
 
+  /** A linear run's quantities from its plan length and vertical legs (#441)
+   * — the server twin of shapeMetrics' linear branch: perimeter_lf is the
+   * TOTAL the summers read; plan_lf / vertical_lf appear only when a leg
+   * exists, so a flat run's record is what it always was. area_sf stays 0 —
+   * the canvas mints border SF only from a condition thickness. */
+  private static linearQty(planLf: number, vertical?: { rise: number; drop: number }): Shape["computed"] {
+    const vert = (vertical?.rise ?? 0) + (vertical?.drop ?? 0);
+    const plan = round2(planLf);
+    return { area_sf: 0, perimeter_lf: round2(planLf + vert), ...(vert > 0 ? { plan_lf: plan, vertical_lf: round2(vert) } : {}) };
+  }
+
+  /** The legs a linear run resolves to: its own rise_ft / drop_ft where
+   * given, else the condition's defaults (by tag — the condition may not
+   * exist yet on a first commit, in which case there are no defaults). */
+  private verticalFor(tag: string | undefined, own: { rise_ft?: number; drop_ft?: number }): { rise: number; drop: number } {
+    const cond = tag ? this.conditions.find((x) => Session.tagKey(x.finish_tag) === Session.tagKey(tag)) : undefined;
+    return linearVerticalFt(own, cond);
+  }
+
   /** The quantities a shape of `role` carries for `verts` on sheet `s` — the
    * same arithmetic measure_polygon / measure_line / measure_surface /
    * place_count run, in one place so a revised batch measures exactly as a
    * fresh commit would. */
-  private quantify(s: SheetState, role: MeasureRole, verts: Point[], heightFt?: number): Shape["computed"] {
+  private quantify(s: SheetState, role: MeasureRole, verts: Point[], heightFt?: number, vertical?: { rise: number; drop: number }): Shape["computed"] {
     if (role === "count") return { count: 1 };
     const upp = s.upp ?? 0;
-    if (role === "linear") return { area_sf: 0, perimeter_lf: round2(openLen(verts) * upp) };
+    if (role === "linear") return Session.linearQty(openLen(verts) * upp, vertical);
     if (role === "surface_area") { const LF = openLen(verts) * upp; return { area_sf: round2(LF * (heightFt ?? 0)), perimeter_lf: round2(LF) }; }
     const met = closedMetrics(verts);
     return { area_sf: round2(met.area * upp * upp), perimeter_lf: round2(met.perim * upp) };
@@ -2042,6 +2093,8 @@ export class Session {
     if (proposed.waste_pct !== undefined && proposed.waste_pct !== c.waste_pct) diff.waste_pct = proposed.waste_pct;
     if (proposed.multiplier !== undefined && proposed.multiplier !== c.multiplier) diff.multiplier = proposed.multiplier;
     if (proposed.height_ft !== undefined && proposed.height_ft !== c.height_ft) diff.height_ft = proposed.height_ft;
+    if (proposed.rise_ft !== undefined && proposed.rise_ft !== (c.rise_ft ?? 0)) diff.rise_ft = proposed.rise_ft;
+    if (proposed.drop_ft !== undefined && proposed.drop_ft !== (c.drop_ft ?? 0)) diff.drop_ft = proposed.drop_ft;
     if (proposed.roll_setup !== undefined) {
       if (proposed.roll_setup === null) { if (c.roll_setup) diff.roll_setup = null; }
       else diff.roll_setup = structuredClone(proposed.roll_setup);
@@ -2092,6 +2145,7 @@ export class Session {
     const before = structuredClone(c);
     const { finish_tag, ...knobs } = proposal.proposed;
     this.applyConditionKnobs(c, knobs);
+    if (knobs.rise_ft !== undefined || knobs.drop_ft !== undefined) this.reflowLinears(c);
     if (finish_tag !== undefined) c.finish_tag = finish_tag;
     this.conditionEditProposals.splice(i, 1);
     this.record({ op: "condition_proposal_accept", tool: "accept_condition_edit", proposal, index: i, before });
@@ -2102,8 +2156,27 @@ export class Session {
     return {
       finish_tag: c.finish_tag, waste_pct: c.waste_pct, multiplier: c.multiplier,
       ...(c.height_ft !== undefined ? { height_ft: c.height_ft } : {}),
+      ...(c.rise_ft !== undefined ? { rise_ft: c.rise_ft } : {}),
+      ...(c.drop_ft !== undefined ? { drop_ft: c.drop_ft } : {}),
       ...(c.roll_setup ? { roll_setup: c.roll_setup } : {}),
     };
+  }
+
+  /** Re-price every linear run of `c` from its geometry and the legs it now
+   * resolves to (#441) — the canvas's setCondParam re-flow, on the server. A
+   * run carrying its own rise_ft / drop_ft keeps that field; a derived run
+   * never takes a leg. Nothing is journaled here: the condition step that
+   * called it is the undo unit, and undo calls it again with the old values. */
+  private reflowLinears(c: Condition): void {
+    for (const sh of this.shapes) {
+      if (sh.condition_id !== c.id || sh.measure_role !== "linear") continue;
+      const s = this.sheets.get(sh.sheet_id);
+      if (!s || s.upp == null) continue;
+      const px: Point[] = sh.verts_norm.map(([nx, ny]) => [nx * s.widthPx, ny * s.heightPx]);
+      const vertical = sh.origin?.derived ? { rise: 0, drop: 0 } : linearVerticalFt(sh, c);
+      sh.computed = { ...sh.computed, ...Session.linearQty(openLen(px) * (s.upp ?? 0), vertical) };
+      if (!vertical.rise && !vertical.drop) { delete sh.computed.plan_lf; delete sh.computed.vertical_lf; }
+    }
   }
 
   /** The pending condition diffs as the report and the summary print them:
@@ -2467,22 +2540,30 @@ export class Session {
     };
     const wasLf = parent.computed?.perimeter_lf ?? 0;
     const wasSf = parent.computed?.area_sf ?? 0;
-    const qty = (lenPx: number) => {
-      const lf = round2(lenPx * upp);
-      const k = wasLf > 0 ? lf / wasLf : 0;
-      return { area_sf: round2(wasSf * k), perimeter_lf: lf };
+    // #441 — a run's legs stay with the piece that keeps the parent's id; the
+    // pieces minted from the cut carry NO leg (rise_ft/drop_ft: 0 stated on
+    // them, so a condition default cannot re-attach one). SF scales with the
+    // PLAN length, which is what a ring on the sheet actually removes.
+    const parentCond = this.conditions.find((x) => x.id === parent.condition_id);
+    const parentLegs = parent.origin?.derived ? { rise: 0, drop: 0 } : linearVerticalFt(parent, parentCond);
+    const wasPlan = parent.computed?.plan_lf ?? wasLf;
+    const qty = (lenPx: number, legs: { rise: number; drop: number }) => {
+      const plan = round2(lenPx * upp);
+      const k = wasPlan > 0 ? plan / wasPlan : 0;
+      return { ...Session.linearQty(plan, legs), area_sf: round2(wasSf * k) };
     };
     const toNorm = (run: number[][]): [number, number][] => run.map(([x, y]) => [x / s.widthPx, y / s.heightPx]);
     const survivors = r.runs ?? [];
     const [head, ...rest] = survivors;
     if (!head) throw new UserError(`That ring covers the whole of ${parent.id}. Removing a run outright is delete_shape, not a cut.`);
     parent.verts_norm = toNorm(head);
-    parent.computed = qty(openLen(head));
+    parent.computed = qty(openLen(head), parentLegs);
     const minted: Shape[] = rest.map((piece) => ({
       ...structuredClone(parent),
       id: uid("shp"),
       verts_norm: toNorm(piece),
-      computed: qty(openLen(piece)),
+      ...(parentLegs.rise || parentLegs.drop ? { rise_ft: 0, drop_ft: 0 } : {}),
+      computed: qty(openLen(piece), { rise: 0, drop: 0 }),
     }));
     this.shapes.push(...minted);
     this.record({ op: "runcut", tool: "cut_out", target_id: parent.id, target_prev, minted_ids: minted.map((m) => m.id) });
@@ -2494,7 +2575,7 @@ export class Session {
       removed_lf: round2(Math.max(0, wasLf - pieces.reduce((n, p) => n + p.lf, 0))),
       removed_sf: round2(Math.max(0, wasSf - pieces.reduce((n, p) => n + p.sf, 0))),
       note: minted.length
-        ? `The cut fell inside the run, so it comes back in ${pieces.length} pieces — same condition, same height, each measured on its own. One undo_last puts the run back whole.`
+        ? `The cut fell inside the run, so it comes back in ${pieces.length} pieces — same condition, same height, each measured on its own${parentLegs.rise || parentLegs.drop ? `; the run's rise/drop stay on ${parent.id}, the new piece(s) carry none (rise_ft/drop_ft 0 — edit_shape to move a leg)` : ""}. One undo_last puts the run back whole.`
         : "The run keeps its id and its condition; only its length (and the SF that rides on it) changed. One undo_last puts it back whole.",
     };
   }
@@ -3777,15 +3858,23 @@ export class Session {
    * layer exists to collect. Freezing proposed_verts_norm stays correct on the
    * human's first edit, because the geometry a reviewer saw IS the agent's
    * final revision, not its first draft. */
-  editShape(id: string, patch: { verts?: Point[]; condition?: string; role?: MeasureRole; label?: string }) {
+  editShape(id: string, patch: { verts?: Point[]; condition?: string; role?: MeasureRole; label?: string; rise_ft?: number | null; drop_ft?: number | null }) {
     const i = this.shapes.findIndex((x) => x.id === id);
     if (i < 0) throw new UserError(`No shape with id ${JSON.stringify(id)}.`);
     const cur = this.shapes[i];
     if (cur.origin?.reviewed === true) {
       throw new UserError(`Shape ${JSON.stringify(id)} was affirmed by a human — reviewed work is ink, not pencil, and cannot be edited by an agent.`);
     }
-    if (patch.verts === undefined && patch.condition === undefined && patch.role === undefined && patch.label === undefined) {
-      throw new UserError("Nothing to change — pass at least one of verts, condition, role, label.");
+    if (patch.verts === undefined && patch.condition === undefined && patch.role === undefined && patch.label === undefined && patch.rise_ft === undefined && patch.drop_ft === undefined) {
+      throw new UserError("Nothing to change — pass at least one of verts, condition, role, label, rise_ft, drop_ft.");
+    }
+    // #441 — legs belong to a linear run (the role AFTER this call)
+    const roleAfter = patch.role ?? cur.measure_role;
+    if ((patch.rise_ft !== undefined || patch.drop_ft !== undefined) && roleAfter !== "linear") {
+      throw new UserError(`rise_ft / drop_ft are a linear run's vertical legs — ${JSON.stringify(id)} ${patch.role !== undefined ? `would be ${roleAfter}` : `is ${roleAfter}`}. A wall's vertical is its height_ft.`);
+    }
+    if (cur.origin?.derived && (patch.rise_ft !== undefined || patch.drop_ft !== undefined)) {
+      throw new UserError(`Shape ${JSON.stringify(id)} is a derived run (base or transition) — a floor-level line by construction; it never takes a rise or drop. Trace the vertical run with measure_line.`);
     }
     // #206 — a reconciled cutout pair is one geometry, not two shapes to edit
     // independently. Moving/re-roling the deduct would desync the hole it cut
@@ -3825,9 +3914,21 @@ export class Session {
       if (!(h > 0)) throw new UserError(`Surface Area needs a height — set height_ft on ${cond?.finish_tag ?? "the condition"} with edit_condition first.`);
       return h;
     };
+    // linear legs: null CLEARS a field (the condition's default applies again),
+    // a number sets it for this run, absent keeps what the shape carries
+    const legs: { rise_ft?: number; drop_ft?: number } = role === "linear" ? {
+      ...(cur.rise_ft !== undefined ? { rise_ft: cur.rise_ft } : {}),
+      ...(cur.drop_ft !== undefined ? { drop_ft: cur.drop_ft } : {}),
+    } : {};
+    for (const k of ["rise_ft", "drop_ft"] as const) {
+      const v = patch[k];
+      if (v === null) delete legs[k];
+      else if (v !== undefined) legs[k] = v;
+    }
+    const condTagAfter = patch.condition !== undefined ? patch.condition : this.conditions.find((x) => x.id === cur.condition_id)?.finish_tag;
     const computed =
       role === "count" ? { count: cur.computed.count ?? 1 }
-      : role === "linear" ? { area_sf: 0, perimeter_lf: round2(openLen(vertsPx) * upp) }
+      : role === "linear" ? Session.linearQty(openLen(vertsPx) * upp, cur.origin?.derived ? { rise: 0, drop: 0 } : this.verticalFor(condTagAfter, legs))
       : role === "surface_area" ? (() => {
           const LF = openLen(vertsPx) * upp;
           return { area_sf: round2(LF * heightFor()), perimeter_lf: round2(LF) };
@@ -3851,6 +3952,7 @@ export class Session {
       computed,
       ...(nextLabel ? { label: nextLabel } : {}),
       ...(role === "surface_area" ? { height_ft: Number(cur.height_ft) || heightFor() } : {}),
+      ...legs,
       ...(cur.origin ? { origin: {
         ...cur.origin,
         agent_edits: (cur.origin.agent_edits ?? 0) + 1,
@@ -3863,6 +3965,9 @@ export class Session {
     // the spread above carried the old label through — clearing means the key
     // GOES, so an export never ships label: "" for "no room"
     if (!nextLabel) delete this.shapes[i].label;
+    // a cleared leg, or a role flip away from linear, drops the key outright
+    if (legs.rise_ft === undefined) delete this.shapes[i].rise_ft;
+    if (legs.drop_ft === undefined) delete this.shapes[i].drop_ft;
     this.record({ op: "edit", tool: "edit_shape", before });
 
     const changed = [
@@ -3870,6 +3975,8 @@ export class Session {
       ...(patch.condition !== undefined ? ["condition"] : []),
       ...(patch.role !== undefined ? ["role"] : []),
       ...(patch.label !== undefined ? ["label"] : []),
+      ...(patch.rise_ft !== undefined ? ["rise_ft"] : []),
+      ...(patch.drop_ft !== undefined ? ["drop_ft"] : []),
     ];
     return {
       shape_id: id,
@@ -4034,10 +4141,12 @@ export class Session {
    * and a condition-edit proposal's acceptance (#365) both land here, which
    * is what makes "after acceptance the report matches a direct
    * edit_condition byte for byte" true by construction, not by testing. */
-  private applyConditionKnobs(c: Condition, opts: { waste_pct?: number; multiplier?: number; height_ft?: number; roll_setup?: Record<string, unknown> | null }): void {
+  private applyConditionKnobs(c: Condition, opts: ConditionKnobPatch): void {
     if (opts.waste_pct !== undefined) c.waste_pct = opts.waste_pct;
     if (opts.multiplier !== undefined) c.multiplier = opts.multiplier;
     if (opts.height_ft !== undefined) c.height_ft = opts.height_ft;
+    if (opts.rise_ft !== undefined) c.rise_ft = opts.rise_ft;
+    if (opts.drop_ft !== undefined) c.drop_ft = opts.drop_ft;
     if (opts.roll_setup !== undefined) {
       if (opts.roll_setup === null) {
         delete c.roll_setup; // opt out — the condition is trade-agnostic again
@@ -4054,9 +4163,9 @@ export class Session {
     }
   }
 
-  editCondition(tag: string, opts: { waste_pct?: number; multiplier?: number; height_ft?: number; roll_setup?: Record<string, unknown> | null }) {
-    if (opts.waste_pct === undefined && opts.multiplier === undefined && opts.height_ft === undefined && opts.roll_setup === undefined) {
-      throw new UserError("Nothing to change — pass at least one of waste_pct, multiplier, height_ft, roll_setup.");
+  editCondition(tag: string, opts: ConditionKnobPatch) {
+    if (opts.waste_pct === undefined && opts.multiplier === undefined && opts.height_ft === undefined && opts.rise_ft === undefined && opts.drop_ft === undefined && opts.roll_setup === undefined) {
+      throw new UserError("Nothing to change — pass at least one of waste_pct, multiplier, height_ft, rise_ft, drop_ft, roll_setup.");
     }
     const c = this.conditions.find((x) => x.finish_tag === tag);
     if (!c) {
@@ -4064,11 +4173,14 @@ export class Session {
       throw new UserError(`No condition ${JSON.stringify(tag)}.${known.length ? ` Known tags: ${known.join(", ")}.` : " Nothing has minted a condition yet — commit a measurement or add materials first."}`);
     }
     const before = {
-      waste_pct: c.waste_pct, multiplier: c.multiplier, height_ft: c.height_ft,
+      waste_pct: c.waste_pct, multiplier: c.multiplier, height_ft: c.height_ft, rise_ft: c.rise_ft, drop_ft: c.drop_ft,
       roll_setup: c.roll_setup ? structuredClone(c.roll_setup) : undefined,
     };
     this.applyConditionKnobs(c, opts);
     this.record({ op: "condition", tool: "edit_condition", condition_id: c.id, before });
+    // #441 — the defaults re-flow every linear run of the condition that does
+    // not carry its own leg for that field (the canvas's setCondParam rule)
+    if (opts.rise_ft !== undefined || opts.drop_ft !== undefined) this.reflowLinears(c);
 
     // when the condition is roll goods AND floor shapes exist on scaled sheets,
     // echo the figured order right on the reply — the agent should not need an
@@ -4083,6 +4195,8 @@ export class Session {
     return {
       condition: tag, condition_id: c.id, waste_pct: c.waste_pct, multiplier: c.multiplier,
       ...(c.height_ft !== undefined ? { height_ft: c.height_ft } : {}),
+      ...(c.rise_ft !== undefined ? { rise_ft: c.rise_ft } : {}),
+      ...(c.drop_ft !== undefined ? { drop_ft: c.drop_ft } : {}),
       ...(c.roll_setup ? { roll_setup: c.roll_setup } : {}),
       ...(roll ? { roll } : {}),
     };
@@ -4237,8 +4351,13 @@ export class Session {
           c.multiplier = e.before.multiplier;
           if (e.before.height_ft === undefined) delete c.height_ft;
           else c.height_ft = e.before.height_ft;
+          if (e.before.rise_ft === undefined) delete c.rise_ft;
+          else c.rise_ft = e.before.rise_ft;
+          if (e.before.drop_ft === undefined) delete c.drop_ft;
+          else c.drop_ft = e.before.drop_ft;
           if (e.before.roll_setup === undefined) delete c.roll_setup;
           else c.roll_setup = e.before.roll_setup;
+          this.reflowLinears(c);
         }
         undone.push({ seq: e.seq, op: e.op, tool: e.tool, shapes: 0 });
       } else if (e.op === "duplicate_condition") {

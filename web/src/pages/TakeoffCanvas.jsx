@@ -185,7 +185,7 @@ import { applyApprovalCommand, sanitizeApprovals, approvalInk, APPROVAL_R } from
 import { findCutoutParent, subtractCutout, recomposeCutouts, cutRunsAcross } from "../lib/cutout.js";
 import { normalizeAgentReview } from "../lib/reviewState.js";
 import { oneClickEnabled, ONE_CLICK_GATE_MESSAGE, commandBoxEnabled } from "../lib/gate.js";
-import { computeShapeMetrics, needsMetrics, recalibrateShapes } from "../lib/shapeMetrics.js";
+import { computeShapeMetrics, needsMetrics, recalibrateShapes, linearVerticalFt } from "../lib/shapeMetrics.js";
 import { fmtCheckLen, parseLenInput, checkVerdict, M_PER_FT, areaVal, areaUnit, lenVal, lenUnit, calInputToFeet, heightVal, heightUnit, heightInputToFeet, heightStep, dimInputStr, dimLabel, volVal, volUnit } from "../lib/units";
 import * as panelGeom from "../lib/panelGeometry.js";
 
@@ -590,6 +590,8 @@ export default function TakeoffCanvas() {
   // round-trips through a rounded unit conversion, so without this a metric
   // typist watching "2.4" become "2.438" mid-word cannot finish the number.
   const [shapeHDraft, setShapeHDraft] = useState(null);
+  // #441 — the selected run's rise/drop inputs mid-edit (raw text, display units)
+  const [shapeVertDraft, setShapeVertDraft] = useState({ rise_ft: null, drop_ft: null });
   useEffect(() => { setShapeHDraft(null); }, [selectedId]);   // a draft belongs to ONE wall
   const [selVert, setSelVert] = useState(null);         // selected vertex index of the selected shape — Delete removes just that point
   const [selectedMarkupId, setSelectedMarkupId] = useState(null); // selected markup — mutually exclusive with selectedId
@@ -4416,16 +4418,16 @@ export default function TakeoffCanvas() {
     if (!activeCond) { setCommitMsg("Pick or add a condition first."); return; }
     // curved: verts stay the clicked CONTROL points (drag one → re-smooths);
     // length always comes from the flattened spline
-    const LF = openLen(curved ? flattenCurve(points) : points) * upp;
-    const tIn = Number(aCond?.thickness_in) || 0; // borders/feature strips: SF = LF × T/12
-    dispatchShape({ type: "add", shapes: [{
+    // quantified by the ONE computer (shapeMetrics): border SF from the
+    // condition's thickness, and the run's rise/drop (#441) added to its LF
+    const draft = {
       sheet_id: tp.key, condition_id: activeCond, measure_role: "linear",
       ...(curved ? { curved: true } : {}),
       verts_norm: points.map(([x, y]) => [(x - tp.xOffset) / tp.img.w, y / tp.img.h]),
-      computed: { perimeter_lf: +LF.toFixed(2), area_sf: tIn > 0 ? +((LF * tIn) / 12).toFixed(2) : 0 },
       ...(activeLabel ? { label: activeLabel } : {}),
       origin: { method: "manual", ...(baked ? { curved: true } : {}) },
-    }] });
+    };
+    dispatchShape({ type: "add", shapes: [{ ...draft, computed: computeShapeMetrics(draft, tp.img, upp, aCond) }] });
   }
   // Surface Area — trace the wall run in plan; SF = traced LF × the condition's
   // height. The wall-tile "stack" workflow: set tile height once, trace walls.
@@ -7281,14 +7283,14 @@ export default function TakeoffCanvas() {
     setShapes((ss) => ss.map((s) => {
       // height: existing walls KEEP their drawn height (the condition H only
       // seeds new traces — Michael: 4-ft wainscot stays 4 ft when the next
-      // wall goes full height). Thickness still re-flows linears live.
+      // wall goes full height). Thickness, rise and drop (#441) re-flow
+      // linears live: they are the condition's defaults for its runs, and a
+      // run that carries its own rise/drop keeps it (computeShapeMetrics).
       if (s.condition_id !== activeCond) return s;
-      if (!(field === "thickness_in" && s.measure_role === "linear")) return s;
+      if (!((field === "thickness_in" || field === "rise_ft" || field === "drop_ft") && s.measure_role === "linear")) return s;
       const sp = panelByKey(s.sheet_id);
       const u = uppFor(s.sheet_id) || 0;
-      const lpts = s.verts_norm.map(([nx, ny]) => [nx * sp.img.w, ny * sp.img.h]);
-      const LF = openLen(s.curved ? flattenCurve(lpts) : lpts) * u;
-      return { ...s, computed: { perimeter_lf: +LF.toFixed(2), area_sf: v > 0 ? +((LF * v) / 12).toFixed(2) : 0 } };
+      return { ...s, computed: computeShapeMetrics(s, sp.img, u, { ...condById[s.condition_id], [field]: v }) };
     }));
   };
   // "Undo last shape" (toolbar/⌫) is NOT ⌘Z: it stays what it always was — a
@@ -7481,6 +7483,25 @@ export default function TakeoffCanvas() {
       return { ...next, computed: recomputeShape(next) };
     }));
   };
+  // #441 — rise / drop for THIS run only. A value on the shape overrides the
+  // condition's default for that field outright (0 included: "no drop here"
+  // is a fact); ↺ deletes both so the condition's defaults apply again.
+  const setShapeVertical = (field, raw) => {
+    const v = Math.max(0, heightInputToFeet(parseFloat(raw) || 0, units));
+    setShapes((ss) => ss.map((s) => {
+      if (s.id !== selectedId) return s;
+      const next = { ...s, [field]: v };
+      return { ...next, computed: recomputeShape(next) };
+    }));
+  };
+  const clearShapeVertical = () => {
+    setShapeVertDraft({ rise_ft: null, drop_ft: null });
+    setShapes((ss) => ss.map((s) => {
+      if (s.id !== selectedId) return s;
+      const { rise_ft, drop_ft, ...rest } = s;
+      return { ...rest, computed: recomputeShape(rest) };
+    }));
+  };
   const finishOk = !bowOpen && (((tool === "area" || tool === "deduct") && poly.length >= 3) || (tool === "zone" && poly.length >= 3 && !zoneTraceCross) || ((tool === "linear" || tool === "surface") && poly.length >= 2));
 
   // ── Layers panel (#85 phase 2) wiring ──────────────────────────────────────
@@ -7619,6 +7640,8 @@ export default function TakeoffCanvas() {
     waste_pct: c.waste_pct || 0,
     ...(c.height_ft != null ? { height_ft: c.height_ft } : {}),
     ...(c.thickness_in != null ? { thickness_in: c.thickness_in } : {}),
+    ...(c.rise_ft != null ? { rise_ft: c.rise_ft } : {}),
+    ...(c.drop_ft != null ? { drop_ft: c.drop_ft } : {}),
     ...(c.laborType != null ? { laborType: c.laborType } : {}),
     ...(c.subfloorType != null ? { subfloorType: c.subfloorType } : {}),
     ...(c.roll_setup ? { roll_setup: { ...c.roll_setup } } : {}),   // #136 — the roll spec is part of what makes a CPT-1 template CPT-1
@@ -9977,7 +10000,11 @@ export default function TakeoffCanvas() {
               const foot = <div style={{ fontSize: 11.5, color: "var(--ink-muted)", marginTop: 4 }}>{shTag} · selected{selShape.origin === "agent" ? " · agent" : ""}</div>;
               if (selShape.measure_role === "count") return <>{big(num(c.count || 1, 0), "EA")}{foot}</>;
               if (selShape.measure_role === "linear") {
-                return <>{big(num(lenVal(lf, units)), lenUnit(units))}{a > 0 ? sub(`${fa(a)} border`) : null}{foot}</>;
+                // #441 — a run with vertical legs reads as its parts: plan + ↑rise + ↓drop = total
+                const vert = Number(c.vertical_lf) || 0;
+                const { rise, drop } = vert > 0 ? linearVerticalFt(selShape, condById[selShape.condition_id]) : { rise: 0, drop: 0 };
+                const legs = [`${fl(Number(c.plan_lf) || 0)} plan`, rise > 0 ? `↑ ${fl(rise)}` : "", drop > 0 ? `↓ ${fl(drop)}` : ""].filter(Boolean).join(" + ");
+                return <>{big(num(lenVal(lf, units)), lenUnit(units))}{vert > 0 ? sub(legs) : null}{a > 0 ? sub(`${fa(a)} border`) : null}{foot}</>;
               }
               if (selShape.measure_role === "surface_area") {
                 const h = selShape.height_override === true
@@ -10016,6 +10043,31 @@ export default function TakeoffCanvas() {
               )}
             </div>
           )}
+          {selShape?.measure_role === "linear" && (() => {
+            // #441 — vertical legs for THIS run: the fields shown are what the
+            // run resolves to (its own override, else the condition default).
+            const shCond = condById[selShape.condition_id];
+            const own = selShape.rise_ft != null || selShape.drop_ft != null;
+            const { rise, drop } = linearVerticalFt(selShape, shCond);
+            const vInput = (field, val, label, glyph) => (
+              <label style={{ display: "flex", alignItems: "center", gap: 3 }} title={`${label} (${heightUnit(units)}) for THIS run only — the vertical leg added to its plan length. Blank the field or press ↺ to use the condition's default.`}>
+                <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>{glyph} {label}</span>
+                <input name={`shape-${field}`} type="number" min="0" step={heightStep(units)} value={shapeVertDraft[field] ?? dimInputStr(val, units, "height")}
+                  onChange={(e) => { setShapeVertDraft((d) => ({ ...d, [field]: e.target.value })); setShapeVertical(field, e.target.value); }}
+                  onBlur={() => { if (shapeVertDraft[field] != null) setShapeVertical(field, shapeVertDraft[field]); setShapeVertDraft((d) => ({ ...d, [field]: null })); }}
+                  style={{ width: 52, padding: "2px 5px", border: "1px solid var(--ink-faint)", fontSize: 12 }} />
+              </label>
+            );
+            return (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>this run</span>
+                {vInput("rise_ft", rise, "rise", "↑")}
+                {vInput("drop_ft", drop, "drop", "↓")}
+                <span style={{ fontSize: 11, color: "var(--ink-muted)" }}>{heightUnit(units)} → {fl(selShape.computed?.perimeter_lf || 0)}</span>
+                {own && <button onClick={clearShapeVertical} title="Use the condition's rise and drop for this run" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)", padding: 0 }}>↺</button>}
+              </div>
+            );
+          })()}
           <div style={{ height: 1, background: "var(--divider-soft)", margin: "8px 0" }} />
           <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4, opacity: 0.5 }}>{aCond?.finish_tag || "—"} total ({condRow?.shape_count || 0}{condMult > 1 ? ` ×${condMult}` : ""})</div>
           {condTotal !== 0 && <div style={{ fontSize: 15, fontWeight: 700, marginTop: 2 }}>{num(areaVal(condTotal, units))} <span style={{ fontSize: 12, fontWeight: 600 }}>{areaUnit(units)}</span> {units === "imperial" && <span style={{ fontSize: 12, fontWeight: 500, color: "var(--ink-secondary)" }}>· {num(condTotal / 9)} SY</span>}</div>}
@@ -10036,7 +10088,9 @@ export default function TakeoffCanvas() {
                       {fl(r.lf)}
                       {r.role === "wall"
                         ? <> × {num(heightVal(r.h, units), 2)} {heightUnit(units)} = {fa(r.sf)}</>
-                        : <span style={{ color: "var(--ink-muted)" }}> linear</span>}
+                        : r.vert > 0
+                          ? <span style={{ color: "var(--ink-muted)" }}> = {fl(r.plan)} plan + {fl(r.vert)} vert</span>
+                          : <span style={{ color: "var(--ink-muted)" }}> linear</span>}
                     </span>
                   </div>
                 ))}

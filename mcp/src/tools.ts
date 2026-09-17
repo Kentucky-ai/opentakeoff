@@ -180,15 +180,17 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
   }, run("cut_out", (a) => session.cutOut(a)));
 
   server.registerTool("measure_line", {
-    description: `Measure an open polyline (min 2 points, image px): length_lf at the sheet's scale. Requires the scale to be set. Pass condition to commit it as a linear shape (base, transitions, feature strips). A curved run (base along a radius wall, a curved feature strip) takes arc_through: one point on the bow, marked. ${COORDS}`,
+    description: `Measure an open polyline (min 2 points, image px): length_lf at the sheet's scale. Requires the scale to be set. Pass condition to commit it as a linear shape (base, transitions, feature strips, conduit and home runs). A curved run (base along a radius wall, a curved feature strip) takes arc_through: one point on the bow, marked. DROP AND RISE (#441): a plan trace is the flat X–Y path; the material also travels VERTICALLY — a home run drops from the ceiling to a panel, rises to a box. length_lf is the TOTAL: plan + rise + drop. The condition's rise_ft / drop_ft (edit_condition) are the defaults for every run under it; pass rise_ft / drop_ft here to give THIS run its own legs (0 included — "no drop on this one" is a statement), and the reply splits plan_lf / vertical_lf beside the total when a leg exists. ${COORDS}`,
     inputSchema: {
       sheet: z.string(),
       pts: z.array(pointSchema).min(2),
       condition: z.string().optional(),
+      rise_ft: z.number().min(0).optional().describe("This run's vertical leg UP, in feet, added to its plan length — overrides the condition's rise_ft default for this run (0 = no rise here, whatever the default)"),
+      drop_ft: z.number().min(0).optional().describe("This run's vertical leg DOWN, in feet, added to its plan length — overrides the condition's drop_ft default for this run (0 = no drop here, whatever the default)"),
       arc_through: z.array(z.number().int().nonnegative()).optional().describe("Indices of points that are the MIDDLE of an arc: the trace runs the point before → this point → the point after as the unique circle through the three (the canvas's Curve mode). For a curved wall put one point anywhere ON the bow between its two ends and mark it. The arc is baked to ordinary vertices on commit and origin.curved is stamped; a mark on an end of an open run, or two marks in a row, refuses."),
     },
     outputSchema: measureLineOutput,
-  }, run("measure_line", (a) => session.measureLine(a.sheet, a.pts, { condition: a.condition, arc_through: a.arc_through })));
+  }, run("measure_line", (a) => session.measureLine(a.sheet, a.pts, { condition: a.condition, arc_through: a.arc_through, rise_ft: a.rise_ft, drop_ft: a.drop_ft })));
 
   server.registerTool("measure_surface", {
     description: `Surface Area — wall SF (#146): trace an OPEN run along the wall in plan view (min 2 points, image px) and the quantity is traced LF × height. This is how wall tile, wainscot, and wall systems are taken off — the quantity family ${oneClick ? "one_click and " : ""}measure_polygon cannot produce. Height lives on the CONDITION (the canvas's H knob): pass height_ft to set it on this call (journals as its own undo step, like typing H before tracing), or set it once with edit_condition; with neither, this refuses and mints nothing. The shape snapshots the height it was quantified at. Requires the sheet's scale. ${COORDS}`,
@@ -485,9 +487,11 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
       condition: z.string().optional().describe("Reassign to this finish tag (minted on first use)"),
       role: z.enum(["floor_area", "deduct", "linear", "surface_area", "count"]).optional().describe("Switch what the shape measures — flipping INTO surface_area needs a height on the shape or its condition"),
       label: z.string().optional().describe('The room (or phase/area) this shape belongs to, e.g. "134" or "OFFICE 101" — what per-room reporting groups by. Pass "" to clear it'),
+      rise_ft: z.number().min(0).nullable().optional().describe("Linear runs only (#441): this run's vertical leg UP in feet, overriding the condition's rise_ft default (0 = none). null clears the override so the condition's default applies again. perimeter_lf is recomputed as plan + rise + drop"),
+      drop_ft: z.number().min(0).nullable().optional().describe("Linear runs only (#441): this run's vertical leg DOWN in feet, overriding the condition's drop_ft default (0 = none). null clears the override so the condition's default applies again"),
     },
     outputSchema: editShapeOutput,
-  }, run("edit_shape", (a) => session.editShape(a.shape_id, { verts: a.verts, condition: a.condition, role: a.role, label: a.label })));
+  }, run("edit_shape", (a) => session.editShape(a.shape_id, { verts: a.verts, condition: a.condition, role: a.role, label: a.label, rise_ft: a.rise_ft, drop_ft: a.drop_ft })));
 
   server.registerTool("edit_materials", {
     description: `Add, remove, or patch supporting-materials rows on a condition — the coverage-rate lines that turn a measured area/length/count into an order quantity (adhesive at N sf/gal, grout at N lf/bag, …), matching the canvas's per-condition Supporting Materials panel. Each row is {name, per, basis, unit, round, note}: quantity = the condition's basis total (area/linear/count/seam_lf) ÷ per, rounded up to whole purchase units unless round:false. basis "seam_lf" is the one basis that is FIGURED rather than measured: it is the length where two cuts meet on the floor, read off the condition's roll layout (set roll_setup with edit_condition), which is what a heat-weld rod or a carpet seam tape is bought by. A 20-ft-wide room off a 12-ft roll seams once down its length; the same square footage as two 10-ft rooms seams not at all, and no percentage of the area or the perimeter can tell those two jobs apart. Without a roll_setup — or with no committed floor shapes to lay out — a seam_lf row reads 0, which is the honest state rather than a guess. condition names an existing OR NEW finish tag (minted on first touch, same as ${oneClick ? "one_click/" : ""}measure_polygon) — add alone is enough to seed materials on a condition before you've traced anything. remove/patch target existing row ids from this reply or export_takeoff (takeoff_summary strips materials for a compact quantities-only reply); a bad id 404s the WHOLE call before anything is written, and referencing an id on a tag with no condition yet errors rather than silently minting an empty one. No review gate here — materials rows are quantity config, not traced geometry, so this edits directly; undo_last reverses a call in one step (the condition's whole materials array, snapshotted before the write, restored verbatim).`,
@@ -517,6 +521,8 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
       waste_pct: z.number().min(0).optional().describe("Waste percentage applied to net order quantities, e.g. 10 for 10%"),
       multiplier: z.number().positive().optional().describe("Quantity multiplier (×N identical areas). Note: the canvas treats 0 as 1, so 0 is rejected here rather than silently meaning 'off'"),
       height_ft: z.number().positive().optional().describe("Wall height in feet — the canvas's H knob; measure_surface quantifies traced LF × this"),
+      rise_ft: z.number().min(0).optional().describe("Drop and Rise (#441): the vertical leg UP, in feet, every linear run of this condition adds to its plan length (LF = plan + rise + drop). Re-flows existing runs that do not carry their own rise_ft; derived base/transitions never take a leg. 0 turns it off"),
+      drop_ft: z.number().min(0).optional().describe("Drop and Rise (#441): the vertical leg DOWN, in feet, every linear run of this condition adds to its plan length. Re-flows existing runs that do not carry their own drop_ft. 0 turns it off"),
       roll_setup: z.union([
         z.null().describe("Opt the condition OUT of roll goods"),
         z.object({
@@ -532,7 +538,7 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
       ]).optional().describe("Roll-goods opt-in (#147): presence of a setup is what makes the condition roll goods — seams figured, cuts packed, order footage beside the measured quantities. Same-material partial edits patch the existing setup; null opts out. The reply echoes the figured order (cuts, order_lf, rolls, order_qty) whenever floor shapes exist on scaled sheets, and export_report's roll_goods block carries the same rows"),
     },
     outputSchema: editConditionOutput,
-  }, run("edit_condition", (a) => session.editCondition(a.condition, { waste_pct: a.waste_pct, multiplier: a.multiplier, height_ft: a.height_ft, roll_setup: a.roll_setup })));
+  }, run("edit_condition", (a) => session.editCondition(a.condition, { waste_pct: a.waste_pct, multiplier: a.multiplier, height_ft: a.height_ft, roll_setup: a.roll_setup, rise_ft: a.rise_ft, drop_ft: a.drop_ft })));
 
   server.registerTool("propose_condition_edit", {
     description: `PROPOSE a change to a condition instead of making it (#365): a diff — a new finish tag (rename), waste %, ×N multiplier, height_ft, roll_setup — held PENDING until the estimator accepts it from the panel. edit_condition is the wrong power for "I think this condition is wrong": a tag rename or a knob change should be a decision the estimator makes, not one they discover. Until acceptance NOTHING changes — takeoff_summary and export_report keep computing from the current values and carry the diff beside them (proposed_condition_edits), and once accepted the report is byte-for-byte what a direct edit_condition would have produced (the same write path). Only fields that differ from the current value are recorded; a proposal that changes nothing is refused, and a rename onto a tag another condition already carries is refused (two conditions on one tag would make one unreachable). One pending diff per condition — proposing again replaces the earlier one (undo_last restores it). rationale is required: the estimator accepts a reason.`,
@@ -542,11 +548,13 @@ export function registerTools(realServer: McpServer, session: Session, opts: { o
       waste_pct: z.number().min(0).optional(),
       multiplier: z.number().positive().optional(),
       height_ft: z.number().positive().optional(),
+      rise_ft: z.number().min(0).optional().describe("Proposed default vertical leg UP for the condition's linear runs (#441)"),
+      drop_ft: z.number().min(0).optional().describe("Proposed default vertical leg DOWN for the condition's linear runs (#441)"),
       roll_setup: z.union([z.null(), z.object({}).passthrough()]).optional().describe("Proposed roll-goods setup, or null to propose opting out"),
       rationale: z.string().min(1).describe("Why — the schedule row, the spec section, the sheet note that decided it"),
     },
     outputSchema: proposeConditionEditOutput,
-  }, run("propose_condition_edit", (a) => session.proposeConditionEdit(a.condition, { finish_tag: a.finish_tag, waste_pct: a.waste_pct, multiplier: a.multiplier, height_ft: a.height_ft, roll_setup: a.roll_setup }, a.rationale)));
+  }, run("propose_condition_edit", (a) => session.proposeConditionEdit(a.condition, { finish_tag: a.finish_tag, waste_pct: a.waste_pct, multiplier: a.multiplier, height_ft: a.height_ft, rise_ft: a.rise_ft, drop_ft: a.drop_ft, roll_setup: a.roll_setup }, a.rationale)));
 
   server.registerTool("withdraw_condition_edit", {
     description: `Drop a pending condition-edit proposal (#365) without touching the condition. undo_last re-seats it.`,

@@ -32,6 +32,16 @@
     "thickness_in": {
       "type": "number"
     },
+    "rise_ft": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Default vertical leg UP, in feet, every linear run of this condition adds to its plan length (LF = plan + rise + drop). A run may override it with its own rise_ft."
+    },
+    "drop_ft": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Default vertical leg DOWN, in feet, every linear run of this condition adds to its plan length. A run may override it with its own drop_ft."
+    },
     "materials": {
       "type": "array",
       "items": {

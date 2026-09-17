@@ -168,7 +168,7 @@ Fifty-two tools, in the order an agent tends to reach for them:
   (multi-cut parents rebuild from the pristine snapshot minus survivors—the
   canvas's own delete semantics, ported as the spec)
 - **Revise**—`edit_shape` (all five roles), `edit_materials`,
-  `edit_condition` (waste %, ×N multiplier, `height_ft`, and the roll-goods
+  `edit_condition` (waste %, ×N multiplier, `height_ft`, `rise_ft` / `drop_ft` — the vertical legs every linear run adds to its plan length (#441), and the roll-goods
   `roll_setup` opt-in—the reply echoes the figured order), `delete_shape`,
   `undo_last`, with `list_shapes` as the mid-session inventory the mutating
   verbs assume you have

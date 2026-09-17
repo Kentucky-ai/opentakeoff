@@ -7,6 +7,7 @@
 // LF total; only linear rows sum to it.
 
 import { csvEsc as esc } from "./csv.js";
+import { linearVerticalFt } from "./shapeMetrics.js";
 
 export function shapesDetail(conditions, shapes, sheetLabel) {
   const byId = new Map(conditions.map((c) => [c.id, c]));
@@ -37,15 +38,20 @@ export function shapesDetail(conditions, shapes, sheetLabel) {
         ? Number(s.height_ft) || 0
         : Number(s.height_ft) || Number(cond?.height_ft) || 0,
       height_override: s.height_override === true,
+      // #441 — a linear run's LF above is the TOTAL; these split out what of it
+      // is vertical so a column reader can see the plan trace and the legs.
+      // Non-linear rows carry 0 (a wall's height is height_ft, not a leg).
+      rise_ft: role === "linear" ? linearVerticalFt(s, cond).rise : 0,
+      drop_ft: role === "linear" ? linearVerticalFt(s, cond).drop : 0,
       origin: s.origin?.method || "untracked",
     };
   });
 }
 
 export function shapesToCsv(rows, projectName = "", brandName = "OpenTakeoff") {
-  const header = ["Shape", "Sheet", "Sheet ID", "Finish", "Role", "Area SF", "LF", "EA", "Height ft", "Height override", "Origin"];
+  const header = ["Shape", "Sheet", "Sheet ID", "Finish", "Role", "Area SF", "LF", "EA", "Height ft", "Height override", "Rise ft", "Drop ft", "Origin"];
   const lines = [
-    "# Per-shape measured quantities — no multiplier or waste; deducts negative; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF",
+    "# Per-shape measured quantities — no multiplier or waste; deducts negative; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF; a linear row's LF includes its Rise + Drop",
     header.map(esc).join(","),
   ];
   for (const r of rows) {
@@ -53,6 +59,7 @@ export function shapesToCsv(rows, projectName = "", brandName = "OpenTakeoff") {
       r.shape_id, r.sheet, r.sheet_id, r.finish, r.role,
       r.area_sf, r.lf, r.ea, r.height_ft,
       r.height_override ? "yes" : "",
+      r.rise_ft, r.drop_ft,
       r.origin,
     ].map(esc).join(","));
   }

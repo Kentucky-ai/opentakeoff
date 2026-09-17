@@ -90,7 +90,7 @@ test("shapesToCsv: empty project — semantics line + header only", () => {
   const csv = shapesToCsv(shapesDetail(conds, []));
   const lines = csv.split("\n");
   assert.ok(lines[0].startsWith("# Per-shape measured quantities"));
-  assert.equal(lines[1], "Shape,Sheet,Sheet ID,Finish,Role,Area SF,LF,EA,Height ft,Height override,Origin");
+  assert.equal(lines[1], "Shape,Sheet,Sheet ID,Finish,Role,Area SF,LF,EA,Height ft,Height override,Rise ft,Drop ft,Origin");
   assert.equal(lines[2], "");
   assert.equal(lines.length, 3);
 });
@@ -110,12 +110,12 @@ test("shapesToCsv: title, semantics line, exact header, quoting, negative deduct
   const csv = shapesToCsv(shapesDetail(conds2, shapes), "Job 42");
   const lines = csv.split("\n");
   assert.equal(lines[0], "# Job 42 — OpenTakeoff shapes");
-  assert.equal(lines[1], "# Per-shape measured quantities — no multiplier or waste; deducts negative; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF");
-  assert.equal(lines[2], "Shape,Sheet,Sheet ID,Finish,Role,Area SF,LF,EA,Height ft,Height override,Origin");
+  assert.equal(lines[1], "# Per-shape measured quantities — no multiplier or waste; deducts negative; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF; a linear row's LF includes its Rise + Drop");
+  assert.equal(lines[2], "Shape,Sheet,Sheet ID,Finish,Role,Area SF,LF,EA,Height ft,Height override,Rise ft,Drop ft,Origin");
   assert.ok(lines[3].includes('"CT-1, honed"'));
   // full-line equality: the -12.5 deduct is a NUMBER cell — a type-blind
   // formula guard would emit '-12.5 and includes("-12.5") would still pass
-  assert.equal(lines[4], 'd,sh1,sh1,"CT-1, honed",deduct,-12.5,0,0,0,,untracked');
+  assert.equal(lines[4], 'd,sh1,sh1,"CT-1, honed",deduct,-12.5,0,0,0,,0,0,untracked');
   assert.ok(csv.endsWith("\n"));
 });
 
@@ -141,4 +141,21 @@ test("shapesToJson: schema envelope wraps the rows", () => {
   assert.equal(j.generated_with, "OpenTakeoff");
   assert.deepEqual(j.shapes, rows);
   assert.equal(shapesToJson(rows, "").project_name, null);
+});
+
+// #441 — a linear row's LF is the total; Rise/Drop columns split the legs out.
+test("shapesDetail: linear rise/drop columns — condition default, per-run override, non-linear rows 0", () => {
+  const conds2 = [{ id: "ec", finish_tag: "EC-1", rise_ft: 2, drop_ft: 8 }];
+  const shapes = [
+    { id: "r1", sheet_id: "sh1", condition_id: "ec", measure_role: "linear", computed: { perimeter_lf: 52, plan_lf: 42, vertical_lf: 10, area_sf: 0 } },
+    { id: "r2", sheet_id: "sh1", condition_id: "ec", measure_role: "linear", drop_ft: 0, computed: { perimeter_lf: 44, plan_lf: 42, vertical_lf: 2, area_sf: 0 } },
+    { id: "w", sheet_id: "sh1", condition_id: "ec", measure_role: "surface_area", computed: { area_sf: 90, perimeter_lf: 10 }, height_ft: 9 },
+  ];
+  const [r1, r2, w] = shapesDetail(conds2, shapes);
+  assert.equal(r1.lf, 52); assert.equal(r1.rise_ft, 2); assert.equal(r1.drop_ft, 8);
+  assert.equal(r2.rise_ft, 2); assert.equal(r2.drop_ft, 0);   // the run's own 0 wins over the condition's 8
+  assert.equal(w.rise_ft, 0); assert.equal(w.drop_ft, 0);
+  const lines = shapesToCsv([r1, r2, w]).split("\n");
+  assert.equal(lines[2], "r1,sh1,sh1,EC-1,linear,0,52,0,0,,2,8,untracked");
+  assert.equal(lines[3], "r2,sh1,sh1,EC-1,linear,0,44,0,0,,2,0,untracked");
 });

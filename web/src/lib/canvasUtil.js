@@ -61,6 +61,8 @@ export const instantiateTemplate = (t) => ({
   hatch: t.hatch || "solid", multiplier: 1, waste_pct: Number(t.waste_pct) || 0,
   ...(t.height_ft != null ? { height_ft: t.height_ft } : {}),
   ...(t.thickness_in != null ? { thickness_in: t.thickness_in } : {}),
+  ...(t.rise_ft != null ? { rise_ft: t.rise_ft } : {}),   // #441 — a conduit template's legs are part of what it is
+  ...(t.drop_ft != null ? { drop_ft: t.drop_ft } : {}),
   ...(t.laborType != null ? { laborType: t.laborType } : {}),
   ...(t.subfloorType != null ? { subfloorType: t.subfloorType } : {}),
   ...(t.roll_setup ? { roll_setup: { ...t.roll_setup } } : {}),   // #136 — deep-copied like grout: a template's roll spec must never be shared by reference

@@ -33,10 +33,18 @@
         },
         "count": {
           "type": "number"
+        },
+        "plan_lf": {
+          "type": "number",
+          "description": "Linear runs with a vertical leg: the flat X-Y trace alone. perimeter_lf is then plan_lf + vertical_lf."
+        },
+        "vertical_lf": {
+          "type": "number",
+          "description": "Linear runs with a vertical leg: rise + drop in feet."
         }
       },
       "additionalProperties": true,
-      "description": "Stored quantity cache: square feet, linear feet, and each. Metric is display conversion. Validation never recomputes values."
+      "description": "Stored quantity cache: square feet, linear feet (a linear run's perimeter_lf is its TOTAL incl. any rise + drop), and each. Metric is display conversion. Validation never recomputes values."
     },
     "parentSnapshot": {
       "type": "object",

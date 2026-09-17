@@ -255,6 +255,7 @@ A **condition** is one finish—`LVT-1`, `CPT-2`, `RB-1`—and it's what every m
 - **Line style**—the outline dash for this finish's floor and linear takeoffs, on canvas and in the Marked Set.
 - **H** (height, ft)—the default for **new** wall traces (Surface Area SF = LF × H) and the vertical-SF display. Existing walls keep the height they were drawn at—select a wall to change only that one (§5).
 - **T** (thickness, in)—a Linear run with thickness also computes border/feature-strip SF = LF × T⁄12. Changing it re-flows existing runs.
+- **↑ Rise** and **↓ Drop** (ft)—the vertical legs every Linear run of this condition adds to its plan length: LF = plan + rise + drop. A conduit condition with an 8′ drop prices every home run to the panel with its 8′ down; the plan only shows the flat path. Changing either re-flows existing runs, except a run you gave its own legs (§5, Linear). Derived base and transitions never take a leg.
 
 **Delete** (the row's ✕) asks first when the condition owns shapes—*"Delete 〈TAG〉 and its N takeoff(s)? This can't be undone."*—and means it: the cascade is deliberately outside the undo stack (§8).
 
@@ -416,7 +417,7 @@ Two clicks: one corner, then the opposite corner. Between them the cursor chip r
 
 ### Linear (`L`)
 
-An open run, two or more points → LF. The **╱ Straight / ⌒ Curve** switch works here too (see Area, above)—a run that bends partway along commits as one line. If the condition carries a **thickness**, the run also yields border SF (LF × thickness ÷ 12)—feature strips, borders, transitions. The live chip reads the running segment length, amber at 12′.
+An open run, two or more points → LF. The **╱ Straight / ⌒ Curve** switch works here too (see Area, above)—a run that bends partway along commits as one line. **Drop and Rise:** a run's LF is its plan length plus the condition's **↑ Rise** and **↓ Drop** (§4)—the live chip reads the plan length while you trace; the committed readout reads the total with the split beneath it (`42′ plan + ↑ 2′ + ↓ 8′`), as does the Measurements tally. Select a run and the **this run** row under the readout gives it its own rise and drop—a 0 there is a statement ("no drop on this one") that the condition default no longer overrides; ↺ returns the run to the defaults. If the condition carries a **thickness**, the run also yields border SF (LF × thickness ÷ 12)—feature strips, borders, transitions. The live chip reads the running segment length, amber at 12′.
 
 ### Surface Area (`S`)
 

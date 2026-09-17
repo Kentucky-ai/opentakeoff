@@ -6,7 +6,7 @@
 // guessed.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { computeShapeMetrics, needsMetrics, recalibrateShapes } from "../src/lib/shapeMetrics.js";
+import { computeShapeMetrics, needsMetrics, recalibrateShapes, linearVerticalFt } from "../src/lib/shapeMetrics.js";
 
 const approx = (a: number, b: number, tol = 1e-6) => Math.abs(a - b) <= tol;
 const DIMS = { w: 1000, h: 800 };
@@ -81,4 +81,45 @@ test("sheet recalibration preserves counts and physical height/thickness, withou
     { area_sf: 160, perimeter_lf: 20 }, { area_sf: 10, perimeter_lf: 20 }, { count: 3.5 },
   ]);
   assert.deepEqual(shapes, before);
+});
+
+// #441 — Drop and Rise: a run's LF is its plan length plus its vertical legs.
+test("linear rise/drop: condition defaults add to LF; plan_lf/vertical_lf ride beside the total", () => {
+  const s = { measure_role: "linear", verts_norm: [[0.1, 0.1], [0.3, 0.1]] };   // 200 px = 10 LF plan
+  const m = computeShapeMetrics(s, DIMS, UPP, { rise_ft: 2, drop_ft: 8 });
+  assert.equal(m.perimeter_lf, 20);
+  assert.equal(m.plan_lf, 10);
+  assert.equal(m.vertical_lf, 10);
+  // border SF rides the TOTAL — the material travels the legs too
+  assert.equal(computeShapeMetrics(s, DIMS, UPP, { rise_ft: 2, drop_ft: 8, thickness_in: 6 }).area_sf, 10);
+});
+
+test("linear rise/drop: a flat run's record is unchanged (no plan_lf/vertical_lf keys)", () => {
+  const s = { measure_role: "linear", verts_norm: [[0.1, 0.1], [0.3, 0.1]] };
+  const m = computeShapeMetrics(s, DIMS, UPP, { rise_ft: 0 });
+  assert.deepEqual(m, { perimeter_lf: 10, area_sf: 0 });
+  assert.deepEqual(computeShapeMetrics(s, DIMS, UPP, undefined), { perimeter_lf: 10, area_sf: 0 });
+});
+
+test("linear rise/drop: a run's own value overrides that field outright, 0 included; the other field keeps the default", () => {
+  const cond = { rise_ft: 2, drop_ft: 8 };
+  const s = { measure_role: "linear", verts_norm: [[0.1, 0.1], [0.3, 0.1]] };
+  assert.equal(computeShapeMetrics({ ...s, drop_ft: 0 }, DIMS, UPP, cond).perimeter_lf, 12);       // 10 + 2 + 0
+  assert.equal(computeShapeMetrics({ ...s, drop_ft: 12 }, DIMS, UPP, cond).perimeter_lf, 24);      // 10 + 2 + 12
+  assert.equal(computeShapeMetrics({ ...s, rise_ft: 0, drop_ft: 0 }, DIMS, UPP, cond).perimeter_lf, 10);
+  assert.deepEqual(linearVerticalFt({ rise_ft: 0 }, cond), { rise: 0, drop: 8 });
+  assert.deepEqual(linearVerticalFt({}, cond), { rise: 2, drop: 8 });
+  assert.deepEqual(linearVerticalFt({ rise_ft: -3, drop_ft: "x" }, cond), { rise: 0, drop: 0 });  // garbage reads as 0, never as the default
+});
+
+test("linear rise/drop: a derived run (base, transition) never takes a leg", () => {
+  const s = { measure_role: "linear", verts_norm: [[0.1, 0.1], [0.3, 0.1]], origin: { method: "derived", derived: { from_shape_id: "f", gross_lf: 10, openings_lf: 0 } } };
+  assert.deepEqual(computeShapeMetrics(s, DIMS, UPP, { rise_ft: 2, drop_ft: 8 }), { perimeter_lf: 10, area_sf: 0 });
+});
+
+test("linear rise/drop: recalibrateShapes re-prices with the condition's legs", () => {
+  const conds = [{ id: "c", rise_ft: 1, drop_ft: 1 }];
+  const [r] = recalibrateShapes([{ id: "s", condition_id: "c", measure_role: "linear", verts_norm: [[0.1, 0.1], [0.3, 0.1]], computed: { perimeter_lf: 10 } }], DIMS, UPP, conds);
+  assert.equal(r.computed.perimeter_lf, 12);
+  assert.equal(r.computed.vertical_lf, 2);
 });

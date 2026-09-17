@@ -292,8 +292,12 @@ export const symbolSweepOutput = {
 };
 
 export const measureLineOutput = {
-  length_lf: z.number(),
+  length_lf: z.number().describe("The run's TOTAL length: plan trace + rise + drop (#441)"),
   npts: z.number().int(),
+  plan_lf: z.number().optional().describe("The flat X–Y trace alone — present only when the run carries a vertical leg"),
+  vertical_lf: z.number().optional().describe("rise_ft + drop_ft — present only when a leg exists"),
+  rise_ft: z.number().optional().describe("The rise this run resolved to (its own, else the condition default) — present with vertical_lf"),
+  drop_ft: z.number().optional().describe("The drop this run resolved to — present with vertical_lf"),
   arcs: z.number().int().optional().describe("How many arc_through bows were laid — present only when the trace was bent; the vertices reported are the baked arc, not the three points you gave"),
   shape_id: z.string().optional().describe("Present when condition was passed and the shape committed"),
 };
@@ -359,7 +363,8 @@ export const scopeMergeOutput = {
 // ── Proposals (#365) ────────────────────────────────────────────────────────
 const conditionKnobs = z.object({
   finish_tag: z.string().optional(), waste_pct: z.number().optional(), multiplier: z.number().optional(),
-  height_ft: z.number().optional(), roll_setup: z.object({}).passthrough().nullable().optional(),
+  height_ft: z.number().optional(), rise_ft: z.number().optional(), drop_ft: z.number().optional(),
+  roll_setup: z.object({}).passthrough().nullable().optional(),
 }).passthrough();
 export const proposalRow = z.object({
   proposal_id: z.string(), label: z.string(), rationale: z.string(),
@@ -616,11 +621,13 @@ export const deleteShapeOutput = {
  * re-measures (closed area vs open length). */
 export const editShapeOutput = {
   shape_id: z.string(),
-  changed: z.array(z.enum(["verts", "condition", "role", "label"])).describe("Which fields this call actually changed"),
+  changed: z.array(z.enum(["verts", "condition", "role", "label", "rise_ft", "drop_ft"])).describe("Which fields this call actually changed"),
   measure_role: z.enum(["floor_area", "deduct", "linear", "surface_area", "count"]),
   nverts: z.number().int(),
   area_sf: z.number().optional().describe("0 for linear shapes; LF × height for surface_area; absent for count"),
-  perimeter_lf: z.number().optional().describe("Length for linear/surface runs, perimeter for closed ones; absent for count"),
+  perimeter_lf: z.number().optional().describe("Length for linear/surface runs (a linear run's TOTAL incl. rise + drop), perimeter for closed ones; absent for count"),
+  plan_lf: z.number().optional().describe("Linear runs with a vertical leg: the flat trace alone (#441)"),
+  vertical_lf: z.number().optional().describe("Linear runs with a vertical leg: rise + drop (#441)"),
   count: z.number().optional().describe("count shapes only — the marker's EA (preserved across the edit)"),
   label: z.string().optional().describe("The shape's room/phase label after this call — absent when it carries none (a cleared label reports as absent, not as an empty string)"),
   agent_edits: z.number().int().describe("How many times the agent has revised this shape — separate from the human-correction tally"),
@@ -762,6 +769,8 @@ export const editConditionOutput = {
   waste_pct: z.number().describe("The condition's waste % after this write"),
   multiplier: z.number().describe("The condition's quantity multiplier after this write"),
   height_ft: z.number().optional().describe("The condition's wall height after this write — present once set (measure_surface multiplies traced LF by it)"),
+  rise_ft: z.number().optional().describe("The condition's default rise for its linear runs after this write — present once set (#441)"),
+  drop_ft: z.number().optional().describe("The condition's default drop for its linear runs after this write — present once set (#441)"),
   roll_setup: z.object({}).passthrough().optional().describe("The condition's roll-goods setup after this write — present while opted in"),
   roll: z.object({
     condition_id: z.string(), finish_tag: z.string(), material: z.string(),

@@ -37,3 +37,13 @@ test("empty and null input are safe", () => {
   assert.deepEqual(measurementBreakdown([], "c1", cond), []);
   assert.deepEqual(measurementBreakdown(null as any, "c1", cond), []);
 });
+
+// #441 — a run with legs reads as plan + vert on its tally line
+test("linear rows carry plan/vert only when the run has a vertical", () => {
+  const withLegs = { id: "v", condition_id: "c1", measure_role: "linear", computed: { perimeter_lf: 52, plan_lf: 42, vertical_lf: 10 } };
+  const rows = measurementBreakdown([lin("a", "c1", 10), withLegs], "c1", cond);
+  assert.equal("vert" in rows[0], false);
+  assert.equal(rows[1].lf, 52);
+  assert.equal(rows[1].plan, 42);
+  assert.equal(rows[1].vert, 10);
+});
