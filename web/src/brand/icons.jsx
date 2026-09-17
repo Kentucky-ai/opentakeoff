@@ -70,6 +70,9 @@ export const icons = {
   // pushpin / thumbtack — the quick-access palette "pin this condition" action.
   // Cap bar at top, tapered body to a collar, needle to the point.
   pin: (s) => <I size={s}><line x1="8" y1="3" x2="16" y2="3" /><path d="M10 3 V 8 L 7 11 H 17 L 14 8 V 3" /><line x1="12" y1="11" x2="12" y2="20" /></I>,
+  // eye / struck eye — show or hide a condition's takeoffs on the canvas (#440)
+  eye: (s) => <I size={s}><path d="M2.5 12 C 5.5 6.8 8.6 5 12 5 C 15.4 5 18.5 6.8 21.5 12 C 18.5 17.2 15.4 19 12 19 C 8.6 19 5.5 17.2 2.5 12 Z" /><circle cx="12" cy="12" r="2.8" /></I>,
+  eyeOff: (s) => <I size={s}><path d="M2.5 12 C 5.5 6.8 8.6 5 12 5 C 15.4 5 18.5 6.8 21.5 12 C 18.5 17.2 15.4 19 12 19 C 8.6 19 5.5 17.2 2.5 12 Z" /><circle cx="12" cy="12" r="2.8" /><line x1="4" y1="20" x2="20" y2="4" /></I>,
   // mixer sliders — the toolbar render/fill settings menu
   sliders: (s) => <I size={s}><path d="M4 7 H 6.8 M11.2 7 H 20" /><path d="M4 17 H 12.8 M17.2 17 H 20" /><circle cx="9" cy="7" r="2.2" /><circle cx="15" cy="17" r="2.2" /></I>,
   // stacked plan sheets in isometric — the PDF layer table (Optional Content Groups)

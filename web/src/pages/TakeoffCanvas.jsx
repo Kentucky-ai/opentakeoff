@@ -92,6 +92,7 @@ import { shapesInZone } from "../lib/zone.js";
 import { sanitizeSheetLevels } from "../lib/sheetLevels.js";
 import { sanitizeConditionColumns, sanitizeConditionAttrs, renameColumnValue, columnLabel } from "../lib/conditionColumns.js";
 import { sanitizeShapeLabels, sanitizeShapeLabelsOnShapes, renameShapeLabel, shapeLabelValue } from "../lib/shapeLabels.js";
+import { nextHidden, revealed } from "../lib/conditionVisibility.js";
 import { buildMarkedSetPdf, downloadBytes } from "../lib/markedset.js";
 import { repeatPlan } from "../lib/repeatTool.js";
 import { createDragCache, sheetContentSignature, dragFilename, downloadUrlEntry } from "../lib/dragOut.js";
@@ -362,6 +363,7 @@ export default function TakeoffCanvas() {
   // docked Takeoffs panel on the right).
   const [leftTab, setLeftTab] = useState(null);
   const [showMarkups, setShowMarkups] = useState(true);       // markup SVG layer visibility (orthogonal to the export checkbox)
+  const [hiddenConds, setHiddenConds] = useState(() => new Set()); // condition ids whose takeoffs are hidden on the canvas (#440) — VIEW STATE: never persisted, never touches totals/report/exports
   const [editor, setEditor] = useState(null);                 // inline on-canvas text editor { left, top, value, multiline, commit } (retires window.prompt; screen-space overlay, NOT an SVG child)
   const [panelEditId, setPanelEditId] = useState(null);       // markup id whose text is being edited inline in the markup panel (off-screen fallback for the ✎ button)
   const [captureQuery, setCaptureQuery] = useState("");       // always-on name filter over the GLOBAL Captures list (transient, mirrors condQuery)
@@ -1170,7 +1172,14 @@ export default function TakeoffCanvas() {
   }, [shapes, sheetGroup, sheetKey]);
   // bottom-to-top paint order (see ROLE_TIER) — the renderer maps this
   // ascending; the click and hover pickers scan it reversed.
-  const stackedShapes = useMemo(() => [...visibleShapes].sort((a, b) => tierOf(a) - tierOf(b)), [visibleShapes]);
+  // Hidden conditions (#440) drop out HERE and only here: this list is both
+  // what the renderer paints and what the pickers scan, so a hidden shape
+  // can't be seen or clicked — while visibleShapes (totals, tally, transition
+  // sources) still carries it. Hiding changes the view, never a number.
+  const stackedShapes = useMemo(() => {
+    const drawn = hiddenConds.size ? visibleShapes.filter((s) => !hiddenConds.has(s.condition_id)) : visibleShapes;
+    return [...drawn].sort((a, b) => tierOf(a) - tierOf(b));
+  }, [visibleShapes, hiddenConds]);
   const visibleMarkups = useMemo(() => {
     const keys = new Set(sheetGroup.length ? sheetGroup : [sheetKey]);
     return markups.filter((m) => !m.reference_only && keys.has(m.sheet_id));
@@ -1615,6 +1624,9 @@ export default function TakeoffCanvas() {
     // epoch and it clears them in place (panel tab + width survive, as they
     // always did). On the mount load this is a no-op (fresh panel state).
     setPanelEpoch((e) => e + 1);
+    // hidden conditions (#440) described the replaced project's view — a load
+    // always opens with everything showing
+    setHiddenConds((h) => (h.size ? new Set() : h));
     // `replace` command + reset: hydrate is a whole-array non-edit (no stamps,
     // no counters) and a loaded/restored timeline starts with EMPTY undo/redo
     // stacks — recorded inverses from the replaced project must never fire here.
@@ -5920,6 +5932,7 @@ export default function TakeoffCanvas() {
     return true;
   }
   function locateCondition(id) {
+    setHiddenConds((h) => revealed(h, id));   // ⌖ on a hidden condition shows it — never fly to nothing
     if (!frameShapes((s) => s.condition_id === id)) setCommitMsg(`No takeoffs for ${condById[id]?.finish_tag || "this condition"} on the open sheet${groupKeys.length > 1 ? "s" : ""} yet.`);
   }
   // scope collision (#366): Look frames the PAIR so the estimator sees both
@@ -7585,6 +7598,30 @@ export default function TakeoffCanvas() {
   // unpin if already pinned. movePalette: drag one chip onto another to reorder
   // it to the target index (splice out, splice back in), which also renumbers
   // the 1–9 hotkeys since they follow palette order.
+  // New work is never born invisible (#440): a shape that lands on a hidden
+  // condition — drawn, swept, pasted, or accepted from an agent — reveals it.
+  // Keyed on ids, not length, so a delete+add in one command still counts.
+  const seenShapeIdsRef = useRef(null);
+  useEffect(() => {
+    const seen = seenShapeIdsRef.current;
+    seenShapeIdsRef.current = new Set(shapes.map((s) => s.id));
+    if (!seen || !hiddenConds.size) return;
+    // …and so does reassigning the SELECTED shape onto one (same id, new
+    // condition) — it must not vanish out from under the cursor
+    const born = shapes.filter((s) => (!seen.has(s.id) || s.id === selectedId) && hiddenConds.has(s.condition_id));
+    if (born.length) setHiddenConds((h) => born.reduce((acc, s) => revealed(acc, s.condition_id), h));
+  }, [shapes]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Eye on a condition row (#440): click flips it, ⌥-click isolates it, a null
+  // id shows everything. A selection that just went invisible is dropped — you
+  // can't edit or delete what you can't see.
+  const toggleCondHidden = (id, isolate = false) => {
+    const next = nextHidden(hiddenConds, id, conditions.map((c) => c.id), { isolate });
+    setHiddenConds(next);
+    if (selectedId) {
+      const sel = shapes.find((s) => s.id === selectedId);
+      if (sel && next.has(sel.condition_id)) setSelectedId(null);
+    }
+  };
   const togglePin = (id) => setPalette((p) => (p.includes(id) ? p.filter((x) => x !== id) : (p.length >= PALETTE_MAX ? p : [...p, id])));
   const movePalette = (id, toIndex) => setPalette((p) => {
     const from = p.indexOf(id);
@@ -7775,7 +7812,7 @@ export default function TakeoffCanvas() {
     onUpdateLibMaterial: updateLibMaterial, onPushLibUpdate: pushLibUpdate,
     onDeleteLibMaterial: deleteLibMaterial, onAddLibMaterial: addLibMaterial,
     matFieldOverridden,   // pure helper, not an event handler — the forwarder returns its result
-    onToggleCollapse: toggleTakeoffs, onTogglePin: togglePin,
+    onToggleCollapse: toggleTakeoffs, onTogglePin: togglePin, onToggleHidden: toggleCondHidden,
     // these three are ALREADY stable on their own (setState identity, and
     // holdPanelGesture is a useCallback with an empty dep array) — routed
     // through the registry anyway so the memo contract has exactly ONE
@@ -10267,6 +10304,7 @@ export default function TakeoffCanvas() {
           shapeLabels={shapeLabels}
           templates={templates}
           palette={palette}
+          hiddenConds={hiddenConds}
           rollByCond={rollByCond}
           transitionSources={transitionSources}
           matLib={matLib}
