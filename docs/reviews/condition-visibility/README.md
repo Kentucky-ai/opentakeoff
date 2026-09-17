@@ -6,7 +6,7 @@ An eye leads every row in the Takeoffs panel. Click hides or shows that conditio
 
 ## Verification
 
-`cd web && npm run check` on Node 24.18.0: typecheck, lint, tests, benchmark and production build passed; `test/conditionVisibility.test.ts` adds 7 cases for the eye / isolate rules.
+`cd web && npm run check` on Node 24.18.0: typecheck, lint, tests, benchmark and production build passed; `test/conditionVisibility.test.ts` adds 7 cases for the eye / isolate rules and `test/conditionEye.test.ts` 6 for the row eye, the hidden bar and the icons (markup plus the click contract: plain vs ⌥, no bubbling to the row).
 
 Browser walkthrough on the bundled public `sample-finish-plan.pdf`, 3 count marks on CPT-1 and 3 on BRD-1:
 

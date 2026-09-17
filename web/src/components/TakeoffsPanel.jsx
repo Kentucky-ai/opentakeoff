@@ -753,6 +753,38 @@ function TransitionsAction({ cond: c, sources, draft, setDraft, result, setResul
   );
 }
 
+// Eye (#440) — leads a condition row, where a layer list puts it. Click hides /
+// shows that condition's takeoffs on the canvas; ⌥-click isolates it.
+// stopPropagation on click AND double-click: the row's own gestures (activate /
+// zoom-to) must not fire under a fast toggle. Exported so the markup and the
+// click contract are testable without mounting the whole panel.
+export function ConditionEye({ tag, hidden, onToggle }) {
+  return (
+    <button type="button" aria-pressed={!hidden} aria-label={`${hidden ? "Show" : "Hide"} ${tag} on the plan`}
+      onClick={(e) => { e.stopPropagation(); onToggle(!!e.altKey); }}
+      onDoubleClick={(e) => e.stopPropagation()}
+      title={keyText(hidden ? "Hidden on the plan — click to show (⌥-click shows only this one). Still counted in totals, report and exports." : "Hide on the plan (⌥-click shows only this one). Hiding never changes a quantity.")}
+      style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 24, height: 22, padding: 0, borderRadius: 0, border: `1px solid ${hidden ? "var(--c-danger)" : "var(--ink-faint)"}`, background: hidden ? "var(--c-danger)" : "transparent", color: hidden ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", lineHeight: 0 }}>
+      <Icon name={hidden ? "eyeOff" : "eye"} size={15} />
+    </button>
+  );
+}
+
+// Hidden-conditions bar (#440) — a half-hidden sheet must never pass for a
+// finished one, so the state is loud and one click undoes it. Renders nothing
+// while everything is showing.
+export function HiddenConditionsBar({ hidden, total, onShowAll }) {
+  if (!hidden) return null;
+  return (
+    <div role="status" style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)", background: "var(--c-danger)", color: "var(--paper-bright)", flexShrink: 0, fontSize: 11, fontWeight: 600 }}>
+      <Icon name="eyeOff" size={14} />
+      <span style={{ flex: 1, minWidth: 0 }}>{hidden} of {total} hidden on the plan — totals unchanged</span>
+      <button type="button" onClick={onShowAll} title="Show every hidden condition again"
+        style={{ flexShrink: 0, padding: "2px 8px", borderRadius: 0, border: "1px solid var(--paper-bright)", background: "transparent", color: "var(--paper-bright)", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>Show all</button>
+    </div>
+  );
+}
+
 // stable empty default — a fresh Set per render would defeat React.memo
 const NO_HIDDEN = new Set();
 
@@ -969,17 +1001,7 @@ function TakeoffsPanel({
           title={reassigning ? "Reassign selected shape to this condition" : keyText("Make this the active condition (double-click zooms to its takeoffs · ⌘-click / ⇧-click selects for bulk edit · drag to the top-bar palette for one-click access)")}
           style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", cursor: "pointer", outline: reassigning ? "1px dashed var(--cobalt)" : "none", outlineOffset: -3, userSelect: "none" }}>
           {hot && <span title={pinned ? `Palette shortcut — press ${hIdx + 1} to activate` : `Press ${hIdx + 1} to activate (pin to lock this number)`} style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: pinned ? "var(--cobalt)" : "var(--ink-muted)", border: `1px solid ${pinned ? "var(--cobalt)" : "var(--ink-faint)"}`, borderRadius: 3, padding: "0 3px", flexShrink: 0 }}>{hIdx + 1}</span>}
-          {/* eye (#440) — leads the row, where a layer list puts it. Click hides /
-              shows this condition's takeoffs on the canvas; ⌥-click isolates it.
-              stopPropagation on click AND double-click: the row's own gestures
-              (activate / zoom-to) must not fire under a fast toggle. */}
-          <button type="button" aria-pressed={!hidden} aria-label={`${hidden ? "Show" : "Hide"} ${c.finish_tag} on the plan`}
-            onClick={(e) => { e.stopPropagation(); onToggleHidden(c.id, e.altKey); }}
-            onDoubleClick={(e) => e.stopPropagation()}
-            title={keyText(hidden ? "Hidden on the plan — click to show (⌥-click shows only this one). Still counted in totals, report and exports." : "Hide on the plan (⌥-click shows only this one). Hiding never changes a quantity.")}
-            style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 24, height: 22, padding: 0, borderRadius: 0, border: `1px solid ${hidden ? "var(--c-danger)" : "var(--ink-faint)"}`, background: hidden ? "var(--c-danger)" : "transparent", color: hidden ? "var(--paper-bright)" : "var(--ink)", cursor: "pointer", lineHeight: 0 }}>
-            <Icon name={hidden ? "eyeOff" : "eye"} size={15} />
-          </button>
+          <ConditionEye tag={c.finish_tag} hidden={hidden} onToggle={(isolate) => onToggleHidden(c.id, isolate)} />
           <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0, opacity: hidden ? 0.35 : 1 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>
           <div style={{ minWidth: 0, flex: 1, opacity: hidden ? 0.55 : 1 }}>
             <div style={{ fontWeight: on ? 700 : 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -1220,16 +1242,7 @@ function TakeoffsPanel({
               style={{ marginLeft: "auto", padding: "2px 6px", border: "none", background: "none", color: "var(--ink-muted)", cursor: "pointer", fontSize: 12 }}>✕</button>
           </div>
         )}
-        {/* hidden-conditions bar (#440) — a half-hidden sheet must never pass
-            for a finished one, so the state is loud and one click undoes it */}
-        {liveHidden > 0 && (
-          <div role="status" style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 10px", borderBottom: "1px solid var(--ink-faint)", background: "var(--c-danger)", color: "var(--paper-bright)", flexShrink: 0, fontSize: 11, fontWeight: 600 }}>
-            <Icon name="eyeOff" size={14} />
-            <span style={{ flex: 1, minWidth: 0 }}>{liveHidden} of {conditions.length} hidden on the plan — totals unchanged</span>
-            <button type="button" onClick={() => onToggleHidden(null)} title="Show every hidden condition again"
-              style={{ flexShrink: 0, padding: "2px 8px", borderRadius: 0, border: "1px solid var(--paper-bright)", background: "transparent", color: "var(--paper-bright)", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>Show all</button>
-          </div>
-        )}
+        <HiddenConditionsBar hidden={liveHidden} total={conditions.length} onShowAll={() => onToggleHidden(null)} />
         <div style={{ flex: 1, overflow: "auto" }}>
           {conditions.length === 0 && <div style={{ padding: "12px", color: "var(--ink-muted)" }}>No conditions yet — add one and start tracing.</div>}
           {condGroups.map((g) => (
