@@ -560,6 +560,7 @@ export default function TakeoffCanvas() {
   const [conditionDetails, setConditionDetails] = useState(true);
   const workspacePrefs = useWorkspaceLayout();
   const [premiumOpen, setPremiumOpen] = useState(false);
+  const premiumPrompted = useRef(false); // unprompted dialog: never twice in one app opening, even with storage blocked
   const workspaceLayout = workspacePrefs.enabled;
   const workspaceArrangement = workspacePrefs.layout;
   const [workspaceNavigationOpen, setWorkspaceNavigationOpen] = useState(false);
@@ -10389,7 +10390,7 @@ export default function TakeoffCanvas() {
           sheetLabel={(k) => tabLabel(k)}
           sheetDims={(k) => panelByKey(k)?.img}
           onMarkedSet={exportMarkedSet} markedSetDark={darkMode}
-          onClose={() => { setShowReport(false); if (shouldAutoPromptPremium(readPremiumPrompt(), shapes.length)) setPremiumOpen(true); }}
+          onClose={() => { setShowReport(false); if (!premiumPrompted.current && shouldAutoPromptPremium(readPremiumPrompt(), shapes.length)) { premiumPrompted.current = true; setPremiumOpen(true); } }}
         />
       )}
 
