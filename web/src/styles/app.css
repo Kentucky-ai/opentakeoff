@@ -7,6 +7,15 @@ html, body, #root {
   height: 100%;
 }
 
+/* The canvas shell is exactly one viewport and scrolls internally, never as a
+   page. Left visible, any child that pokes past an edge gives the DOCUMENT a
+   scrollbar — and with classic (always-on) scrollbars that bar takes 15px off
+   the viewport while the 100vh shell keeps its height, so the status bar's
+   bottom half slides under it. Screen only: print.css un-clips the shell. */
+@media screen {
+  .app-shell { overflow: clip; }
+}
+
 body {
   background: var(--paper-bright);
   color: var(--ink);
