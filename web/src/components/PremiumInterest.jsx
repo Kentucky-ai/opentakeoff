@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
-import { PREMIUM_FORM, ROLES, TRADES, INTERESTS, premiumPayload, sendPremiumInterest } from "../lib/premiumInterest.js";
+import { PREMIUM_FORM, ROLES, TRADES, INTERESTS, premiumPayload, sendPremiumInterest, writePremiumPrompt } from "../lib/premiumInterest.js";
 import "./premiumInterest.css";
 
 export default function PremiumInterest({ onClose, onOpenChange }) {
@@ -14,7 +14,7 @@ export default function PremiumInterest({ onClose, onOpenChange }) {
     const el = dialog.current, previous = document.activeElement; el.showModal(); onOpenChange(true);
     return () => { el.close(); onOpenChange(false); requestAnimationFrame(() => { const target = previous?.isConnected && previous !== document.body ? previous : document.querySelector("[data-premium-trigger]"); target?.focus(); }); };
   }, [onOpenChange]);
-  const close = () => { if (!busy.current) onClose(); };
+  const close = () => { if (busy.current) return; writePremiumPrompt("dismissed"); onClose(); };
   const submit = async (event) => {
     event.preventDefault();
     if (busy.current || !available) return;
@@ -23,7 +23,7 @@ export default function PremiumInterest({ onClose, onOpenChange }) {
       const payload = premiumPayload(Object.fromEntries(new FormData(event.currentTarget)), requestId.current);
       busy.current = true; setState("sending");
       await sendPremiumInterest(payload);
-      setState("success");
+      writePremiumPrompt("requested"); setState("success");
     } catch (e) { setError(e.name === "TimeoutError" ? "The connection timed out. Your entries are still here; please try again." : e.message); setState("idle"); }
     finally { busy.current = false; }
   };

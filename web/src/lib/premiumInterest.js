@@ -19,3 +19,20 @@ export async function sendPremiumInterest(body, send = fetch) {
   const html = await response.text();
   if (/id=["']root["']/.test(html)) throw new Error("Requests are temporarily unavailable. Your entries are still here; please try again later.");
 }
+// Unprompted dialog policy: only after real work, at most once per snooze window, never after a request.
+export const PREMIUM_PROMPT_KEY = "opentakeoff.premiumPrompt";
+export const PREMIUM_PROMPT_SNOOZE_MS = 30 * 24 * 60 * 60 * 1000;
+export function shouldAutoPromptPremium(record, shapeCount, now = Date.now()) {
+  if (!(shapeCount > 0)) return false;
+  if (!record) return true;
+  if (record.status === "requested") return false;
+  return !(now - record.at < PREMIUM_PROMPT_SNOOZE_MS);
+}
+/** @param {Pick<Storage, "getItem">} [storage] */
+export function readPremiumPrompt(storage = globalThis.localStorage) {
+  try { const record = JSON.parse(storage.getItem(PREMIUM_PROMPT_KEY)); return record && typeof record.at === "number" ? record : null; } catch { return null; }
+}
+/** @param {"requested" | "dismissed"} status @param {Pick<Storage, "getItem" | "setItem">} [storage] */
+export function writePremiumPrompt(status, storage = globalThis.localStorage, now = Date.now()) {
+  try { if (status === "requested" || readPremiumPrompt(storage)?.status !== "requested") storage.setItem(PREMIUM_PROMPT_KEY, JSON.stringify({status, at: now})); } catch { /* private window: the prompt may repeat */ }
+}
