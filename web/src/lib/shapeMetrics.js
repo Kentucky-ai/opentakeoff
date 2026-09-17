@@ -13,6 +13,26 @@
 import { closedMetrics, openLen, polyWithHolesMetrics } from "./geometry.js";
 import { flattenCurve } from "./curve.js";
 
+/** The vertical legs a linear run carries (#441): rise and drop in feet.
+ *  The condition's rise_ft / drop_ft are the DEFAULTS for its runs and
+ *  re-flow them live (the way thickness does); a run that carries its own
+ *  rise_ft or drop_ft overrides that field outright, even to 0 — a run with
+ *  no drop is a stated fact, not a missing one. Each field resolves on its
+ *  own, so a run can keep the condition's rise and override only its drop.
+ *  Negative or non-numeric values read as 0. */
+export function linearVerticalFt(s, cond) {
+  // a DERIVED run (base minted from a room's perimeter, a transition where
+  // two finishes meet) is a floor-level line by construction — it never
+  // takes a leg, whatever its condition's defaults say
+  if (s?.origin?.derived) return { rise: 0, drop: 0 };
+  const pick = (own, dflt) => {
+    const v = own != null && own !== "" ? Number(own) : Number(dflt);
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  };
+  return { rise: pick(s?.rise_ft, cond?.rise_ft), drop: pick(s?.drop_ft, cond?.drop_ft) };
+}
+
+/** @returns {{ area_sf?: number, perimeter_lf?: number, count?: number, plan_lf?: number, vertical_lf?: number }} */
 export function computeShapeMetrics(s, dims, upp, cond) {
   const pts = (s.verts_norm || []).map(([nx, ny]) => [nx * dims.w, ny * dims.h]);
   const u = upp || 0;
@@ -29,9 +49,22 @@ export function computeShapeMetrics(s, dims, upp, cond) {
     return { area_sf: +(LF * h).toFixed(2), perimeter_lf: +LF.toFixed(2) };
   }
   if (s.measure_role === "linear") {
-    const LF = openLen(s.curved ? flattenCurve(pts) : pts) * u;
+    // #441 — a run's length is what the material actually travels: the plan
+    // (2D) trace PLUS its vertical legs (a home run drops 8 ft to the panel,
+    // rises 2 ft to a box). perimeter_lf stays the TOTAL so every summer,
+    // report, workbook and marked set keep reading one number; plan_lf and
+    // vertical_lf ride beside it only when a vertical exists, so a flat run's
+    // record is byte-for-byte what it always was.
+    const plan = openLen(s.curved ? flattenCurve(pts) : pts) * u;
+    const { rise, drop } = linearVerticalFt(s, cond);
+    const vert = rise + drop;
+    const LF = plan + vert;
     const tIn = Number(cond?.thickness_in) || 0;
-    return { perimeter_lf: +LF.toFixed(2), area_sf: tIn > 0 ? +((LF * tIn) / 12).toFixed(2) : 0 };
+    return {
+      perimeter_lf: +LF.toFixed(2),
+      area_sf: tIn > 0 ? +((LF * tIn) / 12).toFixed(2) : 0,
+      ...(vert > 0 ? { plan_lf: +plan.toFixed(2), vertical_lf: +vert.toFixed(2) } : {}),
+    };
   }
   // #137 — a shape carrying verts_norm_holes (a reconciled Cut Out) nets its
   // hole(s) out of area and adds their boundary into perimeter, so a later

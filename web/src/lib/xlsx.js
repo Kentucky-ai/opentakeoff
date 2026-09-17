@@ -224,11 +224,11 @@ export function reportWorkbook({ rows = [], bySheet = [], shapeRows = [], cols =
   // the note line flags it so a metric reader isn't surprised.
   const shapesTab = [
     ["Per-shape measured quantities — no multiplier or waste; deducts negative; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF" + (M ? ". Raw internal SF/LF (display units: metric)" : "")],
-    ["Shape", "Sheet", "Sheet ID", "Finish", "Role", "Area SF", "LF", "EA", "Height ft", "Height override", "Origin"],
+    ["Shape", "Sheet", "Sheet ID", "Finish", "Role", "Area SF", "LF", "EA", "Height ft", "Height override", "Rise ft", "Drop ft", "Origin"],
   ];
   for (const r of shapeRows) {
     shapesTab.push([String(r.shape_id), String(r.sheet), String(r.sheet_id), r.finish, r.role,
-      r.area_sf, r.lf, r.ea, r.height_ft, r.height_override ? "yes" : "", r.origin]);
+      r.area_sf, r.lf, r.ea, r.height_ft, r.height_override ? "yes" : "", r.rise_ft ?? 0, r.drop_ft ?? 0, r.origin]);
   }
 
   // By floor × room — the cross-section the other tabs each flatten one axis

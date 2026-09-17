@@ -47,6 +47,16 @@
     "height_ft": {
       "type": "number"
     },
+    "rise_ft": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Linear runs only: this run's own vertical leg UP in feet, overriding the condition's rise_ft (0 included). Absent means the condition default applies."
+    },
+    "drop_ft": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Linear runs only: this run's own vertical leg DOWN in feet, overriding the condition's drop_ft (0 included). Absent means the condition default applies."
+    },
     "label": {
       "type": "string"
     },

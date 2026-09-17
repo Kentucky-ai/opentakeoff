@@ -2863,3 +2863,73 @@ test("edit_annotation changes only text, round-trips and undoes; no approval or 
     assert.equal(session.approvals.length, 0);
   } finally { await client.close(); await server.close(); }
 });
+
+// #441 — Drop and Rise: a linear run's LF is its plan trace plus its vertical legs.
+test("measure_line rise/drop: condition defaults, per-run override, edit_shape clear, edit_condition re-flow, undo", async () => {
+  const client = await pair();
+  await call(client, "load_plan", { path: PLAN });
+  await call(client, "set_scale", { sheet: KEY, use_detected: true });
+
+  // 300 px at 1/4" = 1'-0" (36 px/ft at render scale 2) = 8.33 LF plan
+  const flat = await call(client, "measure_line", { sheet: KEY, pts: [[600, 400], [900, 400]], condition: "EC-1" });
+  assert.equal(flat.isError, false);
+  assert.equal(flat.data.length_lf, 8.33);
+  assert.equal(flat.data.plan_lf, undefined, "a flat run carries no split");
+
+  // the condition's defaults re-flow the existing run and seed the next
+  const knob = await call(client, "edit_condition", { condition: "EC-1", rise_ft: 2, drop_ft: 8 });
+  assert.equal(knob.isError, false);
+  assert.equal(knob.data.rise_ft, 2);
+  assert.equal(knob.data.drop_ft, 8);
+  let sum = await call(client, "takeoff_summary");
+  assert.equal(sum.data.conditions[0].lf, 18.33, "edit_condition re-flowed the committed run");
+
+  const dflt = await call(client, "measure_line", { sheet: KEY, pts: [[600, 500], [900, 500]], condition: "EC-1" });
+  assert.equal(dflt.data.length_lf, 18.33);
+  assert.equal(dflt.data.plan_lf, 8.33);
+  assert.equal(dflt.data.vertical_lf, 10);
+  assert.equal(dflt.data.rise_ft, 2);
+  assert.equal(dflt.data.drop_ft, 8);
+
+  // a run's own drop (0 here) beats the condition's 8; rise still defaults to 2
+  const own = await call(client, "measure_line", { sheet: KEY, pts: [[600, 600], [900, 600]], condition: "EC-1", drop_ft: 0 });
+  assert.equal(own.data.length_lf, 10.33);
+  assert.equal(own.data.vertical_lf, 2);
+  sum = await call(client, "takeoff_summary");
+  assert.equal(sum.data.conditions[0].lf, 46.99, "18.33 + 18.33 + 10.33 → the report sums totals");
+
+  // edit_shape: set a leg, then clear it (null) so the default applies again
+  const set = await call(client, "edit_shape", { shape_id: own.data.shape_id, drop_ft: 4 });
+  assert.equal(set.isError, false);
+  assert.deepEqual(set.data.changed, ["drop_ft"]);
+  assert.equal(set.data.perimeter_lf, 14.33);
+  assert.equal(set.data.vertical_lf, 6);
+  const clr = await call(client, "edit_shape", { shape_id: own.data.shape_id, drop_ft: null });
+  assert.equal(clr.data.perimeter_lf, 18.33, "cleared → the condition's 8 ft drop applies");
+
+  // legs belong to linear runs only
+  const wall = await call(client, "measure_surface", { sheet: KEY, pts: [[100, 100], [400, 100]], condition: "CT-W9", height_ft: 9 });
+  const bad = await call(client, "edit_shape", { shape_id: wall.data.shape_id, rise_ft: 3 });
+  assert.equal(bad.isError, true);
+  assert.match(bad.data.error, /linear run's vertical legs/);
+
+  // the export carries the split on the shape record, and the condition its defaults
+  const exp = await call(client, "export_takeoff");
+  const conds = exp.data.conditions as any[];
+  const ec = conds.find((c) => c.finish_tag === "EC-1");
+  assert.equal(ec.rise_ft, 2);
+  assert.equal(ec.drop_ft, 8);
+  const shp = (exp.data.shapes as any[]).find((x) => x.id === dflt.data.shape_id);
+  assert.equal(shp.computed.perimeter_lf, 18.33);
+  assert.equal(shp.computed.plan_lf, 8.33);
+  assert.equal(shp.computed.vertical_lf, 10);
+
+  // undo the knob write: the defaults go, and every run without its own leg re-flows flat
+  const zero = await call(client, "edit_condition", { condition: "EC-1", rise_ft: 0, drop_ft: 0 });
+  assert.equal(zero.isError, false);
+  sum = await call(client, "takeoff_summary");
+  assert.equal(sum.data.conditions.find((c: any) => c.finish_tag === "EC-1").lf, 24.99, "3 flat runs × 8.33");
+  await call(client, "undo_last");
+  sum = await call(client, "takeoff_summary");
+  assert.equal(sum.data.conditions.find((c: any) => c.finish_tag === "EC-1").lf, 54.99, "undo restored the legs and re-flowed all three runs (the cleared override now takes the default too)");
+});

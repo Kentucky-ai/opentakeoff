@@ -48,7 +48,7 @@ export function pendingByProposal(shapes, proposals = []) {
 }
 
 /** The knob names a condition-edit proposal may touch, in display order. */
-export const CONDITION_EDIT_FIELDS = ["finish_tag", "waste_pct", "multiplier", "height_ft", "roll_setup"];
+export const CONDITION_EDIT_FIELDS = ["finish_tag", "waste_pct", "multiplier", "height_ft", "rise_ft", "drop_ft", "roll_setup"];
 
 /** One human line per proposed change: { field, from, to } with display
  *  strings. `roll_setup` collapses to its material class (or "off"). */
@@ -63,6 +63,8 @@ export function describeConditionEdit(cond, proposal) {
     else if (f === "waste_pct") rows.push({ field: "waste", from: `${Number(cur.waste_pct) || 0}%`, to: `${Number(diff.waste_pct)}%` });
     else if (f === "multiplier") rows.push({ field: "multiplier", from: `×${Number(cur.multiplier) || 1}`, to: `×${Number(diff.multiplier)}` });
     else if (f === "height_ft") rows.push({ field: "height", from: cur.height_ft != null ? `${cur.height_ft} ft` : "—", to: `${Number(diff.height_ft)} ft` });
+    else if (f === "rise_ft") rows.push({ field: "rise", from: cur.rise_ft != null ? `${cur.rise_ft} ft` : "—", to: `${Number(diff.rise_ft)} ft` });
+    else if (f === "drop_ft") rows.push({ field: "drop", from: cur.drop_ft != null ? `${cur.drop_ft} ft` : "—", to: `${Number(diff.drop_ft)} ft` });
     else if (f === "roll_setup") rows.push({ field: "roll goods", from: roll(cur.roll_setup), to: roll(diff.roll_setup) });
   }
   return rows;
@@ -78,6 +80,9 @@ export function conditionEditPatch(proposal) {
   if (Number.isFinite(diff.waste_pct) && diff.waste_pct >= 0) patch.waste_pct = diff.waste_pct;
   if (Number.isFinite(diff.multiplier) && diff.multiplier > 0) patch.multiplier = diff.multiplier;
   if (Number.isFinite(diff.height_ft) && diff.height_ft > 0) patch.height_ft = diff.height_ft;
+  // rise/drop accept 0 — "no vertical on this condition" is a real proposal
+  if (Number.isFinite(diff.rise_ft) && diff.rise_ft >= 0) patch.rise_ft = diff.rise_ft;
+  if (Number.isFinite(diff.drop_ft) && diff.drop_ft >= 0) patch.drop_ft = diff.drop_ft;
   if ("roll_setup" in diff) patch.roll_setup = diff.roll_setup === null || diff.roll_setup === undefined ? undefined : diff.roll_setup;
   return patch;
 }
