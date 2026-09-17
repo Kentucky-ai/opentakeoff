@@ -249,7 +249,7 @@ A **condition** is one finish—`LVT-1`, `CPT-2`, `RB-1`—and it's what every m
 **+ condition** (in the Takeoffs panel footer, the top-bar palette band, or the compact strip) prompts for a finish tag and mints the condition with an auto-rotated color and hatch. The active condition's editor appears inline—in the panel's active row and in the top-bar band:
 
 - **Finish tag**—rename in place.
-- **× multiplier**—measure one identical unit, count it N times. Shows as ×N everywhere.
+- **× N units** (the multiplier, right after the tag)—for a repeating layout: measure one identical unit (one apartment, one hotel room) and count it N times instead of tracing it N times. Every quantity on the condition multiplies, the Report and the buy list included; the field lights cobalt while it's above 1 and the row wears a cobalt **×N** chip. Same finish somewhere that shouldn't multiply (the corridor)? Give that area its own condition with **⎘ Duplicate for another area…** and leave it at ×1.
 - **Waste %**—the allowance the Report adds on top of the measured quantity. Per condition, matched to the install: ~8% straight-lay LVP, ~15% diagonal, ~20% herringbone.
 - **Line** color, **Fill** color (or **No fill**), and the **hatch pattern**. In the top-bar band, **Line** and **Fill** are two swatch buttons that each open their own palette (one at a time; Esc or a click outside closes)—the swatch shows the current color, so the band reads at a glance. The docked panel keeps both palettes inline.—a picker grid of CAD hatches (plank, herringbone, tile, terrazzo…) that names the pattern under your cursor, so the canvas reads like the real drawing.
 - **Line style**—the outline dash for this finish's floor and linear takeoffs, on canvas and in the Marked Set.
