@@ -436,12 +436,7 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
         <input name="condition-finish-tag" value={c.finish_tag} onChange={(e) => onUpdateCond({ finish_tag: e.target.value })}
           title="Rename this condition / finish tag"
           style={{ width: 88, padding: "3px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontFamily: "var(--f-mono)", fontWeight: 700, fontSize: 12, color: "var(--ink)" }} />
-        <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Multiply this condition by N identical units (measure one, ×N)">
-          <span style={{ color: "var(--ink-muted)" }}>×</span>
-          <input name="condition-multiplier" type="number" min="1" step="1" value={c.multiplier || 1}
-            onChange={(e) => onUpdateCond({ multiplier: Math.max(1, parseInt(e.target.value, 10) || 1) })}
-            style={{ width: 46, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12 }} />
-        </span>
+        <MultiplierField value={c.multiplier || 1} onChange={(n) => onUpdateCond({ multiplier: n })} />
         <span style={{ display: "flex", alignItems: "center", gap: 4 }} title="Waste % — a flooring allowance added on top of the measured quantity in the Report. You choose it per condition (e.g. ~8% straight-lay LVP, ~15% diagonal, ~20% herringbone).">
           <span style={{ color: "var(--ink-muted)" }}>Waste</span>
           <input name="condition-waste-pct" type="number" min="0" step="1" value={c.waste_pct ?? 0}
@@ -753,6 +748,38 @@ function TransitionsAction({ cond: c, sources, draft, setDraft, result, setResul
   );
 }
 
+// The tag's floor in a condition row — wide enough for "CPT-12 ×120". Below
+// it the row wraps its action cluster rather than squeeze the tag away.
+export const ROW_TAG_MIN_W = 104;
+
+// ×N on a condition row — a multiplier silently scales every quantity under
+// the condition, so it reads as a chip, not as muted text after the tag.
+// Nothing at ×1.
+export function MultiplierChip({ mult }) {
+  if (!(mult > 1)) return null;
+  return (
+    <span data-multiplier-chip title={`Every quantity on this condition is multiplied by ${mult} — measure one unit, count it ${mult} times`}
+      style={{ marginLeft: 6, padding: "0 4px", fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, fontWeight: 700, color: "var(--cobalt)", border: "1px solid var(--cobalt)", borderRadius: 3 }}>×{mult}</span>
+  );
+}
+
+// "× [N] units" in the condition editor — the repeating-unit multiplier (trace
+// one apartment, count it 120 times). Labelled because a bare × beside a small
+// number box read as nothing; lit cobalt while it is actually multiplying.
+export function MultiplierField({ value, onChange }) {
+  const live = value > 1;
+  return (
+    <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "default" }}
+      title="Repeating units — measure one identical unit and multiply every quantity on this condition by N (Report and buy list included). Need the same finish at ×1 elsewhere? Supporting Materials → Duplicate for another area.">
+      <span style={{ color: live ? "var(--cobalt)" : "var(--ink-muted)", fontWeight: live ? 700 : 400 }}>×</span>
+      <input name="condition-multiplier" type="number" min="1" step="1" value={value}
+        onChange={(e) => onChange(Math.max(1, parseInt(e.target.value, 10) || 1))}
+        style={{ width: 46, padding: "3px 5px", borderRadius: 0, border: `1px solid ${live ? "var(--cobalt)" : "var(--ink-faint)"}`, fontSize: 12, fontWeight: live ? 700 : 400 }} />
+      <span style={{ color: live ? "var(--cobalt)" : "var(--ink-muted)" }}>{value === 1 ? "unit" : "units"}</span>
+    </label>
+  );
+}
+
 // Eye (#440) — leads a condition row, where a layer list puts it. Click hides /
 // shows that condition's takeoffs on the canvas; ⌥-click isolates it.
 // stopPropagation on click AND double-click: the row's own gestures (activate /
@@ -999,15 +1026,18 @@ function TakeoffsPanel({
           }}
           onDoubleClick={() => onLocate(c.id)}
           title={reassigning ? "Reassign selected shape to this condition" : keyText("Make this the active condition (double-click zooms to its takeoffs · ⌘-click / ⇧-click selects for bulk edit · drag to the top-bar palette for one-click access)")}
-          style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", cursor: "pointer", outline: reassigning ? "1px dashed var(--cobalt)" : "none", outlineOffset: -3, userSelect: "none" }}>
+          style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, rowGap: 5, padding: "9px 12px", cursor: "pointer", outline: reassigning ? "1px dashed var(--cobalt)" : "none", outlineOffset: -3, userSelect: "none" }}>
           {hot && <span title={pinned ? `Palette shortcut — press ${hIdx + 1} to activate` : `Press ${hIdx + 1} to activate (pin to lock this number)`} style={{ fontSize: 9, fontFamily: "var(--f-mono,monospace)", color: pinned ? "var(--cobalt)" : "var(--ink-muted)", border: `1px solid ${pinned ? "var(--cobalt)" : "var(--ink-faint)"}`, borderRadius: 3, padding: "0 3px", flexShrink: 0 }}>{hIdx + 1}</span>}
           <ConditionEye tag={c.finish_tag} hidden={hidden} onToggle={(isolate) => onToggleHidden(c.id, isolate)} />
           <span style={{ borderRadius: 4, overflow: "hidden", lineHeight: 0, flexShrink: 0, opacity: hidden ? 0.35 : 1 }}><HatchSwatch type={c.hatch || "solid"} line={c.color} fill={c.fill} /></span>
-          <div style={{ minWidth: 0, flex: 1, opacity: hidden ? 0.55 : 1 }}>
+          {/* the tag is the row's identity: it holds a floor (ROW_TAG_MIN_W) and
+              the action cluster wraps under it on a narrow panel, instead of the
+              tag collapsing to nothing beside buttons that never shrink */}
+          <div style={{ minWidth: 0, flex: `1 1 ${ROW_TAG_MIN_W}px`, opacity: hidden ? 0.55 : 1 }}>
             <div style={{ fontWeight: on ? 700 : 600, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {/* a twin reads as one: whose it is, and how many of its rows have gone their own way */}
               {c.variant_of ? <span aria-hidden title="A twin — its materials follow another condition" style={{ color: "var(--ink-faint)", fontWeight: 400 }}>↳ </span> : null}
-              {c.finish_tag}{mult > 1 ? <span style={{ color: "var(--ink-muted)", fontWeight: 500 }}> ×{mult}</span> : null}
+              {c.finish_tag}<MultiplierChip mult={mult} />
               {c.variant_of && localCount(c) > 0 ? (
                 <span title={`${localCount(c)} material row${localCount(c) === 1 ? "" : "s"} no longer follow${localCount(c) === 1 ? "s" : ""} the family`}
                   style={{ marginLeft: 5, fontFamily: "var(--f-mono,monospace)", fontSize: 9, fontWeight: 500, color: "var(--cobalt)", border: "1px solid var(--cobalt)", borderRadius: 3, padding: "0 3px" }}>{localCount(c)}</span>
@@ -1022,6 +1052,7 @@ function TakeoffsPanel({
               ) : null}
             </div>
           </div>
+          <span data-row-actions style={{ display: "inline-flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: "auto" }}>
           <span style={{ fontFamily: "var(--f-mono,monospace)", fontSize: 10.5, color: "var(--ink-muted)", flexShrink: 0 }}>{shapeCount}▦</span>
           {/* scope collision (#366): this condition shares floor with another
               (or with itself — a double trace). The badge is the count; the
@@ -1044,6 +1075,7 @@ function TakeoffsPanel({
           </button>
           <button onClick={(e) => { e.stopPropagation(); onDeleteCondition(c.id); }} title="Delete this condition (and its takeoffs)"
             style={{ flexShrink: 0, padding: "2px 6px", borderRadius: 0, border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--c-danger)", cursor: "pointer", fontSize: 12 }}>✕</button>
+          </span>
         </div>
         {/* properties for the ACTIVE condition — the appearance editing that
             used to live in its own toolbar row above the canvas. Extracted to
