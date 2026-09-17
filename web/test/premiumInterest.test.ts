@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {premiumPayload, sendPremiumInterest} from '../src/lib/premiumInterest.js';
+import {premiumPayload, sendPremiumInterest, shouldAutoPromptPremium, readPremiumPrompt, writePremiumPrompt, PREMIUM_PROMPT_SNOOZE_MS} from '../src/lib/premiumInterest.js';
 const fields={email:' QA@EXAMPLE.COM ',name:' Demo ',company:'Example',role:'Estimator',trade:'Flooring / finishes',interest:'Native iPad / tablet takeoff'};
 test('interest payload contains only submitted contact fields and explicit consent',()=>{
   const body=premiumPayload({...fields,project:'private',shapes:['private'],token:'secret',updates:'on'},'test-id');
@@ -35,4 +35,19 @@ test('submission uses encoded same-origin POST and waits for acknowledgment',asy
     assert.equal(new URLSearchParams(String(options?.body)).get('email'),'qa@example.com');
     return new Response('<h1>Thank you!</h1>');
   });
+});
+test('unprompted dialog waits for real work, snoozes after a dismissal and never follows a request',()=>{
+  assert.equal(shouldAutoPromptPremium(null,0),false);
+  assert.equal(shouldAutoPromptPremium(null,3),true);
+  assert.equal(shouldAutoPromptPremium({status:'dismissed',at:1000},3,1000+PREMIUM_PROMPT_SNOOZE_MS-1),false);
+  assert.equal(shouldAutoPromptPremium({status:'dismissed',at:1000},3,1000+PREMIUM_PROMPT_SNOOZE_MS),true);
+  assert.equal(shouldAutoPromptPremium({status:'requested',at:1000},3,1000+PREMIUM_PROMPT_SNOOZE_MS*9),false);
+});
+test('prompt record survives broken storage and a later dismissal never overwrites a request',()=>{
+  const data=new Map(), storage={getItem:(k:string)=>data.get(k)??null,setItem:(k:string,v:string)=>{data.set(k,v);}};
+  assert.equal(readPremiumPrompt(storage),null);
+  writePremiumPrompt('requested',storage,5); writePremiumPrompt('dismissed',storage,9);
+  assert.deepEqual(readPremiumPrompt(storage),{status:'requested',at:5});
+  const broken={getItem:()=>{throw new Error('blocked');},setItem:()=>{throw new Error('blocked');}};
+  assert.equal(readPremiumPrompt(broken),null); writePremiumPrompt('dismissed',broken);
 });

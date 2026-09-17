@@ -134,6 +134,7 @@ import { computeRollTakeoff, seamLfByShape } from "../lib/rollTakeoff.js";
 import AgentPanel from "../components/AgentPanel.jsx";
 import WorkspacePanel from "../components/WorkspacePanel.jsx";
 import PremiumInterest from "../components/PremiumInterest.jsx";
+import { shouldAutoPromptPremium, readPremiumPrompt } from "../lib/premiumInterest.js";
 import "../styles/premiumWorkspace.css";
 import { WorkspaceChrome, WorkspaceNavigator, WorkspaceCommandMenu } from "../components/WorkspaceChrome.jsx";
 import { useWorkspaceLayout, WorkspaceLayoutDialog, DockHandle, DockTargets } from "../components/WorkspaceLayout.jsx";
@@ -10388,7 +10389,7 @@ export default function TakeoffCanvas() {
           sheetLabel={(k) => tabLabel(k)}
           sheetDims={(k) => panelByKey(k)?.img}
           onMarkedSet={exportMarkedSet} markedSetDark={darkMode}
-          onClose={() => setShowReport(false)}
+          onClose={() => { setShowReport(false); if (shouldAutoPromptPremium(readPremiumPrompt(), shapes.length)) setPremiumOpen(true); }}
         />
       )}
 
