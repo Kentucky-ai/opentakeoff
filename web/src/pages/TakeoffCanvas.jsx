@@ -8376,8 +8376,8 @@ export default function TakeoffCanvas() {
           onOpenChange={onMenuDepth}
           face={<span style={{ fontWeight: 700, letterSpacing: "0.08em" }}>⋯</span>}
           items={[
-            { id: "premium-interest", label: "Request Premium — join the early-access list", onSelect: () => setPremiumOpen(true) },
-            { id: "workspace-preview", label: workspaceLayout ? "Classic layout" : "Premium workspace — arrange your workspace", onSelect: () => workspacePrefs.setEnabled(!workspaceLayout) },
+            { id: "premium-interest", label: "Request Premium — join the early-access list", highlight: true, onSelect: () => setPremiumOpen(true) },
+            { id: "workspace-preview", label: workspaceLayout ? "Classic layout" : "Premium layout — compact controls", onSelect: () => workspacePrefs.setEnabled(!workspaceLayout) },
             { id: "guide", label: "How OpenTakeoff works", shortcut: "?", onSelect: () => setGuideOpen(true) },
             { id: "theme", label: theme === "dark" ? "Light chrome" : "Dark chrome", onSelect: toggleTheme },
             "divider",
