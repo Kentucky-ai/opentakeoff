@@ -1156,3 +1156,7 @@ current support, architecture, saved records, workflows and quantity meanings.
 An MCP agent reads the packaged pages at `takeoff://wiki`; a person follows the
 same pages here. The [stitching workflow](wiki/workflows.md#human-open-stitch-and-measure)
 explains the browser controls and the current MCP transport limit explicitly.
+
+## Privacy and terms
+
+Open the guide (`?`) for links to the [Privacy Policy](https://opentakeoff.kentucky-ai.com/privacy/) and [Terms of Service](https://opentakeoff.kentucky-ai.com/terms/). These explain local storage, optional cloud and AI connections, contributions, and responsibility for reviewed estimates.

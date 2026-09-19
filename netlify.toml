@@ -39,6 +39,27 @@
   to     = "/.netlify/functions/parse-schedule"
   status = 200
 
+# Public legal documents must resolve before the canvas SPA fallback.
+[[redirects]]
+  from   = "/privacy"
+  to     = "/privacy/index.html"
+  status = 200
+
+[[redirects]]
+  from   = "/privacy/"
+  to     = "/privacy/index.html"
+  status = 200
+
+[[redirects]]
+  from   = "/terms"
+  to     = "/terms/index.html"
+  status = 200
+
+[[redirects]]
+  from   = "/terms/"
+  to     = "/terms/index.html"
+  status = 200
+
 # Single-page app: serve index.html for any path.
 [[redirects]]
   from   = "/*"
