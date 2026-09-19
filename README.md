@@ -781,3 +781,7 @@ packaged pages at `takeoff://wiki` and `takeoff://wiki/{page}` before loading a
 plan. [AGENTS.md](AGENTS.md) is the contributor router; detailed guidance lives
 in the wiki. CI checks packaged wiki content, tool counts/inventory, schema
 references and links against source.
+
+## Privacy and terms
+
+[Privacy Policy](https://opentakeoff.kentucky-ai.com/privacy/) · [Terms of Service](https://opentakeoff.kentucky-ai.com/terms/). Both are also linked in the in-app guide (`?`). The Apache-2.0 software license remains unchanged.
