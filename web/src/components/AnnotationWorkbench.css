@@ -34,3 +34,6 @@
 .annotation-match-list input{accent-color:var(--cobalt)}
 .annotation-match-number{font-family:var(--f-mono);color:var(--cobalt);min-width:1.5em}
 .annotation-match-list small{color:var(--ink-muted);margin-left:auto}
+.annotation-split{display:inline-flex;align-items:center;gap:0}
+.annotation-split>button{border-top-right-radius:0;border-bottom-right-radius:0}
+.annotation-split>button svg{flex:none}

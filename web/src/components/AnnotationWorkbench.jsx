@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Icon } from '../brand/icons.jsx';
 import { ANNOTATION_DEFAULTS, ANNOTATION_PRESETS, annotationStyle, annotationScene, pathString, box, bounds, intersects, markupBounds, shiftedMarkup, textMatches } from '../lib/annotationTools.js';
+import ToolMenu from './ToolMenu.jsx';
 import './AnnotationWorkbench.css';
 
 const supported = m => !m.reference_only && ['arrow','highlight','callout','cloud','text'].includes(m.type);
@@ -220,21 +221,36 @@ export function useAnnotationWorkbench(options) {
   };
   const shownStyle=!active&&selectedRows.length?annotationStyle({...style,...selectedRows[0].annotation_style,color:selectedRows[0].color||style.color}):style;
   const controls=(active||selectedRows.length>0)&&!editor&&!review;
-  const toolbar=<div className="annotation-workbench" onKeyDown={e=>e.stopPropagation()}>
-    <div className="annotation-tool-row" role="toolbar" aria-label="Annotation tools">
+  // Compact (workspace) chrome: the tool row folds into one split button in the
+  // Condition row — face re-arms the last tool, caret lists them all.
+  const [lastKey,lastLabel,lastIcon]=tools.find(t=>t[0]===mode)||tools[0];
+  const control=<span className="annotation-split" role="group" aria-label="Annotate">
+    <button type="button" aria-pressed={active} disabled={!options.ready} onClick={()=>active?options.setTool('select'):arm(lastKey)} title={active?`${lastLabel} armed — click to put it down`:`Annotate — ${lastLabel}`}>{toolIcon(lastIcon)}<span>{lastLabel}</span></button>
+    <ToolMenu title="All annotate tools" disabled={!options.ready} onOpenChange={options.onMenuDepth} faceStyle={{padding:'4px 5px'}} face={null} items={[
+      {section:'Annotate'},
+      ...tools.map(([key,label,icon])=>({id:key,checked:active&&mode===key,iconNode:toolIcon(icon),label,onSelect:()=>arm(key),title:key==='selection'?'Sweep a box to select editable markups; Shift-click adds individual marks':label})),
+      'divider',
+      {id:'favorites',checked:presetOpen,icon:'stamp',label:'Favorites',onSelect:()=>setPresetOpen(v=>!v),title:'Saved tool styles'},
+    ]}/>
+  </span>;
+  const hasRows=!options.compact||presetOpen||controls||editor||review;
+  const toolbar=!hasRows?null:<div className="annotation-workbench" onKeyDown={e=>e.stopPropagation()}>
+    {!options.compact&&<div className="annotation-tool-row" role="toolbar" aria-label="Annotation tools">
       <span className="annotation-caption">Annotate</span>
       {tools.map(([key,label,icon])=><button key={key} type="button" aria-pressed={active&&mode===key} disabled={!options.ready} onClick={()=>arm(key)} title={key==='selection'?'Sweep a box to select editable markups; Shift-click adds individual marks':label}>{toolIcon(icon)}<span>{label}</span></button>)}
       <span className="annotation-divider"/>
       <button type="button" aria-expanded={presetOpen} onClick={()=>setPresetOpen(v=>!v)}><Icon name="stamp" size={17}/>Favorites</button>
       {selectedRows.length>0&&!active&&<span className="annotation-count">{selectedRows.length} selected</span>}
       {busy&&<span role="status" className="annotation-hint">Reading this sheet…</span>}
-    </div>
+    </div>}
     {presetOpen&&<div className="annotation-favorites">
       {presets.map(p=><button key={p.id} onClick={()=>{arm(p.tool);setStyles(s=>({...s,[p.tool]:annotationStyle(p.style)}));setPresetOpen(false);}}><i style={{background:annotationStyle(p.style).color}}/>{p.name}</button>)}
       <input aria-label="Favorite name" placeholder="Name this style" maxLength={40} value={presetName} onChange={e=>setPresetName(e.target.value)}/>
       <button disabled={!presetName.trim()||presets.length>=50} onClick={()=>{setPresets(ps=>[...ps,{id:id(),name:presetName.trim(),tool:mode,style:shownStyle}]);setPresetName('');}}>Save favorite</button>
     </div>}
     {controls&&<div className="annotation-properties" aria-label="Annotation properties">
+      {options.compact&&selectedRows.length>0&&!active&&<span className="annotation-count">{selectedRows.length} selected</span>}
+      {options.compact&&busy&&<span role="status" className="annotation-hint" style={{marginLeft:0}}>Reading this sheet…</span>}
       <div className="annotation-swatches">{colors.map(c=><button key={c} aria-label={`Ink ${c}`} aria-pressed={shownStyle.color===c} style={{'--swatch':c}} onClick={()=>setStyle({color:c})}/>)}</div>
       <label>Weight<select aria-label="Annotation line weight" value={shownStyle.stroke_pt} onChange={e=>setStyle({stroke_pt:+e.target.value})}>{[.5,1,1.5,2,3,4,6].map(v=><option key={v} value={v}>{v} pt</option>)}</select></label>
       <label>Line<select aria-label="Annotation line style" value={shownStyle.line_style} onChange={e=>setStyle({line_style:e.target.value})}>{['solid','dashed','dotted'].map(v=><option key={v}>{v}</option>)}</select></label>
@@ -257,5 +273,5 @@ export function useAnnotationWorkbench(options) {
     {review&&(()=>{const p=options.panels.find(p=>p.key===review.key);if(!p)return null;return <g transform={`translate(${p.xOffset},0)`}>{review.rows.map((r,i)=>{const [a,b]=r.rect,z=options.zoom;return <g key={i} role="checkbox" tabIndex={0} aria-label={`Sheet match ${i+1}: ${r.text}`} aria-checked={r.checked} onKeyDown={e=>{if(e.key===' '||e.key==='Enter'){e.preventDefault();e.stopPropagation();toggleReview(i);}}} style={{pointerEvents:'all',cursor:'pointer'}} onPointerDown={e=>e.stopPropagation()} onClick={e=>{e.stopPropagation();toggleReview(i);}}><rect x={a[0]-4/z} y={a[1]-4/z} width={Math.max(10/z,b[0]-a[0]+8/z)} height={Math.max(10/z,b[1]-a[1]+8/z)} fill={r.checked?'#2563eb':'#ed9a23'} fillOpacity={r.checked?.13:.05} stroke={r.checked?'#2563eb':'#ed9a23'} strokeWidth={2/z} strokeDasharray={r.checked?undefined:`${4/z} ${3/z}`}/><text x={a[0]} y={a[1]-8/z} fontSize={11/z} fill={r.checked?'#2563eb':'#b66b00'}>{i+1}{r.held?' ?':''}</text></g>;})}</g>;})()}
     <g ref={preview} style={{pointerEvents:'none'}}/>
   </g>;
-  return {toolbar,layer,selected,active,onPointerDownCapture:onDown,onPointerMoveCapture:onMove,onPointerUpCapture:onUp,onDoubleClickCapture:onDouble,onPointerCancelCapture:e=>{if(gesture.current){stop(e);clear();}},render:(m,p)=>m.annotation_style&&supported(m)?<AnnotationInk key={m.id} markup={m} panel={p} selected={options.tool==='select'&&selected.includes(m.id)} zoom={options.zoom}/>:null};
+  return {toolbar,control,layer,selected,active,onPointerDownCapture:onDown,onPointerMoveCapture:onMove,onPointerUpCapture:onUp,onDoubleClickCapture:onDouble,onPointerCancelCapture:e=>{if(gesture.current){stop(e);clear();}},render:(m,p)=>m.annotation_style&&supported(m)?<AnnotationInk key={m.id} markup={m} panel={p} selected={options.tool==='select'&&selected.includes(m.id)} zoom={options.zoom}/>:null};
 }
