@@ -126,7 +126,7 @@ export default function ToolMenu({ face, active = false, accent = "cobalt", titl
                 onMouseEnter={(e) => { if (!dis && hi) e.currentTarget.style.background = "var(--cobalt-deep)"; else if (!dis && !it.active) e.currentTarget.style.background = "var(--paper-shadow)"; if (!dis) it.onHover?.(true); }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = hi ? "var(--cobalt)" : it.active ? "var(--paper-cream)" : "transparent"; if (!dis) it.onHover?.(false); }}>
                 {checkable && <span style={{ display: "inline-flex", width: 15, justifyContent: "center", color: hi ? "var(--accent-contrast)" : "var(--c-positive)", visibility: it.checked ? "visible" : "hidden" }}><Icon name="check" size={14} /></span>}
-                {it.icon && <span style={{ display: "inline-flex", width: 17, justifyContent: "center", color: hi ? "var(--accent-contrast)" : (it.tint || fg) }}><Icon name={it.icon} size={16} /></span>}
+                {(it.icon || it.iconNode) && <span style={{ display: "inline-flex", width: 17, justifyContent: "center", color: hi ? "var(--accent-contrast)" : (it.tint || fg) }}>{it.iconNode || <Icon name={it.icon} size={16} />}</span>}
                 <span style={{ flex: 1, fontFamily: "var(--f-body)", fontSize: 13, fontWeight: hi || it.active ? 600 : 400 }}>{it.label}</span>
                 {it.shortcut && <span style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: hi ? "var(--accent-contrast)" : "var(--ink-muted)", opacity: hi ? 0.75 : 1 }}>{keyText(it.shortcut)}</span>}
               </button>
