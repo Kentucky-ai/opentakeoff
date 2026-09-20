@@ -16,7 +16,7 @@
 [![Live demo](https://img.shields.io/badge/demo-opentakeoff.kentucky--ai.com-2ea44f.svg)](https://opentakeoff.kentucky-ai.com)
 [![Built with React + Vite](https://img.shields.io/badge/React%2018-Vite-444.svg)](#技術スタック)
 
-[**▶ ライブデモを試す**](https://opentakeoff.kentucky-ai.com) · [クイックスタート](#クイックスタート) · [機能](#主な機能) · [AI エージェント向け](mcp/) · [English](README.md) · [한국어](README.ko.md) · [简体中文](README.zh-Hans.md)
+[**▶ ライブデモを試す**](https://opentakeoff.kentucky-ai.com) · [クイックスタート](#クイックスタート) · [機能](#主な機能) · [AI エージェント向け](mcp/) · [English](README.md) · [한국어](README.ko.md) · [简体中文](README.zh-Hans.md) · [ไทย](README.th.md)
 
 <br/>
 

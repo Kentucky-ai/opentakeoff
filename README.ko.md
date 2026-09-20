@@ -16,7 +16,7 @@
 [![Live demo](https://img.shields.io/badge/demo-opentakeoff.kentucky--ai.com-2ea44f.svg)](https://opentakeoff.kentucky-ai.com)
 [![Built with React + Vite](https://img.shields.io/badge/React%2018-Vite-444.svg)](#기술-스택)
 
-[**▶ 라이브 데모 실행**](https://opentakeoff.kentucky-ai.com) · [빠른 시작](#빠른-시작) · [기능](#주요-기능) · [AI 에이전트용](mcp/) · [English](README.md) · [日本語](README.ja.md) · [简体中文](README.zh-Hans.md)
+[**▶ 라이브 데모 실행**](https://opentakeoff.kentucky-ai.com) · [빠른 시작](#빠른-시작) · [기능](#주요-기능) · [AI 에이전트용](mcp/) · [English](README.md) · [日本語](README.ja.md) · [简体中文](README.zh-Hans.md) · [ไทย](README.th.md)
 
 <br/>
 

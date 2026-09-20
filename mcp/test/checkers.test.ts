@@ -87,7 +87,7 @@ test("check-tool-count --write refuses before mutating a stale marker on version
     };
     for (const path of [
       "mcp/scripts/check-tool-count.mjs", "mcp/scripts/check-tool-inventory.mjs", "mcp/src", "mcp/server.ts", "mcp/package.json", "mcp/package-lock.json", "mcp/server.json",
-      "mcp/README.md", "web/src", "README.md", "FEATURES.md", "AGENT_BRIEF.md", "README.zh-Hans.md", "README.ja.md", "README.ko.md",
+      "mcp/README.md", "web/src", "README.md", "FEATURES.md", "AGENT_BRIEF.md", "README.zh-Hans.md", "README.ja.md", "README.ko.md", "README.th.md",
       "docs/USER_GUIDE.md", "docs/MCP.md", "docs/AGENT_GUIDE.md", "docs/MCP_TOOL_INDEX.md",
       "web/package.json", "web/package-lock.json", "web/public/.well-known/mcp.json",
     ]) await copy(path);
@@ -97,7 +97,7 @@ test("check-tool-count --write refuses before mutating a stale marker on version
     const before = await readFile(marker, "utf8");
     await writeFile(marker, before.replace(/<!--tool-count-->\d+<!--\/tool-count-->/, "<!--tool-count-->0<!--/tool-count-->"));
     const stale = await readFile(marker, "utf8");
-    const generatedDocs = ["README.md", "FEATURES.md", "AGENT_BRIEF.md", "README.zh-Hans.md", "README.ja.md", "README.ko.md", "docs/USER_GUIDE.md", "mcp/README.md", "docs/MCP.md", "docs/AGENT_GUIDE.md", "docs/MCP_TOOL_INDEX.md"];
+    const generatedDocs = ["README.md", "FEATURES.md", "AGENT_BRIEF.md", "README.zh-Hans.md", "README.ja.md", "README.ko.md", "README.th.md", "docs/USER_GUIDE.md", "mcp/README.md", "docs/MCP.md", "docs/AGENT_GUIDE.md", "docs/MCP_TOOL_INDEX.md"];
     const snapshots = new Map(await Promise.all(generatedDocs.map(async (path) => [path, await readFile(resolve(root, path), "utf8")] as const)));
     const pkgPath = resolve(root, "mcp/package.json");
     const pkgBefore = await readFile(pkgPath, "utf8");

@@ -25,7 +25,7 @@
 
 **两份手册：** [智能体手册](docs/AGENT_GUIDE.md) · [用户手册](docs/USER_GUIDE.md)
 
-**其他语言 / Read this in:** [English](README.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
+**其他语言 / Read this in:** [English](README.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [ไทย](README.th.md)
 
 **看视频：** [一个自主智能体全程无剪辑完成一次算量（2:47）](https://youtu.be/e--kXxSGv7Y) · [医院装修图 → 一分钟内出报表（1:14）](https://youtu.be/cNDpPkTLY1k) · [画布走一遍（1:10）](https://youtu.be/aHiW8H2TSBs) · [One-Click Area（0:51）](https://youtu.be/YIjWZ-BAhLE)
 
