@@ -11,6 +11,8 @@ Click **Pin** beside **Sheets** in the top toolbar, then click two corners aroun
 
 ## Unreleased
 
+- **A condition multiplier is a positive number, however it arrives (#455).** `edit_condition` and the Takeoffs panel already refused a `0`, but **Import takeoff** took a file's multiplier as-is, and every quantity reader treats a falsy multiplier as ×1: a `0` billed at ×1, a `-2` billed negative quantities, and a string put `NaN` in the totals, then autosaved into the project. Import now refuses a file carrying any of these (naming each condition; nothing is imported), the same rule the MCP tools apply. A project saved before this fix is repaired when it opens, to the value it was already billing at (`0` and junk → ×1, a numeric string keeps its number, a negative → ×1), and a message that stays up until you read it names every condition it reset. Reported with a reproduction by an outside contributor.
+
 - Add public Privacy Policy and Terms of Service pages at `/privacy/` and `/terms/`, linked from the in-app guide. Cover local and connected data handling, agent-directed estimating and external bounty work, review responsibilities, and the separate Apache-2.0 license.
 
 - **A condition row you can read, and a multiplier you can find.** At the default panel width the row's buttons never shrank, so the finish tag was squeezed to nothing. The tag now holds its width and the buttons wrap under it on a narrow panel; from about 460px the row is one line again. The repeating-unit multiplier was a bare `×` beside a small box: it now reads **× N units**, lights cobalt while it is multiplying, and the row wears a cobalt **×N** chip, because a multiplier scales every quantity under the condition and should never be quiet about it.
