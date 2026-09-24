@@ -165,6 +165,7 @@ import {
   MARKUP_IMG_MAX, MAX_IMAGE_MARKUP_BYTES, MARKUP_UPLOAD_MAX_BYTES, MARKUP_DECODE_MAX_AREA,
 } from "../lib/canvasConstants.js";
 import { uid, clamp, isDangerMsg, instantiateTemplate, seedConditions } from "../lib/canvasUtil.js";
+import { repairConditionMultipliers, describeMultiplierRepair } from "../lib/multiplier.js";
 // Tile-pyramid rendering (#86) — pure math in lib/tiles.ts (tested), worker
 // pool in lib/tilePool.ts, DOM/Worker orchestration glue here via one
 // long-lived compositor instance. Replaces the old single-raster base +
@@ -1611,7 +1612,11 @@ export default function TakeoffCanvas() {
     setConditionColumns(sanitizeConditionColumns(a.condition_columns));   // non-array/malformed → [] (unconditional set: snapshot load must not inherit pre-load columns)
     setShapeLabels(sanitizeShapeLabels(a.shape_labels));   // same unconditional-set rule: a snapshot load must not inherit the replaced project's label vocabulary
     setActiveLabel(null);   // active label is session-only — never carry one from the replaced project into a fresh/loaded one
-    const conds = sanitizeConditionAttrs(a.conditions || []);   // strips corrupt attrs values so every reader can trust them (the client_info precedent)
+    // multipliers get the same load-time trust pass (#455): a project saved before
+    // import refused bad values can still carry a 0 / negative / string — repair it
+    // to what it already billed at and say so, rather than let NaN reach the report
+    const { conditions: conds, repaired: multRepaired } = repairConditionMultipliers(sanitizeConditionAttrs(a.conditions || []));   // strips corrupt attrs values so every reader can trust them (the client_info precedent)
+    if (multRepaired.length) setCommitMsg(describeMultiplierRepair(multRepaired));
     if (conds.length) { setConditions(conds); setActiveCond(conds[0].id); }
     else { const seeded = seedConditions(templatesRef.current); setConditions(seeded); setActiveCond(seeded[0].id); }   // library templates first, flooring defaults as fallback
     // palette holds condition ids — de-dupe (a hand-edited/older payload could

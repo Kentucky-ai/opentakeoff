@@ -19,6 +19,7 @@
 import { TAKEOFF_SCHEMA as ANN_SCHEMA } from "./takeoffConstants.ts";
 import { sanitizeApprovals } from "./approvals.js";
 import { normalizeAgentReview } from "./reviewState.js";
+import { isValidMultiplier } from "./multiplier.js";
 
 /** Parse + gate an import file's text. Throws with copy the message bar shows
  * verbatim — "Couldn't…" is the canvas's danger convention (isDangerMsg), so
@@ -64,6 +65,16 @@ export function mergeTakeoffImport(current, imported, knownFiles = null) {
   const cur = current && typeof current === "object" ? current : {};
   const impShapes = arr(imported.shapes).filter((s) => s && typeof s === "object" && typeof s.sheet_id === "string" && typeof s.id === "string").map(normalizeAgentReview);
   const impConds = arr(imported.conditions).filter((c) => c && typeof c === "object" && typeof c.id === "string");
+  // Same rule edit_condition applies at the tool surface (#455): every reader
+  // is `multiplier || 1`, so a 0 would bill at ×1, a negative bills negative
+  // quantities, and a string puts NaN in the report. Refused whole, like the
+  // scale conflict below — a partly-landed file is harder to reason about
+  // than a file that has to be fixed once.
+  const badMult = impConds.filter((c) => !isValidMultiplier(c.multiplier));
+  if (badMult.length) {
+    const list = badMult.map((c) => `${c.finish_tag ?? c.id} (${JSON.stringify(c.multiplier)})`).join(", ");
+    throw new Error(`Couldn't import takeoff: condition multiplier must be a positive number — ${list}. Fix the file and re-import. Nothing was imported.`);
+  }
   const localScales = new Map(arr(cur.sheets).filter((s) => typeof s?.sheet_id === "string").map((s) => [s.sheet_id, s.units_per_px]));
   const incomingScales = new Map(arr(imported.sheets).filter((s) => typeof s?.sheet_id === "string").map((s) => [s.sheet_id, s.units_per_px]));
   const existingIds = new Set(arr(cur.shapes).map((s) => s.id));
