@@ -20,6 +20,9 @@ operating manual—how a takeoff is run, what withholds, what refuses—and
 
 ## Setup
 
+This is the from-source setup for working on the server. To just use it from Claude Code,
+Codex, Cursor or Claude Desktop, follow [`CONNECT.md`](CONNECT.md) instead.
+
 ```bash
 cd web && npm install        # the engine's pdf.js lives here
 cd ../mcp && npm install
