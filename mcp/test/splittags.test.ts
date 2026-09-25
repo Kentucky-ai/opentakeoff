@@ -1,4 +1,4 @@
-// Split finish tags (EXP-OT-TAG-01): CAD exports often set a tag's hyphen in
+// Split finish tags: CAD exports often set a tag's hyphen in
 // a second font, so pdf.js hands back "WB" + "-" + "01" as three items. Every
 // whole-run consumer missed those tags — find_text, the sheet graph's schedule
 // keys, sweep_schedule_row. The text layer now joins touching runs

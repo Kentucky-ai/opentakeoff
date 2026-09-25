@@ -6,7 +6,7 @@
 // page it reads WB-01, but every consumer that matches a whole run — find_text,
 // the sheet graph's schedule keys, sweep_schedule_row's tag labels, count_marks,
 // the Symbol tool's labels — sees three strings and matches none of them.
-// Measured on six SFG plan sets (EXP-OT-TAG-01): exact find_text recall on
+// Measured on six private commercial finish-plan sets: exact find_text recall on
 // finish tags was 0–35% before joining and 100% after on the vector sets.
 //
 // The rule is ABUTMENT, not proximity: the split pieces sit within a tenth of
