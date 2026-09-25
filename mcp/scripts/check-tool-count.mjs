@@ -7,6 +7,7 @@ import { TOOL_NAMES, ALL_TOOL_NAMES, stagesFor } from "../src/staging.ts";
 const DOCS = ["../../README.md", "../../FEATURES.md", "../../AGENT_BRIEF.md",
   "../../README.zh-Hans.md", "../../README.ja.md", "../../README.ko.md",
   "../../docs/USER_GUIDE.md", "../README.md", "../../docs/MCP.md", "../../docs/AGENT_GUIDE.md",
+  "../../web/public/llms.txt",
 ].map((p) => fileURLToPath(new URL(p, import.meta.url)));
 const RE = /<!--(tool-count(?:-all|-setup)?)-->(\d+)<!--\/\1-->/g;
 const counts = { "tool-count": TOOL_NAMES.length, "tool-count-all": ALL_TOOL_NAMES.length,
