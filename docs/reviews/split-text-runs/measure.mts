@@ -11,7 +11,6 @@ const PLANS = [
   "demo/sample-finish-plan.pdf",
   "evals/mcp-workflow-bench/plan-set/roseburg/va-roseburg-a03a.pdf",
   "evals/mcp-workflow-bench/plan-set/porterville/porterville-adu-a1-101.pdf",
-  "mcp/test/fixtures/split-tags.pdf",
 ];
 
 for (const plan of PLANS) {
