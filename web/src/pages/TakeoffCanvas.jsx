@@ -48,6 +48,7 @@ import TakeoffsPanel, { clampPanelW, CONDITION_DND_MIME, ConditionAppearanceEdit
 import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../components/hatches.jsx";
 import { Icon } from "../brand/icons.jsx";
 import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks, extractDimTexts } from "../lib/sheets";
+import { joinAbuttingSpans } from "../lib/textjoin";
 import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
@@ -4492,12 +4493,23 @@ export default function TakeoffCanvas() {
           const vs = Math.hypot(vt[0], vt[1]) || 2;
           const w = (it.width || 0) * vs;
           const h = (it.height || 0) * vs || Math.hypot(t[2], t[3]);
-          spans.push({ str, x0: t[4], y0: t[5] - h, x1: t[4] + w, y1: t[5] });
+          // the box is the hull of the run's four corners along its own
+          // direction, so a quarter-turn tag gets its true tall-narrow box
+          // (and can rejoin below); unrotated text reduces to [y − h, y]
+          const dn = Math.hypot(t[0], t[1]) || 1, un = Math.hypot(t[2], t[3]) || 1;
+          const dx = t[0] / dn, dy = t[1] / dn, ux = t[2] / un, uy = t[3] / un;
+          const xs = [t[4], t[4] + w * dx, t[4] + h * ux, t[4] + w * dx + h * ux];
+          const ys = [t[5], t[5] + w * dy, t[5] + h * uy, t[5] + w * dy + h * uy];
+          const rot = ((Math.round((Math.atan2(dy, dx) * 180) / Math.PI) % 360) + 360) % 360;
+          spans.push({ str, x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys), ...(rot ? { rot } : {}) });
         }
       }
     } catch { /* no text layer — labels simply stay absent */ }
-    textSpansRef.current.set(key, spans);
-    return spans;
+    // runs pdf.js split mid-tag ("WB" + "-" + "01") rejoin — the MCP textSpans
+    // does the same, so the Symbol tool labels exactly what the agent reads
+    const joined = joinAbuttingSpans(spans);
+    textSpansRef.current.set(key, joined);
+    return joined;
   }
   async function runSymbolSweep(a, b) {
     const tp = panelAt(a[0]);
