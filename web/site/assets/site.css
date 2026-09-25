@@ -205,7 +205,7 @@ pre.has-copy { padding-top: 40px; }
 .seg button { font: 500 .85rem/1 var(--f-mono); padding: 9px 11px; border: 1px solid var(--rule); background: var(--bg); color: var(--fg-2); cursor: pointer; }
 .seg button[aria-pressed="true"] { border-color: var(--accent-rule); color: var(--fg); background: color-mix(in srgb, var(--gold) 16%, var(--bg)); }
 .readout { background: linear-gradient(180deg, var(--navy), var(--night)); color: var(--parch); padding: 28px; display: grid; gap: 4px; align-content: start; position: relative; }
-.readout .r-kicker { font: 600 .7rem/1 var(--f-cap); letter-spacing: .3em; text-transform: uppercase; color: var(--gold); margin: 0 0 14px; }
+.readout .r-kicker { font: 600 .7rem/1.6 var(--f-cap); letter-spacing: .3em; text-transform: uppercase; color: var(--gold); margin: 0 0 14px; }
 .readout .hero-q { font: 600 clamp(2.4rem, 5vw, 3.4rem)/1 var(--f-mono); color: #fff7e6; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
 .readout .hero-q small { font-size: .38em; color: var(--gold); letter-spacing: .06em; margin-left: .3em; }
 .readout .sub { font: 400 .95rem/1.5 var(--f-mono); color: #aab2c0; margin-bottom: 14px; }
