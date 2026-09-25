@@ -15,6 +15,11 @@
 // the same size, and the gap between them is at most JOIN_GAP × height — no
 // space is ever invented, and ordinary words never merge. A run drawn twice
 // on top of itself (fake bold) overlaps by its own width and stays separate.
+// Two guards keep a tag from swallowing its neighbour where the DRAFTING
+// collides (the demo plan's "VCT-1" label overlaps room number "170" by
+// 1.6 px, 0.08 × height): overlap tolerance is a hair (JOIN_OVERLAP; split
+// pieces measured up to 0.03 × height, a rotated "TL" + "-1"), and a run
+// ending in a digit never joins a run starting with one.
 //
 // Pure and DOM-free, like sheets.ts / oneclick.ts: the MCP's textSpans and the
 // canvas's span cache both call it, so canvas and agent read the same text.
@@ -27,7 +32,7 @@ export interface BoxSpan { str: string; x0: number; y0: number; x1: number; y1: 
  *  Split tag pieces measure ≈ 0.00; a word space ≈ 0.25+. */
 export const JOIN_GAP = 0.08;
 /** Most two runs may overlap along the line (fraction of height) and still join. */
-const JOIN_OVERLAP = 0.1;
+const JOIN_OVERLAP = 0.05;
 /** Line test: run centres across the line within this fraction of height. */
 const LINE_TOL = 0.25;
 /** Size test: heights within this ratio. */
@@ -75,6 +80,7 @@ export function abuttingGroups(spans: readonly BoxSpan[]): number[][] {
         if (Math.abs(A.p - B.p) > LINE_TOL * h) continue;
         const gap = B.a0 - A.a1;
         if (gap < -JOIN_OVERLAP * h || gap > JOIN_GAP * h) continue;
+        if (/\d$/.test(spans[i].str) && /^\d/.test(spans[j].str)) continue;   // 1|170: two numbers, not one
         if (Math.abs(gap) < Math.abs(bestGap)) { best = j; bestGap = gap; }
       }
       if (best >= 0 && !hasPrev[best] && next[i] < 0) { next[i] = best; hasPrev[best] = 1; }

@@ -60,3 +60,13 @@ test("skewed text is left alone", () => {
   const out = joinAbuttingSpans([{ ...H("WB", 0, 30), rot: 45 }, { ...H("-01", 30, 25), rot: 45 }]);
   assert.equal(out.length, 2);
 });
+
+test("a tag never swallows a room number the drafting overlaps or touches", () => {
+  // measured on the demo plan: "VCT" "-" "1" then room "170" starting 1.6 px
+  // BEFORE the "1" ends — the tag rejoins, the room number stays its own
+  const out = joinAbuttingSpans([H("VCT", 2805.6, 28.3), H("-", 2833.9, 4.7), H("1", 2838.7, 7.9), H("170", 2845, 26)]);
+  assert.deepEqual(out.map((s) => s.str), ["VCT-1", "170"]);
+  // and touching exactly, a digit never glues to a digit
+  const touch = joinAbuttingSpans([H("RF-1", 0, 30), H("101", 30, 26)]);
+  assert.deepEqual(touch.map((s) => s.str), ["RF-1", "101"]);
+});
