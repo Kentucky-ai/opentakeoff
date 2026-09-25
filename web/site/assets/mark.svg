@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="30 20 1145 530" role="img" aria-label="OpenTakeoff">
+  <!-- The OpenTakeoff building mark, redrawn as vectors from the gold film plate
+       (traced at 2x). Faces keep the plate's light:
+       lit left, shaded right, the lower-right block in shadow. -->
+  <defs>
+    <linearGradient id="otm-l" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e6c88c"/><stop offset=".55" stop-color="#c9a466"/><stop offset="1" stop-color="#a98748"/>
+    </linearGradient>
+    <linearGradient id="otm-r" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#bfa06a"/><stop offset=".6" stop-color="#94784a"/><stop offset="1" stop-color="#7a6139"/>
+    </linearGradient>
+    <linearGradient id="otm-d" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#6e5634"/><stop offset="1" stop-color="#4f3c22"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#otm-l)" d="M338 112 540 28V130L338 192Z"/>
+  <path fill="url(#otm-r)" d="M540 28 748 110V192L540 130Z"/>
+  <path fill="url(#otm-l)" d="M108 345 528 185V540H330V355L108 398Z"/>
+  <path fill="url(#otm-r)" d="M552 185 978 340V392L758 350V540H552Z"/>
+  <path fill="url(#otm-l)" d="M38 455 292 420V545H38Z"/>
+  <path fill="url(#otm-d)" d="M790 418 1165 470V545H790Z"/>
+</svg>

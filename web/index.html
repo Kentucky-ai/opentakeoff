@@ -57,6 +57,20 @@
          fingerprinting, no PII). The token is public by design. Its origin is
          allowed in public/_headers script-src; connect-src is already open. -->
     <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "3f37c88a39dc47e79a5304c38ccf68f3"}'></script>
+    <!-- The static page inside #root is for readers that run no JavaScript —
+         most AI crawlers, and anyone with scripts off. React replaces it on
+         mount; where scripts run it never paints (no flash before the app). -->
+    <style>
+      @media (scripting: enabled) { .ot-static { display: none; } }
+      @media (scripting: none) { body { margin: 0; background: #f5f0e4; } }
+      .ot-static { max-width: 760px; margin: 0 auto; padding: 48px 20px 64px; font: 17px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif; color: #172031; background: #f5f0e4; }
+      .ot-static h1 { font: 600 2.4rem/1.1 Georgia, serif; margin: 12px 0 16px; }
+      .ot-static h2 { font: 600 1.4rem/1.2 Georgia, serif; margin: 36px 0 8px; }
+      .ot-static a { color: #7c5b22; }
+      .ot-static .ot-eyebrow { font: 600 12px/1 Georgia, serif; letter-spacing: .3em; text-transform: uppercase; color: #7c5b22; }
+      .ot-static svg { width: 96px; height: auto; }
+      .ot-static code { font: 14px ui-monospace, Menlo, monospace; background: #ece4d2; padding: 1px 5px; }
+    </style>
   </head>
   <body>
     <!-- Netlify deploy-time form definition; React owns the visible dialog. -->
@@ -74,7 +88,20 @@
       <input name="consent-revision" />
       <input name="source" />
     </form>
-    <div id="root"></div>
+    <div id="root"><div class="ot-static">
+      <svg viewBox="30 20 1145 530" aria-hidden="true"><path fill="#c9a466" d="M338 112 540 28V130L338 192Z"/><path fill="#94784a" d="M540 28 748 110V192L540 130Z"/><path fill="#c9a466" d="M108 345 528 185V540H330V355L108 398Z"/><path fill="#94784a" d="M552 185 978 340V392L758 350V540H552Z"/><path fill="#c9a466" d="M38 455 292 420V545H38Z"/><path fill="#5f4a2b" d="M790 418 1165 470V545H790Z"/></svg>
+      <p class="ot-eyebrow">OpenTakeoff</p>
+      <h1>The takeoff software for agents.</h1>
+      <p>OpenTakeoff is a free, open-source (Apache-2.0) construction takeoff engine. A person measures plans in this browser canvas; an AI agent drives the same geometry and quantity math over MCP. Every measurement records its scale, its method, and whether a person or an agent made it. The deliverable is a marked-up planset a person can check, not a number on its own.</p>
+      <p>This page is the takeoff app itself, and it needs JavaScript. Everything below is readable without it.</p>
+      <h2>For an estimator</h2>
+      <p>Drag in a PDF, image or <code>.zip</code> plan set; nothing uploads and there is no account. Set the scale per sheet, trace rooms under the finish tags from the architect's schedule, and get SF, SY, LF and EA, waste-adjusted order quantities, a supporting-materials buy list, roll-goods cuts with seams, and CSV, Excel and marked-PDF exports. <a href="/flooring-takeoff/">How a flooring takeoff runs</a> · <a href="/free-takeoff-software/">What is free, and the honest limits</a> · <a href="/docs/user-guide/">User manual</a></p>
+      <h2>For an AI agent</h2>
+      <p><code>npx -y opentakeoff-mcp</code> puts the engine on stdio for any MCP client; in Claude Code, <code>claude mcp add opentakeoff -- npx -y opentakeoff-mcp</code>. The agent opens the plan, adopts the scale, measures rooms on the wall faces, checks its work on a rendered overlay, and exports a marked planset. Its work stays pending until a person approves it in this canvas. <a href="/agents/">Connect an agent</a> · <a href="/docs/agent-guide/">Agent manual</a> · <a href="/docs/mcp/">MCP guide</a></p>
+      <h2>Calculators</h2>
+      <p><a href="/tools/sf-to-sy/">Square feet to square yards</a> · <a href="/tools/flooring-order-calculator/">Waste, attic stock and cartons</a> · <a href="/tools/carpet-roll-calculator/">Carpet roll cuts</a> · <a href="/tools/base-calculator/">Wall base</a></p>
+      <p><a href="https://github.com/Kentucky-ai/opentakeoff">Source on GitHub</a> · <a href="/llms.txt">llms.txt</a> · <a href="/privacy/">Privacy</a> · <a href="/terms/">Terms</a> · Built by <a href="https://kentucky-ai.com">Kentucky AI</a></p>
+    </div></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
