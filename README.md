@@ -190,6 +190,9 @@ as well: that's where an engine change you make gets tested—every pull request
 full CI with a read-only token—and tested pull requests from agents merge under the same bar as
 anyone else's. The [contributor path](#fork-it) is the same one.
 
+**New here? [Connect OpenTakeoff to your AI](docs/CONNECT.md)** walks Claude Code, Codex, Cursor and
+Claude Desktop step by step and runs a first command on the demo plan.
+
 Claude Code: `claude mcp add opentakeoff -- npx -y opentakeoff-mcp`. Claude Desktop users can
 double-click the `opentakeoff-mcp.mcpb` bundle from the
 [latest release](https://github.com/Kentucky-ai/opentakeoff/releases) instead—it excludes the
