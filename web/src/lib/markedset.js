@@ -965,6 +965,30 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
   return { bytes, filename, pages };
 }
 
+// Closing a PDF out of the plan set keeps its takeoffs (they restore on
+// re-add), so a sheet can carry ink whose PDF bytes are gone. Export the sheets
+// whose PDFs are loaded and name the ones that aren't — one closed PDF must not
+// sink the whole marked set (#462). A stitched surface needs every member file.
+export function splitLoadedSheets(sheets, loadedFiles) {
+  const loaded = new Set(loadedFiles);
+  const kept = [];
+  const missing = new Set();
+  for (const sh of sheets) {
+    const files = sh.stitch ? sh.stitch.members.map((m) => m.file) : [sh.file];
+    const gone = files.filter((f) => !loaded.has(f));
+    if (gone.length) gone.forEach((f) => missing.add(f));
+    else kept.push(sh);
+  }
+  return { kept, missingFiles: [...missing] };
+}
+
+// The status-line clause for splitLoadedSheets' missingFiles ("" when none).
+export function skippedPdfsNote(missingFiles) {
+  if (!missingFiles.length) return "";
+  const n = missingFiles.length;
+  return `skipped takeoffs on ${n} closed PDF${n === 1 ? "" : "s"} (${missingFiles.join(", ")}). Re-open ${n === 1 ? "it" : "them"} to include ${n === 1 ? "it" : "them"}.`;
+}
+
 export function downloadBytes(filename, bytes, type = "application/pdf") {
   const blob = new Blob([bytes], { type });
   const url = URL.createObjectURL(blob);

@@ -94,7 +94,7 @@ import { sanitizeSheetLevels } from "../lib/sheetLevels.js";
 import { sanitizeConditionColumns, sanitizeConditionAttrs, renameColumnValue, columnLabel } from "../lib/conditionColumns.js";
 import { sanitizeShapeLabels, sanitizeShapeLabelsOnShapes, renameShapeLabel, shapeLabelValue } from "../lib/shapeLabels.js";
 import { nextHidden, revealed } from "../lib/conditionVisibility.js";
-import { buildMarkedSetPdf, downloadBytes } from "../lib/markedset.js";
+import { buildMarkedSetPdf, downloadBytes, splitLoadedSheets, skippedPdfsNote } from "../lib/markedset.js";
 import { repeatPlan } from "../lib/repeatTool.js";
 import { createDragCache, sheetContentSignature, dragFilename, downloadUrlEntry } from "../lib/dragOut.js";
 import { counterRows } from "../lib/liveCounter.js";
@@ -5342,7 +5342,14 @@ export default function TakeoffCanvas() {
           stitch: { members: st.members.map((m) => ({ key: m.key, ...parseSheetKey(m.key), label: tabLabel(m.key), dx: m.dx, dy: m.dy })) },
         };
       }).filter(Boolean);
-      const sheetMeta = [...plainMeta, ...stitchMeta];
+      // A PDF closed out of the plan set keeps its takeoffs, but its bytes are
+      // gone — export what's loaded and say what was left out (#462).
+      const { kept: sheetMeta, missingFiles } = splitLoadedSheets([...plainMeta, ...stitchMeta], sheets.map((s) => s.name));
+      const skipped = skippedPdfsNote(missingFiles);
+      if (!sheetMeta.length && missingFiles.length && !rfis.length) {
+        setCommitMsg(`Nothing to export — ${skipped}`);
+        return;
+      }
       // (source-caption label rides on each capture as m.src_label, frozen at
       // capture time — markedset reads it directly, no per-export resolution.)
       // branding mode decides the cover identity + wordmark + parent credit;
@@ -5355,7 +5362,7 @@ export default function TakeoffCanvas() {
         loadPdfData: (file) => store.loadPdfData(file),
       });
       downloadBytes(filename, bytes);
-      setCommitMsg(`Marked set downloaded — ${filename}`);
+      setCommitMsg(`Marked set downloaded — ${filename}${skipped ? ` — ${skipped}` : ""}`);
     } catch (e) {
       setCommitMsg(`Marked set failed: ${e.message || e}`);
     }
