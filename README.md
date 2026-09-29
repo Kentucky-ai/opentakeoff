@@ -761,6 +761,10 @@ instrument producing it.
 
 — Michael · [Kentucky AI](https://kentucky-ai.com)
 
+<a href="https://www.nvidia.com/en-us/startups/"><img src="docs/img/brand/nvidia-inception-program-badge.svg" alt="NVIDIA Inception Program member badge" height="40"></a>
+
+Kentucky AI is a member of the NVIDIA Inception program.
+
 **Contact:** research collaborations, data questions, press, or anything that is not a bug —
 [research@kentucky-ai.com](mailto:research@kentucky-ai.com). Bugs and feature requests go in
 [issues](https://github.com/Kentucky-ai/opentakeoff/issues); security reports follow [SECURITY.md](SECURITY.md).
@@ -788,3 +792,5 @@ references and links against source.
 ## Privacy and terms
 
 [Privacy Policy](https://opentakeoff.kentucky-ai.com/privacy/) · [Terms of Service](https://opentakeoff.kentucky-ai.com/terms/). Both are also linked in the in-app guide (`?`). The Apache-2.0 software license remains unchanged.
+
+<sub>© 2026 NVIDIA, the NVIDIA logo, and NVIDIA Inception are trademarks and/or registered trademarks of NVIDIA Corporation in the U.S. and other countries.</sub>
