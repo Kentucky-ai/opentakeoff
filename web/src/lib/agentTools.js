@@ -1,10 +1,12 @@
 import { oneClickEnabled, ONE_CLICK_GATE_MESSAGE } from "./gate.js";
+import { refusalWhy } from "./scheduleRoute.ts";
 // In-canvas takeoff agent — the TOOL REGISTRY. Pure-ish and Node-testable:
 // every tool is a name + JSON schema + an execute(ctx, args) that closes over
 // canvas-provided CAPABILITIES (the `ctx` contract below), so the registry
 // itself never touches React, the DOM, or pdf.js. The model never invents
 // geometry — it aims these tools, and the app's own deterministic engines
-// (text layer, scheduleParse, the one-click flood fill) compute everything.
+// (text layer, the sheet graph's finish reader, the one-click flood fill)
+// compute everything.
 //
 // Hard rules enforced HERE, not left to the model:
 //   - scale gate: a tool that needs real-world units refuses on an uncalibrated
@@ -25,7 +27,8 @@ import { oneClickEnabled, ONE_CLICK_GATE_MESSAGE } from "./gate.js";
 //   sheetDims(sheet): { w, h } | null   // null = sheet not open on the canvas
 //   detectedLabel(sheet): string | ""   // drawn-scale note read off the page, if any
 //   readSheetText(sheet, region|null): Promise<[{ text, x, y }]>  (normalized coords)
-//   readSchedule(sheet, region): Promise<ScheduleRow[]>
+//   readSchedule(sheet, region): Promise<{ rows: ScheduleRow[] } | { rows: [], refused, title? }>
+//                                       // scheduleRead.ts ScheduleRead
 //   viewRegion(sheet, region): Promise<{ image_data_url, width, height }>
 //   oneClick(sheet, x, y): Promise<{ verts_norm, area_sf, perimeter_lf, ... } | { error }>
 //   getConditions(): [{ id, finish_tag, ... }]
@@ -127,7 +130,7 @@ export const AGENT_TOOL_DEFS = [
   },
   {
     name: "read_schedule",
-    description: "Parse a finish/material schedule table inside a region of a sheet into structured rows (code, description, manufacturer, style, color, size). Draw the region around the table including its CODE / MATERIAL / ... header.",
+    description: "Read a finish/material schedule table inside a region of a sheet into structured rows — the same reader as Import from schedule. The key column can be CODE, TAG, MARK or SYMBOL; the other columns read are MATERIAL / DESCRIPTION / PRODUCT (joined into description), MANUFACTURER, STYLE, COLOR, SIZE and REMARKS (else COMMENTS). Each row: {finish_tag, section, category, category_source, description, manufacturer, style, spec_color, size, remarks, suggested}. category_source says where the category came from: \"heading\" (a printed section heading such as FLOORING), \"text\" (the row's own item words, e.g. RUBBER WALL BASE) or \"none\" (category \"unassigned\"). Draw the region around the whole table including its header row. A table that is another schedule family (door, equipment, signage …) returns no rows and a note saying why.",
     input_schema: {
       type: "object",
       properties: { sheet: { type: "string" }, region: REGION_SCHEMA },
@@ -252,9 +255,14 @@ export async function executeAgentTool(ctx, name, args) {
       }
       case "read_schedule": {
         if (!ctx.sheetDims(args.sheet)) return { error: `Sheet ${args.sheet} isn't open on the canvas — pick one from list_sheets.` };
-        const rows = await ctx.readSchedule(args.sheet, clampRegion(args.region));
-        if (!rows.length) return { rows: [], note: "No schedule table found in that region — draw the region around the table including its CODE / MATERIAL / ... header, or use view_region to look at the area." };
-        return { rows };
+        const read = await ctx.readSchedule(args.sheet, clampRegion(args.region));
+        if (read.rows.length) return { rows: read.rows };
+        // a table that IS there but is another schedule family: say which, so
+        // the model looks elsewhere instead of re-drawing the same box
+        if (read.refused && read.refused !== "no-table") {
+          return { rows: [], note: `${refusalWhy(read.refused, read.title)} — look for the finish/material schedule elsewhere on the sheets (its CODE / TAG / MARK / SYMBOL column and MATERIAL / MANUFACTURER / COLOR headers).` };
+        }
+        return { rows: [], note: "No schedule table found in that region — draw the region around the whole table including its header row (a CODE / TAG / MARK / SYMBOL key column and MATERIAL / MANUFACTURER / COLOR …), or use view_region to look at the area." };
       }
       case "view_region": {
         if (!ctx.sheetDims(args.sheet)) return { error: `Sheet ${args.sheet} isn't open on the canvas — pick one from list_sheets.` };
