@@ -9,7 +9,7 @@
 // The only schedule module that imports the sheet graph: the canvas loads it
 // with import() when a marquee is read, and seeds conditions from the light
 // scheduleRows.ts.
-import { extractTable, readFinishTable, type GraphSpan, type TableRow } from "./sheetgraph.ts";
+import { extractTables, readFinishTable, type Bbox, type GraphSpan, type TableRow } from "./sheetgraph.ts";
 import { FINISH_SECTION_CATEGORY, type FinishSection } from "./finishSections.ts";
 import type { Category, CategorySource, ScheduleRow, Token } from "./scheduleRows.ts";
 
@@ -17,8 +17,9 @@ import type { Category, CategorySource, ScheduleRow, Token } from "./scheduleRow
  *  (the caller may still try the scan reader). Every other reason is a table
  *  that IS there but is not a finish/material schedule — "title": its title
  *  names another family (DOOR SCHEDULE …); "equipment": the sheet graph's
- *  equipment reader reads the same spans as a device schedule (a GPM, HP,
- *  MBH, NECK … column); "foreign-header": a column only another family
+ *  equipment reader reads a device schedule (a GPM, HP, MBH, NECK … column)
+ *  on the table's own ink, and nothing on the table says finish;
+ *  "foreign-header": a column only another family
  *  prints (QTY, CFM, MESSAGE …); "no-color-style-pattern": nothing about it
  *  says finish (no CODE key, no printed finish heading, no item +
  *  MANUFACTURER columns, and no COLOR / STYLE / PATTERN column). */
@@ -62,10 +63,10 @@ type WordCategory = "base" | "transition" | "wall_protection";
 const plural = (p: string) => [p, p + "S"];
 // Item-naming phrases only — never a material or surface word, never a tag
 // letter. An exclusion (null) consumes its words so the BASE inside BASE
-// CABINET or INTEGRAL COVE BASE names nothing.
+// CABINET, INTEGRAL COVE BASE or BASE BID names nothing.
 const WORD_PHRASES: Array<[string, WordCategory | null]> = [
-  ...plural("BASE CABINET").map((p): [string, null] => [p, null]),
-  ["BASE COAT", null], ["BASE PLATE", null], ["BASE SHEET", null], ["SINK BASE", null], ["VANITY BASE", null],
+  ...["BASE CABINET", "BASE COAT", "BASE PLATE", "BASE SHEET"].flatMap(plural).map((p): [string, null] => [p, null]),
+  ["BASE BID", null], ["SINK BASE", null], ["VANITY BASE", null],
   ["INTEGRAL COVE BASE", null], ["FLASH COVE BASE", null],
   ["WALL BASE", "base"], ["COVE BASE", "base"], ["RUBBER BASE", "base"], ["RESILIENT BASE", "base"], ["BASE", "base"],
   ...["TRANSITION", "TRANSITION STRIP", "THRESHOLD", "REDUCER", "STAIR NOSING", "EDGE STRIP"]
@@ -78,12 +79,14 @@ const WORD_PHRASES: Array<[string, WordCategory | null]> = [
 const PHRASES = WORD_PHRASES.map(([p, c]) => ({ w: p.split(" "), c })).sort((a, b) => b.w.length - a.w.length);
 
 /** The category a row's item words name, or "none". Words split on spaces,
- *  "/", ",", "(" and ")" (a hyphen compound is one word: WALL-MOUNTED); the
- *  " — " between two cells is a word of its own, so no phrase spans two
- *  cells. A STAIR TREAD's NOSING belongs to the tread. Two categories named
- *  in one row → "none" (a guess would be a coin toss). */
+ *  "/", ",", "(" and ")" (a hyphen compound is one word: WALL-MOUNTED) and
+ *  lose the punctuation around them (BASE. / "COVE BASE" / BASE:); the " — "
+ *  between two cells, all punctuation, is a word of its own, so no phrase
+ *  spans two cells. A STAIR TREAD's NOSING belongs to the tread. Two
+ *  categories named in one row → "none" (a guess would be a coin toss). */
 export function b4(item: string): WordCategory | "none" {
-  const t = item.toUpperCase().split(/[\s/,()]+/).filter(Boolean);
+  const t = item.toUpperCase().split(/[\s/,()]+/).filter(Boolean)
+    .map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "") || w);
   const used = t.map(() => false);
   if (t.some((w) => w === "TREAD" || w === "TREADS")) t.forEach((w, i) => { if (w === "NOSING" || w === "NOSINGS") used[i] = true; });
   const hits = new Set<WordCategory>();
@@ -119,7 +122,7 @@ function toRow(r: TableRow): ScheduleRow {
   else {
     // no printed heading names one (none printed, or MISC / ACCESSORIES):
     // the row's item words decide — MATERIAL and DESCRIPTION only, never
-    // PRODUCT, style or remarks (a product line called HARBOR BASE is a floor)
+    // PRODUCT, style or remarks (a product line called STYLE-A BASE is a floor)
     const w = b4(joinParts(cellsOf(r, "MATERIAL", "DESCRIPTION")));
     if (w !== "none") { category = w; source = "text"; }
   }
@@ -138,6 +141,13 @@ function toRow(r: TableRow): ScheduleRow {
   };
 }
 
+/** The share of a's area that b covers (sheetgraph.ts's overlapFrac). */
+const overlapFrac = (a: Bbox, b: Bbox): number => {
+  const w = Math.min(a[2], b[2]) - Math.max(a[0], b[0]), h = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+  if (w <= 0 || h <= 0) return 0;
+  return (w * h) / Math.max(1, (a[2] - a[0]) * (a[3] - a[1]));
+};
+
 /** Read the spans inside a marquee (image px, the graph's span shape) as one
  *  finish/material schedule, or say why not. */
 export function readScheduleSpans(spans: GraphSpan[]): ScheduleRead {
@@ -150,9 +160,21 @@ export function readScheduleSpans(spans: GraphSpan[]): ScheduleRead {
   // materials table, so the finish reader takes it too; the equipment reader's
   // device columns (GPM, HP, MBH, NECK, LUMENS …) are the proof it is not one.
   // The header guard below does not list those words — this re-read does.
-  const eq = extractTable({ key: "crop", spans }, "equipment", { buildings: new Set() });
-  if (eq && eq.rows.length) return { rows: [], refused: "equipment", ...(title ? { title } : {}) };
+  // Only a device table on the finish table's own ink counts (the sheet
+  // graph's rule, buildSheetGraph: half the finish region overlapped → it is
+  // the equipment table): a heater schedule elsewhere in the box says nothing
+  // about this one. Both ways round: a marquee read keeps every keyed row in
+  // the box, so it can run on into a device table printed below and take its
+  // rows — then the device table lies mostly inside the finish region. And a table that says finish itself — a CODE key, a
+  // printed finish heading, a title naming FINISH or MATERIAL — is not
+  // refused for one column a device schedule also prints (WASTE, MOUNTING).
+  // Item + MANUFACTURER is not that evidence: a pump schedule has both.
   const hasSection = t.rows.some((x) => x.section);
+  const saysFinish = t.headers[0] === "CODE" || hasSection || /\b(FINISH|MATERIAL)/.test((title ?? "").toUpperCase());
+  if (!saysFinish) {
+    const eq = extractTables({ key: "crop", spans }, "equipment", { buildings: new Set() });
+    if (eq.some((e) => overlapFrac(t.region, e.region) >= 0.5 || overlapFrac(e.region, t.region) >= 0.5)) return { rows: [], refused: "equipment", ...(title ? { title } : {}) };
+  }
   const why = headerRefusal(t.headers, r.headerWords, hasSection);
   if (why) return { rows: [], refused: why, ...(title ? { title } : {}) };
   return { rows: t.rows.map(toRow) };

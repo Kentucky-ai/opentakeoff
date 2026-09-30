@@ -1115,10 +1115,15 @@ test("a marquee crop is the table: a gap of more than 8 row pitches does not end
 });
 
 // ── readFinishTable: the one finish reader ──────────────────────────────────
-test("readFinishTable returns the table and every word of its header row", () => {
+test("readFinishTable returns the table extractTable reads and every word of its header row", () => {
   const items = [H("FLOORING"), ...FLOOR, H("BASE"), ...BASE];
-  const r = readFinishTable({ key: "fx", spans: build({ key: "TAG", cols: ["MATERIAL", "MANUF.", "COLOR", "REMARKS"], title: "FINISH SCHEDULE", items }) }, { marquee: true });
+  const spans = build({ key: "TAG", cols: ["MATERIAL", "MANUF.", "COLOR", "REMARKS"], title: "FINISH SCHEDULE", items });
+  const r = readFinishTable({ key: "fx", spans }, { marquee: true });
   assert.ok(r && !("refused" in r));
+  assert.deepEqual(r.table, read(spans, true));
+  const whole = readFinishTable({ key: "fx", spans });
+  assert.ok(whole && !("refused" in whole));
+  assert.deepEqual(whole.table, read(spans));
   assert.deepEqual(keys(r.table), keysOf(items));
   assert.equal(r.table.title?.text, "FINISH SCHEDULE");
   // the raw header words — MANUF. as printed, not the column it names

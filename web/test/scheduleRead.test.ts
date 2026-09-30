@@ -130,20 +130,20 @@ test("a heading's category beats the row's words (a TRANSITION STRIP under FLOOR
 test("description joins distinct DESCRIPTION and PRODUCT cells; the words that set a category never include PRODUCT", () => {
   const row = (key: string, d: string, m: string, p: string, c: string): Item => ({ t: "row", key, cells: { DESCRIPTION: d, MANUFACTURER: m, PRODUCT: p, COLOR: c } });
   const items = [
-    row("RB-7", "RUBBER BASE", "VENDOR-P", "ARDENNE CONTOUR", "BLACK 11"),
+    row("RB-7", "RUBBER BASE", "VENDOR-P", "PRODUCT-A", "BLACK 11"),
     row("RB-8", "RUBBER BASE", "VENDOR-P", "RUBBER BASE", "GREY 12"),
-    row("LVT-7", "LUXURY VINYL TILE", "VENDOR-P", "HARBOR BASE", "OAK 13"),
+    row("LVT-7", "LUXURY VINYL TILE", "VENDOR-P", "STYLE-A BASE", "OAK 13"),
     row("CPT-7", "BROADLOOM CARPET", "VENDOR-Q", "TRANSITION SERIES", "BLUE 14"),
-    row("CPT-8", "CARPET TILE", "VENDOR-Q", "MERIDIAN LOOP", "GREY 15"),
-    row("HR-7", "HANDRAIL", "VENDOR-S", "CLASSIC 40", "ALMOND 16"),
+    row("CPT-8", "CARPET TILE", "VENDOR-Q", "PRODUCT-B", "GREY 15"),
+    row("HR-7", "HANDRAIL", "VENDOR-S", "PRODUCT-C", "ALMOND 16"),
     row("P-7", "PAINT", "VENDOR-R", "", "WHITE 17"),
     row("VCT-7", "VINYL COMPOSITION TILE", "VENDOR-R", "STANDARD", "WHITE 18"),
   ];
   const rows = rowsOf(readScheduleSpans(build({ key: "MARK", cols: ["DESCRIPTION", "MANUFACTURER", "PRODUCT", "COLOR"], items })));
   assert.deepEqual(Object.fromEntries(rows.map((r) => [r.finish_tag, r.description])), {
-    "RB-7": "RUBBER BASE — ARDENNE CONTOUR", "RB-8": "RUBBER BASE",
-    "LVT-7": "LUXURY VINYL TILE — HARBOR BASE", "CPT-7": "BROADLOOM CARPET — TRANSITION SERIES",
-    "CPT-8": "CARPET TILE — MERIDIAN LOOP", "HR-7": "HANDRAIL — CLASSIC 40",
+    "RB-7": "RUBBER BASE — PRODUCT-A", "RB-8": "RUBBER BASE",
+    "LVT-7": "LUXURY VINYL TILE — STYLE-A BASE", "CPT-7": "BROADLOOM CARPET — TRANSITION SERIES",
+    "CPT-8": "CARPET TILE — PRODUCT-B", "HR-7": "HANDRAIL — PRODUCT-C",
     "P-7": "PAINT", "VCT-7": "VINYL COMPOSITION TILE — STANDARD",
   });
   assert.deepEqual(Object.fromEntries(rows.map((r) => [r.finish_tag, r.category])), {
@@ -228,6 +228,71 @@ test("a pump schedule is refused by the equipment re-read — the header guard a
   assert.deepEqual(r.rows, []);
 });
 
+const below = (spans: GraphSpan[], dy: number) => spans.map((s) => ({ ...s, y: s.y + dy }));
+
+test("the equipment re-read judges the finish table's own ink: a device schedule elsewhere in the box does not refuse it", () => {
+  // a heading-less MARK table whose title names neither FINISH nor MATERIAL
+  // (nothing but item + MANUFACTURER says finish) under a pump schedule, both
+  // in the box. The pump header (MARK | MANUFACTURER | MODEL | GPM | HP) is
+  // not a finish header, so the finish reader takes the table below; the
+  // equipment reader takes the pump, and its region stops at the title.
+  const pumpCols = ["MANUFACTURER", "MODEL", "GPM", "HP"];
+  const pump = other("MARK", pumpCols, n8("P"), [["VENDOR-L", "CP-1", "40", "1"], ["VENDOR-L", "BP-2", "60", "2"]], "PUMP SCHEDULE");
+  const items = [...FLOOR, ...BASE];
+  const fin = below(build({ key: "MARK", cols: ["MATERIAL", "MANUFACTURER", "COLOR"], title: "INTERIOR SCHEDULE", items }), 14 * PITCH);
+  const rows = rowsOf(readScheduleSpans([...pump, ...fin]));
+  assert.deepEqual(rows.map((r) => r.finish_tag), keysOf(items));
+  assert.equal(refusal(readScheduleSpans(pump)), "no-table", "the pump alone is no finish table");
+});
+
+test("a device schedule the marquee read runs into is still refused as equipment", () => {
+  // the same untitled MARK table with the pump schedule printed below it: a
+  // marquee read keeps every keyed row in the box, so the finish table takes
+  // the pump's rows too — the pump lies inside the finish region, not the
+  // other way round, and that is refused
+  const items = [...FLOOR, ...BASE];
+  const fin = build({ key: "MARK", cols: ["MATERIAL", "MANUFACTURER", "COLOR"], items });
+  const pump = below(other("MARK", ["MANUFACTURER", "MODEL", "GPM", "HP"], n8("P"), [["VENDOR-L", "CP-1", "40", "1"], ["VENDOR-L", "BP-2", "60", "2"]], "PUMP SCHEDULE"), (items.length + 4) * PITCH);
+  const fr = readFinishTable({ key: "crop", spans: [...fin, ...pump] }, { marquee: true });
+  assert.ok(fr && "headerWords" in fr);
+  assert.deepEqual(fr.table.rows.map((r) => r.key), [...keysOf(items), ...n8("P")], "the finish reader runs into the pump");
+  assert.equal(refusal(readScheduleSpans([...fin, ...pump])), "equipment");
+});
+
+test("known limit: a table that says finish, with a device schedule close below it in the box, reads the device rows too", () => {
+  // a FINISH SCHEDULE title skips the equipment re-read, and the marquee read
+  // runs on into the pump — the user drew the box around both
+  const items = [...FLOOR, ...BASE];
+  const fin = build({ key: "MARK", cols: ["MATERIAL", "MANUFACTURER", "COLOR"], title: "FINISH SCHEDULE", items });
+  const pump = below(other("MARK", ["MANUFACTURER", "MODEL", "GPM", "HP"], n8("P"), [["VENDOR-L", "CP-1", "40", "1"], ["VENDOR-L", "BP-2", "60", "2"]], "PUMP SCHEDULE"), (items.length + 5) * PITCH);
+  assert.deepEqual(rowsOf(readScheduleSpans([...fin, ...pump])).map((r) => r.finish_tag), [...keysOf(items), ...n8("P")]);
+});
+
+// ── the equipment re-read yields to finish evidence ─────────────────────────
+/** A finish table with one column an equipment schedule also prints. */
+const withDeviceWord = (o: { key: string; word: string; title?: string; head?: string }) => {
+  const cols = ["MATERIAL", "MANUFACTURER", "COLOR", o.word];
+  const row = (key: string, mat: string, color: string, v: string): Item => ({ t: "row", key, cells: { MATERIAL: mat, MANUFACTURER: "VENDOR-A", COLOR: color, [o.word]: v } });
+  const items: Item[] = [...(o.head ? [H(o.head)] : []), row("CPT-1", "BROADLOOM CARPET", "GREY 101", "10%"), row("LVT-1", "LUXURY VINYL TILE", "OAK 303", "5%")];
+  return { items, spans: build({ key: o.key, cols, title: o.title, items, colX: { MATERIAL: 220, MANUFACTURER: 520, COLOR: 760, [o.word]: 1000 } }) };
+};
+const EVIDENCED: Array<[string, Parameters<typeof withDeviceWord>[0]]> = [
+  ["a FINISH SCHEDULE title and a FLOORING heading (WASTE)", { key: "MARK", word: "WASTE", title: "FINISH SCHEDULE", head: "FLOORING" }],
+  ["a WALL PROTECTION heading alone, TAG key (MOUNTING)", { key: "TAG", word: "MOUNTING", head: "WALL PROTECTION" }],
+  ["a CODE key alone (VENT)", { key: "CODE", word: "VENT" }],
+  ["a MATERIAL SCHEDULE title alone (DRAIN)", { key: "MARK", word: "DRAIN", title: "MATERIAL SCHEDULE" }],
+];
+for (const [name, o] of EVIDENCED) {
+  test(`a finish table with a device-column word is read when it says finish: ${name}`, () => {
+    const { items, spans } = withDeviceWord(o);
+    assert.deepEqual(rowsOf(readScheduleSpans(spans)).map((r) => r.finish_tag), keysOf(items));
+  });
+}
+
+test("the same table with nothing but item + MANUFACTURER to say finish stays refused as equipment", () => {
+  assert.equal(refusal(readScheduleSpans(withDeviceWord({ key: "MARK", word: "WASTE" }).spans)), "equipment");
+});
+
 test("a table that says nothing of finish (no CODE, heading, maker or COLOR/STYLE/PATTERN column) is refused", () => {
   const cols = ["DESCRIPTION", "SIZE", "REMARKS"];
   const r = readScheduleSpans(other("MARK", cols, n8("G"), [["LINEAR GRILLE", "24X6", "SEE PLAN"], ["SLOT DIFFUSER", "48X4", ""]]));
@@ -239,6 +304,25 @@ test("a CODE key or a printed heading wins over a door-schedule column word", ()
   // HEIGHT at the SIZE position, in a CODE-keyed headed finish table
   const spans = build({ cols: ["MATERIAL", "MANUFACTURER", "STYLE", "COLOR", "HEIGHT", "REMARKS"], items, colX: { HEIGHT: 1240 } });
   assert.deepEqual(rowsOf(readScheduleSpans(spans)).map((r) => r.finish_tag), keysOf(items));
+});
+
+test("header guard: which evidence excuses which column word", () => {
+  const std = ["MATERIAL", "MANUFACTURER", "COLOR"];
+  // a HARD word (a count) is excused by a CODE key alone, or by a printed heading alone
+  assert.equal(headerRefusal(["CODE", "MATERIAL", "COLOR", "QTY"], ["CODE", "MATERIAL", "COLOR", "QTY"], false), null);
+  assert.equal(headerRefusal(["TAG", "MATERIAL", "COLOR", "QTY"], ["TAG", "MATERIAL", "COLOR", "QTY"], true), null);
+  // … but never by item + MANUFACTURER (a furniture schedule has both)
+  assert.equal(headerRefusal(["TAG", ...std, "QTY"], ["TAG", ...std, "QTY"], false), "foreign-header");
+  // a soft word (a door dimension) IS excused by item + MANUFACTURER
+  for (const w of ["WIDTH", "HEIGHT"]) assert.equal(headerRefusal(["MARK", ...std], ["MARK", ...std, w], false), null, w);
+  assert.equal(headerRefusal(["MARK", "COLOR"], ["MARK", "COLOR", "WIDTH"], false), "foreign-header");
+});
+
+test("header guard alone refuses the fan schedule (CFM / VOLTS are count / device words)", () => {
+  const fan = FAMILIES.find(([n]) => n.startsWith("fan"))![1];
+  const fin = readFinishTable({ key: "crop", spans: fan }, { marquee: true });
+  assert.ok(fin && "headerWords" in fin && fin.table.rows.length === 8, "the finish reader alone takes it");
+  assert.equal(headerRefusal(fin.table.headers, fin.headerWords, false), "foreign-header");
 });
 
 test("known limit: an untitled door schedule that prints MATERIAL, MANUFACTURER and COLOR is read", () => {
@@ -281,4 +365,15 @@ test("item words: the other exclusions and the plural and phrase forms", () => {
   // the " — " between two cells is a word of its own: RUBBER | BASE is not RUBBER BASE, but BASE alone still is base
   assert.equal(b4("RUBBER — BASE"), "base");
   assert.equal(b4("TRANSITION — HANDRAIL"), "none");
+});
+
+test("item words: punctuation around a word does not hide it; BASE BID and the plural exclusions name nothing", () => {
+  const TABLE: Array<[string, string]> = [
+    ["RUBBER BASE.", "base"], ["RUBBER BASE;", "base"], ["RUBBER BASE:", "base"], ['"COVE BASE"', "base"], ["THRESHOLD.", "transition"],
+    ["CORNER GUARDS.", "wall_protection"], ["WALL-MOUNTED HANDRAIL.", "wall_protection"], ["WATER-BASED SEALER.", "none"],
+    ["LVT — BASE BID", "none"], ["CARPET (BASE BID)", "none"], ["BASE COATS", "none"], ["BASE PLATES", "none"], ["BASE SHEETS", "none"],
+    // the cell boundary still blocks a phrase, punctuation or not
+    ["TRANSITION. — HANDRAIL.", "none"], ["RUBBER. — BASE.", "base"],
+  ];
+  for (const [text, want] of TABLE) assert.equal(b4(text), want, text);
 });

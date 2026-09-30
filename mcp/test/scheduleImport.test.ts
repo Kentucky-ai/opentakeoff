@@ -1,6 +1,6 @@
 // Import from schedule on real sheets: the canvas's path — page text →
 // pageSpans → marquee crop → the shared finish reader (web/src/lib/
-// scheduleRead.ts) — run on the bundled demo plan and a tracked fixture.
+// scheduleRead.ts) — run on the bundled demo plan and tracked fixtures.
 //
 // The demo's material schedule (page 2) is pinned row for row: 28 keys in
 // print order, the joined descriptions, each row's category and where it came
@@ -121,4 +121,36 @@ test("annotated-set p2: the AIR DISTRIBUTION schedule (MARK | MATERIAL | DESCRIP
     assert.equal(r.refused, "no-color-style-pattern");
     assert.equal(r.title, "AIR DISTRIBUTION SCHEDULE");
   }
+});
+
+// ── tracked fixtures read as finish tables ──────────────────────────────────
+const MEP = fileURLToPath(new URL("./fixtures/mep-set.pdf", import.meta.url));
+const SYMBOLS = fileURLToPath(new URL("./fixtures/symbol-set.pdf", import.meta.url));
+const MULTI = fileURLToPath(new URL("./fixtures/multibuilding-set.pdf", import.meta.url));
+/** key → [category, category_source, ticked, description], in print order. */
+const summary = (rows: ScheduleRow[]) => rows.map((r) => [r.finish_tag, r.category, r.category_source, r.suggested, r.description]);
+
+test("mep-set p2: the MATERIAL SCHEDULE is read though device schedules share the box", async () => {
+  // the sheet also prints heater, fan and register schedules; the equipment
+  // re-read judges only the finish table's own ink
+  const ph = await page(MEP, 2);
+  const want = [["CPT-1", "unassigned", "none", true, "CARPET TILE — 24 x 24 MODULAR"], ["RB-1", "base", "text", true, "RESILIENT BASE — 4 IN COVE"]];
+  // the whole sheet, and a box that catches the register schedule's header and its SR-1 row
+  for (const r of [SHEET, { x0: 100, y0: 575, x1: 1200, y1: 860 }]) assert.deepEqual(summary(rowsOf(readRect(ph, r))), want);
+});
+
+test("symbol-set p4: the transition FINISH SCHEDULE reads 3 rows — T1/T2 transition by their words, T9 no section", async () => {
+  assert.deepEqual(summary(rowsOf(readRect(await page(SYMBOLS, 4), SHEET))), [
+    ["T1", "transition", "text", true, "TRANSITION — EDGE STRIP RESILIENT"],
+    ["T2", "transition", "text", true, "TRANSITION — EDGE STRIP METAL"],
+    ["T9", "unassigned", "none", true, "JOINT COVER — NOT DRAWN ON PLANS"],
+  ]);
+});
+
+test("multibuilding-set p3: the MATERIAL SCHEDULE reads 3 rows — RB-1 base by its words, the rest no section", async () => {
+  assert.deepEqual(summary(rowsOf(readRect(await page(MULTI, 3), SHEET))), [
+    ["CPT-1", "unassigned", "none", true, "CARPET TILE"],
+    ["LVT-1", "unassigned", "none", true, "LUXURY VINYL TILE"],
+    ["RB-1", "base", "text", true, "RESILIENT BASE"],
+  ]);
 });
