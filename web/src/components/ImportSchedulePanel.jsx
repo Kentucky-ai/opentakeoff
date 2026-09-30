@@ -22,7 +22,7 @@
 // "from description" so the estimator reviews it before Create.
 import React, { useId, useMemo, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
-import { evaluateTags, isCreatable, previewColors, setPicked as pickRows } from "../lib/scheduleEdit";
+import { closeOnEscape, evaluateTags, isCreatable, previewColors, setPicked as pickRows } from "../lib/scheduleEdit";
 
 // category → display group, in the order an estimator reads a floor set.
 // Rows the schedule gives no section (and whose words name no item) come
@@ -100,14 +100,10 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
 
   // Escape closes the dialog — unless it was a tag edit's Escape, which only
   // cancels the edit (onEditKey preventDefaults it; React's handler runs before
-  // this document listener). Stopped here so the canvas's own Escape (clear the
-  // selection, disarm tools) doesn't also fire behind the modal.
+  // this document listener). Stopped so the canvas's own Escape doesn't also
+  // fire behind the modal. The decision is lib/scheduleEdit's closeOnEscape (tested).
   React.useEffect(() => {
-    const onKey = (e) => {
-      if (e.key !== "Escape" || e.defaultPrevented) return;
-      e.stopPropagation();
-      onClose?.();
-    };
+    const onKey = (e) => { closeOnEscape(e, onClose); };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);

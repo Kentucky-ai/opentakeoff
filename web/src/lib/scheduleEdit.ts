@@ -77,3 +77,16 @@ export function previewColors(keys: string[], willCreate: (key: string) => boole
   for (const k of keys) if (willCreate(k)) m.set(k, palette[n++ % palette.length]);
   return m;
 }
+
+// The dialog's document keydown listener. Escape closes the dialog — unless it
+// was a tag edit's Escape, which only cancels the edit: the input's onEditKey
+// preventDefaults it, and React's handler runs before this document listener.
+// Propagation is stopped so the canvas's own Escape (clear the selection,
+// disarm tools) doesn't also fire behind the modal. Returns whether it closed.
+type EscapeEvent = { key: string; defaultPrevented: boolean; stopPropagation: () => void };
+export function closeOnEscape(e: EscapeEvent, onClose?: () => void): boolean {
+  if (e.key !== "Escape" || e.defaultPrevented) return false;
+  e.stopPropagation();
+  onClose?.();
+  return true;
+}
