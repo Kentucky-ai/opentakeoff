@@ -49,7 +49,6 @@ export default function PremiumInterest({ onClose, onOpenChange }) {
           <label>Your role<select name="role" required defaultValue=""><option value="" disabled>Choose a role</option>{ROLES.map(value => <option key={value}>{value}</option>)}</select></label>
           <label hidden>Leave this empty<input name="bot-field" tabIndex={-1} autoComplete="off"/></label>
           <p className="premium-interest-fine">We’ll use these details to respond about early access. All details pending.</p>
-          {!available && <p role="status" className="premium-interest-fine">Form preview. Submissions become available on the hosted site after form setup.</p>}
           {error && <p role="alert" className="premium-interest-error">{error}</p>}
           <button className="premium-interest-submit" type="submit" disabled={!available || state === "sending"}>{state === "sending" ? "Sending your request…" : "Request Premium access"}</button>
         </fieldset>
