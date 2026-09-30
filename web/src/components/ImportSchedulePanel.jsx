@@ -17,7 +17,8 @@
 // Defaults do the work: ceilings/millwork arrive suggested:false (unchecked),
 // and codes already present as conditions arrive locked ("in use") so a second
 // import can't duplicate them. A category the reader GUESSED from the row's
-// words (category_source "text" — no printed section heading) is flagged
+// own words (category_source "text" — no printed heading names one, whether
+// there is no heading or it is a MISC / ACCESSORIES one) is flagged
 // "from description" so the estimator reviews it before Create.
 import React, { useId, useMemo, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
@@ -110,7 +111,7 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.32)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 40 }} onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}
-        style={{ width: 560, maxHeight: "min(82vh, 720px)", display: "flex", flexDirection: "column", background: "var(--paper-bright)", border: "1px solid var(--cobalt)", boxShadow: "var(--shadow-pop)", fontSize: 12.5 }}>
+        style={{ width: "min(560px, calc(100vw - 32px))", maxHeight: "min(82vh, 720px)", display: "flex", flexDirection: "column", background: "var(--paper-bright)", border: "1px solid var(--cobalt)", boxShadow: "var(--shadow-pop)", fontSize: 12.5 }}>
         {/* header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid var(--ink-faint)", background: "var(--cobalt)", color: "var(--accent-contrast)" }}>
           <span style={{ fontWeight: 700 }}>Import from schedule — {rows.length} finish{rows.length === 1 ? "" : "es"} found</span>
@@ -181,7 +182,7 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
                         {flag && <span style={{ ...lbl, opacity: 0.8 }}>{flag}</span>}
                       </label>
                       {guessId && (
-                        <span id={guessId} title="Category guessed from the row's description — no printed section heading" style={{ ...lbl, color: "var(--c-warning)", flex: "0 0 auto", cursor: "help" }}>from description</span>
+                        <span id={guessId} title="Category guessed from the row's own words — no printed heading names one" style={{ ...lbl, color: "var(--c-warning)", flex: "0 0 auto", cursor: "help" }}>from description</span>
                       )}
                     </div>
                   );
@@ -192,7 +193,7 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
         </div>
 
         {/* footer */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, padding: "10px 14px", borderTop: "1px solid var(--ink-faint)" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 10, padding: "10px 14px", borderTop: "1px solid var(--ink-faint)" }}>
           <button onClick={() => pickAll(true)} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>Select all</button>
           <button onClick={() => pickAll(false)} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12, marginRight: "auto" }}>Deselect all</button>
           <button onClick={onClose} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>Cancel</button>

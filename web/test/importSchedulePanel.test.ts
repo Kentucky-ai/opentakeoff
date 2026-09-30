@@ -1,5 +1,5 @@
 // ImportSchedulePanel render (#468). A category guessed from the row's words
-// (category_source "text" — no printed section heading) must be FLAGGED for
+// (category_source "text" — no printed heading names one) must be FLAGGED for
 // review: visible "from description" text, a sibling of the row's <label>
 // (not inside it, so it isn't folded into the checkbox's accessible name), and
 // tied to that row's checkbox by aria-describedby. Heading, none and scan rows
@@ -56,7 +56,10 @@ test("ImportSchedulePanel: the flag is a sibling of the row's <label>, not insid
   assert.match(html, /<\/label><span[^>]*id="[^"]+"[^>]*>from description<\/span>/);
   // warning colour + a tooltip saying why
   assert.match(html, /<span[^>]*color:var\(--c-warning\)[^>]*>from description</);
-  assert.match(html, /title="Category guessed from the row(&#x27;|')s description — no printed section heading"/);
+  // accurate: a row under a printed MISC / ACCESSORIES heading is "text" too —
+  // there IS a heading, it just names no category
+  assert.match(html, /title="Category guessed from the row(&#x27;|')s own words — no printed heading names one"/);
+  assert.doesNotMatch(html, /no printed section heading/);
 });
 
 test("ImportSchedulePanel: Select All / Deselect All render; the tag is an inline-edit button", () => {
@@ -68,9 +71,20 @@ test("ImportSchedulePanel: Select All / Deselect All render; the tag is an inlin
   assert.match(html, /Create 5 conditions/);
 });
 
+test("ImportSchedulePanel: the dialog fits a phone-width viewport and its footer wraps", () => {
+  const html = render();
+  // no fixed 560px box: capped at the viewport less a 16px gutter each side
+  assert.match(html, /width:min\(560px, calc\(100vw - 32px\)\)/);
+  assert.doesNotMatch(html, /width:560px/);
+  // the footer (Select all … Create) wraps instead of pushing Create off-screen
+  const footer = html.slice(html.lastIndexOf("<div", html.indexOf(">Select all<")));
+  assert.match(footer, /^<div[^>]*flex-wrap:wrap/);
+});
+
 test("ImportSchedulePanel: 'No section' is the first group", () => {
   const html = render();
   const order = ["No section", "Floor", "Wall Protection", "Transition", "Ceiling"].map((l) => html.indexOf(`>${l}<`));
   assert.ok(order.every((i) => i >= 0));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
 });
+
