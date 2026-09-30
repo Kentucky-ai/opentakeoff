@@ -48,6 +48,8 @@ Owner approved release to main after branch review. The previous main is preserv
 
 ## Premium interest intake
 
+This section records the original September 15 intake and its historical verification. [PR #473](https://github.com/Kentucky-ai/opentakeoff/pull/473) simplifies the form to required email, name, company and role, removes trade, main interest and product-news opt-in, and removes the local-preview notice. See the [current user guide](../USER_GUIDE.md#13-the-agent-panel) for current behavior and the [updated form screenshot](evidence/premium-request-form.png).
+
 ![Request Premium interest screen](evidence/premium-workspace/premium-interest.png)
 
 Request Premium opens a user-triggered dialog. The visible capabilities are explicitly in development: mobile/tablet, advanced CV, estimates/pricing, proposals, RFIs and submittals. Email, role, trade and main interest are required; name/company are optional. Product news is a separate unchecked choice.
