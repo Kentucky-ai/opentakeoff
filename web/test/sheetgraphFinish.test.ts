@@ -73,6 +73,11 @@ const keys = (t: ScheduleTable) => t.rows.map((r) => r.key);
 const row = (t: ScheduleTable, k: string) => { const r = t.rows.find((x) => x.key === k); assert.ok(r, `row ${k}`); return r; };
 const cell = (t: ScheduleTable, k: string, col: string) => row(t, k).cells[col]?.text;
 const allCellText = (t: ScheduleTable) => t.rows.flatMap((r) => Object.values(r.cells).map((c) => c.text));
+/** key → section ("" = no section) for every row. */
+const sections = (t: ScheduleTable) => Object.fromEntries(t.rows.map((r) => [r.key, r.section ?? ""]));
+const expectSections = (pairs: Array<[Item[], string]>) => Object.fromEntries(pairs.flatMap(([items, s]) => keysOf(items).map((k) => [k, s])));
+const withCW = <T>(w: number, f: () => T): T => { const prev = CW; CW = w; try { return f(); } finally { CW = prev; } };
+const noCellHas = (t: ScheduleTable, ...texts: string[]) => { for (const x of texts) assert.ok(!allCellText(t).some((c) => c.includes(x)), `"${x}" is in no cell`); };
 
 /** none of the given rows has a cell containing any of the texts */
 const noCellOf = (t: ScheduleTable, ks: string[], ...texts: string[]) => {
@@ -648,4 +653,438 @@ test("fuzz-found, width-less: a group label is found within three rows of its co
   const t = read(fixture(true, [["TAG",100,0],["DESCRIPTION",221,0],["SIZE",417,0],["LOCATION",771,-38],["SPECIFICATION",628.5,-38],["WC-12",140.5,38],["VENDOR-B",899.5,38],["CO",971.5,38],["Q1",995.5,38],["SS-12",140.5,76],["EGGSHELL",911.5,76],["Q2",983.5,76],["SS",152.5,114],["12",915.5,114],["x",939.5,114],["12",955.5,114],["Q3",979.5,114],["WT1-3",140.5,152],["SHADE",287,152],["Z3",335,152],["ACT-2",140.5,190],["RB-3",144.5,228],["PAINT",923.5,228],["Q4",971.5,228],["PT-2",144.5,266],["C",156.5,304],["EGGSHELL",550,304],["Q5",622,304],["W1-1",144.5,342],["SHADE",287,342],["Z7",335,342],["SS-8",144.5,380],["RUBBER",899.5,380],["COVE",955.5,380],["Q6",995.5,380]]));
   assert.deepEqual(keys(t).filter((k) => ["WC-12","SS-12","SS","ACT-2","RB-3","PT-2","C","SS-8"].includes(k)), ["WC-12","SS-12","SS","ACT-2","RB-3","PT-2","C","SS-8"]);
   noCellOf(t, ["WC-12","SS-12","SS","ACT-2","RB-3","PT-2","C","SS-8"], "SHADE Z3", "SHADE Z7");
+});
+
+// ── section headings ────────────────────────────────────────────────────────
+test("key-column headings are consumed and name the rows' section", () => {
+  const items = [H("FLOORING"), ...FLOOR, H("BASE"), ...BASE, H("WALLS"), ...WALLS];
+  const t = read(build({ cols: STD, items }));
+  assert.deepEqual(keys(t), keysOf(items));
+  assert.deepEqual(sections(t), expectSections([[FLOOR, "FLOORING"], [BASE, "BASE"], [WALLS, "WALLS"]]));
+  noCellHas(t, "FLOORING", "WALLS");
+});
+
+test("a heading carries the vocabulary entry it matched — phrases and punctuation", () => {
+  const wp = [R("HR-1", "HANDRAIL", "VENDOR-J", "ROUND", "ALMOND"), R("CG-2", "CORNER GUARD", "VENDOR-J", "FLUSH", "ALMOND")];
+  const a = [H("FLOORING"), ...FLOOR, H("WALL BASE"), ...BASE, H("WALL PROTECTION"), ...wp];
+  const ta = read(build({ cols: STD, items: a }));
+  assert.deepEqual(keys(ta), keysOf(a));
+  assert.deepEqual(sections(ta), expectSections([[FLOOR, "FLOORING"], [BASE, "WALL BASE"], [wp, "WALL PROTECTION"]]));
+  const b = [H("FLOORING"), ...FLOOR, H("MISC. FINISHES"), ...MISC];
+  const tb = read(build({ cols: STD, items: b }));
+  assert.deepEqual(sections(tb), expectSections([[FLOOR, "FLOORING"], [MISC, "MISC"]]));
+  noCellHas(tb, "MISC. FINISHES");
+  const c = [H("FLOORING (SEE NOTE 2)"), ...FLOOR, H("BASE"), ...BASE];
+  const tc = read(build({ cols: STD, items: c }));
+  assert.deepEqual(sections(tc), expectSections([[FLOOR, "FLOORING"], [BASE, "BASE"]]));
+  noCellHas(tc, "SEE NOTE 2");
+});
+
+test("a heading of several spans, all ending before column 2, is one heading", () => {
+  const items: Item[] = [H("FLOORING"), ...FLOOR, { t: "raw", spans: [["BASE", 100], ["(NOTE 4)", 140]] }, ...BASE];
+  const t = read(build({ cols: STD, items }));
+  assert.deepEqual(keys(t), keysOf(items));
+  assert.deepEqual(sections(t), expectSections([[FLOOR, "FLOORING"], [BASE, "BASE"]]));
+  noCellHas(t, "(NOTE 4)");
+});
+
+test("no column map: a heading centered on the table's text is a heading", () => {
+  // too few cells for a column map, so the center is the text's own extent
+  // (the header row reaches from CODE at 100 to the end of COLOR at 800)
+  const at = (s: string) => 450 - (s.length * CW) / 2;
+  const items: Item[] = [H("FLOORING", at("FLOORING")), R("CPT-1", "CARPET", ""), H("BASE", at("BASE")), R("RB-1", "RUBBER BASE", "")];
+  const t = read(build({ cols: ["MATERIAL", "MANUFACTURER", "COLOR"], colX: { COLOR: 760 }, items }));
+  assert.deepEqual(keys(t), ["CPT-1", "RB-1"]);
+  assert.deepEqual(sections(t), { "CPT-1": "FLOORING", "RB-1": "BASE" });
+});
+
+test("no column map: text far below the table does not move the center a heading is measured against", () => {
+  const at = (s: string) => 450 - (s.length * CW) / 2;
+  const items: Item[] = [H("FLOORING", at("FLOORING")), R("CPT-1", "CARPET", ""), H("BASE", at("BASE")), R("RB-1", "RUBBER BASE", ""),
+    { t: "gap", n: 14 }, { t: "raw", spans: [["SEE SHEET A-601 FOR FINISH PLAN NOTES", 900]] }];
+  const t = read(build({ cols: ["MATERIAL", "MANUFACTURER", "COLOR"], colX: { COLOR: 760 }, items }));
+  assert.deepEqual(keys(t), ["CPT-1", "RB-1"]);
+  assert.deepEqual(sections(t), { "CPT-1": "FLOORING", "RB-1": "BASE" });
+});
+
+test("a heading that runs past the key column into column 2 is still a heading", () => {
+  const items = [H("FLOORING - LEVEL ONE"), ...FLOOR, H("BASE - ALL LEVELS"), ...BASE];
+  const t = read(build({ cols: STD, items }));
+  assert.deepEqual(keys(t), keysOf(items));
+  assert.deepEqual(sections(t), expectSections([[FLOOR, "FLOORING"], [BASE, "BASE"]]));
+  noCellHas(t, "LEVEL ONE", "ALL LEVELS");
+});
+
+test("a heading set left of the key column (outdented) is a heading", () => {
+  const more: Item[] = [];
+  for (let i = 3; i <= 14; i++) more.push(R(`CPT-${i}`, "CARPET TILE", "VENDOR-A", "GRID", "GREY", "", i % 4 ? "" : "SEE NOTE 1"));
+  const items = [H("FLOORING", 70), ...FLOOR, ...more, H("BASE", 70), ...BASE, H("WALLS", 70), ...WALLS];
+  const t = read(build({ cols: STD, items }));
+  assert.deepEqual(keys(t), keysOf(items));
+  assert.deepEqual(sections(t), expectSections([[[...FLOOR, ...more], "FLOORING"], [BASE, "BASE"], [WALLS, "WALLS"]]));
+});
+
+test("an outdented heading joins the region", () => {
+  const items = [H("FLOORING", 60), ...FLOOR, H("BASE", 60), ...BASE];
+  const t = read(build({ cols: STD, items }));
+  assert.deepEqual(sections(t), expectSections([[FLOOR, "FLOORING"], [BASE, "BASE"]]));
+  assert.ok(t.region[0] <= 60, `region left ${t.region[0]} ≤ 60`);
+});
+
+test("a heading centered over the table is a heading, at any glyph width", () => {
+  for (const w of [8, 6, 12]) withCW(w, () => {
+    const mid = (100 + 1400 + 400) / 2;
+    const at = (s: string) => mid - (s.length * CW) / 2;
+    const items = [H("FLOORING", at("FLOORING")), ...FLOOR, H("BASE", at("BASE")), ...BASE, H("CEILINGS", at("CEILINGS")), ...CEIL];
+    const t = read(build({ cols: STD, items }));
+    assert.deepEqual(keys(t), keysOf(items), `glyph width ${w}`);
+    assert.deepEqual(sections(t), expectSections([[FLOOR, "FLOORING"], [BASE, "BASE"], [CEIL, "CEILINGS"]]), `glyph width ${w}`);
+  });
+});
+
+test("headings in a center-aligned table", () => {
+  const items = [H("FLOORING"), ...FLOOR, H("BASE"), ...BASE, H("WALLS"), ...WALLS];
+  const t = read(build({ cols: STD, items, align: "center" }));
+  assert.deepEqual(keys(t), keysOf(items));
+  assert.deepEqual(sections(t), expectSections([[FLOOR, "FLOORING"], [BASE, "BASE"], [WALLS, "WALLS"]]));
+  assert.equal(cell(t, "LVT-1", "MATERIAL"), "LUXURY VINYL TILE");
+  assert.equal(cell(t, "LVT-1", "SIZE"), '6" x 36"');
+  assert.equal(cell(t, "CT-1", "REMARKS"), "GROUT: VENDOR-K 01 WHITE");
+});
+
+test("a long centered line that starts with a heading word is a note, not a heading", () => {
+  // joined text of 24+ characters is never a heading, centered or not
+  const mid = (100 + 1400 + 400) / 2;
+  const note = "FLOOR PREP PER SPEC SECTION 09 05 00 TYP";
+  const items = [H("BASE"), ...BASE, H(note, mid - (note.length * CW) / 2), ...FLOOR];
+  const t = read(build({ cols: STD, items }));
+  assert.deepEqual(keys(t), keysOf(items));
+  assert.deepEqual(sections(t), expectSections([[[...BASE, ...FLOOR], "BASE"]]));
+});
+
+test("a cell's wrapped second line is not a heading, even when it is a heading word", () => {
+  for (const w of [8, 6, 12]) withCW(w, () => {
+    const rw = R("RB-3", "RESILIENT WALL", "VENDOR-B", "COVE", "BLACK"), ind = R("RB-4", "RESILIENT WALL", "VENDOR-B", "COVE", "GREY");
+    const sw = R("P-3", "PAINT", "VENDOR-E", "FLAT", "SEE FINISH"), ac = R("ACT-2", "ACOUSTICAL", "VENDOR-G", "SQUARE", "WHITE");
+    const items: Item[] = [H("FLOORING"), ...FLOOR, H("BASE"), rw, { t: "wrap", col: "MATERIAL", text: "BASE" }, ind, { t: "wrap", col: "MATERIAL", text: "BASE", dx: 10 }, BASE[0],
+      H("WALLS"), sw, { t: "wrap", col: "COLOR", text: "WALL" }, WALLS[0], H("CEILINGS"), ac, { t: "wrap", col: "MATERIAL", text: "CEILING" }, CEIL[0]];
+    const t = read(build({ cols: STD, items }));
+    assert.deepEqual(keys(t), keysOf(items), `glyph width ${w}`);
+    assert.deepEqual(sections(t), expectSections([[FLOOR, "FLOORING"], [[rw, ind, BASE[0]], "BASE"], [[sw, WALLS[0]], "WALLS"], [[ac, CEIL[0]], "CEILINGS"]]), `glyph width ${w}`);
+    assert.equal(cell(t, "RB-3", "MATERIAL"), "RESILIENT WALL BASE");
+    assert.equal(cell(t, "RB-4", "MATERIAL"), "RESILIENT WALL BASE");
+    assert.equal(cell(t, "ACT-2", "MATERIAL"), "ACOUSTICAL CEILING");
+    assert.equal(cell(t, "P-3", "COLOR"), "SEE FINISH WALL");
+  });
+});
+
+test("a lone word far right of the table is not a heading", () => {
+  const items = [H("FLOORING"), ...FLOOR.slice(0, 3), { t: "raw", spans: [["WALL", 1650]] } as Item, ...FLOOR.slice(3), H("BASE"), ...BASE];
+  const t = read(build({ cols: STD, items }));
+  assert.deepEqual(keys(t), keysOf(items));
+  assert.deepEqual(sections(t), expectSections([[FLOOR, "FLOORING"], [BASE, "BASE"]]));
+});
+
+test("a material word or a spec-section number is not a section: rows under it have none", () => {
+  const bare = [H("FLOORS"), FLOOR[2], FLOOR[3], H("CARPET"), FLOOR[0], FLOOR[1], H("TILE"), WALLS[2], H("PAINT"), WALLS[0], WALLS[1]];
+  const tb = read(build({ cols: STD, items: bare }));
+  assert.deepEqual(sections(tb), { "LVT-1": "FLOORS", "VCT-1": "FLOORS", "CPT-1": "", "CPT-2": "", "CT-1": "", "P-1": "", "P-2": "" });
+  const spec: Item[] = [H("09 65 00 RESILIENT FLOORING"), FLOOR[2], FLOOR[3], ...BASE, { t: "raw", spans: [["09 68 00", 100], ["CARPETING", 220]] }, FLOOR[0], FLOOR[1], H("09 91 00 PAINTING"), ...WALLS];
+  const items = [H("FLOORING"), FLOOR[4], ...spec];
+  const ts = read(build({ cols: STD, items }));
+  assert.deepEqual(keys(ts), keysOf(items));
+  assert.deepEqual(sections(ts), { "SC-1": "FLOORING", ...expectSections([[spec, ""]]) });
+  noCellHas(ts, "09 65 00", "09 68 00", "CARPETING", "09 91 00", "RESILIENT FLOORING", "PAINTING");
+});
+
+test("a spec-section heading of two spans ends the section and joins the region", () => {
+  const items: Item[] = [H("FLOORING"), ...FLOOR, { t: "raw", spans: [["09 65 13", 60], ["RESILIENT ACCESSORIES", 220]] }, ...BASE];
+  const t = read(build({ cols: STD, items }));
+  assert.deepEqual(keys(t), keysOf(items));
+  assert.deepEqual(sections(t), expectSections([[FLOOR, "FLOORING"], [BASE, ""]]));
+  noCellHas(t, "09 65 13", "ACCESSORIES");
+  assert.ok(t.region[0] <= 60, `region left ${t.region[0]} ≤ 60`);
+});
+
+test("any band in the key column this vocabulary does not know ends the section", () => {
+  const act = [R("ACT-1", "ACOUSTICAL CEILING TILE", "VENDOR-G", "FINE FISSURED", "WHITE"), R("ACT-2", "ACOUSTICAL PANEL", "VENDOR-G", "SQUARE", "WHITE")];
+  for (const band of ["ACOUSTICAL CEILING TREATMENTS", "SECTION 095113 ACOUSTICAL", "TILE/STONE"]) {
+    const items = [H("WALLS"), ...WALLS, H(band), ...act];
+    const t = read(build({ cols: STD, items }));
+    assert.deepEqual(keys(t), keysOf(items), band);
+    assert.deepEqual(sections(t), expectSections([[WALLS, "WALLS"], [act, ""]]), band);
+  }
+});
+
+test("no column map: a lone word starting inside the key column but running into column 2 is not a heading", () => {
+  // too few cells for a column map; "BASE" starts just left of the key
+  // column's boundary and ends in the MATERIAL column
+  const items: Item[] = [H("FLOORING"), R("CPT-1", "CARPET", ""), R("CPT-2", "CARPET", ""), { t: "raw", spans: [["BASE", 180]] }, R("VCT-1", "VINYL TILE", "")];
+  const t = read(build({ cols: ["MATERIAL", "MANUFACTURER", "COLOR"], items }));
+  assert.deepEqual(keys(t), ["CPT-1", "CPT-2", "VCT-1"]);
+  assert.notEqual(row(t, "VCT-1").section, "BASE");
+});
+
+test("no column map: a long left-set heading is not read — its rows carry no section", () => {
+  // the stated safe failure: with no column map, a lone span that runs out of
+  // the key column is taken for a heading only when it is centered over the
+  // table, and this one is set left. Its rows carry no section rather than a
+  // guess (the same line centered would still be refused: 24+ characters)
+  const items: Item[] = [H("FLOORING FINISHES ALL LEVELS"), R("CPT-1", "CARPET", ""), R("CPT-2", "CARPET", ""), R("VCT-1", "VINYL TILE", "")];
+  const t = read(build({ cols: ["MATERIAL", "MANUFACTURER", "COLOR"], items }));
+  assert.deepEqual(keys(t), ["CPT-1", "CPT-2", "VCT-1"]);
+  assert.deepEqual(sections(t), { "CPT-1": "", "CPT-2": "", "VCT-1": "" });
+});
+
+test("tables with no headings carry no sections", () => {
+  const items = [...FLOOR, ...BASE, ...WALLS, ...MISC];
+  for (const k of ["CODE", "TAG", "MARK", "SYMBOL"]) {
+    const t = read(build({ key: k, cols: STD, title: k === "CODE" ? undefined : "FINISH SCHEDULE", items }));
+    assert.deepEqual(keys(t), keysOf(items), k);
+    assert.ok(t.rows.every((r) => r.section === undefined), k);
+    assert.equal(cell(t, "RB-1", "MATERIAL"), "RUBBER WALL BASE");
+    assert.equal(cell(t, "CT-1", "REMARKS"), "GROUT: VENDOR-K 01 WHITE");
+  }
+});
+
+test("a headed finish table with a TYPE / HEIGHT / WIDTH / THICKNESS / SLIP RATING column", () => {
+  const items = [H("FLOORING"), ...FLOOR, H("BASE"), ...BASE, H("WALLS"), ...WALLS];
+  for (const word of ["TYPE", "HEIGHT", "WIDTH", "THICKNESS", "SLIP RATING"]) {
+    const spans = build({ cols: STD, items });
+    const hdrY = Math.min(...spans.filter((x) => x.str === "SIZE").map((x) => x.y));
+    for (const x of spans) if (x.str === "SIZE" && x.y === hdrY) { x.str = word; x.w = word.length * CW; }
+    const t = read(spans);
+    assert.deepEqual(keys(t), keysOf(items), word);
+    assert.deepEqual(sections(t), expectSections([[FLOOR, "FLOORING"], [BASE, "BASE"], [WALLS, "WALLS"]]), word);
+  }
+});
+
+test("a sparse REMARKS column under headings (1 of 9 rows)", () => {
+  const fl = [R("CPT-1", "BROADLOOM CARPET", "VENDOR-A", "LOOP 20", "GREY 101"), R("CPT-2", "MODULAR CARPET TILE", "VENDOR-A", "GRID 24", "BLUE 202"), R("LVT-1", "LUXURY VINYL TILE", "VENDOR-B", "PLANK 6", "OAK 303", '6" x 36"', "ADHESIVE: VENDOR-K"), R("VCT-1", "VINYL COMPOSITION TILE", "VENDOR-C", "STANDARD", "WHITE 404", '12" x 12"'), FLOOR[4]];
+  const wp = [R("HR-1", "HANDRAIL", "VENDOR-J", "ROUND", "ALMOND"), R("CG-2", "CORNER GUARD", "VENDOR-J", "FLUSH", "ALMOND")];
+  const items = [H("FLOORING"), ...fl, H("WALL BASE"), ...BASE, H("WALL PROTECTION"), ...wp];
+  const t = read(build({ cols: STD, items }));
+  assert.deepEqual(keys(t), keysOf(items));
+  assert.deepEqual(sections(t), expectSections([[fl, "FLOORING"], [BASE, "WALL BASE"], [wp, "WALL PROTECTION"]]));
+  assert.equal(cell(t, "LVT-1", "REMARKS"), "ADHESIVE: VENDOR-K");
+});
+
+// A heading is a lone span, so a column of them has a left edge of its own.
+// It must never be taken for a column start: not the key column's, and not a
+// sparse column's the rescue would otherwise hand it.
+const headedTable = (o: { heads: Array<[string, number]>; codeX: number; hdr: Array<[string, number]>; cell: (k: string, i: number) => Array<[string, number]>; n: number; widthless?: boolean }): GraphSpan[] => {
+  const mk = (str: string, x: number, y: number): GraphSpan => (o.widthless ? { str, x, y, w: 0, h: TH } : sp(str, x, y));
+  const out: GraphSpan[] = o.hdr.map(([l, x]) => mk(l, x, 0));
+  let y = 0;
+  o.heads.forEach(([head, hx], h) => {
+    y += PITCH; out.push(mk(head, hx, y));
+    for (let i = 1; i <= o.n; i++) { y += PITCH; const k = ["CPT", "RB", "P"][h] + "-" + i; out.push(mk(k, o.codeX, y), ...o.cell(k, i).map(([s, x]) => mk(s, x, y))); }
+  });
+  return out;
+};
+const HEADS3 = ["FLOORING", "BASE", "WALLS"];
+const KEYS3 = (n: number) => ["CPT", "RB", "P"].flatMap((p) => Array.from({ length: n }, (_, i) => `${p}-${i + 1}`));
+
+test("outdented headings are not the key column's start (codes set right of a left-set CODE header)", () => {
+  const hdr: Array<[string, number]> = [["CODE", 100], ["DESCRIPTION", 220], ["MANUFACTURER", 520], ["COLOR", 760]];
+  const cells = (_k: string, i: number): Array<[string, number]> => [[`MATERIAL ${i}`, 220], [`VENDOR-${i}`, 520], [`COLOR ${i}`, 760]];
+  for (const n of [6, 10]) {
+    const t = read(headedTable({ heads: HEADS3.map((h) => [h, 70]), codeX: 120, hdr, cell: cells, n }));
+    assert.deepEqual(keys(t), KEYS3(n), `n=${n}`);
+    assert.equal(cell(t, "CPT-1", "DESCRIPTION"), "MATERIAL 1");
+    assert.deepEqual([...new Set(t.rows.map((r) => r.section))], ["FLOORING", "BASE", "WALLS"]);
+  }
+});
+
+test("width-less input: outdented headings are not the key column's start (codes indented 4 px)", () => {
+  const hdr: Array<[string, number]> = [["CODE", 100], ["DESCRIPTION", 220], ["MANUFACTURER", 520], ["COLOR", 760]];
+  const cells = (_k: string, i: number): Array<[string, number]> => [[`MATERIAL`, 220], [`VENDOR-${i}`, 520], [`GREY`, 760]];
+  for (const hx of [70, 88]) for (const n of [6, 10]) {
+    const t = read(headedTable({ heads: HEADS3.map((h) => [h, hx]), codeX: 104, hdr, cell: cells, n, widthless: true }));
+    assert.deepEqual(keys(t), KEYS3(n), `heading x=${hx}, n=${n}`);
+    assert.equal(cell(t, "RB-2", "MANUFACTURER"), "VENDOR-2");
+    assert.deepEqual([...new Set(t.rows.map((r) => r.section))], ["FLOORING", "BASE", "WALLS"]);
+  }
+});
+
+test("centered headings are not rescued as a sparse column's start", () => {
+  // COLOR's cells sit 30 px right of its header; the headings, centered over
+  // the table, have their left edges between MATERIAL and COLOR
+  const hdr: Array<[string, number]> = [["CODE", 100], ["MATERIAL", 220], ["COLOR", 400]];
+  const cells = (_k: string, i: number): Array<[string, number]> => [[`MATERIAL ${i}`, 220], [`GREY ${i}`, 430]];
+  const t = read(headedTable({ heads: HEADS3.map((h) => [h, 330 - (h.length * CW) / 2]), codeX: 100, hdr, cell: cells, n: 6 }));
+  assert.deepEqual(keys(t), KEYS3(6));
+  assert.equal(t.rows.filter((r) => r.cells.COLOR).length, 18, "every row keeps its COLOR");
+  assert.equal(cell(t, "CPT-1", "COLOR"), "GREY 1");
+  assert.equal(cell(t, "CPT-1", "MATERIAL"), "MATERIAL 1");
+  assert.deepEqual([...new Set(t.rows.map((r) => r.section))], ["FLOORING", "BASE", "WALLS"]);
+});
+
+test("a heading-word line far below the table does not stretch its region", () => {
+  const items: Item[] = [H("FLOORING"), ...FLOOR, H("BASE"), ...BASE, { t: "gap", n: 14 }, H("BASE DETAIL")];
+  const spans = build({ cols: STD, items });
+  const lastRowBottom = Math.max(...spans.filter((s) => s.str === "RB-2").map((s) => s.y + s.h));
+  const t = read(spans);
+  assert.deepEqual(keys(t), keysOf(items));
+  assert.deepEqual(sections(t), expectSections([[FLOOR, "FLOORING"], [BASE, "BASE"]]));
+  assert.ok(t.region[3] <= lastRowBottom + 2, `region bottom ${t.region[3]} ≤ ${lastRowBottom + 2}`);
+});
+
+test("fuzz-found, width-less: no column is rescued", () => {
+  // a sparse column's first word cannot be told from a later word of the cell before it
+  const t = read(fixture(true, [["SYMBOL",100,0],["COLOR",222,0],["STYLE",527,0],["MISC.",100,30],["FINISHES",148,30],["SS",100,60],["SS2",100,90],["VENDOR-A",222,90],["Q1",294,90],["WALLS",100,120],["VCT-2",100,150]]));
+  assert.deepEqual(keys(t).filter((k) => ["SS2","VCT-2"].includes(k)), ["SS2","VCT-2"]);
+  assert.equal(cell(t, "SS2", "COLOR"), "VENDOR-A Q1");
+  noCellOf(t, ["SS2","VCT-2"], "MISC. FINISHES", "WALLS");
+});
+
+test("fuzz-found: a heading in the key column is consumed, never a cell", () => {
+  // CEILINGS over a three-row table
+  const t = read(fixture(false, [["TAG",100,0,24],["MATERIAL",245,0,64],["PRODUCT",483,0,56],["MANUFACTURER",789,0,96],["CEILINGS",100,38,64],["CPT-12",100,76,48],["12 x 12 Q1",789,76,80],["X1-2",100,114,32],["SHADE Z1",245,114,64],["PT-7",100,152,32],["OAK 303 Q2",245,152,80],["ADHESIVE: VENDOR-K Q3",789,152,168]]));
+  assert.deepEqual(keys(t).filter((k) => ["CPT-12","PT-7"].includes(k)), ["CPT-12","PT-7"]);
+  assert.equal(cell(t, "CPT-12", "MANUFACTURER"), "12 x 12 Q1");
+  assert.equal(cell(t, "PT-7", "MATERIAL"), "OAK 303 Q2");
+  assert.equal(cell(t, "PT-7", "MANUFACTURER"), "ADHESIVE: VENDOR-K Q3");
+  noCellOf(t, ["CPT-12","PT-7"], "CEILINGS");
+});
+
+test("fuzz-found: heading-word lines read as no heading still count toward the row pitch", () => {
+  // the headings are centered on a column the table's extent cannot place; without them the repair radius doubles and they land in cells
+  const t = read(fixture(false, [["SYMBOL",100,0,48],["PRODUCT",211,0,56],["MANUFACTURER",398,0,96],["SPECIFICATION",411,-38,104],["WALLS",387.5,38,40],["T",100,76,8],["ADHESIVE: VENDOR-K Q1",398,76,168],["FLOORING",375.5,114,64],["SS-4",100,152,32],["MATTE FINISH Q2",398,152,120],["SS-11",100,190,40]]));
+  assert.deepEqual(keys(t).filter((k) => ["T","SS-4","SS-11"].includes(k)), ["T","SS-4","SS-11"]);
+  assert.equal(cell(t, "T", "MANUFACTURER"), "ADHESIVE: VENDOR-K Q1");
+  assert.equal(cell(t, "SS-4", "MANUFACTURER"), "MATTE FINISH Q2");
+  noCellOf(t, ["T","SS-4","SS-11"], "WALLS", "FLOORING");
+});
+
+test("fuzz-found: one-row sections keep the repair radius tight (an unkeyed row joins no row)", () => {
+  // consumed headings count toward the pitch; without them W1-1 joins T-10
+  const t = read(fixture(false, [["CODE",100,0,32],["STYLE",193,0,40],["MATERIAL",477,0,64],["BASE",100,30,32],["W1-1",100,60,32],["SHADE Z0",193,60,64],["T-10",100,90,32],["WHITE Q1",193,90,64],["EGGSHELL Q2",477,90,88],["CEILINGS",100,120,64],["LVT-2",100,150,40]]));
+  assert.deepEqual(keys(t).filter((k) => ["T-10","LVT-2"].includes(k)), ["T-10","LVT-2"]);
+  assert.equal(cell(t, "T-10", "STYLE"), "WHITE Q1");
+  assert.equal(cell(t, "T-10", "MATERIAL"), "EGGSHELL Q2");
+  noCellOf(t, ["T-10","LVT-2"], "BASE", "SHADE Z0", "CEILINGS");
+});
+
+test("fuzz-found, width-less: headings in or left of the key column cast no column vote", () => {
+  // their edges would join the key cluster and lift the keep floor over the sparse columns
+  const t = read(fixture(true, [["MARK",142,0],["COLOR",323.5,0],["SPEC",323.5,-15],["DESCRIPTION",497,0],["MILLWORK",70,30],["C",154,60],["TILE",513,60],["Q1",553,60],["CPT-3",138,90],["X",327.5,90],["Q2",343.5,90],["VENDOR-B",485,90],["CO",557,90],["Q3",581,90],["ACT5",142,120],["OAK",303.5,120],["303",335.5,120],["Q4",367.5,120],["TILE",513,120],["Q5",553,120],["WALLS",70,150],["RB-8",142,180],["BLUE",299.5,180],["202",339.5,180],["Q6",371.5,180],["BLUE",497,180],["202",537,180],["Q7",569,180],["ACT-5",138,210],["12",303.5,210],["x",327.5,210],["12",343.5,210],["Q8",367.5,210],["CPT",687,60],["CARPET",747,60],["LGA",803,60],["RB",687,90],["RESILIENT",747,90],["LGB",827,90],["P",687,120],["PAINT",747,120],["LGC",795,120],["LVT",687,150],["LUXURY",747,150],["LGD",803,150]]));
+  assert.deepEqual(keys(t).filter((k) => ["C","CPT-3","ACT5","RB-8","ACT-5"].includes(k)), ["C","CPT-3","ACT5","RB-8","ACT-5"]);
+  assert.equal(cell(t, "C", "DESCRIPTION"), "TILE Q1");
+  assert.equal(cell(t, "ACT5", "COLOR"), "OAK 303 Q4");
+  assert.equal(cell(t, "ACT5", "DESCRIPTION"), "TILE Q5");
+  assert.equal(cell(t, "RB-8", "COLOR"), "BLUE 202 Q6");
+  assert.equal(cell(t, "RB-8", "DESCRIPTION"), "BLUE 202 Q7");
+  assert.equal(cell(t, "ACT-5", "COLOR"), "12 x 12 Q8");
+  noCellOf(t, ["C","CPT-3","ACT5","RB-8","ACT-5"], "MILLWORK", "WALLS", "CARPET LGA", "RESILIENT LGB", "PAINT LGC", "LUXURY LGD");
+});
+
+test("fuzz-found: a heading that shares its row with a legend line casts no column vote", () => {
+  // its edge would start a key column left of the keys
+  const t = read(fixture(false, [["CODE",100,0,32],["COLOR",258,0,40],["MATERIAL",495,0,64],["COMMENTS",820,0,64],["BASIS OF",820,-23,64],["MILLWORK",100,46,64],["P",175,92,8],["P-4",167,138,24],["BLUE 202 Q1",332.5,138,88],["GREY Q2",629.5,138,56],["WALL FINISHES",100,184,104],["T",175,230,8],["VENDOR-A Q3",332.5,230,88],["MATTE FINISH Q4",597.5,230,120],["CPT-10",155,276,48],["RUBBER COVE Q5",320.5,276,112],["OAK 303 Q6",617.5,276,80],["CARPET Q7",853.5,276,72],["SS",171,322,16],["VENDOR-A Q8",332.5,322,88],["X Q9",641.5,322,32],["CPT",999,46,24],["CARPET LGA",1059,46,80],["RB",999,92,16],["RESILIENT LGB",1059,92,104],["P",999,138,8],["PAINT LGC",1059,138,72],["LVT",999,184,24],["LUXURY LGD",1059,184,80],["ACT",999,230,24],["ACOUSTIC LGE",1059,230,96]]));
+  assert.deepEqual(keys(t).filter((k) => ["P-4","T","CPT-10","SS"].includes(k)), ["P-4","T","CPT-10","SS"]);
+  assert.equal(cell(t, "P-4", "COLOR"), "BLUE 202 Q1");
+  assert.equal(cell(t, "P-4", "MATERIAL"), "GREY Q2");
+  assert.equal(cell(t, "T", "COLOR"), "VENDOR-A Q3");
+  assert.equal(cell(t, "T", "MATERIAL"), "MATTE FINISH Q4");
+  assert.equal(cell(t, "CPT-10", "COLOR"), "RUBBER COVE Q5");
+  assert.equal(cell(t, "CPT-10", "MATERIAL"), "OAK 303 Q6");
+  assert.equal(cell(t, "CPT-10", "COMMENTS"), "CARPET Q7");
+  assert.equal(cell(t, "SS", "COLOR"), "VENDOR-A Q8");
+  assert.equal(cell(t, "SS", "MATERIAL"), "X Q9");
+  noCellOf(t, ["P-4","T","CPT-10","SS"], "MILLWORK", "WALL FINISHES", "CARPET LGA", "RESILIENT LGB", "LUXURY LGD");
+});
+
+test("fuzz-found: an unkeyed line nearer a heading than a row joins no row", () => {
+  // X1-2 sits between TRANSITIONS and T-11
+  const t = read(fixture(false, [["TAG",147,0,24],["MATERIAL",275,0,64],["PATTERN",507,0,56],["COLOR",741.5,0,40],["TRANSITIONS",100,38,88],["X1-2",100,76,32],["SHADE Z0",218,76,64],["T-11",100,114,32],["RUBBER COVE Q1",218,114,112],["BLUE 202 Q2",674,114,88],["C-11",100,152,32],["EGGSHELL Q3",218,152,88]]));
+  assert.deepEqual(keys(t).filter((k) => ["T-11","C-11"].includes(k)), ["T-11","C-11"]);
+  assert.equal(cell(t, "T-11", "MATERIAL"), "RUBBER COVE Q1");
+  assert.equal(cell(t, "T-11", "COLOR"), "BLUE 202 Q2");
+  assert.equal(cell(t, "C-11", "MATERIAL"), "EGGSHELL Q3");
+  noCellOf(t, ["T-11","C-11"], "TRANSITIONS", "SHADE Z0");
+});
+
+test("fuzz-found, width-less: a heading over the columns votes where a cell would", () => {
+  // MISC. FINISHES and BASE sit over STYLE
+  const t = read(fixture(true, [["CODE",146,0],["STYLE",269,0],["SPEC",269,-15],["DESCRIPTION",475.5,0],["MISC.",336.5,30],["FINISHES",384.5,30],["T2",100,60],["VENDOR-A",224,60],["Q1",296,60],["SS-2",100,90],["BASE",376.5,120],["P1",100,150],["OAK",224,150],["303",256,150],["Q3",288,150]]));
+  assert.deepEqual(keys(t).filter((k) => ["T2","SS-2","P1"].includes(k)), ["T2","SS-2","P1"]);
+  assert.equal(cell(t, "T2", "STYLE"), "VENDOR-A Q1");
+  assert.equal(cell(t, "P1", "STYLE"), "OAK 303 Q3");
+  noCellOf(t, ["T2","SS-2","P1"], "MISC. FINISHES", "BASE");
+});
+
+test("fuzz-found, width-less: a heading at the key column casts no column vote", () => {
+  // WALL FINISHES at the keys' left edge
+  const t = read(fixture(true, [["TAG",141.5,0],["SIZE",262,0],["DESCRIPTION",473.5,0],["SPECIFICATION",394.5,-38],["WALL FINISHES",100,38],["ACT-10",100,76],["CARPET Q1",349,76],["C-1",100,114],["CARPET Q2",349,114],["WALL BASE",100,152],["WC-12",100,190],["VENDOR-B CO Q3",349,190],["WC-9",100,228],["RUBBER COVE Q4",349,228],["VCT-2",100,266],["MATTE FINISH Q5",207,266],["BLUE 202 Q6",349,266],["P-3",100,304],["VENDOR-A Q7",349,304],["PT-6",100,342],["PAINT Q8",207,342],["PAINT Q9",349,342]]));
+  assert.deepEqual(keys(t).filter((k) => ["ACT-10","C-1","WC-12","WC-9","VCT-2","P-3","PT-6"].includes(k)), ["ACT-10","C-1","WC-12","WC-9","VCT-2","P-3","PT-6"]);
+  assert.equal(cell(t, "ACT-10", "DESCRIPTION"), "CARPET Q1");
+  assert.equal(cell(t, "C-1", "DESCRIPTION"), "CARPET Q2");
+  assert.equal(cell(t, "WC-12", "DESCRIPTION"), "VENDOR-B CO Q3");
+  assert.equal(cell(t, "WC-9", "DESCRIPTION"), "RUBBER COVE Q4");
+  assert.equal(cell(t, "VCT-2", "SIZE"), "MATTE FINISH Q5");
+  assert.equal(cell(t, "VCT-2", "DESCRIPTION"), "BLUE 202 Q6");
+  assert.equal(cell(t, "P-3", "DESCRIPTION"), "VENDOR-A Q7");
+  assert.equal(cell(t, "PT-6", "SIZE"), "PAINT Q8");
+  assert.equal(cell(t, "PT-6", "DESCRIPTION"), "PAINT Q9");
+  noCellOf(t, ["ACT-10","C-1","WC-12","WC-9","VCT-2","P-3","PT-6"], "WALL FINISHES", "WALL BASE");
+});
+
+test("fuzz-found: a heading-word line that shares its row with a legend line still counts toward the pitch", () => {
+  // WALL FINISHES beside the legend's first line
+  const t = read(fixture(false, [["TAG",136.5,0,24],["COMMENTS",228.5,0,64],["INSTALL",370.5,-10,56],["LOCATION",366.5,10,64],["PATTERN",545.5,0,56],["WALL FINISHES",335,38,104],["T",144.5,76,8],["BLUE 202 Q1",216.5,76,88],["GREY Q2",370.5,76,56],["ADHESIVE: VENDOR-K Q3",489.5,76,168],["RB-2",132.5,114,32],["X Q4",244.5,114,32],["CARPET Q5",362.5,114,72],["X1-2",132.5,152,32],["SHADE Z2",228.5,152,64],["P-5",136.5,190,24],["PAINT Q6",366.5,190,64],["CPT",722,38,24],["CARPET LGA",782,38,80],["RB",722,76,16],["RESILIENT LGB",782,76,104]]));
+  assert.deepEqual(keys(t).filter((k) => ["T","RB-2","P-5"].includes(k)), ["T","RB-2","P-5"]);
+  assert.equal(cell(t, "T", "COMMENTS"), "BLUE 202 Q1");
+  assert.equal(cell(t, "RB-2", "COMMENTS"), "X Q4");
+  rowHas(t, "T", "GREY Q2");
+  rowHas(t, "RB-2", "CARPET Q5");
+  rowHas(t, "P-5", "PAINT Q6");
+  noCellOf(t, ["T","RB-2","P-5"], "WALL FINISHES", "SHADE Z2", "CARPET LGA", "RESILIENT LGB");
+});
+
+test("a cell's wrapped word that is a heading word joins its row, in a table whose rows all wrap", () => {
+  // every row prints a second line, so the table's line pitch is the wrap's:
+  // RT-3's second line (FLOORING) does not hug its row, and is still its row's
+  const spans = [sp("CODE", 100, 0), sp("MATERIAL", 220, 0), sp("COLOR", 520, 0)];
+  const ks = ["RT-1", "RT-2", "RT-3", "RB-1", "RB-2", "CT-1"];
+  ks.forEach((k, i) => { const y = PITCH * (i + 1); spans.push(sp(k, 100, y), sp("RESILIENT TILE", 220, y), sp(`GREY ${i}`, 520, y), sp(i === 2 ? "FLOORING" : `SEE NOTE ${"ABCDEF"[i]}`, 220, y + 19)); });
+  const t = read(spans);
+  assert.deepEqual(keys(t), ks);
+  assert.equal(cell(t, "RT-3", "MATERIAL"), "RESILIENT TILE FLOORING");
+  assert.equal(cell(t, "RT-1", "MATERIAL"), "RESILIENT TILE SEE NOTE A");
+});
+
+test("a heading word wrapped tight under its cell is not a table line: a remark line below it still joins the row", () => {
+  // BASE hugs RUBBER WALL (8 px under it); CONTINUED sits 16 px under the row,
+  // nearer the row than the next one. BASE is the cell's own word, not a line
+  // of the table, so it does not take CONTINUED away from the row
+  const spans = [sp("CODE", 100, 0), sp("MATERIAL", 220, 0), sp("COLOR", 520, 0), sp("REMARKS", 760, 0)];
+  const ks = ["CPT-1", "CPT-2", "RB-1", "RB-2", "P-1", "P-2", "CT-1", "ACT-1"];
+  ks.forEach((k, i) => { const y = PITCH * (i + 1); spans.push(sp(k, 100, y), sp("RUBBER WALL", 220, y), sp(`GREY ${i}`, 520, y), sp(`NOTE ${i}`, 760, y)); if (k === "RB-1") spans.push(sp("BASE", 220, y + 8), sp("CONTINUED", 760, y + 16)); });
+  const t = read(spans);
+  assert.deepEqual(keys(t), ks);
+  assert.equal(cell(t, "RB-1", "MATERIAL"), "RUBBER WALL BASE");
+  assert.equal(cell(t, "RB-1", "REMARKS"), "NOTE 2 CONTINUED");
+});
+
+test("a heading a little off the middle of a narrow table is still centered (three text heights)", () => {
+  // the table is 420 px wide, so a tenth of it is under three text heights
+  const spans = [sp("CODE", 100, 0), sp("MATERIAL", 220, 0), sp("COLOR", 400, 0)];
+  let y = 0;
+  const rowsOf = (ks: string[]) => ks.forEach((k, i) => { y += PITCH; spans.push(sp(k, 100, y), sp(`MAT ${i}`, 220, y), sp(`GREY ${i}`, 400, y)); });
+  y += PITCH; spans.push(sp("WALLS", 270, y)); rowsOf(["P-1", "P-2", "P-3", "P-4"]);
+  y += PITCH; spans.push(sp("BASE", 274, y)); rowsOf(["RB-1", "RB-2", "RB-3", "RB-4"]);
+  const t = read(spans);
+  assert.deepEqual(sections(t), { "P-1": "WALLS", "P-2": "WALLS", "P-3": "WALLS", "P-4": "WALLS", "RB-1": "BASE", "RB-2": "BASE", "RB-3": "BASE", "RB-4": "BASE" });
+});
+
+test("no column map: a heading is centered on the table's text, cells and all, not on its header row", () => {
+  // a long remark runs well past the header row; the heading is centered on
+  // the text the table actually prints
+  const rem = "SEE SPECIFICATION SECTION 09 65 00 FOR ADHESIVES";
+  const mid = (100 + 400 + rem.length * CW) / 2;
+  const spans = [sp("CODE", 100, 0), sp("MATERIAL", 220, 0), sp("REMARKS", 400, 0), sp("FLOORING", mid - 32, PITCH), sp("CPT-1", 100, 2 * PITCH), sp("CARPET", 220, 2 * PITCH), sp(rem, 400, 2 * PITCH), sp("CPT-2", 100, 3 * PITCH), sp("CARPET TILE", 220, 3 * PITCH)];
+  const t = read(spans);
+  assert.deepEqual(sections(t), { "CPT-1": "FLOORING", "CPT-2": "FLOORING" });
+  noCellHas(t, "FLOORING");
 });
