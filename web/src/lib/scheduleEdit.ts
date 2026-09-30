@@ -64,3 +64,16 @@ export function setPicked(picked: Set<string>, keys: string[], canPick: (key: st
   }
   return n;
 }
+
+// The line colour each row's condition will get, for the dialog's swatch. The
+// parent (TakeoffCanvas.createFromSchedule → rowToSeed) assigns
+// palette[(startIndex + n) % len] over the rows it CREATES — picked and
+// creatable, in row order — so number only those. An unpicked row gets no
+// entry (the dialog shows the neutral swatch): it would get no colour at all.
+export function previewColors(keys: string[], willCreate: (key: string) => boolean, palette: string[], startIndex = 0): Map<string, string> {
+  const m = new Map<string, string>();
+  if (!palette.length) return m;
+  let n = startIndex;
+  for (const k of keys) if (willCreate(k)) m.set(k, palette[n++ % palette.length]);
+  return m;
+}

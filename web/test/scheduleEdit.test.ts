@@ -12,7 +12,7 @@
 //     empty), and leaves rows outside the given keys as they were.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeTag, evaluateTags, isCreatable, setPicked } from "../src/lib/scheduleEdit.js";
+import { normalizeTag, evaluateTags, isCreatable, setPicked, previewColors } from "../src/lib/scheduleEdit.js";
 
 test("normalizeTag trims, collapses whitespace, upper-cases", () => {
   assert.equal(normalizeTag("  cpt-1 "), "CPT-1");
@@ -106,4 +106,22 @@ test("setPicked off drops a stale pick even when the row is no longer creatable"
   // a row picked, then edited into a duplicate: Deselect All must still clear it
   const after = setPicked(new Set(["r1"]), ["r0", "r1"], () => false, false);
   assert.equal(after.size, 0);
+});
+
+// The dialog's swatch preview must be the colour each condition actually gets:
+// the parent (TakeoffCanvas.createFromSchedule → rowToSeed) assigns
+// palette[(startIndex + n) % len] over the rows it CREATES — picked and
+// creatable, in row order. Unpicked rows get no colour (the neutral swatch).
+test("previewColors: numbers only the picked rows, in row order, from startIndex", () => {
+  const pal = ["#a", "#b", "#c"];
+  const picked = new Set(["r1", "r3", "r4"]);
+  const m = previewColors(["r0", "r1", "r2", "r3", "r4"], (k) => picked.has(k), pal, 2);
+  assert.deepEqual([...m.entries()], [["r1", "#c"], ["r3", "#a"], ["r4", "#b"]]);
+  assert.equal(m.has("r0"), false);
+  assert.equal(m.has("r2"), false);
+});
+
+test("previewColors: nothing picked → no colours; empty palette → no colours", () => {
+  assert.equal(previewColors(["r0", "r1"], () => false, ["#a"], 0).size, 0);
+  assert.equal(previewColors(["r0", "r1"], () => true, [], 0).size, 0);
 });

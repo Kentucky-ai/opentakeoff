@@ -22,7 +22,7 @@
 // "from description" so the estimator reviews it before Create.
 import React, { useId, useMemo, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
-import { evaluateTags, isCreatable, setPicked as pickRows } from "../lib/scheduleEdit";
+import { evaluateTags, isCreatable, previewColors, setPicked as pickRows } from "../lib/scheduleEdit";
 
 // category → display group, in the order an estimator reads a floor set.
 // Rows the schedule gives no section (and whose words name no item) come
@@ -66,14 +66,13 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
   const [editing, setEditing] = useState(null); // { key, orig } | null
 
   // Preview the line color each new condition will actually get: the parent
-  // assigns palette[startIndex + n] over the creatable rows in this order, so
-  // mirror that here (non-creatable rows are skipped, matching create).
-  const colorByKey = useMemo(() => {
-    const m = new Map();
-    let n = startIndex;
-    for (const { key } of keyed) if (isCreatable(tagState.get(key)) && palette.length) m.set(key, palette[n++ % palette.length]);
-    return m;
-  }, [keyed, tagState, palette, startIndex]);
+  // assigns palette[startIndex + n] over the rows it CREATES (picked and
+  // creatable, in row order), so number only those — an unpicked row shows the
+  // neutral swatch, and ticking/unticking a row re-numbers the ones after it.
+  const colorByKey = useMemo(
+    () => previewColors(keyed.map(({ key }) => key), (key) => picked.has(key) && isCreatable(tagState.get(key)), palette, startIndex),
+    [keyed, tagState, picked, palette, startIndex],
+  );
 
   const grouped = useMemo(() => {
     const by = new Map(GROUPS.map((g) => [g.key, []]));
