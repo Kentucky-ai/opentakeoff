@@ -1217,7 +1217,17 @@ function bandDataRows(
       // any other lone span in the key column that is not a key ("CARPET",
       // "TILE/STONE", "SECTION 095113 ACOUSTICAL") is a band this vocabulary
       // does not know: the rows below it have no section
-      if (one && inKey(one) && !rowKeyOf(one.str, kind, buildings, typeKeyed)) curSection = undefined;
+      if (one && inKey(one) && !rowKeyOf(one.str, kind, buildings, typeKeyed)) {
+        curSection = undefined;
+        // a material word on a line of its own ("PAINT" above PT-1, "TILE"
+        // above CT-1) groups the rows under it the way a heading does: it is
+        // consumed, or it reads into the key cell of the row beside it
+        // ("PT-1 PAINT"). A line with a digit ("W1-1", a spec number) or one
+        // hugging the row above (a wrapped cell) is left as before.
+        // It is not registered as a heading: the table's pitch and the
+        // wrapped lines around it read as they did.
+        if (!hugs && joinedLen < 24 && !/\d/.test(one.str)) continue;
+      }
     }
     // An equipment schedule ends where the NEXT schedule begins: a mechanical
     // sheet stacks four or five tables in one column, and the band would

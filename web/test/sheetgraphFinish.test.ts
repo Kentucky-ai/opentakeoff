@@ -558,6 +558,19 @@ test("a bare word in the key column (4+ letters) is never a finish code", () => 
   assert.deepEqual(keys(t), ["LVT-1", "VCT-1", "CPT-1", "CPT-2", "CT-1", "P-1", "P-2"]);
 });
 
+test("a material word above its rows reads into no cell (PAINT above P-1 is not \"P-1 PAINT\")", () => {
+  // a schedule that groups its rows under material words, a multi-word one
+  // running past the key column, each on a line of its own
+  const items = [H("ACOUSTICAL CEILING TILE"), CEIL[0], H("CARPET"), FLOOR[0], FLOOR[1], H("TILE"), WALLS[2], H("PAINT"), WALLS[0], WALLS[1], H("WALLCOVERING"), R("WC-1", "VINYL WALLCOVERING", "VENDOR-L", "TYPE II", "ASH 801")];
+  const t = read(build({ cols: STD, items }));
+  assert.deepEqual(keys(t), ["ACT-1", "CPT-1", "CPT-2", "CT-1", "P-1", "P-2", "WC-1"]);
+  for (const k of keys(t)) assert.equal(cell(t, k, "CODE"), k, `${k}: the key cell holds the key alone`);
+  assert.equal(cell(t, "ACT-1", "MATERIAL"), "ACOUSTICAL CEILING TILE");
+  assert.equal(cell(t, "P-1", "MATERIAL"), "PAINT");
+  assert.equal(cell(t, "WC-1", "MATERIAL"), "VINYL WALLCOVERING");
+  assert.ok(t.rows.every((r) => r.section === undefined), "a material word names no section");
+});
+
 test("known limit: a letters-only code of four letters is not read", () => {
   // indistinguishable from a bare word (TILE, BASE, WALL) in the key column
   const items = [...FLOOR, R("EPOX", "EPOXY FLOORING", "VENDOR-T", "BROADCAST", "GREY 31"), ...BASE];
