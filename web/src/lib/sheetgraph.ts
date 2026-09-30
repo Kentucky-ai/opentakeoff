@@ -1357,6 +1357,20 @@ export function extractTable(sheet: SheetSpans, kind: ExtractKind, opts: Extract
   return r && "table" in r ? r.table : null;
 }
 
+/** The finish/material-schedule reader the sheet graph indexes through.
+ * Returns the table, or a refusal: a table titled as another schedule family
+ * (DOOR SCHEDULE, …) is not a finish table, and the caller names the drop.
+ * null: no finish table here. */
+export type FinishRead =
+  | { table: ScheduleTable }
+  | { refused: "other-family"; table: ScheduleTable };
+export function readFinishTable(sheet: SheetSpans, opts: ExtractOpts = {}): FinishRead | null {
+  const r = extractTableCore(sheet, "finish", opts);
+  if (!r || !("table" in r)) return null;
+  if (r.table.title && isNonFinishSchedule(r.table.title.text)) return { refused: "other-family", table: r.table };
+  return { table: r.table };
+}
+
 /** EVERY table of one kind on a sheet, top to bottom. extractTable reads the
  * FIRST qualifying header on the sheet and stops — one table per kind per
  * sheet, which is how finish schedules ship. A mechanical schedule sheet
@@ -1704,25 +1718,24 @@ export function buildSheetGraph(sheets: SheetSpans[]): SheetGraph {
     roles.set(s.key, classifySheetRole(s));
     const sheetFrags: ScheduleTable[] = [];
     const found: ScheduleTable[] = [];
-    for (const kind of ["room-finish", "finish"] as const) {
-      const t = extractTable(s, kind, { buildings, deltas: deltasBySheet.get(s.key), sheetNumbers: sheetNumberSet });
-      if (t) found.push(t);
-    }
+    const xo: ExtractOpts = { buildings, deltas: deltasBySheet.get(s.key), sheetNumbers: sheetNumberSet };
+    const rf = extractTable(s, "room-finish", xo);
+    if (rf) found.push(rf);
+    // A DOOR / WINDOW / PARTITION schedule carries a MARK column, so the
+    // finish-table hunt happily reads one as a finish/material schedule —
+    // and then a finish code that collides with a door mark chains to a
+    // door, which is a confidently wrong product in the bid. Field-found on
+    // a real grocery set whose DOOR SCHEDULE extracted as 54 "finish" rows.
+    // The finish reader refuses by TITLE, and only when the title does not
+    // also say finish or material: when in doubt the table is kept, and the
+    // drop is NAMED.
+    const fin = readFinishTable(s, xo);
+    if (fin && "refused" in fin) {
+      notes.push(`${s.key}: "${fin.table.title!.text}" names another schedule family, not a finish/material schedule — its ${fin.table.rows.length} rows are NOT indexed as finish definitions`);
+    } else if (fin) found.push(fin.table);
     // equipment schedules stack several to a sheet — every one, top to bottom
-    found.push(...extractTables(s, "equipment", { buildings, deltas: deltasBySheet.get(s.key), sheetNumbers: sheetNumberSet }));
+    found.push(...extractTables(s, "equipment", xo));
     for (const t of found) {
-      const kind = t.kind as ExtractKind;
-      // A DOOR / WINDOW / PARTITION schedule carries a MARK column, so the
-      // finish-table hunt happily reads one as a finish/material schedule —
-      // and then a finish code that collides with a door mark chains to a
-      // door, which is a confidently wrong product in the bid. Field-found on
-      // a real grocery set whose DOOR SCHEDULE extracted as 54 "finish" rows.
-      // Refuse by TITLE, and only when the title does not also say finish or
-      // material: when in doubt the table is kept, and the drop is NAMED.
-      if (kind === "finish" && t.title && isNonFinishSchedule(t.title.text)) {
-        notes.push(`${s.key}: "${t.title.text}" names another schedule family, not a finish/material schedule — its ${t.rows.length} rows are NOT indexed as finish definitions`);
-        continue;
-      }
       // table-level building: its own title first, the sheet's context second
       const titleB = t.title ? buildingMentions(t.title.text) : [];
       const b = titleB.length === 1 ? titleB[0] : ctxBySheet.get(s.key);

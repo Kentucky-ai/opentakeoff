@@ -12,7 +12,7 @@
 //   - text to the right of the table (a legend) is not read into it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extractTable, buildSheetGraph, type GraphSpan, type ScheduleTable } from "../src/lib/sheetgraph.ts";
+import { extractTable, readFinishTable, buildSheetGraph, type GraphSpan, type ScheduleTable } from "../src/lib/sheetgraph.ts";
 
 // ── fixture builder ─────────────────────────────────────────────────────────
 const TH = 17, PITCH = 38;
@@ -1087,4 +1087,40 @@ test("no column map: a heading is centered on the table's text, cells and all, n
   const t = read(spans);
   assert.deepEqual(sections(t), { "CPT-1": "FLOORING", "CPT-2": "FLOORING" });
   noCellHas(t, "FLOORING");
+});
+
+// ── readFinishTable: the one finish reader ──────────────────────────────────
+test("readFinishTable returns the table extractTable reads", () => {
+  const items = [H("FLOORING"), ...FLOOR, H("BASE"), ...BASE];
+  const spans = build({ key: "TAG", cols: ["MATERIAL", "MANUF.", "COLOR", "REMARKS"], title: "FINISH SCHEDULE", items });
+  const r = readFinishTable({ key: "fx", spans });
+  assert.ok(r && !("refused" in r));
+  assert.deepEqual(r.table, read(spans));
+  assert.deepEqual(keys(r.table), keysOf(items));
+  assert.equal(r.table.title?.text, "FINISH SCHEDULE");
+});
+
+test("readFinishTable refuses a table titled as another schedule family, and names it", () => {
+  const rows = ["D-1", "D-2", "D-3"].map((k) => R(k, "HOLLOW METAL", "VENDOR-N", "", "GRAY"));
+  const door = build({ key: "MARK", cols: ["MATERIAL", "MANUFACTURER", "COLOR"], title: "DOOR SCHEDULE", items: rows });
+  const r = readFinishTable({ key: "fx", spans: door });
+  assert.ok(r && "refused" in r);
+  assert.equal(r.refused, "other-family");
+  assert.equal(r.table.title?.text, "DOOR SCHEDULE");
+  const kept = readFinishTable({ key: "fx", spans: build({ key: "MARK", cols: ["MATERIAL", "MANUFACTURER", "COLOR"], title: "DOOR FINISH SCHEDULE", items: rows }) });
+  assert.ok(kept && !("refused" in kept), "a title that also says FINISH is kept");
+  assert.equal(readFinishTable({ key: "fx", spans: [sp("GENERAL NOTES", 100, 0), sp("1. VERIFY ALL DIMENSIONS", 100, 38)] }), null);
+  // the sheet graph drops the same table and names it
+  const g = buildSheetGraph([{ key: "door.pdf#1", spans: door }]);
+  assert.equal(g.tables.filter((t) => t.kind === "finish").length, 0);
+  assert.ok(g.notes.some((n) => n.includes('"DOOR SCHEDULE" names another schedule family') && n.includes("its 3 rows are NOT indexed")), g.notes.join(" | "));
+});
+
+test("the sheet graph indexes finish rows with their sections", () => {
+  const items = [H("FLOORING"), ...FLOOR, H("BASE"), ...BASE, H("WALLS"), ...WALLS];
+  const g = buildSheetGraph([{ key: "mat.pdf#1", spans: build({ cols: STD, title: "MATERIAL SCHEDULE", items }) }]);
+  const t = g.tables.find((x) => x.kind === "finish");
+  assert.ok(t);
+  assert.deepEqual(keys(t), keysOf(items));
+  assert.deepEqual(sections(t), expectSections([[FLOOR, "FLOORING"], [BASE, "BASE"], [WALLS, "WALLS"]]));
 });
