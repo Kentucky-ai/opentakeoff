@@ -1,7 +1,8 @@
 // Finish-schedule section headings — the printed band a materials / finish
 // schedule sets above a group of rows ("FLOORING", "WALL BASE", "MISC.
-// FINISHES"). The sheet graph reads a heading row against this vocabulary and
-// stores the matched entry as TableRow.section.
+// FINISHES"). One vocabulary, shared: the sheet graph reads a heading row
+// against it (and stores the matched entry as TableRow.section), and the
+// Import-from-schedule path maps that entry to a takeoff category.
 //
 // Only what a schedule actually prints as a section title belongs here. A
 // material or surface word ("CARPET", "TILE", "PAINT") is not a section
@@ -23,6 +24,21 @@ export const FINISH_SECTION_HEADINGS = [
   "MISC", "ACCESSORIES",
 ] as const;
 export type FinishSection = (typeof FINISH_SECTION_HEADINGS)[number];
+
+/** The category a printed heading names. `null`: the heading names no
+ * category (MISC / ACCESSORIES group unlike items — the row's own words
+ * decide). Wall protection is its own category (a CSI division of its own). */
+export type FinishSectionCategory = "floor" | "base" | "wall" | "wall_protection" | "transition" | "ceiling" | "other";
+export const FINISH_SECTION_CATEGORY: Readonly<Record<FinishSection, FinishSectionCategory | null>> = {
+  FLOORING: "floor", FLOORS: "floor", FLOOR: "floor", "FLOOR FINISHES": "floor",
+  BASE: "base", BASES: "base", "WALL BASE": "base",
+  WALLS: "wall", WALL: "wall", "WALL FINISHES": "wall",
+  "WALL PROTECTION": "wall_protection",
+  TRANSITIONS: "transition", TRANSITION: "transition", TRIM: "transition",
+  CEILINGS: "ceiling", CEILING: "ceiling",
+  MILLWORK: "other",
+  MISC: null, ACCESSORIES: null,
+};
 
 const PHRASES = FINISH_SECTION_HEADINGS.filter((h) => h.includes(" "))
   .map((h) => ({ h, words: h.split(" ") }))
