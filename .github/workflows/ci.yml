@@ -26,15 +26,30 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      # Voice and on-device OCR share one onnxruntime-web (#469). Fails if a
+      # transformers bump moved its pin away from web/package.json's.
+      - run: node scripts/check-one-ort.mjs
       # Voice model (RFC #59): ~44 MB, cached between runs; the fetch script
       # is the cache key, so bumping MODEL_REV/files in it invalidates cleanly.
       # With the model staged, the corpus + privacy voice tests run for real
       # (they skip loudly when it's absent, e.g. on forks with cache misses).
+      # models/ocr is excluded: the OCR entry below owns it.
       - uses: actions/cache@v4
         with:
-          path: web/public/models
+          path: |
+            web/public/models
+            !web/public/models/ocr
           key: voice-model-${{ hashFiles('web/scripts/fetch-voice-model.mjs') }}
       - run: node scripts/fetch-voice-model.mjs
+      # On-device OCR models (#469): ~12.7 MB, in their own cache entry keyed on
+      # the stage script (which carries the pins); the voice entry above
+      # excludes this directory, so each entry holds only its own files. The
+      # script re-verifies every file's sha256 and always rewrites the manifest.
+      - uses: actions/cache@v4
+        with:
+          path: web/public/models/ocr
+          key: ocr-model-${{ hashFiles('web/scripts/stage-ocr-model.mjs') }}
+      - run: node scripts/stage-ocr-model.mjs
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test:coverage
@@ -58,6 +73,9 @@ jobs:
             exit 1
           }
       - run: npm run build
+      # One ORT wasm in dist, no OpenCV or @napi-rs/canvas code, and a staged
+      # manifest that matches the wasm actually shipped (#469).
+      - run: node scripts/check-ocr-dist.mjs
 
   mcp:
     runs-on: ${{ matrix.os }}
