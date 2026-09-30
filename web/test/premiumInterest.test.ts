@@ -3,16 +3,16 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {premiumPayload, sendPremiumInterest, shouldAutoPromptPremium, readPremiumPrompt, writePremiumPrompt, PREMIUM_PROMPT_SNOOZE_MS} from '../src/lib/premiumInterest.js';
 const fields={email:' QA@EXAMPLE.COM ',name:' Demo ',company:'Example',role:'Estimator',trade:'Flooring / finishes',interest:'Native iPad / tablet takeoff'};
-test('interest payload contains only submitted contact fields and explicit consent',()=>{
+test('interest payload contains only the required contact fields and ignores removed inputs',()=>{
   const body=premiumPayload({...fields,project:'private',shapes:['private'],token:'secret',updates:'on'},'test-id');
   assert.equal(body.get('email'),'qa@example.com');
   assert.equal(body.get('name'),'Demo');
-  assert.equal(body.get('updates'),'no');
-  for(const key of ['project','shapes','token']) assert.equal(body.has(key),false);
-  assert.equal(premiumPayload({...fields,updates:'yes'},'test-id').get('updates'),'yes');
+  assert.equal(body.get('company'),'Example');
+  assert.equal(body.get('role'),'Estimator');
+  for(const key of ['project','shapes','token','trade','interest','updates']) assert.equal(body.has(key),false);
 });
-test('interest input validation rejects incomplete or unsupported requests',()=>{
-  for(const patch of [{email:'bad'}, {role:''}, {trade:'unsupported'}, {interest:''}]) assert.throws(()=>premiumPayload({...fields,...patch},'test-id'));
+test('interest input validation rejects incomplete or unsupported required fields',()=>{
+  for(const patch of [{email:'bad'}, {name:''}, {company:'  '}, {role:''}, {role:'unsupported'}]) assert.throws(()=>premiumPayload({...fields,...patch},'test-id'));
 });
 test('static detection includes every posted field',()=>{
   const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');

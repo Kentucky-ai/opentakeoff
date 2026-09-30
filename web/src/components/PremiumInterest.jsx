@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
-import { PREMIUM_FORM, ROLES, TRADES, INTERESTS, premiumPayload, sendPremiumInterest, writePremiumPrompt } from "../lib/premiumInterest.js";
+import { PREMIUM_FORM, ROLES, premiumPayload, sendPremiumInterest, writePremiumPrompt } from "../lib/premiumInterest.js";
 import "./premiumInterest.css";
 
 export default function PremiumInterest({ onClose, onOpenChange }) {
@@ -27,7 +27,6 @@ export default function PremiumInterest({ onClose, onOpenChange }) {
     } catch (e) { setError(e.name === "TimeoutError" ? "The connection timed out. Your entries are still here; please try again." : e.message); setState("idle"); }
     finally { busy.current = false; }
   };
-  const choice = (name, label, options) => <label>{label}<select name={name} required defaultValue=""><option value="" disabled>Choose {name === "interest" ? "your main interest" : `a ${name}`}</option>{options.map(value => <option key={value}>{value}</option>)}</select></label>;
   return <dialog ref={dialog} className="premium-interest-dialog" aria-labelledby="premium-interest-title" onKeyDown={e => e.stopPropagation()} onCancel={e => {e.preventDefault(); close();}}>
     <button className="premium-interest-close" type="button" aria-label="Close premium interest form" disabled={state === "sending"} onClick={close}>×</button>
     <div className="premium-interest-emblem"><Icon name="product" size={28}/></div>
@@ -43,17 +42,13 @@ export default function PremiumInterest({ onClose, onOpenChange }) {
         <div><strong>RFI workflows</strong><span>Track questions and coordinate answers.</span></div>
         <div><strong>Submittals</strong><span>Build and track approval packages.</span></div>
       </div>
-      <p className="premium-interest-fine">Premium capabilities are in development. Tell us what you want to unlock first.</p>
       <form name="premium-interest-ui" onSubmit={submit} aria-busy={state === "sending"}>
         <fieldset disabled={state === "sending"}>
           <label>Email <input type="email" name="email" autoComplete="email" maxLength={254} placeholder="you@company.com" required /></label>
-          <div className="premium-interest-grid"><label>Name (optional)<input name="name" autoComplete="name" maxLength={100}/></label><label>Company (optional)<input name="company" autoComplete="organization" maxLength={160}/></label></div>
-          <div className="premium-interest-grid">{choice("role", "Your role", ROLES)}{choice("trade", "Trade", TRADES)}</div>
-          {choice("interest", "What would help most?", INTERESTS)}
-          <label className="premium-interest-updates"><input name="updates" type="checkbox" value="yes"/>Also send me occasional product news.</label>
+          <div className="premium-interest-grid"><label>Name<input name="name" autoComplete="name" maxLength={100} required /></label><label>Company<input name="company" autoComplete="organization" maxLength={160} required /></label></div>
+          <label>Your role<select name="role" required defaultValue=""><option value="" disabled>Choose a role</option>{ROLES.map(value => <option key={value}>{value}</option>)}</select></label>
           <label hidden>Leave this empty<input name="bot-field" tabIndex={-1} autoComplete="off"/></label>
-          <p className="premium-interest-fine">We’ll use these details to respond about early access. Only this form is sent to Kentucky AI through Netlify; your plans and quantities stay in your workspace. Joining does not guarantee access, a release date, or pricing.</p>
-          {!available && <p role="status" className="premium-interest-fine">Form preview. Submissions become available on the hosted site after form setup.</p>}
+          <p className="premium-interest-fine">We’ll use these details to respond about early access. All details pending.</p>
           {error && <p role="alert" className="premium-interest-error">{error}</p>}
           <button className="premium-interest-submit" type="submit" disabled={!available || state === "sending"}>{state === "sending" ? "Sending your request…" : "Request Premium access"}</button>
         </fieldset>

@@ -11,6 +11,8 @@ Click **Pin** beside **Sheets** in the top toolbar, then click two corners aroun
 
 ## Unreleased
 
+- **Simplify Request Premium (#473).** Require email, name, company and role; remove trade, main interest and product-news opt-in from the form and submitted payload. Shorten the explanatory copy and remove the local-preview notice. Submission remains disabled when form processing is unavailable.
+
 - **Text a crawler can read, and a correct llms.txt.** The canvas is a React app, so crawlers that run no JavaScript (most AI crawlers) saw an empty `<div id="root">`. `#root` now carries a short plain-HTML description with links to the manuals; it is hidden wherever scripts run and replaced when the app mounts, so the page looks exactly as before. `llms.txt` no longer advertises One-Click (gated) or a stale "40 tools": its count is a marker a web test holds to the README's generated count. The sitemap lists `/privacy/` and `/terms/`.
 
 - **The split-tag test runs on a real sheet (mcp 0.9.90).** The #457 fixture was a hand-drawn PDF; the test now pins the same behaviour on the bundled St. Cloud VA finish plan, with expected counts from an independent census of that page (CPT-1 26, VCT-1 11, P-1 31 …), and the "VCT-1" label that overlaps room "170" stays two runs. The synthetic fixture and its generator are gone. No change to the published server's behaviour.
