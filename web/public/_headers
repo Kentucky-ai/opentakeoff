@@ -40,6 +40,13 @@
 #   style-src / font-src  fonts.googleapis.com / fonts.gstatic.com   the @import'd webfonts
 #   worker-src   'self' blob:                     the bundled pdf.js worker
 #
+# On-device OCR (#469) needs no new origin. Its worker is a bundled file
+# (worker-src 'self'); the ORT runtime's .mjs glue loads from dist/assets
+# (script-src 'self') and compiles its wasm under 'wasm-unsafe-eval'. The
+# models and the wasm bytes are fetched from this site (connect-src) and kept
+# in Cache Storage, and ORT is handed the wasm as bytes, so it never reaches
+# for a CDN.
+#
 # 'unsafe-inline' is intentionally absent from script-src — don't add it; it
 # would undo the containment the other directives still provide.
 /*

@@ -712,6 +712,24 @@ So take the takeoff out of the browser: **Sheet → Export takeoff…** writes `
 
 If a saved project fails to load, autosave **pauses itself** and a banner says so—a load failure never overwrites your saved work with an empty canvas. And if OpenTakeoff updates in another tab, the stale tab asks for a reload instead of writing over the newer one.
 
+### On-device text recognition—what downloads, and when
+
+OpenTakeoff carries an on-device text reader (PaddleOCR) for scanned pages, which have pixels but no text layer. No tool uses it yet; reading a scanned finish schedule is the first planned use. This is what it costs and what it promises once a tool does.
+
+**Nothing downloads until you start a read.** Opening the app, opening a plan, or opening a scanned sheet downloads none of it. The first time you start a read in a browser, a notice says how much will download and waits for you to click **Download**; **Cancel** leaves everything as it was. After that, the files are kept in your browser and the reader starts without asking. If the browser clears its storage, the notice returns. Where the browser offers no Cache Storage (some private windows, for example), the files aren't kept, and the notice appears again each time the app is opened or reloaded.
+
+| File | Size |
+|---|---|
+| Runtime (ONNX Runtime WebAssembly) | 23.57 MB |
+| Text detection model (PP-OCRv5 mobile) | 4.83 MB |
+| Text recognition model (PP-OCRv5 mobile, English) | 7.85 MB |
+| Character list | 1.4 KB |
+| **Total** | **36.24 MB** |
+
+These are the raw sizes; the notice rounds up and says "up to", because a site that compresses its files sends fewer bytes. Voice dictation uses the same runtime, but the reader keeps its own copy with its models, so a browser that has used both stores the runtime twice.
+
+Every file comes from the site you're using—never a model host—and is checked against a fingerprint when it downloads, before it's kept. A later start reads the kept copy and checks only its size. The read runs on your device, in the background, so the canvas stays responsive; the page image isn't sent anywhere. A deployment can turn the reader off ([`DEPLOYMENT.md`](DEPLOYMENT.md#on-device-ocr-models)), and then nothing is downloaded or offered.
+
 ### Optional: projects on Drive
 
 Team deployments can wire a Google Drive "Projects" root. Then a **project is a Drive folder**: sign in from the opening screen, choose the folder, and the plan PDFs live in it while OpenTakeoff keeps its own sidecars (the takeoff JSON and the working-set manifest) in a hidden `.opentakeoff` subfolder. The gallery grows a **Browse Drive** mode that lists the folder's PDFs—nothing downloads until you add it, so spec books and as-builts stay unopened. Revision snapshots stay in your browser but scope per project; condition and material libraries, stamps, and report preferences stay local to your browser either way. Run OpenTakeoff without signing in and none of this exists.
