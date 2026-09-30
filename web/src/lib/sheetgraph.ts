@@ -705,6 +705,11 @@ function bandLimits(anchors: Anchor[]): { x0: number; x1: number; medGap: number
 // names (opts.buildings) — otherwise a stray finish code ("P-2") banding to
 // the key column would mint a phantom building.
 const CODE_RE = /^[A-Z]{1,4}(-?[A-Z0-9]{1,4})?$/;
+// A letters-only key of four or more letters is a word, not a finish code:
+// a section heading or a material word set in the key column (FLOORING,
+// BASE, TILE, PAINT). Known cost: a real four-letter code with no digit
+// ("EPOX") is not read either.
+const finishCodeOk = (p: string): boolean => !/^[A-Z]{4,}$/.test(p) && CODE_RE.test(p);
 const ROW_KEY_RE = /^\d{1,3}[A-Z]{0,2}$/;
 const QUALIFIED_KEY_RE = /^([A-Z]{1,2})-(\d{1,3}[A-Z]{0,2})$/;
 const CORRIDOR_KEY_RE = /^[A-Z]{1,3}(?:\d{1,3}-\d{1,3}|\d{3})[A-Z]?$/;   // CR11-9, C101 — never a two-character tag like "T1"
@@ -737,8 +742,8 @@ function rowKeyOf(raw: string, kind: ExtractKind, buildings?: Set<string>, typeK
     // for each mark on its own (checked first: slash-stripped "R1E1" would
     // otherwise pass CODE_RE and bury the compound)
     const parts = kept.split("/").filter(Boolean);
-    if (parts.length > 1 && parts.every((p) => CODE_RE.test(p))) return { key: parts.join("/") };
-    return CODE_RE.test(key) ? { key } : null;
+    if (parts.length > 1 && parts.every(finishCodeOk)) return { key: parts.join("/") };
+    return finishCodeOk(key) ? { key } : null;
   }
   if (ROW_KEY_RE.test(key)) return { key };
   // "CR11-9", "C101": letters-then-digits keys a Revit schedule gives
@@ -1033,6 +1038,7 @@ function bandDataRows(
   const keyTol = cols && cols.cols.length > 1 ? Math.max(8, (cols.cols[1].start - cols.cols[0].start) * 0.5) : 40;
   const out: TableRow[] = [];
   const outY: number[] = [];
+  const everRows: TableRow[] = [];   // every keyed row, before the end-of-table cut
   let region: Bbox | null = null;
   /** Which column a token belongs to: its LEFT edge against the data-derived
    * column starts when those were recoverable, else the old nearest-anchor
@@ -1118,6 +1124,7 @@ function bandDataRows(
     add(row, banded);
     out.push(row);
     outY.push(rowY(rows[i]));
+    everRows.push(row);
   }
   // A table ends where its rows stop. Rows are clustered across the WHOLE
   // sheet, so a keyed-looking row far below — a legend, a note block, a room
@@ -1160,6 +1167,32 @@ function bandDataRows(
     // shows the symbol, not just the bare digit
     const ebox = m.tri ? merge(bboxOf(m.span), m.tri) : bboxOf(m.span);
     out[i].revision = { rev: m.rev, source: { sheet: sheetKey, text: m.span.str.trim(), bbox: ebox }, ...(m.drawn ? { drawn: true } : {}) };
+  }
+  // A finish schedule can group its rows under a bare prefix ("CPT" above
+  // CPT-1, CPT-2), alone or beside the spec section it groups ("CN  03 50 00
+  // CONCRETE TOPPING"). That label is keyed like a code but names no item: a
+  // letters-only key that prefixes a code within the next three rows, and
+  // prints nothing else or a cell starting with a spec-section number (even
+  // beside other text), is a group label, not a row. A real letters-only
+  // code ("C" for concrete) prints its item — even if only as a remark.
+  if (kind === "finish") {
+    const keyCol = cols ? cols.cols[0].label : anchors[0].label;
+    const dropped = new Set<TableRow>();
+    for (let i = out.length - 1; i >= 0; i--) {
+      const r = out[i];
+      if (!/^[A-Z]{1,3}$/.test(r.key)) continue;
+      // text banded into the key cell beside the key is printed text too
+      const keyRest = norm(r.cells[keyCol]?.text ?? r.key).replace(/[^A-Z0-9 ]/g, "").trim().replace(new RegExp("^" + r.key + "\\b"), "").trim();
+      const texts = [...(keyRest ? [keyRest] : []), ...Object.entries(r.cells).filter(([k]) => k !== keyCol).map(([, c]) => norm(c.text))];
+      if (texts.length && !texts.some((x) => /^\d{2} ?\d{2}[ .]?\d{2}\b/.test(x))) continue;
+      if (out.slice(i + 1, i + 4).some((n) => n.key.startsWith(r.key + "-") || new RegExp("^" + r.key + "\\d").test(n.key))) { dropped.add(r); out.splice(i, 1); outY.splice(i, 1); }
+    }
+    // the dropped label's ink leaves the region: rebuild it from every row
+    // banded above (rows past the end-of-table gap included, as before)
+    if (dropped.size) {
+      region = null;
+      for (const r of everRows) if (!dropped.has(r)) for (const c of Object.values(r.cells)) region = region ? merge(region, c.bbox) : c.bbox;
+    }
   }
   // row-level building off the BLDG/BUILDING column, where the key itself
   // did not carry one

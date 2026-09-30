@@ -528,3 +528,124 @@ test("the key column is never rescued: codes set right of a narrow key header ke
   assert.deepEqual(keys(t), ks);
   ks.forEach((k, i) => { assert.equal(cell(t, k, "MATERIAL"), `MAT ${i}`, k); assert.equal(cell(t, k, "COLOR"), `GREY ${i}`, k); });
 });
+
+// ── row keys ────────────────────────────────────────────────────────────────
+test("outdented bands left of the key column are not its start (codes set right of a left-set CODE header)", () => {
+  // not headings — material words — so they are cells of their own row, and
+  // their left edge is a sparse cluster left of the key header. The key
+  // column is never rescued from one.
+  const hdr: Array<[string, number]> = [["CODE", 100], ["DESCRIPTION", 220], ["MANUFACTURER", 520], ["COLOR", 760]];
+  const spans: GraphSpan[] = hdr.map(([l, x]) => sp(l, x, 0));
+  const ks: string[] = [];
+  let y = 0;
+  ["CARPET", "RESILIENT", "PAINT"].forEach((band, b) => {
+    y += PITCH; spans.push(sp(band, 70, y));
+    for (let i = 1; i <= 6; i++) { y += PITCH; const k = ["CPT", "RB", "P"][b] + "-" + i; ks.push(k); spans.push(sp(k, 120, y), sp(`MATERIAL ${i}`, 220, y), sp(`VENDOR-${i}`, 520, y), sp(`COLOR ${i}`, 760, y)); }
+  });
+  const t = read(spans);
+  assert.deepEqual(keys(t), ks);
+  assert.equal(cell(t, "RB-2", "DESCRIPTION"), "MATERIAL 2");
+});
+
+test("a bare word in the key column (4+ letters) is never a finish code", () => {
+  const items = [H("FLOORS"), FLOOR[2], FLOOR[3], H("CARPET"), FLOOR[0], FLOOR[1], H("TILE"), WALLS[2], H("PAINT"), WALLS[0], WALLS[1]];
+  const t = read(build({ cols: STD, items }));
+  assert.deepEqual(keys(t), ["LVT-1", "VCT-1", "CPT-1", "CPT-2", "CT-1", "P-1", "P-2"]);
+});
+
+test("known limit: a letters-only code of four letters is not read", () => {
+  // indistinguishable from a bare word (TILE, BASE, WALL) in the key column
+  const items = [...FLOOR, R("EPOX", "EPOXY FLOORING", "VENDOR-T", "BROADCAST", "GREY 31"), ...BASE];
+  const t = read(build({ cols: STD, items }));
+  assert.deepEqual(keys(t), keysOf(items).filter((k) => k !== "EPOX"));
+});
+
+test("a group-label row (CPT above CPT-1) is not a row", () => {
+  const label = (key: string): Item => ({ t: "row", key, cells: {} });
+  const items: Item[] = [label("CPT"), FLOOR[0], FLOOR[1], label("LVT"), FLOOR[2], label("RB"), ...BASE, label("P"), WALLS[0], WALLS[1]];
+  const t = read(build({ key: "TAG", cols: STD, items }));
+  assert.deepEqual(keys(t), ["CPT-1", "CPT-2", "LVT-1", "RB-1", "RB-2", "P-1", "P-2"]);
+});
+
+test("a group label is found within three rows of its codes", () => {
+  const label = (key: string): Item => ({ t: "row", key, cells: {} });
+  const items: Item[] = [label("P"), R("PT-1", "PORCELAIN TILE", "VENDOR-F"), R("P-1", "PAINT", "VENDOR-E"), R("P-2", "PAINT", "VENDOR-E"), ...BASE];
+  const t = read(build({ key: "TAG", cols: STD, items }));
+  assert.deepEqual(keys(t), ["PT-1", "P-1", "P-2", "RB-1", "RB-2"]);
+});
+
+test("a letters-only code that names an item, or prefixes nothing close below, stays a row", () => {
+  const label = (key: string, cells: Cells = {}): Item => ({ t: "row", key, cells });
+  const items: Item[] = [
+    R("C", "SEALED CONCRETE", "VENDOR-D", "CLEAR COAT", "CLEAR"), R("C-2", "SEALED CONCRETE", "VENDOR-D", "SATIN COAT", "CLEAR"),
+    label("WD", { REMARKS: "SEE NOTE 2" }), ...FLOOR.slice(0, 4), R("WD-1", "WOOD FLOORING", "VENDOR-U", "PLANK", "NATURAL"),
+  ];
+  const t = read(build({ cols: STD, items }));
+  assert.deepEqual(keys(t), keysOf(items));
+});
+
+test("a letters-only row that names its item in a STYLE / COLOR / SIZE column stays a row", () => {
+  // no MATERIAL column at all: the item is named by its style and color
+  const items: Item[] = [R("CPT-1", "", "", "LOOP 20", "GREY 101", "12' W"), R("RB", "", "", "COVE", "BLACK 505", '4"'), R("RB-1", "", "", "STRAIGHT", "GREY 506", '6"'), R("RB-2", "", "", "COVE", "GREY 507", '4"')];
+  const t = read(build({ cols: ["STYLE", "COLOR", "SIZE"], items }));
+  assert.deepEqual(keys(t), ["CPT-1", "RB", "RB-1", "RB-2"]);
+  assert.equal(cell(t, "RB", "COLOR"), "BLACK 505");
+});
+
+test("a group label above codes that run on without a dash (CPT above CPT1) is not a row", () => {
+  const label = (key: string): Item => ({ t: "row", key, cells: {} });
+  const items: Item[] = [label("CPT"), R("CPT1", "BROADLOOM CARPET", "VENDOR-A"), R("CPT2", "CARPET TILE", "VENDOR-A"), ...BASE];
+  const t = read(build({ key: "TAG", cols: STD, items }));
+  assert.deepEqual(keys(t), ["CPT1", "CPT2", "RB-1", "RB-2"]);
+});
+
+test("a group label beside its spec section is not a row, and leaves the region", () => {
+  // the label prints the spec section it groups, and that line reaches past
+  // every real cell
+  const spec = "09 91 23 INTERIOR PAINTING — SEE SPECIFICATIONS FOR ALL SYSTEMS AND SHEENS";
+  const items: Item[] = [...FLOOR, ...BASE, { t: "row", key: "P", cells: { REMARKS: spec } }, WALLS[0], WALLS[1]];
+  const spans = build({ cols: STD, items });
+  const t = read(spans);
+  assert.deepEqual(keys(t), [...keysOf(FLOOR), ...keysOf(BASE), "P-1", "P-2"]);
+  const kept = spans.filter((x) => x.str !== spec);
+  const right = Math.max(...kept.map((x) => x.x + (x.w || 0)));
+  assert.ok(t.region[2] <= right, `region right ${t.region[2]} ≤ ${right}`);
+});
+
+test("a letters-only code with only a comment beside it stays a row (C above C-1)", () => {
+  const spans = [sp("CODE", 100, 0), sp("MATERIAL", 220, 0), sp("COMMENTS", 760, 0), sp("COLOR", 1000, 0)];
+  const data: Array<[string, string, string]> = [["C", "", "SEALED CONCRETE FLOOR"], ["C-1", "CONCRETE STAIN", "BROWN"], ["CPT-1", "CARPET", "GREY"]];
+  data.forEach(([k, m, c], i) => { const y = PITCH * (i + 1); spans.push(sp(k, 100, y), sp(c, 760, y)); if (m) spans.push(sp(m, 220, y)); });
+  const t = read(spans);
+  assert.deepEqual(keys(t), ["C", "C-1", "CPT-1"]);
+  assert.equal(cell(t, "C", "COMMENTS"), "SEALED CONCRETE FLOOR");
+  assert.equal(cell(t, "C-1", "MATERIAL"), "CONCRETE STAIN");
+  assert.equal(cell(t, "CPT-1", "COMMENTS"), "GREY");
+});
+
+test("a group label beside a spec section numbered with a point (09 30.50) is not a row", () => {
+  const items: Item[] = [...FLOOR, { t: "row", key: "TA", cells: { MATERIAL: "09 30.50 TRIM ACCESSORY" } }, R("TA-1", "METAL EDGE TRIM", "VENDOR-I", "SQUARE", "SATIN"), R("TA-2", "METAL TRANSITION", "VENDOR-I", "RAMP", "SATIN")];
+  const t = read(build({ cols: STD, items }));
+  assert.deepEqual(keys(t), [...keysOf(FLOOR), "TA-1", "TA-2"]);
+});
+
+test("fuzz-found: a letters-only code that prints its item stays a row (SS above SS-3)", () => {
+  // a group label prints nothing but its key
+  const t = read(fixture(false, [["MARK",100,0,32],["MATERIAL",243,0,64],["DESCRIPTION",434,0,88],["CEILINGS",100,38,64],["SS",163.5,76,16],["CARPET Q1",302.5,76,72],["SS-3",155.5,114,32]]));
+  assert.deepEqual(keys(t).filter((k) => ["SS","SS-3"].includes(k)), ["SS","SS-3"]);
+  assert.equal(cell(t, "SS", "MATERIAL"), "CARPET Q1");
+  noCellOf(t, ["SS","SS-3"], "CEILINGS");
+});
+
+test("fuzz-found: a letters-only code whose text bands into its key cell stays a row (T above T-10)", () => {
+  // no column map: T's cell is read beside the key
+  const t = read(fixture(false, [["MARK",139.5,0,32],["SIZE",333,0,32],["DESCRIPTION",605.5,0,88],["T",100,38,8],["OAK 303 Q1",211,38,80],["T-10",100,76,32]]));
+  assert.deepEqual(keys(t).filter((k) => ["T","T-10"].includes(k)), ["T","T-10"]);
+});
+
+test("fuzz-found, width-less: a group label is found within three rows of its codes, not further", () => {
+  // SS is followed by SS-8 five rows down
+  const t = read(fixture(true, [["TAG",100,0],["DESCRIPTION",221,0],["SIZE",417,0],["LOCATION",771,-38],["SPECIFICATION",628.5,-38],["WC-12",140.5,38],["VENDOR-B",899.5,38],["CO",971.5,38],["Q1",995.5,38],["SS-12",140.5,76],["EGGSHELL",911.5,76],["Q2",983.5,76],["SS",152.5,114],["12",915.5,114],["x",939.5,114],["12",955.5,114],["Q3",979.5,114],["WT1-3",140.5,152],["SHADE",287,152],["Z3",335,152],["ACT-2",140.5,190],["RB-3",144.5,228],["PAINT",923.5,228],["Q4",971.5,228],["PT-2",144.5,266],["C",156.5,304],["EGGSHELL",550,304],["Q5",622,304],["W1-1",144.5,342],["SHADE",287,342],["Z7",335,342],["SS-8",144.5,380],["RUBBER",899.5,380],["COVE",955.5,380],["Q6",995.5,380]]));
+  assert.deepEqual(keys(t).filter((k) => ["WC-12","SS-12","SS","ACT-2","RB-3","PT-2","C","SS-8"].includes(k)), ["WC-12","SS-12","SS","ACT-2","RB-3","PT-2","C","SS-8"]);
+  noCellOf(t, ["WC-12","SS-12","SS","ACT-2","RB-3","PT-2","C","SS-8"], "SHADE Z3", "SHADE Z7");
+});
