@@ -49,3 +49,18 @@ export function evaluateTags(rows: TagInput[], existing: Set<string> = new Set()
 }
 
 export const isCreatable = (s: TagState | undefined): boolean => s?.status === "ok";
+
+// Turn a set of rows on or off together — Select All / Deselect All over every
+// row, or one group's checkbox over its rows. Returns a NEW set (React state);
+// rows outside `keys` keep their pick. Turning on never picks a row canPick
+// refuses (in use / duplicate / empty), so the footer's "Create N" can't count
+// one; turning off clears every given key, including a stale pick on a row an
+// edit has since made uncreatable.
+export function setPicked(picked: Set<string>, keys: string[], canPick: (key: string) => boolean, on: boolean): Set<string> {
+  const n = new Set(picked);
+  for (const k of keys) {
+    if (!on) n.delete(k);
+    else if (canPick(k)) n.add(k);
+  }
+  return n;
+}

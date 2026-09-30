@@ -16,10 +16,12 @@
 //
 // Defaults do the work: ceilings/millwork arrive suggested:false (unchecked),
 // and codes already present as conditions arrive locked ("in use") so a second
-// import can't duplicate them.
-import React, { useMemo, useState } from "react";
+// import can't duplicate them. A category the reader GUESSED from the row's
+// words (category_source "text" — no printed section heading) is flagged
+// "from description" so the estimator reviews it before Create.
+import React, { useId, useMemo, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
-import { evaluateTags, isCreatable } from "../lib/scheduleEdit";
+import { evaluateTags, isCreatable, setPicked as pickRows } from "../lib/scheduleEdit";
 
 // category → display group, in the order an estimator reads a floor set.
 // Rows the schedule gives no section (and whose words name no item) come
@@ -36,6 +38,7 @@ const GROUPS = [
 ];
 
 export default function ImportSchedulePanel({ rows = [], existing = new Set(), palette = [], startIndex = 0, skipped = 0, onCreate, onClose }) {
+  const uid = useId(); // prefixes each row's flag id so aria-describedby is unique on the page
   // Give every row a STABLE key up front. Checkbox + color state is keyed on it,
   // not on the tag, so editing a tag never drops a row's selection.
   const keyed = useMemo(() => rows.map((row, i) => ({ key: `r${i}`, row })), [rows]);
@@ -81,8 +84,12 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
   const toggleGroup = (grp) => {
     const pickable = grp.items.filter(({ key }) => canPick(key)).map(({ key }) => key);
     const allOn = pickable.length > 0 && pickable.every((k) => picked.has(k));
-    setPicked((s) => { const n = new Set(s); for (const k of pickable) allOn ? n.delete(k) : n.add(k); return n; });
+    setPicked((s) => pickRows(s, pickable, canPick, !allOn));
   };
+  // Select All / Deselect All: the same set math over every row. Locked rows
+  // (in use / duplicate / needs a code) are never picked.
+  const allKeys = keyed.map(({ key }) => key);
+  const pickAll = (on) => setPicked((s) => pickRows(s, allKeys, canPick, on));
 
   // editing lifecycle
   const startEdit = (key, row) => setEditing({ key, orig: tagOf(key, row) });
@@ -134,40 +141,49 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
                   const isEditing = editing?.key === key;
                   const on = picked.has(key) && ok;
                   const flag = flagFor[st?.status];
+                  // The guessed-category flag sits OUTSIDE the <label> (so it isn't
+                  // folded into the checkbox's name) and describes the checkbox.
+                  const guessId = r.category_source === "text" ? `${uid}-${key}-guess` : undefined;
                   return (
-                    <label key={key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 14px 5px 26px", cursor: ok ? "pointer" : "default", opacity: ok ? 1 : 0.55 }}>
-                      <input type="checkbox" checked={on} disabled={!ok} onChange={() => toggle(key)} />
-                      <span style={{ width: 12, height: 12, flex: "0 0 auto", background: colorByKey.get(key) || "var(--ink-faint)", border: "1px solid var(--ink-faint)" }} />
-                      {isEditing ? (
-                        <input
-                          autoFocus
-                          value={tagOf(key, r)}
-                          onChange={(e) => editValue(key, e.target.value)}
-                          onKeyDown={onEditKey}
-                          onBlur={commitEdit}
-                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                          onMouseDown={(e) => e.stopPropagation()}
-                          spellCheck={false}
-                          style={{ fontFamily: "var(--f-mono)", fontWeight: 600, fontSize: 12.5, width: 76, padding: "1px 4px", border: "1px solid var(--cobalt)", background: "var(--paper-bright)", color: "var(--ink)", textTransform: "uppercase" }}
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          title="Click to fix the code"
-                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); startEdit(key, r); }}
-                          style={{ fontFamily: "var(--f-mono)", fontWeight: 600, fontSize: 12.5, minWidth: 58, textAlign: "left", padding: "1px 3px", border: "1px dashed var(--ink-faint)", background: "transparent", color: st?.status === "empty" ? "var(--ink-muted)" : "var(--ink)", cursor: "text" }}
-                        >
-                          {st?.tag || "set code"}
-                        </button>
-                      )}
-                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {r.description || <span style={{ color: "var(--ink-muted)" }}>—</span>}
-                        {(r.manufacturer || r.size) && (
-                          <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>  ·  {[r.manufacturer, r.size].filter(Boolean).join(" · ")}</span>
+                    <div key={key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 14px 5px 26px", opacity: ok ? 1 : 0.55 }}>
+                      <label style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, cursor: ok ? "pointer" : "default" }}>
+                        <input type="checkbox" checked={on} disabled={!ok} onChange={() => toggle(key)} aria-describedby={guessId} />
+                        <span style={{ width: 12, height: 12, flex: "0 0 auto", background: colorByKey.get(key) || "var(--ink-faint)", border: "1px solid var(--ink-faint)" }} />
+                        {isEditing ? (
+                          <input
+                            autoFocus
+                            onFocus={(e) => e.target.select()}   // one-act edit: type straight over the mis-read code
+                            value={tagOf(key, r)}
+                            onChange={(e) => editValue(key, e.target.value)}
+                            onKeyDown={onEditKey}
+                            onBlur={commitEdit}
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            spellCheck={false}
+                            style={{ fontFamily: "var(--f-mono)", fontWeight: 600, fontSize: 12.5, width: 76, padding: "1px 4px", border: "1px solid var(--cobalt)", background: "var(--paper-bright)", color: "var(--ink)", textTransform: "uppercase" }}
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            title="Click to fix the code"
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); startEdit(key, r); }}
+                            style={{ fontFamily: "var(--f-mono)", fontWeight: 600, fontSize: 12.5, minWidth: 58, textAlign: "left", padding: "1px 3px", border: "1px dashed var(--ink-faint)", background: "transparent", color: st?.status === "empty" ? "var(--ink-muted)" : "var(--ink)", cursor: "text" }}
+                          >
+                            {st?.tag || "set code"}
+                          </button>
                         )}
-                      </span>
-                      {flag && <span style={{ ...lbl, opacity: 0.8 }}>{flag}</span>}
-                    </label>
+                        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {r.description || <span style={{ color: "var(--ink-muted)" }}>—</span>}
+                          {(r.manufacturer || r.size) && (
+                            <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>  ·  {[r.manufacturer, r.size].filter(Boolean).join(" · ")}</span>
+                          )}
+                        </span>
+                        {flag && <span style={{ ...lbl, opacity: 0.8 }}>{flag}</span>}
+                      </label>
+                      {guessId && (
+                        <span id={guessId} title="Category guessed from the row's description — no printed section heading" style={{ ...lbl, color: "var(--c-warning)", flex: "0 0 auto", cursor: "help" }}>from description</span>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -177,6 +193,8 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
 
         {/* footer */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, padding: "10px 14px", borderTop: "1px solid var(--ink-faint)" }}>
+          <button onClick={() => pickAll(true)} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>Select all</button>
+          <button onClick={() => pickAll(false)} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12, marginRight: "auto" }}>Deselect all</button>
           <button onClick={onClose} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>Cancel</button>
           <button onClick={create} disabled={!count}
             style={{ padding: "8px 16px", border: "none", background: count ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: count ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase" }}>
