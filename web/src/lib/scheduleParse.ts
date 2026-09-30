@@ -8,21 +8,10 @@
 // the canvas instantiates. Kept here (not in the canvas) so the column math is
 // testable — the sheets.ts / oneclick.ts precedent.
 
-export type Token = { str: string; x: number; y: number; h: number };
-
-export type Category = "floor" | "base" | "wall" | "transition" | "ceiling" | "other";
-
-export type ScheduleRow = {
-  finish_tag: string;        // CODE cell, e.g. "CPT-1"
-  section: string;           // raw section header it fell under, e.g. "FLOORING"
-  category: Category;        // section → category; drives default color + the checkbox
-  description: string;       // MATERIAL/PRODUCT cell
-  manufacturer: string;      // MANUFACTURER cell
-  style: string;             // STYLE cell
-  spec_color: string;        // COLOR cell (the spec'd color, e.g. "1408 RIVERSTONE")
-  size: string;              // SIZE cell
-  suggested: boolean;        // default-checked in the dialog (ceiling/other start off)
-};
+import type { Category, ScheduleRow, Token } from "./scheduleRows.ts";
+// the row contract + seed step live in the light module; re-exported for existing importers
+export { rowToSeed } from "./scheduleRows.ts";
+export type { Category, CategorySource, ConditionSeed, ScheduleRow, Token } from "./scheduleRows.ts";
 
 // Section header text → category. A flooring tool cares about floor/base/wall
 // (+ transitions); ceilings and millwork are parsed but start UNCHECKED so the
@@ -36,7 +25,7 @@ const SECTION_CATEGORY: Record<string, Category> = {
   CEILINGS: "ceiling", CEILING: "ceiling",
 };
 const SUGGESTED: Record<Category, boolean> = {
-  floor: true, base: true, wall: true, transition: true, ceiling: false, other: false,
+  floor: true, base: true, wall: true, wall_protection: true, transition: true, ceiling: false, other: false, unassigned: true,
 };
 
 // The seven schedule columns, in order. We anchor bands off whichever header
@@ -131,48 +120,15 @@ export function parseSchedule(tokens: Token[]): ScheduleRow[] {
       finish_tag: codeTok,
       section,
       category,
+      category_source: "heading",
       description: cells.MATERIAL.join(" ").trim(),
       manufacturer: cells.MANUFACTURER.join(" ").trim(),
       style: cells.STYLE.join(" ").trim(),
       spec_color: cells.COLOR.join(" ").trim(),
       size: cells.SIZE.join(" ").trim(),
+      remarks: "",
       suggested: SUGGESTED[category],
     });
   }
   return out;
-}
-
-// Default line/fill palette when the canvas doesn't pass its own — mirrors the
-// canvas PALETTE order loosely; the estimator can recolor after.
-const FALLBACK_PALETTE = ["#2f7d54", "#2563eb", "#9333ea", "#be185d", "#b8860b", "#0d9488", "#475569", "#c96442"];
-// Category → default hatch + waste so an imported floor reads like a floor and a
-// base like a base without the estimator touching the appearance editor.
-const CAT_HATCH: Record<Category, string> = { floor: "solid", base: "horiz", wall: "grid", transition: "vert", ceiling: "solid", other: "solid" };
-const CAT_WASTE: Record<Category, number> = { floor: 5, base: 10, wall: 10, transition: 0, ceiling: 0, other: 0 };
-
-export type ConditionSeed = {
-  finish_tag: string;
-  color: string;
-  hatch: string;
-  waste_pct: number;
-  materials: never[];
-  // product spec, for the canvas to drop into condition attrs / report columns.
-  // `description` (the MATERIAL/PRODUCT cell, e.g. "WOOD WALL PANEL") rides along
-  // so the most human-readable label survives import instead of being dropped.
-  spec: { manufacturer: string; style: string; color: string; size: string; description: string };
-  category: Category;
-};
-
-/** Map an approved row to a condition seed (no ids — the canvas mints those). */
-export function rowToSeed(row: ScheduleRow, index: number, palette: string[] = FALLBACK_PALETTE): ConditionSeed {
-  const color = palette[index % palette.length] || FALLBACK_PALETTE[0];
-  return {
-    finish_tag: row.finish_tag,
-    color,
-    hatch: CAT_HATCH[row.category],
-    waste_pct: CAT_WASTE[row.category],
-    materials: [],
-    spec: { manufacturer: row.manufacturer, style: row.style, color: row.spec_color, size: row.size, description: row.description },
-    category: row.category,
-  };
 }

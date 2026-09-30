@@ -40,8 +40,10 @@ class TakeoffAI(Protocol):
         read), OCR/VLM it into rows.
         Return: {"rows": [ScheduleRow...], "note": str}, where each ScheduleRow is
         {finish_tag, section, category, description, manufacturer, style,
-        spec_color, size, suggested} — the SAME shape the client's vector parser
-        emits, so both paths feed the one approval dialog. `category` is one of
-        floor/base/wall/transition/ceiling/other; `suggested` pre-checks the row
-        in the dialog (ceilings/millwork typically False)."""
+        spec_color, size, remarks, suggested} — the SAME shape the client's
+        vector reader emits, so both paths feed the one approval dialog.
+        `category` is one of floor/base/wall/wall_protection/transition/ceiling/
+        other/unassigned ("unassigned" = no section, listed as "No section");
+        `remarks` is the REMARKS cell; `suggested` pre-checks the row in the
+        dialog (ceilings/millwork typically False)."""
         ...

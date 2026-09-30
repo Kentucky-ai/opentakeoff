@@ -1,7 +1,7 @@
 // Shared sheet/plan-text helpers for the Takeoff Canvas and the Sheet Gallery:
 // sheet-key codec, standard scales, title-block sheet numbers, drawn-scale notes.
 import * as pdfjsLib from "pdfjs-dist";
-import type { Token } from "./scheduleParse";
+import type { Token } from "./scheduleRows";
 import { parseSheetKey } from "./sheetKey";
 import { isStitchKey } from "./stitches";
 export { parseSheetKey, compareSheetKeys } from "./sheetKey"; // moved to a pdfjs-free module; re-exported for existing importers

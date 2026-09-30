@@ -21,11 +21,15 @@ import React, { useMemo, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import { evaluateTags, isCreatable } from "../lib/scheduleEdit";
 
-// category → display group, in the order an estimator reads a floor set
+// category → display group, in the order an estimator reads a floor set.
+// Rows the schedule gives no section (and whose words name no item) come
+// first, so the ones that still need a decision are the first thing read.
 const GROUPS = [
+  { key: "unassigned", label: "No section" },
   { key: "floor", label: "Floor" },
   { key: "base", label: "Base" },
   { key: "wall", label: "Wall" },
+  { key: "wall_protection", label: "Wall Protection" },
   { key: "transition", label: "Transition" },
   { key: "ceiling", label: "Ceiling" },
   { key: "other", label: "Other" },
