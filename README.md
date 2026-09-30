@@ -373,9 +373,11 @@ are stored unit-agnostically, so flipping it never changes a measurement.
 A **condition** is one finish (LVP, carpet, tile, base…), carrying a line/fill color, a **CAD
 hatch pattern** so the canvas reads like the real drawing, a per-condition **waste %**, an
 **×N multiplier**, a default wall **height**, and a **thickness** that turns a linear run into
-border SF. **Import from schedule** parses the architect's finish table off the sheet into
-conditions behind a verify dialog—you approve what becomes a condition, and the product spec
-rides along as read-only report columns.
+border SF. **Import from schedule** reads the architect's finish or material table off the
+sheet (keyed by CODE, TAG, MARK or SYMBOL) into conditions behind a verify dialog—grouped by
+the printed section, with a category guessed from a row's words flagged for review—and you
+approve what becomes a condition. The product spec, the schedule's remarks included, rides
+along as report columns.
 
 **Supporting Materials** is the layer most takeoff tools punt on: per condition, a labor type
 and a subfloor type, plus the consumables that actually go on the order—adhesive, sealer,
