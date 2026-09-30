@@ -6,8 +6,10 @@
 // print order, the joined descriptions, each row's category and where it came
 // from, which rows start ticked, and the 8 REMARKS cells. What changed from
 // the old CODE-only marquee parser, on purpose: the MISC block no longer
-// reads as transitions — its rows go by their own words (TS-1/TS-2
-// transition, HR-1/CR-1/CG-1 wall protection, PR-1 no section), all ticked;
+// reads as ceilings, unticked (the old parser never recognised the
+// "MISC. FINISHES" heading, so those rows stayed under CEILINGS) — its rows
+// go by their own words (TS-1/TS-2 transition, HR-1/CR-1/CG-1 wall
+// protection, PR-1 no section), all ticked;
 // the REMARKS cells are remarks, not SIZE; and a marquee around the whole
 // sheet reads the same 28 rows as one around the table. Assertions are
 // vendor-neutral: no maker names.

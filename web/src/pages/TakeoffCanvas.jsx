@@ -7151,7 +7151,7 @@ export default function TakeoffCanvas() {
     } catch { setCommitMsg("Couldn't read that image."); }
   }
 
-  // Approved rows → conditions. Category drives color/hatch/waste (rowToSeed);
+  // Approved rows → conditions. Category drives hatch/waste, the palette the color (rowToSeed);
   // product spec (mfr/style/color/size) rides a plain `spec` field — NOT custom
   // columns (would hijack a user column and pollute its grouping vocabulary) and
   // NOT materials[] (those are coverage buy-list items, no coverage rate here).

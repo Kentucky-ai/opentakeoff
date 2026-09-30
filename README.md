@@ -375,7 +375,7 @@ hatch pattern** so the canvas reads like the real drawing, a per-condition **was
 **×N multiplier**, a default wall **height**, and a **thickness** that turns a linear run into
 border SF. **Import from schedule** reads the architect's finish or material table off the
 sheet (keyed by CODE, TAG, MARK or SYMBOL) into conditions behind a verify dialog—grouped by
-the printed section, with a category guessed from a row's words flagged for review—and you
+category, with a category guessed from a row's words flagged for review—and you
 approve what becomes a condition. The product spec, the schedule's remarks included, rides
 along as report columns.
 
