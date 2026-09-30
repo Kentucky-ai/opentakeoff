@@ -8,7 +8,7 @@
 //   - a title is named only when it is the reason (a "title" refusal).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { routeScheduleRead, refusalMessage, refusalWhy, NO_SCHEDULE_HINT } from "../src/lib/scheduleRoute.ts";
+import { routeScheduleRead, refusalMessage, refusalWhy, NO_SCHEDULE_HINT, SCANNED_PAGE_NO_READER, emptyBoxMessage } from "../src/lib/scheduleRoute.ts";
 import type { RefusalReason } from "../src/lib/scheduleRead.ts";
 import type { ScheduleRow } from "../src/lib/scheduleRows.ts";
 
@@ -69,4 +69,19 @@ test("the hints name every key column, not CODE alone", () => {
   for (const s of [NO_SCHEDULE_HINT, refusalMessage("equipment")]) {
     for (const k of ["CODE", "TAG", "MARK", "SYMBOL"]) assert.match(s, new RegExp(`\\b${k}\\b`), s);
   }
+});
+
+// A box with no text when the scan reader isn't configured. Only a page with
+// NO text layer at all may be called scanned; a vector page's empty box is a
+// mis-drag and gets the re-drag hint instead.
+test("an empty box on a page with no text layer says scanned page", () => {
+  assert.equal(emptyBoxMessage(false), SCANNED_PAGE_NO_READER);
+  assert.match(SCANNED_PAGE_NO_READER, /scanned page \(no text layer\)/);
+});
+
+test("an empty box on a page that has text never claims a scanned page", () => {
+  const m = emptyBoxMessage(true);
+  assert.doesNotMatch(m, /scann/i);
+  assert.match(m, /^No text in that box — drag around the finish\/material schedule/);
+  for (const k of ["CODE", "TAG", "MARK", "SYMBOL"]) assert.match(m, new RegExp(`\\b${k}\\b`));
 });

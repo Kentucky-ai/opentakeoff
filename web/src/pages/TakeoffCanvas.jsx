@@ -53,7 +53,7 @@ import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
 import { rowToSeed } from "../lib/scheduleRows";   // the reader (scheduleRead, which loads the sheet graph) is import()ed on use
-import { routeScheduleRead, NO_SCHEDULE_HINT } from "../lib/scheduleRoute";
+import { routeScheduleRead, NO_SCHEDULE_HINT, emptyBoxMessage } from "../lib/scheduleRoute";
 import { pageSpans, spansInRect, graphSpans } from "../lib/pageSpans";
 import { normalizeScanRows, postScanWithRetry, SCAN_ENDPOINT, scanRasterScale } from "../lib/scheduleScan";
 import { normalizeTag } from "../lib/scheduleEdit";
@@ -6800,13 +6800,15 @@ export default function TakeoffCanvas() {
     const rs = renderScalesRef.current.get(panel.key) || RENDER_SCALE;
     const rect = { x0: a[0] - panel.xOffset, y0: a[1], x1: b[0] - panel.xOffset, y1: b[1] };
     const seq = renderSeqRef.current;                 // a sheet switch mid-await must not pop a dialog for a page you left
-    let spans, readScheduleSpans;
+    let spans, pageHasText, readScheduleSpans;
     try {
       const vp = pageObj.getViewport({ scale: rs });
       const tc = await pageObj.getTextContent();
       ({ readScheduleSpans } = await import("../lib/scheduleRead"));   // the reader chunk loads on first use
       if (seq !== renderSeqRef.current) return;
-      spans = graphSpans(spansInRect(pageSpans(tc.items, vp.transform, rs), rect));
+      const page = pageSpans(tc.items, vp.transform, rs);
+      pageHasText = page.length > 0;   // the box's own source (pageSpans drops blank runs), so "box empty, page not" is consistent
+      spans = graphSpans(spansInRect(page, rect));
     } catch { setCommitMsg("Couldn't read that region."); return; }
     // Vector-vs-scan decision. Spans present ⇒ TRY the text layer first (a real
     // vector schedule reads straight from it, no OCR cost). But text presence
@@ -6825,7 +6827,7 @@ export default function TakeoffCanvas() {
       if (route.kind === "message") { setCommitMsg(route.text); return; }
       // else "scan": the reader is available — let it read the pixels below.
     }
-    await importScheduleFromScan(pageObj, rs, rect, seq, spans.length);
+    await importScheduleFromScan(pageObj, rs, rect, seq, spans.length, pageHasText);
   }
 
   // Scan/OCR fallback for a raster page: rasterize the marqueed region and POST
@@ -6839,10 +6841,13 @@ export default function TakeoffCanvas() {
   // routinely carry a stray text layer (title block, dimension text, embedded OCR)
   // that lands in the marquee yet holds no schedule, so a token-bearing box that
   // parses to nothing is just as likely a genuine scan as a defeated vector table.
-  async function importScheduleFromScan(pageObj, rs, rect, seq, tokenCount) {
+  // pageHasText: the whole page has a text layer. With no reader configured, an
+  // empty box on such a page missed the schedule — only a page with no text at
+  // all is called scanned (scheduleRoute.emptyBoxMessage).
+  async function importScheduleFromScan(pageObj, rs, rect, seq, tokenCount, pageHasText) {
     const hadTokens = tokenCount > 0;
     if (!isGoogleConfigured()) {
-      setCommitMsg("No schedule found — this looks like a scanned page (no text layer). Importing from scanned plans needs the AI backend.");
+      setCommitMsg(emptyBoxMessage(pageHasText));
       return;
     }
     if (!isSignedIn()) { setCommitMsg("Sign in to import from scanned plans."); return; }

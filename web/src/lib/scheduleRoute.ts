@@ -46,3 +46,14 @@ export function routeScheduleRead(read: ScheduleRead, scanReachable: boolean): I
   if (refused !== "no-table") return { kind: "message", text: refusalMessage(refused, "title" in read ? read.title : undefined) };
   return scanReachable ? { kind: "scan" } : { kind: "message", text: NO_SCHEDULE_HINT };
 }
+
+/** A box with no text, when the scan reader isn't configured, on a page with
+ *  no text layer at all: the one case that may be called a scanned page. */
+export const SCANNED_PAGE_NO_READER = "No schedule found — this looks like a scanned page (no text layer). Importing from scanned plans needs the AI backend.";
+
+/** The message for a box that holds no text when the scan reader isn't
+ *  configured. Only a page with no text anywhere is "scanned"; a page that has
+ *  text elsewhere means the box missed the schedule — say so, and how to aim. */
+export function emptyBoxMessage(pageHasText: boolean): string {
+  return pageHasText ? `No text in that box — drag around the finish/material schedule ${WHERE}.` : SCANNED_PAGE_NO_READER;
+}
