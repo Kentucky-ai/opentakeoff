@@ -1,0 +1,530 @@
+// The sheet graph's finish/material-schedule reader (#472):
+// section headings, sparse and header-named columns, the legend beside the
+// table, and group-label rows. Every fixture is synthetic —
+// invented codes and vendors, laid out at the scale the MCP server serves the
+// bundled demo sheet (text 17 px tall, 38 px row pitch, ~8 px per character).
+// The invariants:
+//   - a printed section heading is consumed — it is never a row and never
+//     lands in a cell — and the rows under it carry TableRow.section;
+//   - a material word ("CARPET", "TILE") or a spec-section number is not a
+//     section; rows under it carry none;
+//   - a column the header names keeps its cells even when only one row fills it;
+//   - text to the right of the table (a legend) is not read into it.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { extractTable, buildSheetGraph, type GraphSpan, type ScheduleTable } from "../src/lib/sheetgraph.ts";
+
+// ── fixture builder ─────────────────────────────────────────────────────────
+const TH = 17, PITCH = 38;
+let CW = 8;   // glyph width, px per character
+const sp = (str: string, x: number, y: number, h = TH): GraphSpan => ({ str, x, y, w: str.length * CW, h });
+const COLS: Record<string, number> = { KEY: 100, MATERIAL: 220, DESCRIPTION: 220, MANUFACTURER: 520, "MANUF.": 520, STYLE: 760, PRODUCT: 760, COLOR: 1000, SIZE: 1240, REMARKS: 1400 };
+type Cells = Partial<Record<string, string>>;
+type Item =
+  | { t: "row"; key: string; cells: Cells }
+  | { t: "head"; text: string; x?: number }
+  | { t: "raw"; spans: Array<[string, number]> }
+  | { t: "gap"; n: number }
+  | { t: "wrap"; col: string; text: string; dx?: number };
+
+function build(o: { key?: string; cols: string[]; title?: string; items: Item[]; align?: "left" | "center"; pre?: Array<Array<[string, number]>>; colX?: Record<string, number> }): GraphSpan[] {
+  const X = { ...COLS, ...(o.colX ?? {}) };
+  const labels = [o.key ?? "CODE", ...o.cols];
+  const xs = [X.KEY, ...o.cols.map((c) => X[c])];
+  const colW = xs.map((x, i) => (i + 1 < xs.length ? xs[i + 1] - x : 400));
+  const place = (text: string, ci: number, y: number) => (o.align === "center" ? sp(text, xs[ci] + colW[ci] / 2 - (text.length * CW) / 2, y) : sp(text, xs[ci], y));
+  const out: GraphSpan[] = [];
+  let y = 0;
+  for (const line of o.pre ?? []) { for (const [s, x] of line) out.push(sp(s, x, y)); y += PITCH; }
+  if (o.title) { out.push(sp(o.title, xs[0], y, 24)); y += PITCH; }
+  labels.forEach((l, i) => out.push(place(l, i, y)));
+  let lastY = y;
+  for (const it of o.items) {
+    if (it.t === "gap") { y += PITCH * it.n; continue; }
+    if (it.t === "wrap") { const s = place(it.text, labels.indexOf(it.col), lastY + 19); s.x += it.dx ?? 0; out.push(s); continue; }
+    y += PITCH;
+    if (it.t === "head") out.push(sp(it.text, it.x ?? xs[0], y));
+    else if (it.t === "raw") for (const [s, x] of it.spans) out.push(sp(s, x, y));
+    else { out.push(place(it.key, 0, y)); o.cols.forEach((c, i) => { const v = it.cells[c]; if (v) out.push(place(v, i + 1, y)); }); }
+    lastY = y;
+  }
+  return out;
+}
+
+// invented finish rows: key, material, vendor, style, color, size, remarks
+const R = (key: string, mat: string, mfr: string, style = "", color = "", size = "", rem = ""): Item =>
+  ({ t: "row", key, cells: { MATERIAL: mat, DESCRIPTION: mat, MANUFACTURER: mfr, "MANUF.": mfr, STYLE: style, PRODUCT: style, COLOR: color, SIZE: size, REMARKS: rem } });
+const FLOOR = [R("CPT-1", "BROADLOOM CARPET", "VENDOR-A", "LOOP 20", "GREY 101"), R("CPT-2", "MODULAR CARPET TILE", "VENDOR-A", "GRID 24", "BLUE 202"), R("LVT-1", "LUXURY VINYL TILE", "VENDOR-B", "PLANK 6", "OAK 303", '6" x 36"', "ADHESIVE: VENDOR-K"), R("VCT-1", "VINYL COMPOSITION TILE", "VENDOR-C", "STANDARD", "WHITE 404", '12" x 12"', "ADHESIVE: VENDOR-K"), R("SC-1", "SEALED CONCRETE", "VENDOR-D", "CLEAR COAT", "CLEAR")];
+const BASE = [R("RB-1", "RUBBER WALL BASE", "VENDOR-B", "COVE", "BLACK 505", '4"'), R("RB-2", "RESILIENT BASE", "VENDOR-B", "STRAIGHT", "GREY 506", '6"')];
+const WALLS = [R("P-1", "PAINT", "VENDOR-E", "EGGSHELL", "WHITE 601"), R("P-2", "PAINT", "VENDOR-E", "SEMI-GLOSS", "TAUPE 602", "", "SEE NOTE 4"), R("CT-1", "CERAMIC WALL TILE", "VENDOR-F", "GLOSS", "WHITE 603", '3" x 6"', "GROUT: VENDOR-K 01 WHITE")];
+const CEIL = [R("ACT-1", "ACOUSTICAL CEILING TILE", "VENDOR-G", "FINE FISSURED", "WHITE", "2' x 2'")];
+const MILL = [R("PL-1", "PLASTIC LAMINATE", "VENDOR-H", "MATTE", "MAPLE 701")];
+const MISC = [R("TS-1", "TRANSITION STRIP", "VENDOR-I", "RAMP", "SATIN"), R("CG-1", "CORNER GUARDS", "VENDOR-J", "SURFACE", "ALMOND"), R("PR-1", "METAL TILE EDGE", "VENDOR-I", "SQUARE", "SATIN")];
+const STD = ["MATERIAL", "MANUFACTURER", "STYLE", "COLOR", "SIZE", "REMARKS"];
+const H = (text: string, x?: number): Item => ({ t: "head", text, x });
+const keysOf = (items: Item[]) => items.flatMap((i) => (i.t === "row" ? [i.key] : []));
+
+const read = (spans: GraphSpan[]): ScheduleTable => {
+  const t = extractTable({ key: "fx", spans }, "finish");
+  assert.ok(t, "a finish table is read");
+  return t;
+};
+const keys = (t: ScheduleTable) => t.rows.map((r) => r.key);
+const row = (t: ScheduleTable, k: string) => { const r = t.rows.find((x) => x.key === k); assert.ok(r, `row ${k}`); return r; };
+const cell = (t: ScheduleTable, k: string, col: string) => row(t, k).cells[col]?.text;
+const allCellText = (t: ScheduleTable) => t.rows.flatMap((r) => Object.values(r.cells).map((c) => c.text));
+
+/** none of the given rows has a cell containing any of the texts */
+const noCellOf = (t: ScheduleTable, ks: string[], ...texts: string[]) => {
+  for (const x of texts) assert.ok(!t.rows.filter((r) => ks.includes(r.key)).some((r) => Object.values(r.cells).some((c) => c.text.includes(x))), `"${x}" is in no cell of ${ks.join(",")}`);
+};
+/** the row has a cell containing the text */
+const rowHas = (t: ScheduleTable, k: string, text: string) => assert.ok(Object.values(row(t, k).cells).some((c) => c.text.includes(text)), `${k} keeps "${text}"`);
+/** A fuzz-found fixture: [text, x, y, width]. Tests named "fuzz-found" are
+ * minimal tables from a randomized comparison of this reader against the one
+ * before #472 (synthetic columns, alignments, headings, legends); each pins a
+ * mechanism that keeps this reader from doing worse there. Their texts are
+ * the generator's invented words, tagged Qn so no two cells read alike.
+ * Width-less fixtures carry no width (legacy tokens). */
+const fixture = (widthless: boolean, a: Array<[string, number, number, number?]>): GraphSpan[] =>
+  a.map(([str, x, y, w]) => (widthless ? { str, x, y, w: 0, h: TH } : { str, x, y, w: w ?? str.length * CW, h: TH }));
+
+// ── the header row and the columns ──────────────────────────────────────────
+test("a general-notes line naming CODES / MATERIALS / COLORED is not taken for the header row", () => {
+  const pre: Array<Array<[string, number]>> = [[["GENERAL NOTES", 100]], [["1. VERIFY ALL", 100], ["CODES AND", 400], ["MATERIALS PRIOR", 700], ["TO ORDER. COLORED", 1000]], [["2. SUBMIT SAMPLES.", 100]], [["3. SEE SPECS.", 100]], [["4. COORDINATE.", 100]]];
+  const items = [...FLOOR, ...BASE];
+  const t = read(build({ cols: STD, items, pre }));
+  assert.deepEqual(keys(t), keysOf(items));
+  assert.equal(cell(t, "CPT-1", "MATERIAL"), "BROADLOOM CARPET");
+  assert.equal(cell(t, "CPT-1", "MANUFACTURER"), "VENDOR-A");
+});
+
+test("an abbreviated header (MANUF.) names its column once the row qualifies", () => {
+  const items = [...FLOOR, ...BASE];
+  const t = read(build({ key: "TAG", cols: ["MATERIAL", "MANUF.", "STYLE", "COLOR", "REMARKS"], items }));
+  assert.deepEqual(t.headers, ["TAG", "MATERIAL", "MANUFACTURER", "STYLE", "COLOR", "REMARKS"]);
+  assert.deepEqual(keys(t), keysOf(items));
+  assert.equal(cell(t, "CPT-1", "MATERIAL"), "BROADLOOM CARPET");
+  assert.equal(cell(t, "CPT-1", "MANUFACTURER"), "VENDOR-A");
+  assert.equal(cell(t, "RB-1", "MANUFACTURER"), "VENDOR-B");
+});
+
+test("abbreviated headers name columns in finish tables only: an equipment table reads as before", () => {
+  // DESCRIP. and MANUF. name no equipment column; the reading is pinned to
+  // what the reader gave before finish headers learned abbreviations
+  const hdr: Array<[string, number]> = [["MARK", 100], ["DESCRIP.", 220], ["MANUF.", 520], ["MODEL", 760], ["CFM", 1000], ["REMARKS", 1200]];
+  const spans: GraphSpan[] = hdr.map(([l, x]) => sp(l, x, 0));
+  const data = [["EF-1", "EXHAUST FAN", "VENDOR-A", "X100", "200", ""], ["EF-2", "EXHAUST FAN", "VENDOR-A", "X200", "400", "ROOF"], ["SF-1", "SUPPLY FAN", "VENDOR-B", "S10", "800", ""]];
+  data.forEach((r, i) => r.forEach((v, j) => { if (v) spans.push(sp(v, hdr[j][1], PITCH * (i + 1))); }));
+  const t = extractTable({ key: "fx", spans }, "equipment");
+  assert.ok(t);
+  assert.deepEqual(t.headers, ["MARK", "MODEL", "CFM", "REMARKS"]);
+  assert.deepEqual(Object.fromEntries(t.rows.map((r) => [r.key, Object.fromEntries(Object.entries(r.cells).map(([k, c]) => [k, c.text]))])), {
+    "EF-1": { MARK: "EF-1 EXHAUST FAN", MODEL: "VENDOR-A X100", CFM: "200" },
+    "EF-2": { MARK: "EF-2 EXHAUST FAN", MODEL: "VENDOR-A X200", CFM: "400", REMARKS: "ROOF" },
+    "SF-1": { MARK: "SF-1 SUPPLY FAN", MODEL: "VENDOR-B S10", CFM: "800" },
+  });
+});
+
+test("a sparse column the header names keeps its cells (SIZE in 2 of 30 rows)", () => {
+  const items: Item[] = [];
+  for (let i = 1; i <= 30; i++) items.push(R(`CPT-${i}`, "CARPET TILE", "VENDOR-A", "LOOP", "GREY", i === 4 || i === 18 ? '24" x 24"' : ""));
+  const t = read(build({ cols: STD, items }));
+  assert.deepEqual(keys(t), keysOf(items));
+  for (const k of ["CPT-4", "CPT-18"]) {
+    assert.equal(cell(t, k, "SIZE"), '24" x 24"');
+    assert.equal(cell(t, k, "COLOR"), "GREY");
+    assert.equal(cell(t, k, "REMARKS"), undefined);
+  }
+});
+
+test("a single REMARKS cell stays in REMARKS (1 of 11 rows)", () => {
+  const items = [R("CPT-1", "BROADLOOM CARPET", "VENDOR-A", "LOOP 20", "GREY 101"), R("CPT-2", "MODULAR CARPET TILE", "VENDOR-A", "GRID 24", "BLUE 202"), R("VCT-1", "VINYL COMPOSITION TILE", "VENDOR-C", "STANDARD", "WHITE 404", '12" x 12"'), ...BASE, WALLS[0], WALLS[2], ...CEIL, ...MILL, MISC[0], MISC[1]];
+  const t = read(build({ cols: STD, items }));
+  assert.deepEqual(keys(t), keysOf(items));
+  assert.equal(cell(t, "CT-1", "REMARKS"), "GROUT: VENDOR-K 01 WHITE");
+  assert.equal(cell(t, "CT-1", "SIZE"), '3" x 6"');
+  assert.equal(t.rows.filter((r) => r.cells.REMARKS).length, 1);
+});
+
+test("a legend block to the right of REMARKS is not read into the table", () => {
+  const legend: Array<[string, string]> = [["LEGEND", ""], ["CPT", "CARPET"], ["LVT", "LUXURY VINYL"], ["VCT", "VINYL TILE"], ["RB", "RUBBER BASE"], ["P", "PAINT"], ["CT", "CERAMIC TILE"], ["ACT", "ACOUSTIC TILE"]];
+  const items = [...FLOOR, ...BASE, ...WALLS];
+  const spans = build({ cols: STD, items });
+  legend.forEach(([a, b], i) => { spans.push(sp(a, 1680, PITCH * (i + 1))); if (b) spans.push(sp(b, 1740, PITCH * (i + 1))); });
+  const t = read(spans);
+  assert.deepEqual(keys(t), keysOf(items));
+  assert.equal(cell(t, "CT-1", "REMARKS"), "GROUT: VENDOR-K 01 WHITE");
+  assert.equal(cell(t, "P-1", "REMARKS"), undefined);
+  assert.ok(!allCellText(t).some((s) => /LEGEND|ACOUSTIC TILE|LUXURY VINYL$/.test(s)), "no legend text in any cell");
+  assert.ok(t.region[2] < 1680, "the region stops short of the legend");
+});
+
+test("a rotated header row qualifies on whole words too (COLORED names no column)", () => {
+  const vsp = (str: string, x: number): GraphSpan => ({ str, x, y: 0, w: TH, h: str.length * CW, rot: 90 });
+  const rotated = (third: string): GraphSpan[] => {
+    const out = [vsp("CODE", 100), vsp("MATERIAL", 220), vsp(third, 520)];
+    ["CPT-1", "CPT-2", "RB-1"].forEach((k, i) => { const y = 100 + PITCH * i; out.push(sp(k, 100, y), sp("CARPET", 220, y), sp("GREY", 520, y)); });
+    return out;
+  };
+  const t = extractTable({ key: "fx", spans: rotated("COLOR") }, "finish");
+  assert.ok(t && t.rotated_headers, "CODE / MATERIAL / COLOR reads as a rotated header");
+  assert.deepEqual(keys(t), ["CPT-1", "CPT-2", "RB-1"]);
+  assert.equal(extractTable({ key: "fx", spans: rotated("COLORED") }, "finish"), null);
+});
+
+test("a last column whose header is outside the vocabulary is not capped away as a legend", () => {
+  // LOCATION names no column this reader knows, so its cells band into COLOR
+  // beside it — as they did before the legend cap (the stated limit). The
+  // header over them says they are the table's, so they are not dropped.
+  const hdr: Array<[string, number]> = [["CODE", 100], ["MATERIAL", 220], ["MANUFACTURER", 520], ["COLOR", 1000], ["LOCATION", 1200]];
+  const spans: GraphSpan[] = hdr.map(([l, x]) => sp(l, x, 0));
+  const locs = ["CORRIDORS", "ALL OFFICES", "LOBBY", "CORRIDORS", "RESTROOMS", "BREAK ROOM", "ALL OFFICES", "STAIRS"];
+  const ks = ["CPT-1", "CPT-2", "LVT-1", "VCT-1", "RB-1", "RB-2", "P-1", "P-2"];
+  ks.forEach((k, i) => { const y = PITCH * (i + 1); spans.push(sp(k, 100, y), sp(`MAT ${i}`, 220, y), sp("VENDOR-A", 520, y), sp(`GREY ${i}`, 1000, y), sp(locs[i], 1200, y)); });
+  const t = read(spans);
+  assert.deepEqual(keys(t), ks);
+  assert.deepEqual(t.headers, ["CODE", "MATERIAL", "MANUFACTURER", "COLOR"]);
+  ks.forEach((k, i) => assert.equal(cell(t, k, "COLOR"), `GREY ${i} ${locs[i]}`, k));
+  assert.ok(t.region[2] >= 1200 + "ALL OFFICES".length * CW, "the region reaches the LOCATION column");
+});
+
+test("narrow neighboring columns with real text widths stay apart", () => {
+  // SIZE starts 70 px right of COLOR: closer than five text heights, which
+  // merges width-less continuation words — never measured text
+  const items = [...FLOOR, ...BASE, ...WALLS];
+  const t = read(build({ cols: STD, colX: { SIZE: 1070, REMARKS: 1250 }, items }));
+  assert.deepEqual(t.headers, ["CODE", ...STD]);
+  assert.equal(cell(t, "LVT-1", "COLOR"), "OAK 303");
+  assert.equal(cell(t, "LVT-1", "SIZE"), '6" x 36"');
+});
+
+test("a continuation sheet with no header row of its own is not capped", () => {
+  // the continuation adopts the base table's columns but has no header row to
+  // say whether text right of COLOR is a legend or a column — so nothing is
+  // cut, and LOCATION reads into COLOR exactly as it does on the base sheet
+  const hdr: Array<[string, number]> = [["CODE", 100], ["MATERIAL", 220], ["MANUFACTURER", 520], ["COLOR", 1000], ["LOCATION", 1200]];
+  const rowsAt = (ks: string[], y0: number): GraphSpan[] => ks.flatMap((k, i) => { const y = y0 + PITCH * i; return [sp(k, 100, y), sp(`MAT ${k}`, 220, y), sp("VENDOR-A", 520, y), sp(`GREY ${i}`, 1000, y), sp(`ROOM ${k}`, 1200, y)]; });
+  const base = [sp("MATERIAL SCHEDULE", 100, 0, 24), ...hdr.map(([l, x]) => sp(l, x, PITCH)), ...rowsAt(["CPT-1", "CPT-2", "LVT-1", "VCT-1"], 2 * PITCH)];
+  const cont = [sp("MATERIAL SCHEDULE (CONT'D)", 100, 0, 24), ...rowsAt(["RB-1", "RB-2", "P-1", "P-2"], 2 * PITCH)];
+  const g = buildSheetGraph([{ key: "a.pdf#1", spans: base }, { key: "a.pdf#2", spans: cont }]);
+  const t = g.tables.find((x) => x.kind === "finish");
+  assert.ok(t);
+  assert.deepEqual(keys(t), ["CPT-1", "CPT-2", "LVT-1", "VCT-1", "RB-1", "RB-2", "P-1", "P-2"]);
+  assert.equal(cell(t, "CPT-1", "COLOR"), "GREY 0 ROOM CPT-1");
+  assert.equal(cell(t, "P-2", "COLOR"), "GREY 3 ROOM P-2");
+});
+
+test("width-less input: a cell's second word is not a column of its own", () => {
+  // legacy text tokens carry no width, one token per word: "BROADLOOM" at the
+  // column start and "CARPET" further right, in every row
+  const words = (s: string, x: number, y: number): GraphSpan[] => { const out: GraphSpan[] = []; let at = x; for (const w of s.split(" ")) { out.push({ str: w, x: at, y, w: 0, h: TH }); at += (w.length + 1) * CW; } return out; };
+  const spans: GraphSpan[] = [];
+  ["CODE", "MATERIAL", "MANUFACTURER", "COLOR", "REMARKS"].forEach((l, i) => spans.push({ str: l, x: [100, 220, 520, 760, 1000][i], y: 0, w: 0, h: TH }));
+  const data: Array<[string, string, string, string]> = [["CPT-1", "BROADLOOM CARPET", "VENDOR-A", "GREY 101"], ["CPT-2", "MODULAR CARPET TILE", "VENDOR-A", "BLUE 202"], ["LVT-1", "LUXURY VINYL TILE", "VENDOR-B", "OAK 303"], ["VCT-1", "VINYL COMPOSITION TILE", "VENDOR-C", "WHITE 404"], ["RB-1", "RUBBER WALL BASE", "VENDOR-B", "BLACK 505"], ["RB-2", "RESILIENT BASE", "VENDOR-B", "GREY 506"], ["P-1", "PAINT", "VENDOR-E", "WHITE 601"], ["CT-1", "CERAMIC WALL TILE", "VENDOR-F", "WHITE 603"]];
+  data.forEach(([k, m, v, c], i) => { const y = PITCH * (i + 1); spans.push({ str: k, x: 100, y, w: 0, h: TH }, ...words(m, 220, y), ...words(v, 520, y), ...words(c, 760, y)); });
+  spans.push({ str: "SEE NOTE 1", x: 1000, y: PITCH * 3, w: 0, h: TH });
+  const t = read(spans);
+  assert.deepEqual(keys(t), data.map((d) => d[0]));
+  for (const [k, m, v, c] of data) {
+    assert.equal(cell(t, k, "MATERIAL"), m, k);
+    assert.equal(cell(t, k, "MANUFACTURER"), v, k);
+    assert.equal(cell(t, k, "COLOR"), c, k);
+  }
+  assert.equal(cell(t, "LVT-1", "REMARKS"), "SEE NOTE 1");
+});
+
+test("an empty REMARKS column does not scatter a short left-set table (5 rows)", () => {
+  const hdr: Array<[string, number]> = [["CODE", 100], ["MATERIAL", 220], ["MANUFACTURER", 520], ["COLOR", 760], ["REMARKS", 1000]];
+  const data = [["CPT-1", "BROADLOOM CARPET", "VENDOR-A", "GREY 101"], ["CPT-2", "CARPET TILE", "VENDOR-A", "BLUE"], ["LVT-1", "LUXURY VINYL TILE", "VENDOR-B", "OAK 303"], ["VCT-1", "VCT", "VENDOR-C", "WHITE 404"], ["RB-1", "RUBBER WALL BASE", "VENDOR-B", "BLACK"]];
+  const spans = hdr.map(([l, x]) => sp(l, x, 0));
+  data.forEach((r, i) => r.forEach((v, j) => spans.push(sp(v, hdr[j][1], PITCH * (i + 1)))));
+  const t = read(spans);
+  assert.deepEqual(keys(t), data.map((d) => d[0]));
+  for (const [k, m, v, c] of data) {
+    assert.equal(cell(t, k, "MATERIAL"), m, k);
+    assert.equal(cell(t, k, "MANUFACTURER"), v, k);
+    assert.equal(cell(t, k, "COLOR"), c, k);
+    assert.equal(cell(t, k, "REMARKS"), undefined, k);
+  }
+});
+
+test("a two-line header over a column outside the vocabulary is not capped away as a legend", () => {
+  // INSTALL / LOCATION set as two lines straddling the header row: its cells
+  // band into COLOR beside them, as they did before the legend cap
+  for (const twoLine of [true, false]) {
+    const spans = build({ cols: ["MATERIAL", "MANUFACTURER", "COLOR"], items: [...FLOOR, ...BASE] });
+    if (twoLine) spans.push(sp("INSTALL", 1250, -10), sp("LOCATION", 1250, 10)); else spans.push(sp("LOCATION", 1250, 0));
+    const ks = [...keysOf(FLOOR), ...keysOf(BASE)];
+    ks.forEach((k, i) => spans.push(sp(`ROOM ${k}`, 1250, PITCH * (i + 1))));
+    const t = read(spans);
+    assert.deepEqual(keys(t), ks);
+    for (const k of ks) assert.ok(cell(t, k, "COLOR")!.endsWith(`ROOM ${k}`), `${k} keeps its LOCATION text (two-line ${twoLine})`);
+  }
+});
+
+test("a column named only in the tier above the header row is not capped away as a legend", () => {
+  const spans = [sp("FINISH", 400, -2 * PITCH), sp("LOCATION", 1250, -PITCH), sp("CODE", 100, 0), sp("MATERIAL", 220, 0), sp("MANUFACTURER", 520, 0), sp("COLOR", 1000, 0)];
+  const ks = ["CPT-1", "CPT-2", "LVT-1", "RB-1", "P-1"];
+  ks.forEach((k, i) => { const y = PITCH * (i + 1); spans.push(sp(k, 100, y), sp(`MAT ${k}`, 220, y), sp("VENDOR-A", 520, y), sp("GREY", 1000, y), sp(`ROOM ${k}`, 1250, y)); });
+  const t = read(spans);
+  assert.deepEqual(keys(t), ks);
+  for (const k of ks) assert.equal(cell(t, k, "COLOR"), `GREY ROOM ${k}`);
+});
+
+test("a centered header outside the vocabulary heads cells that start left of it", () => {
+  // LOCATION is centered over its column; its cells start at the column's
+  // left edge, left of the header's text — still its column, not a legend
+  const spans = [sp("CODE", 100, 0), sp("MATERIAL", 220, 0), sp("MANUFACTURER", 520, 0), sp("COLOR", 1000, 0), sp("LOCATION", 1310, 0)];
+  const ks = ["CPT-1", "CPT-2", "LVT-1", "VCT-1", "RB-1", "RB-2"];
+  ks.forEach((k, i) => { const y = PITCH * (i + 1); spans.push(sp(k, 100, y), sp(`MAT ${i}`, 220, y), sp("VENDOR-A", 520, y), sp(`GREY ${i}`, 1000, y), sp(`ROOM ${k}`, 1250, y)); });
+  const t = read(spans);
+  assert.deepEqual(keys(t), ks);
+  ks.forEach((k, i) => assert.equal(cell(t, k, "COLOR"), `GREY ${i} ROOM ${k}`));
+});
+
+test("a legend's own title set just above the header row does not head the legend", () => {
+  const legend: Array<[string, string]> = [["CPT", "CARPET"], ["LVT", "LUXURY VINYL"], ["VCT", "VINYL TILE"], ["RB", "RUBBER BASE"], ["P", "PAINT"], ["CT", "CERAMIC TILE"], ["ACT", "ACOUSTIC TILE"]];
+  const items = [...FLOOR, ...BASE, ...WALLS];
+  const spans = build({ cols: STD, items });
+  spans.push(sp("ABBREVIATIONS", 1680, -20));
+  legend.forEach(([a, b], i) => { spans.push(sp(a, 1680, PITCH * (i + 1))); spans.push(sp(b, 1740, PITCH * (i + 1))); });
+  const t = read(spans);
+  assert.deepEqual(keys(t), keysOf(items));
+  assert.equal(cell(t, "CT-1", "REMARKS"), "GROUT: VENDOR-K 01 WHITE");
+  noCellOf(t, keys(t), "ACOUSTIC TILE", "RUBBER BASE", "CERAMIC TILE");
+});
+
+test("width-less input: a legend beside REMARKS is not read into the table", () => {
+  const legend: Array<[string, string]> = [["CPT", "CARPET"], ["LVT", "LUXURY VINYL"], ["VCT", "VINYL TILE"], ["RB", "RUBBER BASE"], ["P", "PAINT"], ["CT", "CERAMIC TILE"], ["ACT", "ACOUSTIC TILE"]];
+  const items = [...FLOOR, ...BASE, ...WALLS];
+  const spans = build({ cols: STD, items });
+  legend.forEach(([a, b], i) => { spans.push(sp(a, 1760, PITCH * (i + 1))); spans.push(sp(b, 1820, PITCH * (i + 1))); });
+  const t = read(spans.map((s) => ({ ...s, w: 0 })));
+  assert.deepEqual(keys(t), keysOf(items));
+  assert.equal(cell(t, "CT-1", "REMARKS"), "GROUT: VENDOR-K 01 WHITE");
+  noCellOf(t, keys(t), "ACOUSTIC TILE", "RUBBER BASE", "CERAMIC TILE");
+});
+
+test("a row of abbreviation-like words under the header is not a lower header tier", () => {
+  // PATTERNED / STYLED / PRODUCTS / COMMENTARY each start like a header word
+  // ("PATTE…", "STYLE…"): they name columns only in a row that already
+  // qualifies on whole words, and never make a row the header's lower tier
+  const spans = [sp("CODE", 100, 0), sp("MATERIAL", 220, 0), sp("COLOR", 520, 0), sp("PATTERNED", 220, PITCH), sp("STYLED", 400, PITCH), sp("PRODUCTS", 520, PITCH), sp("COMMENTARY", 700, PITCH)];
+  const ks = ["CPT-1", "CPT-2", "RB-1", "P-1"];
+  ks.forEach((k, i) => { const y = PITCH * (i + 3); spans.push(sp(k, 100, y), sp(`MAT ${i}`, 220, y), sp(`GREY ${i}`, 520, y)); });
+  const t = read(spans);
+  assert.deepEqual(t.headers, ["CODE", "MATERIAL", "COLOR"]);
+  assert.deepEqual(keys(t), ks);
+  ks.forEach((k, i) => assert.equal(cell(t, k, "COLOR"), `GREY ${i}`));
+});
+
+test("width-less input: a room-finish table reads as before (the continuation-word rule is the finish reader's)", () => {
+  // NAME's header stands right of the names' first words; the room-finish
+  // reader keeps its own reading of that, word for word
+  const words = (s: string, x: number, y: number): GraphSpan[] => { const out: GraphSpan[] = []; let at = x; for (const w of s.split(" ")) { out.push({ str: w, x: at, y, w: 0, h: TH }); at += (w.length + 1) * CW; } return out; };
+  const spans: GraphSpan[] = [["ROOM", 100], ["NAME", 180], ["FLOOR", 400], ["BASE", 520], ["WALLS", 640], ["CEILING", 760]].map(([l, x]) => ({ str: l as string, x: x as number, y: 0, w: 0, h: TH }));
+  const rooms = [["101", "OPEN OFFICE"], ["102", "CONF ROOM"], ["103", "BREAK ROOM"], ["104", "MAIN LOBBY"], ["105", "WOMEN TOILET"], ["106", "MEN TOILET"]];
+  rooms.forEach(([k, n], i) => { const y = PITCH * (i + 1); spans.push({ str: k, x: 100, y, w: 0, h: TH }, ...words(n, 160, y), ...words("CPT-1", 400, y), ...words("RB-1", 520, y), ...words("P-1", 640, y), ...words("ACT-1", 760, y)); });
+  const t = extractTable({ key: "fx", spans }, "room-finish");
+  assert.ok(t);
+  assert.deepEqual(t.rows.map((r) => r.key), rooms.map((r) => r[0]));
+  assert.equal(t.rows[0].cells.NAME?.text, "OPEN");
+  assert.equal(t.rows[0].cells.FLOOR?.text, "OFFICE CPT-1");
+  assert.equal(t.rows[0].cells.ROOM?.text, "101");
+});
+
+test("fuzz-found: a legend beside a sparse last column is not read into it", () => {
+  // DESCRIPTION prints one cell; the legend lines sit well right of it
+  const t = read(fixture(false, [["CODE",100,0,32],["PRODUCT",217,0,56],["MATERIAL",488,0,64],["DESCRIPTION",652,0,88],["RB-6",100,38,32],["12 x 12 Q1",217,38,80],["VENDOR-B CO Q2",488,38,112],["TILE Q3",652,38,56],["ACT-10",100,76,48],["X1-2",100,114,32],["SHADE Z2",217,114,64],["WC-8",100,152,32],["VINYL PLANK Q4",217,152,112],["BROADLOOM CARPET Q5",488,152,152],["CPT",938,76,24],["CARPET LGA",998,76,80],["RB",938,114,16],["RESILIENT LGB",998,114,104],["P",938,152,8],["PAINT LGC",998,152,72],["LVT",938,190,24],["LUXURY LGD",998,190,80]]));
+  assert.deepEqual(keys(t).filter((k) => ["RB-6","ACT-10","WC-8"].includes(k)), ["RB-6","ACT-10","WC-8"]);
+  assert.equal(cell(t, "RB-6", "PRODUCT"), "12 x 12 Q1");
+  assert.equal(cell(t, "RB-6", "MATERIAL"), "VENDOR-B CO Q2");
+  assert.equal(cell(t, "RB-6", "DESCRIPTION"), "TILE Q3");
+  assert.equal(cell(t, "WC-8", "PRODUCT"), "VINYL PLANK Q4");
+  assert.equal(cell(t, "WC-8", "MATERIAL"), "BROADLOOM CARPET Q5");
+  noCellOf(t, ["RB-6","ACT-10","WC-8"], "CARPET LGA", "RESILIENT LGB", "PAINT LGC", "LUXURY LGD");
+});
+
+test("fuzz-found, width-less: a last column's words past its narrow header are not a legend", () => {
+  // MANUFACTURER's cells start left of its header and run on past it; the cap needs half a column pitch of clearance
+  const t = read(fixture(true, [["SYMBOL",152,0],["MATERIAL",370,0],["COMMENTS",674,0],["MANUFACTURER",884.5,0],["WALL",100,38],["FINISHES",140,38],["VCT-6",100,76],["ADHESIVE:",252,76],["VENDOR-K",332,76],["Q1",404,76],["MATTE",860,76],["FINISH",908,76],["Q2",964,76],["C-2",100,114],["ADHESIVE:",252,114],["VENDOR-K",332,114],["Q3",404,114],["VENDOR-B",860,114],["CO",932,114],["Q4",956,114]]));
+  assert.deepEqual(keys(t).filter((k) => ["VCT-6","C-2"].includes(k)), ["VCT-6","C-2"]);
+  assert.equal(cell(t, "VCT-6", "MANUFACTURER"), "MATTE FINISH Q2");
+  assert.equal(cell(t, "C-2", "MANUFACTURER"), "VENDOR-B CO Q4");
+  noCellOf(t, ["VCT-6","C-2"], "WALL FINISHES");
+});
+
+test("fuzz-found, width-less: a cell's later words never start the next column", () => {
+  // each cell's second and third word sits under the next header's text
+  const t = read(fixture(true, [["MARK",100,0],["MANUFACTURER",208,0],["MATERIAL",483,0],["SPECIFICATION",373.5,-46],["P-5",100,46],["OAK",208,46],["303",240,46],["Q1",272,46],["GREY",483,46],["Q2",523,46],["T",100,92],["CARPET",208,92],["Q3",264,92],["12",483,92],["x",507,92],["12",523,92],["Q4",547,92]]));
+  assert.deepEqual(keys(t).filter((k) => ["P-5","T"].includes(k)), ["P-5","T"]);
+  assert.equal(cell(t, "P-5", "MANUFACTURER"), "OAK 303 Q1");
+  assert.equal(cell(t, "P-5", "MATERIAL"), "GREY Q2");
+  assert.equal(cell(t, "T", "MANUFACTURER"), "CARPET Q3");
+  assert.equal(cell(t, "T", "MATERIAL"), "12 x 12 Q4");
+});
+
+test("fuzz-found: a column that prints no cell starts at its header", () => {
+  // COMMENTS is empty; without a start for it the table loses its map
+  const t = read(fixture(false, [["SYMBOL",129.5,0,48],["PRODUCT",337,0,56],["COMMENTS",556,0,64],["TRANSITIONS",332.5,30,88],["LVT-2",100,60,40],["VENDOR-A Q1",207,60,88],["WALLS",356.5,90,40],["C7",100,120,16],["VCT-10",100,150,48],["PT-8",100,180,32],["EGGSHELL Q2",207,180,88],["LVT-6",100,210,40],["VENDOR-A Q3",207,210,88],["C-5",100,240,24]]));
+  assert.deepEqual(keys(t).filter((k) => ["LVT-2","C7","VCT-10","PT-8","LVT-6","C-5"].includes(k)), ["LVT-2","C7","VCT-10","PT-8","LVT-6","C-5"]);
+  assert.equal(cell(t, "LVT-2", "PRODUCT"), "VENDOR-A Q1");
+  assert.equal(cell(t, "PT-8", "PRODUCT"), "EGGSHELL Q2");
+  assert.equal(cell(t, "LVT-6", "PRODUCT"), "VENDOR-A Q3");
+  noCellOf(t, ["LVT-2","C7","VCT-10","PT-8","LVT-6","C-5"], "TRANSITIONS", "WALLS");
+});
+
+test("fuzz-found, width-less: a header owning only run-on words starts its column at the header", () => {
+  // the headers sit over their columns' left edges (CODE over the keys)
+  const t = read(fixture(true, [["CODE",156.5,0],["STYLE",408.5,0],["WIDTH",666.5,0],["REMARKS",884,0],["C",168.5,38],["CARPET",876,38],["Q1",932,38],["PT-5",156.5,76],["12",388.5,76],["x",412.5,76],["12",428.5,76],["Q2",452.5,76],["LVT-7",152.5,114],["MATTE",368.5,114],["FINISH",416.5,114],["Q3",472.5,114],["P6",164.5,152],["PAINT",396.5,152],["Q4",444.5,152],["RB-10",152.5,190],["12",388.5,190],["x",412.5,190],["12",428.5,190],["Q5",452.5,190],["VENDOR-B",856,190],["CO",928,190],["Q6",952,190],["CPT-8",152.5,228],["GREY",400.5,228],["Q7",440.5,228],["ACT-2",152.5,266],["SEE",376.5,266],["NOTE",408.5,266],["2",448.5,266],["Q8",464.5,266]]));
+  assert.deepEqual(keys(t).filter((k) => ["C","PT-5","LVT-7","P6","RB-10","CPT-8","ACT-2"].includes(k)), ["C","PT-5","LVT-7","P6","RB-10","CPT-8","ACT-2"]);
+  assert.equal(cell(t, "PT-5", "STYLE"), "12 x 12 Q2");
+  assert.equal(cell(t, "LVT-7", "STYLE"), "MATTE FINISH Q3");
+  assert.equal(cell(t, "P6", "STYLE"), "PAINT Q4");
+  assert.equal(cell(t, "CPT-8", "STYLE"), "GREY Q7");
+  assert.equal(cell(t, "ACT-2", "STYLE"), "SEE NOTE 2 Q8");
+});
+
+test("fuzz-found: a one-cell column is rescued and the table keeps its map", () => {
+  // MANUFACTURER prints one cell; centered headings sit over it
+  const t = read(fixture(false, [["SYMBOL",142.5,0,48],["MATERIAL",348.5,0,64],["MANUFACTURER",645,0,96],["WALL BASE",443,46,72],["ACT11",100,92,40],["RUBBER COVE Q1",233,92,112],["LVT11",100,138,40],["VENDOR-B CO Q2",528,138,112],["PT-3",100,184,32],["TILE Q3",233,184,56],["WALL BASE",443,230,72],["CPT-11",100,276,48],["BROADLOOM CARPET Q4",233,276,152],["LVT-1",100,322,40],["P-11",100,368,32],["PAINT Q5",233,368,64],["SS",100,414,16],["CARPET Q6",233,414,72],["CPT11",100,460,40],["GREY Q7",233,460,56]]));
+  assert.deepEqual(keys(t).filter((k) => ["ACT11","LVT11","PT-3","CPT-11","LVT-1","P-11","SS","CPT11"].includes(k)), ["ACT11","LVT11","PT-3","CPT-11","LVT-1","P-11","SS","CPT11"]);
+  assert.equal(cell(t, "ACT11", "MATERIAL"), "RUBBER COVE Q1");
+  assert.equal(cell(t, "LVT11", "MANUFACTURER"), "VENDOR-B CO Q2");
+  assert.equal(cell(t, "PT-3", "MATERIAL"), "TILE Q3");
+  assert.equal(cell(t, "CPT-11", "MATERIAL"), "BROADLOOM CARPET Q4");
+  assert.equal(cell(t, "P-11", "MATERIAL"), "PAINT Q5");
+  assert.equal(cell(t, "SS", "MATERIAL"), "CARPET Q6");
+  assert.equal(cell(t, "CPT11", "MATERIAL"), "GREY Q7");
+  noCellOf(t, ["ACT11","LVT11","PT-3","CPT-11","LVT-1","P-11","SS","CPT11"], "WALL BASE", "WALL BASE");
+});
+
+test("fuzz-found: a column named only above the header row blocks the rescue", () => {
+  // LOCATION heads its cells from the tier above; they band into a neighbor as they would with no map
+  const t = read(fixture(false, [["SYMBOL",100,0,48],["COMMENTS",229,0,64],["LOCATION",375,-30,64],["REMARKS",595,0,56],["SPECIFICATION",538,-30,104],["VCT9",100,30,32],["BLUE 202 Q1",375,30,88],["RUBBER COVE Q2",595,30,112],["ACT-12",100,60,48],["X Q3",375,60,32],["12 x 12 Q4",595,60,80]]));
+  assert.deepEqual(keys(t).filter((k) => ["VCT9","ACT-12"].includes(k)), ["VCT9","ACT-12"]);
+  assert.equal(cell(t, "VCT9", "REMARKS"), "RUBBER COVE Q2");
+  assert.equal(cell(t, "ACT-12", "REMARKS"), "12 x 12 Q4");
+  rowHas(t, "VCT9", "BLUE 202 Q1");
+  rowHas(t, "ACT-12", "X Q3");
+});
+
+test("fuzz-found: a map completed by a rescue must sit under its headers", () => {
+  // centered cells under left-set headers cluster by accident; the reader falls back
+  const t = read(fixture(false, [["SYMBOL",100,0,48],["DESCRIPTION",196,0,88],["SIZE",347,0,32],["BASIS OF",347,-23,64],["COMMENTS",473,0,64],["PT-12",128,46,40],["CARPET Q1",374,46,72],["ADHESIVE: VENDOR-K Q2",530,46,168],["VCT-1",128,92,40],["RUBBER COVE Q3",215.5,92,112],["OAK 303 Q4",370,92,80],["EGGSHELL Q5",570,92,88],["VCT-6",128,138,40],["GREY Q6",243.5,138,56],["EGGSHELL Q8",570,138,88],["LVT-10",124,184,48],["MATTE FINISH Q9",211.5,184,120],["VENDOR-A Q10",362,184,96],["EGGSHELL Q11",566,184,96],["C",144,230,8],["TILE Q12",239.5,230,64],["TILE Q14",582,230,64],["P-5",136,276,24],["RUBBER COVE Q15",211.5,276,120],["BLUE 202 Q16",362,276,96],["VENDOR-B CO Q17",554,276,120],["SS",140,322,16],["12 x 12 Q18",227.5,322,88],["VENDOR-B CO Q19",554,322,120],["ACT-3",128,368,40],["VENDOR-A Q20",223.5,368,96],["VENDOR-A Q21",566,368,96]]));
+  assert.deepEqual(keys(t).filter((k) => ["PT-12","VCT-1","VCT-6","LVT-10","C","P-5","SS","ACT-3"].includes(k)), ["PT-12","VCT-1","VCT-6","LVT-10","C","P-5","SS","ACT-3"]);
+  assert.equal(cell(t, "PT-12", "SIZE"), "CARPET Q1");
+  assert.equal(cell(t, "PT-12", "COMMENTS"), "ADHESIVE: VENDOR-K Q2");
+  assert.equal(cell(t, "VCT-1", "DESCRIPTION"), "RUBBER COVE Q3");
+  assert.equal(cell(t, "VCT-1", "SIZE"), "OAK 303 Q4");
+  assert.equal(cell(t, "VCT-1", "COMMENTS"), "EGGSHELL Q5");
+  assert.equal(cell(t, "VCT-6", "DESCRIPTION"), "GREY Q6");
+  assert.equal(cell(t, "VCT-6", "COMMENTS"), "EGGSHELL Q8");
+  assert.equal(cell(t, "LVT-10", "DESCRIPTION"), "MATTE FINISH Q9");
+  assert.equal(cell(t, "LVT-10", "SIZE"), "VENDOR-A Q10");
+  assert.equal(cell(t, "LVT-10", "COMMENTS"), "EGGSHELL Q11");
+  assert.equal(cell(t, "C", "DESCRIPTION"), "TILE Q12");
+  assert.equal(cell(t, "C", "COMMENTS"), "TILE Q14");
+  assert.equal(cell(t, "P-5", "DESCRIPTION"), "RUBBER COVE Q15");
+  assert.equal(cell(t, "P-5", "SIZE"), "BLUE 202 Q16");
+  assert.equal(cell(t, "P-5", "COMMENTS"), "VENDOR-B CO Q17");
+  assert.equal(cell(t, "SS", "DESCRIPTION"), "12 x 12 Q18");
+  assert.equal(cell(t, "SS", "COMMENTS"), "VENDOR-B CO Q19");
+  assert.equal(cell(t, "ACT-3", "DESCRIPTION"), "VENDOR-A Q20");
+  assert.equal(cell(t, "ACT-3", "COMMENTS"), "VENDOR-A Q21");
+});
+
+test("fuzz-found: a rescued column's cells count toward the map's fit", () => {
+  // MANUFACTURER prints one cell; without it on a start the map falls short of the fit and the table falls back
+  const t = read(fixture(false, [["MARK",134.5,0,32],["MANUFACTURER",299,0,96],["REMARKS",578,0,56],["PT-3",100,30,32],["PAINT Q1",493,30,64],["VCT-6",100,60,40],["ACT-1",100,90,40],["X Q2",201,90,32],["LVT-3",100,120,40]]));
+  assert.deepEqual(keys(t).filter((k) => ["PT-3","VCT-6","ACT-1","LVT-3"].includes(k)), ["PT-3","VCT-6","ACT-1","LVT-3"]);
+  assert.equal(cell(t, "PT-3", "REMARKS"), "PAINT Q1");
+  assert.equal(cell(t, "ACT-1", "MANUFACTURER"), "X Q2");
+});
+
+test("fuzz-found: a column is rescued only on the left-edge map", () => {
+  // a centred cell's centre is not a column start
+  const t = read(fixture(false, [["CODE",100,0,32],["MATERIAL",217,0,64],["BASIS OF",217,-23,64],["DESCRIPTION",495,0,88],["FLOORING",100,46,64],["T-8",100,92,24],["WALL FINISHES",100,138,104],["PT-1",100,184,32],["PT12",100,230,32],["VCT-10",100,276,48],["SS-2",100,322,32],["T",100,368,8],["BROADLOOM CARPET Q1",217,368,152],["VCT-6",100,414,40],["WALLS",100,460,40],["P-7",100,506,24],["CEILINGS",100,552,64],["WC-12",100,598,40],["RUBBER COVE Q2",217,598,112],["C-6",100,644,24],["CPT",830,46,24],["CARPET LGA",890,46,80],["RB",830,92,16],["RESILIENT LGB",890,92,104]]));
+  assert.deepEqual(keys(t).filter((k) => ["T-8","PT-1","PT12","VCT-10","SS-2","T","VCT-6","P-7","WC-12","C-6"].includes(k)), ["T-8","PT-1","PT12","VCT-10","SS-2","T","VCT-6","P-7","WC-12","C-6"]);
+  assert.equal(cell(t, "T", "MATERIAL"), "BROADLOOM CARPET Q1");
+  assert.equal(cell(t, "WC-12", "MATERIAL"), "RUBBER COVE Q2");
+  noCellOf(t, ["T-8","PT-1","PT12","VCT-10","SS-2","T","VCT-6","P-7","WC-12","C-6"], "FLOORING", "WALL FINISHES", "WALLS", "CEILINGS", "CARPET LGA");
+});
+
+test("fuzz-found, width-less: an empty column is not placed at its header", () => {
+  // width-less, the header's extent is its left edge, and the words before it are the column to its left running on
+  const t = read(fixture(true, [["CODE",163,0],["REMARKS",298,0],["DESCRIPTION",532,0],["PRODUCT",840,0],["W1-1",100,38],["SHADE",258,38],["Z0",306,38],["VCT-11",100,76],["WHITE",258,76],["Q1",306,76],["PT-1",100,114],["CARPET",258,114],["Q2",314,114]]));
+  assert.deepEqual(keys(t).filter((k) => ["VCT-11","PT-1"].includes(k)), ["VCT-11","PT-1"]);
+  assert.equal(cell(t, "VCT-11", "REMARKS"), "WHITE Q1");
+  assert.equal(cell(t, "PT-1", "REMARKS"), "CARPET Q2");
+  noCellOf(t, ["VCT-11","PT-1"], "SHADE Z0");
+});
+
+test("fuzz-found, width-less: a header starts its column only when the headers sit flush over their columns", () => {
+  // TAG is centred over the keys
+  const t = read(fixture(true, [["TAG",137.5,0],["MATERIAL",236,0],["COLOR",415,0],["P-2",100,38],["RUBBER",337,38],["COVE",393,38],["Q2",433,38],["VCT-12",100,76],["SEE",199,76],["NOTE",231,76],["2",271,76],["Q3",287,76],["ADHESIVE:",337,76],["VENDOR-K",417,76],["Q4",489,76],["VCT-7",100,114],["VENDOR-A",199,114],["Q5",271,114],["MATTE",337,114],["FINISH",385,114],["Q6",441,114],["CPT",543,76],["CARPET",603,76],["LGA",659,76],["RB",543,114],["RESILIENT",603,114],["LGB",683,114],["P",543,152],["PAINT",603,152],["LGC",651,152],["LVT",543,190],["LUXURY",603,190],["LGD",659,190],["ACT",543,228],["ACOUSTIC",603,228],["LGE",675,228]]));
+  assert.deepEqual(keys(t).filter((k) => ["P-2","VCT-12","VCT-7"].includes(k)), ["P-2","VCT-12","VCT-7"]);
+  assert.equal(cell(t, "P-2", "COLOR"), "RUBBER COVE Q2");
+  noCellOf(t, ["P-2","VCT-12","VCT-7"], "CARPET LGA", "RESILIENT LGB", "PAINT LGC", "LUXURY LGD", "ACOUSTIC LGE");
+});
+
+test("fuzz-found, width-less: a header line set just under the header row heads its column", () => {
+  // INSTALL on two lines straddling the header row: its cells are not a legend
+  const t = read(fixture(true, [["TAG",161,0],["PRODUCT",400.5,0],["MATERIAL",669.5,0],["SIZE",856.5,0],["INSTALL",1040,-10],["INSTALL",1040,10],["C-11",100,38],["MATTE",246,38],["FINISH",294,38],["Q1",350,38],["PAINT",611,38],["Q2",659,38],["EGGSHELL",792,38],["Q3",864,38],["BLUE",953,38],["202",993,38],["Q4",1025,38],["C",100,76],["SEE",246,76],["NOTE",278,76],["2",318,76],["Q5",334,76],["SEE",611,76],["NOTE",643,76],["2",683,76],["Q6",699,76],["SEE",953,76],["NOTE",985,76],["2",1025,76],["Q7",1041,76],["LVT-5",100,114],["ADHESIVE:",611,114],["VENDOR-K",691,114],["Q8",763,114],["WC9",100,152],["GREY",246,152],["Q9",286,152],["EGGSHELL",611,152],["Q10",683,152],["P4",100,190],["VENDOR-B",246,190],["CO",318,190],["Q11",342,190],["RUBBER",792,190],["COVE",848,190],["Q12",888,190]]));
+  assert.deepEqual(keys(t).filter((k) => ["C-11","C","LVT-5","WC9","P4"].includes(k)), ["C-11","C","LVT-5","WC9","P4"]);
+  assert.equal(cell(t, "C-11", "PRODUCT"), "MATTE FINISH Q1");
+  assert.equal(cell(t, "C-11", "MATERIAL"), "PAINT Q2");
+  assert.equal(cell(t, "C-11", "SIZE"), "EGGSHELL Q3");
+  assert.equal(cell(t, "C", "PRODUCT"), "SEE NOTE 2 Q5");
+  assert.equal(cell(t, "C", "MATERIAL"), "SEE NOTE 2 Q6");
+  assert.equal(cell(t, "LVT-5", "MATERIAL"), "ADHESIVE: VENDOR-K Q8");
+  assert.equal(cell(t, "WC9", "PRODUCT"), "GREY Q9");
+  assert.equal(cell(t, "WC9", "MATERIAL"), "EGGSHELL Q10");
+  assert.equal(cell(t, "P4", "PRODUCT"), "VENDOR-B CO Q11");
+  assert.equal(cell(t, "P4", "SIZE"), "RUBBER COVE Q12");
+});
+
+test("fuzz-found, width-less: the last column's later words are not a legend", () => {
+  // PATTERN's second words start past its header
+  const t = read(fixture(true, [["CODE",100,0],["PRODUCT",193,0],["PATTERN",473,0],["LVT-9",100,30],["CARPET",193,30],["Q1",249,30],["CARPET",473,30],["Q2",529,30],["CPT-2",100,60],["EGGSHELL",193,60],["Q3",265,60],["PAINT",473,60],["Q4",521,60]]));
+  assert.deepEqual(keys(t).filter((k) => ["LVT-9","CPT-2"].includes(k)), ["LVT-9","CPT-2"]);
+  assert.equal(cell(t, "LVT-9", "PRODUCT"), "CARPET Q1");
+  assert.equal(cell(t, "LVT-9", "PATTERN"), "CARPET Q2");
+  assert.equal(cell(t, "CPT-2", "PRODUCT"), "EGGSHELL Q3");
+  assert.equal(cell(t, "CPT-2", "PATTERN"), "PAINT Q4");
+});
+
+test("fuzz-found, width-less: a centred header outside the vocabulary heads the cells that start left of it", () => {
+  // FINISH's cells start left of the header's left edge; they band into MANUFACTURER, not out of the table
+  const t = read(fixture(true, [["TAG",154,0],["MATERIAL",332.5,0],["MANUFACTURER",597,0],["FINISH",856.5,0],["VCT-12",100,46],["EGGSHELL Q1",232,46],["WHITE Q2",497,46],["TILE Q3",793,46],["WC-5",100,92],["SEE NOTE 2 Q4",232,92],["ADHESIVE: VENDOR-K Q5",497,92],["TILE Q6",793,92],["SS-12",100,138],["VINYL PLANK Q7",232,138],["TILE Q8",497,138],["GREY Q9",793,138]]));
+  assert.deepEqual(keys(t).filter((k) => ["VCT-12","WC-5","SS-12"].includes(k)), ["VCT-12","WC-5","SS-12"]);
+  assert.equal(cell(t, "VCT-12", "MATERIAL"), "EGGSHELL Q1");
+  assert.equal(cell(t, "WC-5", "MATERIAL"), "SEE NOTE 2 Q4");
+  assert.equal(cell(t, "SS-12", "MATERIAL"), "VINYL PLANK Q7");
+  rowHas(t, "VCT-12", "TILE Q3");
+  rowHas(t, "WC-5", "TILE Q6");
+  rowHas(t, "SS-12", "GREY Q9");
+});
+
+test("fuzz-found: the header row is passed to the column map", () => {
+  // a one-cell STYLE column is rescued only with its header in hand
+  const t = read(fixture(false, [["TAG",152,0,24],["STYLE",355.5,0,40],["MANUFACTURER",636,0,96],["WT1-3",100,38,40],["SHADE Z0",228,38,64],["WC-5",100,76,32],["WHITE Q1",228,76,64],["VCT-3",100,114,40],["12 x 12 Q2",228,114,80],["VENDOR-B CO Q3",523,114,112]]));
+  assert.deepEqual(keys(t).filter((k) => ["WC-5","VCT-3"].includes(k)), ["WC-5","VCT-3"]);
+  assert.equal(cell(t, "WC-5", "STYLE"), "WHITE Q1");
+  assert.equal(cell(t, "VCT-3", "STYLE"), "12 x 12 Q2");
+  assert.equal(cell(t, "VCT-3", "MANUFACTURER"), "VENDOR-B CO Q3");
+  noCellOf(t, ["WC-5","VCT-3"], "SHADE Z0");
+});
+
+test("the key column is never rescued: codes set right of a narrow key header keep their rows", () => {
+  // TAG is narrow and left-set, the codes start right of it, and a stray note
+  // line sits out left of the table: that line's edge is not the key column
+  const spans = [sp("TAG", 100, 0), sp("MATERIAL", 220, 0), sp("COLOR", 520, 0)];
+  const ks = ["CPT-1", "CPT-2", "RB-1", "RB-2", "P-1", "P-2"];
+  ks.forEach((k, i) => { const y = PITCH * (i + 1); spans.push(sp(k, 140, y), sp(`MAT ${i}`, 220, y), sp(`GREY ${i}`, 520, y)); });
+  spans.push(sp("NOTE: VERIFY", 60, PITCH * 7));
+  const t = read(spans);
+  assert.deepEqual(keys(t), ks);
+  ks.forEach((k, i) => { assert.equal(cell(t, k, "MATERIAL"), `MAT ${i}`, k); assert.equal(cell(t, k, "COLOR"), `GREY ${i}`, k); });
+});
