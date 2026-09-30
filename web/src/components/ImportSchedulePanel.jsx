@@ -98,6 +98,21 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
   const cancelEdit = () => { if (editing) setTags((t) => ({ ...t, [editing.key]: editing.orig })); setEditing(null); };
   const onEditKey = (e) => { if (e.key === "Enter") { e.preventDefault(); commitEdit(); } else if (e.key === "Escape") { e.preventDefault(); cancelEdit(); } };
 
+  // Escape closes the dialog — unless it was a tag edit's Escape, which only
+  // cancels the edit (onEditKey preventDefaults it; React's handler runs before
+  // this document listener). Stopped here so the canvas's own Escape (clear the
+  // selection, disarm tools) doesn't also fire behind the modal.
+  React.useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      e.stopPropagation();
+      onClose?.();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const titleId = `${uid}-title`;
+
   // Rows to create: only picked + creatable, in row order (so the parent's
   // palette[startIndex + n] assignment lines up), carrying the NORMALIZED tag.
   const creatable = keyed.filter(({ key }) => picked.has(key) && canPick(key));
@@ -109,11 +124,11 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.32)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 40 }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()}
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={titleId}
         style={{ width: "min(560px, calc(100vw - 32px))", maxHeight: "min(82vh, 720px)", display: "flex", flexDirection: "column", background: "var(--paper-bright)", border: "1px solid var(--cobalt)", boxShadow: "var(--shadow-pop)", fontSize: 12.5 }}>
         {/* header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid var(--ink-faint)", background: "var(--cobalt)", color: "var(--accent-contrast)" }}>
-          <span style={{ fontWeight: 700 }}>Import from schedule — {rows.length} finish{rows.length === 1 ? "" : "es"} found</span>
+          <span id={titleId} style={{ fontWeight: 700 }}>Import from schedule — {rows.length} finish{rows.length === 1 ? "" : "es"} found</span>
           <button onClick={onClose} title="Close" style={{ background: "transparent", border: "none", color: "var(--accent-contrast)", cursor: "pointer", display: "inline-flex" }}><Icon name="close" size={14} /></button>
         </div>
 

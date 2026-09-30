@@ -88,3 +88,13 @@ test("ImportSchedulePanel: 'No section' is the first group", () => {
   assert.deepEqual([...order].sort((a, b) => a - b), order);
 });
 
+test("ImportSchedulePanel: the dialog is a labelled modal", () => {
+  const html = render();
+  const dlg = html.match(/<div[^>]*role="dialog"[^>]*>/)?.[0];
+  assert.ok(dlg, "has role=dialog");
+  assert.match(dlg!, /aria-modal="true"/);
+  const labelId = dlg!.match(/aria-labelledby="([^"]+)"/)?.[1];
+  assert.ok(labelId, "has aria-labelledby");
+  const esc = labelId!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  assert.match(html, new RegExp(`<span[^>]*id="${esc}"[^>]*>Import from schedule`));
+});
