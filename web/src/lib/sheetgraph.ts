@@ -21,6 +21,7 @@
 // serves (sheet_context.text.spans).
 
 import { ROOM_LABEL_RE } from "./detectRooms";
+import { finishSectionOf, type FinishSection } from "./finishSections";
 
 /** rot: text rotation in degrees, clockwise in device space (y down). Absent
  * or 0 = horizontal; 90/270 = a quarter-turn — the rotated-header case. When
@@ -284,7 +285,15 @@ export interface TableCell { text: string; bbox: Bbox }
  * continuation it differs from the table's base sheet, and the row's evidence
  * must cite where the ink actually is. `building` is the row-level qualifier
  * (a qualified key's prefix, or the BLDG column) when one exists. */
-export interface TableRow { key: string; sheet: string; building?: string; cells: Record<string, TableCell>; revision?: RowRevision }
+export interface TableRow {
+  key: string; sheet: string; building?: string; cells: Record<string, TableCell>; revision?: RowRevision;
+  /** Finish tables: the printed section heading the row sits under ("FLOORING",
+   * "WALL BASE", "MISC" …), as its entry in the shared vocabulary
+   * (lib/finishSections.ts). Absent when no heading is printed above the row,
+   * or when the band above it is not a section (a material word, a spec
+   * number). */
+  section?: FinishSection;
+}
 export interface TablePart { sheet: string; title: string; rows: number; region: Bbox; rotated_headers?: boolean }
 export interface ScheduleTable {
   kind: TableKind;
@@ -377,9 +386,21 @@ const headerLabel = (s: string, vocab: string[]): string | null => headerLabels(
  * ROOM — so the anchor builder falls through to the next word when the first
  * is already taken. Without that, the NAME column loses its anchor and the
  * room name merges into the finish column beside it. */
-const headerLabels = (s: string, vocab: string[]): string[] => {
+const headerLabels = (s: string, vocab: string[], wholeWords = false): string[] => {
   const out: string[] = [];
-  for (const w of norm(s).split(/[^A-Z]+/)) if (w && vocab.includes(w) && !out.includes(w)) out.push(w);
+  const words = norm(s).split(/[^A-Z]+/);
+  for (const w of words) if (w && vocab.includes(w) && !out.includes(w)) out.push(w);
+  // A finish schedule abbreviates its headers ("MANUF.", "DESCRIP."): a word
+  // that starts with a label's first five letters names that column. Only in
+  // naming — whether a row IS the header is decided on whole words alone
+  // (`wholeWords`), or a general-notes line saying "CODES … MATERIALS …
+  // COLORED" qualifies as the header of the table below it.
+  if (vocab === FINISH_HEADERS && !wholeWords) {
+    for (const w of words) {
+      if (!w) continue;
+      for (const l of vocab) if (w.startsWith(l.slice(0, 5)) && !out.includes(l)) { out.push(l); break; }
+    }
+  }
   return out;
 };
 
@@ -392,11 +413,11 @@ const headerLabels = (s: string, vocab: string[]): string[] => {
  * real, well-formed schedule starves below minHits. Only when a cell's every
  * word is already spoken for does it fall back to its own first word — still
  * a real hit, just an ambiguous one the anchor pass resolves later. */
-function headerHits(row: GraphSpan[], vocab: string[]): Array<{ label: string; span: GraphSpan }> {
+function headerHits(row: GraphSpan[], vocab: string[], wholeWords = false): Array<{ label: string; span: GraphSpan }> {
   const out: Array<{ label: string; span: GraphSpan }> = [];
   const used = new Set<string>();
   for (const t of row) {
-    const words = headerLabels(t.str, vocab);
+    const words = headerLabels(t.str, vocab, wholeWords);
     if (!words.length) continue;
     // "EAST NORTH SOUTH" set as ONE text run over three columns (#374): every
     // word is a surface, so each is a column, laid out across the run's width
@@ -420,10 +441,11 @@ const qualifies = (hits: Array<{ label: string }>, required: string[], minHits: 
   return seen.size >= minHits && (!required.length || required.some((r) => seen.has(r)));
 };
 
-function findHeaderRow(rows: GraphSpan[][], vocab: string[], required: string[], minHits: number): { anchors: Anchor[]; rowIndex: number } | null {
+function findHeaderRow(rows: GraphSpan[][], vocab: string[], required: string[], minHits: number): { anchors: Anchor[]; rowIndex: number; top: number } | null {
   for (let i = 0; i < rows.length; i++) {
+    // a row qualifies on whole header words; abbreviations only NAME columns
+    if (!qualifies(headerHits(rows[i], vocab, true), required, minHits)) continue;
     let hits = headerHits(rows[i], vocab);
-    if (!qualifies(hits, required, minHits)) continue;
     // A three-tier header puts PARENTS on top (ROOM | FLOOR | WALLS | CEILING)
     // and the real columns underneath (MARK | LOCATION | FINISH | BASE |
     // NORTH | …). The parent row carries enough vocabulary to look like the
@@ -448,7 +470,7 @@ function findHeaderRow(rows: GraphSpan[][], vocab: string[], required: string[],
         // that actually defines the columns — which carries none of the
         // required words itself. Demanding them again refused the descent,
         // the key column never anchored, and 21 rows read as 2.
-        if (qualifies(h, [], minHits) && h.length > hits.length && ratio >= 0.6) { next = j; break; }
+        if (qualifies(headerHits(rows[j], vocab, true), [], minHits) && h.length > hits.length && ratio >= 0.6) { next = j; break; }
       }
       if (next < 0) break;
       idx = next;
@@ -526,7 +548,7 @@ function findHeaderRow(rows: GraphSpan[][], vocab: string[], required: string[],
         }
       }
     }
-    return { anchors: subTierAnchors(rows, idx, anchors.sort((a, b) => a.x - b.x), vocab), rowIndex: idx };
+    return { anchors: subTierAnchors(rows, idx, anchors.sort((a, b) => a.x - b.x), vocab), rowIndex: idx, top: i };
   }
   return null;
 }
@@ -620,7 +642,9 @@ function subTierAnchors(rows: GraphSpan[][], hdrIdx: number, anchors: Anchor[], 
 // band's bottom edge exactly as they would under a horizontal header.
 function findRotatedHeader(vert: GraphSpan[], vocab: string[], required: string[], minHits: number): { anchors: Anchor[]; top: number; bottom: number; spans: GraphSpan[] } | null {
   const cands = vert
-    .map((sp) => ({ sp, label: headerLabel(sp.str, vocab) }))
+    // whole words only, as a flat header row qualifies: a rotated note reading
+    // "COLORED" is not a COLOR header
+    .map((sp) => ({ sp, label: headerLabels(sp.str, vocab, true)[0] ?? null }))
     .filter((c): c is { sp: GraphSpan; label: string } => !!c.label)
     .sort((a, b) => a.sp.x - b.sp.x);
   let band: typeof cands = [];
@@ -690,6 +714,11 @@ function bandLimits(anchors: Anchor[]): { x0: number; x1: number; medGap: number
 // names (opts.buildings) — otherwise a stray finish code ("P-2") banding to
 // the key column would mint a phantom building.
 const CODE_RE = /^[A-Z]{1,4}(-?[A-Z0-9]{1,4})?$/;
+// A letters-only key of four or more letters is a word, not a finish code:
+// a section heading or a material word set in the key column (FLOORING,
+// BASE, TILE, PAINT). Known cost: a real four-letter code with no digit
+// ("EPOX") is not read either.
+const finishCodeOk = (p: string): boolean => !/^[A-Z]{4,}$/.test(p) && CODE_RE.test(p);
 const ROW_KEY_RE = /^\d{1,3}[A-Z]{0,2}$/;
 const QUALIFIED_KEY_RE = /^([A-Z]{1,2})-(\d{1,3}[A-Z]{0,2})$/;
 const CORRIDOR_KEY_RE = /^[A-Z]{1,3}(?:\d{1,3}-\d{1,3}|\d{3})[A-Z]?$/;   // CR11-9, C101 — never a two-character tag like "T1"
@@ -722,8 +751,8 @@ function rowKeyOf(raw: string, kind: ExtractKind, buildings?: Set<string>, typeK
     // for each mark on its own (checked first: slash-stripped "R1E1" would
     // otherwise pass CODE_RE and bury the compound)
     const parts = kept.split("/").filter(Boolean);
-    if (parts.length > 1 && parts.every((p) => CODE_RE.test(p))) return { key: parts.join("/") };
-    return CODE_RE.test(key) ? { key } : null;
+    if (parts.length > 1 && parts.every(finishCodeOk)) return { key: parts.join("/") };
+    return finishCodeOk(key) ? { key } : null;
   }
   if (ROW_KEY_RE.test(key)) return { key };
   // "CR11-9", "C101": letters-then-digits keys a Revit schedule gives
@@ -756,25 +785,59 @@ const centerX = (t: GraphSpan) => t.x + (t.w || 0) / 2;
  * is returned only when every anchor ends up owning a column, in the anchors'
  * own order; otherwise banding falls back to nearest-anchor, so a table this
  * does not fit is never mangled by a half-built column map. */
-type ColumnMap = { coord: "left" | "center"; cols: Array<{ start: number; label: string }>; score: number };
+type ColumnMap = {
+  coord: "left" | "center"; cols: Array<{ start: number; label: string }>; score: number;
+  /** the clustering tolerance the map was built with */
+  tol: number;
+  /** finish tables: left edge of a data cluster right of the last column that
+   * no header names — a legend or note block beside the table. Nothing at or
+   * right of it belongs to the table. */
+  capX?: number;
+};
 const PLACEHOLDER_RE = /^[-–—]{1,3}$/;
 
 function columnMapFor(
   rows: GraphSpan[][],
   anchors: Anchor[],
-  cfg: { fromIdx: number; belowY: number },
+  cfg: { fromIdx: number; belowY: number; hdrSpans?: GraphSpan[]; hdrBand?: GraphSpan[] },
   x0: number,
   x1: number,
   coord: "left" | "center",
+  kind: ExtractKind,
 ): ColumnMap | null {
   const at = (t: GraphSpan) => (coord === "left" ? t.x : t.x + (t.w || 0) / 2);
   const xs: number[] = [];
   const hs: number[] = [];
   const dashes: number[] = [];
+  // finish: where the keys start — the median left edge of the rows' first
+  // tokens that read as keys
+  let keyCellX = -Infinity;
+  if (kind === "finish") {
+    const kx: number[] = [];
+    for (let i = Math.max(cfg.fromIdx, 0); i < rows.length; i++) {
+      if (rowY(rows[i]) <= cfg.belowY) continue;
+      const first = rows[i].filter((t) => t.x >= x0 && t.x <= x1).reduce<GraphSpan | null>((m, t) => (!m || t.x < m.x ? t : m), null);
+      if (first && rowKeyOf(first.str, kind)) kx.push(first.x);
+    }
+    kx.sort((p, q) => p - q);
+    if (kx.length) keyCellX = kx[kx.length >> 1];
+  }
   for (let i = Math.max(cfg.fromIdx, 0); i < rows.length; i++) {
     if (rowY(rows[i]) <= cfg.belowY) continue;
+    // a section heading ("FLOORING", outdented or centered) is not a cell:
+    // its left edge places no column — alone on its row, or leading a row
+    // it shares with something else (a legend line beside the table)
+    let lead: GraphSpan | null = null;
+    if (kind === "finish") {
+      const inb = rows[i].filter((t) => t.x >= x0 && t.x <= x1);
+      // (width-less text: only a heading set in or left of the key column —
+      // one over the other columns votes where cells would, as it always has)
+      if (inb.length === 1 && finishSectionOf(inb[0].str) && ((inb[0].w || 0) > 0 || inb[0].x < keyCellX + 4)) continue;
+      const first = inb.reduce<GraphSpan | null>((m, t) => (!m || t.x < m.x ? t : m), null);
+      if (first && (first.w || 0) > 0 && finishSectionOf(first.str)) lead = first;
+    }
     for (const t of rows[i]) {
-      if (t.x < x0 || t.x > x1 || revisionOf(t.str) != null) continue;
+      if (t === lead || t.x < x0 || t.x > x1 || revisionOf(t.str) != null) continue;
       // A placeholder dash is CENTRED in its column while the codes beside it
       // are left-aligned, and on a column that is mostly dashes ("--" in 16
       // of 20 WAINSCOT rows) the dash edge became the column start and the
@@ -798,13 +861,78 @@ function columnMapFor(
   }
   const maxN = Math.max(...clusters.map((c) => c.n));
   const kept = clusters.filter((c) => c.n >= Math.max(2, maxN * 0.25));
-  if (kept.length < anchors.length) return null;
+  // Width-less text (legacy tokens: one per word, no extent) puts the left
+  // edge of a cell's SECOND word into the clustering too, and "CARPET" after
+  // "BROADLOOM" in every row is a tidy cluster of its own — owned by the NEXT
+  // header, whose column it then started. A finish column is wider than five
+  // text heights, so a cluster that close to a kept one on its left is a
+  // continuation word: it never starts a column while its header owns a
+  // cluster that is not one. It still counts toward the fit — its tokens sit
+  // exactly where the cells put them.
+  const widthless = rows.every((r) => r.every((t) => !((t.w || 0) > 0)));
+  const hMed = hs[hs.length >> 1];
+  const contWord = (c: { start: number }) => kind === "finish" && widthless && kept.some((k) => k.start < c.start && c.start - k.start < 5 * hMed);
+  const ownerOf = (c: { start: number }) => anchors.find((a) => a.x >= c.start);
+  // A finish column the header names can be nearly empty — REMARKS filled in
+  // one row of eleven, SIZE in two of thirty — and the keep floor above drops
+  // it. Without it the map has fewer columns than headers and the whole table
+  // falls back to nearest-header banding. A cluster below the floor is
+  // rescued, down to a single cell, when it sits under a header no kept
+  // cluster already owns (and the map it completes must then sit under its
+  // headers — checked below).
+  const rescued: Array<{ start: number; n: number }> = [];
+  // The header block's lines (the header row, a multi-line header's other
+  // lines, the tier above). A legend's own title ("ABBREVIATIONS", "FINISH
+  // LEGEND") set just above the header row heads the legend, not a column.
+  const block = (cfg.hdrBand ?? cfg.hdrSpans ?? []).filter((t) => cfg.hdrSpans?.includes(t) || !/\b(LEGEND|ABBREVIATIONS?|SYMBOLS?|KEY|NOTES?)\b/.test(norm(t.str)));
+  // A header word that names no column ("LOCATION" — in the header row, on
+  // a second header line, or only in the tier above) heads cells of its own,
+  // which band into a neighbor either way; a rescued start would only move
+  // which one. Such a table is left to read as it did. A line set over a
+  // named header ("BASIS OF" above MANUFACTURER, a parent spanning several)
+  // is not one.
+  const named = (cfg.hdrSpans ?? []).filter((t) => anchors.some((a) => t.x - 0.5 <= a.x && a.x <= t.x + (t.w || 0) + 0.5));
+  const unnamed = block.some((t) => t.x >= x0 && t.x <= x1 && !named.some((n) => t.x <= n.x + (n.w || 0) && n.x <= t.x + (t.w || 0)));
+  const spanOf = (a: Anchor) => cfg.hdrSpans?.find((t) => t.x - 0.5 <= a.x && a.x <= t.x + (t.w || 0) + 0.5);
+  const fromHeader = kind === "finish" && coord === "left" && !!cfg.hdrSpans && !unnamed;
+  // Width-less text has no cell extents to tell a sparse column's first
+  // cell from a later word of the cell before it, so nothing is rescued.
+  if (fromHeader && !widthless) {
+    const owned = new Set<string>();
+    for (const c of kept) { const own = ownerOf(c); if (own && !contWord(c)) owned.add(own.label); }
+    for (const c of clusters) {
+      if (kept.includes(c)) continue;
+      const k = anchors.findIndex((a) => a.x >= c.start);
+      // the key column is never sparse: a stray cluster left of the key
+      // header is not its start
+      if (k <= 0 || owned.has(anchors[k].label)) continue;
+      owned.add(anchors[k].label);
+      rescued.push(c);
+    }
+  }
+  const cols0 = [...kept, ...rescued];
+  if (cols0.length < anchors.length && !fromHeader) return null;
   const byLabel = new Map<string, number>();
-  for (const c of kept) {
-    const own = anchors.find((a) => a.x >= c.start);
+  const byLabelCont = new Map<string, number>();
+  for (const c of cols0) {
+    const own = ownerOf(c);
     if (!own) continue;
-    const cur = byLabel.get(own.label);
-    if (cur == null || c.start < cur) byLabel.set(own.label, c.start);
+    const m = contWord(c) ? byLabelCont : byLabel;
+    const cur = m.get(own.label);
+    if (cur == null || c.start < cur) m.set(own.label, c.start);
+  }
+  // A header owning nothing but continuation words: they are the column to
+  // its left running on. When the headers are set flush left over their
+  // columns (the key header stands where the keys start) and this one
+  // stands right of all of them, its column starts at the header; otherwise
+  // it keeps the leftmost, as before.
+  const keyStart = byLabel.get(anchors[0].label);
+  const flushHeaders = keyStart != null && Math.abs(anchors[0].x - keyStart) <= tol;
+  for (const [l, st] of byLabelCont) {
+    if (byLabel.has(l)) continue;
+    const a = anchors.find((q) => q.label === l)!;
+    const contMax = Math.max(...cols0.filter((c) => contWord(c) && ownerOf(c) === a).map((c) => c.start));
+    byLabel.set(l, widthless && flushHeaders && a.x > contMax + tol ? a.x : st);
   }
   // A column that is dashes in most rows and a real code in a few (the
   // WAINSCOT column: "--" in 16 rows, CWT-1 in 4) can lose its real cluster
@@ -821,23 +949,85 @@ function columnMapFor(
       byLabel.set(own.label, real ? real.start : c.start);
     }
   }
+  // A finish column the header names can be EMPTY — not one cell in it. There
+  // is nothing to cluster, and the whole table fell back to nearest-header
+  // banding for want of it. Such a column starts at its header's left edge.
+  let filled = false;
+  if (fromHeader && !widthless && byLabel.size < anchors.length) {
+    for (let k = 1; k < anchors.length; k++) {
+      const own = spanOf(anchors[k]);
+      if (byLabel.has(anchors[k].label) || !own) continue;
+      byLabel.set(anchors[k].label, own.x);
+      filled = true;
+    }
+  }
   if (byLabel.size !== anchors.length) return null;
   const cols = [...byLabel.entries()].map(([label, start]) => ({ label, start })).sort((a, b) => a.start - b.start);
   if (cols.map((c) => c.label).join("|") !== anchors.map((a) => a.label).join("|")) return null;
+  // A map completed by a rescued or header-placed start must be what that
+  // start assumes: every column starting under its own header, left-aligned —
+  // right of the previous header's text, not right of its own header's left
+  // edge. A centred cell, or a fragment of the column beside it, is not a
+  // column start; centred cells cluster by accident, and such a map fit on
+  // them.
+  if (rescued.length || filled) {
+    for (let k = 1; k < anchors.length; k++) {
+      const own = spanOf(anchors[k]), prev = spanOf(anchors[k - 1]);
+      if (!own || !prev) return null;
+      const st = cols[k].start;
+      const lo = prev === own ? anchors[k - 1].x : prev.x + (prev.w || 0);
+      if (st < lo - tol || st > Math.min(own.x, anchors[k].x) + tol) return null;
+    }
+  }
   // how well this alignment explains the data: the share of tokens sitting on
-  // a column start rather than scattered between them
-  const starts = kept.map((c) => c.start);
+  // a column start rather than scattered between them (a rescued column's
+  // cells sit on its start too — the check above keeps a map that needed one
+  // under its headers)
+  const starts = cols0.map((c) => c.start);
   let on = 0;
   for (const x of xs) if (starts.some((st) => Math.abs(x - st) <= tol)) on++;
-  return { coord, cols, score: on / xs.length };
+  // A finish table's legend ("CPT  CARPET", "RB  RESILIENT BASE") often sits
+  // right beside REMARKS, inside the band the last column's wide margin
+  // allows. Its left edges form a kept cluster that starts past the last
+  // header's printed text: that edge caps the table. Only where no line of
+  // the header block — the header row, the lines of a multi-line header, the
+  // tier above it — prints anything over it: a column headed by a word
+  // outside the vocabulary ("LOCATION", on one line or two, or only in the
+  // parent tier) is the table's own, and bands into its neighbor as it always
+  // has. A header-less continuation has no header block to ask, so it is not
+  // capped. (Width-less, a header's extent is its left edge, and a cluster of
+  // the last column's own later words is not a legend.)
+  let capX: number | undefined;
+  const lastHdr = cfg.hdrSpans ? cfg.hdrSpans.find((t) => t.x - 0.5 <= anchors[anchors.length - 1].x && anchors[anchors.length - 1].x <= t.x + (t.w || 0) + 0.5) : undefined;
+  if (kind === "finish" && lastHdr) {
+    const lastR = lastHdr.x + (lastHdr.w || 0);
+    const band = block;
+    // clear of the last header by half a column pitch: a narrow header's own
+    // column runs on past it, and its centred cells start there
+    const ps = cols.slice(1).map((c, k) => c.start - cols[k].start).sort((p, q) => p - q);
+    const clear = Math.max(tol, 0.5 * (ps.length ? ps[(ps.length - 1) >> 1] : 0));
+    const foreign = kept.filter((c) => c.start > lastR + clear && !contWord(c)).map((c) => c.start).sort((a, b) => a - b);
+    // a header-block line heads the cells from the end of the text before
+    // it to its own right edge: a column's cells can start left of a
+    // centered header, never right of it
+    const right = (t: GraphSpan) => t.x + (t.w || 0);
+    const heads = band.filter((t) => t !== lastHdr && right(t) > lastR).map((t) => ({
+      lo: Math.max(lastR, ...band.filter((u) => u !== t && right(u) <= t.x).map(right)),
+      hi: right(t),
+    }));
+    const free = foreign.filter((st) => !heads.some((h) => st >= h.lo - tol && st <= h.hi + tol));
+    if (free.length) capX = free[0];
+  }
+  return { coord, cols, score: on / xs.length, tol, ...(capX != null ? { capX } : {}) };
 }
 
 function columnStarts(
   rows: GraphSpan[][],
   anchors: Anchor[],
-  cfg: { fromIdx: number; belowY: number },
+  cfg: { fromIdx: number; belowY: number; hdrSpans?: GraphSpan[]; hdrBand?: GraphSpan[] },
   x0: number,
   x1: number,
+  kind: ExtractKind,
 ): ColumnMap | null {
   // A map has to FIT before it is trusted. A mediocre fit is worse than none:
   // it looks authoritative and quietly merges a column into its neighbour,
@@ -845,8 +1035,8 @@ function columnStarts(
   // on real sets, a true alignment scores ~0.82–0.90 and a wrong one ~0.54.
   const FIT_FLOOR = 0.7;
   const fits = (m: ColumnMap | null) => (m && m.score >= FIT_FLOOR ? m : null);
-  const left = fits(columnMapFor(rows, anchors, cfg, x0, x1, "left"));
-  const center = fits(columnMapFor(rows, anchors, cfg, x0, x1, "center"));
+  const left = fits(columnMapFor(rows, anchors, cfg, x0, x1, "left", kind));
+  const center = fits(columnMapFor(rows, anchors, cfg, x0, x1, "center", kind));
   if (!left) return center;
   if (!center) return left;
   // Left alignment is the common case; centring has to EARN the switch. On a
@@ -861,7 +1051,7 @@ function bandDataRows(
   kind: ExtractKind,
   sheetKey: string,
   buildings: Set<string> | undefined,
-  cfg: { fromIdx: number; belowY: number; keyAlign?: { x: number; tol: number }; deltas?: DeltaIndex; sheetNumbers?: Set<string> },
+  cfg: { fromIdx: number; belowY: number; keyAlign?: { x: number; tol: number }; deltas?: DeltaIndex; sheetNumbers?: Set<string>; hdrSpans?: GraphSpan[]; hdrBand?: GraphSpan[] },
 ): { out: TableRow[]; region: Bbox | null } {
   const { x0, x1, medGap } = bandLimits(anchors);
   // a device schedule keyed by TYPE / FIXTURE uses letter types ("A", "B2") as
@@ -874,13 +1064,74 @@ function bandDataRows(
   // "PT-1" and "SEE INT. ELEVATIONS" both start at x=2342, and center-banding
   // put the short one in BASE and the long one in WALL. Clustering the left
   // edges recovers the true column starts; the headers only NAME them.
-  const cols = columnStarts(rows, anchors, cfg, x0, x1);
+  const cols = columnStarts(rows, anchors, cfg, x0, x1, kind);
+  const xCap = cols?.capX;
+  const inBand = (t: GraphSpan) => t.x >= x0 && t.x <= x1 && (xCap == null || t.x < xCap);
+  const finish = kind === "finish";
+  // ── finish section headings ──
+  // A finish schedule sets a printed heading above each group of rows
+  // (FLOORING, WALL BASE, MISC. FINISHES). A heading row is consumed — never a
+  // row, never a cell — and names the section of the rows below it. A row is a
+  // heading when its first span starts with a heading word (lib/
+  // finishSections.ts), the joined text is short, and it sits where a heading
+  // sits: in the key column (or outdented left of it) and ending before
+  // column 2 starts, or alone on its row and centered over the table.
+  let curSection: FinishSection | undefined;
+  // the key column's interval: with a column map, first start → second start;
+  // without, the key header's center ± half the gap to the next header
+  const halfGap = anchors.length > 1 ? (anchors[1].x - anchors[0].x) / 2 : 40;
+  const keyLo = cols ? cols.cols[0].start : anchors[0].x - halfGap;
+  const keyHi = cols ? (cols.cols.length > 1 ? cols.cols[1].start : Infinity) : anchors[0].x + halfGap;
+  const colTol = cols?.tol ?? 4;
+  const atOf = (t: GraphSpan) => (cols && cols.coord === "center" ? centerX(t) : t.x);
+  const inKey = (t: GraphSpan) => { const a = atOf(t); return a >= Math.min(x0, keyLo - colTol) && a < keyHi; };
+  // what a centered heading is centered ON: the column extent (first column
+  // start → last start + the median column pitch) — independent of how wide
+  // the glyphs are; without a column map, the text's own extent
+  let tLeft = 0, tRight = 0, medPitch = 0;
+  let prevBandY: number | null = null;
+  if (finish) {
+    // the table's rows: in-band rows from the header down to the first gap
+    // deeper than eight row pitches (the bar the end-of-table cut uses) —
+    // not whatever shares the band further down the sheet
+    let ys = rows.slice(Math.max(cfg.fromIdx, 0)).filter((r) => r.some(inBand)).map(rowY);
+    const med = (v: number[]) => { const d = v.slice(1).map((y, k) => y - v[k]).sort((p, q) => p - q); return d.length ? d[d.length >> 1] : 0; };
+    const p0 = med(ys);
+    const cut = p0 > 0 ? ys.findIndex((y, k) => k > 0 && y - ys[k - 1] > 8 * p0) : -1;
+    if (cut > 0) ys = ys.slice(0, cut);
+    const lastTableY = ys.length ? ys[ys.length - 1] : Infinity;
+    if (cols) {
+      const cs = cols.cols;
+      const pitch = cs.length > 1 ? cs.slice(1).map((c, k) => c.start - cs[k].start).sort((p, q) => p - q)[(cs.length - 1) >> 1] : medGap;
+      tLeft = cs[0].start; tRight = cs[cs.length - 1].start + pitch;
+    } else {
+      tLeft = Infinity; tRight = -Infinity;
+      for (let i = Math.max(cfg.fromIdx - 1, 0); i < rows.length && rowY(rows[i]) <= lastTableY; i++) for (const t of rows[i]) {
+        if (!inBand(t)) continue;
+        tLeft = Math.min(tLeft, t.x); tRight = Math.max(tRight, t.x + (t.w || 0));
+      }
+    }
+    // the table's median row pitch
+    medPitch = med(ys);
+  }
+  const headings: Array<{ bbox: Bbox; y: number }> = [];
+  // heading-word lines left unread (not where a heading sits, or sharing
+  // the row with other text): not a section, but a line of the table all the
+  // same — they count toward its pitch, as they did when they were read as
+  // rows
+  const headLines: number[] = [];
+  const consumeHeading = (banded: GraphSpan[], y: number) => {
+    let hb: Bbox | null = null;
+    for (const t of banded) hb = hb ? merge(hb, bboxOf(t)) : bboxOf(t);
+    headings.push({ bbox: hb!, y });
+  };
   // A key belongs to the key column when it sits nearer that column's start
   // than the next column's — sized from the table's own pitch, not from text
   // height, so a wider key ("139A") or a hair of indent still counts.
   const keyTol = cols && cols.cols.length > 1 ? Math.max(8, (cols.cols[1].start - cols.cols[0].start) * 0.5) : 40;
   const out: TableRow[] = [];
   const outY: number[] = [];
+  const everRows: TableRow[] = [];   // every keyed row, before the end-of-table cut
   let region: Bbox | null = null;
   /** Which column a token belongs to: its LEFT edge against the data-derived
    * column starts when those were recoverable, else the old nearest-anchor
@@ -931,9 +1182,53 @@ function bandDataRows(
         if (centerX(t) >= x0 - 2.5 * medGap && centerX(t) <= x1 + medGap) markers.push({ rev, span: t, ...(tri ? { drawn: true, tri } : {}) });
         continue;
       }
-      if (t.x >= x0 && t.x <= x1) banded.push(t);
+      if (inBand(t)) banded.push(t);
     }
     if (!banded.length) continue;
+    const bandYBefore = prevBandY;
+    prevBandY = rowY(rows[i]);
+    if (finish) {
+      const h = finishSectionOf(banded[0].str);
+      const joinedLen = banded.map((t) => t.str.trim()).join(" ").length;
+      const inKeyColumn = inKey(banded[0]) && banded.every((t) => t.x + (t.w || 0) <= keyHi);
+      const one = banded.length === 1 ? banded[0] : null;
+      // a lone span that crosses a column start is not a cell: it is laid over
+      // the table
+      const straddles = !!one && !!cols && cols.cols.slice(1).some((c) => one.x < c.start - colTol && one.x + (one.w || 0) > c.start + colTol);
+      // a lone span hugging the row above (under 0.6 × the row pitch) is that
+      // row's wrapped second line — "BASE" under "RESILIENT WALL" — never a
+      // heading: a heading takes a full row of its own
+      const hugs = bandYBefore != null && rowY(rows[i]) - bandYBefore < 0.6 * medPitch;
+      const tMid = (tLeft + tRight) / 2;
+      const centered = !!one && !hugs && (Math.abs(centerX(one) - tMid) <= Math.max(0.1 * (tRight - tLeft), 3 * (one.h || 8)) || straddles);
+      if (h && (inKeyColumn || centered) && joinedLen < 24) {
+        curSection = h;
+        consumeHeading(banded, rowY(rows[i]));
+        continue;
+      }
+      if (h && !hugs) headLines.push(rowY(rows[i]));
+      // a spec-section heading ("09 65 00 RESILIENT FLOORING") is consumed and
+      // ends the current section: it names a spec division, not a surface
+      if (banded.length <= 2 && inKey(banded[0]) && /^\d{2} ?\d{2} ?\d{2}(\.\d+)?\b/.test(norm(banded[0].str)) && !rowKeyOf(banded[0].str, kind, buildings, typeKeyed)) {
+        curSection = undefined;
+        consumeHeading(banded, rowY(rows[i]));
+        continue;
+      }
+      // any other lone span in the key column that is not a key ("CARPET",
+      // "TILE/STONE", "SECTION 095113 ACOUSTICAL") is a band this vocabulary
+      // does not know: the rows below it have no section
+      if (one && inKey(one) && !rowKeyOf(one.str, kind, buildings, typeKeyed)) {
+        curSection = undefined;
+        // a material word on a line of its own ("PAINT" above PT-1, "TILE"
+        // above CT-1) groups the rows under it the way a heading does: it is
+        // consumed, or it reads into the key cell of the row beside it
+        // ("PT-1 PAINT"). A line with a digit ("W1-1", a spec number) or one
+        // hugging the row above (a wrapped cell) is left as before.
+        // It is not registered as a heading: the table's pitch and the
+        // wrapped lines around it read as they did.
+        if (!hugs && joinedLen < 24 && !/\d/.test(one.str)) continue;
+      }
+    }
     // An equipment schedule ends where the NEXT schedule begins: a mechanical
     // sheet stacks four or five tables in one column, and the band would
     // otherwise read the fan schedule's rows as more heaters. A row that is a
@@ -963,9 +1258,11 @@ function bandDataRows(
     if (cfg.keyAlign && Math.abs(centerX(banded[0]) - cfg.keyAlign.x) > cfg.keyAlign.tol) continue;
     const row: TableRow = { key: keyed.key, sheet: sheetKey, cells: {} };
     if (keyed.building) row.building = keyed.building;
+    if (curSection) row.section = curSection;
     add(row, banded);
     out.push(row);
     outY.push(rowY(rows[i]));
+    everRows.push(row);
   }
   // A table ends where its rows stop. Rows are clustered across the WHOLE
   // sheet, so a keyed-looking row far below — a legend, a note block, a room
@@ -987,8 +1284,14 @@ function bandDataRows(
     }
   }
   // the repair radius: median gap between consecutive keyed rows; a lone-row
-  // table falls back to a couple of text heights
-  const gaps = outY.slice(1).map((y, i) => y - outY[i]).filter((d) => d > 0).sort((a, b) => a - b);
+  // table falls back to a couple of text heights. A section heading still
+  // takes a line of its own, and so does a heading-word line left unread:
+  // their lines count, as they did when they were read as rows. Without them
+  // a table of one- and two-row sections measures its pitch across the
+  // headings — twice the real one — and the radius doubles.
+  const headY = [...headings.map((h) => h.y), ...headLines];
+  const ly2 = outY.length > 1 ? [...outY, ...headY].filter((y) => y <= outY[outY.length - 1]).sort((a, b) => a - b) : [];
+  const gaps = ly2.slice(1).map((y, i) => y - ly2[i]).filter((d) => d > 0).sort((a, b) => a - b);
   const pitch = gaps.length ? gaps[gaps.length >> 1] : 0;
   const nearest = (y: number): { i: number; d: number } => {
     let bi = -1, bd = Infinity;
@@ -996,9 +1299,15 @@ function bandDataRows(
     return { i: bi, d: bd };
   };
   const radius = (h: number) => (pitch ? pitch * 0.6 : Math.max(h, 8) * 1.6);
+  // an unkeyed line nearer a heading than any row belongs to no row: it was
+  // the heading's, and a heading is never a cell
+  const headYs = [...headY].sort((p, q) => p - q);
   for (const o of orphans) {
     const { i, d } = nearest(o.y);
     if (i < 0 || d > radius(Math.max(...o.toks.map((t) => t.h || 8)))) continue;
+    // (an unread heading-word line is not nearer itself: it may be a cell's
+    // wrapped word, and then it attaches like any other)
+    if (headYs.some((hy) => hy !== o.y && (Math.abs(o.y - hy) < d || (Math.abs(o.y - hy) === d && hy < outY[i])))) continue;
     add(out[i], o.toks);
   }
   for (const m of markers) {
@@ -1009,6 +1318,32 @@ function bandDataRows(
     const ebox = m.tri ? merge(bboxOf(m.span), m.tri) : bboxOf(m.span);
     out[i].revision = { rev: m.rev, source: { sheet: sheetKey, text: m.span.str.trim(), bbox: ebox }, ...(m.drawn ? { drawn: true } : {}) };
   }
+  // A finish schedule can group its rows under a bare prefix ("CPT" above
+  // CPT-1, CPT-2), alone or beside the spec section it groups ("CN  03 50 00
+  // CONCRETE TOPPING"). That label is keyed like a code but names no item: a
+  // letters-only key that prefixes a code within the next three rows, and
+  // prints nothing else or a cell starting with a spec-section number (even
+  // beside other text), is a group label, not a row. A real letters-only
+  // code ("C" for concrete) prints its item — even if only as a remark.
+  if (kind === "finish") {
+    const keyCol = cols ? cols.cols[0].label : anchors[0].label;
+    const dropped = new Set<TableRow>();
+    for (let i = out.length - 1; i >= 0; i--) {
+      const r = out[i];
+      if (!/^[A-Z]{1,3}$/.test(r.key)) continue;
+      // text banded into the key cell beside the key is printed text too
+      const keyRest = norm(r.cells[keyCol]?.text ?? r.key).replace(/[^A-Z0-9 ]/g, "").trim().replace(new RegExp("^" + r.key + "\\b"), "").trim();
+      const texts = [...(keyRest ? [keyRest] : []), ...Object.entries(r.cells).filter(([k]) => k !== keyCol).map(([, c]) => norm(c.text))];
+      if (texts.length && !texts.some((x) => /^\d{2} ?\d{2}[ .]?\d{2}\b/.test(x))) continue;
+      if (out.slice(i + 1, i + 4).some((n) => n.key.startsWith(r.key + "-") || new RegExp("^" + r.key + "\\d").test(n.key))) { dropped.add(r); out.splice(i, 1); outY.splice(i, 1); }
+    }
+    // the dropped label's ink leaves the region: rebuild it from every row
+    // banded above (rows past the end-of-table gap included, as before)
+    if (dropped.size) {
+      region = null;
+      for (const r of everRows) if (!dropped.has(r)) for (const c of Object.values(r.cells)) region = region ? merge(region, c.bbox) : c.bbox;
+    }
+  }
   // row-level building off the BLDG/BUILDING column, where the key itself
   // did not carry one
   for (const row of out) {
@@ -1016,6 +1351,10 @@ function bandDataRows(
     const cellB = norm(row.cells.BLDG?.text || row.cells.BUILDING?.text || "");
     if (DESIGNATOR_RE.test(cellB)) row.building = cellB;
   }
+  // a heading joins the region only when it sits among the rows kept — a
+  // "BASE DETAIL" title far below the table is not the table
+  const lastY = outY.length ? outY[outY.length - 1] : -Infinity;
+  for (const hd of headings) if (hd.y <= lastY) region = region ? merge(region, hd.bbox) : hd.bbox;
   return { out, region };
 }
 
@@ -1026,6 +1365,20 @@ function bandDataRows(
 export function extractTable(sheet: SheetSpans, kind: ExtractKind, opts: ExtractOpts = {}): ScheduleTable | null {
   const r = extractTableCore(sheet, kind, opts);
   return r && "table" in r ? r.table : null;
+}
+
+/** The finish/material-schedule reader the sheet graph indexes through.
+ * Returns the table, or a refusal: a table titled as another schedule family
+ * (DOOR SCHEDULE, …) is not a finish table, and the caller names the drop.
+ * null: no finish table here. */
+export type FinishRead =
+  | { table: ScheduleTable }
+  | { refused: "other-family"; table: ScheduleTable };
+export function readFinishTable(sheet: SheetSpans, opts: ExtractOpts = {}): FinishRead | null {
+  const r = extractTableCore(sheet, "finish", opts);
+  if (!r || !("table" in r)) return null;
+  if (r.table.title && isNonFinishSchedule(r.table.title.text)) return { refused: "other-family", table: r.table };
+  return { table: r.table };
 }
 
 /** EVERY table of one kind on a sheet, top to bottom. extractTable reads the
@@ -1067,6 +1420,7 @@ function extractTableCore(sheet: SheetSpans, kind: ExtractKind, opts: ExtractOpt
 
   let anchors: Anchor[];
   let headerSpans: GraphSpan[];
+  let hdrBlock: GraphSpan[] | undefined;
   let dataFrom: number;           // first row index eligible as data
   let dataBelowY = -Infinity;     // rotated: data rows must sit below the band
   let titleFrom: number;          // title hunt walks upward from here
@@ -1076,6 +1430,17 @@ function extractTableCore(sheet: SheetSpans, kind: ExtractKind, opts: ExtractOpt
   if (flat) {
     anchors = flat.anchors;
     headerSpans = rows[flat.rowIndex];
+    // the header block: the tiers the descent passed through, the lines of
+    // a multi-line header set just above or below the header row, and up to
+    // two tiers stacked close above it
+    const hy = rowY(rows[flat.rowIndex]);
+    const hhs = headerSpans.map((t) => t.h || 8).sort((a, b) => a - b);
+    const hh = hhs[hhs.length >> 1];
+    const band = new Set<number>();
+    for (let k = flat.top; k <= flat.rowIndex; k++) band.add(k);
+    for (let k = flat.rowIndex + 1; k < rows.length && rowY(rows[k]) - hy <= 1.5 * hh; k++) band.add(k);
+    for (let k = flat.top, n = 0; n < 2 && k > 0 && rowY(rows[k]) - rowY(rows[k - 1]) <= 3 * hh; n++) band.add(--k);
+    hdrBlock = [...band].flatMap((k) => rows[k]);
     dataFrom = flat.rowIndex + 1;
     titleFrom = flat.rowIndex - 1;
   } else {
@@ -1111,7 +1476,7 @@ function extractTableCore(sheet: SheetSpans, kind: ExtractKind, opts: ExtractOpt
     if (centerX(t) < hdrBand.x0 || centerX(t) > hdrBand.x1) continue;
     region = region ? merge(region, bboxOf(t)) : bboxOf(t);
   }
-  const banded = bandDataRows(rows, anchors, kind, sheet.key, opts.buildings, { fromIdx: dataFrom, belowY: dataBelowY, deltas: opts.deltas, sheetNumbers: opts.sheetNumbers });
+  const banded = bandDataRows(rows, anchors, kind, sheet.key, opts.buildings, { fromIdx: dataFrom, belowY: dataBelowY, deltas: opts.deltas, sheetNumbers: opts.sheetNumbers, hdrSpans: headerSpans, hdrBand: hdrBlock });
   const out = banded.out;
   if (banded.region) region = region ? merge(region, banded.region) : banded.region;
   if (!out.length) {
@@ -1363,25 +1728,24 @@ export function buildSheetGraph(sheets: SheetSpans[]): SheetGraph {
     roles.set(s.key, classifySheetRole(s));
     const sheetFrags: ScheduleTable[] = [];
     const found: ScheduleTable[] = [];
-    for (const kind of ["room-finish", "finish"] as const) {
-      const t = extractTable(s, kind, { buildings, deltas: deltasBySheet.get(s.key), sheetNumbers: sheetNumberSet });
-      if (t) found.push(t);
-    }
+    const xo: ExtractOpts = { buildings, deltas: deltasBySheet.get(s.key), sheetNumbers: sheetNumberSet };
+    const rf = extractTable(s, "room-finish", xo);
+    if (rf) found.push(rf);
+    // A DOOR / WINDOW / PARTITION schedule carries a MARK column, so the
+    // finish-table hunt happily reads one as a finish/material schedule —
+    // and then a finish code that collides with a door mark chains to a
+    // door, which is a confidently wrong product in the bid. Field-found on
+    // a real grocery set whose DOOR SCHEDULE extracted as 54 "finish" rows.
+    // The finish reader refuses by TITLE, and only when the title does not
+    // also say finish or material: when in doubt the table is kept, and the
+    // drop is NAMED.
+    const fin = readFinishTable(s, xo);
+    if (fin && "refused" in fin) {
+      notes.push(`${s.key}: "${fin.table.title!.text}" names another schedule family, not a finish/material schedule — its ${fin.table.rows.length} rows are NOT indexed as finish definitions`);
+    } else if (fin) found.push(fin.table);
     // equipment schedules stack several to a sheet — every one, top to bottom
-    found.push(...extractTables(s, "equipment", { buildings, deltas: deltasBySheet.get(s.key), sheetNumbers: sheetNumberSet }));
+    found.push(...extractTables(s, "equipment", xo));
     for (const t of found) {
-      const kind = t.kind as ExtractKind;
-      // A DOOR / WINDOW / PARTITION schedule carries a MARK column, so the
-      // finish-table hunt happily reads one as a finish/material schedule —
-      // and then a finish code that collides with a door mark chains to a
-      // door, which is a confidently wrong product in the bid. Field-found on
-      // a real grocery set whose DOOR SCHEDULE extracted as 54 "finish" rows.
-      // Refuse by TITLE, and only when the title does not also say finish or
-      // material: when in doubt the table is kept, and the drop is NAMED.
-      if (kind === "finish" && t.title && isNonFinishSchedule(t.title.text)) {
-        notes.push(`${s.key}: "${t.title.text}" names another schedule family, not a finish/material schedule — its ${t.rows.length} rows are NOT indexed as finish definitions`);
-        continue;
-      }
       // table-level building: its own title first, the sheet's context second
       const titleB = t.title ? buildingMentions(t.title.text) : [];
       const b = titleB.length === 1 ? titleB[0] : ctxBySheet.get(s.key);

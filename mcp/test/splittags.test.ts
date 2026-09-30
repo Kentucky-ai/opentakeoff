@@ -47,5 +47,7 @@ test("both schedules still read off the joined text", async () => {
   const room = await s.findSchedule("room finish");
   const mat = await s.findSchedule("finish");
   assert.equal(room.matches[0].rows, 29);
-  assert.equal(mat.matches[0].rows, 44);
+  // the material schedule's 28 rows — the legend beside REMARKS and the
+  // section headings (FLOORING, BASE, WALLS …) are no longer read as rows
+  assert.equal(mat.matches[0].rows, 28);
 });
