@@ -52,7 +52,7 @@ import { joinAbuttingSpans } from "../lib/textjoin";
 import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
-import { parseSchedule, rowToSeed } from "../lib/scheduleParse";
+import { rowToSeed } from "../lib/scheduleRows";   // the reader (scheduleRead, which loads the sheet graph) is import()ed on use
 import { normalizeScanRows, postScanWithRetry, SCAN_ENDPOINT, scanRasterScale } from "../lib/scheduleScan";
 import { normalizeTag } from "../lib/scheduleEdit";
 // Condition twins — the whole inheritance rule is in lib/variants.ts (test/variants.test.ts);
@@ -6077,6 +6077,7 @@ export default function TakeoffCanvas() {
 
   async function agentReadSchedule(key, region) {
     const { tokens } = await agentTextTokens(key, region);
+    const { parseSchedule } = await import("../lib/scheduleRead");
     return parseSchedule(tokens);   // vector path only — same parser as Import from schedule
   }
 
@@ -6781,10 +6782,11 @@ export default function TakeoffCanvas() {
     const rs = renderScalesRef.current.get(panel.key) || RENDER_SCALE;
     const rect = { x0: a[0] - panel.xOffset, y0: a[1], x1: b[0] - panel.xOffset, y1: b[1] };
     const seq = renderSeqRef.current;                 // a sheet switch mid-await must not pop a dialog for a page you left
-    let tokens;
+    let tokens, parseSchedule;
     try {
       const vp = pageObj.getViewport({ scale: rs });
       const tc = await pageObj.getTextContent();
+      ({ parseSchedule } = await import("../lib/scheduleRead"));   // the reader chunk loads on first use
       if (seq !== renderSeqRef.current) return;
       tokens = extractRegionText(tc, vp, rect);
     } catch { setCommitMsg("Couldn't read that region."); return; }

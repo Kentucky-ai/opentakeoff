@@ -1,6 +1,6 @@
 // ImportSchedulePanel — the approval dialog for "Import from schedule".
 // The estimator drags a box around the finish/material schedule; the parent
-// (TakeoffCanvas) extracts + parses it (lib/scheduleParse) and hands the rows
+// (TakeoffCanvas) reads it (lib/scheduleRead) and hands the rows
 // here. This view is the one human beat: glance, FIX a mis-read code, uncheck
 // what you don't want, Create.
 //
