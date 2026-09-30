@@ -102,7 +102,11 @@ Fifty-two tools, in the order an agent tends to reach for them:
   merged `WALLS (PLAN DIRECTION)` parent over `N | E | S | W`—anchors each
   sub-column under its parent as `WALLS N` … `WALLS W` with real bounds, so a
   left-aligned wall code never lands in the narrow BASE column beside it; a
-  neighboring legend cannot bleed into the last column; finish tables headed
+  neighboring legend stays out of the last column of a room-finish table and,
+  from 0.9.91, of a finish/material table too; a finish table's printed
+  section headings (FLOORING, WALL BASE, MISC. FINISHES) are consumed rather
+  than read as rows (the engine keeps each row's heading as `TableRow.section`;
+  no tool reply carries it yet); finish tables headed
   `SYMBOL` (no CODE, no MARK) extract and chain; and a **DOOR / WINDOW /
   PARTITION schedule is refused as a finish table** by title—those carry a
   MARK column too, and a finish code chaining to a door mark is a confidently
