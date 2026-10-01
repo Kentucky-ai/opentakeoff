@@ -1,4 +1,5 @@
 import { cloudBezier } from './geometry.js';
+import { FIELD_WARN_INK } from './noteFields.ts';
 
 export const ANNOTATION_DEFAULTS = { color: '#dc3d43', stroke_pt: 1.5, font_pt: 10, opacity: 0.32, head: 'filled', both: false, mode: 'freehand', width_pt: 10, line_style: 'solid' };
 export const ANNOTATION_PRESETS = [
@@ -83,7 +84,7 @@ export function annotationScene(m, W, H, pixelScale = 2) {
     const width = Math.max(45 * pixelScale, ...lines.map(l => l.length * font * .62)) + pad * 2;
     const height = Math.max(1, lines.length) * font * 1.35 + pad * 2;
     add([...path([at, [at[0] + width, at[1]], [at[0] + width, at[1] + height], [at[0], at[1] + height]]), ['Z']], { fill: '#ffffff' });
-    lines.forEach((text, i) => texts.push({ text, x: at[0] + pad, y: at[1] + pad + font * (1 + i * 1.35), size: font, color: '#172033' }));
+    lines.forEach((text, i) => texts.push({ text, x: at[0] + pad, y: at[1] + pad + font * (1 + i * 1.35), size: font, color: m.field_warn ? FIELD_WARN_INK : '#172033' }));   // field_warn: an unresolved {{field}} (noteFields, #474)
     return [[at[0], at[1]], [at[0] + width, at[1] + height]];
   };
   let noteBox = null;

@@ -87,7 +87,9 @@ export function useAnnotationWorkbench(options) {
   const arm=(next)=>{clear();options.resetDraft?.();setReview(null);setEditor(null);setSelected([]);options.setSelectedId(null);setMode(next);options.setTool('annotation');request.current++;setBusy(false);};
   const commitNew=rows=>{
     const o=current.current,now=new Date().toISOString();
-    const made=rows.map(m=>({...m,id:id(),created_at:now,updated_at:now,condition_id:'',rfi_id:''}));
+    // a new annotation links to the ACTIVE condition, the canvas's addMarkup rule — it's
+    // almost always about that condition, and a {{qty}} field (#474) needs the link to fill
+    const made=rows.map(m=>({...m,id:id(),created_at:now,updated_at:now,condition_id:o.activeCondition||'',rfi_id:''}));
     o.commit([...o.markups,...made]);setSelected(made.map(m=>m.id));o.setSelectedId(made[0]?.id||null);return made;
   };
   const commitEdit=rows=>{const o=current.current,by=new Map(rows.map(m=>[m.id,{...m,updated_at:new Date().toISOString()}]));o.commit(o.markups.map(m=>by.get(m.id)||m));};

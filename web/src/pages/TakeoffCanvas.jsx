@@ -100,6 +100,7 @@ import { buildMarkedSetPdf, downloadBytes, splitLoadedSheets, skippedPdfsNote } 
 import { repeatPlan } from "../lib/repeatTool.js";
 import { createDragCache, sheetContentSignature, dragFilename, downloadUrlEntry } from "../lib/dragOut.js";
 import { counterRows } from "../lib/liveCounter.js";
+import { qtyLabels, resolveMarkup, FIELD_WARN_INK, FIELD_WARN_INK_DARK } from "../lib/noteFields.ts";
 import LiveCounter from "../components/LiveCounter.jsx";
 import { loadProfiles } from "../lib/identity.js";
 import { resolveBranding, loadBrandingSelection } from "../lib/branding.js";
@@ -3213,7 +3214,8 @@ export default function TakeoffCanvas() {
       // hit size == render size at every zoom, wrapped lines included
       const ax = m.at[0] * W + ox, ay = m.at[1] * H;
       const fs = inkPx(NOTE_PT, sc);
-      const b = noteBox(ax, ay, layoutNote({ text: m.text, fontPx: fs, measure: canvasMeasure(fs) }));
+      // the RESOLVED text ({{qty}} → "5 EA") — the box the renderer actually draws
+      const b = noteBox(ax, ay, layoutNote({ text: resolveMarkup(m, noteQtyLabels).m.text, fontPx: fs, measure: canvasMeasure(fs) }));
       if (X >= b.x0 - thr && X <= b.x1 + thr && Y >= b.y0 - thr && Y <= b.y1 + thr) return true;
       if (m.type === "callout" && m.target) {
         const tx = m.target[0] * W + ox, ty = m.target[1] * H;
@@ -7431,6 +7433,9 @@ export default function TakeoffCanvas() {
   // exist only in the Report/exports). Same conditionTotals rules, no filter.
   const projRows = useMemo(() => conditionTotals(conditions, shapes, seamCtx), [conditions, shapes, seamCtx]);
   const projRowById = useMemo(() => new Map(projRows.map((r) => [r.id, r])), [projRows]);
+  // {{qty}} in a note (#474) — the linked condition's measured quantity,
+  // whole project, in the display unit system. Resolved at draw time only.
+  const noteQtyLabels = useMemo(() => qtyLabels(projRows, units), [projRows, units]);
   // ── load-time quantity heal (#137) ─────────────────────────────────────────
   // A shape can ARRIVE without the numbers its role requires (an import that
   // carried geometry only). Such a shape draws fine but reads as 0 SF in
@@ -7882,7 +7887,7 @@ export default function TakeoffCanvas() {
   }
   const annotations = useAnnotationWorkbench({
     tool, setTool, panels, tf: tfRef, zoom: tf.scale, toImage, spaceRef,
-    markups, selectedId: selectedMarkupId, setSelectedId: setSelectedMarkupId,
+    markups, selectedId: selectedMarkupId, setSelectedId: setSelectedMarkupId, activeCondition: activeCond,
     commit: commitAnnotationBatch, message: setCommitMsg, ready: status === "ready",
     storageKey: "opentakeoff_annotation_favorites_v1", visible: showMarkups,
     compact: workspaceLayout, onMenuDepth,
@@ -8755,7 +8760,12 @@ export default function TakeoffCanvas() {
                            onBlur={(e) => { updateMarkup(m.id, { text: e.currentTarget.value.trim() }); setPanelEditId(null); }}
                            style={{ flex: 1, minWidth: 0, fontSize: 12.5, padding: "1px 4px", border: "1px solid var(--cobalt)", borderRadius: 0, outline: "none" }} />
                        ) : (
-                         <span style={{ flex: 1, color: "var(--ink)" }}>{m.type === "svg" ? <em style={{ color: "var(--ink-muted)" }}>(vector symbol)</em> : ([m.type === "dimension" && Number(m.len_ft) > 0 ? dimLabel(m.len_ft) : "", m.text].filter(Boolean).join(" · ") || <em style={{ color: "var(--ink-muted)" }}>(no text)</em>)}</span>
+                         (() => {
+                           // shown resolved ({{qty}} → "5 EA", #474); the edit box keeps the template
+                           const rm = resolveMarkup(m, noteQtyLabels);
+                           const warn = rm.unresolved.length > 0;
+                           return <span title={warn ? `Can't fill ${rm.unresolved.join(", ")}: link this note to a condition that has a quantity` : (rm.m !== m ? m.text : undefined)} style={{ flex: 1, color: warn ? "var(--c-danger)" : "var(--ink)" }}>{m.type === "svg" ? <em style={{ color: "var(--ink-muted)" }}>(vector symbol)</em> : ([m.type === "dimension" && Number(m.len_ft) > 0 ? dimLabel(m.len_ft) : "", rm.m.text].filter(Boolean).join(" · ") || <em style={{ color: "var(--ink-muted)" }}>(no text)</em>)}</span>;
+                         })()
                        )}
                        {m.type !== "svg" && <button onClick={(e) => { e.stopPropagation(); setPanelEditId((id) => (id === m.id ? null : m.id)); }} title="Edit text" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--ink-muted)" }}>✎</button>}
                        <button onClick={(e) => { e.stopPropagation(); deleteMarkup(m.id); }} title="Delete markup" style={{ border: "none", background: "none", cursor: "pointer", color: "var(--c-danger)" }}>🗑</button>
@@ -9214,7 +9224,10 @@ export default function TakeoffCanvas() {
                       // and tier 2 last/on top; hit-test ranks them in reverse, so the
                       // topmost-drawn markup is the one a click selects.
                       .slice().sort((a, b) => (a.type === "image" ? 0 : a.type === "highlight" ? 1 : 2) - (b.type === "image" ? 0 : b.type === "highlight" ? 1 : 2))
-                      .map((m) => {
+                      .map((m0) => {
+                      // fields resolve before anything reads the text, Premium ink included;
+                      // an unresolved field leaves the literal in place and tints the note
+                      const { m, unresolved: mUnres } = resolveMarkup(m0, noteQtyLabels);
                       const premiumInk = annotations.render(m, p);
                       if (premiumInk) {
                         const at=m.at||m.from||m.rect?.[0]||m.pts?.[0]||m.quads?.[0]?.[0];
@@ -9229,6 +9242,10 @@ export default function TakeoffCanvas() {
                       const mCond = m.condition_id ? condById[m.condition_id] : null;
                       const base = m.color || mCond?.color || (m.rfi_id ? "#1f3fc7" : "#c47a10");
                       const mk = darkMode ? boostForDark(base) : base;   // literal — SVG attrs don't resolve CSS vars
+                      // a note quoting a field that can't resolve reads in the danger ink;
+                      // note blocks sit on a white backing in both themes, labels on the sheet
+                      const labelInk = mUnres.length ? (darkMode ? FIELD_WARN_INK_DARK : FIELD_WARN_INK) : mk;
+                      const noteInk = mUnres.length ? FIELD_WARN_INK : "#0e1a2e";
                       const dash = dashArrayFor(m.line_style || "solid", z);
                       const w = clampWeight(m.weight);   // stroke-width multiplier over each element's base, default ×1
                       const selM = m.id === selectedMarkupId;
@@ -9293,7 +9310,7 @@ export default function TakeoffCanvas() {
                           <g key={m.id}>
                             {halo(hx0 - pad, hy0 - pad, hx1 + pad, hy1 + pad)}
                             <rect x={hx0} y={hy0} width={hx1 - hx0} height={hy1 - hy0} fill={mk} fillOpacity={0.18} stroke={mk} strokeWidth={(2 * w) / z} strokeDasharray={dash} />
-                            {m.text && <text x={(hx0 + hx1) / 2} y={(hy0 + hy1) / 2} fill={mk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{m.text}</text>}
+                            {m.text && <text x={(hx0 + hx1) / 2} y={(hy0 + hy1) / 2} fill={labelInk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{m.text}</text>}
                             {badge(hx0, hy0 - pad - 9 / z)}
                           </g>
                         );
@@ -9307,7 +9324,7 @@ export default function TakeoffCanvas() {
                           <g key={m.id}>
                             {halo(bx0, by0, bx1, by1)}
                             <path d={cloudPath(c0[0] * p.img.w, c0[1] * p.img.h, c1[0] * p.img.w, c1[1] * p.img.h)} fill="none" stroke={mk} strokeWidth={(2 * w) / z} strokeDasharray={dash} />
-                            {m.text && <text x={(c0[0] + c1[0]) / 2 * p.img.w} y={(c0[1] + c1[1]) / 2 * p.img.h} fill={mk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{m.text}</text>}
+                            {m.text && <text x={(c0[0] + c1[0]) / 2 * p.img.w} y={(c0[1] + c1[1]) / 2 * p.img.h} fill={labelInk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{m.text}</text>}
                             {badge(bx0, by0 - 9 / z)}
                             {revTri(bx1, by0 - 9 / z)}
                           </g>
@@ -9330,7 +9347,7 @@ export default function TakeoffCanvas() {
                             <path d={arrowheadPath(AX, AY, tx * p.img.w, ty * p.img.h, 9 / z)} fill={mk} />
                             {L.lines.length > 0 && <rect x={b.x0} y={b.y0} width={L.w} height={L.h} fill="rgba(255,255,255,.92)" stroke={mk} strokeWidth={(1 * w) / z} strokeDasharray={dash} />}
                             {L.lines.length > 0 && (
-                              <text fill="#0e1a2e" fontSize={fs} fontWeight="600" fontFamily={NOTE_FONT_FAMILY} style={{ pointerEvents: "none" }}>
+                              <text fill={noteInk} fontSize={fs} fontWeight="600" fontFamily={NOTE_FONT_FAMILY} style={{ pointerEvents: "none" }}>
                                 {L.lines.map((ln, i) => <tspan key={i} x={AX} y={lineBaseline(AY, L, i)}>{ln || "\u00a0"}</tspan>)}
                               </text>
                             )}
@@ -9350,7 +9367,7 @@ export default function TakeoffCanvas() {
                             <line x1={fx} y1={fy} x2={tx} y2={ty} stroke={mk} strokeWidth={(2 * w) / z} strokeDasharray={dash} strokeLinecap="round" />
                             {/* filled arrowhead at the `to` end */}
                             <path d={arrowheadPath(fx, fy, tx, ty, 11 / z)} fill={mk} />
-                            {m.text && <text x={midx} y={midy - inkPx(LABEL_PT, z) * 0.6} fill={mk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{m.text}</text>}
+                            {m.text && <text x={midx} y={midy - inkPx(LABEL_PT, z) * 0.6} fill={labelInk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{m.text}</text>}
                             {badge(hx0, hy0 - pad - 9 / z)}
                           </g>
                         );
@@ -9374,7 +9391,7 @@ export default function TakeoffCanvas() {
                             <line x1={fx} y1={fy} x2={tx} y2={ty} stroke={mk} strokeWidth={(2 * w) / z} strokeDasharray={dash} />
                             <line x1={fx - dnx * tick} y1={fy - dny * tick} x2={fx + dnx * tick} y2={fy + dny * tick} stroke={mk} strokeWidth={(2 * w) / z} />
                             <line x1={tx - dnx * tick} y1={ty - dny * tick} x2={tx + dnx * tick} y2={ty + dny * tick} stroke={mk} strokeWidth={(2 * w) / z} />
-                            {dimText && <text x={(fx + tx) / 2 + dnx * (inkPx(LABEL_PT, z) * 0.9)} y={(fy + ty) / 2 + dny * (inkPx(LABEL_PT, z) * 0.9)} fill={mk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{dimText}</text>}
+                            {dimText && <text x={(fx + tx) / 2 + dnx * (inkPx(LABEL_PT, z) * 0.9)} y={(fy + ty) / 2 + dny * (inkPx(LABEL_PT, z) * 0.9)} fill={labelInk} fontSize={inkPx(LABEL_PT, z)} fontWeight="700" fontFamily={NOTE_FONT_FAMILY} textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{dimText}</text>}
                             {badge(hx0, hy0 - pad - 9 / z)}
                           </g>
                         );
@@ -9387,7 +9404,7 @@ export default function TakeoffCanvas() {
                           <g key={m.id}>
                             {halo(cx - rad - pad, cy - rad - pad, cx + rad + pad, cy + rad + pad)}
                             <circle cx={cx} cy={cy} r={rad} fill={darkMode ? "rgba(12,15,20,.85)" : "rgba(255,255,255,.85)"} stroke={mk} strokeWidth={(2 * w) / z} strokeDasharray={dash} />
-                            {m.text && <text x={cx} y={cy} fill={mk} fontSize={Math.min(13, rad * z * 0.9) / z} fontWeight="700" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{m.text}</text>}
+                            {m.text && <text x={cx} y={cy} fill={labelInk} fontSize={Math.min(13, rad * z * 0.9) / z} fontWeight="700" textAnchor="middle" dominantBaseline="central" style={{ pointerEvents: "none" }}>{m.text}</text>}
                             {badge(cx + rad, cy - rad - 4 / z)}
                           </g>
                         );
@@ -9478,7 +9495,7 @@ export default function TakeoffCanvas() {
                           {halo(b.x0 - 2 / z, b.y0 - 2 / z, b.x1 + 2 / z, b.y1 + 2 / z)}
                           {L.lines.length > 0 && <rect x={b.x0} y={b.y0} width={L.w} height={L.h} fill="rgba(255,247,237,.92)" stroke={mk} strokeWidth={(1 * w) / z} strokeDasharray={dash} />}
                           {L.lines.length > 0 && (
-                            <text fill="#0e1a2e" fontSize={fs} fontWeight="600" fontFamily={NOTE_FONT_FAMILY} style={{ pointerEvents: "none" }}>
+                            <text fill={noteInk} fontSize={fs} fontWeight="600" fontFamily={NOTE_FONT_FAMILY} style={{ pointerEvents: "none" }}>
                               {L.lines.map((ln, i) => <tspan key={i} x={AX} y={lineBaseline(AY, L, i)}>{ln || "\u00a0"}</tspan>)}
                             </text>
                           )}

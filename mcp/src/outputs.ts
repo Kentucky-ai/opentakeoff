@@ -1008,6 +1008,8 @@ const annotationRow = z.object({
   to: z.tuple([z.number(), z.number()]).optional().describe("Arrow head / dimension end (image px)"),
   r: z.number().optional().describe("Bubble radius (image px)"),
   length_lf: z.number().optional().describe("Dimension only: the measured length in real feet, snapshotted at annotate time from the sheet scale"),
+  text_resolved: z.string().optional().describe("Only when text carries a {{qty}} field: the note as the sheet shows it, {{qty}} filled with the linked condition's measured quantity (multiplier applied, no waste)"),
+  unresolved_fields: z.array(z.string()).optional().describe("Fields that could not fill (no linked condition, nothing measured yet, or an unknown name) — they stay literal and print in the warning ink; link_annotation fixes the first case"),
 });
 
 export const editAnnotationOutput = { id: z.string(), text: z.string(), note: z.string() };

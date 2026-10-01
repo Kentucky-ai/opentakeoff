@@ -872,6 +872,38 @@ test("mark_verdict / delete_verdict / list_annotations verdicts: replies validat
   assert.equal(alive.verdict_count, 1, "the violations changed nothing");
 });
 
+// {{qty}} in a note (#474): the stored text keeps the field, list_annotations
+// reports what the sheet shows, and the number follows the next count. A note
+// whose field can't fill says which one, and the reply still round-trips.
+test("list_annotations: {{qty}} resolves to the linked condition's measured quantity and follows the count", async () => {
+  const client = await pair();
+  await callOk(client, "load_plan", { path: PLAN });
+  await callOk(client, "set_scale", { sheet: KEY, use_detected: true });
+  // place_count's reply isn't in this file's schema table — call it raw, assert it landed
+  const count = async (points: number[][]) => {
+    const res: any = await client.callTool({ name: "place_count", arguments: { sheet: KEY, points, condition: "EM-1" } });
+    assert.equal(!!res.isError, false, res.content?.[0]?.text);
+  };
+  await count([[200, 200], [260, 200], [320, 200], [380, 200], [440, 200]]);
+  const live = await callOk(client, "annotate", { sheet: KEY, type: "text", at: [600, 600], text: "Provide x{{qty}} emergency lights", condition: "EM-1" });
+  const loose = await callOk(client, "annotate", { sheet: KEY, type: "text", at: [600, 700], text: "x{{qty}} spare" });
+  await callOk(client, "annotate", { sheet: KEY, type: "text", at: [600, 800], text: "plain note" });
+
+  let listed = await callOk(client, "list_annotations", {});
+  assert.deepEqual(z.object(listAnnotationsOutput).parse(listed), listed, "text_resolved / unresolved_fields are fully stated");
+  const byId = (id: string) => listed.annotations.find((a: any) => a.id === id);
+  assert.equal(byId(live.id).text, "Provide x{{qty}} emergency lights", "the stored text keeps the template");
+  assert.equal(byId(live.id).text_resolved, "Provide x5 EA emergency lights");
+  assert.equal(byId(live.id).unresolved_fields, undefined);
+  assert.equal(byId(loose.id).text_resolved, "x{{qty}} spare", "an unlinked note leaves the field literal");
+  assert.deepEqual(byId(loose.id).unresolved_fields, ["{{qty}}"]);
+  assert.equal(listed.annotations.find((a: any) => a.text === "plain note").text_resolved, undefined, "a note with no field adds nothing");
+
+  await count([[500, 200]]);
+  listed = await callOk(client, "list_annotations", {});
+  assert.equal(byId(live.id).text_resolved, "Provide x6 EA emergency lights", "the note follows the takeoff");
+});
+
 // 0.9.18 — assign-from-schedule's output contract. The deepEqual is the
 // load-bearing assertion: zod strips unknown keys, so a bare parse would pass
 // with an incomplete schema — equality proves the schema states EVERY field
