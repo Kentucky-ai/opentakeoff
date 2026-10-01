@@ -171,8 +171,10 @@ export function ocrFailedMessage(reason: string): string {
  *  header band at all) or that the box cut off above. */
 export const OCR_NO_HEADER_MESSAGE = "Found finish codes in a column but no header row the reader could read. The headers may be rotated (which can't be read yet) or outside the box — box the schedule with a header row that reads left to right.";
 
-/** A span's text as a code: the reader keys rows the same way (sheetgraph
- *  rowKeyOf: upper case, only letters, digits and hyphens kept). */
+/** A span's text as a code: upper case, only letters, digits and hyphens
+ *  kept. Close to the reader's rowKeyOf, not the same: rowKeyOf keeps "/"
+ *  and splits a compound cell ("R1 / E1") into codes first; this drops the
+ *  "/" and tests the whole span, so a compound span may not count. */
 const asCode = (str: string) => str.toUpperCase().replace(/[^A-Z0-9-]/g, "");
 
 /** At least three finish codes stacked in one column: spans that pass the

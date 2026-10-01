@@ -1,8 +1,8 @@
 {
  "about": [
-  "What the on-device reader returned for a synthetic finish schedule whose header row is rotated 90 degrees (#484): 10 rows, 8 columns, drawn at 200 DPI as an image-only 17 x 11 in page; every name in it is made up.",
+  "What the on-device reader returned for a synthetic finish schedule whose header row is rotated 90 degrees (#484): 10 rows, 8 columns, drawn at 200 DPI as an image-only 17 x 11 in page. Synthetic text, with the vendor names the generator used replaced (below).",
   "Read at 216 DPI (rs 2) with ppu-paddle-ocr per-box recognition at batch 1 (the shipped engine), by the #484 diagnosis harness in headless Chromium. The rotated header row gave no detections at all.",
-  "Redacted (CONTRIBUTING.md bans brand names in sample data): every word with a letter or digit whose box centre is right of x = 864 (the ruling between the DESCRIPTION and MANUFACTURER cells), i.e. MANUFACTURER and every column right of it, reads \"REDACTED\"; boxes are unchanged. 43 words redacted; 0 word box(es) straddle x = 864.",
+  "Vendor names replaced (CONTRIBUTING.md: no brand names in sample data): every word with a letter or digit whose box centre is right of x = 864 (the ruling between the DESCRIPTION and MANUFACTURER cells), i.e. MANUFACTURER and every column right of it, reads \"REDACTED\"; boxes are unchanged. 43 words redacted; 0 word box(es) straddle x = 864.",
   "Words are OcrWords in image px at rs (x left, y baseline). Read by test/scheduleRoute.test.ts and test/scheduleOcrRead.test.ts (the no-header-row hint)."
  ],
  "engine": "ppocrv5-mobile-en-1, recognition { strategy: per-box, recBatchSize: 1 }",

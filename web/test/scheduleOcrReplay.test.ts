@@ -11,9 +11,10 @@
 // tile at its zoom; a fixture captured at another zoom, or that the plan now
 // splits into tiles, no longer says what the canvas would read, so it fails
 // as stale. Both were captured under ppu's per-line recognition at batch 6,
-// before #484 (each file's `recognition`); the canvas now reads per box at
-// batch 1 (engineOptions.ts). They replay recorded words through the
-// reader, so they still pin the reader, not what today's engine returns.
+// before #484 (each file's `recognition`, checked as provenance only); the
+// canvas now reads per box at batch 1 (engineOptions.ts). They replay
+// recorded words through the reader, so they pin the reader, not what
+// today's engine returns: no check here can notice an engine change.
 //
 // Scores, both copies: no tag the vector read lacks; at least 28 of its
 // tags; the row's printed section equal to the vector read's for at least 12
@@ -107,7 +108,10 @@ for (const [dpi, sectionFloor, groupFloor] of [[200, 12, 14], [100, 28, 28]] as 
     const fx = fixture(dpi);
     const plan = planTiles(fx.rect, fx.rs);
     assert.deepEqual([plan.tiles.length, plan.zoom], [1, fx.zoom], "stale fixture — capture again");
-    assert.deepEqual(fx.recognition, { strategy: "per-line", recBatchSize: 6 }, "recorded under per-line: see the header");
+    // provenance only: the words are a recording, replayed, so this can't
+    // notice an engine change; it keeps the file honest about which engine
+    // read them
+    assert.deepEqual(fx.recognition, { strategy: "per-line", recBatchSize: 6 }, "recorded under the pre-#484 engine (per-line, batch 6); replays words, so it can't detect an engine change");
     const key = await vectorKey(fx);
     assert.equal(key.length, 28);
     const spans = wordsToSpans(fx.words as OcrWord[]);
