@@ -94,6 +94,8 @@ function harness(opts: {
   ac?: AbortController;
   /** wraps session.run, to see the session's answer or act after it */
   afterRun?: (r: unknown) => void;
+  /** the client's whenIdle; absent = not passed */
+  whenIdle?: () => Promise<void>;
 } = {}) {
   const c = fakeClient(opts.probe ?? available(true)), host = fakeHost();
   const real = createOcrSession({ client: c.client, requestConsent: host.requestConsent });
@@ -126,6 +128,7 @@ function harness(opts: {
     read: (spans) => { log.push("read"); readCalls.push(spans); return opts.result ?? { rows: [row] }; },
     isCurrent: () => (opts.isCurrent ? opts.isCurrent(step) : true),
     onReading: () => { log.push("onReading"); },
+    ...(opts.whenIdle ? { whenIdle: async () => { log.push("whenIdle"); await opts.whenIdle!(); step = "idle"; }, onWaiting: () => { log.push("onWaiting"); } } : {}),
     signal: ac.signal,
     box: opts.box ?? RASTER_BOX,
   });
@@ -300,4 +303,46 @@ test("the reader refuses the table: its refusal", async () => {
   await flush();
   h.c.ensure[0].settle({ ok: true });
   assert.deepEqual(await h.p, { kind: "message", text: refusalMessage("title", "DOOR SCHEDULE") });
+});
+
+/** A whenIdle the test resolves. */
+function deferredIdle() {
+  let resolve!: () => void;
+  const p = new Promise<void>((r) => { resolve = r; });
+  return { whenIdle: () => p, resolve };
+}
+
+test("waits its turn: onWaiting, then nothing until the engine is idle, then reading", async () => {
+  const idle = deferredIdle();
+  const h = harness({ whenIdle: idle.whenIdle });
+  await flush();
+  h.c.ensure[0].settle({ ok: true });
+  await flush();
+  assert.deepEqual(h.log, ["onWaiting", "whenIdle"], "waiting is reported, and nothing is rendered, while another read runs");
+  idle.resolve();
+  assert.deepEqual(await h.p, { kind: "rows", rows: [row] });
+  assert.deepEqual(h.log, ["onWaiting", "whenIdle", "onReading", "rasterize", "recognize", "read"]);
+});
+
+test("aborted while waiting its turn: cancelled at once, nothing rendered", async () => {
+  const idle = deferredIdle();   // never resolved: the abort alone must end the wait
+  const h = harness({ whenIdle: idle.whenIdle });
+  await flush();
+  h.c.ensure[0].settle({ ok: true });
+  await flush();
+  h.ac.abort();
+  assert.deepEqual(await h.p, CANCELLED);
+  assert.deepEqual(h.log, ["onWaiting", "whenIdle"]);
+  assert.deepEqual(h.rasterizeSignals, []);
+});
+
+test("another sheet while waiting its turn: cancelled once idle, nothing rendered", async () => {
+  const idle = deferredIdle();
+  const h = harness({ whenIdle: idle.whenIdle, isCurrent: (step) => step !== "idle" });
+  await flush();
+  h.c.ensure[0].settle({ ok: true });
+  await flush();
+  idle.resolve();
+  assert.deepEqual(await h.p, CANCELLED);
+  assert.deepEqual(h.log, ["onWaiting", "whenIdle"]);
 });

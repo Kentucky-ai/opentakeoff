@@ -8,7 +8,12 @@
 //   1. session.run starts the engine the way the person agreed (lib/ocr/
 //      session.ts: cached files start at once, else the download notice, and
 //      only its Download downloads);
-//   2. onReading() — the status line says "Reading" from here on;
+//   2. whenIdle(), when given (the OCR client's): the engine reads one thing
+//      at a time, so a page read or a copy read (#471) under way goes first.
+//      onWaiting() says so on the status line while it waits; Cancel ends
+//      the wait at once (the client's wait takes no signal, so it is raced
+//      against the session's). Then onReading() — the status line says
+//      "Reading" from here on;
 //   3. rasterize() renders the box; recognize() reads its words. Both get
 //      the session's signal, so Cancel stops a render under way;
 //   4. read() is the sheet graph's finish reader (readScheduleSpans with
@@ -45,6 +50,11 @@ export interface BoxReadSteps<R> {
   isCurrent: () => boolean;
   /** the engine is up and the box is about to be rendered */
   onReading: () => void;
+  /** resolves once no other on-device read is running or queued (the OCR
+   *  client's whenIdle); absent, the box is rendered at once */
+  whenIdle?: () => Promise<void>;
+  /** the engine is up and the box waits for whenIdle */
+  onWaiting?: () => void;
   signal: AbortSignal;
   /** the box's text, for the unavailable message */
   box: BoxText;
@@ -55,12 +65,28 @@ const STALE = new Error("The box read is no longer wanted.");
 
 const CANCELLED: OcrReadResult = { kind: "cancelled" };
 
+/** `p`, or a rejection the moment `signal` aborts. */
+function untilAbort(p: Promise<void>, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(STALE);
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => reject(STALE);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    p.then(() => { signal?.removeEventListener("abort", onAbort); resolve(); },
+      (e) => { signal?.removeEventListener("abort", onAbort); reject(e); });
+  });
+}
+
 export async function readBoxOnDevice<R>(steps: BoxReadSteps<R>): Promise<OcrReadResult> {
-  const { session, rasterize, recognize, read, isCurrent, onReading, signal, box } = steps;
+  const { session, rasterize, recognize, read, isCurrent, onReading, whenIdle, onWaiting, signal, box } = steps;
   const stale = () => signal.aborted || !isCurrent();
   const check = () => { if (stale()) throw STALE; };
   const r = await session.run(async (sig) => {
     check();
+    if (whenIdle) {
+      onWaiting?.();
+      await untilAbort(whenIdle(), sig);
+      check();
+    }
     onReading();
     const raster = await rasterize(sig);
     check();

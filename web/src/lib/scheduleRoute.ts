@@ -86,6 +86,9 @@ export function routeScheduleRead(read: ScheduleRead, box: BoxText): ImportRoute
  *  rendered and read. Both carry Cancel. */
 export const OCR_STARTING_MESSAGE = "Starting the on-device reader…";
 export const OCR_READING_MESSAGE = "Reading the schedule on this device…";
+/** …and while it waits for a page read or copy read (#471) ahead of it: the
+ *  same words as Copy text's own waiting line (an inline string there). */
+export const OCR_WAITING_MESSAGE = "Waiting for another read…";
 
 /** The status line's attribute: keys inside it (its Cancel) are its own. */
 export const IMPORT_READ_STATUS_ATTR = "data-import-read-status";

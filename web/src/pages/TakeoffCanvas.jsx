@@ -66,7 +66,7 @@ import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
 import { rowToSeed } from "../lib/scheduleRows";   // the reader (scheduleRead, which loads the sheet graph) is import()ed on use
-import { routeScheduleRead, countTextRuns, heldKeyWouldPress, EMPTY_BOX_MESSAGE, OCR_BUSY_MESSAGE, OCR_STARTING_MESSAGE, OCR_READING_MESSAGE } from "../lib/scheduleRoute";
+import { routeScheduleRead, countTextRuns, heldKeyWouldPress, EMPTY_BOX_MESSAGE, OCR_BUSY_MESSAGE, OCR_STARTING_MESSAGE, OCR_READING_MESSAGE, OCR_WAITING_MESSAGE } from "../lib/scheduleRoute";
 import { readBoxOnDevice } from "../lib/scheduleOcrRead";
 import { rasterizeRegion } from "../lib/ocr/rasterize";
 import { pageSpans, spansInRect, graphSpans } from "../lib/pageSpans";
@@ -830,7 +830,8 @@ export default function TakeoffCanvas() {
   // read instead), so keys on the body behind a coming notice, or under the
   // status line, act on nothing. Only the holder writes a result.
   const ocrReadRef = useRef(null);
-  // The footer's status line: null | "starting" | "reading". Never commitMsg.
+  // The footer's status line: null | "starting" | "waiting" (another on-device
+  // read goes first) | "reading". Never commitMsg.
   const [ocrRead, setOcrRead] = useState(null);
   /** End `m`'s hold on the read, if it still has it: the lock and the line go. */
   function releaseImportRead(m) {
@@ -7294,6 +7295,8 @@ export default function TakeoffCanvas() {
         recognize: (raster, signal) => getOcrClient().recognize(raster, { signal }),
         read: (ocrSpans) => readScheduleSpans(ocrSpans, { ocr: true }),   // the OCR words' blank-band section reset
         isCurrent,
+        whenIdle: () => getOcrClient().whenIdle(),   // a page read or copy read (#471) under way goes first
+        onWaiting: () => { if (isCurrent()) setOcrRead("waiting"); },
         onReading: () => { if (isCurrent()) setOcrRead("reading"); },
         signal: mine.ctl.signal,
         box,
@@ -10985,7 +10988,7 @@ export default function TakeoffCanvas() {
             is up (the notice owns Cancel and Esc then) */}
         <span data-import-read-status="" aria-live="polite" style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
           {ocrRead && !ocrNotice && (<>
-            <span>{ocrRead === "starting" ? OCR_STARTING_MESSAGE : OCR_READING_MESSAGE}</span>
+            <span>{ocrRead === "starting" ? OCR_STARTING_MESSAGE : ocrRead === "waiting" ? OCR_WAITING_MESSAGE : OCR_READING_MESSAGE}</span>
             <button type="button" className="btn-ghost" onClick={cancelImportRead} style={{ padding: "var(--sp-1) var(--sp-2)" }}>Cancel</button>
           </>)}
         </span>
