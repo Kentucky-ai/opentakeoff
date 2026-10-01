@@ -130,7 +130,7 @@ export const AGENT_TOOL_DEFS = [
   },
   {
     name: "read_schedule",
-    description: "Read a finish/material schedule table inside a region of a sheet into structured rows — the same reader as Import from schedule. The key column can be CODE, TAG, MARK or SYMBOL; the other columns read are MATERIAL / DESCRIPTION / PRODUCT (joined into description), MANUFACTURER, STYLE, COLOR, SIZE and REMARKS (else COMMENTS). Each row: {finish_tag, section, category, category_source, description, manufacturer, style, spec_color, size, remarks, suggested}. category_source says where the category came from: \"heading\" (a printed section heading such as FLOORING), \"text\" (the row's own item words, e.g. RUBBER WALL BASE) or \"none\" (category \"unassigned\"). Draw the region around the whole table including its header row. A table that is another schedule family (door, equipment, signage …) returns no rows and a note saying why — but an untitled one that prints finish-like columns (MATERIAL, MANUFACTURER, COLOR) can still be read as a finish table; check the rows.",
+    description: "Read a finish/material schedule table inside a region of a sheet into structured rows — Import from schedule's reader, on the sheet's text layer only: Import from schedule also reads a raster box on the device, this tool doesn't, so a raster schedule (no text layer) returns no rows — use view_region to look at it. The key column can be CODE, TAG, MARK or SYMBOL; the other columns read are MATERIAL / DESCRIPTION / PRODUCT (joined into description), MANUFACTURER, STYLE, COLOR, SIZE and REMARKS (else COMMENTS). Each row: {finish_tag, section, category, category_source, description, manufacturer, style, spec_color, size, remarks, suggested}. category_source says where the category came from: \"heading\" (a printed section heading such as FLOORING), \"text\" (the row's own item words, e.g. RUBBER WALL BASE) or \"none\" (category \"unassigned\"). Draw the region around the whole table including its header row. A table that is another schedule family (door, equipment, signage …) returns no rows and a note saying why — but an untitled one that prints finish-like columns (MATERIAL, MANUFACTURER, COLOR) can still be read as a finish table; check the rows.",
     input_schema: {
       type: "object",
       properties: { sheet: { type: "string" }, region: REGION_SCHEMA },
@@ -139,7 +139,7 @@ export const AGENT_TOOL_DEFS = [
   },
   {
     name: "view_region",
-    description: "Render a region of the sheet as an image and look at it. Use this for scanned sheets, hatched/ambiguous areas, or to visually confirm what a room contains before proposing.",
+    description: "Render a region of the sheet as an image and look at it. Use this for raster sheets, hatched/ambiguous areas, or to visually confirm what a room contains before proposing.",
     input_schema: {
       type: "object",
       properties: { sheet: { type: "string" }, region: REGION_SCHEMA },

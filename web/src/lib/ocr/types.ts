@@ -1,8 +1,11 @@
 // On-device OCR vocabulary (#469). Pure and DOM-free, like scheduleParse.ts:
-// an OCR read turns a raster region into positioned words, and wordsToTokens
-// hands them to the same parser the text layer feeds, so the parser never
-// learns whether a schedule was vector or scanned.
+// an OCR read turns a raster region into positioned words. wordsToSpans hands
+// them to the sheet graph's finish reader as the spans a text layer would
+// give it (Import from schedule's raster read, #470), and wordsToTokens to
+// the token parser, so neither reader learns whether a schedule was vector or
+// a raster image.
 import type { Token } from "../scheduleParse";
+import type { GraphSpan } from "../sheetgraph";
 
 /** A recognized word in image px at the sheet's render scale, laid out like
  * the text layer's Tokens (sheets.extractRegionText): x is the left edge, y
@@ -29,3 +32,18 @@ export type OcrWord = {
  * column gap), drop confidence. */
 export const wordsToTokens = (words: OcrWord[]): Token[] =>
   words.map(({ str, x, y, w, h }) => ({ str, x, y, h, w }));
+
+/** A word counts when it has a letter or digit (scheduleRoute's run count
+ * uses the same test). */
+const HAS_TEXT = /[\p{L}\p{N}]/u;
+
+/** Words → the sheet graph's spans: the same box with y moved from the
+ * bottom to the top edge (a span spans [y, y + h]). Words with no letter or
+ * digit (leader dots, rules, stray marks) are dropped. Every span is marked
+ * rot 0, read left to right: a word's box carries no reading direction, and
+ * without one the sheet graph guesses that a 4+ character run more than
+ * twice as tall as wide is vertical text and leaves it out of the rows. */
+export const wordsToSpans = (words: OcrWord[]): GraphSpan[] =>
+  words
+    .filter((w) => HAS_TEXT.test(w.str || ""))
+    .map(({ str, x, y, w, h }) => ({ str, x, y: y - h, w, h, rot: 0 }));

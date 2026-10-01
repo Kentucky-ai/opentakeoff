@@ -8,14 +8,12 @@
 //   • no chunk carries OpenCV or @napi-rs/canvas code, which ppu uses only
 //     on Node (the word "opencv" alone is fine: ppu names its engines);
 //   • with OCR on, the OCR worker chunk is there and loads that same wasm, so
-//     the other checks can't pass on a build that has no OCR code in it;
+//     the other checks can't pass on a build that has no OCR code in it (the
+//     app's import of src/lib/ocr/client.ts is what builds the worker);
 //   • a staged manifest's ort-wasm entry matches the wasm actually shipped,
 //     byte for byte, since the worker checks the download against it;
 //   • every other manifest file is a /models/ocr/ path present in dist at
 //     the manifest's byte length;
-//   • while vite.config.js has the temporary `ocr` build input, its entry
-//     chunk is empty and no other chunk imports it (once the app imports the
-//     OCR client, it isn't, and the input must go);
 //   • with VITE_OCR=off, dist has no models/ocr at all.
 // No staged models is fine: the site then reports OCR as not installed.
 import { createHash } from "node:crypto";
@@ -60,24 +58,10 @@ export function checkDist(distDir, env) {
 
   if (env.VITE_OCR !== "off") {
     const workers = files.filter((f) => /^assets\/ocr\.worker-[^/]*\.js$/.test(f));
-    if (!workers.length) errors.push("no assets/ocr.worker-*.js chunk: the build has no OCR code, so these checks prove nothing (see build.rollupOptions.input in vite.config.js)");
+    if (!workers.length) errors.push("no assets/ocr.worker-*.js chunk: the build has no OCR code, so these checks prove nothing (the app's import of src/lib/ocr/client.ts builds the worker; is that import gone?)");
     for (const w of workers) {
       const text = readFileSync(join(distDir, w), "latin1");
       if (!wasm || !text.includes(wasm.slice("assets/".length))) errors.push(`${w} doesn't reference the shipped asyncify wasm${wasm ? ` (${wasm})` : ""}`);
-    }
-    // The `ocr` input in vite.config.js is there only while no app code
-    // imports the OCR client, and the real build then emits its entry chunk
-    // empty. Once the app imports the client, Rollup moves the client (and
-    // the worker's URL) into that entry and app chunks import it by file
-    // name, so the entry is redundant and must go.
-    const remove = "remove the `ocr` input from build.rollupOptions.input in vite.config.js";
-    for (const entry of files.filter((x) => /^assets\/ocr-[^/]*\.js$/.test(x))) {
-      const name = entry.slice("assets/".length);
-      const body = readFileSync(join(distDir, entry), "latin1");
-      if (body.trim()) errors.push(`${entry} carries code: the app now imports the OCR client, so ${remove}`);
-      for (const f of files.filter((x) => /^assets\/[^/]*\.m?js$/.test(x) && x !== entry)) {
-        if (readFileSync(join(distDir, f), "latin1").includes(name)) errors.push(`${f} imports ${entry}: the app now imports the OCR client, so ${remove}`);
-      }
     }
   }
 

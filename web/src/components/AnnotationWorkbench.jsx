@@ -76,6 +76,7 @@ export function useAnnotationWorkbench(options) {
     const key=e=>{
       if(e.target?.closest?.('input,textarea,select,[contenteditable="true"]'))return;
       const st=state.current,o=current.current;
+      if(o.keysHeld?.())return; // the host holds its shortcuts (Import from schedule's on-device read)
       if(e.key==='Escape' && (st.active||st.editor||st.review||gesture.current||anchor.current)){e.preventDefault();e.stopImmediatePropagation();clear();setEditor(null);setReview(null);request.current++;setBusy(false);o.setTool('select');return;}
       if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'&&(gesture.current||anchor.current)){e.preventDefault();e.stopImmediatePropagation();clear();return;}
       if((e.key==='Delete'||e.key==='Backspace')&&st.selected.length&&o.tool==='select'){
@@ -119,7 +120,7 @@ export function useAnnotationWorkbench(options) {
       if(st.mode==='highlighter'){
         const runs=await o.readText(p.key);if(token!==request.current)return;
         const chosen=runs.filter(r=>intersects(r.rect,region));
-        if(!chosen.length){o.message('No selectable PDF text in that region. Use Freehand or Straight for scanned content.');return;}
+        if(!chosen.length){o.message('No selectable PDF text in that region. Use Freehand or Straight for raster content.');return;}
         const quads=chosen.map(r=>r.quad.map(q=>[q[0]/p.img.w,q[1]/p.img.h]));
         commitNew([{...draft(a,b,p),pts:undefined,quads,rect:bounds(quads.flat()),text:chosen.map(r=>r.text).join(' ')}]);
         o.message(`Highlighted ${chosen.length} PDF text run${chosen.length===1?'':'s'}.`);return;
@@ -128,7 +129,7 @@ export function useAnnotationWorkbench(options) {
       if(st.sweepKind==='text'){
         const runs=await o.readText(p.key);if(token!==request.current)return;
         rows=textMatches(runs,region).map(r=>({rect:r.rect,text:r.text,checked:true}));
-        if(!rows.length){o.message('No matching native PDF text. Sweep over a text label; scanned text needs OCR.');return;}
+        if(!rows.length){o.message('No matching native PDF text. Sweep over a text label; a raster image has no native text to sweep.');return;}
       }else{
         const res=await o.findSymbols(p.key,region);if(token!==request.current)return;
         const r=box(...(res.seed.rect||region)),w=r[1][0]-r[0][0],h=r[1][1]-r[0][1];

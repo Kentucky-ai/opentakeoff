@@ -1,7 +1,7 @@
 // The one consent path for on-device reads (#471). Every feature that reads
 // text on-device (the canvas's Read, the gallery's Read, the copy tool's box
-// read) runs its work through session.run, which starts the engine the way
-// the person agreed to:
+// read, Import from schedule's raster read) runs its work through
+// session.run, which starts the engine the way the person agreed to:
 //   • a notice is up (or its download running): join it;
 //   • else ask the client without consent (ensureReady). It answers ok when
 //     the engine is running or its files are cached, joins a start already

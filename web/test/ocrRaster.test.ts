@@ -135,7 +135,10 @@ test("the OCR render reaches 216 DPI from the canvas's 144 DPI render scale", ()
   assert.equal(ocrRenderFactor(RENDER_SCALE, 1000, 800, { dpi: 288 }), 2);
 });
 
-test("the render factor respects the scan side cap, so the AI fallback can reuse the raster", () => {
+// SCAN_MAX_DIM is a memory limit: a near-whole-sheet box at 216 DPI would
+// otherwise allocate a canvas, and the pixel buffers read from it, far larger
+// than reading the table needs.
+test("the render factor respects the raster side cap, a memory limit", () => {
   const f = ocrRenderFactor(RENDER_SCALE, 2750, 1750);
   assert.ok(Math.round(2750 * f) <= SCAN_MAX_DIM);
   assert.ok(f > 1.45 && f < 1.5);

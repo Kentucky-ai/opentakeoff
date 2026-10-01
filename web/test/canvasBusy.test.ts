@@ -47,3 +47,10 @@ test("prevScale === 0 counts as busy (a present prompt, not absent) — nullish 
 test("any one busy signal is enough (OR of all modes)", () => {
   assert.equal(isCanvasBusy({ poly: [], calib: [], check: [], saveState: "saved", editing: true }), true);
 });
+
+test("Import from schedule's on-device read (status line or download notice up) → busy", () => {
+  // a hydrate that re-renders the sheet would cancel the read; an untouched
+  // notice defers sync like One-Click's proposal
+  assert.equal(isCanvasBusy({ importReading: true }), true);
+  assert.equal(isCanvasBusy({ importReading: false }), false);
+});
