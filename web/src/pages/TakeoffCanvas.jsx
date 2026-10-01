@@ -53,6 +53,7 @@ import { Icon } from "../brand/icons.jsx";
 import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks, extractDimTexts } from "../lib/sheets";
 import { joinAbuttingSpans } from "../lib/textjoin";
 import { dropFileFromIndex, indexIsScanLike } from "../lib/planIndex";
+import { labelsForFile, labelsOnFileChange, withPageLabel, withFoundLabels } from "../lib/sheetLabels";
 import { textLayerReader, ocrCopyReaders, copyOcrRoute, readCopyText, createReadGate, boxOnPanel, copyIsScanLike, copyStartMiss, copyReaderChain, copyUnavailable, outcomeMessage, deliverCopy, makeReceipt, receiptExpires, receiptAfterEsc, receiptPlacement, RECEIPT_MS } from "../lib/copyText";
 import { putSheetIndex, createChangeSignal, ocrSheetIndex, needsTextPass } from "../lib/planSearch";
 import { createOcrSession } from "../lib/ocr/session";
@@ -349,7 +350,8 @@ export default function TakeoffCanvas() {
   // silently did nothing on prod. A direct scrollLeft write always lands.
   const scrollTabStrip = (dir) => { const el = tabStripRef.current; if (el) el.scrollLeft = Math.max(0, el.scrollLeft + dir * Math.max(160, el.clientWidth * 0.6)); };
   const [galleryLabels, setGalleryLabels] = useState({}); // sheetKey → title-block number, all files
-  const [pageLabels, setPageLabels] = useState({}); // { pageNum: "A003" } from the title block
+  const [labelsByFile, setLabelsByFile] = useState({}); // { file: { pageNum: "A003" } } from the title block
+  const pageLabels = labelsForFile(labelsByFile, active); // the active file's only: page numbers repeat across files
   const [sheetGroup, setSheetGroup] = useState([]);   // sheetKeys shown side-by-side; [] = single-sheet mode
   const [sheetLevels, setSheetLevels] = useState({}); // sheetKey → level label ("L1") — persisted (additive `sheet_levels` key); groups the gallery for multi-floor sets
   const [lastGroup, setLastGroup] = useState([]);     // most recent side-by-side composition — "Regroup" restores it
@@ -2421,13 +2423,13 @@ export default function TakeoffCanvas() {
       lead.pageObj.getTextContent().then((tc) => {
         if (stale()) return;
         const lbl = extractSheetNumber(tc, lead.viewport);
-        if (lbl) setPageLabels((m) => (m[lead.pageNum] === lbl ? m : { ...m, [lead.pageNum]: lbl }));
+        if (lbl) setLabelsByFile((m) => withPageLabel(m, active, lead.pageNum, lbl));
         // plan-set search: the same text, at the same RENDER_SCALE viewport
         if (needsTextPass(planIndexRef.current.get(lead.key))) onIndexed(lead.key, pageTextIndex(lead.key, tc, lead.viewport));
       }).catch(() => {});
       if (labeledFileRef.current !== active) {
         labeledFileRef.current = active;
-        setPageLabels((m) => (m[lead.pageNum] ? { [lead.pageNum]: m[lead.pageNum] } : {})); // drop other file's labels
+        setLabelsByFile((m) => labelsOnFileChange(m, active)); // drop other files' labels
         (async () => {
           const pdf = await docFor(active);
           const found = {};
@@ -2439,7 +2441,7 @@ export default function TakeoffCanvas() {
               const tc = await p2.getTextContent();
               const vp2 = p2.getViewport({ scale: RENDER_SCALE });
               const lbl = extractSheetNumber(tc, vp2);
-              if (lbl) { found[n] = lbl; if (Object.keys(found).length % 8 === 0) setPageLabels((m) => ({ ...found, ...m })); }
+              if (lbl) { found[n] = lbl; if (Object.keys(found).length % 8 === 0) setLabelsByFile((m) => withFoundLabels(m, active, found)); }
               const key = n > 1 ? `${active}#${n}` : active;
               const det = detectScale(tc, vp2);
               if (det) setDetectedScales((d) => (d[key]?.label === det.label ? d : { ...d, [key]: det }));
@@ -2447,7 +2449,7 @@ export default function TakeoffCanvas() {
               if (needsTextPass(planIndexRef.current.get(key))) onIndexed(key, pageTextIndex(key, tc, vp2));
             } catch { /* skip */ }
           }
-          if (!stale() && Object.keys(found).length) setPageLabels((m) => ({ ...found, ...m }));
+          if (!stale() && Object.keys(found).length) setLabelsByFile((m) => withFoundLabels(m, active, found));
         })();
       }
     })().catch((e) => { if (stale() || e?.name === "RenderingCancelledException") return; setErr(String(e.message || e)); setStatus("error"); });
