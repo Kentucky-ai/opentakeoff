@@ -17,7 +17,9 @@
 // least 14 and 28 (at 200 DPI two BASE rows still land in Base by their
 // words); no printed section that differs from the vector read's (a missing
 // one is No section); and the blank-band section reset ({ ocr: true }) no
-// worse than the read without it on any of these.
+// worse than the read without it on any of these. Then the 100 DPI copy with
+// section headings taken out pins the reset itself: a row never carries the
+// heading of the code group above it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -94,5 +96,29 @@ for (const [dpi, sectionFloor, groupFloor] of [[200, 12, 14], [100, 28, 28]] as 
     assert.ok(on.section >= off.section, "section agreement");
     assert.ok(on.group >= off.group, "group agreement");
     assert.ok(on.wrongSection.length <= off.wrongSection.length, "wrong sections");
+  });
+}
+
+// The 200 DPI copy lost its FLOORING, BASE and WALLS headings, all of them,
+// so it never shows a row carried into the next code group. Take headings out
+// of the 100 DPI copy, one group at a time, and the plain read carries the
+// heading above into the group below (measured: BASE+WALLS 10 rows wrong,
+// BASE 3, WALLS 7, MILLWORK 4); the blank-band reset leaves those rows with
+// no section instead. The heading words are removed by their exact text, each
+// printed once in the fixture.
+for (const drop of [["BASE", "WALLS"], ["BASE"], ["WALLS"], ["MILLWORK"]]) {
+  test(`with the ${drop.join(" and ")} heading${drop.length > 1 ? "s" : ""} missing, the blank-band reset leaves no row under the heading above`, async () => {
+    const fx = fixture(100);
+    const key = await vectorKey(fx);
+    for (const h of drop) assert.equal(fx.words.filter((w) => w.str === h).length, 1, `the fixture prints ${h} once`);
+    const words = fx.words.filter((w) => !drop.includes(w.str));
+    const spans = wordsToSpans(words as OcrWord[]);
+    const off = score(readScheduleSpans(spans), key);
+    const on = score(readScheduleSpans(spans, { ocr: true }), key);
+    assert.ok(off.wrongSection.length > 0, "without the reset, some row carries the heading above");
+    assert.deepEqual(on.wrongSection, [], `with the reset, no printed section other than the vector read's (without it: ${off.wrongSection.join(", ")})`);
+    assert.deepEqual(on.wrong, [], "no tag the vector read lacks");
+    assert.ok(on.exact >= 28, `tags: ${on.exact}/28`);
+    assert.ok(on.section >= off.section && on.group >= off.group, "the reset is no worse on section or group agreement");
   });
 }
