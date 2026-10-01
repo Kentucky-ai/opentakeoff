@@ -495,19 +495,18 @@ to Drive in the background, so the canvas is instant and survives a flaky networ
 
 <br/>
 
-OpenTakeoff can ask a vision model **you** provide to read things off the plan—starting with
-the drawn scale when a sheet's text doesn't state one (scans, rotated notes, image title
-blocks). Click **AI** in the toolbar and point it at an **OpenAI-style** endpoint (the default;
-local runtimes on your own machine speak it and need no key) or an **Anthropic-style** one,
-plus a vision-capable model id.
+The in-canvas takeoff agent runs on a vision model **you** provide: type a goal and it aims the
+app's own tools at it. Open **Work → Agent**, then **AI settings…**, and point it at an
+**OpenAI-style** endpoint (the default; local runtimes on your own machine speak it and need no
+key) or an **Anthropic-style** one, plus a vision-capable model id.
 
-- **What's sent, and only when you click an AI button:** one snapshot of the sheet region in
-  question, plus the question—to *your* endpoint. Never the whole plan file, file names,
-  project names, or your takeoff.
-- **Nothing configured = nothing exists.** Unconfigured builds add zero UI beyond the button
-  and make zero AI network calls. No telemetry either way.
-- The answer is only ever a **suggestion**, landing in the same confirm-to-apply flow as a
-  text-detected scale, with the calibrated guide bar shown on acceptance.
+- **What's sent, and only while a run you started is going:** your goal, the prompts, and the
+  results of the tools the agent calls—sheet titles, text and schedule rows it reads, images of
+  the sheet regions it looks at, your conditions' finish tags—to *your* endpoint. Never the
+  whole plan file.
+- **Nothing configured = nothing exists.** Unconfigured builds make zero AI network calls; the
+  Agent panel only offers AI settings. No telemetry either way.
+- What the agent finds is only ever a **proposal**: each shape waits, dashed, until you accept it.
 - The key is stored in this browser's localStorage—use one you can revoke. Deployers:
   `VITE_AI_ENDPOINT` / `VITE_AI_MODEL` / `VITE_AI_PROVIDER` bake team defaults, but **never set
   `VITE_AI_KEY` on a public deploy**—Vite inlines it into the shipped bundle.
