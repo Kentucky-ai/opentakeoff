@@ -53,11 +53,12 @@ export function ocrCacheOpts(params: OcrCacheParams): string {
 export const OCR_CACHE_OPTS = ocrCacheOpts(OCR_CACHE_PARAMS);
 
 /** Opts hashes of past reads kept, flagged stale, rather than dropped: the
- * lines stay in search and Copy and the Read control offers Read again.
- * Only a change that makes old reads less complete, not wrong, adds its old
- * hash here: other mismatches (a seam-rule or DPI fix) stay misses, so a
- * known-wrong read isn't served. d67721d4: per-line recognition at batch 6,
- * before #484. */
+ * lines stay in search and Copy and the Read control offers Read again. An
+ * old hash goes here when serving its reads, marked stale, beats losing
+ * search and Copy on every page read under it until each is read again; a
+ * seam-rule or DPI fix stays a miss, so a read known to be wrong where it
+ * matters isn't served. d67721d4: per-line recognition at batch 6, before
+ * #484 (it misread or dropped some rows; most of its text still searches). */
 export const STALE_OK_OPTS: readonly string[] = ["d67721d4"];
 
 /** The meta key for one page (1-based) of one PDF. Throws on a bad hash or page. */
