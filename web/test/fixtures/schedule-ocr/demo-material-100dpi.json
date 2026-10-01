@@ -4,9 +4,11 @@
     "Captured in Chrome from the app (#470) with a wrap on the OCR worker's postMessage that logged the box's render request (rect, zoom and raster size here) and the worker's answer (words, in rs px on the page).",
     "Rounded to 2 decimals; each word's confidence dropped.",
     "Redacted (CONTRIBUTING.md bans brand names in sample data): every word with a letter or digit below the header row whose box centre is right of x = 3326 (the vector PDF's ruling between the MATERIAL/PRODUCT and MANUFACTURER cells), i.e. MANUFACTURER and every column right of it, reads \"REDACTED\"; boxes are unchanged and punctuation-only words are kept. 105 words redacted; 0 word box(es) below the header straddle x = 3326.",
-    "Read by test/scheduleOcrReplay.test.ts against the vector read of the same rect."
+    "Read by test/scheduleOcrReplay.test.ts against the vector read of the same rect.",
+    "Read under ppu-paddle-ocr's per-line recognition at batch 6 (recognition), the engine before #484; the app now reads per box at batch 1."
   ],
   "engine": "ppocrv5-mobile-en-1+ort-1.26.0-dev.20260416-b7804b056c",
+  "recognition": { "strategy": "per-line", "recBatchSize": 6 },
   "source": {
     "pdf": "web/public/demo/sample-finish-plan.pdf",
     "page": 2,

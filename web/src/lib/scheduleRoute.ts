@@ -86,6 +86,20 @@ export function routeScheduleRead(read: ScheduleRead, box: BoxText): ImportRoute
  *  rendered and read. Both carry Cancel. */
 export const OCR_STARTING_MESSAGE = "Starting the on-device reader…";
 export const OCR_READING_MESSAGE = "Reading the schedule on this device…";
+
+/** The reading line once the read reports progress. A box read in one
+ *  raster keeps the plain line; a box read in several (tiles, then patches
+ *  across their seams) adds how many are read, never "n of N": the plan
+ *  grows when patches join it, and a count that goes back reads as a fault.
+ *  Takes seams.ts's SeamProgress (only these two counts). */
+export function ocrReadingMessage(p: { rastersDone: number; rastersPlanned: number } | null | undefined): string {
+  if (!p || p.rastersPlanned <= 1 || p.rastersDone < 1) return OCR_READING_MESSAGE;
+  return `${OCR_READING_MESSAGE} (${p.rastersDone} ${p.rastersDone === 1 ? "raster" : "rasters"} read)`;
+}
+
+/** A box past the on-device reader's tile cap (OCR_MAX_TILES), refused
+ *  before the engine starts: no download notice for a read that can't run. */
+export const OCR_TOO_LARGE_MESSAGE = "That box is too large to read — draw it around the schedule only.";
 /** …and while it waits for a page read or copy read (#471) ahead of it: the
  *  same words as Copy text's own waiting line (an inline string there). */
 export const OCR_WAITING_MESSAGE = "Waiting for another read…";

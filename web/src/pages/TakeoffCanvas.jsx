@@ -66,9 +66,9 @@ import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
 import { rowToSeed } from "../lib/scheduleRows";   // the reader (scheduleRead, which loads the sheet graph) is import()ed on use
-import { routeScheduleRead, countTextRuns, heldKeyWouldPress, EMPTY_BOX_MESSAGE, OCR_BUSY_MESSAGE, OCR_STARTING_MESSAGE, OCR_READING_MESSAGE, OCR_WAITING_MESSAGE } from "../lib/scheduleRoute";
+import { routeScheduleRead, countTextRuns, heldKeyWouldPress, EMPTY_BOX_MESSAGE, OCR_BUSY_MESSAGE, OCR_STARTING_MESSAGE, OCR_WAITING_MESSAGE, ocrReadingMessage } from "../lib/scheduleRoute";
 import { readBoxOnDevice } from "../lib/scheduleOcrRead";
-import { rasterizeRegion } from "../lib/ocr/rasterize";
+import { boxReadWords, boxTooLarge } from "../lib/ocr/boxRead";
 import { pageSpans, spansInRect, graphSpans } from "../lib/pageSpans";
 import { normalizeTag } from "../lib/scheduleEdit";
 // Condition twins — the whole inheritance rule is in lib/variants.ts (test/variants.test.ts);
@@ -831,19 +831,22 @@ export default function TakeoffCanvas() {
   // status line, act on nothing. Only the holder writes a result.
   const ocrReadRef = useRef(null);
   // The footer's status line: null | "starting" | "waiting" (another on-device
-  // read goes first) | "reading". Never commitMsg.
+  // read goes first) | "reading". Never commitMsg. ocrReadProgress: the
+  // read's last SeamProgress, for the reading line's raster count.
   const [ocrRead, setOcrRead] = useState(null);
+  const [ocrReadProgress, setOcrReadProgress] = useState(null);
   /** End `m`'s hold on the read, if it still has it: the lock and the line go. */
   function releaseImportRead(m) {
     if (ocrReadRef.current !== m) return;
     ocrReadRef.current = null;
     setOcrRead(null);
+    setOcrReadProgress(null);
   }
   /** Cancel, Esc, a sheet switch, the gallery, guide, report or revisions,
    *  unmount: stop the read and let go at once, so nothing that can't be
    *  stopped keeps the lock or the line. The render takes the read's signal,
    *  so a render under way is cancelled and its canvas freed
-   *  (rasterizeRegion). Recognitions never overlap: the client keeps an aborted one running until the worker
+   *  (boxReadWords → rasterizeRegion). Recognitions never overlap: the client keeps an aborted one running until the worker
    *  replies, and a read started right after queues behind it. Aborted while
    *  the notice waits, the session answers this read and closes the notice;
    *  during the download it stops the download, and the next box asks again. */
@@ -7240,8 +7243,10 @@ export default function TakeoffCanvas() {
   // .readScheduleSpans, loaded on first use). scheduleRoute.ts decides what
   // the box becomes — rows, a refusal, the re-drag hint, or, when its text
   // holds no table and at most a few runs (a raster schedule, or an empty
-  // box), a read with the on-device OCR reader (#470): the box is rendered
-  // at OCR's DPI and its words go to the same finish reader
+  // box), a read with the on-device OCR reader (#470): the box is read as a
+  // page read is, tiled at OCR's DPI (lib/ocr/boxRead.ts, #484; a box past
+  // the tile cap is refused before the engine starts), and its words go to
+  // the same finish reader
   // (scheduleOcrRead.readBoxOnDevice). That read asks for the engine's
   // download the first time (the notice), shows its status line with Cancel
   // in the footer, and is cancelled by Cancel, Esc, a sheet switch, or the
@@ -7291,8 +7296,9 @@ export default function TakeoffCanvas() {
       setOcrRead("starting");
       const result = await readBoxOnDevice({
         session: ocrSession,
-        rasterize: (signal) => rasterizeRegion(pageObj, rs, rect, { signal }),
-        recognize: (raster, signal) => getOcrClient().recognize(raster, { signal }),
+        readWords: boxReadWords(pageObj, rs, rect, isCurrent),
+        tooLarge: () => boxTooLarge(pageObj, rs, rect),
+        onProgress: (p) => { if (isCurrent()) setOcrReadProgress(p); },
         read: (ocrSpans) => readScheduleSpans(ocrSpans, { ocr: true }),   // the OCR words' blank-band section reset
         isCurrent,
         whenIdle: () => getOcrClient().whenIdle(),   // a page read or copy read (#471) under way goes first
@@ -10988,7 +10994,7 @@ export default function TakeoffCanvas() {
             is up (the notice owns Cancel and Esc then) */}
         <span data-import-read-status="" aria-live="polite" style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
           {ocrRead && !ocrNotice && (<>
-            <span>{ocrRead === "starting" ? OCR_STARTING_MESSAGE : ocrRead === "waiting" ? OCR_WAITING_MESSAGE : OCR_READING_MESSAGE}</span>
+            <span>{ocrRead === "starting" ? OCR_STARTING_MESSAGE : ocrRead === "waiting" ? OCR_WAITING_MESSAGE : ocrReadingMessage(ocrReadProgress)}</span>
             <button type="button" className="btn-ghost" onClick={cancelImportRead} style={{ padding: "var(--sp-1) var(--sp-2)" }}>Cancel</button>
           </>)}
         </span>

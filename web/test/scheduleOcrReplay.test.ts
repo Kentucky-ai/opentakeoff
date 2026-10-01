@@ -7,8 +7,13 @@
 // The fixtures (test/fixtures/schedule-ocr/, each file's `about` says how
 // they were captured and redacted) are the OCR engine's words for Import
 // from schedule's box on raster copies of page 2 at 200 and 100 DPI. The
-// box is rendered at ocrRenderFactor's zoom; a fixture captured at another
-// zoom no longer says what the canvas would read, so it fails as stale.
+// box is read as planTiles plans it (lib/ocr/boxRead.ts): under the cap, one
+// tile at its zoom; a fixture captured at another zoom, or that the plan now
+// splits into tiles, no longer says what the canvas would read, so it fails
+// as stale. Both were captured under ppu's per-line recognition at batch 6,
+// before #484 (each file's `recognition`); the canvas now reads per box at
+// batch 1 (engineOptions.ts). They replay recorded words through the
+// reader, so they still pin the reader, not what today's engine returns.
 //
 // Scores, both copies: no tag the vector read lacks; at least 28 of its
 // tags; the row's printed section equal to the vector read's for at least 12
@@ -33,13 +38,15 @@ import { fileURLToPath } from "node:url";
 import { pageSpans, spansInRect, graphSpans } from "../src/lib/pageSpans.ts";
 import { readScheduleSpans, type ScheduleRead } from "../src/lib/scheduleRead.ts";
 import { wordsToSpans, type OcrWord } from "../src/lib/ocr/types.ts";
-import { ocrRenderFactor } from "../src/lib/ocr/rasterize.ts";
+import { planTiles } from "../src/lib/ocr/seams.ts";
 import type { ScheduleRow } from "../src/lib/scheduleRows.ts";
 
 type Rect = { x0: number; y0: number; x1: number; y1: number };
 interface Fixture {
   source: { page: number; pageSize: { w: number; h: number; rotate: number } };
   rs: number; rect: Rect; zoom: number;
+  /** the recognition options the words were read under */
+  recognition: { strategy: string; recBatchSize: number };
   words: Array<{ str: string; x: number; y: number; w: number; h: number }>;
 }
 const fixture = (dpi: number): Fixture =>
@@ -98,7 +105,9 @@ function score(read: ScheduleRead, key: ScheduleRow[]): Score {
 for (const [dpi, sectionFloor, groupFloor] of [[200, 12, 14], [100, 28, 28]] as const) {
   test(`the ${dpi} DPI on-device read of the demo material schedule scores against the vector read`, async () => {
     const fx = fixture(dpi);
-    assert.equal(fx.zoom, ocrRenderFactor(fx.rs, fx.rect.x1 - fx.rect.x0, fx.rect.y1 - fx.rect.y0), "stale fixture — capture again");
+    const plan = planTiles(fx.rect, fx.rs);
+    assert.deepEqual([plan.tiles.length, plan.zoom], [1, fx.zoom], "stale fixture — capture again");
+    assert.deepEqual(fx.recognition, { strategy: "per-line", recBatchSize: 6 }, "recorded under per-line: see the header");
     const key = await vectorKey(fx);
     assert.equal(key.length, 28);
     const spans = wordsToSpans(fx.words as OcrWord[]);

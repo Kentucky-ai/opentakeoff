@@ -20,7 +20,8 @@ import assert from "node:assert/strict";
 import {
   routeScheduleRead, routeOcrRead, refusalMessage, refusalWhy, countTextRuns, ocrUnavailableMessage, ocrFailedMessage,
   NO_SCHEDULE_HINT, EMPTY_BOX_MESSAGE, OCR_NO_ROWS_MESSAGE, OCR_DECLINED_MESSAGE, OCR_BUSY_MESSAGE, OCR_STARTING_MESSAGE,
-  OCR_READING_MESSAGE, OCR_WAITING_MESSAGE, STRAY_TEXT_MAX_RUNS, heldKeyWouldPress, IMPORT_READ_STATUS_ATTR,
+  OCR_READING_MESSAGE, OCR_WAITING_MESSAGE, OCR_TOO_LARGE_MESSAGE, STRAY_TEXT_MAX_RUNS, heldKeyWouldPress, IMPORT_READ_STATUS_ATTR,
+  ocrReadingMessage,
 } from "../src/lib/scheduleRoute.ts";
 import type { RefusalReason } from "../src/lib/scheduleRead.ts";
 import type { ScheduleRow } from "../src/lib/scheduleRows.ts";
@@ -180,6 +181,22 @@ test("declined, failed, and the status lines are worded as decided", () => {
   assert.equal(OCR_STARTING_MESSAGE, "Starting the on-device reader…");
   assert.equal(OCR_READING_MESSAGE, "Reading the schedule on this device…");
   assert.equal(OCR_WAITING_MESSAGE, "Waiting for another read…", "Copy text's waiting line, word for word");
+  assert.equal(OCR_TOO_LARGE_MESSAGE, "That box is too large to read — draw it around the schedule only.");
+});
+
+test("the reading line counts rasters read only when the box takes several, never as n/N", () => {
+  const p = (rastersDone: number, rastersPlanned: number) => ({ rastersDone, rastersPlanned });
+  // no progress yet, or a box read in one raster: the plain line
+  assert.equal(ocrReadingMessage(null), OCR_READING_MESSAGE);
+  assert.equal(ocrReadingMessage(undefined), OCR_READING_MESSAGE);
+  assert.equal(ocrReadingMessage(p(0, 1)), OCR_READING_MESSAGE);
+  assert.equal(ocrReadingMessage(p(1, 1)), OCR_READING_MESSAGE);
+  // several planned, none read yet: still the plain line, not "0 rasters"
+  assert.equal(ocrReadingMessage(p(0, 4)), OCR_READING_MESSAGE);
+  // several: how many are read (the total grows when patches join the plan)
+  assert.equal(ocrReadingMessage(p(1, 4)), "Reading the schedule on this device… (1 raster read)");
+  assert.equal(ocrReadingMessage(p(3, 4)), "Reading the schedule on this device… (3 rasters read)");
+  assert.equal(ocrReadingMessage(p(5, 6)), "Reading the schedule on this device… (5 rasters read)");
 });
 
 /** A fake element: a tag, its attributes and a parent. closest() matches a
