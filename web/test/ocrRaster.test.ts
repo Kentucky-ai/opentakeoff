@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { renderDims, cropBoxToWord, unpadCropBox, OCR_DETECTION_PADDING, type CropBox, type RenderGeometry } from "../src/lib/ocr/raster.ts";
 import { wordsToTokens, type OcrWord } from "../src/lib/ocr/types.ts";
-import { ocrRenderFactor, OCR_TARGET_DPI } from "../src/lib/ocr/rasterize.ts";
+import { ocrRenderFactor, OCR_TARGET_DPI, rasterizeRegion } from "../src/lib/ocr/rasterize.ts";
 import { SCAN_MAX_DIM } from "../src/lib/scheduleScan.ts";
 import { RENDER_SCALE } from "../src/lib/takeoffConstants.ts";
 import { cacheKey, cacheName } from "../src/lib/ocr/manifest.ts";
@@ -120,8 +120,8 @@ test("cropBoxToWord carries confidence only when given", () => {
   assert.equal("confidence" in cropBoxToWord("X", { x0: 0, y0: 0, x1: 10, y1: 10 }, g), false);
 });
 
-test("wordsToTokens keeps the parser's {str,x,y,h} and drops w and confidence", () => {
-  assert.deepEqual(wordsToTokens([{ str: "A", x: 1, y: 2, w: 3, h: 4, confidence: 0.5 }]), [{ str: "A", x: 1, y: 2, h: 4 }]);
+test("wordsToTokens keeps the parser's {str,x,y,h} and the width, drops confidence", () => {
+  assert.deepEqual(wordsToTokens([{ str: "A", x: 1, y: 2, w: 3, h: 4, confidence: 0.5 }]), [{ str: "A", x: 1, y: 2, h: 4, w: 3 }]);
 });
 
 // ── render factor ────────────────────────────────────────────────────────────
@@ -163,4 +163,153 @@ test("cache keys are synthetic, content-addressed and independent of the fetch u
   assert.equal(cacheKey({ name: "ort-wasm", bytes: 1, sha256: sha }), "/models/ocr/ort-wasm-a431985659dc.wasm");
   assert.equal(cacheKey({ name: "dict", url: "/models/ocr/dict.txt", bytes: 1, sha256: sha }), "/models/ocr/dict-a431985659dc.txt");
   assert.equal(cacheName("ppocrv5-mobile-en-1+ort-1.26.0"), "opentakeoff-ocr-ppocrv5-mobile-en-1+ort-1.26.0");
+});
+
+// ── rasterizeRegion: abort and canvas release (#471) ─────────────────────────
+// No DOM under Node, so document.createElement is stubbed for these tests
+// with a canvas that logs what happens to it. The pdf.js page is a fake whose
+// render task settles when the test says so, and whose cancel() rejects it the
+// way pdf.js does (a RenderingCancelledException, not an AbortError).
+
+type Log = string[];
+function fakeCanvas(log: Log) {
+  let w = 0, h = 0;
+  return {
+    get width() { return w; },
+    set width(v: number) { w = v; log.push(`width=${v}`); },
+    get height() { return h; },
+    set height(v: number) { h = v; log.push(`height=${v}`); },
+    getContext() {
+      return { getImageData: (_x: number, _y: number, gw: number, gh: number) => { log.push("getImageData"); return { data: new Uint8ClampedArray(gw * gh * 4) }; } };
+    },
+    // a real canvas sized to 0 encodes as "data:,"
+    toDataURL() { log.push("toDataURL"); return w && h ? "data:image/png;base64,AAAA" : "data:,"; },
+  };
+}
+
+function fakeRenderPage(log: Log) {
+  let settle!: { resolve: () => void; reject: (e: unknown) => void };
+  let cancels = 0;
+  const page = {
+    getViewport: ({ scale }: { scale: number }) => ({ scale }),
+    render() {
+      log.push("render");
+      const promise = new Promise<void>((resolve, reject) => { settle = { resolve, reject }; });
+      return {
+        promise,
+        cancel() {
+          cancels++;
+          log.push("cancel");
+          const e = new Error("Rendering cancelled, page 1");
+          e.name = "RenderingCancelledException";
+          settle.reject(e);
+        },
+      };
+    },
+  };
+  return { page, finish: () => settle.resolve(), cancels: () => cancels };
+}
+
+async function withFakeDocument<T>(log: Log, fn: () => Promise<T>): Promise<T> {
+  const g = globalThis as { document?: unknown };
+  const had = "document" in g, prev = g.document;
+  g.document = { createElement: (tag: string) => { log.push(`create ${tag}`); return fakeCanvas(log); } };
+  try { return await fn(); } finally { if (had) g.document = prev; else delete g.document; }
+}
+
+const RECT = { x0: 0, y0: 0, x1: 100, y1: 80 };
+const tick = () => new Promise((r) => setTimeout(r, 0));
+/** Rejects if `p` hasn't settled within `ms`, so a render that ignores the
+ * signal fails the test instead of hanging the run. */
+const within = <T>(p: Promise<T>, ms = 500) => Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`still pending after ${ms} ms`)), ms).unref())]);
+
+test("rasterizeRegion releases the canvas right after reading its pixels", async () => {
+  const log: Log = [];
+  const { page, finish } = fakeRenderPage(log);
+  const out = await withFakeDocument(log, async () => {
+    const p = rasterizeRegion(page, RENDER_SCALE, RECT);
+    await tick();
+    finish();
+    return p;
+  });
+  assert.equal(out.rgba.length, out.width * out.height * 4, "the pixels survive the release");
+  const read = log.indexOf("getImageData");
+  assert.ok(read > 0);
+  assert.deepEqual(log.slice(read + 1).sort(), ["height=0", "width=0"], JSON.stringify(log));
+});
+
+test("rasterizeRegion with png: encodes first, then releases the canvas", async () => {
+  const log: Log = [];
+  const { page, finish } = fakeRenderPage(log);
+  const out = await withFakeDocument(log, async () => {
+    const p = rasterizeRegion(page, RENDER_SCALE, RECT, { png: true });
+    await tick();
+    finish();
+    return p;
+  });
+  assert.equal(out.png, "AAAA");
+  const read = log.indexOf("getImageData"), enc = log.indexOf("toDataURL");
+  assert.ok(read > 0 && enc > read, JSON.stringify(log));
+  assert.deepEqual(log.slice(enc + 1).sort(), ["height=0", "width=0"], JSON.stringify(log));
+});
+
+test("aborting rasterizeRegion cancels the pdf.js render task, rejects AbortError and releases the canvas", async () => {
+  const log: Log = [];
+  const { page, cancels } = fakeRenderPage(log);
+  const ac = new AbortController();
+  await withFakeDocument(log, async () => {
+    const p = rasterizeRegion(page, RENDER_SCALE, RECT, { signal: ac.signal });
+    await tick();
+    ac.abort();
+    assert.equal(cancels(), 1, "abort cancels the render task at once");
+    await assert.rejects(within(p), (e: Error) => e.name === "AbortError");
+  });
+  assert.equal(cancels(), 1);
+  assert.ok(!log.includes("getImageData"));
+  const c = log.indexOf("cancel");
+  assert.deepEqual(log.slice(c + 1).sort(), ["height=0", "width=0"], JSON.stringify(log));
+});
+
+test("an already-aborted signal renders nothing", async () => {
+  const log: Log = [];
+  const { page } = fakeRenderPage(log);
+  const ac = new AbortController();
+  ac.abort();
+  await withFakeDocument(log, async () => {
+    await assert.rejects(within(rasterizeRegion(page, RENDER_SCALE, RECT, { signal: ac.signal })), (e: Error) => e.name === "AbortError");
+  });
+  assert.deepEqual(log, []);
+});
+
+test("a render that finishes as the read is aborted: its pixels are never read", async () => {
+  // pdf.js's cancel() does nothing once the task is done, so the abort
+  // arrives after a resolved render.
+  const log: Log = [];
+  const { page, finish } = fakeRenderPage(log);
+  const ac = new AbortController();
+  await withFakeDocument(log, async () => {
+    const p = rasterizeRegion(page, RENDER_SCALE, RECT, { signal: ac.signal });
+    await tick();
+    finish();
+    ac.abort();
+    await assert.rejects(within(p), (e: Error) => e.name === "AbortError");
+  });
+  assert.ok(!log.includes("getImageData"), JSON.stringify(log));
+  assert.deepEqual(log.slice(-2).sort(), ["height=0", "width=0"]);
+});
+
+test("once rasterizeRegion is done, a later abort of the same signal cancels nothing", async () => {
+  // The signal outlives the render (one signal covers a whole tiled read):
+  // the listener must go when the render does.
+  const log: Log = [];
+  const { page, finish, cancels } = fakeRenderPage(log);
+  const ac = new AbortController();
+  await withFakeDocument(log, async () => {
+    const p = rasterizeRegion(page, RENDER_SCALE, RECT, { signal: ac.signal });
+    await tick();
+    finish();
+    await p;
+  });
+  ac.abort();
+  assert.equal(cancels(), 0);
 });

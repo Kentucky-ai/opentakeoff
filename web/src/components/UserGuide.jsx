@@ -14,8 +14,9 @@
 // USER_GUIDE.md §15, which is itself maintained against the code — if a
 // shortcut changes, §15 and this table move together.
 import { oneClickEnabled, commandBoxEnabled } from "../lib/gate.js";
-import { useEffect } from "react";
-import { Z } from "../lib/ui.js";
+import { useEffect, useRef } from "react";
+import { inOtherModal, otherModalOpen } from "../lib/modalKeys";
+import { Z, S } from "../lib/ui.js";
 import { keyLabel, keyText, isApplePlatform } from "../lib/keys.ts";
 
 const GUIDE_URL = "https://github.com/Kentucky-ai/opentakeoff/blob/main/docs/USER_GUIDE.md";
@@ -29,7 +30,9 @@ function Kbd({ children }) {
   );
 }
 
-function Keys({ combo }) {
+export function Keys({ combo }) {
+  // A tool with no key (Copy text) says where it lives instead of an empty cell.
+  if (!combo.length) return <span style={S.monoLabel}>rail</span>;
   // Labels only — the handlers already treat ⌘ and Ctrl as one key. See lib/keys.ts.
   const apple = isApplePlatform();
   return (
@@ -77,6 +80,7 @@ export const TOOLS = [
   [["H"], "Highlighter"], [["K"], "Check a dimension against what the drawing says"],
   [["N"], "Dimension line — a standalone length label at the sheet's scale (markup, never counted)"],
   [["V"], "Select"], [["G"], "Sheet gallery"],
+  [[], "Copy text (no key) — box a note or schedule; its text goes on your clipboard"],
   [["1", "–", "9"], "Arm condition N"],
   ...(commandBoxEnabled() ? [[["hold", "M"], "Push-to-talk dictation — release runs it, Esc discards"]] : []),
 ];
@@ -111,9 +115,14 @@ export default function UserGuide({ onClose }) {
   // looking for the manual. Owning the key here makes dismissal independent of
   // whatever view is behind. Capture phase + stopPropagation so the same press
   // cannot also back out of a trace the user cannot see behind the overlay.
+  // Esc pressed inside another modal over the guide (the OCR download
+  // notice), or with one open anywhere while focus is on the body, is that
+  // modal's own: it is the one on top.
+  const dialogRef = useRef(null);
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== "Escape") return;
+      if (inOtherModal(e.target, dialogRef.current) || otherModalOpen(document, dialogRef.current)) return;
       e.preventDefault();
       e.stopPropagation();
       onClose();
@@ -130,7 +139,11 @@ export default function UserGuide({ onClose }) {
         display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "5vh 16px", overflow: "auto",
       }}>
       <div
+        ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
+        // keys typed in the guide stay in it: the canvas's window shortcuts
+        // (and the gallery's, which step aside for a modal) never see them
+        onKeyDown={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="OpenTakeoff user guide"

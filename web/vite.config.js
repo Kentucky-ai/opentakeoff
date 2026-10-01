@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -49,15 +48,5 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
-    // The OCR client (#469) has no caller until #470/#471, so nothing would
-    // pull the OCR worker into the build and check-ocr-dist would check
-    // nothing. This second entry builds it. Nothing loads the chunk at
-    // runtime. Remove the entry once the app imports the client.
-    rollupOptions: {
-      input: {
-        index: fileURLToPath(new URL("./index.html", import.meta.url)),
-        ocr: fileURLToPath(new URL("./src/lib/ocr/client.ts", import.meta.url)),
-      },
-    },
   },
 });

@@ -5,8 +5,12 @@
 // dialog takes ScheduleRow.
 
 /** A positioned text token as extractRegionText emits it: baseline-left
- *  origin (x, y) in image px, glyph height h, no width. */
-export type Token = { str: string; x: number; y: number; h: number };
+ *  origin (x, y) in image px, glyph height h. ang: baseline direction in
+ *  degrees [0,360), clockwise on screen (y down) — 0 reads left→right, 90
+ *  top→bottom, 180 upside down, 270 bottom→top. w: the run's length in px
+ *  along that direction, when pdf.js reports one. Both optional: OCR lines
+ *  carry no angle, and the schedule reader reads neither. */
+export type Token = { str: string; x: number; y: number; h: number; ang?: number; w?: number };
 
 /** A takeoff category. "wall_protection" is its own (a CSI division of its
  *  own); "unassigned" is a row the schedule gives no section and whose words

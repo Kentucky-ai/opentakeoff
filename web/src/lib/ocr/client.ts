@@ -94,6 +94,14 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
   let seq = 0;
   const queue: Job[] = [];
   let running: Job | null = null;
+  // whenIdle's callers, answered once nothing is running or queued.
+  let idleWaiters: (() => void)[] = [];
+  function checkIdle() {
+    if (running || queue.length || !idleWaiters.length) return;
+    const ws = idleWaiters;
+    idleWaiters = [];
+    for (const w of ws) w();
+  }
 
   async function missingFiles(m: OcrManifest) {
     try {
@@ -209,6 +217,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
       j.cleanup();
       if (!j.aborted) j.reject(err);
     }
+    checkIdle();
   }
 
   function discardWorker(err: Error) {
@@ -295,7 +304,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
   function pump() {
     while (!running && worker) {
       const job = queue.shift();
-      if (!job) return;
+      if (!job) break;
       running = job;
       const { rgba, width, height, geometry } = job.region;
       try {
@@ -309,6 +318,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
         if (!job.aborted) job.reject(err instanceof Error ? err : new Error(String(err)));
       }
     }
+    checkIdle();
   }
 
   /** Read a rendered region; words come back in the region's sheet coords.
@@ -340,6 +350,17 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
     });
   }
 
+  /** Resolves once no read is running at the worker or queued for it: an
+   * aborted read counts as running until the worker's late reply (its
+   * caller was answered at the abort). A page read waits on this before its
+   * first raster, so reads never overlap in the worker. Never rejects. */
+  function whenIdle(): Promise<void> {
+    return new Promise((resolve) => {
+      idleWaiters.push(resolve);
+      checkIdle();
+    });
+  }
+
   /** End the worker for good: reject pending reads, resolve pending starts
    * aborted. Later ensureReady calls resolve aborted without a worker. */
   function dispose() {
@@ -350,7 +371,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
     discardWorker(new Error("OCR client disposed"));
   }
 
-  return { probe, ensureReady, recognize, dispose };
+  return { probe, ensureReady, recognize, whenIdle, dispose };
 }
 
 export type OcrClient = ReturnType<typeof createOcrClient>;

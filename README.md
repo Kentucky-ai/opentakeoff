@@ -528,6 +528,7 @@ key) or an **Anthropic-style** one, plus a vision-capable model id.
 | **Supporting Materials** | Labor + subfloor type, coverage rate × basis (incl. figured seam LF) → rounded order quantities, trowel/roller presets, grout calculator |
 | **Roll goods** | Per-condition roll setup → lanes, seams, multi-roll splits, to-scale cuts with drag-to-reorder nesting, Roll Order LF + Rolls + figured Seam LF on every export |
 | **Multi-sheet** | Sheet gallery, tabs and side-by-side groups, Regroup, levels, **stitching across a match line**, PDF layer roles |
+| **Search and copy** | Search every sheet's text from the gallery, **Copy text** from a box or a whole sheet, and read a scanned sheet on-device (OCR, labelled wherever it's used) |
 | **Report** | Per-condition Floor/Wall/Border SF, LF, EA, SY with and without waste, plus the combined buy list; columns, grouping, saved templates |
 | **Export** | CSV, JSON, **Excel (.xlsx)**, print, **Marked Set PDF**, RFI CSV/JSON |
 | **Revisions** | Save at each bid revision, compare quantity deltas per condition/sheet/buy list, guarded restore |
