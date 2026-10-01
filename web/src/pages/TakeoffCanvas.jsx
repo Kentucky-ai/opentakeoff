@@ -1696,10 +1696,12 @@ export default function TakeoffCanvas() {
   const removeFromProject = useCallback(async (name) => {
     if (typeof store.removeFromProject !== "function") return;
     await store.removeFromProject(name);
-    if (dropFileFromIndex(planIndexRef.current, name)) notifyIndex();
-    pageReader.dropFile(name);   // its OCR statuses go with its index entries
+    // as closePdf: its pdf.js doc, index entries, OCR reads and statuses,
+    // text-layer flags, page count and thumbnail records go with it
+    evictDoc(name);
+    forgetPages([name]);
     reconcileAfterRemoval(name, await refreshSheets());
-  }, [refreshSheets, reconcileAfterRemoval, notifyIndex, pageReader]);
+  }, [refreshSheets, reconcileAfterRemoval, evictDoc, forgetPages]);
   // open dropped/picked files of any kind: PDFs, images, and .zip plan sets all
   // get turned into PDF sheets (in-browser) by ingestFiles, then stashed locally
   async function handleFiles(fileList) {
