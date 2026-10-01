@@ -6403,7 +6403,8 @@ export default function TakeoffCanvas() {
     }));
   }
 
-  // Vector path only — the same spans and reader as Import from schedule.
+  // Text layer only — the same spans and reader as Import from schedule's
+  // text-layer read; unlike Import, a raster box is not read on-device here.
   // Returns the reader's ScheduleRead: { rows } or { rows: [], refused, title? }
   // (agentTools.js words the refusal for the model).
   async function agentReadSchedule(key, region) {

@@ -2,6 +2,8 @@
 // schedule is read by the SAME finish reader the sheet graph indexes with
 // (sheetgraph.ts readFinishTable, marquee mode), so the canvas, the in-canvas
 // agent's read_schedule and the MCP's resolve_tag read one table one way.
+// Import from schedule's raster read (#470) feeds it the on-device reader's
+// words as spans, with opts.ocr set (readScheduleSpans).
 // This module turns that table into approval-dialog rows: it refuses tables
 // that are another schedule family, names each row's category, and joins the
 // cells a row's description is spread over.
