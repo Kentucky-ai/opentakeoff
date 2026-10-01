@@ -1,8 +1,11 @@
 // On-device OCR worker (#469): runs PaddleOCR (PP-OCRv5 mobile, English) off
 // the main thread so the canvas stays smooth during a read. A thin shell: the
-// download, integrity checks, runtime setup and word mapping live in
+// download, integrity checks, runtime setup, the tile's ink preprocessing
+// for recognition (lib/ocr/ink.ts, #481) and word mapping live in
 // lib/ocr/workerCore.ts, tested under Node. This file wires in the browser
-// pieces. `worker-src 'self'` in the CSP covers it.
+// pieces, and wraps ppu's service in splitRecognizer
+// (lib/ocr/splitRecognize.ts) so detection reads the tile as rendered and
+// recognition the grayed copy. `worker-src 'self'` in the CSP covers it.
 //
 // The runtime is the same ORT asyncify build voice uses (vite.config.js
 // aliases ppu's bare `onnxruntime-web` import to the webgpu entry). Its wasm
@@ -12,7 +15,10 @@
 // which says why (forcing WebGPU hung engine start in Chrome, no speed gain).
 import ortWasmUrl from "onnxruntime-web/ort-wasm-simd-threaded.asyncify.wasm?url";
 import ortMjsUrl from "onnxruntime-web/ort-wasm-simd-threaded.asyncify.mjs?url";
-import { createOcrCore, type OcrInMsg, type OcrServiceLike, type OrtLike } from "./lib/ocr/workerCore.ts";
+import { createOcrCore, type OcrInMsg, type OrtLike } from "./lib/ocr/workerCore.ts";
+// No ppu import comes with this (line-grouping.js has no imports), so ppu
+// still loads only after the runtime is configured.
+import { splitRecognizer, type PpuServiceInternals } from "./lib/ocr/splitRecognize.ts";
 
 const core = createOcrCore({
   fetchImpl: (url, init) => fetch(url, init),
@@ -33,7 +39,8 @@ const core = createOcrCore({
     // back to its options.model in web/paddle-ocr.service.web.js), about
     // 12.7 MB for the engine's life. Left alone: clearing them means
     // editing ppu's private state.
-    return svc as unknown as OcrServiceLike;
+    // detector, recognitor and options are protected in ppu's types.
+    return splitRecognizer(svc as unknown as PpuServiceInternals);
   },
   makeCanvas: (rgba, width, height) => {
     const canvas = new OffscreenCanvas(width, height);
