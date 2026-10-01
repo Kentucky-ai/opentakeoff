@@ -3270,8 +3270,17 @@ export default function TakeoffCanvas() {
       if (t === "INPUT" || t === "SELECT" || t === "TEXTAREA") return;
       if (viewRef.current === "gallery") return;
       // a schedule box read on-device holds these keys; Esc cancels the read
-      // (the download notice, when it is up, takes Esc before this sees it)
-      if (ocrReadRef.current?.ocr) { if (e.key === "Escape") { e.preventDefault(); cancelImportRead(); } return; }
+      // (the download notice, when it is up, takes Esc before this sees it).
+      // Esc still ends a copy read (#471) exactly when the Escape branch
+      // below would: its copy steps run only past the offer, ocSel and selVert.
+      if (ocrReadRef.current?.ocr) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          cancelImportRead();
+          if (!agentOfferFnsRef.current?.pending() && !ocSel && selVert == null) { setCopyReceipt(receiptAfterEsc); copyGateRef.current.begin(); }
+        }
+        return;
+      }
       if (e.key === "Backspace" || e.key === "Delete") {
         e.preventDefault();
         if (poly.length) { dropLastPoint(); }
