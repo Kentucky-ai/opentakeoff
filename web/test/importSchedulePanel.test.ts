@@ -2,8 +2,8 @@
 // (category_source "text" — no printed heading names one) must be FLAGGED for
 // review: visible "from description" text, a sibling of the row's <label>
 // (not inside it, so it isn't folded into the checkbox's accessible name), and
-// tied to that row's checkbox by aria-describedby. Heading, none and scan rows
-// carry no flag. Select All / Deselect All render in the dialog, and the tag
+// tied to that row's checkbox by aria-describedby. Heading and none rows carry
+// no flag. Select All / Deselect All render in the dialog, and the tag
 // stays a one-act inline edit (a button that becomes a focused input).
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -19,7 +19,7 @@ const rows = [
   row("TS-1", "transition", "text"),
   row("CPT-1", "floor", "heading"),
   row("PR-1", "unassigned", "none"),
-  row("ACT-1", "ceiling", "scan"),
+  row("ACT-1", "ceiling", "heading"),
   row("HR-1", "wall_protection", "text"),
 ];
 const render = (rs: any[] = rows) => renderToStaticMarkup(
@@ -37,7 +37,7 @@ const describedBy = (html: string) => {
   return out;
 };
 
-test("ImportSchedulePanel: text-sourced rows are flagged 'from description'; heading/none/scan rows are not", () => {
+test("ImportSchedulePanel: text-sourced rows are flagged 'from description'; heading/none rows are not", () => {
   const html = render();
   const flags = [...html.matchAll(/<span[^>]*id="([^"]+)"[^>]*>from description<\/span>/g)].map((m) => m[1]);
   assert.equal(flags.length, 2);
