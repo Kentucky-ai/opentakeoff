@@ -12,6 +12,7 @@
 // read's own answers are worded here too, so every message lives in one place.
 import type { RefusalReason, ScheduleRead } from "./scheduleRead.ts";
 import type { ScheduleRow } from "./scheduleRows.ts";
+import { MODAL_SELECTOR } from "./modalKeys.ts";
 
 /** What the reader keys a row by and what says "finish" — the hint names them
  *  all, not CODE alone. */
@@ -85,6 +86,39 @@ export function routeScheduleRead(read: ScheduleRead, box: BoxText): ImportRoute
  *  rendered and read. Both carry Cancel. */
 export const OCR_STARTING_MESSAGE = "Starting the on-device reader…";
 export const OCR_READING_MESSAGE = "Reading the schedule on this device…";
+
+/** The status line's attribute: keys inside it (its Cancel) are its own. */
+export const IMPORT_READ_STATUS_ATTR = "data-import-read-status";
+
+/** Where Space and Enter type rather than press: a text field, a select or
+ *  an editable region. An <input> counts only as a text field (no type, an
+ *  empty one, or a text-like type); a checkbox, radio or button input would
+ *  be pressed. */
+const TEXT_ENTRY = "textarea, select, [contenteditable=true]";
+const TEXT_INPUT_TYPES = new Set(["", "text", "search", "email", "url", "tel", "password", "number"]);
+
+type KeyTarget = { closest?: (sel: string) => unknown } | null | undefined;
+type InputLike = { getAttribute?: (name: string) => string | null } | null | undefined;
+
+function typesInto(target: KeyTarget): boolean {
+  if (target?.closest?.(TEXT_ENTRY)) return true;
+  const input = target?.closest?.("input") as InputLike;
+  if (!input) return false;
+  return TEXT_INPUT_TYPES.has((input.getAttribute?.("type") ?? "").trim().toLowerCase());
+}
+
+/** While a box is read on-device the canvas's keys are held, but Space and
+ *  Enter would still press whatever button has focus (after the download
+ *  notice closes, focus can land on the Read control): true when this key
+ *  must be kept from doing that. Space and Enter only; never inside the
+ *  status line (Enter or Space on its Cancel still cancels), inside a modal
+ *  (the download notice's Download and Cancel, open while the read waits on
+ *  it) or in a text field. */
+export function heldKeyWouldPress(key: string, target: KeyTarget): boolean {
+  if (key !== " " && key !== "Enter") return false;
+  if (target?.closest?.(`[${IMPORT_READ_STATUS_ATTR}], ${MODAL_SELECTOR}`)) return false;
+  return !typesInto(target);
+}
 
 /** A box drawn while another is still being read. */
 export const OCR_BUSY_MESSAGE = "Still reading the last box.";

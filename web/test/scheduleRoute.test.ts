@@ -20,7 +20,7 @@ import assert from "node:assert/strict";
 import {
   routeScheduleRead, routeOcrRead, refusalMessage, refusalWhy, countTextRuns, ocrUnavailableMessage, ocrFailedMessage,
   NO_SCHEDULE_HINT, EMPTY_BOX_MESSAGE, OCR_NO_ROWS_MESSAGE, OCR_DECLINED_MESSAGE, OCR_BUSY_MESSAGE, OCR_STARTING_MESSAGE,
-  OCR_READING_MESSAGE, STRAY_TEXT_MAX_RUNS,
+  OCR_READING_MESSAGE, STRAY_TEXT_MAX_RUNS, heldKeyWouldPress, IMPORT_READ_STATUS_ATTR,
 } from "../src/lib/scheduleRoute.ts";
 import type { RefusalReason } from "../src/lib/scheduleRead.ts";
 import type { ScheduleRow } from "../src/lib/scheduleRows.ts";
@@ -179,4 +179,91 @@ test("declined, failed, and the status lines are worded as decided", () => {
   assert.equal(OCR_BUSY_MESSAGE, "Still reading the last box.");
   assert.equal(OCR_STARTING_MESSAGE, "Starting the on-device reader…");
   assert.equal(OCR_READING_MESSAGE, "Reading the schedule on this device…");
+});
+
+/** A fake element: a tag, its attributes and a parent. closest() matches a
+ * selector list the way the DOM does for the simple forms used here — a tag,
+ * any number of [attr] / [attr=value] / [attr="value"] parts, or both — on
+ * this element first, then up the parent chain. */
+type FakeEl = { tagName: string; attrs: Record<string, string>; parent: FakeEl | null; getAttribute(n: string): string | null; closest(sel: string): FakeEl | null };
+const matchesSimple = (el: FakeEl, sel: string) => {
+  const m = /^([a-z]*)((?:\[[^\]]+\])*)$/i.exec(sel.trim());
+  if (!m) throw new Error(`fake closest can't read ${sel}`);
+  if (m[1] && m[1].toLowerCase() !== el.tagName.toLowerCase()) return false;
+  for (const a of m[2].matchAll(/\[([^=\]]+)(?:=("?)([^"\]]*)\2)?\]/g)) {
+    const [, name, , value] = a;
+    if (!(name in el.attrs)) return false;
+    if (value !== undefined && el.attrs[name] !== value) return false;
+  }
+  return true;
+};
+const el = (tagName: string, attrs: Record<string, string> = {}, parent: FakeEl | null = null): FakeEl => {
+  const self: FakeEl = {
+    tagName: tagName.toUpperCase(), attrs, parent,
+    getAttribute: (n) => (n in attrs ? attrs[n] : null),
+    closest: (sel) => {
+      const parts = sel.split(",");
+      for (let e: FakeEl | null = self; e; e = e.parent) if (parts.some((p) => matchesSimple(e!, p))) return e;
+      return null;
+    },
+  };
+  return self;
+};
+const body = el("body");
+
+test("held keys: the fake element's closest() reads selectors, not their spelling", () => {
+  const box = el("div", { "aria-modal": "true" }, body);
+  assert.equal(el("button", {}, box).closest('[aria-modal="true"]'), box);
+  assert.equal(el("button", {}, body).closest('[aria-modal="true"]'), null);
+  const cb = el("input", { type: "checkbox" }, box);
+  assert.equal(cb.closest("input"), cb);
+  assert.equal(cb.closest("textarea, [aria-modal=\"true\"]"), box, "a list matches its first hit up the chain");
+  assert.equal(el("dialog", { open: "" }).closest("dialog[open]")?.tagName, "DIALOG");
+  assert.equal(el("dialog").closest("dialog[open]"), null);
+});
+
+test("held keys: Space and Enter on a button are kept from pressing it during a read", () => {
+  for (const key of [" ", "Enter"]) {
+    assert.equal(heldKeyWouldPress(key, el("button", {}, body)), true, `${JSON.stringify(key)} on a button`);
+    assert.equal(heldKeyWouldPress(key, body), true, `${JSON.stringify(key)} on the body`);
+    assert.equal(heldKeyWouldPress(key, null), true, `${JSON.stringify(key)} with no target`);
+  }
+});
+
+test("held keys: the status line's own Cancel and text entry keep their keys", () => {
+  const status = el("div", { [IMPORT_READ_STATUS_ATTR]: "" }, body);
+  for (const key of [" ", "Enter"]) {
+    assert.equal(heldKeyWouldPress(key, el("button", {}, status)), false, "inside the status line: Cancel still presses");
+    for (const ed of [el("textarea"), el("select"), el("div", { contenteditable: "true" })]) {
+      assert.equal(heldKeyWouldPress(key, ed), false, `typing into ${ed.tagName}`);
+    }
+    assert.equal(heldKeyWouldPress(key, el("span", {}, el("div", { contenteditable: "true" }, body))), false, "inside an editable region");
+  }
+});
+
+test("held keys: a modal dialog's buttons keep their keys (the download notice's Download and Cancel)", () => {
+  const notice = el("div", { role: "dialog", "aria-modal": "true" }, body);
+  const dlg = el("dialog", { open: "" }, body);
+  for (const key of [" ", "Enter"]) {
+    assert.equal(heldKeyWouldPress(key, el("button", {}, notice)), false, `${JSON.stringify(key)} on a button in an aria-modal dialog`);
+    assert.equal(heldKeyWouldPress(key, el("button", {}, el("div", {}, notice))), false, `${JSON.stringify(key)} nested deeper in the dialog`);
+    assert.equal(heldKeyWouldPress(key, el("button", {}, dlg)), false, `${JSON.stringify(key)} in an open <dialog>`);
+    assert.equal(heldKeyWouldPress(key, el("button", {}, el("div", { "aria-modal": "false" }, body))), true, `${JSON.stringify(key)} under aria-modal="false"`);
+  }
+});
+
+test("held keys: only text-like inputs count as text entry", () => {
+  for (const key of [" ", "Enter"]) {
+    for (const type of ["checkbox", "radio", "button", "submit", "reset", "range", "color", "file"]) {
+      assert.equal(heldKeyWouldPress(key, el("input", { type }, body)), true, `${JSON.stringify(key)} on input type=${type} would press it`);
+    }
+    for (const type of ["text", "search", "email", "url", "tel", "password", "number", "TEXT", ""]) {
+      assert.equal(heldKeyWouldPress(key, el("input", { type }, body)), false, `${JSON.stringify(key)} typing into input type=${JSON.stringify(type)}`);
+    }
+    assert.equal(heldKeyWouldPress(key, el("input", {}, body)), false, `${JSON.stringify(key)} typing into input with no type`);
+  }
+});
+
+test("held keys: other keys are not this guard's", () => {
+  for (const key of ["a", "Escape", "Tab", "Delete", "1"]) assert.equal(heldKeyWouldPress(key, el("button", {}, body)), false, key);
 });

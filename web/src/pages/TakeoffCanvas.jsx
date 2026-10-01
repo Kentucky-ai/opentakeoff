@@ -66,7 +66,7 @@ import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
 import { rowToSeed } from "../lib/scheduleRows";   // the reader (scheduleRead, which loads the sheet graph) is import()ed on use
-import { routeScheduleRead, countTextRuns, EMPTY_BOX_MESSAGE, OCR_BUSY_MESSAGE, OCR_STARTING_MESSAGE, OCR_READING_MESSAGE } from "../lib/scheduleRoute";
+import { routeScheduleRead, countTextRuns, heldKeyWouldPress, EMPTY_BOX_MESSAGE, OCR_BUSY_MESSAGE, OCR_STARTING_MESSAGE, OCR_READING_MESSAGE } from "../lib/scheduleRoute";
 import { readBoxOnDevice } from "../lib/scheduleOcrRead";
 import { rasterizeRegion } from "../lib/ocr/rasterize";
 import { pageSpans, spansInRect, graphSpans } from "../lib/pageSpans";
@@ -3118,10 +3118,19 @@ export default function TakeoffCanvas() {
     return () => { el.removeEventListener("wheel", onWheel); if (raf) cancelAnimationFrame(raf); };
   }, [applyTf, scheduleSync, zoomAround, promoteStage]);
 
-  // Space = temporary pan (any tool)
+  // Space = temporary pan (any tool). Held during a schedule box's on-device
+  // read, and kept from pressing a focused button (heldKeyWouldPress): on
+  // keydown, which stops the press in Chromium (checked), and on keyup too,
+  // where a button's Space press lands.
   useEffect(() => {
-    const down = (e) => { if (e.code === "Space" && !e.repeat && e.target.tagName !== "INPUT" && !ocrReadRef.current?.ocr) { spaceRef.current = true; if (containerRef.current) containerRef.current.style.cursor = "grab"; } };
-    const up = (e) => { if (e.code === "Space") { spaceRef.current = false; if (containerRef.current) containerRef.current.style.cursor = ""; } };
+    const down = (e) => {
+      if (ocrReadRef.current?.ocr) { if (heldKeyWouldPress(e.key, e.target)) e.preventDefault(); return; }
+      if (e.code === "Space" && !e.repeat && e.target.tagName !== "INPUT") { spaceRef.current = true; if (containerRef.current) containerRef.current.style.cursor = "grab"; }
+    };
+    const up = (e) => {
+      if (ocrReadRef.current?.ocr && heldKeyWouldPress(e.key, e.target)) e.preventDefault();
+      if (e.code === "Space") { spaceRef.current = false; if (containerRef.current) containerRef.current.style.cursor = ""; }
+    };
     window.addEventListener("keydown", down); window.addEventListener("keyup", up);
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
   }, []);
@@ -3135,8 +3144,9 @@ export default function TakeoffCanvas() {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (menuDepthRef.current > 0) return;
       // held while a schedule box is read on-device: ⏎, g, f, ? must not act
-      // behind (or open a dialog under) the coming download notice
-      if (ocrReadRef.current?.ocr) return;
+      // behind (or open a dialog under) the coming download notice, and ⏎
+      // must not press a focused button either (heldKeyWouldPress)
+      if (ocrReadRef.current?.ocr) { if (heldKeyWouldPress(e.key, e.target)) e.preventDefault(); return; }
       // "?" opens the manual. Here rather than in its own listener so it
       // inherits this effect's guards — a "?" typed into a condition tag or
       // with a toolbar menu open must not pop a dialog over the work.
@@ -10973,7 +10983,7 @@ export default function TakeoffCanvas() {
         {/* Import from schedule's on-device read: its own live line, never
             commitMsg (which ellipsizes), and hidden while the download notice
             is up (the notice owns Cancel and Esc then) */}
-        <span aria-live="polite" style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
+        <span data-import-read-status="" aria-live="polite" style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
           {ocrRead && !ocrNotice && (<>
             <span>{ocrRead === "starting" ? OCR_STARTING_MESSAGE : OCR_READING_MESSAGE}</span>
             <button type="button" className="btn-ghost" onClick={cancelImportRead} style={{ padding: "var(--sp-1) var(--sp-2)" }}>Cancel</button>
