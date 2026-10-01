@@ -1,6 +1,7 @@
 // Import from schedule — what a marquee read turns into. Kept LIGHT (type-only
-// imports from the reader), so the canvas and the agent registry can word a
-// refusal without loading the sheet graph.
+// imports from the reader; the code test comes from its leaf, finishCode.ts),
+// so the canvas and the agent registry can word a refusal without loading the
+// sheet graph.
 //
 // Every box is one decision here, from the read plus two facts about the box:
 // how many text runs it held and whether the page has a text layer at all.
@@ -13,6 +14,7 @@
 import type { RefusalReason, ScheduleRead } from "./scheduleRead.ts";
 import type { ScheduleRow } from "./scheduleRows.ts";
 import { MODAL_SELECTOR } from "./modalKeys.ts";
+import { finishCodeOk } from "./finishCode.ts";
 
 /** What the reader keys a row by and what says "finish" — the hint names them
  *  all, not CODE alone. */
@@ -163,11 +165,31 @@ export function ocrFailedMessage(reason: string): string {
   return `Couldn't read that box on this device (${reason}) — try again.`;
 }
 
+/** No table, but finish codes stacked in a column (#484): the engine found
+ *  the codes and no header row, as on a schedule whose header row is rotated
+ *  90° (OCR reads left to right only, and gave no detections in a rotated
+ *  header band at all) or that the box cut off above. */
+export const OCR_NO_HEADER_MESSAGE = "Found finish codes in a column but no header row the reader could read. The headers may be rotated (which can't be read yet) or outside the box — box the schedule with a header row that reads left to right.";
+
+/** A span's text as a code: the reader keys rows the same way (sheetgraph
+ *  rowKeyOf: upper case, only letters, digits and hyphens kept). */
+const asCode = (str: string) => str.toUpperCase().replace(/[^A-Z0-9-]/g, "");
+
+/** At least three finish codes stacked in one column: spans that pass the
+ *  reader's own code test (finishCodeOk) and hold a digit or hyphen (the
+ *  test alone passes "SEE", "AND", "TO"), three of them overlapping one
+ *  code's x extent. */
+function codesInAColumn(spans: readonly { str: string; x: number; w: number }[]): boolean {
+  const codes = spans.filter((s) => { const c = asCode(s.str); return /[\d-]/.test(c) && finishCodeOk(c); });
+  return codes.some((a) => codes.filter((b) => b.x < a.x + a.w && a.x < b.x + b.w).length >= 3);
+}
+
 /** The on-device read's result: rows → the dialog; a refused table → its
- *  message; no table → the no-rows hint. */
-export function routeOcrRead(read: ScheduleRead): Exclude<ImportRoute, { kind: "ocr" }> {
+ *  message; no table → the no-header hint when `spans` (the words read)
+ *  hold codes in a column, else the no-rows hint. */
+export function routeOcrRead(read: ScheduleRead, spans?: readonly { str: string; x: number; w: number }[]): Exclude<ImportRoute, { kind: "ocr" }> {
   if (read.rows.length) return { kind: "rows", rows: read.rows };
   const refused = "refused" in read ? read.refused : "no-table";
   if (refused !== "no-table") return { kind: "message", text: refusalMessage(refused, "title" in read ? read.title : undefined) };
-  return { kind: "message", text: OCR_NO_ROWS_MESSAGE };
+  return { kind: "message", text: spans && codesInAColumn(spans) ? OCR_NO_HEADER_MESSAGE : OCR_NO_ROWS_MESSAGE };
 }

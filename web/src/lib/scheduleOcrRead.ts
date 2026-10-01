@@ -22,7 +22,8 @@
 //      on to onProgress while the read is wanted;
 //   4. read() is the sheet graph's finish reader (readScheduleSpans with
 //      { ocr: true } on the canvas), fed the words as spans (wordsToSpans),
-//      and routeOcrRead words the result.
+//      and routeOcrRead words the result (given the spans too, so no table
+//      over a column of codes says the header row is what's missing).
 // Before each step and once more after the session answers, a read that is no
 // longer wanted (the signal aborted, or isCurrent() false: the canvas moved on
 // to another sheet) stops. Inside the task that is a throw of the private
@@ -107,7 +108,11 @@ export async function readBoxOnDevice(steps: BoxReadSteps): Promise<OcrReadResul
     check();
     return words;
   }, { signal });
-  if (r.ok) return stale() ? CANCELLED : routeOcrRead(read(wordsToSpans(r.value)));
+  if (r.ok) {
+    if (stale()) return CANCELLED;
+    const spans = wordsToSpans(r.value);
+    return routeOcrRead(read(spans), spans);
+  }
   switch (r.reason) {
     case "disabled":
     case "uninstalled":

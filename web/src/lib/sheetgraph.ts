@@ -22,6 +22,7 @@
 
 import { ROOM_LABEL_RE } from "./detectRooms";
 import { finishSectionOf, type FinishSection } from "./finishSections";
+import { CODE_RE, finishCodeOk } from "./finishCode";
 
 /** rot: text rotation in degrees, clockwise in device space (y down). Absent
  * or 0 = horizontal; 90/270 = a quarter-turn — the rotated-header case. When
@@ -707,18 +708,10 @@ function bandLimits(anchors: Anchor[]): { x0: number; x1: number; medGap: number
   return { x0: anchors[0].x - Math.max(80, medGap / 2), x1: last.x + rightMargin, medGap };
 }
 
-// A finish code: scheduleParse's pattern. A schedule ROW key is looser than a
-// plan bubble (detectRooms' 2–3 digits): real room-finish schedules carry
-// "3", "3A", "139A" — one to three digits plus up to two letters. A
-// building-QUALIFIED key ("A-134") is accepted only for a designator the set
-// names (opts.buildings) — otherwise a stray finish code ("P-2") banding to
-// the key column would mint a phantom building.
-const CODE_RE = /^[A-Z]{1,4}(-?[A-Z0-9]{1,4})?$/;
-// A letters-only key of four or more letters is a word, not a finish code:
-// a section heading or a material word set in the key column (FLOORING,
-// BASE, TILE, PAINT). Known cost: a real four-letter code with no digit
-// ("EPOX") is not read either.
-const finishCodeOk = (p: string): boolean => !/^[A-Z]{4,}$/.test(p) && CODE_RE.test(p);
+// A finish code: CODE_RE and finishCodeOk live in finishCode.ts (a leaf, so
+// scheduleRoute.ts can ask the same test without loading this module) and
+// are re-exported here, the reader's own test.
+export { CODE_RE, finishCodeOk };
 const ROW_KEY_RE = /^\d{1,3}[A-Z]{0,2}$/;
 const QUALIFIED_KEY_RE = /^([A-Z]{1,2})-(\d{1,3}[A-Z]{0,2})$/;
 const CORRIDOR_KEY_RE = /^[A-Z]{1,3}(?:\d{1,3}-\d{1,3}|\d{3})[A-Z]?$/;   // CR11-9, C101 — never a two-character tag like "T1"

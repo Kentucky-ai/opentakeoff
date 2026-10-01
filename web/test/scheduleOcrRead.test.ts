@@ -26,11 +26,12 @@ import type { OcrProbe, OcrProgress, OcrReady } from "../src/lib/ocr/client.ts";
 import type { OcrManifest } from "../src/lib/ocr/manifest.ts";
 import { wordsToSpans, type OcrWord } from "../src/lib/ocr/types.ts";
 import type { GraphSpan } from "../src/lib/sheetgraph.ts";
-import type { ScheduleRead } from "../src/lib/scheduleRead.ts";
+import { readScheduleSpans, type ScheduleRead } from "../src/lib/scheduleRead.ts";
+import { readFileSync } from "node:fs";
 import type { ScheduleRow } from "../src/lib/scheduleRows.ts";
 import { readBoxOnDevice } from "../src/lib/scheduleOcrRead.ts";
 import {
-  ocrUnavailableMessage, ocrFailedMessage, refusalMessage, OCR_DECLINED_MESSAGE, OCR_NO_ROWS_MESSAGE, OCR_TOO_LARGE_MESSAGE, type BoxText,
+  ocrUnavailableMessage, ocrFailedMessage, refusalMessage, OCR_DECLINED_MESSAGE, OCR_NO_ROWS_MESSAGE, OCR_TOO_LARGE_MESSAGE, OCR_NO_HEADER_MESSAGE, type BoxText,
 } from "../src/lib/scheduleRoute.ts";
 import type { SeamProgress } from "../src/lib/ocr/seams.ts";
 
@@ -96,6 +97,8 @@ type ReadWords = (signal?: AbortSignal, onProgress?: (p: SeamProgress) => void) 
 function harness(opts: {
   probe?: OcrProbe;
   result?: ScheduleRead;
+  /** the finish reader itself, in place of `result` */
+  reader?: (spans: GraphSpan[]) => ScheduleRead;
   readWords?: ReadWords;
   tooLarge?: () => boolean;
   isCurrent?: (step: string) => boolean;
@@ -133,7 +136,7 @@ function harness(opts: {
       return w;
     },
     tooLarge: () => { log.push("tooLarge"); return opts.tooLarge?.() ?? false; },
-    read: (spans) => { log.push("read"); readCalls.push(spans); return opts.result ?? { rows: [row] }; },
+    read: (spans) => { log.push("read"); readCalls.push(spans); return opts.reader ? opts.reader(spans) : opts.result ?? { rows: [row] }; },
     isCurrent: () => (opts.isCurrent ? opts.isCurrent(step) : true),
     onReading: () => { log.push("onReading"); },
     onProgress: (pr) => { progress.push(pr); },
@@ -350,6 +353,14 @@ test("the reader finds no table: the no-rows hint", async () => {
   await flush();
   h.c.ensure[0].settle({ ok: true });
   assert.deepEqual(await h.p, { kind: "message", text: OCR_NO_ROWS_MESSAGE });
+});
+
+test("finish codes in a column but no header row (the real reader on a rotated-header table's words): the no-header hint", async () => {
+  const fx: { words: OcrWord[] } = JSON.parse(readFileSync(new URL("./fixtures/schedule-ocr/rotated-header-perbox.json", import.meta.url), "utf8"));
+  const h = harness({ readWords: async () => fx.words, reader: (spans) => readScheduleSpans(spans, { ocr: true }) });
+  await flush();
+  h.c.ensure[0].settle({ ok: true });
+  assert.deepEqual(await h.p, { kind: "message", text: OCR_NO_HEADER_MESSAGE });
 });
 
 test("the reader refuses the table: its refusal", async () => {
