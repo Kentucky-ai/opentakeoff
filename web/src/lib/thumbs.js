@@ -59,7 +59,13 @@ export async function loadThumb(sheetKey, minW = thumbPixelWidth()) {
 
 /** Best-effort persist; a quota failure only costs the next open a re-render. */
 export function saveThumb(sheetKey, rec) {
-  return metaPut(keyOf(sheetKey), { w: rec.w, h: rec.h, blob: rec.blob, label: rec.label ?? null, det: rec.det ?? null, ts: Date.now() }).catch(() => {});
+  // textLayer: false when the page is a scan (#471; planIndex's
+  // indexIsScanLike), so a reopened gallery can offer Read page text on it
+  // without loading its PDF. Left out when unknown, so an old record and a
+  // new unknown one read alike.
+  const out = { w: rec.w, h: rec.h, blob: rec.blob, label: rec.label ?? null, det: rec.det ?? null, ts: Date.now() };
+  if (typeof rec.textLayer === "boolean") out.textLayer = rec.textLayer;
+  return metaPut(keyOf(sheetKey), out).catch(() => {});
 }
 
 /** Drop every thumb for these FILE names — persisted AND the live object

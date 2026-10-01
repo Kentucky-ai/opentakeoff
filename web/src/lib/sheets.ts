@@ -267,27 +267,48 @@ export function extractDimTexts(textContent: TextContentLike, viewport: Viewport
   return out;
 }
 
-// ── marquee → tokens: the text-layer half of "Import from schedule" ──────────
+// ── marquee → tokens: a text-layer region as positioned tokens ───────────────
 // Turn the page text layer into positioned tokens inside a viewport-px rect (the
 // box the estimator dragged around the schedule). x is the glyph's left edge, y
-// grows downward, h is the cap height — exactly what parseSchedule() clusters on.
+// grows downward, h is the cap height (parseSchedule's legacy token entry reads these).
 // A vector plan needs no OCR: this IS the extraction. Returns [] for a raster
 // page (no text items in the box) so the caller can fall back to the OCR path.
+// ang: the baseline direction in degrees [0,360), clockwise on screen (0
+// reads left→right); w: the run's length in px along it. opts.boxIntersects
+// (Copy text) keeps a run whose glyph box meets the rect, not only one whose
+// baseline start is inside (the schedule contract), so a line whose baseline
+// sits a hair below the box still copies.
 export function extractRegionText(
   textContent: TextContentLike,
   viewport: Viewport,
   rect: { x0: number; y0: number; x1: number; y1: number },
+  opts?: { boxIntersects?: boolean },
 ): Token[] {
   const x0 = Math.min(rect.x0, rect.x1), x1 = Math.max(rect.x0, rect.x1);
   const y0 = Math.min(rect.y0, rect.y1), y1 = Math.max(rect.y0, rect.y1);
+  const vs = Math.hypot(viewport.transform[0], viewport.transform[1]) || 1;
   const out: Token[] = [];
   for (const it of textContent.items || []) {
     const str = it.str || "";
     if (!str.trim()) continue;
     const t = pdfjsLib.Util.transform(viewport.transform, it.transform);
-    const x = t[4], y = t[5], h = Math.hypot(t[2], t[3]) || it.height || 0;
-    if (x < x0 || x > x1 || y < y0 || y > y1) continue;
-    out.push({ str, x, y, h });
+    // h and w in px: extractTextMarks' conversion
+    const x = t[4], y = t[5], h = Math.hypot(t[2], t[3]) || (it.height || 0) * vs;
+    // a run with no reported width gets no w, so readers fall back to an
+    // estimate rather than trusting a zero
+    const w = it.width && it.width > 0 ? it.width * vs : undefined;
+    const rad = Math.atan2(t[1], t[0]);
+    const ang = ((rad * 180 / Math.PI % 360) + 360) % 360;
+    if (opts?.boxIntersects) {
+      // corners: baseline start, + w along the run, + h toward the glyph tops
+      // (the run's direction turned 90° counter-clockwise on screen)
+      const dx = Math.cos(rad), dy = Math.sin(rad), ux = dy * h, uy = -dx * h;
+      const len = w ?? str.length * 0.6 * h;   // no reported width: textlines' 0.6·h a character
+      const xs = [x, x + dx * len, x + ux, x + dx * len + ux];
+      const ys = [y, y + dy * len, y + uy, y + dy * len + uy];
+      if (Math.max(...xs) < x0 || Math.min(...xs) > x1 || Math.max(...ys) < y0 || Math.min(...ys) > y1) continue;
+    } else if (x < x0 || x > x1 || y < y0 || y > y1) continue;
+    out.push(w === undefined ? { str, x, y, h, ang } : { str, x, y, h, w, ang });
   }
   return out;
 }

@@ -181,9 +181,9 @@ export function readScheduleSpans(spans: GraphSpan[]): ScheduleRead {
 }
 
 /**
- * Legacy entry: positioned tokens (baseline-left origin, no width — what
- * extractRegionText emits) already cropped to the marquee. Each becomes a
- * width-less span; a refusal reads as no rows. [] when nothing is found — the
+ * Legacy entry: positioned tokens (baseline-left origin, as extractRegionText
+ * emits them) already cropped to the marquee. Each becomes a width-less span
+ * (a token's optional w and ang are not read); a refusal reads as no rows. [] when nothing is found — the
  * caller says "no schedule here" rather than inventing rows.
  */
 export function parseSchedule(tokens: Token[]): ScheduleRow[] {

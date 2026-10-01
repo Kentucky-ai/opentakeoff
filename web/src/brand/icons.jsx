@@ -77,6 +77,9 @@ export const icons = {
   sliders: (s) => <I size={s}><path d="M4 7 H 6.8 M11.2 7 H 20" /><path d="M4 17 H 12.8 M17.2 17 H 20" /><circle cx="9" cy="7" r="2.2" /><circle cx="15" cy="17" r="2.2" /></I>,
   // stacked plan sheets in isometric — the PDF layer table (Optional Content Groups)
   layers: (s) => <I size={s}><path d="M12 3 L 21 7.5 L 12 12 L 3 7.5 Z" /><path d="M3 12 L 12 16.5 L 21 12" /><path d="M3 16.5 L 12 21 L 21 16.5" /></I>,
+  // dashed marquee around lines of text — the Copy text tool (#471); the
+  // dashed box is the Symbol tool's marquee motif, the ragged last line reads as prose
+  copyText: (s) => <I size={s}><rect x="3.5" y="4.5" width="17" height="15" strokeDasharray="2.6 2" /><line x1="7" y1="9" x2="17" y2="9" /><line x1="7" y1="12" x2="17" y2="12" /><line x1="7" y1="15" x2="12.5" y2="15" /></I>,
 };
 
 export function Icon({ name, size = 18 }) {

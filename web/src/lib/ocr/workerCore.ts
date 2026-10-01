@@ -35,9 +35,10 @@
 // recognize.
 import { asManifest, CACHE_PREFIX, cacheKey, cacheName, MANIFEST_URL, type ManifestEntry, type OcrManifest } from "./manifest";
 import { cropBoxToWord, OCR_DETECTION_PADDING, unpadCropBox, type RenderGeometry } from "./raster";
-// A plain constant from a pure module (its only import is type-only), so the
-// worker bundle gains nothing else.
-import { SCAN_MAX_DIM } from "../scheduleScan";
+// The engine options live in a leaf module (no imports) so the OCR page
+// cache can key on them without importing this file.
+import { OCR_ENGINE_OPTIONS, type EngineOptions } from "./engineOptions";
+export { OCR_ENGINE_OPTIONS, type EngineOptions };
 import type { OcrWord } from "./types";
 
 /** The slice of Cache Storage the core uses. keys and delete are optional:
@@ -65,31 +66,6 @@ export interface EngineBuffers {
   recognition: ArrayBuffer;
   charactersDictionary: ArrayBuffer;
 }
-
-/** What the core passes ppu's PaddleOcrService besides the model buffers. */
-export interface EngineOptions {
-  detection: { paddingVertical: number; paddingHorizontal: number; maxSideLength: number };
-  recognition: { maxCropSourceSideLength: number };
-  session: { logSeverityLevel: number; executionProviders: readonly "cpu"[] };
-}
-
-// ppu's defaults shrink the page before reading it: detection to 1920 px on
-// the long side and recognition crops from a 2000 px copy. On the demo
-// schedule as an image-only page, rendered to 4096 × 2607 px (headless
-// Chromium on Apple silicon, #469 PR), the defaults found 22 of 28 finish
-// tags in about 6.6 s; letting both see the full raster (up to
-// SCAN_MAX_DIM) found all 28, none wrong, in about 10.4 to 11.6 s.
-// logSeverityLevel 3 (errors only) keeps ORT's per-start "Removing
-// initializer" warnings out of the console; the words are the same.
-// Execution provider: pinned to "cpu" (ORT's wasm backend) here rather than
-// left to ppu's deep-merged default. It is the provider every browser run
-// measured (ppu logged `Using user-provided executionProviders: ["cpu"]`);
-// forcing WebGPU hung engine start in Chrome, with no speed gain measured.
-export const OCR_ENGINE_OPTIONS: EngineOptions = {
-  detection: { paddingVertical: OCR_DETECTION_PADDING.vertical, paddingHorizontal: OCR_DETECTION_PADDING.horizontal, maxSideLength: SCAN_MAX_DIM },
-  recognition: { maxCropSourceSideLength: SCAN_MAX_DIM },
-  session: { logSeverityLevel: 3, executionProviders: ["cpu"] },
-};
 
 export interface OcrCoreDeps {
   fetchImpl: (url: string, init?: { signal?: AbortSignal; cache?: RequestCache }) => Promise<Response>;

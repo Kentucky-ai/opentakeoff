@@ -51,6 +51,18 @@ export const GESTURE_MS = 140;      // wheel/pinch quiet window before the detai
 // region under real CPU contention took 50+ seconds and still resolved on its own.
 export const DETAIL_STALL_MS = 25000;
 
+// Floating panels' berths, px. The Symbol Sweep review panel: position
+// fixed, FLOAT_GAP from the WINDOW's right edge and below the top bar,
+// SWEEP_PANEL_W wide. Inside the canvas: CANVAS_EDGE to its edges, and
+// RAIL_CLEAR, the right clearance the live readout and the Zone check panel
+// keep from the panel rail (right 14, 34 wide). The Zone check panel sits at
+// right RAIL_CLEAR, bottom CANVAS_EDGE, ZONE_PANEL_W wide, as tall as its rows.
+export const FLOAT_GAP = 12;
+export const SWEEP_PANEL_W = 288;
+export const CANVAS_EDGE = 14;
+export const RAIL_CLEAR = 56;
+export const ZONE_PANEL_W = 300;
+
 import { SNAP_CELL } from "./takeoffConstants.ts";
 export { SNAP_CELL };   // snap-grid bucket, raster px (Spline runs 12 — its budgeted raster is denser)
 

@@ -11,8 +11,9 @@ import type { Token } from "../scheduleParse";
  * (raster.unpadCropBox): y is the bottom of that region, meant to be the
  * bottom of the ink, which is the baseline except where a descender (g, p,
  * y) hangs below it. How closely the detector's region hugs the ink, and so
- * the text layer's baseline, isn't measured yet. w is the width, which
- * Tokens don't carry but span-based readers need. */
+ * the text layer's baseline, isn't measured yet. w is the width, carried
+ * into Token.w; span-based readers need it (textlines tells a word gap from
+ * a column gap on it). */
 export type OcrWord = {
   str: string;
   x: number;
@@ -23,6 +24,8 @@ export type OcrWord = {
   confidence?: number;
 };
 
-/** Words → parser tokens: keep the shared {str,x,y,h}, drop the rest. */
+/** Words → tokens: keep the shared {str,x,y,h} and the measured width w
+ * (the parser ignores it; textlines needs it to tell a word gap from a
+ * column gap), drop confidence. */
 export const wordsToTokens = (words: OcrWord[]): Token[] =>
-  words.map(({ str, x, y, h }) => ({ str, x, y, h }));
+  words.map(({ str, x, y, w, h }) => ({ str, x, y, h, w }));

@@ -51,34 +51,62 @@ export interface RegionRaster {
 /** The pdf.js page surface this needs. */
 interface PdfPageLike {
   getViewport(o: { scale: number }): unknown;
-  render(o: { canvasContext: CanvasRenderingContext2D; viewport: unknown; transform: number[] }): { promise: Promise<unknown> };
+  render(o: { canvasContext: CanvasRenderingContext2D; viewport: unknown; transform: number[] }): { promise: Promise<unknown>; cancel?: () => void };
 }
+
+const abortError = () => new DOMException("The OCR render was cancelled.", "AbortError");
 
 /** Render `rect` (rs px, any corner order) of `page` for OCR. `png: true` also
  * encodes the same render as PNG, so a caller that falls back to the AI
- * reader doesn't render twice (recognize transfers `rgba` away). */
+ * reader doesn't render twice (recognize transfers `rgba` away).
+ *
+ * `signal` cancels the pdf.js render task and rejects with an AbortError.
+ * The canvas is released (sized to 0) once its pixels, and the PNG if asked,
+ * are out, or on abort or error: a tiled read renders many large rasters in a
+ * row, and a canvas left to the garbage collector holds its backing store. */
 export async function rasterizeRegion(
   page: PdfPageLike,
   rs: number,
   rect: { x0: number; y0: number; x1: number; y1: number },
-  opts: { dpi?: number; png?: boolean } = {},
+  opts: { dpi?: number; png?: boolean; signal?: AbortSignal } = {},
 ): Promise<RegionRaster> {
+  const { signal } = opts;
+  if (signal?.aborted) throw abortError();
   const x0 = Math.min(rect.x0, rect.x1), y0 = Math.min(rect.y0, rect.y1);
   const regW = Math.max(1, Math.abs(rect.x1 - rect.x0)), regH = Math.max(1, Math.abs(rect.y1 - rect.y0));
   const zoom = ocrRenderFactor(rs, regW, regH, { dpi: opts.dpi });
   const geometry: RenderGeometry = { rect: { x0, y0, x1: x0 + regW, y1: y0 + regH }, zoom };
   const { width, height } = renderDims(geometry);
   const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) throw new Error("no 2d canvas context");
-  await page.render({
-    canvasContext: ctx,
-    viewport: page.getViewport({ scale: rs * zoom }),
-    transform: [1, 0, 0, 1, -x0 * zoom, -y0 * zoom],
-  }).promise;
-  const out: RegionRaster = { width, height, rgba: ctx.getImageData(0, 0, width, height).data, geometry };
-  if (opts.png) out.png = canvas.toDataURL("image/png").split(",")[1] || "";
-  return out;
+  let onAbort: (() => void) | null = null;
+  try {
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) throw new Error("no 2d canvas context");
+    const task = page.render({
+      canvasContext: ctx,
+      viewport: page.getViewport({ scale: rs * zoom }),
+      transform: [1, 0, 0, 1, -x0 * zoom, -y0 * zoom],
+    });
+    if (signal) {
+      onAbort = () => task.cancel?.();
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+    try {
+      await task.promise;
+    } catch (err) {
+      // pdf.js rejects a cancelled task with its own exception; callers
+      // check for AbortError.
+      if (signal?.aborted) throw abortError();
+      throw err;
+    }
+    if (signal?.aborted) throw abortError();
+    const out: RegionRaster = { width, height, rgba: ctx.getImageData(0, 0, width, height).data, geometry };
+    if (opts.png) out.png = canvas.toDataURL("image/png").split(",")[1] || "";
+    return out;
+  } finally {
+    if (onAbort) signal?.removeEventListener("abort", onAbort);
+    canvas.width = canvas.height = 0;
+  }
 }

@@ -32,6 +32,10 @@ import { m365Config, M365_ENABLED_KEY } from "../lib/msgraph/config.js";
 import { metaGet, metaPut, metaDelete } from "../lib/store.js";
 import { groupSheetsByLevel, sortGalleryGroups } from "../lib/sheetLevels.js";
 import { renderThumb, loadThumb, saveThumb, thumbPixelWidth } from "../lib/thumbs.js";
+import { runPlanSearch, filesToIndex, pagesToIndex, galleryEscStep, createChangeSignal, needsRead, keysToLookUp, canLookUp, galleryReadView, unreadLine, thumbIndexStep, galleryCountLine, needsTextPass, createWalkFailures, searchFailedLine, retryWalk } from "../lib/planSearch";
+import { indexIsScanLike } from "../lib/planIndex";
+import { pageTextIndex } from "../lib/pageTextIndex";
+import { inOtherModal, otherModalOpen } from "../lib/modalKeys";
 
 // Thumbnails in flight at once. The canvas rasters in its worker pool now, so
 // the main thread's pdf.js is mostly idle while the gallery is up; two keeps
@@ -61,6 +65,14 @@ export default function PlanNavigator({
   // plan-set (gallery) data
   sheets, getDoc, scales, detectedScales, scaleUnconfirmed = {}, shapes, labels, onLabel, onDetect,
   thumbCacheRef, busyRef, openTabs, onOpen,
+  // plan-set search (#471): the canvas-owned index map, a subscription to its
+  // changes (at most one call a frame), the setter that stores one sheet's
+  // entry, and whether the canvas holds a sheet's pdf.js page
+  planIndexRef, subscribeIndex, onIndexed, pageHeld, docLoaded,
+  // on-device page reads (#471), the canvas's (TakeoffCanvas ocrApi): enabled,
+  // availability(), read(key, {force, signal}), cancel, status, subscribe,
+  // lookup(key). A read or lookup hit is already in the index when it lands.
+  ocr,
   onAddFiles, onClosePdf, onRemoveFromProject,
   // manage mode (#301/#302): bulk close + workspace reset, and the persisted
   // page-count cache that lets a known set open without reading its bytes
@@ -163,7 +175,8 @@ export default function PlanNavigator({
   const escRef = useRef(() => {});
   useEffect(() => {
     const onKey = (e) => {
-      if (previewOpenRef.current || e.target?.closest?.("dialog[open]")) return; // The preview owns Escape and focus.
+      if (previewOpenRef.current || inOtherModal(e.target)) return; // The preview (and the OCR download notice) own Escape and focus.
+      if (e.key === "Escape" && otherModalOpen(document)) return; // a modal over the gallery (guide, OCR notice) takes Esc, focus anywhere
       if (e.key === "Escape") { e.stopPropagation(); escRef.current(); return; }
       const tag = e.target?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
@@ -238,6 +251,13 @@ export default function PlanNavigator({
   const [confirmClear, setConfirmClear] = useState(false);
   const [working, setWorking] = useState(false);   // a bulk remove / clear in flight
   const [, bump] = useState(0);
+  // ══ SEARCH state (#471) ═══════════════════════════════════════════════════
+  // Plan mode only. Any mode switch clears the query — adjusted during render
+  // (React's "reset state when a value changes" pattern), so no effect runs.
+  const [query, setQuery] = useState("");
+  const [queryMode, setQueryMode] = useState(mode);
+  if (queryMode !== mode) { setQueryMode(mode); setQuery(""); }
+  const searching = mode === "plan" && query.trim() !== "" && !!planIndexRef;
   const seqRef = useRef(0);
   const queueRef = useRef([]);
   const obsRef = useRef(null);
@@ -323,6 +343,7 @@ export default function PlanNavigator({
     const want = thumbPixelWidth();
     let rec = await loadThumb(key, want);
     if (seq !== seqRef.current) return;
+    const kept = !!rec;
     if (!rec) {
       const { file, page } = parseSheetKey(key);
       const pdf = await getDoc(file);
@@ -330,14 +351,20 @@ export default function PlanNavigator({
       if (seq !== seqRef.current) return;
       rec = await renderThumb(pg, want);
       if (seq !== seqRef.current) return;
-      if (!labels[key] || !detectedScales[key]) {
-        try {
-          const tc = await pg.getTextContent();
-          const vpL = pg.getViewport({ scale: RENDER_SCALE });
+      // the page is warm: read its text once for the plan-set search index
+      // and the record's text-layer flag, and for the sheet number +
+      // plan-noted scale when those are missing
+      try {
+        const tc = await pg.getTextContent();
+        const vpL = pg.getViewport({ scale: RENDER_SCALE });
+        const ix = pageTextIndex(key, tc, vpL);
+        rec.textLayer = !indexIsScanLike(ix);
+        if (seq === seqRef.current && onIndexed && planIndexRef && needsTextPass(planIndexRef.current.get(key))) onIndexed(key, ix);
+        if (!labels[key] || !detectedScales[key]) {
           rec.label = extractSheetNumber(tc, vpL) || null;
           rec.det = detectScale(tc, vpL) || null;
-        } catch { /* text layer is optional */ }
-      }
+        }
+      } catch { /* text layer is optional */ }
       saveThumb(key, rec);
     }
     if (thumbCacheRef.current.has(key)) return;
@@ -345,6 +372,30 @@ export default function PlanNavigator({
     if (rec.label && !labels[key]) onLabel(key, rec.label);
     if (rec.det && !detectedScales[key]) onDetect(key, rec.det);
     scheduleBump();
+    if (kept && onIndexed && planIndexRef) {
+      // a kept record: a scan's says so, and seeds its empty text entry (no
+      // PDF parsed), so its card offers Read page text and its kept read is
+      // looked up; a record saved before the flag reads this page's text
+      // once, if its document is already loaded, and is saved again with it
+      const has = (k) => !needsTextPass(planIndexRef.current.get(k));
+      const step = thumbIndexStep(rec, key, (k) => planIndexRef.current.get(k), (f) => !!docLoaded?.(f));
+      if (step.kind === "seed") onIndexed(key, step.ix);
+      else if (step.kind === "flag") saveThumb(key, { ...rec, textLayer: step.textLayer });
+      else if (step.kind === "read") {
+        try {
+          const { file, page } = parseSheetKey(key);
+          const pg = await (await getDoc(file)).getPage(page);
+          if (seq !== seqRef.current) return;
+          const tc = await pg.getTextContent();
+          if (seq !== seqRef.current) return;
+          const ix = pageTextIndex(key, tc, pg.getViewport({ scale: RENDER_SCALE }));
+          if (!has(key)) onIndexed(key, ix);
+          rec = { ...rec, textLayer: !indexIsScanLike(ix) };
+          saveThumb(key, rec);
+          if (!pageHeld?.(key)) { try { pg.cleanup(); } catch { /* already released */ } }
+        } catch { /* text layer is optional; asked again next open */ }
+      }
+    }
   };
 
   // coalesce card reveals to one React render per frame
@@ -405,6 +456,202 @@ export default function PlanNavigator({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keySig, mode]);
 
+  // ── plan-set search: index the sheets no text pass has reached (#471) ──
+  // The canvas indexes the sheets it renders and scans; the thumbnail pump
+  // indexes each thumbnail it rasters. Everything else is read here, once a
+  // query is typed: each file by its page count (read from its document when
+  // the count isn't known yet, or when a known page is missing from the
+  // index — a fully indexed set loads no document), one sheet at a time,
+  // yielding to the canvas's open sequence as the thumbnail pump does. Its own
+  // generation counter, not seqRef: the page-count effect bumps seqRef on
+  // every knownPages change, which would cancel the walk part-way through.
+  // Restarts on a sheets change; stops on unmount or when the query clears.
+  // In a cloud project this downloads every PDF not yet opened, the same as
+  // opening them; the documents stay in the canvas's cache like the pump's.
+  const indexGenRef = useRef(0);
+  const [indexProg, setIndexProg] = useState(null);   // { done, total } while the walk runs
+  // what the last walk couldn't read ({ sheets, incomplete }); Retry, or the
+  // next query, walks again for it
+  const [walkFail, setWalkFail] = useState({ sheets: 0, incomplete: false });
+  const [walkTick, setWalkTick] = useState(0);
+  const walkFailRef = useRef(walkFail);
+  walkFailRef.current = walkFail;
+  const allKeysRef = useRef(allKeys);
+  allKeysRef.current = allKeys;
+
+  // ── on-device reads (#471): the probe, and each sheet's read status ──
+  // The probe is asked once a scan (little or no text layer) is known (never on
+  // open): disabled / uninstalled hide every Read and the unread line, and
+  // stop the cache lookups. Status changes (the canvas's reader) repaint the
+  // cards at most once a frame.
+  const [ocrAvail, setOcrAvail] = useState(null);    // the probe's state, null until asked
+  const probeRef = useRef(null);
+  const probeOcr = useCallback(() => {
+    if (!ocr?.enabled) return Promise.resolve("disabled");
+    return (probeRef.current ??= ocr.availability()
+      .then((a) => a.state, () => "error")
+      .then((st) => { if (st === "error") probeRef.current = null; setOcrAvail(st); return st; }));
+  }, [ocr]);
+  // the session forgets an error answer, so asking again re-probes
+  const retryProbe = () => { probeRef.current = null; probeOcr(); };
+  const [, setReadTick] = useState(0);
+  useEffect(() => {
+    if (!ocr) return;
+    const sig = createChangeSignal();
+    const offSig = sig.subscribe(() => setReadTick((t) => t + 1));
+    const off = ocr.subscribe(() => sig.notify());
+    return () => { off(); offSig(); };
+  }, [ocr]);
+  // the card whose Read was pressed last: focus returns to it after the
+  // download notice (its button changes under the notice)
+  const [lastReadKey, setLastReadKey] = useState(null);
+  const readCard = (key, force = false) => {
+    setLastReadKey(key);
+    ocr.read(key, { force }).then((r) => { if (!r.ok && (r.status === "disabled" || r.status === "uninstalled")) setOcrAvail(r.status); });
+  };
+  const pageOfRef = useRef(pageOf);
+  pageOfRef.current = pageOf;
+  useEffect(() => {
+    if (!searching || !onIndexed) return;
+    const gen = ++indexGenRef.current;
+    const live = () => gen === indexGenRef.current;
+    // a seeded entry (from a thumbnail's flag) is read for real, and so is a
+    // cached read that replaced one (its stamp terms: needsTextPass); every
+    // other indexed sheet is done, so no other file is opened again
+    const has = (k) => !needsTextPass(planIndexRef.current.get(k));
+    // progress repaints at most once a frame, not once a page
+    let done = 0, total = 0;
+    const tick = createChangeSignal();
+    tick.subscribe(() => { if (live()) setIndexProg({ done, total }); });
+    // the OCR cache is asked only once the probe allows it (asked lazily, at
+    // the first scan); unanswered, a sheet stays unread
+    let allowed = null;
+    const lookupsAllowed = () => (allowed ??= probeOcr().then((a) => canLookUp(!!ocr?.enabled, a)));
+    const failures = createWalkFailures();
+    let incomplete = false;
+    (async () => {
+      // sheets other passes indexed as scans (the canvas, the thumbnails):
+      // only a hash already in hand, so nothing downloads just to hash
+      for (const key of keysToLookUp(allKeysRef.current, planIndexRef.current)) {
+        if (!live() || !(await lookupsAllowed())) break;
+        await ocr.lookup(key, { known: true });
+      }
+      if (!live()) return;
+      const todo = filesToIndex(sheets.map((s) => s.name), (f) => pageOfRef.current(f), has);
+      if (!todo.length) return;
+      total = todo.reduce((t, f) => t + f.knownPages, 0);
+      tick.notify();
+      for (const { file, knownPages } of todo) {
+        let pdf;
+        try { pdf = await getDoc(file); }
+        catch (e) {   // unreadable file: not checked; say so and move on
+          if (!live()) return;
+          console.warn(`Search couldn't open ${file}`, e);
+          failures.failFile(file, knownPages);
+          continue;
+        }
+        if (!live()) return;
+        const n = pdf.numPages || 1;
+        total += n - knownPages;
+        const keys = pagesToIndex(file, n, has);
+        done += n - keys.length;   // pages already indexed count as checked
+        tick.notify();
+        for (const key of keys) {
+          if (!has(key)) {
+            while (busyRef.current === "rendering" && live()) await new Promise((r) => setTimeout(r, 150));
+            if (!live()) return;
+            let page = null;
+            try {
+              page = await pdf.getPage(parseSheetKey(key).page);
+              if (!live()) return;
+              const tc = await page.getTextContent();
+              if (!live()) return;
+              if (!has(key)) onIndexed(key, pageTextIndex(key, tc, page.getViewport({ scale: RENDER_SCALE })));
+              // a scan's cached read (if any) joins the search now,
+              // under the hash of the document the walk just loaded
+              if (needsRead(planIndexRef.current.get(key)) && await lookupsAllowed()) await ocr.lookup(key);
+            } catch (e) {
+              // destroyed doc (file closed / revised) or unreadable page: not
+              // checked, so search doesn't claim it has no match
+              if (live() && !has(key)) {
+                console.warn(`Search couldn't read ${file} (${key})`, e);
+                failures.fail(key);
+                continue;
+              }
+            }
+            // release only what the walk alone holds: getPage hands back the
+            // document's shared page proxy, and the canvas may have taken this
+            // page during the awaits above
+            finally { if (page && !pageHeld?.(key)) { try { page.cleanup(); } catch { /* already released */ } } }
+          }
+          done++;
+          tick.notify();
+        }
+      }
+    // done: retire this generation so a progress frame still queued can't
+    // repaint "Indexing" after the clear
+    })().catch((e) => {
+      console.warn("Search stopped before reading every sheet", e);
+      incomplete = true;
+    }).finally(() => {
+      if (!live()) return;
+      setWalkFail({ sheets: failures.count(), incomplete });
+      indexGenRef.current++;
+      setIndexProg(null);
+    });
+    // bumping the LIVE counter is the point: it invalidates this walk (seqRef's pattern)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { indexGenRef.current++; setIndexProg(null); };
+    // planIndexRef/getDoc/busyRef/onIndexed/pageHeld are stable; pageOf is read through
+    // its ref so a page-count update doesn't restart the walk
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searching, sheets, walkTick]);
+  // a new query walks again for what the last walk couldn't read
+  useEffect(() => {
+    if (searching && retryWalk(walkFailRef.current)) setWalkTick((t) => t + 1);
+  }, [query]); // eslint-disable-line react-hooks/exhaustive-deps -- searching is read with the query
+  // The canvas announces index changes on a signal; this re-renders the
+  // gallery for them. The map is read fresh on mount, so nothing written while
+  // the gallery was closed is missed; one catch-up bump after subscribing
+  // covers a write between this render and the subscription.
+  const [indexVersion, setIndexVersion] = useState(0);
+  useEffect(() => {
+    if (!subscribeIndex) return;
+    const bumpIndex = () => setIndexVersion((v) => v + 1);
+    const off = subscribeIndex(bumpIndex);
+    bumpIndex();
+    return off;
+  }, [subscribeIndex]);
+  // Scans in the index with no read: ask the probe (once)
+  // so their cards can offer Read page text, and look each one's kept read up
+  // (one at a time; cache only, memoized per sheet), so a sheet read before
+  // shows as read, not as Read page text, search or no search.
+  const unreadKeys = planIndexRef ? keysToLookUp(allKeys, planIndexRef.current) : [];
+  const unreadSig = unreadKeys.join("\u0000");
+  useEffect(() => {
+    if (!unreadKeys.length || !ocr?.enabled) return;
+    let live = true;
+    (async () => {
+      if (!canLookUp(true, await probeOcr())) return;
+      // background: only hashes the store already has (no download in a
+      // cloud project; a card may offer Read page text for a sheet read
+      // before, and Read then finds the saved read)
+      for (const key of unreadKeys) {
+        if (!live) return;
+        await ocr.lookup(key, { known: true });
+      }
+    })();
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unreadSig stands for unreadKeys
+  }, [unreadSig, ocr, probeOcr]);
+  // Results. The map is the same object every time, so indexVersion is what
+  // says it changed; keySig covers the set itself.
+  const search = useMemo(
+    () => (searching ? runPlanSearch(query, planIndexRef.current, allKeys) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [searching, query, indexVersion, keySig],
+  );
+
   const toggleSel = (key) => setSel((g) => (g.includes(key) ? g.filter((k) => k !== key) : [...g, key]));
   // shape tallies once per shapes change, not once per card per render — a
   // thumbnail reveal re-renders the grid, and N cards × M shapes added up
@@ -431,6 +678,9 @@ export default function PlanNavigator({
   // regardless of whether other groups have levels — see sortGalleryGroups's
   // comment for why this must be a PER-GROUP gate, not a whole-gallery one.
   const groups = sortGalleryGroups(groupSheetsByLevel(allKeys, levels), labelOf);
+  // a search shows its hits as one ungrouped run, in searchPlan's rank order —
+  // never through the level grouping/sort above, which would reorder them
+  const shownGroups = search ? (search.hits.length ? [{ level: null, keys: search.hits.map((h) => h.key) }] : []) : groups;
   const assignLevel = () => {
     const label = window.prompt('Level for the selected sheets (e.g. "L1", "Level 2", "Garage") — empty clears:', "");
     if (label === null) return;
@@ -455,10 +705,13 @@ export default function PlanNavigator({
   // canvas), independent of the back button's per-level folder climb.
   useEffect(() => {
     escRef.current = () => {
-      if (mode === "browse" || mode === "manage") { setMode("plan"); return; }
-      if (canClose) onExit();
+      // a typed search clears first; the next Esc leaves as before
+      const step = galleryEscStep({ query, mode, canClose });
+      if (step === "clear-query") setQuery("");
+      else if (step === "to-plan") setMode("plan");
+      else if (step === "exit") onExit();
     };
-  }, [mode, canClose, onExit]);
+  }, [mode, canClose, onExit, query]);
 
   // ── close / remove a PDF from the working set ───────────────────────────
   const requestClose = (file) => setConfirmClose({ file, shapeCount: pdfShapeCount(file) });
@@ -480,6 +733,11 @@ export default function PlanNavigator({
     : mode === "manage"
       ? `${sheets.length} PDF${sheets.length === 1 ? "" : "s"} stored in this workspace — remove what this takeoff doesn't need`
       : `${allKeys.length || "…"} sheets · pick one or several — the order you pick is the left-to-right order`;
+  // the search's count and indexing progress sit beside its box, so the
+  // header (and the grid under it) never moves while a query is typed
+  // only the hit count is announced; the indexing ticks aren't
+  const countLine = galleryCountLine(search && { hits: search.hits.length }, allKeys.length);
+  const failLine = search && !indexProg ? searchFailedLine(walkFail) : null;
 
   const header = (
     <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 18px", borderBottom: "1px solid var(--ink)", background: "var(--paper-bright)", flexWrap: "wrap" }}>
@@ -649,12 +907,51 @@ export default function PlanNavigator({
     </>
   );
 
+  // ── a card's Read page text row (#471): a scan (little or no text layer) ─
+  // Read page text (the canvas's reader: cache first, the download notice
+  // before the first read), then its progress with Cancel, Stopping…, and
+  // the time once read, labelled OCR. Clicks stay off the card (it toggles
+  // selection).
+  const readRow = (key) => {
+    if (!ocr || !planIndexRef) return null;
+    const v = galleryReadView(planIndexRef.current.get(key), ocrAvail, ocr.status(key));
+    if (v.kind === "hidden") return null;
+    const btn = (label, onClick) => (
+      <button type="button" onClick={(e) => { e.stopPropagation(); onClick(); }} style={{ ...ctrlBtn, padding: "3px 8px", fontSize: 11 }}>{label}</button>
+    );
+    return (
+      <div data-gallery-read={key} data-state={v.kind} data-last-read={key === lastReadKey ? "" : undefined} onClick={(e) => e.stopPropagation()}
+        style={{ padding: "0 10px 8px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)", cursor: "default" }}>
+        {v.kind === "read" && <>{btn("Read page text", () => readCard(key))}<span>little or no text layer</span>{v.note && <span style={{ color: "var(--c-danger)", flexBasis: "100%" }}>{v.note}</span>}</>}
+        {v.kind === "reading" && <><span className="pip" aria-hidden="true" /><span aria-live="polite">{v.text}</span>{btn("Cancel", () => ocr.cancel(key))}</>}
+        {v.kind === "stopping" && <span aria-live="polite">{v.text}</span>}
+        {v.kind === "unreadable" && <span aria-live="polite" style={{ color: "var(--c-danger)" }}>{v.text}</span>}
+        {v.kind === "unreachable" && <><span aria-live="polite" style={{ color: "var(--c-danger)" }}>{v.text}</span>{btn("Retry", retryProbe)}</>}
+        {v.kind === "done" && <><span aria-live="polite" style={{ color: "var(--c-warning)" }}>{v.text}</span>{v.readAgain && btn("Read again", () => readCard(key, true))}</>}
+      </div>
+    );
+  };
+  const unread = search ? unreadLine(search.unreadCount, ocrAvail) : null;
+
   // ── PLAN body + footer ──────────────────────────────────────────────────
   const planBody = (
     <>
-      <div className="sheet-preview-controls"><label>Page previews</label>{["medium", "large"].map(size => <button type="button" key={size} aria-pressed={previewSize === size} onClick={() => setPreviewSize(size)}>{size === "large" ? "Large" : "Medium"}</button>)}<span style={{ color: "var(--ink-muted)", fontSize: "var(--fs-s)" }}>Preview to inspect · View to open · Select cards for tabs or stitching</span></div>
+      <div className="sheet-preview-controls"><label>Page previews</label>{["medium", "large"].map(size => <button type="button" key={size} aria-pressed={previewSize === size} onClick={() => setPreviewSize(size)}>{size === "large" ? "Large" : "Medium"}</button>)}<span style={{ color: "var(--ink-muted)", fontSize: "var(--fs-s)" }}>Preview to inspect · View to open · Select cards for tabs or stitching</span>
+        {/* plan-set search (#471), right-aligned in this row: the browse filter's field styling */}
+        {sheets.length > 0 && planIndexRef && (<>
+          <span style={{ flex: 1 }} />
+          {countLine && <span aria-live="polite" style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)" }}>{countLine}</span>}
+          {search && indexProg && <span style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)" }}>· Indexing {indexProg.done} / {indexProg.total}</span>}
+          {failLine && <span data-search-failed="" style={{ fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--c-danger)" }}>· {failLine} <button type="button" onClick={() => setWalkTick((t) => t + 1)} style={{ ...ctrlBtn, padding: "1px 6px", fontSize: 11 }}>Retry</button></span>}
+          <input name="plan-search" type="text" value={query} onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search sheet text…" aria-label="Search the text on every sheet"
+            title="Find sheets by the text on them — a finish tag, room number, sheet number or word (Esc clears)"
+            autoComplete="off" spellCheck={false}
+            style={{ padding: "6px 10px", border: "1px solid var(--ink-faint)", background: "var(--paper-bright)", fontSize: 12.5, minWidth: 180 }} />
+        </>)}
+      </div>
       <div ref={gridRef} style={{ flex: 1, overflow: "auto", padding: 18 }}>
-        {groups.map((grp) => (
+        {shownGroups.map((grp) => (
         <div key={grp.level ?? "__all"} style={{ marginBottom: grp.level !== null ? 22 : 0 }}>
         {grp.level !== null && (
           <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--ink-muted)", margin: "0 0 8px 2px" }}>
@@ -693,6 +990,10 @@ export default function PlanNavigator({
                 <div data-preview-caption style={{ padding: "8px 10px", display: "flex", alignItems: "baseline", gap: 8 }}>
                   <strong style={{ fontFamily: "var(--f-mono)", fontSize: 12.5, color: "var(--ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }} title={key}>{labelOf(key)}</strong>
                   {levels[key] && <span title="Level" style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--ink-muted)", border: "1px solid var(--ink-faint)", padding: "1px 5px" }}>{levels[key]}</span>}
+                  {search?.chipsByKey[key]?.map((t) => (
+                    <span key={`m:${t}`} title="Matched text on this sheet" style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--cobalt)", border: "1px solid var(--cobalt)", padding: "1px 5px", whiteSpace: "nowrap" }}>{t}</span>
+                  ))}
+                  {search?.ocrKeys.has(key) && <span title="Matched in text the on-device text reader (OCR) read from the page image, not the PDF's own text — check the sheet" style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--c-warning)", textTransform: "uppercase", letterSpacing: "0.08em" }}>OCR</span>}
                   {isOpenTab && <span title="Already open as a tab" style={{ fontSize: 9.5, fontFamily: "var(--f-mono)", color: "var(--cobalt)", textTransform: "uppercase", letterSpacing: "0.08em" }}>open</span>}
                   {cnt > 0 && <span style={{ fontFamily: "var(--f-mono)", fontSize: 10.5, color: "var(--ink-muted)" }}>{cnt}▦</span>}
                   <span style={{ fontSize: 10, fontWeight: 600, whiteSpace: "nowrap", color: scales[key] ? (scaleUnconfirmed[key] === false ? "var(--c-warning)" : "var(--c-positive)") : detectedScales[key] ? "var(--c-warning)" : "var(--c-danger)" }}
@@ -700,12 +1001,27 @@ export default function PlanNavigator({
                     {scales[key] ? (scaleUnconfirmed[key] === false ? "scale ⚠ confirm" : "scale ✓") : detectedScales[key] ? `plan: ${detectedScales[key].label}` : "no scale"}
                   </span>
                 </div>
+                {readRow(key)}
               </div>
             );
           })}
         </div>
         </div>
         ))}
+        {search && !search.hits.length && allKeys.length > 0 && (
+          <div style={{ padding: 48, textAlign: "center", color: "var(--ink-muted)", fontSize: 13.5, lineHeight: 1.7 }}>
+            <div style={{ fontFamily: "var(--f-display)", fontSize: 16, color: "var(--ink)", marginBottom: 6 }}>No sheet matches “{query.trim()}”</div>
+            {indexProg
+              ? `Still reading sheet text — ${indexProg.done} of ${indexProg.total} checked.`
+              : "Search reads each sheet's own text: finish tags, room and sheet numbers, and words of three letters or more."}
+          </div>
+        )}
+        {unread && (
+          <div data-unread-line style={{ padding: "14px 2px 0", fontFamily: "var(--f-mono)", fontSize: 11.5, color: "var(--ink-muted)", textAlign: search.hits.length ? "left" : "center" }}>
+            {unread}
+            {ocrAvail === "error" && <> <button type="button" onClick={retryProbe} style={{ ...ctrlBtn, padding: "1px 6px", fontSize: 11 }}>Retry</button></>}
+          </div>
+        )}
         {!allKeys.length && (
           <div style={{ padding: 48, textAlign: "center", color: "var(--ink-muted)", fontSize: 13.5, lineHeight: 1.7 }}>
             {!sheets.length ? (

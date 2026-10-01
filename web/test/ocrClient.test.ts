@@ -550,3 +550,74 @@ test("disposing the shared client ends it for good, and the next getOcrClient ma
   assert.equal(getOcrClient(), b);
   b.dispose();
 });
+
+// ── whenIdle: nothing running or queued (#471: page reads never overlap) ────
+
+/** Has `p` settled within a couple of ticks? */
+async function settled(p: Promise<unknown>): Promise<boolean> {
+  let done = false;
+  void p.then(() => { done = true; }, () => { done = true; });
+  await tick(); await tick();
+  return done;
+}
+
+test("whenIdle resolves at once with nothing running, even before the engine starts", async () => {
+  const s = setup();
+  assert.equal(await settled(s.client.whenIdle()), true);
+  const { client } = await readyClient();
+  assert.equal(await settled(client.whenIdle()), true);
+});
+
+test("whenIdle waits for the running read and everything queued", async () => {
+  const { client, w } = await readyClient();
+  const a = client.recognize(region());
+  const b = client.recognize(region());
+  const idle = client.whenIdle();
+  w.reply({ type: "result", id: recognizes(w)[0].msg.id, words: [] });
+  await a;
+  assert.equal(await settled(idle), false, "b is still to run");
+  w.reply({ type: "result", id: recognizes(w)[1].msg.id, words: [] });
+  await b;
+  assert.equal(await settled(idle), true);
+});
+
+test("whenIdle after an abort waits for the worker's late reply", async () => {
+  const { client, w } = await readyClient();
+  const ac = new AbortController();
+  const running = client.recognize(region(), { signal: ac.signal });
+  ac.abort();
+  await assert.rejects(running, { name: "AbortError" });
+  const idle = client.whenIdle();
+  assert.equal(await settled(idle), false, "the worker is still on the aborted tile");
+  w.reply({ type: "result", id: recognizes(w)[0].msg.id, words: [] });
+  assert.equal(await settled(idle), true);
+});
+
+test("whenIdle resolves when a queued read is aborted and nothing else is left", async () => {
+  const { client, w } = await readyClient();
+  const first = client.recognize(region());
+  const ac = new AbortController();
+  const queued = client.recognize(region(), { signal: ac.signal });
+  const idle = client.whenIdle();
+  ac.abort();
+  await assert.rejects(queued, { name: "AbortError" });
+  assert.equal(await settled(idle), false);
+  w.reply({ type: "result", id: recognizes(w)[0].msg.id, words: [] });
+  await first;
+  assert.equal(await settled(idle), true);
+});
+
+test("whenIdle resolves when a crash or dispose empties the queue", async () => {
+  const { client, w } = await readyClient();
+  const a = client.recognize(region());
+  const idle = client.whenIdle();
+  w.crash("gone");
+  await assert.rejects(a, /gone/);
+  assert.equal(await settled(idle), true);
+  const r = await readyClient();
+  const b = r.client.recognize(region());
+  const idle2 = r.client.whenIdle();
+  r.client.dispose();
+  await assert.rejects(b, /disposed/);
+  assert.equal(await settled(idle2), true);
+});
