@@ -1,9 +1,8 @@
 // Import from schedule — the row contract and the row → condition seed step.
 // Kept LIGHT on purpose: no reader in here, so the canvas can seed conditions
 // from approved rows without loading the sheet graph (scheduleRead.ts, loaded
-// on demand, is the reader). Both readers — the vector text layer and the
-// optional scan/OCR adapter (scheduleScan.ts) — emit ScheduleRow, so both
-// feed the one approval dialog.
+// on demand, is the reader). The reader emits ScheduleRow, and the approval
+// dialog takes ScheduleRow.
 
 /** A positioned text token as extractRegionText emits it: baseline-left
  *  origin (x, y) in image px, glyph height h, no width. */
@@ -15,9 +14,9 @@ export type Token = { str: string; x: number; y: number; h: number };
 export type Category = "floor" | "base" | "wall" | "wall_protection" | "transition" | "ceiling" | "other" | "unassigned";
 
 /** Where a row's category came from: a printed section heading, the row's
- *  own item words ("RUBBER WALL BASE"), nothing (unassigned), or the scan
- *  adapter. The dialog flags a category read from the words. */
-export type CategorySource = "heading" | "text" | "none" | "scan";
+ *  own item words ("RUBBER WALL BASE") or nothing (unassigned). The dialog
+ *  flags a category read from the words. */
+export type CategorySource = "heading" | "text" | "none";
 
 export type ScheduleRow = {
   finish_tag: string;        // key cell (CODE / TAG / MARK / SYMBOL), e.g. "CPT-1"

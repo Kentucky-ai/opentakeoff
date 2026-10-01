@@ -1,7 +1,6 @@
 # OpenTakeoff — one-click static deploy.
-# The app lives in web/ and builds to web/dist/. The only server code is the
-# gated schedule-scan function (web/netlify/functions/); it stays dark unless
-# GEMINI_API_KEY is set, so a default deploy is still fully static.
+# The app lives in web/ and builds to web/dist/. There is no server code: the
+# deploy is fully static.
 [build]
   base    = "web"
   # Stage the on-device voice model (RFC #59) same-origin before the build, so
@@ -14,11 +13,6 @@
   # environment skips it.
   command = "node scripts/fetch-voice-model.mjs || echo 'voice model fetch failed — deploying without voice'; node scripts/stage-ocr-model.mjs || echo 'OCR model staging failed — deploying without on-device OCR'; npm run build"
   publish = "dist"
-
-# Serverless functions live under the build base (web/netlify/functions).
-[functions]
-  directory    = "netlify/functions"
-  node_bundler = "esbuild"
 
 # One canonical host. Netlify is *documented* to 301 the .netlify.app subdomain
 # to the primary custom domain on its own, but it was still answering 200 on
@@ -34,13 +28,6 @@
   to     = "https://opentakeoff.kentucky-ai.com/:splat"
   status = 301
   force  = true
-
-# Gated "Import from scanned schedule" — must precede the SPA catch-all, else
-# /* swallows it and the POST returns index.html.
-[[redirects]]
-  from   = "/ai/parse-schedule"
-  to     = "/.netlify/functions/parse-schedule"
-  status = 200
 
 # Public legal documents must resolve before the canvas SPA fallback.
 [[redirects]]

@@ -126,20 +126,18 @@ class ClassifyFinishOut(BaseModel):
 
 
 class ParseScheduleIn(BaseModel):
-    # base64-encoded PNG crop of the marqueed schedule region (no "data:" prefix),
-    # plus its pixel dims — what the client sends for a SCANNED sheet with no text
-    # layer to read.
+    # base64-encoded PNG crop of a schedule region (no "data:" prefix), plus its
+    # pixel dims — a raster schedule with no text layer to read.
     image_b64: str = ""
     width: int = 0
     height: int = 0
 
 
-# The finish categories the client understands, and which ones the approval
-# dialog pre-checks. Mirrors CATEGORIES / SUGGESTED in web/src/lib/scheduleScan.ts
+# The finish categories, and which ones a row starts ticked for. The categories
+# mirror the `Category` union in web/src/lib/scheduleRows.ts
 # (tests/test_schedule_row.py holds the two equal): ceilings/millwork start
-# UNCHECKED so the estimator drops them for free; wall protection is its own
-# category, and "unassigned" is a row with no section ("No section" in the
-# dialog) — both start checked.
+# unticked; wall protection is its own category, and "unassigned" is a row with
+# no section ("No section") — both start ticked.
 _CATEGORIES = {"floor", "base", "wall", "wall_protection", "transition", "ceiling", "other", "unassigned"}
 _SUGGESTED_DEFAULT = {
     "floor": True, "base": True, "wall": True, "wall_protection": True,
@@ -149,8 +147,7 @@ _SUGGESTED_DEFAULT = {
 
 class ScheduleRow(BaseModel):
     """One parsed schedule row — the SAME shape as the client's ScheduleRow
-    (web/src/lib/scheduleRows.ts), so an adapter's output feeds the one approval
-    dialog. Off-contract values are coerced (unknown category → "other",
+    (web/src/lib/scheduleRows.ts). Off-contract values are coerced (unknown category → "other",
     missing `suggested` → the category default) so a rough model output still
     lands cleanly."""
     finish_tag: str = ""
@@ -209,7 +206,8 @@ def parse_schedule(body: ParseScheduleIn) -> ParseScheduleOut:
     out = adapter.parse_schedule(body.image_b64, body.width, body.height)
     # Validate/coerce each row through ScheduleRow and drop untagged ones (a row
     # with no finish_tag can't become a condition). The default heuristic returns
-    # no rows — this path is plumbing-complete but needs a real OCR/VLM adapter.
+    # no rows; reading one needs a real OCR/VLM adapter. Nothing in the web app
+    # calls this route.
     rows = [ScheduleRow(**r) for r in out.get("rows", []) if isinstance(r, dict)]
     rows = [r for r in rows if r.finish_tag.strip()]
     return ParseScheduleOut(rows=rows, note=out.get("note", ""))

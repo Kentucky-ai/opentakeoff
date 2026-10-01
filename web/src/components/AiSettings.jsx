@@ -1,5 +1,5 @@
-// AI settings — bring your own key. The single always-visible pixel of the AI
-// seam; everything else stays dormant until this is configured (ai.js).
+// AI settings — bring your own key. Opened from the Agent panel; the agent
+// stays dormant until this is configured (ai.js isAiConfigured).
 import { useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import { aiConfig, saveAiConfig } from "../lib/ai.js";
@@ -19,14 +19,17 @@ export default function AiSettings({ onClose }) {
         </div>
         <div style={{ padding: 16, fontSize: 13, lineHeight: 1.6, color: "var(--ink)" }}>
           <p style={{ marginTop: 0 }}>
-            OpenTakeoff can ask a vision model <strong>you</strong> provide to read things off the plan — starting
-            with the drawn scale when the sheet text doesn't state one. Point it at an OpenAI-style or
-            Anthropic-style endpoint: a hosted API, or a local runtime on your own machine (most local
-            runtimes speak the OpenAI style and need no key).
+            The in-canvas takeoff agent runs on a vision model <strong>you</strong> provide. Point it at an
+            OpenAI-style or Anthropic-style endpoint: a hosted API, or a local runtime on your own machine
+            (most local runtimes speak the OpenAI style and need no key).
           </p>
           <p style={{ margin: "0 0 10px", color: "var(--c-positive)", fontWeight: 600 }}>
-            What's sent, and only when you click an AI button: a snapshot of the sheet region in question,
-            plus the question. Never the whole plan file, file names, project names, or your takeoff.
+            What's sent, and only while an agent run you started is going: your goal, the prompts, and
+            what the agent's tools return. That includes sheet names (which include the PDF file name),
+            each sheet's size and scale status, the text and schedule rows it reads, and images of the
+            sheet regions it looks at (up to a whole sheet, at most 1,024 px a side). It also includes
+            your conditions (finish tag, hatch, waste %) and the areas and perimeters it measures. This
+            list isn't complete. Never the whole plan file.
           </p>
           <label style={{ display: "block", margin: "6px 0" }}>
             <span className="field-label">Endpoint</span>

@@ -35,13 +35,12 @@ class TakeoffAI(Protocol):
         ...
 
     def parse_schedule(self, image_b64: str, width: int, height: int) -> dict:
-        """Given a base64 PNG crop of a finish/material schedule table (the region
-        the estimator marqueed on a SCANNED sheet, so there's no text layer to
-        read), OCR/VLM it into rows.
+        """Given a base64 PNG crop of a finish/material schedule table (a raster
+        schedule with no text layer to read), OCR/VLM it into rows.
         Return: {"rows": [ScheduleRow...], "note": str}, where each ScheduleRow is
         {finish_tag, section, category, description, manufacturer, style,
         spec_color, size, remarks, suggested} — the SAME shape the client's
-        vector reader emits, so both paths feed the one approval dialog.
+        vector reader emits. Nothing in the web app calls this route.
         `category` is one of floor/base/wall/wall_protection/transition/ceiling/
         other/unassigned ("unassigned" = no section, listed as "No section");
         `remarks` is the REMARKS cell; `suggested` pre-checks the row in the

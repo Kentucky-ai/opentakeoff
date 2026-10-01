@@ -14,7 +14,7 @@ import { FINISH_SECTION_CATEGORY, type FinishSection } from "./finishSections.ts
 import type { Category, CategorySource, ScheduleRow, Token } from "./scheduleRows.ts";
 
 /** Why a marquee gave no rows. "no-table": no finish table was read at all
- *  (the caller may still try the scan reader). Every other reason is a table
+ *  (an empty box, or text that holds no table). Every other reason is a table
  *  that IS there but is not a finish/material schedule — "title": its title
  *  names another family (DOOR SCHEDULE …); "equipment": the sheet graph's
  *  equipment reader reads a device schedule (a GPM, HP, MBH, NECK … column)

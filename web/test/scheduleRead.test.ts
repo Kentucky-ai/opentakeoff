@@ -331,7 +331,7 @@ test("known limit: an untitled door schedule that prints MATERIAL, MANUFACTURER 
   assert.equal(r.rows.length, 8);
 });
 
-test("no finish table in the box → refused as no-table (the caller may try the scan reader)", () => {
+test("no finish table in the box → refused as no-table", () => {
   assert.equal(refusal(readScheduleSpans([])), "no-table");
   assert.equal(refusal(readScheduleSpans([sp("GENERAL NOTES", 10, 10), sp("FIELD VERIFY", 10, 48)])), "no-table");
 });
