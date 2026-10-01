@@ -226,7 +226,8 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
   let running: Job | null = null;
   // After a read timeout: the restart in progress (recognize queues and
   // whenIdle waits while it runs), its deadline, and the timeouts since a
-  // read last got an answer.
+  // read last got an answer (reset too whenever the client gives up, so a
+  // start the person asks for again gets a fresh allowance).
   let restarting = false;
   let restartTimer: Deadline | null = null;
   let strikes = 0;
@@ -434,7 +435,12 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
       finish(att, r);
       if (disposed) return; // dispose answered the queue and whenIdle
       if (r.ok) pump();
-      else rejectAll(err ?? restartError(r));
+      else {
+        // Back to "needs ensureReady", as after giving up: the next start
+        // gets a fresh allowance.
+        strikes = 0;
+        rejectAll(err ?? restartError(r));
+      }
       checkIdle();
     };
     restartTimer = deadline(RESTART_DEADLINE_MS, () => {

@@ -810,6 +810,7 @@ test("with no timer deps the client builds under node, and a read round-trips on
   await assert.rejects(hung, /disposed/);
 });
 
+
 test("a hung read whose deadline is unref'd doesn't keep node alive", async () => {
   const w = fakeWorker();
   const client = createOcrClient({ enabled: true, fetchImpl: fakeFetch().fetchImpl as never, cacheStorage: fakeCaches(ALL).cacheStorage as never, spawnWorker: () => w });
@@ -818,13 +819,16 @@ test("a hung read whose deadline is unref'd doesn't keep node alive", async () =
   const real = globalThis.setTimeout;
   // Watch which timers the client makes, without changing them.
   globalThis.setTimeout = ((fn: () => void, ms?: number) => { const h = real(fn, ms); handles.add(h); return h; }) as typeof setTimeout;
-  let hung: Promise<unknown>;
-  try { hung = client.recognize(region()); } finally { globalThis.setTimeout = real; }
-  void hung.catch(() => {});
-  const armed = [...handles] as NodeJS.Timeout[];
-  assert.equal(armed.length, 1, "the read armed one default timer");
-  assert.equal(armed[0].hasRef(), false, "unref'd");
-  client.dispose();
+  try {
+    let hung: Promise<unknown>;
+    try { hung = client.recognize(region()); } finally { globalThis.setTimeout = real; }
+    void hung.catch(() => {});
+    const armed = [...handles] as NodeJS.Timeout[];
+    assert.equal(armed.length, 1, "the read armed one default timer");
+    assert.equal(armed[0].hasRef(), false, "unref'd");
+  } finally {
+    client.dispose(); // a failed assertion mustn't leave a ref'd timer holding node open
+  }
 });
 
 // ── the watchdog's restart: the queue survives a hung read ──────────────────
@@ -904,11 +908,21 @@ test("a restart that doesn't come up in 120 s is ended; its late ready is ignore
   assert.equal(spawned.length, 2);
   assert.equal(await settled(idle), true);
   assert.equal(timers.live().length, 0);
-  // The next ensureReady starts afresh.
+  // The next ensureReady starts afresh, with a fresh allowance: the next
+  // hang restarts rather than giving up at once.
   const again = client.ensureReady();
   const w3 = await initAt(spawned, 2);
   readyAt(w3);
   assert.deepEqual(await again, { ok: true });
+  const c = client.recognize(region());
+  const d = client.recognize(region());
+  timers.live()[0].fn();
+  await assert.rejects(c, OcrTimeoutError);
+  const w4 = await initAt(spawned, 3);
+  readyAt(w4);
+  await tick();
+  w4.reply({ type: "result", id: recognizes(w4)[0].msg.id, words: [] });
+  assert.deepEqual(await d, []);
 });
 
 test("an ensureReady caller who joins a restart and aborts doesn't cancel it", async () => {
@@ -1000,9 +1014,18 @@ test("two timeouts with no completed read between them reject the queue and stop
   assert.equal(spawned.length, 2, "no third worker");
   assert.equal(await settled(idle), true);
   await assert.rejects(client.recognize(region()), /not ready/);
-  // A fresh ensureReady starts over, with a fresh allowance.
+  // A fresh ensureReady starts over, with a fresh allowance: the next hang
+  // restarts again rather than giving up at once.
   assert.deepEqual(await client.ensureReady(), { ok: true });
   assert.equal(spawned.length, 3);
+  const d = client.recognize(region());
+  const e = client.recognize(region());
+  timers.live()[0].fn();
+  await assert.rejects(d, OcrTimeoutError);
+  const w4 = await initAt(spawned, 3);
+  await tick();
+  w4.reply({ type: "result", id: recognizes(w4)[0].msg.id, words: [] });
+  assert.deepEqual(await e, []);
 });
 
 test("dispose during a restart clears its timer, rejects the queue and resolves whenIdle", async () => {
@@ -1154,4 +1177,32 @@ test("time hidden doesn't count toward a read's measured speed", async () => {
   // 4 s visible over both stretches = 1.6× the 2.5 s envelope.
   assert.equal(await nextDeadline(s), readDeadlineMs(16, 1.6));
   assert.equal(readDeadlineMs(16, 1.6), 280_000);
+});
+
+test("a timeout while a newer start is still under way doesn't restart beside it: the queue rejects", async () => {
+  // An abandoned start's late ready lets reads run while a newer start waits
+  // at the same worker. A restart then would race that start for the worker.
+  const s = setup({ cached: ALL, worker: () => fakeWorker(() => {}) });
+  const ac = new AbortController();
+  const first = s.client.ensureReady({ signal: ac.signal });
+  const w = await initPosted(s.spawned);
+  ac.abort();
+  assert.deepEqual(await first, { ok: false, reason: "aborted" });
+  const second = s.client.ensureReady();
+  await initPosted(s.spawned, 2);
+  const inits = initsOf(w).map((p) => p.msg.initId);
+  w.reply({ type: "ready", initId: inits[0] }); // the abandoned start's ready
+  const a = s.client.recognize(region());
+  const b = s.client.recognize(region());
+  assert.equal(recognizes(w).length, 1);
+  s.timers.live()[0].fn();
+  await assert.rejects(a, OcrTimeoutError);
+  await assert.rejects(b, OcrTimeoutError);
+  const r = await second;
+  assert.equal(r.ok, false);
+  assert.equal(!r.ok && r.reason, "error");
+  await tick();
+  assert.equal(s.spawned.length, 1, "no restart");
+  await assert.rejects(s.client.recognize(region()), /not ready/);
+  assert.equal(await settled(s.client.whenIdle()), true);
 });
