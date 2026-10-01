@@ -40,7 +40,7 @@ import { wordsToSpans, type OcrWord } from "./ocr/types.ts";
 import type { GraphSpan } from "./sheetgraph.ts";
 import type { ScheduleRead } from "./scheduleRead.ts";
 import {
-  routeOcrRead, ocrUnavailableMessage, ocrFailedMessage, OCR_DECLINED_MESSAGE, OCR_TOO_LARGE_MESSAGE, type BoxText, type ImportRoute,
+  routeOcrRead, ocrUnavailableMessage, ocrFailedMessage, OCR_DECLINED_MESSAGE, OCR_TOO_LARGE_MESSAGE, OCR_TIMEOUT_MESSAGE, type BoxText, type ImportRoute,
 } from "./scheduleRoute.ts";
 
 /** What a box read on-device becomes. */
@@ -90,6 +90,8 @@ function untilAbort(p: Promise<void>, signal?: AbortSignal): Promise<void> {
 /** A thrown value that is the read's PageTooLargeError (regionRead.ts). */
 const tooLargeError = (e: unknown) => (e as { name?: string } | null)?.name === "PageTooLargeError";
 const abortError = (e: unknown) => (e as { name?: string } | null)?.name === "AbortError";
+/** The client's OcrTimeoutError: the reader never answered (client.ts). */
+const timeoutError = (e: unknown) => (e as { name?: string } | null)?.name === "OcrTimeoutError";
 
 export async function readBoxOnDevice(steps: BoxReadSteps): Promise<OcrReadResult> {
   const { session, readWords, tooLarge, onProgress, read, isCurrent, onReading, whenIdle, onWaiting, signal, box } = steps;
@@ -126,6 +128,7 @@ export async function readBoxOnDevice(steps: BoxReadSteps): Promise<OcrReadResul
     case "failed":
       if (r.error === STALE || stale() || abortError(r.error)) return CANCELLED;
       if (tooLargeError(r.error)) return { kind: "message", text: OCR_TOO_LARGE_MESSAGE };
+      if (timeoutError(r.error)) return { kind: "message", text: OCR_TIMEOUT_MESSAGE };
       return { kind: "message", text: ocrFailedMessage(r.error instanceof Error ? r.error.message : String(r.error)) };
   }
 }

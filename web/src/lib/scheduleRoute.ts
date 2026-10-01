@@ -160,6 +160,12 @@ export function ocrUnavailableMessage(reason: "disabled" | "uninstalled", box: B
     : `No schedule found in that box. If it's a raster image, ${why}.`;
 }
 
+/** A read the reader never answered (lib/ocr/client.ts OcrTimeoutError):
+ *  the reader restarts on its own, so trying again is the next move. Its
+ *  own line rather than ocrFailedMessage, which would wrap the error's
+ *  sentence in parentheses. */
+export const OCR_TIMEOUT_MESSAGE = "The on-device reader stopped responding — try again.";
+
 /** A start or a read step that failed, with the reason it gave. */
 export function ocrFailedMessage(reason: string): string {
   return `Couldn't read that box on this device (${reason}) — try again.`;

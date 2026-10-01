@@ -31,7 +31,7 @@ import { readFileSync } from "node:fs";
 import type { ScheduleRow } from "../src/lib/scheduleRows.ts";
 import { readBoxOnDevice } from "../src/lib/scheduleOcrRead.ts";
 import {
-  ocrUnavailableMessage, ocrFailedMessage, refusalMessage, OCR_DECLINED_MESSAGE, OCR_NO_ROWS_MESSAGE, OCR_TOO_LARGE_MESSAGE, OCR_NO_HEADER_MESSAGE, type BoxText,
+  ocrUnavailableMessage, ocrFailedMessage, refusalMessage, OCR_DECLINED_MESSAGE, OCR_NO_ROWS_MESSAGE, OCR_TOO_LARGE_MESSAGE, OCR_NO_HEADER_MESSAGE, OCR_TIMEOUT_MESSAGE, type BoxText,
 } from "../src/lib/scheduleRoute.ts";
 import type { SeamProgress } from "../src/lib/ocr/seams.ts";
 
@@ -321,6 +321,14 @@ test("the read throws: its message", async () => {
   h.c.ensure[0].settle({ ok: true });
   assert.deepEqual(await h.p, { kind: "message", text: ocrFailedMessage("no 2d canvas context") });
   assert.deepEqual(h.log, ["tooLarge", "onReading", "readWords"]);
+});
+
+test("the reader stopped responding (the client's OcrTimeoutError): its own message, not the failed-read wording", async () => {
+  const h = harness({ readWords: async () => { throw Object.assign(new Error("The on-device reader stopped responding."), { name: "OcrTimeoutError" }); } });
+  await flush();
+  h.c.ensure[0].settle({ ok: true });
+  assert.deepEqual(await h.p, { kind: "message", text: OCR_TIMEOUT_MESSAGE });
+  assert.equal(OCR_TIMEOUT_MESSAGE, "The on-device reader stopped responding — try again.");
 });
 
 test("the read rejects with a non-Error: String(error)", async () => {
