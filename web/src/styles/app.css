@@ -52,6 +52,10 @@ input, textarea { font-family: var(--f-body); }
 .btn-ghost  { background: transparent; color: var(--ink); border: 1px solid var(--ink); }
 .btn-ghost:hover  { background: var(--paper-shadow); }
 .btn-ghost:active { transform: translateY(1px); }
+/* on the ink panel (the status bar) --ink is the panel's own background, so
+   the ghost takes the panel's foreground instead, in every theme */
+.ink-panel .btn-ghost { color: var(--status-fg); border-color: var(--status-fg); }
+.ink-panel .btn-ghost:hover { background: color-mix(in srgb, var(--status-fg) 18%, transparent); }
 
 .btn-primary:focus-visible,
 .btn-ghost:focus-visible { outline: none; box-shadow: var(--ring); }

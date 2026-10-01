@@ -147,10 +147,10 @@ node scripts/stage-ocr-model.mjs   # or: npm run stage:ocr
   `dist/assets` has exactly one ORT wasm (the asyncify build), no chunk carries
   OpenCV or `@napi-rs/canvas` code, a staged manifest matches the wasm
   actually shipped, and every other file the manifest lists is a
-  `/models/ocr/` path in `dist` at the listed byte length. It also fails
-  once the app imports the OCR client while `vite.config.js` still has the
-  temporary `ocr` build input: that input's entry chunk then carries the
-  client, or another chunk imports it, and the input must be removed.
+  `/models/ocr/` path in `dist` at the listed byte length. With OCR on, it
+  also fails unless the OCR worker chunk is there and loads that same wasm,
+  so the checks can't pass on a build with no OCR code in it; the app's
+  import of `src/lib/ocr/client.ts` is what builds the worker.
 - **Headers.** The reader needs no new origin in the CSP; the comment in
   `web/public/_headers` says why.
 

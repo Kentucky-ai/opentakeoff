@@ -838,9 +838,9 @@ export default function TakeoffCanvas() {
     ocrReadRef.current = null;
     setOcrRead(null);
   }
-  /** Cancel, Esc, a sheet switch, the gallery or guide, unmount: stop the
-   *  read and let go at once, so nothing that can't be stopped keeps the lock
-   *  or the line. A render already started runs to its end (rasterize takes
+  /** Cancel, Esc, a sheet switch, the gallery, guide, report or revisions,
+   *  unmount: stop the read and let go at once, so nothing that can't be
+   *  stopped keeps the lock or the line. A render already started runs to its end (rasterize takes
    *  no signal), so it can overlap the next read's render (two canvases, each
    *  within MAX_CANVAS_AREA); its result is dropped. Recognitions never
    *  overlap: the client keeps an aborted one running until the worker
@@ -853,7 +853,7 @@ export default function TakeoffCanvas() {
     m.ctl.abort();
     releaseImportRead(m);
   }
-  useEffect(() => { if (view !== "canvas" || guideOpen) cancelImportRead(); }, [view, guideOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (view !== "canvas" || guideOpen || showReport || showRevisions) cancelImportRead(); }, [view, guideOpen, showReport, showRevisions]); // eslint-disable-line react-hooks/exhaustive-deps
   // ── the Symbol tool (#264) — same two-click marquee idiom as schedule ─────
   const [symbolAnchor, setSymbolAnchor] = useState(null);     // first marquee corner, isolated like scheduleAnchor
   const [imageAnchor, setImageAnchor] = useState(null);       // first marquee corner for the "image" screenshot tool, isolated like scheduleAnchor/symbolAnchor
@@ -1010,8 +1010,11 @@ export default function TakeoffCanvas() {
   useEffect(() => {
     if (!workspaceLayout) return;
     const onSearchKey = (e) => {
-      if (ocrReadRef.current?.ocr) return;   // held while a schedule box is read on-device
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k" && !e.altKey && !e.shiftKey && menuDepthRef.current === 0) {
+      const isSearch = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k" && !e.altKey && !e.shiftKey;
+      // held while a schedule box is read on-device — and kept from the
+      // browser's own ⌘K too, so nothing acts behind the coming notice
+      if (ocrReadRef.current?.ocr) { if (isSearch) e.preventDefault(); return; }
+      if (isSearch && menuDepthRef.current === 0) {
         if (e.target.closest?.("input, textarea, select, [contenteditable=true]")) return;
         e.preventDefault(); setWorkspaceSearchOpen(true);
       }
@@ -7222,7 +7225,7 @@ export default function TakeoffCanvas() {
   // (scheduleOcrRead.readBoxOnDevice). That read asks for the engine's
   // download the first time (the notice), shows its status line with Cancel
   // in the footer, and is cancelled by Cancel, Esc, a sheet switch, or the
-  // gallery or guide opening. One box at a time: a box drawn meanwhile is
+  // gallery, guide, report or revisions opening. One box at a time: a box drawn meanwhile is
   // told so.
   // Corners a,b are stage px (raw cursor, snapping exempted at pointer-down).
   async function importScheduleFromRect(a, b) {

@@ -34,9 +34,6 @@ const good = () => ({
   "assets/index-abc.js": 'const engine="opencv";export{engine}',
   "assets/ort-wasm-simd-threaded.asyncify-XYZ.wasm": WASM,
   "assets/ocr.worker-W1.js": 'const w="/assets/ort-wasm-simd-threaded.asyncify-XYZ.wasm";',
-  // the temporary `ocr` build entry, as the real build emits it while
-  // nothing in the app imports the client: one newline, no code
-  "assets/ocr-E1.js": "\n",
   "models/ocr/det.onnx": DET,
   "models/ocr/manifest.json": manifest(),
 });
@@ -95,6 +92,7 @@ test("OCR on: a dist without the OCR worker chunk fails, so the checks above can
   const r = checkDist(dist(rest), {});
   assert.equal(r.ok, false);
   assert.match(r.errors.join("\n"), /ocr\.worker/);
+  assert.match(r.errors.join("\n"), /lib\/ocr\/client\.ts/);
   // VITE_OCR=off doesn't need it
   assert.deepEqual(checkDist(dist(withoutModels(rest)), { VITE_OCR: "off" }).errors, []);
 });
@@ -133,40 +131,7 @@ test("a manifest file whose length differs from dist's copy fails", () => {
   assert.match(r.errors.join("\n"), /det\.onnx.*bytes/);
 });
 
-// The `ocr` rollup input in vite.config.js exists only because nothing in the
-// app imports the OCR client yet. Once something does, Rollup puts the client
-// (and the worker's URL) in the `ocr-*.js` entry chunk and the app chunk
-// imports that entry by file name; the extra input must then go. The shapes
-// below are what `vite build` emitted with an app entry importing
-// getOcrClient while the `ocr` input was still there.
-const REMOVE = /remove the `ocr` input.*vite\.config\.js/s;
-test("an app chunk importing the ocr entry, which carries the client, fails until the ocr input is removed", () => {
-  const r = checkDist(dist({
-    ...good(),
-    "assets/app-A1.js": 'import{g as o}from"./ocr-E1.js";import"./gate-G1.js";globalThis.__ocr=o;',
-    "assets/ocr-E1.js": 'function g(){return new Worker(new URL("ocr.worker-W1.js",import.meta.url),{type:"module"})}export{g};',
-  }), {});
-  assert.equal(r.ok, false);
-  assert.match(r.errors.join("\n"), /app-A1\.js.*ocr-E1\.js/);
-  assert.match(r.errors.join("\n"), REMOVE);
-});
-
-test("an app chunk importing the ocr entry fails even when the entry itself is empty", () => {
-  const r = checkDist(dist({ ...good(), "assets/index-abc.js": 'import"./ocr-E1.js";' }), {});
-  assert.equal(r.ok, false);
-  assert.match(r.errors.join("\n"), /index-abc\.js.*ocr-E1\.js/s);
-  assert.match(r.errors.join("\n"), REMOVE);
-});
-
-test("an ocr entry that carries code fails, even with no importer", () => {
-  const r = checkDist(dist({ ...good(), "assets/ocr-E1.js": "export const x=1;" }), {});
-  assert.equal(r.ok, false);
-  assert.match(r.errors.join("\n"), /ocr-E1\.js/);
-  assert.match(r.errors.join("\n"), REMOVE);
-});
-
-test("once the ocr input is gone, an app chunk may reference the worker", () => {
-  const { ["assets/ocr-E1.js"]: _e, ...rest } = good();
-  const r = checkDist(dist({ ...rest, "assets/index-abc.js": 'new Worker(new URL("ocr.worker-W1.js",import.meta.url),{type:"module"})' }), {});
+test("an app chunk may reference the worker (the app's import of the OCR client builds it)", () => {
+  const r = checkDist(dist({ ...good(), "assets/index-abc.js": 'new Worker(new URL("ocr.worker-W1.js",import.meta.url),{type:"module"})' }), {});
   assert.deepEqual(r.errors, []);
 });
