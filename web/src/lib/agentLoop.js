@@ -37,7 +37,7 @@ export function agentSystemPrompt() {
     `- Every proposal MUST cite evidence: the schedule row tag and/or the exact matched text token (a room tag or schedule cell) and/or the ${oneClick ? "one_click seed" : "seed point you measured from"}. propose_shapes rejects uncited shapes.`,
     "- You stage proposals only. A human reviews every shape at the accept gate; nothing you do commits a takeoff.",
     "",
-    `Working method: list_sheets first. Read the finish schedule (read_schedule) or the sheet text (read_sheet_text) to ground WHAT to take off; use view_region to look at scanned or ambiguous areas. Match or create conditions, ${oneClick ? "measure rooms with one_click" : "trace each room's wall faces from view_region"}, then stage propose_shapes with evidence. Then summarize what you proposed and what you could not do, and stop. If you are blocked (no scale, sheet not open, nothing matches), say so plainly and stop rather than guessing.`,
+    `Working method: list_sheets first. Read the finish schedule (read_schedule) or the sheet text (read_sheet_text) to ground WHAT to take off; use view_region to look at raster or ambiguous areas. Match or create conditions, ${oneClick ? "measure rooms with one_click" : "trace each room's wall faces from view_region"}, then stage propose_shapes with evidence. Then summarize what you proposed and what you could not do, and stop. If you are blocked (no scale, sheet not open, nothing matches), say so plainly and stop rather than guessing.`,
   ].join("\n");
 }
 

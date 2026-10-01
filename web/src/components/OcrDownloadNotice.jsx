@@ -63,7 +63,7 @@ export default function OcrDownloadNotice({ downloadBytes, progress, onDownload,
       </div>
       <div id="ocr-download-body" style={{ padding: "var(--sp-3) var(--sp-4)", fontSize: "var(--fs-s)", lineHeight: 1.5 }}>
         <p style={{ margin: 0 }}>
-          Reading text from a scanned page needs two recognition models, a character list and their runtime:{" "}
+          Reading text from an image needs two recognition models, a character list and their runtime:{" "}
           <span style={S.monoReadout}>up to {formatMB(downloadBytes)}</span>, downloaded once from this site and kept in your browser.
         </p>
         <p style={{ margin: "var(--sp-2) 0 0", color: "var(--ink-muted)" }}>
