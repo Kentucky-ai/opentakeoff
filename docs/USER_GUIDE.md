@@ -504,7 +504,7 @@ With the **45°** toggle on (it's on by default), the segment you're drawing loc
 
 ### Snap (beta)
 
-The **Snap** toggle pulls your cursor onto true PDF endpoints—real corners extracted from the drawing's own vectors. When a snap engages, the chip reads `snap`, and an endpoint snap always beats the angle lock: corners win over axes. Off by default; scans have no vector endpoints, so Snap has nothing to grab there.
+The **Snap** toggle pulls your cursor onto true PDF endpoints—real corners extracted from the drawing's own vectors. When a snap engages, the chip reads `snap`, and an endpoint snap always beats the angle lock: corners win over axes. Off by default; scans have no vector endpoints, so Snap has nothing to grab there. **Copy text**, **Import from schedule**, **Image** and **Pin** never snap: the corner you see is the corner you place.
 
 ### The live readout
 

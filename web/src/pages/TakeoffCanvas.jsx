@@ -54,6 +54,7 @@ import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKe
 import { joinAbuttingSpans } from "../lib/textjoin";
 import { dropFileFromIndex, indexIsScanLike } from "../lib/planIndex";
 import { labelsForFile, labelsOnFileChange, withPageLabel, withFoundLabels } from "../lib/sheetLabels";
+import { snapsToVectors } from "../lib/cursorSnap";
 import { textLayerReader, ocrCopyReaders, copyOcrRoute, readCopyText, createReadGate, boxOnPanel, copyIsScanLike, copyStartMiss, copyReaderChain, copyUnavailable, outcomeMessage, deliverCopy, makeReceipt, receiptExpires, receiptAfterEsc, receiptPlacement, RECEIPT_MS } from "../lib/copyText";
 import { putSheetIndex, createChangeSignal, ocrSheetIndex, needsTextPass } from "../lib/planSearch";
 import { createOcrSession } from "../lib/ocr/session";
@@ -298,10 +299,6 @@ const TOOL_VERB = {
   arrow: "annotate", dimension: "annotate", stamp: "annotate", bubble: "annotate",
   textcopy: "read_sheet_text",
 };
-// Tools whose click places the RAW cursor: selection gestures, where a corner
-// snapped to a vector endpoint would shift the box off what the estimator
-// aimed at. Select does its own endpoint snap on drop.
-const RAW_CURSOR_TOOLS = new Set(["select", "schedule", "image", "pin", "textcopy"]);
 
 // Pure geometry helpers (star/cloud paths, snap grid, angle lock, metrics,
 // hit-testing) live in lib/geometry.js — byte-identical with Spline's copy.
@@ -3413,12 +3410,13 @@ export default function TakeoffCanvas() {
       return;
     }
     // snapRef/angleRef are drawing-tool aids maintained by moveCrosshair, which
-    // bails for the Select tool (:1577) — so in Select they'd be STALE. Select
-    // does its own endpoint snap (ocSnap) on drop, so it always uses the raw
-    // cursor here; otherwise a stale ref freezes the drag or jumps it on grab.
-    // schedule (marquee) wants the raw cursor like select — snapping a corner to
-    // a vector vertex would shift the box off the schedule and misread the region
-    const rawCursor = RAW_CURSOR_TOOLS.has(tool);
+    // bails for the Select tool — so in Select they'd be STALE. Select does its
+    // own endpoint snap (ocSnap) on drop, so it always uses the raw cursor here;
+    // otherwise a stale ref freezes the drag or jumps it on grab. The selection
+    // boxes want the raw cursor too: a corner snapped to a vector vertex would
+    // shift the box off what was aimed at. snapsToVectors is the one rule,
+    // shared with moveCrosshair's preview.
+    const rawCursor = !snapsToVectors(tool);
     const p = (!rawCursor && snapOn && snapRef.current) ? snapRef.current
       : (!rawCursor && angleOn && angleRef.current) ? angleRef.current
         : toImage(e.clientX, e.clientY);
@@ -3844,9 +3842,10 @@ export default function TakeoffCanvas() {
     let cur = toImage(e.clientX, e.clientY);
     snapRef.current = null;
     if (snapMarkRef.current) snapMarkRef.current.style.display = "none";
-    // Copy text never snaps: its crosshair and box preview show exactly the
-    // corner the click places (raw), so what's drawn is what's read
-    if (snapOn && tool !== "textcopy" && !panRef.current && snapGridsRef.current.size) {
+    // the selection boxes never snap (snapsToVectors is false for them): their
+    // crosshair and box preview show exactly the corner the click places (raw),
+    // so what's drawn is what's read — and no star or "snap" chip
+    if (snapOn && snapsToVectors(tool) && !panRef.current && snapGridsRef.current.size) {
       const sc = tfRef.current.scale;
       const sp = panelAt(cur[0]);
       const grid = snapGridsRef.current.get(sp.key);
