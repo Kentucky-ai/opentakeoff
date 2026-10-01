@@ -110,6 +110,63 @@ test("the canvas leaves the sheet while a raster renders: it is never read, and 
   assert.equal(outer.signal.aborted, false, "the caller's own signal is left alone");
 });
 
+test("the caller's Cancel during a render: the read rejects AbortError and nothing is read after it", async () => {
+  const page = fakePage(36 * 72, 24 * 72);
+  const rect: Rect = { x0: 2 * IN, y0: 2 * IN, x1: 32 * IN, y1: 22 * IN };
+  const outer = new AbortController();
+  // the render ignores its signal and lands after the abort: only the read's
+  // own abort check (on the signal boxReadWords forwards to) can stop it
+  const r = fakeRender((i) => { if (i === 1) outer.abort(); });
+  let readsAfterAbort = 0;
+  const client = { async recognize() { if (outer.signal.aborted) readsAfterAbort++; return []; } };
+  await assert.rejects(
+    boxReadWords(page, RS, rect, () => true, { rasterize: r.rasterize, client })(outer.signal),
+    (e: Error) => e.name === "AbortError",
+  );
+  assert.equal(r.calls.length, 2, "nothing rendered after the abort");
+  assert.equal(readsAfterAbort, 0, "the raster that landed after Cancel was never read");
+});
+
+test("the caller's Cancel during a recognize: the read rejects AbortError at once and nothing more is read", async () => {
+  const page = fakePage(36 * 72, 24 * 72);
+  const rect: Rect = { x0: 2 * IN, y0: 2 * IN, x1: 32 * IN, y1: 22 * IN };
+  const outer = new AbortController();
+  const r = fakeRender();
+  const seen: (AbortSignal | undefined)[] = [];
+  // like client.ts: a read under way rejects AbortError when its signal fires
+  const client = {
+    recognize(_r: RegionRaster, o: { signal?: AbortSignal } = {}): Promise<OcrWord[]> {
+      seen.push(o.signal);
+      if (seen.length === 2) setTimeout(() => outer.abort(), 1);
+      return new Promise((resolve, reject) => {
+        const t = setTimeout(() => resolve([]), 20);
+        o.signal?.addEventListener("abort", () => { clearTimeout(t); reject(new DOMException("aborted", "AbortError")); }, { once: true });
+      });
+    },
+  };
+  await assert.rejects(
+    boxReadWords(page, RS, rect, () => true, { rasterize: r.rasterize, client })(outer.signal),
+    (e: Error) => e.name === "AbortError",
+  );
+  assert.equal(seen.length, 2, "no read started after Cancel");
+  assert.equal(r.calls.length, 2, "no render started after Cancel");
+  assert.ok(seen[1]?.aborted, "the read under way saw the abort");
+});
+
+test("the read stops listening to the caller's signal once it settles", async () => {
+  const page = fakePage(36 * 72, 24 * 72);
+  const rect: Rect = { x0: 10 * IN, y0: 3 * IN, x1: 18 * IN, y1: 9 * IN };
+  const outer = new AbortController();
+  let added = 0, removed = 0;
+  const sig = outer.signal;
+  const add = sig.addEventListener.bind(sig), remove = sig.removeEventListener.bind(sig);
+  sig.addEventListener = ((...a: Parameters<typeof add>) => { added++; return add(...a); }) as typeof add;
+  sig.removeEventListener = ((...a: Parameters<typeof remove>) => { removed++; return remove(...a); }) as typeof remove;
+  await boxReadWords(page, RS, rect, () => true, { rasterize: fakeRender().rasterize, client: fakeClient().client })(sig);
+  assert.equal(added, 1);
+  assert.equal(removed, 1);
+});
+
 /** A session like the real one (lib/ocr/session.ts run): the task runs with
  * the caller's signal; its throw is `aborted` only when that signal fired,
  * else `failed`. Counts runs. */
