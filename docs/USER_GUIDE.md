@@ -394,8 +394,8 @@ Known limits of the raster read:
 
 - A raster sheet that also carries a full OCR text layer, or a CAD sheet whose schedule text is drawn as lines (SHX) while its title is real text: when the box holds more than 8 text runs with a letter or digit that don't read as a table, it gets the re-drag hint instead of a read.
 - The in-canvas agent's `read_schedule` reads the text layer only; it doesn't read a raster schedule.
-- The reader can miss a printed section heading, and the rows under it then come in under **No section**. On the bundled demo's MATERIAL SCHEDULE as a 200 DPI image (one sheet, n=1), the read found all 28 codes, and every row landed in the same group as the text-layer read of the same box (No section 1, Floor 6, Base 3, Wall 7, Wall Protection 3, Transition 2, Ceiling 2, Other 4); before the reader read each word box on its own (#484), it missed the FLOORING, BASE and WALLS headings there and 17 rows came in with no section.
-- A space inside a short box can go missing: on the same read, four size cells came in as `2'x2'` or `3"x 6"` for `2' x 2'` and `3" x 6"`. Check sizes against the sheet.
+- The reader can miss a printed section heading, and the rows under it then come in under **No section**. On the bundled demo's MATERIAL SCHEDULE as a 200 DPI image (one sheet, n=1), the read found all 28 codes, and every row landed in the same group as the text-layer read of the same box (No section 1, Floor 6, Base 3, Wall 7, Wall Protection 3, Transition 2, Ceiling 2, Other 4); before the reader read each word box on its own (#484), it missed the FLOOR, WALL and CEILING headings in the same run and 17 rows came in with no section.
+- A space inside a short box can go missing: on the same read, four size cells lost a space: `2'x2'` (twice), `2"x 2"` and `3"x 6"`. Check sizes against the sheet.
 - A blank row between two code groups inside one printed section (CPT-1 to CPT-4, a blank row, then LVT-1), or a row the reader drops at a group boundary, moves the later rows of that section to **No section**. It errs toward No section, never toward a wrong section.
 - **Cancel** can't stop a recognition already running in the background, so a box read right after waits for it.
 - A header row set rotated 90° (column names reading bottom to top) isn't read at all, so the table isn't found; the message above names this case.
@@ -783,7 +783,7 @@ Measured time and memory (Apple M4, 16 GB, macOS 26.2, headless Chrome for Testi
 | Floor plan sheet, first read | 42.2 s (41.8–47.4) | 0.95 GB (0.89–2.3) | 2.9–4.9 GB |
 | Finish schedule sheet, reader already running | 47.2 s (43.7–49.0) | 2.2 GB (1.1–2.8) | 3.6–4.5 GB |
 
-Memory is the browser tab's process (renderer RSS, which includes the reader's worker), sampled every 250 ms; "adds" is the peak during the read minus the same process just before it. It varies a lot from run to run (the tab's memory before a read differed by over 2 GB between runs), so read it as a range, not a figure. Background load on the machine slows reads: one run during other heavy work took 47.4 s and 59.0 s. One raster is read at a time.
+Memory is the browser tab's process (renderer RSS, which includes the reader's worker), sampled every 250 ms; "adds" is the peak during the read minus the same process just before it. It varies a lot from run to run (the tab's memory before a read differed by over 2 GB between runs), so read it as a range, not a figure. Other processes were busy during parts of runs 1 and 2 (run 1's floor plan read, 47.4 s, is the slow end of its range), so expect slower reads on a loaded machine. One raster is read at a time.
 
 Known limits:
 

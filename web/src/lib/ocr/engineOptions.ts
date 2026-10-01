@@ -56,8 +56,8 @@ export interface EngineOptions {
 // a space inside a short box can go ("2' x 2'" read as "2'x2'"). Time per
 // page is about the same or less: in the app, the median of 4 reads per
 // sheet went 41.7 → 40.0 s and 49.5 → 42.6 s (one earlier read ran on a
-// loaded machine and is included; the diagnosis harness's single runs, on a
-// loaded machine, had per-box 6–30% slower).
+// loaded machine and is included). Single runs in the diagnosis harness, on a
+// loaded machine, were 6–30% slower with per-box.
 export const OCR_ENGINE_OPTIONS: EngineOptions = {
   detection: { paddingVertical: 0.4, paddingHorizontal: 0.6, maxSideLength: OCR_SCAN_MAX_DIM },
   recognition: { maxCropSourceSideLength: OCR_SCAN_MAX_DIM, strategy: "per-box", recBatchSize: 1 },
