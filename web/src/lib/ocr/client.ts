@@ -32,7 +32,9 @@
 // consent-required. It has its own deadline. If it fails, or a second read
 // times out with none answered in between (reads are deterministic, so the
 // same raster would hang again), the queue rejects and the next
-// ensureReady starts afresh.
+// ensureReady starts afresh. Both deadlines count only time the page is
+// visible, since a browser throttles a background tab: a hang in a hidden
+// tab is bounded only once the tab is visible again.
 //
 // dispose() is final: pending and later ensureReady calls resolve aborted,
 // and no worker is started again.
@@ -75,6 +77,12 @@ export interface OcrClientDeps {
    * test injects timers it fires by hand. */
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
+  now?: () => number;
+  /** Is the page hidden, and tell me when that changes (returns the
+   * unsubscribe). By default document.hidden and visibilitychange; with no
+   * document (node) the page is always visible. */
+  isHidden?: () => boolean;
+  onVisibility?: (listener: () => void) => () => void;
 }
 
 /** A read the worker never answered within its deadline. */
@@ -119,10 +127,15 @@ type Attempt = { waiters: Set<Waiter>; done: boolean; network: boolean; initId: 
 const ABORTED: OcrReady = { ok: false, reason: "aborted" };
 const CONSENT_REQUIRED: OcrReady = { ok: false, reason: "consent-required" };
 
-/** `cleanup` drops the abort listener; `timer` is the deadline, armed once
- * the read is posted. An abort runs cleanup only: the worker is still busy
- * with the read, so its deadline still stands. */
-type Job = { id: number; region: OcrRegion; resolve: (w: OcrWord[]) => void; reject: (e: Error) => void; aborted: boolean; cleanup: () => void; timer: unknown };
+/** A deadline that runs only while the page is visible. `handle` is the
+ * armed timer (null while paused); `left` is what remained when it was last
+ * armed or paused, at `since`; `visibleMs` the visible time before that. */
+type Deadline = { fire: () => void; left: number; handle: unknown; since: number; visibleMs: number };
+
+/** `cleanup` drops the abort listener; `deadline` is armed once the read is
+ * posted. An abort runs cleanup only: the worker is still busy with the
+ * read, so its deadline still stands. */
+type Job = { id: number; region: OcrRegion; resolve: (w: OcrWord[]) => void; reject: (e: Error) => void; aborted: boolean; cleanup: () => void; deadline: Deadline | null };
 
 const abortError = () => new DOMException("The OCR read was cancelled.", "AbortError");
 
@@ -135,6 +148,13 @@ const defaultSetTimer = (fn: () => void, ms: number): unknown => {
   return h;
 };
 const defaultClearTimer = (h: unknown) => clearTimeout(h as ReturnType<typeof setTimeout>);
+const defaultNow = () => (typeof performance === "undefined" ? Date.now() : performance.now());
+const defaultIsHidden = () => typeof document !== "undefined" && document.hidden === true;
+const defaultOnVisibility = (listener: () => void) => {
+  if (typeof document === "undefined") return () => {};
+  document.addEventListener("visibilitychange", listener);
+  return () => document.removeEventListener("visibilitychange", listener);
+};
 
 export function createOcrClient(deps: OcrClientDeps = {}) {
   const enabled = deps.enabled ?? ocrEnabled();
@@ -143,6 +163,45 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
   const spawnWorker = deps.spawnWorker ?? defaultSpawn;
   const setTimer = deps.setTimer ?? defaultSetTimer;
   const clearTimer = deps.clearTimer ?? defaultClearTimer;
+  const now = deps.now ?? defaultNow;
+  const isHidden = deps.isHidden ?? defaultIsHidden;
+
+  // Every deadline still running, paused while the page is hidden and
+  // re-armed with what was left when it shows again.
+  const deadlines = new Set<Deadline>();
+  function arm(d: Deadline) {
+    d.since = now();
+    // Fired, it leaves the set (no re-arming); its owner's cancel still
+    // clears the handle, harmless on a timer that already ran.
+    d.handle = setTimer(() => { deadlines.delete(d); d.fire(); }, d.left);
+  }
+  function pause(d: Deadline) {
+    if (d.handle == null) return;
+    clearTimer(d.handle);
+    d.handle = null;
+    const ran = now() - d.since;
+    d.left = Math.max(0, d.left - ran);
+    d.visibleMs += ran;
+  }
+  /** `fire` after `ms` of visible time; starts paused on a hidden page. */
+  function deadline(ms: number, fire: () => void): Deadline {
+    const d: Deadline = { fire, left: ms, handle: null, since: 0, visibleMs: 0 };
+    deadlines.add(d);
+    if (!isHidden()) arm(d);
+    return d;
+  }
+  function cancel(d: Deadline | null) {
+    if (!d) return;
+    pause(d);
+    deadlines.delete(d);
+  }
+  const stopWatching = (deps.onVisibility ?? defaultOnVisibility)(() => {
+    const hidden = isHidden();
+    for (const d of deadlines) {
+      if (hidden) pause(d);
+      else if (d.handle == null) arm(d);
+    }
+  });
 
   let uninstalled = false;
   let manifest: OcrManifest | null = null;
@@ -161,7 +220,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
   // whenIdle waits while it runs), its deadline, and the timeouts since a
   // read last got an answer.
   let restarting = false;
-  let restartTimer: unknown = null;
+  let restartTimer: Deadline | null = null;
   let strikes = 0;
   // whenIdle's callers, answered once nothing is running, queued or
   // restarting.
@@ -282,8 +341,8 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
 
   /** A job is done with: drop its abort listener and its deadline. */
   function settled(j: Job) {
-    if (j.timer != null) clearTimer(j.timer);
-    j.timer = null;
+    cancel(j.deadline);
+    j.deadline = null;
     j.cleanup();
   }
 
@@ -352,7 +411,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
     const end = (r: OcrReady, err?: Error) => {
       if (over) return;
       over = true;
-      if (restartTimer != null) clearTimer(restartTimer);
+      cancel(restartTimer);
       restartTimer = null;
       restarting = false;
       finish(att, r);
@@ -361,7 +420,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
       else rejectAll(err ?? restartError(r));
       checkIdle();
     };
-    restartTimer = setTimer(() => {
+    restartTimer = deadline(RESTART_DEADLINE_MS, () => {
       if (over) return;
       // A late ready from this worker must not count: end it (its messages
       // are ignored from here on) before settling.
@@ -371,7 +430,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
       try { w?.terminate(); } catch { /* already gone */ }
       const e = new OcrTimeoutError();
       end({ ok: false, reason: "error", message: e.message }, e);
-    }, RESTART_DEADLINE_MS);
+    });
     void start(att).then((r) => end(r), (err) => end({ ok: false, reason: "error", message: String(err) }));
   }
 
@@ -472,7 +531,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
       }
       // Armed only once the read is at the worker; every path that settles
       // the job (settled()) clears it.
-      job.timer = setTimer(() => timeOut(job), readDeadlineMs((width * height) / 1e6));
+      job.deadline = deadline(readDeadlineMs((width * height) / 1e6), () => timeOut(job));
     }
     checkIdle();
   }
@@ -487,7 +546,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
       // earlier read of the same region): its pixels are gone.
       if (region.rgba.buffer.byteLength === 0) return reject(new Error("OCR region pixels were already sent; render the region again"));
       const signal = opts.signal;
-      const job: Job = { id: ++seq, region, resolve, reject, aborted: false, cleanup: () => {}, timer: null };
+      const job: Job = { id: ++seq, region, resolve, reject, aborted: false, cleanup: () => {}, deadline: null };
       const onAbort = () => {
         job.aborted = true;
         const i = queue.indexOf(job);
@@ -523,9 +582,10 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
    * aborted. Later ensureReady calls resolve aborted without a worker. */
   function dispose() {
     disposed = true;
-    if (restartTimer != null) clearTimer(restartTimer);
+    cancel(restartTimer);
     restartTimer = null;
     restarting = false;
+    stopWatching();
     if (attempt) cancelAttempt(attempt, ABORTED);
     const w = worker;
     try { w?.postMessage({ type: "dispose" }); } catch { /* already gone */ }

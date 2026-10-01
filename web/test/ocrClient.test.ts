@@ -89,11 +89,26 @@ function fakeTimers() {
   };
 }
 
-function setup(opts: { cached?: string[]; sizes?: Record<string, number>; enabled?: boolean; fetch?: ReturnType<typeof fakeFetch>; worker?: () => FakeWorker } = {}) {
+/** A page's clock and visibility, moved by hand: `t` is now(), `hidden`
+ * what isHidden() answers, and `flip()` changes it and tells the client. */
+function fakePage() {
+  const page = {
+    t: 0,
+    hidden: false,
+    listeners: new Set<() => void>(),
+    unsubscribed: 0,
+    flip(hidden: boolean) { page.hidden = hidden; for (const f of page.listeners) f(); },
+  };
+  return page;
+}
+
+function setup(opts: { cached?: string[]; sizes?: Record<string, number>; enabled?: boolean; fetch?: ReturnType<typeof fakeFetch>; worker?: () => FakeWorker; hidden?: boolean } = {}) {
   const fetch = opts.fetch ?? fakeFetch();
   const caches = fakeCaches(opts.cached ?? [], opts.sizes);
   const spawned: FakeWorker[] = [];
   const timers = fakeTimers();
+  const page = fakePage();
+  page.hidden = opts.hidden ?? false;
   const client = createOcrClient({
     enabled: opts.enabled ?? true,
     fetchImpl: fetch.fetchImpl as never,
@@ -101,8 +116,11 @@ function setup(opts: { cached?: string[]; sizes?: Record<string, number>; enable
     spawnWorker: () => { const w = (opts.worker ?? (() => fakeWorker()))(); spawned.push(w); return w; },
     setTimer: timers.setTimer,
     clearTimer: timers.clearTimer,
+    now: () => page.t,
+    isHidden: () => page.hidden,
+    onVisibility: (f) => { page.listeners.add(f); return () => { page.unsubscribed++; page.listeners.delete(f); }; },
   });
-  return { client, fetch, caches, spawned, timers };
+  return { client, fetch, caches, spawned, timers, page };
 }
 
 const geometry = { rect: { x0: 0, y0: 0, x1: 10, y1: 10 }, zoom: 1 };
@@ -123,7 +141,7 @@ async function initPosted(spawned: FakeWorker[], n = 1): Promise<FakeWorker> {
 }
 const ALL = ["det", "rec", "dict", "ort-wasm"];
 
-async function readyClient(opts: { worker?: () => FakeWorker } = {}) {
+async function readyClient(opts: { worker?: () => FakeWorker; hidden?: boolean } = {}) {
   const s = setup({ cached: ALL, ...opts });
   assert.deepEqual(await s.client.ensureReady(), { ok: true });
   return { ...s, w: s.spawned[0] };
@@ -1001,4 +1019,64 @@ test("dispose during a restart clears its timer, rejects the queue and resolves 
   assert.equal(w2.terminated, true);
   assert.equal(await settled(idle), true);
   assert.deepEqual(await client.ensureReady(), { ok: false, reason: "aborted" });
+});
+
+// ── the watchdog counts only time the page is visible ──────────────────────
+
+test("a hidden page pauses a read's deadline; shown again, it resumes with the time left", async () => {
+  const { client, w, timers, page } = await readyClient();
+  const r = region();
+  const a = client.recognize(r);
+  const full = readDeadlineMs(mpOf(r));
+  assert.equal(timers.live()[0].ms, full);
+  page.t = 50_000;
+  page.flip(true);
+  assert.equal(timers.live().length, 0, "paused while hidden");
+  page.t = 10_000_000; // a night in a background tab
+  page.flip(false);
+  assert.equal(timers.live().length, 1);
+  assert.equal(timers.live()[0].ms, full - 50_000, "the remaining time, not a fresh deadline");
+  timers.live()[0].fn();
+  await assert.rejects(a, OcrTimeoutError);
+  assert.equal(w.terminated, true);
+});
+
+test("a read posted while the page is hidden starts paused", async () => {
+  const { client, w, timers, page } = await readyClient({ hidden: true });
+  const r = region();
+  const a = client.recognize(r);
+  assert.equal(recognizes(w).length, 1, "the read is sent; only its clock waits");
+  assert.equal(timers.live().length, 0);
+  page.t = 5_000;
+  page.flip(false);
+  assert.equal(timers.live()[0].ms, readDeadlineMs(mpOf(r)));
+  w.reply({ type: "result", id: recognizes(w)[0].msg.id, words: [] });
+  await a;
+  assert.equal(timers.live().length, 0);
+  page.flip(true);
+  page.flip(false);
+  assert.equal(timers.live().length, 0, "a settled read's deadline doesn't come back");
+});
+
+test("a hidden page pauses the restart's deadline too", async () => {
+  const { client, timers, spawned, page } = await hungClient();
+  const a = client.recognize(region());
+  timers.live()[0].fn();
+  await assert.rejects(a, OcrTimeoutError);
+  await initAt(spawned, 1);
+  assert.equal(timers.live()[0].ms, 120_000);
+  page.t = 30_000;
+  page.flip(true);
+  assert.equal(timers.live().length, 0);
+  page.t = 900_000;
+  page.flip(false);
+  assert.equal(timers.live()[0].ms, 90_000);
+});
+
+test("dispose removes the visibility listener", async () => {
+  const { client, page } = await readyClient();
+  assert.equal(page.listeners.size, 1);
+  client.dispose();
+  assert.equal(page.listeners.size, 0);
+  assert.equal(page.unsubscribed, 1);
 });

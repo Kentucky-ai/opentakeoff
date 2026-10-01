@@ -36,7 +36,8 @@
 // client's per-read deadline: when it passes, the client ends the worker and
 // restarts the engine from the cache, and is idle once the restart settles,
 // so "Stopping…" ends and later reads go to the new worker (or fail, if the
-// restart does).
+// restart does). Known limit: the deadline counts only visible time, so a
+// hang in a background tab is bounded only once the tab is shown again.
 //
 // Pure: the session, cache, region reader and page are injected. The
 // default region reader imports regionRead.ts on first use, so the page that
