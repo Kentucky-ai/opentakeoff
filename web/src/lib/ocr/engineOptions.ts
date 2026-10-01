@@ -54,8 +54,10 @@ export interface EngineOptions {
 // at batch 6 alone lost notes lines (24 of 30), so it is both or neither.
 // Costs: a lone symbol is held to 0.8 (ppu's SYMBOL_CONFIDENCE_OFFSET), and
 // a space inside a short box can go ("2' x 2'" read as "2'x2'"). Time per
-// page is about the same: in the app, the median of 3–4 reads per sheet went
-// 41.6 → 40.0 s and 48.5 → 42.6 s; single loaded runs ranged 6–30% slower.
+// page is about the same or less: in the app, the median of 4 reads per
+// sheet went 41.7 → 40.0 s and 49.5 → 42.6 s (one earlier read ran on a
+// loaded machine and is included; the diagnosis harness's single runs, on a
+// loaded machine, had per-box 6–30% slower).
 export const OCR_ENGINE_OPTIONS: EngineOptions = {
   detection: { paddingVertical: 0.4, paddingHorizontal: 0.6, maxSideLength: OCR_SCAN_MAX_DIM },
   recognition: { maxCropSourceSideLength: OCR_SCAN_MAX_DIM, strategy: "per-box", recBatchSize: 1 },
