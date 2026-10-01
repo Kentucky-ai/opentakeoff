@@ -66,7 +66,9 @@ import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
 import { rowToSeed } from "../lib/scheduleRows";   // the reader (scheduleRead, which loads the sheet graph) is import()ed on use
-import { routeScheduleRead } from "../lib/scheduleRoute";
+import { routeScheduleRead, countTextRuns, EMPTY_BOX_MESSAGE, OCR_BUSY_MESSAGE, OCR_STARTING_MESSAGE, OCR_READING_MESSAGE } from "../lib/scheduleRoute";
+import { readBoxOnDevice } from "../lib/scheduleOcrRead";
+import { rasterizeRegion } from "../lib/ocr/rasterize";
 import { pageSpans, spansInRect, graphSpans } from "../lib/pageSpans";
 import { normalizeTag } from "../lib/scheduleEdit";
 // Condition twins — the whole inheritance rule is in lib/variants.ts (test/variants.test.ts);
@@ -821,6 +823,37 @@ export default function TakeoffCanvas() {
   const [showRevisions, setShowRevisions] = useState(false); // Revisions overlay (save / compare any two, buy-list deltas, CSV, auto-banked restore)
   const [importRows, setImportRows] = useState(null);        // Import-from-schedule approval rows (null = dialog closed)
   const [scheduleAnchor, setScheduleAnchor] = useState(null); // first marquee corner for the "schedule" tool — ISOLATED from poly so it can never leak into a measure shape
+  // The box being read: one at a time. importScheduleFromRect takes the lock
+  // for every box (a vector box only for its own short read) as `mine` =
+  // { ctl, ocr }; `ocr` is set once the box goes to the on-device reader,
+  // and while it is the canvas's window shortcuts are held (Esc cancels the
+  // read instead), so keys on the body behind a coming notice, or under the
+  // status line, act on nothing. Only the holder writes a result.
+  const ocrReadRef = useRef(null);
+  // The footer's status line: null | "starting" | "reading". Never commitMsg.
+  const [ocrRead, setOcrRead] = useState(null);
+  /** End `m`'s hold on the read, if it still has it: the lock and the line go. */
+  function releaseImportRead(m) {
+    if (ocrReadRef.current !== m) return;
+    ocrReadRef.current = null;
+    setOcrRead(null);
+  }
+  /** Cancel, Esc, a sheet switch, the gallery or guide, unmount: stop the
+   *  read and let go at once, so nothing that can't be stopped keeps the lock
+   *  or the line. A render already started runs to its end (rasterize takes
+   *  no signal), so it can overlap the next read's render (two canvases, each
+   *  within MAX_CANVAS_AREA); its result is dropped. Recognitions never
+   *  overlap: the client keeps an aborted one running until the worker
+   *  replies, and a read started right after queues behind it. Aborted while
+   *  the notice waits, the session answers this read and closes the notice;
+   *  during the download it stops the download, and the next box asks again. */
+  function cancelImportRead() {
+    const m = ocrReadRef.current;
+    if (!m) return;
+    m.ctl.abort();
+    releaseImportRead(m);
+  }
+  useEffect(() => { if (view !== "canvas" || guideOpen) cancelImportRead(); }, [view, guideOpen]); // eslint-disable-line react-hooks/exhaustive-deps
   // ── the Symbol tool (#264) — same two-click marquee idiom as schedule ─────
   const [symbolAnchor, setSymbolAnchor] = useState(null);     // first marquee corner, isolated like scheduleAnchor
   const [imageAnchor, setImageAnchor] = useState(null);       // first marquee corner for the "image" screenshot tool, isolated like scheduleAnchor/symbolAnchor
@@ -977,6 +1010,7 @@ export default function TakeoffCanvas() {
   useEffect(() => {
     if (!workspaceLayout) return;
     const onSearchKey = (e) => {
+      if (ocrReadRef.current?.ocr) return;   // held while a schedule box is read on-device
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k" && !e.altKey && !e.shiftKey && menuDepthRef.current === 0) {
         if (e.target.closest?.("input, textarea, select, [contenteditable=true]")) return;
         e.preventDefault(); setWorkspaceSearchOpen(true);
@@ -1007,11 +1041,13 @@ export default function TakeoffCanvas() {
   // gets the same shared page proxy from getPage and must not clean it up then
   const pageHeld = useCallback((key) => pageObjsRef.current.has(key), []);
   // On-device page reads (#471), one of each for the canvas's life. The
-  // session is the one consent path (lib/ocr/session.ts); its notice is the
-  // OcrDownloadNotice mounted last in the tree, driven by ocrHost. The reader
-  // (lib/ocr/pageRead.ts) reads a text-less sheet (cache first), holds each
-  // sheet's read status, and feeds every read and cache hit to the search
-  // index as an OCR entry. The gallery gets all of it through `ocrApi` below.
+  // session is the one consent path (lib/ocr/session.ts) for these reads and
+  // Import from schedule's raster read (#470, importScheduleFromRect); its
+  // notice is the OcrDownloadNotice mounted last in the tree, driven by
+  // ocrHost. The reader (lib/ocr/pageRead.ts) reads a text-less sheet (cache
+  // first), holds each sheet's read status, and feeds every read and cache
+  // hit to the search index as an OCR entry. The gallery gets all of it
+  // through `ocrApi` below.
   const [ocrNotice, setOcrNotice] = useState(null);   // OcrDownloadNotice's { downloadBytes, progress }, or null
   // Focus: what had it when the notice opened (captured as it opens, before
   // Download's autoFocus takes it), restored when the notice closes;
@@ -2416,8 +2452,11 @@ export default function TakeoffCanvas() {
     // renderSeqRef invalidates in-flight renders, and cancelling the current
     // renderTasksRef set is the whole point. Copying to a variable (the rule's
     // suggestion) would cancel the stale mount-time set and leak the live one.
+    // A schedule box still being read belongs to the sheet group being left
+    // (a sheet switch, a stitch edit, a re-dropped file's docEpoch, unmount):
+    // cancel it and release its lock and status line now.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    return () => { renderSeqRef.current++; for (const [, rt] of renderTasksRef.current) { try { rt.cancel(); } catch { /* done */ } } };
+    return () => { renderSeqRef.current++; for (const [, rt] of renderTasksRef.current) { try { rt.cancel(); } catch { /* done */ } } cancelImportRead(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupSig]);
 
@@ -2886,7 +2925,11 @@ export default function TakeoffCanvas() {
   // a scheduled save, an active drag, the open text editor, an agent run and its
   // staged proposals — hydrate() wipes agentProposals and the
   // conditions a mid-run agent minted, so both defer exactly like One-Click review).
-  busyStateRef.current = { poly, calib, check, proposal, scaleGuide, prevScale, agentRunning, agentProposals };
+  // importReading: a schedule box read on-device — a hydrate that changes
+  // groupSig would cancel the read, and an untouched download notice defers
+  // sync like One-Click's `proposal`. ocrRead is set for the whole read, the
+  // notice included; a notice opened by a page Read (#471) isn't counted.
+  busyStateRef.current = { poly, calib, check, proposal, scaleGuide, prevScale, agentRunning, agentProposals, importReading: !!ocrRead };
   const computeBusy = () => isCanvasBusy({
     ...busyStateRef.current,
     saveState: saveStateRef.current,
@@ -2970,9 +3013,10 @@ export default function TakeoffCanvas() {
     // transition triggers. saveState catches the debounced-save clearing; idleTick
     // catches an interaction ref (drag/editor/scan) clearing with no state change.
     // agentRunning/agentProposals: the run finishing or the last proposal being
-    // accepted/rejected is a busy→idle edge that must drain a held remote.
+    // accepted/rejected is a busy→idle edge that must drain a held remote;
+    // ocrRead: a schedule box's on-device read ending is one too.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [poly, calib, check, proposal, scaleGuide, prevScale, saveState, idleTick, agentRunning, agentProposals]);
+  }, [poly, calib, check, proposal, scaleGuide, prevScale, saveState, idleTick, agentRunning, agentProposals, ocrRead]);
 
   function fitToView(w, h) {
     const el = containerRef.current;
@@ -3074,7 +3118,7 @@ export default function TakeoffCanvas() {
 
   // Space = temporary pan (any tool)
   useEffect(() => {
-    const down = (e) => { if (e.code === "Space" && !e.repeat && e.target.tagName !== "INPUT") { spaceRef.current = true; if (containerRef.current) containerRef.current.style.cursor = "grab"; } };
+    const down = (e) => { if (e.code === "Space" && !e.repeat && e.target.tagName !== "INPUT" && !ocrReadRef.current?.ocr) { spaceRef.current = true; if (containerRef.current) containerRef.current.style.cursor = "grab"; } };
     const up = (e) => { if (e.code === "Space") { spaceRef.current = false; if (containerRef.current) containerRef.current.style.cursor = ""; } };
     window.addEventListener("keydown", down); window.addEventListener("keyup", up);
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
@@ -3088,6 +3132,9 @@ export default function TakeoffCanvas() {
       if (tg === "INPUT" || tg === "SELECT" || tg === "TEXTAREA") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (menuDepthRef.current > 0) return;
+      // held while a schedule box is read on-device: ⏎, g, f, ? must not act
+      // behind (or open a dialog under) the coming download notice
+      if (ocrReadRef.current?.ocr) return;
       // "?" opens the manual. Here rather than in its own listener so it
       // inherits this effect's guards — a "?" typed into a condition tag or
       // with a toolbar menu open must not pop a dialog over the work.
@@ -3203,6 +3250,7 @@ export default function TakeoffCanvas() {
       if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;   // let ⌘/Ctrl+1..9 (native tab switch) through — mirror the letter handler
       if (menuDepthRef.current > 0) return;              // a toolbar menu is open; digits are paused like the letter shortcuts
+      if (ocrReadRef.current?.ocr) return;               // held while a schedule box is read on-device
       const n = parseInt(e.key, 10);
       if (n < 1 || n > 9) return;
       const id = palette.length ? palette[n - 1] : conditions[n - 1]?.id;
@@ -3219,6 +3267,9 @@ export default function TakeoffCanvas() {
       const t = e.target.tagName;
       if (t === "INPUT" || t === "SELECT" || t === "TEXTAREA") return;
       if (viewRef.current === "gallery") return;
+      // a schedule box read on-device holds these keys; Esc cancels the read
+      // (the download notice, when it is up, takes Esc before this sees it)
+      if (ocrReadRef.current?.ocr) { if (e.key === "Escape") { e.preventDefault(); cancelImportRead(); } return; }
       if (e.key === "Backspace" || e.key === "Delete") {
         e.preventDefault();
         if (poly.length) { dropLastPoint(); }
@@ -6728,6 +6779,7 @@ export default function TakeoffCanvas() {
       const tg = e.target.tagName;
       if (tg === "INPUT" || tg === "SELECT" || tg === "TEXTAREA") return;
       if (menuDepthRef.current > 0) return;
+      if (ocrReadRef.current?.ocr) return;   // held while a schedule box is read on-device
       if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
       if ((e.key || "").toLowerCase() !== "m") return;
       if (!commandBoxEnabled()) return;   // gated off the topbar (lib/gate.js): M arms nothing
@@ -7158,37 +7210,80 @@ export default function TakeoffCanvas() {
   }
 
   // ── Import from schedule ────────────────────────────────────────────────────
-  // Read the marqueed box and open the approval dialog. The page text layer
-  // inside the box IS the extraction — no OCR, no server, nothing leaves the
-  // device. The page's text becomes the sheet graph's spans (pageSpans, the
-  // MCP's builder), cropped to the box, and the sheet graph's finish reader
-  // reads them (scheduleRead.readScheduleSpans, loaded on first use).
-  // scheduleRoute.ts decides what every box becomes — rows, a refusal, the
-  // re-drag hint, or the empty-box message — from the read, the box's text-run
-  // count and whether the page has a text layer at all.
+  // Read the marqueed box and open the approval dialog. Nothing leaves the
+  // device. The page's text inside the box is read first: it becomes the
+  // sheet graph's spans (pageSpans, the MCP's builder), cropped to the box,
+  // and the sheet graph's finish reader reads them (scheduleRead
+  // .readScheduleSpans, loaded on first use). scheduleRoute.ts decides what
+  // the box becomes — rows, a refusal, the re-drag hint, or, when its text
+  // holds no table and at most a few runs (a raster schedule, or an empty
+  // box), a read with the on-device OCR reader (#470): the box is rendered
+  // at OCR's DPI and its words go to the same finish reader
+  // (scheduleOcrRead.readBoxOnDevice). That read asks for the engine's
+  // download the first time (the notice), shows its status line with Cancel
+  // in the footer, and is cancelled by Cancel, Esc, a sheet switch, or the
+  // gallery or guide opening. One box at a time: a box drawn meanwhile is
+  // told so.
   // Corners a,b are stage px (raw cursor, snapping exempted at pointer-down).
   async function importScheduleFromRect(a, b) {
-    if (status !== "ready") { setCommitMsg("Sheet still loading — try again in a moment."); return; }
-    const panel = panelAt(a[0]);
-    if (panelAt(b[0]).key !== panel.key) { setCommitMsg("Draw the box within a single sheet, around its schedule table."); return; }
-    const pageObj = pageObjsRef.current.get(panel.key);
-    if (!pageObj) { setCommitMsg("Open a sheet first."); return; }
-    const rs = renderScalesRef.current.get(panel.key) || RENDER_SCALE;
-    const rect = { x0: a[0] - panel.xOffset, y0: a[1], x1: b[0] - panel.xOffset, y1: b[1] };
+    // The lock, taken before any await so two quick boxes can't both read.
+    if (ocrReadRef.current) { setCommitMsg(OCR_BUSY_MESSAGE); return; }
+    const mine = { ctl: new AbortController(), ocr: false };
+    ocrReadRef.current = mine;
     const seq = renderSeqRef.current;                 // a sheet switch mid-await must not pop a dialog for a page you left
-    let spans, pageHasText, readScheduleSpans;
+    const isCurrent = () => ocrReadRef.current === mine && !mine.ctl.signal.aborted && seq === renderSeqRef.current;
     try {
-      const vp = pageObj.getViewport({ scale: rs });
-      const tc = await pageObj.getTextContent();
-      ({ readScheduleSpans } = await import("../lib/scheduleRead"));   // the reader chunk loads on first use
-      if (seq !== renderSeqRef.current) return;
-      const page = pageSpans(tc.items, vp.transform, rs);
-      pageHasText = page.length > 0;   // the box's own source (pageSpans drops blank runs), so "box empty, page not" is consistent
-      spans = graphSpans(spansInRect(page, rect));
-    } catch { setCommitMsg("Couldn't read that region."); return; }
-    const route = routeScheduleRead(readScheduleSpans(spans), { textRuns: spans.length, pageHasText });
-    if (route.kind === "rows") setImportRows(route.rows);
-    else setCommitMsg(route.text);
+      if (status !== "ready") { setCommitMsg("Sheet still loading — try again in a moment."); return; }
+      const panel = panelAt(a[0]);
+      if (panelAt(b[0]).key !== panel.key) { setCommitMsg("Draw the box within a single sheet, around its schedule table."); return; }
+      const pageObj = pageObjsRef.current.get(panel.key);
+      if (!pageObj) { setCommitMsg("Open a sheet first."); return; }
+      const rs = renderScalesRef.current.get(panel.key) || RENDER_SCALE;
+      // rect in image (rs-viewport) px, clamped to the panel as
+      // captureRegionMarkup does; the same rect is cropped and rendered
+      const cl = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+      const rect = {
+        x0: cl(Math.min(a[0], b[0]) - panel.xOffset, 0, panel.img.w), y0: cl(Math.min(a[1], b[1]), 0, panel.img.h),
+        x1: cl(Math.max(a[0], b[0]) - panel.xOffset, 0, panel.img.w), y1: cl(Math.max(a[1], b[1]), 0, panel.img.h),
+      };
+      if (!(rect.x1 - rect.x0 >= 4 && rect.y1 - rect.y0 >= 4)) { setCommitMsg(EMPTY_BOX_MESSAGE); return; }
+      let spans, pageHasText, readScheduleSpans;
+      try {
+        const vp = pageObj.getViewport({ scale: rs });
+        const tc = await pageObj.getTextContent();
+        ({ readScheduleSpans } = await import("../lib/scheduleRead"));   // the reader chunk loads on first use
+        if (!isCurrent()) return;
+        const page = pageSpans(tc.items, vp.transform, rs);
+        pageHasText = page.length > 0;   // the box's own source (pageSpans drops blank runs), so "box empty, page not" is consistent
+        spans = graphSpans(spansInRect(page, rect));
+      } catch { if (isCurrent()) setCommitMsg("Couldn't read that region."); return; }
+      const box = { textRuns: countTextRuns(spans), pageHasText };
+      const route = routeScheduleRead(readScheduleSpans(spans), box);
+      if (route.kind === "rows") { setImportRows(route.rows); return; }
+      if (route.kind === "message") { setCommitMsg(route.text); return; }
+      // On-device: the status line replaces the footer message, unless that
+      // is the stale-tab lockout or another job's in-progress "…" line.
+      mine.ocr = true;
+      setCommitMsgState((m) => (m.text === STALE_TAB_MESSAGE || (m.text || "").endsWith("…") ? m : { text: "" }));
+      setOcrRead("starting");
+      const result = await readBoxOnDevice({
+        session: ocrSession,
+        rasterize: () => rasterizeRegion(pageObj, rs, rect),
+        recognize: (raster, signal) => getOcrClient().recognize(raster, { signal }),
+        read: readScheduleSpans,
+        isCurrent,
+        onReading: () => { if (isCurrent()) setOcrRead("reading"); },
+        signal: mine.ctl.signal,
+        box,
+      });
+      if (!isCurrent()) return;
+      if (result.kind === "rows") setImportRows(result.rows);
+      else if (result.kind === "message") setCommitMsg(result.text);
+    } catch {
+      if (isCurrent()) setCommitMsg("Couldn't read that region.");
+    } finally {
+      releaseImportRead(mine);
+    }
   }
 
   // ── image markup (#…) — two entry points, one record type ────────────────
@@ -8133,6 +8228,7 @@ export default function TakeoffCanvas() {
     commit: commitAnnotationBatch, message: setCommitMsg, ready: status === "ready",
     storageKey: "opentakeoff_annotation_favorites_v1", visible: showMarkups,
     compact: workspaceLayout, onMenuDepth,
+    keysHeld: () => !!ocrReadRef.current?.ocr,   // its Delete/Esc/⌘Z wait out a schedule box's on-device read, like the canvas's own keys
     legacyTools: { highlighter: "highlighter", cloud: "cloud", callout: "callout" },
     resetDraft: () => { leaveCanvas(); setMarkupDraft(null); },
     readText: async key => {
@@ -10862,6 +10958,15 @@ export default function TakeoffCanvas() {
             {commitMsg}
           </span>
         )}
+        {/* Import from schedule's on-device read: its own live line, never
+            commitMsg (which ellipsizes), and hidden while the download notice
+            is up (the notice owns Cancel and Esc then) */}
+        <span aria-live="polite" style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "var(--sp-2)" }}>
+          {ocrRead && !ocrNotice && (<>
+            <span>{ocrRead === "starting" ? OCR_STARTING_MESSAGE : OCR_READING_MESSAGE}</span>
+            <button type="button" className="btn-ghost" onClick={cancelImportRead} style={{ padding: "var(--sp-1) var(--sp-2)" }}>Cancel</button>
+          </>)}
+        </span>
         <span style={{ marginLeft: "auto", display: "flex", gap: 12, opacity: 0.75 }} aria-live="polite">
           <span>{shapes.filter((s) => panelKeySet.has(s.sheet_id)).length} shapes</span>
           <span>{cloudMode ? "drive" : "local"}{saveState === "saving" ? " · saving…" : saveState === "saved" ? " · saved" : ""}</span>

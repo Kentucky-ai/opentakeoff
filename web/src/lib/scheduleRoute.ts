@@ -5,8 +5,11 @@
 // Every box is one decision here, from the read plus two facts about the box:
 // how many text runs it held and whether the page has a text layer at all.
 // Nothing about sign-in or a server goes in — every build routes the same, and
-// the box never leaves the device. An empty box and a box with text but no
-// table both read as "no-table"; the run count tells them apart.
+// the box never leaves the device. A box whose text holds no table and has at
+// most STRAY_TEXT_MAX_RUNS runs (none, or a few stray labels over a picture)
+// goes to the on-device reader (OCR), on any page; more text than that is a
+// vector box that missed the schedule, and gets the re-drag hint. The on-device
+// read's own answers are worded here too, so every message lives in one place.
 import type { RefusalReason, ScheduleRead } from "./scheduleRead.ts";
 import type { ScheduleRow } from "./scheduleRows.ts";
 
@@ -14,8 +17,28 @@ import type { ScheduleRow } from "./scheduleRows.ts";
  *  all, not CODE alone. */
 const WHERE = "(its CODE / TAG / MARK / SYMBOL column and MATERIAL / MANUFACTURER / COLOR headers)";
 
-/** The re-drag hint when the box held no table. */
+/** The re-drag hint when the box held text but no table. */
 export const NO_SCHEDULE_HINT = `No schedule found in that box — drag around the finish/material schedule ${WHERE}.`;
+
+/** A box too small to read (the canvas's size gate): a mis-drag, never a
+ *  claim about the page. */
+export const EMPTY_BOX_MESSAGE = `No text in that box — drag around the finish/material schedule ${WHERE}.`;
+
+/** The most text runs a box can hold and still go to the on-device reader:
+ *  a raster schedule can carry a few real text labels (a stamp, a title
+ *  typed over the scan), and a vector schedule has far more. */
+export const STRAY_TEXT_MAX_RUNS = 8;
+
+/** A run counts as text when it has a letter or digit; leader dots, rules
+ *  and lone punctuation don't push a raster box over the limit. */
+const HAS_TEXT = /[\p{L}\p{N}]/u;
+
+/** The box's text runs, as the routing counts them. */
+export function countTextRuns(spans: readonly { str: string }[]): number {
+  let n = 0;
+  for (const s of spans) if (HAS_TEXT.test(s.str || "")) n++;
+  return n;
+}
 
 /** Why a table was refused, as a clause. The title is named only when it IS
  *  the reason: another refusal's title passed the finish reader's title check
@@ -33,33 +56,67 @@ export function refusalMessage(refused: RefusalReason, title?: string): string {
     : `${refusalWhy(refused, title)} — drag around the finish schedule ${WHERE}.`;
 }
 
+/** rows → the dialog; message → the footer; ocr → read the box on-device. */
 export type ImportRoute =
   | { kind: "rows"; rows: ScheduleRow[] }
-  | { kind: "message"; text: string };
+  | { kind: "message"; text: string }
+  | { kind: "ocr" };
 
-/** What the box held: its text-run count (joined runs, after the crop) and
- *  whether the page has any text layer at all. */
+/** What the box held: its text-run count (countTextRuns over the joined runs,
+ *  after the crop) and whether the page has any text layer at all. */
 export interface BoxText {
   textRuns: number;
   pageHasText: boolean;
 }
 
-/** Rows → the dialog; a refused table → its message; no table → the re-drag
- *  hint when the box held text, else emptyBoxMessage. */
+/** Rows → the dialog; a refused table → its message, however much text the
+ *  box held; no table → the on-device reader for at most STRAY_TEXT_MAX_RUNS
+ *  runs, else the re-drag hint. */
 export function routeScheduleRead(read: ScheduleRead, box: BoxText): ImportRoute {
   if (read.rows.length) return { kind: "rows", rows: read.rows };
   const refused = "refused" in read ? read.refused : "no-table";
   if (refused !== "no-table") return { kind: "message", text: refusalMessage(refused, "title" in read ? read.title : undefined) };
-  return { kind: "message", text: box.textRuns > 0 ? NO_SCHEDULE_HINT : emptyBoxMessage(box.pageHasText) };
+  return box.textRuns <= STRAY_TEXT_MAX_RUNS ? { kind: "ocr" } : { kind: "message", text: NO_SCHEDULE_HINT };
 }
 
-/** A box with no text on a page with no text layer at all: the one case that
- *  may be called a raster page. Nothing in the app reads it. */
-export const RASTER_PAGE_MESSAGE = "No schedule text here — this page looks like a raster image (no text layer), which Import from schedule can't read.";
+// ── the on-device read ───────────────────────────────────────────────────────
 
-/** The message for a box that holds no text. Only a page with no text anywhere
- *  is a raster page; a page that has text elsewhere means the box missed the
- *  schedule — say so, and how to aim. */
-export function emptyBoxMessage(pageHasText: boolean): string {
-  return pageHasText ? `No text in that box — drag around the finish/material schedule ${WHERE}.` : RASTER_PAGE_MESSAGE;
+/** The footer's status line while the engine starts, then while the box is
+ *  rendered and read. Both carry Cancel. */
+export const OCR_STARTING_MESSAGE = "Starting the on-device reader…";
+export const OCR_READING_MESSAGE = "Reading the schedule on this device…";
+
+/** A box drawn while another is still being read. */
+export const OCR_BUSY_MESSAGE = "Still reading the last box.";
+
+/** The download notice's Cancel. */
+export const OCR_DECLINED_MESSAGE = "Not read — reading a raster schedule needs the on-device reader, which wasn't downloaded.";
+
+/** The on-device reader read the box and found no finish table in it. */
+export const OCR_NO_ROWS_MESSAGE = `No schedule found in that box — the on-device reader found no finish/material rows. Drag around the schedule ${WHERE}.`;
+
+/** The on-device reader can't run on this site: turned off (VITE_OCR=off) or
+ *  not installed (no models staged). Only a box with no text on a page with no
+ *  text layer is called a raster page; any other box sent to the reader (stray
+ *  labels, or an empty box on a page with text) only says what applies if it
+ *  is a raster image. */
+export function ocrUnavailableMessage(reason: "disabled" | "uninstalled", box: BoxText): string {
+  const why = reason === "disabled" ? "on-device reading is turned off on this site" : "this site doesn't have the on-device reader installed";
+  return box.textRuns === 0 && !box.pageHasText
+    ? `No schedule text here — this page looks like a raster image (no text layer), and ${why}.`
+    : `No schedule found in that box. If it's a raster image, ${why}.`;
+}
+
+/** A start or a read step that failed, with the reason it gave. */
+export function ocrFailedMessage(reason: string): string {
+  return `Couldn't read that box on this device (${reason}) — try again.`;
+}
+
+/** The on-device read's result: rows → the dialog; a refused table → its
+ *  message; no table → the no-rows hint. */
+export function routeOcrRead(read: ScheduleRead): Exclude<ImportRoute, { kind: "ocr" }> {
+  if (read.rows.length) return { kind: "rows", rows: read.rows };
+  const refused = "refused" in read ? read.refused : "no-table";
+  if (refused !== "no-table") return { kind: "message", text: refusalMessage(refused, "title" in read ? read.title : undefined) };
+  return { kind: "message", text: OCR_NO_ROWS_MESSAGE };
 }

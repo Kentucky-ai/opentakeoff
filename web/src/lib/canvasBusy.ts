@@ -16,6 +16,9 @@
 //     conditions it minted and orphan the proposals it's still staging)
 //   - agentProposals: dashed agent proposals await accept/reject — the agent's
 //     analog of One-Click's `proposal` review gate, deferred for the same reason
+//   - importReading: Import from schedule is reading a box on-device (its status
+//     line or the download notice is up). A hydrate that re-renders the sheet
+//     would cancel the read; an untouched notice defers sync like `proposal`
 export interface CanvasBusyState {
   poly?: unknown[];
   calib?: unknown[];
@@ -28,6 +31,7 @@ export interface CanvasBusyState {
   editing?: boolean;
   agentRunning?: boolean;
   agentProposals?: unknown[];
+  importReading?: boolean;
 }
 
 export function isCanvasBusy(s: CanvasBusyState): boolean {
@@ -42,6 +46,7 @@ export function isCanvasBusy(s: CanvasBusyState): boolean {
     !!s.dragging ||
     !!s.editing ||
     !!s.agentRunning ||
-    (s.agentProposals?.length ?? 0) > 0
+    (s.agentProposals?.length ?? 0) > 0 ||
+    !!s.importReading
   );
 }

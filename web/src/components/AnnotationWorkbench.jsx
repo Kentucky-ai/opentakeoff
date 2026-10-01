@@ -76,6 +76,7 @@ export function useAnnotationWorkbench(options) {
     const key=e=>{
       if(e.target?.closest?.('input,textarea,select,[contenteditable="true"]'))return;
       const st=state.current,o=current.current;
+      if(o.keysHeld?.())return; // the host holds its shortcuts (Import from schedule's on-device read)
       if(e.key==='Escape' && (st.active||st.editor||st.review||gesture.current||anchor.current)){e.preventDefault();e.stopImmediatePropagation();clear();setEditor(null);setReview(null);request.current++;setBusy(false);o.setTool('select');return;}
       if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='z'&&(gesture.current||anchor.current)){e.preventDefault();e.stopImmediatePropagation();clear();return;}
       if((e.key==='Delete'||e.key==='Backspace')&&st.selected.length&&o.tool==='select'){
