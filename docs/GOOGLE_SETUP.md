@@ -70,8 +70,9 @@ Under **APIs & Services → Credentials → Create credentials → OAuth client 
    VITE_GOOGLE_HD=345flooring.com
    ```
 
-   `VITE_GOOGLE_HD` is your Workspace domain—the "hosted domain" hint that,
-   together with the Internal consent screen, keeps login scoped to your team.
+   `VITE_GOOGLE_HD` is your Workspace domain. It's a sign-in hint, so Google's
+   account chooser offers your team's accounts first. It enforces nothing. The
+   Internal consent screen is what keeps login to your team.
    See [`web/.env.example`](../web/.env.example) for the full list of variables.
 
 ## 4. Create the shared Drive
