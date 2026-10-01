@@ -89,8 +89,9 @@ Use the repository's pinned runtime and lockfiles to reduce environment drift:
 - **Node version** is selected by root `.nvmrc` in CI. `nvm use` inside `web/`
   reads `web/.nvmrc`; keep the two pins aligned.
 - **`npm run check`** covers the web job's local type, lint, test, benchmark and
-  build sequence. Other CI jobs still cover MCP, protocol, docs, capture and the
-  optional server.
+  build sequence, plus the two on-device OCR checks: one `onnxruntime-web`
+  before the tests and the `dist/` rules after the build. Other CI jobs still
+  cover MCP, protocol, docs, capture and the optional server.
 - **`npm ci`** in CI installs strictly from `package-lock.json`; if your
   lockfile is out of sync with `package.json`, CI fails fast rather than
   silently resolving different versions.
@@ -111,6 +112,52 @@ unset and the app builds and runs exactly as before (anonymous, local-only). Set
 them as build environment variables wherever `npm run check`/`build` runs (or in
 `web/.env.local` locally—see [`web/.env.example`](../web/.env.example)). Full
 one-time setup is in [`GOOGLE_SETUP.md`](GOOGLE_SETUP.md).
+
+## On-device OCR models
+
+The on-device text reader (#469) needs two models and a character list, served
+from the site itself. They're gitignored, so every deployment stages them:
+
+```sh
+cd web
+node scripts/stage-ocr-model.mjs   # or: npm run stage:ocr
+```
+
+- **What it does.** Downloads PaddlePaddle's official PP-OCRv5 mobile
+  detection and English recognition models from pinned Hugging Face commits
+  into `web/public/models/ocr/`, checks each file's SHA-256 (including files
+  already on disk; a corrupt one is downloaded again), copies the committed
+  character list after checking it, and writes `manifest.json` last. A
+  download that runs past its pinned size stops at once, and one that takes
+  longer than two minutes fails the run. An interrupted run leaves no
+  manifest, and the site then reports OCR as not installed rather than
+  half-installed.
+- **Where it runs.** CI runs it after the voice model, restoring
+  `web/public/models/ocr` from its own cache entry keyed on the script.
+  `netlify.toml` runs it before the build and deploys without OCR if it fails,
+  the same way voice degrades.
+- **Turning it off.** Set `VITE_OCR=off` in the build environment (or in
+  `web/.env.local`). The stage script then stages nothing and removes an
+  earlier staging, the build ships no models, and the app reports OCR as
+  disabled without making any request. `check-ocr-dist` fails an off build
+  that still carries `models/ocr`.
+- **What's checked.** `node scripts/check-one-ort.mjs` fails unless voice and
+  OCR resolve one `onnxruntime-web`, the version `@huggingface/transformers`
+  pins, and `npm ls` reports no problem in that tree. After the build, `node scripts/check-ocr-dist.mjs` fails unless
+  `dist/assets` has exactly one ORT wasm (the asyncify build), no chunk carries
+  OpenCV or `@napi-rs/canvas` code, a staged manifest matches the wasm
+  actually shipped, and every other file the manifest lists is a
+  `/models/ocr/` path in `dist` at the listed byte length. It also fails
+  once the app imports the OCR client while `vite.config.js` still has the
+  temporary `ocr` build input: that input's entry chunk then carries the
+  client, or another chunk imports it, and the input must be removed.
+- **Headers.** The reader needs no new origin in the CSP; the comment in
+  `web/public/_headers` says why.
+
+Browsers download the files only after the person agrees, the first time they
+use the reader: 36,243,408 bytes raw, which the notice shows as “up to
+36.3 MB”. See
+[the user guide](USER_GUIDE.md#on-device-text-recognitionwhat-downloads-and-when).
 
 ## Rules on `main`
 

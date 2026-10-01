@@ -9,7 +9,10 @@
   # fetched by the app at runtime). Tolerant by design: a HuggingFace hiccup at
   # deploy time logs and deploys WITHOUT voice rather than failing the whole
   # static site — feature-absence, never breakage, exactly as the app degrades.
-  command = "node scripts/fetch-voice-model.mjs || echo 'voice model fetch failed — deploying without voice'; npm run build"
+  # On-device OCR (#469) stages the same way: a failure leaves no manifest, so
+  # the site reports OCR as not installed. VITE_OCR=off in the site's
+  # environment skips it.
+  command = "node scripts/fetch-voice-model.mjs || echo 'voice model fetch failed — deploying without voice'; node scripts/stage-ocr-model.mjs || echo 'OCR model staging failed — deploying without on-device OCR'; npm run build"
   publish = "dist"
 
 # Serverless functions live under the build base (web/netlify/functions).

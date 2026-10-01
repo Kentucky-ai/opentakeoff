@@ -15,9 +15,12 @@
     "bench": "node --import tsx bench/run.mts",
     "bench:callouts": "node --import tsx bench/callouts.mts",
     "bench:batch": "node --import tsx bench/batch.mts",
-    "check": "npm run typecheck && npm run lint && npm test && npm run bench && npm run build",
+    "check": "npm run typecheck && npm run lint && npm run check:ort && npm test && npm run bench && npm run build && npm run check:ocr-dist",
     "styles:sync": "diff src/styles/tokens.css ${SPLINE_DIR:-../../spline-app/frontend}/src/styles/tokens.css && diff src/styles/app.css ${SPLINE_DIR:-../../spline-app/frontend}/src/styles/app.css && echo styles-in-sync || echo \"sibling missing or drifted (non-fatal)\"",
-    "lint": "eslint src netlify/functions"
+    "lint": "eslint src netlify/functions",
+    "check:ort": "node scripts/check-one-ort.mjs",
+    "check:ocr-dist": "node scripts/check-ocr-dist.mjs",
+    "stage:ocr": "node scripts/stage-ocr-model.mjs"
   },
   "engines": {
     "node": ">=24"
@@ -31,8 +34,10 @@
     "@turf/helpers": "^7.3.5",
     "fflate": "^0.8.3",
     "jsts": "^2.12.1",
+    "onnxruntime-web": "1.26.0-dev.20260416-b7804b056c",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38",
+    "ppu-paddle-ocr": "6.6.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router": "^7.18.2"
@@ -54,6 +59,7 @@
     "sharp": "^0.35.0",
     "adm-zip": "^0.6.1",
     "brace-expansion": "^1.1.16",
-    "postcss": "^8.5.18"
+    "postcss": "^8.5.18",
+    "onnxruntime-web": "$onnxruntime-web"
   }
 }

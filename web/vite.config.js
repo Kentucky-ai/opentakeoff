@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -19,6 +20,14 @@ const pkg = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), 
 export default defineConfig({
   plugins: [react()],
   define: { __APP_VERSION__: JSON.stringify(pkg.version) },
+  // On-device OCR (#469): ppu-paddle-ocr imports the bare `onnxruntime-web`,
+  // which would bundle ORT's default (jsep) build and ship a second ~24 MB
+  // wasm. Point it at the webgpu entry voice already uses, so both share the
+  // one asyncify runtime. A regex, not a string key: a string also matches
+  // `onnxruntime-web/…` prefixes and would break voice's own subpath imports.
+  resolve: {
+    alias: [{ find: /^onnxruntime-web$/, replacement: "onnxruntime-web/webgpu" }],
+  },
   // The STT worker (stt.worker.ts, RFC #59) lazy-imports its engine adapter,
   // which needs code-splitting inside the worker bundle — only the ES format
   // supports that (Vite's default iife errors on split worker builds).
@@ -40,5 +49,15 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    // The OCR client (#469) has no caller until #470/#471, so nothing would
+    // pull the OCR worker into the build and check-ocr-dist would check
+    // nothing. This second entry builds it. Nothing loads the chunk at
+    // runtime. Remove the entry once the app imports the client.
+    rollupOptions: {
+      input: {
+        index: fileURLToPath(new URL("./index.html", import.meta.url)),
+        ocr: fileURLToPath(new URL("./src/lib/ocr/client.ts", import.meta.url)),
+      },
+    },
   },
 });

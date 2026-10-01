@@ -1,2 +1,6 @@
 # PDFs may contain only ASCII bytes; preserve offsets and fixture hashes on checkout.
 *.pdf binary
+
+# The OCR dictionary and model config are sha256-pinned by web/scripts/stage-ocr-model.mjs;
+# line-ending conversion on checkout would break the pin.
+web/scripts/ocr/* binary

@@ -27,3 +27,11 @@ export function commandBoxEnabled() {
 /** The one sentence every surface uses when something reaches for the tool. */
 export const ONE_CLICK_GATE_MESSAGE =
   "One-Click Area is temporarily gated while the flood engine is re-validated against a wider plan corpus. Trace the room with Area (A) meanwhile.";
+
+// On-device OCR (#469) — on by default. VITE_OCR=off at build time disables
+// it for a deployment: the client reports "disabled" and makes no request,
+// and the stage script ships no models. There's no runtime override; a
+// deployment that stages no models reports "not installed" instead.
+export function ocrEnabled() {
+  try { return import.meta.env?.VITE_OCR !== "off"; } catch { return true; }
+}
