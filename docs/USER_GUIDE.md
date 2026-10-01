@@ -65,8 +65,8 @@ number defensible. This is the sequence, with the section that covers each step:
 2. **Scale every sheet you'll measure, and check one dimension on each** (`K`). Ten seconds a
    sheet. A plan set is never one uniform scale, and a wrong scale is every number wrong at once
    ([§3](#3-scale--set-it-first)).
-3. **Build your conditions off the architect's schedule**, not off memory—**Schedule** in the
-   toolbar parses the finish table and you approve what becomes a condition. The product spec
+3. **Build your conditions off the architect's schedule**, not off memory—**⋯ → Import from
+   schedule** reads the finish table and you approve what becomes a condition. The product spec
    rides along as report columns, so the submittal answers itself later
    ([§4](#4-conditions--your-finishes)).
 4. **Set waste and materials before you trace**, not after. Waste is per condition and matched to
@@ -379,11 +379,11 @@ Agents get the same thing headlessly—`roll_setup` is a field on the MCP server
 
 ### Import from schedule
 
-<img src="img/verify-import-schedule-dialog.png" alt="The Import from schedule verify dialog — parsed finishes grouped by category, checked for approval" width="640"/>
+<img src="img/verify-import-schedule-dialog.png" alt="The Import from schedule dialog on the sample plan's material schedule, scrolled to its end — Wall Protection and Transition rows flagged from description, Ceiling and Other rows unticked, a code already in use locked, Select all and Deselect all in the footer" width="640"/>
 
-Why type conditions the architect already tabulated? Arm **Schedule** in the toolbar and click two corners around the finish schedule on the sheet. The table parses in the browser, and a verify dialog lists every finish it found—grouped Floor / Base / Wall / Transition / Ceiling / Other, each row with the code (click to fix it), description, and flags (**in use**, **duplicate**, **needs a code**). Ceiling and other rows arrive unchecked; you approve what becomes conditions. Each created condition gets category-appropriate color, hatch, and default waste (floor 5%, base and wall 10%), and the schedule's product data (manufacturer, style, color, size) rides along as read-only spec fields that surface as the Report's *Product spec (imported)* columns.
+Why type conditions the architect already tabulated? Pick **Import from schedule** from the **⋯** menu and click two corners around the finish or material schedule—the whole table, header row included. The table is read in the browser: a row's code comes from its **CODE**, **TAG**, **MARK** or **SYMBOL** column, its description joins the **MATERIAL**, **DESCRIPTION** and **PRODUCT** cells with " — ", and **MANUFACTURER**, **STYLE**, **COLOR**, **SIZE** and **REMARKS** (else **COMMENTS**) ride along. The dialog groups the rows **No section** first, then Floor / Base / Wall / Wall Protection / Transition / Ceiling / Other. The section heading printed above a row decides its group; where there is none (or it's MISC or ACCESSORIES), the row's own item words can name base, a transition or wall protection—that row is flagged **from description**, so check it—and a row nothing names lands under No section. Every row starts ticked except those under a printed CEILINGS or MILLWORK heading. A code that's already a condition is locked (**in use**); a **duplicate** or a row that **needs a code** waits until you click the code and fix it. **Select all** / **Deselect all** leave those rows alone. `Esc` or **Cancel** closes the dialog without creating anything.
 
-On scanned pages there's no text to parse; team builds with the optional AI backend can read the schedule from pixels—the message tells you when that's what's needed.
+Each created condition gets the next color from the palette, in row order, and a category-appropriate hatch and default waste (floor 5%, base and wall 10%), and the product data—manufacturer, style, color, size, description, and **Schedule Remarks**—lands in the condition's editable spec fields and the Report's *Product spec (imported)* columns. A box around a table that is another kind of schedule gets a message saying so and imports nothing; it is never sent to the AI reader. That's a table whose title names another schedule (DOOR SCHEDULE—a title that also says FINISH or MATERIAL is read), a device schedule (GPM, HP, MBH… columns) with no CODE key, printed section heading or FINISH / MATERIAL title, and a table that prints a column only other schedules print (QTY, CFM, MESSAGE…) with no CODE key and no printed section heading. A device schedule elsewhere in the box that doesn't touch the finish table doesn't matter, but one printed close to it can run into the read and add its rows or merge its cells into the finish rows' cells—the dialog shows them, so untick them or redraw the box around the finish schedule alone. A door schedule in the same box is not refused: its rows show in the dialog under **No section** (or, when the door schedule has no title, under the finish table's last printed heading), so untick them or redraw the box. A box with no finish table in it (a room finish schedule, say) gets a hint to re-drag, unless you're signed in to a team build with the AI backend, which then reads the box from pixels. Without the AI backend, a box with no text in it on a sheet that has text says so and how to aim; only a page with no text at all is called scanned. On scanned pages there's no text to read; team builds with the optional AI backend can read the schedule from pixels—the message tells you when that's what's needed.
 
 ---
 
@@ -665,7 +665,7 @@ Open **Report** for the whole takeoff on one page: a per-condition table, the su
 
 ### Columns, grouping, templates, theme
 
-- **Columns**—choose what the table (and the CSV) shows. Defaults: Finish, Shapes, Floor SF, Wall SF, Border SF, LF, EA, Waste, SF w/Waste, SY w/Waste. Opt-ins: Total SF, Waste SF, Waste LF, Perimeter LF (reference only—includes openings, never totaled). Roll-goods conditions add **Roll Order LF**, **Rolls**, and **Seam LF** ([§4](#4-conditions--your-finishes)). Custom condition columns, imported product-spec columns (manufacturer, style, color, size, description—from a schedule import), and Labor Type / Subfloor Type (typed into a condition's Supporting Materials panel) appear once they exist. **Labor view** switches to a no-waste actuals set (Total SF in, SF/SY w/Waste out) for tying quantities to labor—attach your own rates externally.
+- **Columns**—choose what the table (and the CSV) shows. Defaults: Finish, Shapes, Floor SF, Wall SF, Border SF, LF, EA, Waste, SF w/Waste, SY w/Waste. Opt-ins: Total SF, Waste SF, Waste LF, Perimeter LF (reference only—includes openings, never totaled). Roll-goods conditions add **Roll Order LF**, **Rolls**, and **Seam LF** ([§4](#4-conditions--your-finishes)). Custom condition columns, imported product-spec columns (manufacturer, style, color, size, description, and **Schedule Remarks**—the schedule row's REMARKS cell—from a schedule import; each is editable in the condition's Spec fields), and Labor Type / Subfloor Type (typed into a condition's Supporting Materials panel) appear once they exist. **Labor view** switches to a no-waste actuals set (Total SF in, SF/SY w/Waste out) for tying quantities to labor—attach your own rates externally.
 - **Group**—break the table into sections with subtotals: by **Sheet**, by **Label** (once shapes carry labels), or by any custom column. Grouping by a column always carries that column into the CSV.
 - **Templates**—save a column-plus-grouping layout by name and recall it on this device. Signed in on a team build, **Push to Drive / Load from Drive** carries templates across your own devices—Load only adds what this device doesn't have; it never overwrites a same-name template.
 - **Theme**—import a design-token file (a `tokens.json`) to reskin the report's palette and fonts for output. **Reset** returns the house style.
@@ -776,7 +776,7 @@ Open **Work**, then select **Agent**. Type a goal—*"Take off the carpet per th
 
 - **`list_sheets`**—what's open, with sizes and scale status;
 - **`read_sheet_text`**—the sheet's positioned text layer;
-- **`read_schedule`**—the same finish-schedule parser you use from the toolbar;
+- **`read_schedule`**—the same finish-schedule reader as **Import from schedule**;
 - **`view_region`**—a rendered crop, for scans or ambiguity;
 - **`one_click`**—the flood engine, probe-only: it returns the traced ring, it commits nothing;
 - **`get_conditions` / `create_condition`**—your condition list (creation dedupes against existing tags);
@@ -1019,6 +1019,7 @@ Every shortcut in the app, verified against the code. Letter keys are suppressed
 | `F` | Focus mode—collapse the chrome, trade it for canvas height |
 | `Esc` (gallery open) | Close the gallery; in Browse Drive, back to the plan set |
 | `Esc` (menu open) | Close the menu |
+| `Esc` (Import from schedule dialog open) | Close the dialog; while you're fixing a code, it only cancels that edit |
 
 ### In panels and fields
 

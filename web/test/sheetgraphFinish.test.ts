@@ -1,6 +1,6 @@
 // The sheet graph's finish/material-schedule reader (#472):
 // section headings, sparse and header-named columns, the legend beside the
-// table, and group-label rows. Every fixture is synthetic —
+// table, group-label rows, and a marquee crop. Every fixture is synthetic —
 // invented codes and vendors, laid out at the scale the MCP server serves the
 // bundled demo sheet (text 17 px tall, 38 px row pitch, ~8 px per character).
 // The invariants:
@@ -64,8 +64,8 @@ const STD = ["MATERIAL", "MANUFACTURER", "STYLE", "COLOR", "SIZE", "REMARKS"];
 const H = (text: string, x?: number): Item => ({ t: "head", text, x });
 const keysOf = (items: Item[]) => items.flatMap((i) => (i.t === "row" ? [i.key] : []));
 
-const read = (spans: GraphSpan[]): ScheduleTable => {
-  const t = extractTable({ key: "fx", spans }, "finish");
+const read = (spans: GraphSpan[], marquee = false): ScheduleTable => {
+  const t = extractTable({ key: "fx", spans }, "finish", marquee ? { marquee: true } : {});
   assert.ok(t, "a finish table is read");
   return t;
 };
@@ -1102,15 +1102,33 @@ test("no column map: a heading is centered on the table's text, cells and all, n
   noCellHas(t, "FLOORING");
 });
 
+// ── a marquee crop ──────────────────────────────────────────────────────────
+test("a marquee crop is the table: a gap of more than 8 row pitches does not end it", () => {
+  const more: Item[] = [];
+  for (let i = 1; i <= 8; i++) more.push(R(`LVT-${i + 10}`, "LUXURY VINYL TILE", "VENDOR-B", "PLANK", "OAK"));
+  const first = [H("FLOORING"), ...FLOOR, ...BASE, ...WALLS, ...CEIL];
+  const spans = build({ cols: STD, items: [...first, { t: "gap", n: 10 }, ...more] });
+  // the whole sheet: rows far below are something else keyed the same way
+  assert.deepEqual(keys(read(spans)), keysOf(first));
+  // a marquee the user drew around the table: every row in it is the table's
+  assert.deepEqual(keys(read(spans, true)), [...keysOf(first), ...keysOf(more)]);
+});
+
 // ── readFinishTable: the one finish reader ──────────────────────────────────
-test("readFinishTable returns the table extractTable reads", () => {
+test("readFinishTable returns the table extractTable reads and every word of its header row", () => {
   const items = [H("FLOORING"), ...FLOOR, H("BASE"), ...BASE];
   const spans = build({ key: "TAG", cols: ["MATERIAL", "MANUF.", "COLOR", "REMARKS"], title: "FINISH SCHEDULE", items });
-  const r = readFinishTable({ key: "fx", spans });
+  const r = readFinishTable({ key: "fx", spans }, { marquee: true });
   assert.ok(r && !("refused" in r));
-  assert.deepEqual(r.table, read(spans));
+  assert.deepEqual(r.table, read(spans, true));
+  const whole = readFinishTable({ key: "fx", spans });
+  assert.ok(whole && !("refused" in whole));
+  assert.deepEqual(whole.table, read(spans));
   assert.deepEqual(keys(r.table), keysOf(items));
   assert.equal(r.table.title?.text, "FINISH SCHEDULE");
+  // the raw header words — MANUF. as printed, not the column it names
+  assert.deepEqual(r.headerWords, ["TAG", "MATERIAL", "MANUF", "COLOR", "REMARKS"]);
+  assert.ok(!("headerWords" in r.table), "the table itself is unchanged");
 });
 
 test("readFinishTable refuses a table titled as another schedule family, and names it", () => {

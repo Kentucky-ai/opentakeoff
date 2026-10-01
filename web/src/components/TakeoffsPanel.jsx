@@ -540,10 +540,12 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
           <ColumnSelects columns={conditionColumns} cond={c} onAssign={onAssignAttr} />
         </div>
       )}
-      {/* Imported product spec (mfr/style/color/size/description) — editable here,
-          read-only columns in the Report. Docked ("stack") layout only: five text
-          fields would crowd the wide top-bar band. Shown only when a spec exists
-          (schedule-imported conditions); hand-drawn conditions have none. Patch
+      {/* Imported product spec (mfr/style/color/size/description/remarks) —
+          editable here, read-only columns in the Report. Docked ("stack") layout
+          only: six text fields would crowd the wide top-bar band. The label
+          column fits the longest header ("Schedule Remarks", ~97px at 11px).
+          Shown only when a spec exists (schedule-imported conditions);
+          hand-drawn conditions have none. Patch
           spreads c.spec so one edit can't clobber the other fields, and writes to
           spec.color — NOT the condition's line `color`. Guard that spec is a plain
           object first: a corrupted payload (spec an array/string) would otherwise
@@ -645,7 +647,7 @@ export function ConditionAppearanceEditor({ cond: c, onUpdateCond, onSetCondPara
             title="Product spec imported from the finish schedule — editable; shown as read-only columns in the Report / CSV / XLSX">Spec</span>
           {SPEC_FIELDS.map(({ field, header }) => (
             <label key={field} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ color: "var(--ink-muted)", width: 74, flexShrink: 0 }}>{header}</span>
+              <span style={{ color: "var(--ink-muted)", width: 104, flexShrink: 0 }}>{header}</span>
               <input name={`condition-spec-${field}`} value={c.spec[field] || ""}
                 onChange={(e) => onUpdateCond({ spec: { ...c.spec, [field]: e.target.value } })}
                 style={{ flex: 1, minWidth: 0, padding: "3px 5px", borderRadius: 0, border: "1px solid var(--ink-faint)", fontSize: 12, color: "var(--ink)" }} />

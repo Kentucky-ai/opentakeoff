@@ -8,7 +8,7 @@
 // every field is coerced and validated here — a malformed row is dropped, never
 // crashes the dialog. Kept out of the canvas so this coercion is node-testable.
 
-import type { ScheduleRow, Category } from "./scheduleParse.js";
+import type { ScheduleRow, Category } from "./scheduleRows.js";
 
 // The one AI endpoint this path calls. Dev proxies /ai/* → localhost:8000
 // (see web/vite.config.js); in prod it's dormant unless a backend is wired up.
@@ -75,12 +75,13 @@ export async function postScanWithRetry(
   throw new Error("scan retry: no response");
 }
 
-// Mirror of scheduleParse's category vocabulary + which categories the dialog
-// pre-checks. Duplicated (not imported) so the parser's internals stay private;
-// the ScheduleRow *type* is the shared contract, this is just its value domain.
-const CATEGORIES: readonly Category[] = ["floor", "base", "wall", "transition", "ceiling", "other"];
+// Mirror of the Category union (scheduleRows.ts) + which categories the dialog
+// pre-checks for a scan row that sends no `suggested` of its own. Duplicated
+// (not imported): the ScheduleRow *type* is the shared contract, this is just
+// its value domain. Also mirrored in server/app.py.
+const CATEGORIES: readonly Category[] = ["floor", "base", "wall", "wall_protection", "transition", "ceiling", "other", "unassigned"];
 const SUGGESTED: Record<Category, boolean> = {
-  floor: true, base: true, wall: true, transition: true, ceiling: false, other: false,
+  floor: true, base: true, wall: true, wall_protection: true, transition: true, ceiling: false, other: false, unassigned: true,
 };
 
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
@@ -102,11 +103,13 @@ function toRow(raw: unknown): ScheduleRow | null {
     finish_tag,
     section: str(o.section).toUpperCase(),
     category,
+    category_source: "scan",
     description: str(o.description),
     manufacturer: str(o.manufacturer),
     style: str(o.style),
     spec_color: str(o.spec_color),
     size: str(o.size),
+    remarks: str(o.remarks),
     // trust the server's checkbox intent only if it sent a real boolean;
     // otherwise fall back to the category default (ceiling/other start off).
     suggested: typeof o.suggested === "boolean" ? o.suggested : SUGGESTED[category],

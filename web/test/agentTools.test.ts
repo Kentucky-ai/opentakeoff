@@ -26,7 +26,7 @@ function makeCtx(overrides: Record<string, unknown> = {}) {
     uppFor: (k: string) => (k === "plan.pdf" ? 0.02 : null),
     detectedLabel: () => "",
     readSheetText: async () => [{ text: "RM 204", x: 0.4, y: 0.5 }],
-    readSchedule: async () => [{ finish_tag: "CPT-1", section: "FLOORING", category: "floor", description: "CARPET", manufacturer: "", style: "", spec_color: "", size: "", suggested: true }],
+    readSchedule: async () => ({ rows: [{ finish_tag: "CPT-1", section: "FLOORING", category: "floor", category_source: "heading", description: "CARPET", manufacturer: "", style: "", spec_color: "", size: "", remarks: "", suggested: true }] }),
     viewRegion: async () => ({ image_data_url: "data:image/png;base64,AAAA", width: 100, height: 80 }),
     oneClick: async (sheet: string, x: number, y: number) => {
       calls.oneClick.push([sheet, x, y]);
@@ -169,4 +169,37 @@ test("proposals transport interior voids and refuse malformed hole rings", async
   for (const holes of [[[[NaN,0],[0,0],[1,1]]], [[[0,0],[1,1]]], "invalid"]) {
     assert.equal((await executeAgentTool(ctx, "propose_shapes", { shapes: [{ ...shape, verts_norm_holes: holes }] })).staged, 0);
   }
+});
+
+test("read_schedule: rows pass through with category_source and remarks", async () => {
+  const row = { finish_tag: "RB-1", section: "", category: "base", category_source: "text", description: "RUBBER WALL BASE",
+    manufacturer: "VENDOR-A", style: "", spec_color: "", size: "", remarks: "SCRIBE AT CASEWORK", suggested: true };
+  const { ctx } = makeCtx({ readSchedule: async () => ({ rows: [row] }) });
+  const out = await executeAgentTool(ctx, "read_schedule", { sheet: "plan.pdf", region: { x0: 0, y0: 0, x1: 0.5, y1: 0.5 } });
+  assert.deepEqual(out, { rows: [row] });
+});
+
+test("read_schedule: a refused table says why, naming the title when that is the reason", async () => {
+  const { ctx } = makeCtx({ readSchedule: async () => ({ rows: [], refused: "title", title: "DOOR SCHEDULE" }) });
+  const out = await executeAgentTool(ctx, "read_schedule", { sheet: "plan.pdf", region: { x0: 0, y0: 0, x1: 0.5, y1: 0.5 } });
+  assert.deepEqual(out.rows, []);
+  assert.match(out.note, /^That's the "DOOR SCHEDULE", not a finish\/material schedule — /);
+  assert.equal(Object.keys(out).sort().join(), "note,rows");
+
+  const { ctx: ctx2 } = makeCtx({ readSchedule: async () => ({ rows: [], refused: "foreign-header" }) });
+  const out2 = await executeAgentTool(ctx2, "read_schedule", { sheet: "plan.pdf", region: { x0: 0, y0: 0, x1: 0.5, y1: 0.5 } });
+  assert.match(out2.note, /^That table doesn't look like a finish\/material schedule — /);
+});
+
+test("read_schedule: no table → the re-draw note names every key column", async () => {
+  const { ctx } = makeCtx({ readSchedule: async () => ({ rows: [], refused: "no-table" }) });
+  const out = await executeAgentTool(ctx, "read_schedule", { sheet: "plan.pdf", region: { x0: 0, y0: 0, x1: 0.5, y1: 0.5 } });
+  assert.deepEqual(out.rows, []);
+  assert.match(out.note, /^No schedule table found in that region/);
+  for (const k of ["CODE", "TAG", "MARK", "SYMBOL"]) assert.match(out.note, new RegExp(`\\b${k}\\b`));
+});
+
+test("read_schedule: the description names the key columns and the row fields", () => {
+  const d = AGENT_TOOL_DEFS.find((x) => x.name === "read_schedule")!.description;
+  for (const w of ["CODE", "TAG", "MARK", "SYMBOL", "category_source", "remarks"]) assert.ok(d.includes(w), `${w} missing from: ${d}`);
 });

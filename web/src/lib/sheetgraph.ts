@@ -723,7 +723,14 @@ const ROW_KEY_RE = /^\d{1,3}[A-Z]{0,2}$/;
 const QUALIFIED_KEY_RE = /^([A-Z]{1,2})-(\d{1,3}[A-Z]{0,2})$/;
 const CORRIDOR_KEY_RE = /^[A-Z]{1,3}(?:\d{1,3}-\d{1,3}|\d{3})[A-Z]?$/;   // CR11-9, C101 — never a two-character tag like "T1"
 
-export interface ExtractOpts { buildings?: Set<string>; deltas?: DeltaIndex; /** Sheet numbers in the set — never a row key (a title block sits in every band). */ sheetNumbers?: Set<string> }
+export interface ExtractOpts {
+  buildings?: Set<string>; deltas?: DeltaIndex;
+  /** Sheet numbers in the set — never a row key (a title block sits in every band). */
+  sheetNumbers?: Set<string>;
+  /** Finish tables: the spans are a marquee the user drew around ONE table,
+   * so every keyed row inside it is the table's — no end-of-table gap cut. */
+  marquee?: boolean;
+}
 
 // Schedule families that are NOT finish/material schedules but share the
 // MARK/DESCRIPTION column shape. A title naming one of these is refused as a
@@ -1051,7 +1058,7 @@ function bandDataRows(
   kind: ExtractKind,
   sheetKey: string,
   buildings: Set<string> | undefined,
-  cfg: { fromIdx: number; belowY: number; keyAlign?: { x: number; tol: number }; deltas?: DeltaIndex; sheetNumbers?: Set<string>; hdrSpans?: GraphSpan[]; hdrBand?: GraphSpan[] },
+  cfg: { fromIdx: number; belowY: number; keyAlign?: { x: number; tol: number }; deltas?: DeltaIndex; sheetNumbers?: Set<string>; hdrSpans?: GraphSpan[]; hdrBand?: GraphSpan[]; marquee?: boolean },
 ): { out: TableRow[]; region: Bbox | null } {
   const { x0, x1, medGap } = bandLimits(anchors);
   // a device schedule keyed by TYPE / FIXTURE uses letter types ("A", "B2") as
@@ -1273,8 +1280,8 @@ function bandDataRows(
   // can carry section breaks and blank bands, so the bar has to be high.
   // Key-column alignment above bounds the table sideways; a gap eight row
   // pitches deep bounds it downwards, for the case where something keyed the
-  // same way sits far below.
-  if (out.length > 2) {
+  // same way sits far below. A finish marquee is already bounded by the user.
+  if (out.length > 2 && !(finish && cfg.marquee)) {
     const d = outY.slice(1).map((y, i) => y - outY[i]).filter((g) => g > 0).sort((a, b) => a - b);
     const pitch0 = d.length ? d[d.length >> 1] : 0;
     if (pitch0 > 0) {
@@ -1367,18 +1374,20 @@ export function extractTable(sheet: SheetSpans, kind: ExtractKind, opts: Extract
   return r && "table" in r ? r.table : null;
 }
 
-/** The finish/material-schedule reader the sheet graph indexes through.
- * Returns the table, or a refusal: a table titled as another schedule family
- * (DOOR SCHEDULE, …) is not a finish table, and the caller names the drop.
- * null: no finish table here. */
+/** The finish/material-schedule reader every finish path shares — the sheet
+ * graph's index, and a marquee read of one table (opts.marquee). Returns the
+ * table with the raw words of its header row as printed ("MANUF", "TYPE") —
+ * what a caller needs to judge what kind of schedule it is, kept off the
+ * table itself — or a refusal: a table titled as another schedule family
+ * (DOOR SCHEDULE, …) is not a finish table. null: no finish table here. */
 export type FinishRead =
-  | { table: ScheduleTable }
+  | { table: ScheduleTable; headerWords: string[] }
   | { refused: "other-family"; table: ScheduleTable };
 export function readFinishTable(sheet: SheetSpans, opts: ExtractOpts = {}): FinishRead | null {
   const r = extractTableCore(sheet, "finish", opts);
   if (!r || !("table" in r)) return null;
   if (r.table.title && isNonFinishSchedule(r.table.title.text)) return { refused: "other-family", table: r.table };
-  return { table: r.table };
+  return { table: r.table, headerWords: r.headerWords };
 }
 
 /** EVERY table of one kind on a sheet, top to bottom. extractTable reads the
@@ -1410,7 +1419,7 @@ export function extractTables(sheet: SheetSpans, kind: ExtractKind, opts: Extrac
   return out;
 }
 
-function extractTableCore(sheet: SheetSpans, kind: ExtractKind, opts: ExtractOpts = {}): { table: ScheduleTable } | { skip: Bbox } | null {
+function extractTableCore(sheet: SheetSpans, kind: ExtractKind, opts: ExtractOpts = {}): { table: ScheduleTable; headerWords: string[] } | { skip: Bbox } | null {
   const horiz = sheet.spans.filter((s) => !isVertical(s));
   const vert = sheet.spans.filter(isVertical);
   const rows = clusterRows(horiz);
@@ -1476,7 +1485,7 @@ function extractTableCore(sheet: SheetSpans, kind: ExtractKind, opts: ExtractOpt
     if (centerX(t) < hdrBand.x0 || centerX(t) > hdrBand.x1) continue;
     region = region ? merge(region, bboxOf(t)) : bboxOf(t);
   }
-  const banded = bandDataRows(rows, anchors, kind, sheet.key, opts.buildings, { fromIdx: dataFrom, belowY: dataBelowY, deltas: opts.deltas, sheetNumbers: opts.sheetNumbers, hdrSpans: headerSpans, hdrBand: hdrBlock });
+  const banded = bandDataRows(rows, anchors, kind, sheet.key, opts.buildings, { fromIdx: dataFrom, belowY: dataBelowY, deltas: opts.deltas, sheetNumbers: opts.sheetNumbers, hdrSpans: headerSpans, hdrBand: hdrBlock, marquee: opts.marquee });
   const out = banded.out;
   if (banded.region) region = region ? merge(region, banded.region) : banded.region;
   if (!out.length) {
@@ -1496,7 +1505,8 @@ function extractTableCore(sheet: SheetSpans, kind: ExtractKind, opts: ExtractOpt
   }
   const table: ScheduleTable = { kind, sheet: sheet.key, title, headers: anchors.map((a) => a.label), rows: out, region: region!, anchors };
   if (rotated) table.rotated_headers = true;
-  return { table };
+  const headerWords = headerSpans.flatMap((t) => t.str.toUpperCase().split(/[^A-Z]+/)).filter(Boolean);
+  return { table, headerWords };
 }
 
 // ── continuation sheets (#87 phase 2) ───────────────────────────────────────

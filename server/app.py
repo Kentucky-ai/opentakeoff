@@ -135,18 +135,21 @@ class ParseScheduleIn(BaseModel):
 
 
 # The finish categories the client understands, and which ones the approval
-# dialog pre-checks. Mirrors web/src/lib/scheduleParse.ts (ceilings/millwork are
-# parsed but start UNCHECKED so the estimator drops them for free).
-_CATEGORIES = {"floor", "base", "wall", "transition", "ceiling", "other"}
+# dialog pre-checks. Mirrors CATEGORIES / SUGGESTED in web/src/lib/scheduleScan.ts
+# (tests/test_schedule_row.py holds the two equal): ceilings/millwork start
+# UNCHECKED so the estimator drops them for free; wall protection is its own
+# category, and "unassigned" is a row with no section ("No section" in the
+# dialog) — both start checked.
+_CATEGORIES = {"floor", "base", "wall", "wall_protection", "transition", "ceiling", "other", "unassigned"}
 _SUGGESTED_DEFAULT = {
-    "floor": True, "base": True, "wall": True,
-    "transition": True, "ceiling": False, "other": False,
+    "floor": True, "base": True, "wall": True, "wall_protection": True,
+    "transition": True, "ceiling": False, "other": False, "unassigned": True,
 }
 
 
 class ScheduleRow(BaseModel):
     """One parsed schedule row — the SAME shape as the client's ScheduleRow
-    (web/src/lib/scheduleParse.ts), so an adapter's output feeds the one approval
+    (web/src/lib/scheduleRows.ts), so an adapter's output feeds the one approval
     dialog. Off-contract values are coerced (unknown category → "other",
     missing `suggested` → the category default) so a rough model output still
     lands cleanly."""
@@ -158,6 +161,7 @@ class ScheduleRow(BaseModel):
     style: str = ""
     spec_color: str = ""
     size: str = ""
+    remarks: str = ""
     suggested: bool | None = None
 
     @field_validator("category")

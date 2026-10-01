@@ -38,9 +38,20 @@ test("drops rows without a finish tag; fills missing fields with empty strings",
   const rows = normalizeScanRows({ rows: [{ description: "no tag here" }, { finish_tag: "P-1" }] });
   assert.equal(rows.length, 1);
   assert.deepEqual(rows[0], {
-    finish_tag: "P-1", section: "", category: "other", description: "",
-    manufacturer: "", style: "", spec_color: "", size: "", suggested: false,
+    finish_tag: "P-1", section: "", category: "other", category_source: "scan", description: "",
+    manufacturer: "", style: "", spec_color: "", size: "", remarks: "", suggested: false,
   });
+});
+
+test("scan rows say where their category came from, and carry REMARKS", () => {
+  const [row] = normalizeScanRows({ rows: [{ finish_tag: "LVT-1", category: "floor", remarks: "  ADHESIVE: VENDOR-K  " }] });
+  assert.equal(row.category_source, "scan");
+  assert.equal(row.remarks, "ADHESIVE: VENDOR-K");
+});
+
+test("wall protection and no-section are categories a scan may return; both start ticked", () => {
+  const rows = normalizeScanRows({ rows: [{ finish_tag: "CG-1", category: "wall_protection" }, { finish_tag: "PR-1", category: "unassigned" }] });
+  assert.deepEqual(rows.map((r) => [r.category, r.suggested]), [["wall_protection", true], ["unassigned", true]]);
 });
 
 test("unknown category falls back to other", () => {

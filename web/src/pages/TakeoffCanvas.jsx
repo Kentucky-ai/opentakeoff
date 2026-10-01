@@ -52,7 +52,9 @@ import { joinAbuttingSpans } from "../lib/textjoin";
 import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
-import { parseSchedule, rowToSeed } from "../lib/scheduleParse";
+import { rowToSeed } from "../lib/scheduleRows";   // the reader (scheduleRead, which loads the sheet graph) is import()ed on use
+import { routeScheduleRead, NO_SCHEDULE_HINT, emptyBoxMessage } from "../lib/scheduleRoute";
+import { pageSpans, spansInRect, graphSpans } from "../lib/pageSpans";
 import { normalizeScanRows, postScanWithRetry, SCAN_ENDPOINT, scanRasterScale } from "../lib/scheduleScan";
 import { normalizeTag } from "../lib/scheduleEdit";
 // Condition twins — the whole inheritance rule is in lib/variants.ts (test/variants.test.ts);
@@ -6042,8 +6044,10 @@ export default function TakeoffCanvas() {
   // The registry (lib/agentTools.js) owns schemas/validation/whitelists; these
   // are the CAPABILITIES its tools close over — each one reads live state via
   // agentStateRef (the loop spans many awaits) and reuses the app's existing
-  // deterministic engines verbatim: the pdf.js text layer + extractRegionText,
-  // parseSchedule, the one-click flood/trace/snap pipeline, and the detail-view
+  // deterministic engines verbatim: the pdf.js text layer + extractRegionText
+  // (read_sheet_text), the pageSpans builder + the sheet graph's finish reader
+  // (read_schedule, the Import from schedule path), the one-click
+  // flood/trace/snap pipeline, and the detail-view
   // offscreen render. Nothing here writes to `shapes` — proposals stage into
   // agentProposals and only the accept gate below dispatches an `add` command.
   const AGENT_VIEW_MAX_EDGE = 1024;   // view_region crop cap (vision-model native range)
@@ -6055,7 +6059,10 @@ export default function TakeoffCanvas() {
   };
   const agentUpp = (key) => panelGeom.uppFor(agentStateRef.current.scales, renderScalesRef.current, key);
 
-  async function agentTextTokens(key, region) {
+  // The page text + the region (normalized 0..1 of the panel image, null = the
+  // whole sheet) as an image-px rect — shared by read_sheet_text and
+  // read_schedule so both read the same box.
+  async function agentPageText(key, region) {
     const p = agentPanelFor(key);
     const pageObj = pageObjsRef.current.get(key);
     if (!p || !pageObj) throw new Error(`Sheet ${key} isn't rendered yet.`);
@@ -6065,6 +6072,11 @@ export default function TakeoffCanvas() {
     const rect = region
       ? { x0: region.x0 * p.img.w, y0: region.y0 * p.img.h, x1: region.x1 * p.img.w, y1: region.y1 * p.img.h }
       : { x0: 0, y0: 0, x1: p.img.w, y1: p.img.h };
+    return { tc, vp, rs, rect, p };
+  }
+
+  async function agentTextTokens(key, region) {
+    const { tc, vp, rect, p } = await agentPageText(key, region);
     return { tokens: extractRegionText(tc, vp, rect), p };
   }
 
@@ -6075,9 +6087,13 @@ export default function TakeoffCanvas() {
     }));
   }
 
+  // Vector path only — the same spans and reader as Import from schedule.
+  // Returns the reader's ScheduleRead: { rows } or { rows: [], refused, title? }
+  // (agentTools.js words the refusal for the model).
   async function agentReadSchedule(key, region) {
-    const { tokens } = await agentTextTokens(key, region);
-    return parseSchedule(tokens);   // vector path only — same parser as Import from schedule
+    const { tc, vp, rs, rect } = await agentPageText(key, region);
+    const { readScheduleSpans } = await import("../lib/scheduleRead");
+    return readScheduleSpans(graphSpans(spansInRect(pageSpans(tc.items, vp.transform, rs), rect)));
   }
 
   // Render just the asked-for crop offscreen (the rasterizeRegion idiom) and
@@ -6767,8 +6783,11 @@ export default function TakeoffCanvas() {
   // Read the marqueed box and open the approval dialog. Two paths, ONE contract
   // (ScheduleRow[] → the same dialog):
   //   • vector plans: the page text layer inside the box IS the extraction —
-  //     no OCR, open to everyone (parseSchedule);
-  //   • scanned plans: the box has no text tokens, so we rasterize it and hand
+  //     no OCR, open to everyone. The page's text becomes the sheet graph's
+  //     spans (pageSpans, the MCP's builder), cropped to the box, and the
+  //     sheet graph's finish reader reads them (scheduleRead.readScheduleSpans,
+  //     loaded on first use); scheduleRoute.ts decides what the read becomes;
+  //   • scanned plans: the box has no text spans, so we rasterize it and hand
   //     the PNG to the optional AI backend (/ai/parse-schedule). That path is
   //     login-gated (see importScheduleFromScan).
   // Corners a,b are stage px (raw cursor, snapping exempted at pointer-down).
@@ -6781,51 +6800,54 @@ export default function TakeoffCanvas() {
     const rs = renderScalesRef.current.get(panel.key) || RENDER_SCALE;
     const rect = { x0: a[0] - panel.xOffset, y0: a[1], x1: b[0] - panel.xOffset, y1: b[1] };
     const seq = renderSeqRef.current;                 // a sheet switch mid-await must not pop a dialog for a page you left
-    let tokens;
+    let spans, pageHasText, readScheduleSpans;
     try {
       const vp = pageObj.getViewport({ scale: rs });
       const tc = await pageObj.getTextContent();
+      ({ readScheduleSpans } = await import("../lib/scheduleRead"));   // the reader chunk loads on first use
       if (seq !== renderSeqRef.current) return;
-      tokens = extractRegionText(tc, vp, rect);
+      const page = pageSpans(tc.items, vp.transform, rs);
+      pageHasText = page.length > 0;   // the box's own source (pageSpans drops blank runs), so "box empty, page not" is consistent
+      spans = graphSpans(spansInRect(page, rect));
     } catch { setCommitMsg("Couldn't read that region."); return; }
-    // Vector-vs-scan decision. Tokens present ⇒ TRY the text layer first (a real
-    // vector schedule parses straight from it, no OCR cost). But token presence
+    // Vector-vs-scan decision. Spans present ⇒ TRY the text layer first (a real
+    // vector schedule reads straight from it, no OCR cost). But text presence
     // isn't proof of a vector page: scanned plans often carry a stray text layer
     // (embedded OCR, a title block, dimension text) that lands in the marquee yet
-    // holds no schedule. So a token-bearing box that parses to NOTHING is not a
-    // dead end — fall through to the AI scan path when it's reachable, exactly as
-    // a truly text-less raster page would.
-    if (tokens.length) {
-      const rows = parseSchedule(tokens);
-      if (rows.length) { setImportRows(rows); return; }
-      // Parsed nothing. If the scan reader isn't reachable — not configured, not
-      // signed in, or the account is outside the org domain — the only actionable
-      // advice is to re-drag around the table header. Don't fire a paid OCR call
-      // and don't claim the page is scanned.
-      if (!isGoogleConfigured() || !isSignedIn() || !isAllowedDomain()) {
-        setCommitMsg("No schedule found in that box — drag around the finish/material schedule (its CODE / MATERIAL / … header).");
-        return;
-      }
-      // else: the reader is available — let it read the pixels below.
+    // holds no schedule. So a text-bearing box that reads as NO table is not a
+    // dead end — fall through to the AI scan path when it's reachable (the
+    // not-configured / signed-out / outside-the-org cases get the re-drag hint
+    // instead: no paid call, no claim the page is scanned). A box the reader
+    // DID read as a table of another schedule family (a door schedule …) stops
+    // with a message and never reaches the paid reader — it would only read
+    // the wrong table. scheduleRoute.ts holds that decision.
+    if (spans.length) {
+      const route = routeScheduleRead(readScheduleSpans(spans), isGoogleConfigured() && isSignedIn() && isAllowedDomain());
+      if (route.kind === "rows") { setImportRows(route.rows); return; }
+      if (route.kind === "message") { setCommitMsg(route.text); return; }
+      // else "scan": the reader is available — let it read the pixels below.
     }
-    await importScheduleFromScan(pageObj, rs, rect, seq, tokens.length);
+    await importScheduleFromScan(pageObj, rs, rect, seq, spans.length, pageHasText);
   }
 
   // Scan/OCR fallback for a raster page: rasterize the marqueed region and POST
   // it to the optional AI backend, then feed the returned rows into the SAME
   // approval dialog. LOGIN-GATED — only a Google-configured deployment with a
   // signed-in user reaches the network (no API key ever lives in client code).
-  // tokenCount is the region's text-token count at the routing site: 0 ⇒ a true
-  // raster page (no text layer, AI is the only reader); >0 ⇒ the fallthrough from a
-  // token-bearing box whose vector parse found nothing. We report WHICH happened
+  // tokenCount is the region's text-span count (joined runs) at the routing site:
+  // 0 ⇒ a true raster page (no text layer, AI is the only reader); >0 ⇒ the
+  // fallthrough from a text-bearing box the vector reader read as no table. We report WHICH happened
   // (#104) but never claim the >0 case is a "fixable parser gap": scanned plans
   // routinely carry a stray text layer (title block, dimension text, embedded OCR)
   // that lands in the marquee yet holds no schedule, so a token-bearing box that
   // parses to nothing is just as likely a genuine scan as a defeated vector table.
-  async function importScheduleFromScan(pageObj, rs, rect, seq, tokenCount) {
+  // pageHasText: the whole page has a text layer. With no reader configured, an
+  // empty box on such a page missed the schedule — only a page with no text at
+  // all is called scanned (scheduleRoute.emptyBoxMessage).
+  async function importScheduleFromScan(pageObj, rs, rect, seq, tokenCount, pageHasText) {
     const hadTokens = tokenCount > 0;
     if (!isGoogleConfigured()) {
-      setCommitMsg("No schedule found — this looks like a scanned page (no text layer). Importing from scanned plans needs the AI backend.");
+      setCommitMsg(emptyBoxMessage(pageHasText));
       return;
     }
     if (!isSignedIn()) { setCommitMsg("Sign in to import from scanned plans."); return; }
@@ -6883,7 +6905,7 @@ export default function TakeoffCanvas() {
         const rows = normalizeScanRows(await res.json());
         if (!rows.length) {
           setCommitMsg(hadTokens
-            ? "No schedule found in that box — drag around the finish/material schedule (its CODE / MATERIAL / … header)."
+            ? NO_SCHEDULE_HINT
             : "No schedule found in that scanned region — the reader returned nothing.");
           return;
         }
@@ -7129,7 +7151,7 @@ export default function TakeoffCanvas() {
     } catch { setCommitMsg("Couldn't read that image."); }
   }
 
-  // Approved rows → conditions. Category drives color/hatch/waste (rowToSeed);
+  // Approved rows → conditions. Category drives hatch/waste, the palette the color (rowToSeed);
   // product spec (mfr/style/color/size) rides a plain `spec` field — NOT custom
   // columns (would hijack a user column and pollute its grouping vocabulary) and
   // NOT materials[] (those are coverage buy-list items, no coverage rate here).

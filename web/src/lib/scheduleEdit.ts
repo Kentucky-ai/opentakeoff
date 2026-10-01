@@ -49,3 +49,44 @@ export function evaluateTags(rows: TagInput[], existing: Set<string> = new Set()
 }
 
 export const isCreatable = (s: TagState | undefined): boolean => s?.status === "ok";
+
+// Turn a set of rows on or off together — Select All / Deselect All over every
+// row, or one group's checkbox over its rows. Returns a NEW set (React state);
+// rows outside `keys` keep their pick. Turning on never picks a row canPick
+// refuses (in use / duplicate / empty), so the footer's "Create N" can't count
+// one; turning off clears every given key, including a stale pick on a row an
+// edit has since made uncreatable.
+export function setPicked(picked: Set<string>, keys: string[], canPick: (key: string) => boolean, on: boolean): Set<string> {
+  const n = new Set(picked);
+  for (const k of keys) {
+    if (!on) n.delete(k);
+    else if (canPick(k)) n.add(k);
+  }
+  return n;
+}
+
+// The line colour each row's condition will get, for the dialog's swatch. The
+// parent (TakeoffCanvas.createFromSchedule → rowToSeed) assigns
+// palette[(startIndex + n) % len] over the rows it CREATES — picked and
+// creatable, in row order — so number only those. An unpicked row gets no
+// entry (the dialog shows the neutral swatch): it would get no colour at all.
+export function previewColors(keys: string[], willCreate: (key: string) => boolean, palette: string[], startIndex = 0): Map<string, string> {
+  const m = new Map<string, string>();
+  if (!palette.length) return m;
+  let n = startIndex;
+  for (const k of keys) if (willCreate(k)) m.set(k, palette[n++ % palette.length]);
+  return m;
+}
+
+// The dialog's document keydown listener. Escape closes the dialog — unless it
+// was a tag edit's Escape, which only cancels the edit: the input's onEditKey
+// preventDefaults it, and React's handler runs before this document listener.
+// Propagation is stopped so the canvas's own Escape (clear the selection,
+// disarm tools) doesn't also fire behind the modal. Returns whether it closed.
+type EscapeEvent = { key: string; defaultPrevented: boolean; stopPropagation: () => void };
+export function closeOnEscape(e: EscapeEvent, onClose?: () => void): boolean {
+  if (e.key !== "Escape" || e.defaultPrevented) return false;
+  e.stopPropagation();
+  onClose?.();
+  return true;
+}
