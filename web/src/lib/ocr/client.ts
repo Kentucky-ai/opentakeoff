@@ -31,9 +31,11 @@
 // the restart, as does whenIdle, and go to the new worker. A restart never
 // downloads, whoever joins it: with the files evicted it ends
 // consent-required. It has its own deadline. If it fails, or a second read
-// times out with none answered in between (reads are deterministic, so the
-// same raster would hang again), the queue rejects and the next
-// ensureReady starts afresh. Both deadlines count only time the page is
+// times out with none answered in between, the queue rejects and the next
+// ensureReady starts afresh. A timed-out read is never sent again, so the
+// second hang is a different raster: two in a row mean the engine can't
+// cope here, and restarting on would make every queued read wait out a
+// deadline in turn. Both deadlines count only time the page is
 // visible, since a browser throttles a background tab: a hang in a hidden
 // tab is bounded only once the tab is visible again.
 //
@@ -95,16 +97,20 @@ export class OcrTimeoutError extends Error {
   }
 }
 
-// How long one read may take, from the measured fits (#484 g3-timing and
-// timing.json, per-line and per-box): 0.21 s + 0.79 s/MP up to
-// 1.33 s + 0.88 s/MP, worst read 1.74–1.96× its fit. The envelope rounds
-// over all of them; k is the margin on top. A hang never ends, so a long
+// How long one read may take, measured on the demo plan and synthetic
+// tables in headless Chromium, per-line and per-box: fits from
+// 0.21 s + 0.79 s/MP to 1.33 s + 0.88 s/MP, the worst read 1.74–1.96× its
+// fit. The envelope rounds over all of them; k is the margin on top, and
+// a device's measured slowdown counts up to MAX_SLOWDOWN, so one freak read
+// can't stretch every later deadline to hours. A hang never ends, so a long
 // bound costs little; a false timeout costs a read.
 const ENVELOPE_BASE_MS = 1_500;
 const ENVELOPE_PER_MP_MS = 1_000;
 const DEADLINE_FLOOR_MS = 120_000;
 const K_UNCALIBRATED = 20;
 const K_CALIBRATED = 10;
+/** The most a measured slowdown stretches a deadline: 16 MP → 1,400 s. */
+const MAX_SLOWDOWN = 8;
 /** Reads smaller than this don't calibrate: fixed overhead dominates them. */
 const CALIBRATE_MIN_MP = 1;
 /** How long a restart after a timeout may take to report ready. */
@@ -112,10 +118,10 @@ const RESTART_DEADLINE_MS = 120_000;
 
 /** The deadline for a read of `mp` megapixels: max(120 s, k × envelope).
  * Without `slowdown` (no read measured on this device yet) k is 20; with it,
- * 10 × slowdown, where slowdown ≥ 1 is how much slower than the envelope
- * this device has read. A 16 MP tile: 350 s, then 175 s at slowdown 1. */
+ * 10 × slowdown, where slowdown (1 to MAX_SLOWDOWN, 8) is how much slower
+ * than the envelope this device has read. A 16 MP tile: 350 s, then 175 s at slowdown 1. */
 export function readDeadlineMs(mp: number, slowdown?: number): number {
-  const scale = slowdown === undefined ? K_UNCALIBRATED : K_CALIBRATED * Math.max(1, slowdown);
+  const scale = slowdown === undefined ? K_UNCALIBRATED : K_CALIBRATED * Math.min(MAX_SLOWDOWN, Math.max(1, slowdown));
   return Math.max(DEADLINE_FLOOR_MS, Math.round(scale * (ENVELOPE_BASE_MS + ENVELOPE_PER_MP_MS * mp)));
 }
 
@@ -354,7 +360,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
     const mp = (j.region.width * j.region.height) / 1e6;
     if (!j.deadline || mp < CALIBRATE_MIN_MP) return;
     const factor = visibleSoFar(j.deadline) / (ENVELOPE_BASE_MS + ENVELOPE_PER_MP_MS * mp);
-    slowdown = Math.max(slowdown ?? 1, factor);
+    slowdown = Math.min(MAX_SLOWDOWN, Math.max(slowdown ?? 1, factor));
   }
 
   /** A job is done with: drop its abort listener and its deadline. */

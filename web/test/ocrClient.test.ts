@@ -1206,3 +1206,23 @@ test("a timeout while a newer start is still under way doesn't restart beside it
   await assert.rejects(s.client.recognize(region()), /not ready/);
   assert.equal(await settled(s.client.whenIdle()), true);
 });
+
+test("calibration is capped: one very slow read can't stretch the deadline past 8× slowdown", async () => {
+  const s = await readyClient();
+  await timedRead(s, sized(1000, 1000), 119_000); // ≈ 48× the 2.5 s envelope
+  assert.equal(await nextDeadline(s), readDeadlineMs(16, 8));
+  assert.equal(readDeadlineMs(16, 8), 1_400_000, "10 × 8 × 17.5 s");
+  assert.equal(readDeadlineMs(16, 48), 1_400_000, "readDeadlineMs caps it too");
+});
+
+test("a read answered while the page is hidden counts only its visible time", async () => {
+  const s = await readyClient();
+  const p = s.client.recognize(sized(1000, 1000));
+  s.page.t = 2_000;
+  s.page.flip(true);
+  s.page.t = 5_000_000; // answered in the background
+  s.w.reply({ type: "result", id: recognizes(s.w).at(-1)!.msg.id, words: [] });
+  await p;
+  s.page.flip(false);
+  assert.equal(await nextDeadline(s), 175_000, "2 s visible, under the envelope");
+});
