@@ -61,7 +61,9 @@ test("opts: a short stable string that changes with every input", () => {
     { ...P, engine: { ...P.engine, detection: { ...P.engine.detection, paddingVertical: 0.5 } } },
     { ...P, engine: { ...P.engine, detection: { ...P.engine.detection, paddingHorizontal: 0.7 } } },
     { ...P, engine: { ...P.engine, detection: { ...P.engine.detection, maxSideLength: 2048 } } },
-    { ...P, engine: { ...P.engine, recognition: { maxCropSourceSideLength: 2000 } } },
+    { ...P, engine: { ...P.engine, recognition: { ...P.engine.recognition, maxCropSourceSideLength: 2000 } } },
+    { ...P, engine: { ...P.engine, recognition: { ...P.engine.recognition, strategy: "per-line" as const } } },
+    { ...P, engine: { ...P.engine, recognition: { ...P.engine.recognition, recBatchSize: 6 } } },
     { ...P, maxDim: 2048 },
   ];
   const seen = new Set([OCR_CACHE_OPTS]);
@@ -124,7 +126,16 @@ test("opts hash is pinned: a change here invalidates every cached page read, on 
   // are now misses. That is intended; update the literal in the same change,
   // and decide whether the old hash goes on STALE_OK_OPTS (its reads kept,
   // flagged stale) or not (dropped).
-  assert.equal(OCR_CACHE_OPTS, "d67721d4");
+  assert.equal(OCR_CACHE_OPTS, "96cc85c8");
+});
+
+test("the stale-ok hash is exactly the engine before #484: per-line at batch 6, ppu's defaults, all else the same", () => {
+  const P = OCR_CACHE_PARAMS;
+  const { strategy, recBatchSize, ...before } = P.engine.recognition;
+  assert.deepEqual({ strategy, recBatchSize }, { strategy: "per-box", recBatchSize: 1 });
+  assert.equal(ocrCacheOpts({ ...P, engine: { ...P.engine, recognition: before } } as unknown as typeof P), "d67721d4");
+  assert.ok(STALE_OK_OPTS.includes("d67721d4"));
+  assert.ok(!STALE_OK_OPTS.includes(OCR_CACHE_OPTS), "the current engine's reads are fresh, not stale");
 });
 
 test("put then get: same rs and opts gives the stored read back", async () => {
