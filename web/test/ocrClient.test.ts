@@ -1080,3 +1080,78 @@ test("dispose removes the visibility listener", async () => {
   assert.equal(page.listeners.size, 0);
   assert.equal(page.unsubscribed, 1);
 });
+
+// ── calibration: this device's own speed sets the margin ────────────────────
+
+/** A w×h raster: 1000×1000 is 1 MP (an envelope of 2.5 s), 4000×4000 16 MP. */
+const sized = (width: number, height: number) => ({ rgba: new Uint8ClampedArray(4 * width * height), width, height, geometry });
+const MP16 = () => sized(4000, 4000);
+
+/** Read `r`, answering it `ms` of page time after it was posted. */
+async function timedRead(s: { client: ReturnType<typeof createOcrClient>; w: FakeWorker; page: ReturnType<typeof fakePage> }, r: ReturnType<typeof sized>, ms: number) {
+  const p = s.client.recognize(r);
+  s.page.t += ms;
+  s.w.reply({ type: "result", id: recognizes(s.w).at(-1)!.msg.id, words: [] });
+  await p;
+}
+/** The deadline the next 16 MP read gets. */
+async function nextDeadline(s: { client: ReturnType<typeof createOcrClient>; w: FakeWorker; timers: ReturnType<typeof fakeTimers> }) {
+  const p = s.client.recognize(MP16());
+  const ms = s.timers.live()[0].ms;
+  s.w.reply({ type: "result", id: recognizes(s.w).at(-1)!.msg.id, words: [] });
+  await p;
+  return ms;
+}
+
+test("before any read the 16 MP deadline is 20× the envelope", async () => {
+  const s = await readyClient();
+  assert.equal(await nextDeadline(s), 350_000);
+});
+
+test("a completed read of 1 MP or more calibrates: a fast device gets 10×", async () => {
+  const s = await readyClient();
+  await timedRead(s, sized(1000, 1000), 1_000); // under the 2.5 s envelope
+  assert.equal(await nextDeadline(s), readDeadlineMs(16, 1));
+  assert.equal(readDeadlineMs(16, 1), 175_000);
+});
+
+test("a slow device's deadline stretches by its slowdown, and a later fast read doesn't shrink it", async () => {
+  const s = await readyClient();
+  await timedRead(s, sized(1000, 1000), 7_500); // 3× the 2.5 s envelope
+  assert.equal(await nextDeadline(s), 525_000);
+  await timedRead(s, sized(1000, 1000), 500);
+  assert.equal(await nextDeadline(s), 525_000, "the slowest seen holds");
+});
+
+test("small patches don't calibrate: fixed overhead dominates them", async () => {
+  const s = await readyClient();
+  await timedRead(s, sized(500, 500), 60_000); // 0.25 MP
+  assert.equal(await nextDeadline(s), 350_000, "still uncalibrated");
+});
+
+test("engine start-up time doesn't count toward a read", async () => {
+  const s = setup({ cached: ALL, worker: () => fakeWorker(() => {}) });
+  const started = s.client.ensureReady();
+  const w = await initPosted(s.spawned);
+  s.page.t += 600_000; // a slow start
+  readyAt(w);
+  assert.deepEqual(await started, { ok: true });
+  const t = { ...s, w };
+  await timedRead(t, sized(1000, 1000), 1_000);
+  assert.equal(await nextDeadline(t), 175_000);
+});
+
+test("time hidden doesn't count toward a read's measured speed", async () => {
+  const s = await readyClient();
+  const p = s.client.recognize(sized(1000, 1000));
+  s.page.t = 2_000;
+  s.page.flip(true);
+  s.page.t = 5_000_000;
+  s.page.flip(false);
+  s.page.t += 2_000;
+  s.w.reply({ type: "result", id: recognizes(s.w).at(-1)!.msg.id, words: [] });
+  await p;
+  // 4 s visible over both stretches = 1.6× the 2.5 s envelope.
+  assert.equal(await nextDeadline(s), readDeadlineMs(16, 1.6));
+  assert.equal(readDeadlineMs(16, 1.6), 280_000);
+});

@@ -24,7 +24,8 @@
 //
 // A read the worker never answers would hold the queue, and whenIdle, for
 // good (#484). Each posted read has a deadline, readDeadlineMs: generous,
-// since a false timeout costs a read and a hang costs everything after it.
+// since a false timeout costs a read and a hang costs everything after it,
+// and stretched to this device's own speed once it has read 1 MP or more.
 // When it passes, the read rejects OcrTimeoutError, the worker is ended and
 // the engine restarts from the cache. The reads queued behind it wait for
 // the restart, as does whenIdle, and go to the new worker. A restart never
@@ -104,6 +105,8 @@ const ENVELOPE_PER_MP_MS = 1_000;
 const DEADLINE_FLOOR_MS = 120_000;
 const K_UNCALIBRATED = 20;
 const K_CALIBRATED = 10;
+/** Reads smaller than this don't calibrate: fixed overhead dominates them. */
+const CALIBRATE_MIN_MP = 1;
 /** How long a restart after a timeout may take to report ready. */
 const RESTART_DEADLINE_MS = 120_000;
 
@@ -165,6 +168,9 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
   const clearTimer = deps.clearTimer ?? defaultClearTimer;
   const now = deps.now ?? defaultNow;
   const isHidden = deps.isHidden ?? defaultIsHidden;
+  // How much slower than the envelope this device has read (the slowest
+  // read of CALIBRATE_MIN_MP or more, at least 1); unset until one answers.
+  let slowdown: number | undefined;
 
   // Every deadline still running, paused while the page is hidden and
   // re-armed with what was left when it shows again.
@@ -175,6 +181,8 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
     // clears the handle, harmless on a timer that already ran.
     d.handle = setTimer(() => { deadlines.delete(d); d.fire(); }, d.left);
   }
+  /** Visible time a deadline has run so far. */
+  const visibleSoFar = (d: Deadline) => d.visibleMs + (d.handle == null ? 0 : now() - d.since);
   function pause(d: Deadline) {
     if (d.handle == null) return;
     clearTimer(d.handle);
@@ -339,6 +347,15 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
     }
   }
 
+  /** A read came back: fold its visible time into this device's slowdown.
+   * Start-up isn't counted (the clock starts at the post), nor hidden time. */
+  function calibrate(j: Job) {
+    const mp = (j.region.width * j.region.height) / 1e6;
+    if (!j.deadline || mp < CALIBRATE_MIN_MP) return;
+    const factor = visibleSoFar(j.deadline) / (ENVELOPE_BASE_MS + ENVELOPE_PER_MP_MS * mp);
+    slowdown = Math.max(slowdown ?? 1, factor);
+  }
+
   /** A job is done with: drop its abort listener and its deadline. */
   function settled(j: Job) {
     cancel(j.deadline);
@@ -464,6 +481,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
         const job = running;
         if (!job || job.id !== m.id) return; // unknown or stale id
         running = null;
+        if (m.type === "result") calibrate(job);
         settled(job);
         strikes = 0; // the worker answered: a later timeout is a new problem
         // An aborted job's caller already got AbortError; drop the late reply.
@@ -531,7 +549,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
       }
       // Armed only once the read is at the worker; every path that settles
       // the job (settled()) clears it.
-      job.deadline = deadline(readDeadlineMs((width * height) / 1e6), () => timeOut(job));
+      job.deadline = deadline(readDeadlineMs((width * height) / 1e6, slowdown), () => timeOut(job));
     }
     checkIdle();
   }
