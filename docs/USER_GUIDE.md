@@ -618,6 +618,12 @@ The **Markup** menu holds seven tools:
 
 Every markup is editable after the fact: with Select, click to select it, drag to move it, **double-click to edit its text in place** (an image carries no text—it's select-only). The Markups panel lists them all with an edit pencil, a **color** row (auto or any palette color), **line style** and **weight** controls, and a **Hide layer / Show layer** toggle for the whole layer. (Markup moves are plain edits, not undo steps—the `⌘Z` stack is for measured shapes.) A large image sits over what it covers—much like a highlight box—so if you can't click a shape beneath one, move the image aside. Images travel **with** the takeoff: they save to your browser, ride the JSON export/import, and sync to your team folder along with the rest of the annotations.
 
+### Live quantities in a note: `{{qty}}`
+
+Type `{{qty}}` anywhere in a note, callout, cloud label or highlight label and it shows the **linked condition's measured quantity**: "Provide and install x{{qty}} emergency light fixtures" reads *x5 EA* on the sheet, and *x6 EA* the moment you count a sixth. The number is the one the condition chip shows (multiplier applied, no waste) in your display units, with every unit the condition carries, e.g. *1,200 SF · 84.25 LF*. The note itself keeps `{{qty}}`, so editing it shows the field, never a frozen number.
+
+A note links to whatever condition is active when you draw it; change it in the Markups panel with **Attach to condition…** or **Detach**. A field that can't fill (an unlinked note, or a condition with nothing measured yet) stays as the literal `{{qty}}` and turns **red**, on the canvas, in the Markups list (hover for the reason), and on the Marked Set. It never prints blank or 0. The report's annotation table shows the filled text, and the JSON export adds `text_resolved` beside `text` on any note that carries a field.
+
 ### Stamps
 
 A **stamp** is a reusable annotation—one or several markup elements saved as a named group and placed with a click. The library seeds with flooring basics (**Plank / tile direction**, **Seam direction**, **Pattern origin**) and is browser-global: build it once, use it on every plan.

@@ -26,6 +26,7 @@ import { M_PER_FT, M2_PER_SF } from "./units";
 import { attrValue } from "./conditionColumns.js";
 import { shapeLabelValue } from "./shapeLabels.js";
 import { compareSheetKeys } from "./sheetKey"; // NOT ./sheets — that module imports pdfjs-dist
+import { hasFields, qtyLabels, resolveNote } from "./noteFields.ts";
 
 // Re-export so existing consumers (markedset, snapshotDiff, ReportPanel, tests)
 // keep importing round2 from here; num.js is the single definition.
@@ -490,6 +491,7 @@ export function totalsToCsv(rows, projectName = "", bySheet = null, sheetLabel =
  */
 export function reportJson({ projectName = "", rows = [], bySheet = [], scaleInfo = [], markups = [], rfis = [], sheetLabel = null, conditionColumns = [], attrsByCond = null, shapeLabels = [], byLabel = [], displayUnits = "imperial", rollGoods = [], proposedConditionEdits = [] }) {
   const label = (id) => (sheetLabel ? sheetLabel(id) : id);
+  const noteQty = qtyLabels(rows || [], displayUnits === "metric" ? "metric" : "imperial");
   // destructuring defaults don't apply to an explicit null, and both values can
   // trace back to a corrupted payload — coerce (and drop malformed items) so
   // the export can't throw
@@ -529,9 +531,14 @@ export function reportJson({ projectName = "", rows = [], bySheet = [], scaleInf
     // resolved finish_tag rather than only the id, so a reader of the export
     // can see WHICH scope an annotation is about without joining two arrays;
     // the id stays authoritative. Unattached markups: "" for both.
+    // text_resolved APPENDS (same rule), and only on a note that carries a
+    // {{field}} — omit-when-empty, so every other markup row is unchanged.
+    // `text` stays the stored note, template and all; text_resolved is what the
+    // sheet shows, {{qty}} filled from the linked condition's measured quantity
+    // (noteFields, #474). An unresolved field stays literal in both.
     markups: markups.map((m) => {
       const c = m.condition_id ? (rows || []).find((r) => r.id === m.condition_id) : null;
-      return { type: m.type, sheet_id: m.sheet_id, sheet: label(m.sheet_id), text: m.text || "", id: m.id ?? null, rfi_id: m.rfi_id || "", condition_id: m.condition_id || "", condition: c?.finish_tag || "" };
+      return { type: m.type, sheet_id: m.sheet_id, sheet: label(m.sheet_id), text: m.text || "", id: m.id ?? null, rfi_id: m.rfi_id || "", condition_id: m.condition_id || "", condition: c?.finish_tag || "", ...(hasFields(m.text) ? { text_resolved: resolveNote(m.text, m.condition_id, noteQty).text } : {}) };
     }),
     // rfis APPENDS after markups (additive-only v1 — old exports had no RFI
     // register). linked_markups/linked_sheets are DERIVED from markup.rfi_id,

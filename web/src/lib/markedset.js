@@ -49,6 +49,7 @@ import { pdfDashFor, boostForDark, clampWeight } from "./lineStyles.js";
 import { NOTE_PT, layoutNote, noteBox, lineBaseline } from "./markupText.js";
 import { dimLabel } from "./units";
 import { sourcePageMode, sourceStampNote, noCanvasForRasterMessage } from "./markedsetSource.js";
+import { qtyLabels, resolveMarkup, FIELD_WARN_INK, FIELD_WARN_INK_DARK } from "./noteFields.ts";
 
 const COBALT = "#1f3fc7";
 const DEDUCT_RED = "#b03a26";
@@ -239,6 +240,14 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
   // raised RFI prints exactly like a panel-raised one; who asked is on the
   // record (origin.actor), not on the page.
   markups = (markups || []).filter(m => !m.reference_only);
+  // {{qty}} fields (#474) resolve here, once, against the same measured
+  // quantities the canvas quotes — the burned note reads what the screen read.
+  // An unresolved field prints literally in the danger ink (fieldWarn).
+  const fieldWarn = new Set();
+  {
+    const qtyL = qtyLabels(conditionTotals(conditions || [], shapes || []), units);
+    markups = markups.map((m0) => { const r = resolveMarkup(m0, qtyL); if (r.unresolved.length) fieldWarn.add(m0.id); return r.m; });
+  }
   const rfis = liveRfis(rfisIn);
   // display-unit edge (lib/units contract): quantities arrive as internal feet;
   // metric converts at the drawn string only — legend rows, by-sheet rows, and
@@ -717,6 +726,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
       const mCond = m.condition_id ? (conditions || []).find((c) => c.id === m.condition_id) : null;
       const mbase = m.color || mCond?.color || (m.rfi_id ? COBALT : "#c47a10");
       const mcol = rgb(...hex(dark ? boostForDark(mbase) : mbase));
+      const tcol = fieldWarn.has(m.id) ? rgb(...hex(dark ? FIELD_WARN_INK_DARK : FIELD_WARN_INK)) : mcol;   // note text
       const mdash = pdfDashFor(m.line_style || "solid");
       const mw = clampWeight(m.weight);   // stroke-width multiplier (markups only), default ×1
       if (m.annotation_style && ["arrow", "highlight", "callout", "cloud", "text"].includes(m.type)) {
@@ -752,7 +762,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         const r = [[nx0 * W, ny0 * H], [nx1 * W, ny0 * H], [nx1 * W, ny1 * H], [nx0 * W, ny1 * H]];
         pg.drawSvgPath(svgPath(r), { x: 0, y: 0, color: mcol, opacity: 0.18 + alphaBoost / 2, borderColor: mcol, borderWidth: 1 * mw, borderOpacity: 0.9, ...(mdash ? { borderDashArray: mdash } : {}) });
         const t = lbl(m.text);
-        if (t) text(t, Math.min(nx0, nx1) * W, Math.min(ny0, ny1) * H - 10 / ptScale, 8, mcol, bold);
+        if (t) text(t, Math.min(nx0, nx1) * W, Math.min(ny0, ny1) * H - 10 / ptScale, 8, tcol, bold);
       } else if (m.type === "cloud" && m.rect) {
         const [[nx0, ny0], [nx1, ny1]] = m.rect;
         // real scallops: cloudBezier's CONTROL POINTS survive the affine page
@@ -764,7 +774,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         for (const [c1, c2, end] of cb.segments) d += ` C${P(c1)} ${P(c2)} ${P(end)}`;
         pg.drawSvgPath(d + " Z", { x: 0, y: 0, borderColor: mcol, borderWidth: 1.3 * mw, borderOpacity: 0.95, ...(mdash ? { borderDashArray: mdash } : {}) });
         const t = lbl(m.text);
-        if (t) text(t, Math.min(nx0, nx1) * W, Math.min(ny0, ny1) * H - 10 / ptScale, 8, mcol, bold);
+        if (t) text(t, Math.min(nx0, nx1) * W, Math.min(ny0, ny1) * H - 10 / ptScale, 8, tcol, bold);
         // revision-delta triangle at the top-right corner — clear of the
         // top-left RFI label and the centered note. Absent m.rev → nothing.
         if (Number.isFinite(m.rev) && m.rev > 0) {
@@ -785,7 +795,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         const [ptx, pty] = toPage(m.to[0] * W, m.to[1] * H);
         pg.drawSvgPath(arrowheadPath(pfx, -pfy, ptx, -pty, 6 * mw), { x: 0, y: 0, color: mcol, opacity: 0.95 });
         const t = lbl(m.text);
-        if (t) text(t, (m.from[0] + m.to[0]) / 2 * W, (m.from[1] + m.to[1]) / 2 * H - 6 / ptScale, 8, mcol, bold);
+        if (t) text(t, (m.from[0] + m.to[0]) / 2 * W, (m.from[1] + m.to[1]) / 2 * H - 6 / ptScale, 8, tcol, bold);
       } else if (m.type === "dimension" && m.from && m.to) {
         // a dimension line: perpendicular ticks at both ends, the measured
         // length centered beside it. m.len_ft was snapshotted at annotate
@@ -805,7 +815,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
           const size = 8;
           const tw = bold.widthOfTextAtSize(winAnsiSafe(t), size);
           const [pmx, pmy] = toPage((fx + dxq) / 2 + dnx * (14 / ptScale), (fy + dyq) / 2 + dny * (14 / ptScale));
-          pg.drawText(winAnsiSafe(t), { x: pmx - tw / 2, y: pmy - size / 2.7, size, font: bold, color: mcol, rotate: chipRot });
+          pg.drawText(winAnsiSafe(t), { x: pmx - tw / 2, y: pmy - size / 2.7, size, font: bold, color: tcol, rotate: chipRot });
         }
       } else if (m.type === "bubble" && m.at) {
         // a circle carrying centered text — detail/section/keynote bubbles and
@@ -819,7 +829,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
         if (t) {
           const size = 8;
           const tw = bold.widthOfTextAtSize(winAnsiSafe(t), size);
-          pg.drawText(winAnsiSafe(t), { x: pcx - tw / 2, y: pcy - size / 2.7, size, font: bold, color: mcol, rotate: chipRot });
+          pg.drawText(winAnsiSafe(t), { x: pcx - tw / 2, y: pcy - size / 2.7, size, font: bold, color: tcol, rotate: chipRot });
         }
       } else if (m.type === "callout" && m.at) {
         if (m.target) {
@@ -830,12 +840,12 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
           const [ptx, pty] = toPage(m.target[0] * W, m.target[1] * H);
           pg.drawSvgPath(arrowheadPath(pax, -pay, ptx, -pty, 5), { x: 0, y: 0, color: mcol, opacity: 0.9 });
         }
-        noteBlock(lbl(m.text), m.at[0] * W, m.at[1] * H, mcol, dark ? rgb(0.08, 0.1, 0.12) : rgb(1, 1, 1));
+        noteBlock(lbl(m.text), m.at[0] * W, m.at[1] * H, tcol, dark ? rgb(0.08, 0.1, 0.12) : rgb(1, 1, 1));
       } else if (m.type === "text" && m.at) {
         // a plain text note — never burned before this branch existed: a note
         // written on the canvas simply vanished from the print. Same block as a
         // callout, on the canvas's cream backing.
-        noteBlock(lbl(m.text), m.at[0] * W, m.at[1] * H, mcol, dark ? rgb(0.08, 0.1, 0.12) : rgb(1, 0.97, 0.93));
+        noteBlock(lbl(m.text), m.at[0] * W, m.at[1] * H, tcol, dark ? rgb(0.08, 0.1, 0.12) : rgb(1, 0.97, 0.93));
       } else if (m.type === "svg" && m.at && Array.isArray(m.vb) && typeof m.path === "string") {
         // a vector symbol — bake local→page px, NEGATING y like every sibling path
         // (drawSvgPath internally applies scale(1,-1), so toPage output must be
@@ -849,7 +859,7 @@ export async function buildMarkedSetPdf({ projectName, dark, sheets, shapes, mar
           const fillOn = m.fill && m.fill !== "none";
           if (d) pg.drawSvgPath(d, { x: 0, y: 0, borderColor: mcol, borderWidth: 1.2 * mw, borderOpacity: 0.95, ...(fillOn ? { color: rgb(...hex(dark ? boostForDark(m.fill) : m.fill)), opacity: 0.9 } : {}) });
           const t = lbl(m.text);
-          if (t) text(t, m.at[0] * W - bw / 2, y0 - 6 / ptScale, 8, mcol, bold);
+          if (t) text(t, m.at[0] * W - bw / 2, y0 - 6 / ptScale, 8, tcol, bold);
         }
       } else if (m.type === "image" && m.at && m.src) {
         // a raster image markup (an uploaded file, or a marquee screenshot of the

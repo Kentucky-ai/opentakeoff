@@ -75,6 +75,7 @@ import { gridPxPerFoot, drawGrid, drawShapes, drawMarks, type Ctx2D, type ToCanv
 // hand-mirrored copies that used to live here drifted once, in 2026-07).
 import { SNAP_CELL, SNAP_TOL, TAKEOFF_SCHEMA, nextHatchId, nextPaletteColor } from "../../web/src/lib/takeoffConstants.ts";
 import { buildTakeoffDocument, sheetEntry } from "../../web/src/lib/takeoffDocument.js";
+import { hasFields, qtyLabels, resolveNote } from "../../web/src/lib/noteFields.ts";
 // uid mirrors web/src/lib/provenance.js mintUuid: crypto.randomUUID is a
 // global in Node 20+, with the same non-secure-context fallback the browser
 // build carries so the two sides mint identically-shaped ids.
@@ -4569,6 +4570,14 @@ export class Session {
       seals = seals.filter((a) => a.shape_id !== undefined && shapeById.get(a.shape_id)?.condition_id === c.id);
     }
     const s0 = this.sheets;
+    // {{qty}} fields (#474): the stored text stays the template; a note that
+    // carries a field also reports what the sheet shows and what wouldn't fill
+    const qtyL = rows.some((m) => hasFields(m.text)) ? qtyLabels(conditionTotals(this.conditions, this.shapes) as { id: string }[]) : new Map<string, string>();
+    const fields = (m: Markup) => {
+      if (!hasFields(m.text)) return {};
+      const r = resolveNote(m.text, m.condition_id, qtyL);
+      return { text_resolved: r.text, ...(r.unresolved.length ? { unresolved_fields: r.unresolved } : {}) };
+    };
     const px = (m: Markup, p?: [number, number]): [number, number] | undefined => {
       const sh = s0.get(m.sheet_id); if (!p || !sh) return undefined;
       return [round1(p[0] * sh.widthPx), round1(p[1] * sh.heightPx)];
@@ -4584,6 +4593,7 @@ export class Session {
         ...(m.to ? { to: px(m, m.to) } : {}),
         ...(m.r != null ? { r: round1(m.r * (s0.get(m.sheet_id)?.widthPx ?? 0)) } : {}),
         ...(m.len_ft != null ? { length_lf: m.len_ft } : {}),
+        ...fields(m),
       })),
       count: rows.length,
       unattached: rows.filter((m) => !m.condition_id).length,
