@@ -394,7 +394,8 @@ Known limits of the raster read:
 
 - A raster sheet that also carries a full OCR text layer, or a CAD sheet whose schedule text is drawn as lines (SHX) while its title is real text: when the box holds more than 8 text runs that don't read as a table, it gets the re-drag hint instead of a read.
 - The in-canvas agent's `read_schedule` reads the text layer only; it doesn't read a raster schedule.
-- A section heading printed on a shaded bar can be missed. On the bundled demo's MATERIAL SCHEDULE as a 200 DPI image (one sheet, n=1), the read found all 28 codes, none wrong, and all 28 descriptions, but not the FLOORING, BASE or WALLS headings (gray bars), so 16 rows came in with no section and 14 of 28 in the group the text-layer read gives; at 100 DPI all 28 rows matched.
+- The reader can miss a printed section heading. On the bundled demo's MATERIAL SCHEDULE as a 200 DPI image (one sheet, n=1), the read found all 28 codes, none wrong, and all 28 descriptions, but missed the FLOORING, BASE and WALLS headings, so 16 rows came in with no section and 14 of 28 in the group the text-layer read gives; at 100 DPI all 28 rows matched.
+- A blank row between two code groups inside one printed section (CPT-1 to CPT-4, a blank row, then LVT-1), or a first row of a group the reader drops at that boundary, moves the later rows of that section to **No section**. It errs toward No section, never toward a wrong section.
 - **Cancel** can't stop a recognition already running in the background, so a box read right after waits for it.
 
 Every box is read on your device; the box and its image never leave it.

@@ -22,14 +22,16 @@ const PDF_POINTS_PER_INCH = 72;
 
 export interface RenderFactorOptions {
   dpi?: number;
-  /** longest side of the raster: the AI reader's cap, so it can reuse it */
+  /** longest side of the raster (SCAN_MAX_DIM, a memory limit); the worker
+   *  gives the engine the same cap */
   maxDim?: number;
   maxCanvasDim?: number;
   maxCanvasArea?: number;
 }
 
 /** Render factor relative to `rs` for a regW × regH (rs px) region: reach
- * `dpi`, but stay within the scan side cap and the browser's canvas caps.
+ * `dpi`, but stay within SCAN_MAX_DIM (a memory limit) and the browser's
+ * canvas caps.
  * Above 1 is a real re-render at higher resolution, not a stretch. */
 export function ocrRenderFactor(rs: number, regW: number, regH: number, opts: RenderFactorOptions = {}): number {
   const { dpi = OCR_TARGET_DPI, maxDim = SCAN_MAX_DIM, maxCanvasDim = MAX_CANVAS_DIM, maxCanvasArea = MAX_CANVAS_AREA } = opts;
@@ -44,7 +46,7 @@ export interface RegionRaster {
   /** RGBA pixels; the OCR client transfers this buffer to the worker */
   rgba: Uint8ClampedArray;
   geometry: RenderGeometry;
-  /** base64 PNG (no data: prefix), only when asked, for the AI reader */
+  /** base64 PNG (no data: prefix), only when asked; no caller asks yet */
   png?: string;
 }
 
@@ -57,8 +59,9 @@ interface PdfPageLike {
 const abortError = () => new DOMException("The OCR render was cancelled.", "AbortError");
 
 /** Render `rect` (rs px, any corner order) of `page` for OCR. `png: true` also
- * encodes the same render as PNG, so a caller that falls back to the AI
- * reader doesn't render twice (recognize transfers `rgba` away).
+ * encodes the same render as PNG, so a caller that wants the image as well
+ * doesn't render twice (recognize transfers `rgba` away). No caller passes it
+ * yet: every read uses `rgba` only.
  *
  * `signal` cancels the pdf.js render task and rejects with an AbortError.
  * The canvas is released (sized to 0) once its pixels, and the PNG if asked,
