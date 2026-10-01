@@ -8,7 +8,9 @@
 // an older model is still used (the caller may offer "Read again" when it
 // knows a newer rev), so a lookup never needs the network. opts is a short
 // hash of everything else that shapes the read (engine options, target DPI,
-// tile overlap, raster cap, seam rules version): a mismatch is a miss. rs is
+// tile overlap, raster cap, seam rules version): a mismatch is a miss, except
+// for an opts on STALE_OK_OPTS (a past engine whose reads are still worth
+// searching), which is a stale hit. rs is
 // the render scale the lines are in; a lookup at another rs gets them
 // rescaled. Bump v1 (here and
 // in pdfHash.ts's prefix) when the tile or unpad maths changes.
@@ -50,6 +52,14 @@ export function ocrCacheOpts(params: OcrCacheParams): string {
 
 export const OCR_CACHE_OPTS = ocrCacheOpts(OCR_CACHE_PARAMS);
 
+/** Opts hashes of past reads kept, flagged stale, rather than dropped: the
+ * lines stay in search and Copy and the Read control offers Read again.
+ * Only a change that makes old reads less complete, not wrong, adds its old
+ * hash here: other mismatches (a seam-rule or DPI fix) stay misses, so a
+ * known-wrong read isn't served. d67721d4: per-line recognition at batch 6,
+ * before #484. */
+export const STALE_OK_OPTS: readonly string[] = ["d67721d4"];
+
 /** The meta key for one page (1-based) of one PDF. Throws on a bad hash or page. */
 export function ocrCacheKey(hash: string, page: number): string {
   if (!Number.isInteger(page) || page < 1) throw new TypeError(`bad page number: ${page}`);
@@ -78,7 +88,8 @@ export interface PageCacheHit {
   ms: number;
   rasters: number;
   at: number;
-  /** read by a model rev other than the current one (only when it's known) */
+  /** read by a model rev other than the current one (only when it's known),
+   * or under STALE_OK_OPTS (whatever the rev) */
   stale: boolean;
 }
 
@@ -120,12 +131,16 @@ function scaleLine(w: CachedLine, f: number): CachedLine {
 export function createPageCache(deps: PageCacheDeps, { opts = OCR_CACHE_OPTS }: { opts?: string } = {}) {
   return {
     /** The cached read of `page`, lines in `rs` px, or null (a miss, a bad
-     * hash, a malformed or other-opts entry). */
+     * hash, a malformed entry, or one under other opts not on STALE_OK_OPTS). */
     async get(hash: string | null | undefined, page: number, { rs, rev }: { rs: number; rev?: string | null }): Promise<PageCacheHit | null> {
       if (!positive(rs)) throw new TypeError(`bad render scale: ${rs}`);
       if (!isPdfHash(hash)) return null;
       const e = await deps.metaGet(ocrCacheKey(hash, page));
-      if (!isEntry(e) || e.opts !== opts) return null;
+      if (!isEntry(e)) return null;
+      // checked without the rev: revOf is null offline, and the read is
+      // from another engine either way
+      const otherEngine = e.opts !== opts;
+      if (otherEngine && !STALE_OK_OPTS.includes(e.opts)) return null;
       const f = rs / e.rs;
       return {
         rev: e.rev,
@@ -134,7 +149,7 @@ export function createPageCache(deps: PageCacheDeps, { opts = OCR_CACHE_OPTS }: 
         ms: e.ms,
         rasters: e.rasters,
         at: e.at,
-        stale: rev != null && e.rev !== rev,
+        stale: otherEngine || (rev != null && e.rev !== rev),
       };
     },
 

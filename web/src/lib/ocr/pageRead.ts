@@ -584,8 +584,9 @@ export type PageReadView =
  * that instead, with Retry); a read under way (so it can be
  * cancelled) or done (so it stays labelled OCR, cached reads included) shows
  * whatever else the probe says (not asked yet, offline). Read again only for
- * a read by another model rev, and only when available (stale is only ever
- * set when the rev is known). Hidden while the cache is being checked. */
+ * a stale read (by another model rev, the rev known, or by an earlier engine
+ * on pageCache's STALE_OK_OPTS, the rev known or not), and only when
+ * available. Hidden while the cache is being checked. */
 export function pageReadView(s: { textless: boolean | undefined; avail: string | null | undefined; status: PageReadStatus | undefined }): PageReadView {
   if (s.textless !== true || s.avail === "disabled" || s.avail === "uninstalled") return { kind: "hidden" };
   const available = s.avail === "available";
