@@ -1627,7 +1627,7 @@ export class Session {
     if (assign) {
       if (s.upp == null) throw new UserError(this.scaleGate(s));   // no silent px-only preview wearing a success reply
       graph = await this.ensureGraph();
-      if (!graph.available) throw new UserError("This set has no text layer (a scan) — the sheet graph is unavailable, not empty.");
+      if (!graph.available) throw new UserError("This set has no text layer (a raster image) — the sheet graph is unavailable, not empty.");
       if (!graph.tables.some((t) => t.kind === "room-finish")) {
         throw new UserError("No room-finish schedule in the working set — load_plan the schedule sheet with merge: true, or pass condition to commit every room under one tag.");
       }
