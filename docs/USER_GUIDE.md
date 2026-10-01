@@ -775,15 +775,15 @@ When a sheet on the canvas is a scan, a **Read page text** control appears at th
 - **Kept in this browser.** A finished read is kept with the PDF's fingerprint, so after a reload the sheet searches and copies without reading again. Removing the PDF from a local project removes its reads (add it again and it's read again). In a cloud project the gallery doesn't download a PDF just to check for a saved read, so a card may show **Read page text** for a sheet read in an earlier session until that sheet is opened or searched; pressing **Read page text** then uses the saved read instead of reading again. In a cloud project, pressing **Read page text** on a sheet that isn't open downloads that PDF before the download notice appears: its page size has to be checked first. A read by an older version of the reader is still used, and **Read again** is offered while the reader is available (not offline). The same goes for reads saved before the reader began reading each word box on its own (#484): they stay searchable and copyable, and **Read again** reads the page with the current reader. Reading again is never automatic.
 - **Labelled OCR in the app.** The control says **Read in n s · OCR**, search hits on read text carry **OCR**, and the Copy text receipt names **OCR** as the reader; the clipboard gets plain text, with no label. OCR text can be wrong: check it against the sheet.
 
-Measured time and memory (Apple M4, 16 GB, macOS 26.2, headless Chrome for Testing 151; three runs, each in a fresh browser profile; median and range). The input was the demo plan's two 42 × 30 in sheets saved as a 200 DPI image-only PDF, read at the reader's 216 DPI in 6 tiles:
+Measured time and memory (Apple M4, 16 GB, macOS 26.2, headless Chrome for Testing 151; three runs, each in a fresh browser profile; median and range; after the #484 engine change). The input was the demo plan's two 42 × 30 in sheets saved as a 200 DPI image-only PDF, read at the reader's 216 DPI in 6 tiles plus the seam reads they need (8 rasters per sheet in the app's own runs):
 
 | Step | Time | Memory the read adds | Tab memory at peak |
 |---|---|---|---|
-| Download the reader's files and start it (served from a local server, so no network time) | 0.83 s (0.83–0.85) | — | — |
-| Floor plan sheet, first read (6 tiles) | 41.8 s (41.7–41.9) | 2.6 GB (2.6–2.7) | 5.4–5.7 GB |
-| Finish schedule sheet, reader already running (6 tiles + seam reads) | 48.8 s (48.6–48.9) | 0.94 GB (0.82–1.2) | 4.7–5.0 GB |
+| Download the reader's files and start it (served from a local server, so no network time) | 0.80 s (0.80–0.84) | — | — |
+| Floor plan sheet, first read | 42.2 s (41.8–47.4) | 0.95 GB (0.89–2.3) | 2.9–4.9 GB |
+| Finish schedule sheet, reader already running | 47.2 s (43.7–49.0) | 2.2 GB (1.1–2.8) | 3.6–4.5 GB |
 
-Memory is the browser tab's process (renderer RSS, which includes the reader's worker), sampled every 250 ms; "adds" is the peak during the read minus the same process just before it. The first read also loads the reader's models, which is why it adds more. One tile is read at a time.
+Memory is the browser tab's process (renderer RSS, which includes the reader's worker), sampled every 250 ms; "adds" is the peak during the read minus the same process just before it. It varies a lot from run to run (the tab's memory before a read differed by over 2 GB between runs), so read it as a range, not a figure. Background load on the machine slows reads: one run during other heavy work took 47.4 s and 59.0 s. One raster is read at a time.
 
 Known limits:
 
