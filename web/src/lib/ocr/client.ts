@@ -22,6 +22,13 @@
 // waits for it like anyone else. And if a caller brings consent to a start
 // that would end consent-required, the start goes on with the download.
 //
+// A read the worker never answers would hold the queue, and whenIdle, for
+// good (#484). Each posted read has a deadline, readDeadlineMs: generous,
+// since a false timeout costs a read and a hang costs everything after it.
+// When it passes, the read rejects OcrTimeoutError, the worker is ended and
+// the reads queued behind it reject too, so nothing waits forever; the next
+// ensureReady starts a fresh worker.
+//
 // dispose() is final: pending and later ensureReady calls resolve aborted,
 // and no worker is started again.
 import { ocrEnabled } from "../gate.js";
@@ -58,6 +65,40 @@ export interface OcrClientDeps {
   fetchImpl?: (url: string, init?: { method?: string }) => Promise<Response>;
   cacheStorage?: CacheStorageLike;
   spawnWorker?: () => WorkerLike;
+  /** The watchdog's clock; setTimeout / clearTimeout by default (unref'd
+   * where the host has it, so an unanswered read can't hold node open). A
+   * test injects timers it fires by hand. */
+  setTimer?: (fn: () => void, ms: number) => unknown;
+  clearTimer?: (handle: unknown) => void;
+}
+
+/** A read the worker never answered within its deadline. */
+export class OcrTimeoutError extends Error {
+  constructor() {
+    super("The on-device reader stopped responding.");
+    // Not AbortError: that reads as "page closed" and would hide this.
+    this.name = "OcrTimeoutError";
+  }
+}
+
+// How long one read may take, from the measured fits (#484 g3-timing and
+// timing.json, per-line and per-box): 0.21 s + 0.79 s/MP up to
+// 1.33 s + 0.88 s/MP, worst read 1.74–1.96× its fit. The envelope rounds
+// over all of them; k is the margin on top. A hang never ends, so a long
+// bound costs little; a false timeout costs a read.
+const ENVELOPE_BASE_MS = 1_500;
+const ENVELOPE_PER_MP_MS = 1_000;
+const DEADLINE_FLOOR_MS = 120_000;
+const K_UNCALIBRATED = 20;
+const K_CALIBRATED = 10;
+
+/** The deadline for a read of `mp` megapixels: max(120 s, k × envelope).
+ * Without `slowdown` (no read measured on this device yet) k is 20; with it,
+ * 10 × slowdown, where slowdown ≥ 1 is how much slower than the envelope
+ * this device has read. A 16 MP tile: 350 s, then 175 s at slowdown 1. */
+export function readDeadlineMs(mp: number, slowdown?: number): number {
+  const scale = slowdown === undefined ? K_UNCALIBRATED : K_CALIBRATED * Math.max(1, slowdown);
+  return Math.max(DEADLINE_FLOOR_MS, Math.round(scale * (ENVELOPE_BASE_MS + ENVELOPE_PER_MP_MS * mp)));
 }
 
 type WorkerMsg = { type: string; id?: number; initId?: number; code?: string; message?: string; loaded?: number; total?: number; words?: OcrWord[] };
@@ -68,18 +109,30 @@ type Attempt = { waiters: Set<Waiter>; done: boolean; network: boolean; initId: 
 const ABORTED: OcrReady = { ok: false, reason: "aborted" };
 const CONSENT_REQUIRED: OcrReady = { ok: false, reason: "consent-required" };
 
-type Job = { id: number; region: OcrRegion; resolve: (w: OcrWord[]) => void; reject: (e: Error) => void; aborted: boolean; cleanup: () => void };
+/** `cleanup` drops the abort listener; `timer` is the deadline, armed once
+ * the read is posted. An abort runs cleanup only: the worker is still busy
+ * with the read, so its deadline still stands. */
+type Job = { id: number; region: OcrRegion; resolve: (w: OcrWord[]) => void; reject: (e: Error) => void; aborted: boolean; cleanup: () => void; timer: unknown };
 
 const abortError = () => new DOMException("The OCR read was cancelled.", "AbortError");
 
 const defaultSpawn = (): WorkerLike =>
   new Worker(new URL("../../ocr.worker.ts", import.meta.url), { type: "module" }) as unknown as WorkerLike;
 
+const defaultSetTimer = (fn: () => void, ms: number): unknown => {
+  const h = setTimeout(fn, ms) as unknown as { unref?: () => void };
+  h.unref?.();
+  return h;
+};
+const defaultClearTimer = (h: unknown) => clearTimeout(h as ReturnType<typeof setTimeout>);
+
 export function createOcrClient(deps: OcrClientDeps = {}) {
   const enabled = deps.enabled ?? ocrEnabled();
   const fetchImpl = deps.fetchImpl ?? ((url: string, init?: { method?: string }) => fetch(url, init));
   const cacheStorage = "cacheStorage" in deps ? deps.cacheStorage : (typeof caches === "undefined" ? undefined : caches);
   const spawnWorker = deps.spawnWorker ?? defaultSpawn;
+  const setTimer = deps.setTimer ?? defaultSetTimer;
+  const clearTimer = deps.clearTimer ?? defaultClearTimer;
 
   let uninstalled = false;
   let manifest: OcrManifest | null = null;
@@ -209,12 +262,19 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
     }
   }
 
+  /** A job is done with: drop its abort listener and its deadline. */
+  function settled(j: Job) {
+    if (j.timer != null) clearTimer(j.timer);
+    j.timer = null;
+    j.cleanup();
+  }
+
   function rejectAll(err: Error) {
     const jobs = running ? [running, ...queue] : [...queue];
     queue.length = 0;
     running = null;
     for (const j of jobs) {
-      j.cleanup();
+      settled(j);
       if (!j.aborted) j.reject(err);
     }
     checkIdle();
@@ -229,8 +289,20 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
     try { w?.terminate(); } catch { /* already gone */ }
   }
 
+  /** The running read's deadline passed: answer its caller, end the worker
+   * and every read queued behind it. */
+  function timeOut(job: Job) {
+    // A timer that fired anyway after its job settled (or the worker
+    // changed) touches nothing: the job is no longer the running one.
+    if (running !== job) return;
+    discardWorker(new OcrTimeoutError());
+  }
+
   function attach(w: WorkerLike) {
     w.onmessage = (e) => {
+      // An ended worker's messages, already on their way, are ignored: its
+      // ready isn't the new worker's, and its replies answer nothing.
+      if (worker !== w) return;
       const m = e.data as WorkerMsg;
       if (m.id == null) {
         // An init reply. One for an abandoned start is ignored, except that
@@ -256,7 +328,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
         const job = running;
         if (!job || job.id !== m.id) return; // unknown or stale id
         running = null;
-        job.cleanup();
+        settled(job);
         // An aborted job's caller already got AbortError; drop the late reply.
         if (!job.aborted) {
           if (m.type === "result") job.resolve(m.words ?? []);
@@ -316,7 +388,11 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
         running = null;
         job.cleanup();
         if (!job.aborted) job.reject(err instanceof Error ? err : new Error(String(err)));
+        continue;
       }
+      // Armed only once the read is at the worker; every path that settles
+      // the job (settled()) clears it.
+      job.timer = setTimer(() => timeOut(job), readDeadlineMs((width * height) / 1e6));
     }
     checkIdle();
   }
@@ -331,7 +407,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
       // earlier read of the same region): its pixels are gone.
       if (region.rgba.buffer.byteLength === 0) return reject(new Error("OCR region pixels were already sent; render the region again"));
       const signal = opts.signal;
-      const job: Job = { id: ++seq, region, resolve, reject, aborted: false, cleanup: () => {} };
+      const job: Job = { id: ++seq, region, resolve, reject, aborted: false, cleanup: () => {}, timer: null };
       const onAbort = () => {
         job.aborted = true;
         const i = queue.indexOf(job);
@@ -352,7 +428,8 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
 
   /** Resolves once no read is running at the worker or queued for it: an
    * aborted read counts as running until the worker's late reply (its
-   * caller was answered at the abort). A page read waits on this before its
+   * caller was answered at the abort) or its deadline, whichever comes
+   * first; a hung worker is ended then. A page read waits on this before its
    * first raster, so reads never overlap in the worker. Never rejects. */
   function whenIdle(): Promise<void> {
     return new Promise((resolve) => {

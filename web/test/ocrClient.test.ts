@@ -1,10 +1,12 @@
 // The main-thread OCR client (#469), with fakes for fetch, Cache Storage and
 // the worker. Pins the probe states, the consent gate (no worker until the
 // person agrees or the files are already cached), the FIFO read queue, abort,
-// and recovery after a worker crash or dispose.
+// recovery after a worker crash or dispose, and the watchdog on a read that
+// never answers (#484). Timers are fakes the test fires by hand, not
+// mock.timers: the helpers here wait on real setTimeout(0) ticks.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createOcrClient, type WorkerLike } from "../src/lib/ocr/client.ts";
+import { createOcrClient, OcrTimeoutError, readDeadlineMs, type WorkerLike } from "../src/lib/ocr/client.ts";
 import * as clientModule from "../src/lib/ocr/client.ts";
 import { cacheKey, cacheName, MANIFEST_URL, type OcrManifest } from "../src/lib/ocr/manifest.ts";
 
@@ -54,7 +56,10 @@ function fakeCaches(cachedNames: string[] = [], sizes: Record<string, number> = 
 type Msg = { type: string; id?: number; [k: string]: unknown };
 type FakeWorker = WorkerLike & { posted: { msg: Msg; transfer?: Transferable[] }[]; terminated: boolean; reply: (d: unknown) => void; crash: (m: string) => void };
 
-/** A worker that answers init with ready, and holds recognize until told. */
+/** A worker that answers init with ready, and holds recognize until told.
+ * Once terminated it goes silent, as a real one does: no reply, no init
+ * answer, no crash, so a dead worker can't mask a client that still waits on
+ * it. A message already in flight is sent with `w.onmessage` directly. */
 function fakeWorker(onInit: (w: FakeWorker, msg: Msg) => void = (w) => w.reply({ type: "ready" })): FakeWorker {
   const w = { onmessage: null, onerror: null, posted: [], terminated: false } as unknown as FakeWorker;
   w.postMessage = (msg: unknown, transfer?: Transferable[]) => {
@@ -62,25 +67,42 @@ function fakeWorker(onInit: (w: FakeWorker, msg: Msg) => void = (w) => w.reply({
     // sent one is detached afterwards, as with a real Worker.
     structuredClone(msg, { transfer: transfer ?? [] });
     w.posted.push({ msg: msg as Msg, transfer });
-    if ((msg as Msg).type === "init") queueMicrotask(() => onInit(w, msg as Msg));
+    if ((msg as Msg).type === "init") queueMicrotask(() => { if (!w.terminated) onInit(w, msg as Msg); });
   };
   w.terminate = () => { w.terminated = true; };
-  w.reply = (data) => w.onmessage?.({ data });
-  w.crash = (message) => w.onerror?.({ message });
+  w.reply = (data) => { if (!w.terminated) w.onmessage?.({ data }); };
+  w.crash = (message) => { if (!w.terminated) w.onerror?.({ message }); };
   return w;
+}
+
+type FakeTimer = { fn: () => void; ms: number; cleared: boolean };
+/** setTimer/clearTimer the test fires by hand. A cleared timer can still be
+ * fired (`t.fn()`), so a test can prove a stale callback does nothing on its
+ * own, not just that it was cleared. */
+function fakeTimers() {
+  const all: FakeTimer[] = [];
+  return {
+    all,
+    live: () => all.filter((t) => !t.cleared),
+    setTimer: (fn: () => void, ms: number) => { const t = { fn, ms, cleared: false }; all.push(t); return t; },
+    clearTimer: (h: unknown) => { (h as FakeTimer).cleared = true; },
+  };
 }
 
 function setup(opts: { cached?: string[]; sizes?: Record<string, number>; enabled?: boolean; fetch?: ReturnType<typeof fakeFetch>; worker?: () => FakeWorker } = {}) {
   const fetch = opts.fetch ?? fakeFetch();
   const caches = fakeCaches(opts.cached ?? [], opts.sizes);
   const spawned: FakeWorker[] = [];
+  const timers = fakeTimers();
   const client = createOcrClient({
     enabled: opts.enabled ?? true,
     fetchImpl: fetch.fetchImpl as never,
     cacheStorage: caches.cacheStorage as never,
     spawnWorker: () => { const w = (opts.worker ?? (() => fakeWorker()))(); spawned.push(w); return w; },
+    setTimer: timers.setTimer,
+    clearTimer: timers.clearTimer,
   });
-  return { client, fetch, caches, spawned };
+  return { client, fetch, caches, spawned, timers };
 }
 
 const geometry = { rect: { x0: 0, y0: 0, x1: 10, y1: 10 }, zoom: 1 };
@@ -101,8 +123,8 @@ async function initPosted(spawned: FakeWorker[], n = 1): Promise<FakeWorker> {
 }
 const ALL = ["det", "rec", "dict", "ort-wasm"];
 
-async function readyClient() {
-  const s = setup({ cached: ALL });
+async function readyClient(opts: { worker?: () => FakeWorker } = {}) {
+  const s = setup({ cached: ALL, ...opts });
   assert.deepEqual(await s.client.ensureReady(), { ok: true });
   return { ...s, w: s.spawned[0] };
 }
@@ -620,4 +642,172 @@ test("whenIdle resolves when a crash or dispose empties the queue", async () => 
   r.client.dispose();
   await assert.rejects(b, /disposed/);
   assert.equal(await settled(idle2), true);
+});
+
+// ── the watchdog: a read that never answers (#484) ──────────────────────────
+
+const mpOf = (r: { width: number; height: number }) => (r.width * r.height) / 1e6;
+
+test("readDeadlineMs: 20× the envelope before calibration, 10× after, never under 120 s", () => {
+  assert.equal(readDeadlineMs(16), 350_000, "20 × (1.5 s + 16 × 1.0 s)");
+  assert.equal(readDeadlineMs(16, 1), 175_000, "10 × 17.5 s once calibrated");
+  assert.equal(readDeadlineMs(16, 2), 350_000, "a device twice as slow gets twice as long");
+  assert.equal(readDeadlineMs(1), 120_000, "the floor");
+  assert.equal(readDeadlineMs(0.0001), 120_000);
+});
+
+test("a read's deadline is armed once it is posted, and its reply clears it", async () => {
+  const { client, w, timers } = await readyClient();
+  assert.equal(timers.live().length, 0, "nothing armed before a read");
+  const r = region();
+  const p = client.recognize(r);
+  assert.equal(recognizes(w).length, 1);
+  assert.equal(timers.live().length, 1);
+  assert.equal(timers.live()[0].ms, readDeadlineMs(mpOf(r)));
+  w.reply({ type: "result", id: recognizes(w)[0].msg.id, words: [] });
+  await p;
+  assert.equal(timers.live().length, 0, "the reply cleared it");
+});
+
+test("a queued read arms nothing until it is posted", async () => {
+  const { client, w, timers } = await readyClient();
+  const a = client.recognize(region());
+  const b = client.recognize(region());
+  assert.equal(timers.all.length, 1, "only the posted read is timed");
+  w.reply({ type: "result", id: recognizes(w)[0].msg.id, words: [] });
+  await a;
+  assert.equal(timers.live().length, 1, "b is timed once it is posted");
+  w.reply({ type: "result", id: recognizes(w)[1].msg.id, words: [] });
+  await b;
+  assert.equal(timers.live().length, 0);
+});
+
+test("a read that never answers times out: it rejects OcrTimeoutError, the worker is ended, and nothing waits forever", async () => {
+  const { client, w, timers, spawned } = await readyClient();
+  const a = client.recognize(region());
+  const b = client.recognize(region());
+  const idle = client.whenIdle();
+  assert.equal(await settled(idle), false);
+  timers.live()[0].fn();
+  await assert.rejects(a, (e: Error) => e instanceof OcrTimeoutError && e.name === "OcrTimeoutError" && e.message === "The on-device reader stopped responding.");
+  await assert.rejects(b);
+  assert.equal(w.terminated, true);
+  assert.equal(await settled(idle), true, "whenIdle can't hang on a hung worker");
+  assert.equal(timers.live().length, 0);
+  await assert.rejects(client.recognize(region()), /not ready/);
+  assert.deepEqual(await client.ensureReady(), { ok: true });
+  assert.equal(spawned.length, 2, "a fresh worker");
+});
+
+test("an aborted read that then hangs still times out, and whenIdle resolves", async () => {
+  const { client, w, timers } = await readyClient();
+  const ac = new AbortController();
+  const running = client.recognize(region(), { signal: ac.signal });
+  ac.abort();
+  await assert.rejects(running, { name: "AbortError" });
+  const idle = client.whenIdle();
+  assert.equal(await settled(idle), false, "the worker is still on the aborted read");
+  assert.equal(timers.live().length, 1, "the abort doesn't stop the watchdog");
+  timers.live()[0].fn();
+  assert.equal(w.terminated, true);
+  assert.equal(await settled(idle), true);
+});
+
+test("a read whose post throws arms no timer", async () => {
+  const { client, w, timers } = await readyClient();
+  const a = client.recognize(region());
+  const rb = region();
+  const b = client.recognize(rb);
+  const c = client.recognize(region());
+  structuredClone(rb.rgba.buffer, { transfer: [rb.rgba.buffer] });
+  w.reply({ type: "result", id: recognizes(w)[0].msg.id, words: [] });
+  await a;
+  await assert.rejects(b);
+  assert.equal(timers.all.length, 2, "a and c, not b");
+  assert.equal(timers.live().length, 1);
+  w.reply({ type: "result", id: recognizes(w)[1].msg.id, words: [] });
+  await c;
+  assert.equal(timers.live().length, 0);
+});
+
+test("dispose and a crash clear the running read's timer", async () => {
+  const one = await readyClient();
+  const a = one.client.recognize(region());
+  one.client.dispose();
+  await assert.rejects(a, /disposed/);
+  assert.equal(one.timers.live().length, 0);
+  const two = await readyClient();
+  const b = two.client.recognize(region());
+  two.w.crash("gone");
+  await assert.rejects(b, /gone/);
+  assert.equal(two.timers.live().length, 0);
+});
+
+test("a message from an ended worker is ignored: its late ready doesn't settle the next start", async () => {
+  let n = 0;
+  // The first worker answers init; the second waits for the test.
+  const s = setup({ cached: ALL, worker: () => fakeWorker(++n === 1 ? (w) => w.reply({ type: "ready" }) : () => {}) });
+  assert.deepEqual(await s.client.ensureReady(), { ok: true });
+  const old = s.spawned[0];
+  const a = s.client.recognize(region());
+  old.crash("gone");
+  await assert.rejects(a, /gone/);
+  let settledStart = false;
+  const restart = s.client.ensureReady().then((r) => { settledStart = true; return r; });
+  for (let i = 0; i < 200 && initsOf(s.spawned[1]).length === 0; i++) await tick();
+  // A ready the ended worker had already sent arrives now.
+  old.onmessage?.({ data: { type: "ready" } });
+  await tick();
+  assert.equal(settledStart, false, "the old worker's ready isn't the new one's");
+  await assert.rejects(s.client.recognize(region()), /not ready/);
+  s.spawned[1].reply({ type: "ready", initId: initsOf(s.spawned[1])[0].msg.initId });
+  assert.deepEqual(await restart, { ok: true });
+});
+
+test("a stale timer leaves a respawned worker alone", async () => {
+  const { client, w, timers, spawned } = await readyClient();
+  const a = client.recognize(region());
+  const stale = timers.live()[0];
+  w.crash("gone");
+  await assert.rejects(a, /gone/);
+  assert.deepEqual(await client.ensureReady(), { ok: true });
+  const w2 = spawned[1];
+  const b = client.recognize(region());
+  stale.fn(); // fires anyway, as a timer already queued would
+  assert.equal(w2.terminated, false);
+  assert.equal(await settled(b), false, "b is still running");
+  w2.reply({ type: "result", id: recognizes(w2)[0].msg.id, words: [] });
+  assert.deepEqual(await b, []);
+});
+
+test("with no timer deps the client builds under node, and a read round-trips on the default timers", async () => {
+  createOcrClient(); // no deps at all: no document, no Worker until asked
+  const w = fakeWorker();
+  const client = createOcrClient({ enabled: true, fetchImpl: fakeFetch().fetchImpl as never, cacheStorage: fakeCaches(ALL).cacheStorage as never, spawnWorker: () => w });
+  assert.deepEqual(await client.ensureReady(), { ok: true });
+  const p = client.recognize(region());
+  w.reply({ type: "result", id: recognizes(w)[0].msg.id, words: [] });
+  assert.deepEqual(await p, []);
+  // A read left unanswered must not hold node open for its 120 s deadline
+  // (the default timer is unref'd); dispose ends it either way.
+  const hung = client.recognize(region());
+  client.dispose();
+  await assert.rejects(hung, /disposed/);
+});
+
+test("a hung read whose deadline is unref'd doesn't keep node alive", async () => {
+  const w = fakeWorker();
+  const client = createOcrClient({ enabled: true, fetchImpl: fakeFetch().fetchImpl as never, cacheStorage: fakeCaches(ALL).cacheStorage as never, spawnWorker: () => w });
+  assert.deepEqual(await client.ensureReady(), { ok: true });
+  const handles = new Set<unknown>();
+  const real = globalThis.setTimeout;
+  // Watch which timers the client makes, without changing them.
+  globalThis.setTimeout = ((fn: () => void, ms?: number) => { const h = real(fn, ms); handles.add(h); return h; }) as typeof setTimeout;
+  let hung: Promise<unknown>;
+  try { hung = client.recognize(region()); } finally { globalThis.setTimeout = real; }
+  void hung.catch(() => {});
+  const armed = [...handles] as NodeJS.Timeout[];
+  assert.equal(armed.length, 1, "the read armed one default timer");
+  assert.equal(armed[0].hasRef(), false, "unref'd");
+  client.dispose();
 });

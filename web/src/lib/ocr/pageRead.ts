@@ -32,9 +32,9 @@
 // in-worker recognize rejects at the abort (the client drops the worker's
 // late reply). Its status stays "Stopping…" until then AND until the worker
 // is idle (deps.idle: the client's whenIdle), and the next read's first
-// raster waits for the same. Known limit: a hung (not dead) worker never goes
-// idle, so a stopped read stays on "Stopping…" and later reads wait; the
-// client has no recognize timeout.
+// raster waits for the same. A hung (not dead) worker is bounded by the
+// client's per-read deadline: when it passes, the client ends the worker, so
+// "Stopping…" ends and the reads queued behind it fail rather than wait.
 //
 // Pure: the session, cache, region reader and page are injected. The
 // default region reader imports regionRead.ts on first use, so the page that
