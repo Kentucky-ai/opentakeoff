@@ -33,8 +33,10 @@
 // late reply). Its status stays "Stopping…" until then AND until the worker
 // is idle (deps.idle: the client's whenIdle), and the next read's first
 // raster waits for the same. A hung (not dead) worker is bounded by the
-// client's per-read deadline: when it passes, the client ends the worker, so
-// "Stopping…" ends and the reads queued behind it fail rather than wait.
+// client's per-read deadline: when it passes, the client ends the worker and
+// restarts the engine from the cache, and is idle once the restart settles,
+// so "Stopping…" ends and later reads go to the new worker (or fail, if the
+// restart does).
 //
 // Pure: the session, cache, region reader and page are injected. The
 // default region reader imports regionRead.ts on first use, so the page that

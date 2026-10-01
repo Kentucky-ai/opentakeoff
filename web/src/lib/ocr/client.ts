@@ -26,8 +26,13 @@
 // good (#484). Each posted read has a deadline, readDeadlineMs: generous,
 // since a false timeout costs a read and a hang costs everything after it.
 // When it passes, the read rejects OcrTimeoutError, the worker is ended and
-// the reads queued behind it reject too, so nothing waits forever; the next
-// ensureReady starts a fresh worker.
+// the engine restarts from the cache. The reads queued behind it wait for
+// the restart, as does whenIdle, and go to the new worker. A restart never
+// downloads, whoever joins it: with the files evicted it ends
+// consent-required. It has its own deadline. If it fails, or a second read
+// times out with none answered in between (reads are deterministic, so the
+// same raster would hang again), the queue rejects and the next
+// ensureReady starts afresh.
 //
 // dispose() is final: pending and later ensureReady calls resolve aborted,
 // and no worker is started again.
@@ -91,6 +96,8 @@ const ENVELOPE_PER_MP_MS = 1_000;
 const DEADLINE_FLOOR_MS = 120_000;
 const K_UNCALIBRATED = 20;
 const K_CALIBRATED = 10;
+/** How long a restart after a timeout may take to report ready. */
+const RESTART_DEADLINE_MS = 120_000;
 
 /** The deadline for a read of `mp` megapixels: max(120 s, k × envelope).
  * Without `slowdown` (no read measured on this device yet) k is 20; with it,
@@ -105,7 +112,10 @@ type WorkerMsg = { type: string; id?: number; initId?: number; code?: string; me
 type Waiter = { consent: boolean; onProgress?: (p: OcrProgress) => void; settle: (r: OcrReady) => void };
 /** One shared start. `done` is set once it settles or is cancelled; `initId`
  * and `resolveInit` are set while an init is out at the worker. */
-type Attempt = { waiters: Set<Waiter>; done: boolean; network: boolean; initId: number | null; resolveInit: ((r: OcrReady) => void) | null };
+type Attempt = { waiters: Set<Waiter>; done: boolean; network: boolean; initId: number | null; resolveInit: ((r: OcrReady) => void) | null;
+  /** The watchdog's restart: cache only, whatever a joiner brings, and
+   * never cancelled by a joiner leaving. */
+  internal: boolean };
 const ABORTED: OcrReady = { ok: false, reason: "aborted" };
 const CONSENT_REQUIRED: OcrReady = { ok: false, reason: "consent-required" };
 
@@ -147,10 +157,17 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
   let seq = 0;
   const queue: Job[] = [];
   let running: Job | null = null;
-  // whenIdle's callers, answered once nothing is running or queued.
+  // After a read timeout: the restart in progress (recognize queues and
+  // whenIdle waits while it runs), its deadline, and the timeouts since a
+  // read last got an answer.
+  let restarting = false;
+  let restartTimer: unknown = null;
+  let strikes = 0;
+  // whenIdle's callers, answered once nothing is running, queued or
+  // restarting.
   let idleWaiters: (() => void)[] = [];
   function checkIdle() {
-    if (running || queue.length || !idleWaiters.length) return;
+    if (running || queue.length || restarting || !idleWaiters.length) return;
     const ws = idleWaiters;
     idleWaiters = [];
     for (const w of ws) w();
@@ -223,7 +240,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
   }
 
   function detach(att: Attempt, w: Waiter) {
-    if (!att.waiters.delete(w)) return;
+    if (!att.waiters.delete(w) || att.internal) return;
     const consented = [...att.waiters].some((x) => x.consent);
     if (att.network && !consented) cancelAttempt(att, CONSENT_REQUIRED);
     else if (att.waiters.size === 0) cancelAttempt(att, ABORTED);
@@ -247,7 +264,8 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
     if (att.done || disposed) return ABORTED;
     if (p.state === "error") return { ok: false, reason: "error", message: p.message };
     if (p.state !== "available") return { ok: false, reason: p.state };
-    const anyConsent = () => [...att.waiters].some((w) => w.consent);
+    // A restart is cache only: a joiner's consent doesn't make it a download.
+    const anyConsent = () => !att.internal && [...att.waiters].some((w) => w.consent);
     let network = anyConsent();
     if (!p.cached && !network) return CONSENT_REQUIRED;
     for (;;) {
@@ -290,12 +308,71 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
   }
 
   /** The running read's deadline passed: answer its caller, end the worker
-   * and every read queued behind it. */
+   * (not discardWorker: the queue stays for the restart) and restart. */
   function timeOut(job: Job) {
     // A timer that fired anyway after its job settled (or the worker
     // changed) touches nothing: the job is no longer the running one.
     if (running !== job) return;
-    discardWorker(new OcrTimeoutError());
+    running = null;
+    settled(job);
+    if (!job.aborted) job.reject(new OcrTimeoutError());
+    const w = worker;
+    worker = null;
+    ready = false;
+    try { w?.terminate(); } catch { /* already gone */ }
+    // A start still under way (rare: an abandoned init's ready let reads
+    // run while a newer start waited) keeps its own course; a restart
+    // beside it would race it for the worker. Its init, if out at the ended
+    // worker, hears an error. The queue rejects, as on a crash.
+    const busy = attempt && !attempt.done;
+    attempt?.resolveInit?.({ ok: false, reason: "error", message: "the OCR worker was ended" });
+    if (++strikes >= 2 || busy) {
+      strikes = 0;
+      rejectAll(new OcrTimeoutError());
+      return;
+    }
+    restart();
+  }
+
+  /** Why the reads queued for a failed restart reject. */
+  function restartError(r: Exclude<OcrReady, { ok: true }>): Error {
+    if (r.reason === "error") return new Error(r.message);
+    if (r.reason === "consent-required") return new Error("OCR engine not ready: its files are no longer cached");
+    return new Error(`OCR engine not ready: ${r.reason}`);
+  }
+
+  /** Start a fresh worker from the cache for the queued reads. ensureReady
+   * calls made meanwhile join it. Settles once, by whichever comes first:
+   * the start's answer, its deadline, or dispose. */
+  function restart() {
+    restarting = true;
+    const att: Attempt = { waiters: new Set(), done: false, network: false, initId: null, resolveInit: null, internal: true };
+    attempt = att;
+    let over = false;
+    const end = (r: OcrReady, err?: Error) => {
+      if (over) return;
+      over = true;
+      if (restartTimer != null) clearTimer(restartTimer);
+      restartTimer = null;
+      restarting = false;
+      finish(att, r);
+      if (disposed) return; // dispose answered the queue and whenIdle
+      if (r.ok) pump();
+      else rejectAll(err ?? restartError(r));
+      checkIdle();
+    };
+    restartTimer = setTimer(() => {
+      if (over) return;
+      // A late ready from this worker must not count: end it (its messages
+      // are ignored from here on) before settling.
+      const w = worker;
+      worker = null;
+      ready = false;
+      try { w?.terminate(); } catch { /* already gone */ }
+      const e = new OcrTimeoutError();
+      end({ ok: false, reason: "error", message: e.message }, e);
+    }, RESTART_DEADLINE_MS);
+    void start(att).then((r) => end(r), (err) => end({ ok: false, reason: "error", message: String(err) }));
   }
 
   function attach(w: WorkerLike) {
@@ -329,6 +406,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
         if (!job || job.id !== m.id) return; // unknown or stale id
         running = null;
         settled(job);
+        strikes = 0; // the worker answered: a later timeout is a new problem
         // An aborted job's caller already got AbortError; drop the late reply.
         if (!job.aborted) {
           if (m.type === "result") job.resolve(m.words ?? []);
@@ -359,7 +437,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
     return new Promise<OcrReady>((resolve) => {
       let att = attempt;
       const fresh = !att;
-      if (!att) att = attempt = { waiters: new Set(), done: false, network: false, initId: null, resolveInit: null };
+      if (!att) att = attempt = { waiters: new Set(), done: false, network: false, initId: null, resolveInit: null, internal: false };
       const joined = att;
       const onAbort = () => { detach(joined, waiter); resolve(ABORTED); };
       const waiter: Waiter = {
@@ -374,7 +452,9 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
   }
 
   function pump() {
-    while (!running && worker) {
+    // ready, not just a worker: postInit spawns the worker before its engine
+    // is up, and during a restart reads wait in the queue.
+    while (!running && worker && ready) {
       const job = queue.shift();
       if (!job) break;
       running = job;
@@ -402,7 +482,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
   function recognize(region: OcrRegion, opts: { signal?: AbortSignal } = {}): Promise<OcrWord[]> {
     return new Promise((resolve, reject) => {
       if (opts.signal?.aborted) return reject(abortError());
-      if (!worker || !ready) return reject(new Error("OCR engine not ready"));
+      if (!restarting && (!worker || !ready)) return reject(new Error("OCR engine not ready"));
       // A zero-length buffer was already transferred (to the worker, by an
       // earlier read of the same region): its pixels are gone.
       if (region.rgba.buffer.byteLength === 0) return reject(new Error("OCR region pixels were already sent; render the region again"));
@@ -429,8 +509,9 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
   /** Resolves once no read is running at the worker or queued for it: an
    * aborted read counts as running until the worker's late reply (its
    * caller was answered at the abort) or its deadline, whichever comes
-   * first; a hung worker is ended then. A page read waits on this before its
-   * first raster, so reads never overlap in the worker. Never rejects. */
+   * first. After a deadline it waits for the restart too, and for the reads
+   * queued behind it. A page read waits on this before its first raster, so
+   * reads never overlap in the worker. Never rejects. */
   function whenIdle(): Promise<void> {
     return new Promise((resolve) => {
       idleWaiters.push(resolve);
@@ -442,6 +523,9 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
    * aborted. Later ensureReady calls resolve aborted without a worker. */
   function dispose() {
     disposed = true;
+    if (restartTimer != null) clearTimer(restartTimer);
+    restartTimer = null;
+    restarting = false;
     if (attempt) cancelAttempt(attempt, ABORTED);
     const w = worker;
     try { w?.postMessage({ type: "dispose" }); } catch { /* already gone */ }

@@ -685,18 +685,15 @@ test("a queued read arms nothing until it is posted", async () => {
 test("a read that never answers times out: it rejects OcrTimeoutError, the worker is ended, and nothing waits forever", async () => {
   const { client, w, timers, spawned } = await readyClient();
   const a = client.recognize(region());
-  const b = client.recognize(region());
   const idle = client.whenIdle();
   assert.equal(await settled(idle), false);
   timers.live()[0].fn();
   await assert.rejects(a, (e: Error) => e instanceof OcrTimeoutError && e.name === "OcrTimeoutError" && e.message === "The on-device reader stopped responding.");
-  await assert.rejects(b);
   assert.equal(w.terminated, true);
   assert.equal(await settled(idle), true, "whenIdle can't hang on a hung worker");
   assert.equal(timers.live().length, 0);
-  await assert.rejects(client.recognize(region()), /not ready/);
+  assert.equal(spawned.length, 2, "a fresh worker, started from the cache");
   assert.deepEqual(await client.ensureReady(), { ok: true });
-  assert.equal(spawned.length, 2, "a fresh worker");
 });
 
 test("an aborted read that then hangs still times out, and whenIdle resolves", async () => {
@@ -810,4 +807,198 @@ test("a hung read whose deadline is unref'd doesn't keep node alive", async () =
   assert.equal(armed.length, 1, "the read armed one default timer");
   assert.equal(armed[0].hasRef(), false, "unref'd");
   client.dispose();
+});
+
+// ── the watchdog's restart: the queue survives a hung read ──────────────────
+
+/** A ready client whose first worker answers init; later workers (restarts)
+ * answer as `later` says, by default not at all, so the test replies. */
+async function hungClient(later: (w: FakeWorker, msg: Msg) => void = () => {}) {
+  let n = 0;
+  const s = await readyClient({ worker: () => fakeWorker(++n === 1 ? (w) => w.reply({ type: "ready" }) : later) });
+  return s;
+}
+/** Wait until spawned[i] has `n` inits. */
+async function initAt(spawned: FakeWorker[], i: number, n = 1): Promise<FakeWorker> {
+  for (let k = 0; k < 200; k++) {
+    if (initsOf(spawned[i]).length >= n) return spawned[i];
+    await tick();
+  }
+  throw new Error(`expected ${n} init(s) at worker ${i}, saw ${initsOf(spawned[i]).length}`);
+}
+const readyAt = (w: FakeWorker) => w.reply({ type: "ready", initId: initsOf(w).at(-1)?.msg.initId });
+
+test("a timeout restarts the engine from the cache; the reads queued behind wait for it and go to the new worker", async () => {
+  const { client, w, timers, spawned } = await hungClient();
+  const a = client.recognize(region());
+  const b = client.recognize(region());
+  timers.live()[0].fn();
+  await assert.rejects(a, OcrTimeoutError);
+  assert.equal(w.terminated, true);
+  const w2 = await initAt(spawned, 1);
+  assert.equal(initsOf(w2)[0].msg.allowNetwork, false, "cache only");
+  const c = client.recognize(region()); // during the restart: queued, not "not ready"
+  await tick();
+  assert.equal(recognizes(w2).length, 0, "nothing is sent until the new engine is ready");
+  assert.equal(await settled(b), false, "b waits for the restart");
+  const idle = client.whenIdle();
+  readyAt(w2);
+  await tick();
+  assert.equal(recognizes(w2).length, 1);
+  w2.reply({ type: "result", id: recognizes(w2)[0].msg.id, words: [] });
+  assert.deepEqual(await b, []);
+  w2.reply({ type: "result", id: recognizes(w2)[1].msg.id, words: [] });
+  assert.deepEqual(await c, []);
+  assert.equal(await settled(idle), true);
+});
+
+test("whenIdle waits for a restart, with nothing queued, after a hung read (aborted or not)", async () => {
+  for (const abort of [false, true]) {
+    const { client, timers, spawned } = await hungClient();
+    const ac = new AbortController();
+    const a = client.recognize(region(), { signal: ac.signal });
+    if (abort) { ac.abort(); await assert.rejects(a, { name: "AbortError" }); }
+    timers.live()[0].fn();
+    if (!abort) await assert.rejects(a, OcrTimeoutError);
+    const idle = client.whenIdle();
+    const w2 = await initAt(spawned, 1);
+    assert.equal(await settled(idle), false, "restarting isn't idle");
+    readyAt(w2);
+    assert.equal(await settled(idle), true);
+  }
+});
+
+test("a restart that doesn't come up in 120 s is ended; its late ready is ignored and the queue rejects", async () => {
+  const { client, timers, spawned } = await hungClient();
+  const a = client.recognize(region());
+  const b = client.recognize(region());
+  timers.live()[0].fn();
+  await assert.rejects(a, OcrTimeoutError);
+  const w2 = await initAt(spawned, 1);
+  const restartTimer = timers.live().find((t) => t.ms === 120_000);
+  assert.ok(restartTimer, "the restart is timed");
+  const idle = client.whenIdle();
+  restartTimer.fn();
+  await assert.rejects(b, OcrTimeoutError);
+  assert.equal(w2.terminated, true);
+  w2.onmessage?.({ data: { type: "ready", initId: initsOf(w2)[0].msg.initId } });
+  await assert.rejects(client.recognize(region()), /not ready/);
+  assert.equal(spawned.length, 2);
+  assert.equal(await settled(idle), true);
+  assert.equal(timers.live().length, 0);
+  // The next ensureReady starts afresh.
+  const again = client.ensureReady();
+  const w3 = await initAt(spawned, 2);
+  readyAt(w3);
+  assert.deepEqual(await again, { ok: true });
+});
+
+test("an ensureReady caller who joins a restart and aborts doesn't cancel it", async () => {
+  const { client, timers, spawned } = await hungClient();
+  const a = client.recognize(region());
+  const b = client.recognize(region());
+  timers.live()[0].fn();
+  await assert.rejects(a, OcrTimeoutError);
+  const w2 = await initAt(spawned, 1);
+  const ac = new AbortController();
+  const joined = client.ensureReady({ signal: ac.signal });
+  ac.abort();
+  assert.deepEqual(await joined, { ok: false, reason: "aborted" });
+  assert.ok(!w2.posted.some((p) => p.msg.type === "cancel"), "the restart goes on");
+  readyAt(w2);
+  await tick();
+  w2.reply({ type: "result", id: recognizes(w2)[0].msg.id, words: [] });
+  assert.deepEqual(await b, []);
+});
+
+test("ensureReady during a restart joins it: one init, and it answers with the restart", async () => {
+  const { client, timers, spawned } = await hungClient();
+  const a = client.recognize(region());
+  timers.live()[0].fn();
+  await assert.rejects(a, OcrTimeoutError);
+  const w2 = await initAt(spawned, 1);
+  const joined = client.ensureReady();
+  await tick();
+  assert.equal(initsOf(w2).length, 1);
+  readyAt(w2);
+  assert.deepEqual(await joined, { ok: true });
+  assert.equal(initsOf(w2).length, 1);
+  assert.equal(spawned.length, 2);
+});
+
+test("a restart never downloads: with the cache evicted it ends consent-required, even for a joiner who consents", async () => {
+  const { client, timers, spawned } = await hungClient((w) => w.reply({ type: "error", code: "consent-required", message: "evicted", initId: initsOf(w).at(-1)?.msg.initId }));
+  const a = client.recognize(region());
+  const b = client.recognize(region());
+  timers.live()[0].fn();
+  await assert.rejects(a, OcrTimeoutError);
+  const clicked = client.ensureReady({ consent: true });
+  assert.deepEqual(await clicked, { ok: false, reason: "consent-required" });
+  await assert.rejects(b, /not ready/);
+  const w2 = spawned[1];
+  assert.ok(initsOf(w2).length >= 1);
+  assert.ok(initsOf(w2).every((p) => p.msg.allowNetwork === false), "no init allowed the network");
+  assert.equal(spawned.length, 2);
+  await assert.rejects(client.recognize(region()), /not ready/);
+  assert.equal(await settled(client.whenIdle()), true);
+});
+
+test("a completed read between two timeouts: the second one restarts again", async () => {
+  const { client, timers, spawned } = await hungClient((w) => w.reply({ type: "ready", initId: initsOf(w).at(-1)?.msg.initId }));
+  const a = client.recognize(region());
+  const b = client.recognize(region());
+  timers.live()[0].fn();
+  await assert.rejects(a, OcrTimeoutError);
+  const w2 = await initAt(spawned, 1);
+  await tick();
+  w2.reply({ type: "result", id: recognizes(w2)[0].msg.id, words: [] });
+  assert.deepEqual(await b, []);
+  const c = client.recognize(region());
+  const d = client.recognize(region());
+  timers.live()[0].fn();
+  await assert.rejects(c, OcrTimeoutError);
+  const w3 = await initAt(spawned, 2);
+  await tick();
+  w3.reply({ type: "result", id: recognizes(w3)[0].msg.id, words: [] });
+  assert.deepEqual(await d, []);
+});
+
+test("two timeouts with no completed read between them reject the queue and stop restarting", async () => {
+  const { client, timers, spawned } = await hungClient((w) => w.reply({ type: "ready", initId: initsOf(w).at(-1)?.msg.initId }));
+  const a = client.recognize(region());
+  const b = client.recognize(region());
+  const c = client.recognize(region());
+  timers.live()[0].fn();
+  await assert.rejects(a, OcrTimeoutError);
+  const w2 = await initAt(spawned, 1);
+  await tick();
+  assert.equal(recognizes(w2).length, 1, "b went to the new worker");
+  const idle = client.whenIdle();
+  timers.live()[0].fn(); // b hangs too
+  await assert.rejects(b, OcrTimeoutError);
+  await assert.rejects(c, OcrTimeoutError);
+  assert.equal(w2.terminated, true);
+  await tick();
+  assert.equal(spawned.length, 2, "no third worker");
+  assert.equal(await settled(idle), true);
+  await assert.rejects(client.recognize(region()), /not ready/);
+  // A fresh ensureReady starts over, with a fresh allowance.
+  assert.deepEqual(await client.ensureReady(), { ok: true });
+  assert.equal(spawned.length, 3);
+});
+
+test("dispose during a restart clears its timer, rejects the queue and resolves whenIdle", async () => {
+  const { client, timers, spawned } = await hungClient();
+  const a = client.recognize(region());
+  const b = client.recognize(region());
+  timers.live()[0].fn();
+  await assert.rejects(a, OcrTimeoutError);
+  const w2 = await initAt(spawned, 1);
+  const idle = client.whenIdle();
+  client.dispose();
+  await assert.rejects(b, /disposed/);
+  assert.equal(timers.live().length, 0);
+  assert.equal(w2.terminated, true);
+  assert.equal(await settled(idle), true);
+  assert.deepEqual(await client.ensureReady(), { ok: false, reason: "aborted" });
 });
