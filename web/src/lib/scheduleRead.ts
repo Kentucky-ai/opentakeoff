@@ -149,9 +149,12 @@ const overlapFrac = (a: Bbox, b: Bbox): number => {
 };
 
 /** Read the spans inside a marquee (image px, the graph's span shape) as one
- *  finish/material schedule, or say why not. */
-export function readScheduleSpans(spans: GraphSpan[]): ScheduleRead {
-  const r = readFinishTable({ key: "crop", spans }, { marquee: true });
+ *  finish/material schedule, or say why not. opts.ocr: the spans are the
+ *  on-device reader's words, so a blank band between two code groups ends the
+ *  section (sheetgraph.ts ExtractOpts.resetAtBlankBand); the vector read
+ *  never sets it. */
+export function readScheduleSpans(spans: GraphSpan[], opts?: { ocr?: boolean }): ScheduleRead {
+  const r = readFinishTable({ key: "crop", spans }, { marquee: true, resetAtBlankBand: !!opts?.ocr });
   if (!r || !r.table.rows.length) return { rows: [], refused: "no-table" };
   const t = r.table;
   const title = t.title?.text;

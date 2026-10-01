@@ -7273,7 +7273,7 @@ export default function TakeoffCanvas() {
         session: ocrSession,
         rasterize: () => rasterizeRegion(pageObj, rs, rect),
         recognize: (raster, signal) => getOcrClient().recognize(raster, { signal }),
-        read: readScheduleSpans,
+        read: (ocrSpans) => readScheduleSpans(ocrSpans, { ocr: true }),   // the OCR words' blank-band section reset
         isCurrent,
         onReading: () => { if (isCurrent()) setOcrRead("reading"); },
         signal: mine.ctl.signal,

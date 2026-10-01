@@ -10,8 +10,9 @@
 //      only its Download downloads);
 //   2. onReading() — the status line says "Reading" from here on;
 //   3. rasterize() renders the box; recognize() reads its words;
-//   4. read() is the sheet graph's finish reader (readScheduleSpans), fed the
-//      words as spans (wordsToSpans), and routeOcrRead words the result.
+//   4. read() is the sheet graph's finish reader (readScheduleSpans with
+//      { ocr: true } on the canvas), fed the words as spans (wordsToSpans),
+//      and routeOcrRead words the result.
 // Before each step and once more after the session answers, a read that is no
 // longer wanted (the signal aborted, or isCurrent() false: the canvas moved on
 // to another sheet) stops. Inside the task that is a throw of the private

@@ -377,3 +377,70 @@ test("item words: punctuation around a word does not hide it; BASE BID and the p
   ];
   for (const [text, want] of TABLE) assert.equal(b4(text), want, text);
 });
+
+// ── the on-device read's blank-band section reset (#470) ────────────────────
+// The on-device reader can miss a printed heading, which leaves a blank band
+// where it sat and the rows under it in the section above. With { ocr: true }
+// a blank band between two code groups ends the section; the vector read
+// (no option) never does this.
+type Band = Item | "blank" | { t: "wrap"; text: string };
+/** build(), plus a blank band ("blank") or a lone wrapped line in the
+ *  MATERIAL column ({ t: "wrap" }) taking a row of its own. */
+function buildBands(items: Band[], cols = STD): GraphSpan[] {
+  const xs = [COLS.KEY, ...cols.map((c) => COLS[c])];
+  const out: GraphSpan[] = ["CODE", ...cols].map((l, i) => sp(l, xs[i], 0));
+  let y = 0;
+  for (const it of items) {
+    y += PITCH;
+    if (it === "blank") continue;
+    if (it.t === "wrap") out.push(sp(it.text, COLS.MATERIAL, y));
+    else if (it.t === "head") out.push(sp(it.text, xs[0], y));
+    else { out.push(sp(it.key, xs[0], y)); cols.forEach((c, i) => { const v = it.cells[c]; if (v) out.push(sp(v, xs[i + 1], y)); }); }
+  }
+  return out;
+}
+const sectionsOf = (r: ScheduleRead) => Object.fromEntries(rowsOf(r).map((x) => [x.finish_tag, x.section]));
+const CPT = ["CPT-1", "CPT-2", "CPT-3", "CPT-4", "CPT-5"].map((k) => R(k, "MODULAR CARPET TILE", "VENDOR-A", "GRID 24", "BLUE 202"));
+
+test("ocr: a blank band where the key prefix changes ends the section (the missed heading)", () => {
+  const spans = buildBands([H("FLOORING"), ...FLOOR, "blank", ...BASE]);
+  const s = sectionsOf(readScheduleSpans(spans, { ocr: true }));
+  for (const k of keysOf(FLOOR)) assert.equal(s[k], "FLOORING", k);
+  for (const k of keysOf(BASE)) assert.equal(s[k], "", k);
+});
+
+test("ocr: a blank band with no prefix change (a dropped row) keeps the section", () => {
+  const spans = buildBands([H("FLOORING"), ...CPT.slice(0, 3), "blank", ...CPT.slice(3)]);
+  const s = sectionsOf(readScheduleSpans(spans, { ocr: true }));
+  for (const k of keysOf(CPT)) assert.equal(s[k], "FLOORING", k);
+});
+
+test("ocr: a wrapped line in the gap is not a blank band", () => {
+  const spans = buildBands([H("FLOORING"), ...FLOOR, { t: "wrap", text: "CONTINUED" }, ...BASE]);
+  const s = sectionsOf(readScheduleSpans(spans, { ocr: true }));
+  for (const k of [...keysOf(FLOOR), ...keysOf(BASE)]) assert.equal(s[k], "FLOORING", k);
+});
+
+test("ocr: fewer than four regular gaps set no pitch, so nothing resets", () => {
+  const spans = buildBands([H("FLOORING"), ...FLOOR.slice(0, 2), "blank", ...BASE]);
+  const s = sectionsOf(readScheduleSpans(spans, { ocr: true }));
+  for (const k of ["CPT-1", "CPT-2", "RB-1", "RB-2"]) assert.equal(s[k], "FLOORING", k);
+});
+
+test("without the ocr option (the vector and MCP reads) a blank band never resets", () => {
+  const spans = buildBands([H("FLOORING"), ...FLOOR, "blank", ...BASE]);
+  for (const s of [sectionsOf(readScheduleSpans(spans)), sectionsOf(readScheduleSpans(spans, {}))]) {
+    for (const k of [...keysOf(FLOOR), ...keysOf(BASE)]) assert.equal(s[k], "FLOORING", k);
+  }
+  const t = readFinishTable({ key: "crop", spans }, { marquee: true });
+  assert.ok(t && "table" in t);
+  assert.ok(t.table.rows.every((r) => r.section === "FLOORING"));
+});
+
+test("ocr: a later printed heading still sets its own section after a reset", () => {
+  const spans = buildBands([H("FLOORING"), ...FLOOR, "blank", ...BASE, H("WALLS"), ...WALLS]);
+  const s = sectionsOf(readScheduleSpans(spans, { ocr: true }));
+  for (const k of keysOf(FLOOR)) assert.equal(s[k], "FLOORING", k);
+  for (const k of keysOf(BASE)) assert.equal(s[k], "", k);
+  for (const k of keysOf(WALLS)) assert.equal(s[k], "WALLS", k);
+});

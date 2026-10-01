@@ -730,6 +730,10 @@ export interface ExtractOpts {
   /** Finish tables: the spans are a marquee the user drew around ONE table,
    * so every keyed row inside it is the table's — no end-of-table gap cut. */
   marquee?: boolean;
+  /** Finish tables read from on-device OCR words only: a blank band between
+   * two code groups ends the section (the engine can miss a printed heading,
+   * leaving the rows below it in the section above). See bandDataRows. */
+  resetAtBlankBand?: boolean;
 }
 
 // Schedule families that are NOT finish/material schedules but share the
@@ -1058,7 +1062,7 @@ function bandDataRows(
   kind: ExtractKind,
   sheetKey: string,
   buildings: Set<string> | undefined,
-  cfg: { fromIdx: number; belowY: number; keyAlign?: { x: number; tol: number }; deltas?: DeltaIndex; sheetNumbers?: Set<string>; hdrSpans?: GraphSpan[]; hdrBand?: GraphSpan[]; marquee?: boolean },
+  cfg: { fromIdx: number; belowY: number; keyAlign?: { x: number; tol: number }; deltas?: DeltaIndex; sheetNumbers?: Set<string>; hdrSpans?: GraphSpan[]; hdrBand?: GraphSpan[]; marquee?: boolean; resetAtBlankBand?: boolean },
 ): { out: TableRow[]; region: Bbox | null } {
   const { x0, x1, medGap } = bandLimits(anchors);
   // a device schedule keyed by TYPE / FIXTURE uses letter types ("A", "B2") as
@@ -1177,6 +1181,13 @@ function bandDataRows(
   };
   const orphans: Array<{ toks: GraphSpan[]; y: number }> = [];
   const markers: Array<{ rev: string; span: GraphSpan; drawn?: boolean; tri?: Bbox }> = [];
+  // for the blank-band reset (cfg.resetAtBlankBand): the section epoch (bumped
+  // wherever curSection is set or cleared), and, per keyed row, its epoch and
+  // the index of its banded line — two keyed rows with consecutive line
+  // indices have no other line (orphan, heading, material word, skipped row)
+  // between them
+  let epoch = 0, line = -1;
+  const outEpoch: number[] = [], outLine: number[] = [];
   for (let i = Math.max(cfg.fromIdx, 0); i < rows.length; i++) {
     if (rowY(rows[i]) <= cfg.belowY) continue;
     const banded: GraphSpan[] = [];
@@ -1192,6 +1203,7 @@ function bandDataRows(
       if (inBand(t)) banded.push(t);
     }
     if (!banded.length) continue;
+    line++;
     const bandYBefore = prevBandY;
     prevBandY = rowY(rows[i]);
     if (finish) {
@@ -1210,6 +1222,7 @@ function bandDataRows(
       const centered = !!one && !hugs && (Math.abs(centerX(one) - tMid) <= Math.max(0.1 * (tRight - tLeft), 3 * (one.h || 8)) || straddles);
       if (h && (inKeyColumn || centered) && joinedLen < 24) {
         curSection = h;
+        epoch++;
         consumeHeading(banded, rowY(rows[i]));
         continue;
       }
@@ -1218,6 +1231,7 @@ function bandDataRows(
       // ends the current section: it names a spec division, not a surface
       if (banded.length <= 2 && inKey(banded[0]) && /^\d{2} ?\d{2} ?\d{2}(\.\d+)?\b/.test(norm(banded[0].str)) && !rowKeyOf(banded[0].str, kind, buildings, typeKeyed)) {
         curSection = undefined;
+        epoch++;
         consumeHeading(banded, rowY(rows[i]));
         continue;
       }
@@ -1226,6 +1240,7 @@ function bandDataRows(
       // does not know: the rows below it have no section
       if (one && inKey(one) && !rowKeyOf(one.str, kind, buildings, typeKeyed)) {
         curSection = undefined;
+        epoch++;
         // a material word on a line of its own ("PAINT" above PT-1, "TILE"
         // above CT-1) groups the rows under it the way a heading does: it is
         // consumed, or it reads into the key cell of the row beside it
@@ -1269,7 +1284,33 @@ function bandDataRows(
     add(row, banded);
     out.push(row);
     outY.push(rowY(rows[i]));
+    outEpoch.push(epoch); outLine.push(line);
     everRows.push(row);
+  }
+  // The blank-band reset (on-device reads only). The engine can miss a
+  // printed heading ("BASE" over RB-1), and the rows under it would read as
+  // the section above. Where two keyed rows of one section sit a blank band
+  // apart (> 1.6 × the section's row pitch, no line of any kind between
+  // them) AND the code prefix changes (SC-1 → RB-1), a new group starts
+  // there under a heading not read: every later row of that section loses
+  // it. A row missing inside a group keeps its prefix, so it never resets;
+  // a heading that IS read starts a new epoch and sets its own section. The
+  // pitch is the median of the no-line gaps in one epoch, from at least
+  // four of them. Run after the loop: keyed-ness and orphans are final only
+  // then.
+  if (finish && cfg.resetAtBlankBand) {
+    const prefixOf = (k: string) => /^[A-Z]*/.exec(k)![0];
+    const plain: number[] = [];   // indices i: out[i-1] → out[i] in one epoch, no line between
+    for (let i = 1; i < out.length; i++) if (outEpoch[i] === outEpoch[i - 1] && outLine[i] === outLine[i - 1] + 1) plain.push(i);
+    const byEpoch = new Map<number, number[]>();
+    for (const i of plain) { const g = outY[i] - outY[i - 1]; if (g > 0) byEpoch.set(outEpoch[i], [...(byEpoch.get(outEpoch[i]) ?? []), g]); }
+    for (const i of plain) {
+      const gaps = (byEpoch.get(outEpoch[i]) ?? []).slice().sort((a, b) => a - b);
+      if (gaps.length < 4) continue;
+      const pitch = gaps[gaps.length >> 1];
+      if (outY[i] - outY[i - 1] <= 1.6 * pitch || prefixOf(out[i].key) === prefixOf(out[i - 1].key)) continue;
+      for (let j = i; j < out.length && outEpoch[j] === outEpoch[i]; j++) delete out[j].section;
+    }
   }
   // A table ends where its rows stop. Rows are clustered across the WHOLE
   // sheet, so a keyed-looking row far below — a legend, a note block, a room
@@ -1485,7 +1526,7 @@ function extractTableCore(sheet: SheetSpans, kind: ExtractKind, opts: ExtractOpt
     if (centerX(t) < hdrBand.x0 || centerX(t) > hdrBand.x1) continue;
     region = region ? merge(region, bboxOf(t)) : bboxOf(t);
   }
-  const banded = bandDataRows(rows, anchors, kind, sheet.key, opts.buildings, { fromIdx: dataFrom, belowY: dataBelowY, deltas: opts.deltas, sheetNumbers: opts.sheetNumbers, hdrSpans: headerSpans, hdrBand: hdrBlock, marquee: opts.marquee });
+  const banded = bandDataRows(rows, anchors, kind, sheet.key, opts.buildings, { fromIdx: dataFrom, belowY: dataBelowY, deltas: opts.deltas, sheetNumbers: opts.sheetNumbers, hdrSpans: headerSpans, hdrBand: hdrBlock, marquee: opts.marquee, resetAtBlankBand: opts.resetAtBlankBand });
   const out = banded.out;
   if (banded.region) region = region ? merge(region, banded.region) : banded.region;
   if (!out.length) {
