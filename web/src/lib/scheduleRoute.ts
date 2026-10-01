@@ -2,11 +2,11 @@
 // imports from the reader), so the canvas and the agent registry can word a
 // refusal without loading the sheet graph.
 //
-// A table the reader refused as another schedule family (a door schedule, a
-// device schedule …) is a message and STOPS: the paid scan reader never runs
-// on it, signed in or not — it would only read the wrong table. Only a box
-// that held no table at all may fall through to the scan (a scanned page's
-// stray text layer), and only when the scan is reachable.
+// Every box is one decision here, from the read plus two facts about the box:
+// how many text runs it held and whether the page has a text layer at all.
+// Nothing about sign-in or a server goes in — every build routes the same, and
+// the box never leaves the device. An empty box and a box with text but no
+// table both read as "no-table"; the run count tells them apart.
 import type { RefusalReason, ScheduleRead } from "./scheduleRead.ts";
 import type { ScheduleRow } from "./scheduleRows.ts";
 
@@ -35,25 +35,31 @@ export function refusalMessage(refused: RefusalReason, title?: string): string {
 
 export type ImportRoute =
   | { kind: "rows"; rows: ScheduleRow[] }
-  | { kind: "message"; text: string }
-  | { kind: "scan" };
+  | { kind: "message"; text: string };
 
-/** Rows → the dialog; a refused table → its message (never the scan); no
- *  table → the scan reader when `scanReachable`, else the re-drag hint. */
-export function routeScheduleRead(read: ScheduleRead, scanReachable: boolean): ImportRoute {
+/** What the box held: its text-run count (joined runs, after the crop) and
+ *  whether the page has any text layer at all. */
+export interface BoxText {
+  textRuns: number;
+  pageHasText: boolean;
+}
+
+/** Rows → the dialog; a refused table → its message; no table → the re-drag
+ *  hint when the box held text, else emptyBoxMessage. */
+export function routeScheduleRead(read: ScheduleRead, box: BoxText): ImportRoute {
   if (read.rows.length) return { kind: "rows", rows: read.rows };
   const refused = "refused" in read ? read.refused : "no-table";
   if (refused !== "no-table") return { kind: "message", text: refusalMessage(refused, "title" in read ? read.title : undefined) };
-  return scanReachable ? { kind: "scan" } : { kind: "message", text: NO_SCHEDULE_HINT };
+  return { kind: "message", text: box.textRuns > 0 ? NO_SCHEDULE_HINT : emptyBoxMessage(box.pageHasText) };
 }
 
-/** A box with no text, when the scan reader isn't configured, on a page with
- *  no text layer at all: the one case that may be called a scanned page. */
-export const SCANNED_PAGE_NO_READER = "No schedule found — this looks like a scanned page (no text layer). Importing from scanned plans needs the AI backend.";
+/** A box with no text on a page with no text layer at all: the one case that
+ *  may be called a raster page. Nothing in the app reads it. */
+export const RASTER_PAGE_MESSAGE = "No schedule text here — this page looks like a raster image (no text layer), which Import from schedule can't read.";
 
-/** The message for a box that holds no text when the scan reader isn't
- *  configured. Only a page with no text anywhere is "scanned"; a page that has
- *  text elsewhere means the box missed the schedule — say so, and how to aim. */
+/** The message for a box that holds no text. Only a page with no text anywhere
+ *  is a raster page; a page that has text elsewhere means the box missed the
+ *  schedule — say so, and how to aim. */
 export function emptyBoxMessage(pageHasText: boolean): string {
-  return pageHasText ? `No text in that box — drag around the finish/material schedule ${WHERE}.` : SCANNED_PAGE_NO_READER;
+  return pageHasText ? `No text in that box — drag around the finish/material schedule ${WHERE}.` : RASTER_PAGE_MESSAGE;
 }

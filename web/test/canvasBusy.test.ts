@@ -1,7 +1,7 @@
 // The canvas defer-gate predicate (lib/canvasBusy.ts, Slice 5b). This is the guard
 // that keeps a reconcile re-hydrate from clobbering in-progress work, so every
 // interaction mode must count as busy — a gap here (the 4c review flagged drag /
-// text-edit / scan were missing) silently reopens the clobber it exists to prevent.
+// text-edit were missing) silently reopens the clobber it exists to prevent.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { isCanvasBusy } from "../src/lib/canvasBusy.js";
@@ -31,7 +31,6 @@ test("a scheduled debounced save (saveState 'saving') → busy (CRITICAL-b)", ()
 test("the interaction modes the 4c review flagged as missing are all covered", () => {
   assert.equal(isCanvasBusy({ dragging: true }), true);   // shape/vertex/markup move or OC proposal-edit drag
   assert.equal(isCanvasBusy({ editing: true }), true);    // inline text editor open (unsaved keystrokes)
-  assert.equal(isCanvasBusy({ scanning: true }), true);   // paid OCR read in flight
 });
 
 test("agent run in flight / staged agent proposals → busy (post-merge review finding)", () => {

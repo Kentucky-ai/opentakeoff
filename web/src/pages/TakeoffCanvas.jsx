@@ -53,16 +53,15 @@ import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
 import { rowToSeed } from "../lib/scheduleRows";   // the reader (scheduleRead, which loads the sheet graph) is import()ed on use
-import { routeScheduleRead, NO_SCHEDULE_HINT, emptyBoxMessage } from "../lib/scheduleRoute";
+import { routeScheduleRead } from "../lib/scheduleRoute";
 import { pageSpans, spansInRect, graphSpans } from "../lib/pageSpans";
-import { normalizeScanRows, postScanWithRetry, SCAN_ENDPOINT, scanRasterScale } from "../lib/scheduleScan";
 import { normalizeTag } from "../lib/scheduleEdit";
 // Condition twins — the whole inheritance rule is in lib/variants.ts (test/variants.test.ts);
 // this file only calls it from the material write paths and the condition deletes.
 import { mintTwin, variantTag,
   propagateRowPatch, propagateRowAdd, propagateRowRemove,
   markRowLocal, dropRowLocal, followFamily, splitFromFamily, promoteOnDelete } from "../lib/variants.ts";
-import { isGoogleConfigured, isSignedIn, isAllowedDomain, getAccessToken, orgDomainHint } from "../lib/google/auth.js";
+import { isGoogleConfigured } from "../lib/google/auth.js";
 import { extractVectorGeometry, buildMask, floodRegionSealed, sealRadiiFor, doorWedgeCapPx, minPassRadiusFor, oneClickRing, ringArea, MASK_MAX_DIM, MIN_PASS_FT, SENS_STRICT, SENS_BALANCED, SENS_AGGRESSIVE } from "../lib/oneclick";
 import { tidyRing, axisLockPoint } from "../lib/ringTidy";
 // The Symbol tool (#264) — the canvas face for the sweep engine. The engine,
@@ -164,7 +163,7 @@ import { getTheme, toggleTheme, onThemeChange } from "../lib/theme.js";
 // (renderBudget.test.ts covers autoRenderScale) pending a follow-up cleanup
 // pass once the tile path has proven itself in production.
 import {
-  PANEL_GAP, DETAIL_ENGAGE, DETAIL_MARGIN, MAX_CANVAS_DIM, MAX_CANVAS_AREA, SYNC_MS, GESTURE_MS, SNAP_CELL,
+  PANEL_GAP, DETAIL_ENGAGE, DETAIL_MARGIN, SYNC_MS, GESTURE_MS, SNAP_CELL,
   MEASURE_TOOLS, CUT_TOOLS, MARKUP_TOOLS, MARKUP_IDS, HL_INKS, HL_SIZES,
   MARKUP_IMG_MAX, MAX_IMAGE_MARKUP_BYTES, MARKUP_UPLOAD_MAX_BYTES, MARKUP_DECODE_MAX_AREA,
 } from "../lib/canvasConstants.js";
@@ -838,7 +837,6 @@ export default function TakeoffCanvas() {
   const renderTasksRef = useRef(new Map());  // sheetKey → pdf.js RenderTask
   const pdfDocsRef = useRef(new Map());      // file name → pdf.js loading task (doc cache)
   const renderSeqRef = useRef(0);            // monotonic token — stale render chains bail out
-  const scanBusyRef = useRef(false);         // a paid schedule OCR read is in flight — blocks re-fire from a rapid re-draw
   const panRef = useRef(null);
   const spaceRef = useRef(false);
   const crossVRef = useRef(null);
@@ -2632,8 +2630,8 @@ export default function TakeoffCanvas() {
   // stable to capture once — no re-registration null window. isCanvasBusy is the
   // pure, unit-tested core (lib/canvasBusy.js); it must report EVERY interaction mode
   // a mid-session re-hydrate would clobber (trace/calibrate/check, One-Click review,
-  // a scheduled save, an active drag, the open text editor, an in-flight OCR scan,
-  // an agent run and its staged proposals — hydrate() wipes agentProposals and the
+  // a scheduled save, an active drag, the open text editor, an agent run and its
+  // staged proposals — hydrate() wipes agentProposals and the
   // conditions a mid-run agent minted, so both defer exactly like One-Click review).
   busyStateRef.current = { poly, calib, check, proposal, scaleGuide, prevScale, agentRunning, agentProposals };
   const computeBusy = () => isCanvasBusy({
@@ -2641,7 +2639,6 @@ export default function TakeoffCanvas() {
     saveState: saveStateRef.current,
     dragging: !!dragRef.current || !!ocDragRef.current,
     editing: editingRef.current,
-    scanning: scanBusyRef.current,
   });
 
   // Register both reconcile handlers ONCE. onRemoteUpdate handles CASE 2: the store
@@ -6098,7 +6095,7 @@ export default function TakeoffCanvas() {
     return readScheduleSpans(graphSpans(spansInRect(pageSpans(tc.items, vp.transform, rs), rect)));
   }
 
-  // Render just the asked-for crop offscreen (the rasterizeRegion idiom) and
+  // Render just the asked-for crop offscreen (shift its top-left to (0,0)) and
   // hand back a PNG data URL — THE vision tool for scans and ambiguous areas.
   async function agentViewRegion(key, region) {
     const p = agentPanelFor(key);
@@ -6782,16 +6779,14 @@ export default function TakeoffCanvas() {
   const stopAgent = () => agentAbortRef.current?.abort();
 
   // ── Import from schedule ────────────────────────────────────────────────────
-  // Read the marqueed box and open the approval dialog. Two paths, ONE contract
-  // (ScheduleRow[] → the same dialog):
-  //   • vector plans: the page text layer inside the box IS the extraction —
-  //     no OCR, open to everyone. The page's text becomes the sheet graph's
-  //     spans (pageSpans, the MCP's builder), cropped to the box, and the
-  //     sheet graph's finish reader reads them (scheduleRead.readScheduleSpans,
-  //     loaded on first use); scheduleRoute.ts decides what the read becomes;
-  //   • scanned plans: the box has no text spans, so we rasterize it and hand
-  //     the PNG to the optional AI backend (/ai/parse-schedule). That path is
-  //     login-gated (see importScheduleFromScan).
+  // Read the marqueed box and open the approval dialog. The page text layer
+  // inside the box IS the extraction — no OCR, no server, nothing leaves the
+  // device. The page's text becomes the sheet graph's spans (pageSpans, the
+  // MCP's builder), cropped to the box, and the sheet graph's finish reader
+  // reads them (scheduleRead.readScheduleSpans, loaded on first use).
+  // scheduleRoute.ts decides what every box becomes — rows, a refusal, the
+  // re-drag hint, or the empty-box message — from the read, the box's text-run
+  // count and whether the page has a text layer at all.
   // Corners a,b are stage px (raw cursor, snapping exempted at pointer-down).
   async function importScheduleFromRect(a, b) {
     if (status !== "ready") { setCommitMsg("Sheet still loading — try again in a moment."); return; }
@@ -6812,147 +6807,15 @@ export default function TakeoffCanvas() {
       pageHasText = page.length > 0;   // the box's own source (pageSpans drops blank runs), so "box empty, page not" is consistent
       spans = graphSpans(spansInRect(page, rect));
     } catch { setCommitMsg("Couldn't read that region."); return; }
-    // Vector-vs-scan decision. Spans present ⇒ TRY the text layer first (a real
-    // vector schedule reads straight from it, no OCR cost). But text presence
-    // isn't proof of a vector page: scanned plans often carry a stray text layer
-    // (embedded OCR, a title block, dimension text) that lands in the marquee yet
-    // holds no schedule. So a text-bearing box that reads as NO table is not a
-    // dead end — fall through to the AI scan path when it's reachable (the
-    // not-configured / signed-out / outside-the-org cases get the re-drag hint
-    // instead: no paid call, no claim the page is scanned). A box the reader
-    // DID read as a table of another schedule family (a door schedule …) stops
-    // with a message and never reaches the paid reader — it would only read
-    // the wrong table. scheduleRoute.ts holds that decision.
-    if (spans.length) {
-      const route = routeScheduleRead(readScheduleSpans(spans), isGoogleConfigured() && isSignedIn() && isAllowedDomain());
-      if (route.kind === "rows") { setImportRows(route.rows); return; }
-      if (route.kind === "message") { setCommitMsg(route.text); return; }
-      // else "scan": the reader is available — let it read the pixels below.
-    }
-    await importScheduleFromScan(pageObj, rs, rect, seq, spans.length, pageHasText);
-  }
-
-  // Scan/OCR fallback for a raster page: rasterize the marqueed region and POST
-  // it to the optional AI backend, then feed the returned rows into the SAME
-  // approval dialog. LOGIN-GATED — only a Google-configured deployment with a
-  // signed-in user reaches the network (no API key ever lives in client code).
-  // tokenCount is the region's text-span count (joined runs) at the routing site:
-  // 0 ⇒ a true raster page (no text layer, AI is the only reader); >0 ⇒ the
-  // fallthrough from a text-bearing box the vector reader read as no table. We report WHICH happened
-  // (#104) but never claim the >0 case is a "fixable parser gap": scanned plans
-  // routinely carry a stray text layer (title block, dimension text, embedded OCR)
-  // that lands in the marquee yet holds no schedule, so a token-bearing box that
-  // parses to nothing is just as likely a genuine scan as a defeated vector table.
-  // pageHasText: the whole page has a text layer. With no reader configured, an
-  // empty box on such a page missed the schedule — only a page with no text at
-  // all is called scanned (scheduleRoute.emptyBoxMessage).
-  async function importScheduleFromScan(pageObj, rs, rect, seq, tokenCount, pageHasText) {
-    const hadTokens = tokenCount > 0;
-    if (!isGoogleConfigured()) {
-      setCommitMsg(emptyBoxMessage(pageHasText));
-      return;
-    }
-    if (!isSignedIn()) { setCommitMsg("Sign in to import from scanned plans."); return; }
-    // Org-only: a signed-in account outside the configured domain must not reach
-    // the paid reader (the server 403s it too — this just avoids the round-trip).
-    if (!isAllowedDomain()) { setCommitMsg("Your sign-in doesn't have access to the scanned-schedule reader."); return; }
-    // A paid read is already in flight — a rapid re-draw of the marquee must not
-    // fire a second Gemini call. Surface it (the first call may not have printed
-    // "Reading…" yet) so the redraw doesn't look ignored. Clears in finally below.
-    if (scanBusyRef.current) { setCommitMsg("Still reading the last schedule — one moment."); return; }
-    scanBusyRef.current = true;
-    try {
-      let png;
-      try { png = await rasterizeRegion(pageObj, rs, rect); }
-      catch { setCommitMsg("Couldn't read that region."); return; }
-      if (seq !== renderSeqRef.current) return;
-      // The token is what actually authorizes the paid read — the server verifies
-      // it before spending. A missing/expired token here means re-consent, not a
-      // silent public call.
-      let token;
-      try { token = await getAccessToken(); }
-      catch { setCommitMsg("Sign in again to import from scanned plans."); return; }
-      if (seq !== renderSeqRef.current) return;
-      setCommitMsg("Reading the scanned schedule…");
-      // #104: record WHY the paid reader was reached, right before the call fires
-      // (rasterize + token succeeded), so the log correlates 1:1 with paid reads.
-      // no-text-layer = truly raster (AI-only); text-present-unparsed = tokens were
-      // in the box but the vector parser produced nothing (NOT asserted as a parser
-      // bug — a stray-text scan is indistinguishable from a defeated vector table).
-      console.info("[schedule-import] using AI reader", {
-        reason: hadTokens ? "text-present-unparsed" : "no-text-layer",
-        tokenCount,
-      });
-      try {
-        // A cold serverless start + slow vision call can overrun Netlify's sync cap
-        // and return a 504 gateway page; the warm retry succeeds (#102). One retry
-        // only, and only on 504 — real errors (401/403/501/5xx JSON) fall through
-        // to the handling below on the first response.
-        const res = await postScanWithRetry(
-          () => fetch(SCAN_ENDPOINT, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-            // client_hd stamps this build's VITE_GOOGLE_HD so the server can warn if
-            // it has drifted from the runtime ALLOWED_HD (the client org-gate would
-            // then be silently no-op'ing). Diagnostic only — the server's authoritative
-            // token + ALLOWED_HD gate ignores it.
-            body: JSON.stringify({ image_b64: png.b64, width: png.width, height: png.height, client_hd: orgDomainHint() }),
-          }),
-          { onRetry: () => setCommitMsg("The reader was warming up — retrying…") },
-        );
-        if (seq !== renderSeqRef.current) return;
-        if (res.status === 401 || res.status === 403) { setCommitMsg("Your sign-in doesn't have access to the scanned-schedule reader."); return; }
-        if (res.status === 501) { setCommitMsg("Importing from scanned plans isn't enabled on this deployment."); return; }
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const rows = normalizeScanRows(await res.json());
-        if (!rows.length) {
-          setCommitMsg(hadTokens
-            ? NO_SCHEDULE_HINT
-            : "No schedule found in that scanned region — the reader returned nothing.");
-          return;
-        }
-        // #104: say why the AI reader ran — honest about the token-bearing case (we
-        // read the pixels; we do NOT claim the vector parser has a bug).
-        setCommitMsg(hadTokens
-          ? `Read ${rows.length} finish${rows.length === 1 ? "" : "es"} from the image — the box had text but we couldn't read it as a table.`
-          : `Read ${rows.length} finish${rows.length === 1 ? "" : "es"} — scanned page (no text layer).`);
-        setImportRows(rows);
-      } catch { setCommitMsg("Couldn't reach the schedule reader — try again in a moment."); }
-    } finally {
-      scanBusyRef.current = false;
-      bumpIdle();   // scan done → let the idle-drain observe the busy→idle edge (Slice 5b)
-    }
-  }
-
-  // Render just the marqueed region (rs-viewport px, the space rect lives in) to
-  // an offscreen canvas and return its PNG as base64 + pixel dims. Mirrors the
-  // detail-view offscreen render: shift the region's top-left to (0,0) and clamp
-  // to the single-canvas caps so a huge marquee can't exceed the backing store —
-  // AND to SCAN_MAX_DIM (scanRasterScale), the server's per-side cap, so a
-  // near-full-sheet marquee downscales to fit instead of being rejected with a
-  // 400 "invalid image dimensions". Downscales only as far as the cap, so a
-  // tighter box still goes at full resolution (better read on small schedule text).
-  async function rasterizeRegion(pageObj, rs, rect) {
-    const x0 = Math.min(rect.x0, rect.x1), y0 = Math.min(rect.y0, rect.y1);
-    const regW = Math.max(1, Math.abs(rect.x1 - rect.x0)), regH = Math.max(1, Math.abs(rect.y1 - rect.y0));
-    const factor = Math.min(1, MAX_CANVAS_DIM / regW, MAX_CANVAS_DIM / regH, Math.sqrt(MAX_CANVAS_AREA / (regW * regH)), scanRasterScale(regW, regH));
-    const bw = Math.max(1, Math.round(regW * factor)), bh = Math.max(1, Math.round(regH * factor));
-    const vp = pageObj.getViewport({ scale: rs * factor });
-    const canvas = document.createElement("canvas");
-    canvas.width = bw; canvas.height = bh;
-    await pageObj.render({
-      canvasContext: canvas.getContext("2d"),
-      viewport: vp,
-      transform: [1, 0, 0, 1, -x0 * factor, -y0 * factor],
-    }).promise;
-    const dataUrl = canvas.toDataURL("image/png");
-    return { b64: dataUrl.split(",")[1] || "", width: bw, height: bh };
+    const route = routeScheduleRead(readScheduleSpans(spans), { textRuns: spans.length, pageHasText });
+    if (route.kind === "rows") setImportRows(route.rows);
+    else setCommitMsg(route.text);
   }
 
   // ── image markup (#…) — two entry points, one record type ────────────────
   // Marquee screenshot: a,b are the two marquee corners in stage px. Render the
-  // boxed region of the plan offscreen (the rasterizeRegion idiom, but with its
-  // OWN 1600px downscale factor — NOT scanRasterScale's 4096 cap) and store it as
+  // boxed region of the plan offscreen (shift its top-left to (0,0), downscaled
+  // to at most MARKUP_IMG_MAX px a side) and store it as
   // a floating `image` markup anchored at the box center. Guards mirror
   // importScheduleFromRect: sheet ready, both corners in one panel, a real source
   // page (refuse a stitched composite), a non-degenerate box.
@@ -6972,7 +6835,7 @@ export default function TakeoffCanvas() {
     const y1 = cl(Math.max(a[1], b[1]), 0, panel.img.h);
     const regW = x1 - x0, regH = y1 - y0;
     if (!(regW >= 4 && regH >= 4)) { setCommitMsg("Drag a larger box to capture."); return; }
-    // own downscale factor: 1600px longest side (never scanRasterScale's 4096)
+    // downscale to MARKUP_IMG_MAX (1600px) on the longest side
     const factor = Math.min(1, MARKUP_IMG_MAX / regW, MARKUP_IMG_MAX / regH);
     const bw = Math.max(1, Math.round(regW * factor)), bh = Math.max(1, Math.round(regH * factor));
     let src;

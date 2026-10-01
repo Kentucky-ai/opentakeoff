@@ -1,14 +1,15 @@
-// What Import from schedule does with a read (lib/scheduleRoute.ts). Invariants:
+// What Import from schedule does with a read (lib/scheduleRoute.ts). Every
+// box the user drags is one pure decision here, with no sign-in or server input:
 //   - rows open the approval dialog;
-//   - a table refused as another schedule family is a plain-words message and
-//     NEVER the paid scan reader — signed in or not;
-//   - only "no-table" (nothing read as a table) may fall through to the scan,
-//     and only when the scan is reachable; otherwise the re-drag hint;
+//   - a table refused as another schedule family is a plain-words message;
+//   - a box with text but no table gets the re-drag hint;
+//   - a box with no text gets emptyBoxMessage: a mis-drag on a page that has
+//     text, the raster-page message on a page with no text layer;
 //   - the hints name every key column the reader takes, not CODE alone;
 //   - a title is named only when it is the reason (a "title" refusal).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { routeScheduleRead, refusalMessage, refusalWhy, NO_SCHEDULE_HINT, SCANNED_PAGE_NO_READER, emptyBoxMessage } from "../src/lib/scheduleRoute.ts";
+import { routeScheduleRead, refusalMessage, refusalWhy, NO_SCHEDULE_HINT, RASTER_PAGE_MESSAGE, emptyBoxMessage } from "../src/lib/scheduleRoute.ts";
 import type { RefusalReason } from "../src/lib/scheduleRead.ts";
 import type { ScheduleRow } from "../src/lib/scheduleRows.ts";
 
@@ -17,28 +18,46 @@ const row: ScheduleRow = {
   finish_tag: "CPT-1", section: "FLOORING", category: "floor", category_source: "heading", description: "CARPET TILE",
   manufacturer: "VENDOR-A", style: "", spec_color: "", size: "", remarks: "", suggested: true,
 };
+const NO_TABLE = { rows: [] as [], refused: "no-table" as const };
 
-test("rows open the dialog whether or not the scan is reachable", () => {
-  for (const reachable of [true, false]) {
-    assert.deepEqual(routeScheduleRead({ rows: [row] }, reachable), { kind: "rows", rows: [row] });
+test("finish table rows open the dialog", () => {
+  for (const pageHasText of [true, false]) {
+    assert.deepEqual(routeScheduleRead({ rows: [row] }, { textRuns: 12, pageHasText }), { kind: "rows", rows: [row] });
   }
 });
 
-test("a refused table is a message and never routes to the scan", () => {
+test("a table of another schedule family is its refusal message", () => {
   for (const refused of REFUSALS) {
-    for (const reachable of [true, false]) {
-      for (const title of [undefined, "DOOR SCHEDULE"]) {
-        const r = routeScheduleRead({ rows: [], refused, ...(title ? { title } : {}) }, reachable);
-        assert.equal(r.kind, "message", `${refused} reachable=${reachable} title=${title}`);
-        assert.equal((r as { text: string }).text, refusalMessage(refused, title));
-      }
+    for (const title of [undefined, "DOOR SCHEDULE"]) {
+      const r = routeScheduleRead({ rows: [], refused, ...(title ? { title } : {}) }, { textRuns: 30, pageHasText: true });
+      assert.deepEqual(r, { kind: "message", text: refusalMessage(refused, title) }, `${refused} title=${title}`);
     }
   }
 });
 
-test("no table: the scan reader when reachable, else the re-drag hint", () => {
-  assert.deepEqual(routeScheduleRead({ rows: [], refused: "no-table" }, true), { kind: "scan" });
-  assert.deepEqual(routeScheduleRead({ rows: [], refused: "no-table" }, false), { kind: "message", text: NO_SCHEDULE_HINT });
+test("text but no table is the re-drag hint", () => {
+  for (const textRuns of [1, 8, 40]) {
+    assert.deepEqual(routeScheduleRead(NO_TABLE, { textRuns, pageHasText: true }), { kind: "message", text: NO_SCHEDULE_HINT });
+  }
+});
+
+test("no text, on a page that has text, is the empty-box hint", () => {
+  assert.deepEqual(routeScheduleRead(NO_TABLE, { textRuns: 0, pageHasText: true }), { kind: "message", text: emptyBoxMessage(true) });
+});
+
+test("no text, on a page with no text layer, is the raster-page message", () => {
+  assert.deepEqual(routeScheduleRead(NO_TABLE, { textRuns: 0, pageHasText: false }), { kind: "message", text: RASTER_PAGE_MESSAGE });
+});
+
+test("the routing takes no sign-in or server input and never routes to a scan", () => {
+  for (const read of [{ rows: [row] }, NO_TABLE, { rows: [] as [], refused: "title" as const }]) {
+    for (const textRuns of [0, 5]) {
+      for (const pageHasText of [true, false]) {
+        const kind = routeScheduleRead(read, { textRuns, pageHasText }).kind;
+        assert.ok(kind === "rows" || kind === "message", kind);
+      }
+    }
+  }
 });
 
 test("a title refusal names the title", () => {
@@ -71,17 +90,20 @@ test("the hints name every key column, not CODE alone", () => {
   }
 });
 
-// A box with no text when the scan reader isn't configured. Only a page with
-// NO text layer at all may be called scanned; a vector page's empty box is a
-// mis-drag and gets the re-drag hint instead.
-test("an empty box on a page with no text layer says scanned page", () => {
-  assert.equal(emptyBoxMessage(false), SCANNED_PAGE_NO_READER);
-  assert.match(SCANNED_PAGE_NO_READER, /scanned page \(no text layer\)/);
+// A box with no text. Only a page with NO text layer at all is called a
+// raster image; a vector page's empty box is a mis-drag and gets the re-drag
+// hint instead.
+test("an empty box on a page with no text layer says raster image", () => {
+  assert.equal(emptyBoxMessage(false), RASTER_PAGE_MESSAGE);
+  assert.equal(
+    RASTER_PAGE_MESSAGE,
+    "No schedule text here — this page looks like a raster image (no text layer), which Import from schedule can't read.",
+  );
 });
 
-test("an empty box on a page that has text never claims a scanned page", () => {
+test("an empty box on a page that has text never claims a raster page", () => {
   const m = emptyBoxMessage(true);
-  assert.doesNotMatch(m, /scann/i);
+  assert.doesNotMatch(m, /scann|raster/i);
   assert.match(m, /^No text in that box — drag around the finish\/material schedule/);
   for (const k of ["CODE", "TAG", "MARK", "SYMBOL"]) assert.match(m, new RegExp(`\\b${k}\\b`));
 });
