@@ -167,3 +167,125 @@ test("closeOnEscape: other keys are ignored; a missing onClose is safe", () => {
   assert.equal(closed, 0);
   assert.doesNotThrow(() => closeOnEscape(keydown("Escape").e, undefined));
 });
+
+// ── #483: group checkbox state, duplicate ranking, the skipped-codes text ─────
+// groupState / groupToggle drive each group's mixed-state checkbox: the state
+// is taken over the group's PICKABLE rows only (a locked in-use row doesn't hold
+// a group at "some"); clicking an "all" group clears every row in it, any other
+// state picks every pickable row — NOT USED rows included.
+// evaluateTags' optional rank decides which row claims a code several rows
+// share: the highest rank, ties to the first row. The dialog ranks a row read
+// today (2) above a row only the newer rules read (1), and both above a row the
+// schedule marks NOT USED (0). An in-use code is still in use, whatever its rank.
+import { groupState, groupToggle, skippedSummary, skippedBanner, skippedNote } from "../src/lib/scheduleEdit.js";
+
+test("groupState: all / some / none over the pickable rows", () => {
+  const keys = ["a", "b", "c"];
+  const all = () => true;
+  assert.equal(groupState(new Set(["a", "b", "c"]), keys, all), "all");
+  assert.equal(groupState(new Set(["a"]), keys, all), "some");
+  assert.equal(groupState(new Set(), keys, all), "none");
+  // nothing pickable → none (the checkbox is disabled)
+  assert.equal(groupState(new Set(["a"]), keys, () => false), "none");
+  // a locked in-use row, every pickable row picked → all
+  assert.equal(groupState(new Set(["a", "b"]), keys, (k) => k !== "c"), "all");
+  // a stale pick on a locked row doesn't count
+  assert.equal(groupState(new Set(["c"]), keys, (k) => k !== "c"), "none");
+});
+
+test("groupToggle: all → none (even with a locked row); some / none → every pickable row", () => {
+  const keys = ["a", "b", "c"];
+  const canPick = (k: string) => k !== "c";   // c is in use
+  // all → clears every key in the group, a stale pick on the locked row too
+  assert.deepEqual([...groupToggle(new Set(["a", "b", "c", "z"]), keys, canPick)].sort(), ["z"]);
+  // some → all pickable, the locked row stays off, other groups untouched
+  assert.deepEqual([...groupToggle(new Set(["a", "z"]), keys, canPick)].sort(), ["a", "b", "z"]);
+  // none → all pickable (a NOT USED row is pickable: it's unticked, not locked)
+  assert.deepEqual([...groupToggle(new Set(), keys, canPick)].sort(), ["a", "b"]);
+  // returns a new set
+  const s = new Set<string>();
+  assert.notEqual(groupToggle(s, keys, canPick), s);
+});
+
+test("Select all (setPicked on every row) picks NOT USED rows", () => {
+  // NOT USED rows are creatable — they only start unticked
+  const s = setPicked(new Set(), ["real", "notUsed"], () => true, true);
+  assert.deepEqual([...s].sort(), ["notUsed", "real"]);
+});
+
+test("evaluateTags with rank: the highest-ranked row claims a shared code, ties to the first", () => {
+  const NOT_USED = 0, NEW_RULE = 1, TODAY = 2;
+  const rk = (m: Record<string, number>) => (key: string) => m[key];
+  const st = (m: Map<string, { status: string }>) => Object.fromEntries([...m].map(([k, v]) => [k, v.status]));
+  // a NOT USED CPT-2 before a real CPT-2 → the real one is ok
+  let r = evaluateTags([{ key: "n", tag: "CPT-2" }, { key: "t", tag: "CPT-2" }], new Set(), rk({ n: NOT_USED, t: TODAY }));
+  assert.deepEqual(st(r), { n: "duplicate", t: "ok" });
+  // two NOT USED CPT-2 and no real one → the first is ok
+  r = evaluateTags([{ key: "n1", tag: "CPT-2" }, { key: "n2", tag: "cpt-2" }], new Set(), rk({ n1: NOT_USED, n2: NOT_USED }));
+  assert.deepEqual(st(r), { n1: "ok", n2: "duplicate" });
+  // a new-rule CT-1 before a today-read CT-1 → the today-read row is ok
+  r = evaluateTags([{ key: "x", tag: "CT-1" }, { key: "t", tag: "CT-1" }], new Set(), rk({ x: NEW_RULE, t: TODAY }));
+  assert.deepEqual(st(r), { x: "duplicate", t: "ok" });
+  // new-rule before NOT USED → the new-rule row is ok
+  r = evaluateTags([{ key: "x", tag: "CT-1" }, { key: "n", tag: "CT-1" }], new Set(), rk({ x: NEW_RULE, n: NOT_USED }));
+  assert.deepEqual(st(r), { x: "ok", n: "duplicate" });
+  // two new-rule rows sharing a key → the later is duplicate
+  r = evaluateTags([{ key: "a", tag: "FTB-01" }, { key: "b", tag: "FTB-01" }], new Set(), rk({ a: NEW_RULE, b: NEW_RULE }));
+  assert.deepEqual(st(r), { a: "ok", b: "duplicate" });
+  // the map is in row order, tags normalized
+  assert.deepEqual([...r.keys()], ["a", "b"]);
+  assert.equal(r.get("b")?.tag, "FTB-01");
+});
+
+test("evaluateTags with rank: an in-use code stays in use; empty never claims; an edit away frees the code", () => {
+  const rank = (key: string) => ({ n: 0, t: 2 } as Record<string, number>)[key];
+  // in use wins over rank
+  let r = evaluateTags([{ key: "n", tag: "CPT-2" }, { key: "t", tag: "CPT-2" }], new Set(["CPT-2"]), rank);
+  assert.equal(r.get("n")?.status, "in-use");
+  assert.equal(r.get("t")?.status, "in-use");
+  // the real row's tag edited away → the NOT USED row is then ok
+  r = evaluateTags([{ key: "n", tag: "CPT-2" }, { key: "t", tag: "CPT-9" }], new Set(), rank);
+  assert.equal(r.get("n")?.status, "ok");
+  assert.equal(r.get("t")?.status, "ok");
+  // edited to blank → empty, and doesn't take the code
+  r = evaluateTags([{ key: "n", tag: "CPT-2" }, { key: "t", tag: "  " }], new Set(), rank);
+  assert.equal(r.get("n")?.status, "ok");
+  assert.equal(r.get("t")?.status, "empty");
+});
+
+test("evaluateTags without rank → first-seen, as before", () => {
+  const r = evaluateTags([{ key: "n", tag: "CPT-2" }, { key: "t", tag: "CPT-2" }], new Set());
+  assert.equal(r.get("n")?.status, "ok");
+  assert.equal(r.get("t")?.status, "duplicate");
+});
+
+const TAIL = "A four- or five-letter code with no number is read only when the header or a read row is above it, it fills two or more other columns, and a row with a numbered code, like CPT-1, comes after it — ";
+
+test("skippedSummary: distinct codes in first-seen order, repeats counted by line, more than 8 summarized", () => {
+  assert.deepEqual(skippedSummary(["EPOX"]), { count: 1, list: "EPOX", lines: 1 });
+  assert.deepEqual(skippedSummary(["EPOX", "SEAL"]), { count: 2, list: "EPOX, SEAL", lines: 2 });
+  assert.deepEqual(skippedSummary(["EPOX", "EPOX"]), { count: 1, list: "EPOX (2 lines)", lines: 2 });
+  assert.deepEqual(skippedSummary(["SEAL", "EPOX", "SEAL"]), { count: 2, list: "SEAL (2 lines), EPOX", lines: 3 });
+  const ten = ["AAAA", "BBBB", "CCCC", "DDDD", "EEEE", "FFFF", "GGGG", "HHHH", "IIII", "JJJJ"];
+  assert.deepEqual(skippedSummary(ten), { count: 10, list: "AAAA, BBBB, CCCC, DDDD, EEEE, FFFF, GGGG, HHHH, and 2 more", lines: 10 });
+  assert.deepEqual(skippedSummary([]), { count: 0, list: "", lines: 0 });
+});
+
+test("skippedBanner: the dialog's exact text, one and several", () => {
+  assert.equal(skippedBanner(["EPOX"]),
+    "1 code wasn't read: EPOX. A four- or five-letter code with no number is read only when the header or a read row is above it, it fills two or more other columns, and a row with a numbered code, like CPT-1, comes after it — if it's a finish, add it as a condition yourself.");
+  assert.equal(skippedBanner(["EPOX", "SEAL"]),
+    "2 codes weren't read: EPOX, SEAL. A four- or five-letter code with no number is read only when the header or a read row is above it, it fills two or more other columns, and a row with a numbered code, like CPT-1, comes after it — if they're finishes, add them as conditions yourself.");
+  assert.equal(skippedBanner(["EPOX", "EPOX"]), `1 code wasn't read: EPOX (2 lines). ${TAIL}if it's a finish, add it as a condition yourself.`);
+  assert.equal(skippedBanner(["AAAA", "BBBB", "CCCC", "DDDD", "EEEE", "FFFF", "GGGG", "HHHH", "IIII"]),
+    `9 codes weren't read: AAAA, BBBB, CCCC, DDDD, EEEE, FFFF, GGGG, HHHH, and 1 more. ${TAIL}if they're finishes, add them as conditions yourself.`);
+});
+
+test("skippedNote: the agent's exact note, one, several, one code on two lines", () => {
+  assert.equal(skippedNote(["EPOX"]),
+    "No rows read. A four- or five-letter code with no number wasn't read: EPOX. Find its line with read_sheet_text, check it with view_region, then create it with create_condition if it's a finish.");
+  assert.equal(skippedNote(["EPOX", "SEAL"]),
+    "No rows read. Four- or five-letter codes with no number weren't read: EPOX, SEAL. Find their lines with read_sheet_text, check them with view_region, then create them with create_condition if they're finishes.");
+  assert.equal(skippedNote(["EPOX", "EPOX"]),
+    "No rows read. A four- or five-letter code with no number wasn't read: EPOX (2 lines). Find its lines with read_sheet_text, check it with view_region, then create it with create_condition if it's a finish.");
+});

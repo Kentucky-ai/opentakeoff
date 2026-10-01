@@ -821,7 +821,7 @@ export default function TakeoffCanvas() {
   }, [commitMsgState]);
   const [showReport, setShowReport] = useState(false);  // Reports overlay (STACK-style breakdown + export)
   const [showRevisions, setShowRevisions] = useState(false); // Revisions overlay (save / compare any two, buy-list deltas, CSV, auto-banked restore)
-  const [importRows, setImportRows] = useState(null);        // Import-from-schedule approval rows (null = dialog closed)
+  const [importRead, setImportRead] = useState(null);        // Import-from-schedule approval read: { rows, skipped } (null = dialog closed)
   const [scheduleAnchor, setScheduleAnchor] = useState(null); // first marquee corner for the "schedule" tool — ISOLATED from poly so it can never leak into a measure shape
   // The box being read: one at a time. importScheduleFromRect takes the lock
   // for every box (a vector box only for its own short read) as `mine` =
@@ -6424,8 +6424,9 @@ export default function TakeoffCanvas() {
 
   // Text layer only — the same spans and reader as Import from schedule's
   // text-layer read; unlike Import, a raster box is not read on-device here.
-  // Returns the reader's ScheduleRead: { rows } or { rows: [], refused, title? }
-  // (agentTools.js words the refusal for the model).
+  // Returns the reader's ScheduleRead: { rows, skipped? } (rows may be [] when
+  // skipped codes were all the box held) or { rows: [], refused, title? }
+  // (agentTools.js words the refusal and the skipped codes for the model).
   async function agentReadSchedule(key, region) {
     const { tc, vp, rs, rect } = await agentPageText(key, region);
     const { readScheduleSpans } = await import("../lib/scheduleRead");
@@ -7282,7 +7283,7 @@ export default function TakeoffCanvas() {
       } catch { if (isCurrent()) setCommitMsg("Couldn't read that region."); return; }
       const box = { textRuns: countTextRuns(spans), pageHasText };
       const route = routeScheduleRead(readScheduleSpans(spans), box);
-      if (route.kind === "rows") { setImportRows(route.rows); return; }
+      if (route.kind === "rows") { setImportRead({ rows: route.rows, skipped: route.skipped ?? [] }); return; }
       if (route.kind === "message") { setCommitMsg(route.text); return; }
       // On-device: the status line replaces the footer message, unless that
       // is the stale-tab lockout or another job's in-progress "…" line.
@@ -7302,7 +7303,7 @@ export default function TakeoffCanvas() {
         box,
       });
       if (!isCurrent()) return;
-      if (result.kind === "rows") setImportRows(result.rows);
+      if (result.kind === "rows") setImportRead({ rows: result.rows, skipped: result.skipped ?? [] });
       else if (result.kind === "message") setCommitMsg(result.text);
     } catch {
       if (isCurrent()) setCommitMsg("Couldn't read that region.");
@@ -7536,7 +7537,7 @@ export default function TakeoffCanvas() {
       });
       existing.add(tag);
     }
-    setImportRows(null);
+    setImportRead(null);
     if (!made.length) { setCommitMsg("Those finishes already exist as conditions."); return; }
     setConditions((cs) => [...cs, ...made]);
     activateCondition(made[0].id, { reassign: false });
@@ -10829,13 +10830,13 @@ export default function TakeoffCanvas() {
         />
       )}
 
-      {importRows && (
+      {importRead && (
         <ImportSchedulePanel
-          rows={importRows}
+          rows={importRead.rows} skipped={importRead.skipped}
           existing={new Set(conditions.map((c) => normalizeTag(c.finish_tag)))}
           palette={PALETTE} startIndex={conditions.length}
           onCreate={createFromSchedule}
-          onClose={() => setImportRows(null)}
+          onClose={() => setImportRead(null)}
         />
       )}
 

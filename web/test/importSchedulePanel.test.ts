@@ -98,3 +98,210 @@ test("ImportSchedulePanel: the dialog is a labelled modal", () => {
   const esc = labelId!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   assert.match(html, new RegExp(`<span[^>]*id="${esc}"[^>]*>Import from schedule`));
 });
+
+// ── #483: NOT USED rows, mixed group checkbox, duplicates, skipped codes ─────
+// A row the schedule marks NOT USED / N.I.C. starts unticked but pickable, and
+// carries a label after "from description": the marker as printed, plus a
+// visually hidden note for screen readers (title = the same note). The label
+// and the from-description flag describe the row's checkbox (aria-describedby);
+// the in-use / duplicate flag is inside the <label> already and never is.
+// A group whose pickable rows are partly picked is "some" (indeterminate, set
+// by a ref — static markup shows data-state). The dialog's skipped notice and
+// its zero-rows form (Close only) are pinned to their exact text.
+const nu = (finish_tag: string, category: string, not_used_text: string, extra: Record<string, unknown> = {}) => ({
+  ...row(finish_tag, category, "heading"), suggested: false, unticked_reason: "not-used", not_used_text, ...extra,
+});
+const renderWith = (props: Record<string, unknown>) => renderToStaticMarkup(
+  React.createElement(ImportSchedulePanel as any, { existing: new Set(), palette: ["#111111"], onCreate: () => {}, onClose: () => {}, ...props }),
+);
+// one row's markup: from its row <div> to the next row or group
+const rowOf = (html: string, tag: string) => {
+  const at = html.indexOf(`>${tag}</button>`);
+  assert.ok(at >= 0, `row ${tag} rendered`);
+  const start = html.lastIndexOf("<div", html.lastIndexOf("<label", at));
+  const next = html.slice(at).search(/<div style="display:flex;align-items:center;gap:10px;padding:5px 14px 5px 26px|<div><label|<\/div><\/div><div style="display:flex;flex-wrap:wrap/);
+  return html.slice(start, next < 0 ? undefined : at + next);
+};
+const checkboxOf = (rowHtml: string) => rowHtml.match(/<label[^>]*><input type="checkbox"[^>]*>/)![0];
+const HIDDEN = "position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0";
+
+test("NOT USED row: the marker as printed, a hidden note, a title; unchecked, not disabled", () => {
+  const html = renderWith({ rows: [row("CPT-1", "floor", "heading"), nu("CPT-2", "floor", "(NOT USED)")] });
+  const r = rowOf(html, "CPT-2");
+  const note = " The schedule marks this row not used. Select it to create a condition anyway.";
+  const m = r.match(/<span id="([^"]+)" title="([^"]+)" style="([^"]*)">\(NOT USED\)<span style="([^"]*)">([^<]*)<\/span><\/span>/);
+  assert.ok(m, `NOT USED label in: ${r}`);
+  assert.equal(m![2], note.trimStart());
+  assert.equal(m![4], HIDDEN);
+  assert.equal(m![5], note);
+  // styled like the from-description flag, normal case, ink text, warning rule
+  assert.match(m![3], /text-transform:none/);
+  assert.match(m![3], /color:var\(--ink\)/);
+  assert.match(m![3], /border-left:2px solid var\(--c-warning\)/);
+  assert.match(m![3], /padding-left:4px/);
+  assert.match(m![3], /position:relative/);
+  // outside the label; the checkbox points at it; unchecked, not disabled
+  const cb = checkboxOf(r);
+  assert.equal(cb.match(/aria-describedby="([^"]+)"/)?.[1], m![1]);
+  assert.doesNotMatch(cb, /checked|disabled/);
+  for (const l of r.matchAll(/<label[^>]*>(.*?)<\/label>/gs)) assert.doesNotMatch(l[1], /NOT USED/);
+  // the ticked row next to it still counts; the NOT USED row doesn't
+  assert.match(html, /Create 1 condition</);
+});
+
+test("N.I.C. row: the not-in-contract note", () => {
+  const html = renderWith({ rows: [nu("CPT-3", "floor", "N.I.C.")] });
+  assert.match(rowOf(html, "CPT-3"), /title="The schedule marks this row N\.I\.C\. \(not in contract\)\. Select it to create a condition anyway\."/);
+});
+
+test("from description, then NOT USED: both describe the checkbox, in that order", () => {
+  const html = renderWith({ rows: [nu("HR-1", "wall_protection", "NOT USED", { category_source: "text" })] });
+  const r = rowOf(html, "HR-1");
+  const guess = r.match(/<span id="([^"]+)"[^>]*>from description<\/span>/)?.[1];
+  const notUsed = r.match(/<span id="([^"]+)"[^>]*>NOT USED<span/)?.[1];
+  assert.ok(guess && notUsed && guess !== notUsed);
+  assert.ok(r.indexOf(">from description<") < r.indexOf(">NOT USED<"));
+  assert.equal(checkboxOf(r).match(/aria-describedby="([^"]+)"/)?.[1], `${guess} ${notUsed}`);
+});
+
+test("a NOT USED CPT-2 before a real CPT-2: the real one is checked and counted; the NOT USED one is the duplicate", () => {
+  const html = renderWith({ rows: [nu("CPT-2", "floor", "NOT USED"), row("CPT-2", "floor", "heading")] });
+  const [first, second] = [...html.matchAll(/<label[^>]*><input type="checkbox"[^>]*>/g)].map((m) => m[0]).slice(1);
+  assert.doesNotMatch(first, /checked/);
+  assert.match(first, /disabled/);
+  assert.match(second, /checked/);
+  assert.match(html, /Create 1 condition</);
+  // the duplicate flag says how to fix it, and stays out of aria-describedby
+  assert.match(html, /<span title="Click the code to rename it\."[^>]*>duplicate<\/span>/);
+  // the locked row's hidden note: no "Select it" (it can't be selected)
+  assert.match(html, /<span style="[^"]*">\s?The schedule marks this row not used\.<\/span>/);
+  assert.doesNotMatch(html, /Select it to create a condition anyway/);
+});
+
+test("in-use flag: inside the label, never in aria-describedby; aria-describedby omitted when nothing describes the row", () => {
+  const html = renderWith({ rows: [row("CPT-1", "floor", "heading"), nu("CPT-2", "floor", "NOT USED")], existing: new Set(["CPT-2"]) });
+  const r = rowOf(html, "CPT-2");
+  const cb = checkboxOf(r);
+  const ids = cb.match(/aria-describedby="([^"]+)"/)![1].split(" ");
+  assert.equal(ids.length, 1);
+  assert.match(r, new RegExp(`<span id="${ids[0]}"[^>]*>NOT USED<span`));
+  assert.match(r.match(/<label[^>]*>(.*?)<\/label>/s)![1], />in use</);
+  assert.doesNotMatch(checkboxOf(rowOf(html, "CPT-1")), /aria-describedby/);
+});
+
+test("row layout: wraps; label flex 1 1 160px; descriptors pushed right; locked rows dim the label only", () => {
+  const html = renderWith({ rows: [row("CPT-1", "floor", "heading"), nu("CPT-2", "floor", "NOT USED"),
+    nu("HR-1", "wall_protection", "NOT USED", { category_source: "text" })], existing: new Set(["CPT-2"]) });
+  const locked = rowOf(html, "CPT-2");
+  const rowDiv = locked.match(/^<div style="([^"]*)"/)![1];
+  assert.match(rowDiv, /flex-wrap:wrap/);
+  assert.doesNotMatch(rowDiv, /opacity/);
+  const label = locked.match(/<label style="([^"]*)"/)![1];
+  assert.match(label, /flex:1 1 160px/);
+  assert.match(label, /min-width:0/);
+  assert.match(label, /opacity:0\.55/);
+  // the NOT USED label on a locked row is at full opacity
+  assert.doesNotMatch(locked.match(/<span id="[^"]+" title="[^"]*" style="([^"]*)">NOT USED/)![1], /opacity/);
+  assert.match(locked, /<\/label><span[^>]*margin-left:auto[^>]*>NOT USED/);
+  // a pickable row's label is at full opacity
+  assert.doesNotMatch(rowOf(html, "CPT-1").match(/<label style="([^"]*)"/)![1], /opacity/);
+  // two descriptors: one group pushed right, flex, gap as the row's
+  const two = rowOf(html, "HR-1");
+  assert.match(two, /<\/label><div style="margin-left:auto;display:flex;gap:10px[^"]*"><span[^>]*>from description<\/span><span[^>]*>NOT USED<span/);
+});
+
+test("group checkbox: a partly picked group is data-state=some and unchecked; all → checked; none → unchecked", () => {
+  const groupBox = (html: string, label: string) => {
+    const at = html.indexOf(`>${label}</span>`);
+    return html.slice(html.lastIndexOf("<input", at), html.indexOf(">", html.lastIndexOf("<input", at)) + 1);
+  };
+  const html = renderWith({ rows: [row("CPT-1", "floor", "heading"), nu("CPT-2", "floor", "NOT USED"),
+    row("RB-1", "base", "heading"), nu("ACT-9", "ceiling", "NOT USED")] });
+  const floor = groupBox(html, "Floor");
+  assert.match(floor, /data-state="some"/);
+  assert.doesNotMatch(floor, /checked/);
+  const base = groupBox(html, "Base");
+  assert.match(base, /data-state="all"/);
+  assert.match(base, /checked/);
+  const ceiling = groupBox(html, "Ceiling");
+  assert.match(ceiling, /data-state="none"/);
+  assert.doesNotMatch(ceiling, /checked|disabled/);
+});
+
+const BANNER_TAIL = "A four- or five-letter code with no number is read only when the header or a read row is above it, it fills two or more other columns, and a row with a numbered code, like CPT-1, comes after it — ";
+const bannerOf = (html: string) => html.match(/<div role="note" id="([^"]+)" style="([^"]*)">([^<]*)<\/div>/);
+const unesc = (s: string) => s.replace(/&#x27;/g, "'").replace(/&quot;/g, "\"").replace(/&amp;/g, "&");
+
+test("skipped notice: exact text one / several / repeated / > 8; a note the dialog is described by", () => {
+  const rs = [row("CPT-1", "floor", "heading")];
+  const cases: [string[], string][] = [
+    [["EPOX"], `1 code wasn't read: EPOX. ${BANNER_TAIL}if it's a finish, add it as a condition yourself.`],
+    [["EPOX", "SEAL"], `2 codes weren't read: EPOX, SEAL. ${BANNER_TAIL}if they're finishes, add them as conditions yourself.`],
+    [["EPOX", "EPOX"], `1 code wasn't read: EPOX (2 lines). ${BANNER_TAIL}if it's a finish, add it as a condition yourself.`],
+    [["AAAA", "BBBB", "CCCC", "DDDD", "EEEE", "FFFF", "GGGG", "HHHH", "IIII", "JJJJ"],
+      `10 codes weren't read: AAAA, BBBB, CCCC, DDDD, EEEE, FFFF, GGGG, HHHH, and 2 more. ${BANNER_TAIL}if they're finishes, add them as conditions yourself.`],
+  ];
+  for (const [skipped, text] of cases) {
+    const html = renderWith({ rows: rs, skipped });
+    const b = bannerOf(html);
+    assert.ok(b, `banner for ${skipped}`);
+    assert.equal(unesc(b![3]), text);
+    for (const s of ["font-size:var(--fs-s)", "color:var(--ink)", "border-left:3px solid var(--c-warning)", "padding-left:8px", "margin:8px 14px"]) assert.ok(b![2].includes(s), `${s} in ${b![2]}`);
+    assert.doesNotMatch(b![2], /background|text-transform/);
+    assert.match(html.match(/<div[^>]*role="dialog"[^>]*>/)![0], new RegExp(`aria-describedby="${b![1]}"`));
+  }
+  // none → no notice, no aria-describedby on the dialog, no scan-era sentence
+  const none = renderWith({ rows: rs });
+  assert.equal(bannerOf(none), null);
+  assert.doesNotMatch(none.match(/<div[^>]*role="dialog"[^>]*>/)![0], /aria-describedby/);
+  assert.doesNotMatch(none, /skipped \(couldn/);
+});
+
+test("zero rows: its own title, Close (autofocus) only — no Select all, Deselect all or Create", () => {
+  const html = renderWith({ rows: [], skipped: ["EPOX"] });
+  assert.match(html, />Import from schedule — no rows read</);
+  assert.doesNotMatch(html, /Select all|Deselect all|Create \d/);
+  assert.match(html, /<button autofocus=""[^>]*>Close<\/button>/);
+  assert.doesNotMatch(html, />Cancel</);
+  assert.ok(bannerOf(html));
+});
+
+// ── a key_rule row ranks below a row read today ──────
+// The dialog's rank puts a row only the newer rules read (key_rule) below a
+// row read the usual way, so the later plain CT-1 keeps the code — checked,
+// counted in Create N — and the earlier key_rule CT-1 shows duplicate.
+import { readScheduleSpans } from "../src/lib/scheduleRead.ts";
+import { build, M, MMC } from "./fixtures/reader483Fixtures.ts";
+
+const ctRows = (html: string) => {
+  const out: Record<string, string> = {};
+  for (const m of html.matchAll(/<label[^>]*>(<input type="checkbox"[^>]*>)(.*?)<\/label>/gs)) {
+    const desc = m[2].match(/<\/button><span[^>]*>([^<]*)/)?.[1];
+    if (m[2].includes(">CT-1</button>") && desc) out[desc] = `${/checked/.test(m[1]) ? "on" : "off"}|${/>duplicate</.test(m[2]) ? "duplicate" : ""}`;
+  }
+  return out;
+};
+
+test("a key_rule CT-1 before a plain CT-1: the plain one is checked and counted; the key_rule one is duplicate", () => {
+  const html = renderWith({ rows: [
+    { ...row("CT-1", "base", "heading"), description: "COVE BASE", key_rule: "extended" },
+    { ...row("CT-1", "floor", "heading"), description: "CERAMIC TILE" },
+  ] });
+  assert.deepEqual(ctRows(html), { "COVE BASE": "off|duplicate", "CERAMIC TILE": "on|" });
+  assert.match(html, /Create 1 condition</);
+});
+
+test("end to end: the reader's CT-1 COVE line above a floor CT-1 → the dialog keeps the floor row, flags the COVE row duplicate", () => {
+  const read = readScheduleSpans(build({ cols: MMC, items: [
+    M("CPT-1", "BROADLOOM CARPET", "VENDOR-A", "GREY 101"), M("CT-1 COVE", "CERAMIC TILE BASE", "VENDOR-F", "WHITE"),
+    M("CT-1", "CERAMIC TILE", "VENDOR-F", "WHITE"), M("PT-1", "PAINT", "VENDOR-E", "WHITE 601"),
+  ] }));
+  assert.equal(read.rows.length, 4);
+  const html = renderWith({ rows: read.rows });
+  const ct = ctRows(html);
+  assert.equal(Object.keys(ct).length, 2, JSON.stringify(ct));
+  const cove = Object.keys(ct).find((d) => d.includes("CERAMIC TILE BASE"))!;
+  const floor = Object.keys(ct).find((d) => d === "CERAMIC TILE")!;
+  assert.equal(ct[cove], "off|duplicate");
+  assert.equal(ct[floor], "on|");
+});

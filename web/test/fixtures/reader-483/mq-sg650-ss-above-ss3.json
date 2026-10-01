@@ -1,0 +1,162 @@
+{
+  "name": "mq-sg650-ss-above-ss3",
+  "kind": "marquee",
+  "note": "sheetgraphFinish.test.ts:650 — fuzz-found SS above SS-3",
+  "spans": [
+    {
+      "str": "MARK",
+      "x": 100,
+      "y": 0,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "MATERIAL",
+      "x": 243,
+      "y": 0,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "DESCRIPTION",
+      "x": 434,
+      "y": 0,
+      "w": 88,
+      "h": 17
+    },
+    {
+      "str": "CEILINGS",
+      "x": 100,
+      "y": 38,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "SS",
+      "x": 163.5,
+      "y": 76,
+      "w": 16,
+      "h": 17
+    },
+    {
+      "str": "CARPET Q1",
+      "x": 302.5,
+      "y": 76,
+      "w": 72,
+      "h": 17
+    },
+    {
+      "str": "SS-3",
+      "x": 155.5,
+      "y": 114,
+      "w": 32,
+      "h": 17
+    }
+  ],
+  "marquee": {
+    "readScheduleSpans": {
+      "rows": [
+        {
+          "finish_tag": "SS",
+          "section": "CEILINGS",
+          "category": "ceiling",
+          "category_source": "heading",
+          "description": "CARPET Q1",
+          "manufacturer": "",
+          "style": "",
+          "spec_color": "",
+          "size": "",
+          "remarks": "",
+          "suggested": false
+        },
+        {
+          "finish_tag": "SS-3",
+          "section": "CEILINGS",
+          "category": "ceiling",
+          "category_source": "heading",
+          "description": "",
+          "manufacturer": "",
+          "style": "",
+          "spec_color": "",
+          "size": "",
+          "remarks": "",
+          "suggested": false
+        }
+      ]
+    },
+    "parseSchedule": [
+      {
+        "finish_tag": "SS",
+        "section": "CEILINGS",
+        "category": "ceiling",
+        "category_source": "heading",
+        "description": "CARPET Q1",
+        "manufacturer": "",
+        "style": "",
+        "spec_color": "",
+        "size": "",
+        "remarks": "",
+        "suggested": false
+      },
+      {
+        "finish_tag": "SS-3",
+        "section": "CEILINGS",
+        "category": "ceiling",
+        "category_source": "heading",
+        "description": "",
+        "manufacturer": "",
+        "style": "",
+        "spec_color": "",
+        "size": "",
+        "remarks": "",
+        "suggested": false
+      }
+    ],
+    "finishRows": {
+      "otherFamily": false,
+      "rows": [
+        {
+          "key": "SS",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "SS",
+              "bbox": [
+                163.5,
+                76,
+                179.5,
+                93
+              ]
+            },
+            "MATERIAL": {
+              "text": "CARPET Q1",
+              "bbox": [
+                302.5,
+                76,
+                374.5,
+                93
+              ]
+            }
+          },
+          "section": "CEILINGS"
+        },
+        {
+          "key": "SS-3",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "SS-3",
+              "bbox": [
+                155.5,
+                114,
+                187.5,
+                131
+              ]
+            }
+          },
+          "section": "CEILINGS"
+        }
+      ]
+    }
+  }
+}

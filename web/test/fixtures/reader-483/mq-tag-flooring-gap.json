@@ -1,0 +1,290 @@
+{
+  "name": "mq-tag-flooring-gap",
+  "kind": "marquee",
+  "note": "TAG | MATERIAL | REMARKS: T-1, then FLOORING 4 pitches below T-1, then T-2, T-3",
+  "spans": [
+    {
+      "str": "TAG",
+      "x": 100,
+      "y": 0,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "MATERIAL",
+      "x": 220,
+      "y": 0,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "REMARKS",
+      "x": 760,
+      "y": 0,
+      "w": 56,
+      "h": 17
+    },
+    {
+      "str": "T-1",
+      "x": 100,
+      "y": 38,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "WALK-OFF MAT",
+      "x": 220,
+      "y": 38,
+      "w": 96,
+      "h": 17
+    },
+    {
+      "str": "RECESSED",
+      "x": 760,
+      "y": 38,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "FLOORING",
+      "x": 100,
+      "y": 190,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "T-2",
+      "x": 100,
+      "y": 228,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "CARPET TILE",
+      "x": 220,
+      "y": 228,
+      "w": 88,
+      "h": 17
+    },
+    {
+      "str": "ASHLAR",
+      "x": 760,
+      "y": 228,
+      "w": 48,
+      "h": 17
+    },
+    {
+      "str": "T-3",
+      "x": 100,
+      "y": 266,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "SHEET VINYL",
+      "x": 220,
+      "y": 266,
+      "w": 88,
+      "h": 17
+    },
+    {
+      "str": "HEAT WELDED",
+      "x": 760,
+      "y": 266,
+      "w": 88,
+      "h": 17
+    }
+  ],
+  "marquee": {
+    "readScheduleSpans": {
+      "rows": [
+        {
+          "finish_tag": "T-1",
+          "section": "",
+          "category": "unassigned",
+          "category_source": "none",
+          "description": "WALK-OFF MAT",
+          "manufacturer": "",
+          "style": "",
+          "spec_color": "",
+          "size": "",
+          "remarks": "RECESSED",
+          "suggested": true
+        },
+        {
+          "finish_tag": "T-2",
+          "section": "FLOORING",
+          "category": "floor",
+          "category_source": "heading",
+          "description": "CARPET TILE",
+          "manufacturer": "",
+          "style": "",
+          "spec_color": "",
+          "size": "",
+          "remarks": "ASHLAR",
+          "suggested": true
+        },
+        {
+          "finish_tag": "T-3",
+          "section": "FLOORING",
+          "category": "floor",
+          "category_source": "heading",
+          "description": "SHEET VINYL",
+          "manufacturer": "",
+          "style": "",
+          "spec_color": "",
+          "size": "",
+          "remarks": "HEAT WELDED",
+          "suggested": true
+        }
+      ]
+    },
+    "parseSchedule": [
+      {
+        "finish_tag": "T-1",
+        "section": "",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "WALK-OFF MAT",
+        "manufacturer": "",
+        "style": "",
+        "spec_color": "",
+        "size": "",
+        "remarks": "RECESSED",
+        "suggested": true
+      },
+      {
+        "finish_tag": "T-2",
+        "section": "FLOORING",
+        "category": "floor",
+        "category_source": "heading",
+        "description": "CARPET TILE",
+        "manufacturer": "",
+        "style": "",
+        "spec_color": "",
+        "size": "",
+        "remarks": "ASHLAR",
+        "suggested": true
+      },
+      {
+        "finish_tag": "T-3",
+        "section": "FLOORING",
+        "category": "floor",
+        "category_source": "heading",
+        "description": "SHEET VINYL",
+        "manufacturer": "",
+        "style": "",
+        "spec_color": "",
+        "size": "",
+        "remarks": "HEAT WELDED",
+        "suggested": true
+      }
+    ],
+    "finishRows": {
+      "otherFamily": false,
+      "rows": [
+        {
+          "key": "T-1",
+          "sheet": "fx",
+          "cells": {
+            "TAG": {
+              "text": "T-1",
+              "bbox": [
+                100,
+                38,
+                124,
+                55
+              ]
+            },
+            "MATERIAL": {
+              "text": "WALK-OFF MAT",
+              "bbox": [
+                220,
+                38,
+                316,
+                55
+              ]
+            },
+            "REMARKS": {
+              "text": "RECESSED",
+              "bbox": [
+                760,
+                38,
+                824,
+                55
+              ]
+            }
+          }
+        },
+        {
+          "key": "T-2",
+          "sheet": "fx",
+          "cells": {
+            "TAG": {
+              "text": "T-2",
+              "bbox": [
+                100,
+                228,
+                124,
+                245
+              ]
+            },
+            "MATERIAL": {
+              "text": "CARPET TILE",
+              "bbox": [
+                220,
+                228,
+                308,
+                245
+              ]
+            },
+            "REMARKS": {
+              "text": "ASHLAR",
+              "bbox": [
+                760,
+                228,
+                808,
+                245
+              ]
+            }
+          },
+          "section": "FLOORING"
+        },
+        {
+          "key": "T-3",
+          "sheet": "fx",
+          "cells": {
+            "TAG": {
+              "text": "T-3",
+              "bbox": [
+                100,
+                266,
+                124,
+                283
+              ]
+            },
+            "MATERIAL": {
+              "text": "SHEET VINYL",
+              "bbox": [
+                220,
+                266,
+                308,
+                283
+              ]
+            },
+            "REMARKS": {
+              "text": "HEAT WELDED",
+              "bbox": [
+                760,
+                266,
+                848,
+                283
+              ]
+            }
+          },
+          "section": "FLOORING"
+        }
+      ]
+    }
+  }
+}

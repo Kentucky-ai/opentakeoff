@@ -1,5 +1,6 @@
 import { oneClickEnabled, ONE_CLICK_GATE_MESSAGE } from "./gate.js";
 import { refusalWhy } from "./scheduleRoute.ts";
+import { skippedNote } from "./scheduleEdit.ts";
 // In-canvas takeoff agent — the TOOL REGISTRY. Pure-ish and Node-testable:
 // every tool is a name + JSON schema + an execute(ctx, args) that closes over
 // canvas-provided CAPABILITIES (the `ctx` contract below), so the registry
@@ -27,7 +28,7 @@ import { refusalWhy } from "./scheduleRoute.ts";
 //   sheetDims(sheet): { w, h } | null   // null = sheet not open on the canvas
 //   detectedLabel(sheet): string | ""   // drawn-scale note read off the page, if any
 //   readSheetText(sheet, region|null): Promise<[{ text, x, y }]>  (normalized coords)
-//   readSchedule(sheet, region): Promise<{ rows: ScheduleRow[] } | { rows: [], refused, title? }>
+//   readSchedule(sheet, region): Promise<{ rows: ScheduleRow[], skipped? } | { rows: [], refused, title? }>
 //                                       // scheduleRead.ts ScheduleRead
 //   viewRegion(sheet, region): Promise<{ image_data_url, width, height }>
 //   oneClick(sheet, x, y): Promise<{ verts_norm, area_sf, perimeter_lf, ... } | { error }>
@@ -130,7 +131,7 @@ export const AGENT_TOOL_DEFS = [
   },
   {
     name: "read_schedule",
-    description: "Read a finish/material schedule table inside a region of a sheet into structured rows — Import from schedule's reader, on the sheet's text layer only: Import from schedule also reads a raster box on the device, this tool doesn't, so a raster schedule (no text layer) returns no rows — use view_region to look at it. The key column can be CODE, TAG, MARK or SYMBOL; the other columns read are MATERIAL / DESCRIPTION / PRODUCT (joined into description), MANUFACTURER, STYLE, COLOR, SIZE and REMARKS (else COMMENTS). Each row: {finish_tag, section, category, category_source, description, manufacturer, style, spec_color, size, remarks, suggested}. category_source says where the category came from: \"heading\" (a printed section heading such as FLOORING), \"text\" (the row's own item words, e.g. RUBBER WALL BASE) or \"none\" (category \"unassigned\"). Draw the region around the whole table including its header row. A table that is another schedule family (door, equipment, signage …) returns no rows and a note saying why — but an untitled one that prints finish-like columns (MATERIAL, MANUFACTURER, COLOR) can still be read as a finish table; check the rows.",
+    description: "Read a finish/material schedule table inside a region of a sheet into structured rows — Import from schedule's reader, on the sheet's text layer only: Import from schedule also reads a raster box on the device, this tool doesn't, so a raster schedule (no text layer) returns no rows — use view_region to look at it. The key column can be CODE, TAG, MARK or SYMBOL; the other columns read are MATERIAL / DESCRIPTION / PRODUCT (joined into description), MANUFACTURER, STYLE, COLOR, SIZE and REMARKS (else COMMENTS). Each row: {finish_tag, section, category, category_source, description, manufacturer, style, spec_color, size, remarks, suggested}, plus unticked_reason, not_used_text and key_rule when set. suggested: false rows are ones the estimator would normally leave out; unticked_reason: \"not-used\" with not_used_text means the schedule marks the row not used or not in contract (the text as printed). key_rule: \"extended\" marks a row read by a newer, less-tested rule (a code with a word after it, a line split from the row above, or a four- or five-letter code) — check it with view_region before creating it. skipped (present only when there are some) lists four- or five-letter codes with no number (EPOX) that weren't read, one entry per line. A drawn region reads more forms than the sheet graph's whole-sheet index. category_source says where the category came from: \"heading\" (a printed section heading such as FLOORING), \"text\" (the row's own item words, e.g. RUBBER WALL BASE) or \"none\" (category \"unassigned\"). Draw the region around the whole table including its header row. A table that is another schedule family (door, equipment, signage …) returns no rows and a note saying why — but an untitled one that prints finish-like columns (MATERIAL, MANUFACTURER, COLOR) can still be read as a finish table; check the rows.",
     input_schema: {
       type: "object",
       properties: { sheet: { type: "string" }, region: REGION_SCHEMA },
@@ -256,6 +257,11 @@ export async function executeAgentTool(ctx, name, args) {
       case "read_schedule": {
         if (!ctx.sheetDims(args.sheet)) return { error: `Sheet ${args.sheet} isn't open on the canvas — pick one from list_sheets.` };
         const read = await ctx.readSchedule(args.sheet, clampRegion(args.region));
+        // skipped codes first: a box whose only codes were skipped has no rows
+        // but isn't "no table" — name the codes and how to take them by hand
+        if (read.skipped?.length) {
+          return read.rows.length ? { rows: read.rows, skipped: read.skipped } : { rows: [], skipped: read.skipped, note: skippedNote(read.skipped) };
+        }
         if (read.rows.length) return { rows: read.rows };
         // a table that IS there but is another schedule family: say which, so
         // the model looks elsewhere instead of re-drawing the same box

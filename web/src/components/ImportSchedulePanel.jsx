@@ -10,19 +10,28 @@
 // callouts against — so the tag is inline-editable here and the CORRECTED tag is
 // what flows through selection and onCreate (the parent gets edited rows, never
 // the originals). The dedup/normalization math lives in lib/scheduleEdit (tested).
-// Contract (unchanged; skipped is optional with a safe default):
+// Contract (skipped is optional with a safe default):
 //   <ImportSchedulePanel rows existing={Set<finish_tag>} palette startIndex
-//                        skipped? onCreate(rows[]) onClose />
+//                        skipped?={string[]} onCreate(rows[]) onClose />
+// skipped = codes the reader saw but didn't read (four- or five-letter codes
+// with no number, one entry per line); a notice above the rows names them.
+// rows can be empty when skipped codes were all the box held: the dialog then
+// says "no rows read" and offers Close only.
 //
 // Defaults do the work: ceilings/millwork arrive suggested:false (unchecked),
-// and codes already present as conditions arrive locked ("in use") so a second
-// import can't duplicate them. A category the reader GUESSED from the row's
+// rows the schedule marks NOT USED / N.I.C. arrive unchecked with a label
+// saying so, and codes already present as conditions arrive locked ("in use")
+// so a second import can't duplicate them. When rows share a code, the row
+// read the usual way claims it over a row only the newer rules read
+// (key_rule), and both over a NOT USED row; the others show "duplicate". A category the reader GUESSED from the row's
 // own words (category_source "text" — no printed heading names one, whether
 // there is no heading or it is a MISC / ACCESSORIES one) is flagged
 // "from description" so the estimator reviews it before Create.
 import React, { useId, useMemo, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
-import { closeOnEscape, evaluateTags, isCreatable, previewColors, setPicked as pickRows } from "../lib/scheduleEdit";
+import { closeOnEscape, evaluateTags, groupState, groupToggle, isCreatable, previewColors, setPicked as pickRows, skippedBanner } from "../lib/scheduleEdit";
+import { notUsedKind, notUsedNote } from "../lib/notUsed";
+import { S } from "../lib/ui.js";
 
 // category → display group, in the order an estimator reads a floor set.
 // Rows the schedule gives no section (and whose words name no item) come
@@ -38,11 +47,18 @@ const GROUPS = [
   { key: "other", label: "Other" },
 ];
 
-export default function ImportSchedulePanel({ rows = [], existing = new Set(), palette = [], startIndex = 0, skipped = 0, onCreate, onClose }) {
+export default function ImportSchedulePanel({ rows = [], existing = new Set(), palette = [], startIndex = 0, skipped = [], onCreate, onClose }) {
   const uid = useId(); // prefixes each row's flag id so aria-describedby is unique on the page
   // Give every row a STABLE key up front. Checkbox + color state is keyed on it,
   // not on the tag, so editing a tag never drops a row's selection.
   const keyed = useMemo(() => rows.map((row, i) => ({ key: `r${i}`, row })), [rows]);
+  // Which row claims a code several rows share, by the row the dialog holds
+  // (never its edited tag): read the usual way 2, read only by the newer rules
+  // (key_rule) 1, marked NOT USED by the schedule 0.
+  const rank = useMemo(() => {
+    const byKey = new Map(keyed.map(({ key, row }) => [key, row]));
+    return (key) => { const r = byKey.get(key); return r?.unticked_reason ? 0 : r?.key_rule ? 1 : 2; };
+  }, [keyed]);
 
   // Edited tags, keyed by row key. Seeded from the parsed tag; a row absent from
   // this map is still showing its original tag.
@@ -53,14 +69,14 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
   // source of truth for "can this row be created": unique, non-empty, and not
   // already a condition. Re-evaluated on every keystroke so dedup stays live.
   const tagState = useMemo(
-    () => evaluateTags(keyed.map(({ key, row }) => ({ key, tag: tags[key] !== undefined ? tags[key] : row.finish_tag })), existing),
-    [keyed, tags, existing],
+    () => evaluateTags(keyed.map(({ key, row }) => ({ key, tag: tags[key] !== undefined ? tags[key] : row.finish_tag })), existing, rank),
+    [keyed, tags, existing, rank],
   );
   const stateOf = (key) => tagState.get(key);
   const canPick = (key) => isCreatable(tagState.get(key));
 
   const [picked, setPicked] = useState(() => {
-    const init = evaluateTags(keyed.map(({ key, row }) => ({ key, tag: row.finish_tag })), existing);
+    const init = evaluateTags(keyed.map(({ key, row }) => ({ key, tag: row.finish_tag })), existing, rank);
     return new Set(keyed.filter(({ key, row }) => row.suggested && isCreatable(init.get(key))).map(({ key }) => key));
   });
   const [editing, setEditing] = useState(null); // { key, orig } | null
@@ -81,11 +97,9 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
   }, [keyed]);
 
   const toggle = (key) => setPicked((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
-  const toggleGroup = (grp) => {
-    const pickable = grp.items.filter(({ key }) => canPick(key)).map(({ key }) => key);
-    const allOn = pickable.length > 0 && pickable.every((k) => picked.has(k));
-    setPicked((s) => pickRows(s, pickable, canPick, !allOn));
-  };
+  // A group's checkbox: all picked → clear the group; some or none → pick
+  // every pickable row in it, NOT USED rows included.
+  const toggleGroup = (grp) => setPicked((s) => groupToggle(s, grp.items.map(({ key }) => key), canPick));
   // Select All / Deselect All: the same set math over every row. Locked rows
   // (in use / duplicate / needs a code) are never picked.
   const allKeys = keyed.map(({ key }) => key);
@@ -108,6 +122,9 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
   const titleId = `${uid}-title`;
+  const bannerId = `${uid}-skipped`;
+  const hasSkipped = skipped.length > 0;
+  const empty = rows.length === 0;
 
   // Rows to create: only picked + creatable, in row order (so the parent's
   // palette[startIndex + n] assignment lines up), carrying the NORMALIZED tag.
@@ -120,29 +137,31 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.32)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 40 }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={titleId}
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={hasSkipped ? bannerId : undefined}
         style={{ width: "min(560px, calc(100vw - 32px))", maxHeight: "min(82vh, 720px)", display: "flex", flexDirection: "column", background: "var(--paper-bright)", border: "1px solid var(--cobalt)", boxShadow: "var(--shadow-pop)", fontSize: 12.5 }}>
         {/* header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid var(--ink-faint)", background: "var(--cobalt)", color: "var(--accent-contrast)" }}>
-          <span id={titleId} style={{ fontWeight: 700 }}>Import from schedule — {rows.length} finish{rows.length === 1 ? "" : "es"} found</span>
+          <span id={titleId} style={{ fontWeight: 700 }}>{empty ? "Import from schedule — no rows read" : `Import from schedule — ${rows.length} finish${rows.length === 1 ? "" : "es"} found`}</span>
           <button onClick={onClose} title="Close" style={{ background: "transparent", border: "none", color: "var(--accent-contrast)", cursor: "pointer", display: "inline-flex" }}><Icon name="close" size={14} /></button>
         </div>
 
-        {skipped > 0 && (
-          <div style={{ padding: "5px 14px", background: "var(--paper)", borderBottom: "1px solid var(--ink-faint)", ...lbl, opacity: 0.85 }}>
-            {skipped} row{skipped === 1 ? "" : "s"} skipped (couldn't be read as a single finish)
+        {hasSkipped && (
+          <div role="note" id={bannerId} style={{ fontSize: "var(--fs-s)", color: "var(--ink)", borderLeft: "3px solid var(--c-warning)", paddingLeft: 8, margin: "8px 14px" }}>
+            {skippedBanner(skipped)}
           </div>
         )}
 
         {/* rows */}
         <div style={{ overflow: "auto", padding: "4px 0" }}>
           {grouped.map((grp) => {
-            const pickable = grp.items.filter(({ key }) => canPick(key)).map(({ key }) => key);
-            const allOn = pickable.length > 0 && pickable.every((k) => picked.has(k));
+            const keys = grp.items.map(({ key }) => key);
+            const anyPickable = keys.some(canPick);
+            const state = groupState(picked, keys, canPick);
             return (
               <div key={grp.key}>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 14px", cursor: pickable.length ? "pointer" : "default", background: "var(--paper)", borderTop: "1px solid var(--ink-faint)" }}>
-                  <input type="checkbox" checked={allOn} disabled={!pickable.length} onChange={() => toggleGroup(grp)} />
+                <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 14px", cursor: anyPickable ? "pointer" : "default", background: "var(--paper)", borderTop: "1px solid var(--ink-faint)" }}>
+                  <input type="checkbox" checked={state === "all"} data-state={state} disabled={!anyPickable} onChange={() => toggleGroup(grp)}
+                    ref={(el) => { if (el) el.indeterminate = state === "some"; }} />
                   <span style={lbl}>{grp.label}</span>
                   <span style={{ ...lbl, opacity: 0.6 }}>{grp.items.length}</span>
                 </label>
@@ -152,13 +171,30 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
                   const isEditing = editing?.key === key;
                   const on = picked.has(key) && ok;
                   const flag = flagFor[st?.status];
-                  // The guessed-category flag sits OUTSIDE the <label> (so it isn't
-                  // folded into the checkbox's name) and describes the checkbox.
+                  // The guessed-category flag and the NOT USED label sit OUTSIDE the
+                  // <label> (so they aren't folded into the checkbox's name) and
+                  // describe the checkbox. The in-use / duplicate flag is inside
+                  // the label, already part of the name.
                   const guessId = r.category_source === "text" ? `${uid}-${key}-guess` : undefined;
+                  const notUsedId = r.unticked_reason ? `${uid}-${key}-notused` : undefined;
+                  const note = notUsedId ? notUsedNote(notUsedKind(r.not_used_text || "") || "not-used", { pickable: ok, picked: on }) : "";
+                  const describedBy = [guessId, notUsedId].filter(Boolean).join(" ") || undefined;
+                  // Descriptors sit right of the label and drop to their own line
+                  // when the row is narrow. A lone one is the label's sibling; two
+                  // are grouped so they wrap together.
+                  const right = guessId && notUsedId ? {} : { marginLeft: "auto" };
+                  const guess = guessId && (
+                    <span id={guessId} title="Category guessed from the row's own words — no printed heading names one" style={{ ...lbl, color: "var(--c-warning)", flex: "0 0 auto", cursor: "help", ...right }}>from description</span>
+                  );
+                  const notUsed = notUsedId && (
+                    <span id={notUsedId} title={note.trimStart()} style={{ ...lbl, textTransform: "none", color: "var(--ink)", borderLeft: "2px solid var(--c-warning)", paddingLeft: 4, position: "relative", flex: "0 0 auto", cursor: "help", ...right }}>
+                      {r.not_used_text || "NOT USED"}<span style={S.visuallyHidden}>{note}</span>
+                    </span>
+                  );
                   return (
-                    <div key={key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 14px 5px 26px", opacity: ok ? 1 : 0.55 }}>
-                      <label style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, cursor: ok ? "pointer" : "default" }}>
-                        <input type="checkbox" checked={on} disabled={!ok} onChange={() => toggle(key)} aria-describedby={guessId} />
+                    <div key={key} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, padding: "5px 14px 5px 26px" }}>
+                      <label style={{ flex: "1 1 160px", minWidth: 0, display: "flex", alignItems: "center", gap: 10, cursor: ok ? "pointer" : "default", ...(ok ? {} : { opacity: 0.55 }) }}>
+                        <input type="checkbox" checked={on} disabled={!ok} onChange={() => toggle(key)} aria-describedby={describedBy} />
                         <span style={{ width: 12, height: 12, flex: "0 0 auto", background: colorByKey.get(key) || "var(--ink-faint)", border: "1px solid var(--ink-faint)" }} />
                         {isEditing ? (
                           <input
@@ -189,11 +225,9 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
                             <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>  ·  {[r.manufacturer, r.size].filter(Boolean).join(" · ")}</span>
                           )}
                         </span>
-                        {flag && <span style={{ ...lbl, opacity: 0.8 }}>{flag}</span>}
+                        {flag && <span title={st?.status === "duplicate" ? "Click the code to rename it." : undefined} style={{ ...lbl, opacity: 0.8 }}>{flag}</span>}
                       </label>
-                      {guessId && (
-                        <span id={guessId} title="Category guessed from the row's own words — no printed heading names one" style={{ ...lbl, color: "var(--c-warning)", flex: "0 0 auto", cursor: "help" }}>from description</span>
-                      )}
+                      {guess && notUsed ? <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>{guess}{notUsed}</div> : guess || notUsed}
                     </div>
                   );
                 })}
@@ -204,13 +238,20 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
 
         {/* footer */}
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 10, padding: "10px 14px", borderTop: "1px solid var(--ink-faint)" }}>
-          <button onClick={() => pickAll(true)} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>Select all</button>
-          <button onClick={() => pickAll(false)} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12, marginRight: "auto" }}>Deselect all</button>
-          <button onClick={onClose} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>Cancel</button>
-          <button onClick={create} disabled={!count}
-            style={{ padding: "8px 16px", border: "none", background: count ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: count ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase" }}>
-            Create {count} condition{count === 1 ? "" : "s"}
-          </button>
+          {empty ? (
+            // nothing to pick or create: the notice says what wasn't read
+            <button autoFocus onClick={onClose} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>Close</button>
+          ) : (
+            <>
+              <button onClick={() => pickAll(true)} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>Select all</button>
+              <button onClick={() => pickAll(false)} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12, marginRight: "auto" }}>Deselect all</button>
+              <button onClick={onClose} style={{ padding: "7px 12px", border: "1px solid var(--ink-faint)", background: "transparent", color: "var(--ink)", cursor: "pointer", fontSize: 12 }}>Cancel</button>
+              <button onClick={create} disabled={!count}
+                style={{ padding: "8px 16px", border: "none", background: count ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: count ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase" }}>
+                Create {count} condition{count === 1 ? "" : "s"}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

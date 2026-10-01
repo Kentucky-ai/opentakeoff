@@ -1,0 +1,488 @@
+{
+  "name": "both-spec-fans",
+  "kind": "both",
+  "note": "spec-section fan table: 23 34 00 HVAC FANS in the key column",
+  "spans": [
+    {
+      "str": "MARK",
+      "x": 100,
+      "y": 0,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "DESCRIPTION",
+      "x": 220,
+      "y": 0,
+      "w": 88,
+      "h": 17
+    },
+    {
+      "str": "MANUFACTURER",
+      "x": 520,
+      "y": 0,
+      "w": 96,
+      "h": 17
+    },
+    {
+      "str": "CFM",
+      "x": 1000,
+      "y": 0,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "23 34 00 HVAC FANS",
+      "x": 100,
+      "y": 38,
+      "w": 144,
+      "h": 17
+    },
+    {
+      "str": "EF-1",
+      "x": 100,
+      "y": 76,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "EXHAUST FAN",
+      "x": 220,
+      "y": 76,
+      "w": 88,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-P",
+      "x": 520,
+      "y": 76,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "250",
+      "x": 1000,
+      "y": 76,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "EF-2",
+      "x": 100,
+      "y": 114,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "EXHAUST FAN",
+      "x": 220,
+      "y": 114,
+      "w": 88,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-P",
+      "x": 520,
+      "y": 114,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "400",
+      "x": 1000,
+      "y": 114,
+      "w": 24,
+      "h": 17
+    }
+  ],
+  "whole": {
+    "extractTable": {
+      "kind": "finish",
+      "sheet": "fx",
+      "title": null,
+      "headers": [
+        "MARK",
+        "DESCRIPTION",
+        "MANUFACTURER"
+      ],
+      "rows": [
+        {
+          "key": "EF-1",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "EF-1",
+              "bbox": [
+                100,
+                76,
+                132,
+                93
+              ]
+            },
+            "DESCRIPTION": {
+              "text": "EXHAUST FAN",
+              "bbox": [
+                220,
+                76,
+                308,
+                93
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-P",
+              "bbox": [
+                520,
+                76,
+                584,
+                93
+              ]
+            }
+          }
+        },
+        {
+          "key": "EF-2",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "EF-2",
+              "bbox": [
+                100,
+                114,
+                132,
+                131
+              ]
+            },
+            "DESCRIPTION": {
+              "text": "EXHAUST FAN",
+              "bbox": [
+                220,
+                114,
+                308,
+                131
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-P",
+              "bbox": [
+                520,
+                114,
+                584,
+                131
+              ]
+            }
+          }
+        }
+      ],
+      "region": [
+        100,
+        0,
+        616,
+        131
+      ],
+      "anchors": [
+        {
+          "label": "MARK",
+          "x": 116
+        },
+        {
+          "label": "DESCRIPTION",
+          "x": 264
+        },
+        {
+          "label": "MANUFACTURER",
+          "x": 568
+        }
+      ]
+    },
+    "finishRows": {
+      "otherFamily": false,
+      "rows": [
+        {
+          "key": "EF-1",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "EF-1",
+              "bbox": [
+                100,
+                76,
+                132,
+                93
+              ]
+            },
+            "DESCRIPTION": {
+              "text": "EXHAUST FAN",
+              "bbox": [
+                220,
+                76,
+                308,
+                93
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-P",
+              "bbox": [
+                520,
+                76,
+                584,
+                93
+              ]
+            }
+          }
+        },
+        {
+          "key": "EF-2",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "EF-2",
+              "bbox": [
+                100,
+                114,
+                132,
+                131
+              ]
+            },
+            "DESCRIPTION": {
+              "text": "EXHAUST FAN",
+              "bbox": [
+                220,
+                114,
+                308,
+                131
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-P",
+              "bbox": [
+                520,
+                114,
+                584,
+                131
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "graphTables": [
+      {
+        "kind": "equipment",
+        "sheet": "fx",
+        "title": null,
+        "headers": [
+          "MARK",
+          "DESCRIPTION",
+          "MANUFACTURER",
+          "CFM"
+        ],
+        "rows": [
+          {
+            "key": "EF-1",
+            "sheet": "fx",
+            "cells": {
+              "MARK": {
+                "text": "EF-1",
+                "bbox": [
+                  100,
+                  76,
+                  132,
+                  93
+                ]
+              },
+              "DESCRIPTION": {
+                "text": "EXHAUST FAN",
+                "bbox": [
+                  220,
+                  76,
+                  308,
+                  93
+                ]
+              },
+              "MANUFACTURER": {
+                "text": "VENDOR-P",
+                "bbox": [
+                  520,
+                  76,
+                  584,
+                  93
+                ]
+              },
+              "CFM": {
+                "text": "250",
+                "bbox": [
+                  1000,
+                  76,
+                  1024,
+                  93
+                ]
+              }
+            }
+          },
+          {
+            "key": "EF-2",
+            "sheet": "fx",
+            "cells": {
+              "MARK": {
+                "text": "EF-2",
+                "bbox": [
+                  100,
+                  114,
+                  132,
+                  131
+                ]
+              },
+              "DESCRIPTION": {
+                "text": "EXHAUST FAN",
+                "bbox": [
+                  220,
+                  114,
+                  308,
+                  131
+                ]
+              },
+              "MANUFACTURER": {
+                "text": "VENDOR-P",
+                "bbox": [
+                  520,
+                  114,
+                  584,
+                  131
+                ]
+              },
+              "CFM": {
+                "text": "400",
+                "bbox": [
+                  1000,
+                  114,
+                  1024,
+                  131
+                ]
+              }
+            }
+          }
+        ],
+        "region": [
+          100,
+          0,
+          1024,
+          131
+        ],
+        "anchors": [
+          {
+            "label": "MARK",
+            "x": 116
+          },
+          {
+            "label": "DESCRIPTION",
+            "x": 264
+          },
+          {
+            "label": "MANUFACTURER",
+            "x": 568
+          },
+          {
+            "label": "CFM",
+            "x": 1012
+          }
+        ]
+      }
+    ],
+    "graphNotes": [
+      "fx: \"untitled finish table\" overlaps the equipment schedule \"untitled\" — indexed once, as equipment, not as a finish definition",
+      "2 numbered tag(s) on plan sheets are NOT counted as rooms — no name drawn with them and no schedule row answers for them; see unmatched_tags (they are listed, never dropped)"
+    ],
+    "resolve": {
+      "EF-1": {
+        "status": "unresolved",
+        "tag": "EF-1",
+        "room": null,
+        "reason": "no room-finish schedule found in the set"
+      },
+      "EF-2": {
+        "status": "unresolved",
+        "tag": "EF-2",
+        "room": null,
+        "reason": "no room-finish schedule found in the set"
+      }
+    }
+  },
+  "marquee": {
+    "readScheduleSpans": {
+      "rows": [],
+      "refused": "equipment"
+    },
+    "parseSchedule": [],
+    "finishRows": {
+      "otherFamily": false,
+      "rows": [
+        {
+          "key": "EF-1",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "EF-1",
+              "bbox": [
+                100,
+                76,
+                132,
+                93
+              ]
+            },
+            "DESCRIPTION": {
+              "text": "EXHAUST FAN",
+              "bbox": [
+                220,
+                76,
+                308,
+                93
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-P",
+              "bbox": [
+                520,
+                76,
+                584,
+                93
+              ]
+            }
+          }
+        },
+        {
+          "key": "EF-2",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "EF-2",
+              "bbox": [
+                100,
+                114,
+                132,
+                131
+              ]
+            },
+            "DESCRIPTION": {
+              "text": "EXHAUST FAN",
+              "bbox": [
+                220,
+                114,
+                308,
+                131
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-P",
+              "bbox": [
+                520,
+                114,
+                584,
+                131
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

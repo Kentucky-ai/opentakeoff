@@ -1,0 +1,157 @@
+{
+  "name": "multi-p3-page",
+  "page": 3,
+  "rect": {
+    "x0": -1000000000,
+    "y0": -1000000000,
+    "x1": 1000000000,
+    "y1": 1000000000
+  },
+  "readScheduleSpans": {
+    "rows": [
+      {
+        "finish_tag": "CPT-1",
+        "section": "",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "CARPET TILE",
+        "manufacturer": "EXAMPLECO",
+        "style": "",
+        "spec_color": "",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "LVT-1",
+        "section": "",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "LUXURY VINYL TILE",
+        "manufacturer": "EXAMPLECO",
+        "style": "",
+        "spec_color": "",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "RB-1",
+        "section": "",
+        "category": "base",
+        "category_source": "text",
+        "description": "RESILIENT BASE",
+        "manufacturer": "EXAMPLECO",
+        "style": "",
+        "spec_color": "",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      }
+    ]
+  },
+  "finishRows": {
+    "otherFamily": false,
+    "rows": [
+      {
+        "key": "CPT-1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "CPT-1",
+            "bbox": [
+              200,
+              544,
+              257.8,
+              564
+            ]
+          },
+          "MATERIAL": {
+            "text": "CARPET TILE",
+            "bbox": [
+              400,
+              544,
+              528.9,
+              564
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "EXAMPLECO",
+            "bbox": [
+              760,
+              544,
+              884.5,
+              564
+            ]
+          }
+        }
+      },
+      {
+        "key": "LVT-1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "LVT-1",
+            "bbox": [
+              200,
+              584,
+              254.5,
+              604
+            ]
+          },
+          "MATERIAL": {
+            "text": "LUXURY VINYL TILE",
+            "bbox": [
+              400,
+              584,
+              592.3,
+              604
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "EXAMPLECO",
+            "bbox": [
+              760,
+              584,
+              884.5,
+              604
+            ]
+          }
+        }
+      },
+      {
+        "key": "RB-1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "RB-1",
+            "bbox": [
+              200,
+              624,
+              245.6,
+              644
+            ]
+          },
+          "MATERIAL": {
+            "text": "RESILIENT BASE",
+            "bbox": [
+              400,
+              624,
+              562.3,
+              644
+            ]
+          },
+          "MANUFACTURER": {
+            "text": "EXAMPLECO",
+            "bbox": [
+              760,
+              624,
+              884.5,
+              644
+            ]
+          }
+        }
+      }
+    ]
+  }
+}
