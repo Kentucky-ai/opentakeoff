@@ -1295,9 +1295,10 @@ function bandDataRows(
   // there under a heading not read: every later row of that section loses
   // it. A row missing inside a group keeps its prefix, so it never resets;
   // a heading that IS read starts a new epoch and sets its own section. The
-  // pitch is the median of the no-line gaps in one epoch, from at least
-  // four of them. Run after the loop: keyed-ness and orphans are final only
-  // then.
+  // pitch is the lower median of the no-line gaps in one epoch, from at
+  // least four of them: in a short section the blank bands can be half the
+  // gaps ([p, p, B, B]), and the upper median would make B the pitch. Run
+  // after the loop: keyed-ness and orphans are final only then.
   if (finish && cfg.resetAtBlankBand) {
     const prefixOf = (k: string) => /^[A-Z]*/.exec(k)![0];
     const plain: number[] = [];   // indices i: out[i-1] → out[i] in one epoch, no line between
@@ -1307,7 +1308,7 @@ function bandDataRows(
     for (const i of plain) {
       const gaps = (byEpoch.get(outEpoch[i]) ?? []).slice().sort((a, b) => a - b);
       if (gaps.length < 4) continue;
-      const pitch = gaps[gaps.length >> 1];
+      const pitch = gaps[(gaps.length - 1) >> 1];
       if (outY[i] - outY[i - 1] <= 1.6 * pitch || prefixOf(out[i].key) === prefixOf(out[i - 1].key)) continue;
       for (let j = i; j < out.length && outEpoch[j] === outEpoch[i]; j++) delete out[j].section;
     }

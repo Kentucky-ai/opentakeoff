@@ -20,6 +20,11 @@
 // worse than the read without it on any of these. Then the 100 DPI copy with
 // section headings taken out pins the reset itself: a row never carries the
 // heading of the code group above it.
+//
+// The answer key is computed with the reader under test, so it is pinned
+// here too — every tag in print order with its printed section and dialog
+// group, the demo's values as mcp/test/scheduleImport.test.ts pins them — and
+// a change to the reader that moved the key cannot move the scores with it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -55,11 +60,25 @@ async function vectorKey(fx: Fixture): Promise<ScheduleRow[]> {
     const tc = await page.getTextContent();
     const r = readScheduleSpans(graphSpans(spansInRect(pageSpans(tc.items, vp.transform, fx.rs), fx.rect)));
     assert.ok(!("refused" in r), "the vector read of the box reads the table");
+    assert.deepEqual(r.rows.map((x) => [x.finish_tag, x.section, x.category]), KEY, "the answer key is the demo's pinned read");
     return r.rows;
   } finally {
     await doc.destroy();
   }
 }
+
+/** The vector read of the demo material schedule: [tag, section, category], in print order. */
+const KEY: Array<[string, string, string]> = [
+  ["CPT-1", "FLOORING", "floor"], ["CPT-2", "FLOORING", "floor"], ["VCT-1", "FLOORING", "floor"],
+  ["PT-1", "FLOORING", "floor"], ["PT-2", "FLOORING", "floor"], ["C", "FLOORING", "floor"],
+  ["RB-1", "BASE", "base"], ["CBT-1", "BASE", "base"], ["CT-3", "BASE", "base"],
+  ["P-1", "WALLS", "wall"], ["P-2", "WALLS", "wall"], ["P-3", "WALLS", "wall"], ["CT-1", "WALLS", "wall"],
+  ["CT-2", "WALLS", "wall"], ["CT-4", "WALLS", "wall"], ["SC-1", "WALLS", "wall"],
+  ["PLAM-1", "MILLWORK", "other"], ["PLAM-2", "MILLWORK", "other"], ["S-1", "MILLWORK", "other"], ["S-2", "MILLWORK", "other"],
+  ["ACT-1", "CEILINGS", "ceiling"], ["ACT-2", "CEILINGS", "ceiling"],
+  ["PR-1", "MISC", "unassigned"], ["TS-1", "MISC", "transition"], ["TS-2", "MISC", "transition"],
+  ["HR-1", "MISC", "wall_protection"], ["CR-1", "MISC", "wall_protection"], ["CG-1", "MISC", "wall_protection"],
+];
 
 interface Score { wrong: string[]; exact: number; section: number; group: number; wrongSection: string[] }
 function score(read: ScheduleRead, key: ScheduleRow[]): Score {

@@ -437,6 +437,18 @@ test("without the ocr option (the vector and MCP reads) a blank band never reset
   assert.ok(t.table.rows.every((r) => r.section === "FLOORING"));
 });
 
+test("ocr: two missed headings in a short section still reset (the pitch is the lower median)", () => {
+  // FLOORING is read; BASE and WALLS are not. The section's no-line gaps are
+  // exactly four — CPT-1→CPT-2 one pitch, CPT-2→RB-1 two, RB-1→P-1 two,
+  // P-1→P-2 one — the fewest the reset takes, so this table isolates which
+  // median is the pitch. The upper median of [1, 1, 2, 2] pitches is 2, and
+  // no band is wider than 1.6 × that; the lower median is 1.
+  const spans = buildBands([H("FLOORING"), ...FLOOR.slice(0, 2), "blank", BASE[0], "blank", ...WALLS.slice(0, 2)]);
+  const s = sectionsOf(readScheduleSpans(spans, { ocr: true }));
+  for (const k of ["CPT-1", "CPT-2"]) assert.equal(s[k], "FLOORING", k);
+  for (const k of ["RB-1", "P-1", "P-2"]) assert.equal(s[k], "", k);
+});
+
 test("ocr: a later printed heading still sets its own section after a reset", () => {
   const spans = buildBands([H("FLOORING"), ...FLOOR, "blank", ...BASE, H("WALLS"), ...WALLS]);
   const s = sectionsOf(readScheduleSpans(spans, { ocr: true }));
