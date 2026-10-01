@@ -893,7 +893,7 @@ Point AI settings at it—endpoint `http://localhost:8787`, API style **Anthropi
 - **Model**—a vision-capable model id.
 - **API key**—optional; local runtimes generally need none. Stored **in this browser's localStorage only**—anyone with access to this browser profile can read it, so use a key you can revoke. The endpoint must allow browser requests (CORS); local runtimes generally allow localhost.
 
-What's sent, and only when you run an AI feature: the sheet region in question and the question—to *your* endpoint. Never the whole plan file, file names, project names, or your takeoff. No telemetry either way. Deployers can bake team defaults with `VITE_AI_ENDPOINT` / `VITE_AI_MODEL` / `VITE_AI_PROVIDER`—but never `VITE_AI_KEY` on a public deploy; the build inlines it.
+What's sent, and only while an agent run you started is going: your goal, the prompts, and what the agent's tools return, to *your* endpoint. That includes sheet names (which include the PDF file name), each sheet's size and scale status, the text and schedule rows it reads, and images of the sheet regions it looks at (up to a whole sheet, at most 1,024 px a side). It also includes your conditions (finish tag, hatch, waste %) and the areas and perimeters it measures. This list isn't complete. Never the whole plan file. No telemetry either way. Deployers can bake team defaults with `VITE_AI_ENDPOINT` / `VITE_AI_MODEL` / `VITE_AI_PROVIDER`—but never `VITE_AI_KEY` on a public deploy; the build inlines it.
 
 ### MCP — for agent users
 
