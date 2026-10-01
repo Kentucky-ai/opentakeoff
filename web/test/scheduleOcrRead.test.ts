@@ -87,7 +87,7 @@ const RASTER_BOX: BoxText = { textRuns: 0, pageHasText: false };
 function harness(opts: {
   probe?: OcrProbe;
   result?: ScheduleRead;
-  rasterize?: () => Promise<unknown>;
+  rasterize?: (signal?: AbortSignal) => Promise<unknown>;
   recognize?: (raster: unknown, signal?: AbortSignal) => Promise<OcrWord[]>;
   isCurrent?: (step: string) => boolean;
   box?: BoxText;
@@ -102,6 +102,7 @@ function harness(opts: {
   const runs: unknown[] = [];
   const readCalls: GraphSpan[][] = [];
   const recognizeSignals: (AbortSignal | undefined)[] = [];
+  const rasterizeSignals: (AbortSignal | undefined)[] = [];
   let step = "start";
   const session: Pick<OcrSession, "run"> = {
     async run(task, o) {
@@ -113,7 +114,7 @@ function harness(opts: {
   };
   const p = readBoxOnDevice({
     session,
-    rasterize: async () => { log.push("rasterize"); const r = await (opts.rasterize ?? (async () => RASTER))(); step = "rasterized"; return r; },
+    rasterize: async (signal) => { log.push("rasterize"); rasterizeSignals.push(signal); const r = await (opts.rasterize ?? (async () => RASTER))(signal); step = "rasterized"; return r; },
     recognize: async (raster, signal) => {
       log.push("recognize");
       recognizeSignals.push(signal);
@@ -128,7 +129,7 @@ function harness(opts: {
     signal: ac.signal,
     box: opts.box ?? RASTER_BOX,
   });
-  return { c, host, ac, log, runs, readCalls, recognizeSignals, p };
+  return { c, host, ac, log, runs, readCalls, recognizeSignals, rasterizeSignals, p };
 }
 
 const CANCELLED = { kind: "cancelled" };
@@ -143,6 +144,7 @@ test("cached: no notice, onReading before the render, the words read as spans, r
   assert.deepEqual(h.log, ["onReading", "rasterize", "recognize", "read"]);
   assert.deepEqual(h.readCalls, [wordsToSpans(WORDS)]);
   assert.deepEqual(h.recognizeSignals, [h.ac.signal], "recognition gets the caller's signal");
+  assert.deepEqual(h.rasterizeSignals, [h.ac.signal], "so does the render, so Cancel stops it");
 });
 
 test("not cached: the notice first, nothing read until Download, then rows", async () => {

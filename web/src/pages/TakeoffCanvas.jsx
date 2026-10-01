@@ -840,10 +840,9 @@ export default function TakeoffCanvas() {
   }
   /** Cancel, Esc, a sheet switch, the gallery, guide, report or revisions,
    *  unmount: stop the read and let go at once, so nothing that can't be
-   *  stopped keeps the lock or the line. A render already started runs to its end (rasterize takes
-   *  no signal), so it can overlap the next read's render (two canvases, each
-   *  within MAX_CANVAS_AREA); its result is dropped. Recognitions never
-   *  overlap: the client keeps an aborted one running until the worker
+   *  stopped keeps the lock or the line. The render takes the read's signal,
+   *  so a render under way is cancelled and its canvas freed
+   *  (rasterizeRegion). Recognitions never overlap: the client keeps an aborted one running until the worker
    *  replies, and a read started right after queues behind it. Aborted while
    *  the notice waits, the session answers this read and closes the notice;
    *  during the download it stops the download, and the next box asks again. */
@@ -7272,7 +7271,7 @@ export default function TakeoffCanvas() {
       setOcrRead("starting");
       const result = await readBoxOnDevice({
         session: ocrSession,
-        rasterize: () => rasterizeRegion(pageObj, rs, rect),
+        rasterize: (signal) => rasterizeRegion(pageObj, rs, rect, { signal }),
         recognize: (raster, signal) => getOcrClient().recognize(raster, { signal }),
         read: (ocrSpans) => readScheduleSpans(ocrSpans, { ocr: true }),   // the OCR words' blank-band section reset
         isCurrent,

@@ -9,7 +9,8 @@
 //      session.ts: cached files start at once, else the download notice, and
 //      only its Download downloads);
 //   2. onReading() — the status line says "Reading" from here on;
-//   3. rasterize() renders the box; recognize() reads its words;
+//   3. rasterize() renders the box; recognize() reads its words. Both get
+//      the session's signal, so Cancel stops a render under way;
 //   4. read() is the sheet graph's finish reader (readScheduleSpans with
 //      { ocr: true } on the canvas), fed the words as spans (wordsToSpans),
 //      and routeOcrRead words the result.
@@ -18,8 +19,9 @@
 // to another sheet) stops. Inside the task that is a throw of the private
 // STALE sentinel, which the session reports as `failed` (or `aborted` once the
 // signal has fired); both come back here as "cancelled", never as a failure.
-// The render can't be stopped once started (rasterize takes no signal), so
-// the check after it is what keeps a stale render from being read.
+// The check after the render is what keeps a render that finished for a
+// sheet the canvas has left (isCurrent() false, the signal not aborted) from
+// being read.
 import type { OcrSession } from "./ocr/session.ts";
 import { wordsToSpans, type OcrWord } from "./ocr/types.ts";
 import type { GraphSpan } from "./sheetgraph.ts";
@@ -33,8 +35,8 @@ export type OcrReadResult = Exclude<ImportRoute, { kind: "ocr" }> | { kind: "can
 
 export interface BoxReadSteps<R> {
   session: Pick<OcrSession, "run">;
-  /** render the box for the engine */
-  rasterize: () => Promise<R>;
+  /** render the box for the engine; the signal cancels the render */
+  rasterize: (signal?: AbortSignal) => Promise<R>;
   /** read the render's words, in the sheet's image px */
   recognize: (raster: R, signal?: AbortSignal) => Promise<OcrWord[]>;
   /** the finish reader */
@@ -60,7 +62,7 @@ export async function readBoxOnDevice<R>(steps: BoxReadSteps<R>): Promise<OcrRea
   const r = await session.run(async (sig) => {
     check();
     onReading();
-    const raster = await rasterize();
+    const raster = await rasterize(sig);
     check();
     const words = await recognize(raster, sig);
     check();
