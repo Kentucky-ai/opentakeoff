@@ -1,12 +1,13 @@
-// What shapes an on-device OCR read (#469, #471): the options the worker
-// passes ppu-paddle-ocr's PaddleOcrService, and the read's DPI, raster cap and
-// tile overlap. A leaf with NO imports, so the OCR page cache (pageCache.ts,
-// which keys stored reads on these) never depends on a bundler shaking
-// workerCore.ts down to one constant. The values repeat their sources
-// (raster.ts OCR_DETECTION_PADDING, scheduleScan.ts SCAN_MAX_DIM,
-// rasterize.ts OCR_TARGET_DPI, seams.ts planTiles' overlap default and
-// SEAM_RULES_VERSION);
-// test/ocrPageCache.test.ts pins each copy to its source.
+// What shapes an on-device OCR read (#469, #471, #481): the options the
+// worker passes ppu-paddle-ocr's PaddleOcrService, the read's DPI, raster cap
+// and tile overlap, and the ink preprocessing (ink.ts) of the copy of each
+// tile that ppu's recognition reads. A leaf with NO imports, so the OCR page
+// cache (pageCache.ts, which keys stored reads on these) never depends on a
+// bundler shaking workerCore.ts down to one constant. The values repeat
+// their sources (raster.ts OCR_DETECTION_PADDING, scheduleScan.ts
+// SCAN_MAX_DIM, rasterize.ts OCR_TARGET_DPI, seams.ts planTiles' overlap
+// default and SEAM_RULES_VERSION); test/ocrPageCache.test.ts pins each copy
+// to its source.
 
 /** The longest raster side the engine is given (scheduleScan SCAN_MAX_DIM). */
 export const OCR_SCAN_MAX_DIM = 4096;
@@ -20,6 +21,13 @@ export const OCR_SEAM_RULES_VERSION = 2;
 /** The most tiles one read may take. A 42 × 30 in sheet takes 6; past this
  * a malformed or enormous page would hold the engine for hours. */
 export const OCR_MAX_TILES = 64;
+/** The ink preprocessing of a read: split, detection on the tile as
+ * rendered and recognition on a copy grayed by ink.ts inkToGray (Rec. 601
+ * luma into R, G and B for pixels with chroma ≥ 24, each channel ramped
+ * toward it from chroma 8, near-neutral pixels untouched). A page read saved
+ * under other preprocessing is a cache miss: reads from before #481 lack red
+ * ink. */
+export const OCR_INK = "split-luma601-c8-24";
 
 /** What the core passes ppu's PaddleOcrService besides the model buffers. */
 export interface EngineOptions {
