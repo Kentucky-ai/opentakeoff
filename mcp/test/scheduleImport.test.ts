@@ -156,3 +156,140 @@ test("multibuilding-set p3: the MATERIAL SCHEDULE reads 3 rows — RB-1 base by 
     ["RB-1", "base", "text", true, "RESILIENT BASE"],
   ]);
 });
+
+// ── #483 PR A: characterization goldens for the demo and tracked fixtures ───
+// Each marquee read (table box and page box) was captured from the base
+// reader by fixtures/capture-reader-483-demo.ts into fixtures/reader-483/ and
+// is never edited. PR A's reader changes must leave every one of these reads
+// identical: no row, field or refusal changes, no skipped list, no key_rule /
+// unticked_reason / not_used_text on any row, no new TableRow field.
+import { readFileSync, readdirSync } from "node:fs";
+import { DEMO_READS, DEMO_GOLDEN_DIR_URL, liveDemoRead, roundTrip } from "./fixtures/reader483Reads.ts";
+
+const goldenDir483 = fileURLToPath(DEMO_GOLDEN_DIR_URL);
+const own483 = (o: object, f: string) => Object.prototype.hasOwnProperty.call(o, f);
+
+test("#483 goldens: every demo / fixture read has its golden, and nothing else is there", () => {
+  assert.deepEqual(readdirSync(goldenDir483).sort(), DEMO_READS.map((d) => `${d.name}.json`).sort());
+});
+
+for (const d of DEMO_READS) {
+  test(`#483 golden ${d.name}: the marquee read and readFinishTable(marquee) rows are unchanged`, async () => {
+    const g = JSON.parse(readFileSync(`${goldenDir483}${d.name}.json`, "utf8"));
+    assert.deepEqual([g.page, g.rect], [d.page, d.rect]);
+    const live = await liveDemoRead(d);
+    assert.deepStrictEqual(roundTrip(live.readScheduleSpans), g.readScheduleSpans);
+    assert.deepStrictEqual(roundTrip(live.finishRows), g.finishRows);
+    assert.ok(!own483(live.readScheduleSpans, "skipped"), "no skipped");
+    for (const r of live.readScheduleSpans.rows) for (const f of ["key_rule", "unticked_reason", "not_used_text"]) assert.ok(!own483(r, f), `${r.finish_tag} has no ${f}`);
+    for (const r of live.finishRows?.rows ?? []) {
+      for (const f of ["qualifier", "notUsed", "notUsedText", "keyRule"]) assert.ok(!own483(r, f), `${r.key} has no ${f}`);
+      for (const f of Object.keys(r)) assert.ok(!f.startsWith("_"), `${r.key} has no internal ${f}`);
+    }
+  });
+}
+
+// ── #483 PR A: the demo table with words printed after its codes ────
+// The demo's own table box, with " SAT" / " TYP" appended to key cells as
+// printed text (each span widened by the words it gains): a code with a word
+// after it reads as the code, the word leading the description; a letters-only
+// key with a word after it ("C TYP") keys nothing.
+async function demoTableSpans() {
+  const d = DEMO_READS.find((x) => x.name === "demo-p2-table")!;
+  const ph = await (await openPdf(d.file)).page(d.page);
+  return graphSpans(spansInRect(pageSpans(ph.textContent.items, ph.viewport.transform, RENDER_SCALE), d.rect));
+}
+function withTail(spans: ReturnType<typeof graphSpans>, keys: (k: string) => boolean, tail: string) {
+  return spans.map((s) => {
+    if (!keys(s.str.trim())) return s;
+    const per = s.str.length ? (s.w || 0) / s.str.length : 0;
+    return { ...s, str: s.str + tail, w: (s.w || 0) + per * tail.length };
+  });
+}
+
+test("#483 demo + \" SAT\" on P-1..P-3 → 28 rows, P-1..P-3 keyed on the code with SAT leading the description", async () => {
+  const base = await demoTableSpans();
+  const before = readScheduleSpans(base);
+  const r = readScheduleSpans(withTail(base, (k) => /^P-[123]$/.test(k), " SAT"));
+  assert.equal(r.rows.length, 28);
+  assert.deepEqual(r.rows.map((x) => x.finish_tag), before.rows.map((x) => x.finish_tag));
+  for (const k of ["P-1", "P-2", "P-3"]) {
+    const hit: ScheduleRow = r.rows.find((x) => x.finish_tag === k)!;
+    const was: ScheduleRow = before.rows.find((x) => x.finish_tag === k)!;
+    assert.equal(hit.description, was.description ? `SAT — ${was.description}` : "SAT", k);
+    assert.ok(!own483(hit, "key_rule"), `${k}: a pass-1 row re-keyed in place`);
+  }
+});
+
+test("#483 demo + \" TYP\" on every coded key → 28 rows with TYP leading each; on C too → 27 (C TYP keys nothing)", async () => {
+  const base = await demoTableSpans();
+  const before = readScheduleSpans(base);
+  const coded = new Set(before.rows.map((x) => x.finish_tag).filter((k) => /\d/.test(k)));
+  const r = readScheduleSpans(withTail(base, (k) => coded.has(k), " TYP"));
+  assert.deepEqual(r.rows.map((x) => x.finish_tag), before.rows.map((x) => x.finish_tag));
+  for (const row of r.rows.filter((x) => coded.has(x.finish_tag))) assert.ok(row.description.startsWith("TYP"), row.finish_tag);
+  const withC = readScheduleSpans(withTail(base, (k) => coded.has(k) || k === "C", " TYP"));
+  assert.equal(withC.rows.length, 27);
+  assert.ok(!withC.rows.some((x) => x.finish_tag === "C" || x.finish_tag === "CTYP"));
+});
+
+// ── #483 PR A: the tracked fixture reader483-set.pdf ────────────────────────
+// scripts/make-reader483-fixture.mjs — invented codes and vendors. Each sheet
+// is a CODE | MATERIAL | MANUFACTURER | COLOR table; the page box reads the
+// same as a box around the table.
+const R483 = fileURLToPath(new URL("./fixtures/reader483-set.pdf", import.meta.url));
+/** key → [section, category, category_source, ticked, description, key_rule, unticked_reason, not_used_text]. */
+const full483 = (rows: ScheduleRow[]) => rows.map((r) => [r.finish_tag, r.section, r.category, r.category_source, r.suggested, r.description, r.key_rule ?? null, r.unticked_reason ?? null, r.not_used_text ?? null]);
+const boxes483: Record<number, Rect> = {
+  1: { x0: 80, y0: 60, x1: 1150, y1: 940 },
+  2: { x0: 80, y0: 60, x1: 1150, y1: 330 },
+  3: { x0: 80, y0: 60, x1: 1150, y1: 370 },
+};
+async function reads483(n: number): Promise<ScheduleRead[]> {
+  const ph = await page(R483, n);
+  return [readRect(ph, boxes483[n]), readRect(ph, SHEET)];
+}
+
+test("reader483-set p1: NOT USED rows, codes with a word after them, a filled EPOX row and a skipped SEAL line", async () => {
+  for (const r of await reads483(1)) {
+    assert.deepEqual(full483(rowsOf(r)), [
+      ["CPT-1", "FLOORING", "floor", "heading", true, "BROADLOOM CARPET", null, null, null],
+      // NOT USED in the key cell: the code alone, unticked, the words kept
+      ["CPT-2", "FLOORING", "floor", "heading", false, "MODULAR CARPET TILE", "extended", "not-used", "NOT USED"],
+      // two rows would share CPT-3, so both keep the codes they read as before
+      ["CPT-3SAT", "FLOORING", "floor", "heading", true, "CARPET TILE", null, null, null],
+      ["CPT-3EGG", "FLOORING", "floor", "heading", true, "CARPET TILE", null, null, null],
+      // a four-letter code that fills the other columns, between coded rows
+      ["EPOX", "FLOORING", "floor", "heading", true, "EPOXY FLOORING", "extended", null, null],
+      ["LVT-1", "FLOORING", "floor", "heading", true, "LUXURY VINYL TILE", null, null, null],
+      // SEAL (one cell) is not a row and its text is not in LVT-1's
+      ["VCT-1", "FLOORING", "floor", "heading", true, "VINYL COMPOSITION TILE", null, null, null],
+      ["FTB-01", "BASE", "base", "heading", true, "CUT (C) — CERAMIC TILE BASE", "extended", null, null],
+      ["FTB-02", "BASE", "base", "heading", true, "COVE — CERAMIC TILE BASE", "extended", null, null],
+      ["RB-1", "BASE", "base", "heading", true, "RUBBER BASE", null, null, null],
+      // a lone P-1 SAT: no other row reads P-1, so the code splits off
+      ["P-1", "WALLS", "wall", "heading", true, "SAT — PAINT", null, null, null],
+      ["P-2", "WALLS", "wall", "heading", true, "PAINT", null, null, null],
+      ["TS-1", "MISC", "transition", "text", false, "METAL TRANSITION STRIP", "extended", "not-used", "NOT USED"],
+      ["CG-1", "MISC", "wall_protection", "text", true, "CORNER GUARDS", null, null, null],
+    ]);
+    assert.deepEqual("skipped" in r ? r.skipped : undefined, ["SEAL"]);
+    assert.ok(!r.rows.some((x) => /SEALER/.test(x.description)), "SEAL's cell is in no row");
+  }
+});
+
+test("reader483-set p2: a table whose codes are all four-letter reads no rows and reports all three", async () => {
+  for (const r of await reads483(2)) assert.deepStrictEqual(r, { rows: [], skipped: ["EPOX", "CONC", "SEAL"] });
+});
+
+test("reader483-set p3: the short table CPT-1, RB-1, EPOX, PT-1 reads each code's own line", async () => {
+  for (const r of await reads483(3)) {
+    assert.deepEqual(full483(rowsOf(r)), [
+      ["CPT-1", "", "unassigned", "none", true, "BROADLOOM CARPET", null, null, null],
+      ["RB-1", "", "base", "text", true, "RUBBER BASE", null, null, null],
+      ["EPOX", "", "unassigned", "none", true, "EPOXY FLOORING", "extended", null, null],
+      ["PT-1", "", "unassigned", "none", true, "PAINT", null, null, null],
+    ]);
+    assert.ok(!("skipped" in r), "nothing skipped");
+  }
+});

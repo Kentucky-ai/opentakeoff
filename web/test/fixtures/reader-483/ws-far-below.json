@@ -1,0 +1,1805 @@
+{
+  "name": "ws-far-below",
+  "kind": "whole",
+  "note": "B12 STORAGE, EF-1 ABOVE, WHERE | SHOWN | ON PLANS, stray P-1 + GWB-2 PAINTED far below the table",
+  "spans": [
+    {
+      "str": "CODE",
+      "x": 100,
+      "y": 0,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "MATERIAL",
+      "x": 220,
+      "y": 0,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "MANUFACTURER",
+      "x": 520,
+      "y": 0,
+      "w": 96,
+      "h": 17
+    },
+    {
+      "str": "STYLE",
+      "x": 760,
+      "y": 0,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "COLOR",
+      "x": 1000,
+      "y": 0,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "SIZE",
+      "x": 1240,
+      "y": 0,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "REMARKS",
+      "x": 1400,
+      "y": 0,
+      "w": 56,
+      "h": 17
+    },
+    {
+      "str": "CPT-1",
+      "x": 100,
+      "y": 38,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "BROADLOOM CARPET",
+      "x": 220,
+      "y": 38,
+      "w": 128,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-A",
+      "x": 520,
+      "y": 38,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "LOOP 20",
+      "x": 760,
+      "y": 38,
+      "w": 56,
+      "h": 17
+    },
+    {
+      "str": "GREY 101",
+      "x": 1000,
+      "y": 38,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "CPT-2",
+      "x": 100,
+      "y": 76,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "MODULAR CARPET TILE",
+      "x": 220,
+      "y": 76,
+      "w": 152,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-A",
+      "x": 520,
+      "y": 76,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "GRID 24",
+      "x": 760,
+      "y": 76,
+      "w": 56,
+      "h": 17
+    },
+    {
+      "str": "BLUE 202",
+      "x": 1000,
+      "y": 76,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "LVT-1",
+      "x": 100,
+      "y": 114,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "LUXURY VINYL TILE",
+      "x": 220,
+      "y": 114,
+      "w": 136,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-B",
+      "x": 520,
+      "y": 114,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "PLANK 6",
+      "x": 760,
+      "y": 114,
+      "w": 56,
+      "h": 17
+    },
+    {
+      "str": "OAK 303",
+      "x": 1000,
+      "y": 114,
+      "w": 56,
+      "h": 17
+    },
+    {
+      "str": "6\" x 36\"",
+      "x": 1240,
+      "y": 114,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "ADHESIVE: VENDOR-K",
+      "x": 1400,
+      "y": 114,
+      "w": 144,
+      "h": 17
+    },
+    {
+      "str": "VCT-1",
+      "x": 100,
+      "y": 152,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "VINYL COMPOSITION TILE",
+      "x": 220,
+      "y": 152,
+      "w": 176,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-C",
+      "x": 520,
+      "y": 152,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "STANDARD",
+      "x": 760,
+      "y": 152,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "WHITE 404",
+      "x": 1000,
+      "y": 152,
+      "w": 72,
+      "h": 17
+    },
+    {
+      "str": "12\" x 12\"",
+      "x": 1240,
+      "y": 152,
+      "w": 72,
+      "h": 17
+    },
+    {
+      "str": "ADHESIVE: VENDOR-K",
+      "x": 1400,
+      "y": 152,
+      "w": 144,
+      "h": 17
+    },
+    {
+      "str": "SC-1",
+      "x": 100,
+      "y": 190,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "SEALED CONCRETE",
+      "x": 220,
+      "y": 190,
+      "w": 120,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-D",
+      "x": 520,
+      "y": 190,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "CLEAR COAT",
+      "x": 760,
+      "y": 190,
+      "w": 80,
+      "h": 17
+    },
+    {
+      "str": "CLEAR",
+      "x": 1000,
+      "y": 190,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "RB-1",
+      "x": 100,
+      "y": 228,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "RUBBER WALL BASE",
+      "x": 220,
+      "y": 228,
+      "w": 128,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-B",
+      "x": 520,
+      "y": 228,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "COVE",
+      "x": 760,
+      "y": 228,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "BLACK 505",
+      "x": 1000,
+      "y": 228,
+      "w": 72,
+      "h": 17
+    },
+    {
+      "str": "4\"",
+      "x": 1240,
+      "y": 228,
+      "w": 16,
+      "h": 17
+    },
+    {
+      "str": "RB-2",
+      "x": 100,
+      "y": 266,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "RESILIENT BASE",
+      "x": 220,
+      "y": 266,
+      "w": 112,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-B",
+      "x": 520,
+      "y": 266,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "STRAIGHT",
+      "x": 760,
+      "y": 266,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "GREY 506",
+      "x": 1000,
+      "y": 266,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "6\"",
+      "x": 1240,
+      "y": 266,
+      "w": 16,
+      "h": 17
+    },
+    {
+      "str": "WHERE",
+      "x": 100,
+      "y": 342,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "SHOWN",
+      "x": 220,
+      "y": 342,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "ON PLANS",
+      "x": 520,
+      "y": 342,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "EF-1 ABOVE",
+      "x": 100,
+      "y": 418,
+      "w": 80,
+      "h": 17
+    },
+    {
+      "str": "B12 STORAGE",
+      "x": 100,
+      "y": 1666,
+      "w": 88,
+      "h": 17
+    },
+    {
+      "str": "EF-1 ABOVE",
+      "x": 100,
+      "y": 1704,
+      "w": 80,
+      "h": 17
+    },
+    {
+      "str": "P-1",
+      "x": 100,
+      "y": 1818,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "GWB-2 PAINTED",
+      "x": 100,
+      "y": 1856,
+      "w": 104,
+      "h": 17
+    }
+  ],
+  "whole": {
+    "extractTable": {
+      "kind": "finish",
+      "sheet": "fx",
+      "title": null,
+      "headers": [
+        "CODE",
+        "MATERIAL",
+        "MANUFACTURER",
+        "STYLE",
+        "COLOR",
+        "SIZE",
+        "REMARKS"
+      ],
+      "rows": [
+        {
+          "key": "CPT-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "CPT-1",
+              "bbox": [
+                100,
+                38,
+                140,
+                55
+              ]
+            },
+            "MATERIAL": {
+              "text": "BROADLOOM CARPET",
+              "bbox": [
+                220,
+                38,
+                348,
+                55
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-A",
+              "bbox": [
+                520,
+                38,
+                584,
+                55
+              ]
+            },
+            "STYLE": {
+              "text": "LOOP 20",
+              "bbox": [
+                760,
+                38,
+                816,
+                55
+              ]
+            },
+            "COLOR": {
+              "text": "GREY 101",
+              "bbox": [
+                1000,
+                38,
+                1064,
+                55
+              ]
+            }
+          }
+        },
+        {
+          "key": "CPT-2",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "CPT-2",
+              "bbox": [
+                100,
+                76,
+                140,
+                93
+              ]
+            },
+            "MATERIAL": {
+              "text": "MODULAR CARPET TILE",
+              "bbox": [
+                220,
+                76,
+                372,
+                93
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-A",
+              "bbox": [
+                520,
+                76,
+                584,
+                93
+              ]
+            },
+            "STYLE": {
+              "text": "GRID 24",
+              "bbox": [
+                760,
+                76,
+                816,
+                93
+              ]
+            },
+            "COLOR": {
+              "text": "BLUE 202",
+              "bbox": [
+                1000,
+                76,
+                1064,
+                93
+              ]
+            }
+          }
+        },
+        {
+          "key": "LVT-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "LVT-1",
+              "bbox": [
+                100,
+                114,
+                140,
+                131
+              ]
+            },
+            "MATERIAL": {
+              "text": "LUXURY VINYL TILE",
+              "bbox": [
+                220,
+                114,
+                356,
+                131
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-B",
+              "bbox": [
+                520,
+                114,
+                584,
+                131
+              ]
+            },
+            "STYLE": {
+              "text": "PLANK 6",
+              "bbox": [
+                760,
+                114,
+                816,
+                131
+              ]
+            },
+            "COLOR": {
+              "text": "OAK 303",
+              "bbox": [
+                1000,
+                114,
+                1056,
+                131
+              ]
+            },
+            "SIZE": {
+              "text": "6\" x 36\"",
+              "bbox": [
+                1240,
+                114,
+                1304,
+                131
+              ]
+            },
+            "REMARKS": {
+              "text": "ADHESIVE: VENDOR-K",
+              "bbox": [
+                1400,
+                114,
+                1544,
+                131
+              ]
+            }
+          }
+        },
+        {
+          "key": "VCT-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "VCT-1",
+              "bbox": [
+                100,
+                152,
+                140,
+                169
+              ]
+            },
+            "MATERIAL": {
+              "text": "VINYL COMPOSITION TILE",
+              "bbox": [
+                220,
+                152,
+                396,
+                169
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-C",
+              "bbox": [
+                520,
+                152,
+                584,
+                169
+              ]
+            },
+            "STYLE": {
+              "text": "STANDARD",
+              "bbox": [
+                760,
+                152,
+                824,
+                169
+              ]
+            },
+            "COLOR": {
+              "text": "WHITE 404",
+              "bbox": [
+                1000,
+                152,
+                1072,
+                169
+              ]
+            },
+            "SIZE": {
+              "text": "12\" x 12\"",
+              "bbox": [
+                1240,
+                152,
+                1312,
+                169
+              ]
+            },
+            "REMARKS": {
+              "text": "ADHESIVE: VENDOR-K",
+              "bbox": [
+                1400,
+                152,
+                1544,
+                169
+              ]
+            }
+          }
+        },
+        {
+          "key": "SC-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "SC-1",
+              "bbox": [
+                100,
+                190,
+                132,
+                207
+              ]
+            },
+            "MATERIAL": {
+              "text": "SEALED CONCRETE",
+              "bbox": [
+                220,
+                190,
+                340,
+                207
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-D",
+              "bbox": [
+                520,
+                190,
+                584,
+                207
+              ]
+            },
+            "STYLE": {
+              "text": "CLEAR COAT",
+              "bbox": [
+                760,
+                190,
+                840,
+                207
+              ]
+            },
+            "COLOR": {
+              "text": "CLEAR",
+              "bbox": [
+                1000,
+                190,
+                1040,
+                207
+              ]
+            }
+          }
+        },
+        {
+          "key": "RB-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "RB-1",
+              "bbox": [
+                100,
+                228,
+                132,
+                245
+              ]
+            },
+            "MATERIAL": {
+              "text": "RUBBER WALL BASE",
+              "bbox": [
+                220,
+                228,
+                348,
+                245
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-B",
+              "bbox": [
+                520,
+                228,
+                584,
+                245
+              ]
+            },
+            "STYLE": {
+              "text": "COVE",
+              "bbox": [
+                760,
+                228,
+                792,
+                245
+              ]
+            },
+            "COLOR": {
+              "text": "BLACK 505",
+              "bbox": [
+                1000,
+                228,
+                1072,
+                245
+              ]
+            },
+            "SIZE": {
+              "text": "4\"",
+              "bbox": [
+                1240,
+                228,
+                1256,
+                245
+              ]
+            }
+          }
+        },
+        {
+          "key": "RB-2",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "RB-2",
+              "bbox": [
+                100,
+                266,
+                132,
+                283
+              ]
+            },
+            "MATERIAL": {
+              "text": "RESILIENT BASE",
+              "bbox": [
+                220,
+                266,
+                332,
+                283
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-B",
+              "bbox": [
+                520,
+                266,
+                584,
+                283
+              ]
+            },
+            "STYLE": {
+              "text": "STRAIGHT",
+              "bbox": [
+                760,
+                266,
+                824,
+                283
+              ]
+            },
+            "COLOR": {
+              "text": "GREY 506",
+              "bbox": [
+                1000,
+                266,
+                1064,
+                283
+              ]
+            },
+            "SIZE": {
+              "text": "6\"",
+              "bbox": [
+                1240,
+                266,
+                1256,
+                283
+              ]
+            }
+          }
+        }
+      ],
+      "region": [
+        100,
+        0,
+        1544,
+        1835
+      ],
+      "anchors": [
+        {
+          "label": "CODE",
+          "x": 116
+        },
+        {
+          "label": "MATERIAL",
+          "x": 252
+        },
+        {
+          "label": "MANUFACTURER",
+          "x": 568
+        },
+        {
+          "label": "STYLE",
+          "x": 780
+        },
+        {
+          "label": "COLOR",
+          "x": 1020
+        },
+        {
+          "label": "SIZE",
+          "x": 1256
+        },
+        {
+          "label": "REMARKS",
+          "x": 1428
+        }
+      ]
+    },
+    "finishRows": {
+      "otherFamily": false,
+      "rows": [
+        {
+          "key": "CPT-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "CPT-1",
+              "bbox": [
+                100,
+                38,
+                140,
+                55
+              ]
+            },
+            "MATERIAL": {
+              "text": "BROADLOOM CARPET",
+              "bbox": [
+                220,
+                38,
+                348,
+                55
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-A",
+              "bbox": [
+                520,
+                38,
+                584,
+                55
+              ]
+            },
+            "STYLE": {
+              "text": "LOOP 20",
+              "bbox": [
+                760,
+                38,
+                816,
+                55
+              ]
+            },
+            "COLOR": {
+              "text": "GREY 101",
+              "bbox": [
+                1000,
+                38,
+                1064,
+                55
+              ]
+            }
+          }
+        },
+        {
+          "key": "CPT-2",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "CPT-2",
+              "bbox": [
+                100,
+                76,
+                140,
+                93
+              ]
+            },
+            "MATERIAL": {
+              "text": "MODULAR CARPET TILE",
+              "bbox": [
+                220,
+                76,
+                372,
+                93
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-A",
+              "bbox": [
+                520,
+                76,
+                584,
+                93
+              ]
+            },
+            "STYLE": {
+              "text": "GRID 24",
+              "bbox": [
+                760,
+                76,
+                816,
+                93
+              ]
+            },
+            "COLOR": {
+              "text": "BLUE 202",
+              "bbox": [
+                1000,
+                76,
+                1064,
+                93
+              ]
+            }
+          }
+        },
+        {
+          "key": "LVT-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "LVT-1",
+              "bbox": [
+                100,
+                114,
+                140,
+                131
+              ]
+            },
+            "MATERIAL": {
+              "text": "LUXURY VINYL TILE",
+              "bbox": [
+                220,
+                114,
+                356,
+                131
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-B",
+              "bbox": [
+                520,
+                114,
+                584,
+                131
+              ]
+            },
+            "STYLE": {
+              "text": "PLANK 6",
+              "bbox": [
+                760,
+                114,
+                816,
+                131
+              ]
+            },
+            "COLOR": {
+              "text": "OAK 303",
+              "bbox": [
+                1000,
+                114,
+                1056,
+                131
+              ]
+            },
+            "SIZE": {
+              "text": "6\" x 36\"",
+              "bbox": [
+                1240,
+                114,
+                1304,
+                131
+              ]
+            },
+            "REMARKS": {
+              "text": "ADHESIVE: VENDOR-K",
+              "bbox": [
+                1400,
+                114,
+                1544,
+                131
+              ]
+            }
+          }
+        },
+        {
+          "key": "VCT-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "VCT-1",
+              "bbox": [
+                100,
+                152,
+                140,
+                169
+              ]
+            },
+            "MATERIAL": {
+              "text": "VINYL COMPOSITION TILE",
+              "bbox": [
+                220,
+                152,
+                396,
+                169
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-C",
+              "bbox": [
+                520,
+                152,
+                584,
+                169
+              ]
+            },
+            "STYLE": {
+              "text": "STANDARD",
+              "bbox": [
+                760,
+                152,
+                824,
+                169
+              ]
+            },
+            "COLOR": {
+              "text": "WHITE 404",
+              "bbox": [
+                1000,
+                152,
+                1072,
+                169
+              ]
+            },
+            "SIZE": {
+              "text": "12\" x 12\"",
+              "bbox": [
+                1240,
+                152,
+                1312,
+                169
+              ]
+            },
+            "REMARKS": {
+              "text": "ADHESIVE: VENDOR-K",
+              "bbox": [
+                1400,
+                152,
+                1544,
+                169
+              ]
+            }
+          }
+        },
+        {
+          "key": "SC-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "SC-1",
+              "bbox": [
+                100,
+                190,
+                132,
+                207
+              ]
+            },
+            "MATERIAL": {
+              "text": "SEALED CONCRETE",
+              "bbox": [
+                220,
+                190,
+                340,
+                207
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-D",
+              "bbox": [
+                520,
+                190,
+                584,
+                207
+              ]
+            },
+            "STYLE": {
+              "text": "CLEAR COAT",
+              "bbox": [
+                760,
+                190,
+                840,
+                207
+              ]
+            },
+            "COLOR": {
+              "text": "CLEAR",
+              "bbox": [
+                1000,
+                190,
+                1040,
+                207
+              ]
+            }
+          }
+        },
+        {
+          "key": "RB-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "RB-1",
+              "bbox": [
+                100,
+                228,
+                132,
+                245
+              ]
+            },
+            "MATERIAL": {
+              "text": "RUBBER WALL BASE",
+              "bbox": [
+                220,
+                228,
+                348,
+                245
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-B",
+              "bbox": [
+                520,
+                228,
+                584,
+                245
+              ]
+            },
+            "STYLE": {
+              "text": "COVE",
+              "bbox": [
+                760,
+                228,
+                792,
+                245
+              ]
+            },
+            "COLOR": {
+              "text": "BLACK 505",
+              "bbox": [
+                1000,
+                228,
+                1072,
+                245
+              ]
+            },
+            "SIZE": {
+              "text": "4\"",
+              "bbox": [
+                1240,
+                228,
+                1256,
+                245
+              ]
+            }
+          }
+        },
+        {
+          "key": "RB-2",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "RB-2",
+              "bbox": [
+                100,
+                266,
+                132,
+                283
+              ]
+            },
+            "MATERIAL": {
+              "text": "RESILIENT BASE",
+              "bbox": [
+                220,
+                266,
+                332,
+                283
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-B",
+              "bbox": [
+                520,
+                266,
+                584,
+                283
+              ]
+            },
+            "STYLE": {
+              "text": "STRAIGHT",
+              "bbox": [
+                760,
+                266,
+                824,
+                283
+              ]
+            },
+            "COLOR": {
+              "text": "GREY 506",
+              "bbox": [
+                1000,
+                266,
+                1064,
+                283
+              ]
+            },
+            "SIZE": {
+              "text": "6\"",
+              "bbox": [
+                1240,
+                266,
+                1256,
+                283
+              ]
+            }
+          }
+        },
+        {
+          "key": "P-1",
+          "sheet": "fx",
+          "cells": {
+            "CODE": {
+              "text": "P-1",
+              "bbox": [
+                100,
+                1818,
+                124,
+                1835
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "graphTables": [
+      {
+        "kind": "finish",
+        "sheet": "fx",
+        "title": null,
+        "headers": [
+          "CODE",
+          "MATERIAL",
+          "MANUFACTURER",
+          "STYLE",
+          "COLOR",
+          "SIZE",
+          "REMARKS"
+        ],
+        "rows": [
+          {
+            "key": "CPT-1",
+            "sheet": "fx",
+            "cells": {
+              "CODE": {
+                "text": "CPT-1",
+                "bbox": [
+                  100,
+                  38,
+                  140,
+                  55
+                ]
+              },
+              "MATERIAL": {
+                "text": "BROADLOOM CARPET",
+                "bbox": [
+                  220,
+                  38,
+                  348,
+                  55
+                ]
+              },
+              "MANUFACTURER": {
+                "text": "VENDOR-A",
+                "bbox": [
+                  520,
+                  38,
+                  584,
+                  55
+                ]
+              },
+              "STYLE": {
+                "text": "LOOP 20",
+                "bbox": [
+                  760,
+                  38,
+                  816,
+                  55
+                ]
+              },
+              "COLOR": {
+                "text": "GREY 101",
+                "bbox": [
+                  1000,
+                  38,
+                  1064,
+                  55
+                ]
+              }
+            }
+          },
+          {
+            "key": "CPT-2",
+            "sheet": "fx",
+            "cells": {
+              "CODE": {
+                "text": "CPT-2",
+                "bbox": [
+                  100,
+                  76,
+                  140,
+                  93
+                ]
+              },
+              "MATERIAL": {
+                "text": "MODULAR CARPET TILE",
+                "bbox": [
+                  220,
+                  76,
+                  372,
+                  93
+                ]
+              },
+              "MANUFACTURER": {
+                "text": "VENDOR-A",
+                "bbox": [
+                  520,
+                  76,
+                  584,
+                  93
+                ]
+              },
+              "STYLE": {
+                "text": "GRID 24",
+                "bbox": [
+                  760,
+                  76,
+                  816,
+                  93
+                ]
+              },
+              "COLOR": {
+                "text": "BLUE 202",
+                "bbox": [
+                  1000,
+                  76,
+                  1064,
+                  93
+                ]
+              }
+            }
+          },
+          {
+            "key": "LVT-1",
+            "sheet": "fx",
+            "cells": {
+              "CODE": {
+                "text": "LVT-1",
+                "bbox": [
+                  100,
+                  114,
+                  140,
+                  131
+                ]
+              },
+              "MATERIAL": {
+                "text": "LUXURY VINYL TILE",
+                "bbox": [
+                  220,
+                  114,
+                  356,
+                  131
+                ]
+              },
+              "MANUFACTURER": {
+                "text": "VENDOR-B",
+                "bbox": [
+                  520,
+                  114,
+                  584,
+                  131
+                ]
+              },
+              "STYLE": {
+                "text": "PLANK 6",
+                "bbox": [
+                  760,
+                  114,
+                  816,
+                  131
+                ]
+              },
+              "COLOR": {
+                "text": "OAK 303",
+                "bbox": [
+                  1000,
+                  114,
+                  1056,
+                  131
+                ]
+              },
+              "SIZE": {
+                "text": "6\" x 36\"",
+                "bbox": [
+                  1240,
+                  114,
+                  1304,
+                  131
+                ]
+              },
+              "REMARKS": {
+                "text": "ADHESIVE: VENDOR-K",
+                "bbox": [
+                  1400,
+                  114,
+                  1544,
+                  131
+                ]
+              }
+            }
+          },
+          {
+            "key": "VCT-1",
+            "sheet": "fx",
+            "cells": {
+              "CODE": {
+                "text": "VCT-1",
+                "bbox": [
+                  100,
+                  152,
+                  140,
+                  169
+                ]
+              },
+              "MATERIAL": {
+                "text": "VINYL COMPOSITION TILE",
+                "bbox": [
+                  220,
+                  152,
+                  396,
+                  169
+                ]
+              },
+              "MANUFACTURER": {
+                "text": "VENDOR-C",
+                "bbox": [
+                  520,
+                  152,
+                  584,
+                  169
+                ]
+              },
+              "STYLE": {
+                "text": "STANDARD",
+                "bbox": [
+                  760,
+                  152,
+                  824,
+                  169
+                ]
+              },
+              "COLOR": {
+                "text": "WHITE 404",
+                "bbox": [
+                  1000,
+                  152,
+                  1072,
+                  169
+                ]
+              },
+              "SIZE": {
+                "text": "12\" x 12\"",
+                "bbox": [
+                  1240,
+                  152,
+                  1312,
+                  169
+                ]
+              },
+              "REMARKS": {
+                "text": "ADHESIVE: VENDOR-K",
+                "bbox": [
+                  1400,
+                  152,
+                  1544,
+                  169
+                ]
+              }
+            }
+          },
+          {
+            "key": "SC-1",
+            "sheet": "fx",
+            "cells": {
+              "CODE": {
+                "text": "SC-1",
+                "bbox": [
+                  100,
+                  190,
+                  132,
+                  207
+                ]
+              },
+              "MATERIAL": {
+                "text": "SEALED CONCRETE",
+                "bbox": [
+                  220,
+                  190,
+                  340,
+                  207
+                ]
+              },
+              "MANUFACTURER": {
+                "text": "VENDOR-D",
+                "bbox": [
+                  520,
+                  190,
+                  584,
+                  207
+                ]
+              },
+              "STYLE": {
+                "text": "CLEAR COAT",
+                "bbox": [
+                  760,
+                  190,
+                  840,
+                  207
+                ]
+              },
+              "COLOR": {
+                "text": "CLEAR",
+                "bbox": [
+                  1000,
+                  190,
+                  1040,
+                  207
+                ]
+              }
+            }
+          },
+          {
+            "key": "RB-1",
+            "sheet": "fx",
+            "cells": {
+              "CODE": {
+                "text": "RB-1",
+                "bbox": [
+                  100,
+                  228,
+                  132,
+                  245
+                ]
+              },
+              "MATERIAL": {
+                "text": "RUBBER WALL BASE",
+                "bbox": [
+                  220,
+                  228,
+                  348,
+                  245
+                ]
+              },
+              "MANUFACTURER": {
+                "text": "VENDOR-B",
+                "bbox": [
+                  520,
+                  228,
+                  584,
+                  245
+                ]
+              },
+              "STYLE": {
+                "text": "COVE",
+                "bbox": [
+                  760,
+                  228,
+                  792,
+                  245
+                ]
+              },
+              "COLOR": {
+                "text": "BLACK 505",
+                "bbox": [
+                  1000,
+                  228,
+                  1072,
+                  245
+                ]
+              },
+              "SIZE": {
+                "text": "4\"",
+                "bbox": [
+                  1240,
+                  228,
+                  1256,
+                  245
+                ]
+              }
+            }
+          },
+          {
+            "key": "RB-2",
+            "sheet": "fx",
+            "cells": {
+              "CODE": {
+                "text": "RB-2",
+                "bbox": [
+                  100,
+                  266,
+                  132,
+                  283
+                ]
+              },
+              "MATERIAL": {
+                "text": "RESILIENT BASE",
+                "bbox": [
+                  220,
+                  266,
+                  332,
+                  283
+                ]
+              },
+              "MANUFACTURER": {
+                "text": "VENDOR-B",
+                "bbox": [
+                  520,
+                  266,
+                  584,
+                  283
+                ]
+              },
+              "STYLE": {
+                "text": "STRAIGHT",
+                "bbox": [
+                  760,
+                  266,
+                  824,
+                  283
+                ]
+              },
+              "COLOR": {
+                "text": "GREY 506",
+                "bbox": [
+                  1000,
+                  266,
+                  1064,
+                  283
+                ]
+              },
+              "SIZE": {
+                "text": "6\"",
+                "bbox": [
+                  1240,
+                  266,
+                  1256,
+                  283
+                ]
+              }
+            }
+          }
+        ],
+        "region": [
+          100,
+          0,
+          1544,
+          1835
+        ],
+        "anchors": [
+          {
+            "label": "CODE",
+            "x": 116
+          },
+          {
+            "label": "MATERIAL",
+            "x": 252
+          },
+          {
+            "label": "MANUFACTURER",
+            "x": 568
+          },
+          {
+            "label": "STYLE",
+            "x": 780
+          },
+          {
+            "label": "COLOR",
+            "x": 1020
+          },
+          {
+            "label": "SIZE",
+            "x": 1256
+          },
+          {
+            "label": "REMARKS",
+            "x": 1428
+          }
+        ]
+      }
+    ],
+    "graphNotes": [],
+    "resolve": {
+      "CPT-1": {
+        "status": "unresolved",
+        "tag": "CPT-1",
+        "room": null,
+        "reason": "no room-finish schedule found in the set"
+      },
+      "CPT-2": {
+        "status": "unresolved",
+        "tag": "CPT-2",
+        "room": null,
+        "reason": "no room-finish schedule found in the set"
+      },
+      "LVT-1": {
+        "status": "unresolved",
+        "tag": "LVT-1",
+        "room": null,
+        "reason": "no room-finish schedule found in the set"
+      },
+      "VCT-1": {
+        "status": "unresolved",
+        "tag": "VCT-1",
+        "room": null,
+        "reason": "no room-finish schedule found in the set"
+      },
+      "SC-1": {
+        "status": "unresolved",
+        "tag": "SC-1",
+        "room": null,
+        "reason": "no room-finish schedule found in the set"
+      },
+      "RB-1": {
+        "status": "unresolved",
+        "tag": "RB-1",
+        "room": null,
+        "reason": "no room-finish schedule found in the set"
+      },
+      "RB-2": {
+        "status": "unresolved",
+        "tag": "RB-2",
+        "room": null,
+        "reason": "no room-finish schedule found in the set"
+      }
+    }
+  }
+}

@@ -268,3 +268,39 @@ test("held keys: only text-like inputs count as text entry", () => {
 test("held keys: other keys are not this guard's", () => {
   for (const key of ["a", "Escape", "Tab", "Delete", "1"]) assert.equal(heldKeyWouldPress(key, el("button", {}, body)), false, key);
 });
+
+// ── #483: skipped codes ──────────────────────────────────────────────────────
+// A read can carry skipped codes (four- or five-letter codes with no number the
+// reader saw but didn't read). Rows plus skipped open the dialog with both; a
+// box whose only codes were skipped ({ rows: [], skipped }) still opens the
+// dialog (zero rows, the skipped notice) — never the on-device reader or a
+// hint, however few text runs it held. No skipped → no skipped key.
+test("rows with no skipped codes: no skipped key", () => {
+  assert.deepEqual(routeScheduleRead({ rows: [row] }, { textRuns: 12, pageHasText: true }), { kind: "rows", rows: [row] });
+  assert.deepEqual(routeScheduleRead({ rows: [row], skipped: [] }, { textRuns: 12, pageHasText: true }), { kind: "rows", rows: [row] });
+  assert.deepEqual(routeOcrRead({ rows: [row] }), { kind: "rows", rows: [row] });
+});
+
+test("rows plus skipped codes → rows and skipped", () => {
+  assert.deepEqual(routeScheduleRead({ rows: [row], skipped: ["EPOX"] }, { textRuns: 12, pageHasText: true }), { kind: "rows", rows: [row], skipped: ["EPOX"] });
+  assert.deepEqual(routeOcrRead({ rows: [row], skipped: ["EPOX"] }), { kind: "rows", rows: [row], skipped: ["EPOX"] });
+});
+
+test("{ rows: [], skipped } → the dialog with zero rows, at any run count (never OCR, never a hint)", () => {
+  for (const textRuns of [0, 1, 8, 9, 40]) {
+    for (const pageHasText of [true, false]) {
+      assert.deepEqual(routeScheduleRead({ rows: [], skipped: ["EPOX", "SEAL"] }, { textRuns, pageHasText }),
+        { kind: "rows", rows: [], skipped: ["EPOX", "SEAL"] }, `runs=${textRuns}`);
+    }
+  }
+  assert.deepEqual(routeOcrRead({ rows: [], skipped: ["EPOX"] }), { kind: "rows", rows: [], skipped: ["EPOX"] });
+});
+
+test("refusals and no-table route as before alongside the skipped check", () => {
+  assert.deepEqual(routeScheduleRead({ rows: [], refused: "title", title: "DOOR SCHEDULE" }, { textRuns: 3, pageHasText: true }),
+    { kind: "message", text: refusalMessage("title", "DOOR SCHEDULE") });
+  assert.deepEqual(routeScheduleRead(NO_TABLE, { textRuns: 3, pageHasText: true }), { kind: "ocr" });
+  assert.deepEqual(routeScheduleRead(NO_TABLE, { textRuns: 30, pageHasText: true }), { kind: "message", text: NO_SCHEDULE_HINT });
+  assert.deepEqual(routeOcrRead({ rows: [], refused: "title", title: "DOOR SCHEDULE" }), { kind: "message", text: refusalMessage("title", "DOOR SCHEDULE") });
+  assert.deepEqual(routeOcrRead(NO_TABLE), { kind: "message", text: OCR_NO_ROWS_MESSAGE });
+});

@@ -1,0 +1,462 @@
+{
+  "name": "both-spec-signage",
+  "kind": "both",
+  "note": "spec-section signage table: 10 14 00 SIGNAGE in the key column",
+  "spans": [
+    {
+      "str": "MARK",
+      "x": 100,
+      "y": 0,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "DESCRIPTION",
+      "x": 220,
+      "y": 0,
+      "w": 88,
+      "h": 17
+    },
+    {
+      "str": "MANUFACTURER",
+      "x": 520,
+      "y": 0,
+      "w": 96,
+      "h": 17
+    },
+    {
+      "str": "MESSAGE",
+      "x": 1000,
+      "y": 0,
+      "w": 56,
+      "h": 17
+    },
+    {
+      "str": "10 14 00 SIGNAGE",
+      "x": 100,
+      "y": 38,
+      "w": 128,
+      "h": 17
+    },
+    {
+      "str": "S-1",
+      "x": 100,
+      "y": 76,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "ROOM SIGN",
+      "x": 220,
+      "y": 76,
+      "w": 72,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-W",
+      "x": 520,
+      "y": 76,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "OFFICE",
+      "x": 1000,
+      "y": 76,
+      "w": 48,
+      "h": 17
+    },
+    {
+      "str": "S-2",
+      "x": 100,
+      "y": 114,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "ROOM SIGN",
+      "x": 220,
+      "y": 114,
+      "w": 72,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-W",
+      "x": 520,
+      "y": 114,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "STORAGE",
+      "x": 1000,
+      "y": 114,
+      "w": 56,
+      "h": 17
+    }
+  ],
+  "whole": {
+    "extractTable": {
+      "kind": "finish",
+      "sheet": "fx",
+      "title": null,
+      "headers": [
+        "MARK",
+        "DESCRIPTION",
+        "MANUFACTURER"
+      ],
+      "rows": [
+        {
+          "key": "S-1",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "S-1",
+              "bbox": [
+                100,
+                76,
+                124,
+                93
+              ]
+            },
+            "DESCRIPTION": {
+              "text": "ROOM SIGN",
+              "bbox": [
+                220,
+                76,
+                292,
+                93
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-W",
+              "bbox": [
+                520,
+                76,
+                584,
+                93
+              ]
+            }
+          }
+        },
+        {
+          "key": "S-2",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "S-2",
+              "bbox": [
+                100,
+                114,
+                124,
+                131
+              ]
+            },
+            "DESCRIPTION": {
+              "text": "ROOM SIGN",
+              "bbox": [
+                220,
+                114,
+                292,
+                131
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-W",
+              "bbox": [
+                520,
+                114,
+                584,
+                131
+              ]
+            }
+          }
+        }
+      ],
+      "region": [
+        100,
+        0,
+        616,
+        131
+      ],
+      "anchors": [
+        {
+          "label": "MARK",
+          "x": 116
+        },
+        {
+          "label": "DESCRIPTION",
+          "x": 264
+        },
+        {
+          "label": "MANUFACTURER",
+          "x": 568
+        }
+      ]
+    },
+    "finishRows": {
+      "otherFamily": false,
+      "rows": [
+        {
+          "key": "S-1",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "S-1",
+              "bbox": [
+                100,
+                76,
+                124,
+                93
+              ]
+            },
+            "DESCRIPTION": {
+              "text": "ROOM SIGN",
+              "bbox": [
+                220,
+                76,
+                292,
+                93
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-W",
+              "bbox": [
+                520,
+                76,
+                584,
+                93
+              ]
+            }
+          }
+        },
+        {
+          "key": "S-2",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "S-2",
+              "bbox": [
+                100,
+                114,
+                124,
+                131
+              ]
+            },
+            "DESCRIPTION": {
+              "text": "ROOM SIGN",
+              "bbox": [
+                220,
+                114,
+                292,
+                131
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-W",
+              "bbox": [
+                520,
+                114,
+                584,
+                131
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "graphTables": [
+      {
+        "kind": "finish",
+        "sheet": "fx",
+        "title": null,
+        "headers": [
+          "MARK",
+          "DESCRIPTION",
+          "MANUFACTURER"
+        ],
+        "rows": [
+          {
+            "key": "S-1",
+            "sheet": "fx",
+            "cells": {
+              "MARK": {
+                "text": "S-1",
+                "bbox": [
+                  100,
+                  76,
+                  124,
+                  93
+                ]
+              },
+              "DESCRIPTION": {
+                "text": "ROOM SIGN",
+                "bbox": [
+                  220,
+                  76,
+                  292,
+                  93
+                ]
+              },
+              "MANUFACTURER": {
+                "text": "VENDOR-W",
+                "bbox": [
+                  520,
+                  76,
+                  584,
+                  93
+                ]
+              }
+            }
+          },
+          {
+            "key": "S-2",
+            "sheet": "fx",
+            "cells": {
+              "MARK": {
+                "text": "S-2",
+                "bbox": [
+                  100,
+                  114,
+                  124,
+                  131
+                ]
+              },
+              "DESCRIPTION": {
+                "text": "ROOM SIGN",
+                "bbox": [
+                  220,
+                  114,
+                  292,
+                  131
+                ]
+              },
+              "MANUFACTURER": {
+                "text": "VENDOR-W",
+                "bbox": [
+                  520,
+                  114,
+                  584,
+                  131
+                ]
+              }
+            }
+          }
+        ],
+        "region": [
+          100,
+          0,
+          616,
+          131
+        ],
+        "anchors": [
+          {
+            "label": "MARK",
+            "x": 116
+          },
+          {
+            "label": "DESCRIPTION",
+            "x": 264
+          },
+          {
+            "label": "MANUFACTURER",
+            "x": 568
+          }
+        ]
+      }
+    ],
+    "graphNotes": [],
+    "resolve": {
+      "S-1": {
+        "status": "unresolved",
+        "tag": "S-1",
+        "room": null,
+        "reason": "no room-finish schedule found in the set"
+      },
+      "S-2": {
+        "status": "unresolved",
+        "tag": "S-2",
+        "room": null,
+        "reason": "no room-finish schedule found in the set"
+      }
+    }
+  },
+  "marquee": {
+    "readScheduleSpans": {
+      "rows": [],
+      "refused": "foreign-header"
+    },
+    "parseSchedule": [],
+    "finishRows": {
+      "otherFamily": false,
+      "rows": [
+        {
+          "key": "S-1",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "S-1",
+              "bbox": [
+                100,
+                76,
+                124,
+                93
+              ]
+            },
+            "DESCRIPTION": {
+              "text": "ROOM SIGN",
+              "bbox": [
+                220,
+                76,
+                292,
+                93
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-W",
+              "bbox": [
+                520,
+                76,
+                584,
+                93
+              ]
+            }
+          }
+        },
+        {
+          "key": "S-2",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "S-2",
+              "bbox": [
+                100,
+                114,
+                124,
+                131
+              ]
+            },
+            "DESCRIPTION": {
+              "text": "ROOM SIGN",
+              "bbox": [
+                220,
+                114,
+                292,
+                131
+              ]
+            },
+            "MANUFACTURER": {
+              "text": "VENDOR-W",
+              "bbox": [
+                520,
+                114,
+                584,
+                131
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

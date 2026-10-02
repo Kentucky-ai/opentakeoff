@@ -1,7 +1,11 @@
 // Import from schedule — the reader. A marquee around a finish/material
-// schedule is read by the SAME finish reader the sheet graph indexes with
-// (sheetgraph.ts readFinishTable, marquee mode), so the canvas, the in-canvas
-// agent's read_schedule and the MCP's resolve_tag read one table one way.
+// schedule is read by the finish reader the sheet graph indexes with, through
+// its marquee entry point (sheetgraph.ts readFinishMarquee), so the canvas and
+// the in-canvas agent's read_schedule read one box one way. The marquee entry
+// adds rules the whole-sheet index (buildSheetGraph, the MCP's find_schedule
+// and resolve_tag) doesn't run — NOT USED rows, codes with a word after them,
+// code lines split from the row above, four- and five-letter codes and the
+// skipped list (#483) — so a drawn box reads more forms than resolve_tag.
 // Import from schedule's raster read (#470) feeds it the on-device reader's
 // words as spans, with opts.ocr set (readScheduleSpans).
 // This module turns that table into approval-dialog rows: it refuses tables
@@ -11,8 +15,9 @@
 // The only schedule module that imports the sheet graph: the canvas loads it
 // with import() when a marquee is read, and seeds conditions from the light
 // scheduleRows.ts.
-import { extractTables, readFinishTable, type Bbox, type GraphSpan, type TableRow } from "./sheetgraph.ts";
+import { FOREIGN_HDR, extractTables, isNonFinishSchedule, readFinishMarquee, traceFinishMarquee, type Bbox, type GraphSpan, type MarqueeRead, type TableRow } from "./sheetgraph.ts";
 import { FINISH_SECTION_CATEGORY, type FinishSection } from "./finishSections.ts";
+import { normalizeNotUsed } from "./notUsed.ts";
 import type { Category, CategorySource, ScheduleRow, Token } from "./scheduleRows.ts";
 
 /** Why a marquee gave no rows. "no-table": no finish table was read at all
@@ -26,14 +31,18 @@ import type { Category, CategorySource, ScheduleRow, Token } from "./scheduleRow
  *  says finish (no CODE key, no printed finish heading, no item +
  *  MANUFACTURER columns, and no COLOR / STYLE / PATTERN column). */
 export type RefusalReason = "no-table" | "title" | "equipment" | "foreign-header" | "no-color-style-pattern";
+/** `skipped`: four- or five-letter codes with no number (EPOX) the reader
+ *  saw in the table's key column but did not read as rows, in y order —
+ *  present only when there is one. A box whose only codes were skipped reads
+ *  `{ rows: [], skipped }`. A refusal never carries it. */
 export type ScheduleRead =
-  | { rows: ScheduleRow[] }
+  | { rows: ScheduleRow[]; skipped?: string[] }
   | { rows: []; refused: RefusalReason; title?: string };
 
 // ── the header guard ─────────────────────────────────────────────────────────
-/** Header words only a non-finish schedule carries (door / furniture /
- *  signage / device columns). */
-const FOREIGN_HDR = new Set(["QTY", "QUANTITY", "MESSAGE", "WIDTH", "HEIGHT", "HARDWARE", "CFM", "VOLTS", "VOLTAGE", "WATTS", "LAMP", "LAMPS", "CATALOG", "FIXTURE", "FRAME", "GLAZING", "THICKNESS", "RATING", "LOUVER"]);
+// FOREIGN_HDR — header words only a non-finish schedule carries — lives in
+// sheetgraph.ts (the marquee rules read it too) and is re-exported here.
+export { FOREIGN_HDR };
 /** The FOREIGN_HDR words that never name a finish attribute (counts, devices,
  *  sign text): an item column + MANUFACTURER does not excuse them. */
 const HARD_HDR = new Set(["QTY", "QUANTITY", "MESSAGE", "CFM", "VOLTS", "VOLTAGE", "WATTS", "LAMP", "LAMPS"]);
@@ -69,7 +78,9 @@ const plural = (p: string) => [p, p + "S"];
 const WORD_PHRASES: Array<[string, WordCategory | null]> = [
   ...["BASE CABINET", "BASE COAT", "BASE PLATE", "BASE SHEET"].flatMap(plural).map((p): [string, null] => [p, null]),
   ["BASE BID", null], ["SINK BASE", null], ["VANITY BASE", null],
-  ["INTEGRAL COVE BASE", null], ["FLASH COVE BASE", null],
+  ["INTEGRAL COVE BASE", null], ["INTEGRAL COVED BASE", null], ["INTEGRAL BASE", null],
+  ["SANITARY COVE BASE", null], ["SANITARY COVED BASE", null], ["SANITARY BASE", null],
+  ["FLASH COVE BASE", null], ["FLASH COVED BASE", null],
   ["WALL BASE", "base"], ["COVE BASE", "base"], ["RUBBER BASE", "base"], ["RESILIENT BASE", "base"], ["BASE", "base"],
   ...["TRANSITION", "TRANSITION STRIP", "THRESHOLD", "REDUCER", "STAIR NOSING", "EDGE STRIP"]
     .flatMap(plural).map((p): [string, WordCategory] => [p, "transition"]),
@@ -77,15 +88,25 @@ const WORD_PHRASES: Array<[string, WordCategory | null]> = [
   ...["HANDRAIL", "CORNER GUARD", "CORNERGUARD", "CRASH RAIL", "PROTECTIVE RAIL", "BUMPER GUARD"]
     .flatMap(plural).map((p): [string, WordCategory] => [p, "wall_protection"]),
 ];
+// A floor surface a base can be an accessory OF: "EPOXY FLOORING W/ 4 IN. COVE
+// BASE" describes the floor, it does not name a base item.
+const FLOOR_SURFACES = new Set(["FLOORING", "FLOOR", "EPOXY", "RESINOUS", "TERRAZZO", "CARPET", "CONCRETE", "TILE", "VINYL", "LVT", "VCT", "PORCELAIN", "CERAMIC", "LINOLEUM"]);
 // longest phrase first, so WALL BASE is consumed before BASE is tried
 const PHRASES = WORD_PHRASES.map(([p, c]) => ({ w: p.split(" "), c })).sort((a, b) => b.w.length - a.w.length);
+
+/** Some word before index i is W (from W/) or WITH, and some word before that is a floor surface. */
+const withFloorBefore = (t: string[], i: number): boolean => {
+  return t.some((x, k) => k < i && (x === "W" || x === "WITH") && t.slice(0, k).some((f) => FLOOR_SURFACES.has(f)));
+};
 
 /** The category a row's item words name, or "none". Words split on spaces,
  *  "/", ",", "(" and ")" (a hyphen compound is one word: WALL-MOUNTED) and
  *  lose the punctuation around them (BASE. / "COVE BASE" / BASE:); the " — "
  *  between two cells, all punctuation, is a word of its own, so no phrase
  *  spans two cells. A STAIR TREAD's NOSING belongs to the tread. Two
- *  categories named in one row → "none" (a guess would be a coin toss). */
+ *  categories named in one row → "none" (a guess would be a coin toss). A base
+ *  phrase after "<floor surface> W/" or "… WITH" is the floor's own base, so
+ *  it names nothing (consumed, like an exclusion). */
 export function b4(item: string): WordCategory | "none" {
   const t = item.toUpperCase().split(/[\s/,()]+/).filter(Boolean)
     .map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "") || w);
@@ -96,6 +117,7 @@ export function b4(item: string): WordCategory | "none" {
     for (let i = 0; i + p.w.length <= t.length; i++) {
       if (!p.w.every((w, j) => !used[i + j] && t[i + j] === w)) continue;
       for (let j = 0; j < p.w.length; j++) used[i + j] = true;
+      if (p.c === "base" && withFloorBefore(t, i)) continue;
       if (p.c) hits.add(p.c);
     }
   }
@@ -116,7 +138,8 @@ const firstCell = (r: TableRow, ...cols: string[]): string => {
  *  ceilings or millwork off a finish schedule, but can opt one in. */
 const UNTICKED = new Set<FinishSection>(["CEILINGS", "CEILING", "MILLWORK"]);
 
-function toRow(r: TableRow): ScheduleRow {
+/** `keyCol`: the table's key column (its first header). */
+function toRow(r: TableRow, keyCol: string): ScheduleRow {
   const section = r.section;
   const heading = section ? FINISH_SECTION_CATEGORY[section] : null;
   let category: Category = "unassigned", source: CategorySource = "none";
@@ -128,12 +151,14 @@ function toRow(r: TableRow): ScheduleRow {
     const w = b4(joinParts(cellsOf(r, "MATERIAL", "DESCRIPTION")));
     if (w !== "none") { category = w; source = "text"; }
   }
-  return {
+  const row: ScheduleRow = {
     finish_tag: r.key,
     section: section ?? "",
     category,
     category_source: source,
-    description: joinParts(cellsOf(r, "MATERIAL", "DESCRIPTION", "PRODUCT")),
+    // a key-cell qualifier ("CUT (C)" of "FTB-01 CUT (C)") leads the
+    // description; it never names the category
+    description: joinParts([r.qualifier, ...cellsOf(r, "MATERIAL", "DESCRIPTION", "PRODUCT")]),
     manufacturer: firstCell(r, "MANUFACTURER"),
     style: firstCell(r, "STYLE"),
     spec_color: firstCell(r, "COLOR"),
@@ -141,6 +166,21 @@ function toRow(r: TableRow): ScheduleRow {
     remarks: firstCell(r, "REMARKS", "COMMENTS"),
     suggested: !(source === "heading" && section && UNTICKED.has(section)),
   };
+  // the schedule marks the row NOT USED / N.I.C. — after its code in the key
+  // cell, or as the whole of another cell: it starts unticked, and says why
+  const marker = r.notUsed ? r.notUsedText ?? "" : notUsedCell(r, keyCol);
+  if (marker != null) { row.suggested = false; row.unticked_reason = "not-used"; row.not_used_text = marker; }
+  if (r.keyRule) row.key_rule = r.keyRule;
+  return row;
+}
+
+/** A non-key cell whose whole text is a NOT USED / N.I.C. marker, as printed
+ * (leading separators stripped); null when there is none. */
+function notUsedCell(r: TableRow, keyCol: string): string | null {
+  for (const [col, c] of Object.entries(r.cells)) {
+    if (col !== keyCol && normalizeNotUsed(c.text)) return c.text.trim().replace(/^[-–—:,\s]+/, "");
+  }
+  return null;
 }
 
 /** The share of a's area that b covers (sheetgraph.ts's overlapFrac). */
@@ -156,11 +196,45 @@ const overlapFrac = (a: Bbox, b: Bbox): number => {
  *  section (sheetgraph.ts ExtractOpts.resetAtBlankBand); the vector read
  *  never sets it. */
 export function readScheduleSpans(spans: GraphSpan[], opts?: { ocr?: boolean }): ScheduleRead {
-  const r = readFinishTable({ key: "crop", spans }, { marquee: true, resetAtBlankBand: !!opts?.ocr });
-  if (!r || !r.table.rows.length) return { rows: [], refused: "no-table" };
+  return readOf(readFinishMarquee({ key: "crop", spans }, { ocr: !!opts?.ocr }), spans);
+}
+
+/** @internal Tests only: readScheduleSpans
+ * plus how the marquee rules got there — the table's rows with their
+ * provenance kept (`_y`, `_pass1`, `_pass1Key`, `_newRule`, `_ungluedFrom`),
+ * the lines they consumed, and the per-line decisions. */
+export function readScheduleDebug(spans: GraphSpan[], opts?: { ocr?: boolean }): { read: ScheduleRead } & Omit<ReturnType<typeof traceFinishMarquee>, "read"> {
+  const t = traceFinishMarquee({ key: "crop", spans }, { ocr: !!opts?.ocr });
+  return { read: readOf(t.read, spans), rows: t.rows, consumed: t.consumed, diag: t.diag };
+}
+
+function readOf(r: MarqueeRead | null, spans: GraphSpan[]): ScheduleRead {
+  if (!r) return { rows: [], refused: "no-table" };
+  if (r.kind === "headerOnly") {
+    // a header with no row read under it, and nothing the reader saw but
+    // skipped: no table, as before. With skipped codes it is a table whose
+    // codes were all skipped — guarded like any table, then read as no rows.
+    if (!r.skipped.length) return { rows: [], refused: "no-table" };
+    const title = r.title?.text;
+    if (title && isNonFinishSchedule(title)) return { rows: [], refused: "title", title };
+    const why = refusalOf(title, r.headers, r.headerWords, r.hasSection, r.region, spans);
+    if (why) return { rows: [], refused: why, ...(title ? { title } : {}) };
+    return { rows: [], skipped: [...r.skipped] };
+  }
+  if (!r.table.rows.length) return { rows: [], refused: "no-table" };
   const t = r.table;
   const title = t.title?.text;
-  if ("refused" in r) return { rows: [], refused: "title", ...(title ? { title } : {}) };
+  if (r.kind === "other-family") return { rows: [], refused: "title", ...(title ? { title } : {}) };
+  const why = refusalOf(title, t.headers, r.headerWords, r.hasSection, r.guardRegion, spans);
+  if (why) return { rows: [], refused: why, ...(title ? { title } : {}) };
+  const rows = t.rows.map((x) => toRow(x, t.headers[0]));
+  return r.skipped.length ? { rows, skipped: [...r.skipped] } : { rows };
+}
+
+/** The refusal a finish-shaped read earns (other than its title), or null.
+ *  `region`: the table's own ink as the guards see it (a table's pass-1
+ *  region, a headerOnly read's header band). */
+function refusalOf(title: string | undefined, headers: string[], headerWords: string[], hasSection: boolean, region: Bbox, spans: GraphSpan[]): RefusalReason | null {
   // A device schedule shares MARK / DESCRIPTION / MANUFACTURER with a
   // materials table, so the finish reader takes it too; the equipment reader's
   // device columns (GPM, HP, MBH, NECK, LUMENS …) are the proof it is not one.
@@ -174,15 +248,12 @@ export function readScheduleSpans(spans: GraphSpan[], opts?: { ocr?: boolean }):
   // printed finish heading, a title naming FINISH or MATERIAL — is not
   // refused for one column a device schedule also prints (WASTE, MOUNTING).
   // Item + MANUFACTURER is not that evidence: a pump schedule has both.
-  const hasSection = t.rows.some((x) => x.section);
-  const saysFinish = t.headers[0] === "CODE" || hasSection || /\b(FINISH|MATERIAL)/.test((title ?? "").toUpperCase());
+  const saysFinish = headers[0] === "CODE" || hasSection || /\b(FINISH|MATERIAL)/.test((title ?? "").toUpperCase());
   if (!saysFinish) {
     const eq = extractTables({ key: "crop", spans }, "equipment", { buildings: new Set() });
-    if (eq.some((e) => overlapFrac(t.region, e.region) >= 0.5 || overlapFrac(e.region, t.region) >= 0.5)) return { rows: [], refused: "equipment", ...(title ? { title } : {}) };
+    if (eq.some((e) => overlapFrac(region, e.region) >= 0.5 || overlapFrac(e.region, region) >= 0.5)) return "equipment";
   }
-  const why = headerRefusal(t.headers, r.headerWords, hasSection);
-  if (why) return { rows: [], refused: why, ...(title ? { title } : {}) };
-  return { rows: t.rows.map(toRow) };
+  return headerRefusal(headers, headerWords, hasSection);
 }
 
 /**

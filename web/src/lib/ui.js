@@ -40,7 +40,8 @@ export function svgAccent(isDark) {
 }
 
 /* Spreadable style fragments — inline-style vocabulary. All values are
-   var() strings so themes keep working. Usage:
+   var() strings so themes keep working (visuallyHidden, a screen-reader-only
+   span, is plain geometry). Usage:
      style={{ ...S.chip, marginLeft: "auto" }}                          */
 export const S = {
   /* mono chip: calibration chip, scale chip, small pill controls */
@@ -115,5 +116,19 @@ export const S = {
     whiteSpace: "nowrap",
     boxShadow: "var(--shadow-2)",
     zIndex: Z.popover,
+  },
+
+  /* screen-reader only: read aloud, not drawn (the download notice's status
+     region, a NOT USED row's note in Import from schedule) */
+  visuallyHidden: {
+    position: "absolute",
+    width: 1,
+    height: 1,
+    padding: 0,
+    margin: -1,
+    overflow: "hidden",
+    clip: "rect(0 0 0 0)",
+    whiteSpace: "nowrap",
+    border: 0,
   },
 };

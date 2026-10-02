@@ -1,0 +1,157 @@
+{
+  "name": "symbols-p4-page",
+  "page": 4,
+  "rect": {
+    "x0": -1000000000,
+    "y0": -1000000000,
+    "x1": 1000000000,
+    "y1": 1000000000
+  },
+  "readScheduleSpans": {
+    "rows": [
+      {
+        "finish_tag": "T1",
+        "section": "",
+        "category": "transition",
+        "category_source": "text",
+        "description": "TRANSITION — EDGE STRIP RESILIENT",
+        "manufacturer": "",
+        "style": "",
+        "spec_color": "",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "T2",
+        "section": "",
+        "category": "transition",
+        "category_source": "text",
+        "description": "TRANSITION — EDGE STRIP METAL",
+        "manufacturer": "",
+        "style": "",
+        "spec_color": "",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      },
+      {
+        "finish_tag": "T9",
+        "section": "",
+        "category": "unassigned",
+        "category_source": "none",
+        "description": "JOINT COVER — NOT DRAWN ON PLANS",
+        "manufacturer": "",
+        "style": "",
+        "spec_color": "",
+        "size": "",
+        "remarks": "",
+        "suggested": true
+      }
+    ]
+  },
+  "finishRows": {
+    "otherFamily": false,
+    "rows": [
+      {
+        "key": "T1",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "T1",
+            "bbox": [
+              120,
+              176,
+              141,
+              194
+            ]
+          },
+          "MATERIAL": {
+            "text": "TRANSITION",
+            "bbox": [
+              400,
+              176,
+              509,
+              194
+            ]
+          },
+          "DESCRIPTION": {
+            "text": "EDGE STRIP RESILIENT",
+            "bbox": [
+              800,
+              176,
+              1007.1,
+              194
+            ]
+          }
+        }
+      },
+      {
+        "key": "T2",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "T2",
+            "bbox": [
+              120,
+              226,
+              141,
+              244
+            ]
+          },
+          "MATERIAL": {
+            "text": "TRANSITION",
+            "bbox": [
+              400,
+              226,
+              509,
+              244
+            ]
+          },
+          "DESCRIPTION": {
+            "text": "EDGE STRIP METAL",
+            "bbox": [
+              800,
+              226,
+              974,
+              244
+            ]
+          }
+        }
+      },
+      {
+        "key": "T9",
+        "sheet": "crop",
+        "cells": {
+          "CODE": {
+            "text": "T9",
+            "bbox": [
+              120,
+              276,
+              141,
+              294
+            ]
+          },
+          "MATERIAL": {
+            "text": "JOINT COVER",
+            "bbox": [
+              400,
+              276,
+              521,
+              294
+            ]
+          },
+          "DESCRIPTION": {
+            "text": "NOT DRAWN ON PLANS",
+            "bbox": [
+              800,
+              276,
+              1007,
+              294
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

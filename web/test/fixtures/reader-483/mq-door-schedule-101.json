@@ -1,0 +1,134 @@
+{
+  "name": "mq-door-schedule-101",
+  "kind": "marquee",
+  "note": "titled DOOR SCHEDULE, MARK | MATERIAL | MANUFACTURER | COLOR, marks 101–103",
+  "spans": [
+    {
+      "str": "DOOR SCHEDULE",
+      "x": 100,
+      "y": 0,
+      "w": 104,
+      "h": 24
+    },
+    {
+      "str": "MARK",
+      "x": 100,
+      "y": 38,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "MATERIAL",
+      "x": 220,
+      "y": 38,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "MANUFACTURER",
+      "x": 520,
+      "y": 38,
+      "w": 96,
+      "h": 17
+    },
+    {
+      "str": "COLOR",
+      "x": 1000,
+      "y": 38,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "101",
+      "x": 100,
+      "y": 76,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "HOLLOW METAL",
+      "x": 220,
+      "y": 76,
+      "w": 96,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-R",
+      "x": 520,
+      "y": 76,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "BLACK",
+      "x": 1000,
+      "y": 76,
+      "w": 40,
+      "h": 17
+    },
+    {
+      "str": "102",
+      "x": 100,
+      "y": 114,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "WOOD",
+      "x": 220,
+      "y": 114,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-S",
+      "x": 520,
+      "y": 114,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "OAK",
+      "x": 1000,
+      "y": 114,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "103",
+      "x": 100,
+      "y": 152,
+      "w": 24,
+      "h": 17
+    },
+    {
+      "str": "ALUMINUM",
+      "x": 220,
+      "y": 152,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "VENDOR-T",
+      "x": 520,
+      "y": 152,
+      "w": 64,
+      "h": 17
+    },
+    {
+      "str": "CLEAR",
+      "x": 1000,
+      "y": 152,
+      "w": 40,
+      "h": 17
+    }
+  ],
+  "marquee": {
+    "readScheduleSpans": {
+      "rows": [],
+      "refused": "no-table"
+    },
+    "parseSchedule": [],
+    "finishRows": null
+  }
+}

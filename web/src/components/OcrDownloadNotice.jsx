@@ -47,8 +47,6 @@ export const noticeKeyDown = (onCancel) => (e) => {
   onCancel();
 };
 
-const visuallyHidden = { position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0 0 0 0)", whiteSpace: "nowrap", border: 0 };
-
 export default function OcrDownloadNotice({ downloadBytes, progress, onDownload, onCancel }) {
   const downloading = !!progress;
   const pct = Math.max(0, Math.min(100, Math.round(progress?.pct ?? 0)));
@@ -75,7 +73,7 @@ export default function OcrDownloadNotice({ downloadBytes, progress, onDownload,
             <span style={S.monoReadout} aria-hidden="true">{pct}%</span>
           </div>
         )}
-        <div role="status" style={visuallyHidden}>{downloading ? `Downloading the text reader: ${announcedPct(pct)}%` : ""}</div>
+        <div role="status" style={S.visuallyHidden}>{downloading ? `Downloading the text reader: ${announcedPct(pct)}%` : ""}</div>
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--sp-2)", padding: "var(--sp-3) var(--sp-4)", borderTop: "1px solid var(--ink-faint)" }}>
         <button key={downloading ? "cancel-download" : "cancel"} type="button" className="btn-ghost" autoFocus={downloading} onClick={onCancel}>Cancel</button>

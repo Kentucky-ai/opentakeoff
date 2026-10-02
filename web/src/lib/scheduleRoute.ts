@@ -57,9 +57,11 @@ export function refusalMessage(refused: RefusalReason, title?: string): string {
     : `${refusalWhy(refused, title)} — drag around the finish schedule ${WHERE}.`;
 }
 
-/** rows → the dialog; message → the footer; ocr → read the box on-device. */
+/** rows → the dialog (with any skipped codes — four- or five-letter codes
+ *  with no number the reader saw but didn't read; absent when none);
+ *  message → the footer; ocr → read the box on-device. */
 export type ImportRoute =
-  | { kind: "rows"; rows: ScheduleRow[] }
+  | { kind: "rows"; rows: ScheduleRow[]; skipped?: string[] }
   | { kind: "message"; text: string }
   | { kind: "ocr" };
 
@@ -70,10 +72,18 @@ export interface BoxText {
   pageHasText: boolean;
 }
 
-/** Rows → the dialog; a refused table → its message, however much text the
- *  box held; no table → the on-device reader for at most STRAY_TEXT_MAX_RUNS
- *  runs, else the re-drag hint. */
+/** A read with skipped codes → the dialog, rows or not: a box whose only
+ *  codes were skipped opens it with zero rows and the skipped notice. */
+function skippedRoute(read: ScheduleRead): Extract<ImportRoute, { kind: "rows" }> | null {
+  return "skipped" in read && read.skipped?.length ? { kind: "rows", rows: read.rows, skipped: read.skipped } : null;
+}
+
+/** Rows (or skipped codes) → the dialog; a refused table → its message,
+ *  however much text the box held; no table → the on-device reader for at
+ *  most STRAY_TEXT_MAX_RUNS runs, else the re-drag hint. */
 export function routeScheduleRead(read: ScheduleRead, box: BoxText): ImportRoute {
+  const skipped = skippedRoute(read);
+  if (skipped) return skipped;
   if (read.rows.length) return { kind: "rows", rows: read.rows };
   const refused = "refused" in read ? read.refused : "no-table";
   if (refused !== "no-table") return { kind: "message", text: refusalMessage(refused, "title" in read ? read.title : undefined) };
@@ -149,9 +159,12 @@ export function ocrFailedMessage(reason: string): string {
   return `Couldn't read that box on this device (${reason}) — try again.`;
 }
 
-/** The on-device read's result: rows → the dialog; a refused table → its
- *  message; no table → the no-rows hint. */
+/** The on-device read's result: rows (or skipped codes) → the dialog; a
+ *  refused table → its message; no table → the no-rows hint. OCR reads carry
+ *  no skipped codes today (the reader's OCR gate), but are routed the same. */
 export function routeOcrRead(read: ScheduleRead): Exclude<ImportRoute, { kind: "ocr" }> {
+  const skipped = skippedRoute(read);
+  if (skipped) return skipped;
   if (read.rows.length) return { kind: "rows", rows: read.rows };
   const refused = "refused" in read ? read.refused : "no-table";
   if (refused !== "no-table") return { kind: "message", text: refusalMessage(refused, "title" in read ? read.title : undefined) };

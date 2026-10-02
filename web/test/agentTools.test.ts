@@ -203,3 +203,50 @@ test("read_schedule: the description names the key columns and the row fields", 
   const d = AGENT_TOOL_DEFS.find((x) => x.name === "read_schedule")!.description;
   for (const w of ["CODE", "TAG", "MARK", "SYMBOL", "category_source", "remarks"]) assert.ok(d.includes(w), `${w} missing from: ${d}`);
 });
+
+// ── #483: skipped codes and key_rule in read_schedule ───────────────────────
+const R = { sheet: "plan.pdf", region: { x0: 0, y0: 0, x1: 0.5, y1: 0.5 } };
+const srow = (finish_tag: string, extra: Record<string, unknown> = {}) => ({ finish_tag, section: "", category: "floor", category_source: "heading",
+  description: "X", manufacturer: "", style: "", spec_color: "", size: "", remarks: "", suggested: true, ...extra });
+
+test("read_schedule: rows plus skipped codes → both, no note", async () => {
+  const rows = [srow("CPT-1")];
+  const { ctx } = makeCtx({ readSchedule: async () => ({ rows, skipped: ["EPOX"] }) });
+  assert.deepEqual(await executeAgentTool(ctx, "read_schedule", R), { rows, skipped: ["EPOX"] });
+  // an empty skipped list adds no key
+  const { ctx: ctx2 } = makeCtx({ readSchedule: async () => ({ rows, skipped: [] }) });
+  assert.deepEqual(await executeAgentTool(ctx2, "read_schedule", R), { rows });
+});
+
+test("read_schedule: { rows: [], skipped } → skipped and the exact note", async () => {
+  const run = async (skipped: string[]) => {
+    const { ctx } = makeCtx({ readSchedule: async () => ({ rows: [], skipped }) });
+    return executeAgentTool(ctx, "read_schedule", R);
+  };
+  assert.deepEqual(await run(["EPOX"]), { rows: [], skipped: ["EPOX"],
+    note: "No rows read. A four- or five-letter code with no number wasn't read: EPOX. Find its line with read_sheet_text, check it with view_region, then create it with create_condition if it's a finish." });
+  assert.deepEqual(await run(["EPOX", "SEAL"]), { rows: [], skipped: ["EPOX", "SEAL"],
+    note: "No rows read. Four- or five-letter codes with no number weren't read: EPOX, SEAL. Find their lines with read_sheet_text, check them with view_region, then create them with create_condition if they're finishes." });
+  assert.deepEqual(await run(["EPOX", "EPOX"]), { rows: [], skipped: ["EPOX", "EPOX"],
+    note: "No rows read. A four- or five-letter code with no number wasn't read: EPOX (2 lines). Find its lines with read_sheet_text, check it with view_region, then create it with create_condition if it's a finish." });
+});
+
+test("read_schedule: rows keep key_rule where the reader set it; other rows have no key_rule key", async () => {
+  const rows = [srow("CPT-1"), srow("FTB-01", { key_rule: "extended", description: "CUT (C) — TILE BASE" }),
+    srow("CPT-2", { suggested: false, unticked_reason: "not-used", not_used_text: "NOT USED" })];
+  const { ctx } = makeCtx({ readSchedule: async () => ({ rows }) });
+  const out = await executeAgentTool(ctx, "read_schedule", R);
+  assert.equal(out.rows[1].key_rule, "extended");
+  assert.ok(!("key_rule" in out.rows[0]));
+  assert.ok(!("key_rule" in out.rows[2]));
+  assert.equal(out.rows[2].unticked_reason, "not-used");
+  assert.equal(out.rows[2].not_used_text, "NOT USED");
+});
+
+test("read_schedule: the description explains suggested, NOT USED, skipped, the drawn box and key_rule", () => {
+  const d = AGENT_TOOL_DEFS.find((x) => x.name === "read_schedule")!.description;
+  for (const w of ["suggested: false", "unticked_reason", "not_used_text", "skipped", "four- or five-letter", "whole-sheet index",
+    "key_rule: \"extended\"", "view_region before creating it"]) assert.ok(d.includes(w), `${w} missing from: ${d}`);
+  // #487's text stays
+  assert.ok(d.includes("on the sheet's text layer only"));
+});
