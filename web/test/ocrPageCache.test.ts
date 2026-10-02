@@ -7,7 +7,7 @@ import { createPageCache, ocrCacheKey, ocrCacheOpts, OCR_CACHE_OPTS, OCR_CACHE_P
 import { EMPTY_SHA256, isPdfHash, ocrCachePrefix, ocrHashesToDrop, startPdfHash } from "../src/lib/ocr/pdfHash.ts";
 import { readFileSync } from "node:fs";
 import { OCR_ENGINE_OPTIONS as CORE_ENGINE_OPTIONS } from "../src/lib/ocr/workerCore.ts";
-import { OCR_ENGINE_OPTIONS, OCR_READ_DPI, OCR_SCAN_MAX_DIM, OCR_SEAM_RULES_VERSION, OCR_TILE_OVERLAP_PT } from "../src/lib/ocr/engineOptions.ts";
+import { OCR_ENGINE_OPTIONS, OCR_INK, OCR_READ_DPI, OCR_SCAN_MAX_DIM, OCR_SEAM_RULES_VERSION, OCR_TILE_OVERLAP_PT } from "../src/lib/ocr/engineOptions.ts";
 import { OCR_DETECTION_PADDING } from "../src/lib/ocr/raster.ts";
 import { SCAN_MAX_DIM } from "../src/lib/scheduleScan.ts";
 import { OCR_TARGET_DPI } from "../src/lib/ocr/rasterize.ts";
@@ -63,6 +63,7 @@ test("opts: a short stable string that changes with every input", () => {
     { ...P, engine: { ...P.engine, detection: { ...P.engine.detection, maxSideLength: 2048 } } },
     { ...P, engine: { ...P.engine, recognition: { maxCropSourceSideLength: 2000 } } },
     { ...P, maxDim: 2048 },
+    { ...P, ink: "other" },
   ];
   const seen = new Set([OCR_CACHE_OPTS]);
   for (const v of variants) {
@@ -97,6 +98,10 @@ test("opts params are the ones the read actually uses", () => {
   assert.ok(Number.isInteger(SEAM_RULES_VERSION) && SEAM_RULES_VERSION >= 1);
   assert.equal(OCR_SEAM_RULES_VERSION, SEAM_RULES_VERSION);
   assert.equal(OCR_CACHE_PARAMS.seams, SEAM_RULES_VERSION);
+  // the ink preprocessing the worker runs before ppu (#481); ocrInk.test.ts
+  // pins ink.ts's re-export to this same value
+  assert.equal(OCR_INK, "split-luma601-c8-24");
+  assert.equal(OCR_CACHE_PARAMS.ink, OCR_INK);
 });
 
 test("a read saved under older seam rules is a miss", async () => {
@@ -120,9 +125,17 @@ test("engineOptions.ts is a leaf: no imports, so the cache never depends on tree
 
 test("opts hash is pinned: a change here invalidates every cached page read, on purpose", () => {
   // If this fails, something that shapes a read changed (engine options,
-  // DPI, tile overlap, raster cap, seam rules version) and old cached reads
-  // are now misses. That is intended; update the literal in the same change.
-  assert.equal(OCR_CACHE_OPTS, "d67721d4");
+  // DPI, tile overlap, raster cap, seam rules version, preprocessing) and old
+  // cached reads are now misses. That is intended; update the literal in the
+  // same change.
+  assert.equal(OCR_CACHE_OPTS, "e2f8d8b4");
+});
+
+test("a read saved before the luminance preprocessing (#481) is a miss", async () => {
+  const meta = fakeMeta();
+  // the opts every read was saved under before #481
+  await createPageCache(meta, { opts: "d67721d4" }).put(H1, 1, { rev: "r1", rs: 2, lines: [LINE], ms: 1, rasters: 1, at: 1 });
+  assert.equal(await createPageCache(meta).get(H1, 1, { rs: 2, rev: "r1" }), null);
 });
 
 test("put then get: same rs and opts gives the stored read back", async () => {

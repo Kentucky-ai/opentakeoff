@@ -8,12 +8,12 @@
 // an older model is still used (the caller may offer "Read again" when it
 // knows a newer rev), so a lookup never needs the network. opts is a short
 // hash of everything else that shapes the read (engine options, target DPI,
-// tile overlap, raster cap, seam rules version): a mismatch is a miss. rs is
-// the render scale the lines are in; a lookup at another rs gets them
-// rescaled. Bump v1 (here and
-// in pdfHash.ts's prefix) when the tile or unpad maths changes.
+// tile overlap, raster cap, seam rules version, ink preprocessing): a
+// mismatch is a miss. rs is the render scale the lines are in; a lookup at
+// another rs gets them rescaled. Bump v1 (here and in pdfHash.ts's prefix)
+// when the tile or unpad maths changes.
 // A leaf module: no OCR engine, rasterizer or worker code comes with it.
-import { OCR_ENGINE_OPTIONS, OCR_READ_DPI, OCR_SCAN_MAX_DIM, OCR_SEAM_RULES_VERSION, OCR_TILE_OVERLAP_PT } from "./engineOptions";
+import { OCR_ENGINE_OPTIONS, OCR_INK, OCR_READ_DPI, OCR_SCAN_MAX_DIM, OCR_SEAM_RULES_VERSION, OCR_TILE_OVERLAP_PT } from "./engineOptions";
 import { isPdfHash, ocrCachePrefix } from "./pdfHash";
 import type { OcrWord } from "./types";
 
@@ -24,6 +24,7 @@ export const OCR_CACHE_PARAMS = {
   overlapPt: OCR_TILE_OVERLAP_PT,
   maxDim: OCR_SCAN_MAX_DIM,
   seams: OCR_SEAM_RULES_VERSION,
+  ink: OCR_INK,
 };
 export type OcrCacheParams = typeof OCR_CACHE_PARAMS;
 

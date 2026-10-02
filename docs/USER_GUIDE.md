@@ -410,6 +410,7 @@ Known limits of the raster read:
 - The in-canvas agent's `read_schedule` reads the text layer only; it doesn't read a raster schedule.
 - The reader can miss a printed section heading. On the bundled demo's MATERIAL SCHEDULE as a 200 DPI image (one sheet, n=1), the read found all 28 codes, none wrong, and all 28 descriptions, but missed the FLOORING, BASE and WALLS headings, so 16 rows came in with no section and 14 of 28 in the group the text-layer read gives; at 100 DPI all 28 rows matched.
 - A blank row between two code groups inside one printed section (CPT-1 to CPT-4, a blank row, then LVT-1), or a row the reader drops at a group boundary, moves the later rows of that section to **No section**. It errs toward No section, never toward a wrong section.
+- Light or low-contrast text can lose letters; red and magenta text are read by their brightness (#481).
 - **Cancel** can't stop a recognition already running in the background, so a box read right after waits for it.
 
 Known limits of the newer rules (NOT USED rows, codes with a word after them, each code on its own line, four- and five-letter codes):
@@ -536,7 +537,7 @@ With the **45°** toggle on (it's on by default), the segment you're drawing loc
 
 ### Snap (beta)
 
-The **Snap** toggle pulls your cursor onto true PDF endpoints—real corners extracted from the drawing's own vectors. When a snap engages, the chip reads `snap`, and an endpoint snap always beats the angle lock: corners win over axes. Off by default; scans have no vector endpoints, so Snap has nothing to grab there.
+The **Snap** toggle pulls your cursor onto true PDF endpoints—real corners extracted from the drawing's own vectors. When a snap engages, the chip reads `snap`, and an endpoint snap always beats the angle lock: corners win over axes. Off by default; scans have no vector endpoints, so Snap has nothing to grab there. **Copy text**, **Import from schedule**, **Image** and **Pin** never snap: the corner you see is the corner you place.
 
 ### The live readout
 
@@ -826,6 +827,8 @@ Known limits:
 - A page needing more than 64 tiles at the reading resolution (far larger than any plan sheet: a 42 × 30 in sheet takes 6) isn't read; the control says it's too large, and no download is asked for.
 - The first search in a cloud project downloads every PDF not opened yet, to read its text.
 - A reader that hangs (rather than stopping) leaves its read on **Stopping…**, and later reads wait behind it; reload the page.
+- Red and magenta text are read by their brightness, like gray text (#481). Light or low-contrast text can still lose letters, blue or green text is read with less contrast than black, and black text on the same line as colored text can read slightly differently than it did before.
+- Page reads saved by an earlier version of the reader (before #481) are ignored. This is not the **Read again** case above: the old read isn't used at all (it stays in browser storage until the page is read again). The sheet shows **Read page text** again, and until you press it its text is out of search and a Copy text box is read on-device. Nothing is read again until you ask.
 
 ### Optional: projects on Drive
 
