@@ -53,6 +53,8 @@ import { Icon } from "../brand/icons.jsx";
 import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks, extractDimTexts } from "../lib/sheets";
 import { joinAbuttingSpans } from "../lib/textjoin";
 import { dropFileFromIndex, indexIsScanLike } from "../lib/planIndex";
+import { labelsForFile, labelsOnFileChange, withPageLabel, withFoundLabels } from "../lib/sheetLabels";
+import { snapsToVectors } from "../lib/cursorSnap";
 import { textLayerReader, ocrCopyReaders, copyOcrRoute, readCopyText, createReadGate, boxOnPanel, copyIsScanLike, copyStartMiss, copyReaderChain, copyUnavailable, outcomeMessage, deliverCopy, makeReceipt, receiptExpires, receiptAfterEsc, receiptPlacement, RECEIPT_MS } from "../lib/copyText";
 import { putSheetIndex, createChangeSignal, ocrSheetIndex, needsTextPass } from "../lib/planSearch";
 import { createOcrSession } from "../lib/ocr/session";
@@ -297,10 +299,6 @@ const TOOL_VERB = {
   arrow: "annotate", dimension: "annotate", stamp: "annotate", bubble: "annotate",
   textcopy: "read_sheet_text",
 };
-// Tools whose click places the RAW cursor: selection gestures, where a corner
-// snapped to a vector endpoint would shift the box off what the estimator
-// aimed at. Select does its own endpoint snap on drop.
-const RAW_CURSOR_TOOLS = new Set(["select", "schedule", "image", "pin", "textcopy"]);
 
 // Pure geometry helpers (star/cloud paths, snap grid, angle lock, metrics,
 // hit-testing) live in lib/geometry.js — byte-identical with Spline's copy.
@@ -349,7 +347,8 @@ export default function TakeoffCanvas() {
   // silently did nothing on prod. A direct scrollLeft write always lands.
   const scrollTabStrip = (dir) => { const el = tabStripRef.current; if (el) el.scrollLeft = Math.max(0, el.scrollLeft + dir * Math.max(160, el.clientWidth * 0.6)); };
   const [galleryLabels, setGalleryLabels] = useState({}); // sheetKey → title-block number, all files
-  const [pageLabels, setPageLabels] = useState({}); // { pageNum: "A003" } from the title block
+  const [labelsByFile, setLabelsByFile] = useState({}); // { file: { pageNum: "A003" } } from the title block
+  const pageLabels = labelsForFile(labelsByFile, active); // the active file's only: page numbers repeat across files
   const [sheetGroup, setSheetGroup] = useState([]);   // sheetKeys shown side-by-side; [] = single-sheet mode
   const [sheetLevels, setSheetLevels] = useState({}); // sheetKey → level label ("L1") — persisted (additive `sheet_levels` key); groups the gallery for multi-floor sets
   const [lastGroup, setLastGroup] = useState([]);     // most recent side-by-side composition — "Regroup" restores it
@@ -821,7 +820,7 @@ export default function TakeoffCanvas() {
   }, [commitMsgState]);
   const [showReport, setShowReport] = useState(false);  // Reports overlay (STACK-style breakdown + export)
   const [showRevisions, setShowRevisions] = useState(false); // Revisions overlay (save / compare any two, buy-list deltas, CSV, auto-banked restore)
-  const [importRows, setImportRows] = useState(null);        // Import-from-schedule approval rows (null = dialog closed)
+  const [importRead, setImportRead] = useState(null);        // Import-from-schedule approval read: { rows, skipped } (null = dialog closed)
   const [scheduleAnchor, setScheduleAnchor] = useState(null); // first marquee corner for the "schedule" tool — ISOLATED from poly so it can never leak into a measure shape
   // The box being read: one at a time. importScheduleFromRect takes the lock
   // for every box (a vector box only for its own short read) as `mine` =
@@ -1700,10 +1699,12 @@ export default function TakeoffCanvas() {
   const removeFromProject = useCallback(async (name) => {
     if (typeof store.removeFromProject !== "function") return;
     await store.removeFromProject(name);
-    if (dropFileFromIndex(planIndexRef.current, name)) notifyIndex();
-    pageReader.dropFile(name);   // its OCR statuses go with its index entries
+    // as closePdf: its pdf.js doc, index entries, OCR reads and statuses,
+    // text-layer flags, page count and thumbnail records go with it
+    evictDoc(name);
+    forgetPages([name]);
     reconcileAfterRemoval(name, await refreshSheets());
-  }, [refreshSheets, reconcileAfterRemoval, notifyIndex, pageReader]);
+  }, [refreshSheets, reconcileAfterRemoval, evictDoc, forgetPages]);
   // open dropped/picked files of any kind: PDFs, images, and .zip plan sets all
   // get turned into PDF sheets (in-browser) by ingestFiles, then stashed locally
   async function handleFiles(fileList) {
@@ -2424,13 +2425,13 @@ export default function TakeoffCanvas() {
       lead.pageObj.getTextContent().then((tc) => {
         if (stale()) return;
         const lbl = extractSheetNumber(tc, lead.viewport);
-        if (lbl) setPageLabels((m) => (m[lead.pageNum] === lbl ? m : { ...m, [lead.pageNum]: lbl }));
+        if (lbl) setLabelsByFile((m) => withPageLabel(m, active, lead.pageNum, lbl));
         // plan-set search: the same text, at the same RENDER_SCALE viewport
         if (needsTextPass(planIndexRef.current.get(lead.key))) onIndexed(lead.key, pageTextIndex(lead.key, tc, lead.viewport));
       }).catch(() => {});
       if (labeledFileRef.current !== active) {
         labeledFileRef.current = active;
-        setPageLabels((m) => (m[lead.pageNum] ? { [lead.pageNum]: m[lead.pageNum] } : {})); // drop other file's labels
+        setLabelsByFile((m) => labelsOnFileChange(m, active)); // drop other files' labels
         (async () => {
           const pdf = await docFor(active);
           const found = {};
@@ -2442,7 +2443,7 @@ export default function TakeoffCanvas() {
               const tc = await p2.getTextContent();
               const vp2 = p2.getViewport({ scale: RENDER_SCALE });
               const lbl = extractSheetNumber(tc, vp2);
-              if (lbl) { found[n] = lbl; if (Object.keys(found).length % 8 === 0) setPageLabels((m) => ({ ...found, ...m })); }
+              if (lbl) { found[n] = lbl; if (Object.keys(found).length % 8 === 0) setLabelsByFile((m) => withFoundLabels(m, active, found)); }
               const key = n > 1 ? `${active}#${n}` : active;
               const det = detectScale(tc, vp2);
               if (det) setDetectedScales((d) => (d[key]?.label === det.label ? d : { ...d, [key]: det }));
@@ -2450,7 +2451,7 @@ export default function TakeoffCanvas() {
               if (needsTextPass(planIndexRef.current.get(key))) onIndexed(key, pageTextIndex(key, tc, vp2));
             } catch { /* skip */ }
           }
-          if (!stale() && Object.keys(found).length) setPageLabels((m) => ({ ...found, ...m }));
+          if (!stale() && Object.keys(found).length) setLabelsByFile((m) => withFoundLabels(m, active, found));
         })();
       }
     })().catch((e) => { if (stale() || e?.name === "RenderingCancelledException") return; setErr(String(e.message || e)); setStatus("error"); });
@@ -3414,12 +3415,13 @@ export default function TakeoffCanvas() {
       return;
     }
     // snapRef/angleRef are drawing-tool aids maintained by moveCrosshair, which
-    // bails for the Select tool (:1577) — so in Select they'd be STALE. Select
-    // does its own endpoint snap (ocSnap) on drop, so it always uses the raw
-    // cursor here; otherwise a stale ref freezes the drag or jumps it on grab.
-    // schedule (marquee) wants the raw cursor like select — snapping a corner to
-    // a vector vertex would shift the box off the schedule and misread the region
-    const rawCursor = RAW_CURSOR_TOOLS.has(tool);
+    // bails for the Select tool — so in Select they'd be STALE. Select does its
+    // own endpoint snap (ocSnap) on drop, so it always uses the raw cursor here;
+    // otherwise a stale ref freezes the drag or jumps it on grab. The selection
+    // boxes want the raw cursor too: a corner snapped to a vector vertex would
+    // shift the box off what was aimed at. snapsToVectors is the one rule,
+    // shared with moveCrosshair's preview.
+    const rawCursor = !snapsToVectors(tool);
     const p = (!rawCursor && snapOn && snapRef.current) ? snapRef.current
       : (!rawCursor && angleOn && angleRef.current) ? angleRef.current
         : toImage(e.clientX, e.clientY);
@@ -3845,9 +3847,10 @@ export default function TakeoffCanvas() {
     let cur = toImage(e.clientX, e.clientY);
     snapRef.current = null;
     if (snapMarkRef.current) snapMarkRef.current.style.display = "none";
-    // Copy text never snaps: its crosshair and box preview show exactly the
-    // corner the click places (raw), so what's drawn is what's read
-    if (snapOn && tool !== "textcopy" && !panRef.current && snapGridsRef.current.size) {
+    // the selection boxes never snap (snapsToVectors is false for them): their
+    // crosshair and box preview show exactly the corner the click places (raw),
+    // so what's drawn is what's read — and no star or "snap" chip
+    if (snapOn && snapsToVectors(tool) && !panRef.current && snapGridsRef.current.size) {
       const sc = tfRef.current.scale;
       const sp = panelAt(cur[0]);
       const grid = snapGridsRef.current.get(sp.key);
@@ -6427,8 +6430,9 @@ export default function TakeoffCanvas() {
 
   // Text layer only — the same spans and reader as Import from schedule's
   // text-layer read; unlike Import, a raster box is not read on-device here.
-  // Returns the reader's ScheduleRead: { rows } or { rows: [], refused, title? }
-  // (agentTools.js words the refusal for the model).
+  // Returns the reader's ScheduleRead: { rows, skipped? } (rows may be [] when
+  // skipped codes were all the box held) or { rows: [], refused, title? }
+  // (agentTools.js words the refusal and the skipped codes for the model).
   async function agentReadSchedule(key, region) {
     const { tc, vp, rs, rect } = await agentPageText(key, region);
     const { readScheduleSpans } = await import("../lib/scheduleRead");
@@ -7287,7 +7291,7 @@ export default function TakeoffCanvas() {
       } catch { if (isCurrent()) setCommitMsg("Couldn't read that region."); return; }
       const box = { textRuns: countTextRuns(spans), pageHasText };
       const route = routeScheduleRead(readScheduleSpans(spans), box);
-      if (route.kind === "rows") { setImportRows(route.rows); return; }
+      if (route.kind === "rows") { setImportRead({ rows: route.rows, skipped: route.skipped ?? [] }); return; }
       if (route.kind === "message") { setCommitMsg(route.text); return; }
       // On-device: the status line replaces the footer message, unless that
       // is the stale-tab lockout or another job's in-progress "…" line.
@@ -7308,7 +7312,7 @@ export default function TakeoffCanvas() {
         box,
       });
       if (!isCurrent()) return;
-      if (result.kind === "rows") setImportRows(result.rows);
+      if (result.kind === "rows") setImportRead({ rows: result.rows, skipped: result.skipped ?? [] });
       else if (result.kind === "message") setCommitMsg(result.text);
     } catch {
       if (isCurrent()) setCommitMsg("Couldn't read that region.");
@@ -7542,7 +7546,7 @@ export default function TakeoffCanvas() {
       });
       existing.add(tag);
     }
-    setImportRows(null);
+    setImportRead(null);
     if (!made.length) { setCommitMsg("Those finishes already exist as conditions."); return; }
     setConditions((cs) => [...cs, ...made]);
     activateCondition(made[0].id, { reassign: false });
@@ -10835,13 +10839,13 @@ export default function TakeoffCanvas() {
         />
       )}
 
-      {importRows && (
+      {importRead && (
         <ImportSchedulePanel
-          rows={importRows}
+          rows={importRead.rows} skipped={importRead.skipped}
           existing={new Set(conditions.map((c) => normalizeTag(c.finish_tag)))}
           palette={PALETTE} startIndex={conditions.length}
           onCreate={createFromSchedule}
-          onClose={() => setImportRows(null)}
+          onClose={() => setImportRead(null)}
         />
       )}
 

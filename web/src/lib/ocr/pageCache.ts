@@ -8,14 +8,14 @@
 // an older model is still used (the caller may offer "Read again" when it
 // knows a newer rev), so a lookup never needs the network. opts is a short
 // hash of everything else that shapes the read (engine options, target DPI,
-// tile overlap, raster cap, seam rules version): a mismatch is a miss, except
-// for an opts on STALE_OK_OPTS (a past engine whose reads are still worth
-// searching), which is a stale hit. rs is
-// the render scale the lines are in; a lookup at another rs gets them
-// rescaled. Bump v1 (here and
-// in pdfHash.ts's prefix) when the tile or unpad maths changes.
+// tile overlap, raster cap, seam rules version, ink preprocessing): a
+// mismatch is a miss, except for an opts on STALE_OK_OPTS (a past engine
+// whose reads are still worth searching), which is a stale hit. rs is the
+// render scale the lines are in; a lookup at another rs gets them rescaled.
+// Bump v1 (here and in pdfHash.ts's prefix) when the tile or unpad maths
+// changes.
 // A leaf module: no OCR engine, rasterizer or worker code comes with it.
-import { OCR_ENGINE_OPTIONS, OCR_READ_DPI, OCR_SCAN_MAX_DIM, OCR_SEAM_RULES_VERSION, OCR_TILE_OVERLAP_PT } from "./engineOptions";
+import { OCR_ENGINE_OPTIONS, OCR_INK, OCR_READ_DPI, OCR_SCAN_MAX_DIM, OCR_SEAM_RULES_VERSION, OCR_TILE_OVERLAP_PT } from "./engineOptions";
 import { isPdfHash, ocrCachePrefix } from "./pdfHash";
 import type { OcrWord } from "./types";
 
@@ -26,6 +26,7 @@ export const OCR_CACHE_PARAMS = {
   overlapPt: OCR_TILE_OVERLAP_PT,
   maxDim: OCR_SCAN_MAX_DIM,
   seams: OCR_SEAM_RULES_VERSION,
+  ink: OCR_INK,
 };
 export type OcrCacheParams = typeof OCR_CACHE_PARAMS;
 
@@ -57,9 +58,11 @@ export const OCR_CACHE_OPTS = ocrCacheOpts(OCR_CACHE_PARAMS);
  * old hash goes here when serving its reads, marked stale, beats losing
  * search and Copy on every page read under it until each is read again; a
  * seam-rule or DPI fix stays a miss, so a read known to be wrong where it
- * matters isn't served. d67721d4: per-line recognition at batch 6, before
- * #484 (it misread or dropped some rows; most of its text still searches). */
-export const STALE_OK_OPTS: readonly string[] = ["d67721d4"];
+ * matters isn't served. e2f8d8b4: per-line recognition at batch 6 with the
+ * ink pass (#481), before #484 (it misread or dropped some rows; most of its
+ * text still searches). d67721d4, the same engine before #481, stays a miss:
+ * it read red and magenta text as blank. */
+export const STALE_OK_OPTS: readonly string[] = ["e2f8d8b4"];
 
 /** The meta key for one page (1-based) of one PDF. Throws on a bad hash or page. */
 export function ocrCacheKey(hash: string, page: number): string {

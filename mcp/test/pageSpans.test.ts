@@ -1,11 +1,13 @@
 // The canvas's spans builder (web/src/lib/pageSpans.ts) against the MCP's own
 // text layer (mcp/src/pdf.ts textSpans / positionedText). Import from schedule
 // and the agent's read_schedule read a marquee through the same finish reader
-// the sheet graph indexes with, so they must hand it the same spans the MCP
-// hands buildSheetGraph — every box and every baseline origin, exactly, not
-// within a tolerance. The builder is a pure copy of rawSpans' math with the
-// render scale as a parameter (the canvas renders at its own scale); at
-// RENDER_SCALE the two must agree to the last decimal.
+// the sheet graph indexes with (plus rules only a drawn box gets: codes with a
+// word after them, NOT USED rows, four- and five-letter codes), so they must
+// hand it the same spans the MCP hands buildSheetGraph — every box and every
+// baseline origin, exactly, not within a tolerance. The builder is a pure
+// copy of rawSpans' math with the render scale as a parameter (the canvas
+// renders at its own scale); at RENDER_SCALE the two must agree to the last
+// decimal.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";

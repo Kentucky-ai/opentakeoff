@@ -446,13 +446,87 @@ test("recognize maps cells to sheet words and never uses ppu's result cache", as
   const h = harness();
   await h.core.handle(init());
   await h.core.handle(recognizeMsg(7));
-  assert.deepEqual(h.recognizeCalls[0].opts, { flatten: false, noCache: true });
+  // a neutral tile: recognition reads the same canvas detection does
+  assert.deepEqual(h.recognizeCalls[0].opts, { flatten: false, noCache: true, recognitionCanvas: h.recognizeCalls[0].canvas });
   const res = last(h.posted);
   assert.equal(res.type, "result");
   assert.equal(res.id, 7);
   // ppu's padding comes off before the crop → sheet map: ink (42..102, 72..102)
   // at zoom 1.5 from (100, 200).
   assert.deepEqual(res.words, [{ str: "CPT-1", x: 128, y: 268, w: 40, h: 20, confidence: 0.98 }]);
+});
+
+// A 2 × 2 tile of red ink (220, 30, 30), opaque.
+const redMsg = (id: number) => {
+  const rgba = new Uint8ClampedArray(4 * 2 * 2);
+  for (let p = 0; p < rgba.length; p += 4) rgba.set([220, 30, 30, 255], p);
+  return { ...recognizeMsg(id), rgba, width: 2, height: 2 };
+};
+
+/** makeCanvas that snapshots the bytes it is handed at call time and returns
+ * a distinct canvas per call. */
+function snapshotCanvases() {
+  const seen: number[][] = [];
+  const made: { canvas: number }[] = [];
+  const makeCanvas = (rgba: Uint8ClampedArray) => {
+    seen.push([...rgba]);
+    const c = { canvas: made.length };
+    made.push(c);
+    return c;
+  };
+  return { seen, made, makeCanvas };
+}
+
+test("recognize: detection gets the tile as rendered, recognition a copy with red ink (220, 30, 30) as luma 87 (#481)", async () => {
+  // ppu's recognition reads only the R byte, so red ink read as paper; its
+  // detection reads R, G and B and is given the tile untouched.
+  const s = snapshotCanvases();
+  const h = harness({ makeCanvas: s.makeCanvas });
+  await h.core.handle(init());
+  await h.core.handle(redMsg(1));
+  assert.deepEqual(s.seen, [
+    [220, 30, 30, 255, 220, 30, 30, 255, 220, 30, 30, 255, 220, 30, 30, 255],
+    [87, 87, 87, 255, 87, 87, 87, 255, 87, 87, 87, 255, 87, 87, 87, 255],
+  ]);
+  assert.equal(h.recognizeCalls.length, 1);
+  assert.equal(h.recognizeCalls[0].canvas, s.made[0]);
+  assert.deepEqual(h.recognizeCalls[0].opts, { flatten: false, noCache: true, recognitionCanvas: s.made[1] });
+  assert.equal((h.recognizeCalls[0].opts as { recognitionCanvas: unknown }).recognitionCanvas, s.made[1]);
+  assert.equal(last(h.posted).type, "result");
+});
+
+test("recognize: the grayed copy keeps near-neutral pixels byte-identical: paper (250, 245, 242) stays, red beside it turns gray (#481)", async () => {
+  const s = snapshotCanvases();
+  const h = harness({ makeCanvas: s.makeCanvas });
+  await h.core.handle(init());
+  const msg = redMsg(1);
+  msg.rgba.set([250, 245, 242, 255], 4);
+  msg.rgba.set([100, 104, 96, 200], 8);
+  await h.core.handle(msg);
+  assert.deepEqual(s.seen, [
+    [220, 30, 30, 255, 250, 245, 242, 255, 100, 104, 96, 200, 220, 30, 30, 255],
+    [87, 87, 87, 255, 250, 245, 242, 255, 100, 104, 96, 200, 87, 87, 87, 255],
+  ]);
+});
+
+test("recognize: a tile with no colored pixel makes one canvas, read by both detection and recognition (#481)", async () => {
+  const s = snapshotCanvases();
+  const h = harness({ makeCanvas: s.makeCanvas });
+  await h.core.handle(init());
+  const msg = redMsg(1);
+  for (let p = 0; p < msg.rgba.length; p += 4) msg.rgba.set([250, 245, 242, 255], p);
+  await h.core.handle(msg);
+  assert.equal(s.made.length, 1);
+  assert.equal(h.recognizeCalls[0].canvas, s.made[0]);
+  assert.equal((h.recognizeCalls[0].opts as { recognitionCanvas: unknown }).recognitionCanvas, s.made[0]);
+});
+
+test("a recognize before the engine is ready leaves the tile's bytes alone", async () => {
+  const h = harness();
+  const msg = redMsg(1);
+  await h.core.handle(msg);
+  assert.equal(last(h.posted).code, "not-ready");
+  assert.deepEqual([...msg.rgba.subarray(0, 4)], [220, 30, 30, 255]);
 });
 
 test("a read that throws in the engine replies with a recognize error, and the next read runs", async () => {
@@ -507,6 +581,25 @@ test("one read at a time: a second recognize in flight gets busy", async () => {
   const first = h.core.handle(recognizeMsg(1));
   await h.core.handle(recognizeMsg(2));
   assert.deepEqual(last(h.posted), { type: "error", id: 2, code: "busy", message: "another read is running" });
+  release();
+  await first;
+  assert.deepEqual(last(h.posted), { type: "result", id: 1, words: [] });
+});
+
+test("a recognize that arrives busy gets the busy error and its tile's bytes are left alone", async () => {
+  let release!: () => void;
+  const h = harness({
+    loadService: async () => ({
+      recognize: () => new Promise((r) => { release = () => r({ lines: [] }); }),
+      destroy: async () => {},
+    }),
+  });
+  await h.core.handle(init());
+  const first = h.core.handle(redMsg(1));
+  const second = redMsg(2);
+  await h.core.handle(second);
+  assert.deepEqual(last(h.posted), { type: "error", id: 2, code: "busy", message: "another read is running" });
+  assert.deepEqual([...second.rgba], [220, 30, 30, 255, 220, 30, 30, 255, 220, 30, 30, 255, 220, 30, 30, 255]);
   release();
   await first;
   assert.deepEqual(last(h.posted), { type: "result", id: 1, words: [] });

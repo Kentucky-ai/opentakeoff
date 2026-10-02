@@ -15,6 +15,11 @@
 //   in : { type: "init", manifest, allowNetwork, initId }
 //        { type: "cancel", initId }                 aborts that init's download
 //        { type: "recognize", id, rgba, width, height, geometry }
+//                                rgba is the tile as rendered; detection
+//                                reads a canvas made from it as is, then
+//                                the core grays its colored pixels in place
+//                                (ink.ts) for recognition's canvas, so it
+//                                can't be reused
 //        { type: "dispose" }
 //   out: { type: "progress", loaded, total, initId } bytes, monotonic
 //        { type: "ready", initId }
@@ -35,6 +40,7 @@
 // recognize.
 import { asManifest, CACHE_PREFIX, cacheKey, cacheName, MANIFEST_URL, type ManifestEntry, type OcrManifest } from "./manifest";
 import { cropBoxToWord, OCR_DETECTION_PADDING, unpadCropBox, type RenderGeometry } from "./raster";
+import { inkToGray } from "./ink";
 // The engine options live in a leaf module (no imports) so the OCR page
 // cache can key on them without importing this file.
 import { OCR_ENGINE_OPTIONS, type EngineOptions } from "./engineOptions";
@@ -55,9 +61,20 @@ export interface CacheStorageLike {
 /** The slice of onnxruntime-web's module the core configures. */
 export interface OrtLike { env: { wasm: Record<string, unknown> } }
 
-/** The slice of ppu-paddle-ocr's PaddleOcrService the core uses. */
+/** The options a read passes the service. recognitionCanvas is the split
+ * read's (splitRecognize.ts), not ppu's: the canvas recognition reads, the
+ * detection canvas when left out. */
+export interface RecognizeOpts {
+  flatten: false;
+  noCache: true;
+  recognitionCanvas?: unknown;
+  strategy?: "per-box" | "per-line" | "cross-line";
+}
+
+/** The service the core reads with: ppu-paddle-ocr's PaddleOcrService
+ * wrapped by splitRecognizer (ocr.worker.ts). */
 export interface OcrServiceLike {
-  recognize(canvas: unknown, opts: { flatten: false; noCache: true }): Promise<unknown>;
+  recognize(canvas: unknown, opts: RecognizeOpts): Promise<unknown>;
   destroy(): Promise<void>;
 }
 
@@ -79,7 +96,9 @@ export interface OcrCoreDeps {
   /** import ppu, construct the service from the buffers and detection
    * options, await initialize() */
   loadService: (buffers: EngineBuffers, options: EngineOptions) => Promise<OcrServiceLike>;
-  /** RGBA → a canvas ppu can read (an OffscreenCanvas in the worker) */
+  /** RGBA → a canvas ppu can read (an OffscreenCanvas in the worker). It
+   * must copy the bytes (ocr.worker.ts does, through img.data.set): the core
+   * grays rgba in place after making detection's canvas from it. */
   makeCanvas: (rgba: Uint8ClampedArray, width: number, height: number) => unknown;
   /** this site's origin (self.location.origin); every file URL must
    * resolve to it */
@@ -352,10 +371,19 @@ export function createOcrCore(deps: OcrCoreDeps) {
     }
     busy = true;
     try {
+      // Detection reads the tile as rendered. makeCanvas copies the bytes,
+      // so graying rgba next leaves this canvas alone.
       const canvas = deps.makeCanvas(msg.rgba, msg.width, msg.height);
+      // ppu's recognition reads only the R byte, so red ink read as paper
+      // (#481): recognition gets a second canvas with colored pixels as luma
+      // gray, near-neutral ones as rendered. Detection keeps the original
+      // because graying its input flipped nearby black-text reads (ink.ts).
+      // In place: the client transferred the buffer, and nothing reads it
+      // after this. A tile with no colored pixel needs no second canvas.
+      const recognitionCanvas = inkToGray(msg.rgba) ? deps.makeCanvas(msg.rgba, msg.width, msg.height) : canvas;
       // noCache: ppu's image cache keys on a 4 KB sample, so two similar
       // tiles can collide and return each other's text.
-      const res = (await service.recognize(canvas, { flatten: false, noCache: true })) as { lines?: Cell[][] };
+      const res = (await service.recognize(canvas, { flatten: false, noCache: true, recognitionCanvas })) as { lines?: Cell[][] };
       const words: OcrWord[] = [];
       for (const line of res?.lines ?? []) {
         for (const cell of line ?? []) {

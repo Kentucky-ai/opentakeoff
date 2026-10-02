@@ -7,7 +7,7 @@ import { createPageCache, ocrCacheKey, ocrCacheOpts, OCR_CACHE_OPTS, OCR_CACHE_P
 import { EMPTY_SHA256, isPdfHash, ocrCachePrefix, ocrHashesToDrop, startPdfHash } from "../src/lib/ocr/pdfHash.ts";
 import { readFileSync } from "node:fs";
 import { OCR_ENGINE_OPTIONS as CORE_ENGINE_OPTIONS } from "../src/lib/ocr/workerCore.ts";
-import { OCR_ENGINE_OPTIONS, OCR_READ_DPI, OCR_SCAN_MAX_DIM, OCR_SEAM_RULES_VERSION, OCR_TILE_OVERLAP_PT } from "../src/lib/ocr/engineOptions.ts";
+import { OCR_ENGINE_OPTIONS, OCR_INK, OCR_READ_DPI, OCR_SCAN_MAX_DIM, OCR_SEAM_RULES_VERSION, OCR_TILE_OVERLAP_PT } from "../src/lib/ocr/engineOptions.ts";
 import { OCR_DETECTION_PADDING } from "../src/lib/ocr/raster.ts";
 import { SCAN_MAX_DIM } from "../src/lib/scheduleScan.ts";
 import { OCR_TARGET_DPI } from "../src/lib/ocr/rasterize.ts";
@@ -65,6 +65,7 @@ test("opts: a short stable string that changes with every input", () => {
     { ...P, engine: { ...P.engine, recognition: { ...P.engine.recognition, strategy: "per-line" as const } } },
     { ...P, engine: { ...P.engine, recognition: { ...P.engine.recognition, recBatchSize: 6 } } },
     { ...P, maxDim: 2048 },
+    { ...P, ink: "other" },
   ];
   const seen = new Set([OCR_CACHE_OPTS]);
   for (const v of variants) {
@@ -99,6 +100,10 @@ test("opts params are the ones the read actually uses", () => {
   assert.ok(Number.isInteger(SEAM_RULES_VERSION) && SEAM_RULES_VERSION >= 1);
   assert.equal(OCR_SEAM_RULES_VERSION, SEAM_RULES_VERSION);
   assert.equal(OCR_CACHE_PARAMS.seams, SEAM_RULES_VERSION);
+  // the ink preprocessing the worker runs before ppu (#481); ocrInk.test.ts
+  // pins ink.ts's re-export to this same value
+  assert.equal(OCR_INK, "split-luma601-c8-24");
+  assert.equal(OCR_CACHE_PARAMS.ink, OCR_INK);
 });
 
 test("a read saved under older seam rules is a miss", async () => {
@@ -122,19 +127,27 @@ test("engineOptions.ts is a leaf: no imports, so the cache never depends on tree
 
 test("opts hash is pinned: a change here invalidates every cached page read, on purpose", () => {
   // If this fails, something that shapes a read changed (engine options,
-  // DPI, tile overlap, raster cap, seam rules version) and old cached reads
-  // are now misses. That is intended; update the literal in the same change,
-  // and decide whether the old hash goes on STALE_OK_OPTS (its reads kept,
-  // flagged stale) or not (dropped).
-  assert.equal(OCR_CACHE_OPTS, "96cc85c8");
+  // DPI, tile overlap, raster cap, seam rules version, preprocessing) and old
+  // cached reads are now misses. That is intended; update the literal in the
+  // same change, and decide whether the old hash goes on STALE_OK_OPTS (its
+  // reads kept, flagged stale) or not (dropped).
+  assert.equal(OCR_CACHE_OPTS, "6ce25af8");
+});
+
+test("a read saved before the luminance preprocessing (#481) is a miss", async () => {
+  const meta = fakeMeta();
+  // the opts every read was saved under before #481
+  await createPageCache(meta, { opts: "d67721d4" }).put(H1, 1, { rev: "r1", rs: 2, lines: [LINE], ms: 1, rasters: 1, at: 1 });
+  assert.equal(await createPageCache(meta).get(H1, 1, { rs: 2, rev: "r1" }), null);
+  assert.ok(!STALE_OK_OPTS.includes("d67721d4"));
 });
 
 test("the stale-ok hash is exactly the engine before #484: per-line at batch 6, ppu's defaults, all else the same", () => {
   const P = OCR_CACHE_PARAMS;
   const { strategy, recBatchSize, ...before } = P.engine.recognition;
   assert.deepEqual({ strategy, recBatchSize }, { strategy: "per-box", recBatchSize: 1 });
-  assert.equal(ocrCacheOpts({ ...P, engine: { ...P.engine, recognition: before } } as unknown as typeof P), "d67721d4");
-  assert.ok(STALE_OK_OPTS.includes("d67721d4"));
+  assert.equal(ocrCacheOpts({ ...P, engine: { ...P.engine, recognition: before } } as unknown as typeof P), "e2f8d8b4");
+  assert.ok(STALE_OK_OPTS.includes("e2f8d8b4"));
   assert.ok(!STALE_OK_OPTS.includes(OCR_CACHE_OPTS), "the current engine's reads are fresh, not stale");
 });
 
@@ -186,7 +199,7 @@ test("the stale-ok list is pinned: the opts of reads still served after an engin
   // Each entry is the opts hash of a past engine whose reads are worth
   // keeping (stale, so Read again shows) rather than dropping. Add the old
   // hash here only when the change that retires it says so.
-  assert.deepEqual(STALE_OK_OPTS, ["d67721d4"]);
+  assert.deepEqual(STALE_OK_OPTS, ["e2f8d8b4"]);
 });
 
 test("a read saved under a stale-ok engine is a stale hit, the rev known or not", async () => {

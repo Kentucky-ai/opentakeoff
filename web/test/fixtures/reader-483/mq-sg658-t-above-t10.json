@@ -1,0 +1,91 @@
+{
+  "name": "mq-sg658-t-above-t10",
+  "kind": "marquee",
+  "note": "sheetgraphFinish.test.ts:658 — fuzz-found T above T-10",
+  "spans": [
+    {
+      "str": "MARK",
+      "x": 139.5,
+      "y": 0,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "SIZE",
+      "x": 333,
+      "y": 0,
+      "w": 32,
+      "h": 17
+    },
+    {
+      "str": "DESCRIPTION",
+      "x": 605.5,
+      "y": 0,
+      "w": 88,
+      "h": 17
+    },
+    {
+      "str": "T",
+      "x": 100,
+      "y": 38,
+      "w": 8,
+      "h": 17
+    },
+    {
+      "str": "OAK 303 Q1",
+      "x": 211,
+      "y": 38,
+      "w": 80,
+      "h": 17
+    },
+    {
+      "str": "T-10",
+      "x": 100,
+      "y": 76,
+      "w": 32,
+      "h": 17
+    }
+  ],
+  "marquee": {
+    "readScheduleSpans": {
+      "rows": [],
+      "refused": "no-color-style-pattern"
+    },
+    "parseSchedule": [],
+    "finishRows": {
+      "otherFamily": false,
+      "rows": [
+        {
+          "key": "T",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "T OAK 303 Q1",
+              "bbox": [
+                100,
+                38,
+                291,
+                55
+              ]
+            }
+          }
+        },
+        {
+          "key": "T-10",
+          "sheet": "fx",
+          "cells": {
+            "MARK": {
+              "text": "T-10",
+              "bbox": [
+                100,
+                76,
+                132,
+                93
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

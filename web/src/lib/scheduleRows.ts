@@ -34,6 +34,14 @@ export type ScheduleRow = {
   size: string;              // SIZE cell
   remarks: string;           // REMARKS cell (else COMMENTS)
   suggested: boolean;        // default-checked in the dialog
+  // Marquee reads only (#483); absent when not set:
+  /** why the row starts unticked: the schedule marks it NOT USED or N.I.C. */
+  unticked_reason?: "not-used";
+  /** that marker as printed ("NOT USED", "(N.I.C.)") */
+  not_used_text?: string;
+  /** read by a newer, less-tested rule (a code with a word after it on a line
+   * of its own) rather than by the reader's long-standing one */
+  key_rule?: "extended";
 };
 
 // Default line/fill palette when the canvas doesn't pass its own — mirrors the
