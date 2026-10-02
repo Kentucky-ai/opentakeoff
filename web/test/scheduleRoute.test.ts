@@ -20,8 +20,13 @@ import assert from "node:assert/strict";
 import {
   routeScheduleRead, routeOcrRead, refusalMessage, refusalWhy, countTextRuns, ocrUnavailableMessage, ocrFailedMessage,
   NO_SCHEDULE_HINT, EMPTY_BOX_MESSAGE, OCR_NO_ROWS_MESSAGE, OCR_DECLINED_MESSAGE, OCR_BUSY_MESSAGE, OCR_STARTING_MESSAGE,
-  OCR_READING_MESSAGE, OCR_WAITING_MESSAGE, STRAY_TEXT_MAX_RUNS, heldKeyWouldPress, IMPORT_READ_STATUS_ATTR,
+  OCR_READING_MESSAGE, OCR_WAITING_MESSAGE, OCR_TOO_LARGE_MESSAGE, STRAY_TEXT_MAX_RUNS, heldKeyWouldPress, IMPORT_READ_STATUS_ATTR,
+  ocrReadingMessage, OCR_NO_HEADER_MESSAGE,
 } from "../src/lib/scheduleRoute.ts";
+import { finishCodeOk, CODE_RE } from "../src/lib/sheetgraph.ts";
+import { readScheduleSpans } from "../src/lib/scheduleRead.ts";
+import { wordsToSpans, type OcrWord } from "../src/lib/ocr/types.ts";
+import { readFileSync } from "node:fs";
 import type { RefusalReason } from "../src/lib/scheduleRead.ts";
 import type { ScheduleRow } from "../src/lib/scheduleRows.ts";
 
@@ -173,6 +178,60 @@ test("the reader's own result: rows, a refusal, or the no-rows hint naming WHERE
   );
 });
 
+// ── codes but no header row (#484) ──────────────────────────────────────────
+
+/** The real per-box words of a synthetic schedule whose header row is
+ * rotated 90°: the engine found no header at all (fixture's `about`). */
+const ROTATED: { rs: number; words: OcrWord[] } = JSON.parse(readFileSync(new URL("./fixtures/schedule-ocr/rotated-header-perbox.json", import.meta.url), "utf8"));
+const span = (str: string, x: number, y: number) => ({ str, x, y, w: 40, h: 12 });
+
+test("the no-header hint is worded as decided", () => {
+  assert.equal(
+    OCR_NO_HEADER_MESSAGE,
+    "Found finish codes in a column but no header row the reader could read. The headers may be rotated (which can't be read yet) or outside the box — box the schedule with a header row that reads left to right.",
+  );
+});
+
+test("the rotated-header table: the reader finds no table, and the hint says why", () => {
+  const spans = wordsToSpans(ROTATED.words);
+  const read = readScheduleSpans(spans, { ocr: true });
+  assert.deepEqual(read, { rows: [], refused: "no-table" }, "the expected refusal is no-table");
+  assert.deepEqual(routeOcrRead(read, spans), { kind: "message", text: OCR_NO_HEADER_MESSAGE });
+  // without the spans (the one-argument call): the no-rows hint, as before
+  assert.deepEqual(routeOcrRead(read), { kind: "message", text: OCR_NO_ROWS_MESSAGE });
+});
+
+test("the hint needs three codes stacked in one column", () => {
+  const column = [span("CPT-1", 100, 50), span("LVT-1", 102, 80), span("RB-1", 98, 110)];
+  assert.deepEqual(routeOcrRead(NO_TABLE, column), { kind: "message", text: OCR_NO_HEADER_MESSAGE });
+  // two codes: no hint
+  assert.deepEqual(routeOcrRead(NO_TABLE, column.slice(0, 2)), { kind: "message", text: OCR_NO_ROWS_MESSAGE });
+  // three codes scattered across columns: no hint
+  const scattered = [span("CPT-1", 100, 50), span("LVT-1", 400, 80), span("RB-1", 700, 110)];
+  assert.deepEqual(routeOcrRead(NO_TABLE, scattered), { kind: "message", text: OCR_NO_ROWS_MESSAGE });
+  // two in one column and one elsewhere: no hint
+  assert.deepEqual(routeOcrRead(NO_TABLE, [...column.slice(0, 2), span("RB-1", 700, 110)]), { kind: "message", text: OCR_NO_ROWS_MESSAGE });
+});
+
+test("the hint counts only codes with a digit or hyphen: a column of words the code test passes is no hint", () => {
+  // CODE_RE alone passes these; the reader's test passes all but none is a code
+  for (const w of ["SEE", "AND", "TO"]) assert.ok(finishCodeOk(w) && CODE_RE.test(w), w);
+  const words = [span("SEE", 100, 50), span("AND", 101, 80), span("TO", 99, 110), span("SEE", 100, 140)];
+  assert.deepEqual(routeOcrRead(NO_TABLE, words), { kind: "message", text: OCR_NO_ROWS_MESSAGE });
+  // and text with a digit or hyphen that the reader's code test refuses never counts
+  for (const w of ["CPT-12345", "ABCDE-1", "CPT--1"]) assert.ok(!finishCodeOk(w), w);
+  const long = [span("CPT-12345", 100, 50), span("ABCDE-1", 100, 80), span("CPT--1", 100, 110)];
+  assert.deepEqual(routeOcrRead(NO_TABLE, long), { kind: "message", text: OCR_NO_ROWS_MESSAGE });
+});
+
+test("the hint is only for no table: rows and other refusals are unchanged", () => {
+  const column = [span("CPT-1", 100, 50), span("LVT-1", 102, 80), span("RB-1", 98, 110)];
+  assert.deepEqual(routeOcrRead({ rows: [row] }, column), { kind: "rows", rows: [row] });
+  for (const refused of REFUSALS) {
+    assert.deepEqual(routeOcrRead({ rows: [], refused }, column), { kind: "message", text: refusalMessage(refused) });
+  }
+});
+
 test("declined, failed, and the status lines are worded as decided", () => {
   assert.equal(OCR_DECLINED_MESSAGE, "Not read — reading a raster schedule needs the on-device reader, which wasn't downloaded.");
   assert.equal(ocrFailedMessage("OCR engine not ready"), "Couldn't read that box on this device (OCR engine not ready) — try again.");
@@ -180,6 +239,22 @@ test("declined, failed, and the status lines are worded as decided", () => {
   assert.equal(OCR_STARTING_MESSAGE, "Starting the on-device reader…");
   assert.equal(OCR_READING_MESSAGE, "Reading the schedule on this device…");
   assert.equal(OCR_WAITING_MESSAGE, "Waiting for another read…", "Copy text's waiting line, word for word");
+  assert.equal(OCR_TOO_LARGE_MESSAGE, "That box is too large to read — draw it around the schedule only.");
+});
+
+test("the reading line counts rasters read only when the box takes several, never as n/N", () => {
+  const p = (rastersDone: number, rastersPlanned: number) => ({ rastersDone, rastersPlanned });
+  // no progress yet, or a box read in one raster: the plain line
+  assert.equal(ocrReadingMessage(null), OCR_READING_MESSAGE);
+  assert.equal(ocrReadingMessage(undefined), OCR_READING_MESSAGE);
+  assert.equal(ocrReadingMessage(p(0, 1)), OCR_READING_MESSAGE);
+  assert.equal(ocrReadingMessage(p(1, 1)), OCR_READING_MESSAGE);
+  // several planned, none read yet: still the plain line, not "0 rasters"
+  assert.equal(ocrReadingMessage(p(0, 4)), OCR_READING_MESSAGE);
+  // several: how many are read (the total grows when patches join the plan)
+  assert.equal(ocrReadingMessage(p(1, 4)), "Reading the schedule on this device… (1 raster read)");
+  assert.equal(ocrReadingMessage(p(3, 4)), "Reading the schedule on this device… (3 rasters read)");
+  assert.equal(ocrReadingMessage(p(5, 6)), "Reading the schedule on this device… (5 rasters read)");
 });
 
 /** A fake element: a tag, its attributes and a parent. closest() matches a

@@ -3,7 +3,7 @@
 // store uses: the hash check, startPdfHash, and the removal keep/delete rule.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createPageCache, ocrCacheKey, ocrCacheOpts, OCR_CACHE_OPTS, OCR_CACHE_PARAMS } from "../src/lib/ocr/pageCache.ts";
+import { createPageCache, ocrCacheKey, ocrCacheOpts, OCR_CACHE_OPTS, OCR_CACHE_PARAMS, STALE_OK_OPTS } from "../src/lib/ocr/pageCache.ts";
 import { EMPTY_SHA256, isPdfHash, ocrCachePrefix, ocrHashesToDrop, startPdfHash } from "../src/lib/ocr/pdfHash.ts";
 import { readFileSync } from "node:fs";
 import { OCR_ENGINE_OPTIONS as CORE_ENGINE_OPTIONS } from "../src/lib/ocr/workerCore.ts";
@@ -61,7 +61,9 @@ test("opts: a short stable string that changes with every input", () => {
     { ...P, engine: { ...P.engine, detection: { ...P.engine.detection, paddingVertical: 0.5 } } },
     { ...P, engine: { ...P.engine, detection: { ...P.engine.detection, paddingHorizontal: 0.7 } } },
     { ...P, engine: { ...P.engine, detection: { ...P.engine.detection, maxSideLength: 2048 } } },
-    { ...P, engine: { ...P.engine, recognition: { maxCropSourceSideLength: 2000 } } },
+    { ...P, engine: { ...P.engine, recognition: { ...P.engine.recognition, maxCropSourceSideLength: 2000 } } },
+    { ...P, engine: { ...P.engine, recognition: { ...P.engine.recognition, strategy: "per-line" as const } } },
+    { ...P, engine: { ...P.engine, recognition: { ...P.engine.recognition, recBatchSize: 6 } } },
     { ...P, maxDim: 2048 },
     { ...P, ink: "other" },
   ];
@@ -127,8 +129,9 @@ test("opts hash is pinned: a change here invalidates every cached page read, on 
   // If this fails, something that shapes a read changed (engine options,
   // DPI, tile overlap, raster cap, seam rules version, preprocessing) and old
   // cached reads are now misses. That is intended; update the literal in the
-  // same change.
-  assert.equal(OCR_CACHE_OPTS, "e2f8d8b4");
+  // same change, and decide whether the old hash goes on STALE_OK_OPTS (its
+  // reads kept, flagged stale) or not (dropped).
+  assert.equal(OCR_CACHE_OPTS, "6ce25af8");
 });
 
 test("a read saved before the luminance preprocessing (#481) is a miss", async () => {
@@ -136,6 +139,16 @@ test("a read saved before the luminance preprocessing (#481) is a miss", async (
   // the opts every read was saved under before #481
   await createPageCache(meta, { opts: "d67721d4" }).put(H1, 1, { rev: "r1", rs: 2, lines: [LINE], ms: 1, rasters: 1, at: 1 });
   assert.equal(await createPageCache(meta).get(H1, 1, { rs: 2, rev: "r1" }), null);
+  assert.ok(!STALE_OK_OPTS.includes("d67721d4"));
+});
+
+test("the stale-ok hash is exactly the engine before #484: per-line at batch 6, ppu's defaults, all else the same", () => {
+  const P = OCR_CACHE_PARAMS;
+  const { strategy, recBatchSize, ...before } = P.engine.recognition;
+  assert.deepEqual({ strategy, recBatchSize }, { strategy: "per-box", recBatchSize: 1 });
+  assert.equal(ocrCacheOpts({ ...P, engine: { ...P.engine, recognition: before } } as unknown as typeof P), "e2f8d8b4");
+  assert.ok(STALE_OK_OPTS.includes("e2f8d8b4"));
+  assert.ok(!STALE_OK_OPTS.includes(OCR_CACHE_OPTS), "the current engine's reads are fresh, not stale");
 });
 
 test("put then get: same rs and opts gives the stored read back", async () => {
@@ -180,6 +193,38 @@ test("opts mismatch is a miss", async () => {
   await createPageCache(meta, { opts: "00000000" }).put(H1, 1, { rev: "r1", rs: 2, lines: [LINE], ms: 1, rasters: 1, at: 1 });
   assert.equal(await createPageCache(meta).get(H1, 1, { rs: 2 }), null);
   assert.equal(await createPageCache(meta).get(H1, 1, { rs: 3 }), null);
+});
+
+test("the stale-ok list is pinned: the opts of reads still served after an engine change", () => {
+  // Each entry is the opts hash of a past engine whose reads are worth
+  // keeping (stale, so Read again shows) rather than dropping. Add the old
+  // hash here only when the change that retires it says so.
+  assert.deepEqual(STALE_OK_OPTS, ["e2f8d8b4"]);
+});
+
+test("a read saved under a stale-ok engine is a stale hit, the rev known or not", async () => {
+  const meta = fakeMeta();
+  const [earlier] = STALE_OK_OPTS;
+  const now = "0000beef";
+  await createPageCache(meta, { opts: earlier }).put(H1, 1, { rev: "r1", rs: 2, lines: [LINE], ms: 7, rasters: 2, at: 5 });
+  const cache = createPageCache(meta, { opts: now });
+  for (const rev of [null, undefined, "r1", "r2"]) {
+    const hit = await cache.get(H1, 1, { rs: 2, rev });
+    assert.deepEqual(hit, { rev: "r1", rs: 2, lines: [LINE], ms: 7, rasters: 2, at: 5, stale: true }, String(rev));
+  }
+  // rescaled like any other hit
+  assert.deepEqual((await cache.get(H1, 1, { rs: 4 }))?.lines, [{ ...LINE, x: 200, y: 400, w: 160, h: 20 }]);
+  // a read saved again under the current engine replaces it, fresh
+  await cache.put(H1, 1, { rev: "r1", rs: 2, lines: [LINE], ms: 7, rasters: 2, at: 6 });
+  assert.equal((await cache.get(H1, 1, { rs: 2 }))?.stale, false);
+  assert.equal((await cache.get(H1, 1, { rs: 2, rev: "r1" }))?.stale, false);
+});
+
+test("other opts not on the stale-ok list stay a miss", async () => {
+  const meta = fakeMeta();
+  await createPageCache(meta, { opts: "12345678" }).put(H1, 1, { rev: "r1", rs: 2, lines: [LINE], ms: 1, rasters: 1, at: 1 });
+  assert.equal(await createPageCache(meta, { opts: "0000beef" }).get(H1, 1, { rs: 2 }), null);
+  assert.equal(await createPageCache(meta, { opts: "0000beef" }).get(H1, 1, { rs: 2, rev: "r1" }), null);
 });
 
 test("an older model rev is still used, flagged stale; no known rev uses it as is", async () => {

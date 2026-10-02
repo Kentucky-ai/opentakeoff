@@ -693,10 +693,14 @@ test("a cancel between files (while one is being hashed): no further fetch start
 // execution provider is pinned to "cpu" (wasm), the one every browser run
 // used (ppu logged `Using user-provided executionProviders: ["cpu"]`):
 // forcing WebGPU hung engine start in Chrome, with no speed gain measured.
-test("the service reads at full raster size on the CPU (wasm) provider and keeps ORT's warnings out of the console", async () => {
+// Each box is recognized on its own, one crop at a time (#484): ppu's
+// per-line default merged a row's boxes into one crop, and its batches of 6
+// garbled short lines (engineOptions.ts has the numbers; the real-engine
+// check is ocrEngineStrategy.test.ts).
+test("the service reads at full raster size, box by box, on the CPU (wasm) provider and keeps ORT's warnings out of the console", async () => {
   const h = harness();
   await h.core.handle(init());
   const o = h.serviceCalls[0].options as { recognition: unknown; session: unknown };
-  assert.deepEqual(o.recognition, { maxCropSourceSideLength: SCAN_MAX_DIM });
+  assert.deepEqual(o.recognition, { maxCropSourceSideLength: SCAN_MAX_DIM, strategy: "per-box", recBatchSize: 1 });
   assert.deepEqual(o.session, { logSeverityLevel: 3, executionProviders: ["cpu"] });
 });

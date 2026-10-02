@@ -14,7 +14,7 @@ import {
   type PageReadStatus, type ReadRegion, type ActiveRead,
 } from "../src/lib/ocr/pageRead.ts";
 import { createPageCache } from "../src/lib/ocr/pageCache.ts";
-import { ocrCacheKey, OCR_CACHE_OPTS } from "../src/lib/ocr/pageCache.ts";
+import { ocrCacheKey, OCR_CACHE_OPTS, STALE_OK_OPTS } from "../src/lib/ocr/pageCache.ts";
 import type { OcrProbe } from "../src/lib/ocr/client.ts";
 import type { OcrRunResult } from "../src/lib/ocr/session.ts";
 import type { SeamLine, SeamProgress } from "../src/lib/ocr/seams.ts";
@@ -152,6 +152,32 @@ test("with the rev unknown (probe not available) a hit is not stale", async () =
   const r = await readPageText({ page: 1, rs: RS, getPage: page().getPage, pdfHash: async () => HASH, session: s.session, cache, readRegion: instantRegion() });
   assert.equal(r.ok && r.stale, false);
   assert.equal(r.ok && r.cached, true);
+});
+
+test("a read saved by an earlier engine (stale-ok) comes back stale, no engine run, the rev known or not; Read again saves it fresh", async () => {
+  // NOW stands in for the current engine's opts, so this holds whatever the
+  // shipped hash is
+  const NOW = "0000beef";
+  for (const avail of [availableRev("r2"), { state: "error", message: "offline" } as OcrProbe]) {
+    const s = fakeSession({ avail });
+    const meta = metaMap();
+    await createPageCache(meta.deps, { opts: STALE_OK_OPTS[0] }).put(HASH, 1, { rev: "r2", rs: RS, lines: [{ str: "OLD", x: 1, y: 2, w: 3, h: 4 }], ms: 900, rasters: 2 });
+    const cache = createPageCache(meta.deps, { opts: NOW });
+    const pg = page();
+    const r = await readPageText({ page: 1, rs: RS, getPage: pg.getPage, pdfHash: async () => HASH, session: s.session, cache, readRegion: instantRegion() });
+    assert.equal(s.runs(), 0, avail.state);
+    assert.equal(pg.opens(), 0, avail.state);
+    assert.deepEqual(r, { ok: true, lines: [{ str: "OLD", x: 1, y: 2, w: 3, h: 4 }], ms: 900, rasters: 2, source: "ocr", stale: true, cached: true, rev: "r2" }, avail.state);
+  }
+  const s = fakeSession();
+  const meta = metaMap();
+  await createPageCache(meta.deps, { opts: STALE_OK_OPTS[0] }).put(HASH, 1, { rev: "r2", rs: RS, lines: [], ms: 1, rasters: 1 });
+  const cache = createPageCache(meta.deps, { opts: NOW });
+  const again = await readPageText({ page: 1, rs: RS, getPage: page().getPage, pdfHash: async () => HASH, session: s.session, cache, readRegion: instantRegion(), force: true });
+  assert.equal(again.ok && again.cached, false);
+  const hit = await cache.get(HASH, 1, { rs: RS, rev: "r2" });
+  assert.equal(hit?.stale, false, "Read again replaced it with a fresh read");
+  assert.equal(hit?.lines.length, LINES.length);
 });
 
 test("force (Read again) skips the cache lookup and reads", async () => {
@@ -515,6 +541,22 @@ test("lookup loads a cached read into the index silently: no run, no page", asyn
   assert.equal(t.pg.opens(), 0);
   assert.deepEqual(t.indexed.map((x) => x.key), ["A.pdf#2"]);
   assert.deepEqual(t.reader.status("A.pdf#2"), { state: "done", ms: 3000, rasters: 4, stale: false, cached: true });
+});
+
+test("lookup of a stale-ok read with the rev unknown: indexed, shown done and stale, so Read again shows once OCR is available", async () => {
+  const s = fakeSession({ avail: { state: "error", message: "offline" } });
+  const meta = metaMap();
+  await createPageCache(meta.deps, { opts: STALE_OK_OPTS[0] }).put(HASH, 2, { rev: "r1", rs: RS, lines: [{ str: "LOBBY", x: 1, y: 1, w: 1, h: 1 }], ms: 3000, rasters: 4 });
+  const indexed: string[] = [];
+  const reader = createPageReader({ session: s.session, cache: createPageCache(meta.deps, { opts: "0000beef" }), readRegion: instantRegion(), onLines: (key) => indexed.push(key) });
+  const hit = await reader.lookup({ key: "A.pdf#2", file: "A.pdf", page: 2, rs: RS, pdfHash: async () => HASH });
+  assert.equal(hit?.lines[0].str, "LOBBY");
+  assert.equal(s.runs(), 0);
+  assert.deepEqual(indexed, ["A.pdf#2"], "still in search and Copy");
+  const status = reader.status("A.pdf#2");
+  assert.deepEqual(status, { state: "done", ms: 3000, rasters: 4, stale: true, cached: true });
+  assert.deepEqual(pageReadView({ textless: true, avail: "error", status }), { kind: "done", text: "Read in 3.0 s · OCR", readAgain: false });
+  assert.deepEqual(pageReadView({ textless: true, avail: "available", status }), { kind: "done", text: "Read in 3.0 s · OCR", readAgain: true });
 });
 
 test("lookup shows checking while it runs, and clears it on a miss", async () => {

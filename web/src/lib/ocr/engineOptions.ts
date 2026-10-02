@@ -32,7 +32,7 @@ export const OCR_INK = "split-luma601-c8-24";
 /** What the core passes ppu's PaddleOcrService besides the model buffers. */
 export interface EngineOptions {
   detection: { paddingVertical: number; paddingHorizontal: number; maxSideLength: number };
-  recognition: { maxCropSourceSideLength: number };
+  recognition: { maxCropSourceSideLength: number; strategy: "per-box" | "per-line"; recBatchSize: number };
   session: { logSeverityLevel: number; executionProviders: readonly "cpu"[] };
 }
 
@@ -49,8 +49,25 @@ export interface EngineOptions {
 // measured (ppu logged `Using user-provided executionProviders: ["cpu"]`);
 // forcing WebGPU hung engine start in Chrome, with no speed gain measured.
 // The paddings are raster.ts OCR_DETECTION_PADDING (vertical, horizontal).
+// Recognition reads each detected box on its own ("per-box"), one crop at a
+// time (recBatchSize 1), not ppu's defaults ("per-line", 6), #484. Per-line
+// merges a row's boxes into one crop with one confidence, so a whole row is
+// misread or dropped under the 0.5 floor (ppu's minimumConfidence, kept: at 0
+// lone "-" and ":" come in); in batches of 6, short standalone lines come
+// back garbled ("TAN I ATANT" at 0.15, "TAN" at 0.99 alone) and are dropped.
+// Measured in headless Chromium on the demo plan as image-only pages, both
+// sheets: words found again from the text layer 83.6% → 94.5%, distinct finish
+// tags 47 → 51 of 52, room numbers 83.5% → 96.1%; Copy of the general notes
+// 25 → 30 of 30 lines verbatim and of the schedule 23 → 36 of 36. Per-box
+// at batch 6 alone lost notes lines (24 of 30), so it is both or neither.
+// Costs: a lone symbol is held to 0.8 (ppu's SYMBOL_CONFIDENCE_OFFSET), and
+// a space inside a short box can go ("2' x 2'" read as "2'x2'"). Time per
+// page is about the same or less: in the app, the median of 4 reads per
+// sheet went 41.7 → 40.0 s and 49.5 → 42.6 s (one earlier read ran on a
+// loaded machine and is included). Single runs in the diagnosis harness, on a
+// loaded machine, were 6–30% slower with per-box.
 export const OCR_ENGINE_OPTIONS: EngineOptions = {
   detection: { paddingVertical: 0.4, paddingHorizontal: 0.6, maxSideLength: OCR_SCAN_MAX_DIM },
-  recognition: { maxCropSourceSideLength: OCR_SCAN_MAX_DIM },
+  recognition: { maxCropSourceSideLength: OCR_SCAN_MAX_DIM, strategy: "per-box", recBatchSize: 1 },
   session: { logSeverityLevel: 3, executionProviders: ["cpu"] },
 };

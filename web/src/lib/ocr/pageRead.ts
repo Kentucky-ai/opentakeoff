@@ -32,9 +32,12 @@
 // in-worker recognize rejects at the abort (the client drops the worker's
 // late reply). Its status stays "Stopping…" until then AND until the worker
 // is idle (deps.idle: the client's whenIdle), and the next read's first
-// raster waits for the same. Known limit: a hung (not dead) worker never goes
-// idle, so a stopped read stays on "Stopping…" and later reads wait; the
-// client has no recognize timeout.
+// raster waits for the same. A hung (not dead) worker is bounded by the
+// client's per-read deadline: when it passes, the client ends the worker and
+// restarts the engine from the cache, and is idle once the restart settles,
+// so "Stopping…" ends and later reads go to the new worker (or fail, if the
+// restart does). Known limit: the deadline counts only visible time, so a
+// hang in a background tab is bounded only once the tab is shown again.
 //
 // Pure: the session, cache, region reader and page are injected. The
 // default region reader imports regionRead.ts on first use, so the page that
@@ -584,8 +587,9 @@ export type PageReadView =
  * that instead, with Retry); a read under way (so it can be
  * cancelled) or done (so it stays labelled OCR, cached reads included) shows
  * whatever else the probe says (not asked yet, offline). Read again only for
- * a read by another model rev, and only when available (stale is only ever
- * set when the rev is known). Hidden while the cache is being checked. */
+ * a stale read (by another model rev, the rev known, or by an earlier engine
+ * on pageCache's STALE_OK_OPTS, the rev known or not), and only when
+ * available. Hidden while the cache is being checked. */
 export function pageReadView(s: { textless: boolean | undefined; avail: string | null | undefined; status: PageReadStatus | undefined }): PageReadView {
   if (s.textless !== true || s.avail === "disabled" || s.avail === "uninstalled") return { kind: "hidden" };
   const available = s.avail === "available";

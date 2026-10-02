@@ -1,6 +1,7 @@
 // Import from schedule — what a marquee read turns into. Kept LIGHT (type-only
-// imports from the reader), so the canvas and the agent registry can word a
-// refusal without loading the sheet graph.
+// imports from the reader; the code test comes from its leaf, finishCode.ts),
+// so the canvas and the agent registry can word a refusal without loading the
+// sheet graph.
 //
 // Every box is one decision here, from the read plus two facts about the box:
 // how many text runs it held and whether the page has a text layer at all.
@@ -13,6 +14,7 @@
 import type { RefusalReason, ScheduleRead } from "./scheduleRead.ts";
 import type { ScheduleRow } from "./scheduleRows.ts";
 import { MODAL_SELECTOR } from "./modalKeys.ts";
+import { finishCodeOk } from "./finishCode.ts";
 
 /** What the reader keys a row by and what says "finish" — the hint names them
  *  all, not CODE alone. */
@@ -96,6 +98,20 @@ export function routeScheduleRead(read: ScheduleRead, box: BoxText): ImportRoute
  *  rendered and read. Both carry Cancel. */
 export const OCR_STARTING_MESSAGE = "Starting the on-device reader…";
 export const OCR_READING_MESSAGE = "Reading the schedule on this device…";
+
+/** The reading line once the read reports progress. A box read in one
+ *  raster keeps the plain line; a box read in several (tiles, then patches
+ *  across their seams) adds how many are read, never "n of N": the plan
+ *  grows when patches join it, and a count that goes back reads as a fault.
+ *  Takes seams.ts's SeamProgress (only these two counts). */
+export function ocrReadingMessage(p: { rastersDone: number; rastersPlanned: number } | null | undefined): string {
+  if (!p || p.rastersPlanned <= 1 || p.rastersDone < 1) return OCR_READING_MESSAGE;
+  return `${OCR_READING_MESSAGE} (${p.rastersDone} ${p.rastersDone === 1 ? "raster" : "rasters"} read)`;
+}
+
+/** A box past the on-device reader's tile cap (OCR_MAX_TILES), refused
+ *  before the engine starts: no download notice for a read that can't run. */
+export const OCR_TOO_LARGE_MESSAGE = "That box is too large to read — draw it around the schedule only.";
 /** …and while it waits for a page read or copy read (#471) ahead of it: the
  *  same words as Copy text's own waiting line (an inline string there). */
 export const OCR_WAITING_MESSAGE = "Waiting for another read…";
@@ -154,19 +170,48 @@ export function ocrUnavailableMessage(reason: "disabled" | "uninstalled", box: B
     : `No schedule found in that box. If it's a raster image, ${why}.`;
 }
 
+/** A read the reader never answered (lib/ocr/client.ts OcrTimeoutError):
+ *  the reader restarts on its own, so trying again is the next move. Its
+ *  own line rather than ocrFailedMessage, which would wrap the error's
+ *  sentence in parentheses. */
+export const OCR_TIMEOUT_MESSAGE = "The on-device reader stopped responding — try again.";
+
 /** A start or a read step that failed, with the reason it gave. */
 export function ocrFailedMessage(reason: string): string {
   return `Couldn't read that box on this device (${reason}) — try again.`;
 }
 
+/** No table, but finish codes stacked in a column (#484): the engine found
+ *  the codes and no header row, as on a schedule whose header row is rotated
+ *  90° (OCR reads left to right only, and gave no detections in a rotated
+ *  header band at all) or that the box cut off above. */
+export const OCR_NO_HEADER_MESSAGE = "Found finish codes in a column but no header row the reader could read. The headers may be rotated (which can't be read yet) or outside the box — box the schedule with a header row that reads left to right.";
+
+/** A span's text as a code: upper case, only letters, digits and hyphens
+ *  kept. Close to the reader's rowKeyOf, not the same: rowKeyOf keeps "/"
+ *  and splits a compound cell ("R1 / E1") into codes first; this drops the
+ *  "/" and tests the whole span, so a compound span may not count. */
+const asCode = (str: string) => str.toUpperCase().replace(/[^A-Z0-9-]/g, "");
+
+/** At least three finish codes stacked in one column: spans that pass the
+ *  reader's own code test (finishCodeOk) and hold a digit or hyphen (the
+ *  test alone passes "SEE", "AND", "TO"), three of them overlapping one
+ *  code's x extent. */
+function codesInAColumn(spans: readonly { str: string; x: number; w: number }[]): boolean {
+  const codes = spans.filter((s) => { const c = asCode(s.str); return /[\d-]/.test(c) && finishCodeOk(c); });
+  return codes.some((a) => codes.filter((b) => b.x < a.x + a.w && a.x < b.x + b.w).length >= 3);
+}
+
 /** The on-device read's result: rows (or skipped codes) → the dialog; a
- *  refused table → its message; no table → the no-rows hint. OCR reads carry
- *  no skipped codes today (the reader's OCR gate), but are routed the same. */
-export function routeOcrRead(read: ScheduleRead): Exclude<ImportRoute, { kind: "ocr" }> {
+ *  refused table → its message; no table → the no-header hint when `spans`
+ *  (the words read) hold codes in a column, else the no-rows hint. OCR reads
+ *  carry no skipped codes today (the reader's OCR gate), but are routed the
+ *  same. */
+export function routeOcrRead(read: ScheduleRead, spans?: readonly { str: string; x: number; w: number }[]): Exclude<ImportRoute, { kind: "ocr" }> {
   const skipped = skippedRoute(read);
   if (skipped) return skipped;
   if (read.rows.length) return { kind: "rows", rows: read.rows };
   const refused = "refused" in read ? read.refused : "no-table";
   if (refused !== "no-table") return { kind: "message", text: refusalMessage(refused, "title" in read ? read.title : undefined) };
-  return { kind: "message", text: OCR_NO_ROWS_MESSAGE };
+  return { kind: "message", text: spans && codesInAColumn(spans) ? OCR_NO_HEADER_MESSAGE : OCR_NO_ROWS_MESSAGE };
 }
