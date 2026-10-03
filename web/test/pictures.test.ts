@@ -457,6 +457,19 @@ test("an op list that rejects: pictures \"failed\", the text entry intact", asyn
     getOperatorList: () => Promise.reject(new Error("worker gone")),
   }, vp, OPS);
   assert.equal(bad.pictures, "failed");
-  assert.deepEqual(bad.index, good.index);
+  assert.equal(bad.index.pictures, "failed");
+  assert.deepEqual({ ...bad.index, pictures: good.pictures }, good.index);
   assert.ok(bad.index.lineCount > SCAN_MAX_TEXT_LINES);
+});
+
+test("measurePage's index carries the text pass's flag and the pictures, for search (planIndex isScan / isHybrid)", async () => {
+  const h = await measure(await hybrid(), 1, RENDER_SCALE);
+  assert.equal(h.index.textLayer, true);
+  assert.deepEqual(h.index.pictures, h.pictures);
+  const d = await measure(await demo(), 1);
+  assert.equal(d.index.textLayer, true);
+  assert.deepEqual(d.index.pictures, []);
+  const s = await measure(await scanned(), 1);
+  assert.equal(s.index.textLayer, false);
+  assert.deepEqual(s.index.pictures, []);
 });

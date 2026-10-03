@@ -2,7 +2,7 @@
 // Pure over injected metaGet/metaPut, so Node tests it with a Map.
 //
 //   key   ocr:v1:<sha256 of the PDF's bytes>:<page>
-//   value { v: 1, rev, opts, rs, lines, ms, rasters, at }
+//   value { v: 1, rev, opts, pp?, rs, lines, ms, rasters, at }
 //
 // rev is the OCR model rev that read the page. It isn't in the key: a read by
 // an older model is still used (the caller may offer "Read again" when it
@@ -12,10 +12,16 @@
 // mismatch is a miss, except for an opts on STALE_OK_OPTS (a past engine
 // whose reads are still worth searching), which is a stale hit. rs is the
 // render scale the lines are in; a lookup at another rs gets them rescaled.
+// pp is set only on a read of a vector sheet's pictures (#489): the picture
+// rule's hash (pictureParams.ts) the pictures were found under. A lookup
+// that expects a pictures read misses an entry without it (a whole-page
+// read), and an entry under another pp is a stale hit (Read again). A
+// scan's entry has none, and its lookups never look at it.
 // Bump v1 (here and in pdfHash.ts's prefix) when the tile or unpad maths
 // changes.
 // A leaf module: no OCR engine, rasterizer or worker code comes with it
 // (wordClean.ts, which cleans each hit, is a leaf too).
+import { PICTURE_PARAMS_HASH } from "../pictureParams";
 import { OCR_ENGINE_OPTIONS, OCR_INK, OCR_READ_DPI, OCR_SCAN_MAX_DIM, OCR_SEAM_RULES_VERSION, OCR_TILE_OVERLAP_PT } from "./engineOptions";
 import { isPdfHash, ocrCachePrefix } from "./pdfHash";
 import type { OcrWord } from "./types";
@@ -79,6 +85,8 @@ export interface PageCacheEntry {
   v: 1;
   rev: string;
   opts: string;
+  /** a pictures read: the picture rule's hash it was read under */
+  pp?: string;
   rs: number;
   lines: CachedLine[];
   ms: number;
@@ -95,7 +103,8 @@ export interface PageCacheHit {
   rasters: number;
   at: number;
   /** read by a model rev other than the current one (only when it's known),
-   * or under STALE_OK_OPTS (whatever the rev) */
+   * under STALE_OK_OPTS (whatever the rev), or a pictures read under other
+   * picture params */
   stale: boolean;
 }
 
@@ -119,7 +128,7 @@ function isLine(w: unknown): w is CachedLine {
 function isEntry(v: unknown): v is PageCacheEntry {
   if (!v || typeof v !== "object" || Array.isArray(v)) return false;
   const o = v as Record<string, unknown>;
-  return o.v === 1 && typeof o.rev === "string" && typeof o.opts === "string" && positive(o.rs)
+  return o.v === 1 && typeof o.rev === "string" && typeof o.opts === "string" && (o.pp === undefined || typeof o.pp === "string") && positive(o.rs)
     && Array.isArray(o.lines) && o.lines.every(isLine)
     && nonNeg(o.ms) && Number.isInteger(o.rasters) && (o.rasters as number) >= 0 && finite(o.at);
 }
@@ -136,11 +145,12 @@ function scaleLine(w: CachedLine, f: number): CachedLine {
   return out;
 }
 
-export function createPageCache(deps: PageCacheDeps, { opts = OCR_CACHE_OPTS }: { opts?: string } = {}) {
+export function createPageCache(deps: PageCacheDeps, { opts = OCR_CACHE_OPTS, pp = PICTURE_PARAMS_HASH }: { opts?: string; pp?: string } = {}) {
   return {
     /** The cached read of `page`, lines in `rs` px, or null (a miss, a bad
-     * hash, a malformed entry, or one under other opts not on STALE_OK_OPTS). */
-    async get(hash: string | null | undefined, page: number, { rs, rev }: { rs: number; rev?: string | null }): Promise<PageCacheHit | null> {
+     * hash, a malformed entry, one under other opts not on STALE_OK_OPTS,
+     * or, when `expect` is "pictures", one that isn't a pictures read). */
+    async get(hash: string | null | undefined, page: number, { rs, rev, expect }: { rs: number; rev?: string | null; expect?: "pictures" }): Promise<PageCacheHit | null> {
       if (!positive(rs)) throw new TypeError(`bad render scale: ${rs}`);
       if (!isPdfHash(hash)) return null;
       const e = await deps.metaGet(ocrCacheKey(hash, page));
@@ -149,6 +159,8 @@ export function createPageCache(deps: PageCacheDeps, { opts = OCR_CACHE_OPTS }: 
       // from another engine either way
       const otherEngine = e.opts !== opts;
       if (otherEngine && !STALE_OK_OPTS.includes(e.opts)) return null;
+      if (expect === "pictures" && e.pp === undefined) return null;
+      const otherPictures = e.pp !== undefined && e.pp !== pp;
       const f = rs / e.rs;
       return {
         rev: e.rev,
@@ -157,14 +169,15 @@ export function createPageCache(deps: PageCacheDeps, { opts = OCR_CACHE_OPTS }: 
         ms: e.ms,
         rasters: e.rasters,
         at: e.at,
-        stale: otherEngine || (rev != null && e.rev !== rev),
+        stale: otherEngine || otherPictures || (rev != null && e.rev !== rev),
       };
     },
 
-    /** Store a page read. Throws (without writing) on a bad hash or value. */
-    async put(hash: string | null | undefined, page: number, read: { rev: string; rs: number; lines: CachedLine[]; ms: number; rasters: number; at?: number }): Promise<void> {
+    /** Store a page read (`pictures`: a read of the page's pictures only,
+     * stored with pp). Throws (without writing) on a bad hash or value. */
+    async put(hash: string | null | undefined, page: number, read: { rev: string; rs: number; lines: CachedLine[]; ms: number; rasters: number; at?: number; pictures?: boolean }): Promise<void> {
       if (!isPdfHash(hash)) throw new TypeError("not a PDF sha256");
-      const entry = { v: 1, rev: read.rev, opts, rs: read.rs, lines: read.lines, ms: read.ms, rasters: read.rasters, at: read.at ?? Date.now() };
+      const entry = { v: 1, rev: read.rev, opts, ...(read.pictures ? { pp } : {}), rs: read.rs, lines: read.lines, ms: read.ms, rasters: read.rasters, at: read.at ?? Date.now() };
       if (!isEntry(entry)) throw new TypeError("malformed OCR page read");
       await deps.metaPut(ocrCacheKey(hash, page), entry);
     },

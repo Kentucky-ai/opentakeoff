@@ -158,13 +158,17 @@ export const OCR_DECLINED_MESSAGE = "Not read — reading a raster schedule need
 /** The on-device reader read the box and found no finish table in it. */
 export const OCR_NO_ROWS_MESSAGE = `No schedule found in that box — the on-device reader found no finish/material rows. Drag around the schedule ${WHERE}.`;
 
-/** The on-device reader can't run on this site: turned off (VITE_OCR=off) or
- *  not installed (no models staged). Only a box with no text on a page with no
- *  text layer is called a raster page; any other box sent to the reader (stray
- *  labels, or an empty box on a page with text) only says what applies if it
- *  is a raster image. */
+/** Why the on-device reader can't run on this site, as a clause: turned off
+ *  (VITE_OCR=off) or not installed (no models staged). Copy text says it too. */
+export const ocrOffReason = (reason: "disabled" | "uninstalled"): string =>
+  reason === "disabled" ? "on-device reading is turned off on this site" : "this site doesn't have the on-device reader installed";
+
+/** The on-device reader can't run on this site (ocrOffReason). Only a box
+ *  with no text on a page with no text layer is called a raster page; any
+ *  other box sent to the reader (stray labels, or an empty box on a page with
+ *  text) only says what applies if it is a raster image. */
 export function ocrUnavailableMessage(reason: "disabled" | "uninstalled", box: BoxText): string {
-  const why = reason === "disabled" ? "on-device reading is turned off on this site" : "this site doesn't have the on-device reader installed";
+  const why = ocrOffReason(reason);
   return box.textRuns === 0 && !box.pageHasText
     ? `No schedule text here — this page looks like a raster image (no text layer), and ${why}.`
     : `No schedule found in that box. If it's a raster image, ${why}.`;

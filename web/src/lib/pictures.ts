@@ -28,11 +28,13 @@
 // (getTextContent, getOperatorList) on the pdf.js page it is handed. pdf.js's
 // OPS table is passed in, as extractVectorGeometry takes it.
 import type { OpList, OpsTable } from "./oneclick";
-import { buildSheetIndex, indexIsScanLike, SCAN_MAX_TEXT_LINES, type IndexedTextItem, type SheetIndex } from "./planIndex";
+import { buildSheetIndex, indexIsScanLike, SCAN_MAX_TEXT_LINES, type IndexedTextItem, type Rect, type SheetIndex } from "./planIndex";
+import { PICTURE_MERGE_SLACK_PT, PICTURE_MIN_SQIN } from "./pictureParams";
 import { pageRuns, pageTextIndex } from "./pageTextIndex";
 import type { extractRegionText } from "./sheets";
 
-export type Rect = { x0: number; y0: number; x1: number; y1: number };
+export type { Rect };
+export { PICTURE_MERGE_SLACK_PT, PICTURE_MIN_SQIN, PICTURE_PARAMS_HASH } from "./pictureParams";
 
 /** One picture: the bounding box of its placements, the placements
  *  themselves, and the box's area in square inches. */
@@ -46,30 +48,6 @@ export interface MeasurablePage {
   getTextContent(): Promise<TextContent>;
   getOperatorList(): Promise<OpList>;
 }
-
-/** Smallest picture worth a read, in square inches (bounding box). */
-export const PICTURE_MIN_SQIN = 15;
-/** Placements this close (pt) or closer are one picture: a table exported
- *  as abutting strips or tiles leaves hairline gaps between them. */
-export const PICTURE_MERGE_SLACK_PT = 2;
-
-/** Revision of the walk and merge rules (imageRectsOf, placementRects,
- *  mergePlacements, linesOverRegion). Any change to what they produce for the
- *  same page bumps it, so pictures measured under the old rules re-measure. */
-const PICTURE_RULES_REV = 1;
-
-/** 8 hex chars (FNV-1a 32) of the rule's revision and parameters, stored
- *  beside measured pictures so a change to the rule re-measures them (as
- *  ocr/pageCache's OCR_CACHE_OPTS does for reads). */
-export const PICTURE_PARAMS_HASH = (() => {
-  const s = JSON.stringify({ rev: PICTURE_RULES_REV, minSqIn: PICTURE_MIN_SQIN, slackPt: PICTURE_MERGE_SLACK_PT, maxLines: SCAN_MAX_TEXT_LINES });
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(16).padStart(8, "0");
-})();
 
 const mul = (a: number[], b: number[]): number[] => [a[0] * b[0] + a[2] * b[1], a[1] * b[0] + a[3] * b[1], a[0] * b[2] + a[2] * b[3], a[1] * b[2] + a[3] * b[3], a[0] * b[4] + a[2] * b[5] + a[4], a[1] * b[4] + a[3] * b[5] + a[5]];
 
@@ -243,10 +221,11 @@ export function unreadPictures(regions: readonly PictureRegion[], linesOver: (r:
 }
 
 /** One page's text-layer index and its unread pictures (bounding boxes, pt
- *  at scale 1). Text first: a scan is decided by it alone and never fetches
- *  the op list (its read covers the whole page). Otherwise the op list is
- *  walked; if pdf.js can't produce it the pictures are "failed" and the
- *  text entry still stands.
+ *  at scale 1), which the index carries too (SheetIndex pictures). Text
+ *  first: a scan is decided by it alone and never fetches the op list (its
+ *  read covers the whole page). Otherwise the op list is walked; if pdf.js
+ *  can't produce it the pictures are "failed" and the text entry still
+ *  stands.
  *
  *  `vp` must carry no transform but the page's own (rotation, the y flip,
  *  scale): the rects are stored in that frame divided by scale, and a
@@ -264,16 +243,17 @@ export async function measurePage(
   const tc = await page.getTextContent();
   const items = pageRuns(tc, vp);
   const index = pageTextIndex(key, tc, vp, items);
-  if (indexIsScanLike(index)) return { index, pictures: [] };
+  const done = (pictures: Rect[] | "failed") => ({ index: { ...index, pictures }, pictures });
+  if (indexIsScanLike(index)) return done([]);
   let ol: OpList;
   try {
     ol = await page.getOperatorList();
   } catch {
-    return { index, pictures: "failed" };
+    return done("failed");
   }
   const s = vp.scale;
   const placed = imageRectsOf(ol, vp.transform, OPS).map((r) => ({ x0: r.x0 / s, y0: r.y0 / s, x1: r.x1 / s, y1: r.y1 / s }));
   const regions = pictureRegions(placed);
-  if (!regions.length) return { index, pictures: [] };
-  return { index, pictures: unreadPictures(regions, (r) => linesOverRegion(items, r, s)).map((r) => r.bbox) };
+  if (!regions.length) return done([]);
+  return done(unreadPictures(regions, (r) => linesOverRegion(items, r, s)).map((r) => r.bbox));
 }

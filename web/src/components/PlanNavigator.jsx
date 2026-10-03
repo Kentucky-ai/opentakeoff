@@ -32,9 +32,9 @@ import { m365Config, M365_ENABLED_KEY } from "../lib/msgraph/config.js";
 import { metaGet, metaPut, metaDelete } from "../lib/store.js";
 import { groupSheetsByLevel, sortGalleryGroups } from "../lib/sheetLevels.js";
 import { renderThumb, loadThumb, saveThumb, thumbPixelWidth } from "../lib/thumbs.js";
-import { runPlanSearch, filesToIndex, pagesToIndex, galleryEscStep, createChangeSignal, needsRead, keysToLookUp, canLookUp, galleryReadView, unreadLine, thumbIndexStep, galleryCountLine, needsTextPass, createWalkFailures, searchFailedLine, retryWalk } from "../lib/planSearch";
-import { indexIsScanLike } from "../lib/planIndex";
-import { pageTextIndex } from "../lib/pageTextIndex";
+import * as pdfjsLib from "pdfjs-dist";
+import { runPlanSearch, filesToIndex, pagesToIndex, galleryEscStep, createChangeSignal, needsRead, keysToLookUp, canLookUp, galleryReadView, unreadLine, thumbIndexStep, adoptEntry, galleryCountLine, needsTextPass, createWalkFailures, searchFailedLine, retryWalk } from "../lib/planSearch";
+import { measurePage } from "../lib/pictures";
 import { inOtherModal, otherModalOpen } from "../lib/modalKeys";
 
 // Thumbnails in flight at once. The canvas rasters in its worker pool now, so
@@ -344,6 +344,17 @@ export default function PlanNavigator({
     let rec = await loadThumb(key, want);
     if (seq !== seqRef.current) return;
     const kept = !!rec;
+    // the card's thumbnail, unless another pass already showed it
+    const show = () => {
+      if (thumbCacheRef.current.has(key)) return false;
+      thumbCacheRef.current.set(key, URL.createObjectURL(rec.blob));
+      scheduleBump();
+      return true;
+    };
+    const emit = () => {
+      if (rec.label && !labels[key]) onLabel(key, rec.label);
+      if (rec.det && !detectedScales[key]) onDetect(key, rec.det);
+    };
     if (!rec) {
       const { file, page } = parseSheetKey(key);
       const pdf = await getDoc(file);
@@ -351,49 +362,64 @@ export default function PlanNavigator({
       if (seq !== seqRef.current) return;
       rec = await renderThumb(pg, want);
       if (seq !== seqRef.current) return;
-      // the page is warm: read its text once for the plan-set search index
-      // and the record's text-layer flag, and for the sheet number +
-      // plan-noted scale when those are missing
+      // the thumbnail first: measuring waits on the page's op list (#489)
+      const shown = show();
+      // the page is warm: read its text once, for the sheet number +
+      // plan-noted scale when those are missing (shown as soon as the text
+      // is in), and measure its pictures (#489: pictures.ts measurePage; its
+      // op list only when the text says it isn't a scan), for the plan-set
+      // search index and the record's text-layer flag and pictures. Then
+      // release what the page parsed, unless the canvas holds it, and save
+      // the record with what was read.
       try {
-        const tc = await pg.getTextContent();
+        const text = pg.getTextContent();
         const vpL = pg.getViewport({ scale: RENDER_SCALE });
-        const ix = pageTextIndex(key, tc, vpL);
-        rec.textLayer = !indexIsScanLike(ix);
-        if (seq === seqRef.current && onIndexed && planIndexRef && needsTextPass(planIndexRef.current.get(key))) onIndexed(key, ix);
         if (!labels[key] || !detectedScales[key]) {
+          const tc = await text;
           rec.label = extractSheetNumber(tc, vpL) || null;
           rec.det = detectScale(tc, vpL) || null;
+          if (shown) emit();
         }
+        const { index, pictures } = await measurePage(key, { getTextContent: () => text, getOperatorList: () => pg.getOperatorList() }, vpL, pdfjsLib.OPS);
+        rec.textLayer = index.textLayer;
+        rec.pictures = pictures;   // saveThumb never keeps "failed"
+        if (seq === seqRef.current && onIndexed && planIndexRef && needsTextPass(planIndexRef.current.get(key))) onIndexed(key, index);
       } catch { /* text layer is optional */ }
+      finally { if (!pageHeld?.(key)) { try { pg.cleanup(); } catch { /* already released */ } } }
       saveThumb(key, rec);
+      return;
     }
-    if (thumbCacheRef.current.has(key)) return;
-    thumbCacheRef.current.set(key, URL.createObjectURL(rec.blob));
-    if (rec.label && !labels[key]) onLabel(key, rec.label);
-    if (rec.det && !detectedScales[key]) onDetect(key, rec.det);
-    scheduleBump();
+    if (!show()) return;
+    emit();
     if (kept && onIndexed && planIndexRef) {
-      // a kept record: a scan's says so, and seeds its empty text entry (no
-      // PDF parsed), so its card offers Read page text and its kept read is
-      // looked up; a record saved before the flag reads this page's text
-      // once, if its document is already loaded, and is saved again with it
+      // a kept record (planSearch thumbIndexStep): a scan's or a hybrid's
+      // seeds its empty text entry (no PDF parsed), so its card offers a read
+      // and its kept read is looked up; its measured pictures go onto an
+      // entry that has none ("adopt": the canvas's label loop doesn't
+      // measure); a record without the flag or the pictures takes them from
+      // the sheet's entry ("flag") or, if its document is already loaded,
+      // reads and measures the page once ("read"), and is saved again with
+      // them, so the next open asks nothing
       const has = (k) => !needsTextPass(planIndexRef.current.get(k));
       const step = thumbIndexStep(rec, key, (k) => planIndexRef.current.get(k), (f) => !!docLoaded?.(f));
       if (step.kind === "seed") onIndexed(key, step.ix);
-      else if (step.kind === "flag") saveThumb(key, { ...rec, textLayer: step.textLayer });
+      else if (step.kind === "adopt") {
+        const have = planIndexRef.current.get(key);
+        if (have) onIndexed(key, adoptEntry(have, step));
+      } else if (step.kind === "flag") saveThumb(key, step.pictures ? { ...rec, textLayer: step.textLayer, pictures: step.pictures } : { ...rec, textLayer: step.textLayer });
       else if (step.kind === "read") {
+        let pg = null;
         try {
           const { file, page } = parseSheetKey(key);
-          const pg = await (await getDoc(file)).getPage(page);
+          pg = await (await getDoc(file)).getPage(page);
           if (seq !== seqRef.current) return;
-          const tc = await pg.getTextContent();
+          const { index, pictures } = await measurePage(key, pg, pg.getViewport({ scale: RENDER_SCALE }), pdfjsLib.OPS);
           if (seq !== seqRef.current) return;
-          const ix = pageTextIndex(key, tc, pg.getViewport({ scale: RENDER_SCALE }));
-          if (!has(key)) onIndexed(key, ix);
-          rec = { ...rec, textLayer: !indexIsScanLike(ix) };
+          if (!has(key)) onIndexed(key, index);
+          rec = { ...rec, textLayer: index.textLayer, pictures };
           saveThumb(key, rec);
-          if (!pageHeld?.(key)) { try { pg.cleanup(); } catch { /* already released */ } }
         } catch { /* text layer is optional; asked again next open */ }
+        finally { if (pg && !pageHeld?.(key)) { try { pg.cleanup(); } catch { /* already released */ } } }
       }
     }
   };
@@ -564,11 +590,14 @@ export default function PlanNavigator({
             try {
               page = await pdf.getPage(parseSheetKey(key).page);
               if (!live()) return;
-              const tc = await page.getTextContent();
+              // its text, and its pictures (#489: measurePage; the op list
+              // only on a page that isn't a scan), in the entry before the
+              // lookup below asks whether the sheet needs a read
+              const { index } = await measurePage(key, page, page.getViewport({ scale: RENDER_SCALE }), pdfjsLib.OPS);
               if (!live()) return;
-              if (!has(key)) onIndexed(key, pageTextIndex(key, tc, page.getViewport({ scale: RENDER_SCALE })));
-              // a scan's cached read (if any) joins the search now,
-              // under the hash of the document the walk just loaded
+              if (!has(key)) onIndexed(key, index);
+              // a scan's or a hybrid's cached read (if any) joins the search
+              // now, under the hash of the document the walk just loaded
               if (needsRead(planIndexRef.current.get(key)) && await lookupsAllowed()) await ocr.lookup(key);
             } catch (e) {
               // destroyed doc (file closed / revised) or unreadable page: not
@@ -907,11 +936,12 @@ export default function PlanNavigator({
     </>
   );
 
-  // ── a card's Read page text row (#471): a scan (little or no text layer) ─
-  // Read page text (the canvas's reader: cache first, the download notice
-  // before the first read), then its progress with Cancel, Stopping…, and
-  // the time once read, labelled OCR. Clicks stay off the card (it toggles
-  // selection).
+  // ── a card's Read row (#471, #489): a scan (little or no text layer) or a
+  // hybrid (a picture the text layer can't read) ─
+  // Read page text, or Read picture text on a hybrid (the canvas's reader:
+  // cache first, the download notice before the first read), then its
+  // progress with Cancel, Stopping…, and the time once read, labelled OCR.
+  // Clicks stay off the card (it toggles selection).
   const readRow = (key) => {
     if (!ocr || !planIndexRef) return null;
     const v = galleryReadView(planIndexRef.current.get(key), ocrAvail, ocr.status(key));
@@ -922,7 +952,7 @@ export default function PlanNavigator({
     return (
       <div data-gallery-read={key} data-state={v.kind} data-last-read={key === lastReadKey ? "" : undefined} onClick={(e) => e.stopPropagation()}
         style={{ padding: "0 10px 8px", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontFamily: "var(--f-mono)", fontSize: 11, color: "var(--ink-muted)", cursor: "default" }}>
-        {v.kind === "read" && <>{btn("Read page text", () => readCard(key))}<span>little or no text layer</span>{v.note && <span style={{ color: "var(--c-danger)", flexBasis: "100%" }}>{v.note}</span>}</>}
+        {v.kind === "read" && <>{btn(v.what === "picture" ? "Read picture text" : "Read page text", () => readCard(key))}<span>{v.what === "picture" ? "text in a picture isn't searchable yet" : "little or no text layer"}</span>{v.note && <span style={{ color: "var(--c-danger)", flexBasis: "100%" }}>{v.note}</span>}</>}
         {v.kind === "reading" && <><span className="pip" aria-hidden="true" /><span aria-live="polite">{v.text}</span>{btn("Cancel", () => ocr.cancel(key))}</>}
         {v.kind === "stopping" && <span aria-live="polite">{v.text}</span>}
         {v.kind === "unreadable" && <span aria-live="polite" style={{ color: "var(--c-danger)" }}>{v.text}</span>}
