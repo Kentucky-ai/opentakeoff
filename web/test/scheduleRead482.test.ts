@@ -42,8 +42,8 @@ test("OCR read: PT-O1 imports as PT-01, read_as PT-O1", () => {
   assert.equal(r.description, "PAINT");
 });
 
-test("OCR read: G-O1(C) imports as G-01C, read_as G-O1(C)", () => {
-  assert.equal(byTag(rowsOf(KEYS, true), "G-01C").read_as, "G-O1(C)");
+test("OCR read: G-O1(C) imports as G-01(C), read_as G-O1(C)", () => {
+  assert.equal(byTag(rowsOf(KEYS, true), "G-01(C)").read_as, "G-O1(C)");
 });
 
 test("OCR read: $SM-1 imports as SSM-1, read_as $SM-1", () => {
@@ -60,7 +60,7 @@ test("OCR read: a repaired code keeps its qualifier; a code read right has no re
 
 test("the same spans read as a text layer: no repair, no read_as", () => {
   const rows = rowsOf(KEYS, false);
-  assert.deepEqual(rows.map((r) => r.finish_tag), ["CPT-1", "PT-O1", "G-O1C", "SM-1", "FTB-O1"]);
+  assert.deepEqual(rows.map((r) => r.finish_tag), ["CPT-1", "PT-O1", "G-O1(C)", "SM-1", "FTB-O1"]);
   for (const r of rows) assert.ok(!has(r, "read_as"), r.finish_tag);
 });
 

@@ -75,11 +75,11 @@ export function cleanOcrText(str: string): string {
 // the dialog shows the code as read beside the code imported.
 
 /** The finish reader's key normalisation (sheetgraph.ts rowKeyOf). */
-const keyNorm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9/-]/g, "");
+const keyNorm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9/()-]/g, "");
 // letters, a hyphen, a run of digits read with O and I among them, and at
-// most one letter after the run (FT-O2E). Two letters or more after it are
+// most one letter after the run (FT-O2E), plus a preserved parenthesized suffix. Two letters or more after it are
 // a word glued on (CPT-1OPT), and a letter-led run a code (WD-OAK1).
-const MISREAD_PART = /^([A-Z]{1,4})-([0-9OI]+)([A-Z]?)$/;
+const MISREAD_PART = /^([A-Z]{1,4})-([0-9OI]+)([A-Z]?)(\([A-Z0-9]{1,4}\))?$/;
 
 /** One part of a code (between "/"s) with O read as 0 and I as 1 in the run
  * after the hyphen, when the run holds at least one digit: a run of letters
@@ -88,14 +88,14 @@ const MISREAD_PART = /^([A-Z]{1,4})-([0-9OI]+)([A-Z]?)$/;
 function repairPart(p: string): string {
   const m = MISREAD_PART.exec(p);
   if (!m || !/\d/.test(m[2])) return p;
-  return `${m[1]}-${m[2].replace(/O/g, "0").replace(/I/g, "1")}${m[3]}`;
+  return `${m[1]}-${m[2].replace(/O/g, "0").replace(/I/g, "1")}${m[3]}${m[4] ?? ""}`;
 }
 
 /** `key` (the row's code as the finish reader keyed it) repaired for an OCR
  * read, given the raw key cell it was read from. A "$" leading the cell's
  * first word (two characters or more once keyed) is an S when the code as
  * keyed is that word ($SM-1 keyed SM-1), or starts with it and the cell has
- * more after the word (SM-1C from "$SM-1 (C)", SM-1SAT from "$SM-1 SAT"). readAs, set only when the code
+ * more after the word (SM-1(C) from "$SM-1 (C)", SM-1SAT from "$SM-1 SAT"). readAs, set only when the code
  * changed, is the cell's first word as read (uppercased, a trailing ":", ","
  * or ";" dropped) when the $ was repaired or the word is the whole code, else
  * the code as keyed ("CPT-O1 / VIN-1"). A part with no hyphen (BO1) is
@@ -105,7 +105,7 @@ export function repairKey(rawKeyCell: string, key: string): { key: string; readA
   const w1Key = keyNorm(w1);
   // the $ first: it is checked against the code as keyed, before any O→0.
   // The key is the first word, or starts with it and the cell goes on after
-  // the word (its qualifier keyed on: "$SM-1 (C)" → SM-1C): never a key the
+  // the word (its qualifier keyed on: "$SM-1 (C)" → SM-1(C)): never a key the
   // first word is only the start of ("$SM-1" against SM-10), and never a
   // one-letter word ("$S")
   const more = /\s\S/.test(rawKeyCell.trim());
