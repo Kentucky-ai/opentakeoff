@@ -52,3 +52,6 @@ web/public/models/
 
 # Coverage output (npm run test:coverage)
 **/coverage/
+
+# Standalone public OCR fixture benchmark build
+web/dist-ocr-codes/
