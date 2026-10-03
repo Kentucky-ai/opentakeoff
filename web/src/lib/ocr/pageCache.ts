@@ -14,10 +14,12 @@
 // render scale the lines are in; a lookup at another rs gets them rescaled.
 // Bump v1 (here and in pdfHash.ts's prefix) when the tile or unpad maths
 // changes.
-// A leaf module: no OCR engine, rasterizer or worker code comes with it.
+// A leaf module: no OCR engine, rasterizer or worker code comes with it
+// (wordClean.ts, which cleans each hit, is a leaf too).
 import { OCR_ENGINE_OPTIONS, OCR_INK, OCR_READ_DPI, OCR_SCAN_MAX_DIM, OCR_SEAM_RULES_VERSION, OCR_TILE_OVERLAP_PT } from "./engineOptions";
 import { isPdfHash, ocrCachePrefix } from "./pdfHash";
 import type { OcrWord } from "./types";
+import { cleanOcrText } from "./wordClean";
 
 /** Everything besides the model rev that shapes a page read. */
 export const OCR_CACHE_PARAMS = {
@@ -124,9 +126,11 @@ function isEntry(v: unknown): v is PageCacheEntry {
 
 /** A stored line in `f`× its stored px, built field by field: nothing else a
  * stored object carries reaches the caller. clipped is seams.ts's flag for a
- * line longer than a patch holds. */
+ * line longer than a patch holds. Its text is cleaned of the ruling
+ * (cleanOcrText, #482): a read stored before the cleaning comes back as a
+ * fresh read would, with no re-read; str "" when it was only ruling. */
 function scaleLine(w: CachedLine, f: number): CachedLine {
-  const out: CachedLine = { str: w.str, x: w.x * f, y: w.y * f, w: w.w * f, h: w.h * f };
+  const out: CachedLine = { str: cleanOcrText(w.str), x: w.x * f, y: w.y * f, w: w.w * f, h: w.h * f };
   if (w.confidence !== undefined) out.confidence = w.confidence;
   if (w.clipped) out.clipped = true;
   return out;
@@ -149,7 +153,7 @@ export function createPageCache(deps: PageCacheDeps, { opts = OCR_CACHE_OPTS }: 
       return {
         rev: e.rev,
         rs,
-        lines: e.lines.map((w) => scaleLine(w, f)),
+        lines: e.lines.map((w) => scaleLine(w, f)).filter((w) => w.str),
         ms: e.ms,
         rasters: e.rasters,
         at: e.at,

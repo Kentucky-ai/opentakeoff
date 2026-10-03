@@ -42,6 +42,10 @@ export type ScheduleRow = {
   /** read by a newer, less-tested rule (a code with a word after it on a line
    * of its own) rather than by the reader's long-standing one */
   key_rule?: "extended";
+  // OCR reads only (#482); absent when not set:
+  /** the code as the reader saw it, before a $→S, O→0 or I→1 repair
+   * ("PT-O1" of a row imported as PT-01) */
+  read_as?: string;
 };
 
 // Default line/fill palette when the canvas doesn't pass its own — mirrors the

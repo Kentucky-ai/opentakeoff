@@ -5,11 +5,14 @@
 // what you don't want, Create.
 //
 // Parsing/normalization is the parent's (tested) job; this holds local checkbox
-// state AND local edited-tag state. The scan/OCR path mis-reads codes (O↔0,
-// I↔1, CPT↔CRT), and finish_tag is the identity the canvas dedups on and matches
-// callouts against — so the tag is inline-editable here and the CORRECTED tag is
-// what flows through selection and onCreate (the parent gets edited rows, never
-// the originals). The dedup/normalization math lives in lib/scheduleEdit (tested).
+// state AND local edited-tag state. The scan/OCR path mis-reads codes. The
+// reader repairs a $ read for S and an O or I read for 0 or 1 after the hyphen,
+// and the row says so ("read as", below); what it can't repair (CPT↔CRT, a
+// dropped letter) comes through as read. finish_tag is the identity the canvas
+// dedups on and matches callouts against — so the tag is inline-editable here
+// and the CORRECTED tag is what flows through selection and onCreate (the parent
+// gets edited rows, never the originals). The dedup/normalization math lives in
+// lib/scheduleEdit (tested).
 // Contract (skipped is optional with a safe default):
 //   <ImportSchedulePanel rows existing={Set<finish_tag>} palette startIndex
 //                        skipped?={string[]} onCreate(rows[]) onClose />
@@ -22,14 +25,17 @@
 // rows the schedule marks NOT USED / N.I.C. arrive unchecked with a label
 // saying so, and codes already present as conditions arrive locked ("in use")
 // so a second import can't duplicate them. When rows share a code, the row
-// read the usual way claims it over a row only the newer rules read
-// (key_rule), and both over a NOT USED row; the others show "duplicate". A category the reader GUESSED from the row's
+// read the usual way claims it over a row whose code the reader repaired
+// (read_as), that over a row only the newer rules read (key_rule), and all
+// of them over a NOT USED row; the others show "duplicate". A category the reader GUESSED from the row's
 // own words (category_source "text" — no printed heading names one, whether
 // there is no heading or it is a MISC / ACCESSORIES one) is flagged
-// "from description" so the estimator reviews it before Create.
+// "from description" so the estimator reviews it before Create. A code the
+// reader repaired from an OCR misread (read_as: PT-O1 imported as PT-01, #482)
+// is flagged "read as PT-O1" until the code is edited to another one.
 import React, { useId, useMemo, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
-import { closeOnEscape, evaluateTags, groupState, groupToggle, isCreatable, previewColors, setPicked as pickRows, skippedBanner } from "../lib/scheduleEdit";
+import { closeOnEscape, evaluateTags, groupState, groupToggle, isCreatable, previewColors, readAsShown, setPicked as pickRows, skippedBanner } from "../lib/scheduleEdit";
 import { notUsedKind, notUsedNote } from "../lib/notUsed";
 import { S } from "../lib/ui.js";
 
@@ -53,11 +59,13 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
   // not on the tag, so editing a tag never drops a row's selection.
   const keyed = useMemo(() => rows.map((row, i) => ({ key: `r${i}`, row })), [rows]);
   // Which row claims a code several rows share, by the row the dialog holds
-  // (never its edited tag): read the usual way 2, read only by the newer rules
-  // (key_rule) 1, marked NOT USED by the schedule 0.
+  // (never its edited tag): read the usual way 2, its code repaired from an
+  // OCR misread (read_as) 1.5, read only by the newer rules (key_rule) 1,
+  // marked NOT USED by the schedule 0. The lowest that applies wins, so a
+  // key_rule row that was also repaired ranks 1.
   const rank = useMemo(() => {
     const byKey = new Map(keyed.map(({ key, row }) => [key, row]));
-    return (key) => { const r = byKey.get(key); return r?.unticked_reason ? 0 : r?.key_rule ? 1 : 2; };
+    return (key) => { const r = byKey.get(key); return r?.unticked_reason ? 0 : r?.key_rule ? 1 : r?.read_as ? 1.5 : 2; };
   }, [keyed]);
 
   // Edited tags, keyed by row key. Seeded from the parsed tag; a row absent from
@@ -171,20 +179,32 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
                   const isEditing = editing?.key === key;
                   const on = picked.has(key) && ok;
                   const flag = flagFor[st?.status];
-                  // The guessed-category flag and the NOT USED label sit OUTSIDE the
-                  // <label> (so they aren't folded into the checkbox's name) and
-                  // describe the checkbox. The in-use / duplicate flag is inside
-                  // the label, already part of the name.
+                  // The guessed-category flag, the read-as flag and the NOT USED
+                  // label sit OUTSIDE the <label> (so they aren't folded into the
+                  // checkbox's name) and describe the checkbox. The in-use /
+                  // duplicate flag is inside the label, already part of the name.
                   const guessId = r.category_source === "text" ? `${uid}-${key}-guess` : undefined;
+                  const readAsId = readAsShown(r, tagOf(key, r)) ? `${uid}-${key}-readas` : undefined;
                   const notUsedId = r.unticked_reason ? `${uid}-${key}-notused` : undefined;
                   const note = notUsedId ? notUsedNote(notUsedKind(r.not_used_text || "") || "not-used", { pickable: ok, picked: on }) : "";
-                  const describedBy = [guessId, notUsedId].filter(Boolean).join(" ") || undefined;
+                  const describedBy = [guessId, readAsId, notUsedId].filter(Boolean).join(" ") || undefined;
                   // Descriptors sit right of the label and drop to their own line
-                  // when the row is narrow. A lone one is the label's sibling; two
-                  // are grouped so they wrap together.
-                  const right = guessId && notUsedId ? {} : { marginLeft: "auto" };
+                  // when the row is narrow. A lone one is the label's sibling; more
+                  // than one are grouped so they wrap together.
+                  const several = [guessId, readAsId, notUsedId].filter(Boolean).length > 1;
+                  const right = several ? {} : { marginLeft: "auto" };
                   const guess = guessId && (
                     <span id={guessId} title="Category guessed from the row's own words — no printed heading names one" style={{ ...lbl, color: "var(--c-warning)", flex: "0 0 auto", cursor: "help", ...right }}>from description</span>
+                  );
+                  // The code as read, in the edit button's mono and size, so O and
+                  // 0 can be told apart. The title says what was repaired; the
+                  // hidden text only adds what to do, since a screen reader has
+                  // just read the code out.
+                  const repaired = readAsId && `Repaired from ${r.read_as}; check the code against the schedule.`;
+                  const readAs = readAsId && (
+                    <span id={readAsId} title={repaired} style={{ ...lbl, textTransform: "none", color: "var(--c-warning)", flex: "0 0 auto", cursor: "help", ...right }}>
+                      read as <span style={{ fontFamily: "var(--f-mono)", fontSize: 12.5 }}>{r.read_as}</span><span style={S.visuallyHidden}> — check the code against the schedule.</span>
+                    </span>
                   );
                   const notUsed = notUsedId && (
                     <span id={notUsedId} title={note.trimStart()} style={{ ...lbl, textTransform: "none", color: "var(--ink)", borderLeft: "2px solid var(--c-warning)", paddingLeft: 4, position: "relative", flex: "0 0 auto", cursor: "help", ...right }}>
@@ -227,7 +247,7 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
                         </span>
                         {flag && <span title={st?.status === "duplicate" ? "Click the code to rename it." : undefined} style={{ ...lbl, opacity: 0.8 }}>{flag}</span>}
                       </label>
-                      {guess && notUsed ? <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>{guess}{notUsed}</div> : guess || notUsed}
+                      {several ? <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>{guess}{readAs}{notUsed}</div> : guess || readAs || notUsed}
                     </div>
                   );
                 })}

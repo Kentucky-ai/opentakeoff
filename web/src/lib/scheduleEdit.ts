@@ -153,3 +153,11 @@ export function closeOnEscape(e: EscapeEvent, onClose?: () => void): boolean {
   onClose?.();
   return true;
 }
+
+// The dialog's "read as" flag (#482): the reader repaired the row's code from
+// an OCR misread (read_as), and the code shown is still the repaired one, in
+// any case or spacing ("pt-01" keeps it). Edited to another code, the flag
+// has nothing left to say and hides.
+export function readAsShown(row: { finish_tag: string; read_as?: string }, editedTag: string): boolean {
+  return !!row.read_as && normalizeTag(editedTag) === row.finish_tag;
+}

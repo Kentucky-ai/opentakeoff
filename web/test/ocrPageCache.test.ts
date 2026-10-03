@@ -334,3 +334,17 @@ test("removal decision: a hash another file still carries is kept", () => {
   assert.deepEqual(ocrHashesToDrop([H1, H2, H3], [H2]).sort(), [H1, H3]);
   assert.deepEqual(ocrHashesToDrop([H1], [null, undefined, H1]), []);
 });
+
+test("a hit's lines are cleaned of border glyphs (#482); a line of ruling only is dropped; a clean entry comes back unchanged", async () => {
+  const meta = fakeMeta();
+  const cache = createPageCache(meta);
+  const bordered = { str: "[P-1", x: 1, y: 2, w: 3, h: 4, confidence: 0.8 };
+  const rule = { str: "__", x: 5, y: 2, w: 3, h: 4 };
+  meta.m.set(ocrCacheKey(H1, 1), { v: 1, rev: "r", opts: OCR_CACHE_OPTS, rs: 2, lines: [bordered, rule, LINE], ms: 1, rasters: 1, at: 1 });
+  const hit = await cache.get(H1, 1, { rs: 2 });
+  assert.deepEqual(hit?.lines, [{ ...bordered, str: "P-1" }, LINE]);
+  // scaled too
+  assert.deepEqual((await cache.get(H1, 1, { rs: 4 }))?.lines.map((l) => l.str), ["P-1", "FT-1 CARPET"]);
+  await cache.put(H2, 1, { rev: "r", rs: 2, lines: [LINE], ms: 1, rasters: 1, at: 1 });
+  assert.deepEqual((await cache.get(H2, 1, { rs: 2 }))?.lines, [LINE]);
+});

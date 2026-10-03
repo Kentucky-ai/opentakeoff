@@ -46,6 +46,7 @@ import type { OcrSession, OcrRunResult } from "./session";
 import type { CachedLine, PageCacheHit } from "./pageCache";
 import type { RegionReadResult } from "./regionRead";
 import type { Rect, SeamLine, SeamProgress } from "./seams";
+import { cleanOcrText } from "./wordClean";
 
 /** The pdf.js page surface a read needs (readRegionText's PageLike). */
 export interface PageLike { getViewport(o: { scale: number }): { width: number; height: number } }
@@ -140,9 +141,10 @@ async function cacheGet(cache: ReadCache, hash: string, page: number, rs: number
 }
 
 /** A seam line as the cache stores it: the OcrWord fields and the clipped
- * flag, nothing else. */
+ * flag, nothing else, its text cleaned of the ruling (cleanOcrText, #482);
+ * str "" when it was only ruling, for the caller to drop. */
 function toCached(l: SeamLine): CachedLine {
-  const out: CachedLine = { str: l.str, x: l.x, y: l.y, w: l.w, h: l.h };
+  const out: CachedLine = { str: cleanOcrText(l.str), x: l.x, y: l.y, w: l.w, h: l.h };
   if (l.confidence !== undefined) out.confidence = l.confidence;
   if (l.clipped) out.clipped = true;
   return out;
@@ -212,7 +214,7 @@ export async function readPageText(a: ReadPageArgs): Promise<PageReadResult> {
     return readRegion(pg, rs, rect, { signal: sig, onProgress: a.onProgress });
   }, { signal });
   if (!r.ok) return failureOf(r);
-  const lines = r.value.lines.map(toCached);
+  const lines = r.value.lines.map(toCached).filter((l) => l.str);
   const { ms, rasters } = r.value;
   // The engine just started, so the probe has its manifest; without a rev an
   // entry couldn't be told stale later, so none is written.
@@ -500,7 +502,9 @@ export function createPageReader(deps: PageReaderDeps): PageReader {
         // the file went away (dropFile) rather than the caller cancelling
         return f.status === "aborted" && !req.signal?.aborted ? { ok: false, status: "page-closed", message: "The page was closed during the read." } : f;
       }
-      return { ok: true, lines: r.value.lines, ms: r.value.ms, rasters: r.value.rasters };
+      // cleaned as a page read is (#482): Copy text carries no ruling either
+      const lines = r.value.lines.flatMap((l) => { const str = cleanOcrText(l.str); return str ? [{ ...l, str }] : []; });
+      return { ok: true, lines, ms: r.value.ms, rasters: r.value.rasters };
     } finally {
       settled();
       boxes.delete(entry);

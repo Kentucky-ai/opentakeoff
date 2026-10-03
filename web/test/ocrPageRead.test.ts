@@ -1135,3 +1135,32 @@ test("a lookup whose hash threw is retried next time", async () => {
   await t.reader.lookup(req);
   assert.equal(n, 2);
 });
+
+// ── border glyphs (#482) ─────────────────────────────────────────────────────
+
+const BORDERED: SeamLine[] = [
+  { str: "[P-1", x: 10, y: 40, w: 30, h: 12, confidence: 0.9 },
+  { str: "_", x: 50, y: 40, w: 6, h: 12 },
+  { str: "115_", x: 200, y: 400, w: 40, h: 14, clipped: true },
+];
+
+test("a fresh page read is cleaned of border glyphs, a line of ruling only dropped, and stored cleaned", async () => {
+  const t = setup({ readRegion: instantRegion(BORDERED) });
+  const r = await t.reader.read(t.req());
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.deepEqual(r.lines, [
+    { str: "P-1", x: 10, y: 40, w: 30, h: 12, confidence: 0.9 },
+    { str: "115", x: 200, y: 400, w: 40, h: 14, clipped: true },
+  ]);
+  assert.deepEqual(t.reader.lines("A.pdf")?.map((l) => l.str), ["P-1", "115"]);
+  // the entry as written, not as a lookup cleans it
+  assert.deepEqual((t.meta.m.get(ocrCacheKey(HASH, 1)) as { lines: { str: string }[] }).lines.map((l) => l.str), ["P-1", "115"]);
+});
+
+test("readBox's lines (Copy text's box read) are cleaned the same way", async () => {
+  const t = setup({ readRegion: instantRegion(BORDERED) });
+  const r = await t.reader.readBox(boxReq(t));
+  assert.equal(r.ok, true);
+  if (r.ok) assert.deepEqual(r.lines.map((l) => l.str), ["P-1", "115"]);
+});

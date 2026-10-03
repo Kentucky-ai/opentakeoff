@@ -20,6 +20,7 @@ import { rasterizeRegion } from "./rasterize";
 import { readRegionText, readTooLarge, type PageLike, type Rasterize, type Recognizer } from "./regionRead";
 import type { Rect, SeamLine, SeamProgress } from "./seams";
 import type { OcrWord } from "./types";
+import { cleanOcrText } from "./wordClean";
 
 /** The box's words, image px at rs; the signal cancels a render or read
  * under way. */
@@ -95,12 +96,16 @@ function repeats(piece: OcrWord, i: number, other: OcrWord, j: number): boolean 
  * repeat). Pieces from either side of a seam that only share the overlap
  * band each hold a part of the line the other doesn't (seams.ts doesn't trim
  * them), so both are kept: some overlap text may repeat in a cell, none is
- * lost. */
+ * lost. Each line is first cleaned of the cell's ruling (cleanOcrText,
+ * #482), and one that was only ruling is dropped with its box. */
 export function boxWords(lines: readonly SeamLine[]): OcrWord[] {
-  const clipped = lines.map((l, i) => (l.clipped ? i : -1)).filter((i) => i >= 0);
+  // cleaned first: a clipped piece that was only ruling ("______") is gone
+  // before the repeat check, so it can't take a real piece with it
+  const kept = lines.flatMap((l) => { const str = cleanOcrText(l.str); return str ? [{ ...l, str }] : []; });
+  const clipped = kept.map((l, i) => (l.clipped ? i : -1)).filter((i) => i >= 0);
   const out: OcrWord[] = [];
-  lines.forEach((l, i) => {
-    if (l.clipped && clipped.some((j) => j !== i && repeats(l, i, lines[j], j))) return;
+  kept.forEach((l, i) => {
+    if (l.clipped && clipped.some((j) => j !== i && repeats(l, i, kept[j], j))) return;
     const w: OcrWord = { str: l.str, x: l.x, y: l.y, w: l.w, h: l.h };
     if (l.confidence !== undefined) w.confidence = l.confidence;
     out.push(w);
