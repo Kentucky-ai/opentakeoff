@@ -6,13 +6,20 @@
 // for consent; a miss reads the full page at rs through session.run and
 // stores it; every outcome maps to one typed status; one read per page at a
 // time (a second request joins); Cancel shows Stopping… until the read
-// settles; a file dropped mid-read leaves no trace.
+// settles; a file dropped mid-read leaves no trace. On a vector sheet (#489)
+// the caller's plan reads only its pictures, or nothing when it has none.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 import {
   createPageReader, readPageText, pageReadView, progressText, readSignature, backgroundRows, createReadRenderGate,
-  type PageReadStatus, type ReadRegion, type ActiveRead,
+  type PageReadStatus, type ReadRegion, type ActiveRead, type ReadPlan, type PageLike,
 } from "../src/lib/ocr/pageRead.ts";
+import { measurePage, type MeasurablePage } from "../src/lib/pictures.ts";
+import type { OpList } from "../src/lib/oneclick.ts";
+import { readPlanOf } from "../src/lib/planSearch.ts";
+import { PICTURE_PARAMS_HASH } from "../src/lib/pictureParams.ts";
+import { buildHybridPlan, PICTURE } from "./fixtures/hybridPlan.ts";
 import { createPageCache } from "../src/lib/ocr/pageCache.ts";
 import { ocrCacheKey, OCR_CACHE_OPTS, STALE_OK_OPTS } from "../src/lib/ocr/pageCache.ts";
 import type { OcrProbe } from "../src/lib/ocr/client.ts";
@@ -1163,4 +1170,271 @@ test("readBox's lines (Copy text's box read) are cleaned the same way", async ()
   const r = await t.reader.readBox(boxReq(t));
   assert.equal(r.ok, true);
   if (r.ok) assert.deepEqual(r.lines.map((l) => l.str), ["P-1", "115"]);
+});
+
+// ── pictures on a vector sheet (#489) ───────────────────────────────────────
+// The caller passes the read's plan (planSearch readPlanOf, from the sheet's
+// index entry): a scan's whole page (as above, and with no plan at all), a
+// hybrid's pictures (one region read each), or nothing. The read never
+// measures the page itself.
+
+const R1 = { x0: 20, y0: 10, x1: 120, y1: 60 }, R2 = { x0: 140, y0: 30, x1: 190, y1: 90 };
+const PICTURES: ReadPlan = { kind: "pictures", rects: [R1, R2] };
+const NO_PICTURE = { ok: false, status: "no-picture", message: "No picture on this sheet to read." };
+
+test("a pictures plan reads each picture on its own at rs, lines joined in order, and stores the read with pp", async () => {
+  const s = fakeSession();
+  const meta = metaMap();
+  const cache = createPageCache(meta.deps);
+  const pg = page();
+  const calls: unknown[][] = [];
+  const A: SeamLine = { str: "VCT-1", x: 25, y: 12, w: 40, h: 8 }, B: SeamLine = { str: "BROADLOOM", x: 150, y: 40, w: 30, h: 8, clipped: true };
+  const readRegion: ReadRegion = async (p, rs, rect) => { calls.push([p, rs, rect]); return rect === R1 ? { lines: [A], ms: 1000, rasters: 2 } : { lines: [B], ms: 500, rasters: 1 }; };
+  const r = await readPageText({ page: 2, rs: RS, getPage: pg.getPage, pdfHash: async () => HASH, session: s.session, cache, readRegion, plan: PICTURES });
+  assert.deepEqual(calls, [[pg.p, RS, R1], [pg.p, RS, R2]]);
+  assert.equal(s.runs(), 1, "one consent, one turn");
+  assert.deepEqual(r, { ok: true, lines: [A, B], ms: 1500, rasters: 3, source: "ocr", stale: false, cached: false, rev: "r2" });
+  assert.equal((meta.m.get(ocrCacheKey(HASH, 2)) as { pp?: string }).pp, PICTURE_PARAMS_HASH);
+});
+
+test("a scan plan reads the whole page, stored without pp, as before", async () => {
+  const s = fakeSession();
+  const meta = metaMap();
+  const calls: unknown[] = [];
+  const readRegion: ReadRegion = async (_p, _rs, rect) => { calls.push(rect); return { lines: LINES, ms: 1, rasters: 1 }; };
+  const r = await readPageText({ page: 1, rs: RS, getPage: page().getPage, pdfHash: async () => HASH, session: s.session, cache: createPageCache(meta.deps), readRegion, plan: { kind: "scan" } });
+  assert.equal(r.ok, true);
+  assert.deepEqual(calls, [{ x0: 0, y0: 0, x1: 200, y1: 100 }]);
+  assert.ok(!("pp" in (meta.m.get(ocrCacheKey(HASH, 1)) as object)));
+});
+
+test("no plan passed: the pre-#489 scan read exactly; the page's text and op list are never asked for", async () => {
+  const s = fakeSession();
+  const meta = metaMap();
+  const asked: string[] = [];
+  // a real-ish page: it has the calls a measurement would make, and they throw
+  const pg = {
+    getViewport: ({ scale }: { scale: number }) => ({ width: 100 * scale, height: 50 * scale }),
+    getTextContent: async () => { asked.push("text"); throw new Error("getTextContent"); },
+    getOperatorList: async () => { asked.push("ops"); throw new Error("getOperatorList"); },
+  };
+  const calls: unknown[][] = [];
+  const checked: unknown[] = [];
+  const readRegion: ReadRegion = async (p, rs, rect, o) => { calls.push([p, rs, rect, typeof o?.onProgress]); return { lines: LINES, ms: 7, rasters: 2 }; };
+  const r = await readPageText({ page: 1, rs: RS, getPage: async () => pg, pdfHash: async () => HASH, session: s.session, cache: createPageCache(meta.deps), readRegion, tooLarge: (rect) => { checked.push(rect); return false; }, onProgress: () => {} });
+  assert.deepEqual(asked, []);
+  assert.deepEqual(checked, [{ x0: 0, y0: 0, x1: 200, y1: 100 }]);
+  assert.deepEqual(calls, [[pg, RS, { x0: 0, y0: 0, x1: 200, y1: 100 }, "function"]]);
+  assert.deepEqual(r, { ok: true, lines: LINES.map((l) => ({ ...l })), ms: 7, rasters: 2, source: "ocr", stale: false, cached: false, rev: "r2" });
+  assert.ok(!("pp" in (meta.m.get(ocrCacheKey(HASH, 1)) as object)));
+});
+
+test("no picture to read: no-picture, said under the offer; no page opened, nothing run, nothing stored", async () => {
+  const s = fakeSession();
+  const meta = metaMap();
+  const pg = page();
+  let reads = 0;
+  const r = await readPageText({ page: 1, rs: RS, getPage: pg.getPage, pdfHash: async () => HASH, session: s.session, cache: createPageCache(meta.deps), readRegion: async () => { reads++; return { lines: [], ms: 1, rasters: 1 }; }, plan: { kind: "none" } });
+  assert.deepEqual(r, NO_PICTURE);
+  assert.deepEqual([s.runs(), reads, meta.puts.length, pg.opens()], [0, 0, 0, 0]);
+  assert.deepEqual(pageReadView({ textless: true, avail: "available", status: { state: "no-picture", message: "No picture on this sheet to read." } }), { kind: "read", note: "No picture on this sheet to read." });
+  assert.deepEqual(pageReadView({ textless: true, avail: "available", status: { state: "no-picture" } }), { kind: "read", note: "No picture on this sheet to read." });
+});
+
+test("an empty pictures plan is no picture: no consent, no size check, nothing read or stored", async () => {
+  const s = fakeSession();
+  const meta = metaMap();
+  const pg = page();
+  let reads = 0, checks = 0;
+  const r = await readPageText({
+    page: 1, rs: RS, getPage: pg.getPage, pdfHash: async () => HASH, session: s.session, cache: createPageCache(meta.deps),
+    readRegion: async () => { reads++; return { lines: [], ms: 1, rasters: 1 }; }, tooLarge: () => { checks++; return false; },
+    plan: { kind: "pictures", rects: [] },
+  });
+  assert.deepEqual(r, NO_PICTURE);
+  assert.deepEqual([s.runs(), reads, checks, meta.puts.length, pg.opens()], [0, 0, 0, 0, 0]);
+});
+
+test("a cache hit opens no page and asks no consent, whatever the plan", async () => {
+  const s = fakeSession();
+  const meta = metaMap();
+  const cache = createPageCache(meta.deps);
+  await cache.put(HASH, 1, { rev: "r2", rs: RS, lines: [], ms: 1, rasters: 1, pictures: true });
+  const pg = page();
+  let reads = 0;
+  const r = await readPageText({ page: 1, rs: RS, getPage: pg.getPage, pdfHash: async () => HASH, session: s.session, cache, readRegion: async () => { reads++; return { lines: [], ms: 1, rasters: 1 }; }, plan: PICTURES });
+  assert.equal(r.ok && r.cached, true);
+  assert.deepEqual([pg.opens(), reads, s.runs()], [0, 0, 0]);
+});
+
+test("a hybrid's read (a pictures plan, nothing else said) never takes a saved whole-page read as its own: it reads its pictures and saves over it", async () => {
+  const s = fakeSession();
+  const meta = metaMap();
+  const cache = createPageCache(meta.deps);
+  await cache.put(HASH, 1, { rev: "r2", rs: RS, lines: [{ str: "WHOLE", x: 1, y: 1, w: 1, h: 1 }], ms: 1, rasters: 1 });
+  const r = await readPageText({ page: 1, rs: RS, getPage: page().getPage, pdfHash: async () => HASH, session: s.session, cache, readRegion: instantRegion(), plan: PICTURES });
+  assert.equal(r.ok && r.cached, false);
+  assert.equal(s.runs(), 1);
+  assert.equal((await cache.get(HASH, 1, { rs: RS, expect: "pictures" }))?.lines.length, LINES.length * 2);
+  // a scan's read of the same entry is unchanged
+  const t = setup();
+  await t.cache.put(HASH, 1, { rev: "r2", rs: RS, lines: [], ms: 1, rasters: 1 });
+  assert.equal((await readPageText({ page: 1, rs: RS, getPage: t.pg.getPage, pdfHash: async () => HASH, session: t.s.session, cache: t.cache, readRegion: instantRegion() })).ok, true);
+  assert.equal(t.pg.opens(), 0);
+});
+
+test("the controller's lookup for a hybrid (its plan is pictures) is a quiet miss on a whole-page read, and finds its pictures read", async () => {
+  const t = setup();
+  await t.cache.put(HASH, 1, { rev: "r2", rs: RS, lines: [], ms: 1, rasters: 1 });
+  assert.equal(await t.reader.lookup({ ...t.req("A.pdf"), plan: PICTURES }), null);
+  assert.deepEqual(t.indexed, []);
+  assert.equal(t.reader.status("A.pdf"), undefined);
+  const u = setup();
+  await u.cache.put(HASH, 1, { rev: "r2", rs: RS, lines: [], ms: 1, rasters: 1, pictures: true });
+  assert.ok(await u.reader.lookup({ ...u.req("A.pdf"), plan: PICTURES }));
+  assert.deepEqual(u.indexed.map((x) => x.key), ["A.pdf"]);
+});
+
+test("the controller reads a hybrid's pictures by the request's plan and saves for its lookups", async () => {
+  const s = fakeSession();
+  const meta = metaMap();
+  const cache = createPageCache(meta.deps);
+  const rects: unknown[] = [];
+  const reader = createPageReader({ session: s.session, cache, readRegion: async (_p, _rs, rect) => { rects.push(rect); return { lines: [], ms: 1, rasters: 1 }; }, onLines: () => {} });
+  const r = await reader.read({ key: "A.pdf", file: "A.pdf", page: 1, rs: RS, getPage: page().getPage, pdfHash: async () => HASH, plan: PICTURES });
+  assert.equal(r.ok, true);
+  assert.deepEqual(rects, [R1, R2]);
+  assert.ok(await cache.get(HASH, 1, { rs: RS, expect: "pictures" }));
+});
+
+test("any picture past the tile cap: too-large, checked for every picture before any read or consent", async () => {
+  const s = fakeSession();
+  const checked: unknown[] = [];
+  let reads = 0;
+  const r = await readPageText({
+    page: 1, rs: RS, getPage: page().getPage, pdfHash: async () => HASH, session: s.session, cache: createPageCache(metaMap().deps),
+    readRegion: async () => { reads++; return { lines: [], ms: 1, rasters: 1 }; }, plan: PICTURES,
+    tooLarge: (rect) => { checked.push(rect); return rect === R2; },
+  });
+  assert.deepEqual(r, { ok: false, status: "too-large", message: "This picture is too large for the on-device text reader (OCR).", what: "picture" });
+  assert.deepEqual(checked, [R1, R2]);
+  assert.deepEqual([reads, s.runs()], [0, 0]);
+  assert.deepEqual(pageReadView({ textless: true, avail: "available", status: { state: "too-large", message: "This picture is too large for the on-device text reader (OCR).", what: "picture" } }),
+    { kind: "unreadable", text: "This picture is too large for the on-device text reader (OCR)." });
+});
+
+test("too-large with no message: the fallback names what the read covers", () => {
+  const v = (status: PageReadStatus) => pageReadView({ textless: true, avail: "available", status });
+  assert.deepEqual(v({ state: "too-large", what: "picture" }), { kind: "unreadable", text: "This picture is too large for the on-device text reader (OCR)." });
+  assert.deepEqual(v({ state: "too-large" }), { kind: "unreadable", text: "This page is too large for the on-device text reader (OCR)." });
+});
+
+test("a pictures read's failures say picture: the region reader's own refusal, a failed read; a scan's still say page", async () => {
+  const s = fakeSession();
+  const big: ReadRegion = async () => { throw Object.assign(new Error("more than 64 tiles"), { name: "PageTooLargeError" }); };
+  const boom: ReadRegion = async () => { throw new Error("render failed"); };
+  const run = (readRegion: ReadRegion, p: ReadPlan) => readPageText({ page: 1, rs: RS, getPage: page().getPage, pdfHash: async () => HASH, session: s.session, cache: createPageCache(metaMap().deps), readRegion, tooLarge: () => false, plan: p });
+  assert.deepEqual(await run(big, PICTURES), { ok: false, status: "too-large", message: "This picture is too large for the on-device text reader (OCR).", what: "picture" });
+  assert.deepEqual(await run(boom, PICTURES), { ok: false, status: "failed", message: "render failed", what: "picture" });
+  assert.deepEqual(await run(boom, { kind: "scan" }), { ok: false, status: "failed", message: "render failed" });
+  const v = (status: PageReadStatus) => pageReadView({ textless: true, avail: "available", status });
+  assert.deepEqual(v({ state: "failed", message: "render failed", what: "picture" }), { kind: "read", note: "Couldn't read this picture: render failed" });
+  assert.deepEqual(v({ state: "failed", message: "render failed" }), { kind: "read", note: "Couldn't read this page: render failed" });
+});
+
+test("the second picture fails after the first is read: the read fails as a picture's, and nothing is stored", async () => {
+  const s = fakeSession();
+  const meta = metaMap();
+  const read: unknown[] = [];
+  const readRegion: ReadRegion = async (_p, _rs, rect) => {
+    read.push(rect);
+    if (rect === R2) throw new Error("render failed");
+    return { lines: LINES, ms: 1, rasters: 1 };
+  };
+  const r = await readPageText({ page: 1, rs: RS, getPage: page().getPage, pdfHash: async () => HASH, session: s.session, cache: createPageCache(meta.deps), readRegion, tooLarge: () => false, plan: PICTURES });
+  assert.deepEqual(r, { ok: false, status: "failed", message: "render failed", what: "picture" });
+  assert.deepEqual(read, [R1, R2]);
+  assert.deepEqual(meta.puts, []);
+});
+
+test("cancelled between pictures: aborted, the next picture never read, nothing stored", async () => {
+  const s = fakeSession();
+  const meta = metaMap();
+  const ac = new AbortController();
+  const read: unknown[] = [];
+  const readRegion: ReadRegion = async (_p, _rs, rect) => {
+    read.push(rect);
+    ac.abort();   // Cancel lands as the first picture's read returns
+    return { lines: LINES, ms: 1, rasters: 1 };
+  };
+  const r = await readPageText({ page: 1, rs: RS, getPage: page().getPage, pdfHash: async () => HASH, session: s.session, cache: createPageCache(meta.deps), readRegion, tooLarge: () => false, plan: PICTURES, signal: ac.signal });
+  assert.deepEqual(r, { ok: false, status: "aborted", what: "picture" });
+  assert.deepEqual(read, [R1]);
+  assert.deepEqual(meta.puts, []);
+});
+
+test("a pictures read's failure reaches the controller's status, still saying picture", async () => {
+  const s = fakeSession();
+  const reader = createPageReader({ session: s.session, cache: createPageCache(metaMap().deps), readRegion: async () => { throw new Error("boom"); }, onLines: () => {} });
+  await reader.read({ key: "A.pdf", file: "A.pdf", page: 1, rs: RS, getPage: page().getPage, pdfHash: async () => HASH, plan: PICTURES });
+  assert.deepEqual(reader.status("A.pdf"), { state: "failed", message: "boom", what: "picture" });
+  const none = createPageReader({ session: s.session, cache: createPageCache(metaMap().deps), readRegion: instantRegion(), onLines: () => {} });
+  await none.read({ key: "A.pdf", file: "A.pdf", page: 1, rs: RS, getPage: page().getPage, pdfHash: async () => HASH, plan: { kind: "none" } });
+  assert.deepEqual(none.status("A.pdf"), { state: "no-picture", message: "No picture on this sheet to read." });
+});
+
+const P = (phase: "tiles" | "seams", done: number, total: number, rastersDone: number, rastersPlanned: number) => ({ phase, done, total, rastersDone, rastersPlanned });
+/** A readRegion that emits each rect's events, then returns nothing. */
+const emitting = (emits: Map<unknown, ReturnType<typeof P>[]>): ReadRegion => async (_p, _rs, rect, o) => { for (const e of emits.get(rect) ?? []) o?.onProgress?.(e); return { lines: [], ms: 1, rasters: 1 }; };
+const progressOf = async (readRegion: ReadRegion, plan: ReadPlan) => {
+  const seen: string[] = [];
+  const r = await readPageText({ page: 1, rs: RS, getPage: page().getPage, pdfHash: async () => HASH, session: fakeSession().session, cache: createPageCache(metaMap().deps), readRegion, plan, onProgress: (p) => seen.push(`${progressText(p)} r${p.rastersDone}/${p.rastersPlanned}`) });
+  assert.equal(r.ok, true);
+  return seen;
+};
+
+test("progress over pictures: each region's phase, done and total summed over the regions read so far", async () => {
+  // R1: 3 tiles then 2 seam patches; R2: 2 tiles, no seams
+  const seen = await progressOf(emitting(new Map([
+    [R1, [P("tiles", 0, 3, 0, 3), P("tiles", 1, 3, 1, 3), P("tiles", 2, 3, 2, 3), P("seams", 0, 2, 3, 5), P("seams", 1, 2, 4, 5), P("seams", 2, 2, 5, 5)]],
+    [R2, [P("tiles", 0, 2, 0, 2), P("tiles", 1, 2, 1, 2), P("tiles", 2, 2, 2, 2)]],
+  ])), PICTURES);
+  assert.deepEqual(seen, [
+    "Reading tiles 0/3 r0/3", "Reading tiles 1/3 r1/3", "Reading tiles 2/3 r2/3",
+    "Joining seams 0/2 r3/5", "Joining seams 1/2 r4/5", "Joining seams 2/2 r5/5",
+    "Reading tiles 3/5 r5/7", "Reading tiles 4/5 r6/7", "Reading tiles 5/5 r7/7",
+  ]);
+});
+
+test("progress over pictures: a picture that says nothing adds nothing; the next counts on from what was said", async () => {
+  const R3 = { x0: 0, y0: 0, x1: 10, y1: 10 };
+  const seen = await progressOf(emitting(new Map([
+    [R1, [P("tiles", 0, 2, 0, 2), P("tiles", 2, 2, 2, 2)]],
+    // R2 emits nothing
+    [R3, [P("tiles", 0, 1, 0, 1), P("tiles", 1, 1, 1, 1)]],
+  ])), { kind: "pictures", rects: [R1, R2, R3] });
+  assert.deepEqual(seen, ["Reading tiles 0/2 r0/2", "Reading tiles 2/2 r2/2", "Reading tiles 2/3 r2/3", "Reading tiles 3/3 r3/3"]);
+  // a lone picture that says nothing: no progress at all, the read still ends
+  assert.deepEqual(await progressOf(emitting(new Map()), { kind: "pictures", rects: [R2] }), []);
+});
+
+test("a scan's progress passes through untouched", async () => {
+  const e = { phase: "tiles" as const, done: 1, total: 4, rastersDone: 1, rastersPlanned: 4 };
+  const seen: unknown[] = [];
+  await readPageText({ page: 1, rs: RS, getPage: page().getPage, pdfHash: async () => HASH, session: fakeSession().session, cache: createPageCache(metaMap().deps), readRegion: async (_p, _rs, _r, o) => { o?.onProgress?.(e); return { lines: [], ms: 1, rasters: 1 }; }, onProgress: (p) => seen.push(p) });
+  assert.deepEqual(seen, [e]);
+});
+
+// ── end to end on a real page: the index's plan (planSearch readPlanOf) ─────
+
+test("a hybrid's read by its measured index entry's plan asks the region reader for its picture alone", async () => {
+  const pg = await (await pdfjs.getDocument({ data: await buildHybridPlan("callouts"), isEvalSupported: false, verbosity: 0 }).promise).getPage(1);
+  const mp: MeasurablePage = { getTextContent: () => pg.getTextContent() as never, getOperatorList: () => pg.getOperatorList() as unknown as Promise<OpList> };
+  const { index } = await measurePage("h.pdf", mp, pg.getViewport({ scale: 1 }), pdfjs.OPS as unknown as Record<string, number>);
+  const rects: { x0: number; y0: number; x1: number; y1: number }[] = [];
+  const r = await readPageText({ page: 1, rs: RS, getPage: async () => pg as unknown as PageLike, pdfHash: async () => HASH, session: fakeSession().session, cache: createPageCache(metaMap().deps), readRegion: async (_p, _rs, rect) => { rects.push(rect); return { lines: [], ms: 1, rasters: 1 }; }, tooLarge: () => false, plan: readPlanOf(index, RS) });
+  assert.equal(r.ok, true);
+  assert.equal(rects.length, 1);
+  const [g] = rects;
+  assert.ok(Math.abs(g.x0 - PICTURE.x0 * RS) <= RS && Math.abs(g.y0 - PICTURE.y0 * RS) <= RS && Math.abs(g.x1 - PICTURE.x1 * RS) <= RS && Math.abs(g.y1 - PICTURE.y1 * RS) <= RS, JSON.stringify(rects));
 });

@@ -20,6 +20,7 @@
 // Pure-ish helpers (DOM canvas + IndexedDB, no React) so PlanNavigator stays
 // a view.
 import { metaGet, metaPut, metaDelete, metaDeletePrefix } from "./store.js";
+import { PICTURE_PARAMS_HASH } from "./pictureParams";
 
 export const THUMB_W = 640;           // CSS px — large gallery cards are capped at this width
 const THUMB_VERSION = 3;              // bump to invalidate every persisted thumb
@@ -47,12 +48,26 @@ export async function renderThumb(pg, w = thumbPixelWidth()) {
   return { blob, w: c.width, h: c.height };
 }
 
+const isNum = (v) => typeof v === "number" && Number.isFinite(v);
+/** A list of rects with finite corners: what measurePage gives for a page
+ *  it measured. Its "failed" (the op list couldn't be read) is never kept:
+ *  that is this session's answer only, so the next one measures again. */
+const picturesOk = (p) => Array.isArray(p) && p.every((r) => r && isNum(r.x0) && isNum(r.y0) && isNum(r.x1) && isNum(r.y1));
+
 /** Persisted record for `sheetKey`, or null when absent / rastered narrower
- *  than this screen now wants (a 1× thumb re-renders on a 2× screen). */
+ *  than this screen now wants (a 1× thumb re-renders on a 2× screen).
+ *  Pictures that are malformed (a stored "failed" included), or were
+ *  measured under another revision of the rule (`pp`, pictures.ts
+ *  PICTURE_PARAMS_HASH), are dropped: the record loads as not measured, and
+ *  the rest of it stands. */
 export async function loadThumb(sheetKey, minW = thumbPixelWidth()) {
   try {
     const rec = await metaGet(keyOf(sheetKey));
     if (!rec || !(rec.blob instanceof Blob) || !(rec.w >= minW)) return null;
+    if (("pictures" in rec || "pp" in rec) && !(rec.pp === PICTURE_PARAMS_HASH && picturesOk(rec.pictures))) {
+      const { pictures: _p, pp: _h, ...rest } = rec;
+      return rest;
+    }
     return rec;
   } catch { return null; }
 }
@@ -62,9 +77,13 @@ export function saveThumb(sheetKey, rec) {
   // textLayer: false when the page is a scan (#471; planIndex's
   // indexIsScanLike), so a reopened gallery can offer Read page text on it
   // without loading its PDF. Left out when unknown, so an old record and a
-  // new unknown one read alike.
+  // new unknown one read alike. pictures (#489): the page's unread pictures
+  // once measured, stamped with the rule's hash (pp) so a change to the
+  // rule measures them again; left out when not measured, and when the op
+  // list couldn't be read ("failed": the next session measures again).
   const out = { w: rec.w, h: rec.h, blob: rec.blob, label: rec.label ?? null, det: rec.det ?? null, ts: Date.now() };
   if (typeof rec.textLayer === "boolean") out.textLayer = rec.textLayer;
+  if (picturesOk(rec.pictures)) { out.pictures = rec.pictures; out.pp = PICTURE_PARAMS_HASH; }
   return metaPut(keyOf(sheetKey), out).catch(() => {});
 }
 
