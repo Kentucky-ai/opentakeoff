@@ -287,6 +287,12 @@ function readOf(r: MarqueeRead | null, spans: GraphSpan[], ocr: boolean): Schedu
       const fix = repairKey(x.cells[t.headers[0]]?.text ?? "", row.finish_tag);
       row.finish_tag = fix.key;
       if (fix.readAs) row.read_as = fix.readAs;
+      const box = x.cells[t.headers[0]]?.bbox;
+      const checks = box ? spans.filter((s) => s.codeAlternate !== undefined
+        && s.x + s.w / 2 >= box[0] && s.x + s.w / 2 <= box[2]
+        && s.y + s.h / 2 >= box[1] && s.y + s.h / 2 <= box[3])
+        .map((s) => ({ first: s.str, second: s.codeAlternate! })) : [];
+      if (checks.length) { row.code_checks = checks; row.suggested = false; }
     }
     return row;
   });

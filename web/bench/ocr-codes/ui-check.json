@@ -1,0 +1,58 @@
+{
+  "layout": "Actual OCR code readings placed in a constructed table; invented headers and descriptions. This measures dialog behavior, not image table extraction.",
+  "browser": "153.0.8010.12",
+  "errors": [],
+  "blockedRequests": [
+    "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+  ],
+  "times": [
+    {
+      "baselineMs": 3666.399999976158,
+      "checkedMs": 4382.1000000834465
+    },
+    {
+      "baselineMs": 3662.5,
+      "checkedMs": 4394.900000035763
+    },
+    {
+      "baselineMs": 3664.600000023842,
+      "checkedMs": 4398.899999976158
+    }
+  ],
+  "flags": [
+    {
+      "text": "Check code: S-3 / SS-3",
+      "selected": false
+    },
+    {
+      "text": "Check code: wwC / WC",
+      "selected": false
+    },
+    {
+      "text": "Check code: wvC / WC",
+      "selected": false
+    },
+    {
+      "text": "Check code: ST.1 / ST-1",
+      "selected": false
+    }
+  ],
+  "groupSelectionSkipsWarnings": true,
+  "explicitSelectionWorks": true,
+  "correctedTagCreated": "SS-3",
+  "selectedTags": [
+    "P1",
+    "P2",
+    "SS-2",
+    "SS-3",
+    "S-1",
+    "P-1",
+    "BK-1",
+    "G-01C",
+    "FT-02E"
+  ],
+  "mobile": {
+    "width": 356,
+    "scrollWidth": 356
+  }
+}
