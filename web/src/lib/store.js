@@ -185,6 +185,24 @@ function txAll(db, stores, mode, fn) {
   });
 }
 
+// A readwrite txAll whose result is decided inside a request callback, for a
+// read-check-write that nothing may interleave with. No await can run inside
+// a transaction (it commits the moment the event loop drains), so fn decides
+// in plain callbacks, each wrapped in `step`: what the callback returns is the
+// result, and a throw aborts the whole transaction and becomes the rejection
+// (an explicit abort leaves t.error null, so it would otherwise be lost).
+async function txDecide(db, stores, fn) {
+  const holder = { out: undefined, err: null };
+  try {
+    await txAll(db, stores, "readwrite", (t) => fn(t, (cb) => () => {
+      try { holder.out = cb(); } catch (e) { holder.err = e; t.abort(); }
+    }));
+  } catch (e) {
+    throw holder.err ?? e ?? new Error("The browser's database stopped the save.");
+  }
+  return holder.out;
+}
+
 // SHA-256 of a PDF's bytes as lowercase hex — the identity a revision is keyed
 // on. WebCrypto is available in every target (browsers, the Node 24 test env).
 async function sha256Hex(bytes) {
@@ -193,8 +211,10 @@ async function sha256Hex(bytes) {
 }
 
 // A legacy record's hash (written before v3, none stored): hashed once per
-// session, never written back (that would race addPdf's read-then-put). A
-// null (no crypto.subtle) isn't kept.
+// session and not written back here. Only addPdf writes PDF records, and it
+// backfills a legacy hash in the same transaction that reads the record, so
+// the write can't overwrite a revision that landed in between. A null (no
+// crypto.subtle) isn't kept.
 const legacyHashMemo = new Map();
 
 function legacyHash(name, bytes) {
@@ -296,32 +316,50 @@ export const localStore = {
     const hash = await sha256Hex(bytes);
     forgetPdfHash(file.name);
     const ts = Date.now();
-    const existing = await withDb((db) => tx(db, PDF_STORE, "readonly", (os) => os.get(file.name)));
-    if (!existing) {
-      await withDb((db) => tx(db, PDF_STORE, "readwrite", (os) => os.put({ name: file.name, bytes, hash, rev: 1, ts })));
-      forgetPdfHash(file.name);
-      return { name: file.name, rev: 1 };
-    }
-    // de-dupe by name, but never by silent overwrite: same bytes are a no-op,
-    // different bytes archive the old record as a revision first (CO-1).
-    // Records written before v3 carry no hash/rev — hash their bytes now and
-    // treat them as rev 1, so legacy sheets version correctly on first re-drop.
-    const prevRev = existing.rev || 1;
-    const prevHash = existing.hash || await sha256Hex(existing.bytes);
-    if (prevHash === hash) {
-      if (!existing.hash || !existing.rev) {
-        // backfill the legacy record's identity so the next compare is cheap
-        await withDb((db) => tx(db, PDF_STORE, "readwrite", (os) => os.put({ ...existing, hash: prevHash, rev: prevRev, ts: existing.ts ?? ts })));
-      }
-      return { name: file.name, rev: prevRev, unchanged: true };
-    }
-    // one transaction across both stores: archive + swap commit atomically
-    await withDb((db) => txAll(db, [PDF_STORE, REV_STORE], "readwrite", (t) => {
-      t.objectStore(REV_STORE).put({ key: revKey(file.name, prevRev), name: file.name, rev: prevRev, hash: prevHash, ts: existing.ts ?? ts, bytes: existing.bytes });
-      t.objectStore(PDF_STORE).put({ name: file.name, bytes, hash, rev: prevRev + 1, ts });
+    // Records written before v3 carry no hash/rev. Peek first and hash a
+    // legacy record's bytes here, outside the transaction below. Only addPdf
+    // writes pdfs and it always stores a hash, so a record can turn from
+    // legacy to hashed in the meantime but never back: a peek that saw no
+    // record or a hashed one never needs this hash.
+    const peek = await withDb((db) => tx(db, PDF_STORE, "readonly", (os) => os.get(file.name)));
+    const peekHash = peek && !peek.hash ? await sha256Hex(peek.bytes) : null;
+    // Read, compare and write in ONE readwrite transaction (#493). The
+    // database runs readwrite transactions over the same stores one at a
+    // time, across connections and tabs, so two adds of one name can't both
+    // read the same record and then overwrite each other's file.
+    const out = await withDb((db) => txDecide(db, [PDF_STORE, REV_STORE], (t, step) => {
+      const pdfs = t.objectStore(PDF_STORE);
+      const req = pdfs.get(file.name);
+      req.onsuccess = step(() => {
+        const existing = req.result;
+        if (!existing) {
+          pdfs.put({ name: file.name, bytes, hash, rev: 1, ts });
+          return { name: file.name, rev: 1 };
+        }
+        // de-dupe by name, but never by silent overwrite: same bytes are a
+        // no-op, different bytes archive the old record as a revision first
+        // (CO-1). A legacy record counts as rev 1, so it versions correctly
+        // on its first re-drop.
+        const prevRev = existing.rev || 1;
+        const prevHash = existing.hash || peekHash;
+        // a legacy record the peek didn't see: only a build older than v3
+        // could write one, and it can't open this database
+        if (!prevHash) throw new Error(`${file.name} changed while it was being added — try again.`);
+        if (prevHash === hash) {
+          if (!existing.hash || !existing.rev) {
+            // backfill the legacy record's identity so the next compare is cheap
+            pdfs.put({ ...existing, hash: prevHash, rev: prevRev, ts: existing.ts ?? ts });
+          }
+          return { name: file.name, rev: prevRev, unchanged: true };
+        }
+        // archive + swap in the same transaction: they commit together or not at all
+        t.objectStore(REV_STORE).put({ key: revKey(file.name, prevRev), name: file.name, rev: prevRev, hash: prevHash, ts: existing.ts ?? ts, bytes: existing.bytes });
+        pdfs.put({ name: file.name, bytes, hash, rev: prevRev + 1, ts });
+        return { name: file.name, rev: prevRev + 1, prev_rev: prevRev, revised: true };
+      });
     }));
     forgetPdfHash(file.name);
-    return { name: file.name, rev: prevRev + 1, prev_rev: prevRev, revised: true };
+    return out;
   },
 
   async removePdf(name) {
