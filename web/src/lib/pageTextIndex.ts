@@ -12,7 +12,13 @@ import { buildSheetIndex, type SheetIndex } from "./planIndex";
 type TextContent = Parameters<typeof extractRegionText>[0];
 type PageViewport = Parameters<typeof extractRegionText>[1];
 
-export function pageTextIndex(key: string, textContent: TextContent, viewport: PageViewport): SheetIndex {
-  const items = extractRegionText(textContent, viewport, { x0: 0, y0: 0, x1: viewport.width, y1: viewport.height });
-  return buildSheetIndex(key, items, "text");
+/** Every run on the page, in viewport px: what pageTextIndex indexes. */
+export function pageRuns(textContent: TextContent, viewport: PageViewport) {
+  return extractRegionText(textContent, viewport, { x0: 0, y0: 0, x1: viewport.width, y1: viewport.height });
+}
+
+/** `runs` lets a caller that also needs the page's runs (pictures.ts
+ *  measurePage) read them once; they must be pageRuns(textContent, viewport). */
+export function pageTextIndex(key: string, textContent: TextContent, viewport: PageViewport, runs = pageRuns(textContent, viewport)): SheetIndex {
+  return buildSheetIndex(key, runs, "text");
 }
