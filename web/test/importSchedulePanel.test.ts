@@ -305,3 +305,77 @@ test("end to end: the reader's CT-1 COVE line above a floor CT-1 → the dialog 
   assert.equal(ct[cove], "off|duplicate");
   assert.equal(ct[floor], "on|");
 });
+
+// ── #482: a code repaired from an OCR misread ──────────────────────────────────
+// A row whose code the reader repaired (read_as: PT-O1 imported as PT-01) shows
+// "read as PT-O1" after the row's label, built like the NOT USED label: the
+// code in the edit button's mono at 12.5px so O and 0 can be told apart, a
+// title and a hidden sentence saying what to check, and the checkbox described
+// by it. With more than one descriptor they wrap as one group: from
+// description, read as, NOT USED. A row read right claims a code over a
+// repaired row with the same code.
+const ra = (finish_tag: string, read_as: string, extra: Record<string, unknown> = {}) => ({ ...row(finish_tag, "floor", "heading"), read_as, ...extra });
+const tagRows = (html: string, tag: string) => {
+  const out: Record<string, string> = {};
+  for (const m of html.matchAll(/<label[^>]*>(<input type="checkbox"[^>]*>)(.*?)<\/label>/gs)) {
+    const desc = m[2].match(/<\/button><span[^>]*>([^<]*)/)?.[1];
+    if (m[2].includes(`>${tag}</button>`) && desc) out[desc] = `${/checked/.test(m[1]) ? "on" : "off"}|${/>duplicate</.test(m[2]) ? "duplicate" : ""}`;
+  }
+  return out;
+};
+
+test("read as: the code as read, mono 12.5px, warning color, a title and hidden sentence; it describes the checkbox", () => {
+  const html = renderWith({ rows: [ra("PT-01", "PT-O1")] });
+  const r = rowOf(html, "PT-01");
+  const sentence = "Repaired from PT-O1; check the code against the schedule.";
+  const m = r.match(/<span id="([^"]+)" title="([^"]+)" style="([^"]*)">read as <span style="([^"]*)">PT-O1<\/span><span style="([^"]*)">([^<]*)<\/span><\/span>/);
+  assert.ok(m, `read as flag in: ${r}`);
+  assert.equal(m![2], sentence);
+  assert.match(m![3], /text-transform:none/);
+  assert.match(m![3], /color:var\(--c-warning\)/);
+  assert.match(m![3], /cursor:help/);
+  assert.match(m![4], /font-family:var\(--f-mono\)/);
+  assert.match(m![4], /font-size:12\.5px/);
+  assert.equal(m![5], HIDDEN);
+  // the hidden text doesn't repeat the code the visible text just read out
+  assert.equal(m![6], " — check the code against the schedule.");
+  // outside the label, pushed right on its own; the checkbox points at it
+  for (const l of r.matchAll(/<label[^>]*>(.*?)<\/label>/gs)) assert.doesNotMatch(l[1], /read as/);
+  assert.match(r, /<\/label><span[^>]*margin-left:auto[^>]*>read as /);
+  assert.equal(checkboxOf(r).match(/aria-describedby="([^"]+)"/)?.[1], m![1]);
+  // a row with no read_as has none
+  assert.doesNotMatch(renderWith({ rows: [row("PT-01", "floor", "heading")] }), /read as/);
+});
+
+test("three descriptors: one group pushed right, in the order from description, read as, NOT USED", () => {
+  const html = renderWith({ rows: [nu("HR-01", "wall_protection", "NOT USED", { category_source: "text", read_as: "HR-O1" })] });
+  const r = rowOf(html, "HR-01");
+  assert.match(r, /<\/label><div style="margin-left:auto;display:flex;gap:10px"><span[^>]*>from description<\/span><span[^>]*>read as <span[^>]*>HR-O1<\/span><span[^>]*>[^<]*<\/span><\/span><span[^>]*>NOT USED<span/);
+  const guess = r.match(/<span id="([^"]+)"[^>]*>from description<\/span>/)?.[1];
+  const readAs = r.match(/<span id="([^"]+)"[^>]*>read as /)?.[1];
+  const notUsed = r.match(/<span id="([^"]+)"[^>]*>NOT USED<span/)?.[1];
+  assert.equal(checkboxOf(r).match(/aria-describedby="([^"]+)"/)?.[1], `${guess} ${readAs} ${notUsed}`);
+  // the group's descriptors aren't each pushed right
+  assert.doesNotMatch(r.slice(r.indexOf('<div style="margin-left:auto')), /<span[^>]*margin-left:auto/);
+});
+
+test("a PT-01 read right claims the code over a repaired PT-01, in either order", () => {
+  for (const rows of [
+    [{ ...ra("PT-01", "PT-O1"), description: "REPAIRED" }, { ...row("PT-01", "floor", "heading"), description: "PLAIN" }],
+    [{ ...row("PT-01", "floor", "heading"), description: "PLAIN" }, { ...ra("PT-01", "PT-O1"), description: "REPAIRED" }],
+  ]) {
+    const html = renderWith({ rows });
+    assert.deepEqual(tagRows(html, "PT-01"), { REPAIRED: "off|duplicate", PLAIN: "on|" });
+  }
+});
+
+test("a key_rule row that was also repaired ranks with key_rule rows: under a repaired row, over a NOT USED one", () => {
+  const krRa = { ...ra("PT-01", "PT-O1", { key_rule: "extended" }), description: "BOTH" };
+  // under a repaired row read the usual way
+  assert.deepEqual(tagRows(renderWith({ rows: [krRa, { ...ra("PT-01", "PT-O1"), description: "REPAIRED" }] }), "PT-01"), { BOTH: "off|duplicate", REPAIRED: "on|" });
+  // level with a key_rule row: the first one claims it
+  assert.deepEqual(tagRows(renderWith({ rows: [krRa, { ...row("PT-01", "floor", "heading"), key_rule: "extended", description: "RULE" }] }), "PT-01"), { BOTH: "on|", RULE: "off|duplicate" });
+  // over a NOT USED row
+  const notUsed = { ...nu("PT-01", "floor", "NOT USED"), description: "UNUSED" };
+  assert.deepEqual(tagRows(renderWith({ rows: [notUsed, krRa] }), "PT-01"), { UNUSED: "off|duplicate", BOTH: "on|" });
+});

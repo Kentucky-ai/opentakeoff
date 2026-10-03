@@ -30,7 +30,7 @@ const golden = (file: string): any => JSON.parse(readFileSync(dir + file, "utf8"
 /** own-property presence on the LIVE object (a JSON round-trip would hide an undefined-valued key) */
 const has = (o: object, f: string) => Object.prototype.hasOwnProperty.call(o, f);
 const TABLE_ROW_ABSENT = ["qualifier", "notUsed", "notUsedText", "keyRule"];
-const SCHEDULE_ROW_ABSENT = ["key_rule", "unticked_reason", "not_used_text"];
+const SCHEDULE_ROW_ABSENT = ["key_rule", "unticked_reason", "not_used_text", "read_as"];
 function assertTableRowsBare(rows: TableRow[] | undefined, where: string) {
   for (const r of rows ?? []) {
     for (const f of TABLE_ROW_ABSENT) assert.ok(!has(r, f), `${where}: ${r.key} has no ${f}`);

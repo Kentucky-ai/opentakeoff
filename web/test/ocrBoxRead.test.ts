@@ -277,3 +277,23 @@ test("boxWords: two equal clipped pieces in the same place keep one", () => {
   const a = clip("ATTIC STOCK", 200, 100);
   assert.deepEqual(boxWords([a, { ...a }]).map((w) => w.str), ["ATTIC STOCK"]);
 });
+
+// ── border glyphs (#482) ─────────────────────────────────────────────────────
+
+test("boxWords: a table's ruling read at a line's edge is cleaned off; a line of ruling only is dropped; confidence stays", () => {
+  const lines: SeamLine[] = [
+    { str: "[P-1 SAT", x: 10, y: 40, w: 70, h: 14, confidence: 0.91 },
+    { str: "_", x: 90, y: 40, w: 6, h: 14, confidence: 0.4 },
+    { str: "PT−01", x: 10, y: 80, w: 50, h: 14 },
+  ];
+  assert.deepEqual(boxWords(lines), [
+    { str: "P-1 SAT", x: 10, y: 40, w: 70, h: 14, confidence: 0.91 },
+    { str: "PT-01", x: 10, y: 80, w: 50, h: 14 },
+  ]);
+});
+
+test("boxWords: a clipped line of ruling only is cleaned away before the repeat check, so it can't swallow a real piece", () => {
+  const rule = clip("________________", 100, 400);
+  const real = clip("P-1 SAT", 150, 80);
+  assert.deepEqual(boxWords([rule, real]).map((w) => w.str), ["P-1 SAT"]);
+});

@@ -15,7 +15,7 @@
 //     tag edit already consumed (preventDefault) — that one only cancels the edit.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeTag, evaluateTags, isCreatable, setPicked, previewColors, closeOnEscape } from "../src/lib/scheduleEdit.js";
+import { normalizeTag, evaluateTags, isCreatable, setPicked, previewColors, closeOnEscape, readAsShown } from "../src/lib/scheduleEdit.js";
 
 test("normalizeTag trims, collapses whitespace, upper-cases", () => {
   assert.equal(normalizeTag("  cpt-1 "), "CPT-1");
@@ -288,4 +288,15 @@ test("skippedNote: the agent's exact note, one, several, one code on two lines",
     "No rows read. Four- or five-letter codes with no number weren't read: EPOX, SEAL. Find their lines with read_sheet_text, check them with view_region, then create them with create_condition if they're finishes.");
   assert.equal(skippedNote(["EPOX", "EPOX"]),
     "No rows read. A four- or five-letter code with no number wasn't read: EPOX (2 lines). Find its lines with read_sheet_text, check it with view_region, then create it with create_condition if it's a finish.");
+});
+
+// #482: the dialog's "read as" flag stays while the code is the repaired one,
+// whatever its case or spacing, and hides once it's edited to another code.
+test("readAsShown: shown at seed and for the same code typed differently; hidden for another code or no read_as", () => {
+  const r = { finish_tag: "PT-01", read_as: "PT-O1" };
+  assert.equal(readAsShown(r, "PT-01"), true);
+  assert.equal(readAsShown(r, " pt-01 "), true);
+  assert.equal(readAsShown(r, "PT-02"), false);
+  assert.equal(readAsShown(r, ""), false);
+  assert.equal(readAsShown({ finish_tag: "PT-01" }, "PT-01"), false);
 });

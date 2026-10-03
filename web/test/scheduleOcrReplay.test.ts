@@ -39,6 +39,7 @@ import { fileURLToPath } from "node:url";
 import { pageSpans, spansInRect, graphSpans } from "../src/lib/pageSpans.ts";
 import { readScheduleSpans, type ScheduleRead } from "../src/lib/scheduleRead.ts";
 import { wordsToSpans, type OcrWord } from "../src/lib/ocr/types.ts";
+import { boxWords } from "../src/lib/ocr/boxRead.ts";
 import { planTiles } from "../src/lib/ocr/seams.ts";
 import type { ScheduleRow } from "../src/lib/scheduleRows.ts";
 
@@ -128,6 +129,27 @@ for (const [dpi, sectionFloor, groupFloor] of [[200, 12, 14], [100, 28, 28]] as 
     assert.ok(on.section >= off.section, "section agreement");
     assert.ok(on.group >= off.group, "group agreement");
     assert.ok(on.wrongSection.length <= off.wrongSection.length, "wrong sections");
+  });
+}
+
+// The canvas's box read hands the reader boxWords' words, which are cleaned
+// of the cells' ruling (#482): both copies end codes with a rule read as "_"
+// (RB-1_, P-2_, C_ …). Through boxWords they meet the same floors with the
+// same rows: the reader already dropped the "_" from a code.
+for (const [dpi, sectionFloor, groupFloor] of [[200, 12, 14], [100, 28, 28]] as const) {
+  test(`the ${dpi} DPI read through boxWords: the same rows, the same floors`, async () => {
+    const fx = fixture(dpi);
+    assert.ok(fx.words.some((w) => w.str.endsWith("_")), "the fixture has ruling to clean");
+    const key = await vectorKey(fx);
+    const raw = readScheduleSpans(wordsToSpans(fx.words as OcrWord[]), { ocr: true });
+    const cleaned = readScheduleSpans(wordsToSpans(boxWords(fx.words)), { ocr: true });
+    assert.deepEqual(cleaned, raw);
+    const on = score(cleaned, key);
+    assert.deepEqual(on.wrong, [], "no tag the vector read lacks");
+    assert.ok(on.exact >= 28, `tags: ${on.exact}/28`);
+    assert.ok(on.section >= sectionFloor, `section agrees: ${on.section}/28, floor ${sectionFloor}`);
+    assert.ok(on.group >= groupFloor, `dialog group agrees: ${on.group}/28, floor ${groupFloor}`);
+    assert.deepEqual(on.wrongSection, [], "no printed section other than the vector read's");
   });
 }
 
