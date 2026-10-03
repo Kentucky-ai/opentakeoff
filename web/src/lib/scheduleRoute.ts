@@ -15,6 +15,7 @@ import type { RefusalReason, ScheduleRead } from "./scheduleRead.ts";
 import type { ScheduleRow } from "./scheduleRows.ts";
 import { MODAL_SELECTOR } from "./modalKeys.ts";
 import { finishCodeOk } from "./finishCode.ts";
+import { STRAY_TEXT_MAX } from "./strayText.ts";
 
 /** What the reader keys a row by and what says "finish" — the hint names them
  *  all, not CODE alone. */
@@ -29,8 +30,10 @@ export const EMPTY_BOX_MESSAGE = `No text in that box — drag around the finish
 
 /** The most text runs a box can hold and still go to the on-device reader:
  *  a raster schedule can carry a few real text labels (a stamp, a title
- *  typed over the scan), and a vector schedule has far more. */
-export const STRAY_TEXT_MAX_RUNS = 8;
+ *  typed over the scan), and a vector schedule has far more. The limit is
+ *  strayText.ts STRAY_TEXT_MAX, which a scan page and an unread picture count
+ *  in lines; why the box counts runs instead is there. */
+export const STRAY_TEXT_MAX_RUNS = STRAY_TEXT_MAX;
 
 /** A run counts as text when it has a letter or digit; leader dots, rules
  *  and lone punctuation don't push a raster box over the limit. */

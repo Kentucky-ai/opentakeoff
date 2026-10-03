@@ -5,8 +5,8 @@
 // never reach search. This module finds such pictures.
 //
 // THE rule: an unread picture is a picture region of at least
-// PICTURE_MIN_SQIN over which the text layer holds at most
-// SCAN_MAX_TEXT_LINES lines. A region is a cluster of image placements that
+// PICTURE_MIN_SQIN over which the text layer holds at most STRAY_TEXT_MAX
+// lines (strayText.ts). A region is a cluster of image placements that
 // overlap or touch (PICTURE_MERGE_SLACK_PT): its bounding box plus the
 // member rects. Lines over it are counted on the member rects, so text in
 // the empty corner of an L-shaped cluster doesn't count against it.
@@ -28,8 +28,9 @@
 // (getTextContent, getOperatorList) on the pdf.js page it is handed. pdf.js's
 // OPS table is passed in, as extractVectorGeometry takes it.
 import type { OpList, OpsTable } from "./oneclick";
-import { buildSheetIndex, indexIsScanLike, SCAN_MAX_TEXT_LINES, type IndexedTextItem, type Rect, type SheetIndex } from "./planIndex";
+import { buildSheetIndex, indexIsScanLike, type IndexedTextItem, type Rect, type SheetIndex } from "./planIndex";
 import { PICTURE_MERGE_SLACK_PT, PICTURE_MIN_SQIN } from "./pictureParams";
+import { STRAY_TEXT_MAX } from "./strayText";
 import { pageRuns, pageTextIndex } from "./pageTextIndex";
 import type { extractRegionText } from "./sheets";
 
@@ -214,10 +215,10 @@ export function linesOverRegion(items: readonly IndexedTextItem[], region: Pictu
   return buildSheetIndex("", inside).lineCount;
 }
 
-/** The regions the text layer can't read: at most SCAN_MAX_TEXT_LINES lines
+/** The regions the text layer can't read: at most STRAY_TEXT_MAX lines
  *  over them. */
 export function unreadPictures(regions: readonly PictureRegion[], linesOver: (r: PictureRegion) => number): PictureRegion[] {
-  return regions.filter((r) => linesOver(r) <= SCAN_MAX_TEXT_LINES);
+  return regions.filter((r) => linesOver(r) <= STRAY_TEXT_MAX);
 }
 
 /** One page's text-layer index and its unread pictures (bounding boxes, pt

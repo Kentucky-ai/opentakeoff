@@ -12,6 +12,7 @@
 //
 import { parseSheetKey, compareSheetKeys } from "./sheetKey";
 import { assembleLines } from "./textlines";
+import { STRAY_TEXT_MAX } from "./strayText";
 
 // The index is deliberately SOURCE-TAGGED. A vector sheet's text layer is
 // exact; OCR text is approximate, with misreads and junk mixed in. Both are
@@ -169,13 +170,10 @@ export function carriesText(items: readonly IndexedTextItem[]): boolean {
 /** A page whose text layer has at most this many lines of text is a scan.
  *  A scanned page often carries a little stray text — a scanner label, a
  *  stamp, a typed title-block field — while a vector sheet carries dozens to
- *  hundreds of runs (~1k on demo/sample-finish-plan.pdf).
- *  Provenance: the 8 is borrowed, not measured on pages. The schedule-OCR
- *  prototype (STRAY_TEXT_MAX_TOKENS on claude/browser-ocr-library-f3le2q)
- *  chose it for routing a marquee REGION by its run count, and reproduced
- *  the failure there with one inserted run; no page-level corpus has tested
- *  it. If both land, one should import the other. */
-export const SCAN_MAX_TEXT_LINES = 8;
+ *  hundreds of runs (~1k on demo/sample-finish-plan.pdf). The limit is
+ *  strayText.ts STRAY_TEXT_MAX, shared with unread pictures and Import from
+ *  schedule's box; its provenance is there. */
+export const SCAN_MAX_TEXT_LINES = STRAY_TEXT_MAX;
 
 /** THE scan rule (#471): a page is a scan when its text layer has at most
  *  SCAN_MAX_TEXT_LINES lines of text (lineCount; blank and punctuation-only

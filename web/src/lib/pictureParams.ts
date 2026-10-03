@@ -2,7 +2,7 @@
 // pictures.ts so the stores that keep measured pictures or picture reads
 // (thumbnail records, ocr/pageCache) can check the hash without bringing in
 // pdf.js. pictures.ts re-exports all of it.
-import { SCAN_MAX_TEXT_LINES } from "./planIndex";
+import { STRAY_TEXT_MAX } from "./strayText";
 
 /** Smallest picture worth a read, in square inches (bounding box). */
 export const PICTURE_MIN_SQIN = 15;
@@ -19,7 +19,7 @@ const PICTURE_RULES_REV = 1;
  *  beside measured pictures so a change to the rule re-measures them (as
  *  ocr/pageCache's OCR_CACHE_OPTS does for reads). */
 export const PICTURE_PARAMS_HASH = (() => {
-  const s = JSON.stringify({ rev: PICTURE_RULES_REV, minSqIn: PICTURE_MIN_SQIN, slackPt: PICTURE_MERGE_SLACK_PT, maxLines: SCAN_MAX_TEXT_LINES });
+  const s = JSON.stringify({ rev: PICTURE_RULES_REV, minSqIn: PICTURE_MIN_SQIN, slackPt: PICTURE_MERGE_SLACK_PT, maxLines: STRAY_TEXT_MAX });
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i);
