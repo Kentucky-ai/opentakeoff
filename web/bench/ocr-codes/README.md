@@ -108,10 +108,11 @@ are not recovered. A consistently wrong second reading has no disagreement marke
 import row still requires individual review. Agreement is not verification. Page OCR, cached text, Copy text, native text-layer
 imports and the agent's text-layer reader do not request this pass.
 
-Warm browser runs over all four images took a median **3.66 → 4.39 seconds**
-with the check off/on (**19.9%** more, three paired runs on macOS arm64,
+Warm browser runs over all four images took a median **6.07 → 7.32 seconds**
+with the check off/on (**20.7%** more, three paired runs on macOS arm64,
 Chromium 153.0.8010.12). Model loading is excluded. This is the small fixture
-set, not a full-sheet latency claim.
+set, not a full-sheet latency claim. Other checks were running on the same
+machine; these are observed paired timings, not an isolated performance benchmark.
 
 ### Reproduce the check and dialog
 
