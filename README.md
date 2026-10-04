@@ -378,7 +378,11 @@ sheet (keyed by CODE, TAG, MARK or SYMBOL) into conditions behind a verify dialo
 category, with a category guessed from a row's words flagged for review, rows the schedule
 marks NOT USED left unticked, and, on a box with a text layer, a four- or five-letter code it
 couldn't read named in a notice—and you approve what becomes a condition. The product spec,
-the schedule's remarks included, rides along as report columns. On raster imports, short codes get a second read; a disagreement shows **Check code** and leaves the row out of group selection and **Select all** until you edit its code or select it individually. Agreement does not prove a code is correct.
+the schedule's remarks included, rides along as report columns. Parenthesized codes such as
+`G-01(C)` keep their suffix; re-import holds a possible older `G-01C` condition for review.
+On raster imports, short codes get a second read; a disagreement shows **Check code** and
+leaves the row out of group selection and **Select all** until you edit its code or select
+it individually. Agreement does not prove a code is correct.
 
 **Supporting Materials** is the layer most takeoff tools punt on: per condition, a labor type
 and a subfloor type, plus the consumables that actually go on the order—adhesive, sealer,

@@ -2,6 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import ImportSchedulePanel from "../../src/components/ImportSchedulePanel.jsx";
 import { readScheduleSpans } from "../../src/lib/scheduleRead";
+import type { ScheduleRow } from "../../src/lib/scheduleRows";
 import { type OcrWord } from "../../src/lib/ocr/types";
 import "../../src/styles/tokens.css";
 import "../../src/styles/app.css";
@@ -20,8 +21,26 @@ const review = document.querySelector<HTMLButtonElement>("#review")!;
 const fixtureSelect = document.querySelector<HTMLSelectElement>("#fixture")!;
 const root = createRoot(document.querySelector("#dialog")!);
 for (const fixture of truth.fixtures) { const option = document.createElement("option"); option.value = fixture.id; option.textContent = fixture.id; fixtureSelect.append(option); }
+const combinedOption = document.createElement("option"); combinedOption.value = "combined-guards"; combinedOption.textContent = "Combined selection guards (synthetic)"; fixtureSelect.append(combinedOption);
+const showRows = (rows: ScheduleRow[], existing = new Set<string>()) => root.render(React.createElement(ImportSchedulePanel, {
+  key: fixtureSelect.value + performance.now(), rows, existing, palette: ["#2563eb", "#2f7d54"], startIndex: 0,
+  onClose: () => root.render(null), onCreate: (created: ScheduleRow[]) => { output.dataset.created = JSON.stringify(created); root.render(null); },
+}));
 review.onclick = () => {
   const id = fixtureSelect.value;
+  if (id === "combined-guards") {
+    // Separate constructed interaction case, not part of the 48-cell OCR score.
+    const cell = (str: string, x: number, y: number) => ({ str, x, y, w: str.length * 8, h: 17 });
+    const spans = [cell("CODE", 100, 0), cell("MATERIAL", 220, 0), cell("MANUFACTURER", 520, 0), cell("COLOR", 1000, 0)];
+    ["G-01(C)", "S-2", "PT-1"].forEach((tag, i) => {
+      const y = (i + 1) * 38;
+      spans.push({ ...cell(tag, 100, y), ...(i < 2 ? { codeAlternate: i === 0 ? "G-01C" : "SS-2" } : {}) }, cell("CERAMIC TILE", 220, y), cell("VENDOR-A", 520, y), cell("GREY", 1000, y));
+    });
+    const result = readScheduleSpans(spans, { ocr: true });
+    output.dataset.schedule = JSON.stringify(result);
+    showRows(result.rows, new Set(["G-01C"]));
+    return;
+  }
   // The tiny recognition fixtures aren't full parser fixtures. For this
   // separate UI exercise, place their actual OCR codes in an invented table.
   // No expected code is substituted and no confidence/alternate is changed.
@@ -41,9 +60,7 @@ review.onclick = () => {
   });
   const result = readScheduleSpans(spans, { ocr: true });
   output.dataset.schedule = JSON.stringify(result);
-  root.render(React.createElement(ImportSchedulePanel, { key: id + performance.now(), rows: result.rows, existing: new Set<string>(), palette: ["#2563eb", "#2f7d54"], startIndex: 0,
-    onClose: () => root.render(null), onCreate: (rows: { finish_tag: string }[]) => { output.dataset.created = JSON.stringify(rows); root.render(null); },
-  }));
+  showRows(result.rows);
 };
 save.onclick = () => {
   const url = URL.createObjectURL(new Blob([evidence], { type: "application/json" }));

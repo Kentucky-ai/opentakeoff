@@ -72,7 +72,7 @@ import { routeScheduleRead, countTextRuns, heldKeyWouldPress, EMPTY_BOX_MESSAGE,
 import { readBoxOnDevice } from "../lib/scheduleOcrRead";
 import { boxReadWords, boxTooLarge } from "../lib/ocr/boxRead";
 import { pageSpans, spansInRect, graphSpans } from "../lib/pageSpans";
-import { normalizeTag } from "../lib/scheduleEdit";
+import { normalizeTag, newScheduleRows } from "../lib/scheduleEdit";
 // Condition twins — the whole inheritance rule is in lib/variants.ts (test/variants.test.ts);
 // this file only calls it from the material write paths and the condition deletes.
 import { mintTwin, variantTag,
@@ -7529,25 +7529,23 @@ export default function TakeoffCanvas() {
   // product spec (mfr/style/color/size) rides a plain `spec` field — NOT custom
   // columns (would hijack a user column and pollute its grouping vocabulary) and
   // NOT materials[] (those are coverage buy-list items, no coverage rate here).
-  // Existing codes are skipped (shown "in use" in the dialog).
+  // Existing codes and possible older flat spellings are held by the same
+  // rules as the dialog; existing condition IDs and shapes stay untouched.
   function createFromSchedule(selected) {
     const existing = new Set(conditions.map((c) => normalizeTag(c.finish_tag)));
     const made = [];
     let idx = conditions.length;
-    for (const row of selected) {
-      const tag = normalizeTag(row.finish_tag);
-      if (existing.has(tag)) continue;
-      const seed = rowToSeed({ ...row, finish_tag: tag }, idx++, PALETTE);
+    for (const row of newScheduleRows(selected, existing)) {
+      const seed = rowToSeed(row, idx++, PALETTE);
       const hasSpec = Object.values(seed.spec).some(Boolean);
       made.push({
         id: uid("cnd"), created_at: nowIso(), finish_tag: seed.finish_tag, color: seed.color, fill: seed.color,
         hatch: seed.hatch, multiplier: 1, waste_pct: seed.waste_pct, materials: [],
         ...(hasSpec ? { spec: seed.spec } : {}),
       });
-      existing.add(tag);
     }
     setImportRead(null);
-    if (!made.length) { setCommitMsg("Those finishes already exist as conditions."); return; }
+    if (!made.length) { setCommitMsg("Those finishes already exist or need review against an existing condition."); return; }
     setConditions((cs) => [...cs, ...made]);
     activateCondition(made[0].id, { reassign: false });
     setCommitMsg(`Created ${made.length} condition${made.length === 1 ? "" : "s"} from the schedule.`);

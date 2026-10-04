@@ -146,6 +146,24 @@ correct code). Bulk selection leaves those four unchecked.
 <img src="dialog-desktop.png" alt="Twelve invented rows with four Check code warnings left unchecked after bulk selection" width="562">
 <img src="dialog-mobile.png" alt="The same code-review dialog at a 390-pixel viewport with no horizontal overflow" width="358">
 
+### Combined import safeguards (#499 + #500)
+
+PR #511 now follows #510, which follows the public fixtures in #509. The import
+dialog conflict is resolved with both notices and both selection guards present.
+The browser reproduction command above also runs a separate constructed
+three-row case. An existing `G-01C` keeps incoming `G-01(C)` locked even though
+that row also has an OCR disagreement. **Select all** picks only clean `PT-1`.
+Individually accepting uncertain `S-2` creates `S-2` and `PT-1`, with no duplicate
+`G-01(C)`. Both notices fit at 390 px with no horizontal overflow. This interaction
+case uses invented spans and disagreement metadata; it is not an OCR measurement.
+
+[Combined assertions](combined-ui-check.json). The full combined web check
+passes with 3,171 passed / 3 skipped. Render tests also check that skipped-code,
+OCR and historical-identity notices each keep their own accessible description.
+
+<img src="combined-guards.png" alt="A historical spelling stays locked while a separate uncertain OCR row is individually accepted" width="560">
+<img src="combined-guards-mobile.png" alt="Both import safeguard notices and three invented rows fit at a 390-pixel viewport" width="358">
+
 ### Real-schedule spot check and remaining work
 
 Two earlier private schedule crops were read locally through the production

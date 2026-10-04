@@ -137,6 +137,8 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
   const hasSkipped = skipped.length > 0;
   const checkId = `${uid}-code-checks`;
   const hasCodeChecks = keyed.some(({ key, row }) => codeCheckShown(row, stateOf(key).tag));
+  const legacyBannerId = `${uid}-legacy`;
+  const hasLegacy = [...tagState.values()].some((s) => s.status === "legacy");
   const empty = rows.length === 0;
 
   // Rows to create: only picked + creatable, in row order (so the parent's
@@ -150,7 +152,7 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.32)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 40 }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={[hasSkipped && bannerId, hasCodeChecks && checkId].filter(Boolean).join(" ") || undefined}
+      <div onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={[hasSkipped && bannerId, hasCodeChecks && checkId, hasLegacy && legacyBannerId].filter(Boolean).join(" ") || undefined}
         style={{ width: "min(560px, calc(100vw - 32px))", maxHeight: "min(82vh, 720px)", display: "flex", flexDirection: "column", background: "var(--paper-bright)", border: "1px solid var(--cobalt)", boxShadow: "var(--shadow-pop)", fontSize: 12.5 }}>
         {/* header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid var(--ink-faint)", background: "var(--cobalt)", color: "var(--accent-contrast)" }}>
@@ -167,6 +169,12 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
         {hasCodeChecks && (
           <div role="note" id={checkId} style={{ fontSize: "var(--fs-s)", color: "var(--ink)", borderLeft: "3px solid var(--c-warning)", paddingLeft: 8, margin: "8px 14px" }}>
             Some codes read differently on a second pass. Check them against the schedule, then edit the code or select each row yourself. Group checkboxes and Select all leave these rows unchecked. Agreement on other rows does not prove their codes are correct.
+          </div>
+        )}
+
+        {hasLegacy && (
+          <div role="note" id={legacyBannerId} style={{ fontSize: "var(--fs-s)", color: "var(--ink)", borderLeft: "3px solid var(--c-warning)", paddingLeft: 8, margin: "8px 14px" }}>
+            Some codes may already exist without parentheses. Those rows are held. Check the existing condition; if it is the same finish, rename it before importing again. If they are different finishes, add the new condition manually.
           </div>
         )}
 
@@ -189,7 +197,7 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
                   const ok = isCreatable(st);
                   const isEditing = editing?.key === key;
                   const on = picked.has(key) && ok;
-                  const flag = flagFor[st?.status];
+                  const flag = st?.status === "legacy" ? `check existing ${st.legacyTag}` : flagFor[st?.status];
                   // The guessed-category flag, the read-as flag and the NOT USED
                   // label sit OUTSIDE the <label> (so they aren't folded into the
                   // checkbox's name) and describe the checkbox. The in-use /
@@ -257,7 +265,7 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
                             <span style={{ color: "var(--ink-muted)", fontSize: 11 }}>  ·  {[r.manufacturer, r.size].filter(Boolean).join(" · ")}</span>
                           )}
                         </span>
-                        {flag && <span title={st?.status === "duplicate" ? "Click the code to rename it." : undefined} style={{ ...lbl, opacity: 0.8 }}>{flag}</span>}
+                        {flag && <span title={st?.status === "legacy" ? `An earlier import may have removed the parentheses. Check the existing ${st.legacyTag} condition; if it is this finish, rename that condition to ${st.tag} before importing again.` : st?.status === "duplicate" ? "Click the code to rename it." : undefined} style={{ ...lbl, opacity: 0.8 }}>{flag}</span>}
                       </label>
                       {codeCheckId && (
                         <span id={codeCheckId} style={{ flexBasis: "100%", fontSize: "var(--fs-s)", color: "var(--c-warning)" }}>

@@ -1,0 +1,315 @@
+{
+  "schema": "opentakeoff.takeoff_canvas.v1",
+  "project_name": "",
+  "sheets": [
+    {
+      "sheet_id": "synthetic-schedule.pdf",
+      "units_per_px": 0.05787037037037038,
+      "scale_source": "standard"
+    }
+  ],
+  "conditions": [
+    {
+      "id": "cnd-a2406908-7538-4377-acff-b02173be2e20",
+      "created_at": "2026-10-03T22:03:46.770Z",
+      "finish_tag": "CPT-1",
+      "color": "#2f7d54",
+      "fill": "#2f7d54",
+      "hatch": "speckle",
+      "multiplier": 1,
+      "waste_pct": 5,
+      "materials": [
+        {
+          "round": true,
+          "name": "Adhesive",
+          "kind": "adhesive",
+          "per": 250,
+          "basis": "area",
+          "unit": "gal",
+          "id": "mat-869f1a03-d926-4e10-a56a-55d016daffdc"
+        }
+      ]
+    },
+    {
+      "id": "cnd-925984e2-d580-474b-9a79-1fb71964590b",
+      "created_at": "2026-10-03T22:03:46.771Z",
+      "finish_tag": "BRD-1",
+      "color": "#be185d",
+      "fill": "#be185d",
+      "hatch": "dots",
+      "multiplier": 1,
+      "waste_pct": 10,
+      "materials": [
+        {
+          "round": true,
+          "name": "Adhesive",
+          "kind": "adhesive",
+          "per": 120,
+          "basis": "area",
+          "unit": "gal",
+          "id": "mat-ab72b043-3823-49ea-badd-4456e52ff14f"
+        }
+      ]
+    },
+    {
+      "id": "cnd-3baf91df-d3aa-40cf-9187-f21d23d39858",
+      "created_at": "2026-10-03T22:03:46.771Z",
+      "finish_tag": "LVT-1",
+      "color": "#b8860b",
+      "fill": "#b8860b",
+      "hatch": "plank",
+      "multiplier": 1,
+      "waste_pct": 8,
+      "materials": [
+        {
+          "round": true,
+          "name": "Adhesive",
+          "kind": "adhesive",
+          "per": 250,
+          "basis": "area",
+          "unit": "gal",
+          "id": "mat-b90f8f17-ea7a-492d-9c6c-17b23ee5d7cb"
+        }
+      ]
+    },
+    {
+      "id": "cnd-ba8585f4-c226-40cc-9301-7c8200357129",
+      "created_at": "2026-10-03T22:03:46.771Z",
+      "finish_tag": "WD-1",
+      "color": "#9a3412",
+      "fill": "#9a3412",
+      "hatch": "plank",
+      "multiplier": 1,
+      "waste_pct": 10,
+      "materials": [
+        {
+          "round": true,
+          "name": "Adhesive (wood, SMP)",
+          "kind": "adhesive",
+          "per": 50,
+          "basis": "area",
+          "unit": "gal",
+          "note": "1/4″×1/4″ V (wood)",
+          "id": "mat-a3691bda-c67c-4b37-a414-b0f0439513a3"
+        },
+        {
+          "round": true,
+          "name": "Sealer (primer coat)",
+          "per": 400,
+          "basis": "area",
+          "unit": "gal",
+          "note": "1 prime coat (~10 m²/L)",
+          "id": "mat-32f832f6-fe01-421f-9e59-eaa8bdf54f01"
+        },
+        {
+          "round": true,
+          "name": "Polyurethane (2K finish)",
+          "per": 136,
+          "basis": "area",
+          "unit": "gal",
+          "note": "≈3 coats @ ~408 SF/gal/coat (2K 10:1)",
+          "id": "mat-69259040-9d04-47c0-9112-6c7628d69cca"
+        }
+      ]
+    },
+    {
+      "id": "cnd-13d37495-7a29-434b-b8f8-49321b8f0ac3",
+      "created_at": "2026-10-03T22:03:46.771Z",
+      "finish_tag": "VCT-1",
+      "color": "#2563eb",
+      "fill": "#2563eb",
+      "hatch": "checker",
+      "multiplier": 1,
+      "waste_pct": 5,
+      "materials": [
+        {
+          "round": true,
+          "name": "Adhesive",
+          "kind": "adhesive",
+          "per": 350,
+          "basis": "area",
+          "unit": "gal",
+          "id": "mat-d9f1a05f-dc7e-438d-8a3f-c3210e60b626"
+        }
+      ]
+    },
+    {
+      "id": "cnd-5402b48e-fea1-4e53-b1f4-bd077e852ce0",
+      "created_at": "2026-10-03T22:03:46.771Z",
+      "finish_tag": "SV-1",
+      "color": "#0d9488",
+      "fill": "#0d9488",
+      "hatch": "solid",
+      "multiplier": 1,
+      "waste_pct": 10,
+      "materials": [
+        {
+          "round": true,
+          "name": "Adhesive",
+          "kind": "adhesive",
+          "per": 150,
+          "basis": "area",
+          "unit": "gal",
+          "id": "mat-423ca2a6-626c-4471-b5ca-2cb4451ba0d4"
+        },
+        {
+          "round": true,
+          "name": "Heat-weld rod",
+          "per": 1,
+          "basis": "seam_lf",
+          "unit": "lf",
+          "note": "runs the figured seams — set the roll width on this condition",
+          "id": "mat-ef21e205-b6a9-4928-83ef-1f006e82f7c6"
+        }
+      ]
+    },
+    {
+      "id": "cnd-eb727429-7210-4511-8eb1-a80e6c67f338",
+      "created_at": "2026-10-03T22:03:46.771Z",
+      "finish_tag": "CT-1",
+      "color": "#9333ea",
+      "fill": "#9333ea",
+      "hatch": "grid",
+      "multiplier": 1,
+      "waste_pct": 10,
+      "materials": [
+        {
+          "round": true,
+          "name": "Thinset mortar",
+          "kind": "mortar",
+          "per": 65,
+          "basis": "area",
+          "unit": "bag",
+          "note": "1/4″×3/8″×1/4″ sq",
+          "id": "mat-d8df06da-53e5-49c6-9dc9-449669d7b857"
+        },
+        {
+          "round": true,
+          "name": "Grout",
+          "kind": "grout",
+          "per": 512,
+          "basis": "area",
+          "unit": "bag",
+          "grout": {
+            "tileL": 12,
+            "tileW": 24,
+            "tileT": 0.375,
+            "joint": 0.125,
+            "bagLbs": 25
+          },
+          "note": "12×24×3/8″ @ 1/8″ · 25 lb",
+          "id": "mat-400d0e78-4c02-4263-b692-bda4193df559"
+        }
+      ]
+    },
+    {
+      "id": "cnd-9dea9229-56ff-4e76-bcb3-c58bb1252afd",
+      "created_at": "2026-10-03T22:03:46.771Z",
+      "finish_tag": "RB-1",
+      "color": "#475569",
+      "fill": "#475569",
+      "hatch": "horiz",
+      "multiplier": 1,
+      "waste_pct": 5,
+      "materials": [
+        {
+          "round": true,
+          "name": "Cove base adhesive",
+          "kind": "adhesive",
+          "per": 40,
+          "basis": "linear",
+          "unit": "tube",
+          "id": "mat-a99e6c61-7354-42db-b26a-d8123819d1d8"
+        }
+      ]
+    },
+    {
+      "id": "cnd-4a65b32c-b7cf-4738-95f4-dcb9138458fe",
+      "created_at": "2026-10-03T22:03:46.771Z",
+      "finish_tag": "TR-1",
+      "color": "#c96442",
+      "fill": "#c96442",
+      "hatch": "vert",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": []
+    },
+    {
+      "id": "cnd-3878078c-3161-416f-97bd-ef2600694f18",
+      "created_at": "2026-10-03T22:08:03.788Z",
+      "finish_tag": "G-01C",
+      "color": "#0891b2",
+      "fill": "#0891b2",
+      "hatch": "solid",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "spec": {
+        "manufacturer": "VENDOR-A",
+        "style": "",
+        "color": "GREY",
+        "size": "",
+        "description": "CERAMIC TILE"
+      }
+    },
+    {
+      "id": "cnd-c318305b-ff88-4b8a-8527-d7d2f9d904be",
+      "created_at": "2026-10-03T22:08:03.788Z",
+      "finish_tag": "G-02",
+      "color": "#2563eb",
+      "fill": "#2563eb",
+      "hatch": "solid",
+      "multiplier": 1,
+      "waste_pct": 0,
+      "materials": [],
+      "spec": {
+        "manufacturer": "VENDOR-C",
+        "style": "",
+        "color": "BLACK",
+        "size": "",
+        "description": "CERAMIC TILE"
+      }
+    }
+  ],
+  "shapes": [
+    {
+      "id": "shp-2f469c8f-0e30-4699-bafd-f2048d21feeb",
+      "created_at": "2026-10-03T22:12:53.529Z",
+      "sheet_id": "synthetic-schedule.pdf",
+      "condition_id": "cnd-3878078c-3161-416f-97bd-ef2600694f18",
+      "measure_role": "floor_area",
+      "verts_norm": [
+        [
+          0.11538461538461539,
+          0.6805555555555556
+        ],
+        [
+          0.2403846153846154,
+          0.6805555555555556
+        ],
+        [
+          0.2403846153846154,
+          0.7916666666666666
+        ],
+        [
+          0.11538461538461539,
+          0.7916666666666666
+        ]
+      ],
+      "computed": {
+        "area_sf": 34.83,
+        "perimeter_lf": 24.31
+      },
+      "origin": {
+        "method": "manual"
+      }
+    }
+  ],
+  "markups": [],
+  "rfis": [],
+  "sheet_group": [],
+  "last_group": [],
+  "sheet_tabs": [
+    "synthetic-schedule.pdf"
+  ]
+}

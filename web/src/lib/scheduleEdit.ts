@@ -8,24 +8,26 @@
 // mangled tag before the condition is created — right in the approval dialog.
 // The dialog keeps checkbox state on a STABLE per-row key (not the mutable tag),
 // then asks these helpers what each edited tag resolves to.
+import { legacyFinishTag, normalizeFinishTag } from "./finishCode";
 
 // Finish codes are conventionally all-caps with no interior runs of whitespace
 // (CPT-1, PLAM-2, RES-W). Normalize an edited tag the same way the parser emits
 // them so dedup is case/whitespace insensitive and matches what flows to create.
 export function normalizeTag(raw: string): string {
-  return (raw || "").trim().replace(/\s+/g, " ").toUpperCase();
+  return normalizeFinishTag(raw);
 }
 
 // Why a row can't be created, or "ok" when it can.
 //   empty     — edited to blank; nothing to create (row disabled)
 //   in-use    — its (edited) tag already exists as a condition (the `existing` set)
+//   legacy    — could be an earlier import that dropped parentheses; review first
 //   duplicate — its (edited) tag collides with another row's here that claims it
 //               (the first such row, or the highest-ranked — see evaluateTags)
 //   ok        — a unique, creatable tag
-export type TagStatus = "ok" | "empty" | "in-use" | "duplicate";
+export type TagStatus = "ok" | "empty" | "in-use" | "duplicate" | "legacy";
 
 export type TagInput = { key: string; tag: string };
-export type TagState = { key: string; tag: string; status: TagStatus };
+export type TagState = { key: string; tag: string; status: TagStatus; legacyTag?: string };
 
 // Resolve every row's edited tag to a normalized value + a status, in row order.
 // `existing` is compared against the normalized tag — the same value the dialog
@@ -40,6 +42,7 @@ export type TagState = { key: string; tag: string; status: TagStatus };
 // dialog ranks a row the schedule marks NOT USED lowest, so a real row with the
 // same code keeps it.
 export function evaluateTags(rows: TagInput[], existing: Set<string> = new Set(), rank?: (key: string) => number): Map<string, TagState> {
+  existing = new Set([...existing].map(normalizeTag));
   const tags = rows.map((r) => normalizeTag(r.tag));
   // which row claims each code: the first highest-ranked row (rank absent → the first)
   const owner = new Map<string, { key: string; rank: number }>();
@@ -53,16 +56,29 @@ export function evaluateTags(rows: TagInput[], existing: Set<string> = new Set()
   const out = new Map<string, TagState>();
   rows.forEach((r, i) => {
     const tag = tags[i];
+    const legacyTag = legacyFinishTag(tag, existing);
     let status: TagStatus;
     if (!tag) status = "empty";
     else if (existing.has(tag)) status = "in-use";
+    else if (legacyTag) status = "legacy";
     else status = owner.get(tag)?.key === r.key ? "ok" : "duplicate";
-    out.set(r.key, { key: r.key, tag, status });
+    out.set(r.key, { key: r.key, tag, status, ...(status === "legacy" ? { legacyTag } : {}) });
   });
   return out;
 }
 
 export const isCreatable = (s: TagState | undefined): boolean => s?.status === "ok";
+
+/** Recheck at Create using the same rules as the dialog. Historical
+ * conflicts compare to conditions that already exist, not another new row:
+ * a schedule may intentionally print both G-01C and G-01(C). */
+export function newScheduleRows<T extends { finish_tag: string }>(rows: readonly T[], existing: Set<string>): T[] {
+  const states = evaluateTags(rows.map((r, i) => ({ key: String(i), tag: r.finish_tag })), existing);
+  return rows.flatMap((r, i) => {
+    const state = states.get(String(i))!;
+    return isCreatable(state) ? [{ ...r, finish_tag: state.tag }] : [];
+  });
+}
 
 // Turn a set of rows on or off together — Select All / Deselect All over every
 // row, or one group's checkbox over its rows. Returns a NEW set (React state);
