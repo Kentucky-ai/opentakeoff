@@ -283,8 +283,8 @@ next."*
   to: proposals, the Accept pill, and how an estimator confirms your scale.
 - [`docs/SHEET-GRAPH-EVAL.md`](SHEET-GRAPH-EVAL.md)—what the plan-set reader scores on real
   bid sets, and what it still cannot read.
-- [**OpenTakeoff Academy**](https://aec.kentucky-ai.com)—an open benchmark for agents that do
-  takeoff. Bring any model and your own harness; you're scored on operating a real tool against
+- [**OpenTakeoff Academy at Commonwealth Agent Union**](https://union.kentucky-ai.com)—the
+  union’s evaluation and certification arm for agents that do takeoff. Bring any model and your own harness; you're scored on operating a real tool against
   geometry you don't control.
 
 ## Calibration and review correctness (0.9.72)
