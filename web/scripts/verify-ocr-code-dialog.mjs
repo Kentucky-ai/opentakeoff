@@ -50,20 +50,20 @@ try {
   assert.ok(flags.length > 0); assert.ok(flags.every((f) => !f.selected));
   // Group selection follows the same rule, while an individual check is allowed.
   const group = dialog.locator('input[data-state]');
-  await group.uncheck(); await group.check();
+  assert.equal(await group.isDisabled(), true, "all scanned codes need individual review");
   assert.equal(await dialog.locator('span[id$="-check"]').evaluateAll((es) => es.some((e) => e.parentElement.querySelector('input[type="checkbox"]').checked)), false);
   await dialog.screenshot({ path: `${out}/dialog-desktop.png` });
-  const row = dialog.locator('span[id$="-check"]').first().locator('..');
+  const row = dialog.getByRole('button', {name: 'S-3', exact: true}).locator('..');
   await row.locator('input[type="checkbox"]').check();
   assert.equal(await row.locator('input[type="checkbox"]').isChecked(), true);
   await row.locator('input[type="checkbox"]').uncheck();
   assert.equal(await row.getByTitle('Click to fix the code', { exact: true }).innerText(), 'S-3');
   await row.getByTitle('Click to fix the code', { exact: true }).click();
-  await row.locator('input:not([type="checkbox"])').fill('SS-3');
+  await dialog.locator('input:not([type="checkbox"])').fill('SS-3');
   // Editing removes the warning used to locate this row, so press on focus.
   await page.keyboard.press('Enter');
   await dialog.getByRole('button', { name: 'Select all', exact: true }).click();
-  await dialog.getByRole('button', { name: /Create .* conditions/i }).click();
+  await dialog.getByRole('button', { name: /Create .* conditions?/i }).click();
   const selected = JSON.parse(await page.locator('#output').getAttribute('data-created'));
   assert.ok(selected.some((r) => r.finish_tag === 'SS-3'));
   assert.ok(!selected.some((r) => r.finish_tag === 'S-3'));
@@ -81,11 +81,12 @@ try {
   assert.equal(await legacy.locator('input[type="checkbox"]').isDisabled(), true);
   assert.equal(await legacy.locator('input[type="checkbox"]').isChecked(), false);
   assert.ok((await dialog.innerText()).toLowerCase().includes('check existing g-01c'));
-  assert.ok((await dialog.innerText()).includes('Some codes read differently'));
+  assert.ok((await dialog.innerText()).includes('Verify scanned codes'));
   assert.ok((await dialog.innerText()).includes('Some codes may already exist without parentheses'));
   const disputed = dialog.getByRole('button', { name: 'S-2', exact: true }).locator('..');
   assert.equal(await disputed.locator('input[type="checkbox"]').isChecked(), false);
   await disputed.locator('input[type="checkbox"]').check();
+  await dialog.getByRole('button', { name: 'PT-1', exact: true }).locator('..').locator('input[type="checkbox"]').check();
   await dialog.screenshot({ path: `${out}/combined-guards.png` });
   await dialog.getByRole('button', { name: /Create 2 conditions/i }).click();
   const combinedCreated = JSON.parse(await page.locator('#output').getAttribute('data-created')).map((r) => r.finish_tag);
@@ -95,8 +96,27 @@ try {
   const combinedMobile = await dialog.evaluate((e) => ({ width: e.clientWidth, scrollWidth: e.scrollWidth }));
   assert.equal(combinedMobile.width, combinedMobile.scrollWidth);
   await dialog.screenshot({ path: `${out}/combined-guards-mobile.png` });
+  await dialog.getByRole('button', {name: 'Cancel', exact: true}).click();
+  await page.setViewportSize({width: 1280, height: 960});
+  await page.locator('#fixture').selectOption('remaining-cases');
+  await page.locator('#review').click(); await dialog.waitFor();
+  await dialog.getByRole('button', {name: 'Select all', exact: true}).click();
+  assert.equal(await dialog.locator('input[type="checkbox"]:checked').count(), 0);
+  const stable = dialog.getByRole('button', {name: 'P-110', exact: true}).locator('..');
+  assert.equal(await stable.locator('input[type="checkbox"]').isChecked(), false);
+  const missing = dialog.getByRole('button', {name: 'set code', exact: true}).locator('..');
+  assert.equal(await missing.locator('input[type="checkbox"]').isDisabled(), true);
+  assert.ok((await dialog.innerText()).includes('88-2 / SS-2'));
+  await dialog.screenshot({path: `${out}/remaining-cases.png`});
+  await missing.getByRole('button', {name: 'set code', exact: true}).click();
+  await dialog.locator('input:not([type="checkbox"])').fill('SS-2'); await page.keyboard.press('Enter');
+  await dialog.getByRole('button', {name: 'Select all', exact: true}).click();
+  await stable.locator('input[type="checkbox"]').check();
+  await dialog.getByRole('button', {name: 'Create 2 conditions', exact: true}).click();
+  const remainingCreated = JSON.parse(await page.locator('#output').getAttribute('data-created')).map(r => r.finish_tag);
+  assert.deepEqual(remainingCreated, ['P-110', 'SS-2']);
   assert.deepEqual(errors, []);
-  const report = { layout: 'Actual OCR code readings placed in a constructed table; invented headers and descriptions. This measures dialog behavior, not image table extraction. Combined guard case is separately constructed.', browser: await browser.version(), errors, blockedRequests, times, flags, groupSelectionSkipsWarnings: true, explicitSelectionWorks: true, correctedTagCreated: 'SS-3', selectedTags: selected.map((r) => r.finish_tag), mobile, combinedCreated, combinedMobile };
+  const report = { layout: 'Actual OCR code readings placed in a constructed table; invented headers and descriptions. This measures dialog behavior, not image table extraction. Combined guard case is separately constructed.', browser: await browser.version(), errors, blockedRequests, times, flags, groupSelectionSkipsWarnings: true, explicitSelectionWorks: true, correctedTagCreated: 'SS-3', selectedTags: selected.map((r) => r.finish_tag), mobile, combinedCreated, combinedMobile, remainingCreated, stableAgreementHeld: true, recoveredNumericCodeRequiresEdit: true };
   writeFileSync(`${out}/ui-check.json`, JSON.stringify(report, null, 2) + '\n');
   console.log(`OCR code checks and dialog assertions passed; evidence: ${out}`);
 } finally { await browser?.close(); server.kill(); }

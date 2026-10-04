@@ -168,7 +168,7 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
 
         {hasCodeChecks && (
           <div role="note" id={checkId} style={{ fontSize: "var(--fs-s)", color: "var(--ink)", borderLeft: "3px solid var(--c-warning)", paddingLeft: 8, margin: "8px 14px" }}>
-            Some codes read differently on a second pass. Check them against the schedule, then edit the code or select each row yourself. Group checkboxes and Select all leave these rows unchecked. Agreement on other rows does not prove their codes are correct.
+            Verify scanned codes against the schedule, then edit the code or select each row yourself. Two reads can agree on the same wrong code. Group checkboxes and Select all leave unverified rows unchecked. A row labeled “set code” needs you to enter its code first.
           </div>
         )}
 
@@ -269,7 +269,7 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
                       </label>
                       {codeCheckId && (
                         <span id={codeCheckId} style={{ flexBasis: "100%", fontSize: "var(--fs-s)", color: "var(--c-warning)" }}>
-                          Check code: {r.code_checks.map(({ first, second }) => second ? `${first} / ${second}` : `${first} / second read did not confirm`).join("; ")}
+                          {r.code_checks?.length ? `Check code: ${r.code_checks.map(({ first, second }) => second ? `${first} / ${second}` : `${first} / second read did not confirm`).join("; ")}` : "Verify scanned code"}
                         </span>
                       )}
                       {several ? <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>{guess}{readAs}{notUsed}</div> : guess || readAs || notUsed}

@@ -22,19 +22,20 @@ const fixtureSelect = document.querySelector<HTMLSelectElement>("#fixture")!;
 const root = createRoot(document.querySelector("#dialog")!);
 for (const fixture of truth.fixtures) { const option = document.createElement("option"); option.value = fixture.id; option.textContent = fixture.id; fixtureSelect.append(option); }
 const combinedOption = document.createElement("option"); combinedOption.value = "combined-guards"; combinedOption.textContent = "Combined selection guards (synthetic)"; fixtureSelect.append(combinedOption);
+const edgeOption = document.createElement("option"); edgeOption.value = "remaining-cases"; edgeOption.textContent = "Stable agreement and numeric omission (synthetic)"; fixtureSelect.append(edgeOption);
 const showRows = (rows: ScheduleRow[], existing = new Set<string>()) => root.render(React.createElement(ImportSchedulePanel, {
   key: fixtureSelect.value + performance.now(), rows, existing, palette: ["#2563eb", "#2f7d54"], startIndex: 0,
   onClose: () => root.render(null), onCreate: (created: ScheduleRow[]) => { output.dataset.created = JSON.stringify(created); root.render(null); },
 }));
 review.onclick = () => {
   const id = fixtureSelect.value;
-  if (id === "combined-guards") {
+  if (id === "combined-guards" || id === "remaining-cases") {
     // Separate constructed interaction case, not part of the 48-cell OCR score.
     const cell = (str: string, x: number, y: number) => ({ str, x, y, w: str.length * 8, h: 17 });
     const spans = [cell("CODE", 100, 0), cell("MATERIAL", 220, 0), cell("MANUFACTURER", 520, 0), cell("COLOR", 1000, 0)];
-    ["G-01(C)", "S-2", "PT-1"].forEach((tag, i) => {
+    (id === "remaining-cases" ? ["P-110", "88-2", "CT-1"] : ["G-01(C)", "S-2", "PT-1"]).forEach((tag, i) => {
       const y = (i + 1) * 38;
-      spans.push({ ...cell(tag, 100, y), ...(i < 2 ? { codeAlternate: i === 0 ? "G-01C" : "SS-2" } : {}) }, cell("CERAMIC TILE", 220, y), cell("VENDOR-A", 520, y), cell("GREY", 1000, y));
+      spans.push({ ...cell(tag, 100, y), ...(i === 1 ? { codeAlternate: "SS-2" } : i === 0 && id === "combined-guards" ? { codeAlternate: "G-01C" } : {}) }, cell("CERAMIC TILE", 220, y), cell("VENDOR-A", 520, y), cell("GREY", 1000, y));
     });
     const result = readScheduleSpans(spans, { ocr: true });
     output.dataset.schedule = JSON.stringify(result);

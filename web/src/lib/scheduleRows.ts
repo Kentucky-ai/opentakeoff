@@ -46,6 +46,8 @@ export type ScheduleRow = {
   /** the code as the reader saw it, before a $→S, O→0 or I→1 repair
    * ("PT-O1" of a row imported as PT-01) */
   read_as?: string;
+  /** A scanned identity needs human verification even when both reads agree. */
+  ocr_code?: true;
   /** Conflicting second reads in the code cell. Empty string = no second
    * code read. Review evidence only, never copied into the condition seed. */
   code_checks?: { first: string; second: string }[];

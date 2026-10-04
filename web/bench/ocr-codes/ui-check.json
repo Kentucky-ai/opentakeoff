@@ -1,5 +1,5 @@
 {
-  "layout": "Actual OCR code readings placed in a constructed table; invented headers and descriptions. This measures dialog behavior, not image table extraction.",
+  "layout": "Actual OCR code readings placed in a constructed table; invented headers and descriptions. This measures dialog behavior, not image table extraction. Combined guard case is separately constructed.",
   "browser": "153.0.8010.12",
   "errors": [],
   "blockedRequests": [
@@ -7,19 +7,31 @@
   ],
   "times": [
     {
-      "baselineMs": 3666.399999976158,
-      "checkedMs": 4382.1000000834465
+      "baselineMs": 6581.599999964237,
+      "checkedMs": 7436.699999988079
     },
     {
-      "baselineMs": 3662.5,
-      "checkedMs": 4394.900000035763
+      "baselineMs": 5948.399999976158,
+      "checkedMs": 7174.5
     },
     {
-      "baselineMs": 3664.600000023842,
-      "checkedMs": 4398.899999976158
+      "baselineMs": 6069.800000071526,
+      "checkedMs": 7324.899999976158
     }
   ],
   "flags": [
+    {
+      "text": "Verify scanned code",
+      "selected": false
+    },
+    {
+      "text": "Verify scanned code",
+      "selected": false
+    },
+    {
+      "text": "Verify scanned code",
+      "selected": false
+    },
     {
       "text": "Check code: S-3 / SS-3",
       "selected": false
@@ -35,24 +47,50 @@
     {
       "text": "Check code: ST.1 / ST-1",
       "selected": false
+    },
+    {
+      "text": "Verify scanned code",
+      "selected": false
+    },
+    {
+      "text": "Verify scanned code",
+      "selected": false
+    },
+    {
+      "text": "Verify scanned code",
+      "selected": false
+    },
+    {
+      "text": "Verify scanned code",
+      "selected": false
+    },
+    {
+      "text": "Verify scanned code",
+      "selected": false
     }
   ],
   "groupSelectionSkipsWarnings": true,
   "explicitSelectionWorks": true,
   "correctedTagCreated": "SS-3",
   "selectedTags": [
-    "P1",
-    "P2",
-    "SS-2",
-    "SS-3",
-    "S-1",
-    "P-1",
-    "BK-1",
-    "G-01C",
-    "FT-02E"
+    "SS-3"
   ],
   "mobile": {
     "width": 356,
     "scrollWidth": 356
-  }
+  },
+  "combinedCreated": [
+    "S-2",
+    "PT-1"
+  ],
+  "combinedMobile": {
+    "width": 356,
+    "scrollWidth": 356
+  },
+  "remainingCreated": [
+    "P-110",
+    "SS-2"
+  ],
+  "stableAgreementHeld": true,
+  "recoveredNumericCodeRequiresEdit": true
 }

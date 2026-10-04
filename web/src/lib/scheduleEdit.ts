@@ -178,8 +178,8 @@ export function readAsShown(row: { finish_tag: string; read_as?: string }, edite
   return !!row.read_as && normalizeTag(editedTag) === row.finish_tag;
 }
 
-/** Editing a code is an explicit correction. Until then, a disagreement
- * stays visible and bulk selection leaves the row for individual review. */
-export function codeCheckShown(row: { finish_tag: string; code_checks?: { first: string; second: string }[] }, editedTag: string): boolean {
-  return !!row.code_checks?.length && normalizeTag(editedTag) === normalizeTag(row.finish_tag);
+/** Editing a code is an explicit correction. Until then, a scanned identity
+ * stays visible (agreement is not proof of correctness) and bulk selection leaves the row for individual review. */
+export function codeCheckShown(row: { finish_tag: string; ocr_code?: true; code_checks?: { first: string; second: string }[] }, editedTag: string): boolean {
+  return !!(row.ocr_code || row.code_checks?.length) && normalizeTag(editedTag) === normalizeTag(row.finish_tag);
 }

@@ -57,7 +57,7 @@
       "id": "arial-400-216",
       "sha256": "21abfb66c1f5ae3d29c47ae5b8c3f35f67f7316173760699a3a3a40d4e4bf3e0",
       "control": true,
-      "ms": 1302.2999999523163,
+      "ms": 2198.099999964237,
       "summary": {
         "total": 12,
         "exact": 12,
@@ -382,7 +382,7 @@
       "id": "avenir-next-condensed-400-100",
       "sha256": "e8964308a66a0f30eacc943d2a6a0f170f348ce3e339e32544c83bc91e9a4415",
       "control": false,
-      "ms": 944,
+      "ms": 1588.300000011921,
       "summary": {
         "total": 12,
         "exact": 7,
@@ -713,7 +713,7 @@
       "id": "arial-narrow-400-100",
       "sha256": "d672ee23e2a3233e5041b4ae08be75204eabb999ff2f5ce3ae5e882b34211ae3",
       "control": false,
-      "ms": 954.3000000119209,
+      "ms": 1568.0999999642372,
       "summary": {
         "total": 12,
         "exact": 9,
@@ -1042,7 +1042,7 @@
       "id": "times-new-roman-400-100",
       "sha256": "3700080f0b5983148430d47d3fb1c27cac92aad5132bcd3603d24ae99e4a685b",
       "control": false,
-      "ms": 1198.300000011921,
+      "ms": 1970.4000000357628,
       "summary": {
         "total": 12,
         "exact": 9,

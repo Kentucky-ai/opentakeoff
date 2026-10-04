@@ -91,3 +91,37 @@ test("removing a repeated clipped fragment keeps its unresolved warning on the s
   ]);
   assert.deepEqual(words, [{ str: "S-2", x: 8, y: 20, w: 34, h: 10, codeAlternate: "" }]);
 });
+
+test("stable wrong reads still require individual review, irrespective of confidence", async () => {
+  const [same] = await checkCodes([read("P-110")], {}, () => ({}), async () => [read("P-110")]);
+  assert.equal(same.codeAlternate, undefined);
+  const spans = build({ cols: MMC, items: [M(same.text, "CERAMIC TILE", "VENDOR-A", "GREY"), M("PT-1", "PAINT", "VENDOR-B", "WHITE")] });
+  const rows = readScheduleSpans(spans, { ocr: true }).rows;
+  assert.ok(rows.every(r => r.ocr_code && codeCheckShown(r, r.finish_tag)));
+  assert.deepEqual([...setPicked(new Set(), rows.map(r => r.finish_tag), k => !codeCheckShown(rows.find(r => r.finish_tag === k)!, k), true)], []);
+  assert.ok(rows.every(r => !('ocr_code' in rowToSeed(r, 0))));
+  assert.ok(readScheduleSpans(spans).rows.every(r => !r.ocr_code && !codeCheckShown(r, r.finish_tag)));
+});
+
+test("numeric misread inside a finish key column becomes an unnamed review row, never the alternate identity", () => {
+  const spans = build({ cols: MMC, items: [M("PT-1", "PAINT", "VENDOR-A", "WHITE"), M("88-2", "SOLID SURFACE", "VENDOR-B", "GREY"), M("CT-1", "CERAMIC TILE", "VENDOR-C", "BEIGE")] });
+  const numeric = spans.find(s => s.str === '88-2')!; numeric.codeAlternate = 'SS-2';
+  const before = structuredClone(spans);
+  const rows = readScheduleSpans(spans, { ocr: true }).rows;
+  assert.deepEqual(rows.map(r => r.finish_tag), ['PT-1', '', 'CT-1']);
+  assert.equal(rows[1].description, 'SOLID SURFACE');
+  assert.equal(rows[1].manufacturer, 'VENDOR-B');
+  assert.deepEqual(rows[1].code_checks, [{ first: '88-2', second: 'SS-2' }]);
+  assert.equal(rows[1].suggested, false);
+  assert.equal(evaluateTags([{ key: 'r', tag: rows[1].finish_tag }]).get('r')?.status, 'empty');
+  assert.deepEqual(spans, before);
+  assert.deepEqual(readScheduleSpans(spans).rows.map(r => r.finish_tag), ['PT-1', 'CT-1']);
+});
+
+test("numeric values in non-key cells and foreign schedules cannot create recovery rows", () => {
+  const spans = build({ cols: MMC, items: [M("PT-1", "PAINT", "88-2", "WHITE"), M("CT-1", "CERAMIC TILE", "VENDOR-C", "BEIGE")] });
+  spans.find(s => s.str === '88-2')!.codeAlternate = 'SS-2';
+  assert.deepEqual(readScheduleSpans(spans, { ocr: true }).rows.map(r => r.finish_tag), ['PT-1', 'CT-1']);
+  const foreign = [{ str: 'DOOR SCHEDULE', x: 100, y: -40, w: 180, h: 15 }, ...spans];
+  assert.equal(readScheduleSpans(foreign, { ocr: true }).rows.length, 0);
+});
