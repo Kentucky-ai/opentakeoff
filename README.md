@@ -690,7 +690,8 @@ Third-party integrations and downstream forks run on this engine today.
 
 `cd web && npm run check` is the exact CI gate—typecheck, lint, test, build. Keep
 `oneclick.ts` and `sheets.ts` free of React and DOM; that purity is what makes them reusable and
-testable. Never commit real construction plans. See [CONTRIBUTING.md](CONTRIBUTING.md) and
+testable. Never commit real construction plans. The [public OCR code fixtures](web/bench/ocr-codes/README.md)
+provide invented schedules, per-cell expected codes and native/browser measurement commands. See [CONTRIBUTING.md](CONTRIBUTING.md) and
 [AGENTS.md](AGENTS.md)—the repo's own instructions for coding agents—plus the
 [user manual](docs/USER_GUIDE.md).
 

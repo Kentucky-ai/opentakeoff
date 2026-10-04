@@ -74,3 +74,13 @@ Malformed suffixes are not recovered by this change and may be left unread or
 absorbed into a neighboring row's description. Check the source and add/correct
 that finish manually. This PR fixes valid printed suffixes and browser schedule
 re-import identity; it does not fix OCR character recognition or header detection.
+
+## Merge readiness
+
+This branch now follows the public fixtures in PR #509 so the OCR safeguard in
+PR #511 can be reviewed against both without conflicting dialog changes.
+The behavior and screenshots above are unchanged. Added render regressions
+confirm the historical spelling is visibly held, its checkbox is disabled,
+a distinct suffix stays creatable, and renaming the existing condition turns
+a repeated import into **in use**. The combined branch's full web check passes
+with 3,157 passed and 3 skipped.
