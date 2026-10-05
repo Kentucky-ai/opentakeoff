@@ -383,6 +383,11 @@ marks NOT USED left unticked, and, on a box with a text layer, a four- or five-l
 couldn't read named in a notice—and you approve what becomes a condition. The product spec,
 the schedule's remarks included, rides along as report columns. Parenthesized codes such as
 `G-01(C)` keep their suffix; re-import holds a possible older `G-01C` condition for review.
+On raster imports, every scanned code starts unchecked and requires individual
+review or correction; two OCR reads can agree on the same wrong identity.
+Short codes also get a second read, with disagreements shown as **Check code**.
+A numeric misread recovered inside a recognized finish table appears as **set code**;
+you must enter its code before creating it. See the [public OCR evidence](web/bench/ocr-codes/README.md).
 
 **Supporting Materials** is the layer most takeoff tools punt on: per condition, a labor type
 and a subfloor type, plus the consumables that actually go on the order—adhesive, sealer,

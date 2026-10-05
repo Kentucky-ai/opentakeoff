@@ -21,6 +21,7 @@
 import { FOREIGN_HDR, extractTables, isNonFinishSchedule, readFinishMarquee, traceFinishMarquee, type Bbox, type GraphSpan, type MarqueeRead, type TableRow } from "./sheetgraph.ts";
 import { FINISH_SECTION_CATEGORY, type FinishSection } from "./finishSections.ts";
 import { normalizeNotUsed } from "./notUsed.ts";
+import { finishCodeOk } from "./finishCode.ts";
 import { repairKey } from "./ocr/wordClean.ts";
 import type { Category, CategorySource, ScheduleRow, Token } from "./scheduleRows.ts";
 
@@ -247,10 +248,69 @@ const overlapFrac = (a: Bbox, b: Bbox): number => {
  *  section (sheetgraph.ts ExtractOpts.resetAtBlankBand); the vector read
  *  never sets it. */
 export function readScheduleSpans(spans: GraphSpan[], opts?: { ocr?: boolean }): ScheduleRead {
-  return readOf(readFinishMarquee({ key: "crop", spans }, { ocr: !!opts?.ocr }), spans, !!opts?.ocr);
+  const parsed = readFinishMarquee({ key: "crop", spans }, { ocr: !!opts?.ocr });
+  const original = readOf(parsed, spans, !!opts?.ocr);
+  if (!opts?.ocr || !parsed || parsed.kind !== "table" || "refused" in original) return original;
+  return recoverNumericCodeRows(parsed, original, spans);
 }
 
-/** @internal Tests only: readScheduleSpans
+/** A numeric-only first read (88-2) is not a finish key, so the parser
+ * can absorb its description into the preceding row. A code-shaped second
+ * read can locate that row, but cannot establish its identity. Reparse only
+ * inside an already accepted finish table, keeping its existing keys, then
+ * expose each recovered row with an EMPTY code: the person must enter it.
+ * No alternate becomes a condition tag and no input span is rewritten. */
+function recoverNumericCodeRows(parsed: Extract<MarqueeRead, { kind: "table" }>, original: ScheduleRead, spans: GraphSpan[]): ScheduleRead {
+  const table = parsed.table;
+  const keyBoxes = table.rows.flatMap(r => r.cells[table.headers[0]] ? [r.cells[table.headers[0]].bbox] : []);
+  if (!keyBoxes.length) return original;
+  const left = Math.min(...keyBoxes.map(b => b[0]));
+  const right = Math.max(...keyBoxes.map(b => b[2]));
+  const inside = (s: GraphSpan, b: Bbox) => s.x + s.w / 2 >= b[0] && s.x + s.w / 2 <= b[2] && s.y + s.h / 2 >= b[1] && s.y + s.h / 2 <= b[3];
+  // The table's region ends at the last row it keyed, so a misread on the
+  // LAST row lies below it: look one row pitch further down (#511 review).
+  const mids = keyBoxes.map(b => (b[1] + b[3]) / 2).sort((a, b) => a - b);
+  const gaps = mids.slice(1).map((m, i) => m - mids[i]).filter(g => g > 0).sort((a, b) => a - b);
+  const pitch = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 2 * (keyBoxes[0][3] - keyBoxes[0][1]);
+  // Each candidate found below the region reaches one pitch further, so two
+  // misreads in a row at the end both recover (#517 review).
+  const shaped = spans.filter(s => /^[0-9]+[-.][0-9]+$/.test(s.str.trim())
+    && !!s.codeAlternate && finishCodeOk(s.codeAlternate) && /[A-Z]/i.test(s.codeAlternate)
+    && s.x + s.w / 2 >= left && s.x + s.w / 2 <= right
+    && s.y + s.h / 2 >= table.region[1]).sort((a, b) => a.y - b.y);
+  let bottom = Math.max(table.region[3], mids[mids.length - 1] + 1.5 * pitch);
+  const candidates: GraphSpan[] = [];
+  for (const s of shaped) {
+    if (s.y + s.h / 2 > bottom) break;
+    candidates.push(s);
+    bottom = Math.max(bottom, s.y + s.h / 2 + 1.5 * pitch);
+  }
+  if (!candidates.length) return original;
+  const candidateSet = new Set(candidates);
+  const reparsed = readFinishMarquee({ key: "crop", spans: spans.map(s => candidateSet.has(s) ? { ...s, str: s.codeAlternate! } : s) }, { ocr: true });
+  if (!reparsed || reparsed.kind !== "table") return original;
+  const read = readOf(reparsed, spans, true);
+  if ("refused" in read) return original;
+  const recovered = new Map<number, GraphSpan>();
+  reparsed.table.rows.forEach((r, i) => {
+    const box = r.cells[reparsed.table.headers[0]]?.bbox;
+    const candidate = box && candidates.find(s => inside(s, box));
+    if (candidate) recovered.set(i, candidate);
+  });
+  // Refuse a reparse that loses, reorders or renames an established identity.
+  const oldKeys = original.rows.map(r => r.finish_tag);
+  const keptKeys = read.rows.filter((_, i) => !recovered.has(i)).map(r => r.finish_tag);
+  if (!recovered.size || JSON.stringify(oldKeys) !== JSON.stringify(keptKeys)) return original;
+  return { ...read, rows: read.rows.map((row, i) => {
+    const candidate = recovered.get(i);
+    if (!candidate) return row;
+    const result = { ...row, finish_tag: "", suggested: false, code_checks: [{ first: candidate.str, second: candidate.codeAlternate! }] };
+    delete result.read_as;
+    return result;
+  }) };
+}
+
+/** @internal Tests only: the primary read (before numeric-row recovery)
  * plus how the marquee rules got there — the table's rows with their
  * provenance kept (`_y`, `_pass1`, `_pass1Key`, `_newRule`, `_ungluedFrom`),
  * the lines they consumed, and the per-line decisions. */
@@ -285,9 +345,16 @@ function readOf(r: MarqueeRead | null, spans: GraphSpan[], ocr: boolean): Schedu
     const row = toRow(x, t.headers[0], { ocr });
     const keyCell = x.cells[t.headers[0]]?.text ?? "";
     if (ocr) {
+      row.ocr_code = true;
       const fix = repairKey(keyCell, row.finish_tag);
       row.finish_tag = fix.key;
       if (fix.readAs) row.read_as = fix.readAs;
+      const box = x.cells[t.headers[0]]?.bbox;
+      const checks = box ? spans.filter((s) => s.codeAlternate !== undefined
+        && s.x + s.w / 2 >= box[0] && s.x + s.w / 2 <= box[2]
+        && s.y + s.h / 2 >= box[1] && s.y + s.h / 2 <= box[3])
+        .map((s) => ({ first: s.str, second: s.codeAlternate! })) : [];
+      if (checks.length) { row.code_checks = checks; row.suggested = false; }
     }
     // A code printed or read with a parenthesis that has no partner
     // (FT-0B(C) keys without it rather than folding into the row above,

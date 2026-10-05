@@ -1226,3 +1226,18 @@ test("a read answered while the page is hidden counts only its visible time", as
   s.page.flip(false);
   assert.equal(await nextDeadline(s), 175_000, "2 s visible, under the envelope");
 });
+
+test("only a requested schedule read asks the worker for code checks; disagreement metadata returns intact", async () => {
+  const { client, w } = await readyClient();
+  const pending = client.recognize({ ...region(), verifyCodes: true });
+  const sent = recognizes(w)[0];
+  assert.equal(sent.msg.verifyCodes, true);
+  const words = [{ str: "S-2", x: 1, y: 2, w: 3, h: 4, confidence: 0.999, codeAlternate: "SS-2" }];
+  w.reply({ type: "result", id: sent.msg.id, words });
+  assert.deepEqual(await pending, words);
+  const ordinary = client.recognize(region());
+  const next = recognizes(w)[1];
+  assert.ok(!("verifyCodes" in next.msg));
+  w.reply({ type: "result", id: next.msg.id, words: [] });
+  await ordinary;
+});

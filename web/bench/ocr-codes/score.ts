@@ -2,7 +2,7 @@
 // Keep punctuation: P-1, P1 and P.1 are different identities for this probe.
 export type Rect = { x0: number; y0: number; x1: number; y1: number };
 export type TruthRow = { expected: string; rect: Rect };
-export type Read = { text: string; confidence?: number; rect: Rect };
+export type Read = { text: string; confidence?: number; codeAlternate?: string; rect: Rect };
 
 export function scoreRows(rows: TruthRow[], reads: Read[]) {
   return rows.map((row) => {
@@ -21,6 +21,8 @@ export function summarize(rows: ReturnType<typeof scoreRows>) {
   return {
     total: rows.length,
     exact: rows.filter((r) => r.ok).length,
+    unflaggedWrong: rows.filter((r) => !r.ok && !r.cells.some((c) => c.codeAlternate !== undefined)).length,
+    flaggedCorrect: rows.filter((r) => r.ok && r.cells.some((c) => c.codeAlternate !== undefined)).length,
     missing: rows.filter((r) => !r.cells.length).length,
     thresholds: [0.8, 0.9, 0.95, 0.99].map((threshold) => ({
       threshold,
