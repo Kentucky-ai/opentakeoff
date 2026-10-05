@@ -814,7 +814,7 @@ function splitKeyCell(raw: string): KeySplit | null {
   if (tail === "NOT USED" || tail === "NOT IN CONTRACT" || tail === "NIC") return { key: w1, notUsed: true, notUsedText: after };
   const words = tail ? tail.split(" ") : [];
   if (words.length < 1 || words.length > 2) return null;
-  if (!words.every((w) => /^[A-Z]{2,8}$/.test(w) || /^\([A-Z]{1,8}\)$/.test(w))) return null;
+  if (!words.every((w) => /^[A-Z]{2,8}$/.test(w) || /^\([A-Z]{1,8}\.?\)$/.test(w))) return null;
   const bare = words.map((w) => w.replace(/[()]/g, ""));
   if (bare.some((w) => SPLIT_DENY.has(w)) || bare.join("").length < 3) return null;
   return { key: w1, qualifier: after };

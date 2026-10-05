@@ -64,6 +64,15 @@ test("a parenthesized word of three or more letters is a qualifier, not a suffix
   assert.equal(finishKeyText("G-01(C)/FT-0B(C"), "G-01(C)/FT-0BC");
 });
 
+test("an abbreviated qualifier and unpaired parentheses are judged over the whole cell (#516 review)", () => {
+  for (const ocr of [false, true]) {
+    const got = readScheduleSpans(table(["CPT-1 (TYP.)", "G-01(C )", "G-01 (W", "G-02"]), { ocr });
+    assert.deepEqual(got.rows.map((r) => [r.finish_tag, r.read_as ?? ""]), [["CPT-1", ""], ["G-01(C)", ""], ["G-01W", "G-01 (W"], ["G-02", ""]], `ocr=${ocr}`);
+    assert.match(got.rows[0].description, /^\(TYP\.\) — /);
+  }
+  assert.equal(finishKeyText("CPT-1 (TYP.)"), "CPT-1 TYP");
+});
+
 test("resolve_tag chains a parenthesized room-finish cell to its definition (#510 review)", () => {
   const sp = (str: string, x: number, y: number) => ({ str, x, y, w: str.length * 7, h: 10 });
   const rooms = { key: "s#1", sheet_number: "A-601", spans: [

@@ -28,7 +28,8 @@ export const finishCodeOk = (p: string): boolean => !/^[A-Z]{4,}(\([A-Z0-9]{1,4}
  * keeps its own code instead of folding into the row above. Code suffixes
  * keep their parentheses. Spaces stay for the caller to strip. */
 export function finishKeyText(upper: string): string {
-  return upper.replace(/\(\s*([A-Z]{3,})\s*\)/g, "$1").split("/").map((part) => {
+  // a trailing period is an abbreviation's (TYP.), still a word
+  return upper.replace(/\(\s*([A-Z]{3,})\.?\s*\)/g, "$1").split("/").map((part) => {
     const open = (part.match(/\(/g) || []).length, close = (part.match(/\)/g) || []).length;
     return open === close ? part : part.replace(/[()]/g, "");
   }).join("/");

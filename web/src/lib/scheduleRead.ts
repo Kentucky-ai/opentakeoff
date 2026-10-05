@@ -292,8 +292,11 @@ function readOf(r: MarqueeRead | null, spans: GraphSpan[], ocr: boolean): Schedu
     // A code printed or read with a parenthesis that has no partner
     // (FT-0B(C) keys without it rather than folding into the row above,
     // and says so (#510 review).
-    const w1 = (keyCell.trim().split(/\s/)[0] ?? "").toUpperCase();
-    if (!row.read_as && (w1.match(/\(/g) || []).length !== (w1.match(/\)/g) || []).length) row.read_as = w1;
+    // Balance is judged over the whole key cell, part by part, as
+    // finishKeyText keys it: "G-01(C )" is balanced, "G-01 (C" is not.
+    const cell = keyCell.trim().toUpperCase();
+    const unpaired = cell.split("/").some((p) => (p.match(/\(/g) || []).length !== (p.match(/\)/g) || []).length);
+    if (!row.read_as && unpaired) row.read_as = cell;
     return row;
   });
   return r.skipped.length ? { rows, skipped: [...r.skipped] } : { rows };
