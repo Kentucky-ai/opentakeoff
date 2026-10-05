@@ -65,7 +65,7 @@ export function boxReadWords(page: PageLike, rs: number, rect: Rect, isCurrent: 
       return raster;
     };
     try {
-      const { lines } = await readRegionText(page, rs, rect, { signal: ac.signal, onProgress, rasterize, client: deps.client });
+      const { lines } = await readRegionText(page, rs, rect, { signal: ac.signal, onProgress, rasterize, client: deps.client, verifyCodes: true });
       return boxWords(lines);
     } finally {
       signal?.removeEventListener("abort", onAbort);
@@ -108,6 +108,8 @@ export function boxWords(lines: readonly SeamLine[]): OcrWord[] {
     if (l.clipped && clipped.some((j) => j !== i && repeats(l, i, kept[j], j))) return;
     const w: OcrWord = { str: l.str, x: l.x, y: l.y, w: l.w, h: l.h };
     if (l.confidence !== undefined) w.confidence = l.confidence;
+    if (l.codeAlternate !== undefined) w.codeAlternate = l.codeAlternate;
+    else if (l.clipped && clipped.some((j) => j !== i && kept[j].codeAlternate !== undefined && repeats(kept[j], j, l, i))) w.codeAlternate = "";
     out.push(w);
   });
   return out;

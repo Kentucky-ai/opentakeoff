@@ -19,6 +19,7 @@
 // path; the file has no imports of its own.
 import { groupResultsByLine } from "../../../node_modules/ppu-paddle-ocr/core/recognition/line-grouping.js";
 import type { OcrServiceLike } from "./workerCore";
+import { checkCodes, type CodeRead, type MakeCodeCrop } from "./codeCheck";
 
 type Results = Parameters<typeof groupResultsByLine>[0];
 
@@ -35,17 +36,22 @@ export interface PpuServiceInternals {
  * canvas: recognize(canvas, { recognitionCanvas }) detects on canvas and
  * recognizes recognitionCanvas (canvas when it is left out) with the same
  * boxes. The two canvases must be the same size. */
-export function splitRecognizer(svc: PpuServiceInternals): OcrServiceLike {
+export function splitRecognizer(svc: PpuServiceInternals, makeCodeCrop?: MakeCodeCrop): OcrServiceLike {
   return {
     async recognize(canvas, opts) {
       const { detector, recognitor } = svc;
       if (!detector || !recognitor) throw new Error("the OCR service isn't initialized");
-      const { recognitionCanvas = canvas, ...ppuOpts } = opts;
+      const { recognitionCanvas = canvas, verifyCodes, ...ppuOpts } = opts;
       const boxes = await detector.run(canvas);
       if (boxes.length === 0) return { text: "", lines: [], confidence: 0 };
       const dict = svc.options.recognition?.charactersDictionary;
       const strategy = ppuOpts.strategy ?? svc.options.recognition?.strategy ?? "per-line";
-      const results = await recognitor.run(recognitionCanvas, boxes, dict, strategy, ppuOpts);
+      let results = await recognitor.run(recognitionCanvas, boxes, dict, strategy, ppuOpts);
+      if (verifyCodes) {
+        if (!makeCodeCrop) throw new Error("code-check cropper unavailable");
+        results = await checkCodes(results as CodeRead[], recognitionCanvas, makeCodeCrop,
+          async (crop, box) => await recognitor.run(crop, [box], dict, "per-box", ppuOpts) as CodeRead[]);
+      }
       return groupResultsByLine(results as Results);
     },
     destroy: () => svc.destroy(),

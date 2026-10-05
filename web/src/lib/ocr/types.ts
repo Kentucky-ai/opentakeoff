@@ -25,6 +25,9 @@ export type OcrWord = {
   h: number;
   /** engine confidence 0..1, when the engine reports one */
   confidence?: number;
+  /** Schedule-import second-read disagreement; empty = no second code read.
+   * Transient evidence, not a corrected value or a condition field. */
+  codeAlternate?: string;
 };
 
 /** Words → tokens: keep the shared {str,x,y,h} and the measured width w
@@ -46,4 +49,4 @@ const HAS_TEXT = /[\p{L}\p{N}]/u;
 export const wordsToSpans = (words: OcrWord[]): GraphSpan[] =>
   words
     .filter((w) => HAS_TEXT.test(w.str || ""))
-    .map(({ str, x, y, w, h }) => ({ str, x, y: y - h, w, h, rot: 0 }));
+    .map(({ str, x, y, w, h, codeAlternate }) => ({ str, x, y: y - h, w, h, rot: 0, ...(codeAlternate !== undefined ? { codeAlternate } : {}) }));

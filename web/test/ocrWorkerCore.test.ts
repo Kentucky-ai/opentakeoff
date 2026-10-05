@@ -457,6 +457,22 @@ test("recognize maps cells to sheet words and never uses ppu's result cache", as
 });
 
 // A 2 × 2 tile of red ink (220, 30, 30), opaque.
+test("code disagreement travels only on a requested schedule read, including an empty second read", async () => {
+  const seen: unknown[] = [];
+  const h = harness({ loadService: async () => ({
+    recognize: async (_canvas, opts) => {
+      seen.push(opts.verifyCodes);
+      return { lines: [[{ text: "S-2", box: { x: 24, y: 60, width: 96, height: 54 }, confidence: 0.999, codeAlternate: "" }]] };
+    }, destroy: async () => {},
+  }) });
+  await h.core.handle(init());
+  await h.core.handle({ ...recognizeMsg(1), verifyCodes: true });
+  assert.deepEqual(last(h.posted).words, [{ str: "S-2", x: 128, y: 268, w: 40, h: 20, confidence: 0.999, codeAlternate: "" }]);
+  await h.core.handle(recognizeMsg(2));
+  assert.deepEqual(last(h.posted).words, [{ str: "S-2", x: 128, y: 268, w: 40, h: 20, confidence: 0.999 }]);
+  assert.deepEqual(seen, [true, undefined]);
+});
+
 const redMsg = (id: number) => {
   const rgba = new Uint8ClampedArray(4 * 2 * 2);
   for (let p = 0; p < rgba.length; p += 4) rgba.set([220, 30, 30, 255], p);

@@ -69,6 +69,7 @@ export interface RecognizeOpts {
   noCache: true;
   recognitionCanvas?: unknown;
   strategy?: "per-box" | "per-line" | "cross-line";
+  verifyCodes?: boolean;
 }
 
 /** The service the core reads with: ppu-paddle-ocr's PaddleOcrService
@@ -112,7 +113,7 @@ export interface OcrCoreDeps {
 export type OcrInMsg =
   | { type: "init"; manifest: OcrManifest; allowNetwork: boolean; initId?: number }
   | { type: "cancel"; initId?: number }
-  | { type: "recognize"; id: number; rgba: Uint8ClampedArray; width: number; height: number; geometry: RenderGeometry }
+  | { type: "recognize"; id: number; rgba: Uint8ClampedArray; width: number; height: number; geometry: RenderGeometry; verifyCodes?: boolean }
   | { type: "dispose" };
 
 /** An error that carries a protocol code. */
@@ -129,7 +130,7 @@ const subtleDigest = async (buf: ArrayBuffer): Promise<string> => {
 
 const ENGINE_FILES = { detection: "det", recognition: "rec", charactersDictionary: "dict" } as const;
 
-type Cell = { text?: string; box?: { x: number; y: number; width: number; height: number }; confidence?: number };
+type Cell = { text?: string; box?: { x: number; y: number; width: number; height: number }; confidence?: number; codeAlternate?: string };
 
 export function createOcrCore(deps: OcrCoreDeps) {
   const digest = deps.digest ?? subtleDigest;
@@ -383,7 +384,7 @@ export function createOcrCore(deps: OcrCoreDeps) {
       const recognitionCanvas = inkToGray(msg.rgba) ? deps.makeCanvas(msg.rgba, msg.width, msg.height) : canvas;
       // noCache: ppu's image cache keys on a 4 KB sample, so two similar
       // tiles can collide and return each other's text.
-      const res = (await service.recognize(canvas, { flatten: false, noCache: true, recognitionCanvas })) as { lines?: Cell[][] };
+      const res = (await service.recognize(canvas, { flatten: false, noCache: true, recognitionCanvas, ...(msg.verifyCodes ? { verifyCodes: true } : {}) })) as { lines?: Cell[][] };
       const words: OcrWord[] = [];
       for (const line of res?.lines ?? []) {
         for (const cell of line ?? []) {
@@ -393,7 +394,9 @@ export function createOcrCore(deps: OcrCoreDeps) {
           // ppu returns the padded box it cropped for recognition; take the
           // padding off so x, y and h describe the text itself.
           const ink = unpadCropBox({ x0: x, y0: y, x1: x + width, y1: y + height }, msg, OCR_DETECTION_PADDING);
-          words.push(cropBoxToWord(str, ink, msg.geometry, cell.confidence));
+          const word = cropBoxToWord(str, ink, msg.geometry, cell.confidence);
+          if (msg.verifyCodes && typeof cell.codeAlternate === "string") word.codeAlternate = cell.codeAlternate;
+          words.push(word);
         }
       }
       deps.post({ type: "result", id: msg.id, words });

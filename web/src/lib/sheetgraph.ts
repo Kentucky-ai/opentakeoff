@@ -30,7 +30,7 @@ import { CODE_RE, finishCodeOk, FINISH_QUALIFIER_WORDS } from "./finishCode";
  * rot is not provided (older span sources), a span at least four characters
  * long whose box is more than twice as tall as it is wide is treated as
  * vertical — a real horizontal token that long cannot be taller than wide. */
-export interface GraphSpan { str: string; x: number; y: number; w: number; h: number; rot?: number }
+export interface GraphSpan { str: string; x: number; y: number; w: number; h: number; rot?: number; codeAlternate?: string }
 /** segs (optional): the sheet's vector linework as flat [x1,y1,x2,y2, ...] in
  * the same px space as the spans (VectorGeometry.segs) — feeds the drawn
  * delta-triangle hunt. Text-only callers omit it and lose only that lane. */
