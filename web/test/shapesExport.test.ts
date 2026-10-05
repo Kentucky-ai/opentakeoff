@@ -124,6 +124,21 @@ test("shapesToCsv: no title line without a project name", () => {
   assert.ok(csv.startsWith("# Per-shape measured quantities"));
 });
 
+test("shapesToCsv: metric export converts per-shape area and length columns", () => {
+  const rows = shapesDetail(conds, [{
+    id: "a",
+    sheet_id: "sh1",
+    condition_id: "ct",
+    measure_role: "floor_area",
+    computed: { area_sf: 100, perimeter_lf: 40 },
+    height_ft: 9,
+  }]);
+  const csv = shapesToCsv(rows, "", "OpenTakeoff", "metric");
+  const lines = csv.split("\n");
+  assert.equal(lines[1], "Shape,Sheet,Sheet ID,Finish,Role,Area m2,m,EA,Height m,Height override,Rise m,Drop m,Origin");
+  assert.equal(lines[2], "a,sh1,sh1,CT-1,floor_area,9.29,12.19,0,2.74,,0,0,untracked");
+});
+
 test("shapesDetail: sheetLabel drives the display label; sheet_id stays raw; omitted falls back", () => {
   const shapes = [floor("a", 10)];
   const [labeled] = shapesDetail(conds, shapes, (id: string) => `Sheet ${id.toUpperCase()}`);
