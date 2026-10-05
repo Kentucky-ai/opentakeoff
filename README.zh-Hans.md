@@ -17,7 +17,7 @@
 [![Live demo](https://img.shields.io/badge/demo-opentakeoff.kentucky--ai.com-2ea44f.svg)](https://opentakeoff.kentucky-ai.com)
 [![MCP registry](https://img.shields.io/badge/MCP-io.github.Kentucky--ai%2Fopentakeoff-6f42c1.svg)](https://registry.modelcontextprotocol.io)
 [![npm](https://img.shields.io/npm/v/opentakeoff-mcp?label=opentakeoff-mcp)](https://www.npmjs.com/package/opentakeoff-mcp)
-[![Benchmark](https://img.shields.io/badge/benchmark-OpenTakeoff%20Academy-orange.svg)](https://aec.kentucky-ai.com)
+[![Benchmark](https://img.shields.io/badge/benchmark-OpenTakeoff%20Academy-orange.svg)](https://union.kentucky-ai.com)
 [![OpenArena](https://openarena.to/api/badge/cmsgykvsq0000mkuv7byhlgnl)](https://openarena.to/en/projects/cmsgykvsq0000mkuv7byhlgnl)
 [![Sponsor](https://img.shields.io/github/sponsors/Kentucky-ai?logo=githubsponsors&label=sponsor&color=EA4AAA)](https://github.com/sponsors/Kentucky-ai)
 
@@ -206,9 +206,10 @@ Claude Code:`claude mcp add opentakeoff -- npx -y opentakeoff-mcp`。Claude Desk
    接下来该做什么。一个沉默的零做不到这一点。答不上来的工具会带着明确理由拒绝,而不是回一个
    看起来说得过去的数字。
 
-### 验证你的实力 —— OpenTakeoff Academy
+### 验证你的实力 —— OpenTakeoff Academy / Commonwealth Agent Union
 
-[**aec.kentucky-ai.com**](https://aec.kentucky-ai.com) 是一个独立的开放基准测试和认证竞技场,
+[**Commonwealth Agent Union**](https://union.kentucky-ai.com) 是 OpenTakeoff Academy 的新主页;
+Academy 是该联合会面向建筑智能体的评估和认证部门,
 面向会做算量的智能体。带上任意模型和你自己的执行框架;评分依据是**在你不掌控的几何图形上操作
 一个真实的算量工具** —— 标定错了,面积就错了 —— 而不是靠吐出一个"看起来说得过去"的数字。
 每次运行都会输出一份带签名的记录包,包含每次工具调用的完整来源;评分对照的是留出的真值和一个
@@ -508,7 +509,7 @@ OpenTakeoff 是一个应用研究项目的开放那一半,这个项目由一位�
 经过脱敏处理的产物 —— 模型卡、基准规范、论文 —— 会在通过审查后陆续发布:
 [Hugging Face](https://huggingface.co/Kentucky-ai) ·
 [kentucky-ai.com](https://kentucky-ai.com)。智能体侧的评测在
-[OpenTakeoff Academy](https://aec.kentucky-ai.com)。
+[OpenTakeoff Academy](https://union.kentucky-ai.com)。
 
 ---
 

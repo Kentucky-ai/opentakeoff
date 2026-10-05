@@ -1,0 +1,169 @@
+{
+ "about": [
+  "What the on-device reader returned for the picture on the synthetic hybrid sheet (#489): web/test/fixtures/hybridPlan.ts buildHybridPlan('callouts'), page 1, the picture rect at rs 2.",
+  "Captured in headless Chrome for Testing from the dev server by calling readRegionText on that rect (the read a pictures-only page read makes), after the engine started with consent.",
+  "Rounded to 2 decimals; confidence dropped. Nothing redacted: the picture (hybrid/material-floor-base.png) is blank right of the MATERIAL/PRODUCT column at source, so it carries no brand names (CONTRIBUTING.md).",
+  "The callout SEE NOTE 4 lies over a MATERIAL cell; the reader may return the overlap as one garbled word, kept as read.",
+  "Read by test/hybridReplay.test.ts."
+ ],
+ "engine": "ppocrv5-mobile-en-1+ort-1.26.0-dev.20260416-b7804b056c",
+ "pdfSha256": "0aca8c45ad96603cebbad55d0fc48f3260f6962a4eb2a3a15dbd1ac9c7e7b6d3",
+ "rs": 2,
+ "rect": {
+  "x0": 1280,
+  "y0": 2640,
+  "x1": 3168,
+  "y1": 3139.6
+ },
+ "ms": 1791.5,
+ "rasters": 1,
+ "lines": [
+  {
+   "str": "FLOORING",
+   "x": 1289.78,
+   "y": 2669.93,
+   "w": 111.11,
+   "h": 11.85
+  },
+  {
+   "str": "CPT-1",
+   "x": 1289.11,
+   "y": 2714.15,
+   "w": 39.11,
+   "h": 12.96
+  },
+  {
+   "str": "BROADLOOM CARPET",
+   "x": 1386,
+   "y": 2711.33,
+   "w": 170,
+   "h": 10
+  },
+  {
+   "str": "CPT-2",
+   "x": 1289.11,
+   "y": 2752.81,
+   "w": 39.78,
+   "h": 12.96
+  },
+  {
+   "str": "MODULAR CARPET TILE",
+   "x": 1386,
+   "y": 2750,
+   "w": 184.67,
+   "h": 10
+  },
+  {
+   "str": "VCT-1",
+   "x": 1280,
+   "y": 2794.59,
+   "w": 48.89,
+   "h": 15.19
+  },
+  {
+   "str": "VINYEEON OFEFIQN TILE",
+   "x": 1386,
+   "y": 2796.67,
+   "w": 200.67,
+   "h": 16.67
+  },
+  {
+   "str": "PT-1",
+   "x": 1280,
+   "y": 2834.67,
+   "w": 37.33,
+   "h": 16.67
+  },
+  {
+   "str": "PORCELAIN CERAMIC TILE",
+   "x": 1385.33,
+   "y": 2828.67,
+   "w": 208,
+   "h": 10
+  },
+  {
+   "str": "PT-2",
+   "x": 1280,
+   "y": 2869.41,
+   "w": 37.78,
+   "h": 14.81
+  },
+  {
+   "str": "PORCELAIN CERAMIC TILE",
+   "x": 1385.56,
+   "y": 2865.85,
+   "w": 208.22,
+   "h": 10.37
+  },
+  {
+   "str": "C",
+   "x": 1280,
+   "y": 2906.52,
+   "w": 15.78,
+   "h": 17.04
+  },
+  {
+   "str": "CONCRETE SEALER",
+   "x": 1386,
+   "y": 2903.33,
+   "w": 154,
+   "h": 10
+  },
+  {
+   "str": "BASE",
+   "x": 1289.56,
+   "y": 2979.41,
+   "w": 54.22,
+   "h": 14.81
+  },
+  {
+   "str": "MATCH EXISTING",
+   "x": 1806,
+   "y": 2996.67,
+   "w": 192,
+   "h": 10
+  },
+  {
+   "str": "RB-1",
+   "x": 1280,
+   "y": 3024.07,
+   "w": 38.44,
+   "h": 14.81
+  },
+  {
+   "str": "RESILIENT BASE",
+   "x": 1385.33,
+   "y": 3020,
+   "w": 126,
+   "h": 10
+  },
+  {
+   "str": "CBT-1",
+   "x": 1288.67,
+   "y": 3060.67,
+   "w": 40,
+   "h": 13.33
+  },
+  {
+   "str": "CARPET WALL BASE",
+   "x": 1386,
+   "y": 3058,
+   "w": 156.67,
+   "h": 10
+  },
+  {
+   "str": "CT-3",
+   "x": 1288.44,
+   "y": 3097.48,
+   "w": 30.44,
+   "h": 12.96
+  },
+  {
+   "str": "CERAMC WALL TILE",
+   "x": 1386,
+   "y": 3095.33,
+   "w": 152.67,
+   "h": 10
+  }
+ ]
+}

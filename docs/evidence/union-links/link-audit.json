@@ -1,0 +1,20 @@
+[
+  {
+    "file": "README.md",
+    "oldURLBefore": 4,
+    "oldURLAfter": 0,
+    "unionURLAfter": 3
+  },
+  {
+    "file": "README.zh-Hans.md",
+    "oldURLBefore": 4,
+    "oldURLAfter": 0,
+    "unionURLAfter": 3
+  },
+  {
+    "file": "docs/AGENT_GUIDE.md",
+    "oldURLBefore": 1,
+    "oldURLAfter": 0,
+    "unionURLAfter": 1
+  }
+]
