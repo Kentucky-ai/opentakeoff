@@ -272,11 +272,19 @@ function recoverNumericCodeRows(parsed: Extract<MarqueeRead, { kind: "table" }>,
   const mids = keyBoxes.map(b => (b[1] + b[3]) / 2).sort((a, b) => a - b);
   const gaps = mids.slice(1).map((m, i) => m - mids[i]).filter(g => g > 0).sort((a, b) => a - b);
   const pitch = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 2 * (keyBoxes[0][3] - keyBoxes[0][1]);
-  const reach: Bbox = [table.region[0], table.region[1], table.region[2], Math.max(table.region[3], mids[mids.length - 1] + 1.5 * pitch)];
-  const candidates = spans.filter(s => /^[0-9]+[-.][0-9]+$/.test(s.str.trim())
+  // Each candidate found below the region reaches one pitch further, so two
+  // misreads in a row at the end both recover (#517 review).
+  const shaped = spans.filter(s => /^[0-9]+[-.][0-9]+$/.test(s.str.trim())
     && !!s.codeAlternate && finishCodeOk(s.codeAlternate) && /[A-Z]/i.test(s.codeAlternate)
     && s.x + s.w / 2 >= left && s.x + s.w / 2 <= right
-    && inside(s, reach));
+    && s.y + s.h / 2 >= table.region[1]).sort((a, b) => a.y - b.y);
+  let bottom = Math.max(table.region[3], mids[mids.length - 1] + 1.5 * pitch);
+  const candidates: GraphSpan[] = [];
+  for (const s of shaped) {
+    if (s.y + s.h / 2 > bottom) break;
+    candidates.push(s);
+    bottom = Math.max(bottom, s.y + s.h / 2 + 1.5 * pitch);
+  }
   if (!candidates.length) return original;
   const candidateSet = new Set(candidates);
   const reparsed = readFinishMarquee({ key: "crop", spans: spans.map(s => candidateSet.has(s) ? { ...s, str: s.codeAlternate! } : s) }, { ocr: true });
