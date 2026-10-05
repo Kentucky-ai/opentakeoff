@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { finishCodeOk, legacyFinishTag, normalizeFinishTag } from "../src/lib/finishCode.ts";
+import { finishCodeOk, finishKeyText, legacyFinishTag, normalizeFinishTag } from "../src/lib/finishCode.ts";
 import { readScheduleSpans } from "../src/lib/scheduleRead.ts";
-import { readFinishTable, rowKeyAnswersFor } from "../src/lib/sheetgraph.ts";
+import { buildSheetGraph, readFinishTable, resolveTag, rowKeyAnswersFor } from "../src/lib/sheetgraph.ts";
 import { repairKey } from "../src/lib/ocr/wordClean.ts";
 import { evaluateTags, isCreatable, newScheduleRows, setPicked } from "../src/lib/scheduleEdit.ts";
 import { build, M, MMC } from "./fixtures/reader483Fixtures.ts";
@@ -38,13 +38,52 @@ test("compound keys retain suffixes and answer only for the printed variants", (
   assert.ok(!rowKeyAnswersFor(got.rows[0].finish_tag, "G-01(E)"));
 });
 
-test("a malformed suffix is not silently flattened into a different code", () => {
+test("a malformed suffix is flagged, never silently flattened into a different code", () => {
   for (const key of ["G-01(C", "G-01C)", "G-01()", "G-01((C))", "G-01(C)(W)", "TILE(C)"]) assert.ok(!finishCodeOk(key), key);
   for (const key of ["G-01(C)", "G-01C", "FT-02(E)", "CPT-1(A1)"]) assert.ok(finishCodeOk(key), key);
-  // A historical OCR result lacked its closing parenthesis. Do not invent
-  // a flat identity; incomplete glyph recovery remains an OCR limitation.
-  const malformed = readScheduleSpans(table(["G-01(C)", "FT-OB(C", "G-02"]), { ocr: true });
-  assert.ok(!malformed.rows.some((r) => r.finish_tag === "FT-OBC"));
+  // A historical OCR result lacked its closing parenthesis. The row keeps
+  // its own place (it used to vanish and its words joined G-01(C)'s) under
+  // the code without the parenthesis, flagged with what was read so the
+  // flat code is checked, not trusted (#510 review).
+  for (const ocr of [false, true]) {
+    const malformed = readScheduleSpans(table(["G-01(C)", "FT-OB(C", "G-02"]), { ocr });
+    assert.deepEqual(malformed.rows.map((r) => r.finish_tag), ["G-01(C)", "FT-OBC", "G-02"], `ocr=${ocr}`);
+    assert.equal(malformed.rows[1].read_as, "FT-OB(C");
+    assert.equal(malformed.rows[0].read_as, undefined);
+    assert.equal(malformed.rows[0].description, "CERAMIC TILE");
+  }
+});
+
+test("a parenthesized word of three or more letters is a qualifier, not a suffix (#510 review)", () => {
+  for (const key of ["CPT-1(TYP)", "PT-1(CUT)", "G-01(ALT)"]) assert.ok(!finishCodeOk(key), key);
+  for (const key of ["G-01(C)", "FT-02(E)", "ACT-1(2X2)", "G-01(AB)"]) assert.ok(finishCodeOk(key), key);
+  const got = readScheduleSpans(table(["CPT-1 (TYP)", "ACT-1 (2X2)", "G-01(C)"]));
+  assert.deepEqual(got.rows.map((r) => r.finish_tag), ["CPT-1", "ACT-1(2X2)", "G-01(C)"]);
+  assert.match(got.rows[0].description, /^\(TYP\) — /);
+  assert.equal(finishKeyText("PT-1 (CUT)"), "PT-1 CUT");
+  assert.equal(finishKeyText("G-01(C)/FT-0B(C"), "G-01(C)/FT-0BC");
+});
+
+test("resolve_tag chains a parenthesized room-finish cell to its definition (#510 review)", () => {
+  const sp = (str: string, x: number, y: number) => ({ str, x, y, w: str.length * 7, h: 10 });
+  const rooms = { key: "s#1", sheet_number: "A-601", spans: [
+    sp("ROOM FINISH SCHEDULE", 100, 40),
+    sp("NO", 100, 60), sp("NAME", 160, 60), sp("FLOOR", 300, 60), sp("BASE", 400, 60), sp("WALL", 500, 60),
+    sp("101", 100, 80), sp("LOBBY", 160, 80), sp("G-01(C)", 300, 80), sp("RB-1", 400, 80), sp("PT-1", 500, 80),
+    sp("102", 100, 100), sp("OFFICE", 160, 100), sp("G-01 ( W )", 300, 100), sp("RB-1", 400, 100), sp("PT-1", 500, 100),
+  ] };
+  const fin = { key: "s#2", sheet_number: "A-602", spans: [
+    sp("MATERIAL SCHEDULE", 100, 300), sp("CODE", 100, 320), sp("MATERIAL", 220, 320), sp("MANUFACTURER", 380, 320),
+    ...[["G-01(C)", "VENDOR-A"], ["G-01(W)", "VENDOR-B"], ["RB-1", "VENDOR-C"], ["PT-1", "VENDOR-D"]].flatMap(([c, v], i) =>
+      [sp(c, 100, 340 + i * 20), sp("TILE", 220, 340 + i * 20), sp(v, 380, 340 + i * 20)]),
+  ] };
+  const g = buildSheetGraph([rooms, fin]);
+  for (const [tag, want] of [["101", "VENDOR-A"], ["102", "VENDOR-B"]]) {
+    const res = resolveTag(g, tag);
+    assert.equal(res.status, "resolved", tag);
+    if (res.status !== "resolved") continue;
+    assert.equal(res.finishes.find((f) => f.surface === "FLOOR")?.definition?.cells.MANUFACTURER, want, tag);
+  }
 });
 
 test("OCR digit repairs leave suffix characters and their punctuation intact", () => {

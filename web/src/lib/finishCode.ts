@@ -12,11 +12,27 @@ export const CODE_RE = /^[A-Z]{1,4}(-?[A-Z0-9]{1,4})?(\([A-Z0-9]{1,4}\))?$/;
 // drawn box (readFinishMarquee) reads a four- or five-letter code as a row
 // when the table's layout says it is one, and reports it as skipped when it
 // can't tell (#483, bandDataRows).
-// Existing reader qualifiers are words, even when parenthesized. Keep
-// FTB-01 (CUT) (C) in the description and CPT-1 (ALT)'s old alternate rule.
-export const FINISH_QUALIFIER_WORDS = new Set(["CUT", "COVE", "SAT", "ALT", "OPT", "OPTION", "ADD", "DEDUCT"]);
+// A parenthesized word of three or more letters is a qualifier, not a code
+// suffix: CPT-1 (TYP) is CPT-1 with a note, FTB-01 (CUT) (C) keeps CUT in the
+// description, and CPT-1 (ALT) keeps its old alternate rule. A suffix of one
+// or two letters, or one with a digit, belongs to the code: G-01(C), FT-02(E),
+// ACT-1(2X2) (USER_GUIDE "Codes with a word after them").
+const QUALIFIER_SUFFIX_RE = /\([A-Z]{3,}\)$/;
 export const finishCodeOk = (p: string): boolean => !/^[A-Z]{4,}(\([A-Z0-9]{1,4}\))?$/.test(p) && CODE_RE.test(p)
-  && !FINISH_QUALIFIER_WORDS.has(p.match(/\(([^()]+)\)$/)?.[1] ?? "");
+  && !QUALIFIER_SUFFIX_RE.test(p);
+
+/** A finish key cell's text the way the reader keys it, upper-cased in:
+ * a parenthesized qualifier word unwraps and glues on as it did before #499
+ * (PT-1 (CUT) → PT-1CUT, CPT-1 (TYP) → CPT-1TYP), and a parenthesis with no
+ * partner is dropped, as it was before #499 (FT-0B(C → FT-0BC), so the row
+ * keeps its own code instead of folding into the row above. Code suffixes
+ * keep their parentheses. Spaces stay for the caller to strip. */
+export function finishKeyText(upper: string): string {
+  return upper.replace(/\(\s*([A-Z]{3,})\s*\)/g, "$1").split("/").map((part) => {
+    const open = (part.match(/\(/g) || []).length, close = (part.match(/\)/g) || []).length;
+    return open === close ? part : part.replace(/[()]/g, "");
+  }).join("/");
+}
 
 /** Identity for an edited/imported tag. Only a complete finish code's
  * parenthesized suffix loses spacing; custom condition names keep their

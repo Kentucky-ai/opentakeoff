@@ -283,11 +283,17 @@ function readOf(r: MarqueeRead | null, spans: GraphSpan[], ocr: boolean): Schedu
   if (why) return { rows: [], refused: why, ...(title ? { title } : {}) };
   const rows = t.rows.map((x) => {
     const row = toRow(x, t.headers[0], { ocr });
+    const keyCell = x.cells[t.headers[0]]?.text ?? "";
     if (ocr) {
-      const fix = repairKey(x.cells[t.headers[0]]?.text ?? "", row.finish_tag);
+      const fix = repairKey(keyCell, row.finish_tag);
       row.finish_tag = fix.key;
       if (fix.readAs) row.read_as = fix.readAs;
     }
+    // A code printed or read with a parenthesis that has no partner
+    // (FT-0B(C) keys without it rather than folding into the row above,
+    // and says so (#510 review).
+    const w1 = (keyCell.trim().split(/\s/)[0] ?? "").toUpperCase();
+    if (!row.read_as && (w1.match(/\(/g) || []).length !== (w1.match(/\)/g) || []).length) row.read_as = w1;
     return row;
   });
   return r.skipped.length ? { rows, skipped: [...r.skipped] } : { rows };

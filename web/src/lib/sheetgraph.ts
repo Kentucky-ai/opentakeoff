@@ -23,7 +23,7 @@
 import { ROOM_LABEL_RE } from "./detectRooms";
 import { FINISH_SECTION_HEADINGS, finishSectionOf, type FinishSection } from "./finishSections";
 import { normalizeNotUsed, normalizeTail } from "./notUsed";
-import { CODE_RE, finishCodeOk, FINISH_QUALIFIER_WORDS } from "./finishCode";
+import { CODE_RE, finishCodeOk, finishKeyText } from "./finishCode";
 
 /** rot: text rotation in degrees, clockwise in device space (y down). Absent
  * or 0 = horizontal; 90/270 = a quarter-turn — the rotated-header case. When
@@ -761,7 +761,7 @@ export const isNonFinishSchedule = (title: string): boolean => {
 };
 
 function rowKeyOf(raw: string, kind: ExtractKind, buildings?: Set<string>, typeKeyed = false): { key: string; building?: string } | null {
-  const source = kind === "finish" ? norm(raw).replace(/\(([A-Z]+)\)/g, (whole, word: string) => FINISH_QUALIFIER_WORDS.has(word) ? word : whole) : norm(raw);
+  const source = kind === "finish" ? finishKeyText(norm(raw)) : norm(raw);
   const kept = source.replace(kind === "finish" ? /[^A-Z0-9/()-]/g : /[^A-Z0-9/-]/g, "");
   const key = kept.replace(/\//g, "");
   if (kind === "equipment") {
@@ -2727,7 +2727,9 @@ export function resolveTag(graph: SheetGraph, tag: string): ResolveResult {
   for (const surface of surfaces) {
     const cell = r.cells[surface];
     if (!cell || !cell.text.trim()) continue;
-    const code = norm(cell.text).replace(/[^A-Z0-9-]/g, "");
+    // keyed the way rowKeyOf keys the finish table's rows, so G-01(C) finds
+    // its definition and PT-1 (CUT) reads as before #499
+    const code = finishKeyText(norm(cell.text)).replace(/[^A-Z0-9()-]/g, "");
     const fin: ResolvedFinish = { surface, code: cell.text.trim(), source: { sheet: r.sheet, text: cell.text.trim(), bbox: cell.bbox } };
     for (const ft of finTables) {
       const def = ft.rows.find((fr) => rowKeyAnswersFor(fr.key, code));
