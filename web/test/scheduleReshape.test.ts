@@ -69,3 +69,56 @@ test("negative controls stay unread", () => {
   // general notes
   assert.equal(readScheduleSpans([span("GENERAL NOTES", 40, 20), span("1. ALL FINISHES PER SPEC", 40, 70), span("2. VERIFY IN FIELD", 40, 112)]).rows.length, 0);
 });
+
+// Layouts from @knmurphy's review of #518 (invented codes and vendors).
+const rowsAt = (cols: string[], xs: number[], rows: string[][], y0 = 70) => [
+  ...cols.map((c, i) => span(c, xs[i], y0)),
+  ...rows.flatMap((r, j) => r.map((v, i) => v && span(v, i === 0 && r.length === 1 ? 40 : xs[i], y0 + 40 + j * 30)).filter(Boolean)),
+] as ReturnType<typeof span>[];
+const box = (a: [string, number, number, number, number][]) => a.map(([str, x, y, w, h]) => ({ str, x, y, w, h }));
+
+test("section headings at the left edge of a MATERIAL | CODE table keep their sections", () => {
+  const spans = [span("FINISH SCHEDULE", 40, 20), ...rowsAt(["MATERIAL", "CODE", "MANUFACTURER", "COLOR"], [40, 260, 380, 600],
+    [["FLOORING"], ["CARPET TILE", "CPT-1", "VENDOR-A", "GREY"], ["BASE"], ["RUBBER BASE", "RB-1", "VENDOR-B", "BLACK"], ["CEILINGS"], ["ACOUSTICAL TILE", "ACT-1", "VENDOR-D", "WHITE"]])];
+  for (const ocr of [false, true]) {
+    const rows = readScheduleSpans(spans, { ocr }).rows;
+    assert.deepEqual(rows.map((r) => [r.finish_tag, r.section, r.suggested]), [["CPT-1", "FLOORING", true], ["RB-1", "BASE", true], ["ACT-1", "CEILINGS", false]], `ocr=${ocr}`);
+  }
+});
+
+test("a header naming MARK and CODE keys on CODE", () => {
+  const spans = [span("FINISH SCHEDULE", 40, 20), ...rowsAt(["MATERIAL", "MARK", "CODE", "MANUFACTURER"], [40, 260, 340, 460],
+    [["CARPET TILE", "A", "CPT-1", "VENDOR-A"], ["RUBBER BASE", "B", "RB-1", "VENDOR-B"], ["PAINT", "C", "PT-1", "VENDOR-C"]])];
+  assert.deepEqual(readScheduleSpans(spans).rows.map((r) => [r.finish_tag, r.manufacturer]), [["CPT-1", "VENDOR-A"], ["RB-1", "VENDOR-B"], ["PT-1", "VENDOR-C"]]);
+});
+
+test("a legend with a note beside some lines keeps every row, the note as remarks", () => {
+  const L5: [string, string][] = [["CPT-1", "CARPET TILE"], ["LVT-1", "LUXURY VINYL TILE"], ["RB-1", "RUBBER BASE"], ["PT-1", "PAINT EGGSHELL"], ["CT-1", "CERAMIC TILE"]];
+  const spans = [span("FINISH LEGEND", 40, 20), ...L5.flatMap(([c, d], j) => [span(c, 40, 70 + j * 30), span(d, 130, 70 + j * 30)]),
+    span("NOTE: ALL FLOORING BY OWNER", 330, 70), span("SEE SPECIFICATIONS", 330, 100)];
+  for (const ocr of [false, true]) {
+    const rows = readScheduleSpans(spans, { ocr }).rows;
+    assert.deepEqual(rows.map((r) => r.finish_tag), ["CPT-1", "LVT-1", "RB-1", "PT-1", "CT-1"], `ocr=${ocr}`);
+    assert.equal(rows[0].description, "CARPET TILE");
+    assert.equal(rows[0].remarks, "NOTE: ALL FLOORING BY OWNER");
+  }
+});
+
+test("ambiguous boxes read nothing rather than rows in the wrong fields", () => {
+  // a headed table with too few known header words isn't a legend
+  const threeCol = [span("FINISH SCHEDULE", 40, 20), span("CODE", 40, 70), span("SECTION", 110, 70), span("DESCRIPTION", 190, 70), span("FLOORS", 40, 100),
+    ...[["CPT-1", "09 68 13", "CARPET TILE"], ["LVT-1", "09 65 19", "LUXURY VINYL TILE"], ["RB-1", "09 65 13", "RUBBER BASE"]].flatMap((r, j) => r.map((v, i) => span(v, [40, 110, 190][i], 130 + j * 30)))];
+  // OCR read the CODE and MFG headers as one box
+  const oneBox = box([["FINISH SCHEDULE", 42, 42, 104, 5], ["MATERIAL", 41, 76, 55, 5], ["CODE MFG", 165, 75, 61, 7], ["SPECIFICATION", 280, 76, 90, 5], ["NOTES", 385, 76, 34, 5],
+    ["RESILIENT FLOOR", 42, 102, 106, 5], ["FL-1", 164, 102, 26, 6], ["VENDOR-A", 207, 102, 56, 6], ["SERIES-A", 279, 102, 54, 6], ["ZONE-A", 388, 102, 39, 7],
+    ["CERAMIC TILE", 42, 124, 83, 5], ["TL-2", 164, 123, 27, 7], ["VENDOR-B SERIES-B", 207, 124, 126, 6], ["ZONE-B", 388, 124, 39, 7],
+    ["RUBBER BASE", 42, 146, 74, 6], ["RB-3", 164, 146, 37, 7], ["VENDOR-C SERIES-C", 206, 146, 126, 6], ["ZONE-C", 388, 146, 39, 7]]);
+  // OCR glued two codes to their vendors: a read of FL-1 alone would hide two rows
+  const glued = box([["MATERIAL", 42, 93, 72, 7], ["CODE", 207, 92, 35, 10], ["MFG", 246, 91, 42, 11], ["SPECIFICATION", 361, 93, 122, 7], ["NOTES", 500, 93, 44, 8],
+    ["RESILIENT FLOOR", 43, 127, 141, 7], ["FL-1", 203, 126, 36, 9], ["VENDOR-A", 262, 127, 73, 8], ["SERIES-A", 359, 127, 72, 7], ["ZONE-A", 504, 127, 52, 10],
+    ["CERAMIC TILE", 44, 157, 108, 8], ["TL-2 VENDOR-B", 207, 156, 129, 10], ["SERIES-B", 360, 157, 70, 8], ["ZONE-B", 505, 157, 50, 11],
+    ["RUBBER BASE", 43, 185, 100, 7], ["RB-3 VENDOR-C", 206, 184, 130, 10], ["SERIES-C", 358, 185, 73, 7], ["ZONE-C", 504, 184, 51, 13]]);
+  for (const ocr of [false, true]) assert.equal(readScheduleSpans(threeCol, { ocr }).rows.length, 0, `threeCol ocr=${ocr}`);
+  assert.equal(readScheduleSpans(oneBox, { ocr: true }).rows.length, 0, "one header box");
+  assert.equal(readScheduleSpans(glued, { ocr: true }).rows.length, 0, "glued codes");
+});

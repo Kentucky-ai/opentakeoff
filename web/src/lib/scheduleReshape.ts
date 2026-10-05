@@ -13,6 +13,7 @@
 // reads exactly as before, and the rows it returns carry no coordinates,
 // so moving a band never reaches a citation.
 import { finishCodeOk } from "./finishCode.ts";
+import { finishSectionOf } from "./finishSections.ts";
 import { isNonFinishSchedule, type GraphSpan } from "./sheetgraph.ts";
 
 const KEY_WORDS = new Set(["CODE", "MARK", "SYMBOL", "TAG"]);
@@ -58,15 +59,28 @@ function headerLine(lines: GraphSpan[][]): number {
   });
 }
 
-export function reshapeBox(spans: readonly GraphSpan[]): GraphSpan[] | null {
+/** The reshaped box, and how many codes it shows: the second read must
+ * read at least that many rows, or it isn't used (a code glued to the
+ * next cell's words by OCR can drop its row, and a read that silently
+ * loses rows is worse than none). */
+export interface Reshaped { spans: GraphSpan[]; codes: number }
+
+export function reshapeBox(spans: readonly GraphSpan[]): Reshaped | null {
   const lines = linesOf(spans);
   const h = headerLine(lines);
-  return h >= 0 ? reshapeHeader(spans, lines, h) : legendHeader(spans, lines);
+  const out = h >= 0 ? reshapeHeader(spans, lines, h) : legendHeader(spans, lines);
+  if (!out) return null;
+  const isCode = (t: GraphSpan) => { const w = (t.str.trim().split(/\s+/)[0] ?? "").toUpperCase(); return /\d/.test(w) && /[A-Z]/.test(w) && finishCodeOk(w); };
+  const data = lines.slice(h >= 0 ? h + 1 : 0);
+  return { spans: out, codes: data.filter((l) => l.some(isCode)).length };
 }
 
 /** Rename alias headers; move the key column's band to the front. */
 function reshapeHeader(spans: readonly GraphSpan[], lines: GraphSpan[][], h: number): GraphSpan[] | null {
   const header = lines[h];
+  // a header cell naming two columns ("CODE MFG", one OCR box) can't be
+  // split into bands here: moving it would carry the wrong column along
+  if (header.some((t) => words(t.str).filter((w) => HEADER_WORDS.has(w) || ALIASES[w]).length >= 2)) return null;
   const present = new Set(header.map((t) => words(t.str).find((w) => HEADER_WORDS.has(w))).filter(Boolean));
   const renamed = new Map<GraphSpan, string>();
   for (const t of header) {
@@ -75,7 +89,11 @@ function reshapeHeader(spans: readonly GraphSpan[], lines: GraphSpan[][], h: num
     if (to && !present.has(to)) { renamed.set(t, to); present.add(to); }
   }
   const named = header.filter((t) => headerWordOf(t.str));
-  const k = named.findIndex((t) => { const w = renamed.get(t) ?? headerWordOf(t.str); return !!w && KEY_WORDS.has(w); });
+  // the key: CODE when the header names it, else the first of TAG / MARK /
+  // SYMBOL (a MARK beside a CODE is a plan symbol, not the finish code)
+  const labelOf = (t: GraphSpan) => renamed.get(t) ?? headerWordOf(t.str);
+  const code = named.findIndex((t) => labelOf(t) === "CODE");
+  const k = code >= 0 ? code : named.findIndex((t) => KEY_WORDS.has(labelOf(t) ?? ""));
   if (!renamed.size && k <= 0) return null;
 
   // column bands: each header cell to halfway to the next one's left edge
@@ -101,29 +119,39 @@ function reshapeHeader(spans: readonly GraphSpan[], lines: GraphSpan[][], h: num
       cursor += ext[b].hi - ext[b].lo + gap;
     }
   }
+  // a section heading printed alone on its line (FLOORING, BASE) stays at the
+  // left edge, where the key column now starts, as it would sit in a table
+  // printed CODE first
+  const heading = new Set(lines.slice(h + 1).filter((l) => l.length === 1 && finishSectionOf(l[0].str)).flat());
   return spans.map((t) => {
     if (!below.has(t)) return t;
-    const dx = shift.get(bandOf(t)) ?? 0;
+    const dx = heading.has(t) ? 0 : shift.get(bandOf(t)) ?? 0;
     const str = renamed.get(t) ?? t.str;
     return dx || str !== t.str ? { ...t, x: t.x + dx, str } : t;
   });
 }
 
 /** A legend with no header row: two or more lines, most of them, led by a
- *  finish code with letters and a digit and followed by one run of text. Write
- *  CODE | DESCRIPTION above the first, and an empty REMARKS column clear of
- *  the text (the reader wants three header words). */
+ *  finish code with letters and a digit and followed by one run of text (and
+ *  at most one note after it). Write CODE | DESCRIPTION above the first, and
+ *  REMARKS over the notes or clear of the text (the reader wants three header
+ *  words). */
 function legendHeader(spans: readonly GraphSpan[], lines: GraphSpan[][]): GraphSpan[] | null {
   // a legend line is a code and ONE run of text: no gap wider than three
   // text heights between its words. A table's cells have such gaps, and a
   // table whose header the reader can't see (rotated, or a device schedule)
   // stays unread rather than folding its columns into one description.
-  const legendLine = (l: GraphSpan[]) => l.slice(2).every((t, i) => t.x - right(l[i + 1]) <= 3 * (t.h || 10));
+  // A line may carry one more run after a gap: a note beside the
+  // description, read as remarks. Most lines must be the one run.
+  // A box with a CODE / TAG / MARK / SYMBOL cell has a header the reader
+  // didn't take (too few known words), so it isn't a legend.
+  if (lines.some((l) => l.some((t) => KEY_WORDS.has(t.str.trim().toUpperCase())))) return null;
+  const runs = (l: GraphSpan[]) => 1 + l.slice(2).filter((t, i) => t.x - right(l[i + 1]) > 3 * (t.h || 10)).length;
   const keyed = lines.filter((l) => {
     const first = (l[0]?.str ?? "").trim().split(/\s+/)[0]?.toUpperCase() ?? "";
-    return l.length >= 2 && finishCodeOk(first) && /\d/.test(first) && /[A-Z]/.test(first) && legendLine(l);
+    return l.length >= 2 && finishCodeOk(first) && /\d/.test(first) && /[A-Z]/.test(first) && runs(l) <= 2;
   });
-  if (keyed.length < 2) return null;
+  if (keyed.length < 2 || keyed.filter((l) => runs(l) === 1).length < 0.6 * keyed.length) return null;
   const firstKeyed = lines.indexOf(keyed[0]);
   // a legend titled as another family (EQUIPMENT LEGEND, DOOR TYPES) isn't a finish legend
   if (lines.slice(0, firstKeyed).some((l) => isNonFinishSchedule(l.map((t) => t.str).join(" ")))) return null;
@@ -132,9 +160,13 @@ function legendHeader(spans: readonly GraphSpan[], lines: GraphSpan[][]): GraphS
   const med = (xs: number[]) => [...xs].sort((a, b) => a - b)[xs.length >> 1];
   const keyX = med(keyed.map((l) => l[0].x));
   const textX = med(keyed.map((l) => l[1].x));
-  const maxRight = Math.max(...body.flat().map(right));
   const top = keyed[0][0], hh = top.h || 10;
+  // REMARKS sits over the notes when there are any, else clear of the text
+  const noteStart = (l: GraphSpan[]) => l.slice(2).find((t, i) => t.x - right(l[i + 1]) > 3 * (t.h || 10));
+  const notes = keyed.map(noteStart).filter((t): t is GraphSpan => !!t);
+  const maxRight = Math.max(...body.flat().map(right));
+  const remarksX = notes.length ? med(notes.map((t) => t.x)) : 2 * maxRight - textX + 4 * hh;
   const y = top.y - 1.6 * hh;
   const at = (str: string, x: number): GraphSpan => ({ str, x, y, w: str.length * hh * 0.6, h: hh });
-  return [...spans, at("CODE", keyX), at("DESCRIPTION", textX), at("REMARKS", 2 * maxRight - textX + 4 * hh)];
+  return [...spans, at("CODE", keyX), at("DESCRIPTION", textX), at("REMARKS", remarksX)];
 }

@@ -256,8 +256,8 @@ export function readScheduleSpans(spans: GraphSpan[], opts?: { ocr?: boolean }):
   if (first.rows.length || ("refused" in first && first.refused === "title")) return first;
   const reshaped = reshapeBox(spans);
   if (!reshaped) return first;
-  const second = readBox(reshaped, opts);
-  return second.rows.length ? second : first;
+  const second = readBox(reshaped.spans, opts);
+  return second.rows.length && second.rows.length >= reshaped.codes ? second : first;
 }
 
 function readBox(spans: GraphSpan[], opts?: { ocr?: boolean }): ScheduleRead {
@@ -277,8 +277,8 @@ export function readScheduleDebug(spans: GraphSpan[], opts?: { ocr?: boolean }):
   const first = trace(spans);
   if (first.read.rows.length || ("refused" in first.read && first.read.refused === "title")) return first;
   const reshaped = reshapeBox(spans);
-  const second = reshaped ? trace(reshaped) : null;
-  return second && second.read.rows.length ? second : first;
+  const second = reshaped ? trace(reshaped.spans) : null;
+  return second && second.read.rows.length && second.read.rows.length >= reshaped!.codes ? second : first;
 }
 
 /** `ocr`: the spans are the on-device reader's words, so a code it misread
