@@ -95,6 +95,11 @@ whether a disputed quantity is a five-minute conversation or a re-takeoff.
 
 ## 2. Opening plans and moving around
 
+Changing sheets releases the previous sheet's background rendering documents and
+embedded fonts. Reopening a sheet loads its rendering resources again; switching
+while a load is pending cannot complete the replacement sheet's load by mistake.
+
+
 ### What you can open
 
 Drag onto the canvas (or click the **Open your plans** target on the empty screen):

@@ -41,6 +41,9 @@ carry an explicit review status. See the [Phase 1 test guide](docs/PHASE_1_TESTI
 
 The **Premium workspace** offers compact controls, searchable actions and sheets, personal panel arrangements, adjustable surfaces and larger sheet previews. It is the default when this browser has no saved layout choice; **Classic layout** remains available. [See the workspace design and research](docs/design/PERSONAL_WORKSPACE.md).
 
+Sheet navigation releases closed PDFs and embedded fonts from the tile workers;
+see the [30-flip rendering check](docs/review/508/README.md).
+
 ## Start here
 
 | You are | Go here |

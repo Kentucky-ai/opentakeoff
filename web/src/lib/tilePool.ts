@@ -28,13 +28,13 @@ export interface TileRequest {
 export interface TileResult { w: number; h: number; bitmap: ImageBitmap; }
 
 type OutMsg =
-  | { type: "sheetReady"; sheetKey: string }
-  | { type: "sheetError"; sheetKey: string; message: string }
+  | { type: "sheetReady"; sheetKey: string; openId: number }
+  | { type: "sheetError"; sheetKey: string; openId: number; message: string }
   | { type: "tile"; reqId: number; sheetKey: string; w: number; h: number; bitmap: ImageBitmap }
   | { type: "tileError"; reqId: number; sheetKey: string; message: string };
 
 // Phone-class devices get a pool of ONE: the broadcast design means every
-// worker holds its own copy of the PDF bytes plus its own nested pdf.js parse,
+// worker holds its own copy of the PDF bytes plus its own in-worker pdf.js parse,
 // and on an iPhone that 3× footprint is what got the workers jetsam-killed
 // (reported live 2026-08-15: "worker failed", planset stuck half-rendered).
 // Desktop pool sizing is unchanged.
@@ -50,6 +50,7 @@ const POOL_SIZE = LOW_MEMORY_DEVICE
   : CORES >= 8 ? 5 : Math.max(1, Math.min(3, CORES - 1));
 
 interface SheetOpenState {
+  openId: number;
   promise: Promise<void>;
   resolve: () => void;
   reject: (e: Error) => void;
@@ -62,6 +63,7 @@ export function createTilePool(size = POOL_SIZE) {
   const sheetOpen = new Map<string, SheetOpenState>();
   const pending = new Map<number, { resolve: (r: TileResult) => void; reject: (e: Error) => void; workerIdx: number; timer?: ReturnType<typeof setTimeout> }>();
   let nextReqId = 1;
+  let nextOpenId = 1;
   let rrCounter = 0; // round-robins tile requests across the whole pool
   let disposed = false;
 
@@ -88,7 +90,7 @@ export function createTilePool(size = POOL_SIZE) {
     const w = ensureWorker(i);
     for (const [sheetKey, { pageNum, data }] of sheetBytes) {
       const copy = data.slice(0);
-      w.postMessage({ type: "openSheet", sheetKey, pageNum, data: copy }, [copy]);
+      w.postMessage({ type: "openSheet", sheetKey, openId: sheetOpen.get(sheetKey)!.openId, pageNum, data: copy }, [copy]);
     }
   }
 
@@ -105,18 +107,18 @@ export function createTilePool(size = POOL_SIZE) {
   function onMessage(m: OutMsg) {
     if (m.type === "sheetReady") {
       const st = sheetOpen.get(m.sheetKey);
-      if (!st || st.settled) return;
+      if (!st || st.settled || st.openId !== m.openId) return;
       st.readyCount++;
       if (st.readyCount >= size) { st.settled = true; st.resolve(); }
       return;
     }
     if (m.type === "sheetError") {
       const st = sheetOpen.get(m.sheetKey);
-      if (!st || st.settled) return;
+      if (!st || st.settled || st.openId !== m.openId) return;
       st.settled = true; st.reject(new Error(m.message));
       return;
     }
-    if (m.type === "tile") { const p = pending.get(m.reqId); if (p) { if (p.timer) clearTimeout(p.timer); p.resolve({ w: m.w, h: m.h, bitmap: m.bitmap }); } pending.delete(m.reqId); return; }
+    if (m.type === "tile") { const p = pending.get(m.reqId); if (p) { if (p.timer) clearTimeout(p.timer); p.resolve({ w: m.w, h: m.h, bitmap: m.bitmap }); } else m.bitmap.close(); pending.delete(m.reqId); return; }
     if (m.type === "tileError") { const p = pending.get(m.reqId); if (p) { if (p.timer) clearTimeout(p.timer); p.reject(new Error(m.message)); } pending.delete(m.reqId); return; }
   }
 
@@ -131,12 +133,12 @@ export function createTilePool(size = POOL_SIZE) {
     if (existing) return existing.promise;
     let resolve!: () => void, reject!: (e: Error) => void;
     const promise = new Promise<void>((res, rej) => { resolve = res; reject = rej; });
-    const st: SheetOpenState = { promise, resolve, reject, settled: false, readyCount: 0 };
+    const st: SheetOpenState = { openId: nextOpenId++, promise, resolve, reject, settled: false, readyCount: 0 };
     sheetOpen.set(sheetKey, st);
     sheetBytes?.set(sheetKey, { pageNum, data }); // pool owns `data` — retained (phone only) so a respawned worker can be re-fed
     for (let i = 0; i < size; i++) {
       const copy = data.slice(0); // independent transferable per worker
-      ensureWorker(i).postMessage({ type: "openSheet", sheetKey, pageNum, data: copy }, [copy]);
+      ensureWorker(i).postMessage({ type: "openSheet", sheetKey, openId: st.openId, pageNum, data: copy }, [copy]);
     }
     return promise;
   }
@@ -161,7 +163,9 @@ export function createTilePool(size = POOL_SIZE) {
 
   function closeSheet(sheetKey: string) {
     for (let i = 0; i < size; i++) ensureWorker(i).postMessage({ type: "closeSheet", sheetKey });
+    const st = sheetOpen.get(sheetKey);
     sheetOpen.delete(sheetKey);
+    if (st && !st.settled) { st.settled = true; st.reject(new Error("sheet closed")); }
     sheetBytes?.delete(sheetKey);
   }
 
