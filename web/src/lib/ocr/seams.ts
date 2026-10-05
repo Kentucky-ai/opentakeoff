@@ -382,8 +382,15 @@ function admit(kept: KeptLine[], word: OcrWord, src: string): void {
       if (squash(word.str).includes(squash(k.word.str))) replaced.push(k);
       continue;
     }
-    if ((inter >= 0.8 * area(b) && textHolds(k.word.str, word.str)) || iou(b, kb) >= 0.5) return;
+    if ((inter >= 0.8 * area(b) && textHolds(k.word.str, word.str)) || iou(b, kb) >= 0.5) {
+      // A duplicate must not erase another view's code-check warning.
+      if (word.codeAlternate !== undefined && k.word.codeAlternate === undefined) {
+        k.word = { ...k.word, codeAlternate: word.codeAlternate !== k.word.str ? word.codeAlternate : word.str !== k.word.str ? word.str : "" };
+      }
+      return;
+    }
   }
+  if (word.codeAlternate === undefined && replaced.some((k) => k.word.codeAlternate !== undefined)) word = { ...word, codeAlternate: "" };
   for (const k of replaced) kept.splice(kept.indexOf(k), 1);
   kept.push({ word, src });
 }
@@ -427,6 +434,7 @@ function mergeRow(a: OcrWord, b: OcrWord): OcrWord | null {
   const u = { x0: Math.min(ab.x0, bb.x0), y0: Math.min(ab.y0, bb.y0), x1: Math.max(ab.x1, bb.x1), y1: Math.max(ab.y1, bb.y1) };
   const out: OcrWord = { str, x: u.x0, y: u.y1, w: u.x1 - u.x0, h: u.y1 - u.y0 };
   if (a.confidence !== undefined && b.confidence !== undefined) out.confidence = Math.min(a.confidence, b.confidence);
+  if (a.codeAlternate !== undefined || b.codeAlternate !== undefined) out.codeAlternate = "";
   return out;
 }
 

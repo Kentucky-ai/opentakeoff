@@ -32,10 +32,11 @@ export type Rasterize = (
 ) => Promise<RegionRaster>;
 
 export interface Recognizer {
-  recognize(region: RegionRaster, opts?: { signal?: AbortSignal }): Promise<OcrWord[]>;
+  recognize(region: RegionRaster & { verifyCodes?: boolean }, opts?: { signal?: AbortSignal }): Promise<OcrWord[]>;
 }
 
 export interface RegionReadOptions {
+  verifyCodes?: boolean;
   signal?: AbortSignal;
   /** after planning and after every raster read; see SeamProgress */
   onProgress?: (p: SeamProgress) => void;
@@ -103,7 +104,7 @@ export async function readRegionText(page: PageLike, rs: number, rect: Rect, opt
       throw new Error(`${job.kind} ${job.index} rendered at zoom ${raster.geometry.zoom}, planned ${job.zoom}`);
     }
     checkAbort(signal);
-    const words = await client.recognize(raster, { signal });
+    const words = await client.recognize(opts.verifyCodes ? { ...raster, verifyCodes: true } : raster, { signal });
     checkAbort(signal);
     run.accept(job, words);
     rasters++;

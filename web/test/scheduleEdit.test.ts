@@ -177,7 +177,7 @@ test("closeOnEscape: other keys are ignored; a missing onClose is safe", () => {
 // share: the highest rank, ties to the first row. The dialog ranks a row read
 // today (2) above a row only the newer rules read (1), and both above a row the
 // schedule marks NOT USED (0). An in-use code is still in use, whatever its rank.
-import { groupState, groupToggle, skippedSummary, skippedBanner, skippedNote } from "../src/lib/scheduleEdit.js";
+import { groupClickable, groupState, groupToggle, skippedSummary, skippedBanner, skippedNote } from "../src/lib/scheduleEdit.js";
 
 test("groupState: all / some / none over the pickable rows", () => {
   const keys = ["a", "b", "c"];
@@ -205,6 +205,25 @@ test("groupToggle: all → none (even with a locked row); some / none → every 
   // returns a new set
   const s = new Set<string>();
   assert.notEqual(groupToggle(s, keys, canPick), s);
+});
+
+test("scanned rows ticked by hand show on the group box, and a group click clears them (#511 review)", () => {
+  const keys = ["a", "b", "c"];
+  const canPick = () => true;
+  const none = () => false;                      // every row is a scanned code awaiting review
+  const all = new Set(["a", "b", "c"]);
+  assert.equal(groupState(all, keys, canPick), "all");
+  assert.equal(groupClickable(all, keys, canPick, none), true);
+  assert.deepEqual([...groupToggle(all, keys, canPick, none)], []);
+  // some ticked by hand: still shown, and a click clears rather than doing nothing
+  assert.equal(groupState(new Set(["a"]), keys, canPick), "some");
+  assert.deepEqual([...groupToggle(new Set(["a", "z"]), keys, canPick, none)], ["z"]);
+  // nothing ticked and nothing a click may tick: the box is disabled
+  assert.equal(groupClickable(new Set(), keys, canPick, none), false);
+  // a mixed group ticks its bulk rows first, then clears
+  const bulk = (k: string) => k !== "c";
+  assert.deepEqual([...groupToggle(new Set(["c"]), keys, canPick, bulk)].sort(), ["a", "b", "c"]);
+  assert.deepEqual([...groupToggle(new Set(["a", "b", "c"]), keys, canPick, bulk)], []);
 });
 
 test("Select all (setPicked on every row) picks NOT USED rows", () => {

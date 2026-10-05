@@ -40,7 +40,13 @@ const core = createOcrCore({
     // 12.7 MB for the engine's life. Left alone: clearing them means
     // editing ppu's private state.
     // detector, recognitor and options are protected in ppu's types.
-    return splitRecognizer(svc as unknown as PpuServiceInternals);
+    return splitRecognizer(svc as unknown as PpuServiceInternals, (source, box) => {
+      const crop = new OffscreenCanvas(Math.max(1, Math.ceil(box.width * 2)), Math.max(1, Math.ceil(box.height)));
+      const ctx = crop.getContext("2d");
+      if (!ctx) throw new Error("no 2d context for code check");
+      ctx.drawImage(source as OffscreenCanvas, box.x, box.y, box.width, box.height, 0, 0, crop.width, crop.height);
+      return crop;
+    });
   },
   makeCanvas: (rgba, width, height) => {
     const canvas = new OffscreenCanvas(width, height);

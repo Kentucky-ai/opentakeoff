@@ -109,8 +109,21 @@ export function groupState(picked: Set<string>, keys: string[], canPick: (key: s
 // Clicking a group's checkbox: an "all" group clears every row in it (a stale
 // pick on a locked row too); any other state picks every pickable row,
 // NOT USED rows included. Returns a NEW set.
-export function groupToggle(picked: Set<string>, keys: string[], canPick: (key: string) => boolean): Set<string> {
-  return groupState(picked, keys, canPick) === "all" ? setPicked(picked, keys, canPick, false) : setPicked(picked, keys, canPick, true);
+// `canBulkPick`: rows a group click may tick, when some pickable rows are
+// ticked only one at a time (a scanned code waits for its own review, #500).
+// The click ticks every such row still unticked; when there is none left, it
+// clears the group, so hand-ticked rows can be cleared together (#511 review).
+// Show the box with groupState over `canPick`: what is ticked, not what a
+// click may tick.
+export function groupToggle(picked: Set<string>, keys: string[], canPick: (key: string) => boolean, canBulkPick: (key: string) => boolean = canPick): Set<string> {
+  if (canBulkPick === canPick) return groupState(picked, keys, canPick) === "all" ? setPicked(picked, keys, canPick, false) : setPicked(picked, keys, canPick, true);
+  const more = keys.some((k) => canBulkPick(k) && !picked.has(k));
+  return more ? setPicked(picked, keys, canBulkPick, true) : setPicked(picked, keys, canPick, false);
+}
+
+// A group's checkbox can be clicked when a click would tick a row or clear one.
+export function groupClickable(picked: Set<string>, keys: string[], canPick: (key: string) => boolean, canBulkPick: (key: string) => boolean = canPick): boolean {
+  return keys.some(canBulkPick) || keys.some((k) => canPick(k) && picked.has(k));
 }
 
 // Codes the reader saw but didn't read (ScheduleRead.skipped: four- or
@@ -176,4 +189,10 @@ export function closeOnEscape(e: EscapeEvent, onClose?: () => void): boolean {
 // has nothing left to say and hides.
 export function readAsShown(row: { finish_tag: string; read_as?: string }, editedTag: string): boolean {
   return !!row.read_as && normalizeTag(editedTag) === row.finish_tag;
+}
+
+/** Editing a code is an explicit correction. Until then, a scanned identity
+ * stays visible (agreement is not proof of correctness) and bulk selection leaves the row for individual review. */
+export function codeCheckShown(row: { finish_tag: string; ocr_code?: true; code_checks?: { first: string; second: string }[] }, editedTag: string): boolean {
+  return !!(row.ocr_code || row.code_checks?.length) && normalizeTag(editedTag) === normalizeTag(row.finish_tag);
 }

@@ -60,7 +60,7 @@ export type OcrReady =
 
 export interface OcrProgress { loaded: number; total: number; pct: number }
 
-export interface OcrRegion { rgba: Uint8ClampedArray; width: number; height: number; geometry: RenderGeometry }
+export interface OcrRegion { rgba: Uint8ClampedArray; width: number; height: number; geometry: RenderGeometry; verifyCodes?: boolean }
 
 /** The Worker surface the client uses; a test injects a fake. */
 export interface WorkerLike {
@@ -549,7 +549,7 @@ export function createOcrClient(deps: OcrClientDeps = {}) {
       running = job;
       const { rgba, width, height, geometry } = job.region;
       try {
-        worker.postMessage({ type: "recognize", id: job.id, rgba, width, height, geometry }, [rgba.buffer]);
+        worker.postMessage({ type: "recognize", id: job.id, rgba, width, height, geometry, ...(job.region.verifyCodes ? { verifyCodes: true } : {}) }, [rgba.buffer]);
       } catch (err) {
         // A buffer detached after the job was queued (sent elsewhere) throws
         // DataCloneError. Fail that read and move on; left running, it would

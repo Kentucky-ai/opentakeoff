@@ -400,3 +400,32 @@ test("after the existing condition is renamed to its printed suffix, re-import i
   assert.doesNotMatch(html, /check existing|Some codes may already exist without parentheses/);
   assert.match(html, /Create 0 conditions/);
 });
+
+test("OCR disagreement and historical identity holds coexist without hiding either notice or enabling duplicate creation", () => {
+  const html = renderWith({ rows: [
+    { ...row("G-01(C)", "floor", "heading"), code_checks: [{ first: "G-01(C)", second: "G-01C" }] },
+    { ...row("S-2", "floor", "heading"), code_checks: [{ first: "S-2", second: "SS-2" }] },
+    row("PT-1", "floor", "heading"),
+  ], existing: new Set(["G-01C"]), skipped: ["EPOX"] });
+  const held = rowOf(html, "G-01(C)");
+  assert.match(held, /check existing G-01C/);
+  assert.match(held, /Check code: G-01\(C\) \/ G-01C/);
+  assert.match(checkboxOf(held), /disabled/);
+  assert.doesNotMatch(checkboxOf(held), /checked/);
+  const uncertain = rowOf(html, "S-2");
+  assert.doesNotMatch(checkboxOf(uncertain), /checked|disabled/);
+  const warningId = checkboxOf(uncertain).match(/aria-describedby="([^"]+)"/)![1];
+  assert.ok(html.includes(`id="${warningId}"`));
+  assert.match(checkboxOf(rowOf(html, "PT-1")), /checked/);
+  assert.match(html, /Create 1 condition</);
+  const ids = html.match(/role="dialog"[^>]*aria-describedby="([^"]+)"/)![1].split(" ");
+  assert.equal(new Set(ids).size, 3);
+  for (const id of ids) assert.ok(html.includes(`role="note" id="${id}"`));
+});
+
+test("an unconfirmed second read remains visible and unchecked even when every row was suggested", () => {
+  const html = renderWith({ rows: [{ ...row("P1", "floor", "heading"), code_checks: [{ first: "P1", second: "" }] }] });
+  assert.match(html, /Check code: P1 \/ second read did not confirm/);
+  assert.doesNotMatch(checkboxOf(rowOf(html, "P1")), /checked|disabled/);
+  assert.match(html, /Create 0 conditions/);
+});

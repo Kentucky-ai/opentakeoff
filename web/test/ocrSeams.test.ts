@@ -197,6 +197,24 @@ test("reads that round a line's centre onto both sides of the boundary keep it o
   assert.equal(a.kept.length, 1);
 });
 
+test("a discarded duplicate cannot erase a code disagreement", () => {
+  const primary = word("S-2", 970, 200, 1010, 210);
+  const disputed = { ...primary, codeAlternate: "SS-2" };
+  const a = assignLines(twoCols(), [[primary], [disputed]]);
+  assert.equal(a.kept.length, 1);
+  assert.equal(a.kept[0].word.str, "S-2");
+  assert.equal(a.kept[0].word.codeAlternate, "SS-2");
+});
+
+test("a merged line retains an unresolved code warning without reusing a fragment's alternate", () => {
+  const left = { ...word("PATCH FINISHES THIS AREA", 935, 400, 1055, 410), codeAlternate: "PATCH" };
+  const right = word("TCH FINISHES THIS AREA TO MATCH", 945, 400.5, 1100, 410.5);
+  const a = assignLines(twoCols(), [[left], [right]]);
+  assert.equal(a.kept.length, 1);
+  assert.equal(a.kept[0].word.str, "PATCH FINISHES THIS AREA TO MATCH");
+  assert.equal(a.kept[0].word.codeAlternate, "");
+});
+
 test("two distinct lines from one read are both kept, however much they overlap", () => {
   const plan = twoCols();
   const a = assignLines(plan, [[word("A", 100, 100, 200, 110), word("B", 100, 101, 200, 111)], []]);
