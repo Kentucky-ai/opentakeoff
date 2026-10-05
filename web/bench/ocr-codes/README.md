@@ -10,6 +10,14 @@ This is a selected stress set, not an estimate of accuracy on real plans. It doe
 not reproduce the exact private `P1 → P` image. It reproduces the failure class
 with public images, including `SS-2 → S-2`, `SS-3 → S-3` and `P-1 → P.1`.
 
+These images stand in for **scanned** sheets specifically. On-device reads of a
+PDF render at 216 DPI (`OCR_TARGET_DPI`, `web/src/lib/ocr/rasterize.ts`), and
+three of these images are 100 DPI. In a review of #509, @knmurphy re-rendered
+them at 216 DPI with the same generator: the `SS-2 → S-2` and `SS-3 → S-3`
+drops went away and the Avenir image kept two hyphen-to-period errors. Upscaled
+from 100 to 216 DPI without smoothing, the way a low-resolution scan comes in,
+several confident misreads came back. Not re-measured here.
+
 ## Measured baseline
 
 Measured October 3, 2026 from main `788e39bf`, ppu-paddle-ocr 6.6.0,
@@ -188,6 +196,11 @@ regressions below to reproduce the failure classes.
 216 DPI. Font families, weights, dimensions and row rectangles are recorded
 in the truth JSON. Only raster output is distributed. Tests read these frozen
 images and need no OS fonts.
+
+The generator draws each family at the weight it asks for only when the OS
+font provides that face. On macOS, `@napi-rs/canvas` finds only the bold (700)
+face of Avenir Next Condensed, so the image labelled 400 renders bold
+(reported in the #509 review).
 
 ```sh
 # Requires the listed fonts, macOS canvas rendering used for the baseline.
