@@ -10,7 +10,7 @@ import { CANVAS_EDGE, FLOAT_GAP } from "../src/lib/canvasConstants.js";
 import type { PageReadView } from "../src/lib/ocr/pageRead.ts";
 
 type El = { type: unknown; props: Record<string, unknown> & { children?: unknown } };
-type Row = { key: string; label: string; view: PageReadView };
+type Row = { key: string; label: string; view: PageReadView; what?: "page" | "picture" };
 
 function walk(node: unknown, out: El[] = []): El[] {
   if (Array.isArray(node)) { for (const n of node) walk(n, out); return out; }
@@ -48,6 +48,21 @@ test("a sheet with no text layer offers Read page text", () => {
   t.press("Read page text");
   assert.deepEqual(t.calls, ["read a.pdf"]);
   assert.ok(!t.html.includes("A-1"), "one sheet: no label");
+});
+
+test("a hybrid's row offers Read picture text; a scan's keeps Read page text (#489)", () => {
+  const t = setup([
+    { key: "h.pdf", label: "A-1", view: { kind: "read" }, what: "picture" },
+    { key: "s.pdf", label: "S-1", view: { kind: "read" }, what: "page" },
+  ]);
+  assert.deepEqual(t.buttons.map(text), ["Read picture text", "Read page text"]);
+  t.press("Read picture text");
+  assert.deepEqual(t.calls, ["read h.pdf"]);
+});
+
+test("the group is named for both kinds it reads", () => {
+  const t = setup([{ key: "a.pdf", label: "A-1", view: { kind: "read" } }]);
+  assert.match(t.html, /role="group" aria-label="Read text from scans and pictures"/);
 });
 
 test("a failure note shows beside Read", () => {

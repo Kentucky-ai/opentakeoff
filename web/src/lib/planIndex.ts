@@ -12,6 +12,7 @@
 //
 import { parseSheetKey, compareSheetKeys } from "./sheetKey";
 import { assembleLines } from "./textlines";
+import { STRAY_TEXT_MAX } from "./strayText";
 
 // The index is deliberately SOURCE-TAGGED. A vector sheet's text layer is
 // exact; OCR text is approximate, with misreads and junk mixed in. Both are
@@ -32,6 +33,9 @@ export interface IndexedTextItem {
 }
 
 export type IndexSource = "text" | "ocr";
+
+/** A rect in points at viewport scale 1, top-left origin (pictures.ts). */
+export type Rect = { x0: number; y0: number; x1: number; y1: number };
 
 /** A sheet's built index — plain data (a Record, no Map/Set). */
 export interface SheetIndex {
@@ -55,10 +59,22 @@ export interface SheetIndex {
    *  (planSearch seedFromThumb), not from reading the page: any real text
    *  pass replaces it, and the indexing walks treat it as not indexed. */
   seeded?: true;
-  /** on an OCR entry of a scan: the text layer's own terms (its stamp,
-   *  scanner label), folded into `terms` and kept here so a later read of
-   *  the same sheet folds them in again (planSearch putSheetIndex). */
+  /** on an OCR entry: the text layer's own terms (a scan's stamp or
+   *  scanner label; on a hybrid, the whole text layer), folded into `terms`
+   *  and kept here so a later read of the same sheet folds them in again,
+   *  and so a hit on them is badged text (planSearch putSheetIndex,
+   *  searchPlan). */
   stray?: Record<string, number>;
+  /** whether the page has a text layer, as a text pass found it (true when
+   *  the pass wasn't indexIsScanLike) or a thumbnail record said. Set by
+   *  text passes and seeds only; an OCR entry has it only when carried from
+   *  the sheet's text entry or seed (planSearch putSheetIndex). Unset: a
+   *  text entry asks the line rule, an OCR entry counts as a scan (isScan). */
+  textLayer?: boolean;
+  /** the page's unread pictures (pictures.ts), rects in pt at scale 1:
+   *  undefined = not measured; "failed" = the op list couldn't be read
+   *  (treated as none, never measured again); a scan stores []. */
+  pictures?: Rect[] | "failed";
 }
 
 /** Shortest plain word that earns a slot. Below this, tokens are list numbering
@@ -154,24 +170,38 @@ export function carriesText(items: readonly IndexedTextItem[]): boolean {
 /** A page whose text layer has at most this many lines of text is a scan.
  *  A scanned page often carries a little stray text — a scanner label, a
  *  stamp, a typed title-block field — while a vector sheet carries dozens to
- *  hundreds of runs (~1k on demo/sample-finish-plan.pdf).
- *  Provenance: the 8 is borrowed, not measured on pages. The schedule-OCR
- *  prototype (STRAY_TEXT_MAX_TOKENS on claude/browser-ocr-library-f3le2q)
- *  chose it for routing a marquee REGION by its run count, and reproduced
- *  the failure there with one inserted run; no page-level corpus has tested
- *  it. If both land, one should import the other. */
-export const SCAN_MAX_TEXT_LINES = 8;
+ *  hundreds of runs (~1k on demo/sample-finish-plan.pdf). The limit is
+ *  strayText.ts STRAY_TEXT_MAX, shared with unread pictures and Import from
+ *  schedule's box; its provenance is there. */
+export const SCAN_MAX_TEXT_LINES = STRAY_TEXT_MAX;
 
 /** THE scan rule (#471): a page is a scan when its text layer has at most
  *  SCAN_MAX_TEXT_LINES lines of text (lineCount; blank and punctuation-only
  *  runs not counted, so a page with no text layer at all is one too).
- *  Search's unread count and Read page text (canvas and gallery) ask this;
- *  Copy text asks it too, and also needs the page to hold an image
- *  (copyText copyIsScanLike).
+ *  Search's unread count and Read page text (canvas and gallery) ask it
+ *  through isScan, which prefers a text pass's recorded answer; Copy text
+ *  asks it too, and also needs the page to hold an image (copyText
+ *  copyIsScanLike).
  *  Lines, not runs or tokens: a stamp or a typed field is one line however
  *  many words it holds or runs it was drawn in. */
 export function indexIsScanLike(ix: SheetIndex): boolean {
   return ix.lineCount <= SCAN_MAX_TEXT_LINES;
+}
+
+/** Is this sheet a scan, read whole? The text pass's own answer when it
+ *  recorded one (a hybrid's seed has no terms but is no scan). With none: a
+ *  text entry by the line rule; an OCR entry is a scan (its line count is
+ *  the read's, not the text layer's, and a read was always of a scan before
+ *  #489). Every "is it a scan" question about an index entry asks this. */
+export function isScan(ix: SheetIndex): boolean {
+  if (ix.textLayer !== undefined) return !ix.textLayer;
+  return ix.source === "ocr" || indexIsScanLike(ix);
+}
+
+/** A hybrid (#489): a sheet with a text layer and at least one unread
+ *  picture on it, whose read covers only the pictures. */
+export function isHybrid(ix: SheetIndex): boolean {
+  return !isScan(ix) && Array.isArray(ix.pictures) && ix.pictures.length > 0;
 }
 
 /** Build one sheet's index from its text runs. */
@@ -211,6 +241,8 @@ function countLines(runs: readonly IndexedTextItem[]): number {
 /** One sheet that matched, and what it matched on. */
 export interface SheetHit {
   key: string;
+  /** where THIS hit's terms came from, not only the entry's source: see
+   *  searchPlan */
   source: IndexSource;
   score: number;
   /** the index term each KEPT query token matched, in query order (not
@@ -258,6 +290,13 @@ export function matchTerm(index: SheetIndex, token: string, digitExtend = false)
  *
  *  Order: every text-layer hit before every OCR hit, whatever the scores — a
  *  text-layer match is read from the PDF, an OCR one is recognized from pixels.
+ *  A hit on a hybrid's read (an OCR entry whose sheet has a text layer, #489)
+ *  is a text-layer hit when every term it matched is one of the text layer's
+ *  own (`stray`), so a code the sheet prints in vector text isn't badged OCR
+ *  because a picture beside it was read. A scan's read stays OCR throughout.
+ *  Limit: a prefix ("CPT") is judged by the term it matched best, so it
+ *  badges OCR when that term is the picture's, though another the prefix
+ *  matches is on the text layer.
  *  Within each, by score, which favours an exact term hit over a prefix one
  *  (×4), a code over prose (×2 — someone typing CPT-1 wants the finish plan,
  *  not the note that mentions it), and more occurrences on the sheet. Ties
@@ -288,7 +327,9 @@ export function searchPlan(indexes: Iterable<SheetIndex>, query: string): SheetH
       matched.push(bestTerm);
     }
     if (!ok) continue;
-    hits.push({ key: index.key, source: index.source, score, matched });
+    const stray = index.stray;
+    const textOnly = index.source === "ocr" && index.textLayer === true && !!stray && matched.every((t) => (stray[t] ?? 0) > 0);
+    hits.push({ key: index.key, source: textOnly ? "text" : index.source, score, matched });
   }
   const ocr = (h: SheetHit) => (h.source === "ocr" ? 1 : 0);
   // Ties break on the repo's CANONICAL sheet order, not a raw string compare:
