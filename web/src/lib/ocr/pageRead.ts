@@ -2,12 +2,16 @@
 // Read page text and the gallery's card Read go through.
 //
 //   readPageText   one read: the page cache first (a hit opens no page and
-//                  asks no consent), else the page is opened (a page past
-//                  the tile cap is refused here, before consent), then
-//                  session.run → readRegionText over the full page at rs,
-//                  stored in the cache under the hash of the document the
-//                  page came from when the model rev is known. Every outcome
-//                  is one typed result the UI can say.
+//                  asks no consent), then the caller's plan (#489; planSearch
+//                  readPlanOf, from the sheet's index entry — the read never
+//                  measures the page): a scan is read whole (with no plan,
+//                  exactly as before #489), a vector sheet only its pictures
+//                  (one region read each), and one with none is not read
+//                  (no-picture, no page opened). Anything past the tile cap
+//                  is refused here, before consent; then session.run →
+//                  readRegionText at rs, stored in the cache under the hash
+//                  of the document the page came from when the model rev is
+//                  known. Every outcome is one typed result the UI can say.
 //   createPageReader   the controller over it: one read per page at a time
 //                  (a second request joins the running one), and one engine
 //                  read at a time across all pages: each waits for the one
@@ -39,9 +43,10 @@
 // restart does). Known limit: the deadline counts only visible time, so a
 // hang in a background tab is bounded only once the tab is shown again.
 //
-// Pure: the session, cache, region reader and page are injected. The
-// default region reader imports regionRead.ts on first use, so the page that
-// imports this carries no rasterizer or seam code until a read starts.
+// Pure: the session, cache, region reader and page are injected, and the
+// plan is the caller's. The default region reader imports regionRead.ts on
+// first use, so the page that imports this carries no rasterizer or seam
+// code until a read starts.
 import type { OcrSession, OcrRunResult } from "./session";
 import type { CachedLine, PageCacheHit } from "./pageCache";
 import type { RegionReadResult } from "./regionRead";
@@ -65,17 +70,30 @@ const defaultReadRegion: ReadRegion = async (page, rs, rect, opts) =>
 /** Whether a read of `rect` would pass the tile cap (regionRead's check). */
 export type TooLarge = (rect: Rect, rs: number) => boolean | Promise<boolean>;
 const defaultTooLarge: TooLarge = async (rect, rs) => (await import("./regionRead")).readTooLarge(rect, rs);
-const TOO_LARGE = "This page is too large for the on-device text reader (OCR).";
+/** What a read reads: a scan's page, or a vector sheet's pictures. */
+type Noun = "page" | "picture";
+const tooLargeText = (what: Noun) => `This ${what} is too large for the on-device text reader (OCR).`;
+const NO_PICTURE = "No picture on this sheet to read.";
+
+/** What to read on a page (#489), rects in px at rs: a scan's whole page, a
+ * vector sheet's unread pictures, or nothing (a vector sheet with none; a
+ * pictures plan with no rects is the same). The caller's (planSearch
+ * readPlanOf). */
+export type ReadPlan = { kind: "scan" } | { kind: "pictures"; rects: readonly Rect[] } | { kind: "none" };
 
 /** Why a read gave no text. page-closed: the document went away mid-read
- * (the file was closed or revised). too-large: past the tile cap. */
-export type ReadFailure = "declined" | "aborted" | "page-closed" | "failed" | "disabled" | "uninstalled" | "error" | "too-large";
+ * (the file was closed or revised). too-large: past the tile cap.
+ * no-picture: a vector sheet with no picture to read (#489). */
+export type ReadFailure = "declined" | "aborted" | "page-closed" | "failed" | "disabled" | "uninstalled" | "error" | "too-large" | "no-picture";
+/** The failures a run (or its size check) can end in. */
+type RunFailure = Exclude<ReadFailure, "no-picture">;
 
 export type PageReadResult =
   /** rev: the model rev that read it, when known; saved: false when the
    * cache refused to keep it */
   | { ok: true; lines: CachedLine[]; ms: number; rasters: number; source: "ocr"; stale: boolean; cached: boolean; rev: string | null; saved?: false }
-  | { ok: false; status: ReadFailure; message?: string };
+  /** what: "picture" when it was a read of a vector sheet's pictures */
+  | { ok: false; status: ReadFailure; message?: string; what?: "picture" };
 
 /** One sheet's read state, for the UI. No status: never read or looked up
  * this session (or dropped since). */
@@ -84,12 +102,12 @@ export type PageReadStatus =
   | { state: "reading"; progress: SeamProgress | null }
   | { state: "stopping" }
   | { state: "done"; ms: number; rasters: number; stale: boolean; cached: boolean }
-  | { state: ReadFailure; message?: string };
+  | { state: ReadFailure; message?: string; what?: "picture" };
 
 /** The cache surface a read uses (pageCache.ts). */
 export interface ReadCache {
-  get(hash: string | null | undefined, page: number, o: { rs: number; rev?: string | null }): Promise<PageCacheHit | null>;
-  put(hash: string | null | undefined, page: number, read: { rev: string; rs: number; lines: CachedLine[]; ms: number; rasters: number }): Promise<void>;
+  get(hash: string | null | undefined, page: number, o: { rs: number; rev?: string | null; expect?: "pictures" }): Promise<PageCacheHit | null>;
+  put(hash: string | null | undefined, page: number, read: { rev: string; rs: number; lines: CachedLine[]; ms: number; rasters: number; pictures?: boolean }): Promise<void>;
 }
 
 export type ReadSession = Pick<OcrSession, "run" | "availability">;
@@ -112,6 +130,10 @@ export interface ReadPageArgs {
   cache: ReadCache;
   readRegion?: ReadRegion;
   tooLarge?: TooLarge;
+  /** what to read (planSearch readPlanOf); left out: the whole page, as
+   * before #489. A pictures plan also means a cached read without pp (a
+   * whole-page read) isn't this sheet's read (expectOf). */
+  plan?: ReadPlan;
   /** skip the cache lookup (Read again) */
   force?: boolean;
   signal?: AbortSignal;
@@ -136,8 +158,8 @@ async function hashOf(pdfHash: () => Promise<string | null>): Promise<string | n
   try { return (await pdfHash()) ?? null; } catch { return null; }
 }
 
-async function cacheGet(cache: ReadCache, hash: string, page: number, rs: number, rev: string | null): Promise<PageCacheHit | null> {
-  try { return await cache.get(hash, page, { rs, rev }); } catch { return null; }
+async function cacheGet(cache: ReadCache, hash: string, page: number, rs: number, rev: string | null, expect?: "pictures"): Promise<PageCacheHit | null> {
+  try { return await cache.get(hash, page, { rs, rev, expect }); } catch { return null; }
 }
 
 /** A seam line as the cache stores it: the OcrWord fields and the clipped
@@ -152,31 +174,72 @@ function toCached(l: SeamLine): CachedLine {
 
 const messageOf = (e: unknown): string => (e instanceof Error || e instanceof DOMException ? e.message : String(e));
 
+type RunFailed = { ok: false; status: RunFailure; message?: string };
+
 /** A failed session run as a read failure. A task error that is an
  * AbortError the caller didn't ask for is the page going away. */
-function failureOf(r: Exclude<OcrRunResult<unknown>, { ok: true }>): Extract<PageReadResult, { ok: false }> {
-  if (r.reason === "failed") return thrownFailure(r.error);
+function failureOf(r: Exclude<OcrRunResult<unknown>, { ok: true }>, what: Noun = "page"): RunFailed {
+  if (r.reason === "failed") return thrownFailure(r.error, what);
   if (r.reason === "error") return { ok: false, status: "error", message: r.message };
   return { ok: false, status: r.reason };
 }
 
 /** A task's (or getPage's) error as a read failure. */
-function thrownFailure(error: unknown): Extract<PageReadResult, { ok: false }> {
+function thrownFailure(error: unknown, what: Noun = "page"): RunFailed {
   const name = (error as { name?: string } | null)?.name;
-  if (name === "PageTooLargeError") return { ok: false, status: "too-large", message: TOO_LARGE };
+  if (name === "PageTooLargeError") return { ok: false, status: "too-large", message: tooLargeText(what) };
   return { ok: false, status: name === "AbortError" ? "page-closed" : "failed", message: messageOf(error) };
 }
 
 /** The size check: a refusal or failure as a read failure, else null. A
  * check that throws (the reader's code didn't load) is a failed read. */
-async function checkSize(tooLarge: TooLarge | undefined, rect: Rect, rs: number): Promise<Extract<PageReadResult, { ok: false }> | null> {
+async function checkSize(tooLarge: TooLarge | undefined, rect: Rect, rs: number, what: Noun = "page"): Promise<RunFailed | null> {
   try {
-    return (await (tooLarge ?? defaultTooLarge)(rect, rs)) ? { ok: false, status: "too-large", message: TOO_LARGE } : null;
+    return (await (tooLarge ?? defaultTooLarge)(rect, rs)) ? { ok: false, status: "too-large", message: tooLargeText(what) } : null;
   } catch (e) {
     return { ok: false, status: "failed", message: messageOf(e) };
   }
 }
 
+/** A pictures read's failure, marked so the UI says "picture". */
+const asPicture = (f: RunFailed): Extract<PageReadResult, { ok: false }> => ({ ...f, what: "picture" });
+
+/** Read each rect in turn (one session task) as one read: lines in rect
+ * order, ms and rasters summed. Progress is each region's own phase, with
+ * done and total summed over the regions read so far in that phase (a
+ * finished region adds its last total for each phase it reached), and the
+ * raster counts likewise; so a later region's tiles count on from the
+ * earlier ones' ("Reading tiles 3/5" as the second picture starts). */
+async function readRects(readRegion: ReadRegion, pg: PageLike, rs: number, rects: readonly Rect[], signal: AbortSignal | undefined, onProgress?: (p: SeamProgress) => void): Promise<RegionReadResult> {
+  const out: RegionReadResult = { lines: [], ms: 0, rasters: 0 };
+  const base = { tiles: 0, seams: 0, rastersDone: 0, rastersPlanned: 0 };
+  for (const rect of rects) {
+    // a Cancel that landed while the last picture was read: the rest aren't
+    if (signal?.aborted) throw abortError();
+    const last: { tiles?: number; seams?: number; p?: SeamProgress } = {};
+    const r = await readRegion(pg, rs, rect, {
+      signal,
+      onProgress: onProgress && ((p) => {
+        last[p.phase] = p.total;
+        last.p = p;
+        onProgress({ phase: p.phase, done: base[p.phase] + p.done, total: base[p.phase] + p.total, rastersDone: base.rastersDone + p.rastersDone, rastersPlanned: base.rastersPlanned + p.rastersPlanned });
+      }),
+    });
+    out.lines.push(...r.lines);
+    out.ms += r.ms;
+    out.rasters += r.rasters;
+    base.tiles += last.tiles ?? 0;
+    base.seams += last.seams ?? 0;
+    base.rastersDone += last.p?.rastersDone ?? 0;
+    base.rastersPlanned += last.p?.rastersPlanned ?? 0;
+  }
+  return out;
+}
+
+const SCAN: ReadPlan = { kind: "scan" };
+/** What the cache must hold for a read under `plan`: a pictures read for a
+ * pictures plan (pageCache get's expect), anything otherwise. */
+const expectOf = (plan: ReadPlan | undefined): "pictures" | undefined => (plan?.kind === "pictures" ? "pictures" : undefined);
 const ABORTED: PageReadResult = { ok: false, status: "aborted" };
 const ABORTED_BOX: BoxReadResult = { ok: false, status: "aborted" };
 
@@ -190,10 +253,13 @@ export async function readPageText(a: ReadPageArgs): Promise<PageReadResult> {
   if (signal?.aborted) return ABORTED;
   const hash = await hashOf(a.pdfHash);
   if (signal?.aborted) return ABORTED;
-  const lookUp = async (h: string | null) => (h && !a.force ? cacheGet(cache, h, page, rs, await revOf(session)) : null);
+  const lookUp = async (h: string | null) => (h && !a.force ? cacheGet(cache, h, page, rs, await revOf(session), expectOf(a.plan)) : null);
   let hit = await lookUp(hash);
   if (signal?.aborted) return ABORTED;
   if (hit) return hitResult(hit);
+  // No whole-page read of a vector sheet, ever: its pictures, or nothing.
+  const plan = a.plan ?? SCAN;
+  if (plan.kind === "none" || (plan.kind === "pictures" && !plan.rects.length)) return { ok: false, status: "no-picture", message: NO_PICTURE };
   let pg: PageLike;
   try { pg = await a.getPage(); } catch (e) { return signal?.aborted ? ABORTED : thrownFailure(e); }
   if (signal?.aborted) return ABORTED;
@@ -205,15 +271,25 @@ export async function readPageText(a: ReadPageArgs): Promise<PageReadResult> {
     if (signal?.aborted) return ABORTED;
     if (hit) return hitResult(hit);
   }
-  const vp = pg.getViewport({ scale: rs });
-  const rect = { x0: 0, y0: 0, x1: vp.width, y1: vp.height };
-  const big = await checkSize(a.tooLarge, rect, rs);
-  if (big) return big;
+  const pictures = plan.kind === "pictures";
+  const said = (f: RunFailed): Extract<PageReadResult, { ok: false }> => (pictures ? asPicture(f) : f);
+  let rects: readonly Rect[];
+  if (plan.kind === "pictures") rects = plan.rects;
+  else {
+    const vp = pg.getViewport({ scale: rs });
+    rects = [{ x0: 0, y0: 0, x1: vp.width, y1: vp.height }];
+  }
+  for (const rect of rects) {
+    const big = await checkSize(a.tooLarge, rect, rs, pictures ? "picture" : "page");
+    if (big) return said(big);
+  }
   const r = await session.run(async (sig) => {
     await a.before?.(sig);
-    return readRegion(pg, rs, rect, { signal: sig, onProgress: a.onProgress });
+    return pictures
+      ? readRects(readRegion, pg, rs, rects, sig, a.onProgress)
+      : readRegion(pg, rs, rects[0], { signal: sig, onProgress: a.onProgress });
   }, { signal });
-  if (!r.ok) return failureOf(r);
+  if (!r.ok) return said(failureOf(r, pictures ? "picture" : "page"));
   const lines = r.value.lines.map(toCached).filter((l) => l.str);
   const { ms, rasters } = r.value;
   // The engine just started, so the probe has its manifest; without a rev an
@@ -221,7 +297,7 @@ export async function readPageText(a: ReadPageArgs): Promise<PageReadResult> {
   const rev = await revOf(session);
   const out: PageReadResult = { ok: true, lines, ms, rasters, source: "ocr", stale: false, cached: false, rev };
   if (putHash && rev) {
-    try { await cache.put(putHash, page, { rev, rs, lines, ms, rasters }); } catch (e) {
+    try { await cache.put(putHash, page, pictures ? { rev, rs, lines, ms, rasters, pictures } : { rev, rs, lines, ms, rasters }); } catch (e) {
       // the read still stands; it just won't be there after a reload
       console.warn("OCR cache: couldn't save page read", e);
       out.saved = false;
@@ -243,6 +319,8 @@ export interface PageReadRequest {
   /** the hash only if the store has it without fetching or reading bytes
    * (lookup's `known` option); null when it doesn't */
   pdfHashIfKnown?: () => Promise<string | null> | string | null;
+  /** readPageText's plan; lookup asks the cache for what it expects too */
+  plan?: ReadPlan;
   force?: boolean;
   signal?: AbortSignal;
   onProgress?: (p: SeamProgress) => void;
@@ -274,7 +352,7 @@ export interface BoxReadRequest {
 
 export type BoxReadResult =
   | { ok: true; lines: SeamLine[]; ms: number; rasters: number }
-  | { ok: false; status: ReadFailure; message?: string };
+  | { ok: false; status: RunFailure; message?: string };
 
 /** A read's status that shows a Cancel (or Stopping…) row. */
 export interface ActiveRead { key: string; status: Extract<PageReadStatus, { state: "reading" | "stopping" }> }
@@ -282,7 +360,7 @@ export interface ActiveRead { key: string; status: Extract<PageReadStatus, { sta
 export interface PageReader {
   /** Read a sheet (cache first unless force). A read of a sheet already
    * being read returns that read's promise; its own signal, onProgress and
-   * force are not used. Never rejects. */
+   * force (nor its plan) are not used. Never rejects. */
   read(req: PageReadRequest): Promise<PageReadResult>;
   /** The cache alone: a hit goes to onLines and shows done. Asked once per
    * sheet until its file is dropped (a finished read is the answer from
@@ -391,7 +469,7 @@ export function createPageReader(deps: PageReaderDeps): PageReader {
     setStatus(key, file, { state: "reading", progress: null });
     const promise = readPageText({
       page: req.page, rs: req.rs, getPage: req.getPage, pdfHash: () => hashFor(file, req.pdfHash), pageHash: req.pageHash,
-      session, cache, readRegion: deps.readRegion, tooLarge: deps.tooLarge, force: req.force, signal: ac.signal,
+      session, cache, readRegion: deps.readRegion, tooLarge: deps.tooLarge, plan: req.plan, force: req.force, signal: ac.signal,
       before,
       onProgress: (p) => {
         if (live() && running.get(key)?.ac === ac && !ac.signal.aborted) setStatus(key, file, { state: "reading", progress: p });
@@ -410,7 +488,9 @@ export function createPageReader(deps: PageReaderDeps): PageReader {
         setStatus(key, file, { state: "done", ms: r.ms, rasters: r.rasters, stale: r.stale, cached: r.cached });
         return r;
       }
-      const final: PageReadStatus = r.message !== undefined ? { state: r.status, message: r.message } : { state: r.status };
+      const final: PageReadStatus = { state: r.status };
+      if (r.message !== undefined) final.message = r.message;
+      if (r.what) final.what = r.what;
       const shown = statuses.get(key);
       if (shown?.status.state !== "stopping") { setStatus(key, file, final); return r; }
       // Cancelled: Stopping… until the worker is idle too (its tile runs on).
@@ -441,7 +521,7 @@ export function createPageReader(deps: PageReaderDeps): PageReader {
       let hit: PageCacheHit | null = null;
       try {
         const hash = await hashFor(file, req.pdfHash);
-        hit = hash ? await cache.get(hash, req.page, { rs: req.rs, rev: await revOf(session) }) : null;
+        hit = hash ? await cache.get(hash, req.page, { rs: req.rs, rev: await revOf(session), expect: expectOf(req.plan) }) : null;
       } catch (e) {
         // failed, not missed: asked again next time rather than remembered
         console.warn(`OCR cache: couldn't look up ${key}`, e);
@@ -583,11 +663,13 @@ export type PageReadView =
   /** the probe couldn't reach the reader: why, and Retry (probe again) */
   | { kind: "unreachable"; text: string };
 
-/** What one sheet's Read control shows. Hidden unless the sheet is a scan
- * (textless true: checked, and planIndex indexIsScanLike — no text layer,
- * or only a few stray runs), and always when the probe says
- * OCR is off or not installed. A read offer (Read page text, with a note
- * after a failure) needs the probe to say available (a probe error shows
+/** What one sheet's Read control shows. Hidden unless the sheet has
+ * something to read (textless true: measured, and planSearch readWhat not
+ * null): a scan, read whole (no text layer, or only a few stray runs), or
+ * a hybrid (#489), whose pictures the text layer can't read; and always
+ * hidden when the probe says OCR is off or not installed. A read offer
+ * (with a note after a failure; the caller labels it by what the read
+ * covers: Read page text on a scan, Read picture text on a hybrid) needs the probe to say available (a probe error shows
  * that instead, with Retry); a read under way (so it can be
  * cancelled) or done (so it stays labelled OCR, cached reads included) shows
  * whatever else the probe says (not asked yet, offline). Read again only for
@@ -618,11 +700,13 @@ export function pageReadView(s: { textless: boolean | undefined; avail: string |
     case "page-closed":
       return offer(st.message || "The page was closed during the read.");
     case "failed":
-      return offer(`Couldn't read this page: ${st.message ?? "unknown error"}`);
+      return offer(`Couldn't read this ${st.what ?? "page"}: ${st.message ?? "unknown error"}`);
+    case "no-picture":
+      return offer(st.message ?? NO_PICTURE);
     case "error":
       return offer(`The on-device text reader (OCR) didn't start: ${st.message ?? "unknown error"}`);
     case "too-large":
-      return { kind: "unreadable", text: st.message ?? TOO_LARGE };
+      return { kind: "unreadable", text: st.message ?? tooLargeText(st.what ?? "page") };
   }
 }
 

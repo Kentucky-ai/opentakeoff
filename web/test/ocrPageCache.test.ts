@@ -10,6 +10,7 @@ import { OCR_ENGINE_OPTIONS as CORE_ENGINE_OPTIONS } from "../src/lib/ocr/worker
 import { OCR_ENGINE_OPTIONS, OCR_INK, OCR_READ_DPI, OCR_SCAN_MAX_DIM, OCR_SEAM_RULES_VERSION, OCR_TILE_OVERLAP_PT } from "../src/lib/ocr/engineOptions.ts";
 import { OCR_DETECTION_PADDING } from "../src/lib/ocr/raster.ts";
 import { SCAN_MAX_DIM } from "../src/lib/scheduleScan.ts";
+import { PICTURE_PARAMS_HASH } from "../src/lib/pictureParams.ts";
 import { OCR_TARGET_DPI } from "../src/lib/ocr/rasterize.ts";
 import { planTiles, SEAM_RULES_VERSION } from "../src/lib/ocr/seams.ts";
 
@@ -252,6 +253,56 @@ test("a malformed hash never reaches meta: get is a miss, put throws", async () 
   assert.equal(meta.gets, 0);
   await assert.rejects(cache.put(EMPTY_SHA256, 1, { rev: "r", rs: 2, lines: [], ms: 0, rasters: 0, at: 0 }), TypeError);
   assert.equal(meta.m.size, 0);
+});
+
+// ── picture reads (#489) ────────────────────────────────────────────────────
+// A hybrid's read covers only its pictures, so its entry carries pp
+// (pictures.ts's PICTURE_PARAMS_HASH) beside opts. A scan's entry stays as it
+// was (no pp, opts unchanged), and a lookup that expects a pictures read
+// never takes one without pp: that would be a whole-page read.
+
+test("a pictures read is stored with pp, and comes back fresh under the same pp", async () => {
+  const meta = fakeMeta();
+  const cache = createPageCache(meta);
+  await cache.put(H1, 1, { rev: "r1", rs: 2, lines: [LINE], ms: 5, rasters: 2, at: 9, pictures: true });
+  assert.deepEqual(meta.m.get(ocrCacheKey(H1, 1)), { v: 1, rev: "r1", opts: OCR_CACHE_OPTS, pp: PICTURE_PARAMS_HASH, rs: 2, lines: [LINE], ms: 5, rasters: 2, at: 9 });
+  const want = { rev: "r1", rs: 2, lines: [LINE], ms: 5, rasters: 2, at: 9, stale: false };
+  assert.deepEqual(await cache.get(H1, 1, { rs: 2, rev: "r1", expect: "pictures" }), want);
+  assert.deepEqual(await cache.get(H1, 1, { rs: 2, rev: "r1" }), want, "a lookup that doesn't say what it expects takes it too");
+});
+
+test("a scan's read is stored without pp, as before", async () => {
+  const meta = fakeMeta();
+  await createPageCache(meta).put(H1, 1, { rev: "r1", rs: 2, lines: [LINE], ms: 5, rasters: 2, at: 9 });
+  assert.ok(!("pp" in (meta.m.get(ocrCacheKey(H1, 1)) as object)));
+});
+
+test("a pictures read under other picture params is served stale (Read again), whatever else matches", async () => {
+  const meta = fakeMeta();
+  await createPageCache(meta, { pp: "0000beef" }).put(H1, 1, { rev: "r1", rs: 2, lines: [LINE], ms: 5, rasters: 2, at: 9, pictures: true });
+  const cache = createPageCache(meta);
+  for (const o of [{ rs: 2, rev: "r1", expect: "pictures" as const }, { rs: 2, rev: "r1" }, { rs: 2 }]) {
+    assert.deepEqual(await cache.get(H1, 1, o), { rev: "r1", rs: 2, lines: [LINE], ms: 5, rasters: 2, at: 9, stale: true }, JSON.stringify(o));
+  }
+});
+
+test("a lookup that expects a pictures read misses an entry without pp; a scan's lookup still finds it", async () => {
+  const meta = fakeMeta();
+  const cache = createPageCache(meta);
+  await cache.put(H1, 1, { rev: "r1", rs: 2, lines: [LINE], ms: 5, rasters: 2, at: 9 });
+  assert.equal(await cache.get(H1, 1, { rs: 2, rev: "r1", expect: "pictures" }), null);
+  assert.equal((await cache.get(H1, 1, { rs: 2, rev: "r1" }))?.stale, false);
+});
+
+test("a stored pp must be a string", async () => {
+  const meta = fakeMeta();
+  const good = { v: 1, rev: "r", opts: OCR_CACHE_OPTS, pp: PICTURE_PARAMS_HASH, rs: 2, lines: [LINE], ms: 1, rasters: 1, at: 1 };
+  meta.m.set(ocrCacheKey(H1, 1), good);
+  assert.ok(await createPageCache(meta).get(H1, 1, { rs: 2 }), "the good value is a hit");
+  for (const pp of [null, 7, {}]) {
+    meta.m.set(ocrCacheKey(H1, 1), { ...good, pp });
+    assert.equal(await createPageCache(meta).get(H1, 1, { rs: 2 }), null, String(pp));
+  }
 });
 
 test("malformed stored values are misses", async () => {
