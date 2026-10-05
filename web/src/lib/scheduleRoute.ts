@@ -15,6 +15,7 @@ import type { RefusalReason, ScheduleRead } from "./scheduleRead.ts";
 import type { ScheduleRow } from "./scheduleRows.ts";
 import { MODAL_SELECTOR } from "./modalKeys.ts";
 import { finishCodeOk } from "./finishCode.ts";
+import { STRAY_TEXT_MAX } from "./strayText.ts";
 
 /** What the reader keys a row by and what says "finish" — the hint names them
  *  all, not CODE alone. */
@@ -29,8 +30,10 @@ export const EMPTY_BOX_MESSAGE = `No text in that box — drag around the finish
 
 /** The most text runs a box can hold and still go to the on-device reader:
  *  a raster schedule can carry a few real text labels (a stamp, a title
- *  typed over the scan), and a vector schedule has far more. */
-export const STRAY_TEXT_MAX_RUNS = 8;
+ *  typed over the scan), and a vector schedule has far more. The limit is
+ *  strayText.ts STRAY_TEXT_MAX, which a scan page and an unread picture count
+ *  in lines; why the box counts runs instead is there. */
+export const STRAY_TEXT_MAX_RUNS = STRAY_TEXT_MAX;
 
 /** A run counts as text when it has a letter or digit; leader dots, rules
  *  and lone punctuation don't push a raster box over the limit. */
@@ -158,13 +161,17 @@ export const OCR_DECLINED_MESSAGE = "Not read — reading a raster schedule need
 /** The on-device reader read the box and found no finish table in it. */
 export const OCR_NO_ROWS_MESSAGE = `No schedule found in that box — the on-device reader found no finish/material rows. Drag around the schedule ${WHERE}.`;
 
-/** The on-device reader can't run on this site: turned off (VITE_OCR=off) or
- *  not installed (no models staged). Only a box with no text on a page with no
- *  text layer is called a raster page; any other box sent to the reader (stray
- *  labels, or an empty box on a page with text) only says what applies if it
- *  is a raster image. */
+/** Why the on-device reader can't run on this site, as a clause: turned off
+ *  (VITE_OCR=off) or not installed (no models staged). Copy text says it too. */
+export const ocrOffReason = (reason: "disabled" | "uninstalled"): string =>
+  reason === "disabled" ? "on-device reading is turned off on this site" : "this site doesn't have the on-device reader installed";
+
+/** The on-device reader can't run on this site (ocrOffReason). Only a box
+ *  with no text on a page with no text layer is called a raster page; any
+ *  other box sent to the reader (stray labels, or an empty box on a page with
+ *  text) only says what applies if it is a raster image. */
 export function ocrUnavailableMessage(reason: "disabled" | "uninstalled", box: BoxText): string {
-  const why = reason === "disabled" ? "on-device reading is turned off on this site" : "this site doesn't have the on-device reader installed";
+  const why = ocrOffReason(reason);
   return box.textRuns === 0 && !box.pageHasText
     ? `No schedule text here — this page looks like a raster image (no text layer), and ${why}.`
     : `No schedule found in that box. If it's a raster image, ${why}.`;

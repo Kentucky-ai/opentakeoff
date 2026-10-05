@@ -23,7 +23,7 @@
 import { ROOM_LABEL_RE } from "./detectRooms";
 import { FINISH_SECTION_HEADINGS, finishSectionOf, type FinishSection } from "./finishSections";
 import { normalizeNotUsed, normalizeTail } from "./notUsed";
-import { CODE_RE, finishCodeOk } from "./finishCode";
+import { CODE_RE, finishCodeOk, FINISH_QUALIFIER_WORDS } from "./finishCode";
 
 /** rot: text rotation in degrees, clockwise in device space (y down). Absent
  * or 0 = horizontal; 90/270 = a quarter-turn — the rotated-header case. When
@@ -761,7 +761,8 @@ export const isNonFinishSchedule = (title: string): boolean => {
 };
 
 function rowKeyOf(raw: string, kind: ExtractKind, buildings?: Set<string>, typeKeyed = false): { key: string; building?: string } | null {
-  const kept = norm(raw).replace(/[^A-Z0-9/-]/g, "");
+  const source = kind === "finish" ? norm(raw).replace(/\(([A-Z]+)\)/g, (whole, word: string) => FINISH_QUALIFIER_WORDS.has(word) ? word : whole) : norm(raw);
+  const kept = source.replace(kind === "finish" ? /[^A-Z0-9/()-]/g : /[^A-Z0-9/-]/g, "");
   const key = kept.replace(/\//g, "");
   if (kind === "equipment") {
     // "EF-1 / EF-2" keys one row for two marks the same way a finish row does
@@ -801,7 +802,10 @@ const SPLIT_DENY = new Set(["SEE", "NOTE", "NOTES", "NOT", "USED", "BY", "OWNER"
 // a qualifier naming an alternate keeps today's glued key (CPT-1ALT): it is a different item
 const ALT_WORDS = new Set(["ALT", "OPT", "OPTION", "ADD", "DEDUCT"]);
 function splitKeyCell(raw: string): KeySplit | null {
-  const r = raw.trim();
+  // A suffix belongs to the code, including when pdf.js/OCR split its
+  // parentheses with spaces. A later qualifier (FTB-01 CUT (C)) stays text.
+  const r = raw.trim().replace(/^([A-Z]{1,4}-?[A-Z0-9]{0,4})\s*\(\s*([A-Z0-9]{1,4})\s*\)/i,
+    (whole, base: string, suffix: string) => finishCodeOk(`${base}(${suffix})`.toUpperCase()) ? `${base}(${suffix})` : whole);
   const sp = r.search(/\s/);
   const w1 = (sp < 0 ? r : r.slice(0, sp)).toUpperCase().replace(/[:,;]+$/, "");
   if (!finishCodeOk(w1) || !/\d/.test(w1)) return null;

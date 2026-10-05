@@ -15,7 +15,7 @@ carry an explicit review status. See the [Phase 1 test guide](docs/PHASE_1_TESTI
 [![Live demo](https://img.shields.io/badge/demo-opentakeoff.kentucky--ai.com-2ea44f.svg)](https://opentakeoff.kentucky-ai.com)
 [![MCP registry](https://img.shields.io/badge/MCP-io.github.Kentucky--ai%2Fopentakeoff-6f42c1.svg)](https://registry.modelcontextprotocol.io)
 [![npm](https://img.shields.io/npm/v/opentakeoff-mcp?label=opentakeoff-mcp)](https://www.npmjs.com/package/opentakeoff-mcp)
-[![Benchmark](https://img.shields.io/badge/benchmark-OpenTakeoff%20Academy-orange.svg)](https://aec.kentucky-ai.com)
+[![Benchmark](https://img.shields.io/badge/benchmark-OpenTakeoff%20Academy-orange.svg)](https://union.kentucky-ai.com)
 [![OpenArena](https://openarena.to/api/badge/cmsgykvsq0000mkuv7byhlgnl)](https://openarena.to/en/projects/cmsgykvsq0000mkuv7byhlgnl)
 [![Sponsor](https://img.shields.io/github/sponsors/Kentucky-ai?logo=githubsponsors&label=sponsor&color=EA4AAA)](https://github.com/sponsors/Kentucky-ai)
 
@@ -272,10 +272,10 @@ are the rules that make this one safe to hand a model, and why each one exists:
    fill spilled"* tells a model what to do next. A silent zero doesn't. Tools that can't answer
    withhold with a stated reason rather than returning a plausible number.
 
-### Prove it — OpenTakeoff Academy
+### Prove it — OpenTakeoff Academy / Commonwealth Agent Union
 
-[**aec.kentucky-ai.com**](https://aec.kentucky-ai.com) is a standalone open benchmark and
-certification arena for agents that do takeoff. Bring any model and your own harness; you are
+[**Commonwealth Agent Union**](https://union.kentucky-ai.com) is the home of OpenTakeoff Academy,
+its construction-agent evaluation and certification arm. Bring any model and your own harness; you are
 scored on **operating a real takeoff tool** against geometry you don't control—a wrong
 calibration yields a wrong area—not on emitting a plausible-looking number. Runs emit a
 signed bundle with full provenance of every tool call, scoring is against held-out ground truth
@@ -381,7 +381,8 @@ sheet (keyed by CODE, TAG, MARK or SYMBOL) into conditions behind a verify dialo
 category, with a category guessed from a row's words flagged for review, rows the schedule
 marks NOT USED left unticked, and, on a box with a text layer, a four- or five-letter code it
 couldn't read named in a notice—and you approve what becomes a condition. The product spec,
-the schedule's remarks included, rides along as report columns.
+the schedule's remarks included, rides along as report columns. Parenthesized codes such as
+`G-01(C)` keep their suffix; re-import holds a possible older `G-01C` condition for review.
 
 **Supporting Materials** is the layer most takeoff tools punt on: per condition, a labor type
 and a subfloor type, plus the consumables that actually go on the order—adhesive, sealer,
@@ -633,7 +634,7 @@ The research side is run as a lab, and the receipts are the point:
 Sanitized artifacts—model cards, benchmark specs, papers—publish as they clear review:
 [Hugging Face](https://huggingface.co/Kentucky-ai) ·
 [kentucky-ai.com](https://kentucky-ai.com). The agent-side evaluation lives in
-[OpenTakeoff Academy](https://aec.kentucky-ai.com).
+[OpenTakeoff Academy](https://union.kentucky-ai.com).
 
 ---
 
@@ -692,7 +693,8 @@ Third-party integrations and downstream forks run on this engine today.
 
 `cd web && npm run check` is the exact CI gate—typecheck, lint, test, build. Keep
 `oneclick.ts` and `sheets.ts` free of React and DOM; that purity is what makes them reusable and
-testable. Never commit real construction plans. See [CONTRIBUTING.md](CONTRIBUTING.md) and
+testable. Never commit real construction plans. The [public OCR code fixtures](web/bench/ocr-codes/README.md)
+provide invented schedules, per-cell expected codes and native/browser measurement commands. See [CONTRIBUTING.md](CONTRIBUTING.md) and
 [AGENTS.md](AGENTS.md)—the repo's own instructions for coding agents—plus the
 [user manual](docs/USER_GUIDE.md).
 

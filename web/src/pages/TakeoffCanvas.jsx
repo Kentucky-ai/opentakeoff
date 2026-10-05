@@ -52,11 +52,11 @@ import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../compone
 import { Icon } from "../brand/icons.jsx";
 import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks, extractDimTexts } from "../lib/sheets";
 import { joinAbuttingSpans } from "../lib/textjoin";
-import { dropFileFromIndex, indexIsScanLike } from "../lib/planIndex";
+import { dropFileFromIndex } from "../lib/planIndex";
 import { labelsForFile, labelsOnFileChange, withPageLabel, withFoundLabels } from "../lib/sheetLabels";
 import { snapsToVectors } from "../lib/cursorSnap";
-import { textLayerReader, ocrCopyReaders, copyOcrRoute, readCopyText, createReadGate, boxOnPanel, copyIsScanLike, copyStartMiss, copyReaderChain, copyUnavailable, outcomeMessage, deliverCopy, makeReceipt, receiptExpires, receiptAfterEsc, receiptPlacement, RECEIPT_MS } from "../lib/copyText";
-import { putSheetIndex, createChangeSignal, ocrSheetIndex, needsTextPass } from "../lib/planSearch";
+import { textLayerReader, ocrCopyReaders, copyOcrRoute, readCopyText, createReadGate, boxOnPanel, copyIsScanLike, copyStartMiss, copyReaderChain, copyPlan, copyPictureInputs, textChainPageLines, hybridCopyReader, copyUnavailable, outcomeMessage, deliverCopy, makeReceipt, receiptExpires, receiptAfterEsc, receiptPlacement, RECEIPT_MS } from "../lib/copyText";
+import { putSheetIndex, createChangeSignal, ocrSheetIndex, acceptsMeasuredPass, acceptsTextPass, readPlanOf, readWhat, mayLookUp, readableFromIndex } from "../lib/planSearch";
 import { createOcrSession } from "../lib/ocr/session";
 import { createConsentHost, focusAfterNotice } from "../lib/ocr/consentHost";
 import { createPageCache } from "../lib/ocr/pageCache";
@@ -64,6 +64,7 @@ import { createPageReader, pageReadView, readSignature, backgroundRows, createRe
 import { createDocCache, createSheetSource, readHooks, lookupHooks, readdEffects } from "../lib/ocr/sheetSource";
 import { getOcrClient } from "../lib/ocr/client";
 import { pageTextIndex } from "../lib/pageTextIndex";
+import { measurePage } from "../lib/pictures";
 import { normalizeLoadedGroups } from "../lib/sheetGroups";
 import { isStitchKey, mintStitchId, sanitizeStitches, autoButt, stitchExtent, alignMembers, seamClips, mergePoints, mergeSegs, stitchAlive, stitchLayoutSig } from "../lib/stitches";
 import { isCanvasBusy } from "../lib/canvasBusy";
@@ -72,7 +73,7 @@ import { routeScheduleRead, countTextRuns, heldKeyWouldPress, EMPTY_BOX_MESSAGE,
 import { readBoxOnDevice } from "../lib/scheduleOcrRead";
 import { boxReadWords, boxTooLarge } from "../lib/ocr/boxRead";
 import { pageSpans, spansInRect, graphSpans } from "../lib/pageSpans";
-import { normalizeTag } from "../lib/scheduleEdit";
+import { normalizeTag, newScheduleRows } from "../lib/scheduleEdit";
 // Condition twins — the whole inheritance rule is in lib/variants.ts (test/variants.test.ts);
 // this file only calls it from the material write paths and the condition deletes.
 import { mintTwin, variantTag,
@@ -1030,10 +1031,11 @@ export default function TakeoffCanvas() {
   // the text passes that already run for sheet numbers and scale notes (the
   // render effect below, and the gallery's thumbnail pump), and by the
   // gallery's own indexing walk for the rest. A ref, like thumbCacheRef: it
-  // survives gallery close. Changes are announced on a signal only the
-  // gallery listens to (at most once a frame), so an index write never
-  // re-renders the canvas, and with the gallery closed it costs nothing; the
-  // gallery reads the map fresh when it opens.
+  // survives gallery close. Changes are announced on a signal (at most once
+  // a frame) the gallery listens to, and the canvas only to keep its Read
+  // rows in step (readableByKey below): an index write re-renders the canvas
+  // only when a row on it changes. The gallery reads the map fresh when it
+  // opens.
   const planIndexRef = useRef(new Map());
   const [indexSignal] = useState(() => createChangeSignal());
   const notifyIndex = indexSignal.notify;
@@ -1094,16 +1096,16 @@ export default function TakeoffCanvas() {
     idle: () => getOcrClient().whenIdle(),
   }));
   const [ocrAvail, setOcrAvail] = useState(null);      // the probe's state once asked ("available", "disabled", …), null before
-  const [textLayerByKey, setTextLayerByKey] = useState({}); // sheet key → has a text layer, i.e. isn't a scan (planIndex indexIsScanLike; set as panels render)
-  const textLayerRef = useRef(new Map());              // the same, read by the render pass so each page is checked once
+  const [readableByKey, setReadableByKey] = useState({}); // sheet key → what a read of it covers: "page" (a scan), "picture" (a hybrid, #489), or null (nothing to read); planSearch readWhat on its index entry, set as panels are measured and kept in step with the index after (readableFromIndex)
+  const measuredRef = useRef(new Set());               // sheet keys the render pass has measured, so each page is measured once
   const [readTick, setReadTick] = useState(0);         // re-render on read status changes the canvas shows
   const readShownRef = useRef([]);                     // the sheet keys on screen (groupKeys), for the signature below
   const [readGate] = useState(() => createReadRenderGate()); // lib/ocr/pageRead: the signature the last render drew
   // a file's bytes are leaving or changing: forget what its pages' text
-  // layers said
+  // layers and pictures said
   const forgetTextLayer = useCallback((name) => {
-    for (const k of [...textLayerRef.current.keys()]) if (parseSheetKey(k).file === name) textLayerRef.current.delete(k);
-    setTextLayerByKey((m) => {
+    for (const k of [...measuredRef.current]) if (parseSheetKey(k).file === name) measuredRef.current.delete(k);
+    setReadableByKey((m) => {
       const keys = Object.keys(m).filter((k) => parseSheetKey(k).file === name);
       if (!keys.length) return m;
       const next = { ...m };
@@ -1111,6 +1113,12 @@ export default function TakeoffCanvas() {
       return next;
     });
   }, []);
+  // The Read rows follow the index (planSearch readableFromIndex), not only
+  // the measure moment: a shown sheet's row is re-derived when its entry
+  // changes (a gallery adopt after the canvas's measure "failed", a read),
+  // and goes when its entry is dropped. Unchanged rows return the same
+  // object, so an index write that changes no row doesn't re-render.
+  useEffect(() => indexSignal.subscribe(() => setReadableByKey((m) => readableFromIndex(m, planIndexRef.current))), [indexSignal]);
   // Re-render only when what the canvas shows changes: a status of a sheet on
   // screen, or an off-screen read starting, stopping or ending. Off-screen
   // progress and the gallery's lookups don't touch the canvas. Compared with
@@ -1737,10 +1745,13 @@ export default function TakeoffCanvas() {
     // A re-added name's search entry, OCR reads and thumbnail records (whose
     // text-layer flag seeds the index) start over unless its bytes are known
     // to be the same (readdEffects); a cached read goes back into the
-    // emptied slot (the textless-sheets effect looks it up again).
+    // emptied slot once the canvas measures its sheets again (forgetTextLayer,
+    // as evictDoc: the measure puts the entry in, and the readable-sheets
+    // effect looks its read up under that entry's plan; a lookup with no
+    // entry would be a whole-page one, planSearch mayLookUp).
     const readd = readdEffects(results.filter(Boolean), { cloud: cloudMode, loaded: (n) => docCache.has(n) });
     for (const n of readd.reset) if (dropFileFromIndex(planIndexRef.current, n)) notifyIndex();
-    for (const n of readd.reset) pageReader.dropFile(n);
+    for (const n of readd.reset) { pageReader.dropFile(n); forgetTextLayer(n); }
     forgetThumbs(readd.reset, thumbCacheRef.current);
     await refreshSheets();
     // CO-1: a re-drop whose bytes CHANGED is a plan revision, not a re-open.
@@ -2133,12 +2144,15 @@ export default function TakeoffCanvas() {
   // Read one sheet, by key, whether or not it's on screen: its page from the
   // file's cached doc (sheetSource: the page and the hash its read is stored
   // under come from one document), released after unless the canvas holds
-  // it. A sheet already being read joins that read.
+  // it. A sheet already being read joins that read. What it reads is the
+  // plan from the sheet's index entry (planSearch readPlanOf: a scan whole, a
+  // hybrid's pictures, #489); a sheet not indexed yet is read whole, as
+  // before.
   const readSheet = useCallback((key, { force = false, signal } = {}) => {
     const { file, page } = parseSheetKey(key);
     const hooks = readHooks(sheetSource, file, page);
     return pageReader.read({
-      key, file, page, rs: RENDER_SCALE, force, signal,
+      key, file, page, rs: RENDER_SCALE, force, signal, plan: readPlanOf(planIndexRef.current.get(key), RENDER_SCALE),
       pdfHash: hooks.pdfHash, getPage: hooks.getPage, pageHash: hooks.pageHash,
     }).then((r) => {
       const opened = hooks.opened();
@@ -2149,10 +2163,15 @@ export default function TakeoffCanvas() {
   }, [sheetSource, pageReader]);
   // A sheet's cached read, if any, into the index (no page, no notice).
   // { known: true }: only a hash already in hand (the gallery's background
-  // lookups: a cloud project downloads nothing).
+  // lookups: a cloud project downloads nothing). Under the same plan as a
+  // read, so a hybrid finds only its pictures read; none for a sheet whose
+  // entry plans no read (planSearch mayLookUp: the reader would remember the
+  // miss).
   const lookupSheet = useCallback((key, opts) => {
     const { file, page } = parseSheetKey(key);
-    return pageReader.lookup({ key, file, page, rs: RENDER_SCALE, ...lookupHooks(sheetSource, file) }, opts);
+    const ix = planIndexRef.current.get(key);
+    if (!mayLookUp(ix)) return Promise.resolve(null);
+    return pageReader.lookup({ key, file, page, rs: RENDER_SCALE, plan: readPlanOf(ix, RENDER_SCALE), ...lookupHooks(sheetSource, file) }, opts);
   }, [sheetSource, pageReader]);
   // The probe, asked once (lib/ocr/session availability) and kept in state
   // for the Read controls; disabled / uninstalled hide them.
@@ -2176,20 +2195,22 @@ export default function TakeoffCanvas() {
     subscribe: pageReader.subscribe,
     lookup: lookupSheet,
   }), [ocrAvailability, readSheet, lookupSheet, pageReader]);
-  // Scans on screen (little or no text layer): the first one shown asks the probe
-  // (lazily, never at load), and each one's cached read, if any, goes into
-  // the index silently, so search works after a reload without a new read.
-  // Stitch panels aren't pages; their members aren't offered a read. It runs
-  // again on status changes too: lookup is memoized per sheet, and a file
-  // dropped from the index (re-added, removed) must look its reads up again.
-  const textlessShown = ocrEnabled() ? groupKeys.filter((k) => !isStitchKey(k) && textLayerByKey[k] === false) : [];
-  const textlessSig = textlessShown.join("\n");
+  // Scans and hybrids on screen (readableByKey): the first one shown asks the
+  // probe (lazily, never at load), and each one's cached read, if any, goes
+  // into the index silently, so search works after a reload without a new
+  // read. Stitch panels aren't pages; their members aren't offered a read.
+  // It runs again on status changes too (lookup is memoized per sheet). A
+  // file dropped from the index (re-added, removed) loses its rows until its
+  // sheets are measured again; the row coming back looks its read up again
+  // under the new entry's plan.
+  const readableShown = ocrEnabled() ? groupKeys.filter((k) => !isStitchKey(k) && !!readableByKey[k]) : [];
+  const readableSig = readableShown.join("\n");
   useEffect(() => {
-    if (!textlessShown.length) return;
+    if (!readableShown.length) return;
     ocrAvailability().catch(() => {});
-    for (const k of textlessShown) lookupSheet(k);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- textlessSig stands for textlessShown
-  }, [textlessSig, readTick, ocrAvailability, lookupSheet]);
+    for (const k of readableShown) lookupSheet(k);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- readableSig stands for readableShown
+  }, [readableSig, readTick, ocrAvailability, lookupSheet]);
 
   // dark toggle: repaint the base layer of every already-loaded panel at the
   // new mode (the detail effect below also depends on darkMode, so it
@@ -2345,7 +2366,9 @@ export default function TakeoffCanvas() {
           continue;
         }
         // snap-to-vector index per panel (best-effort; off until the user enables it)
-        m.pageObj.getOperatorList().then(async (ol) => {
+        const opList = m.pageObj.getOperatorList();
+        const textContent = m.pageObj.getTextContent();
+        opList.then(async (ol) => {
           if (stale()) return;
           const { points, segs, meta, imageArea, lum, layerOf, layerIds, subpaths } = extractVectorGeometry(ol, m.viewport.transform, pdfjsLib.OPS);
           snapGridsRef.current.set(m.key, buildSnapGrid(points, SNAP_CELL));
@@ -2389,23 +2412,37 @@ export default function TakeoffCanvas() {
           // instead (rasterEligible true, vectorViable false).
           sheetStatsRef.current.set(m.key, { segCount: 0, imageFrac: 1 });
         });
+        // the page's text layer and pictures (#471, #489), joined from the two
+        // reads above (pictures.ts measurePage; no second op list): a scan
+        // (at most SCAN_MAX_TEXT_LINES lines: none, or a stray stamp or
+        // label) is decided by its text alone; any other page waits for the
+        // op list, and one pdf.js can't produce leaves its pictures "failed".
+        // The entry goes to search, and what a read of the sheet would cover
+        // (planSearch readWhat on the entry now in the index, which may be a
+        // seed's or a read's) drives the Read control and its lookups. Once
+        // per page (until its file's bytes change: forgetTextLayer); a pass
+        // left behind (stale) records nothing, so the next one measures.
+        if (!measuredRef.current.has(m.key)) {
+          measurePage(m.key, { getTextContent: () => textContent, getOperatorList: () => opList }, m.viewport, pdfjsLib.OPS).then(({ index, pictures }) => {
+            if (stale() || measuredRef.current.has(m.key)) return;
+            measuredRef.current.add(m.key);
+            // a real measurement lands over another pass's "failed" too
+            if (acceptsMeasuredPass(planIndexRef.current.get(m.key), pictures)) onIndexed(m.key, index);
+            const what = readWhat(planIndexRef.current.get(m.key) ?? index);
+            setReadableByKey((s) => (s[m.key] === what ? s : { ...s, [m.key]: what }));
+          }).catch((err) => {
+            // measured-failed for this session (until its file's bytes
+            // change): no retry on every render pass, and no Read row
+            if (stale()) return;
+            measuredRef.current.add(m.key);
+            console.warn(`Couldn't measure ${m.key}'s text layer and pictures:`, err);
+          });
+        }
         // read the drawn scale note off this panel's page text (best-effort),
         // and the positioned dimension-pattern texts the dim-string classifier
         // anchors on (#320) — a mask built before they resolved was textless
-        m.pageObj.getTextContent().then((tc) => {
+        textContent.then((tc) => {
           if (stale()) return;
-          // does the page have a text layer (#471)? At most SCAN_MAX_TEXT_LINES
-          // lines (none, or a scan's stray stamp or label): a scan or a
-          // flattened export, which Read page text can read on-device. The
-          // same entry and rule search uses, so "a scan" means one thing.
-          // Once per page (until its file's bytes change: forgetTextLayer).
-          if (!textLayerRef.current.has(m.key)) {
-            const tix = pageTextIndex(m.key, tc, m.viewport);
-            if (needsTextPass(planIndexRef.current.get(m.key))) onIndexed(m.key, tix);
-            const hasText = !indexIsScanLike(tix);
-            textLayerRef.current.set(m.key, hasText);
-            setTextLayerByKey((s) => (s[m.key] === hasText ? s : { ...s, [m.key]: hasText }));
-          }
           const det = detectScale(tc, m.viewport);
           if (det) setDetectedScales((d) => (d[m.key]?.label === det.label ? d : { ...d, [m.key]: det }));
           // positioned text for ink classification — a mask built before this
@@ -2426,8 +2463,10 @@ export default function TakeoffCanvas() {
         if (stale()) return;
         const lbl = extractSheetNumber(tc, lead.viewport);
         if (lbl) setLabelsByFile((m) => withPageLabel(m, active, lead.pageNum, lbl));
-        // plan-set search: the same text, at the same RENDER_SCALE viewport
-        if (needsTextPass(planIndexRef.current.get(lead.key))) onIndexed(lead.key, pageTextIndex(lead.key, tc, lead.viewport));
+        // plan-set search: the same text, at the same RENDER_SCALE viewport,
+        // built only where the entry would take a pass without pictures
+        // (planSearch acceptsTextPass; the measured pass above brings those)
+        if (acceptsTextPass(planIndexRef.current.get(lead.key))) onIndexed(lead.key, pageTextIndex(lead.key, tc, lead.viewport));
       }).catch(() => {});
       if (labeledFileRef.current !== active) {
         labeledFileRef.current = active;
@@ -2448,7 +2487,7 @@ export default function TakeoffCanvas() {
               const det = detectScale(tc, vp2);
               if (det) setDetectedScales((d) => (d[key]?.label === det.label ? d : { ...d, [key]: det }));
               if (stale()) return;
-              if (needsTextPass(planIndexRef.current.get(key))) onIndexed(key, pageTextIndex(key, tc, vp2));
+              if (acceptsTextPass(planIndexRef.current.get(key))) onIndexed(key, pageTextIndex(key, tc, vp2));
             } catch { /* skip */ }
           }
           if (!stale() && Object.keys(found).length) setLabelsByFile((m) => withFoundLabels(m, active, found));
@@ -7149,9 +7188,10 @@ export default function TakeoffCanvas() {
     if (blocked) { setCommitMsg(blocked); return; }
     const rs = renderScalesRef.current.get(key) || RENDER_SCALE;
     const vp = pageObj.getViewport({ scale: rs });
-    // one "has a text layer" answer: the one the Read control and search use
-    // a scan for Copy text: the page rule, and the page may hold an image (a
-    // vector cover sheet's few title lines copy from the text layer at once)
+    // a scan for Copy text (copyIsScanLike): the page rule on this page's
+    // text, and the page may hold an image (a vector cover sheet's few title
+    // lines copy from the text layer at once); a hybrid's pictures come from
+    // its index entry (copyPictureInputs), as the Read control's do (readWhat)
     const imageFrac = () => sheetStatsRef.current.get(key)?.imageFrac;
     const scanLikeOf = (tc) => copyIsScanLike(tc, vp, imageFrac());
     // OCR known off (and no read in memory): the chain starts with that
@@ -7164,13 +7204,15 @@ export default function TakeoffCanvas() {
     // has replaced it
     let busy = null;
     const clearBusy = () => { if (busy) { const b = busy; busy = null; setCommitMsgState((m) => (m === b ? { text: "" } : m)); } };
-    const settle = (o, tc) => {
+    // hybrid: the copy took copyPlan's "hybrid" chain (#489), which is never
+    // called a scan, and whose unread image is a picture
+    const settle = (o, tc, hybrid) => {
       clearBusy();
       if (o.kind === "aborted" || signal.aborted) return;
-      if (o.kind !== "text") { setCommitMsg(outcomeMessage(o, scope, scanLikeOf(tc))); return; }
+      if (o.kind !== "text") { setCommitMsg(outcomeMessage(o, scope, scanLikeOf(tc), hybrid)); return; }
       // after an on-device read the click's activation is usually gone and
       // the write is refused: the receipt then holds the text in its textarea
-      deliverCopy(o.text, navigator.clipboard).then((ok) => setCopyReceipt(makeReceipt(o, { failed: !ok, scope, key })));
+      deliverCopy(o.text, navigator.clipboard).then((ok) => setCopyReceipt(makeReceipt(o, { failed: !ok, scope, key, hybrid })));
     };
     // a box read's line: nothing while the download notice is up, then
     // "Waiting…" until its turn in the engine, then "Reading…"
@@ -7187,40 +7229,63 @@ export default function TakeoffCanvas() {
     // scan. Copy page text on a scan is the page read itself
     // (readSheet: kept, indexed, shown on the Read control with its Cancel,
     // and it goes on if this copy is replaced).
+    // the page's read: in memory; else, with OCR on, the read under way
+    // (waited for) or the cached one
+    const pageLinesOrLookup = () => {
+      if (!ocrEnabled()) return null;
+      if (pageReader.status(key)?.state === "reading") return readSheet(key).then((r) => (r.ok ? r.lines : null));
+      return lookupSheet(key).then((h) => h?.lines ?? null);
+    };
+    // why OCR can't run here, if it can't
+    const ocrOff = () => (!ocrEnabled() ? "disabled" : ocrAvail === "disabled" || ocrAvail === "uninstalled" ? ocrAvail : null);
+    // a one-off read of a box (not kept)
+    const readBoxOf = (r, sig) => {
+      const off = ocrOff();
+      if (off) return Promise.resolve({ ok: false, status: off });
+      return pageReader.readBox({
+        file: parseSheetKey(key).file, rs, rect: r, getPage: async () => pageObj, signal: sig,
+        onPhase: (ph) => { if (!sig?.aborted) postBusy(ph === "waiting" ? "Waiting for another read…" : "Reading that box with the on-device text reader (OCR)…"); },
+      });
+    };
     const ocrReadersFor = (tc) => {
       const route = copyOcrRoute({ scope, scanLike: scanLikeOf(tc), imageFrac: imageFrac(), ocrOff: !!startMiss });
       if (route === "none") return [];
       return ocrCopyReaders({
-        pageLines: () => {
-          const had = pageReader.lines(key);
-          if (had) return had;
-          if (!ocrEnabled()) return null;
-          if (pageReader.status(key)?.state === "reading") return readSheet(key).then((r) => (r.ok ? r.lines : null));
-          return lookupSheet(key).then((h) => h?.lines ?? null);
-        },
+        // on a hybrid, none (copyText textChainPageLines): its read covers
+        // only the pictures, and this chain's box is off them or a sliver
+        pageLines: textChainPageLines(planIndexRef.current.get(key), () => pageReader.lines(key) ?? pageLinesOrLookup()),
         readBox: (r, sig) => {
-          const off = !ocrEnabled() ? "disabled" : ocrAvail === "disabled" || ocrAvail === "uninstalled" ? ocrAvail : null;
+          const off = ocrOff();
           if (off) return Promise.resolve({ ok: false, status: off });
           if (route === "page") return readSheet(key).then((res) => (res.ok ? { ok: true, lines: res.lines } : { ok: false, status: res.status, message: res.message }));
           // the whole page reaches OCR only on a scan, which is the page
           // route above; a page with a text layer never gets a one-off read
           if (!r) return Promise.resolve({ ok: true, lines: [] });
-          return pageReader.readBox({
-            file: parseSheetKey(key).file, rs, rect: r, getPage: async () => pageObj, signal: sig,
-            onPhase: (ph) => { if (!sig?.aborted) postBusy(ph === "waiting" ? "Waiting for another read…" : "Reading that box with the on-device text reader (OCR)…"); },
-          });
+          return readBoxOf(r, sig);
         },
       });
     };
     const read = (tc) => {
-      // The reader chain, asked in order; the first with any token answers:
-      // the text layer, then OCR — or, on a scan, OCR, then the text layer.
+      // Which chain (lib/copyText copyPlan, #489): a box over a hybrid's
+      // picture is ONE combining reader (the text layer, and OCR for the
+      // picture: the page's read in memory, else the cached read or the one
+      // under way, else a read of each box ∩ picture). Otherwise the reader
+      // chain, asked in order; the first with any token answers: the text
+      // layer, then OCR — or, on a scan, OCR, then the text layer.
       const failed = () => { clearBusy(); setCommitMsg("Couldn't read that region."); };
+      const scan = scanLikeOf(tc);
+      const plan = copyPlan({ scope, rect, scan, ...copyPictureInputs(planIndexRef.current.get(key)), rs, pageRead: !!pageReader.lines(key) });
+      const hybrid = plan.kind === "hybrid";
       let out;
-      try { out = readCopyText(copyReaderChain({ scanLike: scanLikeOf(tc), textLayer: textLayerReader(tc, vp), ocr: ocrReadersFor(tc) }), rect, { signal }, [], startMiss); }
+      try {
+        const readers = hybrid
+          ? [hybridCopyReader({ tc, viewport: vp, ocrRects: plan.ocrRects, startMiss, pageLines: () => pageReader.lines(key), lookup: () => Promise.resolve(pageLinesOrLookup()), readBox: readBoxOf })]
+          : copyReaderChain({ scanLike: scan, textLayer: textLayerReader(tc, vp), ocr: ocrReadersFor(tc) });
+        out = readCopyText(readers, rect, { signal }, [], startMiss);
+      }
       catch { failed(); return; }
-      if (out instanceof Promise) out.then((o) => { if (seq === renderSeqRef.current) settle(o, tc); else clearBusy(); }).catch(failed);
-      else settle(out, tc);
+      if (out instanceof Promise) out.then((o) => { if (seq === renderSeqRef.current) settle(o, tc, hybrid); else clearBusy(); }).catch(failed);
+      else settle(out, tc, hybrid);
     };
     const e = textContentOf(pageObj);
     if (e.tc) { read(e.tc); return; }
@@ -7529,25 +7594,23 @@ export default function TakeoffCanvas() {
   // product spec (mfr/style/color/size) rides a plain `spec` field — NOT custom
   // columns (would hijack a user column and pollute its grouping vocabulary) and
   // NOT materials[] (those are coverage buy-list items, no coverage rate here).
-  // Existing codes are skipped (shown "in use" in the dialog).
+  // Existing codes and possible older flat spellings are held by the same
+  // rules as the dialog; existing condition IDs and shapes stay untouched.
   function createFromSchedule(selected) {
     const existing = new Set(conditions.map((c) => normalizeTag(c.finish_tag)));
     const made = [];
     let idx = conditions.length;
-    for (const row of selected) {
-      const tag = normalizeTag(row.finish_tag);
-      if (existing.has(tag)) continue;
-      const seed = rowToSeed({ ...row, finish_tag: tag }, idx++, PALETTE);
+    for (const row of newScheduleRows(selected, existing)) {
+      const seed = rowToSeed(row, idx++, PALETTE);
       const hasSpec = Object.values(seed.spec).some(Boolean);
       made.push({
         id: uid("cnd"), created_at: nowIso(), finish_tag: seed.finish_tag, color: seed.color, fill: seed.color,
         hatch: seed.hatch, multiplier: 1, waste_pct: seed.waste_pct, materials: [],
         ...(hasSpec ? { spec: seed.spec } : {}),
       });
-      existing.add(tag);
     }
     setImportRead(null);
-    if (!made.length) { setCommitMsg("Those finishes already exist as conditions."); return; }
+    if (!made.length) { setCommitMsg("Those finishes already exist or need review against an existing condition."); return; }
     setConditions((cs) => [...cs, ...made]);
     activateCondition(made[0].id, { reassign: false });
     setCommitMsg(`Created ${made.length} condition${made.length === 1 ? "" : "s"} from the schedule.`);
@@ -10346,9 +10409,10 @@ export default function TakeoffCanvas() {
               style={{ width: 34, height: 34, borderRadius: 0, border: `1px solid ${focusMode ? "var(--cobalt)" : "var(--ink-faint)"}`, background: focusMode ? "var(--cobalt)" : "var(--paper-bright)", color: focusMode ? "var(--accent-contrast)" : "var(--ink)", cursor: "pointer", fontSize: 13 }}>⛶</button>
           </div>
 
-          {/* Read page text (#471) — beside the corner cluster, above the
-              status bar (and above the rule banner while one shows): one row
-              per scan on screen (little or no text layer; named in a group), and a
+          {/* Read page text (#471) and Read picture text (#489) — beside the
+              corner cluster, above the status bar (and above the rule banner
+              while one shows): one row per scan or hybrid on screen (named in
+              a group), and a
               Cancel row for a read still running on a sheet that left the
               screen. Same press handling as the cluster. */}
           <div onPointerDown={(e) => { if (e.button === 0 && !spaceRef.current) e.stopPropagation(); }} onDoubleClick={(e) => e.stopPropagation()}
@@ -10358,7 +10422,8 @@ export default function TakeoffCanvas() {
                 ...panels.filter((p) => !isStitchKey(p.key)).map((p) => ({
                   key: p.key,
                   label: labelFor(p),
-                  view: pageReadView({ textless: textLayerByKey[p.key] === undefined ? undefined : !textLayerByKey[p.key], avail: ocrAvail, status: pageReader.status(p.key) }),
+                  view: pageReadView({ textless: readableByKey[p.key] === undefined ? undefined : readableByKey[p.key] !== null, avail: ocrAvail, status: pageReader.status(p.key) }),
+                  what: readableByKey[p.key] === "picture" ? "picture" : "page",
                 })),
                 ...backgroundRows(pageReader.active(), groupKeys, tabLabel).map((r) => ({ ...r, background: true })),
               ]}
