@@ -48,8 +48,8 @@ test("cleanOcrText: cleaning twice changes nothing", () => {
 test("repairKey: O read for 0 and I read for 1 after a code's hyphen; readAs is the code as read", () => {
   for (const [raw, key, want, readAs] of [
     ["PT-O1", "PT-O1", "PT-01", "PT-O1"],
-    ["G-O1(C)", "G-O1C", "G-01C", "G-O1(C)"],
-    ["FT-O2(E)", "FT-O2E", "FT-02E", "FT-O2(E)"],
+    ["G-O1(C)", "G-O1(C)", "G-01(C)", "G-O1(C)"],
+    ["FT-O2(E)", "FT-O2(E)", "FT-02(E)", "FT-O2(E)"],
     ["FT-O2E", "FT-O2E", "FT-02E", "FT-O2E"],
     ["PT-O1A", "PT-O1A", "PT-01A", "PT-O1A"],
     ["FTB-O1 CUT (C)", "FTB-O1", "FTB-01", "FTB-O1"],
@@ -121,5 +121,5 @@ test("repairKey: the $ repair needs the code as keyed to be the first word, or t
   assert.deepEqual(repairKey("$S M-1", "SM-1"), { key: "SM-1" });
   assert.deepEqual(repairKey("$SM-1 (C)", "SM-1C"), { key: "SSM-1C", readAs: "$SM-1" });
   assert.deepEqual(repairKey("$SM-1 SAT", "SM-1SAT"), { key: "SSM-1SAT", readAs: "$SM-1" });
-  assert.deepEqual(repairKey("$SM-1(C)", "SM-1C"), { key: "SSM-1C", readAs: "$SM-1(C)" });
+  assert.deepEqual(repairKey("$SM-1(C)", "SM-1(C)"), { key: "SSM-1(C)", readAs: "$SM-1(C)" });
 });

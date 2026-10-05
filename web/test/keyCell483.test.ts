@@ -165,7 +165,7 @@ test("collision rule: a pass-1 FT-1 CUT beside a new FT-1 COVE (C) line → FT-1
 });
 
 test("today's keys kept: LVT-1 A, PT-2 B, WC-2 HD, RB-1 4\", SC-1 (C)", () => {
-  for (const [form, want] of [["LVT-1 A", "LVT-1A"], ["PT-2 B", "PT-2B"], ["WC-2 HD", "WC-2HD"], ['RB-1 4"', "RB-14"], ["SC-1 (C)", "SC-1C"]]) {
+  for (const [form, want] of [["LVT-1 A", "LVT-1A"], ["PT-2 B", "PT-2B"], ["WC-2 HD", "WC-2HD"], ['RB-1 4"', "RB-14"], ["SC-1 (C)", "SC-1(C)"]]) {
     const spans = spansOf([CPT1, M(form, "PORCELAIN TILE", "VENDOR-F", "WHITE 603"), PT2]);
     assert.deepEqual(keys(readScheduleSpans(spans)), ["CPT-1", want, "PT-2"], form);
     unchanged(spans, form);
