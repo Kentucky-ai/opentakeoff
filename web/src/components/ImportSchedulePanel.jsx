@@ -35,7 +35,7 @@
 // is flagged "read as PT-O1" until the code is edited to another one.
 import React, { useId, useMemo, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
-import { closeOnEscape, codeCheckShown, evaluateTags, groupState, groupToggle, isCreatable, previewColors, readAsShown, setPicked as pickRows, skippedBanner } from "../lib/scheduleEdit";
+import { closeOnEscape, codeCheckShown, evaluateTags, groupClickable, groupState, groupToggle, isCreatable, previewColors, readAsShown, setPicked as pickRows, skippedBanner } from "../lib/scheduleEdit";
 import { notUsedKind, notUsedNote } from "../lib/notUsed";
 import { S } from "../lib/ui.js";
 
@@ -110,7 +110,7 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
   const toggle = (key) => setPicked((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
   // A group's checkbox: all picked → clear the group; some or none → pick
   // every bulk-pickable row in it, NOT USED included, code disagreements out.
-  const toggleGroup = (grp) => setPicked((s) => groupToggle(s, grp.items.map(({ key }) => key), canBulkPick));
+  const toggleGroup = (grp) => setPicked((s) => groupToggle(s, grp.items.map(({ key }) => key), canPick, canBulkPick));
   // Select All / Deselect All: the same set math over every row. Locked rows
   // (in use / duplicate / needs a code) are never picked.
   const allKeys = keyed.map(({ key }) => key);
@@ -182,8 +182,9 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
         <div style={{ overflow: "auto", padding: "4px 0" }}>
           {grouped.map((grp) => {
             const keys = grp.items.map(({ key }) => key);
-            const anyPickable = keys.some(canBulkPick);
-            const state = groupState(picked, keys, canBulkPick);
+            // the box shows what is ticked; scanned rows tick one at a time (#500)
+            const anyPickable = groupClickable(picked, keys, canPick, canBulkPick);
+            const state = groupState(picked, keys, canPick);
             return (
               <div key={grp.key}>
                 <label style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 14px", cursor: anyPickable ? "pointer" : "default", background: "var(--paper)", borderTop: "1px solid var(--ink-faint)" }}>

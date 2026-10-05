@@ -118,6 +118,21 @@ test("numeric misread inside a finish key column becomes an unnamed review row, 
   assert.deepEqual(readScheduleSpans(spans).rows.map(r => r.finish_tag), ['PT-1', 'CT-1']);
 });
 
+test("a numeric misread on the table's last row is recovered like a middle row (#511 review)", () => {
+  const spans = build({ cols: MMC, items: [M("PT-1", "PAINT", "VENDOR-A", "WHITE"), M("CT-1", "CERAMIC TILE", "VENDOR-C", "BEIGE"), M("88-2", "SOLID SURFACE", "VENDOR-B", "GREY")] });
+  spans.find(s => s.str === '88-2')!.codeAlternate = 'SS-2';
+  const rows = readScheduleSpans(spans, { ocr: true }).rows;
+  assert.deepEqual(rows.map(r => r.finish_tag), ['PT-1', 'CT-1', '']);
+  assert.equal(rows[2].description, 'SOLID SURFACE');
+  assert.deepEqual(rows[2].code_checks, [{ first: '88-2', second: 'SS-2' }]);
+  assert.equal(rows[1].description, 'CERAMIC TILE', "the last row's words don't stay in the row above");
+  // a numeric text far below the table is not a row of it
+  const far = build({ cols: MMC, items: [M("PT-1", "PAINT", "VENDOR-A", "WHITE"), M("CT-1", "CERAMIC TILE", "VENDOR-C", "BEIGE")] });
+  const ct = far.find(s => s.str === 'CT-1')!;
+  far.push({ ...ct, str: '88-2', y: ct.y + 20 * ct.h, codeAlternate: 'SS-2' });
+  assert.deepEqual(readScheduleSpans(far, { ocr: true }).rows.map(r => r.finish_tag), ['PT-1', 'CT-1']);
+});
+
 test("numeric values in non-key cells and foreign schedules cannot create recovery rows", () => {
   const spans = build({ cols: MMC, items: [M("PT-1", "PAINT", "88-2", "WHITE"), M("CT-1", "CERAMIC TILE", "VENDOR-C", "BEIGE")] });
   spans.find(s => s.str === '88-2')!.codeAlternate = 'SS-2';
