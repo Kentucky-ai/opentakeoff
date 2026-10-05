@@ -24,7 +24,7 @@ import type { RefusalReason } from "../../src/lib/scheduleRead.ts";
 
 /** The PR A slice the reader source is at. Bumped by each slice's commit;
  * tests gate the twins a slice changes on it (no test-file edit). */
-export const CURRENT_SLICE: number = 4;
+export const CURRENT_SLICE: number = 5;
 
 // ── the builder (sheetgraphFinish.test.ts's, plus offset header spans) ──────
 export const TH = 17, PITCH = 38, CW = 8;
@@ -356,8 +356,8 @@ export type ChangeKind =
   | "group-drop"       // (iv): a row emptied by unglue dropped as a group label
   | "unticked" | "category" | "description-prefix" | "added-row" | "skipped" | "refusal-flip";
 export interface ExpectedChange {
-  /** the slice whose source change causes it: base guess 1, entry point and guards 2, key cell and NOT USED 3, four- and five-letter codes 4 */
-  slice: 1 | 2 | 3 | 4;
+  /** the slice whose source change causes it: base guess 1, entry point and guards 2, key cell and NOT USED 3, four- and five-letter codes 4, the second look at a box that read no rows 5 (#483 rows 1 and 4, scheduleReshape.ts) */
+  slice: 1 | 2 | 3 | 4 | 5;
   kind: ChangeKind;
   rows?: string[];
   tokens?: string[];
@@ -375,14 +375,14 @@ export interface TwinExpectation {
   /** live readScheduleSpans finish_tags, in order, at slices 0…6 */
   keys: Seven<string[]>;
   /** the complete expected read from the slice it changes at (see the comment above) */
-  reads: Partial<Record<1 | 2 | 3 | 4, ExpectedRead>>;
+  reads: Partial<Record<1 | 2 | 3 | 4 | 5, ExpectedRead>>;
   changes: ExpectedChange[];
   /** why, when the changes are empty but the twin is listed */
   reason?: string;
 }
-/** The expected read at slice s: the nearest `reads` entry at or below s (5, 6 → 4), else null (= the golden). */
+/** The expected read at slice s: the nearest `reads` entry at or below s (6 → 5), else null (= the golden). */
 export function expectedReadAt(e: TwinExpectation, s: number): ExpectedRead | null {
-  for (let k = Math.min(s, 4); k >= 1; k--) { const r = e.reads[k as 1 | 2 | 3 | 4]; if (r) return r; }
+  for (let k = Math.min(s, 5); k >= 1; k--) { const r = e.reads[k as 1 | 2 | 3 | 4 | 5]; if (r) return r; }
   return null;
 }
 
@@ -401,6 +401,22 @@ const CONC = row("CONC", { description: "SEALED CONCRETE", manufacturer: "VENDOR
 /** Marquee twins whose readScheduleSpans read a later slice changes. Twins
  * not listed are exact on their readScheduleSpans golden at every slice. */
 export const expectedChanges: Record<string, TwinExpectation> = {
+  "both-material-code": {
+    counts: [0, 0, 0, 0, 0, 4, 4],
+    keys: [[], [], [], [], [], ["BR-1", "CK-1", "SL-1", "CPT-1"], ["BR-1", "CK-1", "SL-1", "CPT-1"]],
+    reads: {
+      5: { rows: [
+        row("BR-1", { description: "BRICK", manufacturer: "VENDOR-M", spec_color: "RED 801" }),
+        row("CK-1", { description: "CORK", manufacturer: "VENDOR-N", spec_color: "NATURAL 802" }),
+        row("SL-1", { description: "SLATE", manufacturer: "VENDOR-O", spec_color: "GREY 803" }),
+        row("CPT-1", { description: "CARPET", manufacturer: "VENDOR-A", spec_color: "GREY 101" }),
+      ] },
+    },
+    changes: [
+      { slice: 5, kind: "refusal-flip", rows: ["BR-1", "CK-1", "SL-1", "CPT-1"], fields: { from: "no-table", to: "rows" },
+        clause: "the box read no rows with CODE printed second; the second look moves the CODE band to the front and reads it (#483 row 1)" },
+    ],
+  },
   "mq-c-above-c1-not-used": {
     counts: [3, 3, 3, 3, 3, 3, 3],
     keys: [["CPT-1", "C", "C-2"], ["CPT-1", "C", "C-2"], ["CPT-1", "C", "C-2"], ["CPT-1", "C-1", "C-2"], ["CPT-1", "C-1", "C-2"], ["CPT-1", "C-1", "C-2"], ["CPT-1", "C-1", "C-2"]],

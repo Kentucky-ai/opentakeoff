@@ -23,6 +23,7 @@ import { FINISH_SECTION_CATEGORY, type FinishSection } from "./finishSections.ts
 import { normalizeNotUsed } from "./notUsed.ts";
 import { finishCodeOk } from "./finishCode.ts";
 import { repairKey } from "./ocr/wordClean.ts";
+import { reshapeBox } from "./scheduleReshape.ts";
 import type { Category, CategorySource, ScheduleRow, Token } from "./scheduleRows.ts";
 
 /** Why a marquee gave no rows. "no-table": no finish table was read at all
@@ -248,6 +249,19 @@ const overlapFrac = (a: Bbox, b: Bbox): number => {
  *  section (sheetgraph.ts ExtractOpts.resetAtBlankBand); the vector read
  *  never sets it. */
 export function readScheduleSpans(spans: GraphSpan[], opts?: { ocr?: boolean }): ScheduleRead {
+  const first = readBox(spans, opts);
+  // A box that read no rows gets one more look with its layout normalized
+  // (scheduleReshape.ts, #483): alias headers, a key column printed second,
+  // a legend with no header row. Never after a refusal by title: a DOOR
+  // SCHEDULE stays refused however its columns are arranged.
+  if (first.rows.length || ("refused" in first && first.refused === "title")) return first;
+  const reshaped = reshapeBox(spans);
+  if (!reshaped) return first;
+  const second = readBox(reshaped.spans, opts);
+  return second.rows.length && second.rows.length >= reshaped.codes ? second : first;
+}
+
+function readBox(spans: GraphSpan[], opts?: { ocr?: boolean }): ScheduleRead {
   const parsed = readFinishMarquee({ key: "crop", spans }, { ocr: !!opts?.ocr });
   const original = readOf(parsed, spans, !!opts?.ocr);
   if (!opts?.ocr || !parsed || parsed.kind !== "table" || "refused" in original) return original;
@@ -315,8 +329,16 @@ function recoverNumericCodeRows(parsed: Extract<MarqueeRead, { kind: "table" }>,
  * provenance kept (`_y`, `_pass1`, `_pass1Key`, `_newRule`, `_ungluedFrom`),
  * the lines they consumed, and the per-line decisions. */
 export function readScheduleDebug(spans: GraphSpan[], opts?: { ocr?: boolean }): { read: ScheduleRead } & Omit<ReturnType<typeof traceFinishMarquee>, "read"> {
-  const t = traceFinishMarquee({ key: "crop", spans }, { ocr: !!opts?.ocr });
-  return { read: readOf(t.read, spans, !!opts?.ocr), rows: t.rows, consumed: t.consumed, diag: t.diag };
+  const trace = (s: GraphSpan[]) => {
+    const t = traceFinishMarquee({ key: "crop", spans: s }, { ocr: !!opts?.ocr });
+    return { read: readOf(t.read, s, !!opts?.ocr), rows: t.rows, consumed: t.consumed, diag: t.diag };
+  };
+  // the same second look readScheduleSpans takes, traced on the reshaped box
+  const first = trace(spans);
+  if (first.read.rows.length || ("refused" in first.read && first.read.refused === "title")) return first;
+  const reshaped = reshapeBox(spans);
+  const second = reshaped ? trace(reshaped.spans) : null;
+  return second && second.read.rows.length && second.read.rows.length >= reshaped!.codes ? second : first;
 }
 
 /** `ocr`: the spans are the on-device reader's words, so a code it misread
