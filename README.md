@@ -43,6 +43,8 @@ The **Premium workspace** offers compact controls, searchable actions and sheets
 
 Sheet navigation releases closed PDFs and embedded fonts from the tile workers;
 see the [30-flip rendering check](docs/review/508/README.md).
+Beyond the PDFs in open tabs, at most four idle PDFs stay loaded, least recently
+used out first; see the [12-PDF check](docs/review/302-doc-lru/README.md).
 
 ## Start here
 

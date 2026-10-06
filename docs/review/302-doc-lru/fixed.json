@@ -1,0 +1,119 @@
+{
+  "browser": "154.0.8037.98",
+  "build": "fixed",
+  "plan": "12 PDFs made from the bundled sample-finish-plan.pdf, 3 pages each, one marker word per file",
+  "layout": "Premium (default)",
+  "device": {
+    "deviceMemory": 8,
+    "hardwareConcurrency": 8,
+    "idleCap": 4
+  },
+  "sheets": 36,
+  "tabs": {
+    "opened": [
+      "set-10.pdf",
+      "set-11.pdf",
+      "set-12.pdf"
+    ],
+    "closed": [
+      "set-10.pdf",
+      "set-11.pdf"
+    ],
+    "reopened": "set-11.pdf"
+  },
+  "pdfjsDocuments": {
+    "gallery": 4,
+    "threeTabs": 6,
+    "afterClosingTwo": 5,
+    "afterReopen": 5,
+    "reopenSpawns": 0,
+    "afterGalleryScroll": 6,
+    "thumbnailsDrawn": 36,
+    "afterSearch": 6,
+    "totalSpawns": 23
+  },
+  "pdfjsSpawnsSoFar": {
+    "gallery": 14,
+    "threeTabs": 16,
+    "afterClosingTwo": 16,
+    "afterReopen": 16,
+    "afterGalleryScroll": 23,
+    "afterSearch": 23
+  },
+  "search": {
+    "query": "GANNET",
+    "line": "3 of 36 sheets match",
+    "hits": [
+      "set-07.pdf",
+      "set-07.pdf#2",
+      "set-07.pdf#3"
+    ]
+  },
+  "checks": [
+    {
+      "check": "gallery: at most 4 pdf.js documents",
+      "ok": true
+    },
+    {
+      "check": "three tabs: at most 3 + 4",
+      "ok": true
+    },
+    {
+      "check": "after closing two: at most 1 + 4",
+      "ok": true
+    },
+    {
+      "check": "gallery scrolled and searched, two tabs open: at most 2 + 4",
+      "ok": true
+    },
+    {
+      "check": "reopening the last-closed tab loads no new pdf.js document",
+      "ok": true
+    },
+    {
+      "check": "every thumbnail drew",
+      "ok": true
+    },
+    {
+      "check": "search line",
+      "ok": true
+    },
+    {
+      "check": "search hits are the marked file's sheets",
+      "ok": true
+    },
+    {
+      "check": "no uncaught page errors",
+      "ok": true
+    },
+    {
+      "check": "no console errors or warnings but blocked requests and the known tile warning",
+      "ok": true
+    }
+  ],
+  "blockedRequests": [
+    "https://static.cloudflareinsights.com/beacon.min.js",
+    "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+  ],
+  "console": [
+    {
+      "phase": "gallery",
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://static.cloudflareinsights.com/beacon.min.js"
+    },
+    {
+      "phase": "gallery",
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+    },
+    {
+      "phase": "reopen",
+      "type": "warning",
+      "text": "[tiles] detail crop failed — keeping the previous crop: Error: sheet not open\n    at g (http://127.0.0.1:5261/assets/index-CaRYkNMH.js:96:4265)\n    at E.onmessage (http://127.0.0.1:5261/assets/index-CaRYkNMH.js:96:3605)",
+      "url": "http://127.0.0.1:5261/assets/index-CaRYkNMH.js"
+    }
+  ],
+  "errors": []
+}
