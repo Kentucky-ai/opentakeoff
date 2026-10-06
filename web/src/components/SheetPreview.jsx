@@ -5,7 +5,7 @@ import "./sheetPreview.css";
 
 // Separate render task and canvas: no changes to the working sheet, scale,
 // selection or multi-sheet order. The native dialog owns focus restoration.
-export default function SheetPreview({ sheet, label, getDoc, onClose, onOpen }) {
+export default function SheetPreview({ sheet, label, withDoc, onClose, onOpen }) {
   const dialog = useRef(null);
   const canvas = useRef(null);
   const [status, setStatus] = useState("Loading detailed preview…");
@@ -18,11 +18,12 @@ export default function SheetPreview({ sheet, label, getDoc, onClose, onOpen }) 
     return () => { window.removeEventListener("keydown", suppress, true); el.close(); };
   }, [onClose]);
   useEffect(() => {
-    let live = true, task;
+    let live = true, task, close;
+    const closed = new Promise((r) => { close = r; });
     setStatus("Loading detailed preview…"); setZoom(false);
-    (async () => {
-      const { file, page } = parseSheetKey(sheet);
-      const doc = await getDoc(file);
+    const { file, page } = parseSheetKey(sheet);
+    // the file may be in no tab: held while the preview is open
+    withDoc(file, async (doc) => {
       if (!live) return;
       const pg = await doc.getPage(page);
       if (!live) return;
@@ -32,9 +33,10 @@ export default function SheetPreview({ sheet, label, getDoc, onClose, onOpen }) 
       task = pg.render({ canvasContext: c.getContext("2d", { alpha: false }), viewport: vp, background: "#ffffff" });
       await task.promise;
       if (live) setStatus("");
-    })().catch(() => { if (live) setStatus("This preview could not load. Open the sheet to inspect it on the canvas."); });
-    return () => { live = false; task?.cancel(); };
-  }, [sheet, getDoc]);
+      await closed;
+    }).catch(() => { if (live) setStatus("This preview could not load. Open the sheet to inspect it on the canvas."); });
+    return () => { live = false; task?.cancel(); close(); };
+  }, [sheet, withDoc]);
   return <dialog ref={dialog} className="sheet-detail-dialog" aria-label={`Sheet preview: ${label}`} onCancel={(e) => { e.preventDefault(); onClose(); }}>
     <header><div><small>Sheet preview</small><h2>{label}</h2></div><button type="button" onClick={onClose} aria-label="Close sheet preview">×</button></header>
     <div className="sheet-detail-toolbar"><span>Inspect before opening</span><button type="button" aria-pressed={zoom} onClick={() => setZoom(v => !v)}>{zoom ? "Fit page" : "Actual pixels"}</button><button type="button" onClick={() => onOpen(sheet)}>Open sheet</button></div>
