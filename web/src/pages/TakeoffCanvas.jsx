@@ -2177,7 +2177,11 @@ export default function TakeoffCanvas() {
   // No page (not rendered, or a stitch): nothing held.
   function holdSheetPage(key) {
     const page = pageObjsRef.current.get(key);
-    return { page, release: page ? docCache.lease(parseSheetKey(key).file) : () => {} };
+    // only a page whose file is still cached: a lease on a file a forced
+    // evict just dropped (removed or revised) would load it afresh before
+    // the canvas re-renders
+    const { file } = parseSheetKey(key);
+    return { page, release: page && docCache.has(file) ? docCache.lease(file) : () => {} };
   }
   async function withSheetPage(key, fn) {
     const { page, release } = holdSheetPage(key);

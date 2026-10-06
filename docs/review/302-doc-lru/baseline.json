@@ -19,8 +19,23 @@
       "set-10.pdf",
       "set-11.pdf"
     ],
-    "reopened": "set-11.pdf"
+    "reopened": "set-11.pdf",
+    "openAfterSearch": [
+      "set-12.pdf",
+      "set-11.pdf"
+    ],
+    "switchedTo": [
+      "set-12.pdf",
+      "set-11.pdf"
+    ]
   },
+  "previewed": [
+    "set-01.pdf",
+    "set-02.pdf",
+    "set-03.pdf",
+    "set-04.pdf",
+    "set-05.pdf"
+  ],
   "pdfjsDocuments": {
     "gallery": 12,
     "threeTabs": 12,
@@ -30,6 +45,10 @@
     "afterGalleryScroll": 12,
     "thumbnailsDrawn": 36,
     "afterSearch": 12,
+    "afterPreviews": 12,
+    "galleryClosed": 12,
+    "switchTo set-12.pdf": 12,
+    "switchTo set-11.pdf": 12,
     "totalSpawns": 12
   },
   "pdfjsSpawnsSoFar": {
@@ -38,7 +57,16 @@
     "afterClosingTwo": 12,
     "afterReopen": 12,
     "afterGalleryScroll": 12,
-    "afterSearch": 12
+    "afterSearch": 12,
+    "afterPreviews": 12,
+    "galleryClosed": 12,
+    "switchTo set-12.pdf": 12,
+    "switchTo set-11.pdf": 12
+  },
+  "tabSwitchSpawns": {
+    "gallery closed": 0,
+    "set-12.pdf": 0,
+    "set-11.pdf": 0
   },
   "search": {
     "query": "GANNET",
@@ -69,6 +97,18 @@
     },
     {
       "phase": "reopen",
+      "type": "warning",
+      "text": "[tiles] detail crop failed — keeping the previous crop: Error: sheet not open\n    at g (http://127.0.0.1:5261/assets/index-CRCKv4Rw.js:96:4506)\n    at E.onmessage (http://127.0.0.1:5261/assets/index-CRCKv4Rw.js:96:3846)",
+      "url": "http://127.0.0.1:5261/assets/index-CRCKv4Rw.js"
+    },
+    {
+      "phase": "switch tabs",
+      "type": "warning",
+      "text": "[tiles] detail crop failed — keeping the previous crop: Error: sheet not open\n    at g (http://127.0.0.1:5261/assets/index-CRCKv4Rw.js:96:4506)\n    at E.onmessage (http://127.0.0.1:5261/assets/index-CRCKv4Rw.js:96:3846)",
+      "url": "http://127.0.0.1:5261/assets/index-CRCKv4Rw.js"
+    },
+    {
+      "phase": "switch tabs",
       "type": "warning",
       "text": "[tiles] detail crop failed — keeping the previous crop: Error: sheet not open\n    at g (http://127.0.0.1:5261/assets/index-CRCKv4Rw.js:96:4506)\n    at E.onmessage (http://127.0.0.1:5261/assets/index-CRCKv4Rw.js:96:3846)",
       "url": "http://127.0.0.1:5261/assets/index-CRCKv4Rw.js"

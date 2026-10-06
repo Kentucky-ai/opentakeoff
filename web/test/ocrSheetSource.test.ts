@@ -66,10 +66,13 @@ function setup(initial: Record<string, number[]>, hashing = true, o: SetupOpts =
     pinned: o.pinned,
     maxIdle: o.maxIdle,
   });
-  const source = createSheetSource<FakePage>({ cached: docs.cached, open: docs.open, lease: docs.lease, storeHash: store.storeHash, storeKnown: (f) => store.storeKnown(f) });
+  // leases the source took and releases it made, counted
+  const leases = { taken: 0, released: 0 };
+  const lease = (f: string) => { leases.taken++; const r = docs.lease(f); return () => { leases.released++; r(); }; };
+  const source = createSheetSource<FakePage>({ cached: docs.cached, open: docs.open, lease, storeHash: (f) => store.storeHash(f), storeKnown: (f) => store.storeKnown(f) });
   /** the first bytes of every destroyed document, in open order */
   const destroyed = () => opened.filter((d) => d.destroyed()).map((d) => d.from);
-  return { store, docs, source, remembered, opened, destroyed };
+  return { store, docs, source, remembered, opened, destroyed, leases };
 }
 
 /** Files a.pdf, b.pdf, ... whose first byte is 1, 2, ... */
@@ -145,11 +148,28 @@ test("hash: nothing loaded or known loads the document once and takes its hash",
   assert.equal(t.store.calls.storeHash, 0);
 });
 
-test("hash: the document it loads is held only until the hash settles", async () => {
-  const t = setup(files(1), true, { maxIdle: 0 });
-  assert.equal(await t.source.hash("a.pdf"), await shaHex([1]));
+test("hash() keeps the document it loads until its hash settles", async () => {
+  // a store that doesn't hash here: the hash is the store's, held back
+  const t = setup(files(1), false, { maxIdle: 0 });
+  let settle!: (h: string) => void;
+  t.store.storeHash = () => new Promise((r) => { settle = r; });
+  const h = t.source.hash("a.pdf");
+  for (let i = 0; i < 5; i++) await tick();
+  assert.equal(t.docs.loaded("a.pdf"), true, "parsed, so a trim could take it");
+  assert.deepEqual(t.destroyed(), [], "held while its hash is pending");
+  settle("d".repeat(64));
+  assert.equal(await h, "d".repeat(64));
   await tick();
-  assert.deepEqual(t.destroyed(), [1]);
+  assert.deepEqual(t.destroyed(), [1], "settled, it is let go");
+});
+
+test("a hash() whose load fails still releases its lease", async () => {
+  const t = setup(files(1), false, { maxIdle: 0 });
+  t.store.storeHash = async () => { throw new Error("offline"); };
+  await assert.rejects(t.source.hash("a.pdf"), /offline/);
+  await tick();
+  assert.deepEqual(t.leases, { taken: 1, released: 1 });
+  assert.deepEqual(t.destroyed(), [1], "released, the idle document goes");
 });
 
 test("a store that doesn't hash here (local) keys on the store's hash", async () => {
@@ -164,6 +184,15 @@ test("hash with known: a loaded document with no hash of its own asks what the s
   await t.docs.doc("a.pdf");
   assert.equal(await t.source.hash("a.pdf", { known: true }), null);
   assert.deepEqual([t.store.calls.storeHash, t.store.calls.storeKnown], [0, 1]);
+});
+
+test("readHooks.release twice releases once", async () => {
+  const t = setup(files(1));
+  const h = readHooks(t.source, "a.pdf", 1);
+  await h.getPage();
+  h.release();
+  h.release();
+  assert.deepEqual(t.leases, { taken: 1, released: 1 });
 });
 
 test("page: the page and the hash of the document it came from", async () => {
@@ -353,7 +382,9 @@ test("withLoadedDoc skips a document still parsing, without waiting for it", asy
   const pending = t.docs.doc("a.pdf");
   await tick();
   let ran = false;
-  assert.equal(await t.docs.withLoadedDoc("a.pdf", () => { ran = true; }), undefined);
+  // raced against a timer, so one that waits for the parse fails here
+  const out = await Promise.race([t.docs.withLoadedDoc("a.pdf", () => { ran = true; }), tick().then(() => "waited")]);
+  assert.equal(out, undefined);
   assert.equal(ran, false);
   assert.equal(t.store.calls.loads, 1);
   t.opened[0].resolve();

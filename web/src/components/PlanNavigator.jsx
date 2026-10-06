@@ -498,7 +498,8 @@ export default function PlanNavigator({
   // every knownPages change, which would cancel the walk part-way through.
   // Restarts on a sheets change; stops on unmount or when the query clears.
   // In a cloud project this downloads every PDF not yet opened, the same as
-  // opening them; the documents stay in the canvas's cache like the pump's.
+  // opening them; each document is held while its pages are read, then
+  // joins the canvas's few idle ones like the pump's, oldest out first.
   const indexGenRef = useRef(0);
   const [indexProg, setIndexProg] = useState(null);   // { done, total } while the walk runs
   // what the last walk couldn't read ({ sheets, incomplete }); Retry, or the

@@ -167,6 +167,47 @@ try {
   const match = await matchLine.innerText();
   const hits = await page.locator('[data-sheetkey]').evaluateAll(cs => cs.map(c => c.dataset.sheetkey));
   at('afterSearch');
+  // the gallery with its search, before the tab switches leave it
+  mkdirSync(resolve(out, '..'), { recursive: true });
+  await page.screenshot({ path: out.replace(/\.json$/, '.png') });
+
+  // preview one sheet of each of five other files: more than the idle cap,
+  // so any file not kept for its tab is pushed out by them
+  phase = 'previews';
+  await page.getByPlaceholder('Search sheet text…', { exact: true }).fill('');
+  await page.waitForFunction(n => document.querySelectorAll('[data-sheetkey]').length === n, SHEETS);
+  const previewed = [0, 1, 2, 3, 4].map(name);
+  for (const f of previewed) {
+    await page.locator(`[data-sheetkey="${key(f)}"]`).getByRole('button', { name: 'Preview', exact: true }).dispatchEvent('click');
+    const dialog = page.getByRole('dialog', { name: /^Sheet preview: / });
+    await dialog.locator('canvas:not([hidden])').waitFor({ timeout: 60000 });
+    await dialog.getByRole('button', { name: 'Close sheet preview', exact: true }).click();
+    await dialog.waitFor({ state: 'detached' });
+  }
+  await quiet('previews');
+  at('afterPreviews');
+
+  // the files in open tabs must still be loaded: switching to each starts no
+  // pdf.js worker
+  phase = 'switch tabs';
+  const openTabs = await tabFiles();
+  assert.deepEqual([...openTabs].sort(), [B, C].map(f => key(f)).sort(), 'two tabs open');
+  const switchSpawns = {};
+  // close the gallery back onto B, the last tab opened; then C, then B again
+  {
+    const before = spawns;
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    await page.locator('[data-sheetkey]').first().waitFor({ state: 'detached' });
+    await quiet('gallery closed');
+    at('galleryClosed');
+    switchSpawns['gallery closed'] = spawns - before;
+  }
+  for (const f of [C, B]) {
+    const before = spawns;
+    await openFromNavigator(f);
+    at(`switchTo ${f}`);
+    switchSpawns[f] = spawns - before;
+  }
   counts.totalSpawns = spawns;
 
   if (!process.env.BASELINE) {
@@ -176,6 +217,10 @@ try {
     check(`after closing two: at most 1 + ${IDLE_CAP}`, () => assert.ok(counts.afterClosingTwo <= 1 + IDLE_CAP, `${counts.afterClosingTwo}`));
     check(`gallery scrolled and searched, two tabs open: at most 2 + ${IDLE_CAP}`, () => assert.ok(Math.max(counts.afterGalleryScroll, counts.afterSearch) <= 2 + IDLE_CAP, `${counts.afterGalleryScroll}, ${counts.afterSearch}`));
     check('reopening the last-closed tab loads no new pdf.js document', () => assert.equal(counts.reopenSpawns, 0));
+    check('closing the gallery and switching to each open tab after the scroll and search loads no new pdf.js document', () => assert.deepEqual(switchSpawns, { 'gallery closed': 0, [key(C)]: 0, [key(B)]: 0 }));
+    check(`five previews, two tabs open: at most 2 + ${IDLE_CAP}`, () => assert.ok(counts.afterPreviews <= 2 + IDLE_CAP, `${counts.afterPreviews}`));
+    check('the search starts at most 2 pdf.js workers over the scrolled gallery', () => assert.ok(spawnsAt.afterSearch - spawnsAt.afterGalleryScroll <= 2, `${spawnsAt.afterSearch - spawnsAt.afterGalleryScroll}`));
+    check('the gallery after adding 12 PDFs starts at most 16 pdf.js workers', () => assert.ok(spawnsAt.gallery <= 16, `${spawnsAt.gallery}`));
     check('every thumbnail drew', () => assert.equal(drawn.size, SHEETS));
     check('search line', () => assert.equal(match, `3 of ${SHEETS} sheets match`));
     check('search hits are the marked file\'s sheets', () => assert.deepEqual([...hits].sort(), [1, 2, 3].map(p => key(name(target), p)).sort()));
@@ -190,13 +235,12 @@ try {
     browser: browser.version(), build: process.env.BASELINE ? 'baseline' : 'fixed',
     plan: `${files.length} PDFs made from the bundled sample-finish-plan.pdf, 3 pages each, one marker word per file`,
     layout: 'Premium (default)', device: { deviceMemory: 8, hardwareConcurrency: 8, idleCap: IDLE_CAP },
-    sheets: SHEETS, tabs: { opened: [A, B, C], closed: [A, B], reopened: B },
-    pdfjsDocuments: counts, pdfjsSpawnsSoFar: spawnsAt,
+    sheets: SHEETS, tabs: { opened: [A, B, C], closed: [A, B], reopened: B, openAfterSearch: openTabs, switchedTo: [C, B] }, previewed,
+    pdfjsDocuments: counts, pdfjsSpawnsSoFar: spawnsAt, tabSwitchSpawns: switchSpawns,
     search: { query: MARKERS[target], line: match, hits }, checks,
     blockedRequests: [...blocked], console: consoleMessages, errors,
   };
-  mkdirSync(resolve(out, '..'), { recursive: true }); writeFileSync(out, JSON.stringify(report, null, 2) + '\n');
-  await page.screenshot({ path: out.replace(/\.json$/, '.png') });
+  writeFileSync(out, JSON.stringify(report, null, 2) + '\n');
   console.log(JSON.stringify(report));
   const failed = checks.filter(c => !c.ok);
   if (failed.length) { console.error('FAILED:', failed); process.exitCode = 1; }

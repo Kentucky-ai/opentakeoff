@@ -38,35 +38,35 @@
   ],
   "pdfjsDocuments": {
     "gallery": 4,
-    "threeTabs": 6,
-    "afterClosingTwo": 5,
-    "afterReopen": 5,
+    "threeTabs": 4,
+    "afterClosingTwo": 4,
+    "afterReopen": 4,
     "reopenSpawns": 0,
-    "afterGalleryScroll": 6,
+    "afterGalleryScroll": 4,
     "thumbnailsDrawn": 36,
-    "afterSearch": 6,
-    "afterPreviews": 6,
-    "galleryClosed": 6,
-    "switchTo set-12.pdf": 6,
-    "switchTo set-11.pdf": 6,
-    "totalSpawns": 28
+    "afterSearch": 4,
+    "afterPreviews": 4,
+    "galleryClosed": 4,
+    "switchTo set-12.pdf": 4,
+    "switchTo set-11.pdf": 4,
+    "totalSpawns": 33
   },
   "pdfjsSpawnsSoFar": {
     "gallery": 14,
-    "threeTabs": 16,
-    "afterClosingTwo": 16,
-    "afterReopen": 16,
-    "afterGalleryScroll": 23,
-    "afterSearch": 23,
-    "afterPreviews": 28,
-    "galleryClosed": 28,
-    "switchTo set-12.pdf": 28,
-    "switchTo set-11.pdf": 28
+    "threeTabs": 17,
+    "afterClosingTwo": 17,
+    "afterReopen": 17,
+    "afterGalleryScroll": 26,
+    "afterSearch": 26,
+    "afterPreviews": 31,
+    "galleryClosed": 31,
+    "switchTo set-12.pdf": 32,
+    "switchTo set-11.pdf": 33
   },
   "tabSwitchSpawns": {
     "gallery closed": 0,
-    "set-12.pdf": 0,
-    "set-11.pdf": 0
+    "set-12.pdf": 1,
+    "set-11.pdf": 1
   },
   "search": {
     "query": "GANNET",
@@ -100,7 +100,8 @@
     },
     {
       "check": "closing the gallery and switching to each open tab after the scroll and search loads no new pdf.js document",
-      "ok": true
+      "ok": false,
+      "message": "Expected values to be strictly deep-equal:\n+ actual - expected\n\n  {\n    'gallery closed': 0,\n+   'set-11.pdf': 1,\n+   'set-12.pdf': 1\n-   'set-11.pdf': 0,\n-   'set-12.pdf': 0\n  }\n"
     },
     {
       "check": "five previews, two tabs open: at most 2 + 4",
@@ -155,20 +156,8 @@
     {
       "phase": "reopen",
       "type": "warning",
-      "text": "[tiles] detail crop failed — keeping the previous crop: Error: sheet not open\n    at g (http://127.0.0.1:5261/assets/index-yJMv08T0.js:96:4265)\n    at E.onmessage (http://127.0.0.1:5261/assets/index-yJMv08T0.js:96:3605)",
-      "url": "http://127.0.0.1:5261/assets/index-yJMv08T0.js"
-    },
-    {
-      "phase": "switch tabs",
-      "type": "warning",
-      "text": "[tiles] detail crop failed — keeping the previous crop: Error: sheet not open\n    at g (http://127.0.0.1:5261/assets/index-yJMv08T0.js:96:4265)\n    at E.onmessage (http://127.0.0.1:5261/assets/index-yJMv08T0.js:96:3605)",
-      "url": "http://127.0.0.1:5261/assets/index-yJMv08T0.js"
-    },
-    {
-      "phase": "switch tabs",
-      "type": "warning",
-      "text": "[tiles] detail crop failed — keeping the previous crop: Error: sheet not open\n    at g (http://127.0.0.1:5261/assets/index-yJMv08T0.js:96:4265)\n    at E.onmessage (http://127.0.0.1:5261/assets/index-yJMv08T0.js:96:3605)",
-      "url": "http://127.0.0.1:5261/assets/index-yJMv08T0.js"
+      "text": "[tiles] detail crop failed — keeping the previous crop: Error: sheet not open\n    at g (http://127.0.0.1:5261/assets/index-BIOBKurs.js:96:4265)\n    at E.onmessage (http://127.0.0.1:5261/assets/index-BIOBKurs.js:96:3605)",
+      "url": "http://127.0.0.1:5261/assets/index-BIOBKurs.js"
     }
   ],
   "errors": []

@@ -228,8 +228,8 @@ export function createCloudStore(folderId, drive, { local = localStore, maxPdfBy
   // that, pdfHash downloads the file. Only a real hash stays memoized.
   // addPdf/removePdf forget the name and bump its generation: a hash that
   // settles after a forget (of bytes read before a re-add) is neither kept
-  // nor returned. The kept copy of its bytes goes with it, so the hash and
-  // the document are always of the same bytes.
+  // nor returned. Re-adding or removing a file drops its copy together with
+  // its hash.
   const hashMemo = new Map();
   const hashGen = new Map();
   const genOf = (name) => hashGen.get(name) ?? 0;

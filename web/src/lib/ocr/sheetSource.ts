@@ -205,7 +205,8 @@ export function createSheetSource<P>(deps: SheetSourceDeps<P>): SheetSource<P> {
  * the source; the page, and the hash its read is stored under, from one
  * document. `opened()`: the page getPage gave, once it has. `release()`:
  * let that document go once the read settles (a no-op if getPage never ran:
- * a cache hit opens nothing). */
+ * a cached read opens nothing when its PDF's hash is already known, as
+ * before). */
 export function readHooks<P>(source: SheetSource<P>, file: string, n: number) {
   let hash: Promise<string | null> = Promise.resolve(null);
   let opened: P | null = null;

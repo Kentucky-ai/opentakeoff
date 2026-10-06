@@ -57,6 +57,6 @@ export function createByteCache(deps: { load(name: string): Promise<Uint8Array>;
   };
 }
 
-/** How many bytes of copies to keep: none on a low-memory device, whose
- * budget is tightest and where one plan set can outgrow a small cap. */
-export function byteBudget(lowMemory: boolean): number { return lowMemory ? 0 : 256 * 1024 * 1024; }
+/** How many bytes of copies to keep: less on a low-memory device, whose
+ * budget is tightest. A file bigger than the budget isn't kept. */
+export function byteBudget(lowMemory: boolean): number { return (lowMemory ? 64 : 256) * 1024 * 1024; }

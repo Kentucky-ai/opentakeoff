@@ -154,9 +154,9 @@ test("a failed load isn't kept, and its error reaches every caller", async () =>
   assert.deepEqual([...await p3], [7]);
 });
 
-test("the byte budget is 256 MB, and none (the cache off) on a low-memory device", () => {
+test("the byte budget is 256 MB, and 64 MB on a low-memory device", () => {
   assert.equal(byteBudget(false), 256 * 1024 * 1024);
-  assert.equal(byteBudget(true), 0);
+  assert.equal(byteBudget(true), 64 * 1024 * 1024);
 });
 
 test("with no budget the cache is off: every get loads, and concurrent gets don't share", async () => {
@@ -184,6 +184,7 @@ test("callers sharing a load each get a copy: detaching one leaves the other who
   const l = loads();
   const cache = createByteCache({ load: l.load, maxBytes: 100 });
   const p1 = cache.get("a.pdf"), p2 = cache.get("a.pdf");
+  assert.equal(l.count("a.pdf"), 1, "one load, shared");
   l.resolve("a.pdf", [4, 5]);
   const b1 = await p1;
   detach(b1);
