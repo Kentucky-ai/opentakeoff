@@ -786,3 +786,48 @@ test("a Read of an unopened cloud file downloads its bytes once", async () => {
   assert.deepEqual(puts, [ocrCacheKey(await shaHex([5, 6]), 1)]);
   assert.equal(await store.pdfHashIfKnown("plan.pdf"), await shaHex([5, 6]), "and the store has it from then on");
 });
+
+// A document trimmed for being idle past the cap isn't evictDoc: the store
+// keeps its hash, and a later Read downloads the bytes once more, no more.
+test("a Read of a cloud file trimmed past the idle cap downloads it once more and keeps its hash", async () => {
+  const { drive, counter } = countingDrive();
+  const store = createCloudStore("folder1", drive as any, { local: fakeLocal() as any });
+  await store.addPdf(fakeFile("plan.pdf", new Uint8Array([5, 6])) as any);
+  await store.addPdf(fakeFile("other.pdf", new Uint8Array([7])) as any);
+  let forgets = 0;
+  const forget = store.forgetPdfHash.bind(store);
+  (store as any).forgetPdfHash = (n: string) => { forgets++; return forget(n); };
+  const page = { getViewport: ({ scale }: { scale: number }) => ({ width: 100 * scale, height: 50 * scale }) };
+  const docs = createDocCache<typeof page>({
+    load: (f) => store.loadPdfData(f),
+    open: () => ({ promise: Promise.resolve({ getPage: async () => page }), destroy() {} }),
+    hashing: (f) => store.beginPdfHash(f),
+    maxIdle: 1,
+  });
+  const source = createSheetSource<typeof page>({ cached: docs.cached, open: docs.open, lease: docs.lease, storeHash: (f) => store.pdfHash(f), storeKnown: (f) => store.pdfHashIfKnown(f) });
+  const reader = createPageReader({
+    session: {
+      run: async (task: any) => ({ ok: true, value: await task() }),
+      availability: async () => ({ state: "available", manifest: { rev: "r1", files: [] }, cached: true, downloadBytes: 0 }),
+    } as any,
+    cache: createPageCache({ metaGet: async () => undefined, metaPut: async () => {} }),
+    readRegion: async () => ({ lines: [{ str: "ROOM", x: 1, y: 20, w: 40, h: 10 }], ms: 1, rasters: 1 }),
+    onLines: () => {},
+  });
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const n0 = counter.n;
+  await docs.doc("plan.pdf");
+  await tick();
+  await docs.doc("other.pdf");
+  await tick();
+  assert.equal(docs.has("plan.pdf"), false, "plan.pdf was trimmed");
+  assert.equal(counter.n, n0 + 2);
+  assert.equal(await store.pdfHashIfKnown("plan.pdf"), await shaHex([5, 6]), "its hash survives the trim");
+  const h = readHooks(source, "plan.pdf", 1);
+  const r = await reader.read({ key: "plan.pdf", file: "plan.pdf", page: 1, rs: 1, pdfHash: h.pdfHash, getPage: h.getPage, pageHash: h.pageHash });
+  h.release();
+  assert.equal(r.ok, true);
+  assert.equal(counter.n, n0 + 3, "exactly one more download");
+  assert.equal(await store.pdfHashIfKnown("plan.pdf"), await shaHex([5, 6]));
+  assert.equal(forgets, 0);
+});
