@@ -108,8 +108,8 @@
   ],
   "readerMs": {
     "count": 30,
-    "p95": 2.2,
-    "max": 3.6
+    "p95": 1.9,
+    "max": 3.7
   },
   "workerSpawnsAfterReload": 1,
   "consoleErrors": [
@@ -744,6 +744,45 @@
       }
     },
     {
+      "check": "keyboard check setup: one committed shape exists",
+      "ok": true,
+      "detail": {
+        "shapesBefore": 1
+      }
+    },
+    {
+      "check": "keyboard: Delete / Backspace / Shift+Delete / Cmd+Backspace on a row leave the selected shape alone",
+      "ok": true,
+      "detail": {
+        "shapesBefore": 1,
+        "shapesAfter": 1,
+        "focusedRow": "f:set-1.pdf"
+      }
+    },
+    {
+      "check": "keyboard: the same keys on a row leave a trace in progress alone",
+      "ok": true,
+      "detail": {
+        "pointsBefore": 3,
+        "pointsAfter": 3
+      }
+    },
+    {
+      "check": "control: Delete with the canvas focused removes the selected shape",
+      "ok": true,
+      "detail": {
+        "shapesBefore": 1,
+        "shapesControl": 0
+      }
+    },
+    {
+      "check": "keyboard: Delete/Backspace on a row remove nothing",
+      "ok": true,
+      "detail": {
+        "rows": 36
+      }
+    },
+    {
       "check": "keyboard: Tab leaves the tree",
       "ok": true,
       "detail": {
@@ -785,8 +824,8 @@
       "ok": true,
       "detail": {
         "count": 30,
-        "p95": 2.2,
-        "max": 3.6
+        "p95": 1.9,
+        "max": 3.7
       }
     },
     {
@@ -802,6 +841,10 @@
     "05-tree-light-theme.png",
     "06-tree-graphite-theme.png",
     "07-tree-900px-wide.png",
-    "08-keyboard-focus-row.png"
+    "08-keyboard-focus-row.png",
+    "09-shape-selected.png",
+    "10-trace-in-progress-after-keys.png",
+    "11-control-selected-before-delete.png",
+    "12-control-after-delete.png"
   ]
 }

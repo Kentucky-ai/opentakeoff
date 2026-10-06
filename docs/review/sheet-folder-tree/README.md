@@ -41,18 +41,19 @@ of filler and a title block reading `SHEET NUMBER` over the number
 | Numbers shown after the reload | 30 | 30, identical to `expected` |
 | Numbers shown right after opening the first sheet | not asserted (the tree fills in as pages are read) | 9 (one run showed 8) |
 | Reader calls (`sheet-number` measures) | n/a | 30 |
-| Reader duration | max under 50 ms | p95 1.9 ms, max 3.3 ms |
+| Reader duration | max under 50 ms | the `readerMs` entry in `results.json` (p95 and max over the 30 calls; varies a little run to run) |
 | Gallery thumbnails drawn | 30 | 30 of 30 cards |
 | pdf.js worker spawns since the reload | the canvas's active file only | 1, and still 1 after 1.5 s |
 | 900 px window | no horizontal page scroll | none (document width 900) |
-| Delete / Backspace on a focused row | removes nothing | 36 rows before and after |
+| Delete / Backspace / Shift+Delete / Cmd+Backspace on a focused row | removes no row, no selected shape, no trace point | 36 rows before and after; 1 selected shape still there; a 3-point unfinished trace still 3 points |
+| Control: Delete with the canvas focused | removes the selected shape (so the check above can fail) | 1 shape before, 0 after |
 | Console errors | none | only the blocked external requests (analytics beacon, Google Fonts) the script aborts on purpose |
 
-Every claim in this README is a `check` in `results.json` (16 checks, all `ok: true`), including each keyboard step, the worker count and the thumbnail count. The script exits non-zero if any fails.
+Every claim in this README is a `check` in `results.json` (all `ok: true`; the numbers in the table above come from that file, which is the record if they ever differ), including each keyboard step, the worker count and the thumbnail count. The script exits non-zero if any fails.
 
 Reading the table: right after opening, only the open file's pages and part of
 the next file's are numbered, because a number is read when its page's text is
-read; unread rows show today's label (`set-3 · 2`) and are replaced in place.
+read; unread rows show the file-and-page label (`set-3 · 2`) and are replaced in place.
 After the gallery has drawn every card all 30 are numbered, and after a reload
 all 30 are present at once from the saved per-file records, with a single
 worker (the canvas's file) started.
@@ -69,6 +70,9 @@ Each was opened and looked at after the run.
 - `06-tree-graphite-theme.png`: Backlit graphite surface, same tree.
 - `07-tree-900px-wide.png`: a 900 px window; the toolbar wraps to two rows, the panel keeps its width and rows are not clipped.
 - `08-keyboard-focus-row.png`: a keyboard walkthrough position, focus ring on the `A-101` row (the search box outline comes from the navigator's `:focus-within` rule, an existing style).
+- `09-shape-selected.png`: a committed area shape selected on the open sheet (status bar "1 shapes"), before the keys are pressed on a tree row.
+- `10-trace-in-progress-after-keys.png`: after Delete, Backspace, Shift+Delete, Cmd+Backspace and Ctrl+Backspace on a focused tree row, with a 3-point trace in progress: the shape and all trace points are still there, one tree row focused.
+- `11-control-selected-before-delete.png` and `12-control-after-delete.png`: the control. With the canvas focused (not a row) the same Delete removes the selected shape ("0 shapes").
 
 Observation, not a result of this change: in Backlit graphite the panel's
 "Sheets" title and the "open" half of the logo are very low contrast (dark on
@@ -80,8 +84,10 @@ Tab from the search box lands on the tree's one tab stop, here the `set-6`
 folder row (the last folder the script clicked open; with no earlier click it
 is the current sheet's row); ArrowDown/ArrowUp move between
 rows; End goes to the last row, Home to the first; ArrowLeft on an open folder
-collapses it, ArrowRight expands it and then moves into it; Delete and
-Backspace do nothing; Tab leaves the tree for the next control.
+collapses it, ArrowRight expands it and then moves into it; Delete,
+Backspace, Shift+Delete and Cmd/Ctrl+Backspace on a row do nothing (a selected
+shape and an unfinished trace are left alone, with a control showing the same
+Delete does remove the shape from the canvas); Tab leaves the tree for the next control.
 
 ## Reader on public files
 

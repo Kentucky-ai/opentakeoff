@@ -178,11 +178,62 @@ try {
   check('keyboard: ArrowRight on an open folder moves into it', into.to === into.expectedNext && into.to !== into.from, into);
   results.focusedElementsAtShot = await page.evaluate(() => [...document.querySelectorAll(':focus, :focus-within')].map(e => `${e.tagName}${e.getAttribute('role') ? '[' + e.getAttribute('role') + ']' : ''}${e.className ? '.' + String(e.className).split(' ')[0] : ''}`));
   await shot('08-keyboard-focus-row.png', false);
+  // Delete / Backspace / Shift+Delete / Cmd+Backspace on a focused row must not
+  // reach the canvas shortcuts: with a committed shape SELECTED, and again with a
+  // trace in progress, none of them may remove the shape or a trace point.
+  const shapeCount = async () => +(await page.locator('text=/^\\d+ shapes?$/').last().innerText()).match(/\d+/)[0];
+  const tracePoints = async () => { const t = await page.getByRole('button', { name: /^Finish \(\d+\)$/ }).first().innerText().catch(() => ''); return +(t.match(/\d+/) || [0])[0]; };
+  const focusRow = async () => { await page.locator('[role=treeitem]').first().focus(); return focused(); };
+  const rowKeys = ['Delete', 'Backspace', 'Shift+Delete', 'Meta+Backspace', 'Control+Backspace'];
   const textsBefore = (await rowTexts()).map(r => r.text);
-  await page.keyboard.press('Delete');
-  await page.keyboard.press('Backspace');
+  await focusRow();
+  for (const k of rowKeys) await page.keyboard.press(k);
   const textsAfter = (await rowTexts()).map(r => r.text);
   kb.push({ key: 'Delete, Backspace', rowsBefore: textsBefore.length, rowsAfter: textsAfter.length });
+  check('keyboard: Delete/Backspace on a row remove nothing', JSON.stringify(textsBefore) === JSON.stringify(textsAfter) && textsAfter.length === 36, { rows: textsAfter.length });
+  // measuring needs a scale on the sheet
+  await page.getByRole('button', { name: /^Set scale/ }).first().click();
+  await page.getByRole('button', { name: /^1\/8" = 1'-0"/ }).first().click();
+  await settle(300);
+  // a committed shape: three area points on the open sheet, then Finish
+  await page.getByRole('button', { name: 'Area', exact: true }).first().click();
+  for (const [x, y] of [[760, 330], [960, 330], [960, 500]]) { await page.mouse.click(x, y); await settle(150); }
+  await page.getByRole('button', { name: /^Finish \(3\)$/ }).first().click();
+  await settle(300);
+  // select it (Select tool, click inside the triangle)
+  await page.getByRole('button', { name: /^Select/ }).first().click();
+  await page.mouse.click(920, 420);
+  await settle(300);
+  await shot('09-shape-selected.png', false);
+  const shapesBefore = await shapeCount();
+  check('keyboard check setup: one committed shape exists', shapesBefore === 1, { shapesBefore });
+  const rowBeforeKeys = await focusRow();
+  for (const k of rowKeys) await page.keyboard.press(k);
+  const shapesAfter = await shapeCount();
+  check('keyboard: Delete / Backspace / Shift+Delete / Cmd+Backspace on a row leave the selected shape alone', shapesAfter === shapesBefore && /^[sf]:/.test(rowBeforeKeys), { shapesBefore, shapesAfter, focusedRow: rowBeforeKeys });
+  // a trace in progress: three area points (unfinished), then the keys on a row
+  await page.getByRole('button', { name: 'Area', exact: true }).first().click();
+  for (const [x, y] of [[1040, 330], [1180, 330], [1180, 450]]) { await page.mouse.click(x, y); await settle(150); }
+  const pointsBefore = await tracePoints();
+  await focusRow();
+  for (const k of rowKeys) await page.keyboard.press(k);
+  const pointsAfter = await tracePoints();
+  await shot('10-trace-in-progress-after-keys.png', false);
+  check('keyboard: the same keys on a row leave a trace in progress alone', pointsBefore === 3 && pointsAfter === pointsBefore && (await shapeCount()) === shapesBefore, { pointsBefore, pointsAfter });
+  // controls, so the checks above can fail: the same Delete with the canvas (not a
+  // row) focused removes the selected shape
+  await page.keyboard.press('Escape'); // leaves the tree (it also closes the Sheets panel, so the sheet shifts left)
+  await settle(200);
+  await page.getByRole('button', { name: /^Select/ }).first().click();
+  for (let i = 0; i < 4; i++) { await page.keyboard.press('Delete'); await settle(100); } // clears the unfinished trace first
+  await page.mouse.click(640, 400);
+  await settle(300);
+  await shot('11-control-selected-before-delete.png', false);
+  await page.keyboard.press('Delete');
+  await settle(300);
+  await shot('12-control-after-delete.png', false);
+  const shapesControl = await shapeCount();
+  check('control: Delete with the canvas focused removes the selected shape', shapesControl === shapesBefore - 1, { shapesBefore, shapesControl });
   await page.keyboard.press('Tab');
   kb.push({ key: 'Tab (leaves the tree)', focus: await focused() });
   results.keyboard = kb;
