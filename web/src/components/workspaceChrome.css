@@ -259,7 +259,7 @@
   color:var(--ink);
   cursor:pointer;
 }
-.calm-sheet-tree [role=treeitem]:hover { background:var(--tint-hover, var(--well)); }
+.calm-sheet-tree [role=treeitem]:hover { background:var(--tint-select); }
 .calm-sheet-tree [role=treeitem]:focus-visible { outline:2px solid var(--cobalt); outline-offset:-2px; }
 .calm-sheet-tree [role=treeitem][aria-current=page] { background:var(--tint-select); color:var(--cobalt); }
 .calm-sheet-tree .is-child { padding-left:calc(var(--sp-2) + var(--sp-5, 20px)); }
