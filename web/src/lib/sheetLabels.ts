@@ -40,6 +40,17 @@ export function withoutFile(m: SheetLabels, file: string): SheetLabels {
   return next;
 }
 
+// A per-file label generation. A scan captures its file's generation when it
+// starts; forgetting the file (its bytes changed) bumps it, so a scan still
+// reading the old bytes can't write old labels back afterwards.
+export function createLabelGens() {
+  const gens = new Map<string, number>();
+  return {
+    of: (file: string): number => gens.get(file) ?? 0,
+    bump: (file: string): void => { gens.set(file, (gens.get(file) ?? 0) + 1); },
+  };
+}
+
 /** gallery labels are keyed by sheet key: "file" or "file#page" */
 export function withoutFileKeys<T>(m: Record<string, T>, file: string): Record<string, T> {
   let next: Record<string, T> | null = null;

@@ -53,7 +53,7 @@ import { Icon } from "../brand/icons.jsx";
 import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks, extractDimTexts } from "../lib/sheets";
 import { joinAbuttingSpans } from "../lib/textjoin";
 import { dropFileFromIndex } from "../lib/planIndex";
-import { labelsForFile, labelsOnFileChange, withPageLabel, withFoundLabels, withoutFile, withoutFileKeys } from "../lib/sheetLabels";
+import { labelsForFile, labelsOnFileChange, withPageLabel, withFoundLabels, withoutFile, withoutFileKeys, createLabelGens } from "../lib/sheetLabels";
 import { snapsToVectors } from "../lib/cursorSnap";
 import { textLayerReader, ocrCopyReaders, copyOcrRoute, readCopyText, createReadGate, boxOnPanel, copyIsScanLike, copyStartMiss, copyReaderChain, copyPlan, copyPictureInputs, textChainPageLines, hybridCopyReader, copyUnavailable, outcomeMessage, deliverCopy, makeReceipt, receiptExpires, receiptAfterEsc, receiptPlacement, RECEIPT_MS } from "../lib/copyText";
 import { putSheetIndex, createChangeSignal, ocrSheetIndex, acceptsMeasuredPass, acceptsTextPass, readPlanOf, readWhat, mayLookUp, readableFromIndex } from "../lib/planSearch";
@@ -1693,13 +1693,15 @@ export default function TakeoffCanvas() {
   // a file whose bytes changed: the tabs' and pager's title-block numbers
   // name the old revision's sheets, so they go, and the active file's label
   // scan reads the new bytes (the render that follows a re-drop re-runs it)
+  const labelGens = useMemo(() => createLabelGens(), []);
   const forgetLabels = useCallback((names) => {
     for (const n of names) {
+      labelGens.bump(n); // a scan still reading the old bytes drops its writes
       setGalleryLabels((m) => withoutFileKeys(m, n));
       setLabelsByFile((m) => withoutFile(m, n));
       if (labeledFileRef.current === n) labeledFileRef.current = "";
     }
-  }, []);
+  }, [labelGens]);
   // Free a departing file's pdf.js worker doc — the doc cache keeps a few
   // idle ones (thumbnails + reopen speed), but a file that LEFT the working
   // set must go now, leased or not (#302).
@@ -2547,10 +2549,12 @@ export default function TakeoffCanvas() {
       // the pager + pinned tabs + provenance deep-jump can show real sheet numbers
       const lead = metas.find((m) => m.file === active);
       if (!lead) return;
+      const labelGen = labelGens.of(active); // a re-drop of this file moves it
+      const labelsLive = () => labelGens.of(active) === labelGen;
       lead.pageObj.getTextContent().then((tc) => {
         if (stale()) return;
         const lbl = extractSheetNumber(tc, lead.viewport);
-        if (lbl) setLabelsByFile((m) => withPageLabel(m, active, lead.pageNum, lbl));
+        if (lbl && labelsLive()) setLabelsByFile((m) => withPageLabel(m, active, lead.pageNum, lbl));
         // plan-set search: the same text, at the same RENDER_SCALE viewport,
         // built only where the entry would take a pass without pictures
         // (planSearch acceptsTextPass; the measured pass above brings those)
@@ -2571,7 +2575,7 @@ export default function TakeoffCanvas() {
               const vp2 = p2.getViewport({ scale: RENDER_SCALE });
               const lbl = extractSheetNumber(tc, vp2);
               offerSheetText(active, n, nameGenOf(active), tc, vp2);
-              if (lbl) { found[n] = lbl; if (Object.keys(found).length % 8 === 0) setLabelsByFile((m) => withFoundLabels(m, active, found)); }
+              if (lbl) { found[n] = lbl; if (Object.keys(found).length % 8 === 0 && labelsLive()) setLabelsByFile((m) => withFoundLabels(m, active, found)); }
               const key = n > 1 ? `${active}#${n}` : active;
               const det = detectScale(tc, vp2);
               if (det) setDetectedScales((d) => (d[key]?.label === det.label ? d : { ...d, [key]: det }));
@@ -2579,7 +2583,7 @@ export default function TakeoffCanvas() {
               if (acceptsTextPass(planIndexRef.current.get(key))) onIndexed(key, pageTextIndex(key, tc, vp2));
             } catch { /* skip */ }
           }
-          if (!stale() && Object.keys(found).length) setLabelsByFile((m) => withFoundLabels(m, active, found));
+          if (!stale() && labelsLive() && Object.keys(found).length) setLabelsByFile((m) => withFoundLabels(m, active, found));
         })();
       }
     })().catch((e) => { if (stale() || e?.name === "RenderingCancelledException") return; setErr(String(e.message || e)); setStatus("error"); });
