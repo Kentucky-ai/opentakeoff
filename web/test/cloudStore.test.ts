@@ -10,6 +10,7 @@ import { ANN_SCHEMA } from "../src/lib/store.js";
 import { createDocCache, createSheetSource, readHooks, lookupHooks } from "../src/lib/ocr/sheetSource.ts";
 import { createPageReader } from "../src/lib/ocr/pageRead.ts";
 import { createPageCache, ocrCacheKey } from "../src/lib/ocr/pageCache.ts";
+import { createByteCache } from "../src/lib/pdfBytes.ts";
 
 const PDF_MIME = "application/pdf";
 
@@ -830,4 +831,54 @@ test("a Read of a cloud file trimmed past the idle cap downloads it once more an
   assert.equal(counter.n, n0 + 3, "exactly one more download");
   assert.equal(await store.pdfHashIfKnown("plan.pdf"), await shaHex([5, 6]));
   assert.equal(forgets, 0);
+});
+
+// With a byte budget, a document trimmed past the idle cap re-opens from the
+// store's copy of its bytes, not a second download; a revision drops it.
+test("a cloud file trimmed past the idle cap re-opens from kept bytes; a revision downloads afresh", async () => {
+  const { drive, counter } = countingDrive();
+  const store = createCloudStore("folder1", drive as any, { local: fakeLocal() as any, maxPdfBytes: 1024 });
+  await store.addPdf(fakeFile("a.pdf", new Uint8Array([5, 6])) as any);
+  await store.addPdf(fakeFile("b.pdf", new Uint8Array([7])) as any);
+  const names = new Map<string, string>();
+  for (const f of await drive.listChildren("folder1")) names.set(f.id, f.name);
+  const fetched: string[] = [];
+  const get = drive.getFileBytes.bind(drive);
+  (drive as any).getFileBytes = (id: string) => { fetched.push(names.get(id) ?? id); return get(id); };
+  const opened: number[][] = [];
+  const docs = createDocCache({
+    load: (f) => store.loadPdfData(f),
+    open: (data: Uint8Array) => { opened.push([...data]); return { promise: Promise.resolve({ getPage: async () => ({}) }), destroy() {} }; },
+    hashing: (f) => store.beginPdfHash(f),
+    maxIdle: 1,
+  });
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const n0 = counter.n;
+  await docs.doc("a.pdf");
+  await tick();
+  await docs.doc("b.pdf");
+  await tick();
+  assert.equal(docs.has("a.pdf"), false, "a.pdf was trimmed");
+  await docs.doc("a.pdf");
+  await tick();
+  assert.deepEqual(opened, [[5, 6], [7], [5, 6]], "a.pdf opened twice, whole both times");
+  assert.deepEqual(fetched.sort(), ["a.pdf", "b.pdf"], "each file downloaded once");
+  assert.equal(counter.n, n0 + 2);
+  await store.addPdf(fakeFile("a.pdf", new Uint8Array([8, 9])) as any);
+  docs.evict("a.pdf");                // as the canvas's evictDoc does on a revision
+  await docs.doc("a.pdf");
+  await tick();
+  assert.deepEqual(opened.at(-1), [8, 9], "the revision's bytes, not the kept old ones");
+  assert.deepEqual(fetched.filter((f) => f === "a.pdf").length, 2, "downloaded afresh");
+  assert.equal(await store.pdfHash("a.pdf"), await shaHex([8, 9]), "hash and document come from the same bytes");
+});
+
+test("a cloud store without a byte budget keeps no copies", async () => {
+  const { drive, counter } = countingDrive();
+  const store = createCloudStore("folder1", drive as any, { local: fakeLocal() as any });
+  await store.addPdf(fakeFile("a.pdf", new Uint8Array([5, 6])) as any);
+  const n0 = counter.n;
+  await store.loadPdfData("a.pdf");
+  await store.loadPdfData("a.pdf");
+  assert.equal(counter.n, n0 + 2);
 });

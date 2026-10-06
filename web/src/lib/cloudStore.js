@@ -15,6 +15,7 @@
 
 import { localStore, ANN_SCHEMA, emptyAnnotations } from "./store.js";
 import { isPdfHash, startPdfHash } from "./ocr/pdfHash.ts";
+import { createByteCache } from "./pdfBytes.ts";
 
 const PDF_MIME = "application/pdf";
 const FOLDER_MIME = "application/vnd.google-apps.folder";
@@ -27,9 +28,11 @@ const SIDECAR_NAME = ".opentakeoff";
 /**
  * @param {string} folderId               the project's Drive folder
  * @param {ReturnType<import('./google/drive.js').createDrive>} drive
- * @param {{ local?: typeof localStore }} [opts]  inject localStore for tests
+ * @param {{ local?: typeof localStore, maxPdfBytes?: number }} [opts]  inject
+ *   localStore for tests; `maxPdfBytes`: how many bytes of downloaded PDFs to
+ *   keep for the session (0, the default: none)
  */
-export function createCloudStore(folderId, drive, { local = localStore } = {}) {
+export function createCloudStore(folderId, drive, { local = localStore, maxPdfBytes = 0 } = {}) {
   // ── sidecar folder resolution ────────────────────────────────────────────
   // annotations.json / sheets.json live inside <project>/.opentakeoff/. Two
   // resolvers, split by intent so a read-only viewer never litters empty
@@ -225,13 +228,15 @@ export function createCloudStore(folderId, drive, { local = localStore } = {}) {
   // that, pdfHash downloads the file. Only a real hash stays memoized.
   // addPdf/removePdf forget the name and bump its generation: a hash that
   // settles after a forget (of bytes read before a re-add) is neither kept
-  // nor returned.
+  // nor returned. The kept copy of its bytes goes with it, so the hash and
+  // the document are always of the same bytes.
   const hashMemo = new Map();
   const hashGen = new Map();
   const genOf = (name) => hashGen.get(name) ?? 0;
   function forgetHash(name) {
     hashGen.set(name, genOf(name) + 1);
     hashMemo.delete(name);
+    pdfBytes.forget(name);
   }
   // `gen`: the generation the hashed bytes were read under (by default,
   // now). A hash begun under an older one is of bytes that may be gone: it
@@ -256,14 +261,19 @@ export function createCloudStore(folderId, drive, { local = localStore } = {}) {
     }
   }
 
-  async function loadBytes(name) {
+  // A document the canvas let go opens again from here, not a second
+  // download; Drive itself has no cache.
+  const pdfBytes = createByteCache({ load: downloadBytes, maxBytes: maxPdfBytes });
+  const loadBytes = (name) => pdfBytes.get(name);
+  async function downloadBytes(name) {
     // Resolve by id from the manifest: picked files may live in SUBFOLDERS, so
     // a findChild-by-name in the project folder wouldn't find them.
     await ensureManifest();
     const entry = manifestFiles.find((f) => f.name === name);
     if (!entry) throw new Error(`PDF not in project sheet set: ${name}`);
     const bytes = await drive.getFileBytes(entry.id);
-    // hand pdf.js a fresh view each call — getDocument({data}) may detach it
+    // a fresh view; pdfBytes hands each caller its own copy of it (pdf.js
+    // getDocument({data}) may detach what it's given)
     return new Uint8Array(bytes);
   }
 
