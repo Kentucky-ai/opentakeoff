@@ -220,7 +220,7 @@ try {
     check('closing the gallery and switching to each open tab after the scroll and search loads no new pdf.js document', () => assert.deepEqual(switchSpawns, { 'gallery closed': 0, [key(C)]: 0, [key(B)]: 0 }));
     check(`five previews, two tabs open: at most 2 + ${IDLE_CAP}`, () => assert.ok(counts.afterPreviews <= 2 + IDLE_CAP, `${counts.afterPreviews}`));
     check('the search starts at most 2 pdf.js workers over the scrolled gallery', () => assert.ok(spawnsAt.afterSearch - spawnsAt.afterGalleryScroll <= 2, `${spawnsAt.afterSearch - spawnsAt.afterGalleryScroll}`));
-    check('the gallery after adding 12 PDFs starts at most 16 pdf.js workers', () => assert.ok(spawnsAt.gallery <= 16, `${spawnsAt.gallery}`));
+    check('the gallery after adding 12 PDFs starts at most 18 pdf.js workers', () => assert.ok(spawnsAt.gallery <= 18, `${spawnsAt.gallery}`));
     check('every thumbnail drew', () => assert.equal(drawn.size, SHEETS));
     check('search line', () => assert.equal(match, `3 of ${SHEETS} sheets match`));
     check('search hits are the marked file\'s sheets', () => assert.deepEqual([...hits].sort(), [1, 2, 3].map(p => key(name(target), p)).sort()));

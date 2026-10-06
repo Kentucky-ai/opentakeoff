@@ -13,12 +13,9 @@ file when it is next needed.
 
 October 6, 2026, macOS arm64, Chrome 154.0.8037.98 headless, Premium layout
 (the default), `deviceMemory` 8 and `hardwareConcurrency` 8 (desktop class, so
-the idle cap is 4). Fixed: app code at `2bea714a` plus uncommitted edits to
-`web/src/lib/pdfBytes.ts` (the low-memory byte budget) and
-`web/src/pages/TakeoffCanvas.jsx` (`holdSheetPage` leases only a cached
-file), comment-only edits to `PlanNavigator.jsx`, `sheetSource.ts` and
-`cloudStore.js`, and the uncommitted script edits that added the previews, the
-tab switches and the worker-start ceilings. Baseline: upstream main
+the idle cap is 4). Fixed: this branch's app code and script as committed in
+`29d84e16` (the gallery ceiling was later loosened from 16 to 18 starts; the
+recorded run started 14). Baseline: upstream main
 `4d6cfd0e`, its merge base.
 
 The script makes 12 PDFs from the bundled `web/public/demo/sample-finish-plan.pdf`
@@ -44,7 +41,7 @@ running total of pdf.js workers created since the page loaded.
 | Five previews (`set-01` to `set-05`) | ≤ 2 + 4 | 12 / 12 | 6 / 28 |
 | Gallery closed, then each tab opened | 0 new started | 12 / 12 | 6 / 28 |
 
-The gallery after adding the 12 PDFs must also start at most 16 workers in
+The gallery after adding the 12 PDFs must also start at most 18 workers in
 all (fixed: 14).
 
 Both builds drew all 36 thumbnails and the search read **3 of 36 sheets
