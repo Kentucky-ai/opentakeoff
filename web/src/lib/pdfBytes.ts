@@ -1,6 +1,5 @@
 // A session's raw PDF bytes, kept so a file opened again comes from memory,
-// not a second download. A copy is the file's size; the pdf.js document it
-// opens into costs several times that.
+// not a second download.
 
 export interface ByteCache {
   /** a fresh copy of the file's bytes, loaded once while kept: pdf.js and a

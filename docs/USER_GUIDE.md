@@ -100,10 +100,10 @@ embedded fonts. Reopening a sheet loads its rendering resources again; switching
 while a load is pending cannot complete the replacement sheet's load by mistake.
 
 The PDFs in your open tabs stay loaded, plus up to four others you used most
-recently (two on a phone, tablet or low-memory computer). An older one is set
-aside and opened again from the stored file the next time you view, search or
-preview it. A tab you just closed counts as the most recently used, so
-reopening it is usually immediate.
+recently (two on a phone or tablet, or where the browser reports 4 GB of
+memory or less). An older one is set aside and opened again from the stored
+file the next time you view, search or preview it. A tab you just closed
+counts as the most recently used, so reopening it is usually immediate.
 
 
 ### What you can open

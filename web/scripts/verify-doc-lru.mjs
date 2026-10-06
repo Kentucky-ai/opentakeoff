@@ -183,7 +183,7 @@ try {
     // console: nothing but the requests this script blocked, and the tile
     // workers' stale-detail warning main logs too on the reopen (#508's review)
     const known = (m) => (m.type === 'error' && blocked.has(m.url) && /Failed to load resource/.test(m.text))
-      || (m.type === 'warning' && /^\[tiles\] detail crop failed .*sheet not open/.test(m.text));
+      || (m.type === 'warning' && /^\[tiles\] detail crop failed — keeping the previous crop: Error: sheet not open/.test(m.text));
     check('no console errors or warnings but blocked requests and the known tile warning', () => assert.deepEqual(consoleMessages.filter(m => !known(m)), []));
   }
   const report = {
