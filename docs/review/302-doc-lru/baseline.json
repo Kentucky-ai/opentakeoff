@@ -1,0 +1,118 @@
+{
+  "browser": "154.0.8037.98",
+  "build": "baseline",
+  "plan": "12 PDFs made from the bundled sample-finish-plan.pdf, 3 pages each, one marker word per file",
+  "layout": "Premium (default)",
+  "device": {
+    "deviceMemory": 8,
+    "hardwareConcurrency": 8,
+    "idleCap": 4
+  },
+  "sheets": 36,
+  "tabs": {
+    "opened": [
+      "set-10.pdf",
+      "set-11.pdf",
+      "set-12.pdf"
+    ],
+    "closed": [
+      "set-10.pdf",
+      "set-11.pdf"
+    ],
+    "reopened": "set-11.pdf",
+    "openAfterSearch": [
+      "set-12.pdf",
+      "set-11.pdf"
+    ],
+    "switchedTo": [
+      "set-12.pdf",
+      "set-11.pdf"
+    ]
+  },
+  "previewed": [
+    "set-01.pdf",
+    "set-02.pdf",
+    "set-03.pdf",
+    "set-04.pdf",
+    "set-05.pdf"
+  ],
+  "pdfjsDocuments": {
+    "gallery": 12,
+    "threeTabs": 12,
+    "afterClosingTwo": 12,
+    "afterReopen": 12,
+    "reopenSpawns": 0,
+    "afterGalleryScroll": 12,
+    "thumbnailsDrawn": 36,
+    "afterSearch": 12,
+    "afterPreviews": 12,
+    "galleryClosed": 12,
+    "switchTo set-12.pdf": 12,
+    "switchTo set-11.pdf": 12,
+    "totalSpawns": 12
+  },
+  "pdfjsSpawnsSoFar": {
+    "gallery": 12,
+    "threeTabs": 12,
+    "afterClosingTwo": 12,
+    "afterReopen": 12,
+    "afterGalleryScroll": 12,
+    "afterSearch": 12,
+    "afterPreviews": 12,
+    "galleryClosed": 12,
+    "switchTo set-12.pdf": 12,
+    "switchTo set-11.pdf": 12
+  },
+  "tabSwitchSpawns": {
+    "gallery closed": 0,
+    "set-12.pdf": 0,
+    "set-11.pdf": 0
+  },
+  "search": {
+    "query": "GANNET",
+    "line": "3 of 36 sheets match",
+    "hits": [
+      "set-07.pdf",
+      "set-07.pdf#2",
+      "set-07.pdf#3"
+    ]
+  },
+  "checks": [],
+  "blockedRequests": [
+    "https://static.cloudflareinsights.com/beacon.min.js",
+    "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+  ],
+  "console": [
+    {
+      "phase": "gallery",
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://static.cloudflareinsights.com/beacon.min.js"
+    },
+    {
+      "phase": "gallery",
+      "type": "error",
+      "text": "Failed to load resource: net::ERR_FAILED",
+      "url": "https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Mono:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+    },
+    {
+      "phase": "reopen",
+      "type": "warning",
+      "text": "[tiles] detail crop failed — keeping the previous crop: Error: sheet not open\n    at g (http://127.0.0.1:5261/assets/index-CRCKv4Rw.js:96:4506)\n    at E.onmessage (http://127.0.0.1:5261/assets/index-CRCKv4Rw.js:96:3846)",
+      "url": "http://127.0.0.1:5261/assets/index-CRCKv4Rw.js"
+    },
+    {
+      "phase": "switch tabs",
+      "type": "warning",
+      "text": "[tiles] detail crop failed — keeping the previous crop: Error: sheet not open\n    at g (http://127.0.0.1:5261/assets/index-CRCKv4Rw.js:96:4506)\n    at E.onmessage (http://127.0.0.1:5261/assets/index-CRCKv4Rw.js:96:3846)",
+      "url": "http://127.0.0.1:5261/assets/index-CRCKv4Rw.js"
+    },
+    {
+      "phase": "switch tabs",
+      "type": "warning",
+      "text": "[tiles] detail crop failed — keeping the previous crop: Error: sheet not open\n    at g (http://127.0.0.1:5261/assets/index-CRCKv4Rw.js:96:4506)\n    at E.onmessage (http://127.0.0.1:5261/assets/index-CRCKv4Rw.js:96:3846)",
+      "url": "http://127.0.0.1:5261/assets/index-CRCKv4Rw.js"
+    }
+  ],
+  "errors": []
+}

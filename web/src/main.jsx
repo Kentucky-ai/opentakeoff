@@ -14,6 +14,8 @@ import { m365Config, M365_ENABLED_KEY } from "./lib/msgraph/config.js";
 import { cloudSyncEnabled } from "./lib/prefs.js";
 import { projectHomeFolderId } from "./lib/projectHome.js";
 import { initTheme } from "./lib/theme.js";
+import { LOW_MEMORY_DEVICE } from "./lib/deviceClass";
+import { byteBudget } from "./lib/pdfBytes";
 import { initDrawStyle } from "./lib/drawStyles.js";
 import { initDraftOutline } from "./lib/draftOutline.js";
 
@@ -130,10 +132,10 @@ function ProjectGate({ projectId }) {
           // bundle never load any Drive-sync code.
           const { buildLocalFirstStore } = await import("./lib/sync/composite.js");
           if (!live) return;   // navigated away during the import → don't build an orphan reconciler
-          next = buildLocalFirstStore(projectId, drive, createCloudStore(projectId, drive));
+          next = buildLocalFirstStore(projectId, drive, createCloudStore(projectId, drive, { maxPdfBytes: byteBudget(LOW_MEMORY_DEVICE) }));
         } else {
           if (!live) return;   // navigated away → don't install over whatever replaced the store
-          next = createCloudStore(projectId, drive);   // LEGACY Drive-canonical path — byte-identical to today
+          next = createCloudStore(projectId, drive, { maxPdfBytes: byteBudget(LOW_MEMORY_DEVICE) });   // LEGACY Drive-canonical path
         }
         setActiveStore(next);
         setStoreReady(true);

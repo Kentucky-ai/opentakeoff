@@ -313,3 +313,16 @@ export function stitchLayoutSig(groupKeys: string[], stitches: Stitch[]): string
   }
   return parts.join("|");
 }
+
+/** The files the open sheets come from (stitches through their members):
+ * the document cache keeps these loaded. A stitch no longer in `stitchById`
+ * adds nothing; an empty key (no sheet) neither. */
+export function pinnedFiles(o: { keys: Iterable<string>; stitchById: Record<string, Stitch | undefined> }): Set<string> {
+  const files = new Set<string>();
+  const add = (k: string) => { if (k) files.add(parseSheetKey(k).file); };
+  for (const k of o.keys) {
+    if (isStitchKey(k)) o.stitchById[k]?.members.forEach((m) => add(m.key));
+    else add(k);
+  }
+  return files;
+}

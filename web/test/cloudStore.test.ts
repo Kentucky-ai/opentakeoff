@@ -10,6 +10,7 @@ import { ANN_SCHEMA } from "../src/lib/store.js";
 import { createDocCache, createSheetSource, readHooks, lookupHooks } from "../src/lib/ocr/sheetSource.ts";
 import { createPageReader } from "../src/lib/ocr/pageRead.ts";
 import { createPageCache, ocrCacheKey } from "../src/lib/ocr/pageCache.ts";
+import { createByteCache } from "../src/lib/pdfBytes.ts";
 
 const PDF_MIME = "application/pdf";
 
@@ -785,4 +786,99 @@ test("a Read of an unopened cloud file downloads its bytes once", async () => {
   assert.equal(counter.n, n0 + 1, "one download: the hash is of the bytes the document was opened from");
   assert.deepEqual(puts, [ocrCacheKey(await shaHex([5, 6]), 1)]);
   assert.equal(await store.pdfHashIfKnown("plan.pdf"), await shaHex([5, 6]), "and the store has it from then on");
+});
+
+// A document trimmed for being idle past the cap isn't evictDoc: the store
+// keeps its hash, and a later Read downloads the bytes once more, no more.
+test("a Read of a cloud file trimmed past the idle cap downloads it once more and keeps its hash", async () => {
+  const { drive, counter } = countingDrive();
+  const store = createCloudStore("folder1", drive as any, { local: fakeLocal() as any });
+  await store.addPdf(fakeFile("plan.pdf", new Uint8Array([5, 6])) as any);
+  await store.addPdf(fakeFile("other.pdf", new Uint8Array([7])) as any);
+  let forgets = 0;
+  const forget = store.forgetPdfHash.bind(store);
+  (store as any).forgetPdfHash = (n: string) => { forgets++; return forget(n); };
+  const page = { getViewport: ({ scale }: { scale: number }) => ({ width: 100 * scale, height: 50 * scale }) };
+  const docs = createDocCache<typeof page>({
+    load: (f) => store.loadPdfData(f),
+    open: () => ({ promise: Promise.resolve({ getPage: async () => page }), destroy() {} }),
+    hashing: (f) => store.beginPdfHash(f),
+    maxIdle: 1,
+  });
+  const source = createSheetSource<typeof page>({ cached: docs.cached, open: docs.open, lease: docs.lease, storeHash: (f) => store.pdfHash(f), storeKnown: (f) => store.pdfHashIfKnown(f) });
+  const reader = createPageReader({
+    session: {
+      run: async (task: any) => ({ ok: true, value: await task() }),
+      availability: async () => ({ state: "available", manifest: { rev: "r1", files: [] }, cached: true, downloadBytes: 0 }),
+    } as any,
+    cache: createPageCache({ metaGet: async () => undefined, metaPut: async () => {} }),
+    readRegion: async () => ({ lines: [{ str: "ROOM", x: 1, y: 20, w: 40, h: 10 }], ms: 1, rasters: 1 }),
+    onLines: () => {},
+  });
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const n0 = counter.n;
+  await docs.doc("plan.pdf");
+  await tick();
+  await docs.doc("other.pdf");
+  await tick();
+  assert.equal(docs.has("plan.pdf"), false, "plan.pdf was trimmed");
+  assert.equal(counter.n, n0 + 2);
+  assert.equal(await store.pdfHashIfKnown("plan.pdf"), await shaHex([5, 6]), "its hash survives the trim");
+  const h = readHooks(source, "plan.pdf", 1);
+  const r = await reader.read({ key: "plan.pdf", file: "plan.pdf", page: 1, rs: 1, pdfHash: h.pdfHash, getPage: h.getPage, pageHash: h.pageHash });
+  h.release();
+  assert.equal(r.ok, true);
+  assert.equal(counter.n, n0 + 3, "exactly one more download");
+  assert.equal(await store.pdfHashIfKnown("plan.pdf"), await shaHex([5, 6]));
+  assert.equal(forgets, 0);
+});
+
+// With a byte budget, a document trimmed past the idle cap re-opens from the
+// store's copy of its bytes, not a second download; a revision drops it.
+test("a cloud file trimmed past the idle cap re-opens from kept bytes; a revision downloads afresh", async () => {
+  const { drive, counter } = countingDrive();
+  const store = createCloudStore("folder1", drive as any, { local: fakeLocal() as any, maxPdfBytes: 1024 });
+  await store.addPdf(fakeFile("a.pdf", new Uint8Array([5, 6])) as any);
+  await store.addPdf(fakeFile("b.pdf", new Uint8Array([7])) as any);
+  const names = new Map<string, string>();
+  for (const f of await drive.listChildren("folder1")) names.set(f.id, f.name);
+  const fetched: string[] = [];
+  const get = drive.getFileBytes.bind(drive);
+  (drive as any).getFileBytes = (id: string) => { fetched.push(names.get(id) ?? id); return get(id); };
+  const opened: number[][] = [];
+  const docs = createDocCache({
+    load: (f) => store.loadPdfData(f),
+    open: (data: Uint8Array) => { opened.push([...data]); return { promise: Promise.resolve({ getPage: async () => ({}) }), destroy() {} }; },
+    hashing: (f) => store.beginPdfHash(f),
+    maxIdle: 1,
+  });
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  const n0 = counter.n;
+  await docs.doc("a.pdf");
+  await tick();
+  await docs.doc("b.pdf");
+  await tick();
+  assert.equal(docs.has("a.pdf"), false, "a.pdf was trimmed");
+  await docs.doc("a.pdf");
+  await tick();
+  assert.deepEqual(opened, [[5, 6], [7], [5, 6]], "a.pdf opened twice, whole both times");
+  assert.deepEqual(fetched.sort(), ["a.pdf", "b.pdf"], "each file downloaded once");
+  assert.equal(counter.n, n0 + 2);
+  await store.addPdf(fakeFile("a.pdf", new Uint8Array([8, 9])) as any);
+  docs.evict("a.pdf");                // as the canvas's evictDoc does on a revision
+  await docs.doc("a.pdf");
+  await tick();
+  assert.deepEqual(opened.at(-1), [8, 9], "the revision's bytes, not the kept old ones");
+  assert.deepEqual(fetched.filter((f) => f === "a.pdf").length, 2, "downloaded afresh");
+  assert.equal(await store.pdfHash("a.pdf"), await shaHex([8, 9]), "hash and document come from the same bytes");
+});
+
+test("a cloud store without a byte budget keeps no copies", async () => {
+  const { drive, counter } = countingDrive();
+  const store = createCloudStore("folder1", drive as any, { local: fakeLocal() as any });
+  await store.addPdf(fakeFile("a.pdf", new Uint8Array([5, 6])) as any);
+  const n0 = counter.n;
+  await store.loadPdfData("a.pdf");
+  await store.loadPdfData("a.pdf");
+  assert.equal(counter.n, n0 + 2);
 });
