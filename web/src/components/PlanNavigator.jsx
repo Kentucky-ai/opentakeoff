@@ -79,6 +79,8 @@ export default function PlanNavigator({
   onCloseMany, onClearWorkspace, knownPages = {}, onPages,
   onCloseProject, onBrowseProjects,
   levels = {}, onAssignLevel,
+  // sheet-number namer (Sheets tree): the file's naming generation, and an offer of page text already read
+  nameGen, onSheetText,
   // stitches (#161): persisted match-line composites — created from a 2..MAX_GROUP
   // selection, reopened/deleted from their strip
   stitches = [], onStitch, onOpenStitch, onDeleteStitch,
@@ -356,6 +358,7 @@ export default function PlanNavigator({
     };
     if (!rec) {
       const { file, page } = parseSheetKey(key);
+      const nameGenAtRead = nameGen?.(file);
       // held from the page to the saved record: the file may be in no tab
       await withDoc(file, async (pdf) => {
         const pg = await pdf.getPage(page);
@@ -374,6 +377,7 @@ export default function PlanNavigator({
         try {
           const text = pg.getTextContent();
           const vpL = pg.getViewport({ scale: RENDER_SCALE });
+          text.then((tc) => onSheetText?.(file, page, nameGenAtRead, tc, vpL)).catch(() => {});
           if (!labels[key] || !detectedScales[key]) {
             const tc = await text;
             rec.label = extractSheetNumber(tc, vpL) || null;
@@ -412,12 +416,17 @@ export default function PlanNavigator({
         const { file, page } = parseSheetKey(key);
         // only while its document is still loaded (trimmed since: asked
         // again next open), and held while it's read
+        const nameGenAtRead = nameGen?.(file);
         await withLoadedDoc(file, async (pdf) => {
           let pg = null;
           try {
             pg = await pdf.getPage(page);
             if (seq !== seqRef.current) return;
-            const { index, pictures } = await measurePage(key, pg, pg.getViewport({ scale: RENDER_SCALE }), pdfjsLib.OPS);
+            const vp = pg.getViewport({ scale: RENDER_SCALE });
+            // one text read, shared with the sheet-number offer
+            const text = pg.getTextContent();
+            text.then((tc) => onSheetText?.(file, page, nameGenAtRead, tc, vp)).catch(() => {});
+            const { index, pictures } = await measurePage(key, { getTextContent: () => text, getOperatorList: () => pg.getOperatorList() }, vp, pdfjsLib.OPS);
             if (seq !== seqRef.current) return;
             if (!has(key)) onIndexed(key, index);
             rec = { ...rec, textLayer: index.textLayer, pictures };
@@ -577,6 +586,7 @@ export default function PlanNavigator({
         // one lease for all the file's pages; true: the walk is over
         let opened = false, stop;
         try {
+          const nameGenAtRead = nameGen?.(file);
           stop = await withDoc(file, async (pdf) => {
             opened = true;
             if (!live()) return true;
@@ -591,12 +601,17 @@ export default function PlanNavigator({
                 if (!live()) return true;
                 let page = null;
                 try {
-                  page = await pdf.getPage(parseSheetKey(key).page);
+                  const pageNo = parseSheetKey(key).page;
+                  page = await pdf.getPage(pageNo);
                   if (!live()) return true;
                   // its text, and its pictures (#489: measurePage; the op list
                   // only on a page that isn't a scan), in the entry before the
                   // lookup below asks whether the sheet needs a read
-                  const { index } = await measurePage(key, page, page.getViewport({ scale: RENDER_SCALE }), pdfjsLib.OPS);
+                  const vp = page.getViewport({ scale: RENDER_SCALE });
+                  const text = page.getTextContent();
+                  text.then((tc) => onSheetText?.(file, pageNo, nameGenAtRead, tc, vp)).catch(() => {});
+                  const pg = page;
+                  const { index } = await measurePage(key, { getTextContent: () => text, getOperatorList: () => pg.getOperatorList() }, vp, pdfjsLib.OPS);
                   if (!live()) return true;
                   if (!has(key)) onIndexed(key, index);
                   // a scan's or a hybrid's cached read (if any) joins the search

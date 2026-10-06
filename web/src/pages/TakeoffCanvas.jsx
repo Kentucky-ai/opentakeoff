@@ -1682,6 +1682,7 @@ export default function TakeoffCanvas() {
   }, [workspaceLayout, cloudMode, nameScope]);
   useEffect(() => { namer?.setFiles(sheets.map((s) => s.name)); }, [namer, sheets]);
   const offerSheetText = useCallback((file, page, gen, tc, vp) => namerRef.current?.offer(file, page, gen, tc, vp), []);
+  const namerGen = useCallback((file) => namerRef.current?.gen(file), []);
   // saved numbers go wherever a file's bytes change or it leaves — namer or
   // not (a revision dropped in Classic layout); cloud projects save none
   const forgetNames = useCallback((names) => {
@@ -11002,6 +11003,7 @@ export default function TakeoffCanvas() {
           sheet is open behind it, or full-screen (onboarding) when nothing is. */}
       {(view === "gallery" || view === "picker") && (
         <PlanNavigator
+          nameGen={namerGen} onSheetText={offerSheetText}
           onPremium={() => setPremiumOpen(true)}
           canClose={openTabs.length > 0}
           onExit={() => setView("canvas")}
