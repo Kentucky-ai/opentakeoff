@@ -62,6 +62,8 @@ worker (the canvas's file) started.
 
 Each was opened and looked at after the run.
 
+- `00-tree-public-sheets.png` (taken by hand, not by the script): the public sheets `web/public/demo/sample-finish-plan.pdf`, `evals/mcp-workflow-bench/plan-set/porterville/porterville-adu-a1-101.pdf`, and the two VA sheets in `evals/four-asks-2026-09-02/sheets/`, added together in a fresh browser on a production build, the Porterville sheet opened from the gallery, then **Sheets** opened and the sample plan's folder expanded. The open sheet's row reads `A1-101` from its title-block number cell while its tab still shows `X1` (today's largest-token picker reads a door tag there); the sample plan is a folder of `AF101` and `AF600`; the one-page VA sheets are rows `A-601` and `C-300` with their file names underneath. Graphite look.
+
 - `01-tree-after-open.png`: Sheets panel right after the first sheet opens. set-1 (the open file) shows `A-101`..`A-105`, set-2 shows `C-101`..`C-104` with its fifth row still reading `set-2 · 5`, set-3 still shows file labels (`set-3`, `set-3 · 2`, ...). Current row highlighted, its folder open.
 - `02-gallery-all-thumbnails.png`: the plan-set gallery scrolled to its last row (cards `S-102` to `S-105`), thumbnails drawn.
 - `03-tree-after-gallery.png`: the panel after closing the gallery; set-1 `A-`, set-2 `C-`, set-3 `E-` rows all numbered (the rest of the 30 are below the fold; the script reads them all).
