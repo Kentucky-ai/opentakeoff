@@ -23,7 +23,7 @@ import { flushSync } from "react-dom";
 import { Link, useNavigate } from "react-router";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { store, isStaleTabError, STALE_TAB_MESSAGE, friendlyStoreError, projectIdFromUrl, emptyAnnotations, metaGet, metaPut } from "../lib/store.js";
+import { store, isStaleTabError, STALE_TAB_MESSAGE, friendlyStoreError, projectIdFromUrl, emptyAnnotations, metaGet, metaPut, metaDelete } from "../lib/store.js";
 import { forgetThumbs, releaseThumbs } from "../lib/thumbs.js";
 import { Z } from "../lib/ui.js";
 import { getFocusMode, toggleFocusMode, onFocusModeChange } from "../lib/focusMode.js";
@@ -62,6 +62,8 @@ import { createConsentHost, focusAfterNotice } from "../lib/ocr/consentHost";
 import { createPageCache } from "../lib/ocr/pageCache";
 import { createPageReader, pageReadView, readSignature, backgroundRows, createReadRenderGate } from "../lib/ocr/pageRead";
 import { createDocCache, createSheetSource, readHooks, lookupHooks, readdEffects, docIdleMax } from "../lib/ocr/sheetSource";
+import { createSheetNamer, forgetSheetNames, markSheetNamesStale } from "../lib/sheetNamer";
+import { createPageCounts } from "../lib/pageCounts";
 import { getOcrClient } from "../lib/ocr/client";
 import { pageTextIndex } from "../lib/pageTextIndex";
 import { measurePage } from "../lib/pictures";
@@ -1651,33 +1653,42 @@ export default function TakeoffCanvas() {
   const pageCacheKey = "sheet_pages:" + (projectIdFromUrl() || "local");
   const [knownPages, setKnownPages] = useState({});
   const knownPagesRef = useRef(knownPages);
-  useEffect(() => {
-    let off = false;
-    metaGet(pageCacheKey).then((m) => {
-      if (off || !m || typeof m !== "object") return;
-      knownPagesRef.current = m;
-      setKnownPages(m);
-    }).catch(() => {});
-    return () => { off = true; };
-  }, [pageCacheKey]);
-  const rememberPages = useCallback((name, count) => {
-    if (!Number.isFinite(count) || count < 1 || knownPagesRef.current[name] === count) return;
-    const next = { ...knownPagesRef.current, [name]: count };
-    knownPagesRef.current = next;
-    setKnownPages(next);
-    metaPut(pageCacheKey, next).catch(() => { /* cache only — rediscovered next open */ });
-  }, [pageCacheKey]);
+  // nothing is saved until the stored counts have loaded (pageCounts.ts):
+  // the map is written whole, so an early write would drop every stored count
+  const [pageCounts] = useState(() => createPageCounts({
+    load: () => metaGet(pageCacheKey),
+    save: (m) => metaPut(pageCacheKey, m),
+    onChange: (m) => { knownPagesRef.current = m; setKnownPages(m); },
+  }));
+  const rememberPages = useCallback((name, count) => pageCounts.remember(name, count), [pageCounts]);
   const forgetPages = useCallback((names) => {
     // a file whose bytes are leaving (or changing) takes its thumbnails with it
     forgetThumbs(names, thumbCacheRef.current);
-    const next = { ...knownPagesRef.current };
-    let hit = false;
-    for (const n of names) if (n in next) { delete next[n]; hit = true; }
-    if (!hit) return;
-    knownPagesRef.current = next;
-    setKnownPages(next);
-    metaPut(pageCacheKey, next).catch(() => {});
-  }, [pageCacheKey]);
+    pageCounts.forget(names);
+  }, [pageCounts]);
+  // The Sheets tree's numbers (spec §5): Premium layout only; local projects
+  // keep one record per file, cloud ones keep names for the session. A new
+  // namer per mount (StrictMode mounts twice; each one is stopped).
+  const nameScope = projectIdFromUrl() || "local";
+  const namerRef = useRef(null);
+  const [namer, setNamer] = useState(null);
+  useEffect(() => {
+    if (!workspaceLayout) return;
+    const n = createSheetNamer({ scope: nameScope, persist: !cloudMode, meta: { get: metaGet, put: metaPut }, onError: (e) => console.warn("Sheet numbers:", e) });
+    n.start();
+    namerRef.current = n;
+    setNamer(n);
+    return () => { if (namerRef.current === n) namerRef.current = null; setNamer(null); n.stop(); };
+  }, [workspaceLayout, cloudMode, nameScope]);
+  useEffect(() => { namer?.setFiles(sheets.map((s) => s.name)); }, [namer, sheets]);
+  const offerSheetText = useCallback((file, page, gen, tc, vp) => namerRef.current?.offer(file, page, gen, tc, vp), []);
+  // saved numbers go wherever a file's bytes change or it leaves — namer or
+  // not (a revision dropped in Classic layout); cloud projects save none
+  const forgetNames = useCallback((names) => {
+    if (!cloudMode) void forgetSheetNames({ del: metaDelete }, nameScope, names, (e) => console.warn("Couldn't clear saved sheet numbers:", e));
+    else markSheetNamesStale(nameScope, names);
+    for (const n of names) namerRef.current?.forget(n);
+  }, [nameScope, cloudMode]);
   // Free a departing file's pdf.js worker doc — the doc cache keeps a few
   // idle ones (thumbnails + reopen speed), but a file that LEFT the working
   // set must go now, leased or not (#302).
@@ -1697,7 +1708,8 @@ export default function TakeoffCanvas() {
     // the next gallery open (planSearch seedFromThumb), so a revision must
     // never keep the old bytes' flag.
     forgetThumbs([name], thumbCacheRef.current);
-  }, [docCache, notifyIndex, pageReader, forgetTextLayer]);
+    forgetNames([name]);
+  }, [docCache, notifyIndex, pageReader, forgetTextLayer, forgetNames]);
   // Reconcile the canvas after a PDF leaves the working set. For a non-empty
   // result the [sheets] effect already prunes openTabs/sheetGroup, but it can't:
   //   • fix `active` when the CLOSED pdf was the one on screen (it never resets
@@ -1784,6 +1796,7 @@ export default function TakeoffCanvas() {
     for (const n of readd.reset) if (dropFileFromIndex(planIndexRef.current, n)) notifyIndex();
     for (const n of readd.reset) { pageReader.dropFile(n); forgetTextLayer(n); }
     forgetThumbs(readd.reset, thumbCacheRef.current);
+    forgetNames(readd.reset);
     await refreshSheets();
     // CO-1: a re-drop whose bytes CHANGED is a plan revision, not a re-open.
     // The store archived the old bytes; here the stale pdf.js docs must go
@@ -2287,6 +2300,15 @@ export default function TakeoffCanvas() {
     if (!active) return;
     const seq = ++renderSeqRef.current;
     const stale = () => seq !== renderSeqRef.current;
+    // each shown file's generation as this render starts (spec §5.3): text
+    // read below is offered under it, so a re-drop meanwhile discards it
+    const nameGens = new Map();
+    const nameGenOf = (f) => { if (!nameGens.has(f)) nameGens.set(f, namerRef.current?.gen(f)); return nameGens.get(f); };
+    for (const k of groupKeys) {
+      if (isStitchKey(k)) for (const mem of stitchById[k]?.members ?? []) nameGenOf(parseSheetKey(mem.key).file);
+      else nameGenOf(parseSheetKey(k).file);
+    }
+    nameGenOf(active);
     setStatus("rendering"); setErr(""); clearPoly(); setCalib([]); setPendingLen(""); setCheck([]); setCheckStated(""); setScaleGuide(null); setPrevScale(null); selectShape(null); setProposal(null); setAlignPt(null); resetZone();
     for (const [, rt] of renderTasksRef.current) { try { rt.cancel(); } catch { /* done */ } }
     renderTasksRef.current.clear();
@@ -2317,6 +2339,7 @@ export default function TakeoffCanvas() {
         const { file, page: pn } = parseSheetKey(memberKey);
         const pdf = await docFor(file); if (stale()) return null;
         if (file === active) setPageCount(pdf.numPages || 1);
+        if (namerRef.current) { rememberPages(file, pdf.numPages || 1); namerRef.current.setNumPages(file, nameGenOf(file), pdf.numPages || 1); }
         const pageNum = Math.min(Math.max(1, pn), pdf.numPages || 1);
         const pageObj = await pdf.getPage(pageNum); if (stale()) return null;
         const viewport = pageObj.getViewport({ scale: RENDER_SCALE });
@@ -2410,6 +2433,7 @@ export default function TakeoffCanvas() {
           // plot at one scale by construction — see createStitch's seeding)
           m.sources[0].pageObj.getTextContent().then((tc) => {
             if (stale()) return;
+            offerSheetText(m.sources[0].file, m.sources[0].pageNum, nameGenOf(m.sources[0].file), tc, m.sources[0].viewport);
             const det = detectScale(tc, m.sources[0].viewport);
             if (det) setDetectedScales((d) => (d[m.key]?.label === det.label ? d : { ...d, [m.key]: det }));
           }).catch(() => {});
@@ -2493,6 +2517,7 @@ export default function TakeoffCanvas() {
         // anchors on (#320) — a mask built before they resolved was textless
         textContent.then((tc) => {
           if (stale()) return;
+          offerSheetText(m.file, m.pageNum, nameGenOf(m.file), tc, m.viewport);
           const det = detectScale(tc, m.viewport);
           if (det) setDetectedScales((d) => (d[m.key]?.label === det.label ? d : { ...d, [m.key]: det }));
           // positioned text for ink classification — a mask built before this
@@ -2532,6 +2557,7 @@ export default function TakeoffCanvas() {
               const tc = await p2.getTextContent();
               const vp2 = p2.getViewport({ scale: RENDER_SCALE });
               const lbl = extractSheetNumber(tc, vp2);
+              offerSheetText(active, n, nameGenOf(active), tc, vp2);
               if (lbl) { found[n] = lbl; if (Object.keys(found).length % 8 === 0) setLabelsByFile((m) => withFoundLabels(m, active, found)); }
               const key = n > 1 ? `${active}#${n}` : active;
               const det = detectScale(tc, vp2);
@@ -8645,9 +8671,12 @@ export default function TakeoffCanvas() {
 
   const workspaceShapeCounts = new Map();
   if (workspaceLayout) for (const shape of shapes) workspaceShapeCounts.set(shape.sheet_id, (workspaceShapeCounts.get(shape.sheet_id) || 0) + 1);
+  const treeCurrent = (focusKey && groupKeys.includes(focusKey)) ? focusKey : sheetKey;
+  const countKnown = useCallback((f) => !!knownPages[f] || f === active, [knownPages, active]);
+  const ocrHold = useCallback(() => !!ocrReadRef.current?.ocr, []);
   const workspaceSheets = (workspaceLayout ? sheets : []).flatMap((sheet) => Array.from({ length: knownPages[sheet.name] || (sheet.name === active ? pageCount : 1) }, (_, i) => {
     const key = i ? `${sheet.name}#${i + 1}` : sheet.name;
-    return { key, label: tabLabel(key), file: sheet.name, count: workspaceShapeCounts.get(key) || 0 };
+    return { key, label: tabLabel(key), file: sheet.name, count: workspaceShapeCounts.get(key) || 0, level: sheetLevels[key] || "" };
   }));
   const workspaceDockHandle = (dock, label) => workspaceLayout && <DockHandle dock={dock} label={label} locked={workspaceArrangement.locked} onDrag={setWorkspaceDragging} onMove={workspacePrefs.move} />;
   const workspaceActions = [
@@ -9176,7 +9205,7 @@ export default function TakeoffCanvas() {
 
       {/* canvas + issue desk */}
       <div data-canvas-workspace style={{ flex: 1, display: "flex", overflow: "hidden", minHeight: 0, position: "relative" /* anchors the narrow-screen panel overlay */ }}>
-       {workspaceLayout && <><WorkspaceNavigator open={!focusMode && workspaceNavigationOpen} items={workspaceSheets} current={sheetKey} onSelect={(key) => openSheets([key], false)} onClose={() => setWorkspaceNavigationOpen(false)} onGallery={() => { setView("gallery"); setWorkspaceNavigationOpen(false); }} dockSide={workspaceArrangement.sheets} width={workspaceArrangement.sheetWidth} dockHandle={workspaceDockHandle("sheets", "Sheets")} /><DockTargets dragging={workspaceDragging} /></>}
+       {workspaceLayout && <><WorkspaceNavigator open={!focusMode && workspaceNavigationOpen} items={workspaceSheets} current={treeCurrent} namer={namer} countKnown={countKnown} hold={ocrHold} onSelect={(key) => openSheets([key], false)} onClose={() => setWorkspaceNavigationOpen(false)} onGallery={() => { setView("gallery"); setWorkspaceNavigationOpen(false); }} dockSide={workspaceArrangement.sheets} width={workspaceArrangement.sheetWidth} dockHandle={workspaceDockHandle("sheets", "Sheets")} /><DockTargets dragging={workspaceDragging} /></>}
        {/* tool rail — machined faces grouped by MCP module (the concept shell).
            Individual tiles replace deck 2's Measure/Cut Out menus; Markup keeps
            its variety flyout on one tile (five markup kinds don't earn five
