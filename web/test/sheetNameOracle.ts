@@ -1,6 +1,6 @@
-// Test-only oracle: the round-3 probe reader's sheet-NUMBER path
-// (scratch-r3/reader3.ts readSheet with the V3 preset), switches folded in and
-// the title path dropped. It is quadratic on dense pages and is kept only to
+// Test-only oracle: the sheet-NUMBER path of the earlier probe
+// reader that sheetName.ts was tuned as, switches folded in and the title path
+// dropped. It is quadratic on dense pages and is kept only to
 // check web/src/lib/sheetName.ts answer-for-answer.
 export type Item = { s: string; x: number; y: number; h: number; a: number; w: number };
 export type Page = { W: number; H: number; items: Item[] };

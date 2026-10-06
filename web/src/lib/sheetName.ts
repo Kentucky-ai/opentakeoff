@@ -3,7 +3,7 @@
 // read in the label's own frame, and the number is a cell line that is wholly
 // one sheet-number-shaped token at ≥ 1.5 × the label's height. Pure: no
 // pdf.js. Answers match the probe reader it was tuned as (test oracle,
-// test/helpers/sheetNameOracle.ts) while staying near-linear in the page's
+// web/test/sheetNameOracle.ts) while staying near-linear in the page's
 // text items: one prefilter, one sort per angle, windowed lookups per label.
 
 /** One text item in viewport px at scale 2: x, y and w as fractions of the

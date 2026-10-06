@@ -199,49 +199,6 @@
   background:transparent;
   color:var(--ink);
 }
-.calm-sheet-list {
-  flex:1;
-  min-height:0;
-  overflow:auto;
-  padding:0 var(--sp-2);
-}
-.calm-sheet-list button {
-  width:100%;
-  justify-content:flex-start;
-  text-align:left;
-  padding:var(--sp-3) var(--sp-2);
-  margin-bottom:var(--sp-1);
-}
-.calm-sheet-list button[aria-current=page] {
-  background:var(--tint-select);
-  color:var(--cobalt);
-}
-.calm-sheet-list button>span {
-  flex:1;
-  min-width:0;
-}
-.calm-sheet-list strong,.calm-sheet-list small {
-  display:block;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-.calm-sheet-list strong {
-  font-weight:600;
-}
-.calm-sheet-list small {
-  font-size:var(--fs-xs);
-  color:var(--ink-muted);
-  margin-top:var(--sp-1);
-}
-.calm-sheet-list em {
-  font:var(--fs-xs) var(--f-mono);
-  color:var(--ink-muted);
-}
-.calm-sheet-list p {
-  padding:var(--sp-3);
-  color:var(--ink-secondary);
-}
 .calm-sheet-tree {
   flex:1;
   min-height:0;

@@ -1655,6 +1655,7 @@ export default function TakeoffCanvas() {
   const knownPagesRef = useRef(knownPages);
   // nothing is saved until the stored counts have loaded (pageCounts.ts):
   // the map is written whole, so an early write would drop every stored count
+  // (StrictMode runs this initializer twice in development: two harmless reads)
   const [pageCounts] = useState(() => createPageCounts({
     load: () => metaGet(pageCacheKey),
     save: (m) => metaPut(pageCacheKey, m),

@@ -83,13 +83,6 @@ test("answers match the probe reader on every page above and on dense copies", a
   for (const p of pages) assert.equal(readSheetNumber(p), oracleSheetNumber(p));
 });
 
-const median = (f: () => void, runs = 9) => {
-  for (let i = 0; i < 3; i++) f();
-  const ts: number[] = [];
-  for (let i = 0; i < runs; i++) { const a = performance.now(); f(); ts.push(performance.now() - a); }
-  return ts.sort((a, b) => a - b)[runs >> 1];
-};
-
 // best of several runs: other work on the machine only ever adds time
 const best = (f: () => void, runs = 15) => {
   for (let i = 0; i < 3; i++) f();
@@ -120,7 +113,7 @@ test("past MAX_ITEMS a page is not read", () => {
 
 test("a page with no label word returns before grouping", () => {
   const items = densePage(30000).items.filter((i) => !/sheet|dwg|drawing/i.test(i.s));
-  const ms = median(() => readSheetNumber({ W, H, items }));
+  const ms = best(() => readSheetNumber({ W, H, items }));
   assert.equal(readSheetNumber({ W, H, items }), null);
   assert.ok(ms <= 5, `${ms.toFixed(1)} ms`);
 });
