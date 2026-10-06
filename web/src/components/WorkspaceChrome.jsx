@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import { keyText } from "../lib/keys.ts";
+import { SheetTree } from "./SheetTree.jsx";
 import "./workspaceChrome.css";
 
 // Workspace chrome. All actions are supplied by the existing canvas;
@@ -35,15 +36,12 @@ export function WorkspaceChrome({ title, onOpen, onNavigate, navigationOpen, onT
   </>;
 }
 
-export function WorkspaceNavigator({ open, items, current, onSelect, onClose, onGallery, dockSide, width, dockHandle }) {
+export function WorkspaceNavigator({ open, items, current, onSelect, onClose, onGallery, dockSide, width, dockHandle, namer = null, countKnown = () => true, hold }) {
   const [query, setQuery] = useState("");
-  const matches = useMemo(() => items.filter((s) => `${s.label} ${s.file}`.toLowerCase().includes(query.trim().toLowerCase())), [items, query]);
   return <aside className="calm-navigator" data-dock-side={dockSide} style={{ width, order: dockSide === "right" ? 20 : -20 }} hidden={!open} aria-label="Sheet navigator" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}>
     <header>{dockHandle}<strong>Sheets <small>{items.length}</small></strong><button type="button" aria-label="Close sheet navigator" onClick={onClose}>×</button></header>
     <label><Icon name="search" size={15} /><input name="workspace-sheet-search" aria-label="Find a sheet" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find a sheet…" /></label>
-    <div className="calm-sheet-list">{matches.map((s) => <button type="button" key={s.key} aria-current={s.key === current ? "page" : undefined} onClick={() => onSelect(s.key)} title={`${s.label} · ${s.file}`}>
-      <Icon name="document" size={19} /><span><strong>{s.label}</strong><small>{s.file}</small></span>{s.count > 0 && <em>{s.count}</em>}
-    </button>)}{!matches.length && <p>{items.length ? "No sheets match your search." : "Open a plan to see its sheets here."}</p>}</div>
+    <SheetTree items={items} current={current} onSelect={onSelect} namer={namer} countKnown={countKnown} query={query} hold={hold} onSearchAll={onGallery} />
     <footer><button type="button" onClick={onGallery}><Icon name="sheets" size={16} />Open visual gallery</button></footer>
   </aside>;
 }

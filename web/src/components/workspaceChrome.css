@@ -242,6 +242,39 @@
   padding:var(--sp-3);
   color:var(--ink-secondary);
 }
+.calm-sheet-tree {
+  flex:1;
+  min-height:0;
+  overflow:auto;
+  padding:0 var(--sp-2);
+}
+.calm-sheet-tree [role=treeitem] {
+  display:flex;
+  align-items:center;
+  gap:var(--sp-2);
+  width:100%;
+  padding:var(--sp-2) var(--sp-2);
+  margin-bottom:var(--sp-1);
+  border-radius:var(--r-1);
+  color:var(--ink);
+  cursor:pointer;
+}
+.calm-sheet-tree [role=treeitem]:hover { background:var(--tint-hover, var(--well)); }
+.calm-sheet-tree [role=treeitem]:focus-visible { outline:2px solid var(--cobalt); outline-offset:-2px; }
+.calm-sheet-tree [role=treeitem][aria-current=page] { background:var(--tint-select); color:var(--cobalt); }
+.calm-sheet-tree .is-child { padding-left:calc(var(--sp-2) + var(--sp-5, 20px)); }
+.calm-sheet-tree .calm-tree-folder svg { transition:transform .12s ease; flex:none; }
+.calm-sheet-tree .calm-tree-folder[aria-expanded=true] svg { transform:rotate(90deg); }
+.calm-sheet-tree [role=treeitem]>span { flex:1; min-width:0; }
+.calm-sheet-tree strong,.calm-sheet-tree small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.calm-sheet-tree strong { font-weight:600; }
+.calm-sheet-tree .calm-sheet-number { font-family:var(--f-mono); letter-spacing:.01em; }
+.calm-sheet-tree small { font-size:var(--fs-xs); color:var(--ink-muted); margin-top:var(--sp-1); }
+.calm-sheet-tree .calm-tree-folder>small { margin-top:0; }
+.calm-sheet-tree em { font:var(--fs-xs) var(--f-mono); color:var(--ink-muted); }
+.calm-sheet-tree .calm-level-chip { font:var(--fs-xs) var(--f-mono); font-style:normal; padding:0 var(--sp-1); border:var(--rule-soft); border-radius:var(--r-1); color:var(--ink-secondary); }
+.calm-sheet-tree p { padding:var(--sp-3); color:var(--ink-secondary); }
+.calm-sheet-tree .calm-tree-note button { display:inline; padding:0; border:0; background:none; color:var(--cobalt); text-decoration:underline; cursor:pointer; font:inherit; }
 .calm-navigator footer {
   padding:var(--sp-3);
   border-top:var(--rule-soft);
