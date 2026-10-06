@@ -1,6 +1,6 @@
 // A session's raw PDF bytes, kept so a file opened again comes from memory,
-// not a second download. A copy costs about a fifth of the pdf.js document
-// it opens into.
+// not a second download. A copy is the file's size; the pdf.js document it
+// opens into costs several times that.
 
 export interface ByteCache {
   /** a fresh copy of the file's bytes, loaded once while kept: pdf.js and a
@@ -9,7 +9,6 @@ export interface ByteCache {
   /** drop the file's copy; a load in flight for it isn't kept when it lands,
    * and the next get loads afresh */
   forget(name: string): void;
-  clear(): void;
 }
 
 /** Copies are kept while their total fits `maxBytes`, the least recently
@@ -18,7 +17,7 @@ export interface ByteCache {
  * budget turns the cache off: every get loads. */
 export function createByteCache(deps: { load(name: string): Promise<Uint8Array>; maxBytes: number }): ByteCache {
   if (!(deps.maxBytes > 0)) {
-    return { get: (name) => deps.load(name), forget() {}, clear() {} };
+    return { get: (name) => deps.load(name), forget() {} };
   }
   // Map order is recency: the first entry is the least recently asked for
   const kept = new Map<string, Uint8Array>();
@@ -46,7 +45,7 @@ export function createByteCache(deps: { load(name: string): Promise<Uint8Array>;
       if (had) { kept.delete(name); kept.set(name, had); return Promise.resolve(had.slice()); }
       let p = loading.get(name);
       if (!p) {
-        // a forget or clear meanwhile takes this load out of `loading`
+        // a forget meanwhile takes this load out of `loading`
         const mine: Promise<Uint8Array> = deps.load(name).then(
           (b) => { if (loading.get(name) === mine) { loading.delete(name); keep(name, b); } return b; },
           (e) => { if (loading.get(name) === mine) loading.delete(name); throw e; },
@@ -56,7 +55,6 @@ export function createByteCache(deps: { load(name: string): Promise<Uint8Array>;
       return copy(p);
     },
     forget(name) { drop(name); loading.delete(name); },
-    clear() { kept.clear(); loading.clear(); total = 0; },
   };
 }
 

@@ -471,3 +471,25 @@ test("re-adding in the cloud: every name resets, and one with a loaded document 
     { reset: ["open.pdf", "closed.pdf"], evict: ["open.pdf"] },
   );
 });
+
+test("loaded: only once the document has finished loading, and not after it's gone", async () => {
+  const t = setup({ "a.pdf": [1], "b.pdf": [2] });
+  let open!: () => void;
+  const held = new Promise<void>((r) => { open = r; });
+  const docs = createDocCache<FakePage>({
+    load: t.store.load,
+    open: (data) => { const f = fakeOpen(data); return { ...f, promise: held.then(() => f.promise) }; },
+    hashing: () => null,
+  });
+  docs.doc("a.pdf");
+  await tick();
+  assert.equal(docs.has("a.pdf"), true, "a's load has started");
+  assert.equal(docs.loaded("a.pdf"), false, "but its document isn't in yet");
+  open();
+  await docs.doc("a.pdf");
+  assert.equal(docs.loaded("a.pdf"), true);
+  assert.equal(docs.loaded("b.pdf"), false, "never asked for");
+  docs.evict("a.pdf");
+  assert.equal(docs.loaded("a.pdf"), false);
+});
+

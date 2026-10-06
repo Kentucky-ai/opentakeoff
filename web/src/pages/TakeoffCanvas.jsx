@@ -1345,15 +1345,19 @@ export default function TakeoffCanvas() {
   const groupKeys = sheetGroup.length ? sheetGroup : [sheetKey];
   const stitchById = useMemo(() => Object.fromEntries(stitches.map((s) => [s.id, s])), [stitches]);
   // the files on screen or a tab away stay loaded (docCache's pins); one that
-  // just left is the last idle one to go, so a tab just closed reopens
-  // without a reload. The trim runs in an effect after the render
+  // just left becomes the most recent idle one, so a tab just closed reopens
+  // without a reload unless enough other files are used meanwhile. Pins are
+  // set before any effect runs; the trim runs in an effect after the render
   // effect (pinSig).
   const pinFiles = pinnedFiles({ keys: [...openTabs, ...groupKeys], stitchById });
   if (active) pinFiles.add(active);
-  const unpinned = [...pinsRef.current.files].filter((f) => !pinFiles.has(f));
-  if (unpinned.length) docCache.touch(unpinned);
-  pinsRef.current = { files: pinFiles, stitchById };
   const pinSig = [...pinFiles].sort().join("\n");
+  useLayoutEffect(() => {
+    const unpinned = [...pinsRef.current.files].filter((f) => !pinFiles.has(f));
+    if (unpinned.length) docCache.touch(unpinned);
+    pinsRef.current = { files: pinFiles, stitchById };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pinSig is pinFiles' identity; stitchById rides along
+  }, [pinSig, stitchById, docCache]);
   // docEpoch re-keys groupSig when a re-dropped file's BYTES changed under the
   // same name (store.addPdf → revised): the render effect keyed on groupSig is
   // the one path that resets every cache (compositor, pageObjs, snap grids) and
@@ -7250,112 +7254,115 @@ export default function TakeoffCanvas() {
     const { page: pageObj, release } = holdSheetPage(key);
     const blocked = copyUnavailable({ stitch: isStitchKey(key), hasPage: !!pageObj });
     if (blocked) { release(); setCommitMsg(blocked); return; }
-    const rs = renderScalesRef.current.get(key) || RENDER_SCALE;
-    const vp = pageObj.getViewport({ scale: rs });
-    // a scan for Copy text (copyIsScanLike): the page rule on this page's
-    // text, and the page may hold an image (a vector cover sheet's few title
-    // lines copy from the text layer at once); a hybrid's pictures come from
-    // its index entry (copyPictureInputs), as the Read control's do (readWhat)
-    const imageFrac = () => sheetStatsRef.current.get(key)?.imageFrac;
-    const scanLikeOf = (tc) => copyIsScanLike(tc, vp, imageFrac());
-    // OCR known off (and no read in memory): the chain starts with that
-    // miss, asks no OCR reader, and an empty copy still says why
-    const startMiss = copyStartMiss({ enabled: ocrEnabled(), avail: ocrAvail, hasRead: !!pageReader.lines(key) });
-    const seq = renderSeqRef.current;   // a sheet switch mid-await must not post a receipt for a page you left
-    const signal = copyGateRef.current.begin();   // and a newer box (or page copy) replaces this one
-    // an on-device read posts an in-progress line (sticky, it ends in "…");
-    // whatever ends this copy takes it down again, unless a newer message
-    // has replaced it
-    let busy = null;
-    const clearBusy = () => { if (busy) { const b = busy; busy = null; setCommitMsgState((m) => (m === b ? { text: "" } : m)); } };
-    // hybrid: the copy took copyPlan's "hybrid" chain (#489), which is never
-    // called a scan, and whose unread image is a picture
-    const settle = (o, tc, hybrid) => {
-      clearBusy();
-      if (o.kind === "aborted" || signal.aborted) return;
-      if (o.kind !== "text") { setCommitMsg(outcomeMessage(o, scope, scanLikeOf(tc), hybrid)); return; }
-      // after an on-device read the click's activation is usually gone and
-      // the write is refused: the receipt then holds the text in its textarea
-      deliverCopy(o.text, navigator.clipboard).then((ok) => setCopyReceipt(makeReceipt(o, { failed: !ok, scope, key, hybrid })));
-    };
-    // a box read's line: nothing while the download notice is up, then
-    // "Waiting…" until its turn in the engine, then "Reading…"
-    const postBusy = (text) => {
-      if (!busy) signal.addEventListener("abort", clearBusy, { once: true });   // Esc, or a newer box
-      busy = { text };
-      setCommitMsgState(busy);
-    };
-    // OCR (lib/copyText): which OCR this copy may use (copyOcrRoute: none on
-    // a sheet with a text layer and no placed image), then ocrCopyReaders: the page's own
-    // read (in memory, else the cache; a read of it under way is waited for),
-    // then, only if the page has no read, an on-device read of the box, not
-    // kept; copyReaderChain puts them after the text layer, or first on a
-    // scan. Copy page text on a scan is the page read itself
-    // (readSheet: kept, indexed, shown on the Read control with its Cancel,
-    // and it goes on if this copy is replaced).
-    // the page's read: in memory; else, with OCR on, the read under way
-    // (waited for) or the cached one
-    const pageLinesOrLookup = () => {
-      if (!ocrEnabled()) return null;
-      if (pageReader.status(key)?.state === "reading") return readSheet(key).then((r) => (r.ok ? r.lines : null));
-      return lookupSheet(key).then((h) => h?.lines ?? null);
-    };
-    // why OCR can't run here, if it can't
-    const ocrOff = () => (!ocrEnabled() ? "disabled" : ocrAvail === "disabled" || ocrAvail === "uninstalled" ? ocrAvail : null);
-    // a one-off read of a box (not kept)
-    const readBoxOf = (r, sig) => {
-      const off = ocrOff();
-      if (off) return Promise.resolve({ ok: false, status: off });
-      return pageReader.readBox({
-        file: parseSheetKey(key).file, rs, rect: r, getPage: async () => pageObj, signal: sig,
-        onPhase: (ph) => { if (!sig?.aborted) postBusy(ph === "waiting" ? "Waiting for another read…" : "Reading that box with the on-device text reader (OCR)…"); },
-      });
-    };
-    const ocrReadersFor = (tc) => {
-      const route = copyOcrRoute({ scope, scanLike: scanLikeOf(tc), imageFrac: imageFrac(), ocrOff: !!startMiss });
-      if (route === "none") return [];
-      return ocrCopyReaders({
-        // on a hybrid, none (copyText textChainPageLines): its read covers
-        // only the pictures, and this chain's box is off them or a sliver
-        pageLines: textChainPageLines(planIndexRef.current.get(key), () => pageReader.lines(key) ?? pageLinesOrLookup()),
-        readBox: (r, sig) => {
-          const off = ocrOff();
-          if (off) return Promise.resolve({ ok: false, status: off });
-          if (route === "page") return readSheet(key).then((res) => (res.ok ? { ok: true, lines: res.lines } : { ok: false, status: res.status, message: res.message }));
-          // the whole page reaches OCR only on a scan, which is the page
-          // route above; a page with a text layer never gets a one-off read
-          if (!r) return Promise.resolve({ ok: true, lines: [] });
-          return readBoxOf(r, sig);
-        },
-      });
-    };
-    const read = (tc) => {
-      // Which chain (lib/copyText copyPlan, #489): a box over a hybrid's
-      // picture is ONE combining reader (the text layer, and OCR for the
-      // picture: the page's read in memory, else the cached read or the one
-      // under way, else a read of each box ∩ picture). Otherwise the reader
-      // chain, asked in order; the first with any token answers: the text
-      // layer, then OCR — or, on a scan, OCR, then the text layer.
-      const failed = () => { clearBusy(); setCommitMsg("Couldn't read that region."); };
-      const scan = scanLikeOf(tc);
-      const plan = copyPlan({ scope, rect, scan, ...copyPictureInputs(planIndexRef.current.get(key)), rs, pageRead: !!pageReader.lines(key) });
-      const hybrid = plan.kind === "hybrid";
-      let out;
-      try {
-        const readers = hybrid
-          ? [hybridCopyReader({ tc, viewport: vp, ocrRects: plan.ocrRects, startMiss, pageLines: () => pageReader.lines(key), lookup: () => Promise.resolve(pageLinesOrLookup()), readBox: readBoxOf })]
-          : copyReaderChain({ scanLike: scan, textLayer: textLayerReader(tc, vp), ocr: ocrReadersFor(tc) });
-        out = readCopyText(readers, rect, { signal }, [], startMiss);
-      }
-      catch { failed(); return; }
-      if (out instanceof Promise) return out.then((o) => { if (seq === renderSeqRef.current) settle(o, tc, hybrid); else clearBusy(); }).catch(failed);
-      settle(out, tc, hybrid);
-    };
-    const e = textContentOf(pageObj);
-    const done = e.tc
-      ? read(e.tc)
-      : e.p.then((tc) => { if (seq === renderSeqRef.current && !signal.aborted) return read(tc); }).catch(() => setCommitMsg("Couldn't read that sheet's text."));
-    Promise.resolve(done).finally(release);
+    // a throw before the copy is under way lets it go at once
+    try {
+      const rs = renderScalesRef.current.get(key) || RENDER_SCALE;
+      const vp = pageObj.getViewport({ scale: rs });
+      // a scan for Copy text (copyIsScanLike): the page rule on this page's
+      // text, and the page may hold an image (a vector cover sheet's few title
+      // lines copy from the text layer at once); a hybrid's pictures come from
+      // its index entry (copyPictureInputs), as the Read control's do (readWhat)
+      const imageFrac = () => sheetStatsRef.current.get(key)?.imageFrac;
+      const scanLikeOf = (tc) => copyIsScanLike(tc, vp, imageFrac());
+      // OCR known off (and no read in memory): the chain starts with that
+      // miss, asks no OCR reader, and an empty copy still says why
+      const startMiss = copyStartMiss({ enabled: ocrEnabled(), avail: ocrAvail, hasRead: !!pageReader.lines(key) });
+      const seq = renderSeqRef.current;   // a sheet switch mid-await must not post a receipt for a page you left
+      const signal = copyGateRef.current.begin();   // and a newer box (or page copy) replaces this one
+      // an on-device read posts an in-progress line (sticky, it ends in "…");
+      // whatever ends this copy takes it down again, unless a newer message
+      // has replaced it
+      let busy = null;
+      const clearBusy = () => { if (busy) { const b = busy; busy = null; setCommitMsgState((m) => (m === b ? { text: "" } : m)); } };
+      // hybrid: the copy took copyPlan's "hybrid" chain (#489), which is never
+      // called a scan, and whose unread image is a picture
+      const settle = (o, tc, hybrid) => {
+        clearBusy();
+        if (o.kind === "aborted" || signal.aborted) return;
+        if (o.kind !== "text") { setCommitMsg(outcomeMessage(o, scope, scanLikeOf(tc), hybrid)); return; }
+        // after an on-device read the click's activation is usually gone and
+        // the write is refused: the receipt then holds the text in its textarea
+        deliverCopy(o.text, navigator.clipboard).then((ok) => setCopyReceipt(makeReceipt(o, { failed: !ok, scope, key, hybrid })));
+      };
+      // a box read's line: nothing while the download notice is up, then
+      // "Waiting…" until its turn in the engine, then "Reading…"
+      const postBusy = (text) => {
+        if (!busy) signal.addEventListener("abort", clearBusy, { once: true });   // Esc, or a newer box
+        busy = { text };
+        setCommitMsgState(busy);
+      };
+      // OCR (lib/copyText): which OCR this copy may use (copyOcrRoute: none on
+      // a sheet with a text layer and no placed image), then ocrCopyReaders: the page's own
+      // read (in memory, else the cache; a read of it under way is waited for),
+      // then, only if the page has no read, an on-device read of the box, not
+      // kept; copyReaderChain puts them after the text layer, or first on a
+      // scan. Copy page text on a scan is the page read itself
+      // (readSheet: kept, indexed, shown on the Read control with its Cancel,
+      // and it goes on if this copy is replaced).
+      // the page's read: in memory; else, with OCR on, the read under way
+      // (waited for) or the cached one
+      const pageLinesOrLookup = () => {
+        if (!ocrEnabled()) return null;
+        if (pageReader.status(key)?.state === "reading") return readSheet(key).then((r) => (r.ok ? r.lines : null));
+        return lookupSheet(key).then((h) => h?.lines ?? null);
+      };
+      // why OCR can't run here, if it can't
+      const ocrOff = () => (!ocrEnabled() ? "disabled" : ocrAvail === "disabled" || ocrAvail === "uninstalled" ? ocrAvail : null);
+      // a one-off read of a box (not kept)
+      const readBoxOf = (r, sig) => {
+        const off = ocrOff();
+        if (off) return Promise.resolve({ ok: false, status: off });
+        return pageReader.readBox({
+          file: parseSheetKey(key).file, rs, rect: r, getPage: async () => pageObj, signal: sig,
+          onPhase: (ph) => { if (!sig?.aborted) postBusy(ph === "waiting" ? "Waiting for another read…" : "Reading that box with the on-device text reader (OCR)…"); },
+        });
+      };
+      const ocrReadersFor = (tc) => {
+        const route = copyOcrRoute({ scope, scanLike: scanLikeOf(tc), imageFrac: imageFrac(), ocrOff: !!startMiss });
+        if (route === "none") return [];
+        return ocrCopyReaders({
+          // on a hybrid, none (copyText textChainPageLines): its read covers
+          // only the pictures, and this chain's box is off them or a sliver
+          pageLines: textChainPageLines(planIndexRef.current.get(key), () => pageReader.lines(key) ?? pageLinesOrLookup()),
+          readBox: (r, sig) => {
+            const off = ocrOff();
+            if (off) return Promise.resolve({ ok: false, status: off });
+            if (route === "page") return readSheet(key).then((res) => (res.ok ? { ok: true, lines: res.lines } : { ok: false, status: res.status, message: res.message }));
+            // the whole page reaches OCR only on a scan, which is the page
+            // route above; a page with a text layer never gets a one-off read
+            if (!r) return Promise.resolve({ ok: true, lines: [] });
+            return readBoxOf(r, sig);
+          },
+        });
+      };
+      const read = (tc) => {
+        // Which chain (lib/copyText copyPlan, #489): a box over a hybrid's
+        // picture is ONE combining reader (the text layer, and OCR for the
+        // picture: the page's read in memory, else the cached read or the one
+        // under way, else a read of each box ∩ picture). Otherwise the reader
+        // chain, asked in order; the first with any token answers: the text
+        // layer, then OCR — or, on a scan, OCR, then the text layer.
+        const failed = () => { clearBusy(); setCommitMsg("Couldn't read that region."); };
+        const scan = scanLikeOf(tc);
+        const plan = copyPlan({ scope, rect, scan, ...copyPictureInputs(planIndexRef.current.get(key)), rs, pageRead: !!pageReader.lines(key) });
+        const hybrid = plan.kind === "hybrid";
+        let out;
+        try {
+          const readers = hybrid
+            ? [hybridCopyReader({ tc, viewport: vp, ocrRects: plan.ocrRects, startMiss, pageLines: () => pageReader.lines(key), lookup: () => Promise.resolve(pageLinesOrLookup()), readBox: readBoxOf })]
+            : copyReaderChain({ scanLike: scan, textLayer: textLayerReader(tc, vp), ocr: ocrReadersFor(tc) });
+          out = readCopyText(readers, rect, { signal }, [], startMiss);
+        }
+        catch { failed(); return; }
+        if (out instanceof Promise) return out.then((o) => { if (seq === renderSeqRef.current) settle(o, tc, hybrid); else clearBusy(); }).catch(failed);
+        settle(out, tc, hybrid);
+      };
+      const e = textContentOf(pageObj);
+      const done = e.tc
+        ? read(e.tc)
+        : e.p.then((tc) => { if (seq === renderSeqRef.current && !signal.aborted) return read(tc); }).catch(() => setCommitMsg("Couldn't read that sheet's text."));
+      Promise.resolve(done).finally(release);
+    } catch (e) { release(); throw e; }
   }
   // two stage-px corners → the box on one sheet
   function copyTextFromBox(a, b) {
@@ -10960,7 +10967,7 @@ export default function TakeoffCanvas() {
           onLabel={(k, lbl) => setGalleryLabels((m) => (m[k] === lbl ? m : { ...m, [k]: lbl }))}
           onDetect={(k, det) => setDetectedScales((d) => (d[k]?.label === det.label ? d : { ...d, [k]: det }))}
           thumbCacheRef={thumbCacheRef} busyRef={statusRef}
-          planIndexRef={planIndexRef} subscribeIndex={indexSignal.subscribe} onIndexed={onIndexed} pageHeld={pageHeld} docLoaded={docCache.has}
+          planIndexRef={planIndexRef} subscribeIndex={indexSignal.subscribe} onIndexed={onIndexed} pageHeld={pageHeld} docLoaded={docCache.loaded}
           ocr={ocrApi}
           openTabs={openTabs} onOpen={openSheets}
           stitches={stitches} onStitch={createStitch} onOpenStitch={openStitch} onDeleteStitch={deleteStitch}

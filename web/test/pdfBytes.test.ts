@@ -154,28 +154,6 @@ test("a failed load isn't kept, and its error reaches every caller", async () =>
   assert.deepEqual([...await p3], [7]);
 });
 
-test("clear drops every copy, and a load in flight then isn't kept", async () => {
-  const l = loads();
-  const cache = createByteCache({ load: l.load, maxBytes: 100 });
-  const a = cache.get("a.pdf");
-  l.resolve("a.pdf", [1]);
-  await a;
-  const b = cache.get("b.pdf");
-  cache.clear();
-  l.resolve("b.pdf", [2]);
-  await b;
-  const a2 = cache.get("a.pdf");
-  const b2 = cache.get("b.pdf");
-  assert.equal(l.count("a.pdf"), 2, "a's copy went");
-  assert.equal(l.count("b.pdf"), 2, "b's in-flight load wasn't kept");
-  l.resolve("a.pdf", [1]);
-  l.resolve("b.pdf", [2]);
-  await Promise.all([a2, b2]);
-  const a3 = cache.get("a.pdf"), b3 = cache.get("b.pdf");
-  assert.equal(l.calls.length, 4, "loads after the clear are kept again");
-  await Promise.all([a3, b3]);
-});
-
 test("the byte budget is 256 MB, and none (the cache off) on a low-memory device", () => {
   assert.equal(byteBudget(false), 256 * 1024 * 1024);
   assert.equal(byteBudget(true), 0);

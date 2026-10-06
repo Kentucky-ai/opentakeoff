@@ -28,6 +28,8 @@ export interface DocCache<P, D extends DocLike<P>> {
    * leased, as `doc` */
   open(file: string): SourceDoc<P>;
   has(file: string): boolean;
+  /** has, and its document has finished loading */
+  loaded(file: string): boolean;
   /** drop the file's document and destroy its worker copy, leased or not */
   evict(file: string): void;
   clear(): void;
@@ -135,6 +137,7 @@ export function createDocCache<P, D extends DocLike<P> = DocLike<P>>(deps: {
     cached(file) { const e = docs.get(file); return e && view(e); },
     open: (file) => view(entry(file)),
     has: (file) => docs.has(file),
+    loaded: (file) => !!docs.get(file)?.loaded,
     evict(file) { const e = docs.get(file); if (e) drop(file, e); everOpened.delete(file); },
     clear() { for (const e of docs.values()) destroy(e); docs.clear(); everOpened.clear(); },
     trim,
