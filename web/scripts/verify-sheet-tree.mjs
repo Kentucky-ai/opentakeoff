@@ -7,7 +7,7 @@
 // Screenshots go next to results.json.
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { spawn, execFileSync } from 'node:child_process';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const out = resolve(process.argv[2]), dist = resolve(process.argv[3] || 'dist');
@@ -155,22 +155,41 @@ try {
   await page.getByLabel('Find a sheet').focus();
   await page.keyboard.press('Tab');
   kb.push({ key: 'Tab (search box into tree)', focus: await focused() });
-  for (const key of ['ArrowDown', 'ArrowDown', 'ArrowUp', 'End', 'Home', 'ArrowLeft', 'ArrowRight', 'ArrowRight']) {
+  const rowIds = () => page.locator('[role=treeitem]').evaluateAll(rs => rs.map(r => r.getAttribute('data-row')));
+  const expandedOf = id => page.locator(`[data-row="${id}"]`).getAttribute('aria-expanded');
+  const steps = [];
+  const press = async key => {
+    const ids = await rowIds(), from = await focused(), expandedBefore = await expandedOf(from);
     await page.keyboard.press(key);
-    kb.push({ key, focus: await focused() });
-  }
+    const to = await focused();
+    const step = { key, from, to, index: ids.indexOf(from), expectedNext: ids[ids.indexOf(from) + 1], expectedPrev: ids[ids.indexOf(from) - 1], first: ids[0], last: ids[ids.length - 1], expandedBefore, expandedAfter: await expandedOf(from) };
+    steps.push(step); kb.push({ key, focus: to });
+    return step;
+  };
+  const down1 = await press('ArrowDown'), down2 = await press('ArrowDown'), up1 = await press('ArrowUp');
+  const end = await press('End'), home = await press('Home');
+  const left = await press('ArrowLeft'), right = await press('ArrowRight'), into = await press('ArrowRight');
+  check('keyboard: ArrowDown moves to the next row', down1.to === down1.expectedNext && down2.to === down2.expectedNext, { down1, down2 });
+  check('keyboard: ArrowUp moves to the previous row', up1.to === up1.expectedPrev, up1);
+  check('keyboard: End lands on the last row', end.to === end.last, end);
+  check('keyboard: Home lands on the first row (the set-1 folder)', home.to === home.first && home.to === 'f:set-1.pdf', home);
+  check('keyboard: ArrowLeft collapses an open folder', left.expandedBefore === 'true' && left.expandedAfter === 'false', left);
+  check('keyboard: ArrowRight expands it again', right.expandedBefore === 'false' && right.expandedAfter === 'true', right);
+  check('keyboard: ArrowRight on an open folder moves into it', into.to === into.expectedNext && into.to !== into.from, into);
   results.focusedElementsAtShot = await page.evaluate(() => [...document.querySelectorAll(':focus, :focus-within')].map(e => `${e.tagName}${e.getAttribute('role') ? '[' + e.getAttribute('role') + ']' : ''}${e.className ? '.' + String(e.className).split(' ')[0] : ''}`));
   await shot('08-keyboard-focus-row.png', false);
-  const toolBefore = await page.evaluate(() => document.querySelector('[aria-pressed=true][data-tool], [data-tool][aria-pressed=true]')?.getAttribute('data-tool') ?? null);
+  const textsBefore = (await rowTexts()).map(r => r.text);
   await page.keyboard.press('Delete');
   await page.keyboard.press('Backspace');
-  const rowsAfterDelete = (await rowTexts()).length;
-  kb.push({ key: 'Delete, Backspace', rowsBefore: results.rowsAfterReload.length, rowsAfter: rowsAfterDelete });
+  const textsAfter = (await rowTexts()).map(r => r.text);
+  kb.push({ key: 'Delete, Backspace', rowsBefore: textsBefore.length, rowsAfter: textsAfter.length });
   await page.keyboard.press('Tab');
   kb.push({ key: 'Tab (leaves the tree)', focus: await focused() });
   results.keyboard = kb;
-  check('keyboard: Delete/Backspace on a row remove nothing', rowsAfterDelete >= results.rowsAfterReload.length - 0, { rowsAfterDelete });
-  check('keyboard: Tab leaves the tree', !kb[kb.length - 1].focus.startsWith('file') && !(kb[kb.length - 1].focus.includes('::') ));
+  check('keyboard: Delete/Backspace on a row remove nothing', JSON.stringify(textsBefore) === JSON.stringify(textsAfter) && textsAfter.length === 36, { rows: textsAfter.length });
+  check('keyboard: Tab leaves the tree', !/^[sf]:/.test(kb[kb.length - 1].focus), kb[kb.length - 1]);
+  check('worker spawns after the reload: at most 1 (the canvas file)', results.workerSpawnsAfterReload <= 1 && results.workerSpawnsAfterReloadSettled <= 1, { settled: results.workerSpawnsAfterReloadSettled });
+  check('gallery: every card drew a thumbnail', results.galleryThumbnailsDrawn === results.galleryCards && results.galleryCards === FILES * PAGES, { cards: results.galleryCards, drawn: results.galleryThumbnailsDrawn });
 
   const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   check('all 30 numbers shown after the gallery', eq(results.shownAfterGallery, expected), { got: results.shownAfterGallery.length });
@@ -186,4 +205,4 @@ try {
   console.log((await page.locator('body').innerText().catch(() => '')).slice(-2000));
   await page.screenshot({ path: join(tmpdir(), 'verify-sheet-tree.fail.png') }).catch(() => {});
   throw e;
-} finally { await browser.close(); server.kill(); }
+} finally { await browser.close(); server.kill(); if (!process.env.SET_DIR) rmSync(setDir, { recursive: true, force: true }); }

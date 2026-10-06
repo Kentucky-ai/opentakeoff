@@ -11,6 +11,10 @@ PLAYWRIGHT_MODULE=<playwright/index.mjs> BROWSER_PATH=<chrome> \
   node scripts/verify-sheet-tree.mjs ../docs/review/sheet-folder-tree/results.json
 ```
 
+Requirements: a freshly built `web/dist` (`npm run build` on the commit under
+test; a stale dist predating the tree shows no numbers at all), Playwright
+(`PLAYWRIGHT_MODULE`) and a Chrome binary (`BROWSER_PATH`).
+
 The script (`web/scripts/verify-sheet-tree.mjs`) generates the set with
 `node scripts/make-sheet-set.mjs <tmp> --files 6 --pages 5 --filler 2000`
 (nothing generated is committed), serves `web/dist` with `vite preview`, blocks
@@ -44,7 +48,7 @@ of filler and a title block reading `SHEET NUMBER` over the number
 | Delete / Backspace on a focused row | removes nothing | 36 rows before and after |
 | Console errors | none | only the blocked external requests (analytics beacon, Google Fonts) the script aborts on purpose |
 
-Every check in `results.json` is `ok: true`.
+Every claim in this README is a `check` in `results.json` (16 checks, all `ok: true`), including each keyboard step, the worker count and the thumbnail count. The script exits non-zero if any fails.
 
 Reading the table: right after opening, only the open file's pages and part of
 the next file's are numbered, because a number is read when its page's text is

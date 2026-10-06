@@ -108,8 +108,8 @@
   ],
   "readerMs": {
     "count": 30,
-    "p95": 1.9,
-    "max": 3.3
+    "p95": 2.2,
+    "max": 3.6
   },
   "workerSpawnsAfterReload": 1,
   "consoleErrors": [
@@ -615,15 +615,156 @@
       }
     },
     {
+      "check": "keyboard: ArrowDown moves to the next row",
+      "ok": true,
+      "detail": {
+        "down1": {
+          "key": "ArrowDown",
+          "from": "f:set-6.pdf",
+          "to": "s:set-6.pdf",
+          "index": 30,
+          "expectedNext": "s:set-6.pdf",
+          "expectedPrev": "s:set-5.pdf#5",
+          "first": "f:set-1.pdf",
+          "last": "s:set-6.pdf#5",
+          "expandedBefore": "true",
+          "expandedAfter": "true"
+        },
+        "down2": {
+          "key": "ArrowDown",
+          "from": "s:set-6.pdf",
+          "to": "s:set-6.pdf#2",
+          "index": 31,
+          "expectedNext": "s:set-6.pdf#2",
+          "expectedPrev": "f:set-6.pdf",
+          "first": "f:set-1.pdf",
+          "last": "s:set-6.pdf#5",
+          "expandedBefore": null,
+          "expandedAfter": null
+        }
+      }
+    },
+    {
+      "check": "keyboard: ArrowUp moves to the previous row",
+      "ok": true,
+      "detail": {
+        "key": "ArrowUp",
+        "from": "s:set-6.pdf#2",
+        "to": "s:set-6.pdf",
+        "index": 32,
+        "expectedNext": "s:set-6.pdf#3",
+        "expectedPrev": "s:set-6.pdf",
+        "first": "f:set-1.pdf",
+        "last": "s:set-6.pdf#5",
+        "expandedBefore": null,
+        "expandedAfter": null
+      }
+    },
+    {
+      "check": "keyboard: End lands on the last row",
+      "ok": true,
+      "detail": {
+        "key": "End",
+        "from": "s:set-6.pdf",
+        "to": "s:set-6.pdf#5",
+        "index": 31,
+        "expectedNext": "s:set-6.pdf#2",
+        "expectedPrev": "f:set-6.pdf",
+        "first": "f:set-1.pdf",
+        "last": "s:set-6.pdf#5",
+        "expandedBefore": null,
+        "expandedAfter": null
+      }
+    },
+    {
+      "check": "keyboard: Home lands on the first row (the set-1 folder)",
+      "ok": true,
+      "detail": {
+        "key": "Home",
+        "from": "s:set-6.pdf#5",
+        "to": "f:set-1.pdf",
+        "index": 35,
+        "expectedPrev": "s:set-6.pdf#4",
+        "first": "f:set-1.pdf",
+        "last": "s:set-6.pdf#5",
+        "expandedBefore": null,
+        "expandedAfter": null
+      }
+    },
+    {
+      "check": "keyboard: ArrowLeft collapses an open folder",
+      "ok": true,
+      "detail": {
+        "key": "ArrowLeft",
+        "from": "f:set-1.pdf",
+        "to": "f:set-1.pdf",
+        "index": 0,
+        "expectedNext": "s:set-1.pdf",
+        "first": "f:set-1.pdf",
+        "last": "s:set-6.pdf#5",
+        "expandedBefore": "true",
+        "expandedAfter": "false"
+      }
+    },
+    {
+      "check": "keyboard: ArrowRight expands it again",
+      "ok": true,
+      "detail": {
+        "key": "ArrowRight",
+        "from": "f:set-1.pdf",
+        "to": "f:set-1.pdf",
+        "index": 0,
+        "expectedNext": "f:set-2.pdf",
+        "first": "f:set-1.pdf",
+        "last": "s:set-6.pdf#5",
+        "expandedBefore": "false",
+        "expandedAfter": "true"
+      }
+    },
+    {
+      "check": "keyboard: ArrowRight on an open folder moves into it",
+      "ok": true,
+      "detail": {
+        "key": "ArrowRight",
+        "from": "f:set-1.pdf",
+        "to": "s:set-1.pdf",
+        "index": 0,
+        "expectedNext": "s:set-1.pdf",
+        "first": "f:set-1.pdf",
+        "last": "s:set-6.pdf#5",
+        "expandedBefore": "true",
+        "expandedAfter": "true"
+      }
+    },
+    {
       "check": "keyboard: Delete/Backspace on a row remove nothing",
       "ok": true,
       "detail": {
-        "rowsAfterDelete": 36
+        "rows": 36
       }
     },
     {
       "check": "keyboard: Tab leaves the tree",
-      "ok": true
+      "ok": true,
+      "detail": {
+        "key": "Tab (leaves the tree)",
+        "focus": "(BUTTON)"
+      }
+    },
+    {
+      "check": "worker spawns after the reload: at most 1 (the canvas file)",
+      "ok": true,
+      "detail": {
+        "settled": 1
+      }
+    },
+    {
+      "check": "gallery: every card drew a thumbnail",
+      "ok": true,
+      "detail": {
+        "cards": 30,
+        "drawn": 30
+      }
     },
     {
       "check": "all 30 numbers shown after the gallery",
@@ -644,8 +785,8 @@
       "ok": true,
       "detail": {
         "count": 30,
-        "p95": 1.9,
-        "max": 3.3
+        "p95": 2.2,
+        "max": 3.6
       }
     },
     {
