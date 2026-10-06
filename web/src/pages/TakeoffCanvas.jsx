@@ -53,7 +53,7 @@ import { Icon } from "../brand/icons.jsx";
 import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks, extractDimTexts } from "../lib/sheets";
 import { joinAbuttingSpans } from "../lib/textjoin";
 import { dropFileFromIndex } from "../lib/planIndex";
-import { labelsForFile, labelsOnFileChange, withPageLabel, withFoundLabels } from "../lib/sheetLabels";
+import { labelsForFile, labelsOnFileChange, withPageLabel, withFoundLabels, withoutFile, withoutFileKeys } from "../lib/sheetLabels";
 import { snapsToVectors } from "../lib/cursorSnap";
 import { textLayerReader, ocrCopyReaders, copyOcrRoute, readCopyText, createReadGate, boxOnPanel, copyIsScanLike, copyStartMiss, copyReaderChain, copyPlan, copyPictureInputs, textChainPageLines, hybridCopyReader, copyUnavailable, outcomeMessage, deliverCopy, makeReceipt, receiptExpires, receiptAfterEsc, receiptPlacement, RECEIPT_MS } from "../lib/copyText";
 import { putSheetIndex, createChangeSignal, ocrSheetIndex, acceptsMeasuredPass, acceptsTextPass, readPlanOf, readWhat, mayLookUp, readableFromIndex } from "../lib/planSearch";
@@ -1689,6 +1689,16 @@ export default function TakeoffCanvas() {
     else markSheetNamesStale(nameScope, names);
     for (const n of names) namerRef.current?.forget(n);
   }, [nameScope, cloudMode]);
+  // a file whose bytes changed: the tabs' and pager's title-block numbers
+  // name the old revision's sheets, so they go, and the active file's label
+  // scan reads the new bytes (the render that follows a re-drop re-runs it)
+  const forgetLabels = useCallback((names) => {
+    for (const n of names) {
+      setGalleryLabels((m) => withoutFileKeys(m, n));
+      setLabelsByFile((m) => withoutFile(m, n));
+      if (labeledFileRef.current === n) labeledFileRef.current = "";
+    }
+  }, []);
   // Free a departing file's pdf.js worker doc — the doc cache keeps a few
   // idle ones (thumbnails + reopen speed), but a file that LEFT the working
   // set must go now, leased or not (#302).
@@ -1709,7 +1719,8 @@ export default function TakeoffCanvas() {
     // never keep the old bytes' flag.
     forgetThumbs([name], thumbCacheRef.current);
     forgetNames([name]);
-  }, [docCache, notifyIndex, pageReader, forgetTextLayer, forgetNames]);
+    forgetLabels([name]);
+  }, [docCache, notifyIndex, pageReader, forgetTextLayer, forgetNames, forgetLabels]);
   // Reconcile the canvas after a PDF leaves the working set. For a non-empty
   // result the [sheets] effect already prunes openTabs/sheetGroup, but it can't:
   //   • fix `active` when the CLOSED pdf was the one on screen (it never resets
@@ -1797,6 +1808,7 @@ export default function TakeoffCanvas() {
     for (const n of readd.reset) { pageReader.dropFile(n); forgetTextLayer(n); }
     forgetThumbs(readd.reset, thumbCacheRef.current);
     forgetNames(readd.reset);
+    forgetLabels(readd.reset);
     await refreshSheets();
     // CO-1: a re-drop whose bytes CHANGED is a plan revision, not a re-open.
     // The store archived the old bytes; here the stale pdf.js docs must go

@@ -30,3 +30,24 @@ export function withPageLabel(m: SheetLabels, file: string, page: number, label:
 export function withFoundLabels(m: SheetLabels, file: string, found: PageLabels): SheetLabels {
   return { ...m, [file]: { ...found, ...labelsForFile(m, file) } };
 }
+
+// A file whose bytes changed (a revision re-dropped, a file removed): its
+// labels name the old bytes' sheets, so they go, from both maps
+export function withoutFile(m: SheetLabels, file: string): SheetLabels {
+  if (!(file in m)) return m;
+  const next = { ...m };
+  delete next[file];
+  return next;
+}
+
+/** gallery labels are keyed by sheet key: "file" or "file#page" */
+export function withoutFileKeys<T>(m: Record<string, T>, file: string): Record<string, T> {
+  let next: Record<string, T> | null = null;
+  for (const k of Object.keys(m)) {
+    if (k === file || (k.startsWith(`${file}#`) && /^\d+$/.test(k.slice(file.length + 1)))) {
+      next ??= { ...m };
+      delete next[k];
+    }
+  }
+  return next ?? m;
+}
