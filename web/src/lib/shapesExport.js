@@ -9,6 +9,7 @@
 import { csvEsc as esc } from "./csv.js";
 import { linearVerticalFt } from "./shapeMetrics.js";
 import { M_PER_FT, M2_PER_SF } from "./units";
+import { round2 } from "./num.js";
 
 export function shapesDetail(conditions, shapes, sheetLabel) {
   const byId = new Map(conditions.map((c) => [c.id, c]));
@@ -54,8 +55,8 @@ export function shapesToCsv(rows, projectName = "", brandName = "OpenTakeoff", u
   const areaUnit = M ? "m2" : "SF";
   const lengthUnit = M ? "m" : "LF";
   const heightUnit = M ? "m" : "ft";
-  const A = (v) => (M ? Math.round(((Number(v) || 0) * M2_PER_SF) * 100) / 100 : v);
-  const L = (v) => (M ? Math.round(((Number(v) || 0) * M_PER_FT) * 100) / 100 : v);
+  const A = (v) => (M ? round2((Number(v) || 0) * M2_PER_SF) : v);
+  const L = (v) => (M ? round2((Number(v) || 0) * M_PER_FT) : v);
   const header = ["Shape", "Sheet", "Sheet ID", "Finish", "Role", `Area ${areaUnit}`, lengthUnit, "EA", `Height ${heightUnit}`, "Height override", `Rise ${heightUnit}`, `Drop ${heightUnit}`, "Origin"];
   const lines = [
     "# Per-shape measured quantities — no multiplier or waste; deducts negative; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF; a linear row's LF includes its Rise + Drop",
