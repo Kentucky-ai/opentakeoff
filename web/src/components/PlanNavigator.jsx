@@ -263,6 +263,8 @@ export default function PlanNavigator({
   const queueRef = useRef([]);
   const obsRef = useRef(null);
 
+  const demoBase = import.meta.env.BASE_URL || "/";
+  const reducedMotion = typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   const loadSample = async () => {
     if (sampleBusy || !onAddFiles) return;
     setSampleBusy(true);
@@ -1140,13 +1142,22 @@ export default function PlanNavigator({
                   <span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />new here?<span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />
                 </div>
                 {onStartTour && (
-                  <div style={{ marginBottom: 12 }}>
-                    <button onClick={onStartTour} title="Open the sample plan and do one real takeoff, step by step — about two minutes"
-                      style={{ display: "inline-flex", alignItems: "center", gap: 9, padding: "13px 22px", border: "1px solid var(--ink)", background: "var(--cobalt)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 700, fontSize: 14, fontFamily: "var(--f-body)" }}>
-                      <Icon name="takeoff" size={16} />Guided first takeoff
-                    </button>
-                    <div style={{ fontFamily: "var(--f-body)", fontSize: 12.5, color: "var(--ink-muted)", marginTop: 8 }}>
-                      Two minutes, five steps, on a real plan. You do each step; it checks it off.
+                  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: "12px 18px", marginBottom: 14, textAlign: "left" }}>
+                    {/* the guided takeoff itself, a real recorded run at 2× — muted, and
+                        still under reduced motion (the poster shows; controls play it) */}
+                    <video src={`${demoBase}demo/first-takeoff.mp4`} poster={`${demoBase}demo/first-takeoff-poster.jpg`}
+                      autoPlay={!reducedMotion} controls={reducedMotion} muted loop playsInline preload="metadata"
+                      aria-label="A recorded run of the guided first takeoff: open the sample plan, set its scale, arm Area, trace a patient room, open the Report"
+                      onClick={reducedMotion ? undefined : onStartTour}
+                      style={{ width: 220, aspectRatio: "960 / 618", border: "1px solid var(--ink-faint)", background: "var(--paper-shadow)", cursor: reducedMotion ? "default" : "pointer", display: "block" }} />
+                    <div style={{ maxWidth: 250 }}>
+                      <button onClick={onStartTour} title="Open the sample plan and do one real takeoff, step by step — about two minutes"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 9, padding: "13px 22px", border: "1px solid var(--ink)", background: "var(--cobalt)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 700, fontSize: 14, fontFamily: "var(--f-body)" }}>
+                        <Icon name="takeoff" size={16} />Guided first takeoff
+                      </button>
+                      <div style={{ fontFamily: "var(--f-body)", fontSize: 12.5, color: "var(--ink-muted)", marginTop: 8, lineHeight: 1.5 }}>
+                        Two minutes, five steps, on a real plan. You do each step; it checks it off.
+                      </div>
                     </div>
                   </div>
                 )}

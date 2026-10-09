@@ -37,8 +37,21 @@
   font-weight:600;
 }
 .calm-project small {
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
   font-size:var(--fs-xs);
   color:var(--ink-muted);
+}
+/* A wide action row squeezes the project block to a sliver at laptop widths;
+   below this it can't hold a readable word, so it shows nothing rather than
+   one letter of each line spilling over the Open button. */
+.calm-project {
+  container-type:inline-size;
+}
+@container (max-width: 72px) {
+  .calm-project>span, .calm-project small { display:none; }
 }
 .calm-header-actions {
   display:flex;
