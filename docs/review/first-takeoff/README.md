@@ -10,8 +10,8 @@ screen plays (`web/public/demo/first-takeoff.mp4`).
 | ![Opening screen](0-opening-screen.jpg) | **Opening screen.** *Guided first takeoff* with the recorded run looping beside it; *Just open the sample plan* and *Connect your AI* below. |
 | ![Step 2](1-scale.jpg) | **Step 1 done on its own** when the plan opened; step 2 outlines the scale chip. |
 | ![Step 3](2-area.jpg) | After *Plan says 1/8″ = 1′-0″ — use it*: step 3 outlines the Area tile. |
-| ![Step 5](3-traced.jpg) | Patient room 139 traced on its inside wall faces (the toilet door crossed on the wall's centerline); step 5 outlines Report. |
-| ![Done](4-done.jpg) | The Report: CPT-1, 1 shape, **263.2 SF** (276.3 SF / 30.7 SY with 5% waste). The done card sits over it: "You measured 263 SF of CPT-1." |
+| ![Step 5](3-traced.jpg) | Patient room 139 traced on its inside wall faces: 16 vertices taken from the sheet's own vector strokes (`get_sheet_vectors`), wrapping the chase at the top left and the wall end at the toilet door, both doors crossed on the wall line. Step 5 outlines Report. |
+| ![Done](4-done.jpg) | The Report: CPT-1, 1 shape, **260.6 SF** (273.6 SF / 30.4 SY with 5% waste). The same ring through the MCP engine (`measure_polygon`) measures 260.59 SF. The done card sits over it: "You measured 261 SF of CPT-1." |
 | ![Connect your AI](5-connect.jpg) | *Connect your AI* from the done card, Claude Code tab, after *Copy*. |
 
 ## What was checked, and how
