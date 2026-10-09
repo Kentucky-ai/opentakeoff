@@ -36,6 +36,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import { runPlanSearch, filesToIndex, pagesToIndex, galleryEscStep, createChangeSignal, needsRead, keysToLookUp, canLookUp, galleryReadView, unreadLine, thumbIndexStep, adoptEntry, galleryCountLine, needsTextPass, createWalkFailures, searchFailedLine, retryWalk } from "../lib/planSearch";
 import { measurePage } from "../lib/pictures";
 import { inOtherModal, otherModalOpen } from "../lib/modalKeys";
+import { fetchSamplePlan } from "../lib/samplePlan.js";
 
 // Thumbnails in flight at once. The canvas rasters in its worker pool now, so
 // the main thread's pdf.js is mostly idle while the gallery is up; two keeps
@@ -61,7 +62,7 @@ const ctrlBtn = { display: "inline-flex", alignItems: "center", gap: 6, padding:
 
 export default function PlanNavigator({
   // presentation + exit
-  canClose, onExit, onPremium, initialMode = "plan", cloudMode,
+  canClose, onExit, onPremium, onStartTour, onConnect, initialMode = "plan", cloudMode,
   // plan-set (gallery) data
   sheets, withDoc, withLoadedDoc, scales, detectedScales, scaleUnconfirmed = {}, shapes, labels, onLabel, onDetect,
   thumbCacheRef, busyRef, openTabs, onOpen,
@@ -266,11 +267,7 @@ export default function PlanNavigator({
     if (sampleBusy || !onAddFiles) return;
     setSampleBusy(true);
     try {
-      const base = import.meta.env.BASE_URL || "/";
-      const res = await fetch(`${base}demo/sample-finish-plan.pdf`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      onAddFiles([new File([blob], "sample-finish-plan.pdf", { type: "application/pdf" })]);
+      onAddFiles([await fetchSamplePlan()]);
     } catch {
       setSampleBusy(false);
     }
@@ -1142,14 +1139,34 @@ export default function PlanNavigator({
                 <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "18px auto 16px", color: "var(--text-faint)", fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.14em", textTransform: "uppercase" }}>
                   <span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />new here?<span style={{ flex: 1, height: 1, background: "var(--ink-faint)" }} />
                 </div>
+                {onStartTour && (
+                  <div style={{ marginBottom: 12 }}>
+                    <button onClick={onStartTour} title="Open the sample plan and do one real takeoff, step by step — about two minutes"
+                      style={{ display: "inline-flex", alignItems: "center", gap: 9, padding: "13px 22px", border: "1px solid var(--ink)", background: "var(--cobalt)", color: "var(--paper-bright)", cursor: "pointer", fontWeight: 700, fontSize: 14, fontFamily: "var(--f-body)" }}>
+                      <Icon name="takeoff" size={16} />Guided first takeoff
+                    </button>
+                    <div style={{ fontFamily: "var(--f-body)", fontSize: 12.5, color: "var(--ink-muted)", marginTop: 8 }}>
+                      Two minutes, five steps, on a real plan. You do each step; it checks it off.
+                    </div>
+                  </div>
+                )}
                 <button onClick={loadSample} disabled={sampleBusy} title="Open a real floor finish plan and try a takeoff"
-                  style={{ display: "inline-flex", alignItems: "center", gap: 9, padding: "13px 22px", border: "1px solid var(--ink)", background: "var(--cobalt)", color: "var(--paper-bright)", cursor: sampleBusy ? "default" : "pointer", opacity: sampleBusy ? 0.65 : 1, fontWeight: 700, fontSize: 14, fontFamily: "var(--f-body)" }}>
-                  <Icon name="takeoff" size={16} />{sampleBusy ? "Loading sample…" : "Load sample plan"}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 9, padding: onStartTour ? "9px 16px" : "13px 22px", border: "1px solid var(--ink)", background: onStartTour ? "transparent" : "var(--cobalt)", color: onStartTour ? "var(--ink)" : "var(--paper-bright)", cursor: sampleBusy ? "default" : "pointer", opacity: sampleBusy ? 0.65 : 1, fontWeight: 700, fontSize: onStartTour ? 13 : 14, fontFamily: "var(--f-body)" }}>
+                  <Icon name="takeoff" size={16} />{sampleBusy ? "Loading sample…" : onStartTour ? "Just open the sample plan" : "Load sample plan"}
                 </button>
                 <div style={{ fontFamily: "var(--f-body)", fontSize: 12.5, color: "var(--ink-muted)", marginTop: 11, lineHeight: 1.6 }}>
-                  A real medical-center <strong style={{ color: "var(--ink)" }}>floor finish plan</strong> — the scale auto-detects;
+                  A real medical-center <strong style={{ color: "var(--ink)" }}>floor finish plan</strong> — its scale is read off the sheet;
                   pick a finish and trace a flooring takeoff in seconds.
                 </div>
+                {onConnect && (
+                  <div style={{ marginTop: 14, fontFamily: "var(--f-body)", fontSize: 12.5, color: "var(--ink-muted)" }}>
+                    Working with Claude, Codex or Cursor?{" "}
+                    <button type="button" onClick={onConnect}
+                      style={{ border: "none", background: "transparent", padding: 0, color: "var(--cobalt)", cursor: "pointer", fontSize: 12.5, textDecoration: "underline", fontFamily: "var(--f-body)" }}>
+                      Connect your AI
+                    </button>
+                  </div>
+                )}
                 <div style={{ marginTop: 30, fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.1em", color: "var(--text-faint)" }}>
                   Apache-2.0 open source · an open project by{" "}
                   <a href="https://kentucky-ai.com" target="_blank" rel="noopener" style={{ color: "var(--ink-muted)" }}>Kentucky&nbsp;AI</a>

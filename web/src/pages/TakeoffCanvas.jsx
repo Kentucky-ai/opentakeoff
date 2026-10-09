@@ -41,6 +41,10 @@ import { buildProjectArchive, parseProjectArchive, isProjectArchive, downloadArc
 import { buildProfile, parseProfile, applyProfile, resetProfileDefaults, isProfileFile } from "../lib/profile.js";
 import ToolMenu from "../components/ToolMenu.jsx";
 import PlanNavigator from "../components/PlanNavigator.jsx";
+import FirstTakeoffTour from "../components/FirstTakeoffTour.jsx";
+import ConnectAI from "../components/ConnectAI.jsx";
+import { advanceTour, countFloorShapes, currentStep } from "../lib/firstTakeoff.js";
+import { fetchSamplePlan } from "../lib/samplePlan.js";
 import ReportPanel from "../components/ReportPanel.jsx";
 import RevisionsPanel from "../components/RevisionsPanel.jsx";
 import UserGuide from "../components/UserGuide.jsx";
@@ -564,6 +568,13 @@ export default function TakeoffCanvas() {
     draftStatsRef.current.cross = dCross;
   }
   const [guideOpen, setGuideOpen] = useState(false);   // the in-app manual overlay (? / the toolbar button)
+  // Guided first takeoff (components/FirstTakeoffTour.jsx): null when off, else
+  // { done: step ids, baseline: floor shapes that existed before it started }.
+  // Session-only on purpose — a reload ends the tour rather than resuming a
+  // half-remembered one over a different plan.
+  const [tour, setTour] = useState(null);
+  const [tourSampleBusy, setTourSampleBusy] = useState(false);
+  const [connectOpen, setConnectOpen] = useState(false);   // Connect your AI (components/ConnectAI.jsx)
   const [proposal, setProposal] = useState(null);  // One-Click selection under review: { key, regions: [{kind:'pos'|'neg', seed, poly, area_sf, perim_lf}] } — panel-LOCAL px
   // ── in-canvas takeoff agent state ──────────────────────────────────────────
   // agentProposals are NOT shapes: committed truth stays committed. Each entry
@@ -1433,6 +1444,34 @@ export default function TakeoffCanvas() {
   // the FOCUSED panel (the one last clicked); single mode focuses the lone panel.
   const focusPanel = (focusKey && groupKeys.includes(focusKey) && panelByKey(focusKey)) || panels[0];
   const unitsPerPx = scales[focusPanel.key] ?? null;
+  // Guided first takeoff — fold what the canvas can see into the tour's done
+  // set. Every step completes on the real action (lib/firstTakeoff.js).
+  const tourFloorShapes = tour ? countFloorShapes(shapes) : 0;
+  const tourSheetOpen = view === "canvas" && openTabs.length > 0;
+  useEffect(() => {
+    if (!tour) return;
+    const obs = { sheetOpen: tourSheetOpen, scaled: !!unitsPerPx, tool, floorShapes: tourFloorShapes, reportOpen: showReport };
+    const next = advanceTour(tour.done, obs, tour.baseline);
+    if (next !== tour.done) setTour((t) => (t ? { ...t, done: next } : t));
+  }, [tour, tourSheetOpen, unitsPerPx, tool, tourFloorShapes, showReport]);
+  const startTour = () => {
+    setGuideOpen(false);
+    setConnectOpen(false);
+    setTour({ done: [], baseline: countFloorShapes(shapes) });
+  };
+  const loadSampleForTour = async () => {
+    if (tourSampleBusy) return;
+    setTourSampleBusy(true);
+    try { await handleFiles([await fetchSamplePlan()]); } catch { /* the card stays on step 1; the button can be pressed again */ }
+    finally { setTourSampleBusy(false); }
+  };
+  // the room the tour just measured — the newest floor shape, for the done card
+  const tourResult = (() => {
+    if (!tour || currentStep(tour.done)) return null;
+    const last = [...shapes].reverse().find((sh) => (sh.computed?.area_sf || 0) > 0 && sh.measure_role !== "deduct");
+    if (!last) return null;
+    return { sf: last.computed.area_sf, tag: conditions.find((c) => c.id === last.condition_id)?.finish_tag || "" };
+  })();
   const labelFor = (p) => stitchById[p.key]?.name || (p.file === active && pageLabels[p.page]) || (p.page > 1 ? `Sheet ${p.page}` : p.file);
   // Scale semantics (why geometry divides by factorFor and calibration
   // multiplies back to baseline) are documented on the pure functions in
@@ -8661,6 +8700,9 @@ export default function TakeoffCanvas() {
     { id: "copy", label: "Copy selected", group: "Edit", shortcut: "⌘C", disabled: !selectedId, run: copySelected },
     { id: "paste", label: "Paste", group: "Edit", shortcut: "⌘V", disabled: !clipRef.current.length, run: () => pasteClipboard() },
     { id: "report", label: "Open report", group: "Workspace", run: () => setShowReport(true) },
+    { id: "tour", label: "Guided first takeoff — learn it on the sample plan", group: "Help", run: startTour },
+    { id: "guide", label: "How OpenTakeoff works — shortcuts and the five-minute path", group: "Help", shortcut: "?", run: () => setGuideOpen(true) },
+    { id: "connect-ai", label: "Connect your AI — Claude, Codex, Cursor", group: "Help", run: () => setConnectOpen(true) },
     { id: "work", label: "Open work and review", group: "Workspace", run: () => setAgentOpen(true) },
     { id: "layout", label: "Arrange and save your layout", group: "Workspace", run: () => setWorkspaceLayoutOpen(true) },
     { id: "fit", label: "Fit sheet to view", group: "View", disabled: !stage.w, run: () => fitToView(stage.w, stage.h) },
@@ -8752,6 +8794,11 @@ export default function TakeoffCanvas() {
           {panelBtn(() => setShowRevisions(true), "revisions", "Revisions — save the takeoff at each bid revision, compare what moved", showRevisions)}
         </div>}
         layoutMenu={<button type="button" onClick={() => setWorkspaceLayoutOpen(true)} title="Arrange panels, lock positions, and save layouts"><Icon name="sliders" size={16} />Layout</button>}
+        helpMenu={<ToolMenu title="Learn OpenTakeoff, or connect an AI agent" face={<span>Help</span>} onOpenChange={onMenuDepth} items={[
+          { id: "tour", label: "Guided first takeoff", onSelect: startTour },
+          { id: "guide", label: "How OpenTakeoff works", shortcut: "?", onSelect: () => setGuideOpen(true) },
+          { id: "connect-ai", label: "Connect your AI", onSelect: () => setConnectOpen(true) },
+        ]} />}
         fileMenu={<><ToolMenu title="Files and workspace" face={<span>File</span>} onOpenChange={onMenuDepth} items={sheetMenuItems} /><PresenceChip bridge={store.syncBridge} /><AccountChip note={cloudMode ? "Synced to Google Drive" : "Local workspace"} onOpenChange={onMenuDepth} /></>}
         conditionControl={<><label className="calm-condition-label" htmlFor="workspace-condition">Condition</label><select id="workspace-condition" value={activeCond || ""} onChange={(e) => activateCondition(e.target.value)} title={tool === "select" && selectedId ? "Reassign selected measurement" : "Condition for the next measurement"}>
           {!conditions.length && <option value="">No conditions</option>}{conditions.map((c) => <option key={c.id} value={c.id}>{c.finish_tag}</option>)}</select>
@@ -8760,7 +8807,7 @@ export default function TakeoffCanvas() {
         history={<><button type="button" onClick={() => poly.length ? dropLastPoint() : undoShapeCommand()} title="Undo (⌘Z)" aria-label="Undo"><Icon name="undo" size={16} /></button><button type="button" onClick={redoShapeCommand} title="Redo (⇧⌘Z)" aria-label="Redo"><span style={{ display: "flex", transform: "scaleX(-1)" }}><Icon name="undo" size={16} /></span></button></>}
         aids={<><button type="button" aria-pressed={tool === "zone"} onClick={() => setTool((t) => (t === "zone" ? "select" : "zone"))} title="Zone check — trace a region (an apartment, a wing) to read every condition's quantities inside it, materials included. Nothing is saved; the outline clears when you leave the tool."><Icon name="zone" size={15} />Zone</button><button type="button" aria-pressed={snapOn} onClick={() => setSnapOn((v) => !v)} title="Snap to plan lines/corners (beta)"><Icon name="snap" size={15} />Snap</button><button type="button" aria-pressed={angleOn} onClick={() => setAngleOn((v) => !v)} title="45°/90° angle guides"><Icon name="angle" size={15} />45°</button>{draftMenu}<span className="calm-separator" />{annotations.control}</>}
         action={finishOk && <button type="button" onClick={finishShape}>Finish ({poly.length})</button>}
-        scaleMenu={<><button type="button" onClick={() => setUnits((u) => u === "metric" ? "imperial" : "metric")} title="Switch display units">{units === "metric" ? "m" : "ft"}</button><ToolMenu title={scaleTitle} onOpenChange={onScaleMenuDepth} face={<span>{scaleFace}</span>} faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 11.5, ...scaleFaceStyle }} menuStyle={{ minWidth: 250 }} items={scaleItems} /></>}
+        scaleMenu={<><button type="button" onClick={() => setUnits((u) => u === "metric" ? "imperial" : "metric")} title="Switch display units">{units === "metric" ? "m" : "ft"}</button><ToolMenu title={scaleTitle} onOpenChange={onScaleMenuDepth} face={<span data-tour="scale">{scaleFace}</span>} faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 11.5, ...scaleFaceStyle }} menuStyle={{ minWidth: 250 }} items={scaleItems} /></>}
       />}
       {workspaceLayout && !workspaceArrangement.readout && selShape?.measure_role === "surface_area" && <div className="calm-property-editor"><label>Selected wall height <input aria-label="Selected wall height" type="number" min="0" step={heightStep(units)} value={shapeHDraft ?? dimInputStr(selShape.height_ft, units, "height")} onChange={(e) => { setShapeHDraft(e.target.value); setShapeHeight(e.target.value); }} onBlur={() => { if (shapeHDraft != null) setShapeHeight(shapeHDraft); setShapeHDraft(null); }} /></label><span>{heightUnit(units)} → {fa(selShape.computed?.area_sf || 0)}</span><button type="button" onClick={clearShapeHeight}>Use condition height</button></div>}
       {!focusMode && workspaceLayout && workspaceDetailsOpen && aCond && <div className="calm-property-editor"><strong>{aCond.finish_tag}</strong><ConditionAppearanceEditor cond={aCond} onUpdateCond={updateCond} onSetCondParam={setCondParam} onAssignAttr={assignAttr} conditionColumns={conditionColumns} layout="row" units={units} /><button type="button" onClick={() => setWorkspaceDetailsOpen(false)}>Close properties</button></div>}
@@ -8936,7 +8983,7 @@ export default function TakeoffCanvas() {
             <ToolMenu
               title={scaleTitle}
               onOpenChange={onScaleMenuDepth}
-              face={<span>{scaleFace}</span>}
+              face={<span data-tour="scale">{scaleFace}</span>}
               faceStyle={{ fontFamily: "var(--f-mono)", fontSize: 11.5, ...scaleFaceStyle }}
               menuStyle={{ minWidth: 250 }}
               items={scaleItems}
@@ -8948,7 +8995,7 @@ export default function TakeoffCanvas() {
           style={{ minHeight: "var(--ctl-m)", padding: "var(--sp-1) var(--sp-3)", border: "1px solid var(--cobalt)", background: agentOpen ? "var(--cobalt)" : "transparent", color: agentOpen ? "var(--accent-contrast)" : "var(--cobalt)", cursor: "pointer", fontSize: "var(--fs-s)", fontWeight: 600 }}>
           Work{agentRunning ? " · Working" : shapes.some((s) => s.origin?.reviewed === false) ? ` · ${shapes.filter((s) => s.origin?.reviewed === false).length}` : ""}
         </button>
-        <button onClick={() => setShowReport(true)} disabled={!conditions.length} title="Open the takeoff report — per-condition breakdown with waste, plus CSV / JSON export."
+        <button data-tour="report" onClick={() => setShowReport(true)} disabled={!conditions.length} title="Open the takeoff report — per-condition breakdown with waste, plus CSV / JSON export."
           style={{ padding: "8px 14px", border: "none", background: conditions.length ? "var(--ink)" : "var(--text-faint)", color: "var(--paper-bright)", cursor: conditions.length ? "pointer" : "default", fontWeight: 700, fontFamily: "var(--f-mono)", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase" }}>Report</button>
         {/* ⋯ overflow — rarely-used project controls, so the row never wraps
             and nothing shifts position mid-work (issue #61's contract). */}
@@ -8960,6 +9007,8 @@ export default function TakeoffCanvas() {
             { id: "premium-interest", label: "Request Premium — join the early-access list", highlight: true, onSelect: () => setPremiumOpen(true) },
             { id: "workspace-preview", label: workspaceLayout ? "Classic layout" : "Premium layout — compact controls", onSelect: () => workspacePrefs.setEnabled(!workspaceLayout) },
             { id: "guide", label: "How OpenTakeoff works", shortcut: "?", onSelect: () => setGuideOpen(true) },
+            { id: "tour", label: "Guided first takeoff", onSelect: startTour },
+            { id: "connect-ai", label: "Connect your AI", onSelect: () => setConnectOpen(true) },
             { id: "theme", label: theme === "dark" ? "Light chrome" : "Dark chrome", onSelect: toggleTheme },
             "divider",
             { id: "schedule", icon: "rectTool", label: "Import from schedule", active: tool === "schedule", onSelect: () => { setScheduleAnchor(null); setTool((t) => (t === "schedule" ? "select" : "schedule")); } },
@@ -10962,6 +11011,8 @@ export default function TakeoffCanvas() {
       {(view === "gallery" || view === "picker") && (
         <PlanNavigator
           onPremium={() => setPremiumOpen(true)}
+          onStartTour={() => { startTour(); loadSampleForTour(); }}
+          onConnect={() => setConnectOpen(true)}
           canClose={openTabs.length > 0}
           onExit={() => setView("canvas")}
           initialMode={view === "picker" ? "browse" : "plan"}
@@ -11170,7 +11221,13 @@ export default function TakeoffCanvas() {
       {/* live counter (mock) — floating running totals, drag to park anywhere */}
       {!focusMode && (!workspaceLayout || workspaceArrangement.counter) && !agentOpen && !showReport && <LiveCounter rows={liveCounterRows} onActivate={(id) => activateCondition(id, { reassign: false })} />}
       {/* the manual, last in the tree so it sits above every panel and dock */}
-      {guideOpen && <UserGuide onClose={() => setGuideOpen(false)} />}
+      {guideOpen && <UserGuide onClose={() => setGuideOpen(false)} onTour={startTour} onConnect={() => { setGuideOpen(false); setConnectOpen(true); }} />}
+      {connectOpen && <ConnectAI onClose={() => setConnectOpen(false)} />}
+      {tour && view === "canvas" && !focusMode && !guideOpen && !connectOpen && (
+        <FirstTakeoffTour done={tour.done} step={currentStep(tour.done)} sheetOpen={tourSheetOpen}
+          sampleBusy={tourSampleBusy} onLoadSample={loadSampleForTour} result={tourResult}
+          onClose={() => setTour(null)} onConnect={() => { setTour(null); setConnectOpen(true); }} />
+      )}
       {/* on-device OCR's download notice (#471): modal over everything, the
           gallery and the guide included. Keys stop here so the canvas's
           window shortcuts (Delete, ⌘Z, letters) don't act behind it, and a

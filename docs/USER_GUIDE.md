@@ -45,10 +45,10 @@ In a hurry, or already in the app? Press **`?`** (or the **?** button in the top
 
 ## 1. Five minutes to a takeoff
 
-The fastest way to learn the canvas is to run one takeoff end to end on the bundled plan.
+The fastest way to learn the canvas is to run one takeoff end to end on the bundled plan. To be walked through it, click **Guided first takeoff** on the opening screen (or **Help → Guided first takeoff**, or the **⋯** menu in the classic layout): a card over the canvas names each step below, outlines the control it needs, and checks the step off when you've done it. Nothing advances until you do it yourself.
 
 1. **Load the sample.** On the opening screen, click **Load sample plan**—a real medical-center floor finish plan. (Your own plans: drag a PDF anywhere onto the page.)
-2. **Accept the scale.** Open the **Set scale…** chip in the toolbar. The plan's drawn scale note has already been read off the sheet—click **Plan says 1/4″ = 1′-0″ — use it**. A calibrated ruler bar flashes on the sheet for a few seconds so you can eyeball that it's right (a door opening is about 3′).
+2. **Accept the scale.** Open the **Set scale…** chip in the toolbar. The plan's drawn scale note has already been read off the sheet—click **Plan says 1/8″ = 1′-0″ — use it**. A calibrated ruler bar flashes on the sheet for a few seconds so you can eyeball that it's right (a door opening is about 3′).
 3. **Choose a condition.** A fresh workspace ships with a starter set of flooring conditions—CPT-1, LVT-1, CT-1, and friends. Press `1` to arm the first (the number keys answer in list order until you pin your own palette), or open the **☰ Takeoffs** rail button and click one.
 4. **Trace the rooms.** Press `A`, click the room's corners, `⏎` closes it. (One-Click Area — press `O`, click inside a room, it traces itself — is **temporarily gated** while the flood engine is re-validated; [§6](#6-one-click-area) says what that means.)
 5. **Read the report.** Open **Report** for the per-condition breakdown—SF, SY, waste-adjusted order quantities, and the materials buy list. Export **CSV**, **Excel**, or a **Marked set** PDF.
@@ -1028,7 +1028,7 @@ What's sent, and only while an agent run you started is going: your goal, the pr
 ### MCP — for agent users
 
 The same engine speaks [MCP](https://modelcontextprotocol.io), one command away:
-`npx -y opentakeoff-mcp` (or the one-click `opentakeoff-mcp.mcpb` bundle for Claude Desktop). An
+`npx -y opentakeoff-mcp` (or the one-click `opentakeoff-mcp.mcpb` bundle for Claude Desktop). **Help → Connect your AI** in the app (also on the opening screen and in the **⋯** menu) has the setup for Claude Desktop, Claude Code, Codex and Cursor with copy buttons, and a first question to ask about the sample plan; [CONNECT.md](CONNECT.md) is the same walk-through. An
 MCP client gets **<!--tool-count-->53<!--/tool-count--> tools** plus browsable sheet resources, over the very same measuring engine,
 with the same scale gate and the same provenance receipts:
 
