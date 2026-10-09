@@ -93,8 +93,10 @@ const canvasSettled = async opens => {
 const tabFiles = () => page.locator('[data-sheet-tab] > button:first-child').evaluateAll(bs => bs.map(b => b.title));
 const openFromNavigator = async file => {
   const opens = await page.evaluate(() => window.tileAudit.opens);
-  const item = page.locator(`.calm-sheet-list button[title$=" · ${file}"]`).first();
-  if (!(await item.isVisible())) await page.getByRole('button', { name: 'Sheets', exact: true }).click();
+  if (!(await page.locator('.calm-navigator').isVisible())) await page.getByRole('button', { name: 'Sheets', exact: true }).click();
+  // the Sheets tree lists a multi-page file as a folder: open it to reach its first sheet
+  const item = page.locator(`[role=treeitem][title$=" · ${file}"]`).first();
+  if (!(await item.count())) await page.locator(`[role=treeitem][title^="${file} · "]`).first().click();
   await item.click();
   await canvasSettled(opens);
 };
