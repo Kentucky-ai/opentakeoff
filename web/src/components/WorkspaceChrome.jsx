@@ -7,7 +7,7 @@ import "./workspaceChrome.css";
 // this component owns only navigation, search and disclosure state.
 export function WorkspaceChrome({ title, onOpen, onNavigate, navigationOpen, onTakeoffs, takeoffsOpen,
   onPremium, onWork, workOpen, workButtonRef, pending, running, onReport, onFocus, onClassic,
-  onControls, controlsOpen, onSearch, pinControl, panelTools, layoutMenu, fileMenu, scaleMenu, conditionControl, aids, history, action }) {
+  onControls, controlsOpen, onSearch, pinControl, panelTools, layoutMenu, helpMenu, fileMenu, scaleMenu, conditionControl, aids, history, action }) {
   return <>
     <header className="calm-header">
       <strong className="calm-brand">open<span>takeoff</span></strong>
@@ -21,8 +21,8 @@ export function WorkspaceChrome({ title, onOpen, onNavigate, navigationOpen, onT
         <button type="button" aria-pressed={takeoffsOpen} onClick={onTakeoffs} title="Measured quantities, conditions, and supporting materials"><Icon name="product" size={16} />Quantities</button>
         <button type="button" ref={workButtonRef} aria-expanded={workOpen} onClick={onWork} className="calm-work">Work{running ? <span className="calm-badge">Running</span> : pending > 0 ? <span className="calm-badge">{pending}</span> : null}</button>
         {panelTools}
-        <button type="button" onClick={onReport} className="calm-report"><Icon name="document" size={16} />Report</button>
-        {layoutMenu}<button type="button" className="calm-premium" data-premium-trigger onClick={onPremium}>Request Premium</button><button type="button" onClick={onClassic} className="calm-classic" title="Return to the current layout without reloading the plan">Classic layout</button>
+        <button type="button" onClick={onReport} className="calm-report" data-tour="report"><Icon name="document" size={16} />Report</button>
+        {layoutMenu}{helpMenu}<button type="button" className="calm-premium" data-premium-trigger onClick={onPremium}>Request Premium</button><button type="button" onClick={onClassic} className="calm-classic" title="Return to the current layout without reloading the plan">Classic layout</button>
       </div>
     </header>
     <div className="calm-context" aria-label="Current drawing settings">
