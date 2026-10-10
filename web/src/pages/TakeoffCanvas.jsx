@@ -56,7 +56,7 @@ import { HATCHES, PALETTE, NO_FILL, HatchPattern, HatchSwatch } from "../compone
 import { Icon } from "../brand/icons.jsx";
 import { RENDER_SCALE, MAX_GROUP, STANDARD_SCALES, parseSheetKey, compareSheetKeys, extractSheetNumber, detectScale, extractRegionText, extractTextMarks, extractDimTexts } from "../lib/sheets";
 import { joinAbuttingSpans } from "../lib/textjoin";
-import { dropFileFromIndex } from "../lib/planIndex";
+import { buildSheetIndex, dropFileFromIndex } from "../lib/planIndex";
 import { labelsForFile, labelsOnFileChange, withPageLabel, withFoundLabels } from "../lib/sheetLabels";
 import { snapsToVectors } from "../lib/cursorSnap";
 import { textLayerReader, ocrCopyReaders, copyOcrRoute, readCopyText, createReadGate, boxOnPanel, copyIsScanLike, copyStartMiss, copyReaderChain, copyPlan, copyPictureInputs, textChainPageLines, hybridCopyReader, copyUnavailable, outcomeMessage, deliverCopy, makeReceipt, receiptExpires, receiptAfterEsc, receiptPlacement, RECEIPT_MS } from "../lib/copyText";
@@ -833,7 +833,7 @@ export default function TakeoffCanvas() {
   }, [commitMsgState]);
   const [showReport, setShowReport] = useState(false);  // Reports overlay (STACK-style breakdown + export)
   const [showRevisions, setShowRevisions] = useState(false); // Revisions overlay (save / compare any two, buy-list deltas, CSV, auto-banked restore)
-  const [importRead, setImportRead] = useState(null);        // Import-from-schedule approval read: { rows, skipped } (null = dialog closed)
+  const [importRead, setImportRead] = useState(null);        // Import-from-schedule approval read: { rows, skipped, sourceKey, boxTerms? } (null = dialog closed)
   const [scheduleAnchor, setScheduleAnchor] = useState(null); // first marquee corner for the "schedule" tool — ISOLATED from poly so it can never leak into a measure shape
   // The box being read: one at a time. importScheduleFromRect takes the lock
   // for every box (a vector box only for its own short read) as `mine` =
@@ -1336,6 +1336,19 @@ export default function TakeoffCanvas() {
     const base = t.file.replace(/\.pdf$/i, "");
     return lvl + (t.page > 1 ? `${base} · ${t.page}` : base);
   };
+  // Every sheet key in the set, for Import from schedule's "on the plans?"
+  // check (#498): a file whose pages aren't counted yet is one unknownFiles,
+  // not zero sheets (0 is a file that failed to open: no sheets).
+  const planSetKeys = () => {
+    const keys = [];
+    let unknownFiles = 0;
+    for (const s of sheets) {
+      const n = s.name === active ? pageCount : knownPages[s.name];
+      if (n === undefined) { unknownFiles++; continue; }
+      for (let i = 0; i < n; i++) keys.push(i ? `${s.name}#${i + 1}` : s.name);
+    }
+    return { keys, unknownFiles };
+  };
   // A sheet's bare identifier for auto-naming an image markup (e.g. "AF101") —
   // tabLabel WITHOUT the mutable "Level 1 · " prefix and with a hyphen so a page-2
   // sheet reads "PLAN-2", not the compound "Level 1 · PLAN · 2" that would nest
@@ -1706,6 +1719,16 @@ export default function TakeoffCanvas() {
     setKnownPages(next);
     metaPut(pageCacheKey, next).catch(() => { /* cache only — rediscovered next open */ });
   }, [pageCacheKey]);
+  // Import from schedule's plan set (#498), rebuilt only when the dialog's
+  // read or the set's pages change: the dialog re-checks every row against
+  // every sheet's index whenever this object changes, so a fresh one per
+  // canvas render would redo that on every unrelated update. The index map
+  // itself is mutated in place and announced through indexSignal.
+  const importPlanSet = useMemo(() => (importRead
+    ? { ...planSetKeys(), indexes: planIndexRef.current, sourceKey: importRead.sourceKey, boxTerms: importRead.boxTerms }
+    : undefined),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [importRead, sheets, active, pageCount, knownPages]);
   const forgetPages = useCallback((names) => {
     // a file whose bytes are leaving (or changing) takes its thumbnails with it
     forgetThumbs(names, thumbCacheRef.current);
@@ -2356,6 +2379,9 @@ export default function TakeoffCanvas() {
         const { file, page: pn } = parseSheetKey(memberKey);
         const pdf = await docFor(file); if (stale()) return null;
         if (file === active) setPageCount(pdf.numPages || 1);
+        // the doc is open anyway: count its pages for the set (the gallery's
+        // cache), so a file opened from a tab isn't "pages unknown" (#498)
+        rememberPages(file, pdf.numPages);
         const pageNum = Math.min(Math.max(1, pn), pdf.numPages || 1);
         const pageObj = await pdf.getPage(pageNum); if (stale()) return null;
         const viewport = pageObj.getViewport({ scale: RENDER_SCALE });
@@ -7463,7 +7489,7 @@ export default function TakeoffCanvas() {
         x1: cl(Math.max(a[0], b[0]) - panel.xOffset, 0, panel.img.w), y1: cl(Math.max(a[1], b[1]), 0, panel.img.h),
       };
       if (!(rect.x1 - rect.x0 >= 4 && rect.y1 - rect.y0 >= 4)) { setCommitMsg(EMPTY_BOX_MESSAGE); return; }
-      let spans, pageHasText, readScheduleSpans;
+      let spans, pageHasText, readScheduleSpans, boxTerms;
       try {
         const vp = pageObj.getViewport({ scale: rs });
         const tc = await pageObj.getTextContent();
@@ -7472,10 +7498,14 @@ export default function TakeoffCanvas() {
         const page = pageSpans(tc.items, vp.transform, rs);
         pageHasText = page.length > 0;   // the box's own source (pageSpans drops blank runs), so "box empty, page not" is consistent
         spans = graphSpans(spansInRect(page, rect));
+        // the box's terms as the sheet's plan-search entry counts them (the
+        // same runs, pageTextIndex's reader): the dialog's "on the plans?"
+        // check (#498) subtracts them from the schedule's own sheet
+        boxTerms = buildSheetIndex("box", extractRegionText(tc, vp, rect)).terms;
       } catch { if (isCurrent()) setCommitMsg("Couldn't read that region."); return; }
       const box = { textRuns: countTextRuns(spans), pageHasText };
       const route = routeScheduleRead(readScheduleSpans(spans), box);
-      if (route.kind === "rows") { setImportRead({ rows: route.rows, skipped: route.skipped ?? [] }); return; }
+      if (route.kind === "rows") { setImportRead({ rows: route.rows, skipped: route.skipped ?? [], sourceKey: panel.key, boxTerms }); return; }
       if (route.kind === "message") { setCommitMsg(route.text); return; }
       // On-device: the status line replaces the footer message, unless that
       // is the stale-tab lockout or another job's in-progress "…" line.
@@ -7496,7 +7526,7 @@ export default function TakeoffCanvas() {
         box,
       });
       if (!isCurrent()) return;
-      if (result.kind === "rows") setImportRead({ rows: result.rows, skipped: result.skipped ?? [] });
+      if (result.kind === "rows") setImportRead({ rows: result.rows, skipped: result.skipped ?? [], sourceKey: panel.key });
       else if (result.kind === "message") setCommitMsg(result.text);
     } catch {
       if (isCurrent()) setCommitMsg("Couldn't read that region.");
@@ -11049,6 +11079,8 @@ export default function TakeoffCanvas() {
       {importRead && (
         <ImportSchedulePanel
           rows={importRead.rows} skipped={importRead.skipped}
+          planSet={importPlanSet}
+          subscribeIndex={indexSignal.subscribe} labelOf={tabLabel}
           existing={new Set(conditions.map((c) => normalizeTag(c.finish_tag)))}
           palette={PALETTE} startIndex={conditions.length}
           onCreate={createFromSchedule}
