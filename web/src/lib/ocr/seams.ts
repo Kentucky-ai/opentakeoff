@@ -31,7 +31,9 @@
 //     Neighbouring groups on one seam share a
 //     patch while it fits the cap both ways, so a table across a seam is one
 //     raster, not one per row. From a patch, lines in a group's band and
-//     over one of its fragments join `kept` through admit, patch by patch.
+//     over one of its fragments join `kept` through admit, patch by patch;
+//     a line in a band that touches no kept line or fragment is one no tile
+//     read, and is kept as it is.
 //   • A line longer than a patch holds (about 19 in at 216 DPI) is kept as
 //     its fragments, flagged `clipped`, and so is any fragment its patch
 //     didn't read back. Nothing a tile read is silently lost.
@@ -50,7 +52,7 @@ import { SCAN_MAX_DIM } from "../scheduleScan";
 import { MAX_CANVAS_AREA, MAX_CANVAS_DIM } from "../canvasConstants.js";
 
 /** Bump whenever the keep, patch or merge rules change: saved page reads are keyed on it. */
-export const SEAM_RULES_VERSION = 2;
+export const SEAM_RULES_VERSION = 3;
 
 export interface Rect { x0: number; y0: number; x1: number; y1: number }
 
@@ -242,7 +244,9 @@ export function assignLines(plan: TilePlan, tileWords: OcrWord[][]): Assignment 
 /** Finish the join with each patch's read, in patch order. From a patch,
  * keep the whole lines (clear of its inner edges) that cross the group's
  * band and aren't already kept; `kept` grows as each patch is taken, so two
- * patches that both read a line keep it once. A group whose patch read no
+ * patches that both read a line keep it once. A line in the band but over
+ * none of its fragments is one the tiles missed: kept only when its box
+ * touches no kept line or fragment. A group whose patch read no
  * line covering a fragment keeps that fragment, as does a line too long for
  * a patch: flagged `clipped`, never dropped. */
 export function joinPatches(a: Assignment, patchWords: OcrWord[][]): SeamLine[] {
@@ -253,16 +257,27 @@ export function joinPatches(a: Assignment, patchWords: OcrWord[][]): SeamLine[] 
     const inner = innerEdges(p.render, plan.rect), src = `p${j}`;
     const along = (r: Rect) => (p.axis === "h" ? [r.x0, r.x1] : [r.y0, r.y1]);
     const across = (r: Rect) => (p.axis === "h" ? [r.y0, r.y1] : [r.x0, r.x1]);
+    const orphans: OcrWord[] = [];
     for (const word of patchWords[j]) {
       const b = boxOf(word);
-      const [lo, hi] = across(b), [a0, a1] = along(b);
-      // in a group's band, and over one of that group's fragments
-      const mine = p.groups.some(g => hi > g.band.lo && lo < g.band.hi
-        && g.fragments.some(f => { const [f0, f1] = along(boxOf(f)); return a1 > f0 && a0 < f1; }));
-      if (!mine) continue;
       const n = nearSides(b, word, p.render, inner, plan.zoom);
       if (n.left || n.right || n.top || n.bottom) continue;
-      admit(kept, word, src);
+      const [lo, hi] = across(b), [a0, a1] = along(b);
+      const bands = p.groups.filter(g => hi > g.band.lo && lo < g.band.hi);
+      if (!bands.length) continue;
+      // over one of its group's fragments: the straddler, or a read of it
+      if (bands.some(g => g.fragments.some(f => { const [f0, f1] = along(boxOf(f)); return a1 > f0 && a0 < f1; }))) admit(kept, word, src);
+      else orphans.push(word);
+    }
+    // A line in a band that no tile read at all (#488): kept only where it
+    // touches no line another read kept and no fragment, so another read of
+    // a line the tiles have is never doubled. Lines from this patch don't
+    // count: as in admit, one read's lines are never duplicates.
+    for (const word of orphans) {
+      const b = boxOf(word);
+      if (kept.some(k => !k.src.split("+").includes(src) && interArea(b, boxOf(k.word)) > 0)) continue;
+      if (p.groups.some(g => g.fragments.some(f => interArea(b, boxOf(f)) > 0))) continue;
+      kept.push({ word, src });
     }
   });
   const unread = a.patches.flatMap(p => p.groups.flatMap(g => g.fragments.filter(f => !covered(f, kept, plan.zoom))));
