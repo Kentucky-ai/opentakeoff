@@ -291,19 +291,15 @@ test("a key_rule CT-1 before a plain CT-1: the plain one is checked and counted;
   assert.match(html, /Create 1 condition</);
 });
 
-test("end to end: the reader's CT-1 COVE line above a floor CT-1 → the dialog keeps the floor row, flags the COVE row duplicate", () => {
+test("end to end: the reader's CT-1 COVE line above a floor CT-1 → two items, CT-1COVE and CT-1, both picked (the collision rule)", () => {
   const read = readScheduleSpans(build({ cols: MMC, items: [
     M("CPT-1", "BROADLOOM CARPET", "VENDOR-A", "GREY 101"), M("CT-1 COVE", "CERAMIC TILE BASE", "VENDOR-F", "WHITE"),
     M("CT-1", "CERAMIC TILE", "VENDOR-F", "WHITE"), M("PT-1", "PAINT", "VENDOR-E", "WHITE 601"),
   ] }));
-  assert.equal(read.rows.length, 4);
+  assert.deepEqual(read.rows.map((r) => r.finish_tag), ["CPT-1", "CT-1COVE", "CT-1", "PT-1"]);
   const html = renderWith({ rows: read.rows });
-  const ct = ctRows(html);
-  assert.equal(Object.keys(ct).length, 2, JSON.stringify(ct));
-  const cove = Object.keys(ct).find((d) => d.includes("CERAMIC TILE BASE"))!;
-  const floor = Object.keys(ct).find((d) => d === "CERAMIC TILE")!;
-  assert.equal(ct[cove], "off|duplicate");
-  assert.equal(ct[floor], "on|");
+  assert.deepEqual(ctRows(html), { "CERAMIC TILE": "on|" });
+  assert.deepEqual(tagRows(html, "CT-1COVE"), { "CERAMIC TILE BASE": "on|" });
 });
 
 // ── #482: a code repaired from an OCR misread ──────────────────────────────────

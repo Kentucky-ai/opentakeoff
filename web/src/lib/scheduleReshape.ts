@@ -65,14 +65,57 @@ function headerLine(lines: GraphSpan[][]): number {
  * loses rows is worse than none). */
 export interface Reshaped { spans: GraphSpan[]; codes: number }
 
-export function reshapeBox(spans: readonly GraphSpan[]): Reshaped | null {
+export function reshapeBox(input: readonly GraphSpan[]): Reshaped | null {
+  const split = splitGluedHeader(input, linesOf(input));
+  const spans = split ?? input;
   const lines = linesOf(spans);
   const h = headerLine(lines);
-  const out = h >= 0 ? reshapeHeader(spans, lines, h) : legendHeader(spans, lines);
+  const out = h >= 0 ? reshapeHeader(spans, lines, h) ?? split : legendHeader(spans, lines);
   if (!out) return null;
-  const isCode = (t: GraphSpan) => { const w = (t.str.trim().split(/\s+/)[0] ?? "").toUpperCase(); return /\d/.test(w) && /[A-Z]/.test(w) && finishCodeOk(w); };
   const data = lines.slice(h >= 0 ? h + 1 : 0);
-  return { spans: out, codes: data.filter((l) => l.some(isCode)).length };
+  return { spans: out, codes: data.filter((l) => l.some(isCodeCell)).length };
+}
+
+const isCodeCell = (t: GraphSpan) => { const w = (t.str.trim().split(/\s+/)[0] ?? "").toUpperCase(); return /\d/.test(w) && /[A-Z]/.test(w) && finishCodeOk(w); };
+
+/** A header cell OCR read as one box over two columns (MATERIAL CODE): split
+ * it in two when every cell under it lies inside its left and right edges, in
+ * two groups side by side, and the key word's group holds codes. The second
+ * word starts where its group does. When more than a fifth of the cells
+ * under it run past its edges (vendors under a CODE MFG box, glued into the
+ * next column) the box stays whole, and the read stands down as before. */
+function splitGluedHeader(spans: readonly GraphSpan[], lines: GraphSpan[][]): GraphSpan[] | null {
+  for (let h = 0; h < lines.length; h++) {
+    for (const t of lines[h]) {
+      const ws = words(t.str);
+      if (ws.length !== 2 || !ws.every((w) => HEADER_WORDS.has(w) || ALIASES[w])) continue;
+      const keyAt = ws.findIndex((w) => KEY_WORDS.has(w));
+      if (keyAt < 0 || KEY_WORDS.has(ws[1 - keyAt])) continue;
+      // with the box as two cells, the line names three or more columns
+      if (lines[h].filter((o) => o !== t && headerWordOf(o.str)).length + 2 < 3) continue;
+      const lo = t.x, hi = right(t), tol = 0.5 * (t.h || 10);
+      const below = lines.slice(h + 1).flat();
+      const touching = below.filter((s) => s.x < hi && right(s) > lo);
+      const under = touching.filter((s) => s.x >= lo - tol && right(s) <= hi + tol);
+      // a stray long word (a note line below the table) may run past it; a
+      // column of them is a column the box doesn't hold
+      if (touching.length - under.length > 0.2 * touching.length) continue;
+      const codes = under.filter(isCodeCell);
+      if (codes.length < 2) continue;
+      // the second column starts where the codes do (key second) or past
+      // their right edge (key first); the first column's cells end before it
+      const at = keyAt === 1 ? Math.min(...codes.map((s) => s.x)) : Math.min(...under.filter((s) => s.x > Math.max(...codes.map(right))).map((s) => s.x));
+      if (!Number.isFinite(at)) continue;
+      const left = under.filter((s) => s.x < at - tol), rightGroup = under.filter((s) => s.x >= at - tol);
+      if (left.some((s) => right(s) >= at)) continue;
+      const keyGroup = keyAt === 1 ? rightGroup : left;
+      if (keyGroup.filter(isCodeCell).length < 0.6 * keyGroup.length) continue;
+      const a: GraphSpan = { ...t, str: ws[0], w: Math.max(1, Math.min(at - lo - 1, (t.w || 0) * ws[0].length / t.str.length)) };
+      const b: GraphSpan = { ...t, str: ws[1], x: at, w: Math.max(1, hi - at) };
+      return spans.flatMap((s) => (s === t ? [a, b] : [s]));
+    }
+  }
+  return null;
 }
 
 /** Rename alias headers; move the key column's band to the front. */
@@ -160,7 +203,16 @@ function legendHeader(spans: readonly GraphSpan[], lines: GraphSpan[][]): GraphS
   const med = (xs: number[]) => [...xs].sort((a, b) => a - b)[xs.length >> 1];
   const keyX = med(keyed.map((l) => l[0].x));
   const textX = med(keyed.map((l) => l[1].x));
-  const top = keyed[0][0], hh = top.h || 10;
+  // a four- or five-letter code with no number (CONC) leading the legend is
+  // a legend line too: the header goes above it, so the reader sees it and
+  // reports it (skipped) instead of losing it above the table
+  let topLine = firstKeyed;
+  while (topLine > 0) {
+    const l = lines[topLine - 1];
+    if (l.length < 2 || runs(l) > 1 || Math.abs(l[0].x - keyX) > 0.5 * (l[0].h || 10) || !/^[A-Z]{4,5}$/.test(l[0].str.trim())) break;
+    topLine--;
+  }
+  const top = lines[topLine][0], hh = keyed[0][0].h || 10;
   // REMARKS sits over the notes when there are any, else clear of the text
   const noteStart = (l: GraphSpan[]) => l.slice(2).find((t, i) => t.x - right(l[i + 1]) > 3 * (t.h || 10));
   const notes = keyed.map(noteStart).filter((t): t is GraphSpan => !!t);

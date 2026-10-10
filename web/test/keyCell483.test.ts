@@ -93,11 +93,35 @@ test("2 coded rows with 2 FTB rows between → 4 rows", () => {
   assert.deepEqual(keys(r), ["CPT-1", "FTB-01", "FTB-02", "PT-1"]);
 });
 
-test("FTB-01 CUT + FTB-01 COVE, both new → two FTB-01 rows (the dialog flags the later one duplicate)", () => {
+test("collision rule on new lines: FTB-01 CUT + FTB-01 COVE, both new → FTB-01CUT, FTB-01COVE (two items, not a duplicate)", () => {
   const r = read([CPT1, FTB("FTB-01 CUT"), FTB("FTB-01 COVE"), PT1]);
-  assert.deepEqual(keys(r), ["CPT-1", "FTB-01", "FTB-01", "PT-1"]);
-  assert.equal(rowOf(r, "FTB-01", 0).description, "CUT — TILE BASE");
-  assert.equal(rowOf(r, "FTB-01", 1).description, "COVE — TILE BASE");
+  assert.deepEqual(keys(r), ["CPT-1", "FTB-01CUT", "FTB-01COVE", "PT-1"]);
+  assert.equal(rowOf(r, "FTB-01CUT").description, "TILE BASE");
+  assert.equal(rowOf(r, "FTB-01COVE").description, "TILE BASE");
+  assert.equal(rowOf(r, "FTB-01CUT").key_rule, "extended");
+});
+
+test("collision rule on new lines: the surface suffix stays in the key, so (C) and (W) never share one", () => {
+  const r = read([CPT1, FTB("XTB-01 CUT (C)"), FTB("XTB-01 CUT (W)"), FTB("XTB-01 COVE (C)"), FTB("XTB-01 ALT CUT (C)"), PT1]);
+  assert.deepEqual(keys(r), ["CPT-1", "XTB-01CUT(C)", "XTB-01CUT(W)", "XTB-01COVE(C)", "XTB-01ALTCUT(C)", "PT-1"]);
+  for (const k of keys(r).slice(1, -1)) assert.equal(rowOf(r, k).description, "TILE BASE", k);
+});
+
+test("collision rule on new lines: a new XT-01 COVE beside a plain XT-01 row → XT-01COVE", () => {
+  const r = read([CPT1, M("XT-01", "PORCELAIN TILE", "VENDOR-F", "WHITE 603"), FTB("XT-01 COVE"), PT1]);
+  assert.deepEqual(keys(r), ["CPT-1", "XT-01", "XT-01COVE", "PT-1"]);
+});
+
+test("key-cell forms OCR returns: a suffix glued to the word, a spaced suffix, three words, a word glued to the code", () => {
+  for (const [form, desc] of [
+    ["XTB-01 CUT(C)", "CUT (C)"], ["XTB-01 COVE (W )", "COVE (W)"], ["XTB-01 CUT( W)", "CUT (W)"],
+    ["XTB-01 ALT CUT (C)", "ALT CUT (C)"], ["XT-01 ALT(C)", "ALT (C)"], ["XTB-03ALTCUT (C)", "ALTCUT (C)"],
+  ]) {
+    const r = read([CPT1, FTB(form), PT1]);
+    const code = form.match(/^[A-Z]+-\d+/)![0];
+    assert.deepEqual(keys(r), ["CPT-1", code, "PT-1"], form);
+    assert.equal(rowOf(r, code).description, `${desc} — TILE BASE`, form);
+  }
 });
 
 test("FTB-01 (CUT) (C) → splits, qualifier `(CUT) (C)`", () => {
@@ -197,12 +221,12 @@ test("tight pair (CPT-1 /, CPT-1A 18 px under it) above a lone P-1 SAT → uncha
 });
 
 // ── provenance ──────────────────────────────────────────────────────────────
-test("provenance: a new CT-1 COVE line above a pass-1 CT-1 floor row → the floor row has no key_rule, the new row key_rule extended", () => {
+test("provenance: a new CT-1 COVE line above a pass-1 CT-1 floor row → CT-1COVE (the collision rule), key_rule extended; the floor row has none", () => {
   const r = read([CPT1, M("CT-1 COVE", "CERAMIC TILE BASE", "VENDOR-F", "WHITE"), M("CT-1", "CERAMIC TILE", "VENDOR-F", "WHITE"), PT1]);
-  assert.deepEqual(keys(r), ["CPT-1", "CT-1", "CT-1", "PT-1"]);
-  assert.equal(rowOf(r, "CT-1", 0).key_rule, "extended");
-  assert.equal(rowOf(r, "CT-1", 0).category, "base");
-  assert.ok(!has(rowOf(r, "CT-1", 1), "key_rule"));
+  assert.deepEqual(keys(r), ["CPT-1", "CT-1COVE", "CT-1", "PT-1"]);
+  assert.equal(rowOf(r, "CT-1COVE").key_rule, "extended");
+  assert.equal(rowOf(r, "CT-1COVE").category, "base");
+  assert.ok(!has(rowOf(r, "CT-1"), "key_rule"));
   const t = mrows(spansOf([CPT1, M("CT-1 COVE", "CERAMIC TILE BASE", "VENDOR-F", "WHITE"), M("CT-1", "CERAMIC TILE", "VENDOR-F", "WHITE"), PT1]));
   assert.equal(t[1].keyRule, "extended");
   assert.ok(!has(t[2], "keyRule"));
@@ -512,12 +536,15 @@ test("limit: inside the run, a lone <code> <word> line keys a row — PT-1 OPTIO
   assert.deepEqual(keys(room), ["CPT-1", "C101", "RB-1"]);
 });
 
-test("limit: centred key codes with no column map are not eligible", () => {
+test("centred key codes with no column map are eligible: a longer key starts left of the codes it is centred with", () => {
   // CODE | MATERIAL | MANUFACTURER | COLOR, too few cells for a column map; codes centred on x = 130
   const c = (s: string) => 130 - (s.length * CW) / 2;
   const spans = [sp("CODE", 100, 0), sp("MATERIAL", 220, 0), sp("MANUFACTURER", 520, 0), sp("COLOR", 1000, 0),
     sp("CPT-1", c("CPT-1"), 38), sp("CARPET", 220, 38), sp("FTB-01 CUT (C)", c("FTB-01 CUT (C)"), 76), sp("TILE BASE", 220, 76), sp("PT-1", c("PT-1"), 114), sp("PAINT", 220, 114)];
-  unchanged(spans, "centred keys");
+  const r = readScheduleSpans(spans);
+  assert.deepEqual(keys(r), ["CPT-1", "FTB-01", "PT-1"]);
+  assert.equal(rowOf(r, "FTB-01").description, "CUT (C) — TILE BASE");
+  assert.equal(rowOf(r, "CPT-1").description, "CARPET");
 });
 
 test("limit: word-split NOT USED where USED bands into the next column is not detected; while USED starts in the key column it is, width-less too", () => {
@@ -592,11 +619,11 @@ test("no pass-1 rows: the run pitch is the LOWER median line gap — FTB lines a
 // dialog's rank (NOT USED 0, key_rule 1, else 2 — ImportSchedulePanel.jsx):
 // the today-read floor CT-1 keeps the code, the new CT-1 COVE row is duplicate.
 import { evaluateTags } from "../src/lib/scheduleEdit.ts";
-test("provenance: the CT-1 COVE row is keyed CT-1 with key_rule extended; the floor CT-1 has no key_rule key and is ok under the dialog's rank", () => {
+test("provenance: the CT-1 COVE row is keyed CT-1COVE with key_rule extended; the floor CT-1 has no key_rule key; both are ok under the dialog's rank", () => {
   const all: ScheduleRow[] = read([CPT1, M("CT-1 COVE", "CERAMIC TILE BASE", "VENDOR-F", "WHITE"), M("CT-1", "CERAMIC TILE", "VENDOR-F", "WHITE"), PT1]).rows;
   const cove = all.find((x) => x.description.includes("CERAMIC TILE BASE"))!;
   const floor = all.find((x) => x.description === "CERAMIC TILE")!;
-  assert.equal(cove.finish_tag, "CT-1");
+  assert.equal(cove.finish_tag, "CT-1COVE");
   assert.equal(cove.key_rule, "extended");
   assert.equal(floor.finish_tag, "CT-1");
   assert.ok(!("key_rule" in floor));
@@ -604,6 +631,6 @@ test("provenance: the CT-1 COVE row is keyed CT-1 with key_rule extended; the fl
   const byKey = new Map(rows.map(({ key, row }) => [key, row]));
   const rank = (key: string) => { const x = byKey.get(key)!; return x.unticked_reason ? 0 : x.key_rule ? 1 : 2; };
   const st = evaluateTags(rows.map(({ key, row }) => ({ key, tag: row.finish_tag })), new Set(), rank);
-  assert.equal(st.get(`r${all.indexOf(cove)}`)?.status, "duplicate");
+  assert.equal(st.get(`r${all.indexOf(cove)}`)?.status, "ok");
   assert.equal(st.get(`r${all.indexOf(floor)}`)?.status, "ok");
 });
