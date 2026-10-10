@@ -188,6 +188,107 @@ pixels, document text, project names and file paths stay local.
 These two spot checks are not a public reproducible corpus; use the invented
 regressions below to reproduce the failure classes.
 
+## Second read of flagged codes (#519, measure first)
+
+#519 proposes an opt-in second read, by the user's own AI provider, of the
+codes the disagreement check flags. Before anything is built, this scores what
+a second read of those rows would do. It follows @drb995's three points on #519:
+
+1. **Flagged rows only, scored against truth.** `scoreSecondRead` in
+   [score.ts](score.ts) reads only rows with a `codeAlternate` and counts the
+   second read as the printed code, wrong, or nothing usable. A flagged row
+   that is already right costs the user a glance today; a second read that
+   "settles" it to a wrong code is worse than leaving the flag up.
+2. **Blind, and a disagreement check rather than a vote.** The reader gets the crop and a
+   prompt that names no candidate ([secondRead.ts](secondRead.ts),
+   `blindReadPrompt`). Its reply goes through `comparable()` from
+   `src/lib/ocr/codeCheck.ts`. The flag clears only when the reply equals the
+   primary read. A reply equal to the alternate is two reads against one and is
+   still shown. Anything else stays on **Check code**. The table also prints
+   the naive rule (take any usable reply as the code) beside it.
+3. **An empty second view is split from a real alternate.** `summarize` now
+   reports `flaggedEmpty` and `flaggedAlternate` separately, and every
+   second-read table prints for each kind.
+
+drb995's question on the crop rule is a column. Each flagged row is read twice:
+as a tight crop around its code box, and as its whole schedule row with the
+prompt naming where the cell starts. The two columns print side by side.
+
+### Empty versus real alternate in the recorded runs
+
+| Recorded checked run | Flagged, empty alternate (right / wrong) | Flagged, real alternate (right / wrong) | Real alternate is the printed code |
+|---|---:|---:|---:|
+| Native | 1 / 0 | 1 / 10 | 9 |
+| Browser worker | 1 / 0 | 2 / 11 | 10 |
+
+The only empty second view in either run is a correct `SS-2`.
+
+### Free stand-in reader
+
+The numbers below use no provider. The second reader is the shipped detector
+and recognizer, on the crop scaled 2x in both directions (the disagreement check
+stretches 2x horizontally only), keeping the boxes whose centre falls in the
+flagged cell. It is the same engine as the primary read, so its errors can
+correlate with the primary's. Treat these numbers as a check of the pipeline
+and the decision rule, not as an estimate for a provider.
+
+| Native primary, 12 flagged rows | Tight crop | Whole row |
+|---|---:|---:|
+| Second read = printed code | 12 | 10 |
+| Blind rule: flags cleared correctly | 2 | 2 |
+| **Blind rule: flags cleared wrongly** | **0** | **1** |
+| Blind rule: two reads vs one, shown (alternate right) | 9 (9) | 7 (7) |
+| Blind rule: third string, kept | 1 | 2 |
+| Naive rule: settled wrongly | 0 | 2 |
+
+| Browser primary, 14 flagged rows | Tight crop | Whole row |
+|---|---:|---:|
+| Second read = printed code | 12 | 11 |
+| Blind rule: flags cleared correctly | 3 | 3 |
+| **Blind rule: flags cleared wrongly** | **1** | **1** |
+| Blind rule: two reads vs one, shown (alternate right) | 10 (9) | 7 (7) |
+| Blind rule: third string, kept | 0 | 3 |
+| Naive rule: settled wrongly | 2 | 3 |
+
+Each wrongly cleared flag is the primary's own misread read a second time:
+`Pl` for `P1` from the whole row (both runs), and `5.1` for `S-1` from the browser's
+tight crop. In this set the blind rule cleared a flag wrongly once at most per
+column. The naive rule settled up to 3 rows wrongly.
+Even the same engine gets 12 of 12 flagged codes right on a 2x tight crop of
+the 100-DPI images. That agrees with the 216-DPI note above, and it is a
+finding about scale on this selected set, not a provider result.
+Full rows: [native](second-read-native.json), [browser](second-read-browser.json).
+
+### Reproduce
+
+From `web/`, after `npm ci` and staging the models as above:
+
+```sh
+node --import tsx --test test/ocrSecondRead.test.ts
+node --import tsx scripts/measure-ocr-second-read.mjs /tmp/second-read-native.json
+node --import tsx scripts/measure-ocr-second-read.mjs --primary=bench/ocr-codes/checked-browser.json /tmp/second-read-browser.json
+```
+
+The primary reads are the committed checked runs, so a second reader is scored
+against fixed flags. The script checks each fixture's hash against the run.
+
+### With a real provider (not measured here)
+
+```sh
+OT_SECOND_READ_ENDPOINT=https://your-endpoint OT_SECOND_READ_MODEL=your-model \
+OT_SECOND_READ_PROVIDER=openai OT_SECOND_READ_KEY=... \
+  node --import tsx scripts/measure-ocr-second-read.mjs --reader=provider --allow-network /tmp/second-read-provider.json
+```
+
+`OT_SECOND_READ_PROVIDER` is `openai` (OpenAI-style, also most local
+runtimes) or `anthropic`. Requests are built by the app's own
+`buildVisionRequest`/`parseVisionResponse` (`src/lib/ai.js`). Before sending,
+the script prints the endpoint and the number of crops. It refuses to send
+anything without `--allow-network`. Each flagged row sends one PNG crop per
+unit: 12 rows × 2 units from the native run. No provider numbers are in this
+change. A reply that isn't one code-shaped string counts as nothing usable. A
+transport error stops the run.
+
 ## Image provenance
 
 [The generator](../../scripts/make-ocr-code-fixtures.mjs) draws 7 pt type in
