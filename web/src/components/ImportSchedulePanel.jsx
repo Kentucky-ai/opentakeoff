@@ -15,7 +15,8 @@
 // lib/scheduleEdit (tested).
 // Contract (skipped is optional with a safe default):
 //   <ImportSchedulePanel rows existing={Set<finish_tag>} palette startIndex
-//                        skipped?={string[]} onCreate(rows[]) onClose />
+//                        skipped?={string[]} planSet? subscribeIndex? labelOf?
+//                        onCreate(rows[]) onClose />
 // skipped = codes the reader saw but didn't read (four- or five-letter codes
 // with no number, one entry per line); a notice above the rows names them.
 // rows can be empty when skipped codes were all the box held: the dialog then
@@ -33,10 +34,17 @@
 // "from description" so the estimator reviews it before Create. A code the
 // reader repaired from an OCR misread (read_as: PT-O1 imported as PT-01, #482)
 // is flagged "read as PT-O1" until the code is edited to another one.
+//
+// planSet (optional; lib/codeUse CodeUseSet) lets each row say whether its
+// code (as edited) is printed on the plans: "on N sheets", "not found in
+// checked text", or "N sheets not checked" while the set's index fills (#498).
+// It is information only: it never unticks a row. subscribeIndex re-reads it
+// as the index fills; labelOf names sheets in the tooltip.
 import React, { useId, useMemo, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import { closeOnEscape, codeCheckShown, evaluateTags, groupClickable, groupState, groupToggle, isCreatable, previewColors, readAsShown, setPicked as pickRows, skippedBanner } from "../lib/scheduleEdit";
 import { notUsedKind, notUsedNote } from "../lib/notUsed";
+import { codeUse, codeUseLine } from "../lib/codeUse";
 import { S } from "../lib/ui.js";
 
 // category → display group, in the order an estimator reads a floor set.
@@ -53,8 +61,8 @@ const GROUPS = [
   { key: "other", label: "Other" },
 ];
 
-/** @param {{ rows?: import('../lib/scheduleRows').ScheduleRow[], existing?: Set<string>, palette?: string[], startIndex?: number, skipped?: string[], onCreate: (rows: import('../lib/scheduleRows').ScheduleRow[]) => void, onClose: () => void }} props */
-export default function ImportSchedulePanel({ rows = [], existing = new Set(), palette = [], startIndex = 0, skipped = [], onCreate, onClose }) {
+/** @param {{ rows?: import('../lib/scheduleRows').ScheduleRow[], existing?: Set<string>, palette?: string[], startIndex?: number, skipped?: string[], planSet?: import('../lib/codeUse').CodeUseSet, subscribeIndex?: (fn: () => void) => () => void, labelOf?: (key: string) => string, onCreate: (rows: import('../lib/scheduleRows').ScheduleRow[]) => void, onClose: () => void }} props */
+export default function ImportSchedulePanel({ rows = [], existing = new Set(), palette = [], startIndex = 0, skipped = [], planSet, subscribeIndex, labelOf, onCreate, onClose }) {
   const uid = useId(); // prefixes each row's flag id so aria-describedby is unique on the page
   // Give every row a STABLE key up front. Checkbox + color state is keyed on it,
   // not on the tag, so editing a tag never drops a row's selection.
@@ -91,6 +99,17 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
     return new Set(keyed.filter(({ key, row }) => row.suggested && !codeCheckShown(row, row.finish_tag) && isCreatable(init.get(key))).map(({ key }) => key));
   });
   const [editing, setEditing] = useState(null); // { key, orig } | null
+
+  // "On the plans?" per row (#498), re-read whenever the set's index changes
+  // (the canvas and gallery fill it lazily) and on every tag edit.
+  const [indexTick, setIndexTick] = useState(0);
+  React.useEffect(() => subscribeIndex?.(() => setIndexTick((n) => n + 1)), [subscribeIndex]);
+  const useByKey = useMemo(() => {
+    if (!planSet) return new Map();
+    return new Map(keyed.map(({ key }) => { const tag = tagState.get(key)?.tag; return [key, tag ? codeUse(tag, planSet) : null]; }));
+    // indexTick: the index map is mutated in place, so its change is the tick
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keyed, tagState, planSet, indexTick]);
 
   // Preview the line color each new condition will actually get: the parent
   // assigns palette[startIndex + n] over the rows it CREATES (picked and
@@ -208,11 +227,14 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
                   const notUsedId = r.unticked_reason ? `${uid}-${key}-notused` : undefined;
                   const note = notUsedId ? notUsedNote(notUsedKind(r.not_used_text || "") || "not-used", { pickable: ok, picked: on }) : "";
                   const codeCheckId = codeCheckShown(r, st?.tag || "") ? `${uid}-${key}-check` : undefined;
-                  const describedBy = [guessId, readAsId, notUsedId, codeCheckId].filter(Boolean).join(" ") || undefined;
+                  const u = useByKey.get(key);
+                  const useLine = u && codeUseLine(u, labelOf);
+                  const useId_ = useLine ? `${uid}-${key}-use` : undefined;
+                  const describedBy = [guessId, readAsId, notUsedId, codeCheckId, useId_].filter(Boolean).join(" ") || undefined;
                   // Descriptors sit right of the label and drop to their own line
                   // when the row is narrow. A lone one is the label's sibling; more
                   // than one are grouped so they wrap together.
-                  const several = [guessId, readAsId, notUsedId].filter(Boolean).length > 1;
+                  const several = [guessId, readAsId, notUsedId, useId_].filter(Boolean).length > 1;
                   const right = several ? {} : { marginLeft: "auto" };
                   const guess = guessId && (
                     <span id={guessId} title="Category guessed from the row's own words — no printed heading names one" style={{ ...lbl, color: "var(--c-warning)", flex: "0 0 auto", cursor: "help", ...right }}>from description</span>
@@ -230,6 +252,14 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
                   const notUsed = notUsedId && (
                     <span id={notUsedId} title={note.trimStart()} style={{ ...lbl, textTransform: "none", color: "var(--ink)", borderLeft: "2px solid var(--c-warning)", paddingLeft: 4, position: "relative", flex: "0 0 auto", cursor: "help", ...right }}>
                       {r.not_used_text || "NOT USED"}<span style={S.visuallyHidden}>{note}</span>
+                    </span>
+                  );
+                  // Quiet unless the code wasn't found: a found code is a muted
+                  // count, an unchecked one muted too; only "not found in
+                  // checked text" takes the warning color.
+                  const onPlans = useId_ && (
+                    <span id={useId_} title={useLine.title} style={{ ...lbl, textTransform: "none", color: u.state === "not-found" ? "var(--c-warning)" : "var(--ink-muted)", flex: "0 0 auto", cursor: "help", ...right }}>
+                      {useLine.text}
                     </span>
                   );
                   return (
@@ -273,7 +303,7 @@ export default function ImportSchedulePanel({ rows = [], existing = new Set(), p
                           {r.code_checks?.length ? `Check code: ${r.code_checks.map(({ first, second }) => second ? `${first} / ${second}` : `${first} / second read did not confirm`).join("; ")}` : "Verify scanned code"}
                         </span>
                       )}
-                      {several ? <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>{guess}{readAs}{notUsed}</div> : guess || readAs || notUsed}
+                      {several ? <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>{guess}{readAs}{notUsed}{onPlans}</div> : guess || readAs || notUsed || onPlans}
                     </div>
                   );
                 })}
