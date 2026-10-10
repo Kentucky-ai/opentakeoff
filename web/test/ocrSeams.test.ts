@@ -499,12 +499,14 @@ test("a patch that reads no whole line keeps the fragments, flagged clipped", ()
   assert.ok(out.every(l => l.clipped === true));
 });
 
-test("a patch keeps a line only where it overlaps one of its fragments along the line", () => {
+test("a patch line off its fragments is kept only where it overlaps no kept line: a tile's line read again differently isn't doubled", () => {
   const plan = twoCols();
-  // two rows pack into one patch; the lower one is longer
+  // two rows pack into one patch; the lower one is longer. A tile read
+  // "NOTE A" whole, in the short row's band past its fragments.
+  const note = word("NOTE A", 1250, 300, 1350, 310);
   const a = assignLines(plan, [
     [word("SHORT ROW", 800, 300, 1072, 310), word("LONG ROW", 600, 330, 1072, 340)],
-    [word("SHORT ROW", 928, 300, 1200, 310), word("LONG ROW", 928, 330, 1400, 340)],
+    [word("SHORT ROW", 928, 300, 1200, 310), word("LONG ROW", 928, 330, 1400, 340), note],
   ]);
   assert.equal(a.patches.length, 1);
   const r = a.patches[0].render;
@@ -512,9 +514,60 @@ test("a patch keeps a line only where it overlaps one of its fragments along the
   const out = joinPatches(a, [[
     word("SHORT ROW", 800, 300, 1200, 310),
     word("LONG ROW", 600, 330, 1400, 340),
-    word("STRAY", 1250, 300, 1350, 310), // in the short row's band, past its fragments
+    word("N0TE 4", 1252, 300, 1340, 310), // the kept note, misread and a little shorter: not a second line
   ]]);
-  assert.deepEqual(out.map(l => l.str).sort(), ["LONG ROW", "SHORT ROW"]);
+  assert.deepEqual(out.map(l => l.str).sort(), ["LONG ROW", "NOTE A", "SHORT ROW"]);
+});
+
+test("a whole line only a patch read, in a group's band and clear of every kept line, is kept once (#488)", () => {
+  const plan = twoCols();
+  // Two straddling rows pack into one patch. On the short row the tiles read
+  // only the straddler; the cell beside it, "P-5", came back from neither
+  // tile, so it has no fragment for the patch line to lie over.
+  const a = assignLines(plan, [
+    [word("SHORT ROW", 800, 300, 1072, 310), word("LONG ROW", 600, 330, 1072, 340)],
+    [word("SHORT ROW", 928, 300, 1200, 310), word("LONG ROW", 928, 330, 1400, 340)],
+  ]);
+  assert.equal(a.patches.length, 1);
+  const p5 = word("P-5", 1250, 300, 1290, 310);
+  const read = [word("SHORT ROW", 800, 300, 1200, 310), word("LONG ROW", 600, 330, 1400, 340), p5];
+  const out = joinPatches(a, [read]);
+  assert.deepEqual(out.map(l => l.str).sort(), ["LONG ROW", "P-5", "SHORT ROW"]);
+  assert.ok(out.every(l => !l.clipped));
+  assert.deepEqual(out.find(l => l.str === "P-5"), p5, "as the patch read it");
+  // two patches over the same row keep it once
+  const twice = { ...a, patches: [a.patches[0], { ...a.patches[0], index: 1 }] };
+  assert.deepEqual(joinPatches(twice, [read, read]).map(l => l.str).sort(), ["LONG ROW", "P-5", "SHORT ROW"]);
+});
+
+test("two overlapping lines only a patch read are both kept: one read's lines are never duplicates", () => {
+  const plan = twoCols();
+  // the long row widens the shared patch past the short row's end
+  const a = assignLines(plan, [
+    [word("SHORT ROW", 800, 300, 1072, 310), word("LONG ROW", 600, 330, 1072, 340)],
+    [word("SHORT ROW", 928, 300, 1200, 310), word("LONG ROW", 928, 330, 1400, 340)],
+  ]);
+  assert.equal(a.patches.length, 1);
+  const out = joinPatches(a, [[
+    word("SHORT ROW", 800, 300, 1200, 310), word("LONG ROW", 600, 330, 1400, 340),
+    word("P-5", 1250, 300, 1290, 310), word("NOTE", 1280, 302, 1340, 312),
+  ]]);
+  assert.deepEqual(out.map(l => l.str).sort(), ["LONG ROW", "NOTE", "P-5", "SHORT ROW"]);
+});
+
+test("a patch line off its fragments that partly overlaps a kept line is not added", () => {
+  const plan = twoCols();
+  const kept = word("KEPT NOTE", 1250, 300, 1350, 310);
+  const a = assignLines(plan, [
+    [word("SHORT ROW", 800, 300, 1072, 310)],
+    [word("SHORT ROW", 928, 300, 1200, 310), kept],
+  ]);
+  assert.equal(a.patches.length, 1);
+  const out = joinPatches(a, [[
+    word("SHORT ROW", 800, 300, 1200, 310),
+    word("TE EXTRA", 1320, 301, 1420, 311), // in the band, a third of it over the kept note
+  ]]);
+  assert.deepEqual(out.map(l => l.str).sort(), ["KEPT NOTE", "SHORT ROW"]);
 });
 
 test("a patch line holding a kept line and its exact text replaces it; a misread keeps both", () => {
@@ -984,6 +1037,34 @@ test("rows spanning more than the cap across one seam split into patches that ea
   assert.ok(patches.length >= 2, `${patches.length} patches`);
   for (const p of patches) assert.equal(factorOf(rs, p.render), plan.zoom, `patch ${p.index}: ${JSON.stringify(p.render)}`);
   assertMatchesTruth(lines, truth, plan.zoom, "43 rows");
+});
+
+test("a 60-row table across a seam: cells only the patch read are kept, once (#488)", () => {
+  // Each row's remarks straddle the seam; the shorter ones have a code cell
+  // after them, inside the patch the longer rows size. The tiles read every
+  // remark's two pieces, but on two rows not the code cell beside it (as the
+  // demo's real read did for rooms 3 and 134). The patch reads those whole.
+  const rs = 2, plan = planTiles(pageRect(36, 24, rs), rs);
+  const sx = plan.tiles[1].core.x0, size = 10 * rs, adv = ADV * size, inch = IN * rs, rnd = mulberry32(60);
+  const truth: Truth[] = [];
+  const missed = new Set<Truth>();
+  for (let i = 0; i < 60; i++) {
+    const c0 = 1.5 * inch + i * 0.25 * inch, len = (2.4 + (i % 3) * 0.8) * inch, n = Math.round(len / adv);
+    truth.push({ dir: "h", size, text: makeText(i, n, rnd), c0, a0: sx - 1.2 * inch });
+    if (i % 3) continue;
+    const code: Truth = { dir: "h", size, text: `C-${i + 1}`, c0, a0: sx - 1.2 * inch + (n + 2) * adv };
+    truth.push(code);
+    if (i === 18 || i === 42) missed.add(code);
+  }
+  const tileTruth = truth.filter(g => !missed.has(g));
+  const run = createSeamRun(plan);
+  const jobs: SeamJob[] = [];
+  for (let job = run.next(); job; job = run.next()) {
+    jobs.push(job);
+    run.accept(job, fakeRead(job.kind === "tile" ? tileTruth : truth, job.render, job.zoom));
+  }
+  assert.equal(jobs.filter(j => j.kind === "patch").length, 1);
+  assertMatchesTruth(run.lines(), truth, plan.zoom, "60 rows, two code cells missed by the tiles");
 });
 
 test("jobs carry the plan's dpi and zoom; accept takes only the job outstanding and throws otherwise", () => {
