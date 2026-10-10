@@ -8,6 +8,8 @@
 
 import { csvEsc as esc } from "./csv.js";
 import { linearVerticalFt } from "./shapeMetrics.js";
+import { M_PER_FT, M2_PER_SF } from "./units";
+import { round2 } from "./num.js";
 
 export function shapesDetail(conditions, shapes, sheetLabel) {
   const byId = new Map(conditions.map((c) => [c.id, c]));
@@ -48,8 +50,14 @@ export function shapesDetail(conditions, shapes, sheetLabel) {
   });
 }
 
-export function shapesToCsv(rows, projectName = "", brandName = "OpenTakeoff") {
-  const header = ["Shape", "Sheet", "Sheet ID", "Finish", "Role", "Area SF", "LF", "EA", "Height ft", "Height override", "Rise ft", "Drop ft", "Origin"];
+export function shapesToCsv(rows, projectName = "", brandName = "OpenTakeoff", units = "imperial") {
+  const M = units === "metric";
+  const areaUnit = M ? "m2" : "SF";
+  const lengthUnit = M ? "m" : "LF";
+  const heightUnit = M ? "m" : "ft";
+  const A = (v) => (M ? round2((Number(v) || 0) * M2_PER_SF) : v);
+  const L = (v) => (M ? round2((Number(v) || 0) * M_PER_FT) : v);
+  const header = ["Shape", "Sheet", "Sheet ID", "Finish", "Role", `Area ${areaUnit}`, lengthUnit, "EA", `Height ${heightUnit}`, "Height override", `Rise ${heightUnit}`, `Drop ${heightUnit}`, "Origin"];
   const lines = [
     "# Per-shape measured quantities — no multiplier or waste; deducts negative; LF on floor/deduct/surface rows is trace reference only (incl. openings) — linear rows alone sum to condition LF; a linear row's LF includes its Rise + Drop",
     header.map(esc).join(","),
@@ -57,9 +65,9 @@ export function shapesToCsv(rows, projectName = "", brandName = "OpenTakeoff") {
   for (const r of rows) {
     lines.push([
       r.shape_id, r.sheet, r.sheet_id, r.finish, r.role,
-      r.area_sf, r.lf, r.ea, r.height_ft,
+      A(r.area_sf), L(r.lf), r.ea, L(r.height_ft),
       r.height_override ? "yes" : "",
-      r.rise_ft, r.drop_ft,
+      L(r.rise_ft), L(r.drop_ft),
       r.origin,
     ].map(esc).join(","));
   }
