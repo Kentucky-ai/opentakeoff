@@ -12,7 +12,7 @@ For the draft persisted-record contract and known compatibility gaps, read
 tool behavior or saved-file format.
 
 **Repo:** <https://github.com/Kentucky-ai/opentakeoff> · **Live:**
-<https://opentakeoff.kentucky-ai.com> · **License:** Apache-2.0
+<https://opentakeoff.kentucky-ai.com> · **License:** AGPL-3.0-only
 
 ---
 

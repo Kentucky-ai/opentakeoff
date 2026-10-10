@@ -1,6 +1,6 @@
 # Working on the repository
 
-OpenTakeoff is a **client-only React app**: a PDF construction-takeoff canvas for flooring (useful for any trade). No backend, no database, no auth—everything runs and persists in the browser. Apache-2.0. (For the one-page project pitch and vision, see [`AGENT_BRIEF.md`](../../AGENT_BRIEF.md); for capability → code mapping, see [`FEATURES.md`](../../FEATURES.md).)
+OpenTakeoff is a **client-only React app**: a PDF construction-takeoff canvas for flooring (useful for any trade). No backend, no database, no auth—everything runs and persists in the browser. AGPL-3.0-only. (For the one-page project pitch and vision, see [`AGENT_BRIEF.md`](../../AGENT_BRIEF.md); for capability → code mapping, see [`FEATURES.md`](../../FEATURES.md).)
 
 ## Run / build / check
 

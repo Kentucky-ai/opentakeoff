@@ -11,7 +11,7 @@ its calibration; measurements carry geometry, method and authorship. Recalibrati
 quantities together, incompatible imports report scale conflicts, and agent measurements
 carry an explicit review status. See the [Phase 1 test guide](docs/PHASE_1_TESTING.md).
 
-[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![Live demo](https://img.shields.io/badge/demo-opentakeoff.kentucky--ai.com-2ea44f.svg)](https://opentakeoff.kentucky-ai.com)
 [![MCP registry](https://img.shields.io/badge/MCP-io.github.Kentucky--ai%2Fopentakeoff-6f42c1.svg)](https://registry.modelcontextprotocol.io)
 [![npm](https://img.shields.io/npm/v/opentakeoff-mcp?label=opentakeoff-mcp)](https://www.npmjs.com/package/opentakeoff-mcp)
@@ -53,7 +53,7 @@ a phone or tablet, or a browser that reports 4 GB of memory or less), least rece
 | **An estimator with a bid due** | [Open the canvas](https://opentakeoff.kentucky-ai.com)—drag in a plan, no account, nothing uploads. The [**user manual**](docs/USER_GUIDE.md) gets you from a blank tab to an exported takeoff in five minutes, and its [working order](docs/USER_GUIDE.md#the-working-order-on-a-real-bid) is the sequence to run on a real bid set. |
 | **An AI agent**—or the person wiring one up | `npx -y opentakeoff-mcp`, then the [**agent manual**](docs/AGENT_GUIDE.md): the operating model, the standard finish every takeoff ends with, what the engine refuses to guess, and why. Tool-by-tool reference is [`mcp/README.md`](mcp/README.md). |
 | **A developer building on the engine** | [`AGENTS.md`](AGENTS.md) is the repo map and the ship discipline; [`FEATURES.md`](FEATURES.md) maps every capability to the code that does it. |
-| **A crew that wants its own copy** | [**Fork it**](#fork-it)—your own instance on your own URL in a few minutes, Apache-2.0, nothing phones home. Same path if you're going to send a pull request. |
+| **A crew that wants its own copy** | [**Fork it**](#fork-it)—your own instance on your own URL in a few minutes, AGPL-3.0, nothing phones home. Same path if you're going to send a pull request. |
 
 ### Windows, macOS, Linux — all of it
 
@@ -608,7 +608,7 @@ OpenTakeoff is the open half of an applied-research program run by a working com
 flooring estimator who builds the AI his own department uses
 ([Kentucky AI](https://kentucky-ai.com)). The open-core boundary is the same one the better
 open scientific software draws: **the measurement engine—rendering, scale, geometry, exports,
-the MCP server—is Apache-2.0 and stays open. The models trained on our own estimating archive
+the MCP server—is AGPL-3.0 and stays open. The models trained on our own estimating archive
 are proprietary.** You get a real tool with no seat licenses; the part only our data can build
 stays ours.
 
@@ -667,8 +667,9 @@ knowing about. Deployment notes and the optional AI backend:
 
 ## Fork it
 
-Apache-2.0: fork it, change it, ship it—for your own crew or as the base of your own product.
-A fork is the unit of ownership here, and it's the unit of contribution: the same three steps
+AGPL-3.0: fork it, change it, ship it—for your own crew or as the base of your own product.
+If you run a modified copy for other people, including as a hosted service, publish your
+changes under the same license. A fork is the unit of ownership here, and it's the unit of contribution: the same three steps
 give you a private instance and a branch to send back.
 
 1. **[Fork on GitHub](https://github.com/Kentucky-ai/opentakeoff/fork)**, then clone your fork.
@@ -793,8 +794,12 @@ Thanks to **[@knmurphy](https://github.com/knmurphy)** (Kevin Murphy) for [image
 
 ## License
 
-[Apache License 2.0](LICENSE)—use it, [fork it](#fork-it), ship it, build on top of it. See
-[NOTICE](NOTICE) for attribution.
+[GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only)—use it, [fork it](#fork-it),
+ship it, build on top of it, and share your changes when you run a modified copy for others.
+Through commit `84c7f48e` (tag `apache-2.0-final`) OpenTakeoff was Apache-2.0, and that code
+stays Apache-2.0 for everyone who already has it. See [NOTICE](NOTICE) for attribution and the
+relicensing note; contributions are accepted under the [CLA](CLA.md). For commercial terms
+outside the AGPL, contact [Kentucky AI](https://kentucky-ai.com).
 
 For an agent measurement workflow focused on accurate geometry, see [Geometry from source to review](docs/GEOMETRY_WORKFLOW.md).
 
@@ -809,6 +814,6 @@ references and links against source.
 
 ## Privacy and terms
 
-[Privacy Policy](https://opentakeoff.kentucky-ai.com/privacy/) · [Terms of Service](https://opentakeoff.kentucky-ai.com/terms/). Both are also linked in the in-app guide (`?`). The Apache-2.0 software license remains unchanged.
+[Privacy Policy](https://opentakeoff.kentucky-ai.com/privacy/) · [Terms of Service](https://opentakeoff.kentucky-ai.com/terms/). Both are also linked in the in-app guide (`?`). The software license (AGPL-3.0) is separate.
 
 <sub>© 2026 NVIDIA, the NVIDIA logo, and NVIDIA Inception are trademarks and/or registered trademarks of NVIDIA Corporation in the U.S. and other countries.</sub>

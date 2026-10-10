@@ -1287,7 +1287,7 @@ those are the ones worth pinning down before you rely on a number.
 
 ---
 
-*OpenTakeoff is Apache-2.0 and the codebase is deliberately readable—when you outgrow the manual, [`FEATURES.md`](../FEATURES.md) maps every capability to its code. Driving it from an agent instead? [`AGENT_GUIDE.md`](AGENT_GUIDE.md) is this document's counterpart.*
+*OpenTakeoff is AGPL-3.0 and the codebase is deliberately readable—when you outgrow the manual, [`FEATURES.md`](../FEATURES.md) maps every capability to its code. Driving it from an agent instead? [`AGENT_GUIDE.md`](AGENT_GUIDE.md) is this document's counterpart.*
 
 ### Marked-set quantity units
 

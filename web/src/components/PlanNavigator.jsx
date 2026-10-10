@@ -1179,7 +1179,7 @@ export default function PlanNavigator({
                   </div>
                 )}
                 <div style={{ marginTop: 30, fontFamily: "var(--f-mono)", fontSize: 10.5, letterSpacing: "0.1em", color: "var(--text-faint)" }}>
-                  Apache-2.0 open source · an open project by{" "}
+                  AGPL-3.0 open source · an open project by{" "}
                   <a href="https://kentucky-ai.com" target="_blank" rel="noopener" style={{ color: "var(--ink-muted)" }}>Kentucky&nbsp;AI</a>
                 </div>
               </div>

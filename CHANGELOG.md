@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-10-10 — relicensed to AGPL-3.0
+
+OpenTakeoff is now licensed under the GNU Affero General Public License v3.0 only (AGPL-3.0-only). Commit `84c7f48e` and everything before it stay under Apache-2.0, so existing forks and copies keep their rights. Outside contributions made before this change stay Apache-2.0 and keep their notices (`LICENSES/Apache-2.0.txt`). New contributions are accepted under `CLA.md`. If you run a modified copy for other people, including as a hosted service, you must publish your changes under the same license.
+
 ## 2026-09-15 — annotation toolbar
 
 Added direct arrow, highlighter, callout, cloud-note, favorites, and annotation Sweep tools. Sweep requires confirmation in a numbered checklist, supports individual exclusions, and applies one undoable batch. Added page-relative vector PDF export and rotated-page highlight checks.
