@@ -1719,6 +1719,16 @@ export default function TakeoffCanvas() {
     setKnownPages(next);
     metaPut(pageCacheKey, next).catch(() => { /* cache only — rediscovered next open */ });
   }, [pageCacheKey]);
+  // Import from schedule's plan set (#498), rebuilt only when the dialog's
+  // read or the set's pages change: the dialog re-checks every row against
+  // every sheet's index whenever this object changes, so a fresh one per
+  // canvas render would redo that on every unrelated update. The index map
+  // itself is mutated in place and announced through indexSignal.
+  const importPlanSet = useMemo(() => (importRead
+    ? { ...planSetKeys(), indexes: planIndexRef.current, sourceKey: importRead.sourceKey, boxTerms: importRead.boxTerms }
+    : undefined),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [importRead, sheets, active, pageCount, knownPages]);
   const forgetPages = useCallback((names) => {
     // a file whose bytes are leaving (or changing) takes its thumbnails with it
     forgetThumbs(names, thumbCacheRef.current);
@@ -11069,7 +11079,7 @@ export default function TakeoffCanvas() {
       {importRead && (
         <ImportSchedulePanel
           rows={importRead.rows} skipped={importRead.skipped}
-          planSet={{ ...planSetKeys(), indexes: planIndexRef.current, sourceKey: importRead.sourceKey, boxTerms: importRead.boxTerms }}
+          planSet={importPlanSet}
           subscribeIndex={indexSignal.subscribe} labelOf={tabLabel}
           existing={new Set(conditions.map((c) => normalizeTag(c.finish_tag)))}
           palette={PALETTE} startIndex={conditions.length}
