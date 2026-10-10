@@ -17,7 +17,7 @@ export const OCR_READ_DPI = 216;
 export const OCR_TILE_OVERLAP_PT = 72;
 /** The seam rules' version (seams SEAM_RULES_VERSION): a page read saved
  * under other seam rules is a cache miss. */
-export const OCR_SEAM_RULES_VERSION = 2;
+export const OCR_SEAM_RULES_VERSION = 3;
 /** The most tiles one read may take. A 42 × 30 in sheet takes 6; past this
  * a malformed or enormous page would hold the engine for hours. */
 export const OCR_MAX_TILES = 64;

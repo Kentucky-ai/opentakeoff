@@ -132,7 +132,7 @@ test("opts hash is pinned: a change here invalidates every cached page read, on 
   // cached reads are now misses. That is intended; update the literal in the
   // same change, and decide whether the old hash goes on STALE_OK_OPTS (its
   // reads kept, flagged stale) or not (dropped).
-  assert.equal(OCR_CACHE_OPTS, "6ce25af8");
+  assert.equal(OCR_CACHE_OPTS, "70e022ad");
 });
 
 test("a read saved before the luminance preprocessing (#481) is a miss", async () => {
@@ -147,7 +147,8 @@ test("the stale-ok hash is exactly the engine before #484: per-line at batch 6, 
   const P = OCR_CACHE_PARAMS;
   const { strategy, recBatchSize, ...before } = P.engine.recognition;
   assert.deepEqual({ strategy, recBatchSize }, { strategy: "per-box", recBatchSize: 1 });
-  assert.equal(ocrCacheOpts({ ...P, engine: { ...P.engine, recognition: before } } as unknown as typeof P), "e2f8d8b4");
+  // under the seam rules of its day (2)
+  assert.equal(ocrCacheOpts({ ...P, seams: 2, engine: { ...P.engine, recognition: before } } as unknown as typeof P), "e2f8d8b4");
   assert.ok(STALE_OK_OPTS.includes("e2f8d8b4"));
   assert.ok(!STALE_OK_OPTS.includes(OCR_CACHE_OPTS), "the current engine's reads are fresh, not stale");
 });

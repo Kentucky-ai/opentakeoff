@@ -181,6 +181,32 @@ test("reportWorkbook: materials quantity matches conditionTotals (measured basis
   assert.equal(adhesive![2], rows[0].materials[0].qty);
 });
 
+test("reportWorkbook: metric Shapes tab follows the unit toggle", () => {
+  const tabs = reportWorkbook({
+    ...workbookArgs(),
+    units: "metric",
+    shapeRows: [{
+      shape_id: "m1",
+      sheet: "Level 1",
+      sheet_id: "L1",
+      finish: "CT-1",
+      role: "floor_area",
+      area_sf: 100,
+      lf: 40,
+      ea: 0,
+      height_ft: 9,
+      height_override: false,
+      rise_ft: 2,
+      drop_ft: 8,
+      origin: "manual",
+    }],
+  });
+  const shapeTab = tabs[3];
+  assert.equal(shapeTab.rows[0][0].includes("Raw internal SF/LF"), false);
+  assert.deepEqual(shapeTab.rows[1], ["Shape", "Sheet", "Sheet ID", "Finish", "Role", "Area m2", "m", "EA", "Height m", "Height override", "Rise m", "Drop m", "Origin"]);
+  assert.deepEqual(shapeTab.rows[2], ["m1", "Level 1", "L1", "CT-1", "floor_area", 9.29, 12.19, 0, 2.74, "", 0.61, 2.44, "manual"]);
+});
+
 // ---------------------------------------------------------------------------
 // the zipped package
 
