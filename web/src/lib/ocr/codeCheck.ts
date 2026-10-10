@@ -7,7 +7,9 @@ export type CodeBox = { x: number; y: number; width: number; height: number };
 export type CodeRead = { text: string; box: CodeBox; confidence: number; codeAlternate?: string };
 export type MakeCodeCrop = (canvas: unknown, box: CodeBox) => unknown;
 
-const comparable = (text: string) => cleanOcrText(text).trim().replace(/\s+/g, " ").toUpperCase();
+/** The form two reads of one code are compared in: cleaned, trimmed, one
+ * space, upper case. Punctuation is identity and is kept. */
+export const comparable = (text: string) => cleanOcrText(text).trim().replace(/\s+/g, " ").toUpperCase();
 
 /** Short standalone code shapes, including a single surviving letter. A
  * prose line is not reread; long/huge boxes are bounded before allocating. */
