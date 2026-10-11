@@ -120,3 +120,45 @@ test("only the drawn image needs the flag — an alpha PNG's SMask is not drawn 
     { cs: "/DeviceGray", interpolate: undefined },
   ]);
 });
+
+for (const extension of ["png", "jpg"]) {
+  test(`a malformed ${extension} entry does not discard later plans in its ZIP`, async () => {
+    const zip = zipFile("mixed.zip", {
+      [`broken.${extension}`]: enc.encode("not an image"),
+      "A1.pdf": pdfBytes(),
+      "scan.png": Buffer.from(OPAQUE_PNG, "base64"),
+    });
+    const { pdfs, skipped } = await ingestFiles([zip]);
+    assert.deepEqual(pdfs.map((file) => file.name), ["A1.pdf", "scan.pdf"]);
+    assert.equal(skipped.length, 1);
+    assert.equal(skipped[0].name, `broken.${extension}`);
+  });
+}
+
+test("a broken nested ZIP does not discard its parent's remaining PDF entries", async () => {
+  const { pdfs, skipped } = await ingestFiles([zipFile("parent.zip", {
+    "broken.zip": enc.encode("not a zip"),
+    "A1.pdf": pdfBytes(),
+  })]);
+  assert.deepEqual(pdfs.map((file) => file.name), ["A1.pdf"]);
+  assert.equal(skipped.length, 1);
+  assert.equal(skipped[0].name, "broken.zip");
+});
+
+test("ingest preserves PDF bytes for downstream validation even if the contents are invalid", async () => {
+  const bytes = enc.encode("not a pdf");
+  const { pdfs, skipped } = await ingestFiles([zipFile("plans.zip", { "broken.pdf": bytes })]);
+  assert.deepEqual(new Uint8Array(await pdfs[0].arrayBuffer()), bytes);
+  assert.equal(skipped.length, 0);
+});
+
+test("PDFs and images at the archive depth limit still open while nested archives are refused", async () => {
+  const nested = zipSync({ "A2.pdf": pdfBytes() });
+  const { pdfs, skipped } = await ingestFiles([zipFile("plans.zip", {
+    "A1.pdf": pdfBytes(),
+    "scan.png": Buffer.from(OPAQUE_PNG, "base64"),
+    "nested.zip": nested,
+  })], { maxZipDepth: 1 });
+  assert.deepEqual(pdfs.map((file) => file.name), ["A1.pdf", "scan.pdf"]);
+  assert.deepEqual(skipped, [{ name: "nested.zip", reason: "nested too deep" }]);
+});
