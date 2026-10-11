@@ -113,7 +113,7 @@ Drag onto the canvas (or click the **Open your plans** target on the empty scree
 
 - **PDF** plan sets—multi-page, multiple files at once.
 - **Images**—scans, screenshots, photos of a sheet. They're wrapped into PDF pages in your browser.
-- **`.zip` plan sets**—the whole download off a bid platform. Unzipped in the browser; every PDF inside opens. (Hostile-archive guards cap entry counts, sizes, and nesting, so a malformed zip fails cleanly instead of ballooning the tab.)
+- **`.zip` plan sets**—the whole download off a bid platform. Unzipped in the browser; every PDF inside opens. An unreadable image is skipped individually, without stopping the remaining plans or valid images. (Hostile-archive guards cap entry counts, sizes, and nesting, so a malformed zip fails cleanly instead of ballooning the tab.)
 
 Nothing uploads anywhere. The file is read locally, rendered locally, and stored locally.
 
