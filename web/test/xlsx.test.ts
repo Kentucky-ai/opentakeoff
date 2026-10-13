@@ -139,6 +139,29 @@ test("reportWorkbook: five tabs, Conditions mirrors the CSV columns and numbers"
   assert.equal(s2![6], 25); // measured LF — no multiplier
 });
 
+test("reportWorkbook: Shapes audit keeps reconciled cutouts at zero additive area", () => {
+  const cutConds = [{ id: "cut", finish_tag: "CT-1" }] as any;
+  const cutShapes = [
+    { id: "parent", sheet_id: "sh1", condition_id: "cut", measure_role: "floor_area", computed: { area_sf: 90 } },
+    { id: "cutout", sheet_id: "sh1", condition_id: "cut", measure_role: "deduct", cuts_shape_id: "parent", computed: { area_sf: 10 }, origin: { method: "cutout_v1" } },
+  ] as any;
+  const tabs = reportWorkbook({
+    ...workbookArgs(),
+    rows: conditionTotals(cutConds, cutShapes).filter((r: any) => r.shape_count > 0),
+    bySheet: sheetTotals(cutConds, cutShapes),
+    shapeRows: shapesDetail(cutConds, cutShapes),
+  });
+  const shapeTab = tabs.find((t: any) => t.name === "Shapes");
+  assert.ok(shapeTab);
+  assert.match(shapeTab!.rows[0][0], /standalone deducts negative; reconciled cutouts stay as audit rows with zero additive area/);
+  const parent = shapeTab!.rows.find((r: any[]) => r[0] === "parent");
+  const cutout = shapeTab!.rows.find((r: any[]) => r[0] === "cutout");
+  assert.equal(parent![5], 90);
+  assert.equal(cutout![4], "deduct");
+  assert.equal(cutout![5], 0);
+  assert.equal(cutout![12], "cutout_v1");
+});
+
 test("reportWorkbook: custom column in cols — header, per-row value, blank TOTAL cell", () => {
   const custom = customColProfile([{ id: "div", name: "CSI Division", values: ["09 30 00"] }]);
   const tabs = reportWorkbook({
