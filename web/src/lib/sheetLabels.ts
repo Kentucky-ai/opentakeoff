@@ -30,3 +30,35 @@ export function withPageLabel(m: SheetLabels, file: string, page: number, label:
 export function withFoundLabels(m: SheetLabels, file: string, found: PageLabels): SheetLabels {
   return { ...m, [file]: { ...found, ...labelsForFile(m, file) } };
 }
+
+// A file whose bytes changed (a revision re-dropped, a file removed): its
+// labels name the old bytes' sheets, so they go, from both maps
+export function withoutFile(m: SheetLabels, file: string): SheetLabels {
+  if (!(file in m)) return m;
+  const next = { ...m };
+  delete next[file];
+  return next;
+}
+
+// A per-file label generation. A scan captures its file's generation when it
+// starts; forgetting the file (its bytes changed) bumps it, so a scan still
+// reading the old bytes can't write old labels back afterwards.
+export function createLabelGens() {
+  const gens = new Map<string, number>();
+  return {
+    of: (file: string): number => gens.get(file) ?? 0,
+    bump: (file: string): void => { gens.set(file, (gens.get(file) ?? 0) + 1); },
+  };
+}
+
+/** gallery labels are keyed by sheet key: "file" or "file#page" */
+export function withoutFileKeys<T>(m: Record<string, T>, file: string): Record<string, T> {
+  let next: Record<string, T> | null = null;
+  for (const k of Object.keys(m)) {
+    if (k === file || (k.startsWith(`${file}#`) && /^\d+$/.test(k.slice(file.length + 1)))) {
+      next ??= { ...m };
+      delete next[k];
+    }
+  }
+  return next ?? m;
+}
