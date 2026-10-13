@@ -37,3 +37,37 @@ test("finish-field output also computes from final geometry", () => {
   assert.equal(r.areaPx, 83600);
   assert.equal(r.areaPx, polyWithHolesMetrics(r.ring, r.holes).area);
 });
+
+// The arrangement's ring start vertex and winding are accidents of its edge
+// order (JSTS and other engines differ). The simplified room must not depend
+// on them: a 2 px corner notch on a 20 x 346 room used to come out as 6574 or
+// 6900 px² depending on where the ring started — the 6574 answer joined the
+// notch across the whole 346 px wall as a diagonal.
+function notchedRoom() {
+  const room = [[0,0],[20,0],[20,346],[2,346],[2,344],[0,344]].map(([x, y]) => [x + 500, y + 500]);
+  const border = [[0,0],[2000,0],[2000,2000],[0,2000]];
+  const segs = [room, border].flatMap((r) => r.flatMap((p, i) => [...p, ...r[(i + 1) % r.length]]));
+  const arr = buildPolyArrangement(segs, 0.01);
+  const net = { arr, solid: (i: number) => arr.faces[i].area > 100000, narrowFace: () => false, fixtureFace: () => false, starved: false, doorCellPolys: [],
+    _field: { inkFam: () => ({ h: [10, ...Array(11).fill(0)], tot: 10 }), inDoorCell: () => false } };
+  return { net, fi: arr.faces.findIndex((f: { area: number }) => f.area < 100000) };
+}
+
+for (const [name, fn] of [["netRoomAt", netRoomAt], ["netFieldAt", netFieldAt]] as const) {
+  test(`${name}: same room whatever vertex the ring starts at, either winding`, () => {
+    const { net, fi } = notchedRoom();
+    const orig = net.arr.faces[fi].ring.slice();
+    const areas = new Set<number>();
+    for (const base of [orig, orig.slice().reverse()]) {
+      for (let k = 0; k < base.length; k++) {
+        net.arr.faces[fi].ring = base.slice(k).concat(base.slice(0, k));
+        const r = fn(net, 510, 600, 9);
+        assert.ok(r);
+        areas.add(r.areaPx);
+      }
+    }
+    // one answer, and the one that changes the room least: the notch closes
+    // across its own 20 px end, not as a wedge down the 346 px wall
+    assert.deepEqual([...areas], [6900]);
+  });
+}

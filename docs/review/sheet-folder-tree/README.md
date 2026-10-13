@@ -99,3 +99,7 @@ The reader's results on the bundled demo and public fixtures are pinned by
 viewport scale reads the same", plus the table-driven "built pages: one per
 rule" cases (cover-index column, body-note mention, rotated label, vertical
 strip, no label, label not larger than its number).
+
+## October 13 maintainer follow-up
+
+[Updated-main verification and page-count race regression](2026-10-13/README.md).

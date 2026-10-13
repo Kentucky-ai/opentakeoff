@@ -236,3 +236,43 @@ test("text the vector sheet runs across a tile seam comes back from OCR", async 
     await doc.destroy();
   }
 });
+
+// #488: on this sheet the tiles read nothing of two schedule rows (room 3,
+// CORRIDOR, at y ≈ 387 and room 134, CONFERENCE/BREAK ROOM, at y ≈ 723)
+// whose remarks cross the seam; the patches read for those remarks read the
+// rows whole. Every vector run inside a patch, in one of its bands, must have
+// a line over it. Over it, not matching it: whether the engine read "VCT-1"
+// as "VCT 1" is the engine's, not the seam's.
+test("every vector run in a patch's band has a line over it, even where no tile read it (#488)", async () => {
+  const plan = planOf();
+  const lines = replay();
+  const a = assignLines(plan, tileJobs.map((j) => j.words));
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(DEMO)), isEvalSupported: false }).promise;
+  try {
+    const page = await doc.getPage(SHEET);
+    const vp = page.getViewport({ scale: FIX.rs });
+    const runs = extractRegionText(await page.getTextContent() as never, vp as never, { x0: 0, y0: 0, x1: vp.width, y1: vp.height })
+      .filter((t) => Math.round(t.ang ?? 0) % 360 === 0);
+    const inBand = runs.filter((t) => {
+      const b = box(t);
+      return a.patches.some((p) => p.axis === "h"
+        && b.x0 >= p.render.x0 && b.x1 <= p.render.x1 && b.y0 >= p.render.y0 && b.y1 <= p.render.y1
+        && p.groups.some((g) => b.y1 > g.band.lo && b.y0 < g.band.hi));
+    });
+    // the vector box is the font's (ascent to descent), an OCR box the ink's:
+    // a line is over a run when its middle is inside the run's height and it
+    // covers half the run's width
+    const overIt = (t: (typeof runs)[number]) => {
+      const b = box(t);
+      return lines.some((l) => {
+        const lb = box(l), mid = (lb.y0 + lb.y1) / 2;
+        return mid > b.y0 && mid < b.y1 && Math.min(lb.x1, b.x1) - Math.max(lb.x0, b.x0) >= 0.5 * (b.x1 - b.x0);
+      });
+    };
+    assert.ok(inBand.some((t) => t.str === "CORRIDOR") && inBand.some((t) => t.str === "CONFERENCE/BREAK ROOM"), "the two rows are in a band");
+    assert.ok(inBand.length >= 20, `${inBand.length} runs in a band`);
+    assert.deepEqual(inBand.filter((t) => !overIt(t)).map((t) => t.str), [], "runs in a patch's band with no line over them");
+  } finally {
+    await doc.destroy();
+  }
+});

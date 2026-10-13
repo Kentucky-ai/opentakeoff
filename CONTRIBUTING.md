@@ -110,4 +110,6 @@ engines—OpenTakeoff is a takeoff tool, not an ERP.
 - Keep the geometry libs pure and typed; add a test when you touch them.
 - Never commit real plan PDFs or any private/customer data.
 
-By contributing you agree your contributions are licensed under the Apache License 2.0.
+OpenTakeoff is licensed under AGPL-3.0-only. Before your first pull request is merged, read
+[CLA.md](CLA.md) and post the agreement comment it gives on the pull request. Contributions made
+before the relicensing stay under Apache-2.0 (see [NOTICE](NOTICE)).

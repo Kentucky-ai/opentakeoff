@@ -51,3 +51,22 @@ test("an unchanged count writes nothing; forget drops counts and early ones", as
   t.pc.forget(["a.pdf"]);
   assert.deepEqual(t.pc.get(), {});
 });
+
+
+test("forget before hydration never restores a removed file's saved count", async () => {
+  const t = setup({ "removed.pdf": 8, "kept.pdf": 3 });
+  t.pc.forget(["removed.pdf"]);
+  assert.equal(t.saves.length, 0);
+  t.release(); await tick();
+  assert.deepEqual(t.pc.get(), { "kept.pdf": 3 });
+  assert.deepEqual(t.saves.at(-1), { "kept.pdf": 3 });
+});
+
+test("a revised file's early count replaces its forgotten saved count", async () => {
+  const t = setup({ "revised.pdf": 8, "kept.pdf": 3 });
+  t.pc.forget(["revised.pdf"]);
+  t.pc.remember("revised.pdf", 2);
+  t.release(); await tick();
+  assert.deepEqual(t.pc.get(), { "revised.pdf": 2, "kept.pdf": 3 });
+  assert.deepEqual(t.saves.at(-1), { "revised.pdf": 2, "kept.pdf": 3 });
+});

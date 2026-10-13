@@ -12,7 +12,7 @@
 すべての計測値が、その**縮尺**と**どう計測されたか**を保持します。無料・オープンソース・
 ブラウザで動作 — アカウント不要、アップロード不要、インストール不要。
 
-[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![Live demo](https://img.shields.io/badge/demo-opentakeoff.kentucky--ai.com-2ea44f.svg)](https://opentakeoff.kentucky-ai.com)
 [![Built with React + Vite](https://img.shields.io/badge/React%2018-Vite-444.svg)](#技術スタック)
 
@@ -114,7 +114,7 @@ MCP クライアントから駆動できる stdio サーバーで、コマンド
 OpenTakeoff は、自分の部署が使う AI を自分で作っている現役の商業床仕上げ積算担当者が運営する、
 応用研究プログラム（[Kentucky AI](https://kentucky-ai.com)）の「開かれた半分」です。
 境界線は意図的なもので、優れたオープンコア科学ソフトウェアが引くのと同じ線です —
-**計測エンジン（レンダリング、縮尺、ジオメトリ、エクスポート、MCP サーバー）は Apache-2.0 で
+**計測エンジン（レンダリング、縮尺、ジオメトリ、エクスポート、MCP サーバー）は AGPL-3.0 で
 オープンなまま。自社の積算アーカイブで学習させた AI モデルは専有。**
 シートライセンス不要の実用ツールが手に入り、私たちは自分たちのデータでしか作れない部分を保持します。
 
@@ -123,7 +123,7 @@ OpenTakeoff は、自分の部署が使う AI を自分で作っている現役�
 
 ## この上に作る
 
-OpenTakeoff は **Apache-2.0** です。フォークし、変更し、出荷してください — 自分のチームのためでも、
+OpenTakeoff は **AGPL-3.0** です。フォークし、変更し、出荷してください — 自分のチームのためでも、
 自分のプロダクトの土台としてでも。コードベースは意図的に小さく読みやすく保たれています:
 
 - **ジオメトリと計測** — [`web/src/lib/oneclick.ts`](web/src/lib/oneclick.ts)、[`web/src/lib/sheets.ts`](web/src/lib/sheets.ts)（型付き・テスト済み）
@@ -159,7 +159,9 @@ One-Click Area、条件、副資材、レポートとエクスポート — は�
 
 ## ライセンス
 
-[Apache License 2.0](LICENSE) — 使い、フォークし、出荷し、この上に作ってください。
+[GNU Affero General Public License v3.0](LICENSE)（AGPL-3.0-only）— 使い、フォークし、出荷し、この上に作ってください。
+改変版を他者に提供する場合（ホスティングを含む）は、同じライセンスで変更を公開してください。
+コミット `84c7f48e`（タグ `apache-2.0-final`）までは Apache-2.0 で、そのコードは引き続き Apache-2.0 です。
 帰属表示については [NOTICE](NOTICE) を参照してください。
 
 ---

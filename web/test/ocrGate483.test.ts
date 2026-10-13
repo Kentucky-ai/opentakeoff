@@ -89,13 +89,18 @@ test("ocr gate: a key-column wrap 19 px under a row in a 38 px table reads as to
   }
 });
 
-test("ocr gate: a code line between rows that pass 1 merged into a row stays merged (FTB-01 CUT (C) in a short table)", () => {
-  // an unglue candidate in the vector read too: there it is a row, on OCR words it is not
+test("ocr gate: a whole row pass 1 merged into the row above is a row (FTB-01 CUT (C) with its own cells, in a short table)", () => {
+  // an unglue candidate in the vector read; on OCR words a qualifier line with
+  // cells in two other columns on its own line is a row too, as the vector read has it
   const vec = spansOf([CPT1, R("FTB-01 CUT (C)", "CERAMIC TILE", "VENDOR-F"), PT1]);
   assert.deepEqual(keys(readScheduleSpans(vec)), ["CPT-1", "FTB-01", "PT-1"]);
   const ocr = asOcr(vec);
-  assert.deepEqual(keys(readScheduleSpans(ocr, { ocr: true })), ["CPT-1", "PT-1"]);
-  asTodayOcr(ocr, "FTB-01 short table");
+  assert.deepEqual(keys(readScheduleSpans(ocr, { ocr: true })), ["CPT-1", "FTB-01", "PT-1"]);
+  assert.equal(readScheduleSpans(ocr, { ocr: true }).rows[1].description, "CUT (C) — CERAMIC TILE");
+  // with one cell beside it the line is not a whole row, and stays merged as before
+  const oneCell = asOcr(spansOf([CPT1, R("FTB-01 CUT (C)", "CERAMIC TILE", ""), PT1]));
+  assert.deepEqual(keys(readScheduleSpans(oneCell, { ocr: true })), ["CPT-1", "PT-1"]);
+  asTodayOcr(oneCell, "FTB-01 one cell");
 });
 
 test("ocr gate: four- and five-letter codes are neither read nor reported — no letters candidates", () => {

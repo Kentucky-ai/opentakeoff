@@ -15,6 +15,7 @@ export interface PageCounts {
 export function createPageCounts(deps: { load(): Promise<unknown>; save(m: PageCountMap): Promise<void>; onChange(m: PageCountMap): void }): PageCounts {
   let map: PageCountMap = {}, loaded = false;
   const early: PageCountMap = {};
+  const forgotten = new Set<string>();
   const save = () => { deps.save(map).catch(() => { /* cache only — rediscovered next open */ }); };
   function remember(name: string, count: number) {
     if (!Number.isFinite(count) || count < 1) return;
@@ -26,9 +27,18 @@ export function createPageCounts(deps: { load(): Promise<unknown>; save(m: PageC
   }
   const settle = (m: unknown) => {
     if (m && typeof m === "object") map = { ...(m as PageCountMap) };
+    // A removal/revision during the load must also remove the stored count.
+    // Apply all early changes before publishing or saving the hydrated map.
+    let dirty = false;
+    for (const n of forgotten) if (n in map) { delete map[n]; dirty = true; }
+    forgotten.clear();
+    for (const [n, c] of Object.entries(early)) {
+      if (map[n] !== c) { map[n] = c; dirty = true; }
+      delete early[n];
+    }
     loaded = true;
     deps.onChange(map);
-    for (const [n, c] of Object.entries(early)) { delete early[n]; remember(n, c); }
+    if (dirty) save();
   };
   deps.load().then(settle, () => settle(null));
   return {
@@ -36,7 +46,7 @@ export function createPageCounts(deps: { load(): Promise<unknown>; save(m: PageC
     forget(names) {
       let hit = false;
       const next = { ...map };
-      for (const n of names) { delete early[n]; if (n in next) { delete next[n]; hit = true; } }
+      for (const n of names) { delete early[n]; if (!loaded) forgotten.add(n); if (n in next) { delete next[n]; hit = true; } }
       if (!hit) return;
       map = next;
       deps.onChange(map);
