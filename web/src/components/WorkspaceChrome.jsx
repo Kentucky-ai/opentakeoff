@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../brand/icons.jsx";
 import { keyText } from "../lib/keys.ts";
+import { useCrossAppRail } from "../lib/useCrossAppRail.js";
 import "./workspaceChrome.css";
 
 // Workspace chrome. All actions are supplied by the existing canvas;
@@ -8,10 +9,23 @@ import "./workspaceChrome.css";
 export function WorkspaceChrome({ title, onOpen, onNavigate, navigationOpen, onTakeoffs, takeoffsOpen,
   onPremium, onWork, workOpen, workButtonRef, pending, running, onReport, onFocus, onClassic,
   onControls, controlsOpen, onSearch, pinControl, panelTools, layoutMenu, fileMenu, scaleMenu, conditionControl, aids, history, action }) {
+  // Cross-app rail (opentakeoff#305, ledger D5–D7). Destinations, order, labels, active
+  // state and the deep-link params are the vendored contract's (src/lib/crossApp.js, a
+  // byte-identical copy of 345's, sha256-pinned by test/crossApp.test.ts); only the pixels
+  // are OT's, per D6. The hook reads the live location, so a `return=` that is not
+  // allowlisted yields "" and the link is simply not rendered.
+  const { items, returnHref, returnLabel } = useCrossAppRail();
   return <>
     <header className="calm-header">
       <strong className="calm-brand">open<span>takeoff</span></strong>
+      {returnHref ? <a className="calm-return" href={returnHref} title={returnLabel}>{returnLabel}</a> : null}
       <div className="calm-project" title={title}><span>{title || "Untitled workspace"}</span><small>Premium workspace</small></div>
+      {/* The rail rides THIS row, never a row of its own — the canvas below keeps its height. */}
+      <nav className="calm-rail" aria-label="Connected apps">{items.map((l) =>
+        l.active
+          ? <span key={l.id} className="calm-rail-current" aria-current="page" data-app={l.id} title={l.title}>{l.label}</span>
+          : <a key={l.id} className="calm-rail-link" href={l.href} data-app={l.id} title={l.title}>{l.label}</a>,
+      )}</nav>
       <div className="calm-header-actions">
         <button type="button" onClick={onOpen} title="Open plans"><Icon name="plus" size={16} /><span>Open</span></button>
         {fileMenu}

@@ -11,7 +11,13 @@
   min-width:0;
 }
 .calm-header {
-  min-height:var(--topbar-h);
+  /* 58px matches 345's topbar floor (`.pa-topbar`, vendor/345-ui chrome.css) — the
+     cross-app rail now rides this row (#305), so the two apps' headers are one height. */
+  min-height:58px;
+  /* The row was already wider than a 1440-class laptop before the rail (1342px of chrome
+     at 1280); with the rail + the return hop it is ~1640. Scroll rather than clip a
+     control off-screen — 345's `.pa-topbar` and OT's classic `[data-topbar]` do the same. */
+  overflow-x:auto;
 }
 .calm-brand {
   font-family:var(--f-display);
@@ -22,11 +28,51 @@
 .calm-brand span {
   color:var(--cobalt);
 }
+/* Cross-app rail + the return hop (#305). OT's own pixels for the vendored contract's
+   destinations — the shared files carry no class names or tokens (D6). */
+.calm-rail {
+  display:inline-flex;
+  align-items:center;
+  gap:var(--sp-2);
+  flex:none;
+  min-width:0;
+}
+.calm-rail-link,.calm-rail-current,.calm-return {
+  display:inline-flex;
+  align-items:center;
+  font:inherit;
+  white-space:nowrap;
+  text-decoration:none;
+  border:1px solid transparent;
+  border-radius:var(--r-1);
+  padding:var(--sp-1) var(--sp-2);
+  min-height:var(--ctl-m);
+}
+.calm-rail-link,.calm-return {
+  color:var(--ink-secondary);
+}
+.calm-rail-link:hover,.calm-return:hover {
+  background:var(--paper-shadow);
+  color:var(--ink);
+}
+/* Where you already are — a current-page marker, not a self-link (mirrors 345's
+   `.fd-apps-current`). */
+.calm-rail-current {
+  font-weight:600;
+  color:var(--ink);
+}
+.calm-return {
+  font-size:var(--fs-s);
+}
 .calm-project {
   border-left:var(--rule-soft);
   padding-left:var(--sp-4);
   flex:1;
-  min-width:0;
+  /* The cross-app rail shares this row now (#305) and the row's controls are already
+     ~1.2kpx wide, so without a floor the title collapses to "…" (measured 37px at 1680
+     with the rail vs 334px without). The row scrolls instead — same contract as 345's
+     `.pa-topbar` and OT's own classic `[data-topbar]`. */
+  min-width:10rem;
 }
 .calm-project>span {
   display:block;
@@ -39,6 +85,12 @@
 .calm-project small {
   font-size:var(--fs-xs);
   color:var(--ink-muted);
+  /* One line, always: a collapsed title used to wrap this to three lines and push the
+     whole header past its 58px floor (#305). */
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
 }
 .calm-header-actions {
   display:flex;
